@@ -1,6 +1,6 @@
 # DF AI Overseer: Handoff
 
-26 Oct 2026 (02:15) · @Scott · the one doc to carry between chats: what this is, the plan, how to work, where things live and where to start. History and long lists live in local files (see "Files kept outside this note").
+26 Oct 2026 (02:20) · @Scott · the one doc to carry between chats: what this is, the plan, how to work, where things live and where to start. History and long lists live in local files (see "Files kept outside this note").
 
 ## Standing instructions
 
@@ -104,7 +104,8 @@ The fort goal on the Rules tab is Expand or Maintain. Maintain skips the library
 2. Copy the changed files into the DF-AI folder on the player's PC.
 3. Read the copies back and compare them byte for byte (ignoring line endings). Copy from a fresh staging folder each time: re-using a staged path once wrote the old version back (Oct 21).
 4. See the result in the game: read the live report (`state.json`) and the keeper log from the PC (the player restarts the keeper for Python changes; the self-test when the bridge's checks changed).
-5. Note what changed: a line in the Changelog; the plan and checklist; new start notes (the old ones, and the version's long notes, into the archive file); the Gap Checklist and the other local files; then save the handoff to the project and send it to the player.
+5. Commit the round to the GitHub repo (`SpaceisbigSoft/DF-Overseer`, private, branch `main`: one commit per round, the version in its title, pushed), and at the end of a version save a zip of it (`git archive`) to `DF-AI\backups\code\DF-Overseer-<date>-<commit>.zip` on the PC.
+6. Note what changed: a line in the Changelog; the plan and checklist; new start notes (the old ones, and the version's long notes, into the archive file); the Gap Checklist and the other local files; then save the handoff to the project and send it to the player.
 
 When a report section is added, wrap it in `safe()` in the bridge and give it a default in `digest.py`. A new bridge action needs an entry in the action table, a short label in `overseer.py`, and a planner rule with tests.
 
@@ -122,7 +123,8 @@ When a report section is added, wrap it in `safe()` in the bridge and give it a 
 | Live report | `D:\SteamLibrary\steamapps\common\Dwarf Fortress\dfhack-config\ai-overseer\state.json` (the bridge writes each full report there; read only) |
 | Game raws | `D:\SteamLibrary\steamapps\common\Dwarf Fortress\data\vanilla` (read only, for recipes and reactions) |
 | Keeper log | `DF-AI\logs\unattended.log`; each fort's journal, memory copy, season report and states in `DF-AI\logs\forts\<fort>\` |
-| This handoff | the project doc "DF AI Overseer Handoff", mirrored as `DF-AI\handoff.md` |
+| This handoff | the project doc "DF AI Overseer Handoff", mirrored as `DF-AI\handoff.md` (and in the repo) |
+| Code home | GitHub `SpaceisbigSoft/DF-Overseer` (private, `main`; first commit `ec4dab5`, 26 Oct 02:13: lua, brain, tests, docs, the handoff). Not in it: `.env`, `config.json`, `logs/`, `backups/`, `saves/`. The PC's `DF-AI` folder stays the copy the game runs; zips of the repo in `DF-AI\backups\code\` |
 
 ### Commands
 
@@ -238,6 +240,7 @@ One line per version, newest first (0.104.70 and older: the archive file, "Chang
 
 | Version | Date | What changed | Status |
 | --- | --- | --- | --- |
+| (repo) | Oct 26 | The project put on GitHub (`SpaceisbigSoft/DF-Overseer`, private) at `ec4dab5`: 142 files, every test passing from the repo; `.gitignore` adds backups/, saves/, config.json; `.gitattributes` (text=auto); a zip in `DF-AI\backups\code` | done |
 | 0.104.99 | Oct 26 | (ai-missions) the nearest ruins (DF's `RUINED` flag, or nobody owning or living there) with the way to them; the probe lists the newest army controllers and the fort's ids; tests | in game: **no ruins in this world** (330 sites' flags read, none ruined); the player sent a Diplomacy mission ("Make contact at Cottageflings") by hand: the report shows it (DIPLOMACY, site 110) and its mission report ("Set out Spring") |
 | 0.104.98 | Oct 26 | (planner) `magma_access`: any cavern reaching from the magma's top toward the fort is in the way (Teacheroar's magma top, z 135, is Cavern1's bottom level: "no cavern between" was said at 01:50); a test | built; waits for a restart (a note only) |
 | 0.104.97 | Oct 26 | (ai-missions) `probe_screen`, read only: the World screen's fields one level deep, its mode, the goals it allows, the focus and the mouse; (bridge) `probe_missions`; (brain) `probe_missions.py` (`--watch`: a sample a second, each change printed, `logs\probe-missions.json`); a test | built; for the player's hand-sent mission |
