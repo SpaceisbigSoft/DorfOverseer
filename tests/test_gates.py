@@ -38,6 +38,7 @@ function env.tile(x, y, z)
   -- 'w' deep water (7/7) in a natural pool, 'v' shallow water (2/7)
   -- 't' the top of a stair shaft on the surface (outside); 'n' surface under a
   -- tree's crown (DF says not outside)
+  if ch == 'B' then return {walk = true, shape = 'BRANCH', outside = true, material = 'TREE'} end   -- a treetop
   return {walk = true, shape = (ch == 's' or ch == 'S' or ch == 't') and 'STAIR_UPDOWN' or 'FLOOR',
           outside = ch == 'o' or ch == 'y' or ch == 't', canopy = ch == 'n', feature = ch == 'c' or ch == 'S',
           special = ch == 'p', hidden = ch == '?', liquid = ch == 'w' or ch == 'v', occupied = ch == 'b',
@@ -197,6 +198,26 @@ def _():
     es, _ = find()
     kinds = sorted((e.kind, e.width) for e in es)
     assert kinds == [("cavern", 1), ("surface", 1), ("surface", 2)], kinds
+
+
+@test("a treetop beside the fort (0.104.104) is neither part of it nor an entrance")
+def _():
+    rows = list(FORT)
+    rows[11] = "oooo#####.......BBBB.........."    # branches of a tree in a roofless gap, ringed by sky
+    rows[12] = "oooo#####.......BBBB.........."
+    rows[9] = "oooo#####....................."
+    rows[10] = "oooo#####....................."
+    rows[13] = "oooo#####....................."
+    rows[14] = "oooo#####....................."
+    setup(rows, buildings=[DOOR_A])
+    es, n_tree = find()
+    kinds = sorted((e.kind, e.width) for e in es)
+    assert kinds == [("cavern", 1), ("surface", 1), ("surface", 2)], kinds
+    rows[11] = rows[11].replace("BBBB", "####")
+    rows[12] = rows[12].replace("BBBB", "####")
+    setup(rows, buildings=[DOOR_A])
+    _, n_rock = find()
+    assert n_tree == n_rock, (n_tree, n_rock)                     # the treetop adds nothing to the fort
 
 
 @test("a local feature (a deep pit) is neither walked into nor an entrance")

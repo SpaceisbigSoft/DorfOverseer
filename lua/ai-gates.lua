@@ -273,10 +273,20 @@ local function reaches_edge(k)
     return result
 end
 
+-- (0.104.104) a tree's branches and twigs are never a courtyard: a treetop is
+-- walkable open air ringed by empty sky, so it never "reaches the edge", and
+-- Teacheroar's forest became dozens of fort "entrances" on branches (none
+-- buildable, x30-185, 2-91 wide) while the real way in stood open to titans
+TREE_PARTS = {BRANCH = true, TRUNK_BRANCH = true, TWIG = true}
+TREE_MATERIALS = {TREE = true, ROOT = true, PLANT = true, MUSHROOM = true}
+local function treetop(t)
+    return t ~= nil and (TREE_PARTS[t.shape] or TREE_MATERIALS[t.material]) or false
+end
+
 local function inside_or_courtyard(t, k)
     if interior(t) then return true end
     return t and t.walk and t.outside and not t.feature and not t.special and not t.hidden
-        and not reaches_edge(k)
+        and not treetop(t) and not reaches_edge(k)
 end
 
 -- Flood the inside from the start tiles. blocked: set of keys that can't be
@@ -303,7 +313,8 @@ function explore(starts, blocked)
             local nk = key(nx, ny, nz)
             if seen[nk] or blocked[nk] then return end
             local nt = T(nx, ny, nz)
-            if not nt or not nt.walk or nt.hidden or nt.special then return end
+            -- (0.104.104) a treetop is neither the fort nor a way in
+            if not nt or not nt.walk or nt.hidden or nt.special or treetop(nt) then return end
             if inside_or_courtyard(nt, nk) then
                 seen[nk] = true
                 table.insert(queue, nk)
