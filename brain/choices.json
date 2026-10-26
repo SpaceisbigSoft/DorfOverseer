@@ -1,0 +1,2001 @@
+{
+ "_about": "The weights engine's data (see brain/weights.py and docs/culture.md). Each area is one decision with a few options. An option's score = bias + sum(affinity x (slider + the fort's leanings) / 100) + sum(history weight x count, capped). Affinities run from -1 to +1 (a little more for a slider's main option). Quirks add bonuses to options and can change how sticky choices are. Tune freely: tests/test_weights.py checks every option can still be reached and that opposite sliders choose differently. (0.95) At default sliders the top two options of each area sit within the close-call band (near), so the fort's seed and its own and its site's leanings (brain/leanings.py) decide.",
+ "settings": {
+  "near": 0.15,
+  "stickiness": 0.15
+ },
+ "areas": {
+  "halls": {
+   "name": "Halls and rooms",
+   "key": "hall",
+   "options": {
+    "plain": {
+     "label": "Square, practical halls",
+     "value": "plain",
+     "bias": 0.1,
+     "sliders": {
+      "fortification": 0.3,
+      "industriousness": 0.2,
+      "grandeur": -0.5,
+      "welfare": -0.1
+     }
+    },
+    "rounded": {
+     "label": "Rounded halls",
+     "value": "rounded",
+     "bias": 0.0,
+     "sliders": {
+      "grandeur": 0.5,
+      "welfare": 0.3,
+      "piety": 0.2,
+      "fortification": -0.3
+     }
+    },
+    "pillared": {
+     "label": "Grand pillared halls",
+     "value": "pillared",
+     "bias": -0.5,
+     "sliders": {
+      "grandeur": 1.1,
+      "craftsmanship": 0.3,
+      "deference": 0.2
+     },
+     "history": {
+      "beasts_slain": [
+       0.1,
+       3
+      ]
+     }
+    }
+   }
+  },
+  "finish": {
+   "name": "Finish",
+   "key": "smooth",
+   "options": {
+    "rough": {
+     "label": "Rough rock",
+     "value": 0,
+     "bias": -0.2,
+     "sliders": {
+      "grandeur": -1.0,
+      "welfare": -0.3,
+      "industriousness": 0.2
+     }
+    },
+    "floors": {
+     "label": "Smoothed floors",
+     "value": 1,
+     "bias": 0.1,
+     "sliders": {
+      "grandeur": -0.1
+     }
+    },
+    "smoothed": {
+     "label": "Smoothed floors and walls",
+     "value": 2,
+     "bias": 0.0,
+     "sliders": {
+      "grandeur": 0.5,
+      "welfare": 0.3,
+      "craftsmanship": 0.2
+     }
+    },
+    "engraved": {
+     "label": "Smoothed and engraved",
+     "value": 3,
+     "bias": -0.5,
+     "sliders": {
+      "grandeur": 1.0,
+      "craftsmanship": 0.4,
+      "piety": 0.1
+     },
+     "history": {
+      "beasts_slain": [
+       0.1,
+       3
+      ]
+     }
+    }
+   }
+  },
+  "statues": {
+   "name": "Statues",
+   "key": "statues",
+   "options": {
+    "none": {
+     "label": "No statues",
+     "value": 0,
+     "bias": 0.0,
+     "sliders": {
+      "grandeur": -0.6,
+      "industriousness": 0.2
+     }
+    },
+    "one": {
+     "label": "1 statue per hall",
+     "value": 1,
+     "bias": 0.1,
+     "sliders": {}
+    },
+    "two": {
+     "label": "2 statues per hall",
+     "value": 2,
+     "bias": -0.1,
+     "sliders": {
+      "grandeur": 0.4,
+      "craftsmanship": 0.2,
+      "piety": 0.2
+     }
+    },
+    "three": {
+     "label": "3 statues per hall",
+     "value": 3,
+     "bias": -0.4,
+     "sliders": {
+      "grandeur": 0.8,
+      "craftsmanship": 0.2
+     }
+    },
+    "four": {
+     "label": "4 statues per hall",
+     "value": 4,
+     "bias": -0.8,
+     "sliders": {
+      "grandeur": 1.2,
+      "deference": 0.2
+     },
+     "history": {
+      "beasts_slain": [
+       0.1,
+       3
+      ]
+     }
+    }
+   }
+  },
+  "materials": {
+   "name": "Materials",
+   "key": "palette",
+   "options": {
+    "any": {
+     "label": "Whatever stone is plentiful",
+     "value": "any",
+     "bias": 0.1,
+     "sliders": {
+      "industriousness": 0.1
+     }
+    },
+    "dark": {
+     "label": "Dark stone",
+     "value": "dark",
+     "bias": 0.0,
+     "sliders": {
+      "fortification": 0.2,
+      "outsiders": -0.6
+     },
+     "history": {
+      "sieges": [
+       0.15,
+       4
+      ]
+     }
+    },
+    "light": {
+     "label": "Pale stone",
+     "value": "light",
+     "bias": 0.0,
+     "sliders": {
+      "piety": 0.6,
+      "welfare": 0.1
+     }
+    },
+    "warm": {
+     "label": "Warm-coloured stone",
+     "value": "warm",
+     "bias": 0.0,
+     "sliders": {
+      "welfare": 0.6,
+      "outsiders": 0.3
+     }
+    },
+    "cool": {
+     "label": "Cool-coloured stone",
+     "value": "cool",
+     "bias": 0.0,
+     "sliders": {
+      "caution": 0.4,
+      "industriousness": 0.3,
+      "outsiders": -0.2
+     }
+    },
+    "precious": {
+     "label": "The most valuable stone",
+     "value": "precious",
+     "bias": -0.2,
+     "sliders": {
+      "greed": 0.8,
+      "deference": 0.3,
+      "grandeur": 0.2
+     }
+    },
+    "purpose": {
+     "label": "Stone by purpose: dark doors, warm tables, pale coffins",
+     "value": "purpose",
+     "bias": -0.15,
+     "sliders": {
+      "craftsmanship": 0.5,
+      "industriousness": 0.3,
+      "deference": 0.2,
+      "greed": -0.2
+     }
+    },
+    "wood": {
+     "label": "Wood where it will do, stone for the rest",
+     "value": "wood",
+     "bias": -0.1,
+     "sliders": {
+      "surface": 0.4,
+      "agriculture": 0.3,
+      "craftsmanship": -0.4,
+      "mining": -0.3,
+      "greed": -0.2,
+      "outsiders": 0.1
+     }
+    }
+   }
+  },
+  "defence": {
+   "name": "Defence",
+   "key": "gate",
+   "options": {
+    "plain": {
+     "label": "Walls with a plain doorway",
+     "value": "plain",
+     "bias": 0.1,
+     "sliders": {
+      "fortification": -0.3,
+      "outsiders": 0.2
+     }
+    },
+    "narrow": {
+     "label": "A single narrow door",
+     "value": "narrow",
+     "bias": 0.0,
+     "sliders": {
+      "caution": 0.6,
+      "fortification": 0.1,
+      "outsiders": -0.2
+     }
+    },
+    "fortified": {
+     "label": "Two doors, one behind the other",
+     "value": "fortified",
+     "bias": 0.0,
+     "sliders": {
+      "fortification": 0.6,
+      "engineering": -0.2,
+      "outsiders": -0.2
+     },
+     "history": {
+      "sieges": [
+       0.2,
+       4
+      ]
+     }
+    },
+    "gatehouse": {
+     "label": "A gatehouse with cage traps",
+     "value": "gatehouse",
+     "bias": -0.6,
+     "sliders": {
+      "fortification": 0.8,
+      "engineering": 0.6
+     }
+    },
+    "grand": {
+     "label": "Grand double doors with statues",
+     "value": "grand",
+     "bias": -0.4,
+     "sliders": {
+      "grandeur": 0.8,
+      "fortification": -0.2,
+      "outsiders": 0.2
+     }
+    },
+    "drawbridge": {
+     "label": "Walls with a drawbridge, worked by a lever inside",
+     "value": "drawbridge",
+     "bias": -0.5,
+     "sliders": {
+      "engineering": 0.7,
+      "caution": 0.5,
+      "outsiders": -0.3
+     }
+    }
+   }
+  },
+  "traps": {
+   "name": "Traps",
+   "key": "traps",
+   "options": {
+    "none": {
+     "label": "No traps at the gates",
+     "value": "none",
+     "bias": 0.1,
+     "sliders": {
+      "fortification": -0.5,
+      "engineering": -0.4,
+      "outsiders": 0.3
+     }
+    },
+    "cage": {
+     "label": "Cage traps behind the gates (they capture)",
+     "value": "cage",
+     "bias": 0.0,
+     "sliders": {
+      "caution": 0.6,
+      "engineering": 0.3,
+      "outsiders": 0.4
+     }
+    },
+    "stonefall": {
+     "label": "Stone-fall traps behind the gates",
+     "value": "stonefall",
+     "bias": -0.1,
+     "sliders": {
+      "fortification": 0.5,
+      "mining": 0.4,
+      "engineering": 0.2
+     }
+    },
+    "weapon": {
+     "label": "Weapon traps behind the gates",
+     "value": "weapon",
+     "bias": -0.4,
+     "sliders": {
+      "engineering": 0.6,
+      "militarism": 0.3,
+      "caution": -0.2,
+      "outsiders": -0.7
+     }
+    }
+   }
+  },
+  "level_doors": {
+   "name": "Level doors",
+   "key": "entry_doors",
+   "options": {
+    "open": {
+     "label": "Levels left open",
+     "value": false,
+     "bias": 0.1,
+     "sliders": {
+      "caution": -0.2,
+      "welfare": 0.1,
+      "outsiders": 0.3
+     }
+    },
+    "doored": {
+     "label": "A door closes off each level",
+     "value": true,
+     "bias": 0.0,
+     "sliders": {
+      "fortification": 0.5,
+      "caution": 0.4,
+      "outsiders": -0.2
+     },
+     "history": {
+      "sieges": [
+       0.15,
+       4
+      ]
+     }
+    }
+   }
+  },
+  "worship": {
+   "name": "Worship",
+   "key": "temple",
+   "options": {
+    "none": {
+     "label": "No temple wanted",
+     "value": "none",
+     "bias": 0.1,
+     "sliders": {
+      "piety": -0.3,
+      "outsiders": -0.2
+     }
+    },
+    "shrine": {
+     "label": "A shrine",
+     "value": "shrine",
+     "bias": 0.0,
+     "sliders": {
+      "piety": 0.7,
+      "welfare": 0.2,
+      "outsiders": 0.1
+     },
+     "history": {
+      "citizen_deaths": [
+       0.01,
+       20
+      ]
+     }
+    },
+    "grand": {
+     "label": "A grand temple",
+     "value": "grand",
+     "bias": -0.4,
+     "sliders": {
+      "piety": 1.2,
+      "grandeur": 0.2
+     }
+    }
+   }
+  },
+  "layout": {
+   "name": "Layout pattern",
+   "key": "layout",
+   "later": "the builder starts using this with the fort plan (milestone 4)",
+   "options": {
+    "grid": {
+     "label": "A grid",
+     "value": "grid",
+     "bias": 0.1,
+     "sliders": {
+      "industriousness": 0.4,
+      "caution": 0.2,
+      "craftsmanship": 0.2
+     }
+    },
+    "rings": {
+     "label": "Rings around a core",
+     "value": "rings",
+     "bias": 0.0,
+     "sliders": {
+      "fortification": 0.5,
+      "grandeur": 0.2,
+      "piety": 0.1
+     }
+    },
+    "branching": {
+     "label": "Branching tunnels",
+     "value": "branching",
+     "bias": 0.0,
+     "sliders": {
+      "mining": 0.5,
+      "spacing": 0.3,
+      "industriousness": -0.2
+     }
+    },
+    "stacked": {
+     "label": "Stacked levels",
+     "value": "stacked",
+     "bias": 0.0,
+     "sliders": {
+      "verticality": 0.7,
+      "spacing": -0.3
+     }
+    }
+   }
+  },
+  "stairwells": {
+   "name": "Stairwells",
+   "key": "stairwells",
+   "options": {
+    "one": {
+     "label": "One great stair: every level off the main stair",
+     "value": 1,
+     "bias": 0.15,
+     "sliders": {
+      "fortification": 0.4,
+      "verticality": 0.3,
+      "spacing": -0.3
+     }
+    },
+    "two": {
+     "label": "A second stairwell on the fort's far side",
+     "value": 2,
+     "bias": 0.05,
+     "sliders": {
+      "caution": 0.4,
+      "industriousness": 0.3,
+      "engineering": 0.2
+     }
+    },
+    "several": {
+     "label": "A stairwell for each district",
+     "value": 4,
+     "bias": -0.2,
+     "sliders": {
+      "spacing": 0.6,
+      "industriousness": 0.3,
+      "mining": 0.3,
+      "fortification": -0.3
+     }
+    }
+   }
+  }
+ },
+ "quirks": {
+  "stonebound": {
+   "name": "Stonebound",
+   "does": "builds in stone wherever stone will do: rock pots instead of wooden barrels, furniture in the fort's stone",
+   "ai": "Stonebound: these dwarves distrust wood; use stone wherever stone will do.",
+   "earn": {
+    "all": [
+     {
+      "slider": "craftsmanship",
+      "min": 50
+     },
+     {
+      "slider": "greed",
+      "min": 30
+     },
+     {
+      "fact": "stone_per_wood",
+      "min": 1.0
+     }
+    ]
+   },
+   "earn_days": 84,
+   "lose": {
+    "any": [
+     {
+      "fact": "wood_per_stone",
+      "min": 3.0
+     },
+     {
+      "slider": "craftsmanship",
+      "max": -50
+     }
+    ]
+   },
+   "lose_days": 336,
+   "rules": [
+    "stone_containers"
+   ],
+   "weights": {
+    "materials": {
+     "any": -0.1,
+     "wood": -1.0
+    }
+   }
+  },
+  "restless": {
+   "name": "Restless",
+   "does": "changes style readily: choices follow the sliders at once, and close calls go either way",
+   "ai": "Restless: this fort welcomes change; new styles are fine.",
+   "earn": {
+    "all": [
+     {
+      "fact": "eras_last_2_years",
+      "min": 3
+     }
+    ]
+   },
+   "earn_days": 0,
+   "lose": {
+    "any": [
+     {
+      "fact": "years_since_new_era",
+      "min": 3
+     }
+    ]
+   },
+   "lose_days": 0,
+   "stickiness": 0.0,
+   "near": 0.2,
+   "clashes": [
+    "traditionalist"
+   ]
+  },
+  "traditionalist": {
+   "name": "Traditionalist",
+   "does": "keeps its old style: a choice changes only when the sliders push hard the other way",
+   "ai": "Traditionalist: keep the fort's established style; change it only after a disaster.",
+   "earn": {
+    "all": [
+     {
+      "fact": "years_since_new_era",
+      "min": 5
+     },
+     {
+      "slider": "caution",
+      "min": 30
+     }
+    ]
+   },
+   "earn_days": 84,
+   "lose": {
+    "any": [
+     {
+      "fact": "eras_last_year",
+      "min": 2
+     }
+    ]
+   },
+   "lose_days": 0,
+   "stickiness": 0.6,
+   "near": 0.0,
+   "clashes": [
+    "restless"
+   ]
+  },
+  "warren": {
+   "name": "Warren",
+   "does": "many small rooms off narrow, dog-leg corridors; no grand pillared halls or grand temples",
+   "ai": "Warren: a close, burrowing fort; keep rooms small and ways narrow, no grand halls.",
+   "earn": {
+    "any": [
+     {
+      "all": [
+       {
+        "slider": "spacing",
+        "max": -60
+       },
+       {
+        "slider": "grandeur",
+        "max": 0
+       }
+      ]
+     },
+     {
+      "all": [
+       {
+        "fact": "sieges",
+        "min": 2
+       },
+       {
+        "slider": "fortification",
+        "min": 50
+       }
+      ]
+     }
+    ]
+   },
+   "earn_days": 84,
+   "lose": {
+    "any": [
+     {
+      "slider": "spacing",
+      "min": 30
+     }
+    ]
+   },
+   "lose_days": 336,
+   "rules": [
+    "small_rooms",
+    "narrow_ways"
+   ],
+   "weights": {
+    "halls": {
+     "pillared": -1.0,
+     "plain": 0.4
+    },
+    "worship": {
+     "grand": -1.0
+    },
+    "layout": {
+     "branching": 0.4
+    },
+    "stairwells": {
+     "several": 0.5
+    }
+   },
+   "clashes": [
+    "great_shaft"
+   ]
+  },
+  "mirror_minded": {
+   "name": "Mirror-minded",
+   "does": "every level laid out symmetrically: never mirrored to one side, and grid plans first",
+   "ai": "Mirror-minded: these dwarves love symmetry; matched halls, balanced plans.",
+   "earn": {
+    "all": [
+     {
+      "slider": "grandeur",
+      "min": 60
+     },
+     {
+      "slider": "craftsmanship",
+      "min": 60
+     }
+    ]
+   },
+   "earn_days": 84,
+   "lose": {
+    "any": [
+     {
+      "slider": "grandeur",
+      "max": 0
+     },
+     {
+      "slider": "craftsmanship",
+      "max": 0
+     }
+    ]
+   },
+   "lose_days": 336,
+   "rules": [
+    "symmetric"
+   ],
+   "weights": {
+    "layout": {
+     "grid": 0.5
+    },
+    "finish": {
+     "engraved": 0.2
+    }
+   }
+  },
+  "great_shaft": {
+   "name": "The Great Shaft",
+   "does": "the fort grows close around its main stair: new levels kept to one side of it, along the fort's axis, with wide avenues",
+   "ai": "The Great Shaft: everything gathers around the fort's great central stair.",
+   "earn": {
+    "all": [
+     {
+      "slider": "verticality",
+      "min": 70
+     },
+     {
+      "slider": "mining",
+      "min": 50
+     },
+     {
+      "fact": "caverns_reached",
+      "min": 1
+     }
+    ]
+   },
+   "earn_days": 84,
+   "lose": {
+    "any": [
+     {
+      "slider": "verticality",
+      "max": -30
+     }
+    ]
+   },
+   "lose_days": 336,
+   "rules": [
+    "great_shaft"
+   ],
+   "weights": {
+    "layout": {
+     "stacked": 0.8
+    },
+    "stairwells": {
+     "one": 0.8
+    }
+   },
+   "clashes": [
+    "warren",
+    "hundred_stairs"
+   ]
+  },
+  "last_stand": {
+   "name": "Last Stand",
+   "does": "keeps a place for an inner keep beside the homes (built with drawbridges from milestone 5) and favours strong gates",
+   "ai": "Last Stand: the fort was breached once; it plans for a keep to hold out in.",
+   "earn": {
+    "all": [
+     {
+      "slider": "caution",
+      "min": 60
+     },
+     {
+      "fact": "deaths_inside_in_siege",
+      "min": 1
+     }
+    ]
+   },
+   "earn_days": 0,
+   "lose": {
+    "any": [
+     {
+      "fact": "years_since_inside_death",
+      "min": 3
+     }
+    ]
+   },
+   "lose_days": 0,
+   "rules": [
+    "inner_keep"
+   ],
+   "weights": {
+    "defence": {
+     "fortified": 0.3,
+     "gatehouse": 0.3
+    }
+   }
+  },
+  "trapsmiths": {
+   "name": "Trapsmiths",
+   "does": "traps over soldiers: more traps behind every gate, weapon traps where it can arm them",
+   "ai": "Trapsmiths: the fort trusts its traps; line the ways in with them.",
+   "earn": {
+    "all": [
+     {
+      "slider": "engineering",
+      "min": 60
+     },
+     {
+      "slider": "fortification",
+      "min": 40
+     }
+    ]
+   },
+   "earn_days": 84,
+   "lose": {
+    "any": [
+     {
+      "slider": "engineering",
+      "max": -30
+     }
+    ]
+   },
+   "lose_days": 336,
+   "rules": [
+    "more_traps"
+   ],
+   "weights": {
+    "traps": {
+     "weapon": 0.4,
+     "cage": 0.2,
+     "none": -1.0
+    }
+   }
+  },
+  "sealed_halls": {
+   "name": "Sealed Halls",
+   "does": "every level can be shut off: doors at the stairs, strong gates",
+   "ai": "Sealed Halls: a careful fort; each level can be closed, gates are strong.",
+   "earn": {
+    "all": [
+     {
+      "slider": "caution",
+      "min": 70
+     },
+     {
+      "slider": "fortification",
+      "min": 50
+     }
+    ]
+   },
+   "earn_days": 84,
+   "lose": {
+    "any": [
+     {
+      "slider": "caution",
+      "max": 0
+     }
+    ]
+   },
+   "lose_days": 336,
+   "rules": [
+    "doored_levels"
+   ],
+   "weights": {
+    "level_doors": {
+     "doored": 0.6,
+     "open": -0.6
+    },
+    "defence": {
+     "fortified": 0.3,
+     "drawbridge": 0.3
+    }
+   }
+  },
+  "oathbound": {
+   "name": "Oathbound",
+   "does": "a standing army: more of the fort under arms, always training",
+   "ai": "Oathbound: every adult owes the fort their arms; keep the squads full and training.",
+   "earn": {
+    "all": [
+     {
+      "slider": "militarism",
+      "min": 70
+     },
+     {
+      "fact": "sieges",
+      "min": 1
+     }
+    ]
+   },
+   "earn_days": 0,
+   "lose": {
+    "any": [
+     {
+      "slider": "militarism",
+      "max": 0
+     }
+    ]
+   },
+   "lose_days": 336,
+   "rules": [
+    "more_soldiers"
+   ],
+   "weights": {
+    "defence": {
+     "fortified": 0.2
+    }
+   }
+  },
+  "grudge_keepers": {
+   "name": "Grudge-keepers",
+   "does": "after every siege the walls and gates go up a step; the fort forgets nothing",
+   "ai": "Grudge-keepers: three sieges were survived and none forgotten; harden the gates after each.",
+   "earn": {
+    "all": [
+     {
+      "fact": "sieges",
+      "min": 3
+     },
+     {
+      "fact": "years_since_siege",
+      "max": 1
+     }
+    ]
+   },
+   "earn_days": 0,
+   "lose": {
+    "any": [
+     {
+      "fact": "years_since_siege",
+      "min": 3
+     }
+    ]
+   },
+   "lose_days": 0,
+   "rules": [
+    "harden_after_siege"
+   ],
+   "weights": {
+    "defence": {
+     "gatehouse": 0.3,
+     "fortified": 0.3,
+     "plain": -0.5
+    }
+   }
+  },
+  "riverfolk": {
+   "name": "Riverfolk",
+   "does": "lives by its river: the narrow bridge gives way to a proper one early, and the fort keeps fishers on the water",
+   "ai": "Riverfolk: the fort's life runs along its river; bridge it well and fish it.",
+   "earn": {
+    "all": [
+     {
+      "fact": "surface_water_tiles",
+      "min": 200
+     },
+     {
+      "fact": "crossings_built",
+      "min": 1
+     }
+    ]
+   },
+   "earn_days": 56,
+   "lose": {
+    "any": [
+     {
+      "fact": "surface_water_tiles",
+      "max": 20
+     }
+    ]
+   },
+   "lose_days": 336,
+   "rules": [
+    "river_bridges"
+   ]
+  },
+  "frozen_hold": {
+   "name": "Frozen Hold",
+   "does": "knows the long cold: stocks food and drink for winter from midsummer, not autumn",
+   "ai": "Frozen Hold: the water freezes every winter; lay in stores early.",
+   "earn": {
+    "all": [
+     {
+      "fact": "freezes",
+      "min": 1
+     }
+    ]
+   },
+   "earn_days": 168,
+   "lose": {
+    "any": [
+     {
+      "fact": "freezes",
+      "max": 0
+     }
+    ]
+   },
+   "lose_days": 672,
+   "rules": [
+    "early_winter_stores"
+   ]
+  },
+  "thirst_scarred": {
+   "name": "Thirst-scarred",
+   "does": "remembers the dry years: keeps a third more drink than it needs and brews before all else when it runs low",
+   "ai": "Thirst-scarred: this fort once went dry for seasons; never let the drink run low again.",
+   "earn": {
+    "all": [
+     {
+      "fact": "dry_seasons",
+      "min": 2
+     }
+    ]
+   },
+   "earn_days": 0,
+   "lose": {
+    "any": [
+     {
+      "fact": "years_since_dry",
+      "min": 6
+     }
+    ]
+   },
+   "lose_days": 0,
+   "rules": [
+    "drink_hoard"
+   ]
+  },
+  "haunted": {
+   "name": "Haunted",
+   "does": "has known its dead to walk: keeps twice the free tombs and buries the dead before anything else",
+   "ai": "Haunted: the dead have walked here; bury every one, keep tombs ready.",
+   "earn": {
+    "all": [
+     {
+      "fact": "ghosts",
+      "min": 2
+     }
+    ]
+   },
+   "earn_days": 7,
+   "lose": {
+    "any": [
+     {
+      "fact": "ghosts",
+      "max": 0
+     }
+    ]
+   },
+   "lose_days": 336,
+   "rules": [
+    "lay_the_dead"
+   ]
+  },
+  "goblin_haunted": {
+   "name": "Goblin-haunted",
+   "does": "lives at war with the goblins: a quarter more soldiers and a trap more at every gate",
+   "ai": "Goblin-haunted: the goblins are at war with this fort; stay armed.",
+   "earn": {
+    "all": [
+     {
+      "fact": "goblin_wars",
+      "min": 1
+     }
+    ]
+   },
+   "earn_days": 84,
+   "lose": {
+    "any": [
+     {
+      "fact": "goblin_wars",
+      "max": 0
+     }
+    ]
+   },
+   "lose_days": 336,
+   "rules": [
+    "more_soldiers",
+    "more_traps"
+   ]
+  },
+  "mead_hall": {
+   "name": "Mead Hall",
+   "does": "the tavern is the fort's heart: a quarter more drink kept, the tavern before other halls",
+   "ai": "Mead Hall: these dwarves love their tavern and their drink; keep both full.",
+   "earn": {
+    "any": [
+     {
+      "fact": "drink_pd_season",
+      "min": 10
+     },
+     {
+      "all": [
+       {
+        "slider": "welfare",
+        "min": 50
+       },
+       {
+        "slider": "outsiders",
+        "min": 30
+       },
+       {
+        "fact": "drink_pd_season",
+        "min": 6
+       }
+      ]
+     }
+    ]
+   },
+   "earn_days": 84,
+   "lose": {
+    "any": [
+     {
+      "fact": "drink_pd_season",
+      "max": 2
+     },
+     {
+      "slider": "welfare",
+      "max": -30
+     }
+    ]
+   },
+   "lose_days": 84,
+   "rules": [
+    "mead_hall"
+   ]
+  },
+  "ancestor_halls": {
+   "name": "Ancestor Halls",
+   "does": "honours its many dead: twice the free tombs, memorial halls before other halls",
+   "ai": "Ancestor Halls: many have died here; their halls and tombs come first.",
+   "earn": {
+    "any": [
+     {
+      "fact": "citizen_deaths",
+      "min": 10
+     },
+     {
+      "all": [
+       {
+        "slider": "piety",
+        "min": 50
+       },
+       {
+        "fact": "citizen_deaths",
+        "min": 5
+       }
+      ]
+     }
+    ]
+   },
+   "earn_days": 28,
+   "lose": {
+    "any": [
+     {
+      "slider": "piety",
+      "max": -30
+     }
+    ]
+   },
+   "lose_days": 336,
+   "rules": [
+    "lay_the_dead",
+    "memorials_first"
+   ]
+  },
+  "scholars_hold": {
+   "name": "Scholars' Hold",
+   "does": "a fort of learning: a second library and more bookcases come early",
+   "ai": "Scholars' Hold: knowledge is prized here; keep the library growing.",
+   "earn": {
+    "any": [
+     {
+      "fact": "library_years",
+      "min": 2
+     },
+     {
+      "all": [
+       {
+        "slider": "welfare",
+        "min": 40
+       },
+       {
+        "slider": "industriousness",
+        "max": -30
+       },
+       {
+        "fact": "libraries",
+        "min": 1
+       }
+      ]
+     }
+    ]
+   },
+   "earn_days": 84,
+   "lose": {
+    "any": [
+     {
+      "fact": "libraries",
+      "max": 0
+     }
+    ]
+   },
+   "lose_days": 336,
+   "rules": [
+    "library_first"
+   ]
+  },
+  "elf_friends": {
+   "name": "Elf-friends",
+   "does": "keeps well inside the elves' tree quota: a single woodcutter, stone where wood isn't needed",
+   "ai": "Elf-friends: this fort respects the elves' forests; fell few trees.",
+   "earn": {
+    "all": [
+     {
+      "fact": "elf_peace",
+      "min": 1
+     },
+     {
+      "fact": "tree_quota_share",
+      "max": 0.5
+     }
+    ]
+   },
+   "earn_days": 168,
+   "lose": {
+    "any": [
+     {
+      "fact": "elf_peace",
+      "max": 0
+     },
+     {
+      "fact": "tree_quota_share",
+      "min": 0.9
+     }
+    ]
+   },
+   "lose_days": 28,
+   "rules": [
+    "elf_friends"
+   ]
+  },
+  "merchant_princes": {
+   "name": "Merchant Princes",
+   "does": "lives by trade: twice the crafts kept ready for the caravans",
+   "ai": "Merchant Princes: the caravans are this fort's lifeblood; always have goods to sell.",
+   "earn": {
+    "any": [
+     {
+      "fact": "trades",
+      "min": 3
+     },
+     {
+      "all": [
+       {
+        "slider": "trade",
+        "min": 60
+       },
+       {
+        "slider": "greed",
+        "min": 30
+       },
+       {
+        "fact": "trades",
+        "min": 1
+       }
+      ]
+     }
+    ]
+   },
+   "earn_days": 0,
+   "lose": {
+    "any": [
+     {
+      "slider": "trade",
+      "max": -30
+     }
+    ]
+   },
+   "lose_days": 336,
+   "rules": [
+    "merchant_princes"
+   ]
+  },
+  "cradle_hold": {
+   "name": "Cradle-hold",
+   "does": "a fort of families: bedrooms dug well ahead of the births",
+   "ai": "Cradle-hold: many children grow up here; keep rooms ready for them.",
+   "earn": {
+    "all": [
+     {
+      "fact": "children",
+      "min": 6
+     }
+    ]
+   },
+   "earn_days": 84,
+   "lose": {
+    "any": [
+     {
+      "fact": "children",
+      "max": 1
+     }
+    ]
+   },
+   "lose_days": 336,
+   "rules": [
+    "rooms_ahead"
+   ]
+  },
+  "legend_proud": {
+   "name": "Proud of its Legend",
+   "does": "a legend lives here: the fort raises its set pieces (garden, great hall) before other halls",
+   "ai": "Proud of its Legend: a legendary dwarf lives here; make the fort worthy of them.",
+   "earn": {
+    "all": [
+     {
+      "fact": "legendary",
+      "min": 1
+     }
+    ]
+   },
+   "earn_days": 28,
+   "lose": {
+    "any": [
+     {
+      "fact": "legendary",
+      "max": 0
+     }
+    ]
+   },
+   "lose_days": 168,
+   "rules": [
+    "legend_pride"
+   ]
+  },
+  "beast_friends": {
+   "name": "Beast-friends",
+   "does": "lives among its herds: never sends animals to slaughter (unless the game runs slowly)",
+   "ai": "Beast-friends: these dwarves love their animals; no slaughter.",
+   "earn": {
+    "any": [
+     {
+      "fact": "tame_animals",
+      "min": 40
+     },
+     {
+      "all": [
+       {
+        "slider": "husbandry",
+        "min": 60
+       },
+       {
+        "fact": "tame_animals",
+        "min": 15
+       }
+      ]
+     }
+    ]
+   },
+   "earn_days": 168,
+   "lose": {
+    "any": [
+     {
+      "fact": "tame_animals",
+      "max": 5
+     },
+     {
+      "slider": "husbandry",
+      "max": -30
+     }
+    ]
+   },
+   "lose_days": 168,
+   "rules": [
+    "no_slaughter"
+   ]
+  },
+  "forge_born": {
+   "name": "Forge-born",
+   "does": "a fort of the anvil: furniture and doors made of metal (bars the soldiers' gear doesn't need) whenever there are bars to spare",
+   "ai": "Forge-born: these dwarves live by the forge; metal first.",
+   "earn": {
+    "any": [
+     {
+      "fact": "magma_forges",
+      "min": 1
+     },
+     {
+      "all": [
+       {
+        "fact": "magma_tiles",
+        "min": 1
+       },
+       {
+        "fact": "forges",
+        "min": 2
+       }
+      ]
+     },
+     {
+      "all": [
+       {
+        "slider": "craftsmanship",
+        "min": 60
+       },
+       {
+        "fact": "forges",
+        "min": 2
+       }
+      ]
+     },
+     {
+      "all": [
+       {
+        "slider": "militarism",
+        "min": 40
+       },
+       {
+        "fact": "forges",
+        "min": 2
+       }
+      ]
+     }
+    ]
+   },
+   "earn_days": 84,
+   "lose": {
+    "any": [
+     {
+      "fact": "forges",
+      "max": 0
+     }
+    ]
+   },
+   "lose_days": 336,
+   "rules": [
+    "metal_furnish"
+   ]
+  },
+  "communal": {
+   "name": "Communal",
+   "does": "a crowded fort that learned to sleep together: new sleeping quarters are dormitories (private rooms for the nobles only)",
+   "ai": "Communal: these dwarves live and sleep together; dormitories, not private rooms.",
+   "earn": {
+    "any": [
+     {
+      "fact": "beds_per_dwarf",
+      "max": 0.7
+     },
+     {
+      "all": [
+       {
+        "slider": "welfare",
+        "max": -30
+       },
+       {
+        "slider": "growth",
+        "min": 60
+       }
+      ]
+     }
+    ]
+   },
+   "earn_days": 84,
+   "lose": {
+    "any": [
+     {
+      "slider": "welfare",
+      "min": 40
+     },
+     {
+      "fact": "beds_per_dwarf",
+      "min": 1.2
+     }
+    ]
+   },
+   "lose_days": 336,
+   "rules": [
+    "dormitories"
+   ]
+  },
+  "gem_mad": {
+   "name": "Gem-mad",
+   "does": "a fort in love with its gems: cut gems and goods of precious metal never leave for the caravans",
+   "ai": "Gem-mad: these dwarves hoard their gems; never trade them away.",
+   "earn": {
+    "any": [
+     {
+      "all": [
+       {
+        "slider": "greed",
+        "min": 70
+       },
+       {
+        "fact": "cut_gems",
+        "min": 50
+       }
+      ]
+     },
+     {
+      "fact": "gems",
+      "min": 100
+     },
+     {
+      "all": [
+       {
+        "fact": "jewelers",
+        "min": 1
+       },
+       {
+        "fact": "gems",
+        "min": 50
+       }
+      ]
+     }
+    ]
+   },
+   "earn_days": 84,
+   "lose": {
+    "any": [
+     {
+      "slider": "greed",
+      "max": -30
+     },
+     {
+      "fact": "gems",
+      "max": 5
+     }
+    ]
+   },
+   "lose_days": 336,
+   "rules": [
+    "keep_gems"
+   ]
+  },
+  "nobles_pride": {
+   "name": "Nobles' Pride",
+   "does": "a fort that honours its nobles: every noble gets the bedroom, office, dining room and tomb their office asks for, and their suites early",
+   "ai": "Nobles' Pride: these dwarves honour their nobles; give them what their offices ask.",
+   "earn": {
+    "any": [
+     {
+      "all": [
+       {
+        "slider": "deference",
+        "min": 70
+       },
+       {
+        "slider": "greed",
+        "min": 40
+       }
+      ]
+     },
+     {
+      "fact": "nobles",
+      "min": 8
+     }
+    ]
+   },
+   "earn_days": 168,
+   "lose": {
+    "any": [
+     {
+      "slider": "deference",
+      "max": -30
+     },
+     {
+      "fact": "nobles",
+      "max": 3
+     }
+    ]
+   },
+   "lose_days": 336,
+   "rules": [
+    "noble_pride"
+   ]
+  },
+  "superstitious": {
+   "name": "Superstitious",
+   "does": "a fort that has seen its dead walk: a shrine is dug as soon as a quarter of the dwarves long to pray (half otherwise)",
+   "ai": "Superstitious: these dwarves have seen ghosts; keep the gods close.",
+   "earn": {
+    "any": [
+     {
+      "all": [
+       {
+        "slider": "piety",
+        "min": 40
+       },
+       {
+        "slider": "caution",
+        "min": 40
+       },
+       {
+        "fact": "ghosts",
+        "min": 1
+       }
+      ]
+     },
+     {
+      "all": [
+       {
+        "fact": "ghosts",
+        "min": 2
+       },
+       {
+        "fact": "citizen_deaths",
+        "min": 5
+       }
+      ]
+     }
+    ]
+   },
+   "earn_days": 56,
+   "lose": {
+    "any": [
+     {
+      "fact": "ghosts",
+      "max": 0
+     }
+    ]
+   },
+   "lose_days": 672,
+   "rules": [
+    "omens"
+   ]
+  },
+  "sky_reachers": {
+   "name": "Sky-reachers",
+   "does": "a fort that lives under the sky: the walled, roofed keep round the way in is raised whatever the Surface slider",
+   "ai": "Sky-reachers: these dwarves live in the open air; raise the keep.",
+   "earn": {
+    "any": [
+     {
+      "all": [
+       {
+        "slider": "surface",
+        "min": 60
+       },
+       {
+        "slider": "fortification",
+        "min": 40
+       }
+      ]
+     },
+     {
+      "fact": "surface_share",
+      "min": 0.3
+     }
+    ]
+   },
+   "earn_days": 168,
+   "lose": {
+    "any": [
+     {
+      "slider": "surface",
+      "max": -40
+     },
+     {
+      "fact": "surface_share",
+      "max": 0.1
+     }
+    ]
+   },
+   "lose_days": 336,
+   "rules": [
+    "keep_above"
+   ]
+  },
+  "one_stone": {
+   "name": "One Stone",
+   "does": "a fort of one rock: furniture made of its most plentiful stone only",
+   "ai": "One Stone: this fort is carved of one stone; build with it.",
+   "earn": {
+    "any": [
+     {
+      "all": [
+       {
+        "slider": "craftsmanship",
+        "min": 80
+       },
+       {
+        "fact": "top_stone_share",
+        "min": 0.5
+       }
+      ]
+     },
+     {
+      "fact": "top_stone_share",
+      "min": 0.7
+     }
+    ]
+   },
+   "earn_days": 168,
+   "lose": {
+    "any": [
+     {
+      "fact": "top_stone_share",
+      "max": 0.2
+     }
+    ]
+   },
+   "lose_days": 336,
+   "rules": [
+    "one_stone"
+   ],
+   "weights": {
+    "materials": {
+     "purpose": -1.0,
+     "wood": -1.0
+    }
+   }
+  },
+  "living_walls": {
+   "name": "Living Walls",
+   "does": "a fort that carves its story into its walls: idle hands engrave at half the idle share, engraved finish favoured",
+   "ai": "Living Walls: these dwarves carve their history; engrave the halls.",
+   "earn": {
+    "any": [
+     {
+      "all": [
+       {
+        "slider": "grandeur",
+        "min": 70
+       },
+       {
+        "fact": "sieges",
+        "min": 1
+       }
+      ]
+     },
+     {
+      "fact": "sieges",
+      "min": 2
+     },
+     {
+      "all": [
+       {
+        "fact": "legendary",
+        "min": 2
+       },
+       {
+        "fact": "citizen_deaths",
+        "min": 10
+       }
+      ]
+     }
+    ]
+   },
+   "earn_days": 84,
+   "lose": {
+    "any": [
+     {
+      "slider": "grandeur",
+      "max": -30
+     }
+    ]
+   },
+   "lose_days": 336,
+   "rules": [
+    "engrave_history"
+   ],
+   "weights": {
+    "finish": {
+     "engraved": 0.8
+    }
+   }
+  },
+  "hermit_kingdom": {
+   "name": "Hermit Kingdom",
+   "does": "a fort that keeps to itself: no goods to the depot, no trading with caravans",
+   "ai": "Hermit Kingdom: these dwarves want nothing from outsiders; don't trade.",
+   "earn": {
+    "any": [
+     {
+      "all": [
+       {
+        "slider": "trade",
+        "max": -60
+       },
+       {
+        "slider": "outsiders",
+        "max": -40
+       }
+      ]
+     },
+     {
+      "fact": "years_since_trade",
+      "min": 5
+     }
+    ]
+   },
+   "earn_days": 168,
+   "lose": {
+    "any": [
+     {
+      "slider": "trade",
+      "min": 30
+     },
+     {
+      "fact": "years_since_trade",
+      "max": 0
+     }
+    ]
+   },
+   "lose_days": 168,
+   "rules": [
+    "no_trade"
+   ],
+   "clashes": [
+    "merchant_princes"
+   ]
+  },
+  "waste_not": {
+   "name": "Waste Not",
+   "does": "a fort on poor land, short of wood and stone: small storage rooms, and no rock carved into crafts just to sell",
+   "ai": "Waste Not: this fort is short of wood and stone; waste none of it.",
+   "earn": {
+    "any": [
+     {
+      "all": [
+       {
+        "slider": "stockpile",
+        "max": -40
+       },
+       {
+        "slider": "industriousness",
+        "min": 40
+       }
+      ]
+     },
+     {
+      "fact": "materials_pd",
+      "max": 3
+     }
+    ]
+   },
+   "earn_days": 168,
+   "lose": {
+    "any": [
+     {
+      "slider": "stockpile",
+      "min": 40
+     },
+     {
+      "fact": "materials_pd",
+      "min": 15
+     }
+    ]
+   },
+   "lose_days": 336,
+   "rules": [
+    "small_storage"
+   ]
+  },
+  "deep_ambition": {
+   "name": "Deep Ambition",
+   "does": "a fort drawn ever down: new levels stacked deeper rather than spread wide",
+   "ai": "Deep Ambition: these dwarves dig ever deeper.",
+   "earn": {
+    "any": [
+     {
+      "all": [
+       {
+        "slider": "mining",
+        "min": 80
+       },
+       {
+        "slider": "caution",
+        "max": -40
+       }
+      ]
+     },
+     {
+      "fact": "caverns_reached",
+      "min": 2
+     }
+    ]
+   },
+   "earn_days": 84,
+   "lose": {
+    "any": [
+     {
+      "slider": "mining",
+      "max": -30
+     }
+    ]
+   },
+   "lose_days": 336,
+   "weights": {
+    "layout": {
+     "stacked": 0.6
+    }
+   }
+  },
+  "gambler": {
+   "name": "Gambler",
+   "does": "a fort whose risks paid off: close calls in its style go either way more often",
+   "ai": "Gambler: these dwarves took risks and won; bold choices are fine.",
+   "earn": {
+    "any": [
+     {
+      "all": [
+       {
+        "slider": "caution",
+        "max": -70
+       },
+       {
+        "fact": "caverns_reached",
+        "min": 1
+       }
+      ]
+     },
+     {
+      "all": [
+       {
+        "fact": "caverns_reached",
+        "min": 1
+       },
+       {
+        "fact": "magma_forges",
+        "min": 1
+       }
+      ]
+     }
+    ]
+   },
+   "earn_days": 84,
+   "lose": {
+    "any": [
+     {
+      "slider": "caution",
+      "min": 20
+     }
+    ]
+   },
+   "lose_days": 336,
+   "near": 0.3
+  },
+  "hundred_stairs": {
+   "name": "The Hundred Stairs",
+   "does": "every district gets its own stairwell, so no dwarf walks far to climb",
+   "ai": "The Hundred Stairs: many stairwells, each district its own; never one crowded stair.",
+   "earn": {
+    "all": [
+     {
+      "slider": "spacing",
+      "min": 50
+     },
+     {
+      "slider": "industriousness",
+      "min": 40
+     }
+    ]
+   },
+   "earn_days": 84,
+   "lose": {
+    "any": [
+     {
+      "slider": "spacing",
+      "max": -30
+     }
+    ]
+   },
+   "lose_days": 336,
+   "rules": [
+    "many_stairs"
+   ],
+   "weights": {
+    "stairwells": {
+     "several": 1.2
+    }
+   },
+   "clashes": [
+    "great_shaft"
+   ]
+  }
+ },
+ "quirk_limits": {
+  "max": 4,
+  "days_between": 84
+ }
+}

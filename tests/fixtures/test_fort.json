@@ -1,0 +1,1226 @@
+{
+ "bridge_version": "0.4.1",
+ "buildings": {
+  "furnaces": {
+   "MagmaGlassFurnace": 4,
+   "MagmaKiln": 5,
+   "MagmaSmelter": 19,
+   "WoodFurnace": 2
+  },
+  "other": {
+   "ArcheryTarget": 19,
+   "Armorstand": 109,
+   "AxleHorizontal": 7,
+   "BarsFloor": 50,
+   "BarsVertical": 4,
+   "Bed": 342,
+   "Bookcase": 199,
+   "Box": 560,
+   "Bridge": 38,
+   "Cabinet": 318,
+   "Chain": 7,
+   "Chair": 376,
+   "Coffin": 392,
+   "DisplayFurniture": 138,
+   "Door": 822,
+   "FarmPlot": 18,
+   "Floodgate": 68,
+   "GearAssembly": 12,
+   "GrateFloor": 146,
+   "GrateWall": 163,
+   "Instrument": 25,
+   "NestBox": 10,
+   "OfferingPlace": 56,
+   "ScrewPump": 102,
+   "Slab": 139,
+   "Statue": 297,
+   "Table": 348,
+   "TractionBench": 6,
+   "TradeDepot": 1,
+   "Trap": 259,
+   "WaterWheel": 16,
+   "Weaponrack": 109,
+   "Well": 3,
+   "Windmill": 28,
+   "WindowGem": 73
+  },
+  "stockpiles": 178,
+  "under_construction": 0,
+  "workshop_jobs_queued": 13,
+  "workshops": {
+   "Ashery": 1,
+   "Butchers": 3,
+   "Carpenters": 3,
+   "Clothiers": 6,
+   "Craftsdwarfs": 5,
+   "Custom": 5,
+   "Dyers": 3,
+   "Farmers": 4,
+   "Fishery": 2,
+   "Jewelers": 4,
+   "Kitchen": 6,
+   "Leatherworks": 3,
+   "Loom": 6,
+   "MagmaForge": 9,
+   "Masons": 4,
+   "Mechanics": 2,
+   "MetalsmithsForge": 3,
+   "Millstone": 5,
+   "Still": 6,
+   "Tanners": 2
+  },
+  "zones": {
+   "AnimalTraining": 2,
+   "ArcheryRange": 1,
+   "Barracks": 7,
+   "Bedroom": 316,
+   "DiningHall": 10,
+   "Dump": 6,
+   "Dungeon": 1,
+   "FishingArea": 1,
+   "MeetingHall": 33,
+   "Office": 9,
+   "Pen": 2,
+   "Tomb": 392,
+   "WaterSource": 1
+  }
+ },
+ "civ_alert": false,
+ "date": {
+  "day": 25,
+  "month": "Moonstone",
+  "season": "winter",
+  "tick": 332256,
+  "year": 148
+ },
+ "dwarves": {
+  "adults": 167,
+  "children": 27,
+  "idle_adults": 43,
+  "in_squads": 33,
+  "needs_medical_care": 0,
+  "professions": {
+   "Administrator": 4,
+   "Armorer": 3,
+   "Bard": 17,
+   "baron consort": 1,
+   "Bone Doctor": 2,
+   "bookkeeper": 1,
+   "Brewer": 1,
+   "Butcher": 1,
+   "captain of the guard": 1,
+   "Carpenter": 2,
+   "Cheesemaker": 1,
+   "chief medical dwarf": 1,
+   "Clothier": 6,
+   "Cook": 1,
+   "Craftsdwarf": 11,
+   "Dancer": 7,
+   "Diagnoser": 2,
+   "Doctor": 4,
+   "dungeon master": 1,
+   "Dwarven Baby": 4,
+   "Dwarven Child": 23,
+   "Dyer": 2,
+   "Engraver": 12,
+   "Farmer": 2,
+   "Fisherdwarf": 1,
+   "Furnace Operator": 2,
+   "Gem Cutter": 1,
+   "Human Bard": 4,
+   "Human Dancer": 3,
+   "Human Performer": 1,
+   "Human Poet": 1,
+   "Hunter": 1,
+   "Leatherworker": 1,
+   "lord": 1,
+   "manager": 1,
+   "mayor": 1,
+   "messenger": 1,
+   "Metalcrafter": 1,
+   "Metalsmith": 1,
+   "militia captain": 2,
+   "militia commander": 1,
+   "Miner": 8,
+   "Naturalist": 3,
+   "Peasant": 1,
+   "Performer": 3,
+   "Planter": 10,
+   "Poet": 3,
+   "Sage": 3,
+   "Scholar": 2,
+   "Scribe": 2,
+   "Spinner": 1,
+   "Strand Extractor": 2,
+   "Surgeon": 1,
+   "Tavern Keeper": 3,
+   "Trader": 1,
+   "Trapper": 1,
+   "Weaponsmith": 7,
+   "Weaver": 8,
+   "Woodcrafter": 1
+  },
+  "stress": {
+   "content": 27,
+   "ecstatic": 95,
+   "fine": 8,
+   "happy": 59,
+   "miserable": 0,
+   "unhappy": 5,
+   "very_unhappy": 0
+  },
+  "total": 194
+ },
+ "events_waiting": 0,
+ "jobs": {
+  "by_type": {
+   "Clean": 1,
+   "DrinkItem": 5,
+   "DumpItem": 2,
+   "DyeCloth": 3,
+   "Eat": 8,
+   "EncrustWithGems": 4,
+   "GetProvisions": 2,
+   "MakePotashFromAsh": 1,
+   "MillPlants": 5,
+   "PickupEquipment": 9,
+   "ReportCrime": 1,
+   "Sleep": 8,
+   "StoreItemInBag": 2,
+   "StoreItemInBarrel": 3,
+   "StoreItemInBin": 26,
+   "StoreItemInLocation": 1,
+   "StoreItemInStockpile": 41,
+   "StoreOwnedItem": 6
+  },
+  "suspended": 0,
+  "total": 128
+ },
+ "mandates": [
+  {
+   "by": "Zas Oslantarmid, mayor",
+   "days_left": 59,
+   "item": "SHOES",
+   "kind": "Make",
+   "remaining": 3,
+   "total": 3
+  }
+ ],
+ "map": {
+  "dwarves": {
+   "by_layer": {
+    "fort_levels": 194
+   },
+   "z_bottom": 73,
+   "z_top": 193
+  },
+  "layers": [
+   {
+    "discovered": true,
+    "name": "Cavern1",
+    "z_bottom": 123,
+    "z_top": 127
+   },
+   {
+    "discovered": true,
+    "name": "Cavern2",
+    "z_bottom": 110,
+    "z_top": 114
+   },
+   {
+    "discovered": true,
+    "name": "Cavern3",
+    "z_bottom": 29,
+    "z_top": 50
+   },
+   {
+    "discovered": true,
+    "name": "MagmaSea",
+    "z_bottom": 16,
+    "z_top": 20
+   },
+   {
+    "discovered": true,
+    "name": "Underworld",
+    "z_bottom": 4,
+    "z_top": 8
+   }
+  ],
+  "size": [
+   192,
+   192,
+   212
+  ]
+ },
+ "nobles": [
+  {
+   "name": "Ast Akmamnish, militia commander",
+   "position": "MILITIA_COMMANDER",
+   "unit_id": 1306
+  },
+  {
+   "name": "Ast Akmamnish, militia commander",
+   "position": "HAMMERER",
+   "unit_id": 1306
+  },
+  {
+   "name": "Melbil \u00eegamm\u00f6rul, bookkeeper",
+   "position": "BOOKKEEPER",
+   "unit_id": 2448
+  },
+  {
+   "name": "S\u00e5kzul As\u00ebnekir, militia captain",
+   "position": "MILITIA_CAPTAIN",
+   "unit_id": 4717
+  },
+  {
+   "name": "Luki Padoisha, lord",
+   "position": "CUSTOM_LAW_MAKER",
+   "unit_id": 8445
+  },
+  {
+   "name": "Adil Mebzuthudib, manager",
+   "position": "MANAGER",
+   "unit_id": 17511
+  },
+  {
+   "name": "Mosus \u00e8ritham, militia captain",
+   "position": "MILITIA_CAPTAIN",
+   "unit_id": 19748
+  },
+  {
+   "name": "Melbil Thunentulon, captain of the guard",
+   "position": "CAPTAIN_OF_THE_GUARD",
+   "unit_id": 19900
+  },
+  {
+   "name": "Mist\u00eam Idokfath, messenger",
+   "position": "MESSENGER",
+   "unit_id": 20507
+  },
+  {
+   "name": "Zas Oslantarmid, mayor",
+   "position": "MAYOR",
+   "unit_id": 29206
+  },
+  {
+   "name": "Zas Oslantarmid, mayor",
+   "position": "BROKER",
+   "unit_id": 29206
+  },
+  {
+   "name": "Zas Nishcagith, dungeon master",
+   "position": "DUNGEON_MASTER",
+   "unit_id": 38652
+  },
+  {
+   "name": "Imush Asmelurr\u00efth, chief medical dwarf",
+   "position": "CHIEF_MEDICAL_DWARF",
+   "unit_id": 39004
+  }
+ ],
+ "others_on_map": {
+  "contained_dangers": 0,
+  "diplomats": 0,
+  "merchants": 0,
+  "tame_animals": 30,
+  "threats": [
+   {
+    "can_reach_dwarves": false,
+    "distance_to_nearest_dwarf": 239,
+    "flier": false,
+    "great_danger": true,
+    "id": 15576,
+    "invader": false,
+    "layer": "Cavern3",
+    "levels_from_nearest_dwarf": 47,
+    "name": "Nol Ongasosta Spos \"Dreamedwitches the Abyssal\", Forgotten Beast",
+    "pos": {
+     "x": 146,
+     "y": 115,
+     "z": 31
+    }
+   },
+   {
+    "distance_to_nearest_dwarf": 327,
+    "flier": true,
+    "great_danger": true,
+    "id": 39656,
+    "invader": false,
+    "layer": "Underworld",
+    "levels_from_nearest_dwarf": 70,
+    "name": "Specter Of Steam",
+    "pos": {
+     "x": 165,
+     "y": 183,
+     "z": 8
+    }
+   },
+   {
+    "distance_to_nearest_dwarf": 266,
+    "flier": true,
+    "great_danger": true,
+    "id": 39657,
+    "invader": false,
+    "layer": "Underworld",
+    "levels_from_nearest_dwarf": 70,
+    "name": "Specter Of Steam",
+    "pos": {
+     "x": 104,
+     "y": 169,
+     "z": 8
+    }
+   },
+   {
+    "distance_to_nearest_dwarf": 292,
+    "flier": true,
+    "great_danger": true,
+    "id": 39660,
+    "invader": false,
+    "layer": "Underworld",
+    "levels_from_nearest_dwarf": 70,
+    "name": "Specter Of Steam",
+    "pos": {
+     "x": 130,
+     "y": 191,
+     "z": 8
+    }
+   },
+   {
+    "can_reach_dwarves": false,
+    "distance_to_nearest_dwarf": 190,
+    "flier": true,
+    "great_danger": true,
+    "id": 39662,
+    "invader": false,
+    "layer": "MagmaSea",
+    "levels_from_nearest_dwarf": 55,
+    "name": "Specter Of Steam",
+    "pos": {
+     "x": 29,
+     "y": 175,
+     "z": 18
+    }
+   },
+   {
+    "distance_to_nearest_dwarf": 287,
+    "flier": true,
+    "great_danger": true,
+    "id": 39664,
+    "invader": false,
+    "layer": "Underworld",
+    "levels_from_nearest_dwarf": 70,
+    "name": "Specter Of Steam",
+    "pos": {
+     "x": 125,
+     "y": 182,
+     "z": 8
+    }
+   },
+   {
+    "distance_to_nearest_dwarf": 349,
+    "flier": true,
+    "great_danger": true,
+    "id": 39665,
+    "invader": false,
+    "layer": "Underworld",
+    "levels_from_nearest_dwarf": 70,
+    "name": "Specter Of Steam",
+    "pos": {
+     "x": 187,
+     "y": 142,
+     "z": 8
+    }
+   },
+   {
+    "distance_to_nearest_dwarf": 336,
+    "flier": true,
+    "great_danger": true,
+    "id": 39666,
+    "invader": false,
+    "layer": "Underworld",
+    "levels_from_nearest_dwarf": 70,
+    "name": "Specter Of Steam",
+    "pos": {
+     "x": 174,
+     "y": 146,
+     "z": 8
+    }
+   },
+   {
+    "distance_to_nearest_dwarf": 344,
+    "flier": true,
+    "great_danger": true,
+    "id": 39667,
+    "invader": false,
+    "layer": "Underworld",
+    "levels_from_nearest_dwarf": 70,
+    "name": "Specter Of Steam",
+    "pos": {
+     "x": 182,
+     "y": 132,
+     "z": 8
+    }
+   },
+   {
+    "distance_to_nearest_dwarf": 207,
+    "flier": true,
+    "great_danger": true,
+    "id": 39668,
+    "invader": false,
+    "layer": "fort_levels",
+    "levels_from_nearest_dwarf": 61,
+    "name": "Specter Of Steam",
+    "pos": {
+     "x": 32,
+     "y": 174,
+     "z": 12
+    }
+   },
+   {
+    "distance_to_nearest_dwarf": 317,
+    "flier": true,
+    "great_danger": true,
+    "id": 39669,
+    "invader": false,
+    "layer": "Underworld",
+    "levels_from_nearest_dwarf": 70,
+    "name": "Specter Of Steam",
+    "pos": {
+     "x": 155,
+     "y": 191,
+     "z": 8
+    }
+   },
+   {
+    "can_reach_dwarves": false,
+    "distance_to_nearest_dwarf": 191,
+    "flier": true,
+    "great_danger": true,
+    "id": 39735,
+    "invader": false,
+    "layer": "fort_levels",
+    "levels_from_nearest_dwarf": 55,
+    "name": "Specter Of Steam",
+    "pos": {
+     "x": 29,
+     "y": 176,
+     "z": 18
+    }
+   },
+   {
+    "distance_to_nearest_dwarf": 292,
+    "flier": true,
+    "great_danger": true,
+    "id": 39736,
+    "invader": false,
+    "layer": "Underworld",
+    "levels_from_nearest_dwarf": 70,
+    "name": "Specter Of Steam",
+    "pos": {
+     "x": 130,
+     "y": 147,
+     "z": 8
+    }
+   },
+   {
+    "distance_to_nearest_dwarf": 269,
+    "flier": true,
+    "great_danger": true,
+    "id": 39737,
+    "invader": false,
+    "layer": "Underworld",
+    "levels_from_nearest_dwarf": 70,
+    "name": "Specter Of Steam",
+    "pos": {
+     "x": 107,
+     "y": 148,
+     "z": 8
+    }
+   },
+   {
+    "distance_to_nearest_dwarf": 300,
+    "flier": true,
+    "great_danger": true,
+    "id": 39738,
+    "invader": false,
+    "layer": "Underworld",
+    "levels_from_nearest_dwarf": 70,
+    "name": "Specter Of Steam",
+    "pos": {
+     "x": 138,
+     "y": 158,
+     "z": 8
+    }
+   },
+   {
+    "distance_to_nearest_dwarf": 353,
+    "flier": true,
+    "great_danger": true,
+    "id": 39739,
+    "invader": false,
+    "layer": "Underworld",
+    "levels_from_nearest_dwarf": 70,
+    "name": "Specter Of Steam",
+    "pos": {
+     "x": 191,
+     "y": 177,
+     "z": 8
+    }
+   },
+   {
+    "distance_to_nearest_dwarf": 352,
+    "flier": true,
+    "great_danger": true,
+    "id": 39740,
+    "invader": false,
+    "layer": "Underworld",
+    "levels_from_nearest_dwarf": 70,
+    "name": "Specter Of Steam",
+    "pos": {
+     "x": 190,
+     "y": 115,
+     "z": 8
+    }
+   },
+   {
+    "distance_to_nearest_dwarf": 251,
+    "flier": true,
+    "great_danger": true,
+    "id": 39741,
+    "invader": false,
+    "layer": "Underworld",
+    "levels_from_nearest_dwarf": 70,
+    "name": "Specter Of Steam",
+    "pos": {
+     "x": 89,
+     "y": 152,
+     "z": 8
+    }
+   },
+   {
+    "distance_to_nearest_dwarf": 274,
+    "flier": true,
+    "great_danger": true,
+    "id": 39742,
+    "invader": false,
+    "layer": "Underworld",
+    "levels_from_nearest_dwarf": 70,
+    "name": "Specter Of Steam",
+    "pos": {
+     "x": 112,
+     "y": 174,
+     "z": 8
+    }
+   },
+   {
+    "can_reach_dwarves": false,
+    "distance_to_nearest_dwarf": 190,
+    "flier": true,
+    "great_danger": true,
+    "id": 39743,
+    "invader": false,
+    "layer": "MagmaSea",
+    "levels_from_nearest_dwarf": 55,
+    "name": "Specter Of Steam",
+    "pos": {
+     "x": 30,
+     "y": 175,
+     "z": 18
+    }
+   },
+   {
+    "distance_to_nearest_dwarf": 323,
+    "flier": true,
+    "great_danger": true,
+    "id": 39744,
+    "invader": false,
+    "layer": "Underworld",
+    "levels_from_nearest_dwarf": 70,
+    "name": "Specter Of Steam",
+    "pos": {
+     "x": 161,
+     "y": 166,
+     "z": 8
+    }
+   },
+   {
+    "distance_to_nearest_dwarf": 343,
+    "flier": true,
+    "great_danger": true,
+    "id": 39745,
+    "invader": false,
+    "layer": "Underworld",
+    "levels_from_nearest_dwarf": 70,
+    "name": "Specter Of Steam",
+    "pos": {
+     "x": 181,
+     "y": 145,
+     "z": 8
+    }
+   },
+   {
+    "distance_to_nearest_dwarf": 279,
+    "flier": true,
+    "great_danger": true,
+    "id": 39746,
+    "invader": false,
+    "layer": "Underworld",
+    "levels_from_nearest_dwarf": 70,
+    "name": "Specter Of Steam",
+    "pos": {
+     "x": 117,
+     "y": 181,
+     "z": 8
+    }
+   },
+   {
+    "distance_to_nearest_dwarf": 326,
+    "flier": true,
+    "great_danger": true,
+    "id": 39981,
+    "invader": false,
+    "layer": "Underworld",
+    "levels_from_nearest_dwarf": 70,
+    "name": "Saffron Fiend",
+    "pos": {
+     "x": 164,
+     "y": 190,
+     "z": 8
+    }
+   },
+   {
+    "distance_to_nearest_dwarf": 353,
+    "flier": true,
+    "great_danger": true,
+    "id": 39982,
+    "invader": false,
+    "layer": "Underworld",
+    "levels_from_nearest_dwarf": 70,
+    "name": "Saffron Fiend",
+    "pos": {
+     "x": 191,
+     "y": 189,
+     "z": 8
+    }
+   },
+   {
+    "distance_to_nearest_dwarf": 344,
+    "flier": true,
+    "great_danger": true,
+    "id": 39983,
+    "invader": false,
+    "layer": "Underworld",
+    "levels_from_nearest_dwarf": 70,
+    "name": "Saffron Fiend",
+    "pos": {
+     "x": 182,
+     "y": 110,
+     "z": 8
+    }
+   },
+   {
+    "distance_to_nearest_dwarf": 288,
+    "flier": true,
+    "great_danger": true,
+    "id": 39984,
+    "invader": false,
+    "layer": "Underworld",
+    "levels_from_nearest_dwarf": 70,
+    "name": "Saffron Fiend",
+    "pos": {
+     "x": 126,
+     "y": 174,
+     "z": 8
+    }
+   },
+   {
+    "distance_to_nearest_dwarf": 350,
+    "flier": true,
+    "great_danger": true,
+    "id": 39985,
+    "invader": false,
+    "layer": "Underworld",
+    "levels_from_nearest_dwarf": 70,
+    "name": "Saffron Fiend",
+    "pos": {
+     "x": 188,
+     "y": 108,
+     "z": 8
+    }
+   },
+   {
+    "distance_to_nearest_dwarf": 307,
+    "flier": true,
+    "great_danger": true,
+    "id": 39986,
+    "invader": false,
+    "layer": "Underworld",
+    "levels_from_nearest_dwarf": 70,
+    "name": "Saffron Fiend",
+    "pos": {
+     "x": 145,
+     "y": 128,
+     "z": 8
+    }
+   },
+   {
+    "distance_to_nearest_dwarf": 329,
+    "flier": true,
+    "great_danger": true,
+    "id": 39987,
+    "invader": false,
+    "layer": "Underworld",
+    "levels_from_nearest_dwarf": 70,
+    "name": "Saffron Fiend",
+    "pos": {
+     "x": 167,
+     "y": 153,
+     "z": 8
+    }
+   },
+   {
+    "distance_to_nearest_dwarf": 314,
+    "flier": true,
+    "great_danger": true,
+    "id": 39988,
+    "invader": false,
+    "layer": "Underworld",
+    "levels_from_nearest_dwarf": 70,
+    "name": "Saffron Fiend",
+    "pos": {
+     "x": 152,
+     "y": 163,
+     "z": 8
+    }
+   },
+   {
+    "distance_to_nearest_dwarf": 232,
+    "flier": true,
+    "great_danger": true,
+    "id": 39989,
+    "invader": false,
+    "layer": "Underworld",
+    "levels_from_nearest_dwarf": 70,
+    "name": "Saffron Fiend",
+    "pos": {
+     "x": 70,
+     "y": 161,
+     "z": 8
+    }
+   },
+   {
+    "distance_to_nearest_dwarf": 278,
+    "flier": true,
+    "great_danger": true,
+    "id": 39990,
+    "invader": false,
+    "layer": "Underworld",
+    "levels_from_nearest_dwarf": 70,
+    "name": "Saffron Fiend",
+    "pos": {
+     "x": 116,
+     "y": 161,
+     "z": 8
+    }
+   },
+   {
+    "distance_to_nearest_dwarf": 255,
+    "flier": true,
+    "great_danger": true,
+    "id": 39991,
+    "invader": false,
+    "layer": "Underworld",
+    "levels_from_nearest_dwarf": 70,
+    "name": "Saffron Fiend",
+    "pos": {
+     "x": 93,
+     "y": 155,
+     "z": 8
+    }
+   },
+   {
+    "can_reach_dwarves": false,
+    "distance_to_nearest_dwarf": 189,
+    "flier": true,
+    "great_danger": true,
+    "id": 39992,
+    "invader": false,
+    "layer": "MagmaSea",
+    "levels_from_nearest_dwarf": 55,
+    "name": "Saffron Fiend",
+    "pos": {
+     "x": 29,
+     "y": 174,
+     "z": 18
+    }
+   },
+   {
+    "distance_to_nearest_dwarf": 308,
+    "flier": true,
+    "great_danger": true,
+    "id": 40164,
+    "invader": false,
+    "layer": "Underworld",
+    "levels_from_nearest_dwarf": 70,
+    "name": "Specter Of Steam",
+    "pos": {
+     "x": 146,
+     "y": 156,
+     "z": 8
+    }
+   },
+   {
+    "distance_to_nearest_dwarf": 318,
+    "flier": true,
+    "great_danger": true,
+    "id": 40166,
+    "invader": false,
+    "layer": "Underworld",
+    "levels_from_nearest_dwarf": 72,
+    "name": "Specter Of Steam",
+    "pos": {
+     "x": 150,
+     "y": 144,
+     "z": 6
+    }
+   },
+   {
+    "distance_to_nearest_dwarf": 279,
+    "flier": true,
+    "great_danger": true,
+    "id": 40167,
+    "invader": false,
+    "layer": "Underworld",
+    "levels_from_nearest_dwarf": 70,
+    "name": "Specter Of Steam",
+    "pos": {
+     "x": 117,
+     "y": 191,
+     "z": 8
+    }
+   },
+   {
+    "distance_to_nearest_dwarf": 290,
+    "flier": true,
+    "great_danger": true,
+    "id": 40168,
+    "invader": false,
+    "layer": "Underworld",
+    "levels_from_nearest_dwarf": 70,
+    "name": "Specter Of Steam",
+    "pos": {
+     "x": 128,
+     "y": 124,
+     "z": 8
+    }
+   },
+   {
+    "distance_to_nearest_dwarf": 312,
+    "flier": true,
+    "great_danger": true,
+    "id": 40175,
+    "invader": false,
+    "layer": "Underworld",
+    "levels_from_nearest_dwarf": 71,
+    "name": "Specter Of Steam",
+    "pos": {
+     "x": 147,
+     "y": 144,
+     "z": 7
+    }
+   },
+   {
+    "distance_to_nearest_dwarf": 299,
+    "flier": true,
+    "great_danger": true,
+    "id": 40176,
+    "invader": false,
+    "layer": "Underworld",
+    "levels_from_nearest_dwarf": 70,
+    "name": "Specter Of Steam",
+    "pos": {
+     "x": 137,
+     "y": 169,
+     "z": 8
+    }
+   },
+   {
+    "distance_to_nearest_dwarf": 318,
+    "flier": true,
+    "great_danger": true,
+    "id": 40177,
+    "invader": false,
+    "layer": "Underworld",
+    "levels_from_nearest_dwarf": 71,
+    "name": "Specter Of Steam",
+    "pos": {
+     "x": 153,
+     "y": 125,
+     "z": 7
+    }
+   },
+   {
+    "can_reach_dwarves": false,
+    "distance_to_nearest_dwarf": 252,
+    "flier": false,
+    "great_danger": true,
+    "id": 15717,
+    "invader": false,
+    "layer": "Cavern1",
+    "levels_from_nearest_dwarf": 53,
+    "name": "Omshit Ernist \"The Fat Fears\", Forgotten Beast",
+    "pos": {
+     "x": 184,
+     "y": 164,
+     "z": 124
+    }
+   }
+  ],
+  "threats_that_can_reach_dwarves": 0,
+  "visitors": 17
+ },
+ "paused": true,
+ "protocol": 1,
+ "recent_announcements": [
+  {
+   "text": "Kad\u00f4l Sazirlecad, Weaponsmith cancels Store owned item: Too injured.",
+   "type": "CANCEL_JOB",
+   "year": 148
+  },
+  {
+   "text": "Kad\u00f4l Sazirlecad, Weaponsmith cancels Clean: Too injured.",
+   "type": "CANCEL_JOB",
+   "year": 148
+  },
+  {
+   "text": "Rith Shorastsemor, queen is visiting.",
+   "type": "GUEST_ARRIVAL",
+   "year": 148
+  },
+  {
+   "text": "Likot Adilsefol has dyed a masterpiece!",
+   "type": "DYED_MASTERPIECE",
+   "year": 148
+  },
+  {
+   "text": "Rovod Al\u00e5thcilob, duchess of Woundblood is visiting.",
+   "type": "GUEST_ARRIVAL",
+   "year": 148
+  },
+  {
+   "text": "The Goblin lieutenant Doren Olin\u00e5m has shared many tales from beyond Woundblood.",
+   "type": "SERVICE_ORDER_RUMOR_RECEIVED",
+   "year": 148
+  },
+  {
+   "text": "Dye cloth (10) has been completed.",
+   "type": "QUOTA_FILLED",
+   "year": 148
+  },
+  {
+   "text": "Etur S\u00e5kzul\u00f4sed, Engraver is brawling under the influence!",
+   "type": "CITIZEN_TANTRUM",
+   "year": 148
+  },
+  {
+   "text": "Etur S\u00e5kzul\u00f4sed, Engraver cancels Clean: Throwing tantrum.",
+   "type": "CANCEL_JOB",
+   "year": 148
+  },
+  {
+   "text": "Kul Cirocok, Human Dancer is visiting.",
+   "type": "GUEST_ARRIVAL",
+   "year": 148
+  },
+  {
+   "text": "\u00e8rith Zaskonos, baroness of Roommines is visiting.",
+   "type": "GUEST_ARRIVAL",
+   "year": 148
+  },
+  {
+   "text": "The Forgotten Beast Shulmik Soshoshritas has come!  A gigantic scaly tarantula.  It has a knobby shell and it is ravening.  Its aquamarine scales are large and set far apart.  Beware its poisonous bite!",
+   "type": "MEGABEAST_ARRIVAL",
+   "year": 148
+  },
+  {
+   "text": "Erush Unolkilrud, baron of Joinedcrystals is visiting.",
+   "type": "GUEST_ARRIVAL",
+   "year": 148
+  },
+  {
+   "text": "The Forgotten Beast Omshit Ernist has come!  A gigantic iguana composed of crystal glass.  It has three long, curving horns and it squirms and fidgets.  Beware its deadly spittle!",
+   "type": "MEGABEAST_ARRIVAL",
+   "year": 148
+  },
+  {
+   "text": "Etur S\u00e5kzul\u00f4sed, Engraver cancels Clean: Throwing tantrum.",
+   "type": "CANCEL_JOB",
+   "year": 148
+  }
+ ],
+ "stocks": {
+  "ammo": 8915,
+  "armor": 309,
+  "barrels": 649,
+  "bins": 1214,
+  "blocks": 2175,
+  "boulders": 3157,
+  "cloth": 2537,
+  "cut_gems": 43,
+  "drink": 3929,
+  "fish": 518,
+  "leather": 253,
+  "meat": 5225,
+  "metal_bars": 5229,
+  "plants": 2662,
+  "prepared_meals": 4170,
+  "rough_gems": 138,
+  "seeds": 3993,
+  "thread": 185,
+  "weapons": 791,
+  "wood": 1062
+ },
+ "wealth": 16769099,
+ "_errors": {},
+ "fort": {
+  "save_dir": "AI Test Run",
+  "site_id": 1234
+ },
+ "orders": [
+  {
+   "id": 500,
+   "recipe": null,
+   "job": "MakeCrafts",
+   "amount_left": 5,
+   "amount_total": 5,
+   "repeats": false,
+   "by_ai": false
+  }
+ ],
+ "tools": {
+  "autobutcher": true,
+  "autochop": false,
+  "autoclothing": null,
+  "autofarm": null,
+  "nestboxes": null,
+  "seedwatch": false,
+  "suspendmanager": true,
+  "tailor": true,
+  "buildingplan": true,
+  "autoslab": false
+ },
+ "settings": {
+  "traits": {},
+  "activity": 50,
+  "tokens_per_game_day": 1000,
+  "token_bank_max": 100000,
+  "real_day_token_cap": 0
+ },
+ "civ_alert_ready": true,
+ "projects": {
+  "open": [],
+  "finished": 0,
+  "max_open": 2
+ },
+ "locations": {
+  "count": {
+   "HOSPITAL": 1,
+   "TEMPLE": 2,
+   "INN_TAVERN": 1,
+   "LIBRARY": 1
+  },
+  "total": 5
+ },
+ "supplies": {
+  "empty_barrels": 120,
+  "empty_pots": 40,
+  "empty_bags": 60,
+  "buckets": 30,
+  "splints": 12,
+  "crutches": 9,
+  "soap": 25,
+  "slabs": 30
+ },
+ "dead": {
+  "ghosts": 0,
+  "ghost_names": [],
+  "unburied": 0,
+  "tomb_coffins": 392,
+  "free_tombs": 40,
+  "loose_coffins": 0
+ },
+ "moods": {
+  "list": []
+ },
+ "military": {
+  "squads": [
+   {
+    "id": 11,
+    "name": "The Axes of Iron",
+    "members": 10,
+    "size": 10,
+    "leader": true,
+    "routine": "Staggered training",
+    "orders": 0,
+    "ai_orders": 0
+   },
+   {
+    "id": 12,
+    "name": "The Bolts",
+    "members": 10,
+    "size": 10,
+    "leader": true,
+    "routine": "Staggered training",
+    "orders": 0,
+    "ai_orders": 0
+   }
+  ],
+  "soldiers": 20,
+  "routines": [
+   "Off duty",
+   "Staggered training",
+   "Constant training",
+   "Ready"
+  ],
+  "gates": []
+ },
+ "society": {
+  "vacant": [],
+  "starving": 0,
+  "parched": 0,
+  "hungry_names": [],
+  "grazers_unpastured": 0
+ },
+ "entrances": {
+  "scanned": true,
+  "scanned_tick": 60004656,
+  "inside_tiles": 52000,
+  "armed": false,
+  "citizens_outside": 4,
+  "entrances": [
+   {
+    "id": 1,
+    "kind": "surface",
+    "x": 31,
+    "y": 140,
+    "z": 173,
+    "width": 1,
+    "sealed": true,
+    "equipment": [
+     {
+      "id": 500,
+      "kind": "door"
+     }
+    ],
+    "door_spots": 0,
+    "closed": false
+   }
+  ]
+ },
+ "farms": {
+  "plots": 18,
+  "tiles": 216,
+  "built": 18
+ }
+}

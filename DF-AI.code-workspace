@@ -1,0 +1,18 @@
+{
+  "folders": [
+    { "path": "." }
+  ],
+  "settings": {
+    "python.defaultInterpreterPath": "python",
+    "files.eol": "\n",
+    "files.exclude": {
+      "**/__pycache__": true
+    }
+  },
+  "extensions": {
+    "recommendations": [
+      "sumneko.lua",
+      "ms-python.python"
+    ]
+  }
+}

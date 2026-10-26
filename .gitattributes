@@ -1,0 +1,5 @@
+* text=auto
+*.json text
+*.lua text
+*.py text
+*.md text

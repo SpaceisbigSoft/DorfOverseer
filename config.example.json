@@ -1,0 +1,5 @@
+{
+  "dfhack_run": "C:\\path\\to\\steamapps\\common\\DFHack\\hack\\dfhack-run.exe",
+  "timeout_s": 10,
+  "strategist_backend": "subscription"
+}

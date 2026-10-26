@@ -1,0 +1,5673 @@
+{
+  "bridge_version": "0.4.1",
+  "buildings": {
+    "furnaces": {
+      "MagmaGlassFurnace": 4,
+      "MagmaKiln": 5,
+      "MagmaSmelter": 19,
+      "WoodFurnace": 2
+    },
+    "other": {
+      "ArcheryTarget": 19,
+      "Armorstand": 109,
+      "AxleHorizontal": 7,
+      "BarsFloor": 50,
+      "BarsVertical": 4,
+      "Bed": 342,
+      "Bookcase": 199,
+      "Box": 560,
+      "Bridge": 38,
+      "Cabinet": 318,
+      "Chain": 7,
+      "Chair": 376,
+      "Coffin": 392,
+      "DisplayFurniture": 138,
+      "Door": 822,
+      "FarmPlot": 18,
+      "Floodgate": 68,
+      "GearAssembly": 12,
+      "GrateFloor": 146,
+      "GrateWall": 163,
+      "Instrument": 25,
+      "NestBox": 10,
+      "OfferingPlace": 56,
+      "ScrewPump": 102,
+      "Slab": 139,
+      "Statue": 297,
+      "Table": 348,
+      "TractionBench": 6,
+      "TradeDepot": 1,
+      "Trap": 259,
+      "WaterWheel": 16,
+      "Weaponrack": 109,
+      "Well": 3,
+      "Windmill": 28,
+      "WindowGem": 73
+    },
+    "stockpiles": 178,
+    "under_construction": 0,
+    "workshop_jobs_queued": 13,
+    "workshops": {
+      "Ashery": 1,
+      "Butchers": 3,
+      "Carpenters": 3,
+      "Clothiers": 6,
+      "Craftsdwarfs": 5,
+      "Custom": 5,
+      "Dyers": 3,
+      "Farmers": 4,
+      "Fishery": 2,
+      "Jewelers": 4,
+      "Kitchen": 6,
+      "Leatherworks": 3,
+      "Loom": 6,
+      "MagmaForge": 9,
+      "Masons": 4,
+      "Mechanics": 2,
+      "MetalsmithsForge": 3,
+      "Millstone": 5,
+      "Still": 6,
+      "Tanners": 2
+    },
+    "zones": {
+      "AnimalTraining": 2,
+      "ArcheryRange": 1,
+      "Barracks": 7,
+      "Bedroom": 316,
+      "DiningHall": 10,
+      "Dump": 6,
+      "Dungeon": 1,
+      "FishingArea": 1,
+      "MeetingHall": 33,
+      "Office": 9,
+      "Pen": 2,
+      "Tomb": 392,
+      "WaterSource": 1
+    }
+  },
+  "civ_alert": false,
+  "date": {
+    "day": 25,
+    "month": "Moonstone",
+    "season": "winter",
+    "tick": 332256,
+    "year": 148
+  },
+  "dwarves": {
+    "adults": 167,
+    "children": 27,
+    "idle_adults": 43,
+    "in_squads": 33,
+    "needs_medical_care": 0,
+    "professions": {
+      "Administrator": 4,
+      "Armorer": 3,
+      "Bard": 17,
+      "baron consort": 1,
+      "Bone Doctor": 2,
+      "bookkeeper": 1,
+      "Brewer": 1,
+      "Butcher": 1,
+      "captain of the guard": 1,
+      "Carpenter": 2,
+      "Cheesemaker": 1,
+      "chief medical dwarf": 1,
+      "Clothier": 6,
+      "Cook": 1,
+      "Craftsdwarf": 11,
+      "Dancer": 7,
+      "Diagnoser": 2,
+      "Doctor": 4,
+      "dungeon master": 1,
+      "Dwarven Baby": 4,
+      "Dwarven Child": 23,
+      "Dyer": 2,
+      "Engraver": 12,
+      "Farmer": 2,
+      "Fisherdwarf": 1,
+      "Furnace Operator": 2,
+      "Gem Cutter": 1,
+      "Human Bard": 4,
+      "Human Dancer": 3,
+      "Human Performer": 1,
+      "Human Poet": 1,
+      "Hunter": 1,
+      "Leatherworker": 1,
+      "lord": 1,
+      "manager": 1,
+      "mayor": 1,
+      "messenger": 1,
+      "Metalcrafter": 1,
+      "Metalsmith": 1,
+      "militia captain": 2,
+      "militia commander": 1,
+      "Miner": 8,
+      "Naturalist": 3,
+      "Peasant": 1,
+      "Performer": 3,
+      "Planter": 10,
+      "Poet": 3,
+      "Sage": 3,
+      "Scholar": 2,
+      "Scribe": 2,
+      "Spinner": 1,
+      "Strand Extractor": 2,
+      "Surgeon": 1,
+      "Tavern Keeper": 3,
+      "Trader": 1,
+      "Trapper": 1,
+      "Weaponsmith": 7,
+      "Weaver": 8,
+      "Woodcrafter": 1
+    },
+    "stress": {
+      "content": 27,
+      "ecstatic": 95,
+      "fine": 8,
+      "happy": 59,
+      "miserable": 0,
+      "unhappy": 5,
+      "very_unhappy": 0
+    },
+    "total": 194
+  },
+  "events_waiting": 0,
+  "jobs": {
+    "by_type": {
+      "Clean": 1,
+      "DrinkItem": 5,
+      "DumpItem": 2,
+      "DyeCloth": 3,
+      "Eat": 8,
+      "EncrustWithGems": 4,
+      "GetProvisions": 2,
+      "MakePotashFromAsh": 1,
+      "MillPlants": 5,
+      "PickupEquipment": 9,
+      "ReportCrime": 1,
+      "Sleep": 8,
+      "StoreItemInBag": 2,
+      "StoreItemInBarrel": 3,
+      "StoreItemInBin": 26,
+      "StoreItemInLocation": 1,
+      "StoreItemInStockpile": 41,
+      "StoreOwnedItem": 6
+    },
+    "suspended": 0,
+    "total": 128
+  },
+  "mandates": [
+    {
+      "by": "Zas Oslantarmid, mayor",
+      "days_left": 59,
+      "item": "SHOES",
+      "kind": "Make",
+      "remaining": 3,
+      "total": 3
+    }
+  ],
+  "map": {
+    "dwarves": {
+      "by_layer": {
+        "fort_levels": 194
+      },
+      "z_bottom": 73,
+      "z_top": 193
+    },
+    "layers": [
+      {
+        "discovered": true,
+        "name": "Cavern1",
+        "z_bottom": 123,
+        "z_top": 127
+      },
+      {
+        "discovered": true,
+        "name": "Cavern2",
+        "z_bottom": 110,
+        "z_top": 114
+      },
+      {
+        "discovered": true,
+        "name": "Cavern3",
+        "z_bottom": 29,
+        "z_top": 50
+      },
+      {
+        "discovered": true,
+        "name": "MagmaSea",
+        "z_bottom": 16,
+        "z_top": 20
+      },
+      {
+        "discovered": true,
+        "name": "Underworld",
+        "z_bottom": 4,
+        "z_top": 8
+      }
+    ],
+    "size": [
+      192,
+      192,
+      212
+    ]
+  },
+  "nobles": [
+    {
+      "name": "Ast Akmamnish, militia commander",
+      "position": "MILITIA_COMMANDER",
+      "unit_id": 1306
+    },
+    {
+      "name": "Ast Akmamnish, militia commander",
+      "position": "HAMMERER",
+      "unit_id": 1306
+    },
+    {
+      "name": "Melbil îgammörul, bookkeeper",
+      "position": "BOOKKEEPER",
+      "unit_id": 2448
+    },
+    {
+      "name": "Såkzul Asënekir, militia captain",
+      "position": "MILITIA_CAPTAIN",
+      "unit_id": 4717
+    },
+    {
+      "name": "Luki Padoisha, lord",
+      "position": "CUSTOM_LAW_MAKER",
+      "unit_id": 8445
+    },
+    {
+      "name": "Adil Mebzuthudib, manager",
+      "position": "MANAGER",
+      "unit_id": 17511
+    },
+    {
+      "name": "Mosus èritham, militia captain",
+      "position": "MILITIA_CAPTAIN",
+      "unit_id": 19748
+    },
+    {
+      "name": "Melbil Thunentulon, captain of the guard",
+      "position": "CAPTAIN_OF_THE_GUARD",
+      "unit_id": 19900
+    },
+    {
+      "name": "Mistêm Idokfath, messenger",
+      "position": "MESSENGER",
+      "unit_id": 20507
+    },
+    {
+      "name": "Zas Oslantarmid, mayor",
+      "position": "MAYOR",
+      "unit_id": 29206
+    },
+    {
+      "name": "Zas Oslantarmid, mayor",
+      "position": "BROKER",
+      "unit_id": 29206
+    },
+    {
+      "name": "Zas Nishcagith, dungeon master",
+      "position": "DUNGEON_MASTER",
+      "unit_id": 38652
+    },
+    {
+      "name": "Imush Asmelurrïth, chief medical dwarf",
+      "position": "CHIEF_MEDICAL_DWARF",
+      "unit_id": 39004
+    }
+  ],
+  "others_on_map": {
+    "contained_dangers": 0,
+    "diplomats": 0,
+    "merchants": 0,
+    "tame_animals": 30,
+    "threats": [
+      {
+        "can_reach_dwarves": false,
+        "distance_to_nearest_dwarf": 239,
+        "flier": false,
+        "great_danger": true,
+        "id": 15576,
+        "invader": false,
+        "layer": "Cavern3",
+        "levels_from_nearest_dwarf": 47,
+        "name": "Nol Ongasosta Spos \"Dreamedwitches the Abyssal\", Forgotten Beast",
+        "pos": {
+          "x": 146,
+          "y": 115,
+          "z": 31
+        }
+      },
+      {
+        "distance_to_nearest_dwarf": 327,
+        "flier": true,
+        "great_danger": true,
+        "id": 39656,
+        "invader": false,
+        "layer": "Underworld",
+        "levels_from_nearest_dwarf": 70,
+        "name": "Specter Of Steam",
+        "pos": {
+          "x": 165,
+          "y": 183,
+          "z": 8
+        }
+      },
+      {
+        "distance_to_nearest_dwarf": 266,
+        "flier": true,
+        "great_danger": true,
+        "id": 39657,
+        "invader": false,
+        "layer": "Underworld",
+        "levels_from_nearest_dwarf": 70,
+        "name": "Specter Of Steam",
+        "pos": {
+          "x": 104,
+          "y": 169,
+          "z": 8
+        }
+      },
+      {
+        "distance_to_nearest_dwarf": 292,
+        "flier": true,
+        "great_danger": true,
+        "id": 39660,
+        "invader": false,
+        "layer": "Underworld",
+        "levels_from_nearest_dwarf": 70,
+        "name": "Specter Of Steam",
+        "pos": {
+          "x": 130,
+          "y": 191,
+          "z": 8
+        }
+      },
+      {
+        "can_reach_dwarves": false,
+        "distance_to_nearest_dwarf": 190,
+        "flier": true,
+        "great_danger": true,
+        "id": 39662,
+        "invader": false,
+        "layer": "MagmaSea",
+        "levels_from_nearest_dwarf": 55,
+        "name": "Specter Of Steam",
+        "pos": {
+          "x": 29,
+          "y": 175,
+          "z": 18
+        }
+      },
+      {
+        "distance_to_nearest_dwarf": 287,
+        "flier": true,
+        "great_danger": true,
+        "id": 39664,
+        "invader": false,
+        "layer": "Underworld",
+        "levels_from_nearest_dwarf": 70,
+        "name": "Specter Of Steam",
+        "pos": {
+          "x": 125,
+          "y": 182,
+          "z": 8
+        }
+      },
+      {
+        "distance_to_nearest_dwarf": 349,
+        "flier": true,
+        "great_danger": true,
+        "id": 39665,
+        "invader": false,
+        "layer": "Underworld",
+        "levels_from_nearest_dwarf": 70,
+        "name": "Specter Of Steam",
+        "pos": {
+          "x": 187,
+          "y": 142,
+          "z": 8
+        }
+      },
+      {
+        "distance_to_nearest_dwarf": 336,
+        "flier": true,
+        "great_danger": true,
+        "id": 39666,
+        "invader": false,
+        "layer": "Underworld",
+        "levels_from_nearest_dwarf": 70,
+        "name": "Specter Of Steam",
+        "pos": {
+          "x": 174,
+          "y": 146,
+          "z": 8
+        }
+      },
+      {
+        "distance_to_nearest_dwarf": 344,
+        "flier": true,
+        "great_danger": true,
+        "id": 39667,
+        "invader": false,
+        "layer": "Underworld",
+        "levels_from_nearest_dwarf": 70,
+        "name": "Specter Of Steam",
+        "pos": {
+          "x": 182,
+          "y": 132,
+          "z": 8
+        }
+      },
+      {
+        "distance_to_nearest_dwarf": 207,
+        "flier": true,
+        "great_danger": true,
+        "id": 39668,
+        "invader": false,
+        "layer": "fort_levels",
+        "levels_from_nearest_dwarf": 61,
+        "name": "Specter Of Steam",
+        "pos": {
+          "x": 32,
+          "y": 174,
+          "z": 12
+        }
+      },
+      {
+        "distance_to_nearest_dwarf": 317,
+        "flier": true,
+        "great_danger": true,
+        "id": 39669,
+        "invader": false,
+        "layer": "Underworld",
+        "levels_from_nearest_dwarf": 70,
+        "name": "Specter Of Steam",
+        "pos": {
+          "x": 155,
+          "y": 191,
+          "z": 8
+        }
+      },
+      {
+        "can_reach_dwarves": false,
+        "distance_to_nearest_dwarf": 191,
+        "flier": true,
+        "great_danger": true,
+        "id": 39735,
+        "invader": false,
+        "layer": "fort_levels",
+        "levels_from_nearest_dwarf": 55,
+        "name": "Specter Of Steam",
+        "pos": {
+          "x": 29,
+          "y": 176,
+          "z": 18
+        }
+      },
+      {
+        "distance_to_nearest_dwarf": 292,
+        "flier": true,
+        "great_danger": true,
+        "id": 39736,
+        "invader": false,
+        "layer": "Underworld",
+        "levels_from_nearest_dwarf": 70,
+        "name": "Specter Of Steam",
+        "pos": {
+          "x": 130,
+          "y": 147,
+          "z": 8
+        }
+      },
+      {
+        "distance_to_nearest_dwarf": 269,
+        "flier": true,
+        "great_danger": true,
+        "id": 39737,
+        "invader": false,
+        "layer": "Underworld",
+        "levels_from_nearest_dwarf": 70,
+        "name": "Specter Of Steam",
+        "pos": {
+          "x": 107,
+          "y": 148,
+          "z": 8
+        }
+      },
+      {
+        "distance_to_nearest_dwarf": 300,
+        "flier": true,
+        "great_danger": true,
+        "id": 39738,
+        "invader": false,
+        "layer": "Underworld",
+        "levels_from_nearest_dwarf": 70,
+        "name": "Specter Of Steam",
+        "pos": {
+          "x": 138,
+          "y": 158,
+          "z": 8
+        }
+      },
+      {
+        "distance_to_nearest_dwarf": 353,
+        "flier": true,
+        "great_danger": true,
+        "id": 39739,
+        "invader": false,
+        "layer": "Underworld",
+        "levels_from_nearest_dwarf": 70,
+        "name": "Specter Of Steam",
+        "pos": {
+          "x": 191,
+          "y": 177,
+          "z": 8
+        }
+      },
+      {
+        "distance_to_nearest_dwarf": 352,
+        "flier": true,
+        "great_danger": true,
+        "id": 39740,
+        "invader": false,
+        "layer": "Underworld",
+        "levels_from_nearest_dwarf": 70,
+        "name": "Specter Of Steam",
+        "pos": {
+          "x": 190,
+          "y": 115,
+          "z": 8
+        }
+      },
+      {
+        "distance_to_nearest_dwarf": 251,
+        "flier": true,
+        "great_danger": true,
+        "id": 39741,
+        "invader": false,
+        "layer": "Underworld",
+        "levels_from_nearest_dwarf": 70,
+        "name": "Specter Of Steam",
+        "pos": {
+          "x": 89,
+          "y": 152,
+          "z": 8
+        }
+      },
+      {
+        "distance_to_nearest_dwarf": 274,
+        "flier": true,
+        "great_danger": true,
+        "id": 39742,
+        "invader": false,
+        "layer": "Underworld",
+        "levels_from_nearest_dwarf": 70,
+        "name": "Specter Of Steam",
+        "pos": {
+          "x": 112,
+          "y": 174,
+          "z": 8
+        }
+      },
+      {
+        "can_reach_dwarves": false,
+        "distance_to_nearest_dwarf": 190,
+        "flier": true,
+        "great_danger": true,
+        "id": 39743,
+        "invader": false,
+        "layer": "MagmaSea",
+        "levels_from_nearest_dwarf": 55,
+        "name": "Specter Of Steam",
+        "pos": {
+          "x": 30,
+          "y": 175,
+          "z": 18
+        }
+      },
+      {
+        "distance_to_nearest_dwarf": 323,
+        "flier": true,
+        "great_danger": true,
+        "id": 39744,
+        "invader": false,
+        "layer": "Underworld",
+        "levels_from_nearest_dwarf": 70,
+        "name": "Specter Of Steam",
+        "pos": {
+          "x": 161,
+          "y": 166,
+          "z": 8
+        }
+      },
+      {
+        "distance_to_nearest_dwarf": 343,
+        "flier": true,
+        "great_danger": true,
+        "id": 39745,
+        "invader": false,
+        "layer": "Underworld",
+        "levels_from_nearest_dwarf": 70,
+        "name": "Specter Of Steam",
+        "pos": {
+          "x": 181,
+          "y": 145,
+          "z": 8
+        }
+      },
+      {
+        "distance_to_nearest_dwarf": 279,
+        "flier": true,
+        "great_danger": true,
+        "id": 39746,
+        "invader": false,
+        "layer": "Underworld",
+        "levels_from_nearest_dwarf": 70,
+        "name": "Specter Of Steam",
+        "pos": {
+          "x": 117,
+          "y": 181,
+          "z": 8
+        }
+      },
+      {
+        "distance_to_nearest_dwarf": 326,
+        "flier": true,
+        "great_danger": true,
+        "id": 39981,
+        "invader": false,
+        "layer": "Underworld",
+        "levels_from_nearest_dwarf": 70,
+        "name": "Saffron Fiend",
+        "pos": {
+          "x": 164,
+          "y": 190,
+          "z": 8
+        }
+      },
+      {
+        "distance_to_nearest_dwarf": 353,
+        "flier": true,
+        "great_danger": true,
+        "id": 39982,
+        "invader": false,
+        "layer": "Underworld",
+        "levels_from_nearest_dwarf": 70,
+        "name": "Saffron Fiend",
+        "pos": {
+          "x": 191,
+          "y": 189,
+          "z": 8
+        }
+      },
+      {
+        "distance_to_nearest_dwarf": 344,
+        "flier": true,
+        "great_danger": true,
+        "id": 39983,
+        "invader": false,
+        "layer": "Underworld",
+        "levels_from_nearest_dwarf": 70,
+        "name": "Saffron Fiend",
+        "pos": {
+          "x": 182,
+          "y": 110,
+          "z": 8
+        }
+      },
+      {
+        "distance_to_nearest_dwarf": 288,
+        "flier": true,
+        "great_danger": true,
+        "id": 39984,
+        "invader": false,
+        "layer": "Underworld",
+        "levels_from_nearest_dwarf": 70,
+        "name": "Saffron Fiend",
+        "pos": {
+          "x": 126,
+          "y": 174,
+          "z": 8
+        }
+      },
+      {
+        "distance_to_nearest_dwarf": 350,
+        "flier": true,
+        "great_danger": true,
+        "id": 39985,
+        "invader": false,
+        "layer": "Underworld",
+        "levels_from_nearest_dwarf": 70,
+        "name": "Saffron Fiend",
+        "pos": {
+          "x": 188,
+          "y": 108,
+          "z": 8
+        }
+      },
+      {
+        "distance_to_nearest_dwarf": 307,
+        "flier": true,
+        "great_danger": true,
+        "id": 39986,
+        "invader": false,
+        "layer": "Underworld",
+        "levels_from_nearest_dwarf": 70,
+        "name": "Saffron Fiend",
+        "pos": {
+          "x": 145,
+          "y": 128,
+          "z": 8
+        }
+      },
+      {
+        "distance_to_nearest_dwarf": 329,
+        "flier": true,
+        "great_danger": true,
+        "id": 39987,
+        "invader": false,
+        "layer": "Underworld",
+        "levels_from_nearest_dwarf": 70,
+        "name": "Saffron Fiend",
+        "pos": {
+          "x": 167,
+          "y": 153,
+          "z": 8
+        }
+      },
+      {
+        "distance_to_nearest_dwarf": 314,
+        "flier": true,
+        "great_danger": true,
+        "id": 39988,
+        "invader": false,
+        "layer": "Underworld",
+        "levels_from_nearest_dwarf": 70,
+        "name": "Saffron Fiend",
+        "pos": {
+          "x": 152,
+          "y": 163,
+          "z": 8
+        }
+      },
+      {
+        "distance_to_nearest_dwarf": 232,
+        "flier": true,
+        "great_danger": true,
+        "id": 39989,
+        "invader": false,
+        "layer": "Underworld",
+        "levels_from_nearest_dwarf": 70,
+        "name": "Saffron Fiend",
+        "pos": {
+          "x": 70,
+          "y": 161,
+          "z": 8
+        }
+      },
+      {
+        "distance_to_nearest_dwarf": 278,
+        "flier": true,
+        "great_danger": true,
+        "id": 39990,
+        "invader": false,
+        "layer": "Underworld",
+        "levels_from_nearest_dwarf": 70,
+        "name": "Saffron Fiend",
+        "pos": {
+          "x": 116,
+          "y": 161,
+          "z": 8
+        }
+      },
+      {
+        "distance_to_nearest_dwarf": 255,
+        "flier": true,
+        "great_danger": true,
+        "id": 39991,
+        "invader": false,
+        "layer": "Underworld",
+        "levels_from_nearest_dwarf": 70,
+        "name": "Saffron Fiend",
+        "pos": {
+          "x": 93,
+          "y": 155,
+          "z": 8
+        }
+      },
+      {
+        "can_reach_dwarves": false,
+        "distance_to_nearest_dwarf": 189,
+        "flier": true,
+        "great_danger": true,
+        "id": 39992,
+        "invader": false,
+        "layer": "MagmaSea",
+        "levels_from_nearest_dwarf": 55,
+        "name": "Saffron Fiend",
+        "pos": {
+          "x": 29,
+          "y": 174,
+          "z": 18
+        }
+      },
+      {
+        "distance_to_nearest_dwarf": 308,
+        "flier": true,
+        "great_danger": true,
+        "id": 40164,
+        "invader": false,
+        "layer": "Underworld",
+        "levels_from_nearest_dwarf": 70,
+        "name": "Specter Of Steam",
+        "pos": {
+          "x": 146,
+          "y": 156,
+          "z": 8
+        }
+      },
+      {
+        "distance_to_nearest_dwarf": 318,
+        "flier": true,
+        "great_danger": true,
+        "id": 40166,
+        "invader": false,
+        "layer": "Underworld",
+        "levels_from_nearest_dwarf": 72,
+        "name": "Specter Of Steam",
+        "pos": {
+          "x": 150,
+          "y": 144,
+          "z": 6
+        }
+      },
+      {
+        "distance_to_nearest_dwarf": 279,
+        "flier": true,
+        "great_danger": true,
+        "id": 40167,
+        "invader": false,
+        "layer": "Underworld",
+        "levels_from_nearest_dwarf": 70,
+        "name": "Specter Of Steam",
+        "pos": {
+          "x": 117,
+          "y": 191,
+          "z": 8
+        }
+      },
+      {
+        "distance_to_nearest_dwarf": 290,
+        "flier": true,
+        "great_danger": true,
+        "id": 40168,
+        "invader": false,
+        "layer": "Underworld",
+        "levels_from_nearest_dwarf": 70,
+        "name": "Specter Of Steam",
+        "pos": {
+          "x": 128,
+          "y": 124,
+          "z": 8
+        }
+      },
+      {
+        "distance_to_nearest_dwarf": 312,
+        "flier": true,
+        "great_danger": true,
+        "id": 40175,
+        "invader": false,
+        "layer": "Underworld",
+        "levels_from_nearest_dwarf": 71,
+        "name": "Specter Of Steam",
+        "pos": {
+          "x": 147,
+          "y": 144,
+          "z": 7
+        }
+      },
+      {
+        "distance_to_nearest_dwarf": 299,
+        "flier": true,
+        "great_danger": true,
+        "id": 40176,
+        "invader": false,
+        "layer": "Underworld",
+        "levels_from_nearest_dwarf": 70,
+        "name": "Specter Of Steam",
+        "pos": {
+          "x": 137,
+          "y": 169,
+          "z": 8
+        }
+      },
+      {
+        "distance_to_nearest_dwarf": 318,
+        "flier": true,
+        "great_danger": true,
+        "id": 40177,
+        "invader": false,
+        "layer": "Underworld",
+        "levels_from_nearest_dwarf": 71,
+        "name": "Specter Of Steam",
+        "pos": {
+          "x": 153,
+          "y": 125,
+          "z": 7
+        }
+      },
+      {
+        "can_reach_dwarves": false,
+        "distance_to_nearest_dwarf": 252,
+        "flier": false,
+        "great_danger": true,
+        "id": 15717,
+        "invader": false,
+        "layer": "Cavern1",
+        "levels_from_nearest_dwarf": 53,
+        "name": "Omshit Ernist \"The Fat Fears\", Forgotten Beast",
+        "pos": {
+          "x": 184,
+          "y": 164,
+          "z": 124
+        }
+      }
+    ],
+    "threats_that_can_reach_dwarves": 0,
+    "visitors": 17
+  },
+  "paused": true,
+  "protocol": 1,
+  "recent_announcements": [
+    {
+      "text": "Kadôl Sazirlecad, Weaponsmith cancels Store owned item: Too injured.",
+      "type": "CANCEL_JOB",
+      "year": 148
+    },
+    {
+      "text": "Kadôl Sazirlecad, Weaponsmith cancels Clean: Too injured.",
+      "type": "CANCEL_JOB",
+      "year": 148
+    },
+    {
+      "text": "Rith Shorastsemor, queen is visiting.",
+      "type": "GUEST_ARRIVAL",
+      "year": 148
+    },
+    {
+      "text": "Likot Adilsefol has dyed a masterpiece!",
+      "type": "DYED_MASTERPIECE",
+      "year": 148
+    },
+    {
+      "text": "Rovod Alåthcilob, duchess of Woundblood is visiting.",
+      "type": "GUEST_ARRIVAL",
+      "year": 148
+    },
+    {
+      "text": "The Goblin lieutenant Doren Olinåm has shared many tales from beyond Woundblood.",
+      "type": "SERVICE_ORDER_RUMOR_RECEIVED",
+      "year": 148
+    },
+    {
+      "text": "Dye cloth (10) has been completed.",
+      "type": "QUOTA_FILLED",
+      "year": 148
+    },
+    {
+      "text": "Etur Såkzulôsed, Engraver is brawling under the influence!",
+      "type": "CITIZEN_TANTRUM",
+      "year": 148
+    },
+    {
+      "text": "Etur Såkzulôsed, Engraver cancels Clean: Throwing tantrum.",
+      "type": "CANCEL_JOB",
+      "year": 148
+    },
+    {
+      "text": "Kul Cirocok, Human Dancer is visiting.",
+      "type": "GUEST_ARRIVAL",
+      "year": 148
+    },
+    {
+      "text": "èrith Zaskonos, baroness of Roommines is visiting.",
+      "type": "GUEST_ARRIVAL",
+      "year": 148
+    },
+    {
+      "text": "The Forgotten Beast Shulmik Soshoshritas has come!  A gigantic scaly tarantula.  It has a knobby shell and it is ravening.  Its aquamarine scales are large and set far apart.  Beware its poisonous bite!",
+      "type": "MEGABEAST_ARRIVAL",
+      "year": 148
+    },
+    {
+      "text": "Erush Unolkilrud, baron of Joinedcrystals is visiting.",
+      "type": "GUEST_ARRIVAL",
+      "year": 148
+    },
+    {
+      "text": "The Forgotten Beast Omshit Ernist has come!  A gigantic iguana composed of crystal glass.  It has three long, curving horns and it squirms and fidgets.  Beware its deadly spittle!",
+      "type": "MEGABEAST_ARRIVAL",
+      "year": 148
+    },
+    {
+      "text": "Etur Såkzulôsed, Engraver cancels Clean: Throwing tantrum.",
+      "type": "CANCEL_JOB",
+      "year": 148
+    }
+  ],
+  "stocks": {
+    "ammo": 8915,
+    "armor": 309,
+    "barrels": 649,
+    "bins": 1214,
+    "blocks": 2175,
+    "boulders": 3157,
+    "cloth": 2537,
+    "cut_gems": 43,
+    "drink": 3929,
+    "fish": 518,
+    "leather": 253,
+    "meat": 5225,
+    "metal_bars": 5229,
+    "plants": 2662,
+    "prepared_meals": 4170,
+    "rough_gems": 138,
+    "seeds": 3993,
+    "thread": 185,
+    "weapons": 791,
+    "wood": 1062
+  },
+  "units": [
+    {
+      "age": 75,
+      "child": false,
+      "id": 393,
+      "in_squad": false,
+      "job": "Store item in stockpile",
+      "name": "Erib Usenbomrek, Doctor",
+      "needs_medical_care": false,
+      "profession": "Doctor",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 21,
+          "skill": "Weaving"
+        },
+        {
+          "level": 20,
+          "skill": "Studying"
+        },
+        {
+          "level": 19,
+          "skill": "Engraving"
+        }
+      ]
+    },
+    {
+      "age": 120,
+      "child": false,
+      "id": 1298,
+      "in_squad": false,
+      "job": "Dye cloth",
+      "name": "Thob Ubbulostuk Enseb Ralâth, Bone Doctor",
+      "needs_medical_care": false,
+      "profession": "Bone Doctor",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 160,
+          "skill": "Observation"
+        },
+        {
+          "level": 89,
+          "skill": "Fighting"
+        },
+        {
+          "level": 69,
+          "skill": "Mace"
+        }
+      ]
+    },
+    {
+      "age": 104,
+      "child": false,
+      "id": 1306,
+      "in_squad": true,
+      "job": "Drink",
+      "name": "Ast Akmamnish, militia commander",
+      "needs_medical_care": false,
+      "profession": "militia commander",
+      "stress": "fine",
+      "top_skills": [
+        {
+          "level": 124,
+          "skill": "Observation"
+        },
+        {
+          "level": 102,
+          "skill": "Fighting"
+        },
+        {
+          "level": 80,
+          "skill": "Axe"
+        }
+      ]
+    },
+    {
+      "age": 138,
+      "child": false,
+      "id": 1327,
+      "in_squad": true,
+      "job": "Pickup equipment",
+      "name": "Uvash Edoslòr, Miner",
+      "needs_medical_care": false,
+      "profession": "Miner",
+      "stress": "content",
+      "top_skills": [
+        {
+          "level": 45,
+          "skill": "Observation"
+        },
+        {
+          "level": 31,
+          "skill": "Mining"
+        },
+        {
+          "level": 25,
+          "skill": "Fighting"
+        }
+      ]
+    },
+    {
+      "age": 74,
+      "child": false,
+      "id": 1636,
+      "in_squad": false,
+      "name": "Rîsen Shashdonrovod, Dancer",
+      "needs_medical_care": false,
+      "profession": "Dancer",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 19,
+          "skill": "Armorsmithing"
+        },
+        {
+          "level": 12,
+          "skill": "Studying"
+        },
+        {
+          "level": 11,
+          "skill": "Concentration"
+        }
+      ]
+    },
+    {
+      "age": 71,
+      "child": false,
+      "id": 1813,
+      "in_squad": false,
+      "job": "Store item in stockpile",
+      "name": "Stran ñabsizethba, Human Bard",
+      "needs_medical_care": false,
+      "profession": "Human Bard",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 10,
+          "skill": "Weaponsmithing"
+        },
+        {
+          "level": 9,
+          "skill": "Studying"
+        },
+        {
+          "level": 8,
+          "skill": "Concentration"
+        }
+      ]
+    },
+    {
+      "age": 83,
+      "child": false,
+      "id": 1826,
+      "in_squad": false,
+      "job": "Make potash from ash",
+      "name": "Woge Otngesedast, Human Bard",
+      "needs_medical_care": false,
+      "profession": "Human Bard",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 9,
+          "skill": "Growing"
+        },
+        {
+          "level": 9,
+          "skill": "Studying"
+        },
+        {
+          "level": 8,
+          "skill": "Concentration"
+        }
+      ]
+    },
+    {
+      "age": 77,
+      "child": false,
+      "id": 2435,
+      "in_squad": false,
+      "job": "Store item in stockpile",
+      "name": "Zan Gikenùshrir, Sage",
+      "needs_medical_care": false,
+      "profession": "Sage",
+      "stress": "fine",
+      "top_skills": [
+        {
+          "level": 21,
+          "skill": "Studying"
+        },
+        {
+          "level": 15,
+          "skill": "Reading"
+        },
+        {
+          "level": 14,
+          "skill": "Critical Thinking"
+        }
+      ]
+    },
+    {
+      "age": 76,
+      "child": false,
+      "id": 2448,
+      "in_squad": false,
+      "job": "Store item in stockpile",
+      "name": "Melbil îgammörul, bookkeeper",
+      "needs_medical_care": false,
+      "profession": "bookkeeper",
+      "stress": "happy",
+      "top_skills": [
+        {
+          "level": 23,
+          "skill": "Studying"
+        },
+        {
+          "level": 17,
+          "skill": "Engraving"
+        },
+        {
+          "level": 15,
+          "skill": "Reading"
+        }
+      ]
+    },
+    {
+      "age": 99,
+      "child": false,
+      "id": 2456,
+      "in_squad": false,
+      "job": "Store owned item",
+      "name": "Datan Ustuthakmesh, Scribe",
+      "needs_medical_care": false,
+      "profession": "Scribe",
+      "stress": "fine",
+      "top_skills": [
+        {
+          "level": 24,
+          "skill": "Studying"
+        },
+        {
+          "level": 21,
+          "skill": "Mining"
+        },
+        {
+          "level": 20,
+          "skill": "Weaponsmithing"
+        }
+      ]
+    },
+    {
+      "age": 54,
+      "child": false,
+      "id": 2779,
+      "in_squad": false,
+      "job": "Store item in stockpile",
+      "name": "Kadol Tiristethab, Armorer",
+      "needs_medical_care": false,
+      "profession": "Armorer",
+      "stress": "happy",
+      "top_skills": [
+        {
+          "level": 5,
+          "skill": "Concentration"
+        },
+        {
+          "level": 5,
+          "skill": "Studying"
+        },
+        {
+          "level": 5,
+          "skill": "Armorsmithing"
+        }
+      ]
+    },
+    {
+      "age": 69,
+      "child": false,
+      "id": 3355,
+      "in_squad": false,
+      "job": "Store item in bin",
+      "name": "Gulgud Pathrilatal, Human Performer",
+      "needs_medical_care": false,
+      "profession": "Human Performer",
+      "stress": "content",
+      "top_skills": [
+        {
+          "level": 9,
+          "skill": "Studying"
+        },
+        {
+          "level": 8,
+          "skill": "Concentration"
+        },
+        {
+          "level": 7,
+          "skill": "Weaving"
+        }
+      ]
+    },
+    {
+      "age": 71,
+      "child": false,
+      "id": 4035,
+      "in_squad": false,
+      "name": "Nomal Anambim, Bard",
+      "needs_medical_care": false,
+      "profession": "Bard",
+      "stress": "happy",
+      "top_skills": [
+        {
+          "level": 13,
+          "skill": "Observation"
+        },
+        {
+          "level": 6,
+          "skill": "Strand Extraction"
+        },
+        {
+          "level": 6,
+          "skill": "Studying"
+        }
+      ]
+    },
+    {
+      "age": 85,
+      "child": false,
+      "id": 4047,
+      "in_squad": true,
+      "job": "Store item in stockpile",
+      "name": "ònul Uzolamem, Bard",
+      "needs_medical_care": false,
+      "profession": "Bard",
+      "stress": "happy",
+      "top_skills": [
+        {
+          "level": 41,
+          "skill": "Observation"
+        },
+        {
+          "level": 36,
+          "skill": "Crutch-walking"
+        },
+        {
+          "level": 24,
+          "skill": "Fighting"
+        }
+      ]
+    },
+    {
+      "age": 76,
+      "child": false,
+      "id": 4048,
+      "in_squad": false,
+      "name": "Mestthos Ducimudist, Bard",
+      "needs_medical_care": false,
+      "profession": "Bard",
+      "stress": "unhappy",
+      "top_skills": [
+        {
+          "level": 18,
+          "skill": "Clothes Making"
+        },
+        {
+          "level": 9,
+          "skill": "Observation"
+        },
+        {
+          "level": 7,
+          "skill": "Studying"
+        }
+      ]
+    },
+    {
+      "age": 103,
+      "child": false,
+      "id": 4082,
+      "in_squad": false,
+      "job": "Store item in stockpile",
+      "name": "Mörul Akmamlikot, Bard",
+      "needs_medical_care": false,
+      "profession": "Bard",
+      "stress": "happy",
+      "top_skills": [
+        {
+          "level": 11,
+          "skill": "Music"
+        },
+        {
+          "level": 9,
+          "skill": "Studying"
+        },
+        {
+          "level": 9,
+          "skill": "Mining"
+        }
+      ]
+    },
+    {
+      "age": 83,
+      "child": false,
+      "id": 4260,
+      "in_squad": false,
+      "job": "Store item in stockpile",
+      "name": "Sath Remebelrok, Human Poet",
+      "needs_medical_care": false,
+      "profession": "Human Poet",
+      "stress": "content",
+      "top_skills": [
+        {
+          "level": 23,
+          "skill": "Engraving"
+        },
+        {
+          "level": 14,
+          "skill": "Studying"
+        },
+        {
+          "level": 12,
+          "skill": "Concentration"
+        }
+      ]
+    },
+    {
+      "age": 87,
+      "child": false,
+      "id": 4327,
+      "in_squad": false,
+      "job": "Store item in bin",
+      "name": "Kumil Lertethmosus, Bard",
+      "needs_medical_care": false,
+      "profession": "Bard",
+      "stress": "content",
+      "top_skills": [
+        {
+          "level": 10,
+          "skill": "Studying"
+        },
+        {
+          "level": 9,
+          "skill": "Growing"
+        },
+        {
+          "level": 9,
+          "skill": "Armorsmithing"
+        }
+      ]
+    },
+    {
+      "age": 84,
+      "child": false,
+      "id": 4571,
+      "in_squad": false,
+      "job": "Store item in stockpile",
+      "name": "Ast Nishlaz, Diagnoser",
+      "needs_medical_care": false,
+      "profession": "Diagnoser",
+      "stress": "happy",
+      "top_skills": [
+        {
+          "level": 23,
+          "skill": "Studying"
+        },
+        {
+          "level": 21,
+          "skill": "Mining"
+        },
+        {
+          "level": 20,
+          "skill": "Weaponsmithing"
+        }
+      ]
+    },
+    {
+      "age": 105,
+      "child": false,
+      "id": 4594,
+      "in_squad": false,
+      "job": "Store item in stockpile",
+      "name": "Olon Zonoshur, Scribe",
+      "needs_medical_care": false,
+      "profession": "Scribe",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 116,
+          "skill": "Observation"
+        },
+        {
+          "level": 59,
+          "skill": "Fighting"
+        },
+        {
+          "level": 42,
+          "skill": "Discipline"
+        }
+      ]
+    },
+    {
+      "age": 122,
+      "child": false,
+      "id": 4608,
+      "in_squad": false,
+      "job": "Drink",
+      "name": "Cog Sazirmonom, Sage",
+      "needs_medical_care": false,
+      "profession": "Sage",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 34,
+          "skill": "Crutch-walking"
+        },
+        {
+          "level": 25,
+          "skill": "Studying"
+        },
+        {
+          "level": 24,
+          "skill": "Growing"
+        }
+      ]
+    },
+    {
+      "age": 50,
+      "child": false,
+      "id": 4639,
+      "in_squad": false,
+      "job": "Store item in stockpile",
+      "name": "Oddom Ulåbmûthkat, Weaver",
+      "needs_medical_care": false,
+      "profession": "Weaver",
+      "stress": "content",
+      "top_skills": [
+        {
+          "level": 33,
+          "skill": "Weaving"
+        },
+        {
+          "level": 11,
+          "skill": "Concentration"
+        },
+        {
+          "level": 11,
+          "skill": "Studying"
+        }
+      ]
+    },
+    {
+      "age": 61,
+      "child": false,
+      "id": 4650,
+      "in_squad": false,
+      "job": "Eat",
+      "name": "Adil Olonthukkan, Metalsmith",
+      "needs_medical_care": false,
+      "profession": "Metalsmith",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 19,
+          "skill": "Crutch-walking"
+        },
+        {
+          "level": 7,
+          "skill": "Weaponsmithing"
+        },
+        {
+          "level": 6,
+          "skill": "Concentration"
+        }
+      ]
+    },
+    {
+      "age": 139,
+      "child": false,
+      "id": 4717,
+      "in_squad": true,
+      "job": "Store item in bin",
+      "name": "Såkzul Asënekir, militia captain",
+      "needs_medical_care": false,
+      "profession": "militia captain",
+      "stress": "happy",
+      "top_skills": [
+        {
+          "level": 41,
+          "skill": "Fighting"
+        },
+        {
+          "level": 38,
+          "skill": "Observation"
+        },
+        {
+          "level": 30,
+          "skill": "Spear"
+        }
+      ]
+    },
+    {
+      "age": 76,
+      "child": false,
+      "id": 4875,
+      "in_squad": false,
+      "job": "Eat",
+      "name": "Kadol Endoklecad, Bard",
+      "needs_medical_care": false,
+      "profession": "Bard",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 11,
+          "skill": "Studying"
+        },
+        {
+          "level": 10,
+          "skill": "Concentration"
+        },
+        {
+          "level": 8,
+          "skill": "Weaponsmithing"
+        }
+      ]
+    },
+    {
+      "age": 83,
+      "child": false,
+      "id": 4878,
+      "in_squad": false,
+      "name": "Id Athelbavast, Bard",
+      "needs_medical_care": false,
+      "profession": "Bard",
+      "stress": "unhappy",
+      "top_skills": [
+        {
+          "level": 10,
+          "skill": "Weaving"
+        },
+        {
+          "level": 9,
+          "skill": "Concentration"
+        },
+        {
+          "level": 9,
+          "skill": "Studying"
+        }
+      ]
+    },
+    {
+      "age": 80,
+      "child": false,
+      "id": 4883,
+      "in_squad": false,
+      "name": "Deler Athelograd, Bard",
+      "needs_medical_care": false,
+      "profession": "Bard",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 10,
+          "skill": "Studying"
+        },
+        {
+          "level": 10,
+          "skill": "Concentration"
+        },
+        {
+          "level": 8,
+          "skill": "Mining"
+        }
+      ]
+    },
+    {
+      "age": 91,
+      "child": false,
+      "id": 4890,
+      "in_squad": false,
+      "name": "Ustuth Endokisram, Bard",
+      "needs_medical_care": false,
+      "profession": "Bard",
+      "stress": "fine",
+      "top_skills": [
+        {
+          "level": 54,
+          "skill": "Crutch-walking"
+        },
+        {
+          "level": 23,
+          "skill": "Engraving"
+        },
+        {
+          "level": 19,
+          "skill": "Studying"
+        }
+      ]
+    },
+    {
+      "age": 92,
+      "child": false,
+      "id": 4892,
+      "in_squad": false,
+      "job": "Store item in stockpile",
+      "name": "Id Iriddoren, Bard",
+      "needs_medical_care": false,
+      "profession": "Bard",
+      "stress": "happy",
+      "top_skills": [
+        {
+          "level": 106,
+          "skill": "Observation"
+        },
+        {
+          "level": 41,
+          "skill": "Fighting"
+        },
+        {
+          "level": 31,
+          "skill": "Discipline"
+        }
+      ]
+    },
+    {
+      "age": 123,
+      "child": false,
+      "id": 4906,
+      "in_squad": false,
+      "job": "Dump item",
+      "name": "Mestthos ágùshrir, Bard",
+      "needs_medical_care": false,
+      "profession": "Bard",
+      "stress": "fine",
+      "top_skills": [
+        {
+          "level": 15,
+          "skill": "Music"
+        },
+        {
+          "level": 9,
+          "skill": "Brewing"
+        },
+        {
+          "level": 5,
+          "skill": "Studying"
+        }
+      ]
+    },
+    {
+      "age": 74,
+      "child": false,
+      "id": 5056,
+      "in_squad": false,
+      "job": "Store item in stockpile",
+      "name": "Reg Nishshigós, Scholar",
+      "needs_medical_care": false,
+      "profession": "Scholar",
+      "stress": "content",
+      "top_skills": [
+        {
+          "level": 30,
+          "skill": "Engraving"
+        },
+        {
+          "level": 23,
+          "skill": "Mining"
+        },
+        {
+          "level": 20,
+          "skill": "Studying"
+        }
+      ]
+    },
+    {
+      "age": 91,
+      "child": false,
+      "id": 5079,
+      "in_squad": true,
+      "job": "Store item in bin",
+      "name": "Mestthos Cattenelbel, Sage",
+      "needs_medical_care": false,
+      "profession": "Sage",
+      "stress": "fine",
+      "top_skills": [
+        {
+          "level": 88,
+          "skill": "Observation"
+        },
+        {
+          "level": 56,
+          "skill": "Fighting"
+        },
+        {
+          "level": 42,
+          "skill": "Hammer"
+        }
+      ]
+    },
+    {
+      "age": 60,
+      "child": false,
+      "id": 5847,
+      "in_squad": false,
+      "job": "Store item in stockpile",
+      "name": "Ast Avuzukosh, Craftsdwarf",
+      "needs_medical_care": false,
+      "profession": "Craftsdwarf",
+      "stress": "happy",
+      "top_skills": [
+        {
+          "level": 8,
+          "skill": "Clothes Making"
+        },
+        {
+          "level": 7,
+          "skill": "Concentration"
+        },
+        {
+          "level": 7,
+          "skill": "Studying"
+        }
+      ]
+    },
+    {
+      "age": 61,
+      "child": false,
+      "id": 5973,
+      "in_squad": false,
+      "job": "Store item in stockpile",
+      "name": "Zefon Egdothnokim, Doctor",
+      "needs_medical_care": false,
+      "profession": "Doctor",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 155,
+          "skill": "Observation"
+        },
+        {
+          "level": 83,
+          "skill": "Fighting"
+        },
+        {
+          "level": 60,
+          "skill": "Discipline"
+        }
+      ]
+    },
+    {
+      "age": 97,
+      "child": false,
+      "id": 5982,
+      "in_squad": true,
+      "job": "Eat",
+      "name": "Cog Lòrshameb, Planter",
+      "needs_medical_care": false,
+      "profession": "Planter",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 111,
+          "skill": "Observation"
+        },
+        {
+          "level": 90,
+          "skill": "Fighting"
+        },
+        {
+          "level": 64,
+          "skill": "Spear"
+        }
+      ]
+    },
+    {
+      "age": 53,
+      "child": false,
+      "id": 6095,
+      "in_squad": false,
+      "job": "Store item in stockpile",
+      "name": "Lorbam Gemeshletmos, Weaver",
+      "needs_medical_care": false,
+      "profession": "Weaver",
+      "stress": "happy",
+      "top_skills": [
+        {
+          "level": 19,
+          "skill": "Weaving"
+        },
+        {
+          "level": 11,
+          "skill": "Studying"
+        },
+        {
+          "level": 10,
+          "skill": "Concentration"
+        }
+      ]
+    },
+    {
+      "age": 69,
+      "child": false,
+      "id": 6363,
+      "in_squad": false,
+      "job": "Store item in bin",
+      "name": "Lelgo Coñefuri, Human Dancer",
+      "needs_medical_care": false,
+      "profession": "Human Dancer",
+      "stress": "happy",
+      "top_skills": [
+        {
+          "level": 23,
+          "skill": "Mining"
+        },
+        {
+          "level": 19,
+          "skill": "Furnace Operation"
+        },
+        {
+          "level": 18,
+          "skill": "Studying"
+        }
+      ]
+    },
+    {
+      "age": 90,
+      "child": false,
+      "id": 6863,
+      "in_squad": true,
+      "job": "Pickup equipment",
+      "name": "èzum Sazirtholest, Bard",
+      "needs_medical_care": false,
+      "profession": "Bard",
+      "stress": "happy",
+      "top_skills": [
+        {
+          "level": 35,
+          "skill": "Observation"
+        },
+        {
+          "level": 25,
+          "skill": "Fighting"
+        },
+        {
+          "level": 20,
+          "skill": "Sword"
+        }
+      ]
+    },
+    {
+      "age": 97,
+      "child": false,
+      "id": 6877,
+      "in_squad": false,
+      "job": "Store item in stockpile",
+      "name": "Asën Rodimoltar, Bard",
+      "needs_medical_care": false,
+      "profession": "Bard",
+      "stress": "happy",
+      "top_skills": [
+        {
+          "level": 11,
+          "skill": "Music"
+        },
+        {
+          "level": 2,
+          "skill": "Suturing"
+        },
+        {
+          "level": 1,
+          "skill": "Weaponsmithing"
+        }
+      ]
+    },
+    {
+      "age": 94,
+      "child": false,
+      "id": 6886,
+      "in_squad": false,
+      "job": "Store item in stockpile",
+      "name": "Urvad Dorenabsam, Bard",
+      "needs_medical_care": false,
+      "profession": "Bard",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 22,
+          "skill": "Growing"
+        },
+        {
+          "level": 16,
+          "skill": "Studying"
+        },
+        {
+          "level": 16,
+          "skill": "Engraving"
+        }
+      ]
+    },
+    {
+      "age": 97,
+      "child": false,
+      "id": 6891,
+      "in_squad": false,
+      "name": "Kulet Stukoskodor, Bard",
+      "needs_medical_care": false,
+      "profession": "Bard",
+      "stress": "content",
+      "top_skills": [
+        {
+          "level": 8,
+          "skill": "Music"
+        },
+        {
+          "level": 8,
+          "skill": "Studying"
+        },
+        {
+          "level": 6,
+          "skill": "Teaching"
+        }
+      ]
+    },
+    {
+      "age": 78,
+      "child": false,
+      "id": 7097,
+      "in_squad": true,
+      "job": "Store owned item",
+      "name": "Sigun Bimzimesh, Poet",
+      "needs_medical_care": false,
+      "profession": "Poet",
+      "stress": "happy",
+      "top_skills": [
+        {
+          "level": 45,
+          "skill": "Observation"
+        },
+        {
+          "level": 29,
+          "skill": "Fighting"
+        },
+        {
+          "level": 21,
+          "skill": "Spear"
+        }
+      ]
+    },
+    {
+      "age": 71,
+      "child": false,
+      "id": 7443,
+      "in_squad": false,
+      "job": "Store item in stockpile",
+      "name": "Sibrek Uzolatír, Bard",
+      "needs_medical_care": false,
+      "profession": "Bard",
+      "stress": "content",
+      "top_skills": [
+        {
+          "level": 11,
+          "skill": "Weaving"
+        },
+        {
+          "level": 8,
+          "skill": "Studying"
+        },
+        {
+          "level": 8,
+          "skill": "Concentration"
+        }
+      ]
+    },
+    {
+      "age": 115,
+      "child": false,
+      "id": 7494,
+      "in_squad": false,
+      "job": "Store item in bin",
+      "name": "Erush Ralilid, Bard",
+      "needs_medical_care": false,
+      "profession": "Bard",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 28,
+          "skill": "Cooking"
+        },
+        {
+          "level": 18,
+          "skill": "Studying"
+        },
+        {
+          "level": 17,
+          "skill": "Weaponsmithing"
+        }
+      ]
+    },
+    {
+      "age": 122,
+      "child": false,
+      "id": 7683,
+      "in_squad": false,
+      "job": "Store item in bin",
+      "name": "Alåth Menglised, baron consort of Uttermerchant",
+      "needs_medical_care": false,
+      "profession": "baron consort",
+      "stress": "happy",
+      "top_skills": [
+        {
+          "level": 11,
+          "skill": "Dance"
+        },
+        {
+          "level": 9,
+          "skill": "Studying"
+        },
+        {
+          "level": 8,
+          "skill": "Concentration"
+        }
+      ]
+    },
+    {
+      "age": 82,
+      "child": false,
+      "id": 7968,
+      "in_squad": false,
+      "job": "Mill plants",
+      "name": "Iguk Nesimanstrid, Human Dancer",
+      "needs_medical_care": false,
+      "profession": "Human Dancer",
+      "stress": "happy",
+      "top_skills": [
+        {
+          "level": 9,
+          "skill": "Mining"
+        },
+        {
+          "level": 9,
+          "skill": "Studying"
+        },
+        {
+          "level": 7,
+          "skill": "Concentration"
+        }
+      ]
+    },
+    {
+      "age": 69,
+      "child": false,
+      "id": 8445,
+      "in_squad": false,
+      "job": "Store item in stockpile",
+      "name": "Luki Padoisha, lord",
+      "needs_medical_care": false,
+      "profession": "lord",
+      "stress": "happy",
+      "top_skills": [
+        {
+          "level": 5,
+          "skill": "Speaking"
+        },
+        {
+          "level": 5,
+          "skill": "Observation"
+        },
+        {
+          "level": 4,
+          "skill": "Poetry"
+        }
+      ]
+    },
+    {
+      "age": 75,
+      "child": false,
+      "id": 8629,
+      "in_squad": true,
+      "job": "Get provisions",
+      "name": "Bëmbul Kåtâktun, Performer",
+      "needs_medical_care": false,
+      "profession": "Performer",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 37,
+          "skill": "Observation"
+        },
+        {
+          "level": 22,
+          "skill": "Fighting"
+        },
+        {
+          "level": 17,
+          "skill": "Spear"
+        }
+      ]
+    },
+    {
+      "age": 108,
+      "child": false,
+      "id": 9706,
+      "in_squad": false,
+      "job": "Store item in stockpile",
+      "name": "Mosus Astsefol, Poet",
+      "needs_medical_care": false,
+      "profession": "Poet",
+      "stress": "happy",
+      "top_skills": [
+        {
+          "level": 17,
+          "skill": "Clothes Making"
+        },
+        {
+          "level": 12,
+          "skill": "Teaching"
+        },
+        {
+          "level": 11,
+          "skill": "Speaking"
+        }
+      ]
+    },
+    {
+      "age": 81,
+      "child": false,
+      "id": 9887,
+      "in_squad": true,
+      "name": "Moldath Zágodgoden, Scholar",
+      "needs_medical_care": false,
+      "profession": "Scholar",
+      "stress": "content",
+      "top_skills": [
+        {
+          "level": 165,
+          "skill": "Observation"
+        },
+        {
+          "level": 114,
+          "skill": "Fighting"
+        },
+        {
+          "level": 91,
+          "skill": "Mace"
+        }
+      ]
+    },
+    {
+      "age": 93,
+      "child": false,
+      "id": 9990,
+      "in_squad": false,
+      "name": "Didde Asmurakul, Human Bard",
+      "needs_medical_care": false,
+      "profession": "Human Bard",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 11,
+          "skill": "Music"
+        },
+        {
+          "level": 7,
+          "skill": "Studying"
+        },
+        {
+          "level": 6,
+          "skill": "Concentration"
+        }
+      ]
+    },
+    {
+      "age": 59,
+      "child": false,
+      "id": 10070,
+      "in_squad": false,
+      "job": "Store item in bin",
+      "name": "Iden Etesfikod, Engraver",
+      "needs_medical_care": false,
+      "profession": "Engraver",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 10,
+          "skill": "Engraving"
+        },
+        {
+          "level": 9,
+          "skill": "Armorsmithing"
+        },
+        {
+          "level": 8,
+          "skill": "Concentration"
+        }
+      ]
+    },
+    {
+      "age": 69,
+      "child": false,
+      "id": 10082,
+      "in_squad": true,
+      "job": "Sleep",
+      "name": "Erib Kibmozib, Engraver",
+      "needs_medical_care": false,
+      "profession": "Engraver",
+      "stress": "content",
+      "top_skills": [
+        {
+          "level": 43,
+          "skill": "Observation"
+        },
+        {
+          "level": 25,
+          "skill": "Fighting"
+        },
+        {
+          "level": 23,
+          "skill": "Engraving"
+        }
+      ]
+    },
+    {
+      "age": 77,
+      "child": false,
+      "id": 10595,
+      "in_squad": false,
+      "job": "Store item in stockpile",
+      "name": "Guki Apsongdolil, Human Dancer",
+      "needs_medical_care": false,
+      "profession": "Human Dancer",
+      "stress": "happy",
+      "top_skills": [
+        {
+          "level": 11,
+          "skill": "Studying"
+        },
+        {
+          "level": 10,
+          "skill": "Concentration"
+        },
+        {
+          "level": 9,
+          "skill": "Armorsmithing"
+        }
+      ]
+    },
+    {
+      "age": 58,
+      "child": false,
+      "id": 11421,
+      "in_squad": true,
+      "job": "Pickup equipment",
+      "name": "Ustuth Bimtaron Mìshos Ubas, Diagnoser",
+      "needs_medical_care": false,
+      "profession": "Diagnoser",
+      "stress": "happy",
+      "top_skills": [
+        {
+          "level": 119,
+          "skill": "Observation"
+        },
+        {
+          "level": 60,
+          "skill": "Fighting"
+        },
+        {
+          "level": 47,
+          "skill": "Discipline"
+        }
+      ]
+    },
+    {
+      "age": 63,
+      "child": false,
+      "id": 11425,
+      "in_squad": false,
+      "job": "Eat",
+      "name": "Led Mörulanûz, Miner",
+      "needs_medical_care": false,
+      "profession": "Miner",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 4,
+          "skill": "Mining"
+        },
+        {
+          "level": 3,
+          "skill": "Dance"
+        },
+        {
+          "level": 3,
+          "skill": "Armorsmithing"
+        }
+      ]
+    },
+    {
+      "age": 80,
+      "child": false,
+      "id": 11520,
+      "in_squad": false,
+      "job": "Clean",
+      "name": "Kib Rithenshal, Poet",
+      "needs_medical_care": false,
+      "profession": "Poet",
+      "stress": "fine",
+      "top_skills": [
+        {
+          "level": 9,
+          "skill": "Studying"
+        },
+        {
+          "level": 8,
+          "skill": "Concentration"
+        },
+        {
+          "level": 7,
+          "skill": "Speaking"
+        }
+      ]
+    },
+    {
+      "age": 52,
+      "child": false,
+      "id": 12324,
+      "in_squad": true,
+      "job": "Store item in bin",
+      "name": "Nil Alakèrith, Furnace Operator",
+      "needs_medical_care": false,
+      "profession": "Furnace Operator",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 155,
+          "skill": "Observation"
+        },
+        {
+          "level": 85,
+          "skill": "Fighting"
+        },
+        {
+          "level": 64,
+          "skill": "Spear"
+        }
+      ]
+    },
+    {
+      "age": 61,
+      "child": false,
+      "id": 12801,
+      "in_squad": true,
+      "job": "Store item in bin",
+      "name": "Oddom Lathonoslan, Naturalist",
+      "needs_medical_care": false,
+      "profession": "Naturalist",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 163,
+          "skill": "Observation"
+        },
+        {
+          "level": 90,
+          "skill": "Fighting"
+        },
+        {
+          "level": 66,
+          "skill": "Sword"
+        }
+      ]
+    },
+    {
+      "age": 52,
+      "child": false,
+      "id": 12901,
+      "in_squad": false,
+      "job": "Store item in stockpile",
+      "name": "Zasit Kilrudshorast, Craftsdwarf",
+      "needs_medical_care": false,
+      "profession": "Craftsdwarf",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 16,
+          "skill": "Studying"
+        },
+        {
+          "level": 15,
+          "skill": "Clothes Making"
+        },
+        {
+          "level": 15,
+          "skill": "Concentration"
+        }
+      ]
+    },
+    {
+      "age": 53,
+      "child": false,
+      "id": 12903,
+      "in_squad": false,
+      "name": "Lorbam Tosidozor, Weaver",
+      "needs_medical_care": false,
+      "profession": "Weaver",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 19,
+          "skill": "Weaving"
+        },
+        {
+          "level": 15,
+          "skill": "Studying"
+        },
+        {
+          "level": 14,
+          "skill": "Concentration"
+        }
+      ]
+    },
+    {
+      "age": 54,
+      "child": false,
+      "id": 12906,
+      "in_squad": true,
+      "job": "Store item in bin",
+      "name": "Erib Zokundegël, Clothier",
+      "needs_medical_care": false,
+      "profession": "Clothier",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 107,
+          "skill": "Observation"
+        },
+        {
+          "level": 58,
+          "skill": "Fighting"
+        },
+        {
+          "level": 45,
+          "skill": "Sword"
+        }
+      ]
+    },
+    {
+      "age": 55,
+      "child": false,
+      "id": 12915,
+      "in_squad": false,
+      "job": "Mill plants",
+      "name": "Zuglar Lecadvucar, Brewer",
+      "needs_medical_care": false,
+      "profession": "Brewer",
+      "stress": "happy",
+      "top_skills": [
+        {
+          "level": 129,
+          "skill": "Observation"
+        },
+        {
+          "level": 59,
+          "skill": "Fighting"
+        },
+        {
+          "level": 47,
+          "skill": "Mace"
+        }
+      ]
+    },
+    {
+      "age": 75,
+      "child": false,
+      "id": 12943,
+      "in_squad": false,
+      "job": "Store item in stockpile",
+      "name": "Oñec Jeharimtil, Human Bard",
+      "needs_medical_care": false,
+      "profession": "Human Bard",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 29,
+          "skill": "Clothes Making"
+        },
+        {
+          "level": 18,
+          "skill": "Mining"
+        },
+        {
+          "level": 14,
+          "skill": "Studying"
+        }
+      ]
+    },
+    {
+      "age": 48,
+      "child": false,
+      "id": 14155,
+      "in_squad": false,
+      "job": "Dye cloth",
+      "name": "Mörul Azothral, Engraver",
+      "needs_medical_care": false,
+      "profession": "Engraver",
+      "stress": "happy",
+      "top_skills": [
+        {
+          "level": 10,
+          "skill": "Engraving"
+        },
+        {
+          "level": 10,
+          "skill": "Studying"
+        },
+        {
+          "level": 10,
+          "skill": "Concentration"
+        }
+      ]
+    },
+    {
+      "age": 72,
+      "child": false,
+      "id": 14375,
+      "in_squad": true,
+      "job": "Pickup equipment",
+      "name": "Zuntîr Kekimmonom Bonunstistmig, Doctor",
+      "needs_medical_care": false,
+      "profession": "Doctor",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 123,
+          "skill": "Observation"
+        },
+        {
+          "level": 78,
+          "skill": "Fighting"
+        },
+        {
+          "level": 57,
+          "skill": "Discipline"
+        }
+      ]
+    },
+    {
+      "age": 47,
+      "child": false,
+      "id": 16305,
+      "in_squad": true,
+      "job": "Store item in bin",
+      "name": "Degël Kunmistêm Uthmikoggez Keskal, Administrator",
+      "needs_medical_care": false,
+      "profession": "Administrator",
+      "stress": "unhappy",
+      "top_skills": [
+        {
+          "level": 147,
+          "skill": "Observation"
+        },
+        {
+          "level": 96,
+          "skill": "Fighting"
+        },
+        {
+          "level": 74,
+          "skill": "Hammer"
+        }
+      ]
+    },
+    {
+      "age": 108,
+      "child": false,
+      "id": 16929,
+      "in_squad": true,
+      "job": "Sleep",
+      "name": "Stinthäd Rigòthsåkzul, Dancer",
+      "needs_medical_care": false,
+      "profession": "Dancer",
+      "stress": "content",
+      "top_skills": [
+        {
+          "level": 140,
+          "skill": "Observation"
+        },
+        {
+          "level": 85,
+          "skill": "Fighting"
+        },
+        {
+          "level": 69,
+          "skill": "Spear"
+        }
+      ]
+    },
+    {
+      "age": 129,
+      "child": false,
+      "id": 17051,
+      "in_squad": true,
+      "job": "Store owned item",
+      "name": "Thob Taninod, Dancer",
+      "needs_medical_care": false,
+      "profession": "Dancer",
+      "stress": "content",
+      "top_skills": [
+        {
+          "level": 163,
+          "skill": "Observation"
+        },
+        {
+          "level": 101,
+          "skill": "Fighting"
+        },
+        {
+          "level": 81,
+          "skill": "Spear"
+        }
+      ]
+    },
+    {
+      "age": 105,
+      "child": false,
+      "id": 17054,
+      "in_squad": false,
+      "job": "Store item in stockpile",
+      "name": "Erush Libashthabum, Weaponsmith",
+      "needs_medical_care": false,
+      "profession": "Weaponsmith",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 12,
+          "skill": "Studying"
+        },
+        {
+          "level": 12,
+          "skill": "Concentration"
+        },
+        {
+          "level": 11,
+          "skill": "Weaponsmithing"
+        }
+      ]
+    },
+    {
+      "age": 120,
+      "child": false,
+      "id": 17511,
+      "in_squad": false,
+      "job": "Encrust finished goods with cut gems",
+      "name": "Adil Mebzuthudib, manager",
+      "needs_medical_care": false,
+      "profession": "manager",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 116,
+          "skill": "Observation"
+        },
+        {
+          "level": 56,
+          "skill": "Fighting"
+        },
+        {
+          "level": 41,
+          "skill": "Discipline"
+        }
+      ]
+    },
+    {
+      "age": 99,
+      "child": false,
+      "id": 18247,
+      "in_squad": true,
+      "job": "Sleep",
+      "name": "Lorbam Adrilmûthkat, Weaver",
+      "needs_medical_care": false,
+      "profession": "Weaver",
+      "stress": "content",
+      "top_skills": [
+        {
+          "level": 132,
+          "skill": "Observation"
+        },
+        {
+          "level": 97,
+          "skill": "Fighting"
+        },
+        {
+          "level": 74,
+          "skill": "Spear"
+        }
+      ]
+    },
+    {
+      "age": 116,
+      "child": false,
+      "id": 18667,
+      "in_squad": true,
+      "job": "Store item in bin",
+      "name": "Dôbar Nishmörul, Performer",
+      "needs_medical_care": false,
+      "profession": "Performer",
+      "stress": "unhappy",
+      "top_skills": [
+        {
+          "level": 135,
+          "skill": "Observation"
+        },
+        {
+          "level": 98,
+          "skill": "Fighting"
+        },
+        {
+          "level": 64,
+          "skill": "Discipline"
+        }
+      ]
+    },
+    {
+      "age": 94,
+      "child": false,
+      "id": 19040,
+      "in_squad": false,
+      "job": "Store item in stockpile",
+      "name": "Dakost Bomrekzim, Administrator",
+      "needs_medical_care": false,
+      "profession": "Administrator",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 17,
+          "skill": "Teaching"
+        },
+        {
+          "level": 15,
+          "skill": "Studying"
+        },
+        {
+          "level": 14,
+          "skill": "Concentration"
+        }
+      ]
+    },
+    {
+      "age": 126,
+      "child": false,
+      "id": 19382,
+      "in_squad": false,
+      "job": "Store item in stockpile",
+      "name": "Obok Mengrërith, Dancer",
+      "needs_medical_care": false,
+      "profession": "Dancer",
+      "stress": "happy",
+      "top_skills": [
+        {
+          "level": 6,
+          "skill": "Flattery"
+        },
+        {
+          "level": 5,
+          "skill": "Judging Intent"
+        },
+        {
+          "level": 5,
+          "skill": "Intimidation"
+        }
+      ]
+    },
+    {
+      "age": 103,
+      "child": false,
+      "id": 19389,
+      "in_squad": false,
+      "job": "Store item in stockpile",
+      "name": "Ducim Rulushkûbuk, Engraver",
+      "needs_medical_care": false,
+      "profession": "Engraver",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 12,
+          "skill": "Studying"
+        },
+        {
+          "level": 12,
+          "skill": "Concentration"
+        },
+        {
+          "level": 12,
+          "skill": "Teaching"
+        }
+      ]
+    },
+    {
+      "age": 110,
+      "child": false,
+      "id": 19748,
+      "in_squad": true,
+      "job": "Store owned item",
+      "name": "Mosus èritham, militia captain",
+      "needs_medical_care": false,
+      "profession": "militia captain",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 168,
+          "skill": "Observation"
+        },
+        {
+          "level": 84,
+          "skill": "Fighting"
+        },
+        {
+          "level": 58,
+          "skill": "Discipline"
+        }
+      ]
+    },
+    {
+      "age": 88,
+      "child": false,
+      "id": 19898,
+      "in_squad": true,
+      "job": "Eat",
+      "name": "Ingish Nishunâl, Naturalist",
+      "needs_medical_care": false,
+      "profession": "Naturalist",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 166,
+          "skill": "Observation"
+        },
+        {
+          "level": 100,
+          "skill": "Fighting"
+        },
+        {
+          "level": 77,
+          "skill": "Spear"
+        }
+      ]
+    },
+    {
+      "age": 99,
+      "child": false,
+      "id": 19900,
+      "in_squad": true,
+      "job": "Pickup equipment",
+      "name": "Melbil Thunentulon, captain of the guard",
+      "needs_medical_care": false,
+      "profession": "captain of the guard",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 159,
+          "skill": "Observation"
+        },
+        {
+          "level": 110,
+          "skill": "Fighting"
+        },
+        {
+          "level": 89,
+          "skill": "Axe"
+        }
+      ]
+    },
+    {
+      "age": 104,
+      "child": false,
+      "id": 19966,
+      "in_squad": false,
+      "job": "Store item in stockpile",
+      "name": "Inod Dodókgongith, Clothier",
+      "needs_medical_care": false,
+      "profession": "Clothier",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 60,
+          "skill": "Observation"
+        },
+        {
+          "level": 46,
+          "skill": "Fighting"
+        },
+        {
+          "level": 40,
+          "skill": "Clothes Making"
+        }
+      ]
+    },
+    {
+      "age": 120,
+      "child": false,
+      "id": 20269,
+      "in_squad": true,
+      "job": "Pickup equipment",
+      "name": "èzum Locunavuz, Naturalist",
+      "needs_medical_care": false,
+      "profession": "Naturalist",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 166,
+          "skill": "Observation"
+        },
+        {
+          "level": 104,
+          "skill": "Fighting"
+        },
+        {
+          "level": 84,
+          "skill": "Sword"
+        }
+      ]
+    },
+    {
+      "age": 103,
+      "child": false,
+      "id": 20507,
+      "in_squad": true,
+      "job": "Pickup equipment",
+      "name": "Mistêm Idokfath, messenger",
+      "needs_medical_care": false,
+      "profession": "messenger",
+      "stress": "happy",
+      "top_skills": [
+        {
+          "level": 71,
+          "skill": "Observation"
+        },
+        {
+          "level": 68,
+          "skill": "Fighting"
+        },
+        {
+          "level": 53,
+          "skill": "Hammer"
+        }
+      ]
+    },
+    {
+      "age": 104,
+      "child": false,
+      "id": 20698,
+      "in_squad": false,
+      "job": "Store item in stockpile",
+      "name": "Sodel Bershagog, Tavern Keeper",
+      "needs_medical_care": false,
+      "profession": "Tavern Keeper",
+      "stress": "happy",
+      "top_skills": [
+        {
+          "level": 5,
+          "skill": "Engraving"
+        },
+        {
+          "level": 4,
+          "skill": "Speaking"
+        },
+        {
+          "level": 4,
+          "skill": "Studying"
+        }
+      ]
+    },
+    {
+      "age": 100,
+      "child": false,
+      "id": 20702,
+      "in_squad": true,
+      "job": "Store item in bin",
+      "name": "Tulon Rithdesor, Administrator",
+      "needs_medical_care": false,
+      "profession": "Administrator",
+      "stress": "happy",
+      "top_skills": [
+        {
+          "level": 83,
+          "skill": "Observation"
+        },
+        {
+          "level": 45,
+          "skill": "Fighting"
+        },
+        {
+          "level": 36,
+          "skill": "Sword"
+        }
+      ]
+    },
+    {
+      "age": 86,
+      "child": false,
+      "id": 20748,
+      "in_squad": false,
+      "job": "Store item in stockpile",
+      "name": "Minkot Othilrimtar, Planter",
+      "needs_medical_care": false,
+      "profession": "Planter",
+      "stress": "happy",
+      "top_skills": [
+        {
+          "level": 154,
+          "skill": "Observation"
+        },
+        {
+          "level": 88,
+          "skill": "Fighting"
+        },
+        {
+          "level": 70,
+          "skill": "Sword"
+        }
+      ]
+    },
+    {
+      "age": 96,
+      "child": false,
+      "id": 20900,
+      "in_squad": false,
+      "name": "Aban Keskalethad, Weaponsmith",
+      "needs_medical_care": false,
+      "profession": "Weaponsmith",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 53,
+          "skill": "Observation"
+        },
+        {
+          "level": 34,
+          "skill": "Fighting"
+        },
+        {
+          "level": 26,
+          "skill": "Studying"
+        }
+      ]
+    },
+    {
+      "age": 99,
+      "child": false,
+      "id": 21105,
+      "in_squad": false,
+      "job": "Store item in bag",
+      "name": "Domas Kibdesor, Planter",
+      "needs_medical_care": false,
+      "profession": "Planter",
+      "stress": "content",
+      "top_skills": [
+        {
+          "level": 97,
+          "skill": "Observation"
+        },
+        {
+          "level": 51,
+          "skill": "Fighting"
+        },
+        {
+          "level": 40,
+          "skill": "Sword"
+        }
+      ]
+    },
+    {
+      "age": 34,
+      "child": false,
+      "id": 21183,
+      "in_squad": true,
+      "job": "Store item in bin",
+      "name": "Imush Koldeduk, Weaponsmith",
+      "needs_medical_care": false,
+      "profession": "Weaponsmith",
+      "stress": "happy",
+      "top_skills": [
+        {
+          "level": 131,
+          "skill": "Observation"
+        },
+        {
+          "level": 55,
+          "skill": "Fighting"
+        },
+        {
+          "level": 44,
+          "skill": "Spear"
+        }
+      ]
+    },
+    {
+      "age": 33,
+      "child": false,
+      "id": 21325,
+      "in_squad": false,
+      "job": "Store item in stockpile",
+      "name": "Ast Stukoslilum, Miner",
+      "needs_medical_care": false,
+      "profession": "Miner",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 15,
+          "skill": "Mining"
+        },
+        {
+          "level": 9,
+          "skill": "Weaponsmithing"
+        },
+        {
+          "level": 7,
+          "skill": "Studying"
+        }
+      ]
+    },
+    {
+      "age": 94,
+      "child": false,
+      "id": 21331,
+      "in_squad": false,
+      "job": "Store item in bin",
+      "name": "Melbil Mâtzangdodók, Dancer",
+      "needs_medical_care": false,
+      "profession": "Dancer",
+      "stress": "content",
+      "top_skills": [
+        {
+          "level": 41,
+          "skill": "Weaving"
+        },
+        {
+          "level": 27,
+          "skill": "Growing"
+        },
+        {
+          "level": 18,
+          "skill": "Mining"
+        }
+      ]
+    },
+    {
+      "age": 85,
+      "child": false,
+      "id": 21562,
+      "in_squad": true,
+      "job": "Get provisions",
+      "name": "Erush Likotkab, Clothier",
+      "needs_medical_care": false,
+      "profession": "Clothier",
+      "stress": "happy",
+      "top_skills": [
+        {
+          "level": 156,
+          "skill": "Observation"
+        },
+        {
+          "level": 76,
+          "skill": "Fighting"
+        },
+        {
+          "level": 55,
+          "skill": "Discipline"
+        }
+      ]
+    },
+    {
+      "age": 113,
+      "child": false,
+      "id": 21912,
+      "in_squad": false,
+      "job": "Store item in stockpile",
+      "name": "Adil Aranaban, Planter",
+      "needs_medical_care": false,
+      "profession": "Planter",
+      "stress": "happy",
+      "top_skills": [
+        {
+          "level": 35,
+          "skill": "Growing"
+        },
+        {
+          "level": 25,
+          "skill": "Teaching"
+        },
+        {
+          "level": 23,
+          "skill": "Studying"
+        }
+      ]
+    },
+    {
+      "age": 111,
+      "child": false,
+      "id": 22063,
+      "in_squad": false,
+      "job": "Store item in barrel",
+      "name": "Ineth Vabôktathur, Dancer",
+      "needs_medical_care": false,
+      "profession": "Dancer",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 25,
+          "skill": "Weaponsmithing"
+        },
+        {
+          "level": 23,
+          "skill": "Mining"
+        },
+        {
+          "level": 21,
+          "skill": "Cut Stone"
+        }
+      ]
+    },
+    {
+      "age": 105,
+      "child": false,
+      "id": 22064,
+      "in_squad": false,
+      "job": "Sleep",
+      "name": "Avuz Rosatducim, Weaver",
+      "needs_medical_care": false,
+      "profession": "Weaver",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 54,
+          "skill": "Weaving"
+        },
+        {
+          "level": 24,
+          "skill": "Growing"
+        },
+        {
+          "level": 22,
+          "skill": "Mining"
+        }
+      ]
+    },
+    {
+      "age": 108,
+      "child": false,
+      "id": 22240,
+      "in_squad": false,
+      "job": "Store item in stockpile",
+      "name": "Goden Nishshelret, Armorer",
+      "needs_medical_care": false,
+      "profession": "Armorer",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 6,
+          "skill": "Armorsmithing"
+        },
+        {
+          "level": 4,
+          "skill": "Clothes Making"
+        },
+        {
+          "level": 4,
+          "skill": "Studying"
+        }
+      ]
+    },
+    {
+      "age": 88,
+      "child": false,
+      "id": 22250,
+      "in_squad": false,
+      "job": "Drink",
+      "name": "Unib Mörulnimar, Tavern Keeper",
+      "needs_medical_care": false,
+      "profession": "Tavern Keeper",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 6,
+          "skill": "Engraving"
+        },
+        {
+          "level": 6,
+          "skill": "Concentration"
+        },
+        {
+          "level": 6,
+          "skill": "Studying"
+        }
+      ]
+    },
+    {
+      "age": 107,
+      "child": false,
+      "id": 22267,
+      "in_squad": false,
+      "job": "Store item in stockpile",
+      "name": "Inod Elisoslan, Weaver",
+      "needs_medical_care": false,
+      "profession": "Weaver",
+      "stress": "happy",
+      "top_skills": [
+        {
+          "level": 29,
+          "skill": "Weaving"
+        },
+        {
+          "level": 14,
+          "skill": "Studying"
+        },
+        {
+          "level": 13,
+          "skill": "Concentration"
+        }
+      ]
+    },
+    {
+      "age": 115,
+      "child": false,
+      "id": 22320,
+      "in_squad": false,
+      "job": "Encrust finished goods with cut gems",
+      "name": "Erush åblelikud, Miner",
+      "needs_medical_care": false,
+      "profession": "Miner",
+      "stress": "happy",
+      "top_skills": [
+        {
+          "level": 23,
+          "skill": "Mining"
+        },
+        {
+          "level": 22,
+          "skill": "Engraving"
+        },
+        {
+          "level": 21,
+          "skill": "Studying"
+        }
+      ]
+    },
+    {
+      "age": 82,
+      "child": false,
+      "id": 23068,
+      "in_squad": false,
+      "job": "Store item in location",
+      "name": "Bomrek Voduzol, Dancer",
+      "needs_medical_care": false,
+      "profession": "Dancer",
+      "stress": "content",
+      "top_skills": [
+        {
+          "level": 12,
+          "skill": "Studying"
+        },
+        {
+          "level": 11,
+          "skill": "Teaching"
+        },
+        {
+          "level": 11,
+          "skill": "Engraving"
+        }
+      ]
+    },
+    {
+      "age": 29,
+      "child": false,
+      "id": 23136,
+      "in_squad": true,
+      "job": "Store item in bin",
+      "name": "Nil Azmoloddom, Miner",
+      "needs_medical_care": false,
+      "profession": "Miner",
+      "stress": "fine",
+      "top_skills": [
+        {
+          "level": 67,
+          "skill": "Observation"
+        },
+        {
+          "level": 40,
+          "skill": "Fighting"
+        },
+        {
+          "level": 32,
+          "skill": "Sword"
+        }
+      ]
+    },
+    {
+      "age": 84,
+      "child": false,
+      "id": 23407,
+      "in_squad": false,
+      "name": "Ber Erushebal, Miner",
+      "needs_medical_care": false,
+      "profession": "Miner",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 11,
+          "skill": "Studying"
+        },
+        {
+          "level": 10,
+          "skill": "Concentration"
+        },
+        {
+          "level": 9,
+          "skill": "Mining"
+        }
+      ]
+    },
+    {
+      "age": 98,
+      "child": false,
+      "id": 23417,
+      "in_squad": false,
+      "job": "Dump item",
+      "name": "Zuglar Godenthibam, Engraver",
+      "needs_medical_care": false,
+      "profession": "Engraver",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 132,
+          "skill": "Observation"
+        },
+        {
+          "level": 50,
+          "skill": "Fighting"
+        },
+        {
+          "level": 34,
+          "skill": "Discipline"
+        }
+      ]
+    },
+    {
+      "age": 88,
+      "child": false,
+      "id": 23784,
+      "in_squad": false,
+      "name": "Catten Kogansom, Miner",
+      "needs_medical_care": false,
+      "profession": "Miner",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 124,
+          "skill": "Observation"
+        },
+        {
+          "level": 57,
+          "skill": "Fighting"
+        },
+        {
+          "level": 39,
+          "skill": "Spear"
+        }
+      ]
+    },
+    {
+      "age": 93,
+      "child": false,
+      "id": 25622,
+      "in_squad": false,
+      "job": "Store item in stockpile",
+      "name": "ònul Idinash, Strand Extractor",
+      "needs_medical_care": false,
+      "profession": "Strand Extractor",
+      "stress": "content",
+      "top_skills": [
+        {
+          "level": 4,
+          "skill": "Concentration"
+        },
+        {
+          "level": 4,
+          "skill": "Strand Extraction"
+        },
+        {
+          "level": 3,
+          "skill": "Consoling"
+        }
+      ]
+    },
+    {
+      "age": 18,
+      "child": false,
+      "id": 26294,
+      "in_squad": false,
+      "job": "Store item in bin",
+      "name": "Cerol Udåblel, Peasant",
+      "needs_medical_care": false,
+      "profession": "Peasant",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 6,
+          "skill": "Observation"
+        },
+        {
+          "level": 3,
+          "skill": "Speaking"
+        },
+        {
+          "level": 1,
+          "skill": "Fighting"
+        }
+      ]
+    },
+    {
+      "age": 102,
+      "child": false,
+      "id": 26561,
+      "in_squad": false,
+      "name": "Datan Råshäs, Craftsdwarf",
+      "needs_medical_care": false,
+      "profession": "Craftsdwarf",
+      "stress": "content",
+      "top_skills": [
+        {
+          "level": 16,
+          "skill": "Weaving"
+        },
+        {
+          "level": 14,
+          "skill": "Studying"
+        },
+        {
+          "level": 14,
+          "skill": "Concentration"
+        }
+      ]
+    },
+    {
+      "age": 80,
+      "child": false,
+      "id": 26852,
+      "in_squad": false,
+      "job": "Store item in bin",
+      "name": "Dodók Mafolostuk, Tavern Keeper",
+      "needs_medical_care": false,
+      "profession": "Tavern Keeper",
+      "stress": "content",
+      "top_skills": [
+        {
+          "level": 7,
+          "skill": "Negotiation"
+        },
+        {
+          "level": 5,
+          "skill": "Flattery"
+        },
+        {
+          "level": 4,
+          "skill": "Comedy"
+        }
+      ]
+    },
+    {
+      "age": 83,
+      "child": false,
+      "id": 26861,
+      "in_squad": false,
+      "job": "Store item in stockpile",
+      "name": "Vutok Udilïngiz, Craftsdwarf",
+      "needs_medical_care": false,
+      "profession": "Craftsdwarf",
+      "stress": "happy",
+      "top_skills": [
+        {
+          "level": 6,
+          "skill": "Persuasion"
+        },
+        {
+          "level": 5,
+          "skill": "Negotiation"
+        },
+        {
+          "level": 5,
+          "skill": "Judging Intent"
+        }
+      ]
+    },
+    {
+      "age": 15,
+      "child": true,
+      "id": 27101,
+      "in_squad": false,
+      "job": "Eat",
+      "name": "Olon Kurelonol, Dwarven Child",
+      "needs_medical_care": false,
+      "profession": "Dwarven Child",
+      "stress": "content",
+      "top_skills": [
+        {
+          "level": 7,
+          "skill": "Observation"
+        },
+        {
+          "level": 3,
+          "skill": "Fighting"
+        },
+        {
+          "level": 2,
+          "skill": "Speaking"
+        }
+      ]
+    },
+    {
+      "age": 70,
+      "child": false,
+      "id": 27545,
+      "in_squad": true,
+      "job": "Store owned item",
+      "name": "Tirist Likotevon, Craftsdwarf",
+      "needs_medical_care": false,
+      "profession": "Craftsdwarf",
+      "stress": "happy",
+      "top_skills": [
+        {
+          "level": 36,
+          "skill": "Observation"
+        },
+        {
+          "level": 26,
+          "skill": "Fighting"
+        },
+        {
+          "level": 20,
+          "skill": "Sword"
+        }
+      ]
+    },
+    {
+      "age": 14,
+      "child": true,
+      "id": 28176,
+      "in_squad": false,
+      "name": "Sibrek Ethramzefon, Dwarven Child",
+      "needs_medical_care": false,
+      "profession": "Dwarven Child",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 5,
+          "skill": "Observation"
+        },
+        {
+          "level": 2,
+          "skill": "Speaking"
+        }
+      ]
+    },
+    {
+      "age": 72,
+      "child": false,
+      "id": 28439,
+      "in_squad": false,
+      "name": "Zon Bimsazir, Engraver",
+      "needs_medical_care": false,
+      "profession": "Engraver",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 6,
+          "skill": "Engraving"
+        },
+        {
+          "level": 5,
+          "skill": "Judging Intent"
+        },
+        {
+          "level": 5,
+          "skill": "Conversation"
+        }
+      ]
+    },
+    {
+      "age": 67,
+      "child": false,
+      "id": 28848,
+      "in_squad": false,
+      "name": "Kadôl Sazirlecad, Weaponsmith",
+      "needs_medical_care": false,
+      "profession": "Weaponsmith",
+      "stress": "unhappy",
+      "top_skills": [
+        {
+          "level": 10,
+          "skill": "Studying"
+        },
+        {
+          "level": 9,
+          "skill": "Weaponsmithing"
+        },
+        {
+          "level": 9,
+          "skill": "Concentration"
+        }
+      ]
+    },
+    {
+      "age": 69,
+      "child": false,
+      "id": 28851,
+      "in_squad": false,
+      "job": "Mill plants",
+      "name": "Lòr Igathkol, Armorer",
+      "needs_medical_care": false,
+      "profession": "Armorer",
+      "stress": "happy",
+      "top_skills": [
+        {
+          "level": 22,
+          "skill": "Armorsmithing"
+        },
+        {
+          "level": 14,
+          "skill": "Studying"
+        },
+        {
+          "level": 13,
+          "skill": "Teaching"
+        }
+      ]
+    },
+    {
+      "age": 86,
+      "child": false,
+      "id": 28857,
+      "in_squad": true,
+      "job": "Pickup equipment",
+      "name": "Onol Ekirber, Administrator",
+      "needs_medical_care": false,
+      "profession": "Administrator",
+      "stress": "happy",
+      "top_skills": [
+        {
+          "level": 105,
+          "skill": "Observation"
+        },
+        {
+          "level": 43,
+          "skill": "Fighting"
+        },
+        {
+          "level": 30,
+          "skill": "Discipline"
+        }
+      ]
+    },
+    {
+      "age": 73,
+      "child": false,
+      "id": 29138,
+      "in_squad": false,
+      "job": "Mill plants",
+      "name": "Stodir Likotavuz, Strand Extractor",
+      "needs_medical_care": false,
+      "profession": "Strand Extractor",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 5,
+          "skill": "Persuasion"
+        },
+        {
+          "level": 5,
+          "skill": "Conversation"
+        },
+        {
+          "level": 4,
+          "skill": "Negotiation"
+        }
+      ]
+    },
+    {
+      "age": 97,
+      "child": false,
+      "id": 29158,
+      "in_squad": false,
+      "job": "Store item in bin",
+      "name": "Mistêm Zonikal, Craftsdwarf",
+      "needs_medical_care": false,
+      "profession": "Craftsdwarf",
+      "stress": "happy",
+      "top_skills": [
+        {
+          "level": 5,
+          "skill": "Intimidation"
+        },
+        {
+          "level": 5,
+          "skill": "Conversation"
+        },
+        {
+          "level": 5,
+          "skill": "Persuasion"
+        }
+      ]
+    },
+    {
+      "age": 90,
+      "child": false,
+      "id": 29162,
+      "in_squad": false,
+      "name": "Vucar Alåthsoloz, Clothier",
+      "needs_medical_care": false,
+      "profession": "Clothier",
+      "stress": "happy",
+      "top_skills": [
+        {
+          "level": 5,
+          "skill": "Conversation"
+        },
+        {
+          "level": 4,
+          "skill": "Speaking"
+        },
+        {
+          "level": 4,
+          "skill": "Clothes Making"
+        }
+      ]
+    },
+    {
+      "age": 83,
+      "child": false,
+      "id": 29171,
+      "in_squad": false,
+      "job": "Store item in bin",
+      "name": "Mistêm Cerolstelid, Clothier",
+      "needs_medical_care": false,
+      "profession": "Clothier",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 8,
+          "skill": "Clothes Making"
+        },
+        {
+          "level": 5,
+          "skill": "Negotiation"
+        },
+        {
+          "level": 4,
+          "skill": "Judging Intent"
+        }
+      ]
+    },
+    {
+      "age": 99,
+      "child": false,
+      "id": 29206,
+      "in_squad": false,
+      "name": "Zas Oslantarmid, mayor",
+      "needs_medical_care": false,
+      "profession": "mayor",
+      "stress": "happy",
+      "top_skills": [
+        {
+          "level": 21,
+          "skill": "Clothes Making"
+        },
+        {
+          "level": 17,
+          "skill": "Appraisal"
+        },
+        {
+          "level": 16,
+          "skill": "Studying"
+        }
+      ]
+    },
+    {
+      "age": 66,
+      "child": false,
+      "id": 29630,
+      "in_squad": false,
+      "job": "Store item in stockpile",
+      "name": "ïteb Meslòr, Planter",
+      "needs_medical_care": false,
+      "profession": "Planter",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 13,
+          "skill": "Studying"
+        },
+        {
+          "level": 12,
+          "skill": "Concentration"
+        },
+        {
+          "level": 11,
+          "skill": "Growing"
+        }
+      ]
+    },
+    {
+      "age": 69,
+      "child": false,
+      "id": 29736,
+      "in_squad": false,
+      "job": "Store item in stockpile",
+      "name": "Asmel Othlestfikod, Weaponsmith",
+      "needs_medical_care": false,
+      "profession": "Weaponsmith",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 13,
+          "skill": "Studying"
+        },
+        {
+          "level": 12,
+          "skill": "Weaponsmithing"
+        },
+        {
+          "level": 12,
+          "skill": "Concentration"
+        }
+      ]
+    },
+    {
+      "age": 81,
+      "child": false,
+      "id": 29737,
+      "in_squad": true,
+      "job": "Pickup equipment",
+      "name": "Cog Sobìrtekkud, Engraver",
+      "needs_medical_care": false,
+      "profession": "Engraver",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 37,
+          "skill": "Observation"
+        },
+        {
+          "level": 26,
+          "skill": "Fighting"
+        },
+        {
+          "level": 23,
+          "skill": "Axe"
+        }
+      ]
+    },
+    {
+      "age": 92,
+      "child": false,
+      "id": 30331,
+      "in_squad": false,
+      "name": "Cerol Rimtargúr, Craftsdwarf",
+      "needs_medical_care": false,
+      "profession": "Craftsdwarf",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 12,
+          "skill": "Pottery"
+        },
+        {
+          "level": 9,
+          "skill": "Strand Extraction"
+        },
+        {
+          "level": 8,
+          "skill": "Concentration"
+        }
+      ]
+    },
+    {
+      "age": 73,
+      "child": false,
+      "id": 30433,
+      "in_squad": false,
+      "name": "Etur Såkzulôsed, Engraver",
+      "needs_medical_care": false,
+      "profession": "Engraver",
+      "stress": "happy",
+      "top_skills": [
+        {
+          "level": 16,
+          "skill": "Studying"
+        },
+        {
+          "level": 13,
+          "skill": "Concentration"
+        },
+        {
+          "level": 12,
+          "skill": "Teaching"
+        }
+      ]
+    },
+    {
+      "age": 99,
+      "child": false,
+      "id": 30434,
+      "in_squad": false,
+      "job": "Store item in stockpile",
+      "name": "Meng Idendallith, Surgeon",
+      "needs_medical_care": false,
+      "profession": "Surgeon",
+      "stress": "content",
+      "top_skills": [
+        {
+          "level": 12,
+          "skill": "Studying"
+        },
+        {
+          "level": 11,
+          "skill": "Concentration"
+        },
+        {
+          "level": 9,
+          "skill": "Weaving"
+        }
+      ]
+    },
+    {
+      "age": 93,
+      "child": false,
+      "id": 30435,
+      "in_squad": false,
+      "job": "Drink",
+      "name": "Meng ìtdùndoren, Farmer",
+      "needs_medical_care": false,
+      "profession": "Farmer",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 92,
+          "skill": "Observation"
+        },
+        {
+          "level": 37,
+          "skill": "Fighting"
+        },
+        {
+          "level": 30,
+          "skill": "Axe"
+        }
+      ]
+    },
+    {
+      "age": 64,
+      "child": false,
+      "id": 30769,
+      "in_squad": false,
+      "name": "Catten Berdesis, Craftsdwarf",
+      "needs_medical_care": false,
+      "profession": "Craftsdwarf",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 14,
+          "skill": "Studying"
+        },
+        {
+          "level": 14,
+          "skill": "Observation"
+        },
+        {
+          "level": 13,
+          "skill": "Concentration"
+        }
+      ]
+    },
+    {
+      "age": 11,
+      "child": true,
+      "id": 30775,
+      "in_squad": false,
+      "name": "Meng Ukerlitast, Dwarven Child",
+      "needs_medical_care": false,
+      "profession": "Dwarven Child",
+      "stress": "content",
+      "top_skills": [
+        {
+          "level": 15,
+          "skill": "Wood Crafting"
+        },
+        {
+          "level": 3,
+          "skill": "Observation"
+        },
+        {
+          "level": 2,
+          "skill": "Speaking"
+        }
+      ]
+    },
+    {
+      "age": 96,
+      "child": false,
+      "id": 31094,
+      "in_squad": false,
+      "job": "Store item in bin",
+      "name": "Litast Mengdodók, Carpenter",
+      "needs_medical_care": false,
+      "profession": "Carpenter",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 9,
+          "skill": "Carpentry"
+        },
+        {
+          "level": 8,
+          "skill": "Furnace Operation"
+        },
+        {
+          "level": 8,
+          "skill": "Engraving"
+        }
+      ]
+    },
+    {
+      "age": 90,
+      "child": false,
+      "id": 31095,
+      "in_squad": false,
+      "name": "Mosus Sanuskol, Furnace Operator",
+      "needs_medical_care": false,
+      "profession": "Furnace Operator",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 8,
+          "skill": "Furnace Operation"
+        },
+        {
+          "level": 7,
+          "skill": "Concentration"
+        },
+        {
+          "level": 7,
+          "skill": "Studying"
+        }
+      ]
+    },
+    {
+      "age": 15,
+      "child": true,
+      "id": 31096,
+      "in_squad": false,
+      "name": "Fikod Tekkudgemsit, Dwarven Child",
+      "needs_medical_care": false,
+      "profession": "Dwarven Child",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 3,
+          "skill": "Speaking"
+        },
+        {
+          "level": 3,
+          "skill": "Observation"
+        },
+        {
+          "level": 2,
+          "skill": "Conversation"
+        }
+      ]
+    },
+    {
+      "age": 11,
+      "child": true,
+      "id": 31097,
+      "in_squad": false,
+      "name": "Amost Rulushdegël, Dwarven Child",
+      "needs_medical_care": false,
+      "profession": "Dwarven Child",
+      "stress": "happy",
+      "top_skills": [
+        {
+          "level": 4,
+          "skill": "Persuasion"
+        },
+        {
+          "level": 4,
+          "skill": "Speaking"
+        },
+        {
+          "level": 3,
+          "skill": "Observation"
+        }
+      ]
+    },
+    {
+      "age": 71,
+      "child": false,
+      "id": 31438,
+      "in_squad": false,
+      "name": "Obok Zulbandîshmab, Woodcrafter",
+      "needs_medical_care": false,
+      "profession": "Woodcrafter",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 19,
+          "skill": "Wood Crafting"
+        },
+        {
+          "level": 12,
+          "skill": "Studying"
+        },
+        {
+          "level": 12,
+          "skill": "Concentration"
+        }
+      ]
+    },
+    {
+      "age": 10,
+      "child": true,
+      "id": 31509,
+      "in_squad": false,
+      "job": "Eat",
+      "name": "Udib Adaseshtân, Dwarven Child",
+      "needs_medical_care": false,
+      "profession": "Dwarven Child",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 3,
+          "skill": "Mining"
+        },
+        {
+          "level": 3,
+          "skill": "Speaking"
+        },
+        {
+          "level": 2,
+          "skill": "Observation"
+        }
+      ]
+    },
+    {
+      "age": 68,
+      "child": false,
+      "id": 31641,
+      "in_squad": false,
+      "job": "Drink",
+      "name": "Id Munèstatír, Planter",
+      "needs_medical_care": false,
+      "profession": "Planter",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 17,
+          "skill": "Growing"
+        },
+        {
+          "level": 9,
+          "skill": "Weaving"
+        },
+        {
+          "level": 8,
+          "skill": "Studying"
+        }
+      ]
+    },
+    {
+      "age": 10,
+      "child": true,
+      "id": 31656,
+      "in_squad": false,
+      "name": "Stukos Oslanbidok, Dwarven Child",
+      "needs_medical_care": false,
+      "profession": "Dwarven Child",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 1,
+          "skill": "Speaking"
+        }
+      ]
+    },
+    {
+      "age": 72,
+      "child": false,
+      "id": 32454,
+      "in_squad": false,
+      "name": "Mebzuth Letmoskovest, Engraver",
+      "needs_medical_care": false,
+      "profession": "Engraver",
+      "stress": "happy",
+      "top_skills": [
+        {
+          "level": 11,
+          "skill": "Crossbow"
+        },
+        {
+          "level": 11,
+          "skill": "Archery"
+        },
+        {
+          "level": 10,
+          "skill": "Engraving"
+        }
+      ]
+    },
+    {
+      "age": 88,
+      "child": false,
+      "id": 32466,
+      "in_squad": false,
+      "name": "Id Domasasmel, Craftsdwarf",
+      "needs_medical_care": false,
+      "profession": "Craftsdwarf",
+      "stress": "happy",
+      "top_skills": [
+        {
+          "level": 3,
+          "skill": "Persuasion"
+        },
+        {
+          "level": 3,
+          "skill": "Comedy"
+        },
+        {
+          "level": 3,
+          "skill": "Poetry"
+        }
+      ]
+    },
+    {
+      "age": 9,
+      "child": true,
+      "id": 32603,
+      "in_squad": false,
+      "job": "Store item in bin",
+      "name": "Rimtar Datanzasit, Dwarven Child",
+      "needs_medical_care": false,
+      "profession": "Dwarven Child",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 2,
+          "skill": "Observation"
+        },
+        {
+          "level": 1,
+          "skill": "Speaking"
+        }
+      ]
+    },
+    {
+      "age": 8,
+      "child": true,
+      "id": 32660,
+      "in_squad": false,
+      "name": "ùshrir Konosbekar, Dwarven Child",
+      "needs_medical_care": false,
+      "profession": "Dwarven Child",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 1,
+          "skill": "Observation"
+        },
+        {
+          "level": 1,
+          "skill": "Speaking"
+        },
+        {
+          "level": 1,
+          "skill": "Fighting"
+        }
+      ]
+    },
+    {
+      "age": 8,
+      "child": true,
+      "id": 32949,
+      "in_squad": false,
+      "name": "Vutok Duthnurfikod, Dwarven Child",
+      "needs_medical_care": false,
+      "profession": "Dwarven Child",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 1,
+          "skill": "Speaking"
+        }
+      ]
+    },
+    {
+      "age": 8,
+      "child": true,
+      "id": 32992,
+      "in_squad": false,
+      "job": "Store item in bin",
+      "name": "Amost Oddomamud, Dwarven Child",
+      "needs_medical_care": false,
+      "profession": "Dwarven Child",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 1,
+          "skill": "Speaking"
+        }
+      ]
+    },
+    {
+      "age": 8,
+      "child": true,
+      "id": 33306,
+      "in_squad": false,
+      "name": "Solon Idenlorbam, Dwarven Child",
+      "needs_medical_care": false,
+      "profession": "Dwarven Child",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 1,
+          "skill": "Observation"
+        },
+        {
+          "level": 1,
+          "skill": "Speaking"
+        }
+      ]
+    },
+    {
+      "age": 7,
+      "child": true,
+      "id": 33976,
+      "in_squad": false,
+      "job": "Store item in bin",
+      "name": "Cog Koltarem, Dwarven Child",
+      "needs_medical_care": false,
+      "profession": "Dwarven Child",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 1,
+          "skill": "Speaking"
+        }
+      ]
+    },
+    {
+      "age": 7,
+      "child": true,
+      "id": 34048,
+      "in_squad": false,
+      "name": "Kûbuk Stukónuzol, Dwarven Child",
+      "needs_medical_care": false,
+      "profession": "Dwarven Child",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 1,
+          "skill": "Observation"
+        },
+        {
+          "level": 1,
+          "skill": "Speaking"
+        }
+      ]
+    },
+    {
+      "age": 81,
+      "child": false,
+      "id": 34053,
+      "in_squad": false,
+      "name": "ùshrir Konosegen, Weaponsmith",
+      "needs_medical_care": false,
+      "profession": "Weaponsmith",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 9,
+          "skill": "Weaponsmithing"
+        },
+        {
+          "level": 8,
+          "skill": "Concentration"
+        },
+        {
+          "level": 8,
+          "skill": "Studying"
+        }
+      ]
+    },
+    {
+      "age": 67,
+      "child": false,
+      "id": 34055,
+      "in_squad": false,
+      "job": "Store item in bin",
+      "name": "Såkzul Almôshmelbil, Doctor",
+      "needs_medical_care": false,
+      "profession": "Doctor",
+      "stress": "happy",
+      "top_skills": [
+        {
+          "level": 9,
+          "skill": "Studying"
+        },
+        {
+          "level": 9,
+          "skill": "Concentration"
+        },
+        {
+          "level": 8,
+          "skill": "Weaponsmithing"
+        }
+      ]
+    },
+    {
+      "age": 7,
+      "child": true,
+      "id": 34062,
+      "in_squad": false,
+      "name": "Mebzuth Alåthonshen, Dwarven Child",
+      "needs_medical_care": false,
+      "profession": "Dwarven Child",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 1,
+          "skill": "Speaking"
+        }
+      ]
+    },
+    {
+      "age": 74,
+      "child": false,
+      "id": 34366,
+      "in_squad": false,
+      "name": "Zefon Vucarùshrir, Hunter",
+      "needs_medical_care": false,
+      "profession": "Hunter",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 12,
+          "skill": "Ambush"
+        },
+        {
+          "level": 7,
+          "skill": "Dodging"
+        },
+        {
+          "level": 7,
+          "skill": "Crossbow"
+        }
+      ]
+    },
+    {
+      "age": 82,
+      "child": false,
+      "id": 34367,
+      "in_squad": false,
+      "name": "Stâkud Sezukmeng, Craftsdwarf",
+      "needs_medical_care": false,
+      "profession": "Craftsdwarf",
+      "stress": "happy",
+      "top_skills": [
+        {
+          "level": 39,
+          "skill": "Observation"
+        },
+        {
+          "level": 12,
+          "skill": "Fighting"
+        },
+        {
+          "level": 12,
+          "skill": "Studying"
+        }
+      ]
+    },
+    {
+      "age": 80,
+      "child": false,
+      "id": 34369,
+      "in_squad": false,
+      "name": "Oddom Tangathid, Planter",
+      "needs_medical_care": false,
+      "profession": "Planter",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 10,
+          "skill": "Growing"
+        },
+        {
+          "level": 8,
+          "skill": "Studying"
+        },
+        {
+          "level": 7,
+          "skill": "Concentration"
+        }
+      ]
+    },
+    {
+      "age": 6,
+      "child": true,
+      "id": 34473,
+      "in_squad": false,
+      "name": "Zas Kirbomrek, Dwarven Child",
+      "needs_medical_care": false,
+      "profession": "Dwarven Child",
+      "stress": "ecstatic",
+      "top_skills": []
+    },
+    {
+      "age": 70,
+      "child": false,
+      "id": 34721,
+      "in_squad": false,
+      "job": "Store item in barrel",
+      "name": "Tun ûthirèrith, Farmer",
+      "needs_medical_care": false,
+      "profession": "Farmer",
+      "stress": "happy",
+      "top_skills": [
+        {
+          "level": 5,
+          "skill": "Concentration"
+        },
+        {
+          "level": 5,
+          "skill": "Studying"
+        },
+        {
+          "level": 5,
+          "skill": "Growing"
+        }
+      ]
+    },
+    {
+      "age": 88,
+      "child": false,
+      "id": 34748,
+      "in_squad": false,
+      "name": "Edzul Keluzar, Clothier",
+      "needs_medical_care": false,
+      "profession": "Clothier",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 5,
+          "skill": "Clothes Making"
+        },
+        {
+          "level": 3,
+          "skill": "Intimidation"
+        },
+        {
+          "level": 3,
+          "skill": "Speaking"
+        }
+      ]
+    },
+    {
+      "age": 70,
+      "child": false,
+      "id": 34859,
+      "in_squad": false,
+      "job": "Store owned item",
+      "name": "ùshrir Iliden, Engraver",
+      "needs_medical_care": false,
+      "profession": "Engraver",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 7,
+          "skill": "Engraving"
+        },
+        {
+          "level": 6,
+          "skill": "Speaking"
+        },
+        {
+          "level": 5,
+          "skill": "Pacification"
+        }
+      ]
+    },
+    {
+      "age": 66,
+      "child": false,
+      "id": 34860,
+      "in_squad": false,
+      "job": "Report crime",
+      "name": "Rimtar Tunetes, Craftsdwarf",
+      "needs_medical_care": false,
+      "profession": "Craftsdwarf",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 11,
+          "skill": "Weaponsmithing"
+        },
+        {
+          "level": 11,
+          "skill": "Concentration"
+        },
+        {
+          "level": 11,
+          "skill": "Weaving"
+        }
+      ]
+    },
+    {
+      "age": 5,
+      "child": true,
+      "id": 35330,
+      "in_squad": false,
+      "name": "Id ïlulmörul, Dwarven Child",
+      "needs_medical_care": false,
+      "profession": "Dwarven Child",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 2,
+          "skill": "Observation"
+        },
+        {
+          "level": 1,
+          "skill": "Speaking"
+        }
+      ]
+    },
+    {
+      "age": 5,
+      "child": true,
+      "id": 35332,
+      "in_squad": false,
+      "name": "Urvad Nazushzuntîr, Dwarven Child",
+      "needs_medical_care": false,
+      "profession": "Dwarven Child",
+      "stress": "ecstatic",
+      "top_skills": []
+    },
+    {
+      "age": 4,
+      "child": true,
+      "id": 36032,
+      "in_squad": false,
+      "name": "Kadôl Alåthtagùz, Dwarven Child",
+      "needs_medical_care": false,
+      "profession": "Dwarven Child",
+      "stress": "ecstatic",
+      "top_skills": []
+    },
+    {
+      "age": 4,
+      "child": true,
+      "id": 36295,
+      "in_squad": false,
+      "name": "Ustuth Sazirdosîm, Dwarven Child",
+      "needs_medical_care": false,
+      "profession": "Dwarven Child",
+      "stress": "ecstatic",
+      "top_skills": []
+    },
+    {
+      "age": 78,
+      "child": false,
+      "id": 36472,
+      "in_squad": false,
+      "name": "Eshtân Loloknokim, Weaponsmith",
+      "needs_medical_care": false,
+      "profession": "Weaponsmith",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 6,
+          "skill": "Weaponsmithing"
+        },
+        {
+          "level": 4,
+          "skill": "Studying"
+        },
+        {
+          "level": 4,
+          "skill": "Concentration"
+        }
+      ]
+    },
+    {
+      "age": 62,
+      "child": false,
+      "id": 36645,
+      "in_squad": false,
+      "name": "Kosoth Atîsiklist, Carpenter",
+      "needs_medical_care": false,
+      "profession": "Carpenter",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 7,
+          "skill": "Studying"
+        },
+        {
+          "level": 7,
+          "skill": "Concentration"
+        },
+        {
+          "level": 6,
+          "skill": "Armorsmithing"
+        }
+      ]
+    },
+    {
+      "age": 88,
+      "child": false,
+      "id": 36648,
+      "in_squad": false,
+      "name": "Likot Uzoldosîm, Bone Doctor",
+      "needs_medical_care": false,
+      "profession": "Bone Doctor",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 13,
+          "skill": "Glazing"
+        },
+        {
+          "level": 6,
+          "skill": "Studying"
+        },
+        {
+          "level": 6,
+          "skill": "Concentration"
+        }
+      ]
+    },
+    {
+      "age": 87,
+      "child": false,
+      "id": 36975,
+      "in_squad": false,
+      "job": "Eat",
+      "name": "îton Dumatubbul, Engraver",
+      "needs_medical_care": false,
+      "profession": "Engraver",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 10,
+          "skill": "Concentration"
+        },
+        {
+          "level": 6,
+          "skill": "Engraving"
+        },
+        {
+          "level": 6,
+          "skill": "Studying"
+        }
+      ]
+    },
+    {
+      "age": 81,
+      "child": false,
+      "id": 36976,
+      "in_squad": false,
+      "name": "Catten Oslantusung, Performer",
+      "needs_medical_care": false,
+      "profession": "Performer",
+      "stress": "happy",
+      "top_skills": [
+        {
+          "level": 4,
+          "skill": "Speaking"
+        },
+        {
+          "level": 4,
+          "skill": "Judging Intent"
+        },
+        {
+          "level": 4,
+          "skill": "Consoling"
+        }
+      ]
+    },
+    {
+      "age": 76,
+      "child": false,
+      "id": 37312,
+      "in_squad": false,
+      "job": "Sleep",
+      "name": "Degël Nishgídthur, Trader",
+      "needs_medical_care": false,
+      "profession": "Trader",
+      "stress": "happy",
+      "top_skills": [
+        {
+          "level": 3,
+          "skill": "Dance"
+        },
+        {
+          "level": 3,
+          "skill": "Judging Intent"
+        },
+        {
+          "level": 3,
+          "skill": "Comedy"
+        }
+      ]
+    },
+    {
+      "age": 2,
+      "child": true,
+      "id": 37690,
+      "in_squad": false,
+      "name": "Bomrek Lelumkeskal, Dwarven Child",
+      "needs_medical_care": false,
+      "profession": "Dwarven Child",
+      "stress": "ecstatic",
+      "top_skills": []
+    },
+    {
+      "age": 61,
+      "child": false,
+      "id": 38173,
+      "in_squad": false,
+      "name": "èrith Adasdîshmab, Planter",
+      "needs_medical_care": false,
+      "profession": "Planter",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 7,
+          "skill": "Growing"
+        },
+        {
+          "level": 4,
+          "skill": "Studying"
+        },
+        {
+          "level": 4,
+          "skill": "Speaking"
+        }
+      ]
+    },
+    {
+      "age": 2,
+      "child": true,
+      "id": 38352,
+      "in_squad": false,
+      "name": "Melbil Likotduthal, Dwarven Child",
+      "needs_medical_care": false,
+      "profession": "Dwarven Child",
+      "stress": "ecstatic",
+      "top_skills": []
+    },
+    {
+      "age": 2,
+      "child": true,
+      "id": 38369,
+      "in_squad": false,
+      "name": "Eshtân Zocoloddom, Dwarven Child",
+      "needs_medical_care": false,
+      "profession": "Dwarven Child",
+      "stress": "ecstatic",
+      "top_skills": []
+    },
+    {
+      "age": 85,
+      "child": false,
+      "id": 38644,
+      "in_squad": false,
+      "job": "Store item in stockpile",
+      "name": "Thob Onoldanman, Miner",
+      "needs_medical_care": false,
+      "profession": "Miner",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 8,
+          "skill": "Mining"
+        },
+        {
+          "level": 8,
+          "skill": "Weaponsmithing"
+        },
+        {
+          "level": 7,
+          "skill": "Concentration"
+        }
+      ]
+    },
+    {
+      "age": 73,
+      "child": false,
+      "id": 38645,
+      "in_squad": false,
+      "name": "Zuglar Bâsenlolor, Weaver",
+      "needs_medical_care": false,
+      "profession": "Weaver",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 16,
+          "skill": "Weaving"
+        },
+        {
+          "level": 5,
+          "skill": "Persuasion"
+        },
+        {
+          "level": 4,
+          "skill": "Wood Crafting"
+        }
+      ]
+    },
+    {
+      "age": 73,
+      "child": false,
+      "id": 38648,
+      "in_squad": false,
+      "name": "Zefon Endokthad, Leatherworker",
+      "needs_medical_care": false,
+      "profession": "Leatherworker",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 20,
+          "skill": "Leatherworkering"
+        },
+        {
+          "level": 5,
+          "skill": "Cooking"
+        },
+        {
+          "level": 5,
+          "skill": "Machinery"
+        }
+      ]
+    },
+    {
+      "age": 63,
+      "child": false,
+      "id": 38649,
+      "in_squad": false,
+      "job": "Dye cloth",
+      "name": "Likot Adilsefol, Dyer",
+      "needs_medical_care": false,
+      "profession": "Dyer",
+      "stress": "happy",
+      "top_skills": [
+        {
+          "level": 10,
+          "skill": "Dyeing"
+        },
+        {
+          "level": 3,
+          "skill": "Negotiation"
+        },
+        {
+          "level": 3,
+          "skill": "Growing"
+        }
+      ]
+    },
+    {
+      "age": 78,
+      "child": false,
+      "id": 38650,
+      "in_squad": false,
+      "job": "Encrust finished goods with cut gems",
+      "name": "Ilral Lolorritan, Metalcrafter",
+      "needs_medical_care": false,
+      "profession": "Metalcrafter",
+      "stress": "happy",
+      "top_skills": [
+        {
+          "level": 13,
+          "skill": "Metal Crafting"
+        },
+        {
+          "level": 6,
+          "skill": "Trapping"
+        },
+        {
+          "level": 3,
+          "skill": "Concentration"
+        }
+      ]
+    },
+    {
+      "age": 55,
+      "child": false,
+      "id": 38652,
+      "in_squad": false,
+      "job": "Mill plants",
+      "name": "Zas Nishcagith, dungeon master",
+      "needs_medical_care": false,
+      "profession": "dungeon master",
+      "stress": "content",
+      "top_skills": [
+        {
+          "level": 13,
+          "skill": "Gem Cutting"
+        },
+        {
+          "level": 5,
+          "skill": "Potash Making"
+        },
+        {
+          "level": 4,
+          "skill": "Intrigue"
+        }
+      ]
+    },
+    {
+      "age": 72,
+      "child": false,
+      "id": 38655,
+      "in_squad": false,
+      "name": "Dîshmab Idenkeskal, Trapper",
+      "needs_medical_care": false,
+      "profession": "Trapper",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 6,
+          "skill": "Studying"
+        },
+        {
+          "level": 6,
+          "skill": "Trapping"
+        },
+        {
+          "level": 5,
+          "skill": "Armorsmithing"
+        }
+      ]
+    },
+    {
+      "age": 74,
+      "child": false,
+      "id": 38861,
+      "in_squad": false,
+      "name": "Cerol Ethabkel, Butcher",
+      "needs_medical_care": false,
+      "profession": "Butcher",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 11,
+          "skill": "Butchery"
+        },
+        {
+          "level": 6,
+          "skill": "Pump Operation"
+        },
+        {
+          "level": 5,
+          "skill": "Concentration"
+        }
+      ]
+    },
+    {
+      "age": 77,
+      "child": false,
+      "id": 38862,
+      "in_squad": false,
+      "job": "Encrust finished goods with cut gems",
+      "name": "Melbil Likotakmam, Cook",
+      "needs_medical_care": false,
+      "profession": "Cook",
+      "stress": "happy",
+      "top_skills": [
+        {
+          "level": 3,
+          "skill": "Singing"
+        },
+        {
+          "level": 3,
+          "skill": "Lying"
+        },
+        {
+          "level": 3,
+          "skill": "Comedy"
+        }
+      ]
+    },
+    {
+      "age": 66,
+      "child": false,
+      "id": 38863,
+      "in_squad": false,
+      "job": "Store item in barrel",
+      "name": "Fath Ukeredëm, Spinner",
+      "needs_medical_care": false,
+      "profession": "Spinner",
+      "stress": "content",
+      "top_skills": [
+        {
+          "level": 10,
+          "skill": "Spinning"
+        },
+        {
+          "level": 4,
+          "skill": "Pacification"
+        },
+        {
+          "level": 4,
+          "skill": "Judging Intent"
+        }
+      ]
+    },
+    {
+      "age": 71,
+      "child": false,
+      "id": 39001,
+      "in_squad": false,
+      "job": "Store item in bag",
+      "name": "Oddom Kedoltar, Fisherdwarf",
+      "needs_medical_care": false,
+      "profession": "Fisherdwarf",
+      "stress": "happy",
+      "top_skills": [
+        {
+          "level": 6,
+          "skill": "Fishing"
+        },
+        {
+          "level": 4,
+          "skill": "Pacification"
+        },
+        {
+          "level": 4,
+          "skill": "Lying"
+        }
+      ]
+    },
+    {
+      "age": 67,
+      "child": false,
+      "id": 39002,
+      "in_squad": false,
+      "name": "Eshtân Bomreklegon, Planter",
+      "needs_medical_care": false,
+      "profession": "Planter",
+      "stress": "happy",
+      "top_skills": [
+        {
+          "level": 7,
+          "skill": "Growing"
+        },
+        {
+          "level": 3,
+          "skill": "Dance"
+        },
+        {
+          "level": 3,
+          "skill": "Consoling"
+        }
+      ]
+    },
+    {
+      "age": 53,
+      "child": false,
+      "id": 39003,
+      "in_squad": false,
+      "name": "Endok Imsalïteb, Weaver",
+      "needs_medical_care": false,
+      "profession": "Weaver",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 3,
+          "skill": "Weaving"
+        },
+        {
+          "level": 2,
+          "skill": "Poetry"
+        },
+        {
+          "level": 2,
+          "skill": "Speaking"
+        }
+      ]
+    },
+    {
+      "age": 70,
+      "child": false,
+      "id": 39004,
+      "in_squad": false,
+      "name": "Imush Asmelurrïth, chief medical dwarf",
+      "needs_medical_care": false,
+      "profession": "chief medical dwarf",
+      "stress": "happy",
+      "top_skills": [
+        {
+          "level": 10,
+          "skill": "Threshing"
+        },
+        {
+          "level": 4,
+          "skill": "Lying"
+        },
+        {
+          "level": 4,
+          "skill": "Suturing"
+        }
+      ]
+    },
+    {
+      "age": 0,
+      "child": true,
+      "id": 39477,
+      "in_squad": false,
+      "name": "Rimtar Mûthkatastel, Dwarven Baby",
+      "needs_medical_care": false,
+      "profession": "Dwarven Baby",
+      "stress": "content",
+      "top_skills": []
+    },
+    {
+      "age": 81,
+      "child": false,
+      "id": 39647,
+      "in_squad": false,
+      "job": "Sleep",
+      "name": "Likot ònulgatiz, Engraver",
+      "needs_medical_care": false,
+      "profession": "Engraver",
+      "stress": "happy",
+      "top_skills": [
+        {
+          "level": 7,
+          "skill": "Engraving"
+        },
+        {
+          "level": 3,
+          "skill": "Concentration"
+        },
+        {
+          "level": 3,
+          "skill": "Poetry"
+        }
+      ]
+    },
+    {
+      "age": 64,
+      "child": false,
+      "id": 39648,
+      "in_squad": false,
+      "name": "Alåth Uzolnil, Dyer",
+      "needs_medical_care": false,
+      "profession": "Dyer",
+      "stress": "happy",
+      "top_skills": [
+        {
+          "level": 6,
+          "skill": "Dyeing"
+        },
+        {
+          "level": 4,
+          "skill": "Consoling"
+        },
+        {
+          "level": 4,
+          "skill": "Flattery"
+        }
+      ]
+    },
+    {
+      "age": 0,
+      "child": true,
+      "id": 39726,
+      "in_squad": false,
+      "name": "Shem Fikukvucar, Dwarven Baby",
+      "needs_medical_care": false,
+      "profession": "Dwarven Baby",
+      "stress": "happy",
+      "top_skills": []
+    },
+    {
+      "age": 0,
+      "child": true,
+      "id": 39729,
+      "in_squad": false,
+      "name": "Rimtar Lisidstinthäd, Dwarven Baby",
+      "needs_medical_care": false,
+      "profession": "Dwarven Baby",
+      "stress": "content",
+      "top_skills": []
+    },
+    {
+      "age": 82,
+      "child": false,
+      "id": 39747,
+      "in_squad": false,
+      "name": "Mörul Vucarmûthkat, Gem Cutter",
+      "needs_medical_care": false,
+      "profession": "Gem Cutter",
+      "stress": "happy",
+      "top_skills": [
+        {
+          "level": 13,
+          "skill": "Gem Cutting"
+        },
+        {
+          "level": 6,
+          "skill": "Negotiation"
+        },
+        {
+          "level": 3,
+          "skill": "Poetry"
+        }
+      ]
+    },
+    {
+      "age": 64,
+      "child": false,
+      "id": 39994,
+      "in_squad": false,
+      "job": "Sleep",
+      "name": "Tulon Urvaduzar, Planter",
+      "needs_medical_care": false,
+      "profession": "Planter",
+      "stress": "happy",
+      "top_skills": [
+        {
+          "level": 13,
+          "skill": "Growing"
+        },
+        {
+          "level": 2,
+          "skill": "Comedy"
+        },
+        {
+          "level": 2,
+          "skill": "Conversation"
+        }
+      ]
+    },
+    {
+      "age": 55,
+      "child": false,
+      "id": 39995,
+      "in_squad": false,
+      "job": "Sleep",
+      "name": "Urvad Sigunlòr, Cheesemaker",
+      "needs_medical_care": false,
+      "profession": "Cheesemaker",
+      "stress": "ecstatic",
+      "top_skills": [
+        {
+          "level": 4,
+          "skill": "Judging Intent"
+        },
+        {
+          "level": 4,
+          "skill": "Intimidation"
+        },
+        {
+          "level": 3,
+          "skill": "Dance"
+        }
+      ]
+    },
+    {
+      "age": 0,
+      "child": true,
+      "id": 40149,
+      "in_squad": false,
+      "name": "Obok Nudenuzol, Dwarven Baby",
+      "needs_medical_care": false,
+      "profession": "Dwarven Baby",
+      "stress": "content",
+      "top_skills": []
+    }
+  ],
+  "wealth": 16769099,
+  "_meta": {
+    "build_ms": 112,
+    "file": "D:\\SteamLibrary\\steamapps\\common\\Dwarf Fortress\\dfhack-config\\ai-overseer\\state.json"
+  },
+  "_errors": {}
+}

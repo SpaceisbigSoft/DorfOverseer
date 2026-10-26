@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Secrets (API keys go in .env, never in config.json)
+.env
+
+# Logs and run output
+logs/
+*.log
+
+# Save files and backups are large and local (DF-AI\backups keeps the PC's copies)
+saves/
+backups/
+
+# This PC's paths (config.example.json shows the shape)
+config.json

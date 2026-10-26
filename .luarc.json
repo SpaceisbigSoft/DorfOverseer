@@ -1,0 +1,20 @@
+{
+  "$schema": "https://raw.githubusercontent.com/LuaLS/vscode-lua/master/setting/schema.json",
+  "runtime.version": "Lua 5.3",
+  "diagnostics.globals": [
+    "df",
+    "dfhack",
+    "dfhack_flags",
+    "reqscript",
+    "mkmodule",
+    "printall",
+    "copyall",
+    "safe_index",
+    "ensure_key",
+    "ensure_keys"
+  ],
+  "workspace.library": [
+    "D:\\SteamLibrary\\steamapps\\common\\DFHack\\hack\\lua"
+  ],
+  "workspace.checkThirdParty": false
+}

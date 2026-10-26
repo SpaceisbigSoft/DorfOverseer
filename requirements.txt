@@ -1,0 +1,9 @@
+# The overseer and the local planner need only the Python standard library.
+#
+# Optional, for the AI strategist (pick the one for your connection route,
+# see docs/ai-setup.md):
+#   claude-agent-sdk   your Pro/Max subscription
+#   anthropic          an API key
+#
+# Optional, for the Lua tests (tests/test_layouts.py, tests/test_builder.py):
+#   lupa
