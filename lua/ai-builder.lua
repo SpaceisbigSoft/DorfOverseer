@@ -2985,6 +2985,23 @@ CISTERN_MIN_WATER = 20           -- tiles of water near the intake (a puddle won
 CISTERN_MIN_SURFACE_WATER = 100
 CISTERN_SURFACE_PENALTY = 60
 CISTERN_DRY_DAYS = 28            -- the source dry this long while filling: the cistern is retired
+-- (0.104.100) a floodgate shut for a flood (dwarves in deep water) while filling
+-- reopens when nobody has stood in deep water this many days; after
+-- CISTERN_MAX_REOPENS floods in a row it stays shut and says so
+CISTERN_REOPEN_DAYS = 3
+CISTERN_MAX_REOPENS = 3
+
+-- Citizens standing in deep water (4/7 or more, not magma) anywhere: the flood sign.
+function citizens_in_deep_water()
+    local n = 0
+    pcall(function()
+        for _, p in ipairs(citizen_positions()) do
+            local t = tile_info(p.x, p.y, p.z)
+            if t and t.liquid and not t.magma and t.depth >= 4 then n = n + 1 end
+        end
+    end)
+    return n
+end
 CISTERN_LEVELS = 6               -- busiest fort levels tried
 CISTERN_SECONDS = 3
 
@@ -3531,6 +3548,38 @@ function cistern_step(dry_run)
         if st.depth < CISTERN_FULL then
             local why = st.path and (' (gate %s; %s)'):format(st.gate or '?', path_words(st.path)) or ''
             if dry_run then return wait(('the cistern is filling: %d/7%s'):format(st.depth, why)) end
+            -- (0.104.100) the gate shut (the flood rule, while dwarves stood in deep
+            -- water): reopened after CISTERN_REOPEN_DAYS with nobody in deep water
+            -- (Teacheroar sat at 5/7 behind a shut gate from 03:18 all night)
+            if gate and gate.built and gate.closed and d.lever_id then
+                local okn, now_t = pcall(function() return df.global.cur_year * 403200 + df.global.cur_year_tick end)
+                now_t = okn and now_t or 0
+                local wet = citizens_in_deep_water()
+                if wet > 0 or not d.shut_seen then
+                    d.shut_seen = now_t
+                    save_cistern(d)
+                end
+                if (d.reopens or 0) >= CISTERN_MAX_REOPENS then
+                    return wait(('the cistern is filling: %d/7, its floodgate shut after %d floods: it stays shut '
+                                 .. '(open it by its lever when the cause is found)'):format(st.depth, d.reopens))
+                end
+                local days = (now_t - d.shut_seen) // 1200
+                if wet == 0 and days >= CISTERN_REOPEN_DAYS then
+                    if lever_pull_pending(d.lever_id) then
+                        return wait('a dwarf is on the way to pull the cistern\'s lever (reopening it)')
+                    end
+                    local ok, out = pull(d.lever_id)
+                    if not ok then return {ok = false, error = 'lever pull failed: ' .. tostring(out)} end
+                    d.reopens, d.shut_seen = (d.reopens or 0) + 1, nil
+                    save_cistern(d)
+                    return {ok = true, stage = 'filling', reopened = true, depth = st.depth,
+                            error = ('the floodgate was shut for a flood; nobody has stood in deep water for %d days: '
+                                     .. 'reopened to finish filling (%d of %d)'):format(days, d.reopens, CISTERN_MAX_REOPENS)}
+                end
+                return wait(('the cistern is filling: %d/7, its floodgate shut (%s): it reopens after %d days with '
+                             .. 'nobody in deep water'):format(st.depth, wet > 0 and (wet .. ' in deep water now')
+                                                              or (days .. ' day(s) dry so far'), CISTERN_REOPEN_DAYS))
+            end
             -- (0.104.94) the source dried up (a surface pool evaporates): after
             -- CISTERN_DRY_DAYS with no water there and none in the cistern, the
             -- floodgate is shut and the cistern retired; the next one is planned

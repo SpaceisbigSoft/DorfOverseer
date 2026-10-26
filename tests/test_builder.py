@@ -1426,6 +1426,52 @@ def _():
         LUA.execute("df.global = nil")
 
 
+@test("cistern (0.104.100): a floodgate shut for a flood reopens after 3 days with nobody in deep water; not while wet")
+def _():
+    LUA.execute("""local W = ...
+      W.citizens = {}
+      for i = 1, 20 do table.insert(W.citizens, {x = 50 + i % 10, y = 60, z = 80}) end
+      for x = 30, 90 do for y = 45, 75 do
+        if not (x == 60 and y == 60) then W.set(x, y, 79, {shape = 'WALL', material = 'STONE'}) end
+      end end
+      for x = 74, 78 do for y = 55, 65 do W.set(x, y, 79, {shape = 'EMPTY', liquid = true, depth = 7}) end end
+    """, W)
+    plan = B.plan_cistern()
+    plan = plan[0] if not hasattr(plan, "cistern") else plan
+    z = plan.cistern.z
+    for c in list(plan.tunnel_path.values()) + [plan.plug]:
+        W.set(c.x, c.y, z, LUA.table_from({"shape": "FLOOR", "designated": False, "liquid": True, "depth": 7}))
+    W.set(plan.well.x, plan.well.y, z, LUA.table_from({"shape": "FLOOR", "liquid": True, "depth": 5}))
+    LUA.execute("BLD, LINKS, PULLS = {}, {}, {}")
+    gate = LUA.globals().MKB(plan.floodgate.x, plan.floodgate.y, z, 1, LUA.table_from({"gate_flags": LUA.table_from({"closed": True})}))
+    gate.built = True
+    W.persist["ai-overseer/cistern"] = LUA.table_from({"stage": "filling", "plan": plan, "lever_id": 5, "gate_id": gate.id})
+    LUA.execute("df = df or {}; df.global = {cur_year = 10, cur_year_tick = 0}")
+    real_pending = B.lever_pull_pending
+    B.lever_pull_pending = lambda i: False
+    try:
+        step = lambda: B.cistern_step(False)
+        W.set(51, 60, 80, LUA.table_from({"liquid": True, "depth": 6}))       # a dwarf in deep water
+        r = step()
+        assert r.waiting and "in deep water now" in r.error, r.error
+        W.set(51, 60, 80, LUA.table_from({"liquid": False, "depth": 0}))
+        LUA.execute("df.global.cur_year_tick = 2 * 1200")
+        r = step()
+        assert r.waiting and "2 day(s) dry so far" in r.error and len(LUA.globals().PULLS) == 0, r.error
+        LUA.execute("df.global.cur_year_tick = 3 * 1200")
+        r = step()
+        assert r.ok and r.reopened and len(LUA.globals().PULLS) == 1 and not gate.gate_flags.closed, dict(r)
+        assert B.cistern_data().reopens == 1
+        # three floods in a row: it stays shut
+        gate.gate_flags.closed = True
+        W.persist["ai-overseer/cistern"].reopens = 3
+        r = step()
+        assert r.waiting and "stays shut" in r.error, r.error
+    finally:
+        B.lever_pull_pending = real_pending
+        LUA.execute("df.global = nil")
+
+
 @test("cistern plan (0.104.94): a small surface pool is no source; a big one counts as further off than water underground")
 def _():
     LUA.execute("""local W = ...

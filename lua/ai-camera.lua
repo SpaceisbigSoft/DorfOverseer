@@ -238,8 +238,15 @@ local function hook_events()
         if p then
             local who = name_of(u)
             local cit = dfhack.units.isCitizen(u, true)
+            -- (0.104.100) how they died, under the caption (DF's incident)
+            local okc, cause = pcall(function()
+                local inc = df.incident.find(u.counters.death_id)
+                return inc and df.death_type[inc.death_cause]
+            end)
+            local sub = okc and type(cause) == 'string' and cause:lower():gsub('_', ' ') or nil
             add_event({x = p.x, y = p.y, z = p.z, prio = 70, kind = 'event', key = 'death' .. id,
-                       cat = cit and 'death' or 'slain', label = cit and ('A death: ' .. who) or ('Slain: ' .. who)})
+                       cat = cit and 'death' or 'slain', label = cit and ('A death: ' .. who) or ('Slain: ' .. who),
+                       sub = sub})
         end
     end
     eventful.onUnitNewActive[KEY] = function(id)

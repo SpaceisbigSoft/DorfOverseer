@@ -784,6 +784,20 @@ def _():
     overseer._CAMERA_LEVELS.clear()
 
 
+@test("deaths (0.104.100): each one in a line with DF's cause and the killer; a ghost laid to rest isn't counted again")
+def _():
+    ev = {"kind": "death", "name": "Mörul Etesral \"Blowsilvers\", mayor", "own_civ": True, "animal": False,
+          "cause": "DROWN", "x": 158, "y": 20, "z": 168}
+    assert overseer.death_words(ev) == 'Mörul Etesral "Blowsilvers", mayor, drown, at x158 y20 z168', overseer.death_words(ev)
+    ev2 = dict(ev, cause="STRUCK_DOWN", killer="Ume, Swamp Titan", killer_kind="great beast")
+    assert "struck down, by Ume, Swamp Titan (great beast)" in overseer.death_words(ev2)
+    again = dict(ev, again=True, ghost=True)
+    assert "a ghost laid to rest" in overseer.death_words(again) and "drown" not in overseer.death_words(again)
+    import timeline, metrics
+    events = [ev, again]
+    assert sum(1 for e in events if e.get("kind") == "death" and e.get("own_civ") and not e.get("again")) == 1
+
+
 if __name__ == "__main__":
     for name, ok, msg in RESULTS:
         print(f"[{'PASS' if ok else 'FAIL'}] {name}" + (f"\n        {msg}" if msg else ""))

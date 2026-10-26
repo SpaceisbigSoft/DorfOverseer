@@ -12,7 +12,7 @@ import phases
 from quirks import has_rule
 from digest import _d, _l, normalize
 
-__all__ = ["STEER_PROTECTED", "STEER_MAX_DAYS", "steer_of", "PLANNER_CONFIG", "BREW_RECIPES", "MEAL_RECIPES", "MANDATE_RECIPES", "BUILDABLE_SHOPS", "SHOP_ALIASES", "SURVIVAL_SHOPS", "TICKS_PER_DAY", "TICKS_PER_YEAR", "NO_COOLDOWN", "MULTI_PER_CYCLE", "EMERGENCY", "STUCK_HOLD_EXEMPT", "LIMIT_EXEMPT", "Proposal", "Memory", "abs_tick", "game_day", "factor", "ADJUST_BOUNDS", "_number", "effective_config", "queued", "_clamp", "MEMORIAL_SPAN", "OPTIONAL_LEVELS", "GEAR_WEAPONS", "GEAR_METALS", "GEAR_RECIPES", "NEEDS_YOU", "ask_player", "player_rules", "MAINTAIN_SKIPS", "level_refused", "_traits", "reachable_threats", "held_off_threats", "_holding_off", "ONE_A_CYCLE", "growth_mode", "growth_target", "JOB_SHOPS", "RECIPE_SHOPS", "WOOD_ELSEWHERE", "recipe_shop", "brew_recipe", "_watchdog_notes", "jobs_reported", "order_job_state", "masons_jammed", "stuck_hold_days", "_stuck_before", "stone_short", "_office_held", "tantrums_recent", "justice_held", "_restraint_order", "manager_needs_office", "suites_short", "wool_route", "thread_plants_here", "MINING_NEED_ONLY", "mining_plan", "noble_room_kinds", "SOCIAL_NEEDS", "care_waiting", "unmet", "_soldier_swap", "LOCATION_UNITS", "_location", "_location_short", "_real_locations", "is_ranged", "STALE_PROJECT_DAYS", "_workshops_busy", "shop_count", "shops_max", "_has_shop", "RAW_FOOD", "ALL_FOOD", "_idle_share", "update_idle", "AGENDA_THEMES", "agenda", "food_per_dwarf", "WINTER_STOCK", "winter_factor", "young_fort", "established", "has_farms", "_best_metal", "REFUSAL_FIRST_DAYS", "REFUSAL_MAX_DAYS", "REFUSAL_KEYS", "refusal_key", "_refused_wait", "note_refusal", "LOOP_LIMITS", "LOOP_LIMIT_DEFAULT", "LOOP_EXEMPT", "_loop_count", "_stalled_days", "_entrance_spot", "_record_any_outcome", "_weapon_gaps"]
+__all__ = ["great_present", "all_clear", "STEER_PROTECTED", "STEER_MAX_DAYS", "steer_of", "PLANNER_CONFIG", "BREW_RECIPES", "MEAL_RECIPES", "MANDATE_RECIPES", "BUILDABLE_SHOPS", "SHOP_ALIASES", "SURVIVAL_SHOPS", "TICKS_PER_DAY", "TICKS_PER_YEAR", "NO_COOLDOWN", "MULTI_PER_CYCLE", "EMERGENCY", "STUCK_HOLD_EXEMPT", "LIMIT_EXEMPT", "Proposal", "Memory", "abs_tick", "game_day", "factor", "ADJUST_BOUNDS", "_number", "effective_config", "queued", "_clamp", "MEMORIAL_SPAN", "OPTIONAL_LEVELS", "GEAR_WEAPONS", "GEAR_METALS", "GEAR_RECIPES", "NEEDS_YOU", "ask_player", "player_rules", "MAINTAIN_SKIPS", "level_refused", "_traits", "reachable_threats", "held_off_threats", "_holding_off", "ONE_A_CYCLE", "growth_mode", "growth_target", "JOB_SHOPS", "RECIPE_SHOPS", "WOOD_ELSEWHERE", "recipe_shop", "brew_recipe", "_watchdog_notes", "jobs_reported", "order_job_state", "masons_jammed", "stuck_hold_days", "_stuck_before", "stone_short", "_office_held", "tantrums_recent", "justice_held", "_restraint_order", "manager_needs_office", "suites_short", "wool_route", "thread_plants_here", "MINING_NEED_ONLY", "mining_plan", "noble_room_kinds", "SOCIAL_NEEDS", "care_waiting", "unmet", "_soldier_swap", "LOCATION_UNITS", "_location", "_location_short", "_real_locations", "is_ranged", "STALE_PROJECT_DAYS", "_workshops_busy", "shop_count", "shops_max", "_has_shop", "RAW_FOOD", "ALL_FOOD", "_idle_share", "update_idle", "AGENDA_THEMES", "agenda", "food_per_dwarf", "WINTER_STOCK", "winter_factor", "young_fort", "established", "has_farms", "_best_metal", "REFUSAL_FIRST_DAYS", "REFUSAL_MAX_DAYS", "REFUSAL_KEYS", "refusal_key", "_refused_wait", "note_refusal", "LOOP_LIMITS", "LOOP_LIMIT_DEFAULT", "LOOP_EXEMPT", "_loop_count", "_stalled_days", "_entrance_spot", "_record_any_outcome", "_weapon_gaps"]
 
 PLANNER_CONFIG = {
     # Starting guesses, tuned from experience. Per citizen, before trait factors.
@@ -42,6 +42,11 @@ PLANNER_CONFIG = {
     "precious_crafts_bars": 10,    # bars of a precious metal kept back before crafts are made of it
     "min_boulders_for_blocks": 100,
     "alert_quiet_cycles": 3,       # quiet cycles before the AI lowers its own alert
+    # (0.104.100) ...and game days since a threat last could reach the dwarves, and
+    # since a great danger (titan, beast) was last on the surface or in reach: the
+    # alert dropped 10 s after a titan died and 15 dwarves died outside in the next 50
+    "alert_quiet_days": 3,
+    "alert_quiet_days_great": 7,
     "cautious_alert_levels": 10,   # Caution +100: react to unknown-reach threats this close
     # Building (docs/building.md)
     "spare_beds_share": 0.1,       # beds wanted beyond one per citizen
@@ -448,6 +453,8 @@ class Memory:
     orders_by_day: dict = field(default_factory=dict)    # absolute game day (str) -> count
     ai_alert_raised: bool = False
     quiet_cycles: int = 0
+    last_threat_tick: int = 0          # (0.104.100) a threat could reach the dwarves
+    last_great_tick: int = 0           # (0.104.100) a great danger on the surface or in reach
     alert_suppressed: list = field(default_factory=list)  # threat ids the player chose to ignore
     tools_enabled_by_ai: list = field(default_factory=list)   # the game accepted our "enable"
     tools_confirmed_on: list = field(default_factory=list)    # seen running after we enabled it
@@ -706,6 +713,35 @@ def reachable_threats(s: dict, traits: dict, cfg: dict) -> list:
             if t.get("can_reach_dwarves") is None and lv is not None and lv <= cfg["cautious_alert_levels"]:
                 ids.append(t.get("id"))
     return ids
+
+
+def great_present(s: dict) -> bool:
+    """(0.104.100) A great danger (titan, forgotten beast, megabeast) that can
+    reach the dwarves or walks the surface: cavern ones out of reach don't count
+    (they never leave, and would keep the fort shut for good)."""
+    o = _d(s.get("others_on_map"))
+    return any(isinstance(t, dict) and t.get("great_danger")
+               and (t.get("can_reach_dwarves") is True or t.get("layer") == "upper_levels")
+               for t in _l(o.get("threats")))
+
+
+def all_clear(s: dict, memory, cfg: dict) -> tuple[bool, str]:
+    """(0.104.100) May the AI lower its alert and open its gates? Quiet for
+    `alert_quiet_cycles` cycles, `alert_quiet_days` game days since a threat could
+    reach the dwarves, and `alert_quiet_days_great` since a great danger was about.
+    (ok, why not) - the why for the log while it holds."""
+    if memory.quiet_cycles < cfg["alert_quiet_cycles"]:
+        return False, f"quiet for {memory.quiet_cycles} cycle(s)"
+    now = abs_tick(s)
+    if not isinstance(now, int):
+        return True, ""
+    gdays = (now - (memory.last_great_tick or 0)) // TICKS_PER_DAY
+    if memory.last_great_tick and gdays < cfg["alert_quiet_days_great"]:
+        return False, f"a great danger was about {gdays} day(s) ago"
+    days = (now - (memory.last_threat_tick or 0)) // TICKS_PER_DAY
+    if memory.last_threat_tick and days < cfg["alert_quiet_days"]:
+        return False, f"the last threat was {days} day(s) ago"
+    return True, ""
 
 
 def held_off_threats(s: dict) -> list:

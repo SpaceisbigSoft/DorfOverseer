@@ -79,7 +79,7 @@ def note_events(history: dict, events: list[dict]) -> list[str]:
             if isinstance(e.get("year"), int):
                 history["last_siege_year"] = e["year"]      # (Grudge-keepers fade 3 years after)
             changed.append("a siege hardened the fort")
-        elif kind == "death" and e.get("own_civ") and not e.get("animal"):
+        elif kind == "death" and e.get("own_civ") and not e.get("animal") and not e.get("again"):
             history["citizen_deaths"] = history.get("citizen_deaths", 0) + 1
         elif kind == "death" and e.get("hostile") and is_great_beast(e) and '"' in name:
             # only named beasts (forgotten beasts, titans, megabeasts): not

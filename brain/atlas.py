@@ -495,6 +495,8 @@ def note_events(state: dict, memory, events: list[dict]) -> int:
         if not isinstance(e, dict):
             continue
         k = e.get("kind")
+        if k == "death" and e.get("again"):
+            continue                    # (0.104.100) a ghost laid to rest: its death was told already
         if k == "death":
             if e.get("own_civ") and not e.get("animal"):
                 kind = "death"

@@ -97,10 +97,14 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
             notes.append(f"{len(ids)} threat(s) can reach the dwarves; you cleared the alert for "
                          "them, so the AI is leaving it off")
         elif not ids and alert_on and memory.ai_alert_raised and not hazard_alert(s, cfg):
-            if memory.quiet_cycles >= cfg["alert_quiet_cycles"]:
+            clear, why = all_clear(s, memory, cfg)
+            if clear:
                 proposals.append(Proposal("threat_alert", {"type": "civ_alert", "on": False},
                                           "no threat has been able to reach the dwarves for "
-                                          f"{memory.quiet_cycles} cycles", 0))
+                                          f"{memory.quiet_cycles} cycles and "
+                                          f"{cfg['alert_quiet_days']}+ days", 0))
+            elif "great danger" in why or "day(s) ago" in why:
+                notes.append(f"the alarm stays up: {why}")
 
     # 1b. Hazards: fire, clouds, flooding, berserk citizens, cursed, prisoners
     if can_use("hazards"):
@@ -812,6 +816,11 @@ def note_cycle(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> list[
 
     if "others_on_map" not in errors:
         ids = reachable_threats(s, _traits(s), cfg)
+        now_t = abs_tick(s)
+        if ids and isinstance(now_t, int):
+            memory.last_threat_tick = now_t           # (0.104.100)
+        if great_present(s) and isinstance(now_t, int):
+            memory.last_great_tick = now_t
         if ids or (_holding_off(s, memory) and held_off_threats(s)):
             # (0.100.1, review) behind a raised bridge the siege can't walk in,
             # so it stops counting as "can reach": while the AI holds the alarm

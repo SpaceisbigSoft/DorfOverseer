@@ -187,6 +187,34 @@ def _():
     assert p and p[0].action == {"type": "civ_alert", "on": False}, p
 
 
+@test("alert (0.104.100): after a titan, the alarm holds 7 days and the gates stay shut; 3 days after any threat")
+def _():
+    from planner import note_cycle, abs_tick, TICKS_PER_DAY
+    s = fort(civ_alert=True)
+    s["others_on_map"]["threats"] = [{"id": 77, "name": "Ume, Swamp Titan", "great_danger": True,
+                                      "can_reach_dwarves": True, "layer": "upper_levels"}]
+    s["others_on_map"]["threats_that_can_reach_dwarves"] = 1
+    m = Memory(ai_alert_raised=True, quiet_cycles=0)
+    note_cycle(s, m)
+    t0 = abs_tick(s)
+    assert m.last_threat_tick == t0 and m.last_great_tick == t0
+    s["others_on_map"]["threats"] = []                                  # the titan dies
+    s["others_on_map"]["threats_that_can_reach_dwarves"] = 0
+    m.quiet_cycles = 3
+    s["date"]["tick"] += 2 * TICKS_PER_DAY
+    p, notes = plan(s, m)
+    assert not any(x.action == {"type": "civ_alert", "on": False} for x in p), p
+    assert any("the alarm stays up: a great danger was about 2 day(s) ago" in n for n in notes), notes
+    s["date"]["tick"] += 6 * TICKS_PER_DAY
+    p = plan(s, m)[0]
+    assert any(x.action == {"type": "civ_alert", "on": False} for x in p), p
+    # an ordinary threat: 3 days
+    m2 = Memory(ai_alert_raised=True, quiet_cycles=3, last_threat_tick=abs_tick(s) - TICKS_PER_DAY)
+    assert not any(x.action == {"type": "civ_alert", "on": False} for x in plan(s, m2)[0])
+    m2.last_threat_tick = abs_tick(s) - 4 * TICKS_PER_DAY
+    assert any(x.action == {"type": "civ_alert", "on": False} for x in plan(s, m2)[0])
+
+
 @test("never lowers an alert the PLAYER raised")
 def _():
     s = fort(civ_alert=True)

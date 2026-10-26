@@ -225,7 +225,7 @@ def detect(prev: dict | None, state: dict, events: list[dict]) -> list[str]:
     for topic, kind in REPORT_KINDS.items():
         if topic in topics and kind not in kinds:
             kinds.append(kind)
-    if any(e.get("kind") == "death" and e.get("own_civ") and not e.get("animal") for e in events):
+    if any(e.get("kind") == "death" and e.get("own_civ") and not e.get("animal") and not e.get("again") for e in events):
         kinds.append("citizen_death")
     arrivals = [e for e in events if e.get("kind") == "arrival" and e.get("own_civ") and not e.get("hostile")]
     o = s["others_on_map"]

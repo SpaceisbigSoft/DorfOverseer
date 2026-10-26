@@ -185,7 +185,7 @@ def _():
     for absent in ("supplies", "map", "jobs", "recent_announcements", "registry"):
         assert absent not in keys, absent
     daily = M.build_state(True)
-    assert daily.tier == "daily" and daily.units[1].id == 1 and daily.bridge_version == "0.104.97"
+    assert daily.tier == "daily" and daily.units[1].id == 1 and daily.bridge_version == "0.104.100"
     assert set(pulse.keys()) - {"tier"} <= set(daily.keys())
     assert daily.registry.error is not None                         # no builder here, but the section is there
     assert M.build_state(False, "survey").tier == "survey"
@@ -858,6 +858,32 @@ def _():
     return {before = before, removed = r.removed, left = #jobs, again_ok = again.ok == true}
     """, env, H.df, H.dfhack)
     assert r["before"] == 2 and r["removed"] == 2 and r["left"] == 3 and not r["again_ok"], dict(r)
+
+
+@test("death_details (0.104.100): DF's cause and the killer (a great beast); a second death of one unit is `again`")
+def _():
+    env = H.module()
+    r = LUA.execute(r"""
+    local env, df, dfhack = ...
+    df.death_type = {[2] = 'STRUCK_DOWN'}
+    local victim = {id = 5, counters = {death_id = 70}}
+    local titan = {id = 9}
+    df.unit = {find = function(id) return ({[5] = victim, [9] = titan})[id] end}
+    df.incident = {find = function(id) return id == 70 and {death_cause = 2, criminal = 9} or nil end}
+    dfhack.units.getReadableName = function(u) return u == titan and 'Ume, Swamp Titan' or 'a dwarf' end
+    dfhack.units.isGhost = function() return false end
+    dfhack.units.isGreatDanger = function(u) return u == titan end
+    dfhack.units.isCitizen = function() return false end
+    dfhack.units.isOwnCiv = function() return false end
+    dfhack.units.isAnimal = function() return false end
+    env.DEATHS_TOLD = {}
+    local a, b = {}, {}
+    env.death_details(a, 5)
+    env.death_details(b, 5)
+    return {cause = a.cause, killer = a.killer, kind = a.killer_kind, again1 = a.again or false, again2 = b.again or false}
+    """, env, H.df, H.dfhack)
+    assert (r["cause"], r["killer"], r["kind"], r["again1"], r["again2"]) == \
+        ("STRUCK_DOWN", "Ume, Swamp Titan", "great beast", False, True), dict(r)
 
 
 @test("free_slabs (0.104.42): forbidden memorial slabs unforbidden, their suspended slab buildings resumed")

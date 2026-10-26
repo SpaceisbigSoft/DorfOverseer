@@ -34,7 +34,7 @@
 local json = require('json')
 local utils = require('utils')
 
-BRIDGE_VERSION = '0.104.97'
+BRIDGE_VERSION = '0.104.100'
 PROTOCOL = 1 -- bump when the report's shape changes in a breaking way
 
 local OUT_DIR = dfhack.getDFPath() .. '/dfhack-config/ai-overseer'
@@ -2472,6 +2472,33 @@ local function describe_unit(id)
     }
 end
 
+-- (0.104.100) What killed it, from DF's incident (the overnight review of 26
+-- Oct: 15 dwarves died in 50 s and the log couldn't say how): the cause
+-- (DROWN, STRUCK_DOWN, THIRST...), the killer's name and kind (a citizen, a
+-- ghost, a beast, an animal, an outsider), and `again` when this unit's death
+-- was already told (a ghost laid to rest dies a second time).
+DEATHS_TOLD = DEATHS_TOLD or {}
+function death_details(ev, id)
+    local u = df.unit.find(id)
+    if not u then return end
+    if DEATHS_TOLD[id] then ev.again = true end
+    DEATHS_TOLD[id] = true
+    pcall(function() if dfhack.units.isGhost(u) then ev.ghost = true end end)
+    local inc = df.incident.find(u.counters.death_id)
+    if not inc then return end
+    ev.cause = df.death_type[inc.death_cause] or tostring(inc.death_cause)
+    local k = inc.criminal ~= -1 and df.unit.find(inc.criminal) or nil
+    if k then
+        ev.killer = txt(dfhack.units.getReadableName(k))
+        local okg, ghost = pcall(dfhack.units.isGhost, k)
+        ev.killer_kind = (okg and ghost) and 'ghost'
+            or dfhack.units.isGreatDanger(k) and 'great beast'
+            or (dfhack.units.isCitizen(k) or dfhack.units.isOwnCiv(k)) and 'citizen'
+            or dfhack.units.isAnimal(k) and 'animal'
+            or 'outsider'
+    end
+end
+
 function start_watching()
     local ok, eventful = pcall(require, 'plugins.eventful')
     if not ok then return false end
@@ -2481,6 +2508,7 @@ function start_watching()
     eventful.onUnitDeath[WATCH_KEY] = function(id)
         local ev = describe_unit(id)
         ev.kind = 'death'
+        pcall(death_details, ev, id)
         push_event(ev)
     end
     eventful.onUnitNewActive[WATCH_KEY] = function(id)
@@ -2506,6 +2534,7 @@ function start_watching()
             EVENT_QUEUE = {}
             LAST_REPORT_ID = nil
             WATER_PLAN = nil           -- (0.104.81, 13c) a half-done cistern plan belongs to the fort unloaded
+            DEATHS_TOLD = {}
         end
     end
     -- Stamped with the bridge version, so an updated script re-registers

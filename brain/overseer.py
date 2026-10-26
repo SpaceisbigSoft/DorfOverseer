@@ -293,6 +293,22 @@ CAMERA_QUIET = {"dismiss_alerts", "sand_zone", "report_status", "survey_water", 
 _CAMERA_LEVELS: list = []   # (0.104.91) the newest "dig a new ... level" lines, while the keeper runs
 
 
+def death_words(ev: dict) -> str:
+    """(0.104.100) A death in a line: who, how (DF's cause), by whom, where."""
+    who = " ".join(str(ev.get("name") or "someone").split())
+    cause = str(ev.get("cause") or "").replace("_", " ").lower()
+    bits = [who]
+    if ev.get("again"):
+        bits.append("(laid to rest: died before)" if not ev.get("ghost") else "(a ghost laid to rest)")
+    elif cause:
+        bits.append(cause)
+    if ev.get("killer") and not ev.get("again"):
+        bits.append(f"by {' '.join(str(ev['killer']).split())} ({ev.get('killer_kind') or '?'})")
+    if ev.get("x") is not None:
+        bits.append(f"at x{ev['x']} y{ev['y']} z{ev['z']}")
+    return ", ".join(bits)
+
+
 def camera_feed(memory) -> dict:
     """(0.104.90) For the in-game camera: the plan's district names and the
     reasons for the AI's newest work (the camera shows them under a new or
@@ -669,6 +685,10 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
             if ev.get("kind") == "report" and ev.get("topic") not in QUIET_TOPICS:
                 # one line however the text runs (a name can hold a line break)
                 line = f"Seen: {ev.get('topic')}: {' '.join(str(ev.get('text', '')).split())[:120]}"
+                seen[line] = seen.get(line, 0) + 1
+            elif (ev.get("kind") == "death" and ev.get("own_civ") and not ev.get("animal")) \
+                    or (ev.get("kind") == "death" and ev.get("great")):
+                line = "Died: " + death_words(ev)    # (0.104.100) how each one died, in the log
                 seen[line] = seen.get(line, 0) + 1
         for line, n in seen.items():          # the same announcement 9 times is one line
             say(line + (f" (x{n})" if n > 1 else ""))

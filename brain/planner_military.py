@@ -64,7 +64,7 @@ def _gate_rules(s: dict, memory, cfg: dict, rules_: dict, any_reach: bool,
         proposals.append(Proposal("gates", {"type": "arm_gates"},
                                   f"a threat can reach the dwarves: watch the {len(closable)} gate(s); each closes "
                                   "once everyone is inside or the danger is 12 tiles away", 0))
-    elif not any_reach and ent.get("armed") and memory.quiet_cycles >= cfg["alert_quiet_cycles"]:
+    elif not any_reach and ent.get("armed") and all_clear(s, memory, cfg)[0]:
         proposals.append(Proposal("gates", {"type": "open_gates"},
                                   f"no threat for {memory.quiet_cycles} cycles: open the gates", 1))
     werr = _d(ent.get("watch_error"))
@@ -608,7 +608,7 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
             proposals.append(Proposal("gate", {"type": "pull_gate", "lever_id": gates[0]["id"]},
                                       "a threat can reach the dwarves: pull the AI gate lever", 0))
         elif (not any_reach and memory.gate_closed_by_ai and gates
-              and memory.quiet_cycles >= cfg["alert_quiet_cycles"]):
+              and all_clear(s, memory, cfg)[0]):
             proposals.append(Proposal("gate", {"type": "pull_gate", "lever_id": gates[0]["id"]},
                                       f"no threat for {memory.quiet_cycles} cycles: pull the AI gate "
                                       "lever back", 1))

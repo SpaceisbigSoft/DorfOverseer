@@ -105,7 +105,7 @@ def row_for(state: dict, events: list[dict] | None = None, cfg: dict | None = No
         row[k] = m.get(k)
     row["wealth"] = _num(s.get("wealth"))
     row["deaths"] = sum(1 for e in events or [] if isinstance(e, dict) and e.get("kind") == "death"
-                        and e.get("own_civ") and not e.get("animal"))
+                        and e.get("own_civ") and not e.get("animal") and not e.get("again"))
     if "others_on_map" not in s["_errors"]:
         row["threats"] = _d(s.get("others_on_map")).get("threats_that_can_reach_dwarves", 0) or 0
     # stock against the target it is kept to (1.0 = exactly the target)

@@ -57,7 +57,7 @@ def day_row(day: int, state: dict, events: list[dict], *, ai_actions: int = 0, t
         "drink_per_dwarf": round(st.get("drink", 0) / pop, 1) if pop else 0,
         "meals_per_dwarf": round(st.get("prepared_meals", 0) / pop, 1) if pop else 0,
         "citizen_deaths": sum(1 for e in events if e.get("kind") == "death"
-                              and e.get("own_civ") and not e.get("animal")),
+                              and e.get("own_civ") and not e.get("animal") and not e.get("again")),
         "arrivals": sum(1 for e in events if e.get("kind") == "arrival"
                         and e.get("own_civ") and not e.get("hostile")),
         "threats_reaching": _d(s.get("others_on_map")).get("threats_that_can_reach_dwarves", 0),
