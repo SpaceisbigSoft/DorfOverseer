@@ -74,6 +74,7 @@ def _gate_rules(s: dict, memory, cfg: dict, rules_: dict, any_reach: bool,
                      f"({str(werr['error'])[:120]}); close the gates by hand while a threat is near")
     if stale:
         return                              # building gates waits for the new map
+    _gate_parts_rule(s, ent, es, off, proposals, notes)
     doors_proposed = fortify_proposed = False
     open_wide: list = []
     refused: list = []
@@ -168,6 +169,48 @@ def _gate_rules(s: dict, memory, cfg: dict, rules_: dict, any_reach: bool,
         ask_player(notes, f"{len(open_wide)} entrance(s) can't be closed with doors ({surface} to the surface, "
                           f"{len(open_wide) - surface} to the caverns or deeper; {why}), e.g. {named}: wall them "
                           "down to 3 tiles or less and the AI puts doors on them")
+
+
+GATE_PART_RECIPES = {"hatch": ("hatch_covers", "stone_hatch_cover", "hatch cover"),
+                     "door": ("doors", "stone_door", "door")}
+GATE_PART_STUCK_DAYS = 7
+
+
+def _gate_parts_rule(s: dict, ent: dict, es: list, off: int, proposals: list, notes: list) -> None:
+    """(0.104.105, overnight review) A hatch or door planned at an entrance is
+    built only from one the fort has. The hatch over the main stair waited 15
+    hours for a hatch cover nobody made; the entrance read "closing" all along,
+    so nothing else was tried, and two titans walked in. Parts are ordered at
+    the mason's when none is free; a gate still waiting a week with parts free
+    is put to the player."""
+    parts = _d(ent.get("parts"))
+    want: dict = {}
+    for e in es:
+        if e.get("sealed") or not e.get("closing"):
+            continue
+        waiting = _d(e.get("waiting"))
+        where = f"the {e.get('kind')} entrance at elevation {(e.get('z') or 0) + off} (x{e.get('x')} y{e.get('y')})"
+        for what, (field, recipe, word) in GATE_PART_RECIPES.items():
+            n = waiting.get(what)
+            if not isinstance(n, int) or n <= 0:
+                continue
+            free = parts.get(field)
+            if not isinstance(free, int):
+                continue                    # an older bridge: parts not counted
+            if free == 0:
+                w = want.setdefault(what, [0, where])
+                w[0] += n
+            elif isinstance(e.get("closing_days"), int) and e["closing_days"] >= GATE_PART_STUCK_DAYS:
+                ask_player(notes, f"a {word} planned at {where} has waited {e['closing_days']} days though "
+                                  f"{free} {word}(s) are free: check its job isn't suspended or the spot blocked")
+    for what, (n, where) in want.items():
+        field, recipe, word = GATE_PART_RECIPES[what]
+        held = parts.get(field + "_held") or 0
+        need = min(4, n - held) if isinstance(held, int) else n
+        if need > 0 and not queued(s, {recipe}):
+            proposals.append(Proposal("gate_parts", {"type": "work_order", "recipe": recipe, "amount": need},
+                                      f"the {word} planned at {where} waits for a {word} the fort doesn't have: "
+                                      f"a mason makes {need}", 3, is_order=True))
 
 
 def _free_gate_lever(s: dict):

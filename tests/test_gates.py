@@ -956,6 +956,27 @@ def _():
     r = env.clear_gate(94, 97, 169, None, False)                   # right beside the stair: refused
     assert not r.ok and "still an entrance" in r.error, dict(r)
 
+
+@test("0.104.105: a closing entrance says what it waits for (a planned hatch)")
+def _():
+    hatch = {"id": 9, "kind": "pending", "what": "hatch", "x1": 4, "y1": 5, "x2": 4, "y2": 6, "z": 0, "name": ""}
+    setup(buildings=[DOOR_A, hatch])
+    b = by_kind_and_y(find()[0])[("surface", 5)]
+    assert b.closing and b.waiting and b.waiting["hatch"] == 1, (b.closing, b.waiting and dict(b.waiting))
+    setup(buildings=[DOOR_A])
+    assert not by_kind_and_y(find()[0])[("surface", 5)].waiting, "nothing planned: nothing waited for"
+
+
+@test("0.104.105: days an entrance has read closing count from the first scan that saw it so")
+def _():
+    e = LUA.table_from({"closing": True, "x": 4, "y": 5, "z": 0})
+    k = (0 * 4096 + 5) * 4096 + 4
+    M.GATES = LUA.table_from({"scanned": True, "scanned_tick": 18000,
+                              "closing_since": LUA.table_from({k: 6000})})
+    assert M.closing_days(e) == 10, M.closing_days(e)
+    e.closing = False
+    assert M.closing_days(e) is None
+
 if __name__ == "__main__":
     for name, ok, msg in RESULTS:
         print(f"[{'PASS' if ok else 'FAIL'}] {name}" + (f"\n        {msg}" if msg else ""))

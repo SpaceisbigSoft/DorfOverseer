@@ -34,7 +34,7 @@
 local json = require('json')
 local utils = require('utils')
 
-BRIDGE_VERSION = '0.104.104'
+BRIDGE_VERSION = '0.104.105'
 PROTOCOL = 1 -- bump when the report's shape changes in a breaking way
 
 local OUT_DIR = dfhack.getDFPath() .. '/dfhack-config/ai-overseer'
@@ -2811,6 +2811,7 @@ ORDER_RECIPES = {
     mechanisms = {job = 'ConstructMechanisms', kind = 'stone'},
     -- (0.92.1) the cistern's floodgate, at the mason's
     stone_floodgate = {job = 'ConstructFloodgate', kind = 'stone'},
+    stone_hatch_cover = {job = 'ConstructHatchCover', kind = 'stone'},      -- (0.104.105) a hatch over a stair needs one
     -- soldiers' gear, in a named weapon-grade metal (steel, iron, bronze...)
     metal_battle_axe = {job = 'MakeWeapon', item_subtype = 'ITEM_WEAPON_AXE_BATTLE', kind = 'metal'},
     metal_pick = {job = 'MakeWeapon', item_subtype = 'ITEM_WEAPON_PICK', kind = 'metal'},   -- (0.99.4) more miners

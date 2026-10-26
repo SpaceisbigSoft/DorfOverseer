@@ -454,6 +454,11 @@ function find_entrances(starts, buildings)
             if near(b, g) then
                 if b.kind == 'pending' then
                     table.insert(pending, b)
+                    -- (0.104.105) what it waits for, by kind: a hatch planned
+                    -- over the main stair waited 15 hours for a hatch cover
+                    -- nobody made, and the entrance read "closing" all along
+                    e.waiting = e.waiting or {}
+                    e.waiting[b.what or 'wall'] = (e.waiting[b.what or 'wall'] or 0) + 1
                 elseif b.kind ~= 'bridge' then
                     table.insert(cands, b)
                 else
@@ -608,8 +613,18 @@ function scan(now_tick)
             if b.lever_id then set_name(b.lever_id, gate_name(e) .. ' lever') end
         end
     end
+    -- (0.104.105) since when each entrance has read "closing" (by its spot):
+    -- one that stays so for days waits for something
+    local since_old, since = GATES.closing_since or {}, {}
+    for _, e in ipairs(entrances) do
+        if e.closing and not e.sealed then
+            local k = key(e.x, e.y, e.z)
+            since[k] = since_old[k] or now_tick
+        end
+    end
     GATES = {scanned = true, entrances = entrances, inside = inside, inside_tiles = n,
-             scanned_tick = now_tick, armed = GATES.armed, closed = GATES.closed or {}}
+             scanned_tick = now_tick, armed = GATES.armed, closed = GATES.closed or {},
+             closing_since = since}
     return summary()
 end
 
@@ -2087,6 +2102,34 @@ function place_traps(id, kind, n, starts)
             failed = #failed > 0 and table.concat(failed, '; '):sub(1, 200) or nil}
 end
 
+-- (0.104.105) Gate parts in stock: free, and held by a job (on their way to
+-- one). A planned hatch or door is built only from one the fort has.
+GATE_PARTS = {hatch_covers = 'HATCH_COVER', doors = 'DOOR'}
+function gate_parts()
+    local out = {}
+    for name, tname in pairs(GATE_PARTS) do
+        local free, held = 0, 0
+        pcall(function()
+            for _, item in ipairs(df.global.world.items.other[tname]) do
+                local f = item.flags
+                if not (f.forbid or f.in_building or f.construction or f.removed or f.garbage_collect
+                        or f.trader or f.dump or f.hostile) then
+                    if f.in_job then held = held + 1 else free = free + 1 end
+                end
+            end
+        end)
+        out[name], out[name .. '_held'] = free, held
+    end
+    return out
+end
+
+local DAY_TICKS = 1200
+function closing_days(e)
+    local since = e.closing and GATES.closing_since and GATES.closing_since[key(e.x, e.y, e.z)]
+    if not since or not GATES.scanned_tick then return nil end
+    return math.floor((GATES.scanned_tick - since) / DAY_TICKS)
+end
+
 function summary()
     local list = {}
     for _, e in ipairs(GATES.entrances or {}) do
@@ -2101,6 +2144,8 @@ function summary()
                             sealed = e.sealed, closing = e.closing == true, equipment = eq,
                             bridges_unworked = e.bridges_unworked or {},
                             door_spots = #e.door_spots,
+                            waiting = e.waiting,
+                            closing_days = closing_days(e),
                             closed = GATES.closed and GATES.closed[e.id] or false})
     end
     local okf, fl = pcall(free_levers)
@@ -2110,6 +2155,7 @@ function summary()
             capped = (GATES.inside_tiles or 0) >= MAX_TILES or nil,
             free_levers = okf and fl or {}, free_mechanisms = GATES.scanned and free_mechanism_count(200) or nil,
             entrances = list, armed = GATES.armed == true, watch_error = GATES.watch_error,
+            parts = GATES.scanned and gate_parts() or nil,
             citizens_outside = GATES.scanned and citizens_outside() or nil}
 end
 

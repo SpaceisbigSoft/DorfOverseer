@@ -2492,6 +2492,26 @@ def entrances(*es, armed=False, age_days=1):
     return s
 
 
+@test("gate parts (0.104.105): a hatch planned over the stair waits for a cover -> the mason makes one")
+def _():
+    s = entrances({"closing": True, "waiting": {"hatch": 1}, "closing_days": 30})
+    s["entrances"]["parts"] = {"hatch_covers": 0, "hatch_covers_held": 0, "doors": 5, "doors_held": 0}
+    parts = lambda st: by_rule(plan(copy.deepcopy(st), Memory())[0], "gate_parts")
+    got = parts(s)
+    assert [(p.action["recipe"], p.action["amount"]) for p in got] == [("stone_hatch_cover", 1)], got
+    assert got[0].is_order and "x10 y10" in got[0].reason, got[0].reason
+    s["orders"] = list(s.get("orders") or []) + [{"recipe": "stone_hatch_cover", "amount_left": 1, "amount_total": 1}]
+    assert not parts(s)                                              # queued already
+    s["orders"] = []
+    s["entrances"]["parts"]["hatch_covers_held"] = 1                 # one on its way to the job
+    assert not parts(s)
+    s["entrances"]["parts"].update(hatch_covers=2, hatch_covers_held=0)   # covers free, waited a month
+    _, notes = plan(copy.deepcopy(s), Memory())[:2]
+    assert not parts(s) and any("hatch cover planned" in n and "suspended" in n for n in notes), notes
+    del s["entrances"]["parts"]                                      # an older bridge: nothing guessed
+    assert not parts(s)
+
+
 @test("gates: many entrances doors can't close -> ONE needs-you item, widest named first")
 def _():
     s = entrances(*[{"width": w, "door_spots": 0, "kind": k}
