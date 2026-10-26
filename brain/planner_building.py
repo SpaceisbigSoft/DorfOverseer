@@ -644,13 +644,15 @@ def _deep_notes(s: dict, notes: list) -> None:
     open_ = [c for c in caverns if c.get("discovered") and c.get("open")]
     dangers = [x for x in _l(d.get("dangers")) if isinstance(x, dict) and not x.get("caged")]
     for c in open_:
+        at = _d(c.get("open_at"))                   # (0.104.101) where the dwarves' ground meets it
+        where_ = f" (the dwarves' ground meets it at x{at.get('x')} y{at.get('y')} z{at.get('z')})" if at else ""
         here = [x for x in dangers if x.get("layer") == c.get("name")]
         if here:
-            ask_player(notes, f"{c['name']} is open to the fort and {here[0].get('name')} ({here[0].get('kind')}) "
+            ask_player(notes, f"{c['name']} is open to the fort{where_} and {here[0].get('name')} ({here[0].get('kind')}) "
                               f"is in it: seal the way down (the AI walls cavern openings it finds; check "
                               "the entrances line) and keep the dwarves inside")
         else:
-            notes.append(f"{c['name']} is open to the fort's ground (z{c.get('z_bottom')}-{c.get('z_top')}): the AI "
+            notes.append(f"{c['name']} is open to the fort's ground (z{c.get('z_bottom')}-{c.get('z_top')}){where_}: the AI "
                          "walls the openings it finds; cavern creatures can walk in until then")
     for x in dangers:
         if x.get("layer") in [c.get("name") for c in open_]:
@@ -1421,7 +1423,12 @@ def tombs_short(s: dict, citizens: int, cfg: dict, memory=None) -> int:
     d = _d(s.get("dead"))
     unburied = int(d.get("unburied") or 0)
     why = _d(d.get("why"))
-    if why:
+    if why and isinstance(why.get("free"), int):
+        # (0.104.101) the bodies a hauler can take now, as the bridge counts them:
+        # a body both outside and unreachable was subtracted twice (Teacheroar:
+        # 27 unburied, 9 free, 14 outside, 18 out of reach -> 0, a 4-coffin level)
+        unburied = int(why["free"]) + sum(int(why.get(k) or 0) for k in ("forbidden", "in_job", "carried"))
+    elif why:
         # (0.104.38) only the bodies a tomb can take: Enxah's overnight run dug
         # 23 tomb levels for 35 bodies outside or out of reach, 71 tombs free
         unburied = max(0, unburied - sum(int(why.get(k) or 0) for k in ("outside", "unreachable", "not_ours", "dump")))

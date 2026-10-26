@@ -34,7 +34,7 @@
 local json = require('json')
 local utils = require('utils')
 
-BRIDGE_VERSION = '0.104.100'
+BRIDGE_VERSION = '0.104.103'
 PROTOCOL = 1 -- bump when the report's shape changes in a breaking way
 
 local OUT_DIR = dfhack.getDFPath() .. '/dfhack-config/ai-overseer'
@@ -2241,6 +2241,7 @@ end
 -- werebeasts) living among the dwarves.
 ---------------------------------------------------------------------------
 
+JUNCTIONS = JUNCTIONS or {}      -- (0.104.103) cavern name -> {tick, found}: looked for once a week
 function get_deep()
     local layers = get_layers()
     local _, groups = citizen_positions()
@@ -2251,23 +2252,106 @@ function get_deep()
             local row = {name = l.name, discovered = l.discovered, z_top = l.z_top, z_bottom = l.z_bottom,
                          seen = 0, open = false}
             if l.discovered then
-                local checked = 0
+                -- (0.104.101) every block of the cavern is looked at; only the
+                -- walkability checks of seen tiles are capped. The old cap
+                -- counted hidden tiles too and stopped after ~170 blocks of a
+                -- ~1,300-block cavern: Teacheroar's Cavern1 read "seen 0, not
+                -- open" while dwarves worked and died in it, so nothing sealed it
+                local walks = 0
                 for _, block in ipairs(blocks) do
                     if layers.by_gid[block.global_feature] == l then
                         local bx, by, bz = block.map_pos.x, block.map_pos.y, block.map_pos.z
-                        for x = 0, 15, 3 do
-                            for y = 0, 15, 3 do
-                                checked = checked + 1
+                        for x = 0, 15, 5 do
+                            for y = 0, 15, 5 do
                                 if not block.designation[x][y].hidden then
                                     row.seen = row.seen + 1
-                                    local g = dfhack.maps.getWalkableGroup({x = bx + x, y = by + y, z = bz})
-                                    if g ~= 0 and groups[g] then row.open = true end
+                                    if walks < 4000 then
+                                        walks = walks + 1
+                                        local g = dfhack.maps.getWalkableGroup({x = bx + x, y = by + y, z = bz})
+                                        if g ~= 0 and groups[g] then
+                                            row.open = true
+                                            row.open_at = row.open_at or {x = bx + x, y = by + y, z = bz}
+                                        end
+                                    end
                                 end
                             end
                         end
                     end
-                    if row.open or checked > 6000 then break end
+                    if row.open then break end
                 end
+            end
+            -- (0.104.103) where the dwarves' dug ground actually meets the cavern:
+            -- a walkable tile outside the cavern beside (or over, or under) a
+            -- walkable cavern tile of the same walk group, searched over the
+            -- dwarves' x/y span near the cavern's ceiling. Up to 4, with shapes.
+            local now_j = df.global.cur_year * 403200 + df.global.cur_year_tick
+            local cj = JUNCTIONS[row.name]
+            if row.open and cj and now_j - cj.tick < 7 * 1200 then
+                row.junctions = cj.found
+            elseif row.open then
+                pcall(function()
+                    local ps = citizen_positions()
+                    local x1, x2, y1, y2 = math.huge, -math.huge, math.huge, -math.huge
+                    for _, p in ipairs(ps) do
+                        x1, x2 = math.min(x1, p.x), math.max(x2, p.x)
+                        y1, y2 = math.min(y1, p.y), math.max(y2, p.y)
+                    end
+                    local function info(x, y, z)
+                        local tt = dfhack.maps.getTileType(x, y, z)
+                        if not tt then return nil end
+                        local des = dfhack.maps.getTileFlags(x, y, z)
+                        local g = dfhack.maps.getWalkableGroup(xyz2pos(x, y, z))
+                        return {cave = des and (des.feature_global or des.feature_local), g = g,
+                                shape = df.tiletype_shape[df.tiletype.attrs[tt].shape]}
+                    end
+                    local found = {}
+                    for z = row.z_top - 1, row.z_top + 3 do
+                        for y = math.max(1, y1 - 5), y2 + 5 do
+                            for x = math.max(1, x1 - 5), x2 + 5 do
+                                local t = info(x, y, z)
+                                if t and not t.cave and t.g ~= 0 and groups[t.g] then
+                                    for dz = -1, 1 do
+                                        for dy = -1, 1 do
+                                            for dx = -1, 1 do
+                                                local n = (dx ~= 0 or dy ~= 0 or dz ~= 0) and info(x + dx, y + dy, z + dz)
+                                                if n and n.cave and n.g == t.g and #found < 4 then
+                                                    table.insert(found, {x = x, y = y, z = z, shape = t.shape,
+                                                                         cave = {x = x + dx, y = y + dy, z = z + dz,
+                                                                                 shape = n.shape}})
+                                                end
+                                            end
+                                        end
+                                    end
+                                end
+                                if #found >= 4 then break end
+                            end
+                            if #found >= 4 then break end
+                        end
+                        if #found >= 4 then break end
+                    end
+                    row.junctions = found
+                    JUNCTIONS[row.name] = {tick = now_j, found = found}
+                end)
+            end
+            -- (0.104.102) the way up from where it meets the fort: each level's tile
+            -- and building (a hatch, a door), so the seal can be placed
+            if row.open_at then
+                local col = {}
+                for dz = 0, 6 do
+                    pcall(function()
+                        local x, y, z = row.open_at.x, row.open_at.y, row.open_at.z + dz
+                        local tt = dfhack.maps.getTileType(x, y, z)
+                        local shape = tt and df.tiletype_shape[df.tiletype.attrs[tt].shape] or '?'
+                        local b = dfhack.buildings.findAtTile(xyz2pos(x, y, z))
+                        local bt = b and df.building_type[b:getType()] or nil
+                        local closed
+                        if b then pcall(function() closed = b.door_flags.closed end) end
+                        local des = dfhack.maps.getTileFlags(x, y, z)
+                        table.insert(col, {z = z, shape = shape, building = bt, closed = closed,
+                                           cavern = des and (des.feature_global or des.feature_local) or nil})
+                    end)
+                end
+                row.column = col
             end
             table.insert(out.caverns, row)
         end
@@ -2535,6 +2619,7 @@ function start_watching()
             LAST_REPORT_ID = nil
             WATER_PLAN = nil           -- (0.104.81, 13c) a half-done cistern plan belongs to the fort unloaded
             DEATHS_TOLD = {}
+            JUNCTIONS = {}
         end
     end
     -- Stamped with the bridge version, so an updated script re-registers

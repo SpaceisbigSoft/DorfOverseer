@@ -6625,6 +6625,27 @@ def _():
     assert by_rule(plan(s, m)[0], "polish")
 
 
+@test("tombs (0.104.101): the bodies a hauler can take count, not the unburied minus outside and out of reach twice")
+def _():
+    from planner import tombs_short, PLANNER_CONFIG
+    s = fort()
+    s["dead"] = {"unburied": 27, "free_tombs": 0, "why": {"free": 9, "forbidden": 0, "in_job": 0, "carried": 0,
+                                                            "outside": 14, "unreachable": 18, "not_ours": 0, "dump": 0}}
+    want = max(PLANNER_CONFIG["min_free_tombs"], -(-90 * PLANNER_CONFIG["free_tombs_per_dwarf"] // 1)) + 9
+    assert tombs_short(s, 90, PLANNER_CONFIG) >= 9, tombs_short(s, 90, PLANNER_CONFIG)
+    s["dead"]["why"].pop("free")                                          # an older bridge: the old count
+    assert tombs_short(s, 90, PLANNER_CONFIG) < tombs_short(dict(s, dead=dict(s["dead"], why={"free": 9})), 90, PLANNER_CONFIG)
+
+
+@test("caverns (0.104.101): an open cavern's note says where the dwarves' ground meets it")
+def _():
+    s = fort()
+    s["deep"] = {"caverns": [{"name": "Cavern1", "discovered": True, "open": True, "z_bottom": 135, "z_top": 143,
+                              "open_at": {"x": 91, "y": 100, "z": 135}}], "dangers": [], "cursed": []}
+    notes = plan(s, Memory())[1]
+    assert any("Cavern1 is open" in n and "x91 y100 z135" in n for n in notes), [n for n in notes if "Cavern" in n]
+
+
 if __name__ == "__main__":
     for name, ok, msg in RESULTS:
         print(f"[{'PASS' if ok else 'FAIL'}] {name}" + (f"\n        {msg}" if msg else ""))
