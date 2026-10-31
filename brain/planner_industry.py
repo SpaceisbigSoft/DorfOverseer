@@ -1109,6 +1109,18 @@ def _cloth_rule(s: dict, cfg: dict, citizens: int, proposals: list) -> None:
                                           f"only {cloth} cloth (the fort wants {want}) and no free thread; "
                                           f"{sup.get('shearable')} animals can be shorn: {what}", 4, True))
                 return
+    # (0.104.123) a weave order DF made no job from (Teacheroar: 12 thread
+    # counted, the order 32 days without a job, cancelled and stuck again):
+    # that thread isn't fit for the loom, so plants are processed for more
+    stalled = [o for o in _l(s.get("orders")) if isinstance(o, dict) and o.get("recipe") == weave
+               and o.get("by_ai") and not int(_d(o.get("jobs")).get("n") or 0)]
+    if (stalled and (st.get("plants") or 0) > 0 and thread_plants_here(s) and _has_shop(b, "Farmers")
+            and not queued(s, {"process_plants"})):
+        proposals.append(Proposal("cloth", {"type": "work_order", "recipe": "process_plants",
+                                            "amount": cfg["cloth_batch"]},
+                                  f"only {cloth} cloth and the weave order has made no job (the {thread} thread "
+                                  "isn't fit for the loom): process plants for fresh thread", 5, True))
+        return
     if thread >= 3 and not queued(s, {weave}):
         n = min(thread, cfg["cloth_batch"], want - cloth)
         proposals.append(Proposal("cloth", {"type": "work_order", "recipe": weave, "amount": max(1, n)},

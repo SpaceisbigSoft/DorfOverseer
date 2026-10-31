@@ -5697,6 +5697,12 @@ def _():
     s["stocks"]["thread"] = 8
     c = by_rule(plan(s, Memory())[0], "cloth")
     assert c and c[0].action == {"type": "work_order", "recipe": "weave_plant_cloth", "amount": 5}, c
+    s["orders"] = [{"id": 6202, "recipe": "weave_plant_cloth", "amount_left": 5, "by_ai": True}]   # (0.104.123) no job made
+    c = by_rule(plan(s, Memory())[0], "cloth")
+    assert c and c[0].action["recipe"] == "process_plants" and "isn't fit for the loom" in c[0].reason, c
+    s["orders"][0]["jobs"] = {"n": 1, "working": 1}                                                  # weaving: fine
+    assert not by_rule(plan(s, Memory())[0], "cloth")
+    s["orders"] = []
     s["stocks"]["cloth"] = 500
     assert not by_rule(plan(s, Memory())[0], "cloth")
 
