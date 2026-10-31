@@ -329,6 +329,23 @@ def _():
     # (furnishing itself needs the real game's buildings list; checked in the game)
 
 
+@test("0.104.110: a stalled level 90%+ dug may be furnished without its last tiles; under 90% never")
+def _():
+    r = start(kind="bedrooms", rooms=4, room_size=3)
+    tiles = [t for t in W.tiles.values() if t.designated]
+    left = max(1, len(tiles) // 20)                  # 5% left undug
+    for t in tiles[left:]:
+        t.shape, t.designated = "FLOOR", False
+    f = B.furnish_project(r.project_id, False)
+    assert not f.ok and "not finished" in f.error
+    f = B.furnish_project(r.project_id, False, True)
+    assert not f.ok and "buildingplan" in f.error, f.error          # past the dig check
+    for t in tiles[:len(tiles) // 5]:
+        t.shape, t.designated = "WALL", True         # 20% left: too much
+    f = B.furnish_project(r.project_id, False, True)
+    assert not f.ok and "not finished" in f.error
+
+
 @test("cancel removes only the AI's designations, and only while digging")
 def _():
     r = start(kind="bedrooms", rooms=4, room_size=3)
@@ -1333,7 +1350,8 @@ def _():
     gate.built = True
     lever.built = True
     assert step().stage == "linking"
-    assert step().waiting                                                  # not linked yet
+    r = step()
+    assert r.waiting and "asked for again (1)" in r.error, r.error         # (0.104.110) no link job: asked again
     LUA.globals().LINKS[gate.id] = LUA.table_from([lever.id])
     r = step()
     assert r.ok and r.stage == "opening" and not gate.gate_flags.closed, dict(r)   # pulled open

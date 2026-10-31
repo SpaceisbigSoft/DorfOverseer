@@ -34,7 +34,7 @@
 local json = require('json')
 local utils = require('utils')
 
-BRIDGE_VERSION = '0.104.109'
+BRIDGE_VERSION = '0.104.110'
 PROTOCOL = 1 -- bump when the report's shape changes in a breaking way
 
 local OUT_DIR = dfhack.getDFPath() .. '/dfhack-config/ai-overseer'
@@ -3784,7 +3784,14 @@ end
 function act_furnish_project(a)
     local id = project_id(a)
     if not id then return reject('project_id must be a whole number') end
-    return reqscript('ai-builder').furnish_project(id, plugin_enabled('buildingplan') == true)
+    return reqscript('ai-builder').furnish_project(id, plugin_enabled('buildingplan') == true, a.stalled == true)
+end
+
+-- (0.104.110) a stalled level's dig jobs let go of their workers
+function act_free_dig_jobs(a)
+    local id = project_id(a)
+    if not id then return reject('project_id must be a whole number') end
+    return reqscript('ai-builder').free_dig_jobs(id)
 end
 
 function act_finish_project(a)
@@ -5574,6 +5581,7 @@ ACTIONS = {
     farm_plots = act_farm_plots,
     place_well = act_place_well,
     furnish_project = act_furnish_project,
+    free_dig_jobs = act_free_dig_jobs,
     finish_project = act_finish_project,
     engrave_project = act_engrave_project,
     set_culture = act_set_culture,

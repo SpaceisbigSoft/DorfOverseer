@@ -88,7 +88,19 @@ function job_tiles()
     local link = df.global.world.jobs.list.next
     while link do
         local j = link.item
-        if j then set[j.pos.x .. ',' .. j.pos.y .. ',' .. j.pos.z] = true end
+        -- (0.104.110) the job's type, so a tile under some other job (a
+        -- tomb's burial, a smoothing) isn't taken for one being dug
+        if j then
+            local what = tostring(df.job_type[j.job_type] or 'job')
+            local okw, w = pcall(dfhack.job.getWorker, j)
+            if okw and w then
+                local okn, n = pcall(dfhack.units.getReadableName, w)
+                what = what .. ' by ' .. (okn and n or 'a dwarf'):gsub(',.*', '')
+            else
+                what = what .. ', no worker'
+            end
+            set[j.pos.x .. ',' .. j.pos.y .. ',' .. j.pos.z] = what
+        end
         link = link.next
     end
     if okt then JOB_TILES.at, JOB_TILES.set = now, set end
@@ -1103,6 +1115,7 @@ end
 function dig_progress(p)
     local total, dug, stuck, marked, digging = 0, 0, 0, 0, 0
     local jobs = job_tiles()
+    local waiting = {}             -- (0.104.110) what the tiles left wait on: up to 5, with their jobs
     local function check(x, y, z, done)
         total = total + 1
         local t = tile_info(x, y, z)
@@ -1110,6 +1123,9 @@ function dig_progress(p)
             dug = dug + 1
         elseif jobs[x .. ',' .. y .. ',' .. z] then
             digging = digging + 1  -- a dwarf is on it now
+            if #waiting < 5 then
+                table.insert(waiting, ('x%d y%d: %s'):format(x, y, tostring(jobs[x .. ',' .. y .. ',' .. z])))
+            end
         elseif t and t.marked then
             marked = marked + 1    -- marker-only designation: nobody will dig it
         elseif t and not t.designated then
@@ -1155,7 +1171,8 @@ function dig_progress(p)
         local want = STAIR_SHAPES[c.key]
         keep(c.x, c.y, c.z, function(t) return t.shape == want end, c.key)
     end
-    local out = {total = total, dug = dug, stuck = stuck, marked = marked, digging = digging}
+    local out = {total = total, dug = dug, stuck = stuck, marked = marked, digging = digging,
+                 waiting = #waiting > 0 and waiting or nil}
     if p.shaft then out.shaft_open, out.redesignated = shaft_open, redug > 0 and redug or nil end
     return out
 end
@@ -1376,7 +1393,37 @@ function retarget_hall(id, target, dry_run)
 end
 
 -- Dig finished -> place doors, furniture, workshops, stockpiles and zones.
-function furnish_project(id, buildingplan_on)
+-- (0.104.110) Dig jobs on a stalled level let go of their workers, so other
+-- miners take them (a dwarf who took a job and then lay in the hospital for
+-- years held it all along). Returns {ok, freed}.
+function free_dig_jobs(id)
+    local data = load_projects()
+    local p = find(data, id)
+    if not p then return {ok = false, rejected = true, error = 'no such AI project'} end
+    if p.phase ~= 'dig' then return {ok = false, rejected = true, error = 'project is not being dug'} end
+    local anchor, tiles = anchor_of(p), {}
+    for x, col in pairs(layouts.tiles_from_dig(cells_of(p, 'dig'))) do
+        for y in pairs(col) do tiles[(anchor.x + x) .. ',' .. (anchor.y + y) .. ',' .. p.z] = true end
+    end
+    local freed = 0
+    local link = df.global.world.jobs.list.next
+    while link do
+        local j = link.item
+        if j and tiles[j.pos.x .. ',' .. j.pos.y .. ',' .. j.pos.z] then
+            local okw, w = pcall(dfhack.job.getWorker, j)
+            if okw and w and pcall(dfhack.job.removeWorker, j, 0) then freed = freed + 1 end
+        end
+        link = link.next
+    end
+    return {ok = true, freed = freed}
+end
+
+-- (0.104.110) a level 90%+ dug whose last tiles haven't moved for weeks
+-- (Teacheroar's tomb level: 235 of 240 for three game years, holding one of
+-- the two building slots) is furnished without them when the brain says so
+STALLED_SHARE = 0.9
+
+function furnish_project(id, buildingplan_on, stalled)
     OFFSET = elevation_offset()
     local data = load_projects()
     local p = find(data, id)
@@ -1387,6 +1434,9 @@ function furnish_project(id, buildingplan_on)
     local prog = dig_progress(p)
     local accept_rock = prog.stuck > 0 and prog.dug + prog.stuck + prog.marked == prog.total
         and prog.stuck * 5 <= prog.total and prog.shaft_open ~= false    -- (0.104.13) never over a closed shaft
+    if stalled and prog.dug >= STALLED_SHARE * prog.total and prog.shaft_open ~= false then
+        accept_rock = true
+    end
     if prog.dug < prog.total and not accept_rock then
         return {ok = false, rejected = true,
                 error = ('digging not finished (%d of %d tiles)'):format(prog.dug, prog.total)}
@@ -3524,7 +3574,28 @@ function cistern_step(dry_run)
         local links = reqscript('ai-gates').lever_links()
         local linked = false
         for _, lid in ipairs(links[d.gate_id] or {}) do if lid == d.lever_id then linked = true end end
-        if not linked then return wait('the lever is being linked to the floodgate') end
+        if not linked then
+            -- (0.104.110) the link job was lost (cancelled, its mechanisms
+            -- taken): Teacheroar waited on it 3,259 steps. Asked for again,
+            -- 3 times at most
+            local pending = false
+            pcall(function()
+                local lv = df.building.find(d.lever_id)
+                for _, j in ipairs(lv and lv.jobs or {}) do
+                    if j.job_type == df.job_type.LinkBuildingToTrigger then pending = true end
+                end
+            end)
+            if pending or dry_run then return wait('the lever is being linked to the floodgate') end
+            d.relinks = (math.tointeger(d.relinks) or 0) + 1
+            if d.relinks > 3 then
+                return {ok = false, error = 'the link from the lever to the floodgate was lost 3 times; '
+                    .. 'link it by hand (the lever beside the well)'}
+            end
+            local r = reqscript('ai-gates').link_lever(d.lever_id, d.gate_id, false)
+            save_cistern(d)
+            if not r.ok then return r end
+            return wait(('the lever link was lost: asked for again (%d)'):format(d.relinks))
+        end
         if dry_run then return {ok = true, dry_run = true, stage = 'open'} end
         if gate and gate.closed then
             local ok, out = pull(d.lever_id)

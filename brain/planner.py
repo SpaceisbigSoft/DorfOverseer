@@ -360,9 +360,15 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
         idle_share = cfg["idle_share"] / factor(traits, "industriousness")
         idle = dw.get("idle_adults", 0)
         per_job = cfg["blocks_per_job"]
-        blocks_target = citizens * cfg["blocks_per_dwarf"] * buffer
+        # (0.104.110) capped, and only from stone the masons may use: Teacheroar
+        # (300 dwarves) held 1990 blocks while every boulder quarried went to
+        # more of them and the quarry was dug 2,456 times in 87 hours, its
+        # miners kept off the levels
+        blocks_target = min(citizens * cfg["blocks_per_dwarf"] * buffer, cfg["blocks_cap"])
         blocks, pending = st.get("blocks", 0), queued(s, {"stone_blocks"}) * per_job
-        if (idle > adults * idle_share and st.get("boulders", 0) >= cfg["min_boulders_for_blocks"]
+        usable = _d(s.get("stone_use")).get("usable")
+        stone_ok = st.get("boulders", 0) if not isinstance(usable, int) else usable
+        if (idle > adults * idle_share and stone_ok >= cfg["min_boulders_for_blocks"]
                 and blocks + pending < blocks_target):
             jobs = _clamp(math.ceil((blocks_target - blocks - pending) / per_job),
                           cfg["idle_order_min"], cfg["idle_order_max"])

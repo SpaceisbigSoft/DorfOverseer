@@ -1318,6 +1318,43 @@ def _():
     assert any("no longer designated" in n for n in plan(s, Memory())[1])
 
 
+@test("stalled dig (0.104.110): 4 weeks still -> jobs let go of their workers; 8 weeks and 90% dug -> furnish anyway")
+def _():
+    s = fort()
+    s["projects"]["open"] = [
+        {"id": 170, "kind": "tombs", "phase": "dig", "started": {"year": s["date"]["year"], "tick": 0},
+         "dig": {"total": 240, "dug": 235, "digging": 5, "stuck": 0, "waiting": ["x1 y2: Dig by Urist"]}},
+        {"id": 173, "kind": "bedrooms", "phase": "dig", "started": {"year": s["date"]["year"], "tick": 0},
+         "dig": {"total": 89, "dug": 0, "digging": 1, "stuck": 0}}]
+    m = Memory()
+    acts = lambda: [x.action for x in plan(copy.deepcopy(s), m)[0]
+                    if x.action.get("type") in ("free_dig_jobs", "furnish_project")]
+    assert acts() == []                                          # first look: progress noted
+    s["date"]["tick"] += 28 * 1200
+    got = acts()
+    assert {"type": "free_dig_jobs", "project_id": 170} in got and {"type": "free_dig_jobs", "project_id": 173} in got, got
+    assert not [a for a in acts() if a["type"] == "free_dig_jobs"], "let go once"
+    s["date"]["tick"] += 28 * 1200
+    got = acts()
+    assert got == [{"type": "furnish_project", "project_id": 170, "stalled": True}], got   # 0 of 89: not furnished
+    s["projects"]["open"][0]["dig"]["dug"] = 236                  # progress: the clock starts again
+    assert acts() == []
+
+
+@test("idle blocks (0.104.110): capped at 500, and only from stone the masons may use")
+def _():
+    s = fort()
+    s["dwarves"]["idle_adults"] = s["dwarves"]["adults"]
+    s["stocks"]["boulders"], s["stocks"]["blocks"] = 400, 100
+    s["stone_use"] = {"usable": 2, "economic": {}}
+    idle = lambda: [x for x in plan(copy.deepcopy(s), Memory())[0] if x.action.get("recipe") == "stone_blocks" and x.rule == "idle"]
+    assert not idle(), "2 usable boulders: no blocks"
+    s["stone_use"]["usable"] = 300
+    assert idle()
+    s["stocks"]["blocks"] = 600
+    assert not idle(), "past the cap"
+
+
 @test("projects: waiting furniture gets ordered once (not while an order is queued)")
 def _():
     s = fort()

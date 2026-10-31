@@ -41,6 +41,7 @@ PLANNER_CONFIG = {
     "glass_sand_bags": 3,          # bags of sand kept filled
     "precious_crafts_bars": 10,    # bars of a precious metal kept back before crafts are made of it
     "min_boulders_for_blocks": 100,
+    "blocks_cap": 500,                 # (0.104.110) idle hands never make blocks past this many
     "alert_quiet_cycles": 3,       # quiet cycles before the AI lowers its own alert
     # (0.104.100) ...and game days since a threat last could reach the dwarves, and
     # since a great danger (titan, beast) was last on the surface or in reach: the
@@ -354,6 +355,8 @@ PLANNER_CONFIG = {
     "crossing_refine_citizens": 30,    # a wider bridge once the fort has this many dwarves
     "crossing_refine_wealth": 20000,   # ...and this much wealth
     "crossing_cooldown_ticks": 14 * 1200,
+    "dig_stall_days": 28,              # (0.104.110) no tile dug on a level this long: its dig jobs let go of their workers
+    "dig_stall_furnish_days": 56,      # ... and a level 90%+ dug is furnished without its last tiles
     "slow_dig_days": 336,              # (0.104.12) a project under half dug in a game year is given up
     "statue_wait_days": 56,            # (0.104.12) a level waiting only for statues (no stone) this long is finished
     "statue_wait_days_any": 112,         # (0.104.33) a level finished without its statues after this long, stone or not
@@ -535,6 +538,7 @@ class Memory:
     maintain_pop: int | None = None                      # Maintain: the population being kept
     last_expel_tick: int | None = None                   # when a dwarf was last sent away
     last_join_tick: int | None = None                    # (0.104.108) when areas on a level were last looked at for joining
+    dig_seen: dict = field(default_factory=dict)         # (0.104.110) project id -> {"dug", "tick" (last progress), "freed"}
     join_wait_days: int = 2                              # (0.104.108) days to the next look (longer once all were seen)
     culture: dict = field(default_factory=dict)          # culture history (see culture.py)
     culture_pushed: str = ""                              # what was last written into the save

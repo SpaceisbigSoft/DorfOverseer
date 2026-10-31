@@ -13,7 +13,7 @@ from quirks import has_rule
 from digest import _d, _l, normalize
 from planner_core import *  # noqa: F401,F403
 
-__all__ = ["magma_access", "GROWTH", "GROWTH_EXTRA_SCORE", "GROWTH_MAX", "growth_want", "growth_candidates", "TRAIT_NAMES_SHORT", "FURNITURE_RECIPES", "METAL_FURNITURE", "spare_metal", "WOODEN_FURNITURE", "BASIC_WORKSHOPS", "BASIC_STOCKPILES", "memorial_due", "_well_rule", "_water_zone_rule", "cavern_well_need", "cavern_well_safe", "WELL_PARTS_SHOPS", "well_parts_plan", "_well_parts", "_room_repair_rule", "_water_traffic_rule", "_cleanup_rule", "STORE_GROW", "stone_tidiness", "jail_plan", "cistern_pop", "tavern_factor", "full_stores", "LEARNING_NEEDS", "_stairwell_rule", "WATER_WORDS", "water_summary", "_water_rules", "CISTERN_WORDS", "_cistern_parts", "_cistern_rule", "_deep_notes", "good_times", "ORDINALS", "garden_name", "_pop_cap_rule", "fort_strain", "_join_rule", "_shrink_rule", "room_size", "_project_rules", "more_temple", "LADDER_BASE", "LADDER_TRAITS", "_ladder_kind", "_ladder_word", "ladder_score", "tombs_short"]
+__all__ = ["magma_access", "GROWTH", "GROWTH_EXTRA_SCORE", "GROWTH_MAX", "growth_want", "growth_candidates", "TRAIT_NAMES_SHORT", "FURNITURE_RECIPES", "METAL_FURNITURE", "spare_metal", "WOODEN_FURNITURE", "BASIC_WORKSHOPS", "BASIC_STOCKPILES", "memorial_due", "_well_rule", "_water_zone_rule", "cavern_well_need", "cavern_well_safe", "WELL_PARTS_SHOPS", "well_parts_plan", "_well_parts", "_room_repair_rule", "_water_traffic_rule", "_cleanup_rule", "STORE_GROW", "stone_tidiness", "jail_plan", "cistern_pop", "tavern_factor", "full_stores", "LEARNING_NEEDS", "_stairwell_rule", "WATER_WORDS", "water_summary", "_water_rules", "CISTERN_WORDS", "_cistern_parts", "_cistern_rule", "_deep_notes", "good_times", "ORDINALS", "garden_name", "_pop_cap_rule", "fort_strain", "_join_rule", "_dig_stall_rule", "_shrink_rule", "room_size", "_project_rules", "more_temple", "LADDER_BASE", "LADDER_TRAITS", "_ladder_kind", "_ladder_word", "ladder_score", "tombs_short"]
 
 
 # Furniture waiting in a project -> the recipe that makes it.
@@ -782,6 +782,48 @@ def _pop_cap_rule(s: dict, memory, cfg: dict, citizens: int, proposals: list, no
                                   f"-> {cap} (strict {strict})", 4))
 
 
+def _dig_stall_rule(s: dict, memory, cfg: dict, open_: list, proposals: list) -> None:
+    """(0.104.110, the 38-year soak) Teacheroar's tomb level sat at 235 of 240
+    tiles for three game years ("5 being dug") and a bedroom level at 0 of 89
+    for one, and with only two building slots nothing new was started from
+    y76. A level with no tile dug for dig_stall_days: its dig jobs let go of
+    their workers (a dwarf who took one and then lay in the hospital held it);
+    still nothing after dig_stall_furnish_days and 90%+ dug: furnished
+    without the last tiles."""
+    now = abs_tick(s)
+    seen = memory.dig_seen if isinstance(memory.dig_seen, dict) else {}
+    memory.dig_seen = seen
+    live = set()
+    for p in open_:
+        if p.get("phase") != "dig" or not isinstance(p.get("id"), int):
+            continue
+        dig = _d(p.get("dig"))
+        dug, total = int(dig.get("dug") or 0), int(dig.get("total") or 0)
+        if total <= 0:
+            continue
+        k = str(p["id"])
+        live.add(k)
+        rec = seen.get(k)
+        if not isinstance(rec, dict) or rec.get("dug") != dug:
+            seen[k] = {"dug": dug, "tick": now}
+            continue
+        days = (now - int(rec.get("tick") or now)) // TICKS_PER_DAY
+        what = f"the {p.get('kind')} level (project {p['id']})"
+        jobs = "; ".join(str(w) for w in _l(dig.get("waiting"))[:3])
+        if days >= cfg["dig_stall_furnish_days"] and dug >= 0.9 * total and dug < total:
+            proposals.append(Proposal("project", {"type": "furnish_project", "project_id": p["id"], "stalled": True},
+                                      f"{what}: {dug} of {total} tiles dug and none for {days} days"
+                                      + (f" ({jobs})" if jobs else "") + ": furnish it without the last ones", 3))
+        elif days >= cfg["dig_stall_days"] and int(dig.get("digging") or 0) > 0 and not rec.get("freed"):
+            proposals.append(Proposal("dig_jobs", {"type": "free_dig_jobs", "project_id": p["id"]},
+                                      f"{what}: no tile dug for {days} days though {dig.get('digging')} are "
+                                      "taken" + (f" ({jobs})" if jobs else "") + ": let other miners take them", 3))
+            rec["freed"] = now
+    for k in list(seen):
+        if k not in live:
+            del seen[k]
+
+
 def _join_rule(s: dict, memory, cfg: dict, proposals: list) -> None:
     """(0.104.108, phase 12g; the player's findings after 38 years) Areas
     side by side on one level met only through the stairs, and corridors
@@ -886,6 +928,8 @@ def _project_rules(s, traits, cfg, proposals, notes, can_use, memory) -> None:
                 else:
                     ask_player(notes, f"{what}: {dig['stuck']} tiles are no longer designated, so it won't "
                                  "finish (cancel it, or re-designate them)")
+
+    _dig_stall_rule(s, memory, cfg, open_, proposals)
 
     # (0.104.12) projects that hold a building slot for good: a dig that has
     # crept (under half dug in slow_dig_days: Enxah's cavern well, 2 of 24
