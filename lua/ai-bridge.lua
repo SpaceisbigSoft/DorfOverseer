@@ -34,7 +34,7 @@
 local json = require('json')
 local utils = require('utils')
 
-BRIDGE_VERSION = '0.104.124'
+BRIDGE_VERSION = '0.104.125'
 PROTOCOL = 1 -- bump when the report's shape changes in a breaking way
 
 local OUT_DIR = dfhack.getDFPath() .. '/dfhack-config/ai-overseer'
@@ -3008,6 +3008,16 @@ function order_jobs(ids)
                             local okw, wt = pcall(function() return df.workshop_type[b.type] end)
                             e.at = (okw and wt) and (bt .. ':' .. wt) or bt
                             e.at_id = b.id
+                            -- (0.104.125) the workshop's worker profile: Teacheroar's
+                            -- rope and cloth jobs waited 41 days with 175 dwarves
+                            -- holding the labour (who may work there?)
+                            pcall(function()
+                                local pr = b.profile
+                                local n = #pr.permitted_workers
+                                if n > 0 then e.permitted = n end
+                                if (pr.min_level or 0) > 0 then e.min_skill = pr.min_level end
+                                if pr.max_level and pr.max_level < 3000 then e.max_skill = pr.max_level end
+                            end)
                         end
                         local okl, lab = pcall(dfhack.job.getSpecificLabor, j)
                         if okl and lab and lab ~= -1 then e.labor = df.unit_labor[lab] end

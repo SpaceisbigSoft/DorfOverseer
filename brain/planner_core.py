@@ -960,7 +960,13 @@ def order_job_state(o: dict) -> str:
         return f"its job is suspended at the workshop ({j.get('suspended')} of {j.get('n')})"
     if (j.get("working") or 0) > 0:
         return "a dwarf is on it now"
-    return f"{j.get('n')} job(s) wait at the workshop for a worker with the labour"
+    who = []
+    if j.get("permitted"):                       # (0.104.125) the workshop's worker profile
+        who.append(f"only {j['permitted']} named dwarf(s) may work there")
+    if j.get("min_skill") or j.get("max_skill"):
+        who.append(f"its workers' skill is limited to {j.get('min_skill') or 0}-{j.get('max_skill') or 'any'}")
+    return (f"{j.get('n')} job(s) wait at the workshop for a worker with the labour"
+            + (f" ({'; '.join(who)})" if who else ""))
 
 
 def masons_jammed(s: dict) -> int:
