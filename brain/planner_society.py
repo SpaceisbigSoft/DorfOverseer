@@ -13,7 +13,7 @@ from quirks import has_rule
 from digest import _d, _l, normalize
 from planner_core import *  # noqa: F401,F403
 
-__all__ = ["_doctor_patient_rule", "MOOD_WORKSHOPS", "PETITION_KINDS", "petition_orders_wanted", "_petition_rules", "_jail_size_rule", "_convict_rule", "_sync_offices_rule", "patient_waits", "_health_rules", "TANTRUM_KEEP", "note_tantrums", "_noble_rooms_rule", "outsider_orders", "NEED_ADVICE", "JEWEL_RECIPES", "_recreation_rule", "_stress_care", "_needs_notes", "_location_supply_rules", "POST_LABORS", "STAFF_POSTS", "STAFF_MAX", "_traction_rule", "_wish_words", "_wish_met", "wish_key", "_location_petition_rules", "_meeting_notes", "_grandeur_rule", "_location_value_rule", "_staff_rule", "_quick_location_rule", "_needs_rules", "_mood_rules", "mood_item_text", "_mood_materials", "_dead_notes", "AI_OFFICES", "_society_notes"]
+__all__ = ["_doctor_patient_rule", "MOOD_WORKSHOPS", "PETITION_KINDS", "petition_orders_wanted", "_petition_rules", "_jail_size_rule", "_convict_rule", "_break_fights_rule", "_sync_offices_rule", "patient_waits", "_health_rules", "TANTRUM_KEEP", "note_tantrums", "_noble_rooms_rule", "outsider_orders", "NEED_ADVICE", "JEWEL_RECIPES", "_recreation_rule", "_stress_care", "_needs_notes", "_location_supply_rules", "POST_LABORS", "STAFF_POSTS", "STAFF_MAX", "_traction_rule", "_wish_words", "_wish_met", "wish_key", "_location_petition_rules", "_meeting_notes", "_grandeur_rule", "_location_value_rule", "_staff_rule", "_quick_location_rule", "_needs_rules", "_mood_rules", "mood_item_text", "_mood_materials", "_dead_notes", "AI_OFFICES", "_society_notes"]
 
 
 # A crafting mood's skill -> the workshop (or furnace) the dwarf must claim.
@@ -145,6 +145,27 @@ def _convict_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> N
     proposals.append(Proposal("convict", {"type": "convict", "max": k},
                               f"{n} solved case(s) wait for a trial nobody gives (DF sentences only convicted ones): "
                               f"convict {k}, the oldest first ({free} free jail place(s), {queued_} punishment(s) waiting)", 4))
+
+
+def _break_fights_rule(s: dict, memory, cfg: dict, proposals: list) -> None:
+    """(0.104.139, phase 11) The fort's own killing each other: DF's
+    conflicts draw friends and kin in and turn lethal (Teacheroar, 27-31 Oct:
+    460 citizens killed by citizens, 25 -> 144 a day, 356 strangled, a third
+    in the hospital; no crime recorded, so justice can't reach it). While a
+    citizen killed by a citizen is this recent, or tantrums come thick,
+    DFHack's fix/loyaltycascade breaks the fights up (a tenth of a day at most)."""
+    now = abs_tick(s)
+    recent = [t for t in _l(getattr(memory, "fight_deaths", None))
+              if isinstance(t, int) and 0 <= now - t < cfg["break_fights_days"] * TICKS_PER_DAY]
+    tn = tantrums_recent(s, memory)
+    if recent:
+        why = f"{len(recent)} citizen(s) killed by citizens in {cfg['break_fights_days']} days"
+    elif tn >= cfg["crisis_tantrums"]:
+        why = f"{tn} tantrums in 28 days (their fights spread and turn lethal)"
+    else:
+        return
+    proposals.append(Proposal("break_fights", {"type": "break_fights"},
+                              f"{why}: break up the fights among the fort's own (DFHack fix/loyaltycascade)", 0))
 
 
 def _jail_size_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> None:
@@ -371,7 +392,7 @@ NEED_ADVICE = {
 JEWEL_RECIPES = ("stone_amulet", "stone_bracelet", "stone_ring", "stone_earring")
 
 
-def _recreation_rule(s: dict, cfg: dict, worst: list, proposals: list | None) -> None:
+def _recreation_rule(s: dict, cfg: dict, worst: list, proposals: list | None, memory=None) -> None:
     """(0.104.78) The recreation burrow (players' cure for dwarves too busy to
     meet their needs): the very unhappy and miserable civilians moved into a
     burrow over the taverns, temples, library, dining halls, bedrooms and food
@@ -396,8 +417,17 @@ def _recreation_rule(s: dict, cfg: dict, worst: list, proposals: list | None) ->
     # set for forts of 50 (Teacheroar: 221 dwarves, 85 badly wanting friends)
     friends = (min(10, max(cfg["recreation_friends"], lonely // 5))
                if lonely > 0 and int(bwf.get("badly") or 0) >= cfg["recreation_friends_share"] * citizens else 0)
+    # (0.104.139) while the fort's own are killing each other, no crowd of the
+    # unhappiest packed together (Teacheroar: 20 in the burrow, the fights
+    # spread through the halls): the base few, and no extra for friends
+    now_ = abs_tick(s)
+    fighting = any(isinstance(t, int) and 0 <= now_ - t < cfg["break_fights_days"] * TICKS_PER_DAY
+                   for t in _l(getattr(memory, "fight_deaths", None)))
+    if fighting:
+        friends = 0
     if low or members or friends:
-        action = {"type": "recreation", "max": min(30, max(cfg["recreation_max"], citizens // 20)),
+        cap = cfg["recreation_max"] if fighting else min(30, max(cfg["recreation_max"], citizens // 20))
+        action = {"type": "recreation", "max": cap,
                   "days": cfg["recreation_days"]}
         if friends:
             action.update(friends=friends, friend_days=cfg["recreation_friend_days"])
@@ -474,7 +504,7 @@ def _needs_notes(s: dict, cfg: dict, notes: list, proposals: list | None = None,
     miserable = [x for x in worst if x.get("stress") == "miserable"]
     _stress_care(s, cfg, worst, proposals, memory)
     _soldier_swap(s, cfg, proposals, memory)
-    _recreation_rule(s, cfg, worst, proposals)
+    _recreation_rule(s, cfg, worst, proposals, memory)
     # (0.104.133) the full counts (the list keeps the worst 8: "8 miserable" was
     # said with 94 miserable and 48 very unhappy)
     stress = _d(_d(s.get("dwarves")).get("stress"))

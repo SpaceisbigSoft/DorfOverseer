@@ -13,7 +13,7 @@ RECOVERY_RULES = {
     "burial", "tombs_ghosts", "slabs", "slabs_free", "coffins", "hospital", "doctor_patient", "staff",
     "stress_care", "soap", "cloth", "needs_craft", "needs_shops", "needs_trinkets", "trinket_orders", "needs_finery",
     "needs_drink", "needs_meal", "good_cooks", "recreation", "tavern", "tavern_chest", "temple_chest",
-    "tavern_urgent", "jail_urgent", "jail_size", "jail_more", "convict", "mood", "rooms", "drink", "drink_fruit",
+    "tavern_urgent", "jail_urgent", "jail_size", "jail_more", "break_fights", "convict", "mood", "rooms", "drink", "drink_fruit",
     "food", "farms", "kitchen", "water", "well", "well_parts", "pop_cap", "dig_first", "fat_ban",
     "labor", "stone",
 }
@@ -41,7 +41,10 @@ def note_deaths(state: dict, memory, events: list) -> int:
                 and not e.get("again") and not e.get("ghost")):
             memory.deaths_seen.append(now)
             n += 1
+            if e.get("killer_kind") == "citizen":
+                memory.fight_deaths.append(now)            # (0.104.139) killed by one of their own
     memory.deaths_seen = [t for t in memory.deaths_seen if isinstance(t, int) and 0 <= now - t < 84 * TICKS_PER_DAY][-500:]
+    memory.fight_deaths = [t for t in memory.fight_deaths if isinstance(t, int) and 0 <= now - t < 28 * TICKS_PER_DAY][-500:]
     return n
 
 

@@ -2028,6 +2028,11 @@ def _():
     assert w and w[0].action == {"type": "restrict_water", "levels": [168], "x": 98, "y": 88, "radius": 60} and w[0].priority == 6, w
     s["dead"] = dict(s.get("dead") or {}, deaths={"by_cause": {"DROWN": 1, "SUFFOCATE": 5}})
     assert by_rule(plan(s, Memory())[0], "water_traffic")[0].priority == 2
+    # (0.104.139) every level of a body; strangling isn't drowning
+    s["water"]["bodies"] = [{"kind": "surface", "z1": 168, "z2": 170}]
+    s["dead"] = dict(s.get("dead") or {}, deaths={"by_cause": {"SUFFOCATE": 50}})
+    w = by_rule(plan(s, Memory())[0], "water_traffic")
+    assert w and w[0].action["levels"] == [170, 169, 168] and w[0].priority == 6, w
     s["water"]["bodies"] = [{"kind": "cavern", "z1": 114, "z2": 140}]
     assert not by_rule(plan(s, Memory())[0], "water_traffic")
 
@@ -2483,6 +2488,75 @@ def _():
     assert not by_rule(p, "squad_attack")
 
 
+@test("fight or hide (0.104.139): breath or dust and flight weigh; forgotten beasts their own kind; no flip-flop; no refills mid-fight")
+def _():
+    from planner_military import threat_power, fight_key
+    small = {"size": 100_000, "kinds": ["ForgottenBeast"]}
+    plain = threat_power(small)
+    assert abs(threat_power(dict(small, abilities=2)) - plain * 2) < 1e-6
+    assert abs(threat_power(dict(small, abilities=2, flier=True)) - plain * 3) < 1e-6
+    assert fight_key({"kinds": ["Undead", "ForgottenBeast"]}) == "ForgottenBeast"
+
+    def beast(power):
+        s = under_attack(great=True, n=1)
+        s["others_on_map"]["threats"][0].update(kinds=["ForgottenBeast"], size=100_000, abilities=1)
+        for q in s["military"]["squads"]:
+            q["power"] = {"power": power, "armored": 5, "skill": 5}
+        s["military"]["soldiers"] = 20
+        return s
+    # (8 + 2*sqrt(1.67)) * 1.3 * 2 = 27.5; 2 squads: 2 x 20 = 40 < 55: hide (by size alone it was 13.7: go)
+    p, notes = plan(beast(20), Memory())
+    assert not by_rule(p, "squad_attack") and any("hide behind the gates" in n for n in notes), notes
+    m = Memory()
+    plan(beast(30), m)                                       # 60 >= 55: go, the fight begins
+    assert m.fight and m.fight["keys"] == ["ForgottenBeast"], m.fight
+    p, notes = plan(beast(22), m)                            # 44: under 2.0, over 1.5: the fight goes on
+    assert by_rule(p, "squad_attack") or any("the squads go" in n for n in notes), notes
+    s = beast(30)
+    s["military"]["soldiers"] = 5                            # short of the target, mid-fight: no refill
+    p, notes = plan(s, m)
+    assert not by_rule(p, "squad_fill") and any("filled once the fight is over" in n for n in notes), notes
+
+
+@test("reach (0.104.139): a flier in the air near the dwarves, or a building destroyer by the door, can reach them")
+def _():
+    s = under_attack(n=1)
+    th = s["others_on_map"]["threats"][0]
+    th.update(can_reach_dwarves=None, flier=True, distance_to_nearest_dwarf=12)
+    s["others_on_map"]["threats_that_can_reach_dwarves"] = 0
+    assert by_rule(plan(copy.deepcopy(s), Memory())[0], "squad_attack")
+    th.update(distance_to_nearest_dwarf=80)
+    assert not by_rule(plan(copy.deepcopy(s), Memory())[0], "squad_attack")
+    th.update(flier=None, can_reach_dwarves=False, destroyer=True, distance_to_nearest_dwarf=10)
+    assert by_rule(plan(copy.deepcopy(s), Memory())[0], "squad_attack")
+
+
+@test("break fights (0.104.139): a citizen killed by a citizen -> fix/loyaltycascade; quiet again -> no more")
+def _():
+    import crisis
+    s = fort()
+    m = Memory()
+    crisis.note_deaths(s, m, [{"kind": "death", "own_civ": True, "killer_kind": "citizen", "cause": "SUFFOCATE"},
+                              {"kind": "death", "own_civ": True, "killer_kind": "ghost"}])
+    assert len(m.fight_deaths) == 1, m.fight_deaths
+    b = by_rule(plan(copy.deepcopy(s), m)[0], "break_fights")
+    assert b and b[0].action == {"type": "break_fights"} and b[0].priority == 0, b
+    later = copy.deepcopy(s)
+    later["date"]["tick"] += 4 * TICKS_PER_DAY
+    assert not by_rule(plan(later, m)[0], "break_fights")
+
+
+@test("held off (0.104.139): an evil land's undead on the surface don't hold the gates shut; invaders and great ones do")
+def _():
+    from planner_core import held_off_threats
+    s = fort()
+    s["others_on_map"]["threats"] = [{"id": 1, "kinds": ["Undead"], "layer": "upper_levels", "can_reach_dwarves": False}]
+    assert held_off_threats(s) == []
+    s["others_on_map"]["threats"].append({"id": 2, "invader": True, "can_reach_dwarves": False})
+    s["others_on_map"]["threats"].append({"id": 3, "kinds": ["Undead"], "great_danger": True, "layer": "upper_levels"})
+    assert [x["id"] for x in held_off_threats(s)] == [2, 3]
+
+
 @test("gate guard (0.104.83): invaders on the map out of reach -> the able squads hold the main gate; then kill orders")
 def _():
     s = under_attack()
@@ -2642,7 +2716,12 @@ def _():
     assert not parts(s)
     s["entrances"]["parts"].update(hatch_covers=2, hatch_covers_held=0)   # covers free, waited a month
     _, notes = plan(copy.deepcopy(s), Memory())[:2]
-    assert not parts(s) and any("hatch cover planned" in n and "suspended" in n for n in notes), notes
+    # (0.104.139) the free ones may be heirlooms the game won't use: one more is made after the wait
+    got = parts(s)
+    assert [(p.action["recipe"], p.action["amount"]) for p in got] == [("stone_hatch_cover", 1)], got
+    assert any("hatch cover planned" in n and "suspended" in n for n in notes), notes
+    s["entrances"]["entrances"][0]["closing_days"] = 3
+    assert not parts(s)                                              # not before the wait
     del s["entrances"]["parts"]                                      # an older bridge: nothing guessed
     assert not parts(s)
 
@@ -4151,6 +4230,12 @@ def _():
     r = by_rule(plan(s, Memory())[0], "recreation")
     assert r and r[0].action.get("friends") == 5 and r[0].action.get("friend_days") == 7, r   # (0.104.137) 25 // 5
     assert "25 civilian(s) badly wanting friends" in r[0].reason, r[0].reason
+    # (0.104.139) while the fort's own kill each other: no crowd, no places for friends
+    f = copy.deepcopy(s)
+    f["society"] = dict(f.get("society") or {}, recreation={"members": 3})
+    m = Memory(fight_deaths=[abs_tick(f)])
+    r = by_rule(plan(f, m)[0], "recreation")
+    assert r and "friends" not in r[0].action and r[0].action["max"] == 8, r
     s["needs"]["needs"]["BeWithFriends"] = {"badly": 10, "badly_soldiers": 2}
     assert not by_rule(plan(s, Memory())[0], "recreation")       # under a fifth, nobody low, nobody in
 

@@ -304,12 +304,17 @@ def _water_traffic_rule(s: dict, proposals: list) -> None:
     mid = _d(w.get("middle"))
     if not mid or not isinstance(mid.get("x"), int) or not isinstance(mid.get("z_high"), int):
         return
-    levels = sorted({int(b["z2"]) for b in _l(w.get("bodies")) if isinstance(b, dict)
-                     and isinstance(b.get("z2"), int) and b["z2"] >= mid["z_high"] - 4})[:6]
+    # (0.104.139) every level the water spans (z1..z2), not its top only: the
+    # pond by Teacheroar's main stair is z168-170, and 32 drowned at z168
+    levels = sorted({z for b in _l(w.get("bodies")) if isinstance(b, dict)
+                     and isinstance(b.get("z2"), int) and b["z2"] >= mid["z_high"] - 4
+                     for z in range(int(b["z1"] if isinstance(b.get("z1"), int) else b["z2"]), int(b["z2"]) + 1)},
+                    reverse=True)[:6]
     if not levels:
         return
     deaths = _d(_d(_d(s.get("dead")).get("deaths")).get("by_cause"))
-    drowned = int(deaths.get("DROWN") or 0) + int(deaths.get("SUFFOCATE") or 0)
+    # (0.104.139) drowning only: SUFFOCATE is strangling (356 of Teacheroar's were)
+    drowned = int(deaths.get("DROWN") or 0)
     proposals.append(Proposal("water_traffic", {"type": "restrict_water", "levels": levels, "x": mid["x"],
                                                 "y": mid["y"], "radius": 60},
                               ("dwarves drowned this year or last (" + str(drowned) + "): " if drowned else "")

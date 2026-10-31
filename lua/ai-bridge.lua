@@ -34,7 +34,7 @@
 local json = require('json')
 local utils = require('utils')
 
-BRIDGE_VERSION = '0.104.138'
+BRIDGE_VERSION = '0.104.139'
 PROTOCOL = 1 -- bump when the report's shape changes in a breaking way
 
 local OUT_DIR = dfhack.getDFPath() .. '/dfhack-config/ai-overseer'
@@ -2552,7 +2552,7 @@ function get_others_on_map()
                     out.threats_that_can_reach_dwarves = out.threats_that_can_reach_dwarves + 1
                 end
                 local kinds = {}
-                for _, f in ipairs({'Undead', 'Megabeast', 'SemiMegabeast', 'NightCreature', 'Titan', 'Demon'}) do
+                for _, f in ipairs({'ForgottenBeast', 'Undead', 'Megabeast', 'SemiMegabeast', 'NightCreature', 'Titan', 'Demon'}) do
                     local okk, yes = pcall(function() return dfhack.units['is' .. f](u) end)
                     if okk and yes then table.insert(kinds, f) end
                 end
@@ -2570,6 +2570,22 @@ function get_others_on_map()
                     layer = layer_at(pos, layers),
                     can_reach_dwarves = reach,
                     flier = flier,
+                    -- (0.104.139, phase 11) what size alone doesn't say: breath,
+                    -- dust, webs and the like (its caste's interactions), and
+                    -- whether it breaks buildings (a door doesn't hold it)
+                    abilities = (function()
+                        local okc, n = pcall(function()
+                            return #df.creature_raw.find(u.race).caste[u.caste].body_info.interactions
+                        end)
+                        return (okc and n and n > 0) and n or nil
+                    end)(),
+                    destroyer = (function()
+                        local okc, v = pcall(function()
+                            local c = df.creature_raw.find(u.race).caste[u.caste]
+                            return c.flags.BUILDINGDESTROYER or (c.misc and (c.misc.building_destroyer or 0) > 0)
+                        end)
+                        return (okc and v) and true or nil
+                    end)(),
                     levels_from_nearest_dwarf = dz,
                     distance_to_nearest_dwarf = dist,
                 })
@@ -2700,9 +2716,18 @@ function death_details(ev, id)
     local inc = df.incident.find(u.counters.death_id)
     if not inc then return end
     ev.cause = df.death_type[inc.death_cause] or tostring(inc.death_cause)
+    -- (0.104.139) how far the fight had gone (Brawl, Lethal, NoQuarter), and
+    -- whether the dead was a patient: what each killing was
+    pcall(function() ev.conflict = df.conflict_level[inc.conflict_level] or tostring(inc.conflict_level) end)
+    pcall(function() if u.health and u.health.flags.needs_healthcare then ev.patient = true end end)
     local k = inc.criminal ~= -1 and df.unit.find(inc.criminal) or nil
     if k then
         ev.killer = txt(dfhack.units.getReadableName(k))
+        ev.killer_id = k.id
+        pcall(function()
+            local m = df.soldier_mood_type and df.soldier_mood_type[k.counters.soldier_mood]
+            if m and m ~= 'None' then ev.killer_mood = m end
+        end)
         local okg, ghost = pcall(dfhack.units.isGhost, k)
         ev.killer_kind = (okg and ghost) and 'ghost'
             or dfhack.units.isGreatDanger(k) and 'great beast'
@@ -5097,6 +5122,24 @@ end
 -- items: DFHack's deteriorate for non-entombed corpses and body parts nobody
 -- can craft with (its defaults). Usable parts (bones, hair, wool) and food are
 -- left alone; entombed dead are never touched. Stays on in this save.
+-- (0.104.139, phase 11) Fights among the fort's own: DF's conflicts drag
+-- friends and kin in and turn lethal (Teacheroar: 460 citizens killed by
+-- citizens in five days, 356 strangled, 87% within a minute of another
+-- death, none of it a crime). DFHack's fix/loyaltycascade (51.11+) takes the
+-- citizens out of their conflicts and clears their enemy marks.
+function act_break_fights(a)
+    if not dfhack.findScript('fix/loyaltycascade') then
+        return {ok = false, rejected = true, error = 'this DFHack has no fix/loyaltycascade'}
+    end
+    if a.dry_run then return {ok = true, dry_run = true} end
+    local output, rv = dfhack.run_command_silent('fix/loyaltycascade')
+    output = tostring(output or ''):gsub('%s+$', '')
+    if rv ~= CR_OK then return {ok = false, error = 'fix/loyaltycascade failed: ' .. output:sub(1, 200)} end
+    local n = 0
+    for _ in output:gmatch('[^\n]+') do n = n + 1 end
+    return {ok = true, lines = n, report = output:sub(1, 400)}
+end
+
 function act_prune_remains(a)
     if not dfhack.findScript('deteriorate') then
         return {ok = false, error = 'DFHack has no deteriorate script in this version'}
@@ -5807,6 +5850,7 @@ ACTIONS = {
     farm_thresholds = act_farm_thresholds,
     kitchen_brewables = act_kitchen_brewables,   -- (0.100) cooking keeps brewables while drink is short
     unstick_uniforms = act_unstick_uniforms,
+    break_fights = act_break_fights,
     free_stray_gear = act_free_stray_gear,   -- (0.104.58)
     assign_weapons = act_assign_weapons,     -- (0.104.60)
     trim_gathering = act_trim_gathering,

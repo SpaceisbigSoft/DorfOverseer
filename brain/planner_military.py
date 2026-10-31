@@ -201,12 +201,18 @@ def _gate_parts_rule(s: dict, ent: dict, es: list, off: int, proposals: list, no
                 w = want.setdefault(what, [0, where])
                 w[0] += n
             elif isinstance(e.get("closing_days"), int) and e["closing_days"] >= GATE_PART_STUCK_DAYS:
+                # (0.104.139) the "free" one may be one the game won't use (an
+                # heirloom): one more is made all the same, and you're told
+                w = want.setdefault(what, [0, where])
+                w[0] += n
                 ask_player(notes, f"a {word} planned at {where} has waited {e['closing_days']} days though "
-                                  f"{free} {word}(s) are free: check its job isn't suspended or the spot blocked")
+                                  f"{free} {word}(s) are free: one more is made; check its job isn't suspended "
+                                  "or the spot blocked")
     for what, (n, where) in want.items():
         field, recipe, word = GATE_PART_RECIPES[what]
         held = parts.get(field + "_held") or 0
         need = min(4, n - held) if isinstance(held, int) else n
+        need = max(need, 1) if (parts.get(field) or 0) > 0 else need    # (the stuck case above: one)
         if need > 0 and not queued(s, {recipe}):
             proposals.append(Proposal("gate_parts", {"type": "work_order", "recipe": recipe, "amount": need},
                                       f"the {word} planned at {where} waits for a {word} the fort doesn't have: "
@@ -216,18 +222,31 @@ def _gate_parts_rule(s: dict, ent: dict, es: list, off: int, proposals: list, no
 # (0.104.118, phase 11) Fight or hide. A great danger's strength: GREAT_BASE,
 # and more for its size (a dwarf is about 60,000; a titan millions); by kind.
 GREAT_BASE = 8.0
-GREAT_KIND = {"Megabeast": 1.5, "Demon": 1.5, "Titan": 1.2, "SemiMegabeast": 1.0, "Undead": 0.8}
+GREAT_KIND = {"Megabeast": 1.5, "Demon": 1.5, "Titan": 1.2, "ForgottenBeast": 1.3, "SemiMegabeast": 1.0,
+              "Undead": 0.8}
+# (0.104.139) what size doesn't say: a breath, deadly dust or webs (its
+# caste's interactions) kills whole squads; a flier picks its fights
+GREAT_ABILITY = 2.0
+GREAT_FLIER = 1.5
 
 
 def threat_power(t: dict) -> float:
     size = t.get("size") if isinstance(t.get("size"), (int, float)) and t.get("size") > 0 else 60000 * 25
     mult = max([GREAT_KIND.get(k, 1.0) for k in _l(t.get("kinds"))] or [1.0])
+    if t.get("abilities"):
+        mult *= GREAT_ABILITY
+    if t.get("flier"):
+        mult *= GREAT_FLIER
     return (GREAT_BASE + 2 * math.sqrt(size / 60000)) * mult
 
 
 def fight_key(t: dict) -> str:
-    kinds = _l(t.get("kinds"))
-    return str(kinds[0]) if kinds else "beast"
+    kinds = [str(k) for k in _l(t.get("kinds"))]
+    # (0.104.139) the kind that says most first (forgotten beasts were all "beast")
+    for k in ("ForgottenBeast", "Titan", "Megabeast", "Demon", "SemiMegabeast", "Undead", "NightCreature"):
+        if k in kinds:
+            return k
+    return kinds[0] if kinds else "beast"
 
 
 def fight_or_hide(s: dict, memory, cfg: dict, great: list, able: list) -> tuple[bool, str]:
@@ -243,7 +262,11 @@ def fight_or_hide(s: dict, memory, cfg: dict, great: list, able: list) -> tuple[
         need += threat_power(t) * f
     ratio = army / max(1.0, need)
     words = f"squads {army:.0f} against {need:.0f}"
-    return ratio >= cfg["fight_ratio"], words
+    # (0.104.139) no flip-flop: a fight begun goes on unless the squads fall
+    # well short (three quarters of the bar); hiding ends only clearly above it
+    f = getattr(memory, "fight", None)
+    bar = cfg["fight_ratio"] * (0.75 if isinstance(f, dict) and f else 1.0)
+    return ratio >= bar, words
 
 
 def _note_fight(s: dict, memory, great: list) -> None:
@@ -726,7 +749,8 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
     targets = [i for i in reach if policy == "all" or (policy == "ordinary" and (not threats[i].get("great_danger")
                                                                                  or fight))]
     held_back = [i for i in reach if i not in targets]
-    if great and fight and policy == "ordinary" and not any(q.get("ai_orders") for q in able):
+    if great and fight and policy == "ordinary":
+        # (0.104.139) recorded even when the squads were already out at others
         _note_fight(s, memory, [threats[i] for i in great])
     if targets:
         for q in able:
@@ -1001,6 +1025,10 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
     if have < want and not rules_["fill_squads"]:
         notes.append(f"{have} soldiers, the fort wants {want}: raising and filling squads is off on the Rules tab "
                      "(yours to do)")
+    elif have < want and isinstance(getattr(memory, "fight", None), dict) and memory.fight:
+        # (0.104.139) no new soldiers mid-fight: the losses are read from the
+        # soldier count after it (refills hid them, and the beast was learned as weaker)
+        notes.append(f"{have} soldiers, the fort wants {want}: the squads are filled once the fight is over")
     elif have < want:
         open_ = [(q, min(9, (q.get("size") or 0) - 1) - max(0, (q.get("members") or 0) - (1 if q.get("leader") else 0)))
                  for q in squads]

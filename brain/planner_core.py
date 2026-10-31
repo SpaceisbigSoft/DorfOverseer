@@ -204,6 +204,9 @@ PLANNER_CONFIG = {
     "crisis_min_days": 14,                 # ...lasting at least this long
     "crisis_extra_actions": 5,             # ...recovery's extra action slots a cycle
     "convict_per_cycle": 3,            # (0.104.131) solved cases convicted a cycle...
+    "near_threat_tiles": 30,
+    "break_fights_days": 3,            # (0.104.139) a citizen killed by a citizen this recently: break the fights up
+    "break_fights_cooldown_ticks": 120,   # ...at most every tenth of a day while it goes on           # (0.104.139) a flier or destroyer this near reaches the dwarves
     "convict_check_after": 30,         # (0.104.138) convictions before asking whether they bring sentences...
     "convict_check_sentences": 3,      # ...at least this many more sentenced, else the rule rests
     "convict_rest_days": 84,
@@ -475,7 +478,7 @@ def steer_of(memory, rule: str, now: int) -> dict | None:
     return None
 STUCK_HOLD_EXEMPT = {"drink", "drink_fruit", "food", "well_parts"}   # (0.104.2) a well's parts: water for the injured     # (0.100.1) see select()
 # Also outside the limit: switching a squad's schedule (instant, undoable).
-LIMIT_EXEMPT = EMERGENCY | {"join_levels", "census", "train", "shelter", "entrances", "labor", "gather", "stuck_order", "alerts",
+LIMIT_EXEMPT = EMERGENCY | {"break_fights", "join_levels", "census", "train", "shelter", "entrances", "labor", "gather", "stuck_order", "alerts",
                             "kitchen"}   # (0.100) a kitchen setting, once per drink shortage: no slot of its own
 
 
@@ -567,6 +570,7 @@ class Memory:
     crisis: dict = field(default_factory=dict)          # (0.104.137) the fort in crisis: since, why
     deaths_seen: list = field(default_factory=list)     # (0.104.137) citizens' deaths (ticks), 12 weeks
     convict_watch: dict = field(default_factory=dict)   # (0.104.138) cases convicted, sentences then, held until
+    fight_deaths: list = field(default_factory=list)    # (0.104.139) citizens killed by citizens (ticks), 4 weeks
     gear_spare_since: dict = field(default_factory=dict)  # "weapons"/"body"/"helms" -> when 3+ spares sat unused
     swapped: dict = field(default_factory=dict)  # (0.104.78) unit id -> when the swap sent them home
     drafted: dict = field(default_factory=dict)  # (0.104.138) unit id -> when a fill or swap drafted them
@@ -762,6 +766,14 @@ def reachable_threats(s: dict, traits: dict, cfg: dict) -> list:
     o = s["others_on_map"]
     threats = o.get("threats") or []
     ids = [t.get("id") for t in threats if t.get("can_reach_dwarves") is True]
+    # (0.104.139) a flier in the air (its reach unknown) near the dwarves can
+    # reach them whatever DF's walk groups say; and a building destroyer near
+    # them isn't held by a shut door
+    ids += [t.get("id") for t in threats
+            if t.get("can_reach_dwarves") is not True and t.get("id") not in ids
+            and ((t.get("flier") and t.get("can_reach_dwarves") is None) or t.get("destroyer"))
+            and isinstance(t.get("distance_to_nearest_dwarf"), (int, float))
+            and t["distance_to_nearest_dwarf"] <= cfg["near_threat_tiles"]]
     unlisted = max(0, (o.get("threats_that_can_reach_dwarves") or 0) - len(ids))
     ids += [f"unlisted{i}" for i in range(unlisted)]
     if traits.get("caution", 0) >= 100:
@@ -807,8 +819,11 @@ def held_off_threats(s: dict) -> list:
     up on the surface. Cavern creatures that can't reach aren't counted (they
     never leave, and would keep the fort shut for good)."""
     o = _d(s.get("others_on_map"))
+    # (0.104.139) nor the undead an evil land raises on the surface (not
+    # invaders, never leaving): they kept the gates shut for good
     return [t for t in _l(o.get("threats")) if isinstance(t, dict) and t.get("can_reach_dwarves") is not True
-            and (t.get("invader") or t.get("layer") == "upper_levels")]
+            and (t.get("invader") or (t.get("layer") == "upper_levels"
+                                      and not ("Undead" in _l(t.get("kinds")) and not t.get("great_danger"))))]
 
 
 def _holding_off(s: dict, memory) -> bool:
@@ -1353,7 +1368,7 @@ AGENDA_THEMES = {
     "needs_drink": "keep the drink flowing", "needs_meal": "cook good meals", "needs_craft": "let dwarves craft",
     "food": "keep the fort fed", "farm": "farm", "hospital": "stock the hospital", "soap": "make soap",
     "feeder": "shorten the hauling", "labor": "put idle hands to work", "well": "find water for a well",
-    "stuck_order": "clear stuck work", "unsuspend": "resume suspended work", "stray_gear": "hand out lost gear", "assign_weapons": "arm the soldiers", "soldier_swap": "let the keen train", "temple_chest": "a chest for the temple", "instrument_orders": "clear the instrument backlog", "pair_chairs": "seat dwarves together", "recreation": "time off for the unhappiest", "dairy": "milk and cheese", "eggs": "nest boxes for the hens", "war_animals": "train war animals", "gate_guard": "hold the gate", "gate_dogs": "war dogs at the gate", "gem_cutting": "cut the rough gems", "stairwell": "a new stairwell", "animal_trainer": "an animal trainer", "nest_box_order": "make nest boxes", "library_chest": "a chest for the library", "orphan_jobs": "clear jobs whose order is gone", "slabs_free": "free the memorial slabs", "water_traffic": "keep paths off the ice", "jail_size": "a bigger jail", "jail_more": "another jail", "burial": "bury the dead", "rooms": "mend the rooms' walls", "coffins": "coffins for the tombs", "order_slots": "free the workshop's order slots", "fat_ban": "keep fat for soap", "jail_urgent": "a jail against the beatings", "tavern_urgent": "a tavern for company", "quarry": "quarry stone", "cloth": "weave cloth",
+    "stuck_order": "clear stuck work", "unsuspend": "resume suspended work", "stray_gear": "hand out lost gear", "assign_weapons": "arm the soldiers", "soldier_swap": "let the keen train", "temple_chest": "a chest for the temple", "instrument_orders": "clear the instrument backlog", "pair_chairs": "seat dwarves together", "recreation": "time off for the unhappiest", "dairy": "milk and cheese", "eggs": "nest boxes for the hens", "war_animals": "train war animals", "gate_guard": "hold the gate", "gate_dogs": "war dogs at the gate", "gem_cutting": "cut the rough gems", "stairwell": "a new stairwell", "animal_trainer": "an animal trainer", "nest_box_order": "make nest boxes", "library_chest": "a chest for the library", "orphan_jobs": "clear jobs whose order is gone", "slabs_free": "free the memorial slabs", "water_traffic": "keep paths off the ice", "jail_size": "a bigger jail", "jail_more": "another jail", "break_fights": "break up the fights among the fort's own", "burial": "bury the dead", "rooms": "mend the rooms' walls", "coffins": "coffins for the tombs", "order_slots": "free the workshop's order slots", "fat_ban": "keep fat for soap", "jail_urgent": "a jail against the beatings", "tavern_urgent": "a tavern for company", "quarry": "quarry stone", "cloth": "weave cloth",
 }
 
 

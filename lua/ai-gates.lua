@@ -739,6 +739,20 @@ function check()
     local ds = dangers()
     local outside = citizens_outside()
     for _, e in ipairs(GATES.entrances) do
+        for _, g in ipairs(e.equipment) do
+            local b = df.building.find(g.id)
+            if not b then
+                -- (0.104.139) a gate gone (Teacheroar's hatch 278, toppled in a
+                -- tantrum) left the entrance open until the weekly scan: scan again
+                GATES.scanned = false
+                GATES.gone = (GATES.gone or 0) + 1
+            elseif GATES.closed[e.id] and g.kind == 'bridge' and g.lever_id then
+                -- (0.104.139) closed, but the pull's job was lost: the bridge
+                -- is still down. Pulled again
+                local ok, raised = pcall(function() return b.gate_flags.raised end)
+                if ok and not raised and #b.jobs == 0 then pcall(pull, g.lever_id) end
+            end
+        end
         if not GATES.closed[e.id] and #e.equipment > 0 then
             local nearest = math.huge
             for _, p in ipairs(ds) do nearest = math.min(nearest, distance_to(e, p)) end
@@ -2112,8 +2126,12 @@ function gate_parts()
         pcall(function()
             for _, item in ipairs(df.global.world.items.other[tname]) do
                 local f = item.flags
+                -- (0.104.139) nor an artifact, an owned or carried one, or one
+                -- to melt: buildingplan won't take them (Teacheroar: an heirloom
+                -- hatch cover counted free, the hatch at x109 y38 waited 90 days)
                 if not (f.forbid or f.in_building or f.construction or f.removed or f.garbage_collect
-                        or f.trader or f.dump or f.hostile) then
+                        or f.trader or f.dump or f.hostile or f.artifact or f.owned or f.in_inventory
+                        or f.melt or f.on_fire) then
                     if f.in_job then held = held + 1 else free = free + 1 end
                 end
             end

@@ -151,10 +151,16 @@ function squad_power(sq)
             local arm = false
             pcall(function()
                 for _, inv in ipairs(u.inventory) do
-                    if inv.mode == WORN_MODE and inv.item:getType() == df.item_type.ARMOR then arm = true end
+                    -- (0.104.139) real armour only: shirts, coats and cloaks are
+                    -- ARMOR items too, so every clothed dwarf counted as armoured
+                    if inv.mode == WORN_MODE and inv.item:getType() == df.item_type.ARMOR then
+                        local okl, lvl = pcall(function() return inv.item.subtype.armorlevel end)
+                        if okl and (lvl or 0) > 0 then arm = true end
+                    end
                 end
             end)
-            local okw, wounded = pcall(function() return #u.body.wounds > 0 end)
+            -- (0.104.139) DF's own hospital flag: the wound list holds old scars too
+            local okw, wounded = pcall(function() return u.health ~= nil and u.health.flags.needs_healthcare end)
             local p = (1 + math.min(best, 20) / 3) * (arm and 1.5 or 1) * ((okw and wounded) and 0.5 or 1)
             power, n, skill_sum = power + p, n + 1, skill_sum + best
             if arm then armored = armored + 1 end

@@ -977,6 +977,31 @@ def _():
     e.closing = False
     assert M.closing_days(e) is None
 
+@test("(0.104.139) the watcher: a gate gone asks for a scan (and the re-pull of a lowered bridge runs without error)")
+def _():
+    LUA.execute("""
+      local M = ...
+      PULLED = {}
+      df = {building = {find = function(id)
+              if id == 10 then return {gate_flags = {raised = false}, jobs = {}} end
+              return nil end},
+            global = {world = {units = {active = {}}}, cur_year_tick = 0}}
+      dfhack = dfhack or {}
+      dfhack.units = {getCitizens = function() return {} end}
+      dfhack.timeout = function() return nil end
+    """, M)
+    e = LUA.table_from({"id": 1, "equipment": LUA.table_from({
+        1: LUA.table_from({"id": 10, "kind": "bridge", "lever_id": 55}),
+        2: LUA.table_from({"id": 11, "kind": "door"})})})
+    M.GATES = LUA.table_from({"armed": True, "scanned": True, "closed": LUA.table_from({1: True}),
+                              "entrances": LUA.table_from({1: e})})
+    pulls = []
+    M.pull = lambda lever: pulls.append(lever) or True
+    M.check()
+    assert M.GATES.scanned is False and M.GATES.gone == 1, (M.GATES.scanned, M.GATES.gone)
+    LUA.execute("df = nil; dfhack = nil")
+
+
 if __name__ == "__main__":
     for name, ok, msg in RESULTS:
         print(f"[{'PASS' if ok else 'FAIL'}] {name}" + (f"\n        {msg}" if msg else ""))

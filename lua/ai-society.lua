@@ -1090,6 +1090,9 @@ end
 
 local function rec_eligible(u)
     if not rec_base(u) then return false end
+    -- (0.104.139) never one in a tantrum or a rage: they start the fights
+    local okm, m = pcall(function() return df.soldier_mood_type[u.counters.soldier_mood] end)
+    if okm and (m == 'Tantrum' or m == 'Enraged') then return false end
     local okc, cat = pcall(dfhack.units.getStressCategory, u)
     return okc and type(cat) == 'number' and cat <= 1
 end
