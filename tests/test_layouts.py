@@ -138,11 +138,27 @@ def _():
 def _():
     L, tiles, cells = layout("bedrooms", rooms=12, room_size=3)
     doors = {(x, y) for ph, x, y, t in cells if ph == "build" and t == "d"}
-    corridor = {(x, 0) for x, y in tiles if y == 0}
+    rows = range(L.corridor.top, L.corridor.top + L.corridor.width)
+    corridor = {(x, y) for x, y in tiles if y in rows}
     rooms = tiles - corridor - doors - {(x, y) for x in (-1, 0, 1) for y in (-1, 0, 1)}
     for x, y in rooms:
         for n in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
             assert n not in corridor, f"room tile {x},{y} opens straight onto the corridor"
+
+
+@test("0.104.107: corridors 2 wide (bedrooms), 3 wide with 3-wide openings (storage, workshops)")
+def _():
+    L, tiles, cells = layout("bedrooms", rooms=8, room_size=3)
+    assert L.corridor.width == 2 and all((5, y) in tiles for y in (0, 1)), sorted(t for t in tiles if t[0] == 5)
+    L, tiles, cells = layout("storage", piles=["food", "stone"], room_size=7)
+    assert L.corridor.width == 3 and all((5, y) in tiles for y in (-1, 0, 1))
+    # the room's opening onto the corridor: 3 tiles in the row between them
+    top = L.corridor.top - 1
+    opening = sorted(x for x, y in tiles if y == top)
+    assert len(opening) == 3 and opening[2] - opening[0] == 2, opening
+    L, tiles, cells = layout("workshops", shops=["Masons", "Still"])
+    common_checks(L, tiles, cells)
+    assert L.corridor.width == 3
 
 
 @test("sizes are clamped: 999 rooms -> 32, size 9 -> 4")

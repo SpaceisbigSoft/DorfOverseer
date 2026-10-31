@@ -19,6 +19,7 @@ MAX_CORRIDOR = 25          -- longest new corridor from a staircase to a new lev
 MAX_WALK_EXISTING = 15     -- how far a corridor may first follow existing fort space
 SEARCH_SECONDS = 4         -- the search stops here (the game answers within 10 s)
 DECOR_TIMEOUT_DAYS = 60    -- engrave anyway if smoothing hasn't finished by then
+PREFER_SLACK = 3           -- (0.104.107) corridor tiles the plan's direction may cost over another
 TRY_BESIDE = true          -- also try sites beside the stairs, joined by a corridor
 
 -- DFHack counts z-levels from 0 at the bottom of the map; the game's screen
@@ -489,8 +490,15 @@ local function offset_sites(L, stair, z, reserved, try, dirs, grammar)
     local group = walk_group(stair.x, stair.y, z)
     if group == 0 then return nil end
     local shortest, longest = corridor_range(L)
+    -- (0.104.107) the plan's own direction (dirs[1]) may take up to
+    -- PREFER_SLACK more corridor tiles than another direction before that
+    -- one wins: wider corridors made the levels lopsided (2 wide is 1 row off
+    -- centre) and a shorter fit the other way always won
+    local fallback, fallback_at
     for corridor = shortest, longest do
-        for _, d in ipairs(dirs or DIRS) do
+        if fallback and corridor > fallback_at + PREFER_SLACK then return fallback end
+        for di, d in ipairs(dirs or DIRS) do
+          if not fallback or (dirs and di == 1) then
             -- existing fort space next to the stairs, in this direction
             local walked = 0
             while walked < MAX_WALK_EXISTING do
@@ -589,11 +597,16 @@ local function offset_sites(L, stair, z, reserved, try, dirs, grammar)
                                            join = join,
                                            -- the plan's doors, and the inner door's tile (fortified)
                                            doors = grammar and grammar.doors or nil, inner = inner})
-                if site then return site end
+                if site then
+                    if not dirs or di == 1 then return site end
+                    if not fallback then fallback, fallback_at = site, corridor end
+                    break
+                end
             end
+          end
         end
     end
-    return nil
+    return fallback
 end
 
 -- Pick a site. For each staircase (most used first): levels it already

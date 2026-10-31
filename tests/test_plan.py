@@ -175,6 +175,18 @@ def _():
 
 # --- using it -------------------------------------------------------------------------
 
+@test("0.104.107: corridors never 1 wide: 2 by default, 3 for grand or spacious forts, 2 for old 1-wide plans")
+def _():
+    m = mem_with_survey()
+    masterplan.ensure(state_at(50000), m, SITE, traits(), profile())
+    assert masterplan.hint(m, "bedrooms")["avenue"] == 2
+    m.atlas["plan"]["grammar"] = {"avenue": 1}                   # a plan drawn before 0.104.107
+    assert masterplan.hint(m, "bedrooms")["avenue"] == 2
+    m2 = mem_with_survey()
+    masterplan.ensure(state_at(50000), m2, SITE, traits(grandeur=80), profile())
+    assert masterplan.hint(m2, "bedrooms", traits=traits(grandeur=80))["avenue"] == 3
+
+
 @test("hint: the district's band, its directions and the spine; farms follow the soil instead")
 def _():
     m = mem_with_survey()

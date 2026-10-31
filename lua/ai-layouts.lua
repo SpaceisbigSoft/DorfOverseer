@@ -270,8 +270,25 @@ function room_wall(L)
     return (L.style.spacing or 0) >= 50 and 2 or 1
 end
 
+-- (0.104.107, the 38-year soak: 1-wide halls jammed a fort of 300) How wide
+-- each kind's corridor is: storage and workshops carry the hauling, 3 (the
+-- hub's own width); every other kind 2. Rooms there open 3 wide (size 5+)
+-- so haulers pass each other in the doorway.
+CORRIDOR_WIDTH = {storage = 3, workshops = 3}
+CORRIDOR_DEFAULT = 2
+WIDE_OPENINGS = {storage = true, workshops = true}
+
+function corridor_width(kind)
+    return CORRIDOR_WIDTH[kind] or CORRIDOR_DEFAULT
+end
+
 local function corridor_rooms(L, nslots, size, round)
     hub(L)
+    local width = corridor_width(L.kind)
+    -- the corridor's rows: 3 wide is the hub's -1..1; 2 wide is 0..1
+    local top = width == 3 and -1 or 0
+    local bottom = top + width - 1
+    local opening = (WIDE_OPENINGS[L.kind] and size >= 5) and 3 or 1
     local columns = math.max(1, math.ceil(nslots / 4))
     local slots = {}
     local reach = 0
@@ -286,25 +303,27 @@ local function corridor_rooms(L, nslots, size, round)
         for _, c in ipairs(candidates) do
             if #slots >= nslots then break end
             local rx = c.east and x0 or -(x0 + size - 1)
-            local ry = c.side == 'N' and -(1 + size) or 2
+            local ry = c.side == 'N' and (top - 1 - size) or (bottom + 2)
             local door_x = c.east and (x0 + door_dx) or -(x0 + door_dx)
-            local door_y = c.side == 'N' and -1 or 1
+            local door_y = c.side == 'N' and (top - 1) or (bottom + 1)
             table.insert(slots, {x = rx, y = ry, size = size, side = c.side,
-                                 door = {x = door_x, y = door_y}})
+                                 door = {x = door_x, y = door_y}, opening = opening})
             reach = math.max(reach, x0 + size - 1)
         end
     end
     -- corridors run the full length of the room columns on both sides
-    dig_rect(L, 2, 0, reach - 1, 1)
-    dig_rect(L, -reach, 0, reach - 1, 1)
+    dig_rect(L, 2, top, reach - 1, width)
+    dig_rect(L, -reach, top, reach - 1, width)
     for _, s in ipairs(slots) do
         if round then
             dig_rect_except(L, s.x, s.y, s.size, s.size, corners_of(s.x, s.y, s.size, s.size))
         else
             dig_rect(L, s.x, s.y, s.size, s.size)
         end
-        dig_rect(L, s.door.x, s.door.y, 1, 1)
+        local half = (s.opening - 1) // 2
+        dig_rect(L, s.door.x - half, s.door.y, s.opening, 1)
     end
+    L.corridor = {width = width, top = top}
     return slots
 end
 

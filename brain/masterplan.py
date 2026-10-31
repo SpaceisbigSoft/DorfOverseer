@@ -152,7 +152,8 @@ def _vertical(traits: dict) -> str:
 
 def _grammar(traits: dict, profile: dict) -> dict:
     g, sp, fo = (traits.get(k, 0) or 0 for k in ("grandeur", "spacing", "fortification"))
-    return {"avenue": 3 if g >= 60 else 2 if g >= 20 or sp >= 50 else 1,
+    # (0.104.107) never 1 wide: a fort of 300 jammed its 1-wide corridors
+    return {"avenue": 3 if g >= 60 or sp >= 50 else 2,
             "corridors": "dog-leg" if fo >= 50 else "straight",
             "doors": "fortified" if fo >= 70 else ("doored" if profile.get("entry_doors") else "open")}
 
@@ -336,7 +337,7 @@ def hint(memory, kind: str, slot: str | None = None, traits: dict | None = None,
         out["spine"] = {"x": st["x"], "y": st["y"]}      # (0.104.82) the district's own stairwell
     # the corridor grammar (the builder applies it from bridge 0.33), as the quirks bend it
     g = _grammar(traits, profile or {}) if traits is not None else (p.get("grammar") or {})
-    out["avenue"] = int(g.get("avenue") or 1)
+    out["avenue"] = max(2, min(3, int(g.get("avenue") or 2)))     # (0.104.107) plans drawn before: 2 at least
     out["corridors"] = g.get("corridors") if g.get("corridors") in ("straight", "dog-leg") else "straight"
     if g.get("doors") in ("open", "doored", "fortified"):
         out["doors"] = g["doors"]
