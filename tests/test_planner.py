@@ -5773,6 +5773,12 @@ def _():
     s["orders"][0]["jobs"] = {"n": 1, "working": 1}                                                  # weaving: fine
     assert not by_rule(plan(s, Memory())[0], "cloth")
     s["orders"] = []
+    s["stocks"]["thread"] = 0                                                                         # (0.104.132)
+    s["health"] = dict(s.get("health") or {}, needs_counts={"dressing": 79})
+    c = by_rule(plan(s, Memory())[0], "cloth")
+    assert c and c[0].action == {"type": "work_order", "recipe": "process_plants", "amount": 20}, c      # 79 dressings
+    s["health"]["needs_counts"] = {"dressing": 8}
+    assert by_rule(plan(s, Memory())[0], "cloth")[0].action["amount"] == 7
     s["stocks"]["cloth"] = 500
     assert not by_rule(plan(s, Memory())[0], "cloth")
 

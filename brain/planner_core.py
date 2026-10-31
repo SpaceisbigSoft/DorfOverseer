@@ -190,6 +190,7 @@ PLANNER_CONFIG = {
     "cloth_min": 15,                   # cloth kept on hand (dressings, bags, rope, clothes)...
     "cloth_per_dwarf": 1.0,            # ...or a bolt a dwarf
     "cloth_batch": 5,
+    "cloth_batch_max": 20, "dressings_per_extra_bolt": 4,   # (0.104.132) larger batches while wounds wait for dressings
     "coke_when_fuel_below": 40,        # coke made from coal while fuel is under this
     "coke_batch": 5,
     "stone_low": 10,

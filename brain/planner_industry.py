@@ -1127,6 +1127,10 @@ def _cloth_rule(s: dict, cfg: dict, citizens: int, proposals: list) -> None:
     b = _d(s.get("buildings"))
     missing = [w for w in ("Farmers", "Loom") if not _has_shop(b, w)]
     open_ = [p for p in _l(_d(s.get("projects")).get("open")) if isinstance(p, dict)]
+    # (0.104.132) bigger batches while wounds wait for a dressing (Teacheroar:
+    # 79 waiting, 10 cloth, thread and cloth made 5 at a time)
+    dressing = int(_d(_d(s.get("health")).get("needs_counts")).get("dressing") or 0)
+    batch = min(cfg["cloth_batch_max"], cfg["cloth_batch"] + dressing // cfg["dressings_per_extra_bolt"])
     if missing:
         if not _workshops_busy(open_):
             proposals.append(Proposal("cloth", {"type": "start_project", "kind": "workshops", "shops": missing},
@@ -1159,18 +1163,18 @@ def _cloth_rule(s: dict, cfg: dict, citizens: int, proposals: list) -> None:
     if (stalled and (st.get("plants") or 0) > 0 and thread_plants_here(s) and _has_shop(b, "Farmers")
             and not queued(s, {"process_plants"})):
         proposals.append(Proposal("cloth", {"type": "work_order", "recipe": "process_plants",
-                                            "amount": cfg["cloth_batch"]},
+                                            "amount": batch},
                                   f"only {cloth} cloth and the weave order has made no job (the {thread} thread "
                                   "isn't fit for the loom): process plants for fresh thread", 5, True))
         return
     if thread >= 3 and not queued(s, {weave}):
-        n = min(thread, cfg["cloth_batch"], want - cloth)
+        n = min(thread, batch, want - cloth)
         proposals.append(Proposal("cloth", {"type": "work_order", "recipe": weave, "amount": max(1, n)},
                                   f"only {cloth} cloth (the fort wants {want}) and {thread} thread: weave {max(1, n)}",
                                   5, True))
     elif thread < 3 and (st.get("plants") or 0) > 0 and thread_plants_here(s) and not queued(s, {"process_plants"}):
         proposals.append(Proposal("cloth", {"type": "work_order", "recipe": "process_plants",
-                                            "amount": cfg["cloth_batch"]},
+                                            "amount": batch},
                                   f"only {cloth} cloth and {thread} thread: process plants for thread "
                                   "(the ones with fibre in them)", 5, True))
 
