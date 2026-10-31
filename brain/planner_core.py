@@ -297,6 +297,8 @@ PLANNER_CONFIG = {
     "alert_danger_days": 7,            # deaths, ambushes, beasts... kept this long
     "alerts_per_cycle": 50,
     "alerts_cooldown_ticks": 1200,
+    "dwarves_per_woodcutter": 30,      # (0.104.142) while wood is short: up to one cutter per this many dwarves...
+    "wood_short_per_cutter": 100,      # ...one more per this many logs short
     "tree_quota_share": 0.8,           # felling stops at this share of the elves' yearly cap (0.89)
     "location_petitions_open": 1,      # agreed temple/guildhall petitions not yet built at once (0.89)
     "location_value_tier1": 2000,      # zone value of a temple or guildhall (DF wiki, Guildhall)

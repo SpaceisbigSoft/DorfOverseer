@@ -7574,6 +7574,26 @@ def _():
     assert watch_since(w) == WORKED_MAX_DAYS * TICKS_PER_DAY and watch_since({"since": 5}) == 5
 
 
+@test("woodcutters (0.104.142): more while wood is short; Elf-friends one, two while short and well under the quota")
+def _():
+    from quirks import has_rule
+    s = fort()
+    s["labor"] = labor(dig=0, fish_water=0)
+    s["labor"]["jobs"]["woodcutting"]["tools"] = 10
+    s["dwarves"]["total"] = 206
+    def cut(m=None):
+        return {x.action["job"]: x.action["count"] for x in by_rule(plan(copy.deepcopy(s), m or Memory())[0], "labor")}.get("woodcutting")
+    s["stocks"]["wood"] = 5000
+    assert cut() == 2
+    s["stocks"]["wood"] = 112                                           # 300 short at 2 a dwarf
+    assert cut() == 5, cut()
+    m = Memory(culture={"quirks": {"elf_friends": {"since": 50}}})
+    if has_rule(m.culture, "elf_friends"):
+        assert cut(m) == 2
+        s["stocks"]["wood"] = 5000
+        assert cut(m) == 1
+
+
 if __name__ == "__main__":
     for name, ok, msg in RESULTS:
         print(f"[{'PASS' if ok else 'FAIL'}] {name}" + (f"\n        {msg}" if msg else ""))

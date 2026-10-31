@@ -1693,11 +1693,24 @@ def _labor_rules(s: dict, citizens: int, cfg: dict, proposals: list, notes: list
     wc = _d(jobs.get("woodcutting"))
     axes = int(wc.get("tools") or 0)
     if axes:
-        cutters = min(axes, woodcutters(_traits(s) if isinstance(s.get("settings"), dict) else {}, small))
+        cutters = woodcutters(_traits(s) if isinstance(s.get("settings"), dict) else {}, small)
+        # (0.104.142) more while the wood is under what the fort keeps
+        # (Teacheroar: 659 -> 360 logs for 206 dwarves in a season, 1 cutter;
+        # the furniture's wooden part and wooden crafts wait on it)
+        wood = int(_d(s.get("stocks")).get("wood") or 0)
+        short = citizens * cfg["wood_per_dwarf"] - wood
+        if short > 0 and not small:
+            cutters = min(max(cutters, citizens // cfg["dwarves_per_woodcutter"]),
+                          cutters + -(-short // cfg["wood_short_per_cutter"]))
         if memory is not None and has_rule(memory.culture, "elf_friends"):
-            cutters = min(cutters, 1)               # (0.103.4) Elf-friends
+            # (0.103.4) Elf-friends: one cutter; two while short and well under the elves' quota
+            felled, cap_ = trees_this_year(s, memory)
+            roomy = cap_ is None or felled < cap_ * cfg["tree_quota_share"] / 2
+            cutters = min(cutters, 2 if short > 0 and roomy else 1)
+        cutters = min(axes, cutters)
         want("woodcutting", cutters,
-             "trees to cut (wood for beds, barrels and bins)", 4)
+             "trees to cut (wood for beds, barrels and bins)"
+             + (f"; the wood is {short} short of what the fort keeps" if short > 0 else ""), 4)
     _labor_waiting_rule(lb, citizens, cfg, proposals, drink_below_target(s, citizens, cfg))
 
 
