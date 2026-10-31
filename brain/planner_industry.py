@@ -357,7 +357,11 @@ def _soap_rule(s: dict, cfg: dict, proposals: list, notes: list, say, memory=Non
     hosp = _location(s, "HOSPITAL")
     if hosp is not None:
         soap += int(_d(hosp.get("have")).get("soap") or 0) // LOCATION_UNITS["soap"]
-    if soap >= cfg["soap_keep"]:
+    # (0.104.121) more kept while many wounds fester (Teacheroar: 29 infected,
+    # 5 kept, a bar made at a time and used up as it came)
+    keep = max(cfg["soap_keep"], min(cfg["soap_keep_max"], math.ceil(
+        int(_d(s.get("health")).get("infected") or 0) / cfg["infected_per_soap"])))
+    if soap >= keep:
         if memory is not None and memory.fat_ban:
             proposals.append(Proposal("fat_ban", {"type": "kitchen_fat", "ban": False},
                                       f"{soap} soap kept: fat and tallow may be cooked again", 5))
@@ -425,7 +429,7 @@ def _soap_rule(s: dict, cfg: dict, proposals: list, notes: list, say, memory=Non
     # (0.104.32) each step waits only on its own order: a render_fat order
     # left with no fat to render (Enxah, summer y63: 25 tallow, 5 ash, 29
     # buckets, 16 infected wounds) held the lye and the soap back for weeks
-    need = cfg["soap_keep"] - soap
+    need = keep - soap
     steps = []
     if lye and tallow:
         steps.append(("make_soap_from_tallow", min(lye, tallow, need), "make soap from lye and tallow"))
@@ -433,8 +437,10 @@ def _soap_rule(s: dict, cfg: dict, proposals: list, notes: list, say, memory=Non
         steps.append(("render_fat", min(fat, 5), f"render {min(fat, 5)} fat into tallow"))
     if not lye and ash and (sup.get("buckets") or 0) > 0:
         steps.append(("make_lye", min(ash, need), "make lye from ash"))
-    if not lye and not ash and (_d(s.get("stocks")).get("wood") or 0) >= 10:
-        steps.append(("make_ash", min(5, need), "burn wood to ash (for lye)"))
+    if lye + ash < need and (_d(s.get("stocks")).get("wood") or 0) >= 10:
+        # (0.104.121) ash for the next bars too, not only when there is none
+        # (Teacheroar: 1 ash, so one bar of lye, then one of soap, at a time)
+        steps.append(("make_ash", min(5, need - lye - ash), "burn wood to ash (for lye)"))
     if fat and 0 < tallow < need:
         steps.append(("render_fat", min(fat, 5), f"render {min(fat, 5)} fat into tallow"))
     step = next((st for st in steps if not queued(s, {st[0]})), None)

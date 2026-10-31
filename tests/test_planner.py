@@ -5202,8 +5202,13 @@ def _():
     assert p and p[0].action["recipe"] == "make_lye" and p[0].priority == 3, p
     s["orders"] = []
     s["supplies"]["soap"] = 5
+    assert step() is not None, "(0.104.121) 16 infected wounds: 6 bars kept, not 5"
+    s["supplies"]["soap"] = 6
     got = step()
     assert got is None, got and "SOAP" not in [w["key"] for w in trade_wants(s, PLANNER_CONFIG, 20)]
+    s["health"]["infected"] = 0
+    s["supplies"]["soap"] = 5
+    assert step() is None, "nobody infected: 5 bars are enough"
 
 
 @test("labour: work waiting with nobody free gets more dwarves; skilled migrants put on their trade; limits")
@@ -6467,6 +6472,35 @@ def _():
     assert [x for x in builds(plan(s, Memory())[0]) if x.action["kind"] == "hospital"]       # (0.104.12) two extra
     s["projects"]["open"].append({"id": 25, "kind": "well", "phase": "dig", "summary": {}})      # both extra slots taken
     assert not [x for x in builds(plan(s, Memory())[0]) if x.action["kind"] == "hospital"]
+
+
+@test("hospital too small (0.104.121): the wounded rest outside a 5-bed hospital in a big fort: another, by beds, in bad times too")
+def _():
+    s = settled_fort()
+    s["dwarves"]["total"] = 296
+    s["locations"] = {"count": {"HOSPITAL": 1}, "total": 1}
+    s["projects"] = {"max_open": 2, "open": [
+        {"id": 21, "kind": "tombs", "phase": "furnish", "summary": {"coffins": 6}},
+        {"id": 23, "kind": "workshops", "phase": "dig", "summary": {"workshops": ["Farmers"]}}]}
+    s["health"] = {"hospital": [{"id": 4, "zones": [{"id": 287, "beds": 5}]}], "patients": [],
+                   "resting": 99, "resting_in_hospital": 5}
+    hosp = lambda: [x for x in builds(plan(copy.deepcopy(s), Memory())[0]) if x.action["kind"] == "hospital"]
+    h = hosp()
+    assert h and h[0].action["urgent"] is True and h[0].action["beds"] == 12, h       # wants 17, has 5
+    assert "94 wounded dwarves rest outside" in h[0].reason, h[0].reason
+    s["health"]["resting"] = 8                                                        # 3 outside: no
+    assert not hosp()
+    s["health"]["resting"] = 99
+    s["health"]["hospital"][0]["zones"].append({"id": 300, "beds": 12})               # 17 beds: enough
+    assert not hosp()
+    s["health"]["hospital"][0]["zones"].pop()
+    s["projects"]["open"].append({"id": 24, "kind": "hospital", "phase": "dig", "summary": {}})   # one coming
+    assert len(hosp()) == 0
+    s["projects"]["open"].pop()
+    s["settings"].setdefault("rules", {})
+    del s["health"]["resting"]                                                       # an older bridge: listed patients
+    s["health"]["patients"] = [{"id": i, "needs": ["dressing"]} for i in range(6)]
+    assert hosp()
 
 
 @test("urgent tombs (0.104.12): many dead unburied with both slots taken: a tomb level of its own slot, beside urgent workshops")

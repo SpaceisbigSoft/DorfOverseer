@@ -74,6 +74,8 @@ PLANNER_CONFIG = {
     "min_dwarves_for_hospital": 20,
     "min_dwarves_for_small_hospital": 10,  # ...or this many with a chief medical dwarf (not a young fort)
     "urgent_hospital_waiting": 2,
+    "hospital_outside_min": 5,         # (0.104.121) wounded resting outside the hospital before another is dug...
+    "hospital_beds_max": 30,           # ...up to this many hospital beds in all
     "urgent_temple_share": 0.5,        # (0.103.12) this share of the citizens longing to pray, no real temple: a shrine at once      # (0.103.8) this many waiting for care, no hospital: one with a slot of its own
     "urgent_tavern_share": 0.33,       # (0.104.35) this share badly wanting company, only the stop-gap tavern: a tavern at once
     "train_all_share": 0.15,           # (0.104.53) this share badly wanting to train: every squad trains, none rests
@@ -321,6 +323,7 @@ PLANNER_CONFIG = {
     "trade_wood": 50,
     "trade_drink_per_dwarf": 20,
     "soap_keep": 5,                    # soap bars kept for the hospital
+    "soap_keep_max": 15, "infected_per_soap": 3,   # (0.104.121) a bar for every 3 infected wounds, up to 15
     "soap_cooldown_ticks": 2 * 1200,
     "noble_rooms_cooldown_ticks": 1200,
     "uniform_cooldown_ticks": 1200,       # a squad's uniform: once a day   # rooms given to nobles: once a day  # goods to the depot: every 2 days while a caravan is here

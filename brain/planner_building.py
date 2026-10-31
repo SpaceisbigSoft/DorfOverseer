@@ -13,7 +13,7 @@ from quirks import has_rule
 from digest import _d, _l, normalize
 from planner_core import *  # noqa: F401,F403
 
-__all__ = ["magma_access", "GROWTH", "GROWTH_EXTRA_SCORE", "GROWTH_MAX", "growth_want", "growth_candidates", "TRAIT_NAMES_SHORT", "FURNITURE_RECIPES", "METAL_FURNITURE", "spare_metal", "WOODEN_FURNITURE", "BASIC_WORKSHOPS", "BASIC_STOCKPILES", "memorial_due", "_well_rule", "_water_zone_rule", "cavern_well_need", "cavern_well_safe", "WELL_PARTS_SHOPS", "well_parts_plan", "_well_parts", "_room_repair_rule", "_water_traffic_rule", "_cleanup_rule", "STORE_GROW", "stone_tidiness", "jail_plan", "cistern_pop", "tavern_factor", "full_stores", "LEARNING_NEEDS", "_stairwell_rule", "WATER_WORDS", "water_summary", "_water_rules", "CISTERN_WORDS", "_cistern_parts", "_cistern_rule", "_deep_notes", "good_times", "ORDINALS", "garden_name", "_pop_cap_rule", "fort_strain", "_join_rule", "_dig_stall_rule", "_shrink_rule", "room_size", "_project_rules", "more_temple", "LADDER_BASE", "LADDER_TRAITS", "_ladder_kind", "_ladder_word", "ladder_score", "tombs_short"]
+__all__ = ["magma_access", "GROWTH", "GROWTH_EXTRA_SCORE", "GROWTH_MAX", "growth_want", "growth_candidates", "TRAIT_NAMES_SHORT", "FURNITURE_RECIPES", "METAL_FURNITURE", "spare_metal", "WOODEN_FURNITURE", "BASIC_WORKSHOPS", "BASIC_STOCKPILES", "memorial_due", "_well_rule", "_water_zone_rule", "cavern_well_need", "cavern_well_safe", "WELL_PARTS_SHOPS", "well_parts_plan", "_well_parts", "_room_repair_rule", "_water_traffic_rule", "_cleanup_rule", "STORE_GROW", "stone_tidiness", "jail_plan", "cistern_pop", "tavern_factor", "full_stores", "LEARNING_NEEDS", "_stairwell_rule", "WATER_WORDS", "water_summary", "_water_rules", "CISTERN_WORDS", "_cistern_parts", "_cistern_rule", "_deep_notes", "good_times", "ORDINALS", "garden_name", "_pop_cap_rule", "fort_strain", "hospital_shortfall", "_join_rule", "_dig_stall_rule", "_shrink_rule", "room_size", "_project_rules", "more_temple", "LADDER_BASE", "LADDER_TRAITS", "_ladder_kind", "_ladder_word", "ladder_score", "tombs_short"]
 
 
 # Furniture waiting in a project -> the recipe that makes it.
@@ -787,6 +787,26 @@ def _pop_cap_rule(s: dict, memory, cfg: dict, citizens: int, proposals: list, no
                                   f"-> {cap} (strict {strict})", 4))
 
 
+def hospital_shortfall(s: dict, traits: dict, cfg: dict) -> dict | None:
+    """(0.104.121) The hospitals' beds against the fort's size, when the
+    wounded rest outside them: {outside, have, want, beds, citizens}, or None."""
+    locs = _d(_d(s.get("locations")).get("count"))
+    if not locs.get("HOSPITAL"):
+        return None                      # the first hospital is the ladder's (and the urgent rule's)
+    h = _d(s.get("health"))
+    cit = max(1, int(_d(s.get("dwarves")).get("total") or 0))
+    have = sum(int(_d(z).get("beds") or 0) for hosp in _l(h.get("hospital")) for z in _l(_d(hosp).get("zones")))
+    if isinstance(h.get("resting"), int):
+        outside = h["resting"] - int(h.get("resting_in_hospital") or 0)
+    else:                                # an older bridge: the listed patients waiting outside it
+        outside = sum(1 for p in _l(h.get("patients")) if isinstance(p, dict) and _l(p.get("needs"))
+                      and not p.get("in_hospital"))
+    want = max(4, min(cfg["hospital_beds_max"], math.ceil(cit / 20 * factor(traits, "welfare")) + 2))
+    if outside < cfg["hospital_outside_min"] or have >= want:
+        return None
+    return {"outside": outside, "have": have, "want": want, "citizens": cit, "beds": max(4, min(20, want - have))}
+
+
 def _dig_stall_rule(s: dict, memory, cfg: dict, open_: list, proposals: list) -> None:
     """(0.104.110, the 38-year soak) Teacheroar's tomb level sat at 235 of 240
     tiles for three game years ("5 being dug") and a bedroom level at 0 of 89
@@ -1058,6 +1078,20 @@ def _project_rules(s, traits, cfg, proposals, notes, can_use, memory) -> None:
                                   "the manager has no office, and a manager takes up work orders only in one: "
                                   f"dig {'a suite' if n_suites == 1 else f'{n_suites} suites'} (a bedroom and an "
                                   "office each)", 1))
+    # (0.104.121) a hospital too small for the fort: Teacheroar's stop-gap of
+    # 5 beds (built at 54 dwarves) served 296, 99 on the Rest job and 29
+    # infected wounds; "another hospital" was counted by halls (one per 150
+    # dwarves) and only in good times. Counted by beds against the wounded
+    # resting outside it, in bad times too, with a slot of its own.
+    if can_use("stocks") and "buildings" not in s["_errors"] and "locations" not in s["_errors"] \
+            and len(open_) < (pr.get("max_open") or 2) + 2 and not any(p.get("kind") == "hospital" for p in open_):
+        hp = hospital_shortfall(s, traits, cfg)
+        if hp and player_rules(s)["levels"].get("hospital", True):
+            proposals.append(Proposal("build", {"type": "start_project", "kind": "hospital", "beds": hp["beds"],
+                                                "urgent": True},
+                                      f"{hp['outside']} wounded dwarves rest outside the hospital and it has "
+                                      f"{hp['have']} beds for {hp['citizens']} dwarves (the fort wants {hp['want']}): "
+                                      f"another hospital with {hp['beds']} beds", 1))
     # (0.103.8) dwarves waiting for care with no hospital: a hospital with a
     # slot of its own (Enxah: the chief medical dwarf waited 252 days, 4
     # infected wounds, while a tomb level and a workshops level held both slots)

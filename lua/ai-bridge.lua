@@ -34,7 +34,7 @@
 local json = require('json')
 local utils = require('utils')
 
-BRIDGE_VERSION = '0.104.119'
+BRIDGE_VERSION = '0.104.121'
 PROTOCOL = 1 -- bump when the report's shape changes in a breaking way
 
 local OUT_DIR = dfhack.getDFPath() .. '/dfhack-config/ai-overseer'
@@ -1953,9 +1953,25 @@ HEALTH_RQ = {'rq_diagnosis', 'rq_immobilize', 'rq_dressing', 'rq_cleaning', 'rq_
              'rq_setting', 'rq_traction', 'rq_crutch'}
 
 function get_health()
-    local out = {patients = {}, infected = 0, syndromes = 0}
+    -- (0.104.121) every citizen counted, the list still capped at 30: Teacheroar
+    -- had 99 dwarves on the Rest job and a list that stopped at 30
+    local out = {patients = {}, infected = 0, syndromes = 0, total = 0, resting = 0, resting_in_hospital = 0,
+                 needs_counts = {}}
     pcall(function() out.hospital = hospital_survey() end)
     for _, u in ipairs(dfhack.units.getCitizens()) do
+        local resting = false
+        pcall(function()
+            local j = u.job.current_job
+            resting = j ~= nil and j.job_type == df.job_type.Rest
+        end)
+        if resting then
+            out.resting = out.resting + 1
+            pcall(function()
+                for _, z in ipairs(dfhack.buildings.findCivzonesAt(u.pos) or {}) do
+                    if HOSPITAL_ZONES[z.id] then out.resting_in_hospital = out.resting_in_hospital + 1 break end
+                end
+            end)
+        end
         local care = false
         pcall(function() care = u.health ~= nil and u.health.flags.needs_healthcare end)
         local infected = false
@@ -1969,6 +1985,17 @@ function get_health()
         if infected then out.infected = out.infected + 1 end
         if syn > 0 then out.syndromes = out.syndromes + 1 end
         if care or infected then
+            out.total = out.total + 1
+            pcall(function()
+                for _, f in ipairs(HEALTH_RQ) do
+                    if u.health.flags[f] then
+                        local k = f:gsub('^rq_', '')
+                        out.needs_counts[k] = (out.needs_counts[k] or 0) + 1
+                    end
+                end
+            end)
+        end
+        if (care or infected) and #out.patients < 30 then
             local p = {id = u.id, name = txt(dfhack.units.getReadableName(u)), needs = {},
                        infected = infected or nil, syndromes = syn > 0 and syn or nil}
             pcall(function()
@@ -1989,7 +2016,6 @@ function get_health()
                 p.on = b and df.building_type[b:getType()] or nil
             end)
             table.insert(out.patients, p)
-            if #out.patients >= 30 then break end
         end
     end
     return out

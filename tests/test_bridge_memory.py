@@ -185,7 +185,7 @@ def _():
     for absent in ("supplies", "map", "jobs", "recent_announcements", "registry"):
         assert absent not in keys, absent
     daily = M.build_state(True)
-    assert daily.tier == "daily" and daily.units[1].id == 1 and daily.bridge_version == "0.104.119"
+    assert daily.tier == "daily" and daily.units[1].id == 1 and daily.bridge_version == "0.104.121"
     assert set(pulse.keys()) - {"tier"} <= set(daily.keys())
     assert daily.registry.error is not None                         # no builder here, but the section is there
     assert M.build_state(False, "survey").tier == "survey"
@@ -999,6 +999,34 @@ def _():
     assert env.material_matches(glass, t({"mat_type": 3, "mat_index": -1}))
     assert not env.material_matches(glass, t({"mat_type": 0, "mat_index": 12})), "rock crafts aren't glass_crafts"
     assert env.material_matches(t({"kind": "stone"}), t({"mat_type": 0, "mat_index": 12}))
+
+@test("0.104.121: health counts every patient and every dwarf on the Rest job, the list capped at 30")
+def _():
+    reset()
+    M = H.module()
+    LUA.execute("""local M, H = ...
+      H.df.job_type = {Rest = 99}
+      local cits = {}
+      for i = 1, 40 do
+        local rq = {needs_healthcare = true, rq_dressing = (i % 2 == 0), rq_suture = (i == 3)}
+        cits[i] = {id = i, pos = {x = i, y = 0, z = 1}, health = {flags = rq},
+                   body = {wounds = {{flags = {infection = (i <= 5)}}}}, syndromes = {active = {}},
+                   job = {current_job = (i <= 12) and {job_type = 99} or nil}}
+      end
+      table.insert(cits, {id = 41, pos = {x = 0, y = 0, z = 1}, health = {flags = {}}, body = {wounds = {}},
+                          syndromes = {active = {}}, job = {current_job = {job_type = 99}}})   -- resting, not a patient
+      H.dfhack.units = {getCitizens = function() return cits end, getReadableName = function(x) return 'D' .. x.id end}
+      H.dfhack.job = {getName = function() return 'Rest' end}
+      H.dfhack.buildings = {findCivzonesAt = function(p) if p.x <= 3 then return {{id = 287}} end return {} end,
+                            findAtTile = function() return nil end}
+      M.hospital_survey = function() M.HOSPITAL_ZONES = {[287] = true}; return {} end
+      M.txt = function(x) return x end
+    """, M, H)
+    r = M.get_health()
+    assert r.total == 40 and len(r.patients) == 30, (r.total, len(r.patients))
+    assert r.resting == 13 and r.resting_in_hospital == 4, (r.resting, r.resting_in_hospital)
+    assert r.infected == 5 and r.needs_counts.dressing == 20 and r.needs_counts.suture == 1
+
 
 if __name__ == "__main__":
     for name, ok, msg in RESULTS:
