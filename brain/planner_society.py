@@ -157,13 +157,15 @@ def _break_fights_rule(s: dict, memory, cfg: dict, proposals: list) -> None:
     now = abs_tick(s)
     recent = [t for t in _l(getattr(memory, "fight_deaths", None))
               if isinstance(t, int) and 0 <= now - t < cfg["break_fights_days"] * TICKS_PER_DAY]
-    tn = tantrums_recent(s, memory)
-    if recent:
-        why = f"{len(recent)} citizen(s) killed by citizens in {cfg['break_fights_days']} days"
-    elif tn >= cfg["crisis_tantrums"]:
-        why = f"{tn} tantrums in 28 days (their fights spread and turn lethal)"
-    else:
+    # (review) only on deaths (not tantrums alone), and never while enemies are
+    # about: the script takes every citizen out of every conflict, soldiers' too
+    if not recent:
         return
+    o = _d(s.get("others_on_map"))
+    if o.get("threats_that_can_reach_dwarves") or any(isinstance(t, dict) and t.get("invader")
+                                                       for t in _l(o.get("threats"))):
+        return
+    why = f"{len(recent)} citizen(s) killed by citizens in {cfg['break_fights_days']} days"
     proposals.append(Proposal("break_fights", {"type": "break_fights"},
                               f"{why}: break up the fights among the fort's own (DFHack fix/loyaltycascade)", 0))
 

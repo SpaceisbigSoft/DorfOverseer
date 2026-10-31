@@ -74,7 +74,7 @@ def _gate_rules(s: dict, memory, cfg: dict, rules_: dict, any_reach: bool,
                      f"({str(werr['error'])[:120]}); close the gates by hand while a threat is near")
     if stale:
         return                              # building gates waits for the new map
-    _gate_parts_rule(s, ent, es, off, proposals, notes)
+    _gate_parts_rule(s, ent, es, off, proposals, notes, memory)
     doors_proposed = fortify_proposed = False
     open_wide: list = []
     refused: list = []
@@ -176,7 +176,7 @@ GATE_PART_RECIPES = {"hatch": ("hatch_covers", "stone_hatch_cover", "hatch cover
 GATE_PART_STUCK_DAYS = 7
 
 
-def _gate_parts_rule(s: dict, ent: dict, es: list, off: int, proposals: list, notes: list) -> None:
+def _gate_parts_rule(s: dict, ent: dict, es: list, off: int, proposals: list, notes: list, memory=None) -> None:
     """(0.104.105, overnight review) A hatch or door planned at an entrance is
     built only from one the fort has. The hatch over the main stair waited 15
     hours for a hatch cover nobody made; the entrance read "closing" all along,
@@ -202,18 +202,28 @@ def _gate_parts_rule(s: dict, ent: dict, es: list, off: int, proposals: list, no
                 w[0] += n
             elif isinstance(e.get("closing_days"), int) and e["closing_days"] >= GATE_PART_STUCK_DAYS:
                 # (0.104.139) the "free" one may be one the game won't use (an
-                # heirloom): one more is made all the same, and you're told
-                w = want.setdefault(what, [0, where])
-                w[0] += n
+                # heirloom): one more is made all the same (once for each stuck
+                # entrance: review), and you're told
+                done_ = memory.gate_part_extra if isinstance(getattr(memory, "gate_part_extra", None), dict) else {}
+                ek = f"{e.get('x')},{e.get('y')},{e.get('z')}|{what}"
+                if ek not in done_:
+                    w = want.setdefault(what, [0, where])
+                    w[0] += n
+                    w.append(ek)
                 ask_player(notes, f"a {word} planned at {where} has waited {e['closing_days']} days though "
                                   f"{free} {word}(s) are free: one more is made; check its job isn't suspended "
                                   "or the spot blocked")
-    for what, (n, where) in want.items():
+    for what, (n, where, *eks) in want.items():
         field, recipe, word = GATE_PART_RECIPES[what]
         held = parts.get(field + "_held") or 0
         need = min(4, n - held) if isinstance(held, int) else n
         need = max(need, 1) if (parts.get(field) or 0) > 0 else need    # (the stuck case above: one)
         if need > 0 and not queued(s, {recipe}):
+            if eks and memory is not None:                 # (0.104.139) the extra one: remembered
+                if not isinstance(getattr(memory, "gate_part_extra", None), dict):
+                    memory.gate_part_extra = {}
+                for ek in eks:
+                    memory.gate_part_extra[ek] = abs_tick(s)
             proposals.append(Proposal("gate_parts", {"type": "work_order", "recipe": recipe, "amount": need},
                                       f"the {word} planned at {where} waits for a {word} the fort doesn't have: "
                                       f"a mason makes {need}", 3, is_order=True))
@@ -265,7 +275,9 @@ def fight_or_hide(s: dict, memory, cfg: dict, great: list, able: list) -> tuple[
     # (0.104.139) no flip-flop: a fight begun goes on unless the squads fall
     # well short (three quarters of the bar); hiding ends only clearly above it
     f = getattr(memory, "fight", None)
-    bar = cfg["fight_ratio"] * (0.75 if isinstance(f, dict) and f else 1.0)
+    on = (isinstance(f, dict) and f
+          and 0 <= abs_tick(s) - int(f.get("tick") or 0) < cfg["fight_freeze_days"] * TICKS_PER_DAY)
+    bar = cfg["fight_ratio"] * (0.75 if on else 1.0)
     return ratio >= bar, words
 
 
@@ -1025,7 +1037,8 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
     if have < want and not rules_["fill_squads"]:
         notes.append(f"{have} soldiers, the fort wants {want}: raising and filling squads is off on the Rules tab "
                      "(yours to do)")
-    elif have < want and isinstance(getattr(memory, "fight", None), dict) and memory.fight:
+    elif (have < want and isinstance(getattr(memory, "fight", None), dict) and memory.fight
+          and 0 <= abs_tick(s) - int(memory.fight.get("tick") or 0) < cfg["fight_freeze_days"] * TICKS_PER_DAY):
         # (0.104.139) no new soldiers mid-fight: the losses are read from the
         # soldier count after it (refills hid them, and the beast was learned as weaker)
         notes.append(f"{have} soldiers, the fort wants {want}: the squads are filled once the fight is over")

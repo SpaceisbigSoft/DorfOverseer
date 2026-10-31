@@ -2516,6 +2516,9 @@ def _():
     s["military"]["soldiers"] = 5                            # short of the target, mid-fight: no refill
     p, notes = plan(s, m)
     assert not by_rule(p, "squad_fill") and any("filled once the fight is over" in n for n in notes), notes
+    m.fight["tick"] -= 8 * TICKS_PER_DAY                    # (review) a week on (the beast lingers outside): refills again
+    p, notes = plan(s, m)
+    assert not any("filled once the fight is over" in n for n in notes), notes
 
 
 @test("reach (0.104.139): a flier in the air near the dwarves, or a building destroyer by the door, can reach them")
@@ -2529,6 +2532,8 @@ def _():
     assert not by_rule(plan(copy.deepcopy(s), Memory())[0], "squad_attack")
     th.update(flier=None, can_reach_dwarves=False, destroyer=True, distance_to_nearest_dwarf=10)
     assert by_rule(plan(copy.deepcopy(s), Memory())[0], "squad_attack")
+    th.update(invader=False, layer="cavern_1")                        # (review) a cavern destroyer that can't get up: no
+    assert not by_rule(plan(copy.deepcopy(s), Memory())[0], "squad_attack")
 
 
 @test("break fights (0.104.139): a citizen killed by a citizen -> fix/loyaltycascade; quiet again -> no more")
@@ -2544,6 +2549,13 @@ def _():
     later = copy.deepcopy(s)
     later["date"]["tick"] += 4 * TICKS_PER_DAY
     assert not by_rule(plan(later, m)[0], "break_fights")
+    # (review) never with enemies about (it takes soldiers out of their fights too); a sparring death doesn't count
+    war = copy.deepcopy(s)
+    war["others_on_map"]["threats"] = [{"id": 5, "invader": True, "can_reach_dwarves": False}]
+    assert not by_rule(plan(war, m)[0], "break_fights")
+    m2 = Memory()
+    crisis.note_deaths(s, m2, [{"kind": "death", "own_civ": True, "killer_kind": "citizen", "conflict": "Training"}])
+    assert not m2.fight_deaths
 
 
 @test("held off (0.104.139): an evil land's undead on the surface don't hold the gates shut; invaders and great ones do")
@@ -2720,6 +2732,8 @@ def _():
     got = parts(s)
     assert [(p.action["recipe"], p.action["amount"]) for p in got] == [("stone_hatch_cover", 1)], got
     assert any("hatch cover planned" in n and "suspended" in n for n in notes), notes
+    m = Memory()                                                     # (review) once for each stuck entrance
+    assert by_rule(plan(copy.deepcopy(s), m)[0], "gate_parts") and not by_rule(plan(copy.deepcopy(s), m)[0], "gate_parts")
     s["entrances"]["entrances"][0]["closing_days"] = 3
     assert not parts(s)                                              # not before the wait
     del s["entrances"]["parts"]                                      # an older bridge: nothing guessed

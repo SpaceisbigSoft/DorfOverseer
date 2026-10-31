@@ -2582,7 +2582,7 @@ function get_others_on_map()
                     destroyer = (function()
                         local okc, v = pcall(function()
                             local c = df.creature_raw.find(u.race).caste[u.caste]
-                            return c.flags.BUILDINGDESTROYER or (c.misc and (c.misc.building_destroyer or 0) > 0)
+                            return (c.misc.buildingdestroyer or 0) > 0     -- (review: a misc field, not a flag)
                         end)
                         return (okc and v) and true or nil
                     end)(),

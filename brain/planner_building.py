@@ -306,10 +306,12 @@ def _water_traffic_rule(s: dict, proposals: list) -> None:
         return
     # (0.104.139) every level the water spans (z1..z2), not its top only: the
     # pond by Teacheroar's main stair is z168-170, and 32 drowned at z168
+    # (review) the top three of each body, so a body higher up never pushes the low pond out
     levels = sorted({z for b in _l(w.get("bodies")) if isinstance(b, dict)
                      and isinstance(b.get("z2"), int) and b["z2"] >= mid["z_high"] - 4
-                     for z in range(int(b["z1"] if isinstance(b.get("z1"), int) else b["z2"]), int(b["z2"]) + 1)},
-                    reverse=True)[:6]
+                     for z in range(max(int(b["z1"] if isinstance(b.get("z1"), int) else b["z2"]), int(b["z2"]) - 2),
+                                    int(b["z2"]) + 1)},
+                    reverse=True)[:9]
     if not levels:
         return
     deaths = _d(_d(_d(s.get("dead")).get("deaths")).get("by_cause"))

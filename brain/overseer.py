@@ -306,7 +306,7 @@ def death_words(ev: dict) -> str:
     if ev.get("killer") and not ev.get("again"):
         bits.append(f"by {' '.join(str(ev['killer']).split())} ({ev.get('killer_kind') or '?'})")
     # (0.104.139) the fight's level, the killer's state and the victim's
-    extra = [w for w in (ev.get("conflict") and f"a {str(ev['conflict']).lower()} fight",
+    extra = [w for w in (ev.get("conflict") not in (None, "None") and f"a {str(ev['conflict']).lower()} fight",
                          ev.get("killer_mood") and f"the killer {str(ev['killer_mood']).lower()}",
                          ev.get("patient") and "a patient") if w]
     if extra and not ev.get("again"):

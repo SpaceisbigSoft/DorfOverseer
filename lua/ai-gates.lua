@@ -622,9 +622,21 @@ function scan(now_tick)
             since[k] = since_old[k] or now_tick
         end
     end
+    -- (0.104.139, review) the entrances' ids are list places and a rescan can
+    -- number them anew: what was closed is carried by its spot, and the
+    -- watcher's timers are kept
+    local closed_at = {}
+    for _, e in ipairs(GATES.entrances or {}) do
+        if GATES.closed and GATES.closed[e.id] then closed_at[key(e.x, e.y, e.z)] = true end
+    end
+    local closed = {}
+    for _, e in ipairs(entrances) do
+        if closed_at[key(e.x, e.y, e.z)] then closed[e.id] = true end
+    end
     GATES = {scanned = true, entrances = entrances, inside = inside, inside_tiles = n,
-             scanned_tick = now_tick, armed = GATES.armed, closed = GATES.closed or {},
-             closing_since = since}
+             scanned_tick = now_tick, armed = GATES.armed, closed = closed,
+             closing_since = since, timer = GATES.timer, reopen_timer = GATES.reopen_timer,
+             watch_error = GATES.watch_error, gone_ids = GATES.gone_ids, repulled = GATES.repulled}
     return summary()
 end
 
@@ -741,16 +753,31 @@ function check()
     for _, e in ipairs(GATES.entrances) do
         for _, g in ipairs(e.equipment) do
             local b = df.building.find(g.id)
+            GATES.gone_ids = GATES.gone_ids or {}
+            GATES.repulled = GATES.repulled or {}
             if not b then
                 -- (0.104.139) a gate gone (Teacheroar's hatch 278, toppled in a
-                -- tantrum) left the entrance open until the weekly scan: scan again
-                GATES.scanned = false
-                GATES.gone = (GATES.gone or 0) + 1
+                -- tantrum) left the entrance open until the weekly scan: scan
+                -- again (once for each one gone)
+                if not GATES.gone_ids[g.id] then
+                    GATES.gone_ids[g.id] = true
+                    GATES.scanned = false
+                    GATES.gone = (GATES.gone or 0) + 1
+                end
             elseif GATES.closed[e.id] and g.kind == 'bridge' and g.lever_id then
-                -- (0.104.139) closed, but the pull's job was lost: the bridge
-                -- is still down. Pulled again
-                local ok, raised = pcall(function() return b.gate_flags.raised end)
-                if ok and not raised and #b.jobs == 0 then pcall(pull, g.lever_id) end
+                -- (0.104.139) closed, but the pull's job was lost: the bridge is
+                -- still down, not moving. Pulled again, not within 10 checks of
+                -- the last (a pull is a dwarf's job: a second undoes the first)
+                local ok, still = pcall(function()
+                    local f = b.gate_flags
+                    return not f.raised and not f.raising and not f.lowering
+                end)
+                local now = df.global.cur_year_tick or 0
+                local last = GATES.repulled[g.id]
+                if ok and still and #b.jobs == 0 and (not last or now < last or now - last > 10 * CHECK_TICKS) then
+                    GATES.repulled[g.id] = now
+                    pcall(pull, g.lever_id)
+                end
             end
         end
         if not GATES.closed[e.id] and #e.equipment > 0 then

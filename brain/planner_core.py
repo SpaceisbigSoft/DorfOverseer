@@ -206,7 +206,9 @@ PLANNER_CONFIG = {
     "convict_per_cycle": 3,            # (0.104.131) solved cases convicted a cycle...
     "near_threat_tiles": 30,
     "break_fights_days": 3,            # (0.104.139) a citizen killed by a citizen this recently: break the fights up
-    "break_fights_cooldown_ticks": 120,   # ...at most every tenth of a day while it goes on           # (0.104.139) a flier or destroyer this near reaches the dwarves
+    "break_fights_cooldown_ticks": 600,   # ...at most every half day while it goes on (review: it takes
+                                          # every citizen out of every conflict, sparring and beatings too)
+    "fight_freeze_days": 7,            # (0.104.139) squads not refilled this long into a fight with a great danger           # (0.104.139) a flier or destroyer this near reaches the dwarves
     "convict_check_after": 30,         # (0.104.138) convictions before asking whether they bring sentences...
     "convict_check_sentences": 3,      # ...at least this many more sentenced, else the rule rests
     "convict_rest_days": 84,
@@ -571,6 +573,7 @@ class Memory:
     deaths_seen: list = field(default_factory=list)     # (0.104.137) citizens' deaths (ticks), 12 weeks
     convict_watch: dict = field(default_factory=dict)   # (0.104.138) cases convicted, sentences then, held until
     fight_deaths: list = field(default_factory=list)    # (0.104.139) citizens killed by citizens (ticks), 4 weeks
+    gate_part_extra: dict = field(default_factory=dict)   # (0.104.139) stuck entrances given one more part
     gear_spare_since: dict = field(default_factory=dict)  # "weapons"/"body"/"helms" -> when 3+ spares sat unused
     swapped: dict = field(default_factory=dict)  # (0.104.78) unit id -> when the swap sent them home
     drafted: dict = field(default_factory=dict)  # (0.104.138) unit id -> when a fill or swap drafted them
@@ -766,20 +769,23 @@ def reachable_threats(s: dict, traits: dict, cfg: dict) -> list:
     o = s["others_on_map"]
     threats = o.get("threats") or []
     ids = [t.get("id") for t in threats if t.get("can_reach_dwarves") is True]
+    unlisted = max(0, (o.get("threats_that_can_reach_dwarves") or 0) - len(ids))
     # (0.104.139) a flier in the air (its reach unknown) near the dwarves can
     # reach them whatever DF's walk groups say; and a building destroyer near
-    # them isn't held by a shut door
+    # them isn't held by a shut door, when it is an invader or on the surface
+    # (never a cavern beast that can't get up: review)
     ids += [t.get("id") for t in threats
             if t.get("can_reach_dwarves") is not True and t.get("id") not in ids
-            and ((t.get("flier") and t.get("can_reach_dwarves") is None) or t.get("destroyer"))
+            and ((t.get("flier") and t.get("can_reach_dwarves") is None)
+                 or (t.get("destroyer") and (t.get("invader") or t.get("layer") == "upper_levels")))
             and isinstance(t.get("distance_to_nearest_dwarf"), (int, float))
             and t["distance_to_nearest_dwarf"] <= cfg["near_threat_tiles"]]
-    unlisted = max(0, (o.get("threats_that_can_reach_dwarves") or 0) - len(ids))
     ids += [f"unlisted{i}" for i in range(unlisted)]
     if traits.get("caution", 0) >= 100:
         for t in threats:
             lv = t.get("levels_from_nearest_dwarf")
-            if t.get("can_reach_dwarves") is None and lv is not None and lv <= cfg["cautious_alert_levels"]:
+            if (t.get("can_reach_dwarves") is None and lv is not None and lv <= cfg["cautious_alert_levels"]
+                    and t.get("id") not in ids):
                 ids.append(t.get("id"))
     return ids
 
