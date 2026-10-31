@@ -13,7 +13,7 @@ from quirks import has_rule
 from digest import _d, _l, normalize
 from planner_core import *  # noqa: F401,F403
 
-__all__ = ["_doctor_patient_rule", "MOOD_WORKSHOPS", "PETITION_KINDS", "petition_orders_wanted", "_petition_rules", "_jail_size_rule", "_sync_offices_rule", "patient_waits", "_health_rules", "TANTRUM_KEEP", "note_tantrums", "_noble_rooms_rule", "outsider_orders", "NEED_ADVICE", "JEWEL_RECIPES", "_recreation_rule", "_stress_care", "_needs_notes", "_location_supply_rules", "POST_LABORS", "STAFF_POSTS", "STAFF_MAX", "_traction_rule", "_wish_words", "_wish_met", "wish_key", "_location_petition_rules", "_meeting_notes", "_grandeur_rule", "_location_value_rule", "_staff_rule", "_quick_location_rule", "_needs_rules", "_mood_rules", "mood_item_text", "_mood_materials", "_dead_notes", "AI_OFFICES", "_society_notes"]
+__all__ = ["_doctor_patient_rule", "MOOD_WORKSHOPS", "PETITION_KINDS", "petition_orders_wanted", "_petition_rules", "_jail_size_rule", "_convict_rule", "_sync_offices_rule", "patient_waits", "_health_rules", "TANTRUM_KEEP", "note_tantrums", "_noble_rooms_rule", "outsider_orders", "NEED_ADVICE", "JEWEL_RECIPES", "_recreation_rule", "_stress_care", "_needs_notes", "_location_supply_rules", "POST_LABORS", "STAFF_POSTS", "STAFF_MAX", "_traction_rule", "_wish_words", "_wish_met", "wish_key", "_location_petition_rules", "_meeting_notes", "_grandeur_rule", "_location_value_rule", "_staff_rule", "_quick_location_rule", "_needs_rules", "_mood_rules", "mood_item_text", "_mood_materials", "_dead_notes", "AI_OFFICES", "_society_notes"]
 
 
 # A crafting mood's skill -> the workshop (or furnace) the dwarf must claim.
@@ -88,6 +88,32 @@ def _petition_rules(s: dict, cfg: dict, proposals: list, notes: list) -> None:
         what = ", ".join(f"{'accept' if v else 'ask about'} {k.replace('_', ' ')}" for k, v in change.items())
         proposals.append(Proposal("petitions", {"type": "petition_orders", "orders": change},
                                   f"petitions to stay: {what} (DF's standing orders answer them)", 6))
+
+
+def _convict_rule(s: dict, cfg: dict, proposals: list) -> None:
+    """(0.104.131, 12i) DF passes a sentence only once a case is convicted on
+    its Justice screen, and nobody did: Teacheroar held 1,623 crimes, 399
+    waiting for a trial (most tantrums' disorderly behaviour), the jail empty,
+    and 61 citizens killed by citizens since y87. Solved cases (DF names the
+    culprit) whose sentence has no hammer strikes are convicted a few a
+    cycle, as the player's own conviction showed; DF passes the sentence.
+    A lenient fort (Justice -50 or less) leaves them; few at a time while
+    punishments queue up."""
+    j = _d(s.get("justice"))
+    n = int(_d(j.get("crimes")).get("convictable") or 0)
+    if n <= 0:
+        return
+    traits = _traits(s)
+    if int(traits.get("justice", 0) or 0) <= -50:
+        return
+    queued_ = int(_d(j.get("punish")).get("n") or 0)
+    room = max(cfg["convict_queue_min"], int(j.get("restraints") or 0))
+    if queued_ >= room:
+        return
+    k = min(n, cfg["convict_per_cycle"] + (2 if int(traits.get("justice", 0) or 0) >= 50 else 0), room - queued_)
+    proposals.append(Proposal("convict", {"type": "convict", "max": k},
+                              f"{n} solved case(s) wait for a trial nobody gives (DF sentences only convicted ones): "
+                              f"convict {k}, the oldest first ({queued_} punishment(s) waiting)", 4))
 
 
 def _jail_size_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> None:

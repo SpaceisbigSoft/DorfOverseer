@@ -5649,6 +5649,25 @@ def _():
 
 
 
+@test("convict (0.104.131): solved cases convicted a few a cycle; none when lenient, none while punishments queue")
+def _():
+    s = fort()
+    s["justice"] = {"jails": [{"id": 453, "chains": 5, "used": 0}], "restraints": 10, "restraints_used": 0,
+                    "punish": {"n": 0}, "crimes": {"n": 1623, "convictable": 398}}
+    c = by_rule(plan(copy.deepcopy(s), Memory())[0], "convict")
+    assert c and c[0].action == {"type": "convict", "max": 3} and "398 solved" in c[0].reason, c
+    s["justice"]["punish"]["n"] = 9                                    # 1 place left
+    assert by_rule(plan(copy.deepcopy(s), Memory())[0], "convict")[0].action["max"] == 1
+    s["justice"]["punish"]["n"] = 10
+    assert not by_rule(plan(copy.deepcopy(s), Memory())[0], "convict")
+    s["justice"]["punish"]["n"] = 0
+    s["settings"]["traits"] = dict(s["settings"].get("traits") or {}, justice=-60)   # a lenient fort
+    assert not by_rule(plan(copy.deepcopy(s), Memory())[0], "convict")
+    s["settings"]["traits"]["justice"] = 0
+    s["justice"]["crimes"]["convictable"] = 0
+    assert not by_rule(plan(copy.deepcopy(s), Memory())[0], "convict")
+
+
 @test("stone crisis (0.104.124): no ordinary stone, ghosts or dead waiting: the commonest common ore to the masons; kept again after")
 def _():
     from planner import record

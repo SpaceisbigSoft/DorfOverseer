@@ -193,6 +193,8 @@ PLANNER_CONFIG = {
     "coke_when_fuel_below": 40,        # coke made from coal while fuel is under this
     "coke_batch": 5,
     "stone_low": 10,
+    "convict_per_cycle": 3,            # (0.104.131) solved cases convicted a cycle...
+    "convict_queue_min": 5,            # ...while fewer punishments than this (or than restraints) wait
     "dig_raise_days": 14,              # (0.104.128) a level with nothing dug this long is dug before the rest
     "stone_ore_min": 30,               # (0.104.124) an ore freed for the masons in a crisis only with this many boulders
     "stone_crisis_unburied": 5,        # ...a crisis: ghosts, this many dead with no tomb, or a strained fort

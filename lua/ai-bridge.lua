@@ -34,7 +34,7 @@
 local json = require('json')
 local utils = require('utils')
 
-BRIDGE_VERSION = '0.104.130'
+BRIDGE_VERSION = '0.104.131'
 PROTOCOL = 1 -- bump when the report's shape changes in a breaking way
 
 local OUT_DIR = dfhack.getDFPath() .. '/dfhack-config/ai-overseer'
@@ -2126,6 +2126,28 @@ end
 -- and the punishments waiting (beatings, hammer strikes, time in jail).
 -- Enxah: 2 chains for 73 dwarves, a tantrum a minute, and a sheriff who
 -- beat a clothier to death.
+-- (0.104.131, 12i) A crime the AI may convict: DF has solved it (its culprit
+-- known and it discovered), it waits for a trial nobody gave (Teacheroar: 399),
+-- it happened here, the culprit is a living citizen, and its sentence has no
+-- hammer strikes. Learned from the player's own conviction (probe_justice,
+-- 31 Oct 14:25): the Justice screen sets `accused` to the culprit and DF
+-- sentences the case itself a few seconds later.
+CONVICT_PER_CALL_MAX = 10
+
+function convictable(cr, site_id)
+    local ok, yes = pcall(function()
+        local f = cr.flags
+        if f.sentenced or not f.needs_trial or not f.discovered then return false end
+        if cr.accused ~= -1 or cr.criminal == -1 then return false end
+        if site_id and cr.site ~= site_id then return false end
+        if (cr.punishment.hammerstrikes or 0) > 0 then return false end
+        local u = df.unit.find(cr.criminal)
+        if not u or dfhack.units.isDead(u) or not dfhack.units.isCitizen(u) then return false end
+        return true
+    end)
+    return ok and yes or false
+end
+
 function get_justice()
     local out = {jails = {}, restraints = 0, restraints_used = 0, punish = {n = 0, beatings = 0, hammer = 0, prison = 0}}
     pcall(function()
@@ -2185,6 +2207,12 @@ function get_justice()
                 if tv == 'number' or tv == 'boolean' or tv == 'string' then f[k] = v end
             end
             c.newest = f
+        end)
+        pcall(function()
+            local site = df.global.plotinfo.site_id
+            local n = 0
+            for i = 0, #list - 1 do if convictable(list[i], site) then n = n + 1 end end
+            c.convictable = n
         end)
         out.crimes = c
     end)
@@ -3882,6 +3910,39 @@ function act_free_dig_jobs(a)
     local id = project_id(a)
     if not id then return reject('project_id must be a whole number') end
     return reqscript('ai-builder').free_dig_jobs(id)
+end
+
+-- (0.104.131) solved cases convicted, the oldest first, as the Justice screen
+-- does: the case's culprit named as the accused; DF passes the sentence
+function act_convict(a)
+    local max = math.tointeger(a.max) or 3
+    if max < 1 or max > CONVICT_PER_CALL_MAX then return reject('max must be 1-' .. CONVICT_PER_CALL_MAX) end
+    local site = df.global.plotinfo.site_id
+    local list = df.global.world.crimes.all
+    local picked = {}
+    for i = 0, #list - 1 do
+        if #picked >= max then break end
+        if convictable(list[i], site) then table.insert(picked, list[i]) end
+    end
+    if #picked == 0 then return {ok = false, rejected = true, error = 'no solved case waits for a trial'} end
+    local out = {ok = true, convicted = {}}
+    for _, cr in ipairs(picked) do
+        local who = '?'
+        pcall(function() who = txt(dfhack.units.getReadableName(df.unit.find(cr.criminal))) end)
+        local kind = df.crime_type and df.crime_type[cr.mode] or tostring(cr.mode)
+        if a.dry_run then
+            table.insert(out.convicted, {id = cr.id, kind = kind, who = who})
+        else
+            local done = pcall(function()
+                cr.accused = cr.criminal
+                pcall(function() cr.accused_hf:assign(cr.criminal_hf) end)
+            end)
+            if done then table.insert(out.convicted, {id = cr.id, kind = kind, who = who}) end
+        end
+    end
+    if #out.convicted == 0 then return {ok = false, error = 'the game took none of the convictions'} end
+    out.dry_run = a.dry_run == true or nil
+    return out
 end
 
 -- (0.104.128) an open level's tiles left to dig raised to a higher priority
@@ -5706,6 +5767,7 @@ ACTIONS = {
     clear_orphan_jobs = act_clear_orphan_jobs,
     order_slots = act_order_slots,
     kitchen_fat = act_kitchen_fat,
+    convict = act_convict,
     repair_rooms = function(a) return reqscript('ai-builder').repair_rooms(a.dry_run == true) end,
     bootstrap_chair = act_bootstrap_chair,
     sync_offices = function(a) return reqscript('ai-nobles').sync_offices(a.dry_run == true) end,
@@ -6100,7 +6162,7 @@ SECTION_CACHE_DAYS = {logistics = 3, industry = 7,   -- industry: 300-450 ms liv
 SECTION_REBUILDS = 2       -- expired cached sections rebuilt in one report (a missing one always is)
 -- (0.100) the cached sections each action changes (cleared when it succeeds)
 CACHE_INVALIDATES = {
-    place_in_zone = {'justice'},
+    place_in_zone = {'justice'}, convict = {'justice'},
     give_room = {'noble_rooms'}, appoint = {'noble_rooms'}, quick_location = {'locations'},
     add_posts = {'locations'}, staff_location = {'locations'}, vacate_post = {'locations', 'health'}, retarget_hall = {'locations', 'registry'},
     answer_petition = {'petitions', 'locations'}, petition_orders = {'petitions'},
@@ -6305,6 +6367,7 @@ local function cmd_act(args)
                  or action.type == 'unload_depot' or action.type == 'kitchen_skill' or action.type == 'place_slabs'
                  or action.type == 'give_room' or action.type == 'set_uniform' or action.type == 'adopt_uniform' or action.type == 'petition_orders'
                  or action.type == 'set_uniform_weapon' or action.type == 'allow_stone' or action.type == 'prioritize_dig'
+                 or action.type == 'convict'
                  or action.type == 'quarry' or action.type == 'polish' or action.type == 'trade_deal' or action.type == 'call_trader'
                  or action.type == 'open_trade' or action.type == 'close_trade'
                  or action.type == 'squad_barracks' or action.type == 'feeder_pile'

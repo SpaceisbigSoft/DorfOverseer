@@ -185,7 +185,7 @@ def _():
     for absent in ("supplies", "map", "jobs", "recent_announcements", "registry"):
         assert absent not in keys, absent
     daily = M.build_state(True)
-    assert daily.tier == "daily" and daily.units[1].id == 1 and daily.bridge_version == "0.104.130"
+    assert daily.tier == "daily" and daily.units[1].id == 1 and daily.bridge_version == "0.104.131"
     assert set(pulse.keys()) - {"tier"} <= set(daily.keys())
     assert daily.registry.error is not None                         # no builder here, but the section is there
     assert M.build_state(False, "survey").tier == "survey"
@@ -1050,6 +1050,44 @@ def _():
     assert not r.ok and "ore" in r.error, dict(r)
     r = M.act_allow_stone(t({"stone": "MAGNETITE", "ore": True}))
     assert r.ok and H.econ[0] is False, dict(r)
+
+
+@test("0.104.131: convict names the culprit of solved cases (oldest first); never unsolved, sentenced, elsewhere, hammer or the dead")
+def _():
+    reset()
+    M = H.module()
+    LUA.execute("""local M, H = ...
+      local function cr(id, o)
+        local c = {id = id, mode = 5, site = 239, accused = -1, criminal = o.criminal or 100,
+                   flags = {discovered = o.discovered ~= false, needs_trial = o.needs_trial ~= false, sentenced = o.sentenced == true},
+                   punishment = {hammerstrikes = o.hammer or 0, prison_time = 1},
+                   accused_hf = {assign = function(self, other) self.from = other end}, criminal_hf = {hf = 7}}
+        if o.site then c.site = o.site end
+        return c
+      end
+      local list = {[0] = cr(1, {}), cr(2, {discovered = false}), cr(3, {sentenced = true}), cr(4, {site = 12}),
+                    cr(5, {hammer = 2}), cr(6, {criminal = 666}), cr(7, {}), cr(8, {})}
+      setmetatable(list, {__len = function() return 8 end})
+      H.df.global.world.crimes = {all = list}
+      H.df.global.plotinfo.site_id = 239
+      H.df.crime_type = {[5] = 'DisorderlyBehavior'}
+      local units = {[100] = {id = 100}, [666] = {id = 666, dead = true}}
+      H.df.unit = {find = function(id) return units[id] end}
+      H.dfhack.units = {isDead = function(u) return u.dead == true end, isCitizen = function(u) return true end,
+                        getReadableName = function(u) return 'Urist ' .. u.id end}
+      M.txt = function(x) return x end
+      H.list = list
+    """, M, H)
+    r = M.act_convict(t({"max": 2, "dry_run": True}))
+    assert r.ok and r.dry_run and len(r.convicted) == 2 and H.list[0].accused == -1, dict(r)
+    r = M.act_convict(t({"max": 5}))
+    ids = [r.convicted[i].id for i in range(1, len(r.convicted) + 1)]
+    assert r.ok and ids == [1, 7, 8], ids                           # 2-6 never
+    assert H.list[0].accused == 100 and H.list[0].accused_hf["from"].hf == 7
+    assert H.list[1].accused == -1 and H.list[4].accused == -1 and H.list[5].accused == -1
+    r = M.act_convict(t({"max": 5}))
+    assert not r.ok and r.rejected, dict(r)                          # nothing left
+    assert not M.act_convict(t({"max": 50})).ok                      # bounded
 
 
 if __name__ == "__main__":
