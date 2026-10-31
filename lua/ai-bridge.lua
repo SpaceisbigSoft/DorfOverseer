@@ -34,7 +34,7 @@
 local json = require('json')
 local utils = require('utils')
 
-BRIDGE_VERSION = '0.104.125'
+BRIDGE_VERSION = '0.104.126'
 PROTOCOL = 1 -- bump when the report's shape changes in a breaking way
 
 local OUT_DIR = dfhack.getDFPath() .. '/dfhack-config/ai-overseer'
@@ -2044,7 +2044,8 @@ function hospital_survey()
                 if z then
                     HOSPITAL_ZONES[z.id] = true
                     local ze = {id = z.id, type = df.civzone_type[z.type] or tostring(z.type), beds = 0,
-                                traction = 0, tables = 0, chests = 0}
+                                traction = 0, tables = 0, chests = 0,
+                                x1 = z.x1, y1 = z.y1, x2 = z.x2, y2 = z.y2, z = z.z}   -- (0.104.126) where it is
                     pcall(function()
                         for _, ref in ipairs(z.contained_buildings) do
                             local t = df.building_type[ref:getType()]
@@ -2156,6 +2157,36 @@ function get_justice()
             if (pu.hammerstrikes or 0) > 0 then out.punish.hammer = out.punish.hammer + 1 end
             if (pu.prison_counter or 0) > 0 then out.punish.prison = out.punish.prison + 1 end
         end
+    end)
+    -- (0.104.126) the crimes DF holds (Teacheroar: 61 citizens killed by
+    -- citizens since y87, the jail empty, no punishment ever): how many, of
+    -- what kind, which are sentenced, and the newest one's plain fields (the
+    -- names differ between versions, so read, not assumed)
+    pcall(function()
+        local list = df.global.world.crimes.all
+        local c = {n = #list, recent = 0, kinds = {}, flags = {}}
+        local year = df.global.cur_year
+        for i = #list - 1, math.max(0, #list - 400), -1 do
+            local cr = list[i]
+            pcall(function()
+                if (cr.event_year or -1) >= year - 1 then c.recent = c.recent + 1 end
+                local okm, m = pcall(function() return df.crime_type[cr.mode] or tostring(cr.mode) end)
+                if okm and m then c.kinds[m] = (c.kinds[m] or 0) + 1 end
+                for k, v in pairs(cr.flags) do
+                    if v == true then c.flags[k] = (c.flags[k] or 0) + 1 end
+                end
+            end)
+        end
+        pcall(function()
+            local cr = list[#list - 1]
+            local f = {}
+            for k, v in pairs(cr) do
+                local tv = type(v)
+                if tv == 'number' or tv == 'boolean' or tv == 'string' then f[k] = v end
+            end
+            c.newest = f
+        end)
+        out.crimes = c
     end)
     return out
 end
