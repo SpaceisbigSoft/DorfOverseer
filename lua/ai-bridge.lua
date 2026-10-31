@@ -34,7 +34,7 @@
 local json = require('json')
 local utils = require('utils')
 
-BRIDGE_VERSION = '0.104.107'
+BRIDGE_VERSION = '0.104.108'
 PROTOCOL = 1 -- bump when the report's shape changes in a breaking way
 
 local OUT_DIR = dfhack.getDFPath() .. '/dfhack-config/ai-overseer'
@@ -4109,6 +4109,11 @@ function act_import_orders(a)
     return {ok = true, library = a.library, added = #df.global.world.manager_orders.all - before}
 end
 
+-- (0.104.108) Areas on one level joined by a corridor (lua/ai-joins.lua).
+function act_join_levels(a)
+    return reqscript('ai-joins').join_levels(a.dry_run == true)
+end
+
 -- The fort's entrances and their gates (lua/ai-gates.lua).
 function act_scan_entrances(a)
     local t0 = os.clock()
@@ -5455,6 +5460,7 @@ function act_pull_gate(a)
 end
 
 ACTIONS = {
+    join_levels = act_join_levels,
     scan_entrances = act_scan_entrances,
     build_gate_doors = act_build_gate_doors,
     fortify_entrance = act_fortify_entrance,

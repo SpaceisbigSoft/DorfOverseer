@@ -343,6 +343,7 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
         _guard(_farm_rule, s, memory, traits, citizens, cfg, proposals, notes)
     if can_use("society"):
         _guard(_pop_cap_rule, s, memory, cfg, citizens, proposals, notes)
+        _guard(_join_rule, s, memory, cfg, proposals)
         _guard(_shrink_rule, s, memory, cfg, citizens, proposals)
     if can_use("military", "buildings", "orders"):
         _guard(_smelting_rule, s, memory, cfg, rules_, proposals, notes)

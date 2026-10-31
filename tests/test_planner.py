@@ -4314,6 +4314,23 @@ def _():
     assert not by_rule(plan(s, m)[0], "pop_cap")
 
 
+@test("join levels (0.104.108): asked every 2 days; a fortnight once every level was seen with nothing to join")
+def _():
+    s = fort()
+    m = Memory()
+    j = lambda: by_rule(plan(copy.deepcopy(s), m)[0], "join_levels")
+    got = j()
+    assert got and got[0].action == {"type": "join_levels"}, got
+    record([(got[0], {"ok": True, "joined": {"z": 150}})], s, m)
+    assert not j()
+    s["date"]["tick"] += 2 * 1200
+    got = j()
+    assert got
+    record([(got[0], {"ok": True, "wrapped": True})], s, m)        # nothing to join anywhere
+    s["date"]["tick"] += 3 * 1200
+    assert not j() and m.join_wait_days == 14
+
+
 @test("strain (0.104.106): newcomers held at the fort's size while drink, meals or mood fail; let go with margin")
 def _():
     s = grown(100, True)                                        # "no cap"

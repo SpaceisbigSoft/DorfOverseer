@@ -396,7 +396,7 @@ def _():
     assert cul["guide"].startswith("Low dark")
     pushes = [a for a in b.acted if a["type"] == "set_culture"]
     assert pushes and pushes[-1]["culture"]["guide"].startswith("Low dark")
-    assert not [a for a in b.acted if a["type"] not in ("set_culture", "set_learned", "tool", "ledger_set")]
+    assert not [a for a in b.acted if a["type"] not in ("set_culture", "set_learned", "tool", "ledger_set", "join_levels")]
 
 
 

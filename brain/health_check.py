@@ -52,7 +52,7 @@ TICKS_PER_DAY = 1200
 # thresholds
 LOOP_MIN = 12                 # the same action at least this often in the window ...
 LOOP_PER_YEAR = 24            # ... and this often per game year: a loop
-LOOP_EXPECTED = {"scan_entrances", "dismiss_alerts", "survey_water", "cistern_step", "open_trade",
+LOOP_EXPECTED = {"join_levels", "scan_entrances", "dismiss_alerts", "survey_water", "cistern_step", "open_trade",
                  "trade_deal", "close_trade", "call_trader", "unpause"}
 REFUSAL_MIN = 5               # the same refusal (same rule, same action, same reason) this often ...
 REFUSAL_PER_YEAR = 6          # ... and this often per game year (the planner's back-off allows fewer)

@@ -534,6 +534,8 @@ class Memory:
     token_ratio: float = 1.0                     # (0.104.89) a review's real cost against its estimate, learned
     maintain_pop: int | None = None                      # Maintain: the population being kept
     last_expel_tick: int | None = None                   # when a dwarf was last sent away
+    last_join_tick: int | None = None                    # (0.104.108) when areas on a level were last looked at for joining
+    join_wait_days: int = 2                              # (0.104.108) days to the next look (longer once all were seen)
     culture: dict = field(default_factory=dict)          # culture history (see culture.py)
     culture_pushed: str = ""                              # what was last written into the save
     declined: dict = field(default_factory=dict)          # proposal id -> tick you said No
@@ -1468,6 +1470,11 @@ def _record_any_outcome(a: dict, r: dict, state: dict, memory, now: int) -> None
         memory.rescan_entrances = False
     elif t == "expel_dwarf":
         memory.last_expel_tick = now             # refused or not: wait the full spell
+    elif t == "join_levels":
+        # (0.104.108) a corridor dug: look again soon; every level seen and
+        # nothing to join: wait a fortnight (new levels come slowly)
+        memory.last_join_tick = now
+        memory.join_wait_days = 2 if r.get("joined") or not r.get("wrapped") else 14
     elif t == "make_pasture":
         memory.last_fired["new_pasture"] = now   # refused or not: wait the full spell
         if r.get("ok") is True:

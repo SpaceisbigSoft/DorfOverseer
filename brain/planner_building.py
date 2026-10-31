@@ -13,7 +13,7 @@ from quirks import has_rule
 from digest import _d, _l, normalize
 from planner_core import *  # noqa: F401,F403
 
-__all__ = ["magma_access", "GROWTH", "GROWTH_EXTRA_SCORE", "GROWTH_MAX", "growth_want", "growth_candidates", "TRAIT_NAMES_SHORT", "FURNITURE_RECIPES", "METAL_FURNITURE", "spare_metal", "WOODEN_FURNITURE", "BASIC_WORKSHOPS", "BASIC_STOCKPILES", "memorial_due", "_well_rule", "_water_zone_rule", "cavern_well_need", "cavern_well_safe", "WELL_PARTS_SHOPS", "well_parts_plan", "_well_parts", "_room_repair_rule", "_water_traffic_rule", "_cleanup_rule", "STORE_GROW", "stone_tidiness", "jail_plan", "cistern_pop", "tavern_factor", "full_stores", "LEARNING_NEEDS", "_stairwell_rule", "WATER_WORDS", "water_summary", "_water_rules", "CISTERN_WORDS", "_cistern_parts", "_cistern_rule", "_deep_notes", "good_times", "ORDINALS", "garden_name", "_pop_cap_rule", "fort_strain", "_shrink_rule", "room_size", "_project_rules", "more_temple", "LADDER_BASE", "LADDER_TRAITS", "_ladder_kind", "_ladder_word", "ladder_score", "tombs_short"]
+__all__ = ["magma_access", "GROWTH", "GROWTH_EXTRA_SCORE", "GROWTH_MAX", "growth_want", "growth_candidates", "TRAIT_NAMES_SHORT", "FURNITURE_RECIPES", "METAL_FURNITURE", "spare_metal", "WOODEN_FURNITURE", "BASIC_WORKSHOPS", "BASIC_STOCKPILES", "memorial_due", "_well_rule", "_water_zone_rule", "cavern_well_need", "cavern_well_safe", "WELL_PARTS_SHOPS", "well_parts_plan", "_well_parts", "_room_repair_rule", "_water_traffic_rule", "_cleanup_rule", "STORE_GROW", "stone_tidiness", "jail_plan", "cistern_pop", "tavern_factor", "full_stores", "LEARNING_NEEDS", "_stairwell_rule", "WATER_WORDS", "water_summary", "_water_rules", "CISTERN_WORDS", "_cistern_parts", "_cistern_rule", "_deep_notes", "good_times", "ORDINALS", "garden_name", "_pop_cap_rule", "fort_strain", "_join_rule", "_shrink_rule", "room_size", "_project_rules", "more_temple", "LADDER_BASE", "LADDER_TRAITS", "_ladder_kind", "_ladder_word", "ladder_score", "tombs_short"]
 
 
 # Furniture waiting in a project -> the recipe that makes it.
@@ -780,6 +780,24 @@ def _pop_cap_rule(s: dict, memory, cfg: dict, citizens: int, proposals: list, no
         proposals.append(Proposal("pop_cap", {"type": "set_population_cap", "cap": cap, "strict": strict},
                                   f"{why}: population cap {so['pop_cap']} (strict {so.get('strict_pop_cap')}) "
                                   f"-> {cap} (strict {strict})", 4))
+
+
+def _join_rule(s: dict, memory, cfg: dict, proposals: list) -> None:
+    """(0.104.108, phase 12g; the player's findings after 38 years) Areas
+    side by side on one level met only through the stairs, and corridors
+    ended in rock. Every few days the bridge looks at the levels the AI built
+    on, in turn, and joins two areas whose corridors come within 20 tiles
+    through plain rock (2 wide, never into a room)."""
+    if young_fort(s, cfg):
+        return
+    now = abs_tick(s)
+    last = memory.last_join_tick
+    wait = max(1, int(memory.join_wait_days or 2)) * TICKS_PER_DAY
+    if last is not None and 0 <= now - last < wait:
+        return
+    proposals.append(Proposal("join_levels", {"type": "join_levels"},
+                              "join areas on the same level that meet only through the stairs, "
+                              "and corridors that end in rock", 9))
 
 
 def _shrink_rule(s: dict, memory, cfg: dict, citizens: int, proposals: list) -> None:
