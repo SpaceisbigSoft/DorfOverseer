@@ -169,6 +169,18 @@ def _():
     assert "open onto" in why or "water" in why, why
 
 
+@test("0.104.116: a corridor whose new row is designated already is not asked again")
+def _():
+    base = reader(LONG)
+    def T(x, y):
+        t = base(x, y)
+        if t is not None and y == 3 and x == 8:
+            t.recent = True
+        return t
+    r, why, _ = M.plan_widen(T, seeds((1, 1)))
+    assert r is None and "being widened" in why, why
+
+
 @test("widening: short stretches (under 4) are left alone")
 def _():
     rows = ["##########", "#...#.#..#", "#.......##", "#...#.#..#", "##########"]

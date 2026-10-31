@@ -34,7 +34,7 @@
 local json = require('json')
 local utils = require('utils')
 
-BRIDGE_VERSION = '0.104.115'
+BRIDGE_VERSION = '0.104.116'
 PROTOCOL = 1 -- bump when the report's shape changes in a breaking way
 
 local OUT_DIR = dfhack.getDFPath() .. '/dfhack-config/ai-overseer'
@@ -4116,6 +4116,19 @@ function act_import_orders(a)
     return {ok = true, library = a.library, added = #df.global.world.manager_orders.all - before}
 end
 
+-- (0.104.116) Spider webs removed (DFHack's clear-webs, webs only): a
+-- fort's caverns held 10,000 of them, a fifth of the items on the map.
+function act_clear_webs(a)
+    if not dfhack.findScript('clear-webs') then
+        return {ok = false, error = 'DFHack has no clear-webs script in this version'}
+    end
+    local before = #df.global.world.items.other.ANY_WEBS
+    if a.dry_run then return {ok = true, dry_run = true, webs = before} end
+    local out, rv = dfhack.run_command_silent('clear-webs', '--websOnly')
+    if rv ~= CR_OK then return {ok = false, error = 'clear-webs failed: ' .. tostring(out):sub(1, 160)} end
+    return {ok = true, removed = before - #df.global.world.items.other.ANY_WEBS}
+end
+
 -- (0.104.113) What fills the map, read only (lua/ai-census.lua).
 function act_census(a)
     return reqscript('ai-census').census()
@@ -5488,6 +5501,7 @@ end
 ACTIONS = {
     join_levels = act_join_levels,
     census = act_census,
+    clear_webs = act_clear_webs,
     scan_entrances = act_scan_entrances,
     build_gate_doors = act_build_gate_doors,
     fortify_entrance = act_fortify_entrance,

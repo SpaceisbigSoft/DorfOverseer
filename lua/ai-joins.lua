@@ -141,6 +141,7 @@ function route(T, a, b, owner, ia, ib, y_first)
     end
     for _, p in ipairs(list) do
         local t = T(p.x, p.y)
+        if t and t.recent then return nil, 'a corridor is being dug there already' end
         if not t or not t.rock then return nil, ('not plain rock at x%d y%d'):format(p.x, p.y) end
     end
     -- nothing but the two ends may open onto it
@@ -294,6 +295,16 @@ end
 -- A second row beside a run (its ends stay 1 wide: doorways), or nil, why.
 function widen_run(T, run)
     local last
+    -- (0.104.116) a run already being widened (its new row designated in the
+    -- last weeks, not dug yet: live, the same two runs were asked again
+    -- every two days) is left to the miners
+    for _, side in ipairs({1, -1}) do
+        local px, py = run.axis == 'ns' and side or 0, run.axis == 'ew' and side or 0
+        for i = 2, #run.tiles - 1 do
+            local t = T(run.tiles[i].x + px, run.tiles[i].y + py)
+            if t and t.recent then return nil, 'being widened already' end
+        end
+    end
     for _, side in ipairs({1, -1}) do
         local px, py = run.axis == 'ns' and side or 0, run.axis == 'ew' and side or 0
         local corridor, new, list = {}, {}, {}
@@ -348,6 +359,7 @@ local OPEN_SHAPES = {FLOOR = true, STAIR_UP = true, STAIR_DOWN = true, STAIR_UPD
 function game_reader(z)
     local B = reqscript('ai-builder')
     local cache = {}
+    local recent = recent_tiles()
     return function(x, y)
         local k = key(x, y)
         local v = cache[k]
@@ -370,14 +382,37 @@ function game_reader(z)
             rawset(self, 'passage', passage)
             return passage
         end}
-        v = setmetatable({open = open, rock = (B.natural_wall(t)) == true and not t.smoothed,      -- (never an engraved wall)
+        v = setmetatable({open = open, recent = recent[('%d,%d,%d'):format(x, y, z)] ~= nil, rock = (B.natural_wall(t)) == true and not t.smoothed,      -- (never an engraved wall)
              danger = t.liquid or t.aquifer or t.warm or false}, lazy)
         cache[k] = v
         return v
     end
 end
 
+-- (0.104.116) tiles the AI designated here in the last RECENT_DAYS, kept in
+-- the save: "x,y,z" -> tick
+RECENT_KEY = 'ai-overseer/joins'
+RECENT_DAYS = 56
+local function now_tick() return df.global.cur_year * 403200 + df.global.cur_year_tick end
+
+function recent_tiles()
+    local ok, d = pcall(dfhack.persistent.getSiteData, RECENT_KEY, {tiles = {}})
+    local tiles = ok and type(d) == 'table' and type(d.tiles) == 'table' and d.tiles or {}
+    local now, out = now_tick(), {}
+    for k, t in pairs(tiles) do
+        if type(t) == 'number' and now - t >= 0 and now - t < RECENT_DAYS * 1200 then out[k] = t end
+    end
+    return out
+end
+
+local function remember(tiles, z)
+    local keep, now = recent_tiles(), now_tick()
+    for _, p in ipairs(tiles) do keep[('%d,%d,%d'):format(p.x, p.y, z)] = now end
+    pcall(dfhack.persistent.saveSiteData, RECENT_KEY, {tiles = keep})
+end
+
 local function designate(tiles, z)
+    remember(tiles, z)
     local n = 0
     for _, p in ipairs(tiles) do
         local d = dfhack.maps.getTileFlags(p.x, p.y, z)

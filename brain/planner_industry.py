@@ -247,6 +247,14 @@ def _slow_game_rules(s: dict, citizens: int, cfg: dict, proposals: list, notes: 
         worn = {str(_d(x).get("name")): int(_d(x).get("n") or 0) for x in _l(_d(cen.get("items")).get("worn"))}
         if sum(worn.get(k, 0) for k in ("SHOES", "GLOVES", "PANTS", "ARMOR", "HELM")) >= cfg["prune_worn_min"]:
             extra.append("clothes")
+        # (0.104.116) spider webs by the thousand: cleared, once a season at most
+        webs = _d(_d(cen.get("items")).get("counts")).get("webs")
+        last_w = memory.last_fired.get("webs") if memory is not None else None
+        if (isinstance(webs, int) and webs >= cfg["webs_clear_min"]
+                and (last_w is None or not 0 <= abs_tick(s) - last_w < 84 * TICKS_PER_DAY)):
+            proposals.append(Proposal("webs", {"type": "clear_webs"},
+                                      f"{webs} spider webs lie in the caverns, a big share of the {items} items "
+                                      "slowing the game: clear them (DFHack's clear-webs)", 7))
         action = {"type": "prune_remains"}
         if extra:
             action["extra"] = extra

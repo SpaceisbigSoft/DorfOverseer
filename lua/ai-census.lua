@@ -81,6 +81,9 @@ function items()
             end
         end
     end
+    -- (0.104.116) spider webs (cavern silk left where the spiders spun it)
+    local okw, webs = pcall(function() return #df.global.world.items.other.ANY_WEBS end)
+    by.webs = okw and webs or nil
     return {counts = by, types = top(types, 15), worn = top(worn_types, 6), on_ground = top(ground_types, 10)}
 end
 

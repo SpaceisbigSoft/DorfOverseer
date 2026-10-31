@@ -480,6 +480,8 @@ def short(a: dict) -> str:
                 "let the kitchen cook brewable plants again")
     if t == "pull_gate":
         return "pull the AI gate lever"
+    if t == "clear_webs":        # (0.104.116)
+        return "clear the spider webs"
     if t == "census":            # (0.104.113)
         return "count what fills the map"
     if t == "join_levels":       # (0.104.108)

@@ -104,6 +104,13 @@ def _():
     got = prune(m)
     assert got and got[0].action == {"type": "prune_remains", "extra": ["usable-parts", "clothes"]}, got
     assert "7227 bones" in got[0].reason, got[0].reason
+    # (0.104.116) webs by the thousand: cleared, not again for a season
+    m.census["items"]["counts"] = {"webs": 10361}
+    w = [p for p in plan(copy.deepcopy(s), m)[0] if p.rule == "webs"]
+    assert w and w[0].action == {"type": "clear_webs"}, w
+    from planner import record  # noqa: E402
+    record([(w[0], {"ok": True, "removed": 10361})], s, m)
+    assert not [p for p in plan(copy.deepcopy(s), m)[0] if p.rule == "webs"]
 
 
 if __name__ == "__main__":
