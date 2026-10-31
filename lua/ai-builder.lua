@@ -3053,6 +3053,8 @@ CISTERN_MIN_WATER = 20           -- tiles of water near the intake (a puddle won
 CISTERN_MIN_SURFACE_WATER = 100
 CISTERN_SURFACE_PENALTY = 60
 CISTERN_DRY_DAYS = 28            -- the source dry this long while filling: the cistern is retired
+CISTERN_LEVEL_MIN = 4        -- (0.104.119) this deep and not rising for CISTERN_LEVEL_DAYS: full enough
+CISTERN_LEVEL_DAYS = 14
 -- (0.104.100) a floodgate shut for a flood (dwarves in deep water) while filling
 -- reopens when nobody has stood in deep water this many days; after
 -- CISTERN_MAX_REOPENS floods in a row it stays shut and says so
@@ -3719,7 +3721,19 @@ function cistern_step(dry_run)
                 return wait(('the cistern is filling: %d/7; %d tile(s) on the water\'s way blocked: felled or dug again%s')
                             :format(st.depth, blocked, why))
             end
-            return wait(('the cistern is filling: %d/7%s'):format(st.depth, why))
+            -- (0.104.119) water stands no higher than its source: a cistern at
+            -- 4/7 or more that hasn't risen for CISTERN_LEVEL_DAYS with its
+            -- gate open is as full as it gets (it waited at 5/7 for good)
+            local okn, now_t = pcall(function() return df.global.cur_year * 403200 + df.global.cur_year_tick end)
+            now_t = okn and now_t or 0
+            if d.depth_seen ~= st.depth or st.gate == 'shut' then
+                d.depth_seen, d.depth_tick = st.depth, now_t
+                save_cistern(d)
+            end
+            local still = (now_t - (math.tointeger(d.depth_tick) or now_t)) // 1200
+            if not (st.depth >= CISTERN_LEVEL_MIN and still >= CISTERN_LEVEL_DAYS) then
+                return wait(('the cistern is filling: %d/7%s'):format(st.depth, why))
+            end
         end
         if dry_run then return {ok = true, dry_run = true, stage = 'hole'} end
         if gate and not gate.closed then pull(d.lever_id) end

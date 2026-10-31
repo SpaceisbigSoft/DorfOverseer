@@ -185,7 +185,7 @@ def _():
     for absent in ("supplies", "map", "jobs", "recent_announcements", "registry"):
         assert absent not in keys, absent
     daily = M.build_state(True)
-    assert daily.tier == "daily" and daily.units[1].id == 1 and daily.bridge_version == "0.104.118"
+    assert daily.tier == "daily" and daily.units[1].id == 1 and daily.bridge_version == "0.104.119"
     assert set(pulse.keys()) - {"tier"} <= set(daily.keys())
     assert daily.registry.error is not None                         # no builder here, but the section is there
     assert M.build_state(False, "survey").tier == "survey"
@@ -987,6 +987,18 @@ def _():
     m = b.load_memory()
     assert m["kinds"]["working"] == {"fort": "Enxah", "text": big} and m["kinds"]["atlas"]["text"] == "short"
     assert "chronicle" not in m["kinds"], "a raw file that can't be read is dropped, not half-read"
+
+
+@test("0.104.119: a recipe that names a material (green glass) matches only orders in it")
+def _():
+    reset()
+    env = H.module()
+    LUA.execute("local H = ...; H.dfhack.matinfo = {find = function(tok) if tok == 'GLASS_GREEN' then "
+                "return {type = 3, index = -1} end end}", H)
+    glass = t({"material": "GLASS_GREEN"})
+    assert env.material_matches(glass, t({"mat_type": 3, "mat_index": -1}))
+    assert not env.material_matches(glass, t({"mat_type": 0, "mat_index": 12})), "rock crafts aren't glass_crafts"
+    assert env.material_matches(t({"kind": "stone"}), t({"mat_type": 0, "mat_index": 12}))
 
 if __name__ == "__main__":
     for name, ok, msg in RESULTS:

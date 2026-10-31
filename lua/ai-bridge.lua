@@ -34,7 +34,7 @@
 local json = require('json')
 local utils = require('utils')
 
-BRIDGE_VERSION = '0.104.118'
+BRIDGE_VERSION = '0.104.119'
 PROTOCOL = 1 -- bump when the report's shape changes in a breaking way
 
 local OUT_DIR = dfhack.getDFPath() .. '/dfhack-config/ai-overseer'
@@ -2906,6 +2906,21 @@ local function order_kind(order)
     return f.IS_METAL and 'metal' or f.IS_GEM and 'gem' or f.IS_STONE and 'stone' or nil
 end
 
+-- (0.104.119) a recipe naming a material (green glass) is only its own
+-- orders: rock crafts were read as glass_crafts (pairs() order decided)
+local MAT_CACHE = {}
+function material_matches(r, order)
+    if not r.material then return true end
+    local mi = MAT_CACHE[r.material]
+    if mi == nil then
+        local ok, m = pcall(dfhack.matinfo.find, r.material)
+        mi = ok and m or false
+        MAT_CACHE[r.material] = mi
+    end
+    if not mi then return false end
+    return order.mat_type == mi.type and (mi.index == -1 or order.mat_index == mi.index)
+end
+
 local function recipe_of(order)
     local job = df.job_type[order.job_type]
     local kind = order_kind(order)
@@ -2925,7 +2940,8 @@ local function recipe_of(order)
                 and reaction == order.reaction_name
                 and (not r.meal_ingredients or r.meal_ingredients == order.mat_type)
                 and (not r.item_subtype or r.item_subtype == subtype_token)
-                and (not (r.kind == 'stone' or r.kind == 'metal' or r.kind == 'gem') or r.kind == kind) then
+                and (not (r.kind == 'stone' or r.kind == 'metal' or r.kind == 'gem') or r.kind == kind)
+                and material_matches(r, order) then
             local cats_ok = true
             for _, cat in ipairs(r.material_category or {}) do
                 if not order.material_category[cat] then cats_ok = false end
