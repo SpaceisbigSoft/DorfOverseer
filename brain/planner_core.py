@@ -57,6 +57,13 @@ PLANNER_CONFIG = {
     "shrink_days": 28,
     "min_citizens": 7,             # never sent away below this
     "uncapped": 1000,              # the population cap used for "no cap"
+    # (0.104.106, the 38-year soak) newcomers wait while the fort can't carry
+    # the dwarves it has: Teacheroar grew 98 -> 438 under "no cap", drink fell
+    # to 0.08 a dwarf, 50-60% unhappy for 7 years, FPS 87 -> 18. Held at its
+    # size while any of these holds; let go once all are back past the "ok" side
+    "strain_unhappy_pct": 20, "strain_unhappy_ok_pct": 12,
+    "strain_drink_pd": 2.0, "strain_drink_ok_pd": 4.0,
+    "strain_meals_pd": 2.0, "strain_meals_ok_pd": 4.0,
     "beds_ahead": 20,              # Expand: bedrooms up to this many ahead of the population
     "maintain_spare_beds": 2,
     "min_spare_beds": 5,
@@ -519,6 +526,7 @@ class Memory:
     report_season: str = ""                              # the last season the player's report was written for
     found_failure: str = ""                              # why the first staircase couldn't be dug (Needs you)
     fps_cap: int | None = None                           # the population cap held while the game runs slowly
+    strain_hold: bool = False                            # (0.104.106) newcomers held while the fort is strained
     gear_spare_since: dict = field(default_factory=dict)  # "weapons"/"body"/"helms" -> when 3+ spares sat unused
     swapped: dict = field(default_factory=dict)  # (0.104.78) unit id -> when the swap sent them home
     steer: dict = field(default_factory=dict)    # (0.104.89) the strategist's raised and held rules: rule -> {mode, until, why}

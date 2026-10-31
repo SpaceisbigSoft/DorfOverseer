@@ -13,7 +13,7 @@ from quirks import has_rule
 from digest import _d, _l, normalize
 from planner_core import *  # noqa: F401,F403
 
-__all__ = ["magma_access", "GROWTH", "GROWTH_EXTRA_SCORE", "GROWTH_MAX", "growth_want", "growth_candidates", "TRAIT_NAMES_SHORT", "FURNITURE_RECIPES", "METAL_FURNITURE", "spare_metal", "WOODEN_FURNITURE", "BASIC_WORKSHOPS", "BASIC_STOCKPILES", "memorial_due", "_well_rule", "_water_zone_rule", "cavern_well_need", "cavern_well_safe", "WELL_PARTS_SHOPS", "well_parts_plan", "_well_parts", "_room_repair_rule", "_water_traffic_rule", "_cleanup_rule", "STORE_GROW", "stone_tidiness", "jail_plan", "cistern_pop", "tavern_factor", "full_stores", "LEARNING_NEEDS", "_stairwell_rule", "WATER_WORDS", "water_summary", "_water_rules", "CISTERN_WORDS", "_cistern_parts", "_cistern_rule", "_deep_notes", "good_times", "ORDINALS", "garden_name", "_pop_cap_rule", "_shrink_rule", "room_size", "_project_rules", "more_temple", "LADDER_BASE", "LADDER_TRAITS", "_ladder_kind", "_ladder_word", "ladder_score", "tombs_short"]
+__all__ = ["magma_access", "GROWTH", "GROWTH_EXTRA_SCORE", "GROWTH_MAX", "growth_want", "growth_candidates", "TRAIT_NAMES_SHORT", "FURNITURE_RECIPES", "METAL_FURNITURE", "spare_metal", "WOODEN_FURNITURE", "BASIC_WORKSHOPS", "BASIC_STOCKPILES", "memorial_due", "_well_rule", "_water_zone_rule", "cavern_well_need", "cavern_well_safe", "WELL_PARTS_SHOPS", "well_parts_plan", "_well_parts", "_room_repair_rule", "_water_traffic_rule", "_cleanup_rule", "STORE_GROW", "stone_tidiness", "jail_plan", "cistern_pop", "tavern_factor", "full_stores", "LEARNING_NEEDS", "_stairwell_rule", "WATER_WORDS", "water_summary", "_water_rules", "CISTERN_WORDS", "_cistern_parts", "_cistern_rule", "_deep_notes", "good_times", "ORDINALS", "garden_name", "_pop_cap_rule", "fort_strain", "_shrink_rule", "room_size", "_project_rules", "more_temple", "LADDER_BASE", "LADDER_TRAITS", "_ladder_kind", "_ladder_word", "ladder_score", "tombs_short"]
 
 
 # Furniture waiting in a project -> the recipe that makes it.
@@ -720,6 +720,24 @@ def garden_name(s: dict, memory) -> str:
     return (base + (" " + ORDINALS[n] if 0 < n < len(ORDINALS) else ""))[:40]
 
 
+def fort_strain(s: dict, cfg: dict, held: bool = False) -> list:
+    """(0.104.106) Why the fort can't take more dwarves now: too many
+    unhappy, drink or meals too short a dwarf. While held, the "ok" levels
+    must all be reached to let go (no flicker). [] when it's fine or unread."""
+    import outcomes
+    m = outcomes.measure(s)
+    out = []
+    un, dr, me = m.get("unhappy_pct"), m.get("drink_pd"), m.get("meals_pd")
+    k = "_ok" if held else ""
+    if isinstance(un, (int, float)) and un >= cfg["strain_unhappy" + k + "_pct"]:
+        out.append(f"{un:g}% unhappy")
+    if isinstance(dr, (int, float)) and dr < cfg["strain_drink" + k + "_pd"]:
+        out.append(f"drink {dr:g} a dwarf")
+    if isinstance(me, (int, float)) and me < cfg["strain_meals" + k + "_pd"]:
+        out.append(f"meals {me:g} a dwarf")
+    return out
+
+
 def _pop_cap_rule(s: dict, memory, cfg: dict, citizens: int, proposals: list, notes: list) -> None:
     """DF's population cap from the Growth slider (Expand) or the size the
     fort had when Maintain was chosen. Lasts for the session; set again
@@ -743,6 +761,13 @@ def _pop_cap_rule(s: dict, memory, cfg: dict, citizens: int, proposals: list, no
         cap = n
         strict = cap + 20
         why = f"Growth: the fort grows toward {cap} dwarves"
+    strain = fort_strain(s, cfg, memory.strain_hold)
+    if strain and not s.get("fps_low") and rules_["fort_goal"] != "maintain" and mode != "shrink":
+        # (0.104.106) the fort can't carry the dwarves it has: no newcomers
+        # until it can (held at its size when the strain began)
+        cap = min(cap, memory.fps_cap or max(7, citizens))
+        strict = cap + 10
+        why = f"the fort is strained ({'; '.join(strain)}): no newcomers for now"
     if s.get("fps_low") and rules_["fort_goal"] != "maintain" and mode != "shrink":
         # slow game: no newcomers for now. Held at the fort's size when it first
         # ran slowly (deaths don't shrink it further; births replace losses)

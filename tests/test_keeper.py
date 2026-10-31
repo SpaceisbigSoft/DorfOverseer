@@ -106,6 +106,13 @@ def _():
     mid = [(now + i, 25) for i in range(40)]
     assert overseer.fps_state(mid, 12) == 25                       # still low: not yet above 30
     assert overseer.fps_state([(now + i, 60) for i in range(40)], 25) is None
+    # (0.104.106) a game that runs at 100 is held from 35, and let go above 45
+    pk = {"fps": 0}
+    fast = [(now + i, 100) for i in range(40)]
+    assert overseer.fps_state(fast, None, pk) is None and pk["fps"] == 100
+    assert overseer.fps_state([(now + i, 30) for i in range(40)], None, pk) == 30
+    assert overseer.fps_state([(now + i, 42) for i in range(40)], 30, pk) == 42     # not yet above 45
+    assert overseer.fps_state([(now + i, 50) for i in range(40)], 42, pk) is None
 
 
 def fort():

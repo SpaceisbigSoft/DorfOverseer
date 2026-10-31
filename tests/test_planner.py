@@ -4314,6 +4314,28 @@ def _():
     assert not by_rule(plan(s, m)[0], "pop_cap")
 
 
+@test("strain (0.104.106): newcomers held at the fort's size while drink, meals or mood fail; let go with margin")
+def _():
+    s = grown(100, True)                                        # "no cap"
+    s["society"] = {"pop_cap": 1000, "strict_pop_cap": 1000}
+    pop = s["dwarves"]["total"]
+    s["stocks"]["drink"] = pop * 1                              # 1 drink a dwarf: strained
+    m = Memory()
+    c = by_rule(plan(copy.deepcopy(s), m)[0], "pop_cap")
+    assert c and c[0].action["cap"] <= pop + 1 and "strained" in c[0].reason and "drink" in c[0].reason, c
+    record([(c[0], {"ok": True})], s, m)
+    assert m.strain_hold and m.fps_cap == c[0].action["cap"], (m.strain_hold, m.fps_cap)
+    s["society"] = {"pop_cap": c[0].action["cap"], "strict_pop_cap": c[0].action["strict"]}
+    s["stocks"]["drink"] = pop * 3                              # better, not yet past the "ok" level (4)
+    assert not by_rule(plan(copy.deepcopy(s), m)[0], "pop_cap"), "held until it's well past"
+    s["stocks"]["drink"] = pop * 6
+    s["stocks"]["prepared_meals"] = pop * 6
+    c = by_rule(plan(copy.deepcopy(s), m)[0], "pop_cap")
+    assert c and c[0].action["cap"] == 1000, c                  # let go
+    record([(c[0], {"ok": True})], s, m)
+    assert not m.strain_hold and m.fps_cap is None
+
+
 @test("no cap: the population cap goes to 1000; shrinking: 7, and a dwarf is sent away now and then")
 def _():
     s = grown(100, True)

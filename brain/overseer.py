@@ -1448,17 +1448,28 @@ def heartbeat() -> None:
 backup.on_progress = heartbeat      # (0.104.81) a long save copy keeps the keeper's heartbeat fresh
 
 
-def fps_state(samples: list, low):
+FPS_PEAK = {"fps": 0}
+FPS_FLOOR_SHARE = 0.35           # (0.104.106) ... or this share of the best FPS seen this session,
+FPS_CLEAR_SHARE = 0.45           # whichever is higher (a 100 FPS game is held from 35, not 20)
+
+
+def fps_state(samples: list, low, peak: dict | None = None):
     """The FPS to report as low (the median over the window), or None. Needs a
     minute of samples; once low, stays low until the median is back above
-    FPS_CLEAR, so it doesn't flicker."""
+    the clear level, so it doesn't flicker. (0.104.106) The levels follow the
+    game's own best FPS: Teacheroar's soak sat at 24-30 FPS for days (fine
+    by a fixed 20) while the fort grew 250 -> 438."""
     if len(samples) < 30:
         return low
     vals = sorted(v for _, v in samples)
     med = vals[len(vals) // 2]
+    peak = FPS_PEAK if peak is None else peak
+    peak["fps"] = max(peak.get("fps") or 0, med)
+    floor = max(FPS_FLOOR, FPS_FLOOR_SHARE * peak["fps"])
+    clear = max(FPS_CLEAR, FPS_CLEAR_SHARE * peak["fps"])
     if low is None:
-        return int(med) if med < FPS_FLOOR else None
-    return None if med > FPS_CLEAR else int(med)
+        return int(med) if med < floor else None
+    return None if med > clear else int(med)
 
 
 def main() -> int:

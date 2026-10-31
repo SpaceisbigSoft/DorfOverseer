@@ -708,7 +708,9 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
         if a["type"] == "pull_gate":
             memory.gate_closed_by_ai = not memory.gate_closed_by_ai
         if a["type"] == "set_population_cap":
-            memory.fps_cap = a.get("cap") if "runs slowly" in p.reason else None
+            held = "runs slowly" in p.reason or "is strained" in p.reason
+            memory.fps_cap = a.get("cap") if held else None
+            memory.strain_hold = "is strained" in p.reason
         if a["type"] == "import_orders" and a.get("library") not in memory.libraries_imported:
             memory.libraries_imported.append(a.get("library"))
         if a["type"] == "make_squad" and isinstance(r.get("squad_id"), int) and r["squad_id"] not in memory.squads_made:
