@@ -1121,6 +1121,36 @@ function dig_progress(p)
     local total, dug, stuck, marked, digging = 0, 0, 0, 0, 0
     local jobs = job_tiles()
     local waiting = {}             -- (0.104.110) what the tiles left wait on: up to 5, with their jobs
+    -- (0.104.127) can a dwarf get beside a waiting tile? (Teacheroar: the new
+    -- hospital 0 of 175 and a bedrooms level 0 of 89 for years, each one dig
+    -- job with "no worker")
+    local groups
+    local function reach_words(x, y, z)
+        if groups == nil then
+            groups = {}
+            pcall(function()
+                for _, cp in ipairs(citizen_positions()) do
+                    local g = dfhack.maps.getWalkableGroup(xyz2pos(cp.x, cp.y, cp.z))
+                    if g and g ~= 0 then groups[g] = true end
+                end
+            end)
+        end
+        local seen_walk = false
+        for dz = -1, 1 do
+            for dy = -1, 1 do
+                for dx = -1, 1 do
+                    if dx ~= 0 or dy ~= 0 or dz ~= 0 then
+                        local okg, g = pcall(dfhack.maps.getWalkableGroup, xyz2pos(x + dx, y + dy, z + dz))
+                        if okg and g and g ~= 0 then
+                            if groups[g] then return 'reachable' end
+                            seen_walk = true
+                        end
+                    end
+                end
+            end
+        end
+        return seen_walk and 'beside ground the dwarves can\'t reach' or 'no open ground beside it'
+    end
     local function check(x, y, z, done)
         total = total + 1
         local t = tile_info(x, y, z)
@@ -1129,7 +1159,9 @@ function dig_progress(p)
         elseif jobs[x .. ',' .. y .. ',' .. z] then
             digging = digging + 1  -- a dwarf is on it now
             if #waiting < 5 then
-                table.insert(waiting, ('x%d y%d: %s'):format(x, y, job_words(jobs[x .. ',' .. y .. ',' .. z])))
+                local okr, rw = pcall(reach_words, x, y, z)
+                table.insert(waiting, ('x%d y%d z%d: %s%s'):format(x, y, z, job_words(jobs[x .. ',' .. y .. ',' .. z]),
+                                                                    okr and rw ~= 'reachable' and (', ' .. rw) or ''))
             end
         elseif t and t.marked then
             marked = marked + 1    -- marker-only designation: nobody will dig it

@@ -1008,14 +1008,17 @@ end
 -- a burrow over the taverns, temples and library, the low-mood moved in, so
 -- they take no work and spend their time where the friends, the drink and the
 -- gods are. Enxah: 42 badly wanting friends, 18 miserable, hardly anyone idle.
--- The burrow also covers the dining halls, the bedrooms, the hospital and the
--- food and drink piles, so nobody in it goes hungry, thirsty or sleepless.
+-- The burrow also covers the dining halls, the bedrooms and the food and
+-- drink piles (never the hospital: 0.104.127), so nobody in it goes hungry, thirsty or sleepless.
 -- At most `max` dwarves at a time: very unhappy or worse, not a soldier, not
 -- a child, not a patient; each goes back to work when no longer unhappy, or
 -- after `days` days. Its members are kept in the save.
 RECREATION_NAME = 'AI recreation'
 RECREATION_KEY = 'ai-overseer/recreation'
-local REC_ZONES = {MeetingHall = true, DiningHall = true, Bedroom = true, Hospital = true}
+-- (0.104.127) never the hospital: Teacheroar's massacre (31 Oct, ~45 dead, 39 strangled
+-- by citizens) happened in its hospital zone, x95-101 y40-48 z167, where 124 wounded lay
+-- on the floor and the burrow kept the unhappiest dwarves (patients never join it)
+local REC_ZONES = {MeetingHall = true, DiningHall = true, Bedroom = true}
 
 local function rec_state()
     local ok, d = pcall(dfhack.persistent.getSiteData, RECREATION_KEY, {members = {}})
@@ -1043,16 +1046,24 @@ end
 -- stockpiles that take food or drink.
 function fill_recreation(burrow)
     dfhack.burrows.clearTiles(burrow)
-    local n, loc_zone = 0, {}
+    local n, loc_zone, hosp_zone = 0, {}, {}
     pcall(function()
         for _, b in ipairs(dfhack.world.getCurrentSite().buildings) do
-            pcall(function() for _, bid in ipairs(b:getContents().building_ids) do loc_zone[bid] = true end end)
+            pcall(function()
+                local hosp = df.abstract_building_type[b:getType()] == 'HOSPITAL'
+                for _, bid in ipairs(b:getContents().building_ids) do
+                    if hosp then hosp_zone[bid] = true else loc_zone[bid] = true end
+                end
+            end)
         end
     end)
     for _, b in ipairs(df.global.world.buildings.all) do
         local t = b:getType()
         if t == df.building_type.Civzone then
-            if loc_zone[b.id] or REC_ZONES[df.civzone_type[b.type] or ''] then n = n + zone_tiles(b, burrow) end
+            local kind = df.civzone_type[b.type] or ''
+            if not hosp_zone[b.id] and kind ~= 'Hospital' and (loc_zone[b.id] or REC_ZONES[kind]) then
+                n = n + zone_tiles(b, burrow)
+            end
         elseif t == df.building_type.Stockpile then
             local okf, food = pcall(function() return b.settings.flags.food end)
             if okf and food then n = n + zone_tiles(b, burrow) end

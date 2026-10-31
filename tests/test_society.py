@@ -100,6 +100,29 @@ def _():
     assert env.recreation_status().members == 2
 
 
+@test("recreation (0.104.127): never the hospital's zone (a meeting hall that is a hospital location), nor a Hospital zone")
+def _():
+    env, units, assigned, ntiles, g = fresh()
+    env_ = env
+    run = env_["load"]                                              # the Lua global load, to run a snippet in env
+    snippet = """
+      local env = ...
+      local hall = {id = 60, x1 = 10, y1 = 0, x2 = 12, y2 = 1, z = 10, type = 1, getType = function() return 'Civzone' end}
+      local ward = {id = 61, x1 = 20, y1 = 0, x2 = 21, y2 = 0, z = 10, type = 2, getType = function() return 'Civzone' end}
+      local all = env.df.global.world.buildings.all
+      all[1] = hall; all[2] = ward
+      setmetatable(all, nil)
+      env.df.civzone_type[2] = 'Hospital'
+      env.df.abstract_building_type = {[7] = 'HOSPITAL'}
+      local hosp = {getType = function() return 7 end, getContents = function() return {building_ids = {[0] = 60}} end}
+      env.dfhack.world.getCurrentSite = function() return {buildings = {[0] = hosp}} end
+    """
+    f = run(snippet, "t", "t", env_)
+    f(env_)
+    r = env.recreation_tick(2, 28, False)
+    assert r.ok and r.tiles == 6, dict(r)                           # only the first meeting hall, not the ward or the hospital hall
+
+
 @test("recreation (0.104.78): the recovered and those in long enough go back to work")
 def _():
     env, units, assigned, ntiles, g = fresh()
