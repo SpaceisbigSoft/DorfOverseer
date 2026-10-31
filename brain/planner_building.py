@@ -846,7 +846,11 @@ def _dig_stall_rule(s: dict, memory, cfg: dict, open_: list, proposals: list) ->
         # weeks while other digging takes the miners (Teacheroar: the new
         # hospital 0 of 175, a bedrooms level 0 of 89 for years, at priority 4
         # with 260 tiles waiting elsewhere)
-        if (dug < total and not rec.get("raised_ok")      # (0.104.129: 0.104.128's "raised" marked held ones too)
+        raised = rec.get("raised_ok")
+        # (0.104.134) asked again a week on while still nothing is dug (its
+        # old jobs renewed at the new priority)
+        again = isinstance(raised, int) and dug == 0 and now - raised >= cfg["dig_raise_again_days"] * TICKS_PER_DAY
+        if (dug < total and (not raised or again)      # (0.104.129: 0.104.128's "raised" marked held ones too)
                 and (p.get("urgent") or p.get("kind") in DIG_FIRST_KINDS
                      or (dug == 0 and days >= cfg["dig_raise_days"]))):
             proposals.append(Proposal("dig_first", {"type": "prioritize_dig", "project_id": p["id"], "priority": 2},

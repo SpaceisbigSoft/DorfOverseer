@@ -1501,8 +1501,30 @@ function prioritize_project(id, pri, dry_run)
     local p = find(data, id)
     if not p then return {ok = false, rejected = true, error = 'no such AI project'} end
     if p.phase ~= 'dig' then return {ok = false, rejected = true, error = 'project is not being dug'} end
-    if p.dig_pri and p.dig_pri <= pri then          -- done before: the brain marks it so
-        return {ok = true, already = true, priority = p.dig_pri, tiles = 0}
+    -- (0.104.134) the dig jobs DF made before at the old priority keep it: those
+    -- nobody holds are taken away, and DF makes them again from the raised
+    -- designation (Teacheroar's hospital: raised to 2, still 0 of 175 dug 18
+    -- days on, its one job "no worker")
+    local function renew_jobs()
+        local anchor, at = anchor_of(p), {}
+        for x, col in pairs(layouts.tiles_from_dig(cells_of(p, 'dig'))) do
+            for y in pairs(col) do at[(anchor.x + x) .. ',' .. (anchor.y + y) .. ',' .. p.z] = true end
+        end
+        local gone, link = 0, df.global.world.jobs.list.next
+        while link do
+            local j, nxt = link.item, link.next
+            if j and at[j.pos.x .. ',' .. j.pos.y .. ',' .. j.pos.z] then
+                local okw, w = pcall(dfhack.job.getWorker, j)
+                if not (okw and w) and pcall(dfhack.job.removeJob, j) then gone = gone + 1 end
+            end
+            link = nxt
+        end
+        return gone
+    end
+    if p.dig_pri and p.dig_pri <= pri then          -- done before: its old jobs renewed
+        if dry_run then return {ok = true, dry_run = true, already = true, priority = p.dig_pri} end
+        local okr, gone = pcall(renew_jobs)
+        return {ok = true, already = true, priority = p.dig_pri, tiles = 0, renewed = okr and gone or 0}
     end
     local anchor, cells = anchor_of(p), {}
     for x, col in pairs(layouts.tiles_from_dig(cells_of(p, 'dig'))) do
@@ -1518,7 +1540,8 @@ function prioritize_project(id, pri, dry_run)
     if n == 0 then return {ok = false, error = 'the game took none of the tiles at the new priority'} end
     p.dig_pri = pri
     save_projects(data)
-    return {ok = true, tiles = n, priority = pri}
+    local okr, gone = pcall(renew_jobs)
+    return {ok = true, tiles = n, priority = pri, renewed = okr and gone or 0}
 end
 
 -- (0.104.110) a level 90%+ dug whose last tiles haven't moved for weeks

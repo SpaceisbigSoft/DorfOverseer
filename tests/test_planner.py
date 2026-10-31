@@ -1384,9 +1384,11 @@ def _():
     assert raised() == [174], "(0.104.129) held or refused: asked again"
     assert raised() == []                                        # once taken: never again
     s["date"]["tick"] += 14 * 1200
-    assert raised() == [173], "nothing dug for 2 weeks"          # storage moves on its own: never
-    s["projects"]["open"][0]["dig"]["dug"] = 5                   # progress resets the clock, not the mark
-    assert raised() == []
+    assert raised() == [173, 174], "nothing dug for 2 weeks; (0.104.134) the hospital again, still 0 a week on"
+    assert raised() == []                                        # storage moves on its own: never
+    s["projects"]["open"][0]["dig"]["dug"] = 5                   # progress: not asked again
+    s["date"]["tick"] += 8 * 1200
+    assert raised() == [173], "only the one still at 0"
 
 
 @test("idle blocks (0.104.110): capped at 500, and only from stone the masons may use")

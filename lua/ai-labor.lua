@@ -16,7 +16,8 @@
 -- fish in near the fort.
 --@module = true
 
-MAX_MINERS = 10           -- more than this get in each other's way
+MAX_MINERS = 20           -- (0.104.134: was 10) more than this get in each other's way; Teacheroar had
+                          -- 15 picks, 10 miners and 260 tiles waiting on many levels
 TILES_PER_MINER = 25      -- digging waiting per miner wanted
 GATHER_RADIUS = 40        -- shrubs this far from the fort's centre are gathered
 SCAN_EVERY_TICKS = 7 * 1200   -- (0.100) the shrub and water scans: once a game week
