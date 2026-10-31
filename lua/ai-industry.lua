@@ -366,6 +366,48 @@ function quarry_stone(idx, is_economic, is_ore)
     return idx ~= nil and not is_economic and not is_ore
 end
 
+-- (0.104.122) the chambers marked lately: Teacheroar's quarry marked the same
+-- 8 kaolinite tiles at x71 y66 z166 three times in six hours (the marks went
+-- undug), so no stone came. A spot tried is left alone for QUARRY_FORGET_DAYS.
+QUARRY_FORGET_DAYS = 56
+QUARRY_KEY = 'ai-overseer/quarry/tried'
+
+local function now_tick()
+    local ok, t = pcall(function() return df.global.cur_year * 403200 + df.global.cur_year_tick end)
+    return ok and t or nil
+end
+
+function quarry_tried()
+    local ok, v = pcall(function() return dfhack.persistent.getSiteData(QUARRY_KEY, {}) end)
+    local out, now = {}, now_tick()
+    for _, e in ipairs(ok and type(v) == 'table' and v or {}) do
+        if type(e) == 'table' and e.x and e.y and e.z and e.tick and now
+                and now - e.tick >= 0 and now - e.tick < QUARRY_FORGET_DAYS * 1200 then
+            table.insert(out, e)
+        end
+    end
+    return out
+end
+
+local function remember_quarry(spot, tried)
+    local now = now_tick()
+    if not now then return end
+    local list = {}
+    for _, e in ipairs(tried) do table.insert(list, e) end
+    table.insert(list, {x = spot.x, y = spot.y, z = spot.z, tick = now})
+    while #list > 12 do table.remove(list, 1) end
+    pcall(function() dfhack.persistent.saveSiteData(QUARRY_KEY, list) end)
+end
+
+local function tried_near(x, y, z, tried)
+    for _, e in ipairs(tried) do
+        if e.z == z and math.abs(x - e.x) <= QUARRY_REACH + 1 and math.abs(y - e.y) <= QUARRY_REACH + 1 then
+            return true
+        end
+    end
+    return false
+end
+
 local function near_levels(x, y, z, areas)
     for _, a in ipairs(areas) do
         if a.z == z and x >= a.x1 - 2 and x <= a.x2 + 2 and y >= a.y1 - 2 and y <= a.y2 + 2 then return true end
@@ -378,6 +420,7 @@ function quarry(count, dry_run)
     if not a then return {ok = false, error = 'no citizens'} end
     count = math.max(1, math.min(QUARRY_MAX, count or QUARRY_MAX))
     local areas = project_areas()
+    local tried = quarry_tried()
     local groups = {}
     for _, p in ipairs(reqscript('ai-builder').citizen_positions()) do
         local g = dfhack.maps.getWalkableGroup(xyz2pos(p.x, p.y, p.z))
@@ -393,6 +436,7 @@ function quarry(count, dry_run)
         if mat ~= 'STONE' and mat ~= 'MINERAL' then return false end      -- natural rock only
         if near_levels(x, y, z, areas) or not safe(x, y, z) then return false end
         if room_wall(x, y, z) then return false end          -- (0.104.19) never a room's wall
+        if tried_near(x, y, z, tried) then return false end   -- (0.104.122) marked lately, never dug
         local idx = stone_at(x, y, z)
         local inorg = idx and inorganic(idx)
         return inorg ~= nil and quarry_stone(idx, economic(idx), #metals_of(idx) > 0), idx
@@ -419,7 +463,8 @@ function quarry(count, dry_run)
     end
     if not best then
         return {ok = false, rejected = true,
-                error = 'no wall of ordinary (non-economic) stone beside the dwarves\' ground, away from the levels'}
+                error = 'no wall of ordinary (non-economic) stone beside the dwarves\' ground, away from the levels'
+                        .. (#tried > 0 and (' (%d spot(s) marked lately left alone)'):format(#tried) or '')}
     end
     local marked, seen, queue, head = {}, {}, {best}, 1
     seen[best.x .. ',' .. best.y] = true
@@ -447,5 +492,7 @@ function quarry(count, dry_run)
         local block = dfhack.maps.getTileBlock(t.x, t.y, t.z)
         if block then block.flags.designated = true end
     end
+    remember_quarry(best, tried)
+    out.tried = #tried > 0 and #tried or nil
     return out
 end

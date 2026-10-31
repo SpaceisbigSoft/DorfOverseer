@@ -900,19 +900,25 @@ def _needs_rules(s: dict, cfg: dict, proposals: list, rules_: dict | None = None
     # figurines (Enxah: 13 badly, nothing answered it)
     ext = unmet(s, "BeExtravagant")
     jewel = JEWEL_RECIPES[(game_day(s) // 3) % len(JEWEL_RECIPES)]
-    making = queued(s, {"stone_crafts", *JEWEL_RECIPES})
+    making = queued(s, {"stone_crafts", "wood_crafts", *JEWEL_RECIPES})
     ordered = False
+    # (0.104.122) wooden crafts while stone is short (Teacheroar: 2 usable
+    # boulders, stone rings ordered every few hours, cancelled after 15 days
+    # as "made in wood instead" and ordered again; 228 wanting something to own)
+    wood = int(_d(s.get("stocks")).get("wood") or 0)
+    in_wood = stone_short(s, cfg["stone_low"]) and wood >= cfg["wood_crafts_min_logs"]
     if acq >= cfg["needs_note_at"] and rules_.get("give_trinkets", True) and isinstance(nd.get("trinkets"), int):
         if nd["trinkets"] > 0:
             proposals.append(Proposal("needs_trinkets", {"type": "give_trinkets", "max": cfg["trinkets_per_cycle"]},
                                       f"{acq} dwarves are distracted for want of something to own: give them "
                                       f"trinkets ({nd['trinkets']} free rings, amulets, figurines...)", 5))
         elif _has_shop(b, "Craftsdwarfs") and not making:
-            r = jewel if ext >= cfg["needs_note_at"] else "stone_crafts"
+            r = "wood_crafts" if in_wood else jewel if ext >= cfg["needs_note_at"] else "stone_crafts"
             proposals.append(Proposal("needs_trinkets", {"type": "work_order", "recipe": r,
                                                          "amount": min(20, acq)},
                                       f"{acq} dwarves want something to own and there are no free trinkets: "
                                       + ("make stone crafts" if r == "stone_crafts" else
+                                         f"make wooden crafts (no stone to spare; {wood} logs)" if r == "wood_crafts" else
                                          f"make stone {r.split('_', 1)[1]}s to wear ({ext} want finery too)"), 5, True))
             ordered = True
     if (not ordered and ext >= cfg["needs_note_at"] and rules_.get("give_trinkets", True)

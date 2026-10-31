@@ -323,6 +323,7 @@ PLANNER_CONFIG = {
     "trade_wood": 50,
     "trade_drink_per_dwarf": 20,
     "soap_keep": 5,                    # soap bars kept for the hospital
+    "wood_crafts_min_logs": 30,        # (0.104.122) trinkets of wood while stone is short, with this many logs
     "soap_keep_max": 15, "infected_per_soap": 3,   # (0.104.121) a bar for every 3 infected wounds, up to 15
     "soap_cooldown_ticks": 2 * 1200,
     "noble_rooms_cooldown_ticks": 1200,
@@ -860,7 +861,8 @@ RECIPE_SHOPS = {"pig_iron": "Smelter", "steel": "Smelter", "coke_bituminous": "S
 # an order for a workshop the fort doesn't have never moves (130 brew jobs and
 # meals and beds waited five years with no still, kitchen or carpenter, were
 # cancelled as stuck and ordered again: 338 cancels in a night)
-WOOD_ELSEWHERE = {"wooden_crossbow": "Bowyers", "wooden_bolts": "Bowyers", "wooden_cups": "Craftsdwarfs"}
+WOOD_ELSEWHERE = {"wooden_crossbow": "Bowyers", "wooden_bolts": "Bowyers", "wooden_cups": "Craftsdwarfs",
+                  "wood_crafts": "Craftsdwarfs"}
 
 
 def recipe_shop(recipe) -> str | None:

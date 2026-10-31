@@ -34,7 +34,7 @@
 local json = require('json')
 local utils = require('utils')
 
-BRIDGE_VERSION = '0.104.121'
+BRIDGE_VERSION = '0.104.122'
 PROTOCOL = 1 -- bump when the report's shape changes in a breaking way
 
 local OUT_DIR = dfhack.getDFPath() .. '/dfhack-config/ai-overseer'
@@ -2813,6 +2813,9 @@ ORDER_RECIPES = {
     stone_mugs = {job = 'MakeGoblet', kind = 'stone'},        -- mugs for the tavern
     -- (0.104.4) wooden goblets ("cups", DF wiki) at the craftsdwarf's, when there's no stone
     wooden_cups = {job = 'MakeGoblet', material_category = {'wood'}},
+    -- (0.104.122) wooden crafts (figurines, rings, amulets... the craftsdwarf's
+    -- pick) for the dwarves who want something to own when stone is short
+    wood_crafts = {job = 'MakeCrafts', material_category = {'wood'}},
     stone_table = {job = 'ConstructTable', kind = 'stone'},
     stone_chair = {job = 'ConstructThrone', kind = 'stone'},
     stone_door = {job = 'ConstructDoor', kind = 'stone'},

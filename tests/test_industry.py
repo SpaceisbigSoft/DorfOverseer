@@ -239,6 +239,40 @@ def _():
     assert not r.ok, dict(r)                                       # every wall beside the dwarves is the old level's
 
 
+@test("quarry (0.104.122): a spot marked lately is left alone; another found; forgotten after 56 days")
+def _():
+    L = LuaRuntime(unpack_returned_tuples=True)
+    env, dig = L.execute(FAKE, SRC, L.table_from(MAP))
+    L.execute(QUARRY_SETUP, env, 3, False)
+    L.execute("""local env = ...
+      local store = {}
+      env.dfhack.persistent = {getSiteData = function(k, d) return store[k] or d end,
+                               saveSiteData = function(k, v) store[k] = v end}
+      env.df.global.cur_year, env.df.global.cur_year_tick = 80, 1000
+      env.STORE = store
+    """, env)
+    r1 = env.quarry(4, False)
+    assert r1.ok and r1.tried is None, dict(r1)
+    first = (r1.x, r1.y)
+    for y in range(16):                                            # the marks go, undug
+        for x in range(16):
+            if dig(x, y) == 1:
+                L.execute("local env, x, y = ...; env.dfhack.maps.getTileFlags(x, y, 10).dig = 0", env, x, y)
+    r2 = env.quarry(4, False)
+    if r2.ok:
+        assert (r2.x, r2.y) != first and r2.tried == 1, (dict(r2), first)
+        assert abs(r2.x - first[0]) > 4 or abs(r2.y - first[1]) > 4, (dict(r2), first)
+    else:
+        assert "marked lately" in r2.error, dict(r2)
+    L.execute("local env = ...; env.df.global.cur_year_tick = 1000 + 57 * 1200", env)
+    for y in range(16):
+        for x in range(16):
+            if dig(x, y) == 1:
+                L.execute("local env, x, y = ...; env.dfhack.maps.getTileFlags(x, y, 10).dig = 0", env, x, y)
+    r3 = env.quarry(4, False)
+    assert r3.ok and (r3.x, r3.y) == first, (dict(r3), first)  # forgotten: the nearest again
+
+
 if __name__ == "__main__":
     for name, ok, msg in RESULTS:
         print(f"[{'PASS' if ok else 'FAIL'}] {name}" + (f"\n        {msg}" if msg else ""))

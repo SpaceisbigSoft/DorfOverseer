@@ -6665,6 +6665,25 @@ def _():
     assert by_rule(plan(s, Memory())[0], "needs_trinkets")[0].action["recipe"] == "stone_crafts"
 
 
+@test("trinkets in wood (0.104.122): stone short, logs at hand: wooden crafts, not stone jewellery that never moves")
+def _():
+    s = fort()
+    s["orders"] = []
+    s["needs"] = {"needs": {"BeExtravagant": {"distracted": 196}, "AcquireObject": {"distracted": 228}}, "trinkets": 0}
+    s["stone_use"] = {"usable": 2, "economic": {}}                  # Teacheroar, 31 Oct
+    s["stocks"]["wood"] = 518
+    p = plan(copy.deepcopy(s), Memory())[0]
+    t = by_rule(p, "needs_trinkets")
+    assert t and t[0].action == {"type": "work_order", "recipe": "wood_crafts", "amount": 20}, t
+    assert "wooden crafts" in t[0].reason and not by_rule(p, "needs_finery")
+    assert planner.recipe_shop("wood_crafts") == "Craftsdwarfs"
+    s["orders"] = [{"id": 3, "recipe": "wood_crafts", "amount_left": 12, "by_ai": True}]    # being made
+    assert not by_rule(plan(copy.deepcopy(s), Memory())[0], "needs_trinkets")
+    s["orders"] = []
+    s["stocks"]["wood"] = 10                                         # no logs either: the old way
+    assert by_rule(plan(copy.deepcopy(s), Memory())[0], "needs_trinkets")[0].action["recipe"] in planner.JEWEL_RECIPES
+
+
 @test("Forge-born and Communal (0.103.11): furniture in spare metal; new sleeping quarters a dormitory")
 def _():
     s = fort()
