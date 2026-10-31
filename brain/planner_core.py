@@ -235,6 +235,7 @@ PLANNER_CONFIG = {
     "soldier_swap_month_min": 2,                 # (0.104.114) swaps allowed in 28 days: this many at least ...
     "soldier_swap_month_share": 10,              # ... or one per this many soldiers
     "soldier_swap_keen_min": 5,                  # ...while at least this many civilians badly want to train
+    "soldier_swap_month_keen": 4,                # (0.104.142) ... or one per this many keen civilians waiting
     "staggered_starved_min": 3,                  # (0.104.72) this many starved soldiers: back to staggered training
     "pair_chairs_friends_share": 0.2,            # (0.104.77) this share badly wanting friends: chairs paired in taverns
     "pair_chairs_cooldown_ticks": 7 * 1200,
@@ -322,7 +323,7 @@ PLANNER_CONFIG = {
     "idle_train_share": 0.4,           # this share of adults idle: every squad trains, and more may join (0.83)
     "idle_train_off_share": 0.25,      # ... until idle falls under this share
     "idle_avg_weight": 0.1,            # ... judged on a running average (this weight for each new reading)
-    "idle_fight_soldiers_max": 30,     # ... then at most this many more soldiers for the needs
+    "idle_fight_soldiers_max": 40,     # ... then at most this many more soldiers for the needs (0.104.142: was 30)
     "idle_fight_share_max": 0.45,      # ... and at most this share of the citizens
     "fight_min_citizens": 15,          # (0.103.9; was 30)
     "fight_needs_share": 0.4,          # (0.103.9) ...or this share of the citizens, if fewer
@@ -1282,7 +1283,11 @@ def _soldier_swap(s: dict, cfg: dict, proposals: list | None, memory=None) -> No
         month = sum(1 for t in _d(getattr(memory, "swapped", None)).values()
                     if isinstance(t, int) and 0 <= now - t < 28 * TICKS_PER_DAY)
         soldiers = int(_d(_d(s.get("military")).get("gear")).get("soldiers") or 0)
-        if month >= max(cfg["soldier_swap_month_min"], soldiers // cfg["soldier_swap_month_share"]):
+        # (0.104.142) more while many keen civilians wait (Teacheroar: 44 badly
+        # wanting to train, 4 swaps a month); the memory of swaps and drafts
+        # (a year, 84 days) keeps it from churning the same dwarves
+        if month >= max(cfg["soldier_swap_month_min"], soldiers // cfg["soldier_swap_month_share"],
+                        keen // cfg["soldier_swap_month_keen"]):
             return
     x = max(starved, key=lambda v: len(_l(v.get("unmet"))))
     act = {"type": "squad_swap", "unit_id": x["id"]}

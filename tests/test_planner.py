@@ -4190,6 +4190,8 @@ def _():
     s["needs"]["starved_soldiers"].append({"id": 9, "name": "Kib", "unmet": ["CraftObject", "BeWithFriends"]})
     s.setdefault("military", {}).setdefault("gear", {})["soldiers"] = 12
     record([(w2[0], {"ok": True})], s, m)                           # two swapped this month
+    assert by_rule(plan(copy.deepcopy(s), m)[0], "soldier_swap"), "(0.104.142) 33 keen: 8 a month"
+    s["needs"]["keen_civilians"] = 7
     assert not by_rule(plan(copy.deepcopy(s), m)[0], "soldier_swap"), "the month's swaps are used"
     s["date"]["tick"] += 29 * 1200
     assert by_rule(plan(copy.deepcopy(s), m)[0], "soldier_swap")
