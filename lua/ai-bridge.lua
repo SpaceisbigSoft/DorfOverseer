@@ -34,7 +34,7 @@
 local json = require('json')
 local utils = require('utils')
 
-BRIDGE_VERSION = '0.104.112'
+BRIDGE_VERSION = '0.104.113'
 PROTOCOL = 1 -- bump when the report's shape changes in a breaking way
 
 local OUT_DIR = dfhack.getDFPath() .. '/dfhack-config/ai-overseer'
@@ -4116,6 +4116,11 @@ function act_import_orders(a)
     return {ok = true, library = a.library, added = #df.global.world.manager_orders.all - before}
 end
 
+-- (0.104.113) What fills the map, read only (lua/ai-census.lua).
+function act_census(a)
+    return reqscript('ai-census').census()
+end
+
 -- (0.104.108) Areas on one level joined by a corridor (lua/ai-joins.lua).
 function act_join_levels(a)
     return reqscript('ai-joins').join_levels(a.dry_run == true)
@@ -5474,6 +5479,7 @@ end
 
 ACTIONS = {
     join_levels = act_join_levels,
+    census = act_census,
     scan_entrances = act_scan_entrances,
     build_gate_doors = act_build_gate_doors,
     fortify_entrance = act_fortify_entrance,

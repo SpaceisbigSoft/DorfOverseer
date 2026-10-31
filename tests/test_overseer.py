@@ -258,7 +258,7 @@ def _():
     overseer.one_cycle(b, autopilot=True, backend=c)
     assert {"type": "work_order", "recipe": "brew_drink", "amount": 40} in b.acted, b.acted
     assert saved()["memory"]["adjust"] == {"drink_per_dwarf": 25}
-    assert len([a for a in b.acted if a["type"] not in ("set_culture", "set_learned", "ledger_set")]) <= 3
+    assert len([a for a in b.acted if a["type"] not in ("set_culture", "set_learned", "ledger_set", "join_levels", "census")]) <= 3
 
 
 @test("AI: hostile answer does nothing; what was thrown out is logged")

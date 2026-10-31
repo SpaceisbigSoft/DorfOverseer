@@ -286,7 +286,7 @@ def proposal_id(p) -> str:
     return hashlib.sha1((p.rule + json.dumps(a, sort_keys=True)).encode()).hexdigest()[:8]
 
 
-CAMERA_QUIET = {"join_levels", "dismiss_alerts", "sand_zone", "report_status", "survey_water", "scan_entrances", "recreation",
+CAMERA_QUIET = {"census", "join_levels", "dismiss_alerts", "sand_zone", "report_status", "survey_water", "scan_entrances", "recreation",
                 "cistern_step", "restrict_water", "save_memory", "pair_chairs", "approve_orders"}
 
 
@@ -480,6 +480,8 @@ def short(a: dict) -> str:
                 "let the kitchen cook brewable plants again")
     if t == "pull_gate":
         return "pull the AI gate lever"
+    if t == "census":            # (0.104.113)
+        return "count what fills the map"
     if t == "join_levels":       # (0.104.108)
         return "join areas on one level that meet only through the stairs"
     if t == "scan_entrances":

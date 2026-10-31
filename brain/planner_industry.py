@@ -208,7 +208,7 @@ def _supply_rules(s: dict, citizens: int, cfg: dict, proposals: list, notes: lis
                                   "the wells have no buckets", 3, True))
 
 
-def _slow_game_rules(s: dict, citizens: int, cfg: dict, proposals: list, notes: list) -> None:
+def _slow_game_rules(s: dict, citizens: int, cfg: dict, proposals: list, notes: list, memory=None) -> None:
     """The game runs slowly (FPS measured by the overseer): besides holding
     newcomers and new luxury levels, what the counts point at. Many items:
     a garbage dump outside, then worn-out clothes lying about marked for it
@@ -218,6 +218,11 @@ def _slow_game_rules(s: dict, citizens: int, cfg: dict, proposals: list, notes: 
     items, units = int(c.get("items") or 0), int(c.get("units") or 0)
     if not c:
         return
+    # (0.104.113) what fills the map, counted once a week while slow
+    cen = _d(getattr(memory, "census", None)) if memory is not None else {}
+    if not isinstance(cen.get("tick"), int) or not 0 <= abs_tick(s) - cen["tick"] < 7 * TICKS_PER_DAY:
+        proposals.append(Proposal("census", {"type": "census"},
+                                  f"{units} creatures and {items} items on the map: count what they are", 6))
     notes.append(f"the game runs slowly (FPS {s.get('fps_low')}): {items} items, {units} creatures, "
                  f"{c.get('jobs')} jobs on the map")
     if items >= cfg["fps_items_heavy"]:

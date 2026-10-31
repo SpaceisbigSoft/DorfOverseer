@@ -443,7 +443,7 @@ def steer_of(memory, rule: str, now: int) -> dict | None:
     return None
 STUCK_HOLD_EXEMPT = {"drink", "drink_fruit", "food", "well_parts"}   # (0.104.2) a well's parts: water for the injured     # (0.100.1) see select()
 # Also outside the limit: switching a squad's schedule (instant, undoable).
-LIMIT_EXEMPT = EMERGENCY | {"train", "shelter", "entrances", "labor", "gather", "stuck_order", "alerts",
+LIMIT_EXEMPT = EMERGENCY | {"join_levels", "census", "train", "shelter", "entrances", "labor", "gather", "stuck_order", "alerts",
                             "kitchen"}   # (0.100) a kitchen setting, once per drink shortage: no slot of its own
 
 
@@ -538,6 +538,7 @@ class Memory:
     maintain_pop: int | None = None                      # Maintain: the population being kept
     last_expel_tick: int | None = None                   # when a dwarf was last sent away
     last_join_tick: int | None = None                    # (0.104.108) when areas on a level were last looked at for joining
+    census: dict = field(default_factory=dict)           # (0.104.113) the last census of creatures and items (with "tick")
     dig_seen: dict = field(default_factory=dict)         # (0.104.110) project id -> {"dug", "tick" (last progress), "freed"}
     join_wait_days: int = 2                              # (0.104.108) days to the next look (longer once all were seen)
     culture: dict = field(default_factory=dict)          # culture history (see culture.py)
@@ -1474,6 +1475,10 @@ def _record_any_outcome(a: dict, r: dict, state: dict, memory, now: int) -> None
         memory.rescan_entrances = False
     elif t == "expel_dwarf":
         memory.last_expel_tick = now             # refused or not: wait the full spell
+    elif t == "census":
+        if r.get("ok"):
+            memory.census = {"tick": now, "units": _d(r.get("units")), "items": _d(r.get("items")),
+                             "jobs": r.get("jobs")}
     elif t == "join_levels":
         # (0.104.108) a corridor dug: look again soon; every level seen and
         # nothing to join: wait a fortnight (new levels come slowly)

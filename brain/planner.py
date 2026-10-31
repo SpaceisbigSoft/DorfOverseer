@@ -488,7 +488,7 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
             proposals = [p for p in proposals if p not in dropped]
             notes.append(f"the game runs slowly (FPS {s.get('fps_low')}): {len(dropped)} new level(s) wait "
                          "until it recovers")
-        _guard(_slow_game_rules, s, citizens, cfg, proposals, notes)
+        _guard(_slow_game_rules, s, citizens, cfg, proposals, notes, memory)
     # (0.100.1, overnight run) any workshops level another rule starts (a well's
     # parts, the metal works, a bottleneck) brings the missing still, kitchen
     # and carpenter's with it
