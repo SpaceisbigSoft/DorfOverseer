@@ -176,9 +176,15 @@ def _health_rules(s: dict, memory, cfg: dict, notes: list) -> None:
         ask_player(notes, f"{len(long)} dwarves have waited a long time for care: {who}"
                    + (": " + " and ".join(why) if why
                       else ": check the doctors' labours (diagnose, surgery, suturing, bone setting)"))
-    infected = [p for p in patients if p.get("infected")]
-    if infected and not soap:
-        ask_player(notes, f"{len(infected)} dwarves have infected wounds and the fort has no soap "
+    # (0.104.122) the full count (the list stops at 30) and the hospital's own
+    # bars (it said "28 ... no soap" with 112 infected and 5 bars kept there)
+    n_inf = _d(s.get("health")).get("infected")
+    n_inf = n_inf if isinstance(n_inf, int) else sum(1 for p in patients if p.get("infected"))
+    hosp = _location(s, "HOSPITAL")
+    if hosp is not None:
+        soap += int(_d(hosp.get("have")).get("soap") or 0) // LOCATION_UNITS["soap"]
+    if n_inf and not soap:
+        ask_player(notes, f"{n_inf} dwarves have infected wounds and the fort has no soap "
                    "(wounds are cleaned with soap)")
 
 
