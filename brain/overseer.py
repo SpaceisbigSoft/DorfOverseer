@@ -375,6 +375,8 @@ def short(a: dict) -> str:
             f"{'accept' if v else 'ask about'} {str(k).replace('_', ' ')}" for k, v in (a.get("orders") or {}).items())
     if t == "add_posts":
         return "make posts at a location (" + ", ".join(str(k).lower().replace("_", " ") for k in (a.get("posts") or [])) + ")"
+    if t == "vacate_post":       # (0.104.111)
+        return "give a patient's hospital post to a healthy dwarf"
     if t == "staff_location":
         return f"give a dwarf the {str(a.get('post') or 'post').lower().replace('_', ' ')} post"
     if t == "give_trinkets":

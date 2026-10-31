@@ -1318,6 +1318,19 @@ def _():
     assert any("no longer designated" in n for n in plan(s, Memory())[1])
 
 
+@test("doctor a patient (0.104.111): the post goes back; a healthy doctor keeps his")
+def _():
+    s = fort()
+    s["health"] = {"hospital": [{"id": 4, "staff": [{"post": "DOCTOR", "unit_id": 10},
+                                                    {"post": "SURGEON", "unit_id": 11}], "zones": []}],
+                   "patients": [{"id": 11, "name": "Udil, Surgeon", "in_hospital": True, "needs": ["dressing"]},
+                                {"id": 12, "name": "Kib", "needs": ["diagnosis"]}]}
+    got = [p for p in plan(copy.deepcopy(s), Memory())[0] if p.rule == "doctor_patient"]
+    assert [p.action for p in got] == [{"type": "vacate_post", "location_id": 4, "unit_id": 11}], got
+    s["health"]["patients"][0] = {"id": 11, "name": "Udil", "needs": []}      # healed, up and about
+    assert not [p for p in plan(copy.deepcopy(s), Memory())[0] if p.rule == "doctor_patient"]
+
+
 @test("stalled dig (0.104.110): 4 weeks still -> jobs let go of their workers; 8 weeks and 90% dug -> furnish anyway")
 def _():
     s = fort()

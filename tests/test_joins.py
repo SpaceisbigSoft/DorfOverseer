@@ -176,6 +176,19 @@ def _():
     assert r is None and n == 0, (why, n)
 
 
+@test("0.104.112: past the deadline nothing more is read and nothing is planned")
+def _():
+    reads = {"n": 0}
+    base = reader(TWO)
+    def T(x, y):
+        reads["n"] += 1
+        return base(x, y)
+    LUA.execute("local M = ...; M.DEADLINE = os.clock() - 1", M)
+    r, why, stats = M.plan_join(T, seeds((1, 1), (20, 2)))
+    LUA.execute("local M = ...; M.DEADLINE = nil", M)
+    assert r is None and reads["n"] < 20, (why, reads["n"])
+
+
 if __name__ == "__main__":
     for name, ok, msg in RESULTS:
         print(f"[{'PASS' if ok else 'FAIL'}] {name}" + (f"\n        {msg}" if msg else ""))

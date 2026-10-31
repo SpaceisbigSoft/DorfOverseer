@@ -186,6 +186,23 @@ def _():
     assert not env.staff_location(99, "DOCTOR", False).ok
 
 
+@test("0.104.111: a wounded dwarf is passed over for a post; a patient doctor's post is given back")
+def _():
+    lua = LuaRuntime(unpack_returned_tuples=True)
+    env = lua.execute(STAFF_FAKE, SRC)
+    lua.execute("local env = ...; env.UNITS[4].body = {wounds = {_v = true, [0] = {}}}; "
+                "env.UNITS[4].body.wounds = setmetatable(env.UNITS[4].body.wounds, {__len = function() return 1 end}); "
+                "env.df.unit = {find = function(id) for _, u in pairs(env.UNITS) do if u.id == id then return u end end end}",
+                env)
+    d = env.staff_location(3, "DIAGNOSTICIAN", True)
+    assert d.ok and d.unit_id == 2, dict(d)                          # unit 4 (skill 5) is wounded
+    v = env.vacate_post(3, 1, False)
+    assert v.ok and v.post == "doctor", dict(v)
+    assert len(env.UNITS[1].occupations) == 0
+    again = env.vacate_post(3, 1, False)
+    assert not again.ok and "no post" in again.error
+
+
 @test("occupation probe: the world's posts with their fields and the holder's links that point at them")
 def _():
     lua = LuaRuntime(unpack_returned_tuples=True)

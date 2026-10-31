@@ -75,6 +75,21 @@ function tile_info(x, y, z)
     }
 end
 
+-- (0.104.110) a job in words: its type and who has it (only for the few
+-- tiles a stalled level reports)
+function job_words(j)
+    local ok, what = pcall(function()
+        local s = tostring(df.job_type[j.job_type] or 'job')
+        local okw, w = pcall(dfhack.job.getWorker, j)
+        if okw and w then
+            local okn, n = pcall(dfhack.units.getReadableName, w)
+            return s .. ' by ' .. ((okn and n or 'a dwarf'):gsub(',.*', ''))
+        end
+        return s .. ', no worker'
+    end)
+    return ok and what or 'a job'
+end
+
 -- Tiles a job is working on right now ("x,y,z" -> true). DF takes the dig
 -- designation off a tile while a dwarf is digging it, so without this a tile
 -- being dug looks like one the game cancelled.
@@ -90,17 +105,7 @@ function job_tiles()
         local j = link.item
         -- (0.104.110) the job's type, so a tile under some other job (a
         -- tomb's burial, a smoothing) isn't taken for one being dug
-        if j then
-            local what = tostring(df.job_type[j.job_type] or 'job')
-            local okw, w = pcall(dfhack.job.getWorker, j)
-            if okw and w then
-                local okn, n = pcall(dfhack.units.getReadableName, w)
-                what = what .. ' by ' .. (okn and n or 'a dwarf'):gsub(',.*', '')
-            else
-                what = what .. ', no worker'
-            end
-            set[j.pos.x .. ',' .. j.pos.y .. ',' .. j.pos.z] = what
-        end
+        if j then set[j.pos.x .. ',' .. j.pos.y .. ',' .. j.pos.z] = j end
         link = link.next
     end
     if okt then JOB_TILES.at, JOB_TILES.set = now, set end
@@ -1124,7 +1129,7 @@ function dig_progress(p)
         elseif jobs[x .. ',' .. y .. ',' .. z] then
             digging = digging + 1  -- a dwarf is on it now
             if #waiting < 5 then
-                table.insert(waiting, ('x%d y%d: %s'):format(x, y, tostring(jobs[x .. ',' .. y .. ',' .. z])))
+                table.insert(waiting, ('x%d y%d: %s'):format(x, y, job_words(jobs[x .. ',' .. y .. ',' .. z])))
             end
         elseif t and t.marked then
             marked = marked + 1    -- marker-only designation: nobody will dig it

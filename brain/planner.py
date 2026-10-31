@@ -113,6 +113,7 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
     # 1c. Health: who waits for care, and for how long
     if can_use("health"):
         _guard(_health_rules, s, memory, cfg, notes)
+        _guard(_doctor_patient_rule, s, proposals)
 
     # 2. Drink ------------------------------------------------------------
     if can_use("stocks", "orders"):

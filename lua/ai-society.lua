@@ -774,8 +774,36 @@ local function can_staff(u)
     if okm and mood ~= nil and mood ~= -1 then return false end
     local okn, list = pcall(dfhack.units.getNoblePositions, u)
     if okn and list and #list > 0 then return false end
+    -- (0.104.111) never a wounded dwarf: Teacheroar's surgeon and bone
+    -- doctor were patients themselves while five waited up to 820 days
+    local okw, wounded = pcall(function() return #u.body.wounds > 0 end)
+    if okw and wounded then return false end
     local oko, n = pcall(function() return #u.occupations end)
     return oko and n == 0
+end
+
+-- (0.104.111) A post given back: its holder (a doctor who is a patient
+-- himself) leaves it, so the staffing rule fills it with someone who can
+-- work. {ok, post, name}.
+function vacate_post(loc_id, unit_id, dry_run, txt)
+    local loc = find_location(loc_id)
+    if not loc then return {ok = false, rejected = true, error = 'no such location in this fort'} end
+    local post
+    for _, o in ipairs(loc.occupations) do
+        if o.unit_id == unit_id then post = o; break end
+    end
+    if not post then return {ok = false, rejected = true, error = 'that dwarf holds no post there'} end
+    local u = df.unit.find(unit_id)
+    local name = u and (txt or tostring)(dfhack.units.getReadableName(u)) or tostring(unit_id)
+    local job = tostring(df.occupation_type[post.type] or 'post'):lower():gsub('_', ' ')
+    if dry_run then return {ok = true, dry_run = true, post = job, name = name} end
+    post.histfig_id, post.unit_id = -1, -1
+    if u then
+        for i = #u.occupations - 1, 0, -1 do
+            if u.occupations[i] == post or u.occupations[i].id == post.id then u.occupations:erase(i) end
+        end
+    end
+    return {ok = true, post = job, name = name}
 end
 
 function staff_location(loc_id, occ_type, dry_run, txt)

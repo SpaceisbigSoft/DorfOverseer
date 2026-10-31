@@ -20,15 +20,21 @@
 --@ module = true
 
 MAX_JOIN = 20              -- longest corridor between two areas (tiles)
-MAX_AREA = 8000            -- tiles read per area
-MAX_EDGE = 300             -- edge tiles kept per area
+MAX_AREA = 4000            -- tiles read per area
+MAX_EDGE = 200             -- edge tiles kept per area
 MAX_TRIES = 40             -- routes tried per call
+MAX_CANDS = 3000           -- (0.104.111) end pairs compared per level
 MAX_AREAS = 12
 DEAD_END_BONUS = 4         -- a dead end counts as this many tiles nearer
-SCAN_SECONDS = 2.0
+SCAN_SECONDS = 1.0         -- (0.104.111) the whole call, checked inside every loop
 
 local ORTHO = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}}
 local function key(x, y) return y * 4096 + x end
+
+-- (0.104.111) every loop watches the clock: the first live call (31 Oct
+-- 09:26) held the game for minutes. Past DEADLINE the work stops.
+DEADLINE = nil
+local function late() return DEADLINE ~= nil and os.clock() > DEADLINE end
 
 -- The separate areas holding the seed tiles. Returns areas, owner (key -> area index).
 function components(T, seeds, cap)
@@ -42,7 +48,7 @@ function components(T, seeds, cap)
             local area = {id = id, tiles = {}}
             owner[k] = id
             local queue, head = {{s.x, s.y}}, 1
-            while head <= #queue and #area.tiles < cap do
+            while head <= #queue and #area.tiles < cap and not late() do
                 local x, y = queue[head][1], queue[head][2]
                 head = head + 1
                 table.insert(area.tiles, {x = x, y = y})
@@ -70,15 +76,16 @@ end
 function edge_tiles(T, area)
     local out, dead_ends = {}, 0
     for _, p in ipairs(area.tiles) do
-        local t = T(p.x, p.y)
+        if late() then break end
+        local open, rock = 0, false
+        for _, d in ipairs(ORTHO) do
+            local n = T(p.x + d[1], p.y + d[2])
+            if n and n.open then open = open + 1 end
+            if n and n.rock then rock = true end
+        end
+        local t = rock and T(p.x, p.y)              -- (the passage test is the dear one: last)
         if t and t.passage then
-            local open, rock = 0, false
-            for _, d in ipairs(ORTHO) do
-                local n = T(p.x + d[1], p.y + d[2])
-                if n and n.open then open = open + 1 end
-                if n and n.rock then rock = true end
-            end
-            if rock then
+            do
                 local dead = open == 1
                 if dead then dead_ends = dead_ends + 1 end
                 table.insert(out, {x = p.x, y = p.y, dead = dead})
@@ -171,15 +178,33 @@ function plan_join(T, seeds)
         edges[i] = e
         stats.dead_ends = stats.dead_ends + dead
     end
+    -- (0.104.111) only edge tiles in nearby cells are compared, and at most
+    -- MAX_CANDS pairs kept: the first live call compared every pair
+    local CELL = MAX_JOIN + 2
+    local grid = {}
+    for j, list in ipairs(edges) do
+        grid[j] = {}
+        for _, b in ipairs(list) do
+            local ck = key(b.x // CELL, b.y // CELL)
+            grid[j][ck] = grid[j][ck] or {}
+            table.insert(grid[j][ck], b)
+        end
+    end
     local cands = {}
     for i = 1, #areas - 1 do
         for j = i + 1, #areas do
             for _, a in ipairs(edges[i]) do
-                for _, b in ipairs(edges[j]) do
-                    local dist = math.abs(a.x - b.x) + math.abs(a.y - b.y)
-                    if dist >= 2 and dist <= MAX_JOIN + 1 then
-                        local score = dist - (a.dead and DEAD_END_BONUS or 0) - (b.dead and DEAD_END_BONUS or 0)
-                        table.insert(cands, {a = a, b = b, ia = i, ib = j, score = score})
+                if late() or #cands >= MAX_CANDS then break end
+                local cx, cy = a.x // CELL, a.y // CELL
+                for gx = cx - 1, cx + 1 do
+                    for gy = cy - 1, cy + 1 do
+                        for _, b in ipairs(grid[j][key(gx, gy)] or {}) do
+                            local dist = math.abs(a.x - b.x) + math.abs(a.y - b.y)
+                            if dist >= 2 and dist <= MAX_JOIN + 1 then
+                                local score = dist - (a.dead and DEAD_END_BONUS or 0) - (b.dead and DEAD_END_BONUS or 0)
+                                table.insert(cands, {a = a, b = b, ia = i, ib = j, score = score})
+                            end
+                        end
                     end
                 end
             end
@@ -195,6 +220,7 @@ function plan_join(T, seeds)
     end)
     local last
     for n = 1, math.min(#cands, MAX_TRIES) do
+        if late() then break end
         local c = cands[n]
         for _, yf in ipairs({false, true}) do
             local r, why = route(T, c.a, c.b, owner, c.ia, c.ib, yf)
@@ -219,13 +245,13 @@ MAX_WIDEN = 30             -- tiles dug a call
 -- 'ns' or 'ew' for a 1-wide corridor tile (open both ways along it, rock on
 -- both sides across it), else nil.
 local function corridor_axis(T, x, y)
-    local t = T(x, y)
-    if not t or not t.passage then return nil end
     local function open(dx, dy) local n = T(x + dx, y + dy) return n and n.open end
     local function rock(dx, dy) local n = T(x + dx, y + dy) return n and n.rock end
-    if open(0, -1) and open(0, 1) and rock(-1, 0) and rock(1, 0) then return 'ns' end
-    if open(-1, 0) and open(1, 0) and rock(0, -1) and rock(0, 1) then return 'ew' end
-    return nil
+    local ax
+    if open(0, -1) and open(0, 1) and rock(-1, 0) and rock(1, 0) then ax = 'ns'
+    elseif open(-1, 0) and open(1, 0) and rock(0, -1) and rock(0, 1) then ax = 'ew' end
+    local t = ax and T(x, y)                       -- (the passage test is the dear one: last)
+    return t and t.passage and ax or nil
 end
 
 -- The 1-wide straight stretches in the areas: {axis, tiles = {{x, y}} in order}.
@@ -233,6 +259,7 @@ function narrow_runs(T, areas)
     local axis_of, seen, runs = {}, {}, {}
     for _, a in ipairs(areas) do
         for _, p in ipairs(a.tiles) do
+            if late() then break end
             local ax = corridor_axis(T, p.x, p.y)
             if ax then axis_of[key(p.x, p.y)] = ax end
         end
@@ -328,15 +355,23 @@ function game_reader(z)
         local t = B.tile_info(x, y, z)
         if not t then cache[k] = false return nil end
         local open = OPEN_SHAPES[t.shape] == true and not t.outside and not t.feature and not t.liquid
-        local passage = false
-        if open and not t.building then
-            local pos = xyz2pos(x, y, z)
-            local okz, zones = pcall(dfhack.buildings.findCivzonesAt, pos)
-            local okb, bld = pcall(dfhack.buildings.findAtTile, pos)          -- a stockpile, a workshop
-            passage = not (okz and zones and #zones > 0) and not (okb and bld)
-        end
-        v = {open = open, passage = passage, rock = (B.natural_wall(t)) == true and not t.smoothed,      -- (never an engraved wall)
-             danger = t.liquid or t.aquifer or t.warm or false}
+        -- (0.104.111) the zone and building lookups only when asked (they
+        -- are slow, and most tiles never need them)
+        local building = t.building
+        local lazy = {__index = function(self, k)
+            if k ~= 'passage' then return nil end
+            local passage = false
+            if self.open and not building then
+                local pos = xyz2pos(x, y, z)
+                local okz, zones = pcall(dfhack.buildings.findCivzonesAt, pos)
+                local okb, bld = pcall(dfhack.buildings.findAtTile, pos)      -- a stockpile, a workshop
+                passage = not (okz and zones and #zones > 0) and not (okb and bld)
+            end
+            rawset(self, 'passage', passage)
+            return passage
+        end}
+        v = setmetatable({open = open, rock = (B.natural_wall(t)) == true and not t.smoothed,      -- (never an engraved wall)
+             danger = t.liquid or t.aquifer or t.warm or false}, lazy)
         cache[k] = v
         return v
     end
@@ -361,7 +396,7 @@ JOIN_CURSOR = JOIN_CURSOR or 0
 -- One call: the next levels the AI built on, in turn, until a corridor is
 -- dug or the time is up. {ok, joined = {z, from, to, length, dead_end} or nil,
 -- scanned, wrapped (every level looked at since the last join)}.
-function join_levels(dry_run)
+local function join_levels_inner(dry_run)
     local B = reqscript('ai-builder')
     local seeds_by_z, zs = {}, {}
     for _, p in ipairs(B.load_projects().list or {}) do
@@ -377,14 +412,15 @@ function join_levels(dry_run)
     end
     table.sort(zs)
     if #zs == 0 then return {ok = true, scanned = 0, wrapped = true, note = 'no levels built yet'} end
-    local started, scanned, notes, dead = os.clock(), 0, {}, 0
+    local scanned, notes, dead = 0, {}, 0
     local wrapped = false
-    while scanned < #zs and os.clock() - started < SCAN_SECONDS do
+    while scanned < #zs and not late() do
         JOIN_CURSOR = JOIN_CURSOR % #zs + 1
         if JOIN_CURSOR == #zs then wrapped = true end
         local z = zs[JOIN_CURSOR]
         scanned = scanned + 1
-        local r, why, stats = plan_join(game_reader(z), seeds_by_z[z])
+        local T = game_reader(z)
+        local r, why, stats = plan_join(T, seeds_by_z[z])
         dead = dead + (stats and stats.dead_ends or 0)
         if r then
             local n = dry_run and #r.tiles or designate(r.tiles, z)
@@ -394,8 +430,9 @@ function join_levels(dry_run)
         end
         if stats and stats.areas > 1 and #notes < 3 then table.insert(notes, ('z%d: %s'):format(z, why)) end
         -- (0.104.109) nothing to join here: a 1-wide corridor widened instead
-        local w, wwhy, nruns = plan_widen(game_reader(z), seeds_by_z[z])
-        if w then
+        local w, wwhy, nruns = nil, nil, 0
+        if not late() then w, wwhy, nruns = plan_widen(T, seeds_by_z[z]) end
+        if w and not late() then
             local n = dry_run and #w.tiles or designate(w.tiles, z)
             return {ok = true, scanned = scanned, dead_ends = dead, dry_run = dry_run or nil,
                     widened = {z = z, from = w.from, to = w.to, length = w.length, tiles = n, narrow = nruns}}
@@ -403,4 +440,14 @@ function join_levels(dry_run)
     end
     return {ok = true, scanned = scanned, wrapped = wrapped, dead_ends = dead,
             note = #notes > 0 and table.concat(notes, '; ') or nil}
+end
+
+function join_levels(dry_run)
+    DEADLINE = os.clock() + SCAN_SECONDS
+    local ok, r = pcall(join_levels_inner, dry_run)
+    local over = late()
+    DEADLINE = nil
+    if not ok then return {ok = false, error = tostring(r)} end
+    r.out_of_time = over or nil
+    return r
 end

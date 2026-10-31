@@ -13,7 +13,7 @@ from quirks import has_rule
 from digest import _d, _l, normalize
 from planner_core import *  # noqa: F401,F403
 
-__all__ = ["MOOD_WORKSHOPS", "PETITION_KINDS", "petition_orders_wanted", "_petition_rules", "_jail_size_rule", "_sync_offices_rule", "patient_waits", "_health_rules", "TANTRUM_KEEP", "note_tantrums", "_noble_rooms_rule", "outsider_orders", "NEED_ADVICE", "JEWEL_RECIPES", "_recreation_rule", "_stress_care", "_needs_notes", "_location_supply_rules", "POST_LABORS", "STAFF_POSTS", "STAFF_MAX", "_traction_rule", "_wish_words", "_wish_met", "wish_key", "_location_petition_rules", "_meeting_notes", "_grandeur_rule", "_location_value_rule", "_staff_rule", "_quick_location_rule", "_needs_rules", "_mood_rules", "mood_item_text", "_mood_materials", "_dead_notes", "AI_OFFICES", "_society_notes"]
+__all__ = ["_doctor_patient_rule", "MOOD_WORKSHOPS", "PETITION_KINDS", "petition_orders_wanted", "_petition_rules", "_jail_size_rule", "_sync_offices_rule", "patient_waits", "_health_rules", "TANTRUM_KEEP", "note_tantrums", "_noble_rooms_rule", "outsider_orders", "NEED_ADVICE", "JEWEL_RECIPES", "_recreation_rule", "_stress_care", "_needs_notes", "_location_supply_rules", "POST_LABORS", "STAFF_POSTS", "STAFF_MAX", "_traction_rule", "_wish_words", "_wish_met", "wish_key", "_location_petition_rules", "_meeting_notes", "_grandeur_rule", "_location_value_rule", "_staff_rule", "_quick_location_rule", "_needs_rules", "_mood_rules", "mood_item_text", "_mood_materials", "_dead_notes", "AI_OFFICES", "_society_notes"]
 
 
 # A crafting mood's skill -> the workshop (or furnace) the dwarf must claim.
@@ -180,6 +180,35 @@ def _health_rules(s: dict, memory, cfg: dict, notes: list) -> None:
     if infected and not soap:
         ask_player(notes, f"{len(infected)} dwarves have infected wounds and the fort has no soap "
                    "(wounds are cleaned with soap)")
+
+
+def _doctor_patient_rule(s: dict, proposals: list) -> None:
+    """(0.104.111, the 38-year soak) Teacheroar's surgeon and bone doctor lay
+    in the hospital themselves, holding their posts, while five dwarves waited
+    450-820 days for care. A hospital post held by a dwarf being treated (in
+    the hospital, or waiting for a treatment) is given back; the staffing
+    rule then gives it to the best healthy dwarf (wounded ones are passed over
+    since 0.104.111). One a cycle."""
+    h = _d(s.get("health"))
+    sick = {p.get("id"): p for p in _l(h.get("patients"))
+            if isinstance(p, dict) and (p.get("in_hospital") or _l(p.get("needs")))}
+    if not sick:
+        return
+    for hosp in _l(h.get("hospital")):
+        if not isinstance(hosp, dict) or not isinstance(hosp.get("id"), int):
+            continue
+        for st in _l(hosp.get("staff")):
+            uid = _d(st).get("unit_id")
+            if uid in sick:
+                p = sick[uid]
+                post = str(_d(st).get("post") or "post").lower().replace("_", " ")
+                proposals.append(Proposal("doctor_patient", {"type": "vacate_post", "location_id": hosp["id"],
+                                                             "unit_id": uid},
+                                          f"the hospital's {post}, {p.get('name') or uid}, is a patient"
+                                          + (f" (needs {', '.join(map(str, _l(p.get('needs'))[:3]))})"
+                                             if _l(p.get("needs")) else "")
+                                          + ": the post goes to a healthy dwarf", 2))
+                return
 
 
 TANTRUM_KEEP = 60           # tantrums remembered (each [tick, who])

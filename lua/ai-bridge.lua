@@ -34,7 +34,7 @@
 local json = require('json')
 local utils = require('utils')
 
-BRIDGE_VERSION = '0.104.110'
+BRIDGE_VERSION = '0.104.112'
 PROTOCOL = 1 -- bump when the report's shape changes in a breaking way
 
 local OUT_DIR = dfhack.getDFPath() .. '/dfhack-config/ai-overseer'
@@ -2046,7 +2046,7 @@ function hospital_survey()
             for _, o in ipairs(loc.occupations) do
                 local u = o.unit_id ~= -1 and df.unit.find(o.unit_id)
                 if u then
-                    local st = {post = df.occupation_type[o.type], labors = {}}
+                    local st = {post = df.occupation_type[o.type], labors = {}, unit_id = u.id}
                     for _, l in ipairs(MED_LABORS) do
                         pcall(function() if u.status.labors[df.unit_labor[l]] then table.insert(st.labors, l) end end)
                     end
@@ -5198,6 +5198,12 @@ function act_place_in_zone(a)
     return B.place_in_zone(id, a.what, a.dry_run == true)
 end
 
+function act_vacate_post(a)    -- (0.104.111) a doctor who is a patient gives his post back
+    local id, uid = whole_number(a.location_id), whole_number(a.unit_id)
+    if not id or not uid then return reject('vacate_post needs location_id and unit_id') end
+    return reqscript('ai-society').vacate_post(id, uid, a.dry_run == true, txt)
+end
+
 function act_staff_labors(a)   -- (module-level: the chunk's 200-local limit)
     local id = whole_number(a.location_id)
     if not id then return reject('staff_labors needs location_id') end
@@ -5532,6 +5538,7 @@ ACTIONS = {
     staff_location = act_staff_location,
     add_posts = act_add_posts,
     staff_labors = act_staff_labors,
+    vacate_post = act_vacate_post,
     dismiss_alerts = act_dismiss_alerts,
     answer_petition = act_answer_petition,
     retarget_hall = act_retarget_hall,
@@ -5967,7 +5974,7 @@ SECTION_REBUILDS = 2       -- expired cached sections rebuilt in one report (a m
 CACHE_INVALIDATES = {
     place_in_zone = {'justice'},
     give_room = {'noble_rooms'}, appoint = {'noble_rooms'}, quick_location = {'locations'},
-    add_posts = {'locations'}, staff_location = {'locations'}, retarget_hall = {'locations', 'registry'},
+    add_posts = {'locations'}, staff_location = {'locations'}, vacate_post = {'locations', 'health'}, retarget_hall = {'locations', 'registry'},
     answer_petition = {'petitions', 'locations'}, petition_orders = {'petitions'},
     give_trinkets = {'needs'}, idle_crafting = {'needs'}, unload_depot = {'needs'},
     -- (review) furnishing makes the temple, hospital, offices and rooms: the
@@ -6173,7 +6180,7 @@ local function cmd_act(args)
                  or action.type == 'quarry' or action.type == 'polish' or action.type == 'trade_deal' or action.type == 'call_trader'
                  or action.type == 'open_trade' or action.type == 'close_trade'
                  or action.type == 'squad_barracks' or action.type == 'feeder_pile'
-                 or action.type == 'idle_crafting' or action.type == 'give_trinkets' or action.type == 'staff_location' or action.type == 'add_posts' or action.type == 'staff_labors'
+                 or action.type == 'idle_crafting' or action.type == 'give_trinkets' or action.type == 'staff_location' or action.type == 'vacate_post' or action.type == 'add_posts' or action.type == 'staff_labors'
                  or action.type == 'dismiss_alerts' or action.type == 'place_in_zone' or action.type == 'answer_petition' or action.type == 'retarget_hall'
                  or action.type == 'remove_workshops' or action.type == 'survey_water'
                  or action.type == 'cistern_step' or action.type == 'water_zone' or action.type == 'sand_zone'
