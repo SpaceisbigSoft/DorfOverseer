@@ -193,6 +193,8 @@ PLANNER_CONFIG = {
     "coke_when_fuel_below": 40,        # coke made from coal while fuel is under this
     "coke_batch": 5,
     "stone_low": 10,
+    "stone_ore_min": 30,               # (0.104.124) an ore freed for the masons in a crisis only with this many boulders
+    "stone_crisis_unburied": 5,        # ...a crisis: ghosts, this many dead with no tomb, or a strained fort
     "quarry_when_dig_below": 20,       # a quarry only while little other digging waits...
     "quarry_dry_days": 10,             # (0.104.4) ...or, with no usable stone at all, every this many days
     "quarry_cooldown_ticks": 2 * 1200, # ...and at most every 2 days (0.99.4: was a week; region2's 30-tile quarries were dug out in days)
@@ -541,6 +543,7 @@ class Memory:
     fps_cap: int | None = None                           # the population cap held while the game runs slowly
     strain_hold: bool = False                            # (0.104.106) newcomers held while the fort is strained
     strain_cap: int | None = None                        # (0.104.120) the cap held while strained (its size then)
+    ores_freed: list = field(default_factory=list)       # (0.104.124) ores the masons were given in a crisis
     gear_spare_since: dict = field(default_factory=dict)  # "weapons"/"body"/"helms" -> when 3+ spares sat unused
     swapped: dict = field(default_factory=dict)  # (0.104.78) unit id -> when the swap sent them home
     steer: dict = field(default_factory=dict)    # (0.104.89) the strategist's raised and held rules: rule -> {mode, until, why}

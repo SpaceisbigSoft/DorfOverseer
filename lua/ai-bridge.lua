@@ -34,7 +34,7 @@
 local json = require('json')
 local utils = require('utils')
 
-BRIDGE_VERSION = '0.104.122'
+BRIDGE_VERSION = '0.104.124'
 PROTOCOL = 1 -- bump when the report's shape changes in a breaking way
 
 local OUT_DIR = dfhack.getDFPath() .. '/dfhack-config/ai-overseer'
@@ -5487,7 +5487,9 @@ function act_allow_stone(a)
                 if not ok then pcall(function() economic[idx] = 1 end) end
                 return {ok = true, stone = a.stone, keep = true}
             end
-            if #inorg.metal_ore.mat_index > 0 then return reject(a.stone .. ' is an ore: kept for the smelter') end
+            -- (0.104.124) an ore only when the brain asks for it by name with ore = true
+            -- (Teacheroar: 13 ghosts and 38 dead with no stone for slabs or coffins, 197 iron-ore boulders)
+            if #inorg.metal_ore.mat_index > 0 and a.ore ~= true then return reject(a.stone .. ' is an ore: kept for the smelter') end
             if FUEL_STONES[a.stone] then return reject(a.stone .. ' is coal: kept for coke') end
             if not (idx < #economic and economic[idx] and economic[idx] ~= 0) then
                 return {ok = false, rejected = true, error = a.stone .. ' may already be used'}

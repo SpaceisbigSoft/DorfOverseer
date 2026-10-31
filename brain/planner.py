@@ -720,6 +720,10 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
             memory.fps_cap = (memory.fps_cap or a.get("cap")) if slow else None
             memory.strain_hold = strained
             memory.strain_cap = (memory.strain_cap or a.get("cap")) if strained else None   # (0.104.120)
+        if a["type"] == "allow_stone" and a.get("ore") and a.get("stone") not in memory.ores_freed:
+            memory.ores_freed.append(a["stone"])                    # (0.104.124)
+        if a["type"] == "allow_stone" and a.get("keep") and a.get("stone") in memory.ores_freed:
+            memory.ores_freed.remove(a["stone"])
         if a["type"] == "import_orders" and a.get("library") not in memory.libraries_imported:
             memory.libraries_imported.append(a.get("library"))
         if a["type"] == "make_squad" and isinstance(r.get("squad_id"), int) and r["squad_id"] not in memory.squads_made:

@@ -185,7 +185,7 @@ def _():
     for absent in ("supplies", "map", "jobs", "recent_announcements", "registry"):
         assert absent not in keys, absent
     daily = M.build_state(True)
-    assert daily.tier == "daily" and daily.units[1].id == 1 and daily.bridge_version == "0.104.122"
+    assert daily.tier == "daily" and daily.units[1].id == 1 and daily.bridge_version == "0.104.124"
     assert set(pulse.keys()) - {"tier"} <= set(daily.keys())
     assert daily.registry.error is not None                         # no builder here, but the section is there
     assert M.build_state(False, "survey").tier == "survey"
@@ -1026,6 +1026,30 @@ def _():
     assert r.total == 40 and len(r.patients) == 30, (r.total, len(r.patients))
     assert r.resting == 13 and r.resting_in_hospital == 4, (r.resting, r.resting_in_hospital)
     assert r.infected == 5 and r.needs_counts.dressing == 20 and r.needs_counts.suture == 1
+
+
+@test("0.104.124: allow_stone frees an ore only when asked with ore = true")
+def _():
+    reset()
+    M = H.module()
+    LUA.execute("""local M, H = ...
+      local econ = {[0] = true, [1] = true}
+      setmetatable(econ, {__len = function() return 2 end})
+      H.df.global.plotinfo.economic_stone = econ
+      H.df.global.world.raws = {inorganics = {all = {[0] = {id = 'MAGNETITE', metal_ore = {mat_index = {1}}},
+                                                     [1] = {id = 'GYPSUM', metal_ore = {mat_index = {}}}}}}
+      H.econ = econ
+    """, M, H)
+    LUA.execute("""local M = ...
+      local ip = ipairs
+      M.ipairs = function(t) if type(t) == 'table' and rawget(t, 0) ~= nil then
+          local i = -1; return function() i = i + 1; if t[i] ~= nil then return i, t[i] end end end
+        return ip(t) end
+    """, M)
+    r = M.act_allow_stone(t({"stone": "MAGNETITE"}))
+    assert not r.ok and "ore" in r.error, dict(r)
+    r = M.act_allow_stone(t({"stone": "MAGNETITE", "ore": True}))
+    assert r.ok and H.econ[0] is False, dict(r)
 
 
 if __name__ == "__main__":

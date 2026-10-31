@@ -13,7 +13,7 @@ from quirks import has_rule
 from digest import _d, _l, normalize
 from planner_core import *  # noqa: F401,F403
 
-__all__ = ["CONTAINER_RECIPES", "GEAR_ORDER_METALS", "_supply_rules", "_slow_game_rules", "_kiln_rules", "_soap_rule", "_pasture_rule", "LABOR_MODES_FIXED", "INDUSTRY_SHOPS", "_industry_rules", "_steel_rule", "_bottleneck_rule", "drink_short", "_crop_rules", "_kitchen_rule", "_fishery_rule", "_bench_coffins_rule", "STONE_CRAFTS", "order_shop", "_order_slots_rule", "_orphan_jobs_rule", "_unsuspend_rule", "_approve_rule", "_stuck_orders_rule", "COAL_STONES", "_coal_rule", "_picks_order", "_stone_rule", "_cloth_rule", "_trade_rules", "_gems_rule", "trade_wants", "_spare_mechanisms_rule", "_hauling_rule", "_surface_basics", "trees_this_year", "_keep_rule", "_free_time_rule", "_labor_rules", "OWN_LABOR_RULES", "FEEDER_ORDER", "_feeder_rule", "woodcutters", "gatherers", "trade_margin_for", "keeps_treasures", "spare_mechanisms", "_dairy_rule", "_eggs_rule", "EXCESS_SHOPS", "_excess_shops_rule", "drink_below_target", "_labor_waiting_rule", "farm_target", "_farm_rule", "_smelting_rule", "_shoes_recipe", "_glass_rule", "PRECIOUS_METALS", "precious_metal"]
+__all__ = ["CONTAINER_RECIPES", "GEAR_ORDER_METALS", "_supply_rules", "_slow_game_rules", "_kiln_rules", "_soap_rule", "_pasture_rule", "LABOR_MODES_FIXED", "INDUSTRY_SHOPS", "_industry_rules", "_steel_rule", "_bottleneck_rule", "drink_short", "_crop_rules", "_kitchen_rule", "_fishery_rule", "_bench_coffins_rule", "STONE_CRAFTS", "order_shop", "_order_slots_rule", "_orphan_jobs_rule", "_unsuspend_rule", "_approve_rule", "_stuck_orders_rule", "COAL_STONES", "_coal_rule", "_picks_order", "_stone_rule", "stone_crisis", "PRECIOUS_ORES", "_cloth_rule", "_trade_rules", "_gems_rule", "trade_wants", "_spare_mechanisms_rule", "_hauling_rule", "_surface_basics", "trees_this_year", "_keep_rule", "_free_time_rule", "_labor_rules", "OWN_LABOR_RULES", "FEEDER_ORDER", "_feeder_rule", "woodcutters", "gatherers", "trade_margin_for", "keeps_treasures", "spare_mechanisms", "_dairy_rule", "_eggs_rule", "EXCESS_SHOPS", "_excess_shops_rule", "drink_below_target", "_labor_waiting_rule", "farm_target", "_farm_rule", "_smelting_rule", "_shoes_recipe", "_glass_rule", "PRECIOUS_METALS", "precious_metal"]
 
 CONTAINER_RECIPES = {"wooden_barrel", "stone_large_pot"}
 # ore worth mining for gear, most wanted first (iron makes steel; tin with copper makes bronze)
@@ -1015,6 +1015,25 @@ def _picks_order(s: dict, cfg: dict, proposals: list) -> None:
                                   f"more in {metal.lower()}", 4, True))
 
 
+PRECIOUS_ORES = {"NATIVE_GOLD", "NATIVE_SILVER", "NATIVE_PLATINUM", "HORN_SILVER", "NATIVE_ALUMINUM"}
+
+
+def stone_crisis(s: dict, cfg: dict) -> str:
+    """(0.104.124) What only stone answers now: ghosts with no slab, the dead
+    with no coffin, a fort strained by unhappiness. "" when none."""
+    dead = _d(s.get("dead"))
+    out = []
+    if int(dead.get("ghosts") or 0) > 0:
+        out.append(f"{dead.get('ghosts')} ghosts wait for slabs")
+    if int(dead.get("unburied") or 0) >= cfg["stone_crisis_unburied"] and int(dead.get("free_tombs") or 0) == 0:
+        out.append(f"{dead.get('unburied')} dead wait for coffins")
+    import outcomes
+    un = outcomes.measure(s).get("unhappy_pct")
+    if isinstance(un, (int, float)) and un >= cfg["strain_unhappy_pct"]:
+        out.append(f"{un:g}% unhappy")
+    return "; ".join(out)
+
+
 def _stone_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> None:
     """No stone the masons may use: DF keeps "economic" stone (ores, flux
     and the like) from ordinary jobs, and region2's boulders were all
@@ -1023,6 +1042,15 @@ def _stone_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> Non
     settings); without one, stone orders the AI gave that haven't moved are
     cancelled, and the furniture rule makes them in wood."""
     _coal_rule(s, proposals)
+    # (0.104.124) an ore freed for the masons in a crisis goes back to being
+    # kept once the crisis is over
+    freed = list(getattr(memory, "ores_freed", None) or []) if memory is not None else []
+    if freed and not stone_crisis(s, cfg):
+        k = freed[0]
+        proposals.append(Proposal("stone", {"type": "allow_stone", "stone": k, "keep": True},
+                                  f"the ghosts are laid and the dead buried: {k.lower().replace('_', ' ')} is kept "
+                                  "for the smelter again", 5))
+        return
     if not stone_short(s, cfg["stone_low"]):
         # (0.104.117) picks for the digging that waits, stone short or not
         # (Teacheroar: 88 tiles waiting, 9 picks, levels stalled for years)
@@ -1040,6 +1068,20 @@ def _stone_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> Non
         proposals.append(Proposal("stone", {"type": "allow_stone", "stone": k},
                                   f"only {su.get('usable')} boulders of stone the masons may use and {n} of "
                                   f"{k.lower().replace('_', ' ')} kept as \"economic\": let them use it", 3))
+        return
+    # (0.104.124) no ordinary stone at all and a crisis that stone answers
+    # (Teacheroar: 13 ghosts with no slab, 38 dead with no coffin, 73% unhappy,
+    # 51 dead in three minutes of tantrums): the commonest ore of a common
+    # metal goes to the masons until the crisis is over
+    crisis = stone_crisis(s, cfg)
+    ores = sorted(((int(v.get("n") or 0), k) for k, v in econ.items()
+                   if v.get("ore") and k not in PRECIOUS_ORES and int(v.get("n") or 0) >= cfg["stone_ore_min"]),
+                  reverse=True)
+    if crisis and ores:
+        n, k = ores[0]
+        proposals.append(Proposal("stone", {"type": "allow_stone", "stone": k, "ore": True},
+                                  f"only {su.get('usable')} boulders of stone the masons may use and {crisis}: "
+                                  f"let them use {k.lower().replace('_', ' ')} ({n} boulders of ore) until it's over", 2))
         return
     # dig a small quarry in ordinary stone (each tile a boulder), while
     # little other digging waits

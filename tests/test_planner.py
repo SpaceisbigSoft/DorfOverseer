@@ -5624,6 +5624,32 @@ def _():
 
 
 
+@test("stone crisis (0.104.124): no ordinary stone, ghosts or dead waiting: the commonest common ore to the masons; kept again after")
+def _():
+    from planner import record
+    s = fort()
+    s["stone_use"] = {"usable": 3, "economic": {"MAGNETITE": {"n": 79, "ore": True}, "NATIVE_PLATINUM": {"n": 90, "ore": True},
+                                                 "LIMONITE": {"n": 70, "ore": True}, "LIMESTONE": {"n": 30, "flux": True},
+                                                 "COAL_BITUMINOUS": {"n": 13, "fuel": "coke_bituminous"}}}
+    s["dead"] = {"ghosts": 0, "unburied": 0, "free_tombs": 0}
+    st = [p for p in by_rule(plan(copy.deepcopy(s), Memory())[0], "stone") if p.action["type"] == "allow_stone"]
+    assert not st, st                                                    # no crisis: ore stays kept
+    s["dead"] = {"ghosts": 13, "unburied": 38, "free_tombs": 0}           # Teacheroar, 31 Oct
+    m = Memory()
+    st = by_rule(plan(copy.deepcopy(s), m)[0], "stone")
+    assert st and st[0].action == {"type": "allow_stone", "stone": "MAGNETITE", "ore": True}, st   # never platinum
+    assert "13 ghosts" in st[0].reason and "38 dead" in st[0].reason, st[0].reason
+    record([(st[0], {"ok": True})], s, m)
+    assert m.ores_freed == ["MAGNETITE"]
+    s["stone_use"] = {"usable": 82, "economic": {}}                        # the masons have it now
+    assert not by_rule(plan(copy.deepcopy(s), m)[0], "stone")             # still a crisis: kept free
+    s["dead"] = {"ghosts": 0, "unburied": 0, "free_tombs": 4}             # over
+    st = by_rule(plan(copy.deepcopy(s), m)[0], "stone")
+    assert st and st[0].action == {"type": "allow_stone", "stone": "MAGNETITE", "keep": True}, st
+    record([(st[0], {"ok": True})], s, m)
+    assert m.ores_freed == []
+
+
 @test("stone famine (0.104.4): no usable stone -> a quarry despite other digging (every 10 days); more picks for a backlog")
 def _():
     s = fort()
