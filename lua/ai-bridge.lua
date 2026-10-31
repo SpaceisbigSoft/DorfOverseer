@@ -34,7 +34,7 @@
 local json = require('json')
 local utils = require('utils')
 
-BRIDGE_VERSION = '0.104.129'
+BRIDGE_VERSION = '0.104.130'
 PROTOCOL = 1 -- bump when the report's shape changes in a breaking way
 
 local OUT_DIR = dfhack.getDFPath() .. '/dfhack-config/ai-overseer'
@@ -6445,19 +6445,36 @@ local function cmd_probe_justice()
         out.info = probe_fields(info, 60)
         out.justice = probe_fields(info.justice, 150)
     end)
+    -- every crime (not the newest 600), and the ones whose flags or plain
+    -- fields changed since the last call (what a conviction writes)
     pcall(function()
         local list = df.global.world.crimes.all
         out.crimes = #list
         local sentenced, newest_sentenced = 0, nil
-        for i = #list - 1, math.max(0, #list - 600), -1 do
+        local now, changed = {}, {}
+        for i = #list - 1, 0, -1 do
             local cr = list[i]
+            local f = {}
+            pcall(function() for k, v in pairs(cr.flags) do if v == true then table.insert(f, k) end end end)
+            table.sort(f)
+            local sig = table.concat(f, ',') .. '|' .. tostring(cr.accused) .. '|' .. tostring(cr.criminal)
+            now[cr.id] = sig
+            if PROBE_CRIMES and PROBE_CRIMES[cr.id] ~= nil and PROBE_CRIMES[cr.id] ~= sig and #changed < 10 then
+                local e = probe_fields(cr, 60)
+                e.flags_now, e.was = table.concat(f, ','), PROBE_CRIMES[cr.id]
+                pcall(function() e.convict_data = probe_fields(cr.convict_data, 30) end)
+                pcall(function() e.punishment = probe_fields(cr.punishment, 30) end)
+                table.insert(changed, e)
+            end
             if cr.flags.sentenced then
                 sentenced = sentenced + 1
                 if not newest_sentenced then newest_sentenced = probe_fields(cr, 60) end
             end
         end
+        PROBE_CRIMES = now
         out.sentenced = sentenced
         out.newest_sentenced = newest_sentenced
+        if #changed > 0 then out.crimes_changed = changed end
     end)
     pcall(function() out.punishments = #df.global.plotinfo.punishments end)
     return out
