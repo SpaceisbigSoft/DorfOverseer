@@ -70,6 +70,7 @@ PLANNER_CONFIG = {
     "maintain_spare_beds": 2,
     "min_spare_beds": 5,
     "dwarves_per_table": 3,
+    "dining_short_share": 0.5,         # (0.104.135) another dining hall below half the tables wanted
     "min_dwarves_for_dining": 3,                # (0.100.1) was 7
     "min_dwarves_for_hospital": 20,
     "min_dwarves_for_small_hospital": 10,  # ...or this many with a chief medical dwarf (not a young fort)

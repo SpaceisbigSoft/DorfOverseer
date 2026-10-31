@@ -6604,6 +6604,25 @@ def _():
     assert any("94 dwarf(s) are miserable" in n for n in notes), [n for n in notes if "miserable" in n]
 
 
+@test("dining by tables (0.104.135): a hall too few tables for the fort: another, its own slot; none while half are there")
+def _():
+    s = settled_fort()
+    s["dwarves"]["total"] = 227
+    s["buildings"]["zones"]["DiningHall"] = 1
+    s["buildings"]["other"]["Table"] = 19                              # Teacheroar, 31 Oct
+    s["projects"] = {"max_open": 2, "open": [
+        {"id": 21, "kind": "tombs", "phase": "furnish", "summary": {"coffins": 6}},
+        {"id": 174, "kind": "hospital", "phase": "dig", "summary": {}}]}
+    dn = lambda: [x for x in builds(plan(copy.deepcopy(s), Memory())[0]) if x.action["kind"] == "dining"]
+    d = dn()
+    assert d and d[0].action["tables"] == 40 and d[0].action["urgent"] is True and "19 tables for 227" in d[0].reason, d
+    s["buildings"]["other"]["Table"] = 40                              # over half of 76
+    assert not dn()
+    s["buildings"]["other"]["Table"] = 19
+    s["projects"]["open"].append({"id": 180, "kind": "dining", "phase": "dig", "summary": {}})
+    assert not dn()
+
+
 @test("urgent tombs (0.104.12): many dead unburied with both slots taken: a tomb level of its own slot, beside urgent workshops")
 def _():
     s = settled_fort()

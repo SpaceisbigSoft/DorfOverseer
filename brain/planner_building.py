@@ -13,7 +13,7 @@ from quirks import has_rule
 from digest import _d, _l, normalize
 from planner_core import *  # noqa: F401,F403
 
-__all__ = ["magma_access", "GROWTH", "GROWTH_EXTRA_SCORE", "GROWTH_MAX", "growth_want", "growth_candidates", "TRAIT_NAMES_SHORT", "FURNITURE_RECIPES", "METAL_FURNITURE", "spare_metal", "WOODEN_FURNITURE", "BASIC_WORKSHOPS", "BASIC_STOCKPILES", "memorial_due", "_well_rule", "_water_zone_rule", "cavern_well_need", "cavern_well_safe", "WELL_PARTS_SHOPS", "well_parts_plan", "_well_parts", "_room_repair_rule", "_water_traffic_rule", "_cleanup_rule", "STORE_GROW", "stone_tidiness", "jail_plan", "cistern_pop", "tavern_factor", "full_stores", "LEARNING_NEEDS", "_stairwell_rule", "WATER_WORDS", "water_summary", "_water_rules", "CISTERN_WORDS", "_cistern_parts", "_cistern_rule", "_deep_notes", "good_times", "ORDINALS", "garden_name", "_pop_cap_rule", "fort_strain", "hospital_shortfall", "_join_rule", "_dig_stall_rule", "_shrink_rule", "room_size", "_project_rules", "more_temple", "LADDER_BASE", "LADDER_TRAITS", "_ladder_kind", "_ladder_word", "ladder_score", "tombs_short"]
+__all__ = ["magma_access", "GROWTH", "GROWTH_EXTRA_SCORE", "GROWTH_MAX", "growth_want", "growth_candidates", "TRAIT_NAMES_SHORT", "FURNITURE_RECIPES", "METAL_FURNITURE", "spare_metal", "WOODEN_FURNITURE", "BASIC_WORKSHOPS", "BASIC_STOCKPILES", "memorial_due", "_well_rule", "_water_zone_rule", "cavern_well_need", "cavern_well_safe", "WELL_PARTS_SHOPS", "well_parts_plan", "_well_parts", "_room_repair_rule", "_water_traffic_rule", "_cleanup_rule", "STORE_GROW", "stone_tidiness", "jail_plan", "cistern_pop", "tavern_factor", "full_stores", "LEARNING_NEEDS", "_stairwell_rule", "WATER_WORDS", "water_summary", "_water_rules", "CISTERN_WORDS", "_cistern_parts", "_cistern_rule", "_deep_notes", "good_times", "ORDINALS", "garden_name", "_pop_cap_rule", "fort_strain", "hospital_shortfall", "dining_shortfall", "_join_rule", "_dig_stall_rule", "_shrink_rule", "room_size", "_project_rules", "more_temple", "LADDER_BASE", "LADDER_TRAITS", "_ladder_kind", "_ladder_word", "ladder_score", "tombs_short"]
 
 
 # Furniture waiting in a project -> the recipe that makes it.
@@ -787,6 +787,21 @@ def _pop_cap_rule(s: dict, memory, cfg: dict, citizens: int, proposals: list, no
                                   f"-> {cap} (strict {strict})", 4))
 
 
+def dining_shortfall(s: dict, cfg: dict) -> dict | None:
+    """(0.104.135) The fort's tables against its diners, once it has a dining
+    hall: {have, want, tables, citizens} when under `dining_short_share` of
+    what it wants, or None."""
+    zones = _d(_d(s.get("buildings")).get("zones"))
+    if not zones.get("DiningHall"):
+        return None                        # the first hall is the ladder's
+    cit = int(_d(s.get("dwarves")).get("total") or 0)
+    have = int(_d(_d(s.get("buildings")).get("other")).get("Table") or 0)
+    want = math.ceil(cit / cfg["dwarves_per_table"])
+    if cit < cfg["min_dwarves_for_dining"] or have >= cfg["dining_short_share"] * want:
+        return None
+    return {"have": have, "want": want, "citizens": cit, "tables": max(8, min(40, want - have))}
+
+
 def hospital_shortfall(s: dict, traits: dict, cfg: dict) -> dict | None:
     """(0.104.121) The hospitals' beds against the wounded resting (on the
     Rest job: in a bed, or on the hospital's floor when it has none free;
@@ -1103,6 +1118,18 @@ def _project_rules(s, traits, cfg, proposals, notes, can_use, memory) -> None:
                                   "the manager has no office, and a manager takes up work orders only in one: "
                                   f"dig {'a suite' if n_suites == 1 else f'{n_suites} suites'} (a bedroom and an "
                                   "office each)", 1))
+    # (0.104.135, 12k) dining by tables, not halls: Teacheroar had one dining
+    # hall and 19 tables for 227 dwarves (a bad thought at every meal eaten
+    # without one, in a fort 62% miserable or very unhappy); a second hall
+    # came only as the great hall set piece, in good times
+    if can_use("stocks") and "buildings" not in s["_errors"] \
+            and len(open_) < (pr.get("max_open") or 2) + 2 and not any(p.get("kind") == "dining" for p in open_):
+        dn = dining_shortfall(s, cfg)
+        if dn and player_rules(s)["levels"].get("dining", True):
+            proposals.append(Proposal("build", {"type": "start_project", "kind": "dining", "tables": dn["tables"],
+                                                "urgent": True},
+                                      f"{dn['have']} tables for {dn['citizens']} dwarves (the fort wants {dn['want']}; "
+                                      f"a meal without one is a bad thought): another dining hall with {dn['tables']} tables", 2))
     # (0.104.121) a hospital too small for the fort: Teacheroar's stop-gap of
     # 5 beds (built at 54 dwarves) served 296, 107 on the Rest job, 124
     # patients and 112 infected wounds; "another hospital" was counted by halls (one per 150

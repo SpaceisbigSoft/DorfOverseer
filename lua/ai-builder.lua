@@ -1505,25 +1505,40 @@ function prioritize_project(id, pri, dry_run)
     -- nobody holds are taken away, and DF makes them again from the raised
     -- designation (Teacheroar's hospital: raised to 2, still 0 of 175 dug 18
     -- days on, its one job "no worker")
-    local function renew_jobs()
+    -- (0.104.135) DF drops a tile's dig designation with its job: each tile is
+    -- designated again at the new priority (0.104.134 left the hospital's first
+    -- tile bare, and the stuck-level rule gave the level up a minute later)
+    local function renew_jobs(level)
         local anchor, at = anchor_of(p), {}
         for x, col in pairs(layouts.tiles_from_dig(cells_of(p, 'dig'))) do
             for y in pairs(col) do at[(anchor.x + x) .. ',' .. (anchor.y + y) .. ',' .. p.z] = true end
         end
-        local gone, link = 0, df.global.world.jobs.list.next
+        local gone, cleared, link = 0, {}, df.global.world.jobs.list.next
         while link do
             local j, nxt = link.item, link.next
             if j and at[j.pos.x .. ',' .. j.pos.y .. ',' .. j.pos.z] then
                 local okw, w = pcall(dfhack.job.getWorker, j)
-                if not (okw and w) and pcall(dfhack.job.removeJob, j) then gone = gone + 1 end
+                if not (okw and w) then
+                    local pos = {x = j.pos.x, y = j.pos.y, z = j.pos.z}
+                    if pcall(dfhack.job.removeJob, j) then
+                        gone = gone + 1
+                        table.insert(cleared, pos)
+                    end
+                end
             end
             link = nxt
+        end
+        for _, c in ipairs(cleared) do
+            local t = tile_info(c.x, c.y, c.z)
+            if t and t.shape == 'WALL' and not t.designated then
+                pcall(quickfort_apply, 'dig', {{x = 0, y = 0, text = 'd' .. level}}, c.z, c.x, c.y)
+            end
         end
         return gone
     end
     if p.dig_pri and p.dig_pri <= pri then          -- done before: its old jobs renewed
         if dry_run then return {ok = true, dry_run = true, already = true, priority = p.dig_pri} end
-        local okr, gone = pcall(renew_jobs)
+        local okr, gone = pcall(renew_jobs, p.dig_pri)
         return {ok = true, already = true, priority = p.dig_pri, tiles = 0, renewed = okr and gone or 0}
     end
     local anchor, cells = anchor_of(p), {}
@@ -1540,7 +1555,7 @@ function prioritize_project(id, pri, dry_run)
     if n == 0 then return {ok = false, error = 'the game took none of the tiles at the new priority'} end
     p.dig_pri = pri
     save_projects(data)
-    local okr, gone = pcall(renew_jobs)
+    local okr, gone = pcall(renew_jobs, pri)
     return {ok = true, tiles = n, priority = pri, renewed = okr and gone or 0}
 end
 
