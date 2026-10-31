@@ -74,7 +74,7 @@ PLANNER_CONFIG = {
     "min_dwarves_for_hospital": 20,
     "min_dwarves_for_small_hospital": 10,  # ...or this many with a chief medical dwarf (not a young fort)
     "urgent_hospital_waiting": 2,
-    "hospital_outside_min": 5,         # (0.104.121) wounded resting outside the hospital before another is dug...
+    "hospital_outside_min": 5,         # (0.104.121) wounded resting with no hospital bed before another is dug...
     "hospital_beds_max": 30,           # ...up to this many hospital beds in all
     "urgent_temple_share": 0.5,        # (0.103.12) this share of the citizens longing to pray, no real temple: a shrine at once      # (0.103.8) this many waiting for care, no hospital: one with a slot of its own
     "urgent_tavern_share": 0.33,       # (0.104.35) this share badly wanting company, only the stop-gap tavern: a tavern at once

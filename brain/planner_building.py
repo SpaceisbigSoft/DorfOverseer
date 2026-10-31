@@ -788,8 +788,10 @@ def _pop_cap_rule(s: dict, memory, cfg: dict, citizens: int, proposals: list, no
 
 
 def hospital_shortfall(s: dict, traits: dict, cfg: dict) -> dict | None:
-    """(0.104.121) The hospitals' beds against the fort's size, when the
-    wounded rest outside them: {outside, have, want, beds, citizens}, or None."""
+    """(0.104.121) The hospitals' beds against the wounded resting (on the
+    Rest job: in a bed, or on the hospital's floor when it has none free;
+    Teacheroar's 5-bed hospital zone, a meeting hall, held 106 of 107):
+    {unbedded, have, want, beds, citizens}, or None."""
     locs = _d(_d(s.get("locations")).get("count"))
     if not locs.get("HOSPITAL"):
         return None                      # the first hospital is the ladder's (and the urgent rule's)
@@ -797,15 +799,16 @@ def hospital_shortfall(s: dict, traits: dict, cfg: dict) -> dict | None:
     cit = max(1, int(_d(s.get("dwarves")).get("total") or 0))
     have = sum(int(_d(z).get("beds") or 0) for hosp in _l(h.get("hospital")) for z in _l(_d(hosp).get("zones")))
     if isinstance(h.get("resting"), int):
-        outside = h["resting"] - int(h.get("resting_in_hospital") or 0)
-    else:                                # an older bridge: the listed patients waiting outside it
-        outside = sum(1 for p in _l(h.get("patients")) if isinstance(p, dict) and _l(p.get("needs"))
-                      and not p.get("in_hospital"))
-    want = max(4, min(cfg["hospital_beds_max"], math.ceil(cit / 20 * factor(traits, "welfare")) + 2))
-    if outside < cfg["hospital_outside_min"] or have >= want:
+        resting = h["resting"]
+    else:                                # an older bridge: the listed patients waiting for a treatment
+        resting = sum(1 for p in _l(h.get("patients")) if isinstance(p, dict) and _l(p.get("needs")))
+    unbedded = resting - have
+    base = math.ceil(cit / 20 * factor(traits, "welfare")) + 2
+    want = max(4, min(cfg["hospital_beds_max"], max(base, resting)))
+    if unbedded < cfg["hospital_outside_min"] or have >= want:
         return None
-    return {"outside": outside, "have": have, "want": want, "citizens": cit, "beds": max(4, min(20, want - have))}
-
+    return {"unbedded": unbedded, "resting": resting, "have": have, "want": want, "citizens": cit,
+            "beds": max(4, min(20, want - have))}
 
 def _dig_stall_rule(s: dict, memory, cfg: dict, open_: list, proposals: list) -> None:
     """(0.104.110, the 38-year soak) Teacheroar's tomb level sat at 235 of 240
@@ -1079,17 +1082,17 @@ def _project_rules(s, traits, cfg, proposals, notes, can_use, memory) -> None:
                                   f"dig {'a suite' if n_suites == 1 else f'{n_suites} suites'} (a bedroom and an "
                                   "office each)", 1))
     # (0.104.121) a hospital too small for the fort: Teacheroar's stop-gap of
-    # 5 beds (built at 54 dwarves) served 296, 99 on the Rest job and 29
-    # infected wounds; "another hospital" was counted by halls (one per 150
+    # 5 beds (built at 54 dwarves) served 296, 107 on the Rest job, 124
+    # patients and 112 infected wounds; "another hospital" was counted by halls (one per 150
     # dwarves) and only in good times. Counted by beds against the wounded
-    # resting outside it, in bad times too, with a slot of its own.
+    # resting, in bad times too (a second hospital brings 4 more posts), with a slot of its own.
     if can_use("stocks") and "buildings" not in s["_errors"] and "locations" not in s["_errors"] \
             and len(open_) < (pr.get("max_open") or 2) + 2 and not any(p.get("kind") == "hospital" for p in open_):
         hp = hospital_shortfall(s, traits, cfg)
         if hp and player_rules(s)["levels"].get("hospital", True):
             proposals.append(Proposal("build", {"type": "start_project", "kind": "hospital", "beds": hp["beds"],
                                                 "urgent": True},
-                                      f"{hp['outside']} wounded dwarves rest outside the hospital and it has "
+                                      f"{hp['resting']} wounded dwarves resting and the hospitals have "
                                       f"{hp['have']} beds for {hp['citizens']} dwarves (the fort wants {hp['want']}): "
                                       f"another hospital with {hp['beds']} beds", 1))
     # (0.103.8) dwarves waiting for care with no hospital: a hospital with a

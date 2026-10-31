@@ -6474,7 +6474,7 @@ def _():
     assert not [x for x in builds(plan(s, Memory())[0]) if x.action["kind"] == "hospital"]
 
 
-@test("hospital too small (0.104.121): the wounded rest outside a 5-bed hospital in a big fort: another, by beds, in bad times too")
+@test("hospital too small (0.104.121): the wounded rest on a 5-bed hospital's floor in a big fort: another, by beds, in bad times too")
 def _():
     s = settled_fort()
     s["dwarves"]["total"] = 296
@@ -6483,23 +6483,25 @@ def _():
         {"id": 21, "kind": "tombs", "phase": "furnish", "summary": {"coffins": 6}},
         {"id": 23, "kind": "workshops", "phase": "dig", "summary": {"workshops": ["Farmers"]}}]}
     s["health"] = {"hospital": [{"id": 4, "zones": [{"id": 287, "beds": 5}]}], "patients": [],
-                   "resting": 99, "resting_in_hospital": 5}
+                   "resting": 107, "resting_in_hospital": 106}                     # Teacheroar, 31 Oct
     hosp = lambda: [x for x in builds(plan(copy.deepcopy(s), Memory())[0]) if x.action["kind"] == "hospital"]
     h = hosp()
-    assert h and h[0].action["urgent"] is True and h[0].action["beds"] == 12, h       # wants 17, has 5
-    assert "94 wounded dwarves rest outside" in h[0].reason, h[0].reason
-    s["health"]["resting"] = 8                                                        # 3 outside: no
+    assert h and h[0].action["urgent"] is True and h[0].action["beds"] == 20, h       # wants 30, has 5
+    assert "107 wounded dwarves resting" in h[0].reason and "wants 30" in h[0].reason, h[0].reason
+    s["health"]["resting"] = 8                                                        # 3 without a bed: no
     assert not hosp()
-    s["health"]["resting"] = 99
-    s["health"]["hospital"][0]["zones"].append({"id": 300, "beds": 12})               # 17 beds: enough
+    s["health"]["resting"] = 14                                                       # 9 without a bed: up to 17
+    h = hosp()
+    assert h and h[0].action["beds"] == 12 and "wants 17" in h[0].reason, h
+    s["health"]["resting"] = 107
+    s["health"]["hospital"][0]["zones"].append({"id": 300, "beds": 25})               # 30 beds: the most it wants
     assert not hosp()
     s["health"]["hospital"][0]["zones"].pop()
     s["projects"]["open"].append({"id": 24, "kind": "hospital", "phase": "dig", "summary": {}})   # one coming
-    assert len(hosp()) == 0
+    assert not hosp()
     s["projects"]["open"].pop()
-    s["settings"].setdefault("rules", {})
     del s["health"]["resting"]                                                       # an older bridge: listed patients
-    s["health"]["patients"] = [{"id": i, "needs": ["dressing"]} for i in range(6)]
+    s["health"]["patients"] = [{"id": i, "needs": ["dressing"]} for i in range(12)]
     assert hosp()
 
 
