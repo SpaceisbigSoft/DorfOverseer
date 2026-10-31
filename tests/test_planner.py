@@ -5813,6 +5813,19 @@ def _():
     m2 = Memory(convict_watch={"given": 30, "sentenced0": 2})
     s["justice"]["crimes"]["flags"]["sentenced"] = 12           # they work: on
     assert by_rule(plan(copy.deepcopy(s), m2)[0], "convict") and m2.convict_watch.get("sentenced0") == 12
+    # (review) the count over every crime wins over the newest-400 flags; a rest late in the year ends
+    m3 = Memory(convict_watch={"given": 30, "sentenced0": 2})
+    s["justice"]["crimes"]["flags"]["sentenced"] = 2
+    s["justice"]["crimes"]["sentenced_all"] = 9
+    assert by_rule(plan(copy.deepcopy(s), m3)[0], "convict"), "7 more sentenced among the old cases"
+    late = copy.deepcopy(s)
+    late["justice"]["crimes"]["sentenced_all"] = 2
+    late["date"]["tick"] = 300 * 1200
+    m4 = Memory(convict_watch={"given": 30, "sentenced0": 2})
+    assert not by_rule(plan(copy.deepcopy(late), m4)[0], "convict") and m4.convict_watch.get("until")
+    late["date"]["year"] += 1
+    late["date"]["tick"] = 60 * 1200                              # 96 days on, past the new year
+    assert by_rule(plan(copy.deepcopy(late), m4)[0], "convict")
 
 
 @test("stone crisis (0.104.124): no ordinary stone, ghosts or dead waiting: the commonest common ore to the masons; kept again after")

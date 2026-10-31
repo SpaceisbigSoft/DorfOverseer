@@ -2241,9 +2241,14 @@ function get_justice()
         end)
         pcall(function()
             local site = df.global.plotinfo.site_id
-            local n = 0
-            for i = 0, #list - 1 do if convictable(list[i], site) then n = n + 1 end end
-            c.convictable = n
+            local n, sent = 0, 0
+            for i = 0, #list - 1 do
+                if convictable(list[i], site) then n = n + 1 end
+                -- (0.104.138) sentenced over every crime (the flags above count the
+                -- newest 400; the AI convicts the oldest first)
+                pcall(function() if list[i].flags.sentenced then sent = sent + 1 end end)
+            end
+            c.convictable, c.sentenced_all = n, sent
         end)
         out.crimes = c
     end)
@@ -4841,7 +4846,7 @@ function act_pair_chairs(a)
         if r.ok then return r end
         table.insert(said, tostring(r.error))
         local e = tostring(r.error)
-        if not (e:find('has one beside it', 1, true) or e:find('no chairs in zone', 1, true)) then all_paired = false end
+        if not e:find('has one beside it', 1, true) then all_paired = false end   -- (no chairs yet: not done)
     end
     -- (0.104.138) every chair already has a neighbour: nothing to do (asked 33 times)
     return {ok = false, rejected = true, nothing_to_do = all_paired or nil, error = table.concat(said, '; ')}

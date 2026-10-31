@@ -238,3 +238,4 @@ class Reviver:
                     self.log(f"Revive: Dwarf Fortress seems hung, and couldn't be closed ({e}).")
         else:
             self.unknown_since = None
+            self.save_said = False

@@ -1480,7 +1480,7 @@ def note_refusal(memory: Memory, p: Proposal, r: dict, now: int, bridge: str | N
         # success among many refusals began the back-off again at a day
         old = _d(memory.refusals.get(key))
         if int(old.get("n") or 0) >= 3:
-            memory.refusals[key] = dict(old, n=int(old["n"]) // 2, until=now)
+            memory.refusals[key] = {k: v for k, v in dict(old, n=int(old["n"]) // 2, until=now).items() if k != "why"}
         else:
             memory.refusals.pop(key, None)
         return

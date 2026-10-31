@@ -3754,8 +3754,10 @@ function cistern_step(dry_run)
                 if not r.ok then return r end
                 return wait('the lever or floodgate was replaced: linked again')
             end
-            if not lever and p.lever then designate({{x = p.lever.x, y = p.lever.y, text = 'Tl'}}, zw, 'build') end
-            if not gate then designate({{x = p.floodgate.x, y = p.floodgate.y, text = 'x'}}, z, 'build') end
+            if (not lever and p.lever and not designate({{x = p.lever.x, y = p.lever.y, text = 'Tl'}}, zw, 'build'))
+                    or (not gate and not designate({{x = p.floodgate.x, y = p.floodgate.y, text = 'x'}}, z, 'build')) then
+                return {ok = false, error = 'the lever or floodgate is gone and the game would not place it again'}
+            end
             d.relinks = 0
             return advance('building')
         end

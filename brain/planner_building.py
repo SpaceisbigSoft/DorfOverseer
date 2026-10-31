@@ -370,7 +370,8 @@ def stone_tidiness(traits: dict, cfg: dict) -> tuple[int, int] | None:
 # may use; cloth rope with only the hospital's cloth). The first alternative
 # with its material at hand is ordered in its place.
 STUCK_FALLBACKS = {
-    **{k: (v, k.replace("stone_", "metal_")) for k, v in WOODEN_FURNITURE.items()},
+    **{k: (v,) + ((k.replace("stone_", "metal_"),) if k.replace("stone_", "metal_") in METAL_FURNITURE.values() else ())
+       for k, v in WOODEN_FURNITURE.items()},
     "stone_mugs": ("wooden_cups",),
     "stone_crafts": ("wood_crafts", "metal_crafts"),
     "stone_amulet": ("metal_amulet", "wood_crafts"), "stone_bracelet": ("metal_bracelet", "wood_crafts"),
@@ -407,6 +408,9 @@ def stuck_fallback(p, s: dict, memory, cfg: dict, now: int) -> dict | None:
         if alt in RECIPES_WITH_METAL:
             if alt in ("metal_chain", "metal_crafts") or alt.startswith(("metal_amulet", "metal_bracelet",
                                                                             "metal_ring", "metal_earring")):
+                gear_ = _d(_d(s.get("military")).get("gear"))
+                if not gear_.get("forges") or int(_d(s.get("supplies")).get("fuel") or 0) < amount + 5:
+                    continue                            # (a forge and fuel, as spare_metal asks)
                 bars = _d(_d(_d(s.get("military")).get("gear")).get("all_bars"))
                 m = max(((int(v), k) for k, v in bars.items() if isinstance(v, (int, float)) and k not in GEAR_METALS
                          and k != "PIG_IRON" and int(v) >= 2 * amount + 5), default=None)

@@ -106,8 +106,9 @@ def _convict_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> N
     j = _d(s.get("justice"))
     crimes = _d(j.get("crimes"))
     n = int(crimes.get("convictable") or 0)
-    sentenced = int(_d(crimes.get("flags")).get("sentenced") or 0)
-    now = int(_d(s.get("date")).get("tick") or 0)
+    sentenced = int(crimes["sentenced_all"] if isinstance(crimes.get("sentenced_all"), int)
+                    else _d(crimes.get("flags")).get("sentenced") or 0)
+    now = abs_tick(s)
     w = memory.convict_watch if isinstance(memory.convict_watch, dict) else {}
     memory.convict_watch = w
     if w.get("until") and now < int(w["until"]):
@@ -127,7 +128,9 @@ def _convict_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> N
                      "and beatings kill)")
         return
     queued_ = int(punish.get("n") or 0)
-    free = int(j.get("restraints") or 0) - int(j.get("restraints_used") or 0) - queued_
+    # (those serving time are in restraints_used already)
+    waiting_ = max(0, queued_ - int(punish.get("prison") or 0))
+    free = int(j.get("restraints") or 0) - int(j.get("restraints_used") or 0) - waiting_
     if free <= 0:
         return
     if int(w.get("given") or 0) >= cfg["convict_check_after"]:
