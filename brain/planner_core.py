@@ -1138,7 +1138,10 @@ SOCIAL_NEEDS = ("Socialize", "BeWithFriends", "MakeMerry", "DrinkAlcohol")
 def care_waiting(s: dict) -> int:
     """Patients with a treatment waiting (diagnosis, surgery, ...): infected
     wounds alone don't count (0.88.3)."""
-    return sum(1 for p in _l(_d(s.get("health")).get("patients")) if isinstance(p, dict) and _l(p.get("needs")))
+    h = _d(s.get("health"))
+    if isinstance(h.get("waiting"), int):          # (0.104.133) the full count: the list stops at 30
+        return h["waiting"]
+    return sum(1 for p in _l(h.get("patients")) if isinstance(p, dict) and _l(p.get("needs")))
 
 
 def unmet(s: dict, *names: str) -> int:

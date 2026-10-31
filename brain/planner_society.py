@@ -155,6 +155,11 @@ def patient_waits(s: dict, memory, now: int) -> dict:
     day, or now for a new one (0.104.78: only while a treatment is asked)."""
     patients = [p for p in _l(_d(s.get("health")).get("patients")) if isinstance(p, dict) and p.get("id") is not None]
     seen = {str(p["id"]) for p in patients if _l(p.get("needs"))}
+    # (0.104.133) every patient waiting, not the 30 listed: one off the list
+    # lost the day their wait began and started again from "now"
+    ids = _d(s.get("health")).get("waiting_ids")
+    if isinstance(ids, list):
+        seen |= {str(i) for i in ids if isinstance(i, int)}
     since = {k: v for k, v in _d(getattr(memory, "patient_since", None)).items() if k in seen and isinstance(v, int)}
     for k in seen:
         since.setdefault(k, now)
@@ -199,7 +204,10 @@ def _health_rules(s: dict, memory, cfg: dict, notes: list) -> None:
         who = "; ".join(f"{p.get('name') or p['id']} {d} days"
                         + (f" (needs {', '.join(map(str, _l(p.get('needs'))[:3]))})" if p.get("needs") else "")
                         for d, p in long[:3])
-        ask_player(notes, f"{len(long)} dwarves have waited a long time for care: {who}"
+        n_long = len(long)
+        if isinstance(_d(s.get("health")).get("waiting_ids"), list):    # (0.104.133) every one, not the listed
+            n_long = sum(1 for k, v in since.items() if (now - v) // TICKS_PER_DAY >= cfg["health_wait_days"])
+        ask_player(notes, f"{n_long} dwarves have waited a long time for care: {who}"
                    + (": " + " and ".join(why) if why
                       else ": check the doctors' labours (diagnose, surgery, suturing, bone setting)"))
     # (0.104.122) the full count (the list stops at 30) and the hospital's own
@@ -418,12 +426,17 @@ def _needs_notes(s: dict, cfg: dict, notes: list, proposals: list | None = None,
     _stress_care(s, cfg, worst, proposals, memory)
     _soldier_swap(s, cfg, proposals, memory)
     _recreation_rule(s, cfg, worst, proposals)
+    # (0.104.133) the full counts (the list keeps the worst 8: "8 miserable" was
+    # said with 94 miserable and 48 very unhappy)
+    stress = _d(_d(s.get("dwarves")).get("stress"))
+    n_mis = max(len(miserable), stress["miserable"] if isinstance(stress.get("miserable"), int) else 0)
+    n_worst = max(len(worst), n_mis + (stress["very_unhappy"] if isinstance(stress.get("very_unhappy"), int) else 0))
     if miserable:
-        ask_player(notes, f"{len(miserable)} dwarf(s) are miserable and may throw tantrums: "
+        ask_player(notes, f"{n_mis} dwarf(s) are miserable and may throw tantrums (the worst: "
                    + "; ".join(f"{x.get('name')} (missing {', '.join(x.get('unmet') or []) or '?'})"
-                               for x in miserable[:3]))
+                               for x in miserable[:3]) + ")")
     elif worst:
-        notes.append(f"{len(worst)} dwarf(s) very unhappy: "
+        notes.append(f"{n_worst} dwarf(s) very unhappy: "
                      + "; ".join(f"{x.get('name')} (missing {', '.join(x.get('unmet') or []) or '?'})"
                                  for x in worst[:3]))
 

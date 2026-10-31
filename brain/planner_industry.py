@@ -136,6 +136,11 @@ def _supply_rules(s: dict, citizens: int, cfg: dict, proposals: list, notes: lis
         waits = [set(_l(p.get("needs"))) for p in _l(_d(s.get("health")).get("patients")) if isinstance(p, dict)]
         n_splint = sum(1 for w in waits if w & {"immobilize", "traction"})
         n_crutch = sum(1 for w in waits if "crutch" in w)
+        hh = _d(s.get("health"))                  # (0.104.133) the full counts: the list stops at 30
+        if isinstance(hh.get("splint_wait"), int):
+            n_splint = hh["splint_wait"]
+        if isinstance(_d(hh.get("needs_counts")).get("crutch"), int):
+            n_crutch = hh["needs_counts"]["crutch"]
         wants = [("splints", "wooden_splint", need + n_splint), ("crutches", "wooden_crutch", need + n_crutch),
                  ("buckets", "wooden_bucket", max(cfg["min_buckets"], wells))]
         short = [(k, r, n - (sup.get(k) or 0) - queued(s, {r})) for k, r, n in wants]
@@ -176,6 +181,8 @@ def _supply_rules(s: dict, citizens: int, cfg: dict, proposals: list, notes: lis
             # sutures died in the hospital)
             needing = sum(1 for p in _l(_d(s.get("health")).get("patients"))
                           if isinstance(p, dict) and ({"suture", "dressing"} & set(_l(p.get("needs")))))
+            if isinstance(_d(s.get("health")).get("stitch_wait"), int):
+                needing = _d(s.get("health"))["stitch_wait"]           # (0.104.133)
             text = ("no plant here gives thread (pig tail, rope reed, hemp...) and no animal to shear: thread and "
                     "cloth come only from the caravans (the AI buys them) or from seeds of a fibre plant")
             if needing:

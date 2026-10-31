@@ -6587,6 +6587,21 @@ def _():
     assert hosp()
 
 
+@test("true counts (0.104.133): care waiting, the long waits and the miserable counted in full, not from the capped lists")
+def _():
+    from planner import care_waiting, patient_waits
+    s = settled_fort()
+    s["health"] = {"patients": [{"id": 1, "needs": ["dressing"]}], "waiting": 79, "waiting_ids": list(range(1, 80))}
+    assert care_waiting(s) == 79
+    m = Memory()
+    since = patient_waits(s, m, abs_tick(s))
+    assert len(since) == 79, len(since)                         # every waiting patient tracked, not only the listed
+    s["needs"] = {"needs": {}, "stressed": [{"id": 5, "name": "Urist", "stress": "miserable", "unmet": ["Argue"]}]}
+    s["dwarves"]["stress"] = {"miserable": 94, "very_unhappy": 48}
+    notes = plan(copy.deepcopy(s), Memory())[1]
+    assert any("94 dwarf(s) are miserable" in n for n in notes), [n for n in notes if "miserable" in n]
+
+
 @test("urgent tombs (0.104.12): many dead unburied with both slots taken: a tomb level of its own slot, beside urgent workshops")
 def _():
     s = settled_fort()

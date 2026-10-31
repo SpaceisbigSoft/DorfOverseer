@@ -34,7 +34,7 @@
 local json = require('json')
 local utils = require('utils')
 
-BRIDGE_VERSION = '0.104.131'
+BRIDGE_VERSION = '0.104.133'
 PROTOCOL = 1 -- bump when the report's shape changes in a breaking way
 
 local OUT_DIR = dfhack.getDFPath() .. '/dfhack-config/ai-overseer'
@@ -1956,7 +1956,7 @@ function get_health()
     -- (0.104.121) every citizen counted, the list still capped at 30: Teacheroar
     -- had 99 dwarves on the Rest job and a list that stopped at 30
     local out = {patients = {}, infected = 0, syndromes = 0, total = 0, resting = 0, resting_in_hospital = 0,
-                 needs_counts = {}}
+                 needs_counts = {}, waiting = 0, splint_wait = 0, stitch_wait = 0, waiting_ids = {}}
     pcall(function() out.hospital = hospital_survey() end)
     for _, u in ipairs(dfhack.units.getCitizens()) do
         local resting = false
@@ -1986,13 +1986,27 @@ function get_health()
         if syn > 0 then out.syndromes = out.syndromes + 1 end
         if care or infected then
             out.total = out.total + 1
+            -- (0.104.133, 12j) the counts the brain's rules need, in full:
+            -- those with any treatment asked (and their ids, so each one's wait
+            -- is tracked), splints (immobilize or traction), stitches (suture
+            -- or dressing)
             pcall(function()
+                local any, splint, stitch = false, false, false
                 for _, f in ipairs(HEALTH_RQ) do
                     if u.health.flags[f] then
                         local k = f:gsub('^rq_', '')
                         out.needs_counts[k] = (out.needs_counts[k] or 0) + 1
+                        any = true
+                        if k == 'immobilize' or k == 'traction' then splint = true end
+                        if k == 'suture' or k == 'dressing' then stitch = true end
                     end
                 end
+                if any then
+                    out.waiting = out.waiting + 1
+                    if #out.waiting_ids < 400 then table.insert(out.waiting_ids, u.id) end
+                end
+                if splint then out.splint_wait = out.splint_wait + 1 end
+                if stitch then out.stitch_wait = out.stitch_wait + 1 end
             end)
         end
         if (care or infected) and #out.patients < 30 then

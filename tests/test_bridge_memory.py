@@ -185,7 +185,7 @@ def _():
     for absent in ("supplies", "map", "jobs", "recent_announcements", "registry"):
         assert absent not in keys, absent
     daily = M.build_state(True)
-    assert daily.tier == "daily" and daily.units[1].id == 1 and daily.bridge_version == "0.104.131"
+    assert daily.tier == "daily" and daily.units[1].id == 1 and daily.bridge_version == "0.104.133"
     assert set(pulse.keys()) - {"tier"} <= set(daily.keys())
     assert daily.registry.error is not None                         # no builder here, but the section is there
     assert M.build_state(False, "survey").tier == "survey"
@@ -1026,6 +1026,7 @@ def _():
     assert r.total == 40 and len(r.patients) == 30, (r.total, len(r.patients))
     assert r.resting == 13 and r.resting_in_hospital == 4, (r.resting, r.resting_in_hospital)
     assert r.infected == 5 and r.needs_counts.dressing == 20 and r.needs_counts.suture == 1
+    assert r.waiting == 21 and r.stitch_wait == 21 and r.splint_wait == 0 and len(r.waiting_ids) == 21, (r.waiting, r.stitch_wait)   # (0.104.133)
 
 
 @test("0.104.124: allow_stone frees an ore only when asked with ore = true")
