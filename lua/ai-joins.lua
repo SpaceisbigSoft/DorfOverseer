@@ -210,6 +210,108 @@ function plan_join(T, seeds)
 end
 
 ---------------------------------------------------------------------------
+-- (0.104.109) Widening the old fort's 1-wide corridors
+---------------------------------------------------------------------------
+
+MIN_RUN = 4                -- a 1-wide stretch at least this long is widened
+MAX_WIDEN = 30             -- tiles dug a call
+
+-- 'ns' or 'ew' for a 1-wide corridor tile (open both ways along it, rock on
+-- both sides across it), else nil.
+local function corridor_axis(T, x, y)
+    local t = T(x, y)
+    if not t or not t.passage then return nil end
+    local function open(dx, dy) local n = T(x + dx, y + dy) return n and n.open end
+    local function rock(dx, dy) local n = T(x + dx, y + dy) return n and n.rock end
+    if open(0, -1) and open(0, 1) and rock(-1, 0) and rock(1, 0) then return 'ns' end
+    if open(-1, 0) and open(1, 0) and rock(0, -1) and rock(0, 1) then return 'ew' end
+    return nil
+end
+
+-- The 1-wide straight stretches in the areas: {axis, tiles = {{x, y}} in order}.
+function narrow_runs(T, areas)
+    local axis_of, seen, runs = {}, {}, {}
+    for _, a in ipairs(areas) do
+        for _, p in ipairs(a.tiles) do
+            local ax = corridor_axis(T, p.x, p.y)
+            if ax then axis_of[key(p.x, p.y)] = ax end
+        end
+    end
+    for _, a in ipairs(areas) do
+        for _, p in ipairs(a.tiles) do
+            local k = key(p.x, p.y)
+            local ax = axis_of[k]
+            if ax and not seen[k] then
+                local dx, dy = ax == 'ew' and 1 or 0, ax == 'ns' and 1 or 0
+                local sx, sy = p.x, p.y                       -- back to the run's start
+                while axis_of[key(sx - dx, sy - dy)] == ax do sx, sy = sx - dx, sy - dy end
+                local run = {axis = ax, tiles = {}}
+                local x, y = sx, sy
+                while axis_of[key(x, y)] == ax do
+                    seen[key(x, y)] = true
+                    table.insert(run.tiles, {x = x, y = y})
+                    x, y = x + dx, y + dy
+                end
+                if #run.tiles >= MIN_RUN then table.insert(runs, run) end
+            end
+        end
+    end
+    table.sort(runs, function(p, q)
+        if #p.tiles ~= #q.tiles then return #p.tiles > #q.tiles end
+        if p.tiles[1].y ~= q.tiles[1].y then return p.tiles[1].y < q.tiles[1].y end
+        return p.tiles[1].x < q.tiles[1].x
+    end)
+    return runs
+end
+
+-- A second row beside a run (its ends stay 1 wide: doorways), or nil, why.
+function widen_run(T, run)
+    local last
+    for _, side in ipairs({1, -1}) do
+        local px, py = run.axis == 'ns' and side or 0, run.axis == 'ew' and side or 0
+        local corridor, new, list = {}, {}, {}
+        for _, p in ipairs(run.tiles) do corridor[key(p.x, p.y)] = true end
+        for i = 2, math.min(#run.tiles - 1, MAX_WIDEN + 1) do
+            local p = run.tiles[i]
+            new[key(p.x + px, p.y + py)] = true
+            table.insert(list, {x = p.x + px, y = p.y + py})
+        end
+        local ok = #list > 0
+        for _, q in ipairs(list) do
+            local t = T(q.x, q.y)
+            if not t or not t.rock then ok, last = false, ('not plain rock at x%d y%d'):format(q.x, q.y) break end
+            for dx = -1, 1 do
+                for dy = -1, 1 do
+                    local nk = key(q.x + dx, q.y + dy)
+                    if ok and not new[nk] and not corridor[nk] then
+                        local n = T(q.x + dx, q.y + dy)
+                        if not n then ok, last = false, 'off the map'
+                        elseif n.danger then ok, last = false, 'water, magma or warm stone beside it'
+                        elseif n.open then ok, last = false, ('it would open onto other space at x%d y%d'):format(q.x + dx, q.y + dy)
+                        end
+                    end
+                end
+            end
+            if not ok then break end
+        end
+        if ok then return {tiles = list, length = #run.tiles, from = run.tiles[1], to = run.tiles[#run.tiles]} end
+    end
+    return nil, last
+end
+
+function plan_widen(T, seeds)
+    local areas = components(T, seeds)
+    local runs = narrow_runs(T, areas)
+    local last
+    for i = 1, math.min(#runs, MAX_TRIES) do
+        local r, why = widen_run(T, runs[i])
+        if r then return r, nil, #runs end
+        last = why
+    end
+    return nil, #runs == 0 and 'no 1-wide corridors' or ('%d 1-wide stretches, none safe to widen (%s)'):format(#runs, tostring(last)), #runs
+end
+
+---------------------------------------------------------------------------
 -- In the game
 ---------------------------------------------------------------------------
 
@@ -233,7 +335,7 @@ function game_reader(z)
             local okb, bld = pcall(dfhack.buildings.findAtTile, pos)          -- a stockpile, a workshop
             passage = not (okz and zones and #zones > 0) and not (okb and bld)
         end
-        v = {open = open, passage = passage, rock = (B.natural_wall(t)) == true,
+        v = {open = open, passage = passage, rock = (B.natural_wall(t)) == true and not t.smoothed,      -- (never an engraved wall)
              danger = t.liquid or t.aquifer or t.warm or false}
         cache[k] = v
         return v
@@ -291,6 +393,13 @@ function join_levels(dry_run)
                               dead_end = r.dead_end == true}, dry_run = dry_run or nil}
         end
         if stats and stats.areas > 1 and #notes < 3 then table.insert(notes, ('z%d: %s'):format(z, why)) end
+        -- (0.104.109) nothing to join here: a 1-wide corridor widened instead
+        local w, wwhy, nruns = plan_widen(game_reader(z), seeds_by_z[z])
+        if w then
+            local n = dry_run and #w.tiles or designate(w.tiles, z)
+            return {ok = true, scanned = scanned, dead_ends = dead, dry_run = dry_run or nil,
+                    widened = {z = z, from = w.from, to = w.to, length = w.length, tiles = n, narrow = nruns}}
+        end
     end
     return {ok = true, scanned = scanned, wrapped = wrapped, dead_ends = dead,
             note = #notes > 0 and table.concat(notes, '; ') or nil}

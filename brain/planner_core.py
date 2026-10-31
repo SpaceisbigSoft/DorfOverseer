@@ -1474,7 +1474,7 @@ def _record_any_outcome(a: dict, r: dict, state: dict, memory, now: int) -> None
         # (0.104.108) a corridor dug: look again soon; every level seen and
         # nothing to join: wait a fortnight (new levels come slowly)
         memory.last_join_tick = now
-        memory.join_wait_days = 2 if r.get("joined") or not r.get("wrapped") else 14
+        memory.join_wait_days = 2 if r.get("joined") or r.get("widened") or not r.get("wrapped") else 14
     elif t == "make_pasture":
         memory.last_fired["new_pasture"] = now   # refused or not: wait the full spell
         if r.get("ok") is True:

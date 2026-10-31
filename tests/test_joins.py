@@ -134,6 +134,48 @@ def _():
         (r["from"].x, r["from"].y, stats.dead_ends)
 
 
+# --- 0.104.109: widening 1-wide corridors -----------------------------------------------
+
+LONG = [
+    "####################",
+    "#...##########...###",
+    "#..............r.###",   # a 1-wide corridor from one hall to another (x4..13)
+    "#...##########...###",
+    "####################",
+    "####################",
+]
+
+
+@test("widening: a 1-wide corridor gets a second row, its ends left as 1-wide doorways")
+def _():
+    r, why, n = M.plan_widen(reader(LONG), seeds((1, 1)))
+    assert r, why
+    t = dug(r)
+    assert n == 1 and r.length == 10, (n, r.length)
+    ys = {y for _, y in t}
+    assert len(ys) == 1 and ys <= {1, 3}, t                    # one side only
+    xs = sorted(x for x, _ in t)
+    assert xs == list(range(5, 13)), xs                        # not beside the end tiles 4 and 13
+    assert all(LONG[y][x] == "#" for x, y in t)
+
+
+@test("widening: never beside other open space (it would breach a room) or water")
+def _():
+    rows = list(LONG)
+    rows[0] = "#######rr###########"                            # a room beyond the north side's row
+    rows[4] = "#########~##########"                           # water beyond the south side's row
+    r, why, _ = M.plan_widen(reader(rows), seeds((1, 1)))
+    assert r is None, dug(r)
+    assert "open onto" in why or "water" in why, why
+
+
+@test("widening: short stretches (under 4) are left alone")
+def _():
+    rows = ["##########", "#...#.#..#", "#.......##", "#...#.#..#", "##########"]
+    r, why, n = M.plan_widen(reader(rows), seeds((1, 1)))
+    assert r is None and n == 0, (why, n)
+
+
 if __name__ == "__main__":
     for name, ok, msg in RESULTS:
         print(f"[{'PASS' if ok else 'FAIL'}] {name}" + (f"\n        {msg}" if msg else ""))

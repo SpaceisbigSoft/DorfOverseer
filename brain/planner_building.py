@@ -797,7 +797,7 @@ def _join_rule(s: dict, memory, cfg: dict, proposals: list) -> None:
         return
     proposals.append(Proposal("join_levels", {"type": "join_levels"},
                               "join areas on the same level that meet only through the stairs, "
-                              "and corridors that end in rock", 9))
+                              "and corridors that end in rock; else widen a 1-wide corridor", 9))
 
 
 def _shrink_rule(s: dict, memory, cfg: dict, citizens: int, proposals: list) -> None:
