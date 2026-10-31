@@ -3936,6 +3936,13 @@ def _():
     record([(w[0], {"ok": False, "rejected": True, "error": "not in a squad"})], s, m)
     w2 = by_rule(plan(s, m)[0], "soldier_swap")
     assert w2 and w2[0].action["unit_id"] == 7, w2
+    # (0.104.114) at most a tenth of the soldiers (2 at least) swapped in 28 days
+    s["needs"]["starved_soldiers"].append({"id": 9, "name": "Kib", "unmet": ["CraftObject", "BeWithFriends"]})
+    s.setdefault("military", {}).setdefault("gear", {})["soldiers"] = 12
+    record([(w2[0], {"ok": True})], s, m)                           # two swapped this month
+    assert not by_rule(plan(copy.deepcopy(s), m)[0], "soldier_swap"), "the month's swaps are used"
+    s["date"]["tick"] += 29 * 1200
+    assert by_rule(plan(copy.deepcopy(s), m)[0], "soldier_swap")
     big = copy.deepcopy(s)                                           # (0.104.66) no trim while the keen wait
     big["military"]["soldiers"] = 60
     assert not by_rule(plan(big, Memory())[0], "squad_trim")

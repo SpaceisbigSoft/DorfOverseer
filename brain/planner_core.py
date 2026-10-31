@@ -201,6 +201,8 @@ PLANNER_CONFIG = {
     "stray_gear_cooldown_ticks": 3 * 1200,   # (0.104.58) lost gear put back three days apart
     "assign_weapons_cooldown_ticks": 3 * 1200,   # (0.104.60) weapons handed out by the AI three days apart
     "soldier_swap_cooldown_ticks": 2 * 1200,    # (0.104.64) a starved soldier let go two days apart
+    "soldier_swap_month_min": 2,                 # (0.104.114) swaps allowed in 28 days: this many at least ...
+    "soldier_swap_month_share": 10,              # ... or one per this many soldiers
     "soldier_swap_keen_min": 5,                  # ...while at least this many civilians badly want to train
     "staggered_starved_min": 3,                  # (0.104.72) this many starved soldiers: back to staggered training
     "pair_chairs_friends_share": 0.2,            # (0.104.77) this share badly wanting friends: chairs paired in taverns
@@ -1144,6 +1146,16 @@ def _soldier_swap(s: dict, cfg: dict, proposals: list | None, memory=None) -> No
         return
     if _d(s.get("others_on_map")).get("threats_that_can_reach_dwarves"):
         return
+    # (0.104.114, the 38-year soak: 3,122 swaps in 87 hours, a soldier sent
+    # home every two minutes, so the squads were always green) at most a
+    # tenth of the soldiers swapped in 28 days
+    if memory is not None:
+        now = abs_tick(s)
+        month = sum(1 for t in _d(getattr(memory, "swapped", None)).values()
+                    if isinstance(t, int) and 0 <= now - t < 28 * TICKS_PER_DAY)
+        soldiers = int(_d(_d(s.get("military")).get("gear")).get("soldiers") or 0)
+        if month >= max(cfg["soldier_swap_month_min"], soldiers // cfg["soldier_swap_month_share"]):
+            return
     x = max(starved, key=lambda v: len(_l(v.get("unmet"))))
     proposals.append(Proposal("soldier_swap", {"type": "squad_swap", "unit_id": x["id"]},
                               f"{x.get('name')} has trained enough and badly misses "
