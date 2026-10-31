@@ -607,7 +607,7 @@ def select(proposals: list[Proposal], state: dict, memory: Memory,
             continue
         # (0.104.137) in a crisis, recovery gets extra action slots
         limit = cfg["max_actions_per_cycle"]
-        if _d(getattr(memory, "crisis", None)).get("why") and p.rule in crisis.RECOVERY_RULES:
+        if _d(getattr(memory, "crisis", None)).get("why") and crisis.is_recovery(p):
             limit += cfg["crisis_extra_actions"]
         if (p.rule not in LIMIT_EXEMPT
                 and len([a for a in allowed if a.rule not in LIMIT_EXEMPT]) >= limit):

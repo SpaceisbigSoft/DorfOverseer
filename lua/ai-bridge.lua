@@ -34,7 +34,7 @@
 local json = require('json')
 local utils = require('utils')
 
-BRIDGE_VERSION = '0.104.133'
+BRIDGE_VERSION = '0.104.137'
 PROTOCOL = 1 -- bump when the report's shape changes in a breaking way
 
 local OUT_DIR = dfhack.getDFPath() .. '/dfhack-config/ai-overseer'
@@ -2883,6 +2883,11 @@ ORDER_RECIPES = {
     stone_bracelet = {job = 'MakeBracelet', kind = 'stone'},
     stone_ring = {job = 'MakeRing', kind = 'stone'},
     stone_earring = {job = 'MakeEarring', kind = 'stone'},
+    -- (0.104.137) jewellery in metal at the forge, for finery while stone is short
+    metal_amulet = {job = 'MakeAmulet', kind = 'metal'},
+    metal_bracelet = {job = 'MakeBracelet', kind = 'metal'},
+    metal_ring = {job = 'MakeRing', kind = 'metal'},
+    metal_earring = {job = 'MakeEarring', kind = 'metal'},
     stone_mugs = {job = 'MakeGoblet', kind = 'stone'},        -- mugs for the tavern
     -- (0.104.4) wooden goblets ("cups", DF wiki) at the craftsdwarf's, when there's no stone
     wooden_cups = {job = 'MakeGoblet', material_category = {'wood'}},

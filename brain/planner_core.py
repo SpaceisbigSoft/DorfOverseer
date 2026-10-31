@@ -202,7 +202,7 @@ PLANNER_CONFIG = {
     "crisis_ghosts": 5, "crisis_ghosts_clear": 2,
     "crisis_tantrums": 10, "crisis_tantrums_clear": 4,
     "crisis_min_days": 14,                 # ...lasting at least this long
-    "crisis_extra_actions": 3,             # ...recovery's extra action slots a cycle
+    "crisis_extra_actions": 5,             # ...recovery's extra action slots a cycle
     "convict_per_cycle": 3,            # (0.104.131) solved cases convicted a cycle...
     "convict_queue_min": 5,            # ...while fewer punishments than this (or than restraints) wait
     "dig_raise_days": 14,
@@ -301,7 +301,9 @@ PLANNER_CONFIG = {
     "craft_shops_max": 8,              # (0.104.53: 4 -> 8; Enxah: 31 badly wanting to craft, 4 shops)
     "craft_shop_citizens": 15,         # (0.104.137) ...or one per this many dwarves
     "needs_shops_cooldown_ticks": 7 * 1200,
-    "trinkets_per_cycle": 25,
+    "trinkets_per_cycle": 25,          # (0.104.137) or a quarter of those wanting, up to 50
+    "trinket_order_max": 60,           # (0.104.137) crafts ordered at a time: half of those wanting, 20 to this
+    "finery_metal_bars": 10,           # (0.104.137) jewellery in copper when this many bars spare
     "fight_needs_at": 15,              # this many long to fight or train: more soldiers (they train)
     "fight_soldiers_max": 20,          # ... at most this many more
     "fight_share_max": 0.3,            # ... and never past this share of the citizens
@@ -874,7 +876,9 @@ RECIPE_SHOPS = {"pig_iron": "Smelter", "steel": "Smelter", "coke_bituminous": "S
                 # (0.104.87) sewn at a clothier's (an order for one the fort hasn't waits)
                 "cloth_bag": "Clothiers", "silk_bag": "Clothiers", "yarn_bag": "Clothiers",
                 # (0.104.95) glass is made at a glass furnace, precious metal crafts at the forge
-                "collect_sand": "GlassFurnace", "metal_crafts": "MetalsmithsForge"}
+                "collect_sand": "GlassFurnace", "metal_crafts": "MetalsmithsForge",
+                "metal_amulet": "MetalsmithsForge", "metal_bracelet": "MetalsmithsForge",   # (0.104.137)
+                "metal_ring": "MetalsmithsForge", "metal_earring": "MetalsmithsForge"}
 
 
 # (0.100.1, overnight run) the workshop a recipe is made at, where it's sure:
@@ -1474,7 +1478,7 @@ def note_refusal(memory: Memory, p: Proposal, r: dict, now: int, bridge: str | N
 LOOP_LIMITS = {"start_project": 12, "place_surface": 12, "place_well": 12, "make_pasture": 20,
                "dismiss_alerts": 400}
 LOOP_LIMIT_DEFAULT = 80
-LOOP_EXEMPT = {"entrances", "needs_trinkets", "excess_shops", "cistern", "call_trader", "open_trade",
+LOOP_EXEMPT = {"entrances", "needs_trinkets", "trinket_orders", "excess_shops", "cistern", "call_trader", "open_trade",
                "trade_deal", "close_trade", "trade", "train", "water", "project"}
 
 

@@ -346,10 +346,13 @@ def _recreation_rule(s: dict, cfg: dict, worst: list, proposals: list | None) ->
     # (0.104.80) civilians badly wanting friends get a few short stays too
     bwf = _d(_d(_d(s.get("needs")).get("needs")).get("BeWithFriends"))
     lonely = int(bwf.get("badly") or 0) - int(bwf.get("badly_soldiers") or 0)
-    friends = (cfg["recreation_friends"]
+    # (0.104.137) scaled to the fort: 4 places for friends and 8 in all were
+    # set for forts of 50 (Teacheroar: 221 dwarves, 85 badly wanting friends)
+    friends = (min(10, max(cfg["recreation_friends"], lonely // 5))
                if lonely > 0 and int(bwf.get("badly") or 0) >= cfg["recreation_friends_share"] * citizens else 0)
     if low or members or friends:
-        action = {"type": "recreation", "max": cfg["recreation_max"], "days": cfg["recreation_days"]}
+        action = {"type": "recreation", "max": min(30, max(cfg["recreation_max"], citizens // 20)),
+                  "days": cfg["recreation_days"]}
         if friends:
             action.update(friends=friends, friend_days=cfg["recreation_friend_days"])
         proposals.append(Proposal("recreation", action,
@@ -478,7 +481,8 @@ def _location_supply_rules(s: dict, cfg: dict, proposals: list, notes: list) -> 
         zones = [z for e in taverns if e.get("type") == "INN_TAVERN"
                  for z in _l(e.get("zones")) if isinstance(z, int)]
         if zones:
-            proposals.append(Proposal("pair_chairs", {"type": "pair_chairs", "zones": zones[:6], "max": 5},
+            proposals.append(Proposal("pair_chairs", {"type": "pair_chairs", "zones": zones[:6],
+                                                      "max": min(20, max(5, int(friends_badly // 4)))},   # (0.104.137)
                                       f"{friends_badly} dwarves badly want friends and dwarves talk only with "
                                       "those beside them: a chair beside each lone chair in the taverns", 5))
     # (0.104.8) instruments for the tavern and the temples: DFHack's
@@ -957,26 +961,44 @@ def _needs_rules(s: dict, cfg: dict, proposals: list, rules_: dict | None = None
     wood = int(_d(s.get("stocks")).get("wood") or 0)
     in_wood = stone_short(s, cfg["stone_low"]) and wood >= cfg["wood_crafts_min_logs"]
     if acq >= cfg["needs_note_at"] and rules_.get("give_trinkets", True) and isinstance(nd.get("trinkets"), int):
+        # (0.104.137) given and made in amounts the fort's size asks (a fixed 25
+        # and 20, made only once none were left, against 166 wanting at 221)
         if nd["trinkets"] > 0:
-            proposals.append(Proposal("needs_trinkets", {"type": "give_trinkets", "max": cfg["trinkets_per_cycle"]},
+            give = min(50, max(cfg["trinkets_per_cycle"], acq // 4))
+            proposals.append(Proposal("needs_trinkets", {"type": "give_trinkets", "max": give},
                                       f"{acq} dwarves are distracted for want of something to own: give them "
                                       f"trinkets ({nd['trinkets']} free rings, amulets, figurines...)", 5))
-        elif _has_shop(b, "Craftsdwarfs") and not making:
+        if nd["trinkets"] < max(1, acq // 4) and _has_shop(b, "Craftsdwarfs") and not making:
             r = "wood_crafts" if in_wood else jewel if ext >= cfg["needs_note_at"] else "stone_crafts"
-            proposals.append(Proposal("needs_trinkets", {"type": "work_order", "recipe": r,
-                                                         "amount": min(20, acq)},
-                                      f"{acq} dwarves want something to own and there are no free trinkets: "
+            n = min(cfg["trinket_order_max"], max(20, acq // 2))
+            proposals.append(Proposal("trinket_orders", {"type": "work_order", "recipe": r, "amount": n},
+                                      f"{acq} dwarves want something to own and {nd['trinkets']} trinkets are free: "
                                       + ("make stone crafts" if r == "stone_crafts" else
                                          f"make wooden crafts (no stone to spare; {wood} logs)" if r == "wood_crafts" else
                                          f"make stone {r.split('_', 1)[1]}s to wear ({ext} want finery too)"), 5, True))
-            ordered = True
+            ordered = r != "wood_crafts"
     if (not ordered and ext >= cfg["needs_note_at"] and rules_.get("give_trinkets", True)
-            and isinstance(nd.get("trinkets"), int) and nd["trinkets"] < ext
-            and _has_shop(b, "Craftsdwarfs") and not making and not stone_short(s, 10)):
-        proposals.append(Proposal("needs_finery", {"type": "work_order", "recipe": jewel, "amount": min(20, ext)},
-                                  f"{ext} dwarves are distracted for want of finery (something of quality to "
-                                  f"wear) and {nd['trinkets']} trinkets are free: make stone "
-                                  f"{jewel.split('_', 1)[1]}s (a skilled crafter's are of quality)", 5, True))
+            and isinstance(nd.get("trinkets"), int) and nd["trinkets"] < ext):
+        if not stone_short(s, 10) and _has_shop(b, "Craftsdwarfs") and not making:
+            proposals.append(Proposal("needs_finery", {"type": "work_order", "recipe": jewel, "amount": min(20, ext)},
+                                      f"{ext} dwarves are distracted for want of finery (something of quality to "
+                                      f"wear) and {nd['trinkets']} trinkets are free: make stone "
+                                      f"{jewel.split('_', 1)[1]}s (a skilled crafter's are of quality)", 5, True))
+        elif stone_short(s, 10) and _has_shop(b, "MetalsmithsForge"):
+            # (0.104.137) wooden crafts aren't worn: jewellery in metal at the forge
+            # (precious first, else copper) while stone is short
+            import planner_industry as _pi
+            metal = _pi.precious_metal(s, cfg)
+            bars = _d(_d(_d(s.get("military")).get("gear")).get("all_bars"))
+            if not metal and int(bars.get("COPPER") or 0) >= cfg["finery_metal_bars"]:
+                metal = "COPPER"
+            mj = "metal_" + jewel.split("_", 1)[1]
+            if metal and not queued(s, {"metal_amulet", "metal_bracelet", "metal_ring", "metal_earring"}):
+                proposals.append(Proposal("needs_finery", {"type": "work_order", "recipe": mj,
+                                                           "amount": min(10, max(3, ext // 8)),
+                                                           "material": f"INORGANIC:{metal}"},
+                                          f"{ext} dwarves are distracted for want of finery and no stone is "
+                                          f"spare: make {metal.lower()} {mj.split('_', 1)[1]}s to wear at the forge", 5, True))
     recipe = brew_recipe(s)
     # (0.100.1, review) as many brews as there are empty barrels and pots: an
     # order with nowhere to put the drink stood still, was cancelled as stuck,
@@ -987,8 +1009,12 @@ def _needs_rules(s: dict, cfg: dict, proposals: list, rules_: dict | None = None
     # brewed at once (16:32: 11 and 10) and the extra order was cancelled as
     # stuck ("2 brew orders and this one"), 11 of 61 in 3.5 hours
     brewing_now = any(isinstance(p.action, dict) and p.action.get("recipe") in BREW_RECIPES for p in proposals)
+    # (0.104.137) not when drink is already plentiful: the want is for a place
+    # to drink with others (taverns: social_shortfall), not more barrels
+    # (Teacheroar: 56 badly wanting a drink with 8.7 drinks a dwarf)
+    plenty = int(_d(s.get("stocks")).get("drink") or 0) >= cfg["drink_per_dwarf"] * int(_d(s.get("dwarves")).get("total") or 0)
     if (unmet(s, "DrinkAlcohol") >= at and _has_shop(b, "Still") and not queued(s, set(BREW_RECIPES))
-            and recipe is not None and room > 0 and not brewing_now):
+            and recipe is not None and room > 0 and not brewing_now and not plenty):
         # (13c) what a still can brew, as the drink rule chooses: this rule
         # ordered fruit brews the drink_fruit rule then cancelled
         proposals.append(Proposal("needs_drink", {"type": "work_order", "recipe": recipe, "amount": min(10, room)},

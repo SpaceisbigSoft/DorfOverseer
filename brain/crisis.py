@@ -11,7 +11,7 @@ from planner_core import TICKS_PER_DAY, _d, _l, abs_tick, tantrums_recent
 # rules that put a fort back on its feet
 RECOVERY_RULES = {
     "burial", "tombs_ghosts", "slabs", "slabs_free", "coffins", "hospital", "doctor_patient", "staff",
-    "stress_care", "soap", "cloth", "needs_craft", "needs_shops", "needs_trinkets", "needs_finery",
+    "stress_care", "soap", "cloth", "needs_craft", "needs_shops", "needs_trinkets", "trinket_orders", "needs_finery",
     "needs_drink", "needs_meal", "good_cooks", "recreation", "tavern", "tavern_chest", "temple_chest",
     "tavern_urgent", "jail_urgent", "jail_size", "convict", "mood", "rooms", "drink", "drink_fruit",
     "food", "farms", "kitchen", "water", "well", "well_parts", "pop_cap", "dig_first", "fat_ban",
@@ -101,6 +101,14 @@ def is_expansion(p) -> bool:
     return p.rule in EXPANSION_RULES
 
 
+def is_recovery(p) -> bool:
+    """A recovery step: a recovery rule, or a level that is itself recovery
+    (urgent, or a hospital, tombs, dining hall, tavern, temple...)."""
+    if p.rule in RECOVERY_RULES:
+        return True
+    return p.action.get("type") == "start_project" and not is_expansion(p)
+
+
 def apply(proposals: list, why: list, notes: list) -> list:
     """Expansion held, recovery ranked first (priority - 2)."""
     if not why:
@@ -110,7 +118,7 @@ def apply(proposals: list, why: list, notes: list) -> list:
         if is_expansion(p):
             waiting.append(p)
             continue
-        if p.rule in RECOVERY_RULES:
+        if is_recovery(p):
             p.priority -= 2
         kept.append(p)
     if waiting:

@@ -763,10 +763,10 @@ def _():
     sh = by_rule(props, "needs_shops")
     assert sh and sh[0].action["shops"] == ["Craftsdwarfs"] * 4, sh                   # 1 + 35 // 8 = 5 wanted (0.104.53)
     s["needs"]["trinkets"] = 0
-    t = by_rule(plan(s, Memory())[0], "needs_trinkets")
-    assert t and t[0].action["recipe"] == "stone_crafts", t
+    t = by_rule(plan(s, Memory())[0], "trinket_orders")
+    assert t and t[0].action["recipe"] == "stone_crafts" and t[0].action["amount"] == 20, t
     s["settings"]["give_trinkets"] = False
-    assert not by_rule(plan(s, Memory())[0], "needs_trinkets")
+    assert not by_rule(plan(s, Memory())[0], "trinket_orders")
     s["needs"]["craft_shops"] = 5
     props = plan(s, Memory())[0]
     assert not by_rule(props, "needs_shops")
@@ -3400,7 +3400,8 @@ def _():
     s["stocks"]["prepared_meals"] = 300
     props = plan(s, Memory())[0]
     assert by_rule(props, "needs_craft")[0].action == {"type": "idle_crafting"}
-    assert by_rule(props, "needs_drink")[0].action["recipe"].startswith("brew")
+    plenty = s["stocks"].get("drink", 0) >= PLANNER_CONFIG["drink_per_dwarf"] * s["dwarves"]["total"]
+    assert bool(by_rule(props, "needs_drink")) != plenty, "(0.104.137) brewed for the need only while drink is short"
     assert by_rule(props, "needs_meal")[0].action == {"type": "work_order", "recipe": "prepare_fine_meal", "amount": 5}
     s["needs"]["idle_crafting"] = {"enabled": True, "workshops": 1}
     s["needs"]["needs"]["DrinkAlcohol"]["distracted"] = 1
@@ -4038,7 +4039,7 @@ def _():
                                 "have": {"goblets": 10, "instruments": 5}, "want": {"goblets": 10, "instruments": 5}}]}
     s.setdefault("needs", {}).setdefault("needs", {})["BeWithFriends"] = {"badly": 42, "distracted": 57}
     c = by_rule(plan(s, Memory())[0], "pair_chairs")
-    assert c and c[0].action == {"type": "pair_chairs", "zones": [1081], "max": 5}, c
+    assert c and c[0].action == {"type": "pair_chairs", "zones": [1081], "max": 10}, c   # (0.104.137) 42 badly // 4
     s["needs"]["needs"]["BeWithFriends"]["badly"] = 5
     assert not by_rule(plan(s, Memory())[0], "pair_chairs")
 
@@ -4101,7 +4102,7 @@ def _():
     s["dwarves"]["total"] = 88
     s.setdefault("needs", {}).setdefault("needs", {})["BeWithFriends"] = {"badly": 42, "badly_soldiers": 17}
     r = by_rule(plan(s, Memory())[0], "recreation")
-    assert r and r[0].action.get("friends") == 4 and r[0].action.get("friend_days") == 7, r
+    assert r and r[0].action.get("friends") == 5 and r[0].action.get("friend_days") == 7, r   # (0.104.137) 25 // 5
     assert "25 civilian(s) badly wanting friends" in r[0].reason, r[0].reason
     s["needs"]["needs"]["BeWithFriends"] = {"badly": 10, "badly_soldiers": 2}
     assert not by_rule(plan(s, Memory())[0], "recreation")       # under a fifth, nobody low, nobody in
@@ -6646,7 +6647,7 @@ def _():
     props = [Proposal(r, {"type": "work_order", "recipe": r, "amount": 1}, "x", 4) for r in
              ("soap", "cloth", "needs_trinkets", "needs_meal", "slabs", "coffins", "convict")]
     allowed, held = select(props, s, m)
-    assert len(allowed) == 6, (len(allowed), held)
+    assert len(allowed) == 7, (len(allowed), held)          # all 7: 3 + 5 extra
     m2 = Memory()
     assert len(select([Proposal(p.rule, p.action, "x", 4) for p in props], s, m2)[0]) == 3   # no crisis: 3
     # clears only under the clear levels and after 14 days
@@ -6693,6 +6694,31 @@ def _():
     f["needs"] = {"needs": {"CraftObject": {"distracted": 118}}, "craft_shops": 8, "idle_crafting": {"workshops": 8}}
     c = by_rule(plan(copy.deepcopy(f), Memory())[0], "needs_shops")
     assert c and len(c[0].action["shops"]) == 7, c                         # 1 + 118 // 8 = 15
+
+
+@test("needs at the fort's size (0.104.137): trinkets made in half the wanting, given a quarter; metal finery without stone; no brewing on plenty")
+def _():
+    s = fort()
+    s["orders"] = []
+    s["dwarves"]["total"] = 221
+    s["needs"] = {"needs": {"AcquireObject": {"distracted": 166}, "BeExtravagant": {"distracted": 76}}, "trinkets": 30}
+    s["stone_use"] = {"usable": 2, "economic": {}}
+    s["stocks"]["wood"] = 525
+    s["buildings"]["workshops"]["MetalsmithsForge"] = 2
+    s.setdefault("military", {}).setdefault("gear", {})["all_bars"] = {"COPPER": 33, "IRON": 39}
+    p = plan(copy.deepcopy(s), Memory())[0]
+    g = by_rule(p, "needs_trinkets")
+    assert g and g[0].action == {"type": "give_trinkets", "max": 41}, g             # 166 // 4
+    o = by_rule(p, "trinket_orders")
+    assert o and o[0].action == {"type": "work_order", "recipe": "wood_crafts", "amount": 60}, o   # 30 free < 41: more made
+    f = by_rule(p, "needs_finery")
+    assert f and f[0].action["recipe"].startswith("metal_") and f[0].action["material"] == "INORGANIC:COPPER", f
+    s["needs"]["trinkets"] = 50                                                    # enough free: none made
+    assert not by_rule(plan(copy.deepcopy(s), Memory())[0], "trinket_orders")
+    s["needs"] = {"needs": {"DrinkAlcohol": {"distracted": 60}}}
+    s["stocks"]["drink"] = 221 * 9
+    s["supplies"] = dict(s.get("supplies") or {}, empty_barrels=50)
+    assert not by_rule(plan(copy.deepcopy(s), Memory())[0], "needs_drink"), "plenty of drink: no brewing for the need"
 
 
 @test("urgent tombs (0.104.12): many dead unburied with both slots taken: a tomb level of its own slot, beside urgent workshops")
@@ -6849,10 +6875,10 @@ def _():
     assert not by_rule(plan(s, Memory())[0], "needs_finery")
     s["needs"] = {"needs": {"BeExtravagant": {"distracted": 13}, "AcquireObject": {"distracted": 16}}, "trinkets": 0}
     p = plan(s, Memory())[0]
-    t = by_rule(p, "needs_trinkets")
+    t = by_rule(p, "trinket_orders")
     assert t and t[0].action["recipe"] in planner.JEWEL_RECIPES and not by_rule(p, "needs_finery"), (t, by_rule(p, "needs_finery"))
     s["needs"] = {"needs": {"AcquireObject": {"distracted": 16}}, "trinkets": 0}
-    assert by_rule(plan(s, Memory())[0], "needs_trinkets")[0].action["recipe"] == "stone_crafts"
+    assert by_rule(plan(s, Memory())[0], "trinket_orders")[0].action["recipe"] == "stone_crafts"
 
 
 @test("trinkets in wood (0.104.122): stone short, logs at hand: wooden crafts, not stone jewellery that never moves")
@@ -6863,15 +6889,17 @@ def _():
     s["stone_use"] = {"usable": 2, "economic": {}}                  # Teacheroar, 31 Oct
     s["stocks"]["wood"] = 518
     p = plan(copy.deepcopy(s), Memory())[0]
-    t = by_rule(p, "needs_trinkets")
-    assert t and t[0].action == {"type": "work_order", "recipe": "wood_crafts", "amount": 20}, t
-    assert "wooden crafts" in t[0].reason and not by_rule(p, "needs_finery")
+    t = by_rule(p, "trinket_orders")
+    assert t and t[0].action == {"type": "work_order", "recipe": "wood_crafts", "amount": 60}, t   # (0.104.137) 228 // 2, to 60
+    assert "wooden crafts" in t[0].reason
+    f = by_rule(p, "needs_finery")                                    # (0.104.137) worn finery in metal at the forge
+    assert not f or f[0].action["recipe"].startswith("metal_"), f
     assert planner.recipe_shop("wood_crafts") == "Craftsdwarfs"
     s["orders"] = [{"id": 3, "recipe": "wood_crafts", "amount_left": 12, "by_ai": True}]    # being made
-    assert not by_rule(plan(copy.deepcopy(s), Memory())[0], "needs_trinkets")
+    assert not by_rule(plan(copy.deepcopy(s), Memory())[0], "trinket_orders")
     s["orders"] = []
     s["stocks"]["wood"] = 10                                         # no logs either: the old way
-    assert by_rule(plan(copy.deepcopy(s), Memory())[0], "needs_trinkets")[0].action["recipe"] in planner.JEWEL_RECIPES
+    assert by_rule(plan(copy.deepcopy(s), Memory())[0], "trinket_orders")[0].action["recipe"] in planner.JEWEL_RECIPES
 
 
 @test("Forge-born and Communal (0.103.11): furniture in spare metal; new sleeping quarters a dormitory")
