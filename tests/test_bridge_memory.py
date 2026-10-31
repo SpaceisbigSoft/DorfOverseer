@@ -185,7 +185,7 @@ def _():
     for absent in ("supplies", "map", "jobs", "recent_announcements", "registry"):
         assert absent not in keys, absent
     daily = M.build_state(True)
-    assert daily.tier == "daily" and daily.units[1].id == 1 and daily.bridge_version == "0.104.140"
+    assert daily.tier == "daily" and daily.units[1].id == 1 and daily.bridge_version == "0.104.141"
     assert set(pulse.keys()) - {"tier"} <= set(daily.keys())
     assert daily.registry.error is not None                         # no builder here, but the section is there
     assert M.build_state(False, "survey").tier == "survey"
@@ -1053,7 +1053,7 @@ def _():
     assert r.ok and H.econ[0] is False, dict(r)
 
 
-@test("0.104.131: convict names the culprit of solved cases (oldest first); never unsolved, sentenced, elsewhere, hammer or the dead")
+@test("0.104.131: convict names the culprit of solved cases (oldest first); never unsolved, sentenced, elsewhere, hammer, a beating, a child, the wounded or the dead")
 def _():
     reset()
     M = H.module()
@@ -1067,23 +1067,29 @@ def _():
         return c
       end
       local list = {[0] = cr(1, {}), cr(2, {discovered = false}), cr(3, {sentenced = true}), cr(4, {site = 12}),
-                    cr(5, {hammer = 2}), cr(6, {criminal = 666}), cr(7, {}), cr(8, {})}
-      setmetatable(list, {__len = function() return 8 end})
+                    cr(5, {hammer = 2}), cr(6, {criminal = 666}), cr(7, {criminal = 103}), cr(8, {criminal = 104}),
+                    cr(9, {criminal = 101}), cr(10, {criminal = 102}), cr(11, {}), cr(12, {})}
+      list[10].punishment.give_beating = true                        -- (0.104.141) a beating: never
+      setmetatable(list, {__len = function() return 12 end})
       H.df.global.world.crimes = {all = list}
       H.df.global.plotinfo.site_id = 239
       H.df.crime_type = {[5] = 'DisorderlyBehavior'}
-      local units = {[100] = {id = 100}, [666] = {id = 666, dead = true}}
+      local units = {[100] = {id = 100}, [666] = {id = 666, dead = true}, [101] = {id = 101, child = true},
+                     [102] = {id = 102, body = {wounds = {1}}},
+                     [103] = {id = 103}, [104] = {id = 104}}
+      setmetatable(units[102].body.wounds, {__len = function() return 1 end})
       H.df.unit = {find = function(id) return units[id] end}
       H.dfhack.units = {isDead = function(u) return u.dead == true end, isCitizen = function(u) return true end,
+                        isAdult = function(u) return not u.child end,
                         getReadableName = function(u) return 'Urist ' .. u.id end}
       M.txt = function(x) return x end
       H.list = list
     """, M, H)
     r = M.act_convict(t({"max": 2, "dry_run": True}))
     assert r.ok and r.dry_run and len(r.convicted) == 2 and H.list[0].accused == -1, dict(r)
-    r = M.act_convict(t({"max": 5}))
+    r = M.act_convict(t({"max": 9}))
     ids = [r.convicted[i].id for i in range(1, len(r.convicted) + 1)]
-    assert r.ok and ids == [1, 7, 8], ids                           # 2-6 never
+    assert r.ok and ids == [1, 7, 8], ids                           # 2-6 never; 12: one case a culprit (0.104.141)
     assert H.list[0].accused == 100 and H.list[0].accused_hf["from"].hf == 7
     assert H.list[1].accused == -1 and H.list[4].accused == -1 and H.list[5].accused == -1
     r = M.act_convict(t({"max": 5}))

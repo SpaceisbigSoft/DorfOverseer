@@ -632,7 +632,7 @@ end
 -- gives each such dwarf a free trinket: the item becomes theirs (the game's
 -- own ownership: they keep it in their room) and the need counts as met, as
 -- when they pick one up themselves.
-TRINKETS = {'RING', 'EARRING', 'AMULET', 'BRACELET', 'CROWN', 'SCEPTER', 'FIGURINE'}
+TRINKETS = {'RING', 'EARRING', 'AMULET', 'BRACELET', 'CROWN', 'SCEPTER', 'FIGURINE', 'TOTEM'}
 ACQUIRE_DISTRACTED = -1000
 SATISFIED_FOCUS = 400              -- the top of the "not distracted" range
 
@@ -662,6 +662,56 @@ function free_trinkets(limit)
         end
     end
     return out
+end
+
+-- (0.104.141) The trinkets there are, by where they are: free (to give),
+-- owned, in a job, at the depot or a trader's, forbidden, in a building
+-- (a bin in a workshop...), carried, other.
+function trinket_census()
+    local out = {free = 0, owned = 0, in_job = 0, trade = 0, forbidden = 0, in_building = 0, carried = 0, other = 0}
+    for _, name in ipairs(TRINKETS) do
+        local ok, list = pcall(function() return df.global.world.items.other[name] end)
+        if ok and list then
+            for _, item in ipairs(list) do
+                local okk, k = pcall(function()
+                    local f = item.flags
+                    if f.removed or f.garbage_collect or f.artifact then return nil end
+                    if free_trinket(item) then return 'free' end
+                    if f.owned then return 'owned' end
+                    if f.in_job then return 'in_job' end
+                    if f.trader then return 'trade' end
+                    if f.in_building then
+                        local b = dfhack.items.getHolderBuilding(item)
+                        if b and b:getType() == df.building_type.TradeDepot then return 'trade' end
+                    end
+                    if f.forbid then return 'forbidden' end
+                    if f.in_inventory then return 'carried' end
+                    if f.in_building then return 'in_building' end
+                    return 'other'
+                end)
+                if okk and k then out[k] = out[k] + 1 end
+            end
+        end
+    end
+    return out
+end
+
+-- (0.104.141) Butchered bones a craftsdwarf could carve (loose or in a bin,
+-- not forbidden or in a job), counted up to `limit`.
+function free_bones(limit)
+    local n = 0
+    local ok, list = pcall(function() return df.global.world.items.other.CORPSEPIECE end)
+    if not ok or not list then return 0 end
+    for _, item in ipairs(list) do
+        if limit and n >= limit then break end
+        local f = item.flags
+        local okb, bone = pcall(function() return item.corpse_flags.bone and not item.corpse_flags.unbutchered end)
+        if okb and bone and not (f.forbid or f.in_job or f.removed or f.garbage_collect or f.dump
+                or f.in_inventory or f.rotten) then
+            n = n + 1
+        end
+    end
+    return n
 end
 
 local function acquire_need(u)

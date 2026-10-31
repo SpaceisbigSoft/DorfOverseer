@@ -248,6 +248,26 @@ def _():
     assert "hermit_kingdom" not in (h.get("quirks") or {}), h.get("quirks")
 
 
+@test("leanings (0.104.141): a site lean stays while the lowest dwarf comes and goes; gone after 20 reads missing")
+def _():
+    import leanings
+    near = {"map": {"dwarves": {"z_bottom": 148}, "layers": [{"name": "Cavern1", "z_top": 143}]}}
+    far = {"map": {"dwarves": {"z_bottom": 165}, "layers": [{"name": "Cavern1", "z_top": 143}]}}
+    h = {"seed": "Teacheroar"}
+    leanings.update(h, near)
+    has = lambda: any("cavern close" in x["why"] for x in h["leanings"]["site"])
+    assert has()
+    for i in range(10):
+        changed = leanings.update(h, far if i % 2 else near)
+        assert has(), i
+        assert not any("cavern" in c for c in changed), changed      # not said again each time it comes back
+    for _ in range(leanings.SITE_DROP_AFTER - 2):                   # (the last alternation was a miss)
+        leanings.update(h, far)
+    assert has()
+    leanings.update(h, far)
+    assert not has() and not h["leanings"]["missing"]
+
+
 if __name__ == "__main__":
     for name, ok, msg in RESULTS:
         print(f"[{'PASS' if ok else 'FAIL'}] {name}" + (f"\n        {msg}" if msg else ""))

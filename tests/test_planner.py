@@ -5930,9 +5930,9 @@ def _():
                     "punish": {"n": 0}, "crimes": {"n": 1623, "convictable": 398}}
     c = by_rule(plan(copy.deepcopy(s), Memory())[0], "convict")
     assert c and c[0].action == {"type": "convict", "max": 3} and "398 solved" in c[0].reason, c
-    s["justice"]["punish"]["n"] = 9                                    # 1 place left
+    s["justice"]["punish"]["n"] = 8                                    # 2 places left, 1 kept spare (0.104.141)
     assert by_rule(plan(copy.deepcopy(s), Memory())[0], "convict")[0].action["max"] == 1
-    s["justice"]["punish"]["n"] = 10
+    s["justice"]["punish"]["n"] = 9
     assert not by_rule(plan(copy.deepcopy(s), Memory())[0], "convict")
     s["justice"]["punish"]["n"] = 0
     s["settings"]["traits"] = dict(s["settings"].get("traits") or {}, justice=-60)   # a lenient fort
@@ -5956,7 +5956,7 @@ def _():
     assert not by_rule(plan(copy.deepcopy(s), m)[0], "convict"), "no free jail place"
     s["justice"]["restraints_used"] = 2
     c = by_rule(plan(copy.deepcopy(s), m)[0], "convict")
-    assert c and c[0].action["max"] == 3 and "8 free jail" in c[0].reason, c
+    assert c and c[0].action["max"] == 3 and "7 free jail" in c[0].reason, c
     for _ in range(10):                                         # 30 convicted, still 2 sentenced
         record([(c[0], {"ok": True, "convicted": [1, 2, 3]})], s, m)
     assert m.convict_watch["given"] == 30 and m.convict_watch["sentenced0"] == 2, m.convict_watch
@@ -7406,6 +7406,150 @@ def _():
                               "open_at": {"x": 91, "y": 100, "z": 135}}], "dangers": [], "cursed": []}
     notes = plan(s, Memory())[1]
     assert any("Cavern1 is open" in n and "x91 y100 z135" in n for n in notes), [n for n in notes if "Cavern" in n]
+
+
+@test("furniture (0.104.141): a slow stone order -> part in wood beside it; none when the masons keep up or no carpenters")
+def _():
+    s = fort()
+    s["stocks"]["wood"] = 659
+    s["buildings"]["workshops"]["Masons"] = 5
+    s["buildings"]["workshops"]["Carpenters"] = 3
+    s["projects"]["open"] = [{"id": 176, "kind": "dining", "phase": "furnish",
+                              "furnish": {"days": 93, "waiting": {"Table": 30}}}]
+    s["orders"] = [{"id": 6380, "recipe": "stone_table", "job": "ConstructTable", "by_ai": True, "active": True,
+                    "amount_left": 49, "amount_total": 60}]
+    f = by_rule(plan(s, Memory())[0], "furniture")
+    assert f and f[0].action == {"type": "work_order", "recipe": "wooden_table", "amount": 24}, [x.action for x in f]
+    s["orders"][0]["amount_left"] = 12                    # 12 on 5 workshops: they keep up
+    assert not [x for x in by_rule(plan(s, Memory())[0], "furniture") if x.action.get("recipe") == "wooden_table"]
+    s["orders"][0]["amount_left"] = 49
+    s["orders"].append({"id": 7, "recipe": "wooden_table", "by_ai": True, "amount_left": 10})
+    assert not [x for x in by_rule(plan(s, Memory())[0], "furniture") if x.action.get("recipe") == "wooden_table"]
+    s["orders"].pop()
+    s["buildings"]["workshops"].pop("Carpenters")
+    assert not [x for x in by_rule(plan(s, Memory())[0], "furniture") if x.action.get("recipe") == "wooden_table"]
+
+
+@test("project (0.104.141): furnished but for a building never finished, 30+ days -> finished (stalled); not sooner")
+def _():
+    s = fort()
+    s["projects"]["open"] = [{"id": 175, "kind": "hospital", "phase": "furnish",
+                              "started": {"year": s["date"]["year"] - 1, "tick": s["date"]["tick"]},
+                              "furnish": {"days": 134, "done": 30, "placed": 31, "waiting": []}}]
+    acts = [x.action for x in by_rule(plan(s, Memory())[0], "project")]
+    assert {"type": "finish_project", "project_id": 175, "stalled": True} in acts, acts
+    s["projects"]["open"][0]["furnish"]["days"] = 10
+    acts = [x.action for x in by_rule(plan(s, Memory())[0], "project")]
+    assert not any(a.get("stalled") for a in acts), acts
+    s["projects"]["open"][0]["furnish"].update(days=134, waiting={"Bed": 1})
+    acts = [x.action for x in by_rule(plan(s, Memory())[0], "project")]
+    assert not any(a.get("stalled") for a in acts), acts
+
+
+@test("bottleneck (0.104.141): much furniture waiting -> Masons' workshops past the cap, at half the backlog")
+def _():
+    s = fort()
+    s["dwarves"]["idle_adults"] = int(0.4 * s["dwarves"]["adults"])
+    s["buildings"]["workshops"]["Masons"] = planner.shops_max(PLANNER_CONFIG, s["dwarves"]["total"])
+    m_ = s["buildings"]["workshops"]["Masons"]
+    s["projects"]["open"] = [{"id": 176, "kind": "dining", "phase": "furnish",
+                              "furnish": {"days": 93, "waiting": {"Table": 30, "Chair": 21}}}]
+    s["orders"] = [{"id": 1, "recipe": "stone_table", "job": "ConstructTable", "by_ai": True, "active": True,
+                    "amount_left": 8 * m_, "amount_total": 60}]
+    b = by_rule(plan(s, Memory())[0], "bottleneck")
+    assert b and b[0].action["shops"] == ["Masons"], [x.action for x in b]
+    s["projects"]["open"][0]["furnish"]["waiting"] = {"Table": 5}
+    assert not by_rule(plan(s, Memory())[0], "bottleneck")
+
+
+@test("jail (0.104.141, 12k): convicts waiting grow the jail once 1 spare place is left; no conviction into the last one")
+def _():
+    s = fort()
+    s["dwarves"]["total"] = 60
+    s["offices"] = {"offices": {"SHERIFF": {"held": [{"id": 1}]}}}
+    s["justice"] = {"jails": [{"id": 453, "chains": 5, "used": 4, "free": 3}], "restraints": 10, "restraints_used": 8,
+                    "punish": {"n": 0, "beatings": 0}, "crimes": {"n": 900, "convictable": 99}}
+    props, notes = plan(copy.deepcopy(s), Memory())
+    assert by_rule(props, "jail_size"), [p.rule for p in props]
+    c = by_rule(props, "convict")
+    assert c and c[0].action["max"] == 1, c                          # 2 free, 1 kept spare
+    s["justice"]["restraints_used"] = 9
+    props, notes = plan(copy.deepcopy(s), Memory())
+    assert not by_rule(props, "convict") and any("no spare place" in n for n in notes), notes
+    s["justice"]["crimes"]["convictable"] = 2                        # few waiting: no hurry
+    s["justice"]["restraints_used"] = 8
+    assert not by_rule(plan(copy.deepcopy(s), Memory())[0], "jail_size")
+
+
+@test("trinkets (0.104.141): a slow trinket order -> a second beside it in bone (else wood); never a third")
+def _():
+    s = fort()
+    s["orders"] = [{"id": 6382, "recipe": "stone_ring", "job": "MakeRing", "by_ai": True, "active": True,
+                    "amount_left": 40, "amount_total": 60}]
+    s["needs"] = {"needs": {"AcquireObject": {"distracted": 165}}, "trinkets": 0, "bones": 300,
+                  "idle_crafting": {"enabled": True, "workshops": 8}, "craft_shops": 8}
+    s["buildings"]["workshops"]["Craftsdwarfs"] = 8
+    t_ = by_rule(plan(copy.deepcopy(s), Memory())[0], "trinket_orders")
+    assert t_ and t_[0].action == {"type": "work_order", "recipe": "bone_crafts", "amount": 30}, [x.action for x in t_]
+    s["needs"]["bones"] = 5
+    s["stocks"]["wood"] = 5000
+    t_ = by_rule(plan(copy.deepcopy(s), Memory())[0], "trinket_orders")
+    assert t_ and t_[0].action["recipe"] == "wood_crafts", [x.action for x in t_]
+    s["orders"].append({"id": 9, "recipe": "wood_crafts", "by_ai": True, "amount_left": 10})
+    assert not by_rule(plan(copy.deepcopy(s), Memory())[0], "trinket_orders")
+
+
+@test("stuck orders (0.104.141): a dwarf at work on an order keeps it from being cancelled as stuck")
+def _():
+    s = fort()
+    o = {"id": 6382, "recipe": "stone_ring", "job": "MakeRing", "by_ai": True, "active": True,
+         "amount_left": 5, "amount_total": 20, "jobs": {"n": 5, "working": 1}}
+    s["orders"] = [o]
+    m = Memory()
+    now = abs_tick(s)
+    m.order_watch["6382"] = {"left": 5, "since": now - 40 * TICKS_PER_DAY, "by_ai": True, "what": "stone_ring"}
+    note_cycle(copy.deepcopy(s), m)
+    assert m.order_watch["6382"].get("worked") == now and m.order_watch["6382"]["since"] == now - 40 * TICKS_PER_DAY
+    assert not by_rule(plan(copy.deepcopy(s), m)[0], "stuck_order")
+    m2 = Memory()
+    m2.order_watch["6382"] = {"left": 5, "since": now - 40 * TICKS_PER_DAY, "by_ai": True, "what": "stone_ring"}
+    o["jobs"] = {"n": 5, "working": 0}
+    assert by_rule(plan(copy.deepcopy(s), m2)[0], "stuck_order")
+
+
+@test("cistern (0.104.141): the lever's link lost 3 times -> one Needs you with where, no refused step each cycle")
+def _():
+    s = fort()
+    s["water"] = dict(s.get("water") or {}, cistern_status={
+        "stage": "linking", "gate": "shut", "lever": "built", "depth": 0, "relinks": 3,
+        "lever_at": {"x": 109, "y": 38, "z": 168}, "gate_at": {"x": 110, "y": 40, "z": 160}})
+    props, notes = plan(copy.deepcopy(s), Memory())
+    assert not by_rule(props, "cistern"), [p.action for p in by_rule(props, "cistern")]
+    assert any(n.startswith(planner.NEEDS_YOU) and "x109 y38 z168" in n and "x110 y40 z160" in n for n in notes), notes
+    s["water"]["cistern_status"]["relinks"] = 1
+    assert by_rule(plan(copy.deepcopy(s), Memory())[0], "cistern")
+    s["water"]["cistern_status"].update(relinks=3, linked=True)
+    assert by_rule(plan(copy.deepcopy(s), Memory())[0], "cistern")
+
+
+@test("wells (0.104.141, 12k): one well for every 60 dwarves; one at a time; a failure waits a season, never 'no well'")
+def _():
+    s = fort()
+    s["dwarves"]["total"] = 209
+    s["buildings"]["other"]["Well"] = 1
+    s["projects"]["open"] = []
+    m = Memory()
+    w = by_rule(plan(copy.deepcopy(s), m)[0], "well")
+    assert w and w[0].action == {"type": "place_well", "extra": True} and w[0].priority == 5, [x.action for x in w]
+    record([(w[0], {"ok": False, "error": "no clean water inside the fort"})], s, m)
+    assert m.extra_well_failure and not m.well_failure
+    props, notes = plan(copy.deepcopy(s), m)
+    assert not by_rule(props, "well") and any("share 1 well" in n for n in notes), notes
+    s["buildings"]["other"]["Well"] = 4
+    assert not by_rule(plan(copy.deepcopy(s), Memory())[0], "well")
+    s["buildings"]["other"]["Well"] = 1
+    s["projects"]["open"] = [{"id": 9, "kind": "well", "phase": "dig"}]
+    assert not [x for x in by_rule(plan(copy.deepcopy(s), Memory())[0], "well") if x.action.get("type") == "place_well"]
 
 
 if __name__ == "__main__":

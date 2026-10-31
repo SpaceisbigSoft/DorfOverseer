@@ -949,6 +949,11 @@ def note_cycle(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> list[
                 memory.order_watch[k] = {"left": left, "since": now, "by_ai": bool(o.get("by_ai")),
                                          "what": o.get("recipe") or o.get("reaction") or o.get("job") or "?",
                                          "job": o.get("job")}
+            # (0.104.141) a dwarf at work on one of its jobs: moving, however
+            # slowly (Teacheroar's ring orders were cancelled at 4-6 left with
+            # their last jobs on the benches, and held 28 days)
+            if int(_d(o.get("jobs")).get("working") or 0) > 0:
+                memory.order_watch[k]["worked"] = now
         for k in [k for k in memory.order_watch if k not in seen]:
             del memory.order_watch[k]
     pop = _d(s.get("dwarves")).get("total")

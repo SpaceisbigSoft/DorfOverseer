@@ -34,7 +34,7 @@
 local json = require('json')
 local utils = require('utils')
 
-BRIDGE_VERSION = '0.104.140'
+BRIDGE_VERSION = '0.104.141'
 PROTOCOL = 1 -- bump when the report's shape changes in a breaking way
 
 local OUT_DIR = dfhack.getDFPath() .. '/dfhack-config/ai-overseer'
@@ -459,6 +459,11 @@ function get_needs(txt_fn)
     out.idle_crafting = okc and ic or nil
     -- free trinkets the AI can give dwarves who want to own things, and the craft shops
     pcall(function() out.trinkets = #reqscript('ai-society').free_trinkets(500) end)
+    -- (0.104.141) where the trinkets made went (owned, free, in jobs, at the
+    -- depot...) and the bones a craftsdwarf could carve: Teacheroar made ~15
+    -- of each 20 ordered and the AI never saw one free
+    pcall(function() out.trinket_census = reqscript('ai-society').trinket_census() end)
+    pcall(function() out.bones = reqscript('ai-society').free_bones(2000) end)
     pcall(function() out.craft_shops = reqscript('ai-society').craft_shops() end)
     -- petitions the fort agreed to and hasn't fulfilled (DFHack's list-agreements)
     pcall(function()
@@ -2173,8 +2178,20 @@ function convictable(cr, site_id)
         if cr.accused ~= -1 or cr.criminal == -1 then return false end
         if site_id and cr.site ~= site_id then return false end
         if (cr.punishment.hammerstrikes or 0) > 0 then return false end
+        -- (0.104.141) nor a sentence of a beating (the field, where this DF has
+        -- it): Teacheroar's sheriff beat a fisherdwarf to death at 19:05 for a
+        -- disorderly-behaviour case the AI convicted at 18:10
+        local okb, beat = pcall(function() return cr.punishment.give_beating end)
+        if okb and beat and beat ~= 0 then return false end
+        local okb2, beat2 = pcall(function() return cr.punishment.beating end)
+        if okb2 and beat2 and beat2 ~= 0 then return false end
         local u = df.unit.find(cr.criminal)
         if not u or dfhack.units.isDead(u) or not dfhack.units.isCitizen(u) then return false end
+        -- nor a child, or a culprit wounded (a beating or a chain kills sooner)
+        local oka, adult = pcall(dfhack.units.isAdult, u)
+        if oka and adult == false then return false end
+        local okw, nw = pcall(function() return #u.body.wounds end)
+        if okw and nw and nw > 0 then return false end
         return true
     end)
     return ok and yes or false
@@ -2975,6 +2992,8 @@ ORDER_RECIPES = {
     -- (0.104.122) wooden crafts (figurines, rings, amulets... the craftsdwarf's
     -- pick) for the dwarves who want something to own when stone is short
     wood_crafts = {job = 'MakeCrafts', material_category = {'wood'}},
+    -- (0.104.141) bone crafts: the butchers' bones, free while stone goes to furniture
+    bone_crafts = {job = 'MakeCrafts', material_category = {'bone'}},
     stone_table = {job = 'ConstructTable', kind = 'stone'},
     stone_chair = {job = 'ConstructThrone', kind = 'stone'},
     stone_door = {job = 'ConstructDoor', kind = 'stone'},
@@ -4019,10 +4038,27 @@ function act_convict(a)
     if max < 1 or max > CONVICT_PER_CALL_MAX then return reject('max must be 1-' .. CONVICT_PER_CALL_MAX) end
     local site = df.global.plotinfo.site_id
     local list = df.global.world.crimes.all
+    -- (0.104.141) one case a culprit, and never a culprit already convicted
+    -- and waiting for the sentence or serving one: Teacheroar's Wrestler was
+    -- convicted 6 times in 5 minutes and suffocated by the sheriff
+    local busy = {}
+    pcall(function()
+        for i = 0, #list - 1 do
+            local c = list[i]
+            if c.accused ~= -1 and not c.flags.sentenced then busy[c.accused] = true end
+        end
+    end)
+    pcall(function()
+        for _, pu in ipairs(df.global.plotinfo.punishments) do busy[pu.criminal] = true end
+    end)
     local picked = {}
     for i = 0, #list - 1 do
         if #picked >= max then break end
-        if convictable(list[i], site) then table.insert(picked, list[i]) end
+        local c = list[i]
+        if convictable(c, site) and not busy[c.criminal] then
+            table.insert(picked, c)
+            busy[c.criminal] = true
+        end
     end
     if #picked == 0 then return {ok = false, rejected = true, error = 'no solved case waits for a trial'} end
     local out = {ok = true, convicted = {}}
@@ -4055,7 +4091,7 @@ end
 function act_finish_project(a)
     local id = project_id(a)
     if not id then return reject('project_id must be a whole number') end
-    return reqscript('ai-builder').finish_project(id, a.decor_only == true)
+    return reqscript('ai-builder').finish_project(id, a.decor_only == true, a.stalled == true)
 end
 
 -- The fort's culture, written by the overseer so the panel's Culture page can
@@ -6311,6 +6347,9 @@ CACHE_INVALIDATES = {
     cancel_project = {'registry', 'locations', 'noble_rooms'}, engrave_project = {'registry'},
     build_crossing = {'crossings'}, remove_crossing = {'crossings'},
     unforbid_dead = {'dead'}, allow_burial = {'dead'}, repair_rooms = {'room_gaps'},
+    -- (0.104.141) a pile placed: the cached logistics section said "none" for
+    -- 3 days and the rule asked again each cycle (17 refusals in 1.5 h)
+    feeder_pile = {'logistics'},
 }
 SECTION_CACHE = SECTION_CACHE or {}
 -- (0.104.8) a new bridge starts with an empty cache: DFHack keeps a script's
@@ -6527,6 +6566,11 @@ local function cmd_act(args)
     -- in the next report (else e.g. a room given looked still free for days)
     if result.ok == true and not action.dry_run then
         for _, name in ipairs(CACHE_INVALIDATES[action.type] or {}) do SECTION_CACHE[name] = nil end
+    end
+    -- (0.104.141) a refusal that says the report is out of date ("already
+    -- has a pile") clears the sections it names too
+    if type(result.stale) == 'table' and not action.dry_run then
+        for _, name in ipairs(result.stale) do SECTION_CACHE[name] = nil end
     end
     return result
 end

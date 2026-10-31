@@ -668,7 +668,12 @@ def _bottleneck_rule(s: dict, cfg: dict, citizens: int, proposals: list) -> None
     # (Teacheroar: 6 stills and 7 kitchens against a cap of 5 at 221 dwarves)
     st_ = _d(s.get("stocks"))
     short_ = {"Still": int(st_.get("drink") or 0) < citizens * cfg["drink_per_dwarf"],
-              "Kitchen": int(st_.get("prepared_meals") or 0) < citizens * cfg["meals_per_dwarf"]}
+              "Kitchen": int(st_.get("prepared_meals") or 0) < citizens * cfg["meals_per_dwarf"],
+              # (0.104.141) and Masons' workshops while the open levels wait for
+              # much furniture (Teacheroar: 122 pieces on 5, the cap at 209)
+              "Masons": sum(int(n or 0) for p in open_ for k, n in _d(_d(p.get("furnish")).get("waiting")).items()
+                            if k in ("Table", "Chair", "Coffin", "Door", "Cabinet", "Box", "Statue", "Slab"))
+                        >= cfg["furniture_short_pieces"]}
     def cap_(shop):
         return shops_max(cfg, citizens) * (2 if short_.get(shop) else 1)
     worst = sorted(((n / max(1, places.get(shop, 0)), n, shop) for shop, n in backlog.items()
@@ -679,6 +684,8 @@ def _bottleneck_rule(s: dict, cfg: dict, citizens: int, proposals: list) -> None
     need = cfg["shop_backlog"]
     if thirsty and worst and worst[0][2] == "Still":
         need = cfg["thirsty_still_backlog"]                 # (Enxah: 12 brews on one still, drink 13 for 18)
+    elif worst and worst[0][2] == "Masons" and short_["Masons"]:
+        need = cfg["shop_backlog"] // 2                     # (0.104.141) furniture the levels wait for
     if worst and worst[0][0] >= need:
         _, n, shop = worst[0]
         # (0.99.4) drink and food first: a still or kitchen goes ahead of the
@@ -977,7 +984,7 @@ def _stuck_orders_rule(s: dict, memory, cfg: dict, proposals: list) -> None:
             continue
         if (isinstance(w, dict) and w.get("by_ai") and isinstance(w.get("since"), int)
                 and (w.get("left") or 0) > 0):
-            groups.setdefault(str(w.get("what")), []).append((w["since"], k, w))
+            groups.setdefault(str(w.get("what")), []).append((watch_since(w), k, w))
     out = []
     for what, lst in sorted(groups.items()):
         lst.sort()
@@ -1135,10 +1142,10 @@ def _stone_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> Non
     now = abs_tick(s)
     for k, w in sorted(memory.order_watch.items()) if memory is not None else []:
         if (isinstance(w, dict) and w.get("by_ai") and str(w.get("what", "")).startswith("stone_")
-                and isinstance(w.get("since"), int) and (now - w["since"]) // TICKS_PER_DAY >= cfg["order_stuck_days"]):
+                and isinstance(w.get("since"), int) and (now - watch_since(w)) // TICKS_PER_DAY >= cfg["order_stuck_days"]):
             proposals.append(Proposal("stone", {"type": "cancel_work_order", "order_id": int(k)},
                                       f"no stone the masons may use and {w.get('what')} hasn't moved in "
-                                      f"{(now - w['since']) // TICKS_PER_DAY} days: cancel it (made in wood instead)", 4))
+                                      f"{(now - watch_since(w)) // TICKS_PER_DAY} days: cancel it (made in wood instead)", 4))
             return
     notes.append(f"only {su.get('usable')} boulders of stone the masons may use (the rest is ore, flux or other "
                  "economic stone): furniture in wood, no stone crafts until more is dug")

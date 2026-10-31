@@ -634,6 +634,21 @@ def _():
     assert not B.finish_project(r2.project_id, True).ok                       # a bed waits too
 
 
+@test("finish (0.104.141): stalled finishes a level with everything placed and nothing missing; never one still waiting", beside=True)
+def _():
+    B.furnish_progress = LUA.eval("function() return {placed = 31, done = 30, waiting = {}} end")
+    r = styled(kind="storage", piles=["food"], style={"smooth": 0})
+    finish_digging()
+    B.furnish_project(r.project_id, True)
+    assert not B.finish_project(r.project_id).ok                              # a building unfinished
+    assert B.finish_project(r.project_id, False, True).phase == "done"
+    B.furnish_progress = LUA.eval("function() return {placed = 31, done = 29, waiting = {Bed = 1}} end")
+    r2 = styled(kind="storage", piles=["food"], style={"smooth": 0})
+    finish_digging()
+    B.furnish_project(r2.project_id, True)
+    assert not B.finish_project(r2.project_id, False, True).ok                # a bed still missing
+
+
 @test("bounds_of: the box of the dig cells (or build cells) in map coordinates; nil without cells")
 def _():
     p = LUA.eval("""function() return {z = 70, anchor = {x = 50, y = 40},

@@ -100,6 +100,31 @@ def _():
     assert env.recreation_status().members == 2
 
 
+@test("trinkets (0.104.141): the census sorts trinkets by where they are; free bones counted, never forbidden or unbutchered")
+def _():
+    env, units, assigned, ntiles, g = fresh()
+    snippet = """
+      local env = ...
+      local function fl(t) t = t or {}; return t end
+      local function item(flags) return {flags = fl(flags)} end
+      local depot = {getType = function() return 'TradeDepot' end}
+      env.df.building_type.TradeDepot = 'TradeDepot'
+      env.dfhack.items = {getOwner = function(i) return i.owner end, getContainer = function() return nil end,
+                          getHolderBuilding = function(i) return i.holder end}
+      local d = item({in_building = true}); d.holder = depot
+      local rings = {[0] = item({on_ground = true}), [1] = item({owned = true}), [2] = item({in_job = true}),
+                     [3] = d, [4] = item({forbid = true, on_ground = true}), [5] = item({in_inventory = true})}
+      local function b(cf, f) local x = item(f); x.corpse_flags = cf; return x end
+      local bones = {[0] = b({bone = true}), [1] = b({bone = true}, {forbid = true}),
+                     [2] = b({bone = true, unbutchered = true}), [3] = b({}), [4] = b({bone = true})}
+      env.df.global.world.items = {other = {RING = rings, CORPSEPIECE = bones}}
+    """
+    env["load"](snippet, "t", "t", env)(env)
+    c = env.trinket_census()
+    assert (c.free, c.owned, c.in_job, c.trade, c.forbidden, c.carried) == (1, 1, 1, 1, 1, 1), dict(c)
+    assert env.free_bones(100) == 2 and env.free_bones(1) == 1
+
+
 @test("recreation (0.104.127): never the hospital's zone (a meeting hall that is a hospital location), nor a Hospital zone")
 def _():
     env, units, assigned, ntiles, g = fresh()

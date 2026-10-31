@@ -130,8 +130,13 @@ def _convict_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> N
     queued_ = int(punish.get("n") or 0)
     # (those serving time are in restraints_used already)
     waiting_ = max(0, queued_ - int(punish.get("prison") or 0))
-    free = int(j.get("restraints") or 0) - int(j.get("restraints_used") or 0) - waiting_
+    # (0.104.141) one place kept spare: a convict who finds none is beaten,
+    # and the guard's beatings kill
+    free = int(j.get("restraints") or 0) - int(j.get("restraints_used") or 0) - waiting_ - 1
     if free <= 0:
+        if n >= cfg["jail_convicts_wait"]:
+            notes.append(f"{n} solved case(s) wait for a trial and the jail has no spare place: no convictions "
+                         "until it grows")
         return
     if int(w.get("given") or 0) >= cfg["convict_check_after"]:
         if sentenced - int(w.get("sentenced0") or 0) < cfg["convict_check_sentences"]:
@@ -182,13 +187,18 @@ def _jail_size_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) ->
     cit = int(_d(s.get("dwarves")).get("total") or 0)
     have, used = int(j.get("restraints") or 0), int(j.get("restraints_used") or 0)
     want = max(2, min(cfg["jail_restraints_max"], math.ceil(cit / cfg["dwarves_per_restraint"])))
-    if have >= want and used < have:
+    # (0.104.141, 12k) the jail by the convicts waiting: solved cases the
+    # conviction rule holds back for want of a spare place grow it too
+    pressing = int(_d(j.get("crimes")).get("convictable") or 0) >= cfg["jail_convicts_wait"]
+    spare = 2 if pressing else 1
+    if have >= want and used < have - (2 if pressing else 0):
         return
     # (0.104.138) with places free there's no hurry: only when nearly full, or
     # under half of what the fort wants (Teacheroar: 10 chains, 2 in use)
-    if used < have - 1 and have >= want // 2:
+    if used < have - spare and have >= want // 2:
         return
-    if tantrums_recent(s, memory) < cfg["urgent_jail_tantrums"] and int(_d(j.get("punish")).get("beatings") or 0) == 0:
+    if (tantrums_recent(s, memory) < cfg["urgent_jail_tantrums"] and int(_d(j.get("punish")).get("beatings") or 0) == 0
+            and not pressing):
         return
     # (0.104.138) only a jail with free floor (the bridge's own check)
     roomy = [z for z in jails if not isinstance(z.get("free"), int) or z["free"] > 0]
@@ -1025,8 +1035,11 @@ def _needs_rules(s: dict, cfg: dict, proposals: list, rules_: dict | None = None
     want_shops = min(max(cfg["craft_shops_max"], -(-cit_ // cfg["craft_shop_citizens"])),
                      1 + craft // cfg["craft_shop_per"])
     open_ = [p for p in _l(_d(s.get("projects")).get("open")) if isinstance(p, dict)]
+    # (0.104.141) past the open-level cap while many want to craft or to own
+    # (Teacheroar: 11 wanted, 8 stood, never asked: 4 levels open of 2)
+    extra_slots = 2 if max(craft, unmet(s, "AcquireObject")) >= 2 * cfg["craft_shops_at"] else 0
     if (isinstance(shops, int) and craft >= cfg["craft_shops_at"] and shops < want_shops and not young
-            and len(open_) < (_d(s.get("projects")).get("max_open") or 2)
+            and len(open_) < (_d(s.get("projects")).get("max_open") or 2) + extra_slots
             and not _workshops_busy(open_)):
         k = want_shops - shops
         proposals.append(Proposal("needs_shops", {"type": "start_project", "kind": "workshops",
@@ -1041,7 +1054,7 @@ def _needs_rules(s: dict, cfg: dict, proposals: list, rules_: dict | None = None
     # figurines (Enxah: 13 badly, nothing answered it)
     ext = unmet(s, "BeExtravagant")
     jewel = JEWEL_RECIPES[(game_day(s) // 3) % len(JEWEL_RECIPES)]
-    making = queued(s, {"stone_crafts", "wood_crafts", *JEWEL_RECIPES})
+    making = queued(s, {"stone_crafts", "wood_crafts", "bone_crafts", *JEWEL_RECIPES})
     ordered = False
     # (0.104.122) wooden crafts while stone is short (Teacheroar: 2 usable
     # boulders, stone rings ordered every few hours, cancelled after 15 days
@@ -1065,6 +1078,23 @@ def _needs_rules(s: dict, cfg: dict, proposals: list, rules_: dict | None = None
                                          f"make wooden crafts (no stone to spare; {wood} logs)" if r == "wood_crafts" else
                                          f"make stone {r.split('_', 1)[1]}s to wear ({ext} want finery too)"), 5, True))
             ordered = r != "wood_crafts"
+        # (0.104.141) a second order beside a slow one, in a material the
+        # masons don't want: the butchers' bones, else wood (Teacheroar: one
+        # ring order at a time, ~15 of 20 made in 28 days, 156 badly wanting)
+        elif nd["trinkets"] < max(1, acq // 4) and _has_shop(b, "Craftsdwarfs") and making:
+            kinds_q = [r_ for r_ in ("stone_crafts", "wood_crafts", "bone_crafts", *JEWEL_RECIPES) if queued(s, {r_})]
+            bones = int(nd.get("bones") or 0)
+            wood_free = wood - int(_d(s.get("dwarves")).get("total") or 0) * cfg["wood_per_dwarf"]
+            alt = ("bone_crafts" if bones >= cfg["bone_crafts_min"] and "bone_crafts" not in kinds_q
+                   else "wood_crafts" if wood_free >= cfg["wood_crafts_min_logs"] and "wood_crafts" not in kinds_q
+                   else None)
+            if alt and len(kinds_q) < cfg["trinket_parallel"]:
+                n = min(cfg["trinket_parallel_max"], max(15, acq // 4))
+                proposals.append(Proposal("trinket_orders", {"type": "work_order", "recipe": alt, "amount": n},
+                                          f"{acq} dwarves want something to own, {nd['trinkets']} trinkets are free and "
+                                          f"{making} wait on the benches: {n} "
+                                          + (f"bone crafts beside them ({bones} bones)" if alt == "bone_crafts"
+                                             else f"wooden crafts beside them ({wood} logs)"), 5, True))
     if (not ordered and ext >= cfg["needs_note_at"] and rules_.get("give_trinkets", True)
             and isinstance(nd.get("trinkets"), int) and nd["trinkets"] < ext):
         if not stone_short(s, 10) and _has_shop(b, "Craftsdwarfs") and not making:

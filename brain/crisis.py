@@ -15,7 +15,7 @@ RECOVERY_RULES = {
     "needs_drink", "needs_meal", "good_cooks", "recreation", "tavern", "tavern_chest", "temple_chest",
     "tavern_urgent", "jail_urgent", "jail_size", "jail_more", "break_fights", "convict", "mood", "rooms", "drink", "drink_fruit",
     "food", "farms", "kitchen", "water", "well", "well_parts", "pop_cap", "dig_first", "fat_ban",
-    "labor", "stone",
+    "labor", "stone", "furniture",
 }
 # levels that are themselves recovery when started (a build of these kinds is never held)
 RECOVERY_KINDS = {"hospital", "tombs", "dining", "tavern", "temple", "jail", "bedrooms", "workshops",

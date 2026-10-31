@@ -12,7 +12,7 @@ import phases
 from quirks import has_rule
 from digest import _d, _l, normalize
 
-__all__ = ["great_present", "all_clear", "STEER_PROTECTED", "STEER_MAX_DAYS", "steer_of", "PLANNER_CONFIG", "BREW_RECIPES", "MEAL_RECIPES", "MANDATE_RECIPES", "BUILDABLE_SHOPS", "SHOP_ALIASES", "SURVIVAL_SHOPS", "TICKS_PER_DAY", "TICKS_PER_YEAR", "NO_COOLDOWN", "MULTI_PER_CYCLE", "EMERGENCY", "STUCK_HOLD_EXEMPT", "LIMIT_EXEMPT", "Proposal", "Memory", "abs_tick", "game_day", "factor", "ADJUST_BOUNDS", "_number", "effective_config", "queued", "_clamp", "MEMORIAL_SPAN", "OPTIONAL_LEVELS", "GEAR_WEAPONS", "GEAR_METALS", "GEAR_RECIPES", "NEEDS_YOU", "ask_player", "player_rules", "MAINTAIN_SKIPS", "level_refused", "_traits", "reachable_threats", "held_off_threats", "_holding_off", "ONE_A_CYCLE", "growth_mode", "growth_target", "JOB_SHOPS", "RECIPE_SHOPS", "WOOD_ELSEWHERE", "recipe_shop", "brew_recipe", "_watchdog_notes", "jobs_reported", "order_job_state", "masons_jammed", "stuck_hold_days", "_stuck_before", "stone_short", "_office_held", "tantrums_recent", "justice_held", "_restraint_order", "manager_needs_office", "suites_short", "wool_route", "thread_plants_here", "MINING_NEED_ONLY", "mining_plan", "noble_room_kinds", "SOCIAL_NEEDS", "care_waiting", "unmet", "_soldier_swap", "recently_home", "LOCATION_UNITS", "_location", "_location_short", "_real_locations", "is_ranged", "STALE_PROJECT_DAYS", "_workshops_busy", "shop_count", "shops_max", "_has_shop", "RAW_FOOD", "ALL_FOOD", "_idle_share", "update_idle", "AGENDA_THEMES", "agenda", "food_per_dwarf", "WINTER_STOCK", "winter_factor", "young_fort", "established", "has_farms", "_best_metal", "REFUSAL_FIRST_DAYS", "REFUSAL_MAX_DAYS", "REFUSAL_IDLE_DAYS", "REFUSAL_KEYS", "refusal_key", "_refused_wait", "note_refusal", "LOOP_LIMITS", "LOOP_LIMIT_DEFAULT", "LOOP_EXEMPT", "_loop_count", "_stalled_days", "_entrance_spot", "_record_any_outcome", "_weapon_gaps", "spare_sig"]
+__all__ = ["great_present", "all_clear", "STEER_PROTECTED", "STEER_MAX_DAYS", "steer_of", "PLANNER_CONFIG", "BREW_RECIPES", "MEAL_RECIPES", "MANDATE_RECIPES", "BUILDABLE_SHOPS", "SHOP_ALIASES", "SURVIVAL_SHOPS", "TICKS_PER_DAY", "TICKS_PER_YEAR", "NO_COOLDOWN", "MULTI_PER_CYCLE", "EMERGENCY", "STUCK_HOLD_EXEMPT", "LIMIT_EXEMPT", "Proposal", "Memory", "abs_tick", "game_day", "factor", "ADJUST_BOUNDS", "_number", "effective_config", "queued", "watch_since", "_clamp", "MEMORIAL_SPAN", "OPTIONAL_LEVELS", "GEAR_WEAPONS", "GEAR_METALS", "GEAR_RECIPES", "NEEDS_YOU", "ask_player", "player_rules", "MAINTAIN_SKIPS", "level_refused", "_traits", "reachable_threats", "held_off_threats", "_holding_off", "ONE_A_CYCLE", "growth_mode", "growth_target", "JOB_SHOPS", "RECIPE_SHOPS", "WOOD_ELSEWHERE", "recipe_shop", "brew_recipe", "_watchdog_notes", "jobs_reported", "order_job_state", "masons_jammed", "stuck_hold_days", "_stuck_before", "stone_short", "_office_held", "tantrums_recent", "justice_held", "_restraint_order", "manager_needs_office", "suites_short", "wool_route", "thread_plants_here", "MINING_NEED_ONLY", "mining_plan", "noble_room_kinds", "SOCIAL_NEEDS", "care_waiting", "unmet", "_soldier_swap", "recently_home", "LOCATION_UNITS", "_location", "_location_short", "_real_locations", "is_ranged", "STALE_PROJECT_DAYS", "_workshops_busy", "shop_count", "shops_max", "_has_shop", "RAW_FOOD", "ALL_FOOD", "_idle_share", "update_idle", "AGENDA_THEMES", "agenda", "food_per_dwarf", "WINTER_STOCK", "winter_factor", "young_fort", "established", "has_farms", "_best_metal", "REFUSAL_FIRST_DAYS", "REFUSAL_MAX_DAYS", "REFUSAL_IDLE_DAYS", "REFUSAL_KEYS", "refusal_key", "_refused_wait", "note_refusal", "LOOP_LIMITS", "LOOP_LIMIT_DEFAULT", "LOOP_EXEMPT", "_loop_count", "_stalled_days", "_entrance_spot", "_record_any_outcome", "_weapon_gaps", "spare_sig"]
 
 PLANNER_CONFIG = {
     # Starting guesses, tuned from experience. Per citizen, before trait factors.
@@ -311,7 +311,10 @@ PLANNER_CONFIG = {
     "craft_shop_citizens": 15,         # (0.104.137) ...or one per this many dwarves
     "needs_shops_cooldown_ticks": 7 * 1200,
     "trinkets_per_cycle": 25,          # (0.104.137) or a quarter of those wanting, up to 50
-    "trinket_order_max": 60,           # (0.104.137) crafts ordered at a time: half of those wanting, 20 to this
+    "trinket_order_max": 60,
+    "trinket_parallel": 2,             # (0.104.141) trinket orders of different materials at once
+    "trinket_parallel_max": 30,        # (0.104.141) the second one's size at most
+    "bone_crafts_min": 20,             # (0.104.141) free bones before bone crafts are ordered           # (0.104.137) crafts ordered at a time: half of those wanting, 20 to this
     "finery_metal_bars": 10,           # (0.104.137) jewellery in copper when this many bars spare
     "fight_needs_at": 15,              # this many long to fight or train: more soldiers (they train)
     "fight_soldiers_max": 20,          # ... at most this many more
@@ -396,6 +399,11 @@ PLANNER_CONFIG = {
     "dig_stall_days": 28,              # (0.104.110) no tile dug on a level this long: its dig jobs let go of their workers
     "dig_stall_furnish_days": 56,      # ... and a level 90%+ dug is furnished without its last tiles
     "slow_dig_days": 336,              # (0.104.12) a project under half dug in a game year is given up
+    "furniture_parallel_backlog": 4,   # (0.104.141) the stone order's pieces left per Masons' workshop before part goes to wood too
+    "furniture_parallel_min": 3,       # (0.104.141) the smallest wooden part worth ordering
+    "furniture_short_pieces": 40,      # (0.104.141) furniture waiting in open levels: Masons' workshops past the cap
+    "furnish_stalled_days": 30,
+    "jail_convicts_wait": 10,          # (0.104.141) solved cases waiting: the jail grows by them        # (0.104.141) a level furnished but for buildings never finished this long: its slot freed
     "statue_wait_days": 56,            # (0.104.12) a level waiting only for statues (no stone) this long is finished
     "statue_wait_days_any": 112,         # (0.104.33) a level finished without its statues after this long, stone or not
     "stuck_project_days": 21,          # (0.100.1) a level whose digging stopped is given up after this          # (0.100.1) no soldiers below this unless threatened
@@ -409,6 +417,8 @@ PLANNER_CONFIG = {
     "farms_cooldown_ticks": 3 * 1200,
     "farm_dig_retry_days": 28,     # no soil for a farm level: look again (and ask again) after this
     "well_cooldown_ticks": 3 * 1200,
+    "dwarves_per_well": 70,            # (0.104.141) another well for every this many dwarves (0: one well)
+    "extra_well_retry_days": 84,       # (0.104.141) another well that couldn't be placed: tried again a season on
     "new_pasture_cooldown_ticks": 3 * 1200,
     "pasture_margin": 1.25,        # a new pasture: the waiting herd's grass x this (x more at high Husbandry)
     "well_parts_days": 3,          # a well waiting this long for parts: say what to make
@@ -558,6 +568,7 @@ class Memory:
     gate_failures: dict = field(default_factory=dict)    # entrance "x,y,z" -> why the game refused
     gate_failure_ticks: dict = field(default_factory=dict)  # entrance "x,y,z" -> when (tried again later)
     well_failure: str = ""                               # why no well could be placed (Needs you)
+    extra_well_failure: str = ""                         # (0.104.141) why another well (one exists) couldn't be
     cavern_well_failure: str = ""                        # why no cavern well could be placed either
     cavern_shaft_stairs: bool = False                     # (0.104.13) the old shaft's give-up was cleared once
     patient_since: dict = field(default_factory=dict)    # citizen id (str) -> tick first seen needing care
@@ -687,6 +698,14 @@ def queued(state: dict, recipes: set, ai_only: bool = False) -> int:
                 left = max(left, o.get("amount_total") or 0)
             total += left
     return total
+
+
+def watch_since(w: dict) -> int:
+    """(0.104.141) Since when an order has stood still: its amount unchanged
+    and nobody at work on one of its jobs."""
+    since = w.get("since") if isinstance(w.get("since"), int) else 0
+    worked = w.get("worked")
+    return max(since, worked) if isinstance(worked, int) else since
 
 
 def _clamp(v: float, lo: int, hi: int) -> int:
@@ -922,7 +941,7 @@ RECIPE_SHOPS = {"pig_iron": "Smelter", "steel": "Smelter", "coke_bituminous": "S
 # meals and beds waited five years with no still, kitchen or carpenter, were
 # cancelled as stuck and ordered again: 338 cancels in a night)
 WOOD_ELSEWHERE = {"wooden_crossbow": "Bowyers", "wooden_bolts": "Bowyers", "wooden_cups": "Craftsdwarfs",
-                  "wood_crafts": "Craftsdwarfs"}
+                  "wood_crafts": "Craftsdwarfs", "bone_crafts": "Craftsdwarfs"}
 
 
 def recipe_shop(recipe) -> str | None:
@@ -967,7 +986,7 @@ def _watchdog_notes(s: dict, memory, cfg: dict, notes: list) -> None:
     for k, w in memory.order_watch.items():
         if not isinstance(w, dict) or not isinstance(w.get("since"), int) or not (w.get("left") or 0) > 0:
             continue
-        days = (now - w["since"]) // TICKS_PER_DAY
+        days = (now - watch_since(w)) // TICKS_PER_DAY
         if days < cfg["order_stuck_days"]:
             continue
         shop = JOB_SHOPS.get(str(w.get("job")))
@@ -1576,7 +1595,7 @@ def _stalled_days(memory: Memory, recipe: str, now: int) -> int | None:
     for w in (getattr(memory, "order_watch", None) or {}).values():
         if (isinstance(w, dict) and w.get("by_ai") and str(w.get("what")) == recipe
                 and isinstance(w.get("since"), int) and (w.get("left") or 0) > 0):
-            days = max(0, (now - w["since"]) // TICKS_PER_DAY)
+            days = max(0, (now - watch_since(w)) // TICKS_PER_DAY)
             best = days if best is None else max(best, days)
     return best
 
@@ -1620,6 +1639,14 @@ def _record_any_outcome(a: dict, r: dict, state: dict, memory, now: int) -> None
             memory.pasture_failure = ""
         elif r.get("ok") is False and not r.get("rejected"):
             memory.pasture_failure = str(r.get("error") or "refused")[:300]
+    elif t == "place_well" and a.get("extra"):
+        # (0.104.141) another well beside one standing: its failure never says
+        # "no well can be placed" (the cavern well and Needs you hang on that)
+        memory.last_fired["extra_well"] = now
+        if r.get("ok") is True:
+            memory.extra_well_failure = ""
+        elif r.get("ok") is False:
+            memory.extra_well_failure = str(r.get("error") or "refused")[:300]
     elif t == "place_well":
         memory.last_fired["well"] = now          # refused or not: wait the full spell
         if a.get("cavern"):

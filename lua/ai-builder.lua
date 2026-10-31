@@ -1661,7 +1661,7 @@ end
 -- suites held a building slot 257 days for 4 statues with no stone to carve.
 DECOR_ONLY = {Statue = true}
 
-function finish_project(id, decor_only)
+function finish_project(id, decor_only, stalled)
     local data = load_projects()
     local p = find(data, id)
     if not p or p.phase ~= 'furnish' then
@@ -1672,7 +1672,12 @@ function finish_project(id, decor_only)
     for name, n in pairs(f.waiting or {}) do
         if n > 0 and not (decor_only and DECOR_ONLY[name]) then left = true end
     end
-    if f.done < f.placed and (left or not decor_only) then
+    -- (0.104.141) stalled: everything placed, nothing missing, buildings DF
+    -- never finished (a 20-bed hospital at 30 of 31 for 134 days): finished,
+    -- the slot freed; DF goes on building what is placed
+    if stalled and not left and f.placed > 0 then
+        -- falls through to finish
+    elseif f.done < f.placed and (left or not decor_only) then
         return {ok = false, rejected = true, error = ('%d buildings still waiting'):format(f.placed - f.done)}
     end
     -- Engraving still to come: the project frees its slot but stays on the
@@ -3590,6 +3595,19 @@ function cistern_status()
     if d.stage == 'building' or d.stage == 'linking' then
         local lever = p.lever and building_info(p.lever.x, p.lever.y, p.well.z, 'Trap')
         out.lever = lever and (lever.built and 'built' or 'planned') or nil
+        -- (0.104.141) the relinks asked for, whether linked, where the lever and
+        -- the gate are, and why DF dropped the last link job (when it said)
+        if d.stage == 'linking' then
+            out.relinks = math.tointeger(d.relinks) or 0
+            out.link_why = d.link_why
+            out.lever_at = p.lever and {x = p.lever.x, y = p.lever.y, z = p.well.z} or nil
+            out.gate_at = {x = p.floodgate.x, y = p.floodgate.y, z = p.cistern.z}
+            pcall(function()
+                for _, lid in ipairs(reqscript('ai-gates').lever_links()[d.gate_id] or {}) do
+                    if lid == d.lever_id then out.linked = true end
+                end
+            end)
+        end
         out.floodgates_free, out.floodgates_reserved = count_items('FLOODGATE')
         -- (0.94.1) counted as the lever's link takes them (ai-gates), with
         -- what holds the ones it can't use
@@ -3777,9 +3795,19 @@ function cistern_step(dry_run)
             end)
             if pending or dry_run then return wait('the lever is being linked to the floodgate') end
             if (math.tointeger(d.relinks) or 0) >= 3 then
-                return {ok = false, error = 'the link from the lever to the floodgate was lost 3 times; '
+                return {ok = false, rejected = true, needs_player = true,
+                    error = 'the link from the lever to the floodgate was lost 3 times; '
                     .. 'link it by hand (the lever beside the well)'}
             end
+            -- (0.104.141) why the last one was dropped: DF's newest "cancels
+            -- Link a Building" announcement, kept for the Needs you line
+            pcall(function()
+                local reps = df.global.world.status.reports
+                for i = #reps - 1, math.max(0, #reps - 400), -1 do
+                    local txt = reps[i].text
+                    if txt:find('cancels Link') then d.link_why = txt:gsub('^.-cancels ', ''):sub(1, 120) break end
+                end
+            end)
             local r = reqscript('ai-gates').link_lever(d.lever_id, d.gate_id, false)
             if not r.ok then return r end
             d.relinks = (math.tointeger(d.relinks) or 0) + 1     -- (0.104.138) only a link really asked for
@@ -5452,7 +5480,8 @@ function place_feeder(building_id, dry_run)
     local f = kind and FEEDERS[kind]
     if not f then return {ok = false, rejected = true, error = 'not a workshop that takes a feeder stockpile'} end
     if pile_near(f.flag, b.x1, b.y1, b.x2, b.y2, b.z, f.reach or FEEDER_NEAR) then
-        return {ok = false, rejected = true, error = ('the %s already has a %s pile beside it'):format(kind, f.what)}
+        return {ok = false, rejected = true, stale = {'logistics'},
+                error = ('the %s already has a %s pile beside it'):format(kind, f.what)}
     end
     local r = feeder_rect(b.x1, b.y1, b.x2, b.y2, b.z, 3, 3, f.ground, f.reach)
         or feeder_rect(b.x1, b.y1, b.x2, b.y2, b.z, 2, 2, f.ground, f.reach)

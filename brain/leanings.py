@@ -129,6 +129,9 @@ def site_leanings(state: dict) -> list | None:
     return capped
 
 
+SITE_DROP_AFTER = 20      # (0.104.141) reads a site lean may be missing before it goes
+
+
 def update(history: dict, state: dict | None) -> list:
     """Keep the fort's leanings in its culture history: the own leaning drawn
     once (from the seed), the site's read again. Returns what changed, in
@@ -143,11 +146,30 @@ def update(history: dict, state: dict | None) -> list:
                 + (" ..." if len(lean["own"]) > 4 else ""))
     site = site_leanings(state or {})
     if site is not None:
-        old = {(x.get("trait"), x.get("why")) for x in _l(lean.get("site")) if isinstance(x, dict)}
+        prev = [x for x in _l(lean.get("site")) if isinstance(x, dict)]
+        old = {(x.get("trait"), x.get("why")) for x in prev}
         new = {(x["trait"], x["why"]) for x in site}
         for t, why in sorted(new - old):
             changed.append(f"the site leans it: {why} ({TRAIT_NAMES.get(t, t)})")
-        lean["site"] = site
+        # (0.104.141) a lean kept until it has been missing SITE_DROP_AFTER
+        # reads in a row: "a cavern close under the fort" came and went with
+        # wherever the lowest dwarf stood (60 times in 639 cycles), and the
+        # gate style flipped with it
+        miss = lean.get("missing") if isinstance(lean.get("missing"), dict) else {}
+        kept = []
+        for x in prev:
+            k = f"{x.get('trait')}|{x.get('why')}"
+            if (x.get("trait"), x.get("why")) in new:
+                miss.pop(k, None)
+                continue
+            c = int(miss.get(k) or 0) + 1
+            if c < SITE_DROP_AFTER and isinstance(x.get("amount"), (int, float)):
+                miss[k] = c
+                kept.append(x)
+            else:
+                miss.pop(k, None)
+        lean["site"] = site + kept
+        lean["missing"] = miss
     history["leanings"] = lean
     return changed
 

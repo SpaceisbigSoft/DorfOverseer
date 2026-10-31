@@ -70,7 +70,27 @@ def _well_rule(s: dict, memory, traits: dict, cfg: dict, proposals: list, notes:
     building = [p for p in open_ if p.get("kind") == "well"]
     if building:
         _well_parts(s, memory, cfg, building, proposals, notes)
-    if wells or building:
+    if building:
+        return
+    if wells:
+        # (0.104.141, 12k) wells by the dwarves per well: Teacheroar's 209
+        # dwarves (124 patients at the worst) shared one well
+        cit = int(_d(s.get("dwarves")).get("total") or 0)
+        per = cfg["dwarves_per_well"]
+        if not per or wells >= math.ceil(cit / per) or len(open_) >= (pr.get("max_open") or 2):
+            return
+        last = memory.last_fired.get("extra_well") if memory is not None else None
+        if (memory is not None and memory.extra_well_failure and isinstance(last, int)
+                and 0 <= abs_tick(s) - last < cfg["extra_well_retry_days"] * TICKS_PER_DAY):
+            notes.append(f"{cit} dwarves share {wells} well(s); another couldn't be placed "
+                         f"({memory.extra_well_failure[:100]}): tried again next season")
+            return
+        action = {"type": "place_well", "extra": True}
+        if memory is not None and memory.climate_freezes and _d(s.get("date")).get("season") == "winter":
+            action["inside_only"] = True
+        proposals.append(Proposal("well", action,
+                                  f"{cit} dwarves share {wells} well(s) (one for every {per} wanted): "
+                                  "channel a hole over clean water inside the fort and build another", 5))
         return
     patients = _d(s.get("dwarves")).get("needs_medical_care", 0)
     parched = int(_d(s.get("society")).get("parched") or 0)
@@ -380,9 +400,10 @@ STUCK_FALLBACKS = {
     **{k: (v,) + ((k.replace("stone_", "metal_"),) if k.replace("stone_", "metal_") in METAL_FURNITURE.values() else ())
        for k, v in WOODEN_FURNITURE.items()},
     "stone_mugs": ("wooden_cups",),
-    "stone_crafts": ("wood_crafts", "metal_crafts"),
-    "stone_amulet": ("metal_amulet", "wood_crafts"), "stone_bracelet": ("metal_bracelet", "wood_crafts"),
-    "stone_ring": ("metal_ring", "wood_crafts"), "stone_earring": ("metal_earring", "wood_crafts"),
+    "stone_crafts": ("bone_crafts", "wood_crafts", "metal_crafts"),       # (0.104.141) bone first
+    "stone_amulet": ("metal_amulet", "bone_crafts", "wood_crafts"), "stone_bracelet": ("metal_bracelet", "bone_crafts", "wood_crafts"),
+    "stone_ring": ("metal_ring", "bone_crafts", "wood_crafts"), "stone_earring": ("metal_earring", "bone_crafts", "wood_crafts"),
+    "wood_crafts": ("bone_crafts",), "bone_crafts": ("wood_crafts",),
     "cloth_rope": ("metal_chain",),
     "weave_plant_cloth": ("weave_silk_cloth", "weave_yarn_cloth"),     # (0.104.140)
     "cloth_bag": ("silk_bag", "yarn_bag"), "silk_bag": ("cloth_bag", "yarn_bag"), "yarn_bag": ("cloth_bag", "silk_bag"),
@@ -431,6 +452,9 @@ def stuck_fallback(p, s: dict, memory, cfg: dict, now: int) -> dict | None:
             act["material"] = f"INORGANIC:{metal}"
         elif alt.startswith(("wooden_", "wood_")):
             if wood < amount + 5:
+                continue
+        elif alt == "bone_crafts":
+            if int(_d(s.get("needs")).get("bones") or 0) < amount:
                 continue
         elif alt in BAG_KIND:
             if kinds and int(kinds.get(BAG_KIND[alt]) or 0) < amount:
@@ -676,6 +700,18 @@ def _cistern_rule(s: dict, memory, cfg: dict, proposals: list, notes: list, rule
     w = _d(s.get("water"))
     st = w.get("cistern_status")
     if isinstance(st, dict):
+        # (0.104.141) the bridge gave up relinking (3 links lost): one Needs you,
+        # not a refused step every few minutes (09:57-19:04, back after each
+        # new bridge wiped the refusal backoff)
+        if st.get("stage") == "linking" and int(st.get("relinks") or 0) >= 3 and not st.get("linked"):
+            lv = _d(st.get("lever_at"))
+            fg = _d(st.get("gate_at"))
+            ask_player(notes, "the cistern's lever won't stay linked to its floodgate (the link job was lost 3 times"
+                              + (f": {st.get('link_why')}" if st.get("link_why") else "") + "): link the lever"
+                              + (f" at x{lv.get('x')} y{lv.get('y')} z{lv.get('z')}" if lv else " beside the well")
+                              + " to the floodgate" + (f" at x{fg.get('x')} y{fg.get('y')} z{fg.get('z')}" if fg else "")
+                              + " by hand (q, the lever, Link up a floodgate); the AI carries on from there")
+            return
         if st.get("stage") != "done":
             notes.append(f"the cistern: {CISTERN_WORDS.get(st.get('stage'), st.get('stage'))}"
                          + (f", {st.get('depth')}/7 deep" if st.get("depth") else ""))
@@ -1136,6 +1172,18 @@ def _project_rules(s, traits, cfg, proposals, notes, can_use, memory) -> None:
             proposals.append(Proposal("project", {"type": "finish_project", "project_id": p["id"], "decor_only": True},
                                       f"{what} waits only for {fw.get('Statue')} statue(s) and {why}: "
                                       "finish it (the statues stay planned) and free its slot", 4))
+        # (0.104.141) furnished but for buildings placed and never finished
+        # (Teacheroar's 20-bed hospital: 30 of 31 done, nothing missing, 134
+        # days) while its slot holds a petition's guildhall back: finish it
+        # (DF goes on building what is placed)
+        fur = _d(p.get("furnish"))
+        if (p.get("phase") == "furnish" and not fw and int(fur.get("placed") or 0) > 0
+                and int(fur.get("done") or 0) < int(fur.get("placed") or 0)
+                and fdays >= cfg["furnish_stalled_days"]):
+            left_ = int(fur.get("placed") or 0) - int(fur.get("done") or 0)
+            proposals.append(Proposal("project", {"type": "finish_project", "project_id": p["id"], "stalled": True},
+                                      f"{what} has all its furniture and {left_} building(s) placed but not built "
+                                      f"in {fdays} days: finish it (DF still builds them) and free its slot", 4))
 
     # Furniture the projects are waiting for: order what isn't already queued,
     # in the fort's materials: its signature stone, a stone per kind ("by
@@ -1155,6 +1203,22 @@ def _project_rules(s, traits, cfg, proposals, notes, can_use, memory) -> None:
             recipe = FURNITURE_RECIPES.get(kind)
             wooden = WOODEN_FURNITURE.get(recipe)
             metal_r = METAL_FURNITURE.get(recipe)
+            # (0.104.141) a stone order already made, but too slow for what waits
+            # (Teacheroar in crisis: 51 tables and 41 chairs for the dining hall
+            # and tavern, 88-93 days, one order each on 5 busy Masons' workshops,
+            # 3 carpenters' and 659 logs idle): part of it in wood beside it
+            if (recipe and wooden and n > 0 and queued(s, {wooden} | ({metal_r} if metal_r else set())) == 0
+                    and _has_shop(s["buildings"], "Carpenters")):
+                stone_left = queued(s, {recipe})
+                masons = max(1, int(_d(s["buildings"].get("workshops")).get("Masons") or 0))
+                part = min(stone_left // 2, n, int(wood_spare) - 2, cfg["max_order"])
+                if (stone_left and stone_left / masons >= cfg["furniture_parallel_backlog"]
+                        and part >= cfg["furniture_parallel_min"]):
+                    proposals.append(Proposal("furniture", {"type": "work_order", "recipe": wooden, "amount": part},
+                                              f"building projects are waiting for {n} {kind.lower()}(s) and "
+                                              f"{stone_left} in stone wait on {masons} Masons' workshop(s): "
+                                              f"{part} in wood beside them at the carpenters'", 3, True))
+                    continue
             if recipe and n > 0 and queued(s, {recipe} | ({wooden} if wooden else set())
                                                 | ({metal_r} if metal_r else set())) == 0:
                 amount = min(n, cfg["max_order"])
