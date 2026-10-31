@@ -85,7 +85,23 @@ function job_words(j)
             local okn, n = pcall(dfhack.units.getReadableName, w)
             return s .. ' by ' .. ((okn and n or 'a dwarf'):gsub(',.*', ''))
         end
-        return s .. ', no worker'
+        -- (0.104.128) why a dig job nobody takes waits: its flags and the
+        -- tile's dig priority (Teacheroar: the new hospital's first tile)
+        local extra = {}
+        pcall(function()
+            for k, v in pairs(j.flags) do if v == true then table.insert(extra, k) end end
+        end)
+        pcall(function()
+            local b = dfhack.maps.getTileBlock(j.pos)
+            for _, ev in ipairs(b.block_events) do
+                if df.block_square_event_designation_priorityst:is_instance(ev) then
+                    local pr = ev.priority[j.pos.x % 16][j.pos.y % 16]
+                    if pr and pr > 0 then table.insert(extra, 'priority ' .. (pr // 1000)) end
+                end
+            end
+        end)
+        table.sort(extra)
+        return s .. ', no worker' .. (#extra > 0 and (' (' .. table.concat(extra, ', ') .. ')') or '')
     end)
     return ok and what or 'a job'
 end
@@ -1136,10 +1152,10 @@ function dig_progress(p)
             end)
         end
         local seen_walk = false
-        for dz = -1, 1 do
+        for dz = 0, 0 do                -- (a wall is dug from beside it, on its own level)
             for dy = -1, 1 do
                 for dx = -1, 1 do
-                    if dx ~= 0 or dy ~= 0 or dz ~= 0 then
+                    if dx ~= 0 or dy ~= 0 then
                         local okg, g = pcall(dfhack.maps.getWalkableGroup, xyz2pos(x + dx, y + dy, z + dz))
                         if okg and g and g ~= 0 then
                             if groups[g] then return 'reachable' end
