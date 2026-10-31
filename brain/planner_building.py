@@ -837,8 +837,8 @@ def _dig_stall_rule(s: dict, memory, cfg: dict, open_: list, proposals: list) ->
         rec = seen.get(k)
         if not isinstance(rec, dict) or rec.get("dug") != dug:
             seen[k] = {"dug": dug, "tick": now}
-            if isinstance(rec, dict) and rec.get("raised"):
-                seen[k]["raised"] = rec["raised"]          # (0.104.128) raised once is enough
+            if isinstance(rec, dict) and rec.get("raised_ok"):
+                seen[k]["raised_ok"] = rec["raised_ok"]    # (0.104.128) raised once is enough
             continue
         days = (now - int(rec.get("tick") or now)) // TICKS_PER_DAY
         what = f"the {p.get('kind')} level (project {p['id']})"
@@ -846,14 +846,15 @@ def _dig_stall_rule(s: dict, memory, cfg: dict, open_: list, proposals: list) ->
         # weeks while other digging takes the miners (Teacheroar: the new
         # hospital 0 of 175, a bedrooms level 0 of 89 for years, at priority 4
         # with 260 tiles waiting elsewhere)
-        if (dug < total and not rec.get("raised")
+        if (dug < total and not rec.get("raised_ok")      # (0.104.129: 0.104.128's "raised" marked held ones too)
                 and (p.get("urgent") or p.get("kind") in DIG_FIRST_KINDS
                      or (dug == 0 and days >= cfg["dig_raise_days"]))):
             proposals.append(Proposal("dig_first", {"type": "prioritize_dig", "project_id": p["id"], "priority": 2},
                                       f"{what}: {dug} of {total} tiles dug"
                                       + (f", none for {days} days" if days else "")
                                       + ": dig it before the rest (priority 2)", 3))
-            rec["raised"] = now
+            # (marked raised in planner.record, once the game took it: a
+            # proposal held by the cycle's limits is asked again)
         jobs = "; ".join(str(w) for w in _l(dig.get("waiting"))[:3])
         if days >= cfg["dig_stall_furnish_days"] and dug >= 0.9 * total and dug < total:
             proposals.append(Proposal("project", {"type": "furnish_project", "project_id": p["id"], "stalled": True},

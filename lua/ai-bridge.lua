@@ -34,7 +34,7 @@
 local json = require('json')
 local utils = require('utils')
 
-BRIDGE_VERSION = '0.104.128'
+BRIDGE_VERSION = '0.104.129'
 PROTOCOL = 1 -- bump when the report's shape changes in a breaking way
 
 local OUT_DIR = dfhack.getDFPath() .. '/dfhack-config/ai-overseer'
@@ -6399,6 +6399,70 @@ local function cmd_probe_missions()
     return r
 end
 
+-- (0.104.129, 12i) ai-bridge probe_justice: DF's Justice screen and the
+-- crimes, read only (Teacheroar: 1,571 crimes, 399 waiting for a trial, 1
+-- ever sentenced; DF convicts only from that screen). The player convicts one
+-- case by hand while brain/probe_justice.py --watch records it.
+local function probe_plain(v)
+    local tv = type(v)
+    if tv == 'number' or tv == 'string' or tv == 'boolean' then return v end
+    if tv == 'userdata' then
+        local okn, n = pcall(function() return #v end)
+        if okn and type(n) == 'number' then
+            local first = {}
+            for i = 0, math.min(n, 4) - 1 do
+                local oke, e = pcall(function() return v[i] end)
+                local te = oke and type(e)
+                if te == 'number' or te == 'string' or te == 'boolean' then table.insert(first, e) end
+            end
+            return {n = n, first = (#first > 0) and first or nil}
+        end
+        local oks, s = pcall(tostring, v)
+        return oks and s:sub(1, 60) or '?'
+    end
+    return nil
+end
+
+local function probe_fields(obj, limit)
+    local out, n = {}, 0
+    pcall(function()
+        for k, v in pairs(obj) do
+            if n >= (limit or 120) then break end
+            local okv, pv = pcall(probe_plain, v)
+            if okv and pv ~= nil then out[tostring(k)] = pv; n = n + 1 end
+        end
+    end)
+    return out
+end
+
+local function cmd_probe_justice()
+    if not in_fort() then return NOT_IN_FORT end
+    local out = {ok = true}
+    pcall(function() out.focus = dfhack.gui.getCurFocus(true) end)
+    pcall(function() out.mouse = {x = df.global.gps.mouse_x, y = df.global.gps.mouse_y} end)
+    pcall(function()
+        local info = df.global.game.main_interface.info
+        out.info = probe_fields(info, 60)
+        out.justice = probe_fields(info.justice, 150)
+    end)
+    pcall(function()
+        local list = df.global.world.crimes.all
+        out.crimes = #list
+        local sentenced, newest_sentenced = 0, nil
+        for i = #list - 1, math.max(0, #list - 600), -1 do
+            local cr = list[i]
+            if cr.flags.sentenced then
+                sentenced = sentenced + 1
+                if not newest_sentenced then newest_sentenced = probe_fields(cr, 60) end
+            end
+        end
+        out.sentenced = sentenced
+        out.newest_sentenced = newest_sentenced
+    end)
+    pcall(function() out.punishments = #df.global.plotinfo.punishments end)
+    return out
+end
+
 -- The defence test (brain/defence_test.py): hostile invaders set down
 -- outside. args: count race [--dry]
 local function cmd_test_threat(args)
@@ -6814,6 +6878,7 @@ local COMMANDS = {
     probe_occupations = cmd_probe_occupations,
     probe_trade = cmd_probe_trade,
     probe_missions = cmd_probe_missions,
+    probe_justice = cmd_probe_justice,
     trade_here = cmd_trade_here,
     test_threat = cmd_test_threat,
     trade_press = cmd_trade_press,

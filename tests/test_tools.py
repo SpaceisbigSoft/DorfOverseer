@@ -231,6 +231,16 @@ def _():
     assert "would do" in replay.show_day(days[1], 2)
 
 
+
+@test("probe_justice (0.104.129): a watch prints only what changed, the screen's fields in one level")
+def _():
+    import probe_justice
+    a = {"focus": "dwarfmode/Default", "info": {"open": False}, "justice": {"cases": {"n": 3}}, "sentenced": 1}
+    b = {"focus": "dwarfmode/Info/JUSTICE", "info": {"open": True}, "justice": {"cases": {"n": 2}}, "sentenced": 2}
+    d = probe_justice.changes(a, b)
+    assert set(d) == {"focus", "info.open", "justice.cases", "sentenced"}, d
+    assert probe_justice.changes(b, b) == {}
+
 if __name__ == "__main__":
     for name, ok, msg in RESULTS:
         print(f"[{'PASS' if ok else 'FAIL'}] {name}" + (f"\n        {msg}" if msg else ""))

@@ -1372,11 +1372,17 @@ def _():
         {"id": 173, "kind": "bedrooms", "phase": "dig", "dig": {"total": 89, "dug": 0, "digging": 1, "stuck": 0}},
         {"id": 175, "kind": "storage", "phase": "dig", "dig": {"total": 50, "dug": 20, "digging": 3, "stuck": 0}}]
     m = Memory()
-    raised = lambda: sorted(x.action["project_id"] for x in plan(copy.deepcopy(s), m)[0] if x.action.get("type") == "prioritize_dig")
+    from planner import record
+    def raised(ok=True):
+        got = [x for x in plan(copy.deepcopy(s), m)[0] if x.action.get("type") == "prioritize_dig"]
+        if ok:
+            record([(x, {"ok": True}) for x in got], s, m)
+        return sorted(x.action["project_id"] for x in got)
     assert raised() == []                                        # first look: progress noted
     s["date"]["tick"] += 1200
-    assert raised() == [174], raised()                           # the hospital at once
-    assert raised() == []                                        # once
+    assert raised(ok=False) == [174], "the hospital at once"
+    assert raised() == [174], "(0.104.129) held or refused: asked again"
+    assert raised() == []                                        # once taken: never again
     s["date"]["tick"] += 14 * 1200
     assert raised() == [173], "nothing dug for 2 weeks"          # storage moves on its own: never
     s["projects"]["open"][0]["dig"]["dug"] = 5                   # progress resets the clock, not the mark

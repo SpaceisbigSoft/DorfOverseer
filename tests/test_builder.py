@@ -1158,7 +1158,7 @@ def _():
     assert got.ok and got.tiles > 0 and got.priority == 2, (got.ok, got.error)
     assert [tt for tt in W.tiles.values() if tt.designated and tt.dig_text == "d2"]
     again = B.prioritize_project(pid, 2, False)
-    assert not again.ok and "already" in again.error
+    assert again.ok and again.already and again.tiles == 0, "done before: ok, nothing redone"
 
 
 @test("cavern well (0.104.13): a shaft tile that lost its designation is designated again; no well over a closed shaft")

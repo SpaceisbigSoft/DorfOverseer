@@ -1501,8 +1501,8 @@ function prioritize_project(id, pri, dry_run)
     local p = find(data, id)
     if not p then return {ok = false, rejected = true, error = 'no such AI project'} end
     if p.phase ~= 'dig' then return {ok = false, rejected = true, error = 'project is not being dug'} end
-    if p.dig_pri and p.dig_pri <= pri then
-        return {ok = false, rejected = true, error = ('already dug at priority %d'):format(p.dig_pri)}
+    if p.dig_pri and p.dig_pri <= pri then          -- done before: the brain marks it so
+        return {ok = true, already = true, priority = p.dig_pri, tiles = 0}
     end
     local anchor, cells = anchor_of(p), {}
     for x, col in pairs(layouts.tiles_from_dig(cells_of(p, 'dig'))) do
