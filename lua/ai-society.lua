@@ -690,6 +690,32 @@ function trinket_census()
                     return 'other'
                 end)
                 if okk and k then out[k] = out[k] + 1 end
+                -- (0.104.141) what holds the ones not free: Teacheroar showed 0
+                -- free, 16 owned, 1,232 in jobs and 5,884 "other"
+                if okk and (k == 'other' or k == 'in_job') then
+                    pcall(function()
+                        local where
+                        if k == 'in_job' then
+                            local ref = dfhack.items.getSpecificRef(item, df.specific_ref_type.JOB)
+                            local j = ref and ref.data.job
+                            where = 'job ' .. (j and df.job_type[j.job_type] or '?')
+                        else
+                            local c = dfhack.items.getContainer(item)
+                            if not c then
+                                where = 'loose'
+                            else
+                                local cf = c.flags
+                                local cb = cf.in_building and dfhack.items.getHolderBuilding(c)
+                                where = df.item_type[c:getType()] .. (cf.forbid and ' forbidden' or '')
+                                    .. (cf.in_job and ' in a job' or '') .. (cf.in_inventory and ' carried' or '')
+                                    .. (cb and (' in ' .. (df.building_type[cb:getType()] or '?')) or '')
+                                    .. (cf.on_ground and '' or ' not on ground')
+                            end
+                        end
+                        out.where = out.where or {}
+                        out.where[where] = (out.where[where] or 0) + 1
+                    end)
+                end
             end
         end
     end

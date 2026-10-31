@@ -1166,7 +1166,7 @@ def _needs_rules(s: dict, cfg: dict, proposals: list, rules_: dict | None = None
     # cook again once the store runs down
     ck = _d(sup.get("cooks"))
     if isinstance(ck.get("kitchen_min"), int) and isinstance(ck.get("best"), int):
-        want = max(cfg["good_cook_min"], ck["best"] - 2) if ck["best"] >= cfg["good_cook_min"] else 0
+        want = min(20, max(cfg["good_cook_min"], ck["best"] - 2)) if ck["best"] >= cfg["good_cook_min"] else 0
         if ck["kitchen_min"] > ck["best"]:
             # (0.104.19) nobody left who may cook: the best cook died or left
             # (Enxah: kitchens at 9+, the best now 7; the lavish meals stuck 33

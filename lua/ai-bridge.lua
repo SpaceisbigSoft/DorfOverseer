@@ -34,7 +34,7 @@
 local json = require('json')
 local utils = require('utils')
 
-BRIDGE_VERSION = '0.104.141'
+BRIDGE_VERSION = '0.104.142'
 PROTOCOL = 1 -- bump when the report's shape changes in a breaking way
 
 local OUT_DIR = dfhack.getDFPath() .. '/dfhack-config/ai-overseer'
@@ -4812,8 +4812,10 @@ end
 -- (0.103.14) Only cooks this skilled or better work the kitchens (DF's
 -- workshop profile, as its Workers tab sets): good meals from a skilled cook
 function act_kitchen_skill(a)
-    local n = int_in(a.min_level, 0, 15)
-    if not n then return reject('kitchen_skill needs min_level 0-15') end
+    -- (0.104.141) to 20 (Legendary+5): Teacheroar's best cook is 18, and 16+
+    -- was refused 9 times in a row
+    local n = int_in(a.min_level, 0, 20)
+    if not n then return reject('kitchen_skill needs min_level 0-20') end
     local set = 0
     for _, b in ipairs(df.global.world.buildings.other.WORKSHOP_ANY) do
         if b.type == df.workshop_type.Kitchen then

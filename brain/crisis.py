@@ -43,7 +43,10 @@ def note_deaths(state: dict, memory, events: list) -> int:
             n += 1
             # (0.104.139) killed by one of their own in a real fight (not a
             # sparring accident; an older bridge says no level: counted)
-            if e.get("killer_kind") == "citizen" and e.get("conflict") in (None, "Brawl", "Nonlethal", "Lethal",
+            # (0.104.141) "None" too: DF's level for the strangling of patients
+            # (Teacheroar 19:24, a Hammer Lord suffocated a patient: no fight
+            # level, so nothing counted and the fights were never broken up)
+            if e.get("killer_kind") == "citizen" and e.get("conflict") in (None, "None", "Brawl", "Nonlethal", "Lethal",
                                                                           "NoQuarter"):
                 memory.fight_deaths.append(now)
     memory.deaths_seen = [t for t in memory.deaths_seen if isinstance(t, int) and 0 <= now - t < 84 * TICKS_PER_DAY][-500:]

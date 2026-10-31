@@ -2556,6 +2556,9 @@ def _():
     m2 = Memory()
     crisis.note_deaths(s, m2, [{"kind": "death", "own_civ": True, "killer_kind": "citizen", "conflict": "Training"}])
     assert not m2.fight_deaths
+    crisis.note_deaths(s, m2, [{"kind": "death", "own_civ": True, "killer_kind": "citizen", "conflict": "None",
+                                "cause": "SUFFOCATE", "patient": True}])
+    assert len(m2.fight_deaths) == 1                                  # (0.104.141) a patient strangled: no fight level
 
 
 @test("held off (0.104.139): an evil land's undead on the surface don't hold the gates shut; invaders and great ones do")
