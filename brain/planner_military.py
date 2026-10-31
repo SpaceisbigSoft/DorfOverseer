@@ -213,6 +213,66 @@ def _gate_parts_rule(s: dict, ent: dict, es: list, off: int, proposals: list, no
                                       f"a mason makes {need}", 3, is_order=True))
 
 
+# (0.104.118, phase 11) Fight or hide. A great danger's strength: GREAT_BASE,
+# and more for its size (a dwarf is about 60,000; a titan millions); by kind.
+GREAT_BASE = 8.0
+GREAT_KIND = {"Megabeast": 1.5, "Demon": 1.5, "Titan": 1.2, "SemiMegabeast": 1.0, "Undead": 0.8}
+
+
+def threat_power(t: dict) -> float:
+    size = t.get("size") if isinstance(t.get("size"), (int, float)) and t.get("size") > 0 else 60000 * 25
+    mult = max([GREAT_KIND.get(k, 1.0) for k in _l(t.get("kinds"))] or [1.0])
+    return (GREAT_BASE + 2 * math.sqrt(size / 60000)) * mult
+
+
+def fight_key(t: dict) -> str:
+    kinds = _l(t.get("kinds"))
+    return str(kinds[0]) if kinds else "beast"
+
+
+def fight_or_hide(s: dict, memory, cfg: dict, great: list, able: list) -> tuple[bool, str]:
+    """Squads' strength (the bridge's per-squad `power`) against the great
+    dangers' (threat_power), times what the fort learned from its own fights
+    of that kind (memory.fight_factor). Fight at fight_ratio or better."""
+    army = sum(float(_d(q.get("power")).get("power") or 0) for q in able)
+    if not army:
+        return False, "the squads' strength isn't known (older bridge)" if able else "no squad to send"
+    need = 0.0
+    for t in great:
+        f = float(_d(getattr(memory, "fight_factor", None)).get(fight_key(t)) or 1.0)
+        need += threat_power(t) * f
+    ratio = army / max(1.0, need)
+    words = f"squads {army:.0f} against {need:.0f}"
+    return ratio >= cfg["fight_ratio"], words
+
+
+def _note_fight(s: dict, memory, great: list) -> None:
+    """A fight against great dangers begins: what it was and how many soldiers went."""
+    if isinstance(getattr(memory, "fight", None), dict) and memory.fight:
+        return
+    memory.fight = {"tick": abs_tick(s), "keys": sorted({fight_key(t) for t in great}),
+                    "soldiers": int(_d(s.get("military")).get("soldiers") or 0)}
+
+
+def _fight_outcome(s: dict, memory, cfg: dict) -> None:
+    """The fight is over (no great danger in reach): lost a third of the
+    soldiers or more -> that kind is taken as 50% stronger next time; fewer
+    -> 10% weaker (between 0.5 and 4 times the estimate)."""
+    f = getattr(memory, "fight", None)
+    if not isinstance(f, dict) or not f or great_present(s):
+        return
+    now = int(_d(s.get("military")).get("soldiers") or 0)
+    lost = max(0, int(f.get("soldiers") or 0) - now)
+    bad = f.get("soldiers") and lost * 3 >= int(f["soldiers"])
+    ff = memory.fight_factor if isinstance(getattr(memory, "fight_factor", None), dict) else {}
+    for k in _l(f.get("keys")):
+        ff[k] = round(min(4.0, max(0.5, float(ff.get(k) or 1.0) * (1.5 if bad else 0.9))), 2)
+    memory.fight_factor = ff
+    memory.fights = (list(getattr(memory, "fights", None) or []) +
+                     [{"tick": abs_tick(s), "keys": f.get("keys"), "lost": lost, "of": f.get("soldiers")}])[-20:]
+    memory.fight = {}
+
+
 def _free_gate_lever(s: dict):
     """A lever the AI may link, while it's linked to nothing and has no job:
     one the AI placed for a drawbridge ("AI gate lever"), or the player's
@@ -659,8 +719,15 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
     # Squads at threats: kill orders the AI gives, and clears again.
     able = [q for q in squads if (q.get("members") or 0) >= cfg["min_squad_to_fight"]]
     policy = rules_["attack_policy"]
-    targets = [i for i in reach if policy == "all" or (policy == "ordinary" and not threats[i].get("great_danger"))]
+    great = [i for i in reach if threats[i].get("great_danger")]
+    # (0.104.118, phase 11) a great danger is fought when the squads are
+    # strong enough for it (judged), else the dwarves hide behind shut gates
+    fight, verdict = fight_or_hide(s, memory, cfg, [threats[i] for i in great], able) if great else (False, "")
+    targets = [i for i in reach if policy == "all" or (policy == "ordinary" and (not threats[i].get("great_danger")
+                                                                                 or fight))]
     held_back = [i for i in reach if i not in targets]
+    if great and fight and policy == "ordinary" and not any(q.get("ai_orders") for q in able):
+        _note_fight(s, memory, [threats[i] for i in great])
     if targets:
         for q in able:
             if not q.get("ai_orders"):
@@ -672,8 +739,11 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
             ask_player(notes, f"{len(targets)} enemies can reach the dwarves and no squad has "
                          f"{cfg['min_squad_to_fight']}+ soldiers to send")
     if held_back and policy != "never":
-        notes.append(f"{len(held_back)} great danger(s) (beast, titan...) can reach the dwarves; squads aren't "
-                     "sent against those (Rules tab: attack everything)")
+        notes.append(f"{len(held_back)} great danger(s) (beast, titan...) can reach the dwarves: the dwarves hide "
+                     f"behind the gates ({verdict}; Rules tab: attack everything)")
+    elif great and fight:
+        notes.append(f"{len(great)} great danger(s) can reach the dwarves: the squads go ({verdict})")
+    _fight_outcome(s, memory, cfg)
     # (0.100.1, review) a dwarf gone berserk isn't a threat that "can reach",
     # but the squad sent at them stays on them until they're stopped
     berserk_now = bool(_l(_d(s.get("hazards")).get("berserk")))

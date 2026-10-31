@@ -100,6 +100,48 @@ function gate_levers()
     return out
 end
 
+-- (0.104.118) A squad's fighting strength, for fight or hide: each soldier
+-- counts 1 + (best weapon skill)/3, half again in body armour, half when
+-- wounded. {power, armored, skill (average)}.
+local FIGHT_SKILLS = {'AXE', 'SWORD', 'MACE', 'HAMMER', 'SPEAR', 'PIKE', 'WHIP', 'DAGGER', 'CROSSBOW', 'BOW',
+                      'BLOWGUN', 'WRESTLING'}
+-- the "worn" inventory mode's number (its enum moved between DFHack versions)
+WORN_MODE = (function()
+    for _, get in ipairs({function() return df.inv_item_role_type.Worn end,
+                          function() return df.unit_inventory_item.T_mode.Worn end}) do
+        local ok, v = pcall(get)
+        if ok and v ~= nil then return v end
+    end
+    return 2
+end)()
+
+function squad_power(sq)
+    local power, armored, skill_sum, n = 0, 0, 0, 0
+    for _, pos in ipairs(sq.positions) do
+        local hf = pos.occupant ~= -1 and df.historical_figure.find(pos.occupant)
+        local u = hf and hf.unit_id ~= -1 and df.unit.find(hf.unit_id)
+        if u and not dfhack.units.isDead(u) then
+            local best = 0
+            for _, k in ipairs(FIGHT_SKILLS) do
+                local ok, v = pcall(dfhack.units.getNominalSkill, u, df.job_skill[k], true)
+                if ok and v and v > best then best = v end
+            end
+            local arm = false
+            pcall(function()
+                for _, inv in ipairs(u.inventory) do
+                    if inv.mode == WORN_MODE and inv.item:getType() == df.item_type.ARMOR then arm = true end
+                end
+            end)
+            local okw, wounded = pcall(function() return #u.body.wounds > 0 end)
+            local p = (1 + math.min(best, 20) / 3) * (arm and 1.5 or 1) * ((okw and wounded) and 0.5 or 1)
+            power, n, skill_sum = power + p, n + 1, skill_sum + best
+            if arm then armored = armored + 1 end
+        end
+    end
+    return {power = math.floor(power * 10 + 0.5) / 10, armored = armored,
+            skill = n > 0 and math.floor(skill_sum / n * 10 + 0.5) / 10 or 0}
+end
+
 function report(txt)
     local routines = routine_names()
     local out = {squads = {}, soldiers = 0, routines = routines, gates = {}}
@@ -130,6 +172,7 @@ function report(txt)
                     orders = #sq.orders, ai_orders = ai_orders, guarding = guarding or nil,
                     uniform = #sq.positions > 0 and uniform_set(sq.positions[0]) or false,
                     ai_uniform = ai_uniform_names(txt)[tostring(sid)],
+                    power = (function() local okp, p = pcall(squad_power, sq) return okp and p or nil end)(),
                 })
                 out.soldiers = out.soldiers + members
             end

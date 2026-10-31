@@ -34,7 +34,7 @@
 local json = require('json')
 local utils = require('utils')
 
-BRIDGE_VERSION = '0.104.116'
+BRIDGE_VERSION = '0.104.118'
 PROTOCOL = 1 -- bump when the report's shape changes in a breaking way
 
 local OUT_DIR = dfhack.getDFPath() .. '/dfhack-config/ai-overseer'
@@ -2438,6 +2438,10 @@ function get_others_on_map()
                     great_danger = dfhack.units.isGreatDanger(u),
                     invader = dfhack.units.isInvader(u),
                     pos = pos,
+                    -- (0.104.118) its body size (a dwarf is about 60,000), to weigh
+                    -- it against the squads (fight or hide)
+                    size = (function() local oks, v = pcall(function() return u.body.size_info.size_cur end)
+                                return oks and v or nil end)(),
                     layer = layer_at(pos, layers),
                     can_reach_dwarves = reach,
                     flier = flier,

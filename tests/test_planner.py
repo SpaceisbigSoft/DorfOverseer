@@ -2408,6 +2408,37 @@ def under_attack(great=False, n=2):
     return s
 
 
+@test("fight or hide (0.104.118): a titan is fought by strong squads, hidden from by weak ones; a costly fight teaches")
+def _():
+    def titan(power):
+        s = under_attack(great=True, n=1)
+        s["others_on_map"]["threats"][0].update(kinds=["Titan"], size=2_500_000, name="Ume, Swamp Titan")
+        for q in s["military"]["squads"]:
+            q["power"] = {"power": power, "armored": 10, "skill": 10}
+        s["military"]["soldiers"] = 20
+        return s
+    # titan: (8 + 2*sqrt(41.7)) * 1.2 = 25.1; two squads
+    p, notes = plan(titan(40), Memory())                      # 80 >= 2 x 25: go
+    assert by_rule(p, "squad_attack"), notes
+    assert any("the squads go" in n for n in notes), notes
+    p, notes = plan(titan(10), Memory())                      # 20 < 50: hide
+    assert not by_rule(p, "squad_attack")
+    assert any("hide behind the gates" in n for n in notes), notes
+    # learning: a fight that cost a third of the soldiers makes titans count 1.5x
+    m = Memory()
+    s = titan(35)                                             # 70 >= 50: go
+    plan(copy.deepcopy(s), m)
+    assert m.fight and m.fight["keys"] == ["Titan"] and m.fight["soldiers"] == 20, m.fight
+    after = copy.deepcopy(s)
+    after["others_on_map"]["threats"] = []
+    after["others_on_map"]["threats_that_can_reach_dwarves"] = 0
+    after["military"]["soldiers"] = 13
+    plan(after, m)
+    assert m.fight_factor == {"Titan": 1.5} and not m.fight and m.fights[-1]["lost"] == 7, (m.fight_factor, m.fights)
+    p, notes = plan(titan(35), m)                             # now 70 < 2 x 37.7: hide
+    assert not by_rule(p, "squad_attack")
+
+
 @test("gate guard (0.104.83): invaders on the map out of reach -> the able squads hold the main gate; then kill orders")
 def _():
     s = under_attack()

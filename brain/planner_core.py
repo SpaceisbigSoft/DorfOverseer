@@ -48,6 +48,7 @@ PLANNER_CONFIG = {
     # alert dropped 10 s after a titan died and 15 dwarves died outside in the next 50
     "alert_quiet_days": 3,
     "alert_quiet_days_great": 7,
+    "fight_ratio": 2.0,            # (0.104.118) squads at least this many times a great danger's strength: they go
     "cautious_alert_levels": 10,   # Caution +100: react to unknown-reach threats this close
     # Building (docs/building.md)
     "spare_beds_share": 0.1,       # beds wanted beyond one per citizen
@@ -544,6 +545,9 @@ class Memory:
     last_expel_tick: int | None = None                   # when a dwarf was last sent away
     last_join_tick: int | None = None                    # (0.104.108) when areas on a level were last looked at for joining
     census: dict = field(default_factory=dict)           # (0.104.113) the last census of creatures and items (with "tick")
+    fight: dict = field(default_factory=dict)            # (0.104.118) a fight against great dangers under way
+    fight_factor: dict = field(default_factory=dict)     # (0.104.118) kind -> how much stronger than estimated (learned)
+    fights: list = field(default_factory=list)           # (0.104.118) the last fights: {tick, keys, lost, of}
     dig_seen: dict = field(default_factory=dict)         # (0.104.110) project id -> {"dug", "tick" (last progress), "freed"}
     join_wait_days: int = 2                              # (0.104.108) days to the next look (longer once all were seen)
     culture: dict = field(default_factory=dict)          # culture history (see culture.py)
