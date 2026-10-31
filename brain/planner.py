@@ -33,6 +33,7 @@ from planner_core import *  # noqa: E402,F401,F403  (0.104.83: the planner in pa
 from planner_military import *  # noqa: E402,F401,F403  (0.104.83: the planner in parts)
 from planner_industry import *  # noqa: E402,F401,F403  (0.104.83: the planner in parts)
 from planner_society import *  # noqa: E402,F401,F403  (0.104.83: the planner in parts)
+import crisis  # noqa: E402  (0.104.137)
 from planner_building import *  # noqa: E402,F401,F403  (0.104.83: the planner in parts)
 
 
@@ -517,6 +518,10 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
         for p in proposals:
             if p.action.get("type") == "farm_plots" and p.action.get("dig"):
                 p.action = {k: v for k, v in p.action.items() if k != "dig"}
+    # (0.104.137) crisis mode: expansion waits, recovery goes first
+    why = _d(getattr(memory, "crisis", None)).get("why") if memory is not None else None
+    if why:
+        proposals = crisis.apply(proposals, why, notes)
     proposals.sort(key=lambda p: p.priority)
     return proposals, notes
 
@@ -600,8 +605,12 @@ def select(proposals: list[Proposal], state: dict, memory: Memory,
                         else f"{p.rule}: waiting on the game (its last answer was to wait); asks again in "
                              f"{wait} day(s)")      # (0.97: it said "refused 0 time(s)")
             continue
+        # (0.104.137) in a crisis, recovery gets extra action slots
+        limit = cfg["max_actions_per_cycle"]
+        if _d(getattr(memory, "crisis", None)).get("why") and p.rule in crisis.RECOVERY_RULES:
+            limit += cfg["crisis_extra_actions"]
         if (p.rule not in LIMIT_EXEMPT
-                and len([a for a in allowed if a.rule not in LIMIT_EXEMPT]) >= cfg["max_actions_per_cycle"]):
+                and len([a for a in allowed if a.rule not in LIMIT_EXEMPT]) >= limit):
             held.append(f"{p.rule}: action limit for this cycle reached")
             continue
         if p.is_order and orders_today >= cfg["max_orders_per_game_day"]:
@@ -786,6 +795,8 @@ def note_cycle(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> list[
     h = _d(s.get("health"))
     if h and not h.get("error"):
         memory.patient_since = patient_waits(s, memory, now)     # (0.104.81) moved out of plan()
+    if "dwarves" not in errors:
+        crisis.update(s, memory, cfg, notes)                     # (0.104.137) crisis mode
     # (0.104.89) the strategist's raised and held rules run out
     if isinstance(getattr(memory, "steer", None), dict):
         for k in [k for k, v in memory.steer.items() if not (isinstance(v, dict) and isinstance(v.get("until"), int)

@@ -645,9 +645,16 @@ def _bottleneck_rule(s: dict, cfg: dict, citizens: int, proposals: list) -> None
         shop = RECIPE_SHOPS.get(str(o.get("recipe"))) or JOB_SHOPS.get(str(o.get("job")))
         if shop:
             backlog[shop] = backlog.get(shop, 0) + max(0, int(o.get("amount_left") or 0))
+    # (0.104.137) stills and kitchens past the cap while drink or meals run short
+    # (Teacheroar: 6 stills and 7 kitchens against a cap of 5 at 221 dwarves)
+    st_ = _d(s.get("stocks"))
+    short_ = {"Still": int(st_.get("drink") or 0) < citizens * cfg["drink_per_dwarf"],
+              "Kitchen": int(st_.get("prepared_meals") or 0) < citizens * cfg["meals_per_dwarf"]}
+    def cap_(shop):
+        return shops_max(cfg, citizens) * (2 if short_.get(shop) else 1)
     worst = sorted(((n / max(1, places.get(shop, 0)), n, shop) for shop, n in backlog.items()
                     if shop in BUILDABLE_SHOPS and places.get(shop, 0) >= 1
-                    and places.get(shop, 0) < shops_max(cfg, citizens)), reverse=True)
+                    and places.get(shop, 0) < cap_(shop)), reverse=True)
     if thirsty and (young_fort(s, cfg) or idle < cfg["idle_share"]):
         worst = [w for w in worst if w[2] == "Still"]       # only the still, for the thirsty
     need = cfg["shop_backlog"]

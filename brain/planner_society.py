@@ -926,7 +926,11 @@ def _needs_rules(s: dict, cfg: dict, proposals: list, rules_: dict | None = None
                                   f"{craft} dwarves are distracted for want of making something: "
                                   "let idle dwarves craft for themselves at every Craftsdwarf's workshop", 5))
     # more workshops for it: one for every craft_shop_per dwarves who want to craft
-    want_shops = min(max(cfg["craft_shops_max"], shops_max(cfg, int(_d(s.get("dwarves")).get("total") or 0)) + 1),
+    # (0.104.137) one for every craft_shop_per wanting to craft, up to one per
+    # craft_shop_citizens dwarves: a fixed 8 held Teacheroar's 221 dwarves (118
+    # badly wanting to craft) at the 8 it had
+    cit_ = int(_d(s.get("dwarves")).get("total") or 0)
+    want_shops = min(max(cfg["craft_shops_max"], -(-cit_ // cfg["craft_shop_citizens"])),
                      1 + craft // cfg["craft_shop_per"])
     open_ = [p for p in _l(_d(s.get("projects")).get("open")) if isinstance(p, dict)]
     if (isinstance(shops, int) and craft >= cfg["craft_shops_at"] and shops < want_shops and not young

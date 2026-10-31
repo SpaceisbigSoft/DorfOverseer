@@ -70,7 +70,9 @@ PLANNER_CONFIG = {
     "maintain_spare_beds": 2,
     "min_spare_beds": 5,
     "dwarves_per_table": 3,
-    "dining_short_share": 0.5,         # (0.104.135) another dining hall below half the tables wanted
+    "dining_short_share": 0.5,
+    "tavern_badly_per": 30, "temple_badly_per": 25,   # (0.104.137) a tavern / temple for every this many badly missing...
+    "social_badly_share": 0.15, "social_halls_max": 6,   # ...once that many of the fort badly miss it; at most this many         # (0.104.135) another dining hall below half the tables wanted
     "min_dwarves_for_dining": 3,                # (0.100.1) was 7
     "min_dwarves_for_hospital": 20,
     "min_dwarves_for_small_hospital": 10,  # ...or this many with a chief medical dwarf (not a young fort)
@@ -195,6 +197,12 @@ PLANNER_CONFIG = {
     "coke_when_fuel_below": 40,        # coke made from coal while fuel is under this
     "coke_batch": 5,
     "stone_low": 10,
+    "crisis_unhappy_pct": 40, "crisis_unhappy_clear_pct": 25,   # (0.104.137) crisis mode: enter / leave
+    "crisis_deaths": 5, "crisis_deaths_share": 0.03, "crisis_deaths_clear": 2, "crisis_deaths_clear_share": 0.01,
+    "crisis_ghosts": 5, "crisis_ghosts_clear": 2,
+    "crisis_tantrums": 10, "crisis_tantrums_clear": 4,
+    "crisis_min_days": 14,                 # ...lasting at least this long
+    "crisis_extra_actions": 3,             # ...recovery's extra action slots a cycle
     "convict_per_cycle": 3,            # (0.104.131) solved cases convicted a cycle...
     "convict_queue_min": 5,            # ...while fewer punishments than this (or than restraints) wait
     "dig_raise_days": 14,
@@ -291,6 +299,7 @@ PLANNER_CONFIG = {
     "craft_shops_at": 10,              # this many want to craft: more Craftsdwarf's workshops for idle crafting
     "craft_shop_per": 8,               # ... one for every this many (0.104.53: 15 -> 8)
     "craft_shops_max": 8,              # (0.104.53: 4 -> 8; Enxah: 31 badly wanting to craft, 4 shops)
+    "craft_shop_citizens": 15,         # (0.104.137) ...or one per this many dwarves
     "needs_shops_cooldown_ticks": 7 * 1200,
     "trinkets_per_cycle": 25,
     "fight_needs_at": 15,              # this many long to fight or train: more soldiers (they train)
@@ -550,6 +559,8 @@ class Memory:
     strain_hold: bool = False                            # (0.104.106) newcomers held while the fort is strained
     strain_cap: int | None = None                        # (0.104.120) the cap held while strained (its size then)
     ores_freed: list = field(default_factory=list)       # (0.104.124) ores the masons were given in a crisis
+    crisis: dict = field(default_factory=dict)          # (0.104.137) the fort in crisis: since, why
+    deaths_seen: list = field(default_factory=list)     # (0.104.137) citizens' deaths (ticks), 12 weeks
     gear_spare_since: dict = field(default_factory=dict)  # "weapons"/"body"/"helms" -> when 3+ spares sat unused
     swapped: dict = field(default_factory=dict)  # (0.104.78) unit id -> when the swap sent them home
     steer: dict = field(default_factory=dict)    # (0.104.89) the strategist's raised and held rules: rule -> {mode, until, why}

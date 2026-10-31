@@ -225,7 +225,7 @@ PICK, AXE = {"skill": "MINING"}, {"skill": "AXE"}
 def _():
     w = game([], [], [])["env"].miners_wanted
     assert w(0, 5, 10) == 0 and w(100, 1, 10) == 1 and w(100, 3, 6) == 3 and w(100, 9, 6) == 3
-    assert w(10, 5, 6) == 1 and w(60, 5, 6) == 3 and w(5000, 50, 200) == 20 and w(262, 15, 160) == 11
+    assert w(10, 5, 6) == 1 and w(60, 5, 6) == 3 and w(5000, 50, 200) == 20 and w(262, 15, 160) == 15 and w(174, 15, 160) == 12
 
 
 @test("the survey: every job's detail, mode and workers; picks against soldiers' picks; digging apart from gathering")

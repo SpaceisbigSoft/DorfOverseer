@@ -18,7 +18,7 @@
 
 MAX_MINERS = 20           -- (0.104.134: was 10) more than this get in each other's way; Teacheroar had
                           -- 15 picks, 10 miners and 260 tiles waiting on many levels
-TILES_PER_MINER = 25      -- digging waiting per miner wanted
+TILES_PER_MINER = 15      -- digging waiting per miner wanted (0.104.137: was 25; levels stalled for years at 10)
 GATHER_RADIUS = 40        -- shrubs this far from the fort's centre are gathered
 SCAN_EVERY_TICKS = 7 * 1200   -- (0.100) the shrub and water scans: once a game week
 SCAN_CACHE = SCAN_CACHE      -- kept across reloads of this module within a session

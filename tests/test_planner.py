@@ -6623,6 +6623,78 @@ def _():
     assert not dn()
 
 
+@test("crisis mode (0.104.137): unhappiness, deaths or ghosts -> expansion waits, recovery first with extra slots; ends with margin")
+def _():
+    from planner import note_cycle, select, Proposal
+    import crisis
+    s = settled_fort()
+    pop = s["dwarves"]["total"]
+    s["dwarves"]["stress"] = {"miserable": int(pop * 0.5), "very_unhappy": int(pop * 0.2), "content": pop - int(pop * 0.7)}
+    m = Memory()
+    notes = note_cycle(copy.deepcopy(s), m)
+    assert m.crisis.get("why") and any(n.startswith("CRISIS") for n in notes), (m.crisis, notes)
+    lib = Proposal("build", {"type": "start_project", "kind": "library", "bookcases": 6}, "a library", 6)
+    hosp = Proposal("build", {"type": "start_project", "kind": "hospital", "beds": 20, "urgent": True}, "x", 1)
+    hall = Proposal("build", {"type": "start_project", "kind": "dining", "tables": 90, "set_piece": "great hall"}, "x", 6)
+    bury = Proposal("burial", {"type": "allow_burial"}, "x", 5)
+    pol = Proposal("polish", {"type": "polish"}, "x", 7)
+    out_notes = []
+    kept = crisis.apply([lib, hosp, hall, bury, pol], m.crisis["why"], out_notes)
+    assert hosp in kept and bury in kept and lib not in kept and hall not in kept and pol not in kept, kept
+    assert bury.priority == 3 and any("expansion step" in n for n in out_notes)
+    # extra action slots for recovery
+    props = [Proposal(r, {"type": "work_order", "recipe": r, "amount": 1}, "x", 4) for r in
+             ("soap", "cloth", "needs_trinkets", "needs_meal", "slabs", "coffins", "convict")]
+    allowed, held = select(props, s, m)
+    assert len(allowed) == 6, (len(allowed), held)
+    m2 = Memory()
+    assert len(select([Proposal(p.rule, p.action, "x", 4) for p in props], s, m2)[0]) == 3   # no crisis: 3
+    # clears only under the clear levels and after 14 days
+    s["dwarves"]["stress"] = {"miserable": int(pop * 0.3), "content": pop - int(pop * 0.3)}   # 30%: above 25
+    note_cycle(copy.deepcopy(s), m)
+    assert m.crisis.get("why"), "30% is still over the clear level"
+    s["dwarves"]["stress"] = {"miserable": int(pop * 0.1), "content": pop - int(pop * 0.1)}
+    note_cycle(copy.deepcopy(s), m)
+    assert m.crisis.get("since"), "under 14 days: held"
+    s["date"]["tick"] += 15 * 1200
+    notes = note_cycle(copy.deepcopy(s), m)
+    assert not m.crisis and any("crisis is over" in n for n in notes), (m.crisis, notes)
+    # deaths and ghosts start one too
+    s["dead"] = dict(s.get("dead") or {}, ghosts=6)
+    note_cycle(copy.deepcopy(s), m)
+    assert m.crisis.get("why") and "6 ghosts" in m.crisis["why"]
+    m3 = Memory()
+    crisis.note_deaths(s, m3, [{"kind": "death", "own_civ": True}] * 6 + [{"kind": "death", "own_civ": True, "again": True}])
+    assert crisis.deaths_recent(s, m3) == 6
+
+
+@test("taverns and temples by need (0.104.137): many badly missing friends, drink or prayer -> another, own slot; craft shops by need")
+def _():
+    from planner_building import social_shortfall
+    s = settled_fort()
+    s["dwarves"]["total"] = 221
+    s["locations"] = {"count": {"INN_TAVERN": 2, "TEMPLE": 2}, "total": 4}
+    s["needs"] = {"needs": {"BeWithFriends": {"badly": 85, "distracted": 150}, "DrinkAlcohol": {"badly": 56},
+                            "PrayOrMeditate": {"badly": 63}}}
+    got = dict(social_shortfall(s, PLANNER_CONFIG))
+    assert set(got) == {"tavern", "temple"} and "BeWithFriends 85" in got["tavern"], got
+    s["locations"]["count"]["INN_TAVERN"] = 3
+    assert "tavern" not in dict(social_shortfall(s, PLANNER_CONFIG))       # 1 + 85 // 30 = 3: enough
+    s["needs"]["needs"]["PrayOrMeditate"]["badly"] = 20                    # under 15% of the fort
+    assert not social_shortfall(s, PLANNER_CONFIG)
+    s["locations"]["count"] = {}                                           # none yet: the ladder's job
+    s["needs"]["needs"]["PrayOrMeditate"]["badly"] = 63
+    assert not social_shortfall(s, PLANNER_CONFIG)
+    # craft shops: one per 8 wanting to craft, up to a shop per 15 dwarves (not a fixed 8)
+    f = fort()
+    f["dwarves"]["total"] = 221
+    f["projects"] = {"open": [], "max_open": 2}
+    f["buildings"]["workshops"]["Craftsdwarfs"] = 8
+    f["needs"] = {"needs": {"CraftObject": {"distracted": 118}}, "craft_shops": 8, "idle_crafting": {"workshops": 8}}
+    c = by_rule(plan(copy.deepcopy(f), Memory())[0], "needs_shops")
+    assert c and len(c[0].action["shops"]) == 7, c                         # 1 + 118 // 8 = 15
+
+
 @test("urgent tombs (0.104.12): many dead unburied with both slots taken: a tomb level of its own slot, beside urgent workshops")
 def _():
     s = settled_fort()

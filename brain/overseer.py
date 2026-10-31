@@ -43,6 +43,7 @@ import season as season_mod  # noqa: E402
 import calibrate  # noqa: E402
 import chronicle  # noqa: E402
 import defence  # noqa: E402
+import crisis
 import learning  # noqa: E402
 import masterplan  # noqa: E402
 import leanings  # noqa: E402
@@ -712,6 +713,7 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
         expire_adjustments(memory, state)
         notes = note_cycle(state, memory)
         note_tantrums(state, memory, events)     # (0.104.31) tantrums counted for the jail
+        crisis.note_deaths(state, memory, events)   # (0.104.137) deaths counted for crisis mode
         note_events(state, memory, bank if backend else None, events)
         for line in learned_now:
             say(f"Learned: {line}")
