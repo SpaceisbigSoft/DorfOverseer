@@ -1371,6 +1371,16 @@ def _():
     assert step().stage == "linking"
     r = step()
     assert r.waiting and "asked for again (1)" in r.error, r.error         # (0.104.110) no link job: asked again
+    # (0.104.138) the lever itself gone (toppled) and a new one built on its spot: adopted, linked, counted afresh
+    old_id = lever.id
+    LUA.execute("""local old = ...
+      df.building = {find = function(id) if id == old then return nil end return {} end}""", old_id)
+    lever = LUA.globals().MKB(lv.x, lv.y, z + 1, 2, LUA.table_from({"id": old_id + 7}))
+    lever.built = True
+    r = step()
+    assert r.waiting and "replaced" in r.error and B.cistern_data().lever_id == old_id + 7, (r.error,)
+    assert B.cistern_data().relinks == 0
+    LUA.execute("df.building = nil")
     LUA.globals().LINKS[gate.id] = LUA.table_from([lever.id])
     r = step()
     assert r.ok and r.stage == "opening" and not gate.gate_flags.closed, dict(r)   # pulled open

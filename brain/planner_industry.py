@@ -143,6 +143,13 @@ def _supply_rules(s: dict, citizens: int, cfg: dict, proposals: list, notes: lis
             n_crutch = hh["needs_counts"]["crutch"]
         wants = [("splints", "wooden_splint", need + n_splint), ("crutches", "wooden_crutch", need + n_crutch),
                  ("buckets", "wooden_bucket", max(cfg["min_buckets"], wells))]
+        # (0.104.138) and what the hospital itself keeps too little of: the
+        # fort-wide count held crutches in use or elsewhere, and the Needs you
+        # "crutches 3 of 5" never cleared (Teacheroar, 83 days)
+        loc0 = _location(s, "HOSPITAL")
+        lshort = _location_short(loc0, ("splints", "crutches")) if loc0 is not None else {}
+        wants = [(k, r, max(n, (sup.get(k) or 0) + (lshort[k][1] - lshort[k][0]) if k in lshort else n))
+                 for k, r, n in wants]
         short = [(k, r, n - (sup.get(k) or 0) - queued(s, {r})) for k, r, n in wants]
         short = [(k, r, n) for k, r, n in short if n > 0]
         if short:
@@ -1691,7 +1698,9 @@ def _feeder_rule(s: dict, cfg: dict, proposals: list) -> None:
     cycle, busiest first. Not in a young fort (it has few piles to spare)."""
     if young_fort(s, cfg):
         return
-    rows = [r for r in _l(_d(s.get("logistics")).get("feeders")) if isinstance(r, dict) and not r.get("has")]
+    # (0.104.138) never one with no room for a pile (the bridge's own check)
+    rows = [r for r in _l(_d(s.get("logistics")).get("feeders")) if isinstance(r, dict) and not r.get("has")
+            and r.get("room") is not False]
     rows.sort(key=lambda r: FEEDER_ORDER.index(r.get("kind")) if r.get("kind") in FEEDER_ORDER else 99)
     # (0.102.2) the stills' piles first while drink is short (Monastery's 5
     # stills on three levels had none: plants were hauled across the fort)

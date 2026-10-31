@@ -90,30 +90,58 @@ def _petition_rules(s: dict, cfg: dict, proposals: list, notes: list) -> None:
                                   f"petitions to stay: {what} (DF's standing orders answer them)", 6))
 
 
-def _convict_rule(s: dict, cfg: dict, proposals: list) -> None:
+def _convict_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> None:
     """(0.104.131, 12i) DF passes a sentence only once a case is convicted on
     its Justice screen, and nobody did: Teacheroar held 1,623 crimes, 399
     waiting for a trial (most tantrums' disorderly behaviour), the jail empty,
     and 61 citizens killed by citizens since y87. Solved cases (DF names the
     culprit) whose sentence has no hammer strikes are convicted a few a
     cycle, as the player's own conviction showed; DF passes the sentence.
-    A lenient fort (Justice -50 or less) leaves them; few at a time while
-    punishments queue up."""
+    A lenient fort (Justice -50 or less) leaves them.
+    (0.104.138) Only into free jail places, never while a beating waits (a
+    convict with no place is beaten, and the guard kills: Teacheroar's sheriff
+    killed 5 in the half hour after the convictions began, 10 in all); and the
+    rule rests when its convictions bring no sentences (~100 convicted, 2 ever
+    sentenced)."""
     j = _d(s.get("justice"))
-    n = int(_d(j.get("crimes")).get("convictable") or 0)
+    crimes = _d(j.get("crimes"))
+    n = int(crimes.get("convictable") or 0)
+    sentenced = int(_d(crimes.get("flags")).get("sentenced") or 0)
+    now = int(_d(s.get("date")).get("tick") or 0)
+    w = memory.convict_watch if isinstance(memory.convict_watch, dict) else {}
+    memory.convict_watch = w
+    if w.get("until") and now < int(w["until"]):
+        notes.append(f"convictions rest: {w.get('given', 0)} case(s) convicted brought "
+                     f"{max(0, sentenced - int(w.get('sentenced0') or 0))} sentence(s)")
+        return
+    if w.get("until"):
+        w.clear()                                    # rested: try again from scratch
     if n <= 0:
         return
     traits = _traits(s)
     if int(traits.get("justice", 0) or 0) <= -50:
         return
-    queued_ = int(_d(j.get("punish")).get("n") or 0)
-    room = max(cfg["convict_queue_min"], int(j.get("restraints") or 0))
-    if queued_ >= room:
+    punish = _d(j.get("punish"))
+    if int(punish.get("beatings") or 0) > 0:
+        notes.append("no convictions while a beating waits (the guard beats a convict with no jail place, "
+                     "and beatings kill)")
         return
-    k = min(n, cfg["convict_per_cycle"] + (2 if int(traits.get("justice", 0) or 0) >= 50 else 0), room - queued_)
+    queued_ = int(punish.get("n") or 0)
+    free = int(j.get("restraints") or 0) - int(j.get("restraints_used") or 0) - queued_
+    if free <= 0:
+        return
+    if int(w.get("given") or 0) >= cfg["convict_check_after"]:
+        if sentenced - int(w.get("sentenced0") or 0) < cfg["convict_check_sentences"]:
+            w["until"] = now + cfg["convict_rest_days"] * 1200
+            notes.append(f"convictions rest {cfg['convict_rest_days']} days: {w['given']} convicted brought "
+                         f"{max(0, sentenced - int(w.get('sentenced0') or 0))} sentence(s)")
+            return
+        w.clear()                                    # they work: count afresh
+    w.setdefault("sentenced0", sentenced)
+    k = min(n, cfg["convict_per_cycle"] + (2 if int(traits.get("justice", 0) or 0) >= 50 else 0), free)
     proposals.append(Proposal("convict", {"type": "convict", "max": k},
                               f"{n} solved case(s) wait for a trial nobody gives (DF sentences only convicted ones): "
-                              f"convict {k}, the oldest first ({queued_} punishment(s) waiting)", 4))
+                              f"convict {k}, the oldest first ({free} free jail place(s), {queued_} punishment(s) waiting)", 4))
 
 
 def _jail_size_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> None:
@@ -130,9 +158,24 @@ def _jail_size_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) ->
     want = max(2, min(cfg["jail_restraints_max"], math.ceil(cit / cfg["dwarves_per_restraint"])))
     if have >= want and used < have:
         return
+    # (0.104.138) with places free there's no hurry: only when nearly full, or
+    # under half of what the fort wants (Teacheroar: 10 chains, 2 in use)
+    if used < have - 1 and have >= want // 2:
+        return
     if tantrums_recent(s, memory) < cfg["urgent_jail_tantrums"] and int(_d(j.get("punish")).get("beatings") or 0) == 0:
         return
-    zone = min(jails, key=lambda z: int(z.get("chains") or 0) + int(z.get("cages") or 0))
+    # (0.104.138) only a jail with free floor (the bridge's own check)
+    roomy = [z for z in jails if not isinstance(z.get("free"), int) or z["free"] > 0]
+    if not roomy:
+        open_ = [p for p in _l(_d(s.get("projects")).get("open")) if isinstance(p, dict)]
+        if not any(p.get("kind") == "jail" for p in open_) and player_rules(s)["levels"].get("jail", True):
+            proposals.append(Proposal("jail_more", {"type": "start_project", "kind": "jail", "cells": 8},
+                                      f"the jails are full to the walls ({have} restraints, {used} in use, no free "
+                                      f"floor) for {cit} dwarves: dig another jail with 8 cells", 3))
+        else:
+            notes.append(f"the jails have no free floor for another chain ({have} restraints for {cit} dwarves)")
+        return
+    zone = min(roomy, key=lambda z: int(z.get("chains") or 0) + int(z.get("cages") or 0))
     proposals.append(Proposal("jail_size", {"type": "place_in_zone", "zone_id": zone["id"], "what": "chain"},
                               f"the jail holds {have} ({used} in use) for {cit} dwarves and the crimes come thick: "
                               "another chain (or the guard beats the offenders)", 3))
@@ -703,6 +746,16 @@ def _location_petition_rules(s: dict, cfg: dict, proposals: list, notes: list, r
         else:
             return
         left = max(0, 336 - int(w.get("days") or 0))
+        # (0.104.138) the last 112 days an agreed petition is urgent (a slot of
+        # its own); before that it waits for a free slot instead of being
+        # refused (Teacheroar: "already 3 unfinished building projects" 11 times
+        # while its year ran from 335 days left to 148)
+        limit = int(_d(s.get("projects")).get("max_open") or 2)
+        if left < 112:
+            action["urgent"] = True
+        elif len(open_) >= limit:
+            notes.append(f"{_wish_words(w)} (agreed) waits for a building slot ({left} days left of the year)")
+            return
         proposals.append(Proposal("petition_build", action,
                                   f"the fort agreed to {_wish_words(w)}: build it ({left} days left of the year)",
                                   4 if left < 112 else 5))

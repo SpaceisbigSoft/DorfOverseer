@@ -12,7 +12,7 @@ import phases
 from quirks import has_rule
 from digest import _d, _l, normalize
 
-__all__ = ["great_present", "all_clear", "STEER_PROTECTED", "STEER_MAX_DAYS", "steer_of", "PLANNER_CONFIG", "BREW_RECIPES", "MEAL_RECIPES", "MANDATE_RECIPES", "BUILDABLE_SHOPS", "SHOP_ALIASES", "SURVIVAL_SHOPS", "TICKS_PER_DAY", "TICKS_PER_YEAR", "NO_COOLDOWN", "MULTI_PER_CYCLE", "EMERGENCY", "STUCK_HOLD_EXEMPT", "LIMIT_EXEMPT", "Proposal", "Memory", "abs_tick", "game_day", "factor", "ADJUST_BOUNDS", "_number", "effective_config", "queued", "_clamp", "MEMORIAL_SPAN", "OPTIONAL_LEVELS", "GEAR_WEAPONS", "GEAR_METALS", "GEAR_RECIPES", "NEEDS_YOU", "ask_player", "player_rules", "MAINTAIN_SKIPS", "level_refused", "_traits", "reachable_threats", "held_off_threats", "_holding_off", "ONE_A_CYCLE", "growth_mode", "growth_target", "JOB_SHOPS", "RECIPE_SHOPS", "WOOD_ELSEWHERE", "recipe_shop", "brew_recipe", "_watchdog_notes", "jobs_reported", "order_job_state", "masons_jammed", "stuck_hold_days", "_stuck_before", "stone_short", "_office_held", "tantrums_recent", "justice_held", "_restraint_order", "manager_needs_office", "suites_short", "wool_route", "thread_plants_here", "MINING_NEED_ONLY", "mining_plan", "noble_room_kinds", "SOCIAL_NEEDS", "care_waiting", "unmet", "_soldier_swap", "LOCATION_UNITS", "_location", "_location_short", "_real_locations", "is_ranged", "STALE_PROJECT_DAYS", "_workshops_busy", "shop_count", "shops_max", "_has_shop", "RAW_FOOD", "ALL_FOOD", "_idle_share", "update_idle", "AGENDA_THEMES", "agenda", "food_per_dwarf", "WINTER_STOCK", "winter_factor", "young_fort", "established", "has_farms", "_best_metal", "REFUSAL_FIRST_DAYS", "REFUSAL_MAX_DAYS", "REFUSAL_KEYS", "refusal_key", "_refused_wait", "note_refusal", "LOOP_LIMITS", "LOOP_LIMIT_DEFAULT", "LOOP_EXEMPT", "_loop_count", "_stalled_days", "_entrance_spot", "_record_any_outcome", "_weapon_gaps"]
+__all__ = ["great_present", "all_clear", "STEER_PROTECTED", "STEER_MAX_DAYS", "steer_of", "PLANNER_CONFIG", "BREW_RECIPES", "MEAL_RECIPES", "MANDATE_RECIPES", "BUILDABLE_SHOPS", "SHOP_ALIASES", "SURVIVAL_SHOPS", "TICKS_PER_DAY", "TICKS_PER_YEAR", "NO_COOLDOWN", "MULTI_PER_CYCLE", "EMERGENCY", "STUCK_HOLD_EXEMPT", "LIMIT_EXEMPT", "Proposal", "Memory", "abs_tick", "game_day", "factor", "ADJUST_BOUNDS", "_number", "effective_config", "queued", "_clamp", "MEMORIAL_SPAN", "OPTIONAL_LEVELS", "GEAR_WEAPONS", "GEAR_METALS", "GEAR_RECIPES", "NEEDS_YOU", "ask_player", "player_rules", "MAINTAIN_SKIPS", "level_refused", "_traits", "reachable_threats", "held_off_threats", "_holding_off", "ONE_A_CYCLE", "growth_mode", "growth_target", "JOB_SHOPS", "RECIPE_SHOPS", "WOOD_ELSEWHERE", "recipe_shop", "brew_recipe", "_watchdog_notes", "jobs_reported", "order_job_state", "masons_jammed", "stuck_hold_days", "_stuck_before", "stone_short", "_office_held", "tantrums_recent", "justice_held", "_restraint_order", "manager_needs_office", "suites_short", "wool_route", "thread_plants_here", "MINING_NEED_ONLY", "mining_plan", "noble_room_kinds", "SOCIAL_NEEDS", "care_waiting", "unmet", "_soldier_swap", "recently_home", "LOCATION_UNITS", "_location", "_location_short", "_real_locations", "is_ranged", "STALE_PROJECT_DAYS", "_workshops_busy", "shop_count", "shops_max", "_has_shop", "RAW_FOOD", "ALL_FOOD", "_idle_share", "update_idle", "AGENDA_THEMES", "agenda", "food_per_dwarf", "WINTER_STOCK", "winter_factor", "young_fort", "established", "has_farms", "_best_metal", "REFUSAL_FIRST_DAYS", "REFUSAL_MAX_DAYS", "REFUSAL_IDLE_DAYS", "REFUSAL_KEYS", "refusal_key", "_refused_wait", "note_refusal", "LOOP_LIMITS", "LOOP_LIMIT_DEFAULT", "LOOP_EXEMPT", "_loop_count", "_stalled_days", "_entrance_spot", "_record_any_outcome", "_weapon_gaps", "spare_sig"]
 
 PLANNER_CONFIG = {
     # Starting guesses, tuned from experience. Per citizen, before trait factors.
@@ -204,6 +204,9 @@ PLANNER_CONFIG = {
     "crisis_min_days": 14,                 # ...lasting at least this long
     "crisis_extra_actions": 5,             # ...recovery's extra action slots a cycle
     "convict_per_cycle": 3,            # (0.104.131) solved cases convicted a cycle...
+    "convict_check_after": 30,         # (0.104.138) convictions before asking whether they bring sentences...
+    "convict_check_sentences": 3,      # ...at least this many more sentenced, else the rule rests
+    "convict_rest_days": 84,
     "convict_queue_min": 5,            # ...while fewer punishments than this (or than restraints) wait
     "dig_raise_days": 14,
     "dig_raise_again_days": 7,         # (0.104.134) ...and again a week on while still nothing is dug              # (0.104.128) a level with nothing dug this long is dug before the rest
@@ -563,8 +566,11 @@ class Memory:
     ores_freed: list = field(default_factory=list)       # (0.104.124) ores the masons were given in a crisis
     crisis: dict = field(default_factory=dict)          # (0.104.137) the fort in crisis: since, why
     deaths_seen: list = field(default_factory=list)     # (0.104.137) citizens' deaths (ticks), 12 weeks
+    convict_watch: dict = field(default_factory=dict)   # (0.104.138) cases convicted, sentences then, held until
     gear_spare_since: dict = field(default_factory=dict)  # "weapons"/"body"/"helms" -> when 3+ spares sat unused
     swapped: dict = field(default_factory=dict)  # (0.104.78) unit id -> when the swap sent them home
+    drafted: dict = field(default_factory=dict)  # (0.104.138) unit id -> when a fill or swap drafted them
+    unstick_seen: dict = field(default_factory=dict)   # (0.104.138) the spare gear at the last untangling, times
     steer: dict = field(default_factory=dict)    # (0.104.89) the strategist's raised and held rules: rule -> {mode, until, why}
     strategist_wants: list = field(default_factory=list)   # (0.104.89) report sections it asked to see in full next time
     token_ratio: float = 1.0                     # (0.104.89) a review's real cost against its estimate, learned
@@ -1055,7 +1061,14 @@ def _restraint_order(s: dict, n: int, cfg: dict, proposals: list, notes: list) -
         return
     st = _d(s.get("stocks"))
     amount = min(n, cfg["max_order"])
-    if st.get("cloth"):
+    # (0.104.138) plant cloth beyond what the hospitals keep (Teacheroar: the
+    # rope order stuck, "Needs 1 unused plant cloth", while the 4-5 bolts
+    # counted were the hospital's): the rope wants plant cloth
+    kinds = _d(_d(s.get("supplies")).get("cloth_kinds"))
+    hosp = sum(int(_d(e.get("have")).get("cloth") or 0) for e in _l(_d(s.get("locations")).get("list"))
+               if isinstance(e, dict) and e.get("type") == "HOSPITAL")
+    free_cloth = (int(kinds.get("plant") or 0) if kinds else int(st.get("cloth") or 0)) - hosp
+    if free_cloth >= amount:
         proposals.append(Proposal("furniture", {"type": "work_order", "recipe": "cloth_rope", "amount": amount},
                                   f"the jail is waiting for {n} rope(s) or chain(s): make ropes from cloth", 4, True))
         return
@@ -1167,6 +1180,17 @@ def unmet(s: dict, *names: str) -> int:
     return sum(int(_d(n.get(k)).get("distracted") or 0) for k in names)
 
 
+def recently_home(s: dict, memory) -> list:
+    """(0.104.138) Units the AI sent home in the last 168 days (newest 100),
+    for the bridge's fill to pass over."""
+    if memory is None:
+        return []
+    now = abs_tick(s)
+    rows = sorted(((t, k) for k, t in _d(getattr(memory, "swapped", None)).items()
+                   if isinstance(t, int) and 0 <= now - t < 168 * TICKS_PER_DAY), reverse=True)[:100]
+    return [int(k) for _, k in rows if str(k).isdigit()]
+
+
 def _soldier_swap(s: dict, cfg: dict, proposals: list | None, memory=None) -> None:
     """(0.104.64) Constant training leaves soldiers no time for their other
     needs (Enxah, spring y75: of those badly wanting to craft 23 of 24 were
@@ -1185,8 +1209,12 @@ def _soldier_swap(s: dict, cfg: dict, proposals: list | None, memory=None) -> No
     # cycles between asked for a soldier already out (refused)
     if memory is not None:
         now = abs_tick(s)
+        # (0.104.138) and never one swapped this year, nor one drafted in the
+        # last 84 days (Teacheroar: the same 20 dwarves swapped 15-22 times)
         recent = {str(k) for k, t in _d(getattr(memory, "swapped", None)).items()
-                  if isinstance(t, int) and 0 <= now - t < 7 * TICKS_PER_DAY}
+                  if isinstance(t, int) and 0 <= now - t < 336 * TICKS_PER_DAY}
+        recent |= {str(k) for k, t in _d(getattr(memory, "drafted", None)).items()
+                   if isinstance(t, int) and 0 <= now - t < 84 * TICKS_PER_DAY}
         starved = [x for x in starved if str(x["id"]) not in recent]
     if keen < cfg["soldier_swap_keen_min"] or not starved:
         return
@@ -1203,7 +1231,11 @@ def _soldier_swap(s: dict, cfg: dict, proposals: list | None, memory=None) -> No
         if month >= max(cfg["soldier_swap_month_min"], soldiers // cfg["soldier_swap_month_share"]):
             return
     x = max(starved, key=lambda v: len(_l(v.get("unmet"))))
-    proposals.append(Proposal("soldier_swap", {"type": "squad_swap", "unit_id": x["id"]},
+    act = {"type": "squad_swap", "unit_id": x["id"]}
+    home = recently_home(s, memory)                  # (0.104.138) the fill passes these over
+    if home:
+        act["avoid"] = home
+    proposals.append(Proposal("soldier_swap", act,
                               f"{x.get('name')} has trained enough and badly misses "
                               f"{', '.join(_l(x.get('unmet'))[:3])}, while {keen} civilians badly want to train: "
                               "back to work, a keen one takes the place", 4))
@@ -1321,7 +1353,7 @@ AGENDA_THEMES = {
     "needs_drink": "keep the drink flowing", "needs_meal": "cook good meals", "needs_craft": "let dwarves craft",
     "food": "keep the fort fed", "farm": "farm", "hospital": "stock the hospital", "soap": "make soap",
     "feeder": "shorten the hauling", "labor": "put idle hands to work", "well": "find water for a well",
-    "stuck_order": "clear stuck work", "unsuspend": "resume suspended work", "stray_gear": "hand out lost gear", "assign_weapons": "arm the soldiers", "soldier_swap": "let the keen train", "temple_chest": "a chest for the temple", "instrument_orders": "clear the instrument backlog", "pair_chairs": "seat dwarves together", "recreation": "time off for the unhappiest", "dairy": "milk and cheese", "eggs": "nest boxes for the hens", "war_animals": "train war animals", "gate_guard": "hold the gate", "gate_dogs": "war dogs at the gate", "gem_cutting": "cut the rough gems", "stairwell": "a new stairwell", "animal_trainer": "an animal trainer", "nest_box_order": "make nest boxes", "library_chest": "a chest for the library", "orphan_jobs": "clear jobs whose order is gone", "slabs_free": "free the memorial slabs", "water_traffic": "keep paths off the ice", "jail_size": "a bigger jail", "burial": "bury the dead", "rooms": "mend the rooms' walls", "coffins": "coffins for the tombs", "order_slots": "free the workshop's order slots", "fat_ban": "keep fat for soap", "jail_urgent": "a jail against the beatings", "tavern_urgent": "a tavern for company", "quarry": "quarry stone", "cloth": "weave cloth",
+    "stuck_order": "clear stuck work", "unsuspend": "resume suspended work", "stray_gear": "hand out lost gear", "assign_weapons": "arm the soldiers", "soldier_swap": "let the keen train", "temple_chest": "a chest for the temple", "instrument_orders": "clear the instrument backlog", "pair_chairs": "seat dwarves together", "recreation": "time off for the unhappiest", "dairy": "milk and cheese", "eggs": "nest boxes for the hens", "war_animals": "train war animals", "gate_guard": "hold the gate", "gate_dogs": "war dogs at the gate", "gem_cutting": "cut the rough gems", "stairwell": "a new stairwell", "animal_trainer": "an animal trainer", "nest_box_order": "make nest boxes", "library_chest": "a chest for the library", "orphan_jobs": "clear jobs whose order is gone", "slabs_free": "free the memorial slabs", "water_traffic": "keep paths off the ice", "jail_size": "a bigger jail", "jail_more": "another jail", "burial": "bury the dead", "rooms": "mend the rooms' walls", "coffins": "coffins for the tombs", "order_slots": "free the workshop's order slots", "fat_ban": "keep fat for soap", "jail_urgent": "a jail against the beatings", "tavern_urgent": "a tavern for company", "quarry": "quarry stone", "cloth": "weave cloth",
 }
 
 
@@ -1407,9 +1439,11 @@ def _best_metal(s: dict, items: int, wanted: str | None = None) -> str | None:
 # success clears it. Responses to an attack never wait.
 REFUSAL_FIRST_DAYS = 1
 REFUSAL_MAX_DAYS = 84                # (the overnight run: a spot that never fits was asked about every 28 days)
+REFUSAL_IDLE_DAYS = 336              # (0.104.138) refused as nothing to do (every chair paired, all water restricted)
 REFUSAL_KEYS = ("type", "kind", "recipe", "job", "entrance_id", "project_id", "name", "squad_id",
                 "lever_id", "target_id", "tool", "unit_id",      # (0.103.12) unit_id: one dwarf's refusal isn't another's
-                "zone_id", "order_id", "location_id")            # (0.104.81) nor one zone's, order's or location's
+                "zone_id", "order_id", "location_id",            # (0.104.81) nor one zone's, order's or location's
+                "building_id")                                   # (0.104.138) nor one workshop's feeder another's
 
 
 def refusal_key(p: Proposal) -> str:
@@ -1442,7 +1476,13 @@ def note_refusal(memory: Memory, p: Proposal, r: dict, now: int, bridge: str | N
     if r.get("ok") is True and p.action.get("type") == "polish" and r.get("designated") == 0:
         r = {"ok": False, "error": r.get("note") or "nothing to smooth or engrave"}   # nothing done: back off
     if r.get("ok") is True:
-        memory.refusals.pop(key, None)
+        # (0.104.138) a success halves the count rather than wiping it: one
+        # success among many refusals began the back-off again at a day
+        old = _d(memory.refusals.get(key))
+        if int(old.get("n") or 0) >= 3:
+            memory.refusals[key] = dict(old, n=int(old["n"]) // 2, until=now)
+        else:
+            memory.refusals.pop(key, None)
         return
     if r.get("ok") is not False or r.get("halted") or p.rule in EMERGENCY:
         return                     # unknown, or stopped by the in-game halt: not the game saying no
@@ -1455,6 +1495,8 @@ def note_refusal(memory: Memory, p: Proposal, r: dict, now: int, bridge: str | N
     old = _d(memory.refusals.get(key))
     n = int(old.get("n") or 0) + 1
     days = min(REFUSAL_MAX_DAYS, REFUSAL_FIRST_DAYS * 2 ** (n - 1))
+    if r.get("nothing_to_do"):
+        days = REFUSAL_IDLE_DAYS   # (0.104.138) the goal is met: a year, not a loop
     if p.action.get("type") == "squad_release" and "longs to fight or train" in str(r.get("error") or ""):
         days = max(days, 56)       # (0.104.34) a need that lasts: Enxah asked 368 times, 10 dwarves, all refused
     memory.refusals[key] = {"n": n, "until": now + days * TICKS_PER_DAY, "at": now,
@@ -1626,10 +1668,17 @@ def _record_any_outcome(a: dict, r: dict, state: dict, memory, now: int) -> None
                     memory.gates_fortified_ticks[spot] = now
 
 
+def spare_sig(gear: dict) -> str:
+    """(0.104.138) The spare gear counts, as one string to compare."""
+    return json.dumps(sorted((str(k), v) for k, v in _d(gear.get("spare")).items()))
+
+
 def _weapon_gaps(gear: dict) -> bool:
     """(0.104.60) Soldiers on duty with places whose weapon entry is empty
     while free weapons (or crossbows) lie on the game's unassigned list."""
     free_w = (sum(int(v or 0) for k, v in _d(gear.get("spare_weapons")).items()
                   if isinstance(v, (int, float)) and k != "ITEM_WEAPON_PICK")      # a pick is a miner's tool
               + int(gear.get("spare_crossbows") or 0))
+    if isinstance(gear.get("weapon_gaps_fillable"), int) and gear["weapon_gaps_fillable"] <= 0:
+        return False                 # (0.104.138) the bridge's own dry run fills none
     return int(gear.get("weapon_gaps") or 0) > 0 and free_w > 0 and int(gear.get("on_duty") or 0) > 0

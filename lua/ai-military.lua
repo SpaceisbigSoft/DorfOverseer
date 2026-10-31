@@ -30,10 +30,32 @@ local function wants_fight(u)
     return ok and yes
 end
 
-function pick_soldiers(cands, n)
+-- (0.104.138) a dwarf who BADLY wants to fight or train (as `keen_civilians`
+-- counts them) before one who merely wants it: an Axe Lord sent home slips
+-- just past the wanting line in weeks and was drafted straight back over the
+-- 70-200 keen ones (Teacheroar: 2,070 swaps, the same 20 dwarves 15-22 times)
+KEEN_FOCUS = -10000
+
+local function fight_focus(u)
+    local ok, low = pcall(function()
+        local lo
+        for _, nd in ipairs(u.status.current_soul.personality.needs) do
+            if FIGHT_NEEDS[df.need_type[nd.id]] and (lo == nil or nd.focus_level < lo) then lo = nd.focus_level end
+        end
+        return lo
+    end)
+    return ok and low or nil
+end
+
+function pick_soldiers(cands, n, avoid)
     local list = {}
-    for _, c in ipairs(cands) do table.insert(list, c) end
+    for _, c in ipairs(cands) do
+        if not (avoid and avoid[c.id]) then table.insert(list, c) end
+    end
+    local function keen(c) return c.fight_focus ~= nil and c.fight_focus <= KEEN_FOCUS end
     table.sort(list, function(a, b)
+        if keen(a) ~= keen(b) then return keen(a) end
+        if keen(a) and a.fight_focus ~= b.fight_focus then return a.fight_focus < b.fight_focus end
         -- dwarves who long to fight or train (the Fight / MartialTraining
         -- needs) come first: soldiering meets those needs. (0.104.64) always
         -- first, before any veteran: a soldier the AI let go to meet his other
@@ -241,7 +263,8 @@ local function candidates()
                     elseif sk.rating > best then best = sk.rating end
                 end
             end
-            table.insert(out, {id = u.id, combat = combat, best_craft = best, unit = u, wants_fight = wants_fight(u)})
+            table.insert(out, {id = u.id, combat = combat, best_craft = best, unit = u, wants_fight = wants_fight(u),
+                               fight_focus = fight_focus(u)})
         end
     end
     return out
@@ -286,7 +309,8 @@ local function seat_holder(sq)
 end
 
 -- Fill up to `count` open positions of a squad (never the captain's seat).
-function fill(squad_id, count, txt)
+-- (0.104.138) `avoid`: unit ids not to draft (those the AI sent home lately)
+function fill(squad_id, count, txt, avoid)
     local sq = fort_squad(squad_id)
     if not sq then return {ok = false, rejected = true, error = 'no such squad in this fort'} end
     local seated = seat_holder(sq)
@@ -326,7 +350,7 @@ function fill(squad_id, count, txt)
     if not okc then return {ok = false, error = 'could not list dwarves: ' .. tostring(cands)} end
     local added = {}
     local tried, k = 0, 1
-    for _, c in ipairs(pick_soldiers(cands, count)) do
+    for _, c in ipairs(pick_soldiers(cands, count, avoid)) do
         tried = tried + 1
         local place = places[k]
         if place and dfhack.military.addToSquad(c.id, squad_id, place) then
@@ -529,7 +553,9 @@ function add_post(fort, p, pidx)
     fort.positions.assignments:insert('#', a)
     pcall(function()
         for r, on in pairs(p.responsibilities) do
-            if on then fort.positions.assignments_by_type[r]:insert('#', a) end
+            -- (0.104.138) the per-duty lists hang on the entity itself (as
+            -- ai-nobles reads them); `fort.positions.` failed silently
+            if on then fort.assignments_by_type[r]:insert('#', a) end
         end
     end)
     return a, #fort.positions.assignments - 1
@@ -544,7 +570,7 @@ function drop_post(fort, a)
     end
     erase(fort.positions.assignments)
     pcall(function()
-        for r = 0, #fort.positions.assignments_by_type - 1 do erase(fort.positions.assignments_by_type[r]) end
+        for _, lst in ipairs(fort.assignments_by_type) do erase(lst) end
     end)
     pcall(function() a:delete() end)
 end
@@ -1721,6 +1747,16 @@ function gear_report()
                 or b.type == df.workshop_type.MagmaForge) then
             out.forges = out.forges + 1
         end
+    end
+    -- (0.104.138) how many empty weapon places the hand-out could really fill
+    -- (its own dry run): the brain counted 354 spare weapons of every kind
+    -- while each empty place asked for a battle axe and none was free
+    -- (assign_weapons refused 71 times a day)
+    if (out.weapon_gaps or 0) > 0 then
+        pcall(function()
+            local r = assign_weapons(true, 50)
+            out.weapon_gaps_fillable = (r and r.would_assign) or 0
+        end)
     end
     return out
 end

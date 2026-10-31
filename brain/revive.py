@@ -36,7 +36,9 @@ START_DOWN_S = 15
 TITLE_S = 120
 LAUNCH_EVERY_S = 900
 LOADS_PER_HOUR = 3
-HUNG_S = 900                 # (0.100.1) no answer this long (not down, not at the title): DF is closed
+HUNG_S = 1800                # (0.100.1) no answer this long (not down, not at the title): DF is closed
+                             # (0.104.138: 30 min, was 15: Teacheroar's autosaves took up to 10)
+SAVE_QUIET_S = 180           # (0.104.138) never while a save folder was written this recently
 HUNG_KILL_EVERY_S = 3600     # at most once an hour
 DF_EXE = "Dwarf Fortress.exe"
 
@@ -85,6 +87,28 @@ def load_candidates() -> tuple[list[str], str | None]:
     cands = [c for c in cands if c.is_dir()]
     cands.sort(key=folder_mtime, reverse=True)
     return [c.name for c in cands], d.get("world")
+
+
+def save_written_within(seconds: float, clock=time.time) -> bool:
+    """(0.104.138) True when the fort's save or an autosave folder (or a file
+    in one) was written in the last `seconds`: DF is saving, not hung."""
+    try:
+        d = json.loads(LAST_FORT.read_text(encoding="utf-8"))
+        root = save_root(d["df_path"], d["save_dir"]) or Path(d["df_path"]) / "save"
+        folders = [root / d["save_dir"]] + sorted(root.glob("autosave*"))
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
+    now = clock()
+    for f in folders:
+        try:
+            if not f.is_dir():
+                continue
+            newest = max([f.stat().st_mtime] + [c.stat().st_mtime for c in f.iterdir()])
+            if now - newest < seconds:
+                return True
+        except OSError:
+            continue
+    return False
 
 
 def launch_command() -> str | None:
@@ -197,6 +221,12 @@ class Reviver:
         if state == "unknown":
             self.unknown_since = self.unknown_since or now
             if (self.seen_up and now - self.unknown_since >= HUNG_S and now - self.last_kill >= HUNG_KILL_EVERY_S
+                    and os.name == "nt" and save_written_within(SAVE_QUIET_S)):
+                if not getattr(self, "save_said", False):
+                    self.log("Revive: Dwarf Fortress hasn't answered for a long while, but it is still writing its "
+                             "save: left to finish.")
+                    self.save_said = True
+            elif (self.seen_up and now - self.unknown_since >= HUNG_S and now - self.last_kill >= HUNG_KILL_EVERY_S
                     and os.name == "nt"):
                 self.last_kill = now
                 try:

@@ -13,7 +13,7 @@ from quirks import has_rule
 from digest import _d, _l, normalize
 from planner_core import *  # noqa: F401,F403
 
-__all__ = ["magma_access", "GROWTH", "GROWTH_EXTRA_SCORE", "GROWTH_MAX", "growth_want", "growth_candidates", "TRAIT_NAMES_SHORT", "FURNITURE_RECIPES", "METAL_FURNITURE", "spare_metal", "WOODEN_FURNITURE", "BASIC_WORKSHOPS", "BASIC_STOCKPILES", "memorial_due", "_well_rule", "_water_zone_rule", "cavern_well_need", "cavern_well_safe", "WELL_PARTS_SHOPS", "well_parts_plan", "_well_parts", "_room_repair_rule", "_water_traffic_rule", "_cleanup_rule", "STORE_GROW", "stone_tidiness", "jail_plan", "cistern_pop", "tavern_factor", "full_stores", "LEARNING_NEEDS", "_stairwell_rule", "WATER_WORDS", "water_summary", "_water_rules", "CISTERN_WORDS", "_cistern_parts", "_cistern_rule", "_deep_notes", "good_times", "ORDINALS", "garden_name", "_pop_cap_rule", "fort_strain", "hospital_shortfall", "dining_shortfall", "social_shortfall", "SOCIAL_KINDS", "_join_rule", "_dig_stall_rule", "_shrink_rule", "room_size", "_project_rules", "more_temple", "LADDER_BASE", "LADDER_TRAITS", "_ladder_kind", "_ladder_word", "ladder_score", "tombs_short"]
+__all__ = ["STUCK_FALLBACKS", "stuck_fallback", "magma_access", "GROWTH", "GROWTH_EXTRA_SCORE", "GROWTH_MAX", "growth_want", "growth_candidates", "TRAIT_NAMES_SHORT", "FURNITURE_RECIPES", "METAL_FURNITURE", "spare_metal", "WOODEN_FURNITURE", "BASIC_WORKSHOPS", "BASIC_STOCKPILES", "memorial_due", "_well_rule", "_water_zone_rule", "cavern_well_need", "cavern_well_safe", "WELL_PARTS_SHOPS", "well_parts_plan", "_well_parts", "_room_repair_rule", "_water_traffic_rule", "_cleanup_rule", "STORE_GROW", "stone_tidiness", "jail_plan", "cistern_pop", "tavern_factor", "full_stores", "LEARNING_NEEDS", "_stairwell_rule", "WATER_WORDS", "water_summary", "_water_rules", "CISTERN_WORDS", "_cistern_parts", "_cistern_rule", "_deep_notes", "good_times", "ORDINALS", "garden_name", "_pop_cap_rule", "fort_strain", "hospital_shortfall", "dining_shortfall", "social_shortfall", "SOCIAL_KINDS", "_join_rule", "_dig_stall_rule", "_shrink_rule", "room_size", "_project_rules", "more_temple", "LADDER_BASE", "LADDER_TRAITS", "_ladder_kind", "_ladder_word", "ladder_score", "tombs_short"]
 
 
 # Furniture waiting in a project -> the recipe that makes it.
@@ -362,6 +362,68 @@ def stone_tidiness(traits: dict, cfg: dict) -> tuple[int, int] | None:
         return None
     f = factor(traits, "industriousness")
     return int(cfg["store_stone_loose"] / f), int(cfg["store_stone_max_tiles"] * f)
+
+
+# (0.104.138, 12l) What a stuck order is made of instead: an order cancelled
+# as stuck was held up to 112 days and then placed again unchanged
+# (Teacheroar: stone coffins, slabs and jewellery with no stone the masons
+# may use; cloth rope with only the hospital's cloth). The first alternative
+# with its material at hand is ordered in its place.
+STUCK_FALLBACKS = {
+    **{k: (v, k.replace("stone_", "metal_")) for k, v in WOODEN_FURNITURE.items()},
+    "stone_mugs": ("wooden_cups",),
+    "stone_crafts": ("wood_crafts", "metal_crafts"),
+    "stone_amulet": ("metal_amulet", "wood_crafts"), "stone_bracelet": ("metal_bracelet", "wood_crafts"),
+    "stone_ring": ("metal_ring", "wood_crafts"), "stone_earring": ("metal_earring", "wood_crafts"),
+    "cloth_rope": ("metal_chain",),
+    "cloth_bag": ("silk_bag", "yarn_bag"), "silk_bag": ("cloth_bag", "yarn_bag"), "yarn_bag": ("cloth_bag", "silk_bag"),
+}
+BAG_KIND = {"cloth_bag": "plant", "silk_bag": "silk", "yarn_bag": "yarn"}
+RECIPES_WITH_METAL = {"metal_table", "metal_chair", "metal_door", "metal_cabinet", "metal_chest", "metal_coffin",
+                      "metal_armor_stand", "metal_weapon_rack", "metal_chain", "metal_crafts", "metal_amulet",
+                      "metal_bracelet", "metal_ring", "metal_earring"}
+
+
+def stuck_fallback(p, s: dict, memory, cfg: dict, now: int) -> dict | None:
+    """(0.104.138) The action to order instead of a work order held as stuck:
+    the first alternative not itself stuck lately, with its material at hand
+    and its workshop built. None when there is none."""
+    a = p.action
+    recipe = str(a.get("recipe") or "")
+    amount = int(a.get("amount") or 1)
+    b = _d(s.get("buildings"))
+    wood = int(_d(s.get("stocks")).get("wood") or 0) - int(_d(s.get("dwarves")).get("total") or 0) * cfg["wood_per_dwarf"]
+    kinds = _d(_d(s.get("supplies")).get("cloth_kinds"))
+    stuck = _d(getattr(memory, "stuck_cancelled", None))
+    for alt in STUCK_FALLBACKS.get(recipe, ()):
+        sc = _d(stuck.get(alt))
+        if isinstance(sc.get("tick"), int) and 0 <= now - sc["tick"] < stuck_hold_days(sc, cfg) * TICKS_PER_DAY:
+            continue
+        shop = recipe_shop(alt)
+        if shop and (b.get("workshops") is not None or b.get("furnaces") is not None) and not _has_shop(b, shop):
+            continue
+        act = {k: v for k, v in a.items() if k != "material"}
+        act["recipe"] = alt
+        if alt in RECIPES_WITH_METAL:
+            if alt in ("metal_chain", "metal_crafts") or alt.startswith(("metal_amulet", "metal_bracelet",
+                                                                            "metal_ring", "metal_earring")):
+                bars = _d(_d(_d(s.get("military")).get("gear")).get("all_bars"))
+                m = max(((int(v), k) for k, v in bars.items() if isinstance(v, (int, float)) and k not in GEAR_METALS
+                         and k != "PIG_IRON" and int(v) >= 2 * amount + 5), default=None)
+                metal = m[1] if m else None
+            else:
+                metal = spare_metal(s, cfg, amount)
+            if not metal:
+                continue
+            act["material"] = f"INORGANIC:{metal}"
+        elif alt.startswith(("wooden_", "wood_")):
+            if wood < amount + 5:
+                continue
+        elif alt in BAG_KIND:
+            if kinds and int(kinds.get(BAG_KIND[alt]) or 0) < amount:
+                continue
+        return act
+    return None
 
 
 def jail_plan(traits: dict, cfg: dict, citizens: int) -> dict | None:
@@ -774,7 +836,10 @@ def _pop_cap_rule(s: dict, memory, cfg: dict, citizens: int, proposals: list, no
         # until it can, held at its size when the strain began. (0.104.120)
         # its own size, and also while the game runs slowly: Teacheroar's
         # slow-game cap of 405 (29 Oct) held nothing at 296 dwarves, 51% unhappy
-        cap = min(cap, memory.strain_cap or max(7, citizens))
+        # (0.104.138) and never above the fort's size now: the remembered size
+        # (293 when the strain began) let 76 newcomers into a fort of 217 after
+        # the massacre; births still come through the strict cap
+        cap = min(cap, memory.strain_cap or max(7, citizens), max(7, citizens))
         held_why.append(f"the fort is strained ({'; '.join(strain)})")
     if held_why:
         strict = cap + 10
@@ -1091,6 +1156,12 @@ def _project_rules(s, traits, cfg, proposals, notes, can_use, memory) -> None:
                 elif stone_short(s, max(amount, cfg["stone_low"])) and wooden and wood_spare >= amount:
                     action = {"type": "work_order", "recipe": wooden, "amount": amount}
                     why += ", in wood (no stone the masons may use)"
+                elif stone_short(s, max(amount, cfg["stone_low"])) and wooden and wood_spare >= 5:
+                    # (0.104.138) as many as the wood covers: Teacheroar's 27 coffins
+                    # waited with ~20 logs to spare and nothing was ordered at all
+                    part = int(wood_spare) - 2
+                    action = {"type": "work_order", "recipe": wooden, "amount": part}
+                    why += f", {part} of them in wood for now (no stone the masons may use; wood for {part})"
                 elif stone_short(s, max(amount, cfg["stone_low"])) and recipe.startswith("stone_"):
                     notes.append(f"{why}: no stone the masons may use" + ("" if wooden else " and no wooden kind"))
                     continue

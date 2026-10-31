@@ -140,6 +140,10 @@ def main() -> int:
             check("game names the AI relies on", "FAIL",
                   f"{len(r['failed'])} missing (the AI will misbehave where they're used): "
                   + "; ".join(r["failed"][:8]) + (" ..." if len(r["failed"]) > 8 else ""))
+        elif r.get("ok") and r.get("optional_missing"):
+            check("game names the AI relies on", "WARN",
+                  f"all needed found; {len(r['optional_missing'])} optional missing (left to you): "
+                  + "; ".join(r["optional_missing"][:4]))
         elif r.get("ok"):
             check("game names the AI relies on", "PASS", f"all {r.get('passed')} found")
         elif r.get("failed"):

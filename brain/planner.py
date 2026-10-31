@@ -192,7 +192,11 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
         meals, pending = st.get("prepared_meals", 0), queued(s, MEAL_RECIPES) * per_job
         target = citizens * cfg["meals_per_dwarf"] * buffer * winter
         raw = sum(st.get(k, 0) or 0 for k in RAW_FOOD)
-        if meals + pending < target:
+        # (0.104.138) three quarters stocked with an order still cooking: no
+        # more on top (Teacheroar: 2,481 of 2,739, its kitchens kept to the best
+        # cooks, fine meals ordered 6 times and cancelled as stuck 4)
+        cooking = queued(s, MEAL_RECIPES) > 0 and meals >= 0.75 * target
+        if meals + pending < target and not cooking:
             # Without readable settings, use the middle grade.
             welfare = traits.get("welfare", 0) if "settings" not in errors else 0
             recipe = ("prepare_lavish_meal" if welfare >= 50 else
@@ -449,7 +453,7 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
         _guard(_unsuspend_rule, s, proposals)
         _guard(_water_traffic_rule, s, proposals)
         _guard(_jail_size_rule, s, memory, cfg, proposals, notes)
-        _guard(_convict_rule, s, cfg, proposals)
+        _guard(_convict_rule, s, memory, cfg, proposals, notes)
         _guard(_orphan_jobs_rule, s, proposals)
         _guard(_room_repair_rule, s, proposals)
         _guard(_bench_coffins_rule, s, memory, proposals)
@@ -559,6 +563,16 @@ def select(proposals: list[Proposal], state: dict, memory: Memory,
         if (p.action.get("type") == "work_order" and p.rule not in STUCK_HOLD_EXEMPT
                 and isinstance(sc.get("tick"), int)
                 and 0 <= now - sc["tick"] < hold_days * TICKS_PER_DAY):
+            # (0.104.138, 12l) made of something else, when there's one at hand
+            alt = stuck_fallback(p, state, memory, cfg, now)
+            if alt and not queued(state, {alt["recipe"]}):
+                p = Proposal(p.rule, alt, f"{p.reason} (the {p.action.get('recipe')} order got stuck "
+                                          f"{(now - sc['tick']) // TICKS_PER_DAY} day(s) ago: "
+                                          f"{alt['recipe']} instead)", p.priority, p.is_order)
+                sc = {}
+        if (p.action.get("type") == "work_order" and p.rule not in STUCK_HOLD_EXEMPT
+                and isinstance(sc.get("tick"), int)
+                and 0 <= now - sc["tick"] < hold_days * TICKS_PER_DAY):
             held.append(f"{p.rule}: an order for {p.action.get('recipe')} got stuck and was cancelled "
                         f"{(now - sc['tick']) // TICKS_PER_DAY} day(s) ago; tried again after "
                         f"{hold_days} days")
@@ -642,8 +656,21 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
         if p.action.get("type") == "squad_swap" and p.action.get("unit_id") is not None:
             # (0.104.78) sent home, or found already out: not asked for again a week
             memory.swapped[str(p.action["unit_id"])] = now
-            for k in [k for k, t in memory.swapped.items() if not isinstance(t, int) or now - t > 28 * TICKS_PER_DAY]:
+            # (0.104.138) kept a year (was 28 days): never swapped twice a year
+            for k in [k for k, t in memory.swapped.items() if not isinstance(t, int) or now - t > 336 * TICKS_PER_DAY]:
                 del memory.swapped[k]
+        if p.action.get("type") == "unstick_uniforms" and ok is True:
+            sig = spare_sig(_d(_d(state.get("military")).get("gear")))   # (0.104.138)
+            prev = memory.unstick_seen if isinstance(memory.unstick_seen, dict) else {}
+            memory.unstick_seen = {"sig": sig, "n": (int(prev.get("n") or 0) + 1) if prev.get("sig") == sig else 1}
+        if p.action.get("type") in ("squad_swap", "squad_fill") and ok is True:
+            # (0.104.138) who was drafted when: not sent home again for 84 days
+            added = _l(_d(r.get("filled")).get("added")) if p.action["type"] == "squad_swap" else _l(r.get("added"))
+            for x in added:
+                if isinstance(x, dict) and x.get("unit_id") is not None:
+                    memory.drafted[str(x["unit_id"])] = now
+            for k in [k for k, t in memory.drafted.items() if not isinstance(t, int) or now - t > 336 * TICKS_PER_DAY]:
+                del memory.drafted[k]
         if p.action.get("type") == "dig_stairwell" and ok is True and isinstance(r.get("x"), int):
             import masterplan          # (0.104.82) the district's levels grow from it
             masterplan.note_stairwell(memory, str(p.action.get("district")), r["x"], r["y"])
@@ -729,7 +756,12 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
             slow, strained = "runs slowly" in p.reason, "is strained" in p.reason
             memory.fps_cap = (memory.fps_cap or a.get("cap")) if slow else None
             memory.strain_hold = strained
-            memory.strain_cap = (memory.strain_cap or a.get("cap")) if strained else None   # (0.104.120)
+            # (0.104.120) its own; (0.104.138) only ever lower while the strain lasts
+            memory.strain_cap = (min(memory.strain_cap or a.get("cap"), a.get("cap") or 10 ** 6)
+                                 if strained else None)
+        if a["type"] == "convict" and isinstance(memory.convict_watch, dict):   # (0.104.138)
+            got_ = len(r.get("convicted") or []) or int(a.get("max") or 0)
+            memory.convict_watch["given"] = int(memory.convict_watch.get("given") or 0) + got_
         if a["type"] == "prioritize_dig" and isinstance(memory.dig_seen, dict):   # (0.104.129)
             rec = memory.dig_seen.setdefault(str(a.get("project_id")), {"dug": None, "tick": now})
             if isinstance(rec, dict):

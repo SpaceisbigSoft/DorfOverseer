@@ -288,12 +288,21 @@ end
 -- set down on the depot's tile, so the haulers store them again and dwarves
 -- can own them (DF leaves them there until the next caravan: Enxah, 163).
 function unload(limit, dry_run, txt)
+    local busy_n = 0
     local dep = depot()
     if not dep then return {ok = false, rejected = true, error = 'no trade depot built yet'} end
     if #caravans(txt) > 0 then return {ok = false, rejected = true, error = 'a caravan is coming or at the depot'} end
     local items = {}
     for _, ci in ipairs(dep.contained_items) do
-        if ci.use_mode == df.building_item_role_type.TEMP and ci.item then table.insert(items, ci.item) end
+        if ci.use_mode == df.building_item_role_type.TEMP and ci.item then
+            -- (0.104.138) one a hauler is already carrying out is left to him
+            local busy = false
+            pcall(function() busy = ci.item.flags.in_job end)
+            if busy then busy_n = busy_n + 1 else table.insert(items, ci.item) end
+        end
+    end
+    if #items == 0 and busy_n > 0 then
+        return {ok = false, rejected = true, waiting = true, error = busy_n .. ' item(s) are being hauled out of the depot'}
     end
     if #items == 0 then return {ok = false, rejected = true, error = 'nothing of the fort\'s is in the depot'} end
     local n = math.min(#items, limit or 50)

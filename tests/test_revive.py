@@ -189,7 +189,7 @@ def _():
 
 
 
-@test("revive (0.100.1 review): a game that stops answering (hung) for 15 minutes is closed, once an hour")
+@test("revive (0.100.1 review; 0.104.138: 30 minutes, never mid-save): a hung game is closed, once an hour")
 def _():
     t = [1000.0]
     logs, kills = [], []
@@ -198,22 +198,27 @@ def _():
     rv = revive.Reviver(logs.append, dfhack=df, launcher=lambda *_: None, clock=lambda: t[0])
     rv.tick(); t[0] += 60                     # seen up
     rv.probe = lambda: "unknown"
-    saved_os, saved_run = revive.os.name, revive.subprocess.run
+    saved_os, saved_run, saved_sw = revive.os.name, revive.subprocess.run, revive.save_written_within
     class R: stdout, stderr = "SUCCESS", ""
     revive.subprocess.run = lambda args, **kw: (kills.append(args), R())[1]
+    saving = [True]
+    revive.save_written_within = lambda s, clock=None: saving[0]
     try:
         revive.os.name = "nt"
-        for _ in range(14):
+        for _ in range(29):
             rv.tick(); t[0] += 60
-        assert kills == [], kills             # 14 minutes: still waiting
+        assert kills == [], kills             # 29 minutes: still waiting
         for _ in range(3):
             rv.tick(); t[0] += 60
+        assert kills == [] and any("still writing its save" in x for x in logs), logs   # the save goes on
+        saving[0] = False
+        rv.tick(); t[0] += 60
         assert len(kills) == 1 and kills[0][:3] == ["taskkill", "/F", "/IM"], kills
         for _ in range(30):
             rv.tick(); t[0] += 60
         assert len(kills) == 1, kills            # not again within the hour
     finally:
-        revive.os.name, revive.subprocess.run = saved_os, saved_run
+        revive.os.name, revive.subprocess.run, revive.save_written_within = saved_os, saved_run, saved_sw
 
 if __name__ == "__main__":
     for name, ok, msg in RESULTS:

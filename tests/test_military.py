@@ -71,6 +71,18 @@ def _():
     assert ids(M.pick_soldiers(v, 1)) == [2]
 
 
+@test("(0.104.138) the badly keen come first, keenest first; the avoided are never picked")
+def _():
+    t = cands((1, 60, 3), (2, 0, 3), (3, 0, 3))
+    t[1].fight_focus = -1500                              # a veteran just past the wanting line
+    t[1].wants_fight = True
+    t[2].fight_focus = -12000
+    t[3].fight_focus = -30000
+    assert ids(M.pick_soldiers(t, 3)) == [3, 2, 1]
+    avoid = LUA.table_from({3: True})
+    assert ids(M.pick_soldiers(t, 3, avoid)) == [2, 1]
+
+
 @test("asking for more than there are gives everyone, never more")
 def _():
     assert ids(M.pick_soldiers(cands((5, 1, 1)), 4)) == [5]
@@ -542,7 +554,7 @@ local positions = vec({{id = 1, code = 'MILITIA_COMMANDER', squad_size = 10, num
 local assignments = vec({{id = 50, position_id = 1, histfig = spec.commander and 900 or -1, squad_id = 32,
                           flags = {active = true}}})
 local fort = {id = 77, squads = vec({32}), positions = {own = positions, assignments = assignments,
-              next_assignment_id = 60, assignments_by_type = vec({vec()})}}
+              next_assignment_id = 60}, assignments_by_type = vec({vec()})}   -- (0.104.138) on the entity
 local made = {}
 local env = setmetatable({ipairs = ipairs0}, {__index = _G})
 env.df = {

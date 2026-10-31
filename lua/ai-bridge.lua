@@ -34,7 +34,7 @@
 local json = require('json')
 local utils = require('utils')
 
-BRIDGE_VERSION = '0.104.137'
+BRIDGE_VERSION = '0.104.138'
 PROTOCOL = 1 -- bump when the report's shape changes in a breaking way
 
 local OUT_DIR = dfhack.getDFPath() .. '/dfhack-config/ai-overseer'
@@ -284,6 +284,7 @@ function get_needs(txt_fn)
             -- and civilians who badly want to train: the AI swaps them
             if soldier and not leader and #badly_other >= 2 and (fight_focus == nil or fight_focus > DISTRACTED) then
                 out.starved_soldiers = out.starved_soldiers or {}
+                out.starved_soldiers_total = (out.starved_soldiers_total or 0) + 1   -- (0.104.138, 12j)
                 if #out.starved_soldiers < 8 then
                     table.insert(out.starved_soldiers, {id = u.id, name = t(dfhack.units.getReadableName(u)),
                                                         unmet = badly_other})
@@ -978,15 +979,24 @@ function get_supplies()
     -- a drink (DRINK_MAT). region2's 325 "fruit" were leaves and the like:
     -- "Brew drink from fruit: Needs unrotten fermentable leaf or fruit"
     out.brewable_plants, out.brewable_growths = 0, 0
-    each('PLANT', function(it) if brewable(it) then out.brewable_plants = out.brewable_plants + it:getStackSize() end end)
     -- (0.104.11) plants that give thread (Enxah had none: 59 thread orders stood still)
+    -- (0.104.138) one pass for both, ai-builder looked up once and each plant
+    -- kind's answer kept (the supplies section ran ~255 ms every report)
     out.thread_plants = 0
+    local okB, B = pcall(reqscript, 'ai-builder')
+    local thread_of = {}
     each('PLANT', function(it)
+        local n = it:getStackSize()
+        if brewable(it) then out.brewable_plants = out.brewable_plants + n end
         local okp, yes = pcall(function()
+            local okk, key = pcall(function() return it:getActualMaterialIndex() end)
+            if okk and key ~= nil and thread_of[key] ~= nil then return thread_of[key] end
             local mi = dfhack.matinfo.decode(it)
-            return mi and mi.plant and reqscript('ai-builder').plant_thread(mi.plant)
+            local yes_ = (okB and mi and mi.plant and B.plant_thread(mi.plant)) and true or false
+            if okk and key ~= nil then thread_of[key] = yes_ end
+            return yes_
         end)
-        if okp and yes then out.thread_plants = out.thread_plants + it:getStackSize() end
+        if okp and yes then out.thread_plants = out.thread_plants + n end
     end)
     each('PLANT_GROWTH', function(it)
         if brewable(it) then out.brewable_growths = out.brewable_growths + it:getStackSize() end
@@ -2181,6 +2191,13 @@ function get_justice()
                     end
                 end
             end)
+            -- (0.104.138) the free floor a chain could go on (the brain picked
+            -- the emptiest jail blind: "no free floor in zone 453" 16 times)
+            pcall(function()
+                local B = reqscript('ai-builder')
+                local area = B.zone_area(z.id)
+                e.free = area and #B.zone_spots(area) or 0
+            end)
             out.restraints = out.restraints + e.chains + e.cages
             out.restraints_used = out.restraints_used + e.used
             table.insert(out.jails, e)
@@ -2475,7 +2492,11 @@ function get_deep()
                 end
             elseif not dfhack.units.isHidden(u) then
                 local kind = kind_of(u)
-                if kind and #out.dangers < 20 then
+                local caged_ = u.flags1.caged or u.flags1.chained
+                -- (0.104.138, 12j) every loose one listed (20 caged beasts hid
+                -- the rest before), and the count in full
+                if kind then out.dangers_total = (out.dangers_total or 0) + 1 end
+                if kind and (#out.dangers < 20 or not caged_) then
                     local pos = {x = u.pos.x, y = u.pos.y, z = u.pos.z}
                     local g = dfhack.maps.getWalkableGroup(pos)
                     table.insert(out.dangers, {id = u.id, name = txt(dfhack.units.getReadableName(u)), kind = kind,
@@ -4814,13 +4835,16 @@ function act_pair_chairs(a)
         local id = whole_number(a.zone_id); if id then table.insert(ids, id) end
     end
     if #ids == 0 then return reject('pair_chairs needs zone_id or zones') end
-    local B, said = reqscript('ai-builder'), {}
+    local B, said, all_paired = reqscript('ai-builder'), {}, true
     for _, id in ipairs(ids) do
         local r = B.pair_chairs(id, a.dry_run == true, n)
         if r.ok then return r end
         table.insert(said, tostring(r.error))
+        local e = tostring(r.error)
+        if not (e:find('has one beside it', 1, true) or e:find('no chairs in zone', 1, true)) then all_paired = false end
     end
-    return {ok = false, rejected = true, error = table.concat(said, '; ')}
+    -- (0.104.138) every chair already has a neighbour: nothing to do (asked 33 times)
+    return {ok = false, rejected = true, nothing_to_do = all_paired or nil, error = table.concat(said, '; ')}
 end
 
 -- (0.104.78) The recreation burrow: the low-mood moved in, the recovered let
@@ -5319,7 +5343,11 @@ function act_restrict_water(a)
         end
     end
     if seen == 0 then return reject('no water or ice on those levels near the fort') end
-    if marked == 0 then return reject(('all %d tiles over the water are already restricted (or set by hand)'):format(seen)) end
+    if marked == 0 then
+        -- (0.104.138) nothing left to do is not a failure: the brain rests it long
+        return {ok = false, rejected = true, nothing_to_do = true,
+                error = ('all %d tiles over the water are already restricted (or set by hand)'):format(seen)}
+    end
     return {ok = true, marked = marked, water_tiles = seen, dry_run = a.dry_run or nil}
 end
 
@@ -5533,7 +5561,13 @@ function act_squad_swap(a)
     local M = reqscript('ai-military')
     local r = M.release(id, a.dry_run == true, txt)
     if not r.ok or a.dry_run then return r end
-    local okf, f = pcall(M.fill, sid, 1, txt)
+    -- (0.104.138) never the one just sent home, nor those sent home lately
+    local avoid = {[id] = true}
+    for _, v in ipairs(type(a.avoid) == 'table' and a.avoid or {}) do
+        local n = whole_number(v)
+        if n then avoid[n] = true end
+    end
+    local okf, f = pcall(M.fill, sid, 1, txt, avoid)
     return {ok = true, released = r.name, squad_id = sid, filled = okf and f or tostring(f)}
 end
 
@@ -5546,7 +5580,12 @@ end
 function act_squad_fill(a)
     local id, n = whole_number(a.squad_id), int_in(a.count, 1, 10)
     if not id or not n then return reject('squad_fill needs squad_id and count 1-10') end
-    return reqscript('ai-military').fill(id, n, txt)
+    local avoid = {}                                  -- (0.104.138) those sent home lately
+    for _, v in ipairs(type(a.avoid) == 'table' and a.avoid or {}) do
+        local u = whole_number(v)
+        if u then avoid[u] = true end
+    end
+    return reqscript('ai-military').fill(id, n, txt, avoid)
 end
 
 -- A squad given one of the fort's uniform templates (lua/ai-military.lua).
@@ -6291,6 +6330,9 @@ local function cmd_status()
         -- DF's trade screen holds time still while it's open (seen 0.58.0): the
         -- overseer trades then without waiting for the next day
         trade_open = trade_screen_open(),
+        -- (0.104.138) DF saving itself: time stands still and calls wait (99% of
+        -- the keeper's "DFHack did not answer" lines fell in seasonal autosaves)
+        saving = saving_now() or nil,
     }
 end
 
@@ -6877,13 +6919,15 @@ ASSUMPTIONS = {
     'df.trap_type.Lever', 'UNIT.owned_buildings', 'dfhack.buildings.setOwner', 'dfhack.items.setOwner', 'dfhack.items.getOwner', 'dfhack.buildings.deconstruct', 'df.building_floodgatest', 'dfhack.maps.getBlock', 'df.viewscreen_titlest', 'df.need_type', 'df.building_def', 'dfhack.maps.getTileBiomeRgn', 'dfhack.maps.getRegionBiome', 'df.world_geo_biome', 'df.global.plotinfo.economic_stone', 'df.global.world.raws.itemdefs.weapons', 'df.uniform_category.weapon', 'dfhack.job.removeJob', 'df.general_ref_unit_workerst', 'ENTITY.uniforms', 'df.civzone_type.Office', '(dfhack.translation and dfhack.translation.translateName) or dfhack.TranslateName', 'df.global.squad_next_id', 'df.civzone_type.SandCollection', 'df.job_type.CollectSand', 'df.job_type.MakeWindow', 'df.furnace_type.GlassFurnace',
     -- captains' posts added by the AI (lua/ai-military.lua add_post, 0.81)
     'df.entity_position_assignment', 'ENTITY.positions.next_assignment_id', 'ENTITY.squads',
-    'ENTITY.positions.assignments_by_type',
+    'ENTITY.assignments_by_type',          -- (0.104.138) on the entity itself, not its positions
     -- staffing locations (lua/ai-society.lua staff_location, 0.84)
     'df.occupation_type.DOCTOR', 'df.occupation_type.SCRIBE', 'df.occupation_type.TAVERN_KEEPER', 'UNIT.occupations',
     'df.occupation', 'df.global.occupation_next_id', 'df.global.world.occupations.all',
     -- petitions (0.87)
     'df.global.plotinfo.petitions', 'df.agreement', 'df.agreement_details_type.Residency',
-    'df.global.standing_orders_petition_citizenship', 'df.global.standing_orders_petition_resident_performer',
+    -- (0.104.138) '~': optional, a warning when missing (DFHack 53.16-r3 knows these names but not their
+    -- address in this DF; the petition orders are left to the player then)
+    '~df.global.standing_orders_petition_citizenship', '~df.global.standing_orders_petition_resident_performer',
     'df.history_event_reason',
     -- the kiln and paper chains (0.86)
     'df.improvement_type.WRITING', 'df.global.world.items.other.SHEET', 'df.global.world.items.other.POWDER_MISC',
@@ -6945,9 +6989,11 @@ local function cmd_assumptions()
         end
     end
     for _, cat in ipairs(STOCK_CATEGORIES) do table.insert(list, 'df.items_other_id.' .. cat[2]) end
-    local failed, passed = {}, 0
+    local failed, passed, optional = {}, 0, {}
     for _, a in ipairs(list) do
         local expr = a:gsub(' %(.*%)$', '')
+        local opt = expr:sub(1, 1) == '~'
+        if opt then expr = expr:sub(2) end
         local nil_ok = expr:sub(1, 1) == '?'
         if nil_ok then expr = expr:sub(2) end
         local holder = expr:match('^(%u+)%.')
@@ -6957,11 +7003,15 @@ local function cmd_assumptions()
             return fn()
         end)
         if ok and (v ~= nil or nil_ok) then passed = passed + 1
-        else table.insert(failed, a .. (ok and ': missing' or (': ' .. tostring(v):gsub('^.-:%d+: ', '')))) end
+        else
+            local why = a:gsub('^~', '') .. (ok and ': missing' or (': ' .. tostring(v):gsub('^.-:%d+: ', '')))
+            table.insert(opt and optional or failed, why)
+        end
     end
     table.sort(failed)
     -- (ok: the check ran; a failed list comes back as data, not an error)
-    return {ok = true, all_found = #failed == 0, passed = passed, failed = failed}
+    return {ok = true, all_found = #failed == 0, passed = passed, failed = failed,
+            optional_missing = #optional > 0 and optional or nil}
 end
 
 local COMMANDS = {

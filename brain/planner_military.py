@@ -868,7 +868,13 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
         # that asks for something else), so more would only be wasted metal.
         waiting = [x for x in short
                    if (spare.get(x[0]) or 0) // (2 if x[0] in pairs else 1) >= cfg["gear_spare_stop"]]
-        if waiting and int(gear.get("on_duty") or 0) > 0:
+        # (0.104.138) twice with nothing changed: it doesn't help here (456 runs
+        # in two days, every result "0 replaced", the spares the same)
+        seen = memory.unstick_seen if isinstance(memory.unstick_seen, dict) else {}
+        same = seen.get("sig") == spare_sig(gear) and int(seen.get("n") or 0) >= 2
+        if waiting and same:
+            notes.append("untangling the uniforms twice changed nothing: left until the spare gear changes")
+        if waiting and not same and int(gear.get("on_duty") or 0) > 0:
             # (0.99.7) region2: each soldier had 17-19 items assigned for a
             # 9-item uniform, 31 of them in other dwarves' hands, and nobody
             # picked anything up. DFHack's uniform-unstick frees them.
@@ -906,7 +912,10 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
             # (0.104.57) weapons that lie unused a month aren't the uniform's
             # (Enxah: 3 battle axes reachable, none ever assigned, 7 of 26
             # soldiers armed): new ones are made all the same
-            if (k == "weapons" and isinstance(since, int)
+            # (0.104.138) armour and helms too: Teacheroar's 5 body armour and 4
+            # helms lay unused 6,600 days (loose on floors, never handed out)
+            # while ~20 soldiers went without, and none was made again
+            if (k in ("weapons", "body", "helms") and isinstance(since, int)
                     and abs_tick(s) - since >= cfg["gear_weapons_anyway_ticks"]):
                 released.append(k)
                 notes.append(f"{spare.get(k)} spare {what} lie unused for a month: making new ones anyway")
@@ -999,7 +1008,11 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
         if open_:
             q, n = open_[0]
             count = min(n, want - have, cfg["max_fill_per_cycle"])
-            proposals.append(Proposal("squad_fill", {"type": "squad_fill", "squad_id": q["id"], "count": count},
+            act = {"type": "squad_fill", "squad_id": q["id"], "count": count}
+            home = recently_home(s, memory)              # (0.104.138) not those just sent home
+            if home:
+                act["avoid"] = home
+            proposals.append(Proposal("squad_fill", act,
                                       f"{have} soldiers, the fort wants {want}: add {count} to "
                                       f"{q.get('name') or 'a squad'}", 3))
         else:

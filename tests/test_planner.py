@@ -18,7 +18,7 @@ sys.path.insert(0, str(ROOT / "brain"))
 
 import planner  # noqa: E402
 from planner import (PLANNER_CONFIG, Memory, effective_config, factor, game_day, note_cycle,  # noqa: E402
-                     plan, record, select, abs_tick)
+                     plan, record, select, abs_tick, TICKS_PER_DAY)
 
 BASE = json.loads((ROOT / "tests" / "fixtures" / "test_fort.json").read_text(encoding="utf-8"))
 RESULTS = []
@@ -2049,6 +2049,23 @@ def _():
     assert not by_rule(plan(s, Memory())[0], "jail_size")              # nobody to jail them
 
 
+@test("jail size (0.104.138): only a jail with free floor; none -> another jail; no hurry while places are free")
+def _():
+    s = settled_fort()
+    s["offices"] = {"offices": {"SHERIFF": {"held": ["Solon"]}}}
+    s["dwarves"]["total"] = 221
+    s["justice"] = {"jails": [{"id": 453, "chains": 5, "used": 5, "free": 0}, {"id": 454, "chains": 6, "used": 4, "free": 3}],
+                    "restraints": 11, "restraints_used": 10, "punish": {"n": 1, "beatings": 1}}
+    j = by_rule(plan(copy.deepcopy(s), Memory())[0], "jail_size")
+    assert j and j[0].action["zone_id"] == 454, j                     # the fuller-floored 453 has no room
+    s["justice"]["jails"][1]["free"] = 0
+    p = plan(copy.deepcopy(s), Memory())[0]
+    assert not by_rule(p, "jail_size") and by_rule(p, "jail_more"), [x.rule for x in p]
+    s["justice"]["jails"][1]["free"] = 3
+    s["justice"].update(restraints=10, restraints_used=2)             # Teacheroar: 10 chains, 2 in use
+    assert not by_rule(plan(copy.deepcopy(s), Memory())[0], "jail_size")
+
+
 @test("cloth (0.104.54): the hospital's thread isn't free to weave; no free thread and animals to shear -> shear and spin")
 def _():
     s = settled_fort()
@@ -3277,6 +3294,9 @@ def _():
     assert f and f[0].action == {"type": "feeder_pile", "building_id": 6}, f
     s["logistics"]["feeders"][1]["has"] = True
     assert by_rule(plan(s, Memory())[0], "feeder")[0].action["building_id"] == 5
+    s["logistics"]["feeders"][1]["has"] = False
+    s["logistics"]["feeders"][1]["room"] = False                       # (0.104.138) no room by the Masons
+    assert by_rule(plan(s, Memory())[0], "feeder")[0].action["building_id"] == 5
 
 
 @test("storage: full piles with things lying loose -> a storage level for those kinds; stone by Industriousness")
@@ -3820,6 +3840,15 @@ def _():
     s["projects"]["open"] = [{"kind": "temple", "id": 9}]
     assert not by_rule(plan(s, Memory())[0], "petition_build")
     s["projects"]["open"] = []
+    # (0.104.138) slots full: waits with a note; its last 112 days: urgent, a slot of its own
+    s["projects"]["open"] = [{"kind": "hospital", "id": 7}, {"kind": "dining", "id": 8}]
+    props, notes = plan(s, Memory())
+    assert not by_rule(props, "petition_build") and any("waits for a building slot" in n for n in notes), notes
+    s["petitions"]["agreed"][0]["days"] = 250
+    b = by_rule(plan(s, Memory())[0], "petition_build")
+    assert b and b[0].action.get("urgent") is True, b
+    s["petitions"]["agreed"][0]["days"] = 30
+    s["projects"]["open"] = []
     # built and dedicated: the guildhall petition is agreed to next; a low value is noted
     s["locations"]["list"] = [{"id": 4, "type": "TEMPLE", "deity_hf": 55, "tier": 0, "value": 1400}]
     props, notes = plan(s, Memory())
@@ -3985,6 +4014,24 @@ def _():
     a = by_rule(plan(geared(soldiers=33, on_duty=20, armed=10, armored=20, helmed=20,
                             spare={"weapons": 2}), Memory())[0], "arms")
     assert a and a[0].action["amount"] == 8, a                     # 20 on duty - 10 armed - 2 spare
+
+
+@test("soldier swap (0.104.138): never one swapped this year or drafted lately; the fill passes over those sent home")
+def _():
+    from planner import record
+    s = fort()
+    s["needs"] = {"needs": {}, "keen_civilians": 33,
+                  "starved_soldiers": [{"id": 8, "name": "Bim", "unmet": ["CraftObject", "BeWithFriends"]}]}
+    now = abs_tick(s)
+    m = Memory(swapped={"8": now - 100 * TICKS_PER_DAY})
+    assert not by_rule(plan(copy.deepcopy(s), m)[0], "soldier_swap"), "swapped 100 days ago"
+    m = Memory(drafted={"8": now - 20 * TICKS_PER_DAY})
+    assert not by_rule(plan(copy.deepcopy(s), m)[0], "soldier_swap"), "drafted 20 days ago"
+    m = Memory(swapped={"5": now - 10 * TICKS_PER_DAY})
+    w = by_rule(plan(copy.deepcopy(s), m)[0], "soldier_swap")
+    assert w and w[0].action.get("avoid") == [5], w
+    record([(w[0], {"ok": True, "filled": {"added": [{"unit_id": 44}]}})], s, m)
+    assert "44" in m.drafted and "8" in m.swapped, (m.drafted, m.swapped)
 
 
 @test("soldier swap (0.104.64): a soldier trained enough and starved of the rest goes home while civilians badly want to train")
@@ -4278,6 +4325,34 @@ def _():
     assert a and a[0].action["amount"] == 9, a                     # 33 - 24
 
 
+@test("gear (0.104.138): no hand-out the bridge's dry run can't fill; armour made again after a month unused; untangling stops when it changes nothing")
+def _():
+    s = geared(soldiers=26, on_duty=26, armed=6, armored=21, helmed=20, spare={"weapons": 19}, bars={"STEEL": 53},
+               weapon_gaps=19, weapon_gaps_fillable=0, spare_weapons={"ITEM_WEAPON_AXE_BATTLE": 19})
+    m = Memory()
+    note_cycle(s, m)
+    later = copy.deepcopy(s)
+    later["date"]["tick"] += 8 * 1200
+    note_cycle(later, m)
+    assert not by_rule(plan(later, m)[0], "assign_weapons"), "every free axe is an artifact: nothing fits"
+    h = geared(soldiers=30, on_duty=30, armed=30, armored=30, helmed=10, spare={"helms": 4}, bars={"STEEL": 64})
+    m = Memory()
+    note_cycle(h, m)
+    assert not any(p.action.get("recipe") == "metal_helm" for p in by_rule(plan(h, m)[0], "arms"))
+    month = copy.deepcopy(h)
+    month["date"]["tick"] += 29 * 1200
+    note_cycle(month, m)
+    p, notes = plan(month, m)
+    assert any(x.action.get("recipe") == "metal_helm" for x in by_rule(p, "arms")), (by_rule(p, "arms"), notes)
+    assert not any(n.startswith("[you] 4 helms") for n in notes), notes
+    u = by_rule(p, "unstick_uniforms")
+    assert u
+    record([(u[0], {"ok": True})], month, m)
+    record([(u[0], {"ok": True})], month, m)
+    p, notes = plan(month, m)
+    assert not by_rule(p, "unstick_uniforms") and any("changed nothing" in n for n in notes), notes
+
+
 @test("gear: then body armour, then helms; one order at a time; queued orders count")
 def _():
     a = by_rule(plan(geared(armored=15, helmed=10), Memory())[0], "arms")
@@ -4499,6 +4574,19 @@ def _():
     assert c and c[0].action["cap"] == pop + 100 and "strained" not in c[0].reason, c   # back to the slow-game hold
     record([(c[0], {"ok": True})], s, m)
     assert not m.strain_hold and m.strain_cap is None and m.fps_cap == pop + 100
+
+
+@test("strain after losses (0.104.138): the cap follows the fort down, never back up to its size when the strain began")
+def _():
+    s = grown(100, True)
+    pop = s["dwarves"]["total"]
+    s["society"] = {"pop_cap": pop + 76, "strict_pop_cap": pop + 86}
+    s["stocks"]["drink"] = pop * 1                              # strained
+    m = Memory(strain_hold=True, strain_cap=pop + 76)           # Teacheroar: 293 remembered, 217 now
+    c = by_rule(plan(copy.deepcopy(s), m)[0], "pop_cap")
+    assert c and c[0].action["cap"] <= pop and "strained" in c[0].reason, c
+    record([(c[0], {"ok": True})], s, m)
+    assert m.strain_cap == c[0].action["cap"], m.strain_cap
 
 
 @test("no cap: the population cap goes to 1000; shrinking: 7, and a dwarf is sent away now and then")
@@ -4927,6 +5015,28 @@ def _():
     assert any("rope or chain" in n for n in notes), notes
 
 
+@test("stuck fallback (0.104.138, 12l): a stuck stone order is made in wood (or metal) instead, else held")
+def _():
+    from planner import Proposal
+    s = fort()
+    now = abs_tick(s)
+    s["stocks"]["wood"] = 900
+    m = Memory(stuck_cancelled={"stone_coffin": {"tick": now - 3 * TICKS_PER_DAY, "n": 1}})
+    p = Proposal("furniture", {"type": "work_order", "recipe": "stone_coffin", "amount": 10,
+                               "material": "INORGANIC:GRANITE"}, "coffins", 4)
+    allowed, held = select([p], s, m)
+    assert allowed and allowed[0].action == {"type": "work_order", "recipe": "wooden_coffin", "amount": 10}, (allowed, held)
+    assert "wooden_coffin instead" in allowed[0].reason
+    s["stocks"]["wood"] = 0                                         # no wood, no spare metal: held as before
+    m.last_fired.clear()
+    allowed, held = select([p], s, m)
+    assert not allowed and any("got stuck" in h for h in held), held
+    m.stuck_cancelled["wooden_coffin"] = {"tick": now, "n": 1}       # the fallback stuck too: not again
+    s["stocks"]["wood"] = 900
+    m.last_fired.clear()
+    assert not select([p], s, m)[0]
+
+
 @test("one back-off: the same refused action waits 1, 2, 4 ... days (at most 12 weeks); a success clears it")
 def _():
     from planner import Proposal, REFUSAL_MAX_DAYS, abs_tick
@@ -4945,12 +5055,20 @@ def _():
     assert not select([other], s, m)[0]
     record([(p, {"ok": True})], s, m)
     m.last_fired.clear()                                                  # (its own cooldown aside)
-    assert not m.refusals and select([p], s, m)[0]
+    # (0.104.138) a success frees it at once but keeps half the count: the next refusal waits 8 days, not 1
+    assert [v["n"] for v in m.refusals.values()] == [3] and select([p], s, m)[0], m.refusals
+    before = copy.deepcopy(m.refusals)
     # the in-game halt, an unknown result, or an attack response: no back-off
     record([(p, {"ok": False, "halted": True})], s, m)
     record([(p, {"ok": None})], s, m)
     record([(Proposal("gate", {"type": "pull_gate", "lever_id": 1}, "x", 0), {"ok": False})], s, m)
-    assert not m.refusals, m.refusals
+    assert m.refusals == before, m.refusals
+    record([(p, {"ok": False, "error": "no grass"})], s, m)
+    assert (m.refusals[next(iter(m.refusals))]["until"] - abs_tick(s)) // 1200 == 8
+    q = Proposal("pair_chairs", {"type": "pair_chairs", "zones": [168]}, "x", 3)
+    record([(q, {"ok": False, "rejected": True, "nothing_to_do": True, "error": "every chair has one beside it"})], s, m)
+    from planner import refusal_key
+    assert (m.refusals[refusal_key(q)]["until"] - abs_tick(s)) // 1200 == 336
 
 
 @test("a mood stuck gathering: blocks and cloth are ordered; what no recipe makes is named in Needs you")
@@ -5669,6 +5787,32 @@ def _():
     s["settings"]["traits"]["justice"] = 0
     s["justice"]["crimes"]["convictable"] = 0
     assert not by_rule(plan(copy.deepcopy(s), Memory())[0], "convict")
+
+
+@test("convict (0.104.138): never while a beating waits, only into free jail places; rests when no sentences follow")
+def _():
+    s = fort()
+    s["justice"] = {"jails": [{"id": 453, "chains": 5, "used": 1}], "restraints": 10, "restraints_used": 2,
+                    "punish": {"n": 1, "beatings": 1}, "crimes": {"n": 1745, "convictable": 204,
+                                                                   "flags": {"sentenced": 2}}}
+    m = Memory()
+    props = plan(copy.deepcopy(s), m)[0]
+    assert not by_rule(props, "convict"), "a beating waits (Teacheroar's sheriff)"
+    s["justice"]["punish"] = {"n": 0, "beatings": 0}
+    s["justice"]["restraints_used"] = 10
+    assert not by_rule(plan(copy.deepcopy(s), m)[0], "convict"), "no free jail place"
+    s["justice"]["restraints_used"] = 2
+    c = by_rule(plan(copy.deepcopy(s), m)[0], "convict")
+    assert c and c[0].action["max"] == 3 and "8 free jail" in c[0].reason, c
+    for _ in range(10):                                         # 30 convicted, still 2 sentenced
+        record([(c[0], {"ok": True, "convicted": [1, 2, 3]})], s, m)
+    assert m.convict_watch["given"] == 30 and m.convict_watch["sentenced0"] == 2, m.convict_watch
+    assert not by_rule(plan(copy.deepcopy(s), m)[0], "convict") and m.convict_watch.get("until")
+    s["date"]["tick"] += 85 * 1200                              # rested: tries again
+    assert by_rule(plan(copy.deepcopy(s), m)[0], "convict")
+    m2 = Memory(convict_watch={"given": 30, "sentenced0": 2})
+    s["justice"]["crimes"]["flags"]["sentenced"] = 12           # they work: on
+    assert by_rule(plan(copy.deepcopy(s), m2)[0], "convict") and m2.convict_watch.get("sentenced0") == 12
 
 
 @test("stone crisis (0.104.124): no ordinary stone, ghosts or dead waiting: the commonest common ore to the masons; kept again after")

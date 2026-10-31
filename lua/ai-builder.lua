@@ -3737,6 +3737,28 @@ function cistern_step(dry_run)
         return advance('linking')
     end
     if d.stage == 'linking' then
+        -- (0.104.138) the lever (or the gate) itself gone (Teacheroar: "no
+        -- lever with id 273", toppled in a tantrum?) used up the 3 relinks on
+        -- a building that wasn't there: take the one standing on its spot, or
+        -- place it again, and count afresh
+        local function gone(id)
+            local ok, b = pcall(function() return df.building.find(id) end)
+            return ok and id ~= nil and b == nil
+        end
+        if gone(d.lever_id) or gone(d.gate_id) then
+            if dry_run then return wait('the lever or floodgate is gone: placed again') end
+            if lever and lever.built and gate and gate.built then
+                d.lever_id, d.gate_id, d.relinks = lever.id, gate.id, 0
+                save_cistern(d)
+                local r = reqscript('ai-gates').link_lever(d.lever_id, d.gate_id, false)
+                if not r.ok then return r end
+                return wait('the lever or floodgate was replaced: linked again')
+            end
+            if not lever and p.lever then designate({{x = p.lever.x, y = p.lever.y, text = 'Tl'}}, zw, 'build') end
+            if not gate then designate({{x = p.floodgate.x, y = p.floodgate.y, text = 'x'}}, z, 'build') end
+            d.relinks = 0
+            return advance('building')
+        end
         local links = reqscript('ai-gates').lever_links()
         local linked = false
         for _, lid in ipairs(links[d.gate_id] or {}) do if lid == d.lever_id then linked = true end end
@@ -3752,14 +3774,14 @@ function cistern_step(dry_run)
                 end
             end)
             if pending or dry_run then return wait('the lever is being linked to the floodgate') end
-            d.relinks = (math.tointeger(d.relinks) or 0) + 1
-            if d.relinks > 3 then
+            if (math.tointeger(d.relinks) or 0) >= 3 then
                 return {ok = false, error = 'the link from the lever to the floodgate was lost 3 times; '
                     .. 'link it by hand (the lever beside the well)'}
             end
             local r = reqscript('ai-gates').link_lever(d.lever_id, d.gate_id, false)
-            save_cistern(d)
             if not r.ok then return r end
+            d.relinks = (math.tointeger(d.relinks) or 0) + 1     -- (0.104.138) only a link really asked for
+            save_cistern(d)
             return wait(('the lever link was lost: asked for again (%d)'):format(d.relinks))
         end
         if dry_run then return {ok = true, dry_run = true, stage = 'open'} end
@@ -5311,8 +5333,15 @@ function feeder_survey()
         local kind = bkind(b)
         local f = kind and FEEDERS[kind]
         if f and b:getBuildStage() >= b:getMaxBuildStage() then
-            table.insert(out, {id = b.id, kind = kind, what = f.what, x = b.centerx, y = b.centery, z = b.z,
-                               has = pile_near(f.flag, b.x1, b.y1, b.x2, b.y2, b.z, f.reach or FEEDER_NEAR)})
+            local row = {id = b.id, kind = kind, what = f.what, x = b.centerx, y = b.centery, z = b.z,
+                         has = pile_near(f.flag, b.x1, b.y1, b.x2, b.y2, b.z, f.reach or FEEDER_NEAR)}
+            -- (0.104.138) whether a pile would fit at all (the Masons had no
+            -- room and were asked for one 91 times, the rest never asked)
+            if not row.has then
+                local okr, r = pcall(feeder_rect, b.x1, b.y1, b.x2, b.y2, b.z, 2, 2, f.ground, f.reach)
+                row.room = (okr and r ~= nil) and true or false
+            end
+            table.insert(out, row)
         end
     end
     return out

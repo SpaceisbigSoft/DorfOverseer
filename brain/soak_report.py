@@ -29,7 +29,8 @@ EVENTS = [
     ("revive: save loaded from the title screen", r"Revive: the game sat at the title"),
     ("revive problems", r"Revive: couldn't"),
     ("game not running", r"Dwarf Fortress isn't running"),
-    ("problems talking to the game", r"Problem talking to the game"),
+    ("problems talking to the game", r"^(?!.*Check:).*Problem talking to the game"),   # (0.104.138) not the check's own quote
+    ("DF autosaves waited out", r"DF is saving itself"),
     ("Python errors (tracebacks)", r"Traceback"),
     ("self-pauses unpaused", r"the game had paused itself"),
     ("time stood still (popups)", r"time stood still"),

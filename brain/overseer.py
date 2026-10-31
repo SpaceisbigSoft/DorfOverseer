@@ -818,9 +818,13 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
         pending, would = [], []
         memory.declined = {k: t for k, t in memory.declined.items() if 0 <= now - t < DECLINE_DAYS * 1200}
         results = []
+        no_answer = False            # (0.104.138) an action the game didn't answer: the rest wait
         try:
             for p in allowed:
                 r = None
+                if no_answer and acting:
+                    say(f"  held: {short(p.action)} (the game didn't answer the last action; next cycle)")
+                    continue
                 if acting and mode == "copilot" and is_big(p.action):
                     pid = proposal_id(p)
                     answer = decisions.get(pid)
@@ -865,6 +869,7 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
                     except DFHackError as e:
                         # The command may or may not have happened in the game.
                         r = {"ok": None, "error": f"no reply from the game ({e})"}
+                        no_answer = True     # (0.104.138) the next would only queue behind it
                     results.append((p, r))
                     if p.action["type"] == "start_project" and r.get("ok") is True:
                         memory.saved_before = ""
@@ -1530,6 +1535,10 @@ def main() -> int:
     stall_wait = STALL_AFTER_S   # the wait before the next try at the same stall (doubles, up to 10 min)
     quieted = False              # (unattended) announcements told not to pause or pop up, this fort
     soak_at = float("-inf")      # (unattended) when the last soak row was written
+    saving_at = float("-inf")    # (0.104.138) when the game last said it was saving
+    season_end = False           # (0.104.138) the last date seen was a season's last days (DF autosaves then)
+    save_said = False            # (0.104.138) "DF is saving" said for this silence
+    quiet_wait = 10              # (0.104.138) the wait after an unanswered call while DF saves (10 -> 60 s)
     while True:
         heartbeat()
         try:
@@ -1541,6 +1550,11 @@ def main() -> int:
                 one_cycle(bridge, args.autopilot, backend)
                 return 0
             st = bridge.status()
+            if st.get("saving"):
+                saving_at = time.time()
+            _d0 = st.get("date") if isinstance(st.get("date"), dict) else {}
+            season_end = isinstance(_d0.get("tick"), int) and (_d0["tick"] // 33600) % 3 == 2 and int(_d0.get("day") or 0) >= 26
+            save_said, quiet_wait = False, 10
             controls = {"halted": st.get("halted") is True, "decisions": st.get("decisions") or {}}
             if st.get("in_fort") and controls["halted"] != was_halted:
                 say("Halted in the game (Ctrl-Shift-H): watching only, changing nothing."
@@ -1585,7 +1599,11 @@ def main() -> int:
             stalled = nowt - date_since >= STALL_AFTER_S
             if st.get("in_fort") and not st.get("paused") and not stalled and isinstance(st.get("fps"), (int, float)):
                 fps_samples.append((nowt, st["fps"]))
-            if (stalled and args.unattended and args.autopilot and not controls["halted"]
+            if stalled and st.get("saving"):
+                # (0.104.138) DF is saving itself: time stands still for minutes
+                # (2-10 on Teacheroar), nothing to take off or say
+                pass
+            elif (stalled and args.unattended and args.autopilot and not controls["halted"]
                     and not STOP_FILE.exists() and nowt - stall_said >= stall_wait):
                 # running, but time stands still: DF waits on a popup. Take it off
                 # (again a minute later if that didn't help, then 2, 4, 8, 10 minutes)
@@ -1686,9 +1704,21 @@ def main() -> int:
             time.sleep(10)
             continue
         except (DFHackError, BridgeError) as e:
-            say(f"Problem talking to the game: {e}. Retrying in 10 s.")
             if args.once:
+                say(f"Problem talking to the game: {e}. Retrying in 10 s.")
                 return 1
+            # (0.104.138) an unanswered call while DF autosaves (it said it was
+            # saving lately, or the season is ending) is the save, not a fault:
+            # said once, and asked again less often (10 -> 20 -> 40 -> 60 s)
+            if "did not answer" in str(e) and (time.time() - saving_at < 900 or season_end):
+                if not save_said:
+                    say("DF is saving itself (the season's autosave): the game doesn't answer until it's done.")
+                    save_said = True
+                bridge = None
+                time.sleep(quiet_wait)
+                quiet_wait = min(60, quiet_wait * 2)
+                continue
+            say(f"Problem talking to the game: {e}. Retrying in 10 s.")
             bridge = None
             time.sleep(10)
             continue
