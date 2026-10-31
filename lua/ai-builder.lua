@@ -966,6 +966,28 @@ local function undo_dig(dig_cells, stairs, z, anchor, stair)
 end
 
 -- The layout's dig cells plus the site's extra tiles (corridor, centre).
+-- (0.104.128) an urgent level dug before the rest: Teacheroar's new hospital
+-- sat at 0 of 175 tiles with 260 others waiting for 10 miners, all at the
+-- default priority 4. Its tiles are designated one by one at this priority.
+URGENT_DIG_PRIORITY = 2
+
+function prioritized(cells, pri)
+    local out = {}
+    for _, c in ipairs(cells) do
+        local w, h = 1, 1
+        local ew, eh = tostring(c.text):match('^d%((%d+)x(%d+)%)$')
+        if ew then w, h = tonumber(ew), tonumber(eh) end
+        if ew or c.text == 'd' then
+            for dx = 0, w - 1 do
+                for dy = 0, h - 1 do table.insert(out, {x = c.x + dx, y = c.y + dy, text = 'd' .. pri}) end
+            end
+        else
+            table.insert(out, c)
+        end
+    end
+    return out
+end
+
 local function site_dig_cells(L, extra)
     local cells = {}
     for _, c in ipairs(L.dig) do table.insert(cells, c) end
@@ -1056,6 +1078,7 @@ function start_project(params, now, dry_run)
 
     -- Dry run: Quickfort must agree that every tile can be designated.
     local dig = site_dig_cells(L, site.extra)
+    if params.urgent == true then dig = prioritized(dig, URGENT_DIG_PRIORITY) end   -- (0.104.128)
     local expected = count(L.tiles) + count(site.extra)
     local a, stair = site.anchor, site.stair
     local dry = quickfort_apply('dig', dig, site.z, a.x, a.y, 'run', true)
@@ -1469,6 +1492,33 @@ function free_dig_jobs(id)
         link = link.next
     end
     return {ok = true, freed = freed}
+end
+
+-- (0.104.128) the tiles of an open level still to dig raised to priority `pri`
+function prioritize_project(id, pri, dry_run)
+    pri = math.max(1, math.min(3, math.tointeger(pri) or URGENT_DIG_PRIORITY))
+    local data = load_projects()
+    local p = find(data, id)
+    if not p then return {ok = false, rejected = true, error = 'no such AI project'} end
+    if p.phase ~= 'dig' then return {ok = false, rejected = true, error = 'project is not being dug'} end
+    if p.dig_pri and p.dig_pri <= pri then
+        return {ok = false, rejected = true, error = ('already dug at priority %d'):format(p.dig_pri)}
+    end
+    local anchor, cells = anchor_of(p), {}
+    for x, col in pairs(layouts.tiles_from_dig(cells_of(p, 'dig'))) do
+        for y in pairs(col) do
+            local t = tile_info(anchor.x + x, anchor.y + y, p.z)
+            if t and t.shape == 'WALL' then table.insert(cells, {x = x, y = y, text = 'd' .. pri}) end
+        end
+    end
+    if #cells == 0 then return {ok = false, rejected = true, error = 'nothing left to dig'} end
+    if dry_run then return {ok = true, dry_run = true, tiles = #cells, priority = pri} end
+    local s = quickfort_apply('dig', cells, p.z, anchor.x, anchor.y)
+    local n = stat(s, 'dig_designated')
+    if n == 0 then return {ok = false, error = 'the game took none of the tiles at the new priority'} end
+    p.dig_pri = pri
+    save_projects(data)
+    return {ok = true, tiles = n, priority = pri}
 end
 
 -- (0.104.110) a level 90%+ dug whose last tiles haven't moved for weeks

@@ -810,6 +810,9 @@ def hospital_shortfall(s: dict, traits: dict, cfg: dict) -> dict | None:
     return {"unbedded": unbedded, "resting": resting, "have": have, "want": want, "citizens": cit,
             "beds": max(4, min(20, want - have))}
 
+DIG_FIRST_KINDS = {"hospital", "tombs"}      # (0.104.128) levels dug before the rest
+
+
 def _dig_stall_rule(s: dict, memory, cfg: dict, open_: list, proposals: list) -> None:
     """(0.104.110, the 38-year soak) Teacheroar's tomb level sat at 235 of 240
     tiles for three game years ("5 being dug") and a bedroom level at 0 of 89
@@ -834,9 +837,23 @@ def _dig_stall_rule(s: dict, memory, cfg: dict, open_: list, proposals: list) ->
         rec = seen.get(k)
         if not isinstance(rec, dict) or rec.get("dug") != dug:
             seen[k] = {"dug": dug, "tick": now}
+            if isinstance(rec, dict) and rec.get("raised"):
+                seen[k]["raised"] = rec["raised"]          # (0.104.128) raised once is enough
             continue
         days = (now - int(rec.get("tick") or now)) // TICKS_PER_DAY
         what = f"the {p.get('kind')} level (project {p['id']})"
+        # (0.104.128) dug first: an urgent level, or one with nothing dug for
+        # weeks while other digging takes the miners (Teacheroar: the new
+        # hospital 0 of 175, a bedrooms level 0 of 89 for years, at priority 4
+        # with 260 tiles waiting elsewhere)
+        if (dug < total and not rec.get("raised")
+                and (p.get("urgent") or p.get("kind") in DIG_FIRST_KINDS
+                     or (dug == 0 and days >= cfg["dig_raise_days"]))):
+            proposals.append(Proposal("dig_first", {"type": "prioritize_dig", "project_id": p["id"], "priority": 2},
+                                      f"{what}: {dug} of {total} tiles dug"
+                                      + (f", none for {days} days" if days else "")
+                                      + ": dig it before the rest (priority 2)", 3))
+            rec["raised"] = now
         jobs = "; ".join(str(w) for w in _l(dig.get("waiting"))[:3])
         if days >= cfg["dig_stall_furnish_days"] and dug >= 0.9 * total and dug < total:
             proposals.append(Proposal("project", {"type": "furnish_project", "project_id": p["id"], "stalled": True},

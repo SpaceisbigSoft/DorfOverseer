@@ -1364,6 +1364,25 @@ def _():
     assert acts() == []
 
 
+@test("dig first (0.104.128): a hospital or tomb level, or one with nothing dug for 2 weeks, raised to priority 2 once")
+def _():
+    s = fort()
+    s["projects"]["open"] = [
+        {"id": 174, "kind": "hospital", "phase": "dig", "dig": {"total": 175, "dug": 0, "digging": 1, "stuck": 0}},
+        {"id": 173, "kind": "bedrooms", "phase": "dig", "dig": {"total": 89, "dug": 0, "digging": 1, "stuck": 0}},
+        {"id": 175, "kind": "storage", "phase": "dig", "dig": {"total": 50, "dug": 20, "digging": 3, "stuck": 0}}]
+    m = Memory()
+    raised = lambda: sorted(x.action["project_id"] for x in plan(copy.deepcopy(s), m)[0] if x.action.get("type") == "prioritize_dig")
+    assert raised() == []                                        # first look: progress noted
+    s["date"]["tick"] += 1200
+    assert raised() == [174], raised()                           # the hospital at once
+    assert raised() == []                                        # once
+    s["date"]["tick"] += 14 * 1200
+    assert raised() == [173], "nothing dug for 2 weeks"          # storage moves on its own: never
+    s["projects"]["open"][0]["dig"]["dug"] = 5                   # progress resets the clock, not the mark
+    assert raised() == []
+
+
 @test("idle blocks (0.104.110): capped at 500, and only from stone the masons may use")
 def _():
     s = fort()

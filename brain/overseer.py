@@ -484,6 +484,8 @@ def short(a: dict) -> str:
         return "clear the spider webs"
     if t == "census":            # (0.104.113)
         return "count what fills the map"
+    if t == "prioritize_dig":    # (0.104.128)
+        return f"dig level {a.get('project_id')} before the rest"
     if t == "join_levels":       # (0.104.108)
         return "join areas on one level that meet only through the stairs"
     if t == "scan_entrances":

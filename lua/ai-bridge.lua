@@ -34,7 +34,7 @@
 local json = require('json')
 local utils = require('utils')
 
-BRIDGE_VERSION = '0.104.126'
+BRIDGE_VERSION = '0.104.128'
 PROTOCOL = 1 -- bump when the report's shape changes in a breaking way
 
 local OUT_DIR = dfhack.getDFPath() .. '/dfhack-config/ai-overseer'
@@ -3884,6 +3884,13 @@ function act_free_dig_jobs(a)
     return reqscript('ai-builder').free_dig_jobs(id)
 end
 
+-- (0.104.128) an open level's tiles left to dig raised to a higher priority
+function act_prioritize_dig(a)
+    local id = project_id(a)
+    if not id then return reject('project_id must be a whole number') end
+    return reqscript('ai-builder').prioritize_project(id, a.priority, a.dry_run == true)
+end
+
 function act_finish_project(a)
     local id = project_id(a)
     if not id then return reject('project_id must be a whole number') end
@@ -5709,6 +5716,7 @@ ACTIONS = {
     place_well = act_place_well,
     furnish_project = act_furnish_project,
     free_dig_jobs = act_free_dig_jobs,
+    prioritize_dig = act_prioritize_dig,
     finish_project = act_finish_project,
     engrave_project = act_engrave_project,
     set_culture = act_set_culture,
@@ -6296,7 +6304,7 @@ local function cmd_act(args)
                  or action.type == 'mine_ore' or action.type == 'clear_gate' or action.type == 'bring_goods'
                  or action.type == 'unload_depot' or action.type == 'kitchen_skill' or action.type == 'place_slabs'
                  or action.type == 'give_room' or action.type == 'set_uniform' or action.type == 'adopt_uniform' or action.type == 'petition_orders'
-                 or action.type == 'set_uniform_weapon' or action.type == 'allow_stone'
+                 or action.type == 'set_uniform_weapon' or action.type == 'allow_stone' or action.type == 'prioritize_dig'
                  or action.type == 'quarry' or action.type == 'polish' or action.type == 'trade_deal' or action.type == 'call_trader'
                  or action.type == 'open_trade' or action.type == 'close_trade'
                  or action.type == 'squad_barracks' or action.type == 'feeder_pile'
