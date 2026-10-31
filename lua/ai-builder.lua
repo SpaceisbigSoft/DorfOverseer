@@ -1190,6 +1190,27 @@ function dig_progress(p)
         end
         return seen_walk and 'beside ground the dwarves can\'t reach' or 'no open ground beside it'
     end
+    -- (0.104.136) what DF cancels digging for: warm stone, damp stone (water or
+    -- an aquifer beside it), a hidden tile (Teacheroar: two hospital levels began
+    -- at x109 y40 z157 beside the cistern and neither was ever dug)
+    local function risk_words(x, y, z)
+        local out = {}
+        local t = tile_info(x, y, z)
+        if t and t.warm then table.insert(out, 'warm stone') end
+        if t and t.hidden then table.insert(out, 'hidden') end
+        if t and t.aquifer then table.insert(out, 'aquifer') end
+        local wet = false
+        for dz = -1, 1 do
+            for dy = -1, 1 do
+                for dx = -1, 1 do
+                    local n = tile_info(x + dx, y + dy, z + dz)
+                    if n and (n.liquid or n.aquifer) then wet = true end
+                end
+            end
+        end
+        if wet then table.insert(out, 'damp (water or an aquifer beside it)') end
+        return out
+    end
     local function check(x, y, z, done)
         total = total + 1
         local t = tile_info(x, y, z)
@@ -1199,8 +1220,10 @@ function dig_progress(p)
             digging = digging + 1  -- a dwarf is on it now
             if #waiting < 5 then
                 local okr, rw = pcall(reach_words, x, y, z)
-                table.insert(waiting, ('x%d y%d z%d: %s%s'):format(x, y, z, job_words(jobs[x .. ',' .. y .. ',' .. z]),
-                                                                    okr and rw ~= 'reachable' and (', ' .. rw) or ''))
+                local okk, risk = pcall(risk_words, x, y, z)
+                table.insert(waiting, ('x%d y%d z%d: %s%s%s'):format(x, y, z, job_words(jobs[x .. ',' .. y .. ',' .. z]),
+                                                                    okr and rw ~= 'reachable' and (', ' .. rw) or '',
+                                                                    okk and #risk > 0 and (', ' .. table.concat(risk, ', ')) or ''))
             end
         elseif t and t.marked then
             marked = marked + 1    -- marker-only designation: nobody will dig it
