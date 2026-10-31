@@ -657,7 +657,8 @@ def hazard_alert(s: dict, cfg: dict) -> str:
     if h.get("cloud_near") is not None and h["cloud_near"] <= cfg["hazard_near"]:
         return f"a cloud (gas or vapour) {h['cloud_near']} tiles from the dwarves"
     if _l(h.get("berserk")):
-        return f"{_l(h['berserk'])[0].get('name') or 'a dwarf'} has gone berserk"
+        b0 = _l(h['berserk'])[0]
+        return f"{b0.get('name') or 'a dwarf'} " + ("has changed into a beast" if b0.get("changed") else "has gone berserk")
     return ""
 
 
@@ -680,7 +681,8 @@ def _hazard_rules(s: dict, memory, cfg: dict, proposals: list, notes: list, rule
     if berserk:
         able = [q for q in _l(mil.get("squads")) if isinstance(q, dict)
                 and (q.get("members") or 0) >= cfg["min_squad_to_fight"] and not q.get("ai_orders")]
-        names = ", ".join(str(b.get("name")) for b in berserk[:3])
+        names = ", ".join(str(b.get("name")) + (" (changed into a beast)" if b.get("changed") else "")
+                          for b in berserk[:3])
         if able:
             proposals.append(Proposal("squad_attack", {"type": "squad_orders", "squad_id": able[0]["id"],
                                                        "kill": [b["id"] for b in berserk][:10]},
@@ -766,11 +768,21 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
         _note_fight(s, memory, [threats[i] for i in great])
     if targets:
         for q in able:
+            names = ", ".join(sorted({str(threats[i].get("name") or "?") for i in targets}))[:80]
             if not q.get("ai_orders"):
-                names = ", ".join(sorted({str(threats[i].get("name") or "?") for i in targets}))[:80]
                 proposals.append(Proposal(
                     "squad_attack", {"type": "squad_orders", "squad_id": q["id"], "kill": targets[:50]},
                     f"{len(targets)} enemies can reach the dwarves ({names}): send {q.get('name') or 'the squad'}", 0))
+            elif not q.get("guarding") and isinstance(q.get("kill_ids"), list):
+                # (0.104.140) a second wave: enemies in reach the squad's kill
+                # order doesn't name (the order was a list made when it went out)
+                known = {int(x) for x in q["kill_ids"] if isinstance(x, int)}
+                new = [i for i in targets if isinstance(i, int) and i not in known]
+                if new:
+                    proposals.append(Proposal(
+                        "squad_attack", {"type": "squad_orders", "squad_id": q["id"], "kill": targets[:50]},
+                        f"{len(new)} more enemies can reach the dwarves ({names}): "
+                        f"{q.get('name') or 'the squad'} goes after them too", 0))
         if not able:
             ask_player(notes, f"{len(targets)} enemies can reach the dwarves and no squad has "
                          f"{cfg['min_squad_to_fight']}+ soldiers to send")
@@ -780,6 +792,14 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
     elif great and fight:
         notes.append(f"{len(great)} great danger(s) can reach the dwarves: the squads go ({verdict})")
     _fight_outcome(s, memory, cfg)
+    # (0.104.140) after an attack, once all is clear: the enemies' corpses at
+    # the gate rot away now (miasma, a necromancer's fuel), not at the year's end
+    lt = int(getattr(memory, "last_threat_tick", 0) or 0)
+    if (lt and not any_reach and getattr(memory, "pruned_after", 0) != lt
+            and all_clear(s, memory, cfg)[0]):
+        proposals.append(Proposal("siege_cleanup", {"type": "prune_remains"},
+                                  "the attack is over: the enemies' corpses and remains lying about rot away "
+                                  "(entombed dead are kept)", 5))
     # (0.100.1, review) a dwarf gone berserk isn't a threat that "can reach",
     # but the squad sent at them stays on them until they're stopped
     berserk_now = bool(_l(_d(s.get("hazards")).get("berserk")))

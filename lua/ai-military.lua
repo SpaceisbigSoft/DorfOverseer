@@ -183,9 +183,18 @@ function report(txt)
                     if pos.occupant ~= -1 then members = members + 1 end
                 end
                 local ai_orders, guarding = 0, false
+                local kill_ids = nil
                 for _, o in ipairs(sq.orders) do
                     if is_ai_order(o) then
                         ai_orders = ai_orders + 1
+                        -- (0.104.140) who the AI's kill order names: a second wave
+                        -- gets an order of its own (the first one's list was kept)
+                        pcall(function()
+                            if df.squad_order_kill_listst:is_instance(o) then
+                                kill_ids = kill_ids or {}
+                                for _, id in ipairs(o.units) do table.insert(kill_ids, id) end
+                            end
+                        end)
                         -- (0.104.83) holding the gate (a defend order) rather than out to kill
                         local okg, g = pcall(function() return df.squad_order_defend_burrowsst:is_instance(o) end)
                         if okg and g then guarding = true end
@@ -197,7 +206,7 @@ function report(txt)
                     members = members, size = #sq.positions,
                     leader = #sq.positions > 0 and sq.positions[0].occupant ~= -1,
                     routine = ok and routines[idx + 1] or nil,
-                    orders = #sq.orders, ai_orders = ai_orders, guarding = guarding or nil,
+                    orders = #sq.orders, ai_orders = ai_orders, guarding = guarding or nil, kill_ids = kill_ids,
                     uniform = #sq.positions > 0 and uniform_set(sq.positions[0]) or false,
                     ai_uniform = ai_uniform_names(txt)[tostring(sid)],
                     power = (function() local okp, p = pcall(squad_power, sq) return okp and p or nil end)(),
@@ -1009,6 +1018,9 @@ function kill_target_ok(u)
     local U = dfhack.units
     local function is(f) local ok, v = pcall(f, u); return ok and v end
     if u.mood == df.mood_type.Berserk then return true end
+    -- (0.104.140) a citizen changed into a beast (a werebeast) for now
+    local okc, changed = pcall(function() return u.enemy.normal_race ~= -1 and u.enemy.normal_race ~= u.race end)
+    if okc and changed then return true end
     if is(U.isMerchant) or is(U.isDiplomat) or is(U.isTame) then return false end
     if is(U.isCitizen) then return false end
     return is(U.isDanger) or is(U.isInvader)

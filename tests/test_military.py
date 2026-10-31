@@ -643,6 +643,10 @@ def _():
     assert not ok(t(citizen=True)) and not ok(t(citizen=True, danger=True))
     assert not ok(t(merchant=True)) and not ok(t(diplomat=True, invader=True)) and not ok(t(tame=True))
     assert not ok(t())                                          # a peaceful visitor
+    # (0.104.140) a citizen changed into a beast (its race not its own), never one at its own race
+    assert ok(t(citizen=True, race=5, enemy=t(normal_race=1)))
+    assert not ok(t(citizen=True, race=1, enemy=t(normal_race=1)))
+    assert not ok(t(citizen=True, race=1, enemy=t(normal_race=-1)))
 
 
 @test("trim (0.102): the least soldierly go back to work first; never a leader, a dwarf longing to fight, or a squad on orders")

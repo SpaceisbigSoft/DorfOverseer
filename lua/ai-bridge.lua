@@ -34,7 +34,7 @@
 local json = require('json')
 local utils = require('utils')
 
-BRIDGE_VERSION = '0.104.139'
+BRIDGE_VERSION = '0.104.140'
 PROTOCOL = 1 -- bump when the report's shape changes in a breaking way
 
 local OUT_DIR = dfhack.getDFPath() .. '/dfhack-config/ai-overseer'
@@ -1300,6 +1300,14 @@ function get_supplies()
         local k = f and (f.SILK and 'silk' or f.YARN and 'yarn' or f.THREAD_PLANT and 'plant') or nil
         if k then out.cloth_kinds[k] = out.cloth_kinds[k] + it:getStackSize() end
     end)
+    -- (0.104.140) thread by kind, as cloth: a stuck plant-cloth weave can turn
+    -- to silk or yarn thread at hand (webs collected, wool spun)
+    out.thread_kinds = {plant = 0, silk = 0, yarn = 0}
+    each('THREAD', function(it)
+        local f = mat_flags(it)
+        local k = f and (f.SILK and 'silk' or f.YARN and 'yarn' or f.THREAD_PLANT and 'plant') or nil
+        if k then out.thread_kinds[k] = out.thread_kinds[k] + it:getStackSize() end
+    end)
     if next(out.errors) == nil then out.errors = nil end
     return out
 end
@@ -2306,6 +2314,18 @@ function get_hazards()
         local seen = {}
         for _, b in ipairs(out.berserk) do seen[b.id] = true end
         for _, u in ipairs(df.global.world.units.active) do
+            -- (0.104.140) one of the fort's own changed into a beast (a
+            -- werebeast's night, its race not its own): it attacks everyone, and
+            -- like a berserk dwarf only soldiers stop it
+            local changed = false
+            pcall(function()
+                changed = not dfhack.units.isDead(u) and u.enemy.normal_race ~= -1 and u.enemy.normal_race ~= u.race
+                    and u.civ_id == df.global.plotinfo.civ_id
+            end)
+            if changed and not seen[u.id] then
+                seen[u.id] = true
+                table.insert(out.berserk, {id = u.id, name = txt(dfhack.units.getReadableName(u)), changed = true})
+            end
             if u.mood == df.mood_type.Berserk and not seen[u.id] and not dfhack.units.isDead(u) then
                 local own = false
                 pcall(function() own = dfhack.units.isOwnGroup(u) end)
@@ -2529,6 +2549,13 @@ function get_others_on_map()
     }
     local cit_pos, cit_groups = citizen_positions()
     local layers = get_layers()
+    -- (0.104.140) the trade depot: a threat near it while a caravan is in
+    -- (merchants have no walls; the walk groups say nothing of them)
+    local depot
+    pcall(function()
+        local d = df.global.world.buildings.other.TRADE_DEPOT[0]
+        if d then depot = {x = d.centerx, y = d.centery, z = d.z} end
+    end)
     for _, u in ipairs(df.global.world.units.active) do
         if dfhack.units.isActive(u) and not dfhack.units.isDead(u)
                 and not dfhack.units.isHidden(u)
@@ -2588,6 +2615,8 @@ function get_others_on_map()
                     end)(),
                     levels_from_nearest_dwarf = dz,
                     distance_to_nearest_dwarf = dist,
+                    depot_distance = depot and (math.abs(pos.x - depot.x) + math.abs(pos.y - depot.y)
+                                                + 3 * math.abs(pos.z - depot.z)) or nil,
                 })
             elseif dfhack.units.isMerchant(u) then
                 out.merchants = out.merchants + 1

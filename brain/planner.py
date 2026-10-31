@@ -660,6 +660,8 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
             # (0.104.138) kept a year (was 28 days): never swapped twice a year
             for k in [k for k, t in memory.swapped.items() if not isinstance(t, int) or now - t > 336 * TICKS_PER_DAY]:
                 del memory.swapped[k]
+        if p.rule == "siege_cleanup" and ok is True:
+            memory.pruned_after = int(memory.last_threat_tick or 0)        # (0.104.140) once an attack
         if p.action.get("type") == "unstick_uniforms" and ok is True:
             sig = spare_sig(_d(_d(state.get("military")).get("gear")))   # (0.104.138)
             prev = memory.unstick_seen if isinstance(memory.unstick_seen, dict) else {}

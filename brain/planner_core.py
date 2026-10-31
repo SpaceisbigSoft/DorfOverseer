@@ -205,6 +205,7 @@ PLANNER_CONFIG = {
     "crisis_extra_actions": 5,             # ...recovery's extra action slots a cycle
     "convict_per_cycle": 3,            # (0.104.131) solved cases convicted a cycle...
     "near_threat_tiles": 30,
+    "depot_guard_tiles": 15,           # (0.104.140) an invader this near the depot while a caravan is in reaches
     "break_fights_days": 3,            # (0.104.139) a citizen killed by a citizen this recently: break the fights up
     "break_fights_cooldown_ticks": 600,   # ...at most every half day while it goes on (review: it takes
                                           # every citizen out of every conflict, sparring and beatings too)
@@ -574,6 +575,7 @@ class Memory:
     convict_watch: dict = field(default_factory=dict)   # (0.104.138) cases convicted, sentences then, held until
     fight_deaths: list = field(default_factory=list)    # (0.104.139) citizens killed by citizens (ticks), 4 weeks
     gate_part_extra: dict = field(default_factory=dict)   # (0.104.139) stuck entrances given one more part
+    pruned_after: int = 0                                 # (0.104.140) the threat tick last cleaned up after
     gear_spare_since: dict = field(default_factory=dict)  # "weapons"/"body"/"helms" -> when 3+ spares sat unused
     swapped: dict = field(default_factory=dict)  # (0.104.78) unit id -> when the swap sent them home
     drafted: dict = field(default_factory=dict)  # (0.104.138) unit id -> when a fill or swap drafted them
@@ -780,6 +782,11 @@ def reachable_threats(s: dict, traits: dict, cfg: dict) -> list:
                  or (t.get("destroyer") and (t.get("invader") or t.get("layer") == "upper_levels")))
             and isinstance(t.get("distance_to_nearest_dwarf"), (int, float))
             and t["distance_to_nearest_dwarf"] <= cfg["near_threat_tiles"]]
+    # (0.104.140) an invader by the trade depot while merchants are in: the
+    # caravan has no walls (the squads go out to it)
+    if int(o.get("merchants") or 0) > 0:
+        ids += [t.get("id") for t in threats if t.get("id") not in ids and t.get("invader")
+                and isinstance(t.get("depot_distance"), (int, float)) and t["depot_distance"] <= cfg["depot_guard_tiles"]]
     ids += [f"unlisted{i}" for i in range(unlisted)]
     if traits.get("caution", 0) >= 100:
         for t in threats:

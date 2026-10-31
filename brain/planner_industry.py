@@ -207,9 +207,19 @@ def _supply_rules(s: dict, citizens: int, cfg: dict, proposals: list, notes: lis
                                       4, True))
         if loc is not None:
             if short:
-                say("the hospital keeps less than it should: " + ", ".join(
+                # (0.104.140) Needs you only for what a waiting patient lacks and
+                # the AI isn't making (Teacheroar: "powder 0 of 5" asked of the
+                # player for 83 days while the kiln waited for bags); the rest a note
+                text_ = ("the hospital keeps less than it should: " + ", ".join(
                     f"{k} {h} of {w}" for k, (h, w) in short.items())
                     + ("; plaster powder comes from gypsum at a kiln" if "powder" in short else ""))
+                making = {"splints": "wooden_splint", "crutches": "wooden_crutch", "soap": "make_soap_from_tallow",
+                          "powder": "make_plaster_powder"}
+                lacking = [k for k in short
+                           if not (k in making and queued(s, {making[k]}))
+                           and ((k == "splints" and n_splint) or (k == "crutches" and n_crutch)
+                                or (k in ("thread", "cloth") and care_waiting(s)))]
+                (say if lacking else notes.append)(text_)
         elif st.get("thread", 0) < 10 or st.get("cloth", 0) < 10:
             say(f"the hospital needs thread and cloth for stitches and dressings "
                 f"(thread {st.get('thread', 0)}, cloth {st.get('cloth', 0)})")

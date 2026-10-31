@@ -384,9 +384,11 @@ STUCK_FALLBACKS = {
     "stone_amulet": ("metal_amulet", "wood_crafts"), "stone_bracelet": ("metal_bracelet", "wood_crafts"),
     "stone_ring": ("metal_ring", "wood_crafts"), "stone_earring": ("metal_earring", "wood_crafts"),
     "cloth_rope": ("metal_chain",),
+    "weave_plant_cloth": ("weave_silk_cloth", "weave_yarn_cloth"),     # (0.104.140)
     "cloth_bag": ("silk_bag", "yarn_bag"), "silk_bag": ("cloth_bag", "yarn_bag"), "yarn_bag": ("cloth_bag", "silk_bag"),
 }
 BAG_KIND = {"cloth_bag": "plant", "silk_bag": "silk", "yarn_bag": "yarn"}
+WEAVE_KIND = {"weave_silk_cloth": "silk", "weave_yarn_cloth": "yarn"}
 RECIPES_WITH_METAL = {"metal_table", "metal_chair", "metal_door", "metal_cabinet", "metal_chest", "metal_coffin",
                       "metal_armor_stand", "metal_weapon_rack", "metal_chain", "metal_crafts", "metal_amulet",
                       "metal_bracelet", "metal_ring", "metal_earring"}
@@ -433,6 +435,10 @@ def stuck_fallback(p, s: dict, memory, cfg: dict, now: int) -> dict | None:
         elif alt in BAG_KIND:
             if kinds and int(kinds.get(BAG_KIND[alt]) or 0) < amount:
                 continue
+        elif alt in WEAVE_KIND:
+            th = _d(_d(s.get("supplies")).get("thread_kinds"))
+            if int(th.get(WEAVE_KIND[alt]) or 0) < amount:
+                continue                                # (no thread of that kind, or an older bridge)
         return act
     return None
 

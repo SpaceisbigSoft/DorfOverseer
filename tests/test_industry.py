@@ -136,6 +136,19 @@ def _():
     assert s.ores.COPPER.tiles == 4, dict(s.ores.COPPER)
 
 
+@test("(0.104.140) the survey finds the same ore through the area's own blocks (getBlock) as by the whole map's")
+def _():
+    env, _ = game()
+    calls = []
+    def get_block(bx, by, z):
+        calls.append((bx, by, z))
+        return env.dfhack.maps.getTileBlock(bx * 16, by * 16, z)
+    env.dfhack.maps.getBlock = get_block
+    s = env.survey()
+    assert s.ores.IRON.tiles == 5 and s.ores.COPPER.tiles == 4, (dict(s.ores.IRON), dict(s.ores.COPPER))
+    assert calls, "the area's blocks were looked up"
+
+
 @test("mining follows the vein from a tile beside the fort, hidden parts too; a dry run marks nothing")
 def _():
     env, dig = game()

@@ -65,6 +65,27 @@ end
 
 -- Each mineral vein event in the area: calls fn(block, ev, metals).
 local function each_vein(a, fn)
+    -- (0.104.140) only the area's own blocks, looked up by position, where
+    -- DFHack can (the whole map's blocks were walked: ~460 ms a rebuild)
+    local okg = dfhack.maps and dfhack.maps.getBlock ~= nil
+    if okg then
+        for z = a.z1, a.z2 do
+            for by = a.y1 // 16, a.y2 // 16 do
+                for bx = a.x1 // 16, a.x2 // 16 do
+                    local block = dfhack.maps.getBlock(bx, by, z)
+                    if block then
+                        for _, ev in ipairs(block.block_events) do
+                            if df.block_square_event_mineralst:is_instance(ev) then
+                                local metals = metals_of(ev.inorganic_mat)
+                                if #metals > 0 then fn(block, ev, metals) end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        return
+    end
     for _, block in ipairs(df.global.world.map.map_blocks) do
         local p = block.map_pos
         if p.z >= a.z1 and p.z <= a.z2 and p.x + 15 >= a.x1 and p.x <= a.x2 and p.y + 15 >= a.y1 and p.y <= a.y2 then

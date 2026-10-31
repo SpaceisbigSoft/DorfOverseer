@@ -2569,6 +2569,36 @@ def _():
     assert [x["id"] for x in held_off_threats(s)] == [2, 3]
 
 
+@test("chunk D (0.104.140): a second wave gets the squad's order; invaders by the depot in a caravan reach; a changed werebeast is fought; corpses after an attack")
+def _():
+    from planner import record
+    s = under_attack(n=2)
+    for q in s["military"]["squads"]:
+        q.update(ai_orders=1, kill_ids=[900])                          # out after the first goblin only
+    a = by_rule(plan(copy.deepcopy(s), Memory())[0], "squad_attack")
+    assert a and set(a[0].action["kill"]) == {900, 901} and "more enemies" in a[0].reason, a
+    for q in s["military"]["squads"]:
+        q["kill_ids"] = [900, 901]
+    assert not by_rule(plan(copy.deepcopy(s), Memory())[0], "squad_attack"), "nobody new"
+    d = under_attack(n=1)
+    d["others_on_map"]["threats"][0].update(can_reach_dwarves=False, depot_distance=8)
+    d["others_on_map"]["threats_that_can_reach_dwarves"] = 0
+    assert not by_rule(plan(copy.deepcopy(d), Memory())[0], "squad_attack"), "no caravan in"
+    d["others_on_map"]["merchants"] = 6
+    assert by_rule(plan(copy.deepcopy(d), Memory())[0], "squad_attack")
+    w = fort()
+    w["hazards"] = dict(w.get("hazards") or {}, berserk=[{"id": 44, "name": "Urist", "changed": True}])
+    p, notes = plan(w, Memory())
+    a = by_rule(p, "squad_attack")
+    assert a and a[0].action["kill"] == [44] and "changed into a beast" in a[0].reason, a
+    c = fort()
+    m = Memory(last_threat_tick=abs_tick(c) - 10 * TICKS_PER_DAY, quiet_cycles=50)
+    g = by_rule(plan(copy.deepcopy(c), m)[0], "siege_cleanup")
+    assert g and g[0].action == {"type": "prune_remains"}, g
+    record([(g[0], {"ok": True})], c, m)
+    assert not by_rule(plan(copy.deepcopy(c), m)[0], "siege_cleanup"), "once an attack"
+
+
 @test("gate guard (0.104.83): invaders on the map out of reach -> the able squads hold the main gate; then kill orders")
 def _():
     s = under_attack()
@@ -5132,6 +5162,22 @@ def _():
     assert not allowed and any("got stuck" in h for h in held), held
     m.stuck_cancelled["wooden_coffin"] = {"tick": now, "n": 1}       # the fallback stuck too: not again
     s["stocks"]["wood"] = 900
+    m.last_fired.clear()
+    assert not select([p], s, m)[0]
+
+
+@test("stuck fallback (0.104.140): a stuck plant-cloth weave turns to silk thread at hand, never to none")
+def _():
+    from planner import Proposal
+    s = fort()
+    now = abs_tick(s)
+    s["buildings"]["workshops"]["Loom"] = 1
+    s["supplies"] = dict(s.get("supplies") or {}, thread_kinds={"plant": 0, "silk": 12, "yarn": 0})
+    m = Memory(stuck_cancelled={"weave_plant_cloth": {"tick": now - TICKS_PER_DAY, "n": 1}})
+    p = Proposal("cloth", {"type": "work_order", "recipe": "weave_plant_cloth", "amount": 5}, "cloth", 4)
+    allowed, held = select([p], s, m)
+    assert allowed and allowed[0].action["recipe"] == "weave_silk_cloth", (allowed, held)
+    s["supplies"]["thread_kinds"]["silk"] = 0
     m.last_fired.clear()
     assert not select([p], s, m)[0]
 
