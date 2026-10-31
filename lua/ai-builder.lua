@@ -12,6 +12,12 @@ local layouts = reqscript('ai-layouts')
 PROJECTS_KEY = 'ai-overseer/projects'
 MAX_OPEN_PROJECTS = 2
 URGENT_EXTRA = 2          -- (0.104.12) urgent projects beyond the limit
+-- (0.104.142) a level dug and waiting this long only for its furniture lends
+-- its slot (at most FURNISH_LEND_MAX of them): Teacheroar's dining hall, tavern
+-- and tombs waited 26-93 days on the masons while the temple, the planters'
+-- guildhall petition and the craft shops were refused for want of a slot
+FURNISH_LEND_DAYS = 14
+FURNISH_LEND_MAX = 3
 MAX_LEVELS_BELOW = 15      -- how far below the staircase's bottom it may extend
 STAIR_SAMPLE_LEVELS = 12   -- z-levels sampled when looking for the main staircase
 STAIRS_TO_TRY = 5          -- staircases tried, most used first
@@ -1064,7 +1070,7 @@ function start_project(params, now, dry_run)
     -- sanity or the fort's water doesn't wait for a bedroom level)
     -- (0.104.12) two urgent ones beyond the two (Enxah: soap for festering
     -- wounds and tombs for 35 dead both waited on one extra slot)
-    if #open >= MAX_OPEN_PROJECTS + (params.urgent == true and URGENT_EXTRA or (kind == 'farms' and 1 or 0)) then
+    if #open >= slot_cap(open) + (params.urgent == true and URGENT_EXTRA or (kind == 'farms' and 1 or 0)) then
         return {ok = false, rejected = true,
                 error = ('already %d unfinished building projects'):format(#open)}
     end
@@ -1310,6 +1316,20 @@ local function tick_of(d)
     return type(d) == 'table' and (tonumber(d.year) or 0) * 403200 + (tonumber(d.tick) or 0) or nil
 end
 
+-- (0.104.142) The open-project cap: the base, plus a slot for each level
+-- furnishing FURNISH_LEND_DAYS or more (FURNISH_LEND_MAX at most).
+function slot_cap(open)
+    local lent = 0
+    for _, p in ipairs(open or {}) do
+        if p.phase == 'furnish' then
+            local since = tick_of(p.furnish_started)
+            if since and (now_tick() - since) // 1200 >= FURNISH_LEND_DAYS then lent = lent + 1 end
+        end
+    end
+    return MAX_OPEN_PROJECTS + math.min(FURNISH_LEND_MAX, lent)
+end
+
+
 function decor_progress(p)
     local a = anchor_of(p)
     local total, waiting, done, marked = 0, 0, 0, 0
@@ -1373,7 +1393,9 @@ function projects_report()
             finished = finished + 1
         end
     end
-    return {open = out, decorating = decorating, finished = finished, max_open = MAX_OPEN_PROJECTS}
+    local okc, cap = pcall(slot_cap, open_projects(data))
+    return {open = out, decorating = decorating, finished = finished, max_open = okc and cap or MAX_OPEN_PROJECTS,
+            max_open_base = MAX_OPEN_PROJECTS}
 end
 
 -- The box a project covers, in map coordinates: {x1, y1, x2, y2, z}, from
@@ -4000,7 +4022,7 @@ function place_well(params, now, dry_run)
     -- (0.104.13) a well the injured or the parched wait for takes an urgent
     -- slot, like soap and tombs (Enxah: "no well yet: waiting for a free
     -- building slot" while patients died of thirst)
-    if #open >= MAX_OPEN_PROJECTS + (params.urgent == true and URGENT_EXTRA or 0) then
+    if #open >= slot_cap(open) + (params.urgent == true and URGENT_EXTRA or 0) then
         return {ok = false, rejected = true,
                 error = ('already %d unfinished building projects'):format(#open)}
     end

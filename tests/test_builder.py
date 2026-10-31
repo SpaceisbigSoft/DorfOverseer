@@ -649,6 +649,19 @@ def _():
     assert not B.finish_project(r2.project_id, False, True).ok                # a bed still missing
 
 
+@test("slots (0.104.142): a level furnishing 14+ days lends its slot, three at most; the report's max_open says so", beside=True)
+def _():
+    now = B.now_tick()
+    def proj(phase, days_ago):
+        t_ = now - days_ago * 1200
+        return LUA.table_from({"phase": phase, "furnish_started": LUA.table_from({"year": t_ // 403200, "tick": t_ % 403200})})
+    base = B.MAX_OPEN_PROJECTS
+    assert B.slot_cap(LUA.table_from({})) == base
+    assert B.slot_cap(LUA.table_from([proj("furnish", 20), proj("furnish", 3), proj("dig", 40)])) == base + 1
+    assert B.slot_cap(LUA.table_from([proj("furnish", 20), proj("furnish", 30), proj("furnish", 50)])) == base + 3
+    assert B.slot_cap(LUA.table_from([proj("furnish", d) for d in (20, 30, 50, 60)])) == base + 3
+
+
 @test("bounds_of: the box of the dig cells (or build cells) in map coordinates; nil without cells")
 def _():
     p = LUA.eval("""function() return {z = 70, anchor = {x = 50, y = 40},
