@@ -7530,7 +7530,10 @@ def _():
         "lever_at": {"x": 109, "y": 38, "z": 168}, "gate_at": {"x": 110, "y": 40, "z": 160}})
     props, notes = plan(copy.deepcopy(s), Memory())
     assert not by_rule(props, "cistern"), [p.action for p in by_rule(props, "cistern")]
-    assert any(n.startswith(planner.NEEDS_YOU) and "x109 y38 z168" in n and "x110 y40 z160" in n for n in notes), notes
+    assert any(n.startswith(planner.NEEDS_YOU) and "x109 y38, z168" in n and "x110 y40, z160" in n for n in notes), notes
+    s["water"]["cistern_status"]["lever_at"]["e"] = 41
+    notes = plan(copy.deepcopy(s), Memory())[1]
+    assert any("x109 y38, elevation 41" in n for n in notes), notes
     s["water"]["cistern_status"]["relinks"] = 1
     assert by_rule(plan(copy.deepcopy(s), Memory())[0], "cistern")
     s["water"]["cistern_status"].update(relinks=3, linked=True)

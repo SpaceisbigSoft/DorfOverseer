@@ -3628,8 +3628,9 @@ function cistern_status()
                 end
             end)
             out.link_why = d.link_why
-            out.lever_at = p.lever and {x = p.lever.x, y = p.lever.y, z = p.well.z} or nil
-            out.gate_at = {x = p.floodgate.x, y = p.floodgate.y, z = p.cistern.z}
+            -- (0.104.143) with the elevation the game's screen shows (e)
+            out.lever_at = p.lever and {x = p.lever.x, y = p.lever.y, z = p.well.z, e = ez(p.well.z)} or nil
+            out.gate_at = {x = p.floodgate.x, y = p.floodgate.y, z = p.cistern.z, e = ez(p.cistern.z)}
             pcall(function()
                 for _, lid in ipairs(reqscript('ai-gates').lever_links()[d.gate_id] or {}) do
                     if lid == d.lever_id then out.linked = true end

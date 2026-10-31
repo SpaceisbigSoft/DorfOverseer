@@ -707,10 +707,14 @@ def _cistern_rule(s: dict, memory, cfg: dict, proposals: list, notes: list, rule
                 and not st.get("link_pending")):
             lv = _d(st.get("lever_at"))
             fg = _d(st.get("gate_at"))
+            def where(a: dict) -> str:
+                # (0.104.143) the elevation the game shows, where the bridge says it
+                lvl = f"elevation {a['e']}" if isinstance(a.get("e"), int) else f"z{a.get('z')}"
+                return f" at x{a.get('x')} y{a.get('y')}, {lvl}"
             ask_player(notes, "the cistern's lever won't stay linked to its floodgate (the link job was lost 3 times"
                               + (f": {st.get('link_why')}" if st.get("link_why") else "") + "): link the lever"
-                              + (f" at x{lv.get('x')} y{lv.get('y')} z{lv.get('z')}" if lv else " beside the well")
-                              + " to the floodgate" + (f" at x{fg.get('x')} y{fg.get('y')} z{fg.get('z')}" if fg else "")
+                              + (where(lv) + " (beside the well)" if lv else " beside the well")
+                              + " to the floodgate" + (where(fg) if fg else "")
                               + " by hand (q, the lever, Link up a floodgate); the AI carries on from there")
             return
         if st.get("stage") != "done":
