@@ -775,12 +775,18 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
                     f"{len(targets)} enemies can reach the dwarves ({names}): send {q.get('name') or 'the squad'}", 0))
             elif not q.get("guarding") and isinstance(q.get("kill_ids"), list):
                 # (0.104.140) a second wave: enemies in reach the squad's kill
-                # order doesn't name (the order was a list made when it went out)
-                known = {int(x) for x in q["kill_ids"] if isinstance(x, int)}
-                new = [i for i in targets if isinstance(i, int) and i not in known]
+                # order doesn't name (the order was a list made when it went out).
+                # (review) The new order keeps the old targets (a berserk dwarf,
+                # one behind a gate), and an id once sent isn't new again (one
+                # the game refuses, a war animal, would re-order every cycle)
+                known = [int(x) for x in q["kill_ids"] if isinstance(x, int)]
+                sent = {int(x) for x in _l(_d(getattr(memory, "kill_sent", None)).get(str(q["id"])))
+                        if isinstance(x, int)}
+                new = [i for i in targets[:50] if isinstance(i, int) and i not in known and i not in sent]
                 if new:
+                    kill = list(dict.fromkeys(known + [i for i in targets if isinstance(i, int)]))[:50]
                     proposals.append(Proposal(
-                        "squad_attack", {"type": "squad_orders", "squad_id": q["id"], "kill": targets[:50]},
+                        "squad_attack", {"type": "squad_orders", "squad_id": q["id"], "kill": kill},
                         f"{len(new)} more enemies can reach the dwarves ({names}): "
                         f"{q.get('name') or 'the squad'} goes after them too", 0))
         if not able:

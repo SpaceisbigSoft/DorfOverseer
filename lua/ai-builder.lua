@@ -4699,7 +4699,7 @@ CROSS_KEY = 'ai-overseer/crossings'
 CROSS_RADIUS = 45          -- how far from the entrance each side is mapped
 CROSS_MAX_SPAN = 9         -- the widest water a bridge here spans
 CROSS_SIDE_CAP = 6000      -- tiles mapped per side (time)
-CROSS_SECONDS = 0.3   -- (0.104.140: was 1.0; the result is kept a week anyway)
+CROSS_SECONDS = 1.0   -- (0.104.140, review: kept at 1.0; a cut survey is cached for a week)
 CROSS_CANDIDATES = 6       -- the shortest crossings looked across
 local CROSS_WALK = {FLOOR = true, SHRUB = true, SAPLING = true, PEBBLES = true, BOULDER = true, TWIG = true,
                     RAMP = true, BROOK_TOP = true}

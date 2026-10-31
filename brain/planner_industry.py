@@ -218,7 +218,9 @@ def _supply_rules(s: dict, citizens: int, cfg: dict, proposals: list, notes: lis
                 lacking = [k for k in short
                            if not (k in making and queued(s, {making[k]}))
                            and ((k == "splints" and n_splint) or (k == "crutches" and n_crutch)
-                                or (k in ("thread", "cloth") and care_waiting(s)))]
+                                or (k in ("thread", "cloth") and care_waiting(s))
+                                # (review) casts for the waiting with no gypsum to make powder from
+                                or (k == "powder" and n_splint and not (sup.get("gypsum") or 0)))]
                 (say if lacking else notes.append)(text_)
         elif st.get("thread", 0) < 10 or st.get("cloth", 0) < 10:
             say(f"the hospital needs thread and cloth for stitches and dressings "

@@ -2321,6 +2321,7 @@ function get_hazards()
             pcall(function()
                 changed = not dfhack.units.isDead(u) and u.enemy.normal_race ~= -1 and u.enemy.normal_race ~= u.race
                     and u.civ_id == df.global.plotinfo.civ_id
+                    and (u.enemy.were_race == nil or u.enemy.were_race == -1 or u.race == u.enemy.were_race)
             end)
             if changed and not seen[u.id] then
                 seen[u.id] = true

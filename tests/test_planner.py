@@ -2580,8 +2580,16 @@ def _():
     for q in s["military"]["squads"]:
         q["kill_ids"] = [900, 901]
     assert not by_rule(plan(copy.deepcopy(s), Memory())[0], "squad_attack"), "nobody new"
+    # (review) old targets kept; an id sent once and refused (not in the order) isn't new again
+    for q in s["military"]["squads"]:
+        q["kill_ids"] = [777]                                          # a berserk dwarf it was sent at
+    m = Memory()
+    a = by_rule(plan(copy.deepcopy(s), m)[0], "squad_attack")
+    assert a and a[0].action["kill"][0] == 777 and {900, 901} <= set(a[0].action["kill"]), a
+    record([(x, {"ok": True}) for x in a], s, m)
+    assert not by_rule(plan(copy.deepcopy(s), m)[0], "squad_attack"), "the game refused 900/901: not again"
     d = under_attack(n=1)
-    d["others_on_map"]["threats"][0].update(can_reach_dwarves=False, depot_distance=8)
+    d["others_on_map"]["threats"][0].update(can_reach_dwarves=None, depot_distance=8)   # (behind a wall: False, not counted)
     d["others_on_map"]["threats_that_can_reach_dwarves"] = 0
     assert not by_rule(plan(copy.deepcopy(d), Memory())[0], "squad_attack"), "no caravan in"
     d["others_on_map"]["merchants"] = 6

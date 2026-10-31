@@ -1019,7 +1019,10 @@ function kill_target_ok(u)
     local function is(f) local ok, v = pcall(f, u); return ok and v end
     if u.mood == df.mood_type.Berserk then return true end
     -- (0.104.140) a citizen changed into a beast (a werebeast) for now
-    local okc, changed = pcall(function() return u.enemy.normal_race ~= -1 and u.enemy.normal_race ~= u.race end)
+    local okc, changed = pcall(function()
+        return u.enemy.normal_race ~= -1 and u.enemy.normal_race ~= u.race
+            and (u.enemy.were_race == nil or u.enemy.were_race == -1 or u.race == u.enemy.were_race)
+    end)
     if okc and changed then return true end
     if is(U.isMerchant) or is(U.isDiplomat) or is(U.isTame) then return false end
     if is(U.isCitizen) then return false end

@@ -576,6 +576,7 @@ class Memory:
     fight_deaths: list = field(default_factory=list)    # (0.104.139) citizens killed by citizens (ticks), 4 weeks
     gate_part_extra: dict = field(default_factory=dict)   # (0.104.139) stuck entrances given one more part
     pruned_after: int = 0                                 # (0.104.140) the threat tick last cleaned up after
+    kill_sent: dict = field(default_factory=dict)        # (0.104.140) squad id -> unit ids last sent after
     gear_spare_since: dict = field(default_factory=dict)  # "weapons"/"body"/"helms" -> when 3+ spares sat unused
     swapped: dict = field(default_factory=dict)  # (0.104.78) unit id -> when the swap sent them home
     drafted: dict = field(default_factory=dict)  # (0.104.138) unit id -> when a fill or swap drafted them
@@ -786,6 +787,7 @@ def reachable_threats(s: dict, traits: dict, cfg: dict) -> list:
     # caravan has no walls (the squads go out to it)
     if int(o.get("merchants") or 0) > 0:
         ids += [t.get("id") for t in threats if t.get("id") not in ids and t.get("invader")
+                and t.get("can_reach_dwarves") is not False                       # (review) not behind a wall
                 and isinstance(t.get("depot_distance"), (int, float)) and t["depot_distance"] <= cfg["depot_guard_tiles"]]
     ids += [f"unlisted{i}" for i in range(unlisted)]
     if traits.get("caution", 0) >= 100:

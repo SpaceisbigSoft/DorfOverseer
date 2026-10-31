@@ -660,8 +660,17 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
             # (0.104.138) kept a year (was 28 days): never swapped twice a year
             for k in [k for k, t in memory.swapped.items() if not isinstance(t, int) or now - t > 336 * TICKS_PER_DAY]:
                 del memory.swapped[k]
-        if p.rule == "siege_cleanup" and ok is True:
-            memory.pruned_after = int(memory.last_threat_tick or 0)        # (0.104.140) once an attack
+        if p.rule == "siege_cleanup" and ok is not None:
+            memory.pruned_after = int(memory.last_threat_tick or 0)        # (0.104.140) once an attack, done or not
+        if (p.action.get("type") == "squad_orders" and isinstance(p.action.get("kill"), list)
+                and p.action.get("squad_id") is not None):
+            # (0.104.140) what each squad was last sent after (the second wave's memory)
+            if not isinstance(getattr(memory, "kill_sent", None), dict):
+                memory.kill_sent = {}
+            memory.kill_sent[str(p.action["squad_id"])] = [i for i in p.action["kill"] if isinstance(i, int)][:50]
+        if p.action.get("type") == "squad_orders" and p.action.get("clear") and isinstance(
+                getattr(memory, "kill_sent", None), dict):
+            memory.kill_sent.pop(str(p.action.get("squad_id")), None)
         if p.action.get("type") == "unstick_uniforms" and ok is True:
             sig = spare_sig(_d(_d(state.get("military")).get("gear")))   # (0.104.138)
             prev = memory.unstick_seen if isinstance(memory.unstick_seen, dict) else {}
