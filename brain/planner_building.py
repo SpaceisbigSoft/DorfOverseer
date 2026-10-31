@@ -762,18 +762,23 @@ def _pop_cap_rule(s: dict, memory, cfg: dict, citizens: int, proposals: list, no
         strict = cap + 20
         why = f"Growth: the fort grows toward {cap} dwarves"
     strain = fort_strain(s, cfg, memory.strain_hold)
-    if strain and not s.get("fps_low") and rules_["fort_goal"] != "maintain" and mode != "shrink":
-        # (0.104.106) the fort can't carry the dwarves it has: no newcomers
-        # until it can (held at its size when the strain began)
-        cap = min(cap, memory.fps_cap or max(7, citizens))
-        strict = cap + 10
-        why = f"the fort is strained ({'; '.join(strain)}): no newcomers for now"
-    if s.get("fps_low") and rules_["fort_goal"] != "maintain" and mode != "shrink":
+    holds = rules_["fort_goal"] != "maintain" and mode != "shrink"
+    held_why = []
+    if s.get("fps_low") and holds:
         # slow game: no newcomers for now. Held at the fort's size when it first
         # ran slowly (deaths don't shrink it further; births replace losses)
         cap = min(cap, memory.fps_cap or max(7, citizens))
+        held_why.append(f"the game runs slowly (FPS {s.get('fps_low')})")
+    if strain and holds:
+        # (0.104.106) the fort can't carry the dwarves it has: no newcomers
+        # until it can, held at its size when the strain began. (0.104.120)
+        # its own size, and also while the game runs slowly: Teacheroar's
+        # slow-game cap of 405 (29 Oct) held nothing at 296 dwarves, 51% unhappy
+        cap = min(cap, memory.strain_cap or max(7, citizens))
+        held_why.append(f"the fort is strained ({'; '.join(strain)})")
+    if held_why:
         strict = cap + 10
-        why = f"the game runs slowly (FPS {s.get('fps_low')}): no newcomers for now"
+        why = " and ".join(held_why) + ": no newcomers for now"
     cap = max(7, cap)
     strict = max(strict, cap)
     if so["pop_cap"] != cap or (isinstance(so.get("strict_pop_cap"), int) and so["strict_pop_cap"] != strict):

@@ -536,6 +536,7 @@ class Memory:
     found_failure: str = ""                              # why the first staircase couldn't be dug (Needs you)
     fps_cap: int | None = None                           # the population cap held while the game runs slowly
     strain_hold: bool = False                            # (0.104.106) newcomers held while the fort is strained
+    strain_cap: int | None = None                        # (0.104.120) the cap held while strained (its size then)
     gear_spare_since: dict = field(default_factory=dict)  # "weapons"/"body"/"helms" -> when 3+ spares sat unused
     swapped: dict = field(default_factory=dict)  # (0.104.78) unit id -> when the swap sent them home
     steer: dict = field(default_factory=dict)    # (0.104.89) the strategist's raised and held rules: rule -> {mode, until, why}

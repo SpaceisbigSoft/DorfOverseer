@@ -4439,7 +4439,7 @@ def _():
     c = by_rule(plan(copy.deepcopy(s), m)[0], "pop_cap")
     assert c and c[0].action["cap"] <= pop + 1 and "strained" in c[0].reason and "drink" in c[0].reason, c
     record([(c[0], {"ok": True})], s, m)
-    assert m.strain_hold and m.fps_cap == c[0].action["cap"], (m.strain_hold, m.fps_cap)
+    assert m.strain_hold and m.strain_cap == c[0].action["cap"] and m.fps_cap is None, (m.strain_hold, m.strain_cap)
     s["society"] = {"pop_cap": c[0].action["cap"], "strict_pop_cap": c[0].action["strict"]}
     s["stocks"]["drink"] = pop * 3                              # better, not yet past the "ok" level (4)
     assert not by_rule(plan(copy.deepcopy(s), m)[0], "pop_cap"), "held until it's well past"
@@ -4448,7 +4448,29 @@ def _():
     c = by_rule(plan(copy.deepcopy(s), m)[0], "pop_cap")
     assert c and c[0].action["cap"] == 1000, c                  # let go
     record([(c[0], {"ok": True})], s, m)
-    assert not m.strain_hold and m.fps_cap is None
+    assert not m.strain_hold and m.strain_cap is None and m.fps_cap is None
+
+
+@test("strain while slow (0.104.120): a stale slow-game cap above the fort's size doesn't stop the strain hold")
+def _():
+    s = grown(100, True)
+    pop = s["dwarves"]["total"]
+    s["society"] = {"pop_cap": pop + 100, "strict_pop_cap": pop + 110}
+    s["fps_low"] = 18
+    s["stocks"]["drink"] = pop * 1                              # strained
+    m = Memory(fps_cap=pop + 100)                               # held when the fort was bigger (Teacheroar: 405 at 296)
+    c = by_rule(plan(copy.deepcopy(s), m)[0], "pop_cap")
+    assert c and c[0].action["cap"] <= pop + 1, c
+    assert "strained" in c[0].reason and "runs slowly" in c[0].reason, c[0].reason
+    record([(c[0], {"ok": True})], s, m)
+    assert m.strain_hold and m.strain_cap == c[0].action["cap"] and m.fps_cap == pop + 100, (m.strain_cap, m.fps_cap)
+    s["society"] = {"pop_cap": c[0].action["cap"], "strict_pop_cap": c[0].action["strict"]}
+    s["stocks"]["drink"] = pop * 6
+    s["stocks"]["prepared_meals"] = pop * 6
+    c = by_rule(plan(copy.deepcopy(s), m)[0], "pop_cap")
+    assert c and c[0].action["cap"] == pop + 100 and "strained" not in c[0].reason, c   # back to the slow-game hold
+    record([(c[0], {"ok": True})], s, m)
+    assert not m.strain_hold and m.strain_cap is None and m.fps_cap == pop + 100
 
 
 @test("no cap: the population cap goes to 1000; shrinking: 7, and a dwarf is sent away now and then")
