@@ -2171,6 +2171,23 @@ end
 -- sentences the case itself a few seconds later.
 CONVICT_PER_CALL_MAX = 10
 
+-- (0.104.141) Culprits not to convict now: one already convicted and waiting
+-- for the sentence, or serving one (Teacheroar's Wrestler was convicted 6
+-- times in 5 minutes and suffocated by the sheriff).
+function convict_busy(list)
+    local busy = {}
+    pcall(function()
+        for i = 0, #list - 1 do
+            local c = list[i]
+            if c.accused ~= -1 and not c.flags.sentenced then busy[c.accused] = true end
+        end
+    end)
+    pcall(function()
+        for _, pu in ipairs(df.global.plotinfo.punishments) do busy[pu.criminal] = true end
+    end)
+    return busy
+end
+
 function convictable(cr, site_id)
     local ok, yes = pcall(function()
         local f = cr.flags
@@ -2190,8 +2207,11 @@ function convictable(cr, site_id)
         -- nor a child, or a culprit wounded (a beating or a chain kills sooner)
         local oka, adult = pcall(dfhack.units.isAdult, u)
         if oka and adult == false then return false end
-        local okw, nw = pcall(function() return #u.body.wounds end)
-        if okw and nw and nw > 0 then return false end
+        -- (review: not by scars, healed wounds stay listed) bleeding or in care
+        local okw, hurt = pcall(function()
+            return (u.body.blood_count or 0) < (u.body.blood_max or 0) or (u.health and u.health.flags.needs_healthcare)
+        end)
+        if okw and hurt then return false end
         return true
     end)
     return ok and yes or false
@@ -2267,8 +2287,13 @@ function get_justice()
         pcall(function()
             local site = df.global.plotinfo.site_id
             local n, sent = 0, 0
+            -- (review) counted as act_convict picks: one case a culprit, none busy
+            local busy = convict_busy(list)
             for i = 0, #list - 1 do
-                if convictable(list[i], site) then n = n + 1 end
+                if convictable(list[i], site) and not busy[list[i].criminal] then
+                    n = n + 1
+                    busy[list[i].criminal] = true
+                end
                 -- (0.104.138) sentenced over every crime (the flags above count the
                 -- newest 400; the AI convicts the oldest first)
                 pcall(function() if list[i].flags.sentenced then sent = sent + 1 end end)
@@ -4038,19 +4063,7 @@ function act_convict(a)
     if max < 1 or max > CONVICT_PER_CALL_MAX then return reject('max must be 1-' .. CONVICT_PER_CALL_MAX) end
     local site = df.global.plotinfo.site_id
     local list = df.global.world.crimes.all
-    -- (0.104.141) one case a culprit, and never a culprit already convicted
-    -- and waiting for the sentence or serving one: Teacheroar's Wrestler was
-    -- convicted 6 times in 5 minutes and suffocated by the sheriff
-    local busy = {}
-    pcall(function()
-        for i = 0, #list - 1 do
-            local c = list[i]
-            if c.accused ~= -1 and not c.flags.sentenced then busy[c.accused] = true end
-        end
-    end)
-    pcall(function()
-        for _, pu in ipairs(df.global.plotinfo.punishments) do busy[pu.criminal] = true end
-    end)
+    local busy = convict_busy(list)
     local picked = {}
     for i = 0, #list - 1 do
         if #picked >= max then break end

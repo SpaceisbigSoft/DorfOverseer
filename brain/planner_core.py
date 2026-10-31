@@ -311,10 +311,10 @@ PLANNER_CONFIG = {
     "craft_shop_citizens": 15,         # (0.104.137) ...or one per this many dwarves
     "needs_shops_cooldown_ticks": 7 * 1200,
     "trinkets_per_cycle": 25,          # (0.104.137) or a quarter of those wanting, up to 50
-    "trinket_order_max": 60,
+    "trinket_order_max": 60,           # (0.104.137) crafts ordered at a time: half of those wanting, 20 to this
     "trinket_parallel": 2,             # (0.104.141) trinket orders of different materials at once
     "trinket_parallel_max": 30,        # (0.104.141) the second one's size at most
-    "bone_crafts_min": 20,             # (0.104.141) free bones before bone crafts are ordered           # (0.104.137) crafts ordered at a time: half of those wanting, 20 to this
+    "bone_crafts_min": 20,             # (0.104.141) free bones before bone crafts are ordered
     "finery_metal_bars": 10,           # (0.104.137) jewellery in copper when this many bars spare
     "fight_needs_at": 15,              # this many long to fight or train: more soldiers (they train)
     "fight_soldiers_max": 20,          # ... at most this many more
@@ -402,8 +402,8 @@ PLANNER_CONFIG = {
     "furniture_parallel_backlog": 4,   # (0.104.141) the stone order's pieces left per Masons' workshop before part goes to wood too
     "furniture_parallel_min": 3,       # (0.104.141) the smallest wooden part worth ordering
     "furniture_short_pieces": 40,      # (0.104.141) furniture waiting in open levels: Masons' workshops past the cap
-    "furnish_stalled_days": 30,
-    "jail_convicts_wait": 10,          # (0.104.141) solved cases waiting: the jail grows by them        # (0.104.141) a level furnished but for buildings never finished this long: its slot freed
+    "furnish_stalled_days": 30,        # (0.104.141) a level furnished but for buildings never finished this long: its slot freed
+    "jail_convicts_wait": 10,          # (0.104.141) solved cases waiting: the jail grows by them (to twice the restraints wanted)
     "statue_wait_days": 56,            # (0.104.12) a level waiting only for statues (no stone) this long is finished
     "statue_wait_days_any": 112,         # (0.104.33) a level finished without its statues after this long, stone or not
     "stuck_project_days": 21,          # (0.100.1) a level whose digging stopped is given up after this          # (0.100.1) no soldiers below this unless threatened
@@ -700,12 +700,17 @@ def queued(state: dict, recipes: set, ai_only: bool = False) -> int:
     return total
 
 
+WORKED_MAX_DAYS = 56
+
+
 def watch_since(w: dict) -> int:
     """(0.104.141) Since when an order has stood still: its amount unchanged
     and nobody at work on one of its jobs."""
     since = w.get("since") if isinstance(w.get("since"), int) else 0
     worked = w.get("worked")
-    return max(since, worked) if isinstance(worked, int) else since
+    # (review) at most WORKED_MAX_DAYS later: a job taken and dropped again
+    # and again (its item out of reach) looks worked at every sample
+    return min(max(since, worked), since + WORKED_MAX_DAYS * TICKS_PER_DAY) if isinstance(worked, int) else since
 
 
 def _clamp(v: float, lo: int, hi: int) -> int:

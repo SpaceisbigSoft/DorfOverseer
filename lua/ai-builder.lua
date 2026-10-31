@@ -3599,6 +3599,12 @@ function cistern_status()
         -- the gate are, and why DF dropped the last link job (when it said)
         if d.stage == 'linking' then
             out.relinks = math.tointeger(d.relinks) or 0
+            pcall(function()
+                local lv = df.building.find(d.lever_id)
+                for _, j in ipairs(lv and lv.jobs or {}) do
+                    if j.job_type == df.job_type.LinkBuildingToTrigger then out.link_pending = true end
+                end
+            end)
             out.link_why = d.link_why
             out.lever_at = p.lever and {x = p.lever.x, y = p.lever.y, z = p.well.z} or nil
             out.gate_at = {x = p.floodgate.x, y = p.floodgate.y, z = p.cistern.z}

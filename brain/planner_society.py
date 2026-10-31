@@ -189,7 +189,8 @@ def _jail_size_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) ->
     want = max(2, min(cfg["jail_restraints_max"], math.ceil(cit / cfg["dwarves_per_restraint"])))
     # (0.104.141, 12k) the jail by the convicts waiting: solved cases the
     # conviction rule holds back for want of a spare place grow it too
-    pressing = int(_d(j.get("crimes")).get("convictable") or 0) >= cfg["jail_convicts_wait"]
+    pressing = (int(_d(j.get("crimes")).get("convictable") or 0) >= cfg["jail_convicts_wait"]
+                and have < 2 * want)              # (review) never past twice what the fort wants
     spare = 2 if pressing else 1
     if have >= want and used < have - (2 if pressing else 0):
         return
@@ -1043,7 +1044,9 @@ def _needs_rules(s: dict, cfg: dict, proposals: list, rules_: dict | None = None
             and not _workshops_busy(open_)):
         k = want_shops - shops
         proposals.append(Proposal("needs_shops", {"type": "start_project", "kind": "workshops",
-                                                  "shops": ["Craftsdwarfs"] * k},
+                                                  "shops": ["Craftsdwarfs"] * k,
+                                                  # (review) the builder's own cap lets an urgent level past it
+                                                  **({"urgent": True} if len(open_) >= (_d(s.get("projects")).get("max_open") or 2) else {})},
                                   f"{craft} dwarves want to craft and {shops} Craftsdwarf's workshop(s) serve "
                                   f"them: build {k} more (idle dwarves craft there for themselves)", 6))
     # things to own: a free trinket each; crafts made when there are none

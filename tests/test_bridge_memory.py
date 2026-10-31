@@ -1068,14 +1068,15 @@ def _():
       end
       local list = {[0] = cr(1, {}), cr(2, {discovered = false}), cr(3, {sentenced = true}), cr(4, {site = 12}),
                     cr(5, {hammer = 2}), cr(6, {criminal = 666}), cr(7, {criminal = 103}), cr(8, {criminal = 104}),
-                    cr(9, {criminal = 101}), cr(10, {criminal = 102}), cr(11, {}), cr(12, {})}
+                    cr(9, {criminal = 101}), cr(10, {criminal = 102}), cr(11, {}), cr(12, {}), cr(13, {criminal = 105})}
       list[10].punishment.give_beating = true                        -- (0.104.141) a beating: never
-      setmetatable(list, {__len = function() return 12 end})
+      setmetatable(list, {__len = function() return 13 end})
       H.df.global.world.crimes = {all = list}
       H.df.global.plotinfo.site_id = 239
       H.df.crime_type = {[5] = 'DisorderlyBehavior'}
       local units = {[100] = {id = 100}, [666] = {id = 666, dead = true}, [101] = {id = 101, child = true},
-                     [102] = {id = 102, body = {wounds = {1}}},
+                     [102] = {id = 102, body = {wounds = {1}, blood_count = 50, blood_max = 100}},
+                     [105] = {id = 105, body = {wounds = {1}, blood_count = 100, blood_max = 100}},
                      [103] = {id = 103}, [104] = {id = 104}}
       setmetatable(units[102].body.wounds, {__len = function() return 1 end})
       H.df.unit = {find = function(id) return units[id] end}
@@ -1089,7 +1090,7 @@ def _():
     assert r.ok and r.dry_run and len(r.convicted) == 2 and H.list[0].accused == -1, dict(r)
     r = M.act_convict(t({"max": 9}))
     ids = [r.convicted[i].id for i in range(1, len(r.convicted) + 1)]
-    assert r.ok and ids == [1, 7, 8], ids                           # 2-6 never; 12: one case a culprit (0.104.141)
+    assert r.ok and ids == [1, 7, 8, 13], ids                       # 2-6 never; 12: one case a culprit; 13 only scarred (0.104.141)
     assert H.list[0].accused == 100 and H.list[0].accused_hf["from"].hf == 7
     assert H.list[1].accused == -1 and H.list[4].accused == -1 and H.list[5].accused == -1
     r = M.act_convict(t({"max": 5}))

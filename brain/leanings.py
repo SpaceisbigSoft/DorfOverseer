@@ -168,7 +168,17 @@ def update(history: dict, state: dict | None) -> list:
                 kept.append(x)
             else:
                 miss.pop(k, None)
-        lean["site"] = site + kept
+        # (review) kept ones within the cap on their trait, as the new ones are
+        total = {}
+        for x in site:
+            total[x["trait"]] = total.get(x["trait"], 0) + x["amount"]
+        fit = []
+        for x in kept:
+            t_ = total.get(x["trait"], 0)
+            if abs(t_ + x["amount"]) <= SITE_MAX:
+                total[x["trait"]] = t_ + x["amount"]
+                fit.append(x)
+        lean["site"] = site + fit
         lean["missing"] = miss
     history["leanings"] = lean
     return changed

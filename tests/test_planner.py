@@ -7532,7 +7532,7 @@ def _():
     assert by_rule(plan(copy.deepcopy(s), Memory())[0], "cistern")
 
 
-@test("wells (0.104.141, 12k): one well for every 60 dwarves; one at a time; a failure waits a season, never 'no well'")
+@test("wells (0.104.141, 12k): one well for every 70 dwarves; one at a time; a failure waits a season, never 'no well'")
 def _():
     s = fort()
     s["dwarves"]["total"] = 209
@@ -7550,6 +7550,23 @@ def _():
     s["buildings"]["other"]["Well"] = 1
     s["projects"]["open"] = [{"id": 9, "kind": "well", "phase": "dig"}]
     assert not [x for x in by_rule(plan(copy.deepcopy(s), Memory())[0], "well") if x.action.get("type") == "place_well"]
+
+
+@test("review (0.104.141): the jail stops growing at twice what the fort wants; the cistern waits on a pending link; worked delays 56 days at most")
+def _():
+    s = fort()
+    s["dwarves"]["total"] = 60
+    s["offices"] = {"offices": {"SHERIFF": {"held": [{"id": 1}]}}}
+    s["justice"] = {"jails": [{"id": 453, "chains": 30, "used": 28, "free": 3}], "restraints": 30, "restraints_used": 28,
+                    "punish": {"n": 0, "beatings": 0}, "crimes": {"n": 900, "convictable": 99}}
+    assert not by_rule(plan(copy.deepcopy(s), Memory())[0], "jail_size")
+    s = fort()
+    s["water"] = dict(s.get("water") or {}, cistern_status={"stage": "linking", "relinks": 3, "link_pending": True})
+    props, notes = plan(copy.deepcopy(s), Memory())
+    assert by_rule(props, "cistern") and not any(n.startswith(planner.NEEDS_YOU) and "cistern" in n for n in notes)
+    from planner_core import watch_since, WORKED_MAX_DAYS
+    w = {"since": 0, "worked": 500 * TICKS_PER_DAY}
+    assert watch_since(w) == WORKED_MAX_DAYS * TICKS_PER_DAY and watch_since({"since": 5}) == 5
 
 
 if __name__ == "__main__":

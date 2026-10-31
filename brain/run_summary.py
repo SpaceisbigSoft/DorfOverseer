@@ -23,8 +23,8 @@ FORTS = Path(os.environ.get("DFAI_LOG_DIR") or ROOT / "logs") / "forts"
 LOOP_AT = 10            # the same action this many times: named as a possible loop
 # repeated by design (the entrances are mapped weekly; (0.104.141) old alert
 # icons cleared, the manager's approvals, the recreation burrow refilled, a few
-# convictions a cycle and the level joins: each call different work)
-EXPECTED = {"scan_entrances", "dismiss_alerts", "approve_orders", "recreation", "convict", "join_levels"}
+# the level joins: each call different work)
+EXPECTED = {"scan_entrances", "dismiss_alerts", "approve_orders", "recreation", "join_levels"}
 
 
 def _what(a: dict) -> str:

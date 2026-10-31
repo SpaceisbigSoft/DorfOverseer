@@ -703,7 +703,8 @@ def _cistern_rule(s: dict, memory, cfg: dict, proposals: list, notes: list, rule
         # (0.104.141) the bridge gave up relinking (3 links lost): one Needs you,
         # not a refused step every few minutes (09:57-19:04, back after each
         # new bridge wiped the refusal backoff)
-        if st.get("stage") == "linking" and int(st.get("relinks") or 0) >= 3 and not st.get("linked"):
+        if (st.get("stage") == "linking" and int(st.get("relinks") or 0) >= 3 and not st.get("linked")
+                and not st.get("link_pending")):
             lv = _d(st.get("lever_at"))
             fg = _d(st.get("gate_at"))
             ask_player(notes, "the cistern's lever won't stay linked to its floodgate (the link job was lost 3 times"
