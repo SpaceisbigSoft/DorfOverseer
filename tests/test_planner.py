@@ -1102,6 +1102,16 @@ def _():
     s["labor"]["picks"] = 3
     s["orders"] = [{"recipe": "metal_pick", "amount_left": 4, "amount_total": 4, "by_ai": True}]
     assert not picks(s)
+    # (0.104.117) stone plentiful but 88 tiles wait for 9 picks in a fort of 300: more picks, up to 20
+    s["orders"] = []
+    s["dwarves"]["total"] = 300
+    s["stone_use"] = {"economic": {}, "usable": 400}
+    s["stocks"]["boulders"] = 400
+    s["labor"].update(picks=9, dig=88)
+    got = picks(s)
+    assert got and got[0].action["amount"] == 3, [p.action for p in got]      # 300/30 + 88/40 = 12
+    s["labor"]["dig"] = 10
+    assert not picks(s), "little waits: no picks"
 
 
 @test("weapons and armour storage (0.99.12): the forge's products with no pile for them get one")

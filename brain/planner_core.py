@@ -194,7 +194,7 @@ PLANNER_CONFIG = {
     "quarry_dry_days": 10,             # (0.104.4) ...or, with no usable stone at all, every this many days
     "quarry_cooldown_ticks": 2 * 1200, # ...and at most every 2 days (0.99.4: was a week; region2's 30-tile quarries were dug out in days)
     "picks_per_dwarves": 30,           # (0.99.4) a pick for every this many dwarves while stone is short (3 at least)...
-    "picks_max": 10,
+    "picks_max": 20,                   # (0.104.117) was 10: a fort of 300 dug with 9 miners, two levels stalled for years
     "picks_per_backlog": 40,           # (0.104.4) a pick more for every this many tiles waiting to be dug
     "fishery_raw_fish": 50,
     "unstick_uniforms_cooldown_ticks": 14 * 1200,   # (0.99.7) at most every two weeks

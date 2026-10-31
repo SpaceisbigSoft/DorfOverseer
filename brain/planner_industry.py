@@ -1018,6 +1018,10 @@ def _stone_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> Non
     cancelled, and the furniture rule makes them in wood."""
     _coal_rule(s, proposals)
     if not stone_short(s, cfg["stone_low"]):
+        # (0.104.117) picks for the digging that waits, stone short or not
+        # (Teacheroar: 88 tiles waiting, 9 picks, levels stalled for years)
+        if int(_d(s.get("labor")).get("dig") or 0) >= cfg["picks_per_backlog"]:
+            _picks_order(s, cfg, proposals)
         return
     su = _d(s.get("stone_use"))
     econ = {k: v for k, v in _d(su.get("economic")).items() if isinstance(v, dict)}
