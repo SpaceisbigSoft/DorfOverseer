@@ -86,6 +86,26 @@ def _():
     assert not [p for p in plan(copy.deepcopy(s), m)[0] if p.rule == "census"]
 
 
+@test("prune (0.104.115): thousands of bones on the ground and worn clothes rot too; without the census only the old way")
+def _():
+    from test_planner import fort  # noqa: E402
+    from planner import Memory, plan  # noqa: E402
+    s = fort()
+    s["fps_low"] = 15
+    s.setdefault("logistics", {})["counts"] = {"items": 50000, "units": 7800, "jobs": 600}
+    s.setdefault("buildings", {}).setdefault("zones", {})["Dump"] = 1
+    prune = lambda m: [p for p in plan(copy.deepcopy(s), m)[0] if p.rule == "prune"]
+    got = prune(Memory())
+    assert got and got[0].action == {"type": "prune_remains"}, got
+    m = Memory()
+    m.census = {"tick": s["date"]["year"] * 403200 + s["date"]["tick"],
+                "items": {"on_ground": [{"name": "THREAD", "n": 10361}, {"name": "CORPSEPIECE", "n": 7227}],
+                          "worn": [{"name": "SHOES", "n": 177}, {"name": "ARMOR", "n": 160}]}}
+    got = prune(m)
+    assert got and got[0].action == {"type": "prune_remains", "extra": ["usable-parts", "clothes"]}, got
+    assert "7227 bones" in got[0].reason, got[0].reason
+
+
 if __name__ == "__main__":
     for name, ok, msg in RESULTS:
         print(f"[{'PASS' if ok else 'FAIL'}] {name}" + (f"\n        {msg}" if msg else ""))

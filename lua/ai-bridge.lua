@@ -34,7 +34,7 @@
 local json = require('json')
 local utils = require('utils')
 
-BRIDGE_VERSION = '0.104.113'
+BRIDGE_VERSION = '0.104.115'
 PROTOCOL = 1 -- bump when the report's shape changes in a breaking way
 
 local OUT_DIR = dfhack.getDFPath() .. '/dfhack-config/ai-overseer'
@@ -4882,8 +4882,16 @@ function act_prune_remains(a)
     if not dfhack.findScript('deteriorate') then
         return {ok = false, error = 'DFHack has no deteriorate script in this version'}
     end
-    if a.dry_run then return {ok = true, dry_run = true} end
-    local out, rv = dfhack.run_command_silent('deteriorate', 'enable', 'corpses,unusable-parts')
+    -- (0.104.115) and, asked for by name: worn clothes thrown on the floor
+    -- ('clothes': only on the ground and worn, never armour) and usable parts
+    -- ('usable-parts': Teacheroar held 7,227 butchered bones and shells on the
+    -- ground, 6,627 dead creatures still on the map's books)
+    local cats = {'corpses', 'unusable-parts'}
+    for _, c in ipairs(type(a.extra) == 'table' and a.extra or {}) do
+        if c == 'clothes' or c == 'usable-parts' then table.insert(cats, c) end
+    end
+    if a.dry_run then return {ok = true, dry_run = true, categories = cats} end
+    local out, rv = dfhack.run_command_silent('deteriorate', 'enable', table.concat(cats, ','))
     if rv ~= CR_OK then
         return {ok = false, error = 'deteriorate failed: ' .. tostring(out):sub(1, 160)}
     end
@@ -4891,7 +4899,7 @@ function act_prune_remains(a)
     if rv ~= CR_OK then
         return {ok = false, error = 'enable deteriorate failed: ' .. tostring(out):sub(1, 160)}
     end
-    return {ok = true, said = tostring(out):sub(1, 200)}
+    return {ok = true, categories = cats, said = tostring(out):sub(1, 200)}
 end
 
 -- An office filled by the AI (lua/ai-nobles.lua): manager, bookkeeper,

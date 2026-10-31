@@ -237,9 +237,25 @@ def _slow_game_rules(s: dict, citizens: int, cfg: dict, proposals: list, notes: 
                                       "go to the garbage dump", 6))
         # (0.104.0) old remains rot away: non-entombed corpses and body parts
         # nobody can craft with (DFHack deteriorate; stays on in the save)
-        proposals.append(Proposal("prune", {"type": "prune_remains"},
+        # (0.104.115) the census says what lies about: thousands of butchered
+        # bones and shells, or worn clothes thrown down, rot away too
+        ground = {str(_d(x).get("name")): int(_d(x).get("n") or 0)
+                  for x in _l(_d(cen.get("items")).get("on_ground"))}
+        extra = []
+        if ground.get("CORPSEPIECE", 0) >= cfg["prune_parts_min"]:
+            extra.append("usable-parts")
+        worn = {str(_d(x).get("name")): int(_d(x).get("n") or 0) for x in _l(_d(cen.get("items")).get("worn"))}
+        if sum(worn.get(k, 0) for k in ("SHOES", "GLOVES", "PANTS", "ARMOR", "HELM")) >= cfg["prune_worn_min"]:
+            extra.append("clothes")
+        action = {"type": "prune_remains"}
+        if extra:
+            action["extra"] = extra
+        what = (" (and " + ", ".join({"usable-parts": f"{ground.get('CORPSEPIECE', 0)} bones, shells and hair on the "
+                                                       "ground", "clothes": "worn clothes thrown down"}[e]
+                                      for e in extra) + ")") if extra else ""
+        proposals.append(Proposal("prune", action,
                                   f"{items} items on the map slow the game: old corpses and useless body "
-                                  "parts lying about rot away (entombed dead and usable parts are kept)", 7))
+                                  f"parts lying about rot away{what} (entombed dead are kept)", 7))
 
 
 def _kiln_rules(s: dict, cfg: dict, proposals: list, notes: list) -> None:

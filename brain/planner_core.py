@@ -201,6 +201,8 @@ PLANNER_CONFIG = {
     "stray_gear_cooldown_ticks": 3 * 1200,   # (0.104.58) lost gear put back three days apart
     "assign_weapons_cooldown_ticks": 3 * 1200,   # (0.104.60) weapons handed out by the AI three days apart
     "soldier_swap_cooldown_ticks": 2 * 1200,    # (0.104.64) a starved soldier let go two days apart
+    "prune_parts_min": 2000,                     # (0.104.115) butchered parts on the ground: past this, usable ones rot too
+    "prune_worn_min": 200,                       # (0.104.115) worn clothes: past this, those thrown down rot
     "soldier_swap_month_min": 2,                 # (0.104.114) swaps allowed in 28 days: this many at least ...
     "soldier_swap_month_share": 10,              # ... or one per this many soldiers
     "soldier_swap_keen_min": 5,                  # ...while at least this many civilians badly want to train
