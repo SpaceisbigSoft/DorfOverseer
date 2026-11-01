@@ -487,6 +487,19 @@ def _():
     assert not r.ok and "no room" in r.error, dict(r)
 
 
+@test("(review 2) a Rest job that isn't the AI's own (DF's, for a new wound) is never removed")
+def _():
+    env, units, made, _, removed = health(SICK, beds=BEDS4)
+    env.rest_infected(3, False, None, 3, 2)
+    j = units[2].job.current_job
+    j.id = 4242                                                         # DF's own rest replaced the AI's
+    env.df["global"].cur_year_tick = 1000 + 3 * 1200
+    s = env.survey()
+    # dwarf 1's own (the AI's) rest is ended after 3 days; dwarf 2's, now DF's, is left alone
+    assert len(removed) == 1 and removed[1].id != 4242 and units[2].job.current_job.id == 4242, len(removed)
+    assert s.sleeping == 0, s.sleeping                                  # counted as ended, not the AI's
+
+
 @test("(review) a sleeper with no treatment asked after 3 days is got up (the Rest job removed) and not sent again for 28 days")
 def _():
     env, units, made, _, removed = health(SICK, beds=BEDS4)

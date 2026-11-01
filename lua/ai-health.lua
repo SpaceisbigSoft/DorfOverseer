@@ -268,6 +268,10 @@ local function tend(d, t, dry_run)
             if not dry_run then d.sent[sid], d.helped[sid] = nil, t end
         else
             local j = rest_job(u)
+            -- (0.104.168, review) only the AI's own Rest job: DF may have ended it
+            -- and given the dwarf a Rest of its own for a new wound since
+            local mine = type(e) == 'table' and tonumber(e.job) or nil
+            if j and mine and j.id ~= mine then j = nil end
             if not j then
                 out.ended = out.ended + 1                 -- DF ended the rest itself
                 if not dry_run then d.sent[sid], d.cooldown[sid] = nil, t end
