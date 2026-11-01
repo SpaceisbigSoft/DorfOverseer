@@ -204,6 +204,8 @@ PLANNER_CONFIG = {
     "petition_unanswered_days": 28,    # (0.104.159) an agreed petition DF still counts unmet this long: a new hall for it
     # (0.104.161, 14.1) the sliders change what a mature fort builds and agrees to
     "petition_decline_lean": -35,      # a temple or guildhall petition the fort's leaning for it (petition_lean) is this low or lower: declined
+    "season_slider_weight": 1.0,       # (0.104.162, 14.1) the sliders' push on the scripted season choice (season.py; 0 = needs and quirks alone)...
+    "season_crisis_slider_weight": 0.0,   # ...and while the fort is in crisis (needs alone choose)
     "growth_gap_days": 84,             # a further hall of one kind (growth_candidates) at most once a season...
     "growth_levels_max": 6,            # ...and at most this many of a kind in the fort's life (a count that never rises can't loop)
     "prison_justice_at": 50,           # Justice this harsh: more jail cells as the fort grows (a prison)

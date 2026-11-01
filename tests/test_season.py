@@ -80,6 +80,31 @@ def _():
     assert season.score_options(s, m)["raise:tavern"][0] < season.score_options(fort(needs={"BeWithFriends": 10}), m)["raise:tavern"][0]
 
 
+@test("(0.104.162) the reason names the sliders that tipped it; Extreme pushes twice as hard; needs first")
+def _():
+    s = fort(needs={"BeWithFriends": 30})                   # a tavern by need alone
+    assert season.pick(s, Memory())["choice"] == "raise:tavern"
+    s["settings"]["traits"] = {"piety": 200}
+    c = season.pick(s, Memory())
+    assert c["choice"] == "raise:temple" and "sliders tipped it" in c["why"] and "Piety +200" in c["why"], c
+    p1 = season.slider_pushes(fort(traits={"piety": 100}), Memory())["raise:temple"][0][2]
+    p2 = season.slider_pushes(fort(traits={"piety": 200}), Memory())["raise:temple"][0][2]
+    assert abs(p2 - 2 * p1) < 1e-9, (p1, p2)
+    # the weight is a config key: 0 leaves needs and quirks alone
+    from planner import PLANNER_CONFIG
+    assert season.pick(s, Memory(), dict(PLANNER_CONFIG, season_slider_weight=0))["choice"] == "raise:tavern"
+    # in crisis the sliders don't lean: the need wins again
+    m = Memory()
+    m.crisis = {"since": 1, "why": ["45% unhappy"]}
+    c = season.pick(s, m)
+    assert c["choice"] == "raise:tavern" and "needs alone choose" in c["why"], c
+    # hunger before the sliders
+    from planner import ALL_FOOD
+    s = fort(traits={"piety": 200}, stocks={k: 0 for k in ALL_FOOD})
+    c = season.pick(s, Memory())
+    assert c["choice"] == "focus:food" and "hunger comes first" in c["why"], c
+
+
 @test("the AI has two weeks of a season; then the script chooses")
 def _():
     s = fort()

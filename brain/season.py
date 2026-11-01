@@ -226,6 +226,78 @@ def _share(s: dict, names, pop: int) -> float:
     return max([int(_d(n.get(k)).get("distracted") or 0) for k in names] or [0]) / max(1, pop)
 
 
+def in_crisis(memory) -> list:
+    """The planner's crisis reasons (crisis.py keeps them in memory), [] when calm."""
+    c = getattr(memory, "crisis", None)
+    return list(c.get("why") or []) if isinstance(c, dict) and c.get("since") else []
+
+
+def slider_pushes(state: dict, memory, cfg: dict | None = None, lean: dict | None = None) -> dict:
+    """(0.104.162, 14.1) Each option's push from the fort's sliders (and its own
+    leanings at half weight): {option: [(slider, value, push)]}, the push
+    scaled by `season_slider_weight` (`season_crisis_slider_weight` while the
+    fort is in crisis: needs alone choose then). Graded and linear: Extreme
+    (+-200) pushes twice as hard as +-100."""
+    from planner import PLANNER_CONFIG
+    cfg = cfg or PLANNER_CONFIG
+    traits = _d(_d(state.get("settings")).get("traits"))
+    if lean is None:
+        lean = {}
+        try:
+            from leanings import totals
+            lean = totals(getattr(memory, "culture", None) if isinstance(getattr(memory, "culture", None), dict) else {})
+        except Exception:  # noqa: BLE001
+            pass
+    key = "season_crisis_slider_weight" if in_crisis(memory) else "season_slider_weight"
+    scale = cfg.get(key, PLANNER_CONFIG.get(key, 1.0))
+    scale = float(scale) if isinstance(scale, (int, float)) and not isinstance(scale, bool) else 1.0
+    out: dict = {}
+    for opt, pushes in SLIDERS.items():
+        for slider, w in pushes:
+            v = (traits.get(slider, 0) or 0) + 0.5 * (lean.get(slider, 0) or 0)
+            if v and scale:
+                out.setdefault(opt, []).append((slider, v, w * v / 100 * scale))
+    return out
+
+
+def _slider_words(parts) -> str:
+    from weights import TRAIT_NAMES
+    pos = sorted((p for p in parts if p[2] > 0), key=lambda p: -p[2])[:3]
+    return ", ".join(f"{TRAIT_NAMES.get(sl, sl)} {round(v):+d}" for sl, v, _ in pos)
+
+
+def first_needs(state: dict, memory, cfg: dict | None = None) -> dict | None:
+    """(0.104.162) What comes before the fort's character: thirst, hunger, a
+    siege or a danger in reach. The choice and its reason, or None when calm.
+    The sliders don't lean these."""
+    from planner import PLANNER_CONFIG, food_per_dwarf, great_present, reachable_threats
+    cfg = cfg or PLANNER_CONFIG
+    s = state
+    pop = int(_d(s.get("dwarves")).get("total") or 0)
+    st = _d(s.get("stocks"))
+    if pop:
+        drink = int(st.get("drink") or 0)
+        if drink < float(cfg.get("urgent_drink_per_dwarf") or 0) * pop:
+            want = int(float(cfg.get("drink_per_dwarf") or 0) * pop)
+            return {"choice": "focus:drink", "why": f"drink short: {drink} of {want}; thirst comes first"}
+        if food_per_dwarf(s) < float(cfg.get("urgent_meals_per_dwarf") or 0):
+            return {"choice": "focus:food", "why": f"food short: {food_per_dwarf(s):g} a dwarf; hunger comes first"}
+    try:
+        import phases
+        siege = phases.current(memory) == "siege"
+    except Exception:  # noqa: BLE001
+        siege = False
+    traits = _d(_d(s.get("settings")).get("traits"))
+    try:
+        danger = bool(reachable_threats(s, traits, cfg)) or great_present(s)
+    except Exception:  # noqa: BLE001  (an old or partial report: no danger seen)
+        danger = False
+    if siege or danger:
+        what = "a siege" if siege else "a danger within reach"
+        return {"choice": "keep", "why": f"{what}: the fort turns to its defence, no new undertaking this season"}
+    return None
+
+
 def score_options(state: dict, memory, cfg: dict | None = None) -> dict:
     """Each menu option's score for this fort this season, with its reason."""
     from planner import PLANNER_CONFIG, level_refused
@@ -278,11 +350,8 @@ def score_options(state: dict, memory, cfg: dict | None = None) -> dict:
             if want > 0 and have_n < want:
                 short = 1 - have_n / want
                 add(f"focus:{key}", short * 0.5, f"{SHORT_WORDS[key]} short: {int(have_n)} of {int(want)}")
-    for opt, pushes in SLIDERS.items():
-        for slider, w in pushes:
-            v = (traits.get(slider, 0) or 0) + 0.5 * (lean.get(slider, 0) or 0)
-            if v:
-                add(opt, w * v / 100, None)
+    for opt, parts in slider_pushes(s, memory, cfg, lean=lean).items():
+        add(opt, sum(c for _, _, c in parts), None)
     for q, pushes in QUIRKS.items():
         if q in held:
             for opt, w in pushes:
@@ -305,13 +374,34 @@ def pick(state: dict, memory, cfg: dict | None = None) -> dict:
     def tie(opt):          # a small tie-breaker of this fort's own (two default forts choose apart)
         return int(hashlib.sha256(f"{fort}|{key}|{opt}".encode()).hexdigest()[:4], 16) / 65535 * 0.02
 
-    best = max(scores, key=lambda o: scores[o][0] + tie(o), default=None)
     d = _d(state.get("date"))
     when = f"{str(d.get('season') or '').capitalize()} of {d.get('year')}"
+    first = first_needs(state, memory, cfg)
+    if first:
+        best = first["choice"]
+        line = (f"{when}: the fort kept to its old ways." if best == "keep"
+                else f"{when}: the fort turned its hands to {WORDS[best]}.")
+        return {"choice": best, "why": game_text(first["why"], 160), "line": game_text(line, LINE_MAX), "by": "script"}
+    crisis = in_crisis(memory)
+    best = max(scores, key=lambda o: scores[o][0] + tie(o), default=None)
     if best is None or scores[best][0] < KEEP_BELOW:
-        return {"choice": "keep", "why": "nothing presses this season",
+        why = ("the fort is in crisis (" + "; ".join(crisis[:2]) + ") and nothing it needs presses"
+               if crisis else "nothing presses this season")
+        return {"choice": "keep", "why": game_text(why, 160),
                 "line": f"{when}: the fort kept to its old ways.", "by": "script"}
-    why = "; ".join(scores[best][1][:2]) or "the fort's leanings"
+    # (0.104.162) the sliders' part, in words: did they tip it (the choice
+    # without them would differ, or be nothing), or only lean it?
+    pushes = slider_pushes(state, memory, cfg)
+    sl = {o: sum(c for _, _, c in pushes.get(o, [])) for o in scores}
+    named = _slider_words(pushes.get(best, []))
+    bare = max(scores, key=lambda o: scores[o][0] - sl[o] + tie(o))
+    tipped = sl[best] > 0 and (bare != best or scores[best][0] - sl[best] < KEEP_BELOW)
+    parts = scores[best][1][:2]
+    if named:
+        parts = ([f"the sliders tipped it ({named})"] + parts[:1]) if tipped else (parts + [f"leaned by {named}"])
+    if crisis:
+        parts = [f"in crisis ({crisis[0]}): needs alone choose"] + parts
+    why = "; ".join(parts) or "the fort's leanings"
     kind, _, what = best.partition(":")
     line = (f"{when}: the fort set its heart on {WORDS[best]}." if kind == "raise"
             else f"{when}: the fort turned its hands to {WORDS[best]}.")

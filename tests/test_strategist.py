@@ -624,6 +624,78 @@ def _():
     assert ma == {501: True, 502: True}, ma                          # Monastery agrees to both
 
 
+def _preset_fort(name):
+    """The exit test's calm mature fort under a built-in preset (None without lupa)."""
+    try:
+        from lupa import LuaRuntime
+    except ImportError:
+        return None
+    lua = LuaRuntime(unpack_returned_tuples=True)
+    src = (ROOT / "lua" / "ai-overseer-settings.lua").read_text(encoding="utf-8")
+    S = lua.eval("""function(src)
+      local env = setmetatable({dfhack_flags = {module = true}, dfhack = {getDFPath = function() return '.' end,
+                                          isMapLoaded = function() return false end,
+                                          filesystem = {isdir = function() return false end}}},
+                               {__index = _G})
+      env.require = function(n) if n == 'json' then
+        return {decode_file = function(p) error('no file ' .. p) end} end return require(n) end
+      assert(load(src, 'settings', 't', env))()
+      return env end""")(src)
+
+    def lua_py(v):
+        return {k: lua_py(x) for k, x in dict(v.items()).items()} if hasattr(v, "items") else v
+
+    ai = lua_py(S.for_ai(S.load_preset(name, S.defaults())))
+    st = copy.deepcopy(BASE)
+    st["settings"] = dict(st.get("settings") or {}, **{k: v for k, v in ai.items() if k != "traits"})
+    st["settings"]["traits"] = ai.get("traits") or {}
+    st["date"]["season"] = "spring"
+    st["buildings"]["zones"].update(Barracks=1, ArcheryRange=1, Dungeon=2)
+    return st
+
+
+@test("opposite forts (0.104.162, 14.1 exit test): the scripted season choice leans by the sliders; needs and dangers first")
+def _():
+    import planner
+    import season
+    forts = {n: _preset_fort(n) for n in ("War-hold", "Monastery")}
+    if forts["War-hold"] is None:
+        return
+    # calm and mature: the same state, opposite presets, different characters
+    got = {n: season.pick(st, planner.Memory()) for n, st in forts.items()}
+    w, m = got["War-hold"], got["Monastery"]
+    assert season.first_needs(forts["War-hold"], planner.Memory()) is None        # nothing presses
+    assert w["choice"] != m["choice"], got
+    assert w["choice"] in ("raise:barracks", "raise:archery", "raise:jail"), w
+    assert m["choice"] in ("raise:temple", "raise:memorial", "raise:garden", "raise:great hall"), m
+    assert "Militarism +150" in w["why"] and "Piety +150" in m["why"], got     # the reason names the sliders
+    # thirst comes first, whatever the preset
+    for n, st in forts.items():
+        dry = copy.deepcopy(st)
+        dry["stocks"]["drink"] = 0
+        c = season.pick(dry, planner.Memory())
+        assert c["choice"] == "focus:drink" and "thirst comes first" in c["why"], (n, c)
+    # an invader within reach: no new undertaking, War-hold's barracks no more than Monastery's memorial
+    for n, st in forts.items():
+        siege = copy.deepcopy(st)
+        siege["others_on_map"]["threats"].append({"id": 9001, "can_reach_dwarves": True, "invader": True,
+                                                  "distance_to_nearest_dwarf": 20, "layer": "upper_levels"})
+        siege["others_on_map"]["threats_that_can_reach_dwarves"] = 1
+        c = season.pick(siege, planner.Memory())
+        assert c["choice"] == "keep" and "defence" in c["why"], (n, c)
+    # a fort in crisis: needs alone choose (the sliders' push is off), so the presets agree
+    crisis = {}
+    for n, st in forts.items():
+        sick = copy.deepcopy(st)
+        sick["needs"] = {"needs": {"BeWithFriends": {"distracted": 120}}}
+        mem = planner.Memory()
+        mem.crisis = {"since": 1, "why": ["45% unhappy"]}
+        crisis[n] = season.pick(sick, mem)
+        assert "needs alone choose" in crisis[n]["why"] and "sliders" not in crisis[n]["why"], crisis[n]
+        assert not season.slider_pushes(sick, mem), n
+    assert crisis["War-hold"]["choice"] == crisis["Monastery"]["choice"] == "raise:tavern", crisis
+
+
 
 @test("the real-day token cap counts every fort on this PC (0.99.1, B10)")
 def _():
