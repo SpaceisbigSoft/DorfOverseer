@@ -808,6 +808,23 @@ function free_items_count(kind, detail)
             return not (f.removed or f.garbage_collect or f.artifact or f.owned or f.in_inventory or f.forbid
                         or f.in_job or f.trader or f.in_building or f.dump or f.hostile or f.construction)
         end)
+        -- (0.104.157) a product still in its workshop (Teacheroar: 34 cups in the
+        -- craftsdwarf's, the finished goods piles full) or one on a tile no
+        -- dwarf can walk to (91 of 118 shoes) is no use to anyone yet
+        local where = 'free'
+        if okf and free then
+            pcall(function()
+                local hb = dfhack.items.getHolderBuilding(it)
+                if hb and hb:getType() == df.building_type.Workshop then where = 'workshop' return end
+                local x, y, z = dfhack.items.getPosition(it)
+                local pos = type(x) == 'number' and xyz2pos(x, y, z) or x
+                if pos and dfhack.maps.getWalkableGroup(pos) == 0 then where = 'unwalkable' end
+            end)
+            if where ~= 'free' then
+                if d then bump(d.place, where) end
+                free = false
+            end
+        end
         if okf and free then
             n = n + 1
             if d then
@@ -823,11 +840,9 @@ function free_items_count(kind, detail)
                     local x, y, z = dfhack.items.getPosition(it)
                     local pos = type(x) == 'number' and xyz2pos(x, y, z) or x
                     local okb, b = pcall(dfhack.buildings.findAtTile, pos)
-                    local g = dfhack.maps.getWalkableGroup(pos)
-                    if g == 0 then bump(d.place, 'unwalkable')
-                    elseif okb and b and b:getType() == df.building_type.Stockpile then bump(d.place, 'stockpile')
+                    if okb and b and b:getType() == df.building_type.Stockpile then bump(d.place, 'stockpile')
                     else bump(d.place, 'elsewhere') end
-                    if g ~= 0 and not (okb and b and b:getType() == df.building_type.Stockpile) then
+                    if not (okb and b and b:getType() == df.building_type.Stockpile) then
                         d.elsewhere_at = d.elsewhere_at or {}
                         if #d.elsewhere_at < 4 then
                             table.insert(d.elsewhere_at, ('x%d y%d z%d'):format(pos.x, pos.y, pos.z))

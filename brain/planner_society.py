@@ -581,7 +581,11 @@ def _comfort_rules(s: dict, cfg: dict, proposals: list, notes: list) -> None:
     barefoot = int(_d(cl.get("without")).get("shoes") or 0)
     free_shoes = cl.get("free_shoes")
     if barefoot >= max(3, citizens * cfg["barefoot_share"]) and isinstance(free_shoes, int):
-        pairs = barefoot - free_shoes // 2
+        # free ones only (none where no dwarf can walk or still in a workshop),
+        # and not boots: civilians never put armour on themselves
+        boots = int(_d(_d(cl.get("free_shoes_detail")).get("kinds")).get("ITEM_SHOES_BOOTS") or 0)
+        waiting = int(_d(_d(cl.get("free_shoes_detail")).get("place")).get("workshop") or 0)
+        pairs = barefoot - (max(0, free_shoes - boots) + waiting) // 2
         recipe = None
         if int(st.get("leather") or 0) >= 10 and _has_shop(b, "Leatherworks"):
             recipe, what = "leather_shoes", "leather shoes"
@@ -603,7 +607,13 @@ def _comfort_rules(s: dict, cfg: dict, proposals: list, notes: list) -> None:
     free_cups = cl.get("free_cups")
     cupless = _cause_citizens(s, "DrinkWithoutCup")
     want = max(10, -(-citizens // cfg["citizens_per_free_cup"]))
-    if (isinstance(free_cups, int) and free_cups < want and cupless >= citizens * cfg["cupless_share"]
+    # cups made but still in the workshop (the finished goods piles full): more
+    # storage, not more cups (the storage rule counts them)
+    waiting = int(_d(_d(cl.get("free_cups_detail")).get("place")).get("workshop") or 0)
+    if waiting and cupless >= citizens * cfg["cupless_share"]:
+        notes.append(f"{cupless} citizens drank without a cup lately and {waiting} cups wait in the workshops "
+                     "they were made in (dwarves only drink from cups on a stockpile): they need finished goods storage")
+    if (isinstance(free_cups, int) and not waiting and free_cups < want and cupless >= citizens * cfg["cupless_share"]
             and _has_shop(b, "Craftsdwarfs") and not queued(s, {"stone_mugs", "wooden_cups"})):
         wood = int(st.get("wood") or 0)
         cups = stone_short(s, cfg["stone_low"]) and wood >= 20
