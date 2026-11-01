@@ -873,8 +873,18 @@ def _location_petition_rules(s: dict, cfg: dict, proposals: list, notes: list, r
                                                              else "the Temple level is off on the Rules tab"))
         pending = [w for w in pending if w.get("loc") != "TEMPLE"]
         agreed = [w for w in agreed if w.get("loc") != "TEMPLE"]
-    # agreed: build what isn't there yet
-    unbuilt = [w for w in agreed if not _wish_met(s, w)]
+    # agreed: build what isn't there yet. (0.104.159) `agreed` holds only the
+    # agreements DF still counts outstanding (list-agreements: not yet
+    # convicted_accepted): one that stays so a month after agreeing, though a
+    # matching hall stands, isn't answered by that hall (DF counts a hall made
+    # for the agreement, not one the fort had: 0.102.2). Teacheroar, 1 Nov: the
+    # miners' petition agreed 206 days, the miners' guildhall (value 4,839)
+    # standing, IgnoredGuildhallPetition upsetting 17-20 citizens.
+    def unanswered(w):          # a hall of the wish's tier stands a month on, and DF still counts it unmet
+        e = _wish_met(s, w)
+        return (e is not None and int(w.get("days") or 0) >= cfg["petition_unanswered_days"]
+                and int(e.get("tier") or 0) >= int(w.get("tier") or 1))
+    unbuilt = [w for w in agreed if not _wish_met(s, w) or unanswered(w)]
     # (0.92) a hall still being dug whose own wish something else answered
     # meanwhile (the player's own guildhall): given to the next unbuilt wish
     for p in open_:
@@ -903,7 +913,10 @@ def _location_petition_rules(s: dict, cfg: dict, proposals: list, notes: list, r
     for w in agreed:
         e = _wish_met(s, w)
         need = cfg["location_value_tier2"] if int(w.get("tier") or 1) >= 2 else cfg["location_value_tier1"]
-        if e and int(e.get("tier") or 0) < int(w.get("tier") or 1):
+        if e and unanswered(w):
+            notes.append(f"{_wish_words(w)} was agreed {w.get('days')} days ago and DF still counts it unmet, "
+                         "though one stands (DF counts a hall made for the agreement): a new one is built")
+        elif e and int(e.get("tier") or 0) < int(w.get("tier") or 1):
             notes.append(f"{_wish_words(w)} (agreed, {w.get('days', '?')} days ago) stands but is worth "
                          f"{e.get('value', '?')} of the {need} it needs: engrave and furnish it")
     if unbuilt and not any(p.get("kind") == "temple" for p in open_):

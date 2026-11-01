@@ -201,6 +201,7 @@ PLANNER_CONFIG = {
     "citizens_per_free_cup": 3,        # a free cup in store for every 3 citizens (10 at least)...
     "cups_batch": 20,                  # ...20 an order at most
     "cupless_share": 0.1,              # ...while this share drank without one lately
+    "petition_unanswered_days": 28,    # (0.104.159) an agreed petition DF still counts unmet this long: a new hall for it
     "dead_scrub_min": 1000,            # (0.104.158) dead units fix/dead-units could scrub before it runs...
     "dead_scrub_days": 28,             # ...once a month at most
     "herd_per_dwarf": 2.0,             # (0.104.158) tame animals the fort keeps per citizen (60 at least),

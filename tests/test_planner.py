@@ -4049,6 +4049,16 @@ def _():
     s["petitions"] = {"agreed": [{"id": 175, "loc": "GUILDHALL", "tier": 1, "profession": "MINER", "days": 300}]}
     b = by_rule(plan(s, Memory())[0], "petition_build")
     assert b and b[0].action["profession"] == "MINER" and b[0].priority == 4, b   # little time left: sooner
+    # (0.104.159) Teacheroar: a miners' guildhall of the right tier stands, yet DF still counts the
+    # petition agreed 206 days ago unmet: a new hall for it (not before a month)
+    s["locations"]["list"] = [{"id": 10, "type": "GUILDHALL", "profession": "MINER", "tier": 1, "value": 4839}]
+    s["petitions"] = {"agreed": [{"id": 250, "loc": "GUILDHALL", "tier": 1, "profession": "MINER", "days": 206}]}
+    props, notes = plan(s, Memory())
+    b = by_rule(props, "petition_build")
+    assert b and b[0].action["profession"] == "MINER", b
+    assert any("DF still counts it unmet" in n for n in notes), notes
+    s["petitions"]["agreed"][0]["days"] = 10
+    assert not by_rule(plan(s, Memory())[0], "petition_build")
     s["settings"]["answer_locations"] = False
     props = plan(s, Memory())[0]
     assert not by_rule(props, "petition_build") and not by_rule(props, "petition_answer")
