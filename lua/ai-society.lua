@@ -740,6 +740,22 @@ local function emotion_divider(t)
     return nil
 end
 
+-- (0.104.168) what a few thoughts were about (DF's subthought, its
+-- circumstance): a complaint nobody heard (UnableComplain, COMPLAINT_UNREGISTERED)
+-- carries DF's reason (history_event_reason: insufficient_work,
+-- work_request, make_weapon, vent_at_boss, cry_on_boss), and a hated
+-- vermin seen (AnnoyedVermin, NEAR_HATED_VERMIN) the creature (assumed the
+-- race id: the caption is "accosted by [vermin]"). Tallied per thought as
+-- `about` = {word = n}. Teacheroar, 1 Nov: 24 citizens unable to complain,
+-- 15 accosted by vermin, and the census couldn't say why or by what.
+local function about_reason(sub) return df.history_event_reason[sub] end
+local function about_creature(sub)
+    local cr = df.creature_raw.find(sub)
+    return cr and cr.creature_id or nil
+end
+STRESS_ABOUT = {UnableComplain = about_reason, Complained = about_reason,
+                AnnoyedVermin = about_creature, NearVermin = about_creature}
+
 function stress_census(units)
     local now = df.global.cur_year * 403200 + df.global.cur_year_tick
     local since = now - STRESS_DAYS * 1200
@@ -763,6 +779,14 @@ function stress_census(units)
                     e.stress, e.emotions = e.stress + stress, e.emotions + 1
                     local ek = df.emotion_type[em.type] or tostring(em.type)
                     e.kinds[ek] = (e.kinds[ek] or 0) + 1
+                    local about = STRESS_ABOUT[name]          -- (0.104.168)
+                    if about then
+                        local okw, w = pcall(function() return about(em.subthought) end)
+                        if okw and w ~= nil then
+                            e.about = e.about or {}
+                            e.about[tostring(w)] = (e.about[tostring(w)] or 0) + 1
+                        end
+                    end
                     if not seen[name] then
                         seen[name], e.citizens = true, e.citizens + 1
                         if child then e.children = (e.children or 0) + 1 end   -- (0.104.159)
@@ -1622,8 +1646,18 @@ function fill_recreation(burrow)
     return n
 end
 
+-- (0.104.168) never a noble: the burrow covers no office, and a noble's
+-- duties wait there (the mayor meets the citizens who come to complain, DF's
+-- MEET_WORKERS; the manager takes up the work orders). Teacheroar, 1 Nov: 24
+-- citizens "unable to complain" while the mayor was always in meetings.
+local function rec_noble(u)
+    local ok, list = pcall(dfhack.units.getNoblePositions, u)
+    return ok and list ~= nil and #list > 0
+end
+
 local function rec_base(u)
     if not dfhack.units.isAdult(u) or u.military.squad_id ~= -1 then return false end
+    if rec_noble(u) then return false end
     local okh, sick = pcall(function() return u.health and u.health.flags.needs_healthcare end)
     return not (okh and sick)
 end
@@ -1679,6 +1713,7 @@ function recreation_tick(max, days, dry_run, txt, friends, friend_days)
     for id, since in pairs(d.members) do
         local u = df.unit.find(tonumber(id))
         local keep = u and dfhack.units.isCitizen(u) and u.military.squad_id == -1
+        if keep and rec_noble(u) then keep = false end     -- (0.104.168) a noble since moved in: out
         local okc, cat = false, nil
         if keep then okc, cat = pcall(dfhack.units.getStressCategory, u) end
         if keep and d.friends[id] then
@@ -2308,4 +2343,115 @@ function hospital_burrow_tick(max, per, dry_run, txt, days, release)
     end
     return {ok = true, burrow_id = b.id, tiles = tiles, added = added, released = released, members = count,
             drink = d.drink, food = src.food ~= nil, dry_run = dry_run or nil}
+end
+
+-- --- (0.104.168) vermin hunters ----------------------------------------------
+--
+-- Teacheroar, 1 Nov: 15-16 citizens a month upset at being "accosted by"
+-- vermin they hate (NEAR_HATED_VERMIN, stress 25-50 each). The fort's
+-- answer in DF is a vermin hunter (a creature whose caste has HUNTS_VERMIN:
+-- the cat), loose in the fort, catching the vermin in the halls and food
+-- stores. DFHack's autobutcher (on in this fort, for a herd of 1,077) culls
+-- every kind down to 2/4/2/4 and spares only the named or nicknamed, pets,
+-- war and hunting animals, the pregnant and those up for adoption
+-- (plugins/autobutcher.cpp, isProtectedUnit): the cats went with the ducks.
+-- The AI keeps a few by giving them a nickname (MOUSER_NICK), which
+-- autobutcher respects and the player can see and change.
+MOUSER_NICK = 'Mouser'
+
+local function hunts_vermin(u)
+    local ok, yes = pcall(function()
+        local cr = df.creature_raw.find(u.race)
+        return cr ~= nil and cr.caste[u.caste].flags.HUNTS_VERMIN
+    end)
+    return ok and yes == true
+end
+
+local function fort_animal(u)
+    local ok, yes = pcall(function()
+        if dfhack.units.isDead(u) or not dfhack.units.isAnimal(u) then return false end
+        return dfhack.units.isFortControlled(u) or (dfhack.units.isTame(u) and dfhack.units.isOwnCiv(u))
+    end)
+    return ok and yes == true
+end
+
+local function nickname(u)
+    local ok, n = pcall(function() return u.name.nickname end)
+    return ok and n or ''
+end
+
+local function kept_hunter(u)
+    local ok, yes = pcall(function()
+        return dfhack.units.isPet(u) or u.name.has_name or (u.name.nickname or '') ~= ''
+            or dfhack.units.isAvailableForAdoption(u)
+    end)
+    return ok and yes == true
+end
+
+-- The fort's vermin hunters: {n, loose, caged, marked (for slaughter),
+-- kept (loose and safe from autobutcher: pets, named, up for adoption), mousers
+-- (nicknamed by the AI), races = {CAT = n}}.
+function vermin_hunters(units)
+    local out = {n = 0, loose = 0, caged = 0, marked = 0, kept = 0, mousers = 0, races = {}}
+    for _, u in ipairs(units or df.global.world.units.active) do
+        if fort_animal(u) and hunts_vermin(u) then
+            out.n = out.n + 1
+            local okr, r = pcall(function() return df.creature_raw.find(u.race).creature_id end)
+            r = okr and r or tostring(u.race)
+            out.races[r] = (out.races[r] or 0) + 1
+            local okc, caged = pcall(function() return u.flags1.caged end)
+            local in_cage = okc and caged
+            if in_cage then out.caged = out.caged + 1 else out.loose = out.loose + 1 end
+            local okm, marked = pcall(function() return u.flags2.slaughter end)
+            if okm and marked then out.marked = out.marked + 1 end
+            if kept_hunter(u) and not in_cage then out.kept = out.kept + 1 end     -- loose and safe
+            if nickname(u) == MOUSER_NICK then out.mousers = out.mousers + 1 end
+        end
+    end
+    return out
+end
+
+-- Keep `want` vermin hunters safe from the butcher: those already safe
+-- count; then loose ones, adults first, the marked unmarked, each given the
+-- nickname MOUSER_NICK. Never a caged one (it hunts nothing).
+function keep_mousers(want, dry_run, txt, units)
+    want = math.max(1, math.min(tonumber(want) or 6, 20))
+    local kept, cands = 0, {}
+    for _, u in ipairs(units or df.global.world.units.active) do
+        if fort_animal(u) and hunts_vermin(u) then
+            local okc, caged = pcall(function() return u.flags1.caged end)
+            if kept_hunter(u) then
+                if not (okc and caged) then kept = kept + 1 end
+            elseif not (okc and caged) then
+                local oka, adult = pcall(dfhack.units.isAdult, u)
+                table.insert(cands, {u = u, adult = oka and adult or false})
+            end
+        end
+    end
+    if kept >= want then return {ok = true, unchanged = true, kept = kept} end
+    if #cands == 0 then
+        return {ok = false, rejected = true, kept = kept,
+                error = kept > 0 and 'no other loose vermin hunter to keep' or 'no loose cat or other vermin hunter in the fort'}
+    end
+    table.sort(cands, function(a, b)
+        if a.adult ~= b.adult then return a.adult end
+        return a.u.id < b.u.id
+    end)
+    local named, unmarked = {}, 0
+    for _, c in ipairs(cands) do
+        if kept >= want then break end
+        if not dry_run then
+            local okm, marked = pcall(function() return c.u.flags2.slaughter end)
+            if okm and marked then c.u.flags2.slaughter = false; unmarked = unmarked + 1 end
+            pcall(dfhack.units.setNickname, c.u, MOUSER_NICK)
+            if nickname(c.u) ~= MOUSER_NICK then
+                return {ok = #named > 0, kept = kept, named = named, unmarked = unmarked,
+                        error = 'the game did not take the nickname'}
+            end
+        end
+        kept = kept + 1
+        local okn, n = pcall(function() return (txt or tostring)(dfhack.units.getReadableName(c.u)) end)
+        table.insert(named, okn and n or tostring(c.u.id))
+    end
+    return {ok = true, kept = kept, named = named, unmarked = unmarked, dry_run = dry_run or nil}
 end

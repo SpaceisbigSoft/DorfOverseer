@@ -8288,6 +8288,170 @@ def _():
     assert any(p.rule == "hospital_burrow" for p in allowed), held
 
 
+def _rotation_fort():
+    s = fort()
+    sq = s["military"]["squads"]
+    s["military"]["routines"] = ["Off duty", "Staggered training", "Constant training", "Ready"]
+    for q in sq:
+        q["routine"], q["members"], q["ai_orders"] = "Constant training", 5, False
+    s["settings"]["militarism"] = 0
+    s["dwarves"]["total"] = 160
+    m = Memory()
+    m.squads_trained = [q["id"] for q in sq]
+    return s, m
+
+
+@test("training rotation (0.104.168): the mode held a while: all training 14 days before half rest, half resting 7 before all train")
+def _():
+    s, m = _rotation_fort()
+    sq = s["military"]["squads"]
+    mt = s.setdefault("needs", {}).setdefault("needs", {})
+    def moves(state):
+        return {p.action["squad_id"]: p.action["routine"] for p in by_rule(plan(state, m)[0], "train")}
+    mt["MartialTraining"] = {"badly": 30, "distracted": 80}            # all train (first seen: no hold)
+    assert not [r for r in moves(copy.deepcopy(s)).values() if r == "Off duty"]
+    assert m.train_mode.get("all") is True
+    # the need drops under 7% two days later (as Teacheroar's did): still all training
+    s["date"]["tick"] += 2 * TICKS_PER_DAY
+    mt["MartialTraining"] = {"badly": 4, "distracted": 20}
+    m.train_mode = {"all": True, "tick": abs_tick(s) - 2 * TICKS_PER_DAY}   # all since two days
+    assert not [r for r in moves(copy.deepcopy(s)).values() if r == "Off duty"], "held: all train 14 days"
+    s["date"]["tick"] += 13 * TICKS_PER_DAY                             # 15 days in: half rest
+    off = [sid for sid, r in moves(copy.deepcopy(s)).items() if r == "Off duty"]
+    assert off and m.train_mode == {"all": False, "tick": abs_tick(s)}, (off, m.train_mode)
+    # half resting; the need back over 15% three days later: held another four days
+    for q in sq:
+        q["routine"] = "Off duty" if q["id"] in off else "Constant training"
+    m.squads_rested = list(off)
+    s["date"]["tick"] += 3 * TICKS_PER_DAY
+    mt["MartialTraining"] = {"badly": 40, "distracted": 90}
+    assert not [sid for sid, r in moves(copy.deepcopy(s)).items() if sid in off and r == "Constant training"], \
+        "held: half rest 7 days"
+    s["date"]["tick"] += 4 * TICKS_PER_DAY
+    got = moves(copy.deepcopy(s))
+    assert all(got.get(sid) == "Constant training" for sid in off), got
+    assert m.train_mode.get("all") is True
+
+
+@test("keen lift (0.104.168): in a crisis the soldiers wanted rise for the keen, held after drafting; never in a threat")
+def _():
+    from planner_military import keen_lift
+    cfg = PLANNER_CONFIG
+    s = fort()
+    s["needs"] = {"needs": {}, "keen_civilians": 18}
+    now = abs_tick(s)
+    calm = Memory()
+    assert keen_lift(s, calm, cfg, 33, 34, 133, False) == 33, "no crisis: no lift"
+    m = Memory(); m.crisis = {"since": 1, "why": ["45% unhappy"]}
+    w = keen_lift(s, m, cfg, 33, 34, 133, False)
+    assert w == 33 + 19 and m.keen_lift == {"n": 19, "tick": now, "keen": 18}, (w, m.keen_lift)   # 34 + 18 keen
+    # 12 drafted, 6 keen left who can't be (mothers, patients): no more places for others
+    s["needs"]["keen_civilians"] = 6
+    assert keen_lift(s, m, cfg, 33, 46, 133, False) == 52
+    s["needs"]["keen_civilians"] = 9                                     # 3 newly keen: 3 more places, 20 at most
+    assert keen_lift(s, m, cfg, 33, 46, 133, False) == 53 and m.keen_lift["n"] == cfg["keen_lift_max"], m.keen_lift
+    # the keen drafted (keen 0): the lift is held, no extra soldiers to trim
+    s["needs"]["keen_civilians"] = 0
+    assert keen_lift(s, m, cfg, 33, 52, 133, False) == 53
+    s["date"]["tick"] += 57 * TICKS_PER_DAY                              # 57 days on: the lift is gone
+    assert keen_lift(s, m, cfg, 33, 52, 133, False) == 33 and m.keen_lift == {}
+    # never while threats can reach the fort, nor at Militarism -50; capped by the fort's share and the max
+    s["needs"]["keen_civilians"] = 40
+    m2 = Memory(); m2.crisis = {"since": 1, "why": ["x"]}
+    assert keen_lift(s, m2, cfg, 33, 34, 133, True) == 33
+    low = copy.deepcopy(s); low["settings"]["traits"] = {"militarism": -60}
+    assert keen_lift(low, m2, cfg, 33, 34, 133, False) == 33
+    assert keen_lift(s, m2, cfg, 33, 34, 133, False) == 33 + cfg["keen_lift_max"]
+    assert keen_lift(s, m2, cfg, 33, 34, 60, False) == 33, "within 45% of a fort of 60 (27): no more than wanted"
+    # in the plan: the fill asks for more, and says why
+    p = fort()
+    p["settings"]["traits"] = {"militarism": 0}
+    p["military"]["squads"][1]["members"] = 4
+    p["military"]["soldiers"] = 14
+    p["needs"] = {"needs": {}, "keen_civilians": 9}
+    mc = Memory(); mc.crisis = {"since": 1, "why": ["45% unhappy"]}
+    f = by_rule(plan(copy.deepcopy(p), mc)[0], "squad_fill")
+    assert f and "more for the civilians who badly want to train" in f[0].reason, f
+    f = by_rule(plan(copy.deepcopy(p), Memory())[0], "squad_fill")
+    assert f and "badly want to train" not in f[0].reason, f
+
+
+@test("soldier swap (0.104.168): in a crisis, one swap a month per 2 keen civilians (4 out of crisis)")
+def _():
+    from planner_core import _soldier_swap
+    cfg = PLANNER_CONFIG
+    s = fort()
+    s["needs"] = {"needs": {}, "keen_civilians": 18,
+                  "starved_soldiers": [{"id": 9, "name": "Kib", "unmet": ["CraftObject", "BeWithFriends"]}]}
+    s.setdefault("military", {}).setdefault("gear", {})["soldiers"] = 34
+    now = abs_tick(s)
+    m = Memory(swapped={str(100 + i): now - TICKS_PER_DAY for i in range(5)})   # 5 swaps this month
+    out = []
+    _soldier_swap(s, cfg, out, m)
+    assert not out, "out of crisis: 18 // 4 = 4 a month, 5 used"
+    m.crisis = {"since": 1, "why": ["45% unhappy"]}
+    _soldier_swap(s, cfg, out, m)
+    assert out and out[0].action["unit_id"] == 9, out                    # 18 // 2 = 9 a month
+
+
+@test("complaints (0.104.168): citizens unable to complain are said with why, the mayor's meetings; the mayor gets an office whatever Deference says")
+def _():
+    s = fort()
+    s.setdefault("needs", {})["stress_causes"] = {"causes": [
+        {"thought": "UnableComplain", "citizens": 24, "stress": 13,
+         "about": {"vent_at_boss": 15, "cry_on_boss": 4, "insufficient_work": 5}}]}
+    s["offices"] = {"offices": {"MAYOR": {"held": ["Asob Sheshekolin"], "vacant": 0}}}
+    s["meetings"] = {"activities": [{"actor": "Iton", "noble": 'Asob Sheshekolin "Tiptongs", mayor'}], "requests": 11}
+    notes = plan(copy.deepcopy(s), Memory())[1]
+    n = [x for x in notes if "couldn't lodge a complaint" in x]
+    assert n and "24 citizens" in n[0] and "venting 15" in n[0] and "back to back (11 waiting)" in n[0] \
+        and "eases as the fort's stress does" in n[0], n
+    work = copy.deepcopy(s)
+    work["needs"]["stress_causes"]["causes"][0]["about"] = {"insufficient_work": 12, "vent_at_boss": 2}
+    n = [x for x in plan(work, Memory())[1] if "couldn't lodge" in x]
+    assert n and "asking for work" in n[0], n
+    nomayor = copy.deepcopy(s); nomayor["offices"]["offices"]["MAYOR"]["held"] = []
+    n = [x for x in plan(nomayor, Memory())[1] if "couldn't lodge" in x]
+    assert n and "no mayor" in n[0], n
+    few = copy.deepcopy(s); few["needs"]["stress_causes"]["causes"][0]["citizens"] = 3
+    assert not [x for x in plan(few, Memory())[1] if "couldn't lodge" in x]
+    # the mayor's office: given even when Deference gives nobles no office
+    s["settings"]["traits"] = {"deference": -100}
+    s["noble_rooms"] = {"nobles": [{"unit_id": 6247, "name": "Asob", "office": "MAYOR", "needs": ["office"]},
+                                   {"unit_id": 5, "name": "Urist", "office": "SHERIFF", "needs": ["office"]}],
+                        "free": {"office": 1}}
+    g = by_rule(plan(copy.deepcopy(s), Memory())[0], "noble_rooms")
+    assert [p.action["unit_id"] for p in g] == [6247], [p.action for p in g]
+    n = [x for x in plan(copy.deepcopy(s), Memory())[1] if "couldn't lodge" in x]
+    assert n and "no office of their own" in n[0], n
+
+
+@test("vermin (0.104.168): citizens upset by hated vermin: a few cats kept from the butcher; no cats or all caged: said")
+def _():
+    s = fort()
+    s["dwarves"]["total"] = 133
+    s.setdefault("needs", {})["stress_causes"] = {"causes": [
+        {"thought": "AnnoyedVermin", "citizens": 15, "stress": 25, "about": {"RAT": 9, "FLY": 4}}]}
+    s["needs"]["vermin_hunters"] = {"n": 12, "loose": 10, "caged": 2, "marked": 3, "kept": 1, "mousers": 0}
+    v = by_rule(plan(copy.deepcopy(s), Memory())[0], "vermin")
+    assert v and v[0].action == {"type": "keep_mousers", "count": 5}, v            # 133 // 25 = 5
+    assert "15 citizens were upset" in v[0].reason and "rat 9" in v[0].reason, v[0].reason
+    enough = copy.deepcopy(s); enough["needs"]["vermin_hunters"]["kept"] = 5
+    assert not by_rule(plan(enough, Memory())[0], "vermin")
+    few = copy.deepcopy(s); few["needs"]["vermin_hunters"].update(loose=2, kept=2)
+    assert not by_rule(plan(few, Memory())[0], "vermin"), "every loose cat already kept"
+    none_ = copy.deepcopy(s); none_["needs"]["vermin_hunters"] = {"n": 0, "loose": 0, "kept": 0}
+    p, notes = plan(none_, Memory())[:2]
+    assert not by_rule(p, "vermin") and any("no cat" in n for n in notes), notes
+    caged = copy.deepcopy(s); caged["needs"]["vermin_hunters"] = {"n": 3, "loose": 0, "caged": 3, "kept": 0}
+    assert any("all caged" in n for n in plan(caged, Memory())[1])
+    calm = copy.deepcopy(s); calm["needs"]["stress_causes"]["causes"][0]["citizens"] = 2
+    assert not by_rule(plan(calm, Memory())[0], "vermin")
+    from overseer import short
+    assert "cats" in short({"type": "keep_mousers", "count": 5})
+    assert planner.PLANNER_CONFIG["vermin_cooldown_ticks"] == 7 * 1200
+
+
 
 @test("cistern gaps (0.104.168): an open spot the AI walls itself is a note and the step goes on; only one it can't close asks the player")
 def _():

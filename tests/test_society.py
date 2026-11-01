@@ -838,6 +838,87 @@ def _():
     assert r.ok and r.piles_set == 1 and W.B.settings.finished_goods.type[7] is True and not W.A.settings.finished_goods.type[7], dict(r)
 
 
+@test("0.104.168: the stress census says what unheard complaints and hated vermin were about (DF's subthought)")
+def _():
+    env, units, assigned, ntiles, g = fresh()
+    snippet = """
+      local env = ...
+      env.df.global.cur_year, env.df.global.cur_year_tick = 92, 200000
+      env.df.unit_thought_type = {[1] = 'UnableComplain', [2] = 'AnnoyedVermin', [3] = 'SawDeadBody'}
+      env.df.emotion_type = {[10] = 'ISOLATION', [11] = 'ANNOYANCE', attrs = {[10] = {divider = 1}, [11] = {divider = 1}}}
+      env.df.history_event_reason = {[25] = 'insufficient_work', [28] = 'vent_at_boss'}
+      local raws = {[7] = {creature_id = 'RAT'}, [8] = {creature_id = 'FLY'}}
+      env.df.creature_raw = {find = function(id) return raws[id] end}
+      local function em(th, sub) return {thought = th, type = th == 1 and 10 or 11, strength = 10, year = 92,
+                                         year_tick = 199000, subthought = sub} end
+      local function soul(list) return {status = {current_soul = {personality = {emotions = list}}}} end
+      STRESS_UNITS = {soul({em(1, 28), em(2, 7)}), soul({em(1, 28), em(1, 25), em(2, 8), em(3, 99)})}
+    """
+    env["load"](snippet, "t", "t", env)(env)
+    c = env.stress_census(env.STRESS_UNITS)
+    by = {x.thought: x for x in c.causes.values()}
+    assert dict(by["UnableComplain"].about) == {"vent_at_boss": 2, "insufficient_work": 1}, dict(by["UnableComplain"].about)
+    assert dict(by["AnnoyedVermin"].about) == {"RAT": 1, "FLY": 1}, dict(by["AnnoyedVermin"].about)
+    assert by["SawDeadBody"].about is None                                  # only the listed thoughts
+
+
+@test("recreation (0.104.168): never a noble (their office is outside the burrow); one in already is let out")
+def _():
+    env, units, assigned, ntiles, g = fresh()
+    env["load"]("""local env, units = ...
+        env.dfhack.units.getNoblePositions = function(u) if u.noble then return {{}} end return nil end
+        units[1].noble = true""", "t", "t", env)(env, units)
+    r = env.recreation_tick(2, 28, False)
+    assert not assigned[1] and assigned[2] and assigned[7], dict(assigned)  # the mayor (cat 0) passed over
+    units[2].noble = True                                                   # elected since
+    env.recreation_tick(2, 28, False)
+    assert not assigned[2], dict(assigned)
+
+
+@test("vermin hunters (0.104.168): the cats counted (loose, caged, kept); a few kept from the butcher by a nickname")
+def _():
+    env, units, assigned, ntiles, g = fresh()
+    snippet = """
+      local env = ...
+      local cat_raw = {creature_id = 'CAT', caste = {[0] = {flags = {HUNTS_VERMIN = true}}}}
+      local cow_raw = {creature_id = 'COW', caste = {[0] = {flags = {}}}}
+      env.df.creature_raw = {find = function(id) return id == 1 and cat_raw or cow_raw end}
+      local function animal(id, race, o)
+          o = o or {}
+          return {id = id, race = race, caste = 0, adult = o.adult ~= false, pet = o.pet,
+                  name = {has_name = false, nickname = o.nick or ''},
+                  flags1 = {caged = o.caged or false}, flags2 = {slaughter = o.marked or false}}
+      end
+      ANIMALS = {animal(11, 1, {pet = true}), animal(12, 1, {marked = true}), animal(13, 1, {adult = false}),
+                 animal(14, 1, {caged = true}), animal(15, 1), animal(16, 2)}
+      local U = env.dfhack.units
+      U.isDead = function() return false end
+      U.isAnimal = function() return true end
+      U.isFortControlled = function() return true end
+      U.isPet = function(u) return u.pet == true end
+      U.isAvailableForAdoption = function() return false end
+      U.isAdult = function(u) return u.adult end
+      U.setNickname = function(u, n) u.name.nickname = n end
+      U.getReadableName = function(u) return 'cat ' .. u.id end
+    """
+    env["load"](snippet, "t", "t", env)(env)
+    v = env.vermin_hunters(env.ANIMALS)
+    assert (v.n, v.loose, v.caged, v.marked, v.kept, v.mousers) == (5, 4, 1, 1, 1, 0), dict(v)
+    r = env.keep_mousers(3, True, None, env.ANIMALS)
+    assert r.ok and r.dry_run and list(r.named.values()) == ["cat 12", "cat 15"], dict(r)   # adults first; not caged
+    assert env.ANIMALS[2].name.nickname == "" and env.ANIMALS[2].flags2.slaughter
+    r = env.keep_mousers(3, False, None, env.ANIMALS)
+    assert r.ok and r.unmarked == 1 and env.ANIMALS[2].name.nickname == "Mouser", dict(r)
+    assert not env.ANIMALS[2].flags2.slaughter                              # off the butcher's list
+    v = env.vermin_hunters(env.ANIMALS)
+    assert v.kept == 3 and v.mousers == 2 and v.marked == 0, dict(v)
+    assert env.keep_mousers(3, False, None, env.ANIMALS).unchanged
+    r = env.keep_mousers(9, False, None, env.ANIMALS)
+    assert r.ok and r.kept == 4, dict(r)                                    # the kitten too, never the caged one
+    r = env.keep_mousers(9, False, None, env.ANIMALS)
+    assert not r.ok and r.rejected, dict(r)
+
+
 if __name__ == "__main__":
     for name, ok, msg in RESULTS:
         print(f"[{'PASS' if ok else 'FAIL'}] {name}" + (f"\n        {msg}" if msg else ""))
