@@ -762,23 +762,26 @@ CUP_WORLD = """
   env.df.item_type = {GOBLET = 7}
   env.df.building_type.Stockpile = 'Stockpile'
   env.df.abstract_building_type = {[3] = 'INN_TAVERN'}
-  -- the finished goods piles: A (2 free tiles) refuses goblets; B (5 free) takes them but no wood
+  -- the finished goods piles: A (x300, 2 free tiles) refuses goblets; B (x200, 5 free) takes them
+  -- but no wood or bone; D beside the depot and O outdoors (nearer, more room) refuse wood too
   local function pile(id, free, goblets, wood)
-    return {id = id, x1 = id, y1 = 0, x2 = id, y2 = free - 1, z = 1, free_ = free, use_links_only = 0,
+    return {id = id, x1 = id, y1 = 0, x2 = id, y2 = free - 1, z = 1, use_links_only = 0,
             settings = {flags = {finished_goods = true},
                         finished_goods = {type = {[7] = goblets}, mats = {[5] = true}, other_mats = {[0] = wood},
                                           quality_core = {[0] = true}}},
             getType = function() return 'Stockpile' end}
   end
-  W.A, W.B = pile(100, 2, false, true), pile(200, 5, true, false)
-  env.df.global.world.buildings.other = {STOCKPILE = {W.A, W.B}}
-  -- tiles: x 100/200 are piles (all free); the halls at y 10 (dining, a zone) and 20 (a tavern's)
-  env.dfhack.maps = {getTileFlags = function(x, y, z) return {pile = (x == 100 or x == 200)}, {item = false} end,
+  W.A, W.B, W.D, W.O = pile(300, 2, false, true), pile(200, 5, true, false), pile(150, 9, true, false), pile(120, 9, true, false)
+  local depot = {x1 = 148, y1 = 12, x2 = 152, y2 = 16, z = 1}
+  env.df.global.world.buildings.other = {STOCKPILE = {W.A, W.B, W.D, W.O}, TRADE_DEPOT = {depot}}
+  -- tiles: x >= 100 are piles (all free); the halls at y 10 (dining, a zone) and 20 (a tavern's);
+  -- a pasture under the sky at y 30; x 120 is outdoors
+  env.dfhack.maps = {getTileFlags = function(x, y, z) return {pile = x >= 100, outside = (x == 120 or y == 30)}, {item = false} end,
                      getWalkableGroup = function(p) return (p.x == 99) and 2 or 1 end}
   local hall = {location_id = -1}
   local tavern = {location_id = 3}
   env.dfhack.buildings.findCivzonesAt = function(p)
-    if p.y == 10 then return {hall} elseif p.y == 20 then return {tavern} end
+    if p.y == 10 or p.y == 30 then return {hall} elseif p.y == 20 then return {tavern} end
     return {} end
   env.dfhack.buildings.findAtTile = function(p) return nil end
   env.dfhack.world.getCurrentSite = function()
@@ -786,17 +789,20 @@ CUP_WORLD = """
   env.dfhack.units.getPosition = function(u) return 1, 1, 1 end
   env.dfhack.units.getCitizens = function() return {{}} end
   env.dfhack.items = {getPosition = function(i) return i.x, i.y, 1 end, getHolderBuilding = function() return nil end,
-                      getContainer = function() return nil end}
+                      getContainer = function(i) return i.container end}
   env.dfhack.matinfo = {decode = function(i)
     if i.mat == 'wood' then return {plant = {}, material = {flags = {WOOD = true}}, getToken = function() return 'PLANT:X:WOOD' end} end
+    if i.mat == 'bone' then return {creature = {}, material = {flags = {BONE = true}}, getToken = function() return 'CREATURE:X:BONE' end} end
     return {inorganic = {}, index = 5, getToken = function() return 'INORGANIC:X' end} end}
   local function cup(x, y, mat, flags)
     local f = flags or {}
     f.on_ground = true
     return {x = x, y = y, mat = mat, flags = f, getQuality = function() return 0 end, maker_race = -1}
   end
+  local boxed = cup(9, 10, 'wood'); boxed.container = {}
   W.cups = {[0] = cup(5, 10, 'wood'), [1] = cup(6, 10, 'stone'), [2] = cup(7, 20, 'stone'),
-            [3] = cup(99, 10, 'stone'), [4] = cup(8, 10, 'stone', {forbid = true})}
+            [3] = cup(99, 10, 'stone'), [4] = cup(8, 10, 'stone', {forbid = true}), [5] = cup(4, 10, 'bone'),
+            [6] = boxed, [7] = cup(3, 30, 'stone', {forbid = true})}
   env.df.global.world.items = {other = {GOBLET = W.cups}}
   return W
 """
@@ -809,34 +815,42 @@ def _():
     W = env["load"](CUP_WORLD, "t", "t", env)(env)
     d = env.free_items_count("GOBLET", True)
     why = dict(d.why)
-    # wood: B takes goblets but not wood, A no goblets -> material; the tavern's; x99 cut off; the stone one in the hall: B takes it
-    assert why == {"pile_refuses_material": 1, "location": 1, "unreachable": 1, "should_haul": 1}, why
-    assert dict(d.why_locations) == {"INN_TAVERN": 1} and d.n == 4, (dict(d.why_locations), d.n)
-    assert d.flags.forbid == 1 and d.flags.on_ground == 5 and d.forbidden_in_halls == 1, dict(d.flags)
-    assert (d.piles.finished_goods, d.piles.take_goblets) == (2, 1)
-    assert dict(d.mats) == {"wood": 1, "inorganic": 3}, dict(d.mats)
+    # wood and bone: the piles take goblets, not those materials; the tavern's; x99 cut off; the stone one
+    # in the hall: B takes it; the one in a bin: hauled with its bin (review)
+    assert why == {"pile_refuses_material": 2, "location": 1, "unreachable": 1, "should_haul": 1,
+                   "in_container": 1}, why
+    assert dict(d.why_locations) == {"INN_TAVERN": 1} and d.n == 6, (dict(d.why_locations), d.n)
+    # the forbidden one in the pasture under the sky is no hall's (review)
+    assert d.flags.forbid == 2 and d.flags.on_ground == 8 and d.forbidden_in_halls == 1, dict(d.flags)
+    assert (d.piles.finished_goods, d.piles.take_goblets) == (4, 3)
+    assert dict(d.mats) == {"wood": 2, "bone": 1, "inorganic": 3}, dict(d.mats)
 
 
-@test("cups (0.104.168): accept_cups sets the pile with the most room to take the refused cups (their material too); unforbids those in a hall")
+@test("cups (0.104.168): accept_cups sets the nearest indoor pile (never the depot's) to take the refused cups; unforbids those in an indoor hall")
 def _():
     lua = LuaRuntime(unpack_returned_tuples=True)
     env = lua.execute(FAKE, (ROOT / "lua" / "ai-society.lua").read_text(encoding="utf-8"))[0]
     W = env["load"](CUP_WORLD, "t", "t", env)(env)
     r = env.accept_cups(True)
-    assert r.ok and r.dry_run and r.cups_refused == 1 and r.unforbidden == 1 and r.pile_id == 200, dict(r)
+    # the cup in the bin is never counted here, as in the census (review)
+    assert r.ok and r.dry_run and r.cups_refused == 2 and r.unforbidden == 1 and r.pile_id == 200, dict(r)
     assert not W.B.settings.finished_goods.other_mats[0] and W.cups[4].flags.forbid       # a dry run changes nothing
     r = env.accept_cups(False)
-    assert r.ok and r.pile_id == 200 and r.materials_set == 1 and r.unforbidden == 1, dict(r)
-    assert W.B.settings.finished_goods.other_mats[0] is True and not W.cups[4].flags.forbid
-    assert W.A.settings.finished_goods.type[7] is False                    # the other pile left as it was
+    assert r.ok and r.pile_id == 200 and r.materials_set == 2 and r.unforbidden == 1, dict(r)
+    fg = W.B.settings.finished_goods
+    assert fg.other_mats[0] is True and fg.other_mats[2] is True and not W.cups[4].flags.forbid
+    assert W.cups[7].flags.forbid                                          # the pasture's left as it was
+    for other in (W.A, W.D, W.O):                                          # the depot's and the outdoor pile untouched
+        assert not other.settings.finished_goods.other_mats[2]
     assert not W.cups[2].flags.forbid                                      # (the tavern's never touched)
     r = env.accept_cups(False)
     assert not r.ok and r.rejected, dict(r)                                # nothing left to fix
-    # no pile takes goblets at all: the one with the most room is set to
-    W.B.settings.finished_goods.type[7] = False
+    # no indoor pile with room: refused, never the depot's
+    fg.other_mats[0], fg.other_mats[2] = False, False
+    W.B.y2, W.A.y2 = -1, -1                                                # (no tiles: no room indoors)
     r = env.accept_cups(False)
-    assert r.ok and r.piles_set == 1 and W.B.settings.finished_goods.type[7] is True and not W.A.settings.finished_goods.type[7], dict(r)
-
+    assert not r.ok and r.rejected and "depot" in r.error, dict(r)
+    assert not W.D.settings.finished_goods.other_mats[0] and not W.O.settings.finished_goods.other_mats[0]
 
 @test("0.104.168: the stress census says what unheard complaints and hated vermin were about (DF's subthought)")
 def _():

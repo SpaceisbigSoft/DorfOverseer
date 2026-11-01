@@ -718,7 +718,7 @@ CUP_WHY_WORDS = {"location": "kept by a location (a tavern's own)", "pile_refuse
                  "links_only": "the piles that take them take from links only",
                  "no_room": "the piles that take them are full",
                  "unreachable": "where no citizen walks", "should_haul": "nothing in the way (waiting for a hauler)",
-                 "unknown": "unread"}
+                 "in_container": "in a bin or barrel (hauled with it)", "unknown": "unread"}
 
 
 def _cups_home_rule(cl: dict, cupless: int, proposals: list, notes: list) -> None:

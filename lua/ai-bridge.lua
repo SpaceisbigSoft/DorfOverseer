@@ -6635,6 +6635,7 @@ CACHE_INVALIDATES = {
     add_doctor_post = {'locations'},   -- (0.104.168)
     house_dwarves = {'homes', 'noble_rooms'},   -- (0.104.168)
 }
+CACHE_INVALIDATES.accept_cups = {'needs'}      -- (0.104.168) the cups census shows what it changed
 SECTION_CACHE = SECTION_CACHE or {}
 -- (0.104.8) a new bridge starts with an empty cache: DFHack keeps a script's
 -- globals across runs, so a section cached by older code (0.104.7's

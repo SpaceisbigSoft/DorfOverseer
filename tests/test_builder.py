@@ -2021,6 +2021,84 @@ def _():
     assert r.ok and r.walls == 1, dict(r)
 
 
+def _gaps(plan):
+    ok, where, gaps = B.cistern_sealed(plan)
+    assert not ok
+    return gaps
+
+
+def _unit_at(*spots):
+    want = set(spots)
+    return lambda tiles, z: sum(1 for t in tiles.values() if (t.x, t.y, z) in want)
+
+
+@test("cistern gaps (0.104.168, review): open air is no way off a hollow, nor a way round the wall; unsure past the tiles looked at: the player's")
+def _():
+    plan, gx, gy, dx, dy = _shaft_plan()
+    real = B.units_on_tiles
+    try:
+        # (b) a hollow beyond the gap with a channel (open air) in it and a dwarf: wait, not build
+        W.set(gx, gy, 80, LUA.table_from({"shape": "FLOOR"}))
+        W.set(gx + dx, gy + dy, 80, LUA.table_from({"shape": "FLOOR"}))
+        W.set(gx + 2 * dx, gy + 2 * dy, 80, LUA.table_from({"shape": "EMPTY"}))
+        B.units_on_tiles = _unit_at((gx + dx, gy + dy, 80))
+        r = B.cistern_close_gaps(LUA.table_from({"stage": "linking"}), plan, _gaps(plan), False, lambda x: None)
+        assert r.waiting and "hollow" in r.error and not [c for c in W.placed.values() if c.mode == "build"], dict(r)
+        B.units_on_tiles = real
+        # (c) two sides of a corridor joined only through open air: walling the gap cuts the way
+        plan, gx, gy, dx, dy = _shaft_plan()
+        px, py = dy, dx
+        for i in (-1, 0, 1):
+            W.set(gx + px * i, gy + py * i, 80, LUA.table_from({"shape": "FLOOR"}))
+            W.set(gx + dx + px * i, gy + dy + py * i, 80, LUA.table_from({"shape": "EMPTY"}))
+        for i in (-2, 2):                                  # the corridor goes on both ways
+            W.set(gx + px * i, gy + py * i, 80, LUA.table_from({"shape": "FLOOR"}))
+        r = B.cistern_close_gaps(LUA.table_from({"stage": "linking"}), plan, _gaps(plan), False, lambda x: None)
+        assert r.needs_player and "cut a way" in r.unsealed_why, dict(r)
+        # (a) more ground beyond than is looked at, no stair found: never assumed safe
+        plan, gx, gy, dx, dy = _shaft_plan()
+        W.set(gx, gy, 80, LUA.table_from({"shape": "FLOOR"}))
+        for i in range(1, 7):
+            W.set(gx + dx * i, gy + dy * i, 80, LUA.table_from({"shape": "FLOOR"}))
+        B.CISTERN_GAP_POCKET_MAX = 3
+        r = B.cistern_close_gaps(LUA.table_from({"stage": "linking"}), plan, _gaps(plan), False, lambda x: None)
+        assert r.needs_player and "too much ground" in r.unsealed_why, dict(r)
+        # ...a stair within the tiles looked at: a way off the level, no hollow: walled
+        W.set(gx + dx * 2, gy + dy * 2, 80, LUA.table_from({"shape": "STAIR_UPDOWN"}))
+        r = B.cistern_close_gaps(LUA.table_from({"stage": "linking"}), plan, _gaps(plan), False, lambda x: None)
+        assert r.ok and r.walls == 1, dict(r)
+    finally:
+        B.units_on_tiles = real
+        B.CISTERN_GAP_POCKET_MAX = 400
+
+
+@test("cistern gaps (0.104.168, review): a dwarf gone into the hollow while the wall waits for a builder: the wall is taken back")
+def _():
+    plan, gx, gy, dx, dy = _shaft_plan()
+    W.set(gx, gy, 80, LUA.table_from({"shape": "FLOOR"}))
+    W.set(gx + dx, gy + dy, 80, LUA.table_from({"shape": "FLOOR"}))
+    d = LUA.table_from({"stage": "linking", "plan": plan})
+    r = B.cistern_close_gaps(d, plan, _gaps(plan), False, lambda x: None)
+    assert r.ok and r.walls == 1, dict(r)
+    W.set(gx, gy, 80, LUA.table_from({"building": True}))             # placed, not built yet
+    real, real_cancel = B.units_on_tiles, B.cancel_construction
+    cancelled = []
+    try:
+        B.cancel_construction = lambda x, y, z: cancelled.append((x, y, z)) or True
+        r = B.cistern_close_gaps(d, plan, _gaps(plan), False, lambda x: None)
+        assert r.waiting and "being built" in r.error and not cancelled, dict(r)      # nobody inside: it goes on
+        B.units_on_tiles = _unit_at((gx + dx, gy + dy, 80))
+        r = B.cistern_close_gaps(d, plan, _gaps(plan), False, lambda x: None)
+        assert r.waiting and "taken back" in r.error and cancelled == [(gx, gy, 80)], dict(r)
+        assert d.sealing[f"{gx},{gy},80"] is None
+        B.units_on_tiles = _unit_at((gx, gy, 80))                         # only passing over the tile: kept
+        cancelled.clear()
+        r = B.cistern_close_gaps(d, plan, _gaps(plan), False, lambda x: None)
+        assert not cancelled, dict(r)
+    finally:
+        B.units_on_tiles, B.cancel_construction = real, real_cancel
+
+
 @test("cistern v2 (0.104.145): the AI weighs the sources: a cavern lake over a pond that freezes; a pond over caverns with a danger")
 def _():
     LUA.execute("""local W = ...
