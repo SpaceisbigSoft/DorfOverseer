@@ -7672,6 +7672,23 @@ def _():
     assert by_rule(plan(copy.deepcopy(s), Memory())[0], "well_lid")[0].action == {"type": "seal_well_stairs"}
 
 
+@test("people (0.104.159): a soldier with a baby goes home (not a leader); the syndromes named; children per stress")
+def _():
+    s = fort()
+    s.setdefault("military", {})["soldier_mothers"] = [{"id": 7, "name": "Urist, Axedwarf", "leader": True},
+                                                       {"id": 8, "name": "Ast, Wrestler"}, {"id": 9, "name": "Kib"}]
+    s.setdefault("health", {}).update(syndromes=36, infected=82, syndrome_names={"alcohol": 30, "spider venom": 6})
+    s.setdefault("needs", {})["stress_causes"] = {"causes": [{"thought": "SleptRoughFloor", "citizens": 6, "children": 4}]}
+    props, notes = plan(copy.deepcopy(s), Memory())[:2]
+    m = [p.action for p in props if p.rule == "mothers"]
+    assert m == [{"type": "squad_release", "unit_id": 8, "mother": True}], m
+    assert any("Urist, Axedwarf leads a squad and has a baby" in n for n in notes), notes
+    assert any("36 citizens have a syndrome: alcohol (30), spider venom (6); 82 walk about" in n for n in notes), notes
+    assert any("sleeping on the floor (6 citizens, 4 of them children)" in n for n in notes), notes
+    del s["military"]["soldier_mothers"]
+    assert not [p for p in plan(copy.deepcopy(s), Memory())[0] if p.rule == "mothers"]
+
+
 @test("comfort (0.104.157): shoes for the barefoot in pairs (leather, else cloth), cups when dwarves drink without; the worst stresses said")
 def _():
     s = fort()

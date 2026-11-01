@@ -837,6 +837,14 @@ def _():
     assert not r.ok and r.rejected and "longs to fight" in r.error, dict(r)
     r = env.release(1, False, None)
     assert r.ok and removed[1] == 1, dict(r)
+    # (0.104.159) a mother with a baby goes home even longing to train; not one without a baby
+    lua.execute("""local env = ...
+        env.dfhack.units.getCitizens = function() return {{id = 9, relationship_ids = {Mother = 2}}} end
+        env.dfhack.units.isBaby = function(u) return u.id == 9 end""", env)
+    r = env.release(2, False, None, True)
+    assert r.ok and removed[2] == 2, dict(r)
+    r = env.release(1, False, None, True)
+    assert not r.ok and "no baby" in r.error, dict(r)
 
 
 if __name__ == "__main__":

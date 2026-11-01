@@ -228,6 +228,17 @@ function report(txt)
     out.barracks = okb and bar or {}
     local okr, rng = pcall(ranges_report)
     out.ranges = okr and rng or {}
+    -- (0.104.159) soldiers with a baby (drafted before it came): {id, name, leader}
+    pcall(function()
+        local mothers = nursing_mothers()
+        for _, u in ipairs(dfhack.units.getCitizens(true)) do
+            if mothers[u.id] and u.military.squad_id ~= -1 then
+                out.soldier_mothers = out.soldier_mothers or {}
+                table.insert(out.soldier_mothers, {id = u.id, name = (txt or tostring)(dfhack.units.getReadableName(u)),
+                                                   leader = u.military.squad_position == 0 or nil})
+            end
+        end
+    end)
     return out
 end
 
@@ -432,7 +443,9 @@ end
 -- (0.102.4) One stressed soldier back to civilian life (DF wiki: the
 -- stress-prone are "not suitable for the military"): never a squad's
 -- leader, nor while the squad is out on orders.
-function release(unit_id, dry_run, txt)
+-- `mother`: (0.104.159) a soldier with a baby goes home whatever she longs
+-- for (the baby is carried into every fight); only a squad leader stays.
+function release(unit_id, dry_run, txt, mother)
     if not (dfhack.military and type(dfhack.military.removeFromSquad) == 'function') then
         return {ok = false, rejected = true, error = 'this DFHack cannot take a dwarf out of a squad'}
     end
@@ -442,7 +455,8 @@ function release(unit_id, dry_run, txt)
     if u.military.squad_position == 0 then return {ok = false, rejected = true, error = 'a squad leader stays'} end
     -- (0.103.10) one who longs to fight or train stays: the squad is what
     -- meets that (and the fill would draft them straight back)
-    if wants_fight(u) then return {ok = false, rejected = true, error = 'longs to fight or train: the squad is what meets that'} end
+    if mother and not nursing_mothers()[u.id] then return {ok = false, rejected = true, error = 'no baby of hers'} end
+    if wants_fight(u) and not mother then return {ok = false, rejected = true, error = 'longs to fight or train: the squad is what meets that'} end
     local sq = df.squad.find(u.military.squad_id)
     if sq and #sq.orders > 0 then return {ok = false, rejected = true, error = 'the squad is out on orders'} end
     local name = (txt or tostring)(dfhack.units.getReadableName(u))

@@ -34,7 +34,7 @@
 local json = require('json')
 local utils = require('utils')
 
-BRIDGE_VERSION = '0.104.158'
+BRIDGE_VERSION = '0.104.159'
 PROTOCOL = 1 -- bump when the report's shape changes in a breaking way
 
 local OUT_DIR = dfhack.getDFPath() .. '/dfhack-config/ai-overseer'
@@ -2042,6 +2042,15 @@ function get_health()
         end)
         local syn = 0
         pcall(function() syn = #u.syndromes.active end)
+        -- (0.104.159) by name: what the fort is sick (or high) with
+        pcall(function()
+            for _, a in ipairs(u.syndromes.active) do
+                local sd = df.syndrome.find(a.type)
+                local nm = sd and sd.syn_name ~= '' and txt(sd.syn_name) or ('syndrome ' .. tostring(a.type))
+                out.syndrome_names = out.syndrome_names or {}
+                out.syndrome_names[nm] = (out.syndrome_names[nm] or 0) + 1
+            end
+        end)
         if infected then out.infected = out.infected + 1 end
         if syn > 0 then out.syndromes = out.syndromes + 1 end
         if care or infected then
@@ -5775,7 +5784,7 @@ end
 function act_squad_release(a)
     local id = whole_number(a.unit_id)
     if not id then return reject('squad_release needs unit_id') end
-    return reqscript('ai-military').release(id, a.dry_run == true, txt)
+    return reqscript('ai-military').release(id, a.dry_run == true, txt, a.mother == true)
 end
 
 -- (0.104.65) A swap: a soldier trained enough goes back to work and the

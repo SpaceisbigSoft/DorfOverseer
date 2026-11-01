@@ -750,6 +750,8 @@ function stress_census(units)
         if ok and ems then
             read = read + 1
             local seen = {}
+            local okc, child = pcall(function() return dfhack.units.isChild(u) or dfhack.units.isBaby(u) end)
+            child = okc and child or false
             for _, em in ipairs(ems) do
                 local okt, when = pcall(function() return em.year * 403200 + em.year_tick end)
                 if not okt or when >= since then
@@ -761,7 +763,10 @@ function stress_census(units)
                     e.stress, e.emotions = e.stress + stress, e.emotions + 1
                     local ek = df.emotion_type[em.type] or tostring(em.type)
                     e.kinds[ek] = (e.kinds[ek] or 0) + 1
-                    if not seen[name] then seen[name], e.citizens = true, e.citizens + 1 end
+                    if not seen[name] then
+                        seen[name], e.citizens = true, e.citizens + 1
+                        if child then e.children = (e.children or 0) + 1 end   -- (0.104.159)
+                    end
                     by[name] = e
                 end
             end

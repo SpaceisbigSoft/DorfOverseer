@@ -13,7 +13,7 @@ from quirks import has_rule
 from digest import _d, _l, normalize
 from planner_core import *  # noqa: F401,F403
 
-__all__ = ["_comfort_rules", "stress_causes", "THOUGHT_WORDS", "_doctor_patient_rule", "MOOD_WORKSHOPS", "PETITION_KINDS", "petition_orders_wanted", "_petition_rules", "_jail_size_rule", "_convict_rule", "_break_fights_rule", "_sync_offices_rule", "patient_waits", "_health_rules", "TANTRUM_KEEP", "note_tantrums", "_noble_rooms_rule", "outsider_orders", "NEED_ADVICE", "JEWEL_RECIPES", "_recreation_rule", "_stress_care", "_needs_notes", "_location_supply_rules", "POST_LABORS", "STAFF_POSTS", "STAFF_MAX", "_traction_rule", "_wish_words", "_wish_met", "wish_key", "_location_petition_rules", "_meeting_notes", "_grandeur_rule", "_location_value_rule", "_staff_rule", "_quick_location_rule", "_needs_rules", "_mood_rules", "mood_item_text", "_mood_materials", "_dead_notes", "AI_OFFICES", "_society_notes"]
+__all__ = ["_people_rules", "_comfort_rules", "stress_causes", "THOUGHT_WORDS", "_doctor_patient_rule", "MOOD_WORKSHOPS", "PETITION_KINDS", "petition_orders_wanted", "_petition_rules", "_jail_size_rule", "_convict_rule", "_break_fights_rule", "_sync_offices_rule", "patient_waits", "_health_rules", "TANTRUM_KEEP", "note_tantrums", "_noble_rooms_rule", "outsider_orders", "NEED_ADVICE", "JEWEL_RECIPES", "_recreation_rule", "_stress_care", "_needs_notes", "_location_supply_rules", "POST_LABORS", "STAFF_POSTS", "STAFF_MAX", "_traction_rule", "_wish_words", "_wish_met", "wish_key", "_location_petition_rules", "_meeting_notes", "_grandeur_rule", "_location_value_rule", "_staff_rule", "_quick_location_rule", "_needs_rules", "_mood_rules", "mood_item_text", "_mood_materials", "_dead_notes", "AI_OFFICES", "_society_notes"]
 
 
 # A crafting mood's skill -> the workshop (or furnace) the dwarf must claim.
@@ -571,7 +571,8 @@ def _comfort_rules(s: dict, cfg: dict, proposals: list, notes: list) -> None:
     causes = stress_causes(s)
     if causes:
         notes.append("what stresses the fort most (28 days): " + "; ".join(
-            f"{THOUGHT_WORDS.get(c.get('thought'), c.get('thought'))} ({c.get('citizens')} citizens)"
+            f"{THOUGHT_WORDS.get(c.get('thought'), c.get('thought'))} ({c.get('citizens')} citizens"
+            + (f", {c['children']} of them children" if c.get("children") else "") + ")"
             for c in causes[:5]))
     cl = _d(_d(s.get("needs")).get("clothing"))
     if not cl:
@@ -622,6 +623,30 @@ def _comfort_rules(s: dict, cfg: dict, proposals: list, notes: list) -> None:
                                               "amount": n},
                                   f"{cupless} citizens drank without a cup lately and {free_cups} cups are free: make {n} "
                                   + ("wooden cups (no stone to spare)" if cups else "stone mugs"), 5, True))
+
+
+def _people_rules(s: dict, cfg: dict, proposals: list, notes: list) -> None:
+    """(0.104.159) Health and people: a soldier who has had a baby goes home
+    (the baby is carried into every fight; the fill never drafts mothers, but
+    one drafted before her baby came stayed), one a cycle, never a squad
+    leader; and what the fort is sick with, by name (the health report's
+    syndromes), said in the log."""
+    mil = _d(s.get("military"))
+    mothers = [m for m in _l(mil.get("soldier_mothers")) if isinstance(m, dict) and m.get("id") is not None]
+    for m in mothers:
+        if m.get("leader"):
+            notes.append(f"{m.get('name')} leads a squad and has a baby (it is carried into every fight): "
+                         "the AI leaves a squad leader in place")
+            continue
+        proposals.append(Proposal("mothers", {"type": "squad_release", "unit_id": m["id"], "mother": True},
+                                  f"{m.get('name')} has a baby, carried into every fight: out of her squad", 3))
+        break
+    h = _d(s.get("health"))
+    names = {str(k): int(v) for k, v in _d(h.get("syndrome_names")).items() if isinstance(v, int)}
+    if names:
+        top = sorted(names.items(), key=lambda kv: (-kv[1], kv[0]))[:4]
+        notes.append(f"{h.get('syndromes')} citizens have a syndrome: " + ", ".join(f"{k} ({n})" for k, n in top)
+                     + (f"; {h.get('infected')} walk about with infected wounds" if h.get("infected") else ""))
 
 
 def _location_supply_rules(s: dict, cfg: dict, proposals: list, notes: list) -> None:
