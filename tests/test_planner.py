@@ -3413,6 +3413,38 @@ def _():
     assert ids[0] not in got or len(ids) > 2, got
 
 
+@test("training rotation (0.104.149): all squads training keep on in the dead band; they don't flip each cycle")
+def _():
+    s = fort()
+    sq = s["military"]["squads"]
+    s["military"]["routines"] = ["Off duty", "Staggered training", "Constant training", "Ready"]
+    for q in sq:
+        q["routine"], q["members"], q["ai_orders"] = "Constant training", 5, False
+    s["settings"]["militarism"] = 0
+    m = Memory()
+    m.squads_trained = [q["id"] for q in sq]
+    cit = s["dwarves"]["total"] = 160
+    mt = s.setdefault("needs", {}).setdefault("needs", {})
+    def moves(state):
+        return {p.action["squad_id"]: p.action["routine"] for p in by_rule(plan(state, m)[0], "train")}
+    # all train, the need under the 15% (24) but over 7% (11): nobody sent off duty
+    mt["MartialTraining"] = {"badly": 18, "distracted": 60}
+    assert not [r for r in moves(copy.deepcopy(s)).values() if r == "Off duty"], moves(s)
+    # under 7%: half go back to work
+    mt["MartialTraining"] = {"badly": 8, "distracted": 30}
+    assert [r for r in moves(copy.deepcopy(s)).values() if r == "Off duty"], moves(s)
+    # half resting and 18 keen: not enough to call them all back (under 15%)
+    first = sorted(q["id"] for q in sq)[: len(sq) // 2]
+    for q in sq:
+        q["routine"] = "Off duty" if q["id"] in first else "Constant training"
+    m.squads_rested = list(first)
+    mt["MartialTraining"] = {"badly": 18, "distracted": 60}
+    got = moves(copy.deepcopy(s))
+    assert not all(got.get(sid) == "Constant training" for sid in first), got     # not every resting one called back
+    mt["MartialTraining"] = {"badly": 30, "distracted": 80}
+    assert all(r == "Constant training" for r in moves(copy.deepcopy(s)).values()), moves(s)
+
+
 @test("the deep: an open cavern is said; a great danger in it is Needs you; vampires and werebeasts are Needs you")
 def _():
     s = fort()
@@ -3516,7 +3548,7 @@ def _():
     assert not by_rule(plan(s, Memory())[0], "water_zone")
 
 
-@test("slow game: many items -> a dump outside, then worn clothes marked for it; big herds -> autobutcher")
+@test("slow game: many items -> a dump outside, then old remains rot (no tidy); big herds -> autobutcher")
 def _():
     s = fort()
     s["fps_low"] = 14
@@ -3527,7 +3559,7 @@ def _():
     assert any("45000 items, 300 creatures" in n for n in notes), notes
     s["buildings"]["zones"]["Dump"] = 1
     props = plan(s, Memory())[0]
-    assert by_rule(props, "tidy") and not by_rule(props, "dump")
+    assert not by_rule(props, "tidy") and not by_rule(props, "dump")     # (0.104.149) no cleanowned
     assert by_rule(props, "prune") and by_rule(props, "prune")[0].action == {"type": "prune_remains"}
     s["logistics"]["counts"]["items"] = 5000
     assert not by_rule(plan(s, Memory())[0], "tidy")

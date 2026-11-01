@@ -257,10 +257,11 @@ def _slow_game_rules(s: dict, citizens: int, cfg: dict, proposals: list, notes: 
             proposals.append(Proposal("dump", {"type": "place_surface", "kind": "dump"},
                                       f"{items} items on the map slow the game: make a garbage dump outside "
                                       "for worn-out things", 5))
-        else:
-            proposals.append(Proposal("tidy", {"type": "tidy"},
-                                      f"{items} items on the map slow the game: worn-out clothes lying about "
-                                      "go to the garbage dump", 6))
+        # (0.104.149) no more `tidy` (DFHack cleanowned scattered x) here: it
+        # took every owned thing off the floor (the trinkets just given) and
+        # every slightly worn garment off its wearer, all carried to the dump
+        # (68 times a night in Teacheroar), and the dump keeps them on the map;
+        # prune_remains' "clothes" below rots the thrown-down clothes for real
         # (0.104.0) old remains rot away: non-entombed corpses and body parts
         # nobody can craft with (DFHack deteriorate; stays on in the save)
         # (0.104.115) the census says what lies about: thousands of butchered

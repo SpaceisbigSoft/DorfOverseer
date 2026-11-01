@@ -82,6 +82,7 @@ PLANNER_CONFIG = {
     "urgent_temple_share": 0.5,        # (0.103.12) this share of the citizens longing to pray, no real temple: a shrine at once      # (0.103.8) this many waiting for care, no hospital: one with a slot of its own
     "urgent_tavern_share": 0.33,       # (0.104.35) this share badly wanting company, only the stop-gap tavern: a tavern at once
     "train_all_share": 0.15,           # (0.104.53) this share badly wanting to train: every squad trains, none rests
+    "train_all_off_share": 0.07,       # (0.104.149) ...and once all train, they keep on until under this share
     "dwarves_per_restraint": 10,       # (0.104.52) a jail restraint for this many citizens...
     "jail_restraints_max": 12,         # ...up to this many
     # Supplies (docs/local-planner.md)

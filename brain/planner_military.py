@@ -1169,7 +1169,14 @@ def _training_rotation(s: dict, memory, squads: list, train_to: str, off: str, c
     # (Enxah: MartialTraining 16 badly, 52 distracted, a squad off duty by turns)
     cit = max(1, int(_d(s.get("dwarves")).get("total") or 0))
     mt = int(_d(_d(_d(s.get("needs")).get("needs")).get("MartialTraining")).get("badly") or 0)
-    if mt >= max(5, cit * cfg["train_all_share"]):
+    # (0.104.149) a dead band: once every squad trains they keep on until the
+    # need falls to `train_all_off_share`, read from the squads' own routines
+    # (Teacheroar, 1 Nov: one threshold flipped 8 squads on and off duty 64
+    # times a night, every soldier dropping what he carried each time)
+    by_id0 = {q["id"]: q for q in squads if q.get("id") is not None}
+    all_on = all("off duty" not in str(by_id0[sid].get("routine") or "").lower() for sid in mine)
+    if mt >= max(5, cit * cfg["train_all_share"]) or (
+            all_on and mt >= max(3, cit * cfg["train_all_off_share"])):
         k = n
     turn = abs_tick(s) // (cfg["train_rotate_days"] * TICKS_PER_DAY)
     on = {mine[(turn * k + j) % n] for j in range(k)}
