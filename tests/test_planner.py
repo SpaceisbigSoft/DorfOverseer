@@ -8333,47 +8333,85 @@ def _():
     assert m.train_mode.get("all") is True
 
 
-@test("keen lift (0.104.168): in a crisis the soldiers wanted rise for the keen, held after drafting; never in a threat")
+@test("keen lift (0.104.168): in a crisis the soldiers wanted rise for the draftable keen, held after drafting; never in a threat")
 def _():
     from planner_military import keen_lift
     cfg = PLANNER_CONFIG
     s = fort()
-    s["needs"] = {"needs": {}, "keen_civilians": 18}
+    # (review) 18 keen, 15 the fill could draft (3 nobles, mothers or patients): sized on the 15
+    s["needs"] = {"needs": {}, "keen_civilians": 18, "keen_draftable": 15}
     now = abs_tick(s)
     calm = Memory()
     assert keen_lift(s, calm, cfg, 33, 34, 133, False) == 33, "no crisis: no lift"
+    old = copy.deepcopy(s); del old["needs"]["keen_draftable"]
+    mo = Memory(); mo.crisis = {"since": 1, "why": ["45% unhappy"]}
+    assert keen_lift(old, mo, cfg, 33, 34, 133, False) == 33, "an older bridge (no draftable count): no lift"
     m = Memory(); m.crisis = {"since": 1, "why": ["45% unhappy"]}
     w = keen_lift(s, m, cfg, 33, 34, 133, False)
-    assert w == 33 + 19 and m.keen_lift == {"n": 19, "tick": now, "keen": 18}, (w, m.keen_lift)   # 34 + 18 keen
-    # 12 drafted, 6 keen left who can't be (mothers, patients): no more places for others
-    s["needs"]["keen_civilians"] = 6
-    assert keen_lift(s, m, cfg, 33, 46, 133, False) == 52
-    s["needs"]["keen_civilians"] = 9                                     # 3 newly keen: 3 more places, 20 at most
-    assert keen_lift(s, m, cfg, 33, 46, 133, False) == 53 and m.keen_lift["n"] == cfg["keen_lift_max"], m.keen_lift
-    # the keen drafted (keen 0): the lift is held, no extra soldiers to trim
-    s["needs"]["keen_civilians"] = 0
-    assert keen_lift(s, m, cfg, 33, 52, 133, False) == 53
-    s["date"]["tick"] += 57 * TICKS_PER_DAY                              # 57 days on: the lift is gone
-    assert keen_lift(s, m, cfg, 33, 52, 133, False) == 33 and m.keen_lift == {}
+    assert w == 33 + 16 and m.keen_lift == {"n": 16, "tick": now}, (w, m.keen_lift)   # 34 + 15 = 49
+    # 10 drafted (the lift's places go to the keen alone): the need holds, no more places
+    s["needs"]["keen_draftable"] = 5
+    assert keen_lift(s, m, cfg, 33, 44, 133, False) == 49
+    # (review, minor) the count bouncing (5 -> 2 -> 5) doesn't ratchet it: the most over the period
+    s["needs"]["keen_draftable"] = 2
+    assert keen_lift(s, m, cfg, 33, 44, 133, False) == 49
+    s["needs"]["keen_draftable"] = 5
+    assert keen_lift(s, m, cfg, 33, 44, 133, False) == 49 and m.keen_lift["n"] == 16, m.keen_lift
+    s["needs"]["keen_draftable"] = 9                                     # 4 newly keen: 4 more places
+    assert keen_lift(s, m, cfg, 33, 44, 133, False) == 53 and m.keen_lift["n"] == 20, m.keen_lift
+    # the keen all drafted: the lift is held, no extra soldiers to trim; then gone after 56 days
+    s["needs"]["keen_draftable"] = 0
+    assert keen_lift(s, m, cfg, 33, 53, 133, False) == 53
+    s["date"]["tick"] += 57 * TICKS_PER_DAY
+    assert keen_lift(s, m, cfg, 33, 53, 133, False) == 33 and m.keen_lift == {}
     # never while threats can reach the fort, nor at Militarism -50; capped by the fort's share and the max
-    s["needs"]["keen_civilians"] = 40
+    s["needs"]["keen_draftable"] = 40
     m2 = Memory(); m2.crisis = {"since": 1, "why": ["x"]}
     assert keen_lift(s, m2, cfg, 33, 34, 133, True) == 33
     low = copy.deepcopy(s); low["settings"]["traits"] = {"militarism": -60}
     assert keen_lift(low, m2, cfg, 33, 34, 133, False) == 33
     assert keen_lift(s, m2, cfg, 33, 34, 133, False) == 33 + cfg["keen_lift_max"]
     assert keen_lift(s, m2, cfg, 33, 34, 60, False) == 33, "within 45% of a fort of 60 (27): no more than wanted"
-    # in the plan: the fill asks for more, and says why
+
+
+@test("keen lift (0.104.168, review): the fill fills the wanted places first, the lift's with the keen only, strict in a crisis; none while berserk or in a tantrum")
+def _():
     p = fort()
-    p["settings"]["traits"] = {"militarism": 0}
+    p["settings"]["traits"] = {"militarism": 0}                       # 10% of 194 = 19 wanted
     p["military"]["squads"][1]["members"] = 4
     p["military"]["soldiers"] = 14
-    p["needs"] = {"needs": {}, "keen_civilians": 9}
-    mc = Memory(); mc.crisis = {"since": 1, "why": ["45% unhappy"]}
-    f = by_rule(plan(copy.deepcopy(p), mc)[0], "squad_fill")
+    p["needs"] = {"needs": {}, "keen_civilians": 9, "keen_draftable": 9}
+    def crisis():
+        mc = Memory(); mc.crisis = {"since": 1, "why": ["45% unhappy"]}
+        return mc
+    f = by_rule(plan(copy.deepcopy(p), crisis())[0], "squad_fill")
     assert f and "more for the civilians who badly want to train" in f[0].reason, f
+    assert f[0].action["count"] <= 19 - 14 and f[0].action.get("strict") is True and not f[0].action.get("keen_only"), f
     f = by_rule(plan(copy.deepcopy(p), Memory())[0], "squad_fill")
-    assert f and "badly want to train" not in f[0].reason, f
+    assert f and "badly want to train" not in f[0].reason and "strict" not in f[0].action, f
+    full = copy.deepcopy(p); full["military"]["soldiers"] = 19        # the wanted places are filled: keen only
+    f = by_rule(plan(full, crisis())[0], "squad_fill")
+    assert f and f[0].action.get("keen_only") is True and f[0].action.get("strict") is True, f
+    # nobody drafted while a dwarf is berserk or a tantrum is under way
+    mad = copy.deepcopy(p); mad.setdefault("hazards", {})["berserk"] = [{"id": 77, "name": "Urist"}]
+    props, notes = plan(mad, Memory())[:2]
+    assert not by_rule(props, "squad_fill") and any("no drafting while a dwarf is berserk" in n for n in notes), notes
+    mt = Memory(); mt.tantrums = [[abs_tick(p) - 100, "Urist"]]
+    props, notes = plan(copy.deepcopy(p), mt)[:2]
+    assert not by_rule(props, "squad_fill") and any("tantrums are under way" in n for n in notes), notes
+    mt.tantrums = [[abs_tick(p) - 2 * TICKS_PER_DAY, "Urist"]]         # two days ago: over
+    assert by_rule(plan(copy.deepcopy(p), mt)[0], "squad_fill")
+    # the swap's draft is strict in a crisis too
+    from planner_core import _soldier_swap
+    s = fort()
+    s["needs"] = {"needs": {}, "keen_civilians": 18,
+                  "starved_soldiers": [{"id": 9, "name": "Kib", "unmet": ["CraftObject", "BeWithFriends"]}]}
+    out = []
+    _soldier_swap(s, PLANNER_CONFIG, out, crisis())
+    assert out and out[0].action.get("strict") is True, out
+    out = []
+    _soldier_swap(s, PLANNER_CONFIG, out, Memory())
+    assert out and "strict" not in out[0].action, out
 
 
 @test("soldier swap (0.104.168): in a crisis, one swap a month per 2 keen civilians (4 out of crisis)")

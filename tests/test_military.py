@@ -729,6 +729,60 @@ def _():
     assert got == [3, 4], got                       # not 1 (miserable) or 2 (very unhappy)
 
 
+def _fill_env():
+    lua = LuaRuntime(unpack_returned_tuples=True)
+    return lua.execute(r"""
+    local src = ...
+    local env = setmetatable({}, {__index = _G})
+    assert(load(src, 'ai-military', 't', env))()
+    local added = {}
+    local function vec(t) t = t or {}; return setmetatable(t, {__len = function(v) local n = 0
+        while rawget(v, n) ~= nil do n = n + 1 end return n end}) end
+    local function zl(...) local t = {}; for i, v in ipairs({...}) do t[i - 1] = v end return vec(t) end
+    local function dwarf(id, stress, focus, o)
+        o = o or {}
+        return {id = id, stress = stress, military = {squad_id = -1}, relationship_ids = {Mother = -1}, noble = o.noble,
+                status = {current_soul = {skills = zl(), personality = {needs = zl({id = 5, focus_level = focus})}}},
+                health = o.sick and {flags = {needs_healthcare = true}} or nil}
+    end
+    -- 1 miserable and keen, 2 very unhappy and keen, 3 content and keen, 4 content, not keen,
+    -- 5 keen but a noble, 6 keen but a patient
+    local citizens = {dwarf(1, 0, -20000), dwarf(2, 1, -20000), dwarf(3, 3, -20000), dwarf(4, 5, 0),
+                      dwarf(5, 4, -20000, {noble = true}), dwarf(6, 4, -20000, {sick = true})}
+    local sq = {id = 10, orders = zl(), positions = zl({occupant = 99}, {occupant = -1}, {occupant = -1}, {occupant = -1})}
+    env.ipairs = function(t)
+        if getmetatable(t) then return function(v, i) i = i + 1; if rawget(v, i) ~= nil then return i, v[i] end end, t, -1 end
+        return ipairs(t)
+    end
+    env.df = {squad = {find = function(id) return id == 10 and sq or nil end}, job_skill = {}, need_type = {[5] = 'MartialTraining'},
+        global = {plotinfo = {group_id = 1}}, historical_entity = {find = function() return {squads = zl(10)} end}}
+    env.dfhack = {units = {getCitizens = function() return citizens end, isAdult = function() return true end,
+            isBaby = function() return false end,
+            getNoblePositions = function(u) if u.noble then return {{}} end return {} end,
+            getStressCategory = function(u) return u.stress end, getReadableName = function(u) return 'd' .. u.id end},
+        military = {addToSquad = function(id) table.insert(added, id); return true end}}
+    env.CITIZENS = citizens
+    return env, added
+    """, (ROOT / "lua" / "ai-military.lua").read_text(encoding="utf-8"))
+
+
+@test("fill (0.104.168, review): strict (a crisis) never drafts the very unhappy, keen or not; keen_only only the keen; draftable is the fill's test")
+def _():
+    env, added = _fill_env()
+    got = lambda: sorted(added[i] for i in range(1, len(added) + 1))
+    assert env.fill(10, 3, env.tostring).ok and got() == [1, 2, 3], got()      # out of crisis: the keen, unhappy or not
+    env, added = _fill_env()
+    assert env.fill(10, 3, env.tostring, None, True).ok and got() == [3, 4], got()   # strict: never 1 or 2
+    env, added = _fill_env()
+    assert env.fill(10, 3, env.tostring, None, True, True).ok and got() == [3], got()  # strict and keen only
+    c = env.CITIZENS
+    mothers = env.nursing_mothers()
+    yes = [i + 1 for i in range(6) if env.draftable(c[i + 1], mothers, True)]
+    assert yes == [3, 4], yes                                                  # never a noble or a patient
+    yes = [i + 1 for i in range(6) if env.draftable(c[i + 1], mothers, False)]
+    assert yes == [1, 2, 3, 4], yes
+
+
 @test("fill (0.104.5): soldiers go to numbered open places, never 'any' (the empty leader seat DFHack refuses)")
 def _():
     lua = LuaRuntime(unpack_returned_tuples=True)

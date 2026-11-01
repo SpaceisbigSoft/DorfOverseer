@@ -235,6 +235,14 @@ function get_needs(txt_fn)
     local t = txt_fn or txt
     local out = {needs = {}, deities = {}, deity_ids = {}, stressed = {}}
     local deity_names = {}
+    -- (0.104.168) the keen the fill could draft in a crisis (ai-military's
+    -- test, strict): the keen lift is sized on these, not on nobles, nursing
+    -- mothers, patients or the breaking-down, whom the fill passes over
+    local okd, MIL = pcall(reqscript, 'ai-military')
+    local okmo, mothers = false, nil
+    if okd then okmo, mothers = pcall(MIL.nursing_mothers) end
+    if not okmo then okd = false end
+    if okd then out.keen_draftable = 0 end      -- (none read: missing, and the brain uses keen_civilians)
     for _, u in ipairs(dfhack.units.getCitizens()) do
         local okn, needs = pcall(function() return u.status.current_soul.personality.needs end)
         if okn and needs then
@@ -291,6 +299,9 @@ function get_needs(txt_fn)
                 end
             elseif not soldier and fight_focus and fight_focus <= BADLY and dfhack.units.isAdult(u) then
                 out.keen_civilians = (out.keen_civilians or 0) + 1
+                if okd and MIL.draftable(u, mothers, true) then     -- (0.104.168)
+                    out.keen_draftable = (out.keen_draftable or 0) + 1
+                end
             end
             local cat = dfhack.units.getStressCategory(u)
             if cat <= 1 then
@@ -5946,7 +5957,7 @@ function act_squad_swap(a)
         local n = whole_number(v)
         if n then avoid[n] = true end
     end
-    local okf, f = pcall(M.fill, sid, 1, txt, avoid)
+    local okf, f = pcall(M.fill, sid, 1, txt, avoid, a.strict == true)   -- (0.104.168) strict in a crisis
     return {ok = true, released = r.name, squad_id = sid, filled = okf and f or tostring(f)}
 end
 
@@ -5964,7 +5975,7 @@ function act_squad_fill(a)
         local u = whole_number(v)
         if u then avoid[u] = true end
     end
-    return reqscript('ai-military').fill(id, n, txt, avoid)
+    return reqscript('ai-military').fill(id, n, txt, avoid, a.strict == true, a.keen_only == true)   -- (0.104.168)
 end
 
 -- A squad given one of the fort's uniform templates (lua/ai-military.lua).

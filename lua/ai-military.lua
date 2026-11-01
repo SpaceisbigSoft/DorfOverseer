@@ -263,19 +263,32 @@ end
 -- took Enxah's miserable lye maker out of his squad, and the next cycle's
 -- fill put him straight back in, a dozen times an hour. (0.103.9) Unless soldiering is
 -- what the dwarf longs for (the Fight / MartialTraining needs).
-local function breaking_down(u)
+-- (0.104.168) `strict` (the fort in crisis): never one very unhappy or
+-- worse, whatever they long for (armed mid-spiral in a tantrum spiral)
+local function breaking_down(u, strict)
     local ok, cat = pcall(dfhack.units.getStressCategory, u)
-    return ok and type(cat) == 'number' and cat <= 1 and not wants_fight(u)
+    if not (ok and type(cat) == 'number' and cat <= 1) then return false end
+    return strict == true or not wants_fight(u)
 end
 
-local function candidates()
+-- (0.104.168) the fill's test, shared with the needs report's count of the
+-- keen who can be drafted (`keen_draftable`): adult, in no squad, no nursing
+-- mother, not breaking down, no noble post, no hospital care asked
+function draftable(u, mothers, strict)
+    local ok, yes = pcall(function()
+        return dfhack.units.isAdult(u) and u.military.squad_id == -1 and not mothers[u.id]
+            and not breaking_down(u, strict)
+            and #(dfhack.units.getNoblePositions(u) or {}) == 0
+            and not (u.health and u.health.flags.needs_healthcare)
+    end)
+    return ok and yes == true
+end
+
+local function candidates(strict)
     local out = {}
     local mothers = nursing_mothers()
     for _, u in ipairs(dfhack.units.getCitizens(true)) do
-        if dfhack.units.isAdult(u) and u.military.squad_id == -1 and not mothers[u.id]
-                and not breaking_down(u)
-                and #(dfhack.units.getNoblePositions(u) or {}) == 0
-                and not (u.health and u.health.flags.needs_healthcare) then
+        if draftable(u, mothers, strict) then
             local combat, best = 0, 0
             local soul = u.status.current_soul
             if soul then
@@ -336,7 +349,10 @@ end
 
 -- Fill up to `count` open positions of a squad (never the captain's seat).
 -- (0.104.138) `avoid`: unit ids not to draft (those the AI sent home lately)
-function fill(squad_id, count, txt, avoid)
+-- (0.104.168) `strict`: the fort in crisis (never the very unhappy);
+-- `keen_only`: only those who badly want to fight or train (the places the
+-- keen lift added are theirs alone: none of them filled by combat skill)
+function fill(squad_id, count, txt, avoid, strict, keen_only)
     local sq = fort_squad(squad_id)
     if not sq then return {ok = false, rejected = true, error = 'no such squad in this fort'} end
     local seated = seat_holder(sq)
@@ -372,8 +388,15 @@ function fill(squad_id, count, txt, avoid)
     local open = #places
     count = math.min(count, open)
     if count < 1 then return {ok = false, rejected = true, error = 'the squad has no open places'} end
-    local okc, cands = pcall(candidates)
+    local okc, cands = pcall(candidates, strict)      -- (0.104.168) strict in a crisis
     if not okc then return {ok = false, error = 'could not list dwarves: ' .. tostring(cands)} end
+    if keen_only then
+        local only = {}
+        for _, c in ipairs(cands) do
+            if c.fight_focus ~= nil and c.fight_focus <= KEEN_FOCUS then table.insert(only, c) end
+        end
+        cands = only
+    end
     local added = {}
     local tried, k = 0, 1
     for _, c in ipairs(pick_soldiers(cands, count, avoid)) do

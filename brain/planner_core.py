@@ -266,6 +266,7 @@ PLANNER_CONFIG = {
     "soldier_swap_month_keen_crisis": 2,         # ...in a crisis, one per this many keen (training eases stress)
     "keen_lift_max": 20,                         # in a crisis, the soldiers wanted rise by up to this for the keen...
     "keen_lift_days": 56,                        # ...held this long after the keen were last many (no fill-then-trim)
+    "fill_tantrum_hold_days": 1,                 # no drafting while a tantrum this recent is under way (or a berserk dwarf)
     "train_all_hold_days": 14,                   # every squad training: kept at least this long before half rest
     "train_half_hold_days": 7,                   # half resting: kept at least this long before all train again
     "complaint_note_min": 5,                     # citizens unable to complain lately: said, with why
@@ -1392,6 +1393,8 @@ def _soldier_swap(s: dict, cfg: dict, proposals: list | None, memory=None) -> No
     home = recently_home(s, memory)                  # (0.104.138) the fill passes these over
     if home:
         act["avoid"] = home
+    if _d(getattr(memory, "crisis", None)).get("why"):
+        act["strict"] = True                         # (0.104.168) in a crisis the place never goes to the very unhappy
     proposals.append(Proposal("soldier_swap", act,
                               f"{x.get('name')} has trained enough and badly misses "
                               f"{', '.join(_l(x.get('unmet'))[:3])}, while {keen} civilians badly want to train: "
