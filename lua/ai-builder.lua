@@ -4165,14 +4165,18 @@ function well_shaft_step(want_closed, dry_run)
                         end
                     end
                 end
-            elseif g.state == 'pulling' and want_closed then
-                -- rv 9: a dwarf on the way to open it while a danger comes: called off
+            elseif g.state == 'pulling' then
+                -- rv 9: a dwarf on the way to pull it: called off (a late pull would
+                -- toggle the gate the wrong way), and the gate set at once
                 if not dry_run then
                     local j = job_of(g.lever.id, df.job_type.PullLever)
                     if j then pcall(dfhack.job.removeJob, j) end
-                    if not g.hatch.closed then pull(g.lever.id, true) end
+                    if g.hatch.closed ~= (want_closed == true) then
+                        local ok, out = pull(g.lever.id, true)
+                        if not ok then r.error = 'lever pull failed: ' .. tostring(out):sub(1, 120) end
+                    end
                 end
-                r.stage = 'closed'
+                if not r.error then r.stage = want_closed and 'closed' or 'opened' end
             elseif g.state == 'open' or g.state == 'closed' then
                 if sg.link_lost or sg.link_asked then sg.link_lost, sg.link_asked, changed = nil, nil, true end
                 if sg.lever_id ~= g.lever.id or sg.hatch_id ~= g.hatch.id then
@@ -4182,15 +4186,18 @@ function well_shaft_step(want_closed, dry_run)
                     if dry_run then
                         r.stage = want_closed and 'close' or 'open'
                     else
-                        local ok, out = pull(g.lever.id, want_closed == true)
-                        if ok then r.stage = want_closed and 'closed' or 'opening'
+                        -- (0.104.164) opened at once too: a dwarf's pull never came (Teacheroar,
+                        -- 1 Nov: well 218 "open its shaft again" 49 times in 90 minutes, the
+                        -- gate still shut), and the hatch only opens while no danger is near
+                        local ok, out = pull(g.lever.id, true)
+                        if ok then r.stage = want_closed and 'closed' or 'opened'
                         else r.error = 'lever pull failed: ' .. tostring(out):sub(1, 120) end
                     end
                 else
                     r.stage = g.state
                 end
             else
-                r.stage = g.state            -- building, linking, pulling, none_possible: waits
+                r.stage = g.state            -- building, linking, none_possible: waits
             end
             table.insert(wells, r)
         end

@@ -20,9 +20,10 @@ RECOVERY_RULES = {
 # levels that are themselves recovery when started (a build of these kinds is never held)
 RECOVERY_KINDS = {"hospital", "tombs", "dining", "tavern", "temple", "jail", "bedrooms", "workshops",
                   "suites", "well", "farms", "storage"}
-# work that can wait while the fort is in crisis
+# work that can wait while the fort is in crisis ((0.104.164) not the traction
+# bench's parts: care for the wounded, held while a patient waited for traction)
 EXPANSION_RULES = {"polish", "stairwell", "grandeur", "location_value", "glass", "gems", "gem_cutting",
-                   "encrust", "squad_make", "war_animals", "traction_parts", "instruments",
+                   "encrust", "squad_make", "war_animals", "instruments",
                    "instrument_orders", "industry", "idle"}
 
 

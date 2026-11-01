@@ -1347,19 +1347,25 @@ def _():
         assert B.well_lids(False)[1].gate == "closed"                             # linked; a hatch starts shut
         s = B.well_shaft_step(False, False)
         pulls = LUA.eval("PULLS")
-        assert s.ok and s.wells[1].stage == "opening" and pulls[1].instant is None and h.door_flags.closed is False
+        # (0.104.164) opened at once (a dwarf's pull never came on Teacheroar)
+        assert s.ok and s.wells[1].stage == "opened" and pulls[1].instant == "--instant" and h.door_flags.closed is False
         assert B.well_lids(False)[1].gate == "open" and not B.well_shaft_step(False, False).ok
         s = B.well_shaft_step(True, False)
         assert s.ok and s.wells[1].stage == "closed" and pulls[2].instant == "--instant" and h.door_flags.closed is True
-        assert B.well_shaft_step(False, False).wells[1].stage == "opening"
+        assert B.well_shaft_step(False, False).wells[1].stage == "opened"
         # a danger while a dwarf is on the way to pull it open: the pull called off
         lv.jobs[1] = LUA.table_from({"job_type": 1})
         assert B.well_lids(False)[1].gate == "pulling"
         s = B.well_shaft_step(True, False)
         assert s.ok and s.wells[1].stage == "closed" and len(LUA.eval("REMOVED")) == 1, dict(s.wells[1])
+        # (0.104.164) a pull to open that no dwarf makes: called off, the gate opened at once
+        lv.jobs[1] = LUA.table_from({"job_type": 1})
+        s = B.well_shaft_step(False, False)
+        assert s.ok and s.wells[1].stage == "opened" and len(LUA.eval("REMOVED")) == 2 and h.door_flags.closed is False, dict(s.wells[1])
+        assert B.well_shaft_step(True, False).wells[1].stage == "closed"
         # (0.104.153) the watcher: started once the gate is linked; it shuts an open gate at once
         lv.jobs[1] = None
-        assert B.well_shaft_step(False, False).wells[1].stage == "opening" and h.door_flags.closed is False
+        assert B.well_shaft_step(False, False).wells[1].stage == "opened" and h.door_flags.closed is False
         assert B.SHAFT_WATCH.on and B.well_lids(False)[1].watching is True
         tick = lambda: LUA.eval("function() local f = TIMERS[#TIMERS]; TIMERS[#TIMERS] = nil; f() end")()
         units = LUA.eval("UNITS")

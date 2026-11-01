@@ -8156,6 +8156,31 @@ def _():
     props, notes = plan(copy.deepcopy(s), Memory())
     assert not by_rule(props, "convict") and any("convicts no one" in n for n in notes)
 
+@test("0.104.164: released soldiers passed over by the fill; a stale open pull turned; traction parts not held in a crisis")
+def _():
+    from planner import record, Proposal
+    from planner_core import recently_home
+    import crisis
+    s = fort()
+    now = abs_tick(s)
+    m = Memory(swapped={"5": now - 10 * TICKS_PER_DAY})
+    rel = Proposal("stress_care", {"type": "squad_release", "unit_id": 11438}, "miserable", 3)
+    record([(rel, {"ok": True})], s, m)
+    assert m.released.get("11438") == now, m.released
+    assert sorted(recently_home(s, m)) == [5, 11438], recently_home(s, m)
+    record([(Proposal("stress_care", {"type": "squad_release", "unit_id": 77}, "x", 3), {"ok": False})], s, m)
+    assert "77" not in m.released                                       # refused: nobody went home
+    m2 = Memory.from_dict(json.loads(json.dumps(m.to_dict())))
+    assert m2.released == m.released                                    # kept with the memory
+    # the shaft gate: a pull nobody made ("pulling" with no danger) is turned, as "closed" is
+    s["others_on_map"]["threats"] = []
+    s["projects"]["well_lids"] = [{"project_id": 218, "x": 115, "y": 44, "z": 154, "elevation": 26,
+                                   "state": "none", "gate": "pulling", "watching": True}]
+    acts = [p.action for p in by_rule(plan(copy.deepcopy(s), Memory())[0], "well_shaft")]
+    assert {"type": "well_shaft", "close": False} in acts, acts
+    # a crisis holds expansion, not the hospital's traction bench
+    assert "traction_parts" not in crisis.EXPANSION_RULES and "war_animals" in crisis.EXPANSION_RULES
+
 
 if __name__ == "__main__":
     for name, ok, msg in RESULTS:
@@ -8163,3 +8188,4 @@ if __name__ == "__main__":
     failed = sum(1 for _, ok, _ in RESULTS if not ok)
     print(f"\n{len(RESULTS) - failed} passed, {failed} failed")
     sys.exit(1 if failed else 0)
+

@@ -679,6 +679,11 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
             # (0.104.138) kept a year (was 28 days): never swapped twice a year
             for k in [k for k, t in memory.swapped.items() if not isinstance(t, int) or now - t > 336 * TICKS_PER_DAY]:
                 del memory.swapped[k]
+        if p.action.get("type") == "squad_release" and ok is True and p.action.get("unit_id") is not None:
+            # (0.104.164) released for stress or a baby: the fill passes them over 168 days
+            memory.released[str(p.action["unit_id"])] = now
+            for k in [k for k, t in memory.released.items() if not isinstance(t, int) or now - t > 168 * TICKS_PER_DAY]:
+                del memory.released[k]
         if p.rule == "siege_cleanup" and ok is not None:
             memory.pruned_after = int(memory.last_threat_tick or 0)        # (0.104.140) once an attack, done or not
         if (p.action.get("type") == "squad_orders" and isinstance(p.action.get("kill"), list)

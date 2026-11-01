@@ -620,6 +620,7 @@ class Memory:
     gear_spare_since: dict = field(default_factory=dict)  # "weapons"/"body"/"helms" -> when 3+ spares sat unused
     swapped: dict = field(default_factory=dict)  # (0.104.78) unit id -> when the swap sent them home
     drafted: dict = field(default_factory=dict)  # (0.104.138) unit id -> when a fill or swap drafted them
+    released: dict = field(default_factory=dict)  # (0.104.164) unit id -> when stress care or a baby sent them home
     unstick_seen: dict = field(default_factory=dict)   # (0.104.138) the spare gear at the last untangling, times
     steer: dict = field(default_factory=dict)    # (0.104.89) the strategist's raised and held rules: rule -> {mode, until, why}
     strategist_wants: list = field(default_factory=list)   # (0.104.89) report sections it asked to see in full next time
@@ -1285,11 +1286,17 @@ def unmet(s: dict, *names: str) -> int:
 
 def recently_home(s: dict, memory) -> list:
     """(0.104.138) Units the AI sent home in the last 168 days (newest 100),
-    for the bridge's fill to pass over."""
+    for the bridge's fill to pass over: swapped, or (0.104.164) released."""
     if memory is None:
         return []
     now = abs_tick(s)
-    rows = sorted(((t, k) for k, t in _d(getattr(memory, "swapped", None)).items()
+    # (0.104.164) and those released for stress or a baby (the fill drafted
+    # one back once he was merely unhappy; they never counted as swaps)
+    sent = dict(_d(getattr(memory, "released", None)))
+    for k, v in _d(getattr(memory, "swapped", None)).items():
+        if isinstance(v, int) and v > (sent.get(k) if isinstance(sent.get(k), int) else -1):
+            sent[k] = v
+    rows = sorted(((t, k) for k, t in sent.items()
                    if isinstance(t, int) and 0 <= now - t < 168 * TICKS_PER_DAY), reverse=True)[:100]
     return [int(k) for _, k in rows if str(k).isdigit()]
 

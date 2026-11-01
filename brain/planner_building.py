@@ -256,7 +256,9 @@ def _well_lid_rule(s: dict, proposals: list, notes: list) -> None:
                 ok_gates.append(x)
                 pool -= 2
     build = [] if danger else ok_gates
-    turn = [x for x in gates if (x.get("gate") in ("open", "pulling") and danger) or (x.get("gate") == "closed" and not danger)]
+    # (0.104.164) a pull a dwarf never made ("pulling" for good) is turned too: the bridge sets the gate at once
+    turn = [x for x in gates if (x.get("gate") in ("open", "pulling") and danger)
+            or (x.get("gate") in ("closed", "pulling") and not danger)]
     if danger and turn:
         proposals.append(Proposal("well_shaft", {"type": "well_shaft", "close": True},
                                   f"{danger} near the cavern well: shut its shaft (its hatch, at once)", 2))
