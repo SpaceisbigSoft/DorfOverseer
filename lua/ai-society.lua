@@ -791,18 +791,36 @@ end
 -- Items of one kind (df.items_other_id) no one holds: not owned, worn,
 -- carried, forbidden, in a job, at the depot or kept in a building (a
 -- location's chest).
-function free_items_count(kind)
+-- With `detail`, also what the free ones are (0.104.157: 118 free shoes and
+-- 34 free cups lay in store while 63 went barefoot and 149 drank without a
+-- cup): {n, kinds = {subtype = n}, races = {maker race = n}, stored = {in a
+-- container, loose}}.
+local function bump(t, k) k = tostring(k or '?'); t[k] = (t[k] or 0) + 1 end
+
+function free_items_count(kind, detail)
     local ok, list = pcall(function() return df.global.world.items.other[kind] end)
     if not ok or not list then return nil end
     local n = 0
+    local d = detail and {kinds = {}, races = {}, stored = {}} or nil
     for _, it in ipairs(list) do
         local okf, free = pcall(function()
             local f = it.flags
             return not (f.removed or f.garbage_collect or f.artifact or f.owned or f.in_inventory or f.forbid
                         or f.in_job or f.trader or f.in_building or f.dump or f.hostile or f.construction)
         end)
-        if okf and free then n = n + 1 end
+        if okf and free then
+            n = n + 1
+            if d then
+                pcall(function() bump(d.kinds, it.subtype and it.subtype.id or 'none') end)
+                pcall(function()
+                    local cr = df.creature_raw.find(it.maker_race)
+                    bump(d.races, cr and cr.creature_id or 'unknown')
+                end)
+                pcall(function() bump(d.stored, dfhack.items.getContainer(it) and 'container' or 'loose') end)
+            end
+        end
     end
+    if d then d.n = n; return d end
     return n
 end
 
@@ -852,6 +870,8 @@ function clothing_census(units)
     -- 1 Nov, 63 of 150 barefoot, "NoShoes" the worst stress) and cups (149 of
     -- 150 drank without one; the taverns keep theirs in their own chests)
     out.free_shoes, out.free_cups = free_items_count('SHOES'), free_items_count('GOBLET')
+    out.free_shoes_detail = free_items_count('SHOES', true)
+    out.free_cups_detail = free_items_count('GOBLET', true)
     return out
 end
 
