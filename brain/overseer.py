@@ -430,6 +430,8 @@ def short(a: dict) -> str:
         return "mark open water as a water source for the injured"
     if t == "close_meeting":
         return "leave DF's meeting screen"
+    if t == "keep_mousers":      # (0.104.168)
+        return f"keep {a.get('count') or 'a few'} cats from the butcher to hunt the vermin"
     if t == "prune_remains":
         return "let old corpses and useless body parts rot away"
     if t == "feeder_pile":

@@ -1045,6 +1045,8 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
     from quirks import has_rule
     if memory is not None and has_rule(memory.culture, "more_soldiers"):
         want = min(citizens, round(want * 1.25))   # (Oathbound)
+    base_want = want
+    want = keen_lift(s, memory, cfg, want, have, citizens, bool(any_reach))      # (0.104.168) the keen in a crisis
     # (0.102) an army bigger than the fort wants (Militarism lowered, the fort
     # shrank) gives soldiers back to work a few at a time, while all is quiet.
     # Monastery kept 49 soldiers at Militarism -60 (it wanted ~10).
@@ -1080,8 +1082,10 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
             if home:
                 act["avoid"] = home
             proposals.append(Proposal("squad_fill", act,
-                                      f"{have} soldiers, the fort wants {want}: add {count} to "
-                                      f"{q.get('name') or 'a squad'}", 3))
+                                      f"{have} soldiers, the fort wants {want}"
+                                      + (f" ({want - base_want} more for the civilians who badly want to train, "
+                                         "while the fort is in crisis)" if want > base_want else "")
+                                      + f": add {count} to {q.get('name') or 'a squad'}", 3))
         else:
             # (0.97: "Raise and fill squads" governs new squads too; it was
             # appoint_nobles, which said nothing about squads)
@@ -1150,6 +1154,71 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
                    "the squads it makes later")
 
 
+def _train_mode_held(s: dict, memory, cfg: dict, want_all: bool) -> bool:
+    """(0.104.168) The rotation's mode (every squad training, or half resting)
+    held a while once it changes: every squad training at least
+    `train_all_hold_days`, half resting at least `train_half_hold_days`.
+    The 0.104.149 dead band wasn't enough: the need DF counts as "badly"
+    swung past both lines within days (the AI's run of 31 Oct-1 Nov, 8
+    squads: all train on day 14, half off on day 19, all on again two days
+    later; squad_routine 44-88 times in 90 minutes, every soldier dropping
+    what he carried each time). A mode first seen is taken as it is (no hold)."""
+    if memory is None:
+        return want_all
+    now = abs_tick(s)
+    tm = _d(getattr(memory, "train_mode", None))
+    was, since = tm.get("all"), tm.get("tick")
+    if isinstance(was, bool) and was != want_all and isinstance(since, int):
+        hold = cfg["train_all_hold_days"] if was else cfg["train_half_hold_days"]
+        if 0 <= now - since < hold * TICKS_PER_DAY:
+            return was
+    if was != want_all:
+        memory.train_mode = {"all": want_all, "tick": now if isinstance(was, bool) else None}
+    return want_all
+
+
+def keen_lift(s: dict, memory, cfg: dict, want: int, have: int, citizens: int, threat: bool) -> int:
+    """(0.104.168) In a crisis, while civilians badly want to train (they can
+    meet MartialTraining only in a squad, and a spar eases stress), the
+    soldiers wanted rise so the fill drafts them (the keen first; never a
+    mother, a noble, a patient, or one breaking down who doesn't long to
+    fight: lua/ai-military.lua candidates): up to `keen_lift_max`, within
+    `idle_fight_share_max` of the fort. The lift is remembered and held
+    `keen_lift_days` after the keen were last many, so drafting them (the keen
+    count falls) doesn't make them extra soldiers to trim (0.104.66). Never
+    while threats can reach the fort, nor at Militarism -50 or lower.
+    Teacheroar, 1 Nov: 45% unhappy, 18 keen civilians, 89 distracted by
+    unmet MartialTraining, 34 soldiers for 33 wanted."""
+    if memory is None:
+        return want
+    traits = _d(_d(s.get("settings")).get("traits"))
+    if threat or (traits.get("militarism", 0) or 0) <= -50:
+        return want
+    now = abs_tick(s)
+    kl = _d(getattr(memory, "keen_lift", None))
+    lift = 0
+    if isinstance(kl.get("tick"), int) and 0 <= now - kl["tick"] < cfg["keen_lift_days"] * TICKS_PER_DAY:
+        lift = max(0, int(kl.get("n") or 0))
+    keen = int(_d(s.get("needs")).get("keen_civilians") or 0)
+    if _d(getattr(memory, "crisis", None)).get("why") and keen >= cfg["soldier_swap_keen_min"]:
+        # places for every keen one: the soldiers there are, and the keen.
+        # Once set it grows only by keen ones newly counted (a keen one drafted
+        # leaves the count; one who can't be drafted, a mother or a patient,
+        # must not make the fill draft others in his place)
+        seen = kl.get("keen")
+        if lift and isinstance(seen, int):
+            lift += max(0, keen - seen)
+        else:
+            lift = max(lift, have + keen - want)
+        lift = min(cfg["keen_lift_max"], max(0, lift))
+        memory.keen_lift = {"n": lift, "tick": now, "keen": keen}
+    elif not lift and kl:
+        memory.keen_lift = {}
+    if lift <= 0:
+        return want
+    return max(want, min(want + lift, round(citizens * cfg["idle_fight_share_max"])))
+
+
 def _training_rotation(s: dict, memory, squads: list, train_to: str, off: str, cfg: dict,
                        proposals: list) -> set:
     """Two or more squads the AI trains: they take turns, half of them
@@ -1175,8 +1244,9 @@ def _training_rotation(s: dict, memory, squads: list, train_to: str, off: str, c
     # times a night, every soldier dropping what he carried each time)
     by_id0 = {q["id"]: q for q in squads if q.get("id") is not None}
     all_on = all("off duty" not in str(by_id0[sid].get("routine") or "").lower() for sid in mine)
-    if mt >= max(5, cit * cfg["train_all_share"]) or (
-            all_on and mt >= max(3, cit * cfg["train_all_off_share"])):
+    want_all = mt >= max(5, cit * cfg["train_all_share"]) or (
+        all_on and mt >= max(3, cit * cfg["train_all_off_share"]))
+    if _train_mode_held(s, memory, cfg, want_all):
         k = n
     turn = abs_tick(s) // (cfg["train_rotate_days"] * TICKS_PER_DAY)
     on = {mine[(turn * k + j) % n] for j in range(k)}

@@ -262,6 +262,17 @@ PLANNER_CONFIG = {
     "soldier_swap_month_share": 10,              # ... or one per this many soldiers
     "soldier_swap_keen_min": 5,                  # ...while at least this many civilians badly want to train
     "soldier_swap_month_keen": 4,                # (0.104.142) ... or one per this many keen civilians waiting
+    # (0.104.168) the keen in a crisis, the training turns held, complaints, vermin
+    "soldier_swap_month_keen_crisis": 2,         # ...in a crisis, one per this many keen (training eases stress)
+    "keen_lift_max": 20,                         # in a crisis, the soldiers wanted rise by up to this for the keen...
+    "keen_lift_days": 56,                        # ...held this long after the keen were last many (no fill-then-trim)
+    "train_all_hold_days": 14,                   # every squad training: kept at least this long before half rest
+    "train_half_hold_days": 7,                   # half resting: kept at least this long before all train again
+    "complaint_note_min": 5,                     # citizens unable to complain lately: said, with why
+    "vermin_note_min": 5,                        # citizens upset by hated vermin lately: cats kept, or said
+    "citizens_per_mouser": 25,                   # cats kept from the butcher: one per this many citizens...
+    "mousers_min": 4, "mousers_max": 8,          # ...within these
+    "vermin_cooldown_ticks": 7 * 1200,           # the cats looked at once a week
     "staggered_starved_min": 3,                  # (0.104.72) this many starved soldiers: back to staggered training
     "pair_chairs_friends_share": 0.2,            # (0.104.77) this share badly wanting friends: chairs paired in taverns
     "pair_chairs_cooldown_ticks": 7 * 1200,
@@ -628,6 +639,8 @@ class Memory:
     swapped: dict = field(default_factory=dict)  # (0.104.78) unit id -> when the swap sent them home
     drafted: dict = field(default_factory=dict)  # (0.104.138) unit id -> when a fill or swap drafted them
     released: dict = field(default_factory=dict)  # (0.104.164) unit id -> when stress care or a baby sent them home
+    train_mode: dict = field(default_factory=dict)  # (0.104.168) the rotation's {all: bool, tick: when it changed}
+    keen_lift: dict = field(default_factory=dict)   # (0.104.168) {n, tick}: soldiers wanted raised for the keen in a crisis
     unstick_seen: dict = field(default_factory=dict)   # (0.104.138) the spare gear at the last untangling, times
     steer: dict = field(default_factory=dict)    # (0.104.89) the strategist's raised and held rules: rule -> {mode, until, why}
     strategist_wants: list = field(default_factory=list)   # (0.104.89) report sections it asked to see in full next time
@@ -1350,8 +1363,14 @@ def _soldier_swap(s: dict, cfg: dict, proposals: list | None, memory=None) -> No
         # (0.104.142) more while many keen civilians wait (Teacheroar: 44 badly
         # wanting to train, 4 swaps a month); the memory of swaps and drafts
         # (a year, 84 days) keeps it from churning the same dwarves
+        # (0.104.168) in a crisis, twice that: training eases the stress of those
+        # who long for it (Teacheroar, 1 Nov: 45% unhappy, 89 distracted by
+        # unmet MartialTraining, 18 keen civilians, 4 swaps a month)
+        per_keen = cfg["soldier_swap_month_keen"]
+        if _d(getattr(memory, "crisis", None)).get("why"):
+            per_keen = cfg["soldier_swap_month_keen_crisis"]
         if month >= max(cfg["soldier_swap_month_min"], soldiers // cfg["soldier_swap_month_share"],
-                        keen // cfg["soldier_swap_month_keen"]):
+                        keen // max(1, per_keen)):
             return
     x = max(starved, key=lambda v: len(_l(v.get("unmet"))))
     act = {"type": "squad_swap", "unit_id": x["id"]}
@@ -1478,6 +1497,7 @@ AGENDA_THEMES = {
     "feeder": "shorten the hauling", "labor": "put idle hands to work", "labor_trim": "take the extra hands off fishing", "well": "find water for a well", "well_lid": "close the cavern well's stairs", "well_shaft": "a gate in the cavern well's shaft", "planned_parts": "parts the planned buildings wait for", "comfort": "shoes and cups for the fort", "mothers": "mothers home from the squads", "dead_units": "clear old dead from the unit list", "herd": "keep the herds the fort's size",
     "stuck_order": "clear stuck work", "unsuspend": "resume suspended work", "stray_gear": "hand out lost gear", "assign_weapons": "arm the soldiers", "soldier_swap": "let the keen train", "temple_chest": "a chest for the temple", "instrument_orders": "clear the instrument backlog", "pair_chairs": "seat dwarves together", "recreation": "time off for the unhappiest", "hospital_burrow": "keep the wounded in the hospital", "dairy": "milk and cheese", "eggs": "nest boxes for the hens", "war_animals": "train war animals", "gate_guard": "hold the gate", "gate_dogs": "war dogs at the gate", "gem_cutting": "cut the rough gems", "stairwell": "a new stairwell", "animal_trainer": "an animal trainer", "nest_box_order": "make nest boxes", "library_chest": "a chest for the library", "orphan_jobs": "clear jobs whose order is gone", "slabs_free": "free the memorial slabs", "water_traffic": "keep paths off the ice", "jail_size": "a bigger jail", "jail_more": "another jail", "break_fights": "break up the fights among the fort's own", "burial": "bury the dead", "rooms": "mend the rooms' walls", "coffins": "coffins for the tombs", "order_slots": "free the workshop's order slots", "fat_ban": "keep fat for soap", "jail_urgent": "a jail against the beatings", "tavern_urgent": "a tavern for company", "quarry": "quarry stone", "cloth": "weave cloth",
 }
+AGENDA_THEMES["vermin"] = "keep cats against the vermin"     # (0.104.168)
 
 
 def agenda(proposals: list, notes: list, limit: int = 5) -> list[str]:

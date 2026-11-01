@@ -432,6 +432,9 @@ def note_tantrums(state: dict, memory, events: list) -> int:
     return n
 
 
+OFFICE_FIRST = ("MANAGER", "MAYOR", "EXPEDITION_LEADER")     # (0.104.168) an office whatever Deference says
+
+
 def _noble_rooms_rule(s: dict, cfg: dict, proposals: list, memory=None) -> None:
     """A noble whose office asks for a bedroom, office, dining room or tomb
     of their own gets a free one (an unhappy noble makes demands); which of
@@ -441,11 +444,14 @@ def _noble_rooms_rule(s: dict, cfg: dict, proposals: list, memory=None) -> None:
     kinds_given = noble_room_kinds(_traits(s) if isinstance(s.get("settings"), dict) else {}, memory)
     # (0.100.2) the manager's office first, whatever Deference says: it's
     # where work orders are taken up, not a noble's comfort
+    # (0.104.168) and the mayor's (the expedition leader's before one is
+    # elected): the citizens' complaints are heard there (DF's MEET_WORKERS)
     nobles = sorted((n for n in _l(nr.get("nobles")) if isinstance(n, dict)),
-                    key=lambda n: n.get("office") != "MANAGER")
+                    key=lambda n: (OFFICE_FIRST.index(n.get("office")) if n.get("office") in OFFICE_FIRST
+                                   else len(OFFICE_FIRST)))
     for n in nobles:
         for kind in _l(n.get("needs")):
-            given = kind in kinds_given or (kind == "office" and n.get("office") == "MANAGER")
+            given = kind in kinds_given or (kind == "office" and n.get("office") in OFFICE_FIRST)
             if given and (free.get(kind) or 0) > 0:
                 free[kind] -= 1
                 proposals.append(Proposal("noble_rooms", {"type": "give_room", "unit_id": n.get("unit_id"),
@@ -624,6 +630,7 @@ THOUGHT_WORDS = {"NoShoes": "no shoes", "DrinkWithoutCup": "drinking without a c
                  "MajorInjuries": "bad injuries", "Argument": "arguments", "AnnoyedVermin": "vermin",
                  "Decay": "rotting bodies", "SleptRoughFloor": "sleeping on the floor", "Uncovered": "no clothes on",
                  "Rest": "being kept resting", "NeedsUnfulfilled": "unmet needs"}
+THOUGHT_WORDS.update({"UnableComplain": "complaints nobody heard"})   # (0.104.168)
 
 
 def _comfort_rules(s: dict, cfg: dict, proposals: list, notes: list) -> None:
@@ -1675,3 +1682,105 @@ def _society_notes(s: dict, traits: dict, citizens: int, cfg: dict, notes: list,
     if so.get("grazers_unpastured") and not player_rules(s)["pasture_animals"]:
         ask_player(notes, f"{so['grazers_unpastured']} grazing animals have no pasture and will starve: "
                    "assign them to a pasture zone (the AI's pasture switch is off in the Rules tab)")
+
+
+# --- (0.104.168) complaints nobody heard; vermin ---------------------------------
+
+# DF's reasons a citizen goes to someone in charge (history_event_reason, the
+# subthought of UnableComplain / Complained)
+COMPLAINT_WORDS = {"insufficient_work": "too little work", "work_request": "asking for work",
+                   "make_weapon": "asking for weapons", "vent_at_boss": "venting",
+                   "cry_on_boss": "crying on someone in charge"}
+
+
+def _cause(s: dict, thought: str) -> dict:
+    return next((c for c in stress_causes(s) if c.get("thought") == thought), {})
+
+
+def _about(c: dict) -> list:
+    """A cause's `about` tally (bridge 0.104.168), the most first: [(word, n)]."""
+    return sorted(((str(k), int(v)) for k, v in _d(c.get("about")).items()
+                   if isinstance(v, (int, float)) and not isinstance(v, bool)), key=lambda kv: (-kv[1], kv[0]))
+
+
+def _complaint_notes(s: dict, cfg: dict, notes: list) -> None:
+    """(0.104.168) Citizens "unable to complain" (DF's COMPLAINT_UNREGISTERED:
+    nobody in charge to hear them). DF sends a citizen's complaint to the
+    noble who meets the workers (the mayor, the expedition leader before one;
+    MEET_WORKERS), in their office when they have one; one meeting at a
+    time. Teacheroar, 1 Nov: 24 citizens a month unheard while the mayor
+    held meeting after meeting (11 waiting). The AI can't add a second
+    mayor (the position is elected, one a fort) nor shorten DF's meetings:
+    it gives the mayor an office whatever Deference says, keeps nobles out
+    of its recreation burrow (no office in it), and says here why they went
+    unheard: venting eases as the fort's stress does; "too little work"
+    with work for the idle hands."""
+    c = _cause(s, "UnableComplain")
+    n = int(c.get("citizens") or 0)
+    if n < cfg["complaint_note_min"]:
+        return
+    about = _about(c)
+    words = "; ".join(f"{COMPLAINT_WORDS.get(k, k.replace('_', ' '))} {v}" for k, v in about[:3])
+    text = f"{n} citizens couldn't lodge a complaint lately" + (f" ({words})" if words else "")
+    offices = _d(_d(s.get("offices")).get("offices"))
+    holder = next(((code, _l(_d(offices.get(code)).get("held"))) for code in ("MAYOR", "EXPEDITION_LEADER")
+                   if _l(_d(offices.get(code)).get("held"))), None)
+    if offices and holder is None:
+        notes.append(text + ": the fort has no mayor (or expedition leader) to hear them; DF holds the election")
+        return
+    name = str(holder[1][0]) if holder else ""
+    who = f"the {holder[0].lower().replace('_', ' ')}, {name}" if holder else "the mayor"
+    m = _d(s.get("meetings"))
+    first = name.split(" ")[0] if name else ""
+    acts = [a for a in _l(m.get("activities")) if isinstance(a, dict)
+            and (not first or first in str(a.get("noble") or ""))]
+    waiting = int(m.get("requests") or 0)
+    busy = (f", is in meetings back to back ({waiting} waiting)" if acts and waiting
+            else ", is in a meeting" if acts else ", is the only one DF sends them to")
+    no_office = any(isinstance(x, dict) and "office" in _l(x.get("needs"))
+                    and x.get("office") in ("MAYOR", "EXPEDITION_LEADER")
+                    for x in _l(_d(s.get("noble_rooms")).get("nobles")))
+    work = sum(v for k, v in about if k in ("insufficient_work", "work_request"))
+    vent = sum(v for k, v in about if k in ("vent_at_boss", "cry_on_boss"))
+    if no_office:
+        tail = "; with no office of their own to meet them in (the AI gives one when a free office stands)"
+    elif work > vent:
+        tail = "; most were asking for work: work for the idle hands meets it"
+    else:
+        tail = "; it eases as the fort's stress does (DF has one mayor, one meeting at a time)"
+    notes.append(f"{text}: {who}{busy}{tail}")
+
+
+def _vermin_rule(s: dict, cfg: dict, proposals: list, notes: list) -> None:
+    """(0.104.168) Citizens upset at being "accosted by" vermin they hate
+    (DF's NEAR_HATED_VERMIN; Teacheroar, 1 Nov: 15-16 a month, stress 25-50
+    each). A cat (a vermin hunter, HUNTS_VERMIN) loose in the fort catches
+    them; DFHack's autobutcher, which the AI turns on for big herds
+    (0.104.158), culls cats with the rest and spares only the named, pets
+    and those up for adoption. So a few cats are kept from the butcher by a
+    nickname, one per `citizens_per_mouser`; with none, it's said."""
+    c = _cause(s, "AnnoyedVermin")
+    n = int(c.get("citizens") or 0)
+    if n < cfg["vermin_note_min"]:
+        return
+    kinds = ", ".join(f"{k.lower().replace('_', ' ')} {v}" for k, v in _about(c)[:3])
+    text = f"{n} citizens were upset lately by vermin they hate" + (f" ({kinds})" if kinds else "")
+    vh = _d(_d(s.get("needs")).get("vermin_hunters"))
+    if not vh:
+        notes.append(text)
+        return
+    citizens = int(_d(s.get("dwarves")).get("total") or 0)
+    want = max(cfg["mousers_min"], min(cfg["mousers_max"], citizens // max(1, cfg["citizens_per_mouser"])))
+    total, loose, kept = int(vh.get("n") or 0), int(vh.get("loose") or 0), int(vh.get("kept") or 0)
+    if total == 0:
+        notes.append(text + ": the fort has no cat or other vermin hunter (buy cats from a caravan)")
+    elif loose == 0:
+        notes.append(text + f": the fort's {total} cat(s) are all caged, where they hunt nothing")
+    elif kept < want and loose > kept and proposals is not None:
+        k = min(want, loose)
+        proposals.append(Proposal("vermin", {"type": "keep_mousers", "count": k},
+                                  text + f": {kept} of the {loose} loose cat(s) are safe from the butcher; keep {k} "
+                                  "(nicknamed Mouser, which autobutcher spares) to hunt them", 5))
+
+
+__all__ += ["COMPLAINT_WORDS", "_complaint_notes", "_vermin_rule", "OFFICE_FIRST"]

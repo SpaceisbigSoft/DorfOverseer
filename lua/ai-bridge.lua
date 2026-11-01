@@ -468,6 +468,8 @@ function get_needs(txt_fn)
     pcall(function() out.stress_causes = reqscript('ai-society').stress_census() end)
     pcall(function() out.clothing = reqscript('ai-society').clothing_census() end)
     pcall(function() out.craft_shops = reqscript('ai-society').craft_shops() end)
+    -- (0.104.168) the cats (vermin hunters) and how many are safe from the butcher
+    pcall(function() out.vermin_hunters = reqscript('ai-society').vermin_hunters() end)
     -- petitions the fort agreed to and hasn't fulfilled (DFHack's list-agreements)
     pcall(function()
         local la = reqscript('list-agreements')
@@ -5152,6 +5154,14 @@ function act_recreation(a)
     return reqscript('ai-society').recreation_tick(n, days, a.dry_run == true, txt, f, fd)
 end
 
+-- (0.104.168) A few cats (vermin hunters) kept from the butcher: nicknamed,
+-- which DFHack's autobutcher respects (lua/ai-society.lua keep_mousers).
+function act_keep_mousers(a)
+    local n = int_in(a.count or 6, 1, 20)
+    if not n then return reject('keep_mousers: count 1-20') end
+    return reqscript('ai-society').keep_mousers(n, a.dry_run == true, txt)
+end
+
 -- (0.104.167) The hospital burrow: the patients kept inside the hospitals
 -- (with the nearest drink and food they can reach), the healed let out
 -- (lua/ai-society.lua hospital_burrow_tick).
@@ -5245,6 +5255,7 @@ function act_slaughter_one(a)
             if not dfhack.units.isAnimal(u) or not dfhack.units.isFortControlled(u) or dfhack.units.isDead(u) then return false end
             if u.flags2.slaughter then marked = marked + 1 return false end
             if dfhack.units.isPet(u) or dfhack.units.isWar(u) or dfhack.units.isHunter(u) then return false end
+            if (u.name.nickname or '') == 'Mouser' then return false end      -- (0.104.168) a cat the AI keeps
             if not dfhack.units.isAdult(u) or u.flags1.caged then return false end
             return true
         end)
@@ -6134,6 +6145,7 @@ ACTIONS = {
     open_trade = act_open_trade,
     close_trade = act_close_trade,
     close_meeting = act_close_meeting,
+    keep_mousers = act_keep_mousers,      -- (0.104.168)
     water_zone = act_water_zone,
     sand_zone = act_sand_zone,
     give_room = act_give_room,
@@ -6568,6 +6580,7 @@ CACHE_INVALIDATES = {
     add_posts = {'locations'}, staff_location = {'locations'}, vacate_post = {'locations', 'health'}, retarget_hall = {'locations', 'registry'},
     answer_petition = {'petitions', 'locations'}, petition_orders = {'petitions'},
     give_trinkets = {'needs'}, idle_crafting = {'needs'}, unload_depot = {'needs'},
+    keep_mousers = {'needs'},     -- (0.104.168) the cats kept: read again
     -- (review) furnishing makes the temple, hospital, offices and rooms: the
     -- rules that read locations and noble_rooms would start a second level
     start_project = {'registry'}, furnish_project = {'registry', 'locations', 'noble_rooms'},
@@ -7310,6 +7323,9 @@ ASSUMPTIONS = {
     'df.global.plotinfo.trees_removed', 'df.global.plotinfo.main.custom_difficulty.tree_fell_count',
     'df.global.world.items.other.STATUE', 'df.global.plotinfo.civ_id',
     'df.global.plotinfo.activities', 'df.global.plotinfo.dip_meeting_info', 'df.global.plotinfo.dipscript_popups', 'df.meeting_topic', 'df.diplomacy_state_type.Peace', 'df.historical_entity_type.Civilization',
+    -- (0.104.168) why a complaint went unheard, the cats kept from the butcher
+    'df.history_event_reason.vent_at_boss', 'df.caste_raw_flags.HUNTS_VERMIN', 'dfhack.units.setNickname',
+    'dfhack.units.isAvailableForAdoption', 'dfhack.units.isFortControlled',
 }
 
 local function cmd_assumptions()
