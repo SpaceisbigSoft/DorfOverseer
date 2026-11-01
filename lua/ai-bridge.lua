@@ -34,7 +34,7 @@
 local json = require('json')
 local utils = require('utils')
 
-BRIDGE_VERSION = '0.104.156'
+BRIDGE_VERSION = '0.104.157'
 PROTOCOL = 1 -- bump when the report's shape changes in a breaking way
 
 local OUT_DIR = dfhack.getDFPath() .. '/dfhack-config/ai-overseer'
@@ -464,6 +464,9 @@ function get_needs(txt_fn)
     -- of each 20 ordered and the AI never saw one free
     pcall(function() out.trinket_census = reqscript('ai-society').trinket_census() end)
     pcall(function() out.bones = reqscript('ai-society').free_bones(2000) end)
+    -- (0.104.157) what stresses the fort (DF's thoughts) and the citizens' clothes
+    pcall(function() out.stress_causes = reqscript('ai-society').stress_census() end)
+    pcall(function() out.clothing = reqscript('ai-society').clothing_census() end)
     pcall(function() out.craft_shops = reqscript('ai-society').craft_shops() end)
     -- petitions the fort agreed to and hasn't fulfilled (DFHack's list-agreements)
     pcall(function()

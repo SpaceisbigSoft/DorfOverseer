@@ -125,6 +125,41 @@ def _():
     assert env.free_bones(100) == 2 and env.free_bones(1) == 1
 
 
+@test("0.104.157: the stress census sums DF's thoughts by stress (recent only); the clothes census counts wear and what's missing")
+def _():
+    env, units, assigned, ntiles, g = fresh()
+    snippet = """
+      local env = ...
+      env.df.global.cur_year, env.df.global.cur_year_tick = 92, 200000
+      env.df.unit_thought_type = {[1] = 'SawDeadBody', [2] = 'Ghost', [3] = 'Talked', [4] = 'GoodMeal'}
+      env.df.emotion_type = {[10] = 'HORROR', [11] = 'TERROR', [12] = 'JOY',
+                             attrs = {[10] = {divider = 1}, [11] = {divider = 2}, [12] = {divider = -1}}}
+      local function em(th, ty, str, tick) return {thought = th, type = ty, strength = str, year = 92, year_tick = tick or 199000} end
+      local function soul(list) return {status = {current_soul = {personality = {emotions = list}}}} end
+      local a = soul({em(1, 10, 50), em(1, 10, 30), em(2, 11, 40), em(4, 12, 20)})
+      local b = soul({em(1, 10, 10), em(3, 12, 25), em(2, 11, 100, 10)})     -- the ghost long ago: left out
+      STRESS_UNITS = {a, b}
+      local function inv(t, wear) return {mode = 2, item = {wear = wear, getType = function() return t end}} end
+      env.df.item_type = {[1] = 'SHOES', [2] = 'PANTS', [3] = 'ARMOR', [4] = 'HELM'}
+      env.df.unit_inventory_item = {T_mode = {Worn = 2}}
+      env.dfhack.units.isBaby = function(u) return u.baby == true end
+      CLOTH_UNITS = {{inventory = {inv(1, 0), inv(2, 3), inv(3, 1)}},
+                     {inventory = {inv(3, 2), {mode = 1, item = {wear = 3, getType = function() return 1 end}}}},
+                     {baby = true, inventory = {}}}
+    """
+    env["load"](snippet, "t", "t", env)(env)
+    c = env.stress_census(env.STRESS_UNITS)
+    worst = [(x.thought, x.citizens, x.stress, x.emotion) for x in c.causes.values()]
+    assert worst == [("SawDeadBody", 2, 90, "HORROR"), ("Ghost", 1, 20, "TERROR")], worst
+    eased = [(x.thought, x.stress) for x in c.eased.values()]
+    assert eased == [("Talked", -25), ("GoodMeal", -20)], eased
+    assert c.citizens == 2 and c.read == 2
+    k = env.clothing_census(env.CLOTH_UNITS)
+    assert k.citizens == 2 and k.tattered_wearers == 1, dict(k)
+    assert (k.worn.new, k.worn.worn, k.worn.threadbare, k.worn.tattered) == (1, 1, 1, 1), dict(k.worn)
+    assert (k.without.shoes, k.without.legs, k.without.body) == (1, 1, 0), dict(k.without)
+
+
 @test("recreation (0.104.127): never the hospital's zone (a meeting hall that is a hospital location), nor a Hospital zone")
 def _():
     env, units, assigned, ntiles, g = fresh()

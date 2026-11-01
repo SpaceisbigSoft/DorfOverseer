@@ -724,6 +724,114 @@ end
 
 -- (0.104.141) Butchered bones a craftsdwarf could carve (loose or in a bin,
 -- not forbidden or in a job), counted up to `limit`.
+-- (0.104.157) What is stressing the fort, in DF's own words: each citizen's
+-- emotions of the last STRESS_DAYS days by the thought behind them
+-- (df.unit_thought_type), summed by how much stress each adds (strength /
+-- the emotion's divider; a negative divider eases stress). Teacheroar, 1 Nov:
+-- 9 miserable, 21 very unhappy, and miserable children with no unmet need:
+-- the needs alone can't say why. {causes = [{thought, citizens, stress,
+-- emotions}] (the worst first, 15), eased = [...] (8), citizens, read}.
+STRESS_DAYS = 28
+STRESS_TOP, EASED_TOP = 15, 8
+
+local function emotion_divider(t)
+    local ok, d = pcall(function() return df.emotion_type.attrs[t].divider end)
+    if ok and type(d) == 'number' then return d end
+    return nil
+end
+
+function stress_census(units)
+    local now = df.global.cur_year * 403200 + df.global.cur_year_tick
+    local since = now - STRESS_DAYS * 1200
+    local by, citizens, read, no_divider = {}, 0, 0, 0
+    for _, u in ipairs(units or dfhack.units.getCitizens()) do
+        citizens = citizens + 1
+        local ok, ems = pcall(function() return u.status.current_soul.personality.emotions end)
+        if ok and ems then
+            read = read + 1
+            local seen = {}
+            for _, em in ipairs(ems) do
+                local okt, when = pcall(function() return em.year * 403200 + em.year_tick end)
+                if not okt or when >= since then
+                    local name = df.unit_thought_type[em.thought] or tostring(em.thought)
+                    local d = emotion_divider(em.type)
+                    local stress = 0
+                    if d and d ~= 0 then stress = (em.strength or 0) / d else no_divider = no_divider + 1 end
+                    local e = by[name] or {thought = name, citizens = 0, stress = 0, emotions = 0, kinds = {}}
+                    e.stress, e.emotions = e.stress + stress, e.emotions + 1
+                    local ek = df.emotion_type[em.type] or tostring(em.type)
+                    e.kinds[ek] = (e.kinds[ek] or 0) + 1
+                    if not seen[name] then seen[name], e.citizens = true, e.citizens + 1 end
+                    by[name] = e
+                end
+            end
+        end
+    end
+    local worse, eased = {}, {}
+    for _, e in pairs(by) do
+        e.stress = math.floor(e.stress + 0.5)
+        local top, topn = nil, 0
+        for k, n in pairs(e.kinds) do if n > topn then top, topn = k, n end end
+        e.emotion, e.kinds = top, nil
+        if e.stress > 0 then table.insert(worse, e) elseif e.stress < 0 then table.insert(eased, e) end
+    end
+    table.sort(worse, function(a, b) return a.stress > b.stress end)
+    table.sort(eased, function(a, b) return a.stress < b.stress end)
+    while #worse > STRESS_TOP do table.remove(worse) end
+    while #eased > EASED_TOP do table.remove(eased) end
+    return {causes = worse, eased = eased, citizens = citizens, read = read, days = STRESS_DAYS,
+            no_divider = no_divider > 0 and no_divider or nil}
+end
+
+-- (0.104.157) The citizens' clothes: worn items by wear (DF's 0 new .. 3
+-- tattered, "XX"), and how many go without shoes, something on the legs
+-- (trousers, skirt) or the body (shirt, robe, armour). Babies left out.
+-- {citizens, worn = {new, worn, threadbare, tattered}, without = {shoes,
+-- legs, body}, tattered_wearers}.
+local WORN_MODE
+local function worn_mode()
+    if WORN_MODE == nil then
+        local ok, v = pcall(function() return df.unit_inventory_item.T_mode.Worn end)
+        if not ok or v == nil then ok, v = pcall(function() return df.inv_item_role_type.Worn end) end
+        WORN_MODE = (ok and v ~= nil) and v or 2
+    end
+    return WORN_MODE
+end
+
+local WEAR_NAMES = {[0] = 'new', [1] = 'worn', [2] = 'threadbare', [3] = 'tattered'}
+
+function clothing_census(units)
+    local out = {citizens = 0, worn = {new = 0, worn = 0, threadbare = 0, tattered = 0},
+                 without = {shoes = 0, legs = 0, body = 0}, tattered_wearers = 0}
+    local mode = worn_mode()
+    for _, u in ipairs(units or dfhack.units.getCitizens()) do
+        local okb, baby = pcall(dfhack.units.isBaby, u)
+        if not (okb and baby) then
+            out.citizens = out.citizens + 1
+            local has, tattered = {}, false
+            pcall(function()
+                for _, inv in ipairs(u.inventory) do
+                    if inv.mode == mode and inv.item then
+                        local it = inv.item
+                        local okt, tn = pcall(function() return df.item_type[it:getType()] end)
+                        if okt and tn then has[tn] = true end
+                        local okw, w = pcall(function() return it.wear end)
+                        w = (okw and type(w) == 'number') and math.max(0, math.min(3, w)) or 0
+                        local k = WEAR_NAMES[w]
+                        out.worn[k] = out.worn[k] + 1
+                        if w >= 3 then tattered = true end
+                    end
+                end
+            end)
+            if not has.SHOES then out.without.shoes = out.without.shoes + 1 end
+            if not has.PANTS then out.without.legs = out.without.legs + 1 end
+            if not has.ARMOR then out.without.body = out.without.body + 1 end
+            if tattered then out.tattered_wearers = out.tattered_wearers + 1 end
+        end
+    end
+    return out
+end
+
 function free_bones(limit)
     local n = 0
     local ok, list = pcall(function() return df.global.world.items.other.CORPSEPIECE end)
