@@ -788,6 +788,24 @@ end
 -- (trousers, skirt) or the body (shirt, robe, armour). Babies left out.
 -- {citizens, worn = {new, worn, threadbare, tattered}, without = {shoes,
 -- legs, body}, tattered_wearers}.
+-- Items of one kind (df.items_other_id) no one holds: not owned, worn,
+-- carried, forbidden, in a job, at the depot or kept in a building (a
+-- location's chest).
+function free_items_count(kind)
+    local ok, list = pcall(function() return df.global.world.items.other[kind] end)
+    if not ok or not list then return nil end
+    local n = 0
+    for _, it in ipairs(list) do
+        local okf, free = pcall(function()
+            local f = it.flags
+            return not (f.removed or f.garbage_collect or f.artifact or f.owned or f.in_inventory or f.forbid
+                        or f.in_job or f.trader or f.in_building or f.dump or f.hostile or f.construction)
+        end)
+        if okf and free then n = n + 1 end
+    end
+    return n
+end
+
 local WORN_MODE
 local function worn_mode()
     if WORN_MODE == nil then
@@ -829,6 +847,11 @@ function clothing_census(units)
             if tattered then out.tattered_wearers = out.tattered_wearers + 1 end
         end
     end
+    -- in store, free for a dwarf to take: footwear (DFHack's tailor only
+    -- replaces worn-out clothes, so the barefoot never get any: Teacheroar,
+    -- 1 Nov, 63 of 150 barefoot, "NoShoes" the worst stress) and cups (149 of
+    -- 150 drank without one; the taverns keep theirs in their own chests)
+    out.free_shoes, out.free_cups = free_items_count('SHOES'), free_items_count('GOBLET')
     return out
 end
 

@@ -143,6 +143,9 @@ def _():
       env.df.item_type = {[1] = 'SHOES', [2] = 'PANTS', [3] = 'ARMOR', [4] = 'HELM'}
       env.df.unit_inventory_item = {T_mode = {Worn = 2}}
       env.dfhack.units.isBaby = function(u) return u.baby == true end
+      env.df.global.world.items = {other = {SHOES = {[0] = {flags = {}}, [1] = {flags = {owned = true}},
+                                                     [2] = {flags = {in_inventory = true}}},
+                                            GOBLET = {[0] = {flags = {in_building = true}}}}}
       CLOTH_UNITS = {{inventory = {inv(1, 0), inv(2, 3), inv(3, 1)}},
                      {inventory = {inv(3, 2), {mode = 1, item = {wear = 3, getType = function() return 1 end}}}},
                      {baby = true, inventory = {}}}
@@ -158,6 +161,7 @@ def _():
     assert k.citizens == 2 and k.tattered_wearers == 1, dict(k)
     assert (k.worn.new, k.worn.worn, k.worn.threadbare, k.worn.tattered) == (1, 1, 1, 1), dict(k.worn)
     assert (k.without.shoes, k.without.legs, k.without.body) == (1, 1, 0), dict(k.without)
+    assert k.free_shoes == 1 and k.free_cups == 0, (k.free_shoes, k.free_cups)
 
 
 @test("recreation (0.104.127): never the hospital's zone (a meeting hall that is a hospital location), nor a Hospital zone")

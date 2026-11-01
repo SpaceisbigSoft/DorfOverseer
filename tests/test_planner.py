@@ -7672,6 +7672,47 @@ def _():
     assert by_rule(plan(copy.deepcopy(s), Memory())[0], "well_lid")[0].action == {"type": "seal_well_stairs"}
 
 
+@test("comfort (0.104.157): shoes for the barefoot in pairs (leather, else cloth), cups when dwarves drink without; the worst stresses said")
+def _():
+    s = fort()
+    s["buildings"].setdefault("workshops", {}).update({"Leatherworks": 1, "Clothiers": 1, "Craftsdwarfs": 2})
+    s["stocks"].update(leather=1325, cloth=35, wood=600)
+    s.setdefault("needs", {})["stress_causes"] = {"causes": [
+        {"thought": "NoShoes", "citizens": 75, "stress": 113, "emotion": "EMBARRASSMENT"},
+        {"thought": "DrinkWithoutCup", "citizens": 149, "stress": 50, "emotion": "ANNOYANCE"}]}
+    s["needs"]["clothing"] = {"citizens": 150, "without": {"shoes": 63, "legs": 7, "body": 4},
+                              "free_shoes": 4, "free_cups": 0}
+    def run(state):
+        props, notes = plan(copy.deepcopy(state), Memory())[:2]
+        return [x for x in props if x.rule == "comfort"], notes
+    p, notes = run(s)
+    acts = [x.action for x in p]
+    assert {"type": "work_order", "recipe": "leather_shoes", "amount": 30} in acts, acts      # 61 pairs, 30 a batch
+    cups = [a for a in acts if a.get("recipe") in ("stone_mugs", "wooden_cups")]
+    assert cups and cups[0]["amount"] == 20, acts                                            # 50 wanted, 20 a batch
+    assert any("no shoes (75 citizens)" in n and "drinking without a cup (149" in n for n in notes), notes
+    shoes = [x for x in p if x.action.get("recipe") == "leather_shoes"][0]
+    assert "63 of 150 citizens are barefoot (75 upset" in shoes.reason, shoes.reason
+    s["orders"] = s.get("orders", []) + [{"recipe": "leather_shoes", "amount_left": 30, "active": True, "by_ai": True}]
+    p, _ = run(s)
+    assert not [x for x in p if x.action.get("recipe") in ("leather_shoes", "cloth_shoes")], [x.action for x in p]
+    s["orders"] = []
+    s["stocks"]["leather"] = 2                                             # no leather: cloth shoes
+    p, _ = run(s)
+    assert any(x.action.get("recipe") == "cloth_shoes" for x in p), [x.action for x in p]
+    s["stocks"]["leather"] = 1325
+    s["needs"]["clothing"]["free_shoes"] = 130                             # enough in store: a note, no order
+    p, notes = run(s)
+    assert not [x for x in p if "shoes" in x.action.get("recipe", "")], [x.action for x in p]
+    assert any("130 shoes lie free" in n for n in notes), notes
+    s["needs"]["clothing"]["free_cups"] = 60                               # enough cups
+    s["needs"]["stress_causes"]["causes"] = s["needs"]["stress_causes"]["causes"][:1]
+    p, _ = run(s)
+    assert not p, [x.action for x in p]
+    del s["needs"]["clothing"]                                             # an older bridge: nothing
+    assert run(s)[0] == []
+
+
 @test("well shaft (0.104.156): two gates share the mechanisms; a link uses reachable ones; lost links wait; orders for all")
 def _():
     s = fort()

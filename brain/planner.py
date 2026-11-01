@@ -444,6 +444,7 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
         _guard(_grandeur_rule, s, cfg, proposals, notes)
         _guard(_meeting_notes, s, notes)
         _guard(_location_supply_rules, s, cfg, proposals, notes)
+        _guard(_comfort_rules, s, cfg, proposals, notes)
         _guard(_kiln_rules, s, cfg, proposals, notes)
         _guard(_glass_rule, s, cfg, proposals, notes)
         _guard(_petition_rules, s, cfg, proposals, notes)

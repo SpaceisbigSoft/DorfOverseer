@@ -13,7 +13,7 @@ from quirks import has_rule
 from digest import _d, _l, normalize
 from planner_core import *  # noqa: F401,F403
 
-__all__ = ["_doctor_patient_rule", "MOOD_WORKSHOPS", "PETITION_KINDS", "petition_orders_wanted", "_petition_rules", "_jail_size_rule", "_convict_rule", "_break_fights_rule", "_sync_offices_rule", "patient_waits", "_health_rules", "TANTRUM_KEEP", "note_tantrums", "_noble_rooms_rule", "outsider_orders", "NEED_ADVICE", "JEWEL_RECIPES", "_recreation_rule", "_stress_care", "_needs_notes", "_location_supply_rules", "POST_LABORS", "STAFF_POSTS", "STAFF_MAX", "_traction_rule", "_wish_words", "_wish_met", "wish_key", "_location_petition_rules", "_meeting_notes", "_grandeur_rule", "_location_value_rule", "_staff_rule", "_quick_location_rule", "_needs_rules", "_mood_rules", "mood_item_text", "_mood_materials", "_dead_notes", "AI_OFFICES", "_society_notes"]
+__all__ = ["_comfort_rules", "stress_causes", "THOUGHT_WORDS", "_doctor_patient_rule", "MOOD_WORKSHOPS", "PETITION_KINDS", "petition_orders_wanted", "_petition_rules", "_jail_size_rule", "_convict_rule", "_break_fights_rule", "_sync_offices_rule", "patient_waits", "_health_rules", "TANTRUM_KEEP", "note_tantrums", "_noble_rooms_rule", "outsider_orders", "NEED_ADVICE", "JEWEL_RECIPES", "_recreation_rule", "_stress_care", "_needs_notes", "_location_supply_rules", "POST_LABORS", "STAFF_POSTS", "STAFF_MAX", "_traction_rule", "_wish_words", "_wish_met", "wish_key", "_location_petition_rules", "_meeting_notes", "_grandeur_rule", "_location_value_rule", "_staff_rule", "_quick_location_rule", "_needs_rules", "_mood_rules", "mood_item_text", "_mood_materials", "_dead_notes", "AI_OFFICES", "_society_notes"]
 
 
 # A crafting mood's skill -> the workshop (or furnace) the dwarf must claim.
@@ -540,6 +540,78 @@ def _needs_notes(s: dict, cfg: dict, notes: list, proposals: list | None = None,
         notes.append(f"{n_worst} dwarf(s) very unhappy: "
                      + "; ".join(f"{x.get('name')} (missing {', '.join(x.get('unmet') or []) or '?'})"
                                  for x in worst[:3]))
+
+
+def stress_causes(s: dict) -> list:
+    """(0.104.157) The census of what stresses the fort (DF's thoughts of the
+    last 28 days, the worst first): [{thought, citizens, stress, emotion}]."""
+    return [c for c in _l(_d(_d(s.get("needs")).get("stress_causes")).get("causes")) if isinstance(c, dict)]
+
+
+def _cause_citizens(s: dict, thought: str) -> int:
+    for c in stress_causes(s):
+        if c.get("thought") == thought:
+            return int(c.get("citizens") or 0)
+    return 0
+
+
+THOUGHT_WORDS = {"NoShoes": "no shoes", "DrinkWithoutCup": "drinking without a cup", "Attacked": "being attacked",
+                 "MajorInjuries": "bad injuries", "Argument": "arguments", "AnnoyedVermin": "vermin",
+                 "Decay": "rotting bodies", "SleptRoughFloor": "sleeping on the floor", "Uncovered": "no clothes on",
+                 "Rest": "being kept resting", "NeedsUnfulfilled": "unmet needs"}
+
+
+def _comfort_rules(s: dict, cfg: dict, proposals: list, notes: list) -> None:
+    """(0.104.157) The small daily miseries the stress census found
+    (Teacheroar, 1 Nov: 75 citizens upset at having no shoes, 63 of 150
+    barefoot, the worst cause; 149 drank without a cup): shoes for the
+    barefoot (DFHack's tailor only replaces worn-out clothes), made in pairs
+    at the leather works (else of cloth at the clothier's); free cups in
+    store (the taverns keep theirs in their own chests)."""
+    causes = stress_causes(s)
+    if causes:
+        notes.append("what stresses the fort most (28 days): " + "; ".join(
+            f"{THOUGHT_WORDS.get(c.get('thought'), c.get('thought'))} ({c.get('citizens')} citizens)"
+            for c in causes[:5]))
+    cl = _d(_d(s.get("needs")).get("clothing"))
+    if not cl:
+        return
+    st, b = _d(s.get("stocks")), _d(s.get("buildings"))
+    citizens = max(1, int(cl.get("citizens") or _d(s.get("dwarves")).get("total") or 1))
+    barefoot = int(_d(cl.get("without")).get("shoes") or 0)
+    free_shoes = cl.get("free_shoes")
+    if barefoot >= max(3, citizens * cfg["barefoot_share"]) and isinstance(free_shoes, int):
+        pairs = barefoot - free_shoes // 2
+        recipe = None
+        if int(st.get("leather") or 0) >= 10 and _has_shop(b, "Leatherworks"):
+            recipe, what = "leather_shoes", "leather shoes"
+        elif int(st.get("cloth") or 0) >= 10 and _has_shop(b, "Clothiers"):
+            recipe, what = "cloth_shoes", "cloth shoes"
+        if pairs <= 0:
+            notes.append(f"{barefoot} citizens are barefoot though {free_shoes} shoes lie free in store")
+        elif recipe is None:
+            notes.append(f"{barefoot} citizens are barefoot and there's no leather or cloth (or no leather works or "
+                         "clothier's) to make shoes")
+        elif not queued(s, {"leather_shoes", "cloth_shoes"}):
+            n = min(cfg["shoes_batch"], pairs)
+            upset = _cause_citizens(s, "NoShoes")
+            proposals.append(Proposal("comfort", {"type": "work_order", "recipe": recipe, "amount": n},
+                                      f"{barefoot} of {citizens} citizens are barefoot"
+                                      + (f" ({upset} upset by it lately)" if upset else "")
+                                      + f" and the tailor only replaces worn-out clothes: make {n} pair(s) of {what}",
+                                      4, True))
+    free_cups = cl.get("free_cups")
+    cupless = _cause_citizens(s, "DrinkWithoutCup")
+    want = max(10, -(-citizens // cfg["citizens_per_free_cup"]))
+    if (isinstance(free_cups, int) and free_cups < want and cupless >= citizens * cfg["cupless_share"]
+            and _has_shop(b, "Craftsdwarfs") and not queued(s, {"stone_mugs", "wooden_cups"})):
+        wood = int(st.get("wood") or 0)
+        cups = stone_short(s, cfg["stone_low"]) and wood >= 20
+        n = min(cfg["cups_batch"], want - free_cups)
+        proposals.append(Proposal("comfort", {"type": "work_order", "recipe": "wooden_cups" if cups else "stone_mugs",
+                                              "amount": n},
+                                  f"{cupless} citizens drank without a cup lately and {free_cups} cups are free: make {n} "
+                                  + ("wooden cups (no stone to spare)" if cups else "stone mugs"), 5, True))
 
 
 def _location_supply_rules(s: dict, cfg: dict, proposals: list, notes: list) -> None:
