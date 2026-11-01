@@ -5165,6 +5165,21 @@ function act_hospital_burrow(a)
     return reqscript('ai-society').hospital_burrow_tick(n, per, a.dry_run == true, txt, days, a.release == true)
 end
 
+-- (0.104.168) Infected dwarves DF asks no treatment for, put to rest in a
+-- free hospital bed (as DFHack's dwarfvet does for animals), the worst
+-- first; and a second doctor's post at a hospital (lua/ai-health.lua).
+function act_rest_infected(a)
+    local n = int_in(a.max or 3, 1, 10)
+    if not n then return reject('rest_infected: max 1-10') end
+    return reqscript('ai-health').rest_infected(n, a.dry_run == true, txt)
+end
+
+function act_add_doctor_post(a)
+    local id = tonumber(a.location_id)
+    if not id then return reject('add_doctor_post needs location_id') end
+    return reqscript('ai-health').add_doctor_post(id, a.dry_run == true)
+end
+
 function act_gather_plants(a)
     local n = int_in(a.count or 100, 1, 150)
     if not n then return reject('gather_plants needs count 1-150') end
@@ -6084,6 +6099,8 @@ ACTIONS = {
     pair_chairs = act_pair_chairs,        -- (0.104.77)
     recreation = act_recreation,          -- (0.104.78)
     hospital_burrow = act_hospital_burrow,   -- (0.104.167)
+    rest_infected = act_rest_infected,       -- (0.104.168)
+    add_doctor_post = act_add_doctor_post,   -- (0.104.168)
     squad_trim = act_squad_trim,
     squad_release = act_squad_release,
     quick_location = function(a)
@@ -6292,6 +6309,8 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
     needs = function() return safe(get_needs) end,
     hazards = function() return safe(get_hazards) end,
     health = function() return safe(get_health) end,
+    -- (0.104.168) the infected: untreated, bleeding, beds free (lua/ai-health.lua)
+    infection = function() return safe(function() return reqscript('ai-health').survey(txt) end) end,
     -- the last water survey (lua/ai-water.lua), from the save: no scan here
     water = function()
         return safe(function()
@@ -6578,6 +6597,7 @@ CACHE_INVALIDATES = {
     -- (0.104.141) a pile placed: the cached logistics section said "none" for
     -- 3 days and the rule asked again each cycle (17 refusals in 1.5 h)
     feeder_pile = {'logistics'},
+    add_doctor_post = {'locations'},   -- (0.104.168)
 }
 SECTION_CACHE = SECTION_CACHE or {}
 -- (0.104.8) a new bridge starts with an empty cache: DFHack keeps a script's

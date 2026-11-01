@@ -469,6 +469,13 @@ def _soap_rule(s: dict, cfg: dict, proposals: list, notes: list, say, memory=Non
     # left with no fat to render (Enxah, summer y63: 25 tallow, 5 ash, 29
     # buckets, 16 infected wounds) held the lye and the soap back for weeks
     need = keep - soap
+    # (0.104.168) many wounds festering (Teacheroar: 77 infected, a bar of
+    # ash, then of lye, then of soap, one step every 2 days): bigger batches,
+    # and a second step of the chain in the same cycle (rule soap_rush)
+    infected_n = int(_d(s.get("health")).get("infected") or 0)
+    rush = infected_n >= cfg["soap_rush_infected"]
+    if rush:
+        need = max(need, cfg["soap_rush_batch"])
     steps = []
     if lye and tallow:
         steps.append(("make_soap_from_tallow", min(lye, tallow, need), "make soap from lye and tallow"))
@@ -489,6 +496,12 @@ def _soap_rule(s: dict, cfg: dict, proposals: list, notes: list, say, memory=Non
     proposals.append(Proposal("soap", {"type": "work_order", "recipe": recipe, "amount": max(1, amount)},
                               f"{soap} soap for the hospital (lye {lye}, tallow {tallow}, fat {fat}, ash {ash}): {what}",
                               3 if int(_d(s.get("health")).get("infected") or 0) else 5, True))
+    if rush:      # (0.104.168) the next step of the chain too, not two days later
+        nxt = next((st for st in steps if st[0] != recipe and not queued(s, {st[0]})), None)
+        if nxt is not None:
+            proposals.append(Proposal("soap_rush", {"type": "work_order", "recipe": nxt[0], "amount": max(1, nxt[1])},
+                                      f"{infected_n} dwarves with infected wounds and {soap} of {keep} soap: "
+                                      f"{nxt[2]} at the same time", 3, True))
 
 
 def _pasture_rule(s: dict, memory, traits: dict, cfg: dict, proposals: list, notes: list) -> None:

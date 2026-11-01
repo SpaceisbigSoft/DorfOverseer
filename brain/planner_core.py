@@ -390,6 +390,14 @@ PLANNER_CONFIG = {
     "wood_crafts_min_logs": 30,        # (0.104.122) trinkets of wood while stone is short, with this many logs
     "soap_keep_max": 15, "infected_per_soap": 3,   # (0.104.121) a bar for every 3 infected wounds, up to 15
     "soap_cooldown_ticks": 2 * 1200,
+    # (0.104.168) disease and care: with this many infected the soap chain
+    # runs two steps a cycle in batches of 5; idle infected dwarves DF asks
+    # no treatment for are put to rest in free hospital beds, 3 a day (stopped
+    # when DF keeps none of 3 sent); a hospital gets a second doctor's post
+    # while more than 3 treatments wait for each dwarf who can diagnose
+    "soap_rush_infected": 20, "soap_rush_batch": 5, "soap_rush_cooldown_ticks": 2 * 1200,
+    "infected_rest_max": 3, "infected_rest_cooldown_ticks": 1200, "infected_rest_give_up": 3,
+    "doctor_post_per_diagnoser": 3, "doctor_post_cooldown_ticks": 3 * 1200,
     "noble_rooms_cooldown_ticks": 1200,
     "uniform_cooldown_ticks": 1200,       # a squad's uniform: once a day   # rooms given to nobles: once a day  # goods to the depot: every 2 days while a caravan is here
     "crafts_cooldown_ticks": 14 * 1200,
@@ -1478,6 +1486,8 @@ AGENDA_THEMES = {
     "feeder": "shorten the hauling", "labor": "put idle hands to work", "labor_trim": "take the extra hands off fishing", "well": "find water for a well", "well_lid": "close the cavern well's stairs", "well_shaft": "a gate in the cavern well's shaft", "planned_parts": "parts the planned buildings wait for", "comfort": "shoes and cups for the fort", "mothers": "mothers home from the squads", "dead_units": "clear old dead from the unit list", "herd": "keep the herds the fort's size",
     "stuck_order": "clear stuck work", "unsuspend": "resume suspended work", "stray_gear": "hand out lost gear", "assign_weapons": "arm the soldiers", "soldier_swap": "let the keen train", "temple_chest": "a chest for the temple", "instrument_orders": "clear the instrument backlog", "pair_chairs": "seat dwarves together", "recreation": "time off for the unhappiest", "hospital_burrow": "keep the wounded in the hospital", "dairy": "milk and cheese", "eggs": "nest boxes for the hens", "war_animals": "train war animals", "gate_guard": "hold the gate", "gate_dogs": "war dogs at the gate", "gem_cutting": "cut the rough gems", "stairwell": "a new stairwell", "animal_trainer": "an animal trainer", "nest_box_order": "make nest boxes", "library_chest": "a chest for the library", "orphan_jobs": "clear jobs whose order is gone", "slabs_free": "free the memorial slabs", "water_traffic": "keep paths off the ice", "jail_size": "a bigger jail", "jail_more": "another jail", "break_fights": "break up the fights among the fort's own", "burial": "bury the dead", "rooms": "mend the rooms' walls", "coffins": "coffins for the tombs", "order_slots": "free the workshop's order slots", "fat_ban": "keep fat for soap", "jail_urgent": "a jail against the beatings", "tavern_urgent": "a tavern for company", "quarry": "quarry stone", "cloth": "weave cloth",
 }
+AGENDA_THEMES.update({"soap_rush": "make soap", "infected_rest": "care for the infected",   # (0.104.168)
+                      "doctor_post": "more doctors"})
 
 
 def agenda(proposals: list, notes: list, limit: int = 5) -> list[str]:
