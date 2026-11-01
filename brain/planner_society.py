@@ -641,6 +641,18 @@ def _people_rules(s: dict, cfg: dict, proposals: list, notes: list) -> None:
         proposals.append(Proposal("mothers", {"type": "squad_release", "unit_id": m["id"], "mother": True},
                                   f"{m.get('name')} has a baby, carried into every fight: out of her squad", 3))
         break
+    # (0.104.159) miasma, where and from what (the census' worst stress at
+    # Teacheroar, 136 of 150 disgusted: meat rotting by a stair, z160-162)
+    hz = _d(s.get("hazards"))
+    spots = [c for c in _l(hz.get("miasma_spots")) if isinstance(c, dict)]
+    if spots:
+        c = spots[0]
+        rot = {str(k): int(v) for k, v in _d(c.get("rotting")).items() if isinstance(v, int)}
+        what = ", ".join(f"{n} {k.lower().replace('_', ' ')}" for k, n in sorted(rot.items(), key=lambda kv: -kv[1]))
+        notes.append(f"miasma: {hz.get('miasma')} clouds, the worst at x{c.get('x')} y{c.get('y')} z{c.get('z')}"
+                     + (f" ({c.get('zone') or c.get('building')})" if c.get("zone") or c.get("building") else "")
+                     + (f", rotting near it: {what}" if what else "")
+                     + (" by a refuse pile" if c.get("refuse_pile") is not None else ""))
     h = _d(s.get("health"))
     names = {str(k): int(v) for k, v in _d(h.get("syndrome_names")).items() if isinstance(v, int)}
     if names:

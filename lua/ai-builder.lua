@@ -6393,7 +6393,8 @@ STORE_KINDS = {
 }
 -- kinds whose products waiting in a workshop count as wanting storage
 STORE_FROM_WORKSHOPS = {weapons = true, armor = true, ammo = true,   -- (0.100) ammo too
-                        finished_goods = true}   -- (0.104.157) cups and crafts left in the craftsdwarf's
+                        finished_goods = true,   -- (0.104.157) cups and crafts left in the craftsdwarf's
+                        food = true}   -- (0.104.159) meat left at the butcher's rots: miasma (Teacheroar, 1 Nov)
 
 local function in_workshop(item)
     local f = item.flags

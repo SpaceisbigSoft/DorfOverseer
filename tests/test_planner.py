@@ -7685,6 +7685,10 @@ def _():
     assert any("Urist, Axedwarf leads a squad and has a baby" in n for n in notes), notes
     assert any("36 citizens have a syndrome: alcohol (30), spider venom (6); 82 walk about" in n for n in notes), notes
     assert any("sleeping on the floor (6 citizens, 4 of them children)" in n for n in notes), notes
+    s.setdefault("hazards", {}).update(miasma=29, miasma_spots=[{"n": 7, "x": 95, "y": 94, "z": 162,
+                                                                "rotting": {"MEAT": 72, "CORPSE": 1}}])
+    notes = plan(copy.deepcopy(s), Memory())[1]
+    assert any("miasma: 29 clouds, the worst at x95 y94 z162, rotting near it: 72 meat, 1 corpse" in n for n in notes), notes
     del s["military"]["soldier_mothers"]
     assert not [p for p in plan(copy.deepcopy(s), Memory())[0] if p.rule == "mothers"]
 
@@ -7739,10 +7743,10 @@ def _():
     del s["needs"]["clothing"]                                             # an older bridge: nothing
     assert run(s)[0] == []
     # finished goods left in their workshops count toward more storage
-    st = {"finished_goods": {"tiles": 58, "used": 58, "loose": 5, "in_workshops": 34, "piles": 2}}
+    st = {"finished_goods": {"tiles": 58, "used": 58, "loose": 39, "in_workshops": 34, "piles": 2}}
     s.setdefault("logistics", {})["storage"] = st
     assert "finished_goods" in planner.full_stores(s, PLANNER_CONFIG), planner.full_stores(s, PLANNER_CONFIG)
-    st["finished_goods"]["in_workshops"] = 0
+    st["finished_goods"].update(in_workshops=0, loose=5)
     assert "finished_goods" not in planner.full_stores(s, PLANNER_CONFIG)
     # Teacheroar 13:44: used cups on the halls' floors count too
     s["needs"]["clothing"] = {"free_cups_detail": {"place": {"zone MeetingHall": 24, "zone DiningHall": 10, "stockpile": 3}}}
