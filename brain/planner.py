@@ -35,6 +35,7 @@ from planner_industry import *  # noqa: E402,F401,F403  (0.104.83: the planner i
 from planner_society import *  # noqa: E402,F401,F403  (0.104.83: the planner in parts)
 import crisis  # noqa: E402  (0.104.137)
 from planner_building import *  # noqa: E402,F401,F403  (0.104.83: the planner in parts)
+from planner_homes import *  # noqa: E402,F401,F403  (0.104.168: homes and households)
 
 
 def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[Proposal], list[str]]:
@@ -506,6 +507,8 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
     # 7. Building projects ------------------------------------------------------
     if can_use("projects"):
         _guard(_project_rules, s, traits, cfg, proposals, notes, can_use, memory)
+    # 7a. (0.104.168) a bedroom per household (after the levels: no second bedrooms level)
+    _guard(_homes_rules, s, cfg, traits, proposals, notes)
 
     # 8. The game runs slowly (the overseer measured it while unattended): no
     # newcomers and no new luxury levels until it recovers

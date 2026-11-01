@@ -139,6 +139,7 @@ SECTION_DEFAULTS = {
     "registry": [],          # every AI project with its bounds (lua/ai-builder.lua registry_report)
     "labor": {},
     "industry": {},
+    "homes": {},             # (0.104.168) households: bedrooms, couples in one room or two, rough sleepers (lua/ai-homes.lua)
     "noble_rooms": {},       # {nobles: [{unit_id, name, office, needs}], free: {office, bedroom...}} (lua/ai-nobles.lua)
     "trade": {},             # {depot, caravans: [{civ, state}], goods, goods_value, at_depot} (lua/ai-trade.lua)          # {ores: {METAL: {tiles, ore}}} uncovered near the fort (lua/ai-industry.lua)             # {miners, picks, soldier_picks, dig, want, need, candidates} (lua/ai-labor.lua)
     "founding": {},          # {stairs: has the fort a staircase, near: the wagon or the dwarves}

@@ -391,6 +391,9 @@ def short(a: dict) -> str:
         return f"give a dwarf the {str(a.get('post') or 'post').lower().replace('_', ' ')} post"
     if t == "give_trinkets":
         return "give trinkets to dwarves who want something to own"
+    if t == "house_dwarves":     # (0.104.168)
+        return ("move stressed dwarves to rooms they like better" if not a.get("house")
+                else "one bedroom per household (couples together, a room for those with none)")
     if t == "remove_workshops":
         return f"take down extra {a.get('kind')} workshops"
     if t == "place_keep":

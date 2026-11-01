@@ -8288,6 +8288,85 @@ def _():
     assert any(p.rule == "hospital_burrow" for p in allowed), held
 
 
+# --- (0.104.168) homes: a bedroom per household, rooms the stressed like ------------
+
+HOMES = {"citizens": 142, "adults": 125, "children": 17, "adults_roomless": 0, "children_roomless": 0,
+         "couples": 20, "couples_shared": 20, "couples_apart": 0, "couples_none": 0, "couples_unlinked": 0,
+         "hoarders": 0, "rough": 0, "rough_housed": 0, "rough_children": 0, "rough_unreachable": 0,
+         "lack_room": 0, "free_bedrooms": 190, "free_suites": 2, "free_bedless": 0, "rooms_wanted": 0, "samples": []}
+
+
+def homes_fort(**kw):
+    s = fort()
+    s["homes"] = {**copy.deepcopy(HOMES), **kw}
+    return s
+
+
+@test("homes (0.104.168): everyone housed, few stressed: nothing; an older bridge without the section: nothing")
+def _():
+    s = homes_fort(); s["dwarves"]["stress"]["unhappy"] = 2
+    p, notes = plan(s, Memory())
+    assert not [x for x in p if x.rule.startswith("homes")], rules(p)
+    s = fort(); s.pop("homes", None)
+    p, _ = plan(s, Memory())
+    assert not [x for x in p if x.rule.startswith("homes")], rules(p)
+    s = fort(); s["homes"] = {"error": "boom"}
+    p, _ = plan(s, Memory())
+    assert not [x for x in p if x.rule.startswith("homes")], rules(p)
+
+
+@test("homes (0.104.168): couples in two rooms or roomless households with free rooms: house_dwarves")
+def _():
+    p, _ = plan(homes_fort(couples_apart=3, couples_unlinked=1, rooms_wanted=4, children_roomless=2,
+                           adults_roomless=3), Memory())
+    h = by_rule(p, "homes")
+    assert h and h[0].action == {"type": "house_dwarves", "house": 8}, [x.action for x in h]
+    assert "two rooms" in h[0].reason and "2 children" in h[0].reason, h[0].reason
+    assert not by_rule(p, "homes_dig")
+    # only as many as there are free rooms for the roomless
+    p, _ = plan(homes_fort(rooms_wanted=9, free_bedrooms=2), Memory())
+    assert by_rule(p, "homes")[0].action["house"] == 2
+
+
+@test("homes (0.104.168): more roomless households than free bedrooms: a bedrooms level (not beside another)")
+def _():
+    s = homes_fort(rooms_wanted=12, free_bedrooms=2)
+    d = by_rule(plan(s, Memory())[0], "homes_dig")
+    assert d and d[0].action["kind"] == "bedrooms" and d[0].action["rooms"] == 10 + PLANNER_CONFIG["min_spare_beds"], \
+        [x.action for x in d]
+    s["projects"]["open"] = [{"kind": "bedrooms", "phase": "dig", "id": 9}]
+    assert not by_rule(plan(s, Memory())[0], "homes_dig")
+
+
+@test("homes (0.104.168): five or more stressed and free rooms: the most stressed to rooms they like, a week apart")
+def _():
+    s = homes_fort()
+    s["dwarves"]["stress"].update(miserable=3, very_unhappy=4, unhappy=10)
+    p, _ = plan(s, Memory())
+    h = by_rule(p, "homes_liked")
+    assert h and h[0].action == {"type": "house_dwarves", "house": 0, "upgrade": PLANNER_CONFIG["homes_liked_max"]}, \
+        [x.action for x in h]
+    assert PLANNER_CONFIG["homes_liked_cooldown_ticks"] == 7 * TICKS_PER_DAY
+    s2 = homes_fort(free_bedrooms=0)
+    s2["dwarves"]["stress"].update(miserable=3, very_unhappy=4, unhappy=10)
+    assert not by_rule(plan(s2, Memory())[0], "homes_liked")
+    # a week apart once fired
+    m = Memory(); now = abs_tick(s)
+    m.last_fired["homes_liked"] = now - TICKS_PER_DAY
+    allowed, held = select(plan(copy.deepcopy(s), m)[0], s, m)
+    assert not any(x.rule == "homes_liked" for x in allowed) and any("homes_liked" in x for x in held), held
+
+
+@test("homes (0.104.168): rough sleepers get a note saying whether they lack a room or sleep away from it")
+def _():
+    _, notes = plan(homes_fort(rough=5, rough_housed=4, rough_unreachable=1, rough_children=2), Memory())
+    n = [x for x in notes if "slept rough" in x]
+    assert n and "2 of them children" in n[0] and "1 with no bedroom" in n[0] and "1 can't walk" in n[0], n
+    import overseer
+    assert "household" in overseer.short({"type": "house_dwarves", "house": 3})
+    assert "like better" in overseer.short({"type": "house_dwarves", "house": 0, "upgrade": 5})
+
+
 
 if __name__ == "__main__":
     for name, ok, msg in RESULTS:

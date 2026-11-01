@@ -391,6 +391,13 @@ PLANNER_CONFIG = {
     "soap_keep_max": 15, "infected_per_soap": 3,   # (0.104.121) a bar for every 3 infected wounds, up to 15
     "soap_cooldown_ticks": 2 * 1200,
     "noble_rooms_cooldown_ticks": 1200,
+    # (0.104.168) homes: one bedroom per household, the stressed to rooms they like
+    "homes_cooldown_ticks": 1200,
+    "homes_dig_cooldown_ticks": 7 * 1200,
+    "homes_liked_cooldown_ticks": 7 * 1200,
+    "homes_liked_min_stressed": 5,     # unhappy or worse citizens before a move is looked for
+    "homes_liked_max": 10,             # moves at a time
+    "homes_rough_note_at": 3,          # citizens who slept rough lately before a note says why
     "uniform_cooldown_ticks": 1200,       # a squad's uniform: once a day   # rooms given to nobles: once a day  # goods to the depot: every 2 days while a caravan is here
     "crafts_cooldown_ticks": 14 * 1200,
     "hauling_cooldown_ticks": 14 * 1200,                    # charcoal or coke kept for the smelter
