@@ -410,6 +410,7 @@ PLANNER_CONFIG = {
     "furniture_parallel_min": 3,       # (0.104.141) the smallest wooden part worth ordering
     "furniture_short_pieces": 40,      # (0.104.141) furniture waiting in open levels: Masons' workshops past the cap
     "furnish_stalled_days": 30,        # (0.104.141) a level furnished but for buildings never finished this long: its slot freed
+    "convict_on": False,               # (0.104.147) the AI convicts solved cases (off: the guard's beatings killed patients)
     "jail_convicts_wait": 10,          # (0.104.141) solved cases waiting: the jail grows by them (to twice the restraints wanted)
     "statue_wait_days": 56,            # (0.104.12) a level waiting only for statues (no stone) this long is finished
     "statue_wait_days_any": 112,         # (0.104.33) a level finished without its statues after this long, stone or not

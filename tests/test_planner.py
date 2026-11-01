@@ -5952,8 +5952,7 @@ def _():
 
 
 
-@test("convict (0.104.131): solved cases convicted a few a cycle; none when lenient, none while punishments queue")
-def _():
+def _conv_body():
     s = fort()
     s["justice"] = {"jails": [{"id": 453, "chains": 5, "used": 0}], "restraints": 10, "restraints_used": 0,
                     "punish": {"n": 0}, "crimes": {"n": 1623, "convictable": 398}}
@@ -5971,8 +5970,16 @@ def _():
     assert not by_rule(plan(copy.deepcopy(s), Memory())[0], "convict")
 
 
-@test("convict (0.104.138): never while a beating waits, only into free jail places; rests when no sentences follow")
+@test("convict (0.104.131): solved cases convicted a few a cycle; none when lenient, none while punishments queue")
 def _():
+    PLANNER_CONFIG["convict_on"] = True        # (0.104.147) off by default
+    try:
+        _conv_body()
+    finally:
+        PLANNER_CONFIG["convict_on"] = False
+
+
+def _conv_body():
     s = fort()
     s["justice"] = {"jails": [{"id": 453, "chains": 5, "used": 1}], "restraints": 10, "restraints_used": 2,
                     "punish": {"n": 1, "beatings": 1}, "crimes": {"n": 1745, "convictable": 204,
@@ -6008,6 +6015,15 @@ def _():
     late["date"]["year"] += 1
     late["date"]["tick"] = 60 * 1200                              # 96 days on, past the new year
     assert by_rule(plan(copy.deepcopy(late), m4)[0], "convict")
+
+
+@test("convict (0.104.138): never while a beating waits, only into free jail places; rests when no sentences follow")
+def _():
+    PLANNER_CONFIG["convict_on"] = True        # (0.104.147) off by default
+    try:
+        _conv_body()
+    finally:
+        PLANNER_CONFIG["convict_on"] = False
 
 
 @test("stone crisis (0.104.124): no ordinary stone, ghosts or dead waiting: the commonest common ore to the masons; kept again after")
@@ -7493,8 +7509,7 @@ def _():
     assert not by_rule(plan(s, Memory())[0], "bottleneck")
 
 
-@test("jail (0.104.141, 12k): convicts waiting grow the jail once 1 spare place is left; no conviction into the last one")
-def _():
+def _conv_body():
     s = fort()
     s["dwarves"]["total"] = 60
     s["offices"] = {"offices": {"SHERIFF": {"held": [{"id": 1}]}}}
@@ -7510,6 +7525,15 @@ def _():
     s["justice"]["crimes"]["convictable"] = 2                        # few waiting: no hurry
     s["justice"]["restraints_used"] = 8
     assert not by_rule(plan(copy.deepcopy(s), Memory())[0], "jail_size")
+
+
+@test("jail (0.104.141, 12k): convicts waiting grow the jail once 1 spare place is left; no conviction into the last one")
+def _():
+    PLANNER_CONFIG["convict_on"] = True        # (0.104.147) off by default
+    try:
+        _conv_body()
+    finally:
+        PLANNER_CONFIG["convict_on"] = False
 
 
 @test("trinkets (0.104.141): a slow trinket order -> a second beside it in bone (else wood); never a third")
@@ -7693,6 +7717,15 @@ def _():
     s["locations"]["list"] = [{"id": 0, "type": "TEMPLE"}]          # an older bridge: says nothing
     assert not [x for x in by_rule(plan(copy.deepcopy(s), Memory())[0], "build")
                 if x.action.get("kind") == "temple" and "gods no temple" in x.reason]
+
+
+@test("convict (0.104.147): off by default: no convictions, a note while many cases wait")
+def _():
+    s = fort()
+    s["justice"] = {"jails": [{"id": 453, "chains": 5, "used": 0}], "restraints": 10, "restraints_used": 0,
+                    "punish": {"n": 0}, "crimes": {"n": 1623, "convictable": 398}}
+    props, notes = plan(copy.deepcopy(s), Memory())
+    assert not by_rule(props, "convict") and any("convicts no one" in n for n in notes)
 
 
 if __name__ == "__main__":

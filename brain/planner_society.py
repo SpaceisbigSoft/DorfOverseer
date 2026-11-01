@@ -106,6 +106,15 @@ def _convict_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> N
     j = _d(s.get("justice"))
     crimes = _d(j.get("crimes"))
     n = int(crimes.get("convictable") or 0)
+    # (0.104.147) off: overnight 31 Oct-1 Nov the captain of the guard killed 7,
+    # most of them patients, in the punishments that followed 31 convictions
+    # (DF picks the sentence; a beating of a hurt dwarf kills). Back on only
+    # when the jail can hold every sentence (cfg convict_on)
+    if not cfg["convict_on"]:
+        if n >= cfg["jail_convicts_wait"]:
+            notes.append(f"{n} solved case(s) wait for a trial: the AI convicts no one (DF's beatings killed "
+                         "patients); yours to judge on the Justice screen")
+        return
     sentenced = int(crimes["sentenced_all"] if isinstance(crimes.get("sentenced_all"), int)
                     else _d(crimes.get("flags")).get("sentenced") or 0)
     now = abs_tick(s)
