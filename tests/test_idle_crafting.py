@@ -190,12 +190,22 @@ def _():
 def _():
     lua = LuaRuntime(unpack_returned_tuples=True)
     env = lua.execute(STAFF_FAKE, SRC)
-    lua.execute("local env = ...; env.UNITS[4].body = {wounds = {_v = true, [0] = {}}}; "
+    # (0.104.150) an old scar is no bar: only bleeding or a treatment waiting
+    lua.execute("local env = ...; env.UNITS[4].body = {wounds = {_v = true, [0] = {}}, blood_count = 100, blood_max = 100}; "
                 "env.UNITS[4].body.wounds = setmetatable(env.UNITS[4].body.wounds, {__len = function() return 1 end}); "
                 "env.df.unit = {find = function(id) for _, u in pairs(env.UNITS) do if u.id == id then return u end end end}",
                 env)
     d = env.staff_location(3, "DIAGNOSTICIAN", True)
-    assert d.ok and d.unit_id == 2, dict(d)                          # unit 4 (skill 5) is wounded
+    assert d.ok and d.unit_id == 4, dict(d)                          # unit 4 only scarred
+    lua.execute("local env = ...; env.UNITS[4].health = {flags = {needs_healthcare = true, rq_suture = true}}", env)
+    d = env.staff_location(3, "DIAGNOSTICIAN", True)
+    assert d.ok and d.unit_id == 2, dict(d)                          # unit 4 waits for stitches
+    lua.execute("local env = ...; env.UNITS[4].health = {flags = {needs_healthcare = true}}; env.UNITS[4].body.blood_count = 60", env)
+    d = env.staff_location(3, "DIAGNOSTICIAN", True)
+    assert d.ok and d.unit_id == 2, dict(d)                          # bleeding
+    lua.execute("local env = ...; env.UNITS[4].body.blood_count = 100", env)
+    d = env.staff_location(3, "DIAGNOSTICIAN", True)
+    assert d.ok and d.unit_id == 4, dict(d)                          # only infected: he works, so he may staff
     v = env.vacate_post(3, 1, False)
     assert v.ok and v.post == "doctor", dict(v)
     assert len(env.UNITS[1].occupations) == 0

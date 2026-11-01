@@ -844,6 +844,9 @@ local function skill_of(u, names)
     return n
 end
 
+STAFF_HURT_RQ = {'rq_diagnosis', 'rq_immobilize', 'rq_dressing', 'rq_cleaning', 'rq_surgery', 'rq_suture',
+                 'rq_setting', 'rq_traction', 'rq_crutch'}
+
 local function can_staff(u)
     if not dfhack.units.isAdult(u) or u.military.squad_id ~= -1 then return false end
     local okm, mood = pcall(function() return u.mood end)
@@ -852,7 +855,16 @@ local function can_staff(u)
     if okn and list and #list > 0 then return false end
     -- (0.104.111) never a wounded dwarf: Teacheroar's surgeon and bone
     -- doctor were patients themselves while five waited up to 820 days
-    local okw, wounded = pcall(function() return #u.body.wounds > 0 end)
+    -- (0.104.150) wounded = bleeding or waiting for a treatment (DF's rq_
+    -- flags): the wound list keeps old scars, so after Teacheroar's massacre
+    -- nobody was "free" and a tavern stood without a keeper for days
+    local okw, wounded = pcall(function()
+        if (u.body.blood_count or 0) < (u.body.blood_max or 0) then return true end
+        local f = u.health and u.health.flags
+        if not f then return false end
+        for _, k in ipairs(STAFF_HURT_RQ) do if f[k] then return true end end
+        return false
+    end)
     if okw and wounded then return false end
     local oko, n = pcall(function() return #u.occupations end)
     return oko and n == 0
