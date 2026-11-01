@@ -754,6 +754,11 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
             memory.cavern_well_failure = "the last cavern well's shaft was under half dug in a game year: given up"
         if a["type"] == "start_project" and a.get("kind") == "storage":
             memory.storage_started = now                 # (0.104.38)
+        if a["type"] == "start_project" and a.get("growth") and isinstance(memory.culture, dict):
+            # (0.104.161) a further hall of a kind: one a season, a lifetime cap (growth_wait)
+            gl = memory.culture.setdefault("growth_levels", {})
+            prev = _d(gl.get(str(a.get("kind"))))
+            gl[str(a.get("kind"))] = {"tick": now, "n": int(prev.get("n") or 0) + 1}
         if a["type"] == "cancel_work_order" and a.get("stuck"):
             # (0.104.37) stuck again soon after the last time: held longer each
             # time (Enxah: gauntlets ordered 43 times, cancelled stuck 11)

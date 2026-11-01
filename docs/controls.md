@@ -154,6 +154,30 @@ Each acts across its whole range (the numbers live in `brain/planner.py`, beside
 Outsiders acts through DF's petition standing orders, which DFHack 53.16-r3
 can't reach yet: until a newer DFHack, only the tavern's size shows it.
 
+## What a mature fort keeps building, and which petitions it agrees (0.104.161)
+
+A fort that already has its first tavern, library, hospital, barracks, temple
+and jail keeps adding halls as it grows. A kind its sliders lean toward comes
+in settled times (established, fed, watered, safe, not strained), at most one
+of a kind a season and 6 in the fort's life; a kind they don't lean toward
+waits for good times (which need Grandeur or Craft above 0). The level
+switches on the Rules tab still hold.
+
+| Kind | Wanted (capped at 4; jail cells at 24) | Only from |
+| --- | --- | --- |
+| Tavern, library, hospital, barracks | as before (by citizens, or soldiers for barracks) | |
+| Archery range | one per 40 soldiers x 2^(Militarism/100) | Militarism +50, a crossbow squad |
+| Temple (to all gods: grand from Piety +100) | one per 100 dwarves x 2^(Piety/100) | Piety +50 |
+| Jail cells (a prison) | one per 25 dwarves x 2^(Justice/100) | Justice +50, a sheriff or captain of the guard |
+
+Temple and guildhall petitions are declined when the fort's leaning for them is
+-35 or lower: a temple's is Piety + Welfare/4; a guildhall's is Craft +
+Industry + Trade/2 + Welfare/4, less half of Militarism above +50. War-hold
+declines both, Monastery agrees to both. A declined petition makes no promise
+(an agreed hall left unbuilt is what upsets the petitioners), and prayer is
+still met by the temple to all gods the fort raises when many pray to gods no
+temple serves.
+
 ## The Rules tab, untangled (0.97)
 
 Each switch now does what its label says, and only that:

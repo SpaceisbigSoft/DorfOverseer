@@ -202,6 +202,12 @@ PLANNER_CONFIG = {
     "cups_batch": 20,                  # ...20 an order at most
     "cupless_share": 0.1,              # ...while this share drank without one lately
     "petition_unanswered_days": 28,    # (0.104.159) an agreed petition DF still counts unmet this long: a new hall for it
+    # (0.104.161, 14.1) the sliders change what a mature fort builds and agrees to
+    "petition_decline_lean": -35,      # a temple or guildhall petition the fort's leaning for it (petition_lean) is this low or lower: declined
+    "growth_gap_days": 84,             # a further hall of one kind (growth_candidates) at most once a season...
+    "growth_levels_max": 6,            # ...and at most this many of a kind in the fort's life (a count that never rises can't loop)
+    "prison_justice_at": 50,           # Justice this harsh: more jail cells as the fort grows (a prison)
+    "archery_more_militarism": 50,     # Militarism this high: more archery ranges as the army grows
     "dead_scrub_min": 1000,            # (0.104.158) dead units fix/dead-units could scrub before it runs...
     "dead_scrub_days": 28,             # ...once a month at most
     "herd_per_dwarf": 2.0,             # (0.104.158) tame animals the fort keeps per citizen (60 at least),

@@ -664,6 +664,75 @@ def _():
     assert not growth_candidates(s, traits, PLANNER_CONFIG, m, {}, set(), {"INN_TAVERN": 1}, {}, 150)        # not in bad times
 
 
+@test("growth (0.104.161, 14.1): a plain martial fort grows barracks, ranges and a prison in settled times; a devout one temples")
+def _():
+    from planner import growth_candidates, good_times, settled_times, growth_wait
+    s = fort()
+    s["dwarves"]["total"] = 200
+    s["military"]["soldiers"] = 60
+    s["military"]["squads"] = [{"id": 1, "members": 10, "ai_uniform": "crossbow"}]
+    s["offices"] = {"offices": {"SHERIFF": {"held": [{"unit_id": 1}]}}}
+    war = {"militarism": 150, "justice": 80, "grandeur": -40, "welfare": -40, "outsiders": -80, "piety": -30}
+    m = Memory()
+    assert settled_times(s, m, war, PLANNER_CONFIG) and not good_times(s, m, war, PLANNER_CONFIG)   # a plain fort
+    locs = {"INN_TAVERN": 1, "LIBRARY": 1, "HOSPITAL": 1, "TEMPLE": 2}
+    zones = {"Barracks": 1, "ArcheryRange": 1, "Dungeon": 2}
+    c = {a["kind"]: (a, why) for a, why in growth_candidates(s, war, PLANNER_CONFIG, m, {}, set(), locs, zones, 200)}
+    assert set(c) == {"barracks", "archery", "jail"}, c                      # no tavern or temple: it doesn't care
+    assert c["jail"][0]["cells"] == 8 and "a prison" in c["jail"][1] and "Justice +80" in c["jail"][1], c["jail"]
+    assert c["archery"][0]["lanes"] == 3
+    # no crossbows: no second range; nobody to jail: no prison
+    s2 = copy.deepcopy(s)
+    s2["military"]["squads"] = [{"id": 1, "members": 10, "ai_uniform": "melee"}]
+    s2["offices"] = {}
+    assert {a["kind"] for a, _ in growth_candidates(s2, war, PLANNER_CONFIG, m, {}, set(), locs, zones, 200)} == {"barracks"}
+    # the Rules tab's level switches still hold
+    assert "jail" not in {a["kind"] for a, _ in growth_candidates(s, war, PLANNER_CONFIG, m, {"jail": False}, set(),
+                                                                  locs, zones, 200)}
+    # a devout fort: a grand temple to all gods, no barracks
+    mon = {"piety": 150, "welfare": 80, "outsiders": 60, "grandeur": 60, "militarism": -60, "justice": -60}
+    c = {a["kind"]: a for a, _ in growth_candidates(s, mon, PLANNER_CONFIG, m, {}, set(), locs, zones, 200)}
+    assert "temple" in c and c["temple"]["size"] == "grand" and not {"barracks", "archery", "jail"} & set(c), c
+    # a neutral fort, not in good times: nothing (its sliders don't ask)
+    assert not growth_candidates(s, {}, PLANNER_CONFIG, m, {}, set(), locs, zones, 200)
+    # one of a kind a season, and a lifetime cap (a count that never rises can't loop)
+    a = {"type": "start_project", "kind": "barracks", "beds": 20, "growth": True}
+    planner.record([(planner.Proposal("build", a, "x", 6), {"ok": True})], s, m)
+    assert m.culture["growth_levels"]["barracks"]["n"] == 1 and growth_wait(m, "barracks", abs_tick(s), PLANNER_CONFIG)
+    assert "barracks" not in {x["kind"] for x, _ in growth_candidates(s, war, PLANNER_CONFIG, m, {}, set(), locs, zones, 200)}
+    later = abs_tick(s) + (PLANNER_CONFIG["growth_gap_days"] + 1) * TICKS_PER_DAY
+    assert not growth_wait(m, "barracks", later, PLANNER_CONFIG)
+    m.culture["growth_levels"]["barracks"]["n"] = PLANNER_CONFIG["growth_levels_max"]
+    assert "built already" in growth_wait(m, "barracks", later, PLANNER_CONFIG)
+    planner.record([(planner.Proposal("build", a, "x", 6), {"ok": False})], s, Memory())   # refused: not counted
+
+
+@test("petitions (0.104.161, 14.1): a fort that doesn't hold with a temple or guildhall declines it; a devout one agrees")
+def _():
+    from planner import petition_lean
+    temple = {"type": "Location", "id": 7, "loc": "TEMPLE", "deity_hf": 77, "deity": "Teshkad", "tier": 1}
+    guild = {"type": "Location", "id": 8, "loc": "GUILDHALL", "profession": "MINER", "tier": 1}
+    war = {"militarism": 150, "piety": -30, "welfare": -40}
+    mon = {"piety": 150, "welfare": 80, "craftsmanship": 40, "industriousness": -20, "trade": -30}
+    assert petition_lean(temple, war)[0] == -40 and petition_lean(guild, war)[0] == -60
+    assert petition_lean(temple, mon)[0] > 100 and petition_lean(guild, mon)[0] > 0
+    assert petition_lean(temple, {})[0] == 0 and "Piety -30" in petition_lean(temple, war)[1]
+
+    def answers(traits, wishes):
+        s = fort()
+        s["settings"]["traits"] = traits
+        s["petitions"] = {"pending": [copy.deepcopy(w) for w in wishes]}
+        return [p for p in plan(s, Memory())[0] if p.action.get("type") == "answer_petition"]
+    a = answers(war, [temple])
+    assert len(a) == 1 and a[0].action["accept"] is False and a[0].action["id"] == 7 and "decline" in a[0].reason, a
+    assert answers(war, [guild])[0].action["accept"] is False
+    assert answers(mon, [temple])[0].action["accept"] is True and answers(mon, [guild])[0].action["accept"] is True
+    assert answers({}, [temple])[0].action["accept"] is True                     # neutral: as before
+    m = Memory()
+    planner.record([(a[0], {"ok": True, "declined": True})], fort(), m)
+    assert not m.wishes_agreed                                                    # a decline is no promise
+
+
 @test("the keep: Surface 50+ builds walls round the way in, then a roof, a step at a time; waits while work is left")
 def _():
     from planner import _keep_rule
@@ -1534,6 +1603,12 @@ def _():
     s = settled_fort(piety=150)
     assert builds(plan(s, Memory())[0])[0].action["size"] == "grand"
     s["locations"] = {"count": {"TEMPLE": 1, "HOSPITAL": 1, "INN_TAVERN": 1, "LIBRARY": 1}, "total": 4}
+    # (0.104.161, 14.1) one temple isn't the end of it for a fort this devout:
+    # a second, grand temple to all gods as it grows (it built nothing before)
+    a = builds(plan(s, Memory())[0])
+    assert a and a[0].action["kind"] == "temple" and a[0].action["size"] == "grand" and a[0].action.get("growth") \
+        and "deity_hf" not in a[0].action and "temple to all gods" in a[0].reason, [x.action for x in a]
+    s["locations"]["count"]["TEMPLE"] = 4                      # as many as it wants (GROWTH_MAX)
     assert not builds(plan(s, Memory())[0])
     assert not builds(plan(settled_fort(piety=0), Memory())[0])
 

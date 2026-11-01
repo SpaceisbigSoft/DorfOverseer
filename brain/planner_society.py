@@ -13,7 +13,7 @@ from quirks import has_rule
 from digest import _d, _l, normalize
 from planner_core import *  # noqa: F401,F403
 
-__all__ = ["_people_rules", "_comfort_rules", "stress_causes", "THOUGHT_WORDS", "_doctor_patient_rule", "MOOD_WORKSHOPS", "PETITION_KINDS", "petition_orders_wanted", "_petition_rules", "_jail_size_rule", "_convict_rule", "_break_fights_rule", "_sync_offices_rule", "patient_waits", "_health_rules", "TANTRUM_KEEP", "note_tantrums", "_noble_rooms_rule", "outsider_orders", "NEED_ADVICE", "JEWEL_RECIPES", "_recreation_rule", "_stress_care", "_needs_notes", "_location_supply_rules", "POST_LABORS", "STAFF_POSTS", "STAFF_MAX", "_traction_rule", "_wish_words", "_wish_met", "wish_key", "_location_petition_rules", "_meeting_notes", "_grandeur_rule", "_location_value_rule", "_staff_rule", "_quick_location_rule", "_needs_rules", "_mood_rules", "mood_item_text", "_mood_materials", "_dead_notes", "AI_OFFICES", "_society_notes"]
+__all__ = ["_people_rules", "_comfort_rules", "stress_causes", "THOUGHT_WORDS", "_doctor_patient_rule", "MOOD_WORKSHOPS", "PETITION_KINDS", "petition_orders_wanted", "_petition_rules", "_jail_size_rule", "_convict_rule", "_break_fights_rule", "_sync_offices_rule", "patient_waits", "_health_rules", "TANTRUM_KEEP", "note_tantrums", "_noble_rooms_rule", "outsider_orders", "NEED_ADVICE", "JEWEL_RECIPES", "_recreation_rule", "_stress_care", "_needs_notes", "_location_supply_rules", "POST_LABORS", "STAFF_POSTS", "STAFF_MAX", "_traction_rule", "_wish_words", "_wish_met", "wish_key", "petition_lean", "_location_petition_rules", "_meeting_notes", "_grandeur_rule", "_location_value_rule", "_staff_rule", "_quick_location_rule", "_needs_rules", "_mood_rules", "mood_item_text", "_mood_materials", "_dead_notes", "AI_OFFICES", "_society_notes"]
 
 
 # A crafting mood's skill -> the workshop (or furnace) the dwarf must claim.
@@ -841,6 +841,26 @@ def _wish_met(s: dict, w: dict) -> dict | None:
     return None
 
 
+def petition_lean(w: dict, traits: dict) -> tuple[float, str]:
+    """(0.104.161, 14.1) How much the fort holds with what a location petition
+    asks for, from its sliders, and why in words. A temple: Piety, a little
+    Welfare. A guildhall: Craft and Industry, half Trade, a little Welfare,
+    less a martial fort's half its Militarism past +50 (its stone goes to the
+    army). At petition_decline_lean or lower the petition is declined."""
+    t = lambda k: float(traits.get(k, 0) or 0)                    # noqa: E731
+    if w.get("loc") == "TEMPLE":
+        parts = {"piety": t("piety"), "welfare": t("welfare") / 4}
+    else:
+        parts = {"craftsmanship": t("craftsmanship"), "industriousness": t("industriousness"),
+                 "trade": t("trade") / 2, "welfare": t("welfare") / 4,
+                 "militarism": -max(0.0, t("militarism") - 50) / 2}
+    lean = sum(parts.values())
+    names = {"piety": "Piety", "welfare": "Welfare", "craftsmanship": "Craft", "industriousness": "Industry",
+             "trade": "Trade", "militarism": "Militarism"}
+    words = ", ".join(f"{names[k]} {int(t(k)):+d}" for k, v in sorted(parts.items(), key=lambda kv: kv[1]) if round(v))
+    return lean, (f"the fort's leaning for it is {lean:+.0f}" + (f": {words}" if words else ""))
+
+
 def wish_key(w: dict) -> str:
     """(0.102.2) What a location petition asks for, the same for a repeat."""
     return "|".join(str(w.get(k)) for k in ("loc", "profession", "religion", "deity_hf"))
@@ -959,6 +979,16 @@ def _location_petition_rules(s: dict, cfg: dict, proposals: list, notes: list, r
                                                                          or w.get("religion") is not None)
         if not known or w.get("loc") not in ("TEMPLE", "GUILDHALL"):
             continue
+        # (0.104.161, 14.1) a fort that doesn't hold with it says no: War-hold
+        # and Monastery agreed ~100 petitions each, none declined. Declining
+        # makes no promise (an agreed hall left unbuilt upsets the petitioners);
+        # prayer is still met by the temple-to-all-gods rule (prayer_uncovered).
+        lean, why = petition_lean(w, traits)
+        if lean <= cfg["petition_decline_lean"]:
+            proposals.append(Proposal("petition_answer", {"type": "answer_petition", "id": w.get("id"),
+                                                          "accept": False, "wish": wish_key(w)},
+                                      f"a petition asks for {_wish_words(w)}: decline ({why})", 6))
+            return
         if tier >= 2 and not (traits.get("grandeur", 0) > 0 or (w.get("loc") == "TEMPLE" and traits.get("piety", 0) > 0)):
             notes.append(f"a petition asks for {_wish_words(w)}: left to you (a fort that doesn't care for grandeur "
                          "agrees to temples and guildhalls, not their grand tier)")

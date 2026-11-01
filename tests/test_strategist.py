@@ -544,6 +544,86 @@ def _():
         assert top[0] != top[1] or rules_differ, (a, b, top)
 
 
+@test("opposite forts (0.104.161, 14.1 exit test): one mature fort, War-hold vs Monastery, builds and agrees different things")
+def _():
+    # The 14.1 exit test failed: both forts had every level the rules look
+    # for, so they built the same levels and agreed every petition. Here the
+    # same mature fort (shaped like the exit test's: one barracks, one range,
+    # 2 jail cells, 2 temples, a sheriff, a crossbow squad) runs three
+    # seasons under each preset; what it builds and answers must differ in kind.
+    try:
+        from lupa import LuaRuntime
+    except ImportError:
+        return
+    import planner
+    lua = LuaRuntime(unpack_returned_tuples=True)
+    src = (ROOT / "lua" / "ai-overseer-settings.lua").read_text(encoding="utf-8")
+    S = lua.eval("""function(src)
+      local env = setmetatable({dfhack_flags = {module = true}, dfhack = {getDFPath = function() return '.' end,
+                                          isMapLoaded = function() return false end,
+                                          filesystem = {isdir = function() return false end}}},
+                               {__index = _G})
+      env.require = function(n) if n == 'json' then
+        return {decode_file = function(p) error('no file ' .. p) end} end return require(n) end
+      assert(load(src, 'settings', 't', env))()
+      return env end""")(src)
+
+    def lua_py(v):
+        return {k: lua_py(x) for k, x in dict(v.items()).items()} if hasattr(v, "items") else v
+
+    def mature(name):
+        ai = lua_py(S.for_ai(S.load_preset(name, S.defaults())))
+        st = copy.deepcopy(BASE)
+        st["settings"] = dict(st.get("settings") or {}, **{k: v for k, v in ai.items() if k != "traits"})
+        st["settings"]["traits"] = ai.get("traits") or {}
+        st["date"]["season"] = "spring"
+        st["buildings"]["zones"].update(Barracks=1, ArcheryRange=1, Dungeon=2)
+        st["military"]["squads"] = [{"id": 20 + i, "name": f"Squad {i}", "members": 10, "size": 10, "leader": True,
+                                     "routine": "Staggered training", "ai_uniform": "crossbow" if i == 0 else "melee"}
+                                    for i in range(6)]
+        st["military"]["soldiers"] = 60
+        st["offices"] = {"offices": {"SHERIFF": {"held": [{"unit_id": 1}]}}}
+        st["petitions"] = {"pending": [
+            {"type": "Location", "id": 501, "loc": "TEMPLE", "deity_hf": 77, "deity": "Teshkad", "tier": 1},
+            {"type": "Location", "id": 502, "loc": "GUILDHALL", "profession": "MINER", "tier": 1}]}
+        return st
+
+    got = {}
+    for name in ("War-hold", "Monastery"):
+        st, m = mature(name), planner.Memory()
+        built, answers = [], {}
+        for season in range(3):
+            props, notes = planner.plan(st, m)
+            for p in props:
+                if p.action.get("type") == "answer_petition":
+                    answers[p.action["id"]] = p.action["accept"]
+                    assert ("decline" in p.reason) == (not p.action["accept"]), p.reason
+                    st["petitions"]["pending"] = [w for w in st["petitions"]["pending"] if w["id"] != p.action["id"]]
+            b = [p for p in props if p.rule == "build" and p.action.get("type") == "start_project"]
+            assert len(b) <= 1, [p.action for p in b]
+            if b:
+                a = b[0].action
+                built.append(a["kind"])
+                planner.record([(b[0], {"ok": True})], st, m)
+                if a["kind"] in ("barracks", "archery"):          # the level stands next season
+                    key = "Barracks" if a["kind"] == "barracks" else "ArcheryRange"
+                    st["buildings"]["zones"][key] = st["buildings"]["zones"].get(key, 0) + 1
+                elif a["kind"] == "jail":
+                    st["buildings"]["zones"]["Dungeon"] += a["cells"]
+                elif a["kind"] in ("temple", "tavern", "library", "hospital"):
+                    lk = {"temple": "TEMPLE", "tavern": "INN_TAVERN"}.get(a["kind"], a["kind"].upper())
+                    st["locations"]["count"][lk] = st["locations"]["count"].get(lk, 0) + 1
+            st["date"]["year"] += 1                                  # a season (and more) on
+        got[name] = (built, answers)
+    (wb, wa), (mb, ma) = got["War-hold"], got["Monastery"]
+    martial, devout = {"barracks", "archery", "jail"}, {"temple", "garden", "great hall", "memorial"}
+    assert wb and set(wb) <= martial | {"suites", "tavern"} and set(wb) & martial, wb
+    assert mb and set(mb) & devout and not set(mb) & martial, mb
+    assert not set(wb) & set(mb), (wb, mb)                           # nothing built by both
+    assert wa == {501: False, 502: False}, wa                        # War-hold declines both
+    assert ma == {501: True, 502: True}, ma                          # Monastery agrees to both
+
+
 
 @test("the real-day token cap counts every fort on this PC (0.99.1, B10)")
 def _():

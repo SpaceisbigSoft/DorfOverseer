@@ -13,7 +13,7 @@ from quirks import has_rule
 from digest import _d, _l, normalize
 from planner_core import *  # noqa: F401,F403
 
-__all__ = ["STUCK_FALLBACKS", "stuck_fallback", "magma_access", "GROWTH", "GROWTH_EXTRA_SCORE", "GROWTH_MAX", "growth_want", "growth_candidates", "TRAIT_NAMES_SHORT", "FURNITURE_RECIPES", "METAL_FURNITURE", "spare_metal", "WOODEN_FURNITURE", "BASIC_WORKSHOPS", "BASIC_STOCKPILES", "memorial_due", "_well_rule", "_well_lid_rule", "cavern_danger", "_planned_note", "_planned_parts_rule", "planned_wants", "_water_zone_rule", "cavern_well_need", "cavern_well_safe", "WELL_PARTS_SHOPS", "well_parts_plan", "_well_parts", "_room_repair_rule", "_water_traffic_rule", "_cleanup_rule", "STORE_GROW", "stone_tidiness", "jail_plan", "cistern_pop", "tavern_factor", "full_stores", "LEARNING_NEEDS", "_stairwell_rule", "WATER_WORDS", "water_summary", "_water_rules", "CISTERN_WORDS", "_cistern_parts", "_cistern_rule", "_deep_notes", "good_times", "ORDINALS", "garden_name", "_pop_cap_rule", "fort_strain", "hospital_shortfall", "dining_shortfall", "social_shortfall", "SOCIAL_KINDS", "_join_rule", "_dig_stall_rule", "_shrink_rule", "room_size", "_project_rules", "more_temple", "LADDER_BASE", "LADDER_TRAITS", "_ladder_kind", "_ladder_word", "ladder_score", "tombs_short"]
+__all__ = ["STUCK_FALLBACKS", "stuck_fallback", "magma_access", "GROWTH", "GROWTH_EXTRA_SCORE", "GROWTH_MAX", "growth_want", "growth_candidates", "settled_times", "growth_wait", "GROWTH_SOLDIERS", "GROWTH_ZONES", "GROWTH_MAX_OF", "GROWTH_AT", "TRAIT_NAMES_SHORT", "FURNITURE_RECIPES", "METAL_FURNITURE", "spare_metal", "WOODEN_FURNITURE", "BASIC_WORKSHOPS", "BASIC_STOCKPILES", "memorial_due", "_well_rule", "_well_lid_rule", "cavern_danger", "_planned_note", "_planned_parts_rule", "planned_wants", "_water_zone_rule", "cavern_well_need", "cavern_well_safe", "WELL_PARTS_SHOPS", "well_parts_plan", "_well_parts", "_room_repair_rule", "_water_traffic_rule", "_cleanup_rule", "STORE_GROW", "stone_tidiness", "jail_plan", "cistern_pop", "tavern_factor", "full_stores", "LEARNING_NEEDS", "_stairwell_rule", "WATER_WORDS", "water_summary", "_water_rules", "CISTERN_WORDS", "_cistern_parts", "_cistern_rule", "_deep_notes", "good_times", "ORDINALS", "garden_name", "_pop_cap_rule", "fort_strain", "hospital_shortfall", "dining_shortfall", "social_shortfall", "SOCIAL_KINDS", "_join_rule", "_dig_stall_rule", "_shrink_rule", "room_size", "_project_rules", "more_temple", "LADDER_BASE", "LADDER_TRAITS", "_ladder_kind", "_ladder_word", "ladder_score", "tombs_short"]
 
 
 # Furniture waiting in a project -> the recipe that makes it.
@@ -2156,7 +2156,20 @@ GROWTH = {
     "library": ("LIBRARY", 120, ("craftsmanship", "welfare"), "library"),
     "hospital": ("HOSPITAL", 150, ("welfare",), "hospital"),
     "barracks": ("Barracks", 20, ("militarism",), "barracks"),
+    # (0.104.161, 14.1) a martial fort's ranges grow with its army, a devout
+    # fort raises grander temples, a harsh one a prison (counted by cells:
+    # each jail cell is its own dungeon zone). The 14.1 exit test: War-hold
+    # and Monastery, a game year each, built the same levels.
+    "archery": ("ArcheryRange", 40, ("militarism",), "archery range"),
+    "temple": ("TEMPLE", 100, ("piety",), "temple"),
+    "jail": ("Dungeon", 25, ("justice",), "jail cell"),
 }
+GROWTH_SOLDIERS = {"barracks", "archery"}     # counted by soldiers, not citizens
+GROWTH_ZONES = {"barracks", "archery", "jail"}  # counted by zones, not locations
+GROWTH_MAX_OF = {"jail": 24}                  # cells: three jails of 8
+# (0.104.161) kinds only a fort whose slider asks for them grows (slider, config key of its line)
+GROWTH_AT = {"archery": ("militarism", "archery_more_militarism"), "temple": ("piety", "temple_more_piety"),
+             "jail": ("justice", "prison_justice_at")}
 GROWTH_EXTRA_SCORE = -3.5     # below a set piece at neutral sliders; a slider of +100 brings one level
 GROWTH_MAX = 4                    # at most this many of each
 
@@ -2164,25 +2177,78 @@ GROWTH_MAX = 4                    # at most this many of each
 def growth_want(kind: str, traits: dict, citizens: int, soldiers: int) -> int:
     where, per, sliders, _ = GROWTH[kind]
     f = sum(factor(traits, x) for x in sliders) / len(sliders)
-    base = soldiers if kind == "barracks" else citizens
-    return max(0, min(GROWTH_MAX, int(base * f // per)))
+    base = soldiers if kind in GROWTH_SOLDIERS else citizens
+    return max(0, min(GROWTH_MAX_OF.get(kind, GROWTH_MAX), int(base * f // per)))
+
+
+def settled_times(s: dict, memory, traits: dict, cfg: dict) -> bool:
+    """(0.104.161, 14.1) Settled enough for the fort to keep growing its
+    character (a second barracks, a prison, a grander temple): established,
+    fed and watered, nothing that can reach the dwarves, not strained. Unlike
+    good_times it doesn't ask that the fort cares how it looks, nor for idle
+    hands or a set piece's wait: War-hold (Grandeur -40) never had good times,
+    so its barracks never grew past the first."""
+    if young_fort(s, cfg):
+        return False
+    cit = int(_d(s.get("dwarves")).get("total") or 0)
+    if cit < cfg["garden_min_citizens"]:
+        return False
+    if food_per_dwarf(s) < cfg["good_times_food_per_dwarf"]:
+        return False
+    if (_d(s.get("stocks")).get("drink") or 0) / max(1, cit) < cfg["good_times_drink_per_dwarf"]:
+        return False
+    if _d(s.get("others_on_map")).get("threats_that_can_reach_dwarves"):
+        return False
+    return not fort_strain(s, cfg)
+
+
+def growth_wait(memory, kind: str, now: int, cfg: dict) -> str:
+    """(0.104.161) Why a further hall of this kind waits ('' if it needn't):
+    one a season, and a lifetime cap (a hall whose count never rises in the
+    report must not be dug again and again)."""
+    rec = _d(_d(getattr(memory, "culture", None)).get("growth_levels")).get(kind)
+    if not isinstance(rec, dict):
+        return ""
+    if int(rec.get("n") or 0) >= cfg["growth_levels_max"]:
+        return f"{rec.get('n')} built already"
+    t = rec.get("tick")
+    if isinstance(t, int) and 0 <= now - t < cfg["growth_gap_days"] * TICKS_PER_DAY:
+        return f"the last one {(now - t) // TICKS_PER_DAY} days ago"
+    return ""
 
 
 def growth_candidates(s: dict, traits: dict, cfg: dict, memory, allow: dict, kinds_open, locations: dict,
                       zones: dict, citizens: int) -> list:
     """A second (or further) hall of a kind the fort has, while it has fewer
-    than its size and sliders want, in good times only, one kind at a time."""
-    if not good_times(s, memory, traits, cfg):
+    than its size and sliders want, one kind at a time and at most one of a
+    kind a season. (0.104.161) A kind the fort's sliders lean toward comes in
+    settled times; any other waits for good times (which a plain fort never
+    has: War-hold's barracks never grew past the first)."""
+    settled = settled_times(s, memory, traits, cfg)
+    good = good_times(s, memory, traits, cfg)
+    if not (settled or good):
         return []
     soldiers = int(_d(s.get("military")).get("soldiers") or 0)
+    now = abs_tick(s)
     out = []
     for kind, (where, per, sliders, word) in GROWTH.items():
         if not allow.get(kind, True) or kind in kinds_open:
             continue
-        have = int((zones if kind == "barracks" else locations).get(where) or 0)
+        if not (good or (settled and sum(factor(traits, x) for x in sliders) / len(sliders) > 1)):
+            continue                      # (0.104.161) the sliders don't ask for it: good times only
+        if kind in GROWTH_AT and (traits.get(GROWTH_AT[kind][0], 0) or 0) < cfg[GROWTH_AT[kind][1]]:
+            continue                      # (0.104.161) only a fort whose slider asks for it
+        if kind == "jail" and (not justice_held(s) or not jail_plan(traits, cfg, citizens)):
+            continue                      # nobody to fill the cells
+        if kind == "archery" and not any(is_ranged(q) and (q.get("members") or 0) > 0
+                                         for q in _l(_d(s.get("military")).get("squads")) if isinstance(q, dict)):
+            continue                      # no crossbows to train
+        have = int((zones if kind in GROWTH_ZONES else locations).get(where) or 0)
         want = growth_want(kind, traits, citizens, soldiers)
         if have < 1 or have >= want:
             continue                      # the first one is the ladder's own; enough already
+        if growth_wait(memory, kind, now, cfg):
+            continue
         why = ", ".join(f"{TRAIT_NAMES_SHORT.get(x, x)} {int(traits.get(x, 0) or 0):+d}" for x in sliders
                         if traits.get(x))
         if kind == "tavern":
@@ -2192,14 +2258,24 @@ def growth_candidates(s: dict, traits: dict, cfg: dict, memory, allow: dict, kin
             action = {"type": "start_project", "kind": "library", "bookcases": 6}
         elif kind == "hospital":
             action = {"type": "start_project", "kind": "hospital", "beds": max(4, min(12, citizens // 20))}
+        elif kind == "archery":
+            action = {"type": "start_project", "kind": "archery", "lanes": 3, "length": 12}
+        elif kind == "temple":
+            # a temple to all gods (no deity): the bridge knows "shrine" and "grand" only
+            action = {"type": "start_project", "kind": "temple",
+                      "size": "grand" if (traits.get("piety", 0) or 0) >= 100 else "shrine"}
+        elif kind == "jail":
+            action = {"type": "start_project", "kind": "jail", "cells": max(2, min(8, want - have))}
         else:
             action = {"type": "start_project", "kind": "barracks", "beds": 20}
         action["growth"] = True
-        base = f"{soldiers} soldiers" if kind == "barracks" else f"{citizens} dwarves"
+        base = f"{soldiers} soldiers" if kind in GROWTH_SOLDIERS else f"{citizens} dwarves"
+        tail = {"temple": f": another, {action.get('size')} temple to all gods",
+                "jail": f": a prison, another jail of {action.get('cells')} cells"}.get(kind, f": another {word}")
         out.append((action, f"{base} and {have} {word}{'s' if have > 1 else ''}; the fort wants {want}"
-                            + (f" ({why})" if why else "") + f": another {word}"))
+                            + (f" ({why})" if why else "") + tail))
     return out
 
 
 TRAIT_NAMES_SHORT = {"outsiders": "Outsiders", "welfare": "Welfare", "craftsmanship": "Craft",
-                     "militarism": "Militarism"}
+                     "militarism": "Militarism", "piety": "Piety", "justice": "Justice"}

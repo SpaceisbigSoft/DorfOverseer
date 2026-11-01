@@ -11,7 +11,7 @@ choices.json; the Culture page shows what they chose.
 from __future__ import annotations
 
 from planner import (PLANNER_CONFIG, cistern_pop, factor, gatherers, growth_mode, jail_plan, keeps_treasures,
-                     mining_plan, noble_room_kinds, outsider_orders, room_size, soldier_share, spare_mechanisms,
+                     mining_plan, noble_room_kinds, outsider_orders, petition_lean, room_size, soldier_share, spare_mechanisms,
                      stone_tidiness, tavern_factor, trade_margin_for, woodcutters, _traits, player_rules)
 from weights import data as choices_data
 
@@ -51,6 +51,8 @@ def effects(state: dict, cfg: dict | None = None) -> dict:
         mil.append("no squad training")
     if v("militarism") >= 30:
         mil.append("mercenaries may stay")
+    if v("militarism") >= cfg["archery_more_militarism"]:
+        mil.append("barracks and ranges grow with the army")      # (0.104.161)
     out["militarism"] = "; ".join(mil)
 
     mode, n = growth_mode(state, cfg)
@@ -107,8 +109,12 @@ def effects(state: dict, cfg: dict | None = None) -> dict:
                       + f"; defence trials {_pct(max(0.0, min(0.35, 0.15 - 0.0015 * v('caution'))))} a year")
     out["fortification"] = ("fortified doors on every level" if v("fortification") >= 70
                             else f"style: {style_leanings('fortification')}")
-    out["piety"] = ("grand temple petitions agreed" if v("piety") > 0 else "temples by need only") \
-        + f"; style: {style_leanings('piety')}"
+    # (0.104.161) temple petitions declined at a low leaning; more temples as a devout fort grows
+    temple_lean = petition_lean({"loc": "TEMPLE"}, t)[0]
+    out["piety"] = ("temple petitions declined" if temple_lean <= cfg["petition_decline_lean"]
+                    else "grand temple petitions agreed" if v("piety") > 0 else "temple petitions agreed") \
+        + ("; more temples as it grows" if v("piety") >= cfg["temple_more_piety"]
+           else "; temples by need only") + f"; style: {style_leanings('piety')}"
     out["trade"] = f"crafts kept to sell: {2 * factor(t, 'trade'):.1f} per dwarf"
     oo = outsider_orders(t)
     out["outsiders"] = ("no residents or new citizens" if oo["closed"] else
@@ -124,6 +130,7 @@ def effects(state: dict, cfg: dict | None = None) -> dict:
                           + f"; style: {style_leanings('engineering') or 'none'}")
     out["verticality"] = f"style only for now: {style_leanings('verticality') or 'none'} (acts when the plan is drawn)"
     jp = jail_plan(t, cfg, 100)
-    out["justice"] = (f"a jail from {jp['min_dwarves']} dwarves, {jp['cells']} cells per 100" if jp
+    out["justice"] = ((f"a jail from {jp['min_dwarves']} dwarves, {jp['cells']} cells per 100"
+                       + ("; a prison as it grows" if v("justice") >= cfg["prison_justice_at"] else "")) if jp
                       else "no jail: the sheriff beats or lets go")
     return out
