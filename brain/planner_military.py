@@ -1070,6 +1070,11 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
         # (0.104.139) no new soldiers mid-fight: the losses are read from the
         # soldier count after it (refills hid them, and the beast was learned as weaker)
         notes.append(f"{have} soldiers, the fort wants {want}: the squads are filled once the fight is over")
+    elif have < want and (berserk_now or tantrums_recent(s, memory, cfg["fill_tantrum_hold_days"])):
+        # (0.104.168, review) nobody armed while a dwarf is berserk or a tantrum
+        # is under way (Teacheroar's spirals: soldiers among those who killed)
+        notes.append(f"{have} soldiers, the fort wants {want}: no drafting while "
+                     + ("a dwarf is berserk" if berserk_now else "tantrums are under way"))
     elif have < want:
         open_ = [(q, min(9, (q.get("size") or 0) - 1) - max(0, (q.get("members") or 0) - (1 if q.get("leader") else 0)))
                  for q in squads]
@@ -1078,6 +1083,15 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
             q, n = open_[0]
             count = min(n, want - have, cfg["max_fill_per_cycle"])
             act = {"type": "squad_fill", "squad_id": q["id"], "count": count}
+            # (0.104.168, review) the keen lift's places go to the keen alone;
+            # the places the fort wants anyway are filled first, as before
+            if want > base_want:
+                if have < base_want:
+                    act["count"] = count = min(count, base_want - have)
+                else:
+                    act["keen_only"] = True
+            if _d(getattr(memory, "crisis", None)).get("why"):
+                act["strict"] = True          # in a crisis never the very unhappy, whatever they long for
             home = recently_home(s, memory)              # (0.104.138) not those just sent home
             if home:
                 act["avoid"] = home
@@ -1199,19 +1213,20 @@ def keen_lift(s: dict, memory, cfg: dict, want: int, have: int, citizens: int, t
     lift = 0
     if isinstance(kl.get("tick"), int) and 0 <= now - kl["tick"] < cfg["keen_lift_days"] * TICKS_PER_DAY:
         lift = max(0, int(kl.get("n") or 0))
-    keen = int(_d(s.get("needs")).get("keen_civilians") or 0)
+    # (0.104.168, review) sized on the keen the fill can draft (bridge
+    # `keen_draftable`: the fill's own test, strict; never nobles, nursing
+    # mothers, patients or the very unhappy); an older bridge without it: no lift
+    nd = _d(s.get("needs"))
+    kd = nd.get("keen_draftable")
+    keen = int(kd) if isinstance(kd, int) and not isinstance(kd, bool) else 0
     if _d(getattr(memory, "crisis", None)).get("why") and keen >= cfg["soldier_swap_keen_min"]:
-        # places for every keen one: the soldiers there are, and the keen.
-        # Once set it grows only by keen ones newly counted (a keen one drafted
-        # leaves the count; one who can't be drafted, a mother or a patient,
-        # must not make the fill draft others in his place)
-        seen = kl.get("keen")
-        if lift and isinstance(seen, int):
-            lift += max(0, keen - seen)
-        else:
-            lift = max(lift, have + keen - want)
-        lift = min(cfg["keen_lift_max"], max(0, lift))
-        memory.keen_lift = {"n": lift, "tick": now, "keen": keen}
+        # places for every draftable keen one: the soldiers there are and the
+        # keen. The lift's places are filled by the keen only (keen_only), so
+        # drafting one moves him from one count to the other and the need
+        # holds; the most over the held period (a count that bounces can't
+        # ratchet it up)
+        lift = min(cfg["keen_lift_max"], max(lift, have + keen - want, 0))
+        memory.keen_lift = {"n": lift, "tick": now}
     elif not lift and kl:
         memory.keen_lift = {}
     if lift <= 0:
