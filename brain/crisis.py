@@ -17,6 +17,9 @@ RECOVERY_RULES = {
     "food", "farms", "kitchen", "water", "well", "well_parts", "pop_cap", "dig_first", "fat_ban",
     "labor", "stone", "furniture",
 }
+# (0.104.168) the infected put to bed, soap two steps a cycle, more doctors,
+# and the offices the dead held filled again
+RECOVERY_RULES |= {"infected_rest", "soap_rush", "doctor_post", "appoint"}
 # levels that are themselves recovery when started (a build of these kinds is never held)
 RECOVERY_KINDS = {"hospital", "tombs", "dining", "tavern", "temple", "jail", "bedrooms", "workshops",
                   "suites", "well", "farms", "storage"}

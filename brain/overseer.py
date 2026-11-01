@@ -485,6 +485,10 @@ def short(a: dict) -> str:
         if a.get("release"):
             return "let every patient out of the hospital burrow"
         return "keep the wounded inside the hospital, the healed back to work"
+    if t == "rest_infected":     # (0.104.168)
+        return f"put up to {a.get('max', 3)} dwarves with infected wounds to bed in the hospital, for the doctors"
+    if t == "add_doctor_post":   # (0.104.168)
+        return "add a second doctor's post at a hospital"
     if t == "recreation":        # (0.104.78)
         return "move the unhappiest into the recreation burrow, the recovered back to work"
     if t == "pair_chairs":       # (0.104.77)

@@ -401,6 +401,14 @@ PLANNER_CONFIG = {
     "wood_crafts_min_logs": 30,        # (0.104.122) trinkets of wood while stone is short, with this many logs
     "soap_keep_max": 15, "infected_per_soap": 3,   # (0.104.121) a bar for every 3 infected wounds, up to 15
     "soap_cooldown_ticks": 2 * 1200,
+    # (0.104.168) disease and care: with this many infected the soap chain
+    # runs two steps a cycle in batches of 5; idle infected dwarves DF asks
+    # no treatment for are put to rest in free hospital beds, 3 a day (stopped
+    # when DF keeps none of 3 sent); a hospital gets a second doctor's post
+    # while more than 3 treatments wait for each dwarf who can diagnose
+    "soap_rush_infected": 20, "soap_rush_batch": 5, "soap_rush_cooldown_ticks": 2 * 1200,
+    "infected_rest_max": 3, "infected_rest_cooldown_ticks": 1200, "infected_rest_give_up": 3,
+    "doctor_post_per_diagnoser": 3, "doctor_post_cooldown_ticks": 3 * 1200,
     "noble_rooms_cooldown_ticks": 1200,
     "uniform_cooldown_ticks": 1200,       # a squad's uniform: once a day   # rooms given to nobles: once a day  # goods to the depot: every 2 days while a caravan is here
     "crafts_cooldown_ticks": 14 * 1200,
@@ -1500,6 +1508,9 @@ AGENDA_THEMES = {
 AGENDA_THEMES["vermin"] = "keep cats against the vermin"     # (0.104.168)
 
 AGENDA_THEMES["cups_home"] = "shoes and cups for the fort"      # (0.104.168)
+
+AGENDA_THEMES.update({"soap_rush": "make soap", "infected_rest": "care for the infected",   # (0.104.168)
+                      "doctor_post": "more doctors"})
 
 
 def agenda(proposals: list, notes: list, limit: int = 5) -> list[str]:

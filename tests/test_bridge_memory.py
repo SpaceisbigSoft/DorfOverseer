@@ -1137,6 +1137,36 @@ def _():
     assert M.act_accept_cups(t({})).ok and H.calls[2].dry is False
 
 
+@test("0.104.168: rest_infected and add_doctor_post are in the action table, bounded, passed to ai-health; the infection section and its default")
+def _():
+    reset()
+    M = H.module()
+    LUA.execute("""local M, H = ...
+      H.calls = {}
+      H.scripts = {['ai-health'] = {
+          rest_infected = function(n, dry) table.insert(H.calls, {what = 'rest', n = n, dry = dry}); return {ok = true} end,
+          add_doctor_post = function(id, dry) table.insert(H.calls, {what = 'post', n = id, dry = dry}); return {ok = true} end,
+          survey = function() return {infected = 3} end}}
+    """, M, H)
+    assert LUA.eval("function(M) return M.ACTIONS.rest_infected == M.act_rest_infected "
+                    "and M.ACTIONS.add_doctor_post == M.act_add_doctor_post end")(M)
+    assert M.act_rest_infected(t({"max": 3, "dry_run": True})).ok
+    assert (H.calls[1].what, H.calls[1].n, H.calls[1].dry) == ("rest", 3, True)
+    assert M.act_rest_infected(t({})).ok and H.calls[2].n == 3 and H.calls[2].dry is False
+    for bad in ({"max": 0}, {"max": 11}, {"max": "lots"}, {"max": 2.5}):
+        r = M.act_rest_infected(t(bad))
+        assert not r.ok and r.rejected, (bad, dict(r))
+    assert M.act_add_doctor_post(t({"location_id": 13})).ok and (H.calls[3].what, H.calls[3].n) == ("post", 13)
+    assert M.act_add_doctor_post(t({})).rejected
+    assert len(H.calls) == 3
+    assert M.SECTIONS.infection().infected == 3
+    assert LUA.eval("function(M) return M.CACHE_INVALIDATES.add_doctor_post[1] end")(M) == "locations"
+    sys.path.insert(0, str(ROOT / "brain"))
+    import digest
+    assert digest.SECTION_DEFAULTS["infection"] == {}
+    assert digest.normalize({})["infection"] == {}                    # an older bridge: the default
+
+
 if __name__ == "__main__":
     for name, ok, msg in RESULTS:
         print(f"[{'PASS' if ok else 'FAIL'}] {name}" + (f"\n        {msg}" if msg else ""))

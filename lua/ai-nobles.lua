@@ -38,19 +38,35 @@ OFFICES = {
 }
 OFFICE_ORDER = {'MANAGER', 'BOOKKEEPER', 'CHIEF_MEDICAL_DWARF', 'BROKER', 'SHERIFF', 'CAPTAIN_OF_THE_GUARD'}
 
+-- (0.104.168) the military offices, refilled when their holder dies
+-- (Teacheroar's spirals killed squad leaders with the rest): the commander
+-- (appointed by the expedition leader or mayor) and a captain whose slot
+-- leads a squad (appointed by the commander). A vacant captain's slot that
+-- leads no squad is the one DF keeps for the next squad (make_squad's). The
+-- new holder takes the squad's leader seat (lua/ai-military.lua seat_leader).
+-- Never a soldier of a squad already, a mother of a baby (it is carried into
+-- every fight), a child; the miserable only when nobody else will do.
+OFFICES.MILITIA_COMMANDER = {'MILITARY_TACTICS', 'LEADERSHIP', 'MELEE_COMBAT', 'DISCIPLINE'}
+OFFICES.MILITIA_CAPTAIN = {'LEADERSHIP', 'MELEE_COMBAT', 'MILITARY_TACTICS', 'DISCIPLINE'}
+MILITARY_OFFICES = {MILITIA_COMMANDER = true, MILITIA_CAPTAIN = true}
+table.insert(OFFICE_ORDER, 'MILITIA_COMMANDER')
+table.insert(OFFICE_ORDER, 'MILITIA_CAPTAIN')
+
 -- Pure: the best candidate. Each: {id, skills = {level, level...} in the
 -- office's order, offices = offices already held, soldier = bool, child =
 -- bool}. Dwarves without an office before any with one (one job each), then
 -- the skilled (the first skill counts double), never a child, soldiers last; ties to the
--- lower id.
-function pick_holder(cands)
+-- lower id. (0.104.168) `miserable` (very unhappy or worse): only when nobody
+-- else will do; with `military` (a military office) never a mother of a baby.
+function pick_holder(cands, military)
     local best, best_score
     for _, c in ipairs(cands) do
-        if not c.child then
+        if not c.child and not (military and c.mother) then
             local score = 0
             for i, lvl in ipairs(c.skills or {}) do score = score + (i == 1 and 2 or 1) * (lvl or 0) end
             -- a dwarf already holding an office only when nobody else will do
             score = score * 10 - 1000 * (c.offices or 0) - (c.soldier and 15 or 0)
+            if c.miserable then score = score - 5000 end      -- (0.104.168)
             if best_score == nil or score > best_score or (score == best_score and c.id < best.id) then
                 best, best_score = c, score
             end
@@ -154,8 +170,14 @@ function survey(txt)
         if p then
             local o = out.offices[p.code] or {vacant = 0, held = {}, appointed_by = #p.appointed_by,
                                                 ai = OFFICES[p.code] ~= nil}
+            if o.appointable == nil then          -- (0.104.168) the fort's to fill, or DF's
+                local okp, can, why = pcall(appointable, ent, p)
+                if okp then o.appointable, o.not_why = can, why end
+            end
             if a.histfig == -1 then
                 o.vacant = o.vacant + 1
+                -- (0.104.168) a vacant slot that leads a squad (a dead leader's)
+                if (tonumber(a.squad_id) or -1) ~= -1 then o.vacant_squad = (o.vacant_squad or 0) + 1 end
             else
                 local hf = df.historical_figure.find(a.histfig)
                 table.insert(o.held, hf and (txt or tostring)(translate(hf.name)) or tostring(a.histfig))
@@ -166,19 +188,69 @@ function survey(txt)
     return out
 end
 
+-- (0.104.168) mothers of babies: unit id -> true
+local function mothers()
+    local out = {}
+    pcall(function()
+        for _, u in ipairs(dfhack.units.getCitizens(true)) do
+            if dfhack.units.isBaby(u) then
+                local m = u.relationship_ids.Mother
+                if m and m ~= -1 then out[m] = true end
+            end
+        end
+    end)
+    return out
+end
+
 local function candidates(code)
     local wants = OFFICES[code]
+    local military = MILITARY_OFFICES[code]
+    local moms = military and mothers() or {}
     local out = {}
     for _, u in ipairs(dfhack.units.getCitizens(true)) do
-        if u.hist_figure_id >= 0 then
+        -- (0.104.168) a military office's holder takes a squad's leader seat:
+        -- never a soldier of a squad already
+        if u.hist_figure_id >= 0 and not (military and u.military.squad_id >= 0) then
             local skills = {}
             for i, name in ipairs(wants) do skills[i] = skill(u, name) end
+            local okm, cat = pcall(function() return dfhack.units.getStressCategory(u) end)
             table.insert(out, {id = u.id, skills = skills, offices = offices_held(u),
                                soldier = u.military.squad_id >= 0,
-                               child = dfhack.units.isChild(u) or dfhack.units.isBaby(u)})
+                               child = dfhack.units.isChild(u) or dfhack.units.isBaby(u),
+                               mother = moms[u.id] or nil,
+                               miserable = (okm and type(cat) == 'number' and cat <= 1) or nil})
         end
     end
     return out
+end
+
+-- (0.104.168) May the fort fill this office itself? Only one appointed by
+-- an office of the fort's own government that someone holds (the mayor,
+-- the expedition leader, the militia commander); never an elected one
+-- (the mayor), one passed to an heir (a baron...), one replaced (the
+-- sheriff by the captain of the guard), or one a monarch elsewhere
+-- appoints: those are left to DF. Returns can, why-not.
+function appointable(ent, pos)
+    local why
+    pcall(function()
+        if pos.flags.ELECTED then why = 'elected' end
+        if pos.flags.SUCCESSION_BY_HEIR then why = 'inherited' end
+        if pos.flags.HAS_BEEN_REPLACED then why = 'replaced' end
+    end)
+    if why then return false, why end
+    local by = pos.appointed_by
+    if not by or #by == 0 then return false, 'nobody appoints it' end
+    local civs = nil
+    pcall(function() civs = pos.appointed_by_civ end)
+    for i = 0, #by - 1 do
+        local civ = civs and civs[i]
+        if civ == nil or civ == -1 or civ == ent.id then
+            for _, a in ipairs(ent.positions.assignments) do
+                if a.position_id == by[i] and a.histfig ~= -1 then return true end
+            end
+        end
+    end
+    return false, 'its appointer is not in the fort'
 end
 
 local function add_event(ent, hf, pos)
@@ -202,20 +274,26 @@ function appoint(code, dry_run, txt)
     local ent = fort_entity()
     if not ent then return {ok = false, error = 'no fort government (entity) found'} end
     local assignment, a_idx, pos
-    for idx, a in ipairs(ent.positions.assignments) do
-        local p = position_of(ent, a.position_id)
-        if p and p.code == code then
-            if a.histfig ~= -1 then
-                return {ok = false, rejected = true, error = code .. ' is already held'}
+    if MILITARY_OFFICES[code] then              -- (0.104.168)
+        local r = military_slot(ent, code)
+        if not r.ok then return r end
+        assignment, a_idx, pos = r.assignment, r.idx, r.pos
+    else
+        for idx, a in ipairs(ent.positions.assignments) do
+            local p = position_of(ent, a.position_id)
+            if p and p.code == code then
+                if a.histfig ~= -1 then
+                    return {ok = false, rejected = true, error = code .. ' is already held'}
+                end
+                assignment, a_idx, pos = a, idx, p
+                break
             end
-            assignment, a_idx, pos = a, idx, p
-            break
+        end
+        if not assignment then
+            return {ok = false, rejected = true, error = 'the fort has no ' .. code .. ' office yet'}
         end
     end
-    if not assignment then
-        return {ok = false, rejected = true, error = 'the fort has no ' .. code .. ' office yet'}
-    end
-    local c = pick_holder(candidates(code))
+    local c = pick_holder(candidates(code), MILITARY_OFFICES[code])
     if not c then return {ok = false, rejected = true, error = 'no grown citizen to appoint'} end
     local u = df.unit.find(c.id)
     local hf = u and df.historical_figure.find(u.hist_figure_id)
@@ -228,7 +306,49 @@ function appoint(code, dry_run, txt)
         return {ok = false, office = code, error = 'DFHack did not see the appointment, so it was undone: '
                 .. 'appoint the ' .. code:lower():gsub('_', ' ') .. ' in the nobles screen'}
     end
+    -- (0.104.168) the squad the office leads: its leader's seat taken
+    if MILITARY_OFFICES[code] and (tonumber(assignment.squad_id) or -1) ~= -1 then
+        local oks, seated = pcall(function()
+            local sq = df.squad.find(assignment.squad_id)
+            return sq and reqscript('ai-military').seat_leader(u, sq) or false
+        end)
+        out.squad_id, out.seated = assignment.squad_id, (oks and seated) or false
+    end
     return out
+end
+
+-- (0.104.168) The vacant slot of a military office to fill: the commander's
+-- (one), or a captain's that leads a squad (a dead captain's), and only when
+-- the fort may fill it (appointable: the commander appoints the captains).
+function military_slot(ent, code)
+    local held, seen, best = false, false, nil
+    for idx, a in ipairs(ent.positions.assignments) do
+        local p = position_of(ent, a.position_id)
+        if p and p.code == code then
+            seen = true
+            local squad = (tonumber(a.squad_id) or -1) ~= -1
+            if a.histfig ~= -1 then
+                held = true
+            elseif (code == 'MILITIA_COMMANDER' or squad) and (not best or (squad and not best.squad)) then
+                best = {a = a, idx = idx, p = p, squad = squad}
+            end
+        end
+    end
+    if not seen then return {ok = false, rejected = true, error = 'the fort has no ' .. code .. ' office yet'} end
+    if code == 'MILITIA_COMMANDER' and held then
+        return {ok = false, rejected = true, error = code .. ' is already held'}
+    end
+    if not best then
+        return {ok = false, rejected = true, error = code == 'MILITIA_CAPTAIN'
+                and "no squad has lost its captain (a vacant captain's slot without a squad is for the next squad)"
+                or code .. ' is already held'}
+    end
+    local can, why = appointable(ent, best.p)
+    if not can then
+        return {ok = false, rejected = true,
+                error = code:lower():gsub('_', ' ') .. " is not the fort's to fill (" .. tostring(why) .. ')'}
+    end
+    return {ok = true, assignment = best.a, idx = best.idx, pos = best.p}
 end
 
 -- Undo an appointment written here.

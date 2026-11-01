@@ -8497,6 +8497,168 @@ def _():
     assert "shoes and cups" in planner.agenda([planner.Proposal("cups_home", {"type": "accept_cups"}, "x", 4)], [])[0]
 
 
+def _infected_fort(**inf):
+    s = fort()
+    s["infection"] = {"infected": 77, "untreated": 75, "bleeding": 6, "idle_untreated": 20, "free_beds": 24,
+                      "beds": 30, "hospital_zones": 3, "diagnosers": 6, "cleaners": 80, "sent": 0, "stayed": 0,
+                      "asked": 0, "max_load": 900, "worst": [{"id": 1, "name": "Urist", "load": 900}]}
+    s["infection"].update(inf)
+    return s
+
+
+@test("0.104.168 infection: idle infected dwarves DF asks nothing for are put to bed in the hospital, the bleeding first; said what is wrong")
+def _():
+    props, notes = plan(_infected_fort(), Memory())
+    r = by_rule(props, "infected_rest")
+    assert r and r[0].action == {"type": "rest_infected", "max": 3} and r[0].priority == 2, r
+    assert any(n.startswith("77 citizens have infected wounds, 75 with no treatment asked") and "6 bleed" in n
+               and "Urist (900)" in n for n in notes), notes
+    # bounded by the free beds and the idle; no bleeding: lower priority
+    r = by_rule(plan(_infected_fort(free_beds=2, bleeding=0), Memory())[0], "infected_rest")
+    assert r and r[0].action["max"] == 2 and r[0].priority == 4, r
+    r = by_rule(plan(_infected_fort(idle_untreated=1), Memory())[0], "infected_rest")
+    assert r and r[0].action["max"] == 1, r
+    # every bed taken, nobody idle, no hospital, nobody to diagnose: not asked
+    props, notes = plan(_infected_fort(free_beds=0), Memory())
+    assert not by_rule(props, "infected_rest") and any("every hospital bed is taken" in n for n in notes), notes
+    assert not by_rule(plan(_infected_fort(idle_untreated=0), Memory())[0], "infected_rest")
+    assert not by_rule(plan(_infected_fort(hospital_zones=0), Memory())[0], "infected_rest")
+    props, notes = plan(_infected_fort(diagnosers=0), Memory())
+    assert not by_rule(props, "infected_rest") and any("nobody outside the military can diagnose" in n for n in notes)
+    # nobody with the cleaning labour: the player is asked
+    notes = plan(_infected_fort(cleaners=0), Memory())[1]
+    assert any("cleaning labour" in n for n in notes), notes
+    # an older bridge (no section) or a failed one: nothing
+    s = fort(); s.pop("infection", None)
+    assert not by_rule(plan(s, Memory())[0], "infected_rest")
+    s = _infected_fort(); s["infection"] = {"error": "boom"}
+    assert not by_rule(plan(s, Memory())[0], "infected_rest")
+
+
+@test("0.104.168 infection: DF kept none of those sent resting: the AI stops (for the week the bridge remembers them)")
+def _():
+    props, notes = plan(_infected_fort(sent=3, stayed=0, asked=0), Memory())
+    assert not by_rule(props, "infected_rest") and any("did not stay there" in n for n in notes), notes
+    assert by_rule(plan(_infected_fort(sent=3, stayed=1), Memory())[0], "infected_rest")
+    assert by_rule(plan(_infected_fort(sent=3, asked=2), Memory())[0], "infected_rest")
+    assert by_rule(plan(_infected_fort(sent=2), Memory())[0], "infected_rest")
+
+
+@test("0.104.168 infection: a recovery rule in a crisis; labels for the new actions; a day apart")
+def _():
+    import crisis
+    import overseer
+    assert {"infected_rest", "soap_rush", "doctor_post", "appoint"} <= crisis.RECOVERY_RULES
+    m = Memory(); m.crisis = {"since": 0, "why": ["7 deaths"]}
+    r = by_rule(plan(_infected_fort(), m)[0], "infected_rest")
+    assert r and r[0].priority <= 0, r
+    assert PLANNER_CONFIG["infected_rest_cooldown_ticks"] == TICKS_PER_DAY
+    assert "infected wounds to bed" in overseer.short({"type": "rest_infected", "max": 3})
+    assert overseer.short({"type": "add_doctor_post", "location_id": 4}) == "add a second doctor's post at a hospital"
+
+
+@test("0.104.168 doctors: more treatments waiting than the diagnosers can give: a second doctor's post at a fully staffed hospital")
+def _():
+    s = fort()
+    full = {k: {"posts": 1, "filled": 1} for k in ("DIAGNOSTICIAN", "DOCTOR", "SURGEON", "BONE_DOCTOR")}
+    s["locations"]["list"] = [{"id": 4, "type": "HOSPITAL", "jobs": copy.deepcopy(full), "zones": [287]},
+                              {"id": 13, "type": "HOSPITAL", "jobs": copy.deepcopy(full), "zones": [2798]}]
+    s["health"] = {"waiting": 20, "patients": [], "hospital": []}
+    s["infection"] = {"infected": 0, "diagnosers": 2}
+    r = by_rule(plan(copy.deepcopy(s), Memory())[0], "doctor_post")
+    assert r and r[0].action == {"type": "add_doctor_post", "location_id": 4}, r
+    s["health"]["waiting"] = 6                                          # 3 a diagnoser: enough
+    assert not by_rule(plan(copy.deepcopy(s), Memory())[0], "doctor_post")
+    s["health"]["waiting"] = 20
+    s["locations"]["list"][0]["jobs"]["DOCTOR"] = {"posts": 2, "filled": 2}    # the first has two: the second
+    r = by_rule(plan(copy.deepcopy(s), Memory())[0], "doctor_post")
+    assert r and r[0].action["location_id"] == 13, r
+    s["locations"]["list"][1]["jobs"]["SURGEON"] = {"posts": 1, "filled": 0}   # a post empty: staffed first
+    assert not by_rule(plan(copy.deepcopy(s), Memory())[0], "doctor_post")
+    # an older bridge: the diagnosers counted from the hospitals' staff
+    s["locations"]["list"][1]["jobs"]["SURGEON"] = {"posts": 1, "filled": 1}
+    s.pop("infection")
+    s["health"]["hospital"] = [{"id": 4, "staff": [{"post": "DOCTOR", "labors": ["DIAGNOSE"]}]}]
+    assert by_rule(plan(copy.deepcopy(s), Memory())[0], "doctor_post")
+
+
+@test("0.104.168 soap: with 20+ infected the chain runs two steps a cycle, in batches of 5")
+def _():
+    s = fort()
+    s["locations"].setdefault("count", {})["HOSPITAL"] = 1
+    s["orders"] = []
+    s["buildings"]["workshops"].update(Ashery=1, SoapMaker=1, Kitchen=1)
+    s["buildings"].setdefault("furnaces", {})["WoodFurnace"] = 1
+    s["supplies"].update(soap=0, ash=2, lye=1, tallow=50, fat=100, buckets=5)
+    s["stocks"]["wood"] = 100
+    s["health"] = dict(s.get("health") or {}, infected=77)
+    props = plan(copy.deepcopy(s), Memory())[0]
+    a, b = by_rule(props, "soap"), by_rule(props, "soap_rush")
+    assert a and a[0].action == {"type": "work_order", "recipe": "make_soap_from_tallow", "amount": 1}, a
+    assert b and b[0].action["recipe"] != "make_soap_from_tallow" and b[0].action["recipe"] == "make_ash", b
+    assert b[0].action["amount"] == 5, b                                 # ash for the next bars, 5 at a time
+    s["orders"] = [{"id": 1, "recipe": "make_soap_from_tallow", "amount_left": 1, "by_ai": True}]
+    props = plan(copy.deepcopy(s), Memory())[0]
+    a, b = by_rule(props, "soap"), by_rule(props, "soap_rush")
+    assert a and a[0].action["recipe"] == "make_ash" and not b, (a, b)   # only one step left unqueued
+    # fewer infected: one step a cycle, as before
+    s["orders"] = []
+    s["health"]["infected"] = 10
+    props = plan(copy.deepcopy(s), Memory())[0]
+    assert by_rule(props, "soap") and not by_rule(props, "soap_rush")
+
+
+def _offices_fort(**offices):
+    s = fort()
+    base = {"MAYOR": {"held": ["Asob"], "vacant": 0, "appointable": False, "not_why": "elected", "ai": False},
+            "MILITIA_COMMANDER": {"held": ["Lorbam"], "vacant": 0, "appointable": True, "ai": True},
+            "MILITIA_CAPTAIN": {"held": ["Udil"], "vacant": 1, "appointable": True, "ai": True},
+            "HAMMERER": {"held": [], "vacant": 1, "appointable": False, "not_why": "its appointer is not in the fort",
+                         "ai": False}}
+    for k, v in offices.items():
+        base[k] = dict(base.get(k, {}), **v)
+    s["offices"] = {"entity": 296, "offices": base}
+    return s
+
+
+@test("0.104.168 offices: a dead militia commander's office is filled again; a captain's only where a squad lost him")
+def _():
+    props, notes = plan(_offices_fort(), Memory())
+    assert not [p for p in by_rule(props, "appoint") if "MILITIA" in str(p.action.get("office"))], props
+    assert not any("hammerer" in n or "mayor" in n for n in notes), notes      # left to DF
+    r = by_rule(plan(_offices_fort(MILITIA_COMMANDER={"held": [], "vacant": 1}), Memory())[0], "appoint")
+    assert r and r[0].action == {"type": "appoint", "office": "MILITIA_COMMANDER"}, r
+    # a captain's slot without a squad is DF's spare for the next squad: not filled
+    assert not [p for p in by_rule(plan(_offices_fort(), Memory())[0], "appoint")
+                if p.action.get("office") == "MILITIA_CAPTAIN"]
+    r = by_rule(plan(_offices_fort(MILITIA_CAPTAIN={"vacant": 2, "vacant_squad": 1}), Memory())[0], "appoint")
+    assert r and r[0].action == {"type": "appoint", "office": "MILITIA_CAPTAIN"} and "1 squad(s)" in r[0].reason, r
+    # both vacant: the commander first (he appoints the captains)
+    r = by_rule(plan(_offices_fort(MILITIA_COMMANDER={"held": [], "vacant": 1},
+                                   MILITIA_CAPTAIN={"vacant_squad": 1}), Memory())[0], "appoint")
+    assert [p.action["office"] for p in r if "MILITIA" in p.action["office"]] == ["MILITIA_COMMANDER"], r
+    # not the fort's to fill, or appointing switched off: not asked
+    assert not by_rule(plan(_offices_fort(MILITIA_COMMANDER={"held": [], "vacant": 1, "appointable": False}),
+                            Memory())[0], "appoint")
+    s = _offices_fort(MILITIA_COMMANDER={"held": [], "vacant": 1})
+    s.setdefault("settings", {})["appoint_nobles"] = False
+    assert not by_rule(plan(s, Memory())[0], "appoint")
+
+
+@test("0.104.168 offices: one the fort could fill and the AI doesn't is said; elected and monarch's ones are not")
+def _():
+    notes = plan(_offices_fort(CHAMPION={"held": [], "vacant": 1, "appointable": True, "ai": False}), Memory())[1]
+    assert any("the fort may fill these offices and the AI doesn't: champion" in n for n in notes), notes
+    notes = plan(_offices_fort(CHAMPION={"held": [], "vacant": 1, "appointable": False, "ai": False}), Memory())[1]
+    assert not any("champion" in n for n in notes), notes
+    # an older bridge (no appointable): nothing said, the commander still filled
+    s = _offices_fort(MILITIA_COMMANDER={"held": [], "vacant": 1})
+    for o in s["offices"]["offices"].values():
+        o.pop("appointable", None)
+    props, notes = plan(s, Memory())
+    assert by_rule(props, "appoint") and not any("may fill these offices" in n for n in notes)
+
+
 if __name__ == "__main__":
     for name, ok, msg in RESULTS:
         print(f"[{'PASS' if ok else 'FAIL'}] {name}" + (f"\n        {msg}" if msg else ""))

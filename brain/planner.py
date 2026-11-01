@@ -35,6 +35,7 @@ from planner_industry import *  # noqa: E402,F401,F403  (0.104.83: the planner i
 from planner_society import *  # noqa: E402,F401,F403  (0.104.83: the planner in parts)
 import crisis  # noqa: E402  (0.104.137)
 from planner_building import *  # noqa: E402,F401,F403  (0.104.83: the planner in parts)
+from planner_care import _doctor_post_rule, _infection_rule, _offices_refill_rule  # noqa: E402  (0.104.168)
 
 
 def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[Proposal], list[str]]:
@@ -115,6 +116,10 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
     if can_use("health"):
         _guard(_health_rules, s, memory, cfg, notes)
         _guard(_doctor_patient_rule, s, proposals)
+        if can_use("locations"):
+            _guard(_doctor_post_rule, s, cfg, proposals)        # (0.104.168)
+    if can_use("infection"):
+        _guard(_infection_rule, s, cfg, proposals, notes)       # (0.104.168)
     # (0.104.167) the wounded kept inside; (review) outside the health gate:
     # a failed health section must not freeze the members (the rule reads it if there)
     _guard(_hospital_burrow_rule, s, cfg, proposals, memory)
@@ -365,6 +370,8 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
     # industry through DFHack's own smelting orders --------------------------
     if can_use("society"):
         _guard(_society_notes, s, traits, citizens, cfg, notes, proposals)
+    if can_use("offices"):
+        _guard(_offices_refill_rule, s, cfg, notes, proposals)  # (0.104.168)
     if can_use("farms", "projects", "settings"):
         _guard(_farm_rule, s, memory, traits, citizens, cfg, proposals, notes)
     if can_use("society"):
