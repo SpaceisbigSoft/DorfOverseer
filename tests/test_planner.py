@@ -7673,6 +7673,26 @@ def _():
     assert c and "retire" in c[0].reason and c[0].action["type"] == "cistern_step", [x.reason for x in c]
 
 
+@test("temples (0.104.146): many praying to gods no temple serves -> a temple to all gods; none when one serves all")
+def _():
+    s = fort()
+    s["projects"]["open"] = []
+    s["dwarves"]["total"] = 195
+    s["needs"] = dict(s.get("needs") or {}, deities={"Teshkad": 36, "Pulpy Dung": 19, "Nish": 8},
+                      deity_ids={"Teshkad": 217, "Pulpy Dung": 220, "Nish": 215})
+    s["locations"] = {"count": {"TEMPLE": 2, "INN_TAVERN": 1, "HOSPITAL": 1, "LIBRARY": 1},
+                      "list": [{"id": 0, "type": "TEMPLE", "deity_hf": 217}, {"id": 8, "type": "TEMPLE", "deity_hf": 215}]}
+    b = [x for x in by_rule(plan(copy.deepcopy(s), Memory())[0], "build") if x.action.get("kind") == "temple"]
+    assert b and "deity_hf" not in b[0].action and "Pulpy Dung 19" in b[0].reason and "Teshkad" not in b[0].reason, \
+        [x.reason for x in b]
+    s["locations"]["list"][1] = {"id": 8, "type": "TEMPLE", "any_deity": True}
+    assert not [x for x in by_rule(plan(copy.deepcopy(s), Memory())[0], "build")
+                if x.action.get("kind") == "temple" and "gods no temple" in x.reason]
+    s["locations"]["list"] = [{"id": 0, "type": "TEMPLE"}]          # an older bridge: says nothing
+    assert not [x for x in by_rule(plan(copy.deepcopy(s), Memory())[0], "build")
+                if x.action.get("kind") == "temple" and "gods no temple" in x.reason]
+
+
 if __name__ == "__main__":
     for name, ok, msg in RESULTS:
         print(f"[{'PASS' if ok else 'FAIL'}] {name}" + (f"\n        {msg}" if msg else ""))

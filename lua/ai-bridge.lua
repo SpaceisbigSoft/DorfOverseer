@@ -34,7 +34,7 @@
 local json = require('json')
 local utils = require('utils')
 
-BRIDGE_VERSION = '0.104.145'
+BRIDGE_VERSION = '0.104.146'
 PROTOCOL = 1 -- bump when the report's shape changes in a breaking way
 
 local OUT_DIR = dfhack.getDFPath() .. '/dfhack-config/ai-overseer'
@@ -837,6 +837,25 @@ function get_locations()
                     end
                 end)
                 pcall(function() e.books = #b.copied_artifacts end)
+                -- (0.104.146) a temple's dedication: to one deity (its worshippers
+                -- pray there), a religion (its deities), or all ('any')
+                if t == 'TEMPLE' then
+                    pcall(function()
+                        local dt = df.religious_practice_type[b.deity_type]
+                        if dt == 'WORSHIP_HFID' then
+                            e.deity_hf = b.deity_data.Deity
+                        elseif dt == 'RELIGION_ENID' then
+                            local ent = df.historical_entity.find(b.deity_data.Religion)
+                            e.religion_deities = {}
+                            for _, hfid in ipairs(ent and ent.relations.deities or {}) do
+                                table.insert(e.religion_deities, hfid)
+                            end
+                        else
+                            e.any_deity = true
+                        end
+                    end)
+                    if e.deity_hf == nil and e.religion_deities == nil then e.any_deity = true end
+                end
                 -- (0.90) its zones (furniture goes into the first)
                 pcall(function()
                     for _, bid in ipairs(c.building_ids) do

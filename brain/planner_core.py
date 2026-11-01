@@ -167,6 +167,8 @@ PLANNER_CONFIG = {
     "drink_hoard_share": 1.33,         # (0.103) Thirst-scarred: drink kept x this
     "grandeur_dress_at": 50,           # (0.102.6) a fort this grand puts statues in its halls
     "grandeur_cooldown_ticks": 3 * 1200,
+    "temple_uncovered_min": 10,        # (0.104.146) dwarves praying to gods no temple serves, before a temple to all...
+    "temple_uncovered_share": 0.05,    # ...or this share of the fort
     "temple_more_piety": 50,           # (0.102.1) a devout fort raises a temple to each god many pray to
     "temple_more_worshippers": 5,      # ...this many distracted for want of prayer to that god           # ...and none started this long (halved at Grandeur +100)
     "metal_furniture_bars": 10,        # bars of a non-gear metal kept after furniture is made from it

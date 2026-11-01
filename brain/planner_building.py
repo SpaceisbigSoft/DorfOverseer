@@ -987,6 +987,23 @@ def social_shortfall(s: dict, cfg: dict) -> list:
     return out
 
 
+def prayer_uncovered(s: dict) -> tuple[int, dict] | None:
+    """(0.104.146) The dwarves distracted for want of prayer whose god no temple
+    here serves (one to that god, to a religion that has it, or to all gods),
+    and those by god: (n, {god: n}). None when the bridge doesn't say what the
+    temples are dedicated to (older than 0.104.146), or there is no temple."""
+    temples = [e for e in _l(_d(s.get("locations")).get("list")) if isinstance(e, dict) and e.get("type") == "TEMPLE"]
+    if not temples or not any(("any_deity" in e or "deity_hf" in e or "religion_deities" in e) for e in temples):
+        return None
+    if any(e.get("any_deity") for e in temples):
+        return 0, {}
+    served = {e.get("deity_hf") for e in temples} | {h for e in temples for h in _l(e.get("religion_deities"))}
+    nd = _d(s.get("needs"))
+    ids = _d(nd.get("deity_ids"))
+    by = {g: int(v or 0) for g, v in _d(nd.get("deities")).items() if ids.get(g) not in served}
+    return sum(by.values()), by
+
+
 def dining_shortfall(s: dict, cfg: dict) -> dict | None:
     """(0.104.135) The fort's tables against its diners, once it has a dining
     hall: {have, want, tables, citizens} when under `dining_short_share` of
@@ -1377,6 +1394,19 @@ def _project_rules(s, traits, cfg, proposals, notes, can_use, memory) -> None:
                 action["tables"] = 20
             proposals.append(Proposal("build", action, cap, 2))
             break                                   # one a cycle
+    # (0.104.146) a temple to all gods while many pray to gods no temple here
+    # serves (Teacheroar: 2 temples, 9 gods prayed to, 93 distracted for want
+    # of prayer; more temples by count never came, the count of the badly
+    # held at 40 for 2 temples)
+    pu = prayer_uncovered(s)
+    if (pu and pu[0] >= max(cfg["temple_uncovered_min"], round(cfg["temple_uncovered_share"] * int(_d(s.get("dwarves")).get("total") or 0)))
+            and can_use("stocks") and "buildings" not in s["_errors"]
+            and len(open_) < (pr.get("max_open") or 2) + 2 and not any(p.get("kind") == "temple" for p in open_)
+            and player_rules(s)["levels"].get("temple", True)):
+        gods = ", ".join(f"{g} {n}" for g, n in sorted(pu[1].items(), key=lambda kv: -kv[1])[:4])
+        proposals.append(Proposal("build", {"type": "start_project", "kind": "temple", "size": "shrine", "urgent": True},
+                                  f"{pu[0]} dwarves are distracted for want of prayer to gods no temple here serves "
+                                  f"({gods}): a temple to all gods", 2))
     # (0.104.121) a hospital too small for the fort: Teacheroar's stop-gap of
     # 5 beds (built at 54 dwarves) served 296, 107 on the Rest job, 124
     # patients and 112 infected wounds; "another hospital" was counted by halls (one per 150
