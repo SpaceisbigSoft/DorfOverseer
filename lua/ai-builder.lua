@@ -3624,8 +3624,39 @@ function cistern_status()
             pcall(function()
                 local lv = df.building.find(d.lever_id)
                 for _, j in ipairs(lv and lv.jobs or {}) do
-                    if j.job_type == df.job_type.LinkBuildingToTrigger then out.link_pending = true end
+                    if j.job_type == df.job_type.LinkBuildingToTrigger then
+                        out.link_pending = true
+                        -- (0.104.143) whether a dwarf has taken it, or it is suspended
+                        out.link_worker = dfhack.job.getWorker(j) ~= nil
+                        out.link_suspended = j.flags.suspend or nil
+                    end
                 end
+            end)
+            -- (0.104.143) can the dwarves get beside the lever and the floodgate
+            -- (a linker carries the mechanisms to both)?
+            local function reach(x, y, z)
+                local groups = {}
+                pcall(function()
+                    for _, u in ipairs(dfhack.units.getCitizens(true)) do
+                        local g = dfhack.maps.getWalkableGroup(xyz2pos(dfhack.units.getPosition(u)))
+                        if g and g ~= 0 then groups[g] = true end
+                    end
+                end)
+                local seen = false
+                for dy = -1, 1 do
+                    for dx = -1, 1 do
+                        local okg, g = pcall(dfhack.maps.getWalkableGroup, xyz2pos(x + dx, y + dy, z))
+                        if okg and g and g ~= 0 then
+                            if groups[g] then return 'reachable' end
+                            seen = true
+                        end
+                    end
+                end
+                return seen and 'cut off from the dwarves' or 'no open ground beside it'
+            end
+            pcall(function()
+                if p.lever then out.lever_reach = reach(p.lever.x, p.lever.y, p.well.z) end
+                out.gate_reach = reach(p.floodgate.x, p.floodgate.y, p.cistern.z)
             end)
             out.link_why = d.link_why
             -- (0.104.143) with the elevation the game's screen shows (e)
