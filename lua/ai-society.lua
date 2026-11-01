@@ -801,7 +801,7 @@ function free_items_count(kind, detail)
     local ok, list = pcall(function() return df.global.world.items.other[kind] end)
     if not ok or not list then return nil end
     local n = 0
-    local d = detail and {kinds = {}, races = {}, stored = {}} or nil
+    local d = detail and {kinds = {}, races = {}, stored = {}, wear = {}, place = {}} or nil
     for _, it in ipairs(list) do
         local okf, free = pcall(function()
             local f = it.flags
@@ -817,6 +817,23 @@ function free_items_count(kind, detail)
                     bump(d.races, cr and cr.creature_id or 'unknown')
                 end)
                 pcall(function() bump(d.stored, dfhack.items.getContainer(it) and 'container' or 'loose') end)
+                pcall(function() bump(d.wear, it.wear) end)
+                -- where: on a stockpile, on a tile no dwarf can walk to, or elsewhere
+                pcall(function()
+                    local x, y, z = dfhack.items.getPosition(it)
+                    local pos = type(x) == 'number' and xyz2pos(x, y, z) or x
+                    local okb, b = pcall(dfhack.buildings.findAtTile, pos)
+                    local g = dfhack.maps.getWalkableGroup(pos)
+                    if g == 0 then bump(d.place, 'unwalkable')
+                    elseif okb and b and b:getType() == df.building_type.Stockpile then bump(d.place, 'stockpile')
+                    else bump(d.place, 'elsewhere') end
+                    if g ~= 0 and not (okb and b and b:getType() == df.building_type.Stockpile) then
+                        d.elsewhere_at = d.elsewhere_at or {}
+                        if #d.elsewhere_at < 4 then
+                            table.insert(d.elsewhere_at, ('x%d y%d z%d'):format(pos.x, pos.y, pos.z))
+                        end
+                    end
+                end)
             end
         end
     end
