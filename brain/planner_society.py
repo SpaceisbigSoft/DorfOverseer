@@ -828,17 +828,22 @@ def _wish_words(w: dict) -> str:
 
 
 def _wish_met(s: dict, w: dict) -> dict | None:
-    """The fort's location that answers a petition's wish, if it has one."""
+    """The fort's location that answers a petition's wish, if it has one
+    (0.104.163: the highest tier of them, then the most valuable: Teacheroar
+    has four miners' guildhalls, the first in the list not the best)."""
+    best = None
     for e in _l(_d(s.get("locations")).get("list")):
         if not isinstance(e, dict):
             continue
-        if w.get("loc") == "GUILDHALL" and e.get("type") == "GUILDHALL" and e.get("profession") == w.get("profession"):
-            return e
-        if w.get("loc") == "TEMPLE" and e.get("type") == "TEMPLE" and (
-                (w.get("religion") is not None and e.get("religion") == w.get("religion"))
-                or (w.get("deity_hf") is not None and e.get("deity_hf") == w.get("deity_hf"))):
-            return e
-    return None
+        if ((w.get("loc") == "GUILDHALL" and e.get("type") == "GUILDHALL"
+             and e.get("profession") == w.get("profession"))
+                or (w.get("loc") == "TEMPLE" and e.get("type") == "TEMPLE" and (
+                    (w.get("religion") is not None and e.get("religion") == w.get("religion"))
+                    or (w.get("deity_hf") is not None and e.get("deity_hf") == w.get("deity_hf"))))):
+            key = (int(e.get("tier") or 0), int(e.get("value") or 0))
+            if best is None or key > (int(best.get("tier") or 0), int(best.get("value") or 0)):
+                best = e
+    return best
 
 
 def petition_lean(w: dict, traits: dict) -> tuple[float, str]:
@@ -893,18 +898,19 @@ def _location_petition_rules(s: dict, cfg: dict, proposals: list, notes: list, r
                                                              else "the Temple level is off on the Rules tab"))
         pending = [w for w in pending if w.get("loc") != "TEMPLE"]
         agreed = [w for w in agreed if w.get("loc") != "TEMPLE"]
-    # agreed: build what isn't there yet. (0.104.159) `agreed` holds only the
-    # agreements DF still counts outstanding (list-agreements: not yet
-    # convicted_accepted): one that stays so a month after agreeing, though a
-    # matching hall stands, isn't answered by that hall (DF counts a hall made
-    # for the agreement, not one the fort had: 0.102.2). Teacheroar, 1 Nov: the
-    # miners' petition agreed 206 days, the miners' guildhall (value 4,839)
-    # standing, IgnoredGuildhallPetition upsetting 17-20 citizens.
-    def unanswered(w):          # a hall of the wish's tier stands a month on, and DF still counts it unmet
+    # agreed: build what isn't there yet. (0.104.163) A hall of the wish's
+    # tier answers it: DF settles a location agreement once, when its year runs
+    # out (DF wiki, Guildhall: "satisfied and abandoned at once" when work goes
+    # on at that moment), not when the hall is finished, so `agreed` keeps it
+    # until then. 0.104.160 read that as "unmet" and built a new hall every
+    # few minutes (Teacheroar, 1 Nov 14:29-14:51: miners' guildhalls 17, 18,
+    # 19 and project 233 beside the old one, the petition still open; the
+    # retarget then turned each hall miners -> Teshkad -> miners, 10 times).
+    def met(w):
         e = _wish_met(s, w)
-        return (e is not None and int(w.get("days") or 0) >= cfg["petition_unanswered_days"]
-                and int(e.get("tier") or 0) >= int(w.get("tier") or 1))
-    unbuilt = [w for w in agreed if not _wish_met(s, w) or unanswered(w)]
+        return e is not None and int(e.get("tier") or 0) >= int(w.get("tier") or 1)
+
+    unbuilt = [w for w in agreed if not _wish_met(s, w)]
     # (0.92) a hall still being dug whose own wish something else answered
     # meanwhile (the player's own guildhall): given to the next unbuilt wish
     for p in open_:
@@ -917,6 +923,16 @@ def _location_petition_rules(s: dict, cfg: dict, proposals: list, notes: list, r
             continue
         nxt = [w for w in unbuilt if not (w.get("profession") and w.get("profession") == ded.get("profession"))]
         if not nxt:
+            # (0.104.163) nothing to give it to, and no location petition
+            # waits that might be: a hall the fort has already is not dug
+            # again (cancelled while under a quarter is dug)
+            dig = _d(p.get("dig"))
+            total, dug = int(dig.get("total") or 0), int(dig.get("dug") or 0)
+            if not pending and total and dug * 4 < total and p.get("id") is not None:
+                proposals.append(Proposal("petition_retarget", {"type": "cancel_project", "project_id": p["id"]},
+                                          f"the hall being dug was for {_wish_words(own)}, which the fort has "
+                                          f"already ({dug} of {total} tiles dug): not dug again", 5))
+                return
             continue
         w = nxt[0]
         action = {"type": "retarget_hall", "project_id": p.get("id")}
@@ -933,9 +949,10 @@ def _location_petition_rules(s: dict, cfg: dict, proposals: list, notes: list, r
     for w in agreed:
         e = _wish_met(s, w)
         need = cfg["location_value_tier2"] if int(w.get("tier") or 1) >= 2 else cfg["location_value_tier1"]
-        if e and unanswered(w):
-            notes.append(f"{_wish_words(w)} was agreed {w.get('days')} days ago and DF still counts it unmet, "
-                         "though one stands (DF counts a hall made for the agreement): a new one is built")
+        if e and met(w):
+            notes.append(f"{_wish_words(w)} (agreed {w.get('days')} days ago) stands at tier {e.get('tier')}: "
+                         f"DF settles the agreement when its year is out (in about "
+                         f"{max(0, 336 - int(w.get('days') or 0))} days)")
         elif e and int(e.get("tier") or 0) < int(w.get("tier") or 1):
             notes.append(f"{_wish_words(w)} (agreed, {w.get('days', '?')} days ago) stands but is worth "
                          f"{e.get('value', '?')} of the {need} it needs: engrave and furnish it")

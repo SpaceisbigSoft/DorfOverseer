@@ -201,7 +201,6 @@ PLANNER_CONFIG = {
     "citizens_per_free_cup": 3,        # a free cup in store for every 3 citizens (10 at least)...
     "cups_batch": 20,                  # ...20 an order at most
     "cupless_share": 0.1,              # ...while this share drank without one lately
-    "petition_unanswered_days": 28,    # (0.104.159) an agreed petition DF still counts unmet this long: a new hall for it
     # (0.104.161, 14.1) the sliders change what a mature fort builds and agrees to
     "petition_decline_lean": -35,      # a temple or guildhall petition the fort's leaning for it (petition_lean) is this low or lower: declined
     "season_slider_weight": 1.0,       # (0.104.162, 14.1) the sliders' push on the scripted season choice (season.py; 0 = needs and quirks alone)...

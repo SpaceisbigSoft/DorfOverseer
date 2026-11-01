@@ -4124,16 +4124,31 @@ def _():
     s["petitions"] = {"agreed": [{"id": 175, "loc": "GUILDHALL", "tier": 1, "profession": "MINER", "days": 300}]}
     b = by_rule(plan(s, Memory())[0], "petition_build")
     assert b and b[0].action["profession"] == "MINER" and b[0].priority == 4, b   # little time left: sooner
-    # (0.104.159) Teacheroar: a miners' guildhall of the right tier stands, yet DF still counts the
-    # petition agreed 206 days ago unmet: a new hall for it (not before a month)
-    s["locations"]["list"] = [{"id": 10, "type": "GUILDHALL", "profession": "MINER", "tier": 1, "value": 4839}]
-    s["petitions"] = {"agreed": [{"id": 250, "loc": "GUILDHALL", "tier": 1, "profession": "MINER", "days": 206}]}
+    # (0.104.163) Teacheroar: a miners' guildhall of the right tier stands while DF still lists the
+    # agreement (it settles it when the agreement's year is out): no new hall (0.104.160 built
+    # four), a note with the days left; the best of several halls is the one compared
+    s["locations"]["list"] = [{"id": 19, "type": "GUILDHALL", "profession": "MINER", "tier": 0, "value": 1297},
+                              {"id": 10, "type": "GUILDHALL", "profession": "MINER", "tier": 1, "value": 4839}]
+    s["petitions"] = {"agreed": [{"id": 250, "loc": "GUILDHALL", "tier": 1, "profession": "MINER", "days": 268},
+                                 {"id": 252, "loc": "TEMPLE", "tier": 1, "religion": 281, "days": 117}]}
+    s["locations"]["list"].append({"id": 8, "type": "TEMPLE", "religion": 281, "tier": 1, "value": 8709})
     props, notes = plan(s, Memory())
-    b = by_rule(props, "petition_build")
-    assert b and b[0].action["profession"] == "MINER", b
-    assert any("DF still counts it unmet" in n for n in notes), notes
-    s["petitions"]["agreed"][0]["days"] = 10
-    assert not by_rule(plan(s, Memory())[0], "petition_build")
+    assert not by_rule(props, "petition_build"), by_rule(props, "petition_build")
+    assert any("stands at tier 1" in n and "in about 68 days" in n for n in notes), notes
+    # a hall being dug for it: not turned miners -> temple -> miners (0.104.160's loop), cancelled
+    # while little is dug and no petition waits that could take it
+    s["projects"]["open"] = [{"id": 233, "kind": "temple", "phase": "dig", "dedication": {"profession": "MINER"},
+                              "dig": {"dug": 5, "total": 171}}]
+    props = plan(s, Memory())[0]
+    r = by_rule(props, "petition_retarget")
+    assert r and r[0].action == {"type": "cancel_project", "project_id": 233}, r
+    s["projects"]["open"][0]["dig"]["dug"] = 100                       # well along: left to finish
+    assert not by_rule(plan(s, Memory())[0], "petition_retarget")
+    s["projects"]["open"][0]["dig"]["dug"] = 5
+    s["petitions"]["pending"] = [{"id": 254, "type": "Location", "loc": "GUILDHALL", "tier": 1,
+                                  "profession": "PLANTER"}]                # one waits: kept for it
+    assert not any(p.action.get("type") == "cancel_project" for p in by_rule(plan(s, Memory())[0], "petition_retarget"))
+    s["projects"]["open"] = []
     s["settings"]["answer_locations"] = False
     props = plan(s, Memory())[0]
     assert not by_rule(props, "petition_build") and not by_rule(props, "petition_answer")
