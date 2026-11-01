@@ -800,6 +800,232 @@ end
 -- 34 free cups lay in store while 63 went barefoot and 149 drank without a
 -- cup): {n, kinds = {subtype = n}, races = {maker race = n}, stored = {in a
 -- container, loose}}.
+-- (0.104.168) WHY THE USED CUPS AREN'T HAULED. Teacheroar, 1 Nov: 34 free
+-- cups lay loose in a dining hall (10) and a meeting hall (24) for hours with
+-- 79 of 107 finished goods tiles free, 137 citizens drinking without a cup
+-- (dwarves drink only from cups on a stockpile). For each free cup off the
+-- piles, the first reason found (free_cups_detail.why):
+--   location            in a zone of a location (a tavern keeps its own cups:
+--                       DF doesn't haul them away; why_locations by type)
+--   pile_refuses        no finished goods pile takes goblets at all
+--   pile_refuses_material  piles take goblets, not of this material
+--   pile_refuses_quality   ... not of this quality
+--   links_only          the only piles that take it take from links only
+--   no_room             the piles that take it are full
+--   unreachable         on a tile walked to by no citizen
+--   should_haul         nothing found: DF should haul it (a hauling backlog)
+-- And every cup's flags (free_cups_detail.flags: forbid, owned, dump...), so
+-- what is still unknown can be read from the next report in the game.
+CUP_FLAGS = {'forbid', 'owned', 'dump', 'in_job', 'in_building', 'in_inventory', 'trader', 'on_ground', 'hidden'}
+-- DF's finished goods "other materials" (DFHack's stockpiles plugin order):
+-- wood first, the glasses at 11-13
+CUP_OTHER_MATS = {wood = 0, green_glass = 11, clear_glass = 12, crystal_glass = 13}
+
+-- The cup's material: {kind = 'inorganic' | 'wood' | <glass> | 'other', index}.
+function cup_material(it)
+    local out = {kind = 'other'}
+    pcall(function()
+        local mi = dfhack.matinfo.decode(it)
+        if not mi then return end
+        if mi.inorganic then out.kind, out.index = 'inorganic', mi.index return end
+        local tok = tostring(mi:getToken() or '')
+        if tok:find('GLASS_GREEN') then out.kind = 'green_glass'
+        elseif tok:find('GLASS_CLEAR') then out.kind = 'clear_glass'
+        elseif tok:find('GLASS_CRYSTAL') then out.kind = 'crystal_glass'
+        elseif mi.plant and mi.material and mi.material.flags.WOOD then out.kind = 'wood' end
+    end)
+    return out
+end
+
+-- The fort's finished goods piles: {b, takes_goblets, links_only, free}.
+function cup_piles()
+    local out = {}
+    pcall(function()
+        local gob = df.item_type.GOBLET
+        for _, sp in ipairs(df.global.world.buildings.other.STOCKPILE) do
+            local okf, on = pcall(function() return sp.settings.flags.finished_goods end)
+            if okf and on then
+                local p = {b = sp, free = 0}
+                pcall(function() p.takes_goblets = sp.settings.finished_goods.type[gob] and true or false end)
+                pcall(function() p.links_only = (sp.use_links_only == true or (tonumber(sp.use_links_only) or 0) ~= 0) end)
+                pcall(function()
+                    for y = sp.y1, sp.y2 do
+                        for x = sp.x1, sp.x2 do
+                            local des, occ = dfhack.maps.getTileFlags(x, y, sp.z)
+                            if des and des.pile and not occ.item then p.free = p.free + 1 end
+                        end
+                    end
+                end)
+                table.insert(out, p)
+            end
+        end
+    end)
+    return out
+end
+
+-- Does this pile take this cup? true, or false and why.
+function pile_takes_cup(p, it, mat)
+    if not p.takes_goblets then return false, 'pile_refuses' end
+    local fg = p.b.settings.finished_goods
+    local okm, matok = pcall(function()
+        if mat.kind == 'inorganic' then return fg.mats[mat.index] and true or false end
+        local i = CUP_OTHER_MATS[mat.kind]
+        if i then return fg.other_mats[i] and true or false end
+        return true                       -- (a material not known here: not held against it)
+    end)
+    if okm and matok == false then return false, 'pile_refuses_material' end
+    local okq, qok = pcall(function() return fg.quality_core[it:getQuality()] and true or false end)
+    if okq and qok == false then return false, 'pile_refuses_quality' end
+    if p.links_only then return false, 'links_only' end
+    if p.free <= 0 then return false, 'no_room' end
+    return true
+end
+
+-- The location (its type) whose zone holds this tile, or nil.
+function location_at(pos)
+    local t
+    pcall(function()
+        for _, zn in ipairs(dfhack.buildings.findCivzonesAt(pos) or {}) do
+            local lid = zn.location_id
+            if lid and lid >= 0 and not t then
+                t = 'location'
+                pcall(function()
+                    local site = dfhack.world.getCurrentSite()
+                    for _, b in ipairs(site.buildings) do
+                        if b.id == lid then t = df.abstract_building_type[b:getType()] or 'location' end
+                    end
+                end)
+            end
+        end
+    end)
+    return t
+end
+
+function cup_citizen_groups()
+    local g = {}
+    pcall(function()
+        for _, u in ipairs(dfhack.units.getCitizens(true)) do
+            local okg, w = pcall(dfhack.maps.getWalkableGroup, xyz2pos(dfhack.units.getPosition(u)))
+            if okg and w and w ~= 0 then g[w] = true end
+        end
+    end)
+    return g
+end
+
+local CUP_RANK = {pile_refuses = 1, pile_refuses_material = 2, pile_refuses_quality = 3, links_only = 4, no_room = 5}
+
+-- Why this free cup (off the piles, at pos) isn't hauled: the first reason
+-- (and, for a location, its type).
+function cup_why(it, pos, ctx)
+    local loc = location_at(pos)
+    if loc then return 'location', loc end
+    local mat = cup_material(it)
+    local best, rank = nil, 0
+    for _, p in ipairs(ctx.piles) do
+        local ok, why = pile_takes_cup(p, it, mat)
+        if ok then rank = 99 break end
+        if (CUP_RANK[why] or 0) > rank then best, rank = why, CUP_RANK[why] end
+    end
+    if rank ~= 99 then return best or 'pile_refuses' end
+    if next(ctx.groups) then
+        local okg, w = pcall(dfhack.maps.getWalkableGroup, pos)
+        if okg and w and w ~= 0 and not ctx.groups[w] then return 'unreachable' end
+    end
+    return 'should_haul'
+end
+
+-- (0.104.168) What the AI can fix of it itself (`accept_cups` in the bridge):
+-- when loose cups lie that no pile takes, the finished goods pile with the
+-- most room is set to take goblets (and those cups' materials and quality);
+-- loose forbidden cups in a hall (a zone, not a location's) are unforbidden.
+-- Never the cups of a location (a tavern's), on a pile, or held by anything.
+function accept_cups(dry_run)
+    local ok, list = pcall(function() return df.global.world.items.other.GOBLET end)
+    if not ok or not list then return {ok = false, error = 'no item list for cups'} end
+    local piles = cup_piles()
+    local out = {ok = true, dry_run = dry_run or nil, unforbidden = 0, piles_set = 0, materials_set = 0}
+    local refused, forbidden = {}, {}
+    for _, it in ipairs(list) do
+        pcall(function()
+            local f = it.flags
+            if f.removed or f.garbage_collect or f.artifact or f.owned or f.in_inventory or f.in_job or f.trader
+                    or f.in_building or f.dump or f.construction or not f.on_ground then return end
+            local x, y, z = dfhack.items.getPosition(it)
+            local pos = type(x) == 'number' and xyz2pos(x, y, z) or x
+            local okb, b = pcall(dfhack.buildings.findAtTile, pos)
+            if okb and b and b:getType() == df.building_type.Stockpile then return end
+            if location_at(pos) then return end
+            if f.forbid then
+                local zs = dfhack.buildings.findCivzonesAt(pos)
+                if zs and #zs > 0 and dfhack.maps.getWalkableGroup(pos) ~= 0 then table.insert(forbidden, it) end
+                return
+            end
+            local mat = cup_material(it)
+            local takes = false
+            for _, p in ipairs(piles) do
+                local okp, yes, why = pcall(pile_takes_cup, p, it, mat)
+                if okp and (yes or why == 'no_room' or why == 'links_only') then takes = true break end
+            end
+            if not takes then table.insert(refused, {it = it, mat = mat}) end
+        end)
+    end
+    out.cups_refused, out.cups_forbidden = #refused, #forbidden
+    if #refused == 0 and #forbidden == 0 then
+        return {ok = false, rejected = true,
+                error = 'no loose cup is refused by every finished goods pile, nor forbidden in a hall'}
+    end
+    local best
+    if #refused > 0 then
+        for _, p in ipairs(piles) do
+            if not p.links_only and p.free > 0 and (not best or p.free > best.free) then best = p end
+        end
+        if not best and #forbidden == 0 then
+            return {ok = false, rejected = true,
+                    error = ('%d loose cup(s) no pile takes, and no finished goods pile with room to take them')
+                            :format(#refused)}
+        end
+    end
+    if best then
+        out.pile_id = best.b.id
+        if dry_run then
+            out.piles_set = best.takes_goblets and 0 or 1
+        else
+            local fg = best.b.settings.finished_goods
+            pcall(function()
+                if not fg.type[df.item_type.GOBLET] then fg.type[df.item_type.GOBLET] = true; out.piles_set = 1 end
+            end)
+            local seen = {}
+            for _, r in ipairs(refused) do
+                local key = r.mat.kind .. tostring(r.mat.index or '')
+                if not seen[key] then
+                    seen[key] = true
+                    pcall(function()
+                        if r.mat.kind == 'inorganic' then
+                            if not fg.mats[r.mat.index] then
+                                fg.mats[r.mat.index] = true; out.materials_set = out.materials_set + 1
+                            end
+                        elseif CUP_OTHER_MATS[r.mat.kind] and not fg.other_mats[CUP_OTHER_MATS[r.mat.kind]] then
+                            fg.other_mats[CUP_OTHER_MATS[r.mat.kind]] = true; out.materials_set = out.materials_set + 1
+                        end
+                    end)
+                end
+                pcall(function()
+                    local q = r.it:getQuality()
+                    if not fg.quality_core[q] then fg.quality_core[q] = true; out.materials_set = out.materials_set + 1 end
+                end)
+            end
+        end
+    end
+    if dry_run then
+        out.unforbidden = #forbidden
+    else
+        for _, it in ipairs(forbidden) do
+            pcall(function() it.flags.forbid = false; out.unforbidden = out.unforbidden + 1 end)
+        end
+    end
+    return out
+end
+
 local function bump(t, k) k = tostring(k or '?'); t[k] = (t[k] or 0) + 1 end
 
 function free_items_count(kind, detail)
@@ -807,7 +1033,35 @@ function free_items_count(kind, detail)
     if not ok or not list then return nil end
     local n = 0
     local d = detail and {kinds = {}, races = {}, stored = {}, wear = {}, place = {}} or nil
+    -- (0.104.168) for cups: why each free one off the piles isn't hauled, and every cup's flags
+    local cup_ctx
+    if d and kind == 'GOBLET' then
+        cup_ctx = {piles = cup_piles(), groups = cup_citizen_groups()}
+        d.why, d.why_locations, d.flags, d.mats, d.why_at = {}, {}, {}, {}, {}
+        d.piles = {finished_goods = #cup_ctx.piles, take_goblets = 0}
+        for _, p in ipairs(cup_ctx.piles) do
+            if p.takes_goblets then d.piles.take_goblets = d.piles.take_goblets + 1 end
+        end
+    end
     for _, it in ipairs(list) do
+        if cup_ctx then
+            pcall(function()
+                if it.flags.removed or it.flags.garbage_collect then return end
+                for _, fl in ipairs(CUP_FLAGS) do
+                    local okv, v = pcall(function() return it.flags[fl] end)
+                    if okv and v then bump(d.flags, fl) end
+                end
+                -- forbidden, loose in a hall (a zone, not a location's): accept_cups frees these
+                if it.flags.forbid and it.flags.on_ground and not it.flags.in_inventory then
+                    local x, y, z = dfhack.items.getPosition(it)
+                    local pos = type(x) == 'number' and xyz2pos(x, y, z) or x
+                    local zs = dfhack.buildings.findCivzonesAt(pos)
+                    if zs and #zs > 0 and not location_at(pos) then
+                        d.forbidden_in_halls = (d.forbidden_in_halls or 0) + 1
+                    end
+                end
+            end)
+        end
         local okf, free = pcall(function()
             local f = it.flags
             return not (f.removed or f.garbage_collect or f.artifact or f.owned or f.in_inventory or f.forbid
@@ -856,6 +1110,17 @@ function free_items_count(kind, detail)
                     if okb and b and b:getType() == df.building_type.Stockpile then bump(d.place, 'stockpile')
                     elseif zt then bump(d.place, 'zone ' .. tostring(zt))
                     else bump(d.place, 'elsewhere') end
+                    -- (0.104.168) a cup off the piles: why DF leaves it there
+                    if cup_ctx and not (okb and b and b:getType() == df.building_type.Stockpile) then
+                        bump(d.mats, cup_material(it).kind)
+                        local okw, why, loc = pcall(cup_why, it, pos, cup_ctx)
+                        why = okw and why or 'unknown'
+                        bump(d.why, why)
+                        if loc then bump(d.why_locations, loc) end
+                        if #d.why_at < 4 then
+                            table.insert(d.why_at, ('%s at x%d y%d z%d'):format(why, pos.x, pos.y, pos.z))
+                        end
+                    end
                     if not (okb and b and b:getType() == df.building_type.Stockpile) then
                         d.elsewhere_at = d.elsewhere_at or {}
                         if #d.elsewhere_at < 4 then

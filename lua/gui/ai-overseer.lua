@@ -339,6 +339,20 @@ function RulesPage:init()
             end,
         })
     end
+    -- (0.104.168) the hospital burrow's switch, beside the Hospital level (the
+    -- right-hand column is free; the rows below are full), with its help line
+    local hrow = 2
+    for i, l in ipairs(S.OPTIONAL_LEVELS) do if l.id == 'hospital' then hrow = i end end
+    table.insert(views, widgets.ToggleHotkeyLabel{
+        view_id = 'hospital_burrow',
+        frame = {t = 4 + hrow, l = 56, w = 62},
+        label = 'Keep the wounded in an "AI hospital" burrow:',
+        label_width = 46,
+        initial_option = p.settings.hospital_burrow ~= false,
+        on_change = function(v) p:set_field('hospital_burrow', v) end,
+    })
+    table.insert(views, widgets.Label{frame = {t = 5 + hrow, l = 58}, text = {
+        {text = 'patients stay by the beds, drink and food; off: all let out', pen = COLOR_GREY}}})
     local t = 6 + #S.OPTIONAL_LEVELS
     table.insert(views, widgets.ToggleHotkeyLabel{
         view_id = 'order_supplies',
@@ -543,6 +557,7 @@ function RulesPage:refresh()
     self.subviews.camera:setOption(s.camera, false)
     self.subviews.camera_pace:setOption(s.camera_pace, false)
     self.subviews.answer_locations:setOption(s.answer_locations, false)
+    self.subviews.hospital_burrow:setOption(s.hospital_burrow ~= false, false)     -- (0.104.168)
     self.subviews.engrave_slabs:setOption(s.engrave_slabs, false)
     self.subviews.import_smelting:setOption(s.import_smelting, false)
     self.subviews.alert_shelter:setOption(s.alert_shelter, false)

@@ -987,8 +987,17 @@ def _cistern_rule(s: dict, memory, cfg: dict, proposals: list, notes: list, rule
                               "Look at the cistern's walls and roof; the AI won't open it again until you rebuild it")
             return
         if st.get("unsealed"):
-            ask_player(notes, f"the cistern isn't closed where its water would go ({st['unsealed']}): wall it up "
-                              "(or build a floor there); the AI lets no water in until it is")
+            # (0.104.168) the AI walls the gaps up itself (cistern_step); the
+            # player is asked only for a gap it can't close (water, a stair,
+            # a wall that would cut a way), with the bridge's why
+            if st.get("unsealed_why"):
+                ask_player(notes, f"the cistern isn't closed where its water would go ({st['unsealed_why']}): wall it "
+                                  "up (or build a floor there); the AI lets no water in until it is")
+            else:
+                notes.append(f"the cistern isn't closed where its water would go ({st['unsealed']}): the AI builds "
+                             "a wall or floor there itself"
+                             + (f" ({st['sealing']} placed, being built)" if st.get("sealing") else "")
+                             + " and lets no water in until it is")
         if int(st.get("v") or 1) < 2:
             proposals.append(Proposal("cistern", dict(step),
                                       "the cistern is of the first design (its water could reach the fort under "

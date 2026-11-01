@@ -3658,6 +3658,9 @@ end
 -- ring (rock but the well's stair and the corner or tunnel), rock under the
 -- room, a floor or wall over it but the well; the tunnel and shaft rock all
 -- round. Returns ok, where (in words) when not.
+-- (0.104.168) and, when not, every open spot found: {x, y, z, fix = 'wall' |
+-- 'floor' | nil (nothing the AI can build there), words}, so the AI can close
+-- them itself (cistern_close_gaps); `where` is still the first.
 function cistern_sealed(p, stage)
     local d_stage_hole = stage == 'hole' or stage == 'well' or stage == 'done'
     local c, z = p.cistern, p.cistern.z
@@ -3677,20 +3680,28 @@ function cistern_sealed(p, stage)
             or (t and t.liquid and zz == zi and x == p.water.x and y == p.water.y)
     end
     local function where(x, y, zz) return ('x%d y%d elevation %d'):format(x, y, ez(zz)) end
+    -- (0.104.168) every gap collected (each tile once), not just the first
+    local gaps, seen_gap = {}, {}
+    local function gap(fix, words, x, y, zz)
+        local k = x .. ',' .. y .. ',' .. zz
+        if seen_gap[k] then return end
+        seen_gap[k] = true
+        table.insert(gaps, {x = x, y = y, z = zz, fix = fix, words = words .. where(x, y, zz)})
+    end
     -- the room: its ring and what lies under and over it
     for yy = c.y1 - 1, c.y2 + 1 do
         for xx = c.x1 - 1, c.x2 + 1 do
             local inside = xx >= c.x1 and xx <= c.x2 and yy >= c.y1 and yy <= c.y2
-            if not inside and not closed(xx, yy, z) then return false, 'the cistern\'s wall is open at ' .. where(xx, yy, z) end
+            if not inside and not closed(xx, yy, z) then gap('wall', 'the cistern\'s wall is open at ', xx, yy, z) end
             if inside then
                 local here = tile_info(xx, yy, z)
                 if here and (here.shape == 'EMPTY' or here.shape == 'RAMP_TOP' or here.shape == 'STAIR_DOWN'
                         or here.shape == 'STAIR_UPDOWN' or here.shape == 'RAMP')
                         and not (xx == p.well.x and yy == p.well.y and d_stage_hole) then
-                    return false, 'the cistern\'s floor is open at ' .. where(xx, yy, z)
+                    gap('floor', 'the cistern\'s floor is open at ', xx, yy, z)
                 end
                 if not (xx == p.well.x and yy == p.well.y) and not capped(tile_info(xx, yy, z + 1)) then
-                    return false, 'the cistern\'s roof is open at ' .. where(xx, yy, z + 1)
+                    gap('floor', 'the cistern\'s roof is open at ', xx, yy, z + 1)
                 end
             end
         end
@@ -3707,38 +3718,39 @@ function cistern_sealed(p, stage)
                 -- (water beside the plug's neighbours is the source itself)
                 local t = tile_info(nx, ny, zz)
                 if not (t and t.liquid and math.abs(nx - p.plug.x) <= 1 and math.abs(ny - p.plug.y) <= 1) then
-                    return false, 'the cistern\'s tunnel is open at ' .. where(nx, ny, zz)
+                    gap('wall', 'the cistern\'s tunnel is open at ', nx, ny, zz)
                 end
             end
         end
         if p.shaft and not capped(tile_info(q.x, q.y, zi + 1)) then
-            return false, 'the tunnel\'s roof is open at ' .. where(q.x, q.y, zi + 1)
+            gap('floor', 'the tunnel\'s roof is open at ', q.x, q.y, zi + 1)
         end
     end
     -- the tunnel's own tiles: dug floors (a channel or a stair would let it down)
     for i = 1, #path - 1 do
         local q = tile_info(path[i].x, path[i].y, zi)
         if q and (q.shape == 'EMPTY' or q.shape == 'RAMP_TOP' or q.shape == 'STAIR_DOWN' or q.shape == 'STAIR_UPDOWN') then
-            return false, 'the cistern\'s tunnel floor is open at ' .. where(path[i].x, path[i].y, zi)
+            gap('floor', 'the cistern\'s tunnel floor is open at ', path[i].x, path[i].y, zi)
         end
     end
     -- the shaft: rock all round on every level, the corner diagonal at the bottom
     if p.shaft then
         local foot = tile_info(p.shaft.x, p.shaft.y, z)
         if foot and foot.shape ~= 'STAIR_UP' and foot.shape ~= 'WALL' then
-            return false, 'the shaft\'s foot is open below at ' .. where(p.shaft.x, p.shaft.y, z)
+            gap(nil, 'the shaft\'s foot is open below at ', p.shaft.x, p.shaft.y, z)
         end
         for zz = z, zi do
             for _, e in ipairs(DIR8) do
                 local nx, ny = p.shaft.x + e[1], p.shaft.y + e[2]
                 local ok_ = closed(nx, ny, zz) or (zz == z and p.corner and nx == p.corner.x and ny == p.corner.y)
-                if not ok_ then return false, 'the cistern\'s shaft is open at ' .. where(nx, ny, zz) end
+                if not ok_ then gap('wall', 'the cistern\'s shaft is open at ', nx, ny, zz) end
             end
         end
         if not capped(tile_info(p.shaft.x, p.shaft.y, zi + 1)) then
-            return false, 'the shaft\'s top is open at ' .. where(p.shaft.x, p.shaft.y, zi + 1)
+            gap('floor', 'the shaft\'s top is open at ', p.shaft.x, p.shaft.y, zi + 1)
         end
     end
+    if #gaps > 0 then return false, gaps[1].words, gaps end
     return true
 end
 
@@ -3863,7 +3875,15 @@ function cistern_status()
             elevation = ez(p.cistern.z), x = p.well.x, y = p.well.y,
             -- (0.104.145) the design, where the water comes from, a leak seen
             v = p.v or 1, intake_elevation = p.intake_z and ez(p.intake_z) or nil, shaft = p.shaft and true or nil,
-            source_why = p.source_why, leak = d.leak, unsealed = d.unsealed}
+            source_why = p.source_why, leak = d.leak, unsealed = d.unsealed,
+            -- (0.104.168) why the AI can't close a gap itself (the player's then),
+            -- and how many walls/floors it placed to close them
+            unsealed_why = d.unsealed and d.unsealed_why or nil, sealing = nil}
+    if d.unsealed and type(d.sealing) == 'table' then
+        local n = 0
+        for _ in pairs(d.sealing) do n = n + 1 end
+        out.sealing = n > 0 and n or nil
+    end
     if d.stage == 'filling' or d.stage == 'plug' then
         local okp, path = pcall(cistern_path, p)
         out.path = okp and path or nil
@@ -4536,6 +4556,167 @@ function forbid_items_on(tiles, z)
     return n
 end
 
+-- (0.104.168) THE PLAYER'S RULE: what the AI can set up in the game it does
+-- itself. Teacheroar's cistern waited 20+ steps on "the cistern's shaft is
+-- open at x105 y128" for the player to wall it. Now the AI builds the wall
+-- (or, over the room, the tunnel and the shaft's top, a floor) at each open
+-- spot itself, but never:
+--   - in water, on a building, or on a stair or a ramp (a way up or down the
+--     dwarves may walk: the player decides those);
+--   - where the wall would cut a way: the open tile's walkable neighbours
+--     (the cistern's own tiles left out) must still meet round it without it;
+--   - with anyone on the tile, or in a hollow the wall would close off (a
+--     pocket with no way off its level but through the gap).
+-- Any open tile beside the shaft, the tunnel or the room lets the water out
+-- (the shaft and tunnel are under pressure), so every gap is one to close.
+CISTERN_GAP_WALL_ON = {FLOOR = true, EMPTY = true, PEBBLES = true, BOULDER = true, SHRUB = true, SAPLING = true}
+CISTERN_GAP_POCKET_MAX = 400       -- tiles looked at beyond a gap (more: it is the fort, not a pocket)
+
+-- Is a construction (a wall or floor being built, by the AI or the player) on this tile?
+function construction_at(x, y, z)
+    local ok, yes = pcall(function()
+        local b = dfhack.buildings.findAtTile(xyz2pos(x, y, z))
+        return b ~= nil and b:getType() == df.building_type.Construction
+    end)
+    return ok and yes == true
+end
+
+-- Can the AI close this gap, and how: 'build' (with the quickfort text),
+-- 'building' (its construction already placed), 'wait' (someone is in the
+-- way) or 'no' (the player's), with why.
+function cistern_gap_plan(p, g, inside_set)
+    local t = tile_info(g.x, g.y, g.z)
+    if not t then return 'no', 'off the map' end
+    if t.liquid then return 'no', 'water stands there' end
+    if t.building then return 'building', 'a construction or building stands there' end
+    if not g.fix then return 'no', 'only a stair or a dug way can be there' end
+    local sh = tostring(t.shape)
+    if g.fix == 'floor' and sh ~= 'EMPTY' then
+        return 'no', ('it is %s (a way the dwarves walk, or nothing a floor can be built on)'):format(sh:lower())
+    end
+    if g.fix == 'wall' and not CISTERN_GAP_WALL_ON[sh] then
+        return 'no', ('it is %s (a way up or down the dwarves may walk)'):format(sh:lower())
+    end
+    if units_on_tiles({{x = g.x, y = g.y}}, g.z) > 0 then return 'wait', 'a creature stands there' end
+    if g.fix == 'wall' then
+        -- the gap's open neighbours on its level, the cistern's own tiles left out
+        local function key(x, y) return x .. ',' .. y end
+        local function open_at(x, y)
+            if x == g.x and y == g.y then return false end
+            if inside_set[key(x, y) .. ',' .. g.z] then return false end
+            local n = tile_info(x, y, g.z)
+            return n ~= nil and n.shape ~= 'WALL'
+        end
+        local starts = {}
+        for _, e in ipairs(DIR8) do
+            if open_at(g.x + e[1], g.y + e[2]) then table.insert(starts, {x = g.x + e[1], y = g.y + e[2]}) end
+        end
+        if #starts > 0 then
+            -- one walk from the first neighbour: it must meet every other one
+            -- (else the wall cuts a way), and if it ends small with no way off
+            -- the level it is a hollow: nobody may be in it
+            local seen, queue, tiles, way_off, capped_ = {[key(starts[1].x, starts[1].y)] = true}, {starts[1]}, {}, false, false
+            local i = 1
+            while i <= #queue do
+                local q = queue[i]; i = i + 1
+                table.insert(tiles, q)
+                if #tiles > CISTERN_GAP_POCKET_MAX then capped_ = true break end
+                local qt = tile_info(q.x, q.y, g.z)
+                if qt and (tostring(qt.shape):find('^STAIR') or tostring(qt.shape):find('^RAMP')
+                        or qt.shape == 'EMPTY' or qt.outside) then
+                    way_off = true
+                end
+                for _, e in ipairs(DIR8) do
+                    local nx, ny = q.x + e[1], q.y + e[2]
+                    if not seen[key(nx, ny)] and open_at(nx, ny) then
+                        seen[key(nx, ny)] = true
+                        table.insert(queue, {x = nx, y = ny})
+                    end
+                end
+            end
+            if not capped_ then
+                for _, s0 in ipairs(starts) do
+                    if not seen[key(s0.x, s0.y)] then return 'no', 'a wall there would cut a way the dwarves walk' end
+                end
+                if not way_off and units_on_tiles(tiles, g.z) > 0 then
+                    return 'wait', 'someone is in the hollow beyond it (the wall would shut them in)'
+                end
+            else
+                -- a big open area: its neighbours must still meet near the gap
+                -- (within the tiles walked), or the wall may cut a way
+                for _, s0 in ipairs(starts) do
+                    if not seen[key(s0.x, s0.y)] then return 'no', 'a wall there could cut a way the dwarves walk' end
+                end
+            end
+        end
+    end
+    return 'build', g.fix == 'wall' and 'Cw' or 'Cf'
+end
+
+-- Close what the AI can of the cistern's gaps (cistern_sealed's list).
+-- Returns the step's answer: a wait while walls/floors are being built, or
+-- needs_player (with why) for a gap the AI must leave to the player.
+function cistern_close_gaps(d, p, gaps, dry_run, save)
+    local c, z = p.cistern, p.cistern.z
+    local zi = p.intake_z or z
+    local inside_set = {}
+    for yy = c.y1, c.y2 do for xx = c.x1, c.x2 do inside_set[xx .. ',' .. yy .. ',' .. z] = true end end
+    for _, t in ipairs(p.tunnel_path or {}) do inside_set[t.x .. ',' .. t.y .. ',' .. zi] = true end
+    if p.shaft then for zz = z, zi do inside_set[p.shaft.x .. ',' .. p.shaft.y .. ',' .. zz] = true end end
+    local placed, building, waiting, refused = {}, 0, nil, nil
+    local by_z = {}
+    for _, g in ipairs(gaps or {}) do
+        local how, what = cistern_gap_plan(p, g, inside_set)
+        local mine = (d.sealing and d.sealing[g.x .. ',' .. g.y .. ',' .. g.z]) or construction_at(g.x, g.y, g.z)
+        if how == 'building' and mine then
+            building = building + 1
+        elseif how == 'building' or how == 'no' then
+            refused = refused or (g.words .. ': ' .. what)
+        elseif how == 'wait' then
+            waiting = waiting or (g.words .. ': ' .. what)
+        else
+            by_z[g.z] = by_z[g.z] or {}
+            table.insert(by_z[g.z], {x = g.x, y = g.y, z = g.z, text = what, g = g})
+        end
+    end
+    for zz, cells in pairs(by_z) do
+        for _, cell in ipairs(cells) do
+            if dry_run or designate({{x = cell.x, y = cell.y, text = cell.text}}, zz, 'build') then
+                table.insert(placed, cell)
+            else
+                refused = refused or (cell.g.words .. ': the game would not place a '
+                                      .. (cell.text == 'Cw' and 'wall' or 'floor') .. ' there')
+            end
+        end
+    end
+    if not dry_run then
+        d.sealing = d.sealing or {}
+        for _, cell in ipairs(placed) do d.sealing[cell.x .. ',' .. cell.y .. ',' .. cell.z] = cell.text end
+        d.unsealed_why = refused
+        d.unsealed = gaps and gaps[1] and gaps[1].words or d.unsealed
+        save(d)
+    end
+    local walls, floors = 0, 0
+    for _, cell in ipairs(placed) do if cell.text == 'Cw' then walls = walls + 1 else floors = floors + 1 end end
+    local words = {}
+    if walls > 0 then table.insert(words, walls .. ' wall(s)') end
+    if floors > 0 then table.insert(words, floors .. ' floor(s)') end
+    local where = gaps and gaps[1] and gaps[1].words or '?'
+    if refused then
+        return {ok = false, rejected = true, needs_player = true, unsealed = where,
+                unsealed_why = refused, walls = walls, floors = floors, dry_run = dry_run or nil,
+                error = 'the cistern is not closed where the water goes (' .. refused .. '): the AI can\'t close that itself'}
+    end
+    if #placed > 0 then
+        return {ok = true, stage = d.stage, sealing = true, walls = walls, floors = floors, dry_run = dry_run or nil,
+                error = ('the cistern is not closed where the water goes (%s): the AI builds %s there first')
+                        :format(where, table.concat(words, ' and '))}
+    end
+    return {ok = false, rejected = true, waiting = true, stage = d.stage, unsealed = where,
+            error = 'the cistern is not closed where the water goes (' .. where .. '): '
+                    .. (waiting or (building .. ' wall(s)/floor(s) the AI placed are being built'))}
+end
+
 -- (0.104.144) THE PLAYER, 31 Oct 20:51: the cistern as built doesn't work,
 -- and working it would flood the fort. Until a new design: its floodgate is
 -- never opened by the AI (it may still be shut), and no new cistern is begun.
@@ -4729,12 +4910,13 @@ function cistern_step(dry_run, prefs)
         end
         if CISTERN_HOLD then return {ok = false, rejected = true, held = true, error = CISTERN_HOLD_WHY} end
         -- (0.104.145) closed all round, and its source still there, before any water
-        local sealed, where = cistern_sealed(p, d.stage)
+        local sealed, where, gaps = cistern_sealed(p, d.stage)
         if not dry_run and d.unsealed ~= (where or nil) then d.unsealed = where; save_cistern(d) end
         if not sealed then
-            return {ok = false, rejected = true, needs_player = true, unsealed = where,
-                    error = 'the cistern is not closed where the water goes (' .. where .. '): it stays shut'}
+            -- (0.104.168) the AI walls it up itself where it safely can
+            return cistern_close_gaps(d, p, gaps, dry_run, save_cistern)
         end
+        if not dry_run and (d.sealing or d.unsealed_why) then d.sealing, d.unsealed_why = nil, nil; save_cistern(d) end
         if not still_water(tile_info(p.water.x, p.water.y, zi)) then
             return {ok = false, rejected = true, error = 'the cistern\'s source is gone (no still water beside the plug)'}
         end
@@ -4763,12 +4945,13 @@ function cistern_step(dry_run, prefs)
         if n > 0 then
             return wait(('%d creature(s) in the cistern or its tunnel: the plug waits until it is empty'):format(n))
         end
-        local sealed, where = cistern_sealed(p, d.stage)
+        local sealed, where, gaps = cistern_sealed(p, d.stage)
         if not dry_run and d.unsealed ~= (where or nil) then d.unsealed = where; save_cistern(d) end
         if not sealed then
-            return {ok = false, rejected = true, needs_player = true, unsealed = where,
-                    error = 'the cistern is not closed where the water goes (' .. where .. '): the plug waits'}
+            -- (0.104.168) the AI walls it up itself where it safely can; the plug waits
+            return cistern_close_gaps(d, p, gaps, dry_run, save_cistern)
         end
+        if not dry_run and (d.sealing or d.unsealed_why) then d.sealing, d.unsealed_why = nil, nil; save_cistern(d) end
         if dry_run then return {ok = true, dry_run = true, stage = 'plug'} end
         if zi == z then
             forbid_items_on(inside, z)
@@ -4870,6 +5053,14 @@ function cistern_step(dry_run, prefs)
                     if lever_pull_pending(d.lever_id) then
                         return wait('a dwarf is on the way to pull the cistern\'s lever (reopening it)')
                     end
+                    -- (0.104.168) never reopened while it isn't closed where the water
+                    -- goes (the gate may have been shut for exactly that): closed first
+                    local sealed, where, gaps = cistern_sealed(p, d.stage)
+                    if not sealed then
+                        d.unsealed = where; save_cistern(d)
+                        return cistern_close_gaps(d, p, gaps, dry_run, save_cistern)
+                    end
+                    d.unsealed, d.sealing, d.unsealed_why = nil, nil, nil
                     local ok, out = pull(d.lever_id)
                     if not ok then return {ok = false, error = 'lever pull failed: ' .. tostring(out)} end
                     d.reopens, d.shut_seen = (d.reopens or 0) + 1, nil
@@ -4970,11 +5161,14 @@ function cistern_step(dry_run, prefs)
     -- done: keep it topped up
     if gate and gate.built and d.lever_id then
         if gate.closed and st.depth < CISTERN_LOW and not CISTERN_HOLD then
-            local sealed, where = cistern_sealed(p, d.stage)
+            local sealed, where, gaps = cistern_sealed(p, d.stage)
             if not sealed then
                 if not dry_run then d.unsealed = where; save_cistern(d) end
-                return {ok = false, rejected = true, needs_player = true, unsealed = where,
-                        error = 'the cistern is not closed where the water goes (' .. where .. '): not refilled'}
+                -- (0.104.168) the AI walls it up itself where it safely can; not refilled till then
+                return cistern_close_gaps(d, p, gaps, dry_run, save_cistern)
+            end
+            if not dry_run and (d.unsealed or d.sealing or d.unsealed_why) then
+                d.unsealed, d.sealing, d.unsealed_why = nil, nil, nil; save_cistern(d)
             end
             if dry_run then return {ok = true, dry_run = true, refill = true} end
             local ok, out, pending = pull(d.lever_id)

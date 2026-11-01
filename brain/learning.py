@@ -94,6 +94,7 @@ RULE_SUBJECTS = {
     "pasture_animals": ["pasture:"], "fortify_entrances": ["gate:"], "build_gate_doors": ["gate:doors"],
     "fill_squads": ["squad:fill"], "train_squads": ["squad:train"], "import_smelting": ["orders:smelting", "order:smelt_ore"],
     "set_pop_cap": [], "mood_workshops": [], "order_supplies": [], "give_trinkets": [], "water_works": [], "expel_vampires": [], "accept_visitors": [], "answer_locations": [],
+    "hospital_burrow": [],      # (0.104.168)
 }
 for _k in ("tombs", "hospital", "tavern", "library", "barracks", "temple"):
     RULE_SUBJECTS[f"levels.{_k}"] = [f"level:{_k}"]

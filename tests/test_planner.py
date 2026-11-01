@@ -8289,6 +8289,50 @@ def _():
 
 
 
+@test("cistern gaps (0.104.168): an open spot the AI walls itself is a note and the step goes on; only one it can't close asks the player")
+def _():
+    s = fort()
+    st = {"v": 2, "stage": "linking", "gate": "shut", "depth": 0, "lever": "built", "linked": True,
+          "unsealed": "the cistern's shaft is open at x105 y128 elevation 38"}
+    s["water"] = dict(s.get("water") or {}, cistern_status=dict(st))
+    props, notes = plan(copy.deepcopy(s), Memory())
+    assert not any(n.startswith(planner.NEEDS_YOU) and "cistern" in n for n in notes), notes
+    assert any("the AI builds a wall or floor there itself" in n for n in notes), notes
+    c = by_rule(props, "cistern")
+    assert c and c[0].action["type"] == "cistern_step" and not c[0].action.get("shut"), [x.action for x in c]
+    s["water"]["cistern_status"] = dict(st, unsealed_why="the cistern's shaft is open at x105 y128 elevation 38: "
+                                                         "it is stair_updown (a way up or down the dwarves may walk)")
+    props, notes = plan(copy.deepcopy(s), Memory())
+    assert any(n.startswith(planner.NEEDS_YOU) and "stair_updown" in n for n in notes), notes
+
+
+@test("cups (0.104.168): loose cups no pile takes -> accept_cups; forbidden ones in a hall -> accept_cups; a tavern's only said")
+def _():
+    s = fort()
+    cl = s.setdefault("needs", {}).setdefault("clothing", {"citizens": 140})
+    cl["free_cups"] = 34
+    cl["free_cups_detail"] = {"n": 34, "place": {"zone DiningHall": 10, "zone MeetingHall": 24},
+                              "why": {"pile_refuses": 10, "location": 24}, "why_locations": {"INN_TAVERN": 24},
+                              "flags": {"on_ground": 34}}
+    props, notes = plan(copy.deepcopy(s), Memory())
+    r = by_rule(props, "cups_home")
+    assert r and r[0].action == {"type": "accept_cups"} and r[0].reason.startswith("10 loose cup(s)"), r
+    assert any("why the loose cups stay off the piles" in n and "24 in a tavern" in n for n in notes), notes
+    cl["free_cups_detail"]["why"] = {"location": 34}
+    cl["free_cups_detail"]["why_locations"] = {"INN_TAVERN": 34}
+    assert not by_rule(plan(copy.deepcopy(s), Memory())[0], "cups_home")
+    cl["free_cups_detail"]["why"] = {"should_haul": 3}
+    cl["free_cups_detail"]["forbidden_in_halls"] = 4
+    from planner_society import _cups_home_rule
+    out = []
+    _cups_home_rule(cl, 100, out, [])
+    assert out and out[0].action == {"type": "accept_cups"} and "forbidden" in out[0].reason, out
+    out = []
+    _cups_home_rule(cl, 0, out, [])
+    assert not out                                                    # nobody wants a cup: left alone
+    assert "shoes and cups" in planner.agenda([planner.Proposal("cups_home", {"type": "accept_cups"}, "x", 4)], [])[0]
+
+
 if __name__ == "__main__":
     for name, ok, msg in RESULTS:
         print(f"[{'PASS' if ok else 'FAIL'}] {name}" + (f"\n        {msg}" if msg else ""))

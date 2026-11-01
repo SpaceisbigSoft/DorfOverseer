@@ -515,6 +515,37 @@ def _():
     assert ai.wipe_learned == 5 and ai.wipe_learned_all == 0
 
 
+@test("the hospital burrow's Rules switch (0.104.168): on by default, saved, sent to the AI; the panel shows it")
+def _():
+    try:
+        from lupa import LuaRuntime
+    except ImportError:
+        return
+    lua = LuaRuntime(unpack_returned_tuples=True)
+    src = (ROOT / "lua" / "ai-overseer-settings.lua").read_text(encoding="utf-8")
+    S = lua.eval("""function(src)
+      local env = setmetatable({dfhack_flags = {module = true}, dfhack = {getDFPath = function() return '.' end,
+                                          isMapLoaded = function() return false end}},
+                               {__index = _G})
+      env.require = function(n) if n == 'json' then return {} end return require(n) end
+      assert(load(src, 'settings', 't', env))()
+      return env end""")(src)
+    assert S.defaults().hospital_burrow is True and S.for_ai(S.defaults()).hospital_burrow is True
+    off = S.sanitize(lua.table_from({"hospital_burrow": False}))
+    assert off.hospital_burrow is False and S.for_ai(off).hospital_burrow is False
+    assert S.sanitize(lua.table_from({})).hospital_burrow is True             # an older save: on
+    # the brain reads it the same way: off only when the settings say so
+    from planner_core import player_rules
+    assert player_rules({"settings": {"hospital_burrow": False}})["hospital_burrow"] is False
+    assert player_rules({"settings": {}})["hospital_burrow"] is True
+    # the panel: a switch on the Rules page, set again on refresh (and the file still loads)
+    gui = (ROOT / "lua" / "gui" / "ai-overseer.lua").read_text(encoding="utf-8")
+    assert "view_id = 'hospital_burrow'" in gui and "p:set_field('hospital_burrow', v)" in gui
+    assert "self.subviews.hospital_burrow:setOption(" in gui
+    ok = lua.eval("function(src) local f, e = load(src, 'gui', 't', {}); return f ~= nil, e end")(gui)
+    assert ok[0], ok
+
+
 
 @test("your memory (0.97.1): a fort's copies and autosaves are one fort; it never inherits itself (B1)")
 def _():

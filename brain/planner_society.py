@@ -689,6 +689,7 @@ def _comfort_rules(s: dict, cfg: dict, proposals: list, notes: list) -> None:
     elif stuck and cupless >= citizens * cfg["cupless_share"]:
         notes.append(f"{stuck} cups lie in the halls though the finished goods piles have room "
                      f"({used} of {tiles} tiles used): not counted; new ones are made")
+    _cups_home_rule(cl, cupless, proposals, notes)       # (0.104.168)
     if isinstance(free_cups, int):
         free_cups = max(0, free_cups - stuck)
     if (isinstance(free_cups, int) and not (waiting and not room) and free_cups < want
@@ -701,6 +702,49 @@ def _comfort_rules(s: dict, cfg: dict, proposals: list, notes: list) -> None:
                                               "amount": n},
                                   f"{cupless} citizens drank without a cup lately and {free_cups} cups are free: make {n} "
                                   + ("wooden cups (no stone to spare)" if cups else "stone mugs"), 5, True))
+
+
+# (0.104.168) the bridge's reasons a free cup off the piles stays where it lies
+CUP_WHY_WORDS = {"location": "kept by a location (a tavern's own)", "pile_refuses": "no finished goods pile takes cups",
+                 "pile_refuses_material": "the piles refuse their material",
+                 "pile_refuses_quality": "the piles refuse their quality",
+                 "links_only": "the piles that take them take from links only",
+                 "no_room": "the piles that take them are full",
+                 "unreachable": "where no citizen walks", "should_haul": "nothing in the way (waiting for a hauler)",
+                 "unknown": "unread"}
+
+
+def _cups_home_rule(cl: dict, cupless: int, proposals: list, notes: list) -> None:
+    """(0.104.168) Teacheroar, 1 Nov: 34 used cups lay in a dining hall and a
+    meeting hall for hours while the finished goods piles had room and 137
+    drank without a cup. The bridge's census says why each free cup off the
+    piles stays (`free_cups_detail.why`); what the AI can fix it does itself
+    (`accept_cups`: the pile with the most room takes the cups no pile takes,
+    forbidden cups in a hall unforbidden), the rest is said."""
+    cd = _d(cl.get("free_cups_detail"))
+    why = {k: int(v) for k, v in _d(cd.get("why")).items() if isinstance(v, int) and v > 0}
+    if why:
+        locs = {k: v for k, v in _d(cd.get("why_locations")).items() if isinstance(v, int)}
+
+        def part(k: str, v: int) -> str:
+            extra = ""
+            if k == "location" and locs:
+                extra = " (" + ", ".join(f"{n} in a {str(t).lower().replace('inn_tavern', 'tavern')}"
+                                         for t, n in sorted(locs.items())) + ")"
+            return f"{CUP_WHY_WORDS.get(k, k)}{extra}: {v}"
+        notes.append("why the loose cups stay off the piles: "
+                     + "; ".join(part(k, v) for k, v in sorted(why.items(), key=lambda kv: -kv[1])))
+    refused = sum(why.get(k, 0) for k in ("pile_refuses", "pile_refuses_material", "pile_refuses_quality"))
+    forbidden = int(cd.get("forbidden_in_halls") or 0)
+    if refused:
+        proposals.append(Proposal("cups_home", {"type": "accept_cups"},
+                                  f"{refused} loose cup(s) no finished goods pile takes"
+                                  + (f" ({cupless} citizens drank without a cup lately)" if cupless else "")
+                                  + ": the pile with the most room is set to take them", 4))
+    elif forbidden and cupless:
+        proposals.append(Proposal("cups_home", {"type": "accept_cups"},
+                                  f"{forbidden} cup(s) lie forbidden in the halls and {cupless} citizens drank "
+                                  "without a cup lately: unforbidden", 5))
 
 
 def _people_rules(s: dict, cfg: dict, proposals: list, notes: list) -> None:

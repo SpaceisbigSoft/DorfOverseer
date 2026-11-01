@@ -5152,6 +5152,13 @@ function act_recreation(a)
     return reqscript('ai-society').recreation_tick(n, days, a.dry_run == true, txt, f, fd)
 end
 
+-- (0.104.168) The loose cups no finished goods pile takes: the pile with the
+-- most room set to take them; forbidden cups in a hall unforbidden
+-- (lua/ai-society.lua accept_cups).
+function act_accept_cups(a)
+    return reqscript('ai-society').accept_cups(a.dry_run == true)
+end
+
 -- (0.104.167) The hospital burrow: the patients kept inside the hospitals
 -- (with the nearest drink and food they can reach), the healed let out
 -- (lua/ai-society.lua hospital_burrow_tick).
@@ -6084,6 +6091,7 @@ ACTIONS = {
     pair_chairs = act_pair_chairs,        -- (0.104.77)
     recreation = act_recreation,          -- (0.104.78)
     hospital_burrow = act_hospital_burrow,   -- (0.104.167)
+    accept_cups = act_accept_cups,           -- (0.104.168)
     squad_trim = act_squad_trim,
     squad_release = act_squad_release,
     quick_location = function(a)

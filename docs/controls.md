@@ -108,6 +108,10 @@ over Growth: a fort set to Maintain never shrinks or grows.
   barracks, temple. Switch one off and the AI moves on to its next need.
   Bedrooms, the dining hall, basic workshops and stockpiles are always built
   when missing.
+- **Keep the wounded in an "AI hospital" burrow** (beside the Hospital
+  level, 0.104.168): the patients DF wants treated are kept in a burrow over
+  the hospitals and the nearest drink and food, and let out when healed. Off:
+  everyone in it is let out at once.
 - **Order barrels, pots, bags, hospital supplies:** on by default. Off, the
   shortages are still reported.
 - **Build the workshop a strange mood needs:** on by default. Off, the AI

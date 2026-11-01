@@ -477,6 +477,8 @@ def short(a: dict) -> str:
         return "put tame animals to war training"
     if t == "nest_boxes":        # (0.104.80)
         return "pen the hens together and put nest boxes in their pasture"
+    if t == "accept_cups":       # (0.104.168)
+        return "let the finished goods piles take the loose cups"
     if t == "hospital_burrow":   # (0.104.167)
         if a.get("release"):
             return "let every patient out of the hospital burrow"

@@ -1123,6 +1123,20 @@ def _():
     assert len(H.calls) == 3                                          # a refused call never reaches the game
 
 
+@test("0.104.168: accept_cups is in the action table and passes dry_run to the society script")
+def _():
+    reset()
+    M = H.module()
+    LUA.execute("""local M, H = ...
+      H.calls = {}
+      H.scripts = {['ai-society'] = {accept_cups = function(dry)
+          table.insert(H.calls, {dry = dry}); return {ok = true} end}}
+    """, M, H)
+    assert LUA.eval("function(M) return M.ACTIONS.accept_cups == M.act_accept_cups end")(M)
+    assert M.act_accept_cups(t({"dry_run": True})).ok and H.calls[1].dry is True
+    assert M.act_accept_cups(t({})).ok and H.calls[2].dry is False
+
+
 if __name__ == "__main__":
     for name, ok, msg in RESULTS:
         print(f"[{'PASS' if ok else 'FAIL'}] {name}" + (f"\n        {msg}" if msg else ""))

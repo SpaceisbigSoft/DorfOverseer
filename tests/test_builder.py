@@ -1923,8 +1923,102 @@ def _():
     assert r is True, r
     # a tile dug beside the shaft halfway up: not sealed, and it says where
     W.set(s.x + 1 if s.x + 1 != k.x else s.x - 1, s.y, 80, LUA.table_from({"shape": "FLOOR"}))
-    ok, where = B.cistern_sealed(plan)
+    ok, where, gaps = B.cistern_sealed(plan)
     assert not ok and "shaft is open" in where, where
+    assert len(gaps) == 1 and gaps[1].fix == "wall", [dict(g) for g in gaps.values()]   # (0.104.168) every gap listed
+
+
+def _shaft_plan():
+    """(0.104.168) The v2 shaft plan of the test above (a pond north of the fort)."""
+    LUA.execute("""local W = ...
+      W.reset()
+      W.citizens = {}
+      for i = 1, 20 do table.insert(W.citizens, {x = 50 + i % 10, y = 60, z = 80}) end
+      for x = 30, 90 do for y = 45, 75 do
+        if not (x == 60 and y == 60) then W.set(x, y, 79, {shape = 'WALL', material = 'STONE'}) end
+      end end
+      for x = 52, 64 do for y = 36, 44 do
+        W.set(x, y, 81, {shape = 'EMPTY', liquid = true, depth = 7})
+        W.set(x, y, 82, {shape = 'EMPTY', liquid = true, depth = 7})
+      end end
+    """, W)
+    B.cistern_prefs(LUA.table_from({}))
+    r = B.plan_cistern()
+    plan = r if hasattr(r, "cistern") else r[0]
+    assert plan is not None and plan.shaft is not None
+    s, k = plan.shaft, plan.corner
+    # an open spot beside the shaft halfway up, away from the corner and the tunnel
+    for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+        gx, gy = s.x + dx, s.y + dy
+        if (gx, gy) != (k.x, k.y) and W.get(gx, gy, 80).shape == "WALL" and W.get(gx + dx, gy + dy, 80).shape == "WALL":
+            return plan, gx, gy, dx, dy
+    raise AssertionError("no spot beside the shaft")
+
+
+@test("cistern gaps (0.104.168): the AI walls up an open spot beside the shaft itself; then it is being built, not the player's")
+def _():
+    plan, gx, gy, dx, dy = _shaft_plan()
+    W.set(gx, gy, 80, LUA.table_from({"shape": "FLOOR"}))
+    d = LUA.table_from({"stage": "linking", "plan": plan})
+    saved = []
+    ok, where, gaps = B.cistern_sealed(plan)
+    r = B.cistern_close_gaps(d, plan, gaps, True, lambda x: saved.append(1))
+    assert r.ok and r.dry_run and r.walls == 1 and not W.placed[1] and not saved, dict(r)
+    r = B.cistern_close_gaps(d, plan, gaps, False, lambda x: saved.append(1))
+    walls = [c for c in W.placed.values() if c.mode == "build"]
+    assert r.ok and r.sealing and r.walls == 1 and not r.needs_player, dict(r)
+    assert [(c.x, c.y, c.z, c.text) for c in walls] == [(gx, gy, 80, "Cw")], [dict(c) for c in walls]
+    assert d.sealing[f"{gx},{gy},80"] == "Cw" and saved and not d.unsealed_why
+    # the construction placed: the next step waits on it (nothing placed twice)
+    W.set(gx, gy, 80, LUA.table_from({"building": True}))
+    r = B.cistern_close_gaps(d, plan, gaps, False, lambda x: None)
+    assert r.waiting and not r.needs_player and "being built" in r.error, dict(r)
+    assert len([c for c in W.placed.values() if c.mode == "build"]) == 1
+    # built: closed
+    W.set(gx, gy, 80, LUA.table_from({"shape": "WALL", "building": False}))
+    assert B.cistern_sealed(plan) is True
+
+
+@test("cistern gaps (0.104.168): never a wall that cuts a way, on a stair, in water or on someone; those stay the player's")
+def _():
+    plan, gx, gy, dx, dy = _shaft_plan()
+    # a corridor one tile wide runs past the shaft (across it): walling it would cut it
+    px, py = dy, dx                                  # across the line out from the shaft
+    for i in range(-4, 5):
+        W.set(gx + px * i, gy + py * i, 80, LUA.table_from({"shape": "FLOOR"}))
+    ok, where, gaps = B.cistern_sealed(plan)
+    assert not ok
+    d = LUA.table_from({"stage": "linking", "plan": plan})
+    r = B.cistern_close_gaps(d, plan, gaps, False, lambda x: None)
+    assert not r.ok and r.needs_player and "cut a way" in r.unsealed_why, dict(r)
+    assert d.unsealed_why and "cut a way" in d.unsealed_why
+    # a stair beside the shaft: the player's
+    plan, gx, gy, dx, dy = _shaft_plan()
+    W.set(gx, gy, 80, LUA.table_from({"shape": "STAIR_UPDOWN"}))
+    ok, where, gaps = B.cistern_sealed(plan)
+    r = B.cistern_close_gaps(LUA.table_from({"stage": "linking"}), plan, gaps, False, lambda x: None)
+    assert r.needs_player and "stair" in r.unsealed_why, dict(r)
+    # water there: the player's
+    W.set(gx, gy, 80, LUA.table_from({"shape": "FLOOR", "liquid": True, "depth": 3}))
+    ok, where, gaps = B.cistern_sealed(plan)
+    r = B.cistern_close_gaps(LUA.table_from({"stage": "linking"}), plan, gaps, False, lambda x: None)
+    assert r.needs_player and "water" in r.unsealed_why, dict(r)
+    # a dug hollow beyond the gap with a dwarf in it: wait (the wall would shut them in)
+    W.set(gx, gy, 80, LUA.table_from({"shape": "FLOOR", "liquid": False, "depth": 0}))
+    W.set(gx + dx, gy + dy, 80, LUA.table_from({"shape": "FLOOR"}))
+    real = B.units_on_tiles
+    B.units_on_tiles = lambda tiles, z: sum(1 for t in tiles.values() if (t.x, t.y) == (gx + dx, gy + dy))
+    try:
+        ok, where, gaps = B.cistern_sealed(plan)
+        r = B.cistern_close_gaps(LUA.table_from({"stage": "linking"}), plan, gaps, False, lambda x: None)
+        assert r.waiting and not r.needs_player and "hollow" in r.error, dict(r)
+        assert not [c for c in W.placed.values() if c.mode == "build"]
+    finally:
+        B.units_on_tiles = real
+    # nobody in it: walled
+    ok, where, gaps = B.cistern_sealed(plan)
+    r = B.cistern_close_gaps(LUA.table_from({"stage": "linking"}), plan, gaps, False, lambda x: None)
+    assert r.ok and r.walls == 1, dict(r)
 
 
 @test("cistern v2 (0.104.145): the AI weighs the sources: a cavern lake over a pond that freezes; a pond over caverns with a danger")
