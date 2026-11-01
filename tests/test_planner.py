@@ -7017,9 +7017,11 @@ def _():
     s["needs"] = {"needs": {"BeWithFriends": {"badly": 85, "distracted": 150}, "DrinkAlcohol": {"badly": 56},
                             "PrayOrMeditate": {"badly": 63}}}
     got = dict(social_shortfall(s, PLANNER_CONFIG))
-    assert set(got) == {"tavern", "temple"} and "BeWithFriends 85" in got["tavern"], got
+    assert set(got) == {"tavern", "temple"} and "BeWithFriends 150 distracted (85 badly)" in got["tavern"], got
     s["locations"]["count"]["INN_TAVERN"] = 3
-    assert "tavern" not in dict(social_shortfall(s, PLANNER_CONFIG))       # 1 + 85 // 30 = 3: enough
+    assert "4 wanted" in dict(social_shortfall(s, PLANNER_CONFIG))["tavern"]  # (0.104.146) 1 + 150 // 40 = 4
+    s["locations"]["count"]["INN_TAVERN"] = 4
+    assert "tavern" not in dict(social_shortfall(s, PLANNER_CONFIG))       # enough
     s["needs"]["needs"]["PrayOrMeditate"]["badly"] = 20                    # under 15% of the fort
     assert not social_shortfall(s, PLANNER_CONFIG)
     s["locations"]["count"] = {}                                           # none yet: the ladder's job

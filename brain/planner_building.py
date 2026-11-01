@@ -979,9 +979,15 @@ def social_shortfall(s: dict, cfg: dict) -> list:
         if have < 1:
             continue                                  # the first is the ladder's (and the urgent rules')
         badly = max([int(_d(nd.get(n)).get("badly") or 0) for n in needs] or [0])
-        want = min(cfg["social_halls_max"], 1 + badly // cfg[per_key])
-        if badly >= cfg["social_badly_share"] * cit and have < want:
-            words = ", ".join(f"{n} {int(_d(nd.get(n)).get('badly') or 0)}" for n in needs)
+        # (0.104.146) or every distracted dwarf, at a wider spacing: Teacheroar's
+        # 93 distracted for want of prayer (40 badly) held at 2 temples, one of
+        # them for all gods; 128 wanting friends (68 badly) at 3 taverns
+        dist = max([int(_d(nd.get(n)).get("distracted") or 0) for n in needs] or [0])
+        want = min(cfg["social_halls_max"],
+                   max(1 + badly // cfg[per_key], 1 + dist // cfg["social_distracted_per"]))
+        if (badly >= cfg["social_badly_share"] * cit or dist >= cfg["social_distracted_share"] * cit) and have < want:
+            words = ", ".join(f"{n} {int(_d(nd.get(n)).get('distracted') or 0)} distracted "
+                              f"({int(_d(nd.get(n)).get('badly') or 0)} badly)" for n in needs)
             out.append((kind, f"{have} {kind}(s) for {cit} dwarves and many badly miss what one gives ({words}): "
                               f"another {kind} ({want} wanted)"))
     return out

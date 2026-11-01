@@ -167,6 +167,8 @@ PLANNER_CONFIG = {
     "drink_hoard_share": 1.33,         # (0.103) Thirst-scarred: drink kept x this
     "grandeur_dress_at": 50,           # (0.102.6) a fort this grand puts statues in its halls
     "grandeur_cooldown_ticks": 3 * 1200,
+    "social_distracted_per": 40,       # (0.104.146) a tavern / temple for every this many distracted (any level)...
+    "social_distracted_share": 0.3,    # ...once that share of the fort is
     "temple_uncovered_min": 10,        # (0.104.146) dwarves praying to gods no temple serves, before a temple to all...
     "temple_uncovered_share": 0.05,    # ...or this share of the fort
     "temple_more_piety": 50,           # (0.102.1) a devout fort raises a temple to each god many pray to
