@@ -1752,6 +1752,41 @@ LINK_TARGETS = {Bridge = true, Door = true, Hatch = true, Floodgate = true, Grat
 -- The cistern counted its mechanisms more loosely than the link takes them
 -- (region2: "2 free" in the report, "0 free" at the link, 146 refusals), so
 -- both now use this one test, and the report says what holds the others.
+local function item_pos(it)
+    local ok, x, y, z = pcall(dfhack.items.getPosition, it)
+    if not ok or x == nil then return nil end
+    if type(x) == 'table' or type(x) == 'userdata' then
+        local okp, p = pcall(function() return {x = x.x, y = x.y, z = x.z} end)
+        return okp and p or nil
+    end
+    return {x = x, y = y, z = z}
+end
+
+local function group_at(p)
+    if not p or not (dfhack.maps and dfhack.maps.getWalkableGroup) then return nil end
+    local ok, g = pcall(dfhack.maps.getWalkableGroup, xyz2pos(p.x, p.y, p.z))
+    return ok and g or nil
+end
+
+-- The walkable group a dwarf reaches the item from: its own tile, or for
+-- one held in a workshop (whose own tiles may be impassable) a walkable tile
+-- beside it. nil when unread (no map API: the tests), 0 when none.
+local function reach_group(it, in_shop)
+    local p = item_pos(it)
+    if not p then return nil end
+    local g = group_at(p)
+    if g == nil or g ~= 0 or not in_shop then return g, p end
+    for dy = -1, 1 do
+        for dx = -1, 1 do
+            local g2 = group_at({x = p.x + dx, y = p.y + dy, z = p.z})
+            if g2 and g2 ~= 0 then return g2, p end
+        end
+    end
+    return 0, p
+end
+
+UNWALKABLE_AT = {}       -- (0.104.156) where the last unwalkable mechanisms lay (3 at most)
+
 function mechanism_unusable(it)
     local f = it.flags
     if f.removed or f.garbage_collect then return 'gone' end
@@ -1773,6 +1808,14 @@ function mechanism_unusable(it)
         if okt and (t == 'Workshop' or t == 'Furnace') then return nil end
         return 'held in a ' .. tostring(okt and t or 'building')
     end
+    -- (0.104.156) Teacheroar, 1 Nov: 2 of the 3 "free" mechanisms lay at x92
+    -- y106 z168, a tile no dwarf can walk to; every link took them first and
+    -- DF cancelled it ("Item inaccessible"), and no rule ordered more
+    local g, p = reach_group(it, false)
+    if g == 0 then
+        if p and #UNWALKABLE_AT < 3 then table.insert(UNWALKABLE_AT, ('x%d y%d z%d'):format(p.x, p.y, p.z)) end
+        return 'where no dwarf can walk'
+    end
     return nil
 end
 
@@ -1782,22 +1825,6 @@ end
 -- cancelled it each time ("Link a building to trigger: Item inaccessible"),
 -- 25 times in 2 hours; the cistern's lever lost its link 3 times the same
 -- way on 31 Oct. Returns the list and how many usable ones were out of reach.
-local function item_pos(it)
-    local ok, x, y, z = pcall(dfhack.items.getPosition, it)
-    if not ok or x == nil then return nil end
-    if type(x) == 'table' or type(x) == 'userdata' then
-        local okp, p = pcall(function() return {x = x.x, y = x.y, z = x.z} end)
-        return okp and p or nil
-    end
-    return {x = x, y = y, z = z}
-end
-
-local function group_at(p)
-    if not p or not (dfhack.maps and dfhack.maps.getWalkableGroup) then return nil end
-    local ok, g = pcall(dfhack.maps.getWalkableGroup, xyz2pos(p.x, p.y, p.z))
-    return ok and g or nil
-end
-
 function free_mechanisms(n, near)
     local out, cands, unreachable, far_at = {}, {}, 0, {}
     local want = near and group_at(near) or nil
@@ -1805,8 +1832,8 @@ function free_mechanisms(n, near)
     for _, it in ipairs(df.global.world.items.other.TRAPPARTS) do
         if not mechanism_unusable(it) then
             if want then
-                local p = item_pos(it)
-                local g = group_at(p)
+                local okb, hb = pcall(dfhack.items.getHolderBuilding, it)
+                local g, p = reach_group(it, okb and hb ~= nil)
                 if p and g == want then
                     local d = math.abs(p.x - near.x) + math.abs(p.y - near.y) + 3 * math.abs(p.z - near.z)
                     table.insert(cands, {it = it, d = d})
@@ -1833,12 +1860,14 @@ end
 -- why they can't be used (for the cistern's and the gates' reports).
 function mechanism_counts()
     local out = {usable = 0, reserved = 0, why = {}}
+    UNWALKABLE_AT = {}
     for _, it in ipairs(df.global.world.items.other.TRAPPARTS) do
         local why = mechanism_unusable(it)
         if not why then out.usable = out.usable + 1
         elseif why == 'taken by a job' then out.reserved = out.reserved + 1
         elseif why ~= 'gone' and why ~= 'in a building' then out.why[why] = (out.why[why] or 0) + 1 end
     end
+    if #UNWALKABLE_AT > 0 then out.unwalkable_at = table.concat(UNWALKABLE_AT, '; ') end
     return out
 end
 

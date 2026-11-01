@@ -277,6 +277,9 @@ def _well_lid_rule(s: dict, proposals: list, notes: list) -> None:
             why = "no danger near the cavern well now: open its shaft again"
         proposals.append(Proposal("well_shaft", {"type": "well_shaft", "close": bool(danger)}, why, 3))
     mech = free_stock(s, "mechanisms")
+    far_at = _d(s.get("stocks")).get("mechanisms_unwalkable_at")
+    if far_at:                                                    # (0.104.156)
+        notes.append(f"mechanisms lie where no dwarf can walk ({far_at}): not counted as free")
     need = sum(3 if x.get("gate") in ("none", "stray", "no_lever") else
                2 if x.get("gate") in ("no_hatch", "unlinked") else 0 for x in gates)   # (0.104.156) every gate's
     if need and mech < need and queued(s, {"mechanisms"}) == 0:

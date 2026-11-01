@@ -938,6 +938,15 @@ local function count_stocks()
         -- (0.104.155) those no job has claimed: Teacheroar's 3 mechanisms "in
         -- store" were all taken, so no rule ordered more while 6 buildings waited
         if FREE_STOCKS[label] then stocks[label .. '_free'] = free end
+        -- (0.104.156) mechanisms by the link's own test (none on a tile no dwarf
+        -- can walk to, forbidden or owned): 3 counted free, 1 usable, no order
+        if label == 'mechanisms' then
+            local okc, c = pcall(function() return reqscript('ai-gates').mechanism_counts() end)
+            if okc and type(c) == 'table' and type(c.usable) == 'number' then
+                stocks.mechanisms_free = math.min(free, c.usable)
+                if c.unwalkable_at then stocks.mechanisms_unwalkable_at = c.unwalkable_at end
+            end
+        end
     end
     return stocks
 end

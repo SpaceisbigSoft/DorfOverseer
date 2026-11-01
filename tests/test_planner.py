@@ -7701,6 +7701,12 @@ def _():
     p, notes = run(s)
     assert any("cancelled its lever link 3 times" in n for n in notes), notes
     assert all(x.action.get("type") != "well_shaft" for x in p), [x.action for x in p]
+    s["stocks"]["mechanisms_free"], s["stocks"]["mechanisms_unwalkable_at"] = 1, "x92 y106 z168"
+    p, notes = run(s)
+    assert any("where no dwarf can walk (x92 y106 z168)" in n for n in notes), notes
+    assert {"type": "work_order", "recipe": "mechanisms", "amount": 3} in [x.action for x in p], [x.action for x in p]
+    s["stocks"]["mechanisms_free"] = 3
+    del s["stocks"]["mechanisms_unwalkable_at"]
     a["gate_mechanisms"] = b["gate_mechanisms"] = 4                      # one more made: 224's hatch can go in
     p, _ = run(s)
     step = [x for x in p if x.action.get("type") == "well_shaft"]

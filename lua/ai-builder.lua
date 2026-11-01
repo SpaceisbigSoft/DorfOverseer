@@ -4062,6 +4062,9 @@ function shaft_gate_state(p)
 end
 
 local function free_mechanism_count()
+    -- (0.104.156) by the link's own test when there is one (none where no dwarf can walk)
+    local okc, c = pcall(function() return reqscript('ai-gates').mechanism_counts() end)
+    if okc and type(c) == 'table' and type(c.usable) == 'number' then return c.usable end
     local ok, n = pcall(function() return (count_items('TRAPPARTS')) end)
     return ok and n or 0
 end

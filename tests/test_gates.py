@@ -812,9 +812,23 @@ def _():
         r = M.link_lever(50, 500, False)
         assert not r.ok and "1 out of reach of the lever" in r.error and r.mechanisms == 1, dict(r)
         # the lever's own tile unread (group 0): no filter, as before
-        LUA.execute("local M = ...; M.dfhack.maps.getWalkableGroup = function() return 0 end", M)
+        LUA.execute("local M = ...; M.dfhack.maps.getWalkableGroup = function(p) "
+                    "if p.x == 3 and p.y == 4 and p.z == 9 then return 0 end; return 1 end", M)
         lst, far = LUA.eval("function(M) local l, f = M.free_mechanisms(2, {x = 3, y = 4, z = 9}); return #l, f end")(M)
         assert lst == 2 and far == 0, (lst, far)
+        # Teacheroar: loose ones on a tile no dwarf can walk to are not usable at all (nor counted free);
+        # one in a workshop whose own tile is impassable is reached from beside it
+        LUA.execute("""local M = ...
+            M.JOB_MECHS[4].flags.in_job = false
+            M.dfhack.maps.getWalkableGroup = function(p) if p.x == 5 and p.y == 4 then return 0 end; return 1 end""", M)
+        assert M.mechanism_unusable(M.JOB_MECHS[4]) == "where no dwarf can walk"
+        c = M.mechanism_counts()
+        assert c.usable == 2 and c.why["where no dwarf can walk"] == 1 and c.unwalkable_at == "x5 y4 z9", dict(c)
+        LUA.execute("""local M = ...; M.df.building_type[10] = 'Workshop'
+            M.dfhack.items.getHolderBuilding = function(it) if it.id == 4 then return {getType = function() return 10 end} end end""", M)
+        assert M.mechanism_unusable(M.JOB_MECHS[4]) is None
+        r = M.link_lever(50, 500, True)
+        assert r.ok and r.mechanisms == 2, dict(r)
     finally:
         LUA.execute("local M = ...; M.df = nil; M.dfhack = nil; M.xyz2pos = nil", M)
 
