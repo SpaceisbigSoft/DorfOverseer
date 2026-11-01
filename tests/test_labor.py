@@ -292,6 +292,26 @@ def _():
     assert all(g["by_id"][i].status.labors[g["lab"].MINE] for i in (1, 5, 9))
 
 
+@test("trim (0.104.166): an 'only selected' detail cut to the best few, never one breaking down; others left alone")
+def _():
+    units = [{"id": i, "skills": [("FISH", s)]} for i, s in ((11, 9), (12, 7), (13, 5), (14, 3), (15, 1), (16, 0))]
+    dets = [dict(d) for d in DETAILS]
+    dets[3] = {**dets[3], "members": [11, 12, 13, 14, 15, 16]}
+    g = game(units, [], dets)
+    env, by_id, lab, lua = g["env"], g["by_id"], g["lab"], g["lua"]
+    lua.execute("""local env = ...
+      env.dfhack.units.getStressCategory = function(u) if u.id == 11 then return 0 end return 4 end""", env)
+    dry = env.trim("fishing", 2, True)
+    assert dry.ok and dry.removed == 4 and members(g, 3) == [11, 12, 13, 14, 15, 16], dict(dry)
+    r = env.trim("fishing", 2, False)
+    assert r.ok and members(g, 3) == [12, 13], (dict(r), members(g, 3))     # 11 is miserable: not kept
+    assert by_id[12].status.labors[lab.FISH] and not by_id[15].status.labors[lab.FISH]
+    again = env.trim("fishing", 2, False)
+    assert not again.ok and "only 2" in again.error, dict(again)
+    assert env.trim("fishing", 0, False).ok and members(g, 3) == []
+    assert "not \"only selected\"" in env.trim("farming", 1, False).error   # everybody farms: left alone
+
+
 @test("gatherers and fishers: anyone outside squads, those with the skill first, miners last")
 def _():
     g = game(SEVEN, [], DETAILS)

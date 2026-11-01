@@ -34,7 +34,7 @@
 local json = require('json')
 local utils = require('utils')
 
-BRIDGE_VERSION = '0.104.165'
+BRIDGE_VERSION = '0.104.166'
 PROTOCOL = 1 -- bump when the report's shape changes in a breaking way
 
 local OUT_DIR = dfhack.getDFPath() .. '/dfhack-config/ai-overseer'
@@ -5366,6 +5366,14 @@ function act_narrow_detail(a)
     return reqscript('ai-labor').narrow(a.job, n, a.dry_run == true, txt)
 end
 
+-- (0.104.166) a detail cut back to the few the job needs (lua/ai-labor.lua trim)
+function act_trim_labor(a)
+    if a.job ~= 'fishing' then return reject('trim_labor: job must be fishing') end
+    local n = int_in(a.keep == nil and 2 or a.keep, 0, 30)
+    if not n then return reject('trim_labor needs keep 0-30') end
+    return reqscript('ai-labor').trim(a.job, n, a.dry_run == true, txt)
+end
+
 function act_tidy(a)
     if a.dry_run then return {ok = true, dry_run = true} end
     local out, rv = dfhack.run_command_silent('cleanowned', 'scattered', 'x')
@@ -6072,6 +6080,7 @@ ACTIONS = {
     place_keep = act_place_keep,
     tidy = act_tidy,
     narrow_detail = act_narrow_detail,
+    trim_labor = act_trim_labor,
     order_instrument = act_order_instrument,
     trim_instrument_orders = act_trim_instrument_orders,   -- (0.104.69)
     slaughter_one = act_slaughter_one,

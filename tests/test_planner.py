@@ -8203,6 +8203,23 @@ def _():
     assert {"type": "well_shaft", "close": True} in acts, acts
 
 
+@test("labor trim (0.104.166): 84 on the fishing detail, 2 wanted: the rest off it; not while near the want")
+def _():
+    s = fort()
+    s.setdefault("labor", {})["fish_water"] = 166
+    s["labor"].setdefault("jobs", {})["fishing"] = {"candidates": 16, "detail": "Fisherdwarves", "doing": 84,
+                                                   "mode": "OnlySelectedDoesThis", "soldiers": 21}
+    s["stocks"]["fish"] = s["stocks"]["raw_fish"] = 0
+    t = by_rule(plan(copy.deepcopy(s), Memory())[0], "labor_trim")
+    assert t and t[0].action == {"type": "trim_labor", "job": "fishing", "keep": 2}, t
+    assert "84 dwarves are on the fishing detail, 2 wanted and no fish in store" in t[0].reason, t[0].reason
+    s["labor"]["jobs"]["fishing"]["doing"] = 6
+    assert not by_rule(plan(copy.deepcopy(s), Memory())[0], "labor_trim")
+    s["labor"]["jobs"]["fishing"].update(doing=84, mode="EverybodyDoesThis")     # the player's setting: left
+    assert not by_rule(plan(copy.deepcopy(s), Memory())[0], "labor_trim")
+
+
+
 if __name__ == "__main__":
     for name, ok, msg in RESULTS:
         print(f"[{'PASS' if ok else 'FAIL'}] {name}" + (f"\n        {msg}" if msg else ""))

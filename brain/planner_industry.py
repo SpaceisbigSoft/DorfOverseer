@@ -1698,9 +1698,23 @@ def _labor_rules(s: dict, citizens: int, cfg: dict, proposals: list, notes: list
     if (lb.get("gather_marked") or 0) > 0 or ((hungry or thirsty) and (lb.get("shrubs") or 0) > 0):
         want("gathering", gatherers(_traits(s) if isinstance(s.get("settings"), dict) else {}, small),
              "shrubs to gather")
+    fishers = 0
     if (lb.get("fish_water") or 0) > 0:
         river = 1 if memory is not None and has_rule(memory.culture, "river_bridges") else 0   # (0.103) Riverfolk
-        want("fishing", (1 if citizens < 10 else 2) + river, "water to fish in near the fort")
+        fishers = (1 if citizens < 10 else 2) + river
+        want("fishing", fishers, "water to fish in near the fort")
+    # (0.104.166) far more fishing than wanted: the rest off the detail. Fishing
+    # is long, lonely work at far water (Teacheroar: 84 civilians on it, no fish
+    # caught, fisherdwarves the first to break and kill in the tantrum spirals)
+    fj = _d(jobs.get("fishing"))
+    fdoing = int(fj.get("doing") or 0)
+    if fj.get("mode") == "OnlySelectedDoesThis" and fdoing > fishers + cfg["labor_trim_margin"]:
+        caught = int(_d(s.get("stocks")).get("raw_fish") or 0) + int(_d(s.get("stocks")).get("fish") or 0)
+        proposals.append(Proposal("labor_trim", {"type": "trim_labor", "job": "fishing", "keep": fishers},
+                                  f"{fdoing} dwarves are on the fishing detail, {fishers} wanted"
+                                  + (" and no fish in store" if not caught else "")
+                                  + ": the rest off it (fishing is long work alone at far water; "
+                                  "they miss their friends, crafts and prayer)", 3))
     if farms:
         want("farming", 2 if small else max(3, citizens // 10), "farm plots to tend")
     wc = _d(jobs.get("woodcutting"))

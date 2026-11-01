@@ -663,6 +663,56 @@ function widen(job, dry_run)
     return {ok = true, job = job, detail = tostring(wd.name)}
 end
 
+-- (0.104.166) A detail with far more on it than the job needs: all but the
+-- `keep` best taken off ("only selected" details only; one the player set to
+-- everybody or nobody is left alone). Teacheroar, 1 Nov: 84 civilians on the
+-- Fisherdwarves detail (2 wanted, no fish ever caught in its stagnant and
+-- cavern water); 26 had fishing as their best skill and 4 of the 8 miserable
+-- were fisherdwarves, alone at the water for days, missing friends, crafts
+-- and prayer. Those breaking down (stress category 1 or worse) are never kept.
+function trim(job, keep, dry_run, txt)
+    local J = job_spec(job)
+    if not J or not JOBS[job] then return {ok = false, rejected = true, error = 'unknown job: ' .. tostring(job)} end
+    local wd, mode = detail_for(job)
+    if not wd then return {ok = false, rejected = true, error = 'no work detail for ' .. job} end
+    if mode ~= 'OnlySelectedDoesThis' then
+        return {ok = false, rejected = true, error = ('the %s work detail is %s, not "only selected": left as it is'):format(
+            tostring(wd.name), tostring(mode))}
+    end
+    keep = math.max(0, math.min(30, keep or 2))
+    local sk = enum(df.job_skill, J.skill)
+    local calm, all = {}, {}
+    for _, id in ipairs(ids_of(wd)) do
+        local u = df.unit.find(id)
+        if u then
+            local okc, cat = pcall(dfhack.units.getStressCategory, u)
+            local noble = false
+            pcall(function() noble = #dfhack.units.getNoblePositions(u) > 0 end)
+            local c = {id = id, skill = skill(u, sk), other = best_other(u, sk), idle = false, noble = noble, busy = 0}
+            table.insert(all, c)
+            if not (okc and type(cat) == 'number' and cat <= 1) then table.insert(calm, c) end
+        end
+    end
+    if #all <= keep then
+        return {ok = false, rejected = true, error = ('only %d on the %s work detail (keep %d)'):format(#all, tostring(wd.name), keep)}
+    end
+    local kept = pick_workers(calm, keep)
+    local names = {}
+    for _, c in ipairs(kept) do
+        local u = df.unit.find(c.id)
+        if u then table.insert(names, name_of(u, txt)) end
+    end
+    local out = {ok = true, job = job, detail = tostring(wd.name), was = #all, kept = #kept, removed = #all - #kept,
+                 workers = names, dry_run = dry_run or nil}
+    if dry_run then return out end
+    for i = #wd.assigned_units - 1, 0, -1 do wd.assigned_units:erase(i) end
+    for _, c in ipairs(kept) do insert_sorted(wd, c.id) end
+    for _, u in ipairs(dfhack.units.getCitizens(true)) do recompute(u) end
+    local doing = citizens(job)
+    out.still = #doing          -- with the labour after (another detail may carry it too)
+    return out
+end
+
 -- Mark up to `count` shrubs near the fort for gathering.
 function gather_plants(count, dry_run)
     local c = centre()

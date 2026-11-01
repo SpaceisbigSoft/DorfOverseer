@@ -416,6 +416,8 @@ def short(a: dict) -> str:
         return "let idle dwarves craft for themselves"
     if t == "tidy":
         return "send worn-out clothes to the dump"
+    if t == "trim_labor":
+        return f"take all but {a.get('keep')} off the {a.get('job')} work detail"
     if t == "narrow_detail":
         return f"{'widen' if a.get('widen') else 'narrow'} the {a.get('job')} work detail"
     if t == "order_instrument":
