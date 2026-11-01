@@ -7752,6 +7752,22 @@ def _():
     assert p and p[0].action == {"type": "well_shaft", "close": False} and "watcher" in p[0].reason, [x.reason for x in p]
 
 
+@test("free stock (0.104.155): mechanisms claimed by jobs don't count; an older bridge's count still does")
+def _():
+    from planner_core import free_stock
+    s = fort()
+    s["stocks"]["mechanisms"] = 3
+    assert free_stock(s, "mechanisms") == 3                          # no _free from an older bridge
+    s["stocks"]["mechanisms_free"] = 0
+    assert free_stock(s, "mechanisms") == 0
+    # the shaft gate's mechanisms order follows the free count
+    s["others_on_map"]["threats"] = []
+    s["projects"]["well_lids"] = [{"project_id": 218, "x": 115, "y": 44, "z": 154, "elevation": 26, "state": "none",
+                                   "gate": "none"}]
+    acts = [x.action for x in by_rule(plan(copy.deepcopy(s), Memory())[0], "well_shaft")]
+    assert {"type": "work_order", "recipe": "mechanisms", "amount": 3} in acts, acts
+
+
 @test("planned (0.104.154): the waiting well, hatches and levers said with what they lack and why")
 def _():
     s = fort()

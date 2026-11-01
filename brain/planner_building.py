@@ -245,7 +245,7 @@ def _well_lid_rule(s: dict, proposals: list, notes: list) -> None:
         else:
             why = "no danger near the cavern well now: open its shaft again"
         proposals.append(Proposal("well_shaft", {"type": "well_shaft", "close": bool(danger)}, why, 3))
-    mech = int(_d(s.get("stocks")).get("mechanisms") or 0)
+    mech = free_stock(s, "mechanisms")
     need = max([3 if x.get("gate") in ("none", "stray", "no_lever") else
                 2 if x.get("gate") in ("no_hatch", "unlinked") else 0 for x in gates] or [0])
     if need and mech < need and queued(s, {"mechanisms"}) == 0:
@@ -357,7 +357,7 @@ def _planned_parts_rule(s: dict, proposals: list, notes: list) -> None:
     that buildingplan never used, so no rule ordered more, while the cavern
     well, its gate lever and three traps waited for one each)."""
     wants = planned_wants(s)
-    for thing, n in sorted(wants.items()):
+    for thing, n in sorted(wants.items(), key=lambda kv: (-kv[1], kv[0])):    # the most wanted first
         rec = PLANNED_RECIPES.get(thing)
         if not rec:
             continue
@@ -465,16 +465,16 @@ def well_parts_plan(s: dict) -> tuple[list, list, list]:
             return
         orders.append((recipe, why))
 
-    if not st.get("blocks"):
+    if not free_stock(s, "blocks"):
         want("stone_blocks", "a block")
     if not su.get("buckets"):
         if st.get("wood"):
             want("wooden_bucket", "a bucket")
         else:
             stuck.append("a bucket (no wood: autochop is on the way)")
-    if not st.get("mechanisms"):
+    if not free_stock(s, "mechanisms"):
         want("mechanisms", "a mechanism")
-    if not st.get("chains") and not su.get("ropes"):
+    if not free_stock(s, "chains") and not su.get("ropes"):
         if st.get("cloth"):
             want("cloth_rope", "a rope")
         elif st.get("thread"):

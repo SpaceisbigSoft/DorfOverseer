@@ -1484,7 +1484,7 @@ def _spare_mechanisms_rule(s: dict, cfg: dict, traits: dict, proposals: list) ->
     """(0.96) Engineering +50 or more: a few mechanisms kept spare for levers,
     traps and links (spare_mechanisms), made at a mechanic's workshop."""
     want = spare_mechanisms(traits)
-    have = int(_d(s.get("stocks")).get("mechanisms") or 0)
+    have = free_stock(s, "mechanisms")
     if (want and have < want and not young_fort(s, cfg) and _has_shop(s["buildings"], "Mechanics")
             and not queued(s, {"mechanisms"})):
         proposals.append(Proposal("mechanisms", {"type": "work_order", "recipe": "mechanisms",

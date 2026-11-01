@@ -34,7 +34,7 @@
 local json = require('json')
 local utils = require('utils')
 
-BRIDGE_VERSION = '0.104.154'
+BRIDGE_VERSION = '0.104.155'
 PROTOCOL = 1 -- bump when the report's shape changes in a breaking way
 
 local OUT_DIR = dfhack.getDFPath() .. '/dfhack-config/ai-overseer'
@@ -920,18 +920,24 @@ function get_locations()
     return out
 end
 
+FREE_STOCKS = {mechanisms = true, blocks = true, chains = true, bins = true, barrels = true}
+
 local function count_stocks()
     local stocks = {}
     local other = df.global.world.items.other
     for _, cat in ipairs(STOCK_CATEGORIES) do
         local label, list_name = cat[1], cat[2]
-        local count = 0
+        local count, free = 0, 0
         for _, item in ipairs(other[df.items_other_id[list_name]]) do
             if usable(item) then
                 count = count + item:getStackSize()
+                if not item.flags.in_job then free = free + item:getStackSize() end
             end
         end
         stocks[label] = count
+        -- (0.104.155) those no job has claimed: Teacheroar's 3 mechanisms "in
+        -- store" were all taken, so no rule ordered more while 6 buildings waited
+        if FREE_STOCKS[label] then stocks[label .. '_free'] = free end
     end
     return stocks
 end

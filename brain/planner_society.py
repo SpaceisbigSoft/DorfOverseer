@@ -681,9 +681,9 @@ def _traction_rule(s: dict, cfg: dict, proposals: list, notes: list) -> None:
         part = None
         if not int(sup.get("tables") or 0) and not queued(s, {"wooden_table", "stone_table"}):
             part = ("stone_table", "a table")
-        elif not int(st.get("mechanisms") or 0) and not queued(s, {"mechanisms"}):
+        elif not free_stock(s, "mechanisms") and not queued(s, {"mechanisms"}):
             part = ("mechanisms", "a mechanism")
-        elif not int(sup.get("ropes") or st.get("chains") or 0) and not queued(s, {"cloth_rope"}):
+        elif not int(sup.get("ropes") or free_stock(s, "chains") or 0) and not queued(s, {"cloth_rope"}):
             part = ("cloth_rope", "a rope") if int(st.get("cloth") or 0) else None
             if part is None:
                 notes.append("a traction bench for the hospital waits for a rope or chain (no cloth for a rope)")
