@@ -34,7 +34,7 @@
 local json = require('json')
 local utils = require('utils')
 
-BRIDGE_VERSION = '0.104.150'
+BRIDGE_VERSION = '0.104.151'
 PROTOCOL = 1 -- bump when the report's shape changes in a breaking way
 
 local OUT_DIR = dfhack.getDFPath() .. '/dfhack-config/ai-overseer'
@@ -4136,6 +4136,11 @@ function act_prioritize_dig(a)
     return reqscript('ai-builder').prioritize_project(id, a.priority, a.dry_run == true)
 end
 
+-- (0.104.151) the cavern wells' stair columns closed: a hatch on each, locked
+function act_seal_well_stairs(a)
+    return reqscript('ai-builder').seal_well_stairs(a.dry_run == true)
+end
+
 function act_finish_project(a)
     local id = project_id(a)
     if not id then return reject('project_id must be a whole number') end
@@ -6006,6 +6011,7 @@ ACTIONS = {
     furnish_project = act_furnish_project,
     free_dig_jobs = act_free_dig_jobs,
     prioritize_dig = act_prioritize_dig,
+    seal_well_stairs = act_seal_well_stairs,
     finish_project = act_finish_project,
     engrave_project = act_engrave_project,
     set_culture = act_set_culture,

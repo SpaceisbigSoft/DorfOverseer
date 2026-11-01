@@ -7650,6 +7650,29 @@ def _():
     assert not [x for x in by_rule(plan(copy.deepcopy(s), Memory())[0], "well") if x.action.get("type") == "place_well"]
 
 
+@test("well lids (0.104.151): a cavern well's open stair column -> sealed; a hatch cover made when none is free")
+def _():
+    s = fort()
+    s["projects"]["well_lids"] = [{"project_id": 203, "x": 95, "y": 102, "z": 169, "elevation": 41, "state": "none",
+                                   "shaft_hatch": False}]
+    s.setdefault("entrances", {})["parts"] = {"hatch_covers": 0}
+    props, notes = plan(copy.deepcopy(s), Memory())
+    w = by_rule(props, "well_lid")
+    acts = [x.action for x in w]
+    assert {"type": "seal_well_stairs"} in acts, acts
+    assert any(a.get("recipe") == "stone_hatch_cover" and a.get("amount") == 1 for a in acts), acts
+    assert any("cannot be built" in n for n in notes), notes
+    s["entrances"]["parts"] = {"hatch_covers": 2}
+    acts = [x.action for x in by_rule(plan(copy.deepcopy(s), Memory())[0], "well_lid")]
+    assert acts == [{"type": "seal_well_stairs"}], acts
+    s["projects"]["well_lids"][0]["state"] = "planned"
+    assert not by_rule(plan(copy.deepcopy(s), Memory())[0], "well_lid")
+    s["projects"]["well_lids"][0]["state"] = "open"
+    assert by_rule(plan(copy.deepcopy(s), Memory())[0], "well_lid")[0].action == {"type": "seal_well_stairs"}
+    s["projects"]["well_lids"][0]["state"] = "locked"
+    assert not by_rule(plan(copy.deepcopy(s), Memory())[0], "well_lid")
+
+
 @test("wells (0.104.148): another well can't be placed because the water is a cavern -> the cavern well")
 def _():
     s = fort()

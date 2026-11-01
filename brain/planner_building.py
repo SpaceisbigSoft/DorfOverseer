@@ -13,7 +13,7 @@ from quirks import has_rule
 from digest import _d, _l, normalize
 from planner_core import *  # noqa: F401,F403
 
-__all__ = ["STUCK_FALLBACKS", "stuck_fallback", "magma_access", "GROWTH", "GROWTH_EXTRA_SCORE", "GROWTH_MAX", "growth_want", "growth_candidates", "TRAIT_NAMES_SHORT", "FURNITURE_RECIPES", "METAL_FURNITURE", "spare_metal", "WOODEN_FURNITURE", "BASIC_WORKSHOPS", "BASIC_STOCKPILES", "memorial_due", "_well_rule", "_water_zone_rule", "cavern_well_need", "cavern_well_safe", "WELL_PARTS_SHOPS", "well_parts_plan", "_well_parts", "_room_repair_rule", "_water_traffic_rule", "_cleanup_rule", "STORE_GROW", "stone_tidiness", "jail_plan", "cistern_pop", "tavern_factor", "full_stores", "LEARNING_NEEDS", "_stairwell_rule", "WATER_WORDS", "water_summary", "_water_rules", "CISTERN_WORDS", "_cistern_parts", "_cistern_rule", "_deep_notes", "good_times", "ORDINALS", "garden_name", "_pop_cap_rule", "fort_strain", "hospital_shortfall", "dining_shortfall", "social_shortfall", "SOCIAL_KINDS", "_join_rule", "_dig_stall_rule", "_shrink_rule", "room_size", "_project_rules", "more_temple", "LADDER_BASE", "LADDER_TRAITS", "_ladder_kind", "_ladder_word", "ladder_score", "tombs_short"]
+__all__ = ["STUCK_FALLBACKS", "stuck_fallback", "magma_access", "GROWTH", "GROWTH_EXTRA_SCORE", "GROWTH_MAX", "growth_want", "growth_candidates", "TRAIT_NAMES_SHORT", "FURNITURE_RECIPES", "METAL_FURNITURE", "spare_metal", "WOODEN_FURNITURE", "BASIC_WORKSHOPS", "BASIC_STOCKPILES", "memorial_due", "_well_rule", "_well_lid_rule", "_water_zone_rule", "cavern_well_need", "cavern_well_safe", "WELL_PARTS_SHOPS", "well_parts_plan", "_well_parts", "_room_repair_rule", "_water_traffic_rule", "_cleanup_rule", "STORE_GROW", "stone_tidiness", "jail_plan", "cistern_pop", "tavern_factor", "full_stores", "LEARNING_NEEDS", "_stairwell_rule", "WATER_WORDS", "water_summary", "_water_rules", "CISTERN_WORDS", "_cistern_parts", "_cistern_rule", "_deep_notes", "good_times", "ORDINALS", "garden_name", "_pop_cap_rule", "fort_strain", "hospital_shortfall", "dining_shortfall", "social_shortfall", "SOCIAL_KINDS", "_join_rule", "_dig_stall_rule", "_shrink_rule", "room_size", "_project_rules", "more_temple", "LADDER_BASE", "LADDER_TRAITS", "_ladder_kind", "_ladder_word", "ladder_score", "tombs_short"]
 
 
 # Furniture waiting in a project -> the recipe that makes it.
@@ -188,6 +188,40 @@ def _well_rule(s: dict, memory, traits: dict, cfg: dict, proposals: list, notes:
                               (f"{who} dwarves need water and there is no well" if urgent else "no well yet")
                               + ": channel a hole over clean water inside the fort and build one",
                               2 if urgent else 4))
+
+
+def _well_lid_rule(s: dict, proposals: list, notes: list) -> None:
+    """(0.104.151) A cavern well's stair column, dug only to channel the shaft
+    from, stands beside the open shaft: anything flying up out of the cavern
+    steps onto it and walks up into the hall. Once the shaft is dug, a hatch
+    over the column's top step, locked (the bridge forbids it); a hatch cover
+    made at the mason's if none is free. The shaft's own hatch is only probed
+    (a shut hatch stops the bucket: it needs a lever)."""
+    lids = [x for x in _l(_d(s.get("projects")).get("well_lids")) if isinstance(x, dict)]
+    if not lids:
+        return
+    where = lambda x: f"x{x.get('x')} y{x.get('y')} elevation {x.get('elevation')}"
+    todo = [x for x in lids if x.get("state") in ("none", "open")]
+    if todo:
+        proposals.append(Proposal("well_lid", {"type": "seal_well_stairs"},
+                                  f"{len(todo)} cavern well stair column(s) open beside the shaft (at "
+                                  + ", ".join(where(x) for x in todo[:3]) + "): anything flying up from the "
+                                  "cavern could walk in: a locked hatch over the top step", 3))
+    need = [x for x in lids if x.get("state") in ("none", "planned")]
+    free = _d(_d(s.get("entrances")).get("parts")).get("hatch_covers")
+    if need and isinstance(free, int) and free == 0 and queued(s, {"stone_hatch_cover"}) == 0:
+        proposals.append(Proposal("well_lid", {"type": "work_order", "recipe": "stone_hatch_cover", "amount": len(need)},
+                                  f"the cavern wells' stair lids need {len(need)} hatch cover(s) and none is free: "
+                                  "make them", 3, True))
+    blocked = [x for x in lids if x.get("state") == "blocked"]
+    if blocked:
+        notes.append("a cavern well's stair column has something else built on its top step ("
+                     + ", ".join(where(x) for x in blocked[:2]) + "): left alone")
+    probed = [x for x in lids if "shaft_hatch" in x]
+    if probed:
+        ok = sum(1 for x in probed if x.get("shaft_hatch"))
+        notes.append(f"cavern well shafts: a hatch under the well {'can' if ok else 'cannot'} be built "
+                     f"({ok} of {len(probed)}; it would need a lever to let the bucket through)")
 
 
 def _water_zone_rule(s: dict, proposals: list, notes: list) -> None:

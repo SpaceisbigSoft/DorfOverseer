@@ -1208,6 +1208,55 @@ def _():
     assert not f.ok and "digging" in f.error, f.error
 
 
+@test("cavern well (0.104.151): once dug, its stair column gets a hatch on its top step, then locked")
+def _():
+    cavern_column()
+    r = B.place_well(LUA.table_from({"cavern": True}), LUA.table_from({"year": 148, "tick": 100}), False)
+    assert r.ok, r.error
+    LUA.execute("""
+      LBLD = {}
+      xyz2pos = function(x, y, z) return {x = x, y = y, z = z} end
+      df = df or {}
+      df.building_type = {Hatch = 7, Well = 3}
+      df.building = {find = function(id) for _, b in pairs(LBLD) do if b.id == id then return b end end end}
+      dfhack.buildings = {findAtTile = function(p) return LBLD[p.x .. ',' .. p.y .. ',' .. p.z] end}
+      function MKLID(x, y, z, t, built)
+        local b = {id = x * 1000 + y, t = t, built = built, door_flags = {forbidden = false},
+                   getType = function(self) return self.t end,
+                   getBuildStage = function(self) return self.built and 1 or 0 end,
+                   getMaxBuildStage = function() return 1 end}
+        LBLD[x .. ',' .. y .. ',' .. z] = b
+        return b
+      end
+    """)
+    assert len(B.well_lids(False)) == 0                           # still digging: nothing yet
+    assert not B.seal_well_stairs(False).ok
+    open_shaft()
+    dig_shaft_stairs()
+    f = B.furnish_project(r.project_id, True)
+    assert f.ok, f.error
+    lids = B.well_lids(True)
+    assert len(lids) == 1 and lids[1].state == "none" and (lids[1].x, lids[1].y, lids[1].z) == (71, 58, 70), dict(lids[1])
+    assert lids[1].shaft_hatch is True                            # the probe (the fake game says yes)
+    before = len(W.placed)
+    s = B.seal_well_stairs(False)
+    assert s.ok and s.planned == 1 and s.locked == 0, dict(s)
+    hatch = [W.placed[i] for i in range(before + 1, len(W.placed) + 1)]
+    assert any(h.text == "H" and (h.x, h.y, h.z) == (71, 58, 70) for h in hatch), [dict(h) for h in hatch]
+    lid = LUA.eval("MKLID")(71, 58, 70, 7, False)                 # buildingplan's hatch, not yet built
+    assert B.well_lids(False)[1].state == "planned"
+    assert not B.seal_well_stairs(False).ok                       # nothing to do while it waits
+    lid.built = True
+    assert B.well_lids(False)[1].state == "open"
+    s = B.seal_well_stairs(False)
+    assert s.ok and s.locked == 1 and lid.door_flags.forbidden is True, dict(s)
+    assert B.well_lids(False)[1].state == "locked"
+    assert not B.seal_well_stairs(False).ok
+    other = LUA.eval("MKLID")(71, 58, 70, 99, True)               # something else on the step: left alone
+    assert B.well_lids(False)[1].state == "blocked"
+    LUA.execute("df.building = nil; dfhack.buildings = nil; df.building_type = nil; LBLD = nil; MKLID = nil")
+
+
 @test("cavern well: never through an aquifer, past open space, into salt or magma, or under a full lake")
 def _():
     for change, word in (({"aquifer": True}, "solid rock"), ):

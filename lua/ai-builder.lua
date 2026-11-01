@@ -1394,8 +1394,10 @@ function projects_report()
         end
     end
     local okc, cap = pcall(slot_cap, open_projects(data))
+    local okl, lids = pcall(well_lids, true)     -- (0.104.151)
     return {open = out, decorating = decorating, finished = finished, max_open = okc and cap or MAX_OPEN_PROJECTS,
-            max_open_base = MAX_OPEN_PROJECTS}
+            max_open_base = MAX_OPEN_PROJECTS, well_lids = (okl and #lids > 0) and lids or nil,
+            well_lids_error = (not okl) and tostring(lids):sub(1, 120) or nil}
 end
 
 -- The box a project covers, in map coordinates: {x1, y1, x2, y2, z}, from
@@ -2712,6 +2714,87 @@ function shaft_stair_cells(side, z, rock)
 end
 
 STAIR_SHAPES = {j = 'STAIR_DOWN', i = 'STAIR_UPDOWN', u = 'STAIR_UP'}
+
+-- (0.104.151) The cavern wells' stair columns, closed once the shaft is dug.
+-- The column is only there to dig the shaft from (0.104.13); afterwards its
+-- bottom step stands beside the open shaft, so anything that flies up out of
+-- the cavern steps onto it and walks up into the hall (the Gap Checklist's
+-- known risk; Enxah's first cavern well, y62, stood open so for 30 years). A
+-- hatch over the column's top step, locked (DFHack forbids it: no lever, no
+-- dwarf), closes it; only a building destroyer gets through. The shaft
+-- itself: a hatch there stops the bucket unless a lever opens it (the wiki),
+-- so for now only probed: can the game build one a level under the well?
+-- Each: {project_id, x, y, z, elevation, state = 'none' | 'planned' | 'open'
+-- | 'locked' | 'blocked' | 'gone', shaft_hatch = true/false/nil}.
+local STAIR_DOWN_SHAPE = {STAIR_DOWN = true, STAIR_UPDOWN = true}
+local function lid_building(x, y, z)
+    local b = dfhack.buildings.findAtTile(xyz2pos(x, y, z))
+    if not b then return nil end
+    return b
+end
+
+function well_lids(probe)
+    OFFSET = elevation_offset()
+    local out = {}
+    local data = load_projects()
+    for _, p in ipairs(data.list) do
+        local st = p.shaft_stairs
+        if p.kind == 'well' and type(st) == 'table' and st[1] and (p.phase == 'furnish' or p.phase == 'done') then
+            local top = st[1]
+            local r = {project_id = p.id, x = top.x, y = top.y, z = top.z, elevation = ez(top.z)}
+            local b = lid_building(top.x, top.y, top.z)
+            if b then
+                if b:getType() ~= df.building_type.Hatch then
+                    r.state = 'blocked'
+                elseif b:getBuildStage() < b:getMaxBuildStage() then
+                    r.state = 'planned'
+                else
+                    local okf, f = pcall(function() return b.door_flags.forbidden end)
+                    r.state = (okf and f) and 'locked' or 'open'
+                    r.hatch_id = b.id
+                end
+            else
+                local tl = tile_info(top.x, top.y, top.z)
+                r.state = (tl and STAIR_DOWN_SHAPE[tl.shape]) and 'none' or 'gone'
+            end
+            if probe then
+                local a = anchor_of(p)
+                local okd, s = pcall(quickfort_apply, 'build', {{x = 0, y = 0, text = 'H'}}, p.z - 1, a.x, a.y, 'run', true)
+                r.shaft_hatch = okd and stat(s, 'build_designated') == 1 or false
+            end
+            table.insert(out, r)
+        end
+    end
+    return out
+end
+
+-- Close the columns: a hatch planned where there is none (buildingplan waits
+-- for a hatch cover), a built one locked. {ok, planned, locked, waiting}.
+function seal_well_stairs(dry_run)
+    local planned, locked, waiting = 0, 0, 0
+    for _, r in ipairs(well_lids(false)) do
+        if r.state == 'none' then
+            if dry_run then
+                planned = planned + 1
+            else
+                local okq, s = pcall(quickfort_apply, 'build', {{x = 0, y = 0, text = 'H'}}, r.z, r.x, r.y)
+                if okq and stat(s, 'build_designated') == 1 then planned = planned + 1 else waiting = waiting + 1 end
+            end
+        elseif r.state == 'open' then
+            if not dry_run then
+                local b = df.building.find(r.hatch_id)
+                if b then b.door_flags.forbidden = true end
+            end
+            locked = locked + 1
+        elseif r.state == 'planned' then
+            waiting = waiting + 1
+        end
+    end
+    if planned + locked == 0 then
+        return {ok = false, rejected = true, error = 'no cavern well stair to close', waiting = waiting}
+    end
+    return {ok = true, planned = planned, locked = locked, waiting = waiting, dry_run = dry_run or nil}
+end
 
 -- (0.104.83) A small pen for war dogs just inside a gate: a free 3x3 of
 -- inside floor (no building, zone, designation, water or sky) within 8
