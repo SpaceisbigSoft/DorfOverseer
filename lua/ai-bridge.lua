@@ -1839,7 +1839,19 @@ function get_buildings()
         if t == df.building_type.Stockpile then
             out.stockpiles = out.stockpiles + 1
             local okr, refuse = pcall(function() return b.settings.flags.refuse end)
-            if okr and refuse then out.refuse_piles = (out.refuse_piles or 0) + 1 end
+            if okr and refuse then
+                out.refuse_piles = (out.refuse_piles or 0) + 1
+                -- (0.104.159) where, and whether under the sky (refuse rotting
+                -- indoors fills the fort with miasma)
+                pcall(function()
+                    local cx, cy = (b.x1 + b.x2) // 2, (b.y1 + b.y2) // 2
+                    local des = dfhack.maps.getTileFlags(cx, cy, b.z)
+                    out.refuse_list = out.refuse_list or {}
+                    table.insert(out.refuse_list, {id = b.id, x = cx, y = cy, z = b.z,
+                                                   outside = des and des.outside and true or false,
+                                                   tiles = (b.x2 - b.x1 + 1) * (b.y2 - b.y1 + 1)})
+                end)
+            end
         elseif t == df.building_type.Civzone then
             inc(out.zones, df.civzone_type[b.type] or tostring(b.type))
         else
@@ -2406,6 +2418,19 @@ function get_hazards()
             pcall(function()
                 local b = dfhack.buildings.findAtTile(xyz2pos(c.x, c.y, c.z))
                 if b then c.building = df.building_type[b:getType()] end
+            end)
+            -- a refuse pile within 10 tiles on that level
+            pcall(function()
+                for _, sp in ipairs(df.global.world.buildings.other.STOCKPILE) do
+                    if sp.z == c.z and sp.settings.flags.refuse and sp.x1 - 10 <= c.x and c.x <= sp.x2 + 10
+                            and sp.y1 - 10 <= c.y and c.y <= sp.y2 + 10 then
+                        c.refuse_pile = sp.id
+                    end
+                end
+            end)
+            pcall(function()
+                local des = dfhack.maps.getTileFlags(c.x, c.y, c.z)
+                c.outside = des and des.outside and true or false
             end)
         end
         for _, kind in ipairs({'CORPSE', 'CORPSEPIECE', 'REMAINS', 'MEAT', 'FISH', 'FISH_RAW', 'PLANT', 'FOOD'}) do
