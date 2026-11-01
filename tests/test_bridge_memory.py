@@ -1133,6 +1133,8 @@ def _():
           table.insert(H.calls, {dry = dry}); return {ok = true} end}}
     """, M, H)
     assert LUA.eval("function(M) return M.ACTIONS.accept_cups == M.act_accept_cups end")(M)
+    # (review) the cached needs section (the cups census) is built again after it
+    assert LUA.eval("function(M) return M.CACHE_INVALIDATES.accept_cups[1] end")(M) == "needs"
     assert M.act_accept_cups(t({"dry_run": True})).ok and H.calls[1].dry is True
     assert M.act_accept_cups(t({})).ok and H.calls[2].dry is False
 
