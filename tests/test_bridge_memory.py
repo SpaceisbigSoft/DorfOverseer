@@ -1139,7 +1139,8 @@ def _():
     assert M.act_rest_infected(t({"max": 3, "dry_run": True})).ok
     assert (H.calls[1].what, H.calls[1].n, H.calls[1].dry) == ("rest", 3, True)
     assert M.act_rest_infected(t({})).ok and H.calls[2].n == 3 and H.calls[2].dry is False
-    for bad in ({"max": 0}, {"max": 11}, {"max": "lots"}, {"max": 2.5}):
+    for bad in ({"max": 0}, {"max": 11}, {"max": "lots"}, {"max": 2.5}, {"cap": 0}, {"cap": 21},
+                {"keep_free": -1}, {"keep_free": 21}):          # (review) the sleepers' cap, the beds kept free
         r = M.act_rest_infected(t(bad))
         assert not r.ok and r.rejected, (bad, dict(r))
     assert M.act_add_doctor_post(t({"location_id": 13})).ok and (H.calls[3].what, H.calls[3].n) == ("post", 13)

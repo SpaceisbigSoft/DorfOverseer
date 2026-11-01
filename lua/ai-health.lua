@@ -17,37 +17,69 @@
 -- DFHack's own dwarfvet does what a player's doctor can't ask for: an
 -- injured animal with needs_healthcare and no job is given a special Rest job
 -- on a free tile of a hospital zone, and DF's doctors treat it there. The same
--- here for citizens: an idle one with an infected wound and no treatment
--- asked is put to rest in a free hospital bed (the worst infections first).
--- Whether DF keeps a walking dwarf resting there is watched (`stayed`,
--- `asked`) and said, so the planner stops when it doesn't work.
+-- here for citizens: an idle one with an infected wound, needs_healthcare
+-- and no treatment asked is put to rest in a free hospital bed (the worst
+-- infections first).
+--
+-- (0.104.168, review) Never a bed taken for good: a sleeper DF hasn't asked
+-- a treatment for within REST_DAYS is got up (the Rest job removed) and not
+-- sent again for COOLDOWN_DAYS; at most `cap` of the AI's undiagnosed
+-- sleepers lie in the beds at once, always `keep_free` beds left for DF's own
+-- patients. Who was sent, got up and helped is kept in the save (site data),
+-- so a reload forgets nobody. The tending is done at each report (survey),
+-- as the hospital burrow re-checks its members there, so the sleepers are got
+-- up even while the planner asks nothing.
 --@module = true
 
 local INFECTION_BLEEDS = 300            -- df-structures: ">=300 causes bleeding"
 local RQ = {'rq_diagnosis', 'rq_immobilize', 'rq_dressing', 'rq_cleaning', 'rq_surgery', 'rq_suture',
             'rq_setting', 'rq_traction', 'rq_crutch'}
-local SENT_DAYS = 7
-
--- dwarves the AI put to rest: unit id (number) -> game tick (survives calls;
--- a reloaded script forgets, which only restarts the count)
-SENT = SENT or {}
+REST_DAYS = 3                -- a sleeper with no treatment asked after this many days is got up
+COOLDOWN_DAYS = 28           -- ...and not sent again for this many
+STATE_KEY = 'ai-overseer/infected-rest'
+local DAY = 1200
 
 local function now_tick()
     return df.global.cur_year * 403200 + df.global.cur_year_tick
 end
 
+-- the save's record: sent = {id = {tick, job}}, cooldown = {id = tick} (got
+-- up with nothing asked), helped = {id = tick} (DF asked a treatment)
+local function load_state()
+    local ok, d = pcall(dfhack.persistent.getSiteData, STATE_KEY, {})
+    d = ok and type(d) == 'table' and d or {}
+    for _, k in ipairs({'sent', 'cooldown', 'helped'}) do
+        d[k] = type(d[k]) == 'table' and d[k] or {}
+    end
+    return d
+end
+
+local function save_state(d)
+    pcall(dfhack.persistent.saveSiteData, STATE_KEY, d)
+end
+
 -- Pure: the candidates to send, best first. Each: {id, load, infected,
--- asked, in_hospital, idle, soldier, child, mood, sent}. Only an idle grown
--- citizen with an infected wound, no treatment asked, outside the hospitals,
--- not a soldier, not in a mood, not sent lately; bleeding (load >= 300)
--- first, then the heavier infection, ties to the lower id.
+-- care (needs_healthcare), asked, in_hospital, idle, soldier, child, mood,
+-- sent, cooldown, unhappy, tantrum, insane, burrow, staff, restrained,
+-- noble}. Only an idle grown citizen with an infected wound DF says needs
+-- care, no treatment asked, outside the hospitals; never a soldier, one in a
+-- mood, a tantrum or mad, the unhappy, one in any burrow, the hospitals' own
+-- staff, the caged or chained, an office holder, nor one sent or got up
+-- lately. Bleeding (load >= 300) first, then the heavier infection, ties to
+-- the lower id.
+local BARS = {'asked', 'in_hospital', 'soldier', 'child', 'mood', 'sent', 'cooldown', 'unhappy', 'tantrum',
+              'insane', 'burrow', 'staff', 'restrained', 'noble'}
+
+function eligible(c)
+    if not (c.infected and c.care and c.idle) then return false end
+    for _, k in ipairs(BARS) do if c[k] then return false end end
+    return true
+end
+
 function pick_patients(cands, max)
     local list = {}
     for _, c in ipairs(cands) do
-        if c.infected and not c.asked and not c.in_hospital and c.idle and not c.soldier
-                and not c.child and not c.mood and not c.sent then
-            table.insert(list, c)
-        end
+        if eligible(c) then table.insert(list, c) end
     end
     table.sort(list, function(a, b)
         local ba, bb = (a.load or 0) >= INFECTION_BLEEDS, (b.load or 0) >= INFECTION_BLEEDS
@@ -60,10 +92,16 @@ function pick_patients(cands, max)
     return out
 end
 
+-- Pure: how many may be sent now: at most `max`, `cap` sleepers in all,
+-- `keep_free` beds left free.
+function room(max, cap, keep_free, sleeping, free)
+    return math.max(0, math.min(max, cap - sleeping, free - keep_free))
+end
+
 -- --- the game -----------------------------------------------------------------
 
-local function hospital_zones()
-    local zones = {}
+local function hospitals()
+    local zones, staff = {}, {}
     local site = dfhack.world.getCurrentSite()
     for _, loc in ipairs(site and site.buildings or {}) do
         if df.abstract_building_type[loc:getType()] == 'HOSPITAL' then
@@ -72,9 +110,14 @@ local function hospital_zones()
                 local z = df.building.find(bid)
                 if z then zones[z.id] = z end
             end
+            pcall(function()
+                for _, o in ipairs(loc.occupations) do
+                    if o.unit_id ~= -1 then staff[o.unit_id] = true end
+                end
+            end)
         end
     end
-    return zones
+    return zones, staff
 end
 
 local function in_hospital(u, zones)
@@ -112,26 +155,42 @@ local function load_of(u)
     return ok and tonumber(n) or 0
 end
 
-local function resting(u)
-    local ok, r = pcall(function()
+local function rest_job(u)
+    local ok, j = pcall(function()
         local j = u.job.current_job
-        return j ~= nil and j.job_type == df.job_type.Rest
+        return j ~= nil and j.job_type == df.job_type.Rest and j or nil
     end)
-    return ok and r
+    return ok and j or nil
 end
 
 local function key(x, y, z) return x .. ',' .. y .. ',' .. z end
 
--- The hospital zones' finished beds nobody lies in or is on the way to.
-local function free_beds(zones, citizens)
+-- every job in the world: (0.104.168, review) a bed is held by any job
+-- aimed at it, not only by a citizen's Rest job
+local function each_job(fn)
+    pcall(function()
+        local link = df.global.world.jobs.list.next
+        while link do
+            if link.item then fn(link.item) end
+            link = link.next
+        end
+    end)
+end
+
+-- The hospital zones' finished beds nobody lies in, is on the way to, or
+-- uses (the bed's own users list).
+local function free_beds(zones)
     local taken = {}
-    for _, u in ipairs(citizens) do
-        pcall(function() taken[key(u.pos.x, u.pos.y, u.pos.z)] = true end)
-        pcall(function()
-            local j = u.job.current_job
-            if j and j.job_type == df.job_type.Rest then taken[key(j.pos.x, j.pos.y, j.pos.z)] = true end
-        end)
-    end
+    pcall(function()
+        for _, u in ipairs(df.global.world.units.active) do
+            pcall(function() taken[key(u.pos.x, u.pos.y, u.pos.z)] = true end)
+            pcall(function()
+                local j = u.job.current_job
+                if j then taken[key(j.pos.x, j.pos.y, j.pos.z)] = true end
+            end)
+        end
+    end)
+    each_job(function(j) pcall(function() taken[key(j.pos.x, j.pos.y, j.pos.z)] = true end) end)
     local beds, total = {}, 0
     for _, z in pairs(zones) do
         pcall(function()
@@ -141,8 +200,10 @@ local function free_beds(zones, citizens)
                     pcall(function() done = b:getBuildStage() >= b:getMaxBuildStage() end)
                     if done then
                         total = total + 1
-                        if not taken[key(b.centerx, b.centery, b.z)] then
-                            table.insert(beds, {x = b.centerx, y = b.centery, z = b.z})
+                        local used = false
+                        pcall(function() used = #b.users.unit > 0 end)
+                        if not used and not taken[key(b.centerx, b.centery, b.z)] then
+                            table.insert(beds, {x = b.centerx, y = b.centery, z = b.z, id = b.id})
                         end
                     end
                 end
@@ -152,15 +213,31 @@ local function free_beds(zones, citizens)
     return beds, total
 end
 
-local function candidate(u, zones)
+local function in_tantrum(u)
+    local okm, m = pcall(function() return df.soldier_mood_type[u.counters.soldier_mood] end)
+    return okm and (m == 'Tantrum' or m == 'Enraged')
+end
+
+local function candidate(u, zones, staff, d)
     local c = {id = u.id, unit = u, infected = infected(u), asked = asked(u), load = load_of(u)}
     if not c.infected then return c end
+    pcall(function() c.care = u.health ~= nil and u.health.flags.needs_healthcare == true end)
     c.in_hospital = in_hospital(u, zones)
     pcall(function() c.idle = u.job.current_job == nil end)
     c.soldier = u.military.squad_id ~= -1
     pcall(function() c.child = not dfhack.units.isAdult(u) end)
     pcall(function() c.mood = u.mood ~= nil and u.mood ~= -1 end)
-    c.sent = SENT[u.id] ~= nil
+    c.sent = d.sent[tostring(u.id)] ~= nil
+    c.cooldown = d.cooldown[tostring(u.id)] ~= nil
+    -- (review) unhappy or worse (stress category 2 and below), raging, mad
+    pcall(function() local cat = dfhack.units.getStressCategory(u); c.unhappy = type(cat) == 'number' and cat <= 2 end)
+    c.tantrum = in_tantrum(u)
+    pcall(function() c.insane = dfhack.units.isSane(u) == false end)
+    -- any burrow: the AI's recreation or hospital burrow, or a player's
+    pcall(function() c.burrow = #u.burrows > 0 end)
+    c.staff = staff[u.id] == true
+    pcall(function() c.restrained = u.flags1.caged or u.flags1.chained end)
+    pcall(function() local l = dfhack.units.getNoblePositions(u); c.noble = l ~= nil and #l > 0 end)
     return c
 end
 
@@ -175,16 +252,63 @@ local function labor_count(citizens, name)
     return n
 end
 
--- Read only: the fort's infected, the hospital beds free, and how those the
--- AI put to rest are doing.
+-- The AI's sleepers tended: DF asked a treatment (helped: DF's patient now),
+-- DF ended the rest, or REST_DAYS passed with nothing asked (the Rest job
+-- removed: got up, cooldown); old cooldowns and helps forgotten. Returns the
+-- counts; `dry_run` changes nothing.
+local function tend(d, t, dry_run)
+    local out = {sleeping = 0, got_up = 0, ended = 0}
+    for sid, e in pairs(d.sent) do
+        local u = df.unit.find(tonumber(sid))
+        local oka, alive = pcall(function() return dfhack.units.isAlive(u) end)
+        local when = type(e) == 'table' and tonumber(e.tick) or tonumber(e) or t
+        if not u or (oka and not alive) or t < when then
+            if not dry_run then d.sent[sid] = nil end
+        elseif asked(u) then
+            if not dry_run then d.sent[sid], d.helped[sid] = nil, t end
+        else
+            local j = rest_job(u)
+            if not j then
+                out.ended = out.ended + 1                 -- DF ended the rest itself
+                if not dry_run then d.sent[sid], d.cooldown[sid] = nil, t end
+            elseif t - when >= REST_DAYS * DAY then
+                out.got_up = out.got_up + 1
+                if not dry_run then
+                    pcall(dfhack.job.removeJob, j)
+                    d.sent[sid], d.cooldown[sid] = nil, t
+                end
+            else
+                out.sleeping = out.sleeping + 1
+            end
+        end
+    end
+    if not dry_run then
+        for sid, w in pairs(d.cooldown) do
+            if t < (tonumber(w) or 0) or t - (tonumber(w) or 0) >= COOLDOWN_DAYS * DAY then d.cooldown[sid] = nil end
+        end
+        for sid, w in pairs(d.helped) do
+            if t < (tonumber(w) or 0) or t - (tonumber(w) or 0) >= COOLDOWN_DAYS * DAY then d.helped[sid] = nil end
+        end
+    end
+    return out
+end
+
+local function count(t) local n = 0 for _ in pairs(t) do n = n + 1 end return n end
+
+-- The fort's infected, the hospital beds free, and the AI's sleepers (tended
+-- here: see the top).
 function survey(txt)
-    local zones = hospital_zones()
+    local d = load_state()
+    local t = now_tick()
+    local tended = tend(d, t, false)
+    save_state(d)
+    local zones, staff = hospitals()
     local citizens = dfhack.units.getCitizens(true)
     local out = {infected = 0, untreated = 0, bleeding = 0, in_hospital = 0, idle_untreated = 0, max_load = 0,
-                 worst = {}, sent = 0, stayed = 0, asked = 0}
+                 worst = {}}
     local worst = {}
     for _, u in ipairs(citizens) do
-        local c = candidate(u, zones)
+        local c = candidate(u, zones, staff, d)
         if c.infected then
             out.infected = out.infected + 1
             if c.load >= INFECTION_BLEEDS then out.bleeding = out.bleeding + 1 end
@@ -192,7 +316,7 @@ function survey(txt)
             if c.in_hospital then out.in_hospital = out.in_hospital + 1 end
             if not c.asked then
                 out.untreated = out.untreated + 1
-                if #pick_patients({c}, 1) == 1 then out.idle_untreated = out.idle_untreated + 1 end
+                if eligible(c) then out.idle_untreated = out.idle_untreated + 1 end
             end
             table.insert(worst, c)
         end
@@ -203,51 +327,52 @@ function survey(txt)
         table.insert(out.worst, {id = c.id, name = (txt or tostring)(dfhack.units.getReadableName(c.unit)),
                                  load = c.load, asked = c.asked or nil, in_hospital = c.in_hospital or nil})
     end
-    local beds, total = free_beds(zones, citizens)
+    local beds, total = free_beds(zones)
     out.beds, out.free_beds = total, #beds
-    local n = 0
-    for _ in pairs(zones) do n = n + 1 end
-    out.hospital_zones = n
+    out.hospital_zones = count(zones)
     -- cleaning patients is the CLEAN labour; diagnosis DIAGNOSE (civilians only)
     out.cleaners = labor_count(citizens, 'CLEAN')
     out.diagnosers = labor_count(citizens, 'DIAGNOSE')
-    -- those the AI put to rest: still resting (in the bed or on the way), or
-    -- asked a treatment since
-    local t = now_tick()
-    for id, when in pairs(SENT) do
-        local u = df.unit.find(id)
-        local oka, alive = pcall(function() return dfhack.units.isAlive(u) end)
-        if not u or t - when > SENT_DAYS * 1200 or t < when or (oka and not alive) then
-            SENT[id] = nil
-        else
-            out.sent = out.sent + 1
-            if asked(u) then out.asked = out.asked + 1
-            elseif resting(u) then out.stayed = out.stayed + 1 end
-        end
-    end
+    -- the AI's sleepers: lying in now (undiagnosed), got up for nothing asked
+    -- (in the last COOLDOWN_DAYS), and helped (DF asked a treatment)
+    out.sleeping = tended.sleeping
+    out.got_up_now = tended.got_up + tended.ended
+    out.failed = count(d.cooldown)
+    out.helped = count(d.helped)
+    out.rest_days = REST_DAYS
     return out
 end
 
--- Put up to `max` idle infected citizens (no treatment asked) to rest in a
--- free hospital bed they can walk to, the worst first; as dwarfvet does.
-function rest_infected(max, dry_run, txt)
-    local zones = hospital_zones()
+-- Put idle infected citizens DF asks no treatment for to rest in a free
+-- hospital bed they can walk to, the worst first; as dwarfvet does. At
+-- most `max` now, `cap` of the AI's sleepers at once, `keep_free` beds left.
+function rest_infected(max, dry_run, txt, cap, keep_free)
+    cap, keep_free = cap or 3, keep_free or 2
+    local d = load_state()
+    local t = now_tick()
+    local tended = tend(d, t, dry_run)
+    local zones, staff = hospitals()
     if next(zones) == nil then return {ok = false, rejected = true, error = 'the fort has no hospital zone'} end
-    local citizens = dfhack.units.getCitizens(true)
-    local beds = free_beds(zones, citizens)
-    if #beds == 0 then return {ok = false, rejected = true, error = 'no free hospital bed'} end
+    local beds = free_beds(zones)
+    local n = room(max, cap, keep_free, tended.sleeping, #beds)
+    if n == 0 then
+        if not dry_run then save_state(d) end
+        return {ok = false, rejected = true, error = ('no room: %d of the AI\'s sleepers in bed (at most %d), %d bed(s) '
+                .. 'free (%d kept for the doctors\' own patients)'):format(tended.sleeping, cap, #beds, keep_free)}
+    end
     local cands = {}
-    for _, u in ipairs(citizens) do
-        local c = candidate(u, zones)
+    for _, u in ipairs(dfhack.units.getCitizens(true)) do
+        local c = candidate(u, zones, staff, d)
         if c.infected then table.insert(cands, c) end
     end
     local picks = pick_patients(cands, #cands)
     if #picks == 0 then
+        if not dry_run then save_state(d) end
         return {ok = false, rejected = true, error = 'no idle infected dwarf outside the hospital waits for care'}
     end
     local sent, used = {}, {}
     for _, c in ipairs(picks) do
-        if #sent >= max then break end
+        if #sent >= n then break end
         local u = c.unit
         local bed
         for i, b in ipairs(beds) do
@@ -259,7 +384,7 @@ function rest_infected(max, dry_run, txt)
         if bed then
             local b = beds[bed]
             local name = (txt or tostring)(dfhack.units.getReadableName(u))
-            local done = dry_run
+            local done, job_id = dry_run, nil
             if not dry_run then
                 done = pcall(function()
                     local job = df.job:new()
@@ -271,8 +396,9 @@ function rest_infected(max, dry_run, txt)
                     gref.unit_id = u.id
                     job.general_refs:insert('#', gref)
                     u.job.current_job = job
+                    job_id = job.id
                 end)
-                if done then SENT[u.id] = now_tick() end
+                if done then d.sent[tostring(u.id)] = {tick = t, job = job_id} end
             end
             if done then
                 used[bed] = true
@@ -280,6 +406,7 @@ function rest_infected(max, dry_run, txt)
             end
         end
     end
+    if not dry_run then save_state(d) end
     if #sent == 0 then
         return {ok = false, rejected = true, error = 'no free hospital bed the infected can walk to'}
     end

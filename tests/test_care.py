@@ -90,9 +90,13 @@ for _, u in ipairs(spec.units) do
     figs[u.hf] = {id = u.hf, entity_links = vec(), name = 'fig' .. u.hf}
     local skills = {}
     for _, s in ipairs(u.skills or {}) do table.insert(skills, {id = SK[s[1]], rating = s[2]}) end
+    local needs = {}
+    if u.fight then table.insert(needs, {id = 1, focus_level = -5000}) end
     table.insert(units, {id = u.id, hist_figure_id = u.hf, child = u.child, baby = u.baby, stress = u.stress or 4,
                          military = {squad_id = u.squad or -1}, relationship_ids = {Mother = u.mother or -1},
-                         status = {current_soul = {skills = skills}}})
+                         occupations = u.staff and {{id = 1}} or {},
+                         health = {flags = {needs_healthcare = u.patient == true}},
+                         status = {current_soul = {skills = skills, personality = {needs = needs}}}})
 end
 for _, f in pairs({}) do end
 -- the existing holders' links
@@ -134,6 +138,7 @@ env.df = {
     historical_figure = {find = function(id) return figs[id] end},
     unit = {find = function(id) for _, u in ipairs(units) do if u.id == id then return u end end end},
     squad = {find = function(id) return squads[id] end},
+    need_type = {[1] = 'Fight'},
     job_skill = SK,
     histfig_entity_link_positionst = setmetatable(LINK, {__index = {is_instance = function(_, l) return l._cls == LINK end}}),
     history_event_add_hf_entity_linkst = {},
@@ -202,10 +207,31 @@ def _():
     env, ent, _ = nobles(BASE_A, units=[u for u in FOLK if u["id"] not in (2, 7)])
     r = env.appoint("MILITIA_COMMANDER", True)
     assert r.ok and r.name == "dwarf 1", dict(r)
-    # only the miserable: then he is taken (never the soldier or the mother)
+    # (review) only the miserable, the soldier and the mother: nobody fits, the post stays empty
     env, ent, _ = nobles(BASE_A, units=[u for u in FOLK if u["id"] in (3, 4, 5, 6)])
+    r = env.appoint("MILITIA_COMMANDER", False)
+    assert not r.ok and r.rejected and r.nobody_fits and "nobody fits to lead" in r.error, dict(r)
+    assert ent.positions.assignments[1].histfig == -1
+
+
+@test("(review) a squad's leader: never a patient, a post holder (the hospital's staff) or the unhappy; one who wants to fight first")
+def _():
+    folk = [{"id": 1, "hf": 11},
+            {"id": 2, "hf": 12, "skills": [("MILITARY_TACTICS", 9)], "patient": True},
+            {"id": 3, "hf": 13, "skills": [("MILITARY_TACTICS", 9)], "staff": True},
+            {"id": 4, "hf": 14, "skills": [("MILITARY_TACTICS", 9)], "stress": 2},      # unhappy
+            {"id": 5, "hf": 15, "skills": [("MILITARY_TACTICS", 3)]},
+            {"id": 6, "hf": 16, "skills": [("MILITARY_TACTICS", 1)], "fight": True}]
+    env, _, _ = nobles(BASE_A, units=folk)
     r = env.appoint("MILITIA_COMMANDER", True)
-    assert r.ok and r.name == "dwarf 6", dict(r)
+    assert r.ok and r.name == "dwarf 6", dict(r)                        # wants to fight beats a little skill
+    env, _, _ = nobles(BASE_A, units=[u for u in folk if u["id"] != 6])
+    assert env.appoint("MILITIA_COMMANDER", True).name == "dwarf 5"
+    env, _, _ = nobles(BASE_A, units=[u for u in folk if u["id"] in (1, 2, 3, 4)])
+    r = env.appoint("MILITIA_COMMANDER", True)
+    assert r.ok and r.name == "dwarf 1", dict(r)                        # the expedition leader, before nobody
+    env, _, _ = nobles(BASE_A, units=[u for u in folk if u["id"] in (2, 3, 4)] + [{"id": 1, "hf": 11, "patient": True}])
+    assert env.appoint("MILITIA_COMMANDER", True).nobody_fits
 
 
 @test("a captain's slot is refilled only where it leads a squad (a vacant slot with none is DF's spare)")
@@ -267,48 +293,74 @@ for _, u in ipairs(spec.units) do
     for _ = 1, (u.infected and 1 or 0) do table.insert(wounds, {flags = {infection = true}}) end
     table.insert(units, {id = u.id, pos = {x = u.x or 0, y = u.y or 0, z = u.z or 0},
                          body = {wounds = wounds, infection_level = u.load or 0},
-                         health = {flags = {rq_diagnosis = u.asked or false}},
+                         health = {flags = {rq_diagnosis = u.asked or false,
+                                            needs_healthcare = u.care ~= false and (u.infected or false)}},
                          job = {current_job = u.busy and {job_type = 1, pos = {x = -1, y = -1, z = -1}} or nil},
                          military = {squad_id = u.squad or -1}, mood = u.mood or -1, adult = not u.child,
+                         stress = u.stress or 4, insane = u.insane, noble = u.noble,
+                         counters = {soldier_mood = u.tantrum and 1 or 0},
+                         burrows = u.burrow and {5} or {},
+                         flags1 = {caged = u.caged == true, chained = false},
                          status = {labors = {[1] = u.clean ~= false, [2] = u.diagnose == true}}})
 end
 local beds = {}
-for _, b in ipairs(spec.beds or {}) do
-    table.insert(beds, {centerx = b[1], centery = b[2], z = b[3], getType = function() return 1 end,
+for i, b in ipairs(spec.beds or {}) do
+    table.insert(beds, {id = 700 + i, centerx = b[1], centery = b[2], z = b[3], getType = function() return 1 end,
+                        users = {unit = b[5] and {b[5]} or {}},
                         getBuildStage = function() return b[4] == false and 0 or 3 end,
                         getMaxBuildStage = function() return 3 end})
 end
 local zone = {id = 900, x1 = 0, y1 = 0, x2 = 10, y2 = 10, z = 0, contained_buildings = beds}
+local posts = {}
+for _, p in ipairs(spec.posts or {}) do table.insert(posts, p) end
 local loc = {id = 4, getType = function() return 2 end,
              getContents = function() return {building_ids = spec.no_hospital and {} or {900}} end,
-             occupations = vec(spec.posts or {})}
-local made = {}
+             occupations = vec(posts)}
+-- the world's job list (a linked list), with the jobs given in spec.jobs
+local head = {}
+local last = head
+for _, p in ipairs(spec.jobs or {}) do
+    local link = {item = {pos = {x = p[1], y = p[2], z = p[3]}}}
+    last.next = link; last = link
+end
+local made, removed, saved = {}, {}, {}
+local site_data = {}
 local env = setmetatable({}, {__index = _G})
 env.df = {
     global = {cur_year = 50, cur_year_tick = spec.tick or 1000, occupation_next_id = 500,
-              world = {occupations = {all = vec()}}},
+              world = {occupations = {all = vec()}, units = {active = units}, jobs = {list = head}}},
     abstract_building_type = {[2] = 'HOSPITAL'},
     building_type = {[1] = 'Bed'},
     building = {find = function(id) return id == 900 and zone or nil end},
     unit = {find = function(id) for _, u in ipairs(units) do if u.id == id then return u end end end},
     unit_labor = {CLEAN = 1, DIAGNOSE = 2},
     job_type = {Rest = REST},
+    soldier_mood_type = {[1] = 'Tantrum', [0] = 'None'},
     occupation_type = setmetatable({DOCTOR = 3, [3] = 'DOCTOR', DIAGNOSTICIAN = 4, [4] = 'DIAGNOSTICIAN'}, {}),
     occupation = {new = function() return {} end},
-    job = {new = function() local j = {pos = {}, flags = {}, general_refs = vec()}; table.insert(made, j); return j end},
+    job = {new = function() local j = {id = 800 + #made, pos = {}, flags = {}, general_refs = vec()}
+                            table.insert(made, j); return j end},
     general_ref_unit_workerst = 'worker',
     new = function(t) return {kind = t} end,
 }
 env.dfhack = {
     world = {getCurrentSite = function() return {id = 1, buildings = {loc}} end},
     units = {getCitizens = function() return units end, isAdult = function(u) return u.adult end,
-             isAlive = function(u) return not u.dead end,
+             isAlive = function(u) return not u.dead end, isSane = function(u) return not u.insane end,
+             getStressCategory = function(u) return u.stress end,
+             getNoblePositions = function(u) if u.noble then return {{position = {code = 'MANAGER'}}} end end,
              getReadableName = function(u) return 'dwarf ' .. u.id end},
     buildings = {findCivzonesAt = function(pos)
         if pos.x >= 0 and pos.x <= 10 and pos.y >= 0 and pos.y <= 10 and pos.z == 0 then return {zone} end
         return {} end},
     maps = {canWalkBetween = function(a, b) return not (spec.walls and a.z ~= b.z) end},
-    job = {linkIntoWorld = function() end},
+    job = {linkIntoWorld = function() end,
+           removeJob = function(j)
+               table.insert(removed, j)
+               for _, u in ipairs(units) do if u.job.current_job == j then u.job.current_job = nil end end
+               return true end},
+    persistent = {getSiteData = function(k, default) return site_data[k] or default end,
+                  saveSiteData = function(k, v) site_data[k] = v; table.insert(saved, k) end},
 }
 env.xyz2pos = function(x, y, z) return {x = x, y = y, z = z} end
 env.vlen = function(t) return #t end
@@ -317,8 +369,16 @@ env.pairs = function(t)
     if type(t) == 'table' and rawget(t, 0) ~= nil then return zipairs(t) end
     return pairs(t)
 end
-assert(load(src, 'ai-health', 't', env))()
-return env, units, made, loc
+-- a fresh load of the module over the same game and save (a reload)
+local function fresh()
+    local e = setmetatable({}, {__index = env})
+    assert(load(src, 'ai-health', 't', e))()
+    return e
+end
+local mod = fresh()
+mod.reload = fresh
+mod.site_data = site_data
+return mod, units, made, loc, removed
 """
 
 
@@ -343,11 +403,12 @@ SICK = [{"id": 1, "infected": True, "load": 120, "x": 50, "diagnose": True},
         {"id": 7, "infected": True, "load": 350, "x": 50, "child": True},
         {"id": 8, "x": 50, "clean": False},                                   # healthy
         {"id": 9, "infected": True, "load": 100, "x": 50, "mood": 2}]
+BEDS4 = ((1, 1, 0), (2, 1, 0), (3, 1, 0), (4, 1, 0), (6, 1, 0), (7, 1, 0))
 
 
 @test("infection survey: counts the infected, untreated, bleeding, idle; the worst; the free beds; cleaners and diagnosers")
 def _():
-    env, units, made, _ = health(SICK, beds=((1, 1, 0), (2, 1, 0), (5, 0, 0), (9, 9, 0, False)))
+    env, units, made, _, _ = health(SICK, beds=((1, 1, 0), (2, 1, 0), (5, 0, 0), (9, 9, 0, False)))
     s = env.survey()
     assert (s.infected, s.untreated, s.bleeding, s.in_hospital) == (8, 7, 4, 1), \
         (s.infected, s.untreated, s.bleeding, s.in_hospital)
@@ -356,63 +417,119 @@ def _():
     assert s.beds == 3 and s.free_beds == 2, (s.beds, s.free_beds)      # dwarf 5 lies in one; the unfinished isn't one
     assert s.cleaners == 6 and s.diagnosers == 1, (s.cleaners, s.diagnosers)   # soldiers and children not counted
     assert s.max_load == 900 and s.hospital_zones == 1
+    assert (s.sleeping, s.failed, s.helped, s.rest_days) == (0, 0, 0, 3)
 
 
-@test("rest_infected: the bleeding first, a free bed each (not one lain in), a special Rest job as dwarfvet makes; remembered")
+@test("(review) eligibility: needs_healthcare, and never the unhappy, raging, mad, in a burrow, hospital staff, caged, office holders")
+def _():
+    base = {"infected": True, "load": 500, "x": 50}
+    bad = [dict(base, id=11, care=False), dict(base, id=12, stress=2), dict(base, id=13, tantrum=True),
+           dict(base, id=14, insane=True), dict(base, id=15, burrow=True), dict(base, id=16),
+           dict(base, id=17, caged=True), dict(base, id=18, noble=True)]
+    env, _, _, _, _ = health(bad + [dict(base, id=19, load=10)], beds=BEDS4, posts=[{"type": 3, "unit_id": 16}])
+    assert env.survey().idle_untreated == 1
+    r = env.rest_infected(3, False, None, 3, 2)
+    assert r.ok and [x.unit_id for x in r.sent.values()] == [19], [x.unit_id for x in r.sent.values()]
+    lua = LuaRuntime(unpack_returned_tuples=True)
+    pure = lua.execute("local src = ...; local e = setmetatable({}, {__index = _G}); "
+                       "assert(load(src, 'h', 't', e))(); return e", HEALTH)
+    ok = {"infected": True, "care": True, "idle": True}
+    assert pure.eligible(lua.table_from(ok))
+    for k in ("asked", "in_hospital", "soldier", "child", "mood", "sent", "cooldown", "unhappy", "tantrum", "insane",
+              "burrow", "staff", "restrained", "noble"):
+        assert not pure.eligible(lua.table_from(dict(ok, **{k: True}))), k
+    for k in ("infected", "care", "idle"):
+        assert not pure.eligible(lua.table_from(dict(ok, **{k: False}))), k
+    assert pure.room(3, 3, 2, 0, 10) == 3 and pure.room(3, 3, 2, 2, 10) == 1 and pure.room(3, 3, 2, 0, 3) == 1
+    assert pure.room(3, 3, 2, 0, 2) == 0 and pure.room(3, 3, 2, 3, 10) == 0
+
+
+@test("rest_infected: the bleeding first, a free bed each (not one lain in), a special Rest job as dwarfvet makes; kept in the save")
 def _():
     units_ = SICK + [{"id": 10, "x": 1, "y": 1}]                         # someone lies in bed (1,1)
-    env, units, made, _ = health(units_, beds=((1, 1, 0), (2, 1, 0), (3, 1, 0), (4, 1, 0)))
-    d = env.rest_infected(3, True)
+    env, units, made, _, _ = health(units_, beds=BEDS4)
+    d = env.rest_infected(3, True, None, 3, 2)
     assert d.ok and d.dry_run and [x.unit_id for x in d.sent.values()] == [2, 1] and len(made) == 0, dict(d)
-    r = env.rest_infected(3, False)
+    r = env.rest_infected(3, False, None, 3, 2)
     assert r.ok and [x.unit_id for x in r.sent.values()] == [2, 1], dict(r)
     assert len(made) == 2 and made[1].job_type == 7 and made[1].flags.special
-    beds = ((2, 1), (3, 1), (4, 1))
-    assert (made[1].pos.x, made[1].pos.y) in beds and (made[2].pos.x, made[2].pos.y) in beds
     assert (made[1].pos.x, made[1].pos.y) != (made[2].pos.x, made[2].pos.y)
+    assert (made[1].pos.x, made[1].pos.y) != (1, 1) and (made[2].pos.x, made[2].pos.y) != (1, 1)
     assert made[1].general_refs[0].unit_id == 2 and units[2].job.current_job.job_type == 7
-    s = env.survey()
-    assert s.sent == 2 and s.stayed == 2 and s.asked == 0, (s.sent, s.stayed, s.asked)
-    # not sent twice; nobody idle left (a bed still free)
-    assert s.free_beds == 1, s.free_beds                               # the two beds they walk to are taken
-    r = env.rest_infected(3, False)
+    st = env.site_data["ai-overseer/infected-rest"]
+    assert st.sent["2"].tick == 50 * 403200 + 1000 and st.sent["1"] is not None
+    # a reload of the script forgets nobody (the save keeps them)
+    again = env.reload()
+    s = again.survey()
+    assert s.sleeping == 2 and s.failed == 0, (s.sleeping, s.failed)
+    r = again.rest_infected(3, False, None, 3, 2)
     assert not r.ok and r.rejected and "no idle infected" in r.error, dict(r)
 
 
-@test("rest_infected: bounded by max and the beds; none without a hospital, a free bed or one they can walk to")
+@test("(review) a bed held by any job aimed at it or listed as used is not free")
 def _():
-    env, _, made, _ = health(SICK, beds=((1, 1, 0),))
-    r = env.rest_infected(3, False)
-    assert r.ok and len(list(r.sent.values())) == 1 and r.sent[1].unit_id == 2, dict(r)
-    env, _, made, _ = health(SICK)
-    assert len(list(env.rest_infected(1, False).sent.values())) == 1
-    env, _, _, _ = health(SICK, beds=())
-    assert "no free hospital bed" in env.rest_infected(3, False).error
-    env, _, _, _ = health(SICK, no_hospital=True)
-    assert "no hospital zone" in env.rest_infected(3, False).error
-    env, _, made, _ = health(SICK, beds=((1, 1, 1),), walls=True)
-    r = env.rest_infected(3, False)
+    env, _, _, _, _ = health(SICK, beds=((1, 1, 0), (2, 1, 0, True, 99), (3, 1, 0)), jobs=[(1, 1, 0)])
+    assert env.survey().free_beds == 1
+
+
+@test("(review) at most `cap` undiagnosed sleepers at once, and `keep_free` beds left for DF's patients")
+def _():
+    many = [{"id": i, "infected": True, "load": 100 + i, "x": 50} for i in range(1, 9)]
+    env, _, made, _, _ = health(many, beds=tuple((i, 1, 0) for i in range(1, 11)))
+    r = env.rest_infected(10, False, None, 3, 2)
+    assert r.ok and len(list(r.sent.values())) == 3, dict(r)
+    r = env.rest_infected(10, False, None, 3, 2)
+    assert not r.ok and "no room" in r.error, dict(r)                  # the cap reached
+    env, _, made, _, _ = health(many, beds=((1, 1, 0), (2, 1, 0), (3, 1, 0)))
+    r = env.rest_infected(10, False, None, 3, 2)
+    assert r.ok and len(list(r.sent.values())) == 1, dict(r)           # 3 free, 2 kept
+    r = env.rest_infected(10, False, None, 3, 2)
+    assert not r.ok and "no room" in r.error, dict(r)
+
+
+@test("(review) a sleeper with no treatment asked after 3 days is got up (the Rest job removed) and not sent again for 28 days")
+def _():
+    env, units, made, _, removed = health(SICK, beds=BEDS4)
+    env.rest_infected(3, False, None, 3, 2)
+    env.df["global"].cur_year_tick = 1000 + 2 * 1200
+    s = env.survey()
+    assert s.sleeping == 2 and len(removed) == 0
+    units[1].health.flags.rq_diagnosis = True                           # dwarf 1 diagnosed: DF's patient now
+    env.df["global"].cur_year_tick = 1000 + 3 * 1200
+    s = env.survey()
+    assert len(removed) == 1 and units[2].job.current_job is None, len(removed)      # dwarf 2 got up
+    assert (s.sleeping, s.failed, s.helped, s.got_up_now) == (0, 1, 1, 1), (s.sleeping, s.failed, s.helped)
+    units[1].health.flags.rq_diagnosis = False                          # treated, up again, still infected
+    units[1].job.current_job = None
+    r = env.rest_infected(3, False, None, 3, 2)
+    assert r.ok and [x.unit_id for x in r.sent.values()] == [1], [x.unit_id for x in r.sent.values()]  # 2 waits
+    env.df["global"].cur_year_tick = 1000 + 3 * 1200 + 28 * 1200
+    s = env.survey()
+    cd = env.site_data["ai-overseer/infected-rest"].cooldown
+    assert cd["2"] is None and cd["1"] is not None, (dict(cd))        # 2 forgotten after 28 days; 1 just got up
+    assert s.failed == 1 and s.helped == 0, (s.failed, s.helped)
+    # DF ending the rest itself counts the same
+    env, units, _, _, removed = health(SICK, beds=BEDS4)
+    env.rest_infected(1, False, None, 3, 2)
+    units[2].job.current_job = None
+    s = env.survey()
+    assert s.failed == 1 and s.sleeping == 0 and len(removed) == 0
+
+
+@test("rest_infected: none without a hospital, a free bed or one they can walk to")
+def _():
+    env, _, _, _, _ = health(SICK, beds=())
+    assert "no room" in env.rest_infected(3, False, None, 3, 2).error
+    env, _, _, _, _ = health(SICK, no_hospital=True)
+    assert "no hospital zone" in env.rest_infected(3, False, None, 3, 2).error
+    env, _, made, _, _ = health(SICK, beds=((1, 1, 1), (2, 1, 1), (3, 1, 1)), walls=True)
+    r = env.rest_infected(3, False, None, 3, 0)
     assert not r.ok and "walk to" in r.error and len(made) == 0, dict(r)
-
-
-@test("rest_infected: those DF didn't keep resting are said (stayed 0); a week later forgotten")
-def _():
-    env, units, made, _ = health(SICK)
-    env.rest_infected(3, False)
-    units[2].job.current_job = None                                      # DF ended the rest
-    s = env.survey()
-    assert s.sent == 2 and s.stayed == 1 and s.asked == 0, (s.sent, s.stayed)
-    units[1].health.flags.rq_diagnosis = True                            # diagnosed: asked a treatment
-    s = env.survey()
-    assert s.asked == 1, s.asked
-    env.df["global"].cur_year_tick = 1000 + 8 * 1200
-    s = env.survey()
-    assert s.sent == 0, s.sent
 
 
 @test("add_doctor_post: a second doctor's post, never a third")
 def _():
-    env, _, _, loc = health(SICK, posts=[{"type": 3}, {"type": 4}])
+    env, _, _, loc, _ = health(SICK, posts=[{"type": 3}, {"type": 4}])
     d = env.add_doctor_post(4, True)
     assert d.ok and d.dry_run and d.posts == 2 and env.vlen(loc.occupations) == 2, dict(d)
     r = env.add_doctor_post(4, False)
@@ -423,13 +540,13 @@ def _():
     assert env.add_doctor_post(99, False).rejected
 
 
-@test("pick_patients (pure): idle, grown, infected, nothing asked, outside, no soldier or mood; bleeding then heavier first")
+@test("pick_patients (pure): bleeding then heavier first")
 def _():
     lua = LuaRuntime(unpack_returned_tuples=True)
     env = lua.execute("local src = ...; local e = setmetatable({}, {__index = _G}); "
                       "assert(load(src, 'h', 't', e))(); return e", HEALTH)
     t = lambda rows: lua.table_from([lua.table_from(r) for r in rows])
-    base = {"infected": True, "idle": True}
+    base = {"infected": True, "idle": True, "care": True}
     rows = [dict(base, id=1, load=100), dict(base, id=2, load=310), dict(base, id=3, load=290),
             dict(base, id=4, load=900, asked=True), dict(base, id=5, load=900, soldier=True),
             dict(base, id=6, load=500, in_hospital=True), {"id": 7, "load": 900, "infected": True},
@@ -437,6 +554,7 @@ def _():
     got = [c.id for c in env.pick_patients(t(rows), 10).values()]
     assert got == [9, 2, 3, 1], got
     assert [c.id for c in env.pick_patients(t(rows), 2).values()] == [9, 2]
+
 
 
 if __name__ == "__main__":

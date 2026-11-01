@@ -61,12 +61,16 @@ table.insert(OFFICE_ORDER, 'MILITIA_CAPTAIN')
 function pick_holder(cands, military)
     local best, best_score
     for _, c in ipairs(cands) do
-        if not c.child and not (military and c.mother) then
+        -- (0.104.168, review) a squad's leader is never a mother of a baby, a
+        -- patient, one of the hospitals' (or any location's) staff, nor the
+        -- unhappy; one who wants to fight first
+        if not c.child and not (military and (c.mother or c.patient or c.staff or c.miserable or c.unhappy)) then
             local score = 0
             for i, lvl in ipairs(c.skills or {}) do score = score + (i == 1 and 2 or 1) * (lvl or 0) end
             -- a dwarf already holding an office only when nobody else will do
             score = score * 10 - 1000 * (c.offices or 0) - (c.soldier and 15 or 0)
             if c.miserable then score = score - 5000 end      -- (0.104.168)
+            if military and c.wants_fight then score = score + 300 end
             if best_score == nil or score > best_score or (score == best_score and c.id < best.id) then
                 best, best_score = c, score
             end
@@ -214,11 +218,23 @@ local function candidates(code)
             local skills = {}
             for i, name in ipairs(wants) do skills[i] = skill(u, name) end
             local okm, cat = pcall(function() return dfhack.units.getStressCategory(u) end)
-            table.insert(out, {id = u.id, skills = skills, offices = offices_held(u),
-                               soldier = u.military.squad_id >= 0,
-                               child = dfhack.units.isChild(u) or dfhack.units.isBaby(u),
-                               mother = moms[u.id] or nil,
-                               miserable = (okm and type(cat) == 'number' and cat <= 1) or nil})
+            local c = {id = u.id, skills = skills, offices = offices_held(u),
+                       soldier = u.military.squad_id >= 0,
+                       child = dfhack.units.isChild(u) or dfhack.units.isBaby(u),
+                       mother = moms[u.id] or nil,
+                       miserable = (okm and type(cat) == 'number' and cat <= 1) or nil}
+            if military then      -- (0.104.168, review)
+                c.unhappy = (okm and type(cat) == 'number' and cat <= 2) or nil
+                pcall(function() c.patient = (u.health and u.health.flags.needs_healthcare) or nil end)
+                pcall(function() c.staff = #u.occupations > 0 or nil end)
+                pcall(function()
+                    for _, nd in ipairs(u.status.current_soul.personality.needs) do
+                        local t = df.need_type[nd.id]
+                        if (t == 'Fight' or t == 'MartialTraining') and nd.focus_level <= -1000 then c.wants_fight = true end
+                    end
+                end)
+            end
+            table.insert(out, c)
         end
     end
     return out
@@ -294,7 +310,15 @@ function appoint(code, dry_run, txt)
         end
     end
     local c = pick_holder(candidates(code), MILITARY_OFFICES[code])
-    if not c then return {ok = false, rejected = true, error = 'no grown citizen to appoint'} end
+    if not c then
+        if MILITARY_OFFICES[code] then          -- (0.104.168, review) left empty, said
+            return {ok = false, rejected = true, nobody_fits = true,
+                    error = 'nobody fits to lead a squad (a content, healthy civilian outside the squads, no '
+                            .. 'mother of a baby, holding no post): the ' .. code:lower():gsub('_', ' ')
+                            .. ' stays vacant'}
+        end
+        return {ok = false, rejected = true, error = 'no grown citizen to appoint'}
+    end
     local u = df.unit.find(c.id)
     local hf = u and df.historical_figure.find(u.hist_figure_id)
     if not hf then return {ok = false, error = 'the chosen dwarf has no historical figure'} end
