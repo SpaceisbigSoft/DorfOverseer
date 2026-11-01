@@ -320,6 +320,7 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
     if can_use("projects", "buildings", "stocks"):
         _guard(_well_rule, s, memory, traits, cfg, proposals, notes)
         _guard(_well_lid_rule, s, proposals, notes)
+        _guard(_planned_note, s, notes)
         _guard(_water_zone_rule, s, proposals, notes)
 
     # 6b. Strange moods, the dead ------------------------------------------

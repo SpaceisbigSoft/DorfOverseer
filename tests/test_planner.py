@@ -7752,6 +7752,19 @@ def _():
     assert p and p[0].action == {"type": "well_shaft", "close": False} and "watcher" in p[0].reason, [x.reason for x in p]
 
 
+@test("planned (0.104.154): the waiting well, hatches and levers said with what they lack and why")
+def _():
+    s = fort()
+    s["planned"] = {"n": 12, "list": [
+        {"kind": "Well", "x": 115, "y": 44, "z": 154, "elevation": 26, "suspended": True, "why": "Waiting for items",
+         "items": [{"want": "Bucket (any material)", "queue": 3}, {"want": "Block (granite)"}]},
+        {"kind": "Bed", "x": 1, "y": 1, "z": 1, "elevation": 1}]}
+    notes = plan(copy.deepcopy(s), Memory())[1]
+    n = [x for x in notes if "planned building(s) wait" in x]
+    assert n and "Well at x115 y44 elevation 26: wants Bucket (any material) (queue 3); Block (granite); Waiting for items" in n[0], n
+    assert "Bed" not in n[0]
+
+
 @test("wells (0.104.148): another well can't be placed because the water is a cavern -> the cavern well")
 def _():
     s = fort()

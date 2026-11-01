@@ -125,6 +125,7 @@ SECTION_DEFAULTS = {
     "supplies": {},
     "dead": {},
     "room_gaps": {},              # (0.104.20) rooms whose walls were dug open
+    "planned": {},                # (0.104.154) buildings buildingplan waits on: what each lacks, why suspended
     "justice": {},                # (0.104.52) jail zones, restraints, punishments waiting
     "moods": {"list": []},
     "missions": {"controllers": [], "squads": [], "reports": {"n": 0, "unviewed": 0},   # (0.104.95, 13b)

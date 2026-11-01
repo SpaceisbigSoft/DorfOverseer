@@ -4180,6 +4180,58 @@ function well_shaft_step(want_closed, dry_run)
             error = wells[1].error or ('nothing to do: ' .. tostring(wells[1].stage or wells[1].was))}
 end
 
+-- (0.104.154) Planned buildings that wait (DFHack buildingplan): what each
+-- still lacks, in buildingplan's own words ("Bucket (any material)"), its
+-- place in the queue for that item, and why its job is suspended
+-- (suspendmanager). Teacheroar, 1 Nov: the cavern well 85 days and its lever
+-- waited with every part in store, a gate hatch 129 days "though 1 hatch
+-- cover is free": the report said only "waiting". {n, list (40 at most,
+-- the longest waiting first), by_type}.
+PLANNED_MAX = 40
+
+function planned_report()
+    OFFSET = elevation_offset()
+    local okb, bp = pcall(require, 'plugins.buildingplan')
+    if not okb or not bp or not bp.isPlannedBuilding then return {error = 'no buildingplan'} end
+    local oks, sm = pcall(require, 'plugins.suspendmanager')
+    local why_fn
+    if oks and sm then
+        for _, fn in ipairs({'suspendmanager_suspensionDescription', 'suspensionDescription'}) do
+            if sm[fn] then why_fn = sm[fn] break end
+        end
+    end
+    local out, by_type, n = {}, {}, 0
+    for _, b in ipairs(df.global.world.buildings.all) do
+        local okp, planned = pcall(bp.isPlannedBuilding, b)
+        if okp and planned then
+            n = n + 1
+            local kind = df.building_type[b:getType()] or tostring(b:getType())
+            by_type[kind] = (by_type[kind] or 0) + 1
+            local r = {id = b.id, kind = kind, x = b.centerx, y = b.centery, z = b.z, elevation = ez(b.z)}
+            local j = b.jobs and b.jobs[0]
+            if j then
+                r.suspended = j.flags.suspend or nil
+                if why_fn and j.flags.suspend then
+                    local okw, w = pcall(why_fn, j)
+                    if okw and w and tostring(w) ~= '' then r.why = tostring(w):sub(1, 100) end
+                end
+                local items = {}
+                for i = 0, #j.job_items - 1 do
+                    local okd, d = pcall(bp.getDescString, b, i)
+                    local okq, q = pcall(bp.getQueuePosition, b, i)
+                    table.insert(items, {want = okd and tostring(d):sub(1, 80) or nil, queue = okq and q or nil})
+                end
+                if #items > 0 then r.items = items end
+            end
+            table.insert(out, r)
+        end
+    end
+    table.sort(out, function(a, c) return a.id < c.id end)          -- older buildings first
+    local list = {}
+    for i = 1, math.min(PLANNED_MAX, #out) do list[i] = out[i] end
+    return {n = n, list = list, by_type = by_type}
+end
+
 -- (0.104.153) A wild animal that attacks: a large predator, or one DF has
 -- agitated. (Most of the caverns' thousands of creatures are neither.)
 function hostile_wild(u)

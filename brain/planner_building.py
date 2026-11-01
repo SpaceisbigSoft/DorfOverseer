@@ -13,7 +13,7 @@ from quirks import has_rule
 from digest import _d, _l, normalize
 from planner_core import *  # noqa: F401,F403
 
-__all__ = ["STUCK_FALLBACKS", "stuck_fallback", "magma_access", "GROWTH", "GROWTH_EXTRA_SCORE", "GROWTH_MAX", "growth_want", "growth_candidates", "TRAIT_NAMES_SHORT", "FURNITURE_RECIPES", "METAL_FURNITURE", "spare_metal", "WOODEN_FURNITURE", "BASIC_WORKSHOPS", "BASIC_STOCKPILES", "memorial_due", "_well_rule", "_well_lid_rule", "cavern_danger", "_water_zone_rule", "cavern_well_need", "cavern_well_safe", "WELL_PARTS_SHOPS", "well_parts_plan", "_well_parts", "_room_repair_rule", "_water_traffic_rule", "_cleanup_rule", "STORE_GROW", "stone_tidiness", "jail_plan", "cistern_pop", "tavern_factor", "full_stores", "LEARNING_NEEDS", "_stairwell_rule", "WATER_WORDS", "water_summary", "_water_rules", "CISTERN_WORDS", "_cistern_parts", "_cistern_rule", "_deep_notes", "good_times", "ORDINALS", "garden_name", "_pop_cap_rule", "fort_strain", "hospital_shortfall", "dining_shortfall", "social_shortfall", "SOCIAL_KINDS", "_join_rule", "_dig_stall_rule", "_shrink_rule", "room_size", "_project_rules", "more_temple", "LADDER_BASE", "LADDER_TRAITS", "_ladder_kind", "_ladder_word", "ladder_score", "tombs_short"]
+__all__ = ["STUCK_FALLBACKS", "stuck_fallback", "magma_access", "GROWTH", "GROWTH_EXTRA_SCORE", "GROWTH_MAX", "growth_want", "growth_candidates", "TRAIT_NAMES_SHORT", "FURNITURE_RECIPES", "METAL_FURNITURE", "spare_metal", "WOODEN_FURNITURE", "BASIC_WORKSHOPS", "BASIC_STOCKPILES", "memorial_due", "_well_rule", "_well_lid_rule", "cavern_danger", "_planned_note", "_water_zone_rule", "cavern_well_need", "cavern_well_safe", "WELL_PARTS_SHOPS", "well_parts_plan", "_well_parts", "_room_repair_rule", "_water_traffic_rule", "_cleanup_rule", "STORE_GROW", "stone_tidiness", "jail_plan", "cistern_pop", "tavern_factor", "full_stores", "LEARNING_NEEDS", "_stairwell_rule", "WATER_WORDS", "water_summary", "_water_rules", "CISTERN_WORDS", "_cistern_parts", "_cistern_rule", "_deep_notes", "good_times", "ORDINALS", "garden_name", "_pop_cap_rule", "fort_strain", "hospital_shortfall", "dining_shortfall", "social_shortfall", "SOCIAL_KINDS", "_join_rule", "_dig_stall_rule", "_shrink_rule", "room_size", "_project_rules", "more_temple", "LADDER_BASE", "LADDER_TRAITS", "_ladder_kind", "_ladder_word", "ladder_score", "tombs_short"]
 
 
 # Furniture waiting in a project -> the recipe that makes it.
@@ -297,6 +297,27 @@ def cavern_danger(s: dict, wells: list | None = None, radius: int = SHAFT_DANGER
         if any(max(abs(pos["x"] - x), abs(pos["y"] - y)) <= reach and pos["z"] <= z for x, y, z in spots):
             return str(an.get("name") or "a wild beast")
     return ""
+
+
+PLANNED_SAID = {"Well", "Hatch", "Trap", "Floodgate", "Bridge", "Door"}   # (0.104.154) the ones that guard or water the fort
+
+
+def _planned_note(s: dict, notes: list) -> None:
+    """(0.104.154) What buildingplan's waiting buildings lack: the well, gate
+    hatches, levers and doors by name and place, with buildingplan's own
+    words and suspendmanager's reason (Teacheroar: a cavern well 85 days and a
+    gate hatch 129 days with every part in store)."""
+    pl = _d(s.get("planned"))
+    lst = [x for x in _l(pl.get("list")) if isinstance(x, dict) and x.get("kind") in PLANNED_SAID]
+    if not lst:
+        return
+    bits = []
+    for x in lst[:4]:
+        wants = "; ".join(f"{i.get('want')}" + (f" (queue {i.get('queue')})" if i.get("queue") else "")
+                          for i in _l(x.get("items")) if isinstance(i, dict) and i.get("want"))
+        bits.append(f"{x.get('kind')} at x{x.get('x')} y{x.get('y')} elevation {x.get('elevation')}"
+                    + (f": wants {wants}" if wants else "") + (f"; {x.get('why')}" if x.get("why") else ""))
+    notes.append(f"{pl.get('n')} planned building(s) wait for parts; " + " | ".join(bits))
 
 
 def _water_zone_rule(s: dict, proposals: list, notes: list) -> None:

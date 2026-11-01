@@ -34,7 +34,7 @@
 local json = require('json')
 local utils = require('utils')
 
-BRIDGE_VERSION = '0.104.153'
+BRIDGE_VERSION = '0.104.154'
 PROTOCOL = 1 -- bump when the report's shape changes in a breaking way
 
 local OUT_DIR = dfhack.getDFPath() .. '/dfhack-config/ai-overseer'
@@ -6134,6 +6134,7 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
     dead = function() return safe(get_dead) end,
     -- (0.104.20) rooms whose walls were dug open
     room_gaps = function() return safe(function() return reqscript('ai-builder').room_gaps_report() end) end,
+    planned = function() return safe(function() return reqscript('ai-builder').planned_report() end) end,   -- (0.104.154)
     justice = function() return safe(get_justice) end,
     society = function() return safe(get_society) end,
     entrances = function() return safe(function() return reqscript('ai-gates').summary() end) end,
@@ -6414,7 +6415,7 @@ SECTION_CACHE_DAYS = {logistics = 3, industry = 7,   -- industry: 300-450 ms liv
     -- report pays for all of them (region2: a full report froze ~250 ms)
     -- (supplies isn't cached: "have + queued" rules read it against live
     -- orders, and a stale count made them order twice; review 24 Oct)
-    room_gaps = 3, needs = 1, instruments = 28, registry = 3, noble_rooms = 3, locations = 2, petitions = 2, diplomacy = 7, crossings = 7,
+    room_gaps = 3, planned = 1, needs = 1, instruments = 28, registry = 3, noble_rooms = 3, locations = 2, petitions = 2, diplomacy = 7, crossings = 7,
     missions = 1}   -- (0.104.95) every world site walked
 SECTION_REBUILDS = 2       -- expired cached sections rebuilt in one report (a missing one always is)
 -- (0.100) the cached sections each action changes (cleared when it succeeds)
