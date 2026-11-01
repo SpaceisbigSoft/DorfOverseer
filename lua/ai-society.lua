@@ -840,7 +840,16 @@ function free_items_count(kind, detail)
                     local x, y, z = dfhack.items.getPosition(it)
                     local pos = type(x) == 'number' and xyz2pos(x, y, z) or x
                     local okb, b = pcall(dfhack.buildings.findAtTile, pos)
+                    -- in a zone: the garbage dump (the old `tidy` sent owned things
+                    -- there), a tavern, a dining hall... by DF's zone type
+                    local zt
+                    pcall(function()
+                        for _, zn in ipairs(dfhack.buildings.findCivzonesAt(pos) or {}) do
+                            zt = zt or df.civzone_type[zn.type]
+                        end
+                    end)
                     if okb and b and b:getType() == df.building_type.Stockpile then bump(d.place, 'stockpile')
+                    elseif zt then bump(d.place, 'zone ' .. tostring(zt))
                     else bump(d.place, 'elsewhere') end
                     if not (okb and b and b:getType() == df.building_type.Stockpile) then
                         d.elsewhere_at = d.elsewhere_at or {}
