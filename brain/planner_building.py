@@ -13,7 +13,7 @@ from quirks import has_rule
 from digest import _d, _l, normalize
 from planner_core import *  # noqa: F401,F403
 
-__all__ = ["STUCK_FALLBACKS", "stuck_fallback", "magma_access", "GROWTH", "GROWTH_EXTRA_SCORE", "GROWTH_MAX", "growth_want", "growth_candidates", "TRAIT_NAMES_SHORT", "FURNITURE_RECIPES", "METAL_FURNITURE", "spare_metal", "WOODEN_FURNITURE", "BASIC_WORKSHOPS", "BASIC_STOCKPILES", "memorial_due", "_well_rule", "_well_lid_rule", "_water_zone_rule", "cavern_well_need", "cavern_well_safe", "WELL_PARTS_SHOPS", "well_parts_plan", "_well_parts", "_room_repair_rule", "_water_traffic_rule", "_cleanup_rule", "STORE_GROW", "stone_tidiness", "jail_plan", "cistern_pop", "tavern_factor", "full_stores", "LEARNING_NEEDS", "_stairwell_rule", "WATER_WORDS", "water_summary", "_water_rules", "CISTERN_WORDS", "_cistern_parts", "_cistern_rule", "_deep_notes", "good_times", "ORDINALS", "garden_name", "_pop_cap_rule", "fort_strain", "hospital_shortfall", "dining_shortfall", "social_shortfall", "SOCIAL_KINDS", "_join_rule", "_dig_stall_rule", "_shrink_rule", "room_size", "_project_rules", "more_temple", "LADDER_BASE", "LADDER_TRAITS", "_ladder_kind", "_ladder_word", "ladder_score", "tombs_short"]
+__all__ = ["STUCK_FALLBACKS", "stuck_fallback", "magma_access", "GROWTH", "GROWTH_EXTRA_SCORE", "GROWTH_MAX", "growth_want", "growth_candidates", "TRAIT_NAMES_SHORT", "FURNITURE_RECIPES", "METAL_FURNITURE", "spare_metal", "WOODEN_FURNITURE", "BASIC_WORKSHOPS", "BASIC_STOCKPILES", "memorial_due", "_well_rule", "_well_lid_rule", "cavern_danger", "_water_zone_rule", "cavern_well_need", "cavern_well_safe", "WELL_PARTS_SHOPS", "well_parts_plan", "_well_parts", "_room_repair_rule", "_water_traffic_rule", "_cleanup_rule", "STORE_GROW", "stone_tidiness", "jail_plan", "cistern_pop", "tavern_factor", "full_stores", "LEARNING_NEEDS", "_stairwell_rule", "WATER_WORDS", "water_summary", "_water_rules", "CISTERN_WORDS", "_cistern_parts", "_cistern_rule", "_deep_notes", "good_times", "ORDINALS", "garden_name", "_pop_cap_rule", "fort_strain", "hospital_shortfall", "dining_shortfall", "social_shortfall", "SOCIAL_KINDS", "_join_rule", "_dig_stall_rule", "_shrink_rule", "room_size", "_project_rules", "more_temple", "LADDER_BASE", "LADDER_TRAITS", "_ladder_kind", "_ladder_word", "ladder_score", "tombs_short"]
 
 
 # Furniture waiting in a project -> the recipe that makes it.
@@ -191,37 +191,99 @@ def _well_rule(s: dict, memory, traits: dict, cfg: dict, proposals: list, notes:
 
 
 def _well_lid_rule(s: dict, proposals: list, notes: list) -> None:
-    """(0.104.151) A cavern well's stair column, dug only to channel the shaft
-    from, stands beside the open shaft: anything flying up out of the cavern
-    steps onto it and walks up into the hall. Once the shaft is dug, a hatch
-    over the column's top step, locked (the bridge forbids it); a hatch cover
-    made at the mason's if none is free. The shaft's own hatch is only probed
-    (a shut hatch stops the bucket: it needs a lever)."""
+    """(0.104.151-152) A cavern well's ways in from the cavern. The shaft gate:
+    a hatch on the shaft's lowest tile (the one opening into the cavern) on a
+    lever near the well, opened so the bucket passes, shut while a danger is
+    near; the lever first, the hatch once 2 mechanisms are free for the link.
+    Only where the game won't build that hatch, the stair column's top step
+    gets a locked hatch instead. Mechanisms and hatch covers ordered."""
     lids = [x for x in _l(_d(s.get("projects")).get("well_lids")) if isinstance(x, dict)]
     if not lids:
         return
     where = lambda x: f"x{x.get('x')} y{x.get('y')} elevation {x.get('elevation')}"
-    todo = [x for x in lids if x.get("state") in ("none", "open")]
+    # the stair lid, where the gate can't be built
+    todo = [x for x in lids if x.get("gate") == "none_possible" and x.get("state") in ("none", "open")]
     if todo:
         proposals.append(Proposal("well_lid", {"type": "seal_well_stairs"},
-                                  f"{len(todo)} cavern well stair column(s) open beside the shaft (at "
-                                  + ", ".join(where(x) for x in todo[:3]) + "): anything flying up from the "
-                                  "cavern could walk in: a locked hatch over the top step", 3))
-    need = [x for x in lids if x.get("state") in ("none", "planned")]
+                                  f"the game won't build a hatch at the bottom of {len(todo)} cavern well shaft(s): "
+                                  "a locked hatch over the stair column's top step instead (at "
+                                  + ", ".join(where(x) for x in todo[:3]) + ")", 3))
+    covers = sum(1 for x in lids if x.get("gate") == "none_possible" and x.get("state") in ("none", "planned"))
+    covers += sum(1 for x in lids if x.get("gate") == "no_hatch"
+                  or (x.get("gate") == "building" and x.get("gate_hatch_built") is False))
     free = _d(_d(s.get("entrances")).get("parts")).get("hatch_covers")
-    if need and isinstance(free, int) and free == 0 and queued(s, {"stone_hatch_cover"}) == 0:
-        proposals.append(Proposal("well_lid", {"type": "work_order", "recipe": "stone_hatch_cover", "amount": len(need)},
-                                  f"the cavern wells' stair lids need {len(need)} hatch cover(s) and none is free: "
-                                  "make them", 3, True))
-    blocked = [x for x in lids if x.get("state") == "blocked"]
+    if covers and isinstance(free, int) and free == 0 and queued(s, {"stone_hatch_cover"}) == 0:
+        proposals.append(Proposal("well_lid", {"type": "work_order", "recipe": "stone_hatch_cover", "amount": covers},
+                                  f"the cavern wells' gates need {covers} hatch cover(s) and none is free: make them",
+                                  3, True))
+    blocked = [x for x in lids if x.get("state") == "blocked" and x.get("gate") == "none_possible"]
     if blocked:
         notes.append("a cavern well's stair column has something else built on its top step ("
                      + ", ".join(where(x) for x in blocked[:2]) + "): left alone")
-    probed = [x for x in lids if "shaft_hatch" in x]
-    if probed:
-        ok = sum(1 for x in probed if x.get("shaft_hatch"))
-        notes.append(f"cavern well shafts: a hatch under the well {'can' if ok else 'cannot'} be built "
-                     f"({ok} of {len(probed)}; it would need a lever to let the bucket through)")
+    # the shaft gate
+    gates = [x for x in lids if x.get("gate")]
+    shut = [x for x in gates if x.get("gate") == "closed"]
+    danger = cavern_danger(s, gates, SHAFT_DANGER_OPEN if shut else SHAFT_DANGER_TILES)
+    build = [x for x in gates if x.get("gate") in ("none", "stray", "no_lever", "unlinked")
+             or (x.get("gate") == "no_hatch" and (x.get("gate_mechanisms") or 0) >= 2)]
+    turn = [x for x in gates if (x.get("gate") in ("open", "pulling") and danger) or (x.get("gate") == "closed" and not danger)]
+    if danger and turn:
+        proposals.append(Proposal("well_shaft", {"type": "well_shaft", "close": True},
+                                  f"{danger} near the cavern well: shut its shaft (its hatch, at once)", 2))
+    elif turn or build:
+        if build and any(x.get("gate") in ("none", "stray", "no_lever") for x in build):
+            why = ("the cavern well's shaft stands open to the cavern: a lever near the well first, then a hatch "
+                   "at the shaft's bottom on it (opened so the bucket passes, shut while a danger is near)")
+        elif build and any(x.get("gate") == "no_hatch" for x in build):
+            why = "the cavern well's lever stands and 2 mechanisms are free: the hatch at the shaft's bottom"
+        elif build:
+            why = "the cavern well's shaft hatch and lever are built: link them"
+        else:
+            why = "no danger near the cavern well now: open its shaft again"
+        proposals.append(Proposal("well_shaft", {"type": "well_shaft", "close": bool(danger)}, why, 3))
+    mech = int(_d(s.get("stocks")).get("mechanisms") or 0)
+    need = max([3 if x.get("gate") in ("none", "stray", "no_lever") else
+                2 if x.get("gate") in ("no_hatch", "unlinked") else 0 for x in gates] or [0])
+    if need and mech < need and queued(s, {"mechanisms"}) == 0:
+        proposals.append(Proposal("well_shaft", {"type": "work_order", "recipe": "mechanisms", "amount": need - mech},
+                                  f"the cavern well's shaft gate needs {need} mechanism(s) (its lever and the link; "
+                                  f"{mech} in store): make {need - mech}", 3, True))
+    for x in gates:
+        if x.get("gate_error"):
+            notes.append(f"the cavern well's shaft gate: {x['gate_error']}")
+
+
+SHAFT_DANGER_TILES = 60          # (0.104.152) a danger this close to a cavern well: its shaft shut
+SHAFT_DANGER_OPEN = 80           # ...and opened again only once it's this far (no flapping)
+
+
+def cavern_danger(s: dict, wells: list | None = None, radius: int = SHAFT_DANGER_TILES) -> str:
+    """(0.104.152) What should shut a cavern well's shaft: an enemy free in the
+    caverns, or in the rock between the layers (the shaft itself, its
+    stairs), within `radius` tiles of a well and below it. Not only fliers:
+    a climber can come up a cavern wall next to the opening. Its name, else
+    ""."""
+    spots = [(w.get("x"), w.get("y"), w.get("z")) for w in (wells or []) if isinstance(w, dict)
+             and all(isinstance(w.get(k), int) for k in ("x", "y", "z"))]
+    for th in _l(_d(s.get("others_on_map")).get("threats")):
+        if not isinstance(th, dict) or th.get("caged"):
+            continue
+        layer = str(th.get("layer") or "").lower()
+        pos = _d(th.get("pos"))
+        has_pos = all(isinstance(pos.get(k), int) for k in ("x", "y", "z"))
+        if layer.startswith("cavern"):
+            if spots and has_pos and not any(max(abs(pos["x"] - x), abs(pos["y"] - y)) <= radius and pos["z"] <= z
+                                             for x, y, z in spots):
+                continue
+        elif layer in ("between_layers", "upper_levels"):
+            # in the shaft or its stairs (the rock above the caverns reads as the fort's)
+            if not (spots and has_pos and any(max(abs(pos["x"] - x), abs(pos["y"] - y)) <= 2 and pos["z"] < z
+                                              for x, y, z in spots)):
+                continue
+        else:
+            continue
+        return str(th.get("name") or "an enemy")
+    return ""
 
 
 def _water_zone_rule(s: dict, proposals: list, notes: list) -> None:

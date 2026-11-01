@@ -7650,27 +7650,80 @@ def _():
     assert not [x for x in by_rule(plan(copy.deepcopy(s), Memory())[0], "well") if x.action.get("type") == "place_well"]
 
 
-@test("well lids (0.104.151): a cavern well's open stair column -> sealed; a hatch cover made when none is free")
+@test("well lids (0.104.151-152): the stair lid only where the shaft gate can't be built; hatch covers ordered")
 def _():
     s = fort()
-    s["projects"]["well_lids"] = [{"project_id": 203, "x": 95, "y": 102, "z": 169, "elevation": 41, "state": "none",
-                                   "shaft_hatch": False}]
+    s["others_on_map"]["threats"] = []
+    lid = {"project_id": 203, "x": 95, "y": 102, "z": 169, "elevation": 41, "state": "none", "gate": "none_possible"}
+    s["projects"]["well_lids"] = [lid]
     s.setdefault("entrances", {})["parts"] = {"hatch_covers": 0}
-    props, notes = plan(copy.deepcopy(s), Memory())
-    w = by_rule(props, "well_lid")
-    acts = [x.action for x in w]
+    acts = [x.action for x in by_rule(plan(copy.deepcopy(s), Memory())[0], "well_lid")]
     assert {"type": "seal_well_stairs"} in acts, acts
     assert any(a.get("recipe") == "stone_hatch_cover" and a.get("amount") == 1 for a in acts), acts
-    assert any("cannot be built" in n for n in notes), notes
     s["entrances"]["parts"] = {"hatch_covers": 2}
-    acts = [x.action for x in by_rule(plan(copy.deepcopy(s), Memory())[0], "well_lid")]
-    assert acts == [{"type": "seal_well_stairs"}], acts
-    s["projects"]["well_lids"][0]["state"] = "planned"
+    assert [x.action for x in by_rule(plan(copy.deepcopy(s), Memory())[0], "well_lid")] == [{"type": "seal_well_stairs"}]
+    for state in ("planned", "locked"):
+        lid["state"] = state
+        assert not by_rule(plan(copy.deepcopy(s), Memory())[0], "well_lid"), state
+    lid["state"], lid["gate"] = "open", "open"                       # the gate stands: the lid stays unlocked
     assert not by_rule(plan(copy.deepcopy(s), Memory())[0], "well_lid")
-    s["projects"]["well_lids"][0]["state"] = "open"
+    lid["state"] = "open"
+    lid["gate"] = "none_possible"
     assert by_rule(plan(copy.deepcopy(s), Memory())[0], "well_lid")[0].action == {"type": "seal_well_stairs"}
-    s["projects"]["well_lids"][0]["state"] = "locked"
-    assert not by_rule(plan(copy.deepcopy(s), Memory())[0], "well_lid")
+
+
+@test("well shaft (0.104.152): lever, hatch, link, open; shut while a danger is near (60 tiles), open past 80")
+def _():
+    s = fort()
+    s["others_on_map"]["threats"] = []
+    lid = {"project_id": 218, "x": 115, "y": 44, "z": 154, "elevation": 26, "state": "none", "gate": "none"}
+    s["projects"]["well_lids"] = [lid]
+    s["stocks"]["mechanisms"] = 5
+    s.setdefault("entrances", {})["parts"] = {"hatch_covers": 0}
+    def shaft(state):
+        return [x.action for x in by_rule(plan(copy.deepcopy(state), Memory())[0], "well_shaft")]
+    def lidr(state):
+        return [x.action for x in by_rule(plan(copy.deepcopy(state), Memory())[0], "well_lid")]
+    assert shaft(s) == [{"type": "well_shaft", "close": False}], shaft(s)
+    assert lidr(s) == []                                                # no lid while a gate can be built
+    s["stocks"]["mechanisms"] = 1
+    assert {"type": "work_order", "recipe": "mechanisms", "amount": 2} in shaft(s), shaft(s)
+    s["stocks"]["mechanisms"] = 5
+    lid["gate"] = "building"
+    assert shaft(s) == []
+    lid["gate"], lid["gate_mechanisms"] = "no_hatch", 1
+    assert shaft(s) == [{"type": "work_order", "recipe": "mechanisms", "amount": 2}] or shaft(s) == [], shaft(s)
+    assert any(a.get("recipe") == "stone_hatch_cover" for a in lidr(s)), lidr(s)
+    lid["gate_mechanisms"] = 2
+    assert shaft(s) == [{"type": "well_shaft", "close": False}], shaft(s)
+    lid["gate"], lid["gate_hatch_built"] = "building", False
+    assert any(a.get("recipe") == "stone_hatch_cover" for a in lidr(s)), lidr(s)
+    lid["gate"] = "unlinked"
+    assert shaft(s) == [{"type": "well_shaft", "close": False}]
+    lid["gate"] = "open"
+    assert shaft(s) == []
+    beast = {"name": "Ubbul the Toad", "flier": False, "great_danger": True, "layer": "Cavern1",
+             "pos": {"x": 150, "y": 60, "z": 130}}
+    s["others_on_map"]["threats"] = [beast]
+    p = by_rule(plan(copy.deepcopy(s), Memory())[0], "well_shaft")
+    assert p and p[0].action == {"type": "well_shaft", "close": True} and "Ubbul" in p[0].reason and p[0].priority == 2
+    beast["caged"] = True
+    assert shaft(s) == []
+    beast["caged"] = False
+    beast["pos"] = {"x": 185, "y": 60, "z": 130}                       # 70 tiles: not near enough to shut
+    assert shaft(s) == []
+    lid["gate"] = "closed"
+    assert shaft(s) == []                                              # but shut, it stays shut until past 80
+    beast["pos"] = {"x": 200, "y": 60, "z": 130}
+    assert shaft(s) == [{"type": "well_shaft", "close": False}]
+    lid["gate"] = "open"
+    beast["pos"], beast["layer"] = {"x": 116, "y": 44, "z": 145}, "upper_levels"   # in the shaft itself
+    assert shaft(s) == [{"type": "well_shaft", "close": True}], shaft(s)
+    beast["pos"] = {"x": 140, "y": 44, "z": 160}                       # elsewhere in the fort: not the shaft's
+    assert shaft(s) == []
+    lid["gate"] = "pulling"
+    beast["pos"], beast["layer"] = {"x": 150, "y": 60, "z": 130}, "Cavern1"
+    assert shaft(s) == [{"type": "well_shaft", "close": True}]          # a pull to open under way: called off
 
 
 @test("wells (0.104.148): another well can't be placed because the water is a cavern -> the cavern well")

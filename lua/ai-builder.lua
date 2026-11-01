@@ -893,7 +893,10 @@ function save_projects(data)
     data.old_areas = type(data.old_areas) == 'table' and data.old_areas or {}
     for i = #data.list, 1, -1 do
         local p = data.list[i]
-        if p.phase ~= 'dig' and p.phase ~= 'furnish' and p.phase ~= 'decorate' then
+        -- (0.104.152, review) a cavern well is never dropped: its shaft gate and
+        -- stair lid are run from its project for as long as the well stands
+        local cavern_well = p.kind == 'well' and (type(p.shaft_stairs) == 'table' or p.shaft_gate ~= nil)
+        if p.phase ~= 'dig' and p.phase ~= 'furnish' and p.phase ~= 'decorate' and not cavern_well then
             closed = closed + 1
             if closed > KEEP_CLOSED_PROJECTS then
                 local a = p.area
@@ -2715,86 +2718,6 @@ end
 
 STAIR_SHAPES = {j = 'STAIR_DOWN', i = 'STAIR_UPDOWN', u = 'STAIR_UP'}
 
--- (0.104.151) The cavern wells' stair columns, closed once the shaft is dug.
--- The column is only there to dig the shaft from (0.104.13); afterwards its
--- bottom step stands beside the open shaft, so anything that flies up out of
--- the cavern steps onto it and walks up into the hall (the Gap Checklist's
--- known risk; Enxah's first cavern well, y62, stood open so for 30 years). A
--- hatch over the column's top step, locked (DFHack forbids it: no lever, no
--- dwarf), closes it; only a building destroyer gets through. The shaft
--- itself: a hatch there stops the bucket unless a lever opens it (the wiki),
--- so for now only probed: can the game build one a level under the well?
--- Each: {project_id, x, y, z, elevation, state = 'none' | 'planned' | 'open'
--- | 'locked' | 'blocked' | 'gone', shaft_hatch = true/false/nil}.
-local STAIR_DOWN_SHAPE = {STAIR_DOWN = true, STAIR_UPDOWN = true}
-local function lid_building(x, y, z)
-    local b = dfhack.buildings.findAtTile(xyz2pos(x, y, z))
-    if not b then return nil end
-    return b
-end
-
-function well_lids(probe)
-    OFFSET = elevation_offset()
-    local out = {}
-    local data = load_projects()
-    for _, p in ipairs(data.list) do
-        local st = p.shaft_stairs
-        if p.kind == 'well' and type(st) == 'table' and st[1] and (p.phase == 'furnish' or p.phase == 'done') then
-            local top = st[1]
-            local r = {project_id = p.id, x = top.x, y = top.y, z = top.z, elevation = ez(top.z)}
-            local b = lid_building(top.x, top.y, top.z)
-            if b then
-                if b:getType() ~= df.building_type.Hatch then
-                    r.state = 'blocked'
-                elseif b:getBuildStage() < b:getMaxBuildStage() then
-                    r.state = 'planned'
-                else
-                    local okf, f = pcall(function() return b.door_flags.forbidden end)
-                    r.state = (okf and f) and 'locked' or 'open'
-                    r.hatch_id = b.id
-                end
-            else
-                local tl = tile_info(top.x, top.y, top.z)
-                r.state = (tl and STAIR_DOWN_SHAPE[tl.shape]) and 'none' or 'gone'
-            end
-            if probe then
-                local a = anchor_of(p)
-                local okd, s = pcall(quickfort_apply, 'build', {{x = 0, y = 0, text = 'H'}}, p.z - 1, a.x, a.y, 'run', true)
-                r.shaft_hatch = okd and stat(s, 'build_designated') == 1 or false
-            end
-            table.insert(out, r)
-        end
-    end
-    return out
-end
-
--- Close the columns: a hatch planned where there is none (buildingplan waits
--- for a hatch cover), a built one locked. {ok, planned, locked, waiting}.
-function seal_well_stairs(dry_run)
-    local planned, locked, waiting = 0, 0, 0
-    for _, r in ipairs(well_lids(false)) do
-        if r.state == 'none' then
-            if dry_run then
-                planned = planned + 1
-            else
-                local okq, s = pcall(quickfort_apply, 'build', {{x = 0, y = 0, text = 'H'}}, r.z, r.x, r.y)
-                if okq and stat(s, 'build_designated') == 1 then planned = planned + 1 else waiting = waiting + 1 end
-            end
-        elseif r.state == 'open' then
-            if not dry_run then
-                local b = df.building.find(r.hatch_id)
-                if b then b.door_flags.forbidden = true end
-            end
-            locked = locked + 1
-        elseif r.state == 'planned' then
-            waiting = waiting + 1
-        end
-    end
-    if planned + locked == 0 then
-        return {ok = false, rejected = true, error = 'no cavern well stair to close', waiting = waiting}
-    end
-    return {ok = true, planned = planned, locked = locked, waiting = waiting, dry_run = dry_run or nil}
-end
 
 -- (0.104.83) A small pen for war dogs just inside a gate: a free 3x3 of
 -- inside floor (no building, zone, designation, water or sky) within 8
@@ -4029,6 +3952,293 @@ local function designate(cells, z, mode)
     if not okd or stat(dry, key) < #cells then return false end
     local okr, real = pcall(quickfort_apply, mode, cells, z, 0, 0)
     return okr and stat(real, key) >= 1
+end
+
+-- (0.104.151-152) A cavern well's two ways in from the cavern, closed.
+-- The well is a hole (the wiki: no obstruction; swimmers path in through
+-- wells), and its shaft is dug from a stair column beside it (0.104.13) that
+-- runs down beside the shaft at every level. The one tile that opens into the
+-- cavern is the shaft's lowest (its floor channelled away over the cavern's
+-- air; the column's bottom step is an up stair, a floor under it). So:
+--   the shaft gate: a hatch on that lowest shaft tile, on a lever beside the
+--     well. A shut hatch stops the bucket, so it is opened once linked and
+--     shut only while a danger is near (DFHack's lever --instant: no dwarf
+--     runs to it), then opened again. Built from the column's bottom step.
+--     The lever first; the hatch only once the lever stands and 2 mechanisms
+--     are free for the link, so the well is never left blocked waiting.
+--   the stair lid: only when the game won't build the gate, a hatch over the
+--     column's top step, locked (DFHack forbids it); unlocked again while
+--     dwarves must go down to build or relink a gate.
+-- Kept in the project (`shaft_gate` = {lever = {x, y, z}, lever_id,
+-- hatch_id, link_fails, impossible}). The review's points are marked "rv".
+local STAIR_DOWN_SHAPE = {STAIR_DOWN = true, STAIR_UPDOWN = true}
+SHAFT_LINK_FAILS_MAX = 3
+
+local function shaft_bottom(p)
+    local low
+    for _, z in ipairs(type(p.shaft) == 'table' and p.shaft or {}) do
+        if not low or z < low then low = z end
+    end
+    return low or (p.z - 1)
+end
+
+local function hatch_at(x, y, z)
+    local ok, b = pcall(dfhack.buildings.findAtTile, xyz2pos(x, y, z))
+    if not ok or not b or b:getType() ~= df.building_type.Hatch then return nil end
+    local closed = true
+    pcall(function() closed = b.door_flags.closed end)
+    local forbidden = false
+    pcall(function() forbidden = b.door_flags.forbidden end)
+    return {id = b.id, built = b:getBuildStage() >= b:getMaxBuildStage(), closed = closed, forbidden = forbidden, b = b}
+end
+
+-- rv 14: a lever, not any trap
+local function lever_at(x, y, z)
+    local ok, b = pcall(dfhack.buildings.findAtTile, xyz2pos(x, y, z))
+    if not ok or not b or b:getType() ~= df.building_type.Trap then return nil end
+    local okl, lever = pcall(function() return b.trap_type == df.trap_type.Lever end)
+    if okl and not lever then return nil end
+    return {id = b.id, built = b:getBuildStage() >= b:getMaxBuildStage()}
+end
+
+local function free_floor(x, y, z)
+    local t = tile_info(x, y, z)
+    return t and t.shape == 'FLOOR' and not t.building and not t.designated and not t.liquid
+        and not building_at(x, y, z) and walk_group(x, y, z) ~= 0
+end
+
+-- rv 12: outside the well's 3x3 (its furnishing would wait for the lever)
+local function shaft_lever_spot(p)
+    local a = anchor_of(p)
+    local top = type(p.shaft_stairs) == 'table' and p.shaft_stairs[1] or nil
+    for _, r in ipairs({2, 3}) do
+        for dy = -r, r do
+            for dx = -r, r do
+                if math.max(math.abs(dx), math.abs(dy)) == r then
+                    local x, y = a.x + dx, a.y + dy
+                    if not (top and x == top.x and y == top.y) and free_floor(x, y, p.z) then
+                        return {x = x, y = y, z = p.z}
+                    end
+                end
+            end
+        end
+    end
+end
+
+local function job_of(building_id, jt)
+    local ok, j = pcall(function()
+        local b = df.building.find(building_id)
+        for _, job in ipairs(b and b.jobs or {}) do
+            if job.job_type == jt then return job end
+        end
+    end)
+    return ok and j or nil
+end
+
+function shaft_gate_state(p)
+    local g = p.shaft_gate or {}
+    local a = anchor_of(p)
+    local h = hatch_at(a.x, a.y, shaft_bottom(p))
+    local lv = g.lever and lever_at(g.lever.x, g.lever.y, g.lever.z or p.z) or nil
+    if g.impossible then return {state = 'none_possible', hatch = h, lever = lv} end
+    if not g.lever then return {state = h and 'stray' or 'none', hatch = h} end
+    if not lv then return {state = 'no_lever', hatch = h} end
+    if not lv.built then return {state = 'building', hatch = h, lever = lv} end
+    if not h then return {state = 'no_hatch', lever = lv} end
+    if not h.built then return {state = 'building', hatch = h, lever = lv} end
+    local linked = false
+    local okl, links = pcall(function() return reqscript('ai-gates').lever_links() end)
+    for _, lid in ipairs(okl and links[h.id] or {}) do if lid == lv.id then linked = true end end
+    if not linked then
+        return {state = job_of(lv.id, df.job_type.LinkBuildingToTrigger) and 'linking' or 'unlinked', hatch = h, lever = lv}
+    end
+    if job_of(lv.id, df.job_type.PullLever) then return {state = 'pulling', hatch = h, lever = lv} end
+    return {state = h.closed and 'closed' or 'open', hatch = h, lever = lv}
+end
+
+local function free_mechanism_count()
+    local ok, n = pcall(function() return (count_items('TRAPPARTS')) end)
+    return ok and n or 0
+end
+
+-- One step for each cavern well's shaft gate toward `want_closed`.
+-- {ok, wells = [{project_id, was, stage?, error?}]}
+function well_shaft_step(want_closed, dry_run)
+    local data = load_projects()
+    local wells, changed = {}, false
+    for _, p in ipairs(data.list) do
+        local st = p.shaft_stairs
+        if p.kind == 'well' and type(st) == 'table' and st[1] and (p.phase == 'furnish' or p.phase == 'done') then
+            local a, hz = anchor_of(p), shaft_bottom(p)
+            local g = shaft_gate_state(p)
+            local r = {project_id = p.id, was = g.state}
+            local sg = p.shaft_gate
+            -- rv 3: work below needs the stairs: a locked lid is unlocked
+            if g.state ~= 'open' and g.state ~= 'closed' and g.state ~= 'none_possible' and not dry_run then
+                local top = st[1]
+                local lid = hatch_at(top.x, top.y, top.z)
+                if lid and lid.forbidden then lid.b.door_flags.forbidden = false; r.unlocked_lid = true end
+            end
+            if g.state == 'none' or g.state == 'stray' or g.state == 'no_lever' then
+                -- rv 2, 8: the lever first (a stray hatch kept: linked when the lever stands)
+                local lv = (sg and sg.lever and free_floor(sg.lever.x, sg.lever.y, sg.lever.z or p.z)) and sg.lever
+                    or shaft_lever_spot(p)
+                if not lv then
+                    r.error = 'no free floor near the well for the lever'
+                elseif dry_run then
+                    r.stage = 'place_lever'
+                elseif designate({{x = lv.x, y = lv.y, text = 'Tl'}}, lv.z or p.z, 'build') then
+                    p.shaft_gate = {lever = lv, link_fails = sg and sg.link_fails or nil}
+                    r.stage, changed = 'lever_placed', true
+                else
+                    r.error = 'the game would not place the lever near the well'
+                end
+            elseif g.state == 'no_hatch' then
+                -- rv 6: only with the lever up and 2 mechanisms free for the link
+                local mech = free_mechanism_count()
+                if mech < 2 then
+                    r.stage, r.mechanisms = 'waiting_mechanisms', mech
+                elseif dry_run then
+                    r.stage = 'place_hatch'
+                else
+                    local okd, s = pcall(quickfort_apply, 'build', {{x = 0, y = 0, text = 'H'}}, hz, a.x, a.y, 'run', true)
+                    if not okd or stat(s, 'build_designated') ~= 1 then
+                        sg.impossible, changed = true, true     -- the tile is empty and the game won't: the lid instead
+                        r.error = 'the game would not build a hatch at the bottom of the shaft'
+                    elseif designate({{x = a.x, y = a.y, text = 'H'}}, hz, 'build') then
+                        r.stage = 'hatch_placed'
+                    else
+                        r.error = 'the game refused the hatch at the bottom of the shaft'
+                    end
+                end
+            elseif g.state == 'unlinked' then
+                local res = dry_run and {ok = true} or reqscript('ai-gates').link_lever(g.lever.id, g.hatch.id, false)
+                if res.ok then
+                    r.stage = dry_run and 'link' or 'linking'
+                else
+                    r.error, r.mechanisms = res.error, res.mechanisms
+                    -- rv 6: a link that keeps failing for another reason: the hatch
+                    -- comes down (it would block the bucket for good), the lid instead
+                    if not dry_run and not tostring(res.error or ''):find('mechanism') then
+                        sg.link_fails, changed = (sg.link_fails or 0) + 1, true
+                        if sg.link_fails >= SHAFT_LINK_FAILS_MAX then
+                            pcall(dfhack.buildings.deconstruct, g.hatch.b)
+                            sg.impossible = true
+                            r.error = r.error .. ' (3 times: the shaft hatch taken down, the stair lid instead)'
+                        end
+                    end
+                end
+            elseif g.state == 'pulling' and want_closed then
+                -- rv 9: a dwarf on the way to open it while a danger comes: called off
+                if not dry_run then
+                    local j = job_of(g.lever.id, df.job_type.PullLever)
+                    if j then pcall(dfhack.job.removeJob, j) end
+                    if not g.hatch.closed then pull(g.lever.id, true) end
+                end
+                r.stage = 'closed'
+            elseif g.state == 'open' or g.state == 'closed' then
+                if sg.lever_id ~= g.lever.id or sg.hatch_id ~= g.hatch.id then
+                    sg.lever_id, sg.hatch_id, changed = g.lever.id, g.hatch.id, true   -- rv 13
+                end
+                if (g.state == 'closed') ~= (want_closed == true) then
+                    if dry_run then
+                        r.stage = want_closed and 'close' or 'open'
+                    else
+                        local ok, out = pull(g.lever.id, want_closed == true)
+                        if ok then r.stage = want_closed and 'closed' or 'opening'
+                        else r.error = 'lever pull failed: ' .. tostring(out):sub(1, 120) end
+                    end
+                else
+                    r.stage = g.state
+                end
+            else
+                r.stage = g.state            -- building, linking, pulling, none_possible: waits
+            end
+            table.insert(wells, r)
+        end
+    end
+    if changed and not dry_run then save_projects(data) end
+    if #wells == 0 then return {ok = false, rejected = true, error = 'no cavern well'} end
+    local acted = false
+    for _, r in ipairs(wells) do
+        if not r.error and r.stage and r.stage ~= r.was and r.stage ~= 'waiting_mechanisms' then acted = true end
+    end
+    if dry_run then return {ok = true, dry_run = true, wells = wells} end
+    if acted then return {ok = true, wells = wells} end
+    return {ok = false, rejected = true, wells = wells,
+            error = wells[1].error or ('nothing to do: ' .. tostring(wells[1].stage or wells[1].was))}
+end
+
+-- Each cavern well: {project_id, x, y, z, elevation (the column's top step),
+-- state (the lid: none, planned, open, locked, blocked, gone), gate (the
+-- shaft gate's state), gate_mechanisms?}.
+function well_lids(probe)
+    OFFSET = elevation_offset()
+    local out = {}
+    local data = load_projects()
+    for _, p in ipairs(data.list) do
+        local st = p.shaft_stairs
+        if p.kind == 'well' and type(st) == 'table' and st[1] and (p.phase == 'furnish' or p.phase == 'done') then
+            local top = st[1]
+            local r = {project_id = p.id, x = top.x, y = top.y, z = top.z, elevation = ez(top.z)}
+            local okb, b = pcall(dfhack.buildings.findAtTile, xyz2pos(top.x, top.y, top.z))
+            if okb and b then
+                if b:getType() ~= df.building_type.Hatch then
+                    r.state = 'blocked'
+                elseif b:getBuildStage() < b:getMaxBuildStage() then
+                    r.state = 'planned'
+                else
+                    local okf, f = pcall(function() return b.door_flags.forbidden end)
+                    r.state = (okf and f) and 'locked' or 'open'
+                    r.hatch_id = b.id
+                end
+            else
+                local tl = tile_info(top.x, top.y, top.z)
+                r.state = (tl and STAIR_DOWN_SHAPE[tl.shape]) and 'none' or 'gone'
+            end
+            local okg, g = pcall(shaft_gate_state, p)
+            if okg and g then
+                r.gate = g.state
+                if g.state == 'no_hatch' then r.gate_mechanisms = free_mechanism_count() end
+                r.gate_hatch_built = g.hatch and g.hatch.built or nil
+            else
+                r.gate_error = tostring(g):sub(1, 120)
+            end
+            table.insert(out, r)
+        end
+    end
+    return out
+end
+
+-- The stair lid, only where the shaft gate can't be built: a hatch planned
+-- where there is none (buildingplan waits for a hatch cover), a built one
+-- locked. {ok, planned, locked, waiting}.
+function seal_well_stairs(dry_run)
+    local planned, locked, waiting = 0, 0, 0
+    for _, r in ipairs(well_lids(false)) do
+        if r.gate ~= 'none_possible' then
+            -- the gate seals the cavern: the lid stays unlocked (the way down to it)
+        elseif r.state == 'none' then
+            if dry_run then
+                planned = planned + 1
+            else
+                local okq, s = pcall(quickfort_apply, 'build', {{x = 0, y = 0, text = 'H'}}, r.z, r.x, r.y)
+                if okq and stat(s, 'build_designated') == 1 then planned = planned + 1 else waiting = waiting + 1 end
+            end
+        elseif r.state == 'open' then
+            if not dry_run then
+                local b = df.building.find(r.hatch_id)
+                if b then b.door_flags.forbidden = true end
+            end
+            locked = locked + 1
+        elseif r.state == 'planned' then
+            waiting = waiting + 1
+        end
+    end
+    if planned + locked == 0 then
+        return {ok = false, rejected = true, error = 'no cavern well stair to close', waiting = waiting}
+    end
+    return {ok = true, planned = planned, locked = locked, waiting = waiting, dry_run = dry_run or nil}
 end
 
 -- Shut the cistern's floodgate now (a flood in the fort), whatever the stage.
