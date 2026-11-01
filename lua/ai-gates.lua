@@ -1776,15 +1776,54 @@ function mechanism_unusable(it)
     return nil
 end
 
-function free_mechanisms(n)
-    local out = {}
+-- (0.104.156) `near` (a position): only mechanisms a dwarf can walk to from
+-- there (the same walkable group), nearest first. Teacheroar, 1 Nov: the
+-- cavern well's link job took the first two in the item list and DF
+-- cancelled it each time ("Link a building to trigger: Item inaccessible"),
+-- 25 times in 2 hours; the cistern's lever lost its link 3 times the same
+-- way on 31 Oct. Returns the list and how many usable ones were out of reach.
+local function item_pos(it)
+    local ok, x, y, z = pcall(dfhack.items.getPosition, it)
+    if not ok or x == nil then return nil end
+    if type(x) == 'table' or type(x) == 'userdata' then
+        local okp, p = pcall(function() return {x = x.x, y = x.y, z = x.z} end)
+        return okp and p or nil
+    end
+    return {x = x, y = y, z = z}
+end
+
+local function group_at(p)
+    if not p or not (dfhack.maps and dfhack.maps.getWalkableGroup) then return nil end
+    local ok, g = pcall(dfhack.maps.getWalkableGroup, xyz2pos(p.x, p.y, p.z))
+    return ok and g or nil
+end
+
+function free_mechanisms(n, near)
+    local out, cands, unreachable = {}, {}, 0
+    local want = near and group_at(near) or nil
+    if want == 0 then want = nil end            -- the lever's own tile unread: no filter
     for _, it in ipairs(df.global.world.items.other.TRAPPARTS) do
         if not mechanism_unusable(it) then
-            table.insert(out, it)
-            if #out >= n then break end
+            if want then
+                local p = item_pos(it)
+                local g = group_at(p)
+                if p and g == want then
+                    local d = math.abs(p.x - near.x) + math.abs(p.y - near.y) + 3 * math.abs(p.z - near.z)
+                    table.insert(cands, {it = it, d = d})
+                else
+                    unreachable = unreachable + 1
+                end
+            else
+                table.insert(out, it)
+                if #out >= n then break end
+            end
         end
     end
-    return out
+    if want then
+        table.sort(cands, function(a, b) return a.d < b.d end)
+        for i = 1, math.min(n, #cands) do table.insert(out, cands[i].it) end
+    end
+    return out, unreachable
 end
 
 -- (0.94.1) The mechanisms there are: usable, taken by a job, and the rest by
@@ -1844,11 +1883,12 @@ function link_lever(lever_id, target_id, dry_run)
             and dfhack.job.addGeneralRef and dfhack.job.attachJobItem and dfhack.job.linkIntoWorld) then
         return {ok = false, rejected = true, error = 'this DF version has no lever-link job'}
     end
-    local mechs = free_mechanisms(2)
+    local mechs, unreachable = free_mechanisms(2, {x = lever.centerx, y = lever.centery, z = lever.z})
     if #mechs < 2 then
         local held = {}
         local okc, c = pcall(mechanism_counts)
         if okc then for why, n in pairs(c.why) do table.insert(held, n .. ' ' .. why) end end
+        if (unreachable or 0) > 0 then table.insert(held, unreachable .. ' out of reach of the lever') end
         table.sort(held)
         return {ok = false, error = ('a link needs 2 free mechanisms (%d free%s)'):format(#mechs,
                     #held > 0 and ('; ' .. table.concat(held, ', ')) or ''), mechanisms = #mechs}
@@ -1867,7 +1907,9 @@ function link_lever(lever_id, target_id, dry_run)
     end
     dfhack.job.linkIntoWorld(job, true)
     lever.jobs:insert('#', job)
-    return {ok = true, job_id = job.id, target = tname}
+    local ids = {}
+    for _, m in ipairs(mechs) do table.insert(ids, m.id) end
+    return {ok = true, job_id = job.id, target = tname, mechanism_ids = ids}
 end
 
 ---------------------------------------------------------------------------

@@ -1411,6 +1411,55 @@ def _():
         LUA.execute(GAME_CLEAN)
 
 
+@test("cavern well (0.104.156): a link job DF cancels is counted lost; 3 times with the same mechanisms -> no new job until others")
+def _():
+    r = dug_cavern_well()
+    LUA.execute(GAME_FAKE)
+    try:
+        mk = LUA.eval("MKS")
+        assert B.well_shaft_step(False, False).ok
+        lever = [x for x in W.placed.values() if x.text == "Tl"][-1]
+        mk(lever.x, lever.y, 70, 8, True, 3)
+        LUA.eval("MECH")(2)
+        assert B.well_shaft_step(False, False).ok
+        mk(70, 58, 63, 7, True)
+        # the job is made (ok) but DF cancels it: no link, no job left on the lever
+        LUA.execute("""FREE_IDS = {11, 12}
+            local G0 = reqscript
+            reqscript = function(name)
+              if name == 'ai-gates' then
+                return {link_lever = function() LINK_CALLS = (LINK_CALLS or 0) + 1; return {ok = true} end,
+                        lever_links = function() return LINKS end,
+                        free_mechanisms = function(n, near)
+                          NEAR = near
+                          local out = {}; for _, id in ipairs(FREE_IDS) do table.insert(out, {id = id}) end
+                          return out, 0 end}
+              end
+              return G0(name)
+            end""")
+        for i in range(4):                                  # 1 asked, then lost 1, 2, 3 (the 4th call)
+            s = B.well_shaft_step(False, False)
+            if i < 3:
+                assert s.ok and s.wells[1].stage == "linking", (i, dict(s.wells[1]))
+        assert LUA.eval("LINK_CALLS") == 3
+        assert not s.ok and "lost 3 times" in s.wells[1].error and "11,12" in s.wells[1].error, dict(s.wells[1])
+        near = LUA.eval("NEAR")
+        assert (near.x, near.y, near.z) == (lever.x, lever.y, 70), dict(near)       # picked near the lever
+        lids = B.well_lids(False)
+        assert lids[1].gate_link_lost == 3, dict(lids[1])
+        assert not B.well_shaft_step(False, False).ok and LUA.eval("LINK_CALLS") == 3   # same ones: waits
+        LUA.execute("FREE_IDS = {11, 14}")                  # another mechanism free: a fresh try
+        s = B.well_shaft_step(False, False)
+        assert s.ok and s.wells[1].stage == "linking" and LUA.eval("LINK_CALLS") == 4, dict(s.wells[1])
+        LUA.execute("local lv; for _, b in pairs(SB) do if b.t == 8 then lv = b.id end end; "
+                    "for _, b in pairs(SB) do if b.t == 7 and b.id == 7 * 100000 + 70 * 100 + 58 then LINKS[b.id] = {lv} end end")
+        s = B.well_shaft_step(False, False)                 # linked at last: the count is cleared
+        assert s.wells[1].was in ("closed", "open") and B.well_lids(False)[1].gate_link_lost is None, dict(s.wells[1])
+    finally:
+        LUA.execute("FREE_IDS = nil; LINK_CALLS = nil; NEAR = nil")
+        LUA.execute(GAME_CLEAN)
+
+
 @test("cavern well (0.104.152): the game refusing the bottom hatch 3 times -> the stair lid instead (not after one)")
 def _():
     r = dug_cavern_well()

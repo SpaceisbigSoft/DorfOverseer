@@ -795,6 +795,30 @@ def _():
         LUA.execute("local M = ...; M.df = nil; M.dfhack = nil; M.xyz2pos = nil", M)
 
 
+@test("0.104.156: a link takes the mechanisms a dwarf can reach from the lever, nearest first; out of reach ones said")
+def _():
+    LUA.execute(JOB_STUB, M)
+    try:
+        # the lever at x3 y4 z9 (walk group 1); mechanism 1 far off in group 2, 3 near, 4 nearer
+        LUA.execute("""local M = ...
+            local at = {[1] = {x = 3, y = 4, z = 30}, [3] = {x = 20, y = 4, z = 9}, [4] = {x = 5, y = 4, z = 9}}
+            M.dfhack.items.getPosition = function(it) local p = at[it.id]; return p.x, p.y, p.z end
+            M.dfhack.maps = {getWalkableGroup = function(p) if p.z == 30 then return 2 end; return 1 end}""", M)
+        r = M.link_lever(50, 500, False)
+        assert r.ok and list(r.mechanism_ids.values()) == [4, 3], dict(r)
+        calls = list(M.JOB_CALLS.values())
+        assert calls[2:4] == ["item 4 4", "item 3 5"], calls
+        LUA.execute("local M = ...; M.JOB_LEVER.jobs[1] = nil; M.JOB_MECHS[4].flags.in_job = true", M)
+        r = M.link_lever(50, 500, False)
+        assert not r.ok and "1 out of reach of the lever" in r.error and r.mechanisms == 1, dict(r)
+        # the lever's own tile unread (group 0): no filter, as before
+        LUA.execute("local M = ...; M.dfhack.maps.getWalkableGroup = function() return 0 end", M)
+        lst, far = LUA.eval("function(M) local l, f = M.free_mechanisms(2, {x = 3, y = 4, z = 9}); return #l, f end")(M)
+        assert lst == 2 and far == 0, (lst, far)
+    finally:
+        LUA.execute("local M = ...; M.df = nil; M.dfhack = nil; M.xyz2pos = nil", M)
+
+
 @test("5a review: a fortified gate's inner door never gets its support wall on the way through")
 def _():
     c = wide_c()

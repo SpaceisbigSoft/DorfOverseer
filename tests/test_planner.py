@@ -7672,6 +7672,41 @@ def _():
     assert by_rule(plan(copy.deepcopy(s), Memory())[0], "well_lid")[0].action == {"type": "seal_well_stairs"}
 
 
+@test("well shaft (0.104.156): two gates share the mechanisms; a link uses reachable ones; lost links wait; orders for all")
+def _():
+    s = fort()
+    s["others_on_map"]["threats"] = []
+    a = {"project_id": 218, "x": 115, "y": 44, "z": 154, "elevation": 26, "state": "none", "gate": "unlinked",
+         "gate_hatch_built": True, "gate_hatch_standing": True, "gate_mechanisms": 3, "gate_mechanisms_reachable": 2}
+    b = {"project_id": 224, "x": 79, "y": 43, "z": 157, "elevation": 29, "state": "none", "gate": "no_hatch",
+         "gate_mechanisms": 3}
+    s["projects"]["well_lids"] = [a, b]
+    s["stocks"]["mechanisms"], s["stocks"]["mechanisms_free"] = 3, 3
+    s.setdefault("entrances", {})["parts"] = {"hatch_covers": 2}
+    def run(state):
+        props, notes = plan(copy.deepcopy(state), Memory())[:2]
+        return by_rule(props, "well_shaft"), notes
+    p, _ = run(s)
+    acts = [x.action for x in p]
+    assert {"type": "well_shaft", "close": False} in acts, acts
+    step = [x for x in p if x.action.get("type") == "well_shaft"][0]
+    # Teacheroar 1 Nov: the link first; 224's hatch waits (3 mechanisms, 2 of them for the link)
+    assert "link them" in step.reason and "hatch at the shaft's bottom" not in step.reason, step.reason
+    assert {"type": "work_order", "recipe": "mechanisms", "amount": 1} in acts, acts    # 2 + 2 needed, 3 free
+    a["gate_mechanisms_reachable"] = 1                                   # out of reach of 218's lever
+    p, notes = run(s)
+    assert all(x.action.get("type") != "well_shaft" for x in p), [x.action for x in p]
+    assert any("out of reach of its lever" in n for n in notes), notes
+    a["gate_mechanisms_reachable"], a["gate_link_lost"] = 2, 3           # DF cancelled the link 3 times
+    p, notes = run(s)
+    assert any("cancelled its lever link 3 times" in n for n in notes), notes
+    assert all(x.action.get("type") != "well_shaft" for x in p), [x.action for x in p]
+    a["gate_mechanisms"] = b["gate_mechanisms"] = 4                      # one more made: 224's hatch can go in
+    p, _ = run(s)
+    step = [x for x in p if x.action.get("type") == "well_shaft"]
+    assert step and "hatch at the shaft's bottom" in step[0].reason, [x.reason for x in p]
+
+
 @test("well shaft (0.104.152): lever, hatch, link, open; shut while a danger is near (60 tiles), open past 80")
 def _():
     s = fort()

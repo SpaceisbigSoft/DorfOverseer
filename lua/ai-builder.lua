@@ -4120,19 +4120,45 @@ function well_shaft_step(want_closed, dry_run)
                     end
                 end
             elseif g.state == 'unlinked' then
-                local res = dry_run and {ok = true} or reqscript('ai-gates').link_lever(g.lever.id, g.hatch.id, false)
-                if res.ok then
-                    r.stage = dry_run and 'link' or 'linking'
+                -- (0.104.156) a link job asked for and gone with no link: DF
+                -- cancelled it ("Item inaccessible", 25 times on 1 Nov). Lost 3
+                -- times with the same mechanisms: no new job until others are free.
+                local G = reqscript('ai-gates')
+                if sg.link_asked and not dry_run then
+                    sg.link_lost, sg.link_asked, changed = (sg.link_lost or 0) + 1, nil, true
+                end
+                local lp = sg.lever or {}
+                local okf, cand = pcall(G.free_mechanisms, 2, {x = lp.x or a.x, y = lp.y or a.y, z = lp.z or p.z})
+                local key = {}
+                for _, m in ipairs(okf and type(cand) == 'table' and cand or {}) do table.insert(key, tostring(m.id)) end
+                key = table.concat(key, ',')
+                local lost = sg.link_lost or 0
+                if lost >= SHAFT_LINK_FAILS_MAX and key == (sg.link_mechs or '') then
+                    r.error = ('the link job was lost %d times (DF cancels it; mechanisms %s): waits for others')
+                        :format(lost, key ~= '' and key or 'none')
+                    r.link_lost = lost
                 else
-                    r.error, r.mechanisms = res.error, res.mechanisms
-                    -- rv 6: a link that keeps failing for another reason: the hatch
-                    -- comes down (it would block the bucket for good), the lid instead
-                    if not dry_run and not tostring(res.error or ''):find('mechanism') then
-                        sg.link_fails, changed = (sg.link_fails or 0) + 1, true
-                        if sg.link_fails >= SHAFT_LINK_FAILS_MAX then
-                            pcall(dfhack.buildings.deconstruct, g.hatch.b)
-                            sg.impossible = true
-                            r.error = r.error .. ' (3 times: the shaft hatch taken down, the stair lid instead)'
+                    if lost >= SHAFT_LINK_FAILS_MAX and not dry_run then
+                        sg.link_lost, changed = 0, true          -- other mechanisms: a fresh try
+                    end
+                    local res = dry_run and {ok = true} or G.link_lever(g.lever.id, g.hatch.id, false)
+                    if res.ok then
+                        r.stage = dry_run and 'link' or 'linking'
+                        if not dry_run then
+                            sg.link_asked, sg.link_mechs, changed = true, key, true
+                            r.link_lost = sg.link_lost
+                        end
+                    else
+                        r.error, r.mechanisms = res.error, res.mechanisms
+                        -- rv 6: a link that keeps failing for another reason: the hatch
+                        -- comes down (it would block the bucket for good), the lid instead
+                        if not dry_run and not tostring(res.error or ''):find('mechanism') then
+                            sg.link_fails, changed = (sg.link_fails or 0) + 1, true
+                            if sg.link_fails >= SHAFT_LINK_FAILS_MAX then
+                                pcall(dfhack.buildings.deconstruct, g.hatch.b)
+                                sg.impossible = true
+                                r.error = r.error .. ' (3 times: the shaft hatch taken down, the stair lid instead)'
+                            end
                         end
                     end
                 end
@@ -4145,6 +4171,7 @@ function well_shaft_step(want_closed, dry_run)
                 end
                 r.stage = 'closed'
             elseif g.state == 'open' or g.state == 'closed' then
+                if sg.link_lost or sg.link_asked then sg.link_lost, sg.link_asked, changed = nil, nil, true end
                 if sg.lever_id ~= g.lever.id or sg.hatch_id ~= g.hatch.id then
                     sg.lever_id, sg.hatch_id, changed = g.lever.id, g.hatch.id, true   -- rv 13
                 end
@@ -4360,6 +4387,17 @@ function well_lids(probe)
             if okg and g then
                 r.gate = g.state
                 if g.state == 'no_hatch' or g.state == 'unlinked' then r.gate_mechanisms = free_mechanism_count() end
+                -- (0.104.156) the ones the lever can reach (a link with others is cancelled)
+                local sg = p.shaft_gate or {}
+                if g.state == 'unlinked' and sg.lever then
+                    local okm, m, far = pcall(reqscript('ai-gates').free_mechanisms, 2,
+                                              {x = sg.lever.x, y = sg.lever.y, z = sg.lever.z or p.z})
+                    if okm and type(m) == 'table' then
+                        r.gate_mechanisms_reachable = #m
+                        if (far or 0) > 0 then r.gate_mechanisms_far = far end
+                    end
+                end
+                if sg.link_lost then r.gate_link_lost = sg.link_lost end
                 if g.hatch then r.gate_hatch_built = g.hatch.built and true or false end
                 r.gate_hatch_standing = g.hatch ~= nil or nil     -- rv2 1: a hatch still at the shaft's bottom
                 if g.state == 'open' or g.state == 'closed' or g.state == 'pulling' then     -- (0.104.153)

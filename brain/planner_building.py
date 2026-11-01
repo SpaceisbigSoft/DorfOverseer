@@ -226,8 +226,34 @@ def _well_lid_rule(s: dict, proposals: list, notes: list) -> None:
     shut = [x for x in gates if x.get("gate") == "closed"]
     danger = cavern_danger(s, gates, SHAFT_DANGER_OPEN if shut else SHAFT_DANGER_TILES)
     # (review) never while a danger is near: no dwarf is sent down beside the opening
-    build = [] if danger else [x for x in gates if x.get("gate") in ("none", "stray", "no_lever")
-                               or (x.get("gate") in ("no_hatch", "unlinked") and (x.get("gate_mechanisms") or 0) >= 2)]
+    # (0.104.156) one pool of mechanisms for every gate: a link takes 2 of them,
+    # and only ones the lever can reach (Teacheroar, 1 Nov: well 218's link took
+    # 2 of the 3 each cycle and DF cancelled it, "Item inaccessible", while well
+    # 224 waited for the 2 its hatch needs, 25 times in 2 hours)
+    pool = max([x.get("gate_mechanisms") or 0 for x in gates] or [0])
+    ok_gates = []
+    for x in sorted(gates, key=lambda x: 0 if x.get("gate") == "unlinked" else 1):
+        g = x.get("gate")
+        if g in ("none", "stray", "no_lever"):
+            ok_gates.append(x)
+        elif g == "unlinked":
+            if (x.get("gate_link_lost") or 0) >= SHAFT_LINK_LOST_MAX:
+                notes.append(f"the cavern well's shaft gate at {where(x)}: DF cancelled its lever link "
+                             f"{x['gate_link_lost']} times (the mechanisms out of reach?): it waits for others")
+                pool -= 2
+                continue
+            reach = x.get("gate_mechanisms_reachable")
+            if pool >= 2 and (reach is None or reach >= 2):
+                ok_gates.append(x)
+            elif reach is not None and reach < 2 and pool >= 2:
+                notes.append(f"the cavern well's shaft gate at {where(x)}: {x.get('gate_mechanisms_far') or pool - reach}"
+                             " free mechanism(s) lie out of reach of its lever: the link waits")
+            pool -= 2
+        elif g == "no_hatch":
+            if pool >= 2:
+                ok_gates.append(x)
+                pool -= 2
+    build = [] if danger else ok_gates
     turn = [x for x in gates if (x.get("gate") in ("open", "pulling") and danger) or (x.get("gate") == "closed" and not danger)]
     if danger and turn:
         proposals.append(Proposal("well_shaft", {"type": "well_shaft", "close": True},
@@ -236,27 +262,31 @@ def _well_lid_rule(s: dict, proposals: list, notes: list) -> None:
         if build and any(x.get("gate") in ("none", "stray", "no_lever") for x in build):
             why = ("the cavern well's shaft stands open to the cavern: a lever near the well first, then a hatch "
                    "at the shaft's bottom on it (opened so the bucket passes, shut while a danger is near)")
-        elif build and any(x.get("gate") == "no_hatch" for x in build):
-            why = "the cavern well's lever stands and 2 mechanisms are free: the hatch at the shaft's bottom"
         elif build:
-            why = "the cavern well's shaft hatch and lever are built: link them"
+            steps = []
+            if any(x.get("gate") == "unlinked" for x in build):
+                steps.append("the cavern well's shaft hatch and lever are built: link them")
+            if any(x.get("gate") == "no_hatch" for x in build):
+                steps.append("the cavern well's lever stands and 2 mechanisms are free: the hatch at the shaft's bottom")
+            why = "; ".join(steps)
         elif not turn:
             why = "the cavern well's shaft watcher isn't running (the game was loaded): start it"
         else:
             why = "no danger near the cavern well now: open its shaft again"
         proposals.append(Proposal("well_shaft", {"type": "well_shaft", "close": bool(danger)}, why, 3))
     mech = free_stock(s, "mechanisms")
-    need = max([3 if x.get("gate") in ("none", "stray", "no_lever") else
-                2 if x.get("gate") in ("no_hatch", "unlinked") else 0 for x in gates] or [0])
+    need = sum(3 if x.get("gate") in ("none", "stray", "no_lever") else
+               2 if x.get("gate") in ("no_hatch", "unlinked") else 0 for x in gates)   # (0.104.156) every gate's
     if need and mech < need and queued(s, {"mechanisms"}) == 0:
         proposals.append(Proposal("well_shaft", {"type": "work_order", "recipe": "mechanisms", "amount": need - mech},
-                                  f"the cavern well's shaft gate needs {need} mechanism(s) (its lever and the link; "
+                                  f"the cavern wells' shaft gates need {need} mechanism(s) (their levers and links; "
                                   f"{mech} in store): make {need - mech}", 3, True))
     for x in gates:
         if x.get("gate_error"):
             notes.append(f"the cavern well's shaft gate: {x['gate_error']}")
 
 
+SHAFT_LINK_LOST_MAX = 3         # (0.104.156) lever links DF cancelled before the gate waits for other mechanisms
 SHAFT_DANGER_TILES = 60          # (0.104.152) a danger this close to a cavern well: its shaft shut
 SHAFT_DANGER_OPEN = 80           # ...and opened again only once it's this far (no flapping)
 
