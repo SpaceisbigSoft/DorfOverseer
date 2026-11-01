@@ -1221,6 +1221,16 @@ GAME_FAKE = """
   dfhack.buildings = {findAtTile = function(p) return SB[p.x .. ',' .. p.y .. ',' .. p.z] end,
                       deconstruct = function(b) table.insert(DECON, b.id) end}
   dfhack.job = {removeJob = function(j) table.insert(REMOVED, j) end}
+  TIMERS = {}
+  dfhack.timeout = function(n, unit, f) table.insert(TIMERS, f); return #TIMERS end
+  UNITS = {}
+  df.global.world.units = {active = UNITS}
+  DFU_SAVE = dfhack.units
+  dfhack.units = setmetatable({}, {__index = DFU_SAVE})
+  for k, v in pairs({isActive = function() return true end, isDead = function() return false end,
+                     isCitizen = function(u) return u.citizen == true end, isDanger = function(u) return u.danger == true end,
+                     isAnimal = function(u) return u.animal == true end, isFortControlled = function() return false end,
+                     isTame = function() return false end}) do dfhack.units[k] = v end
   CR_OK = 0
   dfhack.run_command_silent = function(cmd, a, b, id, inst)
     table.insert(PULLS, {id = tonumber(id), instant = inst})
@@ -1249,7 +1259,8 @@ GAME_FAKE = """
     for i = 1, n do MECHS[i] = {flags = {}} end end
 """
 GAME_CLEAN = ("df.building = nil; dfhack.buildings = nil; df.building_type = nil; df.job_type = nil; df.trap_type = nil; "
-              "df.global = nil; dfhack.job = nil; SB = nil; MKS = nil; reqscript = REAL_REQ")
+              "df.global = nil; dfhack.job = nil; dfhack.timeout = nil; SB = nil; MKS = nil; reqscript = REAL_REQ; "
+              "if DFU_SAVE ~= nil then dfhack.units = DFU_SAVE; DFU_SAVE = nil end")
 
 
 def dug_cavern_well():
@@ -1346,7 +1357,25 @@ def _():
         assert B.well_lids(False)[1].gate == "pulling"
         s = B.well_shaft_step(True, False)
         assert s.ok and s.wells[1].stage == "closed" and len(LUA.eval("REMOVED")) == 1, dict(s.wells[1])
+        # (0.104.153) the watcher: started once the gate is linked; it shuts an open gate at once
+        lv.jobs[1] = None
+        assert B.well_shaft_step(False, False).wells[1].stage == "opening" and h.door_flags.closed is False
+        assert B.SHAFT_WATCH.on and B.well_lids(False)[1].watching is True
+        tick = lambda: LUA.eval("function() local f = TIMERS[#TIMERS]; TIMERS[#TIMERS] = nil; f() end")()
+        units = LUA.eval("UNITS")
+        units[1] = LUA.table_from({"id": 9, "animal": True, "pos": LUA.table_from({"x": 100, "y": 58, "z": 50}),
+                                   "flags1": LUA.table_from({}), "flags4": LUA.table_from({"agitated_wilderness_creature": True})})
+        tick()                                                    # 30 tiles off, not flying: left alone
+        assert h.door_flags.closed is False
+        units[1].pos.x = 85                                       # 15 tiles: shut at once, no dwarf
+        n = len(LUA.eval("PULLS"))
+        tick()
+        assert h.door_flags.closed is True and LUA.eval("PULLS")[n + 1].instant == "--instant"
+        assert B.well_lids(False)[1].watch_last.unit == 9
+        tick()                                                    # shut: nothing more (only the brain opens it)
+        assert len(LUA.eval("PULLS")) == n + 1
     finally:
+        LUA.eval("function(B) B.SHAFT_WATCH.on = false; B.SHAFT_WATCH.timer = nil end")(B)
         LUA.execute(GAME_CLEAN)
 
 

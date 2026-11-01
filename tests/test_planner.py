@@ -7737,6 +7737,19 @@ def _():
     assert lidr(s) == [], lidr(s)
     lid.pop("gate_hatch_standing")
     assert lidr(s) == [{"type": "seal_well_stairs"}], lidr(s)
+    # (0.104.153) hostile wild animals: a flier within 60, anything within 20; the watcher started again
+    lid.update(gate="open", state="none", watching=True)
+    s["others_on_map"]["threats"] = []
+    s["others_on_map"]["wild_hostile"] = [{"name": "a giant cave spider", "pos": {"x": 145, "y": 44, "z": 130}}]
+    assert shaft(s) == [], shaft(s)                                     # 30 tiles, walking
+    s["others_on_map"]["wild_hostile"][0]["flier"] = True
+    assert shaft(s) == [{"type": "well_shaft", "close": True}], shaft(s)
+    s["others_on_map"]["wild_hostile"] = [{"name": "a crawler", "pos": {"x": 130, "y": 44, "z": 130}}]
+    assert shaft(s) == [{"type": "well_shaft", "close": True}], shaft(s)   # 15 tiles
+    s["others_on_map"]["wild_hostile"] = []
+    lid["watching"] = False
+    p = by_rule(plan(copy.deepcopy(s), Memory())[0], "well_shaft")
+    assert p and p[0].action == {"type": "well_shaft", "close": False} and "watcher" in p[0].reason, [x.reason for x in p]
 
 
 @test("wells (0.104.148): another well can't be placed because the water is a cavern -> the cavern well")

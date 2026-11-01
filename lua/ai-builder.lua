@@ -4165,7 +4165,12 @@ function well_shaft_step(want_closed, dry_run)
     end
     if changed and not dry_run then save_projects(data) end
     if #wells == 0 then return {ok = false, rejected = true, error = 'no cavern well'} end
-    local acted = false
+    local watch_started = false
+    for _, r in ipairs(wells) do
+        local linked = r.was == 'open' or r.was == 'closed' or r.was == 'pulling'
+        if linked and not dry_run and shaft_watch_start() then watch_started = true end
+    end
+    local acted = watch_started
     for _, r in ipairs(wells) do
         if not r.error and r.stage and r.stage ~= r.was and r.stage ~= 'waiting_mechanisms' then acted = true end
     end
@@ -4173,6 +4178,98 @@ function well_shaft_step(want_closed, dry_run)
     if acted then return {ok = true, wells = wells} end
     return {ok = false, rejected = true, wells = wells,
             error = wells[1].error or ('nothing to do: ' .. tostring(wells[1].stage or wells[1].was))}
+end
+
+-- (0.104.153) A wild animal that attacks: a large predator, or one DF has
+-- agitated. (Most of the caverns' thousands of creatures are neither.)
+function hostile_wild(u)
+    if not dfhack.units.isAnimal(u) or dfhack.units.isFortControlled(u) then return false end
+    local okt, tame = pcall(dfhack.units.isTame, u)
+    if okt and tame then return false end
+    local oka, agit = pcall(function() return u.flags4.agitated_wilderness_creature end)
+    if oka and agit then return true end
+    local okp, pred = pcall(function() return df.creature_raw.find(u.race).caste[u.caste].flags.LARGE_PREDATOR end)
+    return okp and pred or false
+end
+
+local function unit_flies(u)
+    local ok, f = pcall(function() return u.enemy.caste_flags.FLIER end)
+    return ok and f or false
+end
+
+-- (0.104.153) The shaft watcher: every SHAFT_WATCH_TICKS inside the game
+-- (the brain reads the fort once a game day: a flier crosses 60 tiles
+-- sooner), an open shaft gate is shut at once when an enemy comes near
+-- below it: a danger (isDanger) or a flying hostile animal within
+-- SHAFT_NEAR tiles, any hostile one within SHAFT_CLOSE tiles, or anything
+-- hostile in the shaft itself. It only shuts; the brain opens it again once
+-- the cavern is clear. Lives while the game runs; `well_lids` says whether
+-- it is on, and the `well_shaft` action starts it.
+SHAFT_WATCH_TICKS = 100
+SHAFT_NEAR = 60
+SHAFT_CLOSE = 20
+SHAFT_WATCH = SHAFT_WATCH or {on = false}
+
+local function shaft_threat_near(wells)
+    for _, u in ipairs(df.global.world.units.active) do
+        local ok, hit = pcall(function()
+            if not dfhack.units.isActive(u) or dfhack.units.isDead(u) or dfhack.units.isCitizen(u, true) then return false end
+            if u.flags1.caged or u.flags1.chained then return false end
+            local danger = dfhack.units.isDanger(u)
+            local wild = not danger and hostile_wild(u)
+            if not (danger or wild) then return false end
+            local fly = unit_flies(u)
+            for _, w in ipairs(wells) do
+                local d = math.max(math.abs(u.pos.x - w.x), math.abs(u.pos.y - w.y))
+                if u.pos.z < w.hz then
+                    if d <= SHAFT_CLOSE or (d <= SHAFT_NEAR and (danger or fly)) then return w end
+                elseif u.pos.z < w.z and d <= 2 then
+                    return w                        -- in the shaft or on its stairs
+                end
+            end
+            return false
+        end)
+        if ok and hit then return hit, u end
+    end
+end
+
+local function shaft_watch_tick()
+    SHAFT_WATCH.timer = nil
+    if not SHAFT_WATCH.on then return end
+    local ok, err = pcall(function()
+        local wells = {}
+        for _, p in ipairs(load_projects().list) do
+            -- a linked gate (its ids saved): only its hatch and lever read, not every
+            -- building's links (this runs 12 times a game day)
+            local sg = p.shaft_gate
+            if p.kind == 'well' and sg and sg.lever_id and sg.hatch_id and not sg.impossible then
+                local a = anchor_of(p)
+                local h = hatch_at(a.x, a.y, shaft_bottom(p))
+                if h and h.built and h.id == sg.hatch_id and not h.closed then
+                    local pending = job_of(sg.lever_id, df.job_type.PullLever)
+                    table.insert(wells, {x = a.x, y = a.y, z = p.z, hz = shaft_bottom(p), id = p.id,
+                                         lever_id = sg.lever_id, pending = pending})
+                end
+            end
+        end
+        if #wells == 0 then return end
+        local w, u = shaft_threat_near(wells)
+        if w then
+            if w.pending then pcall(dfhack.job.removeJob, w.pending) end
+            pull(w.lever_id, true)
+            SHAFT_WATCH.last = {project_id = w.id, tick = df.global.cur_year_tick, year = df.global.cur_year,
+                                unit = u and u.id or nil}
+        end
+    end)
+    SHAFT_WATCH.error = (not ok) and tostring(err):sub(1, 160) or nil
+    SHAFT_WATCH.timer = dfhack.timeout(SHAFT_WATCH_TICKS, 'ticks', shaft_watch_tick)
+end
+
+function shaft_watch_start()
+    if SHAFT_WATCH.on and SHAFT_WATCH.timer then return false end
+    SHAFT_WATCH.on = true
+    SHAFT_WATCH.timer = dfhack.timeout(SHAFT_WATCH_TICKS, 'ticks', shaft_watch_tick)
+    return true
 end
 
 -- Each cavern well: {project_id, x, y, z, elevation (the column's top step),
@@ -4208,6 +4305,11 @@ function well_lids(probe)
                 if g.state == 'no_hatch' or g.state == 'unlinked' then r.gate_mechanisms = free_mechanism_count() end
                 if g.hatch then r.gate_hatch_built = g.hatch.built and true or false end
                 r.gate_hatch_standing = g.hatch ~= nil or nil     -- rv2 1: a hatch still at the shaft's bottom
+                if g.state == 'open' or g.state == 'closed' or g.state == 'pulling' then     -- (0.104.153)
+                    r.watching = (SHAFT_WATCH.on and SHAFT_WATCH.timer ~= nil) and true or false
+                    r.watch_error = SHAFT_WATCH.error
+                    if SHAFT_WATCH.last and SHAFT_WATCH.last.project_id == p.id then r.watch_last = SHAFT_WATCH.last end
+                end
             else
                 r.gate_error = tostring(g):sub(1, 120)
             end

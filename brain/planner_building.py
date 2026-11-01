@@ -232,7 +232,7 @@ def _well_lid_rule(s: dict, proposals: list, notes: list) -> None:
     if danger and turn:
         proposals.append(Proposal("well_shaft", {"type": "well_shaft", "close": True},
                                   f"{danger} near the cavern well: shut its shaft (its hatch, at once)", 2))
-    elif turn or build:
+    elif turn or build or any(x.get("watching") is False for x in gates):
         if build and any(x.get("gate") in ("none", "stray", "no_lever") for x in build):
             why = ("the cavern well's shaft stands open to the cavern: a lever near the well first, then a hatch "
                    "at the shaft's bottom on it (opened so the bucket passes, shut while a danger is near)")
@@ -240,6 +240,8 @@ def _well_lid_rule(s: dict, proposals: list, notes: list) -> None:
             why = "the cavern well's lever stands and 2 mechanisms are free: the hatch at the shaft's bottom"
         elif build:
             why = "the cavern well's shaft hatch and lever are built: link them"
+        elif not turn:
+            why = "the cavern well's shaft watcher isn't running (the game was loaded): start it"
         else:
             why = "no danger near the cavern well now: open its shaft again"
         proposals.append(Proposal("well_shaft", {"type": "well_shaft", "close": bool(danger)}, why, 3))
@@ -285,6 +287,15 @@ def cavern_danger(s: dict, wells: list | None = None, radius: int = SHAFT_DANGER
         else:
             continue
         return str(th.get("name") or "an enemy")
+    # (0.104.153) hostile wild animals in the caverns (predators, agitated
+    # ones): a flier within `radius`, anything within a third of it
+    for an in _l(_d(s.get("others_on_map")).get("wild_hostile")):
+        pos = _d(an.get("pos")) if isinstance(an, dict) else {}
+        if not (spots and all(isinstance(pos.get(k), int) for k in ("x", "y", "z"))):
+            continue
+        reach = radius if an.get("flier") else radius // 3
+        if any(max(abs(pos["x"] - x), abs(pos["y"] - y)) <= reach and pos["z"] <= z for x, y, z in spots):
+            return str(an.get("name") or "a wild beast")
     return ""
 
 

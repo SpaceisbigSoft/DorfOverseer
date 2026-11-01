@@ -34,7 +34,7 @@
 local json = require('json')
 local utils = require('utils')
 
-BRIDGE_VERSION = '0.104.152'
+BRIDGE_VERSION = '0.104.153'
 PROTOCOL = 1 -- bump when the report's shape changes in a breaking way
 
 local OUT_DIR = dfhack.getDFPath() .. '/dfhack-config/ai-overseer'
@@ -2618,6 +2618,8 @@ function get_others_on_map()
         local d = df.global.world.buildings.other.TRADE_DEPOT[0]
         if d then depot = {x = d.centerx, y = d.centery, z = d.z} end
     end)
+    local okb, builder = pcall(reqscript, 'ai-builder')       -- (0.104.153) once, not per creature
+    HOSTILE_WILD = (okb and builder and builder.hostile_wild) or function() return false end
     for _, u in ipairs(df.global.world.units.active) do
         if dfhack.units.isActive(u) and not dfhack.units.isDead(u)
                 and not dfhack.units.isHidden(u)
@@ -2680,6 +2682,21 @@ function get_others_on_map()
                     depot_distance = depot and (math.abs(pos.x - depot.x) + math.abs(pos.y - depot.y)
                                                 + 3 * math.abs(pos.z - depot.z)) or nil,
                 })
+            elseif (function()                          -- (0.104.153) hostile wild animals in the caverns
+                        local okh, h = pcall(function() return HOSTILE_WILD(u) end)
+                        if not (okh and h) or contained then return false end
+                        local pos = {x = u.pos.x, y = u.pos.y, z = u.pos.z}
+                        local layer = layer_at(pos, layers)
+                        if not tostring(layer or ''):find('^Cavern') then return false end
+                        out.wild_hostile_total = (out.wild_hostile_total or 0) + 1
+                        out.wild_hostile = out.wild_hostile or {}
+                        if #out.wild_hostile < 60 then
+                            table.insert(out.wild_hostile, {id = u.id, name = txt(dfhack.units.getReadableName(u)),
+                                                            pos = pos, layer = layer, flier = can_fly(u) or nil})
+                        end
+                        return true
+                    end)() then
+                -- counted above
             elseif dfhack.units.isMerchant(u) then
                 out.merchants = out.merchants + 1
             elseif dfhack.units.isDiplomat(u) then
