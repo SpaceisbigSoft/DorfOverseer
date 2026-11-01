@@ -3743,9 +3743,18 @@ function forbid_items_on(tiles, z)
     return n
 end
 
+-- (0.104.144) THE PLAYER, 31 Oct 20:51: the cistern as built doesn't work,
+-- and working it would flood the fort. Until a new design: its floodgate is
+-- never opened by the AI (it may still be shut), and no new cistern is begun.
+CISTERN_HOLD = true
+CISTERN_HOLD_WHY = 'the cistern is on hold (the player: as built it would flood the fort): the floodgate stays shut'
+
 function cistern_step(dry_run)
     OFFSET = elevation_offset()
     local d = cistern_data()
+    if not d and CISTERN_HOLD then
+        return {ok = false, rejected = true, held = true, error = 'no new cistern while the design is on hold'}
+    end
     if not d then
         local plan, why = plan_cistern()
         if not plan then return {ok = false, error = why} end
@@ -3762,6 +3771,16 @@ function cistern_step(dry_run)
         return out
     end
 
+    -- (0.104.144) on hold: past the link (opening, the plug, filling, the
+    -- well) nothing more is done; an open floodgate is shut
+    if CISTERN_HOLD and d.stage ~= 'dig' and d.stage ~= 'building' and d.stage ~= 'linking' then
+        local g = building_info(p.floodgate.x, p.floodgate.y, z, 'Floodgate')
+        if not dry_run and g and g.built and not g.closed and d.lever_id and not lever_pull_pending(d.lever_id) then
+            pull(d.lever_id)
+            return {ok = true, held = true, shut = true, error = CISTERN_HOLD_WHY}
+        end
+        return {ok = false, rejected = true, held = true, error = CISTERN_HOLD_WHY}
+    end
     if d.stage == 'dig' then
         if dry_run then return {ok = true, dry_run = true, stage = 'dig', plan = p} end
         local room = {}
@@ -3874,6 +3893,7 @@ function cistern_step(dry_run)
             save_cistern(d)
             return wait(('the lever link was lost: asked for again (%d)'):format(d.relinks))
         end
+        if CISTERN_HOLD then return {ok = false, rejected = true, held = true, error = CISTERN_HOLD_WHY} end
         if dry_run then return {ok = true, dry_run = true, stage = 'open'} end
         if gate and gate.closed then
             local ok, out = pull(d.lever_id)
@@ -3926,7 +3946,7 @@ function cistern_step(dry_run)
                                  .. '(open it by its lever when the cause is found)'):format(st.depth, d.reopens))
                 end
                 local days = (now_t - d.shut_seen) // 1200
-                if wet == 0 and days >= CISTERN_REOPEN_DAYS then
+                if wet == 0 and days >= CISTERN_REOPEN_DAYS and not CISTERN_HOLD then
                     if lever_pull_pending(d.lever_id) then
                         return wait('a dwarf is on the way to pull the cistern\'s lever (reopening it)')
                     end
@@ -4029,7 +4049,7 @@ function cistern_step(dry_run)
     end
     -- done: keep it topped up
     if gate and gate.built and d.lever_id then
-        if gate.closed and st.depth < CISTERN_LOW then
+        if gate.closed and st.depth < CISTERN_LOW and not CISTERN_HOLD then
             if dry_run then return {ok = true, dry_run = true, refill = true} end
             local ok, out, pending = pull(d.lever_id)
             return {ok = ok, stage = 'done', refill = true, depth = st.depth, pending = pending,

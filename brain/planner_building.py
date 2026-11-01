@@ -699,6 +699,19 @@ def _cistern_rule(s: dict, memory, cfg: dict, proposals: list, notes: list, rule
     (the floodgate opened under 3/7, shut at 6/7)."""
     w = _d(s.get("water"))
     st = w.get("cistern_status")
+    if cfg["cistern_hold"]:
+        # (0.104.144) the player: as built, the cistern doesn't work and would
+        # flood the fort if it did. No step (the bridge holds it too) until it
+        # is designed again
+        if isinstance(st, dict):
+            notes.append(f"the cistern is on hold for a new design (stage {st.get('stage')}, floodgate "
+                         f"{st.get('gate') or '?'}): the AI leaves its floodgate shut")
+            if st.get("gate") == "open":
+                # the bridge's held step shuts it (31 Oct 20:54: opened and the
+                # plug dug minutes before the hold)
+                proposals.append(Proposal("cistern", {"type": "cistern_step"},
+                                          "the cistern is on hold and its floodgate is open: shut it", 1))
+        return
     if isinstance(st, dict):
         # (0.104.141) the bridge gave up relinking (3 links lost): one Needs you,
         # not a refused step every few minutes (09:57-19:04, back after each

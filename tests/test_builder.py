@@ -1336,8 +1336,7 @@ def _():
     assert r[0] is None, r                                                 # rivers can be under pressure
 
 
-@test("cistern build: dig, floodgate and lever, link, open, plug, fill, shut, hole, well; then kept topped up")
-def _():
+def _body():
     LUA.execute("""local W = ...
       W.citizens = {}
       for i = 1, 20 do table.insert(W.citizens, {x = 50 + i % 10, y = 60, z = 80}) end
@@ -1457,8 +1456,16 @@ def _():
     assert B.cistern_status().gate == "open"
 
 
-@test("cistern (0.104.94): a source dry for a month retires the cistern, its floodgate shut; water back resets the count")
+@test("cistern build: dig, floodgate and lever, link, open, plug, fill, shut, hole, well; then kept topped up")
 def _():
+    B.CISTERN_HOLD = False                  # (0.104.144) the design under the hold
+    try:
+        _body()
+    finally:
+        B.CISTERN_HOLD = True
+
+
+def _body():
     LUA.execute("""local W = ...
       W.citizens = {}
       for i = 1, 20 do table.insert(W.citizens, {x = 50 + i % 10, y = 60, z = 80}) end
@@ -1501,8 +1508,16 @@ def _():
         LUA.execute("df.global = nil")
 
 
-@test("cistern (0.104.100): a floodgate shut for a flood reopens after 3 days with nobody in deep water; not while wet")
+@test("cistern (0.104.94): a source dry for a month retires the cistern, its floodgate shut; water back resets the count")
 def _():
+    B.CISTERN_HOLD = False                  # (0.104.144) the design under the hold
+    try:
+        _body()
+    finally:
+        B.CISTERN_HOLD = True
+
+
+def _body():
     LUA.execute("""local W = ...
       W.citizens = {}
       for i = 1, 20 do table.insert(W.citizens, {x = 50 + i % 10, y = 60, z = 80}) end
@@ -1545,6 +1560,22 @@ def _():
     finally:
         B.lever_pull_pending = real_pending
         LUA.execute("df.global = nil")
+
+
+@test("cistern (0.104.100): a floodgate shut for a flood reopens after 3 days with nobody in deep water; not while wet")
+def _():
+    B.CISTERN_HOLD = False                  # (0.104.144) the design under the hold
+    try:
+        _body()
+    finally:
+        B.CISTERN_HOLD = True
+
+
+@test("cistern hold (0.104.144): no new cistern and the floodgate never opened while the design is on hold")
+def _():
+    assert B.CISTERN_HOLD
+    r = B.cistern_step(False)
+    assert not r.ok and r.held, dict(r)
 
 
 @test("cistern plan (0.104.94): a small surface pool is no source; a big one counts as further off than water underground")

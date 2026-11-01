@@ -857,8 +857,7 @@ def _():
     assert not any(p.action.get("cavern") for p in plan(s, m)[0] if p.rule == "well")
 
 
-@test("cistern: started when the fort's water is poor (stagnant, freezing, none), stepped while building, kept topped up")
-def _():
+def _body():
     def plan_(st):
         return plan(st, Memory())[0]
     s = fort()
@@ -883,6 +882,15 @@ def _():
     assert [p for p in plan_(s) if p.rule == "cistern"]
 
 
+@test("cistern: started when the fort's water is poor (stagnant, freezing, none), stepped while building, kept topped up")
+def _():
+    PLANNER_CONFIG["cistern_hold"] = False      # (0.104.144) the design under the hold
+    try:
+        _body()
+    finally:
+        PLANNER_CONFIG["cistern_hold"] = True
+
+
 @test("temperament (0.94): every slider says what it does now, in the planner's own numbers")
 def _():
     import temperament
@@ -896,8 +904,7 @@ def _():
     assert e["industriousness"].startswith("stone left where it's dug") and "lavish" in e["welfare"], e
 
 
-@test("cistern parts (0.92.1): a floodgate and mechanisms ordered while the floodgate and lever wait for them")
-def _():
+def _body():
     s = fort()
     s.setdefault("water", {})["cistern_status"] = {
         "stage": "building", "gate": "planned", "lever": "planned",
@@ -925,6 +932,15 @@ def _():
     assert ps and ps[0].action["amount"] == 2 and "2 held in a Workshop" in ps[0].reason, [p.reason for p in ps]
     s["water"]["cistern_status"] = {"stage": "filling", "depth": 3, "gate": "open"}
     assert not parts()                                               # older bridges: no counts
+
+
+@test("cistern parts (0.92.1): a floodgate and mechanisms ordered while the floodgate and lever wait for them")
+def _():
+    PLANNER_CONFIG["cistern_hold"] = False      # (0.104.144) the design under the hold
+    try:
+        _body()
+    finally:
+        PLANNER_CONFIG["cistern_hold"] = True
 
 
 @test("crops for drink (0.99.6): brewable crops favoured while drink is short, put back once it recovers; shrubs gathered")
@@ -1200,8 +1216,7 @@ def _():
     assert drink(s), "the player's own order doesn't hold the AI back"
 
 
-@test("cistern well parts (0.99.2): the cistern's well gets the rope it waits for (region2: ropes 0, chains 0, cloth 33)")
-def _():
+def _body():
     s = fort()
     s.setdefault("water", {})["cistern_status"] = {"stage": "well", "depth": 6, "gate": "shut"}
     s["stocks"].update(blocks=1174, mechanisms=4, chains=0, cloth=33)
@@ -1220,6 +1235,15 @@ def _():
     s["stocks"].update(cloth=0, thread=0)
     _, notes = plan(copy.deepcopy(s), Memory())[:2]
     assert not parts(s) and any("cistern's well waits for a rope or chain" in n for n in notes), notes
+
+
+@test("cistern well parts (0.99.2): the cistern's well gets the rope it waits for (region2: ropes 0, chains 0, cloth 33)")
+def _():
+    PLANNER_CONFIG["cistern_hold"] = False      # (0.104.144) the design under the hold
+    try:
+        _body()
+    finally:
+        PLANNER_CONFIG["cistern_hold"] = True
 
 
 @test("loop watchdog: the same action done too often in a year is held 28 days; rules that repeat by design aren't")
@@ -7522,8 +7546,7 @@ def _():
     assert by_rule(plan(copy.deepcopy(s), m2)[0], "stuck_order")
 
 
-@test("cistern (0.104.141): the lever's link lost 3 times -> one Needs you with where, no refused step each cycle")
-def _():
+def _body():
     s = fort()
     s["water"] = dict(s.get("water") or {}, cistern_status={
         "stage": "linking", "gate": "shut", "lever": "built", "depth": 0, "relinks": 3,
@@ -7538,6 +7561,15 @@ def _():
     assert by_rule(plan(copy.deepcopy(s), Memory())[0], "cistern")
     s["water"]["cistern_status"].update(relinks=3, linked=True)
     assert by_rule(plan(copy.deepcopy(s), Memory())[0], "cistern")
+
+
+@test("cistern (0.104.141): the lever's link lost 3 times -> one Needs you with where, no refused step each cycle")
+def _():
+    PLANNER_CONFIG["cistern_hold"] = False      # (0.104.144) the design under the hold
+    try:
+        _body()
+    finally:
+        PLANNER_CONFIG["cistern_hold"] = True
 
 
 @test("wells (0.104.141, 12k): one well for every 70 dwarves; one at a time; a failure waits a season, never 'no well'")
@@ -7560,8 +7592,7 @@ def _():
     assert not [x for x in by_rule(plan(copy.deepcopy(s), Memory())[0], "well") if x.action.get("type") == "place_well"]
 
 
-@test("review (0.104.141): the jail stops growing at twice what the fort wants; the cistern waits on a pending link; worked delays 56 days at most")
-def _():
+def _body():
     s = fort()
     s["dwarves"]["total"] = 60
     s["offices"] = {"offices": {"SHERIFF": {"held": [{"id": 1}]}}}
@@ -7575,6 +7606,15 @@ def _():
     from planner_core import watch_since, WORKED_MAX_DAYS
     w = {"since": 0, "worked": 500 * TICKS_PER_DAY}
     assert watch_since(w) == WORKED_MAX_DAYS * TICKS_PER_DAY and watch_since({"since": 5}) == 5
+
+
+@test("review (0.104.141): the jail stops growing at twice what the fort wants; the cistern waits on a pending link; worked delays 56 days at most")
+def _():
+    PLANNER_CONFIG["cistern_hold"] = False      # (0.104.144) the design under the hold
+    try:
+        _body()
+    finally:
+        PLANNER_CONFIG["cistern_hold"] = True
 
 
 @test("woodcutters (0.104.142): more while wood is short; Elf-friends one, two while short and well under the quota")
@@ -7595,6 +7635,18 @@ def _():
         assert cut(m) == 2
         s["stocks"]["wood"] = 5000
         assert cut(m) == 1
+
+
+@test("cistern hold (0.104.144): no step and a note while the design is on hold")
+def _():
+    s = fort()
+    s["water"] = dict(s.get("water") or {}, cistern_status={"stage": "linking", "gate": "shut", "relinks": 3})
+    props, notes = plan(copy.deepcopy(s), Memory())
+    assert not by_rule(props, "cistern") and any("cistern is on hold" in n for n in notes), notes
+    assert not any(n.startswith(planner.NEEDS_YOU) and "cistern" in n for n in notes)
+    s["water"]["cistern_status"].update(stage="filling", gate="open")
+    c = by_rule(plan(copy.deepcopy(s), Memory())[0], "cistern")
+    assert c and c[0].action == {"type": "cistern_step"} and "shut it" in c[0].reason, c
 
 
 if __name__ == "__main__":
