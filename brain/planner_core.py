@@ -410,6 +410,13 @@ PLANNER_CONFIG = {
     "infected_rest_max": 3, "infected_rest_cooldown_ticks": 1200, "infected_rest_give_up": 3,
     "doctor_post_per_diagnoser": 3, "doctor_post_cooldown_ticks": 3 * 1200,
     "noble_rooms_cooldown_ticks": 1200,
+    # (0.104.168) homes: one bedroom per household, the stressed to rooms they like
+    "homes_cooldown_ticks": 1200,
+    "homes_dig_cooldown_ticks": 7 * 1200,
+    "homes_liked_cooldown_ticks": 7 * 1200,
+    "homes_liked_min_stressed": 5,     # unhappy or worse citizens before a move is looked for
+    "homes_liked_max": 10,             # moves at a time
+    "homes_rough_note_at": 3,          # citizens who slept rough lately before a note says why
     "uniform_cooldown_ticks": 1200,       # a squad's uniform: once a day   # rooms given to nobles: once a day  # goods to the depot: every 2 days while a caravan is here
     "crafts_cooldown_ticks": 14 * 1200,
     "hauling_cooldown_ticks": 14 * 1200,                    # charcoal or coke kept for the smelter

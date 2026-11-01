@@ -5824,6 +5824,16 @@ function act_give_trinkets(a)
     return reqscript('ai-society').give_trinkets(n, a.dry_run == true)
 end
 
+-- (0.104.168) One bedroom per household (a couple in two keeps the better,
+-- one with none gets the best free one), and up to `upgrade` of the most
+-- stressed moved to a free room much better for them (their likes counted)
+-- (lua/ai-homes.lua). {house = 0-30, upgrade = 0-20}
+function act_house_dwarves(a)
+    local h, u = int_in(a.house or 0, 0, 30), int_in(a.upgrade or 0, 0, 20)
+    if not h or not u or h + u == 0 then return reject('house_dwarves needs house 0-30 and upgrade 0-20, not both 0') end
+    return reqscript('ai-homes').house(h, u, a.dry_run == true, txt)
+end
+
 -- Workshops the fort has far too many of, taken down (lua/ai-builder.lua).
 function act_remove_workshops(a)
     if a.kind ~= 'SoapMaker' and a.kind ~= 'ScrewPress' then
@@ -6156,6 +6166,7 @@ ACTIONS = {
     feeder_pile = act_feeder_pile,
     idle_crafting = act_idle_crafting,
     give_trinkets = act_give_trinkets,
+    house_dwarves = act_house_dwarves,   -- (0.104.168)
     staff_location = act_staff_location,
     add_posts = act_add_posts,
     staff_labors = act_staff_labors,
@@ -6565,6 +6576,8 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
     offices = function() return safe(function() return reqscript('ai-nobles').survey(txt) end) end,
     -- the rooms the nobles' offices ask for and don't have (lua/ai-nobles.lua)
     noble_rooms = function() return safe(function() return reqscript('ai-nobles').rooms_survey(txt) end) end,
+    -- (0.104.168) the households: who has a bedroom, couples in one room or two, who slept rough (lua/ai-homes.lua)
+    homes = function() return safe(function() return reqscript('ai-homes').census(nil, txt) end) end,
     tools = function() return safe(get_tools) end,
     -- the player's settings from the control panel (gui/ai-overseer)
     settings = function()
@@ -6598,7 +6611,8 @@ SECTION_CACHE_DAYS = {logistics = 3, industry = 7,   -- industry: 300-450 ms liv
     -- (supplies isn't cached: "have + queued" rules read it against live
     -- orders, and a stale count made them order twice; review 24 Oct)
     room_gaps = 3, planned = 1, needs = 1, instruments = 28, registry = 3, noble_rooms = 3, locations = 2, petitions = 2, diplomacy = 7, crossings = 7,
-    missions = 1}   -- (0.104.95) every world site walked
+    missions = 1,   -- (0.104.95) every world site walked
+    homes = 1}      -- (0.104.168) each citizen's thoughts and every bedroom zone read
 SECTION_REBUILDS = 2       -- expired cached sections rebuilt in one report (a missing one always is)
 -- (0.100) the cached sections each action changes (cleared when it succeeds)
 CACHE_INVALIDATES = {
@@ -6619,6 +6633,7 @@ CACHE_INVALIDATES = {
     -- 3 days and the rule asked again each cycle (17 refusals in 1.5 h)
     feeder_pile = {'logistics'},
     add_doctor_post = {'locations'},   -- (0.104.168)
+    house_dwarves = {'homes', 'noble_rooms'},   -- (0.104.168)
 }
 SECTION_CACHE = SECTION_CACHE or {}
 -- (0.104.8) a new bridge starts with an empty cache: DFHack keeps a script's
