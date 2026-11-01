@@ -1481,3 +1481,346 @@ function recreation_tick(max, days, dry_run, txt, friends, friend_days)
     return {ok = true, burrow_id = b.id, tiles = tiles, added = added, released = released, members = count + fcount,
             dry_run = dry_run or nil}
 end
+
+-- --- (0.104.167) the hospital burrow -------------------------------------------
+--
+-- Teacheroar, 1 Nov 15:16-15:42: seven citizens killed by citizens, five of
+-- them patients waiting for care, walking the corridors and halls (82 with
+-- infected wounds walked the fort), strangled or struck down by dwarves in
+-- tantrums. The player's word: keep the wounded inside the hospitals. The
+-- opposite of the recreation burrow (which never covers a hospital since
+-- 0.104.127): a burrow over every hospital location's zones, its members
+-- the citizens DF asks a treatment for.
+--
+-- Drink (the design): a dwarf restricted to a burrow takes no drink or food
+-- from outside it, and this fort has lost dwarves to thirst. Restricting only
+-- the patients already lying in a hospital bed (fed and watered by the
+-- doctors, labour FEED_WATER_CIVILIANS) would be safe for drink but would
+-- leave out exactly those who were killed: the ones walking about. So the
+-- burrow also covers, besides the hospitals' zones, the nearest stockpile
+-- that holds drink now (in its barrels, not forbidden), the nearest that
+-- holds food, and the nearest well (the tiles around it), each only when a
+-- dwarf can walk there from a hospital zone (DF's walkability groups). With
+-- no stockpile holding drink and no well reachable, nobody is moved in, every
+-- member is let out, and the call says why. The sources are looked for again
+-- at every call (the burrow refilled when they or the hospital's zones
+-- change), so a pile run dry or a zone removed never leaves a member without
+-- drink for longer than one call.
+-- Never a soldier, the hospital's own staff, a baby, one in a tantrum, or one
+-- already in another burrow (the recreation burrow, a player's); each is let
+-- out once DF asks no treatment for them. At most `max` members, `per` new a call.
+HOSPITAL_BURROW_NAME = 'AI hospital'
+HOSPITAL_BURROW_KEY = 'ai-overseer/hospital-burrow'
+HOSP_RQ = {'rq_diagnosis', 'rq_immobilize', 'rq_dressing', 'rq_cleaning', 'rq_surgery', 'rq_suture',
+           'rq_setting', 'rq_traction', 'rq_crutch'}
+local HOSP_FOOD = {FOOD = true, MEAT = true, FISH = true, CHEESE = true, EGG = true, PLANT = true, PLANT_GROWTH = true}
+local HOSP_SCAN_MAX = 2000           -- items looked at in one pile
+
+local function hb_state()
+    local ok, d = pcall(dfhack.persistent.getSiteData, HOSPITAL_BURROW_KEY, {members = {}})
+    d = ok and type(d) == 'table' and d or {members = {}}
+    d.members = type(d.members) == 'table' and d.members or {}
+    return d
+end
+
+-- The hospital locations' zones (as the bridge's hospital_survey finds them)
+-- and the units holding a post at any of them.
+function hospital_zones()
+    local ids, staff, zones = {}, {}, {}
+    pcall(function()
+        for _, loc in ipairs(dfhack.world.getCurrentSite().buildings) do
+            pcall(function()
+                if df.abstract_building_type[loc:getType()] ~= 'HOSPITAL' then return end
+                for _, bid in ipairs(loc:getContents().building_ids) do ids[bid] = true end
+                for _, o in ipairs(loc.occupations or {}) do
+                    if o.unit_id ~= -1 then staff[o.unit_id] = true end
+                end
+            end)
+        end
+    end)
+    for _, b in ipairs(df.global.world.buildings.all) do
+        if ids[b.id] and b:getType() == df.building_type.Civzone then table.insert(zones, b) end
+    end
+    table.sort(zones, function(a, c) return a.id < c.id end)
+    return zones, staff
+end
+
+local function walk_group(p)
+    local ok, g = pcall(dfhack.maps.getWalkableGroup, p)
+    return ok and type(g) == 'number' and g or 0
+end
+
+-- A tile of the building a dwarf can stand on: its middle, else the first
+-- walkable one of its tiles.
+local function stand_pos(b)
+    local mid = xyz2pos(math.floor((b.x1 + b.x2) / 2), math.floor((b.y1 + b.y2) / 2), b.z)
+    if walk_group(mid) ~= 0 then return mid end
+    local n = 0
+    for y = b.y1, b.y2 do
+        for x = b.x1, b.x2 do
+            local p = xyz2pos(x, y, b.z)
+            if walk_group(p) ~= 0 then return p end
+            n = n + 1
+            if n > 400 then return nil end
+        end
+    end
+    return nil
+end
+
+local function can_walk(a, c)
+    local ok, yes = pcall(dfhack.maps.canWalkBetween, a, c)
+    if ok and type(yes) == 'boolean' then return yes end
+    local ga = walk_group(a)
+    return ga ~= 0 and ga == walk_group(c)
+end
+
+local function in_zones(pos, zones)
+    if not pos then return false end
+    for _, z in ipairs(zones) do
+        if pos.z == z.z and pos.x >= z.x1 and pos.x <= z.x2 and pos.y >= z.y1 and pos.y <= z.y2 then
+            local okc, inside = pcall(dfhack.buildings.containsTile, z, pos.x, pos.y)
+            if not okc or inside then return true end
+        end
+    end
+    return false
+end
+
+-- What a pile holds now: drink, food (in barrels and pots too; never forbidden).
+local function pile_holds(b)
+    local drink, food, seen = false, false, 0
+    local function look(it)
+        local okf, forbid = pcall(function() return it.flags.forbid end)
+        if okf and forbid then return end
+        local okt, t = pcall(function() return df.item_type[it:getType()] end)
+        if not okt then return end
+        if t == 'DRINK' then drink = true elseif HOSP_FOOD[t] then food = true end
+    end
+    local ok, items = pcall(dfhack.buildings.getStockpileContents, b)
+    if not ok or type(items) ~= 'table' and type(items) ~= 'userdata' then return false, false end
+    for _, it in ipairs(items) do
+        seen = seen + 1
+        if seen > HOSP_SCAN_MAX or (drink and food) then break end
+        look(it)
+        pcall(function() for _, c in ipairs(dfhack.items.getContainedItems(it)) do look(c) end end)
+    end
+    return drink, food
+end
+
+-- The nearest drink pile, food pile and well a dwarf can walk to from a
+-- hospital zone: {drink = b, food = b, well = b, dist = {...}}.
+local function hospital_sources(zones)
+    local from = {}
+    for _, z in ipairs(zones) do
+        local p = stand_pos(z)
+        if p then table.insert(from, p) end
+    end
+    local out = {dist = {}}
+    if #from == 0 then return out end
+    local function reach(p)
+        local best
+        for _, f in ipairs(from) do
+            local dd = math.abs(p.x - f.x) + math.abs(p.y - f.y) + 3 * math.abs(p.z - f.z)
+            if (not best or dd < best) and can_walk(f, p) then best = dd end
+        end
+        return best
+    end
+    local function offer(kind, b, dd)
+        if dd and (not out.dist[kind] or dd < out.dist[kind]) then out[kind], out.dist[kind] = b, dd end
+    end
+    for _, b in ipairs(df.global.world.buildings.all) do
+        local t = b:getType()
+        if t == df.building_type.Stockpile then
+            local okf, food = pcall(function() return b.settings.flags.food end)
+            if okf and food then
+                local has_drink, has_food = pile_holds(b)
+                if has_drink or has_food then
+                    local p = stand_pos(b)
+                    local dd = p and reach(p)
+                    if has_drink then offer('drink', b, dd) end
+                    if has_food then offer('food', b, dd) end
+                end
+            end
+        elseif df.building_type.Well ~= nil and t == df.building_type.Well then
+            -- a dwarf draws water standing beside the well
+            local x, y = b.centerx or b.x1, b.centery or b.y1
+            for dy = -1, 1 do
+                for dx = -1, 1 do
+                    if dx ~= 0 or dy ~= 0 then
+                        local p = xyz2pos(x + dx, y + dy, b.z)
+                        if walk_group(p) ~= 0 then offer('well', b, reach(p)) end
+                    end
+                end
+            end
+        end
+    end
+    return out
+end
+
+local function hb_sig(zones, src)
+    local parts = {}
+    for _, z in ipairs(zones) do table.insert(parts, tostring(z.id)) end
+    for _, k in ipairs({'drink', 'food', 'well'}) do
+        table.insert(parts, k .. '=' .. tostring(src[k] and src[k].id or '-'))
+    end
+    return table.concat(parts, ',')
+end
+
+local function fill_hospital_burrow(burrow, zones, src)
+    dfhack.burrows.clearTiles(burrow)
+    local n = 0
+    for _, z in ipairs(zones) do n = n + zone_tiles(z, burrow) end
+    if src.drink then n = n + zone_tiles(src.drink, burrow) end
+    if src.food and src.food ~= src.drink then n = n + zone_tiles(src.food, burrow) end
+    if src.well then
+        local w = src.well
+        local x, y = w.centerx or w.x1, w.centery or w.y1
+        for dy = -1, 1 do
+            for dx = -1, 1 do
+                if dfhack.burrows.setAssignedTile(burrow, xyz2pos(x + dx, y + dy, w.z), true) then n = n + 1 end
+            end
+        end
+    end
+    return n
+end
+
+-- A treatment asked by DF (its rq_ flags; needs_healthcare alone is set for
+-- every infected dwarf walking about: 0.104.150).
+function is_patient(u)
+    local ok, yes = pcall(function()
+        if not (u.health and u.health.flags.needs_healthcare) then return false end
+        for _, f in ipairs(HOSP_RQ) do
+            if u.health.flags[f] then return true end
+        end
+        return false
+    end)
+    return ok and yes or false
+end
+
+local function in_tantrum(u)
+    local okm, m = pcall(function() return df.soldier_mood_type[u.counters.soldier_mood] end)
+    return okm and (m == 'Tantrum' or m == 'Enraged')
+end
+
+-- In a burrow other than `own_id` (the recreation burrow, a player's).
+local function other_burrow(u, own_id)
+    local ok, yes = pcall(function()
+        for _, bid in ipairs(u.burrows or {}) do
+            if bid ~= own_id then return true end
+        end
+        return false
+    end)
+    return not ok or yes
+end
+
+local function hb_eligible(u, staff, own_id)
+    local okb, baby = pcall(dfhack.units.isBaby, u)
+    if okb and baby then return false end
+    if u.military.squad_id ~= -1 or staff[u.id] or in_tantrum(u) then return false end
+    return is_patient(u) and not other_burrow(u, own_id)
+end
+
+-- For the report: the burrow, its members and tiles, the hospital zones, and
+-- the patients who could join walking outside the hospitals.
+function hospital_burrow_status()
+    local d = hb_state()
+    local b = find_burrow(HOSPITAL_BURROW_NAME)
+    local zones, staff = hospital_zones()
+    local out = {burrow = b and b.id or nil, members = 0, tiles = d.tiles, hospital_zones = #zones,
+                 drink = d.drink, why = d.why, outside = 0, patients = 0}
+    for _ in pairs(d.members) do out.members = out.members + 1 end
+    for _, u in ipairs(dfhack.units.getCitizens(true)) do
+        if is_patient(u) then
+            out.patients = out.patients + 1
+            if not d.members[tostring(u.id)] and hb_eligible(u, staff, b and b.id or -1)
+                    and not in_zones(u.pos, zones) then
+                out.outside = out.outside + 1
+            end
+        end
+    end
+    return out
+end
+
+function hospital_burrow_tick(max, per, dry_run, txt)
+    max, per = max or 30, per or 10
+    local function name(u) return (txt or tostring)(dfhack.units.getReadableName(u)) end
+    local d = hb_state()
+    local now = df.global.cur_year * 403200 + df.global.cur_year_tick
+    local zones, staff = hospital_zones()
+    local b = find_burrow(HOSPITAL_BURROW_NAME)
+    local released, added = {}, {}
+    -- no hospital or no drink: nobody kept in, every member let out
+    local function release_all(why)
+        for id in pairs(d.members) do
+            local u = df.unit.find(tonumber(id))
+            if not dry_run and u and b then pcall(dfhack.burrows.setAssignedUnit, b, u, false) end
+            table.insert(released, u and name(u) or id)
+            d.members[id] = nil
+        end
+        d.why = why
+        if not dry_run then pcall(dfhack.persistent.saveSiteData, HOSPITAL_BURROW_KEY, d) end
+        if #released > 0 then
+            return {ok = true, released = released, added = {}, members = 0, note = why, dry_run = dry_run or nil}
+        end
+        return {ok = false, rejected = true, error = why}
+    end
+    if #zones == 0 then
+        return release_all('no hospital zone: make a zone a hospital location first')
+    end
+    local src = hospital_sources(zones)
+    if not src.drink and not src.well then
+        return release_all('no drink reachable from the hospital (no stockpile holding drink and no well a dwarf '
+                           .. 'can walk to): nobody is kept in the hospital without it')
+    end
+    if not b and dry_run then
+        return {ok = true, dry_run = true, note = 'the burrow would be made', drink = src.drink and 'stockpile' or 'well'}
+    end
+    if not b then
+        b = new_burrow(HOSPITAL_BURROW_NAME)
+        d.members, d.sig = {}, nil              -- (a burrow the player removed took its members with it)
+    end
+    d.why = nil
+    d.drink = src.drink and 'stockpile' or 'well'
+    local tiles
+    local sig = hb_sig(zones, src)
+    if sig ~= d.sig or not d.filled or now - d.filled >= 7 * 1200 then
+        if not dry_run then
+            tiles = fill_hospital_burrow(b, zones, src)
+            d.filled, d.sig, d.tiles = now, sig, tiles
+        end
+    end
+    -- let out: healed (no treatment asked), gone, drafted, made staff, raging, or put in another burrow
+    for id in pairs(d.members) do
+        local u = df.unit.find(tonumber(id))
+        local okc, cit = pcall(function() return u and dfhack.units.isCitizen(u) end)
+        local keep = u and okc and cit and u.military.squad_id == -1 and not staff[u.id] and is_patient(u)
+                     and not in_tantrum(u) and not other_burrow(u, b.id)
+        if not keep then
+            if not dry_run and u then pcall(dfhack.burrows.setAssignedUnit, b, u, false) end
+            d.members[id] = nil
+            table.insert(released, u and name(u) or id)
+        end
+    end
+    local count = 0
+    for _ in pairs(d.members) do count = count + 1 end
+    -- the patients walking outside the hospitals first
+    local cands = {}
+    for _, u in ipairs(dfhack.units.getCitizens(true)) do
+        if not d.members[tostring(u.id)] and hb_eligible(u, staff, b.id) then
+            table.insert(cands, {u = u, inside = in_zones(u.pos, zones) and 1 or 0})
+        end
+    end
+    table.sort(cands, function(a, c) if a.inside ~= c.inside then return a.inside < c.inside end return a.u.id < c.u.id end)
+    for _, c in ipairs(cands) do
+        if count >= max or #added >= per then break end
+        if not dry_run then dfhack.burrows.setAssignedUnit(b, c.u, true) end
+        d.members[tostring(c.u.id)] = now
+        count = count + 1
+        table.insert(added, name(c.u))
+    end
+    if not dry_run then pcall(dfhack.persistent.saveSiteData, HOSPITAL_BURROW_KEY, d) end
+    if #added == 0 and #released == 0 and not tiles then
+        return {ok = true, unchanged = true, members = count}     -- nothing to change is no refusal
+    end
+    return {ok = true, burrow_id = b.id, tiles = tiles, added = added, released = released, members = count,
+            drink = d.drink, food = src.food ~= nil, dry_run = dry_run or nil}
+end

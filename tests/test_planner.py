@@ -8219,6 +8219,37 @@ def _():
     assert not by_rule(plan(copy.deepcopy(s), Memory())[0], "labor_trim")
 
 
+@test("hospital burrow (0.104.167): asked while a hospital exists and patients walk outside it, or the burrow has members; first in a crisis")
+def _():
+    s = fort()
+    s["health"] = {"hospital": [{"id": 5, "zones": [{"id": 70, "beds": 4}], "staff": []}],
+                   "patients": [{"id": 1, "needs": ["suture"]}, {"id": 2, "needs": ["diagnosis"], "in_hospital": True},
+                                {"id": 3, "needs": [], "infected": True}]}
+    s.setdefault("society", {})["hospital_burrow"] = {"members": 0, "outside": 5, "hospital_zones": 1}
+    r = by_rule(plan(copy.deepcopy(s), Memory())[0], "hospital_burrow")
+    assert r and r[0].action == {"type": "hospital_burrow", "max": 30, "per": 10}, r
+    assert r[0].reason.startswith("5 patient(s) walking outside the hospital") and r[0].priority == 4, r[0]
+    # an older bridge (no status): the listed patients outside, with a treatment asked
+    old = copy.deepcopy(s); del old["society"]["hospital_burrow"]
+    r = by_rule(plan(old, Memory())[0], "hospital_burrow")
+    assert r and r[0].reason.startswith("1 patient(s)"), r
+    # nobody outside and nobody in: not asked; members to let out: asked
+    calm = copy.deepcopy(s); calm["society"]["hospital_burrow"].update(outside=0)
+    assert not by_rule(plan(calm, Memory())[0], "hospital_burrow")
+    calm["society"]["hospital_burrow"]["members"] = 3
+    assert by_rule(plan(calm, Memory())[0], "hospital_burrow")
+    # no hospital: never
+    none_ = copy.deepcopy(s); none_["health"]["hospital"] = []; none_["society"]["hospital_burrow"]["hospital_zones"] = 0
+    assert not by_rule(plan(none_, Memory())[0], "hospital_burrow")
+    # the fort in crisis: a recovery rule, ranked first
+    m = Memory(); m.crisis = {"since": 0, "why": ["7 deaths"]}
+    r = by_rule(plan(copy.deepcopy(s), m)[0], "hospital_burrow")
+    assert r and r[0].priority <= 0, r
+    import crisis
+    assert "hospital_burrow" in crisis.RECOVERY_RULES
+    assert planner.PLANNER_CONFIG["hospital_burrow_cooldown_ticks"] == 1200
+
+
 
 if __name__ == "__main__":
     for name, ok, msg in RESULTS:

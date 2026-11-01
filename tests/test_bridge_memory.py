@@ -1100,6 +1100,26 @@ def _():
     assert not M.act_convict(t({"max": 50})).ok                      # bounded
 
 
+@test("0.104.167: hospital_burrow is in the action table, bounded, and passes max, per and dry_run to the society script")
+def _():
+    reset()
+    M = H.module()
+    LUA.execute("""local M, H = ...
+      H.calls = {}
+      H.scripts = {['ai-society'] = {hospital_burrow_tick = function(n, per, dry, txt)
+          table.insert(H.calls, {n = n, per = per, dry = dry}); return {ok = true} end}}
+    """, M, H)
+    assert LUA.eval("function(M) return M.ACTIONS.hospital_burrow == M.act_hospital_burrow end")(M)
+    assert M.act_hospital_burrow(t({"max": 30, "per": 10, "dry_run": True})).ok
+    c = H.calls[1]
+    assert (c.n, c.per, c.dry) == (30, 10, True), (c.n, c.per, c.dry)
+    assert M.act_hospital_burrow(t({})).ok and (H.calls[2].n, H.calls[2].per, H.calls[2].dry) == (30, 10, False)
+    for bad in ({"max": 0}, {"max": 61}, {"per": 0}, {"per": 31}, {"max": "lots"}, {"max": 2.5}):
+        r = M.act_hospital_burrow(t(bad))
+        assert not r.ok and r.rejected, (bad, dict(r))
+    assert len(H.calls) == 2                                          # a refused call never reaches the game
+
+
 if __name__ == "__main__":
     for name, ok, msg in RESULTS:
         print(f"[{'PASS' if ok else 'FAIL'}] {name}" + (f"\n        {msg}" if msg else ""))

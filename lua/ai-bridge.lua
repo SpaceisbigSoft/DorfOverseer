@@ -1820,6 +1820,10 @@ function get_society()
     -- (0.104.78) the recreation burrow's members
     local okr, rec = pcall(soc.recreation_status)
     if okr and rec then out.recreation = rec end
+    -- (0.104.167) the hospital burrow: its members and tiles, the patients walking outside
+    local okh, hb = pcall(soc.hospital_burrow_status)
+    if okh and hb then out.hospital_burrow = hb
+    elseif not okh then out.hospital_burrow = {error = tostring(hb):sub(1, 160)} end
     -- (0.104.81) war dogs: who can be trained, who is, who trains them
     local oka, an = pcall(soc.animal_training_report)
     if oka and an then out.animals = an elseif not oka then out.animals = {error = tostring(an):sub(1, 160)} end
@@ -5147,6 +5151,16 @@ function act_recreation(a)
     return reqscript('ai-society').recreation_tick(n, days, a.dry_run == true, txt, f, fd)
 end
 
+-- (0.104.167) The hospital burrow: the patients kept inside the hospitals
+-- (with the nearest drink and food they can reach), the healed let out
+-- (lua/ai-society.lua hospital_burrow_tick).
+function act_hospital_burrow(a)
+    local n = int_in(a.max or 30, 1, 60)
+    local per = int_in(a.per or 10, 1, 30)
+    if not n or not per then return reject('hospital_burrow: max 1-60, per 1-30') end
+    return reqscript('ai-society').hospital_burrow_tick(n, per, a.dry_run == true, txt)
+end
+
 function act_gather_plants(a)
     local n = int_in(a.count or 100, 1, 150)
     if not n then return reject('gather_plants needs count 1-150') end
@@ -6065,6 +6079,7 @@ ACTIONS = {
     squad_swap = act_squad_swap,          -- (0.104.65)
     pair_chairs = act_pair_chairs,        -- (0.104.77)
     recreation = act_recreation,          -- (0.104.78)
+    hospital_burrow = act_hospital_burrow,   -- (0.104.167)
     squad_trim = act_squad_trim,
     squad_release = act_squad_release,
     quick_location = function(a)

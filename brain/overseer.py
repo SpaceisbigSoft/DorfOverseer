@@ -287,7 +287,7 @@ def proposal_id(p) -> str:
     return hashlib.sha1((p.rule + json.dumps(a, sort_keys=True)).encode()).hexdigest()[:8]
 
 
-CAMERA_QUIET = {"census", "join_levels", "dismiss_alerts", "sand_zone", "report_status", "survey_water", "scan_entrances", "recreation",
+CAMERA_QUIET = {"census", "join_levels", "dismiss_alerts", "sand_zone", "report_status", "survey_water", "scan_entrances", "recreation", "hospital_burrow",
                 "cistern_step", "restrict_water", "save_memory", "pair_chairs", "approve_orders"}
 
 
@@ -477,6 +477,8 @@ def short(a: dict) -> str:
         return "put tame animals to war training"
     if t == "nest_boxes":        # (0.104.80)
         return "pen the hens together and put nest boxes in their pasture"
+    if t == "hospital_burrow":   # (0.104.167)
+        return "keep the wounded inside the hospital, the healed back to work"
     if t == "recreation":        # (0.104.78)
         return "move the unhappiest into the recreation burrow, the recovered back to work"
     if t == "pair_chairs":       # (0.104.77)

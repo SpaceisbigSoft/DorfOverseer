@@ -13,7 +13,7 @@ from quirks import has_rule
 from digest import _d, _l, normalize
 from planner_core import *  # noqa: F401,F403
 
-__all__ = ["_people_rules", "_comfort_rules", "stress_causes", "THOUGHT_WORDS", "_doctor_patient_rule", "MOOD_WORKSHOPS", "PETITION_KINDS", "petition_orders_wanted", "_petition_rules", "_jail_size_rule", "_convict_rule", "_break_fights_rule", "_sync_offices_rule", "patient_waits", "_health_rules", "TANTRUM_KEEP", "note_tantrums", "_noble_rooms_rule", "outsider_orders", "NEED_ADVICE", "JEWEL_RECIPES", "_recreation_rule", "_stress_care", "_needs_notes", "_location_supply_rules", "POST_LABORS", "STAFF_POSTS", "STAFF_MAX", "_traction_rule", "_wish_words", "_wish_met", "wish_key", "petition_lean", "_location_petition_rules", "_meeting_notes", "_grandeur_rule", "_location_value_rule", "_staff_rule", "_quick_location_rule", "_needs_rules", "_mood_rules", "mood_item_text", "_mood_materials", "_dead_notes", "AI_OFFICES", "_society_notes"]
+__all__ = ["_people_rules", "_comfort_rules", "stress_causes", "THOUGHT_WORDS", "_doctor_patient_rule", "_hospital_burrow_rule", "MOOD_WORKSHOPS", "PETITION_KINDS", "petition_orders_wanted", "_petition_rules", "_jail_size_rule", "_convict_rule", "_break_fights_rule", "_sync_offices_rule", "patient_waits", "_health_rules", "TANTRUM_KEEP", "note_tantrums", "_noble_rooms_rule", "outsider_orders", "NEED_ADVICE", "JEWEL_RECIPES", "_recreation_rule", "_stress_care", "_needs_notes", "_location_supply_rules", "POST_LABORS", "STAFF_POSTS", "STAFF_MAX", "_traction_rule", "_wish_words", "_wish_met", "wish_key", "petition_lean", "_location_petition_rules", "_meeting_notes", "_grandeur_rule", "_location_value_rule", "_staff_rule", "_quick_location_rule", "_needs_rules", "_mood_rules", "mood_item_text", "_mood_materials", "_dead_notes", "AI_OFFICES", "_society_notes"]
 
 
 # A crafting mood's skill -> the workshop (or furnace) the dwarf must claim.
@@ -338,6 +338,47 @@ def _doctor_patient_rule(s: dict, proposals: list) -> None:
                                              if _l(p.get("needs")) else "")
                                           + ": the post goes to a healthy dwarf", 2))
                 return
+
+
+def _hospital_burrow_rule(s: dict, cfg: dict, proposals: list, memory=None) -> None:
+    """(0.104.167) Teacheroar, 1 Nov: five of seven citizens killed by
+    citizens in 26 minutes were patients waiting for care, walking the halls,
+    struck down by dwarves in tantrums. The player's word: keep the wounded
+    inside the hospitals. The bridge keeps the patients DF asks a treatment
+    for in a burrow over the hospitals' zones and the nearest drink and food
+    they can walk to (never one without drink: then nobody), and lets the
+    healed out; the planner asks while a hospital exists and patients walk
+    outside it, or while the burrow has members (to let them out). Always
+    (patients are safer inside), first of all while the fort is in crisis or
+    its own are killing each other."""
+    if proposals is None or not player_rules(s).get("hospital_burrow", True):
+        return
+    hb = _d(_d(s.get("society")).get("hospital_burrow"))
+    if hb.get("error"):
+        return
+    h = _d(s.get("health"))
+    zones = sum(len(_l(_d(x).get("zones"))) for x in _l(h.get("hospital")))
+    if not zones and not int(hb.get("hospital_zones") or 0):
+        return
+    outside = hb.get("outside")
+    if not isinstance(outside, int):            # an older bridge: the listed patients outside the hospital
+        outside = sum(1 for p in _l(h.get("patients"))
+                      if isinstance(p, dict) and _l(p.get("needs")) and not p.get("in_hospital"))
+    members = int(hb.get("members") or 0)
+    if not outside and not members:
+        return
+    now_ = abs_tick(s)
+    fighting = any(isinstance(t, int) and 0 <= now_ - t < cfg["break_fights_days"] * TICKS_PER_DAY
+                   for t in _l(getattr(memory, "fight_deaths", None)))
+    crisis = bool(_d(getattr(memory, "crisis", None)).get("why"))
+    proposals.append(Proposal("hospital_burrow", {"type": "hospital_burrow", "max": cfg["hospital_burrow_max"],
+                                                  "per": cfg["hospital_burrow_per"]},
+                              (f"{outside} patient(s) walking outside the hospital" if outside else "no patient outside")
+                              + (f", {members} kept in" if members else "")
+                              + (" while the fort's own kill each other" if fighting else "")
+                              + ": the wounded kept in the hospital (with drink and food they can reach), "
+                                "the healed let out",
+                              2 if (fighting or crisis) else 4))
 
 
 TANTRUM_KEEP = 60           # tantrums remembered (each [tick, who])

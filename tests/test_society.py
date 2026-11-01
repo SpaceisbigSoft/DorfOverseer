@@ -439,6 +439,133 @@ def _():
     assert env.gate_dogs(10, 10, 50, 4, False).rejected
 
 
+# (0.104.167) the hospital burrow: a hospital location over zone 70 (staffed
+# by unit 9), a drink pile (80, its barrel holds drink), a food pile (81), and
+# a drink pile on a level nobody can walk to from the hospital (82).
+HOSP_FAKE = r"""
+local src = ...
+local persist, assigned, tiles = {}, {}, {}
+local units = {}
+local function unit(id, o)
+    o = o or {}
+    local flags = {needs_healthcare = o.care ~= false and (o.rq or o.care) and true or false}
+    if o.rq then flags['rq_' .. o.rq] = true end
+    local u = {id = id, pos = o.pos or {x = 50, y = 50, z = 10}, military = {squad_id = o.squad or -1},
+               health = {flags = flags}, counters = {soldier_mood = o.mood or -1}, baby = o.baby, burrows = o.burrows or {}}
+    units[id] = u
+    return u
+end
+local cits = {unit(1, {rq = 'suture'}),                              -- walking about, a treatment asked
+              unit(2, {rq = 'diagnosis', pos = {x = 1, y = 0, z = 10}}),   -- already in the hospital
+              unit(3, {rq = 'suture', squad = 4}), unit(4, {rq = 'dressing', baby = true}),
+              unit(5, {care = true}),                                -- infected only: no treatment asked
+              unit(7, {rq = 'suture', mood = 1}), unit(8, {rq = 'suture', burrows = {99}}),
+              unit(9, {rq = 'setting'}), unit(10, {})}
+local function item(t, inner) return {t = t, flags = {}, inner = inner, getType = function(self) return self.t end} end
+local function bld(id, kind, x1, y1, x2, y2, z, extra)
+    local b = {id = id, x1 = x1, y1 = y1, x2 = x2, y2 = y2, z = z, kind = kind, getType = function(self) return self.kind end}
+    for k, v in pairs(extra or {}) do b[k] = v end
+    return b
+end
+local zone = bld(70, 'Civzone', 0, 0, 2, 1, 10, {type = 1})
+local drink = bld(80, 'Stockpile', 20, 0, 21, 0, 10, {settings = {flags = {food = true}}, contents = {item(2, {item(1)})}})
+local food = bld(81, 'Stockpile', 30, 0, 30, 0, 10, {settings = {flags = {food = true}}, contents = {item(3)}})
+local far = bld(82, 'Stockpile', 5, 5, 5, 5, 20, {settings = {flags = {food = true}}, contents = {item(1)}})
+local all = {zone, drink, food, far}
+local hosp = {getType = function() return 7 end, occupations = {{unit_id = 9}, {unit_id = -1}}}
+hosp.getContents = function() return {building_ids = hosp.ids} end
+hosp.ids = {70}
+local site = {buildings = {hosp}}
+local burrows = {}
+setmetatable(burrows, {__index = {insert = function(self, at, v) self[#self + 1] = v end}})
+local env = setmetatable({}, {__index = _G})
+env.xyz2pos = function(x, y, z) return {x = x, y = y, z = z} end
+env.require = function(name) if name == 'utils' then return {insert_sorted = function() end} end return require(name) end
+env.df = {global = {cur_year = 76, cur_year_tick = 1000, plotinfo = {burrows = {list = burrows, next_id = 1}},
+                    world = {buildings = {all = all}}},
+          burrow = {new = function() return {} end},
+          building_type = {Civzone = 'Civzone', Stockpile = 'Stockpile', Well = 'Well'},
+          civzone_type = {[1] = 'Hospital'}, abstract_building_type = {[7] = 'HOSPITAL'},
+          item_type = {[1] = 'DRINK', [2] = 'BARREL', [3] = 'FOOD'}, soldier_mood_type = {[1] = 'Tantrum'},
+          unit = {find = function(id) return units[id] end}}
+env.dfhack = {
+    persistent = {getSiteData = function(k, d) return persist[k] or d end, saveSiteData = function(k, v) persist[k] = v end},
+    world = {getCurrentSite = function() return site end},
+    maps = {getWalkableGroup = function(p) return p.z == 20 and 2 or 1 end},
+    items = {getContainedItems = function(it) return it.inner or {} end},
+    buildings = {containsTile = function() return true end, getStockpileContents = function(b) return b.contents end},
+    burrows = {clearTiles = function() for k in pairs(tiles) do tiles[k] = nil end end,
+               setAssignedTile = function(b, p, on) tiles[p.x .. ',' .. p.y .. ',' .. p.z] = on; return true end,
+               setAssignedUnit = function(b, u, on) assigned[u.id] = on or nil end},
+    units = {getCitizens = function() return cits end, isCitizen = function(u) return true end,
+             isBaby = function(u) return u.baby == true end,
+             getReadableName = function(u) return 'dwarf ' .. u.id end}}
+assert(load(src, 'ai-society', 't', env))()
+local W = {units = units, all = all, drink = drink, hosp = hosp, persist = persist,
+           bld = bld, item = item, ntiles = function() local n = 0; for _ in pairs(tiles) do n = n + 1 end; return n end}
+return env, assigned, W
+"""
+
+
+def hosp_fresh():
+    lua = LuaRuntime(unpack_returned_tuples=True)
+    env, assigned, w = lua.execute(HOSP_FAKE, (ROOT / "lua" / "ai-society.lua").read_text(encoding="utf-8"))
+    return lua, env, assigned, w
+
+
+def _names(t):
+    return [t[i] for i in range(1, len(t) + 1)] if t else []
+
+
+@test("hospital burrow (0.104.167): over the hospital's zones and the nearest reachable drink and food; patients outside first; never soldiers, staff, babies, the raging, the infected only, or one in another burrow")
+def _():
+    lua, env, assigned, w = hosp_fresh()
+    d = env.hospital_burrow_tick(30, 10, True)
+    assert d.ok and d.dry_run and not dict(assigned), dict(d)               # a dry run changes nothing
+    r = env.hospital_burrow_tick(30, 10, False)
+    # the 3x2 ward + the 2-tile drink pile + the 1-tile food pile (never the pile nobody can walk to)
+    assert r.ok and r.tiles == 9 and w.ntiles() == 9 and r.drink == "stockpile" and r.food, dict(r)
+    assert _names(r.added) == ["dwarf 1", "dwarf 2"], _names(r.added)       # the one walking about first
+    assert dict(assigned) == {1: True, 2: True}, dict(assigned)
+    s = env.hospital_burrow_status()
+    assert s.members == 2 and s.outside == 0 and s.hospital_zones == 1 and s.patients == 7, dict(s)
+    assert env.hospital_burrow_tick(30, 10, False).unchanged
+    # a cap a call
+    lua, env, assigned, w = hosp_fresh()
+    r = env.hospital_burrow_tick(30, 1, False)
+    assert _names(r.added) == ["dwarf 1"] and env.hospital_burrow_status().outside == 0, _names(r.added)
+    lua, env, assigned, w = hosp_fresh()
+    assert env.hospital_burrow_status().outside == 1                        # dwarf 1, before the burrow
+
+
+@test("hospital burrow (0.104.167): the healed let out; no drink reachable: everyone out and nobody in; a well will do; no hospital: refused")
+def _():
+    lua, env, assigned, w = hosp_fresh()
+    env.hospital_burrow_tick(30, 10, False)
+    w.units[1].health.flags.rq_suture = False                               # treated
+    r = env.hospital_burrow_tick(30, 10, False)
+    assert r.ok and _names(r.released) == ["dwarf 1"] and not assigned[1] and assigned[2], dict(r)
+    lua.execute("local W = ...; W.drink.contents = {}", w)                  # the pile drunk dry
+    r = env.hospital_burrow_tick(30, 10, False)
+    assert r.ok and r.members == 0 and "no drink" in r.note and not dict(assigned), dict(r)
+    r = env.hospital_burrow_tick(30, 10, False)
+    assert not r.ok and r.rejected and "no drink" in r.error and not dict(assigned), dict(r)
+    assert "no drink" in env.hospital_burrow_status().why
+    # a well beside the hospital instead (its 3x3 tiles in the burrow)
+    lua.execute("local W = ...; table.insert(W.all, W.bld(90, 'Well', 10, 10, 10, 10, 10, {centerx = 10, centery = 10}))", w)
+    r = env.hospital_burrow_tick(30, 10, False)
+    assert r.ok and r.drink == "well" and r.tiles == 6 + 1 + 9 and assigned[2], dict(r)
+    # a second hospital zone: the tiles filled again at once
+    lua.execute("local W = ...; table.insert(W.all, W.bld(71, 'Civzone', 40, 0, 40, 0, 10, {type = 1})); W.hosp.ids = {70, 71}", w)
+    r = env.hospital_burrow_tick(30, 10, False)
+    assert r.ok and r.tiles == 6 + 1 + 1 + 9, dict(r)
+    # no hospital at all
+    lua, env, assigned, w = hosp_fresh()
+    lua.execute("local W = ...; W.hosp.ids = {}", w)
+    r = env.hospital_burrow_tick(30, 10, False)
+    assert not r.ok and r.rejected and "no hospital" in r.error and not dict(assigned), dict(r)
+
+
 if __name__ == "__main__":
     for name, ok, msg in RESULTS:
         print(f"[{'PASS' if ok else 'FAIL'}] {name}" + (f"\n        {msg}" if msg else ""))
