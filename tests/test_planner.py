@@ -7763,6 +7763,17 @@ def _():
     n = [x for x in notes if "planned building(s) wait" in x]
     assert n and "Well at x115 y44 elevation 26: wants Bucket (any material) (queue 3); Block (granite); Waiting for items" in n[0], n
     assert "Bed" not in n[0]
+    # what they lack is ordered from buildingplan's list, whatever the stock count says
+    s["stocks"]["mechanisms"] = 3
+    s["planned"]["list"] += [{"kind": "Trap", "x": 2, "y": 2, "z": 2, "elevation": 2, "items": [{"want": "1 Mechanism", "queue": 6}]},
+                             {"kind": "Well", "x": 3, "y": 3, "z": 3, "elevation": 3,
+                              "items": [{"want": "0 Block"}, {"want": "0 Bucket"}, {"want": "1 Mechanism", "queue": 5}]}]
+    s["planned"]["list"][0]["items"] = [{"want": "0 Bucket"}]
+    props = plan(copy.deepcopy(s), Memory())[0]
+    acts = [x.action for x in by_rule(props, "planned_parts")]
+    assert acts == [{"type": "work_order", "recipe": "mechanisms", "amount": 2}], acts
+    s["orders"] = [{"job": "ConstructMechanisms", "recipe": "mechanisms", "amount_left": 2, "amount_total": 2, "by_ai": True}]
+    assert not by_rule(plan(copy.deepcopy(s), Memory())[0], "planned_parts")   # on order already: not again
 
 
 @test("wells (0.104.148): another well can't be placed because the water is a cavern -> the cavern well")

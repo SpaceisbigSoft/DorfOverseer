@@ -13,7 +13,7 @@ from quirks import has_rule
 from digest import _d, _l, normalize
 from planner_core import *  # noqa: F401,F403
 
-__all__ = ["STUCK_FALLBACKS", "stuck_fallback", "magma_access", "GROWTH", "GROWTH_EXTRA_SCORE", "GROWTH_MAX", "growth_want", "growth_candidates", "TRAIT_NAMES_SHORT", "FURNITURE_RECIPES", "METAL_FURNITURE", "spare_metal", "WOODEN_FURNITURE", "BASIC_WORKSHOPS", "BASIC_STOCKPILES", "memorial_due", "_well_rule", "_well_lid_rule", "cavern_danger", "_planned_note", "_water_zone_rule", "cavern_well_need", "cavern_well_safe", "WELL_PARTS_SHOPS", "well_parts_plan", "_well_parts", "_room_repair_rule", "_water_traffic_rule", "_cleanup_rule", "STORE_GROW", "stone_tidiness", "jail_plan", "cistern_pop", "tavern_factor", "full_stores", "LEARNING_NEEDS", "_stairwell_rule", "WATER_WORDS", "water_summary", "_water_rules", "CISTERN_WORDS", "_cistern_parts", "_cistern_rule", "_deep_notes", "good_times", "ORDINALS", "garden_name", "_pop_cap_rule", "fort_strain", "hospital_shortfall", "dining_shortfall", "social_shortfall", "SOCIAL_KINDS", "_join_rule", "_dig_stall_rule", "_shrink_rule", "room_size", "_project_rules", "more_temple", "LADDER_BASE", "LADDER_TRAITS", "_ladder_kind", "_ladder_word", "ladder_score", "tombs_short"]
+__all__ = ["STUCK_FALLBACKS", "stuck_fallback", "magma_access", "GROWTH", "GROWTH_EXTRA_SCORE", "GROWTH_MAX", "growth_want", "growth_candidates", "TRAIT_NAMES_SHORT", "FURNITURE_RECIPES", "METAL_FURNITURE", "spare_metal", "WOODEN_FURNITURE", "BASIC_WORKSHOPS", "BASIC_STOCKPILES", "memorial_due", "_well_rule", "_well_lid_rule", "cavern_danger", "_planned_note", "_planned_parts_rule", "planned_wants", "_water_zone_rule", "cavern_well_need", "cavern_well_safe", "WELL_PARTS_SHOPS", "well_parts_plan", "_well_parts", "_room_repair_rule", "_water_traffic_rule", "_cleanup_rule", "STORE_GROW", "stone_tidiness", "jail_plan", "cistern_pop", "tavern_factor", "full_stores", "LEARNING_NEEDS", "_stairwell_rule", "WATER_WORDS", "water_summary", "_water_rules", "CISTERN_WORDS", "_cistern_parts", "_cistern_rule", "_deep_notes", "good_times", "ORDINALS", "garden_name", "_pop_cap_rule", "fort_strain", "hospital_shortfall", "dining_shortfall", "social_shortfall", "SOCIAL_KINDS", "_join_rule", "_dig_stall_rule", "_shrink_rule", "room_size", "_project_rules", "more_temple", "LADDER_BASE", "LADDER_TRAITS", "_ladder_kind", "_ladder_word", "ladder_score", "tombs_short"]
 
 
 # Furniture waiting in a project -> the recipe that makes it.
@@ -318,6 +318,56 @@ def _planned_note(s: dict, notes: list) -> None:
         bits.append(f"{x.get('kind')} at x{x.get('x')} y{x.get('y')} elevation {x.get('elevation')}"
                     + (f": wants {wants}" if wants else "") + (f"; {x.get('why')}" if x.get("why") else ""))
     notes.append(f"{pl.get('n')} planned building(s) wait for parts; " + " | ".join(bits))
+
+
+# (0.104.154) what buildingplan waits for -> the work order that makes it,
+# and the recipes that count as already on order for it
+PLANNED_RECIPES = {
+    "mechanism": ("mechanisms", {"mechanisms"}),
+    "block": ("stone_blocks", {"stone_blocks", "glass_blocks"}),
+    "bucket": ("wooden_bucket", {"wooden_bucket"}),
+    "hatch cover": ("stone_hatch_cover", {"stone_hatch_cover"}),
+    "door": ("stone_door", {"stone_door", "wooden_door", "metal_door", "glass_door"}),
+    "chair": ("stone_chair", {"stone_chair", "wooden_chair", "metal_chair", "glass_chair"}),
+    "table": ("stone_table", {"stone_table", "wooden_table", "metal_table", "glass_table"}),
+    "coffin": ("stone_coffin", {"stone_coffin", "wooden_coffin", "metal_coffin"}),
+    "cabinet": ("stone_cabinet", {"stone_cabinet", "wooden_cabinet", "metal_cabinet", "glass_cabinet"}),
+    "chest": ("stone_chest", {"stone_chest", "wooden_chest", "metal_chest", "glass_chest"}),
+    "bed": ("wooden_bed", {"wooden_bed"}),
+}
+
+
+def planned_wants(s: dict) -> dict:
+    """(0.104.154) {thing: how many} buildingplan's waiting buildings still lack
+    ("1 Mechanism", "2 Block"; a 0 is already attached)."""
+    out: dict = {}
+    for b in _l(_d(s.get("planned")).get("list")):
+        for it in _l(_d(b).get("items")) if isinstance(b, dict) else []:
+            m = re.match(r"^\s*(\d+)\s+(.+?)\s*$", str(_d(it).get("want") or ""))
+            if not m or int(m.group(1)) <= 0:
+                continue
+            thing = re.sub(r"\s*\(.*\)$", "", m.group(2)).lower().rstrip("s")
+            out[thing] = out.get(thing, 0) + int(m.group(1))
+    return out
+
+
+def _planned_parts_rule(s: dict, proposals: list, notes: list) -> None:
+    """(0.104.154) Parts the waiting buildings lack, ordered from buildingplan's
+    own list, not the stock count (Teacheroar, 1 Nov: 3 mechanisms "in store"
+    that buildingplan never used, so no rule ordered more, while the cavern
+    well, its gate lever and three traps waited for one each)."""
+    wants = planned_wants(s)
+    for thing, n in sorted(wants.items()):
+        rec = PLANNED_RECIPES.get(thing)
+        if not rec:
+            continue
+        recipe, same = rec
+        if queued(s, same):
+            continue
+        amount = min(10, n)
+        proposals.append(Proposal("planned_parts", {"type": "work_order", "recipe": recipe, "amount": amount},
+                                  f"{n} planned building part(s) wait for a {thing} buildingplan can't find "
+                                  f"(whatever the stock count says): make {amount}", 3, True))
 
 
 def _water_zone_rule(s: dict, proposals: list, notes: list) -> None:
