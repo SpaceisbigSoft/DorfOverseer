@@ -611,10 +611,23 @@ def _comfort_rules(s: dict, cfg: dict, proposals: list, notes: list) -> None:
     # cups made but still in the workshop (the finished goods piles full): more
     # storage, not more cups (the storage rule counts them)
     waiting = unstored_cups(s)
-    if waiting and cupless >= citizens * cfg["cupless_share"]:
+    # (0.104.165) waited for only while the finished goods piles are short of room:
+    # with room they aren't coming back (Teacheroar, 1 Nov: 34 cups in two halls for
+    # hours with 79 of 107 tiles free, 137 drinking without a cup, none made)
+    fg = _d(_d(_d(s.get("logistics")).get("storage")).get("finished_goods"))
+    tiles, used = int(fg.get("tiles") or 0), int(fg.get("used") or 0)
+    room = tiles > 0 and used / tiles < cfg["store_full_share"]
+    stuck = waiting if room else 0
+    if waiting and not room and cupless >= citizens * cfg["cupless_share"]:
         notes.append(f"{cupless} citizens drank without a cup lately and {waiting} cups lie off the stockpiles "
                      "(in workshops or halls; dwarves only drink from cups on a stockpile): finished goods storage first")
-    if (isinstance(free_cups, int) and not waiting and free_cups < want and cupless >= citizens * cfg["cupless_share"]
+    elif stuck and cupless >= citizens * cfg["cupless_share"]:
+        notes.append(f"{stuck} cups lie in the halls though the finished goods piles have room "
+                     f"({used} of {tiles} tiles used): not counted; new ones are made")
+    if isinstance(free_cups, int):
+        free_cups = max(0, free_cups - stuck)
+    if (isinstance(free_cups, int) and not (waiting and not room) and free_cups < want
+            and cupless >= citizens * cfg["cupless_share"]
             and _has_shop(b, "Craftsdwarfs") and not queued(s, {"stone_mugs", "wooden_cups"})):
         wood = int(st.get("wood") or 0)
         cups = stone_short(s, cfg["stone_low"]) and wood >= 20

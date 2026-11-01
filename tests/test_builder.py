@@ -1378,6 +1378,7 @@ def _():
         tick()
         assert h.door_flags.closed is True and LUA.eval("PULLS")[n + 1].instant == "--instant"
         assert B.well_lids(False)[1].watch_last.unit == 9
+        assert B.well_lids(False)[1].watch_near.id == 9                # (0.104.165) the watcher's test, said
         tick()                                                    # shut: nothing more (only the brain opens it)
         assert len(LUA.eval("PULLS")) == n + 1
     finally:

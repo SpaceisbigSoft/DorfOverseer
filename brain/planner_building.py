@@ -225,6 +225,12 @@ def _well_lid_rule(s: dict, proposals: list, notes: list) -> None:
     gates = [x for x in lids if x.get("gate")]
     shut = [x for x in gates if x.get("gate") == "closed"]
     danger = cavern_danger(s, gates, SHAFT_DANGER_OPEN if shut else SHAFT_DANGER_TILES)
+    if not danger:
+        # (0.104.165) the in-game watcher's own test: it would shut the gate for this
+        # one now, so it isn't opened (Teacheroar: opened, shut again for unit 6300)
+        near = next((_d(x.get("watch_near")) for x in gates if _d(x.get("watch_near"))), None)
+        if near:
+            danger = str(near.get("name") or "a wild beast")
     # (review) never while a danger is near: no dwarf is sent down beside the opening
     # (0.104.156) one pool of mechanisms for every gate: a link takes 2 of them,
     # and only ones the lever can reach (Teacheroar, 1 Nov: well 218's link took

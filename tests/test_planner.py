@@ -7836,6 +7836,18 @@ def _():
     p, notes = run(s)
     assert not [x for x in p if x.action.get("recipe") in ("stone_mugs", "wooden_cups")], [x.action for x in p]
     assert any("34 cups lie off the stockpiles" in n for n in notes), notes
+    # (0.104.165) the piles have room and the cups still lie in the halls: not waited for, new ones made
+    s.setdefault("logistics", {})["storage"] = {"finished_goods": {"tiles": 107, "used": 28, "loose": 28, "piles": 3}}
+    s["needs"]["clothing"].update(free_cups=34, free_cups_detail={"n": 34, "place": {"zone DiningHall": 10,
+                                                                                     "zone MeetingHall": 24}})
+    p, notes = run(s)
+    cup = [x for x in p if x.action.get("recipe") in ("stone_mugs", "wooden_cups")]
+    assert cup and cup[0].action["amount"] == 20, [x.action for x in p]
+    assert any("though the finished goods piles have room" in n for n in notes), notes
+    s["logistics"]["storage"]["finished_goods"]["used"] = 105                # full: storage first again
+    p, notes = run(s)
+    assert not [x for x in p if x.action.get("recipe") in ("stone_mugs", "wooden_cups")]
+    del s["logistics"]["storage"]
     # boots aren't worn by civilians: 20 free boots don't shoe anyone
     s["needs"]["clothing"].update(free_shoes=20, free_shoes_detail={"n": 20, "kinds": {"ITEM_SHOES_BOOTS": 20}})
     p, _ = run(s)
@@ -8180,6 +8192,15 @@ def _():
     assert {"type": "well_shaft", "close": False} in acts, acts
     # a crisis holds expansion, not the hospital's traction bench
     assert "traction_parts" not in crisis.EXPANSION_RULES and "war_animals" in crisis.EXPANSION_RULES
+    # (0.104.165) the watcher's own test finds a beast near: the gate isn't opened, it's shut
+    s["projects"]["well_lids"] = [{"project_id": 218, "x": 115, "y": 44, "z": 154, "elevation": 26, "state": "none",
+                                   "gate": "closed", "watching": True,
+                                   "watch_near": {"id": 6300, "name": "a cave crocodile", "pos": {"x": 120, "y": 50, "z": 140}}}]
+    acts = [p.action for p in by_rule(plan(copy.deepcopy(s), Memory())[0], "well_shaft")]
+    assert {"type": "well_shaft", "close": False} not in acts, acts
+    s["projects"]["well_lids"][0]["gate"] = "open"
+    acts = [p.action for p in by_rule(plan(copy.deepcopy(s), Memory())[0], "well_shaft")]
+    assert {"type": "well_shaft", "close": True} in acts, acts
 
 
 if __name__ == "__main__":

@@ -4419,6 +4419,18 @@ function well_lids(probe)
                     r.watching = (SHAFT_WATCH.on and SHAFT_WATCH.timer ~= nil) and true or false
                     r.watch_error = SHAFT_WATCH.error
                     if SHAFT_WATCH.last and SHAFT_WATCH.last.project_id == p.id then r.watch_last = SHAFT_WATCH.last end
+                    -- (0.104.165) what the watcher would shut it for now, by its own test: the
+                    -- report's wild list holds only animals in a "Cavern" layer, and the brain
+                    -- reopened the gate under a predator the watcher saw (Teacheroar, unit
+                    -- 6300), the watcher shutting it again at once
+                    local an = anchor_of(p)
+                    local okn, hit, u = pcall(shaft_threat_near, {{x = an.x, y = an.y, z = p.z, hz = shaft_bottom(p)}})
+                    if okn and hit and u then
+                        local okr, nm = pcall(dfhack.units.getReadableName, u)
+                        if okr and dfhack.df2utf then local okc, c = pcall(dfhack.df2utf, nm); if okc and c then nm = c end end
+                        r.watch_near = {id = u.id, name = okr and nm or nil,
+                                        pos = {x = u.pos.x, y = u.pos.y, z = u.pos.z}}
+                    end
                 end
             else
                 r.gate_error = tostring(g):sub(1, 120)
