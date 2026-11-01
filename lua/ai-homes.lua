@@ -150,6 +150,33 @@ local function unlinked(p, q)
     return (#p.own > 0 and not has(q.shared, p.own[1])) or (#q.own > 0 and not has(p.shared, q.own[1]))
 end
 
+-- (0.104.168, review) is one of the household a noble whose office asks for
+-- a bedroom? Their room is never moved, freed or downgraded here.
+local function noble(p)
+    if p.noble == nil then p.noble = needs_bedroom(p.u) end
+    return p.noble
+end
+
+local function nobles_in(by, p)
+    local q = p.spouse and by[p.spouse]
+    return (noble(p) and 1 or 0) + ((q and noble(q)) and 1 or 0)
+end
+
+-- (0.104.168, review) what step 1 of house() will do for this dwarf, so the
+-- census counts only that: 'apart' (a couple in two rooms, at most one of
+-- them a noble: the noble's kept), 'unlinked', 'hoard' (a single non-noble
+-- owning two or more), or nil
+local function merge_kind(by, p)
+    local q = p.spouse and by[p.spouse]
+    if q then
+        if #p.own > 0 and #q.own > 0 then return nobles_in(by, p) < 2 and 'apart' or nil end
+        return unlinked(p, q) and 'unlinked' or nil
+    end
+    if #p.own > 1 and not noble(p) then return 'hoard' end
+    return nil
+end
+
+
 local function housed(by, p)
     if #p.shared > 0 then return true end
     local q = p.spouse and by[p.spouse]
@@ -195,9 +222,11 @@ function census(units, txt)
     local c = {citizens = #order, adults = 0, children = 0, adults_roomless = 0, children_roomless = 0,
                couples = 0, couples_shared = 0, couples_apart = 0, couples_none = 0, couples_unlinked = 0, hoarders = 0,
                rough = 0, rough_housed = 0, rough_children = 0, rough_unreachable = 0, lack_room = 0,
-               free_bedrooms = 0, free_suites = 0, free_bedless = 0, rooms_wanted = 0, samples = {}}
+               free_bedrooms = 0, free_suites = 0, free_bedless = 0, rooms_wanted = 0,
+               rooms_reachable = 0, samples = {}}
     local function sample(line) if #c.samples < SAMPLES then table.insert(c.samples, line) end end
     local function name(p) return txt(dfhack.units.getReadableName(p.u)) end
+    local roomless = {}      -- one per household with no bedroom
     for _, p in ipairs(order) do
         local home = housed(by, p)
         if p.child then
@@ -205,7 +234,10 @@ function census(units, txt)
             if not home then
                 c.children_roomless = c.children_roomless + 1
                 -- (one with a parent here rides on the parent's room, once they have one)
-                if not p.mother and not p.father then c.rooms_wanted = c.rooms_wanted + 1 end
+                if not p.mother and not p.father then
+                    c.rooms_wanted = c.rooms_wanted + 1
+                    table.insert(roomless, p)
+                end
             end
         else
             c.adults = c.adults + 1
@@ -213,27 +245,32 @@ function census(units, txt)
                 c.adults_roomless = c.adults_roomless + 1
                 if not p.spouse then
                     c.rooms_wanted = c.rooms_wanted + 1
+                    table.insert(roomless, p)
                     sample('no room: ' .. name(p))
                 end
             end
         end
         local q = p.spouse and by[p.spouse]
+        local mk = merge_kind(by, p)
         if q and p.id < q.id then
             c.couples = c.couples + 1
-            if #p.own > 0 and #q.own > 0 then
+            if mk == 'apart' then
                 c.couples_apart = c.couples_apart + 1
                 sample('two rooms: ' .. name(p) .. ' and ' .. name(q))
+            elseif #p.own > 0 and #q.own > 0 then
+                c.couples_nobles = (c.couples_nobles or 0) + 1   -- two nobles: each keeps theirs
             elseif #p.shared == 0 and #q.shared == 0 then
                 c.couples_none = c.couples_none + 1
                 c.rooms_wanted = c.rooms_wanted + 1
+                table.insert(roomless, p)
                 sample('no room: ' .. name(p) .. ' and ' .. name(q))
-            elseif unlinked(p, q) then
+            elseif mk == 'unlinked' then
                 c.couples_unlinked = c.couples_unlinked + 1
                 sample('room not shared: ' .. name(p) .. ' and ' .. name(q))
             else
                 c.couples_shared = c.couples_shared + 1
             end
-        elseif not q and #p.own > 1 then
+        elseif mk == 'hoard' then
             c.hoarders = c.hoarders + 1
         end
         local rough, lack = rough_sleeper(p.u, since)
@@ -248,14 +285,38 @@ function census(units, txt)
             end
         end
     end
+    local free_beds = {}
     for _, z in ipairs(bedroom_zones()) do
         if z.assigned_unit_id == -1 then
             local f = furnish(z)
             if not f.bed then c.free_bedless = c.free_bedless + 1
             elseif f.statue then c.free_suites = c.free_suites + 1
-            else c.free_bedrooms = c.free_bedrooms + 1 end
+            else
+                c.free_bedrooms = c.free_bedrooms + 1
+                table.insert(free_beds, f.bed_pos)
+            end
         end
     end
+    -- (0.104.168, review) the roomless households that can walk to a free
+    -- bedroom (the action gives only those): by walkability group, so one
+    -- lookup a bed and one a household
+    local groups, any_group = {}, false
+    for _, pos in ipairs(free_beds) do
+        local ok, g = pcall(dfhack.maps.getWalkableGroup, pos)
+        if ok and g and g ~= 0 then groups[g], any_group = true, true end
+    end
+    for _, p in ipairs(roomless) do
+        local ok, g = pcall(dfhack.maps.getWalkableGroup, p.u.pos)
+        if not ok or not g then
+            -- (no group to read: one path check a bed, as the action does)
+            for _, pos in ipairs(free_beds) do
+                if can_walk(p.u, pos) then c.rooms_reachable = c.rooms_reachable + 1 break end
+            end
+        elseif groups[g] then
+            c.rooms_reachable = c.rooms_reachable + 1
+        end
+    end
+    c.rooms_unreachable = #roomless - c.rooms_reachable
     return c
 end
 
@@ -343,7 +404,8 @@ function house(n_house, n_upgrade, dry_run, txt, units)
     for _, p in ipairs(order) do
         if done >= n_house then break end
         local q = p.spouse and by[p.spouse]
-        if not seen[p.id] and (q and #p.own > 0 and #q.own > 0 or (not q and #p.own > 1 and not needs_bedroom(p.u))) then
+        local mk = not seen[p.id] and merge_kind(by, p) or nil
+        if mk == 'apart' or mk == 'hoard' then
             seen[p.id] = true
             if q then seen[q.id] = true end
             local ps = household(by, p)
@@ -353,15 +415,14 @@ function house(n_house, n_upgrade, dry_run, txt, units)
             end
             local keep, kv = nil, -1
             for _, e in ipairs(rooms) do
-                local v = room_value(e.r, ps) + (needs_bedroom(e.owner.u) and 1e9 or 0)
+                local v = room_value(e.r, ps) + (noble(e.owner) and 1e9 or 0)
                 if v > kv then keep, kv = e, v end
             end
             local freed = 0
             for _, e in ipairs(rooms) do
-                if e ~= keep and (dry_run or set_owner(e.r.z, nil)) then
-                    freed = freed + 1
-                    if not e.r.statue and e.r.bed then table.insert(pool, e.r) end
-                end
+                -- (0.104.168, review) not handed out again in this call: the
+                -- old owner's things are still in its cabinet and chest
+                if e ~= keep and (dry_run or set_owner(e.r.z, nil)) then freed = freed + 1 end
             end
             if q and not dry_run then
                 -- (the room kept goes to the spouse's list again: freeing the other took it out)
@@ -374,7 +435,7 @@ function house(n_house, n_upgrade, dry_run, txt, units)
                 line((q and (name(p) .. ' and ' .. name(q) .. ' share one room') or (name(p) .. ' keeps one room'))
                      .. (' (%d freed)'):format(freed))
             end
-        elseif not seen[p.id] and q and unlinked(p, q) then
+        elseif mk == 'unlinked' then
             -- a couple whose one room is in only one spouse's list: given
             -- again, so that setOwner puts it in both
             seen[p.id], seen[q.id] = true, true
@@ -426,7 +487,7 @@ function house(n_house, n_upgrade, dry_run, txt, units)
             local cat = stress_cat(p.u)
             local q = p.spouse and by[p.spouse]
             if cat <= 2 and not p.child and #p.own == 1 and not seen[p.id] and not (q and #q.own > 0)
-                    and not needs_bedroom(p.u) then
+                    and nobles_in(by, p) == 0 then      -- (review: nor a noble spouse's room)
                 table.insert(cands, {p = p, cat = cat})
             end
         end
@@ -445,8 +506,7 @@ function house(n_house, n_upgrade, dry_run, txt, units)
                                            and set_owner(cur.z, nil))
                     if ok then
                         moved = moved + 1
-                        out.upgraded = out.upgraded + 1
-                        table.insert(pool, cur)
+                        out.upgraded = out.upgraded + 1      -- (the old room not given again this call)
                         line(('%s moves to a better room for them (%d -> %d)'):format(name(p), have, v))
                     end
                 end

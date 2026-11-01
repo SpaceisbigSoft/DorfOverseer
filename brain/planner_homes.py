@@ -61,8 +61,14 @@ def _homes_rules(s: dict, cfg: dict, traits: dict, proposals: list, notes: list)
                        + (f" ({far} can't walk to it)" if far else " (far from it when tired, or kept out by a burrow)"))
         notes.append(f"{rough} citizens slept rough in the last 28 days"
                      + (f" ({kids} of them children)" if kids else "") + ": " + ", ".join(why))
-    # one room per household; a room for each household with none
-    give = min(wanted, free)
+    # one room per household; a room for each household with none that can
+    # walk to a free one ((0.104.168, review) the action gives only those: an
+    # unreachable one counted here was proposed and refused every day)
+    reach = _int(h.get("rooms_reachable")) if "rooms_reachable" in h else wanted
+    give = min(reach, free)
+    if wanted > reach and free:
+        notes.append(f"{wanted - reach} household(s) with no bedroom can't walk to any of the {free} free ones "
+                     "(cut off, or outside the fort)")
     if apart or give:
         n = min(30, apart + give)
         bits = []
@@ -74,7 +80,7 @@ def _homes_rules(s: dict, cfg: dict, traits: dict, proposals: list, notes: list)
             bits.append(f"{h['hoarders']} dwarf(s) owning two bedrooms")
         if give:
             kids = _int(h.get("children_roomless"))
-            bits.append(f"{wanted} household(s) with no bedroom" + (f" ({kids} children without one)" if kids else "")
+            bits.append(f"{reach} household(s) with no bedroom" + (f" ({kids} children without one)" if kids else "")
                         + f" and {free} free")
         proposals.append(Proposal("homes", {"type": "house_dwarves", "house": n},
                                   "; ".join(bits) + ": one bedroom per household, the better one kept", 4))
@@ -82,7 +88,10 @@ def _homes_rules(s: dict, cfg: dict, traits: dict, proposals: list, notes: list)
     short = wanted - free
     open_kinds = {_d(p).get("kind") for p in _l(_d(s.get("projects")).get("open"))}
     digging = any(p.action.get("type") == "start_project" and p.action.get("kind") == "bedrooms" for p in proposals)
-    if short > 0 and "bedrooms" not in open_kinds and not digging:
+    # ((0.104.168, review) not when the projects section failed: an open
+    # bedrooms level would go unseen and a second one start)
+    projects_ok = "projects" not in _d(s.get("_errors")) and "error" not in _d(s.get("projects"))
+    if short > 0 and projects_ok and "bedrooms" not in open_kinds and not digging:
         rooms = min(32, short + cfg["min_spare_beds"])
         proposals.append(Proposal("homes_dig", {"type": "start_project", "kind": "bedrooms", "rooms": rooms,
                                                 "room_size": room_size(traits)},
