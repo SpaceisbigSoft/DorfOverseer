@@ -752,6 +752,8 @@ def full_stores(s: dict, cfg: dict) -> list:
         # (Teacheroar: 34 cups in the craftsdwarf's, both finished goods piles
         # full, 5 "loose": no storage ever added, no one drank from a cup)
         lz += int(r.get("in_workshops") or 0)
+        if k == "finished_goods":
+            lz += unstored_cups(s)
         if lz >= cfg["store_loose_min"] and (tiles == 0 or used / tiles >= cfg["store_full_share"]):
             out.append((-(used / tiles if tiles else 1.0), -lz, k))
     kinds = [k for *_, k in sorted(out)]

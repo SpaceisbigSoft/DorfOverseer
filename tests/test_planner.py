@@ -7714,7 +7714,7 @@ def _():
     s["needs"]["clothing"].update(free_cups=0, free_cups_detail={"n": 0, "place": {"workshop": 34}})
     p, notes = run(s)
     assert not [x for x in p if x.action.get("recipe") in ("stone_mugs", "wooden_cups")], [x.action for x in p]
-    assert any("34 cups wait in the workshops" in n for n in notes), notes
+    assert any("34 cups lie off the stockpiles" in n for n in notes), notes
     # boots aren't worn by civilians: 20 free boots don't shoe anyone
     s["needs"]["clothing"].update(free_shoes=20, free_shoes_detail={"n": 20, "kinds": {"ITEM_SHOES_BOOTS": 20}})
     p, _ = run(s)
@@ -7727,6 +7727,9 @@ def _():
     assert "finished_goods" in planner.full_stores(s, PLANNER_CONFIG), planner.full_stores(s, PLANNER_CONFIG)
     st["finished_goods"]["in_workshops"] = 0
     assert "finished_goods" not in planner.full_stores(s, PLANNER_CONFIG)
+    # Teacheroar 13:44: used cups on the halls' floors count too
+    s["needs"]["clothing"] = {"free_cups_detail": {"place": {"zone MeetingHall": 24, "zone DiningHall": 10, "stockpile": 3}}}
+    assert "finished_goods" in planner.full_stores(s, PLANNER_CONFIG)
 
 
 @test("well shaft (0.104.156): two gates share the mechanisms; a link uses reachable ones; lost links wait; orders for all")

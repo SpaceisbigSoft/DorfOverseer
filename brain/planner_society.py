@@ -609,10 +609,10 @@ def _comfort_rules(s: dict, cfg: dict, proposals: list, notes: list) -> None:
     want = max(10, -(-citizens // cfg["citizens_per_free_cup"]))
     # cups made but still in the workshop (the finished goods piles full): more
     # storage, not more cups (the storage rule counts them)
-    waiting = int(_d(_d(cl.get("free_cups_detail")).get("place")).get("workshop") or 0)
+    waiting = unstored_cups(s)
     if waiting and cupless >= citizens * cfg["cupless_share"]:
-        notes.append(f"{cupless} citizens drank without a cup lately and {waiting} cups wait in the workshops "
-                     "they were made in (dwarves only drink from cups on a stockpile): they need finished goods storage")
+        notes.append(f"{cupless} citizens drank without a cup lately and {waiting} cups lie off the stockpiles "
+                     "(in workshops or halls; dwarves only drink from cups on a stockpile): finished goods storage first")
     if (isinstance(free_cups, int) and not waiting and free_cups < want and cupless >= citizens * cfg["cupless_share"]
             and _has_shop(b, "Craftsdwarfs") and not queued(s, {"stone_mugs", "wooden_cups"})):
         wood = int(st.get("wood") or 0)

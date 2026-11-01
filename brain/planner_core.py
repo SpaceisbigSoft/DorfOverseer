@@ -12,7 +12,7 @@ import phases
 from quirks import has_rule
 from digest import _d, _l, normalize
 
-__all__ = ["great_present", "all_clear", "STEER_PROTECTED", "STEER_MAX_DAYS", "steer_of", "PLANNER_CONFIG", "BREW_RECIPES", "MEAL_RECIPES", "MANDATE_RECIPES", "BUILDABLE_SHOPS", "SHOP_ALIASES", "SURVIVAL_SHOPS", "TICKS_PER_DAY", "TICKS_PER_YEAR", "NO_COOLDOWN", "MULTI_PER_CYCLE", "EMERGENCY", "STUCK_HOLD_EXEMPT", "LIMIT_EXEMPT", "Proposal", "Memory", "abs_tick", "game_day", "factor", "ADJUST_BOUNDS", "_number", "effective_config", "queued", "free_stock", "watch_since", "_clamp", "MEMORIAL_SPAN", "OPTIONAL_LEVELS", "GEAR_WEAPONS", "GEAR_METALS", "GEAR_RECIPES", "NEEDS_YOU", "ask_player", "player_rules", "MAINTAIN_SKIPS", "level_refused", "_traits", "reachable_threats", "held_off_threats", "_holding_off", "ONE_A_CYCLE", "growth_mode", "growth_target", "JOB_SHOPS", "RECIPE_SHOPS", "WOOD_ELSEWHERE", "recipe_shop", "brew_recipe", "_watchdog_notes", "jobs_reported", "order_job_state", "masons_jammed", "stuck_hold_days", "_stuck_before", "stone_short", "_office_held", "tantrums_recent", "justice_held", "_restraint_order", "manager_needs_office", "suites_short", "wool_route", "thread_plants_here", "MINING_NEED_ONLY", "mining_plan", "noble_room_kinds", "SOCIAL_NEEDS", "care_waiting", "unmet", "_soldier_swap", "recently_home", "LOCATION_UNITS", "_location", "_location_short", "_real_locations", "is_ranged", "STALE_PROJECT_DAYS", "_workshops_busy", "shop_count", "shops_max", "_has_shop", "RAW_FOOD", "ALL_FOOD", "_idle_share", "update_idle", "AGENDA_THEMES", "agenda", "food_per_dwarf", "WINTER_STOCK", "winter_factor", "young_fort", "established", "has_farms", "_best_metal", "REFUSAL_FIRST_DAYS", "REFUSAL_MAX_DAYS", "REFUSAL_IDLE_DAYS", "REFUSAL_KEYS", "refusal_key", "_refused_wait", "note_refusal", "LOOP_LIMITS", "LOOP_LIMIT_DEFAULT", "LOOP_EXEMPT", "_loop_count", "_stalled_days", "_entrance_spot", "_record_any_outcome", "_weapon_gaps", "spare_sig"]
+__all__ = ["great_present", "all_clear", "STEER_PROTECTED", "STEER_MAX_DAYS", "steer_of", "PLANNER_CONFIG", "BREW_RECIPES", "MEAL_RECIPES", "MANDATE_RECIPES", "BUILDABLE_SHOPS", "SHOP_ALIASES", "SURVIVAL_SHOPS", "TICKS_PER_DAY", "TICKS_PER_YEAR", "NO_COOLDOWN", "MULTI_PER_CYCLE", "EMERGENCY", "STUCK_HOLD_EXEMPT", "LIMIT_EXEMPT", "Proposal", "Memory", "abs_tick", "game_day", "factor", "ADJUST_BOUNDS", "_number", "effective_config", "queued", "unstored_cups", "free_stock", "watch_since", "_clamp", "MEMORIAL_SPAN", "OPTIONAL_LEVELS", "GEAR_WEAPONS", "GEAR_METALS", "GEAR_RECIPES", "NEEDS_YOU", "ask_player", "player_rules", "MAINTAIN_SKIPS", "level_refused", "_traits", "reachable_threats", "held_off_threats", "_holding_off", "ONE_A_CYCLE", "growth_mode", "growth_target", "JOB_SHOPS", "RECIPE_SHOPS", "WOOD_ELSEWHERE", "recipe_shop", "brew_recipe", "_watchdog_notes", "jobs_reported", "order_job_state", "masons_jammed", "stuck_hold_days", "_stuck_before", "stone_short", "_office_held", "tantrums_recent", "justice_held", "_restraint_order", "manager_needs_office", "suites_short", "wool_route", "thread_plants_here", "MINING_NEED_ONLY", "mining_plan", "noble_room_kinds", "SOCIAL_NEEDS", "care_waiting", "unmet", "_soldier_swap", "recently_home", "LOCATION_UNITS", "_location", "_location_short", "_real_locations", "is_ranged", "STALE_PROJECT_DAYS", "_workshops_busy", "shop_count", "shops_max", "_has_shop", "RAW_FOOD", "ALL_FOOD", "_idle_share", "update_idle", "AGENDA_THEMES", "agenda", "food_per_dwarf", "WINTER_STOCK", "winter_factor", "young_fort", "established", "has_farms", "_best_metal", "REFUSAL_FIRST_DAYS", "REFUSAL_MAX_DAYS", "REFUSAL_IDLE_DAYS", "REFUSAL_KEYS", "refusal_key", "_refused_wait", "note_refusal", "LOOP_LIMITS", "LOOP_LIMIT_DEFAULT", "LOOP_EXEMPT", "_loop_count", "_stalled_days", "_entrance_spot", "_record_any_outcome", "_weapon_gaps", "spare_sig"]
 
 PLANNER_CONFIG = {
     # Starting guesses, tuned from experience. Per citizen, before trait factors.
@@ -697,6 +697,15 @@ def effective_config(adjust: dict | None, base: dict = PLANNER_CONFIG,
             lo, hi = ADJUST_BOUNDS[k]
             cfg[k] = max(lo, min(hi, v))
     return cfg
+
+
+def unstored_cups(s: dict) -> int:
+    """(0.104.157) Free cups lying off the stockpiles (in workshops, in halls
+    where dwarves drank): Teacheroar, 1 Nov, 24 in a meeting hall and 10 in a
+    dining hall, both finished goods piles full, so none was put back where
+    the others could drink from it (149 of 150 drank without a cup)."""
+    place = _d(_d(_d(_d(s.get("needs")).get("clothing")).get("free_cups_detail")).get("place"))
+    return sum(int(v) for k, v in place.items() if k not in ("stockpile", "unwalkable") and isinstance(v, int))
 
 
 def free_stock(state: dict, name: str) -> int:
