@@ -34,7 +34,7 @@
 local json = require('json')
 local utils = require('utils')
 
-BRIDGE_VERSION = '0.104.146'
+BRIDGE_VERSION = '0.104.148'
 PROTOCOL = 1 -- bump when the report's shape changes in a breaking way
 
 local OUT_DIR = dfhack.getDFPath() .. '/dfhack-config/ai-overseer'
@@ -2811,6 +2811,13 @@ function death_details(ev, id)
     -- whether the dead was a patient: what each killing was
     pcall(function() ev.conflict = df.conflict_level[inc.conflict_level] or tostring(inc.conflict_level) end)
     pcall(function() if u.health and u.health.flags.needs_healthcare then ev.patient = true end end)
+    -- (0.104.148) the victim's own mood: a melancholy or raving dwarf stops
+    -- drinking (Teacheroar's 4 thirst deaths overnight, with 1,348 drinks
+    -- in store, were no patients); a strange mood too
+    pcall(function()
+        local m = u.mood and u.mood >= 0 and df.mood_type[u.mood]
+        if m then ev.mood = tostring(m) end
+    end)
     local k = inc.criminal ~= -1 and df.unit.find(inc.criminal) or nil
     if k then
         ev.killer = txt(dfhack.units.getReadableName(k))

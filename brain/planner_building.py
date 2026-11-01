@@ -80,6 +80,34 @@ def _well_rule(s: dict, memory, traits: dict, cfg: dict, proposals: list, notes:
         if not per or wells >= math.ceil(cit / per) or len(open_) >= (pr.get("max_open") or 2):
             return
         last = memory.last_fired.get("extra_well") if memory is not None else None
+        # (0.104.148) no ordinary spot because the only water below is a
+        # cavern (Teacheroar, 1 Nov: 163 dwarves on one well, 4 dead of
+        # thirst overnight, "another couldn't be placed ... in a cavern" every
+        # season): the cavern well, as for a fort with none, when it's needed
+        # and safe and none has failed before
+        if (memory is not None and "cavern" in memory.extra_well_failure
+                and not memory.cavern_well_failure):
+            patients = int(_d(s.get("dwarves")).get("needs_medical_care") or 0)
+            need = cavern_well_need(s, cfg, patients) or f"{cit} dwarves share {wells} well(s)"
+            safe = cavern_well_safe(s, cfg)
+            if safe is True:
+                urgent = bool(patients or int(_d(s.get("society")).get("parched") or 0))
+                action = {"type": "place_well", "cavern": True}
+                if urgent:
+                    action["urgent"] = True
+                proposals.append(Proposal("well", action,
+                                          f"{need} (one well for every {per} wanted), and another ordinary well "
+                                          "can't be placed (the water below is in a cavern): dig a one-tile shaft "
+                                          "through solid rock to the cavern lake, from a stair beside it, and "
+                                          "build the well over it" + (" (urgent: dug first)" if urgent else ""),
+                                          1 if urgent else 4))
+                return
+            notes.append(f"a cavern well would help ({need}) but not now: {safe}")
+            return
+        if memory is not None and memory.cavern_well_failure and "cavern" in memory.extra_well_failure:
+            notes.append(f"{cit} dwarves share {wells} well(s); no cavern well either: "
+                         f"{memory.cavern_well_failure[:120]}")
+            return
         if (memory is not None and memory.extra_well_failure and isinstance(last, int)
                 and 0 <= abs_tick(s) - last < cfg["extra_well_retry_days"] * TICKS_PER_DAY):
             notes.append(f"{cit} dwarves share {wells} well(s); another couldn't be placed "

@@ -7618,6 +7618,39 @@ def _():
     assert not [x for x in by_rule(plan(copy.deepcopy(s), Memory())[0], "well") if x.action.get("type") == "place_well"]
 
 
+@test("wells (0.104.148): another well can't be placed because the water is a cavern -> the cavern well")
+def _():
+    s = fort()
+    s["dwarves"]["total"] = 163
+    s["dwarves"]["needs_medical_care"] = 3
+    s["buildings"]["other"]["Well"] = 1
+    s["projects"]["open"] = []
+    m = Memory()
+    m.extra_well_failure = ("no open drop from a free floor inside the fort to clean water "
+                            "(the water below is in a cavern)")
+    m.last_fired["extra_well"] = abs_tick(s)
+    w = by_rule(plan(copy.deepcopy(s), m)[0], "well")
+    assert w and w[0].action == {"type": "place_well", "cavern": True, "urgent": True}, [x.action for x in w]
+    assert w[0].priority == 1 and "share 1 well" not in w[0].reason and "injured" in w[0].reason, w[0].reason
+    # its failure is the cavern well's (recorded as before), and then only said
+    record([(w[0], {"ok": False, "error": "no floor inside the fort over cavern water with solid rock between"})], s, m)
+    assert m.cavern_well_failure.startswith("no floor")
+    props, notes = plan(copy.deepcopy(s), m)
+    assert not by_rule(props, "well") and any("no cavern well either" in n for n in notes), notes
+    # a danger about: not now, said
+    m2 = Memory()
+    m2.extra_well_failure = m.extra_well_failure
+    s["others_on_map"]["threats_that_can_reach_dwarves"] = 1
+    props, notes = plan(copy.deepcopy(s), m2)
+    assert not by_rule(props, "well") and any("cavern well would help" in n for n in notes), notes
+    # another reason for the failure: the season's wait as before
+    s["others_on_map"]["threats_that_can_reach_dwarves"] = 0
+    m3 = Memory()
+    m3.extra_well_failure = "no clean water inside the fort"
+    m3.last_fired["extra_well"] = abs_tick(s)
+    assert not by_rule(plan(copy.deepcopy(s), m3)[0], "well")
+
+
 def _body():
     s = fort()
     s["dwarves"]["total"] = 60

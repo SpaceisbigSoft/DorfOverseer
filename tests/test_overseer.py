@@ -793,6 +793,8 @@ def _():
     assert "struck down, by Ume, Swamp Titan (great beast)" in overseer.death_words(ev2)
     again = dict(ev, again=True, ghost=True)
     assert "a ghost laid to rest" in overseer.death_words(again) and "drown" not in overseer.death_words(again)
+    thirsty = {"name": "Ast", "cause": "THIRST", "mood": "Melancholy", "x": 1, "y": 2, "z": 3}   # (0.104.148)
+    assert overseer.death_words(thirsty) == "Ast, thirst, in a melancholy mood, at x1 y2 z3", overseer.death_words(thirsty)
     import timeline, metrics
     events = [ev, again]
     assert sum(1 for e in events if e.get("kind") == "death" and e.get("own_civ") and not e.get("again")) == 1
