@@ -282,6 +282,18 @@ def _slow_game_rules(s: dict, citizens: int, cfg: dict, proposals: list, notes: 
             proposals.append(Proposal("webs", {"type": "clear_webs"},
                                       f"{webs} spider webs lie in the caverns, a big share of the {items} items "
                                       "slowing the game: clear them (DFHack's clear-webs)", 7))
+        # (0.104.158) dead creatures by the thousand on the game's unit list:
+        # DFHack's fix/dead-units scrubs the slaughtered and nameless ones,
+        # once a month at most (Teacheroar: 7,322 of 8,627 units dead)
+        uc = _d(_d(cen.get("units")).get("counts"))
+        scrub = uc.get("dead_scrubbable")
+        last_d = memory.last_fired.get("dead_units") if memory is not None else None
+        if (isinstance(scrub, int) and scrub >= cfg["dead_scrub_min"]
+                and (last_d is None or not 0 <= abs_tick(s) - last_d < cfg["dead_scrub_days"] * TICKS_PER_DAY)):
+            proposals.append(Proposal("dead_units", {"type": "scrub_dead_units"},
+                                      f"{uc.get('dead')} of the {uc.get('total')} creatures on the game's list are dead "
+                                      f"(up to {scrub} slaughtered or nameless): clear the old ones (DFHack's "
+                                      "fix/dead-units; the fort's own dead are kept)", 7))
         action = {"type": "prune_remains"}
         if extra:
             action["extra"] = extra

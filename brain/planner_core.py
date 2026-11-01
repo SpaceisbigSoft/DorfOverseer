@@ -201,6 +201,11 @@ PLANNER_CONFIG = {
     "citizens_per_free_cup": 3,        # a free cup in store for every 3 citizens (10 at least)...
     "cups_batch": 20,                  # ...20 an order at most
     "cupless_share": 0.1,              # ...while this share drank without one lately
+    "dead_scrub_min": 1000,            # (0.104.158) dead units fix/dead-units could scrub before it runs...
+    "dead_scrub_days": 28,             # ...once a month at most
+    "herd_per_dwarf": 2.0,             # (0.104.158) tame animals the fort keeps per citizen (60 at least),
+    "herd_min": 60,                    # ...by Husbandry; past it nestboxes stop hatching every egg
+    "herd_resume_share": 0.5,          # ...and come back on under this share of it
     "cloth_min": 15,                   # cloth kept on hand (dressings, bags, rope, clothes)...
     "cloth_per_dwarf": 1.0,            # ...or a bolt a dwarf
     "cloth_batch": 5,
@@ -1446,7 +1451,7 @@ AGENDA_THEMES = {
     "gems": "cut gems", "encrust": "set gems into crafts", "drink": "keep the drink flowing",
     "needs_drink": "keep the drink flowing", "needs_meal": "cook good meals", "needs_craft": "let dwarves craft",
     "food": "keep the fort fed", "farm": "farm", "hospital": "stock the hospital", "soap": "make soap",
-    "feeder": "shorten the hauling", "labor": "put idle hands to work", "well": "find water for a well", "well_lid": "close the cavern well's stairs", "well_shaft": "a gate in the cavern well's shaft", "planned_parts": "parts the planned buildings wait for", "comfort": "shoes and cups for the fort",
+    "feeder": "shorten the hauling", "labor": "put idle hands to work", "well": "find water for a well", "well_lid": "close the cavern well's stairs", "well_shaft": "a gate in the cavern well's shaft", "planned_parts": "parts the planned buildings wait for", "comfort": "shoes and cups for the fort", "dead_units": "clear old dead from the unit list", "herd": "keep the herds the fort's size",
     "stuck_order": "clear stuck work", "unsuspend": "resume suspended work", "stray_gear": "hand out lost gear", "assign_weapons": "arm the soldiers", "soldier_swap": "let the keen train", "temple_chest": "a chest for the temple", "instrument_orders": "clear the instrument backlog", "pair_chairs": "seat dwarves together", "recreation": "time off for the unhappiest", "dairy": "milk and cheese", "eggs": "nest boxes for the hens", "war_animals": "train war animals", "gate_guard": "hold the gate", "gate_dogs": "war dogs at the gate", "gem_cutting": "cut the rough gems", "stairwell": "a new stairwell", "animal_trainer": "an animal trainer", "nest_box_order": "make nest boxes", "library_chest": "a chest for the library", "orphan_jobs": "clear jobs whose order is gone", "slabs_free": "free the memorial slabs", "water_traffic": "keep paths off the ice", "jail_size": "a bigger jail", "jail_more": "another jail", "break_fights": "break up the fights among the fort's own", "burial": "bury the dead", "rooms": "mend the rooms' walls", "coffins": "coffins for the tombs", "order_slots": "free the workshop's order slots", "fat_ban": "keep fat for soap", "jail_urgent": "a jail against the beatings", "tavern_urgent": "a tavern for company", "quarry": "quarry stone", "cloth": "weave cloth",
 }
 

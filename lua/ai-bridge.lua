@@ -34,7 +34,7 @@
 local json = require('json')
 local utils = require('utils')
 
-BRIDGE_VERSION = '0.104.157'
+BRIDGE_VERSION = '0.104.158'
 PROTOCOL = 1 -- bump when the report's shape changes in a breaking way
 
 local OUT_DIR = dfhack.getDFPath() .. '/dfhack-config/ai-overseer'
@@ -4517,6 +4517,23 @@ function act_clear_webs(a)
     return {ok = true, removed = before - #df.global.world.items.other.ANY_WEBS}
 end
 
+-- (0.104.158) Dead units scrubbed from the active list by DFHack's own
+-- fix/dead-units (slaughtered animals, nameless and foreign dead, kept a
+-- month; never the fort's own race). Teacheroar, 1 Nov: 7,322 of 8,627 units
+-- on the list dead (2,565 ducks, 950 geese, 680 dogs), the game at 17 FPS.
+function act_scrub_dead_units(a)
+    if not dfhack.findScript('fix/dead-units') then
+        return {ok = false, error = 'DFHack has no fix/dead-units script in this version'}
+    end
+    local before = #df.global.world.units.active
+    if a.dry_run then return {ok = true, dry_run = true, units = before} end
+    local out, rv = dfhack.run_command_silent('fix/dead-units', '--active', '-q')
+    if rv ~= CR_OK then return {ok = false, error = 'fix/dead-units failed: ' .. tostring(out):sub(1, 160)} end
+    local removed = before - #df.global.world.units.active
+    if removed <= 0 then return {ok = false, rejected = true, error = 'no dead unit old enough to scrub'} end
+    return {ok = true, removed = removed, units = #df.global.world.units.active}
+end
+
 -- (0.104.113) What fills the map, read only (lua/ai-census.lua).
 function act_census(a)
     return reqscript('ai-census').census()
@@ -5934,6 +5951,7 @@ ACTIONS = {
     join_levels = act_join_levels,
     census = act_census,
     clear_webs = act_clear_webs,
+    scrub_dead_units = act_scrub_dead_units,
     scan_entrances = act_scan_entrances,
     build_gate_doors = act_build_gate_doors,
     fortify_entrance = act_fortify_entrance,

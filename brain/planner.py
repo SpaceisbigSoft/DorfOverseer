@@ -273,6 +273,17 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
         herds_big = ("others_on_map" not in errors
                      and s["others_on_map"].get("tame_animals", 0)
                      > max(20, citizens * 0.5 * factor(traits, "husbandry")))
+        # (0.104.158) the herd past the fort's size: the eggs no longer hatched
+        # (Teacheroar, 1 Nov: 1,121 tame animals for 150 dwarves, most of them
+        # fowl from the nest boxes; 2,565 ducks and 950 geese dead, the game at
+        # 17 FPS). DFHack's autobutcher keeps 2/4/2/4 of each kind; nestboxes
+        # makes every fertile egg a chick.
+        tame = int(s["others_on_map"].get("tame_animals", 0) or 0) if "others_on_map" not in errors else 0
+        herd_max = max(cfg["herd_min"], citizens * cfg["herd_per_dwarf"]) * factor(traits, "husbandry")
+        if tools.get("nestboxes") is True and tame > herd_max:
+            proposals.append(Proposal("herd", {"type": "tool", "name": "nestboxes", "enabled": False},
+                                      f"{tame} tame animals for {citizens} dwarves (the fort keeps about {int(herd_max)}): "
+                                      "turn off nestboxes so not every egg hatches (the eggs are food instead)", 5))
         wanted = {
             "suspendmanager": (True, "keeps jobs from getting stuck"),
             "buildingplan": (True, "planned furniture waits for materials instead of vanishing"),
@@ -280,7 +291,10 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
             # without it, new farm plots have no crop chosen and grow nothing
             "autofarm": (traits.get("agriculture", 0) > -100 and has_farms(s),
                          "chooses crops for the farm plots by what the fort needs"),
-            "nestboxes": (traits.get("husbandry", 0) >= 0, "lets eggs hatch for more animals"),
+            # (0.104.158) not while the herd is past the fort's size (it comes
+            # back on under half of it): every egg hatched kept the butchers busy
+            "nestboxes": (traits.get("husbandry", 0) >= 0 and tame <= herd_max * cfg["herd_resume_share"],
+                          "lets eggs hatch for more animals"),
             "tailor": (traits.get("welfare", 0) >= -50, "replaces worn-out clothing"),
             "autochop": (wood_low and not quota_near, f"wood is low ({st.get('wood', 0)})"),
             # Slaughter is a big step: only when herds are large AND the player

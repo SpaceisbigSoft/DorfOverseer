@@ -19,8 +19,8 @@ end
 
 function units()
     local by = {total = 0, citizens = 0, dead = 0, tame = 0, wild = 0, hostile = 0, visitors = 0, caged = 0,
-                offsite = 0, other = 0}
-    local races, dead_races, tame_races, wild_races = {}, {}, {}, {}
+                offsite = 0, other = 0, marked = 0, dead_scrubbable = 0}
+    local races, dead_races, tame_races, wild_races, herd = {}, {}, {}, {}, {}
     for _, u in ipairs(df.global.world.units.active) do
         by.total = by.total + 1
         local r = race_name(u)
@@ -28,6 +28,13 @@ function units()
         if is(dfhack.units.isDead) or u.flags2.killed then
             by.dead = by.dead + 1
             dead_races[r] = (dead_races[r] or 0) + 1
+            -- (0.104.158) the ones DFHack's fix/dead-units would scrub from the
+            -- active list (not the fort's own race; slaughtered, nameless or
+            -- of another civ; it keeps the last month's): an upper bound
+            if not is(dfhack.units.isOwnRace) and (is(dfhack.units.isMarkedForSlaughter) or u.hist_figure_id == -1
+                    or not is(dfhack.units.isOwnCiv)) then
+                by.dead_scrubbable = by.dead_scrubbable + 1
+            end
         elseif not is(dfhack.units.isActive) then
             by.offsite = by.offsite + 1
         elseif is(dfhack.units.isCitizen) then
@@ -37,6 +44,21 @@ function units()
         elseif is(dfhack.units.isTame) or is(dfhack.units.isDomesticated) then
             by.tame = by.tame + 1
             tame_races[r] = (tame_races[r] or 0) + 1
+            -- (0.104.158) what each kind of livestock is: autobutcher (on, autowatch
+            -- on, 2/4/2/4 a race by default) spares the named, pets, war and
+            -- hunting animals, the pregnant and the brooding (DFHack 53.16 docs)
+            local h = herd[r] or {n = 0, marked = 0, pet = 0, named = 0, trained = 0, kids = 0, protected = 0}
+            h.n = h.n + 1
+            local named = is(function(x) return x.name.has_name or (x.name.nickname or '') ~= '' end)
+            local pet, marked = is(dfhack.units.isPet), is(dfhack.units.isMarkedForSlaughter)
+            local trained = is(dfhack.units.isWar) or is(dfhack.units.isHunter)
+            if marked then h.marked = h.marked + 1; by.marked = by.marked + 1 end
+            if pet then h.pet = h.pet + 1 end
+            if named then h.named = h.named + 1 end
+            if trained then h.trained = h.trained + 1 end
+            if not is(dfhack.units.isAdult) then h.kids = h.kids + 1 end
+            if pet or named or trained then h.protected = h.protected + 1 end
+            herd[r] = h
         elseif is(dfhack.units.isDanger) then
             by.hostile = by.hostile + 1
         elseif is(dfhack.units.isVisitor) or is(dfhack.units.isMerchant) or is(dfhack.units.isDiplomat) then
@@ -49,8 +71,26 @@ function units()
         end
         races[r] = (races[r] or 0) + 1
     end
+    -- the herd's 12 biggest kinds, with what each is
+    local herd_top = {}
+    for _, e in ipairs(top(tame_races, 12)) do
+        local h = herd[e.name]
+        h.name = e.name
+        table.insert(herd_top, h)
+    end
+    -- slaughter jobs waiting (the butcher's backlog)
+    local okj, waits = pcall(function()
+        local n = 0
+        local l = df.global.world.jobs.list.next
+        while l do
+            if l.item and l.item.job_type == df.job_type.SlaughterAnimal then n = n + 1 end
+            l = l.next
+        end
+        return n
+    end)
+    if okj then by.slaughter_jobs = waits end
     return {counts = by, races = top(races, 12), dead = top(dead_races, 8), tame = top(tame_races, 8),
-            wild = top(wild_races, 8)}
+            wild = top(wild_races, 8), herd = herd_top}
 end
 
 function items()
