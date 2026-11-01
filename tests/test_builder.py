@@ -1352,6 +1352,11 @@ def _body():
       dfhack.buildings = {findAtTile = function(p) return BLD[p.x .. ',' .. p.y .. ',' .. p.z] end}
       CR_OK = 0
       dfhack.run_command_silent = function(cmd, a, b, id)
+        if cmd == 'dig-now' then                       -- (0.104.145) the plug dug at once
+          local x, y, z = a:match('(%d+),(%d+),(%d+)')
+          W.set(tonumber(x), tonumber(y), tonumber(z), {shape = 'FLOOR'})
+          return 'ok', 0
+        end
         table.insert(PULLS, id)
         for _, b in pairs(BLD) do if b.gate_flags then b.gate_flags.closed = not b.gate_flags.closed end end
         return 'ok', 0
@@ -1410,7 +1415,7 @@ def _body():
     LUA.execute("df.building = nil")
     LUA.globals().LINKS[gate.id] = LUA.table_from([lever.id])
     r = step()
-    assert r.ok and r.stage == "opening" and not gate.gate_flags.closed, dict(r)   # pulled open
+    assert r.ok and r.stage == "opening" and gate.gate_flags.closed, dict(r)       # (0.104.145) still shut
     # (0.104.0) a hauler in the cistern: the plug waits; its stones forbidden once empty
     INSIDE = {"n": 1}
     FORBID = []
@@ -1421,12 +1426,11 @@ def _body():
     assert r.waiting and "1 creature(s) in the cistern" in r.error, dict(r)
     INSIDE["n"] = 0
     r = step()
-    assert r.ok and r.stage == "plug", dict(r)
+    # (0.104.145) the plug dug at once with nobody inside, then the gate opened
+    assert r.ok and r.stage == "filling" and r.opened and not gate.gate_flags.closed, dict(r)
+    assert W.get(plan.plug.x, plan.plug.y, z).shape == "FLOOR"
     assert FORBID == [(c.x2 - c.x1 + 1) * (c.y2 - c.y1 + 1) + len(tp) - 1], FORBID
     B.units_on_tiles, B.forbid_items_on = real_units, real_forbid
-    assert step().waiting                                                  # plug still rock
-    W.set(plan.plug.x, plan.plug.y, z, LUA.table_from({"shape": "FLOOR"}))
-    assert step().stage == "filling"
     W.set(wx, wy, z, LUA.table_from({"liquid": True, "depth": 4}))
     r = step()
     assert r.waiting and "4/7" in r.error and "plug floor" in r.error and "source" in r.error, r.error   # (0.104.94)
@@ -1462,7 +1466,7 @@ def _():
     try:
         _body()
     finally:
-        B.CISTERN_HOLD = True
+        B.CISTERN_HOLD = False
 
 
 def _body():
@@ -1514,7 +1518,7 @@ def _():
     try:
         _body()
     finally:
-        B.CISTERN_HOLD = True
+        B.CISTERN_HOLD = False
 
 
 def _body():
@@ -1568,14 +1572,18 @@ def _():
     try:
         _body()
     finally:
-        B.CISTERN_HOLD = True
+        B.CISTERN_HOLD = False
 
 
 @test("cistern hold (0.104.144): no new cistern and the floodgate never opened while the design is on hold")
 def _():
-    assert B.CISTERN_HOLD
-    r = B.cistern_step(False)
-    assert not r.ok and r.held, dict(r)
+    B.CISTERN_HOLD = True
+    try:
+        W.persist["ai-overseer/cistern"] = None
+        r = B.cistern_step(False)
+        assert not r.ok and r.held, dict(r)
+    finally:
+        B.CISTERN_HOLD = False
 
 
 @test("cistern plan (0.104.94): a small surface pool is no source; a big one counts as further off than water underground")
@@ -1590,6 +1598,78 @@ def _():
     """, W)
     r = B.plan_cistern()
     assert r[0] is None and "surface water" in r[1], r                 # 55 tiles: too small outside
+
+
+@test("cistern v2 (0.104.145): a source higher up comes in down a shaft to a tile diagonal to the room; sealed; never past a leak")
+def _():
+    LUA.execute("""local W = ...
+      W.reset()
+      W.citizens = {}
+      for i = 1, 20 do table.insert(W.citizens, {x = 50 + i % 10, y = 60, z = 80}) end
+      for x = 30, 90 do for y = 45, 75 do
+        if not (x == 60 and y == 60) then W.set(x, y, 79, {shape = 'WALL', material = 'STONE'}) end
+      end end
+      -- a pond two levels deep north of the fort, its top a level over the fort's floor
+      for x = 52, 64 do for y = 36, 44 do
+        W.set(x, y, 81, {shape = 'EMPTY', liquid = true, depth = 7})
+        W.set(x, y, 82, {shape = 'EMPTY', liquid = true, depth = 7})
+      end end
+    """, W)
+    B.cistern_prefs(LUA.table_from({}))
+    r = B.plan_cistern()
+    plan, why = (r, None) if hasattr(r, "cistern") else (r[0], r[1])
+    assert plan is not None, why
+    assert plan.v == 2 and plan.shaft is not None and plan.intake_z == 81 and plan.cistern.z == 79, (plan.intake_z, plan.cistern.z)
+    c, s, k = plan.cistern, plan.shaft, plan.corner
+    assert abs(s.x - k.x) == 1 and abs(s.y - k.y) == 1                    # the shaft's foot is diagonal to the room
+    assert c.x1 <= k.x <= c.x2 and c.y1 <= k.y <= c.y2                    # ... at its corner
+    assert not (c.x1 <= s.x <= c.x2 and c.y1 <= s.y <= c.y2)
+    assert plan.source == "underground pool" and plan.considered["underground pool"] == plan.score
+    r = B.cistern_sealed(plan)
+    assert r is True, r
+    # a tile dug beside the shaft halfway up: not sealed, and it says where
+    W.set(s.x + 1 if s.x + 1 != k.x else s.x - 1, s.y, 80, LUA.table_from({"shape": "FLOOR"}))
+    ok, where = B.cistern_sealed(plan)
+    assert not ok and "shaft is open" in where, where
+
+
+@test("cistern v2 (0.104.145): the AI weighs the sources: a cavern lake over a pond that freezes; a pond over caverns with a danger")
+def _():
+    LUA.execute("""local W = ...
+      W.reset()
+      W.citizens = {}
+      for i = 1, 20 do table.insert(W.citizens, {x = 50 + i % 10, y = 60, z = 80}) end
+      for x = 30, 90 do for y = 45, 75 do
+        if not (x == 60 and y == 60) then W.set(x, y, 79, {shape = 'WALL', material = 'STONE'}) end
+      end end
+      -- a surface pond to the east, a cavern lake to the west, as far each
+      for x = 82, 92 do for y = 54, 66 do W.set(x, y, 79, {shape = 'EMPTY', liquid = true, depth = 7, outside = true}) end end
+      for x = 28, 38 do for y = 54, 66 do W.set(x, y, 79, {shape = 'EMPTY', liquid = true, depth = 7, feature = true}) end end
+    """, W)
+    B.cistern_prefs(LUA.table_from({"freezes": True}))
+    r = B.plan_cistern()
+    plan, why = (r, None) if hasattr(r, "cistern") else (r[0], r[1])
+    assert plan is not None and plan.source == "cavern lake", (why, plan and plan.source)
+    assert plan.considered["surface pool"] is not None
+    B.cistern_prefs(LUA.table_from({"freezes": True, "cavern_danger": True}))
+    r = B.plan_cistern()
+    plan, why = (r, None) if hasattr(r, "cistern") else (r[0], r[1])
+    assert plan is not None and plan.source == "surface pool", (why, plan and plan.source)
+    B.cistern_prefs(LUA.table_from({}))
+
+
+@test("cistern v2 (0.104.145): a cistern of the first design is retired (its gate shut first), the next planned afresh")
+def _():
+    LUA.execute("""local W = ...
+      W.persist['ai-overseer/cistern'] = {stage = 'filling', plan = {cistern = {x1 = 1, y1 = 1, x2 = 5, y2 = 5, z = 79},
+          well = {x = 3, y = 3, z = 80}, floodgate = {x = 6, y = 3}, plug = {x = 8, y = 3}, water = {x = 9, y = 3},
+          tunnel_path = {{x = 6, y = 3}, {x = 7, y = 3}, {x = 8, y = 3}}, source = 'underground pool'}}
+      W.persist['ai-overseer/cistern/retired'] = nil
+    """, W)
+    r = B.cistern_step(False)
+    assert r.ok and r.retired, dict(r)
+    assert B.cistern_data() is None
+    assert len(W.persist["ai-overseer/cistern/retired"]) >= 1
 
 
 @test("sand_zone (0.104.95): the nearest floor beside sand the dwarves reach; one zone only; none without sand")

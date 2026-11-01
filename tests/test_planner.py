@@ -866,19 +866,19 @@ def _body():
     s["water"] = {"tick": abs_tick(s), "bodies": [{"kind": "surface", "tiles": 300, "stagnant_share": 100}],
                   "cistern": cplan}
     c = [p for p in plan_(s) if p.rule == "cistern"]
-    assert c and c[0].action == {"type": "cistern_step"} and "stagnant" in c[0].reason, c
+    assert c and c[0].action["type"] == "cistern_step" and "stagnant" in c[0].reason, c
     s["water"]["bodies"][0]["stagnant_share"] = 0
     assert not [p for p in plan_(s) if p.rule == "cistern"]                 # good water already
     s["settings"]["water_works"] = False
     s["water"]["bodies"][0]["stagnant_share"] = 100
     assert not [p for p in plan_(s) if p.rule == "cistern"]                 # switched off
     s["settings"]["water_works"] = True
-    s["water"]["cistern_status"] = {"stage": "filling", "depth": 3, "gate": "open"}
+    s["water"]["cistern_status"] = {"v": 2, "stage": "filling", "depth": 3, "gate": "open"}
     props, notes = plan(s, Memory())
     assert [p for p in props if p.rule == "cistern"] and any("filling, 3/7" in n for n in notes), notes
-    s["water"]["cistern_status"] = {"stage": "done", "depth": 7, "gate": "shut"}
+    s["water"]["cistern_status"] = {"v": 2, "stage": "done", "depth": 7, "gate": "shut"}
     assert not [p for p in plan_(s) if p.rule == "cistern"]
-    s["water"]["cistern_status"] = {"stage": "done", "depth": 2, "gate": "shut"}
+    s["water"]["cistern_status"] = {"v": 2, "stage": "done", "depth": 2, "gate": "shut"}
     assert [p for p in plan_(s) if p.rule == "cistern"]
 
 
@@ -888,7 +888,7 @@ def _():
     try:
         _body()
     finally:
-        PLANNER_CONFIG["cistern_hold"] = True
+        PLANNER_CONFIG["cistern_hold"] = False
 
 
 @test("temperament (0.94): every slider says what it does now, in the planner's own numbers")
@@ -907,7 +907,7 @@ def _():
 def _body():
     s = fort()
     s.setdefault("water", {})["cistern_status"] = {
-        "stage": "building", "gate": "planned", "lever": "planned",
+        "v": 2, "stage": "building", "gate": "planned", "lever": "planned",
         "floodgates_free": 0, "floodgates_reserved": 0, "mechanisms_free": 0, "mechanisms_reserved": 0}
     parts = lambda: [p for p in plan(copy.deepcopy(s), Memory())[0] if p.rule == "cistern_parts"]
     got = {p.action["recipe"]: p.action["amount"] for p in parts()}
@@ -930,7 +930,7 @@ def _body():
                                         mechanisms_held={"held in a Workshop": 2})
     ps = parts()
     assert ps and ps[0].action["amount"] == 2 and "2 held in a Workshop" in ps[0].reason, [p.reason for p in ps]
-    s["water"]["cistern_status"] = {"stage": "filling", "depth": 3, "gate": "open"}
+    s["water"]["cistern_status"] = {"v": 2, "stage": "filling", "depth": 3, "gate": "open"}
     assert not parts()                                               # older bridges: no counts
 
 
@@ -940,7 +940,7 @@ def _():
     try:
         _body()
     finally:
-        PLANNER_CONFIG["cistern_hold"] = True
+        PLANNER_CONFIG["cistern_hold"] = False
 
 
 @test("crops for drink (0.99.6): brewable crops favoured while drink is short, put back once it recovers; shrubs gathered")
@@ -1218,7 +1218,7 @@ def _():
 
 def _body():
     s = fort()
-    s.setdefault("water", {})["cistern_status"] = {"stage": "well", "depth": 6, "gate": "shut"}
+    s.setdefault("water", {})["cistern_status"] = {"v": 2, "stage": "well", "depth": 6, "gate": "shut"}
     s["stocks"].update(blocks=1174, mechanisms=4, chains=0, cloth=33)
     s.setdefault("supplies", {}).update(buckets=110, ropes=0)
     s["buildings"].setdefault("workshops", {})["Clothiers"] = 1
@@ -1243,7 +1243,7 @@ def _():
     try:
         _body()
     finally:
-        PLANNER_CONFIG["cistern_hold"] = True
+        PLANNER_CONFIG["cistern_hold"] = False
 
 
 @test("loop watchdog: the same action done too often in a year is held 28 days; rules that repeat by design aren't")
@@ -1283,7 +1283,7 @@ def _():
     k = [p for p in plan(s, Memory())[0] if p.rule == "squad_attack"]
     assert k and k[0].action == {"type": "squad_orders", "squad_id": 3, "kill": [9]}, k
     s["hazards"] = {"wet": [{"id": 1, "name": "A"}, {"id": 2, "name": "B"}]}
-    s["water"] = {"cistern_status": {"stage": "done", "gate": "open", "depth": 6}}
+    s["water"] = {"cistern_status": {"v": 2, "stage": "done", "gate": "open", "depth": 6}}
     props, notes = plan(s, Memory())
     assert any(p.action == {"type": "cistern_step", "shut": True} for p in props)
     assert any("deep water" in n for n in notes)
@@ -7549,7 +7549,7 @@ def _():
 def _body():
     s = fort()
     s["water"] = dict(s.get("water") or {}, cistern_status={
-        "stage": "linking", "gate": "shut", "lever": "built", "depth": 0, "relinks": 3,
+        "v": 2, "stage": "linking", "gate": "shut", "lever": "built", "depth": 0, "relinks": 3,
         "lever_at": {"x": 109, "y": 38, "z": 168}, "gate_at": {"x": 110, "y": 40, "z": 160}})
     props, notes = plan(copy.deepcopy(s), Memory())
     assert not by_rule(props, "cistern"), [p.action for p in by_rule(props, "cistern")]
@@ -7569,7 +7569,7 @@ def _():
     try:
         _body()
     finally:
-        PLANNER_CONFIG["cistern_hold"] = True
+        PLANNER_CONFIG["cistern_hold"] = False
 
 
 @test("wells (0.104.141, 12k): one well for every 70 dwarves; one at a time; a failure waits a season, never 'no well'")
@@ -7600,7 +7600,7 @@ def _body():
                     "punish": {"n": 0, "beatings": 0}, "crimes": {"n": 900, "convictable": 99}}
     assert not by_rule(plan(copy.deepcopy(s), Memory())[0], "jail_size")
     s = fort()
-    s["water"] = dict(s.get("water") or {}, cistern_status={"stage": "linking", "relinks": 3, "link_pending": True})
+    s["water"] = dict(s.get("water") or {}, cistern_status={"v": 2, "stage": "linking", "relinks": 3, "link_pending": True})
     props, notes = plan(copy.deepcopy(s), Memory())
     assert by_rule(props, "cistern") and not any(n.startswith(planner.NEEDS_YOU) and "cistern" in n for n in notes)
     from planner_core import watch_since, WORKED_MAX_DAYS
@@ -7614,7 +7614,7 @@ def _():
     try:
         _body()
     finally:
-        PLANNER_CONFIG["cistern_hold"] = True
+        PLANNER_CONFIG["cistern_hold"] = False
 
 
 @test("woodcutters (0.104.142): more while wood is short; Elf-friends one, two while short and well under the quota")
@@ -7637,16 +7637,40 @@ def _():
         assert cut(m) == 1
 
 
-@test("cistern hold (0.104.144): no step and a note while the design is on hold")
-def _():
+def _hold_body():
     s = fort()
-    s["water"] = dict(s.get("water") or {}, cistern_status={"stage": "linking", "gate": "shut", "relinks": 3})
+    s["water"] = dict(s.get("water") or {}, cistern_status={"v": 2, "stage": "linking", "gate": "shut", "relinks": 3})
     props, notes = plan(copy.deepcopy(s), Memory())
     assert not by_rule(props, "cistern") and any("cistern is on hold" in n for n in notes), notes
     assert not any(n.startswith(planner.NEEDS_YOU) and "cistern" in n for n in notes)
     s["water"]["cistern_status"].update(stage="filling", gate="open")
     c = by_rule(plan(copy.deepcopy(s), Memory())[0], "cistern")
-    assert c and c[0].action == {"type": "cistern_step"} and "shut it" in c[0].reason, c
+    assert c and c[0].action["type"] == "cistern_step" and "shut it" in c[0].reason, c
+
+
+@test("cistern hold (0.104.144): no step and a note while the design is on hold")
+def _():
+    PLANNER_CONFIG["cistern_hold"] = True
+    try:
+        _hold_body()
+    finally:
+        PLANNER_CONFIG["cistern_hold"] = False
+
+
+
+@test("cistern v2 (0.104.145): open and no longer closed -> shut at once; a leak -> Needs you; the first design retired")
+def _():
+    s = fort()
+    s["water"] = dict(s.get("water") or {}, cistern_status={"v": 2, "stage": "filling", "gate": "open", "depth": 3,
+                                                            "sealed_now": False, "unsealed": "the shaft is open at x1 y2 elevation 3"})
+    c = by_rule(plan(copy.deepcopy(s), Memory())[0], "cistern")
+    assert c and c[0].action == {"type": "cistern_step", "shut": True} and c[0].priority == 0, [x.action for x in c]
+    s["water"]["cistern_status"] = {"v": 2, "stage": "filling", "gate": "shut", "leak": "x5 y6 elevation 41"}
+    props, notes = plan(copy.deepcopy(s), Memory())
+    assert any(n.startswith(planner.NEEDS_YOU) and "x5 y6 elevation 41" in n for n in notes)
+    s["water"]["cistern_status"] = {"stage": "filling", "gate": "shut", "depth": 0}          # no v: the first design
+    c = by_rule(plan(copy.deepcopy(s), Memory())[0], "cistern")
+    assert c and "retire" in c[0].reason and c[0].action["type"] == "cistern_step", [x.reason for x in c]
 
 
 if __name__ == "__main__":

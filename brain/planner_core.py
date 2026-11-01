@@ -420,7 +420,7 @@ PLANNER_CONFIG = {
     "farms_cooldown_ticks": 3 * 1200,
     "farm_dig_retry_days": 28,     # no soil for a farm level: look again (and ask again) after this
     "well_cooldown_ticks": 3 * 1200,
-    "cistern_hold": True,              # (0.104.144) the cistern is on hold for a new design (the player: it would flood the fort)
+    "cistern_hold": False,             # (0.104.144) on hold (the player: the first design would flood the fort); released 0.104.145 (the second)
     "dwarves_per_well": 70,            # (0.104.141) another well for every this many dwarves (0: one well)
     "extra_well_retry_days": 84,       # (0.104.141) another well that couldn't be placed: tried again a season on
     "new_pasture_cooldown_ticks": 3 * 1200,

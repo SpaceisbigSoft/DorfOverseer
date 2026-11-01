@@ -34,7 +34,7 @@
 local json = require('json')
 local utils = require('utils')
 
-BRIDGE_VERSION = '0.104.144'
+BRIDGE_VERSION = '0.104.145'
 PROTOCOL = 1 -- bump when the report's shape changes in a breaking way
 
 local OUT_DIR = dfhack.getDFPath() .. '/dfhack-config/ai-overseer'
@@ -5363,7 +5363,11 @@ end
 -- The cistern (lua/ai-builder.lua): one step of building it, or keeping it filled.
 function act_cistern_step(a)
     if a.shut == true then return reqscript('ai-builder').cistern_shut(a.dry_run == true) end
-    return reqscript('ai-builder').cistern_step(a.dry_run == true)
+    -- (0.104.145) what the brain knows that weighs the source: the climate
+    -- freezes, a danger in the caverns
+    local prefs = type(a.prefs) == 'table' and {freezes = a.prefs.freezes == true,
+                                               cavern_danger = a.prefs.cavern_danger == true} or nil
+    return reqscript('ai-builder').cistern_step(a.dry_run == true, prefs)
 end
 
 -- Trinkets for dwarves who want to own things (lua/ai-society.lua).

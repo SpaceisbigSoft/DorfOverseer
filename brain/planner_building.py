@@ -699,6 +699,13 @@ def _cistern_rule(s: dict, memory, cfg: dict, proposals: list, notes: list, rule
     (the floodgate opened under 3/7, shut at 6/7)."""
     w = _d(s.get("water"))
     st = w.get("cistern_status")
+    # (0.104.145) what the brain knows that weighs the source the bridge picks:
+    # the climate freezes (a surface pond is dry half the year), a danger in
+    # the caverns (no tunnel to a cavern lake then)
+    dangers = [x for x in _l(_d(s.get("deep")).get("dangers")) if isinstance(x, dict) and not x.get("caged")]
+    prefs = {"freezes": bool(memory is not None and memory.climate_freezes),
+             "cavern_danger": any("cavern" in str(x.get("layer") or "").lower() for x in dangers)}
+    step = {"type": "cistern_step", "prefs": prefs}
     if cfg["cistern_hold"]:
         # (0.104.144) the player: as built, the cistern doesn't work and would
         # flood the fort if it did. No step (the bridge holds it too) until it
@@ -709,10 +716,29 @@ def _cistern_rule(s: dict, memory, cfg: dict, proposals: list, notes: list, rule
             if st.get("gate") == "open":
                 # the bridge's held step shuts it (31 Oct 20:54: opened and the
                 # plug dug minutes before the hold)
-                proposals.append(Proposal("cistern", {"type": "cistern_step"},
+                proposals.append(Proposal("cistern", dict(step),
                                           "the cistern is on hold and its floodgate is open: shut it", 1))
         return
     if isinstance(st, dict):
+        # (0.104.145) open and no longer closed all round (a dig beside the
+        # shaft or tunnel): shut at once
+        if st.get("gate") == "open" and st.get("sealed_now") is False:
+            proposals.append(Proposal("cistern", {"type": "cistern_step", "shut": True},
+                                      f"the cistern's floodgate is open and it isn't closed where the water goes "
+                                      f"({st.get('unsealed')}): shut it now", 0))
+        # (0.104.145) the leak guard shut it, or it isn't closed where the water goes
+        if st.get("leak"):
+            ask_player(notes, f"water got out of the cistern (over it at {st['leak']}): its floodgate was shut. "
+                              "Look at the cistern's walls and roof; the AI won't open it again until you rebuild it")
+            return
+        if st.get("unsealed"):
+            ask_player(notes, f"the cistern isn't closed where its water would go ({st['unsealed']}): wall it up "
+                              "(or build a floor there); the AI lets no water in until it is")
+        if int(st.get("v") or 1) < 2:
+            proposals.append(Proposal("cistern", dict(step),
+                                      "the cistern is of the first design (its water could reach the fort under "
+                                      "pressure): shut its floodgate and retire it; a new one is planned", 2))
+            return
         # (0.104.141) the bridge gave up relinking (3 links lost): one Needs you,
         # not a refused step every few minutes (09:57-19:04, back after each
         # new bridge wiped the refusal backoff)
@@ -732,12 +758,17 @@ def _cistern_rule(s: dict, memory, cfg: dict, proposals: list, notes: list, rule
             return
         if st.get("stage") != "done":
             notes.append(f"the cistern: {CISTERN_WORDS.get(st.get('stage'), st.get('stage'))}"
-                         + (f", {st.get('depth')}/7 deep" if st.get("depth") else ""))
-            proposals.append(Proposal("cistern", {"type": "cistern_step"},
+                         + (f", {st.get('depth')}/7 deep" if st.get("depth") else "")
+                         + (f"; its water from the {st.get('source')}"
+                            + (f" {st['intake_elevation'] - st['elevation']} level(s) up, down a shaft through a diagonal step"
+                               if st.get("shaft") and isinstance(st.get("intake_elevation"), int)
+                               and isinstance(st.get("elevation"), int) else "")
+                            if st.get("source") else ""))
+            proposals.append(Proposal("cistern", dict(step),
                                       f"the cistern: {CISTERN_WORDS.get(st.get('stage'), 'next step')}: the next step", 4))
             _cistern_parts(s, st, proposals, notes)
         elif (st.get("gate") == "shut" and (st.get("depth") or 0) < 3) or (st.get("gate") == "open" and (st.get("depth") or 0) >= 6):
-            proposals.append(Proposal("cistern", {"type": "cistern_step"},
+            proposals.append(Proposal("cistern", dict(step),
                                       f"the cistern is {st.get('depth')}/7 deep: "
                                       + ("open the floodgate to refill it" if st.get("gate") == "shut" else "shut the floodgate"), 4))
         return
@@ -760,10 +791,18 @@ def _cistern_rule(s: dict, memory, cfg: dict, proposals: list, notes: list, rule
            else "the water near the fort is stagnant" if all_stagnant and not plan.get("stagnant") else "")
     if not why:
         return
-    proposals.append(Proposal("cistern", {"type": "cistern_step"},
+    # (0.104.145) the source the bridge chose, and what it weighed
+    seen = _d(plan.get("considered"))
+    others = ", ".join(f"{k} {v}" for k, v in sorted(seen.items(), key=lambda kv: kv[1]) if k != plan.get("source"))
+    via = (f" {plan['intake_elevation'] - plan['elevation']} level(s) up, down a shaft through a diagonal step"
+           if plan.get("shaft") and isinstance(plan.get("intake_elevation"), int) and isinstance(plan.get("elevation"), int)
+           else "")
+    proposals.append(Proposal("cistern", dict(step),
                               f"{why}: dig a 5x5 cistern at elevation {plan.get('elevation')}, filled from the "
-                              f"{plan.get('source')} through a {plan.get('tunnel')}-tile tunnel and a floodgate, "
-                              "a well over it", 5))
+                              f"{plan.get('source')}{via} through a {plan.get('tunnel')}-tile tunnel and a floodgate, "
+                              "a well over it"
+                              + (f" (chosen over: {others}; lower is better)" if others else "")
+                              + (f" ({plan['source_why']})" if plan.get("source_why") else ""), 5))
 
 
 def _deep_notes(s: dict, notes: list) -> None:

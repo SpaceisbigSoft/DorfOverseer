@@ -3297,7 +3297,7 @@ end
 -- The connected water on its level (up to `cap` tiles) is checked for water
 -- right above it and for river tiles. Returns ok, why.
 function water_body_safe(x, y, z, cap)
-    cap = cap or 400
+    cap = cap or 3000
     local seen, queue, head = {[x .. ',' .. y] = true}, {{x, y}}, 1
     while head <= #queue do
         local c = queue[head]
@@ -3322,6 +3322,9 @@ function water_body_safe(x, y, z, cap)
             end
         end
     end
+    -- (review) too big to see all of: not known safe (a cavern lake may hold
+    -- water higher up beyond what was looked at)
+    if #queue >= cap then return false, 'that water is too big to check for water above it' end
     return true
 end
 
@@ -3398,73 +3401,227 @@ local function tunnel_to_water(c, z)
     return nil
 end
 
--- The plan (nothing is designated): {source, cistern = {x1, y1, x2, y2, z},
--- well, floodgate, plug, tunnel = n tiles, lever} or nil, why.
--- first, last: which of the busiest levels to look at (all CISTERN_LEVELS
--- by default; the bridge asks one level a call so no call freezes the game
--- long). The plan carries its `score` (lower is better) for comparing.
+-- --- the cistern, second design (0.104.145) ------------------------------------
+--
+-- The player, 31 Oct: the first cistern couldn't work and would have flooded
+-- the fort. Water in DF has PRESSURE: water falling onto full water
+-- teleports along full tiles to as high as one level under where it came
+-- from. The first design dug the cistern on its source's own level (z168)
+-- beside a pond that stands on z168-170: pressure could reach z169, the
+-- well's level. Its source tile had also dried to a bare ramp.
+--
+-- Two ways in, both pressure-safe:
+--   level  the source on the cistern's own level, its water with nothing above
+--          it anywhere in the body (it can never stand higher than the room)
+--   shaft  the source up to CISTERN_MAX_RISE levels higher (a deep pond or a
+--          cavern lake): a tunnel on the source's level to a shaft of stairs
+--          straight down through solid rock to a tile DIAGONAL to the room's
+--          corner. Pressure never passes a diagonal, so past it the water
+--          only spreads level: it fills the room and can't climb the well's
+--          stair. The tunnel and shaft (under pressure) are rock all round,
+--          above and below.
+-- The AI picks among the sources itself (surface, underground pool, cavern
+-- lake), by distance, size, and what the brain tells it (`prefs`: the
+-- climate freezes, a danger in the caverns).
+CISTERN_V = 2
+CISTERN_MAX_RISE = 8
+CISTERN_CAVERN_PENALTY = 40
+CISTERN_FREEZE_PENALTY = 60
+CISTERN_DANGER_PENALTY = 1000
+CISTERN_STAGNANT_PENALTY = 20
+CISTERN_PREFS_KEY = 'ai-overseer/cistern_prefs'
+
+function cistern_prefs(set)
+    if type(set) == 'table' then
+        pcall(dfhack.persistent.saveSiteData, CISTERN_PREFS_KEY,
+              {freezes = set.freezes == true, cavern_danger = set.cavern_danger == true})
+    end
+    local ok, d = pcall(dfhack.persistent.getSiteData, CISTERN_PREFS_KEY, {})
+    return ok and type(d) == 'table' and d or {}
+end
+
+-- every one of the 8 neighbours solid rock (or allowed)
+local function ring_solid(x, y, z, allowed)
+    for _, e in ipairs(DIR8) do
+        local nx, ny = x + e[1], y + e[2]
+        if not (allowed and allowed(nx, ny)) and not solid_rock(tile_info(nx, ny, z)) then return false end
+    end
+    return true
+end
+
+-- A river or brook in the body (always under pressure: never a source).
+local function body_has_river(x, y, z, cap)
+    local seen, queue, head = {[x .. ',' .. y] = true}, {{x, y}}, 1
+    while head <= #queue and #queue < (cap or 400) do
+        local c = queue[head]
+        head = head + 1
+        local here = tile_info(c[1], c[2], z)
+        if here and (here.material == 'RIVER' or here.material == 'BROOK') then return true end
+        for _, d in ipairs(DIR8) do
+            local nx, ny = c[1] + d[1], c[2] + d[2]
+            local k = nx .. ',' .. ny
+            if not seen[k] then
+                seen[k] = true
+                local t = tile_info(nx, ny, z)
+                if t and t.liquid and not t.magma then table.insert(queue, {nx, ny}) end
+            end
+        end
+    end
+    return false
+end
+
+-- A tile over water that holds it down: a wall, or a floor (a dug tile's
+-- floor belongs to it, so water can't rise through it). Not open space, a
+-- stair, a ramp or a channel.
+local function capped(t)
+    return t ~= nil and (t.shape == 'WALL' or t.shape == 'FLOOR') and not t.liquid
+end
+
+-- the tunnel under pressure: capped over every tile but the plug
+local function tunnel_closed(path, z)
+    for i = 1, #path - 1 do
+        if not capped(tile_info(path[i].x, path[i].y, z + 1)) then return false end
+    end
+    return true
+end
+
+local function source_kind(w)
+    return w.feature and 'cavern lake' or (w.outside and 'surface pool' or 'underground pool')
+end
+
+-- The score's extra for a source (lower is better) and why, in words.
+local function source_cost(w, extent, prefs)
+    local kind = source_kind(w)
+    local cost, why = 0, {}
+    if kind == 'surface pool' then
+        cost = cost + CISTERN_SURFACE_PENALTY
+        if prefs.freezes then cost = cost + CISTERN_FREEZE_PENALTY; table.insert(why, 'it freezes in winter') end
+    elseif kind == 'cavern lake' then
+        cost = cost + CISTERN_CAVERN_PENALTY
+        if prefs.cavern_danger then cost = cost + CISTERN_DANGER_PENALTY; table.insert(why, 'a danger in the caverns') end
+    end
+    if w.stagnant then cost = cost + CISTERN_STAGNANT_PENALTY; table.insert(why, 'stagnant') end
+    cost = cost - math.min(30, extent // 20)
+    return cost, kind, why
+end
+
+-- The shaft way in, from one of the room's four outer corners.
+local function shaft_to_water(c, z, water_z, deadline)
+    local corners = {{c.x1 - 1, c.y1 - 1, c.x1, c.y1}, {c.x2 + 1, c.y1 - 1, c.x2, c.y1},
+                     {c.x1 - 1, c.y2 + 1, c.x1, c.y2}, {c.x2 + 1, c.y2 + 1, c.x2, c.y2}}
+    local found = {}
+    for _, k in ipairs(corners) do
+        local bx, by, rx, ry = k[1], k[2], k[3], k[4]
+        local function is_corner(nx, ny) return nx == rx and ny == ry end
+        if solid_rock(tile_info(bx, by, z)) and ring_solid(bx, by, z, is_corner) then
+            for rise = 1, CISTERN_MAX_RISE do
+                if deadline and os.clock() > deadline then break end
+                local zs = z + rise
+                if not solid_rock(tile_info(bx, by, zs)) or not ring_solid(bx, by, zs) then break end
+                if water_z[zs] and capped(tile_info(bx, by, zs + 1)) then
+                    local tun = tunnel_to_water({x1 = bx, y1 = by, x2 = bx, y2 = by}, zs)
+                    if tun and tunnel_closed(tun.path, zs) then
+                        table.insert(found, {tun = tun, zs = zs, shaft = {x = bx, y = by}, corner = {x = rx, y = ry},
+                                             rise = rise})
+                    end
+                end
+            end
+        end
+    end
+    return found
+end
+
+-- The plan (nothing is designated): {v, source, cistern = {x1, y1, x2, y2, z},
+-- well, floodgate, plug, tunnel = n tiles, tunnel_path, intake_z, shaft?, lever}
+-- or nil, why. first, last: which of the busiest levels to look at (the
+-- bridge asks one level a call). The plan carries its `score` (lower is
+-- better) and `considered` (the best score of each kind of source).
 function plan_cistern(first, last)
     local area = fort_scan_area(CISTERN_RADIUS)
     if not area then return nil, 'no citizens' end
+    local prefs = cistern_prefs()
     local deadline = os.clock() + CISTERN_SECONDS
     local best, best_score, why = nil, nil, nil
+    local considered = {}
     for i = first or 1, math.min(last or CISTERN_LEVELS, #area.levels) do
         local zw = area.levels[i].z
         local z = zw - 1
-        -- still water on the level under this one, near the fort?
-        local any = false
-        for y = area.y1, area.y2, 2 do
-            for x = area.x1, area.x2, 2 do
-                if still_water(tile_info(x, y, z)) then any = true break end
+        -- the levels with still water near the fort, from the cistern's up
+        local water_z, any = {}, false
+        for zz = z, z + CISTERN_MAX_RISE do
+            for y = area.y1, area.y2, 2 do
+                for x = area.x1, area.x2, 2 do
+                    if still_water(tile_info(x, y, zz)) then water_z[zz] = true break end
+                end
+                if water_z[zz] then any = true break end
             end
-            if any then break end
         end
         if any then
-            for y = area.y1 + 3, area.y2 - 3 do
+            for y = area.y1 + 4, area.y2 - 4 do
                 if os.clock() > deadline then break end
-                for x = area.x1 + 3, area.x2 - 3 do
-                    -- (0.100, review) the time limit in the row too: each floor
-                    -- tile can start a tunnel search of its own
+                for x = area.x1 + 4, area.x2 - 4 do
                     if os.clock() > deadline then break end
-                    -- a fort floor for the well, with a solid 7x7 of rock under it
+                    -- a fort floor for the well, a solid 7x7 of rock under it, and
+                    -- nothing over the room the water could climb into (a floor or a wall)
                     local f = tile_info(x, y, zw)
                     if f and f.shape == 'FLOOR' and not f.outside and not f.building and not f.liquid
                             and area.groups[walk_group(x, y, zw)] and not building_at(x, y, zw) then
-                        local solid = true
+                        local ok = true
                         for dy = -CISTERN_HALF - 1, CISTERN_HALF + 1 do
                             for dx = -CISTERN_HALF - 1, CISTERN_HALF + 1 do
-                                if not solid_rock(tile_info(x + dx, y + dy, z)) then solid = false break end
+                                if not solid_rock(tile_info(x + dx, y + dy, z)) then ok = false break end
+                                if math.abs(dx) <= CISTERN_HALF and math.abs(dy) <= CISTERN_HALF then
+                                    if not capped(tile_info(x + dx, y + dy, zw)) then ok = false break end
+                                end
                             end
-                            if not solid then break end
+                            if not ok then break end
                         end
-                        if solid then
+                        if ok then
                             local c = {x1 = x - CISTERN_HALF, y1 = y - CISTERN_HALF,
                                        x2 = x + CISTERN_HALF, y2 = y + CISTERN_HALF, z = z}
-                            local tun = tunnel_to_water(c, z)
-                            if not tun then
+                            local options = {}
+                            -- level: the source on the room's level, nothing over its water
+                            if water_z[z] then
+                                local tun = tunnel_to_water(c, z)
+                                if tun and water_body_safe(tun.water.x, tun.water.y, z) then
+                                    table.insert(options, {tun = tun, zs = z, rise = 0})
+                                elseif tun then
+                                    local _, unsafe = water_body_safe(tun.water.x, tun.water.y, z)
+                                    why = why or unsafe
+                                end
+                            end
+                            -- shaft: the source higher up, through a diagonal
+                            for _, o in ipairs(shaft_to_water(c, z, water_z, deadline)) do table.insert(options, o) end
+                            if #options == 0 then
                                 why = why or 'no tunnel through solid rock from a cistern site to still water'
-                            elseif water_extent(tun.water.x, tun.water.y, z, CISTERN_MIN_WATER) < CISTERN_MIN_WATER then
-                                why = 'the still water reachable is only a puddle'
-                            elseif (tile_info(tun.water.x, tun.water.y, z) or {}).outside
-                                    and water_extent(tun.water.x, tun.water.y, z, CISTERN_MIN_SURFACE_WATER)
-                                        < CISTERN_MIN_SURFACE_WATER then
-                                why = 'the surface water reachable is too small (it dries up and freezes)'
-                            elseif not water_body_safe(tun.water.x, tun.water.y, z) then
-                                local _, unsafe = water_body_safe(tun.water.x, tun.water.y, z)
-                                why = unsafe
-                            else
-                                local score = #tun.path * 3 + math.abs(x - area.cx) + math.abs(y - area.cy) + (i - 1) * 20
-                                    + ((tile_info(tun.water.x, tun.water.y, z) or {}).outside and CISTERN_SURFACE_PENALTY or 0)
-                                if not best_score or score < best_score then
-                                    local w = tile_info(tun.water.x, tun.water.y, z)
-                                    best_score = score
-                                    best = {score = score, cistern = c, well = {x = x, y = y, z = zw},
-                                            floodgate = tun.path[1], plug = tun.path[#tun.path],
-                                            tunnel = #tun.path, tunnel_path = tun.path, water = tun.water,
-                                            source = w.feature and 'cavern lake' or (w.outside and 'surface pool'
-                                                or 'underground pool'),
-                                            stagnant = w.stagnant or nil,
-                                            elevation = ez(z)}
+                            end
+                            for _, o in ipairs(options) do
+                                local tun, zs = o.tun, o.zs
+                                local w = tile_info(tun.water.x, tun.water.y, zs)
+                                local ext = water_extent(tun.water.x, tun.water.y, zs, 600)
+                                if not w then
+                                    -- (gone)
+                                elseif ext < CISTERN_MIN_WATER then
+                                    why = 'the still water reachable is only a puddle'
+                                elseif w.outside and ext < CISTERN_MIN_SURFACE_WATER then
+                                    why = 'the surface water reachable is too small (it dries up and freezes)'
+                                elseif body_has_river(tun.water.x, tun.water.y, zs) then
+                                    why = 'that water joins a river or brook (it can be under pressure)'
+                                else
+                                    local cost, kind, whys = source_cost(w, ext, prefs)
+                                    local score = #tun.path * 3 + o.rise * 4 + math.abs(x - area.cx) + math.abs(y - area.cy)
+                                        + (i - 1) * 20 + cost
+                                    if not considered[kind] or score < considered[kind] then considered[kind] = score end
+                                    if not best_score or score < best_score then
+                                        best_score = score
+                                        best = {v = CISTERN_V, score = score, cistern = c, well = {x = x, y = y, z = zw},
+                                                floodgate = tun.path[1], plug = tun.path[#tun.path],
+                                                tunnel = #tun.path, tunnel_path = tun.path, water = tun.water,
+                                                intake_z = zs, shaft = o.shaft, corner = o.corner, rise = o.rise,
+                                                source = kind, source_why = #whys > 0 and table.concat(whys, ', ') or nil,
+                                                stagnant = w.stagnant or nil, extent = ext,
+                                                elevation = ez(z), intake_elevation = ez(zs)}
+                                    end
                                 end
                             end
                         end
@@ -3474,6 +3631,7 @@ function plan_cistern(first, last)
         end
     end
     if best then
+        best.considered = considered
         -- a lever on the fort floor beside the well
         for _, d in ipairs(DIR8) do
             local lx, ly = best.well.x + d[1] * 2, best.well.y + d[2] * 2
@@ -3485,7 +3643,95 @@ function plan_cistern(first, last)
         end
         return best
     end
-    return nil, why or 'no still, fresh water on the level under a fort level'
+    return nil, why or 'no still, fresh water near the fort within reach of a cistern under a fort level'
+end
+
+-- (0.104.145) Is the cistern still closed where the water goes? The room's
+-- ring (rock but the well's stair and the corner or tunnel), rock under the
+-- room, a floor or wall over it but the well; the tunnel and shaft rock all
+-- round. Returns ok, where (in words) when not.
+function cistern_sealed(p, stage)
+    local d_stage_hole = stage == 'hole' or stage == 'well' or stage == 'done'
+    local c, z = p.cistern, p.cistern.z
+    local zi = p.intake_z or z
+    local open_ = {}
+    local function mark(x, y, zz) open_[x .. ',' .. y .. ',' .. zz] = true end
+    for yy = c.y1, c.y2 do for xx = c.x1, c.x2 do mark(xx, yy, z) end end
+    for _, t in ipairs(p.tunnel_path or {}) do mark(t.x, t.y, zi) end
+    if p.shaft then
+        for zz = z, zi do mark(p.shaft.x, p.shaft.y, zz) end
+    end
+    local function closed(x, y, zz)
+        if open_[x .. ',' .. y .. ',' .. zz] then return true end
+        local t = tile_info(x, y, zz)
+        -- (review) any wall holds water, a built one too (the player's repair)
+        return (t ~= nil and t.shape == 'WALL' and not t.liquid)
+            or (t and t.liquid and zz == zi and x == p.water.x and y == p.water.y)
+    end
+    local function where(x, y, zz) return ('x%d y%d elevation %d'):format(x, y, ez(zz)) end
+    -- the room: its ring and what lies under and over it
+    for yy = c.y1 - 1, c.y2 + 1 do
+        for xx = c.x1 - 1, c.x2 + 1 do
+            local inside = xx >= c.x1 and xx <= c.x2 and yy >= c.y1 and yy <= c.y2
+            if not inside and not closed(xx, yy, z) then return false, 'the cistern\'s wall is open at ' .. where(xx, yy, z) end
+            if inside then
+                local here = tile_info(xx, yy, z)
+                if here and (here.shape == 'EMPTY' or here.shape == 'RAMP_TOP' or here.shape == 'STAIR_DOWN'
+                        or here.shape == 'STAIR_UPDOWN' or here.shape == 'RAMP')
+                        and not (xx == p.well.x and yy == p.well.y and d_stage_hole) then
+                    return false, 'the cistern\'s floor is open at ' .. where(xx, yy, z)
+                end
+                if not (xx == p.well.x and yy == p.well.y) and not capped(tile_info(xx, yy, z + 1)) then
+                    return false, 'the cistern\'s roof is open at ' .. where(xx, yy, z + 1)
+                end
+            end
+        end
+    end
+    -- the tunnel (under pressure): rock all round, over and under; the plug's water side excepted
+    local path = p.tunnel_path or {}
+    for i = 1, #path - 1 do
+        local q = path[i]
+        for _, e in ipairs(DIR8) do
+            local nx, ny = q.x + e[1], q.y + e[2]
+            local zz = zi
+            local inroom = zi == z and nx >= c.x1 and nx <= c.x2 and ny >= c.y1 and ny <= c.y2
+            if not inroom and not closed(nx, ny, zz) then
+                -- (water beside the plug's neighbours is the source itself)
+                local t = tile_info(nx, ny, zz)
+                if not (t and t.liquid and math.abs(nx - p.plug.x) <= 1 and math.abs(ny - p.plug.y) <= 1) then
+                    return false, 'the cistern\'s tunnel is open at ' .. where(nx, ny, zz)
+                end
+            end
+        end
+        if p.shaft and not capped(tile_info(q.x, q.y, zi + 1)) then
+            return false, 'the tunnel\'s roof is open at ' .. where(q.x, q.y, zi + 1)
+        end
+    end
+    -- the tunnel's own tiles: dug floors (a channel or a stair would let it down)
+    for i = 1, #path - 1 do
+        local q = tile_info(path[i].x, path[i].y, zi)
+        if q and (q.shape == 'EMPTY' or q.shape == 'RAMP_TOP' or q.shape == 'STAIR_DOWN' or q.shape == 'STAIR_UPDOWN') then
+            return false, 'the cistern\'s tunnel floor is open at ' .. where(path[i].x, path[i].y, zi)
+        end
+    end
+    -- the shaft: rock all round on every level, the corner diagonal at the bottom
+    if p.shaft then
+        local foot = tile_info(p.shaft.x, p.shaft.y, z)
+        if foot and foot.shape ~= 'STAIR_UP' and foot.shape ~= 'WALL' then
+            return false, 'the shaft\'s foot is open below at ' .. where(p.shaft.x, p.shaft.y, z)
+        end
+        for zz = z, zi do
+            for _, e in ipairs(DIR8) do
+                local nx, ny = p.shaft.x + e[1], p.shaft.y + e[2]
+                local ok_ = closed(nx, ny, zz) or (zz == z and p.corner and nx == p.corner.x and ny == p.corner.y)
+                if not ok_ then return false, 'the cistern\'s shaft is open at ' .. where(nx, ny, zz) end
+            end
+        end
+        if not capped(tile_info(p.shaft.x, p.shaft.y, zi + 1)) then
+            return false, 'the shaft\'s top is open at ' .. where(p.shaft.x, p.shaft.y, zi + 1)
+        end
+    end
+    return true
 end
 
 -- --- building the cistern: one step a call ------------------------------------------
@@ -3578,7 +3824,7 @@ end
 -- the source (shape and depth, or ice): Teacheroar's cistern sat at 0/7 for
 -- hours with nothing to say why.
 function cistern_path(p)
-    local z = p.cistern.z
+    local z = p.intake_z or p.cistern.z
     local function desc(pt)
         local t = pt and tile_info(pt.x, pt.y, z)
         if not t then return '?' end
@@ -3603,13 +3849,25 @@ function cistern_status()
     if not d then return nil end
     local p = d.plan
     local t = tile_info(p.well.x, p.well.y, p.cistern.z)
-    local gate = building_info(p.floodgate.x, p.floodgate.y, p.cistern.z, 'Floodgate')
+    local gate = building_info(p.floodgate.x, p.floodgate.y, p.intake_z or p.cistern.z, 'Floodgate')
     local out = {stage = d.stage, depth = t and t.liquid and t.depth or 0, source = p.source,
             gate = gate and (gate.built and (gate.closed and 'shut' or 'open') or 'planned') or nil,
-            elevation = ez(p.cistern.z), x = p.well.x, y = p.well.y}
+            elevation = ez(p.cistern.z), x = p.well.x, y = p.well.y,
+            -- (0.104.145) the design, where the water comes from, a leak seen
+            v = p.v or 1, intake_elevation = p.intake_z and ez(p.intake_z) or nil, shaft = p.shaft and true or nil,
+            source_why = p.source_why, leak = d.leak, unsealed = d.unsealed}
     if d.stage == 'filling' or d.stage == 'plug' then
         local okp, path = pcall(cistern_path, p)
         out.path = okp and path or nil
+    end
+    -- (0.104.145, review) every report while water can come in: still closed?
+    -- (a dig beside the shaft or tunnel later floods that level)
+    if gate and gate.built and not gate.closed then
+        local oks, sealed, where = pcall(cistern_sealed, p, d.stage)
+        if oks then
+            out.sealed_now = sealed == true
+            out.unsealed = (sealed ~= true) and where or d.unsealed
+        end
     end
     -- (0.92.1) while its parts wait: the lever's state, and the floodgates and
     -- mechanisms there are (free, or taken by a job): the floodgate waited two
@@ -3656,12 +3914,12 @@ function cistern_status()
             end
             pcall(function()
                 if p.lever then out.lever_reach = reach(p.lever.x, p.lever.y, p.well.z) end
-                out.gate_reach = reach(p.floodgate.x, p.floodgate.y, p.cistern.z)
+                out.gate_reach = reach(p.floodgate.x, p.floodgate.y, p.intake_z or p.cistern.z)
             end)
             out.link_why = d.link_why
             -- (0.104.143) with the elevation the game's screen shows (e)
             out.lever_at = p.lever and {x = p.lever.x, y = p.lever.y, z = p.well.z, e = ez(p.well.z)} or nil
-            out.gate_at = {x = p.floodgate.x, y = p.floodgate.y, z = p.cistern.z, e = ez(p.cistern.z)}
+            out.gate_at = {x = p.floodgate.x, y = p.floodgate.y, z = p.intake_z or p.cistern.z, e = ez(p.intake_z or p.cistern.z)}
             pcall(function()
                 for _, lid in ipairs(reqscript('ai-gates').lever_links()[d.gate_id] or {}) do
                     if lid == d.lever_id then out.linked = true end
@@ -3695,7 +3953,7 @@ function cistern_shut(dry_run)
     local d = cistern_data()
     if not d or not d.lever_id then return {ok = false, rejected = true, error = 'no cistern lever linked yet'} end
     local p = d.plan
-    local gate = building_info(p.floodgate.x, p.floodgate.y, p.cistern.z, 'Floodgate')
+    local gate = building_info(p.floodgate.x, p.floodgate.y, p.intake_z or p.cistern.z, 'Floodgate')
     if not gate or gate.closed then return {ok = false, rejected = true, error = 'the floodgate is already shut'} end
     if dry_run then return {ok = true, dry_run = true} end
     -- (0.100, review) at once: a queued pull waits for a dwarf to wade to
@@ -3709,6 +3967,13 @@ end
 function cistern_inside(p, z)
     local out = room_tiles(p.cistern)
     for i = 1, #p.tunnel_path - 1 do table.insert(out, {x = p.tunnel_path[i].x, y = p.tunnel_path[i].y}) end
+    return out
+end
+
+-- (0.104.145) The tunnel's tiles (all but the plug), on the source's level.
+function cistern_way(p)
+    local out = {}
+    for i = 1, #(p.tunnel_path or {}) - 1 do table.insert(out, {x = p.tunnel_path[i].x, y = p.tunnel_path[i].y}) end
     return out
 end
 
@@ -3746,12 +4011,36 @@ end
 -- (0.104.144) THE PLAYER, 31 Oct 20:51: the cistern as built doesn't work,
 -- and working it would flood the fort. Until a new design: its floodgate is
 -- never opened by the AI (it may still be shut), and no new cistern is begun.
-CISTERN_HOLD = true
+CISTERN_HOLD = false          -- (0.104.145) the second design: released
 CISTERN_HOLD_WHY = 'the cistern is on hold (the player: as built it would flood the fort): the floodgate stays shut'
 
-function cistern_step(dry_run)
+function cistern_step(dry_run, prefs)
     OFFSET = elevation_offset()
+    if prefs then cistern_prefs(prefs) end
     local d = cistern_data()
+    -- (0.104.145) a cistern of the first design is retired: its floodgate
+    -- shut (it could flood the fort) and the next one planned afresh
+    if d and (d.plan.v or 1) < CISTERN_V then
+        local p0 = d.plan
+        local g = building_info(p0.floodgate.x, p0.floodgate.y, p0.cistern.z, 'Floodgate')
+        if g and g.built and not g.closed and not d.lever_id then
+            return {ok = false, rejected = true, needs_player = true,
+                    error = 'the old cistern\'s floodgate is open and no lever is linked to it: shut it by hand'}
+        end
+        if g and g.built and not g.closed and d.lever_id then
+            if dry_run then return {ok = true, dry_run = true, retire = true} end
+            if not lever_pull_pending(d.lever_id) then pull(d.lever_id, true) end
+            return {ok = true, stage = d.stage, shut = true,
+                    error = 'the old cistern\'s floodgate is being shut before it is retired (its design could flood the fort)'}
+        end
+        if dry_run then return {ok = true, dry_run = true, retire = true} end
+        local old = dfhack.persistent.getSiteData(CISTERN_KEY .. '/retired', {}) or {}
+        table.insert(old, {cistern = p0.cistern, source = p0.source, why = 'the first design (pressure could flood the fort)'})
+        pcall(dfhack.persistent.saveSiteData, CISTERN_KEY .. '/retired', old)
+        pcall(dfhack.persistent.saveSiteData, CISTERN_KEY, {})
+        return {ok = true, stage = 'retired', retired = true,
+                error = 'the old cistern (first design) retired, its floodgate shut: a new one is planned next'}
+    end
     if not d and CISTERN_HOLD then
         return {ok = false, rejected = true, held = true, error = 'no new cistern while the design is on hold'}
     end
@@ -3763,6 +4052,7 @@ function cistern_step(dry_run)
     end
     local p, z = d.plan, d.plan.cistern.z
     local zw, wx, wy = p.well.z, p.well.x, p.well.y
+    local zi = p.intake_z or z                 -- (0.104.145) the source's level: the tunnel, floodgate and plug
     local function wait(why) return {ok = false, rejected = true, waiting = true, stage = d.stage, error = why} end
     local function advance(stage, extra)
         if not dry_run then d.stage = stage; save_cistern(d) end
@@ -3774,7 +4064,7 @@ function cistern_step(dry_run)
     -- (0.104.144) on hold: past the link (opening, the plug, filling, the
     -- well) nothing more is done; an open floodgate is shut
     if CISTERN_HOLD and d.stage ~= 'dig' and d.stage ~= 'building' and d.stage ~= 'linking' then
-        local g = building_info(p.floodgate.x, p.floodgate.y, z, 'Floodgate')
+        local g = building_info(p.floodgate.x, p.floodgate.y, zi, 'Floodgate')
         if not dry_run and g and g.built and not g.closed and d.lever_id and not lever_pull_pending(d.lever_id) then
             pull(d.lever_id)
             return {ok = true, held = true, shut = true, error = CISTERN_HOLD_WHY}
@@ -3793,8 +4083,18 @@ function cistern_step(dry_run)
         end
         if not designate({{x = wx, y = wy, text = 'j'}}, zw, 'dig')
                 or not designate({{x = wx, y = wy, text = 'u'}}, z, 'dig')
-                or not designate(room, z, 'dig') or (#tunnel > 0 and not designate(tunnel, z, 'dig')) then
+                or not designate(room, z, 'dig') or (#tunnel > 0 and not designate(tunnel, zi, 'dig')) then
             return {ok = false, error = 'the game would not designate the cistern\'s digging'}
+        end
+        -- (0.104.145) the shaft: a down stair on the source's level, up/down
+        -- stairs through the rock, an up stair at the bottom (diagonal to the room)
+        if p.shaft then
+            for zz = z, zi do
+                local ch = zz == zi and 'j' or (zz == z and 'u' or 'i')
+                if not designate({{x = p.shaft.x, y = p.shaft.y, text = ch}}, zz, 'dig') then
+                    return {ok = false, error = 'the game would not designate the cistern\'s shaft'}
+                end
+            end
         end
         return advance('digging', {x = wx, y = wy, elevation = ez(z), tunnel = p.tunnel})
     end
@@ -3805,8 +4105,14 @@ function cistern_step(dry_run)
             if t and t.shape == 'WALL' then left = left + 1 end
         end
         for i = 1, #p.tunnel_path - 1 do
-            local t = tile_info(p.tunnel_path[i].x, p.tunnel_path[i].y, z)
+            local t = tile_info(p.tunnel_path[i].x, p.tunnel_path[i].y, zi)
             if t and t.shape == 'WALL' then left = left + 1 end
+        end
+        if p.shaft then
+            for zz = z, zi do
+                local t = tile_info(p.shaft.x, p.shaft.y, zz)
+                if t and t.shape == 'WALL' then left = left + 1 end
+            end
         end
         local top = tile_info(wx, wy, zw)
         if not top or top.shape ~= 'STAIR_DOWN' and top.shape ~= 'STAIR_UPDOWN' then left = left + 1 end
@@ -3814,13 +4120,13 @@ function cistern_step(dry_run)
         if dry_run then return {ok = true, dry_run = true, stage = 'build'} end
         local fg, lv = p.floodgate, p.lever
         if not lv then return {ok = false, error = 'no spot for the lever beside the well'} end
-        if not designate({{x = fg.x, y = fg.y, text = 'x'}}, z, 'build')
+        if not designate({{x = fg.x, y = fg.y, text = 'x'}}, zi, 'build')
                 or not designate({{x = lv.x, y = lv.y, text = 'Tl'}}, zw, 'build') then
             return {ok = false, error = 'the game would not place the floodgate or the lever'}
         end
         return advance('building')
     end
-    local gate = building_info(p.floodgate.x, p.floodgate.y, z, 'Floodgate')
+    local gate = building_info(p.floodgate.x, p.floodgate.y, zi, 'Floodgate')
     local lever = p.lever and building_info(p.lever.x, p.lever.y, zw, 'Trap')
     if d.stage == 'building' then
         if not gate or not lever then return {ok = false, error = 'the floodgate or the lever is gone'} end
@@ -3852,7 +4158,7 @@ function cistern_step(dry_run)
                 return wait('the lever or floodgate was replaced: linked again')
             end
             if (not lever and p.lever and not designate({{x = p.lever.x, y = p.lever.y, text = 'Tl'}}, zw, 'build'))
-                    or (not gate and not designate({{x = p.floodgate.x, y = p.floodgate.y, text = 'x'}}, z, 'build')) then
+                    or (not gate and not designate({{x = p.floodgate.x, y = p.floodgate.y, text = 'x'}}, zi, 'build')) then
                 return {ok = false, error = 'the lever or floodgate is gone and the game would not place it again'}
             end
             d.relinks = 0
@@ -3894,35 +4200,121 @@ function cistern_step(dry_run)
             return wait(('the lever link was lost: asked for again (%d)'):format(d.relinks))
         end
         if CISTERN_HOLD then return {ok = false, rejected = true, held = true, error = CISTERN_HOLD_WHY} end
-        if dry_run then return {ok = true, dry_run = true, stage = 'open'} end
-        if gate and gate.closed then
-            local ok, out = pull(d.lever_id)
-            if not ok then return {ok = false, error = 'lever pull failed: ' .. out} end
+        -- (0.104.145) closed all round, and its source still there, before any water
+        local sealed, where = cistern_sealed(p, d.stage)
+        if not dry_run and d.unsealed ~= (where or nil) then d.unsealed = where; save_cistern(d) end
+        if not sealed then
+            return {ok = false, rejected = true, needs_player = true, unsealed = where,
+                    error = 'the cistern is not closed where the water goes (' .. where .. '): it stays shut'}
         end
+        if not still_water(tile_info(p.water.x, p.water.y, zi)) then
+            return {ok = false, rejected = true, error = 'the cistern\'s source is gone (no still water beside the plug)'}
+        end
+        if dry_run then return {ok = true, dry_run = true, stage = 'open'} end
+        -- (0.104.145, review) the gate stays shut: the plug is dug first with
+        -- nobody inside (DFHack dig-now), then the gate opened at once. A miner
+        -- digging it by hand had to flee back down a shaft filling faster than
+        -- the room, through water a dwarf won't wade
         return advance('opening')
     end
     if d.stage == 'opening' then
-        if gate and gate.closed then return wait('a dwarf is on the way to pull the lever (open the floodgate)') end
+        if gate and gate.closed and d.plug_by_hand then
+            return wait('a dwarf is on the way to pull the lever (open the floodgate)')
+        end
         -- (0.104.0, map safety) the water comes in when the plug is dug: no one
         -- else may be in the cistern or its tunnel then. The plug waits until
         -- both are empty, and what lies there is forbidden (no hauler goes in
         -- for it); only the miner who digs the plug goes in, and out through
         -- the open floodgate
         local inside = cistern_inside(p, z)
-        local n = units_on_tiles(inside, z)
+        local n = zi == z and units_on_tiles(inside, z)
+            or (units_on_tiles(room_tiles(p.cistern), z) + units_on_tiles(cistern_way(p), zi))
+        if p.shaft then
+            for zz = z, zi do n = n + units_on_tiles({{x = p.shaft.x, y = p.shaft.y}}, zz) end
+        end
         if n > 0 then
             return wait(('%d creature(s) in the cistern or its tunnel: the plug waits until it is empty'):format(n))
         end
+        local sealed, where = cistern_sealed(p, d.stage)
+        if not dry_run and d.unsealed ~= (where or nil) then d.unsealed = where; save_cistern(d) end
+        if not sealed then
+            return {ok = false, rejected = true, needs_player = true, unsealed = where,
+                    error = 'the cistern is not closed where the water goes (' .. where .. '): the plug waits'}
+        end
         if dry_run then return {ok = true, dry_run = true, stage = 'plug'} end
-        forbid_items_on(inside, z)
-        if not designate({{x = p.plug.x, y = p.plug.y, text = 'd'}}, z, 'dig') then
+        if zi == z then
+            forbid_items_on(inside, z)
+        else
+            forbid_items_on(room_tiles(p.cistern), z)
+            forbid_items_on(cistern_way(p), zi)
+        end
+        -- dig-now: the plug gone at once, the gate still shut; then the gate opened
+        if not d.plug_by_hand and gate and gate.closed then
+            designate({{x = p.plug.x, y = p.plug.y, text = 'd'}}, zi, 'dig')
+            local pos = ('%d,%d,%d'):format(p.plug.x, p.plug.y, zi)
+            pcall(dfhack.run_command_silent, 'dig-now', pos, pos)
+            local pt = tile_info(p.plug.x, p.plug.y, zi)
+            if pt and pt.shape ~= 'WALL' then
+                local ok, out = pull(d.lever_id, true)
+                if not ok then return {ok = false, error = 'lever pull failed: ' .. tostring(out)} end
+                return advance('filling', {plug = 'dug at once', opened = true})
+            end
+            -- no dig-now here: the old way (the gate opened, a miner digs it),
+            -- never down a shaft (the miner would drown fleeing it)
+            if p.shaft then
+                return {ok = false, rejected = true, needs_player = true,
+                        error = 'DFHack\'s dig-now didn\'t dig the plug, and a miner digging it would drown in the shaft'}
+            end
+            d.plug_by_hand = true
+            save_cistern(d)
+            local ok, out = pull(d.lever_id)
+            if not ok then return {ok = false, error = 'lever pull failed: ' .. tostring(out)} end
+            return wait('dig-now isn\'t here: the gate opened, a miner digs the plug')
+        end
+        if not designate({{x = p.plug.x, y = p.plug.y, text = 'd'}}, zi, 'dig') then
             return {ok = false, error = 'the game would not designate the plug'}
         end
         return advance('plug')
     end
     local st = cistern_status()
+    -- (0.104.145) the leak guard: water over the cistern (on the well's level
+    -- over the room or round it) means it is getting out: the floodgate is
+    -- shut at once and the player told
+    if d.stage ~= 'dig' and d.stage ~= 'digging' and d.stage ~= 'building' and d.stage ~= 'linking' then
+        local leak
+        -- (review) the shaft's own column and the tunnel hold water by design
+        local own = {}
+        if p.shaft then own[p.shaft.x .. ',' .. p.shaft.y] = true end
+        if zi == zw then for _, q in ipairs(p.tunnel_path or {}) do own[q.x .. ',' .. q.y] = true end end
+        for yy = p.cistern.y1 - 1, p.cistern.y2 + 1 do
+            for xx = p.cistern.x1 - 1, p.cistern.x2 + 1 do
+                local tt = tile_info(xx, yy, zw)
+                if tt and tt.liquid and not tt.magma and not own[xx .. ',' .. yy] then
+                    leak = leak or ('x%d y%d elevation %d'):format(xx, yy, ez(zw))
+                end
+            end
+        end
+        if not leak and d.leak and gate and gate.closed then
+            -- the water gone from over it and it is closed again: tried once
+            -- more (a second leak keeps it shut for good)
+            local ok_ = cistern_sealed(p, d.stage)
+            if ok_ == true and (d.leaks or 0) < 2 and not dry_run then d.leak = nil; save_cistern(d) end
+        end
+        if d.leak and not leak then
+            return {ok = false, rejected = true, needs_player = true, leak = d.leak,
+                    error = 'the cistern leaked at ' .. d.leak .. ': its floodgate stays shut'}
+        end
+        if leak then
+            if gate and gate.built and not gate.closed and d.lever_id and not dry_run then pull(d.lever_id, true) end
+            d.leak = leak
+            d.leaks = (d.leaks or 0) + 1
+            if not dry_run then save_cistern(d) end
+            return {ok = false, needs_player = true, leak = leak, shut = true,
+                    error = 'water over the cistern at ' .. leak .. ': its floodgate shut at once'}
+        end
+    end
     if d.stage == 'plug' then
-        local t = tile_info(p.plug.x, p.plug.y, z)
+        local t = tile_info(p.plug.x, p.plug.y, zi)
         if t and t.shape == 'WALL' then return wait('the plug is being dug (then the water comes in)') end
         return advance('filling')
     end
@@ -3966,7 +4358,7 @@ function cistern_step(dry_run)
             -- CISTERN_DRY_DAYS with no water there and none in the cistern, the
             -- floodgate is shut and the cistern retired; the next one is planned
             -- afresh (this room no longer counts as solid rock)
-            local src = tile_info(p.water.x, p.water.y, z)
+            local src = tile_info(p.water.x, p.water.y, zi)
             local dry = st.depth == 0 and not (src and src.liquid)
             local okn, now_t = pcall(function() return df.global.cur_year * 403200 + df.global.cur_year_tick end)
             now_t = okn and now_t or 0
@@ -3998,13 +4390,13 @@ function cistern_step(dry_run)
             for i = 1, #p.tunnel_path - 1 do table.insert(way, p.tunnel_path[i]) end
             table.insert(way, p.plug)
             for _, c in ipairs(way) do
-                local t = tile_info(c.x, c.y, z)
+                local t = tile_info(c.x, c.y, zi)
                 if t and t.shape == 'WALL' and t.material ~= 'FROZEN_LIQUID' and not t.designated then
                     blocked = blocked + 1
                     if t.material == 'TREE' or t.material == 'ROOT' then
-                        fell_tree(c.x, c.y, z)
+                        fell_tree(c.x, c.y, zi)
                     else
-                        designate({{x = c.x, y = c.y, text = 'd'}}, z, 'dig')
+                        designate({{x = c.x, y = c.y, text = 'd'}}, zi, 'dig')
                     end
                 end
             end
@@ -4050,6 +4442,12 @@ function cistern_step(dry_run)
     -- done: keep it topped up
     if gate and gate.built and d.lever_id then
         if gate.closed and st.depth < CISTERN_LOW and not CISTERN_HOLD then
+            local sealed, where = cistern_sealed(p, d.stage)
+            if not sealed then
+                if not dry_run then d.unsealed = where; save_cistern(d) end
+                return {ok = false, rejected = true, needs_player = true, unsealed = where,
+                        error = 'the cistern is not closed where the water goes (' .. where .. '): not refilled'}
+            end
             if dry_run then return {ok = true, dry_run = true, refill = true} end
             local ok, out, pending = pull(d.lever_id)
             return {ok = ok, stage = 'done', refill = true, depth = st.depth, pending = pending,
