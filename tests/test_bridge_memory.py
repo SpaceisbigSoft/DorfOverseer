@@ -1100,24 +1100,27 @@ def _():
     assert not M.act_convict(t({"max": 50})).ok                      # bounded
 
 
-@test("0.104.167: hospital_burrow is in the action table, bounded, and passes max, per and dry_run to the society script")
+@test("0.104.167: hospital_burrow is in the action table, bounded, and passes max, per, days, release and dry_run to the society script")
 def _():
     reset()
     M = H.module()
     LUA.execute("""local M, H = ...
       H.calls = {}
-      H.scripts = {['ai-society'] = {hospital_burrow_tick = function(n, per, dry, txt)
-          table.insert(H.calls, {n = n, per = per, dry = dry}); return {ok = true} end}}
+      H.scripts = {['ai-society'] = {hospital_burrow_tick = function(n, per, dry, txt, days, release)
+          table.insert(H.calls, {n = n, per = per, dry = dry, days = days, release = release}); return {ok = true} end}}
     """, M, H)
     assert LUA.eval("function(M) return M.ACTIONS.hospital_burrow == M.act_hospital_burrow end")(M)
     assert M.act_hospital_burrow(t({"max": 30, "per": 10, "dry_run": True})).ok
     c = H.calls[1]
     assert (c.n, c.per, c.dry) == (30, 10, True), (c.n, c.per, c.dry)
     assert M.act_hospital_burrow(t({})).ok and (H.calls[2].n, H.calls[2].per, H.calls[2].dry) == (30, 10, False)
-    for bad in ({"max": 0}, {"max": 61}, {"per": 0}, {"per": 31}, {"max": "lots"}, {"max": 2.5}):
+    assert (H.calls[2].days, H.calls[2].release) == (28, False)
+    assert M.act_hospital_burrow(t({"release": True, "days": 14})).ok and (H.calls[3].days, H.calls[3].release) == (14, True)
+    for bad in ({"max": 0}, {"max": 61}, {"per": 0}, {"per": 31}, {"max": "lots"}, {"max": 2.5}, {"days": 2},
+                {"days": 200}, {"release": "yes"}, {"release": 1}):
         r = M.act_hospital_burrow(t(bad))
         assert not r.ok and r.rejected, (bad, dict(r))
-    assert len(H.calls) == 2                                          # a refused call never reaches the game
+    assert len(H.calls) == 3                                          # a refused call never reaches the game
 
 
 if __name__ == "__main__":

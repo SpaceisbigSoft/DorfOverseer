@@ -8227,7 +8227,7 @@ def _():
                                 {"id": 3, "needs": [], "infected": True}]}
     s.setdefault("society", {})["hospital_burrow"] = {"members": 0, "outside": 5, "hospital_zones": 1}
     r = by_rule(plan(copy.deepcopy(s), Memory())[0], "hospital_burrow")
-    assert r and r[0].action == {"type": "hospital_burrow", "max": 30, "per": 10}, r
+    assert r and r[0].action == {"type": "hospital_burrow", "max": 30, "per": 10, "days": 28}, r
     assert r[0].reason.startswith("5 patient(s) walking outside the hospital") and r[0].priority == 4, r[0]
     # an older bridge (no status): the listed patients outside, with a treatment asked
     old = copy.deepcopy(s); del old["society"]["hospital_burrow"]
@@ -8248,6 +8248,44 @@ def _():
     import crisis
     assert "hospital_burrow" in crisis.RECOVERY_RULES
     assert planner.PLANNER_CONFIG["hospital_burrow_cooldown_ticks"] == 1200
+
+
+@test("hospital burrow (0.104.167, review): members never left behind: let out when the hospital is gone, the rule is off, the status fails; never held by the strategist; not gated on the health section")
+def _():
+    RELEASE = {"type": "hospital_burrow", "release": True}
+    s = fort()
+    s["health"] = {"hospital": [], "patients": []}
+    s.setdefault("society", {})["hospital_burrow"] = {"members": 4, "outside": 0, "hospital_zones": 0}
+    r = by_rule(plan(copy.deepcopy(s), Memory())[0], "hospital_burrow")
+    assert r and r[0].action == RELEASE and "no hospital zone" in r[0].reason, r          # the hospital gone
+    s["society"]["hospital_burrow"]["members"] = 0
+    assert not by_rule(plan(copy.deepcopy(s), Memory())[0], "hospital_burrow")           # nobody to let out
+    # switched off in the settings, with members: let out; with none: nothing
+    off = copy.deepcopy(s)
+    off["health"]["hospital"] = [{"id": 5, "zones": [{"id": 70}]}]
+    off["society"]["hospital_burrow"].update(members=3, outside=6, hospital_zones=1)
+    off.setdefault("settings", {})["hospital_burrow"] = False
+    r = by_rule(plan(copy.deepcopy(off), Memory())[0], "hospital_burrow")
+    assert r and r[0].action == RELEASE and "switched off" in r[0].reason, r
+    off["society"]["hospital_burrow"]["members"] = 0
+    assert not by_rule(plan(copy.deepcopy(off), Memory())[0], "hospital_burrow")
+    # the status unreadable (or the whole society section): let out
+    bad = copy.deepcopy(s); bad["society"]["hospital_burrow"] = {"error": "boom"}
+    r = by_rule(plan(bad, Memory())[0], "hospital_burrow")
+    assert r and r[0].action == RELEASE and "can't be read" in r[0].reason, r
+    bad = copy.deepcopy(s); bad["society"] = {"error": "boom"}
+    r = by_rule(plan(bad, Memory())[0], "hospital_burrow")
+    assert r and r[0].action == RELEASE, r
+    # the health section failed: the rule still runs on the burrow's own status
+    sick = copy.deepcopy(s); sick["health"] = {"error": "boom"}
+    sick["society"]["hospital_burrow"].update(members=2, outside=3, hospital_zones=1)
+    r = by_rule(plan(sick, Memory())[0], "hospital_burrow")
+    assert r and r[0].action.get("max") == 30, r
+    # the strategist's hold never keeps it back
+    m = Memory(); now = abs_tick(sick)
+    m.steer["hospital_burrow"] = {"mode": "hold", "until": now + 10 * TICKS_PER_DAY, "why": "x"}
+    allowed, held = select(plan(copy.deepcopy(sick), m)[0], sick, m)
+    assert any(p.rule == "hospital_burrow" for p in allowed), held
 
 
 

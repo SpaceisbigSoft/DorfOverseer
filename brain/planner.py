@@ -115,7 +115,9 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
     if can_use("health"):
         _guard(_health_rules, s, memory, cfg, notes)
         _guard(_doctor_patient_rule, s, proposals)
-        _guard(_hospital_burrow_rule, s, cfg, proposals, memory)     # (0.104.167) the wounded kept inside
+    # (0.104.167) the wounded kept inside; (review) outside the health gate:
+    # a failed health section must not freeze the members (the rule reads it if there)
+    _guard(_hospital_burrow_rule, s, cfg, proposals, memory)
 
     # 2. Drink ------------------------------------------------------------
     if can_use("stocks", "orders"):

@@ -350,21 +350,44 @@ def _hospital_burrow_rule(s: dict, cfg: dict, proposals: list, memory=None) -> N
     healed out; the planner asks while a hospital exists and patients walk
     outside it, or while the burrow has members (to let them out). Always
     (patients are safer inside), first of all while the fort is in crisis or
-    its own are killing each other."""
-    if proposals is None or not player_rules(s).get("hospital_burrow", True):
+    its own are killing each other.
+
+    (review) Never members left behind: with the rule switched off, the
+    burrow's status unreadable (or the whole society section), or no
+    hospital zone left, the bridge is asked to let everyone out (`release`);
+    the bridge also re-checks them itself at every report. Called outside
+    the health section's gate (planner.py): a failed health section never
+    freezes the members."""
+    if proposals is None:
         return
-    hb = _d(_d(s.get("society")).get("hospital_burrow"))
-    if hb.get("error"):
+    soc = _d(s.get("society"))
+    hb = _d(soc.get("hospital_burrow"))
+    # a failed section arrives emptied, its error in s["_errors"] (digest.normalize)
+    soc_err = soc.get("error") or _d(s.get("_errors")).get("society")
+    err = hb.get("error") or soc_err
+    members = int(hb.get("members") or 0) if not err else 0
+    release = {"type": "hospital_burrow", "release": True}
+    if not player_rules(s).get("hospital_burrow", True):
+        if members or err:
+            proposals.append(Proposal("hospital_burrow", release, "the hospital burrow is switched off in the Rules: "
+                                      f"{members or 'its'} patient(s) let out", 2))
+        return
+    if err:
+        proposals.append(Proposal("hospital_burrow", release,
+                                  "the hospital burrow's status can't be read (" + str(err)[:80]
+                                  + "): its patients let out, so none is kept from drink unseen", 2))
         return
     h = _d(s.get("health"))
     zones = sum(len(_l(_d(x).get("zones"))) for x in _l(h.get("hospital")))
     if not zones and not int(hb.get("hospital_zones") or 0):
+        if members:
+            proposals.append(Proposal("hospital_burrow", release,
+                                      f"no hospital zone left: the {members} patient(s) kept in let out", 2))
         return
     outside = hb.get("outside")
     if not isinstance(outside, int):            # an older bridge: the listed patients outside the hospital
         outside = sum(1 for p in _l(h.get("patients"))
                       if isinstance(p, dict) and _l(p.get("needs")) and not p.get("in_hospital"))
-    members = int(hb.get("members") or 0)
     if not outside and not members:
         return
     now_ = abs_tick(s)
@@ -372,7 +395,8 @@ def _hospital_burrow_rule(s: dict, cfg: dict, proposals: list, memory=None) -> N
                    for t in _l(getattr(memory, "fight_deaths", None)))
     crisis = bool(_d(getattr(memory, "crisis", None)).get("why"))
     proposals.append(Proposal("hospital_burrow", {"type": "hospital_burrow", "max": cfg["hospital_burrow_max"],
-                                                  "per": cfg["hospital_burrow_per"]},
+                                                  "per": cfg["hospital_burrow_per"],
+                                                  "days": cfg["hospital_burrow_days"]},
                               (f"{outside} patient(s) walking outside the hospital" if outside else "no patient outside")
                               + (f", {members} kept in" if members else "")
                               + (" while the fort's own kill each other" if fighting else "")

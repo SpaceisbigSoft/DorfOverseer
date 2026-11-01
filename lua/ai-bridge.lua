@@ -1820,8 +1820,9 @@ function get_society()
     -- (0.104.78) the recreation burrow's members
     local okr, rec = pcall(soc.recreation_status)
     if okr and rec then out.recreation = rec end
-    -- (0.104.167) the hospital burrow: its members and tiles, the patients walking outside
-    local okh, hb = pcall(soc.hospital_burrow_status)
+    -- (0.104.167) the hospital burrow: its members and tiles, the patients walking outside;
+    -- (review) the members re-checked here at every report (no drink, no hospital: let out)
+    local okh, hb = pcall(soc.hospital_burrow_status, txt)
     if okh and hb then out.hospital_burrow = hb
     elseif not okh then out.hospital_burrow = {error = tostring(hb):sub(1, 160)} end
     -- (0.104.81) war dogs: who can be trained, who is, who trains them
@@ -5157,8 +5158,11 @@ end
 function act_hospital_burrow(a)
     local n = int_in(a.max or 30, 1, 60)
     local per = int_in(a.per or 10, 1, 30)
-    if not n or not per then return reject('hospital_burrow: max 1-60, per 1-30') end
-    return reqscript('ai-society').hospital_burrow_tick(n, per, a.dry_run == true, txt)
+    local days = int_in(a.days or 28, 3, 112)       -- (review) the longest stay
+    if not n or not per or not days then return reject('hospital_burrow: max 1-60, per 1-30, days 3-112') end
+    -- (review) release: everyone let out (the rule switched off, the hospital gone, the status unreadable)
+    if a.release ~= nil and type(a.release) ~= 'boolean' then return reject('hospital_burrow: release is true or false') end
+    return reqscript('ai-society').hospital_burrow_tick(n, per, a.dry_run == true, txt, days, a.release == true)
 end
 
 function act_gather_plants(a)
