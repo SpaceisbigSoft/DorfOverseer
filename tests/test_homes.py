@@ -129,7 +129,8 @@ env.dfhack = {
              end},
     buildings = {setOwner = set_owner},
     items = {getValue = function(i) return i.v end},
-    maps = {canWalkBetween = function(a, b) return a.x ~= 999 end},
+    maps = {canWalkBetween = function(a, b) return a.x ~= 999 end,
+            getWalkableGroup = function(pos) return pos.x == 999 and 2 or 1 end},
 }
 env.ipairs = function(t)
     if type(t) == 'table' and rawget(t, 0) ~= nil then
@@ -274,6 +275,47 @@ def _():
     assert env.census().hoarders == 1
     r = env.house(3, 0, False)
     assert r.merged == 1 and rooms_of(1) == "11" and owner_of(10) == -1, dict(r)
+
+
+@test("review: a noble spouse's room is never left in an upgrade; two nobles in two rooms keep both")
+def _():
+    units = [{"id": 1, "spouse": 2, "cat": 0}, {"id": 2, "spouse": 1, "noble": True}]
+    zones = [{"id": 10, "owner": 1, "items": [{"v": 5}]}, {"id": 11, "items": [{"v": 500}]}]
+    env, owner_of, rooms_of = game(units, zones)
+    r = env.house(0, 5, False)
+    assert not r.ok and owner_of(10) == 1 and owner_of(11) == -1 and rooms_of(2) == "10", dict(r)
+    units = [{"id": 1, "spouse": 2, "noble": True}, {"id": 2, "spouse": 1, "noble": True}]
+    zones = [{"id": 10, "owner": 1, "items": BED}, {"id": 11, "owner": 2, "items": BED}]
+    env, owner_of, _ = game(units, zones)
+    c = env.census()
+    assert c.couples_apart == 0 and c.couples_nobles == 1, dict(c)
+    assert not env.house(5, 0, False).ok and owner_of(10) == 1 and owner_of(11) == 2
+
+
+@test("review: the census counts only what the action does (a noble's two rooms; a roomless dwarf cut off)")
+def _():
+    env, _, _ = game([{"id": 1, "noble": True}], [{"id": 10, "owner": 1, "items": BED},
+                                                   {"id": 11, "owner": 1, "items": BED}])
+    assert env.census().hoarders == 0
+    env, _, _ = game([{"id": 1, "far": True}, {"id": 2}], [{"id": 10, "items": BED}])
+    c = env.census()
+    assert c.rooms_wanted == 2 and c.rooms_reachable == 1 and c.rooms_unreachable == 1, dict(c)
+
+
+@test("review: a room freed in this call (the old owner's things still in it) isn't given out in the same call")
+def _():
+    units = [{"id": 1, "spouse": 2}, {"id": 2, "spouse": 1}, {"id": 3}]
+    zones = [{"id": 10, "owner": 1, "items": [{"v": 20}]}, {"id": 11, "owner": 2, "items": [{"v": 10}]}]
+    env, owner_of, rooms_of = game(units, zones)
+    r = env.house(5, 0, False)
+    assert r.merged == 1 and r.housed == 0 and owner_of(11) == -1 and rooms_of(3) == "", dict(r)
+    assert env.house(5, 0, False).housed == 1 and owner_of(11) == 3                  # the next call may
+    units = [{"id": 1, "cat": 0}, {"id": 2, "cat": 0}]
+    zones = [{"id": 10, "owner": 1, "items": [{"v": 1}]}, {"id": 11, "owner": 2, "items": [{"v": 2}]},
+             {"id": 12, "items": [{"v": 100}]}]
+    env, owner_of, _ = game(units, zones)
+    r = env.house(0, 5, False)
+    assert r.upgraded == 1 and owner_of(10) == -1 and owner_of(11) == 2, dict(r)    # 10 not given to dwarf 2
 
 
 for name, ok, why in RESULTS:

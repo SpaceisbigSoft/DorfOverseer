@@ -8367,6 +8367,27 @@ def _():
     assert "like better" in overseer.short({"type": "house_dwarves", "house": 0, "upgrade": 5})
 
 
+@test("homes (0.104.168, review): only roomless households that can reach a free room; no level if projects failed")
+def _():
+    p, notes = plan(homes_fort(rooms_wanted=4, rooms_reachable=1), Memory())
+    h = by_rule(p, "homes")
+    assert h and h[0].action["house"] == 1, [x.action for x in h]
+    assert any("can't walk to any" in x for x in notes), notes
+    assert not by_rule(plan(homes_fort(rooms_wanted=4, rooms_reachable=0), Memory())[0], "homes")
+    s = homes_fort(rooms_wanted=12, free_bedrooms=2)
+    s["projects"] = {"error": "boom"}
+    assert not by_rule(plan(s, Memory())[0], "homes_dig")
+    # refused (nothing it could do): the planner's refusal memory holds it back next cycle
+    s = homes_fort(couples_apart=1)
+    m = Memory()
+    hp = by_rule(plan(copy.deepcopy(s), m)[0], "homes")
+    assert hp
+    for _ in range(3):      # refused three times: 1, 2, then 4 days' back-off
+        record([(hp[0], {"ok": False, "rejected": True, "error": "nothing"})], s, m)
+    s2 = copy.deepcopy(s); s2["date"]["tick"] += 3 * TICKS_PER_DAY
+    allowed, held = select(plan(copy.deepcopy(s2), m)[0], s2, m)
+    assert not any(x.rule == "homes" for x in allowed) and any(x.startswith("homes: the game refused") for x in held), held
+
 
 if __name__ == "__main__":
     for name, ok, msg in RESULTS:
