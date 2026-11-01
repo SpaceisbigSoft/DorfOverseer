@@ -247,7 +247,9 @@ def _well_lid_rule(s: dict, proposals: list, notes: list) -> None:
                 ok_gates.append(x)
             elif reach is not None and reach < 2 and pool >= 2:
                 notes.append(f"the cavern well's shaft gate at {where(x)}: {x.get('gate_mechanisms_far') or pool - reach}"
-                             " free mechanism(s) lie out of reach of its lever: the link waits")
+                             " free mechanism(s) lie out of reach of its lever"
+                             + (f" ({x['gate_mechanisms_far_at']})" if x.get("gate_mechanisms_far_at") else "")
+                             + ": the link waits")
             pool -= 2
         elif g == "no_hatch":
             if pool >= 2:

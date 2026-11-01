@@ -4390,11 +4390,16 @@ function well_lids(probe)
                 -- (0.104.156) the ones the lever can reach (a link with others is cancelled)
                 local sg = p.shaft_gate or {}
                 if g.state == 'unlinked' and sg.lever then
-                    local okm, m, far = pcall(reqscript('ai-gates').free_mechanisms, 2,
-                                              {x = sg.lever.x, y = sg.lever.y, z = sg.lever.z or p.z})
+                    local okm, m, far, far_at = pcall(reqscript('ai-gates').free_mechanisms, 2,
+                                                      {x = sg.lever.x, y = sg.lever.y, z = sg.lever.z or p.z})
                     if okm and type(m) == 'table' then
                         r.gate_mechanisms_reachable = #m
                         if (far or 0) > 0 then r.gate_mechanisms_far = far end
+                        if type(far_at) == 'table' and #far_at > 0 then
+                            r.gate_mechanisms_far_at = table.concat(far_at, '; ')
+                        end
+                        local okg, lg = pcall(walk_group, sg.lever.x, sg.lever.y, sg.lever.z or p.z)
+                        if okg then r.gate_lever_group = lg end
                     end
                 end
                 if sg.link_lost then r.gate_link_lost = sg.link_lost end

@@ -1799,7 +1799,7 @@ local function group_at(p)
 end
 
 function free_mechanisms(n, near)
-    local out, cands, unreachable = {}, {}, 0
+    local out, cands, unreachable, far_at = {}, {}, 0, {}
     local want = near and group_at(near) or nil
     if want == 0 then want = nil end            -- the lever's own tile unread: no filter
     for _, it in ipairs(df.global.world.items.other.TRAPPARTS) do
@@ -1812,6 +1812,9 @@ function free_mechanisms(n, near)
                     table.insert(cands, {it = it, d = d})
                 else
                     unreachable = unreachable + 1
+                    if p and #far_at < 3 then
+                        table.insert(far_at, ('x%d y%d z%d (group %s)'):format(p.x, p.y, p.z, tostring(g)))
+                    end
                 end
             else
                 table.insert(out, it)
@@ -1823,7 +1826,7 @@ function free_mechanisms(n, near)
         table.sort(cands, function(a, b) return a.d < b.d end)
         for i = 1, math.min(n, #cands) do table.insert(out, cands[i].it) end
     end
-    return out, unreachable
+    return out, unreachable, far_at
 end
 
 -- (0.94.1) The mechanisms there are: usable, taken by a job, and the rest by
