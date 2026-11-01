@@ -496,6 +496,8 @@ def short(a: dict) -> str:
         return "count what fills the map"
     if t == "convict":           # (0.104.131)
         return f"convict {a.get('max')} solved case(s)"
+    if t == "well_shaft":        # (0.104.152)
+        return "shut the cavern well's shaft" if a.get("close") else "open the cavern well's shaft (or build its hatch)"
     if t == "seal_well_stairs":  # (0.104.151)
         return "close the cavern wells' stair columns"
     if t == "prioritize_dig":    # (0.104.128)

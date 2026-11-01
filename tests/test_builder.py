@@ -1208,53 +1208,213 @@ def _():
     assert not f.ok and "digging" in f.error, f.error
 
 
-@test("cavern well (0.104.151): once dug, its stair column gets a hatch on its top step, then locked")
-def _():
+GAME_FAKE = """
+  SB, LINKS, PULLS, REMOVED, DECON = {}, {}, {}, {}, {}
+  xyz2pos = function(x, y, z) return {x = x, y = y, z = z} end
+  df = df or {}
+  df.building_type = {Hatch = 7, Trap = 8, [7] = 'Hatch', [8] = 'Trap'}
+  df.trap_type = {Lever = 3}
+  df.job_type = {PullLever = 1, LinkBuildingToTrigger = 2}
+  df.building = {find = function(id) for _, b in pairs(SB) do if b.id == id then return b end end end}
+  MECHS = {}
+  df.global = {world = {items = {other = {TRAPPARTS = MECHS}}}}
+  dfhack.buildings = {findAtTile = function(p) return SB[p.x .. ',' .. p.y .. ',' .. p.z] end,
+                      deconstruct = function(b) table.insert(DECON, b.id) end}
+  dfhack.job = {removeJob = function(j) table.insert(REMOVED, j) end}
+  CR_OK = 0
+  dfhack.run_command_silent = function(cmd, a, b, id, inst)
+    table.insert(PULLS, {id = tonumber(id), instant = inst})
+    for _, x in pairs(SB) do if x.t == 7 and LINKS[x.id] then x.door_flags.closed = not x.door_flags.closed end end
+    return 'ok', 0
+  end
+  REAL_REQ = REAL_REQ or reqscript
+  LINK_RESULT = {ok = true}
+  reqscript = function(name)
+    if name == 'ai-gates' then
+      return {link_lever = function(l, g) if LINK_RESULT.ok then LINKS[g] = {l} end; return LINK_RESULT end,
+              lever_links = function() return LINKS end}
+    end
+    return REAL_REQ(name)
+  end
+  function MKS(x, y, z, t, built, trap_type)
+    local b = {id = t * 100000 + x * 100 + y, t = t, built = built, jobs = {}, trap_type = trap_type,
+               door_flags = {forbidden = false, closed = true},
+               getType = function(self) return self.t end,
+               getBuildStage = function(self) return self.built and 1 or 0 end,
+               getMaxBuildStage = function() return 1 end}
+    SB[x .. ',' .. y .. ',' .. z] = b
+    return b
+  end
+  function MECH(n) for i = #MECHS, 1, -1 do MECHS[i] = nil end
+    for i = 1, n do MECHS[i] = {flags = {}} end end
+"""
+GAME_CLEAN = ("df.building = nil; dfhack.buildings = nil; df.building_type = nil; df.job_type = nil; df.trap_type = nil; "
+              "df.global = nil; dfhack.job = nil; SB = nil; MKS = nil; reqscript = REAL_REQ")
+
+
+def dug_cavern_well():
     cavern_column()
     r = B.place_well(LUA.table_from({"cavern": True}), LUA.table_from({"year": 148, "tick": 100}), False)
     assert r.ok, r.error
-    LUA.execute("""
-      LBLD = {}
-      xyz2pos = function(x, y, z) return {x = x, y = y, z = z} end
-      df = df or {}
-      df.building_type = {Hatch = 7, Well = 3}
-      df.building = {find = function(id) for _, b in pairs(LBLD) do if b.id == id then return b end end end}
-      dfhack.buildings = {findAtTile = function(p) return LBLD[p.x .. ',' .. p.y .. ',' .. p.z] end}
-      function MKLID(x, y, z, t, built)
-        local b = {id = x * 1000 + y, t = t, built = built, door_flags = {forbidden = false},
-                   getType = function(self) return self.t end,
-                   getBuildStage = function(self) return self.built and 1 or 0 end,
-                   getMaxBuildStage = function() return 1 end}
-        LBLD[x .. ',' .. y .. ',' .. z] = b
-        return b
-      end
-    """)
-    assert len(B.well_lids(False)) == 0                           # still digging: nothing yet
-    assert not B.seal_well_stairs(False).ok
     open_shaft()
     dig_shaft_stairs()
-    f = B.furnish_project(r.project_id, True)
-    assert f.ok, f.error
-    lids = B.well_lids(True)
-    assert len(lids) == 1 and lids[1].state == "none" and (lids[1].x, lids[1].y, lids[1].z) == (71, 58, 70), dict(lids[1])
-    assert lids[1].shaft_hatch is True                            # the probe (the fake game says yes)
-    before = len(W.placed)
-    s = B.seal_well_stairs(False)
-    assert s.ok and s.planned == 1 and s.locked == 0, dict(s)
-    hatch = [W.placed[i] for i in range(before + 1, len(W.placed) + 1)]
-    assert any(h.text == "H" and (h.x, h.y, h.z) == (71, 58, 70) for h in hatch), [dict(h) for h in hatch]
-    lid = LUA.eval("MKLID")(71, 58, 70, 7, False)                 # buildingplan's hatch, not yet built
-    assert B.well_lids(False)[1].state == "planned"
-    assert not B.seal_well_stairs(False).ok                       # nothing to do while it waits
-    lid.built = True
-    assert B.well_lids(False)[1].state == "open"
-    s = B.seal_well_stairs(False)
-    assert s.ok and s.locked == 1 and lid.door_flags.forbidden is True, dict(s)
-    assert B.well_lids(False)[1].state == "locked"
-    assert not B.seal_well_stairs(False).ok
-    other = LUA.eval("MKLID")(71, 58, 70, 99, True)               # something else on the step: left alone
-    assert B.well_lids(False)[1].state == "blocked"
-    LUA.execute("df.building = nil; dfhack.buildings = nil; df.building_type = nil; LBLD = nil; MKLID = nil")
+    assert B.furnish_project(r.project_id, True).ok
+    return r
+
+
+@test("cavern well (0.104.151-152): the stair lid only where the shaft gate can't be built: planned, then locked")
+def _():
+    r = dug_cavern_well()
+    LUA.execute(GAME_FAKE)
+    try:
+        lids = B.well_lids(False)
+        assert len(lids) == 1 and lids[1].state == "none" and lids[1].gate == "none", dict(lids[1])
+        assert (lids[1].x, lids[1].y, lids[1].z) == (71, 58, 70)
+        assert not B.seal_well_stairs(False).ok                      # the gate seals the cavern: no lid
+        LUA.eval("""function(B, id)
+            local d = B.load_projects()
+            for _, p in ipairs(d.list) do if p.id == id then p.shaft_gate = {lever = {x = 0, y = 0, z = 0}, impossible = true} end end
+            B.save_projects(d)
+        end""")(B, r.project_id)
+        assert B.well_lids(False)[1].gate == "none_possible"
+        before = len(W.placed)
+        s = B.seal_well_stairs(False)
+        assert s.ok and s.planned == 1, dict(s)
+        put = [W.placed[i] for i in range(before + 1, len(W.placed) + 1)]
+        assert any(h.text == "H" and (h.x, h.y, h.z) == (71, 58, 70) for h in put), [dict(h) for h in put]
+        lid = LUA.eval("MKS")(71, 58, 70, 7, False)
+        assert B.well_lids(False)[1].state == "planned" and not B.seal_well_stairs(False).ok
+        lid.built = True
+        s = B.seal_well_stairs(False)
+        assert s.ok and s.locked == 1 and lid.door_flags.forbidden is True, dict(s)
+        assert B.well_lids(False)[1].state == "locked" and not B.seal_well_stairs(False).ok
+        LUA.eval("MKS")(71, 58, 70, 99, True)                         # something else on the step
+        assert B.well_lids(False)[1].state == "blocked"
+    finally:
+        LUA.execute(GAME_CLEAN)
+
+
+@test("cavern well (0.104.152): the shaft gate: lever, then (2 mechanisms free) a hatch at the shaft's bottom, linked, opened; shut at once on danger")
+def _():
+    r = dug_cavern_well()
+    LUA.execute(GAME_FAKE)
+    try:
+        mk, mech = LUA.eval("MKS"), LUA.eval("MECH")
+        assert B.well_lids(False)[1].gate == "none"
+        before = len(W.placed)
+        s = B.well_shaft_step(False, False)
+        assert s.ok and s.wells[1].stage == "lever_placed", dict(s.wells[1])
+        put = [W.placed[i] for i in range(before + 1, len(W.placed) + 1)]
+        assert [h.text for h in put] == ["Tl"], [dict(h) for h in put]          # the lever only, no hatch yet
+        lx, ly, lz = put[0].x, put[0].y, put[0].z
+        assert lz == 70 and max(abs(lx - 70), abs(ly - 58)) >= 2, (lx, ly)      # outside the well's 3x3
+        assert B.well_lids(False)[1].gate == "no_lever"
+        lv = mk(lx, ly, 70, 8, False, 3)
+        assert B.well_lids(False)[1].gate == "building"
+        assert not B.well_shaft_step(False, False).ok
+        lv.built = True
+        assert B.well_lids(False)[1].gate == "no_hatch"
+        mech(1)
+        s = B.well_shaft_step(False, False)
+        assert not s.ok and s.wells[1].stage == "waiting_mechanisms", dict(s.wells[1])   # the well stays open meanwhile
+        mech(2)
+        before = len(W.placed)
+        s = B.well_shaft_step(False, False)
+        assert s.ok and s.wells[1].stage == "hatch_placed", dict(s.wells[1])
+        put = [W.placed[i] for i in range(before + 1, len(W.placed) + 1)]
+        assert [(h.text, h.x, h.y, h.z) for h in put] == [("H", 70, 58, 63)], [dict(h) for h in put]  # the shaft's bottom
+        h = mk(70, 58, 63, 7, False)
+        assert B.well_lids(False)[1].gate == "building"
+        h.built = True
+        assert B.well_lids(False)[1].gate == "unlinked"
+        # a lid locked by an older version is unlocked while the gate is built (the way down)
+        lid = mk(71, 58, 70, 7, True)
+        lid.door_flags.forbidden = True
+        s = B.well_shaft_step(False, False)
+        assert s.ok and s.wells[1].stage == "linking" and lid.door_flags.forbidden is False, dict(s.wells[1])
+        assert not B.seal_well_stairs(False).ok                                  # and not locked again
+        assert B.well_lids(False)[1].gate == "closed"                             # linked; a hatch starts shut
+        s = B.well_shaft_step(False, False)
+        pulls = LUA.eval("PULLS")
+        assert s.ok and s.wells[1].stage == "opening" and pulls[1].instant is None and h.door_flags.closed is False
+        assert B.well_lids(False)[1].gate == "open" and not B.well_shaft_step(False, False).ok
+        s = B.well_shaft_step(True, False)
+        assert s.ok and s.wells[1].stage == "closed" and pulls[2].instant == "--instant" and h.door_flags.closed is True
+        assert B.well_shaft_step(False, False).wells[1].stage == "opening"
+        # a danger while a dwarf is on the way to pull it open: the pull called off
+        lv.jobs[1] = LUA.table_from({"job_type": 1})
+        assert B.well_lids(False)[1].gate == "pulling"
+        s = B.well_shaft_step(True, False)
+        assert s.ok and s.wells[1].stage == "closed" and len(LUA.eval("REMOVED")) == 1, dict(s.wells[1])
+    finally:
+        LUA.execute(GAME_CLEAN)
+
+
+@test("cavern well (0.104.152): a link that keeps failing (not for mechanisms) -> the hatch down, the stair lid instead")
+def _():
+    r = dug_cavern_well()
+    LUA.execute(GAME_FAKE)
+    try:
+        mk = LUA.eval("MKS")
+        assert B.well_shaft_step(False, False).ok
+        lever = [x for x in W.placed.values() if x.text == "Tl"][-1]
+        mk(lever.x, lever.y, 70, 8, True, 3)
+        LUA.eval("MECH")(2)
+        assert B.well_shaft_step(False, False).ok
+        mk(70, 58, 63, 7, True)
+        LUA.execute("LINK_RESULT = {ok = false, error = 'this DF version has no lever-link job'}")
+        for i in range(2):
+            s = B.well_shaft_step(False, False)
+            assert not s.ok and B.well_lids(False)[1].gate == "unlinked", dict(s.wells[1])
+        s = B.well_shaft_step(False, False)
+        assert "taken down" in s.wells[1].error and len(LUA.eval("DECON")) == 1, dict(s.wells[1])
+        assert B.well_lids(False)[1].gate == "none_possible"
+        # (review 2) the hatch still stands (until a dwarf takes it away): the lid waits
+        lid = mk(71, 58, 70, 7, True)
+        assert B.well_lids(False)[1].gate_hatch_standing is True
+        sl = B.seal_well_stairs(False)
+        assert not sl.ok and lid.door_flags.forbidden is False, dict(sl)
+        LUA.execute("SB['70,58,63'] = nil")                                    # taken away
+        sl = B.seal_well_stairs(False)
+        assert sl.ok and sl.locked == 1 and lid.door_flags.forbidden is True, dict(sl)
+        LUA.execute("LINK_RESULT = {ok = false, error = 'a link needs 2 free mechanisms (0 free)'}")
+    finally:
+        LUA.execute(GAME_CLEAN)
+
+
+@test("cavern well (0.104.152): the game refusing the bottom hatch 3 times -> the stair lid instead (not after one)")
+def _():
+    r = dug_cavern_well()
+    LUA.execute(GAME_FAKE)
+    try:
+        mk = LUA.eval("MKS")
+        assert B.well_shaft_step(False, False).ok
+        lever = [x for x in W.placed.values() if x.text == "Tl"][-1]
+        mk(lever.x, lever.y, 70, 8, True, 3)
+        LUA.eval("MECH")(2)
+        LUA.execute("""local q = REAL_REQ('quickfort'); Q_REAL = q.apply_blueprint
+            q.apply_blueprint = function(p) local s = Q_REAL(p); if p.mode == 'build' then s.build_designated.value = 0 end; return s end""")
+        for i in range(2):
+            s = B.well_shaft_step(False, False)
+            assert not s.ok and B.well_lids(False)[1].gate == "no_hatch", dict(s.wells[1])
+        s = B.well_shaft_step(False, False)
+        assert "stair lid instead" in s.wells[1].error and B.well_lids(False)[1].gate == "none_possible", dict(s.wells[1])
+    finally:
+        LUA.execute("local q = REAL_REQ('quickfort'); if Q_REAL then q.apply_blueprint = Q_REAL; Q_REAL = nil end")
+        LUA.execute(GAME_CLEAN)
+
+
+@test("cavern well (0.104.152): never dropped from the project list, however many levels close after it")
+def _():
+    r = dug_cavern_well()
+    LUA.eval("""function(B, id)
+        local d = B.load_projects()
+        for _, p in ipairs(d.list) do if p.id == id then p.phase = 'done' end end
+        for i = 1, 40 do table.insert(d.list, {id = 1000 + i, kind = 'bedrooms', phase = 'done', z = 70}) end
+        B.save_projects(d)
+    end""")(B, r.project_id)
+    ids = [p.id for p in LUA.eval("function(B) return B.load_projects().list end")(B).values()]
+    assert r.project_id in ids, ids
 
 
 @test("cavern well: never through an aquifer, past open space, into salt or magma, or under a full lake")
