@@ -795,6 +795,8 @@ def _():
     assert "a ghost laid to rest" in overseer.death_words(again) and "drown" not in overseer.death_words(again)
     thirsty = {"name": "Ast", "cause": "THIRST", "mood": "Melancholy", "x": 1, "y": 2, "z": 3}   # (0.104.148)
     assert overseer.death_words(thirsty) == "Ast, thirst, in a melancholy mood, at x1 y2 z3", overseer.death_words(thirsty)
+    walking = {"name": "Ast", "cause": "SUFFOCATE", "killer": "Bo", "killer_kind": "citizen", "infected": True}  # (0.104.150)
+    assert overseer.death_words(walking) == "Ast, suffocate, by Bo (citizen), infected", overseer.death_words(walking)
     import timeline, metrics
     events = [ev, again]
     assert sum(1 for e in events if e.get("kind") == "death" and e.get("own_civ") and not e.get("again")) == 1

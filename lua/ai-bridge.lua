@@ -34,7 +34,7 @@
 local json = require('json')
 local utils = require('utils')
 
-BRIDGE_VERSION = '0.104.148'
+BRIDGE_VERSION = '0.104.150'
 PROTOCOL = 1 -- bump when the report's shape changes in a breaking way
 
 local OUT_DIR = dfhack.getDFPath() .. '/dfhack-config/ai-overseer'
@@ -2810,7 +2810,16 @@ function death_details(ev, id)
     -- (0.104.139) how far the fight had gone (Brawl, Lethal, NoQuarter), and
     -- whether the dead was a patient: what each killing was
     pcall(function() ev.conflict = df.conflict_level[inc.conflict_level] or tostring(inc.conflict_level) end)
-    pcall(function() if u.health and u.health.flags.needs_healthcare then ev.patient = true end end)
+    -- (0.104.150) a patient only when DF asks for a treatment (its rq_ flags);
+    -- needs_healthcare alone is set for every infected dwarf walking about
+    -- (Teacheroar: 91 of 162), so that is said as `infected`
+    pcall(function()
+        if not (u.health and u.health.flags.needs_healthcare) then return end
+        for _, k in ipairs(HEALTH_RQ) do
+            if u.health.flags[k] then ev.patient = true return end
+        end
+        ev.infected = true
+    end)
     -- (0.104.148) the victim's own mood: a melancholy or raving dwarf stops
     -- drinking (Teacheroar's 4 thirst deaths overnight, with 1,348 drinks
     -- in store, were no patients); a strange mood too

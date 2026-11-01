@@ -308,7 +308,8 @@ def death_words(ev: dict) -> str:
     # (0.104.139) the fight's level, the killer's state and the victim's
     extra = [w for w in (ev.get("conflict") not in (None, "None") and f"a {str(ev['conflict']).lower()} fight",
                          ev.get("killer_mood") and f"the killer {str(ev['killer_mood']).lower()}",
-                         ev.get("patient") and "a patient",
+                         ev.get("patient") and "a patient waiting for care",
+                         ev.get("infected") and "infected",
                          # (0.104.148) the victim insane or in a mood (melancholy and raving dwarves stop drinking)
                          ev.get("mood") and f"in a {str(ev['mood']).lower()} mood") if w]
     if extra and not ev.get("again"):
