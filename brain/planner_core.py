@@ -409,6 +409,7 @@ PLANNER_CONFIG = {
     # while more than 3 treatments wait for each dwarf who can diagnose
     "soap_rush_infected": 20, "soap_rush_batch": 5, "soap_rush_cooldown_ticks": 2 * 1200,
     "infected_rest_max": 3, "infected_rest_cooldown_ticks": 1200, "infected_rest_give_up": 3,
+    "infected_rest_cap": 3, "infected_rest_keep_free": 2,   # (review) sleepers at once; beds left for DF's patients
     "doctor_post_per_diagnoser": 3, "doctor_post_cooldown_ticks": 3 * 1200,
     "noble_rooms_cooldown_ticks": 1200,
     # (0.104.168) homes: one bedroom per household, the stressed to rooms they like

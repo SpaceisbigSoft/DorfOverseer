@@ -5198,8 +5198,10 @@ end
 -- first; and a second doctor's post at a hospital (lua/ai-health.lua).
 function act_rest_infected(a)
     local n = int_in(a.max or 3, 1, 10)
-    if not n then return reject('rest_infected: max 1-10') end
-    return reqscript('ai-health').rest_infected(n, a.dry_run == true, txt)
+    -- (review) at most `cap` of the AI's sleepers at once, `keep_free` beds left for DF's patients
+    local cap, keep = int_in(a.cap or 3, 1, 20), int_in(a.keep_free or 2, 0, 20)
+    if not n or not cap or not keep then return reject('rest_infected: max 1-10, cap 1-20, keep_free 0-20') end
+    return reqscript('ai-health').rest_infected(n, a.dry_run == true, txt, cap, keep)
 end
 
 function act_add_doctor_post(a)

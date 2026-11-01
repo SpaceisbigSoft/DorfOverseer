@@ -18,7 +18,7 @@ monarch-appointed ones left to DF.
 from __future__ import annotations
 
 from digest import _d, _l
-from planner_core import Proposal, ask_player, care_waiting, player_rules
+from planner_core import Proposal, ask_player, care_waiting, player_rules, refusal_key
 
 __all__ = ["_infection_rule", "_doctor_post_rule", "_offices_refill_rule", "MILITARY_OFFICES"]
 
@@ -47,10 +47,14 @@ def _infection_rule(s: dict, cfg: dict, proposals: list, notes: list) -> None:
                           "wounds are cleaned (with soap and water) by dwarves with that labour")
     if proposals is None or not untreated:
         return
-    sent, stayed, asked = (int(inf.get(k) or 0) for k in ("sent", "stayed", "asked"))
-    if sent >= cfg["infected_rest_give_up"] and stayed == 0 and asked == 0:
-        notes.append(f"the {sent} infected dwarves the AI put to bed in the hospital did not stay there and "
-                     "were not diagnosed: it waits a week before trying again")
+    # (review) the give-up: of those put to bed lately, none got a treatment
+    # asked (each got up after rest_days, or DF ended the rest): the bridge
+    # remembers them 28 days, and the AI waits until then
+    failed, helped = int(inf.get("failed") or 0), int(inf.get("helped") or 0)
+    if failed >= cfg["infected_rest_give_up"] and helped == 0:
+        notes.append(f"the {failed} infected dwarves the AI put to bed in the hospital lately were never diagnosed "
+                     f"(got up after {inf.get('rest_days') or 3} days, or DF ended their rest): it stops putting "
+                     "them to bed for 4 weeks")
         return
     if not inf.get("hospital_zones"):
         return                                 # the hospital rules build one
@@ -65,8 +69,16 @@ def _infection_rule(s: dict, cfg: dict, proposals: list, notes: list) -> None:
         return
     if not idle:
         return
-    m = min(cfg["infected_rest_max"], free, idle)
-    proposals.append(Proposal("infected_rest", {"type": "rest_infected", "max": m},
+    # (review) at most infected_rest_cap of the AI's undiagnosed sleepers at
+    # once, and infected_rest_keep_free beds left for DF's own patients
+    sleeping = int(inf.get("sleeping") or 0)
+    m = min(cfg["infected_rest_max"], idle, cfg["infected_rest_cap"] - sleeping,
+            free - cfg["infected_rest_keep_free"])
+    if m <= 0:
+        return
+    proposals.append(Proposal("infected_rest", {"type": "rest_infected", "max": m,
+                                                "cap": cfg["infected_rest_cap"],
+                                                "keep_free": cfg["infected_rest_keep_free"]},
                               f"{untreated} dwarves walk about with infected wounds DF asks no treatment for"
                               + (f" ({bleeding} bleeding from it)" if bleeding else "")
                               + f" and {free} hospital bed(s) are free: the {m} worst of the idle put to bed "
@@ -100,7 +112,7 @@ def _doctor_post_rule(s: dict, cfg: dict, proposals: list) -> None:
         return
 
 
-def _offices_refill_rule(s: dict, cfg: dict, notes: list, proposals: list) -> None:
+def _offices_refill_rule(s: dict, cfg: dict, notes: list, proposals: list, memory=None) -> None:
     """The militia commander's office, and a captain's whose squad has lost
     him, filled again (the commander first: he appoints the captains); the
     other offices the fort could fill and the AI doesn't are said. Elected
@@ -108,6 +120,11 @@ def _offices_refill_rule(s: dict, cfg: dict, notes: list, proposals: list) -> No
     offices = _d(_d(s.get("offices")).get("offices"))
     if not offices:
         return
+    # (review) the last try found nobody fit to lead: the post stays empty, said
+    ref = _d(_d(getattr(memory, "refusals", None)).get(
+        refusal_key(Proposal("appoint", {"type": "appoint"}, "", 3))))
+    if "nobody fits to lead" in str(ref.get("why") or ""):
+        notes.append(str(ref["why"]))
     appoint = player_rules(s)["appoint_nobles"] and proposals is not None
     cmd = _d(offices.get("MILITIA_COMMANDER"))
     cmd_vacant = bool(cmd) and int(cmd.get("vacant") or 0) > 0 and not _l(cmd.get("held"))

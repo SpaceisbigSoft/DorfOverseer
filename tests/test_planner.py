@@ -8538,8 +8538,8 @@ def _():
 def _infected_fort(**inf):
     s = fort()
     s["infection"] = {"infected": 77, "untreated": 75, "bleeding": 6, "idle_untreated": 20, "free_beds": 24,
-                      "beds": 30, "hospital_zones": 3, "diagnosers": 6, "cleaners": 80, "sent": 0, "stayed": 0,
-                      "asked": 0, "max_load": 900, "worst": [{"id": 1, "name": "Urist", "load": 900}]}
+                      "beds": 30, "hospital_zones": 3, "diagnosers": 6, "cleaners": 80, "sleeping": 0, "failed": 0,
+                      "helped": 0, "rest_days": 3, "max_load": 900, "worst": [{"id": 1, "name": "Urist", "load": 900}]}
     s["infection"].update(inf)
     return s
 
@@ -8548,12 +8548,17 @@ def _infected_fort(**inf):
 def _():
     props, notes = plan(_infected_fort(), Memory())
     r = by_rule(props, "infected_rest")
-    assert r and r[0].action == {"type": "rest_infected", "max": 3} and r[0].priority == 2, r
+    assert r and r[0].action == {"type": "rest_infected", "max": 3, "cap": 3, "keep_free": 2} and r[0].priority == 2, r
     assert any(n.startswith("77 citizens have infected wounds, 75 with no treatment asked") and "6 bleed" in n
                and "Urist (900)" in n for n in notes), notes
     # bounded by the free beds and the idle; no bleeding: lower priority
-    r = by_rule(plan(_infected_fort(free_beds=2, bleeding=0), Memory())[0], "infected_rest")
+    # (review) 2 beds always left for DF's own patients; at most 3 of the AI's sleepers at once
+    r = by_rule(plan(_infected_fort(free_beds=4, bleeding=0), Memory())[0], "infected_rest")
     assert r and r[0].action["max"] == 2 and r[0].priority == 4, r
+    assert not by_rule(plan(_infected_fort(free_beds=2), Memory())[0], "infected_rest")
+    r = by_rule(plan(_infected_fort(sleeping=2), Memory())[0], "infected_rest")
+    assert r and r[0].action["max"] == 1, r
+    assert not by_rule(plan(_infected_fort(sleeping=3), Memory())[0], "infected_rest")
     r = by_rule(plan(_infected_fort(idle_untreated=1), Memory())[0], "infected_rest")
     assert r and r[0].action["max"] == 1, r
     # every bed taken, nobody idle, no hospital, nobody to diagnose: not asked
@@ -8573,13 +8578,12 @@ def _():
     assert not by_rule(plan(s, Memory())[0], "infected_rest")
 
 
-@test("0.104.168 infection: DF kept none of those sent resting: the AI stops (for the week the bridge remembers them)")
+@test("0.104.168 infection (review): none of those put to bed lately got a treatment asked (got up, or DF ended the rest): the AI stops")
 def _():
-    props, notes = plan(_infected_fort(sent=3, stayed=0, asked=0), Memory())
-    assert not by_rule(props, "infected_rest") and any("did not stay there" in n for n in notes), notes
-    assert by_rule(plan(_infected_fort(sent=3, stayed=1), Memory())[0], "infected_rest")
-    assert by_rule(plan(_infected_fort(sent=3, asked=2), Memory())[0], "infected_rest")
-    assert by_rule(plan(_infected_fort(sent=2), Memory())[0], "infected_rest")
+    props, notes = plan(_infected_fort(failed=3, helped=0), Memory())
+    assert not by_rule(props, "infected_rest") and any("never diagnosed" in n and "3 days" in n for n in notes), notes
+    assert by_rule(plan(_infected_fort(failed=3, helped=1), Memory())[0], "infected_rest")
+    assert by_rule(plan(_infected_fort(failed=2), Memory())[0], "infected_rest")
 
 
 @test("0.104.168 infection: a recovery rule in a crisis; labels for the new actions; a day apart")
@@ -8681,6 +8685,18 @@ def _():
     s = _offices_fort(MILITIA_COMMANDER={"held": [], "vacant": 1})
     s.setdefault("settings", {})["appoint_nobles"] = False
     assert not by_rule(plan(s, Memory())[0], "appoint")
+
+
+@test("0.104.168 offices (review): nobody fit to lead a squad: the post stays empty and that is said")
+def _():
+    from planner import refusal_key, Proposal
+    m = Memory()
+    s = _offices_fort(MILITIA_COMMANDER={"held": [], "vacant": 1})
+    m.refusals = {refusal_key(Proposal("appoint", {"type": "appoint", "office": "MILITIA_COMMANDER"}, "", 3)): {
+        "n": 1, "until": abs_tick(s) + 2 * TICKS_PER_DAY,
+        "why": "nobody fits to lead a squad (a content, healthy civilian ...): the militia commander stays vacant"}}
+    notes = plan(s, m)[1]
+    assert any(n.startswith("nobody fits to lead a squad") for n in notes), notes
 
 
 @test("0.104.168 offices: one the fort could fill and the AI doesn't is said; elected and monarch's ones are not")

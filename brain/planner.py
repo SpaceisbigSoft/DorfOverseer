@@ -372,7 +372,7 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
     if can_use("society"):
         _guard(_society_notes, s, traits, citizens, cfg, notes, proposals)
     if can_use("offices"):
-        _guard(_offices_refill_rule, s, cfg, notes, proposals)  # (0.104.168)
+        _guard(_offices_refill_rule, s, cfg, notes, proposals, memory)  # (0.104.168)
     if can_use("farms", "projects", "settings"):
         _guard(_farm_rule, s, memory, traits, citizens, cfg, proposals, notes)
     if can_use("society"):
