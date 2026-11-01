@@ -2372,12 +2372,57 @@ function get_hazards()
                     if d and (not out.fire_near or d < out.fire_near) then out.fire_near = d end
                 elseif t == 'Miasma' then
                     out.miasma = out.miasma + 1
+                    -- (0.104.159) where: 8x8 cells on a level
+                    MIASMA_CELLS = MIASMA_CELLS or {}
+                    local k = f.pos.z * 1000000 + (f.pos.x // 8) * 1000 + (f.pos.y // 8)
+                    local c = MIASMA_CELLS[k] or {n = 0, x = f.pos.x, y = f.pos.y, z = f.pos.z}
+                    c.n = c.n + 1
+                    MIASMA_CELLS[k] = c
                 elseif CLOUD_FLOWS[t] then
                     out.clouds = out.clouds + 1
                     if d and (not out.cloud_near or d < out.cloud_near) then out.cloud_near = d end
                 end
             end
         end
+    end)
+    -- (0.104.159) the miasma's spots, the worst 5: the zone there and what
+    -- rots near it (Teacheroar, 1 Nov: miasma the worst stress, 128 of 150
+    -- disgusted, while the remains were being rotted away daily)
+    pcall(function()
+        local cells = MIASMA_CELLS or {}
+        MIASMA_CELLS = nil
+        local list = {}
+        for _, c in pairs(cells) do table.insert(list, c) end
+        table.sort(list, function(a, b) return a.n > b.n end)
+        while #list > 5 do table.remove(list) end
+        if #list == 0 then return end
+        for _, c in ipairs(list) do
+            c.rotting = {}
+            pcall(function()
+                for _, zn in ipairs(dfhack.buildings.findCivzonesAt(xyz2pos(c.x, c.y, c.z)) or {}) do
+                    c.zone = c.zone or df.civzone_type[zn.type]
+                end
+            end)
+            pcall(function()
+                local b = dfhack.buildings.findAtTile(xyz2pos(c.x, c.y, c.z))
+                if b then c.building = df.building_type[b:getType()] end
+            end)
+        end
+        for _, kind in ipairs({'CORPSE', 'CORPSEPIECE', 'REMAINS', 'MEAT', 'FISH', 'FISH_RAW', 'PLANT', 'FOOD'}) do
+            local okl, items = pcall(function() return df.global.world.items.other[kind] end)
+            for _, it in ipairs(okl and items or {}) do
+                local okp, x, y, z = pcall(dfhack.items.getPosition, it)
+                if okp and x then
+                    if type(x) ~= 'number' then x, y, z = x.x, x.y, x.z end
+                    for _, c in ipairs(list) do
+                        if z == c.z and math.abs(x - c.x) <= 8 and math.abs(y - c.y) <= 8 then
+                            c.rotting[kind] = (c.rotting[kind] or 0) + 1
+                        end
+                    end
+                end
+            end
+        end
+        out.miasma_spots = list
     end)
     for _, u in ipairs(dfhack.units.getCitizens()) do
         local name

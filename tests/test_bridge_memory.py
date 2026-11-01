@@ -583,6 +583,8 @@ def _():
     assert r.fires == 1 and r.fire_near == 2 and r.clouds == 1 and r.miasma == 1, (r.fires, r.fire_near, r.clouds)
     assert len(r.wet) == 1 and r.wet[1].id == 2 and len(r.burning) == 1 and r.burning[1].id == 3
     assert len(r.berserk) == 1 and r.berserk[1].id == 2 and r.caged == 1
+    # (0.104.159) the miasma's spot, with the remains rotting near it
+    assert r.miasma_spots is not None and r.miasma_spots[1].n == 1 and r.miasma_spots[1].z == 0, r.miasma_spots
 
 @test("locations (0.83): each one's wanted and held supplies, its books, its posts filled and empty")
 def _():
