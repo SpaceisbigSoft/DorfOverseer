@@ -89,6 +89,8 @@ function job_words(j)
         local okw, w = pcall(dfhack.job.getWorker, j)
         if okw and w then
             local okn, n = pcall(dfhack.units.getReadableName, w)
+            -- (0.104.154) the name in UTF-8 (DF's own code page broke the report's JSON)
+            if okn and dfhack.df2utf then local okc, c = pcall(dfhack.df2utf, n); if okc and c then n = c end end
             return s .. ' by ' .. ((okn and n or 'a dwarf'):gsub(',.*', ''))
         end
         -- (0.104.128) why a dig job nobody takes waits: its flags and the
@@ -4216,7 +4218,10 @@ function planned_report()
                     if okw and w and tostring(w) ~= '' then r.why = tostring(w):sub(1, 100) end
                 end
                 local items = {}
-                for i = 0, #j.job_items - 1 do
+                -- DF 53: job_items holds its list in `elements` (# fails on it)
+                local okc, cnt = pcall(function() return #j.job_items end)
+                if not okc then okc, cnt = pcall(function() return #j.job_items.elements end) end
+                for i = 0, (okc and cnt or 0) - 1 do
                     local okd, d = pcall(bp.getDescString, b, i)
                     local okq, q = pcall(bp.getQueuePosition, b, i)
                     table.insert(items, {want = okd and tostring(d):sub(1, 80) or nil, queue = okq and q or nil})
