@@ -187,7 +187,23 @@ def summary_lines(since=None) -> list[str]:
         return [f"(no summary: {e})"]
 
 
+def pin_fort() -> None:
+    """(0.105.0) The fort this run is pinned to (brain/pin.py), taken once the
+    overseer has named it (or, with the game at the title, the last one played)."""
+    if EXTRAS.get("pinned") or not EXTRAS.get("start_ts"):
+        return
+    try:
+        import pin
+        rv = EXTRAS.get("reviver")
+        at_title = bool(rv is not None and getattr(rv, "title_since", None))
+        EXTRAS["pinned"] = pin.take(EXTRAS["start_ts"], at_title=at_title, log=log)
+    except Exception as e:  # noqa: BLE001  (a pin never stops the run)
+        log(f"Keeper: couldn't pin the fort ({e})")
+        EXTRAS["pinned"] = {"error": str(e)}
+
+
 def chores() -> None:
+    pin_fort()
     rv = EXTRAS.get("reviver")
     if rv is not None:
         try:
@@ -226,7 +242,8 @@ def run_once(ai: bool, popen=subprocess.Popen) -> tuple[int | None, str]:
         HEARTBEAT.unlink(missing_ok=True)
     except OSError:
         pass
-    env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"}   # (dwarves' names have accents)
+    env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1",   # (dwarves' names have accents)
+           "DFAI_PIN": "1"}       # (0.105.0) the overseer acts only on the pinned fort (brain/pin.py)
     proc = popen(command(ai), cwd=str(ROOT), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                  text=True, encoding="utf-8", errors="replace", env=env)
     t = threading.Thread(target=pump, args=(proc,), daemon=True)
@@ -306,6 +323,13 @@ def main(argv=None, popen=subprocess.Popen, sleep=time.sleep, max_runs: int | No
     started = stamp()
     log(f"Keeper starting: overseer.py {' '.join(command(args.ai)[3:])}. Ctrl-C stops it.")
     EXTRAS["run_start"] = datetime.now()
+    # (0.105.0) a new run pins afresh: the fort the overseer names first
+    try:
+        import pin
+        pin.clear()
+    except Exception:  # noqa: BLE001
+        pass
+    EXTRAS["start_ts"], EXTRAS["pinned"] = time.time(), None
     if args.revive:
         try:
             import revive
