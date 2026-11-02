@@ -7529,6 +7529,34 @@ def _():
     assert g and g[0].action == {"type": "kitchen_skill", "min_level": 0}, g
 
 
+@test("good cooks (0.105.8): two free cooks must clear the kitchens' bar; one alone, or soldiers, open it again")
+def _():
+    s = fort()
+    s["orders"] = []
+    pop = s["dwarves"]["total"]
+    s["needs"] = {"needs": {"EatGoodMeal": {"distracted": 30}}}
+    s["stocks"]["prepared_meals"] = pop * 30
+    s["supplies"].update(meal_servings=pop * 30, good_meals=0)
+    # two free cooks at 8 and 5: the bar goes to 5 (the second's), not 6
+    s["supplies"]["cooks"] = {"best": 8, "skilled": 2, "kitchen_min": 0, "able_skills": [8, 5, 1]}
+    g = by_rule(plan(s, Memory())[0], "good_cooks")
+    assert g and g[0].action == {"type": "kitchen_skill", "min_level": 5}, g
+    # one free cook at 8 (the other skilled ones are soldiers): no bar raised
+    s["supplies"]["cooks"] = {"best": 8, "skilled": 1, "kitchen_min": 0, "able_skills": [8, 1]}
+    assert not by_rule(plan(s, Memory())[0], "good_cooks")
+    # the six forts: kitchens at 6+, one free cook that good: any cook again, at once
+    s["supplies"]["cooks"] = {"best": 8, "skilled": 1, "kitchen_min": 6, "able_skills": [8, 2, 0]}
+    g = by_rule(plan(s, Memory())[0], "good_cooks")
+    assert len(g) == 1 and g[0].action == {"type": "kitchen_skill", "min_level": 0} and g[0].priority == 2, g
+    # kitchens at 3+, free cooks 4 and 3: kept
+    s["supplies"]["cooks"] = {"best": 4, "skilled": 0, "kitchen_min": 3, "able_skills": [4, 3]}
+    assert not by_rule(plan(s, Memory())[0], "good_cooks")
+    # no free cook at all (an empty list from the bridge may come as a dict)
+    s["supplies"]["cooks"] = {"best": 0, "skilled": 0, "kitchen_min": 3, "able_skills": {}}
+    g = by_rule(plan(s, Memory())[0], "good_cooks")
+    assert g and g[0].action == {"type": "kitchen_skill", "min_level": 0}, g
+
+
 @test("Gem-mad and Nobles' Pride (0.103.15): treasures kept home; every noble's rooms whatever the Deference")
 def _():
     from planner import keeps_treasures, noble_room_kinds
@@ -9110,6 +9138,34 @@ def _():
     note_cycle(more, m)
     g = by_rule(plan(more, m)[0], "gates")
     assert g and g[0].action == {"type": "arm_gates"}, g
+
+
+@test("0.105.8 A: one thief outside, a squad on him, the hatch shut on 10 citizens -> open, not armed again")
+def _():
+    s = b_thief(inside=False, policy="always")
+    s["entrances"]["citizens_outside"] = 10
+    s["military"]["squads"][1].update(ai_orders=1, kill_ids=[7527])
+    m = Memory(ai_alert_raised=True)
+    note_cycle(s, m)
+    g = by_rule(plan(s, m)[0], "gates")
+    assert g and g[0].action == {"type": "open_gates"} and "10 citizen(s) shut out" in g[0].reason, g
+    s2 = copy.deepcopy(s)
+    s2["entrances"]["armed"] = False
+    s2["entrances"]["entrances"][0]["closed"] = False
+    p2, notes2 = plan(s2, m)
+    assert not by_rule(p2, "gates") and any("squads in and the citizens out" in n for n in notes2), notes2
+    # no squad on him (or only an unarmed one): the gates are watched as before
+    s3 = b_thief(inside=False, closed=False, policy="never")
+    s3["entrances"]["armed"] = False
+    s3["military"]["squads"][0].update(ai_orders=1, kill_ids=[7527])     # (squad 0 unarmed)
+    g3 = by_rule(plan(s3, Memory())[0], "gates")
+    assert g3 and g3[0].action == {"type": "arm_gates"}, g3
+    # a third enemy, or a great danger: a siege, as before
+    big = b_thief(inside=False, policy="always", more=[
+        {"id": 900 + i, "name": "goblin", "invader": True, "can_reach_dwarves": True} for i in range(2)])
+    big["military"]["squads"][1].update(ai_orders=1, kill_ids=[7527, 900, 901])
+    gb = by_rule(plan(big, Memory(ai_alert_raised=True))[0], "gates")
+    assert not gb or gb[0].action != {"type": "open_gates"}, gb
 
 
 @test("0.105.3: a real siege (many invaders, or one inside with more outside, or a beast) -> as before")

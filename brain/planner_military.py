@@ -13,7 +13,7 @@ from quirks import has_rule
 from digest import _d, _l, normalize
 from planner_core import *  # noqa: F401,F403
 
-__all__ = ["lone_intruders", "ai_gates_shut", "lockdown_released", "lone_alert_over", "note_lockdown", "_lone_squad", "quick_clear", "PASTURE_ACTIONS", "_pasture_hold", "gate_invaders", "main_gate", "_gate_guard_rule", "_gate_dogs_rule", "GEAR_HELD", "_shelter_possible", "soldier_share", "_gate_rules", "_free_gate_lever", "_free_gate_levers", "_lever_far_enough", "_link_wanted", "_lever_rule", "_trap_rule", "_near_spot", "soldiers_wanted", "civilian_cap", "crossing_value", "_crossing_rule", "ALERT_DANGERS", "alert_ages", "_alerts_rule", "_war_animal_rule", "hazard_alert", "_hazard_rules", "_military_rules", "_training_rotation", "_ranged_squad_rule", "WEAPON_IDS", "_uniform_weapon_rule", "_anvil_rule", "idle_hands"]
+__all__ = ["lone_intruders", "hunted_outside", "ai_gates_shut", "lockdown_released", "lone_alert_over", "note_lockdown", "_lone_squad", "quick_clear", "PASTURE_ACTIONS", "_pasture_hold", "gate_invaders", "main_gate", "_gate_guard_rule", "_gate_dogs_rule", "GEAR_HELD", "_shelter_possible", "soldier_share", "_gate_rules", "_free_gate_lever", "_free_gate_levers", "_lever_far_enough", "_link_wanted", "_lever_rule", "_trap_rule", "_near_spot", "soldiers_wanted", "civilian_cap", "crossing_value", "_crossing_rule", "ALERT_DANGERS", "alert_ages", "_alerts_rule", "_war_animal_rule", "hazard_alert", "_hazard_rules", "_military_rules", "_training_rotation", "_ranged_squad_rule", "WEAPON_IDS", "_uniform_weapon_rule", "_anvil_rule", "idle_hands"]
 
 
 
@@ -65,19 +65,26 @@ def _gate_rules(s: dict, memory, cfg: dict, rules_: dict, any_reach: bool,
     # a lockdown the AI held days with no new enemy (the game slow, dwarves
     # shut out) is opened: the watcher stands down until a new enemy comes
     lone = lone_intruders(s, cfg, traits, memory) if any_reach else []
+    hunted = [] if lone or not any_reach else hunted_outside(s, cfg, traits, memory)    # (0.105.8)
     released = lockdown_released(memory)
-    if any_reach and closable and not ent.get("armed") and rules_["gate_lever"] and (lone or released):
+    if any_reach and closable and not ent.get("armed") and rules_["gate_lever"] and (lone or released or hunted):
         notes.append(f"{len(lone)} enemy/enemies inside the fort and none outside: the gates stay open "
                      "(shut, they keep only the others out)" if lone else
+                     f"only {len(hunted)} ordinary enemy/enemies outside, and a squad on them or citizens out: "
+                     "the gates stay open (shut, they keep the squads in and the citizens out)" if hunted else
                      "the AI's lockdown was lifted (no new enemy for days): the gates stay open until a new one comes")
     elif any_reach and closable and not ent.get("armed") and rules_["gate_lever"]:
         proposals.append(Proposal("gates", {"type": "arm_gates"},
                                   f"a threat can reach the dwarves: watch the {len(closable)} gate(s); each closes "
                                   "once everyone is inside or the danger is 12 tiles away", 0))
-    elif ent.get("armed") and (lone or released):
+    elif ent.get("armed") and (lone or released or hunted):
         proposals.append(Proposal("gates", {"type": "open_gates"},
                                   f"only {len(lone)} enemy/enemies left, inside the fort: open the gates (shut, they "
                                   "keep only the others out)" if lone else
+                                  f"only {len(hunted)} ordinary enemy/enemies outside and "
+                                  + (f"{int(ent.get('citizens_outside') or 0)} citizen(s) shut out"
+                                     if int(ent.get("citizens_outside") or 0) else "a squad sent at them")
+                                  + ": open the gates (the squads go out, the citizens come in)" if hunted else
                                   "the fort has been shut for days with no new enemy: open the gates", 0))
     elif not any_reach and ent.get("armed") and all_clear(s, memory, cfg)[0]:
         proposals.append(Proposal("gates", {"type": "open_gates"},
@@ -788,7 +795,7 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
     gates = [g for g in gates if g.get("id") not in watched]
     # (0.105.3) not for a lone intruder inside, nor after the lockdown was lifted
     lone = lone_intruders(s, cfg, traits, memory) if any_reach else []
-    open_up = bool(lone) or lockdown_released(memory)
+    open_up = bool(lone) or lockdown_released(memory) or bool(any_reach and hunted_outside(s, cfg, traits, memory))
     if rules_["gate_lever"] and gates:
         if any_reach and not memory.gate_closed_by_ai and not open_up:
             proposals.append(Proposal("gate", {"type": "pull_gate", "lever_id": gates[0]["id"]},
@@ -1534,6 +1541,43 @@ def lone_intruders(s: dict, cfg: dict, traits: dict | None = None, memory=None) 
     if any(t.get("id") not in reach for t in held_off_threats(s)) or great_present(s):
         return []                       # a siege still outside: the gates hold it off, as before
     return list(reach)
+
+
+# (0.105.8) A (2 Nov, 14:00): a lone human axeman (a thief) OUTSIDE the
+# fort. The watcher shut its only gate, a 1-wide hatch: the three squads sent
+# to kill him were shut in, 10 citizens and 4 visitors shut out with him, and
+# the game fell to 3 FPS. A gate keeps out a siege; one or two ordinary
+# enemies are the squads' to deal with, and the citizens outside need a way in.
+
+def hunted_outside(s: dict, cfg: dict, traits: dict | None = None, memory=None) -> list:
+    """The ids of the enemies that can reach the dwarves when they are only a
+    few (`lone_intruder_max`) ordinary ones (no great danger, flier or
+    building destroyer), some of them outside the fort, no siege is held off
+    at the gates, and an armed squad has a kill order on every one of them
+    (the gates then open: the squads must get out, the citizens in); []
+    otherwise. Without the gate scan's map: []."""
+    o = _d(s.get("others_on_map"))
+    rows = {t.get("id"): t for t in _l(o.get("threats")) if isinstance(t, dict)}
+    reach = list(reachable_threats(s, traits if traits is not None else _traits(s), cfg))
+    if not reach or len(reach) > cfg.get("lone_intruder_max", 2):
+        return []
+    ent = _d(s.get("entrances"))
+    if not ent.get("scanned"):
+        return []
+    for i in reach:
+        t = rows.get(i)
+        if not isinstance(t, dict) or t.get("great_danger") or t.get("flier") or t.get("destroyer"):
+            return []
+    if any(t.get("id") not in reach for t in held_off_threats(s)) or great_present(s):
+        return []
+    want = set(reach)
+    hunted = set()
+    for q in _l(_d(s.get("military")).get("squads")):
+        if isinstance(q, dict) and q.get("ai_orders") and can_fight(q, cfg) and isinstance(q.get("kill_ids"), list):
+            hunted |= want & set(q["kill_ids"])
+    # (a squad on them, not citizens outside alone: without one the watcher
+    # would be armed, shut and opened again each cycle)
+    return reach if hunted == want else []
 
 
 def ai_gates_shut(s: dict, memory=None) -> bool:

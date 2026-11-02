@@ -118,10 +118,15 @@ def _():
     rows += [{"in_fort": True, "paused": False, "fort": "F#1", "fps": 55, "pop": 90,
               "report_timing": {"industry": 300, "labor": 25}} for _ in range(6)]
     flags, plain = hc.fps_flags(rows)
-    assert any("slowing down in F#1: FPS median 100 -> 55" in f for f in flags), flags
+    assert any("slowing down in site 1: FPS median 100 -> 55" in f for f in flags), flags
     assert any("'industry' is slow" in f for f in flags) and not any("'labor'" in f for f in flags), flags
     rows = [dict(r, fps=30) for r in rows]
-    assert any("runs slowly in F#1" in f for f in hc.fps_flags(rows)[0])
+    assert any("runs slowly in site 1" in f for f in hc.fps_flags(rows)[0])
+    # (0.105.8) the autosaves of one site are one fort; an older fort's rows are left out
+    old = [{"in_fort": True, "paused": False, "fort": "autosave 1#239", "fps": 5} for _ in range(9)]
+    new = [{"in_fort": True, "paused": False, "fort": f"autosave {1 + i % 3}#1430", "fps": 90} for i in range(9)]
+    flags, plain = hc.fps_flags(old + new)
+    assert not [f for f in flags if "FPS" in f] and len(plain) == 1 and "site 1430" in plain[0] and "9 rows" in plain[0], (flags, plain)
 
 
 @test("self-test: its FAIL lines are flags; a game not running is no flag; a hang is")

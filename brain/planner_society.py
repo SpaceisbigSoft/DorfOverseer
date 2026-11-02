@@ -1547,7 +1547,23 @@ def _needs_rules(s: dict, cfg: dict, proposals: list, rules_: dict | None = None
     ck = _d(sup.get("cooks"))
     if isinstance(ck.get("kitchen_min"), int) and isinstance(ck.get("best"), int):
         want = min(20, max(cfg["good_cook_min"], ck["best"] - 2)) if ck["best"] >= cfg["good_cook_min"] else 0
-        if ck["kitchen_min"] > ck["best"]:
+        # (0.105.8) at least two free cooks must clear the bar (the bridge's
+        # able_skills: adults in no squad with the labour, best first): one
+        # cook alone is pulled to other work and the lavish meals stood at the
+        # kitchen for weeks (the six forts: 17-37 stuck-order notes each)
+        able = [int(x) for x in _l(ck.get("able_skills")) if isinstance(x, (int, float))]
+        if want and "able_skills" in ck:
+            second = able[1] if len(able) >= 2 else 0
+            want = min(want, second) if second >= cfg["good_cook_min"] else 0
+            if ck["kitchen_min"] > 0 and (len(able) < 2 or able[1] < ck["kitchen_min"]) and ck["kitchen_min"] <= ck["best"]:
+                proposals.append(Proposal("good_cooks", {"type": "kitchen_skill", "min_level": want},
+                                          f"the kitchens take only cooks of skill {ck['kitchen_min']}+ and fewer than two "
+                                          f"free cooks are that good ({', '.join(map(str, able[:3])) or 'none'}): "
+                                          + (f"down to {want}+" if want else "any cook again"), 2))
+                ck = None                                # (no second proposal below)
+        if ck is None:
+            pass
+        elif ck["kitchen_min"] > ck["best"]:
             # (0.104.19) nobody left who may cook: the best cook died or left
             # (Enxah: kitchens at 9+, the best now 7; the lavish meals stuck 33
             # days and asked for as Needs you)

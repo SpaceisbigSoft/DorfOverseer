@@ -34,7 +34,7 @@
 local json = require('json')
 local utils = require('utils')
 
-BRIDGE_VERSION = '0.105.7'
+BRIDGE_VERSION = '0.105.8'
 PROTOCOL = 1 -- bump when the report's shape changes in a breaking way
 
 local OUT_DIR = dfhack.getDFPath() .. '/dfhack-config/ai-overseer'
@@ -1199,12 +1199,29 @@ function get_supplies()
     -- (0.103.14) the fort's cooks (a lavish meal's worth grows with the cook's
     -- skill) and the lowest skill its kitchens let cook
     pcall(function()
-        local best, skilled = 0, 0
+        -- (0.105.8) best and skilled count only the cooks who can cook now:
+        -- adults, sane, in no squad, with the cooking labour. Counting every
+        -- citizen kept the six forts' kitchens at 3+ or 6+ for cooks who were
+        -- soldiers (A: 27 of 37 in squads), and the lavish meals stuck at the
+        -- kitchen for weeks; best_any keeps the old count
+        local best, skilled, best_any, able = 0, 0, 0, {}
         for _, u in ipairs(dfhack.units.getCitizens(true)) do
             local r = dfhack.units.getNominalSkill(u, df.job_skill.COOK, true) or 0
-            if r > best then best = r end
-            if r >= 5 then skilled = skilled + 1 end
+            if r > best_any then best_any = r end
+            local ok_c, can = pcall(function()
+                return dfhack.units.isAdult(u) and dfhack.units.isSane(u)
+                    and (u.military.squad_id or -1) < 0
+                    and u.status.labors[df.unit_labor.COOK] == true
+            end)
+            if ok_c and can then
+                table.insert(able, r)
+                if r > best then best = r end
+                if r >= 5 then skilled = skilled + 1 end
+            end
         end
+        table.sort(able, function(x, y) return x > y end)
+        local top = {}
+        for i = 1, math.min(5, #able) do top[i] = able[i] end
         local kmin = nil
         for _, b in ipairs(df.global.world.buildings.other.WORKSHOP_ANY) do
             if b.type == df.workshop_type.Kitchen then
@@ -1212,7 +1229,8 @@ function get_supplies()
                 if kmin == nil or m < kmin then kmin = m end
             end
         end
-        out.cooks = {best = best, skilled = skilled, kitchen_min = kmin}
+        out.cooks = {best = best, skilled = skilled, kitchen_min = kmin, best_any = best_any,
+                     able = #able, able_skills = top}
     end)
     each('SPLINT', function(it) out.splints = out.splints + it:getStackSize() end)
     each('CRUTCH', function(it) out.crutches = out.crutches + it:getStackSize() end)

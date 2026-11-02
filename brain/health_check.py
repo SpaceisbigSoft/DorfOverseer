@@ -283,9 +283,18 @@ def fps_flags(rows: list[dict]) -> tuple[list[str], list[str]]:
     report sections."""
     flags, plain = [], []
     by_fort = defaultdict(list)
+    # (0.105.8) one fort is its site, whichever autosave it was read from
+    # ("autosave 1#1430", "autosave 3#1430"), and only the fort played now
+    # (the last row's site): the check flagged the old fort's FPS
+    # (A: "autosave 1#239") a day after the new one began
+    def site(r):
+        f = str(r.get("fort") or "")
+        return f.rsplit("#", 1)[1] if "#" in f else f
+    current = next((site(r) for r in reversed(rows) if r.get("fort")), None)
     for r in rows:
-        if r.get("in_fort") and not r.get("paused") and isinstance(r.get("fps"), (int, float)) and r.get("fort"):
-            by_fort[str(r["fort"])].append(r)
+        if (r.get("in_fort") and not r.get("paused") and isinstance(r.get("fps"), (int, float)) and r.get("fort")
+                and site(r) == current):
+            by_fort[f"site {current}"].append(r)
     for fort, rs in by_fort.items():
         if len(rs) < 6:
             continue
