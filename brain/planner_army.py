@@ -29,7 +29,7 @@ wherever they were. Here:
 from __future__ import annotations
 
 from digest import _d, _l
-from planner_core import (AGENDA_THEMES, Proposal, all_clear, ask_player, is_ranged, player_rules, queued,
+from planner_core import (AGENDA_THEMES, Proposal, all_clear, ask_player, can_fight, is_ranged, player_rules, queued,
                           reachable_threats, _has_shop)
 
 __all__ = ["_army_gear_rule", "_quiver_rule", "_bolts_rule", "_shelter_squads_rule", "_gate_cut_rule",
@@ -44,7 +44,9 @@ WEAPON_RECIPES = {"ITEM_WEAPON_AXE_BATTLE": "metal_battle_axe", "ITEM_WEAPON_SPE
                   "ITEM_WEAPON_MACE": "metal_mace", "ITEM_WEAPON_CROSSBOW": "wooden_crossbow"}
 
 # reasons the AI mends itself (lua/ai-military.lua fix_gear_gaps)
-FIXABLE = ("stale on a soldier's list", "wrong material", "fillable")
+FIXABLE = ("stale on a soldier's list", "wrong material", "fillable",
+           # (0.105.2) forbidden or dumped weapons let go (none set to melt, none near enemies)
+           "forbidden, dumped or to melt")
 
 
 def _why(gear: dict) -> dict:
@@ -108,7 +110,8 @@ def _army_gear_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) ->
                    "or outside the gates): open the way or haul them in")
     if why.get("forbidden, dumped or to melt"):
         notes.append(f"{why['forbidden, dumped or to melt']} weapon place(s) wait on weapons that are forbidden, "
-                     "dumped or set to melt")
+                     "dumped or set to melt: the forbidden and dumped are let go when no enemy is near "
+                     "(those set to melt are yours to unmark)")
 
 
 def _quiver_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> None:
@@ -169,7 +172,7 @@ def hiding(s: dict, memory, cfg: dict) -> tuple[bool, list]:
     if not reach:
         return False, []
     squads = [q for q in _l(_d(s.get("military")).get("squads")) if isinstance(q, dict)]
-    able = [q for q in squads if (q.get("members") or 0) >= cfg["min_squad_to_fight"]]
+    able = [q for q in squads if can_fight(q, cfg)]
     great = [i for i in reach if threats[i].get("great_danger")]
     policy = rules_["attack_policy"]
     if policy == "all":

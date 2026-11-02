@@ -13,7 +13,7 @@ from quirks import has_rule
 from digest import _d, _l, normalize
 from planner_core import *  # noqa: F401,F403
 
-__all__ = ["gate_invaders", "main_gate", "_gate_guard_rule", "_gate_dogs_rule", "GEAR_HELD", "_shelter_possible", "soldier_share", "_gate_rules", "_free_gate_lever", "_free_gate_levers", "_lever_far_enough", "_link_wanted", "_lever_rule", "_trap_rule", "_near_spot", "soldiers_wanted", "crossing_value", "_crossing_rule", "ALERT_DANGERS", "alert_ages", "_alerts_rule", "_war_animal_rule", "hazard_alert", "_hazard_rules", "_military_rules", "_training_rotation", "_ranged_squad_rule", "WEAPON_IDS", "_uniform_weapon_rule", "_anvil_rule", "idle_hands"]
+__all__ = ["gate_invaders", "main_gate", "_gate_guard_rule", "_gate_dogs_rule", "GEAR_HELD", "_shelter_possible", "soldier_share", "_gate_rules", "_free_gate_lever", "_free_gate_levers", "_lever_far_enough", "_link_wanted", "_lever_rule", "_trap_rule", "_near_spot", "soldiers_wanted", "civilian_cap", "crossing_value", "_crossing_rule", "ALERT_DANGERS", "alert_ages", "_alerts_rule", "_war_animal_rule", "hazard_alert", "_hazard_rules", "_military_rules", "_training_rotation", "_ranged_squad_rule", "WEAPON_IDS", "_uniform_weapon_rule", "_anvil_rule", "idle_hands"]
 
 
 
@@ -449,10 +449,30 @@ def _near_spot(e: dict, spots, value: bool = False):
     return False
 
 
+def civilian_cap(s: dict, cfg: dict) -> int | None:
+    """(0.105.2) The most soldiers the fort can field and still work: the
+    adults less a floor of civilians (`civilians_min`, or `civilians_min_share`
+    of the adults, the larger). War-hold (2 Nov) at Militarism 150 Extreme
+    drafted 29 of 36 adults: the economy and the mood fell (unhappy 77%).
+    None when the report has no adult count."""
+    adults = _d(s.get("dwarves")).get("adults")
+    if not isinstance(adults, int) or isinstance(adults, bool) or adults <= 0:
+        return None
+    floor = max(cfg["civilians_min"], math.ceil(adults * cfg["civilians_min_share"]))
+    return max(0, adults - floor)
+
+
 def soldiers_wanted(s: dict, citizens: int, cfg: dict, idle: bool = False) -> int:
     """From the Militarism trait; more when many dwarves long to fight or
     train (the Fight / MartialTraining needs: soldiering meets them), unless
-    Militarism is at its lowest."""
+    Militarism is at its lowest. (0.105.2) Below 0 the need-driven extra
+    shrinks with the slider (gone at -100); never past the civilian cap."""
+    want = _soldiers_wanted(s, citizens, cfg, idle)
+    cap = civilian_cap(s, cfg)
+    return want if cap is None else min(want, cap)
+
+
+def _soldiers_wanted(s: dict, citizens: int, cfg: dict, idle: bool = False) -> int:
     base = round(citizens * soldier_share(s, cfg))
     # (0.100.1, review) a handful of dwarves keep to their work: no soldiers
     # below SQUAD_MIN_CITIZENS unless a threat can reach them (the alert and
@@ -465,6 +485,10 @@ def soldiers_wanted(s: dict, citizens: int, cfg: dict, idle: bool = False) -> in
     # (0.103.9) a small fort too, by its share: Enxah's 28 had 23 distracted
     # for want of training (the line was 15 of 30+ citizens) and 10 miserable
     need_at = min(cfg["fight_needs_at"], max(4, math.ceil(citizens * cfg["fight_needs_share"])))
+    # (0.105.2) a peaceful fort (Militarism below 0) drafts fewer for the
+    # needs: Monastery at -60 drafted 32 of 70 (its slider asks 5)
+    mil = max(-100.0, min(0.0, float(traits.get("militarism", 0) or 0)))
+    lean = 1 + mil / 100
     if fighters >= need_at and traits.get("militarism", 0) > -100 and citizens >= cfg["fight_min_citizens"]:
         # (0.104.61) a quarter of the fort badly wanting to train or fight: the
         # wider idle-hands caps (Enxah, winter y74: MartialTraining 30 of 93
@@ -478,9 +502,9 @@ def soldiers_wanted(s: dict, citizens: int, cfg: dict, idle: bool = False) -> in
             # Fight, MartialTraining and LearnSomething (a skill rank) at once
             idle = int(_d(s.get("dwarves")).get("idle_adults") or 0)
             extra = min(fighters // 2, max(cfg["fight_soldiers_max"], idle), cfg["idle_fight_soldiers_max"])
-            return min(base + extra, max(base, round(citizens * cfg["idle_fight_share_max"])))
+            return min(base + round(extra * lean), max(base, round(citizens * cfg["idle_fight_share_max"] * lean)))
         extra = min(fighters // 2, cfg["fight_soldiers_max"])
-        return min(base + extra, max(base, round(citizens * cfg["fight_share_max"])))
+        return min(base + round(extra * lean), max(base, round(citizens * cfg["fight_share_max"] * lean)))
     return base
 
 
@@ -680,7 +704,7 @@ def _hazard_rules(s: dict, memory, cfg: dict, proposals: list, notes: list, rule
     mil = _d(s.get("military"))
     if berserk:
         able = [q for q in _l(mil.get("squads")) if isinstance(q, dict)
-                and (q.get("members") or 0) >= cfg["min_squad_to_fight"] and not q.get("ai_orders")]
+                and can_fight(q, cfg) and not q.get("ai_orders")]
         names = ", ".join(str(b.get("name")) + (" (changed into a beast)" if b.get("changed") else "")
                           for b in berserk[:3])
         if able:
@@ -754,7 +778,7 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
                                       "lever back", 1))
 
     # Squads at threats: kill orders the AI gives, and clears again.
-    able = [q for q in squads if (q.get("members") or 0) >= cfg["min_squad_to_fight"]]
+    able = [q for q in squads if can_fight(q, cfg)]
     policy = rules_["attack_policy"]
     great = [i for i in reach if threats[i].get("great_danger")]
     # (0.104.118, phase 11) a great danger is fought when the squads are
@@ -792,7 +816,7 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
                         f"{q.get('name') or 'the squad'} goes after them too", 0))
         if not able:
             ask_player(notes, f"{len(targets)} enemies can reach the dwarves and no squad has "
-                         f"{cfg['min_squad_to_fight']}+ soldiers to send")
+                         f"{cfg['min_squad_to_fight']}+ armed soldiers to send")
     if held_back and policy != "never":
         notes.append(f"{len(held_back)} great danger(s) (beast, titan...) can reach the dwarves: the dwarves hide "
                      f"behind the gates ({verdict}; Rules tab: attack everything)")
@@ -1050,6 +1074,9 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
         want = min(citizens, round(want * 1.25))   # (Oathbound)
     base_want = want
     want = keen_lift(s, memory, cfg, want, have, citizens, bool(any_reach))      # (0.104.168) the keen in a crisis
+    cap = civilian_cap(s, cfg)                                                    # (0.105.2) enough left to work
+    if cap is not None and not any_reach:
+        want = min(want, cap)
     # (0.102) an army bigger than the fort wants (Militarism lowered, the fort
     # shrank) gives soldiers back to work a few at a time, while all is quiet.
     # Monastery kept 49 soldiers at Militarism -60 (it wanted ~10).
@@ -1474,7 +1501,7 @@ def _gate_guard_rule(s: dict, memory, cfg: dict, proposals: list) -> None:
     if not inv or not gate:
         return
     squads = [q for q in _l(_d(s.get("military")).get("squads")) if isinstance(q, dict) and q.get("id") is not None]
-    able = [q for q in squads if (q.get("members") or 0) >= cfg["min_squad_to_fight"]
+    able = [q for q in squads if can_fight(q, cfg)
             and not q.get("ai_orders") and not (q.get("orders") or 0)]
     if not able:
         return

@@ -870,6 +870,33 @@ def _():
     assert calm < keen <= round(93 * PLANNER_CONFIG["idle_fight_share_max"]), (calm, keen)
 
 
+@test("soldiering (0.105.2): a peaceful fort drafts fewer for the needs; enough civilians always kept")
+def _():
+    from planner import soldiers_wanted
+    s = fort()
+    s["needs"] = {"needs": {"Fight": {"distracted": 40, "badly": 30}, "MartialTraining": {"distracted": 50, "badly": 30}}}
+    s["dwarves"].update(adults=68, idle_adults=39)                      # Monastery, 2 Nov
+    s["settings"]["traits"] = {"militarism": 0}
+    at0 = soldiers_wanted(s, 70, PLANNER_CONFIG, True)
+    s["settings"]["traits"] = {"militarism": -60}
+    at60 = soldiers_wanted(s, 70, PLANNER_CONFIG, True)
+    assert at60 <= round(70 * PLANNER_CONFIG["idle_fight_share_max"] * 0.4) < at0, (at60, at0)
+    # War-hold: Militarism 150 with Extreme, 36 adults: 12 kept at work (it drafted 29)
+    s = fort()
+    s["settings"]["traits"] = {"militarism": 150}
+    s["settings"]["extreme"] = ["militarism"]
+    s["dwarves"].update(adults=36, idle_adults=1)
+    from planner_military import soldier_share
+    share = soldier_share(s, PLANNER_CONFIG)
+    assert soldiers_wanted(s, 39, PLANNER_CONFIG) == 36 - 12
+    s["settings"]["traits"] = {"militarism": 200}                       # 90%: a big fort keeps 30%
+    s["dwarves"]["adults"] = 200
+    assert soldiers_wanted(s, 200, PLANNER_CONFIG) == 200 - 60
+    s["settings"]["traits"] = {"militarism": 150}
+    s["dwarves"].pop("adults")                                          # no count: the slider alone
+    assert soldiers_wanted(s, 40, PLANNER_CONFIG) == round(40 * share)
+
+
 @test("idle hands (0.83/0.84): a running average; from 40% every squad trains and more soldiers join; off under 25%")
 def _():
     from planner import soldiers_wanted, idle_hands, update_idle
@@ -2785,7 +2812,7 @@ def _():
     assert not by_rule(p, "squad_attack") and not any("no squad has" in n for n in notes)
     s["military"]["squads"][0]["members"] = 1
     _, notes = plan(s, Memory())
-    assert any("no squad has 3+ soldiers" in n for n in notes), notes
+    assert any("no squad has 3+ armed soldiers" in n for n in notes), notes
 
 
 @test("military: threat gone -> squads on the AI's orders are called back (only those)")

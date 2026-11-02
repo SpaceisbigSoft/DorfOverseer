@@ -12,7 +12,7 @@ import phases
 from quirks import has_rule
 from digest import _d, _l, normalize
 
-__all__ = ["great_present", "all_clear", "STEER_PROTECTED", "STEER_MAX_DAYS", "steer_of", "PLANNER_CONFIG", "BREW_RECIPES", "MEAL_RECIPES", "MANDATE_RECIPES", "BUILDABLE_SHOPS", "SHOP_ALIASES", "SURVIVAL_SHOPS", "TICKS_PER_DAY", "TICKS_PER_YEAR", "NO_COOLDOWN", "MULTI_PER_CYCLE", "EMERGENCY", "STUCK_HOLD_EXEMPT", "LIMIT_EXEMPT", "Proposal", "Memory", "abs_tick", "game_day", "factor", "ADJUST_BOUNDS", "_number", "effective_config", "queued", "unstored_cups", "free_stock", "watch_since", "_clamp", "MEMORIAL_SPAN", "OPTIONAL_LEVELS", "GEAR_WEAPONS", "GEAR_METALS", "GEAR_RECIPES", "NEEDS_YOU", "ask_player", "player_rules", "MAINTAIN_SKIPS", "level_refused", "_traits", "reachable_threats", "held_off_threats", "_holding_off", "ONE_A_CYCLE", "growth_mode", "growth_target", "JOB_SHOPS", "RECIPE_SHOPS", "WOOD_ELSEWHERE", "recipe_shop", "brew_recipe", "_watchdog_notes", "jobs_reported", "order_job_state", "masons_jammed", "stuck_hold_days", "_stuck_before", "stone_short", "_office_held", "tantrums_recent", "justice_held", "_restraint_order", "manager_needs_office", "suites_short", "wool_route", "thread_plants_here", "MINING_NEED_ONLY", "mining_plan", "noble_room_kinds", "SOCIAL_NEEDS", "care_waiting", "unmet", "_soldier_swap", "recently_home", "LOCATION_UNITS", "_location", "_location_short", "_real_locations", "is_ranged", "STALE_PROJECT_DAYS", "_workshops_busy", "shop_count", "shops_max", "_has_shop", "RAW_FOOD", "ALL_FOOD", "_idle_share", "update_idle", "AGENDA_THEMES", "agenda", "food_per_dwarf", "WINTER_STOCK", "winter_factor", "young_fort", "established", "has_farms", "_best_metal", "REFUSAL_FIRST_DAYS", "REFUSAL_MAX_DAYS", "REFUSAL_IDLE_DAYS", "REFUSAL_KEYS", "refusal_key", "_refused_wait", "note_refusal", "LOOP_LIMITS", "LOOP_LIMIT_DEFAULT", "LOOP_EXEMPT", "_loop_count", "_stalled_days", "_entrance_spot", "_record_any_outcome", "_weapon_gaps", "spare_sig"]
+__all__ = ["great_present", "all_clear", "STEER_PROTECTED", "STEER_MAX_DAYS", "steer_of", "PLANNER_CONFIG", "BREW_RECIPES", "MEAL_RECIPES", "MANDATE_RECIPES", "BUILDABLE_SHOPS", "SHOP_ALIASES", "SURVIVAL_SHOPS", "TICKS_PER_DAY", "TICKS_PER_YEAR", "NO_COOLDOWN", "MULTI_PER_CYCLE", "EMERGENCY", "STUCK_HOLD_EXEMPT", "LIMIT_EXEMPT", "Proposal", "Memory", "abs_tick", "game_day", "factor", "ADJUST_BOUNDS", "_number", "effective_config", "queued", "unstored_cups", "free_stock", "watch_since", "_clamp", "MEMORIAL_SPAN", "OPTIONAL_LEVELS", "GEAR_WEAPONS", "GEAR_METALS", "GEAR_RECIPES", "NEEDS_YOU", "ask_player", "player_rules", "MAINTAIN_SKIPS", "level_refused", "_traits", "reachable_threats", "held_off_threats", "_holding_off", "ONE_A_CYCLE", "growth_mode", "growth_target", "JOB_SHOPS", "RECIPE_SHOPS", "WOOD_ELSEWHERE", "recipe_shop", "brew_recipe", "_watchdog_notes", "jobs_reported", "order_job_state", "masons_jammed", "stuck_hold_days", "_stuck_before", "stone_short", "_office_held", "tantrums_recent", "justice_held", "_restraint_order", "manager_needs_office", "suites_short", "wool_route", "thread_plants_here", "MINING_NEED_ONLY", "mining_plan", "noble_room_kinds", "SOCIAL_NEEDS", "care_waiting", "unmet", "_soldier_swap", "recently_home", "LOCATION_UNITS", "_location", "_location_short", "_real_locations", "can_fight", "is_ranged", "STALE_PROJECT_DAYS", "_workshops_busy", "shop_count", "shops_max", "_has_shop", "RAW_FOOD", "ALL_FOOD", "_idle_share", "update_idle", "AGENDA_THEMES", "agenda", "food_per_dwarf", "WINTER_STOCK", "winter_factor", "young_fort", "established", "has_farms", "_best_metal", "REFUSAL_FIRST_DAYS", "REFUSAL_MAX_DAYS", "REFUSAL_IDLE_DAYS", "REFUSAL_KEYS", "refusal_key", "_refused_wait", "note_refusal", "LOOP_LIMITS", "LOOP_LIMIT_DEFAULT", "LOOP_EXEMPT", "_loop_count", "_stalled_days", "_entrance_spot", "_record_any_outcome", "_weapon_gaps", "spare_sig"]
 
 PLANNER_CONFIG = {
     # Starting guesses, tuned from experience. Per citizen, before trait factors.
@@ -353,7 +353,7 @@ PLANNER_CONFIG = {
     "alert_keep_days": 1,              # alert icons cleared once this old (0.88)
     "alert_danger_days": 7,            # deaths, ambushes, beasts... kept this long
     "alerts_per_cycle": 50,
-    "alerts_cooldown_ticks": 1200,
+    "alerts_cooldown_ticks": 7 * 1200,      # (0.105.2) a week: DF raises job_failed, sparring, agreement and guest icons again at once (933 clears a night at a day apart)
     "dwarves_per_woodcutter": 30,      # (0.104.142) while wood is short: up to one cutter per this many dwarves...
     "wood_short_per_cutter": 100,      # ...one more per this many logs short
     "tree_quota_share": 0.8,           # felling stops at this share of the elves' yearly cap (0.89)
@@ -385,6 +385,8 @@ PLANNER_CONFIG = {
     "idle_fight_soldiers_max": 40,     # ... then at most this many more soldiers for the needs (0.104.142: was 30)
     "idle_fight_share_max": 0.45,      # ... and at most this share of the citizens
     "fight_min_citizens": 15,          # (0.103.9; was 30)
+    "civilians_min": 12,               # (0.105.2) never fewer civilians than this ...
+    "civilians_min_share": 0.3,        # ... or this share of the adults (the larger): soldiers are the rest at most
     "fight_needs_share": 0.4,          # (0.103.9) ...or this share of the citizens, if fewer
     "fight_badly_share": 0.25,         # (0.104.61) this share BADLY wanting to train or fight: the idle caps
     "cavern_well_drink_pd": 3,         # a cavern well when drink falls below this a dwarf...
@@ -1488,6 +1490,22 @@ def _real_locations(counts: dict, key: str, memory, listing: list | None = None)
         marked = any(x.get("over_dining") for x in rows)
         return max(0, sum(1 for x in rows if not x.get("over_dining")) - (1 if kind in quick and not marked else 0))
     return max(0, int(counts.get(key) or 0) - (1 if kind in quick else 0))
+
+
+def can_fight(q: dict, cfg: dict) -> bool:
+    """(0.105.2) A squad worth sending at a threat: `min_squad_to_fight`
+    members, and that many of them armed (the bridge's `power.armed`: a
+    weapon in hand or one given on a weapon entry). B (2 Nov): all four
+    squads went at one thief in turn with no weapon among them, and he
+    lived. A bridge without the count: members alone, as before."""
+    need = cfg.get("min_squad_to_fight", 3)
+    members = q.get("members") or 0
+    if members < need:
+        return False
+    armed = _d(q.get("power")).get("armed")
+    if not isinstance(armed, int) or isinstance(armed, bool):
+        return True
+    return armed >= min(need, members)
 
 
 def is_ranged(q: dict) -> bool:

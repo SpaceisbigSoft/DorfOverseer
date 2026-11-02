@@ -28,7 +28,7 @@ from __future__ import annotations
 
 from digest import _d, _l
 from planner_core import (AGENDA_THEMES, LIMIT_EXEMPT, PLANNER_CONFIG, Proposal, STEER_PROTECTED, TICKS_PER_DAY, abs_tick, ask_player,
-                          reachable_threats, _traits)
+                          can_fight, reachable_threats, _traits)
 
 __all__ = ["_threat_rules", "threat_alert", "threat_rules_of", "moon_due", "PRISONER_CHOICES", "THREAT_CONFIG"]
 
@@ -126,7 +126,7 @@ def moon_due(changes: list, now: int, cfg: dict) -> bool | None:
 
 def _able_squads(s: dict, cfg: dict) -> list:
     return [q for q in _l(_d(s.get("military")).get("squads")) if isinstance(q, dict)
-            and (q.get("members") or 0) >= cfg.get("min_squad_to_fight", 3) and not q.get("ai_orders")]
+            and can_fight(q, cfg) and not q.get("ai_orders")]
 
 
 def _fire(s, cfg, t, proposals, notes):
@@ -266,8 +266,7 @@ def _cavern_beasts(s, cfg, memory, t, rules, proposals, notes):
         if here and c.get("open") and rules["seal_caverns"]:
             from planner_military import fight_or_hide
             mil = _d(s.get("military"))
-            able = [q for q in _l(mil.get("squads")) if isinstance(q, dict)
-                    and (q.get("members") or 0) >= cfg.get("min_squad_to_fight", 3)]
+            able = [q for q in _l(mil.get("squads")) if isinstance(q, dict) and can_fight(q, cfg)]
             th = {str(o.get("id")): o for o in _l(_d(s.get("others_on_map")).get("threats")) if isinstance(o, dict)}
             great = [th.get(str(x.get("id"))) or {"name": x.get("name")} for x in here]
             try:

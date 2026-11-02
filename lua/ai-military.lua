@@ -211,7 +211,7 @@ WORN_MODE = (function()
 end)()
 
 function squad_power(sq)
-    local power, armored, skill_sum, n = 0, 0, 0, 0
+    local power, armored, skill_sum, n, armed = 0, 0, 0, 0, 0
     for _, pos in ipairs(sq.positions) do
         local hf = pos.occupant ~= -1 and df.historical_figure.find(pos.occupant)
         local u = hf and hf.unit_id ~= -1 and df.unit.find(hf.unit_id)
@@ -222,6 +222,25 @@ function squad_power(sq)
                 if ok and v and v > best then best = v end
             end
             local arm = false
+            -- (0.105.2) armed: a weapon in hand or one given on a weapon entry
+            -- (B's squads went at a thief with none: four sent, the thief lived)
+            local has_weapon = false
+            pcall(function()
+                for _, inv in ipairs(u.inventory) do
+                    if inv.item:getType() == df.item_type.WEAPON then
+                        local def = weapon_def(inv.item)
+                        local id = def and def.id or ''
+                        if id ~= 'ITEM_WEAPON_PICK' and not id:find('_TRAINING', 1, true) then has_weapon = true end
+                    end
+                end
+            end)
+            if not has_weapon then
+                pcall(function()
+                    for _, spec in ipairs(pos.equipment.uniform[df.uniform_category.weapon]) do
+                        if #spec.assigned > 0 then has_weapon = true end
+                    end
+                end)
+            end
             pcall(function()
                 for _, inv in ipairs(u.inventory) do
                     -- (0.104.139) real armour only: shirts, coats and cloaks are
@@ -235,11 +254,13 @@ function squad_power(sq)
             -- (0.104.139) DF's own hospital flag: the wound list holds old scars too
             local okw, wounded = pcall(function() return u.health ~= nil and u.health.flags.needs_healthcare end)
             local p = (1 + math.min(best, 20) / 3) * (arm and 1.5 or 1) * ((okw and wounded) and 0.5 or 1)
+                      * (has_weapon and 1 or 0.4)
             power, n, skill_sum = power + p, n + 1, skill_sum + best
             if arm then armored = armored + 1 end
+            if has_weapon then armed = armed + 1 end
         end
     end
-    return {power = math.floor(power * 10 + 0.5) / 10, armored = armored,
+    return {power = math.floor(power * 10 + 0.5) / 10, armored = armored, armed = armed,
             skill = n > 0 and math.floor(skill_sum / n * 10 + 0.5) / 10 or 0}
 end
 
@@ -2666,9 +2687,29 @@ end
 local function stale_places(dry_run)
     local eq = equipment_lists()
     if not eq then return 0 end
-    local una = {}
+    local una, asg = {}, {}
     for _, k in ipairs({'WEAPON', 'SHIELD'}) do
         for id in pairs(id_set(eq.items_unassigned[k])) do una[id] = true end
+        for id in pairs(id_set(eq.items_assigned[k])) do asg[id] = k end
+    end
+    -- (0.105.2) a place's stale id DF also keeps on its ASSIGNED list (no
+    -- entry anywhere claims it, nobody holds it): DF never hands it out
+    -- again. B (2 Nov): 7, then 24 places "stale on a soldier's list" and
+    -- the fix refused 17 times, as it took only ids on the free list. Such
+    -- an id comes off the place and goes back on the free list.
+    local entry = claim_map()
+    local moved = {}
+    local function free_again(id)
+        if una[id] or not asg[id] or entry[id] then return false end
+        local okf, ok = pcall(function()
+            local it = df.item.find(id)
+            if not it then return false end
+            local f = it.flags
+            if f.removed or f.garbage_collect or f.artifact or f.trader or f.hostile then return false end
+            if f.in_inventory and dfhack.items.getHolderUnit(it) ~= nil then return false end
+            return true
+        end)
+        return okf and ok
     end
     local n = 0
     for _, sq in ipairs(df.global.world.squads.all) do
@@ -2696,6 +2737,17 @@ local function stale_places(dry_run)
                     local id = v[i]
                     if una[id] and not mine[id] and not held_by_occupant(id) then
                         if not dry_run then v:erase(i) end
+                        n = n + 1
+                    elseif not mine[id] and not held_by_occupant(id) and free_again(id) then
+                        if not dry_run then
+                            v:erase(i)
+                            if not moved[id] then
+                                vec_remove(eq.items_assigned[asg[id]], id)
+                                vec_add(eq.items_unassigned[asg[id]], id)
+                                AW_LEDGER[id] = nil
+                            end
+                        end
+                        moved[id] = true
                         n = n + 1
                     end
                 end
@@ -2743,6 +2795,115 @@ local function loosen_material(dry_run)
     return n
 end
 
+-- (0.105.2) A forbidden or dumped weapon an empty weapon entry wants is let
+-- go again: B (2 Nov) had 20-23 places "forbidden, dumped or to melt" after
+-- the human siege (a dead dwarf's things are forbidden by DF's standing
+-- order) and every soldier unarmed. Only the forbid and dump marks are
+-- cleared (a weapon set to melt is the player's call: left, and counted),
+-- one weapon per empty entry, the nearest the soldier can walk to, and none
+-- lying within UNFORBID_DANGER_TILES of a live enemy (a field of the dead
+-- under fire is no place to send a dwarf for a sword).
+UNFORBID_DANGER_TILES = 20
+
+local function danger_spots()
+    local out = {}
+    local okl, active = pcall(function() return df.global.world.units.active end)
+    for _, u in ipairs(okl and active or {}) do
+        local ok, bad = pcall(function()
+            local U = dfhack.units
+            return not U.isDead(u) and (U.isDanger(u) or U.isInvader(u))
+        end)
+        if ok and bad then
+            local x, y, z = dfhack.units.getPosition(u)
+            if x then table.insert(out, {x = x, y = y, z = z}) end
+        end
+    end
+    return out
+end
+
+local function near_danger(spots, x, y, z)
+    for _, d in ipairs(spots) do
+        if math.abs(d.x - x) + math.abs(d.y - y) <= UNFORBID_DANGER_TILES and math.abs(d.z - z) <= 3 then
+            return true
+        end
+    end
+    return false
+end
+
+function unforbid_spares(dry_run, limit)
+    limit = limit or 10
+    local fort = fort_entity()
+    local eq = equipment_lists()
+    if not fort or not eq then return {n = 0, melt = 0, danger = 0} end
+    local entry, place = claim_map()
+    local ctx = {entry = entry, place = place, work = id_set(eq.work_weapons), una = id_set(eq.items_unassigned.WEAPON)}
+    local spots = danger_spots()
+    local taken, out = {}, {n = 0, melt = 0, danger = 0, items = {}}
+    for _, sid in ipairs(fort.squads) do
+        local sq = df.squad.find(sid)
+        for _, pos in ipairs(sq and sq.positions or {}) do
+            if out.n >= limit then return out end
+            local hf = pos.occupant ~= -1 and df.historical_figure.find(pos.occupant)
+            local u = hf and df.unit.find(hf.unit_id)
+            local ux, uy, uz
+            if u then ux, uy, uz = dfhack.units.getPosition(u) end
+            if ux then
+                local upos = xyz2pos(ux, uy, uz)
+                local specs = {}
+                pcall(function()
+                    for _, sp in ipairs(pos.equipment.uniform[df.uniform_category.weapon]) do
+                        if #sp.assigned == 0 then table.insert(specs, sp) end
+                    end
+                end)
+                for _, spec in ipairs(specs) do
+                    if out.n >= limit then break end
+                    local best, bd, melt_seen, danger_seen = nil, nil, false, false
+                    for _, it in ipairs(df.global.world.items.other.WEAPON) do
+                        if not taken[it.id] then
+                            local f = it.flags
+                            if (f.forbid or f.dump or f.melt) and not f.in_job then
+                                local ok, st = pcall(item_stage, spec, it, true, ctx, upos)
+                                -- stage 7 here: only the mark stands between it and the entry
+                                if ok and st == 7 then
+                                    local x, y, z = dfhack.items.getPosition(it)
+                                    if f.melt then
+                                        melt_seen = true
+                                    elseif x and near_danger(spots, x, y, z) then
+                                        danger_seen = true
+                                    elseif x then
+                                        local okw, walk = pcall(dfhack.maps.canWalkBetween, upos, xyz2pos(x, y, z))
+                                        if okw and walk then
+                                            local d = math.abs(x - ux) + math.abs(y - uy) + 3 * math.abs(z - uz)
+                                            if not bd or d < bd then best, bd = it, d end
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                    if best then
+                        taken[best.id] = true
+                        if not dry_run then
+                            best.flags.forbid = false
+                            best.flags.dump = false
+                        end
+                        out.n = out.n + 1
+                        local okd, d = pcall(function()
+                            return (dfhack.df2utf or tostring)(dfhack.items.getDescription(best, 0, true))
+                        end)
+                        if #out.items < 6 then table.insert(out.items, okd and d or ('#' .. best.id)) end
+                    elseif melt_seen then
+                        out.melt = out.melt + 1
+                    elseif danger_seen then
+                        out.danger = out.danger + 1
+                    end
+                end
+            end
+        end
+    end
+    return out
+end
+
 local function add_shields(dry_run)
     local fort = fort_entity()
     if not fort then return 0 end
@@ -2777,6 +2938,13 @@ end
 function fix_gear_gaps(dry_run, shields)
     local out = {stale = stale_places(dry_run), loosened = loosen_material(dry_run),
                  shields_added = shields and add_shields(dry_run) or 0}
+    -- (0.105.2) forbidden or dumped weapons the entries want, let go
+    local oku, uf = pcall(unforbid_spares, dry_run, 10)
+    uf = oku and type(uf) == 'table' and uf or {n = 0, melt = 0, danger = 0}
+    out.unforbidden = uf.n
+    if uf.items and #uf.items > 0 then out.unforbidden_items = uf.items end
+    if uf.melt > 0 then out.left_to_melt = uf.melt end
+    if uf.danger > 0 then out.left_near_enemies = uf.danger end
     if not dry_run and out.stale + out.loosened + out.shields_added > 0 then
         for _, f in ipairs({'weapon', 'shield'}) do
             pcall(function() df.global.plotinfo.equipment.update[f] = true end)
@@ -2784,8 +2952,14 @@ function fix_gear_gaps(dry_run, shields)
     end
     local okw, w = pcall(assign_weapons, dry_run, 10)
     out.weapons = okw and type(w) == 'table' and (w.assigned or w.would_assign) or 0
-    if out.stale + out.loosened + out.shields_added + out.weapons == 0 then
-        return {ok = false, rejected = true, error = 'nothing to fix (see the report\'s weapon_gaps_why)'}
+    if out.stale + out.loosened + out.shields_added + out.weapons + out.unforbidden == 0 then
+        local why = 'nothing to fix (see the report\'s weapon_gaps_why)'
+        if (out.left_near_enemies or 0) > 0 then
+            why = out.left_near_enemies .. ' wanted weapon(s) lie near enemies: left forbidden until they go'
+        elseif (out.left_to_melt or 0) > 0 then
+            why = out.left_to_melt .. ' wanted weapon(s) are set to melt: left for the player'
+        end
+        return {ok = false, rejected = true, error = why}
     end
     out.ok, out.dry_run = true, dry_run or nil
     return out

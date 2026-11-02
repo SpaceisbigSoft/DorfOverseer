@@ -1068,6 +1068,78 @@ def _():
     assert 43 not in assigned, assigned
 
 
+@test("0.105.2: fix_gear_gaps frees a stale id DF keeps on its ASSIGNED list (B: refused 17 times)")
+def _():
+    lua, n, env, eq, sq7, sq8 = army()
+    lua.execute("""local env, eq = ...
+        local W = env.df.global.world.items.other.WEAPON
+        env.df.item = {find = function(id) for i = 0, 4 do if W[i].id == id then return W[i] end end end}
+        -- the other axes taken: 45 the only one, stale on 103's place AND on DF's assigned list
+        W[0].flags = {owned = true}; W[1].flags = {owned = true}
+        eq.items_unassigned.WEAPON:erase(4)
+        eq.items_assigned.WEAPON:insert('#', 45)""", env, eq)
+    seq = lambda v: [v[i] for i in range(n(v))]
+    assert 45 not in seq(eq.items_unassigned.WEAPON)
+    d = env.fix_gear_gaps(True, False)
+    assert d.ok and d.stale == 1, dict(d)
+    assert seq(eq.items_assigned.WEAPON) == [45]                                  # a dry run changes nothing
+    r = env.fix_gear_gaps(False, False)
+    assert r.ok and r.stale == 1 and r.weapons >= 1, dict(r)
+    assert seq(sq7.positions[3].equipment.assigned_items) == []                  # off 103's place
+    assert seq(sq7.positions[0].equipment.uniform[2][0].assigned) == [45]         # handed out again
+    assert seq(eq.items_assigned.WEAPON).count(45) == 1, seq(eq.items_assigned.WEAPON)   # listed once
+    assert 45 not in seq(eq.items_unassigned.WEAPON)
+
+
+@test("0.105.2: fix_gear_gaps lets go a forbidden or dumped weapon the entries want; not near enemies, not one set to melt")
+def _():
+    def setup(flags, enemy_x=None):
+        lua, n, env, eq, sq7, sq8 = army()
+        lua.execute("""local env, flags, ex = ...
+            local W = env.df.global.world.items.other.WEAPON
+            W[0].flags = {owned = true}; W[1].flags = {owned = true}
+            W[3].flags = {owned = true}                             -- the crossbow out of the way
+            W[4].flags = flags
+            local sq = env.df.squad.find(7)
+            sq.positions[3].equipment.assigned_items:erase(0)      -- 45 no longer stale
+            env.dfhack.units.isDead = function() return false end
+            env.dfhack.units.isDanger = function(u) return u.enemy == true end
+            env.dfhack.units.isInvader = function() return false end
+            local act = {}
+            if ex then act = {[0] = {id = 999, enemy = true, x = ex}} end
+            env.df.global.world.units = {active = act}
+            local gp = env.dfhack.units.getPosition
+            env.dfhack.units.getPosition = function(u) if u.enemy then return u.x, 0, 0 end return gp(u) end""",
+                    env, lua.table_from(flags), enemy_x)
+        return lua, n, env, eq, sq7, sq8
+    seq = lambda n, v: [v[i] for i in range(n(v))]
+    lua, n, env, eq, sq7, sq8 = setup({"forbid": True})
+    why = dict(env.gaps_why("weapon", "WEAPON").why)
+    assert why.get("forbidden, dumped or to melt"), why
+    r = env.fix_gear_gaps(False, False)
+    assert r.ok and r.unforbidden == 1 and r.weapons >= 1, dict(r)
+    W = env.df["global"].world["items"].other.WEAPON
+    assert not W[4].flags.forbid
+    assert 45 in seq(n, sq7.positions[0].equipment.uniform[2][0].assigned)
+    # dumped: the same
+    lua, n, env, eq, sq7, sq8 = setup({"dump": True})
+    r = env.fix_gear_gaps(False, False)
+    assert r.ok and r.unforbidden == 1, dict(r)
+    # an enemy 10 tiles off: left, and the refusal says why
+    lua, n, env, eq, sq7, sq8 = setup({"forbid": True}, 13)
+    r = env.fix_gear_gaps(False, False)
+    assert not r.ok and "near enemies" in r.error, dict(r)
+    assert env.df["global"].world["items"].other.WEAPON[4].flags.forbid
+    # an enemy far away (60 tiles): let go
+    lua, n, env, eq, sq7, sq8 = setup({"forbid": True}, 63)
+    assert env.fix_gear_gaps(False, False).unforbidden == 1
+    # set to melt: the player's
+    lua, n, env, eq, sq7, sq8 = setup({"melt": True})
+    r = env.fix_gear_gaps(False, False)
+    assert not r.ok and "melt" in r.error, dict(r)
+    assert env.df["global"].world["items"].other.WEAPON[4].flags.melt
+
+
 @test("0.105.0: quivers: each crossbow place gets a free one (its quiver field), DF told to look again")
 def _():
     lua, n, env, eq, sq7, sq8 = army()

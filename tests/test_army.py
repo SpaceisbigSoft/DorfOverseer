@@ -93,12 +93,38 @@ def _():
     assert p and p[0].action == {"type": "work_order", "recipe": "wooden_crossbow", "amount": 3}, p
 
 
-@test("unreachable weapons are put to the player; forbidden ones noted")
+@test("unreachable weapons are put to the player; forbidden ones noted and let go (0.105.2)")
 def _():
     s = teacheroar_gear(weapon_gaps_why={"unreachable": 5, "forbidden, dumped or to melt": 2})
-    _, notes = plan(s, Memory())
+    props, notes = plan(s, Memory())
     assert any(n.startswith("[you] 5 soldier(s) can't get to the free weapons") for n in notes), notes
     assert any("forbidden, dumped or set to melt" in n for n in notes), notes
+    p = by_rule(props, "gear_fix")
+    assert p and "2 forbidden, dumped or to melt" in p[0].reason, p
+
+
+@test("0.105.2: a squad with no weapons isn't sent at a thief or an invader; an armed one is")
+def _():
+    from planner_core import can_fight
+    cfg = PLANNER_CONFIG
+    assert can_fight({"members": 8}, cfg)                                   # an older bridge: members alone
+    assert not can_fight({"members": 8, "power": {"armed": 0}}, cfg)        # B, 2 Nov
+    assert not can_fight({"members": 8, "power": {"armed": 2}}, cfg)
+    assert can_fight({"members": 8, "power": {"armed": 3}}, cfg)
+    assert can_fight({"members": 3, "power": {"armed": 3}}, cfg)
+    assert not can_fight({"members": 2, "power": {"armed": 2}}, cfg)
+    s = fort()
+    s["others_on_map"]["threats"] = [{"id": 7527, "name": "Trustdaub, Human Maceman", "can_reach_dwarves": True}]
+    s["others_on_map"]["threats_that_can_reach_dwarves"] = 1
+    for q in s["military"]["squads"]:
+        q["members"] = 8
+        q["power"] = {"power": 3, "armored": 0, "skill": 0, "armed": 0}
+    props, notes = plan(s, Memory())
+    assert not by_rule(props, "squad_attack"), by_rule(props, "squad_attack")
+    assert any("armed soldiers to send" in n for n in notes), notes
+    s["military"]["squads"][1]["power"]["armed"] = 6
+    a = by_rule(plan(s, Memory())[0], "squad_attack")
+    assert a and all(p.action["squad_id"] == s["military"]["squads"][1]["id"] for p in a), a
 
 
 @test("quivers: free ones handed out to the crossbow places; leather ones made for a squad the 0.100 rule doesn't cover")
