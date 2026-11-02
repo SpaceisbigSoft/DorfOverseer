@@ -200,7 +200,7 @@ def _():
     rv.probe = lambda: "unknown"
     saved_os, saved_run, saved_sw = revive.os.name, revive.subprocess.run, revive.save_written_within
     class R: stdout, stderr = "SUCCESS", ""
-    revive.subprocess.run = lambda args, **kw: (kills.append(args), R())[1]
+    revive.subprocess.run = lambda args, **kw: (kills.append(args), R())[1] if args[0] == "taskkill" else R()
     saving = [True]
     revive.save_written_within = lambda s, clock=None: saving[0]
     try:
@@ -219,6 +219,48 @@ def _():
         assert len(kills) == 1, kills            # not again within the hour
     finally:
         revive.os.name, revive.subprocess.run, revive.save_written_within = saved_os, saved_run, saved_sw
+
+
+@test("two games (0.105.1): the hung game is found by its port; the other game is never closed")
+def _():
+    class R:
+        def __init__(self, out): self.stdout = out
+    calls = []
+
+    def run(cmd, **kw):
+        calls.append(cmd)
+        if cmd[0] == "netstat":
+            return R("  TCP    127.0.0.1:5000  0.0.0.0:0  LISTENING  111\n  TCP    127.0.0.1:5001  0.0.0.0:0  LISTENING  222\n"
+                     "  TCP    127.0.0.1:5001  127.0.0.1:6000  ESTABLISHED  333\n")
+        return R('"Dwarf Fortress.exe","111"\n"Dwarf Fortress.exe","222"\n')
+    assert revive.kill_command(5001, run=run) == ["taskkill", "/F", "/PID", "222"]
+    assert revive.kill_command(5000, run=run) == ["taskkill", "/F", "/PID", "111"]
+    k = revive.kill_command(5002, run=run)                   # nothing on that port, two games: neither closed
+    assert "taskkill" not in k and "left alone" in k[-1], k
+
+    def one(cmd, **kw):
+        return R("") if cmd[0] == "netstat" else R('"Dwarf Fortress.exe","111"\n')
+    assert revive.kill_command(5000, run=one) == ["taskkill", "/F", "/IM", "Dwarf Fortress.exe"]
+
+
+@test("two games (0.105.1): config's dfhack_port reaches dfhack-run's environment")
+def _():
+    import dfhack
+    with tempfile.TemporaryDirectory() as d:
+        p = Path(d) / "config.json"
+        p.write_text(json.dumps({"dfhack_run": "x.exe", "dfhack_port": 5001}), encoding="utf-8")
+        assert dfhack.configured_port(p) == 5001
+        assert dfhack.port_env(5001)["DFHACK_PORT"] == "5001"
+        assert dfhack.port_env(None) is None
+        p.write_text(json.dumps({"dfhack_run": "x.exe", "dfhack_port": "bad"}), encoding="utf-8")
+        import os
+        old = os.environ.pop("DFHACK_PORT", None)
+        try:
+            assert dfhack.configured_port(p) is None
+        finally:
+            if old is not None:
+                os.environ["DFHACK_PORT"] = old
+
 
 if __name__ == "__main__":
     for name, ok, msg in RESULTS:

@@ -24,7 +24,8 @@ import time
 from pathlib import Path
 
 from backup import newest_folder
-from dfhack import CONFIG_PATH, PROJECT_ROOT, DFHack, DFHackError, GameNotRunning, save_root
+from dfhack import (CONFIG_PATH, PROJECT_ROOT, DFHack, DFHackError, GameNotRunning, configured_port,  # noqa: E501
+                    port_env, save_root)
 
 LAST_FORT = Path(os.environ.get("DFAI_LOG_DIR") or PROJECT_ROOT / "logs") / "last-fort.json"
 PROBE_EVERY_S = 60
@@ -177,6 +178,38 @@ def launch_command() -> str | None:
     return cmd if isinstance(cmd, str) and cmd.strip() else None
 
 
+def _listening_pid(port: int, netstat_out: str) -> int | None:
+    """(0.105.1) The process listening on 127.0.0.1:<port> (or any address),
+    from `netstat -ano -p TCP`'s lines: "TCP  127.0.0.1:5001  0.0.0.0:0  LISTENING  1234"."""
+    for line in netstat_out.splitlines():
+        parts = line.split()
+        if len(parts) >= 5 and parts[0].upper() == "TCP" and parts[3].upper() == "LISTENING":
+            if parts[1].rsplit(":", 1)[-1] == str(port) and parts[4].isdigit():
+                return int(parts[4])
+    return None
+
+
+def kill_command(port: int | None = None, run=None) -> list[str]:
+    """(0.105.1) How to close this keeper's hung game: by the process id that
+    listens on its DFHack port (a hung game still holds the port), so a second
+    game on another port is never touched. Only when no process listens there
+    and a single Dwarf Fortress runs, by name as before."""
+    port = port or configured_port() or 5000
+    run = run or subprocess.run
+    try:
+        out = run(["netstat", "-ano", "-p", "TCP"], capture_output=True, text=True, timeout=30).stdout or ""
+        pid = _listening_pid(port, out)
+        if pid:
+            return ["taskkill", "/F", "/PID", str(pid)]
+        lst = run(["tasklist", "/FI", f"IMAGENAME eq {DF_EXE}", "/FO", "CSV", "/NH"],
+                  capture_output=True, text=True, timeout=30).stdout or ""
+        if sum(1 for ln in lst.splitlines() if DF_EXE.lower() in ln.lower()) > 1:
+            return ["cmd", "/c", "echo", f"two games run and none listens on port {port}: left alone"]
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return ["taskkill", "/F", "/IM", DF_EXE]
+
+
 class Reviver:
     def __init__(self, log, dfhack: DFHack | None = None, launcher=None, clock=time.time):
         self.log, self.clock = log, clock
@@ -203,8 +236,16 @@ class Reviver:
 
     @staticmethod
     def _launch(cmd: str) -> None:
-        if os.name == "nt":
-            os.startfile(cmd)                    # an .exe or a steam:// link alike
+        # (0.105.1) a game's own .exe (a second copy run beside the Steam one)
+        # starts in its own folder, where it finds data\ and dfhack-config\,
+        # with DFHACK_PORT set to this folder's port, so its DFHack listens
+        # where this keeper's dfhack-run calls
+        exe = Path(cmd)
+        if os.name == "nt" and exe.suffix.lower() == ".exe" and exe.is_file():
+            subprocess.Popen([str(exe)], cwd=str(exe.parent), env=port_env(configured_port()),
+                             creationflags=getattr(subprocess, "DETACHED_PROCESS", 0))
+        elif os.name == "nt":
+            os.startfile(cmd)                    # a steam:// link
         else:
             subprocess.Popen(cmd, shell=True)    # (tests and other systems)
 
@@ -347,7 +388,7 @@ class Reviver:
                     and os.name == "nt"):
                 self.last_kill = now
                 try:
-                    r = subprocess.run(["taskkill", "/F", "/IM", DF_EXE], capture_output=True, text=True, timeout=30)
+                    r = subprocess.run(kill_command(), capture_output=True, text=True, timeout=30)
                     self.log(f"Revive: Dwarf Fortress hasn't answered for {int(now - self.unknown_since)} s "
                              f"(hung): closed it ({(r.stdout or r.stderr).strip()[:120]}); it's started again "
                              "once it's gone.")

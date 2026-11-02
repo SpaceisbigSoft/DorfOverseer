@@ -103,10 +103,40 @@ class GameNotRunning(DFHackError):
     """Dwarf Fortress (with DFHack) isn't running, so nothing answered."""
 
 
+def configured_port(path: Path = CONFIG_PATH) -> int | None:
+    """(0.105.1) The DFHack port this DF-AI folder talks to: config.json's
+    "dfhack_port" (two games side by side: each DF-AI copy names its own
+    game's port), else the DFHACK_PORT environment variable, else None (DFHack's
+    default, 5000). DFHack's server and dfhack-run both read DFHACK_PORT first."""
+    try:
+        cfg = json.loads(Path(path).read_text(encoding="utf-8"))
+        v = cfg.get("dfhack_port")
+        if isinstance(v, int) and 0 < v < 65536:
+            return v
+    except (OSError, ValueError):
+        pass
+    try:
+        v = int(os.environ.get("DFHACK_PORT") or 0)
+        return v if 0 < v < 65536 else None
+    except ValueError:
+        return None
+
+
+def port_env(port: int | None) -> dict | None:
+    """(0.105.1) The environment for dfhack-run and a game this folder starts:
+    DFHACK_PORT set to its port (None: the inherited environment unchanged)."""
+    if not port:
+        return None
+    env = dict(os.environ)
+    env["DFHACK_PORT"] = str(port)
+    return env
+
+
 @dataclass
 class DFHack:
     dfhack_run: Path
     timeout_s: float = 10.0
+    port: int | None = None             # (0.105.1) config "dfhack_port"; None: DFHack's default
 
     @classmethod
     def from_config(cls, path: Path = CONFIG_PATH) -> "DFHack":
@@ -123,7 +153,7 @@ class DFHack:
             raise DFHackError(f"dfhack_run must be dfhack-run.exe itself, not {exe.name}")
         if not exe.exists():
             raise DFHackError(f"dfhack-run not found at: {exe}")
-        return cls(dfhack_run=exe, timeout_s=float(cfg.get("timeout_s", 10.0)))
+        return cls(dfhack_run=exe, timeout_s=float(cfg.get("timeout_s", 10.0)), port=configured_port(path))
 
     def run(self, *args: str, timeout: float | None = None) -> str:
         """Run a DFHack command or script in the live game and return its output.
@@ -138,6 +168,7 @@ class DFHack:
                 encoding="utf-8",
                 errors="replace",
                 timeout=limit,
+                env=port_env(self.port),        # (0.105.1) this folder's game, when two run
             )
         except subprocess.TimeoutExpired as e:
             raise DFHackError(f"DFHack did not answer within {limit}s") from e
