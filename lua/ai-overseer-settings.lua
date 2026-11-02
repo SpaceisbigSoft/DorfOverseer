@@ -477,15 +477,22 @@ BUILTIN_PRESET_RULES = {
     ['Garden fort'] = {pasture_animals = true, levels = {archery = false}},
 }
 
-local function apply_rules(merged, rules)
+-- (applied: an optional table that gets the rules actually set, for apply_preset's answer)
+local function apply_rules(merged, rules, applied)
     if type(rules) ~= 'table' then return merged end
     for _, k in ipairs(PRESET_RULE_KEYS) do
         local v = rules[k]
-        if v ~= nil and type(v) == type(merged[k]) then merged[k] = v end
+        if v ~= nil and type(v) == type(merged[k]) then
+            merged[k] = v
+            if applied then applied[k] = v end
+        end
     end
     if type(rules.levels) == 'table' and type(merged.levels) == 'table' then
         for k, v in pairs(rules.levels) do
-            if type(v) == 'boolean' and merged.levels[k] ~= nil then merged.levels[k] = v end
+            if type(v) == 'boolean' and merged.levels[k] ~= nil then
+                merged.levels[k] = v
+                if applied then applied.levels = applied.levels or {}; applied.levels[k] = v end
+            end
         end
     end
     return sanitize(merged)
@@ -538,7 +545,7 @@ end
 
 -- Applies a preset's traits and (0.99) the Rules choices it carries; keeps
 -- the current activity and token settings.
-function load_preset(name, s)
+function load_preset(name, s, applied)
     if not valid_preset_name(name) then return nil, 'bad preset name' end
     local ok, data = pcall(json.decode_file, preset_path(name))
     if (not ok or type(data) ~= 'table') and BUILTIN_PRESETS[name] then
@@ -547,7 +554,46 @@ function load_preset(name, s)
     if not ok or type(data) ~= 'table' then return nil, 'could not read preset' end
     local merged = sanitize(s)
     merged.traits = sanitize({traits = data.traits}).traits
-    return apply_rules(merged, data.rules)
+    return apply_rules(merged, data.rules, applied)
+end
+
+-- (0.105.4) The preset this fort was last given (the window's Load preset, or
+-- the bridge's apply_preset for keeper.py --preset), kept beside the settings
+-- in the fort's site data: {name, by}. Moving a slider afterwards keeps it.
+PRESET_NAME_KEY = 'ai-overseer/preset'
+
+function current_preset()
+    if not dfhack.isMapLoaded() then return nil end
+    local d = dfhack.persistent.getSiteData(PRESET_NAME_KEY, {})
+    return type(d) == 'table' and type(d.name) == 'string' and d.name or nil
+end
+
+function preset_known(name)
+    local names = list_presets()
+    for _, n in ipairs(names) do
+        if n == name then return true, names end
+    end
+    return false, names
+end
+
+-- Applies a preset exactly as the window's Load preset does (load_preset:
+-- traits with Extreme, and the Rules it carries) to s (default: the fort's
+-- saved settings), saves the result and the preset's name in the fort's
+-- site data. dry_run: nothing saved. Returns the new settings and the rules
+-- set, or nil and why (an unknown name lists the known ones).
+function apply_preset(name, s, by, dry_run)
+    local known, names = preset_known(name)
+    if not known then
+        return nil, ('unknown preset: %s (known: %s)'):format(tostring(name), table.concat(names, ', '))
+    end
+    local applied = {}
+    local merged, err = load_preset(name, s or load_settings(), applied)
+    if not merged then return nil, err end
+    if not dry_run then
+        save_settings(merged)
+        dfhack.persistent.saveSiteData(PRESET_NAME_KEY, {name = name, by = by or 'window'})
+    end
+    return merged, applied
 end
 
 if dfhack_flags.module then

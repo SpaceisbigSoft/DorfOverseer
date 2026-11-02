@@ -6311,8 +6311,28 @@ function act_pull_gate(a)
     return reqscript('ai-military').pull_gate(id)
 end
 
+-- (0.105.4) apply_preset: a named preset (built-in or saved) applied to the
+-- fort's settings exactly as the window's Load preset does (traits, Extreme,
+-- the Rules it carries; ai-overseer-settings apply_preset), saved with its
+-- name in the fort's site data. For keeper.py --preset: six runs from one
+-- embark, one preset each. A dry run saves nothing. An unknown name is
+-- refused, naming the known ones. Allowed while halted (DISPLAY_ONLY): it
+-- changes the player's settings, as the window may, not the fort.
+function act_apply_preset(a)
+    if type(a.name) ~= 'string' or a.name == '' then return reject('apply_preset needs a preset name') end
+    local S = reqscript('ai-overseer-settings')
+    local before = S.current_preset()
+    local merged, rules = S.apply_preset(a.name, nil, 'keeper', a.dry_run == true)
+    if not merged then return reject(rules) end
+    local ai = S.for_ai(merged)
+    ai.preset = a.dry_run == true and before or a.name
+    return {ok = true, preset = a.name, previous = before, dry_run = a.dry_run == true or nil,
+            traits = ai.traits, extreme = ai.extreme, rules = rules, settings = ai}
+end
+
 ACTIONS = {
     join_levels = act_join_levels,
+    apply_preset = act_apply_preset,     -- (0.105.4) keeper.py --preset
     census = act_census,
     clear_webs = act_clear_webs,
     remove_webs = act_remove_webs,       -- (0.105.3)
@@ -6820,7 +6840,9 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
     settings = function()
         return safe(function()
             local S = reqscript('ai-overseer-settings')
-            return S.for_ai(S.load_settings())
+            local out = S.for_ai(S.load_settings())
+            out.preset = S.current_preset()     -- (0.105.4) the preset last applied (window or keeper)
+            return out
         end)
     end,
     events_waiting = function() return #EVENT_QUEUE end,
@@ -7459,7 +7481,8 @@ end
 -- These only change what's displayed, so they still work while halted.
 -- (save_memory is the AI's own bookkeeping, not a change to the fort.)
 DISPLAY_ONLY = {report_status = true, set_culture = true, set_learned = true, save_memory = true,
-                ledger_set = true, mark_run = true}   -- (0.105.0 mark_run: the brain's bookkeeping)
+                ledger_set = true, mark_run = true,
+                apply_preset = true}   -- (0.105.4) the player's settings (keeper --preset), not the fort   -- (0.105.0 mark_run: the brain's bookkeeping)
 
 -- ai-bridge memory: hand the memory stored in the save to the overseer, as
 -- {kinds = {working = {fort, text}, ...}, legacy = <old single table>}.

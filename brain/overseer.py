@@ -556,6 +556,8 @@ def short(a: dict) -> str:
         return "clear old dead creatures from the game's unit list"
     if t == "census":            # (0.104.113)
         return "count what fills the map"
+    if t == "apply_preset":      # (0.105.4) keeper.py --preset
+        return f"apply the {a.get('name')} preset"
     if t == "convict":           # (0.104.131)
         return f"convict {a.get('max')} solved case(s)"
     if t == "well_shaft":        # (0.104.152)
@@ -775,6 +777,8 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
         memstore.note_world(key, (state.get("fort") or {}).get("world"))
     except Exception:  # noqa: BLE001  (the logs folder's name never stops the fort)
         pass
+    if PRESET:
+        apply_preset(bridge, state, key, autopilot)    # (0.105.4) keeper.py --preset, before the first plan
     memory, bank = load(key, bridge, prefer_logs=not autopilot, state=state)
     for k in sorted(memory._texts.get("frozen") or ()):
         if (key, k) not in WARNED:
@@ -1555,6 +1559,85 @@ def meeting_unattended(args) -> bool:
 
 
 UNATTENDED = False      # (0.104.88) set from --unattended: the in-game camera director runs only then
+PRESET: str | None = None   # (0.105.4) --preset NAME (keeper.py --preset): applied once per fort
+PRESET_FILE = LOG_DIR / "keeper-preset.json"   # {fort key: {"name", "at"}}: what --preset applied, per fort
+PRESET_DONE: set = set()    # fort keys seen this process (asked once per fort, not every cycle)
+
+
+def preset_due(key: str, name: str, fort_preset) -> str | None:
+    """(0.105.4) Why --preset NAME should be applied to this fort now, or None.
+    Applied when this fort never had NAME from --preset (logs/keeper-preset.json),
+    or when the fort's site data shows no preset at all (an older save, from
+    before it was applied). Never over the player's own later choice: once
+    applied, a revive or a restart leaves the window's changes alone."""
+    try:
+        done = json.loads(PRESET_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        done = {}
+    rec = done.get(key) if isinstance(done, dict) else None
+    if not isinstance(rec, dict) or rec.get("name") != name:
+        return "first time for this fort" if fort_preset != name else None
+    if not fort_preset:
+        return "the save shows no preset"
+    return None
+
+
+def note_preset(key: str, name: str) -> None:
+    try:
+        done = json.loads(PRESET_FILE.read_text(encoding="utf-8"))
+        done = done if isinstance(done, dict) else {}
+    except (OSError, ValueError):
+        done = {}
+    done[key] = {"name": name, "at": datetime.now().isoformat(timespec="seconds")}
+    try:
+        from dfhack import write_atomic
+        PRESET_FILE.parent.mkdir(parents=True, exist_ok=True)
+        write_atomic(PRESET_FILE, json.dumps(done, indent=1))
+    except OSError:
+        pass
+
+
+def apply_preset(bridge: Bridge, state: dict, key: str, autopilot: bool) -> None:
+    """(0.105.4) --preset NAME: before this fort's first cycle, the preset
+    applied to its settings (the bridge's apply_preset, as the window's Load
+    preset), when preset_due says so. The cycle then plans with it."""
+    name = PRESET
+    if not name or key in PRESET_DONE:
+        return
+    st = state.get("settings") if isinstance(state.get("settings"), dict) else {}
+    why = preset_due(key, name, st.get("preset"))
+    if why is None:
+        PRESET_DONE.add(key)
+        note_preset(key, name)
+        say(f"Preset: {name} already applied to this fort (left as it is: later changes in the window stay).")
+        return
+    try:
+        r = bridge.act({"type": "apply_preset", "name": name, "dry_run": not autopilot})
+    except (BridgeError, DFHackError) as e:
+        say(f"Preset: couldn't apply {name} ({e}); trying again next cycle.")
+        return
+    PRESET_DONE.add(key)
+    if not r.get("ok"):
+        say(f"Preset: {name} not applied: {r.get('error')}")
+        return
+    traits = r.get("traits") if isinstance(r.get("traits"), dict) else {}
+    shown = " ".join(f"{k}:{v:+d}" for k, v in sorted(traits.items(), key=lambda kv: -abs(kv[1])) if isinstance(v, int))
+    rules = r.get("rules") if isinstance(r.get("rules"), dict) else {}
+    rule_words = ", ".join(f"{k}={v}" for k, v in sorted(rules.items()) if k != "levels")
+    levels = rules.get("levels") if isinstance(rules.get("levels"), dict) else {}
+    if levels:
+        rule_words += (", " if rule_words else "") + "levels " + " ".join(
+            f"{k}:{'on' if v else 'off'}" for k, v in sorted(levels.items()))
+    if not autopilot:
+        say(f"Preset: {name} would be applied ({why}; dry run: nothing changed). Traits {shown or 'balanced'}.")
+        return
+    say(f"Preset: {name} applied ({why}; was {r.get('previous') or 'none'}). Traits {shown or 'balanced'}"
+        + (f"; rules {rule_words}" if rule_words else "") + ".")
+    note_preset(key, name)
+    journal({"kind": "preset", "fort": key, "preset": name, "why": why, "previous": r.get("previous"),
+             "traits": traits, "rules": rules})
+    if isinstance(r.get("settings"), dict):
+        state["settings"] = r["settings"]           # this cycle plans with the preset
 
 
 def _newest_season(memory) -> int | None:
@@ -1609,9 +1692,13 @@ def main() -> int:
                          "hold back when FPS drops (use with --autopilot; brain/keeper.py runs it so)")
     ap.add_argument("--save-seasons", action="store_true",
                     help="also ask DFHack to save each new season (only if DF's own seasonal autosave is off)")
+    ap.add_argument("--preset", metavar="NAME",
+                    help="apply this preset (as the window's Load preset) to the fort once, before its first "
+                         "cycle; not again over later changes (brain/keeper.py --preset passes it)")
     args = ap.parse_args()
-    global UNATTENDED
+    global UNATTENDED, PRESET
     UNATTENDED = bool(getattr(args, "unattended", False))   # (0.104.88) for the camera director
+    PRESET = (getattr(args, "preset", None) or "").strip() or None    # (0.105.4)
     import tokens as _tokens
     _tokens.DAY_FILE = LOG_DIR / "tokens-today.json"     # (0.99.1, B10) the daily cap across all forts
 

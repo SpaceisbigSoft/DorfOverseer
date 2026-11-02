@@ -78,6 +78,98 @@ def _():
     assert started[-1][-1] == "--ai"
 
 
+@test("(0.105.4) keeper --preset: passed to every overseer it starts, and said in the log")
+def _():
+    started = []
+
+    def popen(cmd, **kw):
+        started.append(cmd)
+        return FakeProc(code=1, lines=())
+    keeper.main(["--preset", "Merchant city"], popen=popen, sleep=lambda s: None, max_runs=2)
+    assert len(started) == 2 and all(c[3:] == ["--autopilot", "--unattended", "--preset", "Merchant city"]
+                                      for c in started), started
+    assert "Preset: Merchant city asked for" in keeper.LOG.read_text(encoding="utf-8")
+    keeper.main(["--ai", "--preset", "Deep mine"], popen=popen, sleep=lambda s: None, max_runs=1)
+    assert started[-1][3:] == ["--autopilot", "--unattended", "--ai", "--preset", "Deep mine"], started[-1]
+    keeper.main([], popen=popen, sleep=lambda s: None, max_runs=1)
+    assert "--preset" not in started[-1]
+
+
+class PresetGame:
+    """The bridge's apply_preset, as far as the overseer sees it."""
+    def __init__(self, fort_preset=None):
+        self.fort_preset, self.acts = fort_preset, []
+
+    def act(self, a):
+        self.acts.append(a)
+        if a.get("name") not in ("War-hold", "Monastery"):
+            return {"ok": False, "rejected": True, "error": "unknown preset: x (known: Monastery, War-hold)"}
+        prev = self.fort_preset
+        if not a.get("dry_run"):
+            self.fort_preset = a["name"]
+        return {"ok": True, "preset": a["name"], "previous": prev, "traits": {"militarism": 150, "caution": 60},
+                "rules": {"attack_policy": "all", "levels": {"garden": False}},
+                "settings": {"traits": {"militarism": 150}, "preset": self.fort_preset}}
+
+    def state(self):
+        return {"settings": {"traits": {}, "preset": self.fort_preset}}
+
+
+def preset_cycle(game, name, key="region1#7", autopilot=True, new_process=True):
+    said = []
+    real = overseer.say
+    overseer.say = said.append
+    overseer.PRESET = name
+    if new_process:
+        overseer.PRESET_DONE.clear()          # a restart or a revive: a new overseer
+    try:
+        st = game.state()
+        overseer.apply_preset(game, st, key, autopilot)
+        return said, st
+    finally:
+        overseer.say, overseer.PRESET = real, None
+
+
+@test("(0.105.4) overseer --preset: applied once per fort; a restart or revive never applies it over later changes")
+def _():
+    overseer.PRESET_FILE = TMP / "keeper-preset.json"
+    overseer.PRESET_FILE.unlink(missing_ok=True)
+    g = PresetGame()
+    said, st = preset_cycle(g, "War-hold")
+    assert [a["type"] for a in g.acts] == ["apply_preset"] and g.acts[0]["name"] == "War-hold", g.acts
+    assert said and said[0].startswith("Preset: War-hold applied (first time for this fort; was none)"), said
+    assert "militarism:+150" in said[0] and "attack_policy=all" in said[0] and "garden:off" in said[0], said
+    assert st["settings"]["preset"] == "War-hold"                       # this cycle plans with it
+    assert '"War-hold"' in overseer.PRESET_FILE.read_text(encoding="utf-8")
+    preset_cycle(g, "War-hold", new_process=False)                        # the next cycle: not asked again
+    assert len(g.acts) == 1
+    g.fort_preset = "Monastery"                                           # the player chose another in the window
+    said, _ = preset_cycle(g, "War-hold")                                 # the keeper restarts the overseer
+    assert len(g.acts) == 1 and "already applied" in said[0], said
+    g.fort_preset = None                                                  # an older save loaded: no preset in it
+    said, _ = preset_cycle(g, "War-hold")
+    assert len(g.acts) == 2 and "the save shows no preset" in said[0], said
+    said, _ = preset_cycle(g, "Monastery")                                # another preset asked: applied
+    assert len(g.acts) == 3 and g.fort_preset == "Monastery", g.acts
+    g2 = PresetGame()
+    preset_cycle(g2, "War-hold", key="region2#9")                         # another fort: its own record
+    assert len(g2.acts) == 1
+
+
+@test("(0.105.4) overseer --preset: an unknown name is said and not retried; a dry run changes and records nothing")
+def _():
+    overseer.PRESET_FILE = TMP / "keeper-preset2.json"
+    overseer.PRESET_FILE.unlink(missing_ok=True)
+    g = PresetGame()
+    said, _ = preset_cycle(g, "Fortress of Doom")
+    assert "not applied: unknown preset" in said[0] and "War-hold" in said[0], said
+    preset_cycle(g, "Fortress of Doom", new_process=False)
+    assert len(g.acts) == 1
+    said, _ = preset_cycle(g, "Monastery", autopilot=False)
+    assert g.acts[-1]["dry_run"] is True and "would be applied" in said[0] and g.fort_preset is None, said
+    assert not overseer.PRESET_FILE.exists()
+
+
 @test("keeper: a stuck overseer (no heartbeat) is stopped and restarted")
 def _():
     saved = keeper.STALE_S
@@ -340,6 +432,14 @@ def _():
         backup.on_progress = old
     assert len(beats) == 1, beats                     # at most one beat each 30 seconds
     assert sorted(p.name for p in dst.iterdir()) == ["f0.dat", "f1.dat", "f2.dat"]
+
+
+@test("(0.105.4) overseer.py takes --preset (the keeper passes it)")
+def _():
+    g = PausedGame()
+    run_loop(g, ["--autopilot", "--preset", "Garden fort"], ticks=2)
+    assert overseer.PRESET == "Garden fort"
+    overseer.PRESET = None
 
 
 if __name__ == "__main__":

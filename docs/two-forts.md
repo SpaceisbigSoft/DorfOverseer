@@ -23,3 +23,21 @@ embark overnight.
   other game; it starts game B's `.exe` in its own folder.
 - Each keeper keeps its own pin, lock, logs and backups (its DF-AI folder).
 - Code changes go to both DF-AI folders.
+
+## N forts, one preset each (0.105.4)
+
+The same way scales past two: each fort gets its own copy of Dwarf Fortress
+(its own game folder, `prefs\portable.txt` and save folder), its own DF-AI
+folder (`DF-AI-C`, `DF-AI-D`... with that game's `script-paths.txt` pointing at
+its `lua`), its own DFHack port (5002, 5003... in the game's
+`remote-server.json` and the folder's `config.json` `"dfhack_port"`) and its
+own preset. Copy the same embark save into every game, then start one keeper
+per DF-AI folder with `python brain\keeper.py --revive --preset "War-hold"`
+(then `"Monastery"`, `"Merchant city"`, `"Hermit hold"`, `"Deep mine"`,
+`"Garden fort"`). Before the fort's first cycle the overseer applies the preset
+exactly as the window's Load preset does (sliders with Extreme, and the Rules
+it carries; the bridge's `apply_preset` action), saves it in the fort's site
+data, logs `Preset: NAME applied (...)` and records it in
+`logs\keeper-preset.json`. A restart or a revive doesn't apply it again over
+changes made in the window afterwards, unless the loaded save shows no preset
+at all. An unknown name is refused, and the log names the valid ones.

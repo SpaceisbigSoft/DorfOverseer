@@ -2,6 +2,7 @@
 
     python brain\\keeper.py            (autopilot, unattended, no AI strategist)
     python brain\\keeper.py --ai       (also lets the strategist review: spends tokens)
+    python brain\\keeper.py --preset "War-hold"   (the fort given that preset once, at the start)
 
 It starts `overseer.py --autopilot --unattended`, shows and logs everything it
 prints (logs/unattended.log), and restarts it when it stops on an error or
@@ -89,9 +90,12 @@ def write_status(started: str, restarts: int, note: str) -> None:
         pass
 
 
-def command(ai: bool) -> list[str]:
+def command(ai: bool, preset: str | None = None) -> list[str]:
     cmd = [sys.executable, "-u", str(HERE / "overseer.py"), "--autopilot", "--unattended"]
-    return cmd + (["--ai"] if ai else [])
+    # (0.105.4) --preset: the overseer applies it once, before the fort's first
+    # cycle, and records it (logs/keeper-preset.json): a restart or a revive
+    # passes it again, but it isn't applied again over the player's changes
+    return cmd + (["--ai"] if ai else []) + (["--preset", preset] if preset else [])
 
 
 def pump(proc: subprocess.Popen) -> None:
@@ -235,7 +239,7 @@ def write_soak_report() -> None:
         log(f"(no soak report: {e})")
 
 
-def run_once(ai: bool, popen=subprocess.Popen) -> tuple[int | None, str]:
+def run_once(ai: bool, popen=subprocess.Popen, preset: str | None = None) -> tuple[int | None, str]:
     """Run the overseer until it exits or gets stuck. Returns (exit code or
     None if it was stopped for being stuck, why)."""
     try:
@@ -244,7 +248,7 @@ def run_once(ai: bool, popen=subprocess.Popen) -> tuple[int | None, str]:
         pass
     env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1",   # (dwarves' names have accents)
            "DFAI_PIN": "1"}       # (0.105.0) the overseer acts only on the pinned fort (brain/pin.py)
-    proc = popen(command(ai), cwd=str(ROOT), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+    proc = popen(command(ai, preset), cwd=str(ROOT), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                  text=True, encoding="utf-8", errors="replace", env=env)
     t = threading.Thread(target=pump, args=(proc,), daemon=True)
     t.start()
@@ -312,7 +316,11 @@ def main(argv=None, popen=subprocess.Popen, sleep=time.sleep, max_runs: int | No
     ap.add_argument("--revive", action="store_true",
                     help="start Dwarf Fortress again if it closes (config.json \"df_launch\") and load the "
                          "fort's newest save when the game sits at the title screen")
+    ap.add_argument("--preset", metavar="NAME",
+                    help="apply this built-in or saved preset (e.g. \"War-hold\") to the fort once at the start "
+                         "(as the window's Load preset); a restart or revive doesn't apply it again over your changes")
     args = ap.parse_args(argv)
+    preset = (args.preset or "").strip() or None
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(errors="replace")
     lock = single_instance()
@@ -321,7 +329,10 @@ def main(argv=None, popen=subprocess.Popen, sleep=time.sleep, max_runs: int | No
         return 1
     quick_edit_off()
     started = stamp()
-    log(f"Keeper starting: overseer.py {' '.join(command(args.ai)[3:])}. Ctrl-C stops it.")
+    log(f"Keeper starting: overseer.py {' '.join(command(args.ai, preset)[3:])}. Ctrl-C stops it.")
+    if preset:
+        log(f"Preset: {preset} asked for: applied to the fort before its first cycle, unless this fort "
+            "already had it from --preset (logs/keeper-preset.json).")
     EXTRAS["run_start"] = datetime.now()
     # (0.105.0) a new run pins afresh: the fort the overseer names first
     try:
@@ -344,7 +355,7 @@ def main(argv=None, popen=subprocess.Popen, sleep=time.sleep, max_runs: int | No
         while max_runs is None or runs < max_runs:
             runs += 1
             t0 = time.time()
-            code, why = run_once(args.ai, popen)
+            code, why = run_once(args.ai, popen, preset)
             log(why)
             if time.time() - t0 >= GOOD_RUN_S:
                 streak = 0

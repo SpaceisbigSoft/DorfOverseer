@@ -1215,7 +1215,7 @@ function OverseerWindow:load_preset()
         COLOR_WHITE, names,
         function(_, choice)
             local name = type(choice) == 'table' and choice.text or choice
-            local merged, err = S.load_preset(name, self.settings)
+            local merged, err = S.apply_preset(name, self.settings, 'window')   -- (0.105.4) its name kept too
             if not merged then
                 dialogs.showMessage('Not loaded', err, COLOR_LIGHTRED)
                 return
