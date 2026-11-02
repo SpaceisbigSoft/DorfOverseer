@@ -149,6 +149,10 @@ CAMERA_PACE_NAMES = {normal = 'normal (20-40 s a place)', slow = 'slow (longer a
 CLEAR_ALERTS_NAMES = {quiet = 'old ones; dangers kept a week', all = 'all once a day old', none = 'none (yours)'}
 ATTACK_POLICY_NAMES = {ordinary = 'ordinary enemies, not great beasts', all = 'everything that can reach us',
                        never = 'never (alert and gate only)'}
+-- (0.105.0) round 3: what becomes of invaders caught in cages (only keep can
+-- be done safely through DFHack: the others are said, the prisoners kept)
+PRISONER_CHOICES = {'keep', 'release', 'kill'}
+PRISONER_NAMES = {keep = 'keep them caged', release = 'release outside (asks you)', kill = 'put to death (asks you)'}
 GEAR_WEAPONS = {'axe', 'spear', 'mace'}
 GEAR_WEAPON_NAMES = {axe = 'battle axes', spear = 'spears', mace = 'maces'}
 OPTIONAL_LEVELS = {
@@ -243,6 +247,9 @@ function defaults()
         answer_locations = true,   -- (0.89) agree to and build the temples and guildhalls petitions ask for
         hospital_burrow = true,    -- (0.104.168) keep the wounded in the "AI hospital" burrow (off: all let out)
         calm_burrow = true,        -- (0.104.169) a dwarf in a tantrum kept in a free bedroom till calm (off: all let out)
+        prisoners = 'keep',        -- (0.105.0) caged invaders: keep | release | kill (PRISONER_CHOICES)
+        moon_cells = true,         -- (0.105.0) werebeast citizens locked in a cell round the full moon
+        seal_caverns = true,       -- (0.105.0) the way down locked while a beast the squads can't take is in a cavern
         expel_vampires = true,     -- a vampire found among the citizens is sent away      -- with --ai: a short AI-written story of each season (costs tokens)
         -- "Wipe what the AI learned" (Culture tab, Shift-V): each press adds 1;
         -- the overseer wipes when it sees the number go up
@@ -321,10 +328,12 @@ function sanitize(s)
                         'import_smelting', 'alert_shelter', 'pasture_animals', 'build_gate_doors',
                         'fortify_entrances', 'set_pop_cap', 'ai_chronicle', 'give_trinkets', 'water_works', 'expel_vampires', 'accept_visitors', 'answer_locations',
                         'hospital_burrow',          -- (0.104.168) the hospital burrow's switch
-                        'calm_burrow'}) do          -- (0.104.169) the calm-down burrows' switch
+                        'calm_burrow',              -- (0.104.169) the calm-down burrows' switch
+                        'moon_cells', 'seal_caverns'}) do   -- (0.105.0) round 3's switches
         if s[k] ~= nil then out[k] = s[k] == true end
     end
     out.gear_weapon = one_of(s.gear_weapon, GEAR_WEAPONS, d.gear_weapon)
+    out.prisoners = one_of(s.prisoners, PRISONER_CHOICES, d.prisoners)   -- (0.105.0)
     for _, k in ipairs({'wipe_learned', 'wipe_learned_all'}) do
         local n = math.tointeger(tonumber(s[k]))
         out[k] = (n and n >= 0) and n or 0
@@ -395,6 +404,9 @@ function for_ai(s)
         answer_locations = s.answer_locations,
         hospital_burrow = s.hospital_burrow,       -- (0.104.168)
         calm_burrow = s.calm_burrow,               -- (0.104.169)
+        prisoners = s.prisoners,                   -- (0.105.0) round 3
+        moon_cells = s.moon_cells,
+        seal_caverns = s.seal_caverns,
         wipe_learned = s.wipe_learned,
         wipe_learned_all = s.wipe_learned_all,
     }

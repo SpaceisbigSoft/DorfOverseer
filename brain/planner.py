@@ -37,6 +37,7 @@ import crisis  # noqa: E402  (0.104.137)
 from planner_building import *  # noqa: E402,F401,F403  (0.104.83: the planner in parts)
 from planner_care import _doctor_post_rule, _infection_rule, _offices_refill_rule  # noqa: E402  (0.104.168)
 from planner_homes import *  # noqa: E402,F401,F403  (0.104.168: homes and households)
+from planner_threats import _threat_rules  # noqa: E402  (0.105.0 round 3: threats answered)
 
 
 def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[Proposal], list[str]]:
@@ -112,6 +113,9 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
     # 1b. Hazards: fire, clouds, flooding, berserk citizens, cursed, prisoners
     if can_use("hazards"):
         _guard(_hazard_rules, s, memory, cfg, proposals, notes, player_rules(s))
+    # (0.105.0) round 3: fire guarded, prisoners, thieves, the undead, werebeasts, cavern beasts, the wounded
+    if can_use("threats"):
+        _guard(_threat_rules, s, memory, cfg, proposals, notes)
 
     # 1c. Health: who waits for care, and for how long
     if can_use("health"):

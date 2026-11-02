@@ -131,6 +131,7 @@ SECTION_DEFAULTS = {
     "missions": {"controllers": [], "squads": [], "reports": {"n": 0, "unviewed": 0},   # (0.104.95, 13b)
                  "spoils": {"n": 0}, "sites": {}, "unknown": []},
     "hazards": {},
+    "threats": {},                # (0.105.0) round 3: fire, prisoners, thieves, undead, werebeasts (lua/ai-threats.lua)
     "health": {},
     "infection": {},              # (0.104.168) the infected: untreated, bleeding, beds free (lua/ai-health.lua)
     "military": {"squads": [], "soldiers": 0, "routines": [], "gates": []},

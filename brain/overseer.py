@@ -493,6 +493,15 @@ def short(a: dict) -> str:
         if a.get("release"):
             return "let every dwarf out of the calm-down burrows"
         return "keep each dwarf in a tantrum in a free bedroom away from the patients till calm, the calm let out"
+    # (0.105.0) round 3: threats answered
+    if t == "fire_guard":
+        return "the fire is out: paths round it back to normal" if a.get("lift") else "keep the dwarves away from the fire"
+    if t == "prisoner_room":
+        return "a cage room for the prisoners inside the fort"
+    if t == "moon_cell":
+        return "let the werebeasts out of their cells" if a.get("release") else "lock the werebeasts in for the full moon"
+    if t == "seal_cavern":
+        return f"unlock the way down to {a.get('layer')}" if a.get("open") else f"lock the way down to {a.get('layer')}"
     if t == "rest_infected":     # (0.104.168)
         return f"put up to {a.get('max', 3)} dwarves with infected wounds to bed in the hospital, for the doctors"
     if t == "add_doctor_post":   # (0.104.168)

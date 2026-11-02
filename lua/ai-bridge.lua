@@ -5210,6 +5210,54 @@ function act_calm_burrow(a)
     return reqscript('ai-society').calm_burrow_tick(n, days, a.dry_run == true, txt, a.release == true)
 end
 
+-- (0.105.0) Round 3, threats answered (lua/ai-threats.lua). Fire: the
+-- tiles round a fire get restricted traffic and the jobs beside it are taken
+-- off; lift puts back the tiles the AI changed.
+function act_fire_guard(a)
+    local r = int_in(a.radius or 6, 1, 15)
+    local jobs = int_in(a.max_jobs or 40, 0, 200)
+    if not r or not jobs then return reject('fire_guard: radius 1-15, max_jobs 0-200') end
+    if a.lift ~= nil and type(a.lift) ~= 'boolean' then return reject('fire_guard: lift is true or false') end
+    return reqscript('ai-threats').fire_guard(r, jobs, a.lift == true, a.dry_run == true)
+end
+
+-- (0.105.0) A cage room for prisoners: an animal stockpile inside the fort.
+function act_prisoner_room(a)
+    return reqscript('ai-threats').prisoner_room(a.dry_run == true)
+end
+
+-- (0.105.0) Werebeast citizens in cells for the full moon (ids), or let out (release).
+function act_moon_cell(a)
+    local ids = {}
+    if a.ids ~= nil and type(a.ids) ~= 'table' then return reject('moon_cell: ids is a list of unit ids') end
+    for _, v in ipairs(a.ids or {}) do
+        local id = whole_number(v)
+        if not id then return reject('moon_cell: ids must be whole numbers') end
+        table.insert(ids, id)
+    end
+    if #ids > 10 then return reject('moon_cell: at most 10 ids') end
+    if a.release ~= nil and type(a.release) ~= 'boolean' then return reject('moon_cell: release is true or false') end
+    return reqscript('ai-threats').moon_cell(ids, a.release == true, a.dry_run == true, txt)
+end
+
+-- (0.105.0) The way down to a cavern locked (its doors and hatches), or unlocked (open).
+function act_seal_cavern(a)
+    if type(a.layer) ~= 'string' or #a.layer == 0 then return reject('seal_cavern needs layer') end
+    if a.open ~= nil and type(a.open) ~= 'boolean' then return reject('seal_cavern: open is true or false') end
+    local tiles = {}
+    if not a.open then
+        if type(a.tiles) ~= 'table' then return reject('seal_cavern needs tiles {x, y, z}') end
+        for _, p in ipairs(a.tiles) do
+            if type(p) ~= 'table' or not whole_number(p.x) or not whole_number(p.y) or not whole_number(p.z) then
+                return reject('seal_cavern: each tile is {x, y, z}')
+            end
+            table.insert(tiles, {x = whole_number(p.x), y = whole_number(p.y), z = whole_number(p.z)})
+        end
+        if #tiles == 0 or #tiles > 20 then return reject('seal_cavern: 1-20 tiles') end
+    end
+    return reqscript('ai-threats').seal_cavern(a.layer, tiles, a.open == true, a.dry_run == true)
+end
+
 -- (0.104.168) Infected dwarves DF asks no treatment for, put to rest in a
 -- free hospital bed (as DFHack's dwarfvet does for animals), the worst
 -- first; and a second doctor's post at a hospital (lua/ai-health.lua).
@@ -6158,6 +6206,11 @@ ACTIONS = {
     recreation = act_recreation,          -- (0.104.78)
     hospital_burrow = act_hospital_burrow,   -- (0.104.167)
     calm_burrow = act_calm_burrow,           -- (0.104.169)
+    -- (0.105.0) round 3: threats answered (lua/ai-threats.lua)
+    fire_guard = act_fire_guard,
+    prisoner_room = act_prisoner_room,
+    moon_cell = act_moon_cell,
+    seal_cavern = act_seal_cavern,
     accept_cups = act_accept_cups,           -- (0.104.168)
     rest_infected = act_rest_infected,       -- (0.104.168)
     add_doctor_post = act_add_doctor_post,   -- (0.104.168)
@@ -6370,6 +6423,8 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
     missions = function() return safe(function() return reqscript('ai-missions').report() end) end,
     needs = function() return safe(get_needs) end,
     hazards = function() return safe(get_hazards) end,
+    -- (0.105.0) round 3: fire places, prisoners, thieves, undead, werebeasts, the wounded (lua/ai-threats.lua)
+    threats = function() return safe(function() return reqscript('ai-threats').survey(txt) end) end,
     health = function() return safe(get_health) end,
     -- (0.104.168) the infected: untreated, bleeding, beds free (lua/ai-health.lua)
     infection = function() return safe(function() return reqscript('ai-health').survey(txt) end) end,

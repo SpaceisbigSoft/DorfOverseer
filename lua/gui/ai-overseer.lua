@@ -542,6 +542,32 @@ function RulesPage:init()
         initial_option = p.settings.gear_weapon,
         on_change = function(v) p:set_field('gear_weapon', v) end,
     })
+    -- (0.105.0) round 3: prisoners, werebeasts' cells, the caverns sealed
+    table.insert(views, widgets.CycleHotkeyLabel{
+        view_id = 'prisoners',
+        frame = {t = t + 13, l = 2, w = 72},
+        label = 'Invaders caught in cages:',
+        label_width = 34,
+        options = (function()
+            local out = {}
+            for _, m in ipairs(S.PRISONER_CHOICES) do table.insert(out, {label = S.PRISONER_NAMES[m], value = m}) end
+            return out
+        end)(),
+        initial_option = p.settings.prisoners or 'keep',
+        on_change = function(v) p:set_field('prisoners', v) end,
+    })
+    for i, f in ipairs({{'moon_cells', 'Lock werebeasts in at the full moon:'},
+                        {'seal_caverns', 'Seal a cavern a beast is in:'}}) do
+        table.insert(views, widgets.ToggleHotkeyLabel{
+            view_id = f[1],
+            frame = {t = t + 13 + i, l = 2, w = 50},
+            label = f[2],
+            label_width = 36,
+            initial_option = p.settings[f[1]] ~= false,
+            on_change = function(v) p:set_field(f[1], v) end,
+        })
+    end
+    t = t + 3
     t = t + 11
     table.insert(views, widgets.WrappedLabel{
         frame = {t = t + 3, l = 0, r = 2},
@@ -583,6 +609,9 @@ function RulesPage:refresh()
         self.subviews[k]:setOption(s[k], false)
     end
     self.subviews.gear_weapon:setOption(s.gear_weapon, false)
+    self.subviews.prisoners:setOption(s.prisoners or 'keep', false)                -- (0.105.0)
+    self.subviews.moon_cells:setOption(s.moon_cells ~= false, false)
+    self.subviews.seal_caverns:setOption(s.seal_caverns ~= false, false)
 end
 
 ---------------------------------------------------------------------------
