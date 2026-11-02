@@ -120,6 +120,7 @@ SECTION_DEFAULTS = {
     "alerts": {},
     "diplomacy": {},
     "meetings": {},
+    "world": {},                  # (0.105.0) civs, war and peace, sieges, tribute, agreements, the meeting screen
     "ledger": {},                 # (0.104.0) the AI's ledger saved with the game
     "instruments": {},            # (0.104.7) a probe: the instruments the civ knows
     "supplies": {},

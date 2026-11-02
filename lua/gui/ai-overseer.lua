@@ -367,6 +367,29 @@ function RulesPage:init()
     })
     table.insert(views, widgets.Label{frame = {t = 5 + jrow, l = 58}, text = {
         {text = 'a free bedroom away from the patients, with drink, till calm', pen = COLOR_GREY}}})
+    -- (0.105.0) the world outside: tribute asked of the fort, and Make contact
+    -- (the right-hand column below the calm-down switch, clear of the left one's rows)
+    table.insert(views, widgets.CycleHotkeyLabel{
+        view_id = 'tribute',
+        frame = {t = 7 + jrow, l = 62, w = 56},
+        label = 'Tribute a civilisation asks:',
+        label_width = 30,
+        options = (function()
+            local out = {}
+            for _, m in ipairs(S.TRIBUTE_CHOICES) do table.insert(out, {label = S.TRIBUTE_NAMES[m], value = m}) end
+            return out
+        end)(),
+        initial_option = p.settings.tribute or 'small',
+        on_change = function(v) p:set_field('tribute', v) end,
+    })
+    table.insert(views, widgets.ToggleHotkeyLabel{
+        view_id = 'make_contact',
+        frame = {t = 8 + jrow, l = 62, w = 46},
+        label = 'Appoint a messenger, make contact:',
+        label_width = 36,
+        initial_option = p.settings.make_contact ~= false,
+        on_change = function(v) p:set_field('make_contact', v) end,
+    })
     local t = 6 + #S.OPTIONAL_LEVELS
     table.insert(views, widgets.ToggleHotkeyLabel{
         view_id = 'order_supplies',
@@ -573,6 +596,8 @@ function RulesPage:refresh()
     self.subviews.answer_locations:setOption(s.answer_locations, false)
     self.subviews.hospital_burrow:setOption(s.hospital_burrow ~= false, false)     -- (0.104.168)
     self.subviews.calm_burrow:setOption(s.calm_burrow ~= false, false)             -- (0.104.169)
+    self.subviews.tribute:setOption(s.tribute or 'small', false)                   -- (0.105.0)
+    self.subviews.make_contact:setOption(s.make_contact ~= false, false)           -- (0.105.0)
     self.subviews.engrave_slabs:setOption(s.engrave_slabs, false)
     self.subviews.import_smelting:setOption(s.import_smelting, false)
     self.subviews.alert_shelter:setOption(s.alert_shelter, false)

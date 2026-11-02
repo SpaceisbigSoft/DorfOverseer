@@ -1230,8 +1230,11 @@ def _meeting_notes(s: dict, notes: list) -> None:
     if any(w in screen.lower() for w in ("meeting", "diplomacy")):
         # (0.94.1) only the meeting screen itself, which holds the game until
         # answered, is a Needs you
-        ask_player(notes, f"DF's meeting screen is open and waits for your answers ({who}): the AI doesn't "
-                          "answer meetings yet (in an unattended run it leaves the screen after 10 minutes)")
+        # (0.105.0) the AI answers it once shown the screen's buttons (brain/planner_world.py)
+        ask_player(notes, f"DF's meeting screen is open and waits for your answers ({who}): the AI answers "
+                          "meetings once it knows the screen's buttons (with one open, the mouse on Yes: python "
+                          "brain\\probe_meeting.py --here Yes; then No, and Done on the requests screen); in an "
+                          "unattended run it leaves the screen after 10 minutes")
     elif int(m.get("popups") or 0) > 0:
         # (0.94.1) a queued meeting popup doesn't hold the game (region2 ran
         # on through days of them): a note, not a Needs you

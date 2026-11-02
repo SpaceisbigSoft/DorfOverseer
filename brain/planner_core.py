@@ -627,6 +627,7 @@ class Memory:
     tantrums: list = field(default_factory=list)         # (0.104.31) [tick, who] of recent tantrums, a day each
     shops_seen: dict = field(default_factory=dict)       # (0.99.4) workshop name -> how many stood at its last start
     tree_year: dict = field(default_factory=dict)        # (0.89) {year, base}: trees_removed when the game year began
+    world_seen: dict = field(default_factory=dict)       # (0.105.0) grudges (civs that besieged us), export wishes, contact said
     polished_upto: int | None = None                     # finished-level count when every level was found polished
     story_season: str = ""                                # the last season the AI-written chronicle told ("y<year> <season>")
     gate_closed_by_ai: bool = False                      # the AI pulled the gate lever to close it
@@ -872,6 +873,10 @@ def player_rules(s: dict) -> dict:
             "hospital_burrow": st.get("hospital_burrow") is not False,
             # (0.104.169) the calm-down burrows: off only when the settings say so (then their members let out)
             "calm_burrow": st.get("calm_burrow") is not False,
+            # (0.105.0) tribute a civilisation asks: pay a small one, refuse a large one (or pay / refuse)
+            "tribute": st.get("tribute") if st.get("tribute") in ("small", "pay", "refuse") else "small",
+            # (0.105.0, 13b) a messenger appointed and sent to make contact with sites not in contact
+            "make_contact": st.get("make_contact") is not False,
             "clear_alerts": st.get("clear_alerts") if st.get("clear_alerts") in ("all", "quiet", "none") else "quiet"}
 
 

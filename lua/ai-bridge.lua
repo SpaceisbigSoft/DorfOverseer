@@ -5926,6 +5926,25 @@ function act_close_meeting(a)
     return {ok = after == nil, screen = f, error = after and ('the meeting screen is still open (' .. after .. ')') or nil}
 end
 
+-- (0.105.0, 12b) The meeting screen answered with the AI's defaults (trade
+-- and peace agreed, the elves' tree quota kept, tribute by the Rules choice,
+-- the requests' wishes ticked), through the buttons the player showed the AI
+-- once (lua/ai-diplomacy.lua). Each open screen is written to
+-- meeting-probe.json. tribute: small | pay | refuse; wishes: DF's request
+-- categories (entity_sell_category names), at most 20.
+function act_answer_meeting(a)
+    if a.tribute ~= nil and a.tribute ~= 'small' and a.tribute ~= 'pay' and a.tribute ~= 'refuse' then
+        return reject('answer_meeting: tribute is small, pay or refuse')
+    end
+    if a.wishes ~= nil then
+        if type(a.wishes) ~= 'table' or #a.wishes > 20 then return reject('answer_meeting: wishes is a list of up to 20') end
+        for _, w in ipairs(a.wishes) do
+            if type(w) ~= 'string' or not w:match('^%a+$') then return reject('answer_meeting: a wish is a category name') end
+        end
+    end
+    return reqscript('ai-diplomacy').answer_meeting({tribute = a.tribute, wishes = a.wishes, dry_run = a.dry_run == true}, txt)
+end
+
 function act_close_trade(a)
     if a.dry_run then return {ok = true, dry_run = true} end
     if not reqscript('ai-trade').opened_by_ai() and a.force ~= true then
@@ -6212,6 +6231,7 @@ ACTIONS = {
     open_trade = act_open_trade,
     close_trade = act_close_trade,
     close_meeting = act_close_meeting,
+    answer_meeting = act_answer_meeting,  -- (0.105.0)
     keep_mousers = act_keep_mousers,      -- (0.104.168)
     water_zone = act_water_zone,
     sand_zone = act_sand_zone,
@@ -6574,6 +6594,9 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
     petitions = function() return safe(get_petitions) end,
     diplomacy = function() return safe(get_diplomacy) end,
     meetings = function() return safe(get_meetings) end,
+    -- (0.105.0, 12b) the world outside: civs at war or peace, sieges, tribute,
+    -- the caravans' trade agreements, the meeting screen (lua/ai-diplomacy.lua)
+    world = function() return safe(function() return reqscript('ai-diplomacy').world_report(txt) end) end,
     -- (0.88) the alert icons down the left of the screen, by type (lua/ai-reports.lua)
     alerts = function() return safe(function() return reqscript('ai-reports').alerts_report() end) end,
     projects = function() return safe(function() return reqscript('ai-builder').projects_report() end) end,
@@ -6767,6 +6790,8 @@ local function cmd_status()
         -- (0.104.138) DF saving itself: time stands still and calls wait (99% of
         -- the keeper's "DFHack did not answer" lines fell in seasonal autosaves)
         saving = saving_now() or nil,
+        -- (0.105.0) DF's meeting screen is open (the overseer answers it)
+        meeting = meeting_focus() ~= nil or nil,
     }
 end
 
@@ -6951,6 +6976,27 @@ local function cmd_probe_trade()
     if not ok then return {ok = false, error = tostring(r):sub(1, 300)} end
     r.ok = true
     return r
+end
+
+-- (0.105.0, 12b) ai-bridge probe_meeting: the meeting screen, read only (also
+-- written to meeting-probe.json); meeting_here Yes|No|Done: the mouse is on
+-- that button of the open meeting screen, remember where.
+local function cmd_probe_meeting()
+    if not in_fort() then return NOT_IN_FORT end
+    local ok, r = pcall(function()
+        local D = reqscript('ai-diplomacy')
+        local p = D.probe(txt)
+        if p.state then D.save_probe(p) end
+        return p
+    end)
+    if not ok then return {ok = false, error = tostring(r):sub(1, 300)} end
+    r.ok = true
+    return r
+end
+
+local function cmd_meeting_here(args)
+    if not in_fort() then return NOT_IN_FORT end
+    return reqscript('ai-diplomacy').calibrate((args or {})[1] or 'Yes')
 end
 
 -- (0.104.97, 13b) ai-bridge probe_missions: the World screen, read only
@@ -7469,6 +7515,8 @@ local COMMANDS = {
     probe_occupations = cmd_probe_occupations,
     probe_trade = cmd_probe_trade,
     probe_missions = cmd_probe_missions,
+    probe_meeting = cmd_probe_meeting,    -- (0.105.0)
+    meeting_here = cmd_meeting_here,      -- (0.105.0)
     probe_justice = cmd_probe_justice,
     trade_here = cmd_trade_here,
     test_threat = cmd_test_threat,

@@ -37,6 +37,8 @@ import crisis  # noqa: E402  (0.104.137)
 from planner_building import *  # noqa: E402,F401,F403  (0.104.83: the planner in parts)
 from planner_care import _doctor_post_rule, _infection_rule, _offices_refill_rule  # noqa: E402  (0.104.168)
 from planner_homes import *  # noqa: E402,F401,F403  (0.104.168: homes and households)
+from planner_world import (_contact_rule, _export_rule, _hostile_trade_filter, _meeting_answer_rule,  # noqa: E402
+                           _messenger_rule, _world_notes, note_world)  # (0.105.0: the world outside, 12b and 13b)
 
 
 def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[Proposal], list[str]]:
@@ -506,6 +508,16 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
         _guard(_location_value_rule, s, cfg, proposals, notes)
         _guard(_grandeur_rule, s, cfg, proposals, notes)
         _guard(_meeting_notes, s, notes)
+        # (0.105.0, 12b/13b) the world outside: meetings answered, war and peace,
+        # goods for export, the messenger and Make contact (brain/planner_world.py)
+        if can_use("world"):
+            _guard(_meeting_answer_rule, s, cfg, proposals, notes, memory)
+            _guard(_world_notes, s, notes, memory)
+            _guard(_export_rule, s, cfg, proposals, notes, memory)
+        if can_use("offices"):
+            _guard(_messenger_rule, s, cfg, proposals, notes)
+            if can_use("missions"):
+                _guard(_contact_rule, s, cfg, notes, memory)
         _guard(_complaint_notes, s, cfg, notes)                     # (0.104.168)
         _guard(_vermin_rule, s, cfg, proposals, notes)              # (0.104.168)
         _guard(_location_supply_rules, s, cfg, proposals, notes)
@@ -595,6 +607,9 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
         for p in proposals:
             if p.action.get("type") == "farm_plots" and p.action.get("dig"):
                 p.action = {k: v for k, v in p.action.items() if k != "dig"}
+    # (0.105.0) no trade with a civilisation at war (brain/planner_world.py)
+    if "world" not in errors:
+        proposals = _guard(_hostile_trade_filter, s, proposals, notes) or proposals
     # (0.104.137) crisis mode: expansion waits, recovery goes first
     why = _d(getattr(memory, "crisis", None)).get("why") if memory is not None else None
     if why:
@@ -923,6 +938,8 @@ def note_cycle(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> list[
         memory.patient_since = patient_waits(s, memory, now)     # (0.104.81) moved out of plan()
     if "dwarves" not in errors:
         crisis.update(s, memory, cfg, notes)                     # (0.104.137) crisis mode
+    if "world" not in errors:
+        note_world(s, memory)                                    # (0.105.0) grudges, export wishes
     # (0.104.89) the strategist's raised and held rules run out
     if isinstance(getattr(memory, "steer", None), dict):
         for k in [k for k, v in memory.steer.items() if not (isinstance(v, dict) and isinstance(v.get("until"), int)
