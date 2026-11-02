@@ -1274,12 +1274,29 @@ function dig_progress(p)
             end
         end
     end
+    -- (0.105.4 review) the shaft's last level (it opens into the cavern) and
+    -- the stair step beside it are held undug until the shaft gate's lever
+    -- stands and its hatch cover and mechanisms are in store: counted, never
+    -- designated again here, and the shaft isn't open while they wait
+    local held = type(p.held) == 'table' and p.held or nil
+    local held_n = 0
+    local function is_held(x, y, z)
+        return held ~= nil and z == held.z and ((x == anchor.x and y == anchor.y)
+            or (held.stair and x == held.stair.x and y == held.stair.y))
+    end
+    local function keep_or_hold(x, y, z, done, key)
+        if is_held(x, y, z) then
+            total, held_n, shaft_open = total + 1, held_n + 1, false
+        else
+            keep(x, y, z, done, key)
+        end
+    end
     for _, zk in ipairs(p.shaft or {}) do
-        keep(anchor.x, anchor.y, zk, open_shape, 'h')
+        keep_or_hold(anchor.x, anchor.y, zk, open_shape, 'h')
     end
     for _, c in ipairs(p.shaft_stairs or {}) do
         local want = STAIR_SHAPES[c.key]
-        keep(c.x, c.y, c.z, function(t) return t.shape == want end, c.key)
+        keep_or_hold(c.x, c.y, c.z, function(t) return t.shape == want end, c.key)
     end
     -- (0.105.3) Hammerstirred: a gallery out to the shaft, each tile dug to a floor
     for _, g in ipairs(type(p.gallery) == 'table' and p.gallery or {}) do
@@ -1288,6 +1305,7 @@ function dig_progress(p)
     local out = {total = total, dug = dug, stuck = stuck, marked = marked, digging = digging,
                  waiting = #waiting > 0 and waiting or nil}
     if p.shaft then out.shaft_open, out.redesignated = shaft_open, redug > 0 and redug or nil end
+    if held_n > 0 then out.held = held_n end          -- (0.105.4 review)
     return out
 end
 
@@ -2609,6 +2627,7 @@ end
 -- tiles of an entrance (the brain's well_shore_reach) and the dwarves can
 -- walk to the bank (the same walk-group test as before).
 WELL_SHORE_NEAR = 8
+WELL_SHORE_FAR_MAX = 3         -- (0.105.4 review) far ponds looked round at most (the nearest first)
 function find_shore_well_spot(reserved, reach)
     local entrances = pasture_anchors()
     if #entrances == 0 then return nil, 'no surface entrance or staircase to look around' end
@@ -2625,15 +2644,20 @@ function find_shore_well_spot(reserved, reach)
     end
     if reach > WELL_SHORE_RADIUS then
         local okw, w = pcall(function() return reqscript('ai-water').last() end)
+        local far = {}
         for _, b in ipairs(okw and type(w) == 'table' and w.bodies or {}) do
             local n = b.nearest
             if (b.kind == 'surface' or b.kind == 'river') and type(n) == 'table' and n.x and n.y and n.z
                     and from_gate(n.x, n.y) > WELL_SHORE_RADIUS - WELL_SHORE_NEAR
                     and from_gate(n.x, n.y) <= reach then
                 -- the bank is a level over the water (the anchor's z is the bank's level)
-                table.insert(anchors, {x = n.x, y = n.y, z = n.z + 1, r = WELL_SHORE_NEAR, far = true})
+                table.insert(far, {x = n.x, y = n.y, z = n.z + 1, r = WELL_SHORE_NEAR, far = true,
+                                   d = from_gate(n.x, n.y)})
             end
         end
+        -- (0.105.4 review) the review: no cap on far ponds: the nearest 3 only
+        table.sort(far, function(p, q) return p.d < q.d end)
+        for i = 1, math.min(#far, WELL_SHORE_FAR_MAX) do table.insert(anchors, far[i]) end
     end
     local groups = {}
     for _, p in ipairs(citizen_positions()) do
@@ -2644,12 +2668,15 @@ function find_shore_well_spot(reserved, reach)
     local best, best_score, why
     local deadline = os.clock() + WELL_SEARCH_SECONDS
     local seen = {}
+    -- (0.105.4 review) one deadline for the whole search, far ponds included:
+    -- the near scan has 2/3 of it, the far ponds what's left
+    local near_deadline = os.clock() + WELL_SEARCH_SECONDS * 2 / 3
     for _, a in ipairs(anchors) do
-        -- (0.105.3) the far anchors get their own time (the near scan may use it all)
-        if a.far then deadline = math.max(deadline, os.clock() + WELL_SEARCH_SECONDS / 2) end
+        if os.clock() > deadline then break end
+        local stop = a.far and deadline or near_deadline
         for z = a.z - 3, a.z + 3 do
             for y = a.y - a.r, a.y + a.r do
-                if os.clock() > deadline then break end
+                if os.clock() > stop then break end
                 for x = a.x - a.r, a.x + a.r do
                     local k = x .. ',' .. y .. ',' .. z
                     if not seen[k] then
@@ -2732,6 +2759,14 @@ end
 -- (The rock's layout is read even where it's undiscovered, as for every
 -- other safety check of the AI.)
 CAVERN_WELL_MIN_DEPTH = 3
+-- (0.105.4 review) the review: the cavern search (4 s) then the gallery (4 s),
+-- CPU time on DF's main thread, uncached: the game froze up to 8 s a try.
+-- Now 1 s each and 1.5 s in all, and a "no spot" answer is kept until the
+-- next water survey or CAVERN_NO_SPOT_DAYS, whichever is first.
+CAVERN_SEARCH_SECONDS = 1
+CAVERN_TOTAL_SECONDS = 1.5
+CAVERN_NO_SPOT_DAYS = 28
+CAVERN_NO_SPOT = CAVERN_NO_SPOT or nil
 
 local function solid_rock(t)
     return t ~= nil and t.shape == 'WALL' and not t.aquifer and not t.liquid and not t.feature and not t.warm
@@ -2978,7 +3013,12 @@ function cavern_below(x, y, z)
                 if k == rock + 1 and t.depth >= 7 then
                     return nil, 'the cavern water fills the space right under the rock (it may be under pressure)'
                 end
-                if t.depth >= CAVERN_WELL_MIN_DEPTH then return {drop = k, rock = rock, stagnant = t.stagnant} end
+                -- (0.105.4 review) the cavern's air right under the rock unseen: the
+                -- shaft would be the first way into it (forgotten beasts come after)
+                local air = tile_info(x, y, z - rock - 1)
+                if t.depth >= CAVERN_WELL_MIN_DEPTH then
+                    return {drop = k, rock = rock, stagnant = t.stagnant, hidden = (air and air.hidden) or t.hidden or nil}
+                end
                 return nil, 'the cavern water there is too shallow'
             end
             if t.shape ~= 'EMPTY' then return nil, 'cavern floor, not water, below' end
@@ -2993,11 +3033,12 @@ function find_cavern_well_spot(reserved)
     local area = fort_scan_area(WELL_SCAN_MARGIN)
     if not area then return nil, 'no citizens' end
     local best, best_score, why_not = nil, nil, {}
-    local deadline = os.clock() + WELL_SEARCH_SECONDS * 2
+    -- (0.105.4 review) 1 s (was 4): the search runs on DF's own thread, the game stands still meanwhile
+    local deadline = os.clock() + CAVERN_SEARCH_SECONDS
     for i = 1, math.min(FARM_SCAN_LEVELS, #area.levels) do
         local z = area.levels[i].z
         for y = area.y1, area.y2 do
-            if os.clock() > deadline then break end
+            if os.clock() > deadline then why_not['the search ran out of time'] = true break end   -- (0.105.4 review)
             for x = area.x1, area.x2 do
                 local mat = floor_material(x, y, z)
                 if mat and mat ~= 'CONSTRUCTION' then
@@ -3023,7 +3064,7 @@ function find_cavern_well_spot(reserved)
                                 if not best_score or score < best_score then
                                     best, best_score = {x = x, y = y, z = z, drop = c.drop, rock = c.rock,
                                                         zone = liked, cavern = true, stagnant = c.stagnant,
-                                                        side = side}, score
+                                                        side = side, hidden = c.hidden}, score
                                 end
                             elseif why then
                                 why_not[why] = true
@@ -3061,9 +3102,9 @@ end
 -- that fills the space right under the rock is refused, as before).
 -- The columns tried are those round the water survey's nearest cavern water
 -- (or the points the brain passes), so the search stays small.
-WELL_GALLERY_MAX = 40          -- gallery tiles at most (the brain's cavern_well_gallery)
+WELL_GALLERY_MAX = 80          -- gallery tiles at most (the brain's cavern_well_gallery; 0.105.4: 80)
 WELL_GALLERY_WINDOW = 8        -- columns tried this far round each point of cavern water
-WELL_GALLERY_SECONDS = 4
+WELL_GALLERY_SECONDS = 1       -- (0.105.4 review) was 4
 
 local G_DIR4 = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}}
 local G_DIR8 = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, 1}, {1, -1}, {-1, 1}, {-1, -1}}
@@ -3145,13 +3186,13 @@ function find_gallery_well_spot(reserved, opts)
     end
     for _, l in ipairs(area.levels) do zlo, zhi = math.min(zlo, l.z), math.max(zhi, l.z) end
     local function away(x, y) return math.max(0, bx1 - x, x - bx2, by1 - y, y - by2) end
-    local deadline = os.clock() + WELL_GALLERY_SECONDS
+    local deadline = os.clock() + math.min(WELL_GALLERY_SECONDS, opts.seconds or WELL_GALLERY_SECONDS)
     local why_not, nearest_away, best, no_way = {}, nil, nil, {}
     local W, H = map_size()
     for _, tg in ipairs(targets) do
         -- the fort levels a well could stand on over this water (lowest first: the shortest shaft)
         for z = math.max(zlo, tg.z + 2), math.min(zhi, tg.z + WELL_MAX_DROP) do
-            if os.clock() > deadline then break end
+            if os.clock() > deadline then why_not['the search ran out of time'] = true break end   -- (0.105.4 review)
             -- the shaft columns round the water, each with its stair tile(s) beside it
             local sources = {}
             for y = math.max(1, tg.y - WELL_GALLERY_WINDOW), math.min(H - 2, tg.y + WELL_GALLERY_WINDOW) do
@@ -3247,6 +3288,7 @@ function find_gallery_well_spot(reserved, opts)
                 if not best or score < best.score then
                     best = {x = s.shaft.x, y = s.shaft.y, z = z, drop = s.c.drop, rock = s.c.rock, cavern = true,
                             stagnant = s.c.stagnant, side = {x = s.x, y = s.y}, gallery = path, from = found.from,
+                            hidden = s.c.hidden,
                             zone = false, score = score}
                 end
                 break        -- the lowest fort level that reaches it: the shortest shaft
@@ -3903,6 +3945,8 @@ function plan_cistern(first, last, opts)
             local reach = maxlen + CISTERN_HALF + 2
             local head = 1
             while head <= #queue do
+                -- (0.105.4 review) the spread over the wider box under the plan's own deadline
+                if os.clock() > deadline then why = why or 'the cistern search ran out of time'; break end
                 local q = queue[head]
                 head = head + 1
                 local d0 = dist[(q[2] - area.y1) * W_ + (q[1] - area.x1)]
@@ -4461,6 +4505,19 @@ local function free_mechanism_count()
     return ok and n or 0
 end
 
+-- (0.105.4 review) the shaft's lowest level dug open (the hatch can go on it)
+function shaft_bottom_open(p)
+    local a = anchor_of(p)
+    local t = tile_info(a.x, a.y, shaft_bottom(p))
+    return t ~= nil and t.shape ~= 'WALL' and t.shape ~= 'FLOOR' and t.shape ~= 'RAMP'
+end
+
+-- (0.105.4 review) hatch covers in store (free), for the hold on the shaft's last level
+function shaft_hatch_covers()
+    local ok, n = pcall(function() return (count_items('HATCH_COVER')) end)
+    return ok and n or 0
+end
+
 -- One step for each cavern well's shaft gate toward `want_closed`.
 -- {ok, wells = [{project_id, was, stage?, error?}]}
 function well_shaft_step(want_closed, dry_run)
@@ -4468,7 +4525,8 @@ function well_shaft_step(want_closed, dry_run)
     local wells, changed = {}, false
     for _, p in ipairs(data.list) do
         local st = p.shaft_stairs
-        if p.kind == 'well' and type(st) == 'table' and st[1] and (p.phase == 'furnish' or p.phase == 'done') then
+        if p.kind == 'well' and type(st) == 'table' and st[1] and (p.phase == 'furnish' or p.phase == 'done'
+                or (p.phase == 'dig' and (p.held or p.released))) then   -- (0.105.4 review) the gate before the breach
             local a, hz = anchor_of(p), shaft_bottom(p)
             local g = shaft_gate_state(p)
             local r = {project_id = p.id, was = g.state}
@@ -4493,6 +4551,33 @@ function well_shaft_step(want_closed, dry_run)
                 else
                     r.error = 'the game would not place the lever near the well'
                 end
+            elseif g.state == 'no_hatch' and p.held then
+                -- (0.105.4 review) the lever stands: the shaft breaks into the cavern
+                -- only once a hatch cover and 2 mechanisms (its link) are in store,
+                -- so the hatch goes in straight after, before anything comes up
+                local mech, covers = free_mechanism_count(), shaft_hatch_covers()
+                if mech < 2 or covers < 1 then
+                    r.stage, r.mechanisms, r.hatch_covers = 'waiting_parts', mech, covers
+                elseif dry_run then
+                    r.stage = 'break_through'
+                else
+                    local hd = p.held
+                    local pri = type(p.params) == 'table' and p.params.pri or ''
+                    local okh = pcall(quickfort_apply, 'dig', {{x = 0, y = 0, text = 'h' .. (pri or '')}}, hd.z, a.x, a.y)
+                    for _, c in ipairs(st) do
+                        if c.z == hd.z then
+                            pcall(quickfort_apply, 'dig', {{x = 0, y = 0, text = c.key .. (pri or '')}}, c.z, c.x, c.y)
+                        end
+                    end
+                    if okh then
+                        p.held, p.released, changed = nil, true, true
+                        r.stage = 'break_started'
+                    else
+                        r.error = 'the game would not dig the shaft\'s last level'
+                    end
+                end
+            elseif g.state == 'no_hatch' and p.phase == 'dig' and not shaft_bottom_open(p) then
+                r.stage = 'breaking_through'      -- (0.105.4 review) the hatch once the last level is dug
             elseif g.state == 'no_hatch' then
                 -- rv 6: only with the lever up and 2 mechanisms free for the link
                 local mech = free_mechanism_count()
@@ -4603,7 +4688,8 @@ function well_shaft_step(want_closed, dry_run)
     end
     local acted = watch_started
     for _, r in ipairs(wells) do
-        if not r.error and r.stage and r.stage ~= r.was and r.stage ~= 'waiting_mechanisms' then acted = true end
+        if not r.error and r.stage and r.stage ~= r.was and r.stage ~= 'waiting_mechanisms'
+                and r.stage ~= 'waiting_parts' and r.stage ~= 'breaking_through' then acted = true end
     end
     if dry_run then return {ok = true, dry_run = true, wells = wells} end
     if acted then return {ok = true, wells = wells} end
@@ -4767,9 +4853,13 @@ function well_lids(probe)
     local data = load_projects()
     for _, p in ipairs(data.list) do
         local st = p.shaft_stairs
-        if p.kind == 'well' and type(st) == 'table' and st[1] and (p.phase == 'furnish' or p.phase == 'done') then
+        if p.kind == 'well' and type(st) == 'table' and st[1] and (p.phase == 'furnish' or p.phase == 'done'
+                or (p.phase == 'dig' and (p.held or p.released))) then   -- (0.105.4 review) the gate before the breach
             local top = st[1]
             local r = {project_id = p.id, x = top.x, y = top.y, z = top.z, elevation = ez(top.z)}
+            -- (0.105.4 review) the shaft's last level held undug till the gate's parts are in store
+            if p.held then r.held = true; r.hatch_covers = shaft_hatch_covers() end
+            if p.released and p.phase == 'dig' then r.breaking = true end
             local okb, b = pcall(dfhack.buildings.findAtTile, xyz2pos(top.x, top.y, top.z))
             if okb and b then
                 if b:getType() ~= df.building_type.Hatch then
@@ -5613,15 +5703,37 @@ function place_well(params, now, dry_run)
     for _, p in ipairs(open) do table.insert(reserved, p.area) end
     local spot, why
     if params.cavern then
+        -- (0.105.4 review) a "no spot" kept since the last survey: not searched again
+        local okw, wl = pcall(function() return reqscript('ai-water').last() end)
+        local stamp = ('%s/%s'):format(okw and type(wl) == 'table' and tostring(wl.tick) or '-', tostring(params.gallery))
+        local today = type(now) == 'table' and ((tonumber(now.year) or 0) * 403200 + (tonumber(now.tick) or 0)) // 1200 or nil
+        local c = CAVERN_NO_SPOT
+        if c and c.stamp == stamp and today and c.day and today >= c.day and today - c.day < CAVERN_NO_SPOT_DAYS then
+            return {ok = false, error = c.why, cached = true}
+        end
+        local started = os.clock()
         spot, why = find_cavern_well_spot(reserved)
         -- (0.105.3) Hammerstirred (2 Nov): no fort floor over the cavern lake
         -- (it lies beside the fort, 80 tiles off by the survey): a gallery
         -- through solid rock out to a column over it, unless the brain says no
         if not spot and params.gallery ~= 0 then
-            local g, gwhy = find_gallery_well_spot(reserved, {max = params.gallery, toward = params.toward})
+            local left = math.max(0.1, CAVERN_TOTAL_SECONDS - (os.clock() - started))
+            local g, gwhy = find_gallery_well_spot(reserved, {max = params.gallery, toward = params.toward, seconds = left})
             if g then spot = g else why = why .. '; ' .. gwhy end
         end
-        if not spot then return {ok = false, error = why} end
+        if not spot then
+            -- (a search cut short by its time is not kept: it may find one next time)
+            if not why:find('ran out of time') then CAVERN_NO_SPOT = {stamp = stamp, day = today, why = why} end
+            return {ok = false, error = why}
+        end
+        CAVERN_NO_SPOT = nil
+        -- (0.105.4 review) Hammerstirred's Cavern1 was undiscovered: the first
+        -- breach changes the fort's dangers, so only when the player allows it
+        if spot.hidden and params.open_caverns ~= true then
+            return {ok = false, rejected = true, unfound = true,
+                    error = 'the shaft would open a cavern no dwarf has seen yet: allowed only from the Rules tab '
+                        .. '("Cavern well into an unfound cavern")'}
+        end
     else
         spot, why = find_well_spot(reserved)
     end
@@ -5660,6 +5772,12 @@ function place_well(params, now, dry_run)
         end
         table.insert(gallery, {x = g.x, y = g.y})
     end
+    -- (0.105.4 review) the review: the last channel opened the cavern while the
+    -- project was still digging, and the gate's lever and hatch came only at
+    -- furnish (links lost 3+ times on 1 Nov). That level and the stair step
+    -- beside it are held undug until the lever stands and a hatch cover and 2
+    -- mechanisms are in store (well_shaft_step lets them go)
+    local held = spot.cavern and #shaft > 0 and {z = shaft[#shaft], stair = spot.side and {x = spot.side.x, y = spot.side.y}} or nil
     local stairs = {}
     if spot.cavern then
         if not spot.side then return {ok = false, error = 'no room beside the shaft for the stairs it is dug from'} end
@@ -5674,7 +5792,8 @@ function place_well(params, now, dry_run)
     local where = {x = spot.x, y = spot.y, elevation = ez(spot.z), drop = spot.drop, in_hall = spot.zone,
                    shore = spot.shore, stagnant = spot.stagnant, cavern = spot.cavern, shaft = #shaft,
                    stairs = #stairs > 0 and #stairs or nil, urgent = params.urgent == true or nil,
-                   gallery = #gallery > 0 and #gallery or nil, from = spot.from, from_gate = spot.from_gate}
+                   gallery = #gallery > 0 and #gallery or nil, from = spot.from, from_gate = spot.from_gate,
+                   held = held and 2 or nil}
     if dry_run then
         where.ok, where.dry_run = true, true
         return where
@@ -5684,12 +5803,16 @@ function place_well(params, now, dry_run)
         pcall(quickfort_apply, 'dig', dig, spot.z, spot.x, spot.y, 'undo')
         return {ok = false, error = 'the game refused to channel the well spot'}
     end
-    for _, zk in ipairs(shaft) do pcall(quickfort_apply, 'dig', dig, zk, spot.x, spot.y) end
+    for _, zk in ipairs(shaft) do
+        if not (held and zk == held.z) then pcall(quickfort_apply, 'dig', dig, zk, spot.x, spot.y) end
+    end
     for _, g in ipairs(gallery) do
         pcall(quickfort_apply, 'dig', {{x = 0, y = 0, text = 'd' .. pri}}, spot.z, g.x, g.y)
     end
     for _, c in ipairs(stairs) do
-        pcall(quickfort_apply, 'dig', {{x = 0, y = 0, text = c.key .. pri}}, c.z, c.x, c.y)
+        if not (held and c.z == held.z) then
+            pcall(quickfort_apply, 'dig', {{x = 0, y = 0, text = c.key .. pri}}, c.z, c.x, c.y)
+        end
     end
     local p = {
         id = data.next_id, kind = 'well', phase = 'dig', params = {pri = pri ~= '' and pri or nil},
@@ -5698,6 +5821,7 @@ function place_well(params, now, dry_run)
         corridor = 0, stairs = {}, dig_done = 'open', shaft = #shaft > 0 and shaft or nil,
         shaft_stairs = #stairs > 0 and stairs or nil, urgent = params.urgent == true or nil,
         gallery = #gallery > 0 and gallery or nil,      -- (0.105.3)
+        held = held,                                    -- (0.105.4 review)
         summary = {well = 1, drop = spot.drop, cavern = spot.cavern}, furniture = {Well = 1},
         cells = {dig = dig, build = {{x = 0, y = 0, text = 'l'}}, place = {}, zone = {},
                  smooth = {}, engrave = {}},

@@ -74,12 +74,14 @@ def _well_rule(s: dict, memory, traits: dict, cfg: dict, proposals: list, notes:
         return
     # (0.105.3) Hammerstirred (2 Nov): the cavern well was refused once for
     # "no floor over cavern water" and never tried again, while the lake lay
-    # beside the fort. Now it may dig a gallery out to it: tried once more
-    # (its next refusal names the gallery, so this never repeats)
-    if (memory is not None and cfg["cavern_well_gallery"] > 0
-            and memory.cavern_well_failure.startswith("no floor inside the fort over cavern water")
-            and "gallery" not in memory.cavern_well_failure):
-        memory.cavern_well_failure = ""
+    # beside the fort. Now it may dig a gallery out to it: tried once more.
+    # (0.105.4 review) once, by a flag (record sets it when a cavern well with a
+    # gallery comes back): the refusal's text is cut to 300 characters, so
+    # "gallery" in it was no sure sign. plan() itself only reads it.
+    cavern_failure = memory.cavern_well_failure if memory is not None else ""
+    if (memory is not None and cfg["cavern_well_gallery"] > 0 and not memory.cavern_gallery_retried
+            and cavern_failure.startswith("no floor inside the fort over cavern water")):
+        cavern_failure = ""
     if wells:
         # (0.104.141, 12k) wells by the dwarves per well: Teacheroar's 209
         # dwarves (124 patients at the worst) shared one well
@@ -94,7 +96,7 @@ def _well_rule(s: dict, memory, traits: dict, cfg: dict, proposals: list, notes:
         # season): the cavern well, as for a fort with none, when it's needed
         # and safe and none has failed before
         if (memory is not None and "cavern" in memory.extra_well_failure
-                and not memory.cavern_well_failure):
+                and not cavern_failure):
             patients = int(_d(s.get("dwarves")).get("needs_medical_care") or 0)
             need = cavern_well_need(s, cfg, patients) or f"{cit} dwarves share {wells} well(s)"
             safe = cavern_well_safe(s, cfg)
@@ -111,9 +113,9 @@ def _well_rule(s: dict, memory, traits: dict, cfg: dict, proposals: list, notes:
                 return
             notes.append(f"a cavern well would help ({need}) but not now: {safe}")
             return
-        if memory is not None and memory.cavern_well_failure and "cavern" in memory.extra_well_failure:
+        if memory is not None and cavern_failure and "cavern" in memory.extra_well_failure:
             notes.append(f"{cit} dwarves share {wells} well(s); no cavern well either: "
-                         f"{memory.cavern_well_failure[:120]}")
+                         f"{cavern_failure[:120]}")
             return
         if (memory is not None and memory.extra_well_failure and isinstance(last, int)
                 and 0 <= abs_tick(s) - last < cfg["extra_well_retry_days"] * TICKS_PER_DAY):
@@ -137,6 +139,7 @@ def _well_rule(s: dict, memory, traits: dict, cfg: dict, proposals: list, notes:
         memory.cavern_shaft_stairs = True
         if memory.cavern_well_failure.startswith("the last cavern well's shaft was under half dug"):
             memory.cavern_well_failure = ""
+            cavern_failure = ""
     # (0.104.13) the injured or the parched waiting: the well takes one of the
     # urgent slots (as soap, tombs and the hospital do) and is dug first
     urgent = bool(patients or parched)
@@ -160,7 +163,7 @@ def _well_rule(s: dict, memory, traits: dict, cfg: dict, proposals: list, notes:
         say_failure(False)
         return                  # the game refused a well over a hole the AI dug: not another hole
     # no ordinary spot: the AI decides whether a well into a cavern is worth it
-    if memory.well_failure and not memory.cavern_well_failure and len(open_) < limit:
+    if memory.well_failure and not cavern_failure and len(open_) < limit:
         need = cavern_well_need(s, cfg, patients) or (f"{parched} parched dwarves need water" if parched else "")
         safe = cavern_well_safe(s, cfg)
         if need and safe is True:
@@ -175,8 +178,8 @@ def _well_rule(s: dict, memory, traits: dict, cfg: dict, proposals: list, notes:
             return
         if need:
             notes.append(f"a cavern well would help ({need}) but not now: {safe}")
-    elif memory.cavern_well_failure:
-        notes.append(f"no cavern well either: {memory.cavern_well_failure}")
+    elif cavern_failure:
+        notes.append(f"no cavern well either: {cavern_failure}")
     say_failure(False)
     if len(open_) >= limit:
         notes.append("no well yet: waiting for a free building slot")
@@ -221,6 +224,14 @@ def _well_lid_rule(s: dict, proposals: list, notes: list) -> None:
     covers = sum(1 for x in lids if x.get("gate") == "none_possible" and x.get("state") in ("none", "planned"))
     covers += sum(1 for x in lids if x.get("gate") == "no_hatch"
                   or (x.get("gate") == "building" and x.get("gate_hatch_built") is False))
+    # (0.105.4 review) a held shaft waits for its hatch cover before it breaks into the cavern:
+    # ordered while its lever is still being built, too
+    covers += sum(1 for x in lids if x.get("held") and x.get("gate") in ("none", "stray", "no_lever", "building")
+                  and not (x.get("hatch_covers") or 0))
+    for x in lids:
+        if x.get("held"):
+            notes.append(f"the cavern well at {where(x)}: its last level waits undug until the gate's lever stands "
+                         f"and a hatch cover ({x.get('hatch_covers', 0)} free) and 2 mechanisms are in store")
     free = _d(_d(s.get("entrances")).get("parts")).get("hatch_covers")
     if covers and isinstance(free, int) and free == 0 and queued(s, {"stone_hatch_cover"}) == 0:
         proposals.append(Proposal("well_lid", {"type": "work_order", "recipe": "stone_hatch_cover", "amount": covers},
@@ -267,6 +278,11 @@ def _well_lid_rule(s: dict, proposals: list, notes: list) -> None:
                              + ": the link waits")
             pool -= 2
         elif g == "no_hatch":
+            if x.get("breaking"):
+                continue                     # (0.105.4 review) the last level being dug: the hatch after
+            if x.get("held") and not (x.get("hatch_covers") or 0):
+                pool -= 2                    # (0.105.4 review) waits for a hatch cover (ordered above)
+                continue
             if pool >= 2:
                 ok_gates.append(x)
                 pool -= 2
@@ -285,7 +301,10 @@ def _well_lid_rule(s: dict, proposals: list, notes: list) -> None:
             steps = []
             if any(x.get("gate") == "unlinked" for x in build):
                 steps.append("the cavern well's shaft hatch and lever are built: link them")
-            if any(x.get("gate") == "no_hatch" for x in build):
+            if any(x.get("gate") == "no_hatch" and x.get("held") for x in build):
+                steps.append("the cavern well's lever stands, a hatch cover and 2 mechanisms are in store: dig the "
+                             "shaft's last level into the cavern, then the hatch on it at once")
+            if any(x.get("gate") == "no_hatch" and not x.get("held") for x in build):
                 steps.append("the cavern well's lever stands and 2 mechanisms are free: the hatch at the shaft's bottom")
             why = "; ".join(steps)
         elif not turn:
@@ -480,6 +499,8 @@ def cavern_action(s: dict, cfg: dict, urgent: bool) -> dict:
     if urgent:
         action["urgent"] = True
     action["gallery"] = int(cfg["cavern_well_gallery"])
+    if player_rules(s)["open_caverns"]:          # (0.105.4 review) the bridge's own check follows the Rules tab
+        action["open_caverns"] = True
     pts = cavern_points(s)
     if pts and action["gallery"] > 0:
         action["toward"] = pts
@@ -505,10 +526,43 @@ def cavern_well_need(s: dict, cfg: dict, patients: int) -> str:
     return ""
 
 
+def unfound_cavern(s: dict) -> str | None:
+    """(0.105.4 review) The cavern layer a cavern well would open, when no
+    dwarf has found it yet (its name), else None. Hammerstirred's Cavern1 was
+    undiscovered: the first breach is what brings forgotten beasts. The layer
+    holding the survey's nearest cavern water, else the first one under the fort."""
+    m = _d(s.get("map"))
+    layers = [l for l in _l(m.get("layers")) if isinstance(l, dict) and str(l.get("name", "")).startswith("Cavern")]
+    if not layers:
+        return None
+    z = None
+    for b in _l(_d(s.get("water")).get("bodies")):
+        n = _d(_d(b).get("nearest"))
+        if _d(b).get("kind") == "cavern" and isinstance(n.get("z"), int):
+            z = n["z"]
+    pick = None
+    if z is not None:
+        pick = next((l for l in layers if isinstance(l.get("z_bottom"), int) and isinstance(l.get("z_top"), int)
+                     and l["z_bottom"] - 1 <= z <= l["z_top"] + 1), None)
+    if pick is None:
+        bottom = _d(m.get("dwarves")).get("z_bottom")
+        below = [l for l in layers if isinstance(l.get("z_top"), int)
+                 and (not isinstance(bottom, int) or l["z_top"] < bottom)]
+        pick = max(below, key=lambda l: l["z_top"]) if below else None
+    if pick is not None and pick.get("discovered") is False:
+        return str(pick.get("name"))
+    return None
+
+
 def cavern_well_safe(s: dict, cfg: dict):
     """True, or why a shaft into the caverns shouldn't be dug now."""
     if young_fort(s, cfg) or int(_d(s.get("dwarves")).get("total") or 0) < cfg["cavern_well_min_pop"]:
         return "the fort is too young or small"
+    # (0.105.4 review) a cavern nobody has found: only when the Rules tab allows it
+    layer = unfound_cavern(s)
+    if layer and not player_rules(s)["open_caverns"]:
+        return (f"a cavern well would open {layer} for the first time (cavern creatures and forgotten beasts "
+                "follow): allow it on the Rules tab (\"Cavern well into an unfound cavern\")")
     if _d(s.get("others_on_map")).get("threats_that_can_reach_dwarves"):
         return "enemies can reach the dwarves"
     d = _d(s.get("deep"))

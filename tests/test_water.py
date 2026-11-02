@@ -153,6 +153,29 @@ def _():
     assert magma_access({}, m) is None and magma_access(w, {}) is None
 
 
+@test("the Rules (0.105.4 review): \"Cavern well into an unfound cavern\", off by default, saved, sent to the AI, on the panel")
+def _():
+    from planner import player_rules
+    lua = LuaRuntime(unpack_returned_tuples=True)
+    src = (ROOT / "lua" / "ai-overseer-settings.lua").read_text(encoding="utf-8")
+    S = lua.eval("""function(src)
+      local env = setmetatable({dfhack_flags = {module = true}, dfhack = {getDFPath = function() return '.' end,
+                                          isMapLoaded = function() return false end}},
+                               {__index = _G})
+      env.require = function(n) if n == 'json' then return {} end return require(n) end
+      assert(load(src, 'settings', 't', env))()
+      return env end""")(src)
+    d = S.defaults()
+    assert d.open_caverns is False and S.for_ai(d).open_caverns is False
+    s = S.sanitize(lua.table_from({"open_caverns": True}))
+    assert s.open_caverns is True and S.for_ai(s).open_caverns is True
+    assert S.sanitize(lua.table_from({})).open_caverns is False
+    assert player_rules({"settings": {}})["open_caverns"] is False
+    assert player_rules({"settings": {"open_caverns": True}})["open_caverns"] is True
+    gui = (ROOT / "lua" / "gui" / "ai-overseer.lua").read_text(encoding="utf-8")
+    assert "view_id = 'open_caverns'" in gui and "subviews.open_caverns:setOption" in gui
+
+
 if __name__ == "__main__":
     for name, ok, msg in RESULTS:
         print(f"[{'PASS' if ok else 'FAIL'}] {name}" + (f"\n        {msg}" if msg else ""))
