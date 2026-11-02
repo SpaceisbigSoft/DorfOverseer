@@ -462,7 +462,14 @@ def _water_zone_rule(s: dict, proposals: list, notes: list) -> None:
         return
     patients = int(_d(s.get("dwarves")).get("needs_medical_care") or 0)
     parched = int(_d(s.get("society")).get("parched") or 0)
-    if not patients and not parched:
+    # (0.105.5) Hammerstirred (2 Nov): drink 0-11 for 7 dwarves and no well,
+    # and nobody yet parched or injured: the zone waited until they were (a
+    # dwarf died of thirst in another fort). Drink under the urgent line is
+    # reason enough: dwarves drink from a water source when there's no booze.
+    citizens = max(1, int(_d(s.get("dwarves")).get("total") or 1))
+    drink = _d(s.get("stocks")).get("drink")
+    dry = isinstance(drink, (int, float)) and drink < citizens * PLANNER_CONFIG["urgent_drink_per_dwarf"]
+    if not patients and not parched and not dry:
         return
     bodies = [b for b in _l(_d(s.get("water")).get("bodies"))
               if isinstance(b, dict) and isinstance(b.get("nearest"), dict)
@@ -473,6 +480,8 @@ def _water_zone_rule(s: dict, proposals: list, notes: list) -> None:
               if all(isinstance(b["nearest"].get(k), int) for k in ("x", "y", "z"))]
     who = " and ".join(x for x in (f"{patients} injured" if patients else "",
                                     f"{parched} parched" if parched else "") if x)
+    if not who:
+        who = f"drink is short ({drink} for {citizens}): the"     # (0.105.5)
     if not points:
         notes.append(f"{who} dwarves wait for water and there is no well, and no open water near the fort "
                      "is known for a water source")

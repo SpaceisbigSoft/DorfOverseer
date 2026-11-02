@@ -543,6 +543,8 @@ def short(a: dict) -> str:
         return "hatches on the stairs down from a wide opening"
     if t == "farm_thresholds":
         return "set which crops the farms favour (autofarm)"
+    if t == "set_farm_crops":      # (0.105.5) Hammerstirred: the plots lay fallow under autofarm
+        return "set each farm plot's crops" + (" (brewable first)" if a.get("drink") else "")
     if t == "kitchen_brewables":   # (0.100) the kitchen ban on cooking brewables
         return ("stop the kitchen cooking brewable plants" if a.get("ban") else
                 "let the kitchen cook brewable plants again")
@@ -599,7 +601,8 @@ def short(a: dict) -> str:
     if t == "place_well":
         return "dig a shaft to a cavern lake for a well" if a.get("cavern") else "dig a well over water"
     if t == "farm_plots":
-        return f"lay out {a.get('tiles')} farm tiles" + (" (or dig a farm level)" if a.get("dig") else "")
+        return (f"lay out {a.get('tiles')} farm tiles" + (" underground" if a.get("underground") else "")   # (0.105.5)
+                + (" (or dig a farm level)" if a.get("dig") else ""))
     if t == "start_project":
         what = a.get("name") and f"memorial for {a['name']}" or a.get("kind")
         return f"dig a new {what} level"

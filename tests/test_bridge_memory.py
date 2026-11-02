@@ -770,6 +770,27 @@ def _():
     assert len(H.persist["ai-overseer/kitchen"].bans) == 0
 
 
+@test("set_farm_crops (0.105.5): the builder sets the plots' crops; autofarm switched off so it can't rewrite them")
+def _():
+    M = H.module()
+    calls = LUA.execute("""
+    local H = ...
+    local c = {cmds = {}, params = nil}
+    H.dfhack.run_command_silent = function(...) local a = {...}; table.insert(c.cmds, table.concat(a, ' '))
+        if a[1] == 'enable' and #a == 1 then return 'autofarm: on' end return '' end
+    H.scripts = {['ai-builder'] = {set_farm_crops = function(p, dry) c.params = p
+        return {ok = true, changed = 3, dry_run = dry or nil} end}}
+    return c""", H)
+    act = M.ACTIONS.set_farm_crops
+    assert not act(t({"drink": "yes"})).ok
+    r = act(t({"drink": True, "dry_run": True}))
+    assert r.ok and r.dry_run and "disable autofarm" not in list(calls.cmds.values()), dict(r)
+    r = act(t({"drink": True}))
+    assert r.ok and r.autofarm_off and calls.params.drink is True, dict(r)
+    assert "disable autofarm" in list(calls.cmds.values()), list(calls.cmds.values())
+    H.dfhack.run_command_silent = None
+
+
 @test("expel (0.100 security): at most one dwarf a game week, whoever asks; kept in the save")
 def _():
     M = H.module()

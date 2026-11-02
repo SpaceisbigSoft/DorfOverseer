@@ -9449,6 +9449,82 @@ def _():
         planner._pasture_hold = old
 
 
+
+def overseer_short(a):
+    import overseer
+    return overseer.short(a)
+
+def _fort_b():
+    """(0.105.5) Hammerstirred fort B (2 Nov): 5 surface plots, 4 fallow, drink 0-11 for 7 dwarves,
+    seeds mostly underground crops plus a few surface brewables."""
+    s = fort()
+    s["dwarves"]["total"] = 7
+    s["stocks"]["drink"] = 4
+    s["buildings"]["other"].pop("Well", None)
+    s["buildings"]["zones"].pop("WaterSource", None)
+    s["dwarves"]["needs_medical_care"] = 0
+    s.setdefault("society", {})["parched"] = 0
+    plots = [{"id": i, "tiles": 9, "underground": False, "crops": ["", "", "", ""], "fallow": True,
+              "ok_now": False, "options": 1, "options_any": 2} for i in range(1, 6)]
+    plots[0].update(fallow=False, ok_now=True, crops=["", "BERRIES_PRICKLE", "", ""])
+    s["farms"] = {"plots": 5, "built": 5, "tiles": 45, "season": "summer", "plots_surface": 5, "plots_underground": 0,
+                  "plot_list": plots, "crops": {
+                      "MUSHROOM_HELMET_PLUMP": {"name": "plump helmet", "seeds": 60, "brews": "plant",
+                                                "underground": True, "seasons": ["spring", "summer", "autumn", "winter"]},
+                      "BERRIES_PRICKLE": {"name": "prickle berry", "seeds": 8, "brews": "plant",
+                                          "underground": False, "seasons": ["spring", "summer", "autumn", "winter"]}}}
+    return s
+
+
+@test("farm crops (0.105.5): fort B: plots fallow while seeds grow there and drink is short -> set_farm_crops, brewable first, urgent")
+def _():
+    s = _fort_b()
+    m = Memory()
+    fc = by_rule(plan(copy.deepcopy(s), m)[0], "farm_crops")
+    assert fc and fc[0].action == {"type": "set_farm_crops", "drink": True} and fc[0].priority == 1, fc
+    record([(fc[0], {"ok": True})], s, m)
+    assert m.farm_steer == "crops" and "autofarm" not in m.tools_seen_on
+    m.last_fired.clear()
+    # set: the plots grow now, so nothing more; autofarm isn't switched back on, thresholds left alone
+    for p in s["farms"]["plot_list"]:
+        p.update(fallow=False, ok_now=True)
+    props = plan(copy.deepcopy(s), m)[0]
+    assert not by_rule(props, "farm_crops") and not by_rule(props, "crops"), rules(props)
+    s["tools"]["autofarm"] = False
+    assert not [p for p in by_rule(plan(copy.deepcopy(s), m)[0], "tools") if p.action.get("name") == "autofarm"]
+    # drink fine: a lower priority, no brewable steer
+    s = _fort_b()
+    s["stocks"]["drink"] = 200
+    fc = by_rule(plan(copy.deepcopy(s), Memory())[0], "farm_crops")
+    assert fc and fc[0].action == {"type": "set_farm_crops", "drink": False} and fc[0].priority == 4, fc
+    assert overseer_short({"type": "set_farm_crops", "drink": True}) == "set each farm plot's crops (brewable first)"
+
+
+@test("farm crops (0.105.5): surface plots that can grow nothing in any season are said, and underground plots are laid out")
+def _():
+    s = _fort_b()
+    s["farms"]["crops"]["BERRIES_PRICKLE"]["seeds"] = 0
+    for p in s["farms"]["plot_list"]:
+        p.update(dead=True, options=0, options_any=0, fallow=True, ok_now=False)
+    props, notes = plan(copy.deepcopy(s), Memory())[:2]
+    assert not by_rule(props, "farm_crops"), by_rule(props, "farm_crops")
+    assert any("can grow nothing" in n and "underground plots" in n for n in notes), notes
+    f = by_rule(props, "farms")
+    assert f and f[0].action.get("underground") is True and "outside" not in f[0].action and f[0].priority == 2, f
+    assert "underground" in f[0].reason, f[0].reason
+
+
+@test("water zone (0.105.5): drink short with no well -> a water source, even with nobody parched or injured")
+def _():
+    s = _fort_b()
+    s["water"] = {"bodies": [{"kind": "cavern", "nearest": {"d": 30, "x": 133, "y": 130, "z": 5}, "stagnant_share": 0},
+                             {"kind": "surface", "nearest": {"d": 60, "x": 3, "y": 3, "z": 40}, "stagnant_share": 0}]}
+    w = by_rule(plan(s, Memory())[0], "water_zone")
+    assert w and [p["x"] for p in w[0].action["points"]] == [3, 133] and "drink is short" in w[0].reason, w
+    s["stocks"]["drink"] = 200
+    assert not by_rule(plan(s, Memory())[0], "water_zone")
+
+
 if __name__ == "__main__":
     for name, ok, msg in RESULTS:
         print(f"[{'PASS' if ok else 'FAIL'}] {name}" + (f"\n        {msg}" if msg else ""))

@@ -13,7 +13,7 @@ from quirks import has_rule
 from digest import _d, _l, normalize
 from planner_core import *  # noqa: F401,F403
 
-__all__ = ["CONTAINER_RECIPES", "GEAR_ORDER_METALS", "_supply_rules", "_slow_game_rules", "_clutter_rules", "_kiln_rules", "_soap_rule", "_pasture_rule", "LABOR_MODES_FIXED", "INDUSTRY_SHOPS", "_industry_rules", "_steel_rule", "_bottleneck_rule", "drink_short", "_crop_rules", "_kitchen_rule", "_fishery_rule", "_bench_coffins_rule", "STONE_CRAFTS", "order_shop", "_order_slots_rule", "_orphan_jobs_rule", "_unsuspend_rule", "_approve_rule", "_stuck_orders_rule", "COAL_STONES", "_coal_rule", "_picks_order", "_stone_rule", "stone_crisis", "PRECIOUS_ORES", "_cloth_rule", "_trade_rules", "_gems_rule", "trade_wants", "_spare_mechanisms_rule", "_hauling_rule", "_surface_basics", "trees_this_year", "_keep_rule", "_free_time_rule", "_labor_rules", "OWN_LABOR_RULES", "FEEDER_ORDER", "_feeder_rule", "woodcutters", "gatherers", "trade_margin_for", "keeps_treasures", "spare_mechanisms", "_dairy_rule", "_eggs_rule", "EXCESS_SHOPS", "_excess_shops_rule", "drink_below_target", "drink_crisis", "drink_target_per_dwarf", "crisis_brew_room", "brew_jobs_open", "_labor_waiting_rule", "farm_target", "_farm_rule", "_smelting_rule", "_shoes_recipe", "_glass_rule", "PRECIOUS_METALS", "precious_metal"]
+__all__ = ["CONTAINER_RECIPES", "GEAR_ORDER_METALS", "_supply_rules", "_slow_game_rules", "_clutter_rules", "_kiln_rules", "_soap_rule", "_pasture_rule", "LABOR_MODES_FIXED", "INDUSTRY_SHOPS", "_industry_rules", "_steel_rule", "_bottleneck_rule", "drink_short", "_crop_rules", "_farm_crops_rule", "farm_plots_live", "_kitchen_rule", "_fishery_rule", "_bench_coffins_rule", "STONE_CRAFTS", "order_shop", "_order_slots_rule", "_orphan_jobs_rule", "_unsuspend_rule", "_approve_rule", "_stuck_orders_rule", "COAL_STONES", "_coal_rule", "_picks_order", "_stone_rule", "stone_crisis", "PRECIOUS_ORES", "_cloth_rule", "_trade_rules", "_gems_rule", "trade_wants", "_spare_mechanisms_rule", "_hauling_rule", "_surface_basics", "trees_this_year", "_keep_rule", "_free_time_rule", "_labor_rules", "OWN_LABOR_RULES", "FEEDER_ORDER", "_feeder_rule", "woodcutters", "gatherers", "trade_margin_for", "keeps_treasures", "spare_mechanisms", "_dairy_rule", "_eggs_rule", "EXCESS_SHOPS", "_excess_shops_rule", "drink_below_target", "drink_crisis", "drink_target_per_dwarf", "crisis_brew_room", "brew_jobs_open", "_labor_waiting_rule", "farm_target", "_farm_rule", "_smelting_rule", "_shoes_recipe", "_glass_rule", "PRECIOUS_METALS", "precious_metal"]
 
 CONTAINER_RECIPES = {"wooden_barrel", "stone_large_pot"}
 # ore worth mining for gear, most wanted first (iron makes steel; tin with copper makes bronze)
@@ -848,7 +848,7 @@ def _crop_rules(s: dict, memory, cfg: dict, proposals: list, notes: list) -> Non
                        "still can brew: buy seeds or brewable plants from a caravan (the dwarves gather shrubs "
                        "meanwhile)")
             return
-        if memory.farm_steer == "drink":
+        if memory.farm_steer in ("drink", "crops"):     # (0.105.5) "crops": set_farm_crops sets the plots itself
             notes.append("the farms grow brewable crops while drink is short: " + ", ".join(
                 f"{_d(crops[k]).get('name') or k.lower()} ({crops[k].get('seeds')} seeds)" for k in brew[:4]))
             return
@@ -873,13 +873,61 @@ def _crop_rules(s: dict, memory, cfg: dict, proposals: list, notes: list) -> Non
         # brewable crops
         plots = int(farms.get("plots") or farms.get("built") or 0)
         planted = sum(int(v.get("planted") or 0) for v in crops.values())
-        if plots and planted * 2 < plots and seeded and memory.farm_steer != "pop":
+        # (0.105.5) not once the AI sets the plots' crops itself (autofarm is off)
+        if plots and planted * 2 < plots and seeded and memory.farm_steer not in ("pop", "crops"):
             th = {k: max(cfg["crop_default_threshold"], citizens * cfg["crop_per_dwarf"]) for k in seeded}
             th.update({k: max(cfg["crop_default_threshold"], citizens * cfg["crop_brew_per_dwarf"]) for k in brew})
             proposals.append(Proposal("crops", {"type": "farm_thresholds", "thresholds": th, "steer": "pop"},
                                       f"{plots - planted} of {plots} farm plots lie fallow this season (autofarm's "
                                       f"thresholds are a small fort's): keep more of each crop for {citizens} "
                                       "dwarves, the brewable ones most", 4))
+
+
+def farm_plots_live(s: dict) -> list:
+    """(0.105.5) The report's plots one by one (a bridge from 0.105.5 on;
+    an older one: [])."""
+    return [p for p in _l(_d(s.get("farms")).get("plot_list")) if isinstance(p, dict)]
+
+
+def _farm_crops_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> None:
+    """(0.105.5) Hammerstirred (2 Nov): six forts' plots lay fallow all year
+    with autofarm on (fort B: 4 of 5 fallow, drink 0-11 for 7 dwarves, 147
+    seeds; fort E: 4 of 4, drink 9 for 10, 162 seeds). The AI sets each
+    plot's crop itself (set_farm_crops: every season where a crop the fort
+    has seeds of grows there, brewable first while drink is short) when a
+    plot that could grow something lies fallow or holds a crop that can't
+    grow there; plots where nothing the fort has grows are said, once."""
+    if memory is None:
+        return
+    plots = farm_plots_live(s)
+    if not plots:
+        return
+    fm = _d(s.get("farms"))
+    citizens = max(1, int(_d(s.get("dwarves")).get("total") or 1))
+    drink = int(_d(s.get("stocks")).get("drink") or 0)
+    short = drink < citizens * cfg["urgent_drink_per_dwarf"]
+    dead = [p for p in plots if p.get("dead")]
+    if dead:
+        where = "surface" if all(not p.get("underground") for p in dead) else "farm"
+        notes.append(f"{len(dead)} {where} plot(s) can grow nothing the fort has seeds of, in any season "
+                     "(DF offers only \"Leave fallow\"): underground crops need underground plots")
+    idle = [p for p in plots if not p.get("dead") and int(p.get("options") or 0) > 0
+            and (p.get("fallow") or not p.get("ok_now"))]
+    # the AI hasn't set the crops yet: the later seasons too (autofarm sets only the current one)
+    unset = memory.farm_steer != "crops" and any(not p.get("dead") for p in plots)
+    if not idle and not unset:
+        return
+    action = {"type": "set_farm_crops", "drink": short}
+    if not thread_plants_here(s) and any(_d(c).get("thread") and int(_d(c).get("seeds") or 0) > 0
+                                         for c in _d(fm.get("crops")).values()):
+        action["thread"] = True
+    why = (f"{len(idle)} of {len(plots)} farm plot(s) lie fallow (or hold a crop that can't grow there) "
+           "while the fort has seeds that grow there" if idle else
+           f"the {len(plots)} farm plot(s) get a crop for every season the fort's seeds grow in")
+    proposals.append(Proposal("farm_crops", action,
+                              why + (f": brewable crops first, drink is short ({drink} for {citizens})"
+                                     if short else ": set each plot's crop (autofarm off)"),
+                              1 if short and idle else 4))
 
 
 def _kitchen_rule(s: dict, memory, cfg: dict, proposals: list) -> None:
@@ -2089,6 +2137,23 @@ def _farm_rule(s: dict, memory, traits: dict, citizens: int, cfg: dict, proposal
     if crops and plots and under < plots and not any(
             int(v.get("seeds") or 0) > 0 and _l(v.get("seasons")) and not v.get("underground") for v in crops):
         have = round(have * under / plots)
+    # (0.105.5) Hammerstirred (2 Nov): the forts' surface plots could grow
+    # nothing the fort had seeds of in any season (DF's menu: only "Leave
+    # fallow"; its seeds nearly all underground crops) while two ran out of
+    # drink: the report says so plot by plot, and such plots don't count
+    live = farm_plots_live(s)
+    if live:
+        have = sum(int(p.get("tiles") or 0) for p in live if not p.get("dead"))
+    under_seeds = sum(int(v.get("seeds") or 0) for v in crops
+                      if v.get("underground") and _l(v.get("seasons")))
+    under_tiles = sum(int(p.get("tiles") or 0) for p in live if p.get("underground") and not p.get("dead"))
+    citizens_ = max(1, citizens)
+    thirsty = int(_d(s.get("stocks")).get("drink") or 0) < citizens_ * cfg["urgent_drink_per_dwarf"]
+    # underground crops' seeds wait and no (or too few) underground plots for them
+    under_need = (under_seeds >= cfg["seeds_per_plot"] and live
+                  and under_tiles < min(under_seeds, cfg["under_farm_tiles"]) and (thirsty or under == 0))
+    if under_need:
+        have = min(have, under_tiles)
     idle_surface -= have
     pr = _d(s.get("projects"))
     open_ = [p for p in _l(pr.get("open")) if isinstance(p, dict)]
@@ -2096,6 +2161,8 @@ def _farm_rule(s: dict, memory, traits: dict, citizens: int, cfg: dict, proposal
     # plots of a farm level still being dug aren't buildings yet
     coming = sum(int(_d(p.get("summary")).get("farm_tiles") or 0) for p in levels if p.get("phase") == "dig")
     want = farm_target(s, traits, citizens, cfg)
+    if under_need:
+        want = max(want, min(under_seeds, cfg["under_farm_tiles"]))
     if have + coming >= want * cfg["farm_refill_share"]:
         return
     if memory.farm_failure:
@@ -2127,13 +2194,19 @@ def _farm_rule(s: dict, memory, traits: dict, citizens: int, cfg: dict, proposal
         action["outside"] = True     # no farm at all: soil or grass under the sky will do until there's better
     if dig:
         action["style"] = layout_style(profile_from(traits, memory.culture or new_history()))
+    if under_need:
+        action["underground"] = True     # (0.105.5) subterranean floor only: plump helmets don't grow under the sky
+        action.pop("outside", None)
     proposals.append(Proposal(
         "farms", action,
         f"{have} farm tiles" + (f" (+{idle_surface} on the surface with nothing to sow)" if idle_surface else "")
         + (f" (+{coming} being dug)" if coming else "")
         + f" for a fort heading to {want} tiles: lay out {n} more on soil or muddy floor"
         + (", or dig a farm level in soil" if dig else "")
-        + (" (or on the surface: the fort has no farm)" if first else ""), 2 if first else 5))
+        + (" (or on the surface: the fort has no farm)" if first and not under_need else "")
+        + (f" (underground: {under_seeds} seeds of underground crops and {under_tiles} underground tiles"
+           + (", drink is short" if thirsty else "") + ")" if under_need else ""),
+        2 if first or (under_need and thirsty) else 5))
 
 
 def _smelting_rule(s: dict, memory, cfg: dict, rules_: dict, proposals: list, notes: list) -> None:

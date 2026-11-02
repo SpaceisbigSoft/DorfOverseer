@@ -361,7 +361,9 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
             "buildingplan": (True, "planned furniture waits for materials instead of vanishing"),
             "seedwatch": (traits.get("agriculture", 0) > -100, "keeps seeds from being eaten"),
             # without it, new farm plots have no crop chosen and grow nothing
-            "autofarm": (traits.get("agriculture", 0) > -100 and has_farms(s),
+            # (0.105.5) not once the AI sets the plots' crops itself (it rewrites them)
+            "autofarm": (traits.get("agriculture", 0) > -100 and has_farms(s)
+                         and getattr(memory, "farm_steer", "") != "crops",
                          "chooses crops for the farm plots by what the fort needs"),
             # (0.104.158) not while the herd is past the fort's size (it comes
             # back on under half of it): every egg hatched kept the butchers busy
@@ -580,6 +582,7 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
         _guard(_fishery_rule, s, cfg, proposals)
     if can_use("stocks", "farms"):
         _guard(_crop_rules, s, memory, cfg, proposals, notes)
+        _guard(_farm_crops_rule, s, memory, cfg, proposals, notes)   # (0.105.5) Hammerstirred: fallow plots
     if can_use("stocks"):
         _guard(_kitchen_rule, s, memory, cfg, proposals)   # (0.100) cooking leaves brewables to the stills
     # idle hands: finished levels smoothed, then engraved, one at a time
@@ -861,6 +864,13 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
         a = p.action
         if a["type"] == "farm_thresholds" and ok is True:
             memory.farm_steer = str(a.get("steer") or "")
+        if a["type"] == "set_farm_crops" and ok is True:
+            # (0.105.5) the AI sets the crops: autofarm stays off (switched
+            # off by the AI, not the player: may come back if this is undone)
+            memory.farm_steer = "crops"
+            for lst in (memory.tools_seen_on, memory.tools_confirmed_on):
+                while "autofarm" in lst:
+                    lst.remove("autofarm")
         if a["type"] == "kitchen_brewables" and ok is True:   # (0.100) remember the ban to lift it later
             memory.kitchen_ban = a.get("ban") is True
         if a["type"] == "kitchen_fat" and ok is True:          # (0.104.30)

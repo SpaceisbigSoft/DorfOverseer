@@ -334,6 +334,8 @@ PLANNER_CONFIG = {
     "crisis_stills_cap_factor": 3,         # stills up to the workshop cap x this while short in a crisis (x2 otherwise)
     "crisis_containers_max": 60,           # empty barrels/pots wanted for the crisis's brewing, at most
     "surface_farm_seeds": 50,          # (0.99.6) brewable surface seeds before surface plots are laid out...
+    "under_farm_tiles": 40,            # (0.105.5) underground plot tiles wanted for underground crops' seeds (at most)
+    "farm_crops_cooldown_ticks": 1200,  # (0.105.5) the plots' crops set again a day apart at most
     "seeds_per_plot": 10,              # ...while the underground plots have fewer seeds than this each
     "surface_farm_tiles": 60,    # drinks a dwarf before the crops go back to autofarm's way            # (0.99.4) raw fish waiting before a fishery is built (any fort's age)                   # ...up to the miners that don't get in each other's way                   # fewer usable boulders than this: free an economic stone, or wood
     "steel_want": 60,                  # steel bars made while there are fewer than this
@@ -604,7 +606,7 @@ EMERGENCY = {"threat_alert", "gate", "gates", "squad_attack", "flood", "gate_gua
 # (0.104.89) rules the strategist may never hold: survival, safety and the
 # answers to danger (it may still raise them)
 STEER_PROTECTED = EMERGENCY | {"shelter", "alerts", "squad_recall", "hazard", "water", "well", "drink",
-                               "needs_drink", "food", "farm", "gather", "care", "staff", "burial", "unsuspend",
+                               "needs_drink", "food", "farm", "farm_crops", "gather", "care", "staff", "burial", "unsuspend",
                                "stuck_order", "tools", "found", "entrances", "trouble",
                                "hospital_burrow",   # (0.104.167, review) never held: members are let out by it
                                "calm_burrow"}       # (0.104.169) likewise
@@ -672,7 +674,7 @@ class Memory:
     agenda: list = field(default_factory=list)           # the season's goals (agenda()), for the season report
     action_log: dict = field(default_factory=dict)       # refusal_key -> ticks it was done, the last game year (loops)
     shops_started: dict = field(default_factory=dict)    # workshop name -> times a workshops project was started for it
-    farm_steer: str = ""                                 # (0.99.6) "drink" while autofarm's thresholds favour brewable crops
+    farm_steer: str = ""                                 # (0.99.6) "drink" while autofarm's thresholds favour brewable crops; (0.105.5) "crops": the AI sets the plots' crops (autofarm off)
     kitchen_ban: bool = False                            # (0.100) the AI banned cooking brewables while drink is short
     fat_ban: bool = False                                # (0.104.30) the AI kept fat and tallow from the cooks
     storage_started: int | None = None                   # (0.104.38) when the AI last began a storage level for full piles

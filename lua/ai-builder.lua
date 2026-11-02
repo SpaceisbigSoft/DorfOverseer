@@ -69,6 +69,7 @@ function tile_info(x, y, z)
         salt = des.water_salt,
         feature = des.feature_local or des.feature_global,
         outside = des.outside,
+        subterranean = des.subterranean,   -- (0.105.5) DF's underground test for a farm plot
         designated = des.dig ~= df.tile_dig_designation.No,
         -- "marker only" (blueprint) designations: dwarves won't dig them
         marked = occ.dig_marked,
@@ -2105,6 +2106,7 @@ local FARM_GRASS = {GRASS_LIGHT = true, GRASS_DARK = true, GRASS_DRY = true, GRA
 -- outside: also soil and grass under the sky, when there is too little
 -- inside (surface crops only grow there; a site whose soil is all on the
 -- surface farms there until it has more)
+UNDER_ONLY = false
 function find_farm_spots(want, reserved, outside)
     local area = fort_scan_area(FARM_SCAN_MARGIN)
     if not area then return {}, 'no citizens' end
@@ -2135,6 +2137,10 @@ function find_farm_spots(want, reserved, outside)
         end
         v = t ~= nil and t.shape == 'FLOOR' and not t.liquid and not t.feature
             and (not t.outside or (PASS_OUTSIDE and (t.material == 'SOIL' or FARM_GRASS[t.material])))
+            -- (0.105.5) Hammerstirred: plots for underground crops only where
+            -- DF counts the floor subterranean (a roofed floor in the light
+            -- grows surface crops only)
+            and not (UNDER_ONLY and (t.outside or t.subterranean == false))
             and not t.building and not t.designated
             and not inside_any(reserved, x, y, z)
             and groups[walk_group(x, y, z)] == true
@@ -2327,7 +2333,11 @@ function farm_plots(params, now, dry_run)
     local reserved = {}
     for _, p in ipairs(open_projects(data)) do table.insert(reserved, p.area) end
     SURFACE_SCAN = nil
-    local spots, why = find_farm_spots(want, reserved, params.outside == true)
+    -- (0.105.5) underground = true: subterranean floor only, never the surface
+    UNDER_ONLY = params.underground == true
+    local okf, spots, why = pcall(find_farm_spots, want, reserved, params.outside == true and not UNDER_ONLY)
+    UNDER_ONLY = false
+    if not okf then error(spots) end
     local placed, refused, tiles = {}, 0, 0
     for _, sp in ipairs(spots) do
         local cell = {{x = 0, y = 0, text = ('p(%dx%d)'):format(sp.w, sp.h)}}
@@ -2415,7 +2425,258 @@ function plant_thread(raw)
     return ok and yes or false
 end
 
-local SEASON_FLAGS = {'SPRING', 'SUMMER', 'AUTUMN', 'WINTER'}
+SEASON_FLAGS = {'SPRING', 'SUMMER', 'AUTUMN', 'WINTER'}
+
+-- (0.105.5) Hammerstirred (2 Nov): plots lay fallow all year on six forts
+-- (fort B: 4 of 5 surface plots, 147 seeds; fort E: 4 of 4, 162 seeds) while
+-- autofarm was on and its thresholds set: the player's plot menu offered only
+-- "Leave fallow" in every season. DF lists a crop for a plot only when the
+-- fort has its seeds and the plant grows there: a subterranean crop (plump
+-- helmet, cave wheat, pig tail, quarry bush) only on an underground plot, a
+-- surface crop only on a surface plot whose biome is among the plant's
+-- BIOME_ flags, and only in the seasons it has (SPRING..WINTER). The fort's
+-- seeds were nearly all underground crops. These helpers repeat DF's test, so
+-- the report can say per plot what it may grow, and set_farm_crops can set it.
+local SUBTERRANEAN_FLAGS = {'BIOME_SUBTERRANEAN_WATER', 'BIOME_SUBTERRANEAN_CHASM', 'BIOME_SUBTERRANEAN_LAVA'}
+FARM_CROPS_KEY = 'ai-overseer/farm_crops'
+
+-- true/false, or nil when the structure has no such flag (never refuse on
+-- a name this DFHack doesn't know)
+local function plant_flag(raw, name)
+    local ok, v = pcall(function() return raw.flags[name] end)
+    if not ok or v == nil then return nil end
+    return v == true
+end
+
+-- (0.105.5) An underground crop: a BIOME_SUBTERRANEAN_* flag (or, on an
+-- older structure, an underground depth).
+function crop_underground(raw)
+    for _, f in ipairs(SUBTERRANEAN_FLAGS) do
+        if plant_flag(raw, f) then return true end
+    end
+    local ok, d = pcall(function() return raw.underground_depth_min end)
+    return ok and type(d) == 'number' and d > 0 or false
+end
+
+-- (0.105.5) Does it grow in season s (0 spring .. 3 winter)?
+function crop_in_season(raw, s)
+    return plant_flag(raw, SEASON_FLAGS[s + 1]) == true
+end
+
+-- (0.105.5) A tile's place for farming: under = an underground plot (DF's
+-- subterranean flag; else not under the sky), biome = df.biome_type name of
+-- its region, align = {good, evil, savage}. Overridden by the tests.
+function plot_place(x, y, z)
+    local out = {under = false}
+    local d = dfhack.maps.getTileFlags(x, y, z)
+    if d then
+        local ok, sub = pcall(function() return d.subterranean end)
+        if ok and sub ~= nil then out.under = sub == true else out.under = not d.outside end
+    end
+    pcall(function()
+        local rx, ry = dfhack.maps.getTileBiomeRgn(x, y, z)
+        if type(rx) == 'table' or type(rx) == 'userdata' then rx, ry = rx.x, rx.y end
+        local okb, bt = pcall(dfhack.maps.getBiomeType, rx, ry)
+        if okb and bt then out.biome = df.biome_type[bt] end
+        local okr, region = pcall(dfhack.maps.getRegionBiome, rx, ry)
+        if okr and region then
+            out.align = {good = region.evilness < 33, evil = region.evilness > 65, savage = region.savagery > 65}
+        end
+    end)
+    return out
+end
+
+-- (0.105.5) May this plant be set on a plot at `place` (seasons aside)?
+-- DF's own list: seeds (SEED), underground crops underground only, surface
+-- crops on the surface in a biome they have, GOOD/EVIL/SAVAGE plants only
+-- where the land is so. Biome unknown: any surface crop is let through.
+function crop_grows_on(raw, place)
+    if plant_flag(raw, 'SEED') == false then return false end
+    local under = crop_underground(raw)
+    if place.under then return under end
+    if under then return false end
+    if place.biome and plant_flag(raw, 'BIOME_' .. place.biome) == false then return false end
+    local a = place.align
+    if a then
+        if plant_flag(raw, 'GOOD') and not a.good then return false end
+        if plant_flag(raw, 'EVIL') and not a.evil then return false end
+        if plant_flag(raw, 'SAVAGE') and not a.savage then return false end
+    end
+    return true
+end
+
+-- (0.105.5) Seeds the planters can take, by plant index (not forbidden,
+-- rotten, a trader's or being dumped).
+function seed_stock()
+    local out = {}
+    for _, it in ipairs(df.global.world.items.other.SEEDS) do
+        local f = it.flags
+        if not (f.forbid or f.garbage_collect or f.rotten or f.trader or f.removed or f.dump) then
+            local idx = it:getMaterialIndex()
+            out[idx] = (out[idx] or 0) + it:getStackSize()
+        end
+    end
+    return out
+end
+
+function farm_plot_buildings()
+    local out = {}
+    for _, b in ipairs(df.global.world.buildings.all) do
+        if b:getType() == df.building_type.FarmPlot then table.insert(out, b) end
+    end
+    return out
+end
+
+function current_season()
+    return math.max(0, math.min(3, df.global.cur_year_tick // 100800))   -- 3 months of 28 days
+end
+
+local function plant_raw(idx)
+    if not idx or idx < 0 then return nil end
+    return df.plant_raw.find(idx)
+end
+
+function farm_crops_data()
+    local ok, d = pcall(dfhack.persistent.getSiteData, FARM_CROPS_KEY, {})
+    d = ok and type(d) == 'table' and d or {}
+    if type(d.set) ~= 'table' then d.set = {} end
+    return d
+end
+
+-- (0.105.5) Per plot: where it is, what it holds each season, whether that
+-- grows there, and what it could grow from the seeds in store (DF's menu).
+function farm_plot_list(seeds, season)
+    local out = {}
+    for _, b in ipairs(farm_plot_buildings()) do
+        if #out >= 40 then break end
+        local place = plot_place(b.centerx, b.centery, b.z)
+        local p = {id = b.id, x = b.centerx, y = b.centery, elevation = ez(b.z),
+                   tiles = (b.x2 - b.x1 + 1) * (b.y2 - b.y1 + 1),
+                   underground = place.under, biome = place.biome and place.biome:lower() or nil,
+                   crops = {}, options = 0, options_any = 0}
+        local any = {}
+        for s = 0, 3 do
+            local id = b.plant_id[s]
+            local raw = plant_raw(id)
+            p.crops[s + 1] = raw and raw.id or ''
+            local n = 0
+            for idx, c in pairs(seeds) do
+                local r = c > 0 and plant_raw(idx)
+                if r and crop_in_season(r, s) and crop_grows_on(r, place) then
+                    n = n + 1
+                    any[idx] = true
+                end
+            end
+            if s == season then
+                p.options = n
+                p.fallow = raw == nil
+                p.ok_now = raw ~= nil and crop_in_season(raw, s) and crop_grows_on(raw, place)
+            end
+        end
+        for _ in pairs(any) do p.options_any = p.options_any + 1 end
+        -- nothing the fort has seeds of grows here in any season (DF's menu
+        -- shows only "Leave fallow")
+        p.dead = p.options_any == 0 or nil
+        table.insert(out, p)
+    end
+    return out
+end
+
+-- (0.105.5) Sets each farm plot's crop for every season where a crop the
+-- fort has seeds of grows there, the current season first. A season's crop
+-- is changed only when the slot is empty, holds a crop that can't grow
+-- there, or holds the crop the AI set itself last time (a crop the player
+-- chose that grows there is kept). The pick: while drink is short
+-- (params.drink) the brewable crops first; a thread crop on one plot when
+-- params.thread; else spread over the crops (fewest plots first, then the
+-- most seeds). This season's seeds are shared out by the plots' tiles.
+function set_farm_crops(params, dry_run)
+    local season = current_season()
+    local seeds = seed_stock()
+    local plots = farm_plot_buildings()
+    if #plots == 0 then return {ok = false, error = 'the fort has no farm plots'} end
+    local data = farm_crops_data()
+    local left = {}
+    for k, v in pairs(seeds) do left[k] = v end
+    local used = {[0] = {}, {}, {}, {}}
+    local thread_set = {}
+    local changed, dead, kept, set_plots = 0, 0, 0, {}
+    for _, b in ipairs(plots) do
+        local place = plot_place(b.centerx, b.centery, b.z)
+        local tiles = (b.x2 - b.x1 + 1) * (b.y2 - b.y1 + 1)
+        local key = tostring(b.id)
+        local mine = type(data.set[key]) == 'table' and data.set[key] or {}
+        local plot_out, any = {id = b.id, crops = {}}, false
+        for k = 0, 3 do
+            local s = (season + k) % 4
+            local cands = {}
+            for idx, n in pairs(seeds) do
+                local r = n > 0 and plant_raw(idx)
+                if r and crop_in_season(r, s) and crop_grows_on(r, place)
+                        and (s ~= season or (left[idx] or 0) > 0) then
+                    table.insert(cands, {idx = idx, raw = r, brews = plant_brews(r) ~= nil,
+                                         thread = plant_thread(r), seeds = n})
+                end
+            end
+            if #cands > 0 then any = true end
+            local cur = b.plant_id[s]
+            local cur_raw = plant_raw(cur)
+            local cur_ok = cur_raw ~= nil and crop_in_season(cur_raw, s) and crop_grows_on(cur_raw, place)
+            local ours = mine[s + 1] ~= nil and mine[s + 1] == cur
+            -- the AI's own crop is kept too while it still grows there, unless
+            -- drink is short and it doesn't brew while a brewable one could
+            -- go in (no churn of plots already sown)
+            local swap = false
+            if cur_ok and ours and params.drink == true and plant_brews(cur_raw) == nil then
+                for _, c in ipairs(cands) do if c.brews then swap = true break end end
+            end
+            if cur_ok and not swap then
+                if not ours then kept = kept + 1 end
+                used[s][cur] = (used[s][cur] or 0) + 1
+                if s == season then left[cur] = (left[cur] or 0) - tiles end
+                if ours then plot_out.crops[SEASON_FLAGS[s + 1]:lower()] = cur_raw.id end
+            elseif #cands > 0 then
+                local want_thread = params.thread == true and not thread_set[s]
+                table.sort(cands, function(a, c)
+                    if params.drink == true and a.brews ~= c.brews then return a.brews end
+                    if want_thread and a.thread ~= c.thread then return a.thread end
+                    local ua, uc = used[s][a.idx] or 0, used[s][c.idx] or 0
+                    if ua ~= uc then return ua < uc end
+                    if a.seeds ~= c.seeds then return a.seeds > c.seeds end
+                    return a.idx < c.idx
+                end)
+                local pick = cands[1]
+                used[s][pick.idx] = (used[s][pick.idx] or 0) + 1
+                if pick.thread then thread_set[s] = true end
+                if s == season then left[pick.idx] = (left[pick.idx] or 0) - tiles end
+                if pick.idx ~= cur then
+                    changed = changed + 1
+                    if not dry_run then b.plant_id[s] = pick.idx end
+                end
+                mine[s + 1] = pick.idx
+                plot_out.crops[SEASON_FLAGS[s + 1]:lower()] = pick.raw.id
+            end
+        end
+        if not any then dead = dead + 1 end
+        data.set[key] = mine
+        table.insert(set_plots, plot_out)
+    end
+    local out = {ok = true, plots = #plots, changed = changed, kept = kept, dead = dead > 0 and dead or nil,
+                 dry_run = dry_run or nil, set = set_plots}
+    local any_set = false
+    for _, p in ipairs(set_plots) do if next(p.crops) then any_set = true break end end
+    if changed == 0 and kept == 0 and not any_set then
+        out.ok, out.error = false, ('no crop the fort has seeds of grows on any of its %d plot(s) '
+            .. '(underground crops need underground plots)'):format(#plots)
+        return out
+    end
+    if not dry_run then
+        data.ai = true
+        pcall(dfhack.persistent.saveSiteData, FARM_CROPS_KEY, data)
+    end
+    return out
+end
+
 
 -- (0.99.6) The crops the fort has seeds for: seeds and stock of each, what it
 -- brews from, the seasons it grows in, above or below ground; and what the
@@ -2427,14 +2688,17 @@ local function crops_report()
         if not raw then return nil end
         local c = crops[raw.id]
         if not c then
+            -- (0.105.5) Hammerstirred (2 Nov): every crop showed all four
+            -- seasons and plump helmets "surface": read through the same
+            -- tests set_farm_crops uses (crop_in_season, crop_underground)
             local seasons = {}
-            for _, f in ipairs(SEASON_FLAGS) do
-                if raw.flags[f] then table.insert(seasons, f:lower()) end
+            for k = 0, 3 do
+                if crop_in_season(raw, k) then table.insert(seasons, SEASON_FLAGS[k + 1]:lower()) end
             end
-            local under = false
-            pcall(function() under = raw.flags.BIOME_SUBTERRANEAN_WATER or (raw.underground_depth_min or 0) > 0 end)
+            local under = crop_underground(raw)
             c = {name = raw.name, seeds = 0, stock = 0, brews = plant_brews(raw), seasons = seasons,
-                 underground = under, planted = 0, thread = plant_thread(raw) or nil}
+                 underground = under, planted = 0, thread = plant_thread(raw) or nil,
+                 seed = plant_flag(raw, 'SEED') ~= false or nil}
             crops[raw.id] = c
         end
         return c
@@ -2456,21 +2720,42 @@ local function crops_report()
             if c then c.stock = c.stock + it:getStackSize() end
         end
     end
-    local season = math.max(0, math.min(3, df.global.cur_year_tick // 100800))   -- 3 months of 28 days
+    local season = current_season()
     local plots_under, plots_above = 0, 0
-    for _, b in ipairs(df.global.world.buildings.all) do
-        if b:getType() == df.building_type.FarmPlot then
-            local d = dfhack.maps.getTileFlags(b.centerx, b.centery, b.z)
-            if d and d.outside then plots_above = plots_above + 1 else plots_under = plots_under + 1 end
-            local id = b.plant_id[season]
-            if id and id >= 0 then
-                local c = crop(id)
-                if c then c.planted = c.planted + 1 end
-            end
+    for _, b in ipairs(farm_plot_buildings()) do
+        -- (0.105.5) DF's own underground test for the plot (plot_place)
+        if plot_place(b.centerx, b.centery, b.z).under then plots_under = plots_under + 1
+        else plots_above = plots_above + 1 end
+        local id = b.plant_id[season]
+        if id and id >= 0 then
+            local c = crop(id)
+            if c then c.planted = c.planted + 1 end
         end
     end
-    return {crops = crops, season = SEASON_FLAGS[season + 1]:lower(),
-            plots_underground = plots_under, plots_surface = plots_above}
+    -- (0.105.5) per plot: its crops by season, whether this season's grows
+    -- there, how many crops in store could, and plots where none ever could
+    local okp, list = pcall(farm_plot_list, seed_stock(), season)
+    local out = {crops = crops, season = SEASON_FLAGS[season + 1]:lower(),
+                 plots_underground = plots_under, plots_surface = plots_above}
+    if okp then
+        out.plot_list = list
+        local fallow, dead, wrong = 0, 0, 0
+        for _, p in ipairs(list) do
+            if p.dead then dead = dead + 1
+            elseif p.fallow then fallow = fallow + 1
+            elseif not p.ok_now then wrong = wrong + 1 end
+        end
+        out.plots_fallow, out.plots_dead, out.plots_wrong = fallow, dead, wrong
+        -- fallow plots that could grow something this season
+        local idle = 0
+        for _, p in ipairs(list) do
+            if not p.dead and (p.fallow or not p.ok_now) and p.options > 0 then idle = idle + 1 end
+        end
+        out.plots_idle = idle
+    else
+        out.plot_list_error = tostring(list):sub(1, 120)
+    end
+    return out
 end
 
 function farms_report()
@@ -2487,6 +2772,11 @@ function farms_report()
     if ok and cr then
         out.crops, out.season = cr.crops, cr.season
         out.plots_underground, out.plots_surface = cr.plots_underground, cr.plots_surface
+        -- (0.105.5) the plots one by one, and the counts the planner reads
+        out.plot_list, out.plot_list_error = cr.plot_list, cr.plot_list_error
+        out.plots_fallow, out.plots_dead, out.plots_wrong, out.plots_idle =
+            cr.plots_fallow, cr.plots_dead, cr.plots_wrong, cr.plots_idle
+        out.crops_by_ai = farm_crops_data().ai == true or nil
     else
         out.crops_error = tostring(cr):sub(1, 120)
     end
@@ -5844,6 +6134,8 @@ end
 -- water now (not ice, magma or salt) with a bank the citizens reach gets a
 -- 3x3 zone centred on it. Kept in site data 'ai-overseer/water_zones'.
 WATER_ZONES_KEY = 'ai-overseer/water_zones'
+WATER_BANK_RADIUS = 10    -- (0.105.5) water tiles this far around each point are tried too...
+WATER_BANK_TRIES = 120     -- ...at most this many a point, the nearest first
 BANK_SHAPES = {FLOOR = true, BOULDER = true, PEBBLES = true, TWIG = true, SAPLING = true, SHRUB = true, RAMP = true}
 
 function water_zones()
@@ -5856,13 +6148,40 @@ function water_zone(points, dry_run)
     local last = 'no open water the dwarves can walk to'
     local whys = {}
     local function note(w) last = w; table.insert(whys, w) end
+    -- (0.105.5) Hammerstirred (2 Nov): the cavern water's nearest tile
+    -- (x133 y130) had "no bank the dwarves reach" and the zone was refused
+    -- while two forts ran out of drink. A body's nearest tile is only where
+    -- the search starts: the water tiles around it (WATER_BANK_RADIUS, the
+    -- nearest first) are tried too, so the first stretch of shore the
+    -- dwarves walk to gets the zone, however long the walk.
+    local tries = {}
     for _, p in ipairs(points or {}) do
+        local x, y, z = math.tointeger(p.x), math.tointeger(p.y), math.tointeger(p.z)
+        table.insert(tries, {x = x, y = y, z = z, first = true})
+        if x and y and z then
+            local near = {}
+            for dx = -WATER_BANK_RADIUS, WATER_BANK_RADIUS do
+                for dy = -WATER_BANK_RADIUS, WATER_BANK_RADIUS do
+                    if dx ~= 0 or dy ~= 0 then
+                        local n = tile_info(x + dx, y + dy, z)
+                        if n and n.liquid and not n.magma and not n.salt then
+                            table.insert(near, {x = x + dx, y = y + dy, z = z, d = math.max(math.abs(dx), math.abs(dy))})
+                        end
+                    end
+                end
+            end
+            table.sort(near, function(a, b) return a.d < b.d or (a.d == b.d and (a.x < b.x or (a.x == b.x and a.y < b.y))) end)
+            for i = 1, math.min(#near, WATER_BANK_TRIES) do table.insert(tries, near[i]) end
+        end
+    end
+    local said = {}
+    for _, p in ipairs(tries) do
         local x, y, z = math.tointeger(p.x), math.tointeger(p.y), math.tointeger(p.z)
         local t = x and y and z and tile_info(x, y, z)
         if not t then
-            note('no such tile')
+            if p.first then note('no such tile') end
         elseif not t.liquid or t.magma or t.salt then
-            note(('the water at x%d y%d is frozen, salt or gone'):format(x, y))
+            if p.first then note(('the water at x%d y%d is frozen, salt or gone'):format(x, y)) end
         else
             -- a bank beside the water, or (a pond sunk below the ground) on the level above it
             local bank
@@ -5877,7 +6196,10 @@ function water_zone(points, dry_run)
                 if bank then break end
             end
             if not bank then
-                note(('no bank the dwarves reach beside the water at x%d y%d'):format(x, y))
+                if p.first and not said[p] then
+                    said[p] = true
+                    note(('no bank the dwarves reach beside the water at x%d y%d'):format(x, y))
+                end
             else
                 local cell = {{x = 0, y = 0, text = 'w(3x3)'}}
                 local ok, dry = pcall(quickfort_apply, 'zone', cell, z, x - 1, y - 1, 'run', true)

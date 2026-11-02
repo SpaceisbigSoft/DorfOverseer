@@ -4201,6 +4201,7 @@ function act_farm_plots(a)
     -- (0.99.10) `outside` reaches the builder: it was dropped here, so the
     -- outdoor search never ran (region2's "no free soil" seven times over)
     return reqscript('ai-builder').farm_plots({tiles = tiles, dig = a.dig == true, outside = a.outside == true,
+        underground = a.underground == true,   -- (0.105.5) for underground crops: subterranean floor only
                                                style = style}, get_date(), a.dry_run == true)
 end
 
@@ -5063,6 +5064,29 @@ function act_farm_thresholds(a)
         end
     end
     return {ok = true, crops = count}
+end
+
+-- (0.105.5) Hammerstirred (2 Nov): plots lay fallow all year while autofarm
+-- was on and its thresholds set (fort B: 4 of 5 surface plots fallow, drink
+-- 0-11 for 7 dwarves, 147 seeds). The AI sets each plot's crop itself, for
+-- every season where a crop the fort has seeds of grows there (DF's own test:
+-- underground crops underground, surface crops on the surface in their biome
+-- and seasons; lua/ai-builder.lua set_farm_crops). {drink = true} puts the
+-- brewable crops first, {thread = true} one thread crop a season. autofarm is
+-- switched off when the AI sets crops: it rewrites every plot's current
+-- season each cycle (to fallow when no crop is under its threshold), so the
+-- two would fight; only filling the plots autofarm left empty would leave the
+-- fallow it chose. A crop the player set that grows there is kept.
+function act_set_farm_crops(a)
+    if a.drink ~= nil and type(a.drink) ~= 'boolean' then return reject('set_farm_crops: drink is true or false') end
+    if a.thread ~= nil and type(a.thread) ~= 'boolean' then return reject('set_farm_crops: thread is true or false') end
+    local r = reqscript('ai-builder').set_farm_crops({drink = a.drink == true, thread = a.thread == true},
+                                                     a.dry_run == true)
+    if r.ok and not a.dry_run and plugin_enabled('autofarm') then
+        dfhack.run_command_silent('disable', 'autofarm')
+        r.autofarm_off = true
+    end
+    return r
 end
 
 -- (0.100) Cooking eats brewable plants and fruit, and keeps no seed (brewing
@@ -6438,6 +6462,7 @@ ACTIONS = {
     give_room = act_give_room,
     gather_plants = act_gather_plants,
     farm_thresholds = act_farm_thresholds,
+    set_farm_crops = act_set_farm_crops,   -- (0.105.5) each plot's crop set by the AI (Hammerstirred: fallow plots)
     kitchen_brewables = act_kitchen_brewables,   -- (0.100) cooking keeps brewables while drink is short
     unstick_uniforms = act_unstick_uniforms,
     break_fights = act_break_fights,
@@ -6896,6 +6921,7 @@ CACHE_INVALIDATES = {
     add_doctor_post = {'locations'},   -- (0.104.168)
     house_dwarves = {'homes', 'noble_rooms'},   -- (0.104.168)
 }
+CACHE_INVALIDATES.set_farm_crops = {'farms'}   -- (0.105.5) the plots' crops read again
 CACHE_INVALIDATES.accept_cups = {'needs'}      -- (0.104.168) the cups census shows what it changed
 SECTION_CACHE = SECTION_CACHE or {}
 -- (0.104.8) a new bridge starts with an empty cache: DFHack keeps a script's
@@ -7103,6 +7129,7 @@ local function cmd_act(args)
                  or action.type == 'remove_workshops' or action.type == 'survey_water'
                  or action.type == 'cistern_step' or action.type == 'water_zone' or action.type == 'sand_zone'
                  or action.type == 'water_work'      -- (0.105.0)
+                 or action.type == 'set_farm_crops'  -- (0.105.5)
                  or action.type == 'kitchen_brewables')   -- (0.100) its dry run only counts
         and action.dry_run == true
     if not DISPLAY_ONLY[action.type] and not dry and reqscript('ai-status').is_halted() then

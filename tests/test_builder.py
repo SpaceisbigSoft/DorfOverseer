@@ -2459,6 +2459,12 @@ def _():
     r = B.water_zone(LUA.table_from([LUA.table_from({"x": 10, "y": 10, "z": 90}),
                                      LUA.table_from({"x": 82, "y": 60, "z": 79})]), True)
     assert r.ok and r.bank.above and r.x == 82, dict(r)
+    # (0.105.5) Hammerstirred: the water around a point is tried too (the ice
+    # at x70 has live water at x74 beside it, with a bank)
+    r = B.water_zone(LUA.table_from([LUA.table_from({"x": 10, "y": 10, "z": 90}),
+                                     LUA.table_from({"x": 70, "y": 58, "z": 70})]), True)
+    assert r.ok and r.x == 74, dict(r)
+    W.set(74, 58, 70, LUA.table_from({"liquid": False}))
     r = B.water_zone(LUA.table_from([LUA.table_from({"x": 10, "y": 10, "z": 90}),
                                      LUA.table_from({"x": 70, "y": 58, "z": 70})]), True)
     assert not r.ok and "no bank" in r.error and "frozen" in r.error, dict(r)     # every spot's reason
@@ -3441,6 +3447,138 @@ def _():
     no = B.remove_crossing(1, False)
     assert not no["ok"] and "something else" in no["error"], dict(no)
     assert not B.remove_crossing(5, False)["ok"]
+
+# --- (0.105.5) farm crops: DF's own test for a plot, and set_farm_crops ---------------
+# Hammerstirred (2 Nov): plots fallow all year; the forts' seeds were mostly
+# underground crops and the surface plots' menu offered only "Leave fallow".
+FARM_FAKE = r"""
+local B = ...
+local ALL = {'SPRING', 'SUMMER', 'AUTUMN', 'WINTER'}
+local function raw(idx, id, opts)
+    -- like DF's flag set: a flag it knows and isn't set reads false
+    local f = setmetatable({SEED = opts.seed ~= false}, {__index = function() return false end})
+    for _, s in ipairs(opts.seasons or ALL) do f[s] = true end
+    if opts.under then f.BIOME_SUBTERRANEAN_WATER = true end
+    for _, b in ipairs(opts.biomes or {}) do f['BIOME_' .. b] = true end
+    local mats = {}
+    if opts.brews then table.insert(mats, {id = 'STRUCTURAL', reaction_product = {id = {'DRINK_MAT'}}}) end
+    if opts.thread then table.insert(mats, {id = 'THREAD', reaction_product = {id = {}}}) end
+    return {id = id, name = id:lower(), flags = f, material = mats}
+end
+local SURF = {'FOREST_TEMPERATE_BROADLEAF', 'GRASSLAND_TEMPERATE'}
+local RAWS = {
+  [1] = raw(1, 'MUSHROOM_HELMET_PLUMP', {under = true, brews = true}),
+  [2] = raw(2, 'GRASS_WHEAT_CAVE', {under = true, brews = true}),
+  [3] = raw(3, 'BUSH_QUARRY', {under = true}),
+  [4] = raw(4, 'GRASS_TAIL_PIG', {under = true, brews = true, thread = true}),
+  [5] = raw(5, 'BERRIES_PRICKLE', {brews = true, biomes = SURF}),
+  [6] = raw(6, 'BERRIES_STRAW_WILD', {brews = true, biomes = SURF, seasons = {'SPRING'}}),
+  [7] = raw(7, 'HEMP', {thread = true, biomes = SURF}),
+  [8] = raw(8, 'BERRIES_FISHER', {biomes = SURF}),
+}
+local FF = {}
+local function seed(idx, n) return {flags = {}, getMaterialIndex = function() return idx end,
+                                    getStackSize = function() return n end} end
+local function plot(id, under, x)
+    return {id = id, centerx = x, centery = 5, z = 10, x1 = x, x2 = x + 2, y1 = 5, y2 = 6,
+            plant_id = {[0] = -1, -1, -1, -1}, flags = {exists = true}, under = under,
+            getType = function() return 7 end}
+end
+function FF.setup(seeds, plots, tick)
+    df = {plant_raw = {find = function(i) return RAWS[i] end}, building_type = {FarmPlot = 7},
+          global = {cur_year_tick = tick or 100800 + 50, world = {items = {other = {SEEDS = {}, PLANT = {}}},
+                    buildings = {all = {}}}}}
+    for _, s in ipairs(seeds) do table.insert(df.global.world.items.other.SEEDS, seed(s[1], s[2])) end
+    for _, p in ipairs(plots) do table.insert(df.global.world.buildings.all, plot(p[1], p[2], p[3])) end
+    B.plot_place = function(x, y, z)
+        for _, b in ipairs(df.global.world.buildings.all) do
+            if b.centerx == x then return {under = b.under, biome = (not b.under) and 'FOREST_TEMPERATE_BROADLEAF' or nil} end
+        end
+        return {under = true}
+    end
+    return df.global.world.buildings.all
+end
+FF.RAWS = RAWS
+return FF
+"""
+FF = LUA.execute(FARM_FAKE, B)
+
+
+def farm_setup(seeds, plots, tick=None):
+    return FF.setup(LUA.table_from([LUA.table_from(x) for x in seeds]),
+                    LUA.table_from([LUA.table_from(x) for x in plots]), tick)
+
+
+def crops_of(b):
+    return [FF.RAWS[b.plant_id[k]].id if b.plant_id[k] >= 0 else "" for k in range(4)]
+
+
+@test("farm crops (0.105.5): seasons and underground read from the raws, as DF's plot menu does")
+def _():
+    farm_setup([], [])
+    R = FF.RAWS
+    assert B.crop_underground(R[1]) and not B.crop_underground(R[5])
+    assert B.crop_in_season(R[6], 0) and not B.crop_in_season(R[6], 1)
+    under, surf = LUA.table_from({"under": True}), LUA.table_from({"under": False, "biome": "FOREST_TEMPERATE_BROADLEAF"})
+    assert B.crop_grows_on(R[1], under) and not B.crop_grows_on(R[1], surf)      # plump helmet: underground only
+    assert B.crop_grows_on(R[5], surf) and not B.crop_grows_on(R[5], under)      # prickle berry: surface only
+    assert not B.crop_grows_on(R[5], LUA.table_from({"under": False, "biome": "TUNDRA"}))   # not its biome
+    rep = B.farms_report()
+    assert rep.plots == 0
+
+
+@test("farm crops (0.105.5): fort B: surface plots, underground seeds plus surface brewables, drink short -> surface brewables")
+def _():
+    plots = farm_setup([[1, 60], [2, 30], [3, 20], [4, 10], [5, 30], [6, 9], [7, 5]],
+                       [[11, False, 0], [12, False, 10], [13, False, 20]])
+    lst = B.farm_plot_list(B.seed_stock(), 1)
+    assert all(p.fallow and p.options > 0 and not p.dead for p in lst.values()), [dict(p) for p in lst.values()]
+    r = B.set_farm_crops(LUA.table_from({"drink": True}), False)
+    assert r.ok and r.changed > 0, dict(r)
+    for b in plots.values():
+        cs = crops_of(b)
+        assert cs[1] == "BERRIES_PRICKLE", cs                    # summer: the brewable surface crop in season
+        assert cs[0] in ("BERRIES_PRICKLE", "BERRIES_STRAW_WILD"), cs   # spring: a brewable one
+        assert not any(c in ("MUSHROOM_HELMET_PLUMP", "GRASS_WHEAT_CAVE", "BUSH_QUARRY", "GRASS_TAIL_PIG") for c in cs), cs
+    assert W.persist["ai-overseer/farm_crops"].ai is True
+
+
+@test("farm crops (0.105.5): underground plots get underground crops, brewable first; a dead surface plot is said")
+def _():
+    plots = farm_setup([[1, 60], [3, 20], [4, 10]], [[21, True, 0], [22, False, 10]])
+    lst = B.farm_plot_list(B.seed_stock(), 1)
+    by = {p.id: p for p in lst.values()}
+    assert by[22].dead and not by[21].dead, [dict(p) for p in lst.values()]
+    r = B.set_farm_crops(LUA.table_from({"drink": True}), False)
+    assert r.ok and r.dead == 1, dict(r)
+    under = [b for b in plots.values() if b.id == 21][0]
+    surf = [b for b in plots.values() if b.id == 22][0]
+    assert crops_of(under)[1] in ("MUSHROOM_HELMET_PLUMP", "GRASS_TAIL_PIG"), crops_of(under)
+    assert crops_of(surf) == ["", "", "", ""]
+    # nothing at all grows anywhere: refused, saying why
+    farm_setup([[1, 60]], [[31, False, 0]])
+    r = B.set_farm_crops(LUA.table_from({}), False)
+    assert not r.ok and "underground" in r.error, dict(r)
+
+
+@test("farm crops (0.105.5): the player's crop that grows there is kept; one that can't grow is replaced; dry run changes nothing")
+def _():
+    plots = farm_setup([[5, 8], [8, 20], [1, 30]], [[41, False, 0], [42, False, 10]])
+    p41 = [b for b in plots.values() if b.id == 41][0]
+    p42 = [b for b in plots.values() if b.id == 42][0]
+    p41.plant_id[1] = 8          # the player's fisher berry (grows there): kept, even with drink short
+    p42.plant_id[1] = 1          # a plump helmet on the surface: can't grow, replaced
+    r = B.set_farm_crops(LUA.table_from({"drink": True}), True)
+    assert r.ok and r.dry_run and p42.plant_id[1] == 1, dict(r)
+    r = B.set_farm_crops(LUA.table_from({"drink": True}), False)
+    assert r.ok and r.kept >= 1, dict(r)
+    assert crops_of(p41)[1] == "BERRIES_FISHER" and crops_of(p42)[1] == "BERRIES_PRICKLE", (crops_of(p41), crops_of(p42))
+    # the AI's own crop is changed again when drink turns short and it doesn't brew
+    b = list(farm_setup([[5, 8], [8, 20]], [[51, False, 0]]).values())[0]
+    B.set_farm_crops(LUA.table_from({"drink": False}), False)
+    first = crops_of(b)[1]
+    B.set_farm_crops(LUA.table_from({"drink": True}), False)
+    assert crops_of(b)[1] == "BERRIES_PRICKLE", (first, crops_of(b))
 
 if __name__ == "__main__":
     for name, ok, msg in RESULTS:
