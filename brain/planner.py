@@ -162,11 +162,10 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
                 st_ = _d(_d(getattr(memory, "stuck_cancelled", None)).get(r))
                 return isinstance(st_.get("tick"), int) and 0 <= abs_tick(s) - st_["tick"] < cfg["stuck_retry_days"] * TICKS_PER_DAY
             # (0.104.169) in a crisis, far under the target, the next batch is
-            # queued once the open one is all on the stills (crisis_brew_room),
-            # up to crisis_brew_orders_max orders a recipe: the stills never
-            # wait between batches. (select's hold on an order that hasn't
-            # moved in order_hold_days and the rule's cooldown still apply.)
-            stills = shop_count(_d(s.get("buildings")), "Still")
+            # queued once the open one's remaining work is all on the stills
+            # (crisis_brew_room), up to crisis_brew_orders_max orders a recipe:
+            # the stills never wait between batches. (select's hold on an order
+            # that hasn't moved in order_hold_days and the rule's cooldown still apply.)
             far = crisis_drink and drink + pending < target * cfg["crisis_drink_far_share"]
 
             def ai_orders(r):
@@ -176,7 +175,7 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
             def room(r):
                 if not queued(s, {r}, ai_only=True):
                     return True
-                return far and ai_orders(r) < cfg["crisis_brew_orders_max"] and crisis_brew_room(s, r, stills)
+                return far and ai_orders(r) < cfg["crisis_brew_orders_max"] and crisis_brew_room(s, r)
             sources = [(r, n) for r, n in (("brew_drink", plants), ("brew_drink_from_fruit", fruit))
                        if n > 0 and room(r) and not stuck_recently(r)]
             if plants <= 0 and fruit <= 0:
@@ -189,15 +188,20 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
                 recipe, have = sources[0]
                 jobs = _clamp(math.ceil((target - drink - pending) / per_job), cfg["min_order"], cfg["max_order"])
                 jobs = min(jobs, have)
+                kept_for_kitchen = False
                 if crisis_drink and recipe == "brew_drink":
                     # (0.104.169) the crisis's brewing leaves plants for the kitchen
                     # (beyond what the usual target would brew)
                     usual = math.ceil(max(0, target / cfg["crisis_drink_share"] - drink - pending) / per_job)
                     jobs = min(jobs, max(usual, have - citizens * cfg["crisis_plants_keep_per_dwarf"]))
+                kept_for_kitchen = jobs < 1
                 # (0.100) each brew job fills an empty barrel or pot: no more jobs than there are
+                # (0.104.169, review) less the AI's open brew orders' jobs still to
+                # finish: two orders never want more barrels than there are (a brew
+                # job that finds none is cancelled, and the order looks stalled)
                 if isinstance(sup_.get("empty_barrels"), int):
-                    jobs = min(jobs, sup_["empty_barrels"] + int(sup_.get("empty_pots") or 0))
-                if jobs < 1 and crisis_drink and have > 0:
+                    jobs = min(jobs, sup_["empty_barrels"] + int(sup_.get("empty_pots") or 0) - brew_jobs_open(s))
+                if jobs < 1 and crisis_drink and kept_for_kitchen and have > 0:
                     notes.append(f"drink {drink} is below the crisis's target of {round(target)}, but the "
                                  f"{have} brewable plants are kept for the kitchen (at most "
                                  f"{cfg['crisis_plants_keep_per_dwarf']} a dwarf go to the crisis's extra brewing)")
