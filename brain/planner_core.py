@@ -494,6 +494,13 @@ PLANNER_CONFIG = {
     "farms_cooldown_ticks": 3 * 1200,
     "farm_dig_retry_days": 28,     # no soil for a farm level: look again (and ask again) after this
     "well_cooldown_ticks": 3 * 1200,
+    # (0.105.0) water works and magma (brain/planner_water.py)
+    "moat_fortification": 50,          # a moat from this Fortification up (a river near the gate)
+    "moat_drawbridge_engineering": -50,   # below this Engineering a plain bridge over it, no drawbridge
+    "pump_engineering": 0,             # a pump stack from this Engineering up
+    "waterworks_retry_ticks": 28 * 1200,  # a work refused (no site, path blocked): tried again 4 weeks on
+    "waterworks_moat_cooldown_ticks": 1200, "waterworks_magma_cooldown_ticks": 1200,
+    "waterworks_irrigation_cooldown_ticks": 1200, "waterworks_pump_cooldown_ticks": 1200,
     "cistern_hold": False,             # (0.104.144) on hold (the player: the first design would flood the fort); released 0.104.145 (the second)
     "dwarves_per_well": 70,            # (0.104.141) another well for every this many dwarves (0: one well)
     "extra_well_retry_days": 84,       # (0.104.141) another well that couldn't be placed: tried again a season on
@@ -877,6 +884,11 @@ def player_rules(s: dict) -> dict:
             "tribute": st.get("tribute") if st.get("tribute") in ("small", "pay", "refuse") else "small",
             # (0.105.0, 13b) a messenger appointed and sent to make contact with sites not in contact
             "make_contact": st.get("make_contact") is not False,
+            # (0.105.0) water works: the moat (on by default only where the survey found a river:
+            # the planner wants one only then), magma workshops, the muddied farm level
+            "moat": st.get("moat") is not False,
+            "magma_workshops": st.get("magma_workshops") is not False,
+            "irrigation": st.get("irrigation") is not False,
             "clear_alerts": st.get("clear_alerts") if st.get("clear_alerts") in ("all", "quiet", "none") else "quiet"}
 
 

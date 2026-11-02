@@ -455,6 +455,19 @@ function RulesPage:init()
         initial_option = p.settings.water_works,
         on_change = function(v) p:set_field('water_works', v) end,
     })
+    -- (0.105.0) the water works' own switches, beside "Build water works" (the right-hand column is free there)
+    for i, f in ipairs({{'moat', 'A moat from the river at the gate:'},
+                        {'magma_workshops', 'Magma workshops (forge, smelter, glass):'},
+                        {'irrigation', 'Muddy a stone farm level with water:'}}) do
+        table.insert(views, widgets.ToggleHotkeyLabel{
+            view_id = f[1],
+            frame = {t = t + 6 + i, l = 62, w = 56},
+            label = f[2],
+            label_width = 42,
+            initial_option = p.settings[f[1]] ~= false,
+            on_change = function(v) p:set_field(f[1], v) end,
+        })
+    end
     table.insert(views, widgets.ToggleHotkeyLabel{
         view_id = 'expel_vampires',
         frame = {t = t + 8, l = 0, w = 60},
@@ -624,6 +637,9 @@ function RulesPage:refresh()
     self.subviews.calm_burrow:setOption(s.calm_burrow ~= false, false)             -- (0.104.169)
     self.subviews.tribute:setOption(s.tribute or 'small', false)                   -- (0.105.0)
     self.subviews.make_contact:setOption(s.make_contact ~= false, false)           -- (0.105.0)
+    for _, k in ipairs({'moat', 'magma_workshops', 'irrigation'}) do               -- (0.105.0)
+        self.subviews[k]:setOption(s[k] ~= false, false)
+    end
     self.subviews.engrave_slabs:setOption(s.engrave_slabs, false)
     self.subviews.import_smelting:setOption(s.import_smelting, false)
     self.subviews.alert_shelter:setOption(s.alert_shelter, false)

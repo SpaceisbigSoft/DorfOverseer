@@ -36,6 +36,7 @@ from planner_society import *  # noqa: E402,F401,F403  (0.104.83: the planner in
 import crisis  # noqa: E402  (0.104.137)
 from planner_building import *  # noqa: E402,F401,F403  (0.104.83: the planner in parts)
 from planner_care import _doctor_post_rule, _infection_rule, _offices_refill_rule  # noqa: E402  (0.104.168)
+from planner_water import _waterworks_rule  # noqa: E402  (0.105.0) moat, pumps, irrigation, magma workshops
 from planner_homes import *  # noqa: E402,F401,F403  (0.104.168: homes and households)
 from planner_threats import _threat_rules  # noqa: E402  (0.105.0 round 3: threats answered)
 from planner_world import (_contact_rule, _export_rule, _hostile_trade_filter, _meeting_answer_rule,  # noqa: E402
@@ -534,6 +535,7 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
         _guard(_excess_shops_rule, s, cfg, proposals)
         _guard(_water_rules, s, cfg, proposals, notes)
         _guard(_cistern_rule, s, memory, cfg, proposals, notes, player_rules(s))
+        _guard(_waterworks_rule, s, memory, cfg, proposals, notes)    # (0.105.0)
         _guard(_feeder_rule, s, cfg, proposals)
         _guard(_stone_rule, s, memory, cfg, proposals, notes)
         _guard(_unsuspend_rule, s, proposals)

@@ -295,7 +295,7 @@ def proposal_id(p) -> str:
 
 CAMERA_QUIET = {"census", "join_levels", "dismiss_alerts", "sand_zone", "report_status", "survey_water", "scan_entrances", "recreation", "hospital_burrow",
                 "calm_burrow",   # (0.104.169)
-                "cistern_step", "restrict_water", "save_memory", "pair_chairs", "approve_orders"}
+                "cistern_step", "water_work", "restrict_water", "save_memory", "pair_chairs", "approve_orders"}
 
 
 _CAMERA_LEVELS: list = []   # (0.104.91) the newest "dig a new ... level" lines, while the keeper runs
@@ -377,6 +377,12 @@ def short(a: dict) -> str:
         return "shut the cistern's floodgate" if a.get("shut") else "the cistern: next step"
     if t == "survey_water":
         return "survey the water near the fort"
+    if t == "water_work":        # (0.105.0)
+        what = {"moat": "the moat", "pump": "the pump stack", "irrigation": "the muddied farm level",
+                "magma": f"the {a.get('shop') or 'magma workshop'}"}.get(a.get("kind"), "a water work")
+        if a.get("shut"):
+            return f"shut {what}'s floodgate"
+        return f"{what}: next step"
     if t == "staff_labors":
         return "give the hospital's staff the labours of their posts"
     if t == "retarget_hall":

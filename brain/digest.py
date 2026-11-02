@@ -134,6 +134,7 @@ SECTION_DEFAULTS = {
     "hazards": {},
     "threats": {},                # (0.105.0) round 3: fire, prisoners, thieves, undead, werebeasts (lua/ai-threats.lua)
     "health": {},
+    "waterworks": {"works": {}, "refused": {}},   # (0.105.0) moat, pumps, irrigation, magma workshops (lua/ai-waterworks.lua)
     "infection": {},              # (0.104.168) the infected: untreated, bleeding, beds free (lua/ai-health.lua)
     "military": {"squads": [], "soldiers": 0, "routines": [], "gates": []},
     "society": {},

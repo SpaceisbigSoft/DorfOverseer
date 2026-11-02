@@ -255,6 +255,8 @@ function defaults()
         seal_caverns = true,       -- (0.105.0) the way down locked while a beast the squads can't take is in a cavern
         tribute = 'small',         -- (0.105.0) tribute a civilisation asks (TRIBUTE_CHOICES)
         make_contact = true,       -- (0.105.0, 13b) a messenger appointed and sent to sites not in contact
+        -- (0.105.0) water works: a moat from the river (only where one is found), magma workshops, a muddied farm level
+        moat = true, magma_workshops = true, irrigation = true,
         expel_vampires = true,     -- a vampire found among the citizens is sent away      -- with --ai: a short AI-written story of each season (costs tokens)
         -- "Wipe what the AI learned" (Culture tab, Shift-V): each press adds 1;
         -- the overseer wipes when it sees the number go up
@@ -336,7 +338,8 @@ function sanitize(s)
                         'hospital_burrow',          -- (0.104.168) the hospital burrow's switch
                         'calm_burrow',              -- (0.104.169) the calm-down burrows' switch
                         'moon_cells', 'seal_caverns',   -- (0.105.0) round 3's switches
-                        'make_contact'}) do         -- (0.105.0) the messenger and Make contact
+                        'make_contact',             -- (0.105.0) the messenger and Make contact
+                        'moat', 'magma_workshops', 'irrigation'}) do   -- (0.105.0) the water works' switches
         if s[k] ~= nil then out[k] = s[k] == true end
     end
     out.gear_weapon = one_of(s.gear_weapon, GEAR_WEAPONS, d.gear_weapon)
@@ -416,6 +419,7 @@ function for_ai(s)
         seal_caverns = s.seal_caverns,
         tribute = s.tribute,                       -- (0.105.0)
         make_contact = s.make_contact,             -- (0.105.0)
+        moat = s.moat, magma_workshops = s.magma_workshops, irrigation = s.irrigation,   -- (0.105.0)
         wipe_learned = s.wipe_learned,
         wipe_learned_all = s.wipe_learned_all,
     }

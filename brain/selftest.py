@@ -695,7 +695,7 @@ def main() -> int:
                                                                "enabled": True}, halted)
     must_refuse(bridge, "silly work order refused", {"type": "work_order", "recipe": "brew_drink",
                                                      "amount": -5}, halted)
-    must_refuse(bridge, "unknown level kind refused", {"type": "start_project", "kind": "moat",
+    must_refuse(bridge, "unknown level kind refused", {"type": "start_project", "kind": "lake",   # (0.105.0) moat: a water_work
                                                        "dry_run": True}, halted)
     must_refuse(bridge, "silly farm request refused", {"type": "farm_plots", "tiles": 0,
                                                        "dry_run": True}, halted)

@@ -89,6 +89,15 @@ function survey_step(job, seconds)
                                 if is_magma then
                                     local m = magma[bz] or 0
                                     magma[bz] = m + 1
+                                    -- (0.105.0) the highest magma outside the caverns, nearest
+                                    -- the fort's middle: what a magma workshop is dug to
+                                    if not (d.feature_local or d.feature_global) then
+                                        local dist = math.max(math.abs(x - mid.x), math.abs(y - mid.y))
+                                        local t = job.magma_top
+                                        if not t or bz > t.z or (bz == t.z and dist < t.d) then
+                                            job.magma_top = {x = x, y = y, z = bz, d = dist}
+                                        end
+                                    end
                                 else
                                     local tt = block.tiletype[lx][ly]
                                     local mat = df.tiletype_material[df.tiletype.attrs[tt].material]
@@ -149,6 +158,7 @@ function finish_survey(job)
     end
     out.aquifer = levels(aquifer)
     out.magma = levels(magma)
+    if out.magma and job.magma_top then out.magma.top_nearest = job.magma_top end   -- (0.105.0)
     return out
 end
 
