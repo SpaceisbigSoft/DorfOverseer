@@ -4922,7 +4922,7 @@ end
 function act_cut_entrance(a)
     local id = whole_number(a.entrance_id)
     if not id then return reject('cut_entrance needs entrance_id') end
-    return reqscript('ai-gates').cut_entrance(id)
+    return reqscript('ai-gates').cut_entrance(id, nil, a.dry_run == true)   -- (0.105.0 review: dry_run honoured)
 end
 
 function act_gate_dogs(a)   -- (module-level: the chunk's 200-local limit)

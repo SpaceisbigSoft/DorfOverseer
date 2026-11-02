@@ -936,8 +936,8 @@ local W = {item(41, 1, 5), item(42, 1, 4, 9), item(43, 2, 1), item(44, 6, 2), it
 local S = {item(61, 0, 5), item(62, 0, 6)}
 local Q = {item(81, 0, 1), item(82, 0, 2)}
 local items = {WEAPON = vec(W), SHIELD = vec(S), QUIVER = vec(Q)}
-local eq = {items_assigned = {WEAPON = vec({}), SHIELD = vec({})},
-            items_unassigned = {WEAPON = vec({41, 42, 43, 44, 45}), SHIELD = vec({61, 62})},
+local eq = {items_assigned = {WEAPON = vec({}), SHIELD = vec({}), QUIVER = vec({})},
+            items_unassigned = {WEAPON = vec({41, 42, 43, 44, 45}), SHIELD = vec({61, 62}), QUIVER = vec({81, 82})},
             items_unmanifested = {WEAPON = vec({}), SHIELD = vec({})}, update = {}, work_weapons = vec({})}
 local function spec(sub, cls, choice)
     return {item_type = 24, item_subtype = sub, material_class = cls or -1, mattype = -1, matindex = -1,
@@ -983,7 +983,8 @@ env.df = {uniform_category = {_last_item = 2, body = 0, shield = 1, weapon = 2},
                                 burrows = {list = vec({})}},
                     world = {squads = {all = vec({sq7, sq8})}, items = {other = items},
                              raws = {itemdefs = {weapons = vec({{id = 'ITEM_WEAPON_CROSSBOW', subtype = 6}})}}}}}
-env.dfhack = {persistent = {getSiteData = function(k, d) return persist[k] or d end, saveSiteData = function() end},
+env.dfhack = {persistent = {getSiteData = function(k, d) return persist[k] or d end,
+                            saveSiteData = function(k, v) persist[k] = v end},
               matinfo = {decode = function(it)
                   return {inorganic = {id = it.mat == 0 and 'COPPER' or 'X'}, material = {flags = {IS_METAL = it.mat == 0}}}
               end},
@@ -1116,6 +1117,75 @@ def _():
     lua.execute("local env = ... env.df.global.plotinfo.alerts.list[1].burrows = {}", env)
     assert env.shelter(7, False).rejected                              # no shelter burrow
 
+
+
+@test("0.105.0 review: a player's own shelter order isn't the AI's (only the ones shelter() marked); marks pruned")
+def _():
+    lua, n, env, eq, sq7, sq8 = army()
+    lua.execute("""local env, sq8 = ...
+        env.fort_squad = function(id) return env.df.squad.find(id) end
+        local o = env.df.squad_order_defend_burrowsst:new()
+        o.burrows:insert('#', 5)
+        sq8.orders:insert('#', o)""", env, sq8)
+    assert env.is_shelter_order(sq8.orders[0]) is True             # the burrows alone: a shelter order
+    assert env.is_shelter_order(sq8.orders[0], 8) is False         # but not one the AI gave
+    c = env.orders(8, None, True)
+    assert c.ok and c.cleared == 0 and n(sq8.orders) == 1, dict(c)   # the recall leaves it
+    assert env.shelter(8, False).rejected                           # nor is it replaced
+    r = env.shelter(7, False)
+    assert r.ok and env.shelter_marks()["7"] is not None
+    assert env.is_shelter_order(sq7.orders[0], 7) is True
+    assert env.orders(7, None, True).cleared == 1
+    assert env.shelter_marks()["7"] is None                         # the order gone: unmarked
+
+
+@test("0.105.0 review: quivers move to the assigned list; only ones on the unassigned list; a bad field reported")
+def _():
+    lua, n, env, eq, sq7, sq8 = army()
+    seq = lambda v: [v[i] for i in range(n(v))]
+    lua.execute("local eq = ... ; eq.items_unassigned.QUIVER:erase(1)", eq)        # 82 on no list
+    r = env.assign_quivers(False, 10)
+    assert r.ok and r.assigned == 1, dict(r)
+    assert seq(eq.items_assigned.QUIVER) == [81] and seq(eq.items_unassigned.QUIVER) == [], (
+        seq(eq.items_assigned.QUIVER), seq(eq.items_unassigned.QUIVER))
+    # a quiver field this DF hasn't: an error, not a raise
+    lua, n, env, eq, sq7, sq8 = army()
+    lua.execute("""local sq8 = ...
+        for i = 0, 1 do
+            local p = sq8.positions[i]
+            p.equipment = setmetatable({uniform = p.equipment.uniform}, {
+                __index = function(t, k) if k == 'quiver' then return -1 end end,
+                __newindex = function(t, k, v) error('no field ' .. k) end})
+        end""", sq8)
+    r = env.assign_quivers(False, 10)
+    assert r.ok is False and "quiver" in r.error and "no field" in r.error, dict(r)
+
+
+@test("0.105.0 review: 'any' weapon entries are never loosened; a training weapon is never 'any'; a held item isn't stale")
+def _():
+    lua, n, env, eq, sq7, sq8 = army()
+    lua.execute("""local env, sq7 = ...
+        -- place 0's "any melee" entry asks for a material: left as it is
+        local s = sq7.positions[0].equipment.uniform[2][0]
+        s.material_class = 12
+        -- and no metal axe at all (the old code loosened it to any material)
+        for _, i in ipairs({0, 4}) do env.df.global.world.items.other.WEAPON[i].mat = 9 end""", env, sq7)
+    d = env.fix_gear_gaps(True, False)
+    assert sq7.positions[0].equipment.uniform[2][0].material_class == 12
+    assert d.loosened == 1, dict(d)            # only place 1's named axe entry (the old code took "any" too)
+    items = env.df["global"].world["items"].other.WEAPON
+    any_melee = sq7.positions[0].equipment.uniform[2][0]
+    lua.execute("""local env, it = ... it.subtype = {id = 'ITEM_WEAPON_AXE_TRAINING'}""", env, items[0])
+    any_melee.material_class = -1
+    assert env.weapon_fits(any_melee, items[0]) == (False, "kind")
+    # 45 on soldier 103's place list but in 103's own hands: not stale
+    lua, n, env, eq, sq7, sq8 = army()
+    lua.execute("""local env = ...
+        env.df.item.find = function(id) return {id = id} end
+        env.dfhack.items.getHolderUnit = function(it) if it.id == 45 then return {id = 103} end end""", env)
+    d = env.fix_gear_gaps(True, False)
+    assert (d.stale if d.ok else 0) == 0, dict(d)
+    assert n(sq7.positions[3].equipment.assigned_items) == 1
 
 if __name__ == "__main__":
     for name, ok, msg in RESULTS:

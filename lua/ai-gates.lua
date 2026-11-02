@@ -442,6 +442,7 @@ function find_entrances(starts, buildings)
     local inside, n, openings = explore(starts)
     local groups = cluster(openings)
     local entrances = {}
+    local cut_checked = 0        -- (0.105.0 review)
     for i, g in ipairs(groups) do
         local e = {id = i, kind = g.kind, width = #g.inside_list, inside_list = g.inside_list,
                    outs = g.outs, equipment = {}, sealed = false, door_spots = {}}
@@ -549,7 +550,15 @@ function find_entrances(starts, buildings)
                 end
             end
         end
-        cut_equipment(e, buildings, starts, inside)      -- (0.105.0) hatches on the stairs down from a wide opening
+        -- (0.105.0) hatches on the stairs down from a wide opening. (0.105.0
+        -- review) in a pcall (an error lost the whole scan); only an opening
+        -- too wide to wall, or one the AI cut; at most CUT_SURVEY_MAX of
+        -- them a scan (each is a walk of up to CUT_MAX_PORCH tiles)
+        if cut_checked < CUT_SURVEY_MAX and not e.sealed and not e.closing and e.kind == 'surface'
+                and (e.width > FORTIFY_MAX_WIDTH or was_cut(e)) then
+            cut_checked = cut_checked + 1
+            pcall(cut_equipment, e, buildings, starts, inside)
+        end
         table.insert(entrances, e)
     end
     return entrances, inside, n
@@ -645,11 +654,21 @@ function scan(now_tick)
     return summary()
 end
 
-local function citizens_outside()
+-- (0.105.0 review) a cut entrance's porch (the open area above its hatches)
+-- reads as inside on the map, but a dwarf there is shut out when the hatches
+-- lock: counted as outside
+function citizens_outside()
     if not GATES.inside then return 0 end
+    local porches = {}
+    for _, e in ipairs(GATES.entrances or {}) do
+        if e.porch then table.insert(porches, e.porch) end
+    end
     local n = 0
     for _, u in ipairs(dfhack.units.getCitizens(true)) do
-        if not GATES.inside[key(u.pos.x, u.pos.y, u.pos.z)] then n = n + 1 end
+        local k = key(u.pos.x, u.pos.y, u.pos.z)
+        local out = not GATES.inside[k]
+        for _, p in ipairs(porches) do if p[k] then out = true end end
+        if out then n = n + 1 end
     end
     return n
 end
@@ -732,15 +751,18 @@ local function dangers()
     return out
 end
 
-local function distance_to(e, pos)
+function distance_to(e, pos)
     local best = math.huge
-    for k in pairs(e.outs) do
-        local x, y, z = unkey(k)
+    local function near(x, y, z)
         if math.abs(z - pos.z) <= 3 then
             local d = math.max(math.abs(x - pos.x), math.abs(y - pos.y))
             if d < best then best = d end
         end
     end
+    for k in pairs(e.outs) do near(unkey(k)) end
+    -- (0.105.0 review) a cut entrance: its hatches too (a beast deep in a big
+    -- porch is far from the opening but close to the way down)
+    for _, k in ipairs(e.hatch_keys or {}) do near(unkey(k)) end
     return best
 end
 
@@ -2309,6 +2331,38 @@ end
 LEDGE_MAX = 120          -- tiles: a pocket this small with a citizen in it is a ledge, not the fort
 CUT_MAX_PORCH = 6000     -- tiles: an open area bigger than this is the fort itself, not a porch
 CUT_MAX_HATCHES = 12
+-- (0.105.0 review) the brain's fortify_max_width: a narrower opening is
+-- walled, and the scan looks for a cut there only where the AI cut one
+FORTIFY_MAX_WIDTH = 50
+CUT_SPOTS_KEY = 'ai-overseer/cuts'
+
+-- the entrances the AI cut (key(x, y, z) -> true), kept with the save
+function cut_spots()
+    if CUT_SPOTS == nil then
+        local ok, d = pcall(function() return dfhack.persistent.getSiteData(CUT_SPOTS_KEY, {}) end)
+        CUT_SPOTS = {}
+        if ok and type(d) == 'table' then
+            for k, v in pairs(d) do if v then CUT_SPOTS[tonumber(k) or k] = true end end
+        end
+    end
+    return CUT_SPOTS
+end
+
+-- (each tile of the opening: a rescan may anchor the entrance on another of them)
+function was_cut(e)
+    local spots = cut_spots()
+    for _, k in ipairs(e.inside_list or {}) do if spots[k] then return true end end
+    return spots[key(e.x, e.y, e.z)] == true
+end
+
+local function note_cut_spot(e)
+    local spots = cut_spots()
+    spots[key(e.x, e.y, e.z)] = true
+    for _, k in ipairs(e.inside_list or {}) do spots[k] = true end
+    local out = {}
+    for k in pairs(spots) do out[tostring(k)] = true end
+    pcall(function() dfhack.persistent.saveSiteData(CUT_SPOTS_KEY, out) end)
+end
 
 function fort_starts(starts)
     cache, edge_cache = {}, {}           -- (read fresh: it runs before a scan or a cut)
@@ -2410,6 +2464,7 @@ function porch_of(e, starts)
         end)
     end
     out.n = #queue
+    out.tiles = seen             -- (0.105.0 review) the porch's tiles (citizens there are outside)
     table.sort(out.stairs)
     table.sort(out.ramps)
     return out
@@ -2489,6 +2544,10 @@ function cut_equipment(e, buildings, starts, inside)
         for _, b in ipairs(built) do table.insert(e.equipment, b) end
         table.sort(e.equipment, function(a, b) return a.id < b.id end)
         e.sealed, e.cut = true, true
+        -- (0.105.0 review) for the watcher: the porch (outside) and the hatches
+        e.porch = p.tiles
+        e.hatch_keys = {}
+        for k in pairs(blocked) do table.insert(e.hatch_keys, k) end
     end
 end
 
@@ -2514,13 +2573,21 @@ end
 
 -- The action: hatches on the porch's stairs (buildingplan waits for hatch
 -- covers; the masons are asked by the gate parts rule).
-function cut_entrance(id, starts)
+function cut_entrance(id, starts, dry_run)
     local e
     for _, x in ipairs(GATES.entrances or {}) do if x.id == id then e = x end end
     if not e then return {ok = false, rejected = true, error = 'no such entrance (scan first)'} end
     cache, edge_cache = {}, {}
     local plan, why = plan_cut(e, starts or citizen_starts())
     if not plan then return {ok = false, error = why} end
+    if dry_run then                    -- (0.105.0 review) the plan, nothing placed
+        local spots = {}
+        for _, k in ipairs(plan.hatches) do
+            local x, y, z = unkey(k)
+            table.insert(spots, ('%d,%d,%d'):format(x, y, z))
+        end
+        return {ok = true, dry_run = true, style = 'cut', hatches = #plan.hatches, pieces = spots, porch = plan.porch}
+    end
     local placed, failed, pieces = 0, {}, {}
     for _, k in ipairs(plan.hatches) do
         local x, y, z = unkey(k)
@@ -2535,6 +2602,7 @@ function cut_entrance(id, starts)
     if placed == 0 then
         return {ok = false, error = 'no hatch could be placed (' .. table.concat(failed, '; '):sub(1, 200) .. ')'}
     end
+    note_cut_spot(e)                   -- (0.105.0 review) the scan looks for its hatches from now on
     return {ok = true, style = 'cut', hatches = placed, pieces = pieces, porch = plan.porch,
             failed = #failed > 0 and table.concat(failed, '; '):sub(1, 300) or nil}
 end
@@ -2542,7 +2610,7 @@ end
 -- A new fort: forget the old one's gates.
 if dfhack and dfhack.onStateChange then
     dfhack.onStateChange['ai-gates'] = function(sc)
-        if sc == SC_MAP_UNLOADED then GATES = {scanned = false} end
+        if sc == SC_MAP_UNLOADED then GATES = {scanned = false}; CUT_SPOTS = nil end   -- (0.105.0 review CUT_SPOTS)
     end
 end
 

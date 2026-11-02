@@ -560,7 +560,8 @@ TICKS_PER_YEAR = 403200
 
 # Rules exempt from the per-rule cooldown and the one-per-cycle limit.
 NO_COOLDOWN = {"threat_alert", "strategist", "squad_attack", "squad_recall", "train", "gates", "water", "flood",
-               "trade_deal", "close_trade"}   # (time stands still while the trade screen is open)
+               "trade_deal", "close_trade",
+               "shelter_squads"}   # (0.105.0 review: an emergency, as in EMERGENCY)   # (time stands still while the trade screen is open)
 MULTI_PER_CYCLE = {"stuck_order", "uniform", "noble_rooms", "tools", "strategist", "squad_attack", "squad_recall", "train", "labor", "well_parts"}
 # Responses to an attack: never held back by the per-cycle action limit.
 EMERGENCY = {"threat_alert", "gate", "gates", "squad_attack", "flood", "gate_guard",   # (0.104.83 gate_guard)
@@ -1867,6 +1868,17 @@ def _record_any_outcome(a: dict, r: dict, state: dict, memory, now: int) -> None
         spot = _entrance_spot(state, a.get("entrance_id"))
         if not spot:
             return
+        if t == "cut_entrance":
+            # (0.105.0 review) the cut's refusal under its own key: the wall's
+            # refusal (why the cut was tried) is kept, not overwritten
+            if a.get("dry_run"):
+                return
+            if r.get("ok") is False:
+                memory.gate_failures["cut:" + spot] = str(r.get("error") or "refused")[:400]
+                memory.gate_failure_ticks["cut:" + spot] = now
+                return
+            memory.gate_failures.pop("cut:" + spot, None)
+            memory.gate_failure_ticks.pop("cut:" + spot, None)
         if r.get("ok") is False:
             # refused: remembered with the game's reason (shown under Needs you)
             # and when, so it's tried again later

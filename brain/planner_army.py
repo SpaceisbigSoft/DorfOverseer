@@ -65,7 +65,14 @@ def _army_gear_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) ->
     spare_shields = int(_d(g.get("spare")).get("shields") or 0)
     metal_melee = [q for q in squads if "metal" in str(q.get("ai_uniform") or "").lower() and not is_ranged(q)
                    and (q.get("members") or 0) > 0]
-    shields = bool(spare_shields > 0 and int(sh.get("no_entry") or 0) > 0 and metal_melee)
+    # (0.105.0 review) the places without a shield entry that add_shields mends
+    # are the metal melee squads' only: a crossbow or player squad's don't count
+    by_squad = sh.get("no_entry_squads")
+    if isinstance(by_squad, dict):
+        no_entry = sum(int(by_squad.get(str(q.get("id"))) or 0) for q in metal_melee)
+    else:
+        no_entry = int(sh.get("no_entry") or 0)          # (an older bridge: the fort's count)
+    shields = bool(spare_shields > 0 and no_entry > 0 and metal_melee)
     fix = sum(why.get(k, 0) for k in FIXABLE)
     if fix or shields:
         bits = [f"{why[k]} {k}" for k in FIXABLE if why.get(k)]
@@ -211,13 +218,23 @@ def _gate_cut_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> 
     ent = _d(s.get("entrances"))
     if not rules_["fortify_entrances"] or not ent.get("scanned") or "entrances" in s.get("_errors", {}):
         return
+    from planner_core import abs_tick
+    now = abs_tick(s)
+    fails = getattr(memory, "gate_failures", None) or {}
+    fail_ticks = getattr(memory, "gate_failure_ticks", None) or {}
     for e in _l(ent.get("entrances")):
         if not isinstance(e, dict) or e.get("sealed") or e.get("closing") or e.get("kind") != "surface":
             continue
         spot = f"{e.get('x')},{e.get('y')},{e.get('z')}"
-        refused = spot in (getattr(memory, "gate_failures", None) or {})
+        refused = spot in fails
         wide = (e.get("width") or 0) > cfg["fortify_max_width"]
         if not (wide or refused):
+            continue
+        # (0.105.0 review) a cut refused lately waits gate_retry_ticks, as a wall does
+        when = fail_ticks.get("cut:" + spot)
+        if "cut:" + spot in fails and isinstance(when, int) and 0 <= now - when < cfg["gate_retry_ticks"]:
+            notes.append(f"the surface opening at x{e.get('x')} y{e.get('y')} couldn't be cut off below: "
+                         f"{str(fails['cut:' + spot])[:160]} (tried again later)")
             continue
         from planner_military import _near_spot
         if _near_spot(e, getattr(memory, "gates_fortified", None) or {}):

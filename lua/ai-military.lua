@@ -105,29 +105,74 @@ function shelter_burrow_ids()
     return out
 end
 
--- a defend order on the shelter burrows only (the AI's: a player's defend
--- order names other burrows, or one of them beside the gate guard's)
-function is_shelter_order(o)
+-- (0.105.0 review) The AI's own shelter orders, marked when shelter() gives
+-- them: squad id (text) -> the order's year_tick (true when unreadable),
+-- kept in the site data. A defend order naming only the shelter burrows is
+-- the AI's only when marked: a player's own shelter station counted as the
+-- AI's and was recalled every quiet cycle (and replaced by kill orders).
+SHELTER_KEY = 'ai-overseer/shelter'
+
+function shelter_marks()
+    local ok, d = pcall(dfhack.persistent.getSiteData, SHELTER_KEY, {})
+    return ok and type(d) == 'table' and d or {}
+end
+
+local function save_shelter_marks(m)
+    return pcall(dfhack.persistent.saveSiteData, SHELTER_KEY, m)
+end
+
+local function order_tick(o)
+    local ok, t = pcall(function() return o.year_tick end)
+    return (ok and type(t) == 'number') and t or true
+end
+
+-- a defend order on the shelter burrows only, given by shelter() to this
+-- squad (squad_id nil: the burrows alone, for callers without the squad)
+function is_shelter_order(o, squad_id, marks)
     local ok, yes = pcall(function()
         if not df.squad_order_defend_burrowsst:is_instance(o) or #o.burrows == 0 then return false end
         local sh = shelter_burrow_ids()
         for _, id in ipairs(o.burrows) do if not sh[id] then return false end end
         return true
     end)
-    return ok and yes == true
+    if not (ok and yes == true) then return false end
+    if squad_id == nil then return true end
+    local mark = (marks or shelter_marks())[tostring(squad_id)]       -- (0.105.0 review)
+    if mark == nil then return false end
+    return mark == true or mark == order_tick(o)
 end
 
-local function is_ai_order(o)
-    local ok, title = pcall(function() return o.title end)
-    if ok and title == AI_ORDER_TITLE then return true end
-    if is_shelter_order(o) then return true end      -- (0.105.0)
-    -- (0.104.83) a defend order has no title: the AI's names only the gate guard burrow
+-- (0.105.0 review) marks whose squad no longer has its shelter order are dropped
+function prune_shelter_marks()
+    local m = shelter_marks()
+    local changed = false
+    for k in pairs(m) do
+        local sq = df.squad.find(tonumber(k) or -1)
+        local still = false
+        for _, o in ipairs(sq and sq.orders or {}) do
+            if is_shelter_order(o, k, m) then still = true end
+        end
+        if not still then m[k] = nil; changed = true end
+    end
+    if changed then save_shelter_marks(m) end
+    return changed
+end
+
+-- (0.104.83) a defend order has no title: the AI's names only the gate guard burrow
+local function is_guard_order(o)
     local okd, mine = pcall(function()
         if not df.squad_order_defend_burrowsst:is_instance(o) then return false end
         local gid = guard_burrow_id()
         return gid ~= nil and #o.burrows == 1 and o.burrows[0] == gid
     end)
     return okd and mine == true
+end
+
+local function is_ai_order(o, squad_id)
+    local ok, title = pcall(function() return o.title end)
+    if ok and title == AI_ORDER_TITLE then return true end
+    if squad_id ~= nil and is_shelter_order(o, squad_id) then return true end   -- (0.105.0; review: marked only)
+    return is_guard_order(o)
 end
 
 function fort_squad(squad_id)
@@ -201,6 +246,7 @@ end
 function report(txt)
     local routines = routine_names()
     local out = {squads = {}, soldiers = 0, routines = routines, gates = {}}
+    pcall(prune_shelter_marks)          -- (0.105.0 review) the shelter orders gone: unmarked
     local fort = fort_entity()
     if fort then
         for _, sid in ipairs(fort.squads) do
@@ -213,7 +259,7 @@ function report(txt)
                 local ai_orders, guarding = 0, false
                 local kill_ids, sheltering = nil, nil
                 for _, o in ipairs(sq.orders) do
-                    if is_ai_order(o) then
+                    if is_ai_order(o, sid) then
                         ai_orders = ai_orders + 1
                         -- (0.104.140) who the AI's kill order names: a second wave
                         -- gets an order of its own (the first one's list was kept)
@@ -223,11 +269,11 @@ function report(txt)
                                 for _, id in ipairs(o.units) do table.insert(kill_ids, id) end
                             end
                         end)
-                        -- (0.104.83) holding the gate (a defend order) rather than out to kill
-                        local okg, g = pcall(function() return df.squad_order_defend_burrowsst:is_instance(o) end)
-                        if okg and g then guarding = true end
+                        -- (0.104.83) holding the gate rather than out to kill
+                        -- (0.105.0 review: the gate guard burrow only, not the shelter)
+                        if is_guard_order(o) then guarding = true end
                         -- (0.105.0) in the shelter with the civilians (the AI hides)
-                        if is_shelter_order(o) then sheltering = true end
+                        if is_shelter_order(o, sid) then sheltering = true end
                     end
                 end
                 local ok, idx = pcall(function() return sq.cur_routine_idx end)
@@ -1106,13 +1152,14 @@ function orders(squad_id, kill, clear)
     if not sq then return {ok = false, rejected = true, error = 'no such squad in this fort'} end
     local removed = 0
     for i = #sq.orders - 1, 0, -1 do
-        if is_ai_order(sq.orders[i]) then
+        if is_ai_order(sq.orders[i], squad_id) then
             local o = sq.orders[i]
             sq.orders:erase(i)
             o:delete()
             removed = removed + 1
         end
     end
+    if removed > 0 then pcall(prune_shelter_marks) end      -- (0.105.0 review)
     if clear then return {ok = true, cleared = removed} end
     local o = df.squad_order_kill_listst:new()
     local n, refused = 0, 0
@@ -1147,12 +1194,12 @@ function defend(squad_id, burrow_id)
     local sq = fort_squad(squad_id)
     if not sq then return {ok = false, rejected = true, error = 'no such squad in this fort'} end
     for _, o in ipairs(sq.orders) do
-        if not is_ai_order(o) then return {ok = false, rejected = true, error = 'the squad is on your orders'} end
+        if not is_ai_order(o, squad_id) then return {ok = false, rejected = true, error = 'the squad is on your orders'} end
     end
     local removed = 0
     for i = #sq.orders - 1, 0, -1 do
         local o = sq.orders[i]
-        if is_ai_order(o) then
+        if is_ai_order(o, squad_id) then
             if df.squad_order_defend_burrowsst:is_instance(o) then
                 return {ok = false, rejected = true, error = 'the squad already holds the gate'}
             end
@@ -1644,6 +1691,8 @@ function weapon_fits(spec, it)
         local def = weapon_def(it)
         local id = def and def.id
         if id == 'ITEM_WEAPON_PICK' then return false, 'pick' end
+        -- (0.105.0 review) a training weapon is never "any"
+        if type(id) == 'string' and id:find('_TRAINING', 1, true) then return false, 'kind' end
         local okc, choice = pcall(function() return spec.indiv_choice end)
         if okc and choice and def then
             local r = weapon_is_ranged(def)
@@ -2393,7 +2442,8 @@ end
 -- = n}, detail = {...}, wanted = {item id = n}, ranged = n, entries = n,
 -- given = n, places = n, no_entry = n}.
 function gaps_why(cat_name, list_name)
-    local out = {why = {}, detail = {}, wanted = {}, ranged = 0, entries = 0, given = 0, places = 0, no_entry = 0}
+    local out = {why = {}, detail = {}, wanted = {}, ranged = 0, entries = 0, given = 0, places = 0, no_entry = 0,
+                 no_entry_squads = {}}     -- (0.105.0 review) by squad id (text)
     local fort = fort_entity()
     local eq = equipment_lists()
     if not fort or not eq then return out end
@@ -2409,7 +2459,10 @@ function gaps_why(cat_name, list_name)
                 out.places = out.places + 1
                 local specs = {}
                 pcall(function() for _, s in ipairs(pos.equipment.uniform[cat]) do table.insert(specs, s) end end)
-                if #specs == 0 then out.no_entry = out.no_entry + 1 end
+                if #specs == 0 then
+                    out.no_entry = out.no_entry + 1
+                    out.no_entry_squads[tostring(sid)] = (out.no_entry_squads[tostring(sid)] or 0) + 1
+                end
                 local hf = df.historical_figure.find(pos.occupant)
                 local u = hf and df.unit.find(hf.unit_id)
                 local upos
@@ -2475,11 +2528,16 @@ end
 
 local function free_quivers(claimed)
     local out = {}
+    -- (0.105.0 review) only quivers on DF's unassigned list (as for weapons),
+    -- never one built in or an artifact
+    local eq = equipment_lists()
+    local una = eq and id_set(eq.items_unassigned.QUIVER) or {}
     pcall(function()
         for _, it in ipairs(df.global.world.items.other.QUIVER) do
             local f = it.flags
-            if not (claimed[it.id] or f.forbid or f.owned or f.trader or f.removed or f.garbage_collect
-                    or f.dump or f.hostile or f.in_job or f.construction or f.in_inventory) then
+            if una[it.id] and not (claimed[it.id] or f.forbid or f.owned or f.trader or f.removed or f.garbage_collect
+                    or f.dump or f.hostile or f.in_job or f.construction or f.in_inventory
+                    or f.in_building or f.artifact) then
                 table.insert(out, it)
             end
         end
@@ -2520,31 +2578,45 @@ function assign_quivers(dry_run, limit)
     if not fort then return {ok = false, rejected = true, error = 'no fort'} end
     limit = limit or 10
     local pool = free_quivers(quiver_claims())
-    local n, squads = 0, {}
+    local eq = equipment_lists()
+    local n, squads, err = 0, {}, nil
     for _, sid in ipairs(fort.squads) do
         local sq = df.squad.find(sid)
         for _, pos in ipairs(sq and sq.positions or {}) do
-            if n >= limit or #pool == 0 then break end
+            if n >= limit or #pool == 0 or err then break end
             local okq, qid = pcall(function() return pos.equipment.quiver end)
             if pos.occupant ~= -1 and okq and qid == -1 and ranged_place(pos) then
                 local it = table.remove(pool, 1)
                 if not dry_run then
-                    pos.equipment.quiver = it.id
-                    squads[sid] = true
+                    -- (0.105.0 review) the field's name is read from df-structures, not
+                    -- seen in 53.16: a wrong one is reported, not raised; the quiver
+                    -- moves to the assigned list as assign_weapons moves a weapon
+                    local okw, werr = pcall(function()
+                        pos.equipment.quiver = it.id
+                        if eq then
+                            vec_remove(eq.items_unassigned.QUIVER, it.id)
+                            vec_add(eq.items_assigned.QUIVER, it.id)
+                        end
+                    end)
+                    if okw then squads[sid] = true
+                    else err = tostring(werr):sub(1, 160) end
                 end
-                n = n + 1
+                if not err then n = n + 1 end
             end
         end
+    end
+    if err and n == 0 then
+        return {ok = false, error = "this DF's squad places take no quiver this way: " .. err}
     end
     if n == 0 then
         return {ok = false, rejected = true, error = #pool == 0 and 'no free quiver' or 'every crossbow soldier has a quiver'}
     end
     if dry_run then return {ok = true, dry_run = true, would_assign = n} end
     for sid in pairs(squads) do
-        pcall(function() df.squad.find(sid).ammo.update.quiver = true end)
+        pcall(function() df.squad.find(sid).ammo.update.quiver = true end)      -- (0.105.0 review: in a pcall)
     end
     pcall(function() df.global.plotinfo.equipment.update.quiver = true end)
-    return {ok = true, assigned = n, left = #pool}
+    return {ok = true, assigned = n, left = #pool, error = err}
 end
 
 -- A crossbow squad's bolts: its ammunition entries, the bolts wanted and
@@ -2608,10 +2680,21 @@ local function stale_places(dry_run)
                         for _, iid in ipairs(spec.assigned) do mine[iid] = true end
                     end
                 end
+                -- (0.105.0 review) an item the place's own soldier holds is not stale
+                local hf = pos.occupant ~= -1 and df.historical_figure.find(pos.occupant)
+                local uid = hf and hf.unit_id or nil
+                local function held_by_occupant(id)
+                    if not uid or uid == -1 then return false end
+                    local okh, u = pcall(function()
+                        local it = df.item.find(id)
+                        return it and dfhack.items.getHolderUnit(it)
+                    end)
+                    return okh and u ~= nil and u.id == uid
+                end
                 local v = pos.equipment.assigned_items
                 for i = #v - 1, 0, -1 do
                     local id = v[i]
-                    if una[id] and not mine[id] then
+                    if una[id] and not mine[id] and not held_by_occupant(id) then
                         if not dry_run then v:erase(i) end
                         n = n + 1
                     end
@@ -2636,7 +2719,9 @@ local function loosen_material(dry_run)
             for _, pos in ipairs(sq.positions) do
                 pcall(function()
                     for _, spec in ipairs(pos.equipment.uniform[df.uniform_category.weapon]) do
-                        if #spec.assigned == 0 and (spec.material_class ~= -1 or spec.mattype ~= -1) then
+                        -- (0.105.0 review) a named weapon kind only: "any" loosened took anything
+                        if #spec.assigned == 0 and spec.item_subtype ~= -1
+                                and (spec.material_class ~= -1 or spec.mattype ~= -1) then
                             -- only when some item of its kind fails on the material alone
                             local best = 0
                             for _, it in ipairs(df.global.world.items.other.WEAPON) do
@@ -2716,8 +2801,8 @@ function shelter(squad_id, dry_run)
     table.sort(ids)
     if #ids == 0 then return {ok = false, rejected = true, error = 'no civilian-alert burrow to shelter in'} end
     for _, o in ipairs(sq.orders) do
-        if not is_ai_order(o) then return {ok = false, rejected = true, error = 'the squad is on your orders'} end
-        if is_shelter_order(o) then return {ok = false, rejected = true, error = 'the squad is in the shelter already'} end
+        if not is_ai_order(o, squad_id) then return {ok = false, rejected = true, error = 'the squad is on your orders'} end
+        if is_shelter_order(o, squad_id) then return {ok = false, rejected = true, error = 'the squad is in the shelter already'} end
     end
     if dry_run then return {ok = true, dry_run = true, burrows = #ids} end
     local removed = 0
@@ -2731,6 +2816,10 @@ function shelter(squad_id, dry_run)
     for _, id in ipairs(ids) do o.burrows:insert('#', id) end
     pcall(function() o.year = df.global.cur_year; o.year_tick = df.global.cur_year_tick end)
     sq.orders:insert('#', o)
+    -- (0.105.0 review) marked as the AI's, with the site data
+    local marks = shelter_marks()
+    marks[tostring(squad_id)] = order_tick(o)
+    save_shelter_marks(marks)
     return {ok = true, burrows = #ids, replaced = removed}
 end
 
@@ -2749,6 +2838,7 @@ function army_gear(out)
     local oks, sh = pcall(gaps_why, 'shield', 'SHIELD')
     if oks and sh then
         out.shields = {places = sh.places, no_entry = sh.no_entry, entries = sh.entries, given = sh.given,
+                       no_entry_squads = next(sh.no_entry_squads) and sh.no_entry_squads or nil,   -- (0.105.0 review)
                        why = next(sh.why) and sh.why or nil, detail = #sh.detail > 0 and sh.detail or nil}
     end
     local okq, q = pcall(quiver_report)

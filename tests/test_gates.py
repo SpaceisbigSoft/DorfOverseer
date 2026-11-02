@@ -1109,6 +1109,8 @@ def _():
 @test("0.105.0 cut: the scan counts the hatches (planned: closing; built: the entrance's gates, watched like others)")
 def _():
     es, s0 = court_entrance()
+    LUA.execute("local M, e = ... ; M.CUT_SPOTS = {}; for _, k in ipairs(e.inside_list) do M.CUT_SPOTS[k] = true end",
+                M, es[0])                                  # (0.105.0 review) a 19-wide opening: scanned for a cut the AI made
     def hatch(i, x, y, kind="hatch"):
         b = {"id": i, "kind": kind, "x1": x, "y1": y, "x2": x, "y2": y, "z": 1, "name": ""}
         if kind == "pending":
@@ -1125,6 +1127,67 @@ def _():
     W.buildings = LUA.table_from({1: hatch(31, 10, 5)})                    # one stair still open: not sealed
     es, _, _ = M.find_entrances(s0, W.buildings)
     assert not es[1].sealed and not es[1].closing
+
+
+@test("0.105.0 review cut: a dry run places nothing; a narrow opening the AI never cut isn't walked for hatches")
+def _():
+    es, s0 = court_entrance()
+    e = es[0]
+    t = LUA.table()
+    t[1] = e
+    e.id = 1
+    M.GATES = LUA.table_from({"entrances": t})
+    placed = []
+    M.CUT_SPOTS = LUA.table()
+    M.place_hook = lambda text, pos: placed.append((text, pos.x, pos.y, pos.z)) or True
+    try:
+        r = M.cut_entrance(1, s0, True)
+    finally:
+        M.place_hook = None
+    assert r.ok and r.dry_run and r.hatches == 2 and placed == [], (dict(r), placed)
+    assert not M.was_cut(e)
+    def hatch(i, x, y):
+        return LUA.table_from({"id": i, "kind": "hatch", "x1": x, "y1": y, "x2": x, "y2": y, "z": 1, "name": ""})
+    W.buildings = LUA.table_from({1: hatch(31, 10, 5), 2: hatch(32, 20, 12)})
+    es, _, _ = M.find_entrances(s0, W.buildings)
+    assert not es[1].sealed and not es[1].cut           # 19 wide, never cut by the AI: walled, not cut
+    # an error in the cut check doesn't lose the scan
+    LUA.execute("local M = ... ; M.CUT_SPOTS = {}; M.FORTIFY_MAX_WIDTH = 5; M._ce = M.cut_equipment; "
+                "M.cut_equipment = function() error('boom') end", M)
+    try:
+        es, _, _ = M.find_entrances(s0, W.buildings)
+        assert len(es) == 1
+    finally:
+        LUA.execute("local M = ... ; M.cut_equipment = M._ce; M.FORTIFY_MAX_WIDTH = 50", M)
+
+
+@test("0.105.0 review watcher: a dwarf on a cut entrance's porch is outside; a beast near the hatches is near")
+def _():
+    es, s0 = court_entrance()
+    LUA.execute("local M, e = ... ; M.CUT_SPOTS = {}; for _, k in ipairs(e.inside_list) do M.CUT_SPOTS[k] = true end",
+                M, es[0])
+    def hatch(i, x, y):
+        return LUA.table_from({"id": i, "kind": "hatch", "x1": x, "y1": y, "x2": x, "y2": y, "z": 1, "name": ""})
+    W.buildings = LUA.table_from({1: hatch(31, 10, 5), 2: hatch(32, 20, 12)})
+    es, inside, _ = M.find_entrances(s0, W.buildings)
+    e = es[1]
+    assert e.sealed and e.cut and e.porch is not None
+    k = LUA.eval("function(x, y, z) return (z * 4096 + y) * 4096 + x end")
+    assert inside[k(15, 8, 1)] and e.porch[k(15, 8, 1)]          # the porch reads as inside on the map...
+    M.GATES = LUA.table_from({"entrances": LUA.table_from({1: e}), "inside": inside})
+    cit = []
+    M.dfhack = LUA.table_from({"units": LUA.table_from({"getCitizens": lambda *_: LUA.table_from(
+        {i + 1: LUA.table_from({"pos": LUA.table_from(p)}) for i, p in enumerate(cit)})})})
+    try:
+        cit[:] = [{"x": 25, "y": 8, "z": 0}]
+        assert M.citizens_outside() == 0
+        cit.append({"x": 15, "y": 8, "z": 1})                        # ...but a dwarf there is outside
+        assert M.citizens_outside() == 1
+    finally:
+        M.dfhack = None
+    # a beast deep in the court: 16 from the opening (x4), 1 from the hatch at x20 y12
+    d = M.distance_to(e, LUA.table_from({"x": 21, "y": 12, "z": 1}))
+    assert d == 1, d
 
 
 @test("0.105.0 cut: refused when a ramp leads down, or when dwarves live in the open area")

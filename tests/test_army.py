@@ -255,8 +255,38 @@ def _():
     assert m.gates_fortified.get("40,50,160") == "cut", m.gates_fortified
     m2 = Memory()
     record([(p, {"ok": False, "error": "no hatch could be placed"})], s, m2)
-    assert "no hatch" in m2.gate_failures.get("40,50,160", ""), m2.gate_failures
+    # (0.105.0 review) under its own key: a wall's refusal there is kept
+    assert "no hatch" in m2.gate_failures.get("cut:40,50,160", ""), m2.gate_failures
     assert not by_rule(plan(s, m)[0], "gate_cut")          # cut already: not asked again before the scan
+
+
+@test("0.105.0 review gates: a refused cut waits gate_retry_ticks; the wall's refusal text is kept")
+def _():
+    s = wide_entrance(width=6, cut_hatches=2)
+    m = Memory()
+    m.gate_failures["40,50,160"] = "the way in at x40 y50 is a branch"
+    p = by_rule(plan(s, m)[0], "gate_cut")[0]
+    record([(p, {"ok": False, "error": "no hatch could be placed"})], s, m)
+    assert m.gate_failures["40,50,160"] == "the way in at x40 y50 is a branch", m.gate_failures
+    props, notes = plan(s, m)
+    assert not by_rule(props, "gate_cut")                    # refused just now: not asked every cycle
+    assert any("couldn't be cut off below: no hatch" in n for n in notes), notes
+    m.gate_failure_ticks["cut:40,50,160"] -= PLANNER_CONFIG["gate_retry_ticks"] + 1
+    assert by_rule(plan(s, m)[0], "gate_cut")                # two weeks on: tried again
+    # a dry run books nothing
+    m3 = Memory()
+    record([(p.__class__(p.rule, dict(p.action, dry_run=True), p.reason, p.priority), {"ok": False, "error": "x"})], s, m3)
+    assert not m3.gate_failures, m3.gate_failures
+
+
+@test("0.105.0 review: spare shields count only the metal melee squads' places without a shield entry")
+def _():
+    s = teacheroar_gear()
+    ids = [q["id"] for q in s["military"]["squads"]]
+    s["military"]["gear"]["shields"]["no_entry_squads"] = {"999": 29}       # only a squad that isn't the AI's metal one
+    assert not any(p.action.get("shields") for p in by_rule(plan(s, Memory())[0], "gear_fix"))
+    s["military"]["gear"]["shields"]["no_entry_squads"] = {str(ids[0]): 5}
+    assert any(p.action.get("shields") for p in by_rule(plan(s, Memory())[0], "gear_fix"))
 
 
 if __name__ == "__main__":
