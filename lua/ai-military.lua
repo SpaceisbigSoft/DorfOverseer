@@ -3006,6 +3006,86 @@ function shelter(squad_id, dry_run)
     return {ok = true, burrows = #ids, replaced = removed}
 end
 
+-- (0.105.8) Every armour slot, as for weapons and shields: why each empty
+-- entry stays empty, and how a pair is kept on an entry. E (2 Nov): 10 spare
+-- metal gauntlets and boots, 1 soldier gloved; "untangle the uniforms" twice
+-- changed nothing, and nothing else looked at armour. Read only; built at
+-- most once a game day (the military section is the report's slowest).
+KIT_SLOTS = {{'body', 'body', 'ARMOR'}, {'helms', 'head', 'HELM'}, {'pants', 'pants', 'PANTS'},
+             {'gloves', 'gloves', 'GLOVES'}, {'boots', 'shoes', 'SHOES'}}
+KIT_CACHE = KIT_CACHE or {}
+
+local function glove_side(it)
+    local r, l
+    pcall(function() r, l = it.handedness[0], it.handedness[1] end)
+    if r == nil and l == nil then return '?' end
+    local rv = (r == true or (type(r) == 'number' and r ~= 0))
+    local lv = (l == true or (type(l) == 'number' and l ~= 0))
+    return (rv and lv) and 'both' or rv and 'right' or lv and 'left' or 'none'
+end
+
+function kit_report()
+    local now = df.global.cur_year_tick or 0
+    local year = df.global.cur_year or 0
+    if KIT_CACHE.out and KIT_CACHE.year == year and now - (KIT_CACHE.tick or -1e9) >= 0
+            and now - KIT_CACHE.tick < 1200 then
+        return KIT_CACHE.out
+    end
+    local out = {}
+    for _, slot in ipairs(KIT_SLOTS) do
+        local key, cat, list = slot[1], slot[2], slot[3]
+        local ok, g = pcall(gaps_why, cat, list)
+        if ok and g then
+            local r = {entries = g.entries, given = g.given, no_entry = g.no_entry,
+                       why = next(g.why) and g.why or nil}
+            if #g.detail > 0 then r.detail = {table.unpack(g.detail, 1, math.min(3, #g.detail))} end
+            -- how many items a given entry holds (a pair: 1 or 2?), and the
+            -- sides of free gloves
+            if key == 'gloves' or key == 'boots' then
+                local hist = {}
+                pcall(function()
+                    local c = df.uniform_category[cat]
+                    for _, sq in ipairs(df.global.world.squads.all) do
+                        for _, pos in ipairs(sq.positions) do
+                            if pos.occupant ~= -1 then
+                                for _, spec in ipairs(pos.equipment.uniform[c]) do
+                                    local n = tostring(#spec.assigned)
+                                    hist[n] = (hist[n] or 0) + 1
+                                end
+                            end
+                        end
+                    end
+                end)
+                r.per_entry = next(hist) and hist or nil
+                if key == 'gloves' then
+                    local sides, worn = {}, {}
+                    local eq = equipment_lists()
+                    local una = eq and id_set(eq.items_unassigned.GLOVES) or {}
+                    pcall(function()
+                        for _, it in ipairs(df.global.world.items.other.GLOVES) do
+                            if metal_token(it) then
+                                local sd = glove_side(it)
+                                if una[it.id] and not it.flags.in_inventory then
+                                    sides[sd] = (sides[sd] or 0) + 1
+                                elseif it.flags.in_inventory then
+                                    worn[sd] = (worn[sd] or 0) + 1
+                                end
+                            end
+                        end
+                    end)
+                    r.free_sides = next(sides) and sides or nil
+                    r.carried_sides = next(worn) and worn or nil
+                end
+            end
+            out[key] = r
+        else
+            out[key] = {error = tostring(g):sub(1, 120)}
+        end
+    end
+    KIT_CACHE = {out = out, tick = now, year = year}
+    return out
+end
+
 -- For gear_report: the why of the gaps, the shields, the quivers.
 function army_gear(out)
     local okw, w = pcall(gaps_why, 'weapon', 'WEAPON')
@@ -3024,6 +3104,8 @@ function army_gear(out)
                        no_entry_squads = next(sh.no_entry_squads) and sh.no_entry_squads or nil,   -- (0.105.0 review)
                        why = next(sh.why) and sh.why or nil, detail = #sh.detail > 0 and sh.detail or nil}
     end
+    local okk, kit = pcall(kit_report)
+    out.kit = okk and kit or {error = tostring(kit):sub(1, 120)}
     local okq, q = pcall(quiver_report)
     if okq and q then
         for k, v in pairs(q) do out[k] = v end
