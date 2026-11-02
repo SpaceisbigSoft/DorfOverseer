@@ -760,7 +760,11 @@ def full_stores(s: dict, cfg: dict) -> list:
         # survey's STORE_FROM_WORKSHOPS kinds); used cups lying in halls are not
         if k == "finished_goods":
             lz += unstored_cups(s)
-        if lz >= cfg["store_loose_min"] and (tiles == 0 or used / tiles >= cfg["store_full_share"]):
+        # (0.105.0) bolts come 25 to a stack (one item): with no ammo pile at
+        # all, any lying in the bowyer's or forge want one (the squads take
+        # bolts only from a stockpile; Teacheroar's 524 never reached them)
+        lmin = cfg.get("store_loose_min_ammo", 1) if (k == "ammo" and tiles == 0) else cfg["store_loose_min"]
+        if lz >= lmin and (tiles == 0 or used / tiles >= cfg["store_full_share"]):
             out.append((-(used / tiles if tiles else 1.0), -lz, k))
     kinds = [k for *_, k in sorted(out)]
     tidy = stone_tidiness(_traits(s) if isinstance(s.get("settings"), dict) else {}, cfg)

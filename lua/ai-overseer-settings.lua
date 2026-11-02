@@ -243,6 +243,7 @@ function defaults()
         answer_locations = true,   -- (0.89) agree to and build the temples and guildhalls petitions ask for
         hospital_burrow = true,    -- (0.104.168) keep the wounded in the "AI hospital" burrow (off: all let out)
         calm_burrow = true,        -- (0.104.169) a dwarf in a tantrum kept in a free bedroom till calm (off: all let out)
+        squads_shelter = true,     -- (0.105.0) while the AI hides from a great danger, the squads wait in the shelter
         expel_vampires = true,     -- a vampire found among the citizens is sent away      -- with --ai: a short AI-written story of each season (costs tokens)
         -- "Wipe what the AI learned" (Culture tab, Shift-V): each press adds 1;
         -- the overseer wipes when it sees the number go up
@@ -321,7 +322,8 @@ function sanitize(s)
                         'import_smelting', 'alert_shelter', 'pasture_animals', 'build_gate_doors',
                         'fortify_entrances', 'set_pop_cap', 'ai_chronicle', 'give_trinkets', 'water_works', 'expel_vampires', 'accept_visitors', 'answer_locations',
                         'hospital_burrow',          -- (0.104.168) the hospital burrow's switch
-                        'calm_burrow'}) do          -- (0.104.169) the calm-down burrows' switch
+                        'calm_burrow',              -- (0.104.169) the calm-down burrows' switch
+                        'squads_shelter'}) do       -- (0.105.0) the squads hide in the shelter too
         if s[k] ~= nil then out[k] = s[k] == true end
     end
     out.gear_weapon = one_of(s.gear_weapon, GEAR_WEAPONS, d.gear_weapon)
@@ -395,6 +397,7 @@ function for_ai(s)
         answer_locations = s.answer_locations,
         hospital_burrow = s.hospital_burrow,       -- (0.104.168)
         calm_burrow = s.calm_burrow,               -- (0.104.169)
+        squads_shelter = s.squads_shelter,         -- (0.105.0)
         wipe_learned = s.wipe_learned,
         wipe_learned_all = s.wipe_learned_all,
     }

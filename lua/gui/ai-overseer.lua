@@ -529,6 +529,15 @@ function RulesPage:init()
             on_change = function(v) p:set_field(f[1], v) end,
         })
     end
+    -- (0.105.0) the squads hide with the civilians (the free row under the list)
+    table.insert(views, widgets.ToggleHotkeyLabel{
+        view_id = 'squads_shelter',
+        frame = {t = t + 11, l = 2, w = 50},
+        label = 'When hiding, squads wait in the shelter:',
+        label_width = 42,
+        initial_option = p.settings.squads_shelter ~= false,
+        on_change = function(v) p:set_field('squads_shelter', v) end,
+    })
     table.insert(views, widgets.CycleHotkeyLabel{
         view_id = 'gear_weapon',
         frame = {t = t + 12, l = 2, w = 60},
@@ -573,6 +582,7 @@ function RulesPage:refresh()
     self.subviews.answer_locations:setOption(s.answer_locations, false)
     self.subviews.hospital_burrow:setOption(s.hospital_burrow ~= false, false)     -- (0.104.168)
     self.subviews.calm_burrow:setOption(s.calm_burrow ~= false, false)             -- (0.104.169)
+    self.subviews.squads_shelter:setOption(s.squads_shelter ~= false, false)       -- (0.105.0)
     self.subviews.engrave_slabs:setOption(s.engrave_slabs, false)
     self.subviews.import_smelting:setOption(s.import_smelting, false)
     self.subviews.alert_shelter:setOption(s.alert_shelter, false)

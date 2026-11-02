@@ -266,7 +266,8 @@ MODES = {"advisor": "Advisor", "copilot": "Co-pilot", "autopilot": "Autopilot"}
 # What the co-pilot asks you about first (in the game's on-screen panel).
 BIG_MOVES = {"start_project", "cancel_project", "cancel_work_order", "squad_fill", "import_orders",
              "build_gate_doors", "fortify_entrance", "expel_dwarf", "place_well", "link_lever", "place_traps",
-             "remove_workshops"}
+             "remove_workshops",
+             "cut_entrance"}                     # (0.105.0) hatches across the fort's stairs: asked first
 DECLINE_DAYS = 7          # a "No" holds this many in-game days before it may ask again
 
 
@@ -505,6 +506,17 @@ def short(a: dict) -> str:
         return "send a soldier back to work and draft a keen dwarf in his place"
     if t == "assign_weapons":    # (0.104.60)
         return "give the soldiers the free weapons the game won't hand out"
+    # (0.105.0, round 2) an army that can fight
+    if t == "fix_gear_gaps":
+        return "mend the uniforms so the soldiers get weapons" + (" and shields" if a.get("shields") else "")
+    if t == "assign_quivers":
+        return "give the crossbow soldiers quivers"
+    if t == "squad_bolts":
+        return "bolts for a crossbow squad"
+    if t == "shelter_squads":
+        return f"send {len(a.get('squads') or [])} squad(s) to wait in the shelter"
+    if t == "cut_entrance":
+        return "hatches on the stairs down from a wide opening"
     if t == "farm_thresholds":
         return "set which crops the farms favour (autofarm)"
     if t == "kitchen_brewables":   # (0.100) the kitchen ban on cooking brewables

@@ -4860,6 +4860,46 @@ function act_guard_gate(a)   -- (module-level: the chunk's 200-local limit)
     return reqscript('ai-society').guard_gate(ids, x, y, z, int_in(a.radius or 5, 2, 10), a.dry_run == true)
 end
 
+-- (0.105.0, round 2) An army that can fight (lua/ai-military.lua, lua/ai-gates.lua)
+function act_fix_gear_gaps(a)
+    if a.shields ~= nil and type(a.shields) ~= 'boolean' then return reject('fix_gear_gaps: shields must be true or false') end
+    return reqscript('ai-military').fix_gear_gaps(a.dry_run == true, a.shields == true)
+end
+
+function act_assign_quivers(a)
+    local n = int_in(a.limit or 10, 1, 50)
+    if not n then return reject('assign_quivers: limit 1-50') end
+    return reqscript('ai-military').assign_quivers(a.dry_run == true, n)
+end
+
+function act_squad_bolts(a)
+    local id = whole_number(a.squad_id)
+    if not id then return reject('squad_bolts needs squad_id') end
+    return reqscript('ai-military').squad_bolts(id, a.dry_run == true)
+end
+
+function act_shelter_squads(a)
+    if type(a.squads) ~= 'table' or #a.squads == 0 or #a.squads > 20 then
+        return reject('shelter_squads needs squads: a list of 1-20 squad ids')
+    end
+    local M, out, n = reqscript('ai-military'), {}, 0
+    for _, v in ipairs(a.squads) do
+        local id = whole_number(v)
+        if not id then return reject('shelter_squads: squads must be squad ids') end
+        local r = M.shelter(id, a.dry_run == true)
+        out[tostring(id)] = r.ok and 'in the shelter' or r.error
+        if r.ok then n = n + 1 end
+    end
+    if n == 0 then return {ok = false, rejected = true, error = 'no squad could be sent', squads = out} end
+    return {ok = true, sheltered = n, squads = out}
+end
+
+function act_cut_entrance(a)
+    local id = whole_number(a.entrance_id)
+    if not id then return reject('cut_entrance needs entrance_id') end
+    return reqscript('ai-gates').cut_entrance(id)
+end
+
 function act_gate_dogs(a)   -- (module-level: the chunk's 200-local limit)
     local x, y, z = int_in(a.x, 0, 1000), int_in(a.y, 0, 1000), int_in(a.z, 0, 1000)
     if not x or not y or not z then return reject('gate_dogs needs x, y, z') end
@@ -6149,6 +6189,9 @@ ACTIONS = {
     train_war = act_train_war,               -- (0.104.81)
     dig_stairwell = act_dig_stairwell,       -- (0.104.82)
     guard_gate = act_guard_gate,             -- (0.104.83)
+    -- (0.105.0, round 2) an army that can fight
+    fix_gear_gaps = act_fix_gear_gaps, assign_quivers = act_assign_quivers, squad_bolts = act_squad_bolts,
+    shelter_squads = act_shelter_squads, cut_entrance = act_cut_entrance,
     gate_dogs = act_gate_dogs,               -- (0.104.83)
     make_pasture = act_make_pasture,
     import_orders = act_import_orders,

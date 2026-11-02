@@ -901,6 +901,222 @@ def _():
     assert not r.ok and "no baby" in r.error, dict(r)
 
 
+# --- (0.105.0, round 2) an army that can fight ---------------------------------------
+
+ARMY_FAKE = r"""
+local src = ...
+local function vec(list)
+    local t = {}
+    for i, v in ipairs(list or {}) do t[i - 1] = v end
+    return setmetatable(t, {__len = function(self) local n = 0; while rawget(self, n) ~= nil do n = n + 1 end; return n end,
+        __index = {insert = function(self, at, v)
+                       local n = #self
+                       if at == '#' then at = n end
+                       for i = n, at + 1, -1 do self[i] = self[i - 1] end
+                       self[at] = v end,
+                   erase = function(self, at)
+                       local n = #self
+                       for i = at, n - 2 do self[i] = self[i + 1] end
+                       self[n - 1] = nil end}})
+end
+local DEFS = {[1] = {id = 'ITEM_WEAPON_AXE_BATTLE'}, [2] = {id = 'ITEM_WEAPON_PICK'},
+              [6] = {id = 'ITEM_WEAPON_CROSSBOW', ranged_ammo = 'BOLT'}}
+local where = {}
+local function item(id, sub, x, mat, flags)
+    local it = {id = id, flags = flags or {}, sub = sub, mat = mat or 0, subtype = DEFS[sub]}
+    function it:getSubtype() return self.sub end
+    function it:getMaterial() return self.mat end
+    function it:getMaterialIndex() return 0 end
+    where[id] = {x, 0, 0}
+    return it
+end
+-- weapons: 41 a copper axe (mat 0), 42 a wooden axe (mat 9, not metal), 43 a pick, 44 a crossbow,
+-- 45 an axe stale on soldier 103's place list; shields: 61, 62
+local W = {item(41, 1, 5), item(42, 1, 4, 9), item(43, 2, 1), item(44, 6, 2), item(45, 1, 3)}
+local S = {item(61, 0, 5), item(62, 0, 6)}
+local Q = {item(81, 0, 1), item(82, 0, 2)}
+local items = {WEAPON = vec(W), SHIELD = vec(S), QUIVER = vec(Q)}
+local eq = {items_assigned = {WEAPON = vec({}), SHIELD = vec({})},
+            items_unassigned = {WEAPON = vec({41, 42, 43, 44, 45}), SHIELD = vec({61, 62})},
+            items_unmanifested = {WEAPON = vec({}), SHIELD = vec({})}, update = {}, work_weapons = vec({})}
+local function spec(sub, cls, choice)
+    return {item_type = 24, item_subtype = sub, material_class = cls or -1, mattype = -1, matindex = -1,
+            color = -1, indiv_choice = choice or {}, assigned = vec({})}
+end
+local function place(occ, wspec, extra)
+    local u = {[0] = vec({}), [1] = vec({}), [2] = vec(wspec and {wspec} or {})}
+    return {occupant = occ, equipment = {assigned_items = vec(extra or {}), uniform = u, quiver = -1,
+                                         backpack = -1, flask = -1}}
+end
+-- squad 7 (the AI's metal melee): 100 any melee, 101 axes of the WeaponMelee class, 102 axes, 103 axes (45 stale)
+-- squad 8 (crossbows): 104 crossbow, 105 any ranged
+local sq7 = {id = 7, orders = vec({}), ammo = {update = {}, ammunition = vec({}), ammo_items = vec({})},
+             positions = vec({place(100, spec(-1, -1, {melee = true})), place(101, spec(1, 12)),
+                              place(102, spec(1)), place(103, spec(1), {45})})}
+local sq8 = {id = 8, orders = vec({}), ammo = {update = {}, ammunition = vec({}), ammo_items = vec({})},
+             positions = vec({place(104, spec(6)), place(105, spec(-1, -1, {ranged = true}))})}
+local env = setmetatable({}, {__index = _G})
+env.ipairs = function(t)
+    if type(t) == 'table' and rawget(t, 0) ~= nil then
+        local i = -1
+        return function() i = i + 1; if t[i] ~= nil then return i, t[i] end end
+    end
+    return ipairs(t)
+end
+env.xyz2pos = function(x, y, z) return {x = x, y = y, z = z} end
+local persist = {['ai-overseer/uniforms'] = {['7'] = 'Melee, metal armor |weapon:ITEM_WEAPON_AXE_BATTLE'}}
+local DEF = {}
+DEF.new = function() return setmetatable({burrows = vec({}), _defend = true}, {__index = {delete = function() end}}) end
+DEF.is_instance = function(self, o) return type(o) == 'table' and o._defend == true end
+env.df = {uniform_category = {_last_item = 2, body = 0, shield = 1, weapon = 2},
+          item_type = {WEAPON = 24, SHIELD = 27},
+          entity_material_category = {[-1] = 'None', [12] = 'WeaponMelee'},
+          squad_order_defend_burrowsst = DEF,
+          squad_uniform_spec = {new = function() return {indiv_choice = {}, assigned = vec({}), delete = function() end} end},
+          squad = {find = function(id) return id == 7 and sq7 or id == 8 and sq8 or nil end},
+          historical_figure = {find = function(id) return {unit_id = id} end},
+          unit = {find = function(id) return {id = id} end},
+          item = {find = function(id) return nil end},
+          historical_entity = {find = function() return {squads = vec({7, 8})} end},
+          global = {plotinfo = {equipment = eq, group_id = 1,
+                                alerts = {list = vec({{burrows = vec({})}, {burrows = vec({5})}})},
+                                burrows = {list = vec({})}},
+                    world = {squads = {all = vec({sq7, sq8})}, items = {other = items},
+                             raws = {itemdefs = {weapons = vec({{id = 'ITEM_WEAPON_CROSSBOW', subtype = 6}})}}}}}
+env.dfhack = {persistent = {getSiteData = function(k, d) return persist[k] or d end, saveSiteData = function() end},
+              matinfo = {decode = function(it)
+                  return {inorganic = {id = it.mat == 0 and 'COPPER' or 'X'}, material = {flags = {IS_METAL = it.mat == 0}}}
+              end},
+              items = {getHolderUnit = function() return nil end,
+                       getPosition = function(it) local w = where[it.id]; return w[1], w[2], w[3] end,
+                       getSubtypeDef = function(t, st) return DEFS[st] end,
+                       getDescription = function(it) return 'item ' .. it.id end},
+              units = {getPosition = function(u) return 0, 0, 0 end},
+              maps = {canWalkBetween = function(a, b) return b.x ~= 5 end}}     -- x5 is behind a closed door
+assert(load(src, 'ai-military', 't', env))()
+return env, eq, sq7, sq8
+"""
+
+
+def army():
+    lua = LuaRuntime(unpack_returned_tuples=True)
+    out = lua.execute(ARMY_FAKE, (ROOT / "lua" / "ai-military.lua").read_text(encoding="utf-8"))
+    n = lua.eval("function(v) return #v end")
+    return (lua, n) + tuple(out)
+
+
+@test("0.105.0: weapon_fits reads the entry: its kind, melee or ranged for 'any', never a pick, a metal class")
+def _():
+    lua, n, env, eq, sq7, sq8 = army()
+    items = env.df["global"].world["items"].other.WEAPON
+    axe, wood_axe, pick, xbow = items[0], items[1], items[2], items[3]
+    any_melee = sq7.positions[0].equipment.uniform[2][0]
+    metal_axe = sq7.positions[1].equipment.uniform[2][0]
+    any_ranged = sq8.positions[1].equipment.uniform[2][0]
+    assert env.weapon_fits(any_melee, axe) is True
+    assert env.weapon_fits(any_melee, pick) == (False, "pick")                # a miner's pick is never "any"
+    assert env.weapon_fits(any_melee, xbow) == (False, "melee")
+    assert env.weapon_fits(any_ranged, xbow) is True and env.weapon_fits(any_ranged, axe) == (False, "ranged")
+    assert env.weapon_fits(metal_axe, axe) is True
+    assert env.weapon_fits(metal_axe, wood_axe) == (False, "material")      # the WeaponMelee class: metal only
+    assert env.weapon_fits(metal_axe, xbow) == (False, "kind")
+
+
+@test("0.105.0: weapon_gaps_why says why each entry is empty (unreachable, wrong material, stale, a crossbow for the crossbows)")
+def _():
+    lua, n, env, eq, sq7, sq8 = army()
+    w = env.gaps_why("weapon", "WEAPON")
+    why = dict(w.why)
+    # 100 any melee: 41 behind a door, 45 stale (on 103's place list): stale is further along; 101 the class:
+    # the copper axe 41 fits but is unreachable... each gap takes the furthest stage any item reached
+    assert w.places == 6 and w.entries == 6 and w.given == 0, (w.places, w.entries, w.given)
+    # place 1 asks for metal axes: the copper one is behind a door, the wooden one isn't metal
+    assert why == {"unreachable": 1, "fillable": 5}, why
+    assert w.ranged == 2, w.ranged
+    det = [w.detail[i] for i in range(1, len(w.detail) + 1)]
+    assert "squad 7 place 1 wants ITEM_WEAPON_AXE_BATTLE WeaponMelee: unreachable" in det, det
+    assert "squad 8 place 1 wants any ranged: fillable" in det, det
+    # the copper and wooden axes someone's own: axe 45 is the best left, stale
+    # on soldier 103's list (each gap takes the furthest any item got)
+    lua.execute('''local env = ...
+        local W = env.df.global.world.items.other.WEAPON
+        W[0].flags = {owned = true}; W[1].flags = {owned = true}''', env)
+    why = dict(env.gaps_why("weapon", "WEAPON").why)
+    assert why == {"stale on a soldier's list": 4, "fillable": 2}, why
+
+
+@test("0.105.0: fix_gear_gaps clears a stale claim, adds shields to the AI's metal melee uniform, hands weapons out")
+def _():
+    lua, n, env, eq, sq7, sq8 = army()
+    d = env.fix_gear_gaps(True, True)
+    assert d.ok and d.dry_run and d.stale == 1 and d.shields_added == 4, dict(d)
+    assert n(sq7.positions[3].equipment.assigned_items) == 1                      # a dry run changes nothing
+    r = env.fix_gear_gaps(False, True)
+    assert r.ok and r.stale == 1 and r.shields_added == 4 and r.weapons >= 1, dict(r)
+    seq = lambda v: [v[i] for i in range(n(v))]
+    assert seq(sq7.positions[3].equipment.assigned_items) == []                  # the stale 45 cleared off 103
+    assert seq(sq7.positions[0].equipment.uniform[2][0].assigned) == [45]         # and handed out again
+    assert seq(sq7.positions[1].equipment.uniform[2][0].assigned) == []           # metal only: none it can reach
+    assert seq(sq8.positions[0].equipment.uniform[2][0].assigned) == [44]
+    assert all(n(sq7.positions[i].equipment.uniform[1]) == 1 for i in range(4))    # a shield entry each
+    assert n(sq8.positions[0].equipment.uniform[1]) == 0                          # never the crossbow squad
+    assert eq.update.weapon and eq.update.shield
+    # the pick never goes to 'any melee'
+    assigned = [sq7.positions[0].equipment.uniform[2][0].assigned[i]
+                for i in range(n(sq7.positions[0].equipment.uniform[2][0].assigned))]
+    assert 43 not in assigned, assigned
+
+
+@test("0.105.0: quivers: each crossbow place gets a free one (its quiver field), DF told to look again")
+def _():
+    lua, n, env, eq, sq7, sq8 = army()
+    rep = env.quiver_report()
+    assert (rep.ranged_places, rep.quivers_assigned, rep.quivers_free) == (2, 0, 2), dict(rep)
+    d = env.assign_quivers(True, 10)
+    assert d.ok and d.would_assign == 2 and sq8.positions[0].equipment.quiver == -1
+    r = env.assign_quivers(False, 10)
+    assert r.ok and r.assigned == 2, dict(r)
+    assert {sq8.positions[0].equipment.quiver, sq8.positions[1].equipment.quiver} == {81, 82}
+    assert sq7.positions[0].equipment.quiver == -1                    # melee soldiers get none
+    assert sq8.ammo.update.quiver and eq.update.quiver
+    again = env.assign_quivers(False, 10)
+    assert not again.ok and again.rejected
+
+
+@test("0.105.0: bolts: a crossbow squad without an ammunition entry gets one; a melee squad never")
+def _():
+    lua, n, env, eq, sq7, sq8 = army()
+    lua.execute("""local env = ...
+        env.df.squad_ammo_spec = {new = function() return {flags = {}, assigned = {}, delete = function() end} end}
+        env.df.item_type.AMMO = 38
+        env.df.global.world.raws.itemdefs.ammo = {{id = 'ITEM_AMMO_BOLTS', subtype = 0}}
+        env.fort_squad = function(id) return env.df.squad.find(id) end""", env)
+    assert env.squad_ammo(sq7) is None
+    a = env.squad_ammo(sq8)
+    assert a.specs == 0 and a.wanted == 0, dict(a)
+    assert env.squad_bolts(7, False).rejected
+    r = env.squad_bolts(8, False)
+    assert r.ok and r.bolts == 100 and n(sq8.ammo.ammunition) == 1, dict(r)
+    assert env.squad_bolts(8, False).rejected                         # set already
+
+
+@test("0.105.0: shelter: the squad holds the civilian alert's burrow; counts as the AI's order; the player's kept")
+def _():
+    lua, n, env, eq, sq7, sq8 = army()
+    lua.execute("""local env, sq8 = ...
+        env.fort_squad = function(id) return env.df.squad.find(id) end
+        sq8.orders:insert('#', setmetatable({title = 'the player'}, {__index = {delete = function() end}}))""", env, sq8)
+    r = env.shelter(7, False)
+    assert r.ok and r.burrows == 1 and n(sq7.orders) == 1 and sq7.orders[0].burrows[0] == 5, dict(r)
+    assert env.is_shelter_order(sq7.orders[0]) is True
+    assert env.shelter(7, False).rejected                              # in already
+    assert env.shelter(8, False).rejected and n(sq8.orders) == 1      # the player's order kept
+    c = env.orders(7, None, True)
+    assert c.ok and c.cleared == 1 and n(sq7.orders) == 0             # the recall clears it
+    lua.execute("local env = ... env.df.global.plotinfo.alerts.list[1].burrows = {}", env)
+    assert env.shelter(7, False).rejected                              # no shelter burrow
+
+
 if __name__ == "__main__":
     for name, ok, msg in RESULTS:
         print(f"[{'PASS' if ok else 'FAIL'}] {name}" + (f"\n        {msg}" if msg else ""))

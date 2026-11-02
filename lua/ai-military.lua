@@ -90,9 +90,37 @@ local function guard_burrow_id()
     return nil
 end
 
+-- (0.105.0) The shelter: when the AI hides from a great danger the squads
+-- hold the civilian alert's burrow with the civilians (shelter(), at the end
+-- of this file). The burrows are read, never made (DFHack's civ-alert script
+-- makes the alert entries when it is missing them).
+function shelter_burrow_ids()
+    local out = {}
+    pcall(function()
+        local l = df.global.plotinfo.alerts.list
+        if #l >= 2 then
+            for _, id in ipairs(l[1].burrows) do out[id] = true end
+        end
+    end)
+    return out
+end
+
+-- a defend order on the shelter burrows only (the AI's: a player's defend
+-- order names other burrows, or one of them beside the gate guard's)
+function is_shelter_order(o)
+    local ok, yes = pcall(function()
+        if not df.squad_order_defend_burrowsst:is_instance(o) or #o.burrows == 0 then return false end
+        local sh = shelter_burrow_ids()
+        for _, id in ipairs(o.burrows) do if not sh[id] then return false end end
+        return true
+    end)
+    return ok and yes == true
+end
+
 local function is_ai_order(o)
     local ok, title = pcall(function() return o.title end)
     if ok and title == AI_ORDER_TITLE then return true end
+    if is_shelter_order(o) then return true end      -- (0.105.0)
     -- (0.104.83) a defend order has no title: the AI's names only the gate guard burrow
     local okd, mine = pcall(function()
         if not df.squad_order_defend_burrowsst:is_instance(o) then return false end
@@ -183,7 +211,7 @@ function report(txt)
                     if pos.occupant ~= -1 then members = members + 1 end
                 end
                 local ai_orders, guarding = 0, false
-                local kill_ids = nil
+                local kill_ids, sheltering = nil, nil
                 for _, o in ipairs(sq.orders) do
                     if is_ai_order(o) then
                         ai_orders = ai_orders + 1
@@ -198,6 +226,8 @@ function report(txt)
                         -- (0.104.83) holding the gate (a defend order) rather than out to kill
                         local okg, g = pcall(function() return df.squad_order_defend_burrowsst:is_instance(o) end)
                         if okg and g then guarding = true end
+                        -- (0.105.0) in the shelter with the civilians (the AI hides)
+                        if is_shelter_order(o) then sheltering = true end
                     end
                 end
                 local ok, idx = pcall(function() return sq.cur_routine_idx end)
@@ -207,6 +237,9 @@ function report(txt)
                     leader = #sq.positions > 0 and sq.positions[0].occupant ~= -1,
                     routine = ok and routines[idx + 1] or nil,
                     orders = #sq.orders, ai_orders = ai_orders, guarding = guarding or nil, kill_ids = kill_ids,
+                    sheltering = sheltering,         -- (0.105.0)
+                    -- (0.105.0) a crossbow squad's bolts: entries, wanted, assigned
+                    ammo = (function() local oka, a = pcall(squad_ammo, sq) return oka and a or nil end)(),
                     uniform = #sq.positions > 0 and uniform_set(sq.positions[0]) or false,
                     ai_uniform = ai_uniform_names(txt)[tostring(sid)],
                     power = (function() local okp, p = pcall(squad_power, sq) return okp and p or nil end)(),
@@ -1582,6 +1615,60 @@ function fix_weapon_colours(dry_run)
     return n
 end
 
+-- (0.105.0) Does a weapon fit a uniform's weapon entry? ok, or false and why
+-- ('kind', 'melee', 'ranged', 'pick', 'material'). "Any weapon" (subtype -1)
+-- reads the entry's individual choice: melee or ranged (a crossbow has ranged
+-- ammo in its definition); a miner's pick only when the entry names picks.
+-- The material: a named one (mattype/matindex), or a class: the metal classes
+-- want metal, Wood wants wood. Unread fields pass (the game then decides).
+-- (WeaponRanged is "metal.ranged": a crossbow entry asking for it takes no
+-- wooden crossbow; DF's own crossbow templates ask for any material, -1)
+local METAL_CLASSES = {WeaponMelee = true, WeaponRanged = true, Pick = true, Armor = true}
+function weapon_def(it)
+    local ok, def = pcall(function() return it.subtype end)
+    if ok and def then return def end
+    local ok2, d2 = pcall(function() return dfhack.items.getSubtypeDef(df.item_type.WEAPON, it:getSubtype()) end)
+    return ok2 and d2 or nil
+end
+
+function weapon_is_ranged(def)
+    local ok, ammo = pcall(function() return def.ranged_ammo end)
+    return ok and type(ammo) == 'string' and ammo ~= ''
+end
+
+function weapon_fits(spec, it)
+    local sub = it:getSubtype()
+    if spec.item_subtype ~= -1 then
+        if sub ~= spec.item_subtype then return false, 'kind' end
+    else
+        local def = weapon_def(it)
+        local id = def and def.id
+        if id == 'ITEM_WEAPON_PICK' then return false, 'pick' end
+        local okc, choice = pcall(function() return spec.indiv_choice end)
+        if okc and choice and def then
+            local r = weapon_is_ranged(def)
+            if choice.ranged and not choice.melee and not r then return false, 'ranged' end
+            if choice.melee and not choice.ranged and r then return false, 'melee' end
+        end
+    end
+    local okm, mt, mi = pcall(function() return spec.mattype, spec.matindex end)
+    if okm and mt ~= nil and mt ~= -1 then
+        if it:getMaterial() ~= mt or (mi ~= -1 and it:getMaterialIndex() ~= mi) then return false, 'material' end
+    end
+    local okk, cls = pcall(function() return df.entity_material_category[spec.material_class] end)
+    if okk and cls then
+        if METAL_CLASSES[cls] and metal_token(it) == nil then return false, 'material' end
+        if cls == 'Wood' then
+            local okw, wood = pcall(function()
+                local m = dfhack.matinfo.decode(it)
+                return m and m.material and m.material.flags.WOOD
+            end)
+            if okw and wood == false then return false, 'material' end
+        end
+    end
+    return true
+end
+
 function assign_weapons(dry_run, limit)
     local eq = equipment_lists()
     if not eq then return {ok = false, rejected = true, error = "this DF keeps its equipment lists elsewhere"} end
@@ -1618,7 +1705,9 @@ function assign_weapons(dry_run, limit)
                     if done >= limit then break end
                     local upos, best, bd = xyz2pos(ux, uy, uz), nil, nil
                     for i, c in ipairs(pool) do
-                        if (spec.item_subtype == -1 or c.sub == spec.item_subtype) then
+                        -- (0.105.0) the entry's own ask: its kind, melee or ranged
+                        -- for "any", never a miner's pick for "any", its material
+                        if weapon_fits(spec, c.it) then
                             local d = math.abs(c.pos.x - ux) + math.abs(c.pos.y - uy) + 3 * math.abs(c.pos.z - uz)
                             if (not bd or d < bd) and dfhack.maps.canWalkBetween(upos, c.pos) then best, bd = i, d end
                         end
@@ -1816,6 +1905,8 @@ function gear_report()
             out.weapon_gaps_fillable = (r and r.would_assign) or 0
         end)
     end
+    -- (0.105.0) why each empty entry stays empty, the shields, the quivers
+    pcall(army_gear, out)
     return out
 end
 
@@ -2191,4 +2282,477 @@ function probe_squads(txt)
         if #out > 0 then out[1].lists = res else table.insert(out, {lists = res}) end
     end)
     return out
+end
+
+-- ===========================================================================
+-- (0.105.0) Round 2, an army that can fight: why a soldier's weapon (or
+-- shield) entry stays empty, the fixes, quivers, bolts, and the shelter.
+--
+-- Teacheroar, 1 Nov: 39 soldiers, 23 armed, 16 weapon places empty and "0
+-- fillable" while 8 battle axes lay spare; nobody had a shield with 4 spare;
+-- the crossbow squad had no quivers. Each empty entry is now judged against
+-- every item of its kind, and the reason the best one fails is reported
+-- (weapon_gaps_why), so the cause is seen, not guessed.
+-- ===========================================================================
+
+-- the stages an item passes on its way to an empty entry, in order; a gap's
+-- reason is the furthest stage any item reached
+GAP_STAGES = {'none of its kind', 'wrong material', 'held, owned or a tool', "another soldier's",
+              "stale on a soldier's list", 'not on the free list', 'forbidden, dumped or to melt', 'in a job',
+              'unreachable', 'fillable'}
+
+-- an entry of any other kind (a shield): its kind and material
+local function item_fits(spec, it, is_weapon)
+    if is_weapon then return weapon_fits(spec, it) end
+    if spec.item_subtype ~= -1 and it:getSubtype() ~= spec.item_subtype then return false, 'kind' end
+    local okm, mt, mi = pcall(function() return spec.mattype, spec.matindex end)
+    if okm and mt ~= nil and mt ~= -1 then
+        if it:getMaterial() ~= mt or (mi ~= -1 and it:getMaterialIndex() ~= mi) then return false, 'material' end
+    end
+    local okk, cls = pcall(function() return df.entity_material_category[spec.material_class] end)
+    if okk and cls == 'Armor' and metal_token(it) == nil then return false, 'material' end
+    return true
+end
+
+-- who claims what: an entry's own assigned list, or only a place's list
+local function claim_map()
+    local entry, place = {}, {}
+    for _, sq in ipairs(df.global.world.squads.all) do
+        for _, pos in ipairs(sq.positions) do
+            local mine = {}
+            pcall(function()
+                for cat = 0, df.uniform_category._last_item do
+                    for _, spec in ipairs(pos.equipment.uniform[cat]) do
+                        for _, iid in ipairs(spec.assigned) do entry[iid] = true; mine[iid] = true end
+                    end
+                end
+            end)
+            pcall(function()
+                for _, iid in ipairs(pos.equipment.assigned_items) do
+                    if not mine[iid] then place[iid] = true end
+                end
+            end)
+        end
+    end
+    return entry, place
+end
+
+local function spec_text(spec)
+    local what = '?'
+    pcall(function()
+        if spec.item_subtype == -1 then
+            local c = spec.indiv_choice
+            what = (c and c.ranged and not c.melee) and 'any ranged' or (c and c.melee) and 'any melee' or 'any'
+        else
+            local def = dfhack.items.getSubtypeDef(spec.item_type, spec.item_subtype)
+            what = def and def.id or tostring(spec.item_subtype)
+        end
+    end)
+    pcall(function()
+        local cls = df.entity_material_category[spec.material_class]
+        if cls and cls ~= 'None' then what = what .. ' ' .. cls end
+        if spec.mattype ~= -1 then what = what .. ' mat ' .. spec.mattype .. ':' .. spec.matindex end
+    end)
+    return what
+end
+
+local function is_ranged_spec(spec, is_weapon)
+    if not is_weapon then return false end
+    local r = false
+    pcall(function()
+        if spec.item_subtype ~= -1 then
+            local def = dfhack.items.getSubtypeDef(spec.item_type, spec.item_subtype)
+            r = def ~= nil and weapon_is_ranged(def)
+        else
+            r = spec.indiv_choice.ranged and not spec.indiv_choice.melee
+        end
+    end)
+    return r == true
+end
+
+-- How far one item gets toward the entry (a stage number, GAP_STAGES).
+local function item_stage(spec, it, is_weapon, ctx, upos)
+    local ok, why = item_fits(spec, it, is_weapon)
+    if not ok then return why == 'material' and 2 or 1 end
+    if not free_gear(it, ctx.work) then return 3 end
+    if ctx.entry[it.id] then return 4 end
+    if ctx.place[it.id] then return 5 end
+    if not ctx.una[it.id] then return 6 end
+    local f = it.flags
+    if f.forbid or f.dump or f.melt then return 7 end
+    if f.in_job then return 8 end
+    if upos then
+        local x, y, z = dfhack.items.getPosition(it)
+        local okw, walk = pcall(function() return x ~= nil and dfhack.maps.canWalkBetween(upos, xyz2pos(x, y, z)) end)
+        if okw and not walk then return 9 end
+    end
+    return 10
+end
+
+-- The reasons for one kind of entry ('weapon' or 'shield'): {why = {reason
+-- = n}, detail = {...}, wanted = {item id = n}, ranged = n, entries = n,
+-- given = n, places = n, no_entry = n}.
+function gaps_why(cat_name, list_name)
+    local out = {why = {}, detail = {}, wanted = {}, ranged = 0, entries = 0, given = 0, places = 0, no_entry = 0}
+    local fort = fort_entity()
+    local eq = equipment_lists()
+    if not fort or not eq then return out end
+    local is_weapon = cat_name == 'weapon'
+    local cat = df.uniform_category[cat_name]
+    local entry, place = claim_map()
+    local ctx = {entry = entry, place = place, work = id_set(eq.work_weapons), una = id_set(eq.items_unassigned[list_name])}
+    local items = df.global.world.items.other[list_name]
+    for _, sid in ipairs(fort.squads) do
+        local sq = df.squad.find(sid)
+        for pi, pos in ipairs(sq and sq.positions or {}) do
+            if pos.occupant ~= -1 then
+                out.places = out.places + 1
+                local specs = {}
+                pcall(function() for _, s in ipairs(pos.equipment.uniform[cat]) do table.insert(specs, s) end end)
+                if #specs == 0 then out.no_entry = out.no_entry + 1 end
+                local hf = df.historical_figure.find(pos.occupant)
+                local u = hf and df.unit.find(hf.unit_id)
+                local upos
+                if u then
+                    local x, y, z = dfhack.units.getPosition(u)
+                    if x then upos = xyz2pos(x, y, z) end
+                end
+                for _, spec in ipairs(specs) do
+                    out.entries = out.entries + 1
+                    if #spec.assigned > 0 then
+                        out.given = out.given + 1
+                    else
+                        local best = 0
+                        if upos then
+                            for _, it in ipairs(items) do
+                                local st = item_stage(spec, it, is_weapon, ctx, upos)
+                                if st > best then best = st end
+                                if best == #GAP_STAGES then break end
+                            end
+                            best = math.max(best, 1)
+                        end
+                        local why = best == 0 and 'no soldier on the map' or GAP_STAGES[best]
+                        out.why[why] = (out.why[why] or 0) + 1
+                        if is_ranged_spec(spec, is_weapon) then out.ranged = out.ranged + 1 end
+                        if best == 1 and spec.item_subtype ~= -1 then
+                            local okd, def = pcall(dfhack.items.getSubtypeDef, spec.item_type, spec.item_subtype)
+                            local id = okd and def and def.id or tostring(spec.item_subtype)
+                            out.wanted[id] = (out.wanted[id] or 0) + 1
+                        end
+                        if #out.detail < 6 then
+                            table.insert(out.detail, ('squad %d place %d wants %s: %s'):format(sid, pi, spec_text(spec), why))
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return out
+end
+
+-- Quivers: each place with a ranged weapon entry and its quiver (the place's
+-- own `quiver` field, df-structures squad_position_equipmentst), and the
+-- free ones. {ranged_places, quivers_assigned, quivers_carried, quivers_free}
+local function ranged_place(pos)
+    local r = false
+    pcall(function()
+        for _, spec in ipairs(pos.equipment.uniform[df.uniform_category.weapon]) do
+            if is_ranged_spec(spec, true) then r = true end
+        end
+    end)
+    return r
+end
+
+local function quiver_claims()
+    local c = {}
+    for _, sq in ipairs(df.global.world.squads.all) do
+        for _, pos in ipairs(sq.positions) do
+            pcall(function() if pos.equipment.quiver ~= -1 then c[pos.equipment.quiver] = true end end)
+        end
+    end
+    return c
+end
+
+local function free_quivers(claimed)
+    local out = {}
+    pcall(function()
+        for _, it in ipairs(df.global.world.items.other.QUIVER) do
+            local f = it.flags
+            if not (claimed[it.id] or f.forbid or f.owned or f.trader or f.removed or f.garbage_collect
+                    or f.dump or f.hostile or f.in_job or f.construction or f.in_inventory) then
+                table.insert(out, it)
+            end
+        end
+    end)
+    return out
+end
+
+function quiver_report()
+    local out = {ranged_places = 0, quivers_assigned = 0, quivers_carried = 0, quivers_free = 0}
+    local fort = fort_entity()
+    if not fort then return out end
+    for _, sid in ipairs(fort.squads) do
+        local sq = df.squad.find(sid)
+        for _, pos in ipairs(sq and sq.positions or {}) do
+            if pos.occupant ~= -1 and ranged_place(pos) then
+                out.ranged_places = out.ranged_places + 1
+                local okq, qid = pcall(function() return pos.equipment.quiver end)
+                if okq and qid ~= nil and qid ~= -1 then
+                    out.quivers_assigned = out.quivers_assigned + 1
+                    pcall(function()
+                        local it = df.item.find(qid)
+                        local u = it and dfhack.items.getHolderUnit(it)
+                        local hf = df.historical_figure.find(pos.occupant)
+                        if u and hf and u.id == hf.unit_id then out.quivers_carried = out.quivers_carried + 1 end
+                    end)
+                end
+            end
+        end
+    end
+    out.quivers_free = #free_quivers(quiver_claims())
+    return out
+end
+
+-- Give each crossbow soldier without one a free quiver: the place's quiver
+-- field, and DF told to look at quivers again (its own update flags).
+function assign_quivers(dry_run, limit)
+    local fort = fort_entity()
+    if not fort then return {ok = false, rejected = true, error = 'no fort'} end
+    limit = limit or 10
+    local pool = free_quivers(quiver_claims())
+    local n, squads = 0, {}
+    for _, sid in ipairs(fort.squads) do
+        local sq = df.squad.find(sid)
+        for _, pos in ipairs(sq and sq.positions or {}) do
+            if n >= limit or #pool == 0 then break end
+            local okq, qid = pcall(function() return pos.equipment.quiver end)
+            if pos.occupant ~= -1 and okq and qid == -1 and ranged_place(pos) then
+                local it = table.remove(pool, 1)
+                if not dry_run then
+                    pos.equipment.quiver = it.id
+                    squads[sid] = true
+                end
+                n = n + 1
+            end
+        end
+    end
+    if n == 0 then
+        return {ok = false, rejected = true, error = #pool == 0 and 'no free quiver' or 'every crossbow soldier has a quiver'}
+    end
+    if dry_run then return {ok = true, dry_run = true, would_assign = n} end
+    for sid in pairs(squads) do
+        pcall(function() df.squad.find(sid).ammo.update.quiver = true end)
+    end
+    pcall(function() df.global.plotinfo.equipment.update.quiver = true end)
+    return {ok = true, assigned = n, left = #pool}
+end
+
+-- A crossbow squad's bolts: its ammunition entries, the bolts wanted and
+-- those DF has assigned. nil for a squad that doesn't shoot.
+function squad_ammo(sq)
+    local shoots = false
+    for _, pos in ipairs(sq.positions) do
+        if ranged_place(pos) then shoots = true break end
+    end
+    if not shoots then return nil end
+    local out = {specs = 0, wanted = 0, assigned = 0, items = 0}
+    pcall(function()
+        for _, a in ipairs(sq.ammo.ammunition) do
+            out.specs = out.specs + 1
+            out.wanted = out.wanted + (a.amount or 0)
+            out.assigned = out.assigned + #a.assigned
+        end
+        out.items = #sq.ammo.ammo_items
+    end)
+    return out
+end
+
+-- Bolts for a crossbow squad with no ammunition entry (a uniform the player
+-- or an older AI set): one entry, BOLTS_PER_SOLDIER each.
+function squad_bolts(squad_id, dry_run)
+    local sq = fort_squad(squad_id)
+    if not sq then return {ok = false, rejected = true, error = 'no such squad in this fort'} end
+    local a = squad_ammo(sq)
+    if not a then return {ok = false, rejected = true, error = 'the squad has no crossbows'} end
+    if a.specs > 0 then return {ok = false, rejected = true, error = 'the squad already has bolts set'} end
+    local n = BOLTS_PER_SOLDIER * math.max(1, #sq.positions)
+    if dry_run then return {ok = true, dry_run = true, bolts = n} end
+    local ok, err = set_bolts(sq, n)
+    if not ok then return {ok = false, error = tostring(err)} end
+    return {ok = true, bolts = n}
+end
+
+-- Fixes for what the why report finds:
+--  * a soldier's place still listing an item that is back on the free list
+--    (DF took it off the entry: "off the entry, still on the place" in the
+--    0.104.80 ledger): the stale id is taken off the place;
+--  * a weapon entry of a uniform the AI set asking for a material no free
+--    weapon of its kind has: loosened to any material;
+--  * a metal melee uniform the AI set with no shield entry, while shields
+--    lie spare: a shield entry (any shield) on each place;
+-- then the weapons are handed out (assign_weapons).
+local function stale_places(dry_run)
+    local eq = equipment_lists()
+    if not eq then return 0 end
+    local una = {}
+    for _, k in ipairs({'WEAPON', 'SHIELD'}) do
+        for id in pairs(id_set(eq.items_unassigned[k])) do una[id] = true end
+    end
+    local n = 0
+    for _, sq in ipairs(df.global.world.squads.all) do
+        for _, pos in ipairs(sq.positions) do
+            pcall(function()
+                local mine = {}
+                for cat = 0, df.uniform_category._last_item do
+                    for _, spec in ipairs(pos.equipment.uniform[cat]) do
+                        for _, iid in ipairs(spec.assigned) do mine[iid] = true end
+                    end
+                end
+                local v = pos.equipment.assigned_items
+                for i = #v - 1, 0, -1 do
+                    local id = v[i]
+                    if una[id] and not mine[id] then
+                        if not dry_run then v:erase(i) end
+                        n = n + 1
+                    end
+                end
+            end)
+        end
+    end
+    return n
+end
+
+local function loosen_material(dry_run)
+    local fort = fort_entity()
+    local eq = equipment_lists()
+    if not fort or not eq then return 0 end
+    local mine = ai_uniforms()
+    local entry, place = claim_map()
+    local ctx = {entry = entry, place = place, work = id_set(eq.work_weapons), una = id_set(eq.items_unassigned.WEAPON)}
+    local n = 0
+    for _, sid in ipairs(fort.squads) do
+        local sq = df.squad.find(sid)
+        if sq and mine[tostring(sid)] then
+            for _, pos in ipairs(sq.positions) do
+                pcall(function()
+                    for _, spec in ipairs(pos.equipment.uniform[df.uniform_category.weapon]) do
+                        if #spec.assigned == 0 and (spec.material_class ~= -1 or spec.mattype ~= -1) then
+                            -- only when some item of its kind fails on the material alone
+                            local best = 0
+                            for _, it in ipairs(df.global.world.items.other.WEAPON) do
+                                local st = item_stage(spec, it, true, ctx, nil)
+                                if st > best then best = st end
+                            end
+                            if best == 2 then
+                                if not dry_run then
+                                    spec.material_class, spec.mattype, spec.matindex = -1, -1, -1
+                                end
+                                n = n + 1
+                            end
+                        end
+                    end
+                end)
+            end
+        end
+    end
+    return n
+end
+
+local function add_shields(dry_run)
+    local fort = fort_entity()
+    if not fort then return 0 end
+    local mine = ai_uniforms()
+    local n = 0
+    for _, sid in ipairs(fort.squads) do
+        local sq = df.squad.find(sid)
+        local name = mine[tostring(sid)]
+        if sq and tostring(name or ''):lower():find('metal', 1, true) and not squad_is_ranged(sq, name) then
+            for _, pos in ipairs(sq.positions) do
+                pcall(function()
+                    local v = pos.equipment.uniform[df.uniform_category.shield]
+                    if #v == 0 then
+                        if not dry_run then
+                            local spec = df.squad_uniform_spec:new()
+                            spec.item = -1
+                            spec.item_type = df.item_type.SHIELD
+                            spec.item_subtype = -1
+                            spec.material_class, spec.mattype, spec.matindex = -1, -1, -1
+                            pcall(function() spec.color = -1 end)
+                            v:insert('#', spec)
+                        end
+                        n = n + 1
+                    end
+                end)
+            end
+        end
+    end
+    return n
+end
+
+function fix_gear_gaps(dry_run, shields)
+    local out = {stale = stale_places(dry_run), loosened = loosen_material(dry_run),
+                 shields_added = shields and add_shields(dry_run) or 0}
+    if not dry_run and out.stale + out.loosened + out.shields_added > 0 then
+        for _, f in ipairs({'weapon', 'shield'}) do
+            pcall(function() df.global.plotinfo.equipment.update[f] = true end)
+        end
+    end
+    local okw, w = pcall(assign_weapons, dry_run, 10)
+    out.weapons = okw and type(w) == 'table' and (w.assigned or w.would_assign) or 0
+    if out.stale + out.loosened + out.shields_added + out.weapons == 0 then
+        return {ok = false, rejected = true, error = 'nothing to fix (see the report\'s weapon_gaps_why)'}
+    end
+    out.ok, out.dry_run = true, dry_run or nil
+    return out
+end
+
+-- The shelter: the squad holds the civilian alert's burrow(s), the AI's
+-- orders on it replaced (a squad on the player's orders: refused).
+function shelter(squad_id, dry_run)
+    local sq = fort_squad(squad_id)
+    if not sq then return {ok = false, rejected = true, error = 'no such squad in this fort'} end
+    local ids = {}
+    for id in pairs(shelter_burrow_ids()) do table.insert(ids, id) end
+    table.sort(ids)
+    if #ids == 0 then return {ok = false, rejected = true, error = 'no civilian-alert burrow to shelter in'} end
+    for _, o in ipairs(sq.orders) do
+        if not is_ai_order(o) then return {ok = false, rejected = true, error = 'the squad is on your orders'} end
+        if is_shelter_order(o) then return {ok = false, rejected = true, error = 'the squad is in the shelter already'} end
+    end
+    if dry_run then return {ok = true, dry_run = true, burrows = #ids} end
+    local removed = 0
+    for i = #sq.orders - 1, 0, -1 do
+        local o = sq.orders[i]
+        sq.orders:erase(i)
+        pcall(function() o:delete() end)
+        removed = removed + 1
+    end
+    local o = df.squad_order_defend_burrowsst:new()
+    for _, id in ipairs(ids) do o.burrows:insert('#', id) end
+    pcall(function() o.year = df.global.cur_year; o.year_tick = df.global.cur_year_tick end)
+    sq.orders:insert('#', o)
+    return {ok = true, burrows = #ids, replaced = removed}
+end
+
+-- For gear_report: the why of the gaps, the shields, the quivers.
+function army_gear(out)
+    local okw, w = pcall(gaps_why, 'weapon', 'WEAPON')
+    if okw and w then
+        if next(w.why) then
+            out.weapon_gaps_why, out.weapon_gaps_detail = w.why, w.detail
+            out.weapon_gaps_ranged = w.ranged
+            if next(w.wanted) then out.weapon_gaps_wanted = w.wanted end
+        end
+    else
+        out.weapon_gaps_why = {error = tostring(w):sub(1, 120)}
+    end
+    local oks, sh = pcall(gaps_why, 'shield', 'SHIELD')
+    if oks and sh then
+        out.shields = {places = sh.places, no_entry = sh.no_entry, entries = sh.entries, given = sh.given,
+                       why = next(sh.why) and sh.why or nil, detail = #sh.detail > 0 and sh.detail or nil}
+    end
+    local okq, q = pcall(quiver_report)
+    if okq and q then
+        for k, v in pairs(q) do out[k] = v end
+    end
 end
