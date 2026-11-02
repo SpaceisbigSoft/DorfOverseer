@@ -119,6 +119,11 @@ def fort_key(state: dict) -> str | None:
     f = state.get("fort")
     if not isinstance(f, dict) or "error" in f or not f.get("save_dir") or f.get("site_id") is None:
         return None
+    # (0.105.0) a scenario copy (marked with a run id in the save) logs apart
+    # from the real fort: "<save>@<run id>#<site>" (the site stays last)
+    run = f.get("run_id")
+    if isinstance(run, str) and run:
+        return f"{f['save_dir']}@{run}#{f['site_id']}"
     return f"{f['save_dir']}#{f['site_id']}"
 
 
@@ -532,6 +537,8 @@ def short(a: dict) -> str:
         return "map the fort's entrances"
     if t == "arm_gates":
         return "watch the gates (close when danger nears)"
+    if t == "mark_run":          # (0.105.0)
+        return f"mark this save as test run {a.get('run_id')}"
     if t == "open_gates":
         return "open the gates"
     if t == "found_fort":
@@ -725,6 +732,12 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
             WARNED.add(refused)
             say(refused)
         return
+    try:
+        import scenario_mark                       # (0.105.0) a scenario copy waiting for its run id
+        if scenario_mark.mark(bridge, state, say):
+            key = fort_key(state)
+    except Exception:  # noqa: BLE001
+        pass
     try:
         memstore.note_world(key, (state.get("fort") or {}).get("world"))
     except Exception:  # noqa: BLE001  (the logs folder's name never stops the fort)

@@ -194,7 +194,11 @@ def cmd_prepare(args) -> int:
         return 1
     say(f"Copying {src.name} to {dest} ...")
     shutil.copytree(src, dest)
-    say(f"Done. In Dwarf Fortress: Continue Playing -> {args.name}. Then run:\n"
+    # (0.105.0) a run id, written into the save the first time it's played:
+    # the copy logs apart from the real fort (brain/scenario_mark.py)
+    import scenario_mark
+    run_id = scenario_mark.new_run(args.name)
+    say(f"Done (run id {run_id}). In Dwarf Fortress: Continue Playing -> {args.name}. Then run:\n"
         f'  python brain\\scenario.py run --mode planner --days 84 --label "{args.name}"')
     return 0
 
@@ -257,6 +261,8 @@ def cmd_run(args) -> int:
 
     quiet_announcements(bridge)
     tap = EventTap(bridge)
+    import scenario_mark
+    scenario_mark.mark(bridge, state, say)                # (0.105.0) a prepared copy: its own logs
     key = overseer.fort_key(state)
     rows, fell, journal_pos = [], False, 0
     tokens_start = overseer.load(key)[1].total_used if key else 0

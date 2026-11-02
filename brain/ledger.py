@@ -62,7 +62,80 @@ def snapshot(memory) -> dict:
     culture = getattr(memory, "culture", None)
     built = culture.get("memorials_built") if isinstance(culture, dict) else None
     out["memorials_built"] = list(built)[-LIST_MAX:] if isinstance(built, list) else []
+    out.update(_extra_snapshot(memory))       # (0.105.0)
     return out
+
+
+# (0.105.0) What a reload lost besides: the day counts of the AI's own work
+# orders (stuck-order cancels and approvals started counting again), and the
+# atlas registry's gate, door and trap records (Python-only, in the memory
+# written once a game week: a gate built since was "new" again after a
+# reload, and its traps placed twice). Kept in the ledger, bounded.
+ORDER_WATCH_MAX = 40
+GATE_RECORDS_MAX = 40
+GATE_PREFIXES = ("gate:", "doors:", "traps:")
+ORDER_KEYS = ("left", "since", "worked", "by_ai", "what", "job")
+RECORD_KEYS = ("kind", "variant", "tick", "status", "changed", "elevation", "b", "count", "moved_in",
+               "doors_later", "pieces", "era")
+
+
+def _extra_snapshot(memory) -> dict:
+    ow = getattr(memory, "order_watch", None)
+    ow = ow if isinstance(ow, dict) else {}
+    # the AI's own orders only (the ones its rules count days on), newest kept
+    mine = {str(k): {f: w.get(f) for f in ORDER_KEYS if w.get(f) is not None}
+            for k, w in ow.items() if isinstance(w, dict) and w.get("by_ai")}
+    for w in mine.values():
+        if isinstance(w.get("what"), str):
+            w["what"] = w["what"][:60]
+    mine = dict(sorted(mine.items(), key=lambda kv: kv[1].get("since") or 0)[-ORDER_WATCH_MAX:])
+    atlas = getattr(memory, "atlas", None)
+    reg = atlas.get("registry") if isinstance(atlas, dict) and isinstance(atlas.get("registry"), dict) else {}
+    recs = {}
+    for rid, rec in reg.items():
+        if isinstance(rid, str) and rid.startswith(GATE_PREFIXES) and isinstance(rec, dict):
+            r = {f: rec[f] for f in RECORD_KEYS if rec.get(f) is not None}
+            if isinstance(r.get("pieces"), list):
+                r["pieces"] = r["pieces"][:12]
+            recs[rid] = r
+    recs = dict(sorted(recs.items(), key=lambda kv: kv[1].get("tick") or 0)[-GATE_RECORDS_MAX:])
+    return {"order_watch": mine, "gate_records": recs}
+
+
+def _extra_apply(memory, led: dict) -> None:
+    ow = led.get("order_watch")
+    if isinstance(ow, dict):
+        cur = getattr(memory, "order_watch", None)
+        cur = cur if isinstance(cur, dict) else {}
+        for k, w in ow.items():
+            if not isinstance(w, dict):
+                continue
+            had = cur.get(str(k))
+            # the save's count wins over a fresh one (the memory's copy may be a week older)
+            if not isinstance(had, dict) or not isinstance(had.get("since"), int) or \
+                    (isinstance(w.get("since"), int) and w["since"] <= had["since"]):
+                cur[str(k)] = dict(w)
+        memory.order_watch = cur
+    gr = led.get("gate_records")
+    if isinstance(gr, dict) and gr:
+        if not isinstance(getattr(memory, "atlas", None), dict):
+            memory.atlas = {}
+        reg = memory.atlas.setdefault("registry", {})
+        if not isinstance(reg, dict):
+            reg = memory.atlas["registry"] = {}
+        for rid, rec in gr.items():
+            if not isinstance(rec, dict) or not str(rid).startswith(GATE_PREFIXES):
+                continue
+            had = reg.get(rid)
+            if not isinstance(had, dict) or (rec.get("tick") or 0) >= (had.get("tick") or 0):
+                rec = dict(rec)
+                if isinstance(rec.get("b"), dict):          # (a Lua array that came back keyed)
+                    rec["b"] = _as([], rec["b"])
+                if isinstance(rec.get("pieces"), dict):
+                    rec["pieces"] = _as([], rec["pieces"])
+                if isinstance(had, dict) and had.get("pieces"):
+                    rec.pop("pieces", None)                 # (the memory's list is whole; the ledger's cut short)
+                reg[rid] = {**(had if isinstance(had, dict) else {}), **rec}
 
 
 def _as(default, v):
@@ -93,6 +166,7 @@ def apply(memory, ledger) -> bool:
         if not isinstance(getattr(memory, "culture", None), dict):
             memory.culture = {}
         memory.culture["memorials_built"] = _as([], ledger["memorials_built"])
+    _extra_apply(memory, ledger)              # (0.105.0)
     return True
 
 

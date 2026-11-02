@@ -6,6 +6,7 @@ kept in the save the moment it changes and read back over the memory.
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -105,6 +106,34 @@ def _():
     finally:
         memstore.load = real
         overseer.MEMORY_CACHE.clear()
+
+
+@test("(0.105.0) a reload keeps the AI's order day counts and its gate, door and trap records")
+def _():
+    m = Memory()
+    m.order_watch = {"12": {"left": 5, "since": 1000, "by_ai": True, "what": "cloth_bag", "job": "x"},
+                     "13": {"left": 2, "since": 900, "by_ai": False, "what": "player's"}}
+    m.atlas = {"registry": {"gate:5,5,0": {"kind": "gate", "variant": "plain", "tick": 500, "b": [5, 5, 5, 5, 0],
+                                           "pieces": [f"p{i}" for i in range(30)]},
+                            "traps:5,5,0": {"kind": "traps", "variant": "cage", "tick": 600, "count": 4},
+                            "project:3": {"kind": "bedrooms", "tick": 1}}}
+    snap = ledger.snapshot(m)
+    assert set(snap["order_watch"]) == {"12"}, snap["order_watch"]                 # the AI's own only
+    assert set(snap["gate_records"]) == {"gate:5,5,0", "traps:5,5,0"}, snap["gate_records"]
+    # an older memory (the week-old one in the save) with the counts restarted
+    m2 = Memory()
+    m2.order_watch = {"12": {"left": 5, "since": 4000, "by_ai": True, "what": "cloth_bag"}}
+    back = json.loads(json.dumps(snap))
+    back["gate_records"]["gate:5,5,0"]["b"] = {"1": 5, "2": 5, "3": 5, "4": 5, "5": 0}   # as Lua may send it
+    assert ledger.apply(m2, back)
+    assert m2.order_watch["12"]["since"] == 1000, m2.order_watch
+    reg = m2.atlas["registry"]
+    assert reg["traps:5,5,0"]["count"] == 4 and reg["gate:5,5,0"]["b"] == [5, 5, 5, 5, 0], reg
+    # bounded: 40 of each
+    m3 = Memory()
+    m3.order_watch = {str(i): {"left": 1, "since": i, "by_ai": True, "what": "x"} for i in range(100)}
+    s3 = ledger.snapshot(m3)
+    assert len(s3["order_watch"]) == ledger.ORDER_WATCH_MAX and "99" in s3["order_watch"]
 
 
 if __name__ == "__main__":

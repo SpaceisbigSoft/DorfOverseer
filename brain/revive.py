@@ -61,7 +61,7 @@ def write_last_fort(df_path: str | None, save_dir: str | None, fort: str | None,
             # takes the fort the overseer named since the keeper started
             os.utime(LAST_FORT, None)
             return
-        LAST_FORT.parent.mkdir(exist_ok=True)
+        LAST_FORT.parent.mkdir(parents=True, exist_ok=True)
         from dfhack import write_atomic
         write_atomic(LAST_FORT, json.dumps(data))   # (0.100) the reviver may be reading it
     except (OSError, ValueError):

@@ -51,7 +51,7 @@ def log(line: str) -> None:
     text = f"[{stamp()}] {line}"
     with LOCK:
         try:
-            LOG_DIR.mkdir(exist_ok=True)
+            LOG_DIR.mkdir(parents=True, exist_ok=True)   # (0.105.0) a first run: no logs folder yet
             if LOG.exists() and LOG.stat().st_size > LOG_MAX:
                 try:
                     # (0.100.1) five old copies (unattended.old.log, .old2 ... .old5):
@@ -290,7 +290,7 @@ def quick_edit_off() -> None:
 def single_instance():
     """An open, locked file while this keeper runs: a second keeper refuses
     (two autopilots on one fort would fight). Returns the file, or None."""
-    LOG_DIR.mkdir(exist_ok=True)
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
     f = open(LOG_DIR / "keeper.lock", "a+")
     try:
         if os.name == "nt":
