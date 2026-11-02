@@ -994,12 +994,31 @@ env.df = {global = {cur_year = 76, cur_year_tick = 1000, plotinfo = {burrows = {
           civzone_type = {[1] = 'Hospital', [2] = 'Bedroom'}, abstract_building_type = {[7] = 'HOSPITAL'},
           item_type = {[1] = 'DRINK', [2] = 'BARREL', [3] = 'FOOD'}, soldier_mood_type = {[1] = 'Enraged', [2] = 'Tantrum'},
           job_type = {Rest = 'Rest'},
+          tiletype = {attrs = setmetatable({}, {__index = function(_, tt) return {shape = tt.shape, material = tt.mat} end})},
+          tiletype_shape = setmetatable({}, {__index = function(_, k) return k end}),
+          tiletype_material = setmetatable({}, {__index = function(_, k) return k end}),
           unit = {find = function(id) return units[id] end}}
+env.df.civzone_type[3] = 'DiningHall'
 local function key(p) return p.x .. ',' .. p.y .. ',' .. p.z end
+-- (review) the store keeps copies, as DFHack's JSON does: what isn't saved is lost
+local function copy(v)
+    if type(v) ~= 'table' then return v end
+    local t = {}
+    for k, x in pairs(v) do t[k] = copy(x) end
+    return t
+end
+local shaft = {}                                   -- a well's shaft at x90 y3: z -> {shape, mat, flow}
 env.dfhack = {
-    persistent = {getSiteData = function(k, d) return persist[k] or d end, saveSiteData = function(k, v) persist[k] = v end},
+    persistent = {getSiteData = function(k, d) if persist[k] ~= nil then return copy(persist[k]) end return d end,
+                  saveSiteData = function(k, v) persist[k] = copy(v) end},
     world = {getCurrentSite = function() return site end},
-    maps = {getWalkableGroup = function(p) return p.z == 20 and 2 or 1 end},
+    maps = {getWalkableGroup = function(p) return p.z == 20 and 2 or 1 end,
+            getTileType = function(p)
+                local t = p.x == 90 and p.y == 3 and shaft[p.z]
+                return t and {shape = t.shape, mat = t.mat} or {shape = 'WALL', mat = 'STONE'} end,
+            getTileFlags = function(p)
+                local t = p.x == 90 and p.y == 3 and shaft[p.z]
+                return {flow_size = t and t.flow or 0, liquid_type = false} end},
     items = {getContainedItems = function(it) return it.inner or {} end},
     buildings = {containsTile = function() return true end, getStockpileContents = function(b) return b.contents end,
                  findAtTile = function() return nil end},
@@ -1021,7 +1040,7 @@ env.dfhack = {
              getReadableName = function(u) return 'dwarf ' .. u.id end}}
 assert(load(src, 'ai-society', 't', env))()
 local W = {units = units, all = all, rooms = rooms, drink = drink, drink2 = drink2, persist = persist, burrows = burrows,
-           cits = cits, g = env.df.global, item = item}
+           cits = cits, g = env.df.global, item = item, bld = bld, site = site, shaft = shaft}
 function W.calm() return persist['ai-overseer/calm-burrow'] or {members = {}} end
 function W.listed() local n = 0; for _ in pairs(W.calm().members or {}) do n = n + 1 end; return n end
 function W.room_of(id) local m = (W.calm().members or {})[tostring(id)]; return m and m.room end
@@ -1160,6 +1179,100 @@ def _():
     assert r.ok and len(_names(r.released)) == 3 and _calm_ids(w) == [], dict(r)
     assert all(w.nunits(b) == 0 and w.ntiles(b) == 0 for b in w.burrows.values())
     assert env.calm_burrow_tick(6, 3, False, None, True).unchanged
+
+
+@test("calm burrow (0.104.169, review): never a patient, the infected, one resting, lying down or unconscious, nor one in the hospital burrow; a member hurt while kept let out to the doctors")
+def _():
+    lua, env, w = calm_fresh()
+    lua.execute("""local W = ...
+      W.units[1].health.flags.needs_healthcare = true; W.units[1].health.flags.rq_suture = true   -- a patient
+      W.units[2].job.current_job = {job_type = 'Rest'}                                           -- bedridden
+      W.units[9].flags1 = {on_ground = true}                                                     -- can't walk
+    """, w)
+    r = env.calm_burrow_tick(6, 3, False)
+    assert r.unchanged and _calm_ids(w) == [], dict(r)
+    held = dict(env.calm_burrow_status().held)
+    assert (held.get("patient"), held.get("resting"), held.get("cannot walk")) == (1, 1, 1), held
+    lua, env, w = calm_fresh()
+    lua.execute("""local W = ...
+      W.units[1].counters.unconscious = 40
+      W.units[2].health.flags.needs_healthcare = true                                            -- infected only
+      W.persist['ai-overseer/hospital-burrow'] = {members = {['9'] = 1000}, out = {}, burrow_id = 77}
+      W.units[9].burrows = {77}
+    """, w)
+    r = env.calm_burrow_tick(6, 3, False)
+    assert r.unchanged and _calm_ids(w) == [], dict(r)
+    assert "9" in dict(w.persist["ai-overseer/hospital-burrow"].members)        # never taken out of it
+    assert dict(env.calm_burrow_status().held).get("hospital burrow") == 1
+    lua, env, w = calm_fresh()
+    env.calm_burrow_tick(6, 3, False)
+    w.units[2].health.flags.needs_healthcare = True                             # hurt in a fight while kept
+    s = env.calm_burrow_status()
+    assert _calm_ids(w) == [1, 9] and "dwarf 2 (needs care)" in _names(s.released_now), _names(s.released_now)
+
+
+@test("calm burrow (0.104.169, review): the drink: a quiet well first, then a quiet pile; a pile by a dining hall or the hospital is busy: only the 2 drink tiles nearest the room, never the whole pile")
+def _():
+    lua, env, w = calm_fresh()
+    # pile 83 (x75-78 y5, four barrels) inside a dining hall; pile 80 drunk dry
+    lua.execute("""local W = ...
+      W.drink2.x2 = 78
+      W.drink2.contents = {}
+      for x = 75, 78 do
+          local it = W.item(2, {W.item(1)}); it.pos = {x = x, y = 5, z = 10}
+          table.insert(W.drink2.contents, it)
+      end
+      table.insert(W.all, W.bld(60, 'Civzone', 73, 3, 79, 7, 10, {type = 3}))
+      W.drink.contents = {}
+    """, w)
+    env.calm_burrow_tick(6, 3, False)
+    b = w.burrow_of(9)                                                        # room 96 (x80-81 y0-1)
+    tiles = sorted(dict(b.tiles_).keys())
+    assert w.drink_of(9) == 83 and w.ntiles(b) == 4 + 2, tiles
+    assert "78,5,10" in tiles and "77,5,10" in tiles and "75,5,10" not in tiles, tiles
+    # a quiet pile beats the nearer busy one
+    lua, env, w = calm_fresh()
+    lua.execute("local W = ...; table.insert(W.all, W.bld(60, 'Civzone', 73, 3, 79, 7, 10, {type = 3}))", w)
+    env.calm_burrow_tick(6, 3, False)
+    assert w.drink_of(9) == 80, w.drink_of(9)                                # 83 by the dining hall: busy
+    # a pile within 15 tiles of the hospital is busy too; a working well first of all
+    lua, env, w = calm_fresh()
+    lua.execute("""local W = ...
+      W.drink.x1, W.drink.x2 = 8, 9                                           -- 6 tiles from the hospital zone
+      W.shaft[9] = {shape = 'EMPTY', mat = 'AIR', flow = 7}
+      table.insert(W.all, W.bld(85, 'Well', 90, 3, 90, 3, 10, {centerx = 90, centery = 3}))
+    """, w)
+    env.calm_burrow_tick(6, 3, False)
+    assert (w.drink_of(1), w.drink_of(2), w.drink_of(9)) == (85, 85, 85), (w.drink_of(1), w.drink_of(2), w.drink_of(9))
+    assert w.ntiles(w.burrow_of(1)) == 4 + 9
+    lua.execute("local W = ...; W.shaft[9] = nil", w)                          # the well runs dry
+    s = env.calm_burrow_status()
+    assert len(_names(s.released_now)) == 3 and all("no drink" in x for x in _names(s.released_now))
+
+
+@test("calm burrow (0.104.169, review): the member's own claim on the room is no taking; never a location's room (a tavern's guest room); the sightings saved between calls")
+def _():
+    lua, env, w = calm_fresh()
+    env.calm_burrow_tick(6, 3, False)
+    w.rooms[2].assigned_unit_id = 1                                           # dwarf 1 slept there: claimed it
+    env.calm_burrow_status()
+    assert _calm_ids(w) == [1, 2, 9]
+    lua, env, w = calm_fresh()
+    lua.execute("""local W = ...
+      local tav = {getType = function() return 4 end, occupations = {}}
+      tav.getContents = function() return {building_ids = {91}} end            -- room 91 is the tavern's
+      table.insert(W.site.buildings, tav)
+    """, w)
+    env.calm_burrow_tick(6, 3, False)
+    assert w.room_of(1) == 92 and 91 not in (w.room_of(2), w.room_of(9)), (w.room_of(1), w.room_of(2))
+    lua, env, w = calm_fresh()
+    env.calm_burrow_tick(6, 3, False)
+    w.day(0.5)
+    env.calm_burrow_status()
+    env.calm_burrow_status()
+    st = w.calm().stats
+    assert int(st.seen_in or 0) + int(st.seen_out or 0) == 6, dict(st)       # 3 members x 2 reports, kept
+    assert int(w.calm().members["1"].seen_out or 0) + int(w.calm().members["1"].seen_in or 0) == 2
 
 
 @test("recreation (0.104.169): a dwarf in a tantrum never joins, by the friends' places either")

@@ -318,6 +318,17 @@ def _():
     assert r.upgraded == 1 and owner_of(10) == -1 and owner_of(11) == 2, dict(r)    # 10 not given to dwarf 2
 
 
+@test("0.104.169 (review): a room an AI calm burrow holds (a dwarf in a tantrum kept there) is never given out")
+def _():
+    units = [{"id": 5, "cat": 0}]
+    zones = [{"id": 10, "items": [{"v": 5}]}, {"id": 11, "items": [{"v": 30}]}]
+    env, owner_of, _ = game(units, zones)
+    env["load"]("dfhack.persistent = {getSiteData = function(k, d) if k == 'ai-overseer/calm-burrow' then "
+                "return {members = {['7'] = {room = 11, burrow = 3}}} end return d end}", "p", "t", env)()
+    r = env.house(5, 0, False)
+    assert r.housed == 1 and owner_of(10) == 5 and owner_of(11) == -1, (dict(r), owner_of(10), owner_of(11))
+
+
 for name, ok, why in RESULTS:
     print(("[ ok ] " if ok else "[FAIL] ") + name + ("" if ok else "\n    " + why))
 passed = sum(1 for _, ok, _ in RESULTS if ok)
