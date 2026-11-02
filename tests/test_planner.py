@@ -3646,8 +3646,10 @@ def _():
         {"kind": "cavern", "nearest": {"d": 3, "x": 1, "y": 1, "z": 5}, "stagnant_share": 0},
         {"kind": "pool", "nearest": {"d": 16, "x": 2, "y": 2, "z": 5}, "stagnant_share": 100},
         {"kind": "surface", "nearest": {"d": 20, "x": 3, "y": 3, "z": 6}, "stagnant_share": 0}]}
+    s["others_on_map"]["threats"] = []                 # (0.105.7 review) cavern water only with no cavern danger
     w = by_rule(plan(s, Memory())[0], "water_zone")
-    assert w and [p["x"] for p in w[0].action["points"]] == [3, 2, 1] and w[0].priority == 1, w
+    # (0.105.7 review) the nearest first (fresh before stagnant), not surface first
+    assert w and [p["x"] for p in w[0].action["points"]] == [1, 3, 2] and w[0].priority == 1, w
     s["buildings"]["zones"]["WaterSource"] = 1
     assert not by_rule(plan(s, Memory())[0], "water_zone")
     s["buildings"]["zones"].pop("WaterSource")
@@ -9519,10 +9521,110 @@ def _():
     s = _fort_b()
     s["water"] = {"bodies": [{"kind": "cavern", "nearest": {"d": 30, "x": 133, "y": 130, "z": 5}, "stagnant_share": 0},
                              {"kind": "surface", "nearest": {"d": 60, "x": 3, "y": 3, "z": 40}, "stagnant_share": 0}]}
+    s["others_on_map"]["threats"] = []
     w = by_rule(plan(s, Memory())[0], "water_zone")
-    assert w and [p["x"] for p in w[0].action["points"]] == [3, 133] and "drink is short" in w[0].reason, w
+    assert w and [p["x"] for p in w[0].action["points"]] == [133, 3] and "drink is short" in w[0].reason, w
     s["stocks"]["drink"] = 200
     assert not by_rule(plan(s, Memory())[0], "water_zone")
+
+
+@test("farms review (0.105.7) MUST 1: no autofarm thresholds or autofarm switched on in a plan with farm_crops; record keeps \"crops\"")
+def _():
+    s = _fort_b()
+    s["supplies"] = {**(s.get("supplies") or {}), "brewable_plants": 0, "brewable_growths": 0}
+    s["tools"]["autofarm"] = False
+    m = Memory()
+    props = plan(copy.deepcopy(s), m)[0]
+    assert by_rule(props, "farm_crops"), rules(props)
+    assert not [p for p in props if p.action.get("type") == "farm_thresholds"], rules(props)
+    assert not [p for p in props if p.action.get("type") == "tool" and p.action.get("name") == "autofarm"], rules(props)
+    from planner import Proposal
+    th = Proposal("crops", {"type": "farm_thresholds", "thresholds": {"X": 300}, "steer": "drink"}, "", 2)
+    fc = Proposal("farm_crops", {"type": "set_farm_crops", "drink": True}, "", 1)
+    record([(fc, {"ok": True}), (th, {"ok": True})], s, m)
+    assert m.farm_steer == "crops", m.farm_steer
+    # owned: the thresholds rule stays quiet on later cycles too
+    m.last_fired.clear()
+    props = plan(copy.deepcopy(s), m)[0]
+    assert not [p for p in props if p.action.get("type") == "farm_thresholds"], rules(props)
+
+
+@test("farms review (0.105.7) SHOULD 2: autofarm back as the fallback (no plot list, only dead plots); the player's autofarm kept")
+def _():
+    s = _fort_b()
+    s["tools"]["autofarm"] = False
+    m = Memory(farm_steer="crops")
+    old = copy.deepcopy(s)
+    old["farms"].pop("plot_list")                       # an old bridge / a failed plot list
+    t = [p for p in by_rule(plan(old, m)[0], "tools") if p.action.get("name") == "autofarm"]
+    assert t and t[0].action["enabled"] is True, t
+    dead = copy.deepcopy(s)
+    for p in dead["farms"]["plot_list"]:
+        p["dead"] = True
+    assert [p for p in by_rule(plan(dead, m)[0], "tools") if p.action.get("name") == "autofarm"]
+    record([(t[0], {"ok": True, "enabled": True})], old, m)
+    assert m.farm_steer == ""                            # autofarm's again
+    # the player switches autofarm on while the AI owns the crops: theirs, said once
+    m = Memory(farm_steer="crops")
+    s["tools"]["autofarm"] = True
+    notes = note_cycle(copy.deepcopy(s), m)
+    assert m.farm_crops_player and any("autofarm was switched back on" in n for n in notes), notes
+    props = plan(copy.deepcopy(s), m)[0]
+    assert not by_rule(props, "farm_crops") and not [p for p in props if p.action.get("type") == "farm_thresholds"]
+    s["tools"]["autofarm"] = False                        # off again: the AI's crops resume
+    note_cycle(copy.deepcopy(s), m)
+    assert not m.farm_crops_player and m.farm_steer == "crops"
+
+
+@test("farms review (0.105.7) SHOULD 6: unknown drink isn't short (no priority 1); the dead-plot note once a season")
+def _():
+    s = _fort_b()
+    s["stocks"].pop("drink")
+    fc = by_rule(plan(copy.deepcopy(s), Memory())[0], "farm_crops")
+    assert fc and fc[0].action["drink"] is False and fc[0].priority == 4, fc
+    s = _fort_b()
+    for p in s["farms"]["plot_list"]:
+        p.update(dead=True, options=0, options_any=0)
+    m = Memory()
+    n1 = plan(copy.deepcopy(s), m)[1]
+    m.farm_dead_noted = ""
+    assert any("can grow nothing" in n for n in n1)
+    from planner_industry import _farm_crops_rule
+    notes = []
+    _farm_crops_rule(planner.normalize(copy.deepcopy(s)), m, PLANNER_CONFIG, [], notes)
+    _farm_crops_rule(planner.normalize(copy.deepcopy(s)), m, PLANNER_CONFIG, [], notes)
+    assert sum("can grow nothing" in n for n in notes) == 1, notes
+
+
+@test("farms review (0.105.7) SHOULD 5: underground plots just laid out count until the report shows them")
+def _():
+    s = _fort_b()
+    s["farms"]["crops"]["BERRIES_PRICKLE"]["seeds"] = 0
+    for p in s["farms"]["plot_list"]:
+        p.update(dead=True, options=0, options_any=0)
+    m = Memory()
+    f = by_rule(plan(copy.deepcopy(s), m)[0], "farms")
+    assert f and f[0].action.get("underground"), f
+    record([(f[0], {"ok": True, "tiles": 40})], s, m)
+    m.last_fired.clear()
+    assert not by_rule(plan(copy.deepcopy(s), m)[0], "farms"), "asked again before the plots show"
+
+
+@test("water zone review (0.105.7) SHOULD 4: none while a threat can reach the dwarves; no cavern water near a cavern danger; capped")
+def _():
+    s = _fort_b()
+    s["others_on_map"]["threats"] = []
+    s["water"] = {"bodies": [{"kind": "cavern", "nearest": {"d": 30, "x": 133, "y": 130, "z": 5}, "stagnant_share": 0},
+                             {"kind": "surface", "nearest": {"d": 400, "x": 3, "y": 3, "z": 40}, "stagnant_share": 0}]}
+    w = by_rule(plan(copy.deepcopy(s), Memory())[0], "water_zone")
+    assert w and [p["x"] for p in w[0].action["points"]] == [133], w       # the far pond is past the cap
+    s["others_on_map"]["threats"] = [{"name": "a crundle", "layer": "cavern 1", "pos": {"x": 1, "y": 1, "z": 1}}]
+    props, notes = plan(copy.deepcopy(s), Memory())[:2]
+    assert not by_rule(props, "water_zone"), by_rule(props, "water_zone")
+    s["others_on_map"]["threats"] = []
+    s["others_on_map"]["threats_that_can_reach_dwarves"] = 1
+    props, notes = plan(copy.deepcopy(s), Memory())[:2]
+    assert not by_rule(props, "water_zone") and any("threat can reach" in n for n in notes), notes
 
 
 if __name__ == "__main__":

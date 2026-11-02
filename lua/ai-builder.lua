@@ -69,7 +69,10 @@ function tile_info(x, y, z)
         salt = des.water_salt,
         feature = des.feature_local or des.feature_global,
         outside = des.outside,
-        subterranean = des.subterranean,   -- (0.105.5) DF's underground test for a farm plot
+        -- (0.105.5) DF's underground test for a farm plot; (0.105.7 review)
+        -- nil when this DFHack can't read it (pcall: a missing field throws)
+        subterranean = (function() local ok, v = pcall(function() return des.subterranean end)
+                            if ok then return v end end)(),
         designated = des.dig ~= df.tile_dig_designation.No,
         -- "marker only" (blueprint) designations: dwarves won't dig them
         marked = occ.dig_marked,
@@ -2140,7 +2143,10 @@ function find_farm_spots(want, reserved, outside)
             -- (0.105.5) Hammerstirred: plots for underground crops only where
             -- DF counts the floor subterranean (a roofed floor in the light
             -- grows surface crops only)
-            and not (UNDER_ONLY and (t.outside or t.subterranean == false))
+            -- (0.105.7 review) and only where the flag was read: a roofed
+            -- floor in the light (flag unreadable) isn't taken for underground,
+            -- else plots went where plump helmets can't grow and were asked for again
+            and not (UNDER_ONLY and (t.outside or t.subterranean ~= true))
             and not t.building and not t.designated
             and not inside_any(reserved, x, y, z)
             and groups[walk_group(x, y, z)] == true
@@ -2471,7 +2477,11 @@ function plot_place(x, y, z)
     local d = dfhack.maps.getTileFlags(x, y, z)
     if d then
         local ok, sub = pcall(function() return d.subterranean end)
-        if ok and sub ~= nil then out.under = sub == true else out.under = not d.outside end
+        if ok and sub ~= nil then out.under = sub == true
+        else
+            out.under = not d.outside
+            out.guessed = true       -- (0.105.7 review) the flag couldn't be read
+        end
     end
     pcall(function()
         local rx, ry = dfhack.maps.getTileBiomeRgn(x, y, z)
@@ -2570,7 +2580,11 @@ function farm_plot_list(seeds, season)
             if s == season then
                 p.options = n
                 p.fallow = raw == nil
+                -- (0.105.7 review) a crop whose seeds have run out can't be
+                -- sown again: not "fine" (no_seeds), so the plot is moved on
                 p.ok_now = raw ~= nil and crop_in_season(raw, s) and crop_grows_on(raw, place)
+                    and (seeds[id] or 0) > 0
+                if raw ~= nil and (seeds[id] or 0) <= 0 then p.no_seeds = true end
             end
         end
         for _ in pairs(any) do p.options_any = p.options_any + 1 end
@@ -2627,7 +2641,10 @@ function set_farm_crops(params, dry_run)
             if #cands > 0 then any = true end
             local cur = b.plant_id[s]
             local cur_raw = plant_raw(cur)
+            -- (0.105.7 review) with no seed of it left in store the slot is as
+            -- good as fallow: another crop with seeds goes in (if there is one)
             local cur_ok = cur_raw ~= nil and crop_in_season(cur_raw, s) and crop_grows_on(cur_raw, place)
+                and ((seeds[cur] or 0) > 0 or #cands == 0)
             local ours = mine[s + 1] ~= nil and mine[s + 1] == cur
             -- the AI's own crop is kept too while it still grows there, unless
             -- drink is short and it doesn't brew while a brewable one could

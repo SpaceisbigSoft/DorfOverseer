@@ -4338,7 +4338,7 @@ end
 -- the game it was saved with (a reload lost the stop-gap temple, 0.103.13).
 LEDGER_KEY = 'ai-overseer/ledger'
 LEDGER_FIELDS = {
-    ai_alert_raised = true, gate_closed_by_ai = true, kitchen_ban = true, farm_steer = true,
+    ai_alert_raised = true, gate_closed_by_ai = true, kitchen_ban = true, farm_steer = true, farm_crops_player = true,
     tree_year = true, libraries_imported = true, squads_trained = true, squads_rested = true,
     tools_seen_on = true, tools_player_disabled = true, stuck_cancelled = true, wishes_agreed = true,
     last_expel_tick = true, last_memorial_tick = true, last_garden_tick = true, gardens_built = true,

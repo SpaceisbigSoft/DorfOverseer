@@ -3593,6 +3593,34 @@ def _():
     B.set_farm_crops(LUA.table_from({"drink": True}), False)
     assert crops_of(b)[1] == "BERRIES_PRICKLE", (first, crops_of(b))
 
+
+@test("farm crops review (0.105.7) SHOULD 3: a crop whose seeds ran out isn't fine: the plot moves to a crop with seeds")
+def _():
+    plots = farm_setup([[5, 0], [8, 20]], [[61, False, 0]])
+    b = list(plots.values())[0]
+    b.plant_id[1] = 5                      # prickle berry set, its seeds all sown
+    lst = B.farm_plot_list(B.seed_stock(), 1)
+    p = list(lst.values())[0]
+    assert not p.ok_now and p.no_seeds and p.options == 1, dict(p)
+    r = B.set_farm_crops(LUA.table_from({"drink": True}), False)
+    assert r.ok and crops_of(b)[1] == "BERRIES_FISHER", (dict(r), crops_of(b))
+    # nothing else has seeds: the crop stays (better than fallow when seeds come in)
+    plots = farm_setup([[5, 0]], [[62, False, 0]])
+    b = list(plots.values())[0]
+    b.plant_id[1] = 5
+    B.set_farm_crops(LUA.table_from({}), False)
+    assert crops_of(b)[1] == "BERRIES_PRICKLE"
+
+
+@test("farms review (0.105.7) SHOULD 5: underground plots only where DF's subterranean flag reads true")
+def _():
+    soil_floor(42, 56, 47, 59, 71)                     # flag unreadable (nil): not taken for underground
+    r = B.farm_plots(params(tiles=20, underground=True), LUA.table_from({"year": 148, "tick": 100}), True)
+    assert r.tiles == 0, (r.ok, r.tiles)
+    soil_floor(42, 56, 47, 59, 71, subterranean=True)
+    r = B.farm_plots(params(tiles=20, underground=True), LUA.table_from({"year": 148, "tick": 100}), True)
+    assert r.ok and r.tiles >= 20, (r.ok, r.tiles, r.error)
+
 if __name__ == "__main__":
     for name, ok, msg in RESULTS:
         print(f"[{'PASS' if ok else 'FAIL'}] {name}" + (f"\n        {msg}" if msg else ""))

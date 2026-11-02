@@ -21,7 +21,7 @@ import json
 
 # memory field -> its default (the shape the planner expects)
 FIELDS: dict = {
-    "ai_alert_raised": False, "gate_closed_by_ai": False, "kitchen_ban": False, "farm_steer": "",
+    "ai_alert_raised": False, "gate_closed_by_ai": False, "kitchen_ban": False, "farm_steer": "", "farm_crops_player": False,
     "tree_year": {}, "libraries_imported": [], "squads_trained": [], "squads_rested": [],
     "tools_seen_on": [], "tools_player_disabled": [], "stuck_cancelled": {}, "wishes_agreed": {},
     "last_expel_tick": None, "last_memorial_tick": None, "last_garden_tick": None, "gardens_built": [],

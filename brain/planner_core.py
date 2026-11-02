@@ -334,6 +334,8 @@ PLANNER_CONFIG = {
     "crisis_stills_cap_factor": 3,         # stills up to the workshop cap x this while short in a crisis (x2 otherwise)
     "crisis_containers_max": 60,           # empty barrels/pots wanted for the crisis's brewing, at most
     "surface_farm_seeds": 50,          # (0.99.6) brewable surface seeds before surface plots are laid out...
+    "water_zone_max_d": 150,           # (0.105.7 review) water farther than this (survey distance) isn't zoned
+    "farm_under_wait_days": 14,        # (0.105.7 review) underground plots laid out count this long before the report shows them
     "under_farm_tiles": 40,            # (0.105.5) underground plot tiles wanted for underground crops' seeds (at most)
     "farm_crops_cooldown_ticks": 1200,  # (0.105.5) the plots' crops set again a day apart at most
     "seeds_per_plot": 10,              # ...while the underground plots have fewer seeds than this each
@@ -712,6 +714,9 @@ class Memory:
     pasture_failure: str = ""                            # why no pasture could be made (Needs you)
     farm_failure: str = ""                               # why no farm plots could be placed (Needs you)
     farm_failure_tick: int | None = None                 # when a farm level last couldn't be dug
+    farm_crops_player: bool = False                      # (0.105.7 review) the player switched autofarm back on: the AI leaves the crops to it
+    farm_dead_noted: str = ""                            # (0.105.7 review) the season the dead plots were last said
+    farm_under_asked: dict = field(default_factory=dict)  # (0.105.7 review) {tick, tiles}: underground plots last laid out
     report_season: str = ""                              # the last season the player's report was written for
     found_failure: str = ""                              # why the first staircase couldn't be dug (Needs you)
     fps_cap: int | None = None                           # the population cap held while the game runs slowly

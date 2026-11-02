@@ -362,8 +362,10 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
             "seedwatch": (traits.get("agriculture", 0) > -100, "keeps seeds from being eaten"),
             # without it, new farm plots have no crop chosen and grow nothing
             # (0.105.5) not once the AI sets the plots' crops itself (it rewrites them)
+            # (0.105.7 review) back on when the AI's own crop logic can't run
+            # (no plot list, only dead plots): crops_owned
             "autofarm": (traits.get("agriculture", 0) > -100 and has_farms(s)
-                         and getattr(memory, "farm_steer", "") != "crops",
+                         and not crops_owned(s, memory) and not getattr(memory, "farm_crops_player", False),
                          "chooses crops for the farm plots by what the fort needs"),
             # (0.104.158) not while the herd is past the fort's size (it comes
             # back on under half of it): every egg hatched kept the butchers busy
@@ -644,6 +646,13 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
         for p in proposals:
             if p.action.get("type") == "farm_plots" and p.action.get("dig"):
                 p.action = {k: v for k, v in p.action.items() if k != "dig"}
+    # (0.105.7 review) the AI sets the plots' crops (or will this cycle):
+    # nothing that switches autofarm back on in the same plan (farm
+    # thresholds enable it; the tools rule would too)
+    if any(p.rule == "farm_crops" for p in proposals) or crops_owned(s, memory):
+        proposals = [p for p in proposals if not (
+            p.action.get("type") == "farm_thresholds"
+            or (p.action.get("type") == "tool" and p.action.get("name") == "autofarm" and p.action.get("enabled")))]
     # (0.105.3) no new pasture assignments while the AI's gates are shut (B's 26 pen jobs)
     if "entrances" not in errors:
         kept = _guard(_pasture_hold, s, memory, proposals, notes)
@@ -779,6 +788,7 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
     the cooldown and counts start anyway, to be safe against doing it twice."""
     now = abs_tick(state)
     today = game_day(state)
+    crops_set_now = any(p.action.get("type") == "set_farm_crops" and r.get("ok") is True for p, r in results)
     for p, r in results:
         ok = r.get("ok")
         _record_any_outcome(p.action, r, state, memory, now)
@@ -862,8 +872,15 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
                 if str(shop) not in memory.shops_seen:          # the count before the first unanswered start
                     memory.shops_seen[str(shop)] = shop_count(_d(state.get("buildings")), str(shop))
         a = p.action
-        if a["type"] == "farm_thresholds" and ok is True:
+        # (0.105.7 review) a set_farm_crops in this batch wins: a threshold
+        # recorded after it put the mode back to "drink"
+        if a["type"] == "farm_thresholds" and ok is True and not crops_set_now:
             memory.farm_steer = str(a.get("steer") or "")
+        if a["type"] == "tool" and a.get("name") == "autofarm" and a.get("enabled") and ok is True \
+                and memory.farm_steer == "crops" and not crops_set_now:
+            memory.farm_steer = ""       # (0.105.7 review) autofarm is the fallback again
+        if a["type"] == "farm_plots" and a.get("underground") and ok is True:
+            memory.farm_under_asked = {"tick": now, "tiles": int(r.get("tiles") or a.get("tiles") or 0)}
         if a["type"] == "set_farm_crops" and ok is True:
             # (0.105.5) the AI sets the crops: autofarm stays off (switched
             # off by the AI, not the player: may come back if this is undone)
@@ -1076,6 +1093,16 @@ def note_cycle(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> list[
             memory.ai_alert_raised = False
 
     if "tools" not in errors:
+        # (0.105.7 review) autofarm on again while the AI set the crops (it
+        # switched autofarm off, and its own enables leave "crops" first):
+        # the player's choice, kept; the AI's crops resume once it's off again
+        af = s["tools"].get("autofarm")
+        if af is True and memory.farm_steer == "crops" and not memory.farm_crops_player:
+            memory.farm_crops_player = True
+            notes.append("autofarm was switched back on: it chooses the crops again (the AI stops setting them)")
+        elif af is False and memory.farm_crops_player:
+            memory.farm_crops_player = False
+            memory.farm_steer = "crops"
         for name, on in s["tools"].items():
             if on is True:
                 if name not in memory.tools_seen_on:

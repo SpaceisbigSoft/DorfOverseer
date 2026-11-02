@@ -13,7 +13,7 @@ from quirks import has_rule
 from digest import _d, _l, normalize
 from planner_core import *  # noqa: F401,F403
 
-__all__ = ["CONTAINER_RECIPES", "GEAR_ORDER_METALS", "_supply_rules", "_slow_game_rules", "_clutter_rules", "_kiln_rules", "_soap_rule", "_pasture_rule", "LABOR_MODES_FIXED", "INDUSTRY_SHOPS", "_industry_rules", "_steel_rule", "_bottleneck_rule", "drink_short", "_crop_rules", "_farm_crops_rule", "farm_plots_live", "_kitchen_rule", "_fishery_rule", "_bench_coffins_rule", "STONE_CRAFTS", "order_shop", "_order_slots_rule", "_orphan_jobs_rule", "_unsuspend_rule", "_approve_rule", "_stuck_orders_rule", "COAL_STONES", "_coal_rule", "_picks_order", "_stone_rule", "stone_crisis", "PRECIOUS_ORES", "_cloth_rule", "_trade_rules", "_gems_rule", "trade_wants", "_spare_mechanisms_rule", "_hauling_rule", "_surface_basics", "trees_this_year", "_keep_rule", "_free_time_rule", "_labor_rules", "OWN_LABOR_RULES", "FEEDER_ORDER", "_feeder_rule", "woodcutters", "gatherers", "trade_margin_for", "keeps_treasures", "spare_mechanisms", "_dairy_rule", "_eggs_rule", "EXCESS_SHOPS", "_excess_shops_rule", "drink_below_target", "drink_crisis", "drink_target_per_dwarf", "crisis_brew_room", "brew_jobs_open", "_labor_waiting_rule", "farm_target", "_farm_rule", "_smelting_rule", "_shoes_recipe", "_glass_rule", "PRECIOUS_METALS", "precious_metal"]
+__all__ = ["CONTAINER_RECIPES", "GEAR_ORDER_METALS", "_supply_rules", "_slow_game_rules", "_clutter_rules", "_kiln_rules", "_soap_rule", "_pasture_rule", "LABOR_MODES_FIXED", "INDUSTRY_SHOPS", "_industry_rules", "_steel_rule", "_bottleneck_rule", "drink_short", "_crop_rules", "_farm_crops_rule", "farm_plots_live", "crops_owned", "drink_known_short", "_kitchen_rule", "_fishery_rule", "_bench_coffins_rule", "STONE_CRAFTS", "order_shop", "_order_slots_rule", "_orphan_jobs_rule", "_unsuspend_rule", "_approve_rule", "_stuck_orders_rule", "COAL_STONES", "_coal_rule", "_picks_order", "_stone_rule", "stone_crisis", "PRECIOUS_ORES", "_cloth_rule", "_trade_rules", "_gems_rule", "trade_wants", "_spare_mechanisms_rule", "_hauling_rule", "_surface_basics", "trees_this_year", "_keep_rule", "_free_time_rule", "_labor_rules", "OWN_LABOR_RULES", "FEEDER_ORDER", "_feeder_rule", "woodcutters", "gatherers", "trade_margin_for", "keeps_treasures", "spare_mechanisms", "_dairy_rule", "_eggs_rule", "EXCESS_SHOPS", "_excess_shops_rule", "drink_below_target", "drink_crisis", "drink_target_per_dwarf", "crisis_brew_room", "brew_jobs_open", "_labor_waiting_rule", "farm_target", "_farm_rule", "_smelting_rule", "_shoes_recipe", "_glass_rule", "PRECIOUS_METALS", "precious_metal"]
 
 CONTAINER_RECIPES = {"wooden_barrel", "stone_large_pot"}
 # ore worth mining for gear, most wanted first (iron makes steel; tin with copper makes bronze)
@@ -821,6 +821,12 @@ def _crop_rules(s: dict, memory, cfg: dict, proposals: list, notes: list) -> Non
     crops = {k: v for k, v in _d(farms.get("crops")).items() if isinstance(v, dict)}
     if not crops or not has_farms(s):
         return
+    if crops_owned(s, memory) or memory.farm_crops_player:
+        # (0.105.7 review) the AI sets the plots itself (autofarm off), or the
+        # player took them back: autofarm's thresholds would switch it on
+        # again (act_farm_thresholds enables it) in the very cycle
+        # set_farm_crops switched it off
+        return
     citizens = max(1, int(_d(s.get("dwarves")).get("total") or 1))
     drink = int(_d(s.get("stocks")).get("drink") or 0)
     # crops a plot can grow: seeds in stock and a season (trees have none)
@@ -889,6 +895,26 @@ def farm_plots_live(s: dict) -> list:
     return [p for p in _l(_d(s.get("farms")).get("plot_list")) if isinstance(p, dict)]
 
 
+def crops_owned(s: dict, memory) -> bool:
+    """(0.105.7 review) The AI sets the plots' crops now (autofarm off): it
+    did, the player hasn't taken them back, and the report still lists the
+    plots with one that can grow something. Else autofarm is the fallback
+    (an old bridge or a failed plot list, or only dead plots: no crop logic
+    at all otherwise)."""
+    if memory is None or getattr(memory, "farm_steer", "") != "crops" or getattr(memory, "farm_crops_player", False):
+        return False
+    return any(not p.get("dead") for p in farm_plots_live(s))
+
+
+def drink_known_short(s: dict, cfg: dict) -> bool:
+    """(0.105.7 review) Drink under the urgent line, read from the report: a
+    missing stocks section (or count) is not "0 drink"."""
+    if "stocks" in _d(s).get("_errors", {}) or not isinstance(_d(s.get("stocks")).get("drink"), (int, float)):
+        return False
+    citizens = max(1, int(_d(s.get("dwarves")).get("total") or 1))
+    return s["stocks"]["drink"] < citizens * cfg["urgent_drink_per_dwarf"]
+
+
 def _farm_crops_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> None:
     """(0.105.5) Hammerstirred (2 Nov): six forts' plots lay fallow all year
     with autofarm on (fort B: 4 of 5 fallow, drink 0-11 for 7 dwarves, 147
@@ -902,12 +928,20 @@ def _farm_crops_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -
     plots = farm_plots_live(s)
     if not plots:
         return
+    if memory.farm_crops_player:
+        # (0.105.7 review) the player switched autofarm back on: theirs
+        return
     fm = _d(s.get("farms"))
     citizens = max(1, int(_d(s.get("dwarves")).get("total") or 1))
     drink = int(_d(s.get("stocks")).get("drink") or 0)
-    short = drink < citizens * cfg["urgent_drink_per_dwarf"]
+    # (0.105.7 review) unknown drink (a failed stocks section) isn't short:
+    # it read as 0 and made the rule urgent
+    short = drink_known_short(s, cfg)
     dead = [p for p in plots if p.get("dead")]
-    if dead:
+    # (0.105.7 review) said once a season, not every cycle
+    season_key = f"{_d(s.get('date')).get('year')}-{_d(s.get('date')).get('season')}"
+    if dead and memory.farm_dead_noted != season_key:
+        memory.farm_dead_noted = season_key
         where = "surface" if all(not p.get("underground") for p in dead) else "farm"
         notes.append(f"{len(dead)} {where} plot(s) can grow nothing the fort has seeds of, in any season "
                      "(DF offers only \"Leave fallow\"): underground crops need underground plots")
@@ -2147,8 +2181,15 @@ def _farm_rule(s: dict, memory, traits: dict, citizens: int, cfg: dict, proposal
     under_seeds = sum(int(v.get("seeds") or 0) for v in crops
                       if v.get("underground") and _l(v.get("seasons")))
     under_tiles = sum(int(p.get("tiles") or 0) for p in live if p.get("underground") and not p.get("dead"))
-    citizens_ = max(1, citizens)
-    thirsty = int(_d(s.get("stocks")).get("drink") or 0) < citizens_ * cfg["urgent_drink_per_dwarf"]
+    # (0.105.7 review) unknown drink isn't short
+    thirsty = drink_known_short(s, cfg)
+    # (0.105.7 review) underground plots the AI laid out lately count until
+    # the report lists them (else asked again every cooldown)
+    asked = _d(getattr(memory, "farm_under_asked", None))
+    if (isinstance(asked.get("tick"), int)
+            and 0 <= abs_tick(s) - asked["tick"] < cfg["farm_under_wait_days"] * TICKS_PER_DAY):
+        under_tiles = max(under_tiles, int(asked.get("tiles") or 0))
+        have += int(asked.get("tiles") or 0)
     # underground crops' seeds wait and no (or too few) underground plots for them
     under_need = (under_seeds >= cfg["seeds_per_plot"] and live
                   and under_tiles < min(under_seeds, cfg["under_farm_tiles"]) and (thirsty or under == 0))

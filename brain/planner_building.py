@@ -471,11 +471,21 @@ def _water_zone_rule(s: dict, proposals: list, notes: list) -> None:
     dry = isinstance(drink, (int, float)) and drink < citizens * PLANNER_CONFIG["urgent_drink_per_dwarf"]
     if not patients and not parched and not dry:
         return
+    # (0.105.7 review) not while a threat can reach the dwarves (they walk
+    # out to the water), nor to cavern water with a cavern danger known
+    if int(_d(s.get("others_on_map")).get("threats_that_can_reach_dwarves") or 0) > 0:
+        notes.append("the dwarves need a water source but a threat can reach them: no walk to open water now")
+        return
+    danger = cavern_danger(s)
+    far = PLANNER_CONFIG["water_zone_max_d"]
     bodies = [b for b in _l(_d(s.get("water")).get("bodies"))
               if isinstance(b, dict) and isinstance(b.get("nearest"), dict)
-              and (b.get("salt_share") or 0) < 50]
-    bodies.sort(key=lambda b: (b.get("kind") == "cavern", (b.get("stagnant_share") or 0) >= 50,
-                               b["nearest"].get("d") or 999))
+              and (b.get("salt_share") or 0) < 50
+              and not (danger and b.get("kind") == "cavern")
+              and (b["nearest"].get("d") or 999) <= far]
+    # (0.105.7 review) the nearest first (the survey's distance, levels
+    # counted double), fresh before stagnant; not surface-always-first
+    bodies.sort(key=lambda b: ((b.get("stagnant_share") or 0) >= 50, b["nearest"].get("d") or 999))
     points = [{k: b["nearest"].get(k) for k in ("x", "y", "z")} for b in bodies[:6]
               if all(isinstance(b["nearest"].get(k), int) for k in ("x", "y", "z"))]
     who = " and ".join(x for x in (f"{patients} injured" if patients else "",
