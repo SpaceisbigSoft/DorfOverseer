@@ -2421,19 +2421,25 @@ end
 -- restricted, one to a burrow ("AI calm 1".."AI calm 6"), to a free bedroom
 -- (a bedroom zone nobody owns, with a bed, nobody standing in it) at least
 -- CALM_HOSP_DIST tiles from every hospital zone, the nearest one they can
--- walk to; and the nearest drink they can walk to from it (a stockpile
--- holding drink, else a well giving water; the hospital burrow's own drink
--- only when there is no other). With no such room or no drink, nobody is
--- moved, and the call says why. Never a door locked, a dwarf chained or
--- jailed, nor a hospital closed: nobody is shut in or out.
+-- walk to (never a location's room: a tavern's guest rooms); and drink they
+-- can walk to from it (review: a quiet well first, then a quiet pile, then a
+-- busy one, the hospital burrow's own last; of a pile only a few of the
+-- tiles holding drink, nearest the room, never the whole dining-hall pile).
+-- With no such room or no drink, nobody is moved, and the call says why.
+-- Never a door locked, a dwarf chained or jailed, nor a hospital closed:
+-- nobody is shut in or out. Not checked (no cheap path query in DFHack):
+-- whether the walk from where the dwarf stands to the room passes through a
+-- hospital zone; the room is only the nearest one far from them.
 -- Let out: at the first report or call after the tantrum ends (calm), after
 -- `days` (CALM_DAYS, 3) whatever (then not again for CALM_OUT_DAYS), thirsty
 -- or hungry (CALM_THIRST/CALM_HUNGER: far from harm; DFHack calls 25000
 -- thirsty, 50000 dehydrated, and three days add 3600), drafted, insane, gone,
--- the room taken or gone, the drink gone, or put in a player's burrow. Never
--- a baby, a soldier, the insane, one already thirsty or hungry, or one in a
--- player's burrow; one in the AI's recreation or hospital burrow is taken out
--- of it first (both are where the others are). Every report re-checks the
+-- the room taken (by another: their own claim is no taking) or gone, the
+-- drink gone, hurt (needs care), or put in a player's burrow. Never a baby,
+-- a soldier, the insane, one already thirsty or hungry, (review) a patient,
+-- one resting or unable to walk, one in the hospital burrow, or one in a
+-- player's burrow; one in the AI's recreation burrow is taken out of it
+-- first (the taverns and halls, where the others are). Every report re-checks the
 -- members itself (calm_burrow_status), with no brain needed.
 CALM_PREFIX = 'AI calm '
 CALM_KEY = 'ai-overseer/calm-burrow'
@@ -2444,6 +2450,34 @@ CALM_HOSP_DIST = 15         -- the room at least this far from every hospital zo
 CALM_WALK_TICKS = 300       -- a quarter day to walk there before "outside" is counted
 CALM_THIRST = 20000         -- thirst_timer at or past this: drink first (never moved in; let out)
 CALM_HUNGER = 40000         -- hunger_timer likewise (DF: hungry at 50000)
+-- (0.104.169, review) the drink: a quiet source first (a well, or a pile at
+-- least CALM_HOSP_DIST from the hospitals, CALM_BUSY_DIST from any dining
+-- hall, meeting hall or location zone, and fewer than CALM_CROWD citizens
+-- within CALM_CROWD_DIST); of a pile only the tiles holding drink nearest the
+-- room: CALM_PILE_TILES of a quiet one, CALM_BUSY_TILES of a busy one
+CALM_BUSY_DIST = 3
+CALM_CROWD = 5
+CALM_CROWD_DIST = 6
+CALM_PILE_TILES = 6
+CALM_BUSY_TILES = 2
+
+-- (0.104.169, review) never one who needs care: a patient (any treatment
+-- asked, or DF's needs_healthcare: the infected), one resting (a Rest job:
+-- bedridden, fed and watered by the doctors where they lie), one lying on the
+-- ground (flags1.on_ground) or unconscious. Kept 15+ tiles from every
+-- hospital they would get no treatment, and in a bed far off no water.
+local function needs_care(u)
+    if is_patient(u) then return 'patient' end
+    local ok, why = pcall(function()
+        if u.health and u.health.flags.needs_healthcare then return 'patient' end
+        local j = u.job and u.job.current_job
+        if j and j.job_type == df.job_type.Rest then return 'resting' end
+        if u.flags1 and u.flags1.on_ground then return 'cannot walk' end
+        if u.counters and (tonumber(u.counters.unconscious) or 0) > 0 then return 'cannot walk' end
+        return nil
+    end)
+    return ok and why or nil
+end
 
 local function calm_state()
     local ok, d = pcall(dfhack.persistent.getSiteData, CALM_KEY, {members = {}})
@@ -2544,12 +2578,36 @@ local function bedroom_list()
     return out
 end
 
--- The free bedrooms far enough from every hospital zone: {z, pos, hd}.
-local function calm_rooms(hzones, taken, people)
+-- (0.104.169, review) The zones of the fort's locations (tavern, temple,
+-- library, hospital...: id -> true), and the busy zones (those, and every
+-- dining and meeting hall): where the others gather.
+local function calm_busy_zones()
+    local loc, busy = {}, {}
+    pcall(function()
+        for _, l in ipairs(dfhack.world.getCurrentSite().buildings) do
+            pcall(function()
+                for _, bid in ipairs(l:getContents().building_ids) do loc[bid] = true end
+            end)
+        end
+    end)
+    for _, b in ipairs(df.global.world.buildings.all) do
+        if b:getType() == df.building_type.Civzone then
+            local kind = df.civzone_type[b.type] or ''
+            if loc[b.id] or kind == 'DiningHall' or kind == 'MeetingHall' or kind == 'Hospital' then
+                table.insert(busy, b)
+            end
+        end
+    end
+    return loc, busy
+end
+
+-- The free bedrooms far enough from every hospital zone: {z, pos, hd};
+-- (review) never one of a location (a tavern's guest rooms).
+local function calm_rooms(hzones, taken, people, loc)
     local out = {}
     for _, z in ipairs(bedroom_list()) do
         local okf, free = pcall(function() return z.assigned_unit_id == -1 end)
-        if okf and free and not taken[z.id] then
+        if okf and free and not taken[z.id] and not (loc and loc[z.id]) then
             local pos = bed_of(z)
             local hd = pos and (#hzones == 0 and 999 or zone_dist(pos, hzones))
             if pos and hd >= CALM_HOSP_DIST and walk_group(pos) ~= 0 then
@@ -2592,20 +2650,79 @@ local function drink_list()
     return out
 end
 
--- The nearest drink a dwarf can walk to from `pos`; the hospital burrow's
--- own (`avoid`) only when there is no other. Returns the entry and whether shared.
+-- (0.104.169, review) Each drink marked quiet or busy: busy when within
+-- CALM_HOSP_DIST of a hospital zone, CALM_BUSY_DIST of a hall or location
+-- zone, or with CALM_CROWD citizens within CALM_CROWD_DIST.
+local function calm_mark_drinks(drinks, hzones, busy, people)
+    for _, s in ipairs(drinks) do
+        local b = (#hzones > 0 and zone_dist(s.pos, hzones) < CALM_HOSP_DIST)
+                  or (#busy > 0 and zone_dist(s.pos, busy) <= CALM_BUSY_DIST)
+        if not b then
+            local n = 0
+            for _, p in ipairs(people) do
+                if dist(p, s.pos) <= CALM_CROWD_DIST then n = n + 1 end
+            end
+            b = n >= CALM_CROWD
+        end
+        s.busy = b and true or false
+    end
+end
+
+-- The drink a dwarf can walk to from `pos`, by preference: a quiet well, a
+-- quiet pile, a busy one (only a few of its tiles, see fill_calm), and the
+-- hospital burrow's own (`avoid`) last; the nearest in each. Returns the
+-- entry and whether it is the hospital's.
 local function calm_drink(pos, drinks, avoid)
-    local best, bd, shared
-    for pass = 1, 2 do
-        for _, s in ipairs(drinks) do
-            if (pass == 2) == (avoid[s.b.id] == true) then
-                local dd = dist(pos, s.pos)
-                if (not bd or dd < bd) and can_walk(pos, s.pos) then best, bd = s, dd end
+    local function pass_of(s)
+        if avoid[s.b.id] then return 4 end
+        if s.busy then return 3 end
+        return s.kind == 'well' and 1 or 2
+    end
+    local best, bd, bp
+    for _, s in ipairs(drinks) do
+        local p = pass_of(s)
+        local dd = dist(pos, s.pos)
+        if (not bp or p < bp or (p == bp and dd < bd)) and can_walk(pos, s.pos) then best, bd, bp = s, dd, p end
+    end
+    return best, bp == 4
+end
+
+-- (0.104.169, review) A pile's tiles that hold drink now (its barrels' and
+-- loose drinks' tiles, never forbidden), the nearest `k` to `pos`.
+local function pile_drink_tiles(b, pos, k)
+    local seen, list, n = {}, {}, 0
+    local function is_drink(it)
+        local okt, t = pcall(function() return df.item_type[it:getType()] end)
+        return okt and t == 'DRINK'
+    end
+    local ok, items = pcall(dfhack.buildings.getStockpileContents, b)
+    if not ok or not items then return list end
+    for _, it in ipairs(items) do
+        n = n + 1
+        if n > HOSP_SCAN_MAX then break end
+        local okf, forbid = pcall(function() return it.flags.forbid end)
+        if not (okf and forbid) then
+            local has = is_drink(it)
+            if not has then
+                pcall(function()
+                    for _, c in ipairs(dfhack.items.getContainedItems(it)) do
+                        if is_drink(c) and not c.flags.forbid then has = true break end
+                    end
+                end)
+            end
+            local okp, p = pcall(function() return it.pos end)
+            if has and okp and p and p.x ~= nil then
+                local key = p.x .. ',' .. p.y .. ',' .. p.z
+                if not seen[key] then
+                    seen[key] = true
+                    table.insert(list, xyz2pos(p.x, p.y, p.z))
+                end
             end
         end
-        if best then shared = pass == 2 break end
     end
-    return best, shared
+    table.sort(list, function(a, c) return dist(a, pos) < dist(c, pos) end)
+    while #list > k do table.remove(list) end
+    return list
 end
 
 -- The hospital burrow's drink and food piles and well (its saved signature).
@@ -2618,11 +2735,18 @@ local function hospital_drink_ids()
     return ids
 end
 
-local function fill_calm(b, room, src)
+local function fill_calm(b, room, src, pos)
     dfhack.burrows.clearTiles(b)
     local n = zone_tiles(room, b)
     if src.kind == 'stockpile' then
-        n = n + zone_tiles(src.b, b)
+        -- (review) never the whole pile: the tiles holding drink nearest the room
+        local tiles = pile_drink_tiles(src.b, pos, src.busy and CALM_BUSY_TILES or CALM_PILE_TILES)
+        if #tiles == 0 then
+            if src.busy then tiles = {src.pos} else return n + zone_tiles(src.b, b) end
+        end
+        for _, p in ipairs(tiles) do
+            if dfhack.burrows.setAssignedTile(b, p, true) then n = n + 1 end
+        end
     else
         local w = src.b
         local x, y = w.centerx or w.x1, w.centery or w.y1
@@ -2686,9 +2810,12 @@ local function calm_maintain(d, now, dry_run, name, released)
         elseif not in_tantrum(u) then why = 'calm'
         elseif now - (tonumber(m.since) or now) >= days * 1200 then why = 'limit'
         elseif thirsty(u) then why = 'thirst'
+        elseif needs_care(u) then why = 'needs care'          -- (review) hurt while kept: to the doctors
         elseif (calm_burrows_of(u, ids)) then why = 'player burrow'
         else
-            local okr, free = pcall(function() return room.assigned_unit_id == -1 end)
+            -- (review) the member's own claim is no taking (DF 50: a homeless
+            -- dwarf claims a free bedroom by sleeping in it)
+            local okr, free = pcall(function() return room.assigned_unit_id == -1 or room.assigned_unit_id == u.id end)
             if not (okr and free) then why = 'room taken'
             elseif not drink_still(m) then why = 'no drink' end
         end
@@ -2702,6 +2829,7 @@ local function calm_maintain(d, now, dry_run, name, released)
                     local k = inside and 'seen_in' or 'seen_out'
                     m[k] = (tonumber(m[k]) or 0) + 1
                     calm_count(d, k)
+                    d.seen_dirty = true                    -- (review) saved by the status call
                 end
             end
         end
@@ -2755,7 +2883,9 @@ function calm_burrow_status(txt)
                 elseif not hb_citizen(u) then why = 'insane'
                 elseif u.military.squad_id ~= -1 then why = 'soldier'
                 elseif thirsty(u) then why = 'thirsty'
+                elseif needs_care(u) then why = needs_care(u)     -- (review) patient, resting, cannot walk
                 elseif (calm_burrows_of(u, ids)) then why = 'player burrow'
+                elseif select(2, calm_burrows_of(u, ids)).hosp then why = 'hospital burrow'
                 elseif d.out[tostring(u.id)] and now - tonumber(d.out[tostring(u.id)]) < CALM_OUT_DAYS * 1200 then
                     why = 'resting'
                 end
@@ -2763,7 +2893,11 @@ function calm_burrow_status(txt)
             end
         end
     end
-    if #released > 0 or out.members ~= before then calm_save(d) end
+    -- (review) the sightings saved too, or the measurement is lost between calls
+    if #released > 0 or out.members ~= before or d.seen_dirty then
+        d.seen_dirty = nil
+        calm_save(d)
+    end
     return out
 end
 
@@ -2807,9 +2941,10 @@ function calm_burrow_tick(max, days, dry_run, txt, release)
         if was and now - was >= CALM_OUT_DAYS * 1200 then d.out[key] = nil; was = nil end
         local okb, baby = pcall(dfhack.units.isBaby, u)
         if in_tantrum(u) and not d.members[key] and not was and not (okb and baby) and hb_citizen(u)
-                and u.military.squad_id == -1 and not thirsty(u) then
+                and u.military.squad_id == -1 and not thirsty(u) and not needs_care(u) then
             local other, which = calm_burrows_of(u, ids)
-            if not other then
+            -- (review) never one in the hospital burrow: they stay with the doctors
+            if not other and not which.hosp then
                 table.insert(cands, {u = u, which = which, hd = #hzones > 0 and zone_dist(u.pos, hzones) or 999})
             end
         end
@@ -2821,8 +2956,10 @@ function calm_burrow_tick(max, days, dry_run, txt, release)
     if #cands > 0 and count < max then
         local taken = {}
         for _, m in pairs(d.members) do if type(m) == 'table' and m.room then taken[m.room] = true end end
-        local rooms = calm_rooms(hzones, taken, people)
+        local loc, busy = calm_busy_zones()
+        local rooms = calm_rooms(hzones, taken, people, loc)
         local drinks = drink_list()
+        calm_mark_drinks(drinks, hzones, busy, people)
         local avoid = hospital_drink_ids()
         local used = {}
         for _, m in pairs(d.members) do if type(m) == 'table' and m.burrow then used[m.burrow] = true end end
@@ -2857,24 +2994,19 @@ function calm_burrow_tick(max, days, dry_run, txt, release)
                 end
                 if not b then why = 'every calm burrow in use' break end
                 used[b.id] = true
-                -- out of the AI's recreation or hospital burrow first (both are where the others are)
+                -- out of the AI's recreation burrow first (the taverns and halls,
+                -- where the others are); (review) never out of the hospital burrow
                 local key = tostring(c.u.id)
-                for kind, bid in pairs(c.which) do
-                    local ob = burrow_by_id(bid)
-                    if ob and kind ~= 'calm' then pcall(dfhack.burrows.setAssignedUnit, ob, c.u, false) end
-                    if kind == 'rec' then
-                        local rec = rec_state()
-                        rec.members[key] = nil
-                        if type(rec.friends) == 'table' then rec.friends[key] = nil end
-                        rec.out[key] = now
-                        pcall(dfhack.persistent.saveSiteData, RECREATION_KEY, rec)
-                    elseif kind == 'hosp' then
-                        local hb = hb_state()
-                        hb.members[key] = nil
-                        hb_save(hb)
-                    end
+                local rb = c.which.rec and burrow_by_id(c.which.rec)
+                if rb then
+                    pcall(dfhack.burrows.setAssignedUnit, rb, c.u, false)
+                    local rec = rec_state()
+                    rec.members[key] = nil
+                    if type(rec.friends) == 'table' then rec.friends[key] = nil end
+                    rec.out[key] = now
+                    pcall(dfhack.persistent.saveSiteData, RECREATION_KEY, rec)
                 end
-                local tiles = fill_calm(b, best.z, src)
+                local tiles = fill_calm(b, best.z, src, best.pos)
                 local oka = pcall(dfhack.burrows.setAssignedUnit, b, c.u, true)
                 if oka then
                     local okc, cat = pcall(dfhack.units.getStressCategory, c.u)
@@ -2886,7 +3018,8 @@ function calm_burrow_tick(max, days, dry_run, txt, release)
                     calm_save(d)
                     count = count + 1
                     table.insert(added, name(c.u) .. ' (room ' .. best.z.id .. ', ' .. bd .. ' tiles away, drink: '
-                                 .. src.kind .. (shared and ', the hospital\'s' or '') .. ')')
+                                 .. src.kind .. (src.busy and ', busy: a few tiles' or '')
+                                 .. (shared and ', the hospital\'s' or '') .. ')')
                 else
                     pcall(dfhack.burrows.clearTiles, b)
                 end

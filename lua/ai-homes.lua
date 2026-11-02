@@ -389,8 +389,17 @@ function house(n_house, n_upgrade, dry_run, txt, units)
     local by, order = people(units)
     local function name(p) return txt(dfhack.units.getReadableName(p.u)) end
     local pool = {}
+    -- (0.104.169) never a room an AI calm burrow holds now (a dwarf in a
+    -- tantrum kept there: lua/ai-society.lua, the calm-down burrows)
+    local calm = {}
+    pcall(function()
+        local d = dfhack.persistent.getSiteData('ai-overseer/calm-burrow', {})
+        for _, m in pairs(type(d) == 'table' and type(d.members) == 'table' and d.members or {}) do
+            if type(m) == 'table' and m.room then calm[tonumber(m.room)] = true end
+        end
+    end)
     for _, z in ipairs(bedroom_zones()) do
-        if z.assigned_unit_id == -1 then
+        if z.assigned_unit_id == -1 and not calm[z.id] then
             local r = room_of(z)
             if r.bed and not r.statue then table.insert(pool, r) end
         end
