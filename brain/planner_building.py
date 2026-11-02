@@ -13,7 +13,7 @@ from quirks import has_rule
 from digest import _d, _l, normalize
 from planner_core import *  # noqa: F401,F403
 
-__all__ = ["STUCK_FALLBACKS", "stuck_fallback", "magma_access", "GROWTH", "GROWTH_EXTRA_SCORE", "GROWTH_MAX", "growth_want", "growth_candidates", "settled_times", "growth_wait", "GROWTH_SOLDIERS", "GROWTH_ZONES", "GROWTH_MAX_OF", "GROWTH_AT", "TRAIT_NAMES_SHORT", "FURNITURE_RECIPES", "METAL_FURNITURE", "spare_metal", "WOODEN_FURNITURE", "BASIC_WORKSHOPS", "BASIC_STOCKPILES", "memorial_due", "_well_rule", "_well_lid_rule", "cavern_danger", "_planned_note", "_planned_parts_rule", "planned_wants", "_water_zone_rule", "cavern_well_need", "cavern_well_safe", "WELL_PARTS_SHOPS", "well_parts_plan", "_well_parts", "_room_repair_rule", "_water_traffic_rule", "_cleanup_rule", "STORE_GROW", "stone_tidiness", "jail_plan", "cistern_pop", "tavern_factor", "full_stores", "LEARNING_NEEDS", "_stairwell_rule", "WATER_WORDS", "water_summary", "_water_rules", "CISTERN_WORDS", "_cistern_parts", "_cistern_rule", "_deep_notes", "good_times", "ORDINALS", "garden_name", "_pop_cap_rule", "fort_strain", "hospital_shortfall", "dining_shortfall", "social_shortfall", "SOCIAL_KINDS", "_join_rule", "_dig_stall_rule", "_shrink_rule", "room_size", "_project_rules", "more_temple", "LADDER_BASE", "LADDER_TRAITS", "_ladder_kind", "_ladder_word", "ladder_score", "tombs_short"]
+__all__ = ["STUCK_FALLBACKS", "stuck_fallback", "magma_access", "GROWTH", "GROWTH_EXTRA_SCORE", "GROWTH_MAX", "growth_want", "growth_candidates", "settled_times", "growth_wait", "GROWTH_SOLDIERS", "GROWTH_ZONES", "GROWTH_MAX_OF", "GROWTH_AT", "TRAIT_NAMES_SHORT", "FURNITURE_RECIPES", "METAL_FURNITURE", "spare_metal", "WOODEN_FURNITURE", "BASIC_WORKSHOPS", "BASIC_STOCKPILES", "memorial_due", "_well_rule", "_well_lid_rule", "cavern_danger", "_planned_note", "_planned_parts_rule", "planned_wants", "_water_zone_rule", "cavern_well_need", "cavern_points", "cavern_action", "cavern_well_safe", "WELL_PARTS_SHOPS", "well_parts_plan", "_well_parts", "_room_repair_rule", "_water_traffic_rule", "_cleanup_rule", "STORE_GROW", "stone_tidiness", "jail_plan", "cistern_pop", "tavern_factor", "full_stores", "LEARNING_NEEDS", "_stairwell_rule", "WATER_WORDS", "water_summary", "_water_rules", "CISTERN_WORDS", "_cistern_parts", "_cistern_rule", "_deep_notes", "good_times", "ORDINALS", "garden_name", "_pop_cap_rule", "fort_strain", "hospital_shortfall", "dining_shortfall", "social_shortfall", "SOCIAL_KINDS", "_join_rule", "_dig_stall_rule", "_shrink_rule", "room_size", "_project_rules", "more_temple", "LADDER_BASE", "LADDER_TRAITS", "_ladder_kind", "_ladder_word", "ladder_score", "tombs_short"]
 
 
 # Furniture waiting in a project -> the recipe that makes it.
@@ -72,6 +72,14 @@ def _well_rule(s: dict, memory, traits: dict, cfg: dict, proposals: list, notes:
         _well_parts(s, memory, cfg, building, proposals, notes)
     if building:
         return
+    # (0.105.3) Hammerstirred (2 Nov): the cavern well was refused once for
+    # "no floor over cavern water" and never tried again, while the lake lay
+    # beside the fort. Now it may dig a gallery out to it: tried once more
+    # (its next refusal names the gallery, so this never repeats)
+    if (memory is not None and cfg["cavern_well_gallery"] > 0
+            and memory.cavern_well_failure.startswith("no floor inside the fort over cavern water")
+            and "gallery" not in memory.cavern_well_failure):
+        memory.cavern_well_failure = ""
     if wells:
         # (0.104.141, 12k) wells by the dwarves per well: Teacheroar's 209
         # dwarves (124 patients at the worst) shared one well
@@ -92,13 +100,12 @@ def _well_rule(s: dict, memory, traits: dict, cfg: dict, proposals: list, notes:
             safe = cavern_well_safe(s, cfg)
             if safe is True:
                 urgent = bool(patients or int(_d(s.get("society")).get("parched") or 0))
-                action = {"type": "place_well", "cavern": True}
-                if urgent:
-                    action["urgent"] = True
+                action = cavern_action(s, cfg, urgent)       # (0.105.3)
                 proposals.append(Proposal("well", action,
                                           f"{need} (one well for every {per} wanted), and another ordinary well "
                                           "can't be placed (the water below is in a cavern): dig a one-tile shaft "
-                                          "through solid rock to the cavern lake, from a stair beside it, and "
+                                          "through solid rock to the cavern lake, from a stair beside it (out to "
+                                          "it along a short tunnel if no fort floor is over it), and "
                                           "build the well over it" + (" (urgent: dug first)" if urgent else ""),
                                           1 if urgent else 4))
                 return
@@ -157,13 +164,12 @@ def _well_rule(s: dict, memory, traits: dict, cfg: dict, proposals: list, notes:
         need = cavern_well_need(s, cfg, patients) or (f"{parched} parched dwarves need water" if parched else "")
         safe = cavern_well_safe(s, cfg)
         if need and safe is True:
-            action = {"type": "place_well", "cavern": True}
-            if urgent:
-                action["urgent"] = True
+            action = cavern_action(s, cfg, urgent)           # (0.105.3)
             proposals.append(Proposal("well", action,
                                       f"{need}, and no ordinary well can be placed ({memory.well_failure[:80]}): "
                                       "dig a one-tile shaft through solid rock to the cavern lake, from a stair "
-                                      "beside it, and build the well over it"
+                                      "beside it (out to it along a short tunnel if no fort floor is over it), "
+                                      "and build the well over it"
                                       + (" (urgent: dug first)" if urgent else ""), 1 if urgent else 4))
             say_failure(True)
             return
@@ -178,6 +184,9 @@ def _well_rule(s: dict, memory, traits: dict, cfg: dict, proposals: list, notes:
     action = {"type": "place_well"}
     if urgent:
         action["urgent"] = True
+    # (0.105.3) Hammerstirred: the pond 51 tiles from the gate, past the 40 looked at
+    if cfg["well_shore_reach"] != 40:
+        action["shore_reach"] = int(cfg["well_shore_reach"])
     if memory.climate_freezes and _d(s.get("date")).get("season") == "winter":
         # a well right over surface water is dismantled into its parts when
         # the water freezes (the DF wiki; region2's shore well went in winter
@@ -452,6 +461,29 @@ def _water_zone_rule(s: dict, proposals: list, notes: list) -> None:
     proposals.append(Proposal("water_zone", {"type": "water_zone", "points": points},
                               f"{who} dwarves wait for water and there is no well: a water source zone at the "
                               "nearest open water, where buckets are filled until the well stands", 1))
+
+
+def cavern_points(s: dict) -> list:
+    """(0.105.3) The survey's nearest cavern water, for a gallery out to it."""
+    out = []
+    for b in _l(_d(s.get("water")).get("bodies")):
+        n = _d(_d(b).get("nearest"))
+        if _d(b).get("kind") == "cavern" and all(isinstance(n.get(k), int) for k in ("x", "y", "z")):
+            out.append({k: n[k] for k in ("x", "y", "z")})
+    return out[:3]
+
+
+def cavern_action(s: dict, cfg: dict, urgent: bool) -> dict:
+    """(0.105.3) The cavern well's action: a gallery out to the lake allowed
+    (Hammerstirred, 2 Nov: the lake lay beside the fort, under no fort floor)."""
+    action = {"type": "place_well", "cavern": True}
+    if urgent:
+        action["urgent"] = True
+    action["gallery"] = int(cfg["cavern_well_gallery"])
+    pts = cavern_points(s)
+    if pts and action["gallery"] > 0:
+        action["toward"] = pts
+    return action
 
 
 def cavern_well_need(s: dict, cfg: dict, patients: int) -> str:
@@ -884,10 +916,16 @@ def _water_rules(s: dict, cfg: dict, proposals: list, notes: list) -> None:
     now = abs_tick(s)
     tick = w.get("tick")
     if w.get("scanning"):
-        proposals.append(Proposal("water", {"type": "survey_water"},
+        act = {"type": "survey_water"}
+        if cfg["cistern_tunnel_max"] != 30:          # (0.105.3)
+            act["tunnel"] = int(cfg["cistern_tunnel_max"])
+        proposals.append(Proposal("water", act,
                                   "the water survey goes on (a slice a cycle, so the game doesn't stall)", 7))
     elif w.get("none") or not isinstance(tick, int) or not 0 <= now - tick < cfg["water_survey_ticks"]:
-        proposals.append(Proposal("water", {"type": "survey_water"},
+        act = {"type": "survey_water"}
+        if cfg["cistern_tunnel_max"] != 30:          # (0.105.3) the cistern's tunnel may reach further
+            act["tunnel"] = int(cfg["cistern_tunnel_max"])
+        proposals.append(Proposal("water", act,
                                   "survey the water near the fort (rivers, pools, caverns, aquifer, magma)", 7))
     if not w.get("none"):
         elev = int(_d(s.get("map")).get("elevation_offset") or 0)
@@ -965,6 +1003,8 @@ def _cistern_rule(s: dict, memory, cfg: dict, proposals: list, notes: list, rule
     prefs = {"freezes": bool(memory is not None and memory.climate_freezes),
              "cavern_danger": any("cavern" in str(x.get("layer") or "").lower() for x in dangers)}
     step = {"type": "cistern_step", "prefs": prefs}
+    if cfg["cistern_tunnel_max"] != 30:              # (0.105.3) the reach the survey planned it with
+        step["tunnel"] = int(cfg["cistern_tunnel_max"])
     if cfg["cistern_hold"]:
         # (0.104.144) the player: as built, the cistern doesn't work and would
         # flood the fort if it did. No step (the bridge holds it too) until it

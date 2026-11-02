@@ -130,7 +130,8 @@ def _():
     s = {"water": {"none": True}, "date": {"year": 50, "tick": 0}}
     props, notes = [], []
     _water_rules(s, PLANNER_CONFIG, props, notes)
-    assert props and props[0].action == {"type": "survey_water"} and not notes
+    # (0.105.3) the cistern's tunnel reach rides on the survey
+    assert props and props[0].action == {"type": "survey_water", "tunnel": 70} and not notes
     s["water"] = dict(w, tick=50 * 403200)
     props, notes = [], []
     _water_rules(s, PLANNER_CONFIG, props, notes)

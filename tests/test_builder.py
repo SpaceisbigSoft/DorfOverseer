@@ -1158,6 +1158,107 @@ def _():
     assert res[0] is None and "stairs" in res[1], res[1]
 
 
+def lake_beside(x1=93, x2=100, y1=56, y2=64, depth=5):
+    """(0.105.3) Hammerstirred: a cavern lake east of the fort, under no fort
+    floor (the fort's levels end at x80): air at z62 over water at z61."""
+    LUA.execute("""local W, x1, x2, y1, y2, depth = ...
+      for x = x1, x2 do for y = y1, y2 do
+        W.set(x, y, 62, {shape = 'EMPTY', feature = true})
+        W.set(x, y, 61, {shape = 'EMPTY', feature = true, liquid = true, depth = depth})
+      end end""", W, x1, x2, y1, y2, depth)
+
+
+def gallery_well(dry=False, **kw):
+    a = LUA.eval("""function(g, urgent) return {cavern = true, gallery = g, urgent = urgent,
+        toward = {{x = 96, y = 60, z = 61}}} end""")(kw.get("gallery", 40), kw.get("urgent", False))
+    return B.place_well(a, LUA.table_from({"year": 148, "tick": 100}), dry)
+
+
+@test("cavern well (0.105.3): the lake beside the fort, under no floor: a gallery through rock out to it, then the shaft")
+def _():
+    lake_beside()
+    old = B.find_cavern_well_spot(LUA.table_from([]))
+    assert old[0] is None, "no fort floor is over the lake"
+    r = gallery_well(dry=True)
+    assert r.ok and r.cavern and r.gallery and r.gallery > 0, (r.ok, r.error)
+    assert r.elevation == 70 and 92 <= r.x <= 100 and r.shaft == 7, (r.x, r.elevation, r.shaft)
+    assert designated_count() == 0                                     # a dry run digs nothing
+    r = gallery_well()
+    assert r.ok and r.project_id, r.error
+    p = B.projects_report().open[1]
+    # the gallery (dug to floor), the shaft's 8 tiles and the 8 stairs beside it
+    assert p.dig.total == r.gallery + 16, (p.dig.total, r.gallery)
+    # every gallery tile is plain digging on the fort's level, all through rock
+    dug = [(k, t) for k, t in W.tiles.items() if t.designated and t.dig_text == "d"]
+    assert len(dug) == r.gallery and all(k.endswith(",70") for k, _ in dug), dug[:3]
+    # the gallery starts beside a fort floor and nothing is dug into the cavern
+    assert not any(t.designated for k, t in W.tiles.items() if k.endswith(",62") or k.endswith(",61"))
+
+
+@test("cavern well (0.105.3): no gallery when it would be too long, cross an aquifer or water, or is switched off")
+def _():
+    lake_beside()
+    r = gallery_well(dry=True, gallery=5)
+    assert not r.ok and "gallery reaches 5" in r.error and "tiles from the dwarves" in r.error, r.error
+    r = gallery_well(dry=True, gallery=0)
+    assert not r.ok and "gallery" not in r.error, r.error              # off: the old refusal only
+    # an aquifer band across the way (x84-86, every y): the gallery can't pass it
+    LUA.execute("""local W = ...
+      for z = 66, 80 do for x = 84, 86 do for y = 30, 90 do W.set(x, y, z, {aquifer = true}) end end end""", W)
+    r = gallery_well(dry=True)
+    assert not r.ok and "no way of at most 40 tiles" in r.error, r.error
+    W.reset()
+    lake_beside()
+    # water in the rock above the way (a cap with water): not dug under it
+    LUA.execute("""local W = ...
+      for z = 67, 81 do for x = 84, 86 do for y = 30, 90 do
+        W.set(x, y, z, {shape = 'EMPTY', liquid = true, depth = 7}) end end end""", W)
+    r = gallery_well(dry=True)
+    assert not r.ok and "no way" in r.error, r.error
+    W.reset()
+    lake_beside(depth=7)
+    LUA.execute("""local W = ...
+      for x = 93, 100 do for y = 56, 64 do W.set(x, y, 62, {shape = 'EMPTY', feature = true, liquid = true, depth = 7}) end end""", W)
+    r = gallery_well(dry=True)
+    assert not r.ok and "pressure" in r.error, r.error                 # the lake fills up to the rock
+
+
+@test("wells on the shore (0.105.3): a pond past 40 tiles from the gate, within the brain's reach, by the survey")
+def _():
+    saved = LUA.execute("""local B = ...
+      return {pa = B.pasture_anchors, wg = B.walk_group, req = reqscript}""", B)
+    LUA.execute("""local B, W = ...
+      -- the gate at (60, 40, 80); the pond 50 tiles east, on the surface
+      B.pasture_anchors = function() return {{x = 60, y = 40, z = 80}} end
+      for x = 100, 118 do for y = 30, 50 do
+        W.set(x, y, 80, {shape = 'FLOOR', material = 'SOIL', outside = true})
+      end end
+      for x = 110, 113 do for y = 38, 41 do
+        W.set(x, y, 80, {shape = 'EMPTY', outside = true})
+        W.set(x, y, 79, {shape = 'FLOOR', material = 'POOL', liquid = true, depth = 7, outside = true})
+      end end
+      local wg = B.walk_group
+      B.walk_group = function(x, y, z) if z == 80 and x >= 100 then return 1 end return wg(x, y, z) end
+      local real_req = reqscript
+      reqscript = function(name)
+        if name == 'ai-water' then
+          return {last = function() return {bodies = {{kind = 'surface', nearest = {x = 110, y = 39, z = 79, d = 50}}}} end}
+        end
+        return real_req(name)
+      end
+    """, B, W)
+    try:
+        r = B.place_well(LUA.table(), LUA.table_from({"year": 148, "tick": 100}), True)
+        assert not r.ok and "within 40 tiles" in r.error and "50 tiles off" in r.error, r.error
+        r = B.place_well(LUA.table_from({"shore_reach": 60}), LUA.table_from({"year": 148, "tick": 100}), True)
+        assert r.ok and r.shore and r.from_gate and r.from_gate <= 60 and r.x >= 109, (r.ok, r.error)
+        r = B.place_well(LUA.table_from({"shore_reach": 45}), LUA.table_from({"year": 148, "tick": 100}), True)
+        assert not r.ok and "within 45 tiles" in r.error, r.error
+    finally:
+        LUA.execute("""local B, saved = ...
+          B.pasture_anchors, B.walk_group, reqscript = saved.pa, saved.wg, saved.req""", B, saved)
+
+
 @test("cavern well (0.104.13): urgent: dug first (priority 1) and in an urgent slot beyond the two")
 def _():
     cavern_column()
@@ -1628,6 +1729,37 @@ def _():
     """, W)
     r = B.plan_cistern()
     assert r[0] is None, r                                                 # rivers can be under pressure
+
+
+@test("cistern plan (0.105.3): still water past the 30-tile tunnel: refused with how far; the brain's longer reach finds it")
+def _():
+    LUA.execute("""local W = ...
+      W.citizens = {}
+      for i = 1, 20 do table.insert(W.citizens, {x = 50 + i % 10, y = 60, z = 80}) end
+      for x = 30, 90 do for y = 45, 75 do
+        if not (x == 60 and y == 60) then W.set(x, y, 79, {shape = 'WALL', material = 'STONE'}) end
+      end end
+      -- Hammerstirred's pool: underground, stagnant, well off the fort's east end (x80)
+      for x = 112, 117 do for y = 55, 65 do
+        W.set(x, y, 79, {shape = 'EMPTY', liquid = true, depth = 7, stagnant = true})
+      end end
+    """, W)
+    r = B.plan_cistern()
+    assert r[0] is None and "no still, fresh water" in r[1], r
+    # in sight (a wider look), but the tunnel too short: says how far it was
+    B.CISTERN_RADIUS = 60
+    try:
+        r = B.plan_cistern(None, None, LUA.table_from({"tunnel": 20}))
+    finally:
+        B.CISTERN_RADIUS = 30
+    assert r[0] is None and "tiles from a fort floor; a tunnel reaches 20" in r[1], r
+    # the brain's longer reach: the area grows with it, and the tunnel goes there
+    r = B.plan_cistern(None, None, LUA.table_from({"tunnel": 50}))
+    plan = r[0] if not hasattr(r, "cistern") else r
+    assert plan is not None and plan.cistern is not None, r
+    assert plan.tunnel >= 25 and plan.stagnant and plan.source == "underground pool", (plan.tunnel, plan.source)
+    assert plan.plug.x == 111 and plan.water.x == 112, (plan.plug.x, plan.water.x)   # the plug touches the pool
+    assert designated_count() == 0
 
 
 def _body():

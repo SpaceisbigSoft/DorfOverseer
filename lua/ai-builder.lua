@@ -1281,6 +1281,10 @@ function dig_progress(p)
         local want = STAIR_SHAPES[c.key]
         keep(c.x, c.y, c.z, function(t) return t.shape == want end, c.key)
     end
+    -- (0.105.3) Hammerstirred: a gallery out to the shaft, each tile dug to a floor
+    for _, g in ipairs(type(p.gallery) == 'table' and p.gallery or {}) do
+        keep(g.x, g.y, p.z, function(t) return t.shape ~= 'WALL' end, 'd')
+    end
     local out = {total = total, dug = dug, stuck = stuck, marked = marked, digging = digging,
                  waiting = #waiting > 0 and waiting or nil}
     if p.shaft then out.shaft_open, out.redesignated = shaft_open, redug > 0 and redug or nil end
@@ -2573,9 +2577,64 @@ end
 -- then the nearest; salt water never, stagnant only if there's nothing else
 -- (it gives a bad thought, but a fort without water dies of thirst).
 WELL_SHORE_RADIUS = 40
-function find_shore_well_spot(reserved)
-    local anchors = pasture_anchors()
-    if #anchors == 0 then return nil, 'no surface entrance or staircase to look around' end
+
+-- (0.105.3) Hammerstirred (2 Nov): the log said only "no pond within 40 tiles",
+-- and the player couldn't tell how far the water was. The water survey's
+-- nearest tile of each kind asked for, and how far it is from `from` (a list
+-- of {x, y, z}: the entrances, or the dwarves), in words: "the nearest
+-- surface pond is 77 tiles off (x59 y200 elevation 43)". "" when unknown.
+local REACH_WORDS = {surface = 'surface pond', pool = 'underground pool', cavern = 'cavern water', river = 'river'}
+function water_reach_words(kinds, from)
+    local ok, w = pcall(function() return reqscript('ai-water').last() end)
+    if not ok or type(w) ~= 'table' or #(from or {}) == 0 then return '' end
+    local best
+    for _, b in ipairs(w.bodies or {}) do
+        local n = b.nearest
+        if kinds[b.kind] and type(n) == 'table' and n.x and n.y and n.z then
+            for _, f in ipairs(from) do
+                local d = math.max(math.abs(n.x - f.x), math.abs(n.y - f.y))
+                if not best or d < best.d then best = {d = d, n = n, kind = b.kind} end
+            end
+        end
+    end
+    if not best then return '' end
+    return ('the nearest %s is %d tiles off (x%d y%d elevation %d)'):format(REACH_WORDS[best.kind] or best.kind,
+        best.d, best.n.x, best.n.y, ez(best.n.z))
+end
+
+-- (0.105.3) Hammerstirred (2 Nov): the surface pond lay 51 tiles from the
+-- gate, past the 40 looked at. Beyond WELL_SHORE_RADIUS the AI looks only
+-- round the water survey's nearest surface water (WELL_SHORE_NEAR tiles
+-- round it, so the scan stays small), and only if that is within `reach`
+-- tiles of an entrance (the brain's well_shore_reach) and the dwarves can
+-- walk to the bank (the same walk-group test as before).
+WELL_SHORE_NEAR = 8
+function find_shore_well_spot(reserved, reach)
+    local entrances = pasture_anchors()
+    if #entrances == 0 then return nil, 'no surface entrance or staircase to look around' end
+    reach = math.tointeger(tonumber(reach)) or WELL_SHORE_RADIUS
+    local anchors = {}
+    for _, a in ipairs(entrances) do table.insert(anchors, {x = a.x, y = a.y, z = a.z, r = WELL_SHORE_RADIUS}) end
+    local function from_gate(x, y)
+        local d
+        for _, a in ipairs(entrances) do
+            local k = math.max(math.abs(a.x - x), math.abs(a.y - y))
+            if not d or k < d then d = k end
+        end
+        return d or 0
+    end
+    if reach > WELL_SHORE_RADIUS then
+        local okw, w = pcall(function() return reqscript('ai-water').last() end)
+        for _, b in ipairs(okw and type(w) == 'table' and w.bodies or {}) do
+            local n = b.nearest
+            if (b.kind == 'surface' or b.kind == 'river') and type(n) == 'table' and n.x and n.y and n.z
+                    and from_gate(n.x, n.y) > WELL_SHORE_RADIUS - WELL_SHORE_NEAR
+                    and from_gate(n.x, n.y) <= reach then
+                -- the bank is a level over the water (the anchor's z is the bank's level)
+                table.insert(anchors, {x = n.x, y = n.y, z = n.z + 1, r = WELL_SHORE_NEAR, far = true})
+            end
+        end
+    end
     local groups = {}
     for _, p in ipairs(citizen_positions()) do
         local g = walk_group(p.x, p.y, p.z)
@@ -2586,10 +2645,12 @@ function find_shore_well_spot(reserved)
     local deadline = os.clock() + WELL_SEARCH_SECONDS
     local seen = {}
     for _, a in ipairs(anchors) do
+        -- (0.105.3) the far anchors get their own time (the near scan may use it all)
+        if a.far then deadline = math.max(deadline, os.clock() + WELL_SEARCH_SECONDS / 2) end
         for z = a.z - 3, a.z + 3 do
-            for y = a.y - WELL_SHORE_RADIUS, a.y + WELL_SHORE_RADIUS do
+            for y = a.y - a.r, a.y + a.r do
                 if os.clock() > deadline then break end
-                for x = a.x - WELL_SHORE_RADIUS, a.x + WELL_SHORE_RADIUS do
+                for x = a.x - a.r, a.x + a.r do
                     local k = x .. ',' .. y .. ',' .. z
                     if not seen[k] then
                         seen[k] = true
@@ -2633,11 +2694,14 @@ function find_shore_well_spot(reserved)
                                     if n and n.shape == 'FLOOR' and not n.liquid then stand = true end
                                 end
                                 if stand then
-                                    local score = (stagnant and 1000 or 0) + math.abs(x - a.x) + math.abs(y - a.y)
+                                    -- (0.105.3) far from the gate counts by its distance to the gate
+                                    local score = (stagnant and 1000 or 0)
+                                        + (a.far and 2 * from_gate(x, y) or (math.abs(x - a.x) + math.abs(y - a.y)))
                                         + 5 * math.abs(z - a.z)
                                     if not best_score or score < best_score then
                                         best, best_score = {x = x, y = y, z = z, drop = 1, shore = true,
-                                                            stagnant = stagnant or nil}, score
+                                                            stagnant = stagnant or nil,
+                                                            from_gate = a.far and from_gate(x, y) or nil}, score
                                     end
                                 end
                             elseif water then
@@ -2650,7 +2714,12 @@ function find_shore_well_spot(reserved)
         end
     end
     if best then return best end
-    return nil, why or ('no pond, brook or river within %d tiles of the surface entrances to put a well beside'):format(WELL_SHORE_RADIUS)
+    if why then return nil, why end
+    -- (0.105.3) how far the nearest surface water really is
+    local okr, far = pcall(water_reach_words, {surface = true, river = true}, entrances)
+    return nil, ('no pond, brook or river within %d tiles of the surface entrances to put a well beside'):format(
+        math.max(reach, WELL_SHORE_RADIUS))
+        .. (okr and far ~= '' and (' (' .. far .. ')') or '')
 end
 
 -- A cavern well (only when the AI decides it must: brain/planner.py
@@ -2971,6 +3040,236 @@ function find_cavern_well_spot(reserved)
     table.sort(reasons)
     return nil, 'no floor inside the fort over cavern water with solid rock between'
         .. (#reasons > 0 and (' (' .. table.concat(reasons, '; ') .. ')') or '')
+end
+
+-- --- the cavern well at the end of a gallery (0.105.3) ------------------------------
+--
+-- (0.105.3) Hammerstirred (2 Nov): neither fort of the overnight pair had a
+-- well, B with 4 injured waiting for water. The cavern lake (12,412 tiles,
+-- z114-136) lies under the map beside the fort, not under any fort floor:
+-- every floor's column met cavern floor, not water ("cavern floor, not water,
+-- below; no cavern water within reach"). So the fort reaches out to it: a
+-- one-tile gallery dug through solid rock on a fort level, from a fort floor
+-- to a column over the lake, and there the same cavern well as before (the
+-- shaft channelled down through rock, the stair column beside it, the shaft
+-- gate on a lever). Safety as for the shaft: every gallery tile solid rock
+-- (no aquifer, water, cavern, warm stone), its 8 neighbours rock (only the
+-- first tile may touch the fort's own dry floors), rock under it, a wall or
+-- floor over it (no water, no aquifer); the shaft's column and the stair
+-- column are checked by cavern_below and the stair test as before. Nothing
+-- moves water: the bucket goes down to the lake, which never rises (a lake
+-- that fills the space right under the rock is refused, as before).
+-- The columns tried are those round the water survey's nearest cavern water
+-- (or the points the brain passes), so the search stays small.
+WELL_GALLERY_MAX = 40          -- gallery tiles at most (the brain's cavern_well_gallery)
+WELL_GALLERY_WINDOW = 8        -- columns tried this far round each point of cavern water
+WELL_GALLERY_SECONDS = 4
+
+local G_DIR4 = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}}
+local G_DIR8 = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, 1}, {1, -1}, {-1, 1}, {-1, -1}}
+
+-- The points of cavern water to dig toward: the brain's, else the last survey's nearest.
+local function gallery_targets(toward)
+    local out = {}
+    for _, p in ipairs(type(toward) == 'table' and toward or {}) do
+        local x, y, z = math.tointeger(p.x), math.tointeger(p.y), math.tointeger(p.z)
+        if x and y and z then table.insert(out, {x = x, y = y, z = z}) end
+    end
+    if #out == 0 then
+        local ok, w = pcall(function() return reqscript('ai-water').last() end)
+        for _, b in ipairs(ok and type(w) == 'table' and w.bodies or {}) do
+            local n = b.nearest
+            if b.kind == 'cavern' and type(n) == 'table' and n.x and n.y and n.z then
+                table.insert(out, {x = n.x, y = n.y, z = n.z})
+            end
+        end
+    end
+    return out
+end
+
+-- {x, y, z, drop, rock, side, gallery = {{x, y}...} (fort end first, the
+-- stair tile beside the shaft not in it), cavern = true} or nil, why.
+function find_gallery_well_spot(reserved, opts)
+    opts = opts or {}
+    local max = math.tointeger(tonumber(opts.max)) or WELL_GALLERY_MAX
+    if max < 1 then return nil, 'galleries are switched off' end
+    local targets = gallery_targets(opts.toward)
+    if #targets == 0 then return nil, 'the water survey knows no cavern water to dig a gallery toward' end
+    local area = fort_scan_area(0)
+    if not area then return nil, 'no citizens' end
+    local cache = {}
+    local function ti(x, y, z)
+        local k = (z * 4096 + y) * 4096 + x
+        local v = cache[k]
+        if v == nil then v = tile_info(x, y, z) or false; cache[k] = v end
+        return v or nil
+    end
+    local function rock(x, y, z) return solid_rock(ti(x, y, z)) end
+    -- a tile the gallery may be dug through: rock, rock under it, a cap over it
+    local function diggable(x, y, z)
+        local t = ti(x, y, z)
+        if not solid_rock(t) or t.designated or t.building or inside_any(reserved, x, y, z) then return false end
+        local up = ti(x, y, z + 1)
+        if not up or up.liquid or up.aquifer or (up.shape ~= 'WALL' and up.shape ~= 'FLOOR') then return false end
+        return rock(x, y, z - 1)
+    end
+    local function ring_rock(x, y, z, allow)
+        for _, e in ipairs(G_DIR8) do
+            local nx, ny = x + e[1], y + e[2]
+            if not rock(nx, ny, z) and not (allow and allow(nx, ny)) then return false end
+        end
+        return true
+    end
+    local function welcome(x, y, z)
+        for _, k in ipairs(zone_types(x, y, z)) do if not WELL_ZONES[k] then return false end end
+        return true
+    end
+    -- the fort's floor the gallery starts from
+    local function fort_floor(x, y, z)
+        local t = ti(x, y, z)
+        return t and t.shape == 'FLOOR' and not t.liquid and not t.outside and not t.feature
+            and area.groups[walk_group(x, y, z)] and not building_at(x, y, z) and welcome(x, y, z)
+    end
+    -- the first tile's other neighbours may be the fort's own dry space (no zone but a hall)
+    local function dry_inside(x, y, z)
+        local t = ti(x, y, z)
+        return t and t.shape ~= 'WALL' and not t.liquid and not t.aquifer and not t.outside and not t.feature
+            and welcome(x, y, z)
+    end
+    -- how far a column is from the dwarves' box (the walk the gallery must make, at least)
+    local bx1, by1, bx2, by2 = math.huge, math.huge, -math.huge, -math.huge
+    local zlo, zhi = math.huge, -math.huge
+    for _, p in ipairs(citizen_positions()) do
+        bx1, by1 = math.min(bx1, p.x), math.min(by1, p.y)
+        bx2, by2 = math.max(bx2, p.x), math.max(by2, p.y)
+    end
+    for _, l in ipairs(area.levels) do zlo, zhi = math.min(zlo, l.z), math.max(zhi, l.z) end
+    local function away(x, y) return math.max(0, bx1 - x, x - bx2, by1 - y, y - by2) end
+    local deadline = os.clock() + WELL_GALLERY_SECONDS
+    local why_not, nearest_away, best, no_way = {}, nil, nil, {}
+    local W, H = map_size()
+    for _, tg in ipairs(targets) do
+        -- the fort levels a well could stand on over this water (lowest first: the shortest shaft)
+        for z = math.max(zlo, tg.z + 2), math.min(zhi, tg.z + WELL_MAX_DROP) do
+            if os.clock() > deadline then break end
+            -- the shaft columns round the water, each with its stair tile(s) beside it
+            local sources = {}
+            for y = math.max(1, tg.y - WELL_GALLERY_WINDOW), math.min(H - 2, tg.y + WELL_GALLERY_WINDOW) do
+                for x = math.max(1, tg.x - WELL_GALLERY_WINDOW), math.min(W - 2, tg.x + WELL_GALLERY_WINDOW) do
+                    local a = away(x, y)
+                    -- (cheap first: cavern water in this column near the survey's level)
+                    local wet = false
+                    for zz = tg.z - 2, tg.z + 2 do
+                        local wt = ti(x, y, zz)
+                        if wt and wt.liquid and wt.feature then wet = true break end
+                    end
+                    if wet and a <= max + 1 and diggable(x, y, z) and ring_rock(x, y, z) then
+                        local c, why = cavern_below(x, y, z)
+                        if c then
+                            nearest_away = math.min(nearest_away or a, a)
+                            for _, d in ipairs(G_DIR4) do
+                                local sx, sy = x + d[1], y + d[2]
+                                local ok = diggable(sx, sy, z)
+                                for k = 1, ok and c.rock or 0 do
+                                    if not rock(sx, sy, z - k) then ok = false break end
+                                    for _, e in ipairs(G_DIR8) do
+                                        local nx, ny = sx + e[1], sy + e[2]
+                                        local n = ti(nx, ny, z - k)
+                                        if not (nx == x and ny == y) and (not n or n.liquid or n.aquifer or n.shape ~= 'WALL') then
+                                            ok = false break
+                                        end
+                                    end
+                                    if not ok then break end
+                                end
+                                if ok then
+                                    table.insert(sources, {x = sx, y = sy, shaft = {x = x, y = y}, c = c})
+                                else
+                                    why_not['no room beside the shaft for its stairs'] = true
+                                end
+                            end
+                        elseif why then
+                            why_not[why] = true
+                        end
+                    elseif wet and a > max + 1 then
+                        nearest_away = math.min(nearest_away or a, a)
+                    end
+                end
+            end
+            -- one search from every stair tile at once back to the fort: the
+            -- shortest gallery wins. It never passes through its own shaft.
+            local prev, queue, head = {}, {}, 1
+            for i, s in ipairs(sources) do
+                local k = s.x .. ',' .. s.y
+                if prev[k] == nil then prev[k] = false; table.insert(queue, {s.x, s.y, 1, i}) end
+            end
+            local found
+            while head <= #queue and not found do
+                if os.clock() > deadline then why_not['the search ran out of time'] = true break end
+                local x, y, n, i = table.unpack(queue[head])
+                head = head + 1
+                local s = sources[i]
+                local function own_shaft(nx, ny) return nx == s.shaft.x and ny == s.shaft.y end
+                local start
+                for _, d in ipairs(G_DIR4) do
+                    if not start and fort_floor(x + d[1], y + d[2], z) then start = {x = x + d[1], y = y + d[2]} end
+                end
+                if start then
+                    if ring_rock(x, y, z, function(nx, ny) return own_shaft(nx, ny) or dry_inside(nx, ny, z) end) then
+                        found = {x = x, y = y, n = n, i = i, from = start}
+                    else
+                        why_not['the gallery would open beside a room or open ground'] = true
+                    end
+                elseif n < max + 1 and ring_rock(x, y, z) then
+                    for _, d in ipairs(G_DIR4) do
+                        local nx, ny = x + d[1], y + d[2]
+                        local k = nx .. ',' .. ny
+                        if prev[k] == nil and not own_shaft(nx, ny) then
+                            if diggable(nx, ny, z) then
+                                prev[k] = {x, y}
+                                table.insert(queue, {nx, ny, n + 1, i})
+                            end
+                        end
+                    end
+                end
+            end
+            if #sources > 0 and not found then table.insert(no_way, ez(z)) end
+            if found then
+                local s = sources[found.i]
+                -- the gallery, fort end first; the last tile walked (the stair tile) left out
+                local path, px, py = {}, found.x, found.y
+                while true do
+                    local pr = prev[px .. ',' .. py]
+                    if not pr then break end
+                    table.insert(path, {x = px, y = py})
+                    px, py = pr[1], pr[2]
+                end
+                local score = #path * 3 + s.c.rock + (s.c.stagnant and 200 or 0)
+                if not best or score < best.score then
+                    best = {x = s.shaft.x, y = s.shaft.y, z = z, drop = s.c.drop, rock = s.c.rock, cavern = true,
+                            stagnant = s.c.stagnant, side = {x = s.x, y = s.y}, gallery = path, from = found.from,
+                            zone = false, score = score}
+                end
+                break        -- the lowest fort level that reaches it: the shortest shaft
+            end
+        end
+    end
+    if best then return best end
+    if #no_way > 0 then
+        table.sort(no_way)
+        why_not[('no way of at most %d tiles through solid rock (no aquifer, water or open space beside it) from a fort floor at elevation %s')
+            :format(max, no_way[1] == no_way[#no_way] and tostring(no_way[1]) or (no_way[1] .. '-' .. no_way[#no_way]))] = true
+    end
+    local reasons = {}
+    for w in pairs(why_not) do table.insert(reasons, w) end
+    table.sort(reasons)
+    local tg = targets[1]
+    local head_ = ('no gallery to the cavern water at x%d y%d elevation %d'):format(tg.x, tg.y, ez(tg.z))
+    if tg.z + 2 > zhi or tg.z + WELL_MAX_DROP < zlo then
+        head_ = head_ .. (' (the fort\'s levels, elevations %d-%d, are not 2-%d levels above it)'):format(ez(zlo), ez(zhi), WELL_MAX_DROP)
+    elseif nearest_away and nearest_away > max then
+        head_ = head_ .. (' (its nearest column is %d tiles from the dwarves; a gallery reaches %d)'):format(nearest_away, max)
+    end
+    return nil, head_ .. (#reasons > 0 and (': ' .. table.concat(reasons, '; ')) or '')
 end
 
 -- --- rooms opened up: their walls built back (0.104.20) -----------------------------
@@ -3339,7 +3638,8 @@ end
 -- The tunnel: from the cistern's wall outwards through solid rock (each
 -- tile's 8 neighbours rock, the cistern, the tunnel or, for the plug, the
 -- water) to a tile beside still water. {path = {{x, y}...}, water = {x, y}}.
-local function tunnel_to_water(c, z)
+local function tunnel_to_water(c, z, maxlen)
+    maxlen = maxlen or CISTERN_MAX_TUNNEL         -- (0.105.3) the brain's cistern_tunnel_max
     local function in_room(x, y) return x >= c.x1 and x <= c.x2 and y >= c.y1 and y <= c.y2 end
     local starts = {}
     for x = c.x1, c.x2 do
@@ -3385,7 +3685,7 @@ local function tunnel_to_water(c, z)
                     end
                 end
             end
-            if n < CISTERN_MAX_TUNNEL then
+            if n < maxlen then
                 -- (no water even at a corner: water flows diagonally too, so a
                 -- tunnel tile touching it would flood when dug)
                 local clear = true
@@ -3514,7 +3814,7 @@ local function source_cost(w, extent, prefs)
 end
 
 -- The shaft way in, from one of the room's four outer corners.
-local function shaft_to_water(c, z, water_z, deadline)
+local function shaft_to_water(c, z, water_z, deadline, maxlen)
     local corners = {{c.x1 - 1, c.y1 - 1, c.x1, c.y1}, {c.x2 + 1, c.y1 - 1, c.x2, c.y1},
                      {c.x1 - 1, c.y2 + 1, c.x1, c.y2}, {c.x2 + 1, c.y2 + 1, c.x2, c.y2}}
     local found = {}
@@ -3527,7 +3827,7 @@ local function shaft_to_water(c, z, water_z, deadline)
                 local zs = z + rise
                 if not solid_rock(tile_info(bx, by, zs)) or not ring_solid(bx, by, zs) then break end
                 if water_z[zs] and capped(tile_info(bx, by, zs + 1)) then
-                    local tun = tunnel_to_water({x1 = bx, y1 = by, x2 = bx, y2 = by}, zs)
+                    local tun = tunnel_to_water({x1 = bx, y1 = by, x2 = bx, y2 = by}, zs, maxlen)
                     if tun and tunnel_closed(tun.path, zs) then
                         table.insert(found, {tun = tun, zs = zs, shaft = {x = bx, y = by}, corner = {x = rx, y = ry},
                                              rise = rise})
@@ -3544,31 +3844,94 @@ end
 -- or nil, why. first, last: which of the busiest levels to look at (the
 -- bridge asks one level a call). The plan carries its `score` (lower is
 -- better) and `considered` (the best score of each kind of source).
-function plan_cistern(first, last)
-    local area = fort_scan_area(CISTERN_RADIUS)
+-- (0.105.3) Hammerstirred (2 Nov): "no tunnel through solid rock from a
+-- cistern site to still water" while a 40-tile underground pool lay 53-66
+-- survey tiles from the fort, beyond the 30 tiles the tunnel was allowed.
+-- `opts.tunnel` (the brain's cistern_tunnel_max) lets the tunnel go further;
+-- the area looked at grows with it. Sites that couldn't reach any still water
+-- within that many tiles (as the crow flies, a tunnel is never shorter) are
+-- skipped, and the rest are tried nearest the water first, so the longer
+-- reach costs no more time. The refusal says how far the water was.
+function plan_cistern(first, last, opts)
+    opts = type(opts) == 'table' and opts or {}
+    local maxlen = math.tointeger(tonumber(opts.tunnel)) or CISTERN_MAX_TUNNEL
+    if maxlen < 2 then maxlen = CISTERN_MAX_TUNNEL end
+    local area = fort_scan_area(math.max(CISTERN_RADIUS, maxlen + CISTERN_HALF + 2))
     if not area then return nil, 'no citizens' end
     local prefs = cistern_prefs()
     local deadline = os.clock() + CISTERN_SECONDS
     local best, best_score, why = nil, nil, nil
     local considered = {}
+    local nearest_water        -- (0.105.3) the nearest still water to any fort floor looked at
+    -- (0.105.3) the wider box costs time: only the levels the last survey
+    -- found still water on are sampled (all of them when there's no survey),
+    -- and fort floors are looked for only within the old margin of the dwarves
+    local wet_levels
+    local okw, wl = pcall(function() return reqscript('ai-water').last() end)
+    if okw and type(wl) == 'table' and type(wl.bodies) == 'table' then
+        wet_levels = {}
+        for _, b in ipairs(wl.bodies) do
+            if b.kind ~= 'river' and tonumber(b.z1) and tonumber(b.z2) then
+                for zz = b.z1, b.z2 do wet_levels[zz] = true end
+            end
+        end
+    end
+    local inner = fort_scan_area(CISTERN_RADIUS)
     for i = first or 1, math.min(last or CISTERN_LEVELS, #area.levels) do
         local zw = area.levels[i].z
         local z = zw - 1
         -- the levels with still water near the fort, from the cistern's up
+        -- (0.105.3) and the tiles of it, sampled, for the reach test
         local water_z, any = {}, false
+        local W_ = area.x2 - area.x1 + 1
+        local dist, queue = {}, {}
         for zz = z, z + CISTERN_MAX_RISE do
-            for y = area.y1, area.y2, 2 do
+            for y = area.y1, (wet_levels == nil or wet_levels[zz]) and area.y2 or area.y1 - 1, 2 do
                 for x = area.x1, area.x2, 2 do
-                    if still_water(tile_info(x, y, zz)) then water_z[zz] = true break end
+                    if still_water(tile_info(x, y, zz)) then
+                        water_z[zz] = true
+                        local k = (y - area.y1) * W_ + (x - area.x1)
+                        if not dist[k] then dist[k] = 0; table.insert(queue, {x, y}) end
+                    end
                 end
-                if water_z[zz] then any = true break end
             end
+            if water_z[zz] then any = true end
         end
         if any then
-            for y = area.y1 + 4, area.y2 - 4 do
+            -- (0.105.3) every column's distance to the nearest still water
+            -- (8-way spread: Chebyshev tiles), then the sites in reach, nearest first
+            local reach = maxlen + CISTERN_HALF + 2
+            local head = 1
+            while head <= #queue do
+                local q = queue[head]
+                head = head + 1
+                local d0 = dist[(q[2] - area.y1) * W_ + (q[1] - area.x1)]
+                for _, e in ipairs(DIR8) do
+                    local nx, ny = q[1] + e[1], q[2] + e[2]
+                    if nx >= area.x1 and nx <= area.x2 and ny >= area.y1 and ny <= area.y2 then
+                        local k = (ny - area.y1) * W_ + (nx - area.x1)
+                        if not dist[k] then dist[k] = d0 + 1; table.insert(queue, {nx, ny}) end
+                    end
+                end
+            end
+            local sites = {}
+            for y = math.max(area.y1, inner.y1) + 4, math.min(area.y2, inner.y2) - 4 do
+                for x = math.max(area.x1, inner.x1) + 4, math.min(area.x2, inner.x2) - 4 do
+                    local f = tile_info(x, y, zw)
+                    if f and f.shape == 'FLOOR' and not f.outside and area.groups[walk_group(x, y, zw)] then
+                        local d = dist[(y - area.y1) * W_ + (x - area.x1)]
+                        if d then
+                            if not nearest_water or d < nearest_water then nearest_water = d end
+                            if d <= reach then table.insert(sites, {x, y, d}) end
+                        end
+                    end
+                end
+            end
+            table.sort(sites, function(a, b) return a[3] < b[3] end)
+            for _, site in ipairs(sites) do
                 if os.clock() > deadline then break end
-                for x = area.x1 + 4, area.x2 - 4 do
-                    if os.clock() > deadline then break end
+                do
+                    local x, y = site[1], site[2]
                     -- a fort floor for the well, a solid 7x7 of rock under it, and
                     -- nothing over the room the water could climb into (a floor or a wall)
                     local f = tile_info(x, y, zw)
@@ -3590,7 +3953,7 @@ function plan_cistern(first, last)
                             local options = {}
                             -- level: the source on the room's level, nothing over its water
                             if water_z[z] then
-                                local tun = tunnel_to_water(c, z)
+                                local tun = tunnel_to_water(c, z, maxlen)
                                 if tun and water_body_safe(tun.water.x, tun.water.y, z) then
                                     table.insert(options, {tun = tun, zs = z, rise = 0})
                                 elseif tun then
@@ -3599,7 +3962,7 @@ function plan_cistern(first, last)
                                 end
                             end
                             -- shaft: the source higher up, through a diagonal
-                            for _, o in ipairs(shaft_to_water(c, z, water_z, deadline)) do table.insert(options, o) end
+                            for _, o in ipairs(shaft_to_water(c, z, water_z, deadline, maxlen)) do table.insert(options, o) end
                             if #options == 0 then
                                 why = why or 'no tunnel through solid rock from a cistern site to still water'
                             end
@@ -3651,7 +4014,16 @@ function plan_cistern(first, last)
         end
         return best
     end
-    return nil, why or 'no still, fresh water near the fort within reach of a cistern under a fort level'
+    why = why or 'no still, fresh water near the fort within reach of a cistern under a fort level'
+    -- (0.105.3) how far it was, and how far a tunnel may go
+    if nearest_water then
+        why = why .. (' (the nearest still water on a cistern\'s levels is %d tiles from a fort floor; a tunnel reaches %d)')
+            :format(nearest_water, maxlen)
+    else
+        local okr, far = pcall(water_reach_words, {pool = true, cavern = true, surface = true}, {{x = area.cx, y = area.cy}})
+        if okr and far ~= '' then why = why .. ' (' .. far .. ', not on a level 0-' .. CISTERN_MAX_RISE .. ' over a cistern under a fort floor)' end
+    end
+    return nil, why
 end
 
 -- (0.104.145) Is the cistern still closed where the water goes? The room's
@@ -4756,7 +5128,9 @@ end
 CISTERN_HOLD = false          -- (0.104.145) the second design: released
 CISTERN_HOLD_WHY = 'the cistern is on hold (the player: as built it would flood the fort): the floodgate stays shut'
 
-function cistern_step(dry_run, prefs)
+CISTERN_TUNNEL_ASKED = nil       -- (0.105.3) the brain's cistern_tunnel_max, set by cistern_step's caller
+function cistern_step(dry_run, prefs, tunnel)
+    CISTERN_TUNNEL_ASKED = math.tointeger(tonumber(tunnel))
     OFFSET = elevation_offset()
     if prefs then cistern_prefs(prefs) end
     local d = cistern_data()
@@ -4787,7 +5161,8 @@ function cistern_step(dry_run, prefs)
         return {ok = false, rejected = true, held = true, error = 'no new cistern while the design is on hold'}
     end
     if not d then
-        local plan, why = plan_cistern()
+        -- (0.105.3) the same tunnel reach the survey planned it with
+        local plan, why = plan_cistern(nil, nil, {tunnel = CISTERN_TUNNEL_ASKED})
         if not plan then return {ok = false, error = why} end
         if dry_run then return {ok = true, dry_run = true, stage = 'dig', plan = plan} end
         d = {stage = 'dig', plan = plan}
@@ -5239,6 +5614,13 @@ function place_well(params, now, dry_run)
     local spot, why
     if params.cavern then
         spot, why = find_cavern_well_spot(reserved)
+        -- (0.105.3) Hammerstirred (2 Nov): no fort floor over the cavern lake
+        -- (it lies beside the fort, 80 tiles off by the survey): a gallery
+        -- through solid rock out to a column over it, unless the brain says no
+        if not spot and params.gallery ~= 0 then
+            local g, gwhy = find_gallery_well_spot(reserved, {max = params.gallery, toward = params.toward})
+            if g then spot = g else why = why .. '; ' .. gwhy end
+        end
         if not spot then return {ok = false, error = why} end
     else
         spot, why = find_well_spot(reserved)
@@ -5248,7 +5630,7 @@ function place_well(params, now, dry_run)
                 .. 'it would be taken down), so the AI looks only inside the fort'}
     end
     if not spot then
-        local shore, why2 = find_shore_well_spot(reserved)
+        local shore, why2 = find_shore_well_spot(reserved, params.shore_reach)
         if not shore then return {ok = false, error = why .. '; ' .. why2} end
         spot = shore
     end
@@ -5269,6 +5651,15 @@ function place_well(params, now, dry_run)
         end
         table.insert(shaft, zk)
     end
+    -- (0.105.3) the gallery out to the shaft, dug as plain floor through the rock
+    local gallery = {}
+    for _, g in ipairs(spot.gallery or {}) do
+        local d = quickfort_apply('dig', {{x = 0, y = 0, text = 'd' .. pri}}, spot.z, g.x, g.y, 'run', true)
+        if stat(d, 'dig_designated') ~= 1 then
+            return {ok = false, error = ('the game would not dig the gallery at x%d y%d elevation %d'):format(g.x, g.y, ez(spot.z))}
+        end
+        table.insert(gallery, {x = g.x, y = g.y})
+    end
     local stairs = {}
     if spot.cavern then
         if not spot.side then return {ok = false, error = 'no room beside the shaft for the stairs it is dug from'} end
@@ -5282,7 +5673,8 @@ function place_well(params, now, dry_run)
     end
     local where = {x = spot.x, y = spot.y, elevation = ez(spot.z), drop = spot.drop, in_hall = spot.zone,
                    shore = spot.shore, stagnant = spot.stagnant, cavern = spot.cavern, shaft = #shaft,
-                   stairs = #stairs > 0 and #stairs or nil, urgent = params.urgent == true or nil}
+                   stairs = #stairs > 0 and #stairs or nil, urgent = params.urgent == true or nil,
+                   gallery = #gallery > 0 and #gallery or nil, from = spot.from, from_gate = spot.from_gate}
     if dry_run then
         where.ok, where.dry_run = true, true
         return where
@@ -5293,6 +5685,9 @@ function place_well(params, now, dry_run)
         return {ok = false, error = 'the game refused to channel the well spot'}
     end
     for _, zk in ipairs(shaft) do pcall(quickfort_apply, 'dig', dig, zk, spot.x, spot.y) end
+    for _, g in ipairs(gallery) do
+        pcall(quickfort_apply, 'dig', {{x = 0, y = 0, text = 'd' .. pri}}, spot.z, g.x, g.y)
+    end
     for _, c in ipairs(stairs) do
         pcall(quickfort_apply, 'dig', {{x = 0, y = 0, text = c.key .. pri}}, c.z, c.x, c.y)
     end
@@ -5302,6 +5697,7 @@ function place_well(params, now, dry_run)
         area = {x1 = spot.x - 1, y1 = spot.y - 1, x2 = spot.x + 1, y2 = spot.y + 1, z = spot.z},
         corridor = 0, stairs = {}, dig_done = 'open', shaft = #shaft > 0 and shaft or nil,
         shaft_stairs = #stairs > 0 and stairs or nil, urgent = params.urgent == true or nil,
+        gallery = #gallery > 0 and gallery or nil,      -- (0.105.3)
         summary = {well = 1, drop = spot.drop, cavern = spot.cavern}, furniture = {Well = 1},
         cells = {dig = dig, build = {{x = 0, y = 0, text = 'l'}}, place = {}, zone = {},
                  smooth = {}, engrave = {}},

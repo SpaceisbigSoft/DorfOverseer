@@ -4207,8 +4207,28 @@ end
 -- A well: the builder finds a free floor inside the fort with a straight
 -- drop to clean water, channels it, and places the well once it's dug.
 function act_place_well(a)
+    -- (0.105.3) Hammerstirred (2 Nov): the brain's reach for a well beside far
+    -- water: gallery (tiles of tunnel out to a column over the cavern lake; 0
+    -- none), toward (points of cavern water, from the survey), shore_reach
+    -- (tiles from the gate a pond may be for a well on its bank)
+    local toward
+    if type(a.toward) == 'table' then
+        toward = {}
+        for i, p in ipairs(a.toward) do
+            if i > 6 then break end
+            if type(p) == 'table' then
+                local x, y, z = whole_number(p.x), whole_number(p.y), whole_number(p.z)
+                if x and y and z then table.insert(toward, {x = x, y = y, z = z}) end
+            end
+        end
+    end
+    local gallery = whole_number(a.gallery)
+    local reach = whole_number(a.shore_reach)
     return reqscript('ai-builder').place_well({inside_only = a.inside_only == true, cavern = a.cavern == true,
-                                               urgent = a.urgent == true},
+                                               urgent = a.urgent == true,
+                                               gallery = gallery and math.max(0, math.min(gallery, 80)) or nil,
+                                               toward = toward,
+                                               shore_reach = reach and math.max(0, math.min(reach, 100)) or nil},
                                               get_date(), a.dry_run == true)
 end
 
@@ -5727,7 +5747,9 @@ function act_survey_water(a)
     end
     local B = reqscript('ai-builder')
     local i = WATER_PLAN.i
-    local okp, plan, why = pcall(B.plan_cistern, i, i)
+    -- (0.105.3) Hammerstirred (2 Nov): the brain's cistern_tunnel_max (the pool 53-66 tiles off)
+    local tun = whole_number(a.tunnel)
+    local okp, plan, why = pcall(B.plan_cistern, i, i, {tunnel = tun and math.max(2, math.min(tun, 80)) or nil})
     if okp and plan and (not WATER_PLAN.best or plan.score < WATER_PLAN.best.score) then WATER_PLAN.best = plan end
     if okp and not plan and why then WATER_PLAN.why = WATER_PLAN.why or why end
     if not okp then WATER_PLAN.why = tostring(plan):sub(1, 160) end
@@ -5751,7 +5773,9 @@ function act_cistern_step(a)
     -- freezes, a danger in the caverns
     local prefs = type(a.prefs) == 'table' and {freezes = a.prefs.freezes == true,
                                                cavern_danger = a.prefs.cavern_danger == true} or nil
-    return reqscript('ai-builder').cistern_step(a.dry_run == true, prefs)
+    -- (0.105.3) the tunnel's reach, as the survey planned it (Hammerstirred's pool 53-66 tiles off)
+    local tun = whole_number(a.tunnel)
+    return reqscript('ai-builder').cistern_step(a.dry_run == true, prefs, tun and math.max(2, math.min(tun, 80)) or nil)
 end
 
 -- (0.105.0) Water works and magma (lua/ai-waterworks.lua): one step of the
