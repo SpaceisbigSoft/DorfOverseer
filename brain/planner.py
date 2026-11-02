@@ -1164,4 +1164,9 @@ def note_cycle(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> list[
             memory.gear_spare_since.setdefault("weapon_gaps", now)
         else:
             memory.gear_spare_since.pop("weapon_gaps", None)
+        # (0.105.8) armour places the bridge's own dry run could fill
+        if int(_d(gear.get("kit")).get("fillable") or 0) > 0 and int(gear.get("on_duty") or 0) > 0:
+            memory.gear_spare_since.setdefault("kit_gaps", now)
+        elif isinstance(_d(gear.get("kit")).get("fillable"), int):
+            memory.gear_spare_since.pop("kit_gaps", None)
     return notes

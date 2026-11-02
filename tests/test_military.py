@@ -349,6 +349,97 @@ def _():
     assert env.weapon_gaps() == (0, 3) and env.assign_weapons(False, 10).rejected     # nothing to hand out: refused
 
 
+KIT_FAKE = r"""
+local src = ...
+local function vec(list)
+    local t = {}
+    for i, v in ipairs(list or {}) do t[i - 1] = v end
+    return setmetatable(t, {__len = function(self) local n = 0; while rawget(self, n) ~= nil do n = n + 1 end; return n end,
+        __index = {insert = function(self, at, v)
+                       local n = #self
+                       if at == '#' then at = n end
+                       for i = n, at + 1, -1 do self[i] = self[i - 1] end
+                       self[at] = v end,
+                   erase = function(self, at)
+                       local n = #self
+                       for i = at, n - 2 do self[i] = self[i + 1] end
+                       self[n - 1] = nil end}})
+end
+local where = {}
+local function piece(id, x, hand, flags)
+    local it = {id = id, flags = flags or {}, handedness = hand and {[0] = hand == 'r', [1] = hand == 'l'} or nil}
+    function it:getSubtype() return 0 end
+    function it:getMaterial() return 0 end
+    function it:getMaterialIndex() return 0 end
+    where[id] = {x, 0, 0}
+    return it
+end
+-- body armour: 41 far, 42 near, 43 forbidden; gloves: 51 right far, 52 right near, 53 left; 54 a lone left
+local items = {ARMOR = vec({piece(41, 40), piece(42, 2), piece(43, 1, nil, {forbid = true})}),
+               GLOVES = vec({piece(51, 30, 'r'), piece(52, 3, 'r'), piece(53, 4, 'l')}),
+               HELM = vec({}), PANTS = vec({}), SHIELD = vec({}), SHOES = vec({})}
+local function lists(t) local o = {} for k, v in pairs(t) do o[k] = vec(v) end return o end
+local eq = {items_assigned = lists({WEAPON = {}, ARMOR = {}, GLOVES = {}, HELM = {}, PANTS = {}, SHIELD = {}, SHOES = {}}),
+            items_unassigned = lists({WEAPON = {}, ARMOR = {41, 42, 43}, GLOVES = {51, 52, 53}, HELM = {}, PANTS = {}, SHIELD = {}, SHOES = {}}),
+            update = {}, work_weapons = vec({})}
+-- uniform categories: body 0, head 1, pants 2, gloves 3, shoes 4, shield 5, weapon 6
+local function place(occ)
+    local u = {}
+    for c = 0, 6 do u[c] = vec({}) end
+    u[0] = vec({{item_type = 0, item_subtype = -1, mattype = -1, matindex = -1, assigned = vec({})}})
+    u[3] = vec({{item_type = 0, item_subtype = -1, mattype = -1, matindex = -1, assigned = vec({})}})
+    return {occupant = occ, equipment = {assigned_items = vec({}), uniform = u}}
+end
+local sq = {id = 9, positions = vec({place(200), place(201)})}
+local env = setmetatable({}, {__index = _G})
+env.ipairs = function(t)
+    if type(t) == 'table' and rawget(t, 0) ~= nil then
+        local i = -1
+        return function() i = i + 1; if t[i] ~= nil then return i, t[i] end end
+    end
+    return ipairs(t)
+end
+env.xyz2pos = function(x, y, z) return {x = x, y = y, z = z} end
+env.df = {uniform_category = {_last_item = 6, body = 0, head = 1, pants = 2, gloves = 3, shoes = 4, shield = 5, weapon = 6},
+          item_type = {WEAPON = 24}, entity_material_category = {},
+          squad = {find = function(id) return id == 9 and sq or nil end},
+          historical_figure = {find = function(id) return {unit_id = id} end},
+          unit = {find = function(id) return {id = id} end},
+          historical_entity = {find = function() return {squads = vec({9})} end},
+          global = {plotinfo = {equipment = eq, group_id = 1}, cur_year_tick = 0, cur_year = 1,
+                    world = {squads = {all = vec({sq})}, items = {other = items},
+                             raws = {itemdefs = {weapons = vec({})}}}}}
+env.dfhack = {persistent = {getSiteData = function(k, d) return d end, saveSiteData = function() end},
+              items = {getHolderUnit = function() return nil end,
+                       getPosition = function(it) local w = where[it.id]; return w[1], w[2], w[3] end},
+              units = {getPosition = function(u) return 0, 0, 0 end},
+              maps = {canWalkBetween = function(a, b) return true end}}
+assert(load(src, 'ai-military', 't', env))()
+return env, eq, sq
+"""
+
+
+@test("assign kit (0.105.8): empty armour entries get the nearest free piece; gloves a left and a right, never half a pair")
+def _():
+    lua = LuaRuntime(unpack_returned_tuples=True)
+    env, eq, sq = lua.execute(KIT_FAKE, (ROOT / "lua" / "ai-military.lua").read_text(encoding="utf-8"))
+    n = lua.eval("function(v) return #v end")
+    seq = lambda v: sorted(v[i] for i in range(n(v)))
+    d = env.assign_kit(True, 10)
+    assert d.ok and d.would_assign == 3, dict(d)                     # 2 body armour, 1 pair of gloves
+    assert seq(eq.items_unassigned.ARMOR) == [41, 42, 43]            # a dry run changes nothing
+    r = env.assign_kit(False, 10)
+    assert r.ok and r.assigned == 3 and r.by.armor == 2 and r.by.gloves == 1, dict(r)
+    p0, p1 = sq.positions[0].equipment, sq.positions[1].equipment
+    assert seq(p0.uniform[0][0].assigned) == [42] and seq(p1.uniform[0][0].assigned) == [41]   # nearest first, never 43
+    assert seq(p0.uniform[3][0].assigned) == [52, 53]                # the near right and the left
+    assert n(p1.uniform[3][0].assigned) == 0                         # one right left over: no half pair
+    assert seq(p0.assigned_items) == [42, 52, 53]
+    assert seq(eq.items_unassigned.GLOVES) == [51] and seq(eq.items_assigned.GLOVES) == [52, 53]
+    assert eq.update.armor and eq.update.gloves
+    assert env.assign_kit(False, 10).rejected                       # nothing more: refused
+
+
 @test("assign weapons (0.104.60): the limit caps one call")
 def _():
     lua = LuaRuntime(unpack_returned_tuples=True)

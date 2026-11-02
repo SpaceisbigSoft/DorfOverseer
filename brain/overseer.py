@@ -528,6 +528,8 @@ def short(a: dict) -> str:
         return "put a chair beside each lone chair in the tavern"
     if t == "squad_swap":        # (0.104.65)
         return "send a soldier back to work and draft a keen dwarf in his place"
+    if t == "assign_kit":        # (0.105.8)
+        return "give the soldiers the free armour the game won't hand out"
     if t == "assign_weapons":    # (0.104.60)
         return "give the soldiers the free weapons the game won't hand out"
     # (0.105.0, round 2) an army that can fight

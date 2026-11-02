@@ -4636,6 +4636,31 @@ def _():
     assert "weapon_gaps" not in m.gear_spare_since and not by_rule(plan(done, m)[0], "assign_weapons")
 
 
+@test("assign kit (0.105.8): armour places the bridge could fill, left 3 days -> the AI hands the armour out")
+def _():
+    s = geared(soldiers=9, on_duty=9, armed=9, armored=7, helmed=6, spare={"gloves": 10, "boots": 10}, bars={"IRON": 57})
+    s["military"]["gear"]["kit"] = {"fillable": 9, "gloves": {"why": {"fillable": 7}}, "boots": {"why": {"fillable": 4}},
+                                    "body": {"why": {"fillable": 2}}}
+    m = Memory()
+    note_cycle(s, m)
+    assert not by_rule(plan(s, m)[0], "assign_kit"), "DF gets 3 days first"
+    later = copy.deepcopy(s)
+    later["date"]["tick"] += 3 * 1200
+    note_cycle(later, m)
+    a = by_rule(plan(later, m)[0], "assign_kit")
+    assert a and a[0].action == {"type": "assign_kit", "limit": 20} and "gloves 7" in a[0].reason, a
+    done = copy.deepcopy(later)
+    done["military"]["gear"]["kit"] = {"fillable": 0}
+    note_cycle(done, m)
+    assert "kit_gaps" not in m.gear_spare_since and not by_rule(plan(done, m)[0], "assign_kit")
+    off = copy.deepcopy(later)                       # nobody on duty: no timer
+    off["military"]["gear"]["on_duty"] = 0
+    m2 = Memory(); note_cycle(off, m2)
+    assert "kit_gaps" not in m2.gear_spare_since
+    import overseer
+    assert "armour" in overseer.short({"type": "assign_kit", "limit": 20})
+
+
 @test("gear (game): 3+ spares lying unused -> no more made; after a week Needs you says to check uniforms")
 def _():
     s = geared(soldiers=33, on_duty=33, armed=17, armored=33, helmed=33, spare={"weapons": 7},

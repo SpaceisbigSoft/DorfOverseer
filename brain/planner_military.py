@@ -1031,6 +1031,20 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
             proposals.append(Proposal("assign_weapons", {"type": "assign_weapons", "limit": 10},
                                       f"{int(gear['weapon_gaps'])} soldier place(s) the game gives no weapon "
                                       "though free ones lie about: hand them out to the soldiers", 3))
+        # (0.105.8) the same for armour: E's 7 bare-handed soldiers with 5
+        # left and 5 right gauntlets free; uniform-unstick changed nothing
+        kit = _d(gear.get("kit"))
+        since = memory.gear_spare_since.get("kit_gaps")
+        if (int(kit.get("fillable") or 0) > 0 and isinstance(since, int)
+                and abs_tick(s) - since >= cfg["assign_kit_wait_ticks"]):
+            empty = {k: int(_d(_d(kit.get(k)).get("why")).get("fillable") or 0)
+                     for k in ("body", "helms", "pants", "gloves", "boots")}
+            empty = {k: v for k, v in empty.items() if v}
+            proposals.append(Proposal("assign_kit", {"type": "assign_kit", "limit": 20},
+                                      f"{int(kit['fillable'])} soldier place(s) the game gives no armour though "
+                                      "free pieces that fit lie about"
+                                      + (f" ({', '.join(f'{k} {v}' for k, v in empty.items())})" if empty else "")
+                                      + ": hand them out to the soldiers", 3))
         released = []
         for k, _r, what, _n in waiting:
             since = memory.gear_spare_since.get(k)

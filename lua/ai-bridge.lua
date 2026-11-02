@@ -5268,6 +5268,13 @@ end
 
 -- (0.104.60) Weapons put on the soldiers' places when DF leaves the entry
 -- empty with free weapons about (lua/ai-military.lua assign_weapons).
+-- (0.105.8) The same for armour (lua/ai-military.lua assign_kit).
+function act_assign_kit(a)
+    local n = int_in(a.limit or 10, 1, 50)
+    if not n then return reject('assign_kit: limit 1-50') end
+    return reqscript('ai-military').assign_kit(a.dry_run == true, n)
+end
+
 function act_assign_weapons(a)
     local n = int_in(a.limit or 10, 1, 50)
     if not n then return reject('assign_weapons: limit 1-50') end
@@ -6486,6 +6493,7 @@ ACTIONS = {
     break_fights = act_break_fights,
     free_stray_gear = act_free_stray_gear,   -- (0.104.58)
     assign_weapons = act_assign_weapons,     -- (0.104.60)
+    assign_kit = act_assign_kit,             -- (0.105.8)
     trim_gathering = act_trim_gathering,
     squad_routine = act_squad_routine,
     set_uniform = act_set_uniform,

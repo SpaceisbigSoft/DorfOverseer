@@ -3082,8 +3082,113 @@ function kit_report()
             out[key] = {error = tostring(g):sub(1, 120)}
         end
     end
+    local okd, dr = pcall(assign_kit, true, 50)
+    out.fillable = okd and type(dr) == 'table' and (dr.would_assign or 0) or nil
     KIT_CACHE = {out = out, tick = now, year = year}
     return out
+end
+
+-- (0.105.8) The armour DF won't hand out, put on the soldiers' entries as
+-- assign_weapons does for weapons: each empty body, helm, greaves, shield,
+-- gloves or boots entry of a soldier on the map gets the nearest free item
+-- that fits it (its kind and material, on DF's unassigned list, nobody's,
+-- not forbidden, in a job or to melt, reachable). A pair entry takes two, as
+-- DF fills one (the six forts: every given gloves or boots entry holds 2):
+-- gloves one left and one right; nothing is given until the pair is found.
+-- E (2 Nov): 7 of 9 gloves entries empty, 5 left and 5 right free.
+KIT_GIVE = {{'body', 'ARMOR', 'armor', 1}, {'head', 'HELM', 'helm', 1}, {'pants', 'PANTS', 'pants', 1},
+            {'shield', 'SHIELD', 'shield', 1}, {'gloves', 'GLOVES', 'gloves', 2}, {'shoes', 'SHOES', 'shoes', 2}}
+
+function assign_kit(dry_run, limit)
+    local eq = equipment_lists()
+    if not eq then return {ok = false, rejected = true, error = "this DF keeps its equipment lists elsewhere"} end
+    local fort = fort_entity()
+    if not fort then return {ok = false, rejected = true, error = 'no fort'} end
+    limit = limit or 10
+    local claimed, work = claimed_items(), id_set(eq.work_weapons)
+    local done, out, by = 0, {}, {}
+    for _, slot in ipairs(KIT_GIVE) do
+        local cat_name, list_name, flag, need = slot[1], slot[2], slot[3], slot[4]
+        local cat = df.uniform_category[cat_name]
+        local una = id_set(eq.items_unassigned[list_name])
+        local pool = {}
+        for _, it in ipairs(df.global.world.items.other[list_name] or {}) do
+            local f = it.flags
+            if una[it.id] and not claimed[it.id] and free_gear(it, work) and not f.forbid and not f.in_job
+                    and not f.dump and not f.melt then
+                local x, y, z = dfhack.items.getPosition(it)
+                if x then table.insert(pool, {it = it, pos = xyz2pos(x, y, z),
+                                              side = list_name == 'GLOVES' and glove_side(it) or nil}) end
+            end
+        end
+        local given = 0
+        for _, sid in ipairs(fort.squads) do
+            local sq = df.squad.find(sid)
+            for _, pos in ipairs(sq and sq.positions or {}) do
+                if done >= limit or #pool < need then break end
+                if pos.occupant ~= -1 then
+                    local hf = df.historical_figure.find(pos.occupant)
+                    local u = hf and df.unit.find(hf.unit_id)
+                    local ux, uy, uz
+                    if u then ux, uy, uz = dfhack.units.getPosition(u) end
+                    local specs = {}
+                    pcall(function() for _, sp in ipairs(pos.equipment.uniform[cat]) do table.insert(specs, sp) end end)
+                    for _, spec in ipairs(ux and specs or {}) do
+                        if done >= limit or #pool < need then break end
+                        if #spec.assigned == 0 then
+                            local upos = xyz2pos(ux, uy, uz)
+                            -- the nearest fitting items, one per side for gloves
+                            local picks, took = {}, {}
+                            for k = 1, need do
+                                local best, bd
+                                for i, c in ipairs(pool) do
+                                    local side_ok = true
+                                    if c.side and need == 2 and c.side ~= '?' then
+                                        for _, j in ipairs(picks) do
+                                            if pool[j].side == c.side then side_ok = false end
+                                        end
+                                    end
+                                    if not took[i] and side_ok and item_fits(spec, c.it, false) then
+                                        local d = math.abs(c.pos.x - ux) + math.abs(c.pos.y - uy) + 3 * math.abs(c.pos.z - uz)
+                                        if (not bd or d < bd) and dfhack.maps.canWalkBetween(upos, c.pos) then
+                                            best, bd = i, d
+                                        end
+                                    end
+                                end
+                                if not best then break end
+                                took[best] = true
+                                table.insert(picks, best)
+                            end
+                            if #picks == need then
+                                table.sort(picks, function(a, b) return a > b end)
+                                for _, i in ipairs(picks) do
+                                    local c = table.remove(pool, i)
+                                    if not dry_run then
+                                        spec.assigned:insert('#', c.it.id)
+                                        vec_add(pos.equipment.assigned_items, c.it.id)
+                                        vec_remove(eq.items_unassigned[list_name], c.it.id)
+                                        vec_add(eq.items_assigned[list_name], c.it.id)
+                                    end
+                                end
+                                done, given = done + 1, given + 1
+                                table.insert(out, ('squad %d: %s'):format(sid, flag))
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        if given > 0 then
+            by[flag] = given
+            if not dry_run then pcall(function() df.global.plotinfo.equipment.update[flag] = true end) end
+        end
+    end
+    if not dry_run and done > 0 then KIT_CACHE = {} end
+    if dry_run then return {ok = true, dry_run = true, would_assign = done, by = by} end
+    if done == 0 then
+        return {ok = false, rejected = true, error = 'no free armour fits the empty armour places'}
+    end
+    return {ok = true, assigned = done, by = by, items = out}
 end
 
 -- For gear_report: the why of the gaps, the shields, the quivers.
