@@ -263,7 +263,7 @@ def _():
     assert not nothing.ok and nothing.rejected                # no meeting open now
 
 
-@test("the meeting: a barony's holder left to the player; a large tribute refused, a small one paid (Rules choice)")
+@test("the meeting: a barony's holder left to the player; a tribute pressed only when the Rules say pay")
 def _():
     env, G = world(MEETING + "df.global.game.main_interface.diplomacy.selecting_land_holder_position = true")
     r = env.answer_meeting(LUA.table_from({}))
@@ -271,14 +271,46 @@ def _():
     tribute = MEETING + "df.global.game.main_interface.diplomacy.dipev.topic_list = G.vec({9}); " \
                         "df.global.game.main_interface.diplomacy.dipev.agreement_topic = G.vec({}); " \
                         "df.global.game.main_interface.diplomacy.dipev.topic_parms = G.vec({%d})"
+    # (0.105.0 review) small or refuse: a tribute on the table is left to the player
     env, G = world(tribute % 3000)
     r = env.answer_meeting(LUA.table_from({"dry_run": True}))
-    assert r.ok and r.answer == "no" and "large" in r.why and r.policy == "small", dict(r)
-    env, G = world(tribute % 300)
-    assert env.answer_meeting(LUA.table_from({"dry_run": True})).answer == "yes"
+    assert not r.ok and r.left_to_player and "tribute" in r.error, dict(r)
     env, G = world(tribute % 3000)
     G.tribute = "pay"                                          # the Rules tab's choice when none is passed
     assert env.answer_meeting(LUA.table_from({"dry_run": True})).answer == "yes"
+    # decide() still weighs the tribute (kept for the report)
+    assert env.decide("TributeAgreement", "small", LUA.table_from({"amount": 3000, "wealth": 10000}))[0] == "no"
+
+
+@test("the meeting (0.105.0 review): pressed only with exactly one topic open, never on war or surrender")
+def _():
+    WENV, _ = world()
+    T = lambda *a: LUA.table_from(list(a))   # noqa: E731
+    assert lst(WENV.pending_topics(T("PleasantPlace", "TreeQuota"), T("PleasantPlace"))) == ["TreeQuota"]
+    assert WENV.press_guard(T("TreeQuota"), "small") is None
+    assert "2 topics" in WENV.press_guard(T("TreeQuota", "OpenTrade"), "small")
+    assert "left to you" in WENV.press_guard(T(), "small")
+    for t in ("DemandSurrender", "DeclareWar", "InduceWar"):
+        assert t in WENV.press_guard(T(t), "pay")
+    assert "tribute" in WENV.press_guard(T("TributeAgreement"), "small")
+    assert WENV.press_guard(T("TributeAgreement"), "pay") is None
+    two = MEETING + "df.global.game.main_interface.diplomacy.dipev.agreement_topic = G.vec({})"
+    env, G = world(two)
+    r = env.answer_meeting(LUA.table_from({"dry_run": True}))
+    assert not r.ok and r.left_to_player and "2 topics" in r.error, dict(r)
+    import overseer
+    import types
+    import os
+    old = os.environ.pop("DFAI_PIN", None)
+    try:
+        assert not overseer.meeting_unattended(types.SimpleNamespace(unattended=False))
+        assert overseer.meeting_unattended(types.SimpleNamespace(unattended=True))
+        os.environ["DFAI_PIN"] = "1"
+        assert overseer.meeting_unattended(types.SimpleNamespace(unattended=False))
+    finally:
+        os.environ.pop("DFAI_PIN", None)
+        if old is not None:
+            os.environ["DFAI_PIN"] = old
 
 
 @test("the requests screen: the fort's wishes ticked, then Done (only once shown where Done is)")

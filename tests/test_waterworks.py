@@ -90,6 +90,10 @@ env.set_name = function() end
 env.lock_hatch = function(id) W.locked = id end
 env.ez = function(z) return z - 100 end
 env.reqscript = function() error('no reqscript in the tests') end
+-- (0.105.0 review) magma-safe parts at hand unless a test says otherwise
+env.magma_parts = function() return W.parts or {floodgates = 1, hatches = 1, mechanisms = 3} end
+env.building_magma_safe = function(id) if W.unsafe and W.unsafe[id] then return false end return true end
+env.magma_filter = function(on) W.filter = on return on == true and {} or nil end
 return env
 """
 
@@ -262,6 +266,36 @@ def _():
     assert step(env, "magma", shop="MagmaForge").stage == "done"
 
 
+@test("magma (0.105.0 review): no building without magma-safe parts; a part built of the wrong stuff holds it")
+def _():
+    env, W = magma_world()
+    step(env, "magma", shop="MagmaForge")
+    wk = W.saved["ai-overseer/waterworks"].works["magma:MagmaForge"]
+    p = wk.plan
+    step(env, "magma", shop="MagmaForge")
+    W.dig_all(p.dig)
+    W.parts = T(floodgates=1, hatches=0, mechanisms=1)
+    r = step(env, "magma", shop="MagmaForge")
+    assert r.waiting and "magma-safe" in r.error and "hatches" in r.error and "mechanisms" in r.error, dict(r)
+    assert not [d for d in W.designated.values() if d.mode == "build"]          # nothing placed
+    W.parts = None
+    assert step(env, "magma", shop="MagmaForge").stage == "building" and W.filter is not True  # on, then restored
+    W.build_all()
+    gate = env.building(p.gate.x, p.gate.y, p.gate.z, "Floodgate")
+    W.unsafe = LUA.table_from({gate.id: True})
+    r = step(env, "magma", shop="MagmaForge")
+    assert r.stage == "held" and "not magma-safe" in r.error and "floodgate" in r.error, dict(r)
+    # the material test, as DF: fixed temperature, or every point above 12000
+    assert env.magma_safe_heat(T(mat_fixed_temp=60001, melting_point=13600, boiling_point=16000,
+                                 ignite_point=60001, heatdam_point=60001))           # green glass-like
+    assert not env.magma_safe_heat(T(mat_fixed_temp=60001, melting_point=60001, boiling_point=60001,
+                                     ignite_point=10400, heatdam_point=10250))        # wood
+    assert not env.magma_safe_heat(T(mat_fixed_temp=60001, melting_point=11000, boiling_point=14000,
+                                     ignite_point=60001, heatdam_point=60001))        # a low-melting metal
+    assert env.magma_safe_heat(T(mat_fixed_temp=10000))
+    assert not env.magma_safe_heat(None)
+
+
 @test("magma: refused when the way down crosses a cavern, or with no magma outside the caverns")
 def _():
     env, W = magma_world()
@@ -305,6 +339,11 @@ def _():
     r = step(env, "irrigation")
     assert r.stage == "drying" and W.pulls[len(W.pulls)].instant
     assert "still wet" in step(env, "irrigation").error
+    # (0.105.0 review) still wet past IRR_DRY_DAYS: held, saying why
+    W.tick = W.tick + (env.IRR_DRY_DAYS + 1) * 1200
+    r = step(env, "irrigation")
+    assert r.stage == "held" and "still wet after" in r.error, dict(r)
+    W.saved["ai-overseer/waterworks"].works.irrigation.stage = "drying"
     W.set(p.room.x1 + 1, p.room.y1 + 1, 94, T(liquid=False, depth=0))
     assert step(env, "irrigation").stage == "finishing"
     r = step(env, "irrigation")
@@ -441,6 +480,23 @@ def _():
               waterworks={"works": {"moat": {"kind": "moat", "stage": "filling", "gate": "open"}}, "refused": {}})
     props, _ = run(s)
     assert props[0].action.get("shut") and props[0].priority == 0
+
+
+@test("planner (0.105.0 review): a done work with an open floodgate is checked for leaks, and shut in a flood")
+def _():
+    s = state(waterworks={"works": {"magma:MagmaForge": {"kind": "magma", "stage": "done", "gate": "open",
+                                                         "shop": "MagmaForge"}}, "refused": {}})
+    props, notes = run(s)
+    c = [p for p in props if p.rule == "waterworks_check"]
+    assert c and c[0].action == {"type": "water_work", "kind": "magma", "shop": "MagmaForge"}, props
+    from planner_core import PLANNER_CONFIG
+    assert PLANNER_CONFIG["waterworks_check_cooldown_ticks"] >= 1200
+    s["hazards"] = {"wet": [{"name": "a"}, {"name": "b"}]}
+    props, _ = run(s)
+    assert any(p.action.get("shut") and p.action.get("shop") == "MagmaForge" for p in props), props
+    s = state(waterworks={"works": {"moat": {"kind": "moat", "stage": "held", "why": "x"}}, "refused": {}})
+    _, notes = run(s)
+    assert not any("the AI retires it" in n for n in notes), notes
 
 
 @test("planner: the muddied farm level when no soil was found for farms")

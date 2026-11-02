@@ -111,6 +111,34 @@ function current_topic(topics, concluded)
     return nil
 end
 
+-- (0.105.0 review) Pure: the topics not yet concluded, in order.
+function pending_topics(topics, concluded)
+    local done, out = {}, {}
+    for _, t in ipairs(concluded or {}) do done[t] = (done[t] or 0) + 1 end
+    for _, t in ipairs(topics or {}) do
+        if (done[t] or 0) > 0 then done[t] = done[t] - 1 else table.insert(out, t) end
+    end
+    return out
+end
+
+-- (0.105.0 review) Pure: why the AI must not press anything (nil: it may).
+-- The screen may show any unconcluded topic, so only when exactly one is
+-- left is the topic known; and never on war, surrender or (unless the
+-- Rules say pay) tribute, whatever the guess.
+NEVER_PRESSED = {DemandSurrender = true, DeclareWar = true, InduceWar = true}
+function press_guard(pending, policy)
+    for _, t in ipairs(pending or {}) do
+        if NEVER_PRESSED[t] then return t .. ' is on the table: left to you' end
+        if t == 'TributeAgreement' and policy ~= 'pay' then return 'a tribute is on the table: left to you' end
+    end
+    local n = #(pending or {})
+    if n ~= 1 then
+        return n == 0 and 'which topic is asked is not known: left to you'
+            or (('%d topics are open and the screen may show any of them: left to you'):format(n))
+    end
+    return nil
+end
+
 -- Pure: the answer to a topic. policy: the Rules choice for tribute ('small':
 -- pay a small one, refuse a large one; 'pay'; 'refuse'). ctx: {amount =
 -- the tribute asked if known, wealth = the fort's created wealth,
@@ -590,6 +618,11 @@ function answer_meeting(a, txt)
     if st.land_holder then
         return {ok = false, rejected = true, left_to_player = true, topic = st.topic,
                 error = 'a barony\'s holder is the player\'s to choose: left to you'}
+    end
+    -- (0.105.0 review) pressed only when the topic is certain and safe
+    local guard = press_guard(pending_topics(st.topics, st.concluded), policy)
+    if guard then
+        return {ok = false, rejected = true, left_to_player = true, topic = st.topic, topics = st.topics, error = guard}
     end
     local wealth = nil
     pcall(function() wealth = df.global.plotinfo.tasks.wealth.total end)

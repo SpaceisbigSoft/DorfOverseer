@@ -97,6 +97,9 @@ RULE_SUBJECTS = {
     "hospital_burrow": [],      # (0.104.168)
     "calm_burrow": [],          # (0.104.169)
     "squads_shelter": [],       # (0.105.0)
+    # (0.105.0 review) the rest of 0.105.0's on/off switches (prisoners and
+    # tribute are choices, not switches: `_rules_of` reads only true/false)
+    "moon_cells": [], "seal_caverns": [], "make_contact": [], "moat": [], "magma_workshops": [], "irrigation": [],
 }
 for _k in ("tombs", "hospital", "tavern", "library", "barracks", "temple"):
     RULE_SUBJECTS[f"levels.{_k}"] = [f"level:{_k}"]

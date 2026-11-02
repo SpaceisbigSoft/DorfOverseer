@@ -23,6 +23,7 @@ import argparse
 import hashlib
 import json
 import re
+import os
 import sys
 import time
 import traceback
@@ -1545,6 +1546,12 @@ def probe_posts(bridge, state: dict, key: str) -> None:
             pass
 
 
+def meeting_unattended(args) -> bool:
+    """(0.105.0 review) Nobody at the game: --unattended, or run by the keeper
+    (brain/keeper.py sets DFAI_PIN for the overseer it starts)."""
+    return bool(getattr(args, "unattended", False) or os.environ.get("DFAI_PIN"))
+
+
 UNATTENDED = False      # (0.104.88) set from --unattended: the in-game camera director runs only then
 
 
@@ -1631,6 +1638,7 @@ def main() -> int:
     date_since = 0.0
     held_date, held_since, meeting_tried = None, 0.0, float("-inf")   # (0.104.0) paused or not: for meetings
     answer_tried = float("-inf")  # (0.105.0) the last try at answering the meeting screen
+    answer_dead = None           # (0.105.0 review) held_since of a meeting where a press changed nothing: no more presses
     stall_said = float("-inf")
     stall_wait = STALL_AFTER_S   # the wait before the next try at the same stall (doubles, up to 10 min)
     quieted = False              # (unattended) announcements told not to pause or pop up, this fort
@@ -1686,11 +1694,17 @@ def main() -> int:
                 held_date, held_since = date_now, nowt
             # (0.105.0, 12b) before that, answered with the AI's defaults (the
             # tribute by the Rules tab), when the AI knows the screen's buttons
-            if (args.autopilot and st.get("in_fort") and st.get("meeting") and not controls["halted"]
+            # (0.105.0 review) only when the run is unattended (--unattended, or the
+            # keeper's DFAI_PIN): a player at the screen answers it; and after a press
+            # that changed nothing, no more presses for that meeting
+            if (args.autopilot and meeting_unattended(args) and st.get("in_fort") and st.get("meeting")
+                    and not controls["halted"] and answer_dead != held_since
                     and not STOP_FILE.exists() and MEETING_ANSWER_S <= nowt - held_since < MEETING_CLOSE_S and nowt - answer_tried >= 30):
                 answer_tried = nowt
                 try:
                     r = bridge.act({"type": "answer_meeting"})
+                    if r.get("pressed") and not r.get("ok"):
+                        answer_dead = held_since
                     if r.get("pressed") or r.get("needs_button") or r.get("left_to_player"):
                         say("DF's meeting screen: " + (f"answered {r.get('answer')} ({r.get('why') or r.get('topic')})"
                                                        if r.get("ok") else str(r.get("error"))))

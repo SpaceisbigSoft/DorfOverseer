@@ -112,7 +112,7 @@ def _():
 
 @test("the undead near the dwarves or an evil cloud near those outside: the alarm, and it isn't lowered")
 def _():
-    s = fort({"undead": {"undead": 1, "list": [{"id": 9, "name": "zombie", "distance": 10}]}},
+    s = fort({"undead": {"undead": 1, "list": [{"id": 9, "name": "zombie", "distance": 10, "can_reach_dwarves": True}]}},
              civ_alert=False, civ_alert_ready=True)
     a = acts(plan(s, Memory())[0], "threat_alert")
     assert a and a[0].action == {"type": "civ_alert", "on": True} and "walking dead" in a[0].reason, a
@@ -163,11 +163,60 @@ def _():
                  "cursed": []}
     s["military"]["squads"] = []
     p = acts(plan(s, Memory())[0], "seal_cavern")
-    assert p and p[0].action["layer"] == "Cavern1" and {"x": 5, "y": 6, "z": 8} in p[0].action["tiles"], p
+    assert p and p[0].action["layer"] == "Cavern1" and {"x": 5, "y": 6, "z": 8} not in p[0].action["tiles"], p
+    # (0.105.0 review) only the column's stair/ramp/hatch tiles, and the cavern's levels sent
+    s["deep"]["caverns"][0].update(column=[{"z": 8, "shape": "STAIR_UPDOWN"}, {"z": 9, "shape": "FLOOR"},
+                                           {"z": 10, "shape": "FLOOR", "building": "Hatch"}], z_top=7, z_bottom=3)
+    p = acts(plan(s, Memory())[0], "seal_cavern")
+    tl = p[0].action["tiles"]
+    assert {"x": 5, "y": 6, "z": 8} in tl and {"x": 5, "y": 6, "z": 10} in tl and {"x": 5, "y": 6, "z": 9} not in tl, tl
+    assert (p[0].action["z1"], p[0].action["z2"]) == (3, 7), p[0].action
     s["deep"]["dangers"] = []
     s["threats"]["sealed"] = {"Cavern1": {"doors": 2}}
     p = acts(plan(s, Memory())[0], "seal_cavern")
     assert p and p[0].action == {"type": "seal_cavern", "layer": "Cavern1", "open": True}, p
+
+
+@test("(0.105.0 review) the undead alarm: only the dead that can reach; not a reanimating land's own; capped in days")
+def _():
+    def alarm(rows, m=None):
+        s = fort({"undead": {"undead": len(rows), "list": rows}}, civ_alert=False, civ_alert_ready=True)
+        return acts(plan(s, m or Memory())[0], "threat_alert"), s
+    assert not alarm([{"id": 1, "name": "z", "distance": 5, "can_reach_dwarves": False}])[0]   # walled off
+    assert not alarm([{"id": 1, "name": "z", "distance": 5}])[0]                               # unknown
+    assert not alarm([{"id": 1, "name": "z", "distance": 5, "can_reach_dwarves": True, "outside": True}])[0]
+    assert alarm([{"id": 1, "name": "z", "distance": 5, "can_reach_dwarves": True, "outside": True,
+                   "invader": True}])[0]
+    assert alarm([{"id": 1, "name": "z", "distance": 5, "can_reach_dwarves": True, "outside": True, "great": True}])[0]
+    assert not alarm([{"id": 1, "name": "z", "distance": 300, "can_reach_dwarves": True}])[0]  # far away
+    # held 7 days at most, then a Needs-you note
+    row = [{"id": 1, "name": "z", "distance": 5, "can_reach_dwarves": True}]
+    m = Memory()
+    a, s = alarm(row, m)
+    assert a and m.threat_alarm.get("since") == abs_tick(planner.normalize(s))
+    m.threat_alarm["since"] -= 8 * TICKS_PER_DAY
+    props, notes = plan(s, m)
+    assert not acts(props, "threat_alert") and any("no longer holds the alarm" in n for n in notes), notes
+    # all clear: the clock forgets
+    s = fort({"undead": {"undead": 0, "list": []}})
+    plan(s, m)
+    assert m.threat_alarm == {}
+
+
+@test("(0.105.0 review) werebeasts: a changed one's cell id is sent with the others'; a sealed layer gone is unlocked")
+def _():
+    s = fort({"were": {"list": [{"id": 4, "name": "Wolfy"}, {"id": 5, "name": "Raging", "changed": True, "cell": True}],
+                       "cells": [{"unit_id": 5, "locked": True}]}})
+    now = abs_tick(planner.normalize(s))
+    s["threats"]["were"]["changes"] = [{"tick": now - 1 * TICKS_PER_DAY}]
+    c = acts(plan(s, Memory())[0], "moon_cell")
+    assert c and sorted(c[0].action["ids"]) == [4, 5], c
+    s = fort({"sealed": {"Cavern9": {"doors": 2, "days": 8}}})
+    s["deep"] = {"caverns": [], "dangers": []}
+    p = acts(plan(s, Memory())[0], "seal_cavern")
+    assert p and p[0].action == {"type": "seal_cavern", "layer": "Cavern9", "open": True}, p
+    s["threats"]["sealed"]["Cavern9"]["days"] = 2
+    assert not acts(plan(s, Memory())[0], "seal_cavern")
 
 
 @test("a great beast on the surface near dwarves out there: the alarm")
@@ -224,6 +273,70 @@ if LuaRuntime:
         assert len(list(ENV.fire_tiles(one, 5, 10).values())) == 10
         r = ENV.find_rect(LUA.eval("function(x, y) return x >= 10 and y >= 3 end"), 0, 0, 20, 3, 3)
         assert r is not None and (r.x, r.y) == (10, 3), (r and (r.x, r.y))
+
+    @test("lua (0.105.0 review): the fire guard takes off only dig, build and haul jobs; doors touching a zone")
+    def _():
+        for jt in ("Dig", "DigChannel", "CarveUpwardStaircase", "ConstructBuilding", "StoreItemInStockpile",
+                   "StoreItemInBin", "BringItemToDepot", "RemoveConstruction", "DestroyBuilding", "SmoothWall"):
+            assert ENV.fire_job_ok(jt), jt
+        for jt in ("Eat", "Drink", "Sleep", "RecoverWounded", "DressWound", "Surgery", "GiveWater", "GiveFood",
+                   "DiagnosePatient", "BringCrutch", "ApplyCast", "StoreItemInHospital", "ConstructBed",
+                   "ConstructDoor", "Rest", None):
+            assert not ENV.fire_job_ok(jt), jt
+        # an L-shaped zone: (0..2, 0) and (0, 0..2); a tile at (2, 2) touches no zone tile
+        inz = LUA.eval("function(x, y) return (y == 0 and x >= 0 and x <= 2) or (x == 0 and y >= 0 and y <= 2) end")
+        assert ENV.touches_zone(inz, 1, 1) and ENV.touches_zone(inz, 3, 1) and not ENV.touches_zone(inz, 3, 3)
+
+    GAME = r"""
+local src = ...
+local G = {saved = {}, units = {}, buildings = {}, citizens = {}, tiles = {}}
+local e = setmetatable({G = G}, {__index = _G})
+e.xyz2pos = function(x, y, z) return {x = x, y = y, z = z} end
+e.df = {global = {cur_year = 1, cur_year_tick = 0, plotinfo = {burrows = {list = {}, next_id = 1}},
+                  world = {buildings = {all = G.buildings, other = {ZONE_DUNGEON = {}, ZONE_BEDROOM = {}}}}},
+        unit = {find = function(id) return G.units[id] end},
+        building = {find = function(id) for _, b in ipairs(G.buildings) do if b.id == id then return b end end end},
+        building_type = {Door = 'Door', Hatch = 'Hatch'}}
+e.dfhack = {persistent = {getSiteData = function(k, d) return G.saved[k] or d end,
+                          saveSiteData = function(k, v) G.saved[k] = v end},
+            units = {isDead = function() return false end, getReadableName = function(u) return u.name end,
+                     getCitizens = function() return G.citizens end},
+            burrows = {setAssignedUnit = function() end, clearTiles = function() end, setAssignedTile = function() end},
+            buildings = {containsTile = function() return true end,
+                         findAtTile = function(p) return G.tiles[p.x .. ',' .. p.y .. ',' .. p.z] end},
+            maps = {getTileFlags = function(x, y, z) return {feature_global = z <= 5} end}}
+assert(load(src, 'ai-threats', 't', e))()
+return e
+"""
+
+    @test("lua (0.105.0 review): a changed werebeast's cell is never freed; no seal with a dwarf in the cavern")
+    def _():
+        E = LUA.execute(GAME, SRC)
+        G = E.G
+        LUA.execute("""local E = ...; local G = E.G
+            G.units[5] = {id = 5, name = 'Raging', race = 1, enemy = {normal_race = 2}, pos = {x = 1, y = 1, z = 10}}
+            G.units[4] = {id = 4, name = 'Calm', race = 1, enemy = {normal_race = -1}, pos = {x = 9, y = 9, z = 10}}
+            G.saved['ai-overseer/threats'] = {cells = {['5'] = {zone = 77, locked = true, doors = {}}}}""", E)
+        r = E.moon_cell(LUA.table_from([4]), False, True)
+        st = G.saved["ai-overseer/threats"]
+        assert st.cells["5"] is not None and r.kept and r.kept[1] == "Raging", dict(r)
+        r = E.moon_cell(LUA.table_from([]), True, False)                # a release keeps it too
+        assert G.saved["ai-overseer/threats"].cells["5"] is not None and (not r.released or len(r.released) == 0), dict(r)
+        LUA.execute("local E = ...; E.G.units[5].enemy.normal_race = -1", E)   # back to a dwarf: let out
+        E.moon_cell(LUA.table_from([]), True, False)
+        assert G.saved["ai-overseer/threats"].cells["5"] is None
+        # the seal: a citizen down on a cavern tile (z 3) -> refused; none -> the door on the tile locked
+        LUA.execute("""local E = ...; local G = E.G
+            G.citizens[1] = {id = 1, name = 'Urist', pos = {x = 0, y = 0, z = 3}}
+            local door = {id = 30, door_flags = {forbidden = false}, getType = function() return 'Door' end}
+            local near = {id = 31, door_flags = {forbidden = false}, getType = function() return 'Door' end}
+            G.tiles['5,6,7'] = door; G.tiles['6,6,7'] = near; G.door, G.near = door, near""", E)
+        tiles = LUA.table_from([LUA.table_from({"x": 5, "y": 6, "z": 7})])
+        r = E.seal_cavern("Cavern1", tiles, False, False, 1, 5)
+        assert r.rejected and "Urist" in r.error, dict(r)
+        LUA.execute("local E = ...; E.G.citizens[1].pos.z = 8", E)
+        r = E.seal_cavern("Cavern1", tiles, False, False, 1, 5)
+        assert r.ok and r.locked == 1 and G.door.door_flags.forbidden and not G.near.door_flags.forbidden, dict(r)
 
     BRIDGE_TEST = (ROOT / "tests" / "test_bridge_memory.py").read_text(encoding="utf-8")
 

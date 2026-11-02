@@ -366,7 +366,8 @@ local function undead_report(cit, groups, txt)
                 table.insert(out.list, {id = u.id, name = name_of(u, txt), distance = dist_to(pos, cit),
                                         outside = outside_at(pos.x, pos.y, pos.z) or nil,
                                         can_reach_dwarves = reaches(pos, groups),
-                                        invader = is(dfhack.units.isInvader, u) or nil})
+                                        invader = is(dfhack.units.isInvader, u) or nil,
+                                        great = is(dfhack.units.isGreatDanger, u) or nil})   -- (0.105.0 review)
             end
         end
     end
@@ -577,7 +578,8 @@ function fire_guard(radius, max_jobs, lift, dry_run)
     pcall(function()
         each_job(function(j)
             local okp, p = pcall(function() return j.pos end)
-            if okp and p and p.x >= 0 and near_any(p.x, p.y, p.z, pts, radius) then
+            local okt, jt = pcall(function() return df.job_type[j.job_type] end)
+            if okp and p and p.x >= 0 and okt and fire_job_ok(jt) and near_any(p.x, p.y, p.z, pts, radius) then
                 table.insert(found, j)
                 if #found >= max_jobs then return false end
             end
@@ -592,6 +594,27 @@ function fire_guard(radius, max_jobs, lift, dry_run)
     end
     return {ok = true, fires = #pts, restricted = marked, jobs_removed = dry_run and #found or removed,
             dry_run = dry_run or nil}
+end
+
+-- (0.105.0 review) the jobs the fire guard may take off: digging, building
+-- (constructions and buildings) and hauling. Never eating, drinking,
+-- sleeping, fetching the wounded or any care.
+-- (ConstructX jobs other than ConstructBuilding are workshop crafts: kept)
+local FIRE_JOB_PREFIX = {'Dig', 'Carve', 'Store', 'Haul', 'Bring', 'Remove', 'Dump'}
+local FIRE_JOB_EXACT = {ConstructBuilding = true, DetailWall = true, DetailFloor = true, SmoothWall = true,
+                        SmoothFloor = true, DestroyBuilding = true, StoreItemInHospital = false}
+local FIRE_JOB_NEVER = {Eat = true, Drink = true, Drink2 = true, Sleep = true, RecoverWounded = true,
+                        DiagnosePatient = true, ImmobilizeBreak = true, DressWound = true, CleanPatient = true,
+                        Surgery = true, Suture = true, SetBone = true, PlaceInTraction = true,
+                        BringCrutch = true, ApplyCast = true, GiveFood = true, GiveWater = true,
+                        BringItemToPatient = true, Rest = true, SeekInfant = true}
+function fire_job_ok(jt)
+    if type(jt) ~= 'string' or FIRE_JOB_NEVER[jt] then return false end
+    if FIRE_JOB_EXACT[jt] ~= nil then return FIRE_JOB_EXACT[jt] end
+    for _, p in ipairs(FIRE_JOB_PREFIX) do
+        if jt:sub(1, #p) == p then return true end
+    end
+    return false
 end
 
 local function interior_floor(x, y, z)
@@ -669,20 +692,43 @@ local function in_zone(z, x, y, zz)
     return not ok or yes
 end
 
--- The doors and hatches on a zone's edge (its tiles and the ring round it).
+-- (0.105.0 review) a tile on the zone or beside one of its own tiles (not
+-- just in the ring round its bounding box: a bedroom need not be square)
+function touches_zone(inz, x, y)
+    for dy = -1, 1 do
+        for dx = -1, 1 do
+            if inz(x + dx, y + dy) then return true end
+        end
+    end
+    return false
+end
+
+-- The doors and hatches on a zone's edge (its tiles and the tiles touching them).
 local function zone_doors(z)
     local out = {}
+    local function inz(x, y) return in_zone(z, x, y, z.z) end
     for y = z.y1 - 1, z.y2 + 1 do
         for x = z.x1 - 1, z.x2 + 1 do
-            pcall(function()
+            if touches_zone(inz, x, y) then pcall(function()
                 local b = dfhack.buildings.findAtTile(xyz2pos(x, y, z.z))
                 if b and (b:getType() == df.building_type.Door or b:getType() == df.building_type.Hatch) then
                     out[b.id] = b
                 end
-            end)
+            end) end
         end
     end
     return out
+end
+
+-- (0.105.0 review) another citizen in the zone (never locked in with a werebeast)
+local function other_in_zone(z, uid)
+    local ok, yes = pcall(function()
+        for _, c in ipairs(dfhack.units.getCitizens(true)) do
+            if c.id ~= uid and in_zone(z, c.pos.x, c.pos.y, c.pos.z) then return true end
+        end
+        return false
+    end)
+    return not ok or yes
 end
 
 -- A room for a cell: a jail zone, else a free bedroom; the nearest to pos,
@@ -716,6 +762,13 @@ function moon_cell(ids, release, dry_run, txt)
     local out = {ok = true, placed = {}, locked = {}, released = {}, waiting = {}, dry_run = dry_run or nil}
     local function free(uid, c)
         local u = df.unit.find(tonumber(uid))
+        -- (0.105.0 review) never a cell whose werebeast has changed now (raging):
+        -- a call listing only another werebeast, or a release, let it out
+        if u and changed(u) then
+            out.kept = out.kept or {}
+            table.insert(out.kept, name_of(u, txt))
+            return
+        end
         if not dry_run then
             for _, bid in ipairs(c.doors or {}) do
                 pcall(function()
@@ -752,21 +805,33 @@ function moon_cell(ids, release, dry_run, txt)
                         out.ok = #out.placed + #out.locked > 0
                         out.error = 'no jail zone or free bedroom for a cell'
                     elseif not dry_run then
-                        local b = burrow_named(CELL_PREFIX .. uid, true)
-                        dfhack.burrows.clearTiles(b)
-                        for y = z.y1, z.y2 do
-                            for x = z.x1, z.x2 do
-                                if in_zone(z, x, y, z.z) then dfhack.burrows.setAssignedTile(b, xyz2pos(x, y, z.z), true) end
+                        -- (0.105.0 review) the burrow made inside pcall: a failure is said,
+                        -- and the cells already done this call are still saved below
+                        local okb, eb = pcall(function()
+                            local b = burrow_named(CELL_PREFIX .. uid, true)
+                            dfhack.burrows.clearTiles(b)
+                            for y = z.y1, z.y2 do
+                                for x = z.x1, z.x2 do
+                                    if in_zone(z, x, y, z.z) then dfhack.burrows.setAssignedTile(b, xyz2pos(x, y, z.z), true) end
+                                end
                             end
+                            dfhack.burrows.setAssignedUnit(b, u, true)
+                        end)
+                        if okb then
+                            c = {zone = z.id, kind = kind, tick = t, doors = {}}
+                            d.cells[uid] = c
+                            taken[z.id] = true
+                        else
+                            out.error = 'the cell\'s burrow could not be made: ' .. tostring(eb)
+                            out.ok = #out.placed + #out.locked > 0
+                            z = nil
                         end
-                        dfhack.burrows.setAssignedUnit(b, u, true)
-                        c = {zone = z.id, kind = kind, tick = t, doors = {}}
-                        d.cells[uid] = c
-                        taken[z.id] = true
                     end
                     if z then table.insert(out.placed, name_of(u, txt)) end
                 elseif not c.locked then
-                    if in_zone(z, u.pos.x, u.pos.y, u.pos.z) then
+                    if in_zone(z, u.pos.x, u.pos.y, u.pos.z) and other_in_zone(z, u.id) then
+                        table.insert(out.waiting, name_of(u, txt))       -- (0.105.0 review) someone else inside
+                    elseif in_zone(z, u.pos.x, u.pos.y, u.pos.z) then
                         for id, b in pairs(zone_doors(z)) do
                             local okf, f = pcall(function() return b.door_flags.forbidden end)
                             if okf and not f then
@@ -792,10 +857,29 @@ function moon_cell(ids, release, dry_run, txt)
     return out
 end
 
--- The caverns sealed: the doors and hatches on or beside the given tiles
--- (the way down to the cavern: where the fort's ground meets it, the
--- stair column) locked; open: unlocked (only those the AI locked).
-function seal_cavern(layer, tiles, open, dry_run)
+-- (0.105.0 review) a citizen down in the cavern (on a cavern tile between
+-- its levels, z1..z2): the seal would shut them out on the far side
+local function citizen_in_cavern(z1, z2)
+    if not z1 or not z2 then return nil end
+    local lo, hi = math.min(z1, z2), math.max(z1, z2)
+    local ok, who = pcall(function()
+        for _, u in ipairs(dfhack.units.getCitizens(true)) do
+            local p = u.pos
+            if p.z >= lo and p.z <= hi then
+                local des = dfhack.maps.getTileFlags(p.x, p.y, p.z)
+                if des and (des.feature_global or des.feature_local) then return u end
+            end
+        end
+    end)
+    return ok and who or nil
+end
+
+-- The caverns sealed: the doors and hatches on the given tiles (the way
+-- down to the cavern: where the fort's ground meets it, the stair column)
+-- locked; open: unlocked (only those the AI locked). (0.105.0 review) only
+-- on those very tiles (no longer every door within a tile of them), and
+-- refused while a citizen is down in the cavern (z1..z2: its levels).
+function seal_cavern(layer, tiles, open, dry_run, z1, z2)
     local d = load_state()
     local t = now_tick()
     local rec = type(d.sealed[layer]) == 'table' and d.sealed[layer] or nil
@@ -817,22 +901,21 @@ function seal_cavern(layer, tiles, open, dry_run)
         end
         return {ok = true, unlocked = n, layer = layer, dry_run = dry_run or nil}
     end
+    local inside = citizen_in_cavern(z1, z2)
+    if inside then
+        return {ok = false, rejected = true, waiting = true,
+                error = name_of(inside) .. ' is down in ' .. tostring(layer) .. ': not sealed while a dwarf is on the far side'}
+    end
     local found = {}
     for _, p in ipairs(tiles or {}) do
         local x, y, z = tonumber(p.x), tonumber(p.y), tonumber(p.z)
         if x and y and z then
-            for dz = -1, 1 do
-                for dy = -1, 1 do
-                    for dx = -1, 1 do
-                        pcall(function()
-                            local b = dfhack.buildings.findAtTile(xyz2pos(x + dx, y + dy, z + dz))
-                            if b and (b:getType() == df.building_type.Door or b:getType() == df.building_type.Hatch) then
-                                found[b.id] = b
-                            end
-                        end)
-                    end
+            pcall(function()
+                local b = dfhack.buildings.findAtTile(xyz2pos(x, y, z))
+                if b and (b:getType() == df.building_type.Door or b:getType() == df.building_type.Hatch) then
+                    found[b.id] = b
                 end
-            end
+            end)
         end
     end
     rec = rec or {ids = {}, tick = t}

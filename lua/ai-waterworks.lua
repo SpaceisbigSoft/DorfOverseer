@@ -178,6 +178,91 @@ function lock_hatch(id)
     pcall(function() df.building.find(id).door_flags.forbidden = true end)
 end
 
+-- (0.105.0 review) Pure: is a material magma-safe, from its heat numbers
+-- (material.heat: mat_fixed_temp, melting_point, boiling_point, ignite_point,
+-- heatdam_point; 60001 = none)? As DF reckons it: a material held at a
+-- fixed temperature is safe; otherwise none of its points may be at or under
+-- magma's 12000 degrees (60001, "none", is above it).
+MAGMA_TEMP = 12000
+function magma_safe_heat(h)
+    if type(h) ~= 'table' then return false end
+    local fixed = tonumber(h.mat_fixed_temp)
+    if fixed and fixed ~= 60001 then return true end      -- held at its own temperature
+    for _, k in ipairs({'melting_point', 'boiling_point', 'ignite_point', 'heatdam_point'}) do
+        local v = tonumber(h[k])
+        if v == nil or v <= MAGMA_TEMP then return false end
+    end
+    return true
+end
+
+local function item_magma_safe(it)
+    local ok, yes = pcall(function()
+        local mi = dfhack.matinfo.decode(it)
+        local h = mi.material.heat
+        return magma_safe_heat({mat_fixed_temp = h.mat_fixed_temp, melting_point = h.melting_point,
+                                boiling_point = h.boiling_point, ignite_point = h.ignite_point,
+                                heatdam_point = h.heatdam_point})
+    end)
+    return ok and yes or false
+end
+
+-- (0.105.0 review) the free magma-safe parts a magma work needs:
+-- {floodgates, hatches, mechanisms} (free: not forbidden, in a building or a job)
+MAGMA_PARTS = {floodgates = 'FLOODGATE', hatches = 'HATCH_COVER', mechanisms = 'TRAPPARTS'}
+function magma_parts()
+    local out = {}
+    for k, tname in pairs(MAGMA_PARTS) do
+        out[k] = 0
+        pcall(function()
+            for _, it in ipairs(df.global.world.items.other[tname]) do
+                local f = it.flags
+                if not (f.forbid or f.in_building or f.construction or f.removed or f.garbage_collect
+                        or f.trader or f.dump or f.hostile or f.in_job) and item_magma_safe(it) then
+                    out[k] = out[k] + 1
+                end
+            end
+        end)
+    end
+    return out
+end
+
+-- (0.105.0 review) a built building's material magma-safe (its construction material)
+function building_magma_safe(id)
+    local ok, yes = pcall(function()
+        local b = df.building.find(id)
+        local mi = dfhack.matinfo.decode(b.mat_type, b.mat_index)
+        local h = mi.material.heat
+        return magma_safe_heat({mat_fixed_temp = h.mat_fixed_temp, melting_point = h.melting_point,
+                                boiling_point = h.boiling_point, ignite_point = h.ignite_point,
+                                heatdam_point = h.heatdam_point})
+    end)
+    if not ok then return nil end
+    return yes
+end
+
+-- (0.105.0 review) buildingplan's heat-safety filter (0 none, 1 fire, 2 magma)
+-- for the floodgate and the hatch, set before they are placed (buildingplan
+-- applies its filters to buildings quickfort places). on: the player's own
+-- filters kept and returned (a table); pass that table back to restore them.
+-- nil: not available.
+function magma_filter(on)
+    local ok, r = pcall(function()
+        local bp = require('plugins.buildingplan')
+        local kept = {}
+        for _, t in ipairs({df.building_type.Floodgate, df.building_type.Hatch}) do
+            if on == true then
+                local okg, h = pcall(bp.getHeatSafetyFilter, t, -1, -1)
+                kept[t] = okg and tonumber(h) or 0
+                bp.setHeatSafetyFilter(t, -1, -1, 2)
+            else
+                bp.setHeatSafetyFilter(t, -1, -1, type(on) == 'table' and on[t] or 0)
+            end
+        end
+        return kept
+    end)
+    return ok and r or nil
+end
+
 -- the elevation the game shows
 function ez(z)
     local ok, v = pcall(function() return df.global.world.map.region_z - 100 end)
@@ -840,11 +925,32 @@ function step(kind, opts)
             return wait('the floodgate\'s floor is being dug')
         end
         if p.dig2 and left_to_dig(p.dig2) > 0 then return wait('the floodgate\'s floor is being dug') end
+        -- (0.105.0 review) magma: only with magma-safe parts at hand (a wooden
+        -- or iron floodgate would melt or burn, and the magma flood the fort);
+        -- buildingplan's magma filter on while they are placed
+        local filtered = nil
+        if p.kind == 'magma' then
+            local have = magma_parts()
+            local want = {floodgates = 1, hatches = 1, mechanisms = 3}
+            local short = {}
+            for _, k in ipairs({'floodgates', 'hatches', 'mechanisms'}) do
+                if (have[k] or 0) < want[k] then
+                    table.insert(short, ('%d magma-safe %s (has %d)'):format(want[k], k, have[k] or 0))
+                end
+            end
+            if #short > 0 then
+                return wait('magma works need magma-safe parts (e.g. of green glass, or of a metal like steel): '
+                            .. table.concat(short, ', '))
+            end
+            if dry then return {ok = true, dry_run = true, stage = 'building'} end
+            filtered = magma_filter(true)
+        end
         if dry then return {ok = true, dry_run = true, stage = 'building'} end
         local cells = {{x = p.gate.x, y = p.gate.y, z = p.gate.z, text = 'x'},
                        {x = p.lever.x, y = p.lever.y, z = p.lever.z, text = 'Tl'}}
         for _, b in ipairs(p.builds or {}) do table.insert(cells, b) end
         local ok = designate_all(cells, 'build')
+        if filtered then magma_filter(filtered) end
         if not ok then return {ok = false, error = 'the game would not place the floodgate, lever or the work\'s buildings'} end
         return advance('building')
     end
@@ -859,6 +965,19 @@ function step(kind, opts)
             if not bb or not bb.built then table.insert(left, b.kind:lower()) end
         end
         if #left > 0 then return wait('being built: ' .. table.concat(left, ', ')) end
+        -- (0.105.0 review) magma: what was built must be magma-safe (nothing flows yet)
+        if p.kind == 'magma' then
+            local bad = {}
+            if building_magma_safe(g.id) == false then table.insert(bad, 'the floodgate') end
+            for _, b in ipairs(p.builds or {}) do
+                local bb = building(b.x, b.y, b.z, b.kind)
+                if bb and building_magma_safe(bb.id) == false then table.insert(bad, b.kind:lower()) end
+            end
+            if #bad > 0 then
+                return hold(table.concat(bad, ' and ') .. ' was built of a material that is not magma-safe: '
+                            .. 'take it down and build it of a magma-safe one')
+            end
+        end
         if dry then return {ok = true, dry_run = true, stage = 'linking'} end
         set_name(l.id, p.lever.name)
         for _, b in ipairs(p.builds or {}) do
@@ -958,7 +1077,12 @@ function step(kind, opts)
         for x = r.x1, r.x2 do for y = r.y1, r.y2 do if depth_at({x = x, y = y, z = r.z}) > 0 then wet = wet + 1 end end end
         wk.wet = wet
         if wet > 0 then
-            if now() - (wk.since or now()) > IRR_DRY_DAYS * DAY then wk.slow = true end
+            -- (0.105.0 review) not waited on for ever: held, with why
+            if now() - (wk.since or now()) > IRR_DRY_DAYS * DAY then
+                wk.slow = true
+                return hold(('the farm room is still wet after %d days (%d tile(s)): water is still getting in '
+                             .. '(the floodgate leaks, or a second way in); dry it by hand, or retire it'):format(IRR_DRY_DAYS, wet))
+            end
             save()
             return wait(('the farm room is drying: %d tile(s) still wet'):format(wet))
         end
@@ -998,7 +1122,8 @@ function step(kind, opts)
             if not dry then pull(wk.lever_id, true) end
             return hold(('liquid got out at x%d y%d, elevation %d: the floodgate was shut'):format(lk.x, lk.y, ez(lk.z)))
         end
-        return {ok = false, rejected = true, stage = 'done', error = 'the ' .. kind .. ' is done'}
+        -- (0.105.0 review) waiting: the planner looks again in a few days (the leak check)
+        return {ok = false, rejected = true, waiting = true, stage = 'done', error = 'the ' .. kind .. ' is done (no leak)'}
     end
     return {ok = false, rejected = true, error = 'unknown stage ' .. tostring(wk.stage)}
 end
