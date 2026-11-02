@@ -3543,6 +3543,19 @@ def _():
     assert W.persist["ai-overseer/farm_crops"].ai is True
 
 
+@test("farm crops (0.105.6): fort A: 7 plump helmet seeds for 3 underground plots; every plot sown this season")
+def _():
+    # spring (tick 0 is spring in the fake? use the fake's default tick, whatever season it is)
+    plots = farm_setup([[1, 7]], [[41, True, 0], [42, True, 10], [43, True, 20]])
+    r = B.set_farm_crops(LUA.table_from({"drink": True}), False)
+    assert r.ok, dict(r)
+    season = B.current_season()
+    bare = [b.id for b in plots.values() if b.plant_id[season] < 0]
+    assert not bare, bare                                    # none left fallow for want of leftover seeds
+    again = B.set_farm_crops(LUA.table_from({"drink": True}), False)
+    assert again.changed == 0, dict(again)                   # a second call changes nothing (no daily churn)
+
+
 @test("farm crops (0.105.5): underground plots get underground crops, brewable first; a dead surface plot is said")
 def _():
     plots = farm_setup([[1, 60], [3, 20], [4, 10]], [[21, True, 0], [22, False, 10]])

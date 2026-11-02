@@ -2612,10 +2612,16 @@ function set_farm_crops(params, dry_run)
             local cands = {}
             for idx, n in pairs(seeds) do
                 local r = n > 0 and plant_raw(idx)
-                if r and crop_in_season(r, s) and crop_grows_on(r, place)
-                        and (s ~= season or (left[idx] or 0) > 0) then
+                -- (0.105.6) A (2 Nov): the current season took a crop only while
+                -- seeds were left over after the plots already sown; with 7 plump
+                -- helmet seeds for 21 tiles two plots stayed bare while the report
+                -- counted the crop as an option, and the rule fired every day. A
+                -- plot with fewer seeds than tiles is still partly sown, so any
+                -- seed in store will do; the leftover only orders the choice.
+                if r and crop_in_season(r, s) and crop_grows_on(r, place) then
                     table.insert(cands, {idx = idx, raw = r, brews = plant_brews(r) ~= nil,
-                                         thread = plant_thread(r), seeds = n})
+                                         thread = plant_thread(r), seeds = n,
+                                         left = s == season and (left[idx] or 0) or n})
                 end
             end
             if #cands > 0 then any = true end
@@ -2640,6 +2646,8 @@ function set_farm_crops(params, dry_run)
                 table.sort(cands, function(a, c)
                     if params.drink == true and a.brews ~= c.brews then return a.brews end
                     if want_thread and a.thread ~= c.thread then return a.thread end
+                    -- (0.105.6) a crop with seeds left over first, then the least used
+                    if (a.left > 0) ~= (c.left > 0) then return a.left > 0 end
                     local ua, uc = used[s][a.idx] or 0, used[s][c.idx] or 0
                     if ua ~= uc then return ua < uc end
                     if a.seeds ~= c.seeds then return a.seeds > c.seeds end
