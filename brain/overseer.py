@@ -288,6 +288,7 @@ def proposal_id(p) -> str:
 
 
 CAMERA_QUIET = {"census", "join_levels", "dismiss_alerts", "sand_zone", "report_status", "survey_water", "scan_entrances", "recreation", "hospital_burrow",
+                "calm_burrow",   # (0.104.169)
                 "cistern_step", "restrict_water", "save_memory", "pair_chairs", "approve_orders"}
 
 
@@ -488,6 +489,10 @@ def short(a: dict) -> str:
         if a.get("release"):
             return "let every patient out of the hospital burrow"
         return "keep the wounded inside the hospital, the healed back to work"
+    if t == "calm_burrow":       # (0.104.169)
+        if a.get("release"):
+            return "let every dwarf out of the calm-down burrows"
+        return "keep each dwarf in a tantrum in a free bedroom away from the patients till calm, the calm let out"
     if t == "rest_infected":     # (0.104.168)
         return f"put up to {a.get('max', 3)} dwarves with infected wounds to bed in the hospital, for the doctors"
     if t == "add_doctor_post":   # (0.104.168)

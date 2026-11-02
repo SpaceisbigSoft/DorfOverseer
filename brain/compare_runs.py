@@ -131,7 +131,8 @@ def settings_of(state: dict | None) -> tuple[dict, dict]:
     se = _d(_d(state).get("settings"))
     rules = {k: se.get(k) for k in ("attack_policy", "fill_squads", "train_squads", "gate_lever", "fortify_entrances",
                                     "accept_visitors", "answer_locations", "fort_goal",
-                                    "hospital_burrow")}      # (0.104.168)
+                                    "hospital_burrow",       # (0.104.168)
+                                    "calm_burrow")}          # (0.104.169)
     levels = _d(se.get("levels"))
     rules.update({f"level {k}": v for k, v in sorted(levels.items())})
     return _d(se.get("traits")), rules

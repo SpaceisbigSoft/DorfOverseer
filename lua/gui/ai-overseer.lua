@@ -353,6 +353,20 @@ function RulesPage:init()
     })
     table.insert(views, widgets.Label{frame = {t = 5 + hrow, l = 58}, text = {
         {text = 'patients stay by the beds, drink and food; off: all let out', pen = COLOR_GREY}}})
+    -- (0.104.169) the calm-down burrows' switch, beside the Jail level (the
+    -- jail is the other answer to a tantrum), with its help line
+    local jrow = 8
+    for i, l in ipairs(S.OPTIONAL_LEVELS) do if l.id == 'jail' then jrow = i end end
+    table.insert(views, widgets.ToggleHotkeyLabel{
+        view_id = 'calm_burrow',
+        frame = {t = 4 + jrow, l = 56, w = 62},
+        label = 'Keep a dwarf in a tantrum in an "AI calm" burrow:',
+        label_width = 50,
+        initial_option = p.settings.calm_burrow ~= false,
+        on_change = function(v) p:set_field('calm_burrow', v) end,
+    })
+    table.insert(views, widgets.Label{frame = {t = 5 + jrow, l = 58}, text = {
+        {text = 'a free bedroom away from the patients, with drink, till calm', pen = COLOR_GREY}}})
     local t = 6 + #S.OPTIONAL_LEVELS
     table.insert(views, widgets.ToggleHotkeyLabel{
         view_id = 'order_supplies',
@@ -558,6 +572,7 @@ function RulesPage:refresh()
     self.subviews.camera_pace:setOption(s.camera_pace, false)
     self.subviews.answer_locations:setOption(s.answer_locations, false)
     self.subviews.hospital_burrow:setOption(s.hospital_burrow ~= false, false)     -- (0.104.168)
+    self.subviews.calm_burrow:setOption(s.calm_burrow ~= false, false)             -- (0.104.169)
     self.subviews.engrave_slabs:setOption(s.engrave_slabs, false)
     self.subviews.import_smelting:setOption(s.import_smelting, false)
     self.subviews.alert_shelter:setOption(s.alert_shelter, false)

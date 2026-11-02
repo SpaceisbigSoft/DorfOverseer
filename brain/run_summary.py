@@ -24,7 +24,8 @@ LOOP_AT = 10            # the same action this many times: named as a possible l
 # repeated by design (the entrances are mapped weekly; (0.104.141) old alert
 # icons cleared, the manager's approvals, the recreation burrow refilled, a few
 # the level joins: each call different work)
-EXPECTED = {"scan_entrances", "dismiss_alerts", "approve_orders", "recreation", "hospital_burrow", "join_levels"}
+EXPECTED = {"scan_entrances", "dismiss_alerts", "approve_orders", "recreation", "hospital_burrow", "join_levels",
+            "calm_burrow"}    # (0.104.169) a call each tantrum
 
 
 def _what(a: dict) -> str:

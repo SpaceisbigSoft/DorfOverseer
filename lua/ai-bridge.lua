@@ -1838,6 +1838,12 @@ function get_society()
     local okh, hb = pcall(soc.hospital_burrow_status, txt)
     if okh and hb then out.hospital_burrow = hb
     elseif not okh then out.hospital_burrow = {error = tostring(hb):sub(1, 160)} end
+    -- (0.104.169) the calm-down burrows: the citizens in a tantrum, those kept
+    -- in a free bedroom till calm, whether they stay inside; the members
+    -- re-checked here at every report (calm, too long, thirsty: let out)
+    local okc, cb = pcall(soc.calm_burrow_status, txt)
+    if okc and cb then out.calm_burrow = cb
+    elseif not okc then out.calm_burrow = {error = tostring(cb):sub(1, 160)} end
     -- (0.104.81) war dogs: who can be trained, who is, who trains them
     local oka, an = pcall(soc.animal_training_report)
     if oka and an then out.animals = an elseif not oka then out.animals = {error = tostring(an):sub(1, 160)} end
@@ -5193,6 +5199,17 @@ function act_hospital_burrow(a)
     return reqscript('ai-society').hospital_burrow_tick(n, per, a.dry_run == true, txt, days, a.release == true)
 end
 
+-- (0.104.169) The calm-down burrows: each citizen in a tantrum kept in a
+-- free bedroom away from the hospitals (with the nearest drink), let out
+-- once calm or after `days` (lua/ai-society.lua calm_burrow_tick).
+function act_calm_burrow(a)
+    local n = int_in(a.max or 6, 1, 6)
+    local days = int_in(a.days or 3, 1, 7)          -- the longest stay
+    if not n or not days then return reject('calm_burrow: max 1-6, days 1-7') end
+    if a.release ~= nil and type(a.release) ~= 'boolean' then return reject('calm_burrow: release is true or false') end
+    return reqscript('ai-society').calm_burrow_tick(n, days, a.dry_run == true, txt, a.release == true)
+end
+
 -- (0.104.168) Infected dwarves DF asks no treatment for, put to rest in a
 -- free hospital bed (as DFHack's dwarfvet does for animals), the worst
 -- first; and a second doctor's post at a hospital (lua/ai-health.lua).
@@ -6140,6 +6157,7 @@ ACTIONS = {
     pair_chairs = act_pair_chairs,        -- (0.104.77)
     recreation = act_recreation,          -- (0.104.78)
     hospital_burrow = act_hospital_burrow,   -- (0.104.167)
+    calm_burrow = act_calm_burrow,           -- (0.104.169)
     accept_cups = act_accept_cups,           -- (0.104.168)
     rest_infected = act_rest_infected,       -- (0.104.168)
     add_doctor_post = act_add_doctor_post,   -- (0.104.168)

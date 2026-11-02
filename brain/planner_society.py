@@ -13,7 +13,7 @@ from quirks import has_rule
 from digest import _d, _l, normalize
 from planner_core import *  # noqa: F401,F403
 
-__all__ = ["_people_rules", "_comfort_rules", "stress_causes", "THOUGHT_WORDS", "_doctor_patient_rule", "_hospital_burrow_rule", "MOOD_WORKSHOPS", "PETITION_KINDS", "petition_orders_wanted", "_petition_rules", "_jail_size_rule", "_convict_rule", "_break_fights_rule", "_sync_offices_rule", "patient_waits", "_health_rules", "TANTRUM_KEEP", "note_tantrums", "_noble_rooms_rule", "outsider_orders", "NEED_ADVICE", "JEWEL_RECIPES", "_recreation_rule", "_stress_care", "_needs_notes", "_location_supply_rules", "POST_LABORS", "STAFF_POSTS", "STAFF_MAX", "_traction_rule", "_wish_words", "_wish_met", "wish_key", "petition_lean", "_location_petition_rules", "_meeting_notes", "_grandeur_rule", "_location_value_rule", "_staff_rule", "_quick_location_rule", "_needs_rules", "_mood_rules", "mood_item_text", "_mood_materials", "_dead_notes", "AI_OFFICES", "_society_notes"]
+__all__ = ["_people_rules", "_comfort_rules", "stress_causes", "THOUGHT_WORDS", "_doctor_patient_rule", "_hospital_burrow_rule", "_calm_burrow_rule", "MOOD_WORKSHOPS", "PETITION_KINDS", "petition_orders_wanted", "_petition_rules", "_jail_size_rule", "_convict_rule", "_break_fights_rule", "_sync_offices_rule", "patient_waits", "_health_rules", "TANTRUM_KEEP", "note_tantrums", "_noble_rooms_rule", "outsider_orders", "NEED_ADVICE", "JEWEL_RECIPES", "_recreation_rule", "_stress_care", "_needs_notes", "_location_supply_rules", "POST_LABORS", "STAFF_POSTS", "STAFF_MAX", "_traction_rule", "_wish_words", "_wish_met", "wish_key", "petition_lean", "_location_petition_rules", "_meeting_notes", "_grandeur_rule", "_location_value_rule", "_staff_rule", "_quick_location_rule", "_needs_rules", "_mood_rules", "mood_item_text", "_mood_materials", "_dead_notes", "AI_OFFICES", "_society_notes"]
 
 
 # A crafting mood's skill -> the workshop (or furnace) the dwarf must claim.
@@ -403,6 +403,66 @@ def _hospital_burrow_rule(s: dict, cfg: dict, proposals: list, memory=None) -> N
                               + ": the wounded kept in the hospital (with drink and food they can reach), "
                                 "the healed let out",
                               2 if (fighting or crisis) else 4))
+
+
+def _calm_burrow_rule(s: dict, cfg: dict, proposals: list, notes: list | None = None, memory=None) -> None:
+    """(0.104.169) Teacheroar, 1 Nov 18:38-18:53: five citizens killed by
+    citizens, three of them patients waiting for care, the killers in a
+    tantrum. The player's word: keep a dwarf in a tantrum away from the
+    patients and the others until they calm down. The bridge keeps each
+    citizen in a tantrum in a burrow of their own over a free bedroom far
+    from the hospitals and the nearest drink they can walk to, and lets them
+    out once calm, after calm_burrow_days, thirsty or hungry (it re-checks
+    them at every report). The planner asks while a tantrum walks free
+    (`free`), or while the burrows hold members (to let them out).
+
+    Whether DF keeps a tantrum's own acts inside a burrow is not known (the
+    wiki is silent): the report counts each member seen inside or outside
+    their burrow, and the rule says so once the count says it doesn't hold.
+
+    (review, as the hospital burrow) Never members left behind: the rule
+    switched off or the status unreadable, the bridge is asked to let
+    everyone out (`release`). Never the jail, a lock or a chain."""
+    if proposals is None:
+        return
+    soc = _d(s.get("society"))
+    if "calm_burrow" not in soc and not soc.get("error") and not _d(s.get("_errors")).get("society"):
+        return                                   # an older bridge: nothing to ask
+    cb = _d(soc.get("calm_burrow"))
+    err = cb.get("error") or soc.get("error") or _d(s.get("_errors")).get("society")
+    members = int(cb.get("members") or 0) if not err else 0
+    release = {"type": "calm_burrow", "release": True}
+    if not player_rules(s).get("calm_burrow", True):
+        if members or err:
+            proposals.append(Proposal("calm_burrow", release, "the calm-down burrows are switched off in the Rules: "
+                                      f"{members or 'their'} dwarf(s) let out", 2))
+        return
+    if err:
+        proposals.append(Proposal("calm_burrow", release,
+                                  "the calm-down burrows' status can't be read (" + str(err)[:80]
+                                  + "): their dwarves let out, so none is kept from drink unseen", 2))
+        return
+    seen_in, seen_out = int(cb.get("seen_in") or 0), int(cb.get("seen_out") or 0)
+    if notes is not None and seen_in + seen_out >= cfg["calm_burrow_judge_after"]:
+        share = seen_out / (seen_in + seen_out)
+        if share >= cfg["calm_burrow_outside_share"]:
+            notes.append(f"calm burrows: dwarves in a tantrum were seen outside their burrow {seen_out} of "
+                         f"{seen_in + seen_out} times: DF doesn't seem to hold a tantrum to a burrow")
+    free = int(cb.get("free") or 0)
+    if not free and not members:
+        return
+    why = cb.get("why")
+    if not members and why and free:
+        # the last call found no room (or no drink): say so, and ask again after the cooldown
+        if notes is not None:
+            notes.append(f"{free} citizen(s) in a tantrum walk free: {why}")
+    proposals.append(Proposal("calm_burrow", {"type": "calm_burrow", "max": cfg["calm_burrow_max"],
+                                              "days": cfg["calm_burrow_days"]},
+                              (f"{free} citizen(s) in a tantrum walk free" if free else "no tantrum walks free")
+                              + (f", {members} kept apart" if members else "")
+                              + ": each kept in a free bedroom away from the patients (with drink in reach) "
+                                "until calm, the calm let out",
+                              0 if free else 2))
 
 
 TANTRUM_KEEP = 60           # tantrums remembered (each [tick, who])

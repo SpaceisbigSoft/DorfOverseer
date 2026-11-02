@@ -1123,6 +1123,28 @@ def _():
     assert len(H.calls) == 3                                          # a refused call never reaches the game
 
 
+@test("0.104.169: calm_burrow is in the action table, bounded, and passes max, days, release and dry_run to the society script")
+def _():
+    reset()
+    M = H.module()
+    LUA.execute("""local M, H = ...
+      H.calls = {}
+      H.scripts = {['ai-society'] = {calm_burrow_tick = function(n, days, dry, txt, release)
+          table.insert(H.calls, {n = n, days = days, dry = dry, release = release}); return {ok = true} end}}
+    """, M, H)
+    assert LUA.eval("function(M) return M.ACTIONS.calm_burrow == M.act_calm_burrow end")(M)
+    assert M.act_calm_burrow(t({"max": 6, "days": 3, "dry_run": True})).ok
+    c = H.calls[1]
+    assert (c.n, c.days, c.dry, c.release) == (6, 3, True, False), (c.n, c.days, c.dry, c.release)
+    assert M.act_calm_burrow(t({})).ok and (H.calls[2].n, H.calls[2].days, H.calls[2].dry) == (6, 3, False)
+    assert M.act_calm_burrow(t({"release": True})).ok and H.calls[3].release is True
+    for bad in ({"max": 0}, {"max": 7}, {"max": "lots"}, {"days": 0}, {"days": 8}, {"days": 2.5},
+                {"release": "yes"}, {"release": 1}):
+        r = M.act_calm_burrow(t(bad))
+        assert not r.ok and r.rejected, (bad, dict(r))
+    assert len(H.calls) == 3                                          # a refused call never reaches the game
+
+
 @test("0.104.168: accept_cups is in the action table and passes dry_run to the society script")
 def _():
     reset()

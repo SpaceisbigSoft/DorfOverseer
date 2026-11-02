@@ -8815,6 +8815,64 @@ def _():
     assert not any(x.rule == "homes" for x in allowed) and any(x.startswith("homes: the game refused") for x in held), held
 
 
+@test("calm burrow (0.104.169): asked first while a citizen in a tantrum walks free, or while the burrows hold members (to let them out); never on an older bridge")
+def _():
+    s = fort()
+    s.setdefault("society", {})["calm_burrow"] = {"members": 0, "tantrums": 3, "free": 2, "held": {"soldier": 1}}
+    r = by_rule(plan(copy.deepcopy(s), Memory())[0], "calm_burrow")
+    assert r and r[0].action == {"type": "calm_burrow", "max": 6, "days": 3}, r
+    assert r[0].reason.startswith("2 citizen(s) in a tantrum walk free") and r[0].priority == 0, r[0]
+    # members only: asked (to let the calm out), not first
+    m_ = copy.deepcopy(s); m_["society"]["calm_burrow"].update(free=0, members=2)
+    r = by_rule(plan(m_, Memory())[0], "calm_burrow")
+    assert r and r[0].priority == 2 and "2 kept apart" in r[0].reason, r
+    # nothing in a tantrum, nobody kept: not asked; an older bridge (no status): never
+    quiet = copy.deepcopy(s); quiet["society"]["calm_burrow"].update(free=0, tantrums=1)
+    assert not by_rule(plan(quiet, Memory())[0], "calm_burrow")
+    old = copy.deepcopy(s); del old["society"]["calm_burrow"]
+    assert not by_rule(plan(old, Memory())[0], "calm_burrow")
+    # never held by the strategist nor by the action limit; a recovery rule; its own short cooldown
+    m = Memory(); now = abs_tick(s)
+    m.steer["calm_burrow"] = {"mode": "hold", "until": now + 10 * TICKS_PER_DAY, "why": "x"}
+    allowed, held = select(plan(copy.deepcopy(s), m)[0], s, m)
+    assert any(p.rule == "calm_burrow" for p in allowed), held
+    import crisis
+    assert "calm_burrow" in crisis.RECOVERY_RULES and "calm_burrow" in planner.LIMIT_EXEMPT
+    assert planner.PLANNER_CONFIG["calm_burrow_cooldown_ticks"] == 300
+    assert planner.AGENDA_THEMES["calm_burrow"] == "keep a tantrum away from the others"
+
+
+@test("calm burrow (0.104.169): members never left behind: let out when the rule is off or the status fails; the room-less call said; DF ignoring the burrow said once the counts show it")
+def _():
+    RELEASE = {"type": "calm_burrow", "release": True}
+    s = fort()
+    s.setdefault("society", {})["calm_burrow"] = {"members": 2, "tantrums": 2, "free": 1}
+    off = copy.deepcopy(s); off.setdefault("settings", {})["calm_burrow"] = False
+    r = by_rule(plan(copy.deepcopy(off), Memory())[0], "calm_burrow")
+    assert r and r[0].action == RELEASE and "switched off" in r[0].reason, r
+    off["society"]["calm_burrow"]["members"] = 0
+    assert not by_rule(plan(copy.deepcopy(off), Memory())[0], "calm_burrow")         # off, nobody in: nothing
+    bad = copy.deepcopy(s); bad["society"]["calm_burrow"] = {"error": "boom"}
+    r = by_rule(plan(bad, Memory())[0], "calm_burrow")
+    assert r and r[0].action == RELEASE and "can't be read" in r[0].reason, r
+    bad = copy.deepcopy(s); bad["society"] = {"error": "boom"}
+    r = by_rule(plan(bad, Memory())[0], "calm_burrow")
+    assert r and r[0].action == RELEASE, r
+    # the last call found no room: said, and asked again
+    nr = copy.deepcopy(s); nr["society"]["calm_burrow"].update(members=0, why="no free bedroom at least 15 tiles from the hospitals")
+    props, notes = plan(nr, Memory())[:2]
+    assert by_rule(props, "calm_burrow") and any("walk free: no free bedroom" in n for n in notes), notes
+    # seen outside their burrow most of the time: said
+    out = copy.deepcopy(s); out["society"]["calm_burrow"].update(seen_in=4, seen_out=16)
+    notes = plan(out, Memory())[1]
+    assert any("seen outside their burrow 16 of 20" in n for n in notes), notes
+    inside = copy.deepcopy(s); inside["society"]["calm_burrow"].update(seen_in=18, seen_out=2)
+    assert not any("seen outside" in n for n in plan(inside, Memory())[1])
+    import overseer
+    assert "free bedroom" in overseer.short({"type": "calm_burrow", "max": 6, "days": 3})
+    assert overseer.short(RELEASE) == "let every dwarf out of the calm-down burrows"
+
+
 if __name__ == "__main__":
     for name, ok, msg in RESULTS:
         print(f"[{'PASS' if ok else 'FAIL'}] {name}" + (f"\n        {msg}" if msg else ""))
