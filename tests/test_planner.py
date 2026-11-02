@@ -8815,6 +8815,103 @@ def _():
     assert not any(x.rule == "homes" for x in allowed) and any(x.startswith("homes: the game refused") for x in held), held
 
 
+def _crisis_mem():
+    m = Memory()
+    m.crisis = {"since": 1, "why": ["41% unhappy"]}       # (0.104.169) crisis.py's memory
+    return m
+
+
+@test("drink in a crisis (0.104.169): the target rises 1.5x; food under the floor wins")
+def _():
+    s = fort(stocks__drink=2500)                       # 194 dwarves: target 1940, in a crisis 2910
+    assert not by_rule(plan(copy.deepcopy(s), Memory())[0], "drink")
+    d = by_rule(plan(copy.deepcopy(s), _crisis_mem())[0], "drink")
+    assert d and d[0].action["recipe"] == "brew_drink" and "crisis" in d[0].reason, [x.reason for x in d]
+    assert d[0].action["amount"] == 82, d[0].action    # (2910 - 2500) / 5
+    for k in ("prepared_meals", "meat", "fish", "raw_fish", "eggs", "cheese", "plant_growths"):
+        s["stocks"][k] = 0
+    s["stocks"]["plants"] = 1000                       # ~5 food a dwarf: the plants are food first
+    assert not by_rule(plan(copy.deepcopy(s), _crisis_mem())[0], "drink")
+
+
+@test("drink in a crisis (0.104.169): far under the target the next batch waits only for the open one to reach the stills")
+def _():
+    s = fort(stocks__drink=500)
+    s["buildings"]["workshops"]["Still"] = 6
+    s["orders"].append({"id": 70, "recipe": "brew_drink", "amount_left": 10, "amount_total": 10, "by_ai": True,
+                        "active": True, "jobs": {"n": 6, "working": 6}})
+    assert not by_rule(plan(copy.deepcopy(s), Memory())[0], "drink")       # calm: the stills work through it first
+    d = by_rule(plan(copy.deepcopy(s), _crisis_mem())[0], "drink")
+    assert d and "next batch" in d[0].reason, [x.reason for x in d]          # 4 waiting for 6 stills
+    s["orders"][-1]["jobs"] = {"n": 0}                                          # 10 waiting for 6 stills: not yet
+    assert not by_rule(plan(copy.deepcopy(s), _crisis_mem())[0], "drink")
+    s["orders"][-1]["jobs"] = {"n": 6}
+    s["orders"].append({"id": 71, "recipe": "brew_drink", "amount_left": 3, "amount_total": 50, "by_ai": True,
+                        "active": True, "jobs": {"n": 3}})
+    assert not by_rule(plan(copy.deepcopy(s), _crisis_mem())[0], "drink")    # two open: crisis_brew_orders_max
+    s["orders"] = s["orders"][:-2]
+    s["stocks"]["drink"] = 2600                    # 2600 + 50 queued >= 0.75 x 2910: not far, one batch at a time
+    s["orders"].append({"id": 70, "recipe": "brew_drink", "amount_left": 10, "amount_total": 10, "by_ai": True,
+                        "active": True, "jobs": {"n": 6}})
+    assert not by_rule(plan(copy.deepcopy(s), _crisis_mem())[0], "drink")
+
+
+@test("drink in a crisis (0.104.169): the extra brewing leaves plants for the kitchen; containers bound it")
+def _():
+    s = fort(stocks__drink=2000)                   # over the usual target, 910 under the crisis's
+    s["supplies"]["brewable_plants"] = 1000        # 194 x 5 = 970 kept: 30 to brew
+    s["supplies"]["brewable_growths"] = 0
+    d = by_rule(plan(copy.deepcopy(s), _crisis_mem())[0], "drink")
+    assert d and d[0].action["amount"] == 30, [x.action for x in d]
+    s["stocks"]["drink"] = 1500                    # under the usual target too: the usual brewing is never cut
+    d = by_rule(plan(copy.deepcopy(s), _crisis_mem())[0], "drink")
+    assert d and d[0].action["amount"] == 88, [x.action for x in d]     # the usual (1940 - 1500) / 5, not the 30
+    s["supplies"].update(empty_barrels=7, empty_pots=0)
+    d = by_rule(plan(copy.deepcopy(s), _crisis_mem())[0], "drink")
+    assert d and d[0].action["amount"] == 7, [x.action for x in d]
+    s["supplies"].update(empty_barrels=100, brewable_plants=900)
+    s["stocks"]["drink"] = 2000                    # at the usual target, the plants at the keep: none, said so
+    props, notes = plan(copy.deepcopy(s), _crisis_mem())[:2]
+    assert not by_rule(props, "drink") and any("kept for the kitchen" in n for n in notes), notes
+
+
+@test("containers in a crisis (0.104.169): barrels or pots for the brew jobs the crisis's target needs; recovery")
+def _():
+    import crisis
+    s = fort(stocks__drink=2500)
+    s["supplies"].update(empty_barrels=0, empty_pots=30)      # 30 free: enough for 194 dwarves (20) when calm
+    assert not by_rule(plan(copy.deepcopy(s), Memory())[0], "containers")
+    c = by_rule(plan(copy.deepcopy(s), _crisis_mem())[0], "containers")
+    assert c and "crisis" in c[0].reason and c[0].action["recipe"] in ("wooden_barrel", "stone_large_pot"), \
+        [x.reason for x in c]
+    assert crisis.is_recovery(c[0])
+
+
+@test("stills in a crisis (0.104.169): past the cap x3 under the crisis's drink target, idle or not; brewers at one job")
+def _():
+    from planner import _bottleneck_rule, _labor_waiting_rule, drink_below_target
+    cfg = dict(PLANNER_CONFIG)
+    s = fort(stocks__drink=2500)
+    cap = planner.shops_max(cfg, 194)
+    s["buildings"]["workshops"] = {"Still": 2 * cap, "Kitchen": 1}
+    s["orders"] = [{"id": 1, "recipe": "brew_drink", "amount_left": 6 * 2 * cap, "by_ai": True}]
+    s["dwarves"]["idle_adults"] = 0
+    p = []
+    _bottleneck_rule(s, cfg, 194, p, Memory())
+    assert not p, p                                   # calm: drink over the target, at the cap, nobody idle
+    _bottleneck_rule(s, cfg, 194, p, _crisis_mem())
+    assert p and p[0].action["shops"] == ["Still"] and p[0].action.get("urgent") and "crisis" in p[0].reason, p
+    s["buildings"]["workshops"]["Still"] = cfg["crisis_stills_cap_factor"] * cap
+    p = []
+    _bottleneck_rule(s, cfg, 194, p, _crisis_mem())
+    assert not p, p                                   # the crisis's cap
+    assert drink_below_target(s, 194, cfg, _crisis_mem()) and not drink_below_target(s, 194, cfg, Memory())
+    lb = {"waiting": [{"labor": "BREWER", "jobs": 1, "holders": 3, "idle": 0}]}
+    p = []
+    _labor_waiting_rule(lb, 194, cfg, p, drink_below_target(s, 194, cfg, _crisis_mem()))
+    assert p and p[0].action["job"] == "BREWER", p
+
+
 if __name__ == "__main__":
     for name, ok, msg in RESULTS:
         print(f"[{'PASS' if ok else 'FAIL'}] {name}" + (f"\n        {msg}" if msg else ""))

@@ -13,7 +13,7 @@ from quirks import has_rule
 from digest import _d, _l, normalize
 from planner_core import *  # noqa: F401,F403
 
-__all__ = ["CONTAINER_RECIPES", "GEAR_ORDER_METALS", "_supply_rules", "_slow_game_rules", "_kiln_rules", "_soap_rule", "_pasture_rule", "LABOR_MODES_FIXED", "INDUSTRY_SHOPS", "_industry_rules", "_steel_rule", "_bottleneck_rule", "drink_short", "_crop_rules", "_kitchen_rule", "_fishery_rule", "_bench_coffins_rule", "STONE_CRAFTS", "order_shop", "_order_slots_rule", "_orphan_jobs_rule", "_unsuspend_rule", "_approve_rule", "_stuck_orders_rule", "COAL_STONES", "_coal_rule", "_picks_order", "_stone_rule", "stone_crisis", "PRECIOUS_ORES", "_cloth_rule", "_trade_rules", "_gems_rule", "trade_wants", "_spare_mechanisms_rule", "_hauling_rule", "_surface_basics", "trees_this_year", "_keep_rule", "_free_time_rule", "_labor_rules", "OWN_LABOR_RULES", "FEEDER_ORDER", "_feeder_rule", "woodcutters", "gatherers", "trade_margin_for", "keeps_treasures", "spare_mechanisms", "_dairy_rule", "_eggs_rule", "EXCESS_SHOPS", "_excess_shops_rule", "drink_below_target", "_labor_waiting_rule", "farm_target", "_farm_rule", "_smelting_rule", "_shoes_recipe", "_glass_rule", "PRECIOUS_METALS", "precious_metal"]
+__all__ = ["CONTAINER_RECIPES", "GEAR_ORDER_METALS", "_supply_rules", "_slow_game_rules", "_kiln_rules", "_soap_rule", "_pasture_rule", "LABOR_MODES_FIXED", "INDUSTRY_SHOPS", "_industry_rules", "_steel_rule", "_bottleneck_rule", "drink_short", "_crop_rules", "_kitchen_rule", "_fishery_rule", "_bench_coffins_rule", "STONE_CRAFTS", "order_shop", "_order_slots_rule", "_orphan_jobs_rule", "_unsuspend_rule", "_approve_rule", "_stuck_orders_rule", "COAL_STONES", "_coal_rule", "_picks_order", "_stone_rule", "stone_crisis", "PRECIOUS_ORES", "_cloth_rule", "_trade_rules", "_gems_rule", "trade_wants", "_spare_mechanisms_rule", "_hauling_rule", "_surface_basics", "trees_this_year", "_keep_rule", "_free_time_rule", "_labor_rules", "OWN_LABOR_RULES", "FEEDER_ORDER", "_feeder_rule", "woodcutters", "gatherers", "trade_margin_for", "keeps_treasures", "spare_mechanisms", "_dairy_rule", "_eggs_rule", "EXCESS_SHOPS", "_excess_shops_rule", "drink_below_target", "drink_crisis", "drink_target_per_dwarf", "crisis_brew_room", "_labor_waiting_rule", "farm_target", "_farm_rule", "_smelting_rule", "_shoes_recipe", "_glass_rule", "PRECIOUS_METALS", "precious_metal"]
 
 CONTAINER_RECIPES = {"wooden_barrel", "stone_large_pot"}
 # ore worth mining for gear, most wanted first (iron makes steel; tin with copper makes bronze)
@@ -33,6 +33,14 @@ def _supply_rules(s: dict, citizens: int, cfg: dict, proposals: list, notes: lis
     # (always rock pots for a Stonebound fort, while it has the stone).
     free = (sup.get("empty_barrels") or 0) + (sup.get("empty_pots") or 0)
     want = max(cfg["min_empty_containers"], math.ceil(citizens * cfg["empty_containers_per_dwarf"]))
+    crisis_brew = 0
+    if memory is not None and drink_crisis(s, memory, cfg):
+        # (0.104.169) in a crisis every brew job the drink target still needs
+        # wants an empty barrel or pot (the brew order is cut to the free ones)
+        gap = (citizens * drink_target_per_dwarf(s, memory, cfg) - int(st.get("drink") or 0)
+               - queued(s, BREW_RECIPES) * cfg["drinks_per_job"])
+        crisis_brew = min(cfg["crisis_containers_max"], max(0, math.ceil(gap / cfg["drinks_per_job"])))
+        want = max(want, crisis_brew)
     pending = queued(s, CONTAINER_RECIPES)
     if free + pending < want:
         amount = _clamp(want * 2 - free - pending, 5, 30)
@@ -51,7 +59,8 @@ def _supply_rules(s: dict, citizens: int, cfg: dict, proposals: list, notes: lis
             proposals.append(Proposal(
                 "containers", {"type": "work_order", "recipe": recipe, "amount": amount},
                 f"only {free} empty barrels/pots (+{pending} queued) for {citizens} dwarves; "
-                f"brewing and cooking stop without them: make {what}", 2, True))
+                f"brewing and cooking stop without them: make {what}"
+                + (f" (crisis: {crisis_brew} brew jobs wait for one)" if crisis_brew >= want else ""), 2, True))
 
     # Bins hold finished goods, bars, cloth and the like: a stockpile with
     # bins takes far more, and haulers carry a bin's worth in one trip.
@@ -664,7 +673,7 @@ def _steel_rule(s: dict, cfg: dict, bars: dict, furnaces: dict, fuel: int, propo
                                   f"({2 * n} bars)", 5, True))
 
 
-def _bottleneck_rule(s: dict, cfg: dict, citizens: int, proposals: list) -> None:
+def _bottleneck_rule(s: dict, cfg: dict, citizens: int, proposals: list, memory=None) -> None:
     """One workshop with a long queue of the AI's orders while dwarves stand
     idle (region2's one smelter: coke, pig iron, steel and ore, 40% idle):
     another workshop of that kind, through a workshops level."""
@@ -672,6 +681,11 @@ def _bottleneck_rule(s: dict, cfg: dict, citizens: int, proposals: list) -> None
     # not, idle hands or not (Enxah: 18 dwarves, 1 still, 28 brews queued,
     # drink 0-8 for a year)
     thirsty = int(_d(s.get("stocks")).get("drink") or 0) < citizens * cfg["urgent_drink_per_dwarf"]
+    # (0.104.169) and in a crisis, under the crisis's drink target: the
+    # stills are the lever (Teacheroar, 41% unhappy: 6 stills, drink 704 for
+    # 129, 13 of 117 idle, so the idle gate never let a still through)
+    crisis_dry = memory is not None and drink_crisis(s, memory, cfg) and drink_below_target(s, citizens, cfg, memory)
+    thirsty = thirsty or crisis_dry
     if young_fort(s, cfg) and not thirsty:
         return
     dw = _d(s.get("dwarves"))
@@ -693,7 +707,7 @@ def _bottleneck_rule(s: dict, cfg: dict, citizens: int, proposals: list) -> None
     # (0.104.137) stills and kitchens past the cap while drink or meals run short
     # (Teacheroar: 6 stills and 7 kitchens against a cap of 5 at 221 dwarves)
     st_ = _d(s.get("stocks"))
-    short_ = {"Still": int(st_.get("drink") or 0) < citizens * cfg["drink_per_dwarf"],
+    short_ = {"Still": int(st_.get("drink") or 0) < citizens * drink_target_per_dwarf(s, memory, cfg),
               "Kitchen": int(st_.get("prepared_meals") or 0) < citizens * cfg["meals_per_dwarf"],
               # (0.104.141) and Masons' workshops while the open levels wait for
               # much furniture (Teacheroar: 122 pieces on 5, the cap at 209)
@@ -701,6 +715,8 @@ def _bottleneck_rule(s: dict, cfg: dict, citizens: int, proposals: list) -> None
                             if k in ("Table", "Chair", "Coffin", "Door", "Cabinet", "Box", "Statue", "Slab"))
                         >= cfg["furniture_short_pieces"]}
     def cap_(shop):
+        if shop == "Still" and crisis_dry:
+            return shops_max(cfg, citizens) * cfg["crisis_stills_cap_factor"]     # (0.104.169)
         return shops_max(cfg, citizens) * (2 if short_.get(shop) else 1)
     worst = sorted(((n / max(1, places.get(shop, 0)), n, shop) for shop, n in backlog.items()
                     if shop in BUILDABLE_SHOPS and places.get(shop, 0) >= 1
@@ -719,7 +735,10 @@ def _bottleneck_rule(s: dict, cfg: dict, citizens: int, proposals: list) -> None
         proposals.append(Proposal("bottleneck", {"type": "start_project", "kind": "workshops", "shops": [shop],
                                                  **({"urgent": True} if thirsty and shop == "Still" else {})},
                                   f"{n} jobs of the AI's orders wait on {places.get(shop)} {shop} and "
-                                  f"{round(100 * idle)}% of the dwarves are idle: build another",
+                                  + (f"drink is under the crisis's target ({cfg['crisis_drink_share']:g}x): build "
+                                     "another (being drunk eases the fort's stress most)"
+                                     if crisis_dry and shop == "Still" else
+                                     f"{round(100 * idle)}% of the dwarves are idle: build another"),
                                   3 if shop in ("Still", "Kitchen") else 6))
 
 
@@ -1751,7 +1770,7 @@ def _labor_rules(s: dict, citizens: int, cfg: dict, proposals: list, notes: list
         want("woodcutting", cutters,
              "trees to cut (wood for beds, barrels and bins)"
              + (f"; the wood is {short} short of what the fort keeps" if short > 0 else ""), 4)
-    _labor_waiting_rule(lb, citizens, cfg, proposals, drink_below_target(s, citizens, cfg))
+    _labor_waiting_rule(lb, citizens, cfg, proposals, drink_below_target(s, citizens, cfg, memory))   # (0.104.169)
 
 
 # Labours with rules of their own (miners by the digging and picks, woodcutters
@@ -1893,10 +1912,44 @@ def _excess_shops_rule(s: dict, cfg: dict, proposals: list) -> None:
                                       f"{n} {name} workshops (one is enough): take down the idle extras", 6))
 
 
-def drink_below_target(s: dict, citizens: int, cfg: dict) -> bool:
-    """(0.102.2) Drink under the fort's own target per dwarf."""
+def drink_below_target(s: dict, citizens: int, cfg: dict, memory=None) -> bool:
+    """(0.102.2) Drink under the fort's own target per dwarf ((0.104.169) the
+    crisis's higher target while the fort is in crisis, given the memory)."""
     drink = _d(s.get("stocks")).get("drink")
-    return isinstance(drink, (int, float)) and citizens > 0 and drink < citizens * cfg["drink_per_dwarf"]
+    return isinstance(drink, (int, float)) and citizens > 0 and drink < citizens * drink_target_per_dwarf(s, memory, cfg)
+
+
+def drink_crisis(s: dict, memory, cfg: dict) -> bool:
+    """(0.104.169) Drink is a crisis lever: the fort is in crisis (crisis.py's
+    memory.crisis) and its food isn't thin. Being drunk was by far the fort's
+    biggest relief (Teacheroar: inebriation eased -1932 stress across 149
+    citizens, the next relief -130) while drink ran under its target. Food
+    under the floor wins: the stills' plants are food too."""
+    c = getattr(memory, "crisis", None)
+    if not (isinstance(c, dict) and c.get("since") and c.get("why")):
+        return False
+    return food_per_dwarf(s) >= cfg["crisis_drink_food_floor_per_dwarf"]
+
+
+def drink_target_per_dwarf(s: dict, memory, cfg: dict) -> float:
+    """(0.104.169) The drink kept per dwarf: `drink_per_dwarf`, x
+    `crisis_drink_share` while drink is a crisis lever."""
+    base = float(cfg["drink_per_dwarf"])
+    return base * cfg["crisis_drink_share"] if memory is not None and drink_crisis(s, memory, cfg) else base
+
+
+def crisis_brew_room(s: dict, recipe: str, stills: int) -> bool:
+    """(0.104.169) In a crisis, may the next batch of `recipe` be queued while
+    the AI's order of it is still open? Only when every job of the open
+    orders is on a still or about to be (fewer jobs waiting for a still than
+    there are stills), so the stills never stand empty between batches and
+    no copy waits long enough to look stuck."""
+    waiting = 0
+    for o in _l(s.get("orders")):
+        if isinstance(o, dict) and o.get("by_ai") and o.get("recipe") == recipe:
+            made = int(_d(o.get("jobs")).get("n") or 0)
+            waiting += max(0, int(o.get("amount_left") or 0) - made)
+    return waiting < max(1, stills)
 
 
 def _labor_waiting_rule(lb: dict, citizens: int, cfg: dict, proposals: list, thirsty: bool = False) -> None:

@@ -130,6 +130,10 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
         per_job = cfg["drinks_per_job"]
         drink, pending = st.get("drink", 0), queued(s, BREW_RECIPES) * per_job
         target = citizens * cfg["drink_per_dwarf"] * buffer * winter
+        # (0.104.169) in a crisis drink is a lever: a higher target, brewed sooner
+        crisis_drink = memory is not None and drink_crisis(s, memory, cfg)
+        if crisis_drink:
+            target *= cfg["crisis_drink_share"]
         # (0.103) a Thirst-scarred fort keeps a third more
         if memory is not None and has_rule(memory.culture, "drink_hoard"):
             target *= cfg["drink_hoard_share"]
@@ -157,8 +161,24 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
             def stuck_recently(r):
                 st_ = _d(_d(getattr(memory, "stuck_cancelled", None)).get(r))
                 return isinstance(st_.get("tick"), int) and 0 <= abs_tick(s) - st_["tick"] < cfg["stuck_retry_days"] * TICKS_PER_DAY
+            # (0.104.169) in a crisis, far under the target, the next batch is
+            # queued once the open one is all on the stills (crisis_brew_room),
+            # up to crisis_brew_orders_max orders a recipe: the stills never
+            # wait between batches. (select's hold on an order that hasn't
+            # moved in order_hold_days and the rule's cooldown still apply.)
+            stills = shop_count(_d(s.get("buildings")), "Still")
+            far = crisis_drink and drink + pending < target * cfg["crisis_drink_far_share"]
+
+            def ai_orders(r):
+                return sum(1 for o in _l(s.get("orders")) if isinstance(o, dict) and o.get("by_ai")
+                           and o.get("recipe") == r and (o.get("amount_left") or 0) > 0)
+
+            def room(r):
+                if not queued(s, {r}, ai_only=True):
+                    return True
+                return far and ai_orders(r) < cfg["crisis_brew_orders_max"] and crisis_brew_room(s, r, stills)
             sources = [(r, n) for r, n in (("brew_drink", plants), ("brew_drink_from_fruit", fruit))
-                       if n > 0 and not queued(s, {r}, ai_only=True) and not stuck_recently(r)]
+                       if n > 0 and room(r) and not stuck_recently(r)]
             if plants <= 0 and fruit <= 0:
                 ask_player(notes, f"drink is low ({drink} for {citizens} dwarves) but there are no plants or "
                            "fruit a still can brew (farm brewable crops: plump helmets, and others by the season)")
@@ -169,10 +189,19 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
                 recipe, have = sources[0]
                 jobs = _clamp(math.ceil((target - drink - pending) / per_job), cfg["min_order"], cfg["max_order"])
                 jobs = min(jobs, have)
+                if crisis_drink and recipe == "brew_drink":
+                    # (0.104.169) the crisis's brewing leaves plants for the kitchen
+                    # (beyond what the usual target would brew)
+                    usual = math.ceil(max(0, target / cfg["crisis_drink_share"] - drink - pending) / per_job)
+                    jobs = min(jobs, max(usual, have - citizens * cfg["crisis_plants_keep_per_dwarf"]))
                 # (0.100) each brew job fills an empty barrel or pot: no more jobs than there are
                 if isinstance(sup_.get("empty_barrels"), int):
                     jobs = min(jobs, sup_["empty_barrels"] + int(sup_.get("empty_pots") or 0))
-                if jobs < 1:
+                if jobs < 1 and crisis_drink and have > 0:
+                    notes.append(f"drink {drink} is below the crisis's target of {round(target)}, but the "
+                                 f"{have} brewable plants are kept for the kitchen (at most "
+                                 f"{cfg['crisis_plants_keep_per_dwarf']} a dwarf go to the crisis's extra brewing)")
+                elif jobs < 1:
                     notes.append(f"drink {drink} is below the target of {round(target)} but there are no empty "
                                  "barrels or pots to brew into (more are ordered with the containers)")
                 else:
@@ -181,6 +210,9 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
                         f"drink {drink} + ~{pending} queued is below the target of {round(target)}"
                         + (" (stocking up for winter)" if winter > 1 else "")
                         + ("" if recipe == "brew_drink" else ", brewed from fruit")
+                        + (f" (crisis: drink kept x{cfg['crisis_drink_share']:g}, being drunk eases stress"
+                           + ("; the next batch queued while the stills work the last" if queued(s, {recipe}, ai_only=True)
+                              else "") + ")" if crisis_drink else "")
                         + (" (URGENT)" if urgent else ""), 1, True))
 
     # (0.99.5) an AI fruit brew with no fermentable fruit only ties up the
@@ -495,7 +527,7 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
         _guard(_approve_rule, s, memory, cfg, proposals, notes)
         _guard(_sync_offices_rule, s, proposals)
     if can_use("orders", "buildings", "projects"):
-        _guard(_bottleneck_rule, s, cfg, citizens, proposals)
+        _guard(_bottleneck_rule, s, cfg, citizens, proposals, memory)   # (0.104.169) memory: the crisis
         _guard(_fishery_rule, s, cfg, proposals)
     if can_use("stocks", "farms"):
         _guard(_crop_rules, s, memory, cfg, proposals, notes)

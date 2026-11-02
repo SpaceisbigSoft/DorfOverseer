@@ -307,6 +307,16 @@ PLANNER_CONFIG = {
     "crop_other_threshold": 10,        # ...and for the rest (food is a fort's smaller worry by then)
     "crop_default_threshold": 50,      # autofarm's own default, put back once drink recovers
     "drink_recovered_per_dwarf": 4,
+    # (0.104.169) drink as a crisis lever (Teacheroar: being drunk eased -1932
+    # stress across 149 citizens, the next relief -130): in a crisis the fort
+    # keeps more drink and brews it sooner
+    "crisis_drink_share": 1.5,             # the drink target x this while the fort is in crisis...
+    "crisis_drink_far_share": 0.75,        # ...under this share of it the next brew batch is queued early...
+    "crisis_brew_orders_max": 2,           # ...at most this many AI brew orders of a recipe at once
+    "crisis_drink_food_floor_per_dwarf": 15,   # ...and only while food a dwarf is at least this (food first)
+    "crisis_plants_keep_per_dwarf": 5,     # the crisis's extra brewing leaves this many brewable plants a dwarf
+    "crisis_stills_cap_factor": 3,         # stills up to the workshop cap x this while short in a crisis (x2 otherwise)
+    "crisis_containers_max": 60,           # empty barrels/pots wanted for the crisis's brewing, at most
     "surface_farm_seeds": 50,          # (0.99.6) brewable surface seeds before surface plots are laid out...
     "seeds_per_plot": 10,              # ...while the underground plots have fewer seeds than this each
     "surface_farm_tiles": 60,    # drinks a dwarf before the crops go back to autofarm's way            # (0.99.4) raw fish waiting before a fishery is built (any fort's age)                   # ...up to the miners that don't get in each other's way                   # fewer usable boulders than this: free an economic stone, or wood
