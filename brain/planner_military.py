@@ -1520,11 +1520,12 @@ def lone_intruders(s: dict, cfg: dict, traits: dict | None = None, memory=None) 
     reach = reachable_threats(s, traits if traits is not None else _traits(s), cfg)
     if not reach or len(reach) > cfg.get("lone_intruder_max", 2):
         return []
-    inside = _d(s.get("entrances")).get("intruders_inside")
-    if not isinstance(inside, list):
+    # (0.105.4 review) no map this cycle (a rescan, a reload): the ones read
+    # as inside before still count, so the lone-thief case doesn't flip
+    inside = {x for x in _l(_d(s.get("entrances")).get("intruders_inside")) if isinstance(x, int)} | {
+        x for x in _l(_lockdown(memory).get("lone_ids")) if isinstance(x, int)}
+    if not inside:
         return []
-    inside = {x for x in inside if isinstance(x, int)} | {x for x in _l(_lockdown(memory).get("lone_ids"))
-                                                           if isinstance(x, int)}
     for i in reach:
         t = rows.get(i)
         if (not isinstance(t, dict) or i not in inside or t.get("great_danger") or t.get("flier")
@@ -1574,12 +1575,19 @@ def _lockdown_ids(s: dict, traits: dict, cfg: dict) -> list:
     return ids + [t.get("id") for t in held_off_threats(s) if t.get("id") not in ids]
 
 
-def _lockdown_cap_why(s: dict, cfg: dict, ids: list, quiet_ticks: int) -> str:
+def _lockdown_cap_why(s: dict, cfg: dict, ids: list, quiet_ticks: int, rec: dict | None = None) -> str:
     """Why an AI lockdown is opened early ("" if it isn't): no new enemy for
-    `lockdown_max_days`, only a few ordinary ones left, and the game slow or
-    citizens shut out. A siege or a great danger: never."""
+    `lockdown_max_days`, only a few ordinary ones left, all of them already
+    INSIDE the fort, and the game slow or citizens shut out. A siege or a
+    great danger: never. (0.105.4 review) Enemies held off outside never
+    count toward it: two camped at the gate of a slow fort for 2 days got the
+    gates opened, and nothing closed them again when those two walked in."""
     if not ids or quiet_ticks < cfg.get("lockdown_max_days", 2) * TICKS_PER_DAY:
         return ""                       # (nothing left: all_clear's quiet days, as before)
+    inside = {x for x in _l(_d(s.get("entrances")).get("intruders_inside")) if isinstance(x, int)} | {
+        x for x in _l(_d(rec).get("lone_ids")) if isinstance(x, int)}
+    if held_off_threats(s) or any(i not in inside for i in ids):
+        return ""
     rows = {t.get("id"): t for t in _l(_d(s.get("others_on_map")).get("threats")) if isinstance(t, dict)}
     if (len(ids) > cfg.get("lockdown_cap_threats", 2) or great_present(s)
             or any(i not in rows or rows[i].get("great_danger") for i in ids)):
@@ -1614,11 +1622,19 @@ def note_lockdown(s: dict, memory, cfg: dict) -> list[str]:
     new = [i for i in ids if i not in seen]
     if not isinstance(rec.get("new"), int) or rec["new"] > now:
         rec["new"] = now
+    # (0.105.4 review) a lifted lockdown closes again for a new enemy, or for
+    # one that can reach the dwarves now and couldn't (or wasn't inside) when
+    # it was lifted: the same two camped outside walking in
+    reach_now = list(reachable_threats(s, traits, cfg))
+    came_in = [i for i in reach_now if i not in _l(rec.get("released_ids"))]
     if new:
         rec["new"] = now
         rec["seen"] = (seen + new)[-100:]
-        if rec.pop("released", None) is not None:
-            notes.append(f"{len(new)} new enemy/enemies: the gates and alarm may close again")
+    if (new or came_in) and isinstance(rec.get("released"), int):
+        rec.pop("released", None)
+        rec.pop("released_ids", None)
+        notes.append(f"{len(new) or len(came_in)} " + ("new enemy/enemies" if new else "enemy/enemies able to reach "
+                     "the dwarves now") + ": the gates and alarm may close again")
     if new:
         rec.pop("lone_ids", None)       # a new enemy: read afresh from the map
     lone = lone_intruders(s, cfg, traits, _Rec(rec))
@@ -1634,9 +1650,10 @@ def note_lockdown(s: dict, memory, cfg: dict) -> list[str]:
     if great_present(s):
         rec["great"] = True
     if holding and not isinstance(rec.get("released"), int):
-        why = _lockdown_cap_why(s, cfg, ids, now - rec["new"])
+        why = _lockdown_cap_why(s, cfg, ids, now - rec["new"], rec)
         if why:
             rec["released"] = now
+            rec["released_ids"] = reach_now[:50]
             notes.append(f"the AI has kept the fort shut {(now - rec['new']) // TICKS_PER_DAY} day(s) with no new "
                          f"enemy and only {len(ids)} left, and {why}: the gates open and the alarm comes down "
                          "(a new enemy closes them again)")
@@ -1667,12 +1684,18 @@ def quick_clear(s: dict, memory, cfg: dict) -> str:
     # shut out: only while the AI's gates are shut (with them open, nobody is)
     shut = ai_gates_shut(s, memory)
     out = int(_d(s.get("entrances")).get("citizens_outside") or 0) if shut else 0
-    visitors = int(_d(s.get("others_on_map")).get("visitors") or 0) if shut else 0
-    if (out > 0 or visitors >= cfg.get("lockdown_visitors", 20)) and since >= cfg.get("lockdown_clear_ticks", 300):
+    # (0.105.4 review) visitors OUTSIDE the fort only (a tavern holds 20+
+    # inside); an older bridge without the count: citizens alone
+    vo = _d(s.get("entrances")).get("visitors_outside")
+    visitors = vo if shut and isinstance(vo, int) and not isinstance(vo, bool) else 0
+    # (0.105.4 review) only after a small one (a sneaker, a thief): a bigger
+    # ambush that vanished keeps the normal quiet wait
+    small = not rec.get("great") and 0 < int(rec.get("peak") or 0) <= cfg.get("lockdown_cap_threats", 2)
+    if (small and (out > 0 or visitors >= cfg.get("lockdown_visitors", 20))
+            and since >= cfg.get("lockdown_clear_ticks", 300)):
         return (f"nothing hostile in sight for {since // 50} game hour(s) and "
                 + (f"{out} citizen(s)" if out else f"{visitors} visitors") + " shut out")
-    if (not rec.get("great") and 0 < int(rec.get("peak") or 0) <= cfg.get("lockdown_cap_threats", 2)
-            and since >= cfg.get("small_alert_ticks", 1200)):
+    if small and since >= cfg.get("small_alert_ticks", 1200):
         return f"only {int(rec['peak'])} enemy/enemies were seen and none for a day"
     return ""
 
@@ -1688,8 +1711,9 @@ def _lone_squad(s: dict, memory, cfg: dict, squads: list, lone: list, rows: dict
     want = set(lone)
     for q in squads:
         kill = q.get("kill_ids")
+        # (0.105.4 review) only a squad whose kill order names them is on them
         if (q.get("ai_orders") and not q.get("guarding") and not q.get("sheltering")
-                and (not isinstance(kill, list) or want & set(kill))):
+                and isinstance(kill, list) and want & set(kill)):
             notes.append(f"{q.get('name') or 'a squad'} is after {names} inside the fort")
             return
     if any(p.rule == "squad_attack" and want & set(_l(p.action.get("kill"))) for p in proposals):

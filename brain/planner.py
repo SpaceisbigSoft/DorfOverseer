@@ -643,7 +643,9 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
                 p.action = {k: v for k, v in p.action.items() if k != "dig"}
     # (0.105.3) no new pasture assignments while the AI's gates are shut (B's 26 pen jobs)
     if "entrances" not in errors:
-        proposals = _guard(_pasture_hold, s, memory, proposals, notes) or proposals
+        kept = _guard(_pasture_hold, s, memory, proposals, notes)
+        if kept is not None:            # (0.105.4 review) [] is an answer (all held), not a failure
+            proposals = kept
     # (0.105.0) no trade with a civilisation at war (brain/planner_world.py)
     if "world" not in errors:
         proposals = _guard(_hostile_trade_filter, s, proposals, notes) or proposals

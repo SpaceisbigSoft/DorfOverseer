@@ -560,7 +560,7 @@ PLANNER_CONFIG = {
     # for the 3 quiet days (1 FPS). With nothing hostile in sight (no siege
     # held off at the gates either):
     "lockdown_clear_ticks": 300,        # ...citizens or visitors shut out: open after 6 game hours
-    "lockdown_visitors": 20,            # ...this many visitors on the map count as shut out
+    "lockdown_visitors": 20,            # ...this many visitors outside the fort count as shut out (0.105.4: outside only)
     "small_alert_ticks": 1200,          # ...only a few ordinary enemies all along (a sneaker): after a day
 }
 

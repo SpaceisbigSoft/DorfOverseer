@@ -650,7 +650,8 @@ function scan(now_tick)
     GATES = {scanned = true, entrances = entrances, inside = inside, inside_tiles = n,
              scanned_tick = now_tick, armed = GATES.armed, closed = closed,
              closing_since = since, timer = GATES.timer, reopen_timer = GATES.reopen_timer,
-             watch_error = GATES.watch_error, gone_ids = GATES.gone_ids, repulled = GATES.repulled}
+             watch_error = GATES.watch_error, gone_ids = GATES.gone_ids, repulled = GATES.repulled,
+             peak = GATES.peak, clear_looks = GATES.clear_looks}      -- (0.105.4 review)
     return summary()
 end
 
@@ -713,6 +714,28 @@ function intruders_inside()
         if #out >= 50 then break end
     end
     return out
+end
+
+-- (0.105.4 review) visitors outside the map of the inside (or on a cut
+-- entrance's porch): the ones a shut gate keeps out. nil without a map
+function visitors_outside()
+    if not GATES.scanned or not GATES.inside then return nil end
+    local n = 0
+    for _, u in ipairs(df.global.world.units.active) do
+        local ok, yes = pcall(function()
+            if not (dfhack.units.isAlive(u) and dfhack.units.isVisitor(u) and not dfhack.units.isCitizen(u)) then
+                return false
+            end
+            local k = key(u.pos.x, u.pos.y, u.pos.z)
+            if not GATES.inside[k] then return true end
+            for _, e in ipairs(GATES.entrances or {}) do
+                if e.porch and e.porch[k] then return true end
+            end
+            return false
+        end)
+        if ok and yes then n = n + 1 end
+    end
+    return n
 end
 
 local function pull(lever_id)
@@ -797,7 +820,8 @@ function visible_dangers()
         end)
         if ok and yes then
             local oki, inv = pcall(dfhack.units.isInvader, u)
-            table.insert(out, {pos = u.pos, invader = oki and inv or false})
+            local okg, great = pcall(dfhack.units.isGreatDanger, u)      -- (0.105.4 review)
+            table.insert(out, {pos = u.pos, invader = oki and inv or false, great = okg and great or false})
         end
     end
     return out
@@ -813,10 +837,17 @@ end
 -- shuts it again if danger comes) once, for REOPEN_CHECKS looks in a row
 -- (half a day), no visible invader is on the map and no other visible
 -- danger is within REOPEN_CLEAR tiles of it. A siege in sight keeps it shut.
+-- (0.105.4 review) Not while a great danger (titan, forgotten beast) is in
+-- sight, however far; not after more than REOPEN_PEAK_MAX dangers were seen
+-- at once since the watcher was armed (a bigger ambush that hid again keeps
+-- the brain's normal quiet wait; unknown after a reload: kept shut too); and
+-- the clear distance is WIDE, the same the watcher shuts at, so no band
+-- between them flips the gate every half day.
 REOPEN_CHECKS = 6
-REOPEN_CLEAR = 80
-function may_reopen(nearest, invaders)
-    return invaders == 0 and nearest > REOPEN_CLEAR
+REOPEN_PEAK_MAX = 2
+function may_reopen(nearest, invaders, great, peak)
+    return invaders == 0 and (great or 0) == 0 and type(peak) == 'number' and peak <= REOPEN_PEAK_MAX
+        and nearest > WIDE
 end
 
 function distance_to(e, pos)
@@ -844,18 +875,20 @@ end
 function check()
     if not GATES.armed or not GATES.entrances then return end
     local vis = visible_dangers()
-    local ds, invaders = {}, 0
+    local ds, invaders, great = {}, 0, 0
     for _, d in ipairs(vis) do
         table.insert(ds, d.pos)
         if d.invader then invaders = invaders + 1 end
+        if d.great then great = great + 1 end
     end
+    if type(GATES.peak) == 'number' then GATES.peak = math.max(GATES.peak, #vis) end
     local outside = citizens_outside()
     GATES.clear_looks = GATES.clear_looks or {}
     for _, e in ipairs(GATES.entrances) do
         if GATES.closed[e.id] and #e.equipment > 0 then
             local nearest = math.huge
             for _, p in ipairs(ds) do nearest = math.min(nearest, distance_to(e, p)) end
-            if may_reopen(nearest, invaders) then
+            if may_reopen(nearest, invaders, great, GATES.peak) then
                 GATES.clear_looks[e.id] = (GATES.clear_looks[e.id] or 0) + 1
                 if GATES.clear_looks[e.id] >= REOPEN_CHECKS then
                     GATES.clear_looks[e.id] = nil
@@ -937,6 +970,7 @@ function arm()
         -- closes what needs closing from the bridges as they stand
         if GATES.reopen_timer then pcall(dfhack.timeout_active, GATES.reopen_timer, nil) end
         GATES.reopen_timer, GATES.closed = nil, {}
+        GATES.peak, GATES.clear_looks = 0, {}       -- (0.105.4 review) dangers seen at once since armed
         GATES.armed = true
         GATES.timer = dfhack.timeout(CHECK_TICKS, 'ticks', tick)
         watched_check()
@@ -2399,7 +2433,10 @@ function summary()
             free_levers = okf and fl or {}, free_mechanisms = GATES.scanned and free_mechanism_count(200) or nil,
             entrances = list, armed = GATES.armed == true, watch_error = GATES.watch_error,
             parts = GATES.scanned and gate_parts() or nil,
-            citizens_outside = GATES.scanned and citizens_outside() or nil}
+            citizens_outside = GATES.scanned and citizens_outside() or nil,
+            -- (0.105.4 review) visitors outside the fort (a tavern's inside don't count)
+            visitors_outside = GATES.scanned and (function()
+                local okv, n = pcall(visitors_outside); return okv and n or nil end)() or nil}
 end
 
 ---------------------------------------------------------------------------

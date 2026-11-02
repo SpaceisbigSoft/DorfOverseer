@@ -1281,7 +1281,7 @@ def _():
         e = LUA.table_from({"id": 1, "x": 4, "y": 5, "z": 0, "outs": LUA.table_from({k: True}),
                             "equipment": LUA.table_from({1: LUA.table_from({"id": 11, "kind": "door"})})})
         M.GATES = LUA.table_from({"armed": True, "scanned": True, "closed": LUA.table_from({1: True}),
-                                  "entrances": LUA.table_from({1: e})})
+                                  "entrances": LUA.table_from({1: e}), "peak": 1})
         LUA.execute("DOORS[11].door_flags.forbidden = true")
     try:
         # the sneaker hid again: nothing visible. Shut for 5 looks, open at the 6th
@@ -1308,9 +1308,51 @@ def _():
         for _ in range(int(M.REOPEN_CHECKS)):
             M.check()
         assert not M.GATES.closed[1]
+        # (0.105.4 review) a great danger in sight, however far: stays shut
+        gate()
+        LUA.execute("SEEN = {{pos = {x = 200, y = 5, z = 0}, invader = false, great = true}}")
+        for _ in range(int(M.REOPEN_CHECKS) + 2):
+            M.check()
+        assert M.GATES.closed[1]
+        # (0.105.4 review) a bigger ambush seen (peak 5) that hid again: stays shut
+        # (the brain's quiet wait); no peak known (a reload): stays shut too
+        for peak in (5, None):
+            gate()
+            M.GATES.peak = peak
+            LUA.execute("SEEN = {}")
+            for _ in range(int(M.REOPEN_CHECKS) + 2):
+                M.check()
+            assert M.GATES.closed[1], peak
+        # (0.105.4 review) reopen and re-close at the same distance: no band that flips
+        assert not M.may_reopen(M.WIDE, 0, 0, 1) and M.may_reopen(M.WIDE + 1, 0, 0, 1)
+        assert not M.should_close(M.WIDE + 1, 0) and M.should_close(M.WIDE, 0)
     finally:
         LUA.execute("local M = ...; df = nil; dfhack = nil; M.visible_dangers = M._vd", M)
         M.GATES = LUA.table_from({"scanned": False})
+
+
+
+@test("0.105.4 review: visitors outside counts only visitors off the map of the inside")
+def _():
+    LUA.execute("""
+      local M = ...
+      local function u(x, y, vis) return {pos = {x = x, y = y, z = 0}, vis = vis} end
+      df = {global = {world = {units = {active = {u(25, 4, true), u(1, 2, true), u(2, 3, true), u(1, 5, false)}}}}}
+      dfhack = {units = {isAlive = function() return true end, isVisitor = function(x) return x.vis end,
+                         isCitizen = function() return false end}}
+    """, M)
+    setup(buildings=[DOOR_A])
+    starts = LUA.table_from({1: LUA.table_from({"x": 20, "y": 8, "z": 0})})
+    es, inside, n = M.find_entrances(starts, W.buildings)
+    old = M.GATES
+    try:
+        M.GATES = LUA.table_from({"scanned": True, "entrances": es, "inside": inside})
+        assert M.visitors_outside() == 2              # two outside; the one in the tavern doesn't count
+        M.GATES = LUA.table_from({"scanned": False})
+        assert M.visitors_outside() is None
+    finally:
+        M.GATES = old
+        LUA.execute("df = nil; dfhack = nil")
 
 
 if __name__ == "__main__":

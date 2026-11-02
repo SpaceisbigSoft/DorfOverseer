@@ -9139,37 +9139,72 @@ def _():
 
 @test("0.105.3: the AI's lockdown is capped: 2 days with no new enemy, the game slow or dwarves out -> opened")
 def _():
-    # the thief at the gate (not read as inside), the hatch shut, the alarm the AI's
-    s = b_thief(inside=False)
+    # (0.105.4 review) the cap is for enemies already inside: the lone-intruder
+    # path is switched off here (lone_intruder_max 0) so the cap alone is tested
+    cfg = dict(PLANNER_CONFIG, lone_intruder_max=0)
+    s = b_thief()
     s["entrances"]["citizens_outside"] = 0
     m = Memory(ai_alert_raised=True)
-    note_cycle(s, m)
-    assert not by_rule(plan(s, m)[0], "gates")
+    note_cycle(s, m, cfg)
+    assert not by_rule(plan(s, m, cfg)[0], "gates")
     later = copy.deepcopy(s)
     later["date"]["tick"] += PLANNER_CONFIG["lockdown_max_days"] * TICKS_PER_DAY
-    note_cycle(later, m)
-    assert not by_rule(plan(later, m)[0], "gates")            # fast, nobody shut out: held
+    note_cycle(later, m, cfg)
+    assert not by_rule(plan(later, m, cfg)[0], "gates")       # fast, nobody shut out: held
     later["fps_low"] = 3
-    notes = note_cycle(later, m)
+    notes = note_cycle(later, m, cfg)
     assert any("open and the alarm comes down" in n for n in notes), notes
-    p, _ = plan(later, m)
+    p, _ = plan(later, m, cfg)
     assert by_rule(p, "gates")[0].action == {"type": "open_gates"}
     assert any(x.action == {"type": "civ_alert", "on": False} for x in p)
     # dwarves shut out works too (the game fast)
     m2 = Memory(ai_alert_raised=True)
-    s2 = b_thief(inside=False)
-    note_cycle(s2, m2)
+    s2 = b_thief()
+    note_cycle(s2, m2, cfg)
     l2 = copy.deepcopy(s2)
     l2["date"]["tick"] += PLANNER_CONFIG["lockdown_max_days"] * TICKS_PER_DAY
-    note_cycle(l2, m2)
-    assert by_rule(plan(l2, m2)[0], "gates")[0].action == {"type": "open_gates"}
+    note_cycle(l2, m2, cfg)
+    assert by_rule(plan(l2, m2, cfg)[0], "gates")[0].action == {"type": "open_gates"}
     # then a new enemy: closed again
     more = copy.deepcopy(later)
     more["entrances"]["armed"] = False
     more["others_on_map"]["threats"].append({"id": 8001, "name": "goblin", "invader": True, "can_reach_dwarves": True})
-    notes = note_cycle(more, m)
+    notes = note_cycle(more, m, cfg)
     assert any("may close again" in n for n in notes), notes
-    assert by_rule(plan(more, m)[0], "gates")[0].action == {"type": "arm_gates"}
+    assert by_rule(plan(more, m, cfg)[0], "gates")[0].action == {"type": "arm_gates"}
+
+
+@test("0.105.4 review: two enemies camped outside a slow fort never lift the lockdown; one walking in re-closes a lifted one")
+def _():
+    camp = [{"id": 950 + i, "name": "goblin", "invader": True, "can_reach_dwarves": False} for i in range(2)]
+    s = b_thief(inside=False, fps=3)
+    s["others_on_map"]["threats"] = list(camp)
+    s["others_on_map"]["threats_that_can_reach_dwarves"] = 0
+    m = Memory(ai_alert_raised=True)
+    note_cycle(s, m)
+    later = copy.deepcopy(s)
+    later["date"]["tick"] += 5 * TICKS_PER_DAY
+    notes = note_cycle(later, m)
+    assert not any("alarm comes down" in n for n in notes), notes
+    p, _ = plan(later, m)
+    assert not by_rule(p, "gates") and not any(x.action == {"type": "civ_alert", "on": False} for x in p)
+    # a lockdown lifted for a thief inside; then one of the camped two (already seen) walks in
+    cfg = dict(PLANNER_CONFIG, lone_intruder_max=0)
+    t = b_thief(fps=3)
+    m = Memory(ai_alert_raised=True)
+    seen = copy.deepcopy(t)
+    seen["others_on_map"]["threats"].append(dict(camp[0]))       # seen outside once, then hid
+    note_cycle(seen, m, cfg)
+    t["date"]["tick"] += 3 * TICKS_PER_DAY
+    note_cycle(t, m, cfg)
+    assert m.atlas["lockdown"].get("released")                   # only the thief inside left
+    t["others_on_map"]["threats"].append(dict(camp[0]))
+    walked = copy.deepcopy(t)
+    walked["others_on_map"]["threats"][-1]["can_reach_dwarves"] = True
+    walked["entrances"]["armed"] = False
+    notes = note_cycle(walked, m, cfg)
+    assert "released" not in m.atlas["lockdown"] and any("may close again" in n for n in notes), notes
+    assert by_rule(plan(walked, m, cfg)[0], "gates")[0].action == {"type": "arm_gates"}
 
 
 @test("0.105.3: the lockdown cap never opens on a siege or a great danger")
@@ -9312,6 +9347,79 @@ def _():
     assert sv and sv[0].action == {"type": "survey_water", "tunnel": 70}, [x.action for x in sv]
     w = by_rule(props, "well")
     assert w and w[0].action.get("shore_reach") == 60, [x.action for x in w]
+
+
+
+def _vanished(n_seen, outside=0, visitors_outside=None, visitors=0):
+    """An ambush of n_seen seen, then hidden; the AI's hatch shut; quiet past every short wait."""
+    goblins = [{"id": 700 + i, "name": "goblin", "invader": True, "can_reach_dwarves": True} for i in range(n_seen)]
+    s = b_thief(inside=False, policy="ordinary")
+    s["others_on_map"]["threats"] = goblins
+    s["others_on_map"]["threats_that_can_reach_dwarves"] = n_seen
+    m = Memory(ai_alert_raised=True)
+    note_cycle(s, m)
+    gone = copy.deepcopy(s)
+    gone["others_on_map"]["threats"] = []
+    gone["others_on_map"]["threats_that_can_reach_dwarves"] = 0
+    gone["entrances"]["citizens_outside"] = outside
+    gone["others_on_map"]["visitors"] = visitors
+    if visitors_outside is not None:
+        gone["entrances"]["visitors_outside"] = visitors_outside
+    for _ in range(3):
+        gone["date"]["tick"] += 50
+        note_cycle(gone, m)
+    gone["date"]["tick"] += PLANNER_CONFIG["small_alert_ticks"]
+    note_cycle(gone, m)
+    from planner_military import quick_clear
+    return quick_clear(gone, m, PLANNER_CONFIG)
+
+
+@test("0.105.4 review: a bigger ambush that hid again keeps the normal quiet wait (no quick reopen)")
+def _():
+    assert _vanished(1, outside=9)                               # A's sneaker: quick
+    assert _vanished(2)                                          # two, nobody shut out: after a day
+    assert not _vanished(5, outside=9)                           # five vanished: the 3 quiet days
+    assert not _vanished(5)
+
+
+@test("0.105.4 review: only visitors OUTSIDE count as shut out (a tavern's 20+ inside don't)")
+def _():
+    assert "visitors shut out" not in _vanished(1, visitors=39)              # all inside: the day's wait instead
+    assert "39 visitors shut out" in _vanished(1, visitors=39, visitors_outside=39)
+    assert "visitors shut out" not in _vanished(1, visitors=39, visitors_outside=3)
+
+
+@test("0.105.4 review: a cycle with no gate map doesn't flip the lone-thief case (the stored ids count)")
+def _():
+    from planner_military import lone_intruders
+    s = b_thief()
+    m = Memory(ai_alert_raised=True)
+    note_cycle(s, m)
+    assert m.atlas["lockdown"].get("lone_ids") == [7527]
+    nomap = copy.deepcopy(s)
+    del nomap["entrances"]["intruders_inside"]
+    assert lone_intruders(nomap, PLANNER_CONFIG, memory=m) == [7527]
+    note_cycle(nomap, m)
+    assert by_rule(plan(nomap, m)[0], "gates")[0].action == {"type": "open_gates"}
+    assert not lone_intruders(nomap, PLANNER_CONFIG)             # never seen inside: as before
+
+
+@test("0.105.4 review: a squad on other AI orders isn't 'after the thief'; all pasture actions held leaves none")
+def _():
+    s = b_thief()
+    s["military"]["squads"][0].update(ai_orders=1, kill_ids=None)          # a guard order, say: no kill list
+    a = by_rule(plan(s, Memory(ai_alert_raised=True))[0], "squad_attack")
+    assert len(a) == 1 and a[0].action["kill"] == [7527], a
+    from planner_military import _pasture_hold
+    held = [planner.Proposal("pasture", {"type": "pasture", "count": 3}, "x", 3)]
+    assert _pasture_hold(b_thief(inside=False), Memory(), held, []) == []
+    # in plan(): when the hold leaves nothing, nothing comes back (it was `or proposals`)
+    old = planner._pasture_hold
+    try:
+        planner._pasture_hold = lambda s_, m_, props, notes: []
+        assert plan(b_thief(inside=False), Memory())[0] == []
+    finally:
+        planner._pasture_hold = old
 
 
 if __name__ == "__main__":
