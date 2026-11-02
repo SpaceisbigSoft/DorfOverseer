@@ -437,7 +437,7 @@ def _():
 
 @test("bad requests are refused before touching the map")
 def _():
-    assert start(kind="moat").rejected
+    assert start(kind="lake").rejected          # (0.105.0) a moat is a water_work now, not a level
     assert start(kind="storage", piles=["refuse"]).rejected
     assert designated_count() == 0
 

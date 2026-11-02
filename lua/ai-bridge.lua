@@ -5636,6 +5636,20 @@ function act_cistern_step(a)
     return reqscript('ai-builder').cistern_step(a.dry_run == true, prefs)
 end
 
+-- (0.105.0) Water works and magma (lua/ai-waterworks.lua): one step of the
+-- moat, the pump stack, the muddied farm level or a magma workshop, or its
+-- floodgate shut at once (shut) or the work retired.
+function act_water_work(a)
+    local kinds = reqscript('ai-waterworks').KINDS
+    if not kinds[a.kind] then return reject('water_work: kind is moat, pump, irrigation or magma') end
+    if a.shop ~= nil and not reqscript('ai-waterworks').MAGMA_SHOPS[a.shop] then
+        return reject('water_work: shop is MagmaForge, MagmaSmelter or MagmaGlassFurnace')
+    end
+    return reqscript('ai-waterworks').step(a.kind, {dry_run = a.dry_run == true, shut = a.shut == true,
+        retire = a.retire == true, shop = a.shop, plain = a.plain == true,
+        why = type(a.why) == 'string' and a.why:sub(1, 120) or nil})
+end
+
 -- Trinkets for dwarves who want to own things (lua/ai-society.lua).
 -- (0.84) a vacant post at a location (hospital staff, scribes, the tavern keeper)
 function act_staff_location(a)
@@ -6208,6 +6222,7 @@ ACTIONS = {
     place_in_zone = act_place_in_zone,
     survey_water = act_survey_water,
     cistern_step = act_cistern_step,
+    water_work = act_water_work,          -- (0.105.0) moat, pumps, irrigation, magma workshops
     remove_workshops = act_remove_workshops,
     open_trade = act_open_trade,
     close_trade = act_close_trade,
@@ -6384,6 +6399,8 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
             return w
         end)
     end,
+    -- (0.105.0) the water works and magma workshops: each one's stage, and the refusals
+    waterworks = function() return safe(function() return reqscript('ai-waterworks').report() end) end,
     logistics = function()
         return safe(function()
             local B = reqscript('ai-builder')
@@ -6870,6 +6887,7 @@ local function cmd_act(args)
                  or action.type == 'dismiss_alerts' or action.type == 'place_in_zone' or action.type == 'answer_petition' or action.type == 'retarget_hall'
                  or action.type == 'remove_workshops' or action.type == 'survey_water'
                  or action.type == 'cistern_step' or action.type == 'water_zone' or action.type == 'sand_zone'
+                 or action.type == 'water_work'      -- (0.105.0)
                  or action.type == 'kitchen_brewables')   -- (0.100) its dry run only counts
         and action.dry_run == true
     if not DISPLAY_ONLY[action.type] and not dry and reqscript('ai-status').is_halted() then

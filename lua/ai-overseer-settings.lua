@@ -243,6 +243,8 @@ function defaults()
         answer_locations = true,   -- (0.89) agree to and build the temples and guildhalls petitions ask for
         hospital_burrow = true,    -- (0.104.168) keep the wounded in the "AI hospital" burrow (off: all let out)
         calm_burrow = true,        -- (0.104.169) a dwarf in a tantrum kept in a free bedroom till calm (off: all let out)
+        -- (0.105.0) water works: a moat from the river (only where one is found), magma workshops, a muddied farm level
+        moat = true, magma_workshops = true, irrigation = true,
         expel_vampires = true,     -- a vampire found among the citizens is sent away      -- with --ai: a short AI-written story of each season (costs tokens)
         -- "Wipe what the AI learned" (Culture tab, Shift-V): each press adds 1;
         -- the overseer wipes when it sees the number go up
@@ -321,7 +323,8 @@ function sanitize(s)
                         'import_smelting', 'alert_shelter', 'pasture_animals', 'build_gate_doors',
                         'fortify_entrances', 'set_pop_cap', 'ai_chronicle', 'give_trinkets', 'water_works', 'expel_vampires', 'accept_visitors', 'answer_locations',
                         'hospital_burrow',          -- (0.104.168) the hospital burrow's switch
-                        'calm_burrow'}) do          -- (0.104.169) the calm-down burrows' switch
+                        'calm_burrow',              -- (0.104.169) the calm-down burrows' switch
+                        'moat', 'magma_workshops', 'irrigation'}) do   -- (0.105.0) the water works' switches
         if s[k] ~= nil then out[k] = s[k] == true end
     end
     out.gear_weapon = one_of(s.gear_weapon, GEAR_WEAPONS, d.gear_weapon)
@@ -395,6 +398,7 @@ function for_ai(s)
         answer_locations = s.answer_locations,
         hospital_burrow = s.hospital_burrow,       -- (0.104.168)
         calm_burrow = s.calm_burrow,               -- (0.104.169)
+        moat = s.moat, magma_workshops = s.magma_workshops, irrigation = s.irrigation,   -- (0.105.0)
         wipe_learned = s.wipe_learned,
         wipe_learned_all = s.wipe_learned_all,
     }

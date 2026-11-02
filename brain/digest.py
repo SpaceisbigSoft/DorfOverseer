@@ -132,6 +132,7 @@ SECTION_DEFAULTS = {
                  "spoils": {"n": 0}, "sites": {}, "unknown": []},
     "hazards": {},
     "health": {},
+    "waterworks": {"works": {}, "refused": {}},   # (0.105.0) moat, pumps, irrigation, magma workshops (lua/ai-waterworks.lua)
     "infection": {},              # (0.104.168) the infected: untreated, bleeding, beds free (lua/ai-health.lua)
     "military": {"squads": [], "soldiers": 0, "routines": [], "gates": []},
     "society": {},

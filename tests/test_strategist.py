@@ -239,7 +239,7 @@ def _():
 
 @test("projects: unknown kinds, coordinates, huge sizes, unknown piles are all thrown out")
 def _():
-    a = check_answer('{"actions":[{"type":"start_project","kind":"moat"},'
+    a = check_answer('{"actions":[{"type":"start_project","kind":"lake"},'   # (0.105.0) moat: a water_work
                      '{"type":"start_project","kind":"bedrooms","rooms":500},'
                      '{"type":"start_project","kind":"storage","piles":["refuse"]}]}',
                      RECIPES, TOOLS, set(), BUILD)
