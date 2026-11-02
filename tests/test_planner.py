@@ -9227,6 +9227,29 @@ def _():
     assert not gb or gb[0].action != {"type": "open_gates"}, gb
 
 
+@test("0.105.8 B: one thief outside, no squad on him: the AI's alarm comes down after half a day")
+def _():
+    s = b_thief(inside=False, armed=0)
+    m = Memory(ai_alert_raised=True)
+    note_cycle(s, m)
+    off = {"type": "civ_alert", "on": False}
+    assert not any(x.action == off for x in plan(s, m)[0])
+    later = copy.deepcopy(s)
+    later["date"]["tick"] += PLANNER_CONFIG["lone_intruder_alert_ticks"]
+    note_cycle(later, m)
+    a = [x for x in plan(later, m)[0] if x.action == off]
+    assert a and "half a day" in a[0].reason, a
+    assert not any(x.action == {"type": "civ_alert", "on": True} for x in plan(later, m)[0])   # not raised again
+    # a siege (6 enemies): the alarm stays
+    goblins = [{"id": 900 + i, "name": "goblin", "invader": True, "can_reach_dwarves": True} for i in range(6)]
+    big = b_thief(inside=False, armed=0, more=goblins)
+    m2 = Memory(ai_alert_raised=True)
+    note_cycle(big, m2)
+    big2 = copy.deepcopy(big); big2["date"]["tick"] += 3 * PLANNER_CONFIG["lone_intruder_alert_ticks"]
+    note_cycle(big2, m2)
+    assert not any(x.action == off for x in plan(big2, m2)[0])
+
+
 @test("0.105.3: a real siege (many invaders, or one inside with more outside, or a beast) -> as before")
 def _():
     goblins = [{"id": 900 + i, "name": "goblin", "invader": True, "can_reach_dwarves": True} for i in range(6)]

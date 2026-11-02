@@ -3981,7 +3981,11 @@ function act_civ_alert(a)
         if not civ.can_sound_alarm() then
             return reject('no civilian alert burrow is set up yet; the player must choose one in the civ-alert settings first')
         end
+        -- (0.105.8) the AI's shelter over the fort as it is now, first
+        local okr, rr = pcall(function() return reqscript('ai-society').refresh_shelter() end)
         civ.sound_alarm()
+        return {ok = true, on = df.global.plotinfo.alerts.civ_alert_idx ~= 0,
+                shelter = okr and rr or nil, shelter_error = (not okr) and tostring(rr):sub(1, 120) or nil}
     else
         civ.clear_alarm()
     end

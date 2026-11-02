@@ -1292,6 +1292,54 @@ def _():
     assert r.ok and not assigned[1] and assigned[7], (dict(r), dict(assigned))
 
 
+SHELTER_FAKE = r"""
+local src = ...
+local function vec(list)
+    local t = {}
+    for i, v in ipairs(list or {}) do t[i - 1] = v end
+    return setmetatable(t, {__len = function(self) local n = 0; while rawget(self, n) ~= nil do n = n + 1 end; return n end})
+end
+local set = {}
+local blocks = {}
+for z = 0, 30 do
+    local des, tt = {}, {}
+    for x = 0, 15 do des[x], tt[x] = {}, {}
+        for y = 0, 15 do des[x][y] = {hidden = false, outside = false, flow_size = 0}; tt[x][y] = 1 end end
+    table.insert(blocks, {map_pos = {z = z}, designation = des, tiletype = tt})
+end
+local shelter = {id = 4, name = 'AI shelter'}
+local env = setmetatable({}, {__index = _G})
+env.ipairs = function(t)
+    if type(t) == 'table' and rawget(t, 0) ~= nil then
+        local i = -1
+        return function() i = i + 1; if t[i] ~= nil then return i, t[i] end end
+    end
+    return ipairs(t)
+end
+env.df = {global = {world = {map = {map_blocks = blocks},
+                             buildings = {other = {STOCKPILE = vec({{z = 5}, {z = 25}}), WELL = vec({{z = 2}})}}},
+                    plotinfo = {burrows = {list = vec({shelter}), next_id = 5},
+                                alerts = {list = vec({{}, {burrows = vec({4})}}), next_id = 3}}},
+          tiletype = {attrs = {[1] = {shape = 1}}}, tiletype_shape = {[1] = 'FLOOR'}}
+env.require = function(name) if name == 'utils' then return {insert_sorted = function() end} end return require(name) end
+env.dfhack = {units = {getCitizens = function() return {{pos = {z = 15}}, {pos = {z = 16}}} end},
+              burrows = {setAssignedBlockTile = function(b, block, x, y, on) set[block.map_pos.z] = (set[block.map_pos.z] or 0) + 1 end,
+                         clearTiles = function(b) for k in pairs(set) do set[k] = nil end end}}
+assert(load(src, 'ai-society', 't', env))()
+return env, set, env.df
+"""
+
+
+@test("shelter (0.105.8): made again over every level with citizens, a stockpile or a well; only the AI's own")
+def _():
+    lua = LuaRuntime(unpack_returned_tuples=True)
+    env, got, df = lua.execute(SHELTER_FAKE, (ROOT / "lua" / "ai-society.lua").read_text(encoding="utf-8"))
+    r = env.refresh_shelter()
+    assert r and r.refreshed and r.tiles == 28 * 256, dict(r)        # z 0..27: the well (2) - 2 to the top pile (25) + 2
+    assert got[5] and got[25] and got[2] and not got[28], dict(got)
+    lua.execute("local df = ...; df.global.plotinfo.alerts.list[1].burrows[0] = 99", df)   # the player's burrow
+    assert env.refresh_shelter() is None
+
 if __name__ == "__main__":
     for name, ok, msg in RESULTS:
         print(f"[{'PASS' if ok else 'FAIL'}] {name}" + (f"\n        {msg}" if msg else ""))

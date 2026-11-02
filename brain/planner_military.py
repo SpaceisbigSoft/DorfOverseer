@@ -13,7 +13,7 @@ from quirks import has_rule
 from digest import _d, _l, normalize
 from planner_core import *  # noqa: F401,F403
 
-__all__ = ["lone_intruders", "hunted_outside", "ai_gates_shut", "lockdown_released", "lone_alert_over", "note_lockdown", "_lone_squad", "quick_clear", "PASTURE_ACTIONS", "_pasture_hold", "gate_invaders", "main_gate", "_gate_guard_rule", "_gate_dogs_rule", "GEAR_HELD", "_shelter_possible", "soldier_share", "_gate_rules", "_free_gate_lever", "_free_gate_levers", "_lever_far_enough", "_link_wanted", "_lever_rule", "_trap_rule", "_near_spot", "soldiers_wanted", "civilian_cap", "crossing_value", "_crossing_rule", "ALERT_DANGERS", "alert_ages", "_alerts_rule", "_war_animal_rule", "hazard_alert", "_hazard_rules", "_military_rules", "_training_rotation", "_ranged_squad_rule", "WEAPON_IDS", "_uniform_weapon_rule", "_anvil_rule", "idle_hands"]
+__all__ = ["lone_intruders", "hunted_outside", "few_ordinary", "few_alert_over", "ai_gates_shut", "lockdown_released", "lone_alert_over", "note_lockdown", "_lone_squad", "quick_clear", "PASTURE_ACTIONS", "_pasture_hold", "gate_invaders", "main_gate", "_gate_guard_rule", "_gate_dogs_rule", "GEAR_HELD", "_shelter_possible", "soldier_share", "_gate_rules", "_free_gate_lever", "_free_gate_levers", "_lever_far_enough", "_link_wanted", "_lever_rule", "_trap_rule", "_near_spot", "soldiers_wanted", "civilian_cap", "crossing_value", "_crossing_rule", "ALERT_DANGERS", "alert_ages", "_alerts_rule", "_war_animal_rule", "hazard_alert", "_hazard_rules", "_military_rules", "_training_rotation", "_ranged_squad_rule", "WEAPON_IDS", "_uniform_weapon_rule", "_anvil_rule", "idle_hands"]
 
 
 
@@ -1570,6 +1570,35 @@ def lone_intruders(s: dict, cfg: dict, traits: dict | None = None, memory=None) 
 # the game fell to 3 FPS. A gate keeps out a siege; one or two ordinary
 # enemies are the squads' to deal with, and the citizens outside need a way in.
 
+def few_ordinary(s: dict, cfg: dict, traits: dict | None = None) -> list:
+    """(0.105.8) The ids of the enemies that can reach the dwarves when they
+    are only a few (`lone_intruder_max`) ordinary ones (no great danger,
+    flier or building destroyer), inside or outside, and no siege is held off
+    at the gates; [] otherwise."""
+    o = _d(s.get("others_on_map"))
+    rows = {t.get("id"): t for t in _l(o.get("threats")) if isinstance(t, dict)}
+    reach = list(reachable_threats(s, traits if traits is not None else _traits(s), cfg))
+    if not reach or len(reach) > cfg.get("lone_intruder_max", 2):
+        return []
+    for i in reach:
+        t = rows.get(i)
+        if not isinstance(t, dict) or t.get("great_danger") or t.get("flier") or t.get("destroyer"):
+            return []
+    if any(t.get("id") not in reach for t in held_off_threats(s)) or great_present(s):
+        return []
+    return reach
+
+
+def few_alert_over(s: dict, memory, cfg: dict) -> bool:
+    """(0.105.8) The alarm has been up `lone_intruder_alert_ticks` while only a
+    few ordinary enemies were about, inside or out. B (Monastery, 2 Nov): one
+    thief outside, the alarm up 70 real minutes at 1-3 FPS; the shelter held
+    the civilians from the drink and 31 died of thirst when it came down."""
+    since, now = _lockdown(memory).get("few_since"), abs_tick(s)
+    return (isinstance(since, int) and isinstance(now, int)
+            and now - since >= cfg.get("lone_intruder_alert_ticks", 600))
+
+
 def hunted_outside(s: dict, cfg: dict, traits: dict | None = None, memory=None) -> list:
     """The ids of the enemies that can reach the dwarves when they are only a
     few (`lone_intruder_max`) ordinary ones (no great danger, flier or
@@ -1702,6 +1731,12 @@ def note_lockdown(s: dict, memory, cfg: dict) -> list[str]:
                      "the dwarves now") + ": the gates and alarm may close again")
     if new:
         rec.pop("lone_ids", None)       # a new enemy: read afresh from the map
+    few = few_ordinary(s, cfg, traits)
+    if few:
+        if not isinstance(rec.get("few_since"), int) or rec["few_since"] > now:
+            rec["few_since"] = now
+    else:
+        rec.pop("few_since", None)
     lone = lone_intruders(s, cfg, traits, _Rec(rec))
     if lone:
         if not isinstance(rec.get("lone_since"), int) or rec["lone_since"] > now:

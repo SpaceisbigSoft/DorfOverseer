@@ -50,16 +50,27 @@ end
 -- The fort's inside: revealed, walkable tiles that are not outside, not in a
 -- cavern or other map feature, and not under water or magma; only on the
 -- levels where citizens live (lowest to highest citizen, plus 2).
+-- (0.105.8) and every level with a stockpile or a well: B (Monastery, 2 Nov)
+-- made its shelter on its first day with 7 dwarves; at 41 the alarm kept
+-- everyone on those first levels, away from the stills and the drink, and
+-- 31 died of thirst
 local function fort_levels()
     local lo, hi
-    for _, u in ipairs(dfhack.units.getCitizens(true)) do
-        local z = u.pos.z
-        if z >= 0 then
+    local function add(z)
+        if z and z >= 0 then
             lo = lo and math.min(lo, z) or z
             hi = hi and math.max(hi, z) or z
         end
     end
-    return lo and (lo - 2) or nil, hi and (hi + 2) or nil
+    for _, u in ipairs(dfhack.units.getCitizens(true)) do add(u.pos.z) end
+    if not lo then return nil, nil end
+    pcall(function()
+        for _, b in ipairs(df.global.world.buildings.other.STOCKPILE) do add(b.z) end
+    end)
+    pcall(function()
+        for _, b in ipairs(df.global.world.buildings.other.WELL) do add(b.z) end
+    end)
+    return lo - 2, hi + 2
 end
 
 function fill_shelter(b)
@@ -101,6 +112,24 @@ function setup_shelter()
     end
     require('utils').insert_sorted(civ_alert().burrows, b.id)
     return {ok = true, burrow_id = b.id, tiles = n}
+end
+
+-- (0.105.8) The AI's shelter made again over the fort as it is now, when it
+-- is the civilian alert's burrow (a player's own is never touched): before
+-- each alarm the AI sounds. {refreshed, tiles, before} or nil.
+function refresh_shelter()
+    local b = find_burrow(SHELTER_NAME)
+    if not b then return nil end
+    local mine = false
+    pcall(function()
+        for _, id in ipairs(civ_alert().burrows) do if id == b.id then mine = true end end
+    end)
+    if not mine then return nil end
+    local before = 0
+    pcall(function() before = dfhack.burrows.listBlocks and #dfhack.burrows.listBlocks(b) or 0 end)
+    dfhack.burrows.clearTiles(b)
+    local n = fill_shelter(b)
+    return {refreshed = true, tiles = n, blocks_before = before}
 end
 
 -- Grass tiles a grazer needs: DF's rule of thumb, 20000 / its GRAZER value

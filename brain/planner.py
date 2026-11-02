@@ -97,12 +97,17 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
         # at most (the squad deals with them); after a lifted lockdown it
         # waits for a new enemy (note_lockdown)
         lone = lone_intruders(s, cfg, traits, memory) if ids else []
-        stand_down = bool(lone and lone_alert_over(s, memory, cfg)) or lockdown_released(memory)
+        few = few_ordinary(s, cfg, traits) if ids else []                # (0.105.8) B's 31 dead of thirst
+        stand_down = (bool(lone and lone_alert_over(s, memory, cfg)) or lockdown_released(memory)
+                      or bool(few and few_alert_over(s, memory, cfg)))
         if stand_down:
             if alert_on and memory.ai_alert_raised and not hazard_alert(s, cfg):
                 proposals.append(Proposal("threat_alert", {"type": "civ_alert", "on": False},
                                           f"only {len(lone)} enemy/enemies left, inside the fort, and a squad on "
                                           "them: the alarm comes down (it keeps everyone from work)" if lone else
+                                          f"only {len(few)} ordinary enemy/enemies about for half a day: the alarm "
+                                          "comes down (the shelter keeps the dwarves from food, drink and work; "
+                                          "the gates still close when one comes near)" if few else
                                           "the fort has been shut for days with no new enemy: the alarm comes down", 0))
         elif fresh and not alert_on:
             if ready:
