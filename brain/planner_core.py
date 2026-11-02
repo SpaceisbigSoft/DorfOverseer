@@ -518,6 +518,12 @@ PLANNER_CONFIG = {
     "cistern_hold": False,             # (0.104.144) on hold (the player: the first design would flood the fort); released 0.104.145 (the second)
     "dwarves_per_well": 70,            # (0.104.141) another well for every this many dwarves (0: one well)
     "extra_well_retry_days": 84,       # (0.104.141) another well that couldn't be placed: tried again a season on
+    # (0.105.3) Hammerstirred (2 Nov): no well in either fort; the water was all
+    # further off than the AI looked (the pool 53-66 tiles, the pond 51 from the
+    # gate, the cavern lake beside the fort, not under it)
+    "cavern_well_gallery": 80,         # a tunnel this long at most out to a column over the cavern lake (0: none)
+    "well_shore_reach": 60,            # a well on a pond's bank this far from a surface gate (40 before)
+    "cistern_tunnel_max": 70,          # the cistern's tunnel to still water this long at most (30 before)
     "new_pasture_cooldown_ticks": 3 * 1200,
     "pasture_margin": 1.25,        # a new pasture: the waiting herd's grass x this (x more at high Husbandry)
     "well_parts_days": 3,          # a well waiting this long for parts: say what to make
