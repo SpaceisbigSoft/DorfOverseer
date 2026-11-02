@@ -8834,25 +8834,35 @@ def _():
     assert not by_rule(plan(copy.deepcopy(s), _crisis_mem())[0], "drink")
 
 
-@test("drink in a crisis (0.104.169): far under the target the next batch waits only for the open one to reach the stills")
+@test("drink in a crisis (0.104.169, review): the next batch waits until the stills hold all the open order's work")
 def _():
+    # DF 53's amount_left counts down as jobs FINISH (Teacheroar live: brew_drink
+    # 10/10 with 6 jobs made and worked on 6 stills): made jobs are still in it
     s = fort(stocks__drink=500)
     s["buildings"]["workshops"]["Still"] = 6
-    s["orders"].append({"id": 70, "recipe": "brew_drink", "amount_left": 10, "amount_total": 10, "by_ai": True,
-                        "active": True, "jobs": {"n": 6, "working": 6}})
+    s["supplies"].update(empty_barrels=92, empty_pots=8, brewable_growths=0)
+    s["orders"].append({"id": 7200, "recipe": "brew_drink", "amount_left": 10, "amount_total": 10, "by_ai": True,
+                        "active": True, "validated": True, "jobs": {"n": 6, "suspended": 0, "working": 6}})
     assert not by_rule(plan(copy.deepcopy(s), Memory())[0], "drink")       # calm: the stills work through it first
+    assert not by_rule(plan(copy.deepcopy(s), _crisis_mem())[0], "drink")  # 4 of its 10 not made yet: not yet
+    s["orders"][-1].update(amount_left=6, jobs={"n": 6, "suspended": 0, "working": 6})   # its last 6 on the stills
     d = by_rule(plan(copy.deepcopy(s), _crisis_mem())[0], "drink")
-    assert d and "next batch" in d[0].reason, [x.reason for x in d]          # 4 waiting for 6 stills
-    s["orders"][-1]["jobs"] = {"n": 0}                                          # 10 waiting for 6 stills: not yet
-    assert not by_rule(plan(copy.deepcopy(s), _crisis_mem())[0], "drink")
-    s["orders"][-1]["jobs"] = {"n": 6}
-    s["orders"].append({"id": 71, "recipe": "brew_drink", "amount_left": 3, "amount_total": 50, "by_ai": True,
-                        "active": True, "jobs": {"n": 3}})
+    assert d and "next batch" in d[0].reason, [x.reason for x in d]
+    assert d[0].action["amount"] == 94, d[0].action          # 100 barrels and pots less the 6 still to finish
+    s["supplies"].update(empty_barrels=10, empty_pots=0)
+    d = by_rule(plan(copy.deepcopy(s), _crisis_mem())[0], "drink")
+    assert d and d[0].action["amount"] == 4, [x.action for x in d]    # the two never want more than there are
+    s["supplies"].update(empty_barrels=6)
+    props, notes = plan(copy.deepcopy(s), _crisis_mem())[:2]
+    assert not by_rule(props, "drink") and any("no empty barrels or pots" in n for n in notes), notes
+    s["supplies"].update(empty_barrels=92)
+    s["orders"].append({"id": 7201, "recipe": "brew_drink", "amount_left": 50, "amount_total": 50, "by_ai": True,
+                        "active": True, "jobs": {"n": 0}})
+    assert not by_rule(plan(copy.deepcopy(s), _crisis_mem())[0], "drink")    # the next one's 50 not made: wait
+    s["orders"][-1].update(amount_left=3, jobs={"n": 3})
     assert not by_rule(plan(copy.deepcopy(s), _crisis_mem())[0], "drink")    # two open: crisis_brew_orders_max
-    s["orders"] = s["orders"][:-2]
-    s["stocks"]["drink"] = 2600                    # 2600 + 50 queued >= 0.75 x 2910: not far, one batch at a time
-    s["orders"].append({"id": 70, "recipe": "brew_drink", "amount_left": 10, "amount_total": 10, "by_ai": True,
-                        "active": True, "jobs": {"n": 6}})
+    s["orders"] = s["orders"][:-1]
+    s["stocks"]["drink"] = 2600                    # 2600 + 30 queued >= 0.75 x 2910: not far, one batch at a time
     assert not by_rule(plan(copy.deepcopy(s), _crisis_mem())[0], "drink")
 
 

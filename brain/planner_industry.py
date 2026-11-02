@@ -13,7 +13,7 @@ from quirks import has_rule
 from digest import _d, _l, normalize
 from planner_core import *  # noqa: F401,F403
 
-__all__ = ["CONTAINER_RECIPES", "GEAR_ORDER_METALS", "_supply_rules", "_slow_game_rules", "_kiln_rules", "_soap_rule", "_pasture_rule", "LABOR_MODES_FIXED", "INDUSTRY_SHOPS", "_industry_rules", "_steel_rule", "_bottleneck_rule", "drink_short", "_crop_rules", "_kitchen_rule", "_fishery_rule", "_bench_coffins_rule", "STONE_CRAFTS", "order_shop", "_order_slots_rule", "_orphan_jobs_rule", "_unsuspend_rule", "_approve_rule", "_stuck_orders_rule", "COAL_STONES", "_coal_rule", "_picks_order", "_stone_rule", "stone_crisis", "PRECIOUS_ORES", "_cloth_rule", "_trade_rules", "_gems_rule", "trade_wants", "_spare_mechanisms_rule", "_hauling_rule", "_surface_basics", "trees_this_year", "_keep_rule", "_free_time_rule", "_labor_rules", "OWN_LABOR_RULES", "FEEDER_ORDER", "_feeder_rule", "woodcutters", "gatherers", "trade_margin_for", "keeps_treasures", "spare_mechanisms", "_dairy_rule", "_eggs_rule", "EXCESS_SHOPS", "_excess_shops_rule", "drink_below_target", "drink_crisis", "drink_target_per_dwarf", "crisis_brew_room", "_labor_waiting_rule", "farm_target", "_farm_rule", "_smelting_rule", "_shoes_recipe", "_glass_rule", "PRECIOUS_METALS", "precious_metal"]
+__all__ = ["CONTAINER_RECIPES", "GEAR_ORDER_METALS", "_supply_rules", "_slow_game_rules", "_kiln_rules", "_soap_rule", "_pasture_rule", "LABOR_MODES_FIXED", "INDUSTRY_SHOPS", "_industry_rules", "_steel_rule", "_bottleneck_rule", "drink_short", "_crop_rules", "_kitchen_rule", "_fishery_rule", "_bench_coffins_rule", "STONE_CRAFTS", "order_shop", "_order_slots_rule", "_orphan_jobs_rule", "_unsuspend_rule", "_approve_rule", "_stuck_orders_rule", "COAL_STONES", "_coal_rule", "_picks_order", "_stone_rule", "stone_crisis", "PRECIOUS_ORES", "_cloth_rule", "_trade_rules", "_gems_rule", "trade_wants", "_spare_mechanisms_rule", "_hauling_rule", "_surface_basics", "trees_this_year", "_keep_rule", "_free_time_rule", "_labor_rules", "OWN_LABOR_RULES", "FEEDER_ORDER", "_feeder_rule", "woodcutters", "gatherers", "trade_margin_for", "keeps_treasures", "spare_mechanisms", "_dairy_rule", "_eggs_rule", "EXCESS_SHOPS", "_excess_shops_rule", "drink_below_target", "drink_crisis", "drink_target_per_dwarf", "crisis_brew_room", "brew_jobs_open", "_labor_waiting_rule", "farm_target", "_farm_rule", "_smelting_rule", "_shoes_recipe", "_glass_rule", "PRECIOUS_METALS", "precious_metal"]
 
 CONTAINER_RECIPES = {"wooden_barrel", "stone_large_pot"}
 # ore worth mining for gear, most wanted first (iron makes steel; tin with copper makes bronze)
@@ -1938,18 +1938,31 @@ def drink_target_per_dwarf(s: dict, memory, cfg: dict) -> float:
     return base * cfg["crisis_drink_share"] if memory is not None and drink_crisis(s, memory, cfg) else base
 
 
-def crisis_brew_room(s: dict, recipe: str, stills: int) -> bool:
+def crisis_brew_room(s: dict, recipe: str) -> bool:
     """(0.104.169) In a crisis, may the next batch of `recipe` be queued while
-    the AI's order of it is still open? Only when every job of the open
-    orders is on a still or about to be (fewer jobs waiting for a still than
-    there are stills), so the stills never stand empty between batches and
-    no copy waits long enough to look stuck."""
-    waiting = 0
+    the AI's order of it is still open? Only once the open orders' remaining
+    work is all on the stills: every job still to do made (amount_left no
+    more than the jobs it has made), so the next batch only waits for a still
+    coming free and no copy waits long enough to look stuck.
+    (review) DF 53 counts a manager order's amount_left down as its jobs
+    FINISH, not as they are made: Teacheroar's live orders all read
+    amount_left == amount_total with jobs made and worked (brew_drink 10/10
+    with 6 jobs on the stills, stone_crafts 10/10 with 10 made, plaster 1/1
+    with its one job worked), so a made job is still in amount_left."""
     for o in _l(s.get("orders")):
         if isinstance(o, dict) and o.get("by_ai") and o.get("recipe") == recipe:
             made = int(_d(o.get("jobs")).get("n") or 0)
-            waiting += max(0, int(o.get("amount_left") or 0) - made)
-    return waiting < max(1, stills)
+            if int(o.get("amount_left") or 0) > made:
+                return False
+    return True
+
+
+def brew_jobs_open(s: dict) -> int:
+    """(0.104.169, review) The brew jobs the AI's open brew orders have still
+    to finish (amount_left: made or not, see crisis_brew_room): each wants an
+    empty barrel or pot, so a further brew order is sized by what is left."""
+    return sum(max(0, int(o.get("amount_left") or 0)) for o in _l(s.get("orders"))
+               if isinstance(o, dict) and o.get("by_ai") and o.get("recipe") in BREW_RECIPES)
 
 
 def _labor_waiting_rule(lb: dict, citizens: int, cfg: dict, proposals: list, thirsty: bool = False) -> None:
