@@ -4645,6 +4645,17 @@ function act_clear_webs(a)
     return {ok = true, removed = before - #df.global.world.items.other.ANY_WEBS}
 end
 
+-- (0.105.3) B (2 Nov): 5,530 spider webs on the ground, a third of the
+-- 17,471 items, the game at 1-3 FPS. Only the loose webs outside the fort's
+-- areas go (no creature stuck in them, not forbidden, owned, carried or in
+-- a building; lua/ai-census.lua remove_webs), up to `max` a call (default
+-- 2,000), so one call stays quick. Webs near the fort stay for the weavers.
+function act_remove_webs(a)
+    local n = int_in(a.max or 2000, 1, 5000)
+    if not n then return reject('remove_webs needs max 1-5000') end
+    return reqscript('ai-census').remove_webs(n, a.dry_run == true)
+end
+
 -- (0.104.158) Dead units scrubbed from the active list by DFHack's own
 -- fix/dead-units (slaughtered animals, nameless and foreign dead, kept a
 -- month; never the fort's own race). Teacheroar, 1 Nov: 7,322 of 8,627 units
@@ -6280,6 +6291,7 @@ ACTIONS = {
     join_levels = act_join_levels,
     census = act_census,
     clear_webs = act_clear_webs,
+    remove_webs = act_remove_webs,       -- (0.105.3)
     scrub_dead_units = act_scrub_dead_units,
     scan_entrances = act_scan_entrances,
     build_gate_doors = act_build_gate_doors,

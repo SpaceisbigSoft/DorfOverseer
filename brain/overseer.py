@@ -550,6 +550,8 @@ def short(a: dict) -> str:
         return "pull the AI gate lever"
     if t == "clear_webs":        # (0.104.116)
         return "clear the spider webs"
+    if t == "remove_webs":       # (0.105.3)
+        return "remove spider webs far from the fort"
     if t == "scrub_dead_units":  # (0.104.158)
         return "clear old dead creatures from the game's unit list"
     if t == "census":            # (0.104.113)

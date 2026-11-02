@@ -595,6 +595,9 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
             notes.append(f"the game runs slowly (FPS {s.get('fps_low')}): {len(dropped)} new level(s) wait "
                          "until it recovers")
         _guard(_slow_game_rules, s, citizens, cfg, proposals, notes, memory)
+    else:
+        # (0.105.3) a fresh census' clutter cleared at any speed (higher bars)
+        _guard(_clutter_rules, s, cfg, proposals, notes, memory)
     # (0.100.1, overnight run) any workshops level another rule starts (a well's
     # parts, the metal works, a bottleneck) brings the missing still, kitchen
     # and carpenter's with it
@@ -790,6 +793,19 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
                     memory.drafted[str(x["unit_id"])] = now
             for k in [k for k, t in memory.drafted.items() if not isinstance(t, int) or now - t > 336 * TICKS_PER_DAY]:
                 del memory.drafted[k]
+        left_ = r.get("removable_left") if isinstance(r.get("removable_left"), int) else (
+            r.get("removable") if r.get("rejected") else None)
+        if p.action.get("type") == "remove_webs" and isinstance(left_, int) and not p.action.get("dry_run"):
+            # (0.105.3) a batch of webs removed (or none left to take): the
+            # census' count follows, so the next batch comes in days while
+            # more are left, not in a week, and none while all are kept
+            cen_ = memory.census if isinstance(memory.census, dict) else {}
+            ic_ = cen_.setdefault("items", {}).setdefault("counts", {})
+            if isinstance(ic_, dict):
+                ic_["webs_removable"] = left_
+                if isinstance(r.get("webs"), int):
+                    ic_["webs"] = r["webs"]
+                cen_["webs_left"] = {"more": bool(r.get("more")), "tick": now}
         if p.action.get("type") == "dig_stairwell" and ok is True and isinstance(r.get("x"), int):
             import masterplan          # (0.104.82) the district's levels grow from it
             masterplan.note_stairwell(memory, str(p.action.get("district")), r["x"], r["y"])

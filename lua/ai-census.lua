@@ -1,6 +1,8 @@
 -- What fills the map (0.104.113): a fort of 300 dwarves after 38 years
 -- saved for minutes and ran at 18 FPS with 6,500 creatures and 42,000 items
 -- on the map. Read only: creatures by kind and race, items by type and state.
+-- (0.105.3) except remove_webs (the bridge's remove_webs action), which takes
+-- loose spider webs outside the fort's areas off the map.
 --@ module = true
 
 local function race_name(u)
@@ -93,9 +95,22 @@ function units()
             wild = top(wild_races, 8), herd = herd_top}
 end
 
+-- (0.105.3) B (2 Nov): the census counted 5,992 "artifacts" among 17,471
+-- items. The game's item list holds every item loaded, the world's too:
+-- artifacts kept at other sites (books and scrolls written over 250 years,
+-- mostly) have no place on this map. They are counted apart now (off_map,
+-- artifacts_off_map); `artifacts` is the ones on this map.
+local function off_map(it)
+    -- getPosition: x, y, z (through the holder), or nil off the map
+    local okp, x = pcall(function() return dfhack.items.getPosition(it) end)
+    if okp then return type(x) ~= 'number' or x < 0 end
+    local okq, x = pcall(function() return it.pos.x end)
+    return okq and type(x) == 'number' and x < 0
+end
+
 function items()
     local by = {total = 0, forbidden = 0, dump = 0, rotten = 0, worn = 0, in_buildings = 0, in_containers = 0,
-                on_ground = 0, owned = 0, artifacts = 0}
+                on_ground = 0, owned = 0, artifacts = 0, off_map = 0, artifacts_off_map = 0}
     local types, worn_types, ground_types = {}, {}, {}
     for _, it in ipairs(df.global.world.items.all) do
         local f = it.flags
@@ -103,11 +118,16 @@ function items()
             by.total = by.total + 1
             local t = df.item_type[it:getType()] or '?'
             types[t] = (types[t] or 0) + 1
+            local away = off_map(it)
+            if away then by.off_map = by.off_map + 1 end
             if f.forbid then by.forbidden = by.forbidden + 1 end
             if f.dump then by.dump = by.dump + 1 end
             if f.rotten then by.rotten = by.rotten + 1 end
             if f.owned then by.owned = by.owned + 1 end
-            if f.artifact then by.artifacts = by.artifacts + 1 end
+            if f.artifact then
+                if away then by.artifacts_off_map = by.artifacts_off_map + 1
+                else by.artifacts = by.artifacts + 1 end
+            end
             if f.in_building or f.construction then by.in_buildings = by.in_buildings + 1
             elseif f.in_inventory or f.container or f.in_job then by.in_containers = by.in_containers + 1
             elseif f.on_ground then
@@ -124,7 +144,138 @@ function items()
     -- (0.104.116) spider webs (cavern silk left where the spiders spun it)
     local okw, webs = pcall(function() return #df.global.world.items.other.ANY_WEBS end)
     by.webs = okw and webs or nil
-    return {counts = by, types = top(types, 15), worn = top(worn_types, 6), on_ground = top(ground_types, 10)}
+    -- (0.105.3) B (2 Nov): 5,530 webs, the caverns not found yet: which of
+    -- them remove_webs would take (outside the fort's areas, loose, nobody
+    -- stuck in them, not forbidden), why the rest stay, and on which levels
+    local okr, wr = pcall(webs_survey)
+    local where = nil
+    if okr then
+        by.webs_removable = wr.removable
+        where = {kept = wr.kept, levels = wr.levels, hidden = wr.hidden}
+    end
+    return {counts = by, types = top(types, 15), worn = top(worn_types, 6), on_ground = top(ground_types, 10),
+            webs = where}
+end
+
+---------------------------------------------------------------------------
+-- (0.105.3) Spider webs. B "Monastery" (2 Nov, census 07:38): 5,530 webs
+-- lay on the ground, a third of the 17,471 items, the game at 1-3 FPS.
+-- DFHack's clear-webs takes every web at once, even one a dwarf is about
+-- to collect inside the fort. These take only the loose webs outside the
+-- fort's own areas. Webs are silk and could be woven into cloth, but
+-- thousands of them spread over caverns nobody has reached cost more (in
+-- FPS, and dwarves walking far to fetch them) than the silk is worth; the
+-- webs near the fort's buildings stay for the weavers.
+---------------------------------------------------------------------------
+
+-- (0.105.3) the fort's areas: per level, the box round its buildings
+-- (rooms, workshops, stockpiles, zones), widened by `margin` tiles
+local function fort_boxes(margin)
+    local boxes = {}
+    for _, b in ipairs(df.global.world.buildings.all) do
+        local ok, z, x1, y1, x2, y2 = pcall(function() return b.z, b.x1, b.y1, b.x2, b.y2 end)
+        if ok and type(z) == 'number' and x1 >= 0 then
+            local bx = boxes[z]
+            if not bx then
+                boxes[z] = {x1 = x1, y1 = y1, x2 = x2, y2 = y2}
+            else
+                bx.x1, bx.y1 = math.min(bx.x1, x1), math.min(bx.y1, y1)
+                bx.x2, bx.y2 = math.max(bx.x2, x2), math.max(bx.y2, y2)
+            end
+        end
+    end
+    for _, bx in pairs(boxes) do
+        bx.x1, bx.y1, bx.x2, bx.y2 = bx.x1 - margin, bx.y1 - margin, bx.x2 + margin, bx.y2 + margin
+    end
+    return boxes
+end
+
+-- (0.105.3) where a creature is stuck in a web (clear-webs' own test:
+-- counters.webbed, alive): that web stays
+local function webbed_spots()
+    local spots = {}
+    for _, u in ipairs(df.global.world.units.active) do
+        local ok, w = pcall(function() return u.counters.webbed end)
+        if ok and type(w) == 'number' and w > 0 and not u.flags2.killed then
+            spots[u.pos.x .. ',' .. u.pos.y .. ',' .. u.pos.z] = true
+        end
+    end
+    return spots
+end
+
+WEB_MARGIN = 10
+
+-- (0.105.3) true if the web can go, else why it stays (a word)
+local function web_verdict(it, boxes, stuck)
+    local f = it.flags
+    if f.removed or f.garbage_collect then return 'gone' end
+    -- a web collected for thread loses its spider_web flag: not a web any more
+    local okw, web = pcall(function() return f.spider_web end)
+    if okw and web == false then return 'held' end
+    -- loose on the ground: not in a building, a bin or a hand, nor about to be collected
+    if not f.on_ground or f.in_building or f.construction or f.in_inventory or f.container or f.in_job
+            or f.encased then return 'held' end
+    if f.owned or f.trader or f.artifact then return 'owned' end
+    -- forbidden: the player (or a standing order) said keep it
+    if f.forbid then return 'forbidden' end
+    local p = it.pos
+    if stuck[p.x .. ',' .. p.y .. ',' .. p.z] then return 'stuck' end
+    local okh, des = pcall(function() return dfhack.maps.getTileFlags(p.x, p.y, p.z) end)
+    local hidden = okh and des and des.hidden
+    if not hidden then
+        local bx = boxes[p.z]
+        if bx and p.x >= bx.x1 and p.x <= bx.x2 and p.y >= bx.y1 and p.y <= bx.y2 then return 'fort' end
+    end
+    return true, hidden
+end
+
+-- (0.105.3) every web looked at once: the ones that can go, and the rest by why
+function webs_survey()
+    local boxes, stuck = fort_boxes(WEB_MARGIN), webbed_spots()
+    local out = {total = 0, removable = 0, hidden = 0, pick = {},
+                 kept = {gone = 0, held = 0, owned = 0, forbidden = 0, stuck = 0, fort = 0}}
+    local per_z = {}
+    for _, it in ipairs(df.global.world.items.other.ANY_WEBS) do
+        out.total = out.total + 1
+        local v, hidden = web_verdict(it, boxes, stuck)
+        if v == true then
+            out.removable = out.removable + 1
+            if hidden then out.hidden = out.hidden + 1 end
+            table.insert(out.pick, it)
+            local z = tostring(it.pos.z)
+            per_z[z] = (per_z[z] or 0) + 1
+        else
+            out.kept[v] = out.kept[v] + 1
+        end
+    end
+    out.levels = top(per_z, 5)
+    return out
+end
+
+-- (0.105.3) up to `max` of those webs removed (dfhack.items.remove, each in
+-- a pcall, as clear-webs does), so one call stays quick
+function remove_webs(max, dry_run)
+    local t0 = os.clock()
+    local w = webs_survey()
+    local res = {webs = w.total, removable = w.removable, hidden = w.hidden, kept = w.kept, levels = w.levels}
+    if dry_run then res.ok, res.dry_run = true, true; return res end
+    if w.removable == 0 then
+        res.ok, res.rejected = false, true
+        res.error = 'no loose web outside the fort\'s areas (' .. w.total .. ' webs, all kept)'
+        return res
+    end
+    local removed, failed = 0, 0
+    for i = 1, math.min(max, #w.pick) do
+        local ok, r = pcall(function() return dfhack.items.remove(w.pick[i]) end)
+        if ok and r ~= false then removed = removed + 1 else failed = failed + 1 end
+    end
+    res.ok, res.removed, res.failed = removed > 0, removed, failed
+    if removed == 0 then res.error = 'the game removed none of the ' .. failed .. ' webs tried' end
+    res.webs = w.total - removed
+    res.removable_left = w.removable - removed
+    res.more = res.removable_left > 0
+    res.ms = math.floor((os.clock() - t0) * 1000)
+    return res
 end
 
 function census()

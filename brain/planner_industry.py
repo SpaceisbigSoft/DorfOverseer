@@ -13,7 +13,7 @@ from quirks import has_rule
 from digest import _d, _l, normalize
 from planner_core import *  # noqa: F401,F403
 
-__all__ = ["CONTAINER_RECIPES", "GEAR_ORDER_METALS", "_supply_rules", "_slow_game_rules", "_kiln_rules", "_soap_rule", "_pasture_rule", "LABOR_MODES_FIXED", "INDUSTRY_SHOPS", "_industry_rules", "_steel_rule", "_bottleneck_rule", "drink_short", "_crop_rules", "_kitchen_rule", "_fishery_rule", "_bench_coffins_rule", "STONE_CRAFTS", "order_shop", "_order_slots_rule", "_orphan_jobs_rule", "_unsuspend_rule", "_approve_rule", "_stuck_orders_rule", "COAL_STONES", "_coal_rule", "_picks_order", "_stone_rule", "stone_crisis", "PRECIOUS_ORES", "_cloth_rule", "_trade_rules", "_gems_rule", "trade_wants", "_spare_mechanisms_rule", "_hauling_rule", "_surface_basics", "trees_this_year", "_keep_rule", "_free_time_rule", "_labor_rules", "OWN_LABOR_RULES", "FEEDER_ORDER", "_feeder_rule", "woodcutters", "gatherers", "trade_margin_for", "keeps_treasures", "spare_mechanisms", "_dairy_rule", "_eggs_rule", "EXCESS_SHOPS", "_excess_shops_rule", "drink_below_target", "drink_crisis", "drink_target_per_dwarf", "crisis_brew_room", "brew_jobs_open", "_labor_waiting_rule", "farm_target", "_farm_rule", "_smelting_rule", "_shoes_recipe", "_glass_rule", "PRECIOUS_METALS", "precious_metal"]
+__all__ = ["CONTAINER_RECIPES", "GEAR_ORDER_METALS", "_supply_rules", "_slow_game_rules", "_clutter_rules", "_kiln_rules", "_soap_rule", "_pasture_rule", "LABOR_MODES_FIXED", "INDUSTRY_SHOPS", "_industry_rules", "_steel_rule", "_bottleneck_rule", "drink_short", "_crop_rules", "_kitchen_rule", "_fishery_rule", "_bench_coffins_rule", "STONE_CRAFTS", "order_shop", "_order_slots_rule", "_orphan_jobs_rule", "_unsuspend_rule", "_approve_rule", "_stuck_orders_rule", "COAL_STONES", "_coal_rule", "_picks_order", "_stone_rule", "stone_crisis", "PRECIOUS_ORES", "_cloth_rule", "_trade_rules", "_gems_rule", "trade_wants", "_spare_mechanisms_rule", "_hauling_rule", "_surface_basics", "trees_this_year", "_keep_rule", "_free_time_rule", "_labor_rules", "OWN_LABOR_RULES", "FEEDER_ORDER", "_feeder_rule", "woodcutters", "gatherers", "trade_margin_for", "keeps_treasures", "spare_mechanisms", "_dairy_rule", "_eggs_rule", "EXCESS_SHOPS", "_excess_shops_rule", "drink_below_target", "drink_crisis", "drink_target_per_dwarf", "crisis_brew_room", "brew_jobs_open", "_labor_waiting_rule", "farm_target", "_farm_rule", "_smelting_rule", "_shoes_recipe", "_glass_rule", "PRECIOUS_METALS", "precious_metal"]
 
 CONTAINER_RECIPES = {"wooden_barrel", "stone_large_pot"}
 # ore worth mining for gear, most wanted first (iron makes steel; tin with copper makes bronze)
@@ -271,47 +271,106 @@ def _slow_game_rules(s: dict, citizens: int, cfg: dict, proposals: list, notes: 
         # every slightly worn garment off its wearer, all carried to the dump
         # (68 times a night in Teacheroar), and the dump keeps them on the map;
         # prune_remains' "clothes" below rots the thrown-down clothes for real
-        # (0.104.0) old remains rot away: non-entombed corpses and body parts
-        # nobody can craft with (DFHack deteriorate; stays on in the save)
-        # (0.104.115) the census says what lies about: thousands of butchered
-        # bones and shells, or worn clothes thrown down, rot away too
-        ground = {str(_d(x).get("name")): int(_d(x).get("n") or 0)
-                  for x in _l(_d(cen.get("items")).get("on_ground"))}
-        extra = []
-        if ground.get("CORPSEPIECE", 0) >= cfg["prune_parts_min"]:
-            extra.append("usable-parts")
-        worn = {str(_d(x).get("name")): int(_d(x).get("n") or 0) for x in _l(_d(cen.get("items")).get("worn"))}
-        if sum(worn.get(k, 0) for k in ("SHOES", "GLOVES", "PANTS", "ARMOR", "HELM")) >= cfg["prune_worn_min"]:
-            extra.append("clothes")
-        # (0.104.116) spider webs by the thousand: cleared, once a season at most
-        webs = _d(_d(cen.get("items")).get("counts")).get("webs")
-        last_w = memory.last_fired.get("webs") if memory is not None else None
-        if (isinstance(webs, int) and webs >= cfg["webs_clear_min"]
-                and (last_w is None or not 0 <= abs_tick(s) - last_w < 84 * TICKS_PER_DAY)):
+    # (0.105.3) B (2 Nov): 17,471 items at 1-3 FPS, so none of the clean-ups
+    # below (all behind fps_items_heavy, 30,000) ran. The census' own counts
+    # decide them now (_clutter_rules, run at any speed); `heavy` still lets
+    # the old corpses rot when the census hasn't counted yet
+    _clutter_rules(s, cfg, proposals, notes, memory, heavy=items >= cfg["fps_items_heavy"])
+
+
+def _clutter_rules(s: dict, cfg: dict, proposals: list, notes: list, memory=None, heavy: bool = False) -> None:
+    """(0.105.3) What the last census says lies about, cleared: loose spider
+    webs far from the fort (remove_webs), dead creatures on the game's unit
+    list (fix/dead-units) and old corpses on the ground (deteriorate). Lower
+    bars while the game runs slowly. Called by the slow-game rules and, at any
+    speed, by the planner itself (with heavy False)."""
+    slow = bool(s.get("fps_low"))
+    now = abs_tick(s)
+    cen = _d(getattr(memory, "census", None)) if memory is not None else {}
+    # a census older than four weeks says too little to act on (heavy alone still prunes)
+    if not (isinstance(cen.get("tick"), int) and 0 <= now - cen["tick"] < 28 * TICKS_PER_DAY):
+        cen = {}
+    last = (lambda r: memory.last_fired.get(r)) if memory is not None else (lambda r: None)
+
+    def due(rule, days):
+        t = last(rule)
+        return t is None or not 0 <= now - t < days * TICKS_PER_DAY
+
+    ic = _d(_d(cen.get("items")).get("counts"))
+    items = int(_d(_d(s.get("logistics")).get("counts")).get("items") or ic.get("total") or 0)
+    # (0.105.3) loose webs outside the fort's areas (the census' webs_removable,
+    # from 0.105.3's bridge): past 1,000 while slow, past 5,000 at any speed, a
+    # week apart, a batch a day while the last call left more. Webs are silk
+    # for cloth, but thousands far off cost more FPS than their thread is worth
+    far = ic.get("webs_removable")
+    if isinstance(far, int):
+        more = bool(_d(cen.get("webs_left")).get("more"))
+        if (far >= (cfg["remove_webs_slow_min"] if slow else cfg["remove_webs_min"])
+                and due("remove_webs", cfg["remove_webs_more_days"] if more else cfg["remove_webs_days"])):
+            kept = _d(_d(_d(cen.get("items")).get("webs")).get("kept"))
+            near = int(kept.get("fort") or 0)
+            proposals.append(Proposal("remove_webs", {"type": "remove_webs", "max": cfg["remove_webs_max"]},
+                                      f"{far} spider webs lie far from the fort ({ic.get('webs')} in all, "
+                                      f"{items} items on the map): remove up to {cfg['remove_webs_max']}"
+                                      + (f"; the {near} near the fort stay for the weavers" if near else ""), 7))
+    elif heavy and slow:
+        # (0.104.116) a census from an older bridge: every web, a season apart
+        webs = ic.get("webs")
+        if isinstance(webs, int) and webs >= cfg["webs_clear_min"] and due("webs", 84):
             proposals.append(Proposal("webs", {"type": "clear_webs"},
                                       f"{webs} spider webs lie in the caverns, a big share of the {items} items "
                                       "slowing the game: clear them (DFHack's clear-webs)", 7))
-        # (0.104.158) dead creatures by the thousand on the game's unit list:
-        # DFHack's fix/dead-units scrubs the slaughtered and nameless ones,
-        # once a month at most (Teacheroar: 7,322 of 8,627 units dead)
-        uc = _d(_d(cen.get("units")).get("counts"))
-        scrub = uc.get("dead_scrubbable")
-        last_d = memory.last_fired.get("dead_units") if memory is not None else None
-        if (isinstance(scrub, int) and scrub >= cfg["dead_scrub_min"]
-                and (last_d is None or not 0 <= abs_tick(s) - last_d < cfg["dead_scrub_days"] * TICKS_PER_DAY)):
+    # (0.104.158) dead creatures on the game's unit list: DFHack's
+    # fix/dead-units scrubs the slaughtered, nameless and foreign dead a month
+    # old, never the fort's own race (its isOwnRace test; merchants' and
+    # diplomats' too are kept). (0.105.3) B: 151 scrubbable (100 turkeys),
+    # under the old 1,000: now 100 while slow, two weeks apart
+    uc = _d(_d(cen.get("units")).get("counts"))
+    scrub = uc.get("dead_scrubbable")
+    if isinstance(scrub, int):
+        lo, days = ((cfg["dead_scrub_slow_min"], cfg["dead_scrub_slow_days"]) if slow
+                    else (cfg["dead_scrub_min"], cfg["dead_scrub_days"]))
+        if scrub >= lo and due("dead_units", days):
             proposals.append(Proposal("dead_units", {"type": "scrub_dead_units"},
                                       f"{uc.get('dead')} of the {uc.get('total')} creatures on the game's list are dead "
                                       f"(up to {scrub} slaughtered or nameless): clear the old ones (DFHack's "
                                       "fix/dead-units; the fort's own dead are kept)", 7))
-        action = {"type": "prune_remains"}
-        if extra:
-            action["extra"] = extra
-        what = (" (and " + ", ".join({"usable-parts": f"{ground.get('CORPSEPIECE', 0)} bones, shells and hair on the "
-                                                       "ground", "clothes": "worn clothes thrown down"}[e]
-                                      for e in extra) + ")") if extra else ""
-        proposals.append(Proposal("prune", action,
-                                  f"{items} items on the map slow the game: old corpses and useless body "
-                                  f"parts lying about rot away{what} (entombed dead are kept)", 7))
+    if not slow:
+        return
+    # (0.104.0) old remains rot away: non-entombed corpses and body parts
+    # nobody can craft with (DFHack deteriorate; stays on in the save)
+    # (0.104.115) the census says what lies about: thousands of butchered
+    # bones and shells, or worn clothes thrown down, rot away too
+    ground = {str(_d(x).get("name")): int(_d(x).get("n") or 0)
+              for x in _l(_d(cen.get("items")).get("on_ground"))}
+    # (0.105.3) B: 69 corpses, 76 parts and 52 remains on the ground with
+    # 17,471 items: rotted from 100 while slow, but only with no citizen
+    # unburied (deteriorate spares only the entombed, so a dwarf's body
+    # waiting for a coffin would rot too)
+    bodies = sum(ground.get(k, 0) for k in ("CORPSE", "CORPSEPIECE", "REMAINS"))
+    unburied = _d(s.get("dead")).get("unburied")
+    few_bodies = bodies >= cfg["corpses_ground_min"] and unburied == 0
+    if not (heavy or few_bodies):
+        return
+    extra = []
+    if ground.get("CORPSEPIECE", 0) >= cfg["prune_parts_min"]:
+        extra.append("usable-parts")
+    worn = {str(_d(x).get("name")): int(_d(x).get("n") or 0) for x in _l(_d(cen.get("items")).get("worn"))}
+    if sum(worn.get(k, 0) for k in ("SHOES", "GLOVES", "PANTS", "ARMOR", "HELM")) >= cfg["prune_worn_min"]:
+        extra.append("clothes")
+    action = {"type": "prune_remains"}
+    if extra:
+        action["extra"] = extra
+    what = (" (and " + ", ".join({"usable-parts": f"{ground.get('CORPSEPIECE', 0)} bones, shells and hair on the "
+                                                   "ground", "clothes": "worn clothes thrown down"}[e]
+                                  for e in extra) + ")") if extra else ""
+    if heavy:
+        reason = (f"{items} items on the map slow the game: old corpses and useless body "
+                  f"parts lying about rot away{what} (entombed dead are kept)")
+    else:
+        reason = (f"{bodies} corpses and remains lie on the ground while the game runs slowly: they rot "
+                  f"away{what} (no citizen waits for burial; entombed dead are kept)")
+    proposals.append(Proposal("prune", action, reason, 7))
 
 
 def _kiln_rules(s: dict, cfg: dict, proposals: list, notes: list) -> None:
