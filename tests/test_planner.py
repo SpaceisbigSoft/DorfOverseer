@@ -5886,6 +5886,7 @@ def _():
     m = Memory()
     m.well_failure = "no open drop from a free floor inside the fort to clean water"
     m.cavern_well_failure = "no floor inside the fort over cavern water with solid rock between; no gallery to the cavern water at x135 y131 elevation 7 (its nearest column is 81 tiles from the dwarves; a gallery reaches 40)"
+    m.cavern_gallery_retried = True          # (0.105.4 review) the gallery was tried already
     notes = plan(s, m)[1]
     assert not any(n.startswith("[you] ") and "well" in n for n in notes), notes
     assert any("no one is hurt" in n for n in notes)
@@ -9299,7 +9300,7 @@ def _():
     assert not by_rule(p, "gates") and not any(x.action == {"type": "civ_alert", "on": False} for x in p)
 
 
-@test("wells (0.105.3): Hammerstirred: the old cavern refusal tried once more with a gallery toward the survey's lake")
+@test("wells (0.105.3, 0.105.4 review): the old cavern refusal tried once (a memory flag), toward the survey's lake")
 def _():
     s = fort()
     s["buildings"]["other"].pop("Well", None)
@@ -9316,23 +9317,49 @@ def _():
     w = by_rule(plan(copy.deepcopy(s), m)[0], "well")
     assert w and w[0].action == {"type": "place_well", "cavern": True, "urgent": True, "gallery": 80,
                                  "toward": [{"x": 135, "y": 131, "z": 136}]}, [x.action for x in w]
-    assert "tunnel" in w[0].reason and m.cavern_well_failure == ""
-    # its refusal names the gallery: not cleared again, only said
-    record([(w[0], {"ok": False, "error": m.well_failure[:20] + "...; no gallery to the cavern water at x135 y131"})], s, m)
-    m.cavern_well_failure = ("no floor inside the fort over cavern water with solid rock between; no gallery to the "
-                             "cavern water at x135 y131 elevation 7 (its nearest column is 81 tiles from the dwarves; "
-                             "a gallery reaches 40)")
+    assert "tunnel" in w[0].reason and not m.cavern_gallery_retried     # plan() only reads memory
+    # (0.105.4 review) its refusal, cut to 300 characters with no word of the gallery: the flag, not
+    # the text, says the retry is spent
+    long_refusal = "no floor inside the fort over cavern water with solid rock between (" + "x" * 400 + ")"
+    record([(w[0], {"ok": False, "error": long_refusal})], s, m)
+    assert m.cavern_gallery_retried and "gallery" not in m.cavern_well_failure
     props, notes = plan(copy.deepcopy(s), m)
     assert not [x for x in by_rule(props, "well") if x.action.get("cavern")]
-    assert any("no cavern well either" in n and "81 tiles" in n for n in notes), notes
-    # galleries off: the old refusal stands, and the action carries no gallery
+    assert any("no cavern well either" in n for n in notes), notes
+    # galleries off: the old refusal stands
     cfg_off = dict(PLANNER_CONFIG, cavern_well_gallery=0)
     m2 = Memory()
     m2.well_failure = m.well_failure
     m2.cavern_well_failure = "no floor inside the fort over cavern water with solid rock between"
     props = plan(copy.deepcopy(s), m2, cfg_off)[0]
     assert not [x for x in by_rule(props, "well") if x.action.get("cavern")]
-    assert m2.cavern_well_failure.startswith("no floor")
+
+
+@test("wells (0.105.4 review): a cavern no dwarf has found is opened only when the Rules tab allows it")
+def _():
+    s = fort()
+    s["buildings"]["other"].pop("Well", None)
+    s["projects"]["open"] = []
+    s["dwarves"]["needs_medical_care"] = 4
+    s["water"] = {"tick": abs_tick(s), "bodies": [
+        {"kind": "cavern", "tiles": 12412, "stagnant_share": 0, "nearest": {"x": 135, "y": 131, "z": 125, "d": 80}}]}
+    for l in s["map"]["layers"]:
+        if l["name"] == "Cavern1":
+            l["discovered"] = False                    # Hammerstirred: Cavern1 undiscovered
+    m = Memory()
+    m.well_failure = "no open drop from a free floor inside the fort to clean water (the water below is in a cavern)"
+    props, notes = plan(copy.deepcopy(s), m)
+    assert not [x for x in by_rule(props, "well") if x.action.get("cavern")], [x.action for x in by_rule(props, "well")]
+    assert any("would open Cavern1 for the first time" in n and "Rules tab" in n for n in notes), notes
+    s["settings"] = dict(s.get("settings") or {}, open_caverns=True)
+    w = [x for x in by_rule(plan(copy.deepcopy(s), m)[0], "well") if x.action.get("cavern")]
+    assert w and w[0].action.get("open_caverns") is True, [x.action for x in w]
+    # a cavern already found: no switch needed
+    s["settings"]["open_caverns"] = False
+    for l in s["map"]["layers"]:
+        l["discovered"] = True
+    w = [x for x in by_rule(plan(copy.deepcopy(s), m)[0], "well") if x.action.get("cavern")]
+    assert w and "open_caverns" not in w[0].action, [x.action for x in w]
 
 
 @test("water (0.105.3): the survey and the cistern carry the brain's tunnel reach; the shore well its reach")

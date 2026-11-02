@@ -705,6 +705,7 @@ class Memory:
     extra_well_failure: str = ""                         # (0.104.141) why another well (one exists) couldn't be
     cavern_well_failure: str = ""                        # why no cavern well could be placed either
     cavern_shaft_stairs: bool = False                     # (0.104.13) the old shaft's give-up was cleared once
+    cavern_gallery_retried: bool = False                  # (0.105.4 review) the old cavern refusal cleared once for the gallery
     patient_since: dict = field(default_factory=dict)    # citizen id (str) -> tick first seen needing care
     pasture_failure: str = ""                            # why no pasture could be made (Needs you)
     farm_failure: str = ""                               # why no farm plots could be placed (Needs you)
@@ -934,6 +935,8 @@ def player_rules(s: dict) -> dict:
             "moat": st.get("moat") is not False,
             "magma_workshops": st.get("magma_workshops") is not False,
             "irrigation": st.get("irrigation") is not False,
+            # (0.105.4 review) a cavern well into a cavern layer not yet discovered: on only when the player says so
+            "open_caverns": st.get("open_caverns") is True,
             # (0.105.0) the squads wait in the shelter while the AI hides: off only when the settings say so
             "squads_shelter": st.get("squads_shelter") is not False,
             "clear_alerts": st.get("clear_alerts") if st.get("clear_alerts") in ("all", "quiet", "none") else "quiet"}
@@ -1874,8 +1877,13 @@ def _record_any_outcome(a: dict, r: dict, state: dict, memory, now: int) -> None
     elif t == "place_well":
         memory.last_fired["well"] = now          # refused or not: wait the full spell
         if a.get("cavern"):
+            # (0.105.4 review) a cavern well tried with a gallery: the old refusal's one retry is spent
+            if a.get("gallery"):
+                memory.cavern_gallery_retried = True
             if r.get("ok") is False and not r.get("rejected"):
                 memory.cavern_well_failure = str(r.get("error") or "refused")[:300]
+            elif r.get("ok") is True:
+                memory.cavern_well_failure = ""
         elif r.get("ok") is True:
             memory.well_failure = ""
         elif r.get("ok") is False and not r.get("rejected"):

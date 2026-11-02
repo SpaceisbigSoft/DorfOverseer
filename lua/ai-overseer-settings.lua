@@ -257,6 +257,9 @@ function defaults()
         make_contact = true,       -- (0.105.0, 13b) a messenger appointed and sent to sites not in contact
         -- (0.105.0) water works: a moat from the river (only where one is found), magma workshops, a muddied farm level
         moat = true, magma_workshops = true, irrigation = true,
+        -- (0.105.4 review) a cavern well may break into a cavern layer the dwarves
+        -- haven't found yet (the first breach brings forgotten beasts): off by default
+        open_caverns = false,
         squads_shelter = true,     -- (0.105.0) while the AI hides from a great danger, the squads wait in the shelter
         expel_vampires = true,     -- a vampire found among the citizens is sent away      -- with --ai: a short AI-written story of each season (costs tokens)
         -- "Wipe what the AI learned" (Culture tab, Shift-V): each press adds 1;
@@ -341,6 +344,7 @@ function sanitize(s)
                         'moon_cells', 'seal_caverns',   -- (0.105.0) round 3's switches
                         'make_contact',             -- (0.105.0) the messenger and Make contact
                         'moat', 'magma_workshops', 'irrigation',   -- (0.105.0) the water works' switches
+                        'open_caverns',             -- (0.105.4 review) a cavern well into an undiscovered cavern
                         'squads_shelter'}) do       -- (0.105.0) the squads hide in the shelter too
         if s[k] ~= nil then out[k] = s[k] == true end
     end
@@ -422,6 +426,7 @@ function for_ai(s)
         tribute = s.tribute,                       -- (0.105.0)
         make_contact = s.make_contact,             -- (0.105.0)
         moat = s.moat, magma_workshops = s.magma_workshops, irrigation = s.irrigation,   -- (0.105.0)
+        open_caverns = s.open_caverns,             -- (0.105.4 review)
         squads_shelter = s.squads_shelter,         -- (0.105.0)
         wipe_learned = s.wipe_learned,
         wipe_learned_all = s.wipe_learned_all,

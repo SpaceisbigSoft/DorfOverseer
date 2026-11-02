@@ -468,6 +468,15 @@ function RulesPage:init()
             on_change = function(v) p:set_field(f[1], v) end,
         })
     end
+    -- (0.105.4 review) a cavern well may open a cavern nobody has found yet (off by default)
+    table.insert(views, widgets.ToggleHotkeyLabel{
+        view_id = 'open_caverns',
+        frame = {t = t + 11, l = 62, w = 56},
+        label = 'Cavern well into an unfound cavern:',
+        label_width = 42,
+        initial_option = p.settings.open_caverns == true,
+        on_change = function(v) p:set_field('open_caverns', v) end,
+    })
     table.insert(views, widgets.ToggleHotkeyLabel{
         view_id = 'expel_vampires',
         frame = {t = t + 8, l = 0, w = 60},
@@ -650,6 +659,7 @@ function RulesPage:refresh()
         self.subviews[k]:setOption(s[k] ~= false, false)
     end
     self.subviews.squads_shelter:setOption(s.squads_shelter ~= false, false)       -- (0.105.0)
+    self.subviews.open_caverns:setOption(s.open_caverns == true, false)            -- (0.105.4 review)
     self.subviews.engrave_slabs:setOption(s.engrave_slabs, false)
     self.subviews.import_smelting:setOption(s.import_smelting, false)
     self.subviews.alert_shelter:setOption(s.alert_shelter, false)

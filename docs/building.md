@@ -195,18 +195,28 @@ its water was all further off than the AI looked. Three paths now reach
 further, each still bounded and with the same safety checks:
 
 - *Cavern well by a gallery.* When no fort floor stands over the cavern lake,
-  the AI digs a one-tile gallery (up to `cavern_well_gallery` = 40 tiles) on a
+  the AI digs a one-tile gallery (up to `cavern_well_gallery` = 80 tiles) on a
   fort level, through solid rock only (no aquifer, water, warm stone or open
   space beside it, rock under it, a wall or floor over it), out to a column
   over the lake round the survey's nearest cavern water; then the usual shaft,
   the stair column beside it and the shaft gate. Nothing moves water. Set it
   to 0 to switch galleries off.
+- *The breach (0.105.4 review).* Every cavern well (gallery or not) is dug
+  down to the level above the cavern and stops there: the shaft's last level
+  and the stair step beside it stay undug until the gate's lever stands and a
+  hatch cover and 2 mechanisms are in store. Only then is that level dug, and
+  the hatch goes on the opening straight after. A cavern no dwarf has found
+  yet is never opened unless the Rules tab's "Cavern well into an unfound
+  cavern" is on (off by default): the first breach brings cavern creatures
+  and forgotten beasts. The cavern and gallery searches take at most 1.5 s of
+  the game's time, and a "no spot" answer is kept until the next water survey
+  (or 28 days).
 - *Cistern tunnel.* The cistern's tunnel to still water may be up to
   `cistern_tunnel_max` = 70 tiles (30 before); a stagnant pool is still taken
   when it is the only source (it scores worse than fresh water).
 - *Shore well.* A pond up to `well_shore_reach` = 60 tiles from a surface gate
   (40 before) gets a well on its bank, searched only round the survey's
-  nearest surface water.
+  nearest surface water (the 3 nearest ponds at most, one time limit for all).
 
 Each refusal says how far the water was, so the log shows what limited it.
 

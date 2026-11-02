@@ -4226,6 +4226,8 @@ function act_place_well(a)
     local reach = whole_number(a.shore_reach)
     return reqscript('ai-builder').place_well({inside_only = a.inside_only == true, cavern = a.cavern == true,
                                                urgent = a.urgent == true,
+                                               -- (0.105.4 review) a cavern nobody has found: the Rules tab's say
+                                               open_caverns = a.open_caverns == true,
                                                gallery = gallery and math.max(0, math.min(gallery, 80)) or nil,
                                                toward = toward,
                                                shore_reach = reach and math.max(0, math.min(reach, 100)) or nil},

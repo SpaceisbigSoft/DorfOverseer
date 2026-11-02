@@ -178,6 +178,7 @@ def test(name, beside=False):
             REAL_FURNISH_PROGRESS = B.furnish_progress
         B.furnish_progress = REAL_FURNISH_PROGRESS
         W.reset()
+        B.CAVERN_NO_SPOT = None          # (0.105.4 review) the cavern search's kept "no spot"
         B.TRY_BESIDE = beside
         try:
             fn()
@@ -1094,6 +1095,14 @@ def _():
     assert not r.ok and "too shallow" in r.error, r.error
 
 
+def release_hold(pid):
+    """(0.105.4 review) a cavern well from before the hold (its last level dug with the rest)."""
+    LUA.execute("""local B, pid = ...
+      local d = B.load_projects()
+      for _, p in ipairs(d.list) do if p.id == pid then p.held = nil end end
+      B.save_projects(d)""", B, pid)
+
+
 def cavern_column(x=70, y=58, top=70, lake_depth=5, **lake):
     """A floor at `top` with solid rock under it (the fort's dug levels walled
     back round the column, wide enough for the stairs beside the shaft),
@@ -1128,10 +1137,12 @@ def _():
     assert not well().ok                                         # an ordinary well: no
     r = B.place_well(LUA.table_from({"cavern": True}), LUA.table_from({"year": 148, "tick": 100}), False)
     assert r.ok and r.cavern and r.shaft == 7 and r.drop == 9 and (r.x, r.y) == (70, 58), (r.ok, r.error)
-    # (0.104.13) the floor and 7 levels of rock, and the 8 stairs beside them
-    assert r.stairs == 8 and designated_count() == 16, (r.stairs, designated_count())
+    # (0.104.13) the floor and 7 levels of rock, and the 8 stairs beside them;
+    # (0.105.4 review) the last level and its stair step held undug (2 of them)
+    assert r.stairs == 8 and r.held == 2 and designated_count() == 14, (r.stairs, designated_count())
     p = B.projects_report().open[1]
-    assert p.dig.total == 16 and p.dig.dug == 0 and p.dig.shaft_open is False, (p.dig.total, p.dig.dug)
+    assert p.dig.total == 16 and p.dig.dug == 0 and p.dig.shaft_open is False and p.dig.held == 2, (p.dig.total, p.dig.dug)
+    release_hold(r.project_id)
     open_shaft()
     assert B.projects_report().open[1].next is False             # the stairs aren't dug yet
     dig_shaft_stairs()
@@ -1144,8 +1155,9 @@ def _():
     r = B.place_well(LUA.table_from({"cavern": True}), LUA.table_from({"year": 148, "tick": 100}), False)
     assert r.ok, r.error
     keys = {z: W.get(71, 58, z).dig_text for z in range(63, 71)}
-    assert keys[70] == "j" and keys[63] == "u" and all(keys[z] == "i" for z in range(64, 70)), keys
-    assert all(W.get(70, 58, z).dig_text == "h" for z in range(63, 71))
+    # (0.105.4 review) the bottom step (beside the shaft's last level) held undug
+    assert keys[70] == "j" and keys[63] is None and all(keys[z] == "i" for z in range(64, 70)), keys
+    assert W.get(70, 58, 63).dig_text is None and all(W.get(70, 58, z).dig_text == "h" for z in range(64, 71))
     assert not W.get(71, 58, 62).designated                      # nothing dug into the cavern's air
 
 
@@ -1208,6 +1220,7 @@ def _():
     r = gallery_well(dry=True)
     assert not r.ok and "no way of at most 40 tiles" in r.error, r.error
     W.reset()
+    B.CAVERN_NO_SPOT = None
     lake_beside()
     # water in the rock above the way (a cap with water): not dug under it
     LUA.execute("""local W = ...
@@ -1216,6 +1229,7 @@ def _():
     r = gallery_well(dry=True)
     assert not r.ok and "no way" in r.error, r.error
     W.reset()
+    B.CAVERN_NO_SPOT = None
     lake_beside(depth=7)
     LUA.execute("""local W = ...
       for x = 93, 100 do for y = 56, 64 do W.set(x, y, 62, {shape = 'EMPTY', feature = true, liquid = true, depth = 7}) end end""", W)
@@ -1257,6 +1271,53 @@ def _():
     finally:
         LUA.execute("""local B, saved = ...
           B.pasture_anchors, B.walk_group, reqscript = saved.pa, saved.wg, saved.req""", B, saved)
+
+
+@test("wells on the shore (0.105.4 review): at most the 3 nearest far ponds are looked round")
+def _():
+    saved = LUA.execute("""local B = ...
+      return {pa = B.pasture_anchors, ti = B.tile_info, req = reqscript}""", B)
+    LUA.execute("""local B, W = ...
+      B.pasture_anchors = function() return {{x = 20, y = 20, z = 80}} end
+      SEEN = {}
+      local ti = B.tile_info
+      B.tile_info = function(x, y, z) if z == 80 then SEEN[x .. ',' .. y] = true end return ti(x, y, z) end
+      local real_req = reqscript
+      reqscript = function(name)
+        if name == 'ai-water' then
+          local b = {}
+          -- five far ponds 45-85 tiles east of the gate (the nearest last in the list)
+          for i, d in ipairs({85, 75, 65, 55, 45}) do
+            table.insert(b, {kind = 'surface', nearest = {x = 20 + d, y = 20, z = 79, d = d}})
+          end
+          return {last = function() return {bodies = b} end}
+        end
+        return real_req(name)
+      end""", B, W)
+    try:
+        r = B.place_well(LUA.table_from({"shore_reach": 100}), LUA.table_from({"year": 148, "tick": 100}), True)
+        assert not r.ok
+        seen = LUA.eval("SEEN")
+        looked = [d for d in (45, 55, 65, 75, 85) if seen[f"{20 + d},20"]]
+        assert looked == [45, 55, 65], looked
+    finally:
+        LUA.execute("""local B, saved = ...
+          B.pasture_anchors, B.tile_info, reqscript = saved.pa, saved.ti, saved.req""", B, saved)
+
+
+@test("cistern plan (0.105.4 review): the distance spread over the wider box stops at the plan's deadline")
+def _():
+    LUA.execute("""local W = ...
+      W.citizens = {}
+      for i = 1, 20 do table.insert(W.citizens, {x = 50 + i % 10, y = 60, z = 80}) end
+      for x = 112, 117 do for y = 55, 65 do W.set(x, y, 79, {shape = 'EMPTY', liquid = true, depth = 7}) end end
+    """, W)
+    B.CISTERN_SECONDS = -1
+    try:
+        r = B.plan_cistern(None, None, LUA.table_from({"tunnel": 70}))
+    finally:
+        B.CISTERN_SECONDS = 3
+    assert r[0] is None and "ran out of time" in r[1], r
 
 
 @test("cavern well (0.104.13): urgent: dug first (priority 1) and in an urgent slot beyond the two")
@@ -1368,6 +1429,7 @@ def dug_cavern_well():
     cavern_column()
     r = B.place_well(LUA.table_from({"cavern": True}), LUA.table_from({"year": 148, "tick": 100}), False)
     assert r.ok, r.error
+    release_hold(r.project_id)
     open_shaft()
     dig_shaft_stairs()
     assert B.furnish_project(r.project_id, True).ok
@@ -1485,6 +1547,89 @@ def _():
     finally:
         LUA.eval("function(B) B.SHAFT_WATCH.on = false; B.SHAFT_WATCH.timer = nil end")(B)
         LUA.execute(GAME_CLEAN)
+
+
+@test("cavern well (0.105.4 review): the breach held until the lever stands and a hatch cover and 2 mechanisms are in store")
+def _():
+    cavern_column()
+    r = B.place_well(LUA.table_from({"cavern": True}), LUA.table_from({"year": 148, "tick": 100}), False)
+    assert r.ok and r.held == 2, r.error
+    assert not W.get(70, 58, 63).designated and not W.get(71, 58, 63).designated   # the cavern's roof untouched
+    # every other level dug: still not "furnish" (the shaft isn't open)
+    LUA.eval("""function(W)
+        local t = W.get(70, 58, 70); t.designated = false; t.shape = 'EMPTY'
+        for z = 64, 69 do local s = W.get(70, 58, z); s.designated = false; s.shape = 'EMPTY' end
+        for z = 64, 70 do local s = W.get(71, 58, z); s.designated = false; s.shape = (z == 70) and 'STAIR_DOWN' or 'STAIR_UPDOWN' end
+    end""")(W)
+    p = B.projects_report().open[1]
+    assert p.next is False and p.dig.held == 2 and p.dig.stuck == 0, (p.next, p.dig.held, p.dig.stuck)
+    LUA.execute(GAME_FAKE)
+    try:
+        LUA.execute("COVERS = {}; df.global.world.items.other.HATCH_COVER = COVERS")
+        mk, mech = LUA.eval("MKS"), LUA.eval("MECH")
+        # the gate runs while the well is still being dug: the lever first
+        s = B.well_shaft_step(False, False)
+        assert s.ok and s.wells[1].stage == "lever_placed", dict(s.wells[1])
+        lid = B.well_lids(False)[1]
+        assert lid.held and lid.hatch_covers == 0
+        lv = mk(W.placed[len(W.placed)].x, W.placed[len(W.placed)].y, 70, 8, False, 3)
+        lv.built = True
+        mech(2)
+        s = B.well_shaft_step(False, False)
+        assert not s.ok and s.wells[1].stage == "waiting_parts" and s.wells[1].hatch_covers == 0, dict(s.wells[1])
+        assert not W.get(70, 58, 63).designated                         # no cover: still held
+        LUA.execute("COVERS[1] = {flags = {}}")
+        mech(1)
+        s = B.well_shaft_step(False, False)
+        assert not s.ok and s.wells[1].stage == "waiting_parts"         # a cover but 1 mechanism
+        mech(2)
+        s = B.well_shaft_step(True, True)
+        assert s.ok and s.wells[1].stage == "break_through" and not W.get(70, 58, 63).designated   # dry run
+        s = B.well_shaft_step(False, False)
+        assert s.ok and s.wells[1].stage == "break_started", dict(s.wells[1])
+        assert W.get(70, 58, 63).designated and W.get(71, 58, 63).dig_text == "u"   # now the last level and step
+        assert B.projects_report().open[1].dig.held is None
+        s = B.well_shaft_step(False, False)
+        assert not s.ok and s.wells[1].stage == "breaking_through"      # no hatch till it's open
+        LUA.eval("function(W) local t = W.get(70, 58, 63); t.designated = false; t.shape = 'EMPTY' end")(W)
+        before = len(W.placed)
+        s = B.well_shaft_step(False, False)
+        assert s.ok and s.wells[1].stage == "hatch_placed", dict(s.wells[1])   # the hatch straight after the breach
+        put = [W.placed[i] for i in range(before + 1, len(W.placed) + 1)]
+        assert [(h.text, h.x, h.y, h.z) for h in put] == [("H", 70, 58, 63)], [dict(h) for h in put]
+    finally:
+        LUA.execute(GAME_CLEAN)
+
+
+@test("cavern well (0.105.4 review): a cavern no dwarf has seen is opened only when the Rules tab allows it")
+def _():
+    cavern_column()
+    W.set(70, 58, 62, LUA.table_from({"hidden": True}))
+    r = B.place_well(LUA.table_from({"cavern": True}), LUA.table_from({"year": 148, "tick": 100}), True)
+    assert not r.ok and r.unfound and "Rules tab" in r.error, r.error
+    r = B.place_well(LUA.table_from({"cavern": True, "open_caverns": True}), LUA.table_from({"year": 148, "tick": 100}), True)
+    assert r.ok and r.held == 2, r.error
+
+
+@test("cavern well (0.105.4 review): a \"no spot\" is kept (no second search) until the survey changes or 28 days pass")
+def _():
+    calls = LUA.execute("""local B = ...
+      CALLS = {n = 0}
+      CAVERN_REAL = B.find_cavern_well_spot
+      B.find_cavern_well_spot = function(...) CALLS.n = CALLS.n + 1; return CAVERN_REAL(...) end
+      return CALLS""", B)
+    try:
+        day = lambda d: LUA.table_from({"year": 148, "tick": 100 + d * 1200})
+        a = B.place_well(LUA.table_from({"cavern": True, "gallery": 0}), day(0), False)
+        assert not a.ok and calls.n == 1
+        b = B.place_well(LUA.table_from({"cavern": True, "gallery": 0}), day(5), False)
+        assert not b.ok and b.cached and b.error == a.error and calls.n == 1
+        B.place_well(LUA.table_from({"cavern": True, "gallery": 40}), day(5), False)   # other reach: searched
+        assert calls.n == 2
+        B.place_well(LUA.table_from({"cavern": True, "gallery": 40}), day(40), False)  # 28 days on: searched
+        assert calls.n == 3
+    finally:
+        LUA.execute("local B = ...; B.find_cavern_well_spot = CAVERN_REAL", B)
 
 
 @test("cavern well (0.104.152): a link that keeps failing (not for mechanisms) -> the hatch down, the stair lid instead")
