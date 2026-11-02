@@ -494,6 +494,13 @@ def soldiers_wanted(s: dict, citizens: int, cfg: dict, idle: bool = False) -> in
     Militarism is at its lowest. (0.105.2) Below 0 the need-driven extra
     shrinks with the slider (gone at -100); never past the civilian cap."""
     want = _soldiers_wanted(s, citizens, cfg, idle)
+    # (0.105.8) a small guard in every fort of `guard_min_adults`+ adults,
+    # whatever the Militarism or preset (the player, 2 Nov: B's Monastery at
+    # -100 had 2 soldiers and nothing to wear while thieves came)
+    adults = _d(s.get("dwarves")).get("adults")
+    adults = min(adults, citizens) if isinstance(adults, int) and not isinstance(adults, bool) else citizens
+    if adults >= cfg.get("guard_min_adults", 15):
+        want = max(want, cfg.get("guard_min_soldiers", 3))
     cap = civilian_cap(s, cfg)
     return want if cap is None else min(want, cap)
 

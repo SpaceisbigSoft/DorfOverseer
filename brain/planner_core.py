@@ -318,6 +318,8 @@ PLANNER_CONFIG = {
     "calm_burrow_cooldown_ticks": 300,           # ...asked every quarter day while a tantrum walks free
     "calm_burrow_judge_after": 20,               # ...members seen this often (inside or out) before judging...
     "calm_burrow_outside_share": 0.5,            # ...and seen outside this share of the time: said as a note
+    "guard_min_adults": 15,                      # (0.105.8) every fort this big keeps a guard...
+    "guard_min_soldiers": 3,                     # ...of this many soldiers, whatever the Militarism
     "assign_kit_wait_ticks": 3 * 1200,           # (0.105.8) armour handed out by the AI once DF left it 3 days
     "assign_kit_cooldown_ticks": 1200,           # ...a day apart
     "assign_weapons_wait_ticks": 7 * 1200,       # (0.104.60) ...once DF has left the places empty a week

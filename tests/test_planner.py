@@ -4636,6 +4636,22 @@ def _():
     assert "weapon_gaps" not in m.gear_spare_since and not by_rule(plan(done, m)[0], "assign_weapons")
 
 
+@test("guard (0.105.8): every fort of 15+ adults wants 3 soldiers at least, whatever the Militarism")
+def _():
+    from planner_military import soldiers_wanted
+    for mil in (-100, -60, 0):
+        s = fort()
+        s["settings"]["traits"]["militarism"] = mil
+        s["dwarves"].update(total=15, adults=15, idle_adults=0)
+        assert soldiers_wanted(s, 15, PLANNER_CONFIG) >= 3, (mil, soldiers_wanted(s, 15, PLANNER_CONFIG))
+    s = fort()
+    s["settings"]["traits"]["militarism"] = -100
+    s["dwarves"].update(total=14, adults=14, idle_adults=0)
+    assert soldiers_wanted(s, 14, PLANNER_CONFIG) < 3          # a smaller fort: by its slider, as before
+    s["dwarves"].update(total=40, adults=40)
+    assert soldiers_wanted(s, 40, PLANNER_CONFIG) == 3         # Monastery at 40: 5% is 2, the guard 3
+
+
 @test("assign kit (0.105.8): armour places the bridge could fill, left 3 days -> the AI hands the armour out")
 def _():
     s = geared(soldiers=9, on_duty=9, armed=9, armored=7, helmed=6, spare={"gloves": 10, "boots": 10}, bars={"IRON": 57})
