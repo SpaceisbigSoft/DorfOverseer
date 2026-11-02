@@ -78,6 +78,7 @@ SOAK = LOG_DIR / "soak.jsonl"    # (unattended) one row every SOAK_EVERY_S of re
 SOAK_EVERY_S = 600
 LAST_CYCLE: dict = {}            # the last cycle's numbers, for the soak row
 MEETING_CLOSE_S = 600.0          # (0.104.0, unattended) a meeting screen holding the game this long is left
+MEETING_ANSWER_S = 20.0          # (0.105.0) a meeting screen holding the game this long is answered (every 30 s)
 STALL_AFTER_S = 60.0             # (unattended) running, but the date hasn't moved this long: a popup
 HEARTBEAT = LOG_DIR / "heartbeat"   # touched every loop: brain/keeper.py restarts a stuck overseer
 PLAN_EVERY_TICKS = 1200          # one in-game day
@@ -434,6 +435,8 @@ def short(a: dict) -> str:
         return "mark open water as a water source for the injured"
     if t == "close_meeting":
         return "leave DF's meeting screen"
+    if t == "answer_meeting":    # (0.105.0)
+        return "answer the diplomat's meeting"
     if t == "keep_mousers":      # (0.104.168)
         return f"keep {a.get('count') or 'a few'} cats from the butcher to hunt the vermin"
     if t == "prune_remains":
@@ -1204,6 +1207,12 @@ def world_facts(state: dict, memory) -> dict:
     dead = _d(st.get("dead"))
     if "ghosts" in dead:
         f["ghosts"] = int(dead.get("ghosts") or 0)
+    # (0.105.0) the sieges on the game's own record (the grudge list) for Grudge-keepers
+    try:
+        from planner_world import grudge_facts
+        f.update(grudge_facts(st, memory))
+    except Exception:  # noqa: BLE001
+        pass
     civs = [c for c in _l(_d(st.get("diplomacy")).get("civs")) if isinstance(c, dict)]
     if civs:
         f["goblin_wars"] = sum(1 for c in civs if c.get("race") == "GOBLIN" and str(c.get("relation")) == "War")
@@ -1577,6 +1586,7 @@ def main() -> int:
     last_date = None             # (unattended) the game's date, and since when it hasn't moved
     date_since = 0.0
     held_date, held_since, meeting_tried = None, 0.0, float("-inf")   # (0.104.0) paused or not: for meetings
+    answer_tried = float("-inf")  # (0.105.0) the last try at answering the meeting screen
     stall_said = float("-inf")
     stall_wait = STALL_AFTER_S   # the wait before the next try at the same stall (doubles, up to 10 min)
     quieted = False              # (unattended) announcements told not to pause or pop up, this fort
@@ -1630,6 +1640,18 @@ def main() -> int:
             # (paused or not): unattended, it is left after MEETING_CLOSE_S
             if date_now != held_date or not st.get("in_fort"):
                 held_date, held_since = date_now, nowt
+            # (0.105.0, 12b) before that, answered with the AI's defaults (the
+            # tribute by the Rules tab), when the AI knows the screen's buttons
+            if (args.autopilot and st.get("in_fort") and st.get("meeting") and not controls["halted"]
+                    and not STOP_FILE.exists() and MEETING_ANSWER_S <= nowt - held_since < MEETING_CLOSE_S and nowt - answer_tried >= 30):
+                answer_tried = nowt
+                try:
+                    r = bridge.act({"type": "answer_meeting"})
+                    if r.get("pressed") or r.get("needs_button") or r.get("left_to_player"):
+                        say("DF's meeting screen: " + (f"answered {r.get('answer')} ({r.get('why') or r.get('topic')})"
+                                                       if r.get("ok") else str(r.get("error"))))
+                except (BridgeError, DFHackError):
+                    pass
             if (args.unattended and args.autopilot and st.get("in_fort") and not controls["halted"]
                     and not STOP_FILE.exists() and nowt - held_since >= MEETING_CLOSE_S
                     and nowt - meeting_tried >= MEETING_CLOSE_S):

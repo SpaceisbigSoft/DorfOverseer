@@ -52,6 +52,15 @@ MILITARY_OFFICES = {MILITIA_COMMANDER = true, MILITIA_CAPTAIN = true}
 table.insert(OFFICE_ORDER, 'MILITIA_COMMANDER')
 table.insert(OFFICE_ORDER, 'MILITIA_CAPTAIN')
 
+-- (0.105.0, 13b) the messenger (Nobles and Administration), who carries the
+-- fort's word on a Diplomacy mission ("Make contact"): only when the fort has
+-- the post, and never a soldier, a mother of a baby, a hospital's or any
+-- location's staff, a patient, nor a dwarf holding another office (they'd be
+-- away for seasons): the best talker of the rest.
+OFFICES.MESSENGER = {'PERSUASION', 'NEGOTIATION', 'CONVERSATION', 'JUDGING_INTENT'}
+CIVILIAN_AWAY_OFFICES = {MESSENGER = true}
+table.insert(OFFICE_ORDER, 'MESSENGER')
+
 -- Pure: the best candidate. Each: {id, skills = {level, level...} in the
 -- office's order, offices = offices already held, soldier = bool, child =
 -- bool}. Dwarves without an office before any with one (one job each), then
@@ -64,7 +73,8 @@ function pick_holder(cands, military)
         -- (0.104.168, review) a squad's leader is never a mother of a baby, a
         -- patient, one of the hospitals' (or any location's) staff, nor the
         -- unhappy; one who wants to fight first
-        if not c.child and not (military and (c.mother or c.patient or c.staff or c.miserable or c.unhappy)) then
+        if not c.child and not (military and (c.mother or c.patient or c.staff or c.miserable or c.unhappy))
+                and not (c.away_post and (c.mother or c.patient or c.staff or (c.offices or 0) > 0)) then   -- (0.105.0)
             local score = 0
             for i, lvl in ipairs(c.skills or {}) do score = score + (i == 1 and 2 or 1) * (lvl or 0) end
             -- a dwarf already holding an office only when nobody else will do
@@ -214,7 +224,9 @@ local function candidates(code)
     for _, u in ipairs(dfhack.units.getCitizens(true)) do
         -- (0.104.168) a military office's holder takes a squad's leader seat:
         -- never a soldier of a squad already
-        if u.hist_figure_id >= 0 and not (military and u.military.squad_id >= 0) then
+        -- (0.105.0) the messenger is away for seasons: never a soldier either
+        local away = CIVILIAN_AWAY_OFFICES[code]
+        if u.hist_figure_id >= 0 and not ((military or away) and u.military.squad_id >= 0) then
             local skills = {}
             for i, name in ipairs(wants) do skills[i] = skill(u, name) end
             local okm, cat = pcall(function() return dfhack.units.getStressCategory(u) end)
@@ -223,6 +235,12 @@ local function candidates(code)
                        child = dfhack.units.isChild(u) or dfhack.units.isBaby(u),
                        mother = moms[u.id] or nil,
                        miserable = (okm and type(cat) == 'number' and cat <= 1) or nil}
+            if away then          -- (0.105.0) no key worker: staff, patients, mothers, office holders out
+                pcall(function() c.patient = (u.health and u.health.flags.needs_healthcare) or nil end)
+                pcall(function() c.staff = #u.occupations > 0 or nil end)
+                c.mother = mothers()[u.id] or nil
+                c.away_post = true
+            end
             if military then      -- (0.104.168, review)
                 c.unhappy = (okm and type(cat) == 'number' and cat <= 2) or nil
                 pcall(function() c.patient = (u.health and u.health.flags.needs_healthcare) or nil end)

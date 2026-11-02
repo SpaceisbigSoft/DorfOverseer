@@ -87,6 +87,12 @@ def facts(history: dict, stocks: dict | None, year: int, extra: dict | None = No
     last = history.get("last_siege_year")
     if isinstance(last, int):
         f["years_since_siege"] = year - last
+    # (0.105.0) Grudge-keepers: the sieges on the game's own record (brain/planner_world.py
+    # grudge_facts) count too, so a fort the AI took over remembers the sieges before it
+    if isinstance(f.get("sieges_on_record"), (int, float)):
+        f["sieges"] = max(f["sieges"], int(f["sieges_on_record"]))
+    if isinstance(f.get("years_since_siege_on_record"), (int, float)):
+        f["years_since_siege"] = min(f.get("years_since_siege", 10 ** 6), int(f["years_since_siege_on_record"]))
     if isinstance(stocks, dict) and "wood" in stocks and "boulders" in stocks:
         wood, stone = max(0, stocks.get("wood") or 0), max(0, stocks.get("boulders") or 0)
         f["stone_per_wood"] = stone / max(1, wood)

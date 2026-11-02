@@ -146,6 +146,9 @@ CAMERA_NAMES = {on = 'follows what happens, tours between', tour = 'tours the fo
 -- (0.104.90) how long the camera stays at each place
 CAMERA_PACES = {'normal', 'slow', 'fast'}
 CAMERA_PACE_NAMES = {normal = 'normal (20-40 s a place)', slow = 'slow (longer at each place)', fast = 'fast (shorter stops)'}
+-- (0.105.0) what the AI answers when a civilisation asks the fort for tribute
+TRIBUTE_CHOICES = {'small', 'pay', 'refuse'}
+TRIBUTE_NAMES = {small = 'pay small, refuse large', pay = 'always pay', refuse = 'always refuse'}
 CLEAR_ALERTS_NAMES = {quiet = 'old ones; dangers kept a week', all = 'all once a day old', none = 'none (yours)'}
 ATTACK_POLICY_NAMES = {ordinary = 'ordinary enemies, not great beasts', all = 'everything that can reach us',
                        never = 'never (alert and gate only)'}
@@ -250,6 +253,8 @@ function defaults()
         prisoners = 'keep',        -- (0.105.0) caged invaders: keep | release | kill (PRISONER_CHOICES)
         moon_cells = true,         -- (0.105.0) werebeast citizens locked in a cell round the full moon
         seal_caverns = true,       -- (0.105.0) the way down locked while a beast the squads can't take is in a cavern
+        tribute = 'small',         -- (0.105.0) tribute a civilisation asks (TRIBUTE_CHOICES)
+        make_contact = true,       -- (0.105.0, 13b) a messenger appointed and sent to sites not in contact
         expel_vampires = true,     -- a vampire found among the citizens is sent away      -- with --ai: a short AI-written story of each season (costs tokens)
         -- "Wipe what the AI learned" (Culture tab, Shift-V): each press adds 1;
         -- the overseer wipes when it sees the number go up
@@ -322,6 +327,7 @@ function sanitize(s)
     out.attack_policy = one_of(s.attack_policy, ATTACK_POLICIES, d.attack_policy)
     out.fort_goal = one_of(s.fort_goal, FORT_GOALS, d.fort_goal)
     out.clear_alerts = one_of(s.clear_alerts, CLEAR_ALERTS, d.clear_alerts)
+    out.tribute = one_of(s.tribute, TRIBUTE_CHOICES, d.tribute)      -- (0.105.0)
     out.camera = one_of(s.camera, CAMERA_MODES, d.camera)
     out.camera_pace = one_of(s.camera_pace, CAMERA_PACES, d.camera_pace)
     for _, k in ipairs({'fill_squads', 'train_squads', 'appoint_nobles', 'gate_lever', 'make_gear', 'engrave_slabs',
@@ -329,7 +335,8 @@ function sanitize(s)
                         'fortify_entrances', 'set_pop_cap', 'ai_chronicle', 'give_trinkets', 'water_works', 'expel_vampires', 'accept_visitors', 'answer_locations',
                         'hospital_burrow',          -- (0.104.168) the hospital burrow's switch
                         'calm_burrow',              -- (0.104.169) the calm-down burrows' switch
-                        'moon_cells', 'seal_caverns'}) do   -- (0.105.0) round 3's switches
+                        'moon_cells', 'seal_caverns',   -- (0.105.0) round 3's switches
+                        'make_contact'}) do         -- (0.105.0) the messenger and Make contact
         if s[k] ~= nil then out[k] = s[k] == true end
     end
     out.gear_weapon = one_of(s.gear_weapon, GEAR_WEAPONS, d.gear_weapon)
@@ -407,6 +414,8 @@ function for_ai(s)
         prisoners = s.prisoners,                   -- (0.105.0) round 3
         moon_cells = s.moon_cells,
         seal_caverns = s.seal_caverns,
+        tribute = s.tribute,                       -- (0.105.0)
+        make_contact = s.make_contact,             -- (0.105.0)
         wipe_learned = s.wipe_learned,
         wipe_learned_all = s.wipe_learned_all,
     }
