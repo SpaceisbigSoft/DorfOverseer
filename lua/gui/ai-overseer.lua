@@ -565,9 +565,18 @@ function RulesPage:init()
             on_change = function(v) p:set_field(f[1], v) end,
         })
     end
+    -- (0.105.0) the squads hide with the civilians (the row under the list's seven; merge: was t+11, on appoint_nobles)
+    table.insert(views, widgets.ToggleHotkeyLabel{
+        view_id = 'squads_shelter',
+        frame = {t = t + 12, l = 2, w = 50},
+        label = 'When hiding, squads wait in the shelter:',
+        label_width = 42,
+        initial_option = p.settings.squads_shelter ~= false,
+        on_change = function(v) p:set_field('squads_shelter', v) end,
+    })
     table.insert(views, widgets.CycleHotkeyLabel{
         view_id = 'gear_weapon',
-        frame = {t = t + 12, l = 2, w = 60},
+        frame = {t = t + 13, l = 2, w = 60},
         label = 'Weapon to make:',
         label_width = 34,
         options = (function()
@@ -581,7 +590,7 @@ function RulesPage:init()
     -- (0.105.0) round 3: prisoners, werebeasts' cells, the caverns sealed
     table.insert(views, widgets.CycleHotkeyLabel{
         view_id = 'prisoners',
-        frame = {t = t + 13, l = 2, w = 72},
+        frame = {t = t + 14, l = 2, w = 72},
         label = 'Invaders caught in cages:',
         label_width = 34,
         options = (function()
@@ -596,7 +605,7 @@ function RulesPage:init()
                         {'seal_caverns', 'Seal a cavern a beast is in:'}}) do
         table.insert(views, widgets.ToggleHotkeyLabel{
             view_id = f[1],
-            frame = {t = t + 13 + i, l = 2, w = 50},
+            frame = {t = t + 14 + i, l = 2, w = 50},
             label = f[2],
             label_width = 36,
             initial_option = p.settings[f[1]] ~= false,
@@ -640,6 +649,7 @@ function RulesPage:refresh()
     for _, k in ipairs({'moat', 'magma_workshops', 'irrigation'}) do               -- (0.105.0)
         self.subviews[k]:setOption(s[k] ~= false, false)
     end
+    self.subviews.squads_shelter:setOption(s.squads_shelter ~= false, false)       -- (0.105.0)
     self.subviews.engrave_slabs:setOption(s.engrave_slabs, false)
     self.subviews.import_smelting:setOption(s.import_smelting, false)
     self.subviews.alert_shelter:setOption(s.alert_shelter, false)

@@ -1040,6 +1040,146 @@ def _():
     LUA.execute("df = nil; dfhack = nil")
 
 
+# --- (0.105.0, round 2) ledges and the vertical cut -----------------------------------
+
+CUT = LUA.eval("function(M, e, s) local p, w = M.plan_cut(e, s); return {p, w} end")
+_cut = CUT
+
+
+def CUT(M_, e, s):
+    r = _cut(M_, e, s)
+    return r[1], r[2]
+
+
+def two_levels(top, below):
+    m = LUA.table()
+    for z, rows in ((0, below), (1, top)):
+        level = LUA.table()
+        for y, r in enumerate(rows):
+            level[y] = r
+        m[z] = level
+    W.map = m
+    W.buildings = LUA.table()
+
+
+# z1: the surface on the left, a 70-tall open court ('.' inside, roofed but wide
+# open to the surface down column x4) leading down by two stairs at x10 and x20;
+# z0: the fort below, reached only by those stairs.
+COURT_TOP = ["oooo" + "." * 26 for _ in range(19)]
+COURT_TOP[5] = COURT_TOP[5][:10] + "s" + COURT_TOP[5][11:]
+COURT_TOP[12] = COURT_TOP[12][:20] + "s" + COURT_TOP[12][21:]
+COURT_BELOW = ["#" * 30 for _ in range(19)]
+COURT_BELOW[5] = "#" * 10 + "s" + "." * 19
+COURT_BELOW[12] = "#" * 20 + "s" + "." * 9
+for _y in range(6, 12):
+    COURT_BELOW[_y] = "#" * 21 + "." * 9
+
+
+def court_entrance():
+    two_levels(COURT_TOP, COURT_BELOW)
+    s0 = LUA.table_from({1: LUA.table_from({"x": 25, "y": 8, "z": 0})})
+    es, _, _ = M.find_entrances(s0, W.buildings)
+    es = [es[i] for i in range(1, len(es) + 1)]
+    return es, s0
+
+
+@test("0.105.0 cut: a wide surface opening is closed where it leads down: a hatch on each stair down")
+def _():
+    es, s0 = court_entrance()
+    assert len(es) == 1 and es[0].kind == "surface" and es[0].width == 19, [(e.kind, e.width) for e in es]
+    e = es[0]
+    plan, why = CUT(M, e, s0)
+    assert plan is not None, why
+    assert sorted(((k % 4096, k // 4096 % 4096, k // (4096 * 4096)) for k in plan.hatches.values())) == \
+        [(10, 5, 1), (20, 12, 1)], list(plan.hatches.values())
+    t = LUA.table()
+    t[1] = e
+    e.id = 1
+    M.GATES = LUA.table_from({"entrances": t})
+    placed = []
+    M.place_hook = lambda text, pos: placed.append((text, pos.x, pos.y, pos.z)) or True
+    try:
+        r = M.cut_entrance(1, s0)
+    finally:
+        M.place_hook = None
+    assert r.ok and r.hatches == 2 and r.style == "cut", dict(r)
+    assert sorted(placed) == [("H", 10, 5, 1), ("H", 20, 12, 1)], placed
+
+
+@test("0.105.0 cut: the scan counts the hatches (planned: closing; built: the entrance's gates, watched like others)")
+def _():
+    es, s0 = court_entrance()
+    def hatch(i, x, y, kind="hatch"):
+        b = {"id": i, "kind": kind, "x1": x, "y1": y, "x2": x, "y2": y, "z": 1, "name": ""}
+        if kind == "pending":
+            b["what"] = "hatch"
+        return LUA.table_from(b)
+    W.buildings = LUA.table_from({1: hatch(31, 10, 5, "pending"), 2: hatch(32, 20, 12, "pending")})
+    es, _, _ = M.find_entrances(s0, W.buildings)
+    e = es[1]
+    assert e.closing and e.cut and e.waiting.hatch == 2 and not e.sealed, (e.closing, e.cut, e.sealed)
+    W.buildings = LUA.table_from({1: hatch(31, 10, 5), 2: hatch(32, 20, 12)})
+    es, _, _ = M.find_entrances(s0, W.buildings)
+    e = es[1]
+    assert e.sealed and e.cut and sorted(e.equipment[i].id for i in (1, 2)) == [31, 32], (e.sealed, e.cut)
+    W.buildings = LUA.table_from({1: hatch(31, 10, 5)})                    # one stair still open: not sealed
+    es, _, _ = M.find_entrances(s0, W.buildings)
+    assert not es[1].sealed and not es[1].closing
+
+
+@test("0.105.0 cut: refused when a ramp leads down, or when dwarves live in the open area")
+def _():
+    below = list(COURT_BELOW)
+    below[13] = "#" * 19 + "." * 11                         # floor under the court at y13, from x19
+    two_levels(COURT_TOP, below)
+    # x19 y13 on z0 is a ramp up into the court beside the stair's foot: a way down no hatch closes
+    old = M.tile
+    M.tile = LUA.eval("""function(old) return function(x, y, z)
+        if x == 19 and y == 13 and z == 0 then return {walk = true, shape = 'RAMP', material = 'STONE'} end
+        return old(x, y, z) end end""")(old)
+    try:
+        s0 = LUA.table_from({1: LUA.table_from({"x": 25, "y": 8, "z": 0})})
+        es, _, _ = M.find_entrances(s0, W.buildings)
+        e = [es[i] for i in range(1, len(es) + 1) if es[i].kind == "surface"][0]
+        plan, why = CUT(M, e, s0)
+        assert plan is None and "ramp" in str(why), why
+    finally:
+        M.tile = old
+    es, s0 = court_entrance()
+    s1 = LUA.table_from({1: LUA.table_from({"x": 15, "y": 8, "z": 1}),        # a dwarf lives in the court
+                         2: LUA.table_from({"x": 25, "y": 8, "z": 0})})
+    plan, why = CUT(M, es[0], s1)
+    assert plan is None and "dwarves live" in str(why), why
+
+
+@test("0.105.0 ledges: a citizen on a ledge outside doesn't seed entrances of his own")
+def _():
+    rows = list(FORT)
+    # a little roofed ledge (2 tiles) out on the surface at x1-2 y12, walled from the
+    # fort on its east, open to the surface on its west; a citizen stands on it
+    rows = with_tile(with_tile(with_tile(rows, 1, 11, "#"), 2, 11, "#"), 3, 11, "#")
+    rows = with_tile(with_tile(with_tile(rows, 1, 13, "#"), 2, 13, "#"), 3, 13, "#")
+    rows = with_tile(with_tile(with_tile(rows, 1, 12, "."), 2, 12, "."), 3, 12, "#")
+    setup(rows=rows, buildings=[DOOR_A])
+    ledge = LUA.table_from({"x": 1, "y": 12, "z": 0})
+    fort_ = LUA.table_from({"x": 20, "y": 8, "z": 0})
+    kept = M.fort_starts(LUA.table_from({1: ledge, 2: fort_}))
+    assert len(kept) == 1 and kept[1].x == 20, [(kept[i].x, kept[i].y) for i in range(1, len(kept) + 1)]
+    # alone (a new fort's first room), the pocket is the fort
+    kept = M.fort_starts(LUA.table_from({1: ledge}))
+    assert len(kept) == 1 and kept[1].x == 1
+    # the scan with both: the same entrances as the fort alone
+    es, _, _ = M.find_entrances(M.fort_starts(LUA.table_from({1: ledge, 2: fort_})), W.buildings)
+    assert len(es) == 4, len(es)
+    # with the ledge's citizen counted, the ledge was an inside of its own, with an entrance
+    es, _, _ = M.find_entrances(LUA.table_from({1: ledge, 2: fort_}), W.buildings)
+    assert len(es) == 5, len(es)
+    # a treetop never counts
+    setup(rows=with_tile(FORT, 1, 12, "B"), buildings=[DOOR_A])
+    kept = M.fort_starts(LUA.table_from({1: LUA.table_from({"x": 1, "y": 12, "z": 0}), 2: fort_}))
+    assert len(kept) == 1 and kept[1].x == 20
+
+
 if __name__ == "__main__":
     for name, ok, msg in RESULTS:
         print(f"[{'PASS' if ok else 'FAIL'}] {name}" + (f"\n        {msg}" if msg else ""))

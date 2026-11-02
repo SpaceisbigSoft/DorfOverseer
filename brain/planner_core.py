@@ -520,6 +520,13 @@ PLANNER_CONFIG = {
     "max_orders_per_game_day": 8,
     "rule_cooldown_ticks": 2 * 1200,
     "build_cooldown_ticks": 5 * 1200,   # a new building project at most every 5 days
+    # (0.105.0, round 2) an army that can fight (brain/planner_army.py)
+    "gear_fix_cooldown_ticks": 3 * 1200,        # the uniforms mended and gear handed out three days apart
+    "gear_fix_order_cooldown_ticks": 7 * 1200,  # a weapon the entries name and the fort lacks: a week apart
+    "quivers_cooldown_ticks": 1200,             # free quivers handed out once a day
+    "quivers_order_cooldown_ticks": 7 * 1200,
+    "bolts_cooldown_ticks": 3 * 1200,
+    "gate_cut_cooldown_ticks": 3 * 1200,
 }
 
 BREW_RECIPES = {"brew_drink", "brew_drink_from_fruit", "make_mead"}
@@ -556,7 +563,8 @@ NO_COOLDOWN = {"threat_alert", "strategist", "squad_attack", "squad_recall", "tr
                "trade_deal", "close_trade"}   # (time stands still while the trade screen is open)
 MULTI_PER_CYCLE = {"stuck_order", "uniform", "noble_rooms", "tools", "strategist", "squad_attack", "squad_recall", "train", "labor", "well_parts"}
 # Responses to an attack: never held back by the per-cycle action limit.
-EMERGENCY = {"threat_alert", "gate", "gates", "squad_attack", "flood", "gate_guard"}   # (0.104.83 gate_guard)
+EMERGENCY = {"threat_alert", "gate", "gates", "squad_attack", "flood", "gate_guard",   # (0.104.83 gate_guard)
+             "shelter_squads"}                                                      # (0.105.0)
 # (0.104.89) rules the strategist may never hold: survival, safety and the
 # answers to danger (it may still raise them)
 STEER_PROTECTED = EMERGENCY | {"shelter", "alerts", "squad_recall", "hazard", "water", "well", "drink",
@@ -889,6 +897,8 @@ def player_rules(s: dict) -> dict:
             "moat": st.get("moat") is not False,
             "magma_workshops": st.get("magma_workshops") is not False,
             "irrigation": st.get("irrigation") is not False,
+            # (0.105.0) the squads wait in the shelter while the AI hides: off only when the settings say so
+            "squads_shelter": st.get("squads_shelter") is not False,
             "clear_alerts": st.get("clear_alerts") if st.get("clear_alerts") in ("all", "quiet", "none") else "quiet"}
 
 
@@ -1853,7 +1863,7 @@ def _record_any_outcome(a: dict, r: dict, state: dict, memory, now: int) -> None
             memory.gate_failures.pop(key, None)
             memory.gate_failure_ticks.pop(key, None)
             memory.rescan_entrances = True        # the link shows in the next scan once it's made
-    elif t in ("build_gate_doors", "fortify_entrance"):
+    elif t in ("build_gate_doors", "fortify_entrance", "cut_entrance"):   # (0.105.0 cut_entrance)
         spot = _entrance_spot(state, a.get("entrance_id"))
         if not spot:
             return

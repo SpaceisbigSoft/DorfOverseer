@@ -145,8 +145,8 @@ def _gate_rules(s: dict, memory, cfg: dict, rules_: dict, any_reach: bool,
                                                       "style": style},
                                           f"{where} is {e.get('width')} wide: wall it down to a {style} gate", 5))
                 fortify_proposed = True
-        else:
-            open_wide.append((e, where))
+        elif not (isinstance(e.get("cut_hatches"), int) and e["cut_hatches"] > 0):
+            open_wide.append((e, where))        # (0.105.0) one a cut closes is _gate_cut_rule's (planner_army)
     if rules_["gate_lever"]:
         _lever_rule(s, memory, cfg, es, now, proposals)
     if not any_reach and rules_["fortify_entrances"]:
@@ -769,7 +769,8 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
     if targets:
         for q in able:
             names = ", ".join(sorted({str(threats[i].get("name") or "?") for i in targets}))[:80]
-            if not q.get("ai_orders"):
+            # (0.105.0) a squad waiting in the shelter goes out when it's sent
+            if not q.get("ai_orders") or q.get("sheltering"):
                 proposals.append(Proposal(
                     "squad_attack", {"type": "squad_orders", "squad_id": q["id"], "kill": targets[:50]},
                     f"{len(targets)} enemies can reach the dwarves ({names}): send {q.get('name') or 'the squad'}", 0))
@@ -814,6 +815,8 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
         for q in squads:
             if q.get("guarding") and invaders_near:
                 continue                     # (0.104.83) holding the gate while invaders are about
+            if q.get("sheltering") and s.get("civ_alert"):
+                continue                     # (0.105.0) in the shelter until the alarm is over (planner_army)
             if q.get("ai_orders"):
                 proposals.append(Proposal("squad_recall", {"type": "squad_orders", "squad_id": q["id"], "clear": True},
                                           f"no more threats: call {q.get('name') or 'the squad'} back", 1))

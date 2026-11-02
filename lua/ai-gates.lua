@@ -549,6 +549,7 @@ function find_entrances(starts, buildings)
                 end
             end
         end
+        cut_equipment(e, buildings, starts, inside)      -- (0.105.0) hatches on the stairs down from a wide opening
         table.insert(entrances, e)
     end
     return entrances, inside, n
@@ -605,8 +606,12 @@ function pick_levers(entrances, inside)
 end
 
 function scan(now_tick)
-    local entrances, inside, n = find_entrances(citizen_starts(), gate_buildings())
+    cache, edge_cache = {}, {}
+    -- (0.105.0) citizens on a ledge or a treetop don't seed a fort of their own
+    local fstarts = fort_starts(citizen_starts())
+    local entrances, inside, n = find_entrances(fstarts, gate_buildings())
     pick_levers(entrances, inside)
+    pcall(cut_survey, entrances, fstarts)        -- (0.105.0)
     for _, e in ipairs(entrances) do
         for _, b in ipairs(e.equipment) do
             set_name(b.id, gate_name(e))
@@ -2263,6 +2268,8 @@ function summary()
                             sealed = e.sealed, closing = e.closing == true, equipment = eq,
                             bridges_unworked = e.bridges_unworked or {},
                             door_spots = #e.door_spots,
+                            cut = e.cut,                    -- (0.105.0) closed by hatches on its stairs down
+                            cut_hatches = e.cut_hatches, cut_why = e.cut_why,
                             waiting = e.waiting,
                             closing_days = closing_days(e),
                             closed = GATES.closed and GATES.closed[e.id] or false})
@@ -2276,6 +2283,260 @@ function summary()
             entrances = list, armed = GATES.armed == true, watch_error = GATES.watch_error,
             parts = GATES.scanned and gate_parts() or nil,
             citizens_outside = GATES.scanned and citizens_outside() or nil}
+end
+
+---------------------------------------------------------------------------
+-- (0.105.0) Citizens on ledges, and the vertical cut.
+--
+-- Ledges: the map of the inside starts from where the citizens stand. One
+-- on a tree's branches, a cliff ledge or a small roofed pocket outside the
+-- fort seeded a little "inside" of its own, and every edge of it became an
+-- entrance (Teacheroar: "the way in at x30 y187 is a branch", refused six
+-- times). fort_starts keeps the citizens who stand in the fort: a start on a
+-- treetop never counts; one in a small pocket (under LEDGE_MAX tiles) only
+-- when no citizen stands anywhere bigger and that pocket holds the most.
+--
+-- The cut: an opening wider than the AI walls (50 tiles: titans walked into
+-- Teacheroar through one) or one refused for what stands in it. The open
+-- area behind it (the "porch": everything reachable from the opening without
+-- going below its level) leads down into the fort somewhere: each stair
+-- going down from it gets a hatch, which the gate watcher locks like any
+-- other gate. Checked first: the hatches must seal the opening off from the
+-- dwarves, the porch must not be where the dwarves live, and a ramp down
+-- (no hatch fits one) is refused with where it is.
+---------------------------------------------------------------------------
+
+LEDGE_MAX = 120          -- tiles: a pocket this small with a citizen in it is a ledge, not the fort
+CUT_MAX_PORCH = 6000     -- tiles: an open area bigger than this is the fort itself, not a porch
+CUT_MAX_HATCHES = 12
+
+function fort_starts(starts)
+    cache, edge_cache = {}, {}           -- (read fresh: it runs before a scan or a cut)
+    local big, groups, order = {}, {}, {}
+    local keep_big, seen_tile = {}, {}
+    for _, p in ipairs(starts or {}) do
+        local k = key(p.x, p.y, p.z)
+        local t = T(p.x, p.y, p.z)
+        if t and not seen_tile[k] and not treetop(t) and inside_or_courtyard(t, k) then
+            seen_tile[k] = true
+            if big[k] then
+                table.insert(keep_big, p)
+            else
+                -- a flood from it, stopped at LEDGE_MAX tiles
+                local seen, queue, head = {[k] = true}, {k}, 1
+                local small = true
+                while head <= #queue do
+                    if #queue > LEDGE_MAX then small = false break end
+                    local ck = queue[head]
+                    head = head + 1
+                    local x, y, z = unkey(ck)
+                    moves(x, y, z, T(x, y, z), function(nx, ny, nz)
+                        local nk = key(nx, ny, nz)
+                        if seen[nk] then return end
+                        local nt = T(nx, ny, nz)
+                        if nt and nt.walk and not nt.hidden and not nt.special and not treetop(nt)
+                                and inside_or_courtyard(nt, nk) then
+                            seen[nk] = true
+                            table.insert(queue, nk)
+                        end
+                    end)
+                end
+                if small then
+                    local id = math.huge
+                    for sk in pairs(seen) do if sk < id then id = sk end end
+                    if not groups[id] then groups[id] = {}; table.insert(order, id) end
+                    table.insert(groups[id], p)
+                else
+                    for sk in pairs(seen) do big[sk] = true end
+                    table.insert(keep_big, p)
+                end
+            end
+        end
+    end
+    if #keep_big > 0 then return keep_big end
+    -- no citizen in a big place (a new fort's first room): the pocket(s) with the most
+    local most = 0
+    for _, id in ipairs(order) do most = math.max(most, #groups[id]) end
+    local out = {}
+    for _, id in ipairs(order) do
+        if #groups[id] == most then for _, p in ipairs(groups[id]) do table.insert(out, p) end end
+    end
+    return out
+end
+
+-- The porch and its ways down: {n = tiles, stairs = {key...}, ramps = {key...},
+-- home = true when a dwarf stands on it, capped = true when too big}.
+function porch_of(e, starts)
+    cache = cache or {}
+    edge_cache = edge_cache or {}
+    local home = {}
+    for _, p in ipairs(starts or {}) do home[key(p.x, p.y, p.z)] = true end
+    local z0 = e.z
+    local seen, queue, head = {}, {}, 1
+    for _, k in ipairs(e.inside_list) do
+        local _, _, kz = unkey(k)
+        z0 = math.min(z0, kz)                    -- (the opening may span two levels)
+        if not seen[k] then seen[k] = true; table.insert(queue, k) end
+    end
+    local out = {n = 0, stairs = {}, ramps = {}}
+    local stair_seen, ramp_seen = {}, {}
+    while head <= #queue do
+        if #queue > CUT_MAX_PORCH then out.capped = true break end
+        local k = queue[head]
+        head = head + 1
+        if home[k] then out.home = true end
+        local x, y, z = unkey(k)
+        local t = T(x, y, z)
+        moves(x, y, z, t, function(nx, ny, nz)
+            local nk = key(nx, ny, nz)
+            if seen[nk] or e.outs[nk] then return end
+            local nt = T(nx, ny, nz)
+            if not nt or not nt.walk or nt.hidden or nt.special or treetop(nt) or not inside_or_courtyard(nt, nk) then
+                return
+            end
+            if nz < z0 then
+                -- a way down below the opening's level: a stair (hatch on the
+                -- stair it leaves from) or a ramp
+                if nx == x and ny == y then
+                    if not stair_seen[k] then stair_seen[k] = true; table.insert(out.stairs, k) end
+                elseif not ramp_seen[nk] then
+                    ramp_seen[nk] = true
+                    table.insert(out.ramps, nk)
+                end
+                return
+            end
+            seen[nk] = true
+            table.insert(queue, nk)
+        end)
+    end
+    out.n = #queue
+    table.sort(out.stairs)
+    table.sort(out.ramps)
+    return out
+end
+
+-- Does blocking these keys keep the outside from the dwarves, however big
+-- the porch? (seals() with the pocket the porch's size)
+local function cut_seals(starts, e, blocked, porch_n)
+    local was = POCKET
+    POCKET = math.max(POCKET, porch_n + 50)
+    local ok, sealed = pcall(seals, starts, {outs = e.outs}, blocked)
+    POCKET = was
+    return ok and sealed
+end
+
+-- The cut for one entrance: {hatches = {key...}, porch = n} or nil, why.
+function plan_cut(e, starts)
+    cache = cache or {}
+    edge_cache = edge_cache or {}
+    starts = fort_starts(starts)
+    local p = porch_of(e, starts)
+    if p.capped then
+        return nil, ('the open area behind it runs on for more than %d tiles (it is the fort, not a porch)'):format(CUT_MAX_PORCH)
+    end
+    if p.home then return nil, 'dwarves live in the open area behind it: no cut that leaves them outside' end
+    if #p.ramps > 0 then
+        local x, y, z = unkey(p.ramps[1])
+        return nil, ('a ramp leads down from the open area at x%d y%d (no hatch fits a ramp): wall it'):format(x, y)
+    end
+    if #p.stairs == 0 then return nil, 'nothing leads down from the open area behind it' end
+    if #p.stairs > CUT_MAX_HATCHES then
+        return nil, ('%d stairs lead down from the open area: too many to close with hatches'):format(#p.stairs)
+    end
+    for _, k in ipairs(p.stairs) do
+        local x, y, z = unkey(k)
+        local t = T(x, y, z)
+        if not t or t.liquid then return nil, ('water on the stair at x%d y%d'):format(x, y) end
+    end
+    local blocked = {}
+    for _, k in ipairs(p.stairs) do blocked[k] = true end
+    if not cut_seals(starts, e, blocked, p.n) then
+        return nil, 'hatches on its stairs would not seal it (another way leads in)'
+    end
+    return {hatches = p.stairs, porch = p.n}
+end
+
+-- In the scan: hatches (built or planned) on the porch's stairs close an
+-- entrance the doors and walls can't. Fills e.equipment / e.sealed /
+-- e.closing / e.waiting / e.cut; never changes an entrance it can't close.
+function cut_equipment(e, buildings, starts, inside)
+    if e.sealed or e.closing or e.kind ~= 'surface' or #e.door_spots > 0 then return end
+    local hatch_at, pending_at, any = {}, {}, false
+    for _, b in ipairs(buildings) do
+        if b.x1 == b.x2 and b.y1 == b.y2 then
+            if b.kind == 'hatch' then hatch_at[key(b.x1, b.y1, b.z)] = b; any = true
+            elseif b.kind == 'pending' and b.what == 'hatch' then pending_at[key(b.x1, b.y1, b.z)] = b; any = true end
+        end
+    end
+    if not any then return end
+    local p = porch_of(e, starts)
+    if p.capped or p.home or #p.ramps > 0 or #p.stairs == 0 then return end
+    local built, waiting = {}, 0
+    for _, k in ipairs(p.stairs) do
+        if hatch_at[k] then table.insert(built, hatch_at[k])
+        elseif pending_at[k] then waiting = waiting + 1
+        else return end                          -- a stair with nothing: not the cut
+    end
+    if waiting > 0 then
+        e.closing, e.cut = true, true
+        e.waiting = e.waiting or {}
+        e.waiting.hatch = math.max(e.waiting.hatch or 0, waiting)   -- (the scan may have counted them near)
+        return
+    end
+    local blocked = {}
+    for _, b in ipairs(built) do blocked[key(b.x1, b.y1, b.z)] = true end
+    if cut_seals(starts, e, blocked, p.n) then
+        for _, b in ipairs(built) do table.insert(e.equipment, b) end
+        table.sort(e.equipment, function(a, b) return a.id < b.id end)
+        e.sealed, e.cut = true, true
+    end
+end
+
+-- For the scan: which open surface entrances a cut would close
+-- (e.cut_hatches) or why not (e.cut_why); the widest first, CUT_SURVEY_MAX
+-- of them (each is a walk of its open area).
+CUT_SURVEY_MAX = 6
+function cut_survey(entrances, starts)
+    local list = {}
+    for _, e in ipairs(entrances) do
+        if not e.sealed and not e.closing and e.kind == 'surface' and #e.door_spots == 0 then
+            table.insert(list, e)
+        end
+    end
+    table.sort(list, function(a, b) return a.width > b.width end)
+    for i = 1, math.min(#list, CUT_SURVEY_MAX) do
+        local e = list[i]
+        local ok, plan, why = pcall(plan_cut, e, starts)
+        if ok and plan then e.cut_hatches = #plan.hatches
+        else e.cut_why = ok and why or ('error: ' .. tostring(plan):sub(1, 100)) end
+    end
+end
+
+-- The action: hatches on the porch's stairs (buildingplan waits for hatch
+-- covers; the masons are asked by the gate parts rule).
+function cut_entrance(id, starts)
+    local e
+    for _, x in ipairs(GATES.entrances or {}) do if x.id == id then e = x end end
+    if not e then return {ok = false, rejected = true, error = 'no such entrance (scan first)'} end
+    cache, edge_cache = {}, {}
+    local plan, why = plan_cut(e, starts or citizen_starts())
+    if not plan then return {ok = false, error = why} end
+    local placed, failed, pieces = 0, {}, {}
+    for _, k in ipairs(plan.hatches) do
+        local x, y, z = unkey(k)
+        local ok, reason = place('H', {x = x, y = y, z = z})
+        if ok then
+            placed = placed + 1
+            table.insert(pieces, ('%d,%d,%d'):format(x, y, z))
+        else
+            table.insert(failed, ('x%d y%d: %s'):format(x, y, tostring(reason)))
+        end
+    end
+    if placed == 0 then
+        return {ok = false, error = 'no hatch could be placed (' .. table.concat(failed, '; '):sub(1, 200) .. ')'}
+    end
+    return {ok = true, style = 'cut', hatches = placed, pieces = pieces, porch = plan.porch,
+            failed = #failed > 0 and table.concat(failed, '; '):sub(1, 300) or nil}
 end
 
 -- A new fort: forget the old one's gates.

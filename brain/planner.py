@@ -41,6 +41,8 @@ from planner_homes import *  # noqa: E402,F401,F403  (0.104.168: homes and house
 from planner_threats import _threat_rules  # noqa: E402  (0.105.0 round 3: threats answered)
 from planner_world import (_contact_rule, _export_rule, _hostile_trade_filter, _meeting_answer_rule,  # noqa: E402
                            _messenger_rule, _world_notes, note_world)  # (0.105.0: the world outside, 12b and 13b)
+from planner_army import (_army_gear_rule, _quiver_rule, _bolts_rule,  # noqa: E402  (0.105.0, round 2)
+                          _shelter_squads_rule, _gate_cut_rule)
 
 
 def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[Proposal], list[str]]:
@@ -433,6 +435,13 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
         _guard(_military_rules, s, memory, cfg, traits, citizens, proposals, notes)
         _guard(_gate_guard_rule, s, memory, cfg, proposals)
         _guard(_gate_dogs_rule, s, memory, cfg, proposals)
+        # (0.105.0, round 2) an army that can fight (brain/planner_army.py)
+        _guard(_army_gear_rule, s, memory, cfg, proposals, notes)
+        _guard(_quiver_rule, s, memory, cfg, proposals, notes)
+        _guard(_bolts_rule, s, memory, cfg, proposals, notes)
+        _guard(_shelter_squads_rule, s, memory, cfg, proposals, notes)
+        if can_use("entrances"):
+            _guard(_gate_cut_rule, s, memory, cfg, proposals, notes)
 
     # 6. Idle hands ------------------------------------------------------------
     if can_use("stocks", "orders"):

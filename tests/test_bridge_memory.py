@@ -1207,6 +1207,35 @@ def _():
     assert not H.run("act", "{}").ok
 
 
+@test("0.105.0: the army's actions are in the table, bounded, and passed to ai-military and ai-gates")
+def _():
+    reset()
+    M = H.module()
+    LUA.execute("""local M, H = ...
+      H.calls = {}
+      local function rec(what) return function(...) table.insert(H.calls, {what = what, args = {...}}); return {ok = true} end end
+      H.scripts = {['ai-military'] = {fix_gear_gaps = rec('fix'), assign_quivers = rec('quivers'),
+                                      squad_bolts = rec('bolts'), shelter = rec('shelter')},
+                   ['ai-gates'] = {cut_entrance = rec('cut')}}
+    """, M, H)
+    for k in ("fix_gear_gaps", "assign_quivers", "squad_bolts", "shelter_squads", "cut_entrance"):
+        assert LUA.eval(f"function(M) return M.ACTIONS.{k} == M.act_{k} end")(M), k
+    assert M.act_fix_gear_gaps(t({"shields": True, "dry_run": True})).ok
+    assert H.calls[1].what == "fix" and H.calls[1].args[1] is True and H.calls[1].args[2] is True
+    assert M.act_fix_gear_gaps(t({"shields": "yes"})).rejected
+    assert M.act_assign_quivers(t({})).ok and H.calls[2].args[2] == 10
+    assert M.act_assign_quivers(t({"limit": 51})).rejected
+    assert M.act_squad_bolts(t({"squad_id": 8})).ok and H.calls[3].args[1] == 8
+    assert M.act_squad_bolts(t({})).rejected
+    r = M.act_shelter_squads(t({"squads": t({1: 11, 2: 12})}))
+    assert r.ok and r.sheltered == 2 and H.calls[4].args[1] == 11 and H.calls[5].args[1] == 12, dict(r)
+    assert M.act_shelter_squads(t({"squads": t({})})).rejected
+    assert M.act_shelter_squads(t({"squads": t({1: "x"})})).rejected
+    assert M.act_cut_entrance(t({"entrance_id": 3})).ok and H.calls[6].what == "cut" and H.calls[6].args[1] == 3
+    assert M.act_cut_entrance(t({})).rejected
+    assert len(H.calls) == 6                                          # a refused call never reaches the game
+
+
 if __name__ == "__main__":
     for name, ok, msg in RESULTS:
         print(f"[{'PASS' if ok else 'FAIL'}] {name}" + (f"\n        {msg}" if msg else ""))

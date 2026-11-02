@@ -36,8 +36,22 @@ for the civilian alert). From then on the AI:
   gate style (see culture.md): plain, narrow, fortified, gatehouse or
   grand. Co-pilot asks first for both. Before building, the AI checks the
   walls would really close the opening and wouldn't cut part of the fort
-  off. Wider than 50 tiles: Needs you. The map is redone weekly, which picks
-  up the new doors once the dwarves have built them.
+  off. Wider than 50 tiles (or refused for what stands in it): the AI cuts
+  it below instead (0.105.0): the open area behind the opening is followed
+  to the stairs that lead down from it into the fort, and each gets a
+  hatch, locked by the gate watcher like any other gate. A ramp down, or
+  dwarves living in that open area: Needs you. Citizens standing on a ledge
+  or a treetop outside no longer make "entrances" of their own. The map is
+  redone weekly, which picks up the new doors once the dwarves have built them.
+- **Arms the soldiers (0.105.0).** Every empty weapon or shield entry is
+  checked against every item of its kind, and the report says why it stays
+  empty (`weapon_gaps_why`). The AI mends what it can (a stale claim on a
+  soldier's list, a material the fort lacks in a uniform it set, a shield
+  entry for its metal melee squads while shields lie spare), makes the
+  weapon the entries name when there is none at all, gives each crossbow
+  soldier a free quiver, and sets bolts for a crossbow squad that has none.
+  When it hides from a great danger, the squads wait in the civilian
+  shelter (Rules tab: "When hiding, squads wait in the shelter").
   **Openings with something in them (bridge 0.34+):** when the opening itself
   can't take a gate (stairs, water, a workshop or other building, a bridge no
   lever works), the gate goes on the first clear line up to 3 tiles further

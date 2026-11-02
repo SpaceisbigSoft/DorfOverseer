@@ -257,6 +257,7 @@ function defaults()
         make_contact = true,       -- (0.105.0, 13b) a messenger appointed and sent to sites not in contact
         -- (0.105.0) water works: a moat from the river (only where one is found), magma workshops, a muddied farm level
         moat = true, magma_workshops = true, irrigation = true,
+        squads_shelter = true,     -- (0.105.0) while the AI hides from a great danger, the squads wait in the shelter
         expel_vampires = true,     -- a vampire found among the citizens is sent away      -- with --ai: a short AI-written story of each season (costs tokens)
         -- "Wipe what the AI learned" (Culture tab, Shift-V): each press adds 1;
         -- the overseer wipes when it sees the number go up
@@ -339,7 +340,8 @@ function sanitize(s)
                         'calm_burrow',              -- (0.104.169) the calm-down burrows' switch
                         'moon_cells', 'seal_caverns',   -- (0.105.0) round 3's switches
                         'make_contact',             -- (0.105.0) the messenger and Make contact
-                        'moat', 'magma_workshops', 'irrigation'}) do   -- (0.105.0) the water works' switches
+                        'moat', 'magma_workshops', 'irrigation',   -- (0.105.0) the water works' switches
+                        'squads_shelter'}) do       -- (0.105.0) the squads hide in the shelter too
         if s[k] ~= nil then out[k] = s[k] == true end
     end
     out.gear_weapon = one_of(s.gear_weapon, GEAR_WEAPONS, d.gear_weapon)
@@ -420,6 +422,7 @@ function for_ai(s)
         tribute = s.tribute,                       -- (0.105.0)
         make_contact = s.make_contact,             -- (0.105.0)
         moat = s.moat, magma_workshops = s.magma_workshops, irrigation = s.irrigation,   -- (0.105.0)
+        squads_shelter = s.squads_shelter,         -- (0.105.0)
         wipe_learned = s.wipe_learned,
         wipe_learned_all = s.wipe_learned_all,
     }
