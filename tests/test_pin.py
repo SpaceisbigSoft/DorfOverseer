@@ -168,7 +168,12 @@ def _():
     assert rv.load_fails == {"region2": 1}, rv.load_fails
     assert rv.loading and rv.loading[0] == "region2"          # tried again at once (one failure so far)
     t[0] += 60
-    df.state = "world"
+    df.state, df.site = "world", ""                       # (0.105.0 review) the world up, no fort's map yet
+    df.run = (lambda orig: lambda *a: ("WORLD-LOADED SITE=" if a[0] == "lua" and df.site == "" else orig(*a)))(df.run)
+    rv.tick()
+    assert rv.loading and rv.loading[0] == "region2" and rv.load_fails == {"region2": 1}, (rv.loading, rv.load_fails)
+    t[0] += 60
+    df.site = 7
     rv.tick()
     assert rv.load_fails == {} and rv.loading is None
 
@@ -221,6 +226,22 @@ def _():
     assert (copies[0] / "world.sav").read_text() == "region2"
     # another world loaded (a daytime run): no copy, whatever is due
     assert backup.maybe(root, "region5", now=now + 2 * 86400, fort={"world": "Other", "site_id": 3}) is None
+
+
+@test("revive (0.105.0 review): an 'AI restore' folder restored earlier is a load candidate later")
+def _():
+    root = TMP / "cand" / "save"
+    make_save(root, "region2", 5000)
+    make_save(root, "AI restore 2026-10-31 0100", 100)
+    last_fort("Enxah", "region2", 7, df_path=str(TMP / "cand"))
+    pin.take(time.time() - 10)
+    revive.save_root = lambda p, s=None: root
+    try:
+        folders, _ = revive.load_candidates()
+    finally:
+        import dfhack
+        revive.save_root = dfhack.save_root
+    assert folders[:2] == ["AI restore 2026-10-31 0100", "region2"], folders
 
 
 @test("backup: never in a season's last 3 days, nor while any save folder is being written")

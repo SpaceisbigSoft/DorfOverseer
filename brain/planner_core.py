@@ -501,6 +501,7 @@ PLANNER_CONFIG = {
     "waterworks_retry_ticks": 28 * 1200,  # a work refused (no site, path blocked): tried again 4 weeks on
     "waterworks_moat_cooldown_ticks": 1200, "waterworks_magma_cooldown_ticks": 1200,
     "waterworks_irrigation_cooldown_ticks": 1200, "waterworks_pump_cooldown_ticks": 1200,
+    "waterworks_check_cooldown_ticks": 3 * 1200,   # (0.105.0 review) a done work's leak check every 3 days
     "cistern_hold": False,             # (0.104.144) on hold (the player: the first design would flood the fort); released 0.104.145 (the second)
     "dwarves_per_well": 70,            # (0.104.141) another well for every this many dwarves (0: one well)
     "extra_well_retry_days": 84,       # (0.104.141) another well that couldn't be placed: tried again a season on
@@ -607,6 +608,7 @@ class Memory:
     last_fired: dict = field(default_factory=dict)       # rule -> absolute tick
     orders_by_day: dict = field(default_factory=dict)    # absolute game day (str) -> count
     ai_alert_raised: bool = False
+    threat_alarm: dict = field(default_factory=dict)   # (0.105.0 review) {since, why}: the threats round's alarm, capped
     quiet_cycles: int = 0
     last_threat_tick: int = 0          # (0.104.100) a threat could reach the dwarves
     last_great_tick: int = 0           # (0.104.100) a great danger on the surface or in reach

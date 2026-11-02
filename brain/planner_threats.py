@@ -52,6 +52,8 @@ THREAT_CONFIG = {
     "moon_after_days": 2,                    # ...and this long after
     "moon_cell_cooldown_ticks": 300,
     "seal_cavern_cooldown_ticks": 600,
+    "seal_missing_days": 7,                  # (0.105.0 review) a sealed layer gone from the report: unlocked after
+    "threat_alarm_max_days": 7,              # (0.105.0 review) the threats round holds the alarm this long at most
     "rescue_labor_cooldown_ticks": 14 * 1200,
 }
 PLANNER_CONFIG.update({k: v for k, v in THREAT_CONFIG.items() if k not in PLANNER_CONFIG})
@@ -91,8 +93,15 @@ def threat_alert(s: dict, cfg: dict) -> str:
     t = _d(s.get("threats"))
     u = _d(t.get("undead"))
     for x in _l(u.get("list")):
-        if isinstance(x, dict) and (x.get("can_reach_dwarves") is True
-                                    or (_num(x.get("distance")) and x["distance"] <= _c(cfg, "undead_near"))):
+        # (0.105.0 review) only the dead that can walk to the dwarves (walled-off
+        # cavern undead never could), near them; and not the dead a reanimating
+        # land keeps on the surface (not invaders, not great dangers: they never
+        # leave, as held_off_threats has said since 0.104.139)
+        if not isinstance(x, dict) or x.get("can_reach_dwarves") is not True:
+            continue
+        if x.get("outside") and not x.get("invader") and not x.get("great"):
+            continue
+        if not _num(x.get("distance")) or x["distance"] <= _c(cfg, "undead_near"):
             return f"the walking dead ({x.get('name') or 'undead'}) near the dwarves"
     if _num(u.get("cloud_outside_near")) and u["cloud_outside_near"] <= _c(cfg, "evil_cloud_near"):
         return (f"an evil cloud{' of ' + str(u['cloud_material']) if u.get('cloud_material') else ''} "
@@ -236,7 +245,9 @@ def _were(s, cfg, t, rules, proposals, notes):
         want = [x["id"] for x in rows if not x.get("changed")]
         locked = all(x.get("cell") and x.get("locked") for x in rows if not x.get("changed"))
         if want and not locked:
-            proposals.append(Proposal("moon_cell", {"type": "moon_cell", "ids": want},
+            # (0.105.0 review) the changed ones' ids sent too, so their cells are kept
+            ids = want + [x["id"] for x in rows if x.get("changed") and x.get("cell")]
+            proposals.append(Proposal("moon_cell", {"type": "moon_cell", "ids": ids},
                                       f"the full moon is near: {', '.join(str(x.get('name')) for x in rows[:3])} "
                                       "into a cell (a jail or a free bedroom, locked once inside)", 1))
     elif cells and not any(x.get("changed") for x in rows):
@@ -267,12 +278,13 @@ def _cavern_beasts(s, cfg, memory, t, rules, proposals, notes):
                 notes.append(f"{here[0].get('name')} ({here[0].get('kind')}) in {name}: the squads are strong "
                              f"enough ({verdict}); the cavern is left open for them")
                 continue
-            tiles = [p for p in ([_d(c.get("open_at"))] + [_d(j) for j in _l(c.get("junctions"))]
-                                 + [{"x": _d(c.get("open_at")).get("x"), "y": _d(c.get("open_at")).get("y"),
-                                     "z": col.get("z")} for col in _l(c.get("column")) if isinstance(col, dict)])
-                     if all(_num(p.get(k)) for k in ("x", "y", "z"))]
+            tiles = [p for p in seal_tiles(c) if all(_num(p.get(k)) for k in ("x", "y", "z"))]
             if tiles and name not in sealed:
-                proposals.append(Proposal("seal_cavern", {"type": "seal_cavern", "layer": name, "tiles": tiles[:12]},
+                act = {"type": "seal_cavern", "layer": name, "tiles": tiles[:12]}
+                # (0.105.0 review) the cavern's levels: the bridge refuses while a dwarf is down there
+                if _num(c.get("z_top")) and _num(c.get("z_bottom")):
+                    act["z1"], act["z2"] = int(c["z_bottom"]), int(c["z_top"])
+                proposals.append(Proposal("seal_cavern", act,
                                           f"{here[0].get('name')} ({here[0].get('kind')}) is in {name}, open to the "
                                           f"fort, and the squads can't take it ({verdict}): lock the doors and "
                                           "hatches on the way down", 1))
@@ -282,10 +294,41 @@ def _cavern_beasts(s, cfg, memory, t, rules, proposals, notes):
         elif name in sealed and not here:
             proposals.append(Proposal("seal_cavern", {"type": "seal_cavern", "layer": name, "open": True},
                                       f"no great beast left in {name}: unlock the way down again", 3))
+    # (0.105.0 review) a sealed layer the deep report no longer lists: unlocked after some days
+    names = {c.get("name") for c in _l(d.get("caverns")) if isinstance(c, dict)}
+    for name, rec in sealed.items():
+        days = _d(rec).get("days")
+        if (rules["seal_caverns"] and name not in names and _num(days)
+                and days >= _c(cfg, "seal_missing_days")):
+            proposals.append(Proposal("seal_cavern", {"type": "seal_cavern", "layer": name, "open": True},
+                                      f"{name} sealed {days} days and no longer in the deep report: unlock the way down", 3))
     if not rules["seal_caverns"]:
         for name in sealed:
             proposals.append(Proposal("seal_cavern", {"type": "seal_cavern", "layer": name, "open": True},
                                       "sealing the caverns is off on the Rules tab: unlock the way down", 3))
+
+
+STAIRISH = ("STAIR", "RAMP")
+
+
+def seal_tiles(c: dict) -> list:
+    """(0.105.0 review) The tiles on the actual way down to a cavern: where
+    it meets the fort (open_at), each junction (the fort's tile and the
+    cavern's beside it), and the column above open_at only where it is a
+    stair or ramp or holds a hatch - not every tile up to 6
+    levels, whose doors may be any room's."""
+    oa = _d(c.get("open_at"))
+    out = [oa]
+    for j in _l(c.get("junctions")):
+        if isinstance(j, dict):
+            out.append({k: j.get(k) for k in ("x", "y", "z")})
+            if isinstance(j.get("cave"), dict):
+                out.append({k: j["cave"].get(k) for k in ("x", "y", "z")})
+    for col in _l(c.get("column")):
+        if isinstance(col, dict) and (any(w in str(col.get("shape") or "").upper() for w in STAIRISH)
+                                      or col.get("building") == "Hatch"):
+            out.append({"x": oa.get("x"), "y": oa.get("y"), "z": col.get("z")})
+    return out
 
 
 def player_attack(s: dict) -> str:
@@ -326,6 +369,21 @@ def _threat_rules(s: dict, memory, cfg: dict, proposals: list, notes: list) -> N
             notes.append(f"threat rule {name} failed ({type(e).__name__}: {str(e)[:100]})")
     # the alarm: up for the undead, an evil cloud or a surface beast; kept up while they last
     why = threat_alert(s, cfg)
+    # (0.105.0 review) held at most threat_alarm_max_days: past that it is the player's call
+    if why:
+        held = memory.threat_alarm if isinstance(getattr(memory, "threat_alarm", None), dict) else {}
+        now = abs_tick(s)
+        since = held.get("since")
+        if not isinstance(since, int) or since > now:
+            memory.threat_alarm = {"since": now, "why": why}
+            since = now
+        days = (now - since) // TICKS_PER_DAY
+        if days >= _c(cfg, "threat_alarm_max_days"):
+            ask_player(notes, f"{why} for {days} days: the AI no longer holds the alarm for it "
+                              "(sound it, or wall the danger off, yourself)")
+            return
+    else:
+        memory.threat_alarm = {}
     if why:
         proposals[:] = [p for p in proposals if p.action != {"type": "civ_alert", "on": False}]
         if not s.get("civ_alert") and not any(p.action == {"type": "civ_alert", "on": True} for p in proposals):

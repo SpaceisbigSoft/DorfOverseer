@@ -102,12 +102,16 @@ def _work_notes(id_: str, row: dict, s: dict, proposals: list, notes: list) -> b
     if kind == "magma" and row.get("shop"):
         step["shop"] = row["shop"]
     if stage == "held":
-        ask_player(notes, f"{words} is held: {row.get('why')}. Mend it, or the AI retires it "
+        # (0.105.0 review) the AI never retires a held work itself: said so
+        ask_player(notes, f"{words} is held: {row.get('why')}. Mend it by hand; the AI leaves it held "
                           "(its floodgate stays shut)")
         return False
     if stage in ("done", "retired"):
-        if stage == "done" and row.get("gate") == "open" and kind in ("magma", "pump", "irrigation"):
-            pass      # the bridge's done step watches for leaks
+        # (0.105.0 review) a done work with its floodgate open: the bridge's done
+        # step looks for a leak (and shuts it); it answers "waiting", so the
+        # refusal book asks again every couple of days
+        if stage == "done" and row.get("gate") == "open":
+            proposals.append(Proposal("waterworks_check", step, f"{words}: done: the leak check", 7))
         return False
     if row.get("stalled"):
         ask_player(notes, "the pump stack's reservoir isn't rising: give a dwarf the pump operator labour "
@@ -133,7 +137,7 @@ def _waterworks_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -
     flooded = len(_l(h.get("wet")))
     if flooded >= cfg["flood_wet_dwarves"]:
         for id_, row in works.items():
-            if row.get("gate") == "open" and row.get("stage") not in ("done", "retired"):
+            if row.get("gate") == "open" and row.get("stage") != "retired":     # (0.105.0 review) done works too
                 act = {"type": "water_work", "kind": row.get("kind"), "shut": True, "why": "dwarves in deep water"}
                 if row.get("shop"):
                     act["shop"] = row["shop"]

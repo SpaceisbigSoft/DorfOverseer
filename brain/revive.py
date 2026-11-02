@@ -101,7 +101,8 @@ def load_candidates() -> tuple[list[str], str | None]:
         return [], d.get("world")
     root = save_root(d["df_path"], d["save_dir"]) or Path(d["df_path"]) / "save"   # (0.99.13)
     from backup import folder_mtime
-    cands = [root / d["save_dir"]] + sorted(root.glob("autosave*"))
+    # (0.105.0 review) a backup restored earlier ("AI restore <date>") is a candidate too
+    cands = [root / d["save_dir"]] + sorted(root.glob("autosave*")) + sorted(root.glob(RESTORE_PREFIX + "*"))
     cands = [c for c in cands if c.is_dir()]
     cands.sort(key=folder_mtime, reverse=True)
     return [c.name for c in cands], d.get("world")
@@ -240,6 +241,12 @@ class Reviver:
             import pin
             p = pin.current()
             site = getattr(self, "site", None)
+            if site in (None, ""):
+                # (0.105.0 review) the world is up but no fort's map yet (still
+                # loading): not a success; the timeout still counts
+                if now - since >= LOAD_TIMEOUT_S:
+                    self._load_failed(f"no fort {LOAD_TIMEOUT_S // 60} minutes after")
+                return
             if p and site not in (None, "") and str(site) != str(p.get("site")):
                 self.log(f"Revive: '{folder}' loaded another site ({site}, not the pinned {p.get('site')}): "
                          "the overseer won't act on it.")
