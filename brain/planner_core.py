@@ -988,6 +988,13 @@ def all_clear(s: dict, memory, cfg: dict) -> tuple[bool, str]:
         return False, f"a great danger was about {gdays} day(s) ago"
     days = (now - (memory.last_threat_tick or 0)) // TICKS_PER_DAY
     if memory.last_threat_tick and days < cfg["alert_quiet_days"]:
+        # (0.105.2) a sealed fort costs more than the wait saves: B (2 Nov)
+        # ran at 1-3 FPS behind its shut hatch, 6 citizens and 51 visitors
+        # outside re-routing to a way in that wasn't there; unlocking it set
+        # the game racing again. With the game slow and nothing hostile left
+        # on the map, the quiet days are skipped.
+        if s.get("fps_low") and not held_off_threats(s):
+            return True, ""
         return False, f"the last threat was {days} day(s) ago"
     return True, ""
 

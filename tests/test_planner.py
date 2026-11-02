@@ -213,6 +213,15 @@ def _():
     assert not any(x.action == {"type": "civ_alert", "on": False} for x in plan(s, m2)[0])
     m2.last_threat_tick = abs_tick(s) - 4 * TICKS_PER_DAY
     assert any(x.action == {"type": "civ_alert", "on": False} for x in plan(s, m2)[0])
+    # (0.105.2) the game slow and nothing hostile left: the quiet days skipped (B's sealed hatch)
+    m3 = Memory(ai_alert_raised=True, quiet_cycles=3, last_threat_tick=abs_tick(s) - TICKS_PER_DAY)
+    slow = {**s, "fps_low": 3}
+    assert any(x.action == {"type": "civ_alert", "on": False} for x in plan(slow, m3)[0])
+    from planner_core import all_clear, PLANNER_CONFIG as C
+    assert all_clear(slow, m3, C)[0] and not all_clear(s, m3, C)[0]
+    held = {**slow, "others_on_map": {**s.get("others_on_map", {}),
+                                       "threats": [{"id": 1, "name": "goblin", "invader": True, "can_reach_dwarves": False}]}}
+    assert not all_clear(held, m3, C)[0]                # an invader still about: the gates wait
 
 
 @test("never lowers an alert the PLAYER raised")
