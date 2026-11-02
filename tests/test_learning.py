@@ -542,6 +542,15 @@ def _():
     gui = (ROOT / "lua" / "gui" / "ai-overseer.lua").read_text(encoding="utf-8")
     assert "view_id = 'hospital_burrow'" in gui and "p:set_field('hospital_burrow', v)" in gui
     assert "self.subviews.hospital_burrow:setOption(" in gui
+    # (0.104.169) the calm-down burrows' switch, the same way
+    assert S.defaults().calm_burrow is True and S.for_ai(S.defaults()).calm_burrow is True
+    off = S.sanitize(lua.table_from({"calm_burrow": False}))
+    assert off.calm_burrow is False and S.for_ai(off).calm_burrow is False
+    assert S.sanitize(lua.table_from({})).calm_burrow is True
+    assert player_rules({"settings": {"calm_burrow": False}})["calm_burrow"] is False
+    assert player_rules({"settings": {}})["calm_burrow"] is True
+    assert "view_id = 'calm_burrow'" in gui and "p:set_field('calm_burrow', v)" in gui
+    assert "self.subviews.calm_burrow:setOption(" in gui
     ok = lua.eval("function(src) local f, e = load(src, 'gui', 't', {}); return f ~= nil, e end")(gui)
     assert ok[0], ok
 

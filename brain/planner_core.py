@@ -302,6 +302,11 @@ PLANNER_CONFIG = {
     "hospital_burrow_per": 10,                   # ...this many new a call
     "hospital_burrow_days": 28,                  # ...each at most this long (then out a week)
     "hospital_burrow_cooldown_ticks": 1200,      # ...asked once a day (each call looks for the drink again)
+    "calm_burrow_max": 6,                        # (0.104.169) at most this many dwarves in a tantrum kept in a calm burrow...
+    "calm_burrow_days": 3,                       # ...each at most this long (then out a day), let out sooner once calm
+    "calm_burrow_cooldown_ticks": 300,           # ...asked every quarter day while a tantrum walks free
+    "calm_burrow_judge_after": 20,               # ...members seen this often (inside or out) before judging...
+    "calm_burrow_outside_share": 0.5,            # ...and seen outside this share of the time: said as a note
     "assign_weapons_wait_ticks": 7 * 1200,       # (0.104.60) ...once DF has left the places empty a week
     "crop_brew_threshold": 300,        # (0.99.6) autofarm's threshold for brewable crops while drink is short...
     "crop_other_threshold": 10,        # ...and for the rest (food is a fort's smaller worry by then)
@@ -550,7 +555,8 @@ EMERGENCY = {"threat_alert", "gate", "gates", "squad_attack", "flood", "gate_gua
 STEER_PROTECTED = EMERGENCY | {"shelter", "alerts", "squad_recall", "hazard", "water", "well", "drink",
                                "needs_drink", "food", "farm", "gather", "care", "staff", "burial", "unsuspend",
                                "stuck_order", "tools", "found", "entrances", "trouble",
-                               "hospital_burrow"}   # (0.104.167, review) never held: members are let out by it
+                               "hospital_burrow",   # (0.104.167, review) never held: members are let out by it
+                               "calm_burrow"}       # (0.104.169) likewise
 STEER_MAX_DAYS = 84
 
 
@@ -565,7 +571,8 @@ def steer_of(memory, rule: str, now: int) -> dict | None:
     return None
 STUCK_HOLD_EXEMPT = {"drink", "drink_fruit", "food", "well_parts"}   # (0.104.2) a well's parts: water for the injured     # (0.100.1) see select()
 # Also outside the limit: switching a squad's schedule (instant, undoable).
-LIMIT_EXEMPT = EMERGENCY | {"break_fights", "join_levels", "census", "train", "shelter", "entrances", "labor", "gather", "stuck_order", "alerts",
+# (0.104.169) calm_burrow too: a tantrum near the patients waits for no slot
+LIMIT_EXEMPT = EMERGENCY | {"break_fights", "calm_burrow","join_levels", "census", "train", "shelter", "entrances", "labor", "gather", "stuck_order", "alerts",
                             "kitchen"}   # (0.100) a kitchen setting, once per drink shortage: no slot of its own
 
 
@@ -863,6 +870,8 @@ def player_rules(s: dict) -> dict:
             "answer_locations": st.get("answer_locations") is not False,
             # (0.104.167, review) the hospital burrow: off only when the settings say so (then its members let out)
             "hospital_burrow": st.get("hospital_burrow") is not False,
+            # (0.104.169) the calm-down burrows: off only when the settings say so (then their members let out)
+            "calm_burrow": st.get("calm_burrow") is not False,
             "clear_alerts": st.get("clear_alerts") if st.get("clear_alerts") in ("all", "quiet", "none") else "quiet"}
 
 
@@ -1524,7 +1533,7 @@ AGENDA_THEMES = {
     "needs_drink": "keep the drink flowing", "needs_meal": "cook good meals", "needs_craft": "let dwarves craft",
     "food": "keep the fort fed", "farm": "farm", "hospital": "stock the hospital", "soap": "make soap",
     "feeder": "shorten the hauling", "labor": "put idle hands to work", "labor_trim": "take the extra hands off fishing", "well": "find water for a well", "well_lid": "close the cavern well's stairs", "well_shaft": "a gate in the cavern well's shaft", "planned_parts": "parts the planned buildings wait for", "comfort": "shoes and cups for the fort", "mothers": "mothers home from the squads", "dead_units": "clear old dead from the unit list", "herd": "keep the herds the fort's size",
-    "stuck_order": "clear stuck work", "unsuspend": "resume suspended work", "stray_gear": "hand out lost gear", "assign_weapons": "arm the soldiers", "soldier_swap": "let the keen train", "temple_chest": "a chest for the temple", "instrument_orders": "clear the instrument backlog", "pair_chairs": "seat dwarves together", "recreation": "time off for the unhappiest", "hospital_burrow": "keep the wounded in the hospital", "dairy": "milk and cheese", "eggs": "nest boxes for the hens", "war_animals": "train war animals", "gate_guard": "hold the gate", "gate_dogs": "war dogs at the gate", "gem_cutting": "cut the rough gems", "stairwell": "a new stairwell", "animal_trainer": "an animal trainer", "nest_box_order": "make nest boxes", "library_chest": "a chest for the library", "orphan_jobs": "clear jobs whose order is gone", "slabs_free": "free the memorial slabs", "water_traffic": "keep paths off the ice", "jail_size": "a bigger jail", "jail_more": "another jail", "break_fights": "break up the fights among the fort's own", "burial": "bury the dead", "rooms": "mend the rooms' walls", "coffins": "coffins for the tombs", "order_slots": "free the workshop's order slots", "fat_ban": "keep fat for soap", "jail_urgent": "a jail against the beatings", "tavern_urgent": "a tavern for company", "quarry": "quarry stone", "cloth": "weave cloth",
+    "stuck_order": "clear stuck work", "unsuspend": "resume suspended work", "stray_gear": "hand out lost gear", "assign_weapons": "arm the soldiers", "soldier_swap": "let the keen train", "temple_chest": "a chest for the temple", "instrument_orders": "clear the instrument backlog", "pair_chairs": "seat dwarves together", "recreation": "time off for the unhappiest", "hospital_burrow": "keep the wounded in the hospital", "calm_burrow": "keep a tantrum away from the others", "dairy": "milk and cheese", "eggs": "nest boxes for the hens", "war_animals": "train war animals", "gate_guard": "hold the gate", "gate_dogs": "war dogs at the gate", "gem_cutting": "cut the rough gems", "stairwell": "a new stairwell", "animal_trainer": "an animal trainer", "nest_box_order": "make nest boxes", "library_chest": "a chest for the library", "orphan_jobs": "clear jobs whose order is gone", "slabs_free": "free the memorial slabs", "water_traffic": "keep paths off the ice", "jail_size": "a bigger jail", "jail_more": "another jail", "break_fights": "break up the fights among the fort's own", "burial": "bury the dead", "rooms": "mend the rooms' walls", "coffins": "coffins for the tombs", "order_slots": "free the workshop's order slots", "fat_ban": "keep fat for soap", "jail_urgent": "a jail against the beatings", "tavern_urgent": "a tavern for company", "quarry": "quarry stone", "cloth": "weave cloth",
 }
 AGENDA_THEMES["vermin"] = "keep cats against the vermin"     # (0.104.168)
 

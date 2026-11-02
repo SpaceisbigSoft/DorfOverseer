@@ -933,6 +933,252 @@ def _():
     assert not r.ok and r.rejected, dict(r)
 
 
+# (0.104.169) the calm-down burrows: a hospital zone (70, x0-2 y0-1 z10), free
+# bedrooms with a bed at x40 (91), x60 (92) and x80 (96); one too near the
+# hospital (90), one owned (93), one nobody can walk to (94, z20), one with no
+# bed (95). A drink pile at x20 (80) and one at x75 (83). Each burrow keeps its
+# own tiles and units as DFHack does. Citizens in a tantrum (soldier_mood 2):
+# 1 (x30), 2 (x58), 9 (x85, in the recreation burrow); never 3 (soldier),
+# 4 (baby), 5 (thirsty), 6 (a player's burrow 99), 8 (insane); 7 is calm.
+CALM_FAKE = r"""
+local src = ...
+local persist = {}
+local units = {}
+local function unit(id, o)
+    o = o or {}
+    local u = {id = id, pos = o.pos or {x = 50, y = 50, z = 10}, military = {squad_id = o.squad or -1},
+               health = {flags = {}}, counters = {soldier_mood = o.mood or -1},
+               counters2 = {thirst_timer = o.thirst or 0, hunger_timer = 0}, baby = o.baby, burrows = o.burrows or {},
+               job = {}, insane = o.insane, cat = o.cat or 4}
+    units[id] = u
+    return u
+end
+local T = 2
+local cits = {unit(1, {mood = T, pos = {x = 30, y = 0, z = 10}}), unit(2, {mood = T, pos = {x = 58, y = 0, z = 10}}),
+              unit(3, {mood = T, squad = 4}), unit(4, {mood = T, baby = true}), unit(5, {mood = T, thirst = 30000}),
+              unit(6, {mood = T, burrows = {99}}), unit(7, {}), unit(8, {mood = T, insane = true}),
+              unit(9, {mood = T, pos = {x = 85, y = 0, z = 10}})}
+local function item(t, inner) return {t = t, flags = {}, inner = inner, getType = function(self) return self.t end} end
+local function bld(id, kind, x1, y1, x2, y2, z, extra)
+    local b = {id = id, x1 = x1, y1 = y1, x2 = x2, y2 = y2, z = z, kind = kind, getType = function(self) return self.kind end,
+               getBuildStage = function() return 3 end, getMaxBuildStage = function() return 3 end}
+    for k, v in pairs(extra or {}) do b[k] = v end
+    return b
+end
+local function bed(x, y, z) return bld(1000 + x, 'Bed', x, y, x, y, z, {centerx = x, centery = y}) end
+local function room(id, x, z, extra)
+    local r = bld(id, 'Civzone', x, 0, x + 1, 1, z, {type = 2, assigned_unit_id = -1, contained_buildings = {bed(x, 0, z)}})
+    for k, v in pairs(extra or {}) do r[k] = v end
+    return r
+end
+local zone = bld(70, 'Civzone', 0, 0, 2, 1, 10, {type = 1})
+local rooms = {room(90, 5, 10), room(91, 40, 10), room(92, 60, 10), room(93, 45, 10, {assigned_unit_id = 5}),
+               room(94, 50, 20), room(95, 70, 10, {contained_buildings = {}}), room(96, 80, 10)}
+local drink = bld(80, 'Stockpile', 20, 0, 21, 0, 10, {settings = {flags = {food = true}}, contents = {item(2, {item(1)})}})
+local drink2 = bld(83, 'Stockpile', 75, 5, 75, 5, 10, {settings = {flags = {food = true}}, contents = {item(1)}})
+local all = {zone, drink, drink2}
+for _, r in ipairs(rooms) do table.insert(all, r) end
+local hosp = {getType = function() return 7 end, occupations = {}}
+hosp.getContents = function() return {building_ids = {70}} end
+local site = {buildings = {hosp}}
+local burrows = {}
+setmetatable(burrows, {__index = {insert = function(self, at, v) self[#self + 1] = v end}})
+local env = setmetatable({}, {__index = _G})
+env.xyz2pos = function(x, y, z) return {x = x, y = y, z = z} end
+env.require = function(name) if name == 'utils' then return {insert_sorted = function() end} end return require(name) end
+env.df = {global = {cur_year = 76, cur_year_tick = 1000, plotinfo = {burrows = {list = burrows, next_id = 1}},
+                    world = {buildings = {all = all, other = {ZONE_BEDROOM = rooms}}}},
+          burrow = {new = function() return {units_ = {}, tiles_ = {}} end},
+          building = {find = function(id) for _, b in ipairs(all) do if b.id == id then return b end end end},
+          building_type = {Civzone = 'Civzone', Stockpile = 'Stockpile', Well = 'Well', Hatch = 'Hatch', Bed = 'Bed'},
+          civzone_type = {[1] = 'Hospital', [2] = 'Bedroom'}, abstract_building_type = {[7] = 'HOSPITAL'},
+          item_type = {[1] = 'DRINK', [2] = 'BARREL', [3] = 'FOOD'}, soldier_mood_type = {[1] = 'Enraged', [2] = 'Tantrum'},
+          job_type = {Rest = 'Rest'},
+          unit = {find = function(id) return units[id] end}}
+local function key(p) return p.x .. ',' .. p.y .. ',' .. p.z end
+env.dfhack = {
+    persistent = {getSiteData = function(k, d) return persist[k] or d end, saveSiteData = function(k, v) persist[k] = v end},
+    world = {getCurrentSite = function() return site end},
+    maps = {getWalkableGroup = function(p) return p.z == 20 and 2 or 1 end},
+    items = {getContainedItems = function(it) return it.inner or {} end},
+    buildings = {containsTile = function() return true end, getStockpileContents = function(b) return b.contents end,
+                 findAtTile = function() return nil end},
+    burrows = {clearTiles = function(b) b.tiles_ = {} end,
+               setAssignedTile = function(b, p, on) b.tiles_ = b.tiles_ or {}; b.tiles_[key(p)] = on or nil; return true end,
+               isAssignedTile = function(b, p) return (b.tiles_ or {})[key(p)] == true end,
+               setAssignedUnit = function(b, u, on)
+                   b.units_ = b.units_ or {}
+                   b.units_[u.id] = on and u or nil
+                   local keep = {}
+                   for _, id in ipairs(u.burrows) do if id ~= b.id then table.insert(keep, id) end end
+                   if on then table.insert(keep, b.id) end
+                   u.burrows = keep
+               end,
+               listUnits = function(b) local l = {}; for _, u in pairs(b.units_ or {}) do table.insert(l, u) end; return l end},
+    units = {getCitizens = function() return cits end, isCitizen = function(u) return true end,
+             isSane = function(u) return not u.insane end, isBaby = function(u) return u.baby == true end,
+             getStressCategory = function(u) return u.cat end,
+             getReadableName = function(u) return 'dwarf ' .. u.id end}}
+assert(load(src, 'ai-society', 't', env))()
+local W = {units = units, all = all, rooms = rooms, drink = drink, drink2 = drink2, persist = persist, burrows = burrows,
+           cits = cits, g = env.df.global, item = item}
+function W.calm() return persist['ai-overseer/calm-burrow'] or {members = {}} end
+function W.listed() local n = 0; for _ in pairs(W.calm().members or {}) do n = n + 1 end; return n end
+function W.room_of(id) local m = (W.calm().members or {})[tostring(id)]; return m and m.room end
+function W.drink_of(id) local m = (W.calm().members or {})[tostring(id)]; return m and m.src end
+function W.burrow_of(id)
+    for _, b in ipairs(burrows) do if (b.units_ or {})[id] then return b end end
+end
+function W.ntiles(b) local n = 0; for _ in pairs(b and b.tiles_ or {}) do n = n + 1 end; return n end
+function W.nunits(b) local n = 0; for _ in pairs(b and b.units_ or {}) do n = n + 1 end; return n end
+function W.day(n) env.df.global.cur_year_tick = 1000 + math.floor(n * 1200) end
+function W.rec()
+    local b = env.dfhack.burrows
+    local r = {id = 50, name = 'AI recreation', units_ = {}, tiles_ = {}}
+    burrows:insert('#', r)
+    env.df.global.plotinfo.burrows.next_id = 51
+    b.setAssignedUnit(r, units[9], true)
+    persist['ai-overseer/recreation'] = {members = {['9'] = 1000}, out = {}}
+    return r
+end
+return env, W
+"""
+
+
+def calm_fresh(rec=False):
+    lua = LuaRuntime(unpack_returned_tuples=True)
+    env, w = lua.execute(CALM_FAKE, (ROOT / "lua" / "ai-society.lua").read_text(encoding="utf-8"))
+    if rec:
+        w.rec()
+    return lua, env, w
+
+
+def _calm_ids(w):
+    return sorted(int(k) for k in dict(w.calm().members or {}))
+
+
+@test("calm burrow (0.104.169): each citizen in a tantrum kept in a free bedroom far from the hospital, with the nearest drink; never a soldier, a baby, the thirsty, the insane or one in a player's burrow; one in the recreation burrow taken out of it first")
+def _():
+    lua, env, w = calm_fresh(rec=True)
+    d = env.calm_burrow_tick(6, 3, True)
+    assert d.ok and len(_names(d.added)) == 3 and w.listed() == 0 and len(w.burrows) == 1, dict(d)   # a dry run changes nothing
+    r = env.calm_burrow_tick(6, 3, False)
+    assert r.ok and r.members == 3 and _calm_ids(w) == [1, 2, 9], (dict(r), _names(r.added))
+    # the nearest free room each can walk to: 91 (x40) for 1, 92 (x60) for 2, 96 (x80) for 9; never 90, 93, 94, 95
+    assert (w.room_of(1), w.room_of(2), w.room_of(9)) == (91, 92, 96)
+    assert w.drink_of(1) == 80 and w.drink_of(9) == 83                      # the nearest drink to each room
+    b1 = w.burrow_of(1)
+    assert b1.name.startswith("AI calm ") and w.nunits(b1) == 1 and w.ntiles(b1) == 4 + 2, w.ntiles(b1)  # room 2x2 + pile 2x1
+    assert w.burrow_of(2) is not b1 and w.burrow_of(2).name.startswith("AI calm ")
+    rec = w.burrows[1]
+    assert w.nunits(rec) == 0 and "9" not in dict(w.persist["ai-overseer/recreation"].members)  # out of the recreation burrow
+    s = env.calm_burrow_status()
+    assert s.members == 3 and s.tantrums == 8 and s.free == 0, dict(s)
+    assert dict(s.held) == {"soldier": 1, "baby": 1, "thirsty": 1, "player burrow": 1, "insane": 1}, dict(s.held)
+    assert env.calm_burrow_tick(6, 3, False).unchanged
+    lua, env, w = calm_fresh()
+    r = env.calm_burrow_tick(1, 3, False)                                   # a cap: the nearest to the hospital first
+    assert _calm_ids(w) == [1], dict(r)
+
+
+@test("calm burrow (0.104.169): let out once calm, after the longest stay (then a day's rest), thirsty, drafted, or the room taken; every report re-checks; whether each stays inside is counted")
+def _():
+    lua, env, w = calm_fresh()
+    env.calm_burrow_tick(6, 3, False)
+    b1 = w.burrow_of(1)
+    w.units[1].counters.soldier_mood = -1                                   # calm
+    s = env.calm_burrow_status()                                            # the report alone lets out
+    assert _calm_ids(w) == [2, 9] and _names(s.released_now) == ["dwarf 1 (calm)"], dict(s)
+    assert w.nunits(b1) == 0 and w.ntiles(b1) == 0 and s.out_calm == 1
+    w.day(0.5)                                                              # inside/outside counted after a quarter day
+    w.units[2].pos = {"x": 60, "y": 0, "z": 10}                             # in its room
+    w.units[9].pos = {"x": 10, "y": 30, "z": 10}                            # wandered off
+    s = env.calm_burrow_status()
+    assert s.seen_in == 1 and s.seen_out == 1, dict(s)
+    w.day(3)                                                                # the longest stay
+    s = env.calm_burrow_status()
+    assert _calm_ids(w) == [] and s.out_limit == 2, dict(s)
+    r = env.calm_burrow_tick(6, 3, False)                                   # a day's rest before again
+    assert r.unchanged and _calm_ids(w) == [], dict(r)
+    assert dict(env.calm_burrow_status().held) == {"soldier": 1, "baby": 1, "thirsty": 1, "player burrow": 1,
+                                                    "insane": 1, "resting": 2}
+    w.day(4.1)
+    env.calm_burrow_tick(6, 3, False)
+    assert _calm_ids(w) == [2, 9]
+    w.units[2].counters2.thirst_timer = 25000                               # thirsty: out to drink
+    w.units[9].military.squad_id = 3                                        # drafted
+    s = env.calm_burrow_status()
+    assert _calm_ids(w) == [] and s.out_thirst == 1 and s.out_gone == 1, dict(s)
+    lua, env, w = calm_fresh()
+    env.calm_burrow_tick(6, 3, False)
+    w.rooms[2].assigned_unit_id = 7                                         # room 91 given to someone
+    lua.execute("local W = ...; W.drink2.contents = {}", w)                 # pile 83 drunk dry (2's and 9's)
+    s = env.calm_burrow_status()
+    assert _calm_ids(w) == [] and sorted(_names(s.released_now)) == ["dwarf 1 (room taken)", "dwarf 2 (no drink)",
+                                                                      "dwarf 9 (no drink)"], _names(s.released_now)
+    r = env.calm_burrow_tick(6, 3, False)                                   # in again (two rooms left), with pile 80
+    assert _calm_ids(w) == [1, 2] and (w.room_of(1), w.room_of(2)) == (92, 96) and w.drink_of(2) == 80, dict(r)
+    assert "no free bedroom" in r.note
+
+
+@test("calm burrow (0.104.169): no free room far from the hospital, no drink, or a room someone stands in: nobody moved, and why; the hospital burrow's drink only when there is no other")
+def _():
+    lua, env, w = calm_fresh()
+    for r in (w.rooms[2], w.rooms[3], w.rooms[7]):                          # 91, 92, 96 owned
+        r.assigned_unit_id = 7
+    r = env.calm_burrow_tick(6, 3, False)
+    assert not r.ok and r.rejected and "no free bedroom" in r.error and _calm_ids(w) == [], dict(r)
+    assert "no free bedroom" in env.calm_burrow_status().why
+    lua, env, w = calm_fresh()
+    lua.execute("local W = ...; W.drink.contents = {}; W.drink2.contents = {}", w)
+    r = env.calm_burrow_tick(6, 3, False)
+    assert not r.ok and "drink" in r.error and _calm_ids(w) == [], dict(r)
+    lua, env, w = calm_fresh()
+    w.units[7].pos = {"x": 40, "y": 1, "z": 10}                             # someone stands in room 91
+    env.calm_burrow_tick(6, 3, False)
+    assert w.room_of(1) == 92, w.room_of(1)
+    lua, env, w = calm_fresh()
+    lua.execute("local W = ...; W.persist['ai-overseer/hospital-burrow'] = {members = {}, sig = '70,drink=80,food=-,well=-'}", w)
+    r = env.calm_burrow_tick(6, 3, False)
+    assert w.drink_of(1) == 83 and r.ok, (w.drink_of(1), dict(r))          # not the patients' pile
+    lua, env, w2 = calm_fresh()
+    lua.execute("local W = ...; W.persist['ai-overseer/hospital-burrow'] = {members = {}, sig = '70,drink=80,food=-,well=-'}; "
+                "W.drink2.contents = {}", w2)
+    env.calm_burrow_tick(6, 3, False)
+    assert w2.drink_of(1) == 80 and w2.calm().stats.shared_drink >= 1       # the only drink: the patients' pile
+
+
+@test("calm burrow (0.104.169): the brain's release empties every calm burrow; a unit found in one unlisted is let out at the report")
+def _():
+    lua, env, w = calm_fresh()
+    env.calm_burrow_tick(6, 3, False)
+    b1 = w.burrow_of(1)
+    lua.execute("local W, b = ...; local u = W.units[7]; b.units_[7] = u; table.insert(u.burrows, b.id)", w, b1)
+    s = env.calm_burrow_status()
+    assert "dwarf 7 (not listed)" in _names(s.released_now) and w.nunits(b1) == 1, _names(s.released_now)
+    r = env.calm_burrow_tick(6, 3, False, None, True)
+    assert r.ok and len(_names(r.released)) == 3 and _calm_ids(w) == [], dict(r)
+    assert all(w.nunits(b) == 0 and w.ntiles(b) == 0 for b in w.burrows.values())
+    assert env.calm_burrow_tick(6, 3, False, None, True).unchanged
+
+
+@test("recreation (0.104.169): a dwarf in a tantrum never joins, by the friends' places either")
+def _():
+    lua = LuaRuntime(unpack_returned_tuples=True)
+    env, units, assigned, ntiles, g = lua.execute(FAKE, (ROOT / "lua" / "ai-society.lua").read_text(encoding="utf-8"))
+    lua.execute("""local env, units = ...
+      env.df.soldier_mood_type = {[2] = 'Tantrum'}
+      env.df.need_type = {[1] = 'BeWithFriends'}
+      for _, id in ipairs({1, 7}) do       -- both badly want friends; 1 throws a tantrum
+          units[id].status = {current_soul = {personality = {needs = {{id = 1, focus_level = -20000}}}}}
+      end
+      units[1].counters = {soldier_mood = 2}
+      units[1].cat = 9                     -- not unhappy enough for the stress places: only the friends' ones
+      units[2].cat = 9""", env, units)
+    r = env.recreation_tick(8, 28, False, None, 4, 7)
+    assert r.ok and not assigned[1] and assigned[7], (dict(r), dict(assigned))
+
+
 if __name__ == "__main__":
     for name, ok, msg in RESULTS:
         print(f"[{'PASS' if ok else 'FAIL'}] {name}" + (f"\n        {msg}" if msg else ""))
