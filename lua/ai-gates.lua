@@ -673,6 +673,48 @@ function citizens_outside()
     return n
 end
 
+-- (0.105.3) B (2 Nov): one thief left inside after a siege kept the only
+-- hatch shut for 2.5 real hours (1-3 FPS, 6 citizens and 51 visitors shut
+-- out). DF's walk groups ignore locked doors and hatches, so "can reach the
+-- dwarves" can't tell an enemy inside from one queued at a shut door; the
+-- map of the inside can. Inside: on that map, not on a cut entrance's porch,
+-- and more than INTRUDER_GATE_MARGIN tiles from every opening (the bit of
+-- tunnel in front of a gate reads as inside). nil: no map yet (a reload).
+INTRUDER_GATE_MARGIN = 10
+function inside_fort(pos)
+    if not GATES.scanned or not GATES.inside then return nil end
+    local k = key(pos.x, pos.y, pos.z)
+    if not GATES.inside[k] then return false end
+    for _, e in ipairs(GATES.entrances or {}) do
+        if e.porch and e.porch[k] then return false end
+        for _, ik in ipairs(e.inside_list or {}) do
+            local x, y, z = unkey(ik)
+            if math.abs(z - pos.z) <= 2 and math.abs(x - pos.x) <= INTRUDER_GATE_MARGIN
+                    and math.abs(y - pos.y) <= INTRUDER_GATE_MARGIN then
+                return false
+            end
+        end
+    end
+    return true
+end
+
+-- The ids of live, loose enemies standing inside the fort (at most 50), or
+-- nil without a map of the inside
+function intruders_inside()
+    if not GATES.scanned or not GATES.inside then return nil end
+    local out = {}
+    for _, u in ipairs(df.global.world.units.active) do
+        local ok, yes = pcall(function()
+            return dfhack.units.isAlive(u) and not u.flags1.caged and not u.flags1.chained
+                and not dfhack.units.isCitizen(u) and (dfhack.units.isDanger(u) or dfhack.units.isInvader(u))
+                and inside_fort(u.pos) == true
+        end)
+        if ok and yes then table.insert(out, u.id) end
+        if #out >= 50 then break end
+    end
+    return out
+end
+
 local function pull(lever_id)
     -- (0.100, review) a pull already waiting at the lever: a second would undo it
     local okp, pending = pcall(function()
@@ -740,15 +782,41 @@ local function set_entrance(e, close)
     return done
 end
 
-local function dangers()
+-- (0.105.3) A (2 Nov, 09:36): "The Human Swordsman was spotted sneaking
+-- around!", the hatch shut with 9 citizens outside, then he hid again and
+-- nothing visible was left, yet the hatch stayed shut (1 FPS). Only VISIBLE
+-- dangers count now (a hidden one isn't seen by anyone; the brain's report
+-- leaves them out too): {pos, invader}. Tests replace this.
+function visible_dangers()
     local out = {}
     for _, u in ipairs(df.global.world.units.active) do
-        if dfhack.units.isAlive(u) and not u.flags1.caged and not dfhack.units.isCitizen(u)
-                and (dfhack.units.isDanger(u) or dfhack.units.isInvader(u)) then
-            table.insert(out, u.pos)
+        local ok, yes = pcall(function()
+            return dfhack.units.isAlive(u) and not u.flags1.caged and not u.flags1.chained
+                and not dfhack.units.isCitizen(u) and not dfhack.units.isHidden(u)
+                and (dfhack.units.isDanger(u) or dfhack.units.isInvader(u))
+        end)
+        if ok and yes then
+            local oki, inv = pcall(dfhack.units.isInvader, u)
+            table.insert(out, {pos = u.pos, invader = oki and inv or false})
         end
     end
     return out
+end
+
+local function dangers()
+    local out = {}
+    for _, d in ipairs(visible_dangers()) do table.insert(out, d.pos) end
+    return out
+end
+
+-- (0.105.3) A gate the watcher shut opens again (the watcher stays armed and
+-- shuts it again if danger comes) once, for REOPEN_CHECKS looks in a row
+-- (half a day), no visible invader is on the map and no other visible
+-- danger is within REOPEN_CLEAR tiles of it. A siege in sight keeps it shut.
+REOPEN_CHECKS = 6
+REOPEN_CLEAR = 80
+function may_reopen(nearest, invaders)
+    return invaders == 0 and nearest > REOPEN_CLEAR
 end
 
 function distance_to(e, pos)
@@ -775,9 +843,32 @@ end
 -- One look by the watcher: close what needs closing.
 function check()
     if not GATES.armed or not GATES.entrances then return end
-    local ds = dangers()
+    local vis = visible_dangers()
+    local ds, invaders = {}, 0
+    for _, d in ipairs(vis) do
+        table.insert(ds, d.pos)
+        if d.invader then invaders = invaders + 1 end
+    end
     local outside = citizens_outside()
+    GATES.clear_looks = GATES.clear_looks or {}
     for _, e in ipairs(GATES.entrances) do
+        if GATES.closed[e.id] and #e.equipment > 0 then
+            local nearest = math.huge
+            for _, p in ipairs(ds) do nearest = math.min(nearest, distance_to(e, p)) end
+            if may_reopen(nearest, invaders) then
+                GATES.clear_looks[e.id] = (GATES.clear_looks[e.id] or 0) + 1
+                if GATES.clear_looks[e.id] >= REOPEN_CHECKS then
+                    GATES.clear_looks[e.id] = nil
+                    set_entrance(e, false)
+                    GATES.reopened = (GATES.reopened or 0) + 1
+                    pcall(dfhack.gui.showAnnouncement, ('AI Overseer: %s opened again (no danger in sight, %d citizens outside)')
+                        :format(gate_name(e), outside), COLOR_GREEN, true)
+                    goto continue
+                end
+            else
+                GATES.clear_looks[e.id] = nil
+            end
+        end
         for _, g in ipairs(e.equipment) do
             local b = df.building.find(g.id)
             GATES.gone_ids = GATES.gone_ids or {}
@@ -816,6 +907,7 @@ function check()
                     :format(gate_name(e), nearest == math.huge and '?' or tostring(nearest), outside), COLOR_YELLOW, true)
             end
         end
+        ::continue::
     end
 end
 
@@ -2297,7 +2389,10 @@ function summary()
                             closed = GATES.closed and GATES.closed[e.id] or false})
     end
     local okf, fl = pcall(free_levers)
-    return {scanned = GATES.scanned == true, scanned_tick = GATES.scanned_tick, inside_tiles = GATES.inside_tiles,
+    -- (0.105.3) enemies inside the fort (nil without a map: the brain acts as before)
+    local oki, intr = pcall(intruders_inside)
+    return {intruders_inside = oki and intr or nil,
+            scanned = GATES.scanned == true, scanned_tick = GATES.scanned_tick, inside_tiles = GATES.inside_tiles,
             -- (0.100, review) the map of the inside hit its size limit: entrances
             -- past it weren't seen (not gone), and walls aren't planned on it
             capped = (GATES.inside_tiles or 0) >= MAX_TILES or nil,

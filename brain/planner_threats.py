@@ -174,7 +174,13 @@ def _thieves(s, cfg, t, memory, proposals, notes):
         able = _able_squads(s, cfg)
         names = ", ".join(f"{x.get('name')} ({x.get('kind')})" for x in inside[:3])
         hit = [x["id"] for x in inside if x.get("kill_ok") is not False]
-        if able and hit:
+        # (0.105.3) B (2 Nov): all four squads went at one thief, one after
+        # another (each cycle the next free squad). One already after them: no other
+        on_it = [q for q in _l(_d(s.get("military")).get("squads")) if isinstance(q, dict) and q.get("ai_orders")
+                 and set(_l(q.get("kill_ids"))) & set(hit)]
+        if on_it:
+            notes.append(f"{names} in the fort: {on_it[0].get('name') or 'a squad'} is after them")
+        elif able and hit:
             proposals.append(Proposal("squad_attack", {"type": "squad_orders", "squad_id": able[0]["id"], "kill": hit[:10]},
                                       f"{names} in the fort: send {able[0].get('name') or 'the squad'}", 0))
         else:

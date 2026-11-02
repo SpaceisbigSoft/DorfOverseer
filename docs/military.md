@@ -124,6 +124,28 @@ for the civilian alert). From then on the AI:
 Responses to an attack (alert, gate, squads) are never held back by the
 limit of 3 actions per cycle.
 
+**No lockdown without end (0.105.3).** Fort B sat behind its one shut hatch
+for 2.5 hours for a single thief already inside (1-3 FPS, citizens and
+visitors shut out); fort A shut its hatch on 9 citizens for a sneaker who
+then hid again. Now:
+
+- A few (`lone_intruder_max`, 2) ordinary enemies already inside the fort
+  (the gate scan's map of the inside, `entrances.intruders_inside`), with
+  nothing hostile outside: the gates are not shut for them (opened if they
+  are), the alarm is held half a day at most, and one armed squad goes after
+  them whatever "Send squads against" says. No armed squad: Needs you, once.
+- The gate watcher counts only enemies in sight, and opens a gate it shut
+  again after half a day with no invader in sight and nothing within 80
+  tiles of it (it stays armed: danger shuts it again).
+- Nothing hostile in sight and no siege held off at the gates: the AI's gates
+  and alarm are lifted after 6 game hours when citizens or 20+ visitors are
+  shut out, or after a day when only one or two ordinary enemies were seen.
+- The AI's lockdown held 2 days with no new enemy and only 1-2 ordinary ones
+  left, the game slow or citizens shut out: lifted until a new enemy comes.
+- While the AI's gates are shut, no new pasture assignments (animals led to
+  pastures outside piled up 26 jobs at B's gate).
+- A siege in sight or a great danger keeps everything as before.
+
 ## Rules tab
 
 | Setting | Default |

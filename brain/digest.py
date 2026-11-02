@@ -138,7 +138,7 @@ SECTION_DEFAULTS = {
     "infection": {},              # (0.104.168) the infected: untreated, bleeding, beds free (lua/ai-health.lua)
     "military": {"squads": [], "soldiers": 0, "routines": [], "gates": []},
     "society": {},
-    "entrances": {},
+    "entrances": {},              # (0.105.3) intruders_inside (ids) left out: unknown, the old gate rules
     "farms": {"plots": 0, "tiles": 0, "built": 0},
     "registry": [],          # every AI project with its bounds (lua/ai-builder.lua registry_report)
     "labor": {},

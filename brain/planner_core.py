@@ -530,6 +530,21 @@ PLANNER_CONFIG = {
     "quivers_order_cooldown_ticks": 7 * 1200,
     "bolts_cooldown_ticks": 3 * 1200,
     "gate_cut_cooldown_ticks": 3 * 1200,
+    # (0.105.3) B (2 Nov): one thief left inside after a siege kept the only
+    # hatch shut and the alarm up for 2.5 real hours (1-3 FPS, 6 citizens and
+    # 51 visitors shut out). See planner_military lone_intruders / note_lockdown.
+    "lone_intruder_max": 2,             # this many ordinary enemies already inside, or fewer: no shut gates for them
+    "lone_intruder_alert_ticks": 600,   # ...and the alarm held for them at most half a day
+    "lockdown_max_days": 2,             # the AI's shut gates and alarm with no new enemy this long...
+    "lockdown_cap_threats": 2,          # ...this many ordinary enemies left or fewer, the game slow or
+                                        # dwarves shut out: opened again
+    # (0.105.3) A (2 Nov 09:36): a sneaker spotted, the hatch shut with 9
+    # citizens outside, then he hid again: nothing visible, the fort kept shut
+    # for the 3 quiet days (1 FPS). With nothing hostile in sight (no siege
+    # held off at the gates either):
+    "lockdown_clear_ticks": 300,        # ...citizens or visitors shut out: open after 6 game hours
+    "lockdown_visitors": 20,            # ...this many visitors on the map count as shut out
+    "small_alert_ticks": 1200,          # ...only a few ordinary enemies all along (a sneaker): after a day
 }
 
 BREW_RECIPES = {"brew_drink", "brew_drink_from_fruit", "make_mead"}

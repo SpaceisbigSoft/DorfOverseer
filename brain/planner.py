@@ -92,7 +92,19 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
         fresh = [i for i in ids if i not in memory.alert_suppressed]
         alert_on = bool(s.get("civ_alert"))
         ready = s.get("civ_alert_ready") is True
-        if fresh and not alert_on:
+        # (0.105.3) B (2 Nov): the alarm stayed up 2.5 hours for one thief
+        # inside. For a lone intruder it is held `lone_intruder_alert_ticks`
+        # at most (the squad deals with them); after a lifted lockdown it
+        # waits for a new enemy (note_lockdown)
+        lone = lone_intruders(s, cfg, traits, memory) if ids else []
+        stand_down = bool(lone and lone_alert_over(s, memory, cfg)) or lockdown_released(memory)
+        if stand_down:
+            if alert_on and memory.ai_alert_raised and not hazard_alert(s, cfg):
+                proposals.append(Proposal("threat_alert", {"type": "civ_alert", "on": False},
+                                          f"only {len(lone)} enemy/enemies left, inside the fort, and a squad on "
+                                          "them: the alarm comes down (it keeps everyone from work)" if lone else
+                                          "the fort has been shut for days with no new enemy: the alarm comes down", 0))
+        elif fresh and not alert_on:
             if ready:
                 proposals.append(Proposal("threat_alert", {"type": "civ_alert", "on": True},
                                           f"{len(fresh)} threat(s) can reach the dwarves", 0))
@@ -107,11 +119,15 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
                          "them, so the AI is leaving it off")
         elif not ids and alert_on and memory.ai_alert_raised and not hazard_alert(s, cfg):
             clear, why = all_clear(s, memory, cfg)
+            quick = "" if clear else quick_clear(s, memory, cfg)     # (0.105.3) A's sneaker, 9 shut out
             if clear:
                 proposals.append(Proposal("threat_alert", {"type": "civ_alert", "on": False},
                                           "no threat has been able to reach the dwarves for "
                                           f"{memory.quiet_cycles} cycles and "
                                           f"{cfg['alert_quiet_days']}+ days", 0))
+            elif quick:
+                proposals.append(Proposal("threat_alert", {"type": "civ_alert", "on": False},
+                                          f"{quick}: the alarm comes down", 0))
             elif "great danger" in why or "day(s) ago" in why:
                 notes.append(f"the alarm stays up: {why}")
 
@@ -622,6 +638,9 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
         for p in proposals:
             if p.action.get("type") == "farm_plots" and p.action.get("dig"):
                 p.action = {k: v for k, v in p.action.items() if k != "dig"}
+    # (0.105.3) no new pasture assignments while the AI's gates are shut (B's 26 pen jobs)
+    if "entrances" not in errors:
+        proposals = _guard(_pasture_hold, s, memory, proposals, notes) or proposals
     # (0.105.0) no trade with a civilisation at war (brain/planner_world.py)
     if "world" not in errors:
         proposals = _guard(_hostile_trade_filter, s, proposals, notes) or proposals
@@ -955,6 +974,8 @@ def note_cycle(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> list[
         crisis.update(s, memory, cfg, notes)                     # (0.104.137) crisis mode
     if "world" not in errors:
         note_world(s, memory)                                    # (0.105.0) grudges, export wishes
+    if "others_on_map" not in errors:
+        notes += note_lockdown(s, memory, cfg)                   # (0.105.3) B's sealed hatch: lone intruders, the cap
     # (0.104.89) the strategist's raised and held rules run out
     if isinstance(getattr(memory, "steer", None), dict):
         for k in [k for k, v in memory.steer.items() if not (isinstance(v, dict) and isinstance(v.get("until"), int)

@@ -1243,6 +1243,76 @@ def _():
     assert len(kept) == 1 and kept[1].x == 20
 
 
+@test("0.105.3 B: an enemy deep inside the fort is an intruder; one at a gate, outside, or with no map isn't")
+def _():
+    setup(buildings=[DOOR_A])
+    starts = LUA.table_from({1: LUA.table_from({"x": 20, "y": 8, "z": 0})})
+    es, inside, n = M.find_entrances(starts, W.buildings)
+    old = M.GATES
+    try:
+        M.GATES = LUA.table_from({"scanned": True, "entrances": es, "inside": inside})
+        pos = lambda x, y: LUA.table_from({"x": x, "y": y, "z": 0})
+        assert M.inside_fort(pos(25, 4)) is True             # deep in the fort (the thief)
+        assert M.inside_fort(pos(10, 2)) is False            # just behind entrance A's door: at the gate
+        assert M.inside_fort(pos(1, 2)) is False             # outside
+        assert M.inside_fort(pos(22, 15)) is False           # 10 tiles or less from the cavern opening
+        M.GATES = LUA.table_from({"scanned": False})
+        assert M.inside_fort(pos(25, 4)) is None             # no map (a reload): can't say
+        assert M.intruders_inside() is None
+    finally:
+        M.GATES = old
+
+
+@test("0.105.3 A: a gate shut with dwarves outside opens again after half a day with nothing in sight; a siege in sight keeps it shut")
+def _():
+    LUA.execute("""
+      local M = ...
+      DOORS = {[11] = {door_flags = {forbidden = true}, jobs = {}}}
+      df = {building = {find = function(id) return DOORS[id] end},
+            global = {world = {units = {active = {}}}, cur_year_tick = 0}}
+      dfhack = {units = {getCitizens = function() return {} end}, timeout = function() return nil end,
+                gui = {showAnnouncement = function() end}}
+      SEEN = {}
+      M._vd = M.visible_dangers
+      M.visible_dangers = function() return SEEN end
+    """, M)
+    k = (0 * 4096 + 5) * 4096 + 3
+    def gate():
+        e = LUA.table_from({"id": 1, "x": 4, "y": 5, "z": 0, "outs": LUA.table_from({k: True}),
+                            "equipment": LUA.table_from({1: LUA.table_from({"id": 11, "kind": "door"})})})
+        M.GATES = LUA.table_from({"armed": True, "scanned": True, "closed": LUA.table_from({1: True}),
+                                  "entrances": LUA.table_from({1: e})})
+        LUA.execute("DOORS[11].door_flags.forbidden = true")
+    try:
+        # the sneaker hid again: nothing visible. Shut for 5 looks, open at the 6th
+        gate()
+        for i in range(int(M.REOPEN_CHECKS) - 1):
+            M.check()
+            assert M.GATES.closed[1], i
+        M.check()
+        assert not M.GATES.closed[1] and LUA.eval("DOORS[11].door_flags.forbidden") is False
+        assert M.GATES.armed                                         # still watching: shut again if danger comes
+        # a siege in sight (an invader far off): stays shut
+        gate()
+        LUA.execute("SEEN = {{pos = {x = 150, y = 150, z = 0}, invader = true}}")
+        for _ in range(int(M.REOPEN_CHECKS) + 2):
+            M.check()
+        assert M.GATES.closed[1]
+        # a beast (not an invader) near the gate: stays shut; far off: opens
+        gate()
+        LUA.execute("SEEN = {{pos = {x = 20, y = 5, z = 0}, invader = false}}")
+        for _ in range(int(M.REOPEN_CHECKS) + 2):
+            M.check()
+        assert M.GATES.closed[1]
+        LUA.execute("SEEN = {{pos = {x = 200, y = 5, z = 0}, invader = false}}")
+        for _ in range(int(M.REOPEN_CHECKS)):
+            M.check()
+        assert not M.GATES.closed[1]
+    finally:
+        LUA.execute("local M = ...; df = nil; dfhack = nil; M.visible_dangers = M._vd", M)
+        M.GATES = LUA.table_from({"scanned": False})
+
+
 if __name__ == "__main__":
     for name, ok, msg in RESULTS:
         print(f"[{'PASS' if ok else 'FAIL'}] {name}" + (f"\n        {msg}" if msg else ""))
