@@ -2284,3 +2284,188 @@ if dfhack and dfhack.onStateChange then
         if sc == SC_MAP_UNLOADED then GATES = {scanned = false} end
     end
 end
+
+---------------------------------------------------------------------------
+-- (0.105.0) The watcher's state kept with the save. GATES lives only in
+-- Lua memory and is cleared when the map unloads: a drawbridge the watcher
+-- raised before a reload (or a crash and the reviver's load) was never
+-- lowered by open_all, which knew nothing of it. What the watcher holds
+-- (armed, and each closed entrance's gates by building id: entrance ids are
+-- list places and change) goes into the site data whenever it changes, and
+-- comes back after a load: the watcher re-armed once the entrances are
+-- scanned again, closed gates matched to their entrances; before the scan,
+-- open_all opens the saved gates directly.
+-- Kept in its own functions: wrappers round arm, open_all, check and summary.
+---------------------------------------------------------------------------
+GATES_SAVE_KEY = 'ai-overseer/gates'
+-- (apart from GATES, which a scan rebuilds): read back yet, what was read, what was last written
+GATES_SAVE = GATES_SAVE or {}
+
+local function saved_read()
+    local ok, d = pcall(function() return dfhack.persistent.getSiteData(GATES_SAVE_KEY, {}) end)
+    return ok and type(d) == 'table' and d or {}
+end
+
+-- What the watcher holds now, by building id.
+function gates_snapshot()
+    local gates = {}
+    for _, e in ipairs(GATES.entrances or {}) do
+        if GATES.closed and GATES.closed[e.id] then
+            for _, g in ipairs(e.equipment or {}) do
+                table.insert(gates, {id = g.id, kind = g.kind, lever_id = g.lever_id})
+            end
+        end
+    end
+    return {armed = GATES.armed == true, gates = gates}
+end
+
+local function same_snapshot(a, b)
+    if (a.armed == true) ~= (b.armed == true) then return false end
+    local ga, gb = a.gates or {}, b.gates or {}
+    if #ga ~= #gb then return false end
+    for i = 1, #ga do
+        if ga[i].id ~= gb[i].id or ga[i].lever_id ~= gb[i].lever_id then return false end
+    end
+    return true
+end
+
+-- Into the save when it changed. Not before the saved state was read back
+-- (a fresh GATES after a reload must not write over what the save holds).
+function gates_persist()
+    -- (nor while the saved state waits for a scan to be matched up)
+    if not GATES_SAVE.restored or GATES_SAVE.saved then return false end
+    local snap = gates_snapshot()
+    if GATES_SAVE.persisted and same_snapshot(snap, GATES_SAVE.persisted) then return false end
+    local ok = pcall(dfhack.persistent.saveSiteData, GATES_SAVE_KEY, snap)
+    if ok then GATES_SAVE.persisted = snap end
+    return ok
+end
+
+local function lever_pull_pending(lever_id)
+    local okp, pending = pcall(function()
+        local lv = df.building.find(lever_id)
+        for _, j in ipairs(lv and lv.jobs or {}) do
+            if j.job_type == df.job_type.PullLever then return true end
+        end
+        return false
+    end)
+    return okp and pending
+end
+
+-- Open the saved gates straight from their building ids (no scan needed).
+-- Returns opened, still waiting.
+function open_saved_gates(saved)
+    local opened, waiting = 0, 0
+    for _, g in ipairs(saved.gates or {}) do
+        local b = df.building.find(g.id)
+        if b then
+            if g.kind == 'bridge' then
+                local ok, raised = pcall(function() return b.gate_flags.raised end)
+                if ok and raised then
+                    if g.lever_id and #b.jobs == 0 and not bridge_occupied(b) and not lever_pull_pending(g.lever_id) then
+                        local _, rv = dfhack.run_command_silent('lever', 'pull', '--id', tostring(g.lever_id))
+                        if rv == CR_OK then opened = opened + 1 end
+                    end
+                    waiting = waiting + 1
+                end
+            else
+                local ok = pcall(function()
+                    if b.door_flags.forbidden then b.door_flags.forbidden = false opened = opened + 1 end
+                end)
+                if not ok then waiting = waiting + 1 end
+            end
+        end
+    end
+    return opened, waiting
+end
+
+-- After a load: the saved state read back once; once the entrances are
+-- scanned, the watcher re-armed and the closed gates matched up.
+function gates_restore()
+    if not GATES_SAVE.restored then
+        GATES_SAVE.restored = true
+        local saved = saved_read()
+        GATES_SAVE.persisted = saved
+        -- (nothing closed and not armed: nothing to bring back)
+        if saved.armed or next(saved.gates or {}) ~= nil then GATES_SAVE.saved = saved end
+    end
+    local saved = GATES_SAVE.saved
+    if not saved or not GATES.scanned or not GATES.entrances then return nil end
+    GATES_SAVE.saved = nil
+    local ids = {}
+    for _, g in ipairs(saved.gates or {}) do ids[g.id] = true end
+    local closed = {}
+    for _, e in ipairs(GATES.entrances) do
+        for _, g in ipairs(e.equipment or {}) do
+            if ids[g.id] then closed[e.id] = true end
+        end
+    end
+    if saved.armed and not GATES.armed then
+        pcall(GATES_ORIG.arm)
+    end
+    GATES.closed = GATES.closed or {}
+    for id in pairs(closed) do GATES.closed[id] = true end
+    if not GATES.armed and next(GATES.closed) ~= nil then
+        pcall(GATES_ORIG.open_all)     -- (waiting gates: its reopen timer tries again)
+    end
+    GATES_SAVE.restored_from_save = {armed = saved.armed == true, gates = #(saved.gates or {})}
+    return GATES_SAVE.restored_from_save
+end
+
+-- (the file's own functions, as just defined above: a reload of the script takes the new ones)
+GATES_ORIG = {arm = arm, open_all = open_all, check = check, summary = summary}
+
+function arm()
+    pcall(gates_restore)
+    local r = GATES_ORIG.arm()
+    pcall(gates_persist)
+    return r
+end
+
+function open_all()
+    pcall(gates_restore)
+    local saved = GATES_SAVE.saved
+    local r = GATES_ORIG.open_all()
+    if saved and not GATES.scanned then
+        -- no map of the entrances yet: the saved gates opened by their ids;
+        -- the saved state is kept (unarmed) until they are all down
+        local ok, opened, waiting = pcall(open_saved_gates, saved)
+        if ok then
+            r.opened = (r.opened or 0) + opened
+            if waiting > 0 then r.waiting = (r.waiting or 0) + waiting end
+            saved.armed = false
+            if waiting == 0 then GATES_SAVE.saved = {armed = false, gates = {}} end
+            pcall(dfhack.persistent.saveSiteData, GATES_SAVE_KEY, GATES_SAVE.saved)
+            GATES_SAVE.persisted = GATES_SAVE.saved
+        end
+        return r
+    end
+    pcall(gates_persist)
+    return r
+end
+
+function check()
+    GATES_ORIG.check()
+    pcall(gates_persist)
+end
+
+function summary()
+    pcall(gates_restore)
+    local out = GATES_ORIG.summary()
+    pcall(gates_persist)
+    -- what came back from the save after a load (the brain says it once)
+    out.restored = GATES_SAVE.restored_from_save
+    if GATES_SAVE.saved and next(GATES_SAVE.saved.gates or {}) ~= nil then
+        -- gates the save says are closed, not yet matched to a scan: the
+        -- planner may open them (open_gates) before the scan
+        out.saved_closed = #GATES_SAVE.saved.gates
+        if GATES_SAVE.saved.armed then out.armed = true end
+    end
+    return out
+end
+
+if dfhack and dfhack.onStateChange then
+    dfhack.onStateChange['ai-gates-save'] = function(sc)
+        if sc == SC_MAP_UNLOADED then GATES_SAVE = {} end
+    end
+end

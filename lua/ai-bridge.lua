@@ -4321,7 +4321,10 @@ LEDGER_FIELDS = {
     last_expel_tick = true, last_memorial_tick = true, last_garden_tick = true, gardens_built = true,
     memorials_built = true, quick_locations = true, at = true,
 }
-LEDGER_MAX_ITEMS = 600
+-- (0.105.0) the AI's own work orders' day counts, and its gate, door and trap
+-- records: a reload restarted the first and lost the second
+LEDGER_FIELDS.order_watch, LEDGER_FIELDS.gate_records = true, true
+LEDGER_MAX_ITEMS = 3000       -- (0.105.0, was 600) room for 40 orders and 40 gate records besides
 
 local function ledger_clean(v, depth, budget)
     if budget.n <= 0 then return nil end
@@ -4348,6 +4351,28 @@ end
 function ledger_data()
     local ok, d = pcall(dfhack.persistent.getSiteData, LEDGER_KEY, {})
     return ok and type(d) == 'table' and d or {}
+end
+
+-- (0.105.0) A scenario copy's mark: a run id in the save's site data. A test
+-- copy shared its logs folder and log memory with the real fort (the key is
+-- world and site, and DF's autosave renames the loaded save); with the mark
+-- the fort section reports run_id and the brain logs the copy apart.
+RUN_KEY = 'ai-overseer/run'
+function run_mark()
+    local ok, d = pcall(dfhack.persistent.getSiteData, RUN_KEY, {})
+    return ok and type(d) == 'table' and type(d.id) == 'string' and d.id or nil
+end
+
+function act_mark_run(a)
+    local id = type(a.run_id) == 'string' and a.run_id:gsub('[^%w%-_]', ''):sub(1, 40) or ''
+    if id == '' then return reject('mark_run needs run_id (letters, digits, - and _)') end
+    local had = run_mark()
+    if had and had ~= id then return reject('this save is already marked as run ' .. had) end
+    if a.dry_run then return {ok = true, dry_run = true} end
+    if not pcall(dfhack.persistent.saveSiteData, RUN_KEY, {id = id}) then
+        return {ok = false, error = 'the run id could not be kept with the fort'}
+    end
+    return {ok = true, run_id = id}
 end
 
 function act_ledger_set(a)
@@ -6254,6 +6279,7 @@ ACTIONS = {
     slaughter_one = act_slaughter_one,
     prune_remains = act_prune_remains,
     ledger_set = act_ledger_set,
+    mark_run = act_mark_run,      -- (0.105.0) a scenario copy's run id
     make_squad = act_make_squad,
     mine_ore = act_mine_ore,
     clear_gate = act_clear_gate,
@@ -6417,7 +6443,8 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
             return {save_dir = df.global.world.cur_savegame.save_dir,
                     site_id = df.global.plotinfo.site_id,
                     world = okw and world or nil,
-                    name = okn and name or nil}
+                    name = okn and name or nil,
+                    run_id = run_mark()}       -- (0.105.0) a scenario copy's mark, or nil
         end)
     end,
     date = function() return get_date() end,
@@ -7330,7 +7357,7 @@ end
 -- These only change what's displayed, so they still work while halted.
 -- (save_memory is the AI's own bookkeeping, not a change to the fort.)
 DISPLAY_ONLY = {report_status = true, set_culture = true, set_learned = true, save_memory = true,
-                ledger_set = true}
+                ledger_set = true, mark_run = true}   -- (0.105.0 mark_run: the brain's bookkeeping)
 
 -- ai-bridge memory: hand the memory stored in the save to the overseer, as
 -- {kinds = {working = {fort, text}, ...}, legacy = <old single table>}.

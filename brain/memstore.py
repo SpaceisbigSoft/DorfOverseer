@@ -194,6 +194,11 @@ def note_world(key: str, world: str | None) -> str | None:
     save_dir, _, site = key.rpartition("#")
     if not world or not site:
         return None
+    if "@" in save_dir:
+        # (0.105.0) a scenario copy marked with a run id: its own folder, always
+        # (its autosaves carry the mark too), never the real fort's
+        ALIASES.pop(key, None)
+        return fort_dir(key).name
     index_path = FORTS_DIR / "index.json"
     index = _read_json(index_path)
     wk = f"{world}#{site}"
@@ -250,6 +255,14 @@ def fort_dir(key: str) -> Path:
     if key in ALIASES:
         return FORTS_DIR / ALIASES[key]
     save_dir, _, site = key.rpartition("#")
+    run = ""
+    if "@" in save_dir:
+        # (0.105.0) a marked scenario copy: "run-<id>-<site>", whatever the save
+        # folder (an autosave of it included)
+        save_dir, _, run = save_dir.rpartition("@")
+        run = re.sub(r"[^A-Za-z0-9_-]+", "_", run).strip("_")
+    if run:
+        return FORTS_DIR / f"run-{run}-{site}"
     slug = re.sub(r"[^A-Za-z0-9_-]+", "_", save_dir or key).strip("_") or "fort"
     if site and slug.lower().startswith("autosave"):
         try:

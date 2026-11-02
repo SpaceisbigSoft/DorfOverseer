@@ -120,16 +120,58 @@ def _mark(now: float, copy: str, src: str) -> None:
         pass
 
 
+# (0.105.0) DF autosaves in a season's last days: no copy then (a copy
+# begun as DF starts its autosave was torn or missed the newest save)
+SEASON_TICKS = 84 * 1200
+SEASON_END_TICKS = 3 * 1200
+# fort (world#site) -> when this process first saw it loaded: an "autosave N"
+# folder written since then is this fort's (the folders are shared by every
+# world; one written before may be another world's)
+SESSION: dict = {}
+
+
+def season_end(date) -> bool:
+    tick = date.get("tick") if isinstance(date, dict) else None
+    return isinstance(tick, int) and tick % SEASON_TICKS >= SEASON_TICKS - SEASON_END_TICKS
+
+
+def _ours(save_root: Path, save_dir: str, since: float | None) -> Path | None:
+    """(0.105.0) The newest folder that is surely the loaded fort's: its own
+    folder, or an autosave written since the fort was seen loaded."""
+    cands = [save_root / save_dir]
+    if since is not None:
+        cands += [c for c in sorted(save_root.glob("autosave*"))
+                  if c.is_dir() and c.name != save_dir and folder_mtime(c) >= since]
+    cands = [c for c in cands if c.is_dir()]
+    return max(cands, key=folder_mtime) if cands else None
+
+
 def maybe(save_root, save_dir: str | None, now: float | None = None,
-          force: bool = False) -> str | None:
+          force: bool = False, fort: dict | None = None, date: dict | None = None) -> str | None:
     """Copy the newest save folder if a day has passed since the last copy.
     `save_root` may be a callable, called only when a copy is due.
-    Returns a line for the overseer's window, or None."""
+    Returns a line for the overseer's window, or None.
+
+    (0.105.0) With `fort` (the report's fort section): only the keeper's
+    pinned world and site, and of DF's shared autosaves only those written
+    while this fort was loaded. With `date`: never in a season's last 3 days."""
     if not save_dir:
         return None
     now = time.time() if now is None else now
+    since = None
+    if fort is not None:
+        fk = f"{fort.get('world')}#{fort.get('site_id')}"
+        since = SESSION.setdefault(fk, now)
+        try:
+            import pin
+            if not pin.matches(fort.get("world"), fort.get("site_id")):
+                return None                            # another world's fort: never copied for the pinned one
+        except ImportError:
+            pass
     if not force and not due(now):
         return None
+    if season_end(date):
+        return None                                    # DF is about to autosave: after it
     if not safe_save_dir(save_dir):
         _mark(now, "", "")                              # said once a day, not every cycle
         return f"no copy of the save: its folder name {str(save_dir)[:40]!r} isn't a plain folder name"
@@ -137,11 +179,20 @@ def maybe(save_root, save_dir: str | None, now: float | None = None,
         save_root = save_root()
     if not save_root:
         return None
-    src = newest_folder(Path(save_root), save_dir)
+    src = newest_folder(Path(save_root), save_dir) if fort is None else _ours(Path(save_root), save_dir, since)
     if src is None:
         return None
     if now - folder_mtime(src) < QUIET_S:
         return None                                    # being written: next cycle
+    if fort is not None:
+        # (0.105.0) DF writing any save folder (its autosave goes to the oldest
+        # "autosave N", not the newest): it is saving, wait
+        for c in [Path(save_root) / save_dir] + sorted(Path(save_root).glob("autosave*")):
+            try:
+                if c.is_dir() and now - folder_mtime(c) < QUIET_S:
+                    return None
+            except OSError:
+                pass
     dest_root = BACKUP_DIR / save_dir
     try:
         if dest_root.resolve().parent != BACKUP_DIR.resolve():

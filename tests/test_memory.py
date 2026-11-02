@@ -818,6 +818,40 @@ def _():
     assert "kinds" not in sent and sent["kinds_files"]["working"] == "memory-to-save.working.txt", sent
     assert (d / "memory-to-save.working.txt").read_text() == "W" * 50
 
+@test("(0.105.0) a scenario copy marked with a run id logs apart from the real fort, its autosaves too")
+def _():
+    import scenario_mark
+    memstore.ALIASES.clear()
+    for f in ("index.json", "session.json"):
+        (memstore.FORTS_DIR / f).unlink(missing_ok=True)
+    memstore.note_world("region2#239", "The Realm")
+    memstore.fort_dir("region2#239").mkdir(parents=True, exist_ok=True)
+    fort = {"save_dir": "region2", "site_id": 239, "world": "The Realm", "run_id": "202611011200-ab12"}
+    key = overseer.fort_key({"fort": fort})
+    assert key == "region2@202611011200-ab12#239", key
+    assert memstore.note_world(key, "The Realm") == "run-202611011200-ab12-239"
+    auto = overseer.fort_key({"fort": dict(fort, save_dir="autosave 1")})
+    assert memstore.fort_dir(auto).name == "run-202611011200-ab12-239"           # its autosave: the same folder
+    assert memstore.note_world("autosave 2#239", "The Realm") == "region2-239"    # the real fort's untouched
+    assert memstore.same_site(key, "region2#239")                                  # the save's memory still reads
+    # prepare's pending id is written into the save once
+    scenario_mark.PENDING = TMP / "scenario-pending.json"
+    rid = scenario_mark.new_run("AI Run X")
+
+    class B:
+        acted = []
+
+        def act(self, a):
+            self.acted.append(a)
+            return {"ok": True, "run_id": a["run_id"]}
+    b = B()
+    st = {"fort": {"save_dir": "AI Run X", "site_id": 239}}
+    assert scenario_mark.mark(b, st, lambda *_: None) and st["fort"]["run_id"] == rid
+    assert not scenario_mark.mark(b, st, lambda *_: None) and len(b.acted) == 1     # marked: never again
+    assert not scenario_mark.mark(b, {"fort": {"save_dir": "region2", "site_id": 239}}, lambda *_: None)
+    memstore.ALIASES.clear()
+
+
 for name, ok, msg in RESULTS:
     print(f"[{'PASS' if ok else 'FAIL'}] {name}")
     if not ok:

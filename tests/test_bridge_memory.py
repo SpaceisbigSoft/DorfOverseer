@@ -504,7 +504,7 @@ def _():
     H.action = t({"type": "ledger_set", "values": {"anything_else": 1}})
     r = H.run("act", "{}")
     assert not r.ok and "not a ledger field" in r.error, dict(r)
-    H.action = t({"type": "ledger_set", "values": {"gardens_built": [f"g{i}" for i in range(700)]}})
+    H.action = t({"type": "ledger_set", "values": {"gardens_built": [f"g{i}" for i in range(3000)]}})
     r = H.run("act", "{}")
     assert not r.ok and "too much" in r.error, dict(r)
     assert H.persist["ai-overseer/ledger"].ai_alert_raised is True          # unchanged by the refusals
@@ -1190,6 +1190,21 @@ def _():
     import digest
     assert digest.SECTION_DEFAULTS["infection"] == {}
     assert digest.normalize({})["infection"] == {}                    # an older bridge: the default
+
+
+@test("(0.105.0) mark_run: a run id kept in the save, reported in the fort section; never changed once set")
+def _():
+    H.action = t({"type": "mark_run", "run_id": "2026-ab/../12"})
+    r = H.run("act", "{}")
+    assert r.ok and r.run_id == "2026-ab12", dict(r)
+    M = H.module()
+    assert M.run_mark() == "2026-ab12"
+    assert LUA.eval("function(M) return M.ACTIONS.mark_run == M.act_mark_run end")(M)
+    H.action = t({"type": "mark_run", "run_id": "other"})
+    r = H.run("act", "{}")
+    assert not r.ok and "already marked" in r.error, dict(r)
+    H.action = t({"type": "mark_run", "run_id": "///"})
+    assert not H.run("act", "{}").ok
 
 
 if __name__ == "__main__":

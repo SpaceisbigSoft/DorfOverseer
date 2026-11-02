@@ -40,6 +40,10 @@ HUNG_S = 1800                # (0.100.1) no answer this long (not down, not at t
                              # (0.104.138: 30 min, was 15: Teacheroar's autosaves took up to 10)
 SAVE_QUIET_S = 180           # (0.104.138) never while a save folder was written this recently
 HUNG_KILL_EVERY_S = 3600     # at most once an hour
+# (0.105.0) a save that crashes DF on load (or never comes up) was tried all
+# night: after LOAD_FAILS_MAX failed loads the next candidate is tried
+LOAD_FAILS_MAX = 2
+LOAD_TIMEOUT_S = 900         # loading, and no fort this long after: a failed load
 DF_EXE = "Dwarf Fortress.exe"
 
 
@@ -53,8 +57,11 @@ def write_last_fort(df_path: str | None, save_dir: str | None, fort: str | None,
         data["world"] = world
     try:
         if LAST_FORT.exists() and json.loads(LAST_FORT.read_text(encoding="utf-8")) == data:
+            # (0.105.0) touched, not rewritten: the keeper's pin (brain/pin.py)
+            # takes the fort the overseer named since the keeper started
+            os.utime(LAST_FORT, None)
             return
-        LAST_FORT.parent.mkdir(exist_ok=True)
+        LAST_FORT.parent.mkdir(parents=True, exist_ok=True)
         from dfhack import write_atomic
         write_atomic(LAST_FORT, json.dumps(data))   # (0.100) the reviver may be reading it
     except (OSError, ValueError):
@@ -76,17 +83,66 @@ def load_candidates() -> tuple[list[str], str | None]:
     """The fort's own save folder and DF's autosaves, newest first, and the
     world they must belong to: DF's "autosave 1/2" folders are shared by every
     world, so the newest one may be another world's (the title screen says
-    which world each save is; lua/ai-title.lua checks)."""
-    try:
-        d = json.loads(LAST_FORT.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return [], None
+    which world each save is; lua/ai-title.lua checks).
+
+    (0.105.0) With the keeper's pin (brain/pin.py) the pinned fort's folder and
+    world, never last-fort.json's: a manual daytime run of another fort changed
+    which world the reviver loaded."""
+    import pin
+    p = pin.current()
+    if p:
+        d = {"df_path": p.get("df_path"), "save_dir": p.get("save_dir"), "world": p.get("world")}
+    else:
+        try:
+            d = json.loads(LAST_FORT.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return [], None
+    if not d.get("df_path") or not d.get("save_dir"):
+        return [], d.get("world")
     root = save_root(d["df_path"], d["save_dir"]) or Path(d["df_path"]) / "save"   # (0.99.13)
     from backup import folder_mtime
     cands = [root / d["save_dir"]] + sorted(root.glob("autosave*"))
     cands = [c for c in cands if c.is_dir()]
     cands.sort(key=folder_mtime, reverse=True)
     return [c.name for c in cands], d.get("world")
+
+
+RESTORE_PREFIX = "AI restore"
+
+
+def restore_from_backup(log=None) -> str | None:
+    """(0.105.0) Every save of the pinned fort failed to load: the newest copy
+    in backups/ is copied into DF's save folder as "AI restore <date>" and its
+    folder name returned (None if there is none). Each copy is restored once."""
+    import shutil
+    import backup
+    import pin
+    p = pin.current()
+    if not p or not backup.safe_save_dir(p.get("save_dir")) or not p.get("df_path"):
+        return None
+    src_root = backup.BACKUP_DIR / p["save_dir"]
+    try:
+        copies = sorted((c for c in src_root.iterdir() if c.is_dir() and backup.COPY_NAME.match(c.name)),
+                        key=lambda c: c.name, reverse=True)
+    except OSError:
+        return None
+    root = save_root(p["df_path"], p["save_dir"]) or Path(p["df_path"]) / "save"
+    for c in copies:
+        name = f"{RESTORE_PREFIX} {c.name}"
+        dest = root / name
+        if dest.exists():
+            continue                      # restored before (and failed, or it'd be loaded): an older one
+        try:
+            shutil.copytree(c, dest)
+        except OSError as e:
+            if log:
+                log(f"Revive: couldn't copy the backup {c} into the game's saves ({e}).")
+            return None
+        if log:
+            log(f"Revive: every save of the pinned fort failed to load; the backup copy {c.name} is now the "
+                f"save '{name}'.")
+        return name
+    return None
 
 
 def save_written_within(seconds: float, clock=time.time) -> bool:
@@ -133,6 +189,11 @@ class Reviver:
         self.loads: list[float] = []
         self.seen_up = False             # the game answered at some point this run
         self.candidates = load_candidates
+        # (0.105.0) failed loads per save folder; the load under way: (folder, since)
+        self.load_fails: dict[str, int] = {}
+        self.loading: tuple[str, float] | None = None
+        self.restore = restore_from_backup
+        self.restored: list[str] = []
 
     def _dfhack(self) -> DFHack:
         if self.df is None:
@@ -146,15 +207,50 @@ class Reviver:
         else:
             subprocess.Popen(cmd, shell=True)    # (tests and other systems)
 
+    PROBE_LUA = ("local w = dfhack.isWorldLoaded() and 'WORLD-LOADED' or 'NO-WORLD' "
+                 # (0.105.0) the loaded fort's site, for the keeper's pin (read in pcall: a probe)
+                 "local ok, s = pcall(function() return df.global.plotinfo.site_id end) "
+                 "print(w .. ' SITE=' .. tostring(ok and dfhack.isMapLoaded() and s or ''))")
+
     def probe(self) -> str:
         """'down' (nothing answers), 'title' (no world loaded) or 'world'."""
         try:
-            out = self._dfhack().run("lua", "print(dfhack.isWorldLoaded() and 'WORLD-LOADED' or 'NO-WORLD')")
+            out = self._dfhack().run("lua", self.PROBE_LUA)
         except GameNotRunning:
             return "down"
         except DFHackError:
             return "unknown"
+        m = re.search(r"SITE=(-?\d+)", out)
+        self.site = m.group(1) if m else None
         return "world" if "WORLD-LOADED" in out else "title" if "NO-WORLD" in out else "unknown"
+
+    def _load_failed(self, why: str) -> None:
+        """(0.105.0) The load under way failed: counted against its folder."""
+        folder = self.loading[0]
+        self.loading = None
+        n = self.load_fails[folder] = self.load_fails.get(folder, 0) + 1
+        self.log(f"Revive: loading '{folder}' failed ({why}); {n} failed load(s) of it"
+                 + (f": it isn't tried again, the next older save is." if n >= LOAD_FAILS_MAX else "."))
+
+    def _watch_load(self, state: str, now: float) -> None:
+        if self.loading is None:
+            return
+        folder, since = self.loading
+        if state == "world":
+            import pin
+            p = pin.current()
+            site = getattr(self, "site", None)
+            if p and site not in (None, "") and str(site) != str(p.get("site")):
+                self.log(f"Revive: '{folder}' loaded another site ({site}, not the pinned {p.get('site')}): "
+                         "the overseer won't act on it.")
+                self._load_failed("another site")
+                return
+            self.loading = None
+            self.load_fails.pop(folder, None)
+        elif state == "down":
+            self._load_failed("Dwarf Fortress closed")
+        elif now - since >= LOAD_TIMEOUT_S:
+            self._load_failed(f"no fort {LOAD_TIMEOUT_S // 60} minutes after")
 
     def tick(self) -> None:
         now = self.clock()
@@ -164,6 +260,7 @@ class Reviver:
         state = self.probe()
         if state in ("title", "world"):
             self.seen_up = True
+        self._watch_load(state, now)
         if state == "down":
             self.title_since = None
             self.down_since = self.down_since or now
@@ -188,9 +285,21 @@ class Reviver:
             self.title_since = self.title_since or now
             self.loads = [t for t in self.loads if now - t < 3600]
             if now - self.title_since >= TITLE_S and len(self.loads) < LOADS_PER_HOUR:
+                if self.loading is not None:
+                    return                    # (0.105.0) the last load still has time to come up
                 folders, world = self.candidates()
+                folders = [f for f in folders if self.load_fails.get(f, 0) < LOAD_FAILS_MAX]
                 if not folders:
-                    return
+                    # (0.105.0) every save failed: the newest copy in backups/
+                    restored = self.restore(self.log) if self.restore else None
+                    if not restored:
+                        if not getattr(self, "none_said", False):
+                            self.log("Revive: no save of the pinned fort is left to try (each failed to load "
+                                     f"{LOAD_FAILS_MAX} times) and no backup copy to restore: left at the title.")
+                            self.none_said = True
+                        return
+                    self.restored.append(restored)
+                    folders = [restored]
                 folder = folders[0]
                 self.loads.append(now)
                 # (0.100.1, review) the load goes on in steps inside the game after
@@ -207,6 +316,7 @@ class Reviver:
                     else:
                         out = self._dfhack().run("ai-title", "load", folder)
                     if '"ok":true' in out.replace(" ", ""):
+                        self.loading = (folder, now)
                         self.log(f"Revive: the game sat at the title screen; loading the save '{folder}'.")
                     else:
                         self.log(f"Revive: couldn't load '{folder}' ({out.strip()[-200:]}).")
