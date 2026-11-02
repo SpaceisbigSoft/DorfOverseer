@@ -223,6 +223,8 @@ function squad_power(sq)
             end
             local arm = false
             -- (0.105.2) armed: a weapon in hand or one given on a weapon entry
+            -- (an entry's weapon may still lie elsewhere: armed means "has
+            -- one coming", which the gear fix makes true)
             -- (B's squads went at a thief with none: four sent, the thief lived)
             local has_weapon = false
             pcall(function()
@@ -2698,16 +2700,16 @@ local function stale_places(dry_run)
     -- the fix refused 17 times, as it took only ids on the free list. Such
     -- an id comes off the place and goes back on the free list.
     local entry = claim_map()
+    local work = id_set(eq.work_weapons)
     local moved = {}
     local function free_again(id)
         if una[id] or not asg[id] or entry[id] then return false end
         local okf, ok = pcall(function()
             local it = df.item.find(id)
             if not it then return false end
-            local f = it.flags
-            if f.removed or f.garbage_collect or f.artifact or f.trader or f.hostile then return false end
-            if f.in_inventory and dfhack.items.getHolderUnit(it) ~= nil then return false end
-            return true
+            -- (0.105.2 review) only what DF could hand out, and not mid-pickup
+            if it.flags.in_job then return false end
+            return free_gear(it, work)
         end)
         return okf and ok
     end
@@ -2811,6 +2813,9 @@ local function danger_spots()
     for _, u in ipairs(okl and active or {}) do
         local ok, bad = pcall(function()
             local U = dfhack.units
+            -- (0.105.2 review) a caged or chained captive is no danger
+            local f1 = u.flags1
+            if f1 and (f1.caged or f1.chained) then return false end
             return not U.isDead(u) and (U.isDanger(u) or U.isInvader(u))
         end)
         if ok and bad then
@@ -2954,12 +2959,16 @@ function fix_gear_gaps(dry_run, shields)
     out.weapons = okw and type(w) == 'table' and (w.assigned or w.would_assign) or 0
     if out.stale + out.loosened + out.shields_added + out.weapons + out.unforbidden == 0 then
         local why = 'nothing to fix (see the report\'s weapon_gaps_why)'
+        -- (0.105.2 review) enemies or melt marks: looked at again in 2 days,
+        -- no back-off (a long siege's waits kept the dead's weapons forbidden
+        -- after it, and later gaps waited too)
+        local waiting = nil
         if (out.left_near_enemies or 0) > 0 then
-            why = out.left_near_enemies .. ' wanted weapon(s) lie near enemies: left forbidden until they go'
+            why, waiting = out.left_near_enemies .. ' wanted weapon(s) lie near enemies: left forbidden until they go', true
         elseif (out.left_to_melt or 0) > 0 then
-            why = out.left_to_melt .. ' wanted weapon(s) are set to melt: left for the player'
+            why, waiting = out.left_to_melt .. ' wanted weapon(s) are set to melt: left for the player', true
         end
-        return {ok = false, rejected = true, error = why}
+        return {ok = false, rejected = true, waiting = waiting, error = why}
     end
     out.ok, out.dry_run = true, dry_run or nil
     return out

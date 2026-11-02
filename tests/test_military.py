@@ -1128,7 +1128,7 @@ def _():
     # an enemy 10 tiles off: left, and the refusal says why
     lua, n, env, eq, sq7, sq8 = setup({"forbid": True}, 13)
     r = env.fix_gear_gaps(False, False)
-    assert not r.ok and "near enemies" in r.error, dict(r)
+    assert not r.ok and "near enemies" in r.error and r.waiting, dict(r)   # looked at again, no back-off
     assert env.df["global"].world["items"].other.WEAPON[4].flags.forbid
     # an enemy far away (60 tiles): let go
     lua, n, env, eq, sq7, sq8 = setup({"forbid": True}, 63)
@@ -1136,7 +1136,7 @@ def _():
     # set to melt: the player's
     lua, n, env, eq, sq7, sq8 = setup({"melt": True})
     r = env.fix_gear_gaps(False, False)
-    assert not r.ok and "melt" in r.error, dict(r)
+    assert not r.ok and "melt" in r.error and r.waiting, dict(r)
     assert env.df["global"].world["items"].other.WEAPON[4].flags.melt
 
 
