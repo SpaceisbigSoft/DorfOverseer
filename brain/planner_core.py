@@ -257,6 +257,17 @@ PLANNER_CONFIG = {
     "soldier_swap_cooldown_ticks": 2 * 1200,    # (0.104.64) a starved soldier let go two days apart
     "webs_clear_min": 2000,                      # (0.104.116) spider webs on the map: past this they are cleared (a season apart)
     "prune_parts_min": 2000,                     # (0.104.115) butchered parts on the ground: past this, usable ones rot too
+    # (0.105.3) B (2 Nov, census 07:38): 17,471 items (5,530 webs) and 151
+    # scrubbable dead at 1-3 FPS, yet nothing was cleaned: every clean-up sat
+    # behind 30,000 items and the dead behind 1,000. Now from the census' own counts:
+    "remove_webs_slow_min": 1000,                # loose webs outside the fort: removed past this while slow...
+    "remove_webs_min": 5000,                     # ...or past this at any speed
+    "remove_webs_days": 7,                       # ...a week apart
+    "remove_webs_more_days": 2,                  # ...a batch every two days while the last call left more
+    "remove_webs_max": 2000,                     # ...at most this many a call (one call stays quick)
+    "dead_scrub_slow_min": 100,                  # dead fix/dead-units could scrub: scrubbed past this while slow...
+    "dead_scrub_slow_days": 14,                  # ...two weeks apart while slow (dead_scrub_min/_days at any speed)
+    "corpses_ground_min": 100,                   # corpses, parts and remains on the ground: past this they rot (prune) while slow
     "prune_worn_min": 200,                       # (0.104.115) worn clothes: past this, those thrown down rot
     "soldier_swap_month_min": 2,                 # (0.104.114) swaps allowed in 28 days: this many at least ...
     "soldier_swap_month_share": 10,              # ... or one per this many soldiers
