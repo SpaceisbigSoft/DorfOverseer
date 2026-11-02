@@ -63,7 +63,7 @@ PLANNER_CONFIG = {
     # the dwarves it has: Teacheroar grew 98 -> 438 under "no cap", drink fell
     # to 0.08 a dwarf, 50-60% unhappy for 7 years, FPS 87 -> 18. Held at its
     # size while any of these holds; let go once all are back past the "ok" side
-    "strain_unhappy_pct": 20, "strain_unhappy_ok_pct": 12,
+    "strain_unhappy_pct": 20, "strain_unhappy_ok_pct": 12, "strain_unhappy_min": 3,   # (0.105.8) and this many unhappy dwarves at least
     "strain_drink_pd": 2.0, "strain_drink_ok_pd": 4.0,
     "strain_meals_pd": 2.0, "strain_meals_ok_pd": 4.0,
     "beds_ahead": 20,              # Expand: bedrooms up to this many ahead of the population

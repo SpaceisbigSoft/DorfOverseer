@@ -4890,6 +4890,24 @@ def _():
     assert not m.strain_hold and m.strain_cap is None and m.fps_cap is None
 
 
+@test("strain (0.105.8): B's 7 dwarves, one miserable (14%): not strained; three unhappy of 7 are")
+def _():
+    from planner_building import fort_strain
+    s = fort()
+    s["dwarves"]["total"] = 7
+    pop = 7
+    s["stocks"]["drink"] = pop * 20
+    s["stocks"]["prepared_meals"] = pop * 60
+    s["dwarves"]["stress"] = {"content": 4, "fine": 2, "miserable": 1, "unhappy": 0, "very_unhappy": 0,
+                              "happy": 0, "ecstatic": 0}
+    import outcomes
+    un = outcomes.measure(s).get("unhappy_pct")
+    assert un and un > 12, un
+    assert not fort_strain(s, PLANNER_CONFIG, True) and not fort_strain(s, PLANNER_CONFIG), fort_strain(s, PLANNER_CONFIG, True)
+    s["dwarves"]["stress"].update(content=2, unhappy=2)
+    assert any("unhappy" in x for x in fort_strain(s, PLANNER_CONFIG)), fort_strain(s, PLANNER_CONFIG)
+
+
 @test("strain while slow (0.104.120): a stale slow-game cap above the fort's size doesn't stop the strain hold")
 def _():
     s = grown(100, True)

@@ -1282,7 +1282,12 @@ def fort_strain(s: dict, cfg: dict, held: bool = False) -> list:
     out = []
     un, dr, me = m.get("unhappy_pct"), m.get("drink_pd"), m.get("meals_pd")
     k = "_ok" if held else ""
-    if isinstance(un, (int, float)) and un >= cfg["strain_unhappy" + k + "_pct"]:
+    # (0.105.8) and only once a few dwarves are unhappy: B (Monastery, 7
+    # dwarves) was held at 7 from 12:24 for one miserable dwarf (14.3%, over
+    # the 12% to let go), the only way under it nobody unhappy at all
+    pop = int(_d(s.get("dwarves")).get("total") or 0)
+    few = isinstance(un, (int, float)) and pop > 0 and un * pop / 100 < cfg.get("strain_unhappy_min", 3) - 0.01
+    if isinstance(un, (int, float)) and un >= cfg["strain_unhappy" + k + "_pct"] and not few:
         out.append(f"{un:g}% unhappy")
     if isinstance(dr, (int, float)) and dr < cfg["strain_drink" + k + "_pd"]:
         out.append(f"drink {dr:g} a dwarf")
