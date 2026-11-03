@@ -687,7 +687,8 @@ function get_petitions()
         if not dfhack.units.isResident then return end
         local res = {}
         for _, u in ipairs(df.global.world.units.active) do
-            if #res < 200 and dfhack.units.isAlive(u) and dfhack.units.isResident(u) then table.insert(res, u.id) end
+            if #res < 200 and dfhack.units.isAlive(u) and dfhack.units.isResident(u)
+                    and not dfhack.units.isCitizen(u) then table.insert(res, u.id) end
         end
         out.residents = res
         out.residents_n = #res

@@ -92,12 +92,12 @@ def _petition_rules(s: dict, cfg: dict, proposals: list, notes: list) -> None:
 
 def residency_stance(traits: dict, cfg: dict) -> str:
     """(0.105.9) Outsiders: "accept" petitions to stay from a welcoming fort
-    (30 and up), "decline" from a closed one (-30 and below), else "stale"
+    (30 and up), "decline" from a closed one (-50 and below), else "stale"
     (only the ones whose visitor is gone or dead are cleared)."""
     o = traits.get("outsiders", 0) or 0
     if o >= cfg["residency_accept_outsiders"]:
         return "accept"
-    if o <= -30:
+    if outsider_orders(traits)["closed"]:          # (review) -50 and below, as DF's standing orders
         return "decline"
     return "stale"
 
@@ -122,7 +122,7 @@ def _residency_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) ->
     memory.residency = st
     now = abs_tick(s)
     residents = pt.get("residents")
-    # the probe's verdict
+    # the probe's verdict (a visitor who left before it could show is no verdict)
     probe = _d(st.get("probe"))
     if probe and st.get("works") is None and isinstance(residents, list):
         if probe.get("unit") in residents:
@@ -130,8 +130,19 @@ def _residency_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) ->
             st["since"] = now
         elif (isinstance(probe.get("tick"), int)
               and now - probe["tick"] >= cfg["residency_probe_days"] * TICKS_PER_DAY):
-            st["works"] = False
-            st["since"] = now
+            # (review) the visitor may have left in the meantime: a second
+            # probe before the verdict
+            st["tries"] = int(st.get("tries") or 0) + 1
+            if st["tries"] < 2:
+                st.pop("probe", None)
+                probe = {}
+            else:
+                st["works"] = False
+                st["since"] = now
+    if (st.get("works") is False and isinstance(st.get("since"), int)
+            and now - st["since"] >= cfg["residency_reprobe_days"] * TICKS_PER_DAY):
+        st.clear()                                  # a year on: one more probe
+        probe = {}
     if not pending:
         return
     traits = _traits(s) if isinstance(s.get("settings"), dict) else {}
@@ -157,13 +168,25 @@ def _residency_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) ->
         return
     if stance != "accept":
         return
-    here = [e for e in pending if _d(e.get("applicant")).get("unit") is not None]
+    # (review) never a vampire; mercenaries and monster hunters only as the
+    # standing orders would take them (Militarism)
+    fighters = petition_orders_wanted(s, cfg)
+    def welcome(e):
+        if e.get("vampire") or _d(e.get("applicant")).get("unit") is None:
+            return False
+        r = str(e.get("reason") or "").lower()
+        if "mercenar" in r or "merc" == r:
+            return bool(fighters.get("mercenary"))
+        if "monster" in r or "hunt" in r:
+            return bool(fighters.get("monster_hunter"))
+        return True
+    here = [e for e in pending if welcome(e)]
     if not here:
         return
     works = st.get("works")
     if works is False:
-        notes.append(f"Needs you: the AI agreed to a petition to stay and DF didn't make the visitor a resident: "
-                     f"{len(pending)} petition(s) to stay wait for you on DF's petitions screen")
+        ask_player(notes, f"the AI agreed to a petition to stay and DF didn't make the visitor a resident: "
+                          f"{len(pending)} petition(s) to stay wait for you on DF's petitions screen")
         return
     if works is None and not probe:
         e = here[0]
@@ -175,11 +198,11 @@ def _residency_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) ->
         return
     if works is None:
         return                                  # waiting on the probe
-    for e in here[:cfg["residency_accept_per_cycle"]]:
-        proposals.append(Proposal("residency", {"type": "answer_petition", "id": e["id"], "accept": True,
-                                                "residency": True},
-                                  f"a welcoming fort (Outsiders {traits.get('outsiders', 0)}): agree to "
-                                  f"{e.get('name') or 'a visitor'}'s petition to stay", 6))
+    ids = [e["id"] for e in here][:batch]
+    proposals.append(Proposal("residency", {"type": "answer_petition", "ids": ids, "accept": True,
+                                            "residency": True},
+                              f"a welcoming fort (Outsiders {traits.get('outsiders', 0)}): agree to "
+                              f"{len(ids)} petition(s) to stay", 6))
 
 
 def _convict_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> None:

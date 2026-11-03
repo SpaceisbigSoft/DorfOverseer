@@ -201,7 +201,7 @@ def _thieves(s, cfg, t, memory, proposals, notes):
     now = abs_tick(s)
     for e in _l(_d(s.get("entrances")).get("entrances")):
         if not isinstance(e, dict) or not e.get("sealed") or not any(
-                isinstance(b, dict) and b.get("kind") in ("door", "bridge") for b in _l(e.get("equipment"))):
+                isinstance(b, dict) and b.get("kind") in ("door", "bridge", "hatch") for b in _l(e.get("equipment"))):
             continue
         if _near_spot(e, traps):
             continue

@@ -758,18 +758,35 @@ def _():
     props = []
     _residency_rule(st(100, here[1:], residents=[]), m, PLANNER_CONFIG, props, notes)
     assert not props and m.residency.get("works") is None
-    # seen as a resident: three a cycle from now on
+    # seen as a resident: a batch of 25 from now on (one action)
     props = []
     _residency_rule(st(100, here[1:], residents=[101]), m, PLANNER_CONFIG, props, notes)
-    assert m.residency["works"] is True and len(props) == 3 and all(p.action["accept"] for p in props), props
-    # never seen: no more agreed, and a note
+    assert m.residency["works"] is True and len(props) == 1 and props[0].action["accept"] is True, props
+    assert props[0].action["ids"] == list(range(2, 27)), props[0].action
+    # a vampire is never agreed to
+    m3 = Memory()
+    m3.residency = {"works": True}
+    vamp = dict(pet(50, 150), vampire=True)
+    props = []
+    _residency_rule(st(100, [vamp, pet(51, 151)], residents=[]), m3, PLANNER_CONFIG, props, [])
+    assert props[0].action["ids"] == [51], props
+    # never seen: a second probe, then no more agreed, and a note for you
+    from planner import NEEDS_YOU
     m2 = Memory()
     m2.residency = {"probe": {"id": 1, "unit": 101, "tick": 0}}
     s = st(100, here[1:], residents=[])
     s["date"]["tick"] += 10 * 1200
     props, notes = [], []
     _residency_rule(s, m2, PLANNER_CONFIG, props, notes)
-    assert m2.residency["works"] is False and not props and any("Needs you" in n for n in notes), notes
+    assert m2.residency.get("works") is None and m2.residency["tries"] == 1 and len(props) == 1, (m2.residency, props)
+    m2.residency["probe"] = {"id": 2, "unit": 102, "tick": 0}
+    props, notes = [], []
+    _residency_rule(s, m2, PLANNER_CONFIG, props, notes)
+    assert m2.residency["works"] is False and not props and any(n.startswith(NEEDS_YOU) for n in notes), notes
+    # Outsiders -40: DF's orders still take guests, so nothing is declined (only the gone cleared)
+    props = []
+    _residency_rule(st(-40, here), Memory(), PLANNER_CONFIG, props, [])
+    assert not props
     # the Rules switch "accept visitors" off: nothing agreed
     props = []
     _residency_rule(st(100, here, residents=[], accept_visitors=False), Memory(), PLANNER_CONFIG, props, [])

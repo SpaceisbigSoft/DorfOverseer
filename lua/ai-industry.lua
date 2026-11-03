@@ -292,7 +292,7 @@ local function near_levels(x, y, z, areas, m)
     return false
 end
 
-function find_drift(a, metal, areas, groups)
+function find_drift(a, metal, areas, groups, zs)
     local now = abs_tick()
     local last = DRIFT_FAILED[metal]
     if now and last and now >= last and now - last < DRIFT_RETRY_TICKS then return nil end
@@ -307,8 +307,9 @@ function find_drift(a, metal, areas, groups)
         for x = 0, 15 do
             for y = 0, 15 do
                 local tx, ty = p.x + x, p.y + y
-                if dfhack.maps.getTileAssignment(ev.tile_bitmask, x, y)
-                        and block.designation[x][y].dig == df.tile_dig_designation.No
+                -- (review) only on levels where citizens stand: elsewhere no
+                -- drift can open onto the fort, and the search budget is spent
+                if (not zs or zs[p.z]) and dfhack.maps.getTileAssignment(ev.tile_bitmask, x, y)
                         and not near_levels(tx, ty, p.z, areas, 2) then
                     table.insert(seeds, {x = tx, y = ty, z = p.z, mat = ev.inorganic_mat,
                                          d = math.abs(tx - a.cx) + math.abs(ty - a.cy) + 3 * math.abs(p.z - a.cz)})
@@ -360,10 +361,15 @@ function find_drift(a, metal, areas, groups)
                     -- the opening tile may stand next to a level (it opens
                     -- onto the fort); the rest keeps a wall between.
                     -- (the cheap checks first: safe and room_wall read ~50 tiles)
-                    local entry = not near_levels(nx, ny, t.z, areas, 0) and opens(nx, ny, t.z)
-                    if fl and fl.dig == df.tile_dig_designation.No
-                            and not near_levels(nx, ny, t.z, areas, entry and 0 or 1)
-                            and safe(nx, ny, t.z) and not room_wall(nx, ny, t.z) then
+                    -- never inside a level; within 1 tile of one only as the
+                    -- drift's opening (opens is read only for those)
+                    local place
+                    if near_levels(nx, ny, t.z, areas, 0) then place = false
+                    elseif near_levels(nx, ny, t.z, areas, 1) then place = opens(nx, ny, t.z)
+                    else place = true end
+                    -- (review) a tile already marked for digging is passed
+                    -- through: a drift not dug yet is found again, not a second beside it
+                    if fl and place and safe(nx, ny, t.z) and not room_wall(nx, ny, t.z) then
                         seen[nk] = {d = st.d + 1, px = t.x, py = t.y}
                         table.insert(queue, {x = nx, y = ny, z = t.z})
                     else
@@ -423,7 +429,9 @@ function mine(metal, count, dry_run)
         -- levels (the six forts, y257: 29-30 refusals each, 0 veins ever
         -- mined): a drift, a 1-wide tunnel through plain rock from the fort
         -- to the nearest vein (hidden or not), then the vein
-        drift = find_drift(a, metal, areas, groups)
+        local zs = {}
+        for _, p in ipairs(reqscript('ai-builder').citizen_positions()) do zs[p.z] = true end
+        drift = find_drift(a, metal, areas, groups, zs)
         if drift then best, best_mat = drift.vein, drift.mat end
     end
     if not best then

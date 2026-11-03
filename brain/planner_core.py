@@ -364,7 +364,8 @@ PLANNER_CONFIG = {
     "petition_mercenaries_militarism": 30,  # mercenaries from this
     "residency_probe_days": 3,         # (0.105.9) an agreed residency petition: seen as a resident within this
     "residency_batch": 25,             # residency petitions answered in one go
-    "residency_accept_per_cycle": 3,   # once agreeing is seen to work: this many a cycle
+    "residency_cooldown_ticks": 1200,  # (review) a batch a day, not the default 2 days
+    "residency_reprobe_days": 336,     # a failed probe is tried again a year on (a DFHack update may help)
     "residency_accept_outsiders": 30,  # agree from this Outsiders (welcoming); decline below -30 (closed)
     "petition_citizen_margin": 5,      # citizenship while citizens are this far under the population target
     "bag_sink_days": 28,               # this many bag orders in so many days with no empty bag: a sink (0.87.1)
@@ -1735,7 +1736,8 @@ REFUSAL_IDLE_DAYS = 336              # (0.104.138) refused as nothing to do (eve
 REFUSAL_KEYS = ("type", "kind", "recipe", "job", "entrance_id", "project_id", "name", "squad_id",
                 "lever_id", "target_id", "tool", "unit_id",      # (0.103.12) unit_id: one dwarf's refusal isn't another's
                 "zone_id", "order_id", "location_id",            # (0.104.81) nor one zone's, order's or location's
-                "building_id")                                   # (0.104.138) nor one workshop's feeder another's
+                "building_id",                                   # (0.104.138) nor one workshop's feeder another's
+                "accept")                                        # (0.105.9) declining isn't agreeing
 
 
 def refusal_key(p: Proposal) -> str:
@@ -1810,7 +1812,7 @@ def note_refusal(memory: Memory, p: Proposal, r: dict, now: int, bridge: str | N
 # loop (the soak run: 125 soap-maker levels, 184 meal orders): held a while.
 # Rules that repeat by design aren't counted.
 LOOP_LIMITS = {"start_project": 12, "place_surface": 12, "place_well": 12, "make_pasture": 20,
-               "dismiss_alerts": 400}
+               "dismiss_alerts": 400, "answer_petition": 400}   # (0.105.9) residency batches by the hundred
 LOOP_LIMIT_DEFAULT = 80
 LOOP_EXEMPT = {"entrances", "needs_trinkets", "trinket_orders", "excess_shops", "cistern", "call_trader", "open_trade",
                "trade_deal", "close_trade", "trade", "train", "water", "project"}
