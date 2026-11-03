@@ -34,7 +34,7 @@
 local json = require('json')
 local utils = require('utils')
 
-BRIDGE_VERSION = '0.105.18'
+BRIDGE_VERSION = '0.105.20'
 PROTOCOL = 1 -- bump when the report's shape changes in a breaking way
 
 local OUT_DIR = dfhack.getDFPath() .. '/dfhack-config/ai-overseer'
@@ -6512,8 +6512,34 @@ function act_apply_preset(a)
             traits = ai.traits, extreme = ai.extreme, rules = rules, settings = ai}
 end
 
+-- (0.105.20) The Rules tab's on/off switches set from outside the window
+-- (logs/rules-request.json, read by the overseer): only keys whose default is
+-- true or false, each to true or false. Returns what changed.
+function act_set_rules(a)
+    if type(a.rules) ~= 'table' then return reject('set_rules needs rules: {name = true|false}') end
+    local S = reqscript('ai-overseer-settings')
+    local defs = S.defaults()
+    local cur = S.load_settings()
+    local changed, unknown = {}, {}
+    for k, v in pairs(a.rules) do
+        if type(k) ~= 'string' or type(defs[k]) ~= 'boolean' or type(v) ~= 'boolean' then
+            table.insert(unknown, tostring(k))
+        elseif cur[k] ~= v then
+            changed[k] = {old = cur[k], new = v}
+            cur[k] = v
+        end
+    end
+    if #unknown > 0 then
+        table.sort(unknown)
+        return reject('set_rules: not an on/off switch of the Rules tab: ' .. table.concat(unknown, ', '))
+    end
+    if next(changed) and a.dry_run ~= true then S.save_settings(cur) end
+    return {ok = true, changed = changed, dry_run = a.dry_run == true or nil}
+end
+
 ACTIONS = {
     join_levels = act_join_levels,
+    set_rules = act_set_rules,           -- (0.105.20) logs/rules-request.json
     apply_preset = act_apply_preset,     -- (0.105.4) keeper.py --preset
     census = act_census,
     clear_webs = act_clear_webs,

@@ -564,6 +564,8 @@ def short(a: dict) -> str:
         return "clear old dead creatures from the game's unit list"
     if t == "census":            # (0.104.113)
         return "count what fills the map"
+    if t == "set_rules":         # (0.105.20) logs/rules-request.json
+        return "set Rules switches: " + ", ".join(f"{k} {'on' if v else 'off'}" for k, v in sorted(_d(a.get("rules")).items()))
     if t == "apply_preset":      # (0.105.4) keeper.py --preset
         return f"apply the {a.get('name')} preset"
     if t == "convict":           # (0.104.131)
@@ -792,6 +794,7 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
         pass
     if PRESET:
         apply_preset(bridge, state, key, autopilot)    # (0.105.4) keeper.py --preset, before the first plan
+    rules_request(bridge, autopilot)                   # (0.105.20) logs/rules-request.json
     memory, bank = load(key, bridge, prefer_logs=not autopilot, state=state)
     for k in sorted(memory._texts.get("frozen") or ()):
         if (key, k) not in WARNED:
@@ -1613,6 +1616,49 @@ def note_preset(key: str, name: str) -> None:
         write_atomic(PRESET_FILE, json.dumps(done, indent=1))
     except OSError:
         pass
+
+
+RULES_REQUEST = "rules-request.json"     # (0.105.20) in the logs folder: {"rules": {"open_caverns": true}}
+
+
+def rules_request(bridge: Bridge, autopilot: bool) -> None:
+    """(0.105.20) Rules-tab switches asked for from outside the game (the
+    player through Claude: C and F's cavern wells, 3 Nov): logs/
+    rules-request.json {"rules": {name: true|false}} is applied to the fort
+    this folder runs through the bridge's set_rules, then renamed
+    rules-request.done.json with the answer, so it is applied once. A dry
+    run only says what it would change."""
+    path = LOG_DIR / RULES_REQUEST
+    if not path.exists():
+        return
+    try:
+        req = json.loads(path.read_text(encoding="utf-8"))
+        rules = req.get("rules") if isinstance(req, dict) else None
+        if not isinstance(rules, dict) or not rules:
+            raise ValueError("no rules")
+    except (OSError, ValueError) as e:
+        say(f"Rules: {RULES_REQUEST} couldn't be read ({e}); left for you to fix.")
+        return
+    try:
+        r = bridge.act({"type": "set_rules", "rules": rules, "dry_run": not autopilot})
+    except (BridgeError, DFHackError) as e:
+        say(f"Rules: couldn't set {', '.join(sorted(rules))} ({e}); trying again next cycle.")
+        return
+    if not autopilot:
+        say(f"Rules: would set {rules} (dry run: nothing changed).")
+        return
+    if r.get("ok"):
+        ch = r.get("changed") if isinstance(r.get("changed"), dict) else {}
+        words = ", ".join(f"{k} {'on' if v.get('new') else 'off'}" for k, v in sorted(ch.items())) or "nothing to change"
+        say(f"Rules: set from {RULES_REQUEST}: {words}.")
+    else:
+        say(f"Rules: {RULES_REQUEST} not applied: {r.get('error')}")
+    try:
+        done = LOG_DIR / "rules-request.done.json"
+        done.write_text(json.dumps({"request": req, "answer": r}, indent=1), encoding="utf-8")
+        path.unlink()
+    except OSError as e:
+        say(f"Rules: applied, but {RULES_REQUEST} couldn't be moved aside ({e}).")
 
 
 def apply_preset(bridge: Bridge, state: dict, key: str, autopilot: bool) -> None:

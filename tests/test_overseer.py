@@ -802,6 +802,43 @@ def _():
     assert sum(1 for e in events if e.get("kind") == "death" and e.get("own_civ") and not e.get("again")) == 1
 
 
+
+@test("0.105.20 rules-request.json: applied once through set_rules, moved aside with the answer; a dry run changes nothing")
+def _():
+    import json as _json
+    old_dir = overseer.LOG_DIR
+    d = Path(tempfile.mkdtemp())
+    overseer.LOG_DIR = d
+    try:
+        sent = []
+
+        class FakeBridge:
+            def act(self, a):
+                sent.append(a)
+                return {"ok": True, "changed": {"open_caverns": {"old": False, "new": True}}}
+
+        overseer.rules_request(FakeBridge(), True)                       # no file: nothing
+        assert sent == []
+        (d / "rules-request.json").write_text(_json.dumps({"rules": {"open_caverns": True}}), encoding="utf-8")
+        overseer.rules_request(FakeBridge(), False)                      # dry run: asked as one, file kept
+        assert sent[-1] == {"type": "set_rules", "rules": {"open_caverns": True}, "dry_run": True}, sent
+        assert (d / "rules-request.json").exists()
+        overseer.rules_request(FakeBridge(), True)
+        assert sent[-1]["dry_run"] is False
+        assert not (d / "rules-request.json").exists()
+        done = _json.loads((d / "rules-request.done.json").read_text(encoding="utf-8"))
+        assert done["answer"]["changed"]["open_caverns"]["new"] is True, done
+        overseer.rules_request(FakeBridge(), True)                       # applied once
+        assert len(sent) == 2
+        (d / "rules-request.json").write_text("not json", encoding="utf-8")
+        overseer.rules_request(FakeBridge(), True)                       # unreadable: left alone, nothing sent
+        assert len(sent) == 2 and (d / "rules-request.json").exists()
+        assert overseer.short({"type": "set_rules", "rules": {"open_caverns": True}}) == \
+            "set Rules switches: open_caverns on"
+    finally:
+        overseer.LOG_DIR = old_dir
+
+
 if __name__ == "__main__":
     for name, ok, msg in RESULTS:
         print(f"[{'PASS' if ok else 'FAIL'}] {name}" + (f"\n        {msg}" if msg else ""))
