@@ -977,8 +977,11 @@ def _kitchen_rule(s: dict, memory, cfg: dict, proposals: list) -> None:
     # plant adds a meal nobody needs and takes a drink away (B, the Monastery:
     # the ban lifted at 198 drink for 46 with 2,802 meals in store, 62 a dwarf)
     meals = int(st.get("prepared_meals") or 0)
+    # (0.105.17) a ban kept for spare meals lifts only 20% over the target (B
+    # flipped it at 305 and 315 drink for 44, a target of ~308)
+    margin = 1.2 if memory.kitchen_ban else 1.0
     spare_meals = (meals >= citizens * cfg["meals_per_dwarf"] * cfg.get("kitchen_ban_meals_factor", 3)
-                   and drink < citizens * cfg["drink_per_dwarf"])
+                   and drink < citizens * cfg["drink_per_dwarf"] * margin)
     if (drink_short(s, cfg) or spare_meals) and not memory.kitchen_ban:
         why = (f"drink is short ({drink} for {citizens})" if drink_short(s, cfg) else
                f"drink is under its target ({drink} for {citizens}) and the fort has meals to spare ({meals})")

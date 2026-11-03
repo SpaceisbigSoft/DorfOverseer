@@ -345,7 +345,8 @@ def _():
     assert phases.current(m) != "siege", phases.current(m)
     for d in range(50006, 50010):
         s = state_at(d)
-        s["others_on_map"]["threats"] = [{"id": 2, "can_reach_dwarves": True, "invader": True, "name": "goblin"}]
+        s["others_on_map"]["threats"] = [{"id": i, "can_reach_dwarves": True, "invader": True, "name": "goblin"}
+                                         for i in range(2, 5)]      # (0.105.17) an army, not one thief
         timeline.record(s, m, [], PLANNER_CONFIG)
         phases.update(s, m, [])
     assert phases.current(m) == "siege"
@@ -368,6 +369,25 @@ def _():
     ph = m.chronicle["phase"]
     assert ph.get("intrusions") == 1 and not ph.get("pending_invasions") and not ph.get("invasions"), ph
     assert phases.take_new_sieges(m) == 0
+
+
+@test("0.105.17 phases: two thieves seen for days are no siege; three invaders are")
+def _():
+    m = Memory()
+    run_days(m, 49999, 1)
+    before = phases.current(m)
+    for d in range(50000, 50005):
+        s = state_at(d)
+        s["others_on_map"]["threats"] = [{"id": i, "can_reach_dwarves": True, "invader": True} for i in range(2)]
+        timeline.record(s, m, [], PLANNER_CONFIG)
+        phases.update(s, m, [])
+    assert phases.current(m) == before, phases.current(m)
+    for d in range(50005, 50009):
+        s = state_at(d)
+        s["others_on_map"]["threats"] = [{"id": i, "can_reach_dwarves": True, "invader": True} for i in range(3)]
+        timeline.record(s, m, [], PLANNER_CONFIG)
+        phases.update(s, m, [])
+    assert phases.current(m) == "siege"
 
 
 @test("0.105.15 phases: an army that shows up a day after its record is a siege; counted once for culture")

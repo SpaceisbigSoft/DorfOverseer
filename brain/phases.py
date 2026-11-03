@@ -152,8 +152,11 @@ def judge(state: dict, memory, events: list[dict] | None = None) -> str:
         sieges.append(now)
     # invaders or great beasts that can reach the dwarves (not wildlife or cavern creatures)
     oth = _d(state.get("others_on_map"))
-    danger = any(isinstance(t, dict) and t.get("can_reach_dwarves") and (t.get("invader") or t.get("great_danger"))
-                 for t in oth.get("threats") or [])
+    reach = [t for t in oth.get("threats") or [] if isinstance(t, dict) and t.get("can_reach_dwarves")]
+    # (0.105.17) a great beast, or an army: 2 thieves seen 3 days running made
+    # C's siege (00:02, 3 Nov)
+    danger = (any(t.get("great_danger") for t in reach)
+              or sum(1 for t in reach if t.get("invader")) >= SIEGE_MIN_INVADERS)
     if danger and today not in ph["danger_days"]:
         ph["danger_days"] = (ph["danger_days"] + [today])[-10:]
     threat_days = sum(1 for t in ph["danger_days"] if today - t < 5)

@@ -1216,6 +1216,8 @@ def _():
     k = [p for p in plan(copy.deepcopy(s), m)[0] if p.rule == "kitchen"]
     assert k and k[0].action["ban"] is True and "meals to spare" in k[0].reason, k
     m.kitchen_ban = True
+    s["stocks"]["drink"] = 480                                         # 10.4 a dwarf: just over, inside the 20% margin
+    assert not [p for p in plan(copy.deepcopy(s), m)[0] if p.rule == "kitchen"], "0.105.17: no flip at the target"
     s["stocks"]["drink"] = 600                                         # 13 a dwarf: over its target
     back = [p for p in plan(copy.deepcopy(s), m)[0] if p.rule == "kitchen"]
     assert back and back[0].action["ban"] is False, back
