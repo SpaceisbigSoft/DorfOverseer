@@ -938,7 +938,11 @@ def _():
     base = soldiers_wanted(s, 100, PLANNER_CONFIG)
     s["needs"] = {"needs": {"Fight": {"distracted": 75}, "MartialTraining": {"distracted": 73}}}
     more = soldiers_wanted(s, 100, PLANNER_CONFIG)
-    assert more > base and more <= max(base, 30), (base, more)
+    assert base <= more <= base + 3, (base, more)          # (0.105.10) Militarism 0: near its 10%
+    s["settings"]["traits"] = {"militarism": 20}
+    calm100 = soldiers_wanted({**s, "needs": {}}, 100, PLANNER_CONFIG)
+    more = soldiers_wanted(s, 100, PLANNER_CONFIG)
+    assert more > calm100 and more <= max(calm100, 30), (calm100, more)
     s["settings"]["traits"] = {"militarism": -100}
     assert soldiers_wanted(s, 100, PLANNER_CONFIG) == soldiers_wanted({**s, "needs": {}}, 100, PLANNER_CONFIG)
 
@@ -949,6 +953,7 @@ def _():
     s = fort()
     s["needs"] = {"needs": {"Fight": {"distracted": 38, "badly": 13}, "MartialTraining": {"distracted": 54, "badly": 10}}}
     s["dwarves"].update(adults=88, idle_adults=10)
+    s["settings"]["traits"] = {"militarism": 60}                      # (0.105.10) a keen fort's extra
     calm = soldiers_wanted(s, 93, PLANNER_CONFIG)
     assert calm <= round(93 * PLANNER_CONFIG["fight_share_max"]), calm
     s["needs"]["needs"]["MartialTraining"]["badly"] = 30                # 32% badly
@@ -966,7 +971,11 @@ def _():
     at0 = soldiers_wanted(s, 70, PLANNER_CONFIG, True)
     s["settings"]["traits"] = {"militarism": -60}
     at60 = soldiers_wanted(s, 70, PLANNER_CONFIG, True)
-    assert at60 <= round(70 * PLANNER_CONFIG["idle_fight_share_max"] * 0.4) < at0, (at60, at0)
+    s["settings"]["traits"] = {"militarism": 100}
+    at100 = soldiers_wanted(s, 70, PLANNER_CONFIG, True)
+    # (0.105.10) a quarter of the extra at 0, all of it at +100, almost none at -60
+    assert at60 < at0 < at100, (at60, at0, at100)
+    assert at0 <= round(70 * 0.15), at0                               # near its 10% (7) at Militarism 0
     # War-hold: Militarism 150 with Extreme, 36 adults: 12 kept at work (it drafted 29)
     s = fort()
     s["settings"]["traits"] = {"militarism": 150}
@@ -4041,6 +4050,28 @@ def _():
     assert not by_rule(plan(s, Memory())[0], "kiln")
 
 
+@test("0.105.10 the character slot: basics met, one slot left, no level of the fort's own open: it goes to one")
+def _():
+    from planner import character_slot_reserved, is_character_level
+    s = fort()
+    s["projects"]["open"] = [{"id": 3, "kind": "storage", "phase": "dig", "dig": {"total": 50, "dug": 10}}]
+    s["settings"]["traits"] = {"piety": 150}
+    props, notes = plan(s, Memory())
+    starts = [p for p in props if p.action.get("type") == "start_project" and not p.action.get("urgent")]
+    assert starts and all(is_character_level(p.action) for p in starts), [(p.rule, p.action) for p in starts]
+    # a level of the fort's own already open: the other slot is free for anything
+    s2 = fort()
+    s2["projects"]["open"] = [{"id": 4, "kind": "temple", "phase": "dig", "dig": {"total": 50, "dug": 10}}]
+    assert character_slot_reserved(s2, {}, PLANNER_CONFIG, Memory(), s2["projects"]["open"]) is None
+    # both slots free: no hold yet (the first goes to need)
+    assert character_slot_reserved(s, {}, PLANNER_CONFIG, Memory(), []) is None
+    # the basics not met (beds short): no hold
+    s3 = fort()
+    s3["buildings"]["other"]["Bed"] = 3
+    assert character_slot_reserved(s3, {}, PLANNER_CONFIG, Memory(), s["projects"]["open"]) is None
+    assert character_slot_reserved(s, {}, PLANNER_CONFIG, Memory(), s["projects"]["open"])
+
+
 @test("a stuck forge (0.86, live: 104 days): an anvil made for it; it no longer holds back other workshops")
 def _():
     s = fort()
@@ -4054,6 +4085,12 @@ def _():
     s["supplies"].update(anvils=0, gypsum=16, plaster=0, empty_bags=2, fuel=40, calcium_carbonate=0)
     s["locations"] = {"count": {"HOSPITAL": 1}, "total": 1, "list": [
         {"id": 1, "type": "HOSPITAL", "have": {"powder": 0}, "want": {"powder": 750}}]}
+    drink = s["stocks"].get("drink")
+    # (0.105.10) basics met, the last slot is the fort's own: the kiln level waits for it
+    props, notes = plan(s, Memory())
+    if not by_rule(props, "kiln"):
+        assert any("the fort's own" in n and "kiln" in n for n in notes), notes
+    s["stocks"]["drink"] = 1                                            # basics not met: no slot held
     props = plan(s, Memory())[0]
     a = by_rule(props, "anvil")
     assert a and a[0].action == {"type": "work_order", "recipe": "metal_anvil", "amount": 1,
@@ -7525,10 +7562,11 @@ def _():
     from planner import soldiers_wanted, _stress_care
     s = fort()
     s["needs"] = {"needs": {"MartialTraining": {"distracted": 23}}}
-    s["settings"]["traits"] = {}
+    s["settings"]["traits"] = {"militarism": 20}                 # (0.105.10) a keener fort: more of the extra
     base = soldiers_wanted({**s, "needs": {"needs": {}}}, 28, PLANNER_CONFIG)
     more = soldiers_wanted(s, 28, PLANNER_CONFIG)
-    assert base == 3 and more == 8, (base, more)                 # up to 30% of 28
+    assert more > base and more <= round(28 * 0.3) + base, (base, more)
+    s["settings"]["traits"] = {}
     assert soldiers_wanted(s, 12, PLANNER_CONFIG) == round(12 * 0.1)   # under 15 citizens: as before
     props = []
     worst = [{"id": 5, "name": "Erush", "stress": "miserable", "squad": True, "unmet": ["MartialTraining"]},

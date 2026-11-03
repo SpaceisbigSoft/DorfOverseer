@@ -610,6 +610,11 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
         _guard(_project_rules, s, traits, cfg, proposals, notes, can_use, memory)
     # 7a. (0.104.168) a bedroom per household (after the levels: no second bedrooms level)
     _guard(_homes_rules, s, cfg, traits, proposals, notes)
+    # 7b. (0.105.10, 14.1 step 3) the last free slot is the fort's own: other
+    # rules' ordinary new levels wait
+    kept_ = _guard(character_slot_filter, s, proposals, notes)
+    if kept_ is not None:
+        proposals = kept_
 
     # 8. The game runs slowly (the overseer measured it while unattended): no
     # newcomers and no new luxury levels until it recovers

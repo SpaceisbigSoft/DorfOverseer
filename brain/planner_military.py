@@ -521,9 +521,14 @@ def _soldiers_wanted(s: dict, citizens: int, cfg: dict, idle: bool = False) -> i
     # for want of training (the line was 15 of 30+ citizens) and 10 miserable
     need_at = min(cfg["fight_needs_at"], max(4, math.ceil(citizens * cfg["fight_needs_share"])))
     # (0.105.2) a peaceful fort (Militarism below 0) drafts fewer for the
-    # needs: Monastery at -60 drafted 32 of 70 (its slider asks 5)
-    mil = max(-100.0, min(0.0, float(traits.get("militarism", 0) or 0)))
-    lean = 1 + mil / 100
+    # needs: Monastery at -60 drafted 32 of 70 (its slider asks 5).
+    # (0.105.10, 14.1 step 3) scaled all the way: an eighth of the extra at
+    # Militarism 0, all of it at +100, almost none at -60 (the six forts,
+    # y257: Militarism 0 forts at 28-41% soldiers, the War-hold 52%: the
+    # slider showed only at its top)
+    mil = max(-100.0, min(100.0, float(traits.get("militarism", 0) or 0)))
+    lean = ((mil + 100) / 200) ** 3             # the extra soldiers: 1/8 at 0, 0.42 at +50, all at +100
+    cap_lean = 1 + min(0.0, mil) / 100          # the cap (0.105.2): lower only below 0
     if fighters >= need_at and traits.get("militarism", 0) > -100 and citizens >= cfg["fight_min_citizens"]:
         # (0.104.61) a quarter of the fort badly wanting to train or fight: the
         # wider idle-hands caps (Enxah, winter y74: MartialTraining 30 of 93
@@ -537,9 +542,9 @@ def _soldiers_wanted(s: dict, citizens: int, cfg: dict, idle: bool = False) -> i
             # Fight, MartialTraining and LearnSomething (a skill rank) at once
             idle = int(_d(s.get("dwarves")).get("idle_adults") or 0)
             extra = min(fighters // 2, max(cfg["fight_soldiers_max"], idle), cfg["idle_fight_soldiers_max"])
-            return min(base + round(extra * lean), max(base, round(citizens * cfg["idle_fight_share_max"] * lean)))
+            return min(base + round(extra * lean), max(base, round(citizens * cfg["idle_fight_share_max"] * cap_lean)))
         extra = min(fighters // 2, cfg["fight_soldiers_max"])
-        return min(base + round(extra * lean), max(base, round(citizens * cfg["fight_share_max"] * lean)))
+        return min(base + round(extra * lean), max(base, round(citizens * cfg["fight_share_max"] * cap_lean)))
     return base
 
 

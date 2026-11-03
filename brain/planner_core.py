@@ -471,6 +471,8 @@ PLANNER_CONFIG = {
     "train_rotate_below_militarism": 50,   # ...unless the fort is militant: then all train
     "young_fort": 20,                  # under this many dwarves the fort is young: food first, small and plain
     "found_food_per_dwarf": 15,
+    "character_food_per_dwarf": 10,    # (0.105.10, 14.1 step 3) the basics met before a slot is the character's:
+    "character_drink_per_dwarf": 10,   # ... food and drink a dwarf, beds for all, the basic workshops, a dining hall
     "established_food_per_dwarf": 40,  # a small fort with farms, this much food and the drink below is no longer young
     "established_drink_per_dwarf": 15,
     "gather_jobs_max": 60,             # more plant-gathering jobs than this in a fed fort: trimmed...

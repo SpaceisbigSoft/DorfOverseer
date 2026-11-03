@@ -13,7 +13,7 @@ from quirks import has_rule
 from digest import _d, _l, normalize
 from planner_core import *  # noqa: F401,F403
 
-__all__ = ["STUCK_FALLBACKS", "stuck_fallback", "magma_access", "GROWTH", "GROWTH_EXTRA_SCORE", "GROWTH_MAX", "growth_want", "growth_candidates", "settled_times", "growth_wait", "GROWTH_SOLDIERS", "GROWTH_ZONES", "GROWTH_MAX_OF", "GROWTH_AT", "TRAIT_NAMES_SHORT", "FURNITURE_RECIPES", "METAL_FURNITURE", "spare_metal", "WOODEN_FURNITURE", "BASIC_WORKSHOPS", "BASIC_STOCKPILES", "memorial_due", "_well_rule", "_well_lid_rule", "cavern_danger", "_planned_note", "_planned_parts_rule", "planned_wants", "_water_zone_rule", "cavern_well_need", "cavern_points", "cavern_action", "cavern_well_safe", "WELL_PARTS_SHOPS", "well_parts_plan", "_well_parts", "_room_repair_rule", "_water_traffic_rule", "_cleanup_rule", "STORE_GROW", "stone_tidiness", "jail_plan", "cistern_pop", "tavern_factor", "full_stores", "LEARNING_NEEDS", "_stairwell_rule", "WATER_WORDS", "water_summary", "_water_rules", "CISTERN_WORDS", "_cistern_parts", "_cistern_rule", "_deep_notes", "good_times", "ORDINALS", "garden_name", "_pop_cap_rule", "fort_strain", "hospital_shortfall", "dining_shortfall", "social_shortfall", "SOCIAL_KINDS", "_join_rule", "_dig_stall_rule", "_shrink_rule", "room_size", "_project_rules", "more_temple", "LADDER_BASE", "LADDER_TRAITS", "_ladder_kind", "_ladder_word", "ladder_score", "tombs_short"]
+__all__ = ["STUCK_FALLBACKS", "stuck_fallback", "magma_access", "GROWTH", "GROWTH_EXTRA_SCORE", "GROWTH_MAX", "growth_want", "growth_candidates", "settled_times", "growth_wait", "GROWTH_SOLDIERS", "GROWTH_ZONES", "GROWTH_MAX_OF", "GROWTH_AT", "TRAIT_NAMES_SHORT", "FURNITURE_RECIPES", "METAL_FURNITURE", "spare_metal", "WOODEN_FURNITURE", "BASIC_WORKSHOPS", "BASIC_STOCKPILES", "memorial_due", "_well_rule", "_well_lid_rule", "cavern_danger", "_planned_note", "_planned_parts_rule", "planned_wants", "_water_zone_rule", "cavern_well_need", "cavern_points", "cavern_action", "cavern_well_safe", "WELL_PARTS_SHOPS", "well_parts_plan", "_well_parts", "_room_repair_rule", "_water_traffic_rule", "_cleanup_rule", "STORE_GROW", "stone_tidiness", "jail_plan", "cistern_pop", "tavern_factor", "full_stores", "LEARNING_NEEDS", "_stairwell_rule", "WATER_WORDS", "water_summary", "_water_rules", "CISTERN_WORDS", "_cistern_parts", "_cistern_rule", "_deep_notes", "good_times", "ORDINALS", "garden_name", "_pop_cap_rule", "fort_strain", "hospital_shortfall", "dining_shortfall", "social_shortfall", "SOCIAL_KINDS", "_join_rule", "_dig_stall_rule", "_shrink_rule", "room_size", "_project_rules", "CHARACTER_KINDS", "is_character_level", "character_slot_reserved", "character_slot_filter", "more_temple", "LADDER_BASE", "LADDER_TRAITS", "_ladder_kind", "_ladder_word", "ladder_score", "tombs_short"]
 
 
 # Furniture waiting in a project -> the recipe that makes it.
@@ -1537,6 +1537,7 @@ def room_size(traits: dict) -> int:
 
 
 def _project_rules(s, traits, cfg, proposals, notes, can_use, memory) -> None:
+    s.pop("_character_slot", None)          # (0.105.10) this plan's own (normalize may hand back the same dict)
     pr = s["projects"]
     open_ = [p for p in pr.get("open") or [] if isinstance(p, dict)]
     decorating = [p for p in pr.get("decorating") or [] if isinstance(p, dict)]
@@ -2026,7 +2027,11 @@ def _project_rules(s, traits, cfg, proposals, notes, can_use, memory) -> None:
     # scored by its old place in the ladder, the temperament and the need
     # (ladder_score); the best goes first. Neutral sliders keep the old order.
     cands: list = []
-    if action is None:
+    # (0.105.10, 14.1 step 3) the fort's own levels are weighed every cycle,
+    # not only once every need is met: one building slot is theirs
+    need_action, need_reason = action, reason
+    action, reason = None, ""
+    if True:
         if (allow["jail"] and not young and jail_plan(traits, cfg, citizens)
               and citizens >= jail_plan(traits, cfg, citizens)["min_dwarves"] and justice_held(s)
               and zones.get("Dungeon", 0) == 0 and "jail" not in kinds_open):
@@ -2143,12 +2148,22 @@ def _project_rules(s, traits, cfg, proposals, notes, can_use, memory) -> None:
         # sliders built the same 20 levels; Enxah: 20 finished, none open)
         if memory is not None and goal != "maintain" and not young:
             cands.extend(growth_candidates(s, traits, cfg, memory, allow, kinds_open, locations, zones, citizens))
+        action, reason = need_action, need_reason
         if cands:
             scored = sorted(cands, key=lambda c: -ladder_score(c[0], s, traits, cfg, memory))
-            action, reason = scored[0]
             if len(scored) > 1:
                 notes.append("next level by the fort's temperament: " + ", ".join(
                     f"{_ladder_word(c[0])} {ladder_score(c[0], s, traits, cfg, memory):.1f}" for c in scored[:4]))
+            reserved = character_slot_reserved(s, traits, cfg, memory, open_)
+            if action is None:
+                action, reason = scored[0]
+            elif reserved:
+                notes.append(f"the last building slot is the fort's own ({reserved}): the "
+                             f"{_ladder_word(scored[0][0])} level goes ahead of the {action.get('kind')} level")
+                action, reason = scored[0]
+                reason += " (the fort's own building slot)"
+            if reserved:
+                s["_character_slot"] = {"why": reserved, "kind": _ladder_word(scored[0][0])}
     rules_ = player_rules(s)
     if profile["memorials"] and "memorial" not in kinds_open and not memorial_due(s, memory, rules_):
         notes.append(f"memorial for {profile['memorials'][0]} waits: "
@@ -2188,6 +2203,61 @@ def _project_rules(s, traits, cfg, proposals, notes, can_use, memory) -> None:
             action["plan"] = where                 # the master plan's district for it, tried first
             reason += f" (in {where['district']})"
         proposals.append(Proposal("build", action, reason, 6))
+
+
+# (0.105.10, 14.1 step 3) the levels that are the fort's own character: the
+# weighted ladder's kinds, a set piece, or a level grown with the fort
+CHARACTER_KINDS = {"jail", "suites", "tavern", "library", "barracks", "archery", "memorial", "temple", "garden"}
+
+
+def is_character_level(a: dict) -> bool:
+    """A start_project action (or an open project) that is the fort's own character."""
+    a = _d(a)
+    return bool(a.get("kind") in CHARACTER_KINDS or a.get("set_piece") or a.get("growth")
+                or _d(a.get("summary")).get("set_piece"))
+
+
+def character_slot_reserved(s: dict, traits: dict, cfg: dict, memory, open_: list) -> str | None:
+    """(0.105.10, 14.1 step 3) Is the last free building slot the fort's own?
+    Once the basics are met (beds for everyone, food and drink, the basic
+    workshops, a dining hall), and no level of the fort's character is
+    under way, one of the two slots goes to it: storage, bedrooms ahead of
+    need and workshop levels for bottlenecks take the other. Why: the six
+    forts' slots (y250-257) went to storage (9-13 levels each), bedrooms and
+    workshop levels; barracks, temples, gardens and libraries got 0-4, so
+    six presets built the same forts. A reason in words, or None."""
+    if young_fort(s, cfg) or player_rules(s)["fort_goal"] == "maintain":
+        return None
+    max_open = _d(s.get("projects")).get("max_open") or 2
+    if len(open_) != max_open - 1 or any(is_character_level(p) for p in open_):
+        return None
+    citizens = max(1, int(_d(s.get("dwarves")).get("total") or 0))
+    b = _d(s.get("buildings"))
+    if int(_d(b.get("other")).get("Bed") or 0) < citizens:
+        return None
+    if not _d(b.get("zones")).get("DiningHall"):
+        return None
+    shops = {**_d(b.get("workshops")), **_d(b.get("furnaces"))}
+    if any(not shops.get(w) for w in BASIC_WORKSHOPS):
+        return None
+    drink = int(_d(s.get("stocks")).get("drink") or 0) / citizens
+    if food_per_dwarf(s) < cfg["character_food_per_dwarf"] or drink < cfg["character_drink_per_dwarf"]:
+        return None
+    return "beds, food, drink and workshops enough"
+
+
+def character_slot_filter(s: dict, proposals: list, notes: list) -> list:
+    """(0.105.10) While the last slot is the fort's own, no other rule's
+    ordinary new level takes it (urgent levels have slots of their own)."""
+    cs = _d(s.get("_character_slot"))
+    if not cs:
+        return proposals
+    held = [p for p in proposals if p.action.get("type") == "start_project" and not p.action.get("urgent")
+            and not is_character_level(p.action)]
+    if held:
+        notes.append(f"the last building slot waits for the fort's own {cs.get('kind')} level: "
+                     + ", ".join(sorted({f"{p.action.get('kind')} ({p.rule})" for p in held})) + " wait")
+    return [p for p in proposals if p not in held]
 
 
 def more_temple(s: dict, traits: dict, cfg: dict):
