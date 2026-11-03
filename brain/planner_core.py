@@ -1139,7 +1139,9 @@ JOB_SHOPS = {"MakeCrafts": "Craftsdwarfs", "MakeAmulet": "Craftsdwarfs", "MakeBr
 RECIPE_SHOPS = {"pig_iron": "Smelter", "steel": "Smelter", "coke_bituminous": "Smelter",
                 "coke_lignite": "Smelter", "smelt_ore": "Smelter", "brew_drink": "Still",
                 "brew_drink_from_fruit": "Still", "make_mead": "Still", "make_charcoal": "WoodFurnace",
-                "weave_plant_cloth": "Loom", "process_plants": "Farmers", "make_quicklime": "Kiln",
+                "weave_plant_cloth": "Loom", "weave_yarn_cloth": "Loom", "weave_silk_cloth": "Loom",
+                "cloth_rope": "Clothiers", "yarn_rope": "Clothiers", "silk_rope": "Clothiers",
+                "metal_chain": "MetalsmithsForge", "process_plants": "Farmers", "make_quicklime": "Kiln",
                 "make_plaster_powder": "Kiln", "make_milk_of_lime": "Ashery", "make_parchment": "Tanners",
                 "make_quire": "Craftsdwarfs",
                 # (0.104.87) sewn at a clothier's (an order for one the fort hasn't waits)

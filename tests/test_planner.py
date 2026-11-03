@@ -5640,6 +5640,37 @@ def _():
     assert any("rope or chain" in n for n in notes), notes
 
 
+@test("0.105.18 well parts: no plant thread -> a chain at the forge (non-gear metal first), else cloth of the thread there is")
+def _():
+    s = well_fort(blocks=5, mechanisms=1, thread=13)
+    s["supplies"].update(buckets=11, fuel=33, cloth_kinds={"plant": 0, "silk": 0, "yarn": 0},
+                         thread_kinds={"plant": 0, "silk": 0, "yarn": 3})
+    s["buildings"]["workshops"] = {"Masons": 1, "Carpenters": 1, "Mechanics": 1, "Clothiers": 1, "Loom": 1}
+    s.setdefault("military", {}).setdefault("gear", {}).update(
+        forges=2, all_bars={"COPPER": 47, "IRON": 6, "PIG_IRON": 1, "SILVER": 12, "STEEL": 21})
+    p = by_rule(plan(copy.deepcopy(s), Memory())[0], "well_parts")       # A, 3 Nov 08:41
+    assert [x.action for x in p] == [{"type": "work_order", "recipe": "metal_chain", "amount": 1,
+                                      "material": "INORGANIC:SILVER"}], p
+    s["military"]["gear"]["all_bars"] = {"COPPER": 47, "IRON": 6, "STEEL": 21}
+    p = by_rule(plan(copy.deepcopy(s), Memory())[0], "well_parts")
+    assert p[0].action["material"] == "INORGANIC:COPPER", p
+    s["military"]["gear"]["forges"] = 0                                   # no forge: weave the yarn there is
+    p = by_rule(plan(copy.deepcopy(s), Memory())[0], "well_parts")
+    assert [x.action["recipe"] for x in p] == ["weave_yarn_cloth"], p
+    s["supplies"]["cloth_kinds"] = {"plant": 0, "silk": 0, "yarn": 2}     # yarn cloth: a yarn rope
+    p = by_rule(plan(copy.deepcopy(s), Memory())[0], "well_parts")
+    assert [x.action["recipe"] for x in p] == ["yarn_rope"], p
+    s["military"]["gear"]["forges"] = 1                                   # B: plant cloth, but a forge: the chain first
+    s["supplies"]["cloth_kinds"] = {"plant": 1, "silk": 0, "yarn": 0}
+    p = by_rule(plan(copy.deepcopy(s), Memory())[0], "well_parts")
+    assert [x.action["recipe"] for x in p] == ["metal_chain"], p
+    s["orders"] = [{"recipe": "cloth_rope", "amount_left": 1}]            # B's stuck rope doesn't hold the chain
+    p = by_rule(plan(copy.deepcopy(s), Memory())[0], "well_parts")
+    assert [x.action["recipe"] for x in p] == ["metal_chain"], p
+    s["orders"] = [{"recipe": "metal_chain", "amount_left": 1}]           # a chain on order: nothing more
+    assert not by_rule(plan(copy.deepcopy(s), Memory())[0], "well_parts")
+
+
 @test("stuck fallback (0.104.138, 12l): a stuck stone order is made in wood (or metal) instead, else held")
 def _():
     from planner import Proposal

@@ -13,7 +13,7 @@ from quirks import has_rule
 from digest import _d, _l, normalize
 from planner_core import *  # noqa: F401,F403
 
-__all__ = ["STUCK_FALLBACKS", "stuck_fallback", "magma_access", "GROWTH", "GROWTH_EXTRA_SCORE", "GROWTH_MAX", "growth_want", "growth_candidates", "settled_times", "growth_wait", "GROWTH_SOLDIERS", "GROWTH_ZONES", "GROWTH_MAX_OF", "GROWTH_AT", "TRAIT_NAMES_SHORT", "FURNITURE_RECIPES", "METAL_FURNITURE", "spare_metal", "WOODEN_FURNITURE", "BASIC_WORKSHOPS", "BASIC_STOCKPILES", "memorial_due", "_well_rule", "_well_lid_rule", "cavern_danger", "_planned_note", "_planned_parts_rule", "planned_wants", "_water_zone_rule", "cavern_well_need", "cavern_points", "cavern_action", "cavern_well_safe", "WELL_PARTS_SHOPS", "well_parts_plan", "_well_parts", "_room_repair_rule", "_water_traffic_rule", "_cleanup_rule", "STORE_GROW", "stone_tidiness", "jail_plan", "cistern_pop", "tavern_factor", "full_stores", "LEARNING_NEEDS", "_stairwell_rule", "WATER_WORDS", "water_summary", "_water_rules", "CISTERN_WORDS", "_cistern_parts", "_cistern_rule", "_deep_notes", "good_times", "ORDINALS", "garden_name", "_pop_cap_rule", "fort_strain", "hospital_shortfall", "dining_shortfall", "social_shortfall", "SOCIAL_KINDS", "_join_rule", "_dig_stall_rule", "_shrink_rule", "room_size", "_project_rules", "CHARACTER_KINDS", "is_character_level", "character_slot_reserved", "character_slot_filter", "more_temple", "LADDER_BASE", "LADDER_TRAITS", "_ladder_kind", "_ladder_word", "ladder_score", "tombs_short"]
+__all__ = ["STUCK_FALLBACKS", "stuck_fallback", "magma_access", "GROWTH", "GROWTH_EXTRA_SCORE", "GROWTH_MAX", "growth_want", "growth_candidates", "settled_times", "growth_wait", "GROWTH_SOLDIERS", "GROWTH_ZONES", "GROWTH_MAX_OF", "GROWTH_AT", "TRAIT_NAMES_SHORT", "FURNITURE_RECIPES", "METAL_FURNITURE", "spare_metal", "WOODEN_FURNITURE", "BASIC_WORKSHOPS", "BASIC_STOCKPILES", "memorial_due", "_well_rule", "_well_lid_rule", "cavern_danger", "_planned_note", "_planned_parts_rule", "planned_wants", "_water_zone_rule", "cavern_well_need", "cavern_points", "cavern_action", "cavern_well_safe", "WELL_PARTS_SHOPS", "chain_metal", "well_parts_plan", "_well_parts", "_room_repair_rule", "_water_traffic_rule", "_cleanup_rule", "STORE_GROW", "stone_tidiness", "jail_plan", "cistern_pop", "tavern_factor", "full_stores", "LEARNING_NEEDS", "_stairwell_rule", "WATER_WORDS", "water_summary", "_water_rules", "CISTERN_WORDS", "_cistern_parts", "_cistern_rule", "_deep_notes", "good_times", "ORDINALS", "garden_name", "_pop_cap_rule", "fort_strain", "hospital_shortfall", "dining_shortfall", "social_shortfall", "SOCIAL_KINDS", "_join_rule", "_dig_stall_rule", "_shrink_rule", "room_size", "_project_rules", "CHARACTER_KINDS", "is_character_level", "character_slot_reserved", "character_slot_filter", "more_temple", "LADDER_BASE", "LADDER_TRAITS", "_ladder_kind", "_ladder_word", "ladder_score", "tombs_short"]
 
 
 # Furniture waiting in a project -> the recipe that makes it.
@@ -592,7 +592,27 @@ def cavern_well_safe(s: dict, cfg: dict):
 
 
 WELL_PARTS_SHOPS = {"stone_blocks": "Masons", "wooden_bucket": "Carpenters", "mechanisms": "Mechanics",
-                    "cloth_rope": "Clothiers", "weave_plant_cloth": "Loom"}
+                    "cloth_rope": "Clothiers", "weave_plant_cloth": "Loom", "weave_yarn_cloth": "Loom",
+                    "weave_silk_cloth": "Loom", "yarn_rope": "Clothiers", "silk_rope": "Clothiers"}
+# (0.105.18) a well's chain: one bar of any metal but pig iron, the metals
+# the military doesn't want first (A, 3 Nov: silver 12, copper 47)
+CHAIN_SKIP = {"PIG_IRON"}
+
+
+def chain_metal(s: dict) -> str | None:
+    """The metal for one chain at a forge with fuel, or None: a non-gear
+    metal first, else the commonest gear metal."""
+    g = _d(_d(s.get("military")).get("gear"))
+    if not g.get("forges") or int(_d(s.get("supplies")).get("fuel") or 0) < 3:
+        return None
+    bars = {k: int(v) for k, v in _d(g.get("all_bars") or g.get("bars")).items()
+            if isinstance(v, (int, float)) and v >= 1 and k not in CHAIN_SKIP}
+    if not bars:
+        return None
+    from planner_core import GEAR_METALS
+    other = [k for k in bars if k not in GEAR_METALS]
+    pool = other or list(bars)
+    return max(pool, key=lambda k: (bars[k], k))
 
 
 def well_parts_plan(s: dict) -> tuple[list, list, list]:
@@ -603,7 +623,7 @@ def well_parts_plan(s: dict) -> tuple[list, list, list]:
     shops = _d(_d(s.get("buildings")).get("workshops"))
     orders, need_shops, stuck = [], [], []
 
-    def want(recipe: str, why: str) -> None:
+    def want(recipe: str, why: str, extra: dict | None = None) -> None:
         if queued(s, {recipe}):
             return                                  # already on order
         shop = WELL_PARTS_SHOPS.get(recipe)
@@ -611,7 +631,7 @@ def well_parts_plan(s: dict) -> tuple[list, list, list]:
             if shop not in need_shops:
                 need_shops.append(shop)
             return
-        orders.append((recipe, why))
+        orders.append((recipe, why, extra or {}))
 
     if not free_stock(s, "blocks"):
         want("stone_blocks", "a block")
@@ -622,14 +642,38 @@ def well_parts_plan(s: dict) -> tuple[list, list, list]:
             stuck.append("a bucket (no wood: autochop is on the way)")
     if not free_stock(s, "mechanisms"):
         want("mechanisms", "a mechanism")
-    if not free_stock(s, "chains") and not su.get("ropes"):
-        if st.get("cloth"):
+    rope_queued = queued(s, {"cloth_rope", "yarn_rope", "silk_rope", "weave_plant_cloth", "weave_yarn_cloth",
+                             "weave_silk_cloth"})
+    if not free_stock(s, "chains") and not su.get("ropes") and not queued(s, {"metal_chain"}):
+        # (0.105.18) a chain at a forge, else the rope from the cloth the
+        # fort has, else cloth woven from the thread it has. A waited from 06:51
+        # to 08:41 (3 Nov) on plant cloth from 0 plant thread (13 yarn), with
+        # 2 forges and 47 copper bars, while its patients died of thirst
+        ck, tk = _d(su.get("cloth_kinds")), _d(su.get("thread_kinds"))
+        kinds = bool(ck or tk)
+        metal = chain_metal(s)
+        if metal:
+            # first: one bar at a forge never waits on cloth (B's rope order
+            # stuck 89 days on 1 plant cloth it couldn't use)
+            want("metal_chain", f"a chain (in {metal.lower().replace('_', ' ')})",
+                 {"material": f"INORGANIC:{metal}"})
+        elif rope_queued:
+            pass                                    # a rope (or its cloth) already on order
+        elif (int(ck.get("plant") or 0) if kinds else int(st.get("cloth") or 0)) > 0:
             want("cloth_rope", "a rope")
-        elif st.get("thread"):
+        elif kinds and int(ck.get("yarn") or 0) > 0:
+            want("yarn_rope", "a rope (of yarn)")
+        elif kinds and int(ck.get("silk") or 0) > 0:
+            want("silk_rope", "a rope (of silk)")
+        elif (int(tk.get("plant") or 0) if kinds else int(st.get("thread") or 0)) > 0:
             want("weave_plant_cloth", "cloth for a rope")
+        elif kinds and int(tk.get("yarn") or 0) > 0:
+            want("weave_yarn_cloth", "cloth for a rope (of yarn)")
+        elif kinds and int(tk.get("silk") or 0) > 0:
+            want("weave_silk_cloth", "cloth for a rope (of silk)")
         else:
-            stuck.append("a rope or chain (no cloth or thread to make a rope from: buy one from a caravan, "
-                         "or spin thread from plants at a farmer's workshop)")
+            stuck.append("a rope or chain (no cloth, thread or metal bars to make one from: buy one from a "
+                         "caravan, or spin thread from plants at a farmer's workshop)")
     return orders, need_shops, stuck
 
 
@@ -637,8 +681,8 @@ def _well_parts(s: dict, memory, cfg: dict, building: list, proposals: list, not
     """A well being made: order the parts it lacks, build the workshops that
     make them, and say what the AI can't make."""
     orders, need_shops, stuck = well_parts_plan(s)
-    for recipe, why in orders:
-        proposals.append(Proposal("well_parts", {"type": "work_order", "recipe": recipe, "amount": 1},
+    for recipe, why, extra in orders:
+        proposals.append(Proposal("well_parts", {"type": "work_order", "recipe": recipe, "amount": 1, **extra},
                                   f"the new well needs {why}: make one", 3, True))
     pr = _d(s.get("projects"))
     open_ = [p for p in _l(pr.get("open")) if isinstance(p, dict)]
@@ -1034,8 +1078,8 @@ def _cistern_parts(s: dict, st: dict, proposals: list, notes: list | None = None
         # or chain like any well: region2's waited a game year for a rope
         # nobody made (ropes 0, chains 0, cloth 33)
         orders, need_shops, stuck = well_parts_plan(s)
-        for recipe, why in orders:
-            proposals.append(Proposal("cistern_parts", {"type": "work_order", "recipe": recipe, "amount": 1},
+        for recipe, why, extra in orders:
+            proposals.append(Proposal("cistern_parts", {"type": "work_order", "recipe": recipe, "amount": 1, **extra},
                                       f"the cistern's well needs {why}: make one", 4, is_order=True))
         if need_shops:
             ask_player(notes, f"the cistern's well needs parts made at a {', '.join(need_shops)} workshop "

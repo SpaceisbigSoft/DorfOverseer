@@ -34,7 +34,7 @@
 local json = require('json')
 local utils = require('utils')
 
-BRIDGE_VERSION = '0.105.15'
+BRIDGE_VERSION = '0.105.18'
 PROTOCOL = 1 -- bump when the report's shape changes in a breaking way
 
 local OUT_DIR = dfhack.getDFPath() .. '/dfhack-config/ai-overseer'
@@ -3192,6 +3192,8 @@ ORDER_RECIPES = {
     make_parchment = {job = 'CustomReaction', reaction = 'MAKE_PARCHMENT'},
     make_quire = {job = 'CustomReaction', reaction = 'MAKE_QUIRE'},
     cloth_rope = {job = 'MakeChain', material_category = {'cloth'}},      -- a rope (a well needs one)
+    yarn_rope = {job = 'MakeChain', material_category = {'yarn'}},        -- (0.105.18) a rope of yarn cloth
+    silk_rope = {job = 'MakeChain', material_category = {'silk'}},        -- (0.105.18) a rope of silk cloth
     metal_chain = {job = 'MakeChain', kind = 'metal'},                     -- a chain (a jail's restraint)
     metal_anvil = {job = 'ForgeAnvil', kind = 'metal'},
     traction_bench = {job = 'ConstructTractionBench'},                     -- (0.88) a table, a mechanism, a rope or chain                    -- (0.86) a new forge needs one
