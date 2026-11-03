@@ -6517,6 +6517,21 @@ def _():
         PLANNER_CONFIG["convict_on"] = False
 
 
+@test("0.105.19 stone crisis: ghosts waiting free an ore of 10+ boulders (C: limonite 27, tetrahedrite 27)")
+def _():
+    s = fort()
+    s["stone_use"] = {"usable": 5, "economic": {"LIMONITE": {"n": 27, "ore": True}, "TETRAHEDRITE": {"n": 27, "ore": True},
+                                                 "NATIVE_PLATINUM": {"n": 7, "ore": True}, "CASSITERITE": {"n": 6, "ore": True},
+                                                 "COAL_BITUMINOUS": {"n": 21, "fuel": "coke_bituminous"}}}
+    s["dead"] = {"ghosts": 0, "unburied": 0, "free_tombs": 5}
+    assert not [p for p in by_rule(plan(copy.deepcopy(s), Memory())[0], "stone") if p.action["type"] == "allow_stone"]
+    s["dead"] = {"ghosts": 2, "unburied": 0, "free_tombs": 5}
+    st = [p for p in by_rule(plan(copy.deepcopy(s), Memory())[0], "stone") if p.action["type"] == "allow_stone"]
+    assert st and st[0].action["ore"] is True and st[0].action["stone"] in ("LIMONITE", "TETRAHEDRITE"), st
+    s["stone_use"]["economic"] = {"LIMONITE": {"n": 8, "ore": True}}     # too few even for ghosts
+    assert not [p for p in by_rule(plan(copy.deepcopy(s), Memory())[0], "stone") if p.action["type"] == "allow_stone"]
+
+
 @test("stone crisis (0.104.124): no ordinary stone, ghosts or dead waiting: the commonest common ore to the masons; kept again after")
 def _():
     from planner import record

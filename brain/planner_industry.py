@@ -1312,8 +1312,14 @@ def _stone_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> Non
     # 51 dead in three minutes of tantrums): the commonest ore of a common
     # metal goes to the masons until the crisis is over
     crisis = stone_crisis(s, cfg)
+    # (0.105.19) ghosts need a slab each, not 30 boulders: C (3 Nov) had 2
+    # ghosts haunting 31 citizens, limonite 27 and tetrahedrite 27, the slab
+    # ordered and cancelled as stuck six times in an hour
+    ore_min = cfg["stone_ore_min"]
+    if int(_d(s.get("dead")).get("ghosts") or 0) > 0:
+        ore_min = min(ore_min, cfg["stone_ore_ghost_min"])
     ores = sorted(((int(v.get("n") or 0), k) for k, v in econ.items()
-                   if v.get("ore") and k not in PRECIOUS_ORES and int(v.get("n") or 0) >= cfg["stone_ore_min"]),
+                   if v.get("ore") and k not in PRECIOUS_ORES and int(v.get("n") or 0) >= ore_min),
                   reverse=True)
     if crisis and ores:
         n, k = ores[0]

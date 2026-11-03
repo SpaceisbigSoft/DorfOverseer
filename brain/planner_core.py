@@ -242,6 +242,7 @@ PLANNER_CONFIG = {
     "convict_queue_min": 5,            # ...while fewer punishments than this (or than restraints) wait
     "dig_raise_days": 14,
     "dig_raise_again_days": 7,         # (0.104.134) ...and again a week on while still nothing is dug              # (0.104.128) a level with nothing dug this long is dug before the rest
+    "stone_ore_ghost_min": 10,         # (0.105.19) ...or this many while ghosts wait for slabs
     "stone_ore_min": 30,               # (0.104.124) an ore freed for the masons in a crisis only with this many boulders
     "stone_crisis_unburied": 5,        # ...a crisis: ghosts, this many dead with no tomb, or a strained fort
     "quarry_when_dig_below": 20,       # a quarry only while little other digging waits...
