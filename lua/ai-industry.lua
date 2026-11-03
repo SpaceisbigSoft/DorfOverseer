@@ -11,7 +11,7 @@
 
 SURVEY_MARGIN = 40          -- tiles around the citizens looked at
 LEVELS_BELOW = 12           -- levels below the deepest citizen looked at
-VEIN_MAX = 60               -- tiles marked in one go
+VEIN_MAX = 80               -- tiles marked in one go (0.105.9: 80, Mining's top; was 60)
 
 -- Pure: the order metals are wanted in for gear (steel comes from iron).
 METAL_ORDER = {'IRON', 'COPPER', 'TIN', 'SILVER', 'ZINC', 'BISMUTH', 'NICKEL', 'LEAD', 'GOLD', 'PLATINUM'}
@@ -267,6 +267,116 @@ local function by_levels(x, y, z, areas)
     return false
 end
 
+-- (0.105.9) A drift to a vein: searched back from the metal's vein tiles
+-- (each well clear of the AI's levels, as a vein followed must be), through
+-- natural wall that is safe to dig, never inside a level's area or within 1
+-- tile of one, never a room's wall, along a level only (4 ways, so the
+-- tunnel is a plain corridor), until a wall tile beside ground the citizens
+-- walk on: that tile opens the drift. {path = {entry ... last rock}, vein,
+-- mat} or nil. The vein tiles may be hidden: a drift is how a fort finds ore.
+DRIFT_MAX = 30          -- tiles of rock to the vein at most
+DRIFT_VISIT_MAX = 2500  -- tiles looked at in one search (each checks its 3x3x3 for safety)
+DRIFT_SEEDS_MAX = 400   -- vein tiles it starts from, nearest the fort first
+DRIFT_RETRY_TICKS = 7 * 1200   -- a search that found nothing isn't repeated for a week
+DRIFT_FAILED = {}       -- metal -> absolute tick of the last empty search
+
+local function abs_tick()
+    local ok, t = pcall(function() return df.global.cur_year * 403200 + df.global.cur_year_tick end)
+    return ok and t or nil
+end
+
+local function near_levels(x, y, z, areas, m)
+    for _, a in ipairs(areas) do
+        if a.z == z and x >= a.x1 - m and x <= a.x2 + m and y >= a.y1 - m and y <= a.y2 + m then return true end
+    end
+    return false
+end
+
+function find_drift(a, metal, areas, groups)
+    local now = abs_tick()
+    local last = DRIFT_FAILED[metal]
+    if now and last and now >= last and now - last < DRIFT_RETRY_TICKS then return nil end
+    local seen, queue, head = {}, {}, 1
+    local function k(x, y, z) return x .. ',' .. y .. ',' .. z end
+    local seeds = {}
+    each_vein(a, function(block, ev, metals)
+        local has = false
+        for _, m in ipairs(metals) do if m == metal then has = true end end
+        if not has then return end
+        local p = block.map_pos
+        for x = 0, 15 do
+            for y = 0, 15 do
+                local tx, ty = p.x + x, p.y + y
+                if dfhack.maps.getTileAssignment(ev.tile_bitmask, x, y)
+                        and block.designation[x][y].dig == df.tile_dig_designation.No
+                        and not near_levels(tx, ty, p.z, areas, 2) then
+                    table.insert(seeds, {x = tx, y = ty, z = p.z, mat = ev.inorganic_mat,
+                                         d = math.abs(tx - a.cx) + math.abs(ty - a.cy) + 3 * math.abs(p.z - a.cz)})
+                end
+            end
+        end
+    end)
+    table.sort(seeds, function(p1, p2) return p1.d < p2.d end)
+    for i = 1, math.min(#seeds, DRIFT_SEEDS_MAX) do
+        local t = seeds[i]
+        local kk = k(t.x, t.y, t.z)
+        if not seen[kk] and is_wall(t.x, t.y, t.z) and safe(t.x, t.y, t.z) and not room_wall(t.x, t.y, t.z) then
+            seen[kk] = {d = 0, mat = t.mat}
+            table.insert(queue, {x = t.x, y = t.y, z = t.z})
+        end
+    end
+    local function opens(x, y, z)
+        for _, d in ipairs({{1, 0}, {-1, 0}, {0, 1}, {0, -1}}) do
+            local nx, ny = x + d[1], y + d[2]
+            local fl = dfhack.maps.getTileFlags(nx, ny, z)
+            if fl and not fl.hidden and walkable(nx, ny, z) then
+                local g = dfhack.maps.getWalkableGroup(xyz2pos(nx, ny, z))
+                if g and groups[g] then return true end
+            end
+        end
+        return false
+    end
+    while head <= #queue and head <= DRIFT_VISIT_MAX do
+        local t = queue[head]
+        head = head + 1
+        local st = seen[k(t.x, t.y, t.z)]
+        -- a vein tile itself beside the fort was the ordinary case (not here)
+        if st.d > 0 and opens(t.x, t.y, t.z) then
+            local path, c = {}, st
+            local cx, cy = t.x, t.y
+            while c and c.d > 0 do
+                table.insert(path, {x = cx, y = cy, z = t.z})
+                cx, cy = c.px, c.py
+                c = seen[k(cx, cy, t.z)]
+            end
+            return {path = path, vein = {x = cx, y = cy, z = t.z}, mat = c and c.mat}
+        end
+        if st.d < DRIFT_MAX then
+            for _, d in ipairs({{1, 0}, {-1, 0}, {0, 1}, {0, -1}}) do
+                local nx, ny = t.x + d[1], t.y + d[2]
+                local nk = k(nx, ny, t.z)
+                if not seen[nk] and is_wall(nx, ny, t.z) then
+                    local fl = dfhack.maps.getTileFlags(nx, ny, t.z)
+                    -- the opening tile may stand next to a level (it opens
+                    -- onto the fort); the rest keeps a wall between.
+                    -- (the cheap checks first: safe and room_wall read ~50 tiles)
+                    local entry = not near_levels(nx, ny, t.z, areas, 0) and opens(nx, ny, t.z)
+                    if fl and fl.dig == df.tile_dig_designation.No
+                            and not near_levels(nx, ny, t.z, areas, entry and 0 or 1)
+                            and safe(nx, ny, t.z) and not room_wall(nx, ny, t.z) then
+                        seen[nk] = {d = st.d + 1, px = t.x, py = t.y}
+                        table.insert(queue, {x = nx, y = ny, z = t.z})
+                    else
+                        seen[nk] = {d = math.huge}       -- (looked at: not dug)
+                    end
+                end
+            end
+        end
+    end
+    if now then DRIFT_FAILED[metal] = now end
+    return nil
+end
+
 function mine(metal, count, dry_run)
     local a = area()
     if not a then return {ok = false, error = 'no citizens'} end
@@ -307,13 +417,30 @@ function mine(metal, count, dry_run)
             end
         end
     end)
+    local drift
+    if not best then
+        -- (0.105.9) every uncovered vein lies in the walls of the AI's own
+        -- levels (the six forts, y257: 29-30 refusals each, 0 veins ever
+        -- mined): a drift, a 1-wide tunnel through plain rock from the fort
+        -- to the nearest vein (hidden or not), then the vein
+        drift = find_drift(a, metal, areas, groups)
+        if drift then best, best_mat = drift.vein, drift.mat end
+    end
     if not best then
         return {ok = false, rejected = true,
-                error = ('no uncovered %s ore the dwarves can reach safely'):format(metal:lower())}
+                error = ('no uncovered %s ore the dwarves can reach safely, and no vein within %d tiles '
+                         .. 'of the fort through safe rock'):format(metal:lower(), DRIFT_MAX)}
     end
     -- follow the vein (same stone, same level), safe tiles only
     local marked, seen, queue, head = {}, {}, {best}, 1
     seen[best.x .. ',' .. best.y] = true
+    if drift then
+        for _, t in ipairs(drift.path) do
+            table.insert(marked, t)
+            seen[t.x .. ',' .. t.y] = true
+        end
+        count = count + #drift.path
+    end
     while head <= #queue and #marked < count do
         local t = queue[head]
         head = head + 1
@@ -334,7 +461,9 @@ function mine(metal, count, dry_run)
     end
     local inorg = inorganic(best_mat)
     local out = {ok = true, metal = metal, ore = inorg and inorg.id or nil, tiles = #marked,
-                 x = best.x, y = best.y, z = best.z, dry_run = dry_run or nil}
+                 x = best.x, y = best.y, z = best.z, dry_run = dry_run or nil,
+                 drift = drift and #drift.path or nil,
+                 drift_from = drift and drift.path[1] or nil}
     if dry_run then return out end
     for _, t in ipairs(marked) do
         local d = dfhack.maps.getTileFlags(t.x, t.y, t.z)

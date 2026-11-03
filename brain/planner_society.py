@@ -13,7 +13,7 @@ from quirks import has_rule
 from digest import _d, _l, normalize
 from planner_core import *  # noqa: F401,F403
 
-__all__ = ["_people_rules", "_comfort_rules", "stress_causes", "THOUGHT_WORDS", "_doctor_patient_rule", "_hospital_burrow_rule", "_calm_burrow_rule", "MOOD_WORKSHOPS", "PETITION_KINDS", "petition_orders_wanted", "_petition_rules", "_jail_size_rule", "_convict_rule", "_break_fights_rule", "_sync_offices_rule", "patient_waits", "_health_rules", "TANTRUM_KEEP", "note_tantrums", "_noble_rooms_rule", "outsider_orders", "NEED_ADVICE", "JEWEL_RECIPES", "_recreation_rule", "_stress_care", "_needs_notes", "_location_supply_rules", "POST_LABORS", "STAFF_POSTS", "STAFF_MAX", "_traction_rule", "_wish_words", "_wish_met", "wish_key", "petition_lean", "_location_petition_rules", "_meeting_notes", "_grandeur_rule", "_location_value_rule", "_staff_rule", "_quick_location_rule", "_needs_rules", "_mood_rules", "mood_item_text", "_mood_materials", "_dead_notes", "AI_OFFICES", "_society_notes"]
+__all__ = ["_people_rules", "_comfort_rules", "stress_causes", "THOUGHT_WORDS", "_doctor_patient_rule", "_hospital_burrow_rule", "_calm_burrow_rule", "MOOD_WORKSHOPS", "PETITION_KINDS", "petition_orders_wanted", "_petition_rules", "_residency_rule", "residency_stance", "_jail_size_rule", "_convict_rule", "_break_fights_rule", "_sync_offices_rule", "patient_waits", "_health_rules", "TANTRUM_KEEP", "note_tantrums", "_noble_rooms_rule", "outsider_orders", "NEED_ADVICE", "JEWEL_RECIPES", "_recreation_rule", "_stress_care", "_needs_notes", "_location_supply_rules", "POST_LABORS", "STAFF_POSTS", "STAFF_MAX", "_traction_rule", "_wish_words", "_wish_met", "wish_key", "petition_lean", "_location_petition_rules", "_meeting_notes", "_grandeur_rule", "_location_value_rule", "_staff_rule", "_quick_location_rule", "_needs_rules", "_mood_rules", "mood_item_text", "_mood_materials", "_dead_notes", "AI_OFFICES", "_society_notes"]
 
 
 # A crafting mood's skill -> the workshop (or furnace) the dwarf must claim.
@@ -88,6 +88,98 @@ def _petition_rules(s: dict, cfg: dict, proposals: list, notes: list) -> None:
         what = ", ".join(f"{'accept' if v else 'ask about'} {k.replace('_', ' ')}" for k, v in change.items())
         proposals.append(Proposal("petitions", {"type": "petition_orders", "orders": change},
                                   f"petitions to stay: {what} (DF's standing orders answer them)", 6))
+
+
+def residency_stance(traits: dict, cfg: dict) -> str:
+    """(0.105.9) Outsiders: "accept" petitions to stay from a welcoming fort
+    (30 and up), "decline" from a closed one (-30 and below), else "stale"
+    (only the ones whose visitor is gone or dead are cleared)."""
+    o = traits.get("outsiders", 0) or 0
+    if o >= cfg["residency_accept_outsiders"]:
+        return "accept"
+    if o <= -30:
+        return "decline"
+    return "stale"
+
+
+def _residency_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> None:
+    """(0.105.9, 14.1) Petitions to stay (Residency) waited by the hundred in
+    every fort (300+ each at y257), whatever the Outsiders slider said: DF's
+    standing orders that answer them are out of DFHack 53.16-r3's reach.
+    Now the AI answers them itself, by Outsiders (residency_stance):
+    a closed fort declines them, 25 at a time; every fort clears the ones
+    whose visitor has left or died; a welcoming fort agrees, first one as a
+    probe: agreeing is taken to work only once that visitor shows as DF's
+    resident (the report's petitions.residents) within a few days. If not,
+    it agrees to no more, and says so (they wait for you on DF's petitions
+    screen). With the Rules switch "accept visitors" off, none is agreed."""
+    pt = _d(s.get("petitions"))
+    if "error" in pt:
+        return
+    pending = [e for e in _l(pt.get("pending")) if isinstance(e, dict) and e.get("type") == "Residency"
+               and isinstance(e.get("id"), int)]
+    st = memory.residency if isinstance(memory.residency, dict) else {}
+    memory.residency = st
+    now = abs_tick(s)
+    residents = pt.get("residents")
+    # the probe's verdict
+    probe = _d(st.get("probe"))
+    if probe and st.get("works") is None and isinstance(residents, list):
+        if probe.get("unit") in residents:
+            st["works"] = True
+            st["since"] = now
+        elif (isinstance(probe.get("tick"), int)
+              and now - probe["tick"] >= cfg["residency_probe_days"] * TICKS_PER_DAY):
+            st["works"] = False
+            st["since"] = now
+    if not pending:
+        return
+    traits = _traits(s) if isinstance(s.get("settings"), dict) else {}
+    stance = residency_stance(traits, cfg)
+    if stance == "accept" and not player_rules(s).get("accept_visitors", True):
+        stance = "stale"
+    gone = [e["id"] for e in pending
+            if not _d(e.get("applicant")).get("on_map") or _d(e.get("applicant")).get("dead")]
+    batch = cfg["residency_batch"]
+    if stance == "decline":
+        ids = [e["id"] for e in pending][:batch]
+        proposals.append(Proposal("residency", {"type": "answer_petition", "ids": ids, "accept": False,
+                                                "residency": True},
+                                  f"{len(pending)} petition(s) to stay wait, and this fort keeps to itself "
+                                  f"(Outsiders {traits.get('outsiders', 0)}): decline {len(ids)}", 6))
+        return
+    if gone:
+        ids = gone[:batch]
+        proposals.append(Proposal("residency", {"type": "answer_petition", "ids": ids, "accept": False,
+                                                "residency": True},
+                                  f"{len(gone)} petition(s) to stay from visitors who have left or died: "
+                                  f"clear {len(ids)}", 7))
+        return
+    if stance != "accept":
+        return
+    here = [e for e in pending if _d(e.get("applicant")).get("unit") is not None]
+    if not here:
+        return
+    works = st.get("works")
+    if works is False:
+        notes.append(f"Needs you: the AI agreed to a petition to stay and DF didn't make the visitor a resident: "
+                     f"{len(pending)} petition(s) to stay wait for you on DF's petitions screen")
+        return
+    if works is None and not probe:
+        e = here[0]
+        proposals.append(Proposal("residency", {"type": "answer_petition", "id": e["id"], "accept": True,
+                                                "residency": True},
+                                  f"a welcoming fort (Outsiders {traits.get('outsiders', 0)}): agree to "
+                                  f"{e.get('name') or 'a visitor'}'s petition to stay (the first: the AI watches "
+                                  "that DF makes them a resident)", 6))
+        return
+    if works is None:
+        return                                  # waiting on the probe
+    for e in here[:cfg["residency_accept_per_cycle"]]:
+        proposals.append(Proposal("residency", {"type": "answer_petition", "id": e["id"], "accept": True,
+                                                "residency": True},
+                                  f"a welcoming fort (Outsiders {traits.get('outsiders', 0)}): agree to "
+                                  f"{e.get('name') or 'a visitor'}'s petition to stay", 6))
 
 
 def _convict_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> None:

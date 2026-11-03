@@ -716,6 +716,66 @@ def _():
     planner.record([(planner.Proposal("build", a, "x", 6), {"ok": False})], s, Memory())   # refused: not counted
 
 
+@test("0.105.9 residency: closed forts decline, welcoming forts agree one as a probe, then on; gone visitors cleared")
+def _():
+    from planner import _residency_rule, record
+
+    def st(outsiders, pending, residents=None, accept_visitors=True):
+        s = fort()
+        s["settings"]["traits"] = {"outsiders": outsiders}
+        s["settings"]["accept_visitors"] = accept_visitors
+        s["petitions"] = {"pending": pending, "orders": {}}
+        if residents is not None:
+            s["petitions"]["residents"] = residents
+        return s
+
+    def pet(i, unit=None, on_map=True):
+        return {"id": i, "type": "Residency", "name": f"Bard {i}",
+                "applicant": {"unit": unit, "on_map": on_map, "hf": i}}
+
+    here = [pet(i, 100 + i) for i in range(1, 31)]
+    # closed (Hermit hold): 25 declined at once
+    props, notes = [], []
+    m = Memory()
+    _residency_rule(st(-150, here), m, PLANNER_CONFIG, props, notes)
+    assert len(props) == 1 and props[0].action["accept"] is False and len(props[0].action["ids"]) == 25, props
+    # neutral: only the gone ones cleared
+    props = []
+    _residency_rule(st(0, here + [pet(99, None, on_map=False)]), Memory(), PLANNER_CONFIG, props, notes)
+    assert len(props) == 1 and props[0].action["ids"] == [99] and props[0].action["accept"] is False, props
+    props = []
+    _residency_rule(st(0, here), Memory(), PLANNER_CONFIG, props, notes)
+    assert not props
+    # welcoming: one agreed, then wait for it to show as a resident
+    m = Memory()
+    s = st(100, here, residents=[])
+    props = []
+    _residency_rule(s, m, PLANNER_CONFIG, props, notes)
+    assert len(props) == 1 and props[0].action == {"type": "answer_petition", "id": 1, "accept": True,
+                                                    "residency": True}, props
+    record([(props[0], {"ok": True, "unit": 101})], s, m)
+    assert m.residency["probe"]["unit"] == 101, m.residency
+    props = []
+    _residency_rule(st(100, here[1:], residents=[]), m, PLANNER_CONFIG, props, notes)
+    assert not props and m.residency.get("works") is None
+    # seen as a resident: three a cycle from now on
+    props = []
+    _residency_rule(st(100, here[1:], residents=[101]), m, PLANNER_CONFIG, props, notes)
+    assert m.residency["works"] is True and len(props) == 3 and all(p.action["accept"] for p in props), props
+    # never seen: no more agreed, and a note
+    m2 = Memory()
+    m2.residency = {"probe": {"id": 1, "unit": 101, "tick": 0}}
+    s = st(100, here[1:], residents=[])
+    s["date"]["tick"] += 10 * 1200
+    props, notes = [], []
+    _residency_rule(s, m2, PLANNER_CONFIG, props, notes)
+    assert m2.residency["works"] is False and not props and any("Needs you" in n for n in notes), notes
+    # the Rules switch "accept visitors" off: nothing agreed
+    props = []
+    _residency_rule(st(100, here, residents=[], accept_visitors=False), Memory(), PLANNER_CONFIG, props, [])
+    assert not props
+
+
 @test("petitions (0.104.161, 14.1): a fort that doesn't hold with a temple or guildhall declines it; a devout one agrees")
 def _():
     from planner import petition_lean
@@ -3085,6 +3145,15 @@ def _():
     assert by_rule(plan(s, m)[0], "fortify")
     m.gate_failures["14,108,173"] += "; the AI looked: natural pool ... (the fort uses this water)"
     assert not by_rule(plan(s, m)[0], "fortify")
+
+
+@test("0.105.9 traps: the founding stair's hatch is a gate: traps behind it")
+def _():
+    hatch = [{"id": 7, "kind": "hatch", "lever_away": False, "levers": []}]
+    s = entrances({"door_spots": 0, "width": 1, "x": 108, "y": 149, "sealed": True, "equipment": hatch})
+    s["settings"]["traits"] = {"fortification": 120, "engineering": 60, "caution": 60, "militarism": 150}
+    t = by_rule(plan(s, Memory())[0], "traps")
+    assert t and t[0].action["type"] == "place_traps" and t[0].action["entrance_id"] == s["entrances"]["entrances"][0]["id"], t
 
 
 @test("5b traps: a gate with no traps gets them in the fort's style; mechanisms ordered if too few; not twice")

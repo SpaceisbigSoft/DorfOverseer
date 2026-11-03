@@ -2281,11 +2281,16 @@ TRAP_KEYS = {cage = 'Tc', stonefall = 'Ts', weapon = 'Tw'}
 MAX_TRAPS = 8
 
 function trap_tiles(e, n, starts)
-    -- the gate's own tiles: what closes it (doors, bridges), else its opening
-    local gate = {}
+    -- the gate's own tiles: what closes it (doors, bridges, hatches). (0.105.9)
+    -- hatches too: every fort's only gate was the founding stair's hatch, so
+    -- no fort ever had a trap (the six forts, y257). Behind a hatch the way
+    -- in goes down its stair; the traps go on the floor at the stair's foot
+    -- (stairs are never trapped: only floor is)
+    local gate, only_hatch = {}, true
     for _, b in ipairs(e.equipment or {}) do
-        if b.kind ~= 'hatch' then
+        if b.x1 and b.x2 and b.y1 and b.y2 and b.z then
             for x = b.x1, b.x2 do for y = b.y1, b.y2 do gate[key(x, y, b.z)] = true end end
+            if b.kind ~= 'hatch' then only_hatch = false end
         end
     end
     if not next(gate) then return {} end
@@ -2294,7 +2299,8 @@ function trap_tiles(e, n, starts)
     -- gate and the opening, where a dwarf may stand)
     local inside = explore(starts, gate)
     local pocket, q, h = {}, {}, 1
-    for _, k in ipairs(e.inside_list or {}) do
+    -- (a hatch sits on the opening itself: its stair down is the fort, no pocket)
+    for _, k in ipairs(only_hatch and {} or e.inside_list or {}) do
         if not gate[k] and not pocket[k] then pocket[k] = true; table.insert(q, k) end
     end
     while h <= #q and #q < 5000 do

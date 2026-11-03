@@ -424,7 +424,9 @@ def _trap_rule(s: dict, memory, cfg: dict, es: list, now: int, traits: dict, pro
     off = _d(s.get("map")).get("elevation_offset")
     off = off if isinstance(off, int) else 0
     for e in es:
-        if not e.get("sealed") or not any(isinstance(b, dict) and b.get("kind") in ("door", "bridge")
+        # (0.105.9) a hatch is a gate too: the founding stair's hatch was every
+        # fort's only gate, so no fort ever got a trap
+        if not e.get("sealed") or not any(isinstance(b, dict) and b.get("kind") in ("door", "bridge", "hatch")
                                           for b in _l(e.get("equipment"))):
             continue
         spot = f"{e.get('x')},{e.get('y')},{e.get('z')}"

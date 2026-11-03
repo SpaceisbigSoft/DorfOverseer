@@ -390,6 +390,10 @@ def short(a: dict) -> str:
     if t == "retarget_hall":
         return "give a hall being dug to another petition"
     if t == "answer_petition":
+        if a.get("ids"):
+            return ("agree to" if a.get("accept") else "decline") + f" {len(a['ids'])} petitions to stay"
+        if a.get("residency"):
+            return ("agree to" if a.get("accept") else "decline") + " a petition to stay"
         return ("agree to" if a.get("accept") else "decline") + " a petition for a temple or guildhall"
     if t == "dismiss_alerts":
         return "clear old alert icons from the screen"

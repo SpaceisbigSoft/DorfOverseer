@@ -34,7 +34,7 @@
 local json = require('json')
 local utils = require('utils')
 
-BRIDGE_VERSION = '0.105.8'
+BRIDGE_VERSION = '0.105.9'
 PROTOCOL = 1 -- bump when the report's shape changes in a breaking way
 
 local OUT_DIR = dfhack.getDFPath() .. '/dfhack-config/ai-overseer'
@@ -681,6 +681,17 @@ function get_petitions()
         end
     end)
     if #out.pending == 0 then out.pending = nil end
+    -- (0.105.9) DF's residents on the map (unit ids, 200 at most): an agreed
+    -- residency petition is seen to work when its applicant shows here
+    pcall(function()
+        if not dfhack.units.isResident then return end
+        local res = {}
+        for _, u in ipairs(df.global.world.units.active) do
+            if #res < 200 and dfhack.units.isAlive(u) and dfhack.units.isResident(u) then table.insert(res, u.id) end
+        end
+        out.residents = res
+        out.residents_n = #res
+    end)
     -- (0.89) location petitions agreed to, not yet fulfilled, under a year old
     pcall(function()
         local site_id = df.global.plotinfo.site_id
@@ -802,12 +813,25 @@ function answer_petition(id, accept, dry_run)
     if idx == nil then return {ok = false, rejected = true, error = 'no petition ' .. tostring(id) .. ' is waiting'} end
     local a = df.agreement.find(id)
     local d = a and a.details[0]
-    if not d or df.agreement_details_type[d.type] ~= 'Location' then
-        return {ok = false, rejected = true, error = 'only temple and guildhall petitions are answered by the AI'}
+    local kind = d and df.agreement_details_type[d.type]
+    -- (0.105.9) residency too (every fort held 300+ waiting); citizenship stays yours
+    if not d or (kind ~= 'Location' and kind ~= 'Residency') then
+        return {ok = false, rejected = true, error = 'only temple, guildhall and residency petitions are answered by the AI'}
     end
-    local wish = location_wish(a)
+    local wish = kind == 'Location' and location_wish(a) or nil
     local out = {ok = true, id = id, accepted = accept or nil, declined = (not accept) or nil, wish = wish,
-                 dry_run = dry_run or nil}
+                 kind = kind, dry_run = dry_run or nil}
+    if kind == 'Residency' then
+        pcall(function()
+            local party = d.data.Residency.applicant
+            for _, pt in ipairs(a.parties) do
+                if pt.id == party and #pt.histfig_ids > 0 then
+                    local hf = df.historical_figure.find(pt.histfig_ids[0])
+                    out.unit = hf and hf.unit_id >= 0 and hf.unit_id or nil
+                end
+            end
+        end)
+    end
     if dry_run then return out end
     if accept then a.flags.petition_not_accepted = false end
     list:erase(idx)
@@ -5730,8 +5754,8 @@ end
 -- A vein of the metal the fort needs marked for digging (lua/ai-industry.lua).
 function act_mine_ore(a)
     if type(a.metal) ~= 'string' or not a.metal:match('^[A-Z_]+$') then return reject('mine_ore needs metal') end
-    local n = int_in(a.count or 40, 1, 60)
-    if not n then return reject('mine_ore needs count 1-60') end
+    local n = int_in(a.count or 40, 1, 80)       -- (0.105.9) 80: Mining's top (E asked 80, refused 30 times)
+    if not n then return reject('mine_ore needs count 1-80') end
     return reqscript('ai-industry').mine(a.metal, n, a.dry_run == true)
 end
 
@@ -5890,8 +5914,29 @@ end
 
 -- (0.89) answer a temple or guildhall petition: id, accept (true/false)
 function act_answer_petition(a)
+    if type(a.accept) ~= 'boolean' then return reject('answer_petition needs id (or ids) and accept true|false') end
+    -- (0.105.9) ids: up to 25 at once (old residency petitions by the hundred)
+    if type(a.ids) == 'table' then
+        local ids = {}
+        for _, v in ipairs(a.ids) do
+            local n = whole_number(v)
+            if not n then return reject('answer_petition: ids are whole numbers') end
+            table.insert(ids, n)
+        end
+        if #ids == 0 or #ids > 25 then return reject('answer_petition needs 1-25 ids') end
+        local out = {ok = true, answered = 0, refused = {}, accepted = a.accept or nil, dry_run = a.dry_run or nil}
+        for _, n in ipairs(ids) do
+            local r = answer_petition(n, a.accept, a.dry_run == true)
+            if r.ok then out.answered = out.answered + 1
+            else table.insert(out.refused, {id = n, error = r.error}) end
+        end
+        if #out.refused == 0 then out.refused = nil end
+        out.ok = out.answered > 0
+        if not out.ok then out.error = 'no petition answered'; out.rejected = true end
+        return out
+    end
     local id = whole_number(a.id)
-    if not id or type(a.accept) ~= 'boolean' then return reject('answer_petition needs id and accept true|false') end
+    if not id then return reject('answer_petition needs id (or ids) and accept true|false') end
     return answer_petition(id, a.accept, a.dry_run == true)
 end
 

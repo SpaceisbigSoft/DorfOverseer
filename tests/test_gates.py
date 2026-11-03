@@ -660,6 +660,36 @@ def _():
     assert e.sealed and e.equipment[1].id == 5, (e.sealed, len(e.equipment))
 
 
+@test("0.105.9: traps behind a hatch: on the floor at its stair's foot, never on the stair or the surface")
+def _():
+    surface = ["o" * 30] * 3 + ["oooooooooo" + "t" + "o" * 19] + ["o" * 30] * 15
+    below = ["#" * 30] * 3 + ["##########s" + "." * 19] + ["#" * 10 + "." * 20] * 4 + ["#" * 30] * 11
+    m = LUA.table()
+    for z, rows in ((0, below), (1, surface)):
+        level = LUA.table()
+        for y, r in enumerate(rows):
+            level[y] = r
+        m[z] = level
+    W.map = m
+    W.buildings = LUA.table_from({1: LUA.table_from({"id": 5, "kind": "hatch", "x1": 10, "y1": 3, "x2": 10,
+                                                     "y2": 3, "z": 1, "name": ""})})
+    s0 = LUA.table_from({1: LUA.table_from({"x": 20, "y": 5, "z": 0})})
+    es, _, _ = M.find_entrances(s0, W.buildings)
+    e = es[1]
+    assert e.sealed
+    e.id = 1
+    M.GATES = LUA.table_from({"entrances": LUA.table_from({1: e})})
+    placed = []
+    M.place_hook = lambda text, pos: placed.append((text, pos.x, pos.y, pos.z)) or True
+    try:
+        r = M.place_traps(1, "weapon", 3, s0)
+    finally:
+        M.place_hook = None
+    assert r.ok and r.traps == 3 and r.kind == "weapon", dict(r)
+    assert all(t == "Tw" and z == 0 and (x, y) != (10, 3) for t, x, y, z in placed), placed
+    assert all(max(abs(x - 10), abs(y - 3)) <= 3 for _, x, y, _ in placed), placed
+
+
 @test("trees: the ground under a tree's crown is the surface, not an entrance to wall in")
 def _():
     rows = ["o" * 30] * 5 + ["oooooooonnnooooooooooooooooooo"] * 3 + ["o" * 30] * 11

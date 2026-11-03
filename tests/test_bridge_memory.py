@@ -185,7 +185,7 @@ def _():
     for absent in ("supplies", "map", "jobs", "recent_announcements", "registry"):
         assert absent not in keys, absent
     daily = M.build_state(True)
-    assert daily.tier == "daily" and daily.units[1].id == 1 and daily.bridge_version == "0.105.8"
+    assert daily.tier == "daily" and daily.units[1].id == 1 and daily.bridge_version == "0.105.9"
     assert set(pulse.keys()) - {"tier"} <= set(daily.keys())
     assert daily.registry.error is not None                         # no builder here, but the section is there
     assert M.build_state(False, "survey").tier == "survey"
@@ -694,7 +694,9 @@ def _():
     assert by[175].loc == "GUILDHALL" and by[175].profession == "MASON", dict(by[175])
     assert p.agreed is None                                            # all three still wait
     act = M.ACTIONS.answer_petition
-    assert not act(t({"id": 176, "accept": True})).ok                   # residency: DF's standing orders
+    # (0.105.9) residency too: answered by the AI (a dry run here; declined below)
+    d = act(t({"id": 176, "accept": True, "dry_run": True}))
+    assert d.ok and d.kind == "Residency" and A[176].flags.petition_not_accepted is not False, dict(d)
     d = act(t({"id": 174, "accept": True, "dry_run": True}))
     assert d.ok and d.dry_run and A[174].flags.petition_not_accepted is True
     r = act(t({"id": 174, "accept": True}))
@@ -704,6 +706,9 @@ def _():
     r = act(t({"id": 175, "accept": False}))
     assert r.ok and r.declined and A[175].flags.petition_not_accepted is True and pl.n == 1
     assert not act(t({"id": 174, "accept": True})).ok                   # no longer waiting
+    r = act(t({"ids": t({1: 176, 2: 999}), "accept": False}))           # several at once; 999 isn't waiting
+    assert r.ok and r.answered == 1 and pl.n == 0 and len(r.refused) == 1, dict(r)
+    assert not act(t({"ids": t({1: 999}), "accept": False})).ok
     p = M.get_petitions()
     agreed = list(p.agreed.values())
     assert len(agreed) == 1 and agreed[0].id == 174 and agreed[0].deity_hf == 55, agreed

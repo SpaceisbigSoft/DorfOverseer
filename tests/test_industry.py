@@ -183,8 +183,67 @@ def _():
         load_projects = function() return {list = {{area = {x1 = 1, y1 = 1, x2 = 5, y2 = 4, z = 10}}}} end} end
     """, env)
     r = env.mine("IRON", 40, False)
-    # the hematite at x 6-7 lies within 2 tiles of the room (x 1-5): never dug; nothing else reachable
-    assert not r.ok and dig(6, 2) == 0 and dig(7, 3) == 0, dict(r)
+    # the hematite at x 6-7 lies within 2 tiles of the room (x 1-5): the vein
+    # isn't followed there; (0.105.9) a 1-wide drift opens at x6 to the vein
+    # beyond the margin (x8), and the vein is followed only outside it
+    assert r.ok and r.drift == 2 and dig(6, 2) == 1 and dig(7, 2) == 1 and dig(7, 3) == 0, dict(r)
+
+@test("0.105.9: every vein in a level's walls: a drift through plain rock to a hidden vein, then the vein")
+def _():
+    rows = ["################",
+            "#.....##########",
+            "#.....hh####??##",
+            "#.....##########",
+            "#.....##########"] + ["################"] * 11
+    lua = LuaRuntime(unpack_returned_tuples=True)
+    env, dig = lua.execute(FAKE, SRC, lua.table_from(rows))
+    lua.execute("""local env = ...
+      env.reqscript = function() return {
+        citizen_positions = function() return {{x = 2, y = 2, z = 10}} end,
+        load_projects = function() return {list = {{area = {x1 = 1, y1 = 1, x2 = 5, y2 = 4, z = 10}}}} end} end
+    """, env)
+    r = env.mine("IRON", 40, True)
+    assert r.ok and r.drift == 6 and dig(6, 2) == 0, dict(r)                    # a dry run marks nothing
+    assert (r.drift_from.x, r.drift_from.y) == (6, 2), dict(r.drift_from)
+    r = env.mine("IRON", 40, False)
+    assert r.ok and r.drift == 6 and r.tiles == 8, dict(r)
+    assert all(dig(x, 2) == 1 for x in range(6, 14)), [dig(x, 2) for x in range(5, 15)]
+    assert dig(6, 1) == 0 and dig(6, 3) == 0, "a 1-wide tunnel"
+    # the drift runs beside a level only at its opening: a room 1 tile above the
+    # tunnel's line keeps it off that row (around it, or no drift)
+    rows2 = list(rows)
+    rows2[1] = "#.....##.....###"
+    lua = LuaRuntime(unpack_returned_tuples=True)
+    env, dig = lua.execute(FAKE, SRC, lua.table_from(rows2))
+    lua.execute("""local env = ...
+      env.reqscript = function() return {
+        citizen_positions = function() return {{x = 2, y = 2, z = 10}} end,
+        load_projects = function() return {list = {{area = {x1 = 1, y1 = 1, x2 = 5, y2 = 4, z = 10}},
+                                                     {area = {x1 = 8, y1 = 1, x2 = 12, y2 = 1, z = 10}}}} end} end
+    """, env)
+    r = env.mine("IRON", 40, True)
+    assert not r.ok and "no vein within" in r.error, dict(r)                   # the vein is in that level's margin
+
+
+@test("0.105.9: no vein within the drift's reach: refused, nothing marked")
+def _():
+    rows = ["################",
+            "#.....##########",
+            "#.....hh####??##",
+            "#.....##########",
+            "#.....##########"] + ["################"] * 11
+    lua = LuaRuntime(unpack_returned_tuples=True)
+    env, dig = lua.execute(FAKE, SRC, lua.table_from(rows))
+    lua.execute("""local env = ...
+      env.reqscript = function() return {
+        citizen_positions = function() return {{x = 2, y = 2, z = 10}} end,
+        load_projects = function() return {list = {{area = {x1 = 1, y1 = 1, x2 = 5, y2 = 4, z = 10}}}} end} end
+      env.DRIFT_MAX = 3
+    """, env)
+    r = env.mine("IRON", 40, False)
+    assert not r.ok and "no vein within 3 tiles" in r.error, dict(r)
+    assert all(dig(x, y) == 0 for x in range(16) for y in range(16))
+
 
 QUARRY_SETUP = """
 local env, layer_idx, econ = ...

@@ -362,6 +362,10 @@ PLANNER_CONFIG = {
     "hospital_thread_min": 10,         # thread kept for the hospital's stitches (0.83)
     "petition_hunters_militarism": 0,  # monster hunters may stay from this Militarism (0.87)
     "petition_mercenaries_militarism": 30,  # mercenaries from this
+    "residency_probe_days": 3,         # (0.105.9) an agreed residency petition: seen as a resident within this
+    "residency_batch": 25,             # residency petitions answered in one go
+    "residency_accept_per_cycle": 3,   # once agreeing is seen to work: this many a cycle
+    "residency_accept_outsiders": 30,  # agree from this Outsiders (welcoming); decline below -30 (closed)
     "petition_citizen_margin": 5,      # citizenship while citizens are this far under the population target
     "bag_sink_days": 28,               # this many bag orders in so many days with no empty bag: a sink (0.87.1)
     "bag_sink_orders": 3,
@@ -734,6 +738,7 @@ class Memory:
     gate_part_extra: dict = field(default_factory=dict)   # (0.104.139) stuck entrances given one more part
     pruned_after: int = 0                                 # (0.104.140) the threat tick last cleaned up after
     kill_sent: dict = field(default_factory=dict)        # (0.104.140) squad id -> unit ids last sent after
+    residency: dict = field(default_factory=dict)        # (0.105.9) {probe: {id, unit, tick}, works: True|False, since}
     gear_spare_since: dict = field(default_factory=dict)  # "weapons"/"body"/"helms" -> when 3+ spares sat unused
     swapped: dict = field(default_factory=dict)  # (0.104.78) unit id -> when the swap sent them home
     drafted: dict = field(default_factory=dict)  # (0.104.138) unit id -> when a fill or swap drafted them
@@ -1626,7 +1631,7 @@ def update_idle(s: dict, memory, cfg: dict) -> None:
 # What a rule works toward, in a few words (the season's agenda)
 AGENDA_THEMES = {
     "arms": "arm and armour the soldiers", "uniform": "dress the squads", "barracks_assign": "house the squads",
-    "squad_fill": "fill the squads", "grandeur": "dress the halls", "quick_temple": "a place to pray", "quick_tavern": "a tavern", "stress_care": "care for dwarves near breaking", "squad_trim": "send extra soldiers back to work", "unload_depot": "empty the depot after the caravans", "needs_finery": "jewellery to wear", "good_cooks": "the best cooks to the kitchen", "squad_make": "raise a new squad", "uniform_adopt": "dress the squads", "staff": "staff the hospital, library and tavern", "tavern": "stock the tavern", "kiln": "plaster and paper", "anvil": "an anvil for a new forge", "petitions": "answer petitions", "train": "train the soldiers",
+    "squad_fill": "fill the squads", "grandeur": "dress the halls", "quick_temple": "a place to pray", "quick_tavern": "a tavern", "stress_care": "care for dwarves near breaking", "squad_trim": "send extra soldiers back to work", "unload_depot": "empty the depot after the caravans", "needs_finery": "jewellery to wear", "good_cooks": "the best cooks to the kitchen", "squad_make": "raise a new squad", "uniform_adopt": "dress the squads", "staff": "staff the hospital, library and tavern", "tavern": "stock the tavern", "kiln": "plaster and paper", "anvil": "an anvil for a new forge", "petitions": "answer petitions", "residency": "answer petitions to stay", "train": "train the soldiers",
     "build": "build the fort's next level", "furniture": "furnish the new levels",
     "steel": "make steel", "smelt": "smelt the ore", "ore": "mine ore", "fuel": "make fuel",
     "trade": "trade with the caravans", "trade_deal": "trade with the caravans", "crafts": "make goods to sell",

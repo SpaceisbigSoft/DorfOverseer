@@ -565,6 +565,7 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
         _guard(_kiln_rules, s, cfg, proposals, notes)
         _guard(_glass_rule, s, cfg, proposals, notes)
         _guard(_petition_rules, s, cfg, proposals, notes)
+        _guard(_residency_rule, s, memory, cfg, proposals, notes)         # (0.105.9)
         _guard(_anvil_rule, s, cfg, proposals, notes)
         _guard(_excess_shops_rule, s, cfg, proposals)
         _guard(_water_rules, s, cfg, proposals, notes)
@@ -929,6 +930,10 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
             memory.culture["last_trade_year"] = int(_d(state.get("date")).get("year") or 0)   # (0.103.18)
         if a["type"] == "quick_location" and a.get("kind"):
             memory.quick_locations[str(a["kind"])] = now
+        if (a["type"] == "answer_petition" and a.get("residency") and a.get("accept") and r.get("ok") is True
+                and not a.get("ids")):
+            # (0.105.9) the probe: is the applicant DF's resident within a few days?
+            memory.residency["probe"] = {"id": a.get("id"), "unit": r.get("unit"), "tick": now}
         if a["type"] == "answer_petition" and a.get("accept") and a.get("wish"):
             memory.wishes_agreed[str(a["wish"])] = now
             for k in [k for k, t in memory.wishes_agreed.items() if not isinstance(t, int) or now - t > 2 * TICKS_PER_YEAR]:
