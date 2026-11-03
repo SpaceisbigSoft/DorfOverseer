@@ -184,6 +184,13 @@ def _residency_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) ->
     if not here:
         return
     works = st.get("works")
+    if not cfg["residency_accept_by_flag"]:
+        # (0.105.11) B, 2 Nov: Mistêm Zonåm's petition agreed by the flag, and DF
+        # kept her a guest (the player looked: Other, "Guest / Listen to Story")
+        ask_player(notes, f"{len(here)} petition(s) to stay from visitors this welcoming fort would take: agree to "
+                          "them on DF's petitions screen (the AI can only decline; agreeing from outside the "
+                          "screen leaves the visitor a guest)")
+        return
     if works is False:
         ask_player(notes, f"the AI agreed to a petition to stay and DF didn't make the visitor a resident: "
                           f"{len(pending)} petition(s) to stay wait for you on DF's petitions screen")

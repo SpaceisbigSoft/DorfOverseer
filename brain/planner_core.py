@@ -364,6 +364,8 @@ PLANNER_CONFIG = {
     "petition_mercenaries_militarism": 30,  # mercenaries from this
     "residency_probe_days": 3,         # (0.105.9) an agreed residency petition: seen as a resident within this
     "residency_batch": 25,             # residency petitions answered in one go
+    "residency_accept_by_flag": False, # (0.105.11) seen 2 Nov in B: an agreement set by the flag left the visitor a
+                                       # guest (DF's Other list, not Residents): welcoming forts leave them to you
     "residency_cooldown_ticks": 1200,  # (review) a batch a day, not the default 2 days
     "residency_reprobe_days": 336,     # a failed probe is tried again a year on (a DFHack update may help)
     "residency_accept_outsiders": 30,  # agree from this Outsiders (welcoming); decline below -30 (closed)

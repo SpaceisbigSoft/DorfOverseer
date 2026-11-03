@@ -746,6 +746,12 @@ def _():
     props = []
     _residency_rule(st(0, here), Memory(), PLANNER_CONFIG, props, notes)
     assert not props
+    # (0.105.11) by default a welcoming fort agrees to none (the flag leaves a guest): a note for you
+    from planner import NEEDS_YOU
+    props, notes0 = [], []
+    _residency_rule(st(100, here, residents=[]), Memory(), PLANNER_CONFIG, props, notes0)
+    assert not props and any(n.startswith(NEEDS_YOU) and "petitions screen" in n for n in notes0), notes0
+    PLANNER_CONFIG["residency_accept_by_flag"] = True           # the probe path, should DF ever take it
     # welcoming: one agreed, then wait for it to show as a resident
     m = Memory()
     s = st(100, here, residents=[])
@@ -771,7 +777,6 @@ def _():
     _residency_rule(st(100, [vamp, pet(51, 151)], residents=[]), m3, PLANNER_CONFIG, props, [])
     assert props[0].action["ids"] == [51], props
     # never seen: a second probe, then no more agreed, and a note for you
-    from planner import NEEDS_YOU
     m2 = Memory()
     m2.residency = {"probe": {"id": 1, "unit": 101, "tick": 0}}
     s = st(100, here[1:], residents=[])
@@ -791,6 +796,7 @@ def _():
     props = []
     _residency_rule(st(100, here, residents=[], accept_visitors=False), Memory(), PLANNER_CONFIG, props, [])
     assert not props
+    PLANNER_CONFIG["residency_accept_by_flag"] = False
 
 
 @test("petitions (0.104.161, 14.1): a fort that doesn't hold with a temple or guildhall declines it; a devout one agrees")
