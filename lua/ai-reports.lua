@@ -30,7 +30,7 @@ TOPICS = {
     -- the dead
     {topic = 'ghost', types = {'GHOST'}, texts = {'ghost', 'haunt', 'has risen'}},
     -- outsiders
-    {topic = 'thief', types = {'THIEF', 'SNATCHER', 'KIDNAP'}, texts = {'thief', 'snatcher', 'kidnap'}},
+    {topic = 'thief', types = {'THIEF', 'SNATCHER', 'KIDNAP'}, texts = {'thief', 'snatcher', 'kidnap', 'sneaking around'}},
     {topic = 'siege', types = {'SIEGE', 'AMBUSH'}, texts = {'siege', 'ambush', 'vile force of darkness'}},
     {topic = 'curse', types = {'VAMPIRE', 'WEREBEAST', 'NECROMANCER', 'UNDEAD'},
      texts = {'vampire', 'necromancer', 'undead', '%f[%a]were%a+', 'has transformed'}},
@@ -80,6 +80,9 @@ function classify(type_name, text)
     -- Operator": 12 false sieges in Enxah's night)
     low = low:gsub('siege operator', 'operator'):gsub('siege engineer', 'engineer')
     local topic = match(type_name, low)
+    -- (0.105.15) "X was spotted sneaking around!" is a thief or snatcher
+    -- (DF files it with the ambushes), not a siege
+    if topic == 'siege' and low:find('sneaking around', 1, true) then topic = 'thief' end
     -- "Urist cancels Clean: Throwing tantrum." repeats for every job the
     -- dwarf drops; only the digging ones (damp or warm stone) are news.
     if topic and topic ~= 'dig_cancelled' and low:find(' cancels ', 1, true) then return nil end

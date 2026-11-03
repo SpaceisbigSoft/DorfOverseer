@@ -34,7 +34,7 @@
 local json = require('json')
 local utils = require('utils')
 
-BRIDGE_VERSION = '0.105.14'
+BRIDGE_VERSION = '0.105.15'
 PROTOCOL = 1 -- bump when the report's shape changes in a breaking way
 
 local OUT_DIR = dfhack.getDFPath() .. '/dfhack-config/ai-overseer'
@@ -3034,6 +3034,28 @@ function death_details(ev, id)
     end
 end
 
+-- (0.105.15) An invasion event's size: the invaders on the map now (alive,
+-- active) and, read field by field so a DF change can't break it, the
+-- record's size and siege flag (kept for a later look, not acted on).
+function invasion_details(ev, id)
+    local n = 0
+    for _, u in ipairs(df.global.world.units.active) do
+        local ok, yes = pcall(function()
+            return dfhack.units.isInvader(u) and dfhack.units.isActive(u) and not dfhack.units.isDead(u)
+        end)
+        if ok and yes then n = n + 1 end
+    end
+    ev.invaders_now = n
+    for _, v in ipairs(df.global.plotinfo.invasions.list) do
+        if v.id == id then
+            pcall(function() ev.civ_id = v.civ_id end)
+            pcall(function() ev.size = v.size end)
+            pcall(function() ev.siege = v.flags.siege and true or false end)
+            break
+        end
+    end
+end
+
 function start_watching()
     local ok, eventful = pcall(require, 'plugins.eventful')
     if not ok then return false end
@@ -3060,7 +3082,12 @@ function start_watching()
         push_event(ev)
     end
     eventful.onInvasion[WATCH_KEY] = function(id)
-        push_event({kind = 'invasion', invasion_id = id})
+        -- (0.105.15) DF makes an invasion for a lone thief too: say how many
+        -- invaders are on the map now and what the record holds, so the brain
+        -- calls it a siege only when an army came
+        local ev = {kind = 'invasion', invasion_id = id}
+        pcall(invasion_details, ev, id)
+        push_event(ev)
     end
     -- Forget the previous fort's layers and events when a map unloads.
     dfhack.onStateChange[WATCH_KEY] = function(sc)

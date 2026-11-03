@@ -1365,7 +1365,12 @@ def culture_update(state: dict, memory, events: list[dict], key: str) -> None:
     memory.culture["learned"] = learning.engine_bonuses(memory)
     # how each defence design held up in sieges, here and in your other forts
     memory.culture["design"] = defence.engine_bonuses(memory)
-    for change in culture_events(memory.culture, events):
+    # (0.105.15) a siege for culture is one phases confirmed (3+ invaders),
+    # not DF's invasion record of a lone thief
+    year = (state.get("date") or {}).get("year")
+    seen = [e for e in events if not (isinstance(e, dict) and e.get("kind") == "invasion")]
+    seen += [{"kind": "invasion", "year": year}] * phases.take_new_sieges(memory)
+    for change in culture_events(memory.culture, seen):
         say(f"Culture: {change}")
         journal({"kind": "culture", "fort": key, "change": change})
         chronicle.add(memory, state, "siege" if "siege" in change else "beast", change)

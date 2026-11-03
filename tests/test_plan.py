@@ -290,7 +290,7 @@ def _():
     assert phases.current(m) in ("growth", "prosperity"), phases.current(m)     # (the fixture fort is well off)
     s = state_at(50015)
     timeline.record(s, m, [], PLANNER_CONFIG)
-    assert phases.update(s, m, [{"kind": "invasion"}]) == "a siege: the fort turns to its defence"
+    assert phases.update(s, m, [{"kind": "invasion", "invaders_now": 12}]) == "a siege: the fort turns to its defence"
     assert phases.held_kinds(m, 50015 * DAY).keys() == {"library", "memorial"}, "taverns and temples go ahead"
     assert phases.held_kinds(m, 50015 * DAY + 29 * DAY) == {}, "a long siege holds nothing back after 4 weeks"
     assert m.chronicle["phase"]["log"][0]["from"] in ("growth", "prosperity"), "the first look was quiet"
@@ -302,7 +302,7 @@ def _():
     run_days(m, 49999, 1)                                   # the first look, quietly
     s = state_at(50000)
     timeline.record(s, m, [], PLANNER_CONFIG)
-    phases.update(s, m, [{"kind": "invasion"}])
+    phases.update(s, m, [{"kind": "invasion", "invaders_now": 12}])
     run_days(m, 50001, 20)
     assert phases.current(m) == "recovery", phases.current(m)
     assert "library" in phases.held_kinds(m) and "temple" not in phases.held_kinds(m)
@@ -324,7 +324,7 @@ def _():
     run_days(m2, 49999, 1)
     s = state_at(50000)
     timeline.record(s, m2, [], PLANNER_CONFIG)
-    phases.update(s, m2, [{"kind": "invasion"}])
+    phases.update(s, m2, [{"kind": "invasion", "invaders_now": 12}])
     for d in range(50001, 50010):                      # 9 quiet days: still under siege's minimum
         s = state_at(d)
         timeline.record(s, m2, [], PLANNER_CONFIG)
@@ -349,6 +349,56 @@ def _():
         timeline.record(s, m, [], PLANNER_CONFIG)
         phases.update(s, m, [])
     assert phases.current(m) == "siege"
+
+
+@test("0.105.15 phases: a lone thief's invasion record is no siege; it passes as an intrusion")
+def _():
+    m = Memory()
+    run_days(m, 49999, 1)
+    before = phases.current(m)
+    s = state_at(50000)
+    s["others_on_map"]["threats"] = [{"id": 7, "can_reach_dwarves": True, "invader": True, "name": "Human Hammerman"}]
+    timeline.record(s, m, [], PLANNER_CONFIG)
+    assert phases.update(s, m, [{"kind": "invasion", "invaders_now": 1, "size": 1}]) is None
+    for d in range(50001, 50004):
+        s = state_at(d)
+        timeline.record(s, m, [], PLANNER_CONFIG)
+        phases.update(s, m, [])
+    assert phases.current(m) == before, phases.current(m)
+    ph = m.chronicle["phase"]
+    assert ph.get("intrusions") == 1 and not ph.get("pending_invasions") and not ph.get("invasions"), ph
+    assert phases.take_new_sieges(m) == 0
+
+
+@test("0.105.15 phases: an army that shows up a day after its record is a siege; counted once for culture")
+def _():
+    m = Memory()
+    run_days(m, 49999, 1)
+    s = state_at(50000)
+    timeline.record(s, m, [], PLANNER_CONFIG)
+    assert phases.update(s, m, [{"kind": "invasion", "invaders_now": 0}]) is None   # not on the map yet
+    s = state_at(50001)
+    s["others_on_map"]["threats"] = [{"id": i, "invader": True, "name": "goblin"} for i in range(5)]
+    timeline.record(s, m, [], PLANNER_CONFIG)
+    assert phases.update(s, m, []) == "a siege: the fort turns to its defence"
+    assert phases.take_new_sieges(m) == 1 and phases.take_new_sieges(m) == 0
+    s = state_at(50002)                                  # still there next day: not a second siege
+    s["others_on_map"]["threats"] = [{"id": i, "invader": True, "name": "goblin"} for i in range(5)]
+    timeline.record(s, m, [], PLANNER_CONFIG)
+    phases.update(s, m, [])
+    assert phases.take_new_sieges(m) == 0
+    assert len(m.chronicle["phase"]["invasions"]) == 1
+
+
+@test("0.105.15 phases: a pulse report (no threat list) keeps the record waiting; it isn't dropped early")
+def _():
+    m = Memory()
+    run_days(m, 49999, 1)
+    s = state_at(50000)
+    s["others_on_map"].pop("threats", None)
+    timeline.record(s, m, [], PLANNER_CONFIG)
+    phases.update(s, m, [{"kind": "invasion"}])
+    assert m.chronicle["phase"]["pending_invasions"], m.chronicle["phase"]
 
 
 @test("plan: caverns are read in the survey's own terms; too little room means no plan yet")

@@ -12,7 +12,8 @@ with milestone 7):
   founding    the first year of the plan in a fort of under 50 dwarves, or
               fewer than 20 dwarves
   growth      the ordinary state
-  siege       an invasion in the last 14 days, or invaders or great beasts
+  siege       an invasion in the last 14 days (one that brought 3+ invaders
+              onto the map: not a lone thief), or invaders or great beasts
               able to reach the dwarves on 3 of the last 5 days (wildlife and
               cavern creatures don't count): no libraries or memorials are
               started (for at most 4 weeks)
@@ -75,6 +76,55 @@ def _now(state: dict) -> int:
     return d["year"] * YEAR_TICKS + d["tick"]
 
 
+SIEGE_MIN_INVADERS = 3     # a siege: this many invaders on the map at once
+CONFIRM_DAYS = 2           # how long an invasion record waits for them
+
+
+def invaders_on_map(state: dict) -> int | None:
+    """Invaders (not wildlife or great beasts) on the map now, or None
+    when the report has no threat list (a pulse report)."""
+    oth = state.get("others_on_map")
+    if not isinstance(oth, dict) or not isinstance(oth.get("threats"), list):
+        return None
+    return sum(1 for t in oth["threats"] if isinstance(t, dict) and t.get("invader"))
+
+
+def confirm_invasions(state: dict, memory, events: list[dict] | None = None) -> int:
+    """Invasion events wait here until enough invaders show up to call them a
+    siege. Returns the sieges confirmed now (0 or 1); each is added to the
+    phase's invasions and counted in ph["new_sieges"] for culture."""
+    ph = _state(memory)
+    now = _now(state)
+    pending = [t for t in ph.get("pending_invasions") or [] if isinstance(t, int) and t <= now]
+    big = False
+    for e in events or []:
+        if isinstance(e, dict) and e.get("kind") == "invasion":
+            n = e.get("invaders_now")
+            if isinstance(n, int) and n >= SIEGE_MIN_INVADERS:
+                big = True
+            pending.append(now)
+    live = [t for t in pending if now - t <= CONFIRM_DAYS * DAY]
+    gone = len(pending) - len(live)
+    if gone:
+        ph["intrusions"] = (ph.get("intrusions") or 0) + gone      # sneaks, never a siege
+    seen = invaders_on_map(state)
+    if live and (big or (seen is not None and seen >= SIEGE_MIN_INVADERS)):
+        ph["invasions"] = ([t for t in ph.get("invasions") or [] if isinstance(t, int)] + [now])[-10:]
+        ph["new_sieges"] = (ph.get("new_sieges") or 0) + 1
+        ph["pending_invasions"] = []
+        return 1
+    ph["pending_invasions"] = live[-10:]
+    return 0
+
+
+def take_new_sieges(memory) -> int:
+    """Sieges confirmed since the last call (for culture), and forget them."""
+    ph = _state(memory)
+    n = ph.get("new_sieges") or 0
+    ph["new_sieges"] = 0
+    return n if isinstance(n, int) and n > 0 else 0
+
+
 def _avg(memory, metric, a, b, n=7):
     return timeline.avg(memory, metric, a, b, n)[0]
 
@@ -92,8 +142,13 @@ def judge(state: dict, memory, events: list[dict] | None = None) -> str:
     ph["invasions"] = [t for t in ph.get("invasions") or [] if isinstance(t, int) and t <= now]
     ph["danger_days"] = [t for t in ph.get("danger_days") or [] if isinstance(t, int) and t <= today]
     sieges = [t for t in ph["invasions"] if now - t <= 14 * DAY]
-    if any(isinstance(e, dict) and e.get("kind") == "invasion" for e in events or []):
-        ph["invasions"] = (ph["invasions"] + [now])[-10:]
+    # (0.105.15) DF makes an invasion record for every thief or snatcher who
+    # sneaks onto the map ("spotted sneaking around"), not only for armies:
+    # one sneak was a siege, held libraries and memorials back for 14 days and
+    # 8 more of recovery, and counted as a siege for culture (E: 20 of them in
+    # a day). An invasion is a siege only once SIEGE_MIN_INVADERS invaders
+    # are on the map, at its arrival or within CONFIRM_DAYS.
+    if confirm_invasions(state, memory, events):
         sieges.append(now)
     # invaders or great beasts that can reach the dwarves (not wildlife or cavern creatures)
     oth = _d(state.get("others_on_map"))

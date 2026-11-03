@@ -51,6 +51,10 @@ CASES = [
     ("X", "Urist McMiner is throwing a tantrum!", "tantrum"),
     ("X", "The ghost of Urist McMiner has risen and is haunting the fortress!", "ghost"),
     ("X", "A vile force of darkness has arrived!", "siege"),
+    # (0.105.15) a lone sneak is a thief, not a siege; an ambush still is one
+    ("AMBUSH", "The Speardwarf Bembul was spotted sneaking around! \"You will not stand between me and Killstakes!\"", "thief"),
+    ("X", "The Human Hammerman Otu was spotted sneaking around! \"I'll live to fight another day!\"", "thief"),
+    ("AMBUSH", "An ambush! Curse them!", "siege"),
     ("X", "Urist has been bitten by a weremole!", "curse"),
     ("X", "A crime has been committed.", "crime"),
     ("X", "Some migrants have arrived.", "migrants"),
