@@ -3179,6 +3179,50 @@ def _():
     assert not by_rule(plan(s, m)[0], "fortify")
 
 
+@test("0.105.12 machinery: a lever for the founding hatch in a fort that cares for it, then linked; none elsewhere")
+def _():
+    hatch = [{"id": 7, "kind": "hatch", "lever_away": False, "levers": []}]
+    s = entrances({"door_spots": 0, "width": 1, "x": 108, "y": 149, "sealed": True, "equipment": hatch})
+    s["settings"]["traits"] = {"engineering": 60}
+    eid = s["entrances"]["entrances"][0]["id"]
+    g = by_rule(plan(s, Memory())[0], "gate_lever")
+    assert g and g[0].action == {"type": "place_gate_lever", "entrance_id": eid}, [p.action for p in g]
+    s["entrances"]["free_levers"] = [{"id": 90, "x": 108, "y": 120, "z": 160}]
+    g = by_rule(plan(s, Memory())[0], "gate_lever")
+    assert g and g[0].action == {"type": "link_lever", "lever_id": 90, "target_id": 7}, [p.action for p in g]
+    s["settings"]["traits"] = {"engineering": 0, "fortification": 0}
+    assert not by_rule(plan(s, Memory())[0], "gate_lever")
+    s["entrances"]["free_levers"] = []
+    assert not by_rule(plan(s, Memory())[0], "gate_lever")
+
+
+@test("0.105.12 locations: a closed fort shuts its tavern, temple, library, guildhalls to visitors; reopened later")
+def _():
+    from planner import _location_access_rule, record
+    s = fort()
+    both = ["VISITORS_ALLOWED", "NON_CITIZENS_ALLOWED"]
+    s["locations"] = {"count": {}, "list": [{"id": 1, "type": "INN_TAVERN", "flags": list(both)},
+                                            {"id": 2, "type": "HOSPITAL", "flags": list(both)},
+                                            {"id": 3, "type": "TEMPLE", "flags": ["NON_CITIZENS_ALLOWED"]},
+                                            {"id": 4, "type": "GUILDHALL", "flags": list(both)}]}
+    s["settings"]["traits"] = {"outsiders": -150}
+    m = Memory()
+    props = []
+    _location_access_rule(s, m, PLANNER_CONFIG, props, [])
+    assert len(props) == 1 and props[0].action == {"type": "location_access", "ids": [1, 4], "visitors": False}, props
+    record([(props[0], {"ok": True, "changed": [1, 4]})], s, m)
+    assert m.locations_closed == [1, 4]
+    # neutral: nothing; welcoming again: the AI's own reopened (not the player's temple)
+    s["locations"]["list"][0]["flags"] = ["NON_CITIZENS_ALLOWED"]
+    s["locations"]["list"][3]["flags"] = ["NON_CITIZENS_ALLOWED"]
+    s["settings"]["traits"] = {"outsiders": 60}
+    props = []
+    _location_access_rule(s, m, PLANNER_CONFIG, props, [])
+    assert len(props) == 1 and props[0].action == {"type": "location_access", "ids": [1, 4], "visitors": True}, props
+    record([(props[0], {"ok": True, "changed": [1, 4]})], s, m)
+    assert m.locations_closed == []
+
+
 @test("0.105.9 traps: the founding stair's hatch is a gate: traps behind it")
 def _():
     hatch = [{"id": 7, "kind": "hatch", "lever_away": False, "levers": []}]

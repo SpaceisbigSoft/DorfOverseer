@@ -2249,6 +2249,40 @@ function name_at(pos, name)
     end)
 end
 
+-- (0.105.12, 14.1 step 4) A lever of the AI's own for a gate that has none
+-- (the founding stair's hatch: a lever-worked hatch is the machinery of a
+-- fort that cares for its engineering and its walls). Placed where the
+-- dwarves are, away from the gate, named "AI gate lever"; the gate rule
+-- links it once built. Refused (waiting) while an unlinked AI lever stands
+-- or is being built anywhere.
+function place_gate_lever(id, dry_run, starts)
+    local e = entrance(id)
+    if not e then return {ok = false, rejected = true, error = 'no such entrance (scan first)'} end
+    if #(e.equipment or {}) == 0 then
+        return {ok = false, rejected = true, error = 'that entrance has no gate yet: a lever works a gate'}
+    end
+    local waiting = false
+    pcall(function()
+        for _, b in ipairs(df.global.world.buildings.other.TRAP) do
+            if b.trap_type == df.trap_type.Lever and tostring(b.name or ''):lower():find('^ai gate')
+                    and #b.linked_mechanisms == 0 then
+                waiting = true
+            end
+        end
+    end)
+    if waiting then
+        return {ok = false, waiting = true, error = 'an AI gate lever stands unlinked or is being built: it goes first'}
+    end
+    cache, edge_cache = {}, {}
+    local spot = lever_spot(starts or citizen_starts(), e)
+    if not spot then return {ok = false, error = 'no free floor for a lever where the dwarves are, away from the gate'} end
+    if dry_run then return {ok = true, dry_run = true, at = spot} end
+    local ok, why = place('Tl', spot)
+    if not ok then return {ok = false, error = 'the lever could not be placed: ' .. tostring(why)} end
+    name_at(spot, LEVER_NAME)
+    return {ok = true, at = spot}
+end
+
 -- Levers the AI may link: named "AI gate..." (the player's "AI gate", or the
 -- AI's own "AI gate lever"), built, with no link and no job. {{id,x,y,z}}.
 function free_levers()

@@ -690,6 +690,44 @@ def _():
     assert all(max(abs(x - 10), abs(y - 3)) <= 3 for _, x, y, _ in placed), placed
 
 
+@test("0.105.12: a lever for the hatch: where the dwarves are, named; waiting while an AI lever stands unlinked")
+def _():
+    surface = ["o" * 40] * 3 + ["oooooooooo" + "t" + "o" * 29] + ["o" * 40] * 15
+    below = ["#" * 40] * 3 + ["##########s" + "." * 29] + ["#" * 10 + "." * 30] * 4 + ["#" * 40] * 11
+    m = LUA.table()
+    for z, rows in ((0, below), (1, surface)):
+        level = LUA.table()
+        for y, r in enumerate(rows):
+            level[y] = r
+        m[z] = level
+    W.map = m
+    W.buildings = LUA.table_from({1: LUA.table_from({"id": 5, "kind": "hatch", "x1": 10, "y1": 3, "x2": 10,
+                                                     "y2": 3, "z": 1, "name": ""})})
+    s0 = LUA.table_from({i + 1: LUA.table_from({"x": 30 + i, "y": 6, "z": 0}) for i in range(3)})
+    es, _, _ = M.find_entrances(s0, W.buildings)
+    e = es[1]
+    e.id = 1
+    M.GATES = LUA.table_from({"entrances": LUA.table_from({1: e})})
+    LUA.execute("""local M = ...
+      M.df = {trap_type = {Lever = 1}, global = {world = {buildings = {other = {TRAP = {}}}}}}""", M)
+    placed, named = [], []
+    M.place_hook = lambda text, pos: placed.append((text, pos.x, pos.y, pos.z)) or True
+    M.name_hook = lambda pos, name: named.append((pos.x, pos.y, name))
+    try:
+        r = M.place_gate_lever(1, False, s0)
+        assert r.ok and placed and placed[0][0] == "Tl" and placed[0][3] == 0, (dict(r), placed)
+        assert named and named[0][2] == "AI gate lever", named
+        assert max(abs(placed[0][1] - 10), abs(placed[0][2] - 3)) >= 20 or abs(placed[0][3] - 1) > 3, placed
+        LUA.execute("""local M = ...
+          M.df.global.world.buildings.other.TRAP = {{trap_type = 1, name = 'AI gate lever', linked_mechanisms = {}}}""", M)
+        r = M.place_gate_lever(1, False, s0)
+        assert not r.ok and r.waiting, dict(r)
+    finally:
+        M.place_hook = None
+        M.name_hook = None
+        LUA.execute("local M = ...; M.df = nil", M)
+
+
 @test("trees: the ground under a tree's crown is the surface, not an entrance to wall in")
 def _():
     rows = ["o" * 30] * 5 + ["oooooooonnnooooooooooooooooooo"] * 3 + ["o" * 30] * 11

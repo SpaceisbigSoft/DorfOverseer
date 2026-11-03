@@ -619,6 +619,36 @@ def _():
     assert lib.books == 2 and lib.want.copies == 2 and lib.jobs.SCRIBE.posts == 2 and lib.jobs.SCRIBE.filled == 1
 
 
+@test("location_access (0.105.12): visitors shut out or let in by id; never a hospital; nothing to change refused")
+def _():
+    M = H.module()
+    LUA.execute("""local M, df, dfhack = ...
+        local function vec(l) local t = {}; for i, v in ipairs(l) do t[i - 1] = v end return t end
+        local real = ipairs
+        M.ipairs = function(t)
+            if type(t) == 'table' and rawget(t, 0) ~= nil then
+                local i = -1
+                return function() i = i + 1; if t[i] ~= nil then return i, t[i] end end
+            end
+            return real(t)
+        end
+        df.abstract_building_type = {[1] = 'HOSPITAL', [2] = 'INN_TAVERN'}
+        M._hosp = {id = 3, flags = {VISITORS_ALLOWED = true}, getType = function() return 1 end}
+        M._tav = {id = 4, flags = {VISITORS_ALLOWED = true, NON_CITIZENS_ALLOWED = true}, getType = function() return 2 end}
+        dfhack.world.getCurrentSite = function() return {buildings = vec({M._hosp, M._tav})} end
+    """, M, H.df, H.dfhack)
+    act = M.ACTIONS.location_access
+    assert not act(t({"ids": t({1: 4})})).ok                                # visitors true|false needed
+    d = act(t({"ids": t({1: 3, 2: 4}), "visitors": False, "dry_run": True}))
+    assert d.ok and list(d.changed.values()) == [4] and M._tav.flags.VISITORS_ALLOWED is True, dict(d)
+    r = act(t({"ids": t({1: 3, 2: 4}), "visitors": False}))
+    assert r.ok and M._tav.flags.VISITORS_ALLOWED is False and M._hosp.flags.VISITORS_ALLOWED is True
+    assert M._tav.flags.NON_CITIZENS_ALLOWED is True                         # residents still welcome
+    assert not act(t({"ids": t({1: 4}), "visitors": False})).ok              # nothing to change
+    r = act(t({"ids": t({1: 4}), "visitors": True}))
+    assert r.ok and M._tav.flags.VISITORS_ALLOWED is True
+
+
 @test("petition orders (0.87): set only from 0/1 to 0/1; refused when any reads otherwise; dry run says what")
 def _():
     M = H.module()

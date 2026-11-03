@@ -745,6 +745,7 @@ class Memory:
     kill_sent: dict = field(default_factory=dict)        # (0.104.140) squad id -> unit ids last sent after
     residency: dict = field(default_factory=dict)        # (0.105.9) {probe: {id, unit, tick}, works: True|False, since}
     character_projects: list = field(default_factory=list)   # (0.105.10) project ids the AI started as the fort's own
+    locations_closed: list = field(default_factory=list)     # (0.105.12) location ids the AI shut to visitors
     gear_spare_since: dict = field(default_factory=dict)  # "weapons"/"body"/"helms" -> when 3+ spares sat unused
     swapped: dict = field(default_factory=dict)  # (0.104.78) unit id -> when the swap sent them home
     drafted: dict = field(default_factory=dict)  # (0.104.138) unit id -> when a fill or swap drafted them

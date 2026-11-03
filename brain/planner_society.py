@@ -13,7 +13,7 @@ from quirks import has_rule
 from digest import _d, _l, normalize
 from planner_core import *  # noqa: F401,F403
 
-__all__ = ["_people_rules", "_comfort_rules", "stress_causes", "THOUGHT_WORDS", "_doctor_patient_rule", "_hospital_burrow_rule", "_calm_burrow_rule", "MOOD_WORKSHOPS", "PETITION_KINDS", "petition_orders_wanted", "_petition_rules", "_residency_rule", "residency_stance", "_jail_size_rule", "_convict_rule", "_break_fights_rule", "_sync_offices_rule", "patient_waits", "_health_rules", "TANTRUM_KEEP", "note_tantrums", "_noble_rooms_rule", "outsider_orders", "NEED_ADVICE", "JEWEL_RECIPES", "_recreation_rule", "_stress_care", "_needs_notes", "_location_supply_rules", "POST_LABORS", "STAFF_POSTS", "STAFF_MAX", "_traction_rule", "_wish_words", "_wish_met", "wish_key", "petition_lean", "_location_petition_rules", "_meeting_notes", "_grandeur_rule", "_location_value_rule", "_staff_rule", "_quick_location_rule", "_needs_rules", "_mood_rules", "mood_item_text", "_mood_materials", "_dead_notes", "AI_OFFICES", "_society_notes"]
+__all__ = ["_people_rules", "_comfort_rules", "stress_causes", "THOUGHT_WORDS", "_doctor_patient_rule", "_hospital_burrow_rule", "_calm_burrow_rule", "MOOD_WORKSHOPS", "PETITION_KINDS", "petition_orders_wanted", "_petition_rules", "_residency_rule", "residency_stance", "_location_access_rule", "_jail_size_rule", "_convict_rule", "_break_fights_rule", "_sync_offices_rule", "patient_waits", "_health_rules", "TANTRUM_KEEP", "note_tantrums", "_noble_rooms_rule", "outsider_orders", "NEED_ADVICE", "JEWEL_RECIPES", "_recreation_rule", "_stress_care", "_needs_notes", "_location_supply_rules", "POST_LABORS", "STAFF_POSTS", "STAFF_MAX", "_traction_rule", "_wish_words", "_wish_met", "wish_key", "petition_lean", "_location_petition_rules", "_meeting_notes", "_grandeur_rule", "_location_value_rule", "_staff_rule", "_quick_location_rule", "_needs_rules", "_mood_rules", "mood_item_text", "_mood_materials", "_dead_notes", "AI_OFFICES", "_society_notes"]
 
 
 # A crafting mood's skill -> the workshop (or furnace) the dwarf must claim.
@@ -210,6 +210,37 @@ def _residency_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) ->
                                             "residency": True},
                               f"a welcoming fort (Outsiders {traits.get('outsiders', 0)}): agree to "
                               f"{len(ids)} petition(s) to stay", 6))
+
+
+CLOSABLE_LOCATIONS = ("INN_TAVERN", "TEMPLE", "LIBRARY", "GUILDHALL")
+
+
+def _location_access_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> None:
+    """(0.105.12, 14.1 step 4) A closed fort (Outsiders -50 or lower: the
+    Hermit hold, the War-hold) keeps its tavern, temples, library and
+    guildhalls to its own: visitors not allowed (DF's location screen;
+    residents still welcome; a hospital always open). A fort that opens up
+    again gets back the ones the AI shut. Why: at y257 the Hermit hold had the
+    most visitors of the six (92), Outsiders -150 showing nothing."""
+    locs = [e for e in _l(_d(s.get("locations")).get("list"))
+            if isinstance(e, dict) and isinstance(e.get("id"), int) and isinstance(e.get("flags"), list)]
+    if not locs:
+        return
+    traits = _traits(s) if isinstance(s.get("settings"), dict) else {}
+    closed = outsider_orders(traits)["closed"]
+    mine = [i for i in (memory.locations_closed or []) if isinstance(i, int)]
+    if closed:
+        shut = [e["id"] for e in locs if e.get("type") in CLOSABLE_LOCATIONS and "VISITORS_ALLOWED" in e["flags"]]
+        if shut:
+            proposals.append(Proposal("location_access", {"type": "location_access", "ids": shut, "visitors": False},
+                                      f"this fort keeps to itself (Outsiders {traits.get('outsiders', 0)}): "
+                                      f"{len(shut)} location(s) closed to visitors (residents still welcome)", 6))
+        return
+    reopen = [e["id"] for e in locs if e["id"] in mine and "VISITORS_ALLOWED" not in e["flags"]]
+    if reopen:
+        proposals.append(Proposal("location_access", {"type": "location_access", "ids": reopen, "visitors": True},
+                                  f"the fort opens up again (Outsiders {traits.get('outsiders', 0)}): "
+                                  f"{len(reopen)} location(s) the AI closed let visitors in again", 6))
 
 
 def _convict_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> None:

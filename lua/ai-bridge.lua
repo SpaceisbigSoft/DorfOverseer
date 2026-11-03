@@ -4898,6 +4898,44 @@ function act_place_traps(a)
     return reqscript('ai-gates').place_traps(id, a.kind, n)
 end
 
+-- (0.105.12) A lever of the AI's own for a gate (lua/ai-gates.lua).
+function act_place_gate_lever(a)
+    local id = whole_number(a.entrance_id)
+    if not id then return reject('place_gate_lever needs entrance_id') end
+    return reqscript('ai-gates').place_gate_lever(id, a.dry_run == true)
+end
+
+-- (0.105.12) Who may come into a location (DF's location screen): visitors
+-- allowed or not, at the fort's own site only, never a hospital
+function act_location_access(a)
+    if type(a.visitors) ~= 'boolean' or type(a.ids) ~= 'table' then
+        return reject('location_access needs ids and visitors true|false')
+    end
+    local want = {}
+    for _, v in ipairs(a.ids) do
+        local n = whole_number(v)
+        if not n then return reject('location_access: ids are whole numbers') end
+        want[n] = true
+    end
+    local site = dfhack.world.getCurrentSite()
+    if not site then return {ok = false, error = 'no site'} end
+    local out = {ok = true, changed = {}, visitors = a.visitors, dry_run = a.dry_run or nil}
+    for _, b in ipairs(site.buildings) do
+        if want[b.id] then
+            local t = df.abstract_building_type[b:getType()]
+            if t ~= 'HOSPITAL' then
+                local okf, cur = pcall(function() return b.flags.VISITORS_ALLOWED end)
+                if okf and cur ~= a.visitors then
+                    if not a.dry_run then b.flags.VISITORS_ALLOWED = a.visitors end
+                    table.insert(out.changed, b.id)
+                end
+            end
+        end
+    end
+    if #out.changed == 0 then out.changed = nil; out.ok = false; out.rejected = true; out.error = 'nothing to change' end
+    return out
+end
+
 -- Link a lever to a bridge, door or hatch (a mechanic does the job).
 function act_link_lever(a)
     local lid, tid = whole_number(a.lever_id), whole_number(a.target_id)
@@ -4910,8 +4948,9 @@ function act_link_lever(a)
     if not (lever and tostring(lever.name or ''):lower():find('^ai gate')) then
         return reject('only a lever named "AI gate" is linked by the AI')
     end
-    if not (target and target:getType() == df.building_type.Bridge) then
-        return reject('the AI links its lever to a drawbridge only')
+    -- (0.105.12) or a hatch: the founding stair's hatch is every fort's gate
+    if not (target and (target:getType() == df.building_type.Bridge or target:getType() == df.building_type.Hatch)) then
+        return reject('the AI links its lever to a drawbridge or a hatch only')
     end
     return reqscript('ai-gates').link_lever(lid, tid, a.dry_run == true)
 end
@@ -6453,6 +6492,8 @@ ACTIONS = {
     arm_gates = act_arm_gates,
     link_lever = act_link_lever,
     place_traps = act_place_traps,
+    place_gate_lever = act_place_gate_lever,          -- (0.105.12)
+    location_access = act_location_access,            -- (0.105.12)
     unpause = act_unpause,
     found_fort = act_found_fort,
     quiet_announcements = act_quiet_announcements,

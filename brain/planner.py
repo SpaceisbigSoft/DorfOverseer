@@ -566,6 +566,7 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
         _guard(_glass_rule, s, cfg, proposals, notes)
         _guard(_petition_rules, s, cfg, proposals, notes)
         _guard(_residency_rule, s, memory, cfg, proposals, notes)         # (0.105.9)
+        _guard(_location_access_rule, s, memory, cfg, proposals, notes)   # (0.105.12)
         _guard(_anvil_rule, s, cfg, proposals, notes)
         _guard(_excess_shops_rule, s, cfg, proposals)
         _guard(_water_rules, s, cfg, proposals, notes)
@@ -941,6 +942,11 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
             if is_character_level(a):
                 # (0.105.10 review) the report doesn't carry growth or set_piece: remembered here
                 memory.character_projects = (list(memory.character_projects or []) + [r["project_id"]])[-40:]
+        if a["type"] == "location_access" and r.get("ok") is True and isinstance(r.get("changed"), list):
+            ids = [i for i in r["changed"] if isinstance(i, int)]
+            mine = [i for i in (memory.locations_closed or []) if isinstance(i, int)]
+            memory.locations_closed = (sorted(set(mine) | set(ids)) if a.get("visitors") is False
+                                       else [i for i in mine if i not in ids])
         if (a["type"] == "answer_petition" and a.get("residency") and a.get("accept") and r.get("ok") is True
                 and not a.get("ids")):
             # (0.105.9) the probe: is the applicant DF's resident within a few days?

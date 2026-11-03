@@ -589,7 +589,11 @@ def short(a: dict) -> str:
     if t == "place_traps":
         return f"put {a.get('count')} {a.get('kind')} traps behind a gate"
     if t == "link_lever":
-        return f"link the AI gate lever to a drawbridge"
+        return f"link the AI gate lever to a drawbridge or hatch"
+    if t == "place_gate_lever":
+        return "put a lever inside the fort for the gate"
+    if t == "location_access":
+        return ("open" if a.get("visitors") else "close") + f" {len(a.get('ids') or [])} location(s) to visitors"
     if t == "build_gate_doors":
         return "put doors on an open entrance"
     if t == "fortify_entrance":

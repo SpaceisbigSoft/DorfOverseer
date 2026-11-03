@@ -174,7 +174,7 @@ def _gate_rules(s: dict, memory, cfg: dict, rules_: dict, any_reach: bool,
         elif not (isinstance(e.get("cut_hatches"), int) and e["cut_hatches"] > 0):
             open_wide.append((e, where))        # (0.105.0) one a cut closes is _gate_cut_rule's (planner_army)
     if rules_["gate_lever"]:
-        _lever_rule(s, memory, cfg, es, now, proposals)
+        _lever_rule(s, memory, cfg, es, now, proposals, traits or {})
     if not any_reach and rules_["fortify_entrances"]:
         _trap_rule(s, memory, cfg, es, now, traits or {}, proposals)
     if refused:
@@ -360,33 +360,55 @@ def _lever_far_enough(lever: dict, e: dict) -> bool:
     return abs(lz - ez) > 3 or max(abs(lx - ex), abs(ly - ey)) >= 20
 
 
-def _link_wanted(s: dict, e: dict, lever_id=None) -> list:
+def machinery_wanted(traits: dict) -> bool:
+    """(0.105.12, 14.1 step 4) A fort that cares for its machinery or its
+    walls works its gates by lever: Engineering 40+ or Fortification 60+."""
+    return ((traits or {}).get("engineering", 0) or 0) >= 40 or ((traits or {}).get("fortification", 0) or 0) >= 60
+
+
+def _link_wanted(s: dict, e: dict, lever_id=None, hatches: bool = False) -> list:
     """Drawbridges at this entrance the AI gate lever should be linked to:
     ones no lever inside the fort works, and watched ones whose levers are
-    all at the gate. [] with an older bridge (no lever details)."""
+    all at the gate. [] with an older bridge (no lever details). (0.105.12)
+    hatches: a hatch no lever works, too."""
     out = [bid for bid in _l(e.get("bridges_unworked")) if isinstance(bid, int)]
     for b in _l(e.get("equipment")):
         if (isinstance(b, dict) and b.get("kind") == "bridge" and "lever_away" in b and not b["lever_away"]
                 and not (lever_id is not None and lever_id in _l(b.get("levers")))):
             out.append(b.get("id"))
+        elif (hatches and isinstance(b, dict) and b.get("kind") == "hatch" and "levers" in b
+              and not _l(b.get("levers")) and isinstance(b.get("id"), int)):
+            out.append(b["id"])
     return out
 
 
-def _lever_rule(s: dict, memory, cfg: dict, es: list, now: int, proposals: list) -> None:
+def _lever_rule(s: dict, memory, cfg: dict, es: list, now: int, proposals: list, traits: dict | None = None) -> None:
     """A drawbridge in an entrance that no lever inside works, or only levers
     at the gate: the lever named "AI gate", while it's linked to nothing (and
     is itself away from that gate), is linked to it, so a dwarf can close it
     from inside, away from the danger. Two free mechanisms are needed; if
     there aren't, they're ordered."""
+    hatches = machinery_wanted(traits or {}) and not _d(s.get("others_on_map")).get("threats_that_can_reach_dwarves")
     levers = _free_gate_levers(s)
     if not levers:
+        # (0.105.12) a fort that wants machinery and has a gate no lever works: a lever of its own
+        if hatches:
+            for e in es:
+                if e.get("sealed") and _link_wanted(s, e, None, hatches=True):
+                    off = _d(s.get("map")).get("elevation_offset")
+                    elev = (e.get("z") or 0) + (off if isinstance(off, int) else 0)
+                    proposals.append(Proposal("gate_lever", {"type": "place_gate_lever", "entrance_id": e["id"]},
+                                              f"the gate at the {e.get('kind')} entrance at elevation {elev} has no "
+                                              "lever, and this fort works its gates by machinery: a lever inside, "
+                                              "away from the gate", 6))
+                    break
         return
     for e in es:
         # the first free lever away from this gate (another may suit another gate)
         lever = next((lv for lv in levers if _lever_far_enough(lv, e)), None)
         if not lever:
             continue
-        for bid in _link_wanted(s, e, lever["id"]):
+        for bid in _link_wanted(s, e, lever["id"], hatches=hatches):
             key = f"lever:{lever['id']}>{bid}"
             why = memory.gate_failures.get(key)
             when = memory.gate_failure_ticks.get(key)
@@ -405,7 +427,7 @@ def _lever_rule(s: dict, memory, cfg: dict, es: list, now: int, proposals: list)
             elev = (e.get("z") or 0) + (off if isinstance(off, int) else 0)
             proposals.append(Proposal("gate_lever", {"type": "link_lever", "lever_id": lever["id"],
                                                      "target_id": bid},
-                                      f"the drawbridge at the {e.get('kind')} entrance at elevation {elev} "
+                                      f"the gate at the {e.get('kind')} entrance at elevation {elev} "
                                       f"(x{e.get('x')} y{e.get('y')}) has no lever a dwarf can pull from "
                                       "inside, away from the gate: link the AI gate lever to it", 4))
             return
