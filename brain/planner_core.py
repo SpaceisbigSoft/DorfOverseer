@@ -327,6 +327,7 @@ PLANNER_CONFIG = {
     "crop_other_threshold": 10,        # ...and for the rest (food is a fort's smaller worry by then)
     "crop_default_threshold": 50,      # autofarm's own default, put back once drink recovers
     "drink_recovered_per_dwarf": 4,
+    "kitchen_ban_meals_factor": 3,     # (0.105.16) meals this many times their target: no brewables cooked while drink is under its own
     # (0.104.169) drink as a crisis lever (Teacheroar: being drunk eased -1932
     # stress across 149 citizens, the next relief -130): in a crisis the fort
     # keeps more drink and brews it sooner

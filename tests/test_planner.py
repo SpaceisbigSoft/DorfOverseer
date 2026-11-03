@@ -1203,6 +1203,27 @@ def _():
     assert Memory.from_dict(m.to_dict()).kitchen_ban is False
 
 
+@test("0.105.16 kitchen: meals to spare and drink under its target keep the ban; lifted once drink meets it or meals thin")
+def _():
+    s = fort()
+    s["dwarves"]["total"] = 46
+    s["stocks"].update(drink=198, prepared_meals=2802)                # B at 23:33: 4.3 a dwarf, 62 meals a dwarf
+    s.setdefault("supplies", {}).update(brewable_plants=60, brewable_growths=0)   # not "short": brewables in store
+    m = Memory()
+    m.kitchen_ban = True
+    assert not [p for p in plan(copy.deepcopy(s), m)[0] if p.rule == "kitchen"], "not lifted"
+    m.kitchen_ban = False
+    k = [p for p in plan(copy.deepcopy(s), m)[0] if p.rule == "kitchen"]
+    assert k and k[0].action["ban"] is True and "meals to spare" in k[0].reason, k
+    m.kitchen_ban = True
+    s["stocks"]["drink"] = 600                                         # 13 a dwarf: over its target
+    back = [p for p in plan(copy.deepcopy(s), m)[0] if p.rule == "kitchen"]
+    assert back and back[0].action["ban"] is False, back
+    s["stocks"].update(drink=198, prepared_meals=200)                  # meals thin: the old rule (recovered at 4)
+    back = [p for p in plan(copy.deepcopy(s), m)[0] if p.rule == "kitchen"]
+    assert back and back[0].action["ban"] is False, back
+
+
 @test("one level of a kind a cycle (0.100): two workshops levels or two temples don't both start; a held one doesn't block")
 def _():
     from planner import Proposal

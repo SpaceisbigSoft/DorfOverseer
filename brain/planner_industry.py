@@ -971,12 +971,21 @@ def _kitchen_rule(s: dict, memory, cfg: dict, proposals: list) -> None:
     if memory is None:
         return
     citizens = max(1, int(_d(s.get("dwarves")).get("total") or 1))
-    drink = int(_d(s.get("stocks")).get("drink") or 0)
-    if drink_short(s, cfg) and not memory.kitchen_ban:
+    st = _d(s.get("stocks"))
+    drink = int(st.get("drink") or 0)
+    # (0.105.16) meals to spare and drink under its target: cooking a brewable
+    # plant adds a meal nobody needs and takes a drink away (B, the Monastery:
+    # the ban lifted at 198 drink for 46 with 2,802 meals in store, 62 a dwarf)
+    meals = int(st.get("prepared_meals") or 0)
+    spare_meals = (meals >= citizens * cfg["meals_per_dwarf"] * cfg.get("kitchen_ban_meals_factor", 3)
+                   and drink < citizens * cfg["drink_per_dwarf"])
+    if (drink_short(s, cfg) or spare_meals) and not memory.kitchen_ban:
+        why = (f"drink is short ({drink} for {citizens})" if drink_short(s, cfg) else
+               f"drink is under its target ({drink} for {citizens}) and the fort has meals to spare ({meals})")
         proposals.append(Proposal("kitchen", {"type": "kitchen_brewables", "ban": True},
-                                  f"drink is short ({drink} for {citizens}): the kitchen stops cooking the "
+                                  f"{why}: the kitchen stops cooking the "
                                   "plants and fruit a still can brew (cooking keeps no seed)", 2))
-    elif memory.kitchen_ban and drink >= citizens * cfg["drink_recovered_per_dwarf"]:
+    elif memory.kitchen_ban and not spare_meals and drink >= citizens * cfg["drink_recovered_per_dwarf"]:
         proposals.append(Proposal("kitchen", {"type": "kitchen_brewables", "ban": False},
                                   f"drink has recovered ({drink} for {citizens}): the kitchen may cook "
                                   "brewable plants again", 5))
