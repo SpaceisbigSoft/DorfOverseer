@@ -34,7 +34,7 @@
 local json = require('json')
 local utils = require('utils')
 
-BRIDGE_VERSION = '0.105.9'
+BRIDGE_VERSION = '0.105.12'
 PROTOCOL = 1 -- bump when the report's shape changes in a breaking way
 
 local OUT_DIR = dfhack.getDFPath() .. '/dfhack-config/ai-overseer'
@@ -878,6 +878,15 @@ function get_locations()
                     end
                 end)
                 pcall(function() e.books = #b.copied_artifacts end)
+                -- (0.105.12, 14.1 step 4) who may come in (DF's location screen:
+                -- visitors, residents, members only): the flags set, by name
+                pcall(function()
+                    local on = {}
+                    for k, v in pairs(b.flags) do
+                        if v == true then table.insert(on, tostring(k)) end
+                    end
+                    e.flags = on
+                end)
                 -- (0.104.146) a temple's dedication: to one deity (its worshippers
                 -- pray there), a religion (its deities), or all ('any')
                 if t == 'TEMPLE' then
