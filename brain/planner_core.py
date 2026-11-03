@@ -364,6 +364,8 @@ PLANNER_CONFIG = {
     "petition_mercenaries_militarism": 30,  # mercenaries from this
     "residency_probe_days": 3,         # (0.105.9) an agreed residency petition: seen as a resident within this
     "residency_batch": 25,             # residency petitions answered in one go
+    "hatch_levers": False,             # (0.105.12 review) a lever linked to the founding hatch shuts it and the gate
+                                       # watcher only locks hatches: off until the watcher works hatches by lever
     "residency_accept_by_flag": False, # (0.105.11) seen 2 Nov in B: an agreement set by the flag left the visitor a
                                        # guest (DF's Other list, not Residents): welcoming forts leave them to you
     "residency_cooldown_ticks": 1200,  # (review) a batch a day, not the default 2 days
@@ -746,6 +748,7 @@ class Memory:
     residency: dict = field(default_factory=dict)        # (0.105.9) {probe: {id, unit, tick}, works: True|False, since}
     character_projects: list = field(default_factory=list)   # (0.105.10) project ids the AI started as the fort's own
     locations_closed: list = field(default_factory=list)     # (0.105.12) location ids the AI shut to visitors
+    locations_yours: list = field(default_factory=list)      # (0.105.12) ones the AI shut and you opened: left alone
     gear_spare_since: dict = field(default_factory=dict)  # "weapons"/"body"/"helms" -> when 3+ spares sat unused
     swapped: dict = field(default_factory=dict)  # (0.104.78) unit id -> when the swap sent them home
     drafted: dict = field(default_factory=dict)  # (0.104.138) unit id -> when a fill or swap drafted them

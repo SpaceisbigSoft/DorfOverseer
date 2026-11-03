@@ -3179,21 +3179,26 @@ def _():
     assert not by_rule(plan(s, m)[0], "fortify")
 
 
-@test("0.105.12 machinery: a lever for the founding hatch in a fort that cares for it, then linked; none elsewhere")
+@test("0.105.12 machinery: off by default; switched on, a lever for the founding hatch, then linked; none elsewhere")
 def _():
     hatch = [{"id": 7, "kind": "hatch", "lever_away": False, "levers": []}]
     s = entrances({"door_spots": 0, "width": 1, "x": 108, "y": 149, "sealed": True, "equipment": hatch})
     s["settings"]["traits"] = {"engineering": 60}
     eid = s["entrances"]["entrances"][0]["id"]
-    g = by_rule(plan(s, Memory())[0], "gate_lever")
-    assert g and g[0].action == {"type": "place_gate_lever", "entrance_id": eid}, [p.action for p in g]
-    s["entrances"]["free_levers"] = [{"id": 90, "x": 108, "y": 120, "z": 160}]
-    g = by_rule(plan(s, Memory())[0], "gate_lever")
-    assert g and g[0].action == {"type": "link_lever", "lever_id": 90, "target_id": 7}, [p.action for p in g]
-    s["settings"]["traits"] = {"engineering": 0, "fortification": 0}
-    assert not by_rule(plan(s, Memory())[0], "gate_lever")
-    s["entrances"]["free_levers"] = []
-    assert not by_rule(plan(s, Memory())[0], "gate_lever")
+    assert not by_rule(plan(s, Memory())[0], "gate_lever")             # (review) off by default
+    PLANNER_CONFIG["hatch_levers"] = True
+    try:
+        g = by_rule(plan(s, Memory())[0], "gate_lever")
+        assert g and g[0].action == {"type": "place_gate_lever", "entrance_id": eid}, [p.action for p in g]
+        s["entrances"]["free_levers"] = [{"id": 90, "x": 108, "y": 120, "z": 160}]
+        g = by_rule(plan(s, Memory())[0], "gate_lever")
+        assert g and g[0].action == {"type": "link_lever", "lever_id": 90, "target_id": 7}, [p.action for p in g]
+        s["settings"]["traits"] = {"engineering": 0, "fortification": 0}
+        assert not by_rule(plan(s, Memory())[0], "gate_lever")
+        s["entrances"]["free_levers"] = []
+        assert not by_rule(plan(s, Memory())[0], "gate_lever")
+    finally:
+        PLANNER_CONFIG["hatch_levers"] = False
 
 
 @test("0.105.12 locations: a closed fort shuts its tavern, temple, library, guildhalls to visitors; reopened later")
@@ -3212,14 +3217,21 @@ def _():
     assert len(props) == 1 and props[0].action == {"type": "location_access", "ids": [1, 4], "visitors": False}, props
     record([(props[0], {"ok": True, "changed": [1, 4]})], s, m)
     assert m.locations_closed == [1, 4]
+    # (review) you open one again: it's yours, forgotten and never shut again
+    s["locations"]["list"][0]["flags"] = ["NON_CITIZENS_ALLOWED"]
+    s["locations"]["list"][3]["flags"] = ["VISITORS_ALLOWED", "NON_CITIZENS_ALLOWED"]
+    props = []
+    _location_access_rule(s, m, PLANNER_CONFIG, props, [])
+    assert not props and m.locations_closed == [1], (props, m.locations_closed)
+    s["locations"]["list"][3]["flags"] = ["NON_CITIZENS_ALLOWED"]
     # neutral: nothing; welcoming again: the AI's own reopened (not the player's temple)
     s["locations"]["list"][0]["flags"] = ["NON_CITIZENS_ALLOWED"]
     s["locations"]["list"][3]["flags"] = ["NON_CITIZENS_ALLOWED"]
     s["settings"]["traits"] = {"outsiders": 60}
     props = []
     _location_access_rule(s, m, PLANNER_CONFIG, props, [])
-    assert len(props) == 1 and props[0].action == {"type": "location_access", "ids": [1, 4], "visitors": True}, props
-    record([(props[0], {"ok": True, "changed": [1, 4]})], s, m)
+    assert len(props) == 1 and props[0].action == {"type": "location_access", "ids": [1], "visitors": True}, props
+    record([(props[0], {"ok": True, "changed": [1]})], s, m)
     assert m.locations_closed == []
 
 

@@ -388,7 +388,8 @@ def _lever_rule(s: dict, memory, cfg: dict, es: list, now: int, proposals: list,
     is itself away from that gate), is linked to it, so a dwarf can close it
     from inside, away from the danger. Two free mechanisms are needed; if
     there aren't, they're ordered."""
-    hatches = machinery_wanted(traits or {}) and not _d(s.get("others_on_map")).get("threats_that_can_reach_dwarves")
+    hatches = (cfg.get("hatch_levers") and machinery_wanted(traits or {})
+               and not _d(s.get("others_on_map")).get("threats_that_can_reach_dwarves"))
     levers = _free_gate_levers(s)
     if not levers:
         # (0.105.12) a fort that wants machinery and has a gate no lever works: a lever of its own

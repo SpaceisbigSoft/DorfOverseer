@@ -230,7 +230,14 @@ def _location_access_rule(s: dict, memory, cfg: dict, proposals: list, notes: li
     closed = outsider_orders(traits)["closed"]
     mine = [i for i in (memory.locations_closed or []) if isinstance(i, int)]
     if closed:
-        shut = [e["id"] for e in locs if e.get("type") in CLOSABLE_LOCATIONS and "VISITORS_ALLOWED" in e["flags"]]
+        # (review) one the AI shut and you opened again is yours: forgotten, never shut again
+        yours = {e["id"] for e in locs if e["id"] in mine and "VISITORS_ALLOWED" in e["flags"]}
+        if yours:
+            memory.locations_closed = [i for i in mine if i not in yours]
+            memory.locations_yours = sorted(set(memory.locations_yours or []) | yours)
+        left_open = set(memory.locations_yours or [])
+        shut = [e["id"] for e in locs if e.get("type") in CLOSABLE_LOCATIONS and "VISITORS_ALLOWED" in e["flags"]
+                and e["id"] not in left_open]
         if shut:
             proposals.append(Proposal("location_access", {"type": "location_access", "ids": shut, "visitors": False},
                                       f"this fort keeps to itself (Outsiders {traits.get('outsiders', 0)}): "
