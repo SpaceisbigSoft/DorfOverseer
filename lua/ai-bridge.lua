@@ -34,7 +34,7 @@
 local json = require('json')
 local utils = require('utils')
 
-BRIDGE_VERSION = '0.105.20'
+BRIDGE_VERSION = '0.105.21'
 PROTOCOL = 1 -- bump when the report's shape changes in a breaking way
 
 local OUT_DIR = dfhack.getDFPath() .. '/dfhack-config/ai-overseer'
@@ -299,7 +299,7 @@ function get_needs(txt_fn)
                 end
             elseif not soldier and fight_focus and fight_focus <= BADLY and dfhack.units.isAdult(u) then
                 out.keen_civilians = (out.keen_civilians or 0) + 1
-                if okd and MIL.draftable(u, mothers, true) then     -- (0.104.168)
+                if okd and MIL.draftable(u, mothers, 'keen') then   -- (0.104.168; 0.105.21 the very unhappy keen too)
                     out.keen_draftable = (out.keen_draftable or 0) + 1
                 end
             end

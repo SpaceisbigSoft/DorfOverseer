@@ -865,7 +865,7 @@ def _():
     env, added = _fill_env()
     assert env.fill(10, 3, env.tostring, None, True).ok and got() == [3, 4], got()   # strict: never 1 or 2
     env, added = _fill_env()
-    assert env.fill(10, 3, env.tostring, None, True, True).ok and got() == [3], got()  # strict and keen only
+    assert env.fill(10, 3, env.tostring, None, True, True).ok and got() == [2, 3], got()  # (0.105.21) strict and keen only: the very unhappy keen too, never the miserable
     c = env.CITIZENS
     mothers = env.nursing_mothers()
     yes = [i + 1 for i in range(6) if env.draftable(c[i + 1], mothers, True)]

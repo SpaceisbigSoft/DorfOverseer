@@ -370,6 +370,9 @@ end
 local function breaking_down(u, strict)
     local ok, cat = pcall(dfhack.units.getStressCategory, u)
     if not (ok and type(cat) == 'number' and cat <= 1) then return false end
+    -- (0.105.21) strict == 'keen': a crisis's keen-only fill, where the very
+    -- unhappy (1) who long to train may go, the miserable (0) never
+    if strict == 'keen' then return cat == 0 or not wants_fight(u) end
     return strict == true or not wants_fight(u)
 end
 
@@ -490,7 +493,12 @@ function fill(squad_id, count, txt, avoid, strict, keen_only)
     local open = #places
     count = math.min(count, open)
     if count < 1 then return {ok = false, rejected = true, error = 'the squad has no open places'} end
-    local okc, cands = pcall(candidates, strict)      -- (0.104.168) strict in a crisis
+    -- (0.104.168) strict in a crisis; (0.105.21) eased for the keen: in C
+    -- (3 Nov) every dwarf who badly wanted to train was unhappy for want of
+    -- it, so the crisis's keen-only fill found 0 candidates 6 times while 33
+    -- were distracted by MartialTraining (the squad is what meets that;
+    -- stress_care never sends such a dwarf home). The miserable still never.
+    local okc, cands = pcall(candidates, strict and (keen_only and 'keen' or true) or false)
     if not okc then return {ok = false, error = 'could not list dwarves: ' .. tostring(cands)} end
     if keen_only then
         local only = {}
