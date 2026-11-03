@@ -7621,6 +7621,23 @@ def _():
     assert any("wooden_bucket" in n and "suspended" in n for n in notes), notes
 
 
+@test("0.105.13 trade by the slider: more goods a caravan, treasures sold by a trading fort; none from a closed one")
+def _():
+    s = fort()
+    s["trade"] = {"depot": True, "caravans": [{"civ": "the Mountainhomes", "state": "Approaching"}], "goods": 327,
+                  "at_depot": 0}
+    s["settings"]["traits"] = {"trade": 120, "greed": 80}
+    t = by_rule(plan(s, Memory())[0], "trade")
+    assert t and t[0].action["count"] > 40 and "keep_treasures" not in t[0].action, t[0].action
+    s["settings"]["traits"] = {"trade": 0, "greed": 80}
+    t = by_rule(plan(s, Memory())[0], "trade")
+    assert t[0].action == {"type": "bring_goods", "count": 40, "keep_treasures": True}, t[0].action
+    s["settings"]["traits"] = {"trade": -100}
+    p, notes = plan(s, Memory())
+    assert not by_rule(p, "trade") and not by_rule(p, "call_trader"), [x.rule for x in p]
+    assert any("doesn't trade" in n for n in notes), notes
+
+
 @test("depot (0.103.9): goods left there after the caravans are taken out; trinkets kept home while wanted")
 def _():
     s = fort()

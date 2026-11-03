@@ -1417,10 +1417,16 @@ def _trade_rules(s: dict, cfg: dict, citizens: int, proposals: list, notes: list
     # (0.103.18) Hermit Kingdom: no goods to the depot, no broker called, no
     # deal; the caravans come and go (the depot is still emptied after them)
     hermit = memory is not None and has_rule(getattr(memory, "culture", None), "no_trade")
-    if hermit:
+    tv = ((traits or _traits(s)).get("trade", 0) or 0)
+    # (0.105.13, 14.1 step 4b) Trade -50 or lower: the fort doesn't trade (the
+    # Hermit hold at Trade -100 took goods to a caravan as the others did)
+    no_trade = tv <= -50
+    if hermit or no_trade:
         if cs:
-            notes.append("a hermit kingdom: the caravan is left alone, nothing is traded")
+            notes.append("a hermit kingdom: the caravan is left alone, nothing is traded" if hermit else
+                         f"this fort doesn't trade (Trade {tv}): the caravan is left alone")
         cs = []
+        hermit = True
     nd = _d(s.get("needs"))
     acq = unmet(s, "AcquireObject")
     # (0.103.9) rings, figurines and the like stay home while dwarves want
@@ -1428,12 +1434,15 @@ def _trade_rules(s: dict, cfg: dict, citizens: int, proposals: list, notes: list
     # every craft went to the depot, 163 there after the caravan left)
     keep_trinkets = acq >= cfg["needs_note_at"] and isinstance(nd.get("trinkets"), int) and nd["trinkets"] < acq
     if cs and (tr.get("goods") or 0) > 0:
-        keep = keeps_treasures(traits or _traits(s), memory)
+        # (0.105.13) a trading fort (Trade 50+) sells its treasures, however
+        # grasping (the Merchant city, Greed 80, kept its gems and silver home)
+        keep = keeps_treasures(traits or _traits(s), memory) and tv < 50
         # (0.104.78) the finished-goods piles full of crafts: more to the depot
         # at a time (40 a call while 1520 of 1522 tiles were used)
         fg = _d(_d(_d(s.get("logistics")).get("storage")).get("finished_goods"))
         full = int(fg.get("tiles") or 0) and int(fg.get("used") or 0) >= int(fg.get("tiles") or 0) * 0.95
-        per = cfg["bring_goods_full"] if full else 40
+        # (0.105.13) as many as Trade says: 40 at 0, 10 at -100, 120 at most
+        per = cfg["bring_goods_full"] if full else max(10, min(120, round(40 * factor(traits or _traits(s), "trade"))))
         proposals.append(Proposal("trade", {"type": "bring_goods", "count": min(per, tr["goods"])}
                                   | ({"keep_treasures": True} if keep else {})
                                   | ({"keep_trinkets": True} if keep_trinkets else {}),
@@ -1495,7 +1504,10 @@ def _trade_rules(s: dict, cfg: dict, citizens: int, proposals: list, notes: list
                           "depot's Trade button once: python brain\\probe_trade.py --here-depot")
     dw = _d(s.get("dwarves"))
     idle = (dw.get("idle_adults") or 0) / max(1, dw.get("adults") or 1)
-    if (_has_shop(s["buildings"], "Craftsdwarfs") and not young_fort(s, cfg) and idle >= cfg["idle_share"]
+    # (0.105.13) a trading fort (Trade 50+) makes goods to sell as its trade,
+    # not only with idle hands
+    merchant = tv >= 50
+    if (_has_shop(s["buildings"], "Craftsdwarfs") and not young_fort(s, cfg) and (idle >= cfg["idle_share"] or merchant)
             and not stone_short(s, 10) and not hermit
             and not (memory is not None and has_rule(getattr(memory, "culture", None), "small_storage"))   # (0.103.19) Waste Not
             and (tr.get("goods") or 0) < citizens * 2 * factor(traits or {}, "trade")
@@ -1511,8 +1523,10 @@ def _trade_rules(s: dict, cfg: dict, citizens: int, proposals: list, notes: list
                                       f"{tr.get('goods') or 0} crafts to sell: make 3 of {metal.lower()} (worth far "
                                       "more than rock)", 6, True))
             return
+        why = (f"a trading fort (Trade {tv})" if merchant and idle < cfg["idle_share"]
+               else f"{round(100 * idle)}% of the dwarves are idle")
         proposals.append(Proposal("crafts", {"type": "work_order", "recipe": "stone_crafts", "amount": 10},
-                                  f"{round(100 * idle)}% of the dwarves are idle and there are only {tr.get('goods') or 0} "
+                                  f"{why} and there are only {tr.get('goods') or 0} "
                                   "crafts to sell: make some from rock", 6, True))
 
 
