@@ -90,12 +90,16 @@ def _():
     m = mem_with_survey()
     p = masterplan.draw(state_at(50000), m, SITE, traits(verticality=80), profile())
     d = {x["kind"]: x for x in p["districts"]}
-    # the spine's bottom (30) less 3; the cavern (top at 20, +3 clear) is below that
-    assert p["vertical"] == "deep" and p["range"] == [27, 60], p["range"]
+    # (0.105.14) a deep fort reaches down to the cavern's margin (top at 20, +3 clear), not
+    # only 3 below the spine's bottom (30)
+    assert p["vertical"] == "deep" and p["range"] == [23, 60], p["range"]
     assert d["halls"]["lo"] > d["homes"]["hi"] > d["storage"]["hi"] > d["industry"]["hi"], d
     assert d["homes"]["lo"] <= 50 <= d["homes"]["hi"], "homes around the fort's heart"
     for x in d.values():
-        assert 27 <= x["lo"] <= x["hi"] <= 60, x
+        assert 23 <= x["lo"] <= x["hi"] <= 60, x
+    h = masterplan.hint(m, "bedrooms") if masterplan.has_plan(m) else None
+    if h is not None:
+        assert h.get("extend") == masterplan.DEEP_EXTEND, h
     assert "defence" not in d, "no defence district at low Fortification"
     assert d["farms"]["lo"] == 58, "farms where the soil is"
 

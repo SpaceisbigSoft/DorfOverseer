@@ -677,7 +677,9 @@ local function plan_band(plan)
     local lo, hi = math.tointeger(plan.elev_lo), math.tointeger(plan.elev_hi)
     if not lo or not hi or lo > hi then return nil end
     local t = math.tointeger(plan.elev_target) or (lo + (hi - lo) // 2)
-    return {lo = lo - OFFSET, hi = hi - OFFSET, target = t - OFFSET}
+    local ext = math.tointeger(plan.extend)
+    return {lo = lo - OFFSET, hi = hi - OFFSET, target = t - OFFSET,
+            extend = ext and math.max(0, math.min(30, ext)) or nil}
 end
 
 -- Walking areas the citizens are in (empty when unknown).
@@ -771,7 +773,8 @@ local function stair_levels(stair, band, only_band, may_extend)
     if may_extend ~= false then
         local near = {}
         for _, z in ipairs(below) do
-            if may_extend == nil or z >= stair.z_bottom - PLAN_EXTEND then table.insert(near, z) end
+            -- (0.105.14) a deep fort's plan says how far (DEEP_EXTEND); others PLAN_EXTEND
+            if may_extend == nil or z >= stair.z_bottom - (band.extend or PLAN_EXTEND) then table.insert(near, z) end
         end
         band_part(near, true)
     end

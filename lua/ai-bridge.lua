@@ -34,7 +34,7 @@
 local json = require('json')
 local utils = require('utils')
 
-BRIDGE_VERSION = '0.105.12'
+BRIDGE_VERSION = '0.105.14'
 PROTOCOL = 1 -- bump when the report's shape changes in a breaking way
 
 local OUT_DIR = dfhack.getDFPath() .. '/dfhack-config/ai-overseer'
@@ -4104,6 +4104,10 @@ function parse_plan(pl)
         if not out.elev_target then return nil, 'plan.elev_target must be -400 to 400' end
     else
         out.elev_target = lo + (hi - lo) // 2       -- the middle of the band
+    end
+    if pl.extend ~= nil then                        -- (0.105.14) a deep fort's reach below the stair
+        out.extend = int_in(pl.extend, 0, 30)
+        if not out.extend then return nil, 'plan.extend must be 0 to 30' end
     end
     if pl.dirs ~= nil then
         if type(pl.dirs) ~= 'table' then return nil, 'plan.dirs must be a list' end

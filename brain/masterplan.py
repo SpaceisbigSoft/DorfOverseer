@@ -128,13 +128,16 @@ def _axis(memory, spine: dict) -> str:
     return "south" if dy >= 0 else "north"
 
 
-def _range(survey: dict, off: int, spine: dict) -> tuple[int, int] | None:
+DEEP_EXTEND = 20           # (0.105.14, 14.1 step 4c) a deep fort's plan reaches this far below the spine
+
+
+def _range(survey: dict, off: int, spine: dict, deep: bool = False) -> tuple[int, int] | None:
     """The elevations the plan may use: from the spine's top down to a few
     levels below its bottom, kept clear of every cavern above that. None
     when that leaves too little room. `off` is the survey's own elevation
     offset (the same one the spine's elevations came with)."""
     top = spine["top"]
-    low = spine["bottom"] - PLAN_EXTEND
+    low = spine["bottom"] - (DEEP_EXTEND if deep else PLAN_EXTEND)
     for l in _l(survey.get("layers")):
         if isinstance(l, dict) and isinstance(l.get("z_top"), int) and str(l.get("name", "")).startswith("Cavern"):
             cav = l["z_top"] + off
@@ -196,14 +199,14 @@ def draw(state: dict, memory, site: dict, traits: dict, profile: dict) -> dict |
     heart = site.get("citizen_elevation")
     if not whole(heart):
         heart = (spine["top"] + spine["bottom"]) // 2
-    rng = _range(sv, off, spine)
+    vertical = _vertical(traits)
+    rng = _range(sv, off, spine, deep=vertical == "deep")
     if rng is None:
         return None
     lo, hi = rng
     heart = max(lo, min(hi, heart))
     axis = _axis(memory, spine)
     pattern = profile.get("layout") if profile.get("layout") in ("grid", "rings", "branching", "stacked") else "grid"
-    vertical = _vertical(traits)
     spread = 1 if (traits.get("spacing", 0) or 0) >= 50 else 0
     soil = sorted(e for e in _l(site.get("soil")) if isinstance(e, int))
     fort = traits.get("fortification", 0) or 0
@@ -327,6 +330,8 @@ def hint(memory, kind: str, slot: str | None = None, traits: dict | None = None,
     spine = p.get("spine") or {}
     out = {"elev_lo": int(d["lo"]), "elev_hi": int(d["hi"]), "elev_target": int(d.get("target", d["lo"])),
            "district": _plain(d.get("name") or d["kind"])}
+    if p.get("vertical") == "deep":
+        out["extend"] = DEEP_EXTEND      # (0.105.14) the builder may take the stair this far down for it
     dirs = [x for x in (d.get("dirs") or []) if x in DIRS]
     if dirs:
         out["dirs"] = list(dict.fromkeys(dirs))[:4]
