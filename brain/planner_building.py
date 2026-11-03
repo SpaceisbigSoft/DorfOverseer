@@ -2151,10 +2151,21 @@ def _project_rules(s, traits, cfg, proposals, notes, can_use, memory) -> None:
         action, reason = need_action, need_reason
         if cands:
             scored = sorted(cands, key=lambda c: -ladder_score(c[0], s, traits, cfg, memory))
-            if len(scored) > 1:
+            reserved = character_slot_reserved(s, traits, cfg, memory, open_)
+            if reserved and memory is not None:
+                # (0.105.10 review) a level the game keeps refusing never holds the slot
+                now_r = abs_tick(s)
+                scored = [c for c in scored if _refused_wait(memory, Proposal("build", c[0], c[1], 6), now_r,
+                                                             s.get("bridge_version")) is None] or scored
+                if all(_refused_wait(memory, Proposal("build", c[0], c[1], 6), now_r, s.get("bridge_version"))
+                       is not None for c in scored):
+                    reserved = None
+            # (review) care comes first: tombs and a hospital aren't put off
+            if reserved and action is not None and action.get("kind") in ("tombs", "hospital"):
+                reserved = None
+            if len(scored) > 1 and (action is None or reserved):
                 notes.append("next level by the fort's temperament: " + ", ".join(
                     f"{_ladder_word(c[0])} {ladder_score(c[0], s, traits, cfg, memory):.1f}" for c in scored[:4]))
-            reserved = character_slot_reserved(s, traits, cfg, memory, open_)
             if action is None:
                 action, reason = scored[0]
             elif reserved:
@@ -2228,8 +2239,12 @@ def character_slot_reserved(s: dict, traits: dict, cfg: dict, memory, open_: lis
     six presets built the same forts. A reason in words, or None."""
     if young_fort(s, cfg) or player_rules(s)["fort_goal"] == "maintain":
         return None
+    # (review) a slow game or a crisis holds expansion: the need goes ahead
+    if s.get("fps_low") or (memory is not None and _d(getattr(memory, "crisis", None)).get("why")):
+        return None
     max_open = _d(s.get("projects")).get("max_open") or 2
-    if len(open_) != max_open - 1 or any(is_character_level(p) for p in open_):
+    mine = set(getattr(memory, "character_projects", None) or []) if memory is not None else set()
+    if len(open_) != max_open - 1 or any(is_character_level(p) or p.get("id") in mine for p in open_):
         return None
     citizens = max(1, int(_d(s.get("dwarves")).get("total") or 0))
     b = _d(s.get("buildings"))
@@ -2252,8 +2267,9 @@ def character_slot_filter(s: dict, proposals: list, notes: list) -> list:
     cs = _d(s.get("_character_slot"))
     if not cs:
         return proposals
+    import crisis
     held = [p for p in proposals if p.action.get("type") == "start_project" and not p.action.get("urgent")
-            and not is_character_level(p.action)]
+            and not is_character_level(p.action) and p.rule not in crisis.RECOVERY_RULES]
     if held:
         notes.append(f"the last building slot waits for the fort's own {cs.get('kind')} level: "
                      + ", ".join(sorted({f"{p.action.get('kind')} ({p.rule})" for p in held})) + " wait")

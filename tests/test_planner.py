@@ -973,7 +973,7 @@ def _():
     at60 = soldiers_wanted(s, 70, PLANNER_CONFIG, True)
     s["settings"]["traits"] = {"militarism": 100}
     at100 = soldiers_wanted(s, 70, PLANNER_CONFIG, True)
-    # (0.105.10) a quarter of the extra at 0, all of it at +100, almost none at -60
+    # (0.105.10) an eighth of the extra at 0, all of it at +100, almost none at -60
     assert at60 < at0 < at100, (at60, at0, at100)
     assert at0 <= round(70 * 0.15), at0                               # near its 10% (7) at Militarism 0
     # War-hold: Militarism 150 with Extreme, 36 adults: 12 kept at work (it drafted 29)
@@ -4070,6 +4070,23 @@ def _():
     s3["buildings"]["other"]["Bed"] = 3
     assert character_slot_reserved(s3, {}, PLANNER_CONFIG, Memory(), s["projects"]["open"]) is None
     assert character_slot_reserved(s, {}, PLANNER_CONFIG, Memory(), s["projects"]["open"])
+    # (review) a slow game or a crisis: no hold (the need goes ahead)
+    slow = dict(s, fps_low=5)
+    assert character_slot_reserved(slow, {}, PLANNER_CONFIG, Memory(), s["projects"]["open"]) is None
+    mc = Memory()
+    mc.crisis = {"why": ["tantrums"]}
+    assert character_slot_reserved(s, {}, PLANNER_CONFIG, mc, s["projects"]["open"]) is None
+    # (review) an open growth level the AI started (the report doesn't say so): remembered by id
+    mg = Memory()
+    mg.character_projects = [3]
+    assert character_slot_reserved(s, {}, PLANNER_CONFIG, mg, s["projects"]["open"]) is None
+    # (review) every ladder level refused by the game: the need level goes ahead, nothing held
+    from planner import record, select
+    m = Memory()
+    p0 = [p for p in plan(s, m)[0] if p.rule == "build"][0]
+    record([(p0, {"ok": False, "error": "no room"})], s, m)
+    props, notes = plan(s, m)
+    assert not any("the fort's own" in n for n in notes), notes           # nothing held for a refused level
 
 
 @test("a stuck forge (0.86, live: 104 days): an anvil made for it; it no longer holds back other workshops")

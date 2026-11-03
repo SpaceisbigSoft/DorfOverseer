@@ -606,6 +606,7 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
                                       "finished level (nicer rooms, more wealth)", 7))
 
     # 7. Building projects ------------------------------------------------------
+    s.pop("_character_slot", None)          # (0.105.10 review) never a reservation from an earlier plan
     if can_use("projects"):
         _guard(_project_rules, s, traits, cfg, proposals, notes, can_use, memory)
     # 7a. (0.104.168) a bedroom per household (after the levels: no second bedrooms level)
@@ -935,6 +936,11 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
             memory.culture["last_trade_year"] = int(_d(state.get("date")).get("year") or 0)   # (0.103.18)
         if a["type"] == "quick_location" and a.get("kind"):
             memory.quick_locations[str(a["kind"])] = now
+        if a["type"] == "start_project" and r.get("ok") is True and isinstance(r.get("project_id"), int):
+            from planner_building import is_character_level
+            if is_character_level(a):
+                # (0.105.10 review) the report doesn't carry growth or set_piece: remembered here
+                memory.character_projects = (list(memory.character_projects or []) + [r["project_id"]])[-40:]
         if (a["type"] == "answer_petition" and a.get("residency") and a.get("accept") and r.get("ok") is True
                 and not a.get("ids")):
             # (0.105.9) the probe: is the applicant DF's resident within a few days?
