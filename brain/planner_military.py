@@ -446,6 +446,7 @@ def _trap_rule(s: dict, memory, cfg: dict, es: list, now: int, traits: dict, pro
         if has_rule(memory.culture, "harden_after_siege"):
             # (0.103.1, Grudge-keepers: the rule had no effect) a trap more for each siege survived
             n = min(12, n + min(4, int(_d(memory.culture).get("sieges") or 0)))
+        n = min(8, n)                              # (0.105.10) the bridge places 1-8 a call (A asked 9: refused)
         where = f"the {e.get('kind')} entrance at elevation {(e.get('z') or 0) + off} (x{e.get('x')} y{e.get('y')})"
         proposals.append(Proposal("traps", {"type": "place_traps", "entrance_id": e["id"], "kind": kind, "count": n},
                                   f"{where} has a gate but no traps: {n} {kind} trap(s) just inside it", 6))

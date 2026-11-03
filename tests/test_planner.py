@@ -3180,6 +3180,11 @@ def _():
     s["settings"]["traits"] = {"fortification": 120, "engineering": 60, "caution": 60, "militarism": 150}
     t = by_rule(plan(s, Memory())[0], "traps")
     assert t and t[0].action["type"] == "place_traps" and t[0].action["entrance_id"] == s["entrances"]["entrances"][0]["id"], t
+    m = Memory()
+    m.culture = {"quirks": ["Trapsmiths"], "sieges": 4}            # (0.105.10) quirks add traps: never past 8 a call
+    from quirks import has_rule
+    t = by_rule(plan(s, m)[0], "traps")
+    assert t and 1 <= t[0].action["count"] <= 8, t
 
 
 @test("5b traps: a gate with no traps gets them in the fort's style; mechanisms ordered if too few; not twice")
