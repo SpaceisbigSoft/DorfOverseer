@@ -188,15 +188,40 @@ def _shelter_squads_rule(s: dict, memory, cfg: dict, proposals: list, notes: lis
     """While the AI hides, the squads hold the civilian alert's shelter
     (lua/ai-military.lua shelter); out again when the alert clears or the
     squads are sent to fight."""
+    from planner_core import abs_tick, TICKS_PER_DAY
     squads = [q for q in _l(_d(s.get("military")).get("squads")) if isinstance(q, dict) and q.get("id") is not None]
     hide, targets = hiding(s, memory, cfg)
     inside = [q for q in squads if q.get("sheltering")]
+    # (0.105.22) a squad holds the shelter shelter_max_days at most, then
+    # shelter_rest_days off to eat and drink: B (4 Nov) kept 7 squads on the
+    # shelter order about two game years; 28 soldiers died of thirst where
+    # they had killed the titan, 44 of the 49 hungry or parched were soldiers
+    now = abs_tick(s)
+    since = getattr(memory, "shelter_since", None) if memory is not None else None
+    since = since if isinstance(since, dict) else {}
+    rest = getattr(memory, "shelter_rest", None) if memory is not None else None
+    rest = rest if isinstance(rest, dict) else {}
+    for q in inside:
+        since.setdefault(str(q["id"]), now)
+    for k in [k for k in since if k not in {str(q["id"]) for q in inside}]:
+        del since[k]
+    for k in [k for k, t in rest.items() if not isinstance(t, int) or t <= now]:
+        del rest[k]
+    if memory is not None:
+        memory.shelter_since, memory.shelter_rest = since, rest
+    long_in = [q for q in inside if now - since.get(str(q["id"]), now) >= cfg["shelter_max_days"] * TICKS_PER_DAY]
+    for q in long_in:
+        proposals.append(Proposal("squad_recall", {"type": "squad_orders", "squad_id": q["id"], "clear": True},
+                                  f"{q.get('name') or 'the squad'} has held the shelter {cfg['shelter_max_days']} "
+                                  f"days: out for {cfg['shelter_rest_days']} to eat and drink", 1))
+        rest[str(q["id"])] = now + cfg["shelter_rest_days"] * TICKS_PER_DAY
     if hide:
         if not player_rules(s).get("squads_shelter", True):
             return
         if s.get("civ_alert_ready") is not True and not s.get("civ_alert"):
             return                       # no shelter burrow yet (the alarm rule sets one up)
         out = [q for q in squads if (q.get("members") or 0) > 0 and not q.get("sheltering")
+               and str(q["id"]) not in rest
                and not (q.get("orders") or 0) > int(q.get("ai_orders") or 0)]
         if out:
             proposals.append(Proposal("shelter_squads", {"type": "shelter_squads", "squads": [q["id"] for q in out]},
@@ -209,6 +234,8 @@ def _shelter_squads_rule(s: dict, memory, cfg: dict, proposals: list, notes: lis
     if inside and not targets and not s.get("civ_alert") and reachable_threats(
             s, _d(_d(s.get("settings")).get("traits")), cfg):
         for q in inside:
+            if q in long_in:
+                continue
             proposals.append(Proposal("squad_recall", {"type": "squad_orders", "squad_id": q["id"], "clear": True},
                                       f"the alarm is over: {q.get('name') or 'the squad'} leaves the shelter", 1))
 

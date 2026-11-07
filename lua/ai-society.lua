@@ -2244,6 +2244,20 @@ end
 -- refilled when the sources changed (returns nil, tiles), and each member
 -- let out who is healed, gone, drafted, staff, raging, in a player's burrow,
 -- or in too long.
+-- (0.105.22) a member thirsty or hungry this far is let out to drink and eat
+-- where they can (B, 3 Nov: 36 of a night's 71 who died of thirst were in
+-- the hospital burrow, its "drink they can reach" one pile; the bedridden get
+-- water only from a well) and not taken back in until they've drunk
+HOSP_THIRST = 25000          -- DFHack's "thirsty"
+HOSP_HUNGER = 50000          -- DF's "hungry"
+
+local function hb_dry(u)
+    local ok, yes = pcall(function()
+        return u.counters2.thirst_timer >= HOSP_THIRST or u.counters2.hunger_timer >= HOSP_HUNGER
+    end)
+    return ok and yes == true
+end
+
 local function hb_maintain(d, b, zones, staff, src, now, dry_run, name, released)
     local function let_out(id, u, timed)
         if not dry_run and u and b then pcall(dfhack.burrows.setAssignedUnit, b, u, false) end
@@ -2280,7 +2294,9 @@ local function hb_maintain(d, b, zones, staff, src, now, dry_run, name, released
         since = tonumber(since) or now
         local keep = u and hb_citizen(u) and u.military.squad_id == -1 and not staff[u.id] and is_patient(u)
                      and not in_tantrum(u) and not (burrows_of(u, b and b.id or -1, rec_id)) and true or false
-        if keep and now - since >= days * 1200 then
+        if keep and hb_dry(u) then
+            let_out(id, u, true)                 -- (0.105.22) to drink and eat
+        elseif keep and now - since >= days * 1200 then
             let_out(id, u, true)
         elseif keep and not src.food and now - since >= HOSP_NOFOOD_DAYS * 1200 and not in_hospital_bed(u, zones) then
             let_out(id, u, true)
@@ -2387,7 +2403,10 @@ function hospital_burrow_tick(max, per, dry_run, txt, days, release)
         if was and now - was >= HOSP_OUT_DAYS * 1200 then d.out[key] = nil; was = nil end
         if not d.members[key] and not was then
             local ok, in_rec = hb_eligible(u, staff, b.id, rec_id)
-            if ok and (src.food or in_hospital_bed(u, zones)) then
+            -- (0.105.22) never one already thirsty or hungry; a bedridden one
+            -- (in a hospital bed) only with a well giving water
+            local bed = in_hospital_bed(u, zones)
+            if ok and not hb_dry(u) and ((src.food and not bed) or (bed and src.well)) then
                 table.insert(cands, {u = u, inside = in_zones(u.pos, zones) and 1 or 0, rec = in_rec})
             end
         end

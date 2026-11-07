@@ -720,13 +720,23 @@ def _():
       W.at_tile['1,0,10'] = {getType = function() return 'Bed' end}
       W.units[2].job.current_job = {job_type = 'Rest'}""", w)
     r = env.hospital_burrow_tick(30, 10, False)
-    assert r.ok and _names(r.added) == ["dwarf 2"] and not r.food, dict(r)
-    w.units[2].job.current_job = None                                       # up and about
-    w.day(2)
-    assert _ids(w) == [2] and env.hospital_burrow_tick(30, 10, False).unchanged
-    w.day(4)
+    # (0.105.22) a bedridden one only with a well giving water (here none): nobody
+    assert r.ok and not _names(r.added) and not _ids(w), dict(r)
+
+
+@test("0.105.22 hospital burrow: a member thirsty or hungry is let out to drink; one already thirsty isn't moved in")
+def _():
+    lua, env, w = hosp_fresh()
+    lua.execute("""local W = ...
+      for _, u in ipairs(W.units) do u.counters2 = {thirst_timer = 0, hunger_timer = 0} end
+      W.units[1].counters2.thirst_timer = 30000""", w)
     r = env.hospital_burrow_tick(30, 10, False)
-    assert _names(r.released) == ["dwarf 2"] and not _ids(w), dict(r)
+    assert _ids(w) == [2], dict(r)                                          # 1 is thirsty: not moved in
+    lua.execute("""local W = ...
+      W.units[2].counters2.thirst_timer = 26000""", w)
+    w.day(1)
+    r = env.hospital_burrow_tick(30, 10, False)
+    assert "dwarf 2" in _names(r.released) and not _ids(w), dict(r)
 
 
 @test("hospital burrow (0.104.167, review): a patient in the AI's recreation burrow is taken out of it and moved in")

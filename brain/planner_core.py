@@ -48,6 +48,8 @@ PLANNER_CONFIG = {
     # alert dropped 10 s after a titan died and 15 dwarves died outside in the next 50
     "alert_quiet_days": 3,
     "alert_quiet_days_great": 7,
+    "shelter_max_days": 3,             # (0.105.22) a squad on the shelter order this long at most...
+    "shelter_rest_days": 2,            # ...then this long off it to eat and drink
     "fight_ratio": 2.0,            # (0.104.118) squads at least this many times a great danger's strength: they go
     "cautious_alert_levels": 10,   # Caution +100: react to unknown-reach threats this close
     # Building (docs/building.md)
@@ -768,6 +770,8 @@ class Memory:
     census: dict = field(default_factory=dict)           # (0.104.113) the last census of creatures and items (with "tick")
     fight: dict = field(default_factory=dict)            # (0.104.118) a fight against great dangers under way
     fight_factor: dict = field(default_factory=dict)     # (0.104.118) kind -> how much stronger than estimated (learned)
+    shelter_since: dict = field(default_factory=dict)    # (0.105.22) squad id -> tick it took the shelter order
+    shelter_rest: dict = field(default_factory=dict)     # (0.105.22) squad id -> tick it may shelter again
     fights: list = field(default_factory=list)           # (0.104.118) the last fights: {tick, keys, lost, of}
     dig_seen: dict = field(default_factory=dict)         # (0.104.110) project id -> {"dug", "tick" (last progress), "freed"}
     join_wait_days: int = 2                              # (0.104.108) days to the next look (longer once all were seen)

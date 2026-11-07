@@ -202,6 +202,30 @@ def _():
     assert sh and sh[0].action["squads"] == [12], sh
 
 
+@test("0.105.22 hide: a squad holds the shelter 3 days at most, then 2 days off to eat and drink, then back")
+def _():
+    from planner_core import abs_tick, TICKS_PER_DAY
+    s = titan(10)
+    for q in s["military"]["squads"]:
+        q.update(sheltering=True, ai_orders=1, orders=1)
+    s["civ_alert"] = True
+    m = Memory()
+    props = plan(copy.deepcopy(s), m)[0]
+    assert not by_rule(props, "squad_recall"), props                 # just in
+    t0 = abs_tick(s)
+    m.shelter_since = {"11": t0 - 4 * TICKS_PER_DAY, "12": t0}
+    props = plan(copy.deepcopy(s), m)[0]
+    rc = by_rule(props, "squad_recall")
+    assert [p.action["squad_id"] for p in rc] == [11], rc            # 11 out to eat and drink, 12 stays
+    out = copy.deepcopy(s)
+    out["military"]["squads"][0].update(sheltering=False, ai_orders=0, orders=0)
+    sh = by_rule(plan(copy.deepcopy(out), m)[0], "shelter_squads")
+    assert not sh or 11 not in sh[0].action["squads"], sh             # resting: not sent back yet
+    m.shelter_rest = {"11": t0 - 1}
+    sh = by_rule(plan(copy.deepcopy(out), m)[0], "shelter_squads")
+    assert sh and 11 in sh[0].action["squads"], sh                    # rested: back in
+
+
 @test("hide: the squads in the shelter stay while the alarm is up, come out when it clears, and go when sent")
 def _():
     s = titan(10)
