@@ -1350,6 +1350,135 @@ def _():
     lua.execute("local df = ...; df.global.plotinfo.alerts.list[1].burrows[0] = 99", df)   # the player's burrow
     assert env.refresh_shelter() is None
 
+
+# (0.105.23) A (4-5 Nov): a fort two blocks wide (x96-127, y144-159) on
+# levels 160-180, the founding stair at x108 y149 going down from z175 to
+# z160, the entrance at its z170 tile; citizens on z170, a stockpile on z162
+# (the shelter's levels 160-172). `gates` is ai-gates' GATES as the scan left it.
+ENTRANCE_FAKE = r"""
+local src, ncit = ...
+local function vec(list)
+    local t = {}
+    for i, v in ipairs(list or {}) do t[i - 1] = v end
+    return setmetatable(t, {__len = function(self) local n = 0; while rawget(self, n) ~= nil do n = n + 1 end; return n end})
+end
+local function stair(x, y, z) return x == 108 and y == 149 and z >= 160 and z <= 175 end
+local set = {}
+local blocks = {}
+for z = 160, 180 do
+    for _, bx in ipairs({96, 112}) do
+        local des, tt = {}, {}
+        for x = 0, 15 do des[x], tt[x] = {}, {}
+            for y = 0, 15 do
+                des[x][y] = {hidden = false, outside = false, flow_size = 0}
+                tt[x][y] = stair(bx + x, 144 + y, z) and 2 or 1
+            end
+        end
+        table.insert(blocks, {map_pos = {x = bx, y = 144, z = z}, designation = des, tiletype = tt})
+    end
+end
+local shelter = {id = 4, name = 'AI shelter'}
+local door = {id = 77, door_flags = {forbidden = false}}
+local buildings = {[77] = door}
+local gates = {scanned = true, closed = {},
+               entrances = {{id = 1, kind = 'surface', x = 108, y = 149, z = 170, sealed = false, equipment = {}}}}
+local cits = {}
+for i = 1, ncit do cits[i] = {pos = {z = 170}} end
+local env = setmetatable({}, {__index = _G})
+env.ipairs = function(t)
+    if type(t) == 'table' and rawget(t, 0) ~= nil then
+        local i = -1
+        return function() i = i + 1; if t[i] ~= nil then return i, t[i] end end
+    end
+    return ipairs(t)
+end
+env.df = {global = {world = {map = {map_blocks = blocks},
+                             buildings = {other = {STOCKPILE = vec({{z = 162}}), WELL = vec({})}}},
+                    plotinfo = {burrows = {list = vec({shelter}), next_id = 5},
+                                alerts = {list = vec({{}, {burrows = vec({4})}}), next_id = 3}}},
+          tiletype = {attrs = {[1] = {shape = 1}, [2] = {shape = 2}}},
+          tiletype_shape = {[1] = 'FLOOR', [2] = 'STAIR_UPDOWN'},
+          building = {find = function(id) return buildings[id] end}}
+env.require = function(name) if name == 'utils' then return {insert_sorted = function() end} end return require(name) end
+env.reqscript = function(name) if name == 'ai-gates' then return {GATES = gates} end error('no ' .. name) end
+env.dfhack = {units = {getCitizens = function() return cits end},
+              maps = {getTileType = function(x, y, z)
+                  if x < 96 or x > 127 or y < 144 or y > 159 or z < 160 or z > 180 then return nil end
+                  return stair(x, y, z) and 2 or 1 end},
+              burrows = {setAssignedBlockTile = function(b, block, x, y, on)
+                             set[(block.map_pos.x + x) .. ',' .. (block.map_pos.y + y) .. ',' .. block.map_pos.z] = on end,
+                         clearTiles = function(b) for k in pairs(set) do set[k] = nil end end}}
+assert(load(src, 'ai-society', 't', env))()
+return env, set, gates, door, buildings
+"""
+
+
+def entrance_world(ncit=2):
+    lua = LuaRuntime(unpack_returned_tuples=True)
+    return lua, lua.execute(ENTRANCE_FAKE, (ROOT / "lua" / "ai-society.lua").read_text(encoding="utf-8"), ncit)
+
+
+@test("shelter (0.105.23): off the tiles by an entrance with no gate, and its stair column; the hall beside it left out")
+def _():
+    lua, (env, got, gates, door, buildings) = entrance_world()
+    r = env.refresh_shelter()
+    # 13 levels x 512 tiles; left out: x96-120 (all 16 rows) on z168-172, and the
+    # stair at x108 y149 on z160-167
+    assert r.excluded_tiles == 25 * 16 * 5 + 8, dict(r)
+    assert r.tiles == 13 * 512 - r.excluded_tiles and not r.fallback, dict(r)
+    assert r.open_entrances == 1 and "x108 y149 z170 (surface, no gate)" in r.excluded_why, r.excluded_why
+    for x in range(113, 121):                     # the MeetingHall x113-120 y146-151 z170
+        for y in range(146, 152):
+            assert not got[f"{x},{y},170"], (x, y)
+    assert not got["108,149,170"] and not got["108,149,165"] and not got["108,149,160"]
+    assert got["121,149,170"] and got["120,149,167"] and not got["120,149,172"] and got["109,149,165"] and got["108,150,165"]
+    # setup_shelter reports the same
+    lua.execute("local df = ...; df.global.plotinfo.alerts.list[1].burrows = (function() local t = {}; return setmetatable(t, {__len = function() return 0 end}) end)()",
+                env.df)
+    r2 = env.setup_shelter()
+    assert r2.ok and r2.excluded_tiles == r.excluded_tiles and r2.tiles == r.tiles, dict(r2)
+
+
+@test("shelter (0.105.23): an entrance shut by its door is no danger; an open door, or a door gone, is")
+def _():
+    lua, (env, got, gates, door, buildings) = entrance_world()
+    lua.execute("""local gates, door = ...
+        gates.entrances[1].sealed = true
+        gates.entrances[1].equipment = {{id = 77, kind = 'door'}}
+        door.door_flags.forbidden = true""", gates, door)
+    r = env.refresh_shelter()
+    assert r.excluded_tiles == 0 and r.tiles == 13 * 512 and r.open_entrances == 0, dict(r)
+    assert not r.excluded_why and got["113,146,170"]
+    lua.execute("local door = ...; door.door_flags.forbidden = false", door)
+    r = env.refresh_shelter()
+    assert r.excluded_tiles == 2008 and "its gate open" in r.excluded_why, dict(r)
+    lua.execute("local door, buildings = ...; door.door_flags.forbidden = true; buildings[77] = nil", door, buildings)
+    r = env.refresh_shelter()        # broken by a building destroyer: open
+    assert r.excluded_tiles == 2008 and not got["113,146,170"], dict(r)
+
+
+@test("shelter (0.105.23): too few tiles away from the open entrances: the farthest of the rest taken back, said so")
+def _():
+    lua, (env, got, gates, door, buildings) = entrance_world(ncit=2400)
+    r = env.refresh_shelter()
+    kept = 13 * 512 - 2008
+    assert r.fallback and r.tiles == 4800 and r.taken_back == 4800 - kept, dict(r)
+    assert r.excluded_tiles == 2008 - r.taken_back and "taken back" in r.note, dict(r)
+    assert got["96,149,168"] and got["96,149,172"]           # 12 tiles and 2 levels away: the farthest
+    assert not got["108,149,170"] and not got["107,149,170"] and not got["108,149,165"]
+
+
+@test("shelter (0.105.23): no entrance scan yet: the whole fort, as before, and the result says so")
+def _():
+    lua, (env, got, gates, door, buildings) = entrance_world()
+    lua.execute("local gates = ...; gates.scanned = false", gates)
+    r = env.refresh_shelter()
+    assert r.tiles == 13 * 512 and r.excluded_tiles == 0 and r.entrances_scanned is False, dict(r)
+    lua.execute("local env = ...; env.reqscript = function() error('boom') end", env)
+    r = env.refresh_shelter()
+    assert r.tiles == 13 * 512 and r.excluded_tiles == 0, dict(r)
+
+
 if __name__ == "__main__":
     for name, ok, msg in RESULTS:
         print(f"[{'PASS' if ok else 'FAIL'}] {name}" + (f"\n        {msg}" if msg else ""))

@@ -1,7 +1,7 @@
 -- Things the AI sets up so the player doesn't have to:
 --   * a civilian-alert shelter: a burrow named "AI shelter" covering the
 --     inside of the fort (not caverns, not outside), registered as the
---     civilian alert's burrow
+--     civilian alert's burrow; (0.105.23) kept away from entrances not shut
 --   * grazing animals put into a pasture with room for them (the AI makes
 --     new pastures with ai-builder.make_pasture)
 --@module = true
@@ -73,13 +73,142 @@ local function fort_levels()
     return lo - 2, hi + 2
 end
 
+-- (0.105.23) The shelter keeps away from an entrance that can't be shut. A
+-- (4-5 Nov): a Hill Titan came in by the founding stair at x108 y149, the
+-- fort's only entrance, with no door; the alarm's shelter covered the whole
+-- fort, the MeetingHall at x113-120 y146-151 beside the stair with it, and
+-- 41 civilians died in that hall, most within seconds of the titan's fire.
+-- Now, when the shelter is made, every entrance the gate scan knows that is
+-- not shut at that moment (no gate, or a gate open, gone or still to come)
+-- keeps the shelter off the tiles within SHELTER_MARGIN of it on its level
+-- and SHELTER_MARGIN_Z levels above and below, and off its own stair column
+-- (the stairs going on up and down from it, at any depth). A shelter left
+-- with fewer than SHELTER_MIN_TILES tiles, or SHELTER_TILES_PER_CITIZEN a
+-- citizen, takes back the left-out tiles farthest from those entrances
+-- (never nothing), and says so.
+SHELTER_MARGIN = 12            -- tiles across, on the entrance's own level
+SHELTER_MARGIN_Z = 2           -- levels above and below it
+SHELTER_MIN_TILES = 50
+SHELTER_TILES_PER_CITIZEN = 2
+SHELTER_LEVEL_TILES = 6        -- for "farthest": a level apart counts as this many tiles
+local STAIRS = {STAIR_UP = true, STAIR_DOWN = true, STAIR_UPDOWN = true}
+
+local function shape_at(x, y, z)
+    local ok, s = pcall(function()
+        local tt = dfhack.maps.getTileType(x, y, z)
+        if tt == nil then return nil end
+        return df.tiletype_shape[df.tiletype.attrs[tt].shape]
+    end)
+    return ok and s or nil
+end
+
+-- Is the entrance shut now? Every gate of it there and closed (a door or
+-- hatch locked, a bridge raised), read from the game; a gate gone (a
+-- building destroyer breaks them) or unreadable leaves it open.
+local function entrance_shut(e)
+    if not e.sealed or type(e.equipment) ~= 'table' or #e.equipment == 0 then return false end
+    for _, g in ipairs(e.equipment) do
+        local ok, shut = pcall(function()
+            local b = df.building.find(g.id)
+            if not b then return false end
+            if g.kind == 'bridge' then return b.gate_flags.raised == true end
+            return b.door_flags.forbidden == true
+        end)
+        if not ok or not shut then return false end
+    end
+    return true
+end
+
+-- The stair columns going on from an entrance: a stair on its tile or next
+-- to it, followed up and down while the stairs go on. {x, y, lo, hi} each.
+local function stair_columns(e)
+    local out = {}
+    for dx = -1, 1 do
+        for dy = -1, 1 do
+            local x, y = e.x + dx, e.y + dy
+            if STAIRS[shape_at(x, y, e.z)] then
+                local lo, hi = e.z, e.z
+                while e.z - lo < 300 and STAIRS[shape_at(x, y, lo - 1)] do lo = lo - 1 end
+                while hi - e.z < 300 and STAIRS[shape_at(x, y, hi + 1)] do hi = hi + 1 end
+                table.insert(out, {x = x, y = y, lo = lo, hi = hi})
+            end
+        end
+    end
+    return out
+end
+
+-- The entrances the shelter keeps away from (the gate scan's, as it stands):
+-- a list of {id, kind, x, y, z, why, columns}, and whether the scan was there.
+function open_entrances()
+    local ok, G = pcall(function() return reqscript('ai-gates').GATES end)
+    if not ok or type(G) ~= 'table' or not G.scanned or type(G.entrances) ~= 'table' then return {}, false end
+    local out = {}
+    for _, e in ipairs(G.entrances) do
+        local okp = pcall(function() return e.x + e.y + e.z end)
+        if okp and not entrance_shut(e) then
+            local why = (not e.sealed or #(e.equipment or {}) == 0)
+                and (e.closing and 'its gate still to come' or 'no gate') or 'its gate open'
+            local okc, cols = pcall(stair_columns, e)
+            table.insert(out, {id = e.id, kind = e.kind, x = e.x, y = e.y, z = e.z, why = why,
+                               columns = okc and cols or {}})
+        end
+    end
+    return out, true
+end
+
+-- How far a tile is from the open entrances (nil: not near any), and whether
+-- it is near one (in the margin, or on its stair column).
+local function near_entrance(list, x, y, z)
+    local best, near = nil, false
+    for _, e in ipairs(list) do
+        local dz = math.abs(z - e.z)
+        local d = math.max(math.abs(x - e.x), math.abs(y - e.y))
+        if dz <= SHELTER_MARGIN_Z and d <= SHELTER_MARGIN then near = true end
+        local far = d + SHELTER_LEVEL_TILES * dz
+        for _, c in ipairs(e.columns) do
+            if x == c.x and y == c.y and z >= c.lo and z <= c.hi then near, far = true, 0 end
+        end
+        if not best or far < best then best = far end
+    end
+    return near, best
+end
+
+-- The open entrances that could touch this block (its levels and its 16x16).
+local function entrances_for_block(list, bx, by, z)
+    local out
+    for _, e in ipairs(list) do
+        local hit = math.abs(z - e.z) <= SHELTER_MARGIN_Z
+            and e.x >= bx - SHELTER_MARGIN and e.x <= bx + 15 + SHELTER_MARGIN
+            and e.y >= by - SHELTER_MARGIN and e.y <= by + 15 + SHELTER_MARGIN
+        if not hit then
+            for _, c in ipairs(e.columns) do
+                if c.x >= bx and c.x <= bx + 15 and c.y >= by and c.y <= by + 15 and z >= c.lo and z <= c.hi then
+                    hit = true
+                end
+            end
+        end
+        if hit then out = out or {}; table.insert(out, e) end
+    end
+    return out
+end
+
+-- Fills the burrow; returns the tiles in it and what was left out:
+-- {excluded, open_entrances, entrances_scanned, fallback, note, why}.
 function fill_shelter(b)
+    local info = {excluded = 0, margin = SHELTER_MARGIN, margin_levels = SHELTER_MARGIN_Z}
     local lo, hi = fort_levels()
-    if not lo then return 0 end
+    if not lo then return 0, info end
+    local okl, open, scanned = pcall(open_entrances)
+    if not okl then open, scanned, info.entrances_error = {}, false, tostring(open):sub(1, 120) end
+    info.entrances_scanned = scanned
+    info.open_entrances = #open
     local n = 0
+    local held = {}          -- the tiles left out: {block, x, y, far}
     for _, block in ipairs(df.global.world.map.map_blocks) do
         local z = block.map_pos.z
         if z >= lo and z <= hi then
+            local bx, by = block.map_pos.x or 0, block.map_pos.y or 0
+            local near_list = #open > 0 and entrances_for_block(open, bx, by, z) or nil
             for x = 0, 15 do
                 for y = 0, 15 do
                     local d = block.designation[x][y]
@@ -88,15 +217,70 @@ function fill_shelter(b)
                         local tt = block.tiletype[x][y]
                         local shape = df.tiletype_shape[df.tiletype.attrs[tt].shape]
                         if OPEN[shape] then
-                            dfhack.burrows.setAssignedBlockTile(b, block, x, y, true)
-                            n = n + 1
+                            local near, far = false, nil
+                            if near_list then near = near_entrance(near_list, bx + x, by + y, z) end
+                            if near then
+                                -- how far, from every open entrance (for the fallback)
+                                if #open > #near_list then
+                                    far = select(2, near_entrance(open, bx + x, by + y, z))
+                                else
+                                    far = select(2, near_entrance(near_list, bx + x, by + y, z))
+                                end
+                                table.insert(held, {block, x, y, far or 0})
+                            else
+                                dfhack.burrows.setAssignedBlockTile(b, block, x, y, true)
+                                n = n + 1
+                            end
                         end
                     end
                 end
             end
         end
     end
-    return n
+    info.excluded = #held
+    if #held > 0 then
+        local where = {}
+        for i, e in ipairs(open) do
+            if i <= 4 then
+                table.insert(where, ('x%d y%d z%d (%s, %s)'):format(e.x, e.y, e.z, tostring(e.kind), e.why))
+            end
+        end
+        info.why = ('%d tiles left out: within %d tiles (and %d levels) of, or on the stairs of, %d entrance%s not shut: %s')
+            :format(#held, SHELTER_MARGIN, SHELTER_MARGIN_Z, #open, #open == 1 and '' or 's',
+                    table.concat(where, '; ') .. (#open > 4 and '; ...' or ''))
+        local okc, cits = pcall(function() return #dfhack.units.getCitizens(true) end)
+        local need = math.max(SHELTER_MIN_TILES, SHELTER_TILES_PER_CITIZEN * (okc and cits or 0))
+        if n < need then
+            -- too few away from them: the farthest of the left-out tiles back
+            table.sort(held, function(a, c) return a[4] > c[4] end)
+            local back = 0
+            for _, t in ipairs(held) do
+                if n >= need then break end
+                dfhack.burrows.setAssignedBlockTile(b, t[1], t[2], t[3], true)
+                n, back = n + 1, back + 1
+            end
+            info.excluded = #held - back
+            info.fallback = true
+            info.taken_back = back
+            info.note = ('only %d tiles away from the open entrances (needs %d): the %d farthest of the left-out tiles taken back')
+                :format(n - back, need, back)
+        end
+    end
+    return n, info
+end
+
+-- (0.105.23) what the shelter left out near open entrances, in an action's result
+function shelter_result(r, info)
+    if type(info) ~= 'table' then return r end
+    r.excluded_tiles = info.excluded
+    r.open_entrances = info.open_entrances
+    if info.entrances_scanned == false then r.entrances_scanned = false end
+    r.entrances_error = info.entrances_error
+    r.excluded_why = info.why
+    r.fallback = info.fallback
+    r.taken_back = info.taken_back
+    r.note = info.note
+    return r
 end
 
 -- Make (or refresh) the "AI shelter" burrow and make it the civilian alert's.
@@ -106,12 +290,12 @@ function setup_shelter()
     end
     local b = find_burrow(SHELTER_NAME) or new_burrow(SHELTER_NAME)
     dfhack.burrows.clearTiles(b)
-    local n = fill_shelter(b)
+    local n, info = fill_shelter(b)
     if n == 0 then
         return {ok = false, error = 'found no inside tiles to shelter in'}
     end
     require('utils').insert_sorted(civ_alert().burrows, b.id)
-    return {ok = true, burrow_id = b.id, tiles = n}
+    return shelter_result({ok = true, burrow_id = b.id, tiles = n}, info)
 end
 
 -- (0.105.8) The AI's shelter made again over the fort as it is now, when it
@@ -128,8 +312,8 @@ function refresh_shelter()
     local before = 0
     pcall(function() before = dfhack.burrows.listBlocks and #dfhack.burrows.listBlocks(b) or 0 end)
     dfhack.burrows.clearTiles(b)
-    local n = fill_shelter(b)
-    return {refreshed = true, tiles = n, blocks_before = before}
+    local n, info = fill_shelter(b)
+    return shelter_result({refreshed = true, tiles = n, blocks_before = before}, info)
 end
 
 -- Grass tiles a grazer needs: DF's rule of thumb, 20000 / its GRAZER value
