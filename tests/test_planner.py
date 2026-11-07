@@ -2743,8 +2743,8 @@ def _():
     from planner_military import threat_power, fight_key
     small = {"size": 100_000, "kinds": ["ForgottenBeast"]}
     plain = threat_power(small)
-    assert abs(threat_power(dict(small, abilities=2)) - plain * 2) < 1e-6
-    assert abs(threat_power(dict(small, abilities=2, flier=True)) - plain * 3) < 1e-6
+    assert abs(threat_power(dict(small, abilities=2)) - plain * 3) < 1e-6          # (0.105.22: x3)
+    assert abs(threat_power(dict(small, abilities=2, flier=True)) - plain * 4.5) < 1e-6
     assert fight_key({"kinds": ["Undead", "ForgottenBeast"]}) == "ForgottenBeast"
 
     def beast(power):
@@ -2754,15 +2754,21 @@ def _():
             q["power"] = {"power": power, "armored": 5, "skill": 5}
         s["military"]["soldiers"] = 20
         return s
-    # (8 + 2*sqrt(1.67)) * 1.3 * 2 = 27.5; 2 squads: 2 x 20 = 40 < 55: hide (by size alone it was 13.7: go)
-    p, notes = plan(beast(20), Memory())
+    # (8 + 2*sqrt(1.67)) * 1.3 * 3 = 41.3; 2 squads: 2 x 30 = 60 < 82.6: hide (0.105.22: abilities x3)
+    p, notes = plan(beast(30), Memory())
     assert not by_rule(p, "squad_attack") and any("hide behind the gates" in n for n in notes), notes
     m = Memory()
-    plan(beast(30), m)                                       # 60 >= 55: go, the fight begins
+    plan(beast(45), m)                                       # 90 >= 82.6: go, the fight begins
     assert m.fight and m.fight["keys"] == ["ForgottenBeast"], m.fight
-    p, notes = plan(beast(22), m)                            # 44: under 2.0, over 1.5: the fight goes on
+    p, notes = plan(beast(33), m)                            # 66: under 2.0, over 1.5: the fight goes on
     assert by_rule(p, "squad_attack") or any("the squads go" in n for n in notes), notes
-    s = beast(30)
+    s = beast(45)
+    s["military"]["soldiers"] = 12                           # (0.105.22) 8 of 20 lost mid-fight: they come back
+    p, notes = plan(s, m)
+    assert not by_rule(p, "squad_attack") and m.fight_factor.get("ForgottenBeast") == 1.5, (notes, m.fight_factor)
+    plan(s, m)
+    assert m.fight_factor.get("ForgottenBeast") == 1.5          # learned once
+    s = beast(45)
     s["military"]["soldiers"] = 5                            # short of the target, mid-fight: no refill
     p, notes = plan(s, m)
     assert not by_rule(p, "squad_fill") and any("filled once the fight is over" in n for n in notes), notes
@@ -6517,6 +6523,28 @@ def _():
         PLANNER_CONFIG["convict_on"] = False
 
 
+@test("0.105.22 the dead's work: slab orders kept while ghosts walk; one waiting mason job gets a mason; a level nothing dug in 56 days given up")
+def _():
+    from planner_industry import _labor_waiting_rule
+    cfg = dict(PLANNER_CONFIG)
+    props = []
+    lb = {"waiting": [{"labor": "MASON", "jobs": 1, "holders": 2, "idle": 0}]}
+    _labor_waiting_rule(lb, 90, cfg, props, False, False)
+    assert not props, props
+    _labor_waiting_rule(lb, 90, cfg, props, False, True)
+    assert props and props[0].action == {"type": "assign_labor", "job": "MASON", "count": 1}, props
+    s = fort()
+    s["dead"] = {"ghosts": 3, "unburied": 0, "free_tombs": 2}
+    s["stone_use"] = {"usable": 5, "economic": {}}
+    m = Memory()
+    m.order_watch = {"77": {"by_ai": True, "what": "stone_slab", "since": abs_tick(s) - 40 * TICKS_PER_DAY, "left": 3}}
+    acts = [p.action for p in plan(copy.deepcopy(s), m)[0]]
+    assert not [a for a in acts if a.get("type") == "cancel_work_order" and a.get("order_id") == 77], acts
+    s["dead"] = {"ghosts": 0, "unburied": 0, "free_tombs": 2}
+    acts = [p.action for p in plan(copy.deepcopy(s), m)[0]]
+    assert [a for a in acts if a.get("type") == "cancel_work_order" and a.get("order_id") == 77], acts
+
+
 @test("0.105.19 stone crisis: ghosts waiting free an ore of 10+ boulders (C: limonite 27, tetrahedrite 27)")
 def _():
     s = fort()
@@ -7611,7 +7639,7 @@ def _():
     s["stone_use"] = {"usable": 0, "economic": {}}
     pj = by_rule(plan(s, Memory())[0], "project")
     acts = [p.action for p in pj]
-    assert {"type": "cancel_project", "project_id": 25, "cavern_well": True} in acts, acts
+    assert {"type": "cancel_project", "project_id": 25, "unreached": True, "cavern_well": True} in acts, acts
     assert {"type": "finish_project", "project_id": 42, "decor_only": True} in acts, acts
     from planner import record, Proposal
     m = Memory()

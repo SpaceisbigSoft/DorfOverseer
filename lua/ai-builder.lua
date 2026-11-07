@@ -1090,6 +1090,13 @@ function start_project(params, now, dry_run)
     if not stairs then return {ok = false, error = why} end
     local reserved = {}
     for _, p in ipairs(open) do table.insert(reserved, p.area) end
+    -- (0.105.22) nor where a level was given up as out of reach lately
+    for _, p in ipairs(data.list) do
+        if p.unreached and type(p.area) == 'table' and tonumber(p.cancelled_year)
+                and df.global.cur_year - p.cancelled_year < UNREACHED_YEARS then
+            table.insert(reserved, p.area)
+        end
+    end
     local plan = type(params.plan) == 'table' and params.plan or nil
     local site, why2 = choose_site(L, stairs, reserved, plan)
     if not site then return {ok = false, error = why2} end
@@ -1956,7 +1963,13 @@ function found_fort(dry_run)
     return out
 end
 
-function cancel_project(id)
+-- (0.105.22) `unreached`: given up because no dwarf got to dig it (B, 3-5
+-- Nov: a tomb level placed 11 times on the same stair column nobody could
+-- reach, given up after 336 days each time): its area is kept off-limits to
+-- new levels for UNREACHED_YEARS
+UNREACHED_YEARS = 5
+
+function cancel_project(id, unreached)
     local data = load_projects()
     local p = find(data, id)
     if not p then return {ok = false, rejected = true, error = 'no such AI project'} end
@@ -1965,6 +1978,10 @@ function cancel_project(id)
     end
     undo_dig(cells_of(p, 'dig'), p.stairs, p.z, anchor_of(p), p.stair)
     p.phase = 'cancelled'
+    if unreached then
+        p.unreached = true
+        p.cancelled_year = df.global.cur_year
+    end
     save_projects(data)
     return {ok = true, project_id = id}
 end

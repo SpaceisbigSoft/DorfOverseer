@@ -262,7 +262,7 @@ GREAT_KIND = {"Megabeast": 1.5, "Demon": 1.5, "Titan": 1.2, "ForgottenBeast": 1.
               "Undead": 0.8}
 # (0.104.139) what size doesn't say: a breath, deadly dust or webs (its
 # caste's interactions) kills whole squads; a flier picks its fights
-GREAT_ABILITY = 2.0
+GREAT_ABILITY = 3.0     # (0.105.22: was 2) A, 4-5 Nov: a breathing titan scored 39 against squads of 488; 25 soldiers died in six minutes
 GREAT_FLIER = 1.5
 
 
@@ -303,6 +303,21 @@ def fight_or_hide(s: dict, memory, cfg: dict, great: list, able: list) -> tuple[
     f = getattr(memory, "fight", None)
     on = (isinstance(f, dict) and f
           and 0 <= abs_tick(s) - int(f.get("tick") or 0) < cfg["fight_freeze_days"] * TICKS_PER_DAY)
+    # (0.105.22) a fight going badly ends now, not when the danger leaves (A's
+    # titan never left: the squads were sent three times as they died). A
+    # third of the soldiers who went lost: that kind counts 50% stronger at
+    # once (learned once a fight), and the fort hides
+    if isinstance(f, dict) and f and f.get("soldiers"):
+        now_ = int(_d(s.get("military")).get("soldiers") or 0)
+        lost = max(0, int(f["soldiers"]) - now_)
+        if lost * 3 >= int(f["soldiers"]):
+            if not f.get("learned"):
+                ff = memory.fight_factor if isinstance(getattr(memory, "fight_factor", None), dict) else {}
+                for k in _l(f.get("keys")):
+                    ff[k] = round(min(4.0, max(0.5, float(ff.get(k) or 1.0) * 1.5)), 2)
+                memory.fight_factor = ff
+                f["learned"] = True
+            return False, words + f"; {lost} of the {f['soldiers']} soldiers who went are lost: the squads come back"
     bar = cfg["fight_ratio"] * (0.75 if on else 1.0)
     return ratio >= bar, words
 
@@ -327,6 +342,8 @@ def _fight_outcome(s: dict, memory, cfg: dict) -> None:
     bad = f.get("soldiers") and lost * 3 >= int(f["soldiers"])
     ff = memory.fight_factor if isinstance(getattr(memory, "fight_factor", None), dict) else {}
     for k in _l(f.get("keys")):
+        if f.get("learned"):            # (0.105.22) already counted mid-fight
+            continue
         ff[k] = round(min(4.0, max(0.5, float(ff.get(k) or 1.0) * (1.5 if bad else 0.9))), 2)
     memory.fight_factor = ff
     memory.fights = (list(getattr(memory, "fights", None) or []) +

@@ -34,7 +34,7 @@
 local json = require('json')
 local utils = require('utils')
 
-BRIDGE_VERSION = '0.105.21'
+BRIDGE_VERSION = '0.105.22'
 PROTOCOL = 1 -- bump when the report's shape changes in a breaking way
 
 local OUT_DIR = dfhack.getDFPath() .. '/dfhack-config/ai-overseer'
@@ -4646,7 +4646,7 @@ end
 function act_cancel_project(a)
     local id = project_id(a)
     if not id then return reject('project_id must be a whole number') end
-    return reqscript('ai-builder').cancel_project(id)
+    return reqscript('ai-builder').cancel_project(id, a.unreached == true)   -- (0.105.22)
 end
 
 -- The overseer's memory (cooldowns, culture history, token bank...), kept in

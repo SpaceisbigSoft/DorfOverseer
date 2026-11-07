@@ -1662,14 +1662,21 @@ def _project_rules(s, traits, cfg, proposals, notes, can_use, memory) -> None:
         age = (now_ - (st_["year"] * TICKS_PER_YEAR + st_["tick"])) // TICKS_PER_DAY
         dig = _d(p.get("dig"))
         what = f"the {p.get('kind')} level (project {p.get('id')})"
-        if (p.get("phase") == "dig" and age >= cfg["slow_dig_days"] and int(dig.get("total") or 0) > 0
-                and int(dig.get("dug") or 0) * 2 < int(dig.get("total") or 0)):
-            action = {"type": "cancel_project", "project_id": p["id"]}
+        # (0.105.22) or nothing dug at all in unreached_dig_days: no dwarf gets
+        # to it (B's tomb level, 11 times on one stair column, 336 days each,
+        # while 41 ghosts rose); its spot is kept off-limits a while (`unreached`)
+        none_dug = (int(dig.get("dug") or 0) == 0 and age >= cfg["unreached_dig_days"]
+                    and int(dig.get("total") or 0) > 0)
+        if (p.get("phase") == "dig" and int(dig.get("total") or 0) > 0
+                and ((age >= cfg["slow_dig_days"] and int(dig.get("dug") or 0) * 2 < int(dig.get("total") or 0))
+                     or none_dug)):
+            action = {"type": "cancel_project", "project_id": p["id"], "unreached": True}
             if p.get("kind") == "well" and _d(p.get("summary")).get("cavern"):
                 action["cavern_well"] = True
             proposals.append(Proposal("project", action,
                                       f"{what}: {dig.get('dug') or 0} of {dig.get('total')} tiles dug in {age} days: "
-                                      "give it up, so its building slot goes to what waits", 4))
+                                      "give it up, so its building slot goes to what waits (and not that spot "
+                                      "again for a while)", 4))
         fw = _d(_d(p.get("furnish")).get("waiting"))
         # (0.104.33) or waits so long for them whatever the stone (Enxah's
         # storage level: 197 days for 1 statue, 199 usable boulders, the

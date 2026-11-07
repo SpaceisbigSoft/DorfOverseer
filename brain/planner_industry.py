@@ -1195,6 +1195,11 @@ def _stuck_orders_rule(s: dict, memory, cfg: dict, proposals: list) -> None:
             lst = lst[-1:]
         since, k, w = lst[0]
         days = (now - since) // TICKS_PER_DAY
+        # (0.105.22) the last slab or coffin for the waiting dead stays (B: 19
+        # cancelled, each "not placed again for 28 days" while ghosts killed)
+        if what in ("stone_slab", "stone_coffin") and (int(_d(s.get("dead")).get("ghosts") or 0) > 0
+                                                       or int(_d(s.get("dead")).get("unburied") or 0) > 0):
+            continue
         if days >= cfg["order_stuck_you_days"] and not _stuck_before(memory, what, now, cfg):
             out.append((1, k, what, f"the AI's {what} order ({w.get('left')} left) hasn't moved in {days} days: "
                                     f"cancel it (not placed again for {cfg['stuck_retry_days']} days)", True))
@@ -1344,8 +1349,16 @@ def _stone_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> Non
                                   "quarry in ordinary stone near the fort", 4))
     _picks_order(s, cfg, proposals)
     now = abs_tick(s)
+    # (0.105.22) never the dead's slabs and coffins while ghosts walk or bodies
+    # wait: they can't be made in wood, and B (3-5 Nov) ordered and cancelled
+    # the slab 181 times while 41 ghosts rose (the ore, the quarry and the
+    # mason's labour are what get them made)
+    dd = _d(s.get("dead"))
+    keep = {"stone_slab", "stone_coffin"} if (int(dd.get("ghosts") or 0) > 0
+                                             or int(dd.get("unburied") or 0) > 0) else set()
     for k, w in sorted(memory.order_watch.items()) if memory is not None else []:
         if (isinstance(w, dict) and w.get("by_ai") and str(w.get("what", "")).startswith("stone_")
+                and str(w.get("what")) not in keep
                 and isinstance(w.get("since"), int) and (now - watch_since(w)) // TICKS_PER_DAY >= cfg["order_stuck_days"]):
             proposals.append(Proposal("stone", {"type": "cancel_work_order", "order_id": int(k)},
                                       f"no stone the masons may use and {w.get('what')} hasn't moved in "
@@ -1943,7 +1956,10 @@ def _labor_rules(s: dict, citizens: int, cfg: dict, proposals: list, notes: list
         want("woodcutting", cutters,
              "trees to cut (wood for beds, barrels and bins)"
              + (f"; the wood is {short} short of what the fort keeps" if short > 0 else ""), 4)
-    _labor_waiting_rule(lb, citizens, cfg, proposals, drink_below_target(s, citizens, cfg, memory))   # (0.104.169)
+    dd = _d(s.get("dead"))
+    haunted = int(dd.get("ghosts") or 0) > 0 or int(dd.get("unburied") or 0) > 0     # (0.105.22)
+    _labor_waiting_rule(lb, citizens, cfg, proposals, drink_below_target(s, citizens, cfg, memory),   # (0.104.169)
+                        haunted)
 
 
 # Labours with rules of their own (miners by the digging and picks, woodcutters
@@ -2138,7 +2154,12 @@ def brew_jobs_open(s: dict) -> int:
                if isinstance(o, dict) and o.get("by_ai") and o.get("recipe") in BREW_RECIPES)
 
 
-def _labor_waiting_rule(lb: dict, citizens: int, cfg: dict, proposals: list, thirsty: bool = False) -> None:
+# (0.105.22) the dead's work: slabs (a mason), their engraving, coffins
+DEAD_LABORS = ("MASON", "DETAIL", "STONE_CRAFT")
+
+
+def _labor_waiting_rule(lb: dict, citizens: int, cfg: dict, proposals: list, thirsty: bool = False,
+                        haunted: bool = False) -> None:
     """Work that waits for a worker (lua/ai-labor.lua's waiting_work): a
     labour with jobs nobody has taken while none of its dwarves is free gets
     more dwarves, through the detail that carries it (a few at a time, up to a
@@ -2151,7 +2172,11 @@ def _labor_waiting_rule(lb: dict, citizens: int, cfg: dict, proposals: list, thi
         lab, jobs, holders = str(w.get("labor")), int(w.get("jobs") or 0), int(w.get("holders") or 0)
         # (0.102.2) brewing while drink is short: one waiting job is enough
         # (Monastery: 5 stills, 4 brewers, drink 1.9 -> 0.1 a dwarf)
-        least = 1 if (thirsty and lab == "BREWER") else cfg["labor_waiting_jobs"]
+        # (0.105.22) and the dead's work while ghosts walk or bodies wait: B
+        # (4-5 Nov) had 41 ghosts, the slab order's one job waiting at the
+        # workshop "for a worker with the labour" 30 times, no mason added
+        least = 1 if ((thirsty and lab == "BREWER") or (haunted and lab in DEAD_LABORS)) \
+            else cfg["labor_waiting_jobs"]
         if (lab in OWN_LABOR_RULES or lab.startswith("HAUL") or jobs < least
                 or (w.get("idle") or 0) > 0 or w.get("mode") in LABOR_MODES_FIXED
                 or holders >= max(2, citizens // 4)):

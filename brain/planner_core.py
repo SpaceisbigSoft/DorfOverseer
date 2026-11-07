@@ -508,6 +508,7 @@ PLANNER_CONFIG = {
     "crossing_cooldown_ticks": 14 * 1200,
     "dig_stall_days": 28,              # (0.104.110) no tile dug on a level this long: its dig jobs let go of their workers
     "dig_stall_furnish_days": 56,      # ... and a level 90%+ dug is furnished without its last tiles
+    "unreached_dig_days": 56,          # (0.105.22) nothing dug at all in this many days (no one gets to it): given up
     "slow_dig_days": 336,              # (0.104.12) a project under half dug in a game year is given up
     "furniture_parallel_backlog": 4,   # (0.104.141) the stone order's pieces left per Masons' workshop before part goes to wood too
     "furniture_parallel_min": 3,       # (0.104.141) the smallest wooden part worth ordering
