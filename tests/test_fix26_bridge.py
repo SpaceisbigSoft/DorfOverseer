@@ -113,7 +113,7 @@ def _():
 
 # --- 2. version marks and `modules` ------------------------------------------
 
-MARKED = BRIDGE_PARTS + ["ai-builder"] + BUILDER_PARTS + ["ai-military-gear", "ai-society-burrows"]
+MARKED = BRIDGE_PARTS + ["ai-builder"] + BUILDER_PARTS + ["ai-military-gear", "ai-society-burrows", "ai-constructions"]
 
 
 @test("marks: every part carries one version mark, the same string as BRIDGE_VERSION")
@@ -144,6 +144,7 @@ def _():
     H.scripts["ai-builder"] = t(good)
     H.scripts["ai-military-gear"] = t({"PART_VERSIONS": {"ai-military-gear": VERSION}})
     H.scripts["ai-society-burrows"] = t({"PART_VERSIONS": {"ai-society-burrows": VERSION}})
+    H.scripts["ai-constructions"] = t({"PART_VERSIONS": {"ai-constructions": VERSION}})   # (0.105.30)
     assert lua_list(M.stale_parts()) == []
     H.scripts["ai-builder"].PART_VERSIONS["ai-builder-rooms"] = "0.0.1"
     H.scripts["ai-society-burrows"].PART_VERSIONS = None

@@ -214,6 +214,10 @@ ACTIONS = {
     build_crossing = act_build_crossing,
     remove_crossing = act_remove_crossing,
     place_keep = act_place_keep,
+    -- (0.105.30) construction: a surface hall, the gatehouse's wing walls, soil floors finished
+    place_hall = act_place_hall,
+    build_wings = act_build_wings,
+    floor_rooms = act_floor_rooms,
     deep_depot = act_deep_depot,                 -- (0.105.23)
     narrow_detail = act_narrow_detail,
     trim_labor = act_trim_labor,
@@ -357,6 +361,8 @@ for _, name in ipairs({
     'refresh_shelter',   -- (0.105.26)
     -- (0.105.27) disposal: each dry run returns before it changes anything
     'unforbid_items', 'mark_melt', 'mark_dump', 'empty_dump', 'set_standing_orders', 'place_dump',
+    -- (0.105.30) construction: each plans and returns before it places anything
+    'place_hall', 'build_wings', 'floor_rooms',
 }) do DRY_OK[name] = true end
 
 -- These only change what's displayed, so they still work while halted, dry
@@ -408,14 +414,14 @@ end
 -- `--@ module = true`, but this one and the parts, which are no modules);
 -- `modules` loads each. tests/test_fix26_bridge.py keeps it in step with lua/.
 BRIDGE_MODULES = {
-    'ai-builder', 'ai-camera', 'ai-census', 'ai-diplomacy', 'ai-disposal', 'ai-gates', 'ai-health', 'ai-homes',
+    'ai-builder', 'ai-camera', 'ai-census', 'ai-constructions', 'ai-diplomacy', 'ai-disposal', 'ai-gates', 'ai-health', 'ai-homes',
     'ai-industry', 'ai-joins', 'ai-labor', 'ai-layouts', 'ai-military', 'ai-military-gear',
     'ai-mission-send', 'ai-missions', 'ai-moods', 'ai-nobles', 'ai-overlay', 'ai-overseer-settings',
     'ai-ping', 'ai-reports', 'ai-society', 'ai-society-burrows', 'ai-status', 'ai-threats', 'ai-title',
     'ai-trade', 'ai-util', 'ai-water', 'ai-waterworks', 'gui/ai-overseer',
 }
 -- the split-off modules that carry a version mark of their own
-MARKED_MODULES = {'ai-military-gear', 'ai-society-burrows'}
+MARKED_MODULES = {'ai-military-gear', 'ai-society-burrows', 'ai-constructions'}
 
 -- The builder's parts by name ('ai-builder-sites', ...): from the loaded
 -- builder, else read from ai-builder.lua (a builder that fails to load).
@@ -685,6 +691,10 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
     -- seal and the siege (lua/ai-disposal.lua); cached a day, cleared by the
     -- disposal actions
     disposal = function() return safe(function() return reqscript('ai-disposal').report() end) end,
+    -- (0.105.30) what the fort has built: finished constructions by shape and
+    -- material, above or below ground, roofed surface tiles, the waiting ones
+    -- and the AI's own (lua/ai-constructions.lua; one pass, every 3 days)
+    constructions = function() return safe(function() return reqscript('ai-constructions').survey() end) end,
 }
 
 -- The pulse: a small report for the frequent check between full ones.
@@ -706,6 +716,7 @@ SECTION_CACHE_DAYS = {logistics = 3, industry = 7,   -- industry: 300-450 ms liv
     missions = 1,   -- (0.104.95) every world site walked
     homes = 1,      -- (0.104.168) each citizen's thoughts and every bedroom zone read
     disposal = 1}   -- (0.105.27) every item in play walked once for the marks
+SECTION_CACHE_DAYS.constructions = 3   -- (0.105.30) every built tile walked once
 SECTION_REBUILDS = 2       -- expired cached sections rebuilt in one report (a missing one always is)
 -- (0.100) the cached sections each action changes (cleared when it succeeds)
 CACHE_INVALIDATES = {
@@ -738,6 +749,10 @@ for _, name in ipairs({'unforbid_items', 'mark_melt', 'mark_dump', 'empty_dump',
     CACHE_INVALIDATES[name] = {'disposal'}
 end
 CACHE_INVALIDATES.set_standing_orders = {'disposal', 'dead'}
+-- (0.105.30) construction placed: the waiting count read again
+for _, name in ipairs({'place_hall', 'build_wings', 'floor_rooms', 'place_keep'}) do
+    CACHE_INVALIDATES[name] = {'constructions'}
+end
 SECTION_CACHE = SECTION_CACHE or {}
 -- (0.104.8) a new bridge starts with an empty cache: DFHack keeps a script's
 -- globals across runs, so a section cached by older code (0.104.7's

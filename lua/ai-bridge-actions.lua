@@ -859,12 +859,14 @@ function act_build_gate_doors(a)
     return reqscript('ai-gates').build_doors(id)
 end
 
-local GATE_STYLES = {plain = true, narrow = true, fortified = true, gatehouse = true, grand = true, drawbridge = true}
+-- (0.105.30) sealed: a cavern opening walled for good (the Hermit; ai-gates plan_gate)
+local GATE_STYLES = {plain = true, narrow = true, fortified = true, gatehouse = true, grand = true, drawbridge = true,
+                     sealed = true}
 
 function act_fortify_entrance(a)
     local id = whole_number(a.entrance_id)
     if not id then return reject('fortify_entrance needs entrance_id') end
-    if not GATE_STYLES[a.style] then return reject('fortify_entrance needs style plain|narrow|fortified|gatehouse|grand|drawbridge') end
+    if not GATE_STYLES[a.style] then return reject('fortify_entrance needs style plain|narrow|fortified|gatehouse|grand|drawbridge|sealed') end
     return reqscript('ai-gates').fortify(id, a.style)
 end
 
@@ -1664,6 +1666,48 @@ end
 -- The keep: walls round the way in, then a roof (lua/ai-builder.lua), a step at a time.
 function act_place_keep(a)
     return reqscript('ai-builder').place_keep(a.dry_run == true)
+end
+
+-- (0.105.30) construction. A builder or gates file without the function
+-- (one left behind at delivery) refuses cleanly instead of erroring.
+local function construct_call(mod, fn, what)
+    local ok, M = pcall(reqscript, mod)
+    local f = ok and type(M) == 'table' and M[fn] or nil
+    if type(f) ~= 'function' then
+        return nil, reject(('%s: %s.%s is not loaded (an older %s.lua?)'):format(what, mod, fn, mod))
+    end
+    return f
+end
+
+HALL_KINDS = {field_hall = true, market_hall = true}
+
+-- One stage of a surface hall (lua/ai-builder-halls.lua place_hall):
+-- {type = 'place_hall', kind = 'field_hall'|'market_hall', dry_run}
+function act_place_hall(a)
+    if not HALL_KINDS[a.kind] then return reject('place_hall needs kind field_hall|market_hall') end
+    local f, r = construct_call('ai-builder', 'place_hall', 'place_hall')
+    if not f then return r end
+    return f(a.kind, a.dry_run == true)
+end
+
+-- The two wall arms out from a standing gatehouse (lua/ai-gates.lua
+-- build_wings): {type = 'build_wings', entrance_id, dry_run}
+function act_build_wings(a)
+    local id = whole_number(a.entrance_id)
+    if not id then return reject('build_wings needs entrance_id') end
+    local f, r = construct_call('ai-gates', 'build_wings', 'build_wings')
+    if not f then return r end
+    return f(id, a.dry_run == true)
+end
+
+-- Block floors over the soil of a finished project (lua/ai-builder-rooms.lua
+-- floor_soil_rooms): {type = 'floor_rooms', project_id, dry_run}
+function act_floor_rooms(a)
+    local id = whole_number(a.project_id)
+    if not id then return reject('floor_rooms needs project_id') end
+    local f, r = construct_call('ai-builder', 'floor_soil_rooms', 'floor_rooms')
+    if not f then return r end
+    return f(id, a.dry_run == true)
 end
 
 -- (0.105.23, 14.1 step 4c) The Deep mine's trade depot underground: a 3-wide

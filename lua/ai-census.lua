@@ -519,7 +519,10 @@ function census()
     local t0 = os.clock()
     local oku, u = pcall(units)
     local oki, i = pcall(items)
+    -- (0.105.30) what the fort has built (lua/ai-constructions.lua; kept a day)
+    local okc, c = pcall(function() return reqscript('ai-constructions').survey() end)
     return {ok = true, units = oku and u or {error = tostring(u)}, items = oki and i or {error = tostring(i)},
+            constructions = okc and c or {error = tostring(c):sub(1, 160)},
             jobs = (function() local n, l = 0, df.global.world.jobs.list.next
                        while l do n = n + 1; l = l.next end return n end)(),
             ms = math.floor((os.clock() - t0) * 1000)}
