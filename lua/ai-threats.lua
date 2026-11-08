@@ -53,10 +53,11 @@ end
 
 -- the save's record: fire = {tiles = {"x,y,z", ...}}, thieves = {seen = {id
 -- = tick}, last, total}, moon = {changes = {{tick, phase}}}, cells = {uid =
--- {burrow, zone, doors = {ids}, tick, locked}}, sealed = {layer = {ids, tick}}
+-- {burrow, zone, doors = {ids}, tick, locked}}, sealed = {layer = {ids, tick,
+-- pulled?}}, (0.105.26) openings = {"x,y,z" = {x, y, z, kind, source, tick}}
 function load_state()
     local d = U.site_get(STATE_KEY, {})
-    for _, k in ipairs({'fire', 'thieves', 'moon', 'cells', 'sealed'}) do
+    for _, k in ipairs({'fire', 'thieves', 'moon', 'cells', 'sealed', 'openings'}) do
         d[k] = type(d[k]) == 'table' and d[k] or {}
     end
     d.fire.tiles = type(d.fire.tiles) == 'table' and d.fire.tiles or {}
@@ -502,6 +503,130 @@ local function rescue_report()
     return out
 end
 
+-- --- (0.105.26) the cavern openings ------------------------------------------------
+-- F lost 54 and C 12 to forgotten beasts that came in through caverns the AI
+-- opened. Every opening onto a cavern the AI knows is kept in the save
+-- (state.openings, by "x,y,z"): the gates scan's cavern entrances (their
+-- doors and hatches, or the opening itself while it has none: the brain has
+-- doors put on it), each cavern well's shaft hatch (the well's own lever
+-- works it: the shaft watcher shuts it while a great beast is in the caverns),
+-- and every door or hatch the seal found on the way down. The seal locks
+-- them all while a forgotten beast or other great danger is about.
+OPENINGS_MAX = 60
+
+local function okey(x, y, z) return ('%d,%d,%d'):format(x, y, z) end
+
+-- Pure-ish: one opening put on record (false when known, bad or the record is full).
+function note_opening(d, x, y, z, kind, source, t)
+    x, y, z = tonumber(x), tonumber(y), tonumber(z)
+    if not (x and y and z) then return false end
+    local k = okey(x, y, z)
+    local o = d.openings[k]
+    if o then
+        if kind ~= 'open' and o.kind == 'open' then o.kind, o.source = kind, source end
+        return false
+    end
+    local n = 0
+    for _ in pairs(d.openings) do n = n + 1 end
+    if n >= OPENINGS_MAX then return false end
+    d.openings[k] = {x = x, y = y, z = z, kind = kind, source = source, tick = t}
+    return true
+end
+
+function gather_openings(d, t)
+    pcall(function()
+        local G = reqscript('ai-gates')
+        for _, e in ipairs(G.GATES and G.GATES.entrances or {}) do
+            if e.kind == 'cavern' then
+                local src = 'cavern entrance ' .. tostring(e.id)
+                local doors = 0
+                for _, b in ipairs(e.equipment or {}) do
+                    if b.kind == 'door' or b.kind == 'hatch' then
+                        note_opening(d, b.x1, b.y1, b.z, 'gate', src, t)
+                        doors = doors + 1
+                    end
+                end
+                if doors == 0 then note_opening(d, e.x, e.y, e.z, 'open', src, t) end
+            end
+        end
+    end)
+    pcall(function()
+        for _, w in ipairs(reqscript('ai-builder').well_lids(false) or {}) do
+            local h = w.shaft_hatch
+            if type(h) == 'table' then
+                note_opening(d, h.x, h.y, h.z, 'well', 'cavern well ' .. tostring(w.project_id), t)
+            end
+        end
+    end)
+end
+
+-- What stands on one opening now: {building = 'Door'|'Hatch'|other, id,
+-- built, locked, closed} (nothing: no building there).
+local function opening_state(o)
+    local row = {}
+    pcall(function()
+        local b = dfhack.buildings.findAtTile(xyz2pos(o.x, o.y, o.z))
+        if not b then return end
+        local ty = b:getType()
+        if ty == df.building_type.Door or ty == df.building_type.Hatch then
+            row.building = ty == df.building_type.Door and 'Door' or 'Hatch'
+            row.id = b.id
+            pcall(function() row.built = b:getBuildStage() >= b:getMaxBuildStage() end)
+            pcall(function() row.locked = b.door_flags.forbidden == true end)
+            pcall(function() row.closed = b.door_flags.closed == true end)
+        else
+            row.building = tostring(df.building_type[ty] or ty)
+        end
+    end)
+    return row
+end
+
+-- {list = [{x, y, z, kind, source, building?, id?, built?, locked?, closed?,
+-- sealed? (the seal locked it, or shut it by its lever)}], n}
+function openings_report(d, t, txt)
+    gather_openings(d, t)
+    local ai = {}             -- the doors and hatches the seal locked or shut by their lever
+    for _, rec in pairs(d.sealed) do
+        if type(rec) == 'table' then
+            for _, id in ipairs(rec.ids or {}) do ai[id] = true end
+            for sid in pairs(type(rec.pulled) == 'table' and rec.pulled or {}) do ai[tonumber(sid) or sid] = true end
+        end
+    end
+    local list = {}
+    for _, o in pairs(d.openings) do
+        if type(o) == 'table' and o.x and o.y and o.z then
+            local row = opening_state(o)
+            if row.id and ai[row.id] then row.sealed = true end
+            row.x, row.y, row.z, row.kind, row.source = o.x, o.y, o.z, o.kind, o.source
+            table.insert(list, row)
+        end
+    end
+    table.sort(list, function(a, b)
+        if a.z ~= b.z then return a.z < b.z end
+        if a.y ~= b.y then return a.y < b.y end
+        return a.x < b.x
+    end)
+    return {list = list, n = #list}
+end
+
+-- (0.105.26) Citizens down in a cavern (on a cavern tile): the seal waits for them.
+function cavern_citizens(txt)
+    local out = {list = {}, n = 0}
+    for _, u in ipairs(dfhack.units.getCitizens(true)) do
+        local ok, cave = pcall(function()
+            local des = dfhack.maps.getTileFlags(u.pos.x, u.pos.y, u.pos.z)
+            return des and (des.feature_global or des.feature_local) and true or false
+        end)
+        if ok and cave then
+            out.n = out.n + 1
+            if #out.list < 10 then
+                table.insert(out.list, {id = u.id, name = name_of(u, txt), x = u.pos.x, y = u.pos.y, z = u.pos.z})
+            end
+        end
+    end
+    return out
+end
+
 function survey(txt)
     local d = load_state()
     local t = now_tick()
@@ -518,6 +643,8 @@ function survey(txt)
     part('were', were_report, d, t, txt)
     part('surface', surface_report, cit, txt)
     part('rescue', rescue_report)
+    part('openings', openings_report, d, t, txt)          -- (0.105.26)
+    part('cavern_citizens', cavern_citizens, txt)         -- (0.105.26)
     out.sealed = {}
     for layer, s in pairs(d.sealed) do
         if type(s) == 'table' then
@@ -888,7 +1015,30 @@ end
 -- locked; open: unlocked (only those the AI locked). (0.105.0 review) only
 -- on those very tiles (no longer every door within a tile of them), and
 -- refused while a citizen is down in the cavern (z1..z2: its levels).
-function seal_cavern(layer, tiles, open, dry_run, z1, z2)
+-- (0.105.26) openings: every opening on record too (state.openings), but
+-- never a cavern well's shaft hatch (its lever and the shaft watcher work
+-- it, and the bucket needs it open whenever no great beast is about); a
+-- door or hatch on a lever is shut by that lever (a lock does nothing to
+-- it) when the lever works nothing else, and opened by it again after. The
+-- doors and hatches found are put on record as openings. Said in the game.
+local function announce(text, color)
+    pcall(function() dfhack.gui.showAnnouncement('AI Overseer: ' .. text, color or COLOR_YELLOW, true) end)
+end
+
+-- a lever that works this building and nothing else, or nil
+local function own_lever(bid)
+    local ok, lid = pcall(function()
+        local G = reqscript('ai-gates')
+        local links = G.lever_links()
+        for _, l in ipairs(links[bid] or {}) do
+            local targets = G.lever_targets(links, l)
+            if #targets == 1 and targets[1] == bid then return l end
+        end
+    end)
+    return ok and lid or nil
+end
+
+function seal_cavern(layer, tiles, open, dry_run, z1, z2, openings)
     local d = load_state()
     local t = now_tick()
     local rec = type(d.sealed[layer]) == 'table' and d.sealed[layer] or nil
@@ -904,9 +1054,20 @@ function seal_cavern(layer, tiles, open, dry_run, z1, z2)
                 end
             end)
         end
+        for sid, lever in pairs(type(rec.pulled) == 'table' and rec.pulled or {}) do
+            pcall(function()
+                local b = df.building.find(tonumber(sid))
+                if b and b.door_flags.closed then
+                    if not dry_run then reqscript('ai-gates').pull_instant(lever) end
+                    n = n + 1
+                end
+            end)
+        end
         if not dry_run then
             d.sealed[layer] = nil
             save_state(d)
+            announce(('the ways into the caverns opened again (%s): no great beast left'):format(tostring(layer)),
+                     COLOR_GREEN)
         end
         return {ok = true, unlocked = n, layer = layer, dry_run = dry_run or nil}
     end
@@ -915,34 +1076,70 @@ function seal_cavern(layer, tiles, open, dry_run, z1, z2)
         return {ok = false, rejected = true, waiting = true,
                 error = name_of(inside) .. ' is down in ' .. tostring(layer) .. ': not sealed while a dwarf is on the far side'}
     end
-    local found = {}
+    local skip, list, given = {}, {}, {}
+    for _, o in pairs(d.openings) do
+        if type(o) == 'table' and o.kind == 'well' and o.x then skip[okey(o.x, o.y, o.z)] = true end
+    end
     for _, p in ipairs(tiles or {}) do
         local x, y, z = tonumber(p.x), tonumber(p.y), tonumber(p.z)
         if x and y and z then
+            table.insert(list, {x = x, y = y, z = z})
+            given[okey(x, y, z)] = true
+        end
+    end
+    if openings then
+        for _, o in pairs(d.openings) do
+            if type(o) == 'table' and o.x and o.kind ~= 'well' then table.insert(list, {x = o.x, y = o.y, z = o.z}) end
+        end
+    end
+    local found, at = {}, {}
+    for _, p in ipairs(list) do
+        if not skip[okey(p.x, p.y, p.z)] then
             pcall(function()
-                local b = dfhack.buildings.findAtTile(xyz2pos(x, y, z))
+                local b = dfhack.buildings.findAtTile(xyz2pos(p.x, p.y, p.z))
                 if b and (b:getType() == df.building_type.Door or b:getType() == df.building_type.Hatch) then
                     found[b.id] = b
+                    at[b.id] = p
                 end
             end)
         end
     end
     rec = rec or {ids = {}, tick = t}
+    rec.pulled = type(rec.pulled) == 'table' and rec.pulled or {}
     local have, n, already = {}, 0, 0
     for _, id in ipairs(rec.ids) do have[id] = true end
     for id, b in pairs(found) do
-        local okf, f = pcall(function() return b.door_flags.forbidden end)
-        if okf and not f then
-            if not dry_run then
-                b.door_flags.forbidden = true
-                if not have[id] then table.insert(rec.ids, id) end
+        local lever = own_lever(id)
+        if lever then
+            local okc, c = pcall(function() return b.door_flags.closed end)
+            if okc and not c then
+                if not dry_run then
+                    local okp, pulled = pcall(function() return reqscript('ai-gates').pull_instant(lever) end)
+                    if okp and pulled then rec.pulled[tostring(id)] = lever end
+                end
+                n = n + 1
+            elseif okc then
+                already = already + 1
             end
-            n = n + 1
-        elseif okf then
-            already = already + 1
+        else
+            local okf, f = pcall(function() return b.door_flags.forbidden end)
+            if okf and not f then
+                if not dry_run then
+                    b.door_flags.forbidden = true
+                    if not have[id] then table.insert(rec.ids, id) end
+                end
+                n = n + 1
+            elseif okf then
+                already = already + 1
+            end
+        end
+        local p = at[id]
+        if p and given[okey(p.x, p.y, p.z)] and not dry_run then
+            note_opening(d, p.x, p.y, p.z, 'way_down', tostring(layer), t)
         end
     end
     if n == 0 then
+        if not dry_run then save_state(d) end          -- (the openings found are kept)
         return {ok = false, rejected = true, nothing_to_do = already > 0,
                 error = already > 0 and 'every door and hatch on the way down is locked already'
                     or 'no door or hatch on the way down to lock'}
@@ -950,6 +1147,7 @@ function seal_cavern(layer, tiles, open, dry_run, z1, z2)
     if not dry_run then
         d.sealed[layer] = rec
         save_state(d)
+        announce(('%d way(s) into the caverns locked against a great beast (%s)'):format(n, tostring(layer)))
     end
     return {ok = true, locked = n, layer = layer, dry_run = dry_run or nil}
 end

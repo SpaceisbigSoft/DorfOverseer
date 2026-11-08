@@ -13,13 +13,90 @@ from quirks import has_rule
 from digest import _d, _l
 from planner_core import *  # noqa: F401,F403
 
-__all__ = ["_gate_rules", "GATE_PART_RECIPES", "GATE_PART_STUCK_DAYS", "_gate_parts_rule", "_free_gate_levers", "_lever_far_enough", "machinery_wanted", "_lever_hatches_ok", "_link_wanted", "_lever_rule", "_trap_rule", "_gatehouse_rule", "_near_spot", "lone_intruders", "few_ordinary", "few_alert_over", "hunted_outside", "ai_gates_shut", "_Rec", "_lockdown", "lockdown_released", "lone_alert_over", "_lockdown_ids", "_lockdown_cap_why", "note_lockdown", "quick_clear", "PASTURE_ACTIONS", "_pasture_hold", "gate_invaders", "main_gate", "_gate_guard_rule", "_gate_dogs_rule"]
+__all__ = ["_gate_rules", "_stranded_rule", "STRANDED_CONFIG", "GATE_PART_RECIPES", "GATE_PART_STUCK_DAYS", "_gate_parts_rule", "_free_gate_levers", "_lever_far_enough", "machinery_wanted", "_lever_hatches_ok", "_link_wanted", "_lever_rule", "_trap_rule", "_gatehouse_rule", "_near_spot", "lone_intruders", "few_ordinary", "few_alert_over", "hunted_outside", "ai_gates_shut", "_Rec", "_lockdown", "lockdown_released", "lone_alert_over", "_lockdown_ids", "_lockdown_cap_why", "note_lockdown", "quick_clear", "PASTURE_ACTIONS", "_pasture_hold", "gate_invaders", "main_gate", "_gate_guard_rule", "_gate_dogs_rule"]
+
+
+# (0.105.26) citizens stranded outside (lua/ai-gates.lua stranded_citizens)
+STRANDED_CONFIG = {
+    "stranded_after_ticks": 200,         # out this long (~4 game hours) before the rule acts
+    "stranded_danger_near": 30,          # an enemy this close to them or the gate: held back
+    "stranded_cooldown_ticks": 300,
+}
+PLANNER_CONFIG.update({k: v for k, v in STRANDED_CONFIG.items() if k not in PLANNER_CONFIG})
+STEER_PROTECTED.add("stranded")
+AGENDA_THEMES["stranded"] = "bring in the dwarves shut outside"
+
+
+def _stranded_rule(s: dict, cfg: dict, proposals: list, notes: list) -> bool:
+    """(0.105.26) E (3-5 Nov): 8 citizens shut outside after a surface fire
+    died there. A gate the AI shut (the watcher's lockdown or another) with
+    no enemy near it or them: the gates opened (open_gates). No way in at all
+    (a collapse, a fire): put to the player with their names and where. Held
+    while an enemy is near. True when the gates are being opened (the gate
+    rule then doesn't arm them in the same cycle)."""
+    ent = _d(s.get("entrances"))
+    rows = [r for r in _l(ent.get("stranded")) if isinstance(r, dict)
+            and (r.get("out_ticks") or 0) >= cfg.get("stranded_after_ticks", 200)]
+    if not rows:
+        return False
+    off = _d(s.get("map")).get("elevation_offset")
+    off = off if isinstance(off, int) else 0
+    near_d = cfg.get("stranded_danger_near", 30)
+
+    def where(r):
+        return f"{r.get('name') or 'a dwarf'} (x{r.get('x')} y{r.get('y')} elevation {(r.get('z') or 0) + off})"
+
+    def days(rs):
+        d = max(int(r.get("out_days") or 0) for r in rs)
+        return f"{d} day(s)" if d else f"{max(int(r.get('out_ticks') or 0) for r in rs) // 50} hour(s)"
+
+    def danger(r):
+        ds = [r.get(k) for k in ("danger_near", "gate_danger") if isinstance(r.get(k), (int, float))]
+        return min(ds) if ds else None
+
+    hot = [r for r in rows if danger(r) is not None and danger(r) <= near_d]
+    if hot:
+        notes.append(f"{len(rows)} citizen(s) can't get back into the fort ({', '.join(where(r) for r in rows[:3])}), "
+                     f"but an enemy is {min(danger(r) for r in hot)} tiles away: the gates stay as they are for now")
+        return False
+    cave = [r for r in rows if r.get("in_cavern")]
+    gate = [r for r in rows if not r.get("in_cavern") and r.get("cause") in ("gate_shut", "lockdown")]
+    ai_gate = [r for r in gate if r.get("by_ai")]
+    other_gate = [r for r in gate if not r.get("by_ai")]
+    nopath = [r for r in rows if not r.get("in_cavern") and r.get("cause") == "no_path"]
+    opening = False
+    if ai_gate:
+        lock = any(r.get("cause") == "lockdown" for r in ai_gate)
+        e = _d(ai_gate[0].get("entrance"))
+        proposals.append(Proposal("stranded", {"type": "open_gates"},
+                                  f"{len(ai_gate)} citizen(s) shut outside for {days(ai_gate)} by "
+                                  + ("the lockdown" if lock else "a shut gate")
+                                  + f" at x{e.get('x')} y{e.get('y')} ({', '.join(where(r) for r in ai_gate[:3])}) "
+                                  "and no enemy near: open the gates to let them in", 0))
+        opening = True
+    if other_gate:
+        e = _d(other_gate[0].get("entrance"))
+        ask_player(notes, f"{len(other_gate)} citizen(s) shut outside for {days(other_gate)} "
+                          f"({', '.join(where(r) for r in other_gate[:4])}): the gate at x{e.get('x')} "
+                          f"y{e.get('y')} elevation {(e.get('z') or 0) + off} is shut, not by the AI (a raised "
+                          "bridge or a locked door): open it")
+    if nopath:
+        ask_player(notes, f"{len(nopath)} citizen(s) stranded outside for {days(nopath)} with no way back in "
+                          f"(a collapse or a fire?): {', '.join(where(r) for r in nopath[:5])}"
+                          + (f" and {len(nopath) - 5} more" if len(nopath) > 5 else "")
+                          + ": dig or build them a way in")
+    if cave:
+        ask_player(notes, f"{len(cave)} citizen(s) down in the caverns can't get back up for {days(cave)} "
+                          f"({', '.join(where(r) for r in cave[:4])}): the way up is shut or gone; "
+                          "it opens when the cavern's danger is gone, or open it yourself")
+    return opening
 
 
 def _gate_rules(s: dict, memory, cfg: dict, rules_: dict, any_reach: bool,
                 proposals: list, notes: list, traits: dict | None = None) -> None:
     ent = _d(s.get("entrances"))
     now = abs_tick(s)
+    letting_in = _stranded_rule(s, cfg, proposals, notes)       # (0.105.26)
     age = now - ent["scanned_tick"] if isinstance(ent.get("scanned_tick"), int) else None
     stale = (not ent.get("scanned") or age is None or not 0 <= age < cfg["entrance_scan_ticks"]
              or memory.rescan_entrances
@@ -48,7 +125,7 @@ def _gate_rules(s: dict, memory, cfg: dict, rules_: dict, any_reach: bool,
                      f"only {len(hunted)} ordinary enemy/enemies outside, and a squad on them or citizens out: "
                      "the gates stay open (shut, they keep the squads in and the citizens out)" if hunted else
                      "the AI's lockdown was lifted (no new enemy for days): the gates stay open until a new one comes")
-    elif any_reach and closable and not ent.get("armed") and rules_["gate_lever"]:
+    elif any_reach and closable and not ent.get("armed") and rules_["gate_lever"] and not letting_in:
         proposals.append(Proposal("gates", {"type": "arm_gates"},
                                   f"a threat can reach the dwarves: watch the {len(closable)} gate(s); each closes "
                                   "once everyone is inside or the danger is 12 tiles away", 0))
