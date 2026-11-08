@@ -2646,10 +2646,31 @@ def _():
     m = Memory()
     from planner import Proposal
     p = Proposal("project", {"type": "furnish_project", "project_id": 3}, "x", 3)
-    record([(p, {"ok": False, "error": "the game would not place the well over the hole at x1 y2 z3"})], s, m)
+    # (0.105.24) the bridge's give-up (3 tries, what it saw)
+    record([(p, {"ok": False, "error": "the game would not place the well over the hole at x1 y2 z3 (3 tries; "
+                                       "tiles: z3 OpenSpace, z2 OpenSpace, z1 OpenSpace; beside: StoneFloor1)"})], s, m)
     props, notes = plan(s, m)
     assert not by_rule(props, "well"), "would dig another hole"
     assert any(n.startswith("no well could be placed: the game would not place") for n in notes), notes
+
+
+@test("0.105.24 wells: a refusal the bridge tries again isn't 'no well'; the old refusal (C, F) cleared once")
+def _():
+    s = fort()
+    s["buildings"]["other"].pop("Well")
+    m = Memory()
+    from planner import Proposal
+    p = Proposal("project", {"type": "furnish_project", "project_id": 3}, "x", 3)
+    record([(p, {"ok": False, "retry": True, "error": "the game would not put the well over the hole at x1 y2 z3 "
+                                                      "yet: no floor beside it; a floor is dug beside it"})], s, m)
+    assert m.well_failure == ""
+    # the old refusal (before the bridge said what it saw): cleared once, a well tried again
+    m.well_failure = "the game would not place the well over the hole at x131 y129 z24"
+    props, notes = plan(s, m)
+    assert by_rule(props, "well") and m.well_floor_retried and m.well_failure == "", notes
+    m.well_failure = "the game would not place the well over the hole at x131 y129 z24"
+    props, notes = plan(s, m)
+    assert not by_rule(props, "well")                              # once only
 
 
 @test("supplies: an old bridge without the supplies section -> supply rules skipped, said once")

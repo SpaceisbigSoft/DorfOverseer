@@ -140,6 +140,15 @@ def _well_rule(s: dict, memory, traits: dict, cfg: dict, proposals: list, notes:
         if memory.cavern_well_failure.startswith("the last cavern well's shaft was under half dug"):
             memory.cavern_well_failure = ""
             cavern_failure = ""
+    # (0.105.24) C and F (3 Nov): "the game would not place the well over the
+    # hole" stopped every well for good. The cause (quickfort wants a floor
+    # beside the well; a gallery's shaft top had none) is fixed and the bridge
+    # takes such a well up again (a floor dug beside it): the old refusal,
+    # from before the bridge said what it saw ("tiles: ..."), cleared once.
+    if not memory.well_floor_retried:
+        memory.well_floor_retried = True
+        if "would not place the well over the hole" in memory.well_failure and "tiles:" not in memory.well_failure:
+            memory.well_failure = ""
     # (0.104.13) the injured or the parched waiting: the well takes one of the
     # urgent slots (as soap, tombs and the hospital do) and is dug first
     urgent = bool(patients or parched)
