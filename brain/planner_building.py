@@ -7,6 +7,7 @@ import re
 from dataclasses import asdict, dataclass, field
 from culture import layout_style, new_history, pick_stone, profile_from, stone_for
 from learning import held_levels
+import customs
 import masterplan
 import phases
 from quirks import has_rule
@@ -1266,7 +1267,13 @@ def _project_rules(s, traits, cfg, proposals, notes, can_use, memory) -> None:
         if young:
             action["style"].update(smooth=0, statues=0)    # a young fort builds plain: smoothing and statues later
         where = (masterplan.hint(memory, action["kind"], slot=action.get("set_piece"), traits=traits,
-                                 profile=profile) if memory is not None else None)
+                                 profile=profile, action=action, citizens=citizens) if memory is not None else None)
+        lc = customs.layout_customs(traits, action["kind"])   # (0.105.29) the fort's customs
+        if lc:
+            action["style"]["customs"] = lc
+        cs = sorted(set(lc) | set((where or {}).get("customs") or []))
+        if cs:
+            action["customs"] = cs
         if where:
             # the door rule follows the fort as it is now (the plan's own was set when it was drawn)
             where["doors"] = ("fortified" if traits.get("fortification", 0) >= 70

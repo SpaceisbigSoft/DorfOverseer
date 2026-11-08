@@ -13,6 +13,7 @@ from culture import apply_style, explain, layout_style, new_history, pick_stone,
 from quirks import describe as describe_quirks
 from digest import _d, normalize
 import calibrate
+import customs
 import learning
 import memstore
 from planner import PLANNER_CONFIG, TICKS_PER_DAY, Memory, Proposal, abs_tick, level_refused
@@ -228,6 +229,9 @@ def maybe_review(state: dict, memory: Memory, bank: TokenBank, backend, bridge_i
             continue
         if a["type"] == "start_project":
             a = dict(a, style=layout_style(profile_from(traits, memory.culture or new_history())))
+            lc = customs.layout_customs(traits, a.get("kind"))    # (0.105.29) the fort's customs, whoever proposes
+            if lc:
+                a["style"]["customs"], a["customs"] = lc, sorted(lc)
         if a["type"] == "civ_alert" and not a["on"] and s.get("civ_alert") and not memory.ai_alert_raised:
             answer.rejected.append("civ_alert off: the player raised this alert; the AI won't lower it")
             continue
