@@ -472,6 +472,8 @@ def short(a: dict) -> str:
         return "leave DF's meeting screen"
     if t == "answer_meeting":    # (0.105.0)
         return "answer the diplomat's meeting"
+    if t == "send_mission":      # (0.105.24, 13b)
+        return f"send the messenger to make contact with site {a.get('site_id')} (World screen)"
     if t == "keep_mousers":      # (0.104.168)
         return f"keep {a.get('count') or 'a few'} cats from the butcher to hunt the vermin"
     if t == "prune_remains":
@@ -1023,6 +1025,9 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
                                        "marked for felling first; placed once they're down")
                     elif r.get("ok") is True and p.action["type"] == "open_trade" and r.get("clicking"):
                         outcome_txt = f"clicked the depot's Trade button at {r.get('at')} (the screen is checked next cycle)"
+                    elif r.get("ok") is True and p.action["type"] == "send_mission" and r.get("sending"):   # (0.105.24)
+                        outcome_txt = (f"the World screen driven to send the messenger to {r.get('site') or r.get('site_id')} "
+                                       "(each step checked over the next frames; the outcome in the missions report)")
                     elif r.get("ok") is True and p.action["type"] == "call_trader" and not r.get("waiting"):
                         outcome_txt = ("the trader is at the depot" if r.get("at_depot") else
                                        "anyone may trade now (the broker didn't come)" if r.get("anyone") else

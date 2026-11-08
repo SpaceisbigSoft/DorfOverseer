@@ -96,6 +96,7 @@ for _, u in ipairs(spec.units) do
                          military = {squad_id = u.squad or -1}, relationship_ids = {Mother = u.mother or -1},
                          occupations = u.staff and {{id = 1}} or {},
                          health = {flags = {needs_healthcare = u.patient == true}},
+                         body = {wounds = u.wounds and {{id = 1}} or {}},   -- (0.105.24) the messenger is healthy
                          status = {current_soul = {skills = skills, personality = {needs = needs}}}})
 end
 for _, f in pairs({}) do end

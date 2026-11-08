@@ -6346,6 +6346,18 @@ function act_answer_meeting(a)
     return reqscript('ai-diplomacy').answer_meeting({tribute = a.tribute, wishes = a.wishes, dry_run = a.dry_run == true}, txt)
 end
 
+-- (0.105.24, 13b) The messenger sent on "Make contact" to a site, by driving
+-- DF's World screen as the player does (lua/ai-mission-send.lua). Only with
+-- the Rules switch send_messenger on; the steps run over the next frames and
+-- stop (the screen shut) at the first one that differs from what was
+-- recorded; the outcome shows in the `missions` report's `send`.
+function act_send_mission(a)
+    if a.goal ~= nil and a.goal ~= 'make_contact' then return reject('send_mission: goal is make_contact') end
+    local site = int_in(a.site_id, 0, 1000000)
+    if not site then return reject('send_mission needs site_id: a site\'s id') end
+    return reqscript('ai-mission-send').start({goal = 'make_contact', site_id = site, dry_run = a.dry_run == true})
+end
+
 function act_close_trade(a)
     if a.dry_run then return {ok = true, dry_run = true} end
     if not reqscript('ai-trade').opened_by_ai() and a.force ~= true then
@@ -6694,6 +6706,7 @@ ACTIONS = {
     close_trade = act_close_trade,
     close_meeting = act_close_meeting,
     answer_meeting = act_answer_meeting,  -- (0.105.0)
+    send_mission = act_send_mission,      -- (0.105.24) Make contact by the World screen (lua/ai-mission-send.lua)
     keep_mousers = act_keep_mousers,      -- (0.104.168)
     water_zone = act_water_zone,
     sand_zone = act_sand_zone,
@@ -6852,7 +6865,13 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
     others_on_map = function() return safe(get_others_on_map) end,
     deep = function() return safe(get_deep) end,
     -- (0.104.95, 13b) the fort's world-map missions, read only (lua/ai-missions.lua)
-    missions = function() return safe(function() return reqscript('ai-missions').report() end) end,
+    -- (0.105.24) with `send`: the World-screen sender's run under way and its last outcome
+    missions = function() return safe(function()
+        local r = reqscript('ai-missions').report()
+        local oks, send = pcall(function() return reqscript('ai-mission-send').status() end)
+        if oks then r.send = send end
+        return r
+    end) end,
     needs = function() return safe(get_needs) end,
     hazards = function() return safe(get_hazards) end,
     -- (0.105.0) round 3: fire places, prisoners, thieves, undead, werebeasts, the wounded (lua/ai-threats.lua)
@@ -7143,6 +7162,7 @@ SECTION_REBUILDS = 2       -- expired cached sections rebuilt in one report (a m
 CACHE_INVALIDATES = {
     place_in_zone = {'justice'}, convict = {'justice'},
     give_room = {'noble_rooms'}, appoint = {'noble_rooms'}, quick_location = {'locations'},
+    send_mission = {'missions'},   -- (0.105.24) the sender's status read again
     add_posts = {'locations'}, staff_location = {'locations'}, vacate_post = {'locations', 'health'}, retarget_hall = {'locations', 'registry'},
     answer_petition = {'petitions', 'locations'}, petition_orders = {'petitions'},
     give_trinkets = {'needs'}, idle_crafting = {'needs'}, unload_depot = {'needs'},
@@ -7480,6 +7500,14 @@ local function cmd_probe_missions()
     if not ok then return {ok = false, error = tostring(r):sub(1, 300)} end
     r.ok = true
     return r
+end
+
+-- (0.105.24, 13b) ai-bridge mission_here World|Diplomacy: the mouse is on
+-- that button (the toolbar's World button; Diplomacy on New mission),
+-- remember where (lua/ai-mission-send.lua)
+local function cmd_mission_here(args)
+    if not in_fort() then return NOT_IN_FORT end
+    return reqscript('ai-mission-send').calibrate((args or {})[1] or 'World')
 end
 
 -- (0.104.129, 12i) ai-bridge probe_justice: DF's Justice screen and the
@@ -7990,6 +8018,7 @@ local COMMANDS = {
     probe_occupations = cmd_probe_occupations,
     probe_trade = cmd_probe_trade,
     probe_missions = cmd_probe_missions,
+    mission_here = cmd_mission_here,      -- (0.105.24)
     probe_meeting = cmd_probe_meeting,    -- (0.105.0)
     meeting_here = cmd_meeting_here,      -- (0.105.0)
     probe_justice = cmd_probe_justice,

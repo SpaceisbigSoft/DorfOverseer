@@ -18,7 +18,9 @@ screen when it is open. From it:
   * a messenger is appointed when the fort has the post, and a site not in
     contact is named for "Make contact" (13b) once one is free: the World
     screen's last steps (the messenger, the confirm) have never been seen, so
-    the AI says what to send and watches the mission in the `missions` report.
+    the AI says what to send and watches the mission in the `missions` report;
+    (0.105.24) with the Rules switch send_messenger on, it drives the World
+    screen itself as far as the recorded steps go (lua/ai-mission-send.lua).
 
 Citizenship petitions are not answered: DFHack 53.16-r3 can't set the
 standing orders, and agreeing to one in the save without DF's own steps is
@@ -287,10 +289,23 @@ def _contact_site(s: dict, memory) -> dict | None:
     return min(sites, key=lambda x: (int(x.get("dist") or 999), int(x.get("id") or 0)))
 
 
-def _contact_rule(s: dict, cfg: dict, notes: list, memory=None) -> None:
-    """(13b) A site not in contact, nearest first, named for "Make contact"
-    once the messenger is home, no Diplomacy mission is out and no threat or
-    siege is near; the mission's way out and back watched in `missions`."""
+def _send_status(s: dict) -> dict:
+    """(0.105.24) The World-screen sender's state (lua/ai-mission-send.lua,
+    the `missions` report's `send`): {running, last, buttons, on}."""
+    return _d(_d(s.get("missions")).get("send"))
+
+
+SEND_RETRY_TICKS = TICKS_PER_YEAR   # a run that stopped: not tried again for a year (the player records the rest)
+
+
+def _contact_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None) -> None:
+    """(13b) A site not in contact, nearest first, for "Make contact" once
+    the messenger is home, no Diplomacy mission is out and no threat or
+    siege is near; the mission's way out and back watched in `missions`.
+    (0.105.24) With the Rules switch send_messenger on, the AI sends it
+    itself by driving DF's World screen (one run at a time; a run that
+    stopped at a step nobody has recorded yet isn't tried again for a year,
+    and says what to record); off, it names the site for the player."""
     rules = player_rules(s)
     if not rules["make_contact"]:
         return
@@ -301,6 +316,11 @@ def _contact_rule(s: dict, cfg: dict, notes: list, memory=None) -> None:
         notes.append(f"the messenger is {'on the way home from' if c.get('returning') else 'away to'} "
                      f"{c.get('site') or 'a site'} (Make contact): one mission at a time")
         return
+    send = _send_status(s)
+    running = _d(send.get("running"))
+    if running:
+        notes.append(f"the messenger is being sent (World screen, step {running.get('step')}): one at a time")
+        return
     o = _d(_d(_d(s.get("offices")).get("offices")).get("MESSENGER"))
     if not _l(o.get("held")):
         return
@@ -309,10 +329,41 @@ def _contact_rule(s: dict, cfg: dict, notes: list, memory=None) -> None:
                for x in _l(_d(ms.get("sites")).get("nearest"))):
             notes.append("a site waits for Make contact, but not while a threat is near")
         return
+    last = _d(send.get("last"))
+    now = abs_tick(s)
+    last_tick = last.get("tick") if isinstance(last.get("tick"), int) else None
+    recent = last_tick is not None and 0 <= now - last_tick < SEND_RETRY_TICKS
+    if rules["send_messenger"] and recent and last.get("result") in ("stopped", "error"):
+        # said once a season (the same cooldown as the site's name)
+        if _contact_site(s, memory) is not None:
+            ask_player(notes, f"Make contact (13b): the AI's try to send the messenger to "
+                              f"{last.get('site') or 'site ' + str(last.get('site_id'))} stopped at the World screen's "
+                              f"\"{last.get('step')}\" step: {last.get('why') or last.get('reason')}. "
+                              + ("A new army controller was left behind: look at the World screen's missions. "
+                                 if last.get("controller_left") else "")
+                              + "Send one by hand while python brain\\probe_missions.py --watch records the steps "
+                              "(the AI tries again in a year)")
+        return
     site = _contact_site(s, memory)
     if site is None:
         return
+    name = site.get("name") or "site " + str(site.get("id"))
+    if rules["send_messenger"] and send:
+        known = set(str(b) for b in _l(send.get("buttons")))
+        if "World" not in known:
+            ask_player(notes, "Make contact (13b): to send the messenger the AI needs to see DF's World button "
+                              "once: put the mouse on it and run python brain\\probe_missions.py --here World"
+                              + ("" if "Diplomacy" in known else "; then, with a site's New mission showing, "
+                                 "on Diplomacy: --here Diplomacy"))
+            return
+        if last.get("result") == "sent" and recent and now - last_tick < TICKS_PER_YEAR // 4:
+            return          # sent this season: its controller shows in `missions` soon
+        proposals.append(Proposal("contact", {"type": "send_mission", "goal": "make_contact", "site_id": site.get("id")},
+                                  f"send the messenger ({_l(o.get('held'))[0]}) to make contact with {name} "
+                                  f"({site.get('dist')} tiles away, not in contact), by the World screen", 7))
+        return
     ask_player(notes, f"Make contact (13b): the messenger ({_l(o.get('held'))[0]}) can go to "
-                      f"{site.get('name') or 'site ' + str(site.get('id'))} ({site.get('dist')} tiles away), a site "
+                      f"{name} ({site.get('dist')} tiles away), a site "
                       "not in contact: World screen, the site, Diplomacy, Make contact. The AI can't press those "
-                      "buttons yet; send it by hand while python brain\\probe_missions.py --watch records the steps")
+                      "buttons yet (the Rules switch \"Send it by the World screen\" tries); send it by hand while "
+                      "python brain\\probe_missions.py --watch records the steps")

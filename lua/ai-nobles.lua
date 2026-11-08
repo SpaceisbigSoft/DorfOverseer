@@ -56,7 +56,7 @@ table.insert(OFFICE_ORDER, 'MILITIA_CAPTAIN')
 -- fort's word on a Diplomacy mission ("Make contact"): only when the fort has
 -- the post, and never a soldier, a mother of a baby, a hospital's or any
 -- location's staff, a patient, nor a dwarf holding another office (they'd be
--- away for seasons): the best talker of the rest.
+-- away for seasons): the best talker of the rest. (0.105.24) Nor one wounded.
 OFFICES.MESSENGER = {'PERSUASION', 'NEGOTIATION', 'CONVERSATION', 'JUDGING_INTENT'}
 CIVILIAN_AWAY_OFFICES = {MESSENGER = true}
 table.insert(OFFICE_ORDER, 'MESSENGER')
@@ -74,7 +74,7 @@ function pick_holder(cands, military)
         -- patient, one of the hospitals' (or any location's) staff, nor the
         -- unhappy; one who wants to fight first
         if not c.child and not (military and (c.mother or c.patient or c.staff or c.miserable or c.unhappy))
-                and not (c.away_post and (c.mother or c.patient or c.staff or (c.offices or 0) > 0)) then   -- (0.105.0)
+                and not (c.away_post and (c.mother or c.patient or c.staff or c.hurt or (c.offices or 0) > 0)) then   -- (0.105.0; hurt 0.105.24)
             local score = 0
             for i, lvl in ipairs(c.skills or {}) do score = score + (i == 1 and 2 or 1) * (lvl or 0) end
             -- a dwarf already holding an office only when nobody else will do
@@ -239,6 +239,8 @@ local function candidates(code)
                 pcall(function() c.patient = (u.health and u.health.flags.needs_healthcare) or nil end)
                 pcall(function() c.staff = #u.occupations > 0 or nil end)
                 c.mother = mothers()[u.id] or nil
+                -- (0.105.24) healthy: never one with an open wound (seasons on the road)
+                pcall(function() c.hurt = (#u.body.wounds > 0) or nil end)
                 c.away_post = true
             end
             if military then      -- (0.104.168, review)

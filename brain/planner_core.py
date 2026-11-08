@@ -982,6 +982,8 @@ def player_rules(s: dict) -> dict:
             "tribute": st.get("tribute") if st.get("tribute") in ("small", "pay", "refuse") else "small",
             # (0.105.0, 13b) a messenger appointed and sent to make contact with sites not in contact
             "make_contact": st.get("make_contact") is not False,
+            # (0.105.24, 13b) the AI drives DF's World screen to send the messenger: on only when the player says so
+            "send_messenger": st.get("send_messenger") is True,
             # (0.105.0) water works: the moat (on by default only where the survey found a river:
             # the planner wants one only then), magma workshops, the muddied farm level
             "moat": st.get("moat") is not False,

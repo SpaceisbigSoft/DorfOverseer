@@ -390,6 +390,15 @@ function RulesPage:init()
         initial_option = p.settings.make_contact ~= false,
         on_change = function(v) p:set_field('make_contact', v) end,
     })
+    -- (0.105.24, 13b) the AI drives the World screen to send the messenger (a trial: off by default)
+    table.insert(views, widgets.ToggleHotkeyLabel{
+        view_id = 'send_messenger',
+        frame = {t = 9 + jrow, l = 62, w = 56},
+        label = 'Send it by the World screen (trial):',
+        label_width = 38,
+        initial_option = p.settings.send_messenger == true,
+        on_change = function(v) p:set_field('send_messenger', v) end,
+    })
     local t = 6 + #S.OPTIONAL_LEVELS
     table.insert(views, widgets.ToggleHotkeyLabel{
         view_id = 'order_supplies',
@@ -655,6 +664,7 @@ function RulesPage:refresh()
     self.subviews.calm_burrow:setOption(s.calm_burrow ~= false, false)             -- (0.104.169)
     self.subviews.tribute:setOption(s.tribute or 'small', false)                   -- (0.105.0)
     self.subviews.make_contact:setOption(s.make_contact ~= false, false)           -- (0.105.0)
+    self.subviews.send_messenger:setOption(s.send_messenger == true, false)        -- (0.105.24)
     for _, k in ipairs({'moat', 'magma_workshops', 'irrigation'}) do               -- (0.105.0)
         self.subviews[k]:setOption(s[k] ~= false, false)
     end

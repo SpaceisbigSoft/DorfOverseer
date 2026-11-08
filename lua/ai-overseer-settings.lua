@@ -255,6 +255,10 @@ function defaults()
         seal_caverns = true,       -- (0.105.0) the way down locked while a beast the squads can't take is in a cavern
         tribute = 'small',         -- (0.105.0) tribute a civilisation asks (TRIBUTE_CHOICES)
         make_contact = true,       -- (0.105.0, 13b) a messenger appointed and sent to sites not in contact
+        -- (0.105.24, 13b) the messenger actually sent, by the AI driving DF's World
+        -- screen (lua/ai-mission-send.lua): off by default until its last steps
+        -- are recorded; off, the AI only names the site for the player to send
+        send_messenger = false,
         -- (0.105.0) water works: a moat from the river (only where one is found), magma workshops, a muddied farm level
         moat = true, magma_workshops = true, irrigation = true,
         -- (0.105.4 review) a cavern well may break into a cavern layer the dwarves
@@ -343,6 +347,7 @@ function sanitize(s)
                         'calm_burrow',              -- (0.104.169) the calm-down burrows' switch
                         'moon_cells', 'seal_caverns',   -- (0.105.0) round 3's switches
                         'make_contact',             -- (0.105.0) the messenger and Make contact
+                        'send_messenger',           -- (0.105.24) the World screen driven to send it
                         'moat', 'magma_workshops', 'irrigation',   -- (0.105.0) the water works' switches
                         'open_caverns',             -- (0.105.4 review) a cavern well into an undiscovered cavern
                         'squads_shelter'}) do       -- (0.105.0) the squads hide in the shelter too
@@ -425,6 +430,7 @@ function for_ai(s)
         seal_caverns = s.seal_caverns,
         tribute = s.tribute,                       -- (0.105.0)
         make_contact = s.make_contact,             -- (0.105.0)
+        send_messenger = s.send_messenger,         -- (0.105.24)
         moat = s.moat, magma_workshops = s.magma_workshops, irrigation = s.irrigation,   -- (0.105.0)
         open_caverns = s.open_caverns,             -- (0.105.4 review)
         squads_shelter = s.squads_shelter,         -- (0.105.0)
