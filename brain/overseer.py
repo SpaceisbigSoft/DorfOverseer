@@ -628,6 +628,18 @@ def short(a: dict) -> str:
 STATES_KEPT = 80          # (0.100.1) every season of a long run (~60 KB each)
 
 
+def state_run(path: Path) -> str | None:
+    """(0.105.26) The run a kept season state belongs to: its leading "_run"
+    (None for one kept before runs were marked)."""
+    try:
+        with open(path, "rb") as f:
+            head = f.read(200).decode("utf-8", "replace")
+    except OSError:
+        return None
+    m = re.match(r'\{"_run": "([^"]*)"', head)
+    return m.group(1) if m else None
+
+
 def keep_state(state: dict, key: str) -> None:
     """One full report per in-game season in logs/forts/<fort>/states/: real
     game states for the tests (the fake forts in the tests hold only what we
@@ -636,10 +648,16 @@ def keep_state(state: dict, key: str) -> None:
         d = memstore.fort_dir(key) / "states"
         name = report.season_key(state).replace(" ", "-") + ".json"
         path = d / name
-        if path.exists():
+        # (0.105.26) a fresh start from the same save (14.1 step 5: six forts
+        # restarted from region4) finds the old run's files under the same
+        # names: one from an older run (another "_run", or none) is replaced
+        run = fort_run(key)
+        if path.exists() and (run is None or state_run(path) == run):
             return
         d.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps({k: v for k, v in state.items() if k != "_errors"}), encoding="utf-8")
+        body = {"_run": run} if run else {}         # first, so a reader finds it in the first bytes
+        body.update((k, v) for k, v in state.items() if k not in ("_errors", "_run"))
+        path.write_text(json.dumps(body), encoding="utf-8")
         files = sorted(d.glob("*.json"), key=lambda p: p.stat().st_mtime)
         for old in files[:-STATES_KEPT]:
             old.unlink(missing_ok=True)
@@ -1588,9 +1606,31 @@ def preset_due(key: str, name: str, fort_preset) -> str | None:
     return None
 
 
+def _site(key: str) -> str:
+    return str(key).rpartition("#")[2]
+
+
+def fort_run(key: str) -> str | None:
+    """(0.105.26) This fort's run: the "run" stamp of its site's entries in
+    logs/keeper-preset.json (the newest), or None (no preset, or an entry from
+    before runs were marked). Clearing the site's entries (the fresh-restart
+    checklist) starts a new run when the preset is applied again."""
+    site = _site(key)
+    runs = [r["run"] for k, r in load_json(PRESET_FILE, {}).items()
+            if _site(k) == site and isinstance(r, dict) and isinstance(r.get("run"), str)]
+    return max(runs) if runs else None
+
+
 def note_preset(key: str, name: str) -> None:
     done = load_json(PRESET_FILE, {})
-    done[key] = {"name": name, "at": datetime.now().isoformat(timespec="seconds")}
+    now = datetime.now().isoformat(timespec="seconds")
+    # (0.105.26) the run stamp is set once, when the site has no entry at all
+    # (a new fort, or one cleared for a fresh start); a restart, a revive or an
+    # autosave's key keeps the site's stamp; an older entry without one stays so
+    same = [r for k, r in done.items() if _site(k) == _site(key) and isinstance(r, dict)]
+    runs = [r["run"] for r in same if isinstance(r.get("run"), str)]
+    run = max(runs) if runs else (None if same else now)
+    done[key] = {"name": name, "at": now, **({"run": run} if run else {})}
     try:
         from dfhack import write_atomic
         PRESET_FILE.parent.mkdir(parents=True, exist_ok=True)

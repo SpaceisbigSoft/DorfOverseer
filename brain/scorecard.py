@@ -5,6 +5,8 @@
     python brain/scorecard.py --now            each fort's newest season instead (unequal ages)
     python brain/scorecard.py --at 252-spring  that season
     python brain/scorecard.py --fort A=C:\\...\\DF-AI --fort B=...   other folders
+    python brain/scorecard.py --every 2y       a series: every 2 game years (or --every 3 seasons)
+                                               back from the newest common season, with a summary
 
 Each fort's keeper saves a copy of the full report at the start of every season
 (logs/forts/<fort>/states/<year>-<season>.json) and its journal
@@ -12,16 +14,31 @@ Each fort's keeper saves a copy of the full report at the start of every season
 same game date, so a fort restarted later is judged at its own age. Per slider,
 2-4 lines of things seen in the game, and the presets that should come out on
 top (high) or at the bottom (low). A line passes when the best (and the worst)
-fort is one of those, "half" when only one side is; "flat" when every fort has the same value; "no data" when the
-report doesn't carry it. Written to logs/scorecard.md and printed.
+fort is one of those, "half" when only one side is, or when the best (worst)
+is shared with a fort that shouldn't be there; "flat" when every fort has the
+same value; "no data" when the report doesn't carry it. A health table beside
+it, with fixed bars (no ranking): failed moods, thirst deaths, unhappy, idle,
+deaths by cause.
+
+(0.105.26) Runs: a fort restarted fresh from the same save keeps its logs in
+the same folder. The keeper's logs/keeper-preset.json stamps each run ("run",
+set when the site has no entry: clear the site's entries for a fresh start);
+each kept state carries its "_run". States and journal lines of an older run
+are left out, and said so.
+
+Written to logs/scorecards/<year>-<season>.md (now.md with --now), the newest
+also to logs/scorecard.md, and a summary across seasons to
+logs/scorecards/summary.md (from summary.json, kept between runs). Printed too.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from collections import Counter
+from datetime import datetime
 from pathlib import Path
 
 from digest import _d, _l
@@ -49,32 +66,119 @@ def season_key(name: str) -> tuple[int, int] | None:
         return None
 
 
+# ---------------------------------------------------------------- runs
+
+def state_run(path: Path) -> str | None:
+    """The run a kept season state belongs to (brain/overseer.py keep_state
+    writes "_run" first); None for one kept before runs were marked."""
+    try:
+        with open(path, "rb") as f:
+            head = f.read(200).decode("utf-8", "replace")
+    except OSError:
+        return None
+    m = re.match(r'\{"_run": "([^"]*)"', head)
+    return m.group(1) if m else None
+
+
+def _site(key: str) -> str:
+    return str(key).rpartition("#")[2]
+
+
+def dir_site(name: str) -> str:
+    """logs/forts/<save>-<site>, run-<id>-<site>: the site id."""
+    return name.rpartition("-")[2]
+
+
+def canonical_dir(key: str) -> str:
+    """The logs/forts folder name brain/memstore.py fort_dir gives a fort key
+    (without its aliases): <save>-<site>, or run-<id>-<site> for a marked copy."""
+    save_dir, _, site = str(key).rpartition("#")
+    if "@" in save_dir:
+        _, _, run = save_dir.rpartition("@")
+        run = re.sub(r"[^A-Za-z0-9_-]+", "_", run).strip("_")
+        if run:
+            return f"run-{run}-{site}"
+    slug = re.sub(r"[^A-Za-z0-9_-]+", "_", save_dir or key).strip("_") or "fort"
+    return f"{slug}-{site}" if site else slug
+
+
+def run_start(run: str | None) -> float | None:
+    try:
+        return datetime.fromisoformat(run).timestamp() if run else None
+    except (TypeError, ValueError):
+        return None
+
+
 # ---------------------------------------------------------------- one fort
 
 class Fort:
-    """A DF-AI folder: its preset, its season states and its journal."""
+    """A DF-AI folder: its preset, its season states and its journal (of the
+    current run only: `refused` holds the older run's season states)."""
 
     def __init__(self, label: str, folder: Path):
         self.label, self.folder = label, Path(folder)
+        kp = load_json(self.folder / "logs" / "keeper-preset.json") or {}
+        self.keeper = {k: v for k, v in kp.items() if isinstance(v, dict)} if isinstance(kp, dict) else {}
         self.fort_dir = self._fort_dir()
-        self.states = {}
+        # one fort at a time in a DF-AI folder: its site's run, else the newest
+        # run stamped (a folder moved aside under another name has no site)
+        self.run = (self.run_of(self.fort_dir.name) or self.run_of(None)) if self.fort_dir else None
+        self.states, self.refused = {}, []
         if self.fort_dir:
-            for p in (self.fort_dir / "states").glob("*.json"):
-                k = season_key(p.stem)
-                if k:
+            since = run_start(self.run)
+            found = [(season_key(p.stem), p, state_run(p)) for p in (self.fort_dir / "states").glob("*.json")]
+            stamped = any(r for _, _, r in found)
+            for k, p, r in found:
+                if not k:
+                    continue
+                if self.run is None:
+                    # the site's run cleared (a fresh start whose preset isn't applied
+                    # yet): every state of a folder that had marked runs is older
+                    ok = not stamped
+                elif r is not None:
+                    ok = r == self.run
+                else:                       # kept before runs were marked: by when it was written
+                    try:
+                        ok = since is None or p.stat().st_mtime >= since
+                    except OSError:
+                        ok = False
+                if ok:
                     self.states[k] = p
+                else:
+                    self.refused.append(k)
+        self.refused.sort()
         self.preset = self._preset()
         self._journal = None
 
+    def run_of(self, dir_name: str | None) -> str | None:
+        """The newest run stamped for the site of logs/forts/<dir_name> (for
+        any site with None)."""
+        site = dir_site(dir_name) if dir_name is not None else None
+        runs = [r["run"] for k, r in self.keeper.items()
+                if (site is None or _site(k) == site) and isinstance(r.get("run"), str)]
+        return max(runs) if runs else None
+
     def _fort_dir(self) -> Path | None:
-        """The fort with the newest season state (a folder can hold old forts)."""
-        best, when = None, -1.0
-        for d in (self.folder / "logs" / "forts").glob("*"):
+        """The fort being run: one whose newest state is of its site's current
+        run first, then a folder named as the overseer names its forts (a copy
+        moved aside under another name inside logs/forts is passed over), then
+        the newest season state (a folder can hold old forts)."""
+        names = {canonical_dir(k) for k in self.keeper}
+        forts = self.folder / "logs" / "forts"
+        for idx in ("index.json", "session.json"):
+            v = load_json(forts / idx) or {}
+            if isinstance(v, dict):
+                names |= {x for x in v.values() if isinstance(x, str)}
+        best, rank = None, None
+        for d in forts.glob("*"):
             st = list((d / "states").glob("*.json")) if d.is_dir() else []
-            if st:
-                t = max(p.stat().st_mtime for p in st)
-                if t > when:
-                    best, when = d, t
+            if not st:
+                continue
+            newest = max(st, key=lambda p: p.stat().st_mtime)
+            run = self.run_of(d.name)
+            r = (bool(run) and state_run(newest) == run, d.name in names, newest.stat().st_mtime)
+            if rank is None or r > rank:
+                best, rank = d, r
         return best
 
     def _preset(self) -> str:
@@ -83,8 +187,7 @@ class Fort:
             p = _d(s.get("settings")).get("preset")
             if p:
                 return p
-        kp = load_json(self.folder / "logs" / "keeper-preset.json") or {}
-        names = [_d(v).get("name") for v in kp.values() if _d(v).get("name")]
+        names = [_d(v).get("name") for v in self.keeper.values() if _d(v).get("name")]
         return names[-1] if names else "?"
 
     def journal(self) -> list[dict]:
@@ -101,9 +204,14 @@ class Fort:
                         continue
                     for line in text.splitlines():
                         try:
-                            out.append(json.loads(line))
+                            e = json.loads(line)
                         except ValueError:
-                            pass
+                            continue
+                        # (0.105.26) a line written before this run began is the old run's
+                        if (self.run and isinstance(e, dict) and isinstance(e.get("time"), str)
+                                and e["time"] < self.run):
+                            continue
+                        out.append(e)
             self._journal = out
         return self._journal
 
@@ -125,12 +233,29 @@ def before(entry: dict, date: dict) -> bool:
 
 # ---------------------------------------------------------------- measures
 
+TICKS_PER_YEAR, TICKS_PER_DAY = 403200, 1200
+
+
+def abs_ticks(d: dict) -> int:
+    return (d.get("year") or 0) * TICKS_PER_YEAR + (d.get("tick") or 0)
+
+
 def journal_counts(entries: list[dict], date: dict) -> dict:
     """What the fort did up to the date: actions that worked, by type, and a few sums."""
     ok, seen = Counter(), Counter()
     trade_value, petitions_yes, petitions_no = 0, 0, 0
     levels = []
+    reports, deaths = Counter(), Counter()
+    access = []         # (when, visitors allowed, location ids) from location_access
     for e in entries:
+        if e.get("kind") == "event" and before(e, date):
+            ev = _d(e.get("event"))
+            if ev.get("kind") == "report":
+                reports[ev.get("topic")] += 1
+            elif (ev.get("kind") == "death" and ev.get("own_civ") and not ev.get("animal")
+                  and not ev.get("again")):
+                deaths[str(ev.get("cause") or "unknown")] += 1
+            continue
         if e.get("kind") != "decision" or not before(e, date):
             continue
         a, r = _d(e.get("action")), _d(e.get("result"))
@@ -151,8 +276,36 @@ def journal_counts(entries: list[dict], date: dict) -> dict:
         elif t == "start_project":
             levels.append({"kind": r.get("kind") or a.get("kind"), "z": r.get("z"),
                            "tiles": r.get("tiles") or r.get("designated")})
+        elif t == "location_access" and not r.get("dry_run") and isinstance(e.get("date"), dict):
+            ids = r.get("changed") if isinstance(r.get("changed"), list) else _l(a.get("ids"))
+            vis = r.get("visitors") if isinstance(r.get("visitors"), bool) else a.get("visitors")
+            if isinstance(vis, bool):
+                access.append((abs_ticks(e["date"]), vis, ids))
     return {"ok": ok, "seen": seen, "trade_value": trade_value, "petitions_yes": petitions_yes,
-            "petitions_no": petitions_no, "levels": levels}
+            "petitions_no": petitions_no, "levels": levels, "reports": reports, "deaths": deaths,
+            "shut_days": shut_days(access, abs_ticks(date))}
+
+
+def shut_days(access: list, until: int) -> float:
+    """Days up to `until` with at least one location shut to visitors (the
+    planner's location_access: shut, then opened again after a while)."""
+    shut, since, total = set(), None, 0
+    for when, vis, ids in sorted(access, key=lambda x: x[0]):
+        if when > until:
+            break
+        was = bool(shut)
+        if vis:
+            shut -= set(ids)
+        else:
+            shut |= set(ids)
+        if shut and not was:
+            since = when
+        elif was and not shut and since is not None:
+            total += when - since
+            since = None
+    if shut and since is not None:
+        total += max(0, until - since)
+    return round(total / TICKS_PER_DAY, 1)
 
 
 def pct(a, b):
@@ -185,6 +338,35 @@ def measures(s: dict, j: dict) -> dict:
     traps = sum(v for k, v in other.items() if "Trap" in k and k != "TractionBench")
     meals = _d(s.get("supplies")).get("meal_servings")
     good_meals = _d(s.get("supplies")).get("good_meals")
+    loc_list = [_d(x) for x in _l(_d(s.get("locations")).get("list"))]
+    needs = _d(s.get("needs"))
+    ents = [_d(e) for e in _l(_d(s.get("entrances")).get("entrances"))]
+    # (0.105.26) today's signatures, 14.1 step 4
+    gatehouses = max(ok.get("build_gatehouse", 0), sum(1 for e in ents if e.get("gatehouse") == "standing"))
+    lever_gates = sum(1 for e in ents for q in _l(e.get("equipment")) if _d(q).get("lever_driven")) \
+        if s.get("entrances") is not None else None
+    deep = _d(b.get("deep_depot")) if b else None
+    worship = needs.get("worship")
+    if isinstance(worship, dict):
+        ids = _d(needs.get("deity_ids"))
+        housed = set()
+        for t in temples:
+            t = _d(t)
+            if t.get("deity_hf") is not None:
+                housed.add(t["deity_hf"])
+            housed |= set(_l(t.get("religion_deities")))
+        gods = [g for g, n in worship.items() if (n or 0) > 0]
+        gods_housed = pct(sum(1 for g in gods if ids.get(g) in housed), len(gods)) if gods else None
+    else:
+        gods_housed = None
+    open_locs = [x for x in loc_list if x.get("type") != "HOSPITAL"]
+    have_flags = [x for x in open_locs if isinstance(x.get("flags"), list)]
+    sc = needs.get("stress_causes")
+    if isinstance(sc, dict) and sc.get("citizens"):
+        same = next((_d(c) for c in _l(sc.get("causes")) if _d(c).get("thought") == "SameBooze"), {})
+        same_booze = pct(same.get("citizens") or 0, sc.get("citizens"))
+    else:
+        same_booze = None
     return {
         "pop": total,
         "soldier_pct": pct(dw.get("in_squads"), adults),
@@ -233,6 +415,16 @@ def measures(s: dict, j: dict) -> dict:
         "stores_pd": per((stocks.get("drink") or 0) + (meals or 0), total),
         "levels": len(levels),
         "kinds": dict(kinds),
+        "gatehouses": gatehouses,
+        "lever_gates": lever_gates,
+        "deep_depot": (1 if deep.get("depot") == "built" else 0) if deep is not None else None,
+        "gods_housed_pct": gods_housed,
+        "grand_temples": sum(1 for t in temples if (_d(t).get("tier") or 0) >= 2) if s.get("locations") else None,
+        "visitors_open_pct": pct(sum(1 for x in have_flags if "VISITORS_ALLOWED" in x["flags"]), len(have_flags))
+        if have_flags else None,
+        "shut_days": j.get("shut_days"),
+        "drink_kinds": _d(s.get("supplies")).get("drink_kinds"),
+        "same_booze_pct": same_booze,
     }
 
 
@@ -246,16 +438,24 @@ LINES = [
     ("Fortification", "traps", "traps", {W}, set()),
     ("Fortification", "bridges, floodgates, hatches", "bridges", {W}, set()),
     ("Fortification", "gate works done", "gate_works", {W, H}, set()),
+    ("Fortification", "gatehouses built", "gatehouses", {W, H}, set()),
     ("Engineering", "levers", "levers", {W, D}, set()),
+    ("Engineering", "lever-driven gates", "lever_gates", {W, D}, set()),
     ("Engineering", "mechanisms in store", "mechanisms", {W, D}, set()),
     ("Caution", "alarms raised", "alerts", {W, H}, {D}),
     ("Justice", "jail cells", "jails", {W}, {M}),
     ("Justice", "restraints", "restraints", {W}, {M}),
     ("Piety", "temples", "temples", {M}, set()),
     ("Piety", "best temple's value", "temple_value", {M}, set()),
+    ("Piety", "worshipped gods with a temple, %", "gods_housed_pct", {M}, set()),
+    ("Piety", "grand temples (tier 2+)", "grand_temples", {M}, set()),
     ("Welfare", "unhappy, % (lowest wins)", "-unhappy_pct", {M, G}, {W}),
     ("Welfare", "good meals a dwarf", "good_meals_pd", {M, G}, {W}),
-    ("Outsiders", "visitors on the map", "visitors", {ME, M}, {H, W}),
+    ("Welfare", "drink kinds", "drink_kinds", {M, G}, set()),
+    ("Welfare", "upset by the same booze, % (lowest wins)", "-same_booze_pct", {M, G}, set()),
+    # (0.105.26) "visitors on the map" gave way: D at Outsiders -150 had the most
+    ("Outsiders", "locations open to visitors, %", "visitors_open_pct", {ME}, {H, W}),
+    ("Outsiders", "days shut to visitors", "shut_days", {H, W}, {ME}),
     ("Outsiders", "guildhalls", "guildhalls", {ME, M}, {H, W}),
     ("Outsiders", "petitions agreed", "petitions_yes", {ME, M}, {H, W}),
     ("Outsiders", "petitions declined", "petitions_no", {H, W}, {ME, M}),
@@ -271,6 +471,7 @@ LINES = [
     ("Growth", "population", "pop", {ME}, {H}),
     ("Mining", "ore in store", "ore", {D}, {G}),
     ("Mining", "veins mined", "ore_runs", {D}, {G}),
+    ("Mining", "underground depot built", "deep_depot", {D}, set()),
     ("Verticality", "levels' height span", "z_span", {D}, set()),
     ("Verticality", "deepest level below the surface", "depth", {D}, set()),
     ("Surface", "levels at or above the surface", "levels_up", {G, ME}, {D, H}),
@@ -291,7 +492,8 @@ LINES = [
 def judge(values: dict[str, float | None], high: set, low: set) -> str:
     """values: preset -> number (bigger is 'more of the slider'). 'pass', 'fail',
     'flat' or 'no data'; a line with both sides passes when both do, and is
-    'half' when only one does."""
+    'half' when only one does. (0.105.26) A side whose best (or worst) is
+    shared with a preset outside its group counts half."""
     have = {p: v for p, v in values.items() if v is not None}
     want = (high | low) & set(values)
     if len(have) < 2 or not (want & set(have)):
@@ -299,14 +501,19 @@ def judge(values: dict[str, float | None], high: set, low: set) -> str:
     vals = list(have.values())
     if max(vals) == min(vals):
         return "flat"
+
+    def side(group, end):
+        at = {p for p, v in have.items() if v == end}
+        if not at & group:
+            return 0.0
+        return 1.0 if at <= group else 0.5
+
     parts = []
     if high & set(values):
-        top = max(vals)
-        parts.append(any(have.get(p) == top for p in high))
+        parts.append(side(high, max(vals)))
     if low & set(values):
-        bottom = min(vals)
-        parts.append(any(have.get(p) == bottom for p in low))
-    if all(parts):
+        parts.append(side(low, min(vals)))
+    if all(x == 1.0 for x in parts):
         return "pass"
     return "half" if any(parts) else "fail"
 
@@ -319,32 +526,94 @@ def fmt(v) -> str:
     return str(v)
 
 
+def health(s: dict, j: dict) -> dict:
+    """(0.105.26) The fort's health against fixed bars, not a ranking."""
+    dw = _d(s.get("dwarves"))
+    adults, total = dw.get("adults") or 0, dw.get("total") or 0
+    stress = _d(dw.get("stress"))
+    unhappy = sum(stress.get(k, 0) for k in ("unhappy", "very_unhappy", "miserable"))
+    rep = j.get("reports") or Counter()
+    working = sum(1 for m in _l(_d(s.get("moods")).get("list")) if _d(m).get("craft"))
+    # the journal's deaths (this run), or the game's own count from last year
+    # on when that is more (a journal rotated, or deaths before it was kept)
+    deaths = Counter(j.get("deaths") or {})
+    game = _d(_d(s.get("dead")).get("deaths")).get("by_cause")
+    for c, n in _d(game).items():
+        if isinstance(n, int) and n > deaths.get(c, 0):
+            deaths[c] = n
+    return {"failed_moods": max(0, rep.get("mood", 0) - rep.get("artifact_made", 0) - working),
+            "moods": rep.get("mood", 0), "artifacts": rep.get("artifact_made", 0),
+            "thirst_deaths": deaths.get("THIRST", 0),
+            "unhappy_pct": pct(unhappy, total), "idle_pct": pct(dw.get("idle_adults"), adults),
+            "deaths": dict(deaths)}
+
+
+# (what, measure, bar: the value must stay at or under it (or under it, with <))
+HEALTH_BARS = [
+    ("failed moods", "failed_moods", 0, "<="),
+    ("deaths by thirst", "thirst_deaths", 0, "<="),
+    ("unhappy, %", "unhappy_pct", 10, "<"),
+    ("idle adults, % (Phase 12's exit)", "idle_pct", 40, "<"),
+]
+
+
+def health_ok(v, bar, how) -> bool | None:
+    if v is None:
+        return None
+    return v <= bar if how == "<=" else v < bar
+
+
+def pick_keys(forts: list[Fort], at: str | None, now: bool) -> tuple[dict, str]:
+    if now:
+        return {f.label: max(f.states) for f in forts}, "each fort's newest season"
+    if at:
+        k = season_key(at)
+        if not k:
+            raise SystemExit(f"--at wants YEAR-SEASON, like 252-spring (got {at!r})")
+    else:
+        common = set.intersection(*(set(f.states) for f in forts))
+        if not common:
+            raise SystemExit("The forts have no season in common: use --now")
+        k = max(common)
+    return {f.label: k for f in forts}, f"all at {k[0]}-{SEASONS[k[1]]}"
+
+
+def run_notes(forts: list[Fort]) -> list[str]:
+    """(0.105.26) What was left out as another run's."""
+    out = []
+    for f in forts:
+        if f.refused:
+            a, b = f.refused[0], f.refused[-1]
+            out.append(f"- Fort {f.label}: {len(f.refused)} season state(s) of an older run left out "
+                       f"({a[0]}-{SEASONS[a[1]]} .. {b[0]}-{SEASONS[b[1]]})"
+                       + (f"; this run began {f.run}" if f.run else
+                          "; this site has no run in keeper-preset.json yet (cleared for a fresh start?)") + ".")
+        if not f.states:
+            out.append(f"- Fort {f.label}: no season state of its current run yet"
+                       + (f" in {f.fort_dir}" if f.fort_dir else " (no logs/forts folder with states)") + ".")
+    return out
+
+
 def score(forts: list[Fort], at: str | None, now: bool) -> tuple[str, list[dict]]:
     """The markdown report and the rows."""
+    md, rows, _ = score_full(forts, at, now)
+    return md, rows
+
+
+def score_full(forts: list[Fort], at: str | None, now: bool) -> tuple[str, list[dict], dict]:
+    """The markdown report, the rows, and a summary for the series."""
+    notes = run_notes(forts)
     forts = [f for f in forts if f.states]
     if not forts:
-        return "No fort with season states found.\n", []
-    if now:
-        keys = {f.label: max(f.states) for f in forts}
-        title = "each fort's newest season"
-    else:
-        if at:
-            k = season_key(at)
-            if not k:
-                raise SystemExit(f"--at wants YEAR-SEASON, like 252-spring (got {at!r})")
-        else:
-            common = set.intersection(*(set(f.states) for f in forts))
-            if not common:
-                raise SystemExit("The forts have no season in common: use --now")
-            k = max(common)
-        keys = {f.label: k for f in forts}
-        title = f"all at {k[0]}-{SEASONS[k[1]]}"
+        return "No fort with season states found.\n" + ("\n" + "\n".join(notes) + "\n" if notes else ""), [], {}
+    keys, title = pick_keys(forts, at, now)
     data = {}
     for f in forts:
         s = f.state_at(keys[f.label])
         if s is None:
             continue
-        data[f.label] = (f, s, measures(s, journal_counts(f.journal(), _d(s.get("date")))))
+        j = journal_counts(f.journal(), _d(s.get("date")))
+        data[f.label] = (f, s, measures(s, j), health(s, j))
     labels = list(data)
     head = ["Slider", "Line"] + [f"{lb} {SHORT.get(data[lb][0].preset, data[lb][0].preset)}" for lb in labels] + \
         ["Should win", "Result"]
@@ -355,7 +624,7 @@ def score(forts: list[Fort], at: str | None, now: bool) -> tuple[str, list[dict]
         by_preset = {}
         raw = {}
         for lb in labels:
-            f, _, m = data[lb]
+            f, _, m, _ = data[lb]
             v = m.get(k)
             raw[lb] = v
             by_preset[f.preset] = (-v if neg and v is not None else v)
@@ -365,10 +634,12 @@ def score(forts: list[Fort], at: str | None, now: bool) -> tuple[str, list[dict]
         rows.append({"slider": slider, "line": what, "values": raw, "result": res})
         out.append([slider, what] + [fmt(raw[lb]) for lb in labels] + [should, res])
     md = [f"# Slider scorecard: {title}", ""]
+    if notes:
+        md += ["Runs:", ""] + notes + [""]
     md.append("| Fort | Preset | Season | Population | Levels |")
     md.append("| --- | --- | --- | --- | --- |")
     for lb in labels:
-        f, s, m = data[lb]
+        f, s, m, _ = data[lb]
         dt = _d(s.get("date"))
         md.append(f"| {lb} | {f.preset} | {dt.get('season', '?')} {dt.get('year', '?')} | {m['pop']} | {m['levels']} |")
     md += ["", "| " + " | ".join(head) + " |", "|" + " --- |" * len(head)]
@@ -382,13 +653,106 @@ def score(forts: list[Fort], at: str | None, now: bool) -> tuple[str, list[dict]
     bad = [s for s, rs in by_slider.items() if not any(x in ("pass", "half") for x in rs)]
     md.append("Sliders that win every line: " + (", ".join(good) or "none") + ".")
     md.append("Sliders that win none: " + (", ".join(bad) or "none") + ".")
+    # (0.105.26) health: fixed bars, every fort on its own
+    md += ["", "## Health", "", "| Bar | " + " | ".join(labels) + " | Under the bar |",
+           "|" + " --- |" * (len(labels) + 2)]
+    issues = {}
+    for what, k, bar, how in HEALTH_BARS:
+        cells, fine = [], 0
+        for lb in labels:
+            v = data[lb][3].get(k)
+            ok = health_ok(v, bar, how)
+            cells.append(fmt(v) + ("" if ok is None or ok else " **over**"))
+            fine += bool(ok)
+            if ok is False:
+                issues.setdefault(lb, []).append(f"{what.split(',')[0].split(' (')[0]} {fmt(v)}")
+        md.append(f"| {what} {how} {bar} | " + " | ".join(cells) + f" | {fine} of {len(labels)} |")
+    md.append("| moods / artifacts | " + " | ".join(
+        f"{data[lb][3]['moods']} / {data[lb][3]['artifacts']}" for lb in labels) + " | |")
+    causes = sorted({c for lb in labels for c in data[lb][3]["deaths"]})
+    md += ["", "Deaths by cause (this run's journal, or the game's count from last year on when that is more):", ""]
+    if causes:
+        md += ["| Cause | " + " | ".join(labels) + " |", "|" + " --- |" * (len(labels) + 1)]
+        for c in causes:
+            md.append(f"| {c} | " + " | ".join(str(data[lb][3]["deaths"].get(c, 0)) for lb in labels) + " |")
+        md.append("| **all** | " + " | ".join(str(sum(data[lb][3]["deaths"].values())) for lb in labels) + " |")
+    else:
+        md.append("none.")
     kinds = sorted({k for lb in labels for k in data[lb][2]["kinds"] if k})
     if kinds:
         md += ["", "Levels started, by kind:", "", "| Kind | " + " | ".join(labels) + " |",
                "|" + " --- |" * (len(labels) + 1)]
         for k in kinds:
             md.append(f"| {k} | " + " | ".join(str(data[lb][2]["kinds"].get(k, 0)) for lb in labels) + " |")
-    return "\n".join(md) + "\n", rows
+    summary = {"title": title, "tally": dict(tally), "lines": len(rows), "good": good,
+               "runs": {lb: data[lb][0].run for lb in labels},
+               "health": {lb: issues.get(lb, []) for lb in labels},
+               "presets": {lb: data[lb][0].preset for lb in labels}}
+    return "\n".join(md) + "\n", rows, summary
+
+
+def season_name(k: tuple[int, int]) -> str:
+    return f"{k[0]}-{SEASONS[k[1]]}"
+
+
+def every_step(text: str) -> int:
+    """--every: seasons ('3') or game years ('2y')."""
+    t = str(text).strip().lower()
+    try:
+        n = int(t[:-1]) * 4 if t.endswith("y") else int(t)
+    except ValueError:
+        raise SystemExit(f"--every wants a number of seasons (3) or game years (2y), got {text!r}")
+    if n < 1:
+        raise SystemExit("--every wants at least 1")
+    return n
+
+
+def series_keys(forts: list[Fort], step: int, at: str | None = None) -> list[tuple[int, int]]:
+    """Seasons every fort has, every `step` seasons back from the newest common
+    one (or from --at), oldest first."""
+    forts = [f for f in forts if f.states]
+    if not forts:
+        return []
+    common = set.intersection(*(set(f.states) for f in forts))
+    if not common:
+        return []
+    top = season_key(at) if at else max(common)
+    if not top:
+        raise SystemExit(f"--at wants YEAR-SEASON, like 252-spring (got {at!r})")
+    idx = top[0] * 4 + top[1]
+    return sorted(k for k in common if k <= top and (idx - (k[0] * 4 + k[1])) % step == 0)
+
+
+def summary_md(entries: dict) -> str:
+    md = ["# Slider scorecard: the series", "",
+          "| Season | Pass | Half | Fail | Flat | No data | Sliders winning every line | Health over the bar |",
+          "| --- | --- | --- | --- | --- | --- | --- | --- |"]
+    for name in sorted(entries, key=lambda n: season_key(n) or (10 ** 9, 0)):
+        e = entries[name]
+        t = e.get("tally") or {}
+        hl = "; ".join(f"{lb}: {', '.join(v)}" for lb, v in sorted((e.get("health") or {}).items()) if v) or "-"
+        md.append(f"| {name} | {t.get('pass', 0)} | {t.get('half', 0)} | {t.get('fail', 0)} | {t.get('flat', 0)} "
+                  f"| {t.get('no data', 0)} | {', '.join(e.get('good') or []) or '-'} | {hl} |")
+    return "\n".join(md) + "\n"
+
+
+def write_series(out_dir: Path, results: list[tuple[str, str, dict]]) -> Path:
+    """Each scorecard to out_dir/<season>.md, and the summary (kept in
+    summary.json between runs; seasons scored under other runs dropped)."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    for name, md, _ in results:
+        (out_dir / f"{name}.md").write_text(md, encoding="utf-8")
+    sj = out_dir / "summary.json"
+    old = load_json(sj) or {}
+    old = old if isinstance(old, dict) else {}
+    runs = next((summ.get("runs") for _, _, summ in reversed(results) if summ), None)
+    entries = {n: e for n, e in old.items() if isinstance(e, dict) and (runs is None or e.get("runs") == runs)}
+    for name, _, summ in results:
+        if summ and name != "now":
+            entries[name] = summ
+    sj.write_text(json.dumps(entries, indent=1), encoding="utf-8")
+    (out_dir / "summary.md").write_text(summary_md(entries), encoding="utf-8")
+    return out_dir / "summary.md"
 
 
 def default_forts(here: Path) -> list[Fort]:
@@ -406,9 +770,11 @@ def default_forts(here: Path) -> list[Fort]:
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--fort", action="append", default=[], help="LABEL=DF-AI folder (repeatable)")
-    ap.add_argument("--at", help="YEAR-SEASON to compare at")
+    ap.add_argument("--at", help="YEAR-SEASON to compare at (with --every: the newest of the series)")
     ap.add_argument("--now", action="store_true", help="each fort's newest season")
-    ap.add_argument("--out", help="where to write the report (default logs/scorecard.md)")
+    ap.add_argument("--every", help="a series: every N seasons (3) or game years (2y)")
+    ap.add_argument("--out", help="where to write the newest report (default logs/scorecard.md)")
+    ap.add_argument("--dir", help="where the series goes (default logs/scorecards)")
     a = ap.parse_args(argv)
     here = Path(__file__).resolve().parent.parent
     if a.fort:
@@ -418,15 +784,33 @@ def main(argv=None) -> int:
             forts.append(Fort(lb, Path(p)))
     else:
         forts = default_forts(here)
-    md, _ = score(forts, a.at, a.now)
+    results = []
+    if a.every:
+        keys = series_keys(forts, every_step(a.every), a.at)
+        if not keys:
+            md, _, _ = score_full(forts, a.at, a.now)    # says why (no states, a run left out...)
+            results.append(("now", md, {}))
+        for k in keys:
+            md, _, summ = score_full(forts, season_name(k), False)
+            results.append((season_name(k), md, summ))
+    else:
+        md, _, summ = score_full(forts, a.at, a.now)
+        name = "now" if a.now else (summ.get("title", "")[len("all at "):] or "now")
+        results.append((name, md, summ))
     out = Path(a.out) if a.out else here / "logs" / "scorecard.md"
+    series = Path(a.dir) if a.dir else here / "logs" / "scorecards"
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     try:
         out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(md, encoding="utf-8")
+        out.write_text(results[-1][1], encoding="utf-8")
+        summary = write_series(series, results)
     except OSError as e:
-        print(f"(could not write {out}: {e})")
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    print(md)
+        print(f"(could not write {out} or {series}: {e})")
+        summary = None
+    for _, md, _ in results:
+        print(md)
+    if summary and summary.exists():
+        print(summary.read_text(encoding="utf-8"))
     return 0
 
 
