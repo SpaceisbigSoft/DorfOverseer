@@ -42,6 +42,7 @@ from bridge import LOG_DIR, BridgeError
 from dfhack import DFHackError
 from planner import Memory
 from tokens import TokenBank
+from util import load_json
 
 KINDS = ("working", "timeline", "atlas", "chronicle", "knowledge")
 SCHEMA = {"working": 1, "timeline": 1, "atlas": 1, "chronicle": 1, "knowledge": 1}
@@ -276,11 +277,7 @@ def fort_dir(key: str) -> Path:
 
 
 def _read_json(path: Path) -> dict:
-    try:
-        d = json.loads(path.read_text(encoding="utf-8"))
-        return d if isinstance(d, dict) else {}
-    except (OSError, ValueError):
-        return {}
+    return load_json(path, {})
 
 
 def _from_legacy(entry: dict) -> tuple[Memory, TokenBank]:

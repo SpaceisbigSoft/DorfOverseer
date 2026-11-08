@@ -56,7 +56,7 @@ with the fort and appear in the fort report under "AI SETTINGS".
 With your TEST fort loaded:
 
 ```
-python brain\try_actions.py
+python brain\tools\try_actions.py
 ```
 
 Queues a 1-drink brewing order and cancels it, proves four unsafe actions are
@@ -72,7 +72,7 @@ What the AI can do so far (all easy to undo):
   (bedrooms, dining hall, storage, workshops). The AI names only the kind and
   size; the game picks a safe spot and checks every tile for aquifers, water,
   caverns and the surface first. See [docs/building.md](docs/building.md).
-  `python brain\try_building.py` shows where each kind would go, changing nothing.
+  `python brain\tools\try_building.py` shows where each kind would go, changing nothing.
 - **Culture:** every fort builds in its own style (hall shapes, smoothing and
   engraving, statues, a signature stone, temples, memorial halls for slain
   beasts), set by your sliders and shaped by the fort's history. See the

@@ -28,12 +28,10 @@ panel's How long slider (tokens.ai_plan): ask(..., effort={"model": "small" |
 from __future__ import annotations
 
 import asyncio
-import json
 import os
 from dataclasses import dataclass
-from pathlib import Path
 
-from dfhack import CONFIG_PATH, PROJECT_ROOT
+from dfhack import PROJECT_ROOT, read_config
 
 MAX_ANSWER_TOKENS = 1200
 SANDBOX = PROJECT_ROOT / "logs" / "strategist-sandbox"   # empty folder: no project files visible
@@ -64,10 +62,7 @@ ASK_TIMEOUT_S = 480   # (0.104.81) seconds a strategist call may take (the keepe
 
 
 def _config() -> dict:
-    try:
-        return json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
+    return read_config()
 
 
 def load_api_key() -> str | None:

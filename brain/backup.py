@@ -19,6 +19,7 @@ from datetime import datetime
 from pathlib import Path
 
 from bridge import PROJECT_ROOT
+from util import load_json
 
 BACKUP_DIR = PROJECT_ROOT / "backups"
 STATE = BACKUP_DIR / "last.json"
@@ -83,10 +84,7 @@ def newest_folder(save_root: Path, save_dir: str) -> Path | None:
 
 
 def _last() -> dict:
-    try:
-        return json.loads(STATE.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
+    return load_json(STATE, {})
 
 
 def due(now: float | None = None) -> bool:

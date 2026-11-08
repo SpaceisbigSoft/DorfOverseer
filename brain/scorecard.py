@@ -24,6 +24,9 @@ import sys
 from collections import Counter
 from pathlib import Path
 
+from digest import _d, _l
+from util import load_json
+
 SEASONS = ("spring", "summer", "autumn", "winter")
 
 # what the presets are, short names for the table
@@ -36,13 +39,6 @@ GATE_WORKS = ("build_gate_doors", "fortify_entrance", "cut_entrance", "link_leve
               "build_gatehouse")                 # (0.105.23) the War-hold's gatehouse
 
 
-def _d(x) -> dict:
-    return x if isinstance(x, dict) else {}
-
-
-def _l(x) -> list:
-    return x if isinstance(x, list) else []
-
 
 def season_key(name: str) -> tuple[int, int] | None:
     """'252-spring' -> (252, 0)."""
@@ -50,13 +46,6 @@ def season_key(name: str) -> tuple[int, int] | None:
         y, s = name.split("-", 1)
         return int(y), SEASONS.index(s)
     except (ValueError, IndexError):
-        return None
-
-
-def read_json(p: Path):
-    try:
-        return json.loads(p.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
         return None
 
 
@@ -90,11 +79,11 @@ class Fort:
 
     def _preset(self) -> str:
         if self.states:
-            s = read_json(self.states[max(self.states)]) or {}
+            s = load_json(self.states[max(self.states)]) or {}
             p = _d(s.get("settings")).get("preset")
             if p:
                 return p
-        kp = read_json(self.folder / "logs" / "keeper-preset.json") or {}
+        kp = load_json(self.folder / "logs" / "keeper-preset.json") or {}
         names = [_d(v).get("name") for v in kp.values() if _d(v).get("name")]
         return names[-1] if names else "?"
 
@@ -120,7 +109,7 @@ class Fort:
 
     def state_at(self, key) -> dict | None:
         p = self.states.get(key)
-        return read_json(p) if p else None
+        return load_json(p) if p else None
 
 
 def before(entry: dict, date: dict) -> bool:

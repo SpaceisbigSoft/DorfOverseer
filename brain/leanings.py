@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import hashlib
 
+from digest import _d, _l
 from weights import TRAIT_NAMES
 
 OWN_MAX = 15            # an own leaning is at most this, either way
@@ -48,13 +49,6 @@ def own_leanings(seed: str) -> dict:
             out[tid] = int(n)
     return out
 
-
-def _d(x):
-    return x if isinstance(x, dict) else {}
-
-
-def _l(x):
-    return x if isinstance(x, list) else []
 
 
 def site_leanings(state: dict) -> list | None:

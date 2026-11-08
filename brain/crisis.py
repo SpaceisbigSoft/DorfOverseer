@@ -6,7 +6,7 @@ skip their cooldowns, and get extra action slots each cycle."""
 
 from __future__ import annotations
 
-from planner_core import TICKS_PER_DAY, _d, _l, abs_tick, tantrums_recent
+from planner_core import TICKS_PER_DAY, _d, abs_tick, tantrums_recent
 
 # rules that put a fort back on its feet
 RECOVERY_RULES = {

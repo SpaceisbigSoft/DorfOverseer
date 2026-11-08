@@ -18,6 +18,14 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 CONFIG_PATH = PROJECT_ROOT / "config.json"
 
 
+def read_config(path: Path | None = None) -> dict:
+    """(13c) config.json as a dict ({} when it is missing, unreadable or not
+    an object). `path` defaults to CONFIG_PATH as it is at the call (tests
+    point it elsewhere)."""
+    from util import load_json
+    return load_json(CONFIG_PATH if path is None else path, {})
+
+
 def write_atomic(path: Path, text: str) -> None:
     """(0.100) Write a file whole or not at all: to a temporary file beside it,
     then swapped in. The keeper may kill a stuck overseer mid-write, and a
@@ -60,12 +68,9 @@ def save_roots(df_path: str | Path | None) -> list[Path]:
     which on this PC holds 2023 saves: the backups copied those, and the test
     copies landed where the game doesn't look."""
     roots: list[Path] = []
-    try:
-        cfg = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
-        if cfg.get("df_save_dir"):
-            roots.append(Path(cfg["df_save_dir"]))
-    except (OSError, ValueError):
-        pass
+    cfg = read_config()
+    if cfg.get("df_save_dir"):
+        roots.append(Path(cfg["df_save_dir"]))
     appdata = os.environ.get("APPDATA")
     if appdata:
         roots.append(Path(appdata) / "Bay 12 Games" / "Dwarf Fortress" / "save")
@@ -108,13 +113,9 @@ def configured_port(path: Path = CONFIG_PATH) -> int | None:
     "dfhack_port" (two games side by side: each DF-AI copy names its own
     game's port), else the DFHACK_PORT environment variable, else None (DFHack's
     default, 5000). DFHack's server and dfhack-run both read DFHACK_PORT first."""
-    try:
-        cfg = json.loads(Path(path).read_text(encoding="utf-8"))
-        v = cfg.get("dfhack_port")
-        if isinstance(v, int) and 0 < v < 65536:
-            return v
-    except (OSError, ValueError):
-        pass
+    v = read_config(Path(path)).get("dfhack_port")
+    if isinstance(v, int) and 0 < v < 65536:
+        return v
     try:
         v = int(os.environ.get("DFHACK_PORT") or 0)
         return v if 0 < v < 65536 else None

@@ -27,6 +27,7 @@ from __future__ import annotations
 import learning
 import phases
 from digest import _d, _l
+from util import state_tick as _now
 
 DAY = 1200
 GRACE = 2 * DAY            # events this long after the siege still count (the wounded die later)
@@ -47,11 +48,6 @@ def _state(memory) -> dict:
     if not isinstance(d.get("scores"), dict):
         d["scores"] = {}
     return d
-
-
-def _now(state: dict) -> int:
-    d = state["date"]
-    return d["year"] * 403200 + d["tick"]
 
 
 def verdict(threats: int, deaths: int, kills: int) -> str | None:
@@ -200,7 +196,7 @@ def share(memory) -> None:
     fort = str((memory.culture or {}).get("seed") or "")
     if not fort:
         return
-    p = learning.load_player()
+    p = learning.load_player(copy=True)
     design = p.get("design") if isinstance(p.get("design"), dict) else {}
     design[fort] = _state(memory)["scores"]
     p["design"] = design

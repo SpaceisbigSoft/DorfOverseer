@@ -49,9 +49,6 @@ WORDS = {"pop": "dwarves", "drink_pd": "drink per dwarf", "meals_pd": "meals per
          "plants_pd": "food plants per dwarf", "unhappy_pct": "unhappy %", "happy_pct": "happy %",
          "idle_pct": "idle adults %", "wealth": "wealth", "needs_care": "dwarves needing care",
          "hungry": "hungry or thirsty dwarves", "report_ms": "report time (ms)"}
-# Which way is better, for the words "rising" and "falling" in the trend lines.
-BETTER = {"drink_pd": 1, "meals_pd": 1, "plants_pd": 1, "unhappy_pct": -1, "happy_pct": 1,
-          "idle_pct": -1, "wealth": 1, "pop": 0, "needs_care": -1, "hungry": -1, "report_ms": -1}
 # smallest change between seasons worth a word
 TREND_TOL = {"drink_pd": 1.0, "meals_pd": 1.0, "plants_pd": 1.0, "unhappy_pct": 3.0, "happy_pct": 3.0,
              "idle_pct": 5.0, "pop": 3, "wealth": None, "needs_care": 1.0, "hungry": 1.0, "report_ms": 50}
@@ -304,13 +301,3 @@ def trend_lines(memory, limit: int = 6, now_day: int | None = None) -> list[str]
             out.append(f"{w} {_fmt(x['now'])}, {x['move']} ({_fmt(x['before'])} the season before)")
     return out
 
-
-def life_lines(memory, limit: int = 3) -> list[str]:
-    """The fort's past years in a line each, newest first."""
-    t = _state(memory)
-    out = []
-    for y in reversed(t["years"][-limit:]):
-        a, h = _d(y.get("avg")), _d(y.get("high"))
-        out.append(f"year {y.get('year')}: about {_fmt(round(a.get('pop', 0)))} dwarves (up to {_fmt(h.get('pop', 0))}), "
-                   f"{y.get('deaths', 0)} died, a threat near on {y.get('threat_days', 0)} days")
-    return out

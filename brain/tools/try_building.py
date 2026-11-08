@@ -1,9 +1,9 @@
 """Check the AI's building on your fort. By default changes NOTHING.
 
-    python brain/try_building.py            where would each kind of level go?
-    python brain/try_building.py --really   dig one small bedroom level (4 rooms)
+    python brain/tools/try_building.py            where would each kind of level go?
+    python brain/tools/try_building.py --really   dig one small bedroom level (4 rooms)
                                             so you can watch it happen
-    python brain/try_building.py --cancel N cancel AI project number N (while digging)
+    python brain/tools/try_building.py --cancel N cancel AI project number N (while digging)
 
 Use your TEST fort for --really.
 """
@@ -15,7 +15,7 @@ import json
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))   # (13c) brain/tools/ -> brain/
 
 from bridge import Bridge, BridgeError  # noqa: E402
 from dfhack import GameNotRunning  # noqa: E402
@@ -97,7 +97,7 @@ def main() -> int:
         print(f"\nStarted project #{r['project_id']} on level {r.get('elevation', r['z'])}. "
               "Unpause and watch the miners. "
               "The overseer (--autopilot) furnishes it when the digging is done.\n"
-              f"To undo the designations: python brain\\try_building.py --cancel {r['project_id']}")
+              f"To undo the designations: python brain\\tools\\try_building.py --cancel {r['project_id']}")
     return 0 if r.get("ok") else 1
 
 

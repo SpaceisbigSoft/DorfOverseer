@@ -24,10 +24,10 @@ memory (memory.calibration): values, windows, last changes, and a short log.
 
 from __future__ import annotations
 
-from digest import _d, _l, normalize
+from digest import _d, normalize
+from util import state_tick as _now
 
 DAY = 1200
-YEAR_TICKS = 403200
 LOG_MAX = 12
 
 # key -> (low, high, raise step, lower step, multiply?, window days, wait days after a change)
@@ -80,11 +80,6 @@ def values(memory) -> dict:
     """The tuned values, for effective_config (only ones that moved)."""
     vals = _state(memory)["values"]
     return {k: v for k, v in vals.items() if k in BOUNDS and isinstance(v, (int, float))}
-
-
-def _now(state: dict) -> int:
-    d = state["date"]
-    return d["year"] * YEAR_TICKS + d["tick"]
 
 
 def _window(c: dict, key: str, now: int) -> dict:

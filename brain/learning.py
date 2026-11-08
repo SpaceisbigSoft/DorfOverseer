@@ -50,9 +50,10 @@ from datetime import datetime
 from pathlib import Path
 
 from digest import _d, _l, normalize
+from util import load_json
+from util import state_tick as _now
 
 DAY = 1200
-YEAR_TICKS = 403200
 WAIT_DAYS = 28
 LESSON_WEIGHT = 2.0
 SLIDER_WINDOW_DAYS = 3
@@ -199,11 +200,6 @@ def _peek(memory) -> dict:
     l = memory.learning if isinstance(memory.learning, dict) else {}
     prefs = l.get("prefs") if isinstance(l.get("prefs"), dict) else {}
     return {"prefs": prefs, "log": l.get("log") if isinstance(l.get("log"), list) else []}
-
-
-def _now(state: dict) -> int:
-    d = state["date"]
-    return d["year"] * YEAR_TICKS + d["tick"]
 
 
 def _date(state: dict) -> str:
@@ -594,17 +590,33 @@ def engine_bonuses(memory) -> dict:
 
 # --- your memory (shared by all your forts) ---------------------------------------------
 
-def load_player() -> dict:
+# (13c) the file as last read, by its path, size and time: a cycle asked for
+# it five times (learning, defence), each a read and a parse
+_PLAYER_CACHE: dict = {}
+
+
+def load_player(copy: bool = False) -> dict:
+    """Your memory on the PC. The same dict until the file changes: read it
+    only. copy=True gives one of your own, to change and save_player."""
     try:
-        d = json.loads(PLAYER_FILE.read_text(encoding="utf-8"))
-        if isinstance(d, dict) and isinstance(d.get("lessons"), dict):
-            return d
-    except (OSError, ValueError):
-        pass
-    return {"version": 1, "lessons": {}}
+        st = PLAYER_FILE.stat()
+        stamp = (str(PLAYER_FILE), st.st_mtime_ns, st.st_size)
+    except OSError:
+        stamp = None
+    if stamp is None or _PLAYER_CACHE.get("stamp") != stamp:
+        d = load_json(PLAYER_FILE, {}) if stamp is not None else {}
+        if not isinstance(d.get("lessons"), dict):
+            d = {"version": 1, "lessons": {}}
+        _PLAYER_CACHE.clear()
+        if stamp is not None:
+            _PLAYER_CACHE.update(stamp=stamp, data=d)
+    else:
+        d = _PLAYER_CACHE["data"]
+    return json.loads(json.dumps(d)) if copy else d
 
 
 def save_player(d: dict) -> None:
+    _PLAYER_CACHE.clear()
     try:
         PLAYER_FILE.parent.mkdir(parents=True, exist_ok=True)
         tmp = PLAYER_FILE.with_suffix(".tmp")
@@ -618,7 +630,7 @@ def sync_player(memory, fort: str) -> None:
     """This fort's lessons go to your memory (under its line key, with today's
     date: it confirms them); ones it has forgotten come out; entries from
     before 0.97.1 of the same site (its own copies) are folded in."""
-    d = load_player()
+    d = load_player(copy=True)
     changed = False
     prefs = _state(memory)["prefs"]
     today = datetime.now().date().isoformat()

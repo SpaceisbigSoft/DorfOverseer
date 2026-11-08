@@ -6,7 +6,7 @@ Without an API key it estimates (about 2.5 characters per token on current
 Claude models). With a key it asks Anthropic's token-counting endpoint for
 exact numbers. Counting is free; it does not run the model.
 
-    python brain/token_test.py
+    python brain/tools/token_test.py
 
 To get exact counts:
     pip install anthropic
@@ -22,11 +22,11 @@ import os
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))   # (13c) brain/tools/ -> brain/
 
 from digest import _latest_snapshots, diff, digest  # noqa: E402
 
-PROJECT = Path(__file__).resolve().parent.parent
+PROJECT = Path(__file__).resolve().parent.parent.parent
 CHARS_PER_TOKEN = 2.5
 MODELS = ["claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5"]
 

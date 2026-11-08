@@ -2,7 +2,7 @@
 
 Run from the project folder, with your TEST fort loaded:
 
-    python brain/try_actions.py
+    python brain/tools/try_actions.py
 
 What it does, in order:
   1. Pauses the game.
@@ -18,10 +18,11 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))   # (13c) brain/tools/ -> brain/
 
 from bridge import Bridge, BridgeError  # noqa: E402
 from dfhack import DFHackError  # noqa: E402
+from util import date_tick  # noqa: E402
 
 ONE_DAY = 1200  # ticks
 
@@ -96,9 +97,7 @@ def main() -> int:
         bridge.pause()
         return 1
     end_date = status["date"]
-    advanced = (end_date["year"] * 403200 + end_date["tick"]) - (
-        start_date["year"] * 403200 + start_date["tick"]
-    )
+    advanced = date_tick(end_date) - date_tick(start_date)
     check("game paused itself", status.get("paused") is True)
     if status.get("interrupted"):
         print(f"     DF paused early (after {advanced} ticks), probably for an announcement.")

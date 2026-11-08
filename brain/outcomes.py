@@ -28,9 +28,9 @@ Kept in the fort's memory (memory.outcomes):
 from __future__ import annotations
 
 from digest import _d, _l, normalize
+from util import state_tick
 
 DAY = 1200
-YEAR_TICKS = 403200
 MAX_OPEN = 40
 MAX_RECENT = 30
 REL_TOL = 0.05              # a change must also be at least this share of the number before
@@ -42,7 +42,6 @@ LEVEL_WAIT_MAX_DAYS = 84    # ...for at most this long (a level never finished i
 POP_BOUND = {"free_beds": -1.0}
 MIN_FOR_LESSON = 3          # judged entries (not unclear) before a kind says anything
 LESSON_SHARE = 0.6          # ... and one verdict must have at least this share
-VERDICTS = ("helped", "none", "hurt", "unclear")
 VERDICT_TEXT = {"helped": "helped", "none": "no effect", "hurt": "hurt", "unclear": "unclear"}
 
 # The numbers decisions are judged on: name -> (words, smallest change that counts)
@@ -166,8 +165,7 @@ def open_entry(state: dict, memory, kind: str, what: str, by: str,
     if direction not in ("up", "down"):
         return None
     if now is None:
-        d = state["date"]
-        now = d["year"] * YEAR_TICKS + d["tick"]
+        now = state_tick(state)
     # the week before, from the timeline; today's number when there's too little of it
     before, n = _timeline_avg(memory, metric, now // DAY - BASELINE_DAYS + 1, now // DAY, MIN_TIMELINE_DAYS)
     if before is None:
@@ -275,8 +273,7 @@ def judge(state: dict, memory, now: int | None = None) -> list[dict]:
     """Judge every entry whose day has come. Returns the judged entries."""
     o = _state(memory)
     if now is None:
-        d = state["date"]
-        now = d["year"] * YEAR_TICKS + d["tick"]
+        now = state_tick(state)
     after, ctx = measure(state), _context(state, memory)
     keep, done = [], []
     for e in o["open"]:

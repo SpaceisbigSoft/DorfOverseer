@@ -25,6 +25,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from bridge import LOG_DIR  # noqa: E402
+from digest import _d, _l  # noqa: E402
+from util import load_json  # noqa: E402
 
 RUNS_DIR = LOG_DIR / "runs"
 
@@ -35,13 +37,6 @@ TRAITS = ("militarism", "fortification", "caution", "justice", "piety", "welfare
 ZONES = ("Barracks", "ArcheryRange", "Dungeon", "DiningHall", "MeetingHall", "Office", "Bedroom", "Tomb", "Pen")
 LOCATIONS = ("TEMPLE", "GUILDHALL", "INN_TAVERN", "LIBRARY", "HOSPITAL")
 
-
-def _d(x) -> dict:
-    return x if isinstance(x, dict) else {}
-
-
-def _l(x) -> list:
-    return x if isinstance(x, list) else []
 
 
 def find_runs(names: list[str]) -> list[list[Path]]:
@@ -60,13 +55,6 @@ def find_runs(names: list[str]) -> list[list[Path]]:
             side.append(hits[-1])                # the newest of the matches
         out.append(sorted(side))
     return out
-
-
-def read_json(path: Path) -> dict | None:
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return None
 
 
 def read_lines(path: Path) -> list[dict]:
@@ -183,13 +171,13 @@ def metrics_facts(rows: list[dict]) -> dict:
 def load(side: list[Path], end_override: Path | None) -> dict:
     """One side: its runs in order, the first one's start, the last one's end."""
     first, last = side[0], side[-1]
-    start = read_json(first / "start-state.json")
-    end = read_json(end_override) if end_override else read_json(last / "end-state.json")
+    start = load_json(first / "start-state.json")
+    end = load_json(end_override) if end_override else load_json(last / "end-state.json")
     decisions, rows = [], []
     for run in side:
         decisions += read_lines(run / "decisions.jsonl")
         rows += read_metrics(run / "metrics.csv")
-    return {"name": "+".join(p.name for p in side), "run": read_json(last / "run.json") or {},
+    return {"name": "+".join(p.name for p in side), "run": load_json(last / "run.json") or {},
             "start": start, "end": end,
             "journal": journal_facts(decisions),
             "metrics": metrics_facts(rows)}

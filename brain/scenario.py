@@ -35,8 +35,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import metrics  # noqa: E402
 import overseer  # noqa: E402
 from bridge import LOG_DIR, Bridge, BridgeError  # noqa: E402
-from dfhack import CONFIG_PATH, PROJECT_ROOT, DFHackError, GameNotRunning, save_root  # noqa: E402
-from planner import TICKS_PER_DAY, TICKS_PER_YEAR  # noqa: E402
+from dfhack import PROJECT_ROOT, DFHackError, GameNotRunning, read_config, save_root  # noqa: E402
+from planner import TICKS_PER_DAY  # noqa: E402
+from util import date_tick as abs_tick  # noqa: E402
 
 RUNS_DIR = LOG_DIR / "runs"
 BACKUP_SAVES = PROJECT_ROOT / "saves"
@@ -67,10 +68,6 @@ class EventTap:
 
     def __getattr__(self, name):
         return getattr(self._bridge, name)
-
-
-def abs_tick(date: dict) -> int:
-    return date["year"] * TICKS_PER_YEAR + date["tick"]
 
 
 def clear_popups(bridge: Bridge) -> None:
@@ -167,10 +164,9 @@ def df_save_dir(bridge: Bridge | None) -> Path:
     df_path = None
     if bridge is not None and bridge.version and bridge.version.get("df_path"):
         df_path = bridge.version["df_path"]
-    cfg = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
     if df_path is None:
         # ...\steamapps\common\DFHack\hack\dfhack-run.exe -> ...\steamapps\common\Dwarf Fortress
-        df_path = Path(cfg["dfhack_run"]).parents[2] / "Dwarf Fortress"
+        df_path = Path(read_config()["dfhack_run"]).parents[2] / "Dwarf Fortress"
     root = save_root(df_path)
     return root if root is not None else Path(df_path) / "save"
 

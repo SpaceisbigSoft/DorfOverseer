@@ -304,7 +304,6 @@ def score_options(state: dict, memory, cfg: dict | None = None) -> dict:
     cfg = cfg or PLANNER_CONFIG
     s = state
     pop = int(_d(s.get("dwarves")).get("total") or 0)
-    traits = _d(_d(s.get("settings")).get("traits"))
     culture = getattr(memory, "culture", None)
     culture = culture if isinstance(culture, dict) else {}
     lean = {}

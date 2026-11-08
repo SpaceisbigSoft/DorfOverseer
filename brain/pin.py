@@ -21,6 +21,7 @@ import time
 from pathlib import Path
 
 from dfhack import PROJECT_ROOT
+from util import load_json
 
 
 def _log_dir() -> Path:
@@ -32,11 +33,7 @@ LAST_FORT = _log_dir() / "last-fort.json"
 
 
 def _read(path: Path) -> dict:
-    try:
-        d = json.loads(path.read_text(encoding="utf-8"))
-        return d if isinstance(d, dict) else {}
-    except (OSError, ValueError):
-        return {}
+    return load_json(path, {})
 
 
 def site_of(fort_key) -> str:
