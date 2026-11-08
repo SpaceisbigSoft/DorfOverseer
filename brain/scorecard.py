@@ -450,9 +450,11 @@ def measures(s: dict, j: dict) -> dict:
 
 def constructions_section(s: dict) -> dict | None:
     """The report's `constructions` section (lua/ai-constructions.lua survey),
-    or the census's copy; None when neither is there or the survey failed."""
+    or the census's copy; None when neither is there or the survey failed
+    ((0.105.30 fixes) or found no construction list: `missing`, its zeros
+    are no data)."""
     for c in (s.get("constructions"), _d(s.get("census")).get("constructions")):
-        if isinstance(c, dict) and c and "error" not in c:
+        if isinstance(c, dict) and c and "error" not in c and not c.get("missing"):
             return c
     return None
 

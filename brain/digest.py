@@ -368,7 +368,7 @@ def built_line(s: dict) -> str:
     from the constructions survey, with the keep's, halls' and wings' stages.
     "" when the report has no survey (an older bridge) or nothing is built or planned."""
     c = _d(s.get("constructions"))
-    if not c or "error" in c:
+    if not c or "error" in c or c.get("missing"):       # (0.105.30 fixes) no list read: no data, not zeros
         return ""
     shape, item = _d(c.get("by_shape")), _d(c.get("by_item"))
     total = _n(c.get("total"))

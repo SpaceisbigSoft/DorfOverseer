@@ -1796,6 +1796,49 @@ function deep_wagon_check(d)
             end
         end
     end
+    -- (0.105.30 fixes) and up or down from it: a stair (or a ramp, or a
+    -- channel) out of the hall or road to a level that isn't the road's own
+    -- (a stair down from the hall's floor into the fort)
+    local UP = {STAIR_UP = true, STAIR_UPDOWN = true}
+    local DOWN = {STAIR_DOWN = true, STAIR_UPDOWN = true}
+    local function walk_tile(x, y, z)
+        if plan[k3(x, y, z)] then return nil end
+        local t = info(x, y, z)
+        if not t or t.shape == 'WALL' or t.shape == 'EMPTY' then return nil end
+        return t
+    end
+    for _, p in ipairs(d.tiles) do
+        if opens then break end
+        if p.z < sz then
+            local t = info(p.x, p.y, p.z)
+            local shape = t and t.shape
+            if shape and DOWN[shape] then
+                local dn = walk_tile(p.x, p.y, p.z - 1)
+                if dn and UP[dn.shape] then opens = {x = p.x, y = p.y, z = p.z - 1} end
+            end
+            if not opens and shape and UP[shape] and p.z + 1 < sz then
+                local up = walk_tile(p.x, p.y, p.z + 1)
+                if up and DOWN[up.shape] then opens = {x = p.x, y = p.y, z = p.z + 1} end
+            end
+            if not opens and (shape == 'RAMP_TOP' or shape == 'EMPTY') and p.r ~= 'h' then
+                -- the hall's floor channelled or holed: what is under it
+                if walk_tile(p.x, p.y, p.z - 1) then opens = {x = p.x, y = p.y, z = p.z - 1} end
+            end
+            if not opens and shape == 'RAMP' and p.z + 1 < sz then
+                -- a ramp of the road leads up beside it: to a level of the fort?
+                for dx = -1, 1 do
+                    for dy = -1, 1 do
+                        if not opens and (dx ~= 0 or dy ~= 0) then
+                            local up = walk_tile(p.x + dx, p.y + dy, p.z + 1)
+                            if up and not up.outside and up.shape ~= 'RAMP_TOP' then
+                                opens = {x = p.x + dx, y = p.y + dy, z = p.z + 1}
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
     local function block(x, y, z, what, fix, extra)
         local b = {x = x, y = y, z = z, elevation = ez(z), what = what, fix = fix}
         for k, v in pairs(extra or {}) do b[k] = v end
@@ -1810,11 +1853,18 @@ function deep_wagon_check(d)
         end
         return {state = 'blocked', block = b, opens = opens}
     end
-    -- what a building on the AI's road does: removed, unless the road opens
-    -- into the fort (then a door or hatch there may be the fort's gate)
+    -- what a building on the AI's road does: removed only when the hall and
+    -- road are found sealed from the fort on every level (no `opens`, above:
+    -- the same level, stairs, ramps and holes). Opening into the fort,
+    -- anything there may be closing the fort's passage (a door, hatch,
+    -- floodgate, grate, bars, a bridge...): never the AI's to take away,
+    -- a Needs you. (0.105.30 fixes) A bridge never: the wagon drawbridge
+    -- the gates put on the road is raised at an alarm, and a raised one is
+    -- the gate doing its work.
     local function building_fix(b)
-        if opens and (b.kind == 'Door' or b.kind == 'Hatch' or b.kind == 'Bridge') then return nil end
-        return b.id and 'remove' or nil
+        if opens or not b or not b.id then return nil end
+        if b.kind == 'Bridge' then return nil end
+        return 'remove'
     end
     -- 1. the ground in front of the mouth (u = -1, 0)
     for u = -1, 0 do

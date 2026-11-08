@@ -547,7 +547,7 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
         _guard(_hall_rule, s, cfg, citizens, traits, proposals, notes, memory, rules_)
     # 6e-0c. (0.105.30) blocks for what is to be built (after the idle hands: not ordered twice)
     if can_use("stocks", "orders", "buildings"):
-        _guard(_construction_blocks_rule, s, cfg, citizens, traits, proposals, notes, memory)
+        _guard(_construction_blocks_rule, s, cfg, citizens, traits, proposals, notes, memory, rules_)
     # 6e-1. Trade: goods to the depot for a caravan, crafts to sell; hauling
     if can_use("buildings", "orders"):
         _guard(_trade_rules, s, cfg, citizens, proposals, notes, traits, memory)

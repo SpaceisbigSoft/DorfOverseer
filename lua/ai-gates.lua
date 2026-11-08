@@ -1904,9 +1904,18 @@ function sealed_layer_use(e)
     return nil
 end
 
--- Citizens beyond the opening: in the cavern, in the walk group of its
--- outside tiles, or standing on the opening (tests replace this).
+-- Citizens beyond the opening (tests replace this): standing on the
+-- opening; in the cavern, in the walk group of its outside tiles; or
+-- (0.105.30 fixes) anywhere inside that the fort's own inside can't reach
+-- without crossing the opening: a miner's outpost dug from the cavern is
+-- not cavern-flagged, yet walled out all the same. The fort's inside is
+-- flooded from the opening's fort side with the opening shut (the gates'
+-- own explore); an inside citizen it doesn't reach counts (a keep or
+-- tower joined to the fort only over the surface counts too: refused, not
+-- risked). Citizens out on the surface don't count, as before.
 function citizens_beyond(e)
+    cache = cache or {}
+    edge_cache = edge_cache or {}
     local groups, on = {}, {}
     for k in pairs(e.outs or {}) do
         local x, y, z = unkey(k)
@@ -1914,13 +1923,31 @@ function citizens_beyond(e)
         if ok and g and g ~= 0 then groups[g] = true end
     end
     for _, k in ipairs(e.inside_list or {}) do on[k] = true end
+    -- the fort's side of the opening, the opening shut
+    local seeds = {}
+    for _, k in ipairs(e.inside_list or {}) do
+        local x, y, z = unkey(k)
+        for dx = -1, 1 do
+            for dy = -1, 1 do
+                local nk = key(x + dx, y + dy, z)
+                if not on[nk] and not (e.outs or {})[nk] and interior(T(x + dx, y + dy, z)) then
+                    table.insert(seeds, {x = x + dx, y = y + dy, z = z})
+                end
+            end
+        end
+    end
+    local okf, fort = pcall(explore, seeds, on)
+    if not okf then fort = nil end
     local n = 0
     for _, u in ipairs(dfhack.units.getCitizens(true)) do
         local p = u.pos
-        if on[key(p.x, p.y, p.z)] then
+        local k = key(p.x, p.y, p.z)
+        if on[k] then
             n = n + 1
-        else
+        elseif not (fort and fort[k]) then
             local ok, yes = pcall(function()
+                local t = T(p.x, p.y, p.z)
+                if interior(t) then return true end            -- inside, apart from the fort
                 local des = dfhack.maps.getTileFlags(p.x, p.y, p.z)
                 if not (des and (des.feature_global or des.feature_local)) then return false end
                 local g = dfhack.maps.getWalkableGroup(xyz2pos(p.x, p.y, p.z))
@@ -1946,7 +1973,7 @@ function plan_sealed(e, starts)
     if use then return nil, 'the fort uses that cavern: ' .. use end
     local okc, n = pcall(citizens_beyond, e)
     if not okc then return nil, 'the citizens beyond it could not be counted' end
-    if n > 0 then return nil, ('%d citizen%s beyond it in the cavern'):format(n, n == 1 and '' or 's') end
+    if n > 0 then return nil, ('%d citizen%s beyond it (in the cavern, or where the fort can\'t reach but through it)'):format(n, n == 1 and '' or 's') end
     local memo = {}
     local plan, why2 = plan_line(e, 'sealed', starts, {}, memo)
     if not plan then return nil, why2 end
@@ -2394,6 +2421,10 @@ function fortify(id, style, starts)
     local e = entrance(id)
     if not e then return {ok = false, rejected = true, error = 'no such entrance (scan first)'} end
     if not GAP[style] then return {ok = false, rejected = true, error = 'unknown gate style ' .. tostring(style)} end
+    -- (0.105.30 fixes) the depot's wagon road takes no door whatever style
+    -- is asked: the wagon style (a 3-wide drawbridge, or left open)
+    local asked_style
+    if e.deep_road and style ~= 'wagon' then asked_style, style = style, 'wagon' end
     cache, edge_cache = {}, {}      -- the map may have changed since the scan
     -- stockpiles in the opening are moved out of the way first
     local moved = {}
@@ -2414,10 +2445,15 @@ function fortify(id, style, starts)
     local out, failed = {walls = 0, doors = 0, inner_doors = 0, traps = 0, statues = 0, doors_later = 0,
                          support_walls = 0, hatches = 0}, {}
     out.pieces = {}                 -- every tile it placed on ("x,y,z"), so the gate can be taken down exactly
+    out.asked_style = asked_style
+    local wall_keys = {}
     local function put(list, key_text, field)
         for _, k in ipairs(list) do
             local x, y, z = unkey(k)
-            if key_text == 'd' and not wall_beside(x, y, z) then
+            if key_text == 'd' and e.deep_road then
+                -- (0.105.30 fixes) never a door on the depot's wagon road
+                out.doors_refused = (out.doors_refused or 0) + 1
+            elseif key_text == 'd' and not wall_beside(x, y, z) then
                 -- its walls are only planned: the door is added once they're
                 -- built (the next scans see a narrow gap between walls)
                 out.doors_later = out.doors_later + 1
@@ -2426,6 +2462,7 @@ function fortify(id, style, starts)
                 if ok then
                     out[field] = out[field] + 1
                     if #out.pieces < 80 then table.insert(out.pieces, ('%d,%d,%d'):format(x, y, z)) end
+                    if key_text == 'Cw' then table.insert(wall_keys, ('%d,%d,%d'):format(x, y, z)) end
                 else
                     table.insert(failed, key_text .. ':' .. tostring(reason))
                 end
@@ -2433,6 +2470,7 @@ function fortify(id, style, starts)
         end
     end
     put(plan.walls, 'Cw', 'walls')
+    if plan.sealed then pcall(note_sealed, wall_keys) end     -- (0.105.30 fixes) clear_gate's record under rock
     put(plan.support, 'Cw', 'support_walls')
     put(plan.hatches, 'H', 'hatches')
     put(plan.doors, 'd', 'doors')
@@ -2766,10 +2804,37 @@ local function surface_tile(x, y, z)
     return d ~= nil and not d.subterranean
 end
 
+-- (0.105.30 fixes) The walls the `sealed` style placed, kept with the save
+-- ({"x,y,z", ...}): under rock clear_gate takes down only these.
+SEALED_KEY = 'ai-overseer/sealed_walls'
+SEALED_RECORD_MAX = 200
+
+function sealed_records()
+    local d = U.site_get(SEALED_KEY, {})
+    local set = {}
+    for _, k in ipairs(type(d) == 'table' and type(d.walls) == 'table' and d.walls or {}) do set[k] = true end
+    return set, (type(d) == 'table' and type(d.walls) == 'table') and d.walls or {}
+end
+
+function note_sealed(keys)
+    if #keys == 0 then return end
+    local set, list = sealed_records()
+    local out = {}
+    for _, k in ipairs(list) do table.insert(out, k) end
+    for _, k in ipairs(keys) do
+        if not set[k] then set[k] = true; table.insert(out, k) end
+    end
+    while #out > SEALED_RECORD_MAX do table.remove(out, 1) end
+    U.site_put(SEALED_KEY, {walls = out})
+end
+
 -- (0.105.30) A wall the AI built in a cavern opening (a sealed gate): a
--- construction with a cavern tile beside it. Only such walls are taken
--- down under rock.
+-- construction with a cavern tile beside it, (0.105.30 fixes) and recorded
+-- by the sealed style when placed (sealed_records). Only such walls are
+-- taken down under rock.
 local function sealed_wall_tile(x, y, z)
+    local okr, rec = pcall(sealed_records)
+    if not (okr and rec[('%d,%d,%d'):format(x, y, z)]) then return false end
     local ok, yes = pcall(function()
         local pos = xyz2pos(x, y, z)
         local built = dfhack.constructions.findAtTile(pos)
@@ -2814,12 +2879,24 @@ function clear_gate(x, y, z, pieces, dry_run)
         return {ok = false, rejected = true, error = 'it is still an entrance of the fort: kept'}
     end
     local spots = {}
+    -- (0.105.30 fixes) the wing walls recorded for this way in (build_wings):
+    -- part of its gate, taken down with it
+    local okw, wings = pcall(function() return wing_records()[('%d,%d,%d'):format(x, y, z)] end)
+    wings = (okw and type(wings) == 'table' and #wings > 0) and wings or nil
+    if wings then
+        local all = {}
+        for i, k in ipairs(type(pieces) == 'table' and pieces or {}) do
+            if i <= GATE_PIECES_MAX then table.insert(all, k) end
+        end
+        for i, k in ipairs(wings) do if i <= WINGS_MAX then table.insert(all, k) end end
+        pieces = all
+    end
     if type(pieces) == 'table' and #pieces > 0 then
         -- (0.100, security pass) the pieces a fortify recorded lie round its
         -- gate on the surface: anything else (under rock, far off, a list of
         -- thousands) isn't one, and is skipped
         for i, k in ipairs(pieces) do
-            if i > GATE_PIECES_MAX then break end
+            if i > GATE_PIECES_MAX + (wings and WINGS_MAX or 0) then break end
             local px, py, pz = tostring(k):match('^(%-?%d+),(%-?%d+),(%-?%d+)$')
             px, py, pz = tonumber(px), tonumber(py), tonumber(pz)
             if px and math.abs(px - x) <= GATE_PIECE_REACH and math.abs(py - y) <= GATE_PIECE_REACH
@@ -2875,7 +2952,15 @@ function clear_gate(x, y, z, pieces, dry_run)
     if removed + cancelled == 0 then
         return {ok = false, rejected = true, error = 'nothing of that gate is left to take down'}
     end
-    return {ok = true, removed = removed, cancelled = cancelled, dry_run = dry_run or nil}
+    if wings and not dry_run then
+        pcall(function()                         -- (0.105.30 fixes) its wings taken down with it
+            local d = wing_records()
+            d[('%d,%d,%d'):format(x, y, z)] = nil
+            U.site_put(WINGS_KEY, d)
+        end)
+    end
+    return {ok = true, removed = removed, cancelled = cancelled, wings = wings and #wings or nil,
+            dry_run = dry_run or nil}
 end
 
 -- Name the building just placed at pos (quickfort can't name a lever).
@@ -3515,10 +3600,48 @@ local function note_cut_spot(e)
     U.site_put(CUT_SPOTS_KEY, out)
 end
 
+-- (0.105.30 fixes) The AI's own keep and surface hall ("x,y,z" -> true:
+-- their boxes, the level above for the roof): a citizen standing there
+-- seeds no "fort" of its own. A finished keep with its stair to the roof is
+-- its court and its roof together, over LEDGE_MAX at any radius (r = 4:
+-- 49 + 81 tiles), so a dwarf in a keep built away from the way in would
+-- make its door a fort entrance at one scan and gone at the next. A keep
+-- round the way in is still the fort's: reached from the fort's own starts
+-- up the founding stair. Tests replace this.
+function ai_surface_box_keys()
+    local out = {}
+    pcall(function()
+        local B = reqscript('ai-builder')
+        local function box(x1, y1, x2, y2, z)
+            for zz = z, z + 1 do
+                for x = x1, x2 do
+                    for y = y1, y2 do out[key(x, y, zz)] = true end
+                end
+            end
+        end
+        local k = B.keep_data and B.keep_data()
+        if type(k) == 'table' and k.x and k.y and k.z and k.r then box(k.x - k.r, k.y - k.r, k.x + k.r, k.y + k.r, k.z) end
+        local d = B.halls_data and B.halls_data()
+        for _, h in ipairs(type(d) == 'table' and type(d.list) == 'table' and d.list or {}) do
+            if h.x1 and h.y1 and h.x2 and h.y2 and h.z then box(h.x1, h.y1, h.x2, h.y2, h.z) end
+        end
+    end)
+    return out
+end
+
 function fort_starts(starts)
     cache, edge_cache = {}, {}           -- (read fresh: it runs before a scan or a cut)
     local big, groups, order = {}, {}, {}
     local keep_big, seen_tile = {}, {}
+    -- (0.105.30 fixes) not from the AI's keep or hall, while anyone stands elsewhere
+    local okb, boxes = pcall(ai_surface_box_keys)
+    if okb and type(boxes) == 'table' and next(boxes) then
+        local rest = {}
+        for _, p in ipairs(starts or {}) do
+            if not boxes[key(p.x, p.y, p.z)] then table.insert(rest, p) end
+        end
+        if #rest > 0 then starts = rest end
+    end
     for _, p in ipairs(starts or {}) do
         local k = key(p.x, p.y, p.z)
         local t = T(p.x, p.y, p.z)

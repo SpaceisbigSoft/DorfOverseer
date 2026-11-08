@@ -183,7 +183,13 @@ def _next_tiles(h: dict | None, traits: dict, cfg: dict) -> tuple[str, int]:
         nxt = "roof"
     else:
         nxt = {"roof": "furnish", "furnish": "zone", "zone": "done"}.get(stage, "done")
-    need = h.get("next_tiles") if h else None          # the bridge's own count for that stage, where sent
+    # the bridge's own count for that stage, where sent (halls_status's
+    # next_blocks; next_tiles the name this read first)
+    need = None
+    if h:
+        need = h.get("next_blocks")
+        if not isinstance(need, int):
+            need = h.get("next_tiles")
     if isinstance(need, int) and need >= 0:
         return nxt, need
     return nxt, int(tiles.get(nxt, 0))
@@ -436,7 +442,7 @@ def _soil_floor_rule(s: dict, traits: dict, cfg: dict, proposals: list, notes: l
 
 
 def _construction_blocks_rule(s: dict, cfg: dict, citizens: int, traits: dict, proposals: list, notes: list,
-                              memory=None) -> None:
+                              memory=None, rules_: dict | None = None) -> None:
     """(0.105.30, construction 3.6) Stone blocks for what is to be built: the
     keep, the hall, the wings and the soil floors. Outside the idle-hands cap
     (500); at most construct_blocks_max_jobs jobs, and only from stone the
@@ -444,10 +450,9 @@ def _construction_blocks_rule(s: dict, cfg: dict, citizens: int, traits: dict, p
     if s.get("halted") is True or any(
             p.action.get("type") == "work_order" and p.action.get("recipe") == "stone_blocks" for p in proposals):
         return
-    if memory is not None and _d(getattr(memory, "crisis", None)).get("why"):
-        return
-    st_ = s.get("settings") if isinstance(s.get("settings"), dict) else {}
-    if st_.get("construct") is False:
+    # (0.105.30 fixes) the other construction rules' own quiet check: the
+    # Rules tab's switch (settings or rules_), a crisis, a siege, the alarm
+    if construct_quiet(s, memory, traits, cfg, rules_):
         return
     need, what = 0, []
     k = _d(s.get("buildings")).get("keep")
@@ -462,7 +467,7 @@ def _construction_blocks_rule(s: dict, cfg: dict, citizens: int, traits: dict, p
         what.append("the hall")
     if memory is not None:
         w = len(_wings_pending(s, memory, cfg, traits))
-        if w and not construct_quiet(s, memory, traits, cfg):
+        if w:
             need += w * cfg["wings_blocks"]
             what.append("the wings")
     if soil_floor_wanted(traits, cfg):

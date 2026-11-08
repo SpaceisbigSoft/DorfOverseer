@@ -161,37 +161,34 @@ def _():
     assert r.tiles == under and r.surface_out == 2 * 512 + 8 * 32 and not r.surface_back, dict(r)
 
 
-@test("shelter near the surface: too few under rock: the not-subterranean tiles come back, dark first, said so")
+@test("shelter near the surface: too few under rock: the dark not-subterranean tiles come back whole, never the sunlit")
 def _():
-    lua, env, got = shelter_world(NEAR, ncit=2900)          # needs 5800 tiles: 424 back, all dark
+    # (0.105.30 fixes) all the dark ones at once (one piece, not a scatter
+    # up to the need); the sunlit ones (the roofed surface) never
+    lua, env, got = shelter_world(NEAR, ncit=2900)          # needs 5800
     r = env.refresh_shelter()
     under = 10 * 512 + 512 - 8 * 32
-    assert r.tiles == 5800 and r.surface_back == 5800 - under, dict(r)
-    lit = sum(1 for z in (171, 172) for x in range(112, 128) for y in range(144, 160) if got[f"{x},{y},{z}"])
-    assert lit == 0, lit
-    lua, env, got = shelter_world(NEAR, ncit=3200)          # needs 6400: every dark one, then sunlit
-    r = env.refresh_shelter()
-    assert r.tiles == 6400 and r.surface_back == 6400 - under, dict(r)
-    assert r.surface_out == 2 * 512 + 8 * 32 - r.surface_back
-    assert "taken back" in r.surface_note and "dark" in r.surface_note, r.surface_note
-    # the dark ones (west half of z171-172, z170's south rows: 768 tiles) all
-    # came back before any sunlit one
+    assert r.tiles == under + 768 and r.surface_back == 768 and r.surface_out == 512, dict(r)
+    assert r.surface_mode == "short" and "dark" in r.surface_note, dict(r)
     dark = [f"{x},{y},{z}" for z in (171, 172) for x in range(96, 112) for y in range(144, 160)] \
         + [f"{x},{y},170" for x in range(96, 128) for y in range(152, 160)]
     assert all(got[k] for k in dark), sum(1 for k in dark if not got[k])
     lit = sum(1 for z in (171, 172) for x in range(112, 128) for y in range(144, 160) if got[f"{x},{y},{z}"])
-    assert lit == r.surface_back - len(dark), (lit, r.surface_back)
+    assert lit == 0, lit
+    lua, env, got = shelter_world(NEAR, ncit=3200)          # needs 6400: short, said so, still no sunlit
+    r = env.refresh_shelter()
+    assert r.tiles == under + 768 and r.surface_out == 512 and r.short, dict(r)
 
 
-@test("shelter near the surface: a fort DF reads all not subterranean still gets its shelter (never empty)")
+@test("shelter near the surface: a fort DF reads all not subterranean: 0.105.29's shelter, the whole fort")
 def _():
     lua, env, got = shelter_world("function() return false, false end", ncit=10)
     r = env.refresh_shelter()
-    assert r.tiles == 50 and r.surface_back == 50 and r.surface_out == ALL - 50, dict(r)
+    assert r.tiles == ALL and r.surface_mode == "unflagged" and not r.surface_out, dict(r)
     lua.execute("local df = ...; df.global.plotinfo.alerts.list[1].burrows = setmetatable({}, {__len = function() return 0 end})",
                 env.df)
     r2 = env.setup_shelter()
-    assert r2.ok and r2.tiles == 50, dict(r2)
+    assert r2.ok and r2.tiles == ALL, dict(r2)
 
 
 @test("shelter: an open entrance's margin first, then the roofed surface: the surface comes back last, farthest first")

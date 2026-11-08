@@ -341,9 +341,60 @@ local function entrance_keys(list)
     return keys
 end
 
+-- (0.105.30 fixes) The AI's own surface hall and keep (site data 'ai-
+-- overseer/halls' and 'ai-overseer/keep'): their boxes (walls, inside, the
+-- level above for the roof stair), never shelter whatever else happens. A
+-- set of "x,y,z" keys, or nil.
+local function ai_surface_boxes()
+    local ok, B = pcall(reqscript, 'ai-builder')
+    if not ok or type(B) ~= 'table' then return nil end
+    local out, any = {}, false
+    local function box(x1, y1, x2, y2, z)
+        for zz = z, z + 1 do
+            for x = x1, x2 do
+                for y = y1, y2 do out[x .. ',' .. y .. ',' .. zz] = true end
+            end
+        end
+        any = true
+    end
+    pcall(function()
+        local k = B.keep_data and B.keep_data()
+        if type(k) == 'table' and k.x and k.y and k.z and k.r then
+            box(k.x - k.r, k.y - k.r, k.x + k.r, k.y + k.r, k.z)
+        end
+    end)
+    pcall(function()
+        local d = B.halls_data and B.halls_data()
+        for _, h in ipairs(type(d) == 'table' and d.list or {}) do
+            pcall(function()
+                if h.x1 and h.y1 and h.x2 and h.y2 and h.z then box(h.x1, h.y1, h.x2, h.y2, h.z) end
+            end)
+        end
+    end)
+    return any and out or nil
+end
+
 -- Fills the burrow; returns the tiles in it and what was left out:
 -- {excluded, open_entrances, entrances_scanned, fallback, note, why,
--- drink_tiles, well_tiles, deep_depot_tiles, drink_back, surface_out, surface_back}.
+-- drink_tiles, well_tiles, deep_depot_tiles, drink_back, surface_out,
+-- surface_back, surface_mode, ai_hall_tiles, short}.
+--
+-- (0.105.30 fixes) The roofed surface. DF's `subterranean` flag is not
+-- reliable on a fort's top levels: a dark level under a hill can read as
+-- not subterranean, and a fort can read as all not subterranean. The rule:
+--   * a sunlit tile (inside, not subterranean, lit) is the roofed surface
+--     (a keep's court, a tree's shade): never shelter;
+--   * the AI's own hall and keep boxes: never shelter (above);
+--   * a dark not-subterranean tile is taken as the fort itself (0.105.29's
+--     shelter: the entrances' margins still apply) whenever those tiles
+--     are most of the inside, or leaving them out would leave the shelter
+--     short. Otherwise (a few stray dark ones) they stay out, the whole
+--     lot at once: all or none, so the shelter stays one piece rather
+--     than a scatter.
+--   * drink and wells: with neither inside, the left-out drink and well
+--     tiles come back from the margins and from the not-subterranean ones
+--     (dark first, sunlit only when there is nothing else; never the
+--     AI's hall or keep), farthest from the open entrances first.
 function fill_shelter(b)
     local info = {excluded = 0, margin = SHELTER_MARGIN, margin_levels = SHELTER_MARGIN_Z}
     local lo, hi = fort_levels()
@@ -356,10 +407,21 @@ function fill_shelter(b)
     local deep, deep_n = deep_depot_tiles()                  -- (0.105.26)
     local okw, water = pcall(drink_and_wells)
     water = okw and water or {}
-    local drink_tiles, well_tiles, deep_out = 0, 0, 0
+    local okh, ai_box = pcall(ai_surface_boxes)
+    ai_box = okh and ai_box or nil
+    local drink_tiles, well_tiles, deep_out, ai_out = 0, 0, 0, 0
     local n = 0
-    local held = {}          -- the tiles left out: {block, x, y, far, kind}
-    local surface_held = {}  -- (0.105.30) inside but not subterranean: {block, x, y, far, kind, light}
+    -- the tiles left out: {block, x, y, far, kind, light, surface}
+    local held = {}          -- near an open entrance
+    local dark_surface = {}  -- (0.105.30) inside, not subterranean, dark: {.., near}
+    local sunlit = {}        -- inside, not subterranean, sunlit
+    local function take(t)
+        dfhack.burrows.setAssignedBlockTile(b, t[1], t[2], t[3], true)
+        t.taken = true
+        n = n + 1
+        if t[5] == 'drink' then drink_tiles = drink_tiles + 1
+        elseif t[5] == 'well' then well_tiles = well_tiles + 1 end
+    end
     for _, block in ipairs(df.global.world.map.map_blocks) do
         local z = block.map_pos.z
         if z >= lo and z <= hi then
@@ -375,12 +437,8 @@ function fill_shelter(b)
                         local k = (bx + x) .. ',' .. (by + y) .. ',' .. z
                         if OPEN[shape] and deep and deep[k] then
                             deep_out = deep_out + 1
-                        elseif OPEN[shape] and d.subterranean == false then
-                            -- (0.105.30) the roofed surface (a keep, a hall,
-                            -- the shade of a tree): beyond the gate, never shelter
-                            local far = nil
-                            if #open > 0 then far = select(2, near_entrance(open, bx + x, by + y, z)) end
-                            table.insert(surface_held, {block, x, y, far or 0, water[k], d.light == true})
+                        elseif OPEN[shape] and ai_box and ai_box[k] then
+                            ai_out = ai_out + 1
                         elseif OPEN[shape] then
                             local near, far = false, nil
                             if near_list then near = near_entrance(near_list, bx + x, by + y, z) end
@@ -391,12 +449,17 @@ function fill_shelter(b)
                                 else
                                     far = select(2, near_entrance(near_list, bx + x, by + y, z))
                                 end
-                                table.insert(held, {block, x, y, far or 0, water[k]})
+                            elseif #open > 0 and d.subterranean == false then
+                                far = select(2, near_entrance(open, bx + x, by + y, z))
+                            end
+                            local t = {block, x, y, far or 0, water[k], d.light == true}
+                            if d.subterranean == false then
+                                t.surface, t.near = true, near and true or false
+                                table.insert(t[6] and sunlit or dark_surface, t)
+                            elseif near then
+                                table.insert(held, t)
                             else
-                                dfhack.burrows.setAssignedBlockTile(b, block, x, y, true)
-                                n = n + 1
-                                if water[k] == 'drink' then drink_tiles = drink_tiles + 1
-                                elseif water[k] == 'well' then well_tiles = well_tiles + 1 end
+                                take(t)
                             end
                         end
                     end
@@ -405,32 +468,65 @@ function fill_shelter(b)
         end
     end
     if deep_out > 0 then info.deep_depot_tiles = deep_out end
+    if ai_out > 0 then info.ai_hall_tiles = ai_out end
+    local okc, cits = pcall(function() return #dfhack.units.getCitizens(true) end)
+    local need = math.max(SHELTER_MIN_TILES, SHELTER_TILES_PER_CITIZEN * (okc and cits or 0))
+    -- the dark not-subterranean tiles: the fort itself, or left out (above)
+    local inside = n + #held + #dark_surface + #sunlit
+    local surface_back = 0
+    if #dark_surface > 0 then
+        local most = (#dark_surface + #sunlit) * 2 > inside
+        local short = n < need
+        if most or short then
+            for _, t in ipairs(dark_surface) do
+                if t.near then table.insert(held, t) else take(t); surface_back = surface_back + 1 end
+            end
+            info.surface_mode = most and 'unflagged' or 'short'
+            info.surface_note = most
+                and ('%d of %d inside tiles read as not subterranean: the dark ones taken as the fort (only the %d sunlit left out)')
+                    :format(#dark_surface + #sunlit, inside, #sunlit)
+                or ('only %d tiles under rock (needs %d): the %d dark not-subterranean tiles taken as the fort, the %d sunlit ones not')
+                    :format(n - surface_back, need, #dark_surface, #sunlit)
+            dark_surface = {}
+        end
+    end
     -- (0.105.26) B (2 Nov) and A: a shelter with no drink nor well in it
     -- killed by thirst. Neither inside: the left-out drink and well tiles
     -- farthest from the open entrances come back first (a well, and up to
-    -- SHELTER_DRINK_BACK drink tiles)
+    -- SHELTER_DRINK_BACK drink tiles); (0.105.30 fixes) from the margins and
+    -- the dark not-subterranean tiles alike, the sunlit ones last.
     local back = 0
-    if drink_tiles + well_tiles == 0 and #held > 0 then
-        table.sort(held, function(a, c) return a[4] > c[4] end)
-        local rest = {}
-        for _, h in ipairs(held) do
-            if h[5] == 'well' and well_tiles == 0 then
-                dfhack.burrows.setAssignedBlockTile(b, h[1], h[2], h[3], true)
-                n, back, well_tiles = n + 1, back + 1, well_tiles + 1
-            elseif h[5] == 'drink' and drink_tiles < SHELTER_DRINK_BACK then
-                dfhack.burrows.setAssignedBlockTile(b, h[1], h[2], h[3], true)
-                n, back, drink_tiles = n + 1, back + 1, drink_tiles + 1
-            else
-                table.insert(rest, h)
+    if drink_tiles + well_tiles == 0 then
+        local cand = {}
+        for _, list in ipairs({held, dark_surface, sunlit}) do
+            for _, t in ipairs(list) do
+                if (t[5] == 'drink' or t[5] == 'well') and not t.taken then table.insert(cand, t) end
             end
         end
-        held = rest
+        table.sort(cand, function(a, c)
+            if a[6] ~= c[6] then return not a[6] end
+            if a[5] ~= c[5] then return a[5] == 'drink' end
+            return a[4] > c[4]
+        end)
+        for _, t in ipairs(cand) do
+            -- (a sunlit one only when nothing in the dark gave drink or a well)
+            if t[6] and drink_tiles + well_tiles > 0 then break end
+            if t[5] == 'drink' and drink_tiles < SHELTER_DRINK_BACK then
+                take(t); back = back + 1
+            elseif t[5] == 'well' and well_tiles == 0 then
+                take(t); back = back + 1
+            end
+            if drink_tiles >= SHELTER_DRINK_BACK and well_tiles > 0 then break end
+        end
         if back > 0 then
             info.drink_back = back
-            info.drink_note = ('no drink nor well away from the open entrances: %d drink and well tile%s near them taken back')
+            info.drink_note = ('no drink nor well away from the open entrances and the surface: %d drink and well tile%s taken back')
                 :format(back, back == 1 and '' or 's')
         end
     end
+    local rest = {}
+    for _, t in ipairs(held) do if not t.taken then table.insert(rest, t) end end
+    held = rest
     info.excluded = #held
     if #held > 0 then
         local where = {}
@@ -442,18 +538,15 @@ function fill_shelter(b)
         info.why = ('%d tiles left out: within %d tiles (and %d levels) of, or on the stairs of, %d entrance%s not shut: %s')
             :format(#held, SHELTER_MARGIN, SHELTER_MARGIN_Z, #open, #open == 1 and '' or 's',
                     table.concat(where, '; ') .. (#open > 4 and '; ...' or ''))
-        local okc, cits = pcall(function() return #dfhack.units.getCitizens(true) end)
-        local need = math.max(SHELTER_MIN_TILES, SHELTER_TILES_PER_CITIZEN * (okc and cits or 0))
         if n < need then
             -- too few away from them: the farthest of the left-out tiles back
             table.sort(held, function(a, c) return a[4] > c[4] end)
             local fb = 0
             for _, t in ipairs(held) do
                 if n >= need then break end
-                dfhack.burrows.setAssignedBlockTile(b, t[1], t[2], t[3], true)
-                n, fb = n + 1, fb + 1
-                if t[5] == 'drink' then drink_tiles = drink_tiles + 1
-                elseif t[5] == 'well' then well_tiles = well_tiles + 1 end
+                take(t)
+                fb = fb + 1
+                if t.surface then surface_back = surface_back + 1 end
             end
             info.excluded = #held - fb
             info.fallback = true
@@ -462,33 +555,15 @@ function fill_shelter(b)
                 :format(n - fb, need, fb)
         end
     end
-    -- (0.105.30) The roofed surface is left out (as the deep depot is). A
-    -- fort whose top levels are near the surface, or a level DF doesn't flag
-    -- subterranean, could be left short by it: then those tiles come back,
-    -- the dark ones first (sunlit ones are the roofed surface), and
-    -- farthest from the open entrances, up to the shelter's need, said so.
-    if #surface_held > 0 then
-        local okc, cits = pcall(function() return #dfhack.units.getCitizens(true) end)
-        local need = math.max(SHELTER_MIN_TILES, SHELTER_TILES_PER_CITIZEN * (okc and cits or 0))
-        local sb = 0
-        if n < need then
-            table.sort(surface_held, function(a, c)
-                if a[6] ~= c[6] then return not a[6] end
-                return a[4] > c[4]
-            end)
-            for _, t in ipairs(surface_held) do
-                if n >= need then break end
-                dfhack.burrows.setAssignedBlockTile(b, t[1], t[2], t[3], true)
-                n, sb = n + 1, sb + 1
-                if t[5] == 'drink' then drink_tiles = drink_tiles + 1
-                elseif t[5] == 'well' then well_tiles = well_tiles + 1 end
-            end
-            info.surface_back = sb
-            info.surface_note = ('only %d tiles under rock (needs %d): %d of the %d not-subterranean tiles taken back, dark ones first')
-                :format(n - sb, need, sb, #surface_held)
+    local surface_out = 0
+    for _, list in ipairs({dark_surface, sunlit}) do
+        for _, t in ipairs(list) do
+            if t.taken then surface_back = surface_back + 1 else surface_out = surface_out + 1 end
         end
-        info.surface_out = #surface_held - sb
     end
+    if surface_out > 0 or surface_back > 0 then info.surface_out = surface_out end
+    if surface_back > 0 then info.surface_back = surface_back end
+    if n < need then info.short = ('the shelter holds %d tiles (needs %d): the sunlit surface and the AI\'s hall and keep stay out'):format(n, need) end
     info.drink_tiles, info.well_tiles = drink_tiles, well_tiles
     if drink_tiles + well_tiles == 0 then
         info.no_water = 'the shelter holds no drink and no well'
@@ -536,6 +611,7 @@ function shelter_result(r, info)
     r.drink_back, r.drink_note, r.no_water = info.drink_back, info.drink_note, info.no_water
     r.deep_depot_tiles = info.deep_depot_tiles
     r.surface_out, r.surface_back, r.surface_note = info.surface_out, info.surface_back, info.surface_note   -- (0.105.30)
+    r.surface_mode, r.ai_hall_tiles, r.short = info.surface_mode, info.ai_hall_tiles, info.short
     return r
 end
 
