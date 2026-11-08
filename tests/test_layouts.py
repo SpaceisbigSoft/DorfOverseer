@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-RESULTS = []
+from harness import test, finish  # noqa: E402
 
 try:
     import lupa  # noqa: F401
@@ -72,19 +72,6 @@ def draw(tiles, cells) -> str:
                 row += "." if (x, y) in tiles else "#"
         rows.append(row)
     return "\n".join(rows)
-
-
-def test(name):
-    def wrap(fn):
-        try:
-            fn()
-            RESULTS.append((name, True, ""))
-        except AssertionError as e:
-            RESULTS.append((name, False, str(e)))
-        except Exception as e:  # noqa: BLE001
-            RESULTS.append((name, False, f"{type(e).__name__}: {e}"))
-        return fn
-    return wrap
 
 
 def common_checks(L, tiles, cells):
@@ -224,7 +211,8 @@ def _():
     assert (room[1], room[2]) not in tiles, "storage room corner should be rock"
     L, tiles, cells = layout("bedrooms", rooms=4, room_size=3, **style(hall="rounded"))
     common_checks(L, tiles, cells)
-    assert all((x, y) in tiles for ph, x, y, t in cells if ph == "build" and t == "b")
+    beds = [(x, y) for ph, x, y, t in cells if ph == "build" and t == "b"]
+    assert len(beds) == 4 and all(b in tiles for b in beds), beds
 
 
 @test("decoration follows the style: none, floors, floors+walls, engraved halls")
@@ -280,7 +268,6 @@ def _():
         res = M.make("memorial", LUA.table_from({"name": bad}))
         L = res[0] if isinstance(res, tuple) else res
         assert L is None, bad
-
 
 
 @test("hospital and barracks: beds along both walls, supplies or weapon racks at the end, right zone")
@@ -505,7 +492,6 @@ def _():
     assert L.style.rhythm == 6                                    # clamped (the bridge refuses it)
 
 
-
 @test("jail: 3x3 cells, each with a door, a restraint and its own dungeon zone")
 def _():
     L, tiles, cells = layout("jail", cells=3)
@@ -539,8 +525,4 @@ if __name__ == "__main__":
             _, t, c = layout(kind, **params)
             print(f"\n{kind} {params}  (X = stair, . = dug, letters = buildings/stockpiles)\n" + draw(t, c))
         print()
-    for name, ok, msg in RESULTS:
-        print(f"[{'PASS' if ok else 'FAIL'}] {name}" + (f"\n        {msg}" if msg else ""))
-    failed = sum(1 for _, ok, _ in RESULTS if not ok)
-    print(f"\n{len(RESULTS) - failed} passed, {failed} failed")
-    sys.exit(1 if failed else 0)
+    finish()

@@ -14,6 +14,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+from harness import test, finish, code_has  # noqa: E402
 sys.path.insert(0, str(ROOT / "brain"))
 
 import planner  # noqa: E402
@@ -21,7 +22,6 @@ from planner import (PLANNER_CONFIG, Memory, effective_config, factor, game_day,
                      plan, record, select, abs_tick, TICKS_PER_DAY)
 
 BASE = json.loads((ROOT / "tests" / "fixtures" / "test_fort.json").read_text(encoding="utf-8"))
-RESULTS = []
 
 
 def fort(**changes) -> dict:
@@ -38,19 +38,6 @@ def fort(**changes) -> dict:
 
 def rules(proposals) -> list[str]:
     return [p.rule for p in proposals]
-
-
-def test(name):
-    def wrap(fn):
-        try:
-            fn()
-            RESULTS.append((name, True, ""))
-        except AssertionError as e:
-            RESULTS.append((name, False, str(e)))
-        except Exception as e:  # noqa: BLE001
-            RESULTS.append((name, False, f"{type(e).__name__}: {e}"))
-        return fn
-    return wrap
 
 
 @test("well-stocked real fort: no stock orders")
@@ -71,6 +58,7 @@ def _():
 @test("low drink but brewing already queued: no duplicate order")
 def _():
     s = fort(stocks__drink=1800)
+    assert "drink" in rules(plan(s, Memory())[0])                         # (13c) nothing queued: brewed
     s["orders"].append({"id": 9, "recipe": "brew_drink", "amount_left": 200, "by_ai": False})
     p, _ = plan(s, Memory())
     assert "drink" not in rules(p), rules(p)
@@ -167,14 +155,15 @@ def _():
     assert "threat_alert" not in rules(plan(fort(), Memory())[0])
 
 
-@test("Caution +100 reacts to nearby threats of unknown reach")
+@test("Caution +100 reacts to nearby threats of unknown reach (review #14: on the SAME level as a dwarf too)")
 def _():
-    s = fort()
-    s["others_on_map"]["threats"][0]["levels_from_nearest_dwarf"] = 3
-    s["others_on_map"]["threats"][0].pop("can_reach_dwarves", None)
-    assert "threat_alert" not in rules(plan(s, Memory())[0])
-    s["settings"]["traits"] = {"caution": 100}
-    assert "threat_alert" in rules(plan(s, Memory())[0])
+    for levels in (3, 0):
+        s = fort()
+        s["others_on_map"]["threats"][0]["levels_from_nearest_dwarf"] = levels
+        s["others_on_map"]["threats"][0].pop("can_reach_dwarves", None)
+        assert "threat_alert" not in rules(plan(s, Memory())[0]), levels
+        s["settings"]["traits"] = {"caution": 100}
+        assert "threat_alert" in rules(plan(s, Memory())[0]), levels
 
 
 @test("AI lowers its own alert only after 3 quiet cycles")
@@ -285,6 +274,8 @@ def _():
 def _():
     p, _ = plan(fort(), Memory())
     assert "nestboxes" not in {x.action.get("name") for x in p}
+    p, _ = plan(fort(tools__nestboxes=False), Memory())                  # (13c) known to be off: switched on
+    assert "nestboxes" in {x.action.get("name") for x in p}
 
 
 @test("mandate with a recipe gets queued; one without gets a note")
@@ -300,6 +291,7 @@ def _():
 @test("Noble deference -100 ignores mandates")
 def _():
     s = fort(mandates=[{"kind": "Make", "item": "STATUE", "remaining": 3, "total": 3, "days_left": 40}])
+    assert "mandate" in rules(plan(s, Memory())[0])                       # (13c) at the default: it's made
     s["settings"]["traits"] = {"deference": -100}
     assert "mandate" not in rules(plan(s, Memory())[0])
 
@@ -354,7 +346,6 @@ def _():
 def _():
     s = fort(stocks__drink=10)
     m = Memory()
-    d = s["date"]
     m.orders_by_day[str(game_day(s))] = PLANNER_CONFIG["max_orders_per_game_day"]
     allowed, held = select(plan(s, m)[0], s, m)
     assert not [a for a in allowed if a.is_order] and any("today" in h for h in held)
@@ -482,7 +473,8 @@ def _():
 
 @test("review #5: failed stocks section does not switch autochop on")
 def _():
-    s = fort()
+    s = fort(stocks__wood=0)
+    assert "autochop" in {x.action.get("name") for x in plan(s, Memory())[0]}     # (13c) no wood read: on
     s["stocks"] = {"error": "boom"}
     assert "autochop" not in {x.action.get("name") for x in plan(s, Memory())[0]}
 
@@ -525,6 +517,7 @@ def _():
 @test("review #10: a tool the player had on and switched off is never turned back on")
 def _():
     m = Memory()
+    assert "seedwatch" in {x.action.get("name") for x in plan(fort(), m)[0]}      # (13c) never on: turned on
     note_cycle(fort(tools__seedwatch=True), m)
     note_cycle(fort(), m)
     assert "seedwatch" not in {x.action.get("name") for x in plan(fort(), m)[0]}
@@ -533,6 +526,8 @@ def _():
 @test("review #11: failed settings section skips mandates and tools")
 def _():
     s = fort(mandates=[{"kind": "Make", "item": "STATUE", "remaining": 3}])
+    r = rules(plan(s, Memory())[0])
+    assert "mandate" in r and "tools" in r, r              # (13c) with the settings read: both come up
     s["settings"] = {"error": "boom"}
     r = rules(plan(s, Memory())[0])
     assert "mandate" not in r and "tools" not in r, r
@@ -544,15 +539,6 @@ def _():
     m = Memory(orders_by_day={str(game_day(s) - k): 1 for k in range(1, 9)})
     record([(plan(s, m)[0][0], {"ok": True})], s, m)
     assert m.orders_by_day.get(str(game_day(s))) == 1 and len(m.orders_by_day) <= 5
-
-
-@test("review #14: Caution +100 counts a threat on the SAME level as a dwarf")
-def _():
-    s = fort()
-    s["settings"]["traits"] = {"caution": 100}
-    s["others_on_map"]["threats"][0].update(levels_from_nearest_dwarf=0)
-    s["others_on_map"]["threats"][0].pop("can_reach_dwarves")
-    assert "threat_alert" in rules(plan(s, Memory())[0])
 
 
 @test("plan() never changes memory")
@@ -606,6 +592,8 @@ def _():
 def _():
     s = young_fort()
     s["buildings"]["other"]["Bed"] = 180
+    b = builds(plan(s, Memory())[0])
+    assert b and b[0].action["kind"] == "bedrooms", [x.action for x in b]      # (13c) without the project: one
     s["projects"]["open"] = [{"id": 1, "kind": "bedrooms", "phase": "dig", "summary": {"beds": 32},
                               "dig": {"total": 100, "dug": 10, "stuck": 0}}]
     b = builds(plan(s, Memory())[0])
@@ -1973,7 +1961,6 @@ def _():
     assert builds(plan(s, Memory())[0])
 
 
-
 @test("review 4c: an empty location list from the game (sent as []) still allows a temple")
 def _():
     s = settled_fort(piety=60)
@@ -2001,7 +1988,6 @@ def _():
     assert not [x for x in plan(s, Memory())[0] if x.rule == "project"]
 
 
-
 @test("game: a memorial the game left unfinishable is cancelled and owed again")
 def _():
     m = Memory(culture={"beasts_slain": ["Ijat"], "memorials_built": ["Ijat"]})
@@ -2012,7 +1998,6 @@ def _():
     assert c and c[0].action == {"type": "cancel_project", "project_id": 1, "memorial": "Ijat"}, c
     record([(c[0], {"ok": True})], s, m)
     assert m.culture["memorials_built"] == []
-
 
 
 @test("shoes mandate: leather shoes if there's leather, else cloth; boots are left to you")
@@ -2028,7 +2013,6 @@ def _():
     s = fort(mandates=[{"kind": "Make", "item": "SHOES", "subtype": "ITEM_SHOES_BOOTS", "remaining": 2}])
     p, notes = plan(s, Memory())
     assert not [x for x in p if x.rule == "mandate"] and any("boots" in n for n in notes), notes
-
 
 
 @test("hospital: a fort of 20+ without one builds one; barracks only for a militant fort")
@@ -3730,10 +3714,10 @@ def _():
 @test("0.105.24 presets: the Merchant city turns shut_to_visitors off (visitors are its point)")
 def _():
     src = (ROOT / "lua" / "ai-overseer-settings.lua").read_text(encoding="utf-8")
-    assert "shut_to_visitors = false}" in src and "'shut_to_visitors'}" in src
-    assert "heist_lockout = true," in src and "shut_to_visitors = true," in src
+    assert code_has(src, "shut_to_visitors = false}") and code_has(src, "'shut_to_visitors'}")
+    assert code_has(src, "heist_lockout = true,") and code_has(src, "shut_to_visitors = true,")
     gui = (ROOT / "lua" / "gui" / "ai-overseer.lua").read_text(encoding="utf-8")
-    assert "subviews.heist_lockout:setOption" in gui and "subviews.shut_to_visitors:setOption" in gui
+    assert code_has(gui, "subviews.heist_lockout:setOption") and code_has(gui, "subviews.shut_to_visitors:setOption")
 
 
 @test("0.105.9 traps: the founding stair's hatch is a gate: traps behind it")
@@ -4673,8 +4657,7 @@ def _():
     drink = s["stocks"].get("drink")
     # (0.105.10) basics met, the last slot is the fort's own: the kiln level waits for it
     props, notes = plan(s, Memory())
-    if not by_rule(props, "kiln"):
-        assert any("the fort's own" in n and "kiln" in n for n in notes), notes
+    assert not by_rule(props, "kiln") and any("the fort's own" in n and "kiln" in n for n in notes), notes
     s["stocks"]["drink"] = 1                                            # basics not met: no slot held
     props = plan(s, Memory())[0]
     a = by_rule(props, "anvil")
@@ -6522,7 +6505,6 @@ def _():
     assert not by_rule(plan(s, m)[0], "train")                           # you send it off duty now: your call
 
 
-
 @test("metal: ore uncovered -> furnaces and a forge; bars low -> the vein mined; charcoal for the smelter")
 def _():
     s = geared(bars={"IRON": 10, "COPPER": 5})
@@ -6549,8 +6531,6 @@ def _():
     assert f and f[0].action["recipe"] == "make_charcoal", f
     s["industry"] = {"ores": {}}
     assert not by_rule(plan(s, Memory())[0], "industry")
-
-
 
 
 @test("cleanup: a gate built at an entrance a scan no longer finds is taken down once; a real one is kept")
@@ -6742,7 +6722,6 @@ def _():
     assert suites_short(s) == 0
 
 
-
 @test("outside things: no new depot while one is being built or trees are being felled for it; placed when they're down")
 def _():
     s = fort()
@@ -6761,7 +6740,6 @@ def _():
     p = Proposal("depot", {"type": "place_surface", "kind": "depot"}, "x", 6)
     note_refusal(m, p, {"ok": False, "waiting": True, "error": "still felling"}, 1000)
     assert m.refusals[refusal_key(p)]["n"] == 0 and m.refusals[refusal_key(p)]["until"] == 1000 + 2 * 1200
-
 
 
 @test("uniforms: a squad without one gets the fort's leather uniform; metal once there's armour for all; yours left alone")
@@ -6794,7 +6772,6 @@ def _():
     a = by_rule(props, "appoint")
     assert a and a[0].action == {"type": "appoint", "office": "SHERIFF"}, a
     assert not any("sheriff" in n for n in notes), notes
-
 
 
 @test("health: a patient's wait is tracked; a long one is said, with why; infection without soap too")
@@ -6851,7 +6828,6 @@ def _():
     assert not props and "waiting for 3 rope" in notes[0], notes
 
 
-
 @test("gathering: a fed fort with hundreds of waiting gathering jobs cancels all but 20; a hungry one keeps them")
 def _():
     s = fort()
@@ -6878,7 +6854,6 @@ def _():
     assert any(n.startswith("[you] injured dwarves need water") for n in plan(s, m)[1])
 
 
-
 @test("gates: a gate the AI built, and 4 weeks later the entrance still open -> built again (0.40's lost hatch)")
 def _():
     s = entrances({"door_spots": 0, "width": 1, "x": 94, "y": 95})
@@ -6899,7 +6874,6 @@ def _():
     m2 = Memory()
     m2.gates_fortified = {"94,95,173": "plain"}
     assert not by_rule(plan(s, m2)[0], "fortify") and isinstance(m2.gates_fortified_ticks.get("94,95,173"), int)
-
 
 
 @test("smelting: the AI's own orders from the ore in stock (DFHack's library waits for 100 charcoal)")
@@ -6928,7 +6902,6 @@ def _():
     s["orders"].append({"id": 9, "recipe": "smelt_ore", "amount_left": 4, "amount_total": 10, "by_ai": True})
     assert not by_rule(plan(s, Memory())[0], "smelt")                                  # one order at a time
     assert not by_rule(plan(s, Memory())[0], "smelting")                               # no library import any more
-
 
 
 @test("watchdog: an order that doesn't move is named after 2 weeks (with a missing workshop), the AI's is Needs you after 4")
@@ -7016,7 +6989,6 @@ def _():
     assert not any("for a year or more" in n for n in plan(later, m)[1])
 
 
-
 @test("steel: pig iron first, then steel, from spare iron, flux and fuel; some iron always kept back")
 def _():
     s = geared(bars={"IRON": 20})
@@ -7039,7 +7011,6 @@ def _():
     assert not by_rule(plan(s, Memory())[0], "steel")
 
 
-
 @test("hospital: a small fed fort with a chief medical dwarf builds one at 10 dwarves (else at 20)")
 def _():
     s = fort()
@@ -7049,7 +7020,6 @@ def _():
     assert not hosp(s)
     s["offices"] = {"offices": {"CHIEF_MEDICAL_DWARF": {"held": ["Onol"], "vacant": 0}}}
     assert hosp(s), [p.action for p in plan(s, Memory())[0] if p.action.get("type") == "start_project"]
-
 
 
 @test("uniform weapon: soldiers holding a pick aren't armed; axes made, then the uniform asks for axes only")
@@ -7074,7 +7044,6 @@ def _():
     s["military"]["squads"][0]["ai_uniform"] = None                                              # yours: left alone
     s["military"]["squads"][0]["ai_uniform"] = ""
     assert not [p for p in by_rule(plan(s, Memory())[0], "uniform") if p.action["type"] == "set_uniform_weapon"]
-
 
 
 @test("stone: no stone the masons may use -> a plentiful economic stone allowed (never ore or flux), else wood")
@@ -7102,7 +7071,6 @@ def _():
     assert not by_rule(plan(s, Memory())[0], "stone")                          # plenty: nothing to do
     from planner import stone_short
     assert not stone_short({"stone_use": {}}, 10)                              # older bridge: unknown, not short
-
 
 
 def _conv_body():
@@ -7275,7 +7243,6 @@ def _():
     assert any("statue" in n and "no stone the masons may use" in n for n in notes), notes
 
 
-
 @test("coal: kept for coke (never let to the masons); coke made before charcoal while fuel is low")
 def _():
     s = fort()
@@ -7297,7 +7264,6 @@ def _():
     s["stone_use"]["economic"] = {}
     f = by_rule(plan(s, Memory())[0], "fuel")
     assert f and f[0].action["recipe"] == "make_charcoal", f                  # no coal: charcoal as before
-
 
 
 @test("cloth: workshops when missing, then thread from plants, then weaving; not in a young fort")
@@ -7331,7 +7297,6 @@ def _():
     assert not by_rule(plan(s, Memory())[0], "cloth")
 
 
-
 @test("bottleneck: a long queue of the AI's orders on one smelter, dwarves idle -> another smelter")
 def _():
     s = fort()
@@ -7349,7 +7314,6 @@ def _():
     assert not by_rule(plan(s, Memory())[0], "bottleneck")
 
 
-
 @test("polish: idle hands -> a finished level smoothed or engraved; none while busy")
 def _():
     s = fort()
@@ -7357,7 +7321,6 @@ def _():
     assert by_rule(plan(s, Memory())[0], "polish")
     s["dwarves"].update(idle_adults=10)
     assert not by_rule(plan(s, Memory())[0], "polish")
-
 
 
 @test("leather to metal once there are bars for it (a leather uniform takes no iron helms), with mail ordered")
@@ -7626,7 +7589,6 @@ def _():
     assert temperament.effects(s)["growth"].startswith("Maintain (Rules tab)")
 
 
-
 # --- (0.98) the weighted ladder, set pieces, the plan keeps acting --------------------------
 
 @test("ladder (0.98): neutral sliders keep the old order; temperament reorders the optional levels")
@@ -7710,7 +7672,6 @@ def _():
     assert h["avenue"] == 3 and h["corridors"] == "dog-leg", h
 
 
-
 @test("trade deal (0.100 review): a trade screen the player opened is left to them")
 def _():
     s = fort()
@@ -7782,8 +7743,6 @@ def _():
     assert [p.rule for p in allowed] == ["blocks"], held
     s2 = young_fort()
     s2["buildings"]["workshops"] = {"Carpenters": 1}
-    p = Proposal("industry", {"type": "start_project", "kind": "workshops", "shops": ["Smelter"]}, "metal", 4)
-    import planner as P
     got = [x for x in plan(s2, Memory())[0] if x.action.get("kind") == "workshops"]
     assert got and got[0].action["shops"][:2] == ["Still", "Kitchen"], [x.action for x in got]
 
@@ -7909,12 +7868,11 @@ def _():
     s["stocks"]["drink"] = 10 ** 6
     p = []
     _feeder_rule(s, cfg, p)
-    if p:
-        assert p[0].action["building_id"] == 1, p
-        s["stocks"]["drink"] = 0
-        p = []
-        _feeder_rule(s, cfg, p)
-        assert p[0].action["building_id"] == 2, p
+    assert p and p[0].action["building_id"] == 1, p
+    s["stocks"]["drink"] = 0
+    p = []
+    _feeder_rule(s, cfg, p)
+    assert p and p[0].action["building_id"] == 2, p
 
 
 @test("farms (0.102.3): bare surface plots (nothing in season to sow there) don't count toward the farm target")
@@ -8022,9 +7980,11 @@ def _():
     from planner import tombs_short
     s = fort()
     s["dead"] = {"free_tombs": 0, "unburied": 3, "ghosts": 3}
+    # (13c) both building slots taken (with one free the plain tombs rule came first, and this was never seen)
+    s["projects"]["open"] = [{"id": i, "kind": k, "phase": "dig", "dig": {"total": 100, "dug": 10, "stuck": 0}}
+                             for i, k in ((1, "bedrooms"), (2, "dining"))]
     p = by_rule(plan(s, Memory())[0], "tombs_ghosts")
-    if p:
-        assert p[0].action["kind"] == "tombs" and p[0].action["urgent"] is True, p
+    assert p and p[0].action["kind"] == "tombs" and p[0].action["urgent"] is True, p
     m = Memory()
     a = tombs_short(s, 18, dict(PLANNER_CONFIG), m)
     m.culture = {"quirks": {"haunted": {"year": 1}}}
@@ -9202,10 +9162,10 @@ def _():
     s["stocks"]["wood"] = 112                                           # 300 short at 2 a dwarf
     assert cut() == 5, cut()
     m = Memory(culture={"quirks": {"elf_friends": {"since": 50}}})
-    if has_rule(m.culture, "elf_friends"):
-        assert cut(m) == 2
-        s["stocks"]["wood"] = 5000
-        assert cut(m) == 1
+    assert has_rule(m.culture, "elf_friends")
+    assert cut(m) == 2
+    s["stocks"]["wood"] = 5000
+    assert cut(m) == 1
 
 
 def _hold_body():
@@ -9226,7 +9186,6 @@ def _():
         _hold_body()
     finally:
         PLANNER_CONFIG["cistern_hold"] = False
-
 
 
 @test("cistern v2 (0.104.145): open and no longer closed -> shut at once; a leak -> Needs you; the first design retired")
@@ -9594,7 +9553,6 @@ def _():
     assert planner.PLANNER_CONFIG["vermin_cooldown_ticks"] == 7 * 1200
 
 
-
 @test("cistern gaps (0.104.168): an open spot the AI walls itself is a note and the step goes on; only one it can't close asks the player")
 def _():
     s = fort()
@@ -9815,7 +9773,6 @@ def _():
         o.pop("appointable", None)
     props, notes = plan(s, Memory())
     assert by_rule(props, "appoint") and not any("may fill these offices" in n for n in notes)
-
 
 
 # --- (0.104.168) homes: a bedroom per household, rooms the stressed like ------------
@@ -10361,7 +10318,6 @@ def _():
     assert by_rule(plan(s, Memory(gate_closed_by_ai=True))[0], "pasture") == []   # the AI's lever pulled
 
 
-
 @test("0.105.3 A: shut for a sneaker who hid again, 9 citizens outside -> gates and alarm open in hours, not days")
 def _():
     # A (2 Nov 09:39): the swordsman seen sneaking, then gone; the hatch shut, 9 outside, 39 visitors
@@ -10494,7 +10450,6 @@ def _():
     assert w and w[0].action.get("shore_reach") == 60, [x.action for x in w]
 
 
-
 def _vanished(n_seen, outside=0, visitors_outside=None, visitors=0):
     """An ambush of n_seen seen, then hidden; the AI's hatch shut; quiet past every short wait."""
     goblins = [{"id": 700 + i, "name": "goblin", "invader": True, "can_reach_dwarves": True} for i in range(n_seen)]
@@ -10565,7 +10520,6 @@ def _():
         assert plan(b_thief(inside=False), Memory())[0] == []
     finally:
         planner._pasture_hold = old
-
 
 
 def overseer_short(a):
@@ -10743,7 +10697,6 @@ def _():
     assert not by_rule(props, "water_zone") and any("threat can reach" in n for n in notes), notes
 
 
-
 def _thirsty_b():
     """(0.105.23) B, the Monastery (2 Nov 23:20): drink 3 a dwarf, the farm target met with plump helmets."""
     from planner import farm_target
@@ -10811,10 +10764,13 @@ def _():
     n["dwarves"]["total"] = 94
     n["supplies"].update(brewable_plants=3, brewable_growths=0, empty_barrels=17, empty_pots=1)
     n.setdefault("needs", {}).setdefault("needs", {})["DrinkAlcohol"] = {"distracted": 14, "badly": 1}
+    # (13c) drink above the drink rule's target (Stockpile -100) but short of plenty: else the
+    # drink rule brews this cycle and needs_drink was never reached
+    n["stocks"]["drink"] = 600
+    n["settings"]["traits"] = {"stockpile": -100}
     props = plan(copy.deepcopy(n), Memory())[0]
     nd = by_rule(props, "needs_drink")
-    if nd:
-        assert nd[0].action["amount"] == 3, nd
+    assert nd and nd[0].action["amount"] == 3 and not by_rule(props, "drink"), [p.rule for p in props]
     assert brew_recipe(n) == "brew_drink"
 
 
@@ -10945,9 +10901,4 @@ def _():
         planner_building.temple_size = orig_size
 
 if __name__ == "__main__":
-    for name, ok, msg in RESULTS:
-        print(f"[{'PASS' if ok else 'FAIL'}] {name}" + (f"\n        {msg}" if msg else ""))
-    failed = sum(1 for _, ok, _ in RESULTS if not ok)
-    print(f"\n{len(RESULTS) - failed} passed, {failed} failed")
-    sys.exit(1 if failed else 0)
-
+    finish()

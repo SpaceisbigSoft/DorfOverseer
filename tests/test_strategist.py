@@ -12,6 +12,7 @@ from datetime import date
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+from harness import test, finish  # noqa: E402
 sys.path.insert(0, str(ROOT / "brain"))
 
 from strategist import check_answer, detect, instructions, review_message  # noqa: E402
@@ -22,20 +23,6 @@ BASE = json.loads((ROOT / "tests" / "fixtures" / "test_fort.json").read_text(enc
 SETTINGS = {"activity": 50, "tokens_per_game_day": 1000, "token_bank_max": 100000, "real_day_token_cap": 0}
 RECIPES = {"brew_drink", "stone_blocks", "prepare_fine_meal"}
 TOOLS = {"autochop", "seedwatch"}
-RESULTS = []
-
-
-def test(name):
-    def wrap(fn):
-        try:
-            fn()
-            RESULTS.append((name, True, ""))
-        except AssertionError as e:
-            RESULTS.append((name, False, str(e)))
-        except Exception as e:  # noqa: BLE001
-            RESULTS.append((name, False, f"{type(e).__name__}: {e}"))
-        return fn
-    return wrap
 
 
 # --- token bank ---------------------------------------------------------------
@@ -152,6 +139,7 @@ def _():
 @test("a pet dying is not a citizen death")
 def _():
     assert "citizen_death" not in detect(None, BASE, [{"kind": "death", "own_civ": True, "animal": True}])
+    assert "citizen_death" in detect(None, BASE, [{"kind": "death", "own_civ": True, "animal": False}])   # (13c)
 
 
 # --- prompt -------------------------------------------------------------------------
@@ -254,7 +242,6 @@ def _():
     a = check_answer('{"actions":[{"type":"cancel_project","project_id":4},{"type":"cancel_project","project_id":5}]}',
                      RECIPES, TOOLS, set(), BUILD)
     assert a.actions == [{"type": "cancel_project", "project_id": 4}] and len(a.rejected) == 1
-
 
 
 @test("culture: set_style passes allowed fields; bad ones are thrown out")
@@ -493,7 +480,6 @@ def _():
             assert text == f"shrinking: one dwarf sent away every {n} days", (v, x, text, n)
 
 
-
 @test("opposite forts (0.99): each preset pair, on the same fort, differs in style, numbers and what it builds first")
 def _():
     try:
@@ -696,7 +682,6 @@ def _():
     assert crisis["War-hold"]["choice"] == crisis["Monastery"]["choice"] == "raise:tavern", crisis
 
 
-
 @test("the real-day token cap counts every fort on this PC (0.99.1, B10)")
 def _():
     import tempfile
@@ -714,7 +699,6 @@ def _():
         assert tokens.pc_used_today(today) == 9000
     finally:
         tokens.DAY_FILE = None
-
 
 
 @test("game text (0.100 security): one line, no braces or brackets, capped; the model is told it's data")
@@ -735,8 +719,7 @@ def _():
     cfg = effective_config({"drink_per_dwarf": 1e9, "min_citizens": 0, "idle_share": float("nan"),
                             "meals_per_dwarf": True})
     assert cfg["drink_per_dwarf"] == ADJUST_BOUNDS["drink_per_dwarf"][1]
-    if "min_citizens" in PLANNER_CONFIG:
-        assert cfg["min_citizens"] == PLANNER_CONFIG["min_citizens"]
+    assert cfg["min_citizens"] == PLANNER_CONFIG["min_citizens"]
     assert cfg["idle_share"] == PLANNER_CONFIG["idle_share"] and cfg["meals_per_dwarf"] == PLANNER_CONFIG["meals_per_dwarf"]
 
 @test("season (0.103.20): one character decision a season, at the lowest setting too; checked; it shows in the planner")
@@ -859,8 +842,4 @@ def _():
 
 
 if __name__ == "__main__":
-    for name, ok, msg in RESULTS:
-        print(f"[{'PASS' if ok else 'FAIL'}] {name}" + (f"\n        {msg}" if msg else ""))
-    failed = sum(1 for _, ok, _ in RESULTS if not ok)
-    print(f"\n{len(RESULTS) - failed} passed, {failed} failed")
-    sys.exit(1 if failed else 0)
+    finish()

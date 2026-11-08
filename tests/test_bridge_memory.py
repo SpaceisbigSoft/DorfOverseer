@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-RESULTS = []
+from harness import make_test, finish  # noqa: E402
 
 try:
     from lupa import LuaRuntime
@@ -105,18 +105,7 @@ def save(data):
     return H.run("act", "{}")
 
 
-def test(name):
-    def wrap(fn):
-        reset()
-        try:
-            fn()
-            RESULTS.append((name, True, ""))
-        except AssertionError as e:
-            RESULTS.append((name, False, str(e)))
-        except Exception as e:  # noqa: BLE001
-            RESULTS.append((name, False, f"{type(e).__name__}: {e}"))
-        return fn
-    return wrap
+test = make_test(before=reset)
 
 
 @test("save_memory stores each kind's text under its own key; memory hands them back")
@@ -683,7 +672,6 @@ def _():
     assert r.ok is False and "not 0 or 1" in r.error and g["standing_orders_petition_resident_performer"] == 1
 
 
-
 PETITION_FAKES = r"""
 local M, df, dfhack = ...
 local function vec(items)
@@ -1041,7 +1029,6 @@ def _():
     assert r["a"] == 3 and r["b"] == 3 and r["c"] == 0 and r["d"] == 2, dict(r)
 
 
-
 @test("memory (0.104.62): a long kind comes as the save keeps it (raw JSON, decoded in Python, not in Lua)")
 def _():
     reset()
@@ -1337,7 +1324,6 @@ def _():
     assert len(H.calls) == 6                                          # a refused call never reaches the game
 
 
-
 @test("0.105.23: deep_depot is in the action table and passes dry_run to the builder")
 def _():
     M = H.module()
@@ -1352,8 +1338,4 @@ def _():
     assert M.act_deep_depot(t({})).ok and calls[2] is False
 
 if __name__ == "__main__":
-    for name, ok, msg in RESULTS:
-        print(f"[{'PASS' if ok else 'FAIL'}] {name}" + (f"\n        {msg}" if msg else ""))
-    failed = sum(1 for _, ok, _ in RESULTS if not ok)
-    print(f"\n{len(RESULTS) - failed} passed, {failed} failed")
-    sys.exit(1 if failed else 0)
+    finish()

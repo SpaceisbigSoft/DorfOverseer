@@ -12,6 +12,7 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+from harness import test, finish  # noqa: E402
 sys.path.insert(0, str(ROOT / "brain"))
 
 import backup  # noqa: E402
@@ -32,21 +33,6 @@ memstore.FORTS_DIR = TMP / "forts"
 overseer.HEARTBEAT = TMP / "overseer-heartbeat"
 backup.BACKUP_DIR = TMP / "backups"
 backup.STATE = TMP / "backups" / "last.json"
-RESULTS = []
-
-
-def test(name):
-    def wrap(fn):
-        try:
-            fn()
-            RESULTS.append((name, True, ""))
-        except AssertionError as e:
-            RESULTS.append((name, False, str(e)))
-        except Exception as e:  # noqa: BLE001
-            import traceback
-            RESULTS.append((name, False, f"{type(e).__name__}: {e}\n{traceback.format_exc()}"))
-        return fn
-    return wrap
 
 
 class FakeProc:
@@ -172,21 +158,26 @@ def _():
 
 @test("keeper: a stuck overseer (no heartbeat) is stopped and restarted")
 def _():
-    saved = keeper.STALE_S
-    keeper.STALE_S = 0
-    procs = []
+    # (13c) a fresh heartbeat keeps it running; only a stale one stops it
+    # (with STALE_S = 0 the old test passed whatever the heartbeat said)
+    saved = keeper.STALE_S, keeper.heartbeat_age
+    keeper.STALE_S = 600
+    ages = iter([5.0, 590.0, 601.0])
+    procs, sleeps = [], []
 
     def popen(cmd, **kw):
         procs.append(FakeProc(hang=True, lines=()))
         return procs[-1]
     orig_sleep = time.sleep
-    keeper.time.sleep = lambda s: None
+    keeper.time.sleep = sleeps.append
+    keeper.heartbeat_age = lambda: next(ages)
     try:
         code, why = keeper.run_once(False, popen)
     finally:
-        keeper.STALE_S = saved
+        keeper.STALE_S, keeper.heartbeat_age = saved
         keeper.time.sleep = orig_sleep
-    assert code is None and procs[0].killed and "stopped answering" in why, why
+    assert code is None and procs[0].killed and "stopped answering for 10 minutes" in why, why
+    assert len(sleeps) == 2, sleeps                  # two fresh readings watched, killed on the stale one
 
 
 @test("FPS guard: low only after a minute of samples under 20, and clears above 30 (no flicker)")
@@ -215,11 +206,11 @@ def fort():
 @test("FPS guard in the planner: no newcomers and no new luxury levels while slow")
 def _():
     s = fort()
+    s["society"].update(pop_cap=250, strict_pop_cap=270)   # (13c) the fixture has no cap: the rule never ran
     s["fps_low"] = 14
     props, notes = plan(s, Memory())
     caps = [p for p in props if p.rule == "pop_cap"]
-    if caps:
-        assert "runs slowly" in caps[0].reason, caps[0].reason
+    assert caps and "runs slowly" in caps[0].reason and caps[0].action["strict"] == 110, [p.action for p in caps]
     lux = [p for p in props if p.action.get("type") == "start_project"
            and p.action.get("kind") not in ("bedrooms", "dining", "storage", "workshops", "tombs", "hospital")]
     assert not lux, [p.action for p in lux]
@@ -346,7 +337,6 @@ def _():
     assert [a for a in g.acts if a.get("type") == "quiet_announcements"], g.acts
 
 
-
 @test("backups: the newest of the save and DF's autosaves, once a day, three kept; never mid-save")
 def _():
     import os
@@ -443,8 +433,4 @@ def _():
 
 
 if __name__ == "__main__":
-    for name, ok, msg in RESULTS:
-        print(f"[{'PASS' if ok else 'FAIL'}] {name}" + (f"\n        {msg}" if msg else ""))
-    failed = sum(1 for _, ok, _ in RESULTS if not ok)
-    print(f"\n{len(RESULTS) - failed} passed, {failed} failed")
-    sys.exit(1 if failed else 0)
+    finish()

@@ -14,6 +14,7 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+from harness import make_test, finish  # noqa: E402
 sys.path.insert(0, str(ROOT / "brain"))
 
 import masterplan  # noqa: E402
@@ -32,25 +33,16 @@ memstore.FORTS_DIR = TMP / "forts"
 memstore.LEGACY_FILE = TMP / "overseer-memory.json"
 overseer.say = lambda m: None
 overseer.JOURNAL = TMP / "decisions.jsonl"
-RESULTS = []
 DAY = 1200
 YEAR = 403200
 
 
-def test(name):
-    def wrap(fn):
-        shutil.rmtree(memstore.FORTS_DIR, ignore_errors=True)
-        overseer.LAST_FULL.clear()
-        try:
-            fn()
-            RESULTS.append((name, True, ""))
-        except AssertionError as e:
-            RESULTS.append((name, False, str(e)))
-        except Exception:  # noqa: BLE001
-            import traceback
-            RESULTS.append((name, False, traceback.format_exc()))
-        return fn
-    return wrap
+def _before():
+    shutil.rmtree(memstore.FORTS_DIR, ignore_errors=True)
+    overseer.LAST_FULL.clear()
+
+
+test = make_test(before=_before)
 
 
 def state_at(day: int) -> dict:
@@ -97,9 +89,9 @@ def _():
     assert d["homes"]["lo"] <= 50 <= d["homes"]["hi"], "homes around the fort's heart"
     for x in d.values():
         assert 23 <= x["lo"] <= x["hi"] <= 60, x
-    h = masterplan.hint(m, "bedrooms") if masterplan.has_plan(m) else None
-    if h is not None:
-        assert h.get("extend") == masterplan.DEEP_EXTEND, h
+    assert masterplan.has_plan(m)
+    h = masterplan.hint(m, "bedrooms")
+    assert h.get("extend") == masterplan.DEEP_EXTEND, h
     assert "defence" not in d, "no defence district at low Fortification"
     assert d["farms"]["lo"] == 58, "farms where the soil is"
 
@@ -132,7 +124,7 @@ def _():
     m = mem_with_survey()
     p = masterplan.draw(state_at(50000), m, SITE, traits(grandeur=70, fortification=60), profile(palette="dark"))
     names = [x["name"] for x in p["districts"]]
-    assert all(n.startswith("the Dark ") for n in names), names
+    assert names and all(n.startswith("the Dark ") for n in names), names
     p2 = masterplan.draw(state_at(50000), mem_with_survey(), SITE, traits(grandeur=70, fortification=60),
                          profile(palette="dark"))
     assert [x["name"] for x in p2["districts"]] == names, "the same fort names the same way"
@@ -671,7 +663,6 @@ def _():
     assert brief[0].startswith("phase: ") and brief[1].startswith("plan: "), brief
 
 
-
 @test("Sky-reachers (0.103.19): the share of citizens out under the sky, a slow average kept in the culture")
 def _():
     m = mem_with_survey()
@@ -731,10 +722,5 @@ def _():
     assert h["elev_hi"] == 61, h
 
 
-for name, ok, msg in RESULTS:
-    print(f"[{'PASS' if ok else 'FAIL'}] {name}")
-    if not ok:
-        print("    " + msg.replace("\n", "\n    "))
-passed = sum(1 for _, ok, _ in RESULTS if ok)
-print(f"\n{passed} passed, {len(RESULTS) - passed} failed")
-sys.exit(0 if passed == len(RESULTS) else 1)
+if __name__ == "__main__":
+    finish()

@@ -14,6 +14,7 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+from harness import make_test, finish  # noqa: E402
 sys.path.insert(0, str(ROOT / "brain"))
 
 import atlas  # noqa: E402
@@ -26,6 +27,7 @@ overseer.THROTTLE_MEMORY_SAVE = False      # each cycle reads and writes the mem
 import timeline  # noqa: E402
 from planner import PLANNER_CONFIG, Memory  # noqa: E402
 from tokens import TokenBank  # noqa: E402
+from digest import normalize  # noqa: E402
 
 BASE = json.loads((ROOT / "tests" / "fixtures" / "test_fort.json").read_text(encoding="utf-8"))
 KEY = "AI Test Run#1234"
@@ -33,25 +35,16 @@ TMP = Path(tempfile.mkdtemp())
 memstore.FORTS_DIR = TMP / "forts"
 memstore.LEGACY_FILE = TMP / "overseer-memory.json"
 overseer.say = lambda m: None
-RESULTS = []
 DAY = 1200
 YEAR = 403200
 
 
-def test(name):
-    def wrap(fn):
-        shutil.rmtree(memstore.FORTS_DIR, ignore_errors=True)
-        memstore.LEGACY_FILE.unlink(missing_ok=True)
-        try:
-            fn()
-            RESULTS.append((name, True, ""))
-        except AssertionError as e:
-            RESULTS.append((name, False, str(e)))
-        except Exception:  # noqa: BLE001
-            import traceback
-            RESULTS.append((name, False, traceback.format_exc()))
-        return fn
-    return wrap
+def _before():
+    shutil.rmtree(memstore.FORTS_DIR, ignore_errors=True)
+    memstore.LEGACY_FILE.unlink(missing_ok=True)
+
+
+test = make_test(before=_before)
 
 
 def state_at(day: int, **changes) -> dict:
@@ -701,8 +694,12 @@ def _():
     m = Memory()
     s0 = with_entrance(state_at(336 * 120))
     atlas.note_entrances(s0, m)
+    # (13c) one normalized fort shared by every day, only the date new: a deep
+    # copy a day was 4/5 of the time (the memory came out the same either way)
+    base = normalize(copy.deepcopy(BASE))
     for d in range(336 * 120, 336 * 150):
-        s = state_at(d)
+        s = dict(base, date={"year": d // 336, "tick": (d % 336) * DAY, "day": 1, "month": "Granite",
+                             "season": "spring"})
         timeline.record(s, m, [{"kind": "death", "own_civ": True}] if d % 30 == 0 else [], PLANNER_CONFIG)
         if d % 5 == 0:
             atlas.note_events(s, m, [{"kind": "death", "own_civ": True, "x": d % 190, "y": (d * 7) % 190,
@@ -867,10 +864,5 @@ def _():
     memstore.ALIASES.clear()
 
 
-for name, ok, msg in RESULTS:
-    print(f"[{'PASS' if ok else 'FAIL'}] {name}")
-    if not ok:
-        print("    " + msg.replace("\n", "\n    "))
-passed = sum(1 for _, ok, _ in RESULTS if ok)
-print(f"\n{passed} passed, {len(RESULTS) - passed} failed")
-sys.exit(0 if passed == len(RESULTS) else 1)
+if __name__ == "__main__":
+    finish()

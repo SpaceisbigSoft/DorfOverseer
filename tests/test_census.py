@@ -8,9 +8,9 @@ from pathlib import Path
 from lupa import LuaRuntime
 
 ROOT = Path(__file__).resolve().parent.parent
+from harness import test, finish, code_has  # noqa: E402
 sys.path.insert(0, str(ROOT / "brain"))
 sys.path.insert(0, str(ROOT / "tests"))
-RESULTS = []
 
 FAKE = r"""
 local src = ...
@@ -43,19 +43,6 @@ env.dfhack = {units = {isDead = function(x) return x.kind == 'dead' end, isActiv
 assert(load(src, 'ai-census', 't', env))()
 return env
 """
-
-
-def test(name):
-    def wrap(fn):
-        try:
-            fn()
-            RESULTS.append((name, True, ""))
-        except AssertionError as e:
-            RESULTS.append((name, False, str(e)))
-        except Exception as e:  # noqa: BLE001
-            RESULTS.append((name, False, f"{type(e).__name__}: {e}"))
-        return fn
-    return wrap
 
 
 @test("census: creatures by kind and race, items by type and state")
@@ -266,7 +253,7 @@ def _():
 @test("bridge (0.105.3): remove_webs is in the action table, max checked, the census module called")
 def _():
     src = (ROOT / "lua" / "ai-bridge.lua").read_text(encoding="utf-8")
-    assert "    remove_webs = act_remove_webs," in src
+    assert code_has(src, "    remove_webs = act_remove_webs,")
     body = src[src.index("function act_remove_webs"):]
     body = body[:body.index("\nend\n") + 5]
     LUA = LuaRuntime(unpack_returned_tuples=True)
@@ -381,8 +368,4 @@ def _():
 
 
 if __name__ == "__main__":
-    for name, ok, msg in RESULTS:
-        print(f"[{'PASS' if ok else 'FAIL'}] {name}" + (f"\n        {msg}" if msg else ""))
-    failed = sum(1 for _, ok, _ in RESULTS if not ok)
-    print(f"\n{len(RESULTS) - failed} passed, {failed} failed")
-    sys.exit(1 if failed else 0)
+    finish()

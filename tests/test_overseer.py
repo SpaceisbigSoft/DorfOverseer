@@ -14,6 +14,7 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+from harness import make_test, finish  # noqa: E402
 sys.path.insert(0, str(ROOT / "brain"))
 
 import overseer  # noqa: E402
@@ -31,7 +32,6 @@ from dfhack import DFHackError  # noqa: E402
 from tokens import TICKS_PER_DAY  # noqa: E402
 
 BASE = json.loads((ROOT / "tests" / "fixtures" / "test_fort.json").read_text(encoding="utf-8"))
-RESULTS = []
 TMP = Path(tempfile.mkdtemp())
 overseer.memstore.FORTS_DIR = TMP / "forts"
 overseer.memstore.LEGACY_FILE = TMP / "memory.json"      # the one-file memory from before 0.31
@@ -44,24 +44,16 @@ overseer.say = lambda msg: SAID.append(msg)
 SAID: list[str] = []
 
 
-def test(name):
-    def wrap(fn):
-        for f in (MEMORY_FILE, overseer.JOURNAL, overseer.STOP_FILE, overseer.learning.PLAYER_FILE):
-            f.unlink(missing_ok=True)
-        shutil.rmtree(overseer.memstore.FORTS_DIR, ignore_errors=True)
-        overseer.PRINTED.clear()
-        overseer.LAST_FULL.clear()
-        SAID.clear()
-        try:
-            fn()
-            RESULTS.append((name, True, ""))
-        except AssertionError as e:
-            RESULTS.append((name, False, str(e)))
-        except Exception as e:  # noqa: BLE001
-            import traceback
-            RESULTS.append((name, False, traceback.format_exc()))
-        return fn
-    return wrap
+def _before():
+    for f in (MEMORY_FILE, overseer.JOURNAL, overseer.STOP_FILE, overseer.learning.PLAYER_FILE):
+        f.unlink(missing_ok=True)
+    shutil.rmtree(overseer.memstore.FORTS_DIR, ignore_errors=True)
+    overseer.PRINTED.clear()
+    overseer.LAST_FULL.clear()
+    SAID.clear()
+
+
+test = make_test(before=_before)
 
 
 class FakeBridge:
@@ -370,6 +362,9 @@ def _():
     b = FakeBridge()
     overseer.one_cycle(b, autopilot=False)
     assert not [a for a in b.acted if a["type"] == "set_culture"]
+    b = FakeBridge()
+    overseer.one_cycle(b, autopilot=True)                               # (13c) the same cycle for real writes it
+    assert [a for a in b.acted if a["type"] == "set_culture"]
 
 
 @test("culture: changing the sliders starts a new era and updates the save")
@@ -397,7 +392,6 @@ def _():
     pushes = [a for a in b.acted if a["type"] == "set_culture"]
     assert pushes and pushes[-1]["culture"]["guide"].startswith("Low dark")
     assert not [a for a in b.acted if a["type"] not in ("set_culture", "set_learned", "tool", "ledger_set", "join_levels")]
-
 
 
 # --- Phase 5: in-game controls ------------------------------------------------------------
@@ -530,6 +524,9 @@ def _():
     b = devout("autopilot")
     overseer.one_cycle(b, autopilot=False)
     assert not [a for a in b.acted if a["type"] == "set_learned"]
+    b = devout("autopilot")
+    overseer.one_cycle(b, autopilot=True)                               # (13c) the same cycle for real pushes it
+    assert [a for a in b.acted if a["type"] == "set_learned"]
 
 
 @test("save before new levels: the game is saved first, the level starts next cycle")
@@ -552,7 +549,6 @@ def _():
     assert any("brew drink" in x and "below the target" in x for x in r["last"]), r["last"]
 
 
-
 @test("review 5: co-pilot + save first: one Yes is enough (save, then build)")
 def _():
     b = young("copilot", save_before_projects=True)
@@ -571,14 +567,18 @@ def _():
 def _():
     b = young("copilot")
     overseer.one_cycle(b, autopilot=True, controls=b.status())
-    b.decisions[b.reports[-1]["pending"][0]["id"]] = "no"
+    pid = b.reports[-1]["pending"][0]["id"]
+    b.decisions[pid] = "no"
     b.advance(1)
     overseer.one_cycle(b, autopilot=True, controls=b.status())
     b._state["dwarves"]["total"] += 7               # migrants: more rooms wanted now
     b.advance(1)
     overseer.one_cycle(b, autopilot=True, controls=b.status())
     assert b.reports[-1]["pending"] == [] and "start_project" not in kinds(b)
-
+    # (13c) the planner still asks for the level, under the id declined (else nothing was held)
+    from planner import Memory, plan
+    asked = [p for p in plan(copy.deepcopy(b._state), Memory())[0] if p.action.get("kind") == "bedrooms"]
+    assert [overseer.proposal_id(p) for p in asked] == [pid], [p.action for p in asked]
 
 
 @test("needs you: what only the player can set up goes to the panel apart from the notes")
@@ -809,7 +809,6 @@ def _():
     assert sum(1 for e in events if e.get("kind") == "death" and e.get("own_civ") and not e.get("again")) == 1
 
 
-
 @test("0.105.20 rules-request.json: applied once through set_rules, moved aside with the answer; a dry run changes nothing")
 def _():
     import json as _json
@@ -855,8 +854,4 @@ def _():
 
 
 if __name__ == "__main__":
-    for name, ok, msg in RESULTS:
-        print(f"[{'PASS' if ok else 'FAIL'}] {name}" + (f"\n        {msg}" if msg else ""))
-    failed = sum(1 for _, ok, _ in RESULTS if not ok)
-    print(f"\n{len(RESULTS) - failed} passed, {failed} failed")
-    sys.exit(1 if failed else 0)
+    finish()

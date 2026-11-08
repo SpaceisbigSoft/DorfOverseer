@@ -14,8 +14,8 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+from harness import test, finish, code_has  # noqa: E402
 sys.path.insert(0, str(ROOT / "brain"))
-RESULTS = []
 
 try:
     from lupa import LuaRuntime
@@ -29,19 +29,6 @@ from planner_core import player_rules  # noqa: E402
 
 SRC = (ROOT / "lua" / "ai-diplomacy.lua").read_text(encoding="utf-8")
 BASE = json.loads((ROOT / "tests" / "fixtures" / "test_fort.json").read_text(encoding="utf-8"))
-
-
-def test(name):
-    def wrap(fn):
-        try:
-            fn()
-            RESULTS.append((name, True, ""))
-        except AssertionError as e:
-            RESULTS.append((name, False, str(e)))
-        except Exception as e:  # noqa: BLE001
-            RESULTS.append((name, False, f"{type(e).__name__}: {e}"))
-        return fn
-    return wrap
 
 
 # --- the Lua module on a fake game ------------------------------------------------
@@ -339,11 +326,7 @@ G.focus = 'dwarfmode/Diplomacy/Requests'
 
 @test("the messenger: appointed only where the post exists; never a soldier, staff, a patient, the wounded, a mother or an office holder")
 def _():
-    import importlib.util
-    spec = importlib.util.spec_from_file_location("test_care", ROOT / "tests" / "test_care.py")
-    care = importlib.util.module_from_spec(spec)
-    sys.argv_backup = sys.argv
-    spec.loader.exec_module(care)
+    import test_care as care            # (its helpers; its tests don't run again)
     pos = care.POS + [{"code": "MESSENGER", "id": 9, "by": [1]}]
     folk = [{"id": 1, "hf": 11},                                                # the expedition leader
             {"id": 2, "hf": 12, "skills": [("ORGANIZATION", 9)], "squad": 50},  # a soldier
@@ -369,14 +352,11 @@ def _():
 @test("the bridge: answer_meeting in the action table, bounded; the world section; probe_meeting and meeting_here")
 def _():
     src = (ROOT / "lua" / "ai-bridge.lua").read_text(encoding="utf-8")
-    assert "answer_meeting = act_answer_meeting," in src
-    assert "world = function() return safe(function() return reqscript('ai-diplomacy').world_report(txt) end) end," in src
-    assert "probe_meeting = cmd_probe_meeting," in src and "meeting_here = cmd_meeting_here," in src
-    assert "meeting = meeting_focus() ~= nil or nil," in src
-    spec = __import__("importlib.util").util.spec_from_file_location(
-        "tbm", ROOT / "tests" / "test_bridge_memory.py")
-    tbm = __import__("importlib.util").util.module_from_spec(spec)
-    spec.loader.exec_module(tbm)
+    assert code_has(src, "answer_meeting = act_answer_meeting,")
+    assert code_has(src, "world = function() return safe(function() return reqscript('ai-diplomacy').world_report(txt) end) end,")
+    assert code_has(src, "probe_meeting = cmd_probe_meeting,") and code_has(src, "meeting_here = cmd_meeting_here,")
+    assert code_has(src, "meeting = meeting_focus() ~= nil or nil,")
+    import test_bridge_memory as tbm
     tbm.reset()
     M = tbm.H.module()
     tbm.LUA.execute("""local M, H = ...
@@ -426,7 +406,7 @@ def _():
     assert player_rules({"settings": {"make_contact": False}})["make_contact"] is False
     gui = (ROOT / "lua" / "gui" / "ai-overseer.lua").read_text(encoding="utf-8")
     for v in ("tribute", "make_contact"):
-        assert f"view_id = '{v}'" in gui and f"p:set_field('{v}', v)" in gui and f"self.subviews.{v}:setOption(" in gui
+        assert code_has(gui, f"view_id = '{v}'") and code_has(gui, f"p:set_field('{v}', v)") and code_has(gui, f"self.subviews.{v}:setOption(")
     ok = lua.eval("function(src) local f, e = load(src, 'gui', 't', {}); return f ~= nil, e end")(gui)
     assert ok[0], ok
     ok = lua.eval("function(src) local f, e = load(src, 'd', 't', {}); return f ~= nil, e end")(SRC)
@@ -629,11 +609,9 @@ def _():
 @test("(0.105.24) the bridge: send_mission in the action table, checked, to ai-mission-send; mission_here; the switch on the Rules")
 def _():
     src = (ROOT / "lua" / "ai-bridge.lua").read_text(encoding="utf-8")
-    assert "send_mission = act_send_mission," in src and "mission_here = cmd_mission_here," in src
-    assert "reqscript('ai-mission-send').status()" in src and "send_mission = {'missions'}" in src
-    spec = __import__("importlib.util").util.spec_from_file_location("tbm2", ROOT / "tests" / "test_bridge_memory.py")
-    tbm = __import__("importlib.util").util.module_from_spec(spec)
-    spec.loader.exec_module(tbm)
+    assert code_has(src, "send_mission = act_send_mission,") and code_has(src, "mission_here = cmd_mission_here,")
+    assert code_has(src, "reqscript('ai-mission-send').status()") and code_has(src, "send_mission = {'missions'}")
+    import test_bridge_memory as tbm
     tbm.reset()
     M = tbm.H.module()
     tbm.LUA.execute("""local M, H = ...
@@ -661,16 +639,12 @@ def _():
     assert s2.send_messenger is True and S.for_ai(s2).send_messenger is True
     assert player_rules({"settings": {"send_messenger": True}})["send_messenger"] is True
     gui = (ROOT / "lua" / "gui" / "ai-overseer.lua").read_text(encoding="utf-8")
-    assert "view_id = 'send_messenger'" in gui and "p:set_field('send_messenger', v)" in gui
-    assert "self.subviews.send_messenger:setOption(" in gui
+    assert code_has(gui, "view_id = 'send_messenger'") and code_has(gui, "p:set_field('send_messenger', v)")
+    assert code_has(gui, "self.subviews.send_messenger:setOption(")
     ok = lua.eval("function(src) local f, e = load(src, 'm', 't', {}); return f ~= nil, e end")(
         (ROOT / "lua" / "ai-mission-send.lua").read_text(encoding="utf-8"))
     assert ok[0], ok
 
 
 if __name__ == "__main__":
-    for name, ok, msg in RESULTS:
-        print(f"[{'PASS' if ok else 'FAIL'}] {name}" + (f"\n        {msg}" if msg else ""))
-    failed = sum(1 for _, ok, _ in RESULTS if not ok)
-    print(f"\n{len(RESULTS) - failed} passed, {failed} failed")
-    sys.exit(1 if failed else 0)
+    finish()

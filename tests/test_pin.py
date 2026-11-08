@@ -15,6 +15,7 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+from harness import make_test, finish  # noqa: E402
 sys.path.insert(0, str(ROOT / "brain"))
 
 TMP = Path(tempfile.mkdtemp())
@@ -30,22 +31,13 @@ pin.LAST_FORT = TMP / "logs" / "last-fort.json"
 revive.LAST_FORT = pin.LAST_FORT
 backup.BACKUP_DIR = TMP / "backups"
 backup.STATE = TMP / "backups" / "last.json"
-RESULTS = []
 
 
-def test(name):
-    def wrap(fn):
-        pin.clear()
-        try:
-            fn()
-            RESULTS.append((name, True, ""))
-        except AssertionError as e:
-            RESULTS.append((name, False, str(e)))
-        except Exception as e:  # noqa: BLE001
-            import traceback
-            RESULTS.append((name, False, f"{type(e).__name__}: {e}\n{traceback.format_exc()}"))
-        return fn
-    return wrap
+def _before():
+    pin.clear()
+
+
+test = make_test(before=_before)
 
 
 def last_fort(world, save_dir, site, df_path=None):
@@ -261,8 +253,4 @@ def _():
 
 
 if __name__ == "__main__":
-    for name, ok, msg in RESULTS:
-        print(f"[{'PASS' if ok else 'FAIL'}] {name}" + (f"\n        {msg}" if msg else ""))
-    failed = sum(1 for _, ok, _ in RESULTS if not ok)
-    print(f"\n{len(RESULTS) - failed} passed, {failed} failed")
-    sys.exit(1 if failed else 0)
+    finish()

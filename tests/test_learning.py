@@ -13,6 +13,7 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+from harness import make_test, finish, code_has  # noqa: E402
 sys.path.insert(0, str(ROOT / "brain"))
 
 import calibrate  # noqa: E402
@@ -24,23 +25,14 @@ from weights import choose  # noqa: E402
 BASE = json.loads((ROOT / "tests" / "fixtures" / "test_fort.json").read_text(encoding="utf-8"))
 TMP = Path(tempfile.mkdtemp())
 learning.PLAYER_FILE = TMP / "player-memory.json"
-RESULTS = []
 DAY = 1200
 
 
-def test(name):
-    def wrap(fn):
-        learning.PLAYER_FILE.unlink(missing_ok=True)
-        try:
-            fn()
-            RESULTS.append((name, True, ""))
-        except AssertionError as e:
-            RESULTS.append((name, False, str(e)))
-        except Exception:  # noqa: BLE001
-            import traceback
-            RESULTS.append((name, False, traceback.format_exc()))
-        return fn
-    return wrap
+def _before():
+    learning.PLAYER_FILE.unlink(missing_ok=True)
+
+
+test = make_test(before=_before)
 
 
 def fort(**traits) -> dict:
@@ -540,8 +532,8 @@ def _():
     assert player_rules({"settings": {}})["hospital_burrow"] is True
     # the panel: a switch on the Rules page, set again on refresh (and the file still loads)
     gui = (ROOT / "lua" / "gui" / "ai-overseer.lua").read_text(encoding="utf-8")
-    assert "view_id = 'hospital_burrow'" in gui and "p:set_field('hospital_burrow', v)" in gui
-    assert "self.subviews.hospital_burrow:setOption(" in gui
+    assert code_has(gui, "view_id = 'hospital_burrow'") and code_has(gui, "p:set_field('hospital_burrow', v)")
+    assert code_has(gui, "self.subviews.hospital_burrow:setOption(")
     # (0.104.169) the calm-down burrows' switch, the same way
     assert S.defaults().calm_burrow is True and S.for_ai(S.defaults()).calm_burrow is True
     off = S.sanitize(lua.table_from({"calm_burrow": False}))
@@ -549,11 +541,10 @@ def _():
     assert S.sanitize(lua.table_from({})).calm_burrow is True
     assert player_rules({"settings": {"calm_burrow": False}})["calm_burrow"] is False
     assert player_rules({"settings": {}})["calm_burrow"] is True
-    assert "view_id = 'calm_burrow'" in gui and "p:set_field('calm_burrow', v)" in gui
-    assert "self.subviews.calm_burrow:setOption(" in gui
+    assert code_has(gui, "view_id = 'calm_burrow'") and code_has(gui, "p:set_field('calm_burrow', v)")
+    assert code_has(gui, "self.subviews.calm_burrow:setOption(")
     ok = lua.eval("function(src) local f, e = load(src, 'gui', 't', {}); return f ~= nil, e end")(gui)
     assert ok[0], ok
-
 
 
 @test("your memory (0.97.1): a fort's copies and autosaves are one fort; it never inherits itself (B1)")
@@ -633,7 +624,6 @@ def _():
     assert learning.PLAYER_FILE.read_text(encoding="utf-8") == before
 
 
-
 @test("B6 (0.102.7): a self-tuned raise judged no effect or hurt is taken back; one that helped stays")
 def _():
     m = Memory()
@@ -651,8 +641,4 @@ def _():
     assert calibrate.heed(e, m, state) is None
 
 if __name__ == "__main__":
-    for name, passed, msg in RESULTS:
-        print(f"[{'PASS' if passed else 'FAIL'}] {name}" + (f"\n        {msg}" if msg else ""))
-    failed = sum(1 for _, passed, _ in RESULTS if not passed)
-    print(f"\n{len(RESULTS) - failed} passed, {failed} failed")
-    sys.exit(1 if failed else 0)
+    finish()

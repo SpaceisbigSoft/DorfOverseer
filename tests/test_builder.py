@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-RESULTS = []
+from harness import make_test, finish  # noqa: E402
 
 try:
     from lupa import LuaRuntime
@@ -32,20 +32,38 @@ W.size = {120, 120, 100}
 W.persist = {}
 W.calls = {}
 function W.key(x,y,z) return x..','..y..','..z end
+-- (13c tests) W.idx: the same tiles by a number, so a read needs no string
+-- key, and W.peek reads without adding an untouched wall to W.tiles: the
+-- module's searches read millions of tiles (the cistern's runs to its deadline)
+W.idx = {}
+local SOIL_WALL = {shape='WALL', material='SOIL', aquifer=false, liquid=false, feature=false,
+                   outside=false, designated=false, building=false}
+local STONE_WALL = {shape='WALL', material='STONE', aquifer=false, liquid=false, feature=false,
+                    outside=false, designated=false, building=false}
 function W.get(x,y,z)
-  if x < 0 or y < 0 or z < 0 or x >= W.size[1] or y >= W.size[2] or z >= W.size[3] then return nil end
-  local t = W.tiles[W.key(x,y,z)]
+  local sx, sy = W.size[1], W.size[2]
+  if x < 0 or y < 0 or z < 0 or x >= sx or y >= sy or z >= W.size[3] then return nil end
+  local n = (z * sy + y) * sx + x
+  local t = W.idx[n]
   if not t then
     t = {shape='WALL', material=W.soil_levels[z] and 'SOIL' or 'STONE', aquifer=false, liquid=false, feature=false,
          outside=false, designated=false, building=false}
     W.tiles[W.key(x,y,z)] = t
+    W.idx[n] = t
   end
   return t
+end
+-- the tile to read only (the untouched walls are shared: change tiles through W.get)
+function W.peek(x,y,z)
+  local sx, sy = W.size[1], W.size[2]
+  if x < 0 or y < 0 or z < 0 or x >= sx or y >= sy or z >= W.size[3] then return nil end
+  return W.idx[(z * sy + y) * sx + x] or (W.soil_levels[z] and SOIL_WALL or STONE_WALL)
 end
 function W.set(x,y,z,fields) local t = W.get(x,y,z); for k,v in pairs(fields) do t[k]=v end end
 
 function W.reset()
   W.tiles = {}
+  W.idx = {}
   W.persist = {}
   W.calls = {}
   W.placed = {}
@@ -115,31 +133,32 @@ _G.reqscript = function(name)
   if name == 'quickfort' then return quickfort end
   error('unexpected reqscript '..name)
 end
+_G.xyz2pos = function(x, y, z) return {x = x, y = y, z = z} end   -- (DFHack's global)
 _G.dfhack = {persistent = {
   getSiteData = function(k, default) return W.persist[k] or default end,
   saveSiteData = function(k, v) W.persist[k] = v end}}
 LAYOUTS = load_module(layouts_src, 'ai-layouts')
 local B = load_module(builder_src, 'ai-builder')
-B.tile_info = function(x,y,z) local t = W.get(x,y,z); if not t then return nil end
-  local c = {}; for k,v in pairs(t) do c[k]=v end; return c end
+-- (the tile itself, not a copy: the module never writes to what tile_info gives)
+B.tile_info = W.peek
 B.map_size = function() return W.size[1], W.size[2], W.size[3] end
-B.stair_shape = function(x,y,z) local t = W.get(x,y,z)
+B.stair_shape = function(x,y,z) local t = W.peek(x,y,z)
   return t and (t.shape:find('^STAIR') and t.shape) or nil end
 B.citizen_positions = function() return W.citizens end
 B.job_tiles = function() return W.jobs end
 -- one connected walking area: every open tile on the fort levels
-B.walk_group = function(x,y,z) local t = W.get(x,y,z)
+B.walk_group = function(x,y,z) local t = W.peek(x,y,z)
   if t and t.shape ~= 'WALL' and z >= 60 and z <= 80 then return 1 end
   return 0 end
-B.floor_material = function(x,y,z) local t = W.get(x,y,z)
+B.floor_material = function(x,y,z) local t = W.peek(x,y,z)
   return t ~= nil and t.shape == 'FLOOR' and t.material or nil end
-B.mud_at = function(x,y,z) local t = W.get(x,y,z); return t ~= nil and t.mud == true end
-B.tile_taken = function(x,y,z) local t = W.get(x,y,z); return t ~= nil and t.taken == true end
-B.grass_at = function(x,y,z) local t = W.get(x,y,z)
+B.mud_at = function(x,y,z) local t = W.peek(x,y,z); return t ~= nil and t.mud == true end
+B.tile_taken = function(x,y,z) local t = W.peek(x,y,z); return t ~= nil and t.taken == true end
+B.grass_at = function(x,y,z) local t = W.peek(x,y,z)
   return t ~= nil and (t.shape == 'FLOOR' or t.shape == 'SHRUB')
     and (t.material == 'GRASS_LIGHT' or t.material == 'GRASS_DARK' or t.material == 'GRASS_DRY') end
-B.building_at = function(x,y,z) local t = W.get(x,y,z); return t ~= nil and t.taken == true end
-B.zone_types = function(x,y,z) local t = W.get(x,y,z); return (t and t.zones) or {} end
+B.building_at = function(x,y,z) local t = W.peek(x,y,z); return t ~= nil and t.taken == true end
+B.zone_types = function(x,y,z) local t = W.peek(x,y,z); return (t and t.zones) or {} end
 W.soil_levels = {}
 W.reset()
 return B, W
@@ -171,24 +190,24 @@ def start(**kw):
 REAL_FURNISH_PROGRESS = None
 
 
+def _reset(beside):
+    global REAL_FURNISH_PROGRESS
+    if REAL_FURNISH_PROGRESS is None:
+        REAL_FURNISH_PROGRESS = B.furnish_progress
+    B.furnish_progress = REAL_FURNISH_PROGRESS
+    W.reset()
+    B.CAVERN_NO_SPOT = None          # (0.105.4 review) the cavern search's kept "no spot"
+    B.TRY_BESIDE = beside
+
+
 def test(name, beside=False):
-    def wrap(fn):
-        global REAL_FURNISH_PROGRESS
-        if REAL_FURNISH_PROGRESS is None:
-            REAL_FURNISH_PROGRESS = B.furnish_progress
-        B.furnish_progress = REAL_FURNISH_PROGRESS
-        W.reset()
-        B.CAVERN_NO_SPOT = None          # (0.105.4 review) the cavern search's kept "no spot"
-        B.TRY_BESIDE = beside
-        try:
-            fn()
-            RESULTS.append((name, True, ""))
-        except AssertionError as e:
-            RESULTS.append((name, False, str(e)))
-        except Exception as e:  # noqa: BLE001
-            RESULTS.append((name, False, f"{type(e).__name__}: {e}"))
-        return fn
-    return wrap
+    return make_test(before=lambda: _reset(beside))(name)
+
+
+def check_level(L, sx, sy, z, reserved):
+    """(13c) A layout centred on the stair at (sx, sy), checked as the builder
+    does (check_site); the module's own check_level wrapper is unused."""
+    return B.check_site(L, LUA.table(), sx, sy, z, reserved, LUA.table_from({"x": 0, "y": 0}))
 
 
 def designated_count():
@@ -300,7 +319,7 @@ def _():
         L = LUA.eval("function(m) return m.make('bedrooms', {rooms=8, room_size=3}) end")(B.__index if False else LUA.globals().LAYOUTS)
         b = L.bounds
         W.set(60 + b.x2 + 1, 60, 65, LUA.table_from(hazard))        # just outside the dug area
-        ok = B.check_level(L, 60, 60, 65, LUA.table())
+        ok = check_level(L, 60, 60, 65, LUA.table())
         assert not (ok[0] if isinstance(ok, tuple) else ok), hazard
 
 
@@ -756,10 +775,13 @@ def _():
         if tonumber(tz) == z and t.shape == 'WALL' then t.shape = 'FLOOR'; t.player = true end
       end""", W, r.z)
     B.furnish_project(r.project_id, True)
-    bad = LUA.eval("""function(W) local n = 0
-      for _, t in pairs(W.tiles) do if t.player and t.smoothing then n = n + 1 end end
-      return n end""")(W)
+    bad, good = LUA.eval("""function(W) local n, g = 0, 0
+      for _, t in pairs(W.tiles) do
+        if t.smoothing then if t.player then n = n + 1 else g = g + 1 end end
+      end
+      return n, g end""")(W)
     assert bad == 0, f"{bad} of the player's new tiles got smoothing jobs"
+    assert good > 0, "(13c) the level's own walls are smoothed (else nothing was tested)"
 
 
 
@@ -768,11 +790,11 @@ def _():
 @test("game: water or aquifer directly above a tile to dig rejects that level (DF calls it damp)")
 def _():
     L = LUA.globals().LAYOUTS.make("bedrooms", LUA.table_from({"rooms": 8, "room_size": 3}))
-    assert B.check_level(L, 60, 60, 65, LUA.table())[0]
+    assert check_level(L, 60, 60, 65, LUA.table())[0]
     for hazard in ({"aquifer": True}, {"liquid": True}):
         W.reset()
         W.set(64, 57, 66, LUA.table_from(hazard))            # above a room tile on z65
-        res = B.check_level(L, 60, 60, 65, LUA.table())
+        res = check_level(L, 60, 60, 65, LUA.table())
         assert not res[0] and "directly above" in res[1], res
 
 
@@ -780,7 +802,7 @@ def _():
 def _():
     L = LUA.globals().LAYOUTS.make("bedrooms", LUA.table_from({"rooms": 8, "room_size": 3}))
     W.set(64, 57, 65, LUA.table_from({"warm": True}))
-    res = B.check_level(L, 60, 60, 65, LUA.table())
+    res = check_level(L, 60, 60, 65, LUA.table())
     assert not res[0] and "warm" in res[1], res
 
 
@@ -954,14 +976,14 @@ def _():
 def _():
     W.soil_levels[63] = True
     L = LUA.globals().LAYOUTS.make("farms", LUA.table_from({"plots": 2}))
-    assert B.check_level(L, 60, 60, 63, LUA.table())[0]
+    assert check_level(L, 60, 60, 63, LUA.table())[0]
     W.set(63, 58, 63, LUA.table_from({"material": "STONE"}))               # under a plot
-    res = B.check_level(L, 60, 60, 63, LUA.table())
+    res = check_level(L, 60, 60, 63, LUA.table())
     assert not res[0] and "not soil" in res[1], res
     W.reset()
     W.soil_levels[63] = True
     W.set(61, 60, 63, LUA.table_from({"material": "STONE"}))               # hub: fine
-    assert B.check_level(L, 60, 60, 63, LUA.table())[0]
+    assert check_level(L, 60, 60, 63, LUA.table())[0]
 
 
 @test("farms: no soil anywhere -> refused with the reason; without dig, no level is tried")
@@ -1907,6 +1929,50 @@ def _():
     assert designated_count() == 0
 
 
+# the game's side of a cistern: buildings by tile, lever links, lever pulls
+# (13c: each test that needs it sets it up, so the tests run in any order)
+CISTERN_GAME = """local W = ...
+  BLD, LINKS, PULLS = {}, {}, {}
+  xyz2pos = function(x, y, z) return {x = x, y = y, z = z} end
+  df = df or {}
+  df.building_type = {[1] = 'Floodgate', [2] = 'Trap', [3] = 'Well'}
+  dfhack.buildings = {findAtTile = function(p) return BLD[p.x .. ',' .. p.y .. ',' .. p.z] end}
+  CR_OK = 0
+  dfhack.run_command_silent = function(cmd, a, b, id)
+    if cmd == 'dig-now' then                       -- (0.104.145) the plug dug at once
+      local x, y, z = a:match('(%d+),(%d+),(%d+)')
+      W.set(tonumber(x), tonumber(y), tonumber(z), {shape = 'FLOOR'})
+      return 'ok', 0
+    end
+    table.insert(PULLS, id)
+    for _, b in pairs(BLD) do if b.gate_flags then b.gate_flags.closed = not b.gate_flags.closed end end
+    return 'ok', 0
+  end
+  local real_req = REAL_REQ or reqscript      -- (once: the tests that use this run in any order)
+  REAL_REQ = real_req
+  reqscript = function(name)
+    if name == 'ai-gates' then
+      return {link_lever = function(l, g) return {ok = true} end,
+              lever_links = function() return LINKS end}
+    end
+    return real_req(name)
+  end
+  function MKB(x, y, z, t, extra)
+    local b = {id = #PULLS + x * 1000 + y, t = t, built = false,
+               getType = function(self) return self.t end,
+               getBuildStage = function(self) return self.built and 1 or 0 end,
+               getMaxBuildStage = function() return 1 end}
+    for k, v in pairs(extra or {}) do b[k] = v end
+    BLD[x .. ',' .. y .. ',' .. z] = b
+    return b
+  end
+"""
+
+
+def _cistern_game():
+    LUA.execute(CISTERN_GAME, W)
+
+
 def _body():
     LUA.execute("""local W = ...
       W.citizens = {}
@@ -1915,41 +1981,8 @@ def _body():
         if not (x == 60 and y == 60) then W.set(x, y, 79, {shape = 'WALL', material = 'STONE'}) end
       end end
       for x = 74, 78 do for y = 55, 65 do W.set(x, y, 79, {shape = 'EMPTY', liquid = true, depth = 7}) end end
-      -- the game's side: buildings by tile, lever links, lever pulls
-      BLD, LINKS, PULLS = {}, {}, {}
-      xyz2pos = function(x, y, z) return {x = x, y = y, z = z} end
-      df = df or {}
-      df.building_type = {[1] = 'Floodgate', [2] = 'Trap', [3] = 'Well'}
-      dfhack.buildings = {findAtTile = function(p) return BLD[p.x .. ',' .. p.y .. ',' .. p.z] end}
-      CR_OK = 0
-      dfhack.run_command_silent = function(cmd, a, b, id)
-        if cmd == 'dig-now' then                       -- (0.104.145) the plug dug at once
-          local x, y, z = a:match('(%d+),(%d+),(%d+)')
-          W.set(tonumber(x), tonumber(y), tonumber(z), {shape = 'FLOOR'})
-          return 'ok', 0
-        end
-        table.insert(PULLS, id)
-        for _, b in pairs(BLD) do if b.gate_flags then b.gate_flags.closed = not b.gate_flags.closed end end
-        return 'ok', 0
-      end
-      local real_req = reqscript
-      reqscript = function(name)
-        if name == 'ai-gates' then
-          return {link_lever = function(l, g) return {ok = true} end,
-                  lever_links = function() return LINKS end}
-        end
-        return real_req(name)
-      end
-      function MKB(x, y, z, t, extra)
-        local b = {id = #PULLS + x * 1000 + y, t = t, built = false,
-                   getType = function(self) return self.t end,
-                   getBuildStage = function(self) return self.built and 1 or 0 end,
-                   getMaxBuildStage = function() return 1 end}
-        for k, v in pairs(extra or {}) do b[k] = v end
-        BLD[x .. ',' .. y .. ',' .. z] = b
-        return b
-      end
     """, W)
+    _cistern_game()
     step = lambda: B.cistern_step(False)
     r = step()
     assert r.ok and r.stage == "digging", dict(r)
@@ -2054,7 +2087,7 @@ def _body():
     z = plan.cistern.z
     for c in list(plan.tunnel_path.values()) + [plan.plug]:
         W.set(c.x, c.y, z, LUA.table_from({"shape": "FLOOR", "designated": False}))
-    LUA.execute("BLD, LINKS, PULLS = {}, {}, {}")
+    _cistern_game()
     gate = LUA.globals().MKB(plan.floodgate.x, plan.floodgate.y, z, 1, LUA.table_from({"gate_flags": LUA.table_from({"closed": False})}))
     gate.built = True
     W.persist["ai-overseer/cistern"] = LUA.table_from({"stage": "filling", "plan": plan, "lever_id": 5, "gate_id": gate.id})
@@ -2107,7 +2140,7 @@ def _body():
     for c in list(plan.tunnel_path.values()) + [plan.plug]:
         W.set(c.x, c.y, z, LUA.table_from({"shape": "FLOOR", "designated": False, "liquid": True, "depth": 7}))
     W.set(plan.well.x, plan.well.y, z, LUA.table_from({"shape": "FLOOR", "liquid": True, "depth": 5}))
-    LUA.execute("BLD, LINKS, PULLS = {}, {}, {}")
+    _cistern_game()
     gate = LUA.globals().MKB(plan.floodgate.x, plan.floodgate.y, z, 1, LUA.table_from({"gate_flags": LUA.table_from({"closed": True})}))
     gate.built = True
     W.persist["ai-overseer/cistern"] = LUA.table_from({"stage": "filling", "plan": plan, "lever_id": 5, "gate_id": gate.id})
@@ -2205,6 +2238,21 @@ def _():
     assert len(gaps) == 1 and gaps[1].fix == "wall", [dict(g) for g in gaps.values()]   # (0.104.168) every gap listed
 
 
+_SHAFT_PLAN = None
+_DEEP_COPY = LUA.eval("""function(t)
+  local seen = {}
+  local function copy(v)
+    if type(v) ~= 'table' then return v end
+    if seen[v] then return seen[v] end
+    local c = {}
+    seen[v] = c
+    for k, x in pairs(v) do c[copy(k)] = copy(x) end
+    return setmetatable(c, getmetatable(v))
+  end
+  return copy(t)
+end""")
+
+
 def _shaft_plan():
     """(0.104.168) The v2 shaft plan of the test above (a pond north of the fort)."""
     LUA.execute("""local W = ...
@@ -2220,9 +2268,12 @@ def _shaft_plan():
       end end
     """, W)
     B.cistern_prefs(LUA.table_from({}))
-    r = B.plan_cistern()
-    plan = r if hasattr(r, "cistern") else r[0]
-    assert plan is not None and plan.shaft is not None
+    global _SHAFT_PLAN
+    if _SHAFT_PLAN is None:                 # (13c) the search runs to its deadline: planned once, copied after
+        r = B.plan_cistern()
+        _SHAFT_PLAN = r if hasattr(r, "cistern") else r[0]
+        assert _SHAFT_PLAN is not None and _SHAFT_PLAN.shaft is not None
+    plan = _DEEP_COPY(_SHAFT_PLAN)
     s, k = plan.shaft, plan.corner
     # an open spot beside the shaft halfway up, away from the corner and the tunnel
     for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
@@ -2403,6 +2454,7 @@ def _():
 
 @test("cistern v2 (0.104.145): a cistern of the first design is retired (its gate shut first), the next planned afresh")
 def _():
+    _cistern_game()
     LUA.execute("""local W = ...
       W.persist['ai-overseer/cistern'] = {stage = 'filling', plan = {cistern = {x1 = 1, y1 = 1, x2 = 5, y2 = 5, z = 79},
           well = {x = 3, y = 3, z = 80}, floodgate = {x = 6, y = 3}, plug = {x = 8, y = 3}, water = {x = 9, y = 3},
@@ -2654,7 +2706,6 @@ def _():
     assert max(abs(lx - st.x), abs(ly - st.y)) == 1                              # next to the stair (the builder's way)
     assert W.get(lx, ly, 70).designated and W.get(lx, ly, 70).dig_text == "d"
     assert W.get(lx, ly, 69).shape == "WALL" and not W.get(lx, ly, 69).designated     # rock left under it
-    assert p.dig is None or True
     assert B.projects_report().open[1].dig.total == r.gallery + 16
     dig_gallery_well(r)
     assert B.projects_report().open[1].next == "furnish"
@@ -2914,7 +2965,8 @@ def _():
 @test("plan: a spine staircase find_stairs didn't list is found and used (if the dwarves can walk to it)")
 def _():
     second_stair(30, 95, 70, 74)                          # outside the area around the dwarves
-    assert all(s.x != 30 for s in B.find_stairs(5).values())
+    found = [s.x for s in B.find_stairs(5).values()]
+    assert 60 in found and 30 not in found, found          # (13c) the main stair is listed; this one isn't
     r = planned(plan(elev_lo=71, elev_hi=73, spine={"x": 30, "y": 95}))
     assert r.ok and (r.stair.x, r.stair.y) == (30, 95) and 71 <= r.z <= 73 and r.in_district, \
         (r.stair.x, r.stair.y, r.z, r.error)
@@ -3162,7 +3214,6 @@ def fresh_embark(aquifer_z=None):
     """A new embark: grass at z80 open to the sky, soil z79-78, rock from z77; no stairs."""
     W.reset()
     LUA.execute("""local W = ...
-      W.tiles = {}
       W.soil_levels = {[79] = true, [78] = true}
       for x = 30, 70 do for y = 30, 70 do W.set(x, y, 80, {shape = 'FLOOR', outside = true, material = 'GRASS_LIGHT'}) end end
       W.citizens = {}
@@ -3359,7 +3410,9 @@ def _():
     W.placed = LUA.table_from([])
     f = B.place_keep(False)
     assert f.ok and f.stage == "roof" and f.roof == 49, dict(f)
-    assert all(c.text == "Cf" and c.z == 81 and max(abs(c.x - 60), abs(c.y - 60)) <= 3 for c in W.placed.values())
+    roof = list(W.placed.values())
+    assert len(roof) == 49 and all(c.text == "Cf" and c.z == 81 and max(abs(c.x - 60), abs(c.y - 60)) <= 3
+                                   for c in roof), len(roof)
     for c in list(W.placed.values()):
         W.set(c.x, c.y, 81, LUA.table_from({"shape": "FLOOR", "material": "CONSTRUCTION"}))
     e = B.place_keep(False)
@@ -4066,8 +4119,4 @@ def _():
     _deep_reset()
 
 if __name__ == "__main__":
-    for name, ok, msg in RESULTS:
-        print(f"[{'PASS' if ok else 'FAIL'}] {name}" + (f"\n        {msg}" if msg else ""))
-    failed = sum(1 for _, ok, _ in RESULTS if not ok)
-    print(f"\n{len(RESULTS) - failed} passed, {failed} failed")
-    sys.exit(1 if failed else 0)
+    finish()

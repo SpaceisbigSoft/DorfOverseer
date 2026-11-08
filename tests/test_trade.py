@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-RESULTS = []
+from harness import test, finish  # noqa: E402
 
 try:
     from lupa import LuaRuntime
@@ -72,19 +72,6 @@ return env, marked
 """
 
 
-def test(name):
-    def wrap(fn):
-        try:
-            fn()
-            RESULTS.append((name, True, ""))
-        except AssertionError as e:
-            RESULTS.append((name, False, str(e)))
-        except Exception as e:  # noqa: BLE001
-            RESULTS.append((name, False, f"{type(e).__name__}: {e}"))
-        return fn
-    return wrap
-
-
 @test("goods in a bin count (0.46's bins hid every craft); a bin with a wooden one among them stays")
 def _():
     lua = LuaRuntime(unpack_returned_tuples=True)
@@ -113,7 +100,6 @@ def _():
     r = env.bring(40, False)
     got = sorted(marked[i] for i in range(1, len(marked) + 1))
     assert r.ok and r["items"] == 4 and got == [20, 100], (dict(r), got)
-
 
 
 @test("bring (0.96): a grasping fort keeps gems and precious metal home; others still go")
@@ -402,7 +388,6 @@ def _():
             {Depot = {anchor = 'right-top', rx = 20, ty = 10}})""", env)
     r = env.open_screen(False, None)
     assert r.ok and r.clicking and list(r.at.values()) == [100, 10], dict(r)    # 120 - 20
-    vs = env.df.glob if False else None
     env.PENDING()
     tr = env.df["global"].game.main_interface.trade
     assert tr.open and env.opened_by_ai() and env.df["global"].game.main_interface.view_sheets.open is False
@@ -435,8 +420,4 @@ def _():
 
 
 if __name__ == "__main__":
-    for name, ok, msg in RESULTS:
-        print(f"[{'PASS' if ok else 'FAIL'}] {name}" + (f"\n        {msg}" if msg else ""))
-    failed = sum(1 for _, ok, _ in RESULTS if not ok)
-    print(f"\n{len(RESULTS) - failed} passed, {failed} failed")
-    sys.exit(1 if failed else 0)
+    finish()
