@@ -12,7 +12,7 @@ import phases
 from quirks import has_rule
 from digest import _d, _l, normalize
 
-__all__ = ["great_present", "all_clear", "STEER_PROTECTED", "STEER_MAX_DAYS", "steer_of", "PLANNER_CONFIG", "BREW_RECIPES", "MEAL_RECIPES", "MANDATE_RECIPES", "BUILDABLE_SHOPS", "SHOP_ALIASES", "SURVIVAL_SHOPS", "TICKS_PER_DAY", "TICKS_PER_YEAR", "NO_COOLDOWN", "MULTI_PER_CYCLE", "EMERGENCY", "STUCK_HOLD_EXEMPT", "LIMIT_EXEMPT", "Proposal", "Memory", "abs_tick", "game_day", "factor", "ADJUST_BOUNDS", "_number", "effective_config", "queued", "unstored_cups", "free_stock", "watch_since", "_clamp", "MEMORIAL_SPAN", "OPTIONAL_LEVELS", "GEAR_WEAPONS", "GEAR_METALS", "GEAR_RECIPES", "NEEDS_YOU", "ask_player", "player_rules", "MAINTAIN_SKIPS", "level_refused", "_traits", "reachable_threats", "held_off_threats", "_holding_off", "ONE_A_CYCLE", "growth_mode", "growth_target", "JOB_SHOPS", "RECIPE_SHOPS", "WOOD_ELSEWHERE", "recipe_shop", "brewable_counts", "brew_recipe", "_watchdog_notes", "jobs_reported", "order_job_state", "masons_jammed", "stuck_hold_days", "_stuck_before", "stone_short", "_office_held", "tantrums_recent", "justice_held", "_restraint_order", "manager_needs_office", "suites_short", "wool_route", "thread_plants_here", "MINING_NEED_ONLY", "mining_plan", "noble_room_kinds", "SOCIAL_NEEDS", "care_waiting", "unmet", "_soldier_swap", "recently_home", "LOCATION_UNITS", "_location", "_location_short", "_real_locations", "can_fight", "is_ranged", "STALE_PROJECT_DAYS", "_workshops_busy", "shop_count", "shops_max", "_has_shop", "RAW_FOOD", "ALL_FOOD", "_idle_share", "update_idle", "AGENDA_THEMES", "agenda", "food_per_dwarf", "WINTER_STOCK", "winter_factor", "young_fort", "established", "has_farms", "_best_metal", "REFUSAL_FIRST_DAYS", "REFUSAL_MAX_DAYS", "REFUSAL_IDLE_DAYS", "REFUSAL_KEYS", "refusal_key", "_refused_wait", "note_refusal", "LOOP_LIMITS", "LOOP_LIMIT_DEFAULT", "LOOP_EXEMPT", "_loop_count", "_stalled_days", "_entrance_spot", "_record_any_outcome", "_weapon_gaps", "spare_sig"]
+__all__ = ["great_present", "all_clear", "STEER_PROTECTED", "STEER_MAX_DAYS", "steer_of", "PLANNER_CONFIG", "BREW_RECIPES", "MEAL_RECIPES", "MANDATE_RECIPES", "BUILDABLE_SHOPS", "SHOP_ALIASES", "SURVIVAL_SHOPS", "TICKS_PER_DAY", "TICKS_PER_YEAR", "NO_COOLDOWN", "MULTI_PER_CYCLE", "EMERGENCY", "STUCK_HOLD_EXEMPT", "LIMIT_EXEMPT", "Proposal", "Memory", "abs_tick", "game_day", "factor", "ADJUST_BOUNDS", "_number", "effective_config", "queued", "unstored_cups", "free_stock", "watch_since", "_clamp", "MEMORIAL_SPAN", "OPTIONAL_LEVELS", "GEAR_WEAPONS", "GEAR_METALS", "GEAR_RECIPES", "NEEDS_YOU", "ask_player", "player_rules", "MAINTAIN_SKIPS", "level_refused", "_traits", "reachable_threats", "held_off_threats", "_holding_off", "ONE_A_CYCLE", "growth_mode", "growth_target", "JOB_SHOPS", "RECIPE_SHOPS", "WOOD_ELSEWHERE", "recipe_shop", "brewable_counts", "brew_recipe", "_watchdog_notes", "jobs_reported", "order_job_state", "masons_jammed", "stuck_hold_days", "_stuck_before", "stone_short", "_office_held", "tantrums_recent", "justice_held", "_restraint_order", "manager_needs_office", "suites_short", "wool_route", "thread_plants_here", "MOOD_BODY_FLAGS", "mood_kind", "mood_on_hand", "mood_waits", "MINING_NEED_ONLY", "mining_plan", "noble_room_kinds", "SOCIAL_NEEDS", "care_waiting", "unmet", "_soldier_swap", "recently_home", "LOCATION_UNITS", "_location", "_location_short", "_real_locations", "can_fight", "is_ranged", "STALE_PROJECT_DAYS", "_workshops_busy", "shop_count", "shops_max", "_has_shop", "RAW_FOOD", "ALL_FOOD", "_idle_share", "update_idle", "AGENDA_THEMES", "agenda", "food_per_dwarf", "WINTER_STOCK", "winter_factor", "young_fort", "established", "has_farms", "_best_metal", "REFUSAL_FIRST_DAYS", "REFUSAL_MAX_DAYS", "REFUSAL_IDLE_DAYS", "REFUSAL_KEYS", "refusal_key", "_refused_wait", "note_refusal", "LOOP_LIMITS", "LOOP_LIMIT_DEFAULT", "LOOP_EXEMPT", "_loop_count", "_stalled_days", "_entrance_spot", "_record_any_outcome", "_weapon_gaps", "spare_sig"]
 
 PLANNER_CONFIG = {
     # Starting guesses, tuned from experience. Per citizen, before trait factors.
@@ -193,6 +193,7 @@ PLANNER_CONFIG = {
     "appoint_cooldown_ticks": 1200,    # an office filled: at most one a day
     "mood_wait_days": 3,
     "mood_lacking_days": 7,           # (0.103.8) a mood still lacking what no recipe makes: Needs you from this day
+    "mood_cooldown_ticks": 300,       # (0.105.24) a quarter day (was the 2-day default): a mood fails in 30-40 days
     "fuel_min": 10,
     "smelt_batch": 10,
     "metal_kit_bars": 8,               # weapon-grade bars a soldier before a squad goes from leather to metal
@@ -324,6 +325,14 @@ PLANNER_CONFIG = {
     "calm_burrow_cooldown_ticks": 300,           # ...asked every quarter day while a tantrum walks free
     "calm_burrow_judge_after": 20,               # ...members seen this often (inside or out) before judging...
     "calm_burrow_outside_share": 0.5,            # ...and seen outside this share of the time: said as a note
+    "booze_variety_min": 3,                      # (0.105.24) citizens upset by the same booze before...
+    "booze_variety_share": 0.1,                  # ...or this share of the citizens: drinks of more kinds
+    "booze_kinds_enough": 3,                     # ...unless this many kinds are in store already
+    "booze_fruit_min": 10,                       # ...fruit brewed from this many fermentable growths
+    "booze_fruit_batch": 5,
+    "booze_variety_cooldown_ticks": 7 * 1200,    # ...a week between tries (the crops take a season)
+    "calm_burrow_retire_after": 40,              # (0.105.24) seen this often (in or out) and...
+    "calm_burrow_retire_share": 0.9,             # ...outside this share: the lever retired (members let out)
     "guard_min_adults": 15,                      # (0.105.8) every fort this big keeps a guard...
     "guard_min_soldiers": 3,                     # ...of this many soldiers, whatever the Militarism
     "assign_kit_wait_ticks": 3 * 1200,           # (0.105.8) armour handed out by the AI once DF left it 3 days
@@ -635,6 +644,7 @@ NO_COOLDOWN = {"threat_alert", "strategist", "squad_attack", "squad_recall", "tr
                "trade_deal", "close_trade",
                "shelter_squads"}   # (0.105.0 review: an emergency, as in EMERGENCY)   # (time stands still while the trade screen is open)
 MULTI_PER_CYCLE = {"stuck_order", "uniform", "noble_rooms", "tools", "strategist", "squad_attack", "squad_recall", "train", "labor", "well_parts"}
+MULTI_PER_CYCLE |= {"mood"}   # (0.105.24) a mood's materials: weave, tan, smelt, free, cancel in one cycle
 # Responses to an attack: never held back by the per-cycle action limit.
 EMERGENCY = {"threat_alert", "gate", "gates", "squad_attack", "flood", "gate_guard",   # (0.104.83 gate_guard)
              "shelter_squads"}                                                      # (0.105.0)
@@ -662,6 +672,7 @@ STUCK_HOLD_EXEMPT = {"drink", "drink_fruit", "food", "well_parts"}   # (0.104.2)
 # (0.104.169) calm_burrow too: a tantrum near the patients waits for no slot
 LIMIT_EXEMPT = EMERGENCY | {"break_fights", "calm_burrow","join_levels", "census", "train", "shelter", "entrances", "labor", "gather", "stuck_order", "alerts",
                             "kitchen"}   # (0.100) a kitchen setting, once per drink shortage: no slot of its own
+LIMIT_EXEMPT |= {"mood"}   # (0.105.24) a strange mood's materials (a life on it; a handful of actions at most)
 
 
 @dataclass
@@ -1169,7 +1180,8 @@ RECIPE_SHOPS = {"pig_iron": "Smelter", "steel": "Smelter", "coke_bituminous": "S
                 # (0.104.95) glass is made at a glass furnace, precious metal crafts at the forge
                 "collect_sand": "GlassFurnace", "metal_crafts": "MetalsmithsForge",
                 "metal_amulet": "MetalsmithsForge", "metal_bracelet": "MetalsmithsForge",   # (0.104.137)
-                "metal_ring": "MetalsmithsForge", "metal_earring": "MetalsmithsForge"}
+                "metal_ring": "MetalsmithsForge", "metal_earring": "MetalsmithsForge",
+                "tan_hide": "Tanners", "raw_green_glass": "GlassFurnace"}   # (0.105.24) a strange mood's leather and glass
 
 
 # (0.100.1, overnight run) the workshop a recipe is made at, where it's sure:
@@ -1405,6 +1417,61 @@ def wool_route(s: dict) -> bool:
     shorn and a farmer's workshop to shear and spin at."""
     return (int(_d(s.get("supplies")).get("shearable") or 0) > 0
             and _has_shop(_d(s.get("buildings")), "Farmers"))
+
+
+# (0.105.24) what a strange mood asks for, in kinds the AI can act on
+MOOD_BODY_FLAGS = ("bone", "shell", "horn", "pearl", "ivory", "tooth")
+
+
+def mood_kind(x: dict) -> str:
+    """One of a mood request's kinds: cloth, leather, bone, shell, bar,
+    rough, glass_rough, cut_gem, stone, block, log, other."""
+    item = str(_d(x).get("item") or "").upper()
+    flags = set(str(f) for f in _l(_d(x).get("flags")))
+    mat = str(_d(x).get("material") or "").lower()
+    if item == "CLOTH":
+        return "cloth"
+    if item == "SKIN_TANNED":
+        return "leather"
+    if item in ("NONE", "CORPSEPIECE", "") and flags & set(MOOD_BODY_FLAGS):
+        return "shell" if "shell" in flags and "bone" not in flags else "bone"
+    if item == "BAR":
+        return "bar"
+    if item == "ROUGH":
+        return "glass_rough" if ("glass" in mat or "glass" in flags) else "rough"
+    if item == "SMALLGEM":
+        return "cut_gem"
+    if item == "BOULDER":
+        return "stone"
+    if item == "BLOCKS":
+        return "block"
+    if item == "WOOD":
+        return "log"
+    return "other"
+
+
+def mood_on_hand(x: dict) -> bool | None:
+    """(0.105.24) The bridge's count for a mood request (lua/ai-moods.lua):
+    True when enough lies free within the dwarf's walk, False when not, None
+    from an older bridge (no count)."""
+    av = _d(x).get("avail")
+    if not isinstance(av, dict):
+        return None
+    return bool(av.get("enough")) or int(av.get("reach") or 0) >= max(1, int(_d(x).get("quantity") or 1))
+
+
+def mood_waits(s: dict) -> set:
+    """(0.105.24) The kinds the fort's crafting moods wait for and don't have
+    within reach (from a bridge that counts; every unmet kind from an older
+    one): the gem cutters, bone carvers and the like leave them alone."""
+    out = set()
+    for m in _l(_d(s.get("moods")).get("list")):
+        if not isinstance(m, dict) or not m.get("craft"):
+            continue
+        for x in _l(m.get("missing")):
+            if isinstance(x, dict) and mood_on_hand(x) is not True:
+                out.add(mood_kind(x))
+    return out
 
 
 def thread_plants_here(s: dict) -> bool:
@@ -1691,6 +1758,7 @@ AGENDA_THEMES["cups_home"] = "shoes and cups for the fort"      # (0.104.168)
 
 AGENDA_THEMES.update({"soap_rush": "make soap", "infected_rest": "care for the infected",   # (0.104.168)
                       "doctor_post": "more doctors"})
+AGENDA_THEMES.update({"booze_variety": "drinks of more kinds", "mood": "materials for a strange mood"})   # (0.105.24)
 
 
 def agenda(proposals: list, notes: list, limit: int = 5) -> list[str]:

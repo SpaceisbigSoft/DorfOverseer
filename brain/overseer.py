@@ -527,6 +527,8 @@ def short(a: dict) -> str:
         return f"unlock the way down to {a.get('layer')}" if a.get("open") else f"lock the way down to {a.get('layer')}"
     if t == "rest_infected":     # (0.104.168)
         return f"put up to {a.get('max', 3)} dwarves with infected wounds to bed in the hospital, for the doctors"
+    if t == "mood_free_items":   # (0.105.24)
+        return "free the forbidden materials a strange mood is waiting for"
     if t == "add_doctor_post":   # (0.104.168)
         return "add a second doctor's post at a hospital"
     if t == "recreation":        # (0.104.78)
@@ -553,7 +555,8 @@ def short(a: dict) -> str:
     if t == "farm_thresholds":
         return "set which crops the farms favour (autofarm)"
     if t == "set_farm_crops":      # (0.105.5) Hammerstirred: the plots lay fallow under autofarm
-        return "set each farm plot's crops" + (" (brewable first)" if a.get("drink") else "")
+        return ("set each farm plot's crops" + (" (brewable first)" if a.get("drink") else "")
+                + (" (a second brewable crop: drinks of more kinds)" if a.get("variety") else ""))
     if t == "kitchen_brewables":   # (0.100) the kitchen ban on cooking brewables
         return ("stop the kitchen cooking brewable plants" if a.get("ban") else
                 "let the kitchen cook brewable plants again")

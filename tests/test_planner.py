@@ -5989,12 +5989,161 @@ def _():
     props, notes = plan(s, m)
     o = [p.action for p in by_rule(props, "mood")]
     assert {"type": "work_order", "recipe": "stone_blocks", "amount": 2} in o, o
-    assert any("1 bar of iron" in n and "1 bone or shell (bone)" in n for n in notes), notes
+    # (0.105.24) a bone: one spare tame animal to the butcher; iron with no iron ore: named
+    assert {"type": "slaughter_one"} in o, o
+    assert any("1 bar of iron" in n for n in notes), notes
     # (0.103.8) on day 4 the dwarf may still be fetching it: a note; Needs you from day 7
     assert not any(n.startswith(planner.NEEDS_YOU) and "still lacks" in n for n in notes), notes
     m.moods_seen = {"5": abs_tick(s) - 8 * 1200}
     notes = plan(s, m)[1]
     assert any(n.startswith(planner.NEEDS_YOU) and "still lacks" in n and "1 bar of iron" in n for n in notes), notes
+
+
+def _counted_mood(missing, **kw):
+    m = {"unit_id": 5, "name": "Urist", "mood": "Fey", "craft": True, "skill": "STONECRAFT",
+         "workshop": "Craftsdwarfs", "items_have": 0, "items_needed": len(missing), "missing": missing}
+    m.update(kw)
+    return m
+
+
+def _av(**kw):
+    a = {"free": 0, "reach": 0, "forbidden": 0, "forbidden_reach": 0, "dump": 0, "job": 0, "other": 0}
+    a.update(kw)
+    return a
+
+
+@test("mood (0.105.24): with the bridge's count: on hand left alone; forbidden freed; cloth by kind, leather, bars, glass made")
+def _():
+    s = fort()
+    s["supplies"].update(thread_kinds={"plant": 0, "silk": 0, "yarn": 4}, hides=2, fuel=5, sand_bags=3)
+    s["industry"] = {"ore_stock_by": {"MALACHITE": {"n": 6, "metals": ["COPPER"]}, "HEMATITE": {"n": 9, "metals": ["IRON"]}}}
+    s["moods"] = {"list": [_counted_mood([
+        {"index": 0, "item": "CLOTH", "quantity": 1, "flags": ["yarn"], "avail": _av()},
+        {"index": 1, "item": "WOOD", "quantity": 1, "flags": [], "avail": _av(free=40, reach=1, enough=True)},
+        {"index": 2, "item": "SKIN_TANNED", "quantity": 1, "flags": [], "avail": _av()},
+        {"index": 3, "item": "BAR", "material": "copper", "quantity": 2, "flags": ["metal"], "avail": _av()},
+        {"index": 4, "item": "ROUGH", "material": "green glass", "quantity": 1, "flags": [], "avail": _av()},
+        {"index": 5, "item": "NONE", "quantity": 1, "flags": ["bone"], "avail": _av(forbidden=3, forbidden_reach=2)}])]}
+    s["orders"] = []
+    m = Memory()
+    m.moods_seen = {"5": abs_tick(s)}                    # day 0: a counting bridge acts at once
+    props, notes = plan(s, m)
+    o = [p.action for p in by_rule(props, "mood")]
+    assert {"type": "work_order", "recipe": "weave_yarn_cloth", "amount": 1} in o, o
+    assert {"type": "work_order", "recipe": "tan_hide", "amount": 1} in o, o
+    assert {"type": "work_order", "recipe": "smelt_ore", "amount": 2, "material": "INORGANIC:MALACHITE"} in o, o
+    assert {"type": "work_order", "recipe": "raw_green_glass", "amount": 1} in o, o
+    assert {"type": "mood_free_items", "unit_id": 5, "max": 10} in o, o
+    assert not any(a.get("recipe") in ("wooden_bed",) or a.get("type") == "slaughter_one" for a in o), o   # bone freed, log on hand
+    first = [p for p in by_rule(props, "mood") if p.action.get("recipe") == "weave_yarn_cloth"][0]
+    assert "the one it is fetching now" in first.reason and first.priority == 1, first
+    assert not any(n.startswith(planner.NEEDS_YOU) and "Urist" in n for n in notes), notes
+    # the rule may act several times a cycle, and again a quarter day on
+    allowed, _held = select(props, s, m)
+    assert len([p for p in allowed if p.rule == "mood"]) >= 4, [p.action for p in allowed]
+    assert PLANNER_CONFIG["mood_cooldown_ticks"] == 300
+    import overseer
+    assert "strange mood" in overseer.short({"type": "mood_free_items", "unit_id": 5})
+
+
+@test("mood (0.105.24): what the fort can't supply goes to Needs you at once, named, and to the caravans; held gems let go")
+def _():
+    s = fort()
+    s["supplies"].update(thread_kinds={"plant": 0, "silk": 0, "yarn": 0}, shearable=0)
+    s["trade"] = {"rough_gem": {"n": 0}}
+    s["moods"] = {"list": [_counted_mood([
+        {"index": 0, "item": "CLOTH", "quantity": 1, "flags": ["silk"], "avail": _av()},
+        {"index": 1, "item": "ROUGH", "quantity": 1, "flags": [], "avail": _av(job=2)},
+        {"index": 2, "item": "NONE", "quantity": 1, "flags": ["shell"], "avail": _av()},
+        {"index": 3, "item": "WOOD", "quantity": 1, "flags": [], "avail": _av(free=2, reach=0)}])]}
+    s["orders"] = [{"id": 77, "recipe": "cut_gems", "by_ai": True, "amount_left": 4, "amount_total": 6}]
+    m = Memory()
+    m.moods_seen = {"5": abs_tick(s) - 1200}
+    props, notes = plan(s, m)
+    o = [p.action for p in by_rule(props, "mood")]
+    assert {"type": "cancel_work_order", "order_id": 77} in o, o
+    need = [n for n in notes if n.startswith(planner.NEEDS_YOU) and "can't supply" in n]
+    assert need and "1 cloth (silk): no silk thread to weave" in need[0] and "1 shell" in need[0], need
+    assert "rough gem" not in need[0], need                # another job holds it: let go, not asked for
+    assert any(n.startswith(planner.NEEDS_YOU) and "where the dwarf can't walk" in n and "1 log" in n for n in notes), notes
+    from planner_industry import trade_wants
+    w = trade_wants(s, PLANNER_CONFIG, 50)
+    assert w[0] == {"key": "CLOTH", "count": 1}, w[:3]
+    assert sum(1 for x in w if x["key"] == "CLOTH") == 1, w     # the fort's own cloth want isn't added twice
+
+
+@test("mood (0.105.24): the jewellers and bone carvers leave the last gems and bones to a mood that waits for them")
+def _():
+    s = fort()
+    s["stocks"]["rough_gems"] = 12
+    s["trade"] = {"rough_gem": {"n": 12, "token": "INORGANIC:AMETHYST"}}
+    s["tools"]["autogems"] = None
+    s["orders"] = []
+    p, _ = plan(s, Memory())
+    assert by_rule(p, "gem_cutting"), rules(p)
+    s["moods"] = {"list": [_counted_mood([{"index": 0, "item": "ROUGH", "quantity": 1, "flags": [],
+                                           "avail": _av(reach=0, free=0)}])]}
+    p, _ = plan(s, Memory())
+    assert not by_rule(p, "gem_cutting"), by_rule(p, "gem_cutting")
+    s["moods"]["list"][0]["missing"][0]["avail"] = _av(reach=3, free=3, enough=True)      # within reach: cut away
+    p, _ = plan(s, Memory())
+    assert by_rule(p, "gem_cutting"), rules(p)
+
+
+@test("mood (0.105.24): words: 'none (bone)' reads '1 bone'; any stone, gem or metal reads plainly; cloth in DF's units")
+def _():
+    from planner_society import mood_item_text
+    assert mood_item_text({"item": "NONE", "flags": ["bone"], "quantity": 1}) == "1 bone"
+    assert mood_item_text({"item": "ROUGH", "material": "rock", "quantity": 1}) == "1 rough gem"
+    assert mood_item_text({"item": "BAR", "material": "rock", "flags": ["metal"], "quantity": 1}) == "1 bar (metal)"
+    assert mood_item_text({"item": "CLOTH", "flags": ["silk"], "quantity": 9999}) == "1 cloth (silk)"
+    assert mood_item_text({"item": "CLOTH", "flags": ["yarn"], "quantity": 30000}) == "3 cloths (yarn)"
+
+
+@test("calm burrows (0.105.24): seen outside 90%+ of 40+ times: retired, the members let out, no new ones")
+def _():
+    s = fort()
+    s.setdefault("society", {})["calm_burrow"] = {"members": 2, "free": 1, "seen_in": 1, "seen_out": 91}
+    props, notes = [], []
+    planner._calm_burrow_rule(s, PLANNER_CONFIG, props, notes)
+    assert [p.action for p in props] == [{"type": "calm_burrow", "release": True}], [p.action for p in props]
+    assert any("calm burrows retired" in n and "91 of 92" in n for n in notes), notes
+    s["society"]["calm_burrow"] = {"members": 0, "free": 1, "seen_in": 0, "seen_out": 20}
+    props, notes = [], []
+    planner._calm_burrow_rule(s, PLANNER_CONFIG, props, notes)
+    assert props and props[0].action.get("max"), [p.action for p in props]   # 20 seen: not judged retired yet
+    s["society"]["calm_burrow"] = {"members": 0, "free": 1, "seen_in": 0, "seen_out": 45}
+    props = []
+    planner._calm_burrow_rule(s, PLANNER_CONFIG, props, [])
+    assert props == [], [p.action for p in props]
+
+
+@test("same booze (0.105.24): SameBooze in the census: fruit brewed, a second brewable crop planted; said in words")
+def _():
+    s = fort()
+    s.setdefault("needs", {})["stress_causes"] = {"causes": [{"thought": "SameBooze", "citizens": 40}]}
+    s["supplies"].update(drink_kinds=1, brewable_growths=30)
+    s["farms"] = {"season": "spring", "plots_underground": 3, "plots_surface": 0,
+                  "plot_list": [{"id": i, "options": 2, "underground": True} for i in (1, 2, 3)], "crops": {
+        "MUSHROOM_HELMET_PLUMP": {"brews": "DWARVEN_WINE", "seeds": 20, "planted": 3, "seasons": ["spring", "summer"], "underground": True},
+        "GRASS_WHEAT_CAVE": {"brews": "DWARVEN_BEER", "seeds": 9, "planted": 0, "seasons": ["spring"], "underground": True},
+        "BUSH_QUARRY": {"seeds": 9, "planted": 0, "seasons": ["spring"], "underground": True}}}
+    s["orders"] = []
+    m = Memory()
+    m.farm_steer = "crops"
+    props, notes = plan(s, m)
+    o = [p.action for p in by_rule(props, "booze_variety")]
+    assert {"type": "work_order", "recipe": "brew_drink_from_fruit", "amount": 5} in o, o
+    assert any(a.get("type") == "set_farm_crops" and a.get("variety") is True for a in o), o
+    assert any("drinking the same booze (40 citizens" in n for n in notes), notes
+    s["supplies"]["drink_kinds"] = 4                       # kinds enough: only said
+    props, notes = plan(s, m)
+    assert not by_rule(props, "booze_variety") and any("4 kinds of drink" in n for n in notes), notes
+    s["supplies"]["drink_kinds"] = 1
+    s["needs"]["stress_causes"]["causes"][0]["citizens"] = 2  # a few: nothing
+    assert not by_rule(plan(s, m)[0], "booze_variety")
+    import overseer
+    assert "drinks of more kinds" in overseer.short({"type": "set_farm_crops", "variety": True})
 
 
 @test("winter: food and drink are stocked up in autumn, more where the water freezes; fruit brews when plants don't")

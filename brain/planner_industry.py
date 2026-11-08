@@ -1649,7 +1649,12 @@ def _gems_rule(s: dict, cfg: dict, proposals: list) -> None:
     crafts waiting to be sold (several times their value), a few at a time."""
     tr = _d(s.get("trade"))
     cg = _d(tr.get("cut_gem"))
+    # (0.105.24) a strange mood waiting for a rough or a cut gem it can't find:
+    # the jewellers leave the last ones alone (E, 3 Nov: moods failed on "a
+    # rough gem" while the AI cut 4-7 at a time down to under 5)
+    waits = mood_waits(s)
     if (_has_shop(s["buildings"], "Jewelers") and int(cg.get("n") or 0) >= cfg["gems_cut_at"]
+            and "cut_gem" not in waits
             and int(tr.get("goods") or 0) >= cfg["gems_cut_at"] and str(cg.get("token", "")).startswith("INORGANIC:")
             and not queued(s, {"encrust_goods"})):
         n = min(5, int(cg["n"]) // 2)
@@ -1663,7 +1668,7 @@ def _gems_rule(s: dict, cfg: dict, proposals: list) -> None:
     # the gems are cut by work order, the commonest rough gem a few at a time
     rg = _d(tr.get("rough_gem"))
     if (_has_shop(s["buildings"], "Jewelers") and _d(s.get("tools")).get("autogems") is None
-            and int(rg.get("n") or 0) >= 1 and rough >= cfg["gems_cut_at"]
+            and int(rg.get("n") or 0) >= 1 and rough >= cfg["gems_cut_at"] and "rough" not in waits
             and str(rg.get("token", "")).startswith("INORGANIC:") and not queued(s, {"cut_gems"})):
         n = min(10, int(rg["n"]))
         proposals.append(Proposal("gem_cutting", {"type": "work_order", "recipe": "cut_gems", "amount": n,
@@ -1685,10 +1690,14 @@ def trade_wants(s: dict, cfg: dict, citizens: int) -> list[dict]:
     bars = _d(_d(_d(s.get("military")).get("gear")).get("bars"))
     citizens = max(1, citizens)
     wants: list[dict] = []
+    # (0.105.24) what a strange mood waits for and the fort can't supply: first
+    from planner_society import mood_trade_wants
+    for w in mood_trade_wants(s):
+        wants.append(w)
 
     def want(key: str, n: float) -> None:
         n = int(n)
-        if n > 0:
+        if n > 0 and not any(w["key"] == key for w in wants):
             wants.append({"key": key, "count": min(n, 500)})
 
     food = sum(int(st.get(k) or 0) for k in ("prepared_meals", "meat", "fish", "cheese", "eggs", "plants"))

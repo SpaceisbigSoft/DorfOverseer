@@ -342,11 +342,12 @@ local function trade_screen() return df.global.game.main_interface.trade end
 local FOOD_TYPES = {MEAT = true, FISH = true, CHEESE = true, PLANT = true, PLANT_GROWTH = true,
                     FOOD = true, EGG = true}
 local SIMPLE = {CLOTH = true, THREAD = true, SKIN_TANNED = true, WOOD = true, SEEDS = true,
-                ANVIL = true, DRINK = true, BOULDER = true, BLOCKS = true}
+                ANVIL = true, DRINK = true, BOULDER = true, BLOCKS = true,
+                ROUGH = true, SMALLGEM = true}   -- (0.105.24) gems a strange mood waits for
 
 -- What a merchant good is, in the words the planner asks with: BAR:IRON,
 -- BAR:STEEL, BAR:COAL (fuel), CLOTH, THREAD, SKIN_TANNED (leather), WOOD,
--- SEEDS, ANVIL, DRINK, FOOD, SOAP, TALLOW; nil for anything else.
+-- SEEDS, ANVIL, DRINK, FOOD, SOAP, TALLOW, ROUGH and SMALLGEM (gems); nil for anything else.
 function category(item)
     local tname = df.item_type[item:getType()]
     if tname == 'BAR' or tname == 'GLOB' then

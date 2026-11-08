@@ -2643,6 +2643,8 @@ end
 -- (params.drink) the brewable crops first; a thread crop on one plot when
 -- params.thread; else spread over the crops (fewest plots first, then the
 -- most seeds). This season's seeds are shared out by the plots' tiles.
+-- (0.105.24) params.variety: brewable crops first, one no plot grows yet
+-- before a second plot of the same (drinks of several kinds).
 function set_farm_crops(params, dry_run)
     local season = current_season()
     local seeds = seed_stock()
@@ -2692,6 +2694,16 @@ function set_farm_crops(params, dry_run)
             if cur_ok and ours and params.drink == true and plant_brews(cur_raw) == nil then
                 for _, c in ipairs(cands) do if c.brews then swap = true break end end
             end
+            -- (0.105.24) drink of one kind: B and E's dwarves upset by "the same
+            -- old booze" (SameBooze, the worst stress in both, 2-5 Nov): with
+            -- params.variety the AI's own brewable crop another plot already
+            -- grows this season gives way to a brewable one nobody grows yet
+            if cur_ok and ours and not swap and params.variety == true and plant_brews(cur_raw) ~= nil
+                    and (used[s][cur] or 0) >= 1 then
+                for _, c in ipairs(cands) do
+                    if c.brews and c.idx ~= cur and (used[s][c.idx] or 0) == 0 then swap = true break end
+                end
+            end
             if cur_ok and not swap then
                 if not ours then kept = kept + 1 end
                 used[s][cur] = (used[s][cur] or 0) + 1
@@ -2700,7 +2712,12 @@ function set_farm_crops(params, dry_run)
             elseif #cands > 0 then
                 local want_thread = params.thread == true and not thread_set[s]
                 table.sort(cands, function(a, c)
-                    if params.drink == true and a.brews ~= c.brews then return a.brews end
+                    if (params.drink == true or params.variety == true) and a.brews ~= c.brews then return a.brews end
+                    -- (0.105.24) variety: a brewable crop no plot grows yet this season first
+                    if params.variety == true and a.brews and c.brews then
+                        local ua, uc = used[s][a.idx] or 0, used[s][c.idx] or 0
+                        if (ua == 0) ~= (uc == 0) then return ua == 0 end
+                    end
                     if want_thread and a.thread ~= c.thread then return a.thread end
                     -- (0.105.6) a crop with seeds left over first, then the least used
                     if (a.left > 0) ~= (c.left > 0) then return a.left > 0 end
