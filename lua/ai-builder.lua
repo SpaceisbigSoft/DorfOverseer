@@ -86,6 +86,8 @@ function tile_info(x, y, z)
         subterranean = (function() local ok, v = pcall(function() return des.subterranean end)
                             if ok then return v end end)(),
         designated = des.dig ~= df.tile_dig_designation.No,
+        -- (0.105.31) which: 'Default' (dig), 'Channel', 'Ramp', the stairs
+        dig = df.tile_dig_designation[des.dig],
         -- "marker only" (blueprint) designations: dwarves won't dig them
         marked = occ.dig_marked,
         smoothed = df.tiletype_special[attrs.special] == 'SMOOTH',

@@ -482,6 +482,7 @@ SHORT_WORDS = {
     "build_crossing": "build a bridge across a gap",
     "remove_crossing": "take down one of the AI's bridges",
     "free_dig_jobs": "free the workers held by a stalled level's dig jobs",
+    "renew_well_dig": "renew a well's channel job nobody takes",   # (0.105.31)
     "trim_instrument_orders": "cancel extra instrument orders",
 }
 

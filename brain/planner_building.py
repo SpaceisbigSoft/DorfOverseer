@@ -490,7 +490,52 @@ def hospital_shortfall(s: dict, traits: dict, cfg: dict) -> dict | None:
 DIG_FIRST_KINDS = {"hospital", "tombs"}      # (0.104.128) levels dug before the rest
 
 
-def _dig_stall_rule(s: dict, memory, cfg: dict, open_: list, proposals: list) -> None:
+# (0.105.31) what a well's undug channel waits on (the bridge's well_check
+# cause) -> what the player can do; causes left out the AI handles itself
+WELL_DIG_ASK = {
+    "no_miners": "give a dwarf the Mining labour (a pick and the Miners work detail)",
+    "unreached": "open the way out to it (a shut door, a raised bridge, a burrow), or the AI gives the spot up",
+    "no_ground": "the AI gives the spot up and picks another",
+    "marked": "turn its designation from marker to dig (or the AI renews it)",
+    "wrong_designation": "the AI designates it a channel again",
+    "unworked": "the AI renews the channel job at a higher priority; if still nothing, it gives the spot up "
+                "and picks another",
+    "no_designation": "the AI gives the spot up and picks another",
+}
+
+
+def _well_dig_rule(s: dict, memory, cfg: dict, p: dict, rec: dict, days: int, now: int,
+                   proposals: list, notes: list | None) -> None:
+    """(0.105.31) Wells nobody channels: shore wells in all six forts sat at
+    "0 of 1 tiles dug" 14-80 days (E: a year, four times on one tile), a
+    DigChannel job no miner took, and nothing could raise a channel. Its job
+    renewed (well_renew_days, then weekly), and from dig_stall_days the
+    cause named in Needs you with what is being done."""
+    dig = _d(p.get("dig"))
+    if int(dig.get("dug") or 0) > 0:
+        return
+    chk = _d(dig.get("well_check"))
+    cause = chk.get("cause")
+    renewable = cause in (None, "unworked", "waiting", "wrong_designation", "marked")
+    last = rec.get("renewed")
+    if (renewable and days >= cfg["well_renew_days"]
+            and (not isinstance(last, int) or now - last >= cfg["dig_raise_again_days"] * TICKS_PER_DAY)):
+        pri = 1 if p.get("urgent") else 2
+        proposals.append(Proposal("well_dig", {"type": "renew_well_dig", "project_id": p["id"], "priority": pri},
+                                  f"the well level (project {p['id']}): its channel not dug in {days} days"
+                                  + (f" ({chk.get('text')})" if chk.get("text") else "")
+                                  + f": the channel job renewed at priority {pri}", 3))
+        rec["renewed"] = now
+    if notes is not None and cause in WELL_DIG_ASK and days >= cfg["dig_stall_days"]:
+        where = (f" at x{chk.get('x')} y{chk.get('y')} elevation {chk.get('elevation')}"
+                 if chk.get("x") is not None else "")
+        give_up = max(0, int(cfg["unreached_dig_days"]) - days)
+        ask_player(notes, f"the well's channel{where} hasn't been dug in {days} days: {chk.get('text') or cause}. "
+                          f"{WELL_DIG_ASK[cause][0].upper()}{WELL_DIG_ASK[cause][1:]}"
+                          + (f" (the spot is given up in {give_up} days)" if give_up else ""))
+
+
+def _dig_stall_rule(s: dict, memory, cfg: dict, open_: list, proposals: list, notes: list | None = None) -> None:
     """(0.104.110, the 38-year soak) Teacheroar's tomb level sat at 235 of 240
     tiles for three game years ("5 being dug") and a bedroom level at 0 of 89
     for one, and with only two building slots nothing new was started from
@@ -519,6 +564,8 @@ def _dig_stall_rule(s: dict, memory, cfg: dict, open_: list, proposals: list) ->
             continue
         days = (now - int(rec.get("tick") or now)) // TICKS_PER_DAY
         what = f"the {p.get('kind')} level (project {p['id']})"
+        if p.get("kind") == "well" and p.get("dig_done", "open") == "open":
+            _well_dig_rule(s, memory, cfg, p, rec, days, now, proposals, notes)    # (0.105.31)
         # (0.104.128) dug first: an urgent level, or one with nothing dug for
         # weeks while other digging takes the miners (Teacheroar: the new
         # hospital 0 of 175, a bedrooms level 0 of 89 for years, at priority 4
@@ -706,7 +753,7 @@ def _project_rules(s, traits, cfg, proposals, notes, can_use, memory) -> None:
         _soil_floor_rule(s, traits, cfg, proposals, notes, memory)
     except Exception as e:  # noqa: BLE001  (an odd report value: the project steps go on)
         notes.append(f"rule _soil_floor_rule failed ({type(e).__name__}: {str(e)[:120]}); the others ran")
-    _dig_stall_rule(s, memory, cfg, open_, proposals)
+    _dig_stall_rule(s, memory, cfg, open_, proposals, notes)
 
     # (0.104.12) projects that hold a building slot for good: a dig that has
     # crept (under half dug in slow_dig_days: Enxah's cavern well, 2 of 24

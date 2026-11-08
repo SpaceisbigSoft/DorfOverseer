@@ -306,6 +306,7 @@ ACTIONS = {
     furnish_project = act_furnish_project,
     free_dig_jobs = act_free_dig_jobs,
     prioritize_dig = act_prioritize_dig,
+    renew_well_dig = act_renew_well_dig,      -- (0.105.31)
     seal_well_stairs = act_seal_well_stairs,
     well_shaft = act_well_shaft,
     finish_project = act_finish_project,
@@ -339,7 +340,7 @@ for _, name in ipairs({
     'quiet_announcements', 'found_fort', 'assign_labor', 'gather_plants', 'trim_gathering', 'appoint',
     'place_surface', 'place_keep', 'deep_depot', 'make_squad', 'mine_ore', 'clear_gate', 'bring_goods',
     'unload_depot', 'kitchen_skill', 'place_slabs', 'give_room', 'set_uniform', 'adopt_uniform',
-    'petition_orders', 'set_uniform_weapon', 'allow_stone', 'prioritize_dig', 'convict', 'quarry', 'polish',
+    'petition_orders', 'set_uniform_weapon', 'allow_stone', 'prioritize_dig', 'renew_well_dig', 'convict', 'quarry', 'polish',
     'trade_deal', 'call_trader', 'open_trade', 'close_trade', 'squad_barracks', 'feeder_pile',
     'idle_crafting', 'give_trinkets', 'staff_location', 'vacate_post', 'add_posts', 'staff_labors',
     'dismiss_alerts', 'place_in_zone', 'answer_petition', 'retarget_hall', 'remove_workshops',
@@ -749,6 +750,7 @@ for _, name in ipairs({'unforbid_items', 'mark_melt', 'mark_dump', 'empty_dump',
     CACHE_INVALIDATES[name] = {'disposal'}
 end
 CACHE_INVALIDATES.set_standing_orders = {'disposal', 'dead'}
+CACHE_INVALIDATES.renew_well_dig = {'registry'}   -- (0.105.31) as start_project
 -- (0.105.30) construction placed: the waiting count read again
 for _, name in ipairs({'place_hall', 'build_wings', 'floor_rooms', 'place_keep'}) do
     CACHE_INVALIDATES[name] = {'constructions'}

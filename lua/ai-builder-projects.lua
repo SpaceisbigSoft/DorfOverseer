@@ -451,6 +451,12 @@ function dig_progress(p)
                  waiting = #waiting > 0 and waiting or nil}
     if p.shaft then out.shaft_open, out.redesignated = shaft_open, redug > 0 and redug or nil end
     if held_n > 0 then out.held = held_n end          -- (0.105.4 review)
+    -- (0.105.31) a well's channel not dug: why
+    if p.kind == 'well' and dug == 0 and total > 0 then
+        local okw, w = pcall(well_dig_check, p, jobs)
+        if okw and w then out.well_check = w end
+        if p.renewed then out.renewed = p.renewed end
+    end
     return out
 end
 

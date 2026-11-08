@@ -1404,6 +1404,9 @@ function place_well(params, now, dry_run)
     local pri = params.urgent == true and '1' or ''
     local reserved = {}
     for _, p in ipairs(open) do table.insert(reserved, p.area) end
+    -- (0.105.31) nor where a well was given up as out of reach lately: E's
+    -- shore well went on the same tile (x67 y124) four times, a year each
+    for _, a in ipairs(well_spots_unreached(data)) do table.insert(reserved, a) end
     local spot, why, cut      -- (13c) cut: a search ran out of time
     if params.cavern then
         -- (0.105.24) a cavern well given up because the game wouldn't place
@@ -1561,4 +1564,154 @@ function place_well(params, now, dry_run)
     end
     where.ok, where.project_id = true, p.id
     return where
+end
+
+
+-- --- (0.105.31) a well's channel nobody digs ---------------------------------
+--
+-- Shore wells in every fort sat at "0 of 1 tiles dug" for 14 to 80 days, a
+-- year in E (x67 y124, four times): a DigChannel job DF made and no miner
+-- took (free_dig_jobs freed nothing: it had no worker), and the dig_first
+-- rule couldn't raise a channel (prioritize_project raises rock only). Now
+-- the bridge says why (well_dig_check), the brain renews the channel
+-- (renew_well_dig: the unworked job taken away, the tile designated a
+-- channel again at a higher priority; DF makes a fresh job) and a spot given
+-- up as out of reach isn't chosen again for UNREACHED_YEARS.
+
+-- The areas of wells given up as out of reach in the last UNREACHED_YEARS.
+function well_spots_unreached(data)
+    local out = {}
+    local okc, year = pcall(function() return df.global.cur_year end)
+    for _, p in ipairs(type(data) == 'table' and data.list or {}) do
+        if p.kind == 'well' and p.unreached and type(p.area) == 'table' then
+            local y = tonumber(p.cancelled_year)
+            if not (okc and y) or year - y < (UNREACHED_YEARS or 5) then table.insert(out, p.area) end
+        end
+    end
+    return out
+end
+
+-- The citizens with the mining labour ({x, y, z} each), or nil when it
+-- can't be read. Tests replace this.
+function well_miners()
+    local ok, out = pcall(function()
+        local out = {}
+        for _, u in ipairs(dfhack.units.getCitizens(true)) do
+            local okl, mine = pcall(function() return u.status.labors.MINE end)
+            if okl and mine then
+                local x, y, z = dfhack.units.getPosition(u)
+                if x then table.insert(out, {x = x, y = y, z = z}) end
+            end
+        end
+        return out
+    end)
+    return ok and out or nil
+end
+
+-- Why a well level's channel isn't dug: {cause, text, x, y, elevation} or
+-- nil. cause: 'no_designation' (gone and no job), 'wrong_designation' (a
+-- dig of another kind on the floor), 'marked' (marker only), 'no_miners',
+-- 'no_ground' (nothing to stand on beside it), 'unreached' (no miner walks
+-- to beside it), 'held' (a cavern shaft's last level waits for its gate),
+-- 'unworked' (a job no miner takes), 'waiting' (designated, no job yet).
+-- A miner channels from beside the tile, on its own level.
+function well_dig_check(p, jobs)
+    local a = anchor_of(p)
+    local x, y, z = a.x, a.y, p.z
+    local t = tile_info(x, y, z)
+    if not t then return nil end
+    local function out(cause, text)
+        return {cause = cause, text = text, x = x, y = y, elevation = ez(z)}
+    end
+    jobs = jobs or job_tiles()
+    local job = jobs[x .. ',' .. y .. ',' .. z]
+    if not job and not t.designated then
+        return out('no_designation', 'its channel designation is gone and no job is on it')
+    end
+    if t.marked then
+        return out('marked', 'it is designated as a marker only, which no dwarf digs')
+    end
+    if not job and t.dig and t.dig ~= 'Channel' then
+        return out('wrong_designation', ('it is designated "%s", not a channel'):format(tostring(t.dig)))
+    end
+    local miners = well_miners()
+    if miners and #miners == 0 then
+        return out('no_miners', 'no citizen has the mining labour')
+    end
+    if miners then
+        local groups = {}
+        for _, m in ipairs(miners) do
+            local g = walk_group(m.x, m.y, m.z)
+            if g ~= 0 then groups[g] = true end
+        end
+        local ground, reached = false, false
+        for dy = -1, 1 do
+            for dx = -1, 1 do
+                if dx ~= 0 or dy ~= 0 then
+                    local g = walk_group(x + dx, y + dy, z)
+                    if g ~= 0 then
+                        ground = true
+                        if groups[g] then reached = true end
+                    end
+                end
+            end
+        end
+        if not ground then return out('no_ground', 'no floor beside it for a miner to stand on') end
+        if not reached then
+            return out('unreached', ('none of the %d miners can walk to beside it'):format(#miners))
+        end
+    end
+    if type(p.held) == 'table' and not job then
+        return out('held', 'the shaft\'s last level waits for its gate (lever, hatch cover, mechanisms)')
+    end
+    if job then
+        return out('unworked', 'DF made the channel job but no miner takes it (a stale job, other digging '
+                               .. 'first, or a shut door, burrow or raised bridge on the way)')
+    end
+    return out('waiting', 'designated as a channel, waiting for a miner')
+end
+
+-- The well level's channel renewed: an unworked job on its tile taken away
+-- and the floor designated a channel again at priority `pri` (DF makes a
+-- fresh job from it). Rock left under a cavern shaft is not touched here.
+function renew_well_dig(id, pri, dry_run)
+    pri = math.max(1, math.min(3, math.tointeger(pri) or 2))
+    local data = load_projects()
+    local p
+    for _, q in ipairs(data.list or {}) do if q.id == id then p = q end end
+    if not p then return {ok = false, rejected = true, error = 'no such AI project'} end
+    if p.kind ~= 'well' or p.dig_done ~= 'open' then
+        return {ok = false, rejected = true, error = 'only a well level\'s channel is renewed'}
+    end
+    if p.phase ~= 'dig' then return {ok = false, rejected = true, error = 'project is not being dug'} end
+    local a = anchor_of(p)
+    local t = tile_info(a.x, a.y, p.z)
+    if not (t and t.shape == 'FLOOR') then
+        return {ok = false, rejected = true, error = 'nothing left to channel'}
+    end
+    local okc, check = pcall(well_dig_check, p)
+    if dry_run then
+        return {ok = true, dry_run = true, priority = pri, cause = okc and check and check.cause or nil}
+    end
+    local gone = 0
+    pcall(function()
+        local link = df.global.world.jobs.list.next
+        while link do
+            local j, nxt = link.item, link.next
+            if j and j.pos.x == a.x and j.pos.y == a.y and j.pos.z == p.z then
+                local okw, w = pcall(dfhack.job.getWorker, j)
+                if not (okw and w) and pcall(dfhack.job.removeJob, j) then gone = gone + 1 end
+            end
+            link = nxt
+        end
+    end)
+    local s = quickfort_apply('dig', {{x = 0, y = 0, text = 'h' .. pri}}, p.z, a.x, a.y)
+    if stat(s, 'dig_designated') ~= 1 then
+        return {ok = false, error = ('the game would not channel the well spot at x%d y%d elevation %d again')
+                    :format(a.x, a.y, ez(p.z)), renewed = gone}
+    end
+    p.dig_pri, p.renewed = pri, (tonumber(p.renewed) or 0) + 1
+    save_projects(data)
+    return {ok = true, priority = pri, renewed = gone, times = p.renewed,
+            cause = okc and check and check.cause or nil}
 end

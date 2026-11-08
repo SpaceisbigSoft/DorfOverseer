@@ -439,6 +439,13 @@ function act_prioritize_dig(a)
     return reqscript('ai-builder').prioritize_project(id, a.priority, a.dry_run == true)
 end
 
+-- (0.105.31) a well level's channel nobody digs: its job renewed
+function act_renew_well_dig(a)
+    local id = project_id(a)
+    if not id then return reject('project_id must be a whole number') end
+    return reqscript('ai-builder').renew_well_dig(id, a.priority, a.dry_run == true)
+end
+
 -- (0.104.151) the cavern wells' stair columns closed: a hatch on each, locked
 function act_seal_well_stairs(a)
     return reqscript('ai-builder').seal_well_stairs(a.dry_run == true)
