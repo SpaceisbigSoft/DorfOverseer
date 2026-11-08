@@ -126,6 +126,30 @@ counts them, one line per preset.
 A mixed fort may meet both dining customs: `deep_hall` wins over `field_hall`.
 Earned quirks keep the last word on a level's ways (Narrow ways, Great shaft).
 
+## Construction (sliders, 0.105.30)
+
+The keeper builds as well as digs, from a small fixed vocabulary; grand
+design (towers, storeys, a walled town) is left to the future AI agent. At the
+default sliders nothing new is built. One surface project builds at a time (the
+keep, a hall or the gate wings), one stage at a time, and never in a young fort
+or while enemies can reach the dwarves. Every tile placed is recorded so it can
+be taken down exactly.
+
+| Piece | Sliders | What gets built |
+| --- | --- | --- |
+| Keep (since 0.103) | Surface 50+, or the Sky-reachers quirk | a walled ring with one door, roofed (`place_keep`) |
+| Field hall | Surface 50+ (Garden fort) | a 9x7 walled dining hall by the fields, roofed; glass windows with Grandeur 40+; block floors over soil with Craftsmanship 40+ (`place_hall`) |
+| Market hall | Surface 30+ and Trade 80+ (Merchant city) | the same hall 6-15 tiles from the depot, never on the wagon road |
+| Gate wings | Fortification 100+ and Surface above -50 (War-hold) | two 5-tile wall arms from the gatehouse's front corners, never closing a courtyard (`build_wings`) |
+| Soil floors | Grandeur 40+ or Craftsmanship 60+ | block floors on the soil tiles of a finished dining hall, tavern, temple, library or memorial (`floor_rooms`) |
+| Sealed cavern openings | Fortification 80+, Surface -50 or lower, Outsiders -100 or lower (Hermit hold) | cavern openings 3 wide or less walled for good, no door, never with a citizen beyond or a cavern well on that layer |
+
+The Deep mine and the Hermit hold (`underground_only`, `hidden_hold`) raise
+nothing new above ground. Building stone is turned into blocks first (blocks
+build faster, haul lighter and look finished), with any boulder or log as the
+fallback. The scorecard has six lines for it (Surface, Fortification,
+Craftsmanship, Grandeur); see [building.md](building.md#construction-010530).
+
 ## Eras
 
 When the style changes, because you moved a slider or history pushed it, a new

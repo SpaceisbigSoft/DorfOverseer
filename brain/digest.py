@@ -146,6 +146,7 @@ SECTION_DEFAULTS = {
     "noble_rooms": {},       # {nobles: [{unit_id, name, office, needs}], free: {office, bedroom...}} (lua/ai-nobles.lua)
     "trade": {},             # {depot, caravans: [{civ, state}], goods, goods_value, at_depot} (lua/ai-trade.lua)          # {ores: {METAL: {tiles, ore}}} uncovered near the fort (lua/ai-industry.lua)             # {miners, picks, soldier_picks, dig, want, need, candidates} (lua/ai-labor.lua)
     "founding": {},          # {stairs: has the fort a staircase, near: the wagon or the dwarves}
+    "constructions": {},     # (0.105.30) built walls, floors...: by shape, item, surface (lua/ai-constructions.lua)
 }
 
 # Sections the planner decides from. If one of these is MISSING (e.g. a report
@@ -351,6 +352,54 @@ def infection_line(s: dict) -> str:
             + (", nobody can clean wounds" if inf.get("cleaners") == 0 else ""))
 
 
+def _stage_word(name: str, v) -> str:
+    """'hall walls' from a keep or hall status ({stage, ...}); "" when done or absent."""
+    v = _d(v)
+    st = v.get("stage")
+    if not isinstance(st, str) or not st or st == "done":
+        return ""
+    key = {"clearing": "trees_left", "walls": "walls_planned", "roof": "roof_planned"}.get(st)
+    left = _n(v.get(key)) if key else 0
+    return f"{name} {st}" + (f" ({left} left)" if left else "")
+
+
+def built_line(s: dict) -> str:
+    """(0.105.30) "BUILT 40 walls, 35 floors (80% blocks), 75 above ground; 12 waiting",
+    from the constructions survey, with the keep's, halls' and wings' stages.
+    "" when the report has no survey (an older bridge) or nothing is built or planned."""
+    c = _d(s.get("constructions"))
+    if not c or "error" in c:
+        return ""
+    shape, item = _d(c.get("by_shape")), _d(c.get("by_item"))
+    total = _n(c.get("total"))
+    sur = c.get("surface")
+    up = _n(_d(sur).get("total")) if isinstance(sur, dict) else _n(sur)
+    waiting = _n(_d(c.get("planned")).get("n"))
+    b = _d(s.get("buildings"))
+    stages = [w for w in [_stage_word("keep", b.get("keep"))] if w]
+    halls = b.get("halls")
+    hall_list = _l(_d(halls).get("list")) if isinstance(halls, dict) and "list" in halls else (
+        _l(halls) if isinstance(halls, list) else ([halls] if isinstance(halls, dict) and halls.get("stage") else []))
+    for h in hall_list:
+        w = _stage_word(str(_d(h).get("kind") or "hall").replace("_", " "), h)
+        if w:
+            stages.append(w)
+    if not total and not waiting and not stages:
+        return ""
+    blocks = _n(item.get("blocks"))
+    p = round(100 * blocks / total) if total else 0
+    line = (f"BUILT {_n(shape.get('wall'))} walls, {_n(shape.get('floor'))} floors ({p}% blocks), "
+            f"{up} above ground")
+    if waiting:
+        line += f"; {waiting} waiting"
+    roofed = _n(c.get("roofed_surface_tiles"))
+    if roofed:
+        line += f" | roofed surface {roofed}"
+    if stages:
+        line += " | " + ", ".join(stages)
+    return line
+
+
 def digest(s: dict, news: int = 5) -> str:
     s = normalize(s)
     d, dw, b, o = _d(s.get("date")), _d(s.get("dwarves")), _d(s.get("buildings")), _d(s.get("others_on_map"))
@@ -392,7 +441,7 @@ def digest(s: dict, news: int = 5) -> str:
         f" contained {o.get('contained_dangers', 0)}",
     ]
 
-    for extra in (threat_line(s), world_line(s), infection_line(s)):
+    for extra in (threat_line(s), world_line(s), infection_line(s), built_line(s)):
         if extra:
             lines.append(extra)
     m = _d(s.get("map"))
