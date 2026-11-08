@@ -779,6 +779,8 @@ function get_meetings()
             pcall(function()
                 local u = df.unit.find(a.unit_actor)
                 if u and not dfhack.units.isCitizen(u) then e.visitor = true end
+                -- (0.105.26) a resident (lives here, not a citizen) isn't a visitor come to ask
+                if e.visitor and dfhack.units.isResident and dfhack.units.isResident(u) then e.resident = true end
             end)
             out.activities = out.activities or {}
             table.insert(out.activities, e)
@@ -800,14 +802,18 @@ function get_meetings()
     pcall(function() out.requests = #df.global.plotinfo.meeting_requests end)
     -- (0.105.24) of those waiting, the visitors (an entry that is a unit id or holds one)
     pcall(function()
-        local n = 0
+        local n, res = 0, 0
         for _, r in ipairs(df.global.plotinfo.meeting_requests) do
             local id = type(r) == 'number' and r or nil
             if not id then pcall(function() id = r.unit_id end) end
             local u = id and df.unit.find(id)
-            if u and not dfhack.units.isCitizen(u) then n = n + 1 end
+            if u and not dfhack.units.isCitizen(u) then
+                n = n + 1
+                if dfhack.units.isResident and dfhack.units.isResident(u) then res = res + 1 end   -- (0.105.26)
+            end
         end
         out.requests_visitors = n
+        out.requests_residents = res     -- (0.105.26) of those, residents (not visitors come to ask)
     end)
     pcall(function() out.popups = #df.global.plotinfo.dipscript_popups end)
     pcall(function() out.screen = dfhack.gui.getCurFocus(true)[1] end)
@@ -972,6 +978,8 @@ function get_locations()
             end)
         end
     end
+    out.built = abs_tick()     -- (0.105.26) when this copy was built (the section is cached): the planner
+                               -- tells a stale "open" from the player opening a place the AI shut
     return out
 end
 

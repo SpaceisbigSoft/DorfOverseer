@@ -977,6 +977,11 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
             mine = [i for i in (memory.locations_closed or []) if isinstance(i, int)]
             memory.locations_closed = (sorted(set(mine) | set(ids)) if a.get("visitors") is False
                                        else [i for i in mine if i not in ids])
+            # (0.105.26) when the AI acted (a report older than this reads stale), and the
+            # mayor's rest (or the reopen's mark) the action carried: kept only now it went through
+            memory.locations_acted = dict(memory.locations_acted or {}, **{str(i): now for i in ids})
+            if isinstance(a.get("visitor_shut"), dict) and ids:
+                memory.visitor_shut = dict(a["visitor_shut"])
         if (a["type"] == "answer_petition" and a.get("residency") and a.get("accept") and r.get("ok") is True
                 and not a.get("ids")):
             # (0.105.9) the probe: is the applicant DF's resident within a few days?
@@ -1078,6 +1083,8 @@ def note_cycle(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> list[
         note_world(s, memory)                                    # (0.105.0) grudges, export wishes
     if "others_on_map" not in errors:
         notes += note_lockdown(s, memory, cfg)                   # (0.105.3) B's sealed hatch: lone intruders, the cap
+    if "locations" not in errors:
+        note_locations(s, memory, cfg)                           # (0.105.26) moved out of plan()
     # (0.104.89) the strategist's raised and held rules run out
     if isinstance(getattr(memory, "steer", None), dict):
         for k in [k for k, v in memory.steer.items() if not (isinstance(v, dict) and isinstance(v.get("until"), int)

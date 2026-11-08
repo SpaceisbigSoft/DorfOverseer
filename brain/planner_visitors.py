@@ -10,7 +10,7 @@ from __future__ import annotations
 from digest import _d, _l
 from planner_core import *  # noqa: F401,F403
 
-__all__ = ["PETITION_KINDS", "petition_orders_wanted", "_petition_rules", "_citizenship_notes", "residency_stance", "_residency_rule", "CLOSABLE_LOCATIONS", "HEISTS_KEEP", "note_heists", "heist_lockout", "mayor_meetings", "_complaint_holder", "visitor_shut", "LOCATION_WORDS", "_location_words", "_location_access_rule", "outsider_orders"]
+__all__ = ["PETITION_KINDS", "petition_orders_wanted", "_petition_rules", "_citizenship_notes", "residency_stance", "_residency_rule", "CLOSABLE_LOCATIONS", "HEISTS_KEEP", "note_heists", "heist_lockout", "heist_lockout_days", "mayor_meetings", "_complaint_holder", "visitor_shut", "location_stale", "note_locations", "LOCATION_WORDS", "_location_words", "_location_access_rule", "outsider_orders"]
 
 
 PETITION_KINDS = ("performer", "scholar", "monster_hunter", "mercenary", "sanctuary", "citizenship")
@@ -280,10 +280,23 @@ def note_heists(state: dict, memory, events: list) -> int:
     return n
 
 
+def heist_lockout_days(s: dict, cfg: dict) -> int:
+    """(0.105.26) How long a heist shuts the locations to visitors:
+    `heist_lockout_days` (168), but `heist_lockout_days_welcoming` (28) in a
+    fort whose point is visitors (Outsiders `visitor_shut_welcoming`, 100, or
+    more: the Merchant city, shut half a year a heist before). 0: never."""
+    days = int(cfg.get("heist_lockout_days") or 0)
+    traits = _traits(s) if isinstance(s.get("settings"), dict) else {}
+    if days > 0 and int(traits.get("outsiders", 0) or 0) >= int(cfg.get("visitor_shut_welcoming") or 100):
+        days = min(days, int(cfg.get("heist_lockout_days_welcoming", 28) or 0))
+    return days
+
+
 def heist_lockout(s: dict, memory, cfg: dict):
     """(0.105.24) The last heist still inside the lockout ([tick, who]), or None.
-    (0.105.24) None too while the Rules switch heist_lockout is off."""
-    days = int(cfg.get("heist_lockout_days") or 0)
+    (0.105.24) None too while the Rules switch heist_lockout is off.
+    (0.105.26) The lockout's length: heist_lockout_days (shorter in a welcoming fort)."""
+    days = heist_lockout_days(s, cfg)
     if days <= 0:
         return None
     if isinstance(s.get("settings"), dict) and not player_rules(s)["heist_lockout"]:
@@ -301,7 +314,9 @@ def mayor_meetings(s: dict, first: str = "") -> tuple:
     acts = [a for a in _l(m.get("activities")) if isinstance(a, dict)
             and (not first or first in str(a.get("noble") or ""))]
     waiting = int(m.get("requests") or 0)
-    vis = int(m.get("requests_visitors") or 0) + sum(1 for a in acts if a.get("visitor"))
+    # (0.105.26) residents (living here, not citizens) aren't visitors come to ask
+    vis = (max(0, int(m.get("requests_visitors") or 0) - int(m.get("requests_residents") or 0))
+           + sum(1 for a in acts if a.get("visitor") and not a.get("resident")))
     return acts, waiting, vis
 
 
@@ -313,16 +328,24 @@ def _complaint_holder(s: dict):
 
 
 def visitor_shut(s: dict, memory, cfg: dict):
-    """(0.105.24) The mayor's rest from visitors: memory.visitor_shut while it
-    lasts, or None. It starts when the mayor's meetings (under way and
-    waiting) are mostly with visitors (`visitor_shut_share`, at least
-    `visitor_shut_meetings_min`) while `visitor_shut_unheard_min` citizens
-    went unable to complain lately; it lasts `visitor_shut_days`, then the
-    locations open and it is looked at afresh. Never with the Rules switch
-    shut_to_visitors off, nor in a fort whose point is visitors (Outsiders
-    `visitor_shut_welcoming` or more: the Merchant city)."""
+    """(0.105.24) The mayor's rest from visitors, or None. It starts when the
+    mayor's meetings (under way and waiting) are mostly with visitors
+    (`visitor_shut_share`, at least `visitor_shut_meetings_min`) while
+    `visitor_shut_unheard_min` citizens went unable to complain lately; it
+    lasts `visitor_shut_days`, then the locations open and it is looked at
+    afresh. Never with the Rules switch shut_to_visitors off, nor in a fort
+    whose point is visitors (Outsiders `visitor_shut_welcoming` or more: the
+    Merchant city).
+    (0.105.26) Changes no memory (plan() never does): the rest under way is a
+    copy of memory.visitor_shut; a new one comes back with "new": True, and
+    the rule carries it on its location_access action, which record() keeps
+    only when the shut went through (a shut held back by a cooldown, the
+    action limit or the halt starts no clock). After the AI reopened (memory
+    {"reopened", "unheard_at"}) it shuts again only for complaints made
+    since: "unable to complain" lingers in the census (its 28 days), so the
+    count at the reopen alone shut it again right away. Residents meeting
+    the mayor aren't visitors (mayor_meetings)."""
     w = memory.visitor_shut if isinstance(getattr(memory, "visitor_shut", None), dict) else {}
-    memory.visitor_shut = w
     traits = _traits(s) if isinstance(s.get("settings"), dict) else {}
     if isinstance(s.get("settings"), dict) and not player_rules(s)["shut_to_visitors"]:
         return None
@@ -330,26 +353,76 @@ def visitor_shut(s: dict, memory, cfg: dict):
         return None
     now = abs_tick(s)
     until = w.get("until")
-    if isinstance(until, int):
-        if int(w.get("tick") or 0) <= now < until:
-            return w
-        if now >= until:
-            return None         # over: the locations open first (the rule then forgets it), then looked at afresh
-        w.clear()               # (a save from before it)
+    if isinstance(until, int) and int(w.get("tick") or 0) <= now:
+        if now < until:
+            return dict(w)
+        return None             # over: the locations open first (record or note_locations then forget it)
     from planner_society import _cause_citizens     # (13c) the stress census lives there
     unheard = _cause_citizens(s, "UnableComplain")
     if unheard < cfg["visitor_shut_unheard_min"]:
         return None
+    back = w.get("reopened")
+    if isinstance(back, int) and 0 <= now - back:
+        census = int(_d(_d(s.get("needs")).get("stress_causes")).get("days") or 28)
+        # the census still holds thoughts from before the reopen: only those
+        # past the count then are surely new (each citizen counted once)
+        if now - back < census * TICKS_PER_DAY and unheard - int(w.get("unheard_at") or 0) < cfg["visitor_shut_unheard_min"]:
+            return None
     holder = _complaint_holder(s)
     name = str(holder[1][0]) if holder else ""
     acts, waiting, vis = mayor_meetings(s, name.split(" ")[0] if name else "")
     total = len(acts) + waiting
     if vis < cfg["visitor_shut_meetings_min"] or total <= 0 or vis < cfg["visitor_shut_share"] * total:
         return None
-    w.clear()
-    w.update({"tick": now, "until": now + int(cfg["visitor_shut_days"]) * TICKS_PER_DAY,
-              "visitors": vis, "meetings": total, "unheard": unheard})
-    return w
+    return {"tick": now, "until": now + int(cfg["visitor_shut_days"]) * TICKS_PER_DAY,
+            "visitors": vis, "meetings": total, "unheard": unheard, "new": True}
+
+
+def location_stale(s: dict, memory, cfg: dict, loc_id: int) -> bool:
+    """(0.105.26) A location the AI shut that reads open: is the report older
+    than the shut? The locations section is cached (2 days), and before
+    0.105.26 a shut didn't clear it, so the next cycles read the old "open",
+    took it for the player's doing and never reopened it (locations_yours).
+    Stale when the section was built (its `built` tick) no later than the
+    AI's last action on it; from an older bridge (no `built`), when it reads
+    open within `location_stale_days` of that action."""
+    t = _d(getattr(memory, "locations_acted", None)).get(str(loc_id))
+    if not isinstance(t, int):
+        return False
+    built = _d(s.get("locations")).get("built")
+    if isinstance(built, int):
+        return built <= t
+    return abs_tick(s) - t < int(cfg.get("location_stale_days", 4)) * TICKS_PER_DAY
+
+
+def note_locations(s: dict, memory, cfg: dict) -> None:
+    """(0.105.26) The locations' bookkeeping, from a fresh report before
+    planning (moved out of plan(), which never changes memory): one the AI
+    shut that you opened again (in a report built since the shut) is yours,
+    forgotten and never shut again; the mayor's rest over with nothing of the
+    AI's left shut (you opened them, or they opened already) is forgotten,
+    leaving the reopen's mark for the complaints counted then."""
+    locs = [e for e in _l(_d(s.get("locations")).get("list"))
+            if isinstance(e, dict) and isinstance(e.get("id"), int) and isinstance(e.get("flags"), list)]
+    if not locs:
+        return
+    mine = [i for i in (memory.locations_closed or []) if isinstance(i, int)]
+    yours = {e["id"] for e in locs if e["id"] in mine and "VISITORS_ALLOWED" in e["flags"]
+             and not location_stale(s, memory, cfg, e["id"])}
+    if yours:
+        memory.locations_closed = [i for i in mine if i not in yours]
+        memory.locations_yours = sorted(set(memory.locations_yours or []) | yours)
+        mine = memory.locations_closed
+    w = memory.visitor_shut if isinstance(getattr(memory, "visitor_shut", None), dict) else {}
+    now = abs_tick(s)
+    if isinstance(w.get("until"), int) and now >= w["until"]:
+        held = [e["id"] for e in locs if e["id"] in mine and "VISITORS_ALLOWED" not in e["flags"]]
+        if not held:
+            from planner_society import _cause_citizens
+            memory.visitor_shut = {"reopened": now, "unheard_at": _cause_citizens(s, "UnableComplain")}
+    acted = _d(getattr(memory, "locations_acted", None))
+    stale = int(cfg.get("location_stale_days", 4)) * TICKS_PER_DAY
+    memory.locations_acted = {k: t for k, t in acted.items() if isinstance(t, int) and 0 <= now - t < max(stale, TICKS_PER_YEAR)}
 
 
 LOCATION_WORDS = {"INN_TAVERN": "tavern", "TEMPLE": "temple", "LIBRARY": "library", "GUILDHALL": "guildhall"}
@@ -391,23 +464,27 @@ def _location_access_rule(s: dict, memory, cfg: dict, proposals: list, notes: li
     closed = outsider_orders(traits)["closed"]
     lock = None if closed else heist_lockout(s, memory, cfg)
     was = dict(memory.visitor_shut) if isinstance(getattr(memory, "visitor_shut", None), dict) else {}
+    was = was if isinstance(was.get("until"), int) else {}
     swamp = None if closed else visitor_shut(s, memory, cfg)
     now = abs_tick(s)
     mine = [i for i in (memory.locations_closed or []) if isinstance(i, int)]
+    # (0.105.26) plan() changes no memory: one the AI shut and you opened again
+    # (in a report built since) is yours, left alone here and forgotten by
+    # note_locations; one that reads open in a report older than the AI's own
+    # shut is that old report: neither yours nor shut again
+    stale = {i for i in mine if location_stale(s, memory, cfg, i)}
+    yours = {e["id"] for e in locs if e["id"] in mine and "VISITORS_ALLOWED" in e["flags"] and e["id"] not in stale}
     if closed or lock or swamp:
         # (review) one the AI shut and you opened again is yours: forgotten, never shut again
-        yours = {e["id"] for e in locs if e["id"] in mine and "VISITORS_ALLOWED" in e["flags"]}
-        if yours:
-            memory.locations_closed = [i for i in mine if i not in yours]
-            memory.locations_yours = sorted(set(memory.locations_yours or []) | yours)
-        left_open = set(memory.locations_yours or [])
+        left_open = set(memory.locations_yours or []) | yours
         shut = [e["id"] for e in locs if e.get("type") in CLOSABLE_LOCATIONS and "VISITORS_ALLOWED" in e["flags"]
-                and e["id"] not in left_open]
-        lock_left = (int(cfg.get("heist_lockout_days") or 0) - (now - lock[0]) // TICKS_PER_DAY) if lock else 0
+                and e["id"] not in left_open and e["id"] not in stale]
+        lock_left = (heist_lockout_days(s, cfg) - (now - lock[0]) // TICKS_PER_DAY) if lock else 0
         swamp_left = -(-(int(swamp["until"]) - now) // TICKS_PER_DAY) if swamp else 0
         # (0.105.24) the mayor's rest said while it lasts, with what is shut
-        held = [i for i in (memory.locations_closed or []) if isinstance(i, int)]
-        if swamp and not closed and swamp_left >= lock_left and (shut or held):
+        # (0.105.26) a new one only with something to shut (it starts when the shut goes through)
+        held = [i for i in mine if i not in yours]
+        if swamp and not closed and swamp_left >= lock_left and (shut or (held and not swamp.get("new"))):
             notes.append(f"visitors kept out of {_location_words(locs, set(shut) | set(held)) or 'the locations'} "
                          f"for {max(1, swamp_left)} more day(s) (residents still welcome): {swamp.get('visitors')} "
                          f"of the mayor's {swamp.get('meetings')} meetings were with visitors (performers and "
@@ -423,25 +500,34 @@ def _location_access_rule(s: dict, memory, cfg: dict, proposals: list, notes: li
                 why = (f"the mayor is swamped by visitors ({swamp.get('visitors')} of {swamp.get('meetings')} "
                        f"meetings; {swamp.get('unheard')} citizens couldn't lodge a complaint): visitors kept "
                        f"out for {max(1, swamp_left)} day(s) so the citizens are heard")
-            proposals.append(Proposal("location_access", {"type": "location_access", "ids": shut, "visitors": False},
+            action = {"type": "location_access", "ids": shut, "visitors": False}
+            if swamp and swamp.get("new") and not closed:
+                # (0.105.26) the mayor's rest, kept by record() when the shut goes through
+                action["visitor_shut"] = {k: v for k, v in swamp.items() if k != "new"}
+            proposals.append(Proposal("location_access", action,
                                       f"{why}: {_location_words(locs, set(shut))} ({len(shut)} location(s)) "
                                       "closed to visitors (residents still welcome)",
                                       3 if lock else 5 if swamp and not closed else 6))
         return
     reopen = [e["id"] for e in locs if e["id"] in mine and "VISITORS_ALLOWED" not in e["flags"]]
     if not reopen:
-        memory.visitor_shut = {}                  # (0.105.24) nothing held: the mayor's rest forgotten
-        return
+        return                                    # (0.105.26) nothing held: note_locations forgets the mayor's rest
     rules_ = player_rules(s) if isinstance(s.get("settings"), dict) else {}
     why = [f"Outsiders {traits.get('outsiders', 0)}"]
     if _l(getattr(memory, "heists", None)):
         why.append("the lockout after a theft is off on the Rules tab" if rules_.get("heist_lockout") is False
-                   else f"no heist for {int(cfg.get('heist_lockout_days') or 0)} days")
+                   else f"no heist for {heist_lockout_days(s, cfg)} days")
     if was:
         why.append("shutting out visitors for the mayor is off on the Rules tab"
                    if rules_.get("shut_to_visitors") is False
                    else f"the mayor's {int(cfg['visitor_shut_days'])} days without visitors are over")
-    proposals.append(Proposal("location_access", {"type": "location_access", "ids": reopen, "visitors": True},
+    from planner_society import _cause_citizens
+    # (0.105.26) the reopen's mark (the complaints counted now), kept by
+    # record() when it goes through: the mayor's rest starts again only for
+    # complaints made since
+    action = {"type": "location_access", "ids": reopen, "visitors": True,
+              "visitor_shut": {"reopened": now, "unheard_at": _cause_citizens(s, "UnableComplain")}}
+    proposals.append(Proposal("location_access", action,
                               f"the fort opens up again ({'; '.join(why)}): "
                               f"{len(reopen)} location(s) the AI closed let visitors in again", 6))
 
