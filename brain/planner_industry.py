@@ -7,6 +7,7 @@ import re
 from dataclasses import asdict, dataclass, field
 from culture import layout_style, new_history, pick_stone, profile_from, stone_for
 from learning import held_levels
+import customs
 import masterplan
 import phases
 from quirks import has_rule
@@ -1461,6 +1462,17 @@ def _deep_surface_filter(s: dict, traits: dict, memory, proposals: list, notes: 
     new level (and farm level) a ceiling one under the surface (`max_elev`,
     the builder's search keeps under it), and farms underground only."""
     if not masterplan.underground_only(traits):
+        if customs.has(traits, "hidden_hold"):
+            # (0.105.29) the Hermit hold's custom: no new level at or above the
+            # surface; farms, the depot, the keep and the surface stay as they are
+            ceil = masterplan.ceiling(memory, traits) if memory is not None else None
+            if ceil is not None:
+                for p in proposals:
+                    a = p.action
+                    if isinstance(a, dict) and a.get("type") == "start_project":
+                        own = a.get("max_elev")
+                        p.action = dict(a, max_elev=min(own, ceil) if isinstance(own, int) else ceil,
+                                        customs=sorted(set(_l(a.get("customs"))) | {"hidden_hold"}))
         return proposals
     ceil = masterplan.ceiling(memory, traits) if memory is not None else None
     founding = _d(s.get("founding")).get("stairs") is False

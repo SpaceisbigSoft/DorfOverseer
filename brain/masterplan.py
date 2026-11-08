@@ -39,6 +39,7 @@ from __future__ import annotations
 import hashlib
 import json
 
+import customs
 from digest import _d, _l
 from quirks import has_rule
 from util import date_tick
@@ -172,8 +173,10 @@ def surface_elevation(memory, spine: dict | None = None) -> int | None:
 def ceiling(memory, traits: dict | None) -> int | None:
     """(0.105.23) The highest elevation a new level may use: one below the
     surface when the fort is underground only (Surface -80 or lower), else
-    None (no limit). The plan's own ceiling when it was drawn with one."""
-    if not underground_only(traits):
+    None (no limit). The plan's own ceiling when it was drawn with one.
+    (0.105.29) The Hermit hold's `hidden_hold` custom too (the plan draw
+    keeps `underground_only` only)."""
+    if not (underground_only(traits) or customs.has(traits, "hidden_hold")):
         return None
     p = _peek(memory) if memory is not None else {}
     if isinstance(p.get("ceiling"), int):
@@ -384,17 +387,97 @@ def _district(memory, kind: str, slot: str | None = None) -> dict | None:
     return None
 
 
+def _district_of_kind(memory, dkind: str) -> dict | None:
+    """(0.105.29) The plan's district of this kind ("halls", "farms"...)."""
+    for d in _l(_peek(memory).get("districts")):
+        if isinstance(d, dict) and d.get("kind") == dkind:
+            return d
+    return None
+
+
+def _toward_way_in(memory, spine: dict) -> str | None:
+    """(0.105.29) The direction from the spine to the nearest surface
+    entrance (`_axis` reversed), or None when that entrance is within 2
+    tiles of the spine or none is known (the founding stair is the way in)."""
+    if not isinstance(spine, dict) or not isinstance(spine.get("x"), int) or not isinstance(spine.get("y"), int):
+        return None
+    a = memory.atlas if isinstance(getattr(memory, "atlas", None), dict) else {}
+    best, best_d = None, None
+    for k, e in _d(a.get("entrances")).items():
+        if not isinstance(e, dict) or e.get("kind") != "surface":
+            continue
+        try:
+            x, y, _z = (int(v) for v in str(k).split(","))
+        except ValueError:
+            continue
+        d = abs(x - spine["x"]) + abs(y - spine["y"])
+        if best_d is None or d < best_d:
+            best, best_d = (x, y), d
+    if best is None or best_d <= 2:
+        return None
+    dx, dy = best[0] - spine["x"], best[1] - spine["y"]      # spine -> entrance
+    if abs(dx) >= abs(dy):
+        return "east" if dx >= 0 else "west"
+    return "south" if dy >= 0 else "north"
+
+
+def _gate_band(memory, traits: dict | None) -> tuple[int, int, str | None] | None:
+    """(0.105.29) The gate band: the GATE_BAND levels just under the way in,
+    inside the plan's range and under any ceiling, as (lo, hi, toward);
+    toward is the way from the spine to the way in (None: the founding
+    stair is the way in). None when the surface isn't known."""
+    p = _peek(memory)
+    spine = p.get("spine") if isinstance(p.get("spine"), dict) else None
+    s = surface_elevation(memory, spine)
+    if s is None:
+        return None
+    rng = p.get("range") if isinstance(p.get("range"), list) and len(p["range"]) == 2 else [None, None]
+    hi = s - 1
+    if isinstance(rng[1], int):
+        hi = min(hi, rng[1])
+    ceil = ceiling(memory, traits)
+    if ceil is not None:
+        hi = min(hi, ceil)
+    lo = hi - customs.GATE_BAND + 1
+    if isinstance(rng[0], int):
+        lo = max(lo, rng[0])
+    if lo > hi:
+        return None
+    return lo, hi, _toward_way_in(memory, spine)
+
+
 def hint(memory, kind: str, slot: str | None = None, traits: dict | None = None,
-         profile: dict | None = None) -> dict | None:
+         profile: dict | None = None, *, action: dict | None = None,
+         citizens: int | None = None) -> dict | None:
     """The placement hint for a new level of this kind (lua/ai-builder.lua
     tries it first), or None when the plan has no district for it. slot: a
     set piece goes to its place's district (0.98: the great hall among the
     halls). traits and profile: the corridor grammar follows the fort as it
-    is now, not as it was when the plan was drawn (0.98)."""
+    is now, not as it was when the plan was drawn (0.98). (0.105.29) The
+    fort's customs (customs.py) bend it first, the earned quirks after:
+    action (the start_project, for its shops) and citizens (the fort's
+    count) feed them; `out["customs"]` lists those applied (absent: none)."""
     p = _peek(memory)
     d = _district(memory, kind, slot)
     if not d or kind == "farms":
         return None                    # farm levels follow the soil (the builder's own search)
+    applied: list[str] = []
+    act = set(customs.active(traits)) if traits is not None else set()
+    # (0.105.29) customs that send the level to another district
+    if not slot:
+        alt, cid = None, None
+        if kind == "bedrooms" and "cells" in act:
+            alt, cid = _district_of_kind(memory, "halls"), "cells"
+        elif kind == "dining" and "deep_hall" in act and _district_of_kind(memory, "industry"):
+            alt, cid = _district_of_kind(memory, "industry"), "deep_hall"
+        elif kind == "dining" and "field_hall" in act:
+            alt, cid = _district_of_kind(memory, "farms"), "field_hall"
+        elif (kind == "workshops" and "field_kitchens" in act and isinstance(action, dict)
+              and _l(action.get("shops")) and all(x in customs.FOOD_SHOPS for x in _l(action.get("shops")))):
+            alt, cid = _district_of_kind(memory, "farms"), "field_kitchens"
+        if alt:
+            d = alt
+            applied.append(cid)
     spine = p.get("spine") or {}
     out = {"elev_lo": int(d["lo"]), "elev_hi": int(d["hi"]), "elev_target": int(d.get("target", d["lo"])),
            "district": _plain(d.get("name") or d["kind"])}
@@ -415,12 +498,34 @@ def hint(memory, kind: str, slot: str | None = None, traits: dict | None = None,
     st = d.get("stair")
     if isinstance(st, dict) and isinstance(st.get("x"), int) and isinstance(st.get("y"), int):
         out["spine"] = {"x": st["x"], "y": st["y"]}      # (0.104.82) the district's own stairwell
+    # (0.105.29) customs that put the level in the gate band, just under the way in
+    aim = None
+    gate = None
+    if kind == "tavern" and "market_gate" in act:
+        gate = "market_gate"
+    elif kind in ("barracks", "archery") and "gate_barracks" in act:
+        gate = "gate_barracks"
+    gb = _gate_band(memory, traits) if gate else None
+    if gb:
+        lo, hi, toward = gb
+        aim = lo if gate == "market_gate" else hi       # the tavern outside the shelter's margin
+        out["elev_lo"], out["elev_hi"], out["elev_target"] = lo, hi, aim
+        if toward:
+            out["dirs"] = list(dict.fromkeys([toward] + out.get("dirs", [])))[:4]
+        applied.append(gate)
     # the corridor grammar (the builder applies it from bridge 0.33), as the quirks bend it
     g = _grammar(traits, profile or {}) if traits is not None else (p.get("grammar") or {})
     out["avenue"] = max(2, min(3, int(g.get("avenue") or 2)))     # (0.104.107) plans drawn before: 2 at least
     out["corridors"] = g.get("corridors") if g.get("corridors") in ("straight", "dog-leg") else "straight"
     if g.get("doors") in ("open", "doored", "fortified"):
         out["doors"] = g["doors"]
+    # (0.105.29) customs of the ways (the earned quirks below keep the last word)
+    if "wide_ways" in act:
+        out["avenue"] = 3
+        applied.append("wide_ways")
+    if "winding_ways" in act and citizens is not None and citizens <= customs.WINDING_MAX_CITIZENS:
+        out["avenue"], out["corridors"] = 1, "dog-leg"
+        applied.append("winding_ways")
     culture = memory.culture if isinstance(memory.culture, dict) else {}
     if has_rule(culture, "narrow_ways"):            # Warren
         out["avenue"], out["corridors"] = 1, "dog-leg"
@@ -431,8 +536,11 @@ def hint(memory, kind: str, slot: str | None = None, traits: dict | None = None,
     used = [lv.get("elevation") for lv in d.get("levels") or [] if isinstance(lv, dict)]
     band = list(range(out["elev_lo"], out["elev_hi"] + 1))
     if band:
-        out["elev_target"] = min(band, key=lambda e: (used.count(e), abs(e - (out["elev_target"] if ceil is not None
+        out["elev_target"] = min(band, key=lambda e: (used.count(e), abs(e - (aim if aim is not None
+                                                                      else out["elev_target"] if ceil is not None
                                                                       else d.get("target", e)))))
+    if applied:
+        out["customs"] = applied
     return out
 
 
@@ -481,7 +589,11 @@ def note_result(memory, action: dict, result: dict, state: dict) -> str | None:
         return None
     if not isinstance(action.get("plan"), dict):
         return None                    # built without a hint (a mood's workshop, the strategist): not a miss
-    d = _district(memory, action.get("kind"), action.get("set_piece"))
+    # (0.105.29) the district the hint named (a custom may send a level elsewhere: cells, deep_hall)
+    named = action["plan"].get("district")
+    d = next((x for x in _l(_peek(memory).get("districts")) if isinstance(x, dict) and named
+              and _plain(x.get("name") or x.get("kind") or "") == named), None) \
+        or _district(memory, action.get("kind"), action.get("set_piece"))
     if not d:
         return None
     p = _plan(memory)
