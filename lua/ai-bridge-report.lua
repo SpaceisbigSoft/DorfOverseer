@@ -2001,6 +2001,9 @@ function get_buildings()
     -- the keep above ground (the Surface ambition), once begun
     local okk, keep = pcall(function() return reqscript('ai-builder').keep_status() end)
     out.keep = okk and keep or nil
+    -- (0.105.30) the surface halls (lua/ai-builder-halls.lua), once begun
+    local okh, halls = pcall(function() return reqscript('ai-builder').halls_status() end)
+    out.halls = okh and halls or nil
     -- (0.105.23, 14.1 step 4c) the Deep mine's underground trade depot, once begun
     local okd, deep = pcall(function() return reqscript('ai-builder').deep_depot_status() end)
     out.deep_depot = okd and deep or nil
