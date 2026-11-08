@@ -96,6 +96,9 @@ ORDER_RECIPES = {
     coke_bituminous = {job = 'CustomReaction', reaction_find = 'COAL_BITUMINOUS'},
     coke_lignite = {job = 'CustomReaction', reaction_find = 'LIGNITE'},
     steel = {job = 'CustomReaction', reaction = 'STEEL_MAKING'},
+    -- (0.105.27) the items marked for melting melted at a smelter (DF 50
+    -- makes no melt job by itself: the DF wiki's Melt page); ai-disposal's mark_melt adds it
+    melt_metal = {job = 'MeltMetalObject'},
     -- wood
     wooden_bed = {job = 'ConstructBed', material_category = {'wood'}},
     -- wooden furniture (the Materials choice "wood where it will do")
