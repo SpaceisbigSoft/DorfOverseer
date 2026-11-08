@@ -521,6 +521,15 @@ function census()
     local oki, i = pcall(items)
     -- (0.105.30) what the fort has built (lua/ai-constructions.lua; kept a day)
     local okc, c = pcall(function() return reqscript('ai-constructions').survey() end)
+    -- (0.105.30 live fixes) what mark_melt would mark now, by its own test
+    -- (ai-disposal melt_check): the brain proposes melting only when some is
+    -- (the raw forbidden-metal count asked 49 times for nothing on 8 Nov)
+    if oki and type(i) == 'table' and type(i.forbidden) == 'table' then
+        local okm, m = pcall(function() return reqscript('ai-disposal').meltable() end)
+        if okm and type(m) == 'table' and type(m.n) == 'number' then
+            i.forbidden.meltable, i.forbidden.meltable_keep_enemy = m.n, m.keep_enemy
+        end
+    end
     return {ok = true, units = oku and u or {error = tostring(u)}, items = oki and i or {error = tostring(i)},
             constructions = okc and c or {error = tostring(c):sub(1, 160)},
             jobs = (function() local n, l = 0, df.global.world.jobs.list.next

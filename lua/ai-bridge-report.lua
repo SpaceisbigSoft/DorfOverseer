@@ -749,6 +749,9 @@ function get_meetings()
                 if u and not dfhack.units.isCitizen(u) then e.visitor = true end
                 -- (0.105.26) a resident (lives here, not a citizen) isn't a visitor come to ask
                 if e.visitor and dfhack.units.isResident and dfhack.units.isResident(u) then e.resident = true end
+                -- (0.105.30 live fixes) a stranger: a visitor, not a resident, not of the
+                -- fort's race (E's thief, 8 Nov, a weasel woman, asked for meetings first)
+                if e.visitor and not e.resident and u.race ~= df.global.plotinfo.race_id then e.stranger = true end
             end)
             out.activities = out.activities or {}
             table.insert(out.activities, e)
@@ -777,11 +780,19 @@ function get_meetings()
             local u = id and df.unit.find(id)
             if u and not dfhack.units.isCitizen(u) then
                 n = n + 1
-                if dfhack.units.isResident and dfhack.units.isResident(u) then res = res + 1 end   -- (0.105.26)
+                local resident = dfhack.units.isResident and dfhack.units.isResident(u)
+                if resident then res = res + 1 end   -- (0.105.26)
+                -- (0.105.30 live fixes) of those, strangers: not residents, not of the fort's race
+                if not resident and u.race ~= df.global.plotinfo.race_id then
+                    out.strangers = out.strangers or {}
+                    if #out.strangers < 5 then table.insert(out.strangers, unit_word(u.id)) end
+                    out.requests_strangers = (out.requests_strangers or 0) + 1
+                end
             end
         end
         out.requests_visitors = n
         out.requests_residents = res     -- (0.105.26) of those, residents (not visitors come to ask)
+        out.requests_strangers = out.requests_strangers or 0
     end)
     pcall(function() out.popups = #df.global.plotinfo.dipscript_popups end)
     pcall(function() out.screen = dfhack.gui.getCurFocus(true)[1] end)

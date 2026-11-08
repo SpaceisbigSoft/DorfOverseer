@@ -378,6 +378,46 @@ def visitor_shut(s: dict, memory, cfg: dict):
             "visitors": vis, "meetings": total, "unheard": unheard, "new": True}
 
 
+def strangers_seeking(s: dict) -> list:
+    """(0.105.30 live fixes) Strangers seeking a meeting with a noble now (under
+    way or waiting): visitors not of the fort's race and not residents (the
+    bridge's meetings: activities' `stranger`, `strangers` waiting). Their
+    names, or "a stranger" for each one the report doesn't name."""
+    m = _d(s.get("meetings"))
+    out = [str(a.get("actor") or "a stranger") for a in _l(m.get("activities"))
+           if isinstance(a, dict) and a.get("stranger")]
+    named = [str(x) for x in _l(m.get("strangers")) if x]
+    out += named
+    n = m.get("requests_strangers")
+    if isinstance(n, int) and not isinstance(n, bool) and n > len(named):
+        out += ["a stranger"] * (n - len(named))
+    return out
+
+
+def stranger_shut(s: dict, memory, cfg: dict):
+    """(0.105.30 live fixes) The wary days after a stranger sought a meeting
+    ({seen, who, until}), or None. 2-5 Nov: 19 of 23 thieves asked the mayor
+    for a meeting first; E (8 Nov) was asked by a weasel woman from 13:44 and
+    she struck at 13:51 (3 citizens dead). The tavern, temples, library and
+    guildhalls are shut to visitors for `stranger_shut_days` after the last
+    such meeting seen (note_locations keeps it), only below Outsiders
+    `stranger_shut_outsiders` (the Merchant city stays open), and never with
+    the Rules switch heist_lockout off."""
+    traits = _traits(s) if isinstance(s.get("settings"), dict) else {}
+    if int(traits.get("outsiders", 0) or 0) >= int(cfg.get("stranger_shut_outsiders", 50)):
+        return None
+    if isinstance(s.get("settings"), dict) and not player_rules(s)["heist_lockout"]:
+        return None
+    days = int(cfg.get("stranger_shut_days", 7) or 0)
+    w = getattr(memory, "stranger_shut", None)
+    now = abs_tick(s)
+    if days <= 0 or not isinstance(w, dict) or not isinstance(w.get("seen"), int) or not isinstance(now, int):
+        return None
+    if not 0 <= now - w["seen"] < days * TICKS_PER_DAY:
+        return None
+    return dict(w, until=w["seen"] + days * TICKS_PER_DAY)
+
+
 def location_stale(s: dict, memory, cfg: dict, loc_id: int) -> bool:
     """(0.105.26) A location the AI shut that reads open: is the report older
     than the shut? The locations section is cached (2 days), and before
@@ -402,6 +442,10 @@ def note_locations(s: dict, memory, cfg: dict) -> None:
     forgotten and never shut again; the mayor's rest over with nothing of the
     AI's left shut (you opened them, or they opened already) is forgotten,
     leaving the reopen's mark for the complaints counted then."""
+    # (0.105.30 live fixes) a stranger seeking a meeting: when, and who (stranger_shut)
+    who = strangers_seeking(s)
+    if who and isinstance(abs_tick(s), int):
+        memory.stranger_shut = {"seen": abs_tick(s), "who": who[0][:60], "n": len(who)}
     locs = [e for e in _l(_d(s.get("locations")).get("list"))
             if isinstance(e, dict) and isinstance(e.get("id"), int) and isinstance(e.get("flags"), list)]
     if not locs:
@@ -466,6 +510,7 @@ def _location_access_rule(s: dict, memory, cfg: dict, proposals: list, notes: li
     was = dict(memory.visitor_shut) if isinstance(getattr(memory, "visitor_shut", None), dict) else {}
     was = was if isinstance(was.get("until"), int) else {}
     swamp = None if closed else visitor_shut(s, memory, cfg)
+    wary = None if closed else stranger_shut(s, memory, cfg)       # (0.105.30 live fixes)
     now = abs_tick(s)
     mine = [i for i in (memory.locations_closed or []) if isinstance(i, int)]
     # (0.105.26) plan() changes no memory: one the AI shut and you opened again
@@ -474,13 +519,14 @@ def _location_access_rule(s: dict, memory, cfg: dict, proposals: list, notes: li
     # shut is that old report: neither yours nor shut again
     stale = {i for i in mine if location_stale(s, memory, cfg, i)}
     yours = {e["id"] for e in locs if e["id"] in mine and "VISITORS_ALLOWED" in e["flags"] and e["id"] not in stale}
-    if closed or lock or swamp:
+    if closed or lock or swamp or wary:
         # (review) one the AI shut and you opened again is yours: forgotten, never shut again
         left_open = set(memory.locations_yours or []) | yours
         shut = [e["id"] for e in locs if e.get("type") in CLOSABLE_LOCATIONS and "VISITORS_ALLOWED" in e["flags"]
                 and e["id"] not in left_open and e["id"] not in stale]
         lock_left = (heist_lockout_days(s, cfg) - (now - lock[0]) // TICKS_PER_DAY) if lock else 0
         swamp_left = -(-(int(swamp["until"]) - now) // TICKS_PER_DAY) if swamp else 0
+        wary_left = -(-(int(wary["until"]) - now) // TICKS_PER_DAY) if wary else 0
         # (0.105.24) the mayor's rest said while it lasts, with what is shut
         # (0.105.26) a new one only with something to shut (it starts when the shut goes through)
         held = [i for i in mine if i not in yours]
@@ -490,12 +536,21 @@ def _location_access_rule(s: dict, memory, cfg: dict, proposals: list, notes: li
                          f"of the mayor's {swamp.get('meetings')} meetings were with visitors (performers and "
                          f"scholars asking to stay) and {swamp.get('unheard')} citizens couldn't lodge a complaint; "
                          "the Rules switch \"Shut to visitors when mayor swamped\" turns this off")
+        # (0.105.30 live fixes) the wary days after a stranger sought a meeting, said while they hold
+        if wary and not closed and not lock and (shut or held):
+            notes.append(f"a stranger ({wary.get('who') or 'a visitor not of the fort'}) sought a meeting with the "
+                         f"mayor: visitors kept out of {_location_words(locs, set(shut) | set(held)) or 'the locations'} "
+                         f"for {max(1, wary_left)} more day(s) (residents still welcome; 19 of 23 thieves asked for a "
+                         "meeting first). The Rules switch \"Shut to visitors a while after a theft\" turns this off")
         if shut:
             if closed:
                 why = f"this fort keeps to itself (Outsiders {traits.get('outsiders', 0)})"
-            elif lock and lock_left >= swamp_left:
+            elif lock and lock_left >= max(swamp_left, wary_left):
                 why = (f"a thief or a violent visitor ({lock[1]}) struck: visitors kept out "
                        f"for {max(1, lock_left)} more day(s) (thieves came as guests)")
+            elif wary and wary_left >= swamp_left:
+                why = (f"a stranger ({wary.get('who') or 'a visitor not of the fort'}) seeks a meeting with the "
+                       f"mayor (19 of 23 thieves did first): visitors kept out for {max(1, wary_left)} day(s)")
             else:
                 why = (f"the mayor is swamped by visitors ({swamp.get('visitors')} of {swamp.get('meetings')} "
                        f"meetings; {swamp.get('unheard')} citizens couldn't lodge a complaint): visitors kept "
@@ -507,7 +562,7 @@ def _location_access_rule(s: dict, memory, cfg: dict, proposals: list, notes: li
             proposals.append(Proposal("location_access", action,
                                       f"{why}: {_location_words(locs, set(shut))} ({len(shut)} location(s)) "
                                       "closed to visitors (residents still welcome)",
-                                      3 if lock else 5 if swamp and not closed else 6))
+                                      3 if lock or wary else 5 if swamp and not closed else 6))
         return
     reopen = [e["id"] for e in locs if e["id"] in mine and "VISITORS_ALLOWED" not in e["flags"]]
     if not reopen:
@@ -517,6 +572,10 @@ def _location_access_rule(s: dict, memory, cfg: dict, proposals: list, notes: li
     if _l(getattr(memory, "heists", None)):
         why.append("the lockout after a theft is off on the Rules tab" if rules_.get("heist_lockout") is False
                    else f"no heist for {heist_lockout_days(s, cfg)} days")
+    ws = getattr(memory, "stranger_shut", None)
+    if (isinstance(ws, dict) and isinstance(ws.get("seen"), int)
+            and 0 <= now - ws["seen"] < (int(cfg.get("stranger_shut_days", 7)) + 2) * TICKS_PER_DAY):
+        why.append(f"no stranger sought a meeting for {int(cfg.get('stranger_shut_days', 7))} days")
     if was:
         why.append("shutting out visitors for the mayor is off on the Rules tab"
                    if rules_.get("shut_to_visitors") is False

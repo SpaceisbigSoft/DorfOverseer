@@ -184,6 +184,7 @@ def _():
 def _():
     s, m = state()
     m.census["items"]["forbidden"]["by_reason"]["unknown"] = 450
+    m.census["items"]["forbidden"]["unknown_reachable"] = 450     # (0.105.30) the note reads only this
     got, notes = run(s, m)
     you = [n for n in notes if n.startswith("[you] ")]
     assert you and "450 items" in you[0] and "may be yours" in you[0] and "disposal_player_items" in you[0], notes

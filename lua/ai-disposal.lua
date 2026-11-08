@@ -440,6 +440,61 @@ local function foreign_made(it, ctx)
     return r ~= ctx.race
 end
 
+-- (0.105.30 live fixes) The one test of what mark_melt marks, shared with
+-- the census' `meltable` count (ai-census, items().forbidden.meltable): the
+-- brain proposed mark_melt from the raw forbidden-metal count ("18 metal
+-- items lie forbidden") and the bridge refused it every time ("no worn or
+-- enemy metal gear may be marked", 49 refusals on 8 Nov in all six forts).
+-- Returns nil when the item is no melt clutter at all (passed over), false
+-- and a skip word when it is but something keeps it (a tool, danger, a
+-- masterwork, a squad's...), or true and its forbidden reason. An item
+-- already marked is the caller's to count.
+function melt_check(it, kind, ctx, keep_enemy, assigned)
+    local f = it.flags
+    if not U.on_ground(it) then return nil end
+    if not is_metal(it) then return nil end
+    local x, y, z = position(it)
+    if not x then return nil end
+    local reason = reason_of(it, kind, x, y, z, ctx)
+    local w = wear(it)
+    local enemy
+    if f.forbid then
+        enemy = reason == 'other_dead'
+        if w < 1 and not enemy then return nil end
+        if enemy and keep_enemy and w < 1 then return false, 'enemy_gear' end
+    else
+        if in_stockpile(ctx, x, y, z) then return nil end
+        enemy = foreign_made(it, ctx) == true
+        if w < 2 and not enemy then return nil end
+        if enemy and keep_enemy and w < 2 then return false, 'enemy_gear' end
+    end
+    if is_tool(it, kind) then return false, 'tool' end
+    local why = blocked(it, x, y, z, reason, ctx)
+    if why then return false, why end
+    if quality(it) >= 5 then return false, 'masterwork' end
+    if (assigned or {})[it.id] then return false, 'assigned' end
+    return true, reason
+end
+
+-- (0.105.30 live fixes) How many items mark_melt would mark now (melt_check,
+-- uncapped): {n (the enemy's gear melted too), keep_enemy (kept, as the
+-- Rules switch keep_enemy_gear says), already (marked before), siege}. The
+-- player's own forbidden things ('unknown') count only with player_items.
+function meltable(opts)
+    opts = opts or {}
+    local ctx = context(opts)
+    local assigned = assigned_ids()
+    local out = {n = 0, keep_enemy = 0, already = 0, siege = ctx.siege.on or nil}
+    walk(GEAR, function(it, kind)
+        if it.flags.melt then out.already = out.already + 1; return end
+        if melt_check(it, kind, ctx, false, assigned) then
+            out.n = out.n + 1
+            if melt_check(it, kind, ctx, true, assigned) then out.keep_enemy = out.keep_enemy + 1 end
+        end
+    end)
+    return out
+end
+
 -- Metal weapons, armour and ammo marked for melting (melt on, forbid and
 -- dump off: a forbidden item isn't melted): the clutter, not the stock.
 -- Only an item lying loose on the ground (never one in a bin, a hand or a
@@ -468,30 +523,10 @@ function mark_melt(opts, dry_run)
     local res = new_result(dry_run)
     res.already = 0
     walk(GEAR, function(it, kind)
-        local f = it.flags
-        if f.melt then res.already = res.already + 1; return end
-        if not U.on_ground(it) then return end
-        if not is_metal(it) then return end
-        local x, y, z = position(it)
-        if not x then return end
-        local reason = reason_of(it, kind, x, y, z, ctx)
-        local w = wear(it)
-        local enemy
-        if f.forbid then
-            enemy = reason == 'other_dead'
-            if w < 1 and not enemy then return end
-            if enemy and keep_enemy and w < 1 then skip(res, 'enemy_gear'); return end
-        else
-            if in_stockpile(ctx, x, y, z) then return end
-            enemy = foreign_made(it, ctx) == true
-            if w < 2 and not enemy then return end
-            if enemy and keep_enemy and w < 2 then skip(res, 'enemy_gear'); return end
-        end
-        if is_tool(it, kind) then skip(res, 'tool'); return end
-        local why = blocked(it, x, y, z, reason, ctx)
-        if why then skip(res, why); return end
-        if quality(it) >= 5 then skip(res, 'masterwork'); return end
-        if assigned[it.id] then skip(res, 'assigned'); return end
+        if it.flags.melt then res.already = res.already + 1; return end
+        local ok, reason = melt_check(it, kind, ctx, keep_enemy, assigned)
+        if ok == nil then return end
+        if not ok then skip(res, reason); return end
         if not dry_run then
             it.flags.melt = true
             it.flags.forbid = false

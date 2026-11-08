@@ -45,7 +45,7 @@ from planner_building import *  # noqa: E402,F401,F403  (0.104.83: the planner i
 from planner_care import _doctor_post_rule, _infection_rule, _offices_refill_rule, _traction_rest_rule  # noqa: E402  (0.104.168)
 from planner_water import _waterworks_rule  # noqa: E402  (0.105.0) moat, pumps, irrigation, magma workshops
 from planner_homes import *  # noqa: E402,F401,F403  (0.104.168: homes and households)
-from planner_threats import _threat_rules  # noqa: E402  (0.105.0 round 3: threats answered)
+from planner_threats import _threat_rules, unseen_intrusion  # noqa: E402  (0.105.0 round 3: threats answered)
 from planner_world import (_contact_rule, _export_rule, _hostile_trade_filter, _meeting_answer_rule,  # noqa: E402
                            _messenger_rule, _world_notes, note_world)  # (0.105.0: the world outside, 12b and 13b)
 from planner_construct import (_hall_rule, _construction_blocks_rule,  # noqa: E402  (0.105.30) construction
@@ -106,6 +106,7 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
         # inside. For a lone intruder it is held `lone_intruder_alert_ticks`
         # at most (the squad deals with them); after a lifted lockdown it
         # waits for a new enemy (note_lockdown)
+        intrusion = unseen_intrusion(s, memory, cfg)       # (0.105.30 live fixes) DF's invasion record
         lone = lone_intruders(s, cfg, traits, memory) if ids else []
         few = few_ordinary(s, cfg, traits) if ids else []                # (0.105.8) B's 31 dead of thirst
         stand_down = (bool(lone and lone_alert_over(s, memory, cfg)) or lockdown_released(memory)
@@ -132,6 +133,26 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
         elif ids and not fresh and not alert_on:
             notes.append(f"{len(ids)} threat(s) can reach the dwarves; you cleared the alert for "
                          "them, so the AI is leaving it off")
+        elif not ids and not alert_on and intrusion:
+            # (0.105.30 live fixes) E (8 Nov): DF's invasion record of a hidden
+            # thief came 2,000 ticks before she was spotted among the dwarves
+            what = ("an intruder" if intrusion.get("civ") in (None, -1) or (intrusion.get("invaders") or 0) <= 1
+                    else f"{intrusion.get('invaders')} intruders")
+            hours = max(0, (abs_tick(s) - intrusion["tick"]) // 50)
+            if ready:
+                proposals.append(Proposal("threat_alert", {"type": "civ_alert", "on": True},
+                                          f"DF reports {what} on the map ({hours} game hour(s) ago), nobody seen yet "
+                                          "(a thief hides until spotted): sound the alarm before they strike", 0))
+            elif _shelter_possible(s, memory):
+                notes.append(f"DF reports {what} on the map, nobody seen yet: setting up a shelter so the "
+                             "alarm can sound")
+            else:
+                ask_player(notes, f"DF reports {what} on the map, nobody seen yet, but no civilian-alert "
+                                  "burrow is set up, so the AI can't sound the alarm")
+        elif not ids and alert_on and memory.ai_alert_raised and not hazard_alert(s, cfg) and intrusion:
+            notes.append("the alarm stays up: DF reported an intruder "
+                         f"{max(0, (abs_tick(s) - intrusion['tick']) // 50)} game hour(s) ago and nobody has been "
+                         f"seen yet (held {cfg.get('intrusion_alert_days', 2)} days at most)")
         elif not ids and alert_on and memory.ai_alert_raised and not hazard_alert(s, cfg):
             clear, why = all_clear(s, memory, cfg)
             quick = "" if clear else quick_clear(s, memory, cfg)     # (0.105.3) A's sneaker, 9 shut out
@@ -1201,6 +1222,9 @@ def note_cycle(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> list[
                 # Our alert is off and we didn't lower it: the player did. Don't
                 # re-raise for the threats they've seen; a NEW threat still counts.
                 memory.alert_suppressed = list(ids)
+                # (0.105.30 live fixes) nor for DF's invasion record (a new one still counts)
+                if isinstance(memory.intrusion, dict) and memory.intrusion:
+                    memory.intrusion = dict(memory.intrusion, cleared=True)
             memory.ai_alert_raised = False
 
     if "tools" not in errors:

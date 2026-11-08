@@ -527,7 +527,12 @@ def _dig_stall_rule(s: dict, memory, cfg: dict, open_: list, proposals: list) ->
         # (0.104.134) asked again a week on while still nothing is dug (its
         # old jobs renewed at the new priority)
         again = isinstance(raised, int) and dug == 0 and now - raised >= cfg["dig_raise_again_days"] * TICKS_PER_DAY
+        # (0.105.30 live fixes) never a well: its one tile is a channel on a
+        # floor (dig_done "open"), and prioritize_dig raises only WALL tiles,
+        # so every ask came back "nothing left to dig" (8 Nov: 119 refusals
+        # in all six forts, "the well level: 0 of 1 tiles dug")
         if (dug < total and (not raised or again)      # (0.104.129: 0.104.128's "raised" marked held ones too)
+                and p.get("kind") != "well"
                 and (p.get("urgent") or p.get("kind") in DIG_FIRST_KINDS
                      or (dug == 0 and days >= cfg["dig_raise_days"]))):
             proposals.append(Proposal("dig_first", {"type": "prioritize_dig", "project_id": p["id"], "priority": 2},
