@@ -28,6 +28,8 @@
 -- and the overseer leaves the screen after 10 minutes, as before.
 --@ module = true
 
+local U = reqscript('ai-util')      -- (13c) helpers shared by the modules
+
 PROBE_FILE = dfhack.getDFPath() .. '/dfhack-config/ai-overseer/meeting-probe.json'
 PROBE_KEEP = 12                       -- the last samples kept in the probe file
 BUTTONS_KEY = 'ai-overseer/meeting-buttons'
@@ -506,8 +508,7 @@ end
 -- The answer buttons, shown to the AI once (as the trade screen's)
 
 function buttons()
-    local ok, d = pcall(function() return dfhack.persistent.getSiteData(BUTTONS_KEY, {}) end)
-    return ok and type(d) == 'table' and d or {}
+    return U.site_get(BUTTONS_KEY, {})
 end
 
 -- Remember where a button is: the mouse is on it now. Kept from the

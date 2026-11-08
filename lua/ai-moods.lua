@@ -20,6 +20,8 @@
 -- already met (one cloth fetched, counted 1), and "30000 cloths" for three.
 --@module = true
 
+local U = reqscript('ai-util')      -- (13c) helpers shared by the modules
+
 CLOTH_DIM = 10000            -- a whole cloth, in DF's units
 SCAN_CAP = 30000             -- items looked at a request at most
 FREE_MAX = 10                -- items unforbidden a call at most
@@ -105,16 +107,14 @@ end
 
 -- an item's standing for a mood: 'free', 'forbidden', 'dump', 'job' (another
 -- job holds it) or 'other' (a building, a construction, a trader's, owned...)
+-- (lua/ai-util.lua's list; what a unit carries isn't looked up: this runs in
+-- every pulse report)
+local STANDING = {in_job = 'job', forbid = 'forbidden', dump = 'dump'}
+local HELD_OK = {held = true}
 function item_standing(it)
-    local f = it.flags
-    if f.garbage_collect or f.removed or f.construction or f.in_building or f.encased or f.spider_web
-            or f.trader or f.hostile or f.on_fire or f.owned or f.artifact or f.rotten then
-        return 'other'
-    end
-    if f.in_job then return 'job' end
-    if f.forbid then return 'forbidden' end
-    if f.dump then return 'dump' end
-    return 'free'
+    local why = U.item_unfree(it, HELD_OK)
+    if why == nil then return 'free' end
+    return STANDING[why] or 'other'
 end
 
 local function suits(ji, it)
@@ -190,7 +190,7 @@ AVAIL_TICKS = 600
 AVAIL_CACHE = AVAIL_CACHE or {}
 
 local function now_tick()
-    return df.global.cur_year * 403200 + df.global.cur_year_tick
+    return U.abs_tick()
 end
 
 local function cached_avail(ji, entry, unit)

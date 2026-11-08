@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+from lua_modules_util import module_src  # (13c lua-modules) the modules' sources, with lua/ai-util.lua
 RESULTS = []
 
 try:
@@ -18,7 +19,7 @@ except ImportError:
     print("SKIPPED: these tests need the lupa package (pip install lupa)")
     sys.exit(0)
 
-SRC = (ROOT / "lua" / "ai-homes.lua").read_text(encoding="utf-8")
+SRC = module_src("ai-homes.lua")
 
 # spec: units = [{id, child, spouse, mother, father, cat, likes_mat = [mt, mi], likes_item = [it, st],
 #                 thoughts = [name], noble, far}], zones = [{id, owner, bed, statue, items = [{v, mt, mi, it, st}]}]

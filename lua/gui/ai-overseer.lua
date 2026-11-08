@@ -947,7 +947,7 @@ function CulturePage:refresh()
     if type(c) ~= 'table' or type(c.profile) ~= 'table' then
         lines = {'No culture recorded yet.', '',
                  'It appears here once the overseer has run on autopilot. It follows your trait sliders '
-                 .. '(mainly Grandeur, Piety, Fortification, Greed and Hostility) and changes with what '
+                 .. '(mainly Grandeur, Piety, Fortification, Greed and Outsiders) and changes with what '
                  .. 'happens to the fort.'}
     else
         local pr = c.profile

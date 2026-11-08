@@ -31,6 +31,8 @@
 -- up even while the planner asks nothing.
 --@module = true
 
+local U = reqscript('ai-util')      -- (13c) helpers shared by the modules
+
 local INFECTION_BLEEDS = 300            -- df-structures: ">=300 causes bleeding"
 local RQ = {'rq_diagnosis', 'rq_immobilize', 'rq_dressing', 'rq_cleaning', 'rq_surgery', 'rq_suture',
             'rq_setting', 'rq_traction', 'rq_crutch'}
@@ -40,14 +42,13 @@ STATE_KEY = 'ai-overseer/infected-rest'
 local DAY = 1200
 
 local function now_tick()
-    return df.global.cur_year * 403200 + df.global.cur_year_tick
+    return U.abs_tick()
 end
 
 -- the save's record: sent = {id = {tick, job}}, cooldown = {id = tick} (got
 -- up with nothing asked), helped = {id = tick} (DF asked a treatment)
 local function load_state()
-    local ok, d = pcall(dfhack.persistent.getSiteData, STATE_KEY, {})
-    d = ok and type(d) == 'table' and d or {}
+    local d = U.site_get(STATE_KEY, {})
     for _, k in ipairs({'sent', 'cooldown', 'helped'}) do
         d[k] = type(d[k]) == 'table' and d[k] or {}
     end
@@ -55,7 +56,7 @@ local function load_state()
 end
 
 local function save_state(d)
-    pcall(dfhack.persistent.saveSiteData, STATE_KEY, d)
+    U.site_put(STATE_KEY, d)
 end
 
 -- Pure: the candidates to send, best first. Each: {id, load, infected,
@@ -493,8 +494,7 @@ function traction_picks(cands, max)
 end
 
 local function traction_state(t, dry_run)
-    local ok, d = pcall(dfhack.persistent.getSiteData, TRACTION_KEY, {})
-    d = ok and type(d) == 'table' and d or {}
+    local d = U.site_get(TRACTION_KEY, {})
     d.up = type(d.up) == 'table' and d.up or {}
     if not dry_run then
         for k, w in pairs(d.up) do
@@ -558,7 +558,7 @@ function traction_rest(max, dry_run, txt)
         end
         if done then table.insert(up, {unit_id = c.id, name = name}) end
     end
-    if not dry_run then pcall(dfhack.persistent.saveSiteData, TRACTION_KEY, d) end
+    if not dry_run then U.site_put(TRACTION_KEY, d) end
     if #up == 0 then return {ok = false, error = 'the game kept them in bed (the Rest job could not be removed)'} end
     return {ok = true, dry_run = dry_run or nil, got_up = up, benches_free = #benches}
 end

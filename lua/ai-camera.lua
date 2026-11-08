@@ -24,6 +24,8 @@
 -- the Camera pace rule says (slow / normal / fast).
 --@ module = true
 
+local U = reqscript('ai-util')      -- (13c) helpers shared by the modules
+
 local eventful = require('plugins.eventful')
 
 CHECK_FRAMES = 60              -- the timer: about every second or two
@@ -505,7 +507,7 @@ function find_slow()
     pcall(function()
         local first = CAM.nobles == nil
         CAM.nobles = CAM.nobles or {}
-        local ent = df.historical_entity.find(df.global.plotinfo.group_id)
+        local ent = U.fort_entity()
         if not ent then return end
         local names = {}
         for _, pos in ipairs(ent.positions.own) do

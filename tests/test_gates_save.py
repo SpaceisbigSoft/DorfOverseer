@@ -11,6 +11,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+from lua_modules_util import module_src  # (13c lua-modules) the modules' sources, with lua/ai-util.lua
 RESULTS = []
 
 try:
@@ -42,7 +43,7 @@ return env, W
 
 def fresh():
     lua = LuaRuntime(unpack_returned_tuples=True)
-    env, W = lua.execute(HARNESS, (ROOT / "lua" / "ai-gates.lua").read_text(encoding="utf-8"))
+    env, W = lua.execute(HARNESS, module_src("ai-gates.lua"))
     return lua, env, W
 
 

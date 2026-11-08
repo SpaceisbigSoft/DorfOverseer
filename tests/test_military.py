@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+from lua_modules_util import module_src  # (13c lua-modules) the modules' sources, with lua/ai-util.lua
 RESULTS = []
 
 try:
@@ -24,7 +25,7 @@ local src = ...
 local env = setmetatable({}, {__index = _G})
 assert(load(src, 'ai-military', 't', env))()
 return env
-""", (ROOT / "lua" / "ai-military.lua").read_text(encoding="utf-8"))
+""", module_src("ai-military.lua"))
 
 
 def test(name):
@@ -147,7 +148,7 @@ return env, sq
 @test("uniforms: a squad without one gets the template on every place; the AI may change its own, never yours")
 def _():
     lua = LuaRuntime(unpack_returned_tuples=True)
-    env, sq = lua.execute(UNIFORM_FAKE, (ROOT / "lua" / "ai-military.lua").read_text(encoding="utf-8"))
+    env, sq = lua.execute(UNIFORM_FAKE, module_src("ai-military.lua"))
     d = env.set_uniform(32, "leather", True)
     assert d.ok and d.dry_run and d.template == "Melee, leather armor" and sq.positions[0].equipment.uniform[0][0] is None, dict(d)
     r = env.set_uniform(32, "leather", False)
@@ -163,7 +164,7 @@ def _():
     assert sq.positions[0].equipment.uniform[0][0].item_type == 20, "metal"
     # a uniform set by someone else is left alone
     lua2 = LuaRuntime(unpack_returned_tuples=True)
-    env2, sq2 = lua2.execute(UNIFORM_FAKE, (ROOT / "lua" / "ai-military.lua").read_text(encoding="utf-8"))
+    env2, sq2 = lua2.execute(UNIFORM_FAKE, module_src("ai-military.lua"))
     lua2.eval('function(v, x) v:insert("#", x) end')(sq2.positions[0].equipment.uniform[0],
                                                     lua2.table_from({"item_type": 5}))
     r = env2.set_uniform(32, "metal", False)
@@ -173,7 +174,7 @@ def _():
 @test("uniform weapon: every place asks for the one weapon kind; only on a uniform the AI set")
 def _():
     lua = LuaRuntime(unpack_returned_tuples=True)
-    env, sq = lua.execute(UNIFORM_FAKE, (ROOT / "lua" / "ai-military.lua").read_text(encoding="utf-8"))
+    env, sq = lua.execute(UNIFORM_FAKE, module_src("ai-military.lua"))
     lua.execute("""local env = ... ; env.df.uniform_category.weapon = 0 ; env.df.item_type = {WEAPON = 24}
         env.df.global.world = {raws = {itemdefs = {weapons = {[0] = {id = 'ITEM_WEAPON_PICK', subtype = 6},
                                                            [1] = {id = 'ITEM_WEAPON_AXE_BATTLE', subtype = 7}}}}}""", env)
@@ -243,7 +244,7 @@ return env, eq
 @test("stray gear (0.104.58): gear assigned to no one or on no list goes back on the unassigned list, in order")
 def _():
     lua = LuaRuntime(unpack_returned_tuples=True)
-    env, eq = lua.execute(STRAY_FAKE, (ROOT / "lua" / "ai-military.lua").read_text(encoding="utf-8"))
+    env, eq = lua.execute(STRAY_FAKE, module_src("ai-military.lua"))
     r = env.stray_report()
     assert r.n == 4 and r.orphan.WEAPON == 1 and r.unlisted.WEAPON == 1 and r.orphan.HELM == 1 and r.unlisted.HELM == 1, r.n
     n = lua.eval("function(v) return #v end")
@@ -263,7 +264,7 @@ def _():
 @test("stray gear (0.104.58): the limit caps one call")
 def _():
     lua = LuaRuntime(unpack_returned_tuples=True)
-    env, eq = lua.execute(STRAY_FAKE, (ROOT / "lua" / "ai-military.lua").read_text(encoding="utf-8"))
+    env, eq = lua.execute(STRAY_FAKE, module_src("ai-military.lua"))
     assert env.free_stray_gear(False, 1).freed == 1 and env.stray_report().n == 3
 
 
@@ -332,7 +333,7 @@ return env, eq, sq7, sq8
 @test("assign weapons (0.104.60): empty weapon places get the nearest free weapon of their kind, as DF assigns")
 def _():
     lua = LuaRuntime(unpack_returned_tuples=True)
-    env, eq, sq7, sq8 = lua.execute(ARMS_FAKE, (ROOT / "lua" / "ai-military.lua").read_text(encoding="utf-8"))
+    env, eq, sq7, sq8 = lua.execute(ARMS_FAKE, module_src("ai-military.lua"))
     n = lua.eval("function(v) return #v end")
     seq = lambda v: [v[i] for i in range(n(v))]
     assert env.weapon_gaps() == (3, 1)                   # 3 empty; one melee place has its axe
@@ -422,7 +423,7 @@ return env, eq, sq
 @test("assign kit (0.105.8): empty armour entries get the nearest free piece; gloves a left and a right, never half a pair")
 def _():
     lua = LuaRuntime(unpack_returned_tuples=True)
-    env, eq, sq = lua.execute(KIT_FAKE, (ROOT / "lua" / "ai-military.lua").read_text(encoding="utf-8"))
+    env, eq, sq = lua.execute(KIT_FAKE, module_src("ai-military.lua"))
     n = lua.eval("function(v) return #v end")
     seq = lambda v: sorted(v[i] for i in range(n(v)))
     d = env.assign_kit(True, 10)
@@ -443,14 +444,14 @@ def _():
 @test("assign weapons (0.104.60): the limit caps one call")
 def _():
     lua = LuaRuntime(unpack_returned_tuples=True)
-    env, eq, sq7, sq8 = lua.execute(ARMS_FAKE, (ROOT / "lua" / "ai-military.lua").read_text(encoding="utf-8"))
+    env, eq, sq7, sq8 = lua.execute(ARMS_FAKE, module_src("ai-military.lua"))
     assert env.assign_weapons(False, 1).assigned == 1 and env.weapon_gaps()[0] == 2
 
 
 @test("assign weapons (0.104.80): the ledger says what became of each weapon given")
 def _():
     lua = LuaRuntime(unpack_returned_tuples=True)
-    env, eq, sq7, sq8 = lua.execute(ARMS_FAKE, (ROOT / "lua" / "ai-military.lua").read_text(encoding="utf-8"))
+    env, eq, sq7, sq8 = lua.execute(ARMS_FAKE, module_src("ai-military.lua"))
     r = env.assign_weapons(False, 10)
     assert r.assigned == 3 and r.ledger.booked == 0
     p0 = sq7.positions[0].equipment
@@ -468,7 +469,7 @@ def _():
 @test("assign weapons (0.104.80): a weapon entry asking for a colour is put to any colour, and DF told to re-equip")
 def _():
     lua = LuaRuntime(unpack_returned_tuples=True)
-    env, eq, sq7, sq8 = lua.execute(ARMS_FAKE, (ROOT / "lua" / "ai-military.lua").read_text(encoding="utf-8"))
+    env, eq, sq7, sq8 = lua.execute(ARMS_FAKE, module_src("ai-military.lua"))
     for p in (sq7.positions[0], sq7.positions[1], sq7.positions[2], sq8.positions[0]):
         p.equipment.uniform[0][0].color = -1
     sq7.positions[1].equipment.uniform[0][0].color = 0          # set_uniform_weapon's entry before 0.104.80
@@ -482,7 +483,7 @@ def _():
 @test("hold the gate (0.104.83): a defend order on the gate guard burrow replaces the AI's orders, counts as the AI's")
 def _():
     lua = LuaRuntime(unpack_returned_tuples=True)
-    env, eq, sq7, sq8 = lua.execute(ARMS_FAKE, (ROOT / "lua" / "ai-military.lua").read_text(encoding="utf-8"))
+    env, eq, sq7, sq8 = lua.execute(ARMS_FAKE, module_src("ai-military.lua"))
     lua.execute("""local env, sq7, sq8 = ...
         local function vec(list)
             local t = {}
@@ -511,7 +512,7 @@ def _():
 @test("adopt: a copied crossbow uniform becomes the AI's by its template; back to melee drops the bolts")
 def _():
     lua = LuaRuntime(unpack_returned_tuples=True)
-    env, sq = lua.execute(UNIFORM_FAKE, (ROOT / "lua" / "ai-military.lua").read_text(encoding="utf-8"))
+    env, sq = lua.execute(UNIFORM_FAKE, module_src("ai-military.lua"))
     lua.execute("""local env, sq = ...
         env.df.entity_material_category = {Armor = 16}
         env.df.item_type = {WEAPON = 24}
@@ -566,7 +567,7 @@ env.dfhack = {military = {updateRoomAssignments = function(sid, zid, flags)
 end}}
 assert(load(src, 'ai-military', 't', env))()
 return env
-""", (ROOT / "lua" / "ai-military.lua").read_text(encoding="utf-8"))
+""", module_src("ai-military.lua"))
     assert env.assign_barracks(32, 901, False).error == "that is not a barracks zone"
     assert env.assign_barracks(7, 900, False).error == "no such squad"
     r = env.assign_barracks(32, 900, False)
@@ -607,7 +608,7 @@ env.reqscript = function(name)
 end
 assert(load(src, 'ai-military', 't', env))()
 return env
-""", (ROOT / "lua" / "ai-military.lua").read_text(encoding="utf-8"))
+""", module_src("ai-military.lua"))
     d = env.spawn_test_threat(3, None, True)
     assert d.ok and d.dry_run and d.spot.x == 35 and d.spot.y == 50 and d.civ == 7, dict(d.spot)   # (65,50) is water
     r = env.spawn_test_threat(3, None, False)
@@ -678,7 +679,7 @@ return env, fort, made
 
 def post_env(**spec):
     lua = LuaRuntime(unpack_returned_tuples=True)
-    src = (ROOT / "lua" / "ai-military.lua").read_text(encoding="utf-8")
+    src = module_src("ai-military.lua")
     # candidates() is local in the module: give the fake a pick_soldiers that ignores it
     src = src.replace("local okc, cands = pcall(candidates)\n        local pick = okc and pick_soldiers(cands, 1)[1]",
                       "local pick = pick_soldiers({}, 1)[1]")
@@ -776,7 +777,7 @@ def _():
     env.dfhack = {units = {isCitizen = function(u) return u.citizen end, getReadableName = function(u) return 'd' .. u.id end},
         military = {removeFromSquad = function(id) table.insert(removed, id); return true end}}
     return env, removed
-    """, (ROOT / "lua" / "ai-military.lua").read_text(encoding="utf-8"))
+    """, module_src("ai-military.lua"))
     env, removed = env
     r = env.trim(5, False, None)
     assert r.ok, dict(r)
@@ -813,7 +814,7 @@ def _():
             getStressCategory = function(u) return u.stress end, getReadableName = function(u) return 'd' .. u.id end},
         military = {addToSquad = function(id) table.insert(added, id); return true end}}
     return env, added
-    """, (ROOT / "lua" / "ai-military.lua").read_text(encoding="utf-8"))
+    """, module_src("ai-military.lua"))
     r = env.fill(10, 3, env.tostring)
     assert r.ok, dict(r)
     got = sorted(added[i] for i in range(1, len(added) + 1))
@@ -854,7 +855,7 @@ def _fill_env():
         military = {addToSquad = function(id) table.insert(added, id); return true end}}
     env.CITIZENS = citizens
     return env, added
-    """, (ROOT / "lua" / "ai-military.lua").read_text(encoding="utf-8"))
+    """, module_src("ai-military.lua"))
 
 
 @test("fill (0.104.168, review): strict (a crisis) never drafts the very unhappy, keen or not; keen_only only the keen; draftable is the fill's test")
@@ -904,7 +905,7 @@ def _():
             if pos == -1 or pos == 0 then return false end      -- as DFHack: the leader's seat refused
             table.insert(added, pos); sq.positions[pos].occupant = id; return true end}}
     return env, added
-    """, (ROOT / "lua" / "ai-military.lua").read_text(encoding="utf-8"))
+    """, module_src("ai-military.lua"))
     r = env.fill(10, 5, env.tostring)
     assert r.ok and len(r.added) == 2, dict(r)
     assert sorted(added[i] for i in range(1, len(added) + 1)) == [1, 3]
@@ -947,7 +948,7 @@ def _():
             if pos <= 0 then return false end
             table.insert(log.added, id); sq.positions[pos].occupant = id; return true end}}
     return env, log
-    """, (ROOT / "lua" / "ai-military.lua").read_text(encoding="utf-8"))
+    """, module_src("ai-military.lua"))
     r = env.fill(10, 5, env.tostring)
     assert r.ok and r.leader_appointed and log.appointed is not None, dict(r)
     assert len(r.added) == 1 and log.added[1] != log.appointed, (dict(r), log.added[1], log.appointed)
@@ -977,7 +978,7 @@ def _():
     env.dfhack = {units = {isCitizen = function() return true end, getReadableName = function(u) return 'd' .. u.id end},
                   military = {removeFromSquad = function(id) table.insert(removed, id); return true end}}
     return env, removed
-    """, (ROOT / "lua" / "ai-military.lua").read_text(encoding="utf-8"))
+    """, module_src("ai-military.lua"))
     r = env.release(2, False, None)
     assert not r.ok and r.rejected and "longs to fight" in r.error, dict(r)
     r = env.release(1, False, None)
@@ -1092,7 +1093,7 @@ return env, eq, sq7, sq8
 
 def army():
     lua = LuaRuntime(unpack_returned_tuples=True)
-    out = lua.execute(ARMY_FAKE, (ROOT / "lua" / "ai-military.lua").read_text(encoding="utf-8"))
+    out = lua.execute(ARMY_FAKE, module_src("ai-military.lua"))
     n = lua.eval("function(v) return #v end")
     return (lua, n) + tuple(out)
 

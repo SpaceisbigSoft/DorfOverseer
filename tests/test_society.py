@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+from lua_modules_util import module_src  # (13c lua-modules) the modules' sources, with lua/ai-util.lua
 RESULTS = []
 
 try:
@@ -87,7 +88,7 @@ return env, units, assigned, function() local n = 0; for _ in pairs(tiles) do n 
 
 def fresh():
     lua = LuaRuntime(unpack_returned_tuples=True)
-    return lua.execute(FAKE, (ROOT / "lua" / "ai-society.lua").read_text(encoding="utf-8"))
+    return lua.execute(FAKE, module_src("ai-society.lua"))
 
 
 @test("recreation (0.104.78): the burrow made over the halls; the unhappiest civilians moved in, never soldiers, children or patients")
@@ -208,7 +209,7 @@ def _():
 @test("recreation (0.104.80): a few places for civilians badly wanting friends, a week each or until the need is met")
 def _():
     lua = LuaRuntime(unpack_returned_tuples=True)
-    env, units, assigned, ntiles, g = lua.execute(FAKE, (ROOT / "lua" / "ai-society.lua").read_text(encoding="utf-8"))
+    env, units, assigned, ntiles, g = lua.execute(FAKE, module_src("ai-society.lua"))
     lua.execute("""local env, units = ...
         env.df.need_type = {[9] = 'BeWithFriends'}
         local function needs(f) return {current_soul = {personality = {needs = {[0] = {id = 9, focus_level = f}}}}} end
@@ -288,7 +289,7 @@ return env, pen1, pen2, placed, active
 @test("nest boxes (0.104.80): the loose hens join the pasture with the most hens; a nest box a hen there, a few a call")
 def _():
     lua = LuaRuntime(unpack_returned_tuples=True)
-    env, pen1, pen2, placed, active = lua.execute(NEST_FAKE, (ROOT / "lua" / "ai-society.lua").read_text(encoding="utf-8"))
+    env, pen1, pen2, placed, active = lua.execute(NEST_FAKE, module_src("ai-society.lua"))
     n = lua.eval("function(v) return #v end")
     d = env.nest_boxes(3, True)
     assert d.ok and d.dry_run and d.zone_id == 61 and d.penned == 2 and n(pen2.assigned_units) == 0, dict(d)
@@ -344,7 +345,7 @@ return env, training
 @test("war animals (0.104.81): tame adult dogs put to war training, never a pet, a puppy, a war dog or one in training")
 def _():
     lua = LuaRuntime(unpack_returned_tuples=True)
-    env, training = lua.execute(WAR_FAKE, (ROOT / "lua" / "ai-society.lua").read_text(encoding="utf-8"))
+    env, training = lua.execute(WAR_FAKE, module_src("ai-society.lua"))
     n = lua.eval("function(v) return #v end")
     r = env.animal_training_report()
     assert (r.war_candidates, r.war_trained, r.in_training, r.trainers) == (2, 1, 1, 1), dict(r)
@@ -416,7 +417,7 @@ return env, defended, ntiles, all
 @test("hold the gate (0.104.83): the gate guard burrow over the inside tiles near the gate; the squads told to defend it")
 def _():
     lua = LuaRuntime(unpack_returned_tuples=True)
-    env, defended, ntiles, all_ = lua.execute(GATE_FAKE, (ROOT / "lua" / "ai-society.lua").read_text(encoding="utf-8"))
+    env, defended, ntiles, all_ = lua.execute(GATE_FAKE, module_src("ai-society.lua"))
     d = env.guard_gate(lua.table_from([11, 12]), 10, 10, 50, 3, True)
     assert d.ok and d.dry_run and ntiles() == 0
     r = env.guard_gate(lua.table_from([11, 99]), 10, 10, 50, 3, False)
@@ -429,7 +430,7 @@ def _():
 @test("gate dogs (0.104.83): the war dogs with no post go to a pen made inside the gate; never a pet or a penned dog")
 def _():
     lua = LuaRuntime(unpack_returned_tuples=True)
-    env, defended, ntiles, all_ = lua.execute(GATE_FAKE, (ROOT / "lua" / "ai-society.lua").read_text(encoding="utf-8"))
+    env, defended, ntiles, all_ = lua.execute(GATE_FAKE, module_src("ai-society.lua"))
     n = lua.eval("function(v) return #v end")
     assert env.gate_dogs_report().free == 3
     r = env.gate_dogs(10, 10, 50, 2, False)
@@ -553,7 +554,7 @@ return env, W
 
 def hosp_fresh():
     lua = LuaRuntime(unpack_returned_tuples=True)
-    env, w = lua.execute(HOSP_FAKE, (ROOT / "lua" / "ai-society.lua").read_text(encoding="utf-8"))
+    env, w = lua.execute(HOSP_FAKE, module_src("ai-society.lua"))
     return lua, env, w
 
 
@@ -821,7 +822,7 @@ CUP_WORLD = """
 @test("cups (0.104.168): the census says why each loose cup stays (a tavern's, the piles refuse it, cut off, should be hauled) and every cup's flags")
 def _():
     lua = LuaRuntime(unpack_returned_tuples=True)
-    env = lua.execute(FAKE, (ROOT / "lua" / "ai-society.lua").read_text(encoding="utf-8"))[0]
+    env = lua.execute(FAKE, module_src("ai-society.lua"))[0]
     W = env["load"](CUP_WORLD, "t", "t", env)(env)
     d = env.free_items_count("GOBLET", True)
     why = dict(d.why)
@@ -839,7 +840,7 @@ def _():
 @test("cups (0.104.168): accept_cups sets the nearest indoor pile (never the depot's) to take the refused cups; unforbids those in an indoor hall")
 def _():
     lua = LuaRuntime(unpack_returned_tuples=True)
-    env = lua.execute(FAKE, (ROOT / "lua" / "ai-society.lua").read_text(encoding="utf-8"))[0]
+    env = lua.execute(FAKE, module_src("ai-society.lua"))[0]
     W = env["load"](CUP_WORLD, "t", "t", env)(env)
     r = env.accept_cups(True)
     # the cup in the bin is never counted here, as in the census (review)
@@ -1076,7 +1077,7 @@ return env, W
 
 def calm_fresh(rec=False):
     lua = LuaRuntime(unpack_returned_tuples=True)
-    env, w = lua.execute(CALM_FAKE, (ROOT / "lua" / "ai-society.lua").read_text(encoding="utf-8"))
+    env, w = lua.execute(CALM_FAKE, module_src("ai-society.lua"))
     if rec:
         w.rec()
     return lua, env, w
@@ -1288,7 +1289,7 @@ def _():
 @test("recreation (0.104.169): a dwarf in a tantrum never joins, by the friends' places either")
 def _():
     lua = LuaRuntime(unpack_returned_tuples=True)
-    env, units, assigned, ntiles, g = lua.execute(FAKE, (ROOT / "lua" / "ai-society.lua").read_text(encoding="utf-8"))
+    env, units, assigned, ntiles, g = lua.execute(FAKE, module_src("ai-society.lua"))
     lua.execute("""local env, units = ...
       env.df.soldier_mood_type = {[2] = 'Tantrum'}
       env.df.need_type = {[1] = 'BeWithFriends'}
@@ -1343,7 +1344,7 @@ return env, set, env.df
 @test("shelter (0.105.8): made again over every level with citizens, a stockpile or a well; only the AI's own")
 def _():
     lua = LuaRuntime(unpack_returned_tuples=True)
-    env, got, df = lua.execute(SHELTER_FAKE, (ROOT / "lua" / "ai-society.lua").read_text(encoding="utf-8"))
+    env, got, df = lua.execute(SHELTER_FAKE, module_src("ai-society.lua"))
     r = env.refresh_shelter()
     assert r and r.refreshed and r.tiles == 28 * 256, dict(r)        # z 0..27: the well (2) - 2 to the top pile (25) + 2
     assert got[5] and got[25] and got[2] and not got[28], dict(got)
@@ -1415,7 +1416,7 @@ return env, set, gates, door, buildings
 
 def entrance_world(ncit=2):
     lua = LuaRuntime(unpack_returned_tuples=True)
-    return lua, lua.execute(ENTRANCE_FAKE, (ROOT / "lua" / "ai-society.lua").read_text(encoding="utf-8"), ncit)
+    return lua, lua.execute(ENTRANCE_FAKE, module_src("ai-society.lua"), ncit)
 
 
 @test("shelter (0.105.23): off the tiles by an entrance with no gate, and its stair column; the hall beside it left out")

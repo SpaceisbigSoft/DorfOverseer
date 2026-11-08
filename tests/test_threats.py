@@ -14,6 +14,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+from lua_modules_util import module_src  # (13c lua-modules) the modules' sources, with lua/ai-util.lua
 sys.path.insert(0, str(ROOT / "brain"))
 
 import planner  # noqa: E402
@@ -255,7 +256,7 @@ except ImportError:
 
 if LuaRuntime:
     LUA = LuaRuntime(unpack_returned_tuples=True)
-    SRC = (ROOT / "lua" / "ai-threats.lua").read_text(encoding="utf-8")
+    SRC = module_src("ai-threats.lua")
     ENV = LUA.execute("local src = ...; local e = setmetatable({}, {__index = _G}); "
                       "assert(load(src, 'ai-threats', 't', e))(); return e", SRC)
 

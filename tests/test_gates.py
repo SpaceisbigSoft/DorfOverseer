@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+from lua_modules_util import module_src  # (13c lua-modules) the modules' sources, with lua/ai-util.lua
 RESULTS = []
 
 try:
@@ -54,7 +55,7 @@ return env, W
 """
 
 LUA = LuaRuntime(unpack_returned_tuples=True)
-M, W = LUA.execute(HARNESS, (ROOT / "lua" / "ai-gates.lua").read_text(encoding="utf-8"))
+M, W = LUA.execute(HARNESS, module_src("ai-gates.lua"))
 
 # One level. Outside on the left (x 0-3), the fort on the right.
 #   entrance A: 1-wide tunnel at y=2 with a door at x=8
@@ -1054,7 +1055,7 @@ return env, removed
 @test("cleanup: an old tree gate 4 tiles from the main stair never takes the stair's hatch (a level up)")
 def _():
     lua = LuaRuntime(unpack_returned_tuples=True)
-    env, removed = lua.execute(CLEAR, (ROOT / "lua" / "ai-gates.lua").read_text(encoding="utf-8"))
+    env, removed = lua.execute(CLEAR, module_src("ai-gates.lua"))
     r = env.clear_gate(94, 99, 169, None, False)
     got = [removed[i] for i in range(1, len(removed) + 1)]
     # (0.100) no record of its pieces: nothing guessed at, nothing taken down
