@@ -385,7 +385,7 @@ def _district(memory, kind: str, slot: str | None = None) -> dict | None:
 
 
 def hint(memory, kind: str, slot: str | None = None, traits: dict | None = None,
-         profile: dict | None = None) -> dict | None:
+         profile: dict | None = None, action: dict | None = None, citizens: int | None = None) -> dict | None:
     """The placement hint for a new level of this kind (lua/ai-builder.lua
     tries it first), or None when the plan has no district for it. slot: a
     set piece goes to its place's district (0.98: the great hall among the
