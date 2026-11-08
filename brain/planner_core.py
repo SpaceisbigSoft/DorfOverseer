@@ -13,7 +13,7 @@ from quirks import has_rule
 from digest import _d, _l, normalize
 from planner_config import PLANNER_CONFIG  # noqa: F401  (13c: the tuning numbers, split out)
 
-__all__ = ["great_present", "all_clear", "STEER_PROTECTED", "STEER_MAX_DAYS", "steer_of", "PLANNER_CONFIG", "BREW_RECIPES", "MEAL_RECIPES", "MANDATE_RECIPES", "BUILDABLE_SHOPS", "SHOP_ALIASES", "SURVIVAL_SHOPS", "TICKS_PER_DAY", "TICKS_PER_YEAR", "NO_COOLDOWN", "MULTI_PER_CYCLE", "EMERGENCY", "STUCK_HOLD_EXEMPT", "LIMIT_EXEMPT", "Proposal", "Memory", "abs_tick", "stamp_tick", "game_day", "factor", "ADJUST_BOUNDS", "_number", "effective_config", "queued", "unstored_cups", "free_stock", "watch_since", "_clamp", "MEMORIAL_SPAN", "OPTIONAL_LEVELS", "GEAR_WEAPONS", "GEAR_METALS", "NEEDS_YOU", "ask_player", "player_rules", "MAINTAIN_SKIPS", "level_refused", "_traits", "reachable_threats", "held_off_threats", "_holding_off", "ONE_A_CYCLE", "growth_mode", "growth_target", "JOB_SHOPS", "RECIPE_SHOPS", "WOOD_ELSEWHERE", "recipe_shop", "brewable_counts", "brew_recipe", "_watchdog_notes", "jobs_reported", "order_job_state", "masons_jammed", "stuck_hold_days", "_stuck_before", "stone_short", "_office_held", "tantrums_recent", "justice_held", "_restraint_order", "manager_needs_office", "suites_short", "wool_route", "thread_plants_here", "MINING_NEED_ONLY", "mining_plan", "noble_room_kinds", "SOCIAL_NEEDS", "care_waiting", "unmet", "_soldier_swap", "recently_home", "LOCATION_UNITS", "_location", "_location_short", "_real_locations", "can_fight", "is_ranged", "STALE_PROJECT_DAYS", "_workshops_busy", "shop_count", "shops_max", "_has_shop", "RAW_FOOD", "ALL_FOOD", "_idle_share", "update_idle", "AGENDA_THEMES", "agenda", "food_per_dwarf", "WINTER_STOCK", "winter_factor", "young_fort", "established", "has_farms", "_best_metal", "REFUSAL_FIRST_DAYS", "REFUSAL_MAX_DAYS", "REFUSAL_IDLE_DAYS", "REFUSAL_KEYS", "refusal_key", "_refused_wait", "note_refusal", "LOOP_LIMITS", "LOOP_LIMIT_DEFAULT", "LOOP_EXEMPT", "_loop_count", "NO_EFFECT_RULES", "NO_EFFECT_WHY", "note_no_effect", "no_effect_wait", "_stalled_days", "_entrance_spot", "_record_any_outcome", "_weapon_gaps", "spare_sig", "MOOD_BODY_FLAGS", "mood_kind", "mood_on_hand", "mood_waits"]
+__all__ = ["great_present", "all_clear", "STEER_PROTECTED", "STEER_MAX_DAYS", "steer_of", "PLANNER_CONFIG", "BREW_RECIPES", "MEAL_RECIPES", "MANDATE_RECIPES", "BUILDABLE_SHOPS", "SHOP_ALIASES", "SURVIVAL_SHOPS", "TICKS_PER_DAY", "TICKS_PER_YEAR", "NO_COOLDOWN", "COOLDOWN_KEYS", "MULTI_PER_CYCLE", "EMERGENCY", "STUCK_HOLD_EXEMPT", "ORDER_HOLD_EXEMPT", "LIMIT_EXEMPT", "Proposal", "Memory", "abs_tick", "stamp_tick", "game_day", "factor", "ADJUST_BOUNDS", "_number", "effective_config", "queued", "unstored_cups", "free_stock", "watch_since", "_clamp", "MEMORIAL_SPAN", "OPTIONAL_LEVELS", "GEAR_WEAPONS", "GEAR_METALS", "NEEDS_YOU", "ask_player", "player_rules", "MAINTAIN_SKIPS", "level_refused", "_traits", "reachable_threats", "held_off_threats", "_holding_off", "ONE_A_CYCLE", "growth_mode", "growth_target", "JOB_SHOPS", "RECIPE_SHOPS", "WOOD_ELSEWHERE", "recipe_shop", "brewable_counts", "brew_recipe", "_watchdog_notes", "jobs_reported", "order_job_state", "masons_jammed", "stuck_hold_days", "_stuck_before", "stone_short", "_office_held", "tantrums_recent", "justice_held", "_restraint_order", "manager_needs_office", "suites_short", "wool_route", "thread_plants_here", "MINING_NEED_ONLY", "mining_plan", "noble_room_kinds", "SOCIAL_NEEDS", "care_waiting", "unmet", "_soldier_swap", "recently_home", "LOCATION_UNITS", "_location", "_location_short", "_real_locations", "can_fight", "is_ranged", "STALE_PROJECT_DAYS", "_workshops_busy", "shop_count", "shops_max", "_has_shop", "RAW_FOOD", "ALL_FOOD", "_idle_share", "update_idle", "AGENDA_THEMES", "agenda", "food_per_dwarf", "WINTER_STOCK", "winter_factor", "young_fort", "established", "has_farms", "_best_metal", "REFUSAL_FIRST_DAYS", "REFUSAL_MAX_DAYS", "REFUSAL_IDLE_DAYS", "REFUSAL_KEYS", "refusal_key", "_refused_wait", "note_refusal", "TIMEOUT_TRIES", "timeout_streak", "brief_timeout", "LOOP_LIMITS", "LOOP_LIMIT_DEFAULT", "LOOP_EXEMPT", "_loop_count", "NO_EFFECT_RULES", "NO_EFFECT_WHY", "note_no_effect", "no_effect_wait", "_stalled_days", "_entrance_spot", "_record_any_outcome", "_weapon_gaps", "spare_sig", "MOOD_BODY_FLAGS", "mood_kind", "mood_on_hand", "mood_waits"]
 
 BREW_RECIPES = {"brew_drink", "brew_drink_from_fruit", "make_mead"}
 MEAL_RECIPES = {"prepare_easy_meal", "prepare_fine_meal", "prepare_lavish_meal"}
@@ -48,6 +48,9 @@ TICKS_PER_YEAR = 403200
 NO_COOLDOWN = {"threat_alert", "strategist", "squad_attack", "squad_recall", "train", "gates", "water", "flood",
                "trade_deal", "close_trade",       # time stands still while the trade screen is open
                "shelter_squads"}                  # (0.105.0 review) an emergency, as in EMERGENCY
+# (0.105.26) a rule whose cooldown key isn't "<rule>_cooldown_ticks" (select()):
+# the prisoners rule waited the 2-day default instead of its 7 days
+COOLDOWN_KEYS = {"prisoners": "prisoner_room_cooldown_ticks"}
 # Rules that may act more than once a cycle (select()).
 MULTI_PER_CYCLE = {"stuck_order", "uniform", "noble_rooms", "tools", "strategist", "squad_attack", "squad_recall", "train",
                    "labor", "well_parts",
@@ -58,7 +61,7 @@ EMERGENCY = {"threat_alert", "gate", "gates", "squad_attack", "flood", "gate_gua
 # (0.104.89) rules the strategist may never hold: survival, safety and the
 # answers to danger (it may still raise them)
 STEER_PROTECTED = EMERGENCY | {"shelter", "alerts", "squad_recall", "hazard", "water", "well", "drink",
-                               "needs_drink", "food", "farm", "farm_crops", "gather", "care", "staff", "burial", "unsuspend",
+                               "food", "farm", "farm_crops", "gather", "care", "staff", "burial", "unsuspend",
                                "stuck_order", "tools", "found", "entrances", "trouble",
                                "hospital_burrow",   # (0.104.167, review) never held: members are let out by it
                                "calm_burrow",       # (0.104.169) likewise
@@ -88,8 +91,13 @@ def steer_of(memory, rule: str, now: int) -> dict | None:
 
 
 # (0.100.1) never held back by an earlier stuck order of the same recipe (see
-# select()); (0.104.2) a well's parts: water for the injured
-STUCK_HOLD_EXEMPT = {"drink", "drink_fruit", "food", "well_parts"}
+# select()); (0.104.2) a well's parts: water for the injured; (0.105.26) a
+# strange mood's materials (a life on it: a cloth order a mood needed was held
+# 28 days; never swapped for a fallback recipe either)
+STUCK_HOLD_EXEMPT = {"drink", "drink_fruit", "food", "well_parts", "mood"}
+# (0.105.26) work orders never held by the stalled-order check or the daily
+# work-order limit (select()): a strange mood's own materials
+ORDER_HOLD_EXEMPT = {"mood"}
 # Also outside the per-cycle action limit: switching a squad's schedule (instant, undoable).
 # (0.104.169) calm_burrow too: a tantrum near the patients waits for no slot
 LIMIT_EXEMPT = EMERGENCY | {"break_fights", "calm_burrow", "join_levels", "census", "train", "shelter", "entrances", "labor",
@@ -1192,7 +1200,7 @@ AGENDA_THEMES = {
     "steel": "make steel", "smelt": "smelt the ore", "ore": "mine ore", "fuel": "make fuel",
     "trade": "trade with the caravans", "trade_deal": "trade with the caravans", "crafts": "make goods to sell",
     "gems": "cut gems", "encrust": "set gems into crafts", "drink": "keep the drink flowing",
-    "needs_drink": "keep the drink flowing", "needs_meal": "cook good meals", "needs_craft": "let dwarves craft",
+    "needs_meal": "cook good meals", "needs_craft": "let dwarves craft",
     "food": "keep the fort fed", "farm": "farm", "hospital": "stock the hospital", "soap": "make soap",
     "feeder": "shorten the hauling", "labor": "put idle hands to work", "labor_trim": "take the extra hands off fishing", "well": "find water for a well", "well_lid": "close the cavern well's stairs", "well_shaft": "a gate in the cavern well's shaft", "planned_parts": "parts the planned buildings wait for", "comfort": "shoes and cups for the fort", "mothers": "mothers home from the squads", "dead_units": "clear old dead from the unit list", "herd": "keep the herds the fort's size",
     "stuck_order": "clear stuck work", "unsuspend": "resume suspended work", "stray_gear": "hand out lost gear", "assign_weapons": "arm the soldiers", "assign_kit": "armour the soldiers", "soldier_swap": "let the keen train", "temple_chest": "a chest for the temple", "instrument_orders": "clear the instrument backlog", "pair_chairs": "seat dwarves together", "recreation": "time off for the unhappiest", "hospital_burrow": "keep the wounded in the hospital", "calm_burrow": "keep a tantrum away from the others", "dairy": "milk and cheese", "eggs": "nest boxes for the hens", "war_animals": "train war animals", "gate_guard": "hold the gate", "gate_dogs": "war dogs at the gate", "gem_cutting": "cut the rough gems", "stairwell": "a new stairwell", "animal_trainer": "an animal trainer", "nest_box_order": "make nest boxes", "library_chest": "a chest for the library", "orphan_jobs": "clear jobs whose order is gone", "slabs_free": "free the memorial slabs", "water_traffic": "keep paths off the ice", "jail_size": "a bigger jail", "jail_more": "another jail", "break_fights": "break up the fights among the fort's own", "burial": "bury the dead", "rooms": "mend the rooms' walls", "coffins": "coffins for the tombs", "order_slots": "free the workshop's order slots", "fat_ban": "keep fat for soap", "jail_urgent": "a jail against the beatings", "tavern_urgent": "a tavern for company", "quarry": "quarry stone", "cloth": "weave cloth",
@@ -1318,6 +1326,26 @@ def _refused_wait(memory: Memory, p: Proposal, now: int, bridge: str | None = No
     return None
 
 
+# (0.105.26) a search the bridge cut short (timed_out in its answer: no spot
+# found in the time it had, not "there is none") is tried again in a day or
+# two, with no back-off and no "could not be placed" in Needs you, this many
+# times in a row; then it counts as a refusal (the cistern's always times out)
+TIMEOUT_TRIES = 3
+
+
+def timeout_streak(memory, key: str) -> int:
+    """(0.105.26) How many searches in a row under this refusal key were cut
+    short before this one."""
+    return int(_d(_d(getattr(memory, "refusals", None)).get(key)).get("t") or 0)
+
+
+def brief_timeout(memory, p: Proposal, r: dict) -> bool:
+    """(0.105.26) A search cut short that is still to be tried again soon: not
+    a lasting failure (see TIMEOUT_TRIES)."""
+    return (r.get("ok") is False and bool(r.get("timed_out"))
+            and timeout_streak(memory, refusal_key(p)) + 1 < TIMEOUT_TRIES)
+
+
 def note_refusal(memory: Memory, p: Proposal, r: dict, now: int, bridge: str | None = None) -> None:
     """Book a refusal (or clear the count after a success), with the bridge
     version that refused it."""
@@ -1331,7 +1359,8 @@ def note_refusal(memory: Memory, p: Proposal, r: dict, now: int, bridge: str | N
         # success among many refusals began the back-off again at a day
         old = _d(memory.refusals.get(key))
         if int(old.get("n") or 0) >= 3:
-            memory.refusals[key] = {k: v for k, v in dict(old, n=int(old["n"]) // 2, until=now).items() if k != "why"}
+            memory.refusals[key] = {k: v for k, v in dict(old, n=int(old["n"]) // 2, until=now).items()
+                                    if k not in ("why", "t")}
         else:
             memory.refusals.pop(key, None)
         return
@@ -1344,6 +1373,18 @@ def note_refusal(memory: Memory, p: Proposal, r: dict, now: int, bridge: str | N
             memory.refusals[key]["v"] = str(bridge)
         return
     old = _d(memory.refusals.get(key))
+    if r.get("timed_out"):
+        # (0.105.26) a search cut short: again in a day or two, no back-off,
+        # TIMEOUT_TRIES times in a row (one timed-out well search began an
+        # 84-day back-off and said "no well could be placed")
+        t = int(old.get("t") or 0) + 1
+        if t < TIMEOUT_TRIES:
+            memory.refusals[key] = {"n": int(old.get("n") or 0), "t": t, "at": now,
+                                    "until": now + min(2, t) * TICKS_PER_DAY,
+                                    "why": ("search cut short: " + str(r.get("error") or ""))[:120]}
+            if bridge:
+                memory.refusals[key]["v"] = str(bridge)
+            return
     n = int(old.get("n") or 0) + 1
     days = min(REFUSAL_MAX_DAYS, REFUSAL_FIRST_DAYS * 2 ** (n - 1))
     if r.get("nothing_to_do"):
@@ -1352,6 +1393,8 @@ def note_refusal(memory: Memory, p: Proposal, r: dict, now: int, bridge: str | N
         days = max(days, 56)       # (0.104.34) a need that lasts: Enxah asked 368 times, 10 dwarves, all refused
     memory.refusals[key] = {"n": n, "until": now + days * TICKS_PER_DAY, "at": now,
                             "why": str(r.get("error") or "")[:120]}
+    if r.get("timed_out"):
+        memory.refusals[key]["t"] = int(old.get("t") or 0) + 1   # still cut short: the streak goes on
     if bridge:
         memory.refusals[key]["v"] = str(bridge)
     # forget refusals nothing has asked about for two months
@@ -1453,10 +1496,22 @@ def _entrance_spot(state: dict, entrance_id) -> str | None:
     return None
 
 
-def _record_any_outcome(a: dict, r: dict, state: dict, memory, now: int) -> None:
+def _record_any_outcome(a: dict, r: dict, state: dict, memory, now: int, brief: bool = False) -> None:
     """Bookkeeping that holds whether the action worked or was refused, so a
-    refusal is never simply asked again every cycle."""
+    refusal is never simply asked again every cycle. brief (0.105.26): a
+    search the bridge cut short, to be tried again in a day or two (see
+    TIMEOUT_TRIES): no failure booked for Needs you, the rule's wait short."""
     t = a.get("type")
+    if brief:
+        rule_ = {"make_pasture": "new_pasture", "farm_plots": "farms", "found_fort": "found"}.get(
+            t, "extra_well" if t == "place_well" and a.get("extra") else "well" if t == "place_well" else None)
+        if rule_:
+            cd = PLANNER_CONFIG.get(f"{rule_}_cooldown_ticks", PLANNER_CONFIG["rule_cooldown_ticks"])
+            memory.last_fired[rule_] = now - max(0, cd - TICKS_PER_DAY)       # again in a day
+        if t == "farm_plots":
+            memory.farm_failure_tick = now - max(0, PLANNER_CONFIG["farm_dig_retry_days"] - 1) * TICKS_PER_DAY
+        if t in ("make_pasture", "place_well", "farm_plots", "found_fort"):
+            return
     if t == "clear_gate" and r.get("ok") is False and isinstance(a.get("spot"), str):
         # nothing left, or the game says it's real: don't ask again
         reg = _d(_d(memory.atlas).get("registry"))

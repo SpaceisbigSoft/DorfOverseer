@@ -644,13 +644,18 @@ def _project_rules(s, traits, cfg, proposals, notes, can_use, memory) -> None:
         if (p.get("phase") == "dig" and int(dig.get("total") or 0) > 0
                 and ((age >= cfg["slow_dig_days"] and int(dig.get("dug") or 0) * 2 < int(dig.get("total") or 0))
                      or none_dug)):
-            action = {"type": "cancel_project", "project_id": p["id"], "unreached": True}
+            # (0.105.26) `unreached` (its spot kept off-limits) only where nothing
+            # was dug at all: a slow dig was reached, and a cavern well given up
+            # as slow stays revivable (lua: revive_cavern_well skips unreached)
+            action = {"type": "cancel_project", "project_id": p["id"]}
+            if none_dug:
+                action["unreached"] = True
             if p.get("kind") == "well" and _d(p.get("summary")).get("cavern"):
                 action["cavern_well"] = True
             proposals.append(Proposal("project", action,
                                       f"{what}: {dig.get('dug') or 0} of {dig.get('total')} tiles dug in {age} days: "
-                                      "give it up, so its building slot goes to what waits (and not that spot "
-                                      "again for a while)", 4))
+                                      "give it up, so its building slot goes to what waits"
+                                      + (" (and not that spot again for a while)" if none_dug else ""), 4))
         fw = _d(_d(p.get("furnish")).get("waiting"))
         # (0.104.33) or waits so long for them whatever the stone (Enxah's
         # storage level: 197 days for 1 statue, 199 usable boulders, the
@@ -1250,17 +1255,8 @@ def _project_rules(s, traits, cfg, proposals, notes, can_use, memory) -> None:
             notes.append(f"food first: {fpd:g} food a dwarf and no farm yet, so the {action['kind']} level waits "
                          "(the dwarves gather, fish and farm instead)")
             action = None
-    # (0.103.1) ghosts walk while the dead lie unburied (Enxah: 3 ghosts, 0
-    # free tombs, the building slots on bedrooms): a tomb level of its own
-    dead = _d(s.get("dead"))
-    if (allow["tombs"] and (dead.get("ghosts") or 0) > 0 and "tombs" not in kinds_open
-            and tombs_short(s, citizens, cfg, memory) > 0 and not (action and action.get("kind") == "tombs")):
-        short = tombs_short(s, citizens, cfg, memory) + (dead.get("ghosts") or 0)
-        coffins = max(4, min(30, short * 2))
-        proposals.append(Proposal("tombs_ghosts", {"type": "start_project", "kind": "tombs", "coffins": coffins,
-                                                   "urgent": True, "style": layout_style(profile)},
-                                  f"{dead.get('ghosts')} ghost(s) walk the fort and {dead.get('free_tombs', 0)} tombs "
-                                  f"are free: dig a tomb level with {coffins} coffins, its own building slot", 3))
+    # (0.105.26) the ghosts' own tomb level is proposed once, with the urgent
+    # levels above (tombs_ghosts); a second copy here proposed it again
     if action:
         action["style"] = layout_style(profile)
         if memory is not None and has_rule(memory.culture, "doored_levels"):

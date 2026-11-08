@@ -12,7 +12,7 @@ from quirks import has_rule
 from digest import _d, _l
 from planner_core import *  # noqa: F401,F403
 
-__all__ = ["MOOD_WORKSHOPS", "_mood_rules", "mood_item_text", "MOOD_CONSUMERS", "MOOD_TRADE_KEYS", "_mood_make", "_mood_slaughter", "_mood_materials", "mood_trade_wants"]
+__all__ = ["MOOD_WORKSHOPS", "_mood_rules", "mood_item_text", "MOOD_CONSUMERS", "MOOD_TRADE_KEYS", "_mood_make", "_mood_slaughter", "_mood_materials", "mood_trade_wants", "MOOD_BLOCKS", "mood_blocked"]
 
 
 # A crafting mood's skill -> the workshop (or furnace) the dwarf must claim.
@@ -108,6 +108,48 @@ MOOD_CONSUMERS = {"rough": ("cut_gems",), "cut_gem": ("encrust_goods",), "bone":
                   "cloth": ("cloth_bag", "yarn_bag", "silk_bag", "cloth_socks", "cloth_shoes"),
                   "leather": ("leather_shoes", "leather_low_boots", "leather_quiver"),
                   "bar": ("metal_crafts", "metal_amulet", "metal_bracelet", "metal_ring", "metal_earring")}
+
+
+# (0.105.26) the AI's other work orders that would use up what a waiting mood
+# needs, held in select() while it waits (the bag, quiver, shoe, jewellery,
+# crafts and cloth rules re-ordered what a mood had just cancelled); cloth and
+# thread by the kind of thread a request names (none named: every kind)
+MOOD_BLOCKS = {"rough": ("cut_gems",), "cut_gem": ("encrust_goods",), "bone": ("bone_crafts",),
+               "leather": ("leather_shoes", "leather_low_boots", "leather_quiver"),
+               "bar": ("metal_crafts", "metal_amulet", "metal_bracelet", "metal_ring", "metal_earring")}
+MOOD_CLOTH_BLOCKS = {"plant": ("cloth_bag", "cloth_socks", "cloth_shoes"), "silk": ("silk_bag",),
+                     "yarn": ("yarn_bag",)}
+MOOD_THREAD_BLOCKS = {"plant": ("weave_plant_cloth",), "silk": ("weave_silk_cloth",),
+                      "yarn": ("weave_yarn_cloth",)}
+
+
+def mood_blocked(s: dict) -> tuple[dict, dict]:
+    """(0.105.26) What the fort's crafting moods wait for and don't have
+    within reach, as ({recipe: what}, {material token: what}): the AI's
+    other work orders of those recipes, or of those materials (a bar of a
+    named metal), wait while a mood does."""
+    recipes, mats = {}, {}
+    for m in _l(_d(s.get("moods")).get("list")):
+        if not isinstance(m, dict) or not m.get("craft"):
+            continue
+        for x in _l(m.get("missing")):
+            if not isinstance(x, dict) or mood_on_hand(x) is True:
+                continue
+            kind, what = mood_kind(x), mood_item_text(x)
+            flags = set(str(f) for f in _l(x.get("flags")))
+            item = str(x.get("item") or "").upper()
+            if kind == "cloth" or item == "THREAD":
+                table = MOOD_CLOTH_BLOCKS if kind == "cloth" else MOOD_THREAD_BLOCKS
+                kinds = [k for k in table if k in flags] or list(table)
+                found = [r for k in kinds for r in table[k]]
+            else:
+                found = list(MOOD_BLOCKS.get(kind, ()))
+            for r in found:
+                recipes.setdefault(r, what)
+            mat = str(x.get("material") or "").upper().replace(" ", "_")
+            if kind == "bar" and mat and mat != "ROCK":
+                mats.setdefault(mat if ":" in mat else "INORGANIC:" + mat, what)
+    return recipes, mats
 
 
 # what a caravan is asked for, for a mood the fort can't supply (lua/ai-trade.lua's categories)

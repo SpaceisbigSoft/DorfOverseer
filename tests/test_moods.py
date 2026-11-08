@@ -231,7 +231,7 @@ def _():
     assert code_has(src, "    mood_free_items = act_mood_free_items,")
     assert code_has(src, "CACHE_INVALIDATES.mood_free_items = {'moods'}")
     assert code_has(src, "pcall(M.mood_report, job, u, txt)")
-    assert code_has(src, "tan_hide = {job = 'TanAHide'}") and code_has(src, "raw_green_glass = {job = 'MakeRawGlass'")
+    assert code_has(src, "tan_hide = {job = 'CustomReaction', reaction = 'TAN_A_HIDE'}") and code_has(src, "raw_green_glass = {job = 'MakeRawGlass'")
     body = src[src.index("function act_mood_free_items"):]
     body = body[:body.index("\nend\n") + 5]
     L = LuaRuntime(unpack_returned_tuples=True)
