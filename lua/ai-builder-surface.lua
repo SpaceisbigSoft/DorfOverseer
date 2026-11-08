@@ -29,7 +29,8 @@ end
 -- max_trees of them (a spot with fewer trees is better); the result lists
 -- them as trees = {{x, y, z}, ...}. (13c) Out of time with nothing found:
 -- nil, 'search cut short: ...', true.
-function find_surface_rect(w, h, min_d, reserved, shapes, max_trees)
+-- (0.105.27 fixes) `empty`: no tile with an item on it (a garbage dump's spot).
+function find_surface_rect(w, h, min_d, reserved, shapes, max_trees, empty)
     shapes = shapes or {FLOOR = true}
     max_trees = max_trees or 0
     local anchors = pasture_anchors()
@@ -49,7 +50,7 @@ function find_surface_rect(w, h, min_d, reserved, shapes, max_trees)
         if x >= 2 and y >= 2 and x <= mw - 3 and y <= mh - 3 then
             local t = tile_info(x, y, z)
             if t ~= nil and t.outside and not t.hidden and not t.liquid and not t.feature and not t.building
-                    and not inside_any(reserved or {}, x, y, z) and not tile_taken(x, y, z) then
+                    and not (empty and t.items) and not inside_any(reserved or {}, x, y, z) and not tile_taken(x, y, z) then
                 if is_tree(t) then
                     v = max_trees > 0 and 'tree'
                 elseif shapes[t.shape] == true and not t.designated and groups[walk_group(x, y, z)] == true then
@@ -131,7 +132,10 @@ local SURFACE_THINGS = {
     depot = {w = 5, h = 5, min_d = 4, mode = 'build', text = 'D', what = 'a trade depot', shapes = GROUND},
     -- a garbage dump zone: things marked for dumping are taken there (the AI
     -- marks worn-out clothes lying about when the game runs slowly)
-    dump = {w = 3, h = 3, min_d = 8, mode = 'zone', text = 'd(3x3)', what = 'a garbage dump', shapes = GROUND},
+    -- (0.105.27 fixes) on tiles with no item on them (empty): what lies in a
+    -- dump zone may be removed by DFHack's empty_dump
+    dump = {w = 3, h = 3, min_d = 8, mode = 'zone', text = 'd(3x3)', what = 'a garbage dump', shapes = GROUND,
+            empty = true},
     -- an animal stockpile: full cages from the cage traps go there, so the
     -- traps are loaded with empty cages again (prisoners stay in their cages)
     cages = {w = 3, h = 3, min_d = 6, mode = 'place', text = 'a(3x3)', what = 'a stockpile for full cages',
@@ -204,7 +208,27 @@ function place_surface(kind, dry_run)
         end
     end
     if not spot then
-        spot, why, cut = find_surface_rect(k.w, k.h, k.min_d, reserved, k.shapes, SURFACE_MAX_TREES)
+        spot, why, cut = find_surface_rect(k.w, k.h, k.min_d, reserved, k.shapes, SURFACE_MAX_TREES, k.empty)
+    end
+    -- (0.105.27 fixes) a spot that must be empty (the dump), cleared of trees:
+    -- the logs and whatever else lies there hauled away first
+    if spot and k.empty and #spot.trees == 0 then
+        local n = 0
+        for y = spot.y, spot.y + k.h - 1 do
+            for x = spot.x, spot.x + k.w - 1 do
+                local t = tile_info(x, y, spot.z)
+                if t and t.items then n = n + 1 end
+            end
+        end
+        if n > 0 then
+            if not dry_run and type(c) == 'table' then
+                clearing[kind] = c
+                save_clearing(clearing)
+            end
+            return {ok = false, rejected = true, waiting = true, kind = kind,
+                    error = ('items still lie on %d tile(s) of the spot for %s at x%d y%d: they are hauled away first')
+                        :format(n, k.what, spot.x, spot.y)}
+        end
     end
     if not spot then return {ok = false, error = why, timed_out = cut or nil} end
     if #spot.trees > 0 then
@@ -1342,7 +1366,9 @@ end
 --   inside false: outside on open ground, by place_surface('dump') (felling
 --     trees first if it must; the zone comes on a later call);
 --   inside true: a free 3x3 of inside floor near the main entrance, away from
---     the meeting hall, dining halls and the food; else a 3x3 room dug off a
+--     the meeting hall, dining halls and the food, with no item or building
+--     on it and no through-path (a dead end: one opening of at most 3 tiles,
+--     no part of a hall or corridor); else a 3x3 room dug off a
 --     corridor there (through a one-tile doorway), and the zone placed once
 --     it is dug (a later call).
 -- A dump zone already there on the same side of the walls is kept (no second
@@ -1354,6 +1380,7 @@ DUMP_INSIDE_RADIUS = 20     -- how far from the entrance (x, y) the inside dump 
 DUMP_INSIDE_DEPTH = 4       -- the entrance's level and the ones below it searched
 DUMP_KEEP_AWAY = 10         -- tiles from the meeting hall, dining halls and the food
 DUMP_KEEP_ENTRANCE = 3      -- and never right at the way in
+DUMP_OPENING = 3            -- (0.105.27 fixes) a free 3x3 inside: open to the rest in one run of this many tiles at most
 
 local function dump_zone_type(zn)
     local ok, name = pcall(function() return df.civzone_type[zn.type] end)
@@ -1449,7 +1476,27 @@ local function zone_inside(x, y, z, dry_run, why)
                                          dry_run = dry_run or nil})
 end
 
--- A room being dug for the dump: its 3x3 all floor (dug), 'digging', or nil (lost).
+-- (0.105.27 fixes) Only rock lies on the tile (what digging leaves): no item
+-- of any other kind. False when it can't be read.
+local function only_rock_on(x, y, z)
+    local ok, yes = pcall(function()
+        local block = dfhack.maps.getTileBlock(x, y, z)
+        if not block then return false end
+        for _, id in ipairs(block.items) do
+            local it = df.item.find(id)
+            if it and it.pos.x == x and it.pos.y == y and it.pos.z == z
+                    and df.item_type[it:getType()] ~= 'BOULDER' then
+                return false
+            end
+        end
+        return true
+    end)
+    return ok and yes == true
+end
+
+-- A room being dug for the dump: its 3x3 all floor (dug), 'digging', or nil
+-- (lost). (0.105.27 fixes) Dug, but something other than the dug rock lies
+-- in it: 'digging' still (it is taken away first), with no tile left to dig.
 local function dump_room_state(r)
     local dug, left = 0, 0
     for y = r.y, r.y + 2 do
@@ -1457,6 +1504,7 @@ local function dump_room_state(r)
             local t = tile_info(x, y, r.z)
             if not t then return nil end
             if t.shape == 'FLOOR' and not t.building and not tile_taken(x, y, r.z) then
+                if t.items and not only_rock_on(x, y, r.z) then return 'digging', 0, true end
                 dug = dug + 1
             elseif t.shape == 'WALL' and t.designated then
                 left = left + 1
@@ -1501,7 +1549,9 @@ function place_dump_zone(inside, dry_run)
             if out.ok and not dry_run then site_put(DUMP_ROOM_KEY, {}) end
             return out
         elseif state == 'digging' then
-            return dump_fail(true, ('the dump\'s room is still being dug (%d tile(s) left)'):format(left),
+            local cluttered = select(3, dump_room_state(r))
+            return dump_fail(true, cluttered and 'items lie in the dump\'s room: they are hauled away first'
+                                 or ('the dump\'s room is still being dug (%d tile(s) left)'):format(left),
                              {waiting = true, rejected = true, x = r.x, y = r.y, z = r.z, digging = true})
         end
         if not dry_run then site_put(DUMP_ROOM_KEY, {}) end      -- lost: look again
@@ -1516,11 +1566,36 @@ function place_dump_zone(inside, dry_run)
     local function ok_spot(x1, y1, x2, y2, z)
         return not near_any(away, x1, y1, x2, y2, z, DUMP_KEEP_AWAY)
     end
+    -- (0.105.27 fixes) no item on it (what lies in a dump zone may be removed)
     local function free(x, y, z)
         local t = info(x, y, z)
-        return t and t.shape == 'FLOOR' and not t.liquid and not t.outside and not t.building
+        return t and t.shape == 'FLOOR' and not t.liquid and not t.outside and not t.building and not t.items
             and not t.designated and not tile_taken(x, y, z) and walk_group(x, y, z) ~= 0
             and not inside_any(reserved, x, y, z)
+    end
+    -- (0.105.27 fixes) a dead end: the 16 tiles round the 3x3 open in ONE
+    -- run of at most DUMP_OPENING tiles (a doorway or a corridor's end), so
+    -- the dump is no through-path and no part of a hall or corridor
+    local RING = {}
+    for i = 0, 4 do table.insert(RING, {i - 1, -1}) end
+    for i = 1, 4 do table.insert(RING, {3, i - 1}) end
+    for i = 1, 4 do table.insert(RING, {3 - i, 3}) end
+    for i = 1, 3 do table.insert(RING, {-1, 3 - i}) end
+    local function dead_end(x, y, z)
+        local open = {}
+        for i, d in ipairs(RING) do
+            local t = info(x + d[1], y + d[2], z)
+            open[i] = t ~= nil and t.shape ~= 'WALL'
+        end
+        local n, runs = #RING, 0
+        local total = 0
+        for i = 1, n do
+            if open[i] then
+                total = total + 1
+                if not open[(i - 2) % n + 1] then runs = runs + 1 end
+            end
+        end
+        return runs == 1 and total <= DUMP_OPENING
     end
     local function dist(x, y, z) return math.max(math.abs(x + 1 - a.x), math.abs(y + 1 - a.y)) + 3 * math.abs(a.z - z) end
     -- 1) a free 3x3 of inside floor
@@ -1537,7 +1612,7 @@ function place_dump_zone(inside, dry_run)
                             if fits and not free(x + dx, y + dy, z) then fits = false end
                         end
                     end
-                    if fits then best = {x = x, y = y, z = z, d = d} end
+                    if fits and dead_end(x, y, z) then best = {x = x, y = y, z = z, d = d} end
                 end
             end
         end

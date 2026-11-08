@@ -153,12 +153,22 @@ def designated():
     return [k for k, t in W.tiles.items() if t.designated]
 
 
-@wtest("place_dump_zone inside: a named dump zone on free inside floor near the entrance, never at it")
+def alcove(x, y, z, door):
+    """(0.105.27 fixes) A dead-end 3x3 of floor at (x, y) on level z, opening
+    to the hall through the one tile `door`."""
+    for yy in range(y, y + 3):
+        for xx in range(x, x + 3):
+            W.set(xx, yy, z, LUA.table_from({"shape": "FLOOR"}))
+    W.set(door[0], door[1], z, LUA.table_from({"shape": "FLOOR"}))
+
+
+@wtest("place_dump_zone inside: a named dump zone on a free dead-end 3x3 near the entrance, never at it nor in the hall")
 def _():
+    alcove(62, 67, 80, (63, 66))
     r = B.place_dump_zone(True, True)
     assert r.ok and r.inside is True and r.dry_run and r.zone_id is None and not zones(), dict(r)
     r = B.place_dump_zone(True, False)
-    assert r.ok and r.inside is True and r.why and r.z == 80, dict(r)
+    assert r.ok and r.inside is True and r.why and (r.x, r.y, r.z) == (62, 67, 80), dict(r)
     assert r.zone_id == 901 + r.x
     z = zones()
     assert len(z) == 1 and z[0].text == 'd{name="AI dump"}(3x3)' and (z[0].x, z[0].y, z[0].z) == (r.x, r.y, r.z)
@@ -170,10 +180,11 @@ def _():
 def _():
     B.dump_keep_away = LUA.eval("function() return {{x1 = 50, y1 = 55, x2 = 66, y2 = 65, z = 80},"
                                 " {x1 = 50, y1 = 55, x2 = 66, y2 = 65, z = 79}} end")
+    alcove(62, 67, 80, (63, 66))          # too near the hall
+    alcove(78, 67, 80, (79, 66))          # far enough
     r = B.place_dump_zone(True, False)
-    assert r.ok, dict(r)
-    if abs(r.z - 80) <= 1:
-        assert r.x > 66 + 10 or r.x + 2 < 50 - 10, (r.x, r.y, r.z)
+    assert r.ok and (r.x, r.y, r.z) == (78, 67, 80), dict(r)
+    assert r.x > 66 + 10 or r.x + 2 < 50 - 10, (r.x, r.y, r.z)
     assert r.zone_id is not None
 
 

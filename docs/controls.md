@@ -83,7 +83,7 @@ On/off switches can also be set from outside the game. Put
 the fort's DF-AI folder. The overseer applies it once, through the bridge's
 `set_rules`, and renames it `rules-request.done.json` with the answer. Only
 switches whose default is on or off can be set this way, and (0.105.27)
-**Dispose of them**, as `{"rules": {"disposal": "dump"}}`
+**Dispose**, as `{"rules": {"disposal": "dump"}}`
 (`store`, `melt`, `dump` or `destroy`).
 
 ### The fort
@@ -233,24 +233,27 @@ belongings, and everything it dumps. These say what the AI does with them.
 Nothing near danger, during a siege, in a sealed cavern, on the cistern's
 tiles, an artifact or a living citizen's own is ever touched.
 
-- **Dispose of them** (`disposal`): each choice does everything the ones
+- **Dispose** (`disposal`): each choice does everything the ones
   above it do.
   - *store what is useful* (`store`): unforbids useful items (the dead's
     after burial, used ammo, enemy metal gear, cloth, leather, gems, coins)
     so the haulers store them.
-  - *store, melt surplus metal* (`melt`): also marks surplus and worn metal
-    weapons and armour for melting at a smelter (never masterworks).
+  - *store, melt surplus metal* (`melt`): also marks metal clutter for
+    melting at a smelter: forbidden worn or enemy weapons and armour lying
+    about, and badly worn or foreign-made ones lying outside any stockpile
+    (never stock in a pile or a bin, picks, axes or masterworks).
   - *store, melt, dump the junk* (`dump`): also marks junk (worn clothes,
     rags, rotten and non-metal enemy items) for a garbage dump, and makes a
     dump zone when there is none: outside, or in a small room dug near the
     entrance for a closed fort (Hermit hold, or Outsiders or Surface at -50
     or lower).
   - *all, and empty a full dump* (`destroy`, the default): also has DFHack
-    remove what piles up in the dump past a limit.
-- **Also items you forbade** (`disposal_player_items`, off): an item
+    remove what dumping left in the dump (the forbidden items there) past a
+    limit; never a citizen's body or remains, nor anything owned.
+- **Yours too** (`disposal_player_items`, off): an item
   forbidden for no reason the game gives is taken to be yours and left
   alone; on, the AI treats it like the rest.
-- **Keep invaders' gear (no melting)** (`keep_enemy_gear`, off): enemy
+- **Keep enemy gear** (`keep_enemy_gear`, off): enemy
   weapons and armour are stored, never melted. The War-hold preset turns it
   on.
 

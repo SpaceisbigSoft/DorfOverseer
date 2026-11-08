@@ -45,7 +45,7 @@ def state(level="destroy", **settings):
         "total": 900, "by_type": {"AMMO": 300, "WEAPON": 40, "ARMOR": 60, "CORPSE": 50},
         "by_reason": {"own_dead": 20, "used_ammo": 300, "other_dead": 250, "dumped": 200, "ai": 10, "unknown": 120},
         "by_where": {"surface": 600, "inside": 300, "caverns": 0, "near_danger": 0, "unreachable": 0},
-        "metal": 80, "worn": 90, "valuable": 2}}}
+        "metal": 80, "worn": 90, "valuable": 2, "corpses": {"own": 0, "other": 50}}}}
     return s, m
 
 
@@ -82,7 +82,7 @@ def _():
     mm = got["disposal_melt"].action
     assert mm == {"type": "mark_melt", "max": 40, "keep_masterwork": True, "keep_enemy_gear": False}, mm
     d = got["disposal_dump"].action
-    assert d == {"type": "mark_dump", "reasons": ["other_dead", "own_dead"], "max": 200}, d
+    assert d == {"type": "mark_dump", "reasons": ["free", "other_dead", "own_dead"], "max": 200}, d
     e = got["disposal_empty"]
     assert e.action == {"type": "empty_dump", "max": 200} and "200 items lie in the garbage dump" in e.reason, e
     o = got["disposal_orders"].action

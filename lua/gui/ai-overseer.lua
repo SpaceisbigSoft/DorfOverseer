@@ -602,13 +602,15 @@ function RulesPage:init()
         })
     end
     -- (0.105.27) forbidden items and junk: the right-hand column beside the
-    -- military switches (rows t+5..t+8; the left column ends at l=52 there)
+    -- military switches (rows t+5..t+8; the left column ends at l=52 there).
+    -- (0.105.27 fixes) short labels, l=56 w=50: they end at column 106 of the
+    -- window's ~120 inside (they ended at 118 before)
     table.insert(views, widgets.Label{frame = {t = t + 5, l = 56}, text = {{text = 'Forbidden items and junk:'}}})
     table.insert(views, widgets.CycleHotkeyLabel{
         view_id = 'disposal',
-        frame = {t = t + 6, l = 58, w = 60},
-        label = 'Dispose of them:',
-        label_width = 30,
+        frame = {t = t + 6, l = 56, w = 50},
+        label = 'Dispose:',
+        label_width = 20,
         options = (function()
             local out = {}
             for _, m in ipairs(S.DISPOSAL_CHOICES) do table.insert(out, {label = S.DISPOSAL_NAMES[m], value = m}) end
@@ -619,17 +621,17 @@ function RulesPage:init()
     })
     table.insert(views, widgets.ToggleHotkeyLabel{
         view_id = 'disposal_player_items',
-        frame = {t = t + 7, l = 58, w = 60},
-        label = 'Also items you forbade:',
-        label_width = 30,
+        frame = {t = t + 7, l = 56, w = 50},
+        label = 'Yours too:',
+        label_width = 20,
         initial_option = p.settings.disposal_player_items == true,
         on_change = function(v) p:set_field('disposal_player_items', v) end,
     })
     table.insert(views, widgets.ToggleHotkeyLabel{
         view_id = 'keep_enemy_gear',
-        frame = {t = t + 8, l = 58, w = 60},
-        label = 'Keep invaders\' gear (no melting):',
-        label_width = 36,
+        frame = {t = t + 8, l = 56, w = 50},
+        label = 'Keep enemy gear:',
+        label_width = 20,
         initial_option = p.settings.keep_enemy_gear == true,
         on_change = function(v) p:set_field('keep_enemy_gear', v) end,
     })

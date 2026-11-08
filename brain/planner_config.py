@@ -4,7 +4,14 @@ reads `<rule>_cooldown_ticks` by the rule's name (default rule_cooldown_ticks).
 planner_core re-exports PLANNER_CONFIG, so `from planner_core import PLANNER_CONFIG`
 works as before."""
 
-__all__ = ["PLANNER_CONFIG"]
+__all__ = ["PLANNER_CONFIG", "DISPOSAL_ACTION_MAX"]
+
+# (0.105.27 fixes) The most items one disposal action (unforbid_items,
+# mark_melt, mark_dump, empty_dump) may take a call: the bridge refuses a
+# bigger max (lua/ai-bridge-actions.lua DISPOSAL_MAX, lua/ai-disposal.lua
+# MAX_CAP, both 500; tests/test_disposal_fixes.py checks the three agree).
+# _disposal_rules caps every disposal max here.
+DISPOSAL_ACTION_MAX = 500
 
 PLANNER_CONFIG = {
     # Starting guesses, tuned from experience. Per citizen, before trait factors.
@@ -284,7 +291,7 @@ PLANNER_CONFIG = {
     "disposal_dump_cooldown_ticks": 7 * 1200,
     "disposal_place_dump_cooldown_ticks": 7 * 1200,   # a garbage dump asked for a week apart (refusals back off)
     "disposal_destroy_min": 150,                 # items lying in the dump before DFHack removes them...
-    "disposal_empty_max": 1000,                  # ...at most this many a call
+    "disposal_empty_max": 500,                   # ...at most this many a call (<= DISPOSAL_ACTION_MAX)
     "disposal_empty_cooldown_ticks": 7 * 1200,
     "disposal_orders_cooldown_ticks": 28 * 1200,  # the refuse standing order set at most once a month
     "disposal_unknown_note": 200,                # forbidden for no reason the game gives: past this, Needs you

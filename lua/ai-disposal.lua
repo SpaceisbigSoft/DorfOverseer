@@ -11,13 +11,13 @@
 --
 -- What this module does (the bridge's actions of the same names):
 --   unforbid_items   the useful things let go, so the haulers store them;
---   mark_melt        worn or enemy metal gear marked for melting (the bridge
+--   mark_melt        worn or enemy metal gear lying loose marked for melting (the bridge
 --                    adds a smelter work order: DF 50 doesn't make the job by
 --                    itself, the DF wiki's Melt page: "the job order will
 --                    still need to be made at a smelter");
 --   mark_dump        junk (worn clothes and rags, rotten food, non-metal enemy
 --                    junk) marked for the garbage dump;
---   empty_dump       what lies in the dump zones removed (dfhack.items.remove,
+--   empty_dump       what dumping left (forbidden) in the dump zones removed (dfhack.items.remove,
 --                    as DFHack's clear-webs and invader-item-destroyer do);
 --   set_standing_orders  DF's own standing orders on refuse, dumping and forbidding;
 --   report           the `disposal` report section.
@@ -37,7 +37,8 @@
 
 local U = reqscript('ai-util')      -- (13c) helpers shared by the modules
 
-MAX_CAP = 500                -- items changed a call at most
+MAX_CAP = 500                -- items changed a call at most (the bridge's DISPOSAL_MAX and the brain's
+                             -- planner_config DISPOSAL_ACTION_MAX are the same 500; a test checks)
 SIEGE_MIN_INVADERS = 3       -- live invaders on the map that make a siege (a lone thief is a danger, not a siege)
 MELT_ORDER_MAX = 20          -- a melt work order's amount at most
 STATE_THREATS = 'ai-overseer/threats'
@@ -229,14 +230,16 @@ end
 -- ---------------------------------------------------------------------------
 
 -- What every action reads once: the dangers, the siege, the seal, the
--- cistern, the dumps, the fort's race; the stockpiles and the other races'
--- corpses only when asked for.
+-- dumps, and the shared classifier's context (ai-util forbid_context: the
+-- cistern's tiles, the fort's race and civ, the other races' bodies when
+-- first needed), with this module's dump and stockpile tests.
 function context(opts)
     opts = opts or {}
-    local ctx = {spots = U.danger_spots(), siege = siege_state(), sealed = sealed_caverns() > 0,
-                 cistern = U.cistern_tiles(), dumps = dump_zones(), player_items = opts.player_items == true}
-    local ok, race = pcall(function() return df.global.plotinfo.race_id end)
-    ctx.race = ok and race or nil
+    local ctx = U.forbid_context()
+    ctx.spots, ctx.siege, ctx.sealed = U.danger_spots(), siege_state(), sealed_caverns() > 0
+    ctx.dumps, ctx.player_items = dump_zones(), opts.player_items == true
+    ctx.in_dump = function(x, y, z) return in_dump(ctx.dumps, x, y, z) ~= nil end
+    ctx.in_stockpile = function(x, y, z) return in_stockpile(ctx, x, y, z) end
     return ctx
 end
 
@@ -256,7 +259,7 @@ local function stockpiles(ctx)
     return by
 end
 
-local function in_stockpile(ctx, x, y, z)
+function in_stockpile(ctx, x, y, z)
     for _, b in ipairs(stockpiles(ctx)[z] or {}) do
         if x >= b.x1 and x <= b.x2 and y >= b.y1 and y <= b.y2 then
             local ok, yes = pcall(dfhack.buildings.containsTile, b, x, y)
@@ -266,59 +269,10 @@ local function in_stockpile(ctx, x, y, z)
     return false
 end
 
-local function corpse_race(it)
-    local ok, r = pcall(function() return it.race end)
-    return ok and r or nil
-end
-
--- The tiles where another race's body or body part lies (one pass over the
--- corpses, once a call): gear on them is a dead other's.
-local function corpse_tiles(ctx)
-    if ctx.corpses then return ctx.corpses end
-    local set = {}
-    for _, name in ipairs({'CORPSE', 'CORPSEPIECE'}) do
-        for _, it in ipairs(items_of(name) or {}) do
-            pcall(function()
-                local r = corpse_race(it)
-                if r ~= nil and r ~= ctx.race and it.flags.on_ground then set[key(it.pos.x, it.pos.y, it.pos.z)] = true end
-            end)
-        end
-    end
-    ctx.corpses = set
-    return set
-end
-
--- The owner, and whether he is alive: (unit or nil, alive?)
-local function owner_of(it)
-    local ok, u = pcall(dfhack.items.getOwner, it)
-    if not ok or u == nil then return nil, nil end
-    local okd, dead = pcall(dfhack.units.isDead, u)
-    return u, not (okd and dead)
-end
-
--- Why a forbidden item is forbidden ('free' when it isn't), from its
--- signature: the AI's (on the cistern), dumped (in a dump zone), a dead
--- citizen's (the dead_dwarf flag, its owner dead, or a body of the fort's
--- race), a dead other's (another race's body, or gear lying with one), used
--- ammo (on the ground outside a stockpile), else unknown (maybe the player's).
+-- Why a forbidden item is forbidden ('free' when it isn't): the one
+-- classifier the census uses too (ai-util forbidden_reason).
 function reason_of(it, kind, x, y, z, ctx)
-    local f = it.flags
-    if not f.forbid then return 'free' end
-    if x and ctx.cistern[key(x, y, z)] then return 'ai' end
-    if x and in_dump(ctx.dumps, x, y, z) then return 'dumped' end
-    if f.dead_dwarf then return 'own_dead' end
-    if f.owned then
-        local u, alive = owner_of(it)
-        if u ~= nil and not alive then return 'own_dead' end
-    end
-    if kind == 'CORPSE' or kind == 'CORPSEPIECE' then
-        local r = corpse_race(it)
-        if r ~= nil and r == ctx.race then return 'own_dead' end
-        return 'other_dead'
-    end
-    if x and f.on_ground and corpse_tiles(ctx)[key(x, y, z)] then return 'other_dead' end
-    if kind == 'AMMO' and x and f.on_ground and not in_stockpile(ctx, x, y, z) then return 'used_ammo' end
-    return 'unknown'
+    return (U.forbidden_reason(it, ctx, kind, x, y, z))
 end
 
 -- nil if the item may be touched, else why not (a word): what no action
@@ -330,7 +284,7 @@ function blocked(it, x, y, z, reason, ctx)
     local f = it.flags
     if f.artifact then return 'artifact' end
     if f.owned then
-        local u, alive = owner_of(it)
+        local u, alive = U.item_owner(it)
         if u == nil or alive then return 'owned' end
     end
     if ctx.cistern[key(x, y, z)] then return 'cistern' end
@@ -428,17 +382,24 @@ end
 -- store them: only loose ones on the ground, of the useful kinds (no bodies:
 -- the burial and refuse rules see to those). opts: reasons (default own_dead,
 -- used_ammo, other_dead), max (default 50), player_items ('unknown' is let go
--- only when it is listed and player_items is true).
+-- only when it is listed and player_items is true). 'dumped' and 'ai' are
+-- refused: the dump's would be carried back and dumped again for ever, and
+-- the cistern's stay forbidden.
 function unforbid_items(opts, dry_run)
     opts = opts or {}
+    local want = set_of(opts.reasons, {'own_dead', 'used_ammo', 'other_dead'})
+    for _, r in ipairs({'dumped', 'ai'}) do
+        if want[r] then
+            return {ok = false, rejected = true, error = ('unforbid_items: never the %s items'):format(r)}
+        end
+    end
     local ctx = context(opts)
     if ctx.siege.on then return siege_refusal(ctx, 'unforbidding') end
-    local want = set_of(opts.reasons, {'own_dead', 'used_ammo', 'other_dead'})
     local max = clamp_max(opts.max, 50)
     local res = new_result(dry_run)
     walk(USEFUL, function(it, kind)
         local f = it.flags
-        if not f.forbid or not f.on_ground then return end
+        if not f.forbid or not U.on_ground(it) then return end
         local x, y, z = position(it)
         local reason = x and reason_of(it, kind, x, y, z, ctx) or 'unknown'
         local why = blocked(it, x, y, z, reason, ctx)
@@ -455,13 +416,45 @@ function unforbid_items(opts, dry_run)
     return res
 end
 
--- Worn or enemy metal weapons, armour and ammo marked for melting (melt on,
--- forbid and dump off: a forbidden item isn't melted). Never a masterwork,
--- an artifact, or a squad's assigned gear; enemy gear (a dead other's) only
--- when keep_enemy_gear is off. opts: max (default 20), keep_masterwork (only
--- true: masterworks are never melted), keep_enemy_gear, player_items.
--- Returns also smelters, magma_smelters, can_melt, already (marked before),
--- melt_order (a waiting order's id) and needs_order.
+-- Is it a tool the fort works with: a pick (mining) or an axe (wood
+-- cutting), by its skill or its id? A weapon whose kind can't be read counts
+-- as one (kept).
+function is_tool(it, kind)
+    if kind ~= 'WEAPON' then return false end
+    local ok, yes = pcall(function()
+        local st = it.subtype
+        local js = df.job_skill
+        local sk = st.skill_melee
+        if sk == js.MINING or sk == js.AXE then return true end
+        local id = tostring(st.id or '')
+        return id:find('PICK', 1, true) ~= nil or id:find('AXE', 1, true) ~= nil
+    end)
+    return not ok or yes == true
+end
+
+-- Made by another race than the fort's (crafted items record their maker's
+-- race), or nil when the item doesn't say.
+local function foreign_made(it, ctx)
+    local ok, r = pcall(function() return it.maker_race end)
+    if not ok or type(r) ~= 'number' or r < 0 or ctx.race == nil then return nil end
+    return r ~= ctx.race
+end
+
+-- Metal weapons, armour and ammo marked for melting (melt on, forbid and
+-- dump off: a forbidden item isn't melted): the clutter, not the stock.
+-- Only an item lying loose on the ground (never one in a bin, a hand or a
+-- building), and of those:
+--   forbidden: worn (wear >= 1) or a dead enemy's (other_dead; kept when
+--     keep_enemy_gear and unworn);
+--   not forbidden: only outside every stockpile, and worn (wear >= 2) or
+--     made by another race (the enemy's left on the field; whether a maker
+--     was an enemy or a trader can't be told, so never stock in a pile).
+-- Never a pick or an axe (the miners' and woodcutters' tools), a masterwork,
+-- an artifact, or a squad's assigned gear. opts: max (default 20),
+-- keep_masterwork (only true: masterworks are never melted),
+-- keep_enemy_gear, player_items. Returns also smelters, magma_smelters,
+-- can_melt, already (marked before), melt_order (a waiting order's id) and
+-- needs_order.
 function mark_melt(opts, dry_run)
     opts = opts or {}
     if opts.keep_masterwork == false then
@@ -477,13 +470,24 @@ function mark_melt(opts, dry_run)
     walk(GEAR, function(it, kind)
         local f = it.flags
         if f.melt then res.already = res.already + 1; return end
+        if not U.on_ground(it) then return end
         if not is_metal(it) then return end
         local x, y, z = position(it)
-        local reason = x and reason_of(it, kind, x, y, z, ctx) or 'unknown'
-        local worn = wear(it) >= 1
-        local enemy = reason == 'other_dead'
-        if not worn and not enemy then return end
-        if enemy and keep_enemy and not worn then skip(res, 'enemy_gear'); return end
+        if not x then return end
+        local reason = reason_of(it, kind, x, y, z, ctx)
+        local w = wear(it)
+        local enemy
+        if f.forbid then
+            enemy = reason == 'other_dead'
+            if w < 1 and not enemy then return end
+            if enemy and keep_enemy and w < 1 then skip(res, 'enemy_gear'); return end
+        else
+            if in_stockpile(ctx, x, y, z) then return end
+            enemy = foreign_made(it, ctx) == true
+            if w < 2 and not enemy then return end
+            if enemy and keep_enemy and w < 2 then skip(res, 'enemy_gear'); return end
+        end
+        if is_tool(it, kind) then skip(res, 'tool'); return end
         local why = blocked(it, x, y, z, reason, ctx)
         if why then skip(res, why); return end
         if quality(it) >= 5 then skip(res, 'masterwork'); return end
@@ -507,9 +511,9 @@ function mark_melt(opts, dry_run)
     return res
 end
 
--- Junk marked for the garbage dump (dump on, forbid and melt off): worn
--- (wear >= 2) non-metal clothes and rags, rotten food on the ground, and a
--- dead other's non-metal gear. opts: reasons (the forbidden reasons taken,
+-- Junk marked for the garbage dump (dump on, forbid and melt off), lying
+-- loose on the ground only: worn (wear >= 2) non-metal clothes and rags,
+-- rotten food, and a dead other's non-metal gear. opts: reasons (the forbidden reasons taken,
 -- and 'free' for what isn't forbidden; default own_dead, used_ammo,
 -- other_dead; what isn't forbidden is taken whatever they say), max (default
 -- 50), player_items ('unknown' is taken only when both it is listed and
@@ -534,10 +538,11 @@ function mark_dump(opts, dry_run)
     walk(kinds, function(it, kind)
         local f = it.flags
         if f.dump then return end
+        if not U.on_ground(it) then return end      -- never one in a bin, a hand or a building
         local x, y, z = position(it)
         local junk
         if rots[kind] then
-            junk = f.rotten and f.on_ground
+            junk = f.rotten
         else
             local metal = is_metal(it)
             if not metal and IS_CLOTHES[kind] and wear(it) >= 2 then junk = true end
@@ -566,11 +571,14 @@ function mark_dump(opts, dry_run)
     return res
 end
 
--- What lies in the dump zones removed from the game (dfhack.items.remove,
--- each in a pcall). Only a loose item on the ground: never one in a
--- container or a unit's hands, one that holds other items, an artifact, one
--- a job holds, a building's part, an owned one, or one the masks keep.
--- opts: max (default 100).
+-- What dumping left in the dump zones removed from the game
+-- (dfhack.items.remove, each in a pcall): only a FORBIDDEN loose item on the
+-- ground there (what the haulers dump lands forbidden; an unforbidden one
+-- lying there is somebody's, left alone). Never the remains of one of the
+-- fort's own (a body or part of its race or its civ, or the dead_dwarf
+-- flag: a ghost waits on those), one in a container or a unit's hands, one
+-- that holds other items, an artifact, one a job holds, a building's part,
+-- an owned one, or one the masks keep. opts: max (default 100).
 function empty_dump(opts, dry_run)
     opts = opts or {}
     local ctx = context(opts)
@@ -585,10 +593,13 @@ function empty_dump(opts, dry_run)
     for _, zn in ipairs(ctx.dumps) do
         local go = zone_items(zn, function(it)
             local f = it.flags
-            if f.in_inventory or not f.on_ground then skip(res, 'held'); return end
+            if not f.forbid then skip(res, 'not_forbidden'); return end
+            if not U.on_ground(it) then skip(res, 'held'); return end
             if f.container then skip(res, 'container'); return end
             local okc, inside = pcall(dfhack.items.getContainedItems, it)
             if okc and type(inside) == 'table' and #inside > 0 then skip(res, 'container'); return end
+            local kind = U.item_kind(it)
+            if U.fort_remains(it, kind, ctx) then skip(res, 'own_remains'); return end
             local x, y, z = it.pos.x, it.pos.y, it.pos.z
             local why = blocked(it, x, y, z, 'dumped', ctx)
             if why then skip(res, why); return end

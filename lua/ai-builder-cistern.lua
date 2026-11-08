@@ -1117,7 +1117,9 @@ function cistern_step(dry_run, prefs, tunnel)
         end
         if dry_run then return {ok = true, dry_run = true, retire = true} end
         local old = site_get(CISTERN_KEY .. '/retired')
-        table.insert(old, {cistern = p0.cistern, source = p0.source, why = 'the first design (pressure could flood the fort)'})
+        -- (0.105.27 fixes) its tunnel and shaft too: ai-util cistern_tiles keeps their items forbidden
+        table.insert(old, {cistern = p0.cistern, source = p0.source, tunnel_path = p0.tunnel_path,
+                           intake_z = p0.intake_z, shaft = p0.shaft, why = 'the first design (pressure could flood the fort)'})
         site_put(CISTERN_KEY .. '/retired', old)
         site_put(CISTERN_KEY, {})
         return {ok = true, stage = 'retired', retired = true,

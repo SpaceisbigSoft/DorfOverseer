@@ -125,30 +125,232 @@ end
 -- --- the cistern's tiles ------------------------------------------------------------
 --
 -- (0.105.27) The tiles the AI's cistern fills ("x,y,z" = true): its room on
--- its level, the tunnel on the source's level, and the shaft. The AI forbids
--- what lies there before the flood (ai-builder-cistern forbid_items_on); the
--- disposal actions and the census leave those items be. Read from the save
--- (the cistern's record), so no builder load is needed. {} with no cistern.
+-- its level, the tunnel on the source's level (all of it but the plug, the
+-- last tile, beside the source), and the shaft from the room's level to the
+-- source's; and the same for every retired cistern (its room always, its
+-- tunnel and shaft when the record has them). The AI forbids what lies there
+-- before the flood (ai-builder-cistern forbid_items_on); the disposal actions
+-- and the census leave those items be. Read from the save (the cistern's
+-- records), so no builder load is needed. {} with no cistern.
 CISTERN_KEY = 'ai-overseer/cistern'
+
+local function add_cistern(set, p)
+    if type(p) ~= 'table' or type(p.cistern) ~= 'table' then return end
+    local c = p.cistern
+    local z = c.z
+    if type(z) ~= 'number' then return end
+    for y = c.y1, c.y2 do
+        for x = c.x1, c.x2 do set[x .. ',' .. y .. ',' .. z] = true end
+    end
+    local zi = tonumber(p.intake_z) or z
+    local path = type(p.tunnel_path) == 'table' and p.tunnel_path or {}
+    for i = 1, #path - 1 do              -- the last tile is the plug
+        local q = path[i]
+        if type(q) == 'table' and q.x and q.y then set[q.x .. ',' .. q.y .. ',' .. zi] = true end
+    end
+    if type(p.shaft) == 'table' and p.shaft.x and p.shaft.y then
+        for zz = math.min(z, zi), math.max(z, zi) do set[p.shaft.x .. ',' .. p.shaft.y .. ',' .. zz] = true end
+    end
+end
 
 function cistern_tiles()
     local set = {}
     pcall(function()
         local d = site_get(CISTERN_KEY, {})
-        local p = type(d) == 'table' and d.plan
-        if type(p) ~= 'table' or type(p.cistern) ~= 'table' then return end
-        local c = p.cistern
-        local z = c.z
-        local zi = p.intake_z or z
-        for y = c.y1, c.y2 do
-            for x = c.x1, c.x2 do set[x .. ',' .. y .. ',' .. z] = true end
-        end
-        for _, q in ipairs(type(p.tunnel_path) == 'table' and p.tunnel_path or {}) do
-            if q.x and q.y then set[q.x .. ',' .. q.y .. ',' .. zi] = true end
-        end
-        if type(p.shaft) == 'table' and p.shaft.x then
-            for zz = math.min(z, zi), math.max(z, zi) do set[p.shaft.x .. ',' .. p.shaft.y .. ',' .. zz] = true end
+        add_cistern(set, type(d) == 'table' and d.plan)
+    end)
+    pcall(function()
+        for _, r in ipairs(site_get(CISTERN_KEY .. '/retired', {})) do
+            pcall(add_cistern, set, r)
         end
     end)
     return set
+end
+
+-- --- why an item is forbidden ----------------------------------------------------
+--
+-- (0.105.27 disposal fixes) The ONE classifier the census (ai-census
+-- items.forbidden) and the disposal actions (ai-disposal) both use, so what
+-- the census counts is what the actions act on. Who set item_flags.forbid
+-- can't be read, so a forbidden item is put down to a reason from its
+-- signature, first match wins:
+--   ai          on the cistern's tiles (cistern_tiles above)
+--   dumped      lying in a garbage dump zone (ctx.in_dump)
+--   own_dead    the dead_dwarf flag, an owner who is dead, or a body (or a
+--               part) of one of the fort's own: its race AND its civ (a civ
+--               that can't be read counts as the fort's)
+--   other_dead  a body or part of another race or civ, or what the dead wore
+--               or carried (DEAD_GEAR) lying on the ground within the 3x3
+--               round such a body
+--   used_ammo   ammo on the ground outside a stockpile (ctx.in_stockpile)
+--   unknown     the rest: maybe the player's
+-- An item that isn't forbidden is 'free'. The second value says whether it
+-- is a body or a part: 'own', 'other', or nil.
+DEAD_GEAR = {WEAPON = true, ARMOR = true, HELM = true, SHOES = true, GLOVES = true, PANTS = true,
+             SHIELD = true, AMMO = true, QUIVER = true, BACKPACK = true, FLASK = true, CROWN = true,
+             RING = true, EARRING = true, BRACELET = true, AMULET = true, SCEPTER = true}
+CORPSE_KINDS = {CORPSE = true, CORPSEPIECE = true}
+
+local function tkey(x, y, z) return x .. ',' .. y .. ',' .. z end
+
+-- The item's type name ('WEAPON'...), or nil.
+function item_kind(it)
+    local ok, k = pcall(function() return df.item_type[it:getType()] end)
+    if ok and type(k) == 'string' then return k end
+    return nil
+end
+
+-- Where the item is (through its holder or container): x, y, z, or nil off the map.
+function item_pos(it)
+    local okp, x, y, z = pcall(function() return dfhack.items.getPosition(it) end)
+    if okp and type(x) == 'number' and x >= 0 then return x, y, z end
+    if okp and (type(x) == 'userdata' or type(x) == 'table') then
+        local okc, cx, cy, cz = pcall(function() return x.x, x.y, x.z end)
+        if okc and type(cx) == 'number' and cx >= 0 then return cx, cy, cz end
+    end
+    if okp then return nil end
+    local okq, qx, qy, qz = pcall(function() return it.pos.x, it.pos.y, it.pos.z end)
+    if okq and type(qx) == 'number' and qx >= 0 then return qx, qy, qz end
+    return nil
+end
+
+-- Lying loose on the ground: not in a bin, a barrel, a unit's hands or a building.
+function on_ground(it)
+    local f = it.flags
+    return f.on_ground == true and not (f.in_inventory or f.in_building or f.construction) and true or false
+end
+
+-- The item's owner and whether he lives: (unit, alive) or (nil, nil).
+function item_owner(it)
+    local ok, u = pcall(dfhack.items.getOwner, it)
+    if not ok or u == nil then return nil, nil end
+    local okd, dead = pcall(function()
+        return dfhack.units.isDead(u) or (u.flags2 ~= nil and u.flags2.killed == true)
+    end)
+    return u, not (okd and dead)
+end
+
+-- The fort's race and civ (either nil when the game can't say).
+function fort_race_civ()
+    local okr, race = pcall(function() return df.global.plotinfo.race_id end)
+    local okc, civ = pcall(function() return df.global.plotinfo.civ_id end)
+    return okr and tonumber(race) or nil, okc and tonumber(civ) or nil
+end
+
+-- The race and civ of the creature a body (or part) was: (race, civ), each nil when unknown.
+function corpse_race_civ(it)
+    local okr, race = pcall(function() return it.race end)
+    local okc, civ = pcall(function()
+        local u = df.unit.find(it.unit_id)
+        return u and u.civ_id
+    end)
+    return okr and tonumber(race) or nil, okc and tonumber(civ) or nil
+end
+
+-- A body or part of a kind (CORPSE / CORPSEPIECE): 'own' (the fort's race
+-- and civ) or 'other'; nil for anything else. A race that can't be read
+-- counts as another's; a civ that can't be read as the fort's.
+function corpse_side(it, kind, ctx)
+    if not CORPSE_KINDS[kind or ''] then return nil end
+    local race, civ = corpse_race_civ(it)
+    if race == nil or ctx.race == nil or race ~= ctx.race then return 'other' end
+    if civ ~= nil and ctx.civ ~= nil and civ ~= ctx.civ then return 'other' end
+    return 'own'
+end
+
+-- The remains of one of the fort's own, in the widest sense (nothing ever
+-- destroys these): the dead_dwarf flag, or a body or part of the fort's
+-- race OR its civ (or whose race, or kind, can't be read).
+function fort_remains(it, kind, ctx)
+    if it.flags.dead_dwarf then return true end
+    if kind == nil then return true end         -- can't tell what it is: kept
+    if not CORPSE_KINDS[kind] then return false end
+    local race, civ = corpse_race_civ(it)
+    if race == nil or (ctx.race ~= nil and race == ctx.race) then return true end
+    if civ ~= nil and ctx.civ ~= nil and civ == ctx.civ then return true end
+    return false
+end
+
+-- The context forbidden_reason reads: the cistern's tiles, the fort's race
+-- and civ, and the caller's own tests for a dump zone's tile and a
+-- stockpile's (opts.in_dump(x, y, z), opts.in_stockpile(x, y, z)). The other
+-- races' bodies are found on the first need (one pass over the bodies).
+function forbid_context(opts)
+    opts = opts or {}
+    local ctx = {cistern = cistern_tiles(), in_dump = opts.in_dump, in_stockpile = opts.in_stockpile}
+    ctx.race, ctx.civ = fort_race_civ()
+    return ctx
+end
+
+-- The bodies and parts in the game: a list (items.other's, else the whole list filtered).
+local function corpse_items()
+    local out = {}
+    local ok = pcall(function()
+        local other = df.global.world.items.other
+        for _, name in ipairs({'CORPSE', 'CORPSEPIECE'}) do
+            for _, it in ipairs(other[name]) do table.insert(out, it) end
+        end
+    end)
+    if ok then return out end
+    out = {}
+    pcall(function()
+        for _, it in ipairs(df.global.world.items.all) do
+            if CORPSE_KINDS[item_kind(it) or ''] then table.insert(out, it) end
+        end
+    end)
+    return out
+end
+
+-- The tiles where another's body or part lies on the ground ("x,y,z" = true), once a context.
+function other_corpse_tiles(ctx)
+    if ctx.corpse_tiles then return ctx.corpse_tiles end
+    local set = {}
+    for _, it in ipairs(corpse_items()) do
+        pcall(function()
+            local f = it.flags
+            if f.removed or f.garbage_collect or not on_ground(it) then return end
+            if corpse_side(it, item_kind(it) or 'CORPSE', ctx) ~= 'other' then return end
+            local x, y, z = item_pos(it)
+            if x then set[tkey(x, y, z)] = true end
+        end)
+    end
+    ctx.corpse_tiles = set
+    return set
+end
+
+-- Within the 3x3 round another's body?
+function near_other_corpse(ctx, x, y, z)
+    local set = other_corpse_tiles(ctx)
+    if next(set) == nil then return false end
+    for dx = -1, 1 do
+        for dy = -1, 1 do
+            if set[tkey(x + dx, y + dy, z)] then return true end
+        end
+    end
+    return false
+end
+
+-- Why the item is forbidden (see above): reason, corpse side ('own',
+-- 'other' or nil). kind and x, y, z are read from the item when not given.
+function forbidden_reason(it, ctx, kind, x, y, z)
+    local f = it.flags
+    kind = kind or item_kind(it)
+    local corpse = corpse_side(it, kind, ctx)
+    if not f.forbid then return 'free', corpse end
+    if x == nil then x, y, z = item_pos(it) end
+    if x and ctx.cistern[tkey(x, y, z)] then return 'ai', corpse end
+    if x and ctx.in_dump and ctx.in_dump(x, y, z) then return 'dumped', corpse end
+    if f.dead_dwarf then return 'own_dead', corpse end
+    if f.owned then
+        local u, alive = item_owner(it)
+        if u ~= nil and not alive then return 'own_dead', corpse end
+    end
+    if corpse == 'own' then return 'own_dead', corpse end
+    if corpse == 'other' then return 'other_dead', corpse end
+    local ground = x ~= nil and on_ground(it)
+    if ground and DEAD_GEAR[kind or ''] and near_other_corpse(ctx, x, y, z) then return 'other_dead', nil end
+    if ground and kind == 'AMMO' and not (ctx.in_stockpile and ctx.in_stockpile(x, y, z)) then
+        return 'used_ammo', nil
+    end
+    return 'unknown', nil
 end

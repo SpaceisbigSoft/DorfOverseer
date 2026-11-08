@@ -15,6 +15,7 @@ from harness import test, finish  # noqa: E402
 
 CENSUS = (ROOT / "lua" / "ai-census.lua").read_text(encoding="utf-8")
 REPORT = (ROOT / "lua" / "ai-bridge-report.lua").read_text(encoding="utf-8")
+UTIL = (ROOT / "lua" / "ai-util.lua").read_text(encoding="utf-8")
 
 # A fake world: the fort is dwarves (race 1, civ 7) on level 10. Tiles: x >= 70
 # is a cavern, y >= 80 outside, (90, 90) a walk group no citizen stands in.
@@ -22,7 +23,7 @@ REPORT = (ROOT / "lua" / "ai-bridge-report.lua").read_text(encoding="utf-8")
 # (the last tile the plug). A dump zone x 20-22 y 20-22, a stockpile at (41, 41),
 # an invader at (60, 60).
 FAKE = r"""
-local src, util_exports = ...
+local src, util_exports, util_src = ...
 local env = setmetatable({}, {__index = _G})
 local function vec(l) local t = {_v = true}; for i, v in ipairs(l) do t[i - 1] = v end; return t end
 local real = ipairs
@@ -52,11 +53,11 @@ local ITEMS = {
     it('BOULDER', 21, 21, 10),                                  -- dumped
     it('PANTS', 30, 30, 10, {dead_dwarf = true}, {wear = 2}),   -- own_dead (worn)
     it('PANTS', 31, 30, 10, {owned = true}, {owner = owner_dead}), -- own_dead: the owner is dead
-    it('CORPSE', 32, 30, 10, nil, {race = 1, unit_id = 11}),    -- own_dead: a citizen's corpse
+    it('CORPSE', 32, 30, 10, nil, {race = 1, unit_id = 11}),    -- corpses.own: a citizen's corpse
     it('AMMO', 40, 40, 10, nil, {metal = true}),                -- used_ammo
     it('AMMO', 41, 41, 10),                                     -- unknown: in a stockpile
-    it('CORPSE', 50, 50, 10, nil, {race = 2, unit_id = 12}),    -- other_dead
-    it('CORPSEPIECE', 50, 52, 10, nil, {race = 1, unit_id = 13}), -- other_dead: a dwarf of another civ
+    it('CORPSE', 50, 50, 10, nil, {race = 2, unit_id = 12}),    -- corpses.other
+    it('CORPSEPIECE', 50, 52, 10, nil, {race = 1, unit_id = 13}), -- corpses.other: a dwarf of another civ
     it('WEAPON', 51, 51, 10, nil, {metal = true, quality = 5}), -- other_dead: lying by the goblin
     it('BOULDER', 61, 60, 10),                                  -- unknown, near danger
     it('BOULDER', 75, 10, 10),                                  -- unknown, caverns
@@ -83,9 +84,13 @@ env.df = {global = {world = {units = {active = vec({enemy, cit})}, items = {all 
           item_type = TYPES, building_type = BT, civzone_type = {[3] = 'Dump'},
           unit = {find = function(id) return UNITS[id] end},
           creature_raw = {find = function() return {creature_id = 'X'} end}}
-local SITE = {['ai-overseer/cistern'] = {stage = 'done', plan = {cistern = {x1 = 5, y1 = 5, x2 = 6, y2 = 6, z = 10},
+SITE = {['ai-overseer/cistern'] = {stage = 'done', plan = {cistern = {x1 = 5, y1 = 5, x2 = 6, y2 = 6, z = 10},
               intake_z = 9, tunnel_path = {{x = 2, y = 2}, {x = 3, y = 2}, {x = 4, y = 2}}}}}
-local util = {site_get = function(k, d) return SITE[k] or d end}
+-- (0.105.27 fixes) the real ai-util (its forbidden_reason is the census'
+-- classifier), loaded over this fake, its save read from SITE
+local util = setmetatable({}, {__index = env})
+assert(load(util_src, 'ai-util', 't', util))()
+util.site_get = function(k, d) local v = SITE[k]; if v == nil then return d end return v end
 for k, v in pairs(util_exports or {}) do util[k] = v end
 env.UTIL = util
 env.reqscript = function(n)
@@ -120,21 +125,22 @@ return env
 def world(util_exports=None):
     lua = LuaRuntime(unpack_returned_tuples=True)
     exports = lua.table_from(util_exports or {})
-    return lua, lua.execute(FAKE, CENSUS, exports)
+    return lua, lua.execute(FAKE, CENSUS, exports, UTIL)
 
 
 def forbidden(env):
     return env.census()["items"].forbidden
 
 
-@test("census.items.forbidden: one item for each reason, counted by its reason")
+@test("census.items.forbidden: one item for each reason, counted by its reason; bodies apart (corpses)")
 def _():
     _, env = world()
     fb = forbidden(env)
     assert fb.total == 15, fb.total
     r = dict(fb.by_reason)
-    assert r == {"ai": 2, "dumped": 1, "own_dead": 3, "used_ammo": 1, "other_dead": 3, "unknown": 5}, r
-    assert sum(r.values()) == fb.total
+    assert r == {"ai": 2, "dumped": 1, "own_dead": 2, "used_ammo": 1, "other_dead": 1, "unknown": 5}, r
+    assert dict(fb.corpses) == {"own": 1, "other": 2}, dict(fb.corpses)
+    assert sum(r.values()) + fb.corpses.own + fb.corpses.other == fb.total
 
 
 @test("census.items.forbidden: by where (surface/inside/caverns, near danger, unreachable)")
@@ -170,7 +176,7 @@ def _():
                 danger_spots = function() calls.spots = calls.spots + 1; return {{x = 10, y = 85, z = 10}} end,
                 near_danger = function(sp, x, y, z) calls.near = calls.near + 1; return x == 10 and y == 85 end}
     """)
-    env = lua.execute(FAKE, CENSUS, exports)
+    env = lua.execute(FAKE, CENSUS, exports, UTIL)
     ds, nd, src = env.danger_helpers()
     assert src == "ai-util", src
     w = env.census()["items"].forbidden.by_where

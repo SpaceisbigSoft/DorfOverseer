@@ -24,19 +24,23 @@ LUA_DIR = ROOT / "lua"
 
 # A fort: the surface from z 150 up, a cavern at z 100, the fort's race 1.
 # A dump zone (id 50) on the surface at x10-12 y10-12 z150. The cistern's
-# room at x40-42 y40-42 z120. Items are made by mk{kind=..., ...}.
+# room at x40-42 y40-42 z120, its tunnel (43..44, 41) and the plug (45, 41). Items
+# are made by mk{kind=..., ...}.
 FAKE = r"""
 local src = ...
 local W = {items = {}, by_kind = {}, units = {}, zones = {}, piles = {}, furnaces = {}, orders = {},
            site = {}, removed = {}, caves = {}, assigned = {}}
 local env = setmetatable({}, {__index = _G})
 local function qual(self) return self.quality or 0 end
+local function kind_of(self) return self.kind end
 function W.mk(t)
     t.id = t.id or (#W.items + 100)
     t.flags = t.flags or {}
     if t.flags.on_ground == nil and not t.flags.in_inventory then t.flags.on_ground = true end
     t.pos = t.pos or {x = 70, y = 70, z = 130}
     t.getQuality = qual
+    t.getType = kind_of
+    if t.kind == 'WEAPON' and t.subtype == nil then t.subtype = {skill_melee = 2, id = 'ITEM_WEAPON_SWORD_SHORT'} end
     table.insert(W.items, t)
     W.by_kind[t.kind] = W.by_kind[t.kind] or {}
     table.insert(W.by_kind[t.kind], t)
@@ -65,6 +69,8 @@ env.df = {
     building_type = {Civzone = 1},
     furnace_type = {Smelter = 1, MagmaSmelter = 2},
     job_type = {MeltMetalObject = 5},
+    job_skill = {MINING = 0, AXE = 1, SWORD = 2},
+    item_type = setmetatable({}, {__index = function(_, k) return k end}),
 }
 env.dfhack = {
     units = {isDead = function(u) return u.dead == true end, isDanger = function(u) return u.danger == true end,
@@ -102,7 +108,7 @@ function W.dump(id, x1, y1, z)
     return zn
 end
 W.site['ai-overseer/cistern'] = {stage = 'filling',
-    plan = {cistern = {x1 = 40, y1 = 40, x2 = 42, y2 = 42, z = 120}, tunnel_path = {{x = 43, y = 41}, {x = 44, y = 41}}}}
+    plan = {cistern = {x1 = 40, y1 = 40, x2 = 42, y2 = 42, z = 120}, tunnel_path = {{x = 43, y = 41}, {x = 44, y = 41}, {x = 45, y = 41}}}}   -- (45, 41): the plug
 assert(load(src, 'ai-disposal', 't', env))()
 return env, W
 """
@@ -258,18 +264,18 @@ def _():
 
 # --- mark_melt -------------------------------------------------------------------------
 
-@test("mark_melt: worn metal and a dead enemy's metal gear marked (forbid off); never masterwork, assigned or non-metal")
+@test("mark_melt: forbidden worn metal and a dead enemy's metal gear marked (forbid off); never masterwork, assigned or non-metal")
 def _():
     if not need_lua():
         return
     lua, env, w = world()
-    worn = mk(lua, w, kind="WEAPON", metal=True, wear=1)
+    worn = mk(lua, w, kind="WEAPON", metal=True, wear=1, flags={"forbid": True, "dead_dwarf": True})
     mk(lua, w, kind="CORPSE", race=2, flags={"forbid": True}, pos=(20, 20, 130))
     enemy = mk(lua, w, kind="ARMOR", metal=True, flags={"forbid": True}, pos=(20, 20, 130))
-    master = mk(lua, w, kind="WEAPON", metal=True, wear=2, quality=5)
-    wood = mk(lua, w, kind="SHIELD", metal=False, wear=3)
-    fresh = mk(lua, w, kind="WEAPON", metal=True)
-    squad = mk(lua, w, kind="WEAPON", metal=True, wear=2, id=999)
+    master = mk(lua, w, kind="WEAPON", metal=True, wear=2, quality=5, flags={"forbid": True, "dead_dwarf": True})
+    wood = mk(lua, w, kind="SHIELD", metal=False, wear=3, flags={"forbid": True, "dead_dwarf": True})
+    fresh = mk(lua, w, kind="WEAPON", metal=True, flags={"forbid": True, "dead_dwarf": True})
+    squad = mk(lua, w, kind="WEAPON", metal=True, wear=2, id=999, flags={"forbid": True, "dead_dwarf": True})
     w.assigned[1] = 999
     w.furnaces[1] = lua.table_from({"type": 1})
     r = env.mark_melt(opts(lua), True)

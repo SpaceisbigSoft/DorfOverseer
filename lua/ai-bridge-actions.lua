@@ -2636,10 +2636,15 @@ end
 -- player_items) what no game reason explains.
 ---------------------------------------------------------------------------
 
-local DISPOSAL_REASONS = {own_dead = true, used_ammo = true, other_dead = true, dumped = true, unknown = true}
+-- (0.105.27 fixes) 'dumped' is no reason to unforbid: what the dump holds
+-- would be stored, marked and dumped again for ever
+local DISPOSAL_REASONS = {own_dead = true, used_ammo = true, other_dead = true, unknown = true}
+-- a call's max at most: the same 500 as ai-disposal's MAX_CAP and the brain's
+-- planner_config DISPOSAL_ACTION_MAX (a test checks the three agree)
+local DISPOSAL_MAX = 500
 local DUMP_REASONS = {own_dead = true, used_ammo = true, other_dead = true, free = true, unknown = true}
 
--- opts for the item actions: reasons (a list from `allowed`), max (1..500),
+-- opts for the item actions: reasons (a list from `allowed`), max (1..DISPOSAL_MAX),
 -- player_items (bool); or nil, error
 local function disposal_opts(a, allowed, name)
     local o = {}
@@ -2650,8 +2655,8 @@ local function disposal_opts(a, allowed, name)
         end
     end
     if a.max ~= nil then
-        o.max = int_in(a.max, 1, 500)
-        if not o.max then return nil, name .. ': max is 1-500' end
+        o.max = int_in(a.max, 1, DISPOSAL_MAX)
+        if not o.max then return nil, ('%s: max is 1-%d'):format(name, DISPOSAL_MAX) end
     end
     for _, k in ipairs({'player_items', 'keep_masterwork', 'keep_enemy_gear'}) do
         if a[k] ~= nil and type(a[k]) ~= 'boolean' then return nil, ('%s: %s is true or false'):format(name, k) end
