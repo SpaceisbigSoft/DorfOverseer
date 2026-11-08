@@ -19,6 +19,8 @@
 -- season (the survey_water action), the report costs nothing.
 --@ module = true
 
+local U = reqscript('ai-util')      -- (13c) helpers shared by the modules
+
 WATER_KEY = 'ai-overseer/water'
 RADIUS = 72
 SURFACE_ABOVE = 12
@@ -174,7 +176,7 @@ function scan(now_tick)
     local r = survey()
     if r.ok then
         r.tick = now_tick
-        pcall(dfhack.persistent.saveSiteData, WATER_KEY, r)
+        U.site_put(WATER_KEY, r)
     end
     return r
 end
@@ -198,7 +200,7 @@ function scan_step(now_tick, seconds)
     JOB = nil
     r.tick = now_tick
     r.done = true
-    pcall(dfhack.persistent.saveSiteData, WATER_KEY, r)
+    U.site_put(WATER_KEY, r)
     return r
 end
 
@@ -206,6 +208,6 @@ function scanning() return JOB ~= nil end
 
 -- The last scan (or nil): what the fort report shows.
 function last()
-    local ok, d = pcall(dfhack.persistent.getSiteData, WATER_KEY, nil)
-    return ok and type(d) == 'table' and d.ok and d or nil
+    local d = U.site_get(WATER_KEY, nil)
+    return type(d) == 'table' and d.ok and d or nil
 end

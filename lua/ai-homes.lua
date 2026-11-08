@@ -33,6 +33,8 @@
 -- bedroom (lua/ai-layouts.lua suites): never given or taken here.
 --@module = true
 
+local U = reqscript('ai-util')      -- (13c) helpers shared by the modules
+
 ROUGH_THOUGHTS = {SleptFloor = true, SleptMud = true, SleptGrass = true, SleptRoughFloor = true,
                   SleptRocks = true, SleptIce = true, SleptDirt = true, SleptDriftwood = true}
 ROUGH_DAYS = 28
@@ -194,7 +196,7 @@ local function rough_sleeper(u, since)
     local rough, lack = false, false
     pcall(function()
         for _, em in ipairs(u.status.current_soul.personality.emotions) do
-            local okt, when = pcall(function() return em.year * 403200 + em.year_tick end)
+            local okt, when = pcall(function() return U.abs_tick(em.year, em.year_tick) end)
             if not okt or when >= since then
                 local name = df.unit_thought_type[em.thought]
                 if ROUGH_THOUGHTS[name] then rough = true end
@@ -217,7 +219,7 @@ end
 function census(units, txt)
     txt = txt or tostring
     local by, order = people(units)
-    local now = df.global.cur_year * 403200 + df.global.cur_year_tick
+    local now = U.abs_tick()
     local since = now - ROUGH_DAYS * 1200
     local c = {citizens = #order, adults = 0, children = 0, adults_roomless = 0, children_roomless = 0,
                couples = 0, couples_shared = 0, couples_apart = 0, couples_none = 0, couples_unlinked = 0, hoarders = 0,

@@ -16,6 +16,8 @@
 -- fish in near the fort.
 --@module = true
 
+local U = reqscript('ai-util')      -- (13c) helpers shared by the modules
+
 MAX_MINERS = 20           -- (0.104.134: was 10) more than this get in each other's way; Teacheroar had
                           -- 15 picks, 10 miners and 260 tiles waiting on many levels
 TILES_PER_MINER = 15      -- digging waiting per miner wanted (0.104.137: was 25; levels stalled for years at 10)
@@ -68,7 +70,6 @@ function pick_workers(cands, n)
     for i = 1, math.min(n, #list) do out[i] = list[i] end
     return out
 end
-pick_miners = pick_workers
 
 -- Pure: is a list of ids in order (the game finds members by binary search)?
 function is_sorted(ids)
@@ -111,11 +112,10 @@ local function best_other(u, id)
     return best
 end
 
-local function usable(item)
-    local f = item.flags
-    return not (f.forbid or f.garbage_collect or f.trader or f.hostile or f.removed or f.dump
-                or f.on_fire or f.encased or f.construction or f.in_building)
-end
+-- (a tool a job holds, or a dwarf carries, still counts: count_tools sorts
+-- out the soldiers' ones; an artifact pick digs as well as any)
+local TOOL_OK = {in_job = true, held = true, artifact = true}
+local function usable(item) return U.item_free(item, TOOL_OK) end
 
 -- Tools of a weapon skill (picks, axes): usable ones, and those in a
 -- soldier's hands (a squad with "any weapon" takes them: those can't work).
@@ -254,17 +254,26 @@ function skill_token_for(labor)
     return ok and tok or nil
 end
 
-local function citizens(job)
+-- memo (optional, one survey's): the citizens and who holds an office, read
+-- once for all the jobs (13c: they were read again for each of the five)
+local function citizens(job, memo)
     local J = job_spec(job)
     local labor, sk = enum(df.unit_labor, J.labor), enum(df.job_skill, J.skill)
     local doing, cands, soldiers = {}, {}, 0
-    for _, u in ipairs(dfhack.units.getCitizens(true)) do
+    memo = memo or {}
+    memo.units = memo.units or dfhack.units.getCitizens(true)
+    memo.noble = memo.noble or {}
+    for _, u in ipairs(memo.units) do
         if grown(u) then
             if labor and has_labor(u, labor) then
                 if in_squad(u) then soldiers = soldiers + 1 else table.insert(doing, u) end
             elseif not in_squad(u) then
-                local noble, busy = false, 0
-                pcall(function() noble = #dfhack.units.getNoblePositions(u) > 0 end)
+                local noble, busy = memo.noble[u.id], 0
+                if noble == nil then
+                    noble = false
+                    pcall(function() noble = #dfhack.units.getNoblePositions(u) > 0 end)
+                    memo.noble[u.id] = noble
+                end
                 for _, other in ipairs(JOB_ORDER) do
                     local l = enum(df.unit_labor, JOBS[other].labor)
                     if other ~= job and l and has_labor(u, l) then busy = busy + 1 end
@@ -335,6 +344,20 @@ local function shrubs(c, limit, mark)
     return n
 end
 
+-- One job's row of the survey: who does it, who could, soldiers with the
+-- labour, its detail and mode, and (a job with a tool) the tools free and in
+-- soldiers' hands. Also returns the candidates themselves.
+local function job_row(job, memo)
+    local J = job_spec(job)
+    local doing, cands, soldiers = citizens(job, memo)
+    local wd, mode = detail_for(job)
+    local row = {doing = #doing, candidates = #cands, soldiers = soldiers,
+                 detail = wd and tostring(wd.name) or nil, mode = mode,
+                 unsorted = wd and not is_sorted(ids_of(wd)) or nil}
+    if J.tool then row.tools, row.soldier_tools = count_tools(J.tool) end
+    return row, cands, wd
+end
+
 -- The report's "labor" section: per job, the detail, its mode, who does it,
 -- tools; plus digging and gathering waiting, shrubs and water near.
 function survey()
@@ -346,23 +369,15 @@ function survey()
     lap('designations')
     local c = centre()
     local out = {dig = dig, gather_marked = gather, jobs = {}, ms = ms}
-    for _, job in ipairs(JOB_ORDER) do
-        local J = JOBS[job]
-        local doing, cands, soldiers = citizens(job)
-        local wd, mode = detail_for(job)
-        local row = {doing = #doing, candidates = #cands, soldiers = soldiers,
-                     detail = wd and tostring(wd.name) or nil, mode = mode,
-                     unsorted = wd and not is_sorted(ids_of(wd)) or nil}
-        if J.tool then row.tools, row.soldier_tools = count_tools(J.tool) end
-        out.jobs[job] = row
-    end
+    local memo = {}
+    for _, job in ipairs(JOB_ORDER) do out.jobs[job] = job_row(job, memo) end
     lap('jobs')
     local m = out.jobs.mining
     out.adults = m.doing + m.candidates
     -- (0.100) the two map scans (some 46k tiles for shrubs, 21k for water)
     -- ran on every report: shrubs and water change slowly, so a week of game
     -- time apart (and again when the fort's centre moves)
-    local okt, now = pcall(function() return df.global.cur_year * 403200 + df.global.cur_year_tick end)
+    local okt, now = pcall(U.abs_tick)
     -- (0.100.1) the centre on a 20-tile grid: in a young fort the dwarves'
     -- middle moves every report, and the exact tile missed the cache each time
     -- (overnight run: labor 60-76 ms a report)
@@ -533,14 +548,10 @@ function assign(job, count, dry_run, txt, min_skill)
     if (count or 0) <= 0 then
         return {ok = true, repaired = repaired, assigned = {}}
     end
-    local s = survey()
-    local row = s.jobs[job]
-    if not row then
-        local doing, cands0, soldiers = citizens(job)
-        local d0, m0 = detail_for(job)
-        row = {doing = #doing, candidates = #cands0, soldiers = soldiers, detail = d0 and tostring(d0.name) or nil, mode = m0}
-    end
-    local wd, mode = detail_for(job)
+    -- (13c) only this job's row (and, for mining, the digging waiting): the
+    -- whole survey (every job, the map scans, the waiting work) ran here once
+    local row, cands, wd = job_row(job)
+    local mode = row.mode
     if mode == 'EverybodyDoesThis' then
         return {ok = false, rejected = true, survey = row, repaired = repaired,
                 error = ('everybody already does this (the %s work detail is set to everybody)'):format(row.detail or job)}
@@ -549,16 +560,18 @@ function assign(job, count, dry_run, txt, min_skill)
         return {ok = false, rejected = true, survey = row, repaired = repaired,
                 error = ('the %s work detail is set to nobody (your choice): the AI leaves it'):format(row.detail or job)}
     end
-    local n = count
-    if job == 'mining' then n = math.min(n, s.need)
+    local n, dig = count, 0
+    if job == 'mining' then
+        dig = count_designations(5000)
+        local want = miners_wanted(dig, row.tools or 0, row.doing + row.candidates)
+        n = math.min(n, math.max(0, want - row.doing))
     elseif J.tool then n = math.min(n, math.max(0, (row.tools or 0) - row.doing)) end
     if n <= 0 then
         return {ok = false, rejected = true, survey = row, repaired = repaired,
                 error = job == 'mining'
-                    and ('no more miners wanted (%d mining, %d picks free, %d tiles to dig)'):format(s.miners, s.picks, s.dig)
+                    and ('no more miners wanted (%d mining, %d picks free, %d tiles to dig)'):format(row.doing, row.tools or 0, dig)
                     or ('no free %s for another dwarf'):format(J.tool == 'AXE' and 'axe' or 'tool')}
     end
-    local _, cands = citizens(job)
     if min_skill then
         local keep = {}
         for _, c in ipairs(cands) do if (c.skill or 0) >= min_skill then table.insert(keep, c) end end
@@ -590,8 +603,6 @@ function assign(job, count, dry_run, txt, min_skill)
             detail = row.detail, detail_mode = mode, repaired = repaired}
 end
 
-function assign_miners(count, dry_run, txt) return assign('mining', count, dry_run, txt) end
-
 -- (0.104.10) Free time: a work detail set to "everybody does this" (DF's
 -- default for planting and plant gathering) keeps every dwarf on call, and
 -- Enxah's 88 citizens had 167 jobs and 3 idle while 44 badly wanted time with
@@ -602,8 +613,7 @@ function assign_miners(count, dry_run, txt) return assign('mining', count, dry_r
 NARROWED_KEY = 'ai-overseer/narrowed'
 
 function narrowed()
-    local ok, d = pcall(dfhack.persistent.getSiteData, NARROWED_KEY, {})
-    return ok and type(d) == 'table' and d or {}
+    return U.site_get(NARROWED_KEY, {})
 end
 
 local function set_mode(wd, name)
@@ -641,7 +651,7 @@ function narrow(job, keep, dry_run, txt)
     for _, u in ipairs(dfhack.units.getCitizens(true)) do recompute(u) end
     local n = narrowed()
     n[job] = true
-    pcall(dfhack.persistent.saveSiteData, NARROWED_KEY, n)
+    U.site_put(NARROWED_KEY, n)
     return out
 end
 
@@ -652,14 +662,14 @@ function widen(job, dry_run)
     if not wd then return {ok = false, rejected = true, error = 'no work detail for ' .. tostring(job)} end
     if mode ~= 'OnlySelectedDoesThis' then
         n[job] = nil
-        pcall(dfhack.persistent.saveSiteData, NARROWED_KEY, n)
+        U.site_put(NARROWED_KEY, n)
         return {ok = false, rejected = true, error = 'the detail was changed since: left as it is'}
     end
     if dry_run then return {ok = true, dry_run = true, job = job} end
     if not set_mode(wd, 'EverybodyDoesThis') then return {ok = false, error = 'no "everybody" mode'} end
     for _, u in ipairs(dfhack.units.getCitizens(true)) do recompute(u) end
     n[job] = nil
-    pcall(dfhack.persistent.saveSiteData, NARROWED_KEY, n)
+    U.site_put(NARROWED_KEY, n)
     return {ok = true, job = job, detail = tostring(wd.name)}
 end
 

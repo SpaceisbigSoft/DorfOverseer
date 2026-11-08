@@ -66,21 +66,6 @@ function probe()
     return out
 end
 
--- Every container in the screen (one level down) whose items have a
--- folder_name: where the saves are listed.
-local function save_lists(scr)
-    local found = {}
-    pcall(function()
-        for name, val in pairs(scr) do
-            if kind(val) == 'container' and #val > 0 then
-                local ok, f = pcall(function() return val[0].folder_name end)
-                if ok and f ~= nil then table.insert(found, {field = name, list = val}) end
-            end
-        end
-    end)
-    return found
-end
-
 -- Load `folder` from the title screen (DF 53: Continue -> the world -> the
 -- save). One step every STEP_FRAMES frames, each checked; what happened is
 -- kept in LOAD_LOG (ai-title status). The title screen's `selected` is the

@@ -14,6 +14,8 @@
 -- run anywhere). A drawbridge needs a lever that is already linked to it.
 --@module = true
 
+local U = reqscript('ai-util')      -- (13c) helpers shared by the modules
+
 IMMINENT = 12         -- tiles: closer than this to an entrance, close it now
 WIDE = 60             -- tiles: danger this close counts as "coming"
 CHECK_TICKS = 100     -- the watcher looks this often (12 times an in-game day)
@@ -1736,8 +1738,11 @@ end
 -- door (built or planned): they become the gate, and walls go on the rest.
 function plan_gate(e, style, starts, doors_present)
     doors_present = doors_present or {}
+    -- (13c) the fort's size before any wall, flooded once for every line tried
+    -- here (each plan_line flooded it again: up to 8 floods of the fort a plan)
+    local memo = {}
     local why = line_blocked(e.inside_list, doors_present)
-    if not why then return plan_line(e, style, starts, doors_present) end
+    if not why then return plan_line(e, style, starts, doors_present, memo) end
     cache = cache or {}
     edge_cache = edge_cache or {}
     local hatches, lid = hatch_spots(e), false
@@ -1765,7 +1770,7 @@ function plan_gate(e, style, starts, doors_present)
         if #line == 0 or #line > MAX_LINE_IN then break end
         if not line_blocked(line, {}) then
             local ve = {id = e.id, kind = e.kind, inside_list = line, outs = outs, width = #line}
-            local plan, why2 = plan_line(ve, style, starts, {})
+            local plan, why2 = plan_line(ve, style, starts, {}, memo)
             if plan then
                 plan.moved_in = step
                 plan.moved_why = why
@@ -1795,7 +1800,7 @@ function plan_gate(e, style, starts, doors_present)
                 local shore, outs2 = shore_line(e, r)
                 if #shore > 0 and #shore <= MAX_SHORE and not line_blocked(shore, {}) then
                     local ve = {id = e.id, kind = e.kind, inside_list = shore, outs = outs2, width = #shore}
-                    local plan = plan_line(ve, style, starts, {})
+                    local plan = plan_line(ve, style, starts, {}, memo)
                     if plan then
                         plan.shore, plan.water = true, text
                         plan.moved_why = why
@@ -1852,7 +1857,8 @@ local function support_for(k, in_list, outs, taken, walls_keys)
     return nil
 end
 
-function plan_line(e, style, starts, doors_present)
+-- memo (optional, one plan's): keeps the fort's size before walls between calls.
+function plan_line(e, style, starts, doors_present, memo)
     local gap_n = GAP[style] or 2
     if style == 'plain' and e.kind == 'cavern' then gap_n = 1 end
     local list = e.inside_list
@@ -1999,7 +2005,12 @@ function plan_line(e, style, starts, doors_present)
     local wall_only = {}
     for _, k in ipairs(walls) do wall_only[k] = true end
     for _, k in ipairs(plan.support) do wall_only[k] = true end
-    local _, before = explore(starts)
+    memo = memo or {}
+    if not memo.before then
+        local _, n = explore(starts)
+        memo.before = n
+    end
+    local before = memo.before
     if before >= MAX_TILES then
         return nil, 'the fort is too big for the AI to check that walls there would not cut it apart'
     end
@@ -2310,16 +2321,8 @@ end
 UNWALKABLE_AT = {}       -- (0.104.156) where the last unwalkable mechanisms lay (3 at most)
 
 function mechanism_unusable(it)
-    local f = it.flags
-    if f.removed or f.garbage_collect then return 'gone' end
-    if f.construction or f.in_building then return 'in a building' end
-    if f.in_job then return 'taken by a job' end
-    if f.forbid then return 'forbidden' end
-    if f.dump then return 'marked for the dump' end
-    if f.trader then return 'a trader\'s' end
-    if f.hostile then return 'an enemy\'s' end
-    if f.owned then return 'owned by a dwarf' end
-    if f.in_inventory and dfhack.items.getHolderUnit(it) then return 'carried' end
+    local _, why = U.item_unfree(it)       -- (lua/ai-util.lua's list)
+    if why then return why end
     local okb, b = pcall(dfhack.items.getHolderBuilding, it)
     if okb and b then
         local okt, t = pcall(function() return df.building_type[b:getType()] end)
@@ -2976,11 +2979,8 @@ CUT_SPOTS_KEY = 'ai-overseer/cuts'
 -- the entrances the AI cut (key(x, y, z) -> true), kept with the save
 function cut_spots()
     if CUT_SPOTS == nil then
-        local ok, d = pcall(function() return dfhack.persistent.getSiteData(CUT_SPOTS_KEY, {}) end)
         CUT_SPOTS = {}
-        if ok and type(d) == 'table' then
-            for k, v in pairs(d) do if v then CUT_SPOTS[tonumber(k) or k] = true end end
-        end
+        for k, v in pairs(U.site_get(CUT_SPOTS_KEY, {})) do if v then CUT_SPOTS[tonumber(k) or k] = true end end
     end
     return CUT_SPOTS
 end
@@ -2998,7 +2998,7 @@ local function note_cut_spot(e)
     for _, k in ipairs(e.inside_list or {}) do spots[k] = true end
     local out = {}
     for k in pairs(spots) do out[tostring(k)] = true end
-    pcall(function() dfhack.persistent.saveSiteData(CUT_SPOTS_KEY, out) end)
+    U.site_put(CUT_SPOTS_KEY, out)
 end
 
 function fort_starts(starts)
@@ -3268,8 +3268,7 @@ GATES_SAVE_KEY = 'ai-overseer/gates'
 GATES_SAVE = GATES_SAVE or {}
 
 local function saved_read()
-    local ok, d = pcall(function() return dfhack.persistent.getSiteData(GATES_SAVE_KEY, {}) end)
-    return ok and type(d) == 'table' and d or {}
+    return U.site_get(GATES_SAVE_KEY, {})
 end
 
 -- What the watcher holds now, by building id.
@@ -3306,7 +3305,7 @@ function gates_persist()
     if not GATES_SAVE.restored or GATES_SAVE.saved then return false end
     local snap = gates_snapshot()
     if GATES_SAVE.persisted and same_snapshot(snap, GATES_SAVE.persisted) then return false end
-    local ok = pcall(dfhack.persistent.saveSiteData, GATES_SAVE_KEY, snap)
+    local ok = U.site_put(GATES_SAVE_KEY, snap)
     if ok then GATES_SAVE.persisted = snap end
     return ok
 end
@@ -3409,7 +3408,7 @@ function open_all()
             if waiting > 0 then r.waiting = (r.waiting or 0) + waiting end
             saved.armed = false
             if waiting == 0 then GATES_SAVE.saved = {armed = false, gates = {}} end
-            pcall(dfhack.persistent.saveSiteData, GATES_SAVE_KEY, GATES_SAVE.saved)
+            U.site_put(GATES_SAVE_KEY, GATES_SAVE.saved)
             GATES_SAVE.persisted = GATES_SAVE.saved
         end
         return r

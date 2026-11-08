@@ -10,6 +10,8 @@
 -- an animal (some caravans take offence at those).
 --@module = true
 
+local U = reqscript('ai-util')      -- (13c) helpers shared by the modules
+
 -- A DF name in words (dfhack.TranslateName was renamed in DFHack 50.15).
 local function translate(name, english)
     local ok, s = pcall(function() return dfhack.translation.translateName(name, english) end)
@@ -59,11 +61,10 @@ for _, name in ipairs(GOODS) do
     if ok and t then GOOD_TYPE[t] = true end
 end
 
-local function bad_flags(f)
-    return f.hostile or f.removed or f.dead_dwarf or f.construction or f.encased or f.murder or f.trader
-        or f.owned or f.garbage_collect or f.on_fire or f.forbid or f.in_job or f.in_building
-        or f.artifact          -- (0.100, security pass) a mood's artifact is never traded away
-end
+-- Not free to sell (lua/ai-util.lua's list: a mood's artifact is never
+-- traded away). Whether it sits loose or in a bin, goods() works out itself.
+local HELD_OK = {held = true}
+local function unsellable(item) return not U.item_free(item, HELD_OK) end
 
 -- (0.100) a mood's artifact (or any item flagged one): never offered
 local function is_artifact(item)
@@ -100,7 +101,7 @@ end
 
 -- A good the AI may sell, loose (not in a bin): stone, metal, gems or glass.
 local function sellable(item)
-    return not bad_flags(item.flags) and trade_material(item)
+    return not unsellable(item) and trade_material(item)
         and not (KEEP_TREASURES and treasure(item))
 end
 
@@ -108,7 +109,7 @@ end
 -- taken to the depot whole (0.46's bins hid every craft from the count:
 -- an item in a bin is "in inventory", as one in a dwarf's hands).
 local function sellable_bin(c)
-    if bad_flags(c.flags) or c.flags.in_inventory or not c.flags.on_ground then return false end
+    if unsellable(c) or c.flags.in_inventory or not c.flags.on_ground then return false end
     local contents = dfhack.items.getContainedItems(c)
     if #contents == 0 then return false end
     for _, it in ipairs(contents) do
@@ -167,8 +168,7 @@ function survey(txt)
     pcall(function()
         local by = {}
         for _, it in ipairs(df.global.world.items.other.SMALLGEM) do
-            local f = it.flags
-            if not (f.forbid or f.in_job or f.trader or f.removed or f.garbage_collect or f.construction) then
+            if U.item_free(it, HELD_OK) then
                 local tok = dfhack.matinfo.decode(it):getToken()
                 by[tok] = (by[tok] or 0) + it:getStackSize()
             end
@@ -185,8 +185,7 @@ function survey(txt)
     pcall(function()
         local by = {}
         for _, it in ipairs(df.global.world.items.other.ROUGH) do
-            local f = it.flags
-            if not (f.forbid or f.in_job or f.trader or f.removed or f.garbage_collect or f.dump) then
+            if U.item_free(it, HELD_OK) then
                 local mi = dfhack.matinfo.decode(it)
                 if mi and mi.material and mi.material.flags.IS_GEM then
                     local tok = mi:getToken()
@@ -209,8 +208,7 @@ function survey(txt)
                           job = j ~= nil, coming = w ~= nil, at_depot = at_depot(w, dep),
                           can_open = buttons().Depot ~= nil}
             -- whether the AI itself opened the depot to anyone (only then does it close it again)
-            local okc, cst = pcall(dfhack.persistent.getSiteData, CALL_KEY, {})
-            out.trader.anyone_by_ai = okc and type(cst) == 'table' and cst.anyone_by_ai == true
+            out.trader.anyone_by_ai = U.site_get(CALL_KEY, {}).anyone_by_ai == true
             -- a caravan at the depot the AI hasn't traded with yet this visit
             local fresh = false
             for _, c in ipairs(df.global.plotinfo.caravans) do
@@ -238,37 +236,37 @@ function bring(count, dry_run, txt, keep_treasures, keep_trinkets)
     if not dep then return {ok = false, rejected = true, error = 'no trade depot built yet'} end
     local cs = caravans(txt)
     if #cs == 0 then return {ok = false, rejected = true, error = 'no caravan is coming or at the depot'} end
-    local list, value, n = goods(dep, math.min(count or MAX_BRING, MAX_BRING))
+    -- (13c) the goods walked once (it ran twice: once for the first `count`,
+    -- once for all of them to put the requested ones first)
+    local all = goods(dep, 500)
+    local limit = math.min(count or MAX_BRING, MAX_BRING)
+    local keyed = {}
+    for i, it in ipairs(all) do
+        local okc, inside = pcall(dfhack.items.getContainedItems, it)
+        local items = (okc and #inside > 0) and inside or {it}
+        table.insert(keyed, {it = it, i = i, items = items})
+    end
     -- goods the caravans asked for go first (the game pays more for them:
-    -- dfhack.items.getValue with a caravan applies its buy prices)
-    local okr = pcall(function()
-        local all = goods(dep, 500)
-        local keyed = {}
-        for i, it in ipairs(all) do
-            local inside = dfhack.items.getContainedItems(it)
-            local items = #inside > 0 and inside or {it}
-            local req = false
-            for _, x in ipairs(items) do
-                if dfhack.items.isRequestedTradeGood(x) then req = true break end
+    -- dfhack.items.isRequestedTradeGood); without that call, in list order
+    pcall(function()
+        for _, k in ipairs(keyed) do
+            k.req = false
+            for _, x in ipairs(k.items) do
+                if dfhack.items.isRequestedTradeGood(x) then k.req = true break end
             end
-            table.insert(keyed, {it = it, req = req, i = i, n = #items})
         end
         table.sort(keyed, function(a, b)
             if a.req ~= b.req then return a.req end
             return a.i < b.i
         end)
-        local limit, picked, cnt, val = math.min(count or MAX_BRING, MAX_BRING), {}, 0, 0
-        for _, k in ipairs(keyed) do
-            if cnt >= limit then break end
-            table.insert(picked, k.it)
-            cnt = cnt + k.n
-            for _, x in ipairs(#dfhack.items.getContainedItems(k.it) > 0 and dfhack.items.getContainedItems(k.it)
-                               or {k.it}) do
-                val = val + dfhack.items.getValue(x)
-            end
-        end
-        if #picked > 0 then list, value, n = picked, val, cnt end
     end)
+    local list, value, n = {}, 0, 0
+    for _, k in ipairs(keyed) do
+        if n >= limit then break end
+        table.insert(list, k.it)
+        n = n + #k.items
+        for _, x in ipairs(k.items) do value = value + dfhack.items.getValue(x) end
+    end
     if #list == 0 then
         return {ok = false, rejected = true, error = 'no crafts of stone, metal or gems the dwarves can carry there'}
     end
@@ -547,8 +545,7 @@ end
 -- --- pressing the screen's buttons --------------------------------------------------
 
 function buttons()
-    local ok, d = pcall(function() return dfhack.persistent.getSiteData(BUTTONS_KEY, {}) end)
-    return ok and type(d) == 'table' and d or {}
+    return U.site_get(BUTTONS_KEY, {})
 end
 
 -- Remember where a button is: the mouse is on it now (the player put it
@@ -624,13 +621,12 @@ end
 MARGIN_KEY = 'ai-overseer/trade-margin'
 
 function learned_margin()
-    local ok, d = pcall(function() return dfhack.persistent.getSiteData(MARGIN_KEY, {}) end)
-    return ok and type(d) == 'table' and tonumber(d.margin) or 0
+    return tonumber(U.site_get(MARGIN_KEY, {}).margin) or 0
 end
 
 function save_margin(m)
     m = math.min(3, math.max(learned_margin(), m))
-    pcall(function() dfhack.persistent.saveSiteData(MARGIN_KEY, {margin = m}) end)
+    U.site_put(MARGIN_KEY, {margin = m})
 end
 
 -- Press the Trade button on the open screen (where calibrate put it). It
@@ -770,7 +766,7 @@ UNLOAD_RETRY_TICKS = 600     -- after closing a screen opened too early, wait th
 LOAD_WATCH = LOAD_WATCH or {}
 
 function trade_now()
-    return df.global.cur_year * 403200 + df.global.cur_year_tick
+    return U.abs_tick()
 end
 
 -- Are the merchants still carrying their goods into the depot? (The trade
@@ -870,8 +866,7 @@ end
 CALL_KEY = 'ai-overseer/trade-call'
 
 local function call_state()
-    local ok, d = pcall(function() return dfhack.persistent.getSiteData(CALL_KEY, {}) end)
-    return ok and type(d) == 'table' and d or {}
+    return U.site_get(CALL_KEY, {})
 end
 
 function trade_job(dep)
@@ -893,7 +888,7 @@ function call_trader(now, wait, dry_run, txt)
     local cs = caravans(txt)
     if #cs == 0 then
         if st.anyone_by_ai and not dry_run then dep.trade_flags.anyone_can_trade = false end
-        if next(st) and not dry_run then pcall(dfhack.persistent.saveSiteData, CALL_KEY, {}) end
+        if next(st) and not dry_run then U.site_put(CALL_KEY, {}) end
         return {ok = true, waiting = true, error = 'no caravan is coming or at the depot'}
     end
     local job = trade_job(dep)
@@ -928,7 +923,7 @@ function call_trader(now, wait, dry_run, txt)
         st.anyone_by_ai = true
         out.anyone = true
     end
-    pcall(dfhack.persistent.saveSiteData, CALL_KEY, st)
+    U.site_put(CALL_KEY, st)
     out.waiting_ticks = st.since and now - st.since or 0
     out.coming = worker and (txt or tostring)(dfhack.units.getReadableName(worker)) or nil
     return out

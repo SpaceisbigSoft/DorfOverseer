@@ -16,6 +16,8 @@
 -- appointment stands.
 --@module = true
 
+local U = reqscript('ai-util')      -- (13c) helpers shared by the modules
+
 -- A DF name in words (dfhack.TranslateName was renamed in DFHack 50.15).
 local function translate(name, english)
     local ok, s = pcall(function() return dfhack.translation.translateName(name, english) end)
@@ -91,9 +93,6 @@ end
 
 -- --- the game -----------------------------------------------------------------
 
-local function fort_entity()
-    return df.historical_entity.find(df.global.plotinfo.group_id)
-end
 
 local function position_of(ent, id)
     for _, p in ipairs(ent.positions.own) do
@@ -162,7 +161,7 @@ function sync_held(ent, fix)
 end
 
 function sync_offices(dry_run)
-    local ent = fort_entity()
+    local ent = U.fort_entity()
     if not ent then return {ok = false, error = 'no fort government (entity) found'} end
     local missing, stale = sync_held(ent, not dry_run)
     if missing + stale == 0 then return {ok = false, rejected = true, error = 'the duty lists are right already'} end
@@ -172,7 +171,7 @@ end
 -- The fort's offices (read-only): code -> {held_by, vacant assignments,
 -- appointable}, plus what the AI may fill.
 function survey(txt)
-    local ent = fort_entity()
+    local ent = U.fort_entity()
     if not ent then return {error = 'no fort government (entity) found'} end
     local out = {entity = ent.id, offices = {}}
     pcall(function()   -- (0.101.6) held posts the game can't see
@@ -307,7 +306,7 @@ function appoint(code, dry_run, txt)
     if not OFFICES[code] then
         return {ok = false, rejected = true, error = 'the AI only appoints ' .. table.concat(OFFICE_ORDER, ', ')}
     end
-    local ent = fort_entity()
+    local ent = U.fort_entity()
     if not ent then return {ok = false, error = 'no fort government (entity) found'} end
     local assignment, a_idx, pos
     if MILITARY_OFFICES[code] then              -- (0.104.168)

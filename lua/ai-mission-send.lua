@@ -29,6 +29,8 @@
 --   buttons()       the buttons shown so far
 --@ module = true
 
+local U = reqscript('ai-util')      -- (13c) helpers shared by the modules
+
 SEND_KEY = 'ai-overseer/mission-send'        -- the last run's outcome (the save's site data)
 BUTTONS_KEY = 'ai-overseer/world-buttons'    -- where the player showed the buttons
 LOG_KEEP = 4                                 -- runs kept in mission-send.json
@@ -47,7 +49,7 @@ RUN = RUN or nil                             -- the run under way (one at a time
 -- small helpers
 
 local function now_tick()
-    local ok, t = pcall(function() return df.global.cur_year * 403200 + df.global.cur_year_tick end)
+    local ok, t = pcall(U.abs_tick)
     return ok and t or 0
 end
 
@@ -123,8 +125,7 @@ end
 -- the buttons, shown to the AI once (as the trade and meeting screens')
 
 function buttons()
-    local ok, d = pcall(function() return dfhack.persistent.getSiteData(BUTTONS_KEY, {}) end)
-    return ok and type(d) == 'table' and d or {}
+    return U.site_get(BUTTONS_KEY, {})
 end
 
 -- Remember where a button is: the mouse is on it now (the player put it
@@ -289,15 +290,15 @@ local function save_outcome(run)
     local out = {site_id = run.site_id, site = run.site, result = run.result, step = run.stopped_at,
                  reason = run.reason, why = run.why, tick = now_tick(), closed = run.closed,
                  controller_left = run.controller_left, saw = run.saw}
-    pcall(function() dfhack.persistent.saveSiteData(SEND_KEY, out) end)
+    U.site_put(SEND_KEY, out)
     LAST = out
     return out
 end
 
 function last_outcome()
     if LAST then return LAST end
-    local ok, d = pcall(function() return dfhack.persistent.getSiteData(SEND_KEY, nil) end)
-    return ok and type(d) == 'table' and d or nil
+    local d = U.site_get(SEND_KEY, nil)
+    return type(d) == 'table' and d or nil
 end
 
 -- ---------------------------------------------------------------------------
@@ -413,7 +414,7 @@ end
 -- the messenger, home: the holder of the fort's MESSENGER post, on the map
 function messenger_home()
     local ok, r1, r2 = pcall(function()
-        local ent = df.historical_entity.find(df.global.plotinfo.group_id)
+        local ent = U.fort_entity()
         if not ent then return nil, 'no fort government' end
         local pos_id
         for _, p in ipairs(ent.positions.own) do if p.code == 'MESSENGER' then pos_id = p.id end end

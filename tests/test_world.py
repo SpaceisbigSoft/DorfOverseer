@@ -14,6 +14,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+from lua_modules_util import module_src  # (13c lua-modules) the modules' sources, with lua/ai-util.lua
 sys.path.insert(0, str(ROOT / "brain"))
 RESULTS = []
 
@@ -27,7 +28,7 @@ import planner_world as W  # noqa: E402
 from planner import Memory, PLANNER_CONFIG, note_cycle, plan  # noqa: E402
 from planner_core import player_rules  # noqa: E402
 
-SRC = (ROOT / "lua" / "ai-diplomacy.lua").read_text(encoding="utf-8")
+SRC = module_src("ai-diplomacy.lua")
 BASE = json.loads((ROOT / "tests" / "fixtures" / "test_fort.json").read_text(encoding="utf-8"))
 
 
@@ -664,7 +665,7 @@ def _():
     assert "view_id = 'send_messenger'" in gui and "p:set_field('send_messenger', v)" in gui
     assert "self.subviews.send_messenger:setOption(" in gui
     ok = lua.eval("function(src) local f, e = load(src, 'm', 't', {}); return f ~= nil, e end")(
-        (ROOT / "lua" / "ai-mission-send.lua").read_text(encoding="utf-8"))
+        module_src("ai-mission-send.lua"))
     assert ok[0], ok
 
 

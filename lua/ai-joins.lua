@@ -19,6 +19,8 @@
 --    aquifer or warm stone}
 --@ module = true
 
+local U = reqscript('ai-util')      -- (13c) helpers shared by the modules
+
 MAX_JOIN = 20              -- longest corridor between two areas (tiles)
 MAX_AREA = 4000            -- tiles read per area
 MAX_EDGE = 200             -- edge tiles kept per area
@@ -393,11 +395,11 @@ end
 -- the save: "x,y,z" -> tick
 RECENT_KEY = 'ai-overseer/joins'
 RECENT_DAYS = 56
-local function now_tick() return df.global.cur_year * 403200 + df.global.cur_year_tick end
+local function now_tick() return U.abs_tick() end
 
 function recent_tiles()
-    local ok, d = pcall(dfhack.persistent.getSiteData, RECENT_KEY, {tiles = {}})
-    local tiles = ok and type(d) == 'table' and type(d.tiles) == 'table' and d.tiles or {}
+    local d = U.site_get(RECENT_KEY, {tiles = {}})
+    local tiles = type(d.tiles) == 'table' and d.tiles or {}
     local now, out = now_tick(), {}
     for k, t in pairs(tiles) do
         if type(t) == 'number' and now - t >= 0 and now - t < RECENT_DAYS * 1200 then out[k] = t end
@@ -408,7 +410,7 @@ end
 local function remember(tiles, z)
     local keep, now = recent_tiles(), now_tick()
     for _, p in ipairs(tiles) do keep[('%d,%d,%d'):format(p.x, p.y, z)] = now end
-    pcall(dfhack.persistent.saveSiteData, RECENT_KEY, {tiles = keep})
+    U.site_put(RECENT_KEY, {tiles = keep})
 end
 
 local function designate(tiles, z)

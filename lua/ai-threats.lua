@@ -29,6 +29,8 @@
 -- found (probe style).
 --@module = true
 
+local U = reqscript('ai-util')      -- (13c) helpers shared by the modules
+
 STATE_KEY = 'ai-overseer/threats'
 FIRE_RADIUS = 6              -- tiles round a fire restricted, jobs taken off
 FIRE_MAX_TILES = 3000        -- tiles restricted at most (a forest fire)
@@ -41,7 +43,7 @@ local CLOUD_FLOWS = {MaterialDust = true, MaterialGas = true, MaterialVapor = tr
 local GREAT = {'isForgottenBeast', 'isTitan', 'isMegabeast', 'isDemon'}
 
 local function now_tick()
-    return df.global.cur_year * 403200 + df.global.cur_year_tick
+    return U.abs_tick()
 end
 
 local function name_of(u, txt)
@@ -53,8 +55,7 @@ end
 -- = tick}, last, total}, moon = {changes = {{tick, phase}}}, cells = {uid =
 -- {burrow, zone, doors = {ids}, tick, locked}}, sealed = {layer = {ids, tick}}
 function load_state()
-    local ok, d = pcall(dfhack.persistent.getSiteData, STATE_KEY, {})
-    d = ok and type(d) == 'table' and d or {}
+    local d = U.site_get(STATE_KEY, {})
     for _, k in ipairs({'fire', 'thieves', 'moon', 'cells', 'sealed'}) do
         d[k] = type(d[k]) == 'table' and d[k] or {}
     end
@@ -65,7 +66,7 @@ function load_state()
 end
 
 local function save_state(d)
-    pcall(dfhack.persistent.saveSiteData, STATE_KEY, d)
+    U.site_put(STATE_KEY, d)
 end
 
 -- --- pure helpers (tested) -------------------------------------------------------
@@ -770,19 +771,27 @@ function moon_cell(ids, release, dry_run, txt)
             return
         end
         if not dry_run then
+            -- (13c) a door left locked, or a burrow not cleared, is said (it was
+            -- silently dropped with the cell's record)
+            local function failed(what, err)
+                out.errors = out.errors or {}
+                table.insert(out.errors, what .. ': ' .. tostring(err):sub(1, 100))
+            end
             for _, bid in ipairs(c.doors or {}) do
-                pcall(function()
+                local okd, err = pcall(function()
                     local b = df.building.find(bid)
                     if b then b.door_flags.forbidden = false end
                 end)
+                if not okd then failed('door ' .. tostring(bid), err) end
             end
-            pcall(function()
+            local okb, err = pcall(function()
                 local b = burrow_named(CELL_PREFIX .. uid, false)
                 if b then
                     if u then dfhack.burrows.setAssignedUnit(b, u, false) end
                     dfhack.burrows.clearTiles(b)
                 end
             end)
+            if not okb then failed('cell burrow ' .. tostring(uid), err) end
             d.cells[uid] = nil
         end
         table.insert(out.released, u and name_of(u, txt) or uid)

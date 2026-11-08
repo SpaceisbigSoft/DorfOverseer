@@ -9,6 +9,8 @@
 -- has only solid rock, the vein, or the fort's own dug tiles around it).
 --@module = true
 
+local U = reqscript('ai-util')      -- (13c) helpers shared by the modules
+
 SURVEY_MARGIN = 40          -- tiles around the citizens looked at
 LEVELS_BELOW = 12           -- levels below the deepest citizen looked at
 VEIN_MAX = 80               -- tiles marked in one go (0.105.9: 80, Mining's top; was 60)
@@ -281,7 +283,7 @@ DRIFT_RETRY_TICKS = 7 * 1200   -- a search that found nothing isn't repeated for
 DRIFT_FAILED = {}       -- metal -> absolute tick of the last empty search
 
 local function abs_tick()
-    local ok, t = pcall(function() return df.global.cur_year * 403200 + df.global.cur_year_tick end)
+    local ok, t = pcall(U.abs_tick)
     return ok and t or nil
 end
 
@@ -531,14 +533,13 @@ QUARRY_FORGET_DAYS = 56
 QUARRY_KEY = 'ai-overseer/quarry/tried'
 
 local function now_tick()
-    local ok, t = pcall(function() return df.global.cur_year * 403200 + df.global.cur_year_tick end)
+    local ok, t = pcall(U.abs_tick)
     return ok and t or nil
 end
 
 function quarry_tried()
-    local ok, v = pcall(function() return dfhack.persistent.getSiteData(QUARRY_KEY, {}) end)
     local out, now = {}, now_tick()
-    for _, e in ipairs(ok and type(v) == 'table' and v or {}) do
+    for _, e in ipairs(U.site_get(QUARRY_KEY, {})) do
         if type(e) == 'table' and e.x and e.y and e.z and e.tick and now
                 and now - e.tick >= 0 and now - e.tick < QUARRY_FORGET_DAYS * 1200 then
             table.insert(out, e)
@@ -554,7 +555,7 @@ local function remember_quarry(spot, tried)
     for _, e in ipairs(tried) do table.insert(list, e) end
     table.insert(list, {x = spot.x, y = spot.y, z = spot.z, tick = now})
     while #list > 12 do table.remove(list, 1) end
-    pcall(function() dfhack.persistent.saveSiteData(QUARRY_KEY, list) end)
+    U.site_put(QUARRY_KEY, list)
 end
 
 local function tried_near(x, y, z, tried)

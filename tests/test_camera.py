@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+from lua_modules_util import module_src  # (13c lua-modules) the modules' sources, with lua/ai-util.lua
 RESULTS = []
 
 try:
@@ -147,7 +148,7 @@ return env, W
 
 def fresh():
     lua = LuaRuntime(unpack_returned_tuples=True)
-    env, W = lua.execute(FAKE, (ROOT / "lua" / "ai-camera.lua").read_text(encoding="utf-8"))
+    env, W = lua.execute(FAKE, module_src("ai-camera.lua"))
     return lua, env, W
 
 
@@ -512,7 +513,7 @@ def _():
 @test("camera (0.104.90): reloading the module over an older camera's state adds the new fields")
 def _():
     lua = LuaRuntime(unpack_returned_tuples=True)
-    src = (ROOT / "lua" / "ai-camera.lua").read_text(encoding="utf-8")
+    src = module_src("ai-camera.lua")
     env, W = lua.execute(FAKE.replace("assert(load(src, 'ai-camera', 't', env))()",
         "env.CAM = {mode = 'on', queue = {}, tour = {}, tour_built = 0, recent = {}, seen_mood = {}, shown = 184, since = 0, hold_until = 0}\n"
         "assert(load(src, 'ai-camera', 't', env))()"), src)
