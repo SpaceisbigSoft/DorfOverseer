@@ -20,7 +20,7 @@ except ImportError:
     sys.exit(0)
 
 HARNESS = r"""
-local bridge_src, settings_src = ...
+local bridge_src, settings_src, lua_dir = ...
 local H = {persist = {}, action = nil, printed = nil, halted = false, preset_files = {}}
 local json = {
   decode = function(text) return H.action end,
@@ -76,7 +76,7 @@ function H.run(...)
     if name == 'ai-status' then return {is_halted = function() return H.halted end} end
     error('no ' .. name .. ' here')
   end
-  assert(load(bridge_src, 'ai-bridge', 't', env))(...)
+  assert(load(bridge_src, '@' .. lua_dir .. '/ai-bridge.lua', 't', env))(...)
   return H.printed
 end
 return H
@@ -84,7 +84,7 @@ return H
 
 LUA = LuaRuntime(unpack_returned_tuples=True)
 H = LUA.execute(HARNESS, (ROOT / "lua" / "ai-bridge.lua").read_text(encoding="utf-8"),
-                (ROOT / "lua" / "ai-overseer-settings.lua").read_text(encoding="utf-8"))
+                (ROOT / "lua" / "ai-overseer-settings.lua").read_text(encoding="utf-8"), str(ROOT / "lua"))
 PRESETS = ["War-hold", "Monastery", "Merchant city", "Hermit hold", "Deep mine", "Garden fort"]
 
 

@@ -57,7 +57,7 @@ def _():
         assert 10 <= q <= 30, (m, q)
     assert mining_plan({"mining": -100}, PLANNER_CONFIG)["quarry"] < mining_plan({}, PLANNER_CONFIG)["quarry"] \
         < mining_plan({"mining": 100}, PLANNER_CONFIG)["quarry"] == 30
-    bridge = (ROOT / "lua" / "ai-bridge.lua").read_text(encoding="utf-8")
+    bridge = "".join(f.read_text(encoding="utf-8") for f in sorted((ROOT / "lua").glob("ai-bridge*.lua")))   # (13c) with its parts
     assert "int_in(a.count or 30, 1, 30)" in bridge          # what the bridge takes (the clamp's other half)
 
 
@@ -322,7 +322,7 @@ if LuaRuntime is not None:
 
     @test("traction_rest is in the bridge's action table, bounded 1-3")
     def _():
-        src = (ROOT / "lua" / "ai-bridge.lua").read_text(encoding="utf-8")
+        src = "".join(f.read_text(encoding="utf-8") for f in sorted((ROOT / "lua").glob("ai-bridge*.lua")))   # (13c) with its parts
         assert "traction_rest = act_traction_rest" in src and "int_in(a.max or 1, 1, 3)" in src
 
 

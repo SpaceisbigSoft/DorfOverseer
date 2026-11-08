@@ -239,7 +239,7 @@ def _():
 
 @test("bridge: mood_free_items is in the action table, bounded, passed to ai-moods; get_moods asks ai-moods first")
 def _():
-    src = (ROOT / "lua" / "ai-bridge.lua").read_text(encoding="utf-8")
+    src = "".join(f.read_text(encoding="utf-8") for f in sorted((ROOT / "lua").glob("ai-bridge*.lua")))   # (13c) with its parts
     assert "    mood_free_items = act_mood_free_items," in src
     assert "CACHE_INVALIDATES.mood_free_items = {'moods'}" in src
     assert "pcall(M.mood_report, job, u, txt)" in src

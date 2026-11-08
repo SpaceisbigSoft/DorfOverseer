@@ -265,7 +265,7 @@ def _():
 
 @test("bridge (0.105.3): remove_webs is in the action table, max checked, the census module called")
 def _():
-    src = (ROOT / "lua" / "ai-bridge.lua").read_text(encoding="utf-8")
+    src = "".join(f.read_text(encoding="utf-8") for f in sorted((ROOT / "lua").glob("ai-bridge*.lua")))   # (13c) with its parts
     assert "    remove_webs = act_remove_webs," in src
     body = src[src.index("function act_remove_webs"):]
     body = body[:body.index("\nend\n") + 5]
