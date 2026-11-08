@@ -667,6 +667,9 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
     else:
         # (0.105.3) a fresh census' clutter cleared at any speed (higher bars)
         _guard(_clutter_rules, s, cfg, proposals, notes, memory)
+    # (0.105.27) forbidden items stored, melted, dumped or destroyed (after the
+    # clutter rules: worn clothes they rot this cycle aren't marked for the dump)
+    _guard(_disposal_rules, s, cfg, proposals, notes, memory, rules_)
     # (0.100.1, overnight run) any workshops level another rule starts (a well's
     # parts, the metal works, a bottleneck) brings the missing still, kitchen
     # and carpenter's with it

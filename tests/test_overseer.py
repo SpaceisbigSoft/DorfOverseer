@@ -318,7 +318,8 @@ def _():
     # (0.104.89) and the wider view of 14a (steering the planner's rules, the
     # Rules tab, what the planner proposes): about 3.6k tokens, in line with
     # what 14.0's audit measured a real call to cost
-    assert (len(instr) + len(msg)) / 2.5 < 3700, len(instr) + len(msg)
+    # (0.105.27) +25 for the Rules tab's three disposal keys (some 60 characters)
+    assert (len(instr) + len(msg)) / 2.5 < 3725, len(instr) + len(msg)
 
 
 @test("AI (0.104.89): a review's raise and hold reach the planner's memory, are said, and the token ratio is learned")

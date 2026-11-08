@@ -449,6 +449,13 @@ SHORT_WORDS = {
     "repair_rooms": "build back the walls dug out of rooms",
     "allow_burial": "let the AI's tombs take the fort's dead",
     "unforbid_dead": "unforbid the fort's dead so they can be buried",
+    # (0.105.27) forbidden items disposed of
+    "unforbid_items": "unforbid the forbidden items worth keeping, so they are stored",
+    "mark_melt": "mark surplus and worn metal to melt down",
+    "mark_dump": "mark worn-out junk for the garbage dump",
+    "place_dump": "make a garbage dump",
+    "empty_dump": "remove the items piled in the garbage dump (DFHack)",
+    "set_standing_orders": "set the game's standing orders",
     # (13c) planner actions that had no words (the panel showed their type)
     "break_fights": "end the citizens' fights (fix/loyaltycascade)",
     "build_crossing": "build a bridge across a gap",

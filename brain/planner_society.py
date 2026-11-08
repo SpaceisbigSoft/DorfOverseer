@@ -888,15 +888,18 @@ def _dead_notes(s: dict, notes: list, proposals: list | None = None, rules_: dic
                                   f"{d.get('free_tombs')} free tombs have automatic burial of citizens off: switch "
                                   "it on in the AI's tombs", 2))
     if d.get("unburied") and d.get("free_tombs") and why:
-        if d.get("forbid_own_dead"):
-            ask_player(notes, f"{d['unburied']} bodies wait for burial and the game's standing order \"forbid your "
-                              "dead\" is on, so nobody carries them to the free tombs: switch it off (the Orders "
-                              "screen, Forbid)")
-        elif (why.get("forbidden") or 0) - (why.get("unreachable") or 0) > 0 and proposals is not None:
+        # (0.105.27) the bridge reads the standing order right now (it read
+        # false always before): with "forbid your dead" on, the game forbids
+        # each body as it falls and the AI unforbids the ones with a free tomb,
+        # as before. The order itself is left as the player set it
+        order_on = bool(d.get("forbid_own_dead"))
+        if (why.get("forbidden") or 0) - (why.get("unreachable") or 0) > 0 and proposals is not None:
             proposals.append(Proposal("burial", {"type": "unforbid_dead", "max": 20},
                                       f"{why['forbidden']} of the fort's {d['unburied']} unburied dead are forbidden "
                                       f"where they lie and {d['free_tombs']} tomb(s) stand free: unforbid them so "
-                                      "they are buried", 3))
+                                      "they are buried"
+                                      + (" (the game's standing order \"forbid your dead\" forbids each body as "
+                                         "it falls)" if order_on else ""), 3))
         if why.get("unreachable"):
             notes.append(f"{why['unreachable']} of the unburied dead lie where the dwarves can't walk"
                          + (f" ({why.get('outside')} outside)" if why.get("outside") else ""))

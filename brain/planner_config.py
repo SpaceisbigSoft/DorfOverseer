@@ -266,6 +266,28 @@ PLANNER_CONFIG = {
     "dead_scrub_slow_days": 14,                  # ...two weeks apart while slow (dead_scrub_min/_days at any speed)
     "corpses_ground_min": 100,                   # corpses, parts and remains on the ground: past this they rot (prune) while slow
     "prune_worn_min": 200,                       # (0.104.115) worn clothes: past this, those thrown down rot
+    # (0.105.27) forbidden items lying about (the census' items.forbidden and
+    # the disposal report; planner_industry._disposal_rules). Each action waits
+    # for a census taken after its last batch, and its own cooldown:
+    "disposal_census_days": 28,                  # no census this long and a disposal report: count again
+    "disposal_recount_days": 5,                  # ...a batch done since the last census: count again after this
+    "disposal_unforbid_min": 25,                 # useful forbidden items (ammo, the enemy's and the buried dead's) before unforbidding...
+    "disposal_unforbid_max": 300,                # ...at most this many a call
+    "disposal_unforbid_cooldown_ticks": 5 * 1200,
+    "disposal_melt_min": 10,                     # forbidden metal items before marking metal to melt...
+    "disposal_melt_max": 40,                     # ...at most this many marked a call
+    "disposal_melt_backlog": 60,                 # ...none while this many marked still wait for a smelter
+    "disposal_melt_cooldown_ticks": 7 * 1200,
+    "disposal_dump_min": 30,                     # worn clothes and the enemy's junk before marking them for the dump...
+    "disposal_dump_max": 200,                    # ...at most this many a call
+    "disposal_dump_backlog": 300,                # ...none while this many marked wait for the haulers
+    "disposal_dump_cooldown_ticks": 7 * 1200,
+    "disposal_place_dump_cooldown_ticks": 7 * 1200,   # a garbage dump asked for a week apart (refusals back off)
+    "disposal_destroy_min": 150,                 # items lying in the dump before DFHack removes them...
+    "disposal_empty_max": 1000,                  # ...at most this many a call
+    "disposal_empty_cooldown_ticks": 7 * 1200,
+    "disposal_orders_cooldown_ticks": 28 * 1200,  # the refuse standing order set at most once a month
+    "disposal_unknown_note": 200,                # forbidden for no reason the game gives: past this, Needs you
     "soldier_swap_month_min": 2,                 # (0.104.114) swaps allowed in 28 days: this many at least ...
     "soldier_swap_month_share": 10,              # ... or one per this many soldiers
     "soldier_swap_keen_min": 5,                  # ...while at least this many civilians badly want to train
