@@ -17,6 +17,7 @@
 --    planned = {n, by_type},    -- Construction buildings not built yet (waiting), by df.construction_type
 --    ai = {keep, halls, gate_pieces, wings, cavern_walls, cistern, room_walls, soil_floors},
 --    soil_floors = {{project_id, kind, elevation, tiles, floored}...}, soil_floors_left,
+--    soil_floors_placed,        -- tiles on the projects' soil_floors records (ai.soil_floors: built ones)
 --    block_pct, line, ms, where}
 -- Surface means not designation.subterranean (set by the map, not by a roof).
 -- The `ai` counts come from the AI's own records: the keep's and the halls'
@@ -121,7 +122,7 @@ end
 -- looked at first) and boxes by z. A box: {cat, x1, y1, x2, y2, where =
 -- 'surface'|'under'|nil, walls = true (walls only), floors = cat for floors}.
 function ai_regions()
-    local R = {sets = {}, boxes = {}, errors = nil}
+    local R = {sets = {}, boxes = {}, errors = nil, soil_recorded = 0}
     local function err(what, e)
         R.errors = R.errors or {}
         R.errors[what] = tostring(e):sub(1, 120)
@@ -176,7 +177,10 @@ function ai_regions()
             if type(p) ~= 'table' or type(p.z) ~= 'number' then return end
             each(p.soil_floors, function(k)
                 local x, y = tostring(k):match('^(%-?%d+),(%-?%d+)$')
-                if x then claim('soil_floors', tonumber(x), tonumber(y), p.z) end
+                if x then
+                    R.soil_recorded = R.soil_recorded + 1
+                    claim('soil_floors', tonumber(x), tonumber(y), p.z)
+                end
             end)
         end)
     end)
@@ -287,6 +291,7 @@ function survey(fresh)
     out.where = where
     local R = ai_regions()
     out.ai_errors = R.errors
+    out.soil_floors_placed = R.soil_recorded   -- placed by floor_rooms (ai.soil_floors: of those, built)
     if list == nil then
         out.missing = true          -- [verify] neither field: the structure moved
     else

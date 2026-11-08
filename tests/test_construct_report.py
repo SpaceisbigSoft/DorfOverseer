@@ -223,6 +223,7 @@ def _():
     assert s.ai.soil_floors == 1 and s.ai.keep == 1 and s.ai.gate_pieces == 0, dict(s.ai)
     assert "boom" in s.ai_errors.projects, dict(s.ai_errors)
     # the soil still bare, as the brain's soil floor step reads it (a list of projects)
+    assert s.soil_floors_placed == 1
     assert s.soil_floors[1].project_id == 4 and s.soil_floors[1].tiles == 3 and s.soil_floors_left == 3
 
 
