@@ -3461,9 +3461,14 @@ def _():
         [x.reason for x in by_rule(p, "mechanisms")]
 
 
+def _access(p):
+    """(0.105.26) a location_access action without the mayor's rest it carries"""
+    return {k: v for k, v in p.action.items() if k != "visitor_shut"}
+
+
 @test("0.105.12 locations: a closed fort shuts its tavern, temple, library, guildhalls to visitors; reopened later")
 def _():
-    from planner import _location_access_rule, record
+    from planner import _location_access_rule, record, note_locations
     s = fort()
     both = ["VISITORS_ALLOWED", "NON_CITIZENS_ALLOWED"]
     s["locations"] = {"count": {}, "list": [{"id": 1, "type": "INN_TAVERN", "flags": list(both)},
@@ -3474,14 +3479,16 @@ def _():
     m = Memory()
     props = []
     _location_access_rule(s, m, PLANNER_CONFIG, props, [])
-    assert len(props) == 1 and props[0].action == {"type": "location_access", "ids": [1, 4], "visitors": False}, props
+    assert len(props) == 1 and _access(props[0]) == {"type": "location_access", "ids": [1, 4], "visitors": False}, props
     record([(props[0], {"ok": True, "changed": [1, 4]})], s, m)
     assert m.locations_closed == [1, 4]
     # (review) you open one again: it's yours, forgotten and never shut again
     s["locations"]["list"][0]["flags"] = ["NON_CITIZENS_ALLOWED"]
     s["locations"]["list"][3]["flags"] = ["VISITORS_ALLOWED", "NON_CITIZENS_ALLOWED"]
+    s["locations"]["built"] = abs_tick(s) + 1          # (0.105.26) a report built since the shut
     props = []
     _location_access_rule(s, m, PLANNER_CONFIG, props, [])
+    note_locations(s, m, PLANNER_CONFIG)               # (0.105.26) the bookkeeping, outside plan()
     assert not props and m.locations_closed == [1], (props, m.locations_closed)
     s["locations"]["list"][3]["flags"] = ["NON_CITIZENS_ALLOWED"]
     # neutral: nothing; welcoming again: the AI's own reopened (not the player's temple)
@@ -3490,7 +3497,7 @@ def _():
     s["settings"]["traits"] = {"outsiders": 60}
     props = []
     _location_access_rule(s, m, PLANNER_CONFIG, props, [])
-    assert len(props) == 1 and props[0].action == {"type": "location_access", "ids": [1], "visitors": True}, props
+    assert len(props) == 1 and _access(props[0]) == {"type": "location_access", "ids": [1], "visitors": True}, props
     record([(props[0], {"ok": True, "changed": [1]})], s, m)
     assert m.locations_closed == []
 
@@ -3524,7 +3531,7 @@ def _():
     assert note_heists(s, m, [heist, dict(heist)]) == 1 and m.heists[0][1] == "Human baroness consort Lalgi Aspaescu", m.heists
     props = []
     _location_access_rule(s, m, PLANNER_CONFIG, props, [])
-    assert len(props) == 1 and props[0].action == {"type": "location_access", "ids": [1, 3], "visitors": False}, props
+    assert len(props) == 1 and _access(props[0]) == {"type": "location_access", "ids": [1, 3], "visitors": False}, props
     assert "Lalgi" in props[0].reason and "168 more day" in props[0].reason, props[0].reason
     record([(props[0], {"ok": True, "changed": [1, 3]})], s, m)
     for e in s["locations"]["list"]:
@@ -3538,7 +3545,7 @@ def _():
     later["date"]["tick"] += 169 * TICKS_PER_DAY
     props = []
     _location_access_rule(later, m, PLANNER_CONFIG, props, [])
-    assert len(props) == 1 and props[0].action == {"type": "location_access", "ids": [1, 3], "visitors": True}, props
+    assert len(props) == 1 and _access(props[0]) == {"type": "location_access", "ids": [1, 3], "visitors": True}, props
     assert "no heist for 168 days" in props[0].reason, props[0].reason
     # a visitor who killed a citizen (not berserk, alive) counts too; off at 0 days
     m2 = Memory()
@@ -3578,7 +3585,7 @@ def _():
     # on: shut (as before)
     props = []
     _location_access_rule(s, m, PLANNER_CONFIG, props, [])
-    assert len(props) == 1 and props[0].action == {"type": "location_access", "ids": [1, 3], "visitors": False}, props
+    assert len(props) == 1 and _access(props[0]) == {"type": "location_access", "ids": [1, 3], "visitors": False}, props
     record([(props[0], {"ok": True, "changed": [1, 3]})], s, m)
     # a library the player shut before: never the AI's
     s["locations"]["list"].append({"id": 4, "type": "LIBRARY", "flags": ["NON_CITIZENS_ALLOWED"]})
@@ -3589,7 +3596,7 @@ def _():
     off["settings"]["heist_lockout"] = False
     props = []
     _location_access_rule(off, m, PLANNER_CONFIG, props, [])
-    assert len(props) == 1 and props[0].action == {"type": "location_access", "ids": [1, 3], "visitors": True}, props
+    assert len(props) == 1 and _access(props[0]) == {"type": "location_access", "ids": [1, 3], "visitors": True}, props
     assert "off on the Rules tab" in props[0].reason, props[0].reason
     # a closed fort keeps them shut whatever the switch says
     off["settings"]["traits"] = {"outsiders": -150}
@@ -3624,9 +3631,10 @@ def _():
     props, notes = [], []
     _location_access_rule(s, m, PLANNER_CONFIG, props, notes)
     # the library the player shut stays as it is (not the AI's); the hospital never
-    assert len(props) == 1 and props[0].action == {"type": "location_access", "ids": [1, 3, 5], "visitors": False}, props
+    assert len(props) == 1 and _access(props[0]) == {"type": "location_access", "ids": [1, 3, 5], "visitors": False}, props
     assert "mayor is swamped" in props[0].reason and "the tavern and 2 temples" in props[0].reason, props[0].reason
-    assert m.visitor_shut["until"] - m.visitor_shut["tick"] == 56 * TICKS_PER_DAY, m.visitor_shut
+    w = props[0].action["visitor_shut"]                # (0.105.26) carried on the action, kept by record()
+    assert w["until"] - w["tick"] == 56 * TICKS_PER_DAY and m.visitor_shut == {}, (w, m.visitor_shut)
     assert notes and "3 of the mayor's 4 meetings" in notes[0] and "56 more day" in notes[0], notes
     record([(props[0], {"ok": True, "changed": [1, 3, 5]})], s, m)
     for e in s["locations"]["list"]:
@@ -3644,7 +3652,7 @@ def _():
     later["date"]["tick"] += 57 * TICKS_PER_DAY
     props = []
     _location_access_rule(later, m, PLANNER_CONFIG, props, [])
-    assert len(props) == 1 and props[0].action == {"type": "location_access", "ids": [1, 3, 5], "visitors": True}, props
+    assert len(props) == 1 and _access(props[0]) == {"type": "location_access", "ids": [1, 3, 5], "visitors": True}, props
     assert "56 days without visitors are over" in props[0].reason, props[0].reason
     record([(props[0], {"ok": True, "changed": [1, 3, 5]})], later, m)
     for e in later["locations"]["list"]:
@@ -3652,10 +3660,15 @@ def _():
             e["flags"] = ["VISITORS_ALLOWED", "NON_CITIZENS_ALLOWED"]
     props = []
     _location_access_rule(later, m, PLANNER_CONFIG, props, [])
-    assert not props and m.visitor_shut == {}, (props, m.visitor_shut)        # opened: forgotten
+    assert not props and "until" not in m.visitor_shut, (props, m.visitor_shut)    # opened: forgotten
+    # (0.105.26) still swamped: shut afresh only for complaints made since the reopen
     props = []
     _location_access_rule(later, m, PLANNER_CONFIG, props, [])
-    assert props and props[0].action["visitors"] is False, props            # still swamped: shut afresh
+    assert not props, props
+    later["needs"]["stress_causes"]["causes"][0]["citizens"] = 9 + 5
+    props = []
+    _location_access_rule(later, m, PLANNER_CONFIG, props, [])
+    assert props and props[0].action["visitors"] is False, props
     # not swamped: too few unheard, too few visitors, visitors not most of the meetings
     for kw in ({"unheard": 4}, {"visitors": 2, "citizens": 0}, {"visitors": 3, "citizens": 4}):
         props = []
@@ -3679,7 +3692,7 @@ def _():
     s2["settings"]["shut_to_visitors"] = False
     props = []
     _location_access_rule(s2, m2, PLANNER_CONFIG, props, [])
-    assert len(props) == 1 and props[0].action == {"type": "location_access", "ids": [1, 3, 5], "visitors": True}, props
+    assert len(props) == 1 and _access(props[0]) == {"type": "location_access", "ids": [1, 3, 5], "visitors": True}, props
     assert "mayor is off on the Rules tab" in props[0].reason, props[0].reason
 
 

@@ -388,6 +388,11 @@ PLANNER_CONFIG = {
                                        # 2-5 Nov: the thieves came as visitors (19 of 23 had asked the mayor for a
                                        # meeting); D shut its locations at 23:06 2 Nov: 8 heists before, none after
                                        # (0.105.24) the Rules switch heist_lockout (on by default) turns it off
+    "heist_lockout_days_welcoming": 28,  # (0.105.26) ...but this long at Outsiders visitor_shut_welcoming (100) or
+                                       # more: the Merchant city's visitors are its point, not shut half a year a heist
+    "location_stale_days": 4,          # (0.105.26) a location the AI shut that reads open within this many days of
+                                       # the shut, in a report not built since (the locations section is cached 2
+                                       # days), is the old report, not the player opening it
     # (0.105.24) the mayor swamped by visitors: B and F (2-5 Nov) met poets, dancers and bards (asking to
     # stay) about as often as citizens, and citizens went "unable to complain". When the mayor's meetings
     # (under way and waiting) are mostly with visitors and enough citizens went unheard, the tavern,
