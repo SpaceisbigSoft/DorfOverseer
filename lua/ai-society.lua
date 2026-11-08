@@ -356,7 +356,8 @@ local function pens()
     local out = {}
     for _, z in ipairs(df.global.world.buildings.all) do
         if z:getType() == df.building_type.Civzone and z.type == df.civzone_type.Pen then
-            table.insert(out, {zone = z, spare = area_of(z) - pen_load(z)})
+            local area = area_of(z)
+            table.insert(out, {zone = z, area = area, spare = area - pen_load(z)})
         end
     end
     table.sort(out, function(a, b) return a.spare > b.spare end)
@@ -694,6 +695,30 @@ function ai_pastures()
         end
     end
     return {count = n, tiles = tiles, spare = spare}
+end
+
+-- (13c) The bridge's report in one pass: the pastures listed once and the
+-- grazers once (the report asked pasture_count, pasture_needs and
+-- ai_pastures in turn, three walks of every building). The same numbers.
+function pasture_report()
+    local list, waiting = pens(), unpastured_grazers()
+    local need, smallest = 0, nil
+    for _, u in ipairs(waiting) do
+        local t = grazer_tiles(u)
+        need = need + t
+        smallest = smallest and math.min(smallest, t) or t
+    end
+    local n, tiles, spare = 0, 0, 0
+    for _, p in ipairs(list) do
+        if tostring(p.zone.name or '') == AI_PASTURE_NAME then
+            n = n + 1
+            tiles = tiles + p.area
+            spare = spare + math.max(0, p.spare)
+        end
+    end
+    return {grazers = #waiting, count = #list,
+            needs = {need = need, smallest = smallest or 0, spare = #list > 0 and math.max(0, list[1].spare) or 0},
+            ai = {count = n, tiles = tiles, spare = spare}}
 end
 
 -- The population cap (DF's own setting: migrants stop coming at it). Where

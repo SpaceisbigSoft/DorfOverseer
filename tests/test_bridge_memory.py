@@ -19,7 +19,7 @@ except ImportError:
     sys.exit(0)
 
 HARNESS = r"""
-local src = ...
+local src, lua_dir = ...
 local H = {persist = {}, files = {}, to_save = nil, action = nil, printed = nil, has_delete = true}
 local json = {
   decode = function(text) return H.action end,
@@ -67,19 +67,19 @@ end
 local chunk_src = src
 function H.run(...)
   local env = new_env(false)
-  assert(load(chunk_src, 'ai-bridge', 't', env))(...)
+  assert(load(chunk_src, '@' .. lua_dir .. '/ai-bridge.lua', 't', env))(...)
   return H.printed
 end
 function H.module()
   local env = new_env(true)
-  assert(load(chunk_src, 'ai-bridge', 't', env))()
+  assert(load(chunk_src, '@' .. lua_dir .. '/ai-bridge.lua', 't', env))()
   return env
 end
 return H
 """
 
 LUA = LuaRuntime(unpack_returned_tuples=True)
-H = LUA.execute(HARNESS, (ROOT / "lua" / "ai-bridge.lua").read_text(encoding="utf-8"))
+H = LUA.execute(HARNESS, (ROOT / "lua" / "ai-bridge.lua").read_text(encoding="utf-8"), str(ROOT / "lua"))
 FROM = "/df/dfhack-config/ai-overseer/memory-from-save.json"
 
 

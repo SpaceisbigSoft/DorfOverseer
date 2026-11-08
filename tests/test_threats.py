@@ -348,7 +348,7 @@ return e
         assert "threats = function() return safe(function() return reqscript('ai-threats').survey(txt) end) end" in src
         ns = {}
         harness = BRIDGE_TEST.split("LUA = LuaRuntime")[0].split('HARNESS = r"""', 1)[1].split('"""', 1)[0]
-        H = LUA.execute(harness, src)
+        H = LUA.execute(harness, src, str(ROOT / "lua"))   # (13c) where the bridge's parts are
         H.scripts = LUA.table_from({"ai-threats": LUA.eval("""{
             fire_guard = function(r, j, lift, dry) return {ok = true, r = r, j = j, lift = lift} end,
             prisoner_room = function(dry) return {ok = true} end,
