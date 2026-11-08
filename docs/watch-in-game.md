@@ -100,3 +100,12 @@ Suggested placement: in "Starting the next step", in place of the current "then 
 - Lock symbols on the map should thin out over a few game months; nothing near enemies or in a siege is touched; no citizen's body vanishes; picks and axes stay.
 - The Rules tab's "Forbidden items and junk" block fits the window (Dispose / Yours too / Keep enemy gear).
 - A Needs you appears if 200+ locked items match no game reason (maybe yours).
+
+**0.105.29: fort customs (two per preset, new levels only)**
+- **All.** New `start_project` lines in the journal carry `"customs"` only in the fort whose preset owns them (none at default sliders), and the scorecard's six custom lines (Piety "cloister temples and cells" ... Agriculture "halls and kitchens by the fields") are won by their own fort. Levels already dug are not changed.
+- **B Monastery.** A new temple has a ring of rock pillars 1 tile in from its walls, the doorway row and statue column clear (`cloister`). New bedroom levels go to the halls district beside the temple, and the homes district does not grow from "misses" (memory: homes `missed` stays low).
+- **C Merchant city.** New levels' approach corridors are 3 wide (`wide_ways`). The tavern level sits 1-3 levels under the way in (`market_gate`).
+- **D Hermit hold.** Approach corridors 1 wide with a dog-leg while the fort has 80 citizens or fewer, 2 wide again above that (`winding_ways`). No new level at or above the surface; new `start_project` actions carry `max_elev` and `hidden_hold` (`levels_up` stays flat).
+- **A War-hold.** New barracks and archery levels 1-3 levels under the hatch, on the side facing the way in (`gate_barracks`). Barracks have an alcove past the racks with a weapon and an armour pile (`armoury`; layout summary `armoury = true`).
+- **E Deep mine.** A new dining level in the forge (industry) band (`deep_hall`). Workshop levels get one 5x5 stone stockpile room (`ore_piles`; check stone is hauled there and stone tidiness does not fight it).
+- **F Garden fort.** A new dining level and food-only workshop levels (still, kitchen, farmer's, quern, millstone, butcher's, fishery) on the farm level (`field_hall`, `field_kitchens`); a mixed workshop level goes where it always did.

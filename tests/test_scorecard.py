@@ -86,5 +86,76 @@ def _():
     assert forts[1].preset == "Merchant city"
 
 
+def _level(customs, ok=True, tick=5, z=90, with_key=True):
+    a = {"type": "start_project", "kind": "dining"}
+    if with_key:
+        a["customs"] = customs
+    return {"kind": "decision", "date": {"year": 250, "tick": tick}, "action": a,
+            "result": {"ok": ok, "kind": "dining", "z": z, "tiles": 60}}
+
+
+@test("customs: journal levels keep action customs, six lines count each preset's own")
+def _():
+    date = {"year": 250, "tick": 10}
+    entries = [
+        _level(["cloister"]), _level(["cells"]), _level(["wide_ways", "market_gate"]),
+        _level(["hidden_hold"]), _level(["gate_barracks", "armoury"]), _level(["ore_piles"]),
+        _level(["deep_hall"]), _level(["field_kitchens"]),
+        _level(["cloister"], ok=False),            # refused: not a level
+        _level(["cloister"], tick=20),             # after the date: not counted
+        _level("cloister"),                        # not a list: ignored
+        _level([], with_key=False),                # an older journal line: no key
+    ]
+    j = scorecard.journal_counts(entries, date)
+    assert len(j["levels"]) == 10, j["levels"]
+    assert j["levels"][0]["customs"] == ["cloister"] and j["levels"][-1]["customs"] == [], j["levels"]
+    m = scorecard.measures({}, j)
+    got = {k: m[k] for k in m if k.startswith("custom_")}
+    assert got == {"custom_W": 1, "custom_M": 2, "custom_ME": 1, "custom_H": 1, "custom_D": 2,
+                   "custom_G": 1}, got
+    keys = [ln[2] for ln in scorecard.LINES if ln[2].startswith("custom_")]
+    assert keys == ["custom_M", "custom_ME", "custom_H", "custom_W", "custom_D", "custom_G"], keys
+    for _s, _w, k, high, low in scorecard.LINES:
+        if k.startswith("custom_"):
+            owner = next(o for o, kk in scorecard.CUSTOM_KEYS.items() if "custom_" + kk == k)
+            assert high == {owner} and low == set(), (k, high)
+            assert len(scorecard.CUSTOM_IDS[owner]) == 2, scorecard.CUSTOM_IDS
+
+
+@test("customs: no customs anywhere (default sliders) gives zeros, a flat line")
+def _():
+    j = scorecard.journal_counts([_level([], with_key=False)], {"year": 251, "tick": 0})
+    m = scorecard.measures({}, j)
+    assert all(m["custom_" + k] == 0 for k in scorecard.CUSTOM_KEYS.values()), m
+    assert scorecard.judge({"War-hold": 0, "Monastery": 0}, {"Monastery"}, set()) == "flat"
+
+
+@test("customs: the owner fort wins its line in a full score, old-run journal lines left out")
+def _():
+    root = Path(tempfile.mkdtemp())
+    a = scorecard.Fort("A", make_fort(root, "DF-AI", "War-hold", 10, 40))
+    b = scorecard.Fort("B", make_fort(root, "DF-AI-B", "Monastery", 1, 60))
+    jf = b.fort_dir / "journal.jsonl"
+    jf.write_text(jf.read_text() + "\n" + json.dumps(_level(["cloister"])) + "\n" +
+                  json.dumps(_level(["cells"], tick=6)))
+    jw = a.fort_dir / "journal.jsonl"
+    jw.write_text(jw.read_text() + "\n" + json.dumps(_level(["armoury"])))
+    _md, rows = scorecard.score([a, b], None, False)
+    mon = next(r for r in rows if r["line"] == "cloister temples and cells")
+    assert mon["values"] == {"A": 0, "B": 2} and mon["result"] == "pass", mon
+    war = next(r for r in rows if r["line"] == "barracks by the gate, armouries")
+    assert war["values"] == {"A": 1, "B": 0} and war["result"] == "pass", war
+    # a journal line written before this run began is the old run's: not counted
+    old = dict(_level(["cloister"], tick=7), time="2026-10-01T00:00:00")
+    new = dict(_level(["cells"], tick=8), time="2026-11-02T00:00:00")
+    jf.write_text(jf.read_text() + "\n" + json.dumps(old) + "\n" + json.dumps(new))
+    b2 = scorecard.Fort("B", b.folder)
+    b2.run = "2026-11-01T00:00:00"
+    j = scorecard.journal_counts(b2.journal(), {"year": 250, "tick": 10})
+    # (lines with no "time" are kept, as the scorecard always has)
+    assert [lv["customs"] for lv in j["levels"] if lv["customs"]] == [["cloister"], ["cells"], ["cells"]], \
+        j["levels"]
+
+
 if __name__ == "__main__":
     finish()

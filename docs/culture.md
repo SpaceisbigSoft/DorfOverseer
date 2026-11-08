@@ -98,6 +98,34 @@ when and why it was earned, what it does, and what would make it fade.
 Restless and Traditionalist exclude each other. More quirks arrive with the
 systems they bend (see the roadmap).
 
+## Customs (sliders, 0.105.29, brain/customs.py)
+
+Customs are small fixed habits a fort keeps while its sliders hold them: no
+earning, no fading, no AI. They are not quirks (above). Each preset meets two
+of its own and no other preset's; at the default sliders none applies. A custom
+only changes where a new level goes or how one room kind is laid out, so it
+also works in forts whose plan is already drawn. The journal's `start_project`
+actions carry `"customs"` (the ids that shaped that level), and the scorecard
+counts them, one line per preset.
+
+| Preset | Custom | Thresholds | What it does |
+| --- | --- | --- | --- |
+| Monastery | `cloister` | Piety 100+ and Welfare 40+ | temples ringed by a pillared walk, 1 tile in from the walls |
+| Monastery | `cells` | Piety 100+ and Welfare 40+ | bedroom levels in the halls district, beside the temple |
+| Merchant city | `wide_ways` | Trade 80+ and Outsiders 50+ | every level's approach corridor 3 wide |
+| Merchant city | `market_gate` | Trade 80+ and Outsiders 50+ | the tavern level in the gate band (the 3 levels under the way in) |
+| Hermit hold | `winding_ways` | Outsiders -120 or lower and Caution 30+ | approach corridors 1 wide and dog-legged, while 80 citizens or fewer |
+| Hermit hold | `hidden_hold` | Outsiders -120 or lower and Caution 30+ | no new level at or above the surface |
+| War-hold | `gate_barracks` | Militarism 100+ | barracks and archery levels in the gate band, facing the way in |
+| War-hold | `armoury` | Militarism 100+ | barracks get an alcove past the racks with a weapon and an armour pile |
+| Deep mine | `deep_hall` | Mining 100+ and Verticality 60+ | the dining level in the industry district's band (the deepest) |
+| Deep mine | `ore_piles` | Mining 100+ and Verticality 60+ | workshop levels get one 5x5 stone (and ore) stockpile room |
+| Garden fort | `field_hall` | Agriculture 80+ | the dining level at the farms' elevation |
+| Garden fort | `field_kitchens` | Agriculture 80+ | a workshop level of food shops only at the farms' elevation |
+
+A mixed fort may meet both dining customs: `deep_hall` wins over `field_hall`.
+Earned quirks keep the last word on a level's ways (Narrow ways, Great shaft).
+
 ## Eras
 
 When the style changes, because you moved a slider or history pushed it, a new
