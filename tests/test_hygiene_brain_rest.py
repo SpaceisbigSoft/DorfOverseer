@@ -206,7 +206,7 @@ def _():
 
 @test("action words: every word and co-pilot question is a real bridge action; the planner's have words")
 def _():
-    lua = (ROOT / "lua" / "ai-bridge.lua").read_text(encoding="utf-8")
+    lua = "".join(f.read_text(encoding="utf-8") for f in sorted((ROOT / "lua").glob("ai-bridge*.lua")))  # the bridge is split (13c)
     acts = set(re.findall(r"(\w+)\s*=\s*act_\w+", lua)) | set(re.findall(r"^\s+(\w+) = function\(a\)", lua, re.M))
     assert set(overseer.SHORT_WORDS) <= acts, set(overseer.SHORT_WORDS) - acts
     assert overseer.BIG_MOVES <= acts, overseer.BIG_MOVES - acts
@@ -220,7 +220,7 @@ def _():
 @test("squad memory survives a reload: squads_trained and squads_rested are in the ledger")
 def _():
     assert "squads_trained" in ledger.FIELDS and "squads_rested" in ledger.FIELDS
-    lua = (ROOT / "lua" / "ai-bridge.lua").read_text(encoding="utf-8")
+    lua = "".join(f.read_text(encoding="utf-8") for f in sorted((ROOT / "lua").glob("ai-bridge*.lua")))  # the bridge is split (13c)
     assert "squads_trained = true" in lua and "squads_rested = true" in lua
     m = Memory()
     m.squads_trained, m.squads_rested = [4, 9], [9]
