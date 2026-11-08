@@ -33,7 +33,9 @@ MAX_WANT = 3                       # report sections asked for in full, next rev
 SECTION_CHARS = 2500
 # (0.104.89) report sections the strategist may ask to see in full
 SECTIONS = ("needs", "water", "trade", "military", "society", "projects", "health", "locations", "farms",
-            "supplies", "stocks", "others_on_map", "logistics", "order_desk", "entrances")
+            "supplies", "stocks", "others_on_map", "logistics", "order_desk", "entrances",
+            # (0.105.26) the life-and-death ones, and the world's
+            "moods", "threats", "world", "missions", "infection", "homes", "petitions", "meetings")
 
 INSTRUCTIONS = """You are the strategist for an AI overseer that runs a Dwarf Fortress fortress.
 
@@ -115,6 +117,11 @@ STEER_RULES = {**{k: v for k, v in AGENDA_THEMES.items()},
                "bags": "make bags", "fishery": "a fishery", "kitchen": "the kitchen's bans"}
 
 
+PROPOSALS_SHOWN = 12               # THE PLANNER PROPOSES NOW
+RECENT_SHOWN = 6                   # RECENT ACTIONS
+NOT_STEERABLE = {"strategist"}     # (0.105.26) its own actions: nothing to raise or hold
+
+
 STEER_EXTRA = ("build", "grandeur", "trade", "crafts", "gems", "encrust", "steel", "arms", "train", "squad_make",
                "traps", "crops", "dairy", "eggs", "war_animals", "gate_dogs", "stairwell", "recreation", "petitions")
 
@@ -135,7 +142,7 @@ def _format(recipes, tools, build, adj) -> str:
 def review_message(state: dict, reason: str, planner_notes: list[str], recent_decisions: list[dict],
                    adjustments: dict, events: list[dict], culture: dict | None = None, news: int = 4,
                    proposals: list | None = None, steer: dict | None = None, wants: list | None = None,
-                   rules: dict | None = None) -> str:
+                   rules: dict | None = None, lockout: str | None = None) -> str:
     """The per-review message: compact digest + context. Kept short on purpose;
     `news` (how many recent announcements) grows with the How long slider."""
     s = normalize(state)
@@ -169,33 +176,93 @@ def review_message(state: dict, reason: str, planner_notes: list[str], recent_de
     if recent_decisions:
         lines.append("RECENT ACTIONS " + "; ".join(
             f"{d.get('rule')}:{json.dumps(d.get('action'), separators=(',', ':'))}"
-            for d in recent_decisions[-6:]))
+            for d in recent_decisions[-RECENT_SHOWN:]))
     if events:
         lines.append("EVENTS SINCE LAST REVIEW " + "; ".join(_event_text(e) for e in events[-8:]))
     # (0.104.89) the wider view: the Rules tab, what the planner proposes now
     # and why, the strategist's own standing raises and holds, and the
     # sections it asked to see in full
     if rules:
-        flat = {k: v for k, v in rules.items() if isinstance(v, (bool, str, int)) and not isinstance(v, dict)}
-        off = sorted(k for k, v in flat.items() if v is False)
-        lines.append("RULES TAB " + ", ".join(f"{k}={v}" for k, v in sorted(flat.items()) if not isinstance(v, bool))
-                     + (f" | switched off by the player: {', '.join(off)}" if off else ""))
+        lines.append(rules_line(rules))
+    if lockout:
+        lines.append(lockout)
     if proposals:
-        lines.append("THE PLANNER PROPOSES NOW " + "; ".join(
-            f"{getattr(p, 'rule', '?')}: {str(getattr(p, 'reason', ''))[:90]}" for p in proposals[:12]))
+        seen, shown = set(), []
+        for p in proposals[:PROPOSALS_SHOWN]:
+            t = f"{getattr(p, 'rule', '?')}: {str(getattr(p, 'reason', ''))[:90]}"
+            if t not in seen:            # the same rule and reason twice (two squads) is one line
+                seen.add(t)
+                shown.append(t)
+        lines.append("THE PLANNER PROPOSES NOW " + "; ".join(shown))
     if steer:
         lines.append("YOUR STANDING RAISES AND HOLDS " + "; ".join(
             f"{k} {v.get('mode')} ({str(v.get('why') or '')[:60]})" for k, v in steer.items() if isinstance(v, dict)))
     for sec in (wants or [])[:MAX_WANT]:
         if sec in SECTIONS and sec in state:
-            lines.append(f"SECTION {sec} (as you asked) " + json.dumps(state.get(sec), separators=(",", ":"),
-                                                                       default=str)[:SECTION_CHARS])
-    mine = [o for o in _l(s.get("orders")) if o.get("by_ai")]
+            text, cut = cut_json(state.get(sec), SECTION_CHARS)
+            lines.append(f"SECTION {sec} (as you asked{', cut' if cut else ''}) " + text + (" (cut)" if cut else ""))
+    mine = [o for o in _l(s.get("orders")) if isinstance(o, dict) and o.get("by_ai")]
     if mine:
         lines.append("YOUR OPEN ORDERS " + "; ".join(
-            f"#{o['id']} {o.get('recipe') or o.get('job')} {o.get('amount_left')}/{o.get('amount_total')}"
+            f"#{o.get('id')} {o.get('recipe') or o.get('job')} {o.get('amount_left')}/{o.get('amount_total')}"
             for o in mine[:8]))
     return "\n".join(lines)
+
+
+def _j(v) -> str:
+    return json.dumps(v, separators=(",", ":"), default=str)
+
+
+def cut_json(v, limit: int) -> tuple[str, bool]:
+    """(0.105.26) A section as JSON in at most `limit` characters, cut on a
+    whole item (a key and its value, or a list's element), never mid-JSON:
+    still valid JSON. Returns (text, cut). An item too big for what is left
+    is cut the same way inside, one level down at a time."""
+    whole = _j(v)
+    if len(whole) <= limit:
+        return whole, False
+    if isinstance(v, dict):
+        items, opener, closer = [(_j(str(k)) + ":", x) for k, x in v.items()], "{", "}"
+    elif isinstance(v, list):
+        items, opener, closer = [("", x) for x in v], "[", "]"
+    else:
+        return _j(game_text(v, max(8, limit - 2)) if isinstance(v, str) else None), True
+    out, used = [], len(opener) + len(closer)
+    for head, x in items:
+        sep = 1 if out else 0
+        text = _j(x)
+        if used + sep + len(head) + len(text) <= limit:
+            out.append(head + text)
+            used += sep + len(head) + len(text)
+            continue
+        room = limit - used - sep - len(head)
+        if room >= 60 and isinstance(x, (dict, list)) and x:
+            inner, _ = cut_json(x, room)
+            out.append(head + inner)
+        break
+    return opener + ",".join(out) + closer, True
+
+
+def shown_rules(proposals: list | None, recent_decisions: list | None) -> set:
+    """(0.105.26) The rule names a review shows (THE PLANNER PROPOSES NOW and
+    RECENT ACTIONS): the instructions say any of them may be raised or held."""
+    names = {getattr(p, "rule", None) for p in (proposals or [])[:PROPOSALS_SHOWN]}
+    names |= {d.get("rule") for d in (recent_decisions or [])[-RECENT_SHOWN:] if isinstance(d, dict)}
+    return {n for n in names if isinstance(n, str) and n and n not in NOT_STEERABLE}
+
+
+def rules_line(rules: dict) -> str:
+    """(0.105.26) The Rules tab in one line. A switch that is off by default
+    (open_caverns, send_messenger) is just "off"; one that is on by default
+    and now off was switched off by the player."""
+    from planner import player_rules
+    defaults = player_rules({"settings": {}})
+    flat = {k: v for k, v in rules.items() if isinstance(v, (bool, str, int))}
+    by_player = sorted(k for k, v in flat.items() if v is False and defaults.get(k) is not False)
+    off = sorted(k for k, v in flat.items() if v is False and defaults.get(k) is False)
+    return ("RULES TAB " + ", ".join(f"{k}={v}" for k, v in sorted(flat.items()) if not isinstance(v, bool))
+            + (f" | switched off by the player: {', '.join(by_player)}" if by_player else "")
+            + (f" | off: {', '.join(off)}" if off else ""))
 
 
 def _event_text(e: dict) -> str:
@@ -282,8 +349,10 @@ def _extract_json(text: str) -> dict | None:
 
 
 def check_answer(text: str, recipes: set[str], tools: set[str], ai_order_ids: set[int],
-                 build: dict | None = None) -> Answer:
-    """Turn the model's reply into safe, bounded instructions. Never trusts it."""
+                 build: dict | None = None, shown: set | None = None) -> Answer:
+    """Turn the model's reply into safe, bounded instructions. Never trusts it.
+    `shown`: the rule names the review showed (shown_rules), which may be
+    raised or held as well as STEER_RULES (never a protected one held)."""
     a = Answer()
     obj = _extract_json(text)
     if obj is None:
@@ -314,7 +383,7 @@ def check_answer(text: str, recipes: set[str], tools: set[str], ai_order_ids: se
 
     for act in _l(obj.get("actions")):
         if isinstance(act, dict) and act.get("type") in ("raise", "hold"):
-            ok, why = _check_steer(act)
+            ok, why = _check_steer(act, shown)
             if ok and len(a.steer) < MAX_STEER:
                 a.steer.append(ok)
             else:
@@ -331,10 +400,10 @@ def check_answer(text: str, recipes: set[str], tools: set[str], ai_order_ids: se
     return a
 
 
-def _check_steer(act) -> tuple[dict | None, str]:
+def _check_steer(act, shown: set | None = None) -> tuple[dict | None, str]:
     """(0.104.89) A raise or hold of one of the planner's rules."""
     rule, why = act.get("rule"), act.get("why")
-    if rule not in STEER_RULES:
+    if not isinstance(rule, str) or rule in NOT_STEERABLE or (rule not in STEER_RULES and rule not in (shown or ())):
         return None, f"{act.get('type')}: unknown rule {rule!r}"
     why = (why if isinstance(why, str) else "")[:120]
     if act["type"] == "raise":

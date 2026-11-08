@@ -16,7 +16,7 @@ import calibrate
 import learning
 import memstore
 from planner import PLANNER_CONFIG, TICKS_PER_DAY, Memory, Proposal, abs_tick, level_refused
-from strategist import check_answer, detect, instructions, review_message
+from strategist import check_answer, detect, instructions, review_message, shown_rules
 import chronicle
 import season as season_mod
 from tokens import TokenBank, ai_plan, budget_settings, event_review_allowed, routine_due, routine_interval_ticks
@@ -50,6 +50,10 @@ def compact_event(e: dict) -> dict:
 def note_events(state: dict, memory: Memory, bank: TokenBank | None, events: list[dict]) -> list[str]:
     """Every cycle: remember events for the next review, detect big ones, top up
     the bank for them. Returns the kinds detected this cycle."""
+    if "date" in normalize(state)["_errors"]:
+        # (0.105.26) no date: events wait for the next cycle, nothing is topped up on a made-up y0 tick
+        memory.pending_events = (memory.pending_events + [compact_event(e) for e in events])[-MAX_PENDING_EVENTS:]
+        return []
     now = abs_tick(state)
     memory.pending_events = (memory.pending_events + [compact_event(e) for e in events])[-MAX_PENDING_EVENTS:]
     kinds = detect(memory.prev_snapshot or None, state, events)
@@ -102,6 +106,10 @@ def maybe_review(state: dict, memory: Memory, bank: TokenBank, backend, bridge_i
             or ("token_bank_max" not in s["settings"] and "ai_frequency" not in s["settings"])):
         out.say.append("AI review skipped: the AI settings couldn't be read from the game")
         return out
+    if "date" in s["_errors"]:
+        # (0.105.26) a review on a made-up y0 date would schedule, bank and pick the season wrongly
+        out.say.append("AI review skipped: the game's date couldn't be read")
+        return out
     settings = budget_settings(s["settings"])
     now = abs_tick(state)
     plan = ai_plan(settings)                     # how often, how long (the two AI sliders)
@@ -144,10 +152,20 @@ def maybe_review(state: dict, memory: Memory, bank: TokenBank, backend, bridge_i
                "memory": memstore.brief(memory)}
     instr = instructions(sorted(recipes), sorted(tools), build, season_menu=season_due)
     from planner import player_rules
+    lockout = None
+    try:      # (0.105.26) the visitor lockout after a heist or a visitor's killing (memory, not the report)
+        from planner_visitors import heist_lockout
+        last = heist_lockout(s, memory, PLANNER_CONFIG)
+        if last:
+            days = int(PLANNER_CONFIG.get("heist_lockout_days") or 0) - (now - last[0]) // TICKS_PER_DAY
+            lockout = (f"VISITORS KEPT OUT after a heist or a visitor's killing ({len(memory.heists)} on record, "
+                       f"last {(now - last[0]) // TICKS_PER_DAY} days ago): about {max(1, days)} more day(s)")
+    except Exception:  # noqa: BLE001  (only words for the review)
+        pass
     msg = review_message(state, reason, planner_notes, memory.recent_actions, memory.adjust,
                          memory.pending_events, culture, news=plan["news"],
                          proposals=proposals, steer=getattr(memory, "steer", None),
-                         wants=getattr(memory, "strategist_wants", None), rules=player_rules(s))
+                         wants=getattr(memory, "strategist_wants", None), rules=player_rules(s), lockout=lockout)
     think = plan["thinking_events"] if important else plan["thinking_routine"]
     effort = {"model": plan["model_events"] if important else plan["model_routine"],
               "thinking": think, "answer_tokens": plan["answer_tokens"]}
@@ -186,7 +204,8 @@ def maybe_review(state: dict, memory: Memory, bank: TokenBank, backend, bridge_i
     used = reply.budget_tokens
     bank.spend(used, now, reason, today=today)
     learn_token_ratio(memory, used, raw_estimate)
-    answer = check_answer(reply.text, recipes, tools, my_orders, build)
+    answer = check_answer(reply.text, recipes, tools, my_orders, build,
+                          shown=shown_rules(proposals, memory.recent_actions))
     # (0.104.89) its raises and holds of the planner's rules, and what it wants to see
     steer_lines = apply_steer(memory, answer.steer, now)
     memory.strategist_wants = list(answer.want)

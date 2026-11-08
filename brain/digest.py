@@ -177,7 +177,22 @@ def normalize(s: dict) -> dict:
         elif not isinstance(v, type(default)):
             errors[key] = f"unexpected type {type(v).__name__}"
             s[key] = json.loads(json.dumps(default))
+    # (0.105.26) the fort's wealth: a number, or failed / missing (digest() says "?")
+    w = s.get("wealth")
+    if isinstance(w, dict) and "error" in w:
+        errors["wealth"] = w["error"]
+        s["wealth"] = None
+    elif w is not None and (isinstance(w, bool) or not isinstance(w, (int, float))):
+        errors["wealth"] = f"unexpected type {type(w).__name__}"
+        s["wealth"] = None
     m = s.get("map")
+    # (0.105.26) the whole map section failed: said, not shown as an empty map
+    if isinstance(m, dict) and "error" in m and not isinstance(m.get("layers"), list):
+        errors["map"] = m["error"]
+        s["map"] = m = {}
+    elif m is not None and not isinstance(m, dict):
+        errors["map"] = f"unexpected type {type(m).__name__}"
+        s["map"] = m = {}
     if isinstance(m, dict):
         for key in ("layers", "dwarves"):
             v = m.get(key)
@@ -233,40 +248,130 @@ def project_text(pr: dict) -> str:
 
 def numbers(s: dict) -> dict[str, int]:
     """The flat set of numbers the diff compares."""
-    dw, st, b = s["dwarves"], _d(s["stocks"]), s["buildings"]
-    stress = _d(dw["stress"])
+    # (0.105.26) a section that came back partial (a key missing) reads as 0, never raises
+    dw, st, b, jobs = _d(s.get("dwarves")), _d(s.get("stocks")), _d(s.get("buildings")), _d(s.get("jobs"))
+    o = _d(s.get("others_on_map"))
+    stress = _d(dw.get("stress"))
+    w = s.get("wealth")
     n = {
-        "citizens": dw["total"], "children": dw["children"], "idle": dw["idle_adults"],
-        "soldiers": dw["in_squads"], "need_care": dw.get("needs_medical_care", 0),
-        "unhappy": sum(stress.get(k, 0) for k in UNHAPPY),
-        "jobs": s["jobs"]["total"], "suspended": s["jobs"]["suspended"],
-        "threats": len(_l(s["others_on_map"]["threats"])),
-        "threats_can_reach": s["others_on_map"].get("threats_that_can_reach_dwarves", 0),
-        "wealth_k": int(s.get("wealth") or 0) // 1000,
-        "building": b["under_construction"], "queued": b["workshop_jobs_queued"],
+        "citizens": _n(dw.get("total")), "children": _n(dw.get("children")), "idle": _n(dw.get("idle_adults")),
+        "soldiers": _n(dw.get("in_squads")), "need_care": _n(dw.get("needs_medical_care")),
+        "unhappy": sum(_n(stress.get(k)) for k in UNHAPPY),
+        "jobs": _n(jobs.get("total")), "suspended": _n(jobs.get("suspended")),
+        "threats": len(_l(o.get("threats"))),
+        "threats_can_reach": _n(o.get("threats_that_can_reach_dwarves")),
+        "wealth_k": int(w) // 1000 if _num(w) else 0,
+        "building": _n(b.get("under_construction")), "queued": _n(b.get("workshop_jobs_queued")),
     }
     for key, label in STOCK_ORDER:
-        n[label] = st.get(key, 0)
+        n[label] = _n(st.get(key))
     return n
+
+
+def _num(v) -> bool:
+    return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+
+def _n(v) -> int:
+    return int(v) if _num(v) else 0
+
+
+def _signed(v) -> str:
+    return f"{int(v):+d}" if _num(v) else "?"
+
+
+def threat_line(s: dict) -> str:
+    """(0.105.26) The threats the bridge tracks (lua/ai-threats.lua), only
+    what is there now: "" when the fort is calm."""
+    t = _d(s.get("threats"))
+    if not t:
+        return ""
+    parts = []
+    fire = _d(t.get("fire"))
+    if _n(fire.get("fires")):
+        parts.append(f"fire:{_n(fire['fires'])} tiles")
+    u = _d(t.get("undead"))
+    if _n(u.get("undead")):
+        parts.append(f"undead:{_n(u['undead'])}")
+    if _n(u.get("clouds")):
+        parts.append(f"evil_clouds:{_n(u['clouds'])}" + (f" (nearest {u['cloud_near']} tiles)"
+                                                          if _num(u.get("cloud_near")) else ""))
+    if u.get("reanimating") and _n(u.get("surface_corpses")):
+        parts.append(f"bodies_outside_that_may_rise:{_n(u['surface_corpses'])}")
+    th = _d(t.get("thieves"))
+    if _n(th.get("now")):
+        parts.append(f"thieves_on_map:{_n(th['now'])}")
+    were = _d(t.get("were"))
+    if _l(were.get("list")):
+        parts.append(f"werebeast_citizens:{len(_l(were['list']))}")
+    pr = _d(t.get("prisoners"))
+    if _n(pr.get("caged")):
+        parts.append(f"caged_prisoners:{_n(pr['caged'])}")
+    sf = [x for x in _l(_d(t.get("surface")).get("list")) if isinstance(x, dict)]
+    if sf:
+        parts.append(f"surface_dangers:{len(sf)}")
+    r = _d(t.get("rescue"))
+    if _n(r.get("down")):
+        parts.append(f"wounded_down:{_n(r['down'])} (rescuers {_n(r.get('holders'))})")
+    return ("THREATS " + " ".join(parts)) if parts else ""
+
+
+def world_line(s: dict) -> str:
+    """(0.105.26) War, sieges and hostile visitors (lua/ai-diplomacy.lua
+    world_report): "" when the fort is at peace with no siege on record."""
+    w = _d(s.get("world"))
+    if not w:
+        return ""
+    war = [c for c in _l(w.get("civs")) if isinstance(c, dict) and c.get("hostile")]
+    sieges = [e for e in _l(w.get("sieges")) if isinstance(e, dict)]
+    active = [e for e in sieges if e.get("active")]
+    parts = []
+    if war:
+        parts.append("at war with " + ", ".join(
+            f"{game_text(c.get('name'), 30)} ({game_text(c.get('race'), 12)})" for c in war[:4])
+            + (f" +{len(war) - 4} more" if len(war) > 4 else ""))
+    if active:
+        parts.append("SIEGE NOW by " + ", ".join(game_text(e.get("name") or e.get("race"), 30) for e in active[:3]))
+    if sieges:
+        parts.append(f"sieges on record {sum(_n(e.get('n')) for e in sieges)}"
+                     + (f" (last y{max(_n(e.get('last_year')) for e in sieges)})" if any(
+                         _num(e.get("last_year")) for e in sieges) else ""))
+    if _n(w.get("visitors_from_hostile")):
+        parts.append(f"visitors from a civ at war on the map: {_n(w['visitors_from_hostile'])}")
+    return ("WORLD " + " | ".join(parts)) if parts else ""
+
+
+def infection_line(s: dict) -> str:
+    """(0.105.26) Infected wounds (lua/ai-health.lua): "" when none."""
+    inf = _d(s.get("infection"))
+    n = _n(inf.get("infected"))
+    if not n:
+        return ""
+    return (f"INFECTION {n} citizens with infected wounds, untreated {_n(inf.get('untreated'))}, "
+            f"bleeding from it {_n(inf.get('bleeding'))}"
+            + (", nobody can clean wounds" if inf.get("cleaners") == 0 else ""))
 
 
 def digest(s: dict, news: int = 5) -> str:
     s = normalize(s)
-    d, dw, b, o = s["date"], s["dwarves"], s["buildings"], s["others_on_map"]
+    d, dw, b, o = _d(s.get("date")), _d(s.get("dwarves")), _d(s.get("buildings")), _d(s.get("others_on_map"))
     n = numbers(s)
-    stress = _d(dw["stress"])
+    stress = _d(dw.get("stress"))
+    w = s.get("wealth")
+    when = ("DATE unknown (the date couldn't be read)" if "date" in s["_errors"]
+            else f"DATE {d.get('day', '?')} {d.get('month', '?')} y{d.get('year', '?')} {d.get('season', '?')}")
     lines = [
-        f"DATE {d['day']} {d['month']} y{d['year']} {d['season']}{' PAUSED' if s['paused'] else ''}"
-        f" | wealth {s['wealth']:,}",
+        f"{when}{' PAUSED' if s.get('paused') else ''}"
+        f" | wealth {f'{int(w):,}' if _num(w) else '?'}",
         f"DWARVES {n['citizens']} ({n['children']} children) idle {n['idle']} soldiers {n['soldiers']}"
         f" need_care {n['need_care']}",
         "MOOD " + " ".join(f"{k}:{stress.get(k, 0)}" for k in
                            ("miserable", "very_unhappy", "unhappy", "fine", "content", "happy", "ecstatic")),
         "STOCK " + " ".join(f"{label}:{n[label]}" for _, label in STOCK_ORDER),
-        f"WORKSHOPS {_top(b['workshops'], 8)}",
-        f"FURNACES {_top(b['furnaces'], 4)} | stockpiles {b['stockpiles']}"
+        f"WORKSHOPS {_top(b.get('workshops'), 8)}",
+        f"FURNACES {_top(b.get('furnaces'), 4)} | stockpiles {b.get('stockpiles', 0)}"
         f" | queued {n['queued']} | under_construction {n['building']}",
-        f"ZONES {_top(b['zones'], 8)}",
+        f"ZONES {_top(b.get('zones'), 8)}",
         "SUPPLIES " + " ".join(f"{k}:{v}" for k, v in _d(s.get("supplies")).items() if isinstance(v, int))
         + f" wells:{_d(b.get('other')).get('Well', 0)}",
         "MILITARY soldiers " + str(_d(s.get("military")).get("soldiers", 0)) + " | "
@@ -281,25 +386,30 @@ def digest(s: dict, news: int = 5) -> str:
         + f" | starving {_d(s.get('society')).get('starving', 0)} parched {_d(s.get('society')).get('parched', 0)}"
         + f" | grazers without pasture {_d(s.get('society')).get('grazers_unpastured', 0)}",
         "DEAD " + " ".join(f"{k}:{v}" for k, v in _d(s.get("dead")).items() if isinstance(v, int)),
-        f"JOBS {n['jobs']} suspended {n['suspended']} | top {_top(s['jobs']['by_type'], 5)}",
+        f"JOBS {n['jobs']} suspended {n['suspended']} | top {_top(_d(s.get('jobs')).get('by_type'), 5)}",
         f"ON_MAP threats {n['threats']} (can reach dwarves: {n['threats_can_reach']}): "
-        + ("; ".join(_threat_groups(_l(o['threats']))) or "none")
-        + f" | visitors {o['visitors']} merchants {o['merchants']} diplomats {o['diplomats']}"
+        + ("; ".join(_threat_groups([t for t in _l(o.get('threats')) if isinstance(t, dict)])) or "none")
+        + f" | visitors {o.get('visitors', 0)} merchants {o.get('merchants', 0)} diplomats {o.get('diplomats', 0)}"
         f" contained {o.get('contained_dangers', 0)}",
     ]
 
+    for extra in (threat_line(s), world_line(s), infection_line(s)):
+        if extra:
+            lines.append(extra)
     m = _d(s.get("map"))
-    if m:
+    if "map" in s["_errors"]:
+        lines.append(f"MAP unknown: the map section failed ({game_text(s['_errors']['map'], 80)})")
+    elif m:
         # levels as the game shows them (elevation), not DFHack's 0-based z
         off = m.get("elevation_offset") if isinstance(m.get("elevation_offset"), int) else 0
         lv = lambda z: z + off if isinstance(z, int) else z  # noqa: E731
         layers = " ".join(
             f"{l['name']}:{lv(l.get('z_top'))}..{lv(l.get('z_bottom'))}{'' if l.get('discovered') else '(undiscovered)'}"
-            for l in _l(m.get("layers")))
+            for l in _l(m.get("layers")) if isinstance(l, dict))
         dw_at = _d(m.get("dwarves"))
         lines.append(f"MAP levels: layers {layers or 'none'} | dwarves {lv(dw_at.get('z_bottom'))}..{lv(dw_at.get('z_top'))}"
                      f" {_top(dw_at.get('by_layer'), 4)}")
-    for m in _l(_d(s.get("moods")).get("list"))[:4]:
+    for m in [x for x in _l(_d(s.get("moods")).get("list")) if isinstance(x, dict)][:4]:
         lines.append(f"MOOD_DWARF {game_text(m.get('name'), 60)}: {game_text(m.get('mood'), 20)}"
                      + (f" skill {m.get('skill')} workshop {m.get('workshop') or 'none yet'}"
                         f" items {m.get('items_have', '?')}/{m.get('items_needed', '?')}" if m.get("craft") else ""))
@@ -308,28 +418,28 @@ def digest(s: dict, news: int = 5) -> str:
     st = _d(s.get("settings"))
     if st and "error" not in st:
         traits = _d(st.get("traits"))
-        shown = " ".join(f"{k}:{v:+d}" for k, v in sorted(traits.items(), key=lambda kv: -abs(kv[1])))
+        shown = " ".join(f"{k}:{_signed(v)}" for k, v in sorted(traits.items(), key=lambda kv: -abs(_n(kv[1]))))
         lines.append(f"PERSONALITY {shown or 'all balanced'} (scale -200..200)")
-    mandates = _l(s.get("mandates"))
+    mandates = [x for x in _l(s.get("mandates")) if isinstance(x, dict)]
     if mandates:
         lines.append("MANDATES " + "; ".join(
-            f"{x['kind']} {x['remaining']}/{x['total']} {x.get('material') or ''} {x['item']}".replace("  ", " ")
-            + f" ({x['days_left']}d left)" for x in mandates[:6]))
+            f"{x.get('kind')} {x.get('remaining')}/{x.get('total')} {x.get('material') or ''} {x.get('item')}".replace("  ", " ")
+            + f" ({x.get('days_left', '?')}d left)" for x in mandates[:6]))
     nobles = _l(s.get("nobles"))
     if nobles:
-        lines.append("NOBLES " + " ".join(sorted({x["position"] for x in nobles})))
+        lines.append("NOBLES " + " ".join(sorted({str(x.get("position")) for x in nobles if isinstance(x, dict)})))
     pr = _d(s.get("projects"))
     lines.append("BUILDING " + (project_text(pr) or "no projects in progress")
                  + f" ({pr.get('finished', 0)} finished)")
 
     # The AI is an overseer: it sees patterns across the population, never
     # individual dwarves. Group by profession instead of naming anyone.
-    units = _l(s.get("units"))
+    units = [u for u in _l(s.get("units")) if isinstance(u, dict)]
     if units:
-        sad = Counter(u["profession"] for u in units if u.get("stress") in UNHAPPY)
+        sad = Counter(u.get("profession") or "?" for u in units if u.get("stress") in UNHAPPY)
         if sad:
             lines.append(f"UNHAPPY_BY_PROFESSION {_top(dict(sad), 6)}")
-        idle = Counter(u["profession"] for u in units
+        idle = Counter(u.get("profession") or "?" for u in units
                        if not u.get("child") and not u.get("job") and not u.get("in_squad"))
         if idle:
             lines.append(f"IDLE_BY_PROFESSION {_top(dict(idle), 8)}")
