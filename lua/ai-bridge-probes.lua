@@ -9,7 +9,7 @@
 -- in_fort, NOT_IN_FORT, OUT_DIR) are at hand. Not a command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-probes is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-probes'] = '0.105.27'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-probes'] = '0.105.28'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local utils = require('utils')
 
