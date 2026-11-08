@@ -140,6 +140,7 @@ ACTIONS = {
     save_game = act_save_game,
     open_gates = act_open_gates,
     setup_shelter = act_setup_shelter,
+    refresh_shelter = act_refresh_shelter,       -- (0.105.26)
     set_population_cap = act_set_population_cap,
     expel_dwarf = act_expel_dwarf,
     pasture = act_pasture,
@@ -297,7 +298,8 @@ for _, name in ipairs({
     'idle_crafting', 'give_trinkets', 'staff_location', 'vacate_post', 'add_posts', 'staff_labors',
     'dismiss_alerts', 'place_in_zone', 'answer_petition', 'retarget_hall', 'remove_workshops',
     'survey_water', 'cistern_step', 'water_zone', 'sand_zone', 'water_work', 'set_farm_crops',
-    'kitchen_brewables', 'farm_thresholds', 'unstick_uniforms', 'tidy', 'set_rules'
+    'kitchen_brewables', 'farm_thresholds', 'unstick_uniforms', 'tidy', 'set_rules',
+    'refresh_shelter'   -- (0.105.26)
 }) do DRY_OK[name] = true end
 
 -- These only change what's displayed, so they still work while halted, dry

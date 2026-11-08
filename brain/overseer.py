@@ -439,6 +439,7 @@ SHORT_WORDS = {
     "build_gate_doors": "put doors on an open entrance",
     "expel_dwarf": "send a dwarf away",
     "setup_shelter": "set up the AI shelter burrow",
+    "refresh_shelter": "make the AI shelter again (a gate was lost)",    # (0.105.26)
     "sync_offices": "put the appointed nobles on the game's duty lists",
     "bootstrap_chair": "make one chair straight at a workshop (for the manager's office)",
     "approve_orders": "approve the AI's waiting work orders (no manager's office yet)",

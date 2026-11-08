@@ -2911,9 +2911,11 @@ def _():
     s = beast(45)
     s["military"]["soldiers"] = 12                           # (0.105.22) 8 of 20 lost mid-fight: they come back
     p, notes = plan(s, m)
-    assert not by_rule(p, "squad_attack") and m.fight_factor.get("ForgottenBeast") == 1.5, (notes, m.fight_factor)
+    # (0.105.26) learned strong enough to hide even from the squads at full strength
+    ff = m.fight_factor.get("ForgottenBeast")
+    assert not by_rule(p, "squad_attack") and ff >= 1.5 and 90 * 20 / 12 < 2.0 * 41.3 * ff, (notes, m.fight_factor)
     plan(s, m)
-    assert m.fight_factor.get("ForgottenBeast") == 1.5          # learned once
+    assert m.fight_factor.get("ForgottenBeast") == ff           # learned once
     s = beast(45)
     s["military"]["soldiers"] = 5                            # short of the target, mid-fight: no refill
     p, notes = plan(s, m)

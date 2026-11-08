@@ -1051,6 +1051,17 @@ function act_setup_shelter(a)
     return reqscript('ai-society').setup_shelter()
 end
 
+-- (0.105.26) The AI's shelter made again over the fort as it is now (a gate
+-- lost while the alarm is on: the report's military.shelter_stale).
+function act_refresh_shelter(a)
+    local S = reqscript('ai-society')
+    if a.dry_run == true then return {ok = true, dry_run = true, stale = S.shelter_stale()} end
+    local r = S.refresh_shelter()
+    if not r then return reject('the civilian alert\'s burrow is not the AI shelter') end
+    r.ok = true
+    return r
+end
+
 function act_set_population_cap(a)
     local cap = int_in(a.cap, 7, 1000)
     if not cap then return reject('set_population_cap needs cap 7-1000') end

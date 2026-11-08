@@ -47,7 +47,7 @@ from planner_homes import *  # noqa: E402,F401,F403  (0.104.168: homes and house
 from planner_threats import _threat_rules  # noqa: E402  (0.105.0 round 3: threats answered)
 from planner_world import (_contact_rule, _export_rule, _hostile_trade_filter, _meeting_answer_rule,  # noqa: E402
                            _messenger_rule, _world_notes, note_world)  # (0.105.0: the world outside, 12b and 13b)
-from planner_army import (_army_gear_rule, _quiver_rule, _bolts_rule,  # noqa: E402  (0.105.0, round 2)
+from planner_army import (_army_gear_rule, _quiver_rule, _bolts_rule, _flask_rule,  # noqa: E402  (0.105.0, round 2)
                           _shelter_squads_rule, _gate_cut_rule)
 
 
@@ -475,6 +475,7 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
         _guard(_army_gear_rule, s, memory, cfg, proposals, notes)
         _guard(_quiver_rule, s, memory, cfg, proposals, notes)
         _guard(_bolts_rule, s, memory, cfg, proposals, notes)
+        _guard(_flask_rule, s, memory, cfg, proposals, notes)     # (0.105.26)
         _guard(_shelter_squads_rule, s, memory, cfg, proposals, notes)
         if can_use("entrances"):
             _guard(_gate_cut_rule, s, memory, cfg, proposals, notes)

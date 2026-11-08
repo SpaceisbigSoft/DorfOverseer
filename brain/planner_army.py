@@ -33,7 +33,7 @@ from planner_core import (AGENDA_THEMES, Proposal, all_clear, ask_player, can_fi
                           reachable_threats, _has_shop)
 
 __all__ = ["_army_gear_rule", "_quiver_rule", "_bolts_rule", "_shelter_squads_rule", "_gate_cut_rule",
-           "hiding", "WEAPON_RECIPES"]
+           "hiding", "danger_close", "_flask_rule", "WEAPON_RECIPES"]
 
 AGENDA_THEMES.update({"gear_fix": "arm the soldiers", "quivers": "quivers for the crossbows",
                       "bolts": "bolts for the crossbows", "shelter_squads": "the squads hide with the civilians",
@@ -143,6 +143,39 @@ def _quiver_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> No
             notes.append(f"{short} crossbow soldier(s) need a quiver: no leather or no leatherworks to make one")
 
 
+def _flask_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> None:
+    """(0.105.26) A waterskin or flask for each soldier: a squad set to carry
+    water (carry_water, lua/ai-military.lua) fills nothing without one, and
+    nothing made them (B: 28 soldiers died of thirst on the shelter order).
+    Bridge: gear `flask_places` (soldiers), `flasks_assigned`, `flasks_free`
+    (DF hands the free ones out itself). Leather waterskins at a leather
+    works; with no leather, green glass vials at a glass furnace with sand."""
+    g = _d(_d(s.get("military")).get("gear"))
+    if not isinstance(g.get("flask_places"), int) or "error" in g or not player_rules(s)["make_gear"]:
+        return
+    short = (g["flask_places"] - int(g.get("flasks_assigned") or 0) - int(g.get("flasks_free") or 0)
+             - queued(s, {"leather_waterskin", "glass_vial"}))
+    if short <= 0:
+        return
+    b = s.get("buildings") or {}
+    leather = int(_d(s.get("stocks")).get("leather") or 0)
+    sup = _d(s.get("supplies"))
+    bags, fuel = int(sup.get("sand_bags") or 0), int(sup.get("fuel") or 0)
+    if leather > 0 and _has_shop(b, "Leatherworks"):
+        n = min(short, leather, cfg["max_quiver_order"])
+        proposals.append(Proposal("flasks_order", {"type": "work_order", "recipe": "leather_waterskin", "amount": n},
+                                  f"{short} soldier(s) without a waterskin or flask (they carry no water out): "
+                                  f"make {n} of leather", 4, True))
+    elif _has_shop(b, "GlassFurnace") and bags > 0 and fuel > 0:
+        n = min(short, bags, fuel, cfg["max_quiver_order"])
+        proposals.append(Proposal("flasks_order", {"type": "work_order", "recipe": "glass_vial", "amount": n},
+                                  f"{short} soldier(s) without a waterskin or flask (they carry no water out) and "
+                                  f"no leather: make {n} glass vials", 4, True))
+    else:
+        notes.append(f"{short} soldier(s) without a waterskin or flask: no leather and leather works, nor glass "
+                     "furnace with sand and fuel, to make one")
+
+
 def _bolts_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> None:
     """A squad with crossbows and no ammunition entry: bolts for it."""
     for q in _l(_d(s.get("military")).get("squads")):
@@ -184,6 +217,23 @@ def hiding(s: dict, memory, cfg: dict) -> tuple[bool, list]:
     return bool(great) and not fight and not targets, targets
 
 
+def danger_close(s: dict, cfg: dict) -> bool:
+    """(0.105.26) A great danger or a besieger within shelter_hold_tiles of
+    the nearest dwarf (the bridge's distance_to_nearest_dwarf: x/y, a level
+    counting 3). One whose distance isn't known counts when it can reach."""
+    lim = cfg.get("shelter_hold_tiles", 20)
+    for t in _l(_d(s.get("others_on_map")).get("threats")):
+        if not isinstance(t, dict) or not (t.get("great_danger") or t.get("invader")):
+            continue
+        d = t.get("distance_to_nearest_dwarf")
+        if isinstance(d, (int, float)) and not isinstance(d, bool):
+            if d <= lim:
+                return True
+        elif t.get("can_reach_dwarves"):
+            return True
+    return False
+
+
 def _shelter_squads_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> None:
     """While the AI hides, the squads hold the civilian alert's shelter
     (lua/ai-military.lua shelter); out again when the alert clears or the
@@ -209,7 +259,11 @@ def _shelter_squads_rule(s: dict, memory, cfg: dict, proposals: list, notes: lis
         del rest[k]
     if memory is not None:
         memory.shelter_since, memory.shelter_rest = since, rest
-    long_in = [q for q in inside if now - since.get(str(q["id"]), now) >= cfg["shelter_max_days"] * TICKS_PER_DAY]
+    # (0.105.26) ...but not mid-siege: the timer counts only while no great
+    # danger or besieger is close (it let the squads out under the titan)
+    close = danger_close(s, cfg)
+    long_in = [] if close else [q for q in inside
+                                if now - since.get(str(q["id"]), now) >= cfg["shelter_max_days"] * TICKS_PER_DAY]
     for q in long_in:
         proposals.append(Proposal("squad_recall", {"type": "squad_orders", "squad_id": q["id"], "clear": True},
                                   f"{q.get('name') or 'the squad'} has held the shelter {cfg['shelter_max_days']} "
@@ -225,6 +279,13 @@ def _shelter_squads_rule(s: dict, memory, cfg: dict, proposals: list, notes: lis
                                   f"{q['parched']} soldier(s) of {q.get('name') or 'the squad'} in the shelter are "
                                   f"thirsty or hungry: out for {cfg['shelter_rest_days']} days to eat and drink", 1))
         rest[str(q["id"])] = now + cfg["shelter_rest_days"] * TICKS_PER_DAY
+    # (0.105.26) a gate lost while the alarm is on: the shelter made again
+    # over the fort as it is now (away from the entrance now open)
+    stale = _d(s.get("military")).get("shelter_stale")
+    if s.get("civ_alert") and isinstance(stale, int) and stale > 0:
+        proposals.append(Proposal("shelter_refresh", {"type": "refresh_shelter"},
+                                  f"{stale} entrance(s) shut when the shelter was made are open now (a gate lost): "
+                                  "the shelter is made again away from them", 0))
     if hide:
         if not player_rules(s).get("squads_shelter", True):
             return

@@ -193,6 +193,7 @@ def _():
 def _():
     from planner_core import abs_tick, TICKS_PER_DAY
     s = titan(10)
+    s["others_on_map"]["threats"][0]["distance_to_nearest_dwarf"] = 60   # (0.105.26) the timer only counts when it's not close
     for q in s["military"]["squads"]:
         q.update(sheltering=True, ai_orders=1, orders=1)
     s["civ_alert"] = True
