@@ -108,10 +108,299 @@ local function off_map(it)
     return okq and type(x) == 'number' and x < 0
 end
 
+---------------------------------------------------------------------------
+-- (0.105.27) Forbidden items (the lock symbol): the player found them lying
+-- about everywhere and nothing disposing of them. Who set item_flags.forbid
+-- can't be read, so each forbidden item is put down to a reason from its
+-- signature (first match wins):
+--   ai          on the cistern's tiles (ai-builder-cistern forbid_items_on,
+--               before the flood): these stay forbidden
+--   dumped      lying in a garbage dump zone (what the game dumps lands forbidden)
+--   own_dead    the dead_dwarf flag, an owner who is dead, or a corpse (or a
+--               piece) of one of the fort's own
+--   other_dead  a corpse or piece of another race (or civ), or gear lying on
+--               or beside one (worn by the dead when they fell)
+--   used_ammo   ammo on the ground outside a stockpile (fired and left)
+--   unknown     the rest: maybe the player's, left alone by default
+-- and where it lies: surface / inside / caverns (one of them), and besides
+-- near_danger (UNFORBID_DANGER_TILES of a live enemy) and unreachable (no
+-- citizen's walk group reaches its tile). Folded into items()' own walk.
+---------------------------------------------------------------------------
+FORBID_REASONS = {'own_dead', 'used_ammo', 'other_dead', 'dumped', 'ai', 'unknown'}
+FORBID_WHERE = {'surface', 'inside', 'caverns', 'near_danger', 'unreachable'}
+FORBID_TOP_TYPES = 12
+FORBID_DANGER_TILES = 20
+FORBID_REACH_SAMPLE = 400       -- canWalkBetween checks at most (only without walk groups)
+CISTERN_SITE_KEY = 'ai-overseer/cistern'
+-- what the dead wore or carried: lying with a corpse it is theirs
+local DEAD_GEAR = {WEAPON = true, ARMOR = true, HELM = true, SHOES = true, GLOVES = true, PANTS = true,
+                   SHIELD = true, AMMO = true, QUIVER = true, BACKPACK = true, FLASK = true, CROWN = true,
+                   RING = true, EARRING = true, BRACELET = true, AMULET = true, SCEPTER = true}
+
+-- the fallbacks, as ai-military-gear has them, if neither module exports them
+local function danger_spots_here()
+    local out = {}
+    local okl, active = pcall(function() return df.global.world.units.active end)
+    for _, u in ipairs(okl and active or {}) do
+        local ok, bad = pcall(function()
+            local U = dfhack.units
+            local f1 = u.flags1
+            if f1 and (f1.caged or f1.chained) then return false end
+            return not U.isDead(u) and (U.isDanger(u) or U.isInvader(u))
+        end)
+        if ok and bad then
+            local okp, x, y, z = pcall(dfhack.units.getPosition, u)
+            if okp and x then table.insert(out, {x = x, y = y, z = z}) end
+        end
+    end
+    return out
+end
+
+local function near_danger_here(spots, x, y, z)
+    for _, d in ipairs(spots) do
+        if math.abs(d.x - x) + math.abs(d.y - y) <= FORBID_DANGER_TILES and math.abs(d.z - z) <= 3 then
+            return true
+        end
+    end
+    return false
+end
+
+-- danger_spots / near_danger: from ai-util (where they are moving), else
+-- ai-military-gear, else the copy above
+function danger_helpers()
+    for _, name in ipairs({'ai-util', 'ai-military-gear'}) do
+        local ok, m = pcall(function() return reqscript(name) end)
+        if ok and (type(m) == 'table' or type(m) == 'userdata') then
+            local okf, ds, nd = pcall(function() return m.danger_spots, m.near_danger end)
+            if okf and type(ds) == 'function' and type(nd) == 'function' then return ds, nd, name end
+        end
+    end
+    return danger_spots_here, near_danger_here, 'census'
+end
+
+-- the cistern's tiles ("x,y,z"): its room and its tunnel (all but the plug),
+-- as forbid_items_on forbids them; retired cisterns' rooms too
+local function cistern_tiles()
+    local set = {}
+    local function room(c)
+        if type(c) ~= 'table' or not c.z then return end
+        for y = c.y1, c.y2 do for x = c.x1, c.x2 do set[x .. ',' .. y .. ',' .. c.z] = true end end
+    end
+    local function get(key)
+        local ok, d = pcall(function() return reqscript('ai-util').site_get(key, {}) end)
+        return ok and type(d) == 'table' and d or {}
+    end
+    pcall(function()
+        local p = get(CISTERN_SITE_KEY).plan
+        if type(p) ~= 'table' or type(p.cistern) ~= 'table' then return end
+        room(p.cistern)
+        local zi = p.intake_z or p.cistern.z
+        local path = p.tunnel_path or {}
+        for i = 1, #path - 1 do set[path[i].x .. ',' .. path[i].y .. ',' .. zi] = true end
+    end)
+    pcall(function()
+        for _, r in ipairs(get(CISTERN_SITE_KEY .. '/retired')) do room(r.cistern) end
+    end)
+    return set
+end
+
+-- the garbage dump zones: {x1, y1, x2, y2, z, b}
+local function dump_zones()
+    local out = {}
+    pcall(function()
+        for _, b in ipairs(df.global.world.buildings.all) do
+            pcall(function()
+                if b:getType() ~= df.building_type.Civzone then return end
+                local t = df.civzone_type[b.type]
+                if t == 'Dump' or t == 'GarbageDump' then
+                    table.insert(out, {x1 = b.x1, y1 = b.y1, x2 = b.x2, y2 = b.y2, z = b.z, b = b})
+                end
+            end)
+        end
+    end)
+    return out
+end
+
+local function in_dump(dumps, x, y, z)
+    for _, d in ipairs(dumps) do
+        if z == d.z and x >= d.x1 and x <= d.x2 and y >= d.y1 and y <= d.y2 then
+            -- a zone painted in a shape: its extents say which tiles of the box are in it
+            local ok, inside = pcall(function()
+                local r = d.b.room
+                if not r or not r.extents or (r.width or 0) <= 0 then return true end
+                return r.extents[(y - r.y) * r.width + (x - r.x)] ~= 0
+            end)
+            if not ok or inside then return true end
+        end
+    end
+    return false
+end
+
+-- the walk groups the citizens stand in (nil: the game can't say)
+local function citizen_groups()
+    local ok, set, from = pcall(function()
+        local s, first, any = {}, nil, false
+        for _, u in ipairs(dfhack.units.getCitizens(true)) do
+            first = first or u.pos
+            local okg, g = pcall(dfhack.maps.getWalkableGroup, u.pos)
+            if okg and type(g) == 'number' then
+                any = true
+                if g ~= 0 then s[g] = true end
+            end
+        end
+        return any and s or nil, first
+    end)
+    if ok then return set, from end
+    return nil, nil
+end
+
+local function item_xyz(it)
+    local okp, x, y, z = pcall(function() return dfhack.items.getPosition(it) end)
+    if okp and type(x) == 'number' and x >= 0 then return x, y, z end
+    if okp and (type(x) == 'userdata' or type(x) == 'table') then
+        local okc, cx, cy, cz = pcall(function() return x.x, x.y, x.z end)
+        if okc and type(cx) == 'number' and cx >= 0 then return cx, cy, cz end
+    end
+    local okq, qx, qy, qz = pcall(function() return it.pos.x, it.pos.y, it.pos.z end)
+    if okq and type(qx) == 'number' and qx >= 0 then return qx, qy, qz end
+    return nil
+end
+
+-- the context built once a census (only when a forbidden item turns up)
+local function forbid_context()
+    local ctx = {cistern = cistern_tiles(), dumps = dump_zones(), reach_checks = 0}
+    local ds, nd = danger_helpers()
+    local oks, spots = pcall(ds)
+    ctx.spots = oks and type(spots) == 'table' and spots or {}
+    ctx.near = function(x, y, z)
+        if #ctx.spots == 0 then return false end
+        local ok, v = pcall(nd, ctx.spots, x, y, z)
+        return ok and v == true
+    end
+    ctx.groups, ctx.from = citizen_groups()
+    pcall(function() ctx.race, ctx.civ = df.global.plotinfo.race_id, df.global.plotinfo.civ_id end)
+    return ctx
+end
+
+local function new_forbidden()
+    local f = {total = 0, by_type = {}, by_reason = {}, by_where = {}, metal = 0, worn = 0, valuable = 0}
+    for _, k in ipairs(FORBID_REASONS) do f.by_reason[k] = 0 end
+    for _, k in ipairs(FORBID_WHERE) do f.by_where[k] = 0 end
+    return f
+end
+
+local function owner_dead(it)
+    local ok, dead = pcall(function()
+        local o = dfhack.items.getOwner(it)
+        return o and (dfhack.units.isDead(o) or (o.flags2 and o.flags2.killed)) and true or false
+    end)
+    return ok and dead
+end
+
+-- a corpse's: 'own' (the fort's race and civ), 'other', or nil (not a corpse)
+local function corpse_of(it, t, ctx)
+    if t ~= 'CORPSE' and t ~= 'CORPSEPIECE' then return nil end
+    local okr, race = pcall(function() return it.race end)
+    if not okr or type(race) ~= 'number' or not ctx.race then return 'other' end
+    if race ~= ctx.race then return 'other' end
+    local oku, civ = pcall(function()
+        local u = df.unit.find(it.unit_id)
+        return u and u.civ_id
+    end)
+    if oku and type(civ) == 'number' and ctx.civ and civ ~= ctx.civ then return 'other' end
+    return 'own'
+end
+
+local function in_stockpile(x, y, z)
+    local ok, b = pcall(function() return dfhack.buildings.findAtTile(xyz2pos(x, y, z)) end)
+    if not ok or not b then return false end
+    local okt, sp = pcall(function() return b:getType() == df.building_type.Stockpile end)
+    return okt and sp
+end
+
+local function reachable(ctx, x, y, z)
+    if ctx.groups then
+        local ok, g = pcall(dfhack.maps.getWalkableGroup, xyz2pos(x, y, z))
+        if not ok or type(g) ~= 'number' then return nil end
+        return g ~= 0 and ctx.groups[g] == true
+    end
+    if not ctx.from or ctx.reach_checks >= FORBID_REACH_SAMPLE then return nil end
+    ctx.reach_checks = ctx.reach_checks + 1
+    local ok, r = pcall(dfhack.maps.canWalkBetween, ctx.from, xyz2pos(x, y, z))
+    if not ok then return nil end
+    return r == true
+end
+
+-- one forbidden item, counted (its reason maybe left for after the walk)
+local function count_forbidden(fb, ctx, it, t, wear, pending, dead_tiles)
+    fb.total = fb.total + 1
+    fb.by_type[t] = (fb.by_type[t] or 0) + 1
+    local f = it.flags
+    if type(wear) == 'number' and wear >= 2 then fb.worn = fb.worn + 1 end
+    local okq, q = pcall(function() return it:getQuality() end)
+    if f.artifact or (okq and type(q) == 'number' and q >= 5) then fb.valuable = fb.valuable + 1 end
+    local okm, metal = pcall(function()
+        local mi = dfhack.matinfo.decode(it)
+        return mi and mi.material and mi.material.flags.IS_METAL and true or false
+    end)
+    if okm and metal then fb.metal = fb.metal + 1 end
+    local x, y, z = item_xyz(it)
+    if x then
+        local okh, des = pcall(function() return dfhack.maps.getTileFlags(x, y, z) end)
+        if okh and des and (des.feature_global or des.feature_local) then fb.by_where.caverns = fb.by_where.caverns + 1
+        elseif okh and des and des.outside then fb.by_where.surface = fb.by_where.surface + 1
+        else fb.by_where.inside = fb.by_where.inside + 1 end
+        if ctx.near(x, y, z) then fb.by_where.near_danger = fb.by_where.near_danger + 1 end
+        if reachable(ctx, x, y, z) == false then fb.by_where.unreachable = fb.by_where.unreachable + 1 end
+    end
+    local key = x and (x .. ',' .. y .. ',' .. z)
+    local reason
+    if key and ctx.cistern[key] then reason = 'ai'
+    elseif x and in_dump(ctx.dumps, x, y, z) then reason = 'dumped'
+    elseif f.dead_dwarf or (f.owned and owner_dead(it)) then reason = 'own_dead'
+    else
+        local c = corpse_of(it, t, ctx)
+        if c == 'own' then reason = 'own_dead'
+        elseif c == 'other' then
+            reason = 'other_dead'
+            if x then dead_tiles[key] = true end
+        elseif x and (DEAD_GEAR[t]) then
+            -- settled after the walk: beside a corpse of another's, or fired ammo
+            table.insert(pending, {t = t, x = x, y = y, z = z, ground = f.on_ground and not (f.in_building
+                or f.in_inventory or f.container) and true or false})
+            return
+        else reason = 'unknown' end
+    end
+    fb.by_reason[reason] = fb.by_reason[reason] + 1
+end
+
+local function settle_pending(fb, pending, dead_tiles)
+    for _, p in ipairs(pending) do
+        local reason = 'unknown'
+        for dx = -1, 1 do
+            for dy = -1, 1 do
+                if dead_tiles[(p.x + dx) .. ',' .. (p.y + dy) .. ',' .. p.z] then reason = 'other_dead' end
+            end
+        end
+        if reason == 'unknown' and p.t == 'AMMO' and p.ground and not in_stockpile(p.x, p.y, p.z) then
+            reason = 'used_ammo'
+        end
+        fb.by_reason[reason] = fb.by_reason[reason] + 1
+    end
+end
+
+local function top_map(counts, n)
+    local out = {}
+    for _, e in ipairs(top(counts, n)) do out[e.name] = e.n end
+    return out
+end
+
 function items()
     local by = {total = 0, forbidden = 0, dump = 0, rotten = 0, worn = 0, in_buildings = 0, in_containers = 0,
                 on_ground = 0, owned = 0, artifacts = 0, off_map = 0, artifacts_off_map = 0}
     local types, worn_types, ground_types = {}, {}, {}
+    -- (0.105.27) the forbidden ones, by type, reason and where
+    local fb, fctx, pending, dead_tiles = new_forbidden(), nil, {}, {}
     for _, it in ipairs(df.global.world.items.all) do
         local f = it.flags
         if not (f.garbage_collect or f.removed) then
@@ -139,8 +428,15 @@ function items()
                 by.worn = by.worn + 1
                 worn_types[t] = (worn_types[t] or 0) + 1
             end
+            if f.forbid and not away then
+                fctx = fctx or forbid_context()
+                pcall(count_forbidden, fb, fctx, it, t, okw and wear or nil, pending, dead_tiles)
+            end
         end
     end
+    pcall(settle_pending, fb, pending, dead_tiles)
+    fb.by_type = top_map(fb.by_type, FORBID_TOP_TYPES)
+    if fctx and not fctx.groups and fctx.reach_checks > 0 then fb.reach_sampled = fctx.reach_checks end
     -- (0.104.116) spider webs (cavern silk left where the spiders spun it)
     local okw, webs = pcall(function() return #df.global.world.items.other.ANY_WEBS end)
     by.webs = okw and webs or nil
@@ -154,7 +450,7 @@ function items()
         where = {kept = wr.kept, levels = wr.levels, hidden = wr.hidden}
     end
     return {counts = by, types = top(types, 15), worn = top(worn_types, 6), on_ground = top(ground_types, 10),
-            webs = where}
+            webs = where, forbidden = fb}
 end
 
 ---------------------------------------------------------------------------

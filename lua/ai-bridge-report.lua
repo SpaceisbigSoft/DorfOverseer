@@ -1476,6 +1476,38 @@ function in_ai_tombs(x, y, z)
     return false
 end
 
+-- (0.105.27) the game's standing orders on the dead, refuse and dumping
+-- (uint8_t globals, df.global.standing_orders_*): {name = 0/1} for each
+-- that exists in this DF, the name without the prefix
+STANDING_DEAD_ORDERS = {
+    'forbid_used_ammo', 'forbid_own_dead', 'forbid_own_dead_items', 'forbid_other_nohunt',
+    'forbid_other_dead_items', 'gather_refuse', 'gather_refuse_outside',
+    'dump_corpses', 'dump_skulls', 'dump_bones', 'dump_shells', 'dump_skins', 'dump_hair', 'dump_other',
+}
+
+local function standing_kept(name)
+    return name:match('^forbid_') or name:match('^gather_refuse') or name:match('^dump_')
+end
+
+function standing_orders_dead()
+    local out = {}
+    local function read(name)
+        local ok, v = pcall(function() return df.global['standing_orders_' .. name] end)
+        if not ok or v == nil then return end
+        if type(v) == 'boolean' then out[name] = v and 1 or 0
+        elseif type(v) == 'number' then out[name] = v ~= 0 and 1 or 0 end
+    end
+    for _, name in ipairs(STANDING_DEAD_ORDERS) do read(name) end
+    -- any other of the kind this DF has (the globals listed, where the game lets them be)
+    pcall(function()
+        for k in pairs(df.global) do
+            local name = type(k) == 'string' and k:match('^standing_orders_(.+)$')
+            if name and out[name] == nil and standing_kept(name) then read(name) end
+        end
+    end)
+    return out
+end
+
 function get_dead()
     AI_TOMBS = nil
     local out = {ghosts = 0, ghost_names = {}, unburied = 0, tomb_coffins = 0, free_tombs = 0,
@@ -1717,8 +1749,10 @@ function get_dead()
     end)
     out._from = from
     -- the game's standing orders on the dead (the Orders screen)
-    pcall(function() out.forbid_own_dead = df.global.standing_orders_forbid_own_dead == true end)
-    pcall(function() out.forbid_own_dead_items = df.global.standing_orders_forbid_own_dead_items == true end)
+    -- (0.105.27) they are uint8_t 0/1, never true: `== true` read them false always
+    out.standing = standing_orders_dead()
+    out.forbid_own_dead = (out.standing.forbid_own_dead or 0) ~= 0
+    out.forbid_own_dead_items = (out.standing.forbid_own_dead_items or 0) ~= 0
     for _, b in ipairs(df.global.world.buildings.all) do
         if b:getType() == df.building_type.Coffin and b:getBuildStage() >= b:getMaxBuildStage() then
             local tomb, owner, zone = in_tomb_zone(b)
