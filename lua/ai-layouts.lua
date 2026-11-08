@@ -514,8 +514,10 @@ function temple(p)
         -- (0.105.29, custom cloister) a pillared walk 1 tile in from the walls:
         -- pillars on the second and second-last rows and the west column (not
         -- the doorway row); the statue column (2+w-2) stays clear. In a grand
-        -- temple the ring takes the place of its own two pillar rows.
-        for x = 4, 2 + w - 3, 2 do
+        -- temple the ring takes the place of its own two pillar rows. The rows
+        -- start at x = 5, one clear of the west column's pillar at x = 3 (from
+        -- 4 the corners read as 2-tile pillars).
+        for x = 5, 2 + w - 3, 2 do
             mark(skip, x, top + 1); mark(skip, x, top + h - 2)
         end
         for y = top + 1, top + h - 2, 2 do

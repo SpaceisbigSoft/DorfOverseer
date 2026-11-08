@@ -547,7 +547,7 @@ def _():
         L, tiles, cells = layout("temple", size=size, **with_customs("cloister", statues=4))
         common_checks(L, tiles, cells)
         top = -(h // 2)
-        pillars = {(x, y) for x in range(4, 2 + w - 2, 2) for y in (top + 1, top + h - 2)}
+        pillars = {(x, y) for x in range(5, 2 + w - 2, 2) for y in (top + 1, top + h - 2)}
         pillars |= {(3, y) for y in range(top + 1, top + h - 1, 2) if abs(y) > 1}
         assert not (pillars & tiles), sorted(pillars & tiles)
         hall = {(x, y) for x in range(2, 2 + w) for y in range(top, top + h)}
@@ -558,6 +558,8 @@ def _():
         assert all((x, y) in tiles for x in range(2, 2 + w) for y in (-1, 0, 1)), "doorway rows"
         assert all((2 + w - 2, y) in tiles for y in range(top + 1, top + h - 1)), "statue column"
         assert all((2, y) in tiles for y in range(top + 1, top + h - 1)), "the west walk"
+        # no 2-tile corner pillars: the rows start one clear of the west column's pillar
+        assert (4, top + 1) in tiles and (4, top + h - 2) in tiles, "corner"
         assert L.summary.cloister is True
         statues = [(x, y) for ph, x, y, t in cells if ph == "build" and t == "s"]
         assert statues and all(x == 2 + w - 2 for x, _ in statues), statues

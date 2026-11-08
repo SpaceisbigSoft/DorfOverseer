@@ -16,7 +16,7 @@ from planner_core import *  # noqa: F401,F403
 from planner_growth import *  # noqa: F401,F403  (13c: split out by theme)
 from planner_wells import *  # noqa: F401,F403  (13c: split out by theme)
 
-__all__ = ["STUCK_FALLBACKS", "stuck_fallback", "magma_access", "GROWTH", "GROWTH_EXTRA_SCORE", "GROWTH_MAX", "growth_want", "growth_candidates", "settled_times", "growth_wait", "GROWTH_SOLDIERS", "GROWTH_ZONES", "GROWTH_MAX_OF", "GROWTH_AT", "TRAIT_NAMES_SHORT", "FURNITURE_RECIPES", "METAL_FURNITURE", "spare_metal", "WOODEN_FURNITURE", "BASIC_WORKSHOPS", "BASIC_STOCKPILES", "memorial_due", "_well_rule", "_well_lid_rule", "cavern_danger", "_planned_note", "_planned_parts_rule", "planned_wants", "_water_zone_rule", "cavern_well_need", "cavern_points", "cavern_action", "cavern_well_safe", "WELL_PARTS_SHOPS", "chain_metal", "well_parts_plan", "_well_parts", "_room_repair_rule", "_water_traffic_rule", "_cleanup_rule", "STORE_GROW", "stone_tidiness", "jail_plan", "cistern_pop", "tavern_factor", "full_stores", "LEARNING_NEEDS", "_stairwell_rule", "WATER_WORDS", "water_summary", "_water_rules", "CISTERN_WORDS", "_cistern_parts", "_cistern_rule", "_deep_notes", "good_times", "ORDINALS", "garden_name", "_pop_cap_rule", "fort_strain", "hospital_shortfall", "dining_shortfall", "social_shortfall", "SOCIAL_KINDS", "_join_rule", "_dig_stall_rule", "_shrink_rule", "room_size", "_project_rules", "CHARACTER_KINDS", "is_character_level", "character_slot_reserved", "character_slot_filter", "temple_size", "more_temple", "has_grand_temple", "piety_slot", "LADDER_BASE", "LADDER_TRAITS", "_ladder_kind", "_ladder_word", "ladder_score", "tombs_short"]
+__all__ = ["STUCK_FALLBACKS", "stuck_fallback", "magma_access", "GROWTH", "GROWTH_EXTRA_SCORE", "GROWTH_MAX", "growth_want", "growth_candidates", "settled_times", "growth_wait", "GROWTH_SOLDIERS", "GROWTH_ZONES", "GROWTH_MAX_OF", "GROWTH_AT", "TRAIT_NAMES_SHORT", "FURNITURE_RECIPES", "METAL_FURNITURE", "spare_metal", "WOODEN_FURNITURE", "BASIC_WORKSHOPS", "BASIC_STOCKPILES", "memorial_due", "_well_rule", "_well_lid_rule", "cavern_danger", "_planned_note", "_planned_parts_rule", "planned_wants", "_water_zone_rule", "cavern_well_need", "cavern_points", "cavern_action", "cavern_well_safe", "WELL_PARTS_SHOPS", "chain_metal", "well_parts_plan", "_well_parts", "_room_repair_rule", "_water_traffic_rule", "_cleanup_rule", "STORE_GROW", "stone_tidiness", "jail_plan", "cistern_pop", "tavern_factor", "full_stores", "LEARNING_NEEDS", "_stairwell_rule", "WATER_WORDS", "water_summary", "_water_rules", "CISTERN_WORDS", "_cistern_parts", "_cistern_rule", "_deep_notes", "good_times", "ORDINALS", "garden_name", "_pop_cap_rule", "fort_strain", "hospital_shortfall", "dining_shortfall", "social_shortfall", "SOCIAL_KINDS", "_join_rule", "_dig_stall_rule", "_shrink_rule", "room_size", "_project_rules", "CHARACTER_KINDS", "is_character_level", "character_slot_reserved", "character_slot_filter", "temple_size", "more_temple", "has_grand_temple", "piety_slot", "LADDER_BASE", "LADDER_TRAITS", "_ladder_kind", "_ladder_word", "ladder_score", "tombs_short", "PLACEMENT_CUSTOMS", "apply_customs"]
 
 
 # Furniture waiting in a project -> the recipe that makes it.
@@ -556,6 +556,51 @@ def room_size(traits: dict) -> int:
     return 2 if size <= -50 else 4 if size >= 50 else 3
 
 
+# (0.105.29) the customs that place a level of a kind (masterplan.hint applies
+# them); the layout ones are customs.LAYOUT. wide_ways and winding_ways bend
+# every level's ways: they ride along with these, never call the hint alone.
+PLACEMENT_CUSTOMS = {"bedrooms": ("cells",), "dining": ("deep_hall", "field_hall"), "tavern": ("market_gate",),
+                     "barracks": ("gate_barracks",), "archery": ("gate_barracks",), "workshops": ("field_kitchens",)}
+
+
+def apply_customs(action: dict, memory, traits: dict, profile: dict, citizens: int,
+                  urgent: bool = False) -> dict | None:
+    """(0.105.29) The fort's customs on a start_project: the master plan's hint
+    (placement customs; returned, and set as action["plan"]), style.customs
+    (layout customs) and action["customs"] (the journal's). urgent: an urgent
+    level keeps its own placement and gets nothing at all unless a custom
+    concerns its kind; the hint is kept only when it applied a placement custom
+    of that kind (else the urgent placement stands)."""
+    kind = action["kind"]
+    lc = customs.layout_customs(traits, kind)
+    place = [c for c in PLACEMENT_CUSTOMS.get(kind, ()) if customs.has(traits, c)] if urgent else None
+    where = None
+    if memory is not None and (not urgent or place):
+        where = masterplan.hint(memory, kind, slot=action.get("set_piece"), traits=traits,
+                                profile=profile, action=action, citizens=citizens)
+        if urgent and not set(_l((where or {}).get("customs"))) & set(place):
+            where = None
+    if lc:
+        if not isinstance(action.get("style"), dict):
+            action["style"] = {}           # (as no style: plain, the bridge's defaults)
+        action["style"]["customs"] = lc
+    cs = sorted(set(lc) | set(_l((where or {}).get("customs"))))
+    if cs:
+        action["customs"] = cs
+    if where:
+        # the door rule follows the fort as it is now (the plan's own was set when it was drawn)
+        where["doors"] = ("fortified" if traits.get("fortification", 0) >= 70
+                          else "doored" if profile.get("entry_doors") else "open")
+        action["plan"] = where                 # the master plan's district for it, tried first
+    return where
+
+
+def _urgent(action: dict, memory, traits: dict, profile: dict, s: dict) -> dict:
+    """apply_customs for an urgent level, in line: returns the action."""
+    apply_customs(action, memory, traits, profile, max(1, int(_d(s.get("dwarves")).get("total") or 0)), urgent=True)
+    return action
+
+
 def _project_rules(s, traits, cfg, proposals, notes, can_use, memory) -> None:
     s.pop("_character_slot", None)          # (0.105.10) this plan's own (normalize may hand back the same dict)
     pr = s["projects"]
@@ -774,8 +819,9 @@ def _project_rules(s, traits, cfg, proposals, notes, can_use, memory) -> None:
         need = [w for w in SURVIVAL_SHOPS if not have.get(w) and w not in coming]
         if need and len(open_) < (pr.get("max_open") or 2) + 1:
             extra = [w for w in BASIC_WORKSHOPS if w not in need and not have.get(w) and w not in coming]
-            proposals.append(Proposal("build", {"type": "start_project", "kind": "workshops",
-                                                         "shops": need + extra, "urgent": True},
+            proposals.append(Proposal("build", _urgent({"type": "start_project", "kind": "workshops",
+                                                                 "shops": need + extra, "urgent": True},
+                                                        memory, traits, profile, s),
                                       f"no {', '.join(need)}: the fort can't brew, cook or make beds, doors and "
                                       "barrels without them; dig them first", 1))
     # (0.100.2, second overnight run) the manager works only in an office: with
@@ -788,8 +834,8 @@ def _project_rules(s, traits, cfg, proposals, notes, can_use, memory) -> None:
         n_suites = max(1, suites_short(s)) if "office" in noble_room_kinds(traits, memory) else 1
         # (urgent: the builder's extra slot, as for the survival workshops; it
         # holds the open-project limit itself and refused the suite at 2)
-        proposals.append(Proposal("build", {"type": "start_project", "kind": "suites", "suites": n_suites,
-                                            "urgent": True},
+        proposals.append(Proposal("build", _urgent({"type": "start_project", "kind": "suites", "suites": n_suites,
+                                                    "urgent": True}, memory, traits, profile, s),
                                   "the manager has no office, and a manager takes up work orders only in one: "
                                   f"dig {'a suite' if n_suites == 1 else f'{n_suites} suites'} (a bedroom and an "
                                   "office each)", 1))
@@ -801,8 +847,8 @@ def _project_rules(s, traits, cfg, proposals, notes, can_use, memory) -> None:
             and len(open_) < (pr.get("max_open") or 2) + 2 and not any(p.get("kind") == "dining" for p in open_):
         dn = dining_shortfall(s, cfg)
         if dn and player_rules(s)["levels"].get("dining", True):
-            proposals.append(Proposal("build", {"type": "start_project", "kind": "dining", "tables": dn["tables"],
-                                                "urgent": True},
+            proposals.append(Proposal("build", _urgent({"type": "start_project", "kind": "dining", "tables": dn["tables"],
+                                                        "urgent": True}, memory, traits, profile, s),
                                       f"{dn['have']} tables for {dn['citizens']} dwarves (the fort wants {dn['want']}; "
                                       f"a meal without one is a bad thought): another dining hall with {dn['tables']} tables", 2))
     # (0.104.137, 12k) taverns and temples by the dwarves who badly miss what
@@ -820,7 +866,7 @@ def _project_rules(s, traits, cfg, proposals, notes, can_use, memory) -> None:
                 # (0.105.23) the bridge knows "shrine" and "grand" only: this temple
                 # went without a size and was refused 83 times (fort E, 5 Nov)
                 action["size"] = temple_size(traits)
-            proposals.append(Proposal("build", action, cap, 2))
+            proposals.append(Proposal("build", _urgent(action, memory, traits, profile, s), cap, 2))
             break                                   # one a cycle
     # (0.104.146) a temple to all gods while many pray to gods no temple here
     # serves (Teacheroar: 2 temples, 9 gods prayed to, 93 distracted for want
@@ -832,7 +878,8 @@ def _project_rules(s, traits, cfg, proposals, notes, can_use, memory) -> None:
             and len(open_) < (pr.get("max_open") or 2) + 2 and not any(p.get("kind") == "temple" for p in open_)
             and player_rules(s)["levels"].get("temple", True)):
         gods = ", ".join(f"{g} {n}" for g, n in sorted(pu[1].items(), key=lambda kv: -kv[1])[:4])
-        proposals.append(Proposal("build", {"type": "start_project", "kind": "temple", "size": "shrine", "urgent": True},
+        proposals.append(Proposal("build", _urgent({"type": "start_project", "kind": "temple", "size": "shrine",
+                                                    "urgent": True}, memory, traits, profile, s),
                                   f"{pu[0]} dwarves are distracted for want of prayer to gods no temple here serves "
                                   f"({gods}): a temple to all gods", 2))
     # (0.104.121) a hospital too small for the fort: Teacheroar's stop-gap of
@@ -844,8 +891,8 @@ def _project_rules(s, traits, cfg, proposals, notes, can_use, memory) -> None:
             and len(open_) < (pr.get("max_open") or 2) + 2 and not any(p.get("kind") == "hospital" for p in open_):
         hp = hospital_shortfall(s, traits, cfg)
         if hp and player_rules(s)["levels"].get("hospital", True):
-            proposals.append(Proposal("build", {"type": "start_project", "kind": "hospital", "beds": hp["beds"],
-                                                "urgent": True},
+            proposals.append(Proposal("build", _urgent({"type": "start_project", "kind": "hospital", "beds": hp["beds"],
+                                                        "urgent": True}, memory, traits, profile, s),
                                       f"{hp['resting']} wounded dwarves resting and the hospitals have "
                                       f"{hp['have']} beds for {hp['citizens']} dwarves (the fort wants {hp['want']}): "
                                       f"another hospital with {hp['beds']} beds", 1))
@@ -861,8 +908,8 @@ def _project_rules(s, traits, cfg, proposals, notes, can_use, memory) -> None:
                 and player_rules(s)["levels"].get("hospital", True) and not locs.get("HOSPITAL")
                 and not any(p.get("kind") == "hospital" for p in open_)):
             beds = max(4, min(20, math.ceil(cit / 20 * factor(traits, "welfare")) + 2))
-            proposals.append(Proposal("build", {"type": "start_project", "kind": "hospital", "beds": beds,
-                                                "urgent": True},
+            proposals.append(Proposal("build", _urgent({"type": "start_project", "kind": "hospital", "beds": beds,
+                                                        "urgent": True}, memory, traits, profile, s),
                                       f"{waiting} dwarves wait for care and there is no hospital: build one with "
                                       f"{beds} beds now, ahead of the levels under way", 1))
         # (0.103.12) most of the fort longing to pray with only the stop-gap
@@ -877,8 +924,8 @@ def _project_rules(s, traits, cfg, proposals, notes, can_use, memory) -> None:
                 and not _real_locations(lc, "TEMPLE", memory, _l(_d(s.get("locations")).get("list")))
                 and not any(p.get("kind") == "temple" for p in open_)
                 and not any(x.action.get("kind") == "hospital" and x.action.get("urgent") for x in proposals)):
-            proposals.append(Proposal("build", {"type": "start_project", "kind": "temple", "size": "shrine",
-                                                "urgent": True},
+            proposals.append(Proposal("build", _urgent({"type": "start_project", "kind": "temple", "size": "shrine",
+                                                        "urgent": True}, memory, traits, profile, s),
                                       f"{min(pray, cit)} dwarves are distracted for want of somewhere to pray and the fort "
                                       "has only the dining hall for it: dig a shrine now, ahead of the levels under way", 1))
         # (0.104.12) the dead unburied (ghosts, or many bodies: seeing them
@@ -894,8 +941,9 @@ def _project_rules(s, traits, cfg, proposals, notes, can_use, memory) -> None:
                 and not any(x.action.get("urgent") and x.action.get("kind") in ("hospital", "temple") for x in proposals)):
             short = tombs_short(s, cit, cfg, memory) + (dead.get("ghosts") or 0)
             coffins = max(4, min(30, short * 2))
-            proposals.append(Proposal("tombs_ghosts", {"type": "start_project", "kind": "tombs", "coffins": coffins,
-                                                       "urgent": True, "style": layout_style(profile)},
+            proposals.append(Proposal("tombs_ghosts", _urgent({"type": "start_project", "kind": "tombs", "coffins": coffins,
+                                                               "urgent": True, "style": layout_style(profile)},
+                                                              memory, traits, profile, s),
                                       f"{dead.get('unburied') or 0} dead unburied, {dead.get('ghosts') or 0} ghost(s) and "
                                       f"{dead.get('free_tombs', 0)} free tombs: dig a tomb level with {coffins} coffins "
                                       "now, ahead of the levels under way", 2))
@@ -911,8 +959,8 @@ def _project_rules(s, traits, cfg, proposals, notes, can_use, memory) -> None:
                 and not any(p.get("kind") == "jail" for p in open_)
                 and not any(x.action.get("urgent") and x.action.get("kind") in ("hospital", "temple", "tombs")
                             for x in proposals)):
-            proposals.append(Proposal("jail_urgent", {"type": "start_project", "kind": "jail", "cells": jp["cells"],
-                                                      "urgent": True},
+            proposals.append(Proposal("jail_urgent", _urgent({"type": "start_project", "kind": "jail", "cells": jp["cells"],
+                                                              "urgent": True}, memory, traits, profile, s),
                                       f"{tn} tantrums in 28 days and no jail: the guard beats the offenders and the beaten "
                                       f"fill the hospital: dig a jail with {jp['cells']} cells now", 2))
         # (0.104.35) a third of the fort badly wanting company with only the
@@ -928,8 +976,8 @@ def _project_rules(s, traits, cfg, proposals, notes, can_use, memory) -> None:
                 and not any(x.action.get("urgent") and x.action.get("kind") in ("hospital", "temple", "tombs", "jail")
                             for x in proposals)):
             tables = max(4, min(20, math.ceil(cit / 10 * tavern_factor(traits))))
-            proposals.append(Proposal("tavern_urgent", {"type": "start_project", "kind": "tavern", "tables": tables,
-                                                        "urgent": True},
+            proposals.append(Proposal("tavern_urgent", _urgent({"type": "start_project", "kind": "tavern", "tables": tables,
+                                                                "urgent": True}, memory, traits, profile, s),
                                       f"{friends} dwarves badly want time with friends and the fort has only the dining "
                                       f"hall for a tavern: dig a tavern with {tables} tables now, ahead of the levels "
                                       "under way", 2))
@@ -1266,19 +1314,8 @@ def _project_rules(s, traits, cfg, proposals, notes, can_use, memory) -> None:
             action["style"].update(masterplan.variety(memory, action["kind"]))   # seeded details
         if young:
             action["style"].update(smooth=0, statues=0)    # a young fort builds plain: smoothing and statues later
-        where = (masterplan.hint(memory, action["kind"], slot=action.get("set_piece"), traits=traits,
-                                 profile=profile, action=action, citizens=citizens) if memory is not None else None)
-        lc = customs.layout_customs(traits, action["kind"])   # (0.105.29) the fort's customs
-        if lc:
-            action["style"]["customs"] = lc
-        cs = sorted(set(lc) | set((where or {}).get("customs") or []))
-        if cs:
-            action["customs"] = cs
+        where = apply_customs(action, memory, traits, profile, citizens)   # the plan's hint, the customs
         if where:
-            # the door rule follows the fort as it is now (the plan's own was set when it was drawn)
-            where["doors"] = ("fortified" if traits.get("fortification", 0) >= 70
-                              else "doored" if profile.get("entry_doors") else "open")
-            action["plan"] = where                 # the master plan's district for it, tried first
             reason += f" (in {where['district']})"
         proposals.append(Proposal("build", action, reason, 6))
 
