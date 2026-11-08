@@ -233,8 +233,21 @@ end
 
 function get_needs(txt_fn)
     local t = txt_fn or txt
-    local out = {needs = {}, deities = {}, deity_ids = {}, stressed = {}}
+    local out = {needs = {}, deities = {}, deity_ids = {}, stressed = {}, worship = {}}
     local deity_names = {}
+    -- (0.105.23) a deity's name, looked up once a report
+    local function deity_name(id)
+        local key = tostring(id)
+        if deity_names[key] == nil then
+            local okd, nm = pcall(function()
+                local hf = df.historical_figure.find(id)
+                local f = dfhack.translation and dfhack.translation.translateName or dfhack.TranslateName
+                return t(f(hf.name, true))
+            end)
+            deity_names[key] = (okd and nm and nm ~= '') and nm or ('deity ' .. key)
+        end
+        return deity_names[key]
+    end
     -- (0.104.168) the keen the fill could draft in a crisis (ai-military's
     -- test, strict): the keen lift is sized on these, not on nobles, nursing
     -- mothers, patients or the breaking-down, whom the fill passes over
@@ -266,18 +279,18 @@ function get_needs(txt_fn)
                     end
                     table.insert(worst, {name = name, focus = nd.focus_level})
                     if name == 'PrayOrMeditate' and nd.deity_id >= 0 then
-                        local key = tostring(nd.deity_id)
-                        if deity_names[key] == nil then
-                            local okd, nm = pcall(function()
-                                local hf = df.historical_figure.find(nd.deity_id)
-                                local f = dfhack.translation and dfhack.translation.translateName or dfhack.TranslateName
-                                return t(f(hf.name, true))
-                            end)
-                            deity_names[key] = (okd and nm and nm ~= '') and nm or ('deity ' .. key)
-                        end
-                        out.deities[deity_names[key]] = (out.deities[deity_names[key]] or 0) + 1
-                        out.deity_ids[deity_names[key]] = nd.deity_id   -- (0.102.1) for a temple to that god
+                        local nm = deity_name(nd.deity_id)
+                        out.deities[nm] = (out.deities[nm] or 0) + 1
+                        out.deity_ids[nm] = nd.deity_id   -- (0.102.1) for a temple to that god
                     end
+                end
+                -- (0.105.23, 14.1 step 4b) every citizen who prays to a god, met
+                -- or not: the Monastery raises a temple to each god most worship
+                -- (the distracted alone said nothing once a temple to all gods stood)
+                if name == 'PrayOrMeditate' and nd.deity_id >= 0 then
+                    local nm = deity_name(nd.deity_id)
+                    out.worship[nm] = (out.worship[nm] or 0) + 1
+                    out.deity_ids[nm] = nd.deity_id
                 end
             end
             -- (0.104.64) the training need's worst level for this dwarf
