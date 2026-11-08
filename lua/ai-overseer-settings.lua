@@ -459,7 +459,7 @@ BUILTIN_PRESETS = {
                      militarism = -60, justice = -60, greed = -60, trade = -30, industriousness = -20},
     ['Merchant city'] = {trade = 120, greed = 80, outsiders = 100, craftsmanship = 60, stockpile = 40,
                          growth = 60, surface = 40, deference = 40},
-    ['Hermit hold'] = {outsiders = -150, trade = -100, growth = -60, caution = 60, surface = -60,
+    ['Hermit hold'] = {outsiders = -150, trade = -100, growth = -60, caution = 60, surface = -60, fortification = 100,
                        deference = -60, greed = 40, stockpile = 60},
     ['Deep mine'] = {mining = 150, verticality = 120, surface = -100, engineering = 60, industriousness = 60,
                      caution = -40, spacing = -30, agriculture = -20},
