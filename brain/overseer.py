@@ -274,7 +274,8 @@ MODES = {"advisor": "Advisor", "copilot": "Co-pilot", "autopilot": "Autopilot"}
 BIG_MOVES = {"start_project", "cancel_project", "cancel_work_order", "squad_fill", "import_orders",
              "build_gate_doors", "fortify_entrance", "expel_dwarf", "place_well", "link_lever", "place_traps",
              "remove_workshops",
-             "cut_entrance"}                     # (0.105.0) hatches across the fort's stairs: asked first
+             "cut_entrance",                     # (0.105.0) hatches across the fort's stairs: asked first
+             "build_gatehouse"}                  # (0.105.23) walls and a drawbridge on the surface
 DECLINE_DAYS = 7          # a "No" holds this many in-game days before it may ask again
 
 
@@ -594,6 +595,8 @@ def short(a: dict) -> str:
         return f"link the AI gate lever to a drawbridge or hatch"
     if t == "place_gate_lever":
         return "put a lever inside the fort for the gate"
+    if t == "build_gatehouse":     # (0.105.23, 14.1 step 4a)
+        return f"build a gatehouse at the founding stair (drawbridge, walls, {a.get('kind') or 'cage'} trap corridor)"
     if t == "location_access":
         return ("open" if a.get("visitors") else "close") + f" {len(a.get('ids') or [])} location(s) to visitors"
     if t == "build_gate_doors":

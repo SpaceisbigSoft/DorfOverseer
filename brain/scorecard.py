@@ -32,7 +32,8 @@ SHORT = {"War-hold": "War", "Monastery": "Mon", "Merchant city": "Mer", "Hermit 
 
 # The actions that are a fort's gate works
 GATE_WORKS = ("build_gate_doors", "fortify_entrance", "cut_entrance", "link_lever", "place_traps",
-              "guard_gate", "gate_dogs", "arm_gates")
+              "guard_gate", "gate_dogs", "arm_gates",
+              "build_gatehouse")                 # (0.105.23) the War-hold's gatehouse
 
 
 def _d(x) -> dict:

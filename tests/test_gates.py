@@ -1423,6 +1423,279 @@ def _():
         LUA.execute("df = nil; dfhack = nil")
 
 
+
+# --- (0.105.23, 14.1 step 4a) the hatch on a lever, and the gatehouse ----------------
+
+def shaft_world(width=40, surface_rows=None):
+    """The founding stair: its top 't' on the surface (z 1) at x10 y8; the fort below (z 0)."""
+    surface = surface_rows or (["o" * width] * 8 + ["o" * 10 + "t" + "o" * (width - 11)] + ["o" * width] * 10)
+    below = (["#" * width] * 8 + ["#" * 10 + "s" + "." * (width - 11)] + ["#" * 10 + "." * (width - 10)] * 4
+             + ["#" * width] * 6)
+    m = LUA.table()
+    for z, rows in ((0, below), (1, surface)):
+        level = LUA.table()
+        for y, r in enumerate(rows):
+            level[y] = r
+        m[z] = level
+    W.map = m
+    LUA.execute("local M, w = ...; M.map_size = function() return w, 19, 2 end", M, width)
+    return LUA.table_from({i + 1: LUA.table_from({"x": 30 + i, "y": 10, "z": 0}) for i in range(3)})
+
+
+def unk(k):
+    return (k % 4096, k // 4096 % 4096, k // (4096 * 4096))
+
+
+def lever_t(id_, name="AI gate lever", targets=(7,), x=32, y=10, z=0):
+    return LUA.table_from({"id": id_, "x": x, "y": y, "z": z, "name": name,
+                           "targets": LUA.table_from(dict(enumerate(targets, 1)))})
+
+
+def hatch_b(levers=(), closed=False):
+    b = {"id": 7, "kind": "hatch", "x1": 10, "y1": 8, "x2": 10, "y2": 8, "z": 1, "name": "", "closed": closed}
+    if levers:
+        b.update(levers=LUA.table_from(dict(enumerate(levers, 1))), lever_id=levers[0].id, lever_driven=True)
+    return b
+
+
+@test("0.105.23 gatehouse plan: a walled corridor from the hatch, toward the nearest map edge it can, bridge at its end")
+def _():
+    s0 = shaft_world()
+    W.buildings = LUA.table_from({1: LUA.table_from(hatch_b())})
+    es, _, _ = M.find_entrances(s0, W.buildings)
+    e = es[1]
+    assert e.sealed and e.lid and e.gatehouse == "possible", (e.sealed, e.lid, e.gatehouse, e.gatehouse_why)
+    plan = M.plan_gatehouse(e)
+    plan = plan[0] if isinstance(plan, tuple) else plan
+    # north (y 8 from the edge) is the nearest edge and there's room: the corridor runs north, 4 long
+    assert plan.len == 4 and (plan.bridge.x, plan.bridge.y, plan.bridge.z) == (10, 3, 1), (plan.len, plan.bridge.x, plan.bridge.y)
+    assert plan.bridge.dir == "gw", plan.bridge.dir                         # raised toward the outside
+    corridor = sorted(unk(plan.corridor[i]) for i in range(1, len(plan.corridor) + 1))
+    assert corridor == [(10, y, 1) for y in (4, 5, 6, 7)], corridor
+    walls = {unk(plan.walls[i]) for i in range(1, len(plan.walls) + 1)}
+    assert len(walls) == 15 and (10, 9, 1) in walls and (9, 8, 1) in walls and (11, 3, 1) in walls, sorted(walls)
+    assert not any(w[0] == 10 and 3 <= w[1] <= 8 for w in walls)           # nothing on the way through
+    # rock north of the hatch (a hillside): another way out
+    rows = ["o" * 40] * 8 + ["o" * 10 + "t" + "o" * 29] + ["o" * 40] * 10
+    rows = ["o" * 9 + "###" + "o" * 28 if 4 <= y <= 6 else r for y, r in enumerate(rows)]
+    shaft_world(surface_rows=rows)
+    es, _, _ = M.find_entrances(s0, W.buildings)
+    plan = M.plan_gatehouse(es[1])
+    plan = plan[0] if isinstance(plan, tuple) else plan
+    assert (plan.bridge.x, plan.bridge.y, plan.bridge.dir) == (5, 8, "ga"), (plan.bridge.x, plan.bridge.y)   # west, the next edge
+    # a tree's branches all round the hatch: no room on any side, and the scan says why
+    rows = ["o" * 40] * 7 + ["o" * 9 + "BBB" + "o" * 28, "o" * 9 + "BtB" + "o" * 28, "o" * 9 + "BBB" + "o" * 28] \
+        + ["o" * 40] * 9
+    shaft_world(surface_rows=rows)
+    es, _, _ = M.find_entrances(s0, W.buildings)
+    e = es[1]
+    assert e.gatehouse == "none" and "no room" in str(e.gatehouse_why), (e.gatehouse, e.gatehouse_why)
+
+
+@test("0.105.23 gatehouse scan: its named bridge marks it standing; worked by a lever, it's the outer gate, not the seal")
+def _():
+    s0 = shaft_world()
+    pending = {"id": 40, "kind": "pending", "what": "bridge", "x1": 10, "y1": 3, "x2": 10, "y2": 3, "z": 1,
+               "name": "AI gatehouse bridge"}
+    W.buildings = LUA.table_from({1: LUA.table_from(hatch_b()), 2: LUA.table_from(pending)})
+    e = M.find_entrances(s0, W.buildings)[0][1]
+    assert e.sealed and e.gatehouse == "standing" and len(e.outer) == 0, (e.gatehouse, len(e.outer))
+    # built, no lever yet: a bridge waiting for one (the gate rule links the AI lever to it)
+    bridge = dict(pending, kind="bridge")
+    W.buildings = LUA.table_from({1: LUA.table_from(hatch_b()), 2: LUA.table_from(bridge)})
+    e = M.find_entrances(s0, W.buildings)[0][1]
+    assert list(e.bridges_unworked.values()) == [40] and len(e.outer) == 0
+    # worked by a lever inside: the outer gate; the hatch alone seals the fort
+    bl = LUA.table_from({1: lever_t(91, targets=(40,))})
+    W.buildings = LUA.table_from({1: LUA.table_from(hatch_b()), 2: LUA.table_from(dict(bridge, levers=bl, lever_id=91))})
+    e = M.find_entrances(s0, W.buildings)[0][1]
+    eq = [e.equipment[i].id for i in range(1, len(e.equipment) + 1)]
+    assert eq == [7] and len(e.outer) == 1 and e.outer[1].id == 40, (eq, len(e.outer))
+
+
+@test("0.105.23 drive levers: a hatch on a lever is pulled by it; never by a lever that works another entrance's gate")
+def _():
+    s0 = shaft_world()
+    W.buildings = LUA.table_from({1: LUA.table_from(hatch_b(levers=(lever_t(90),)))})
+    es, inside, _ = M.find_entrances(s0, W.buildings)
+    M.pick_levers(es, inside)
+    M.drive_levers(es)
+    g = es[1].equipment[1]
+    assert g.lever_driven and g.drive_lever == 90 and g.drive_ai, (g.lever_driven, g.drive_lever, g.drive_ai)
+    W.buildings = LUA.table_from({1: LUA.table_from(hatch_b(levers=(lever_t(90, targets=(7, 99)),)))})
+    es, inside, _ = M.find_entrances(s0, W.buildings)
+    M.drive_levers(es)
+    assert es[1].equipment[1].drive_lever is None                             # shared: not pulled for this one
+
+
+WATCH_STUB = r"""
+local M = ...
+B = {}
+RUN = {}
+M.df = {building = {find = function(id) return B[id] end},
+        job_type = {PullLever = 9},
+        global = {world = {units = {active = {}}}, cur_year_tick = 0}}
+M.dfhack = {units = {getCitizens = function() return {} end, isDead = function() return false end},
+            timeout = function() return nil end, timeout_active = function() return false end,
+            gui = {showAnnouncement = function() end},
+            run_command_silent = function(...) table.insert(RUN, table.concat({...}, ' ')); return '', 0 end}
+M.CR_OK = 0
+"""
+
+
+def watch_world(drive=90, ai=True, kind="surface", outer=True):
+    """GATES with the founding entrance: a hatch on lever 90, the gatehouse bridge 40 on lever 91."""
+    LUA.execute(WATCH_STUB, M)
+    LUA.execute("""B[7] = {door_flags = {closed = true, forbidden = false}, jobs = {}}
+                   B[40] = {gate_flags = {raised = false}, jobs = {}, x1 = 10, y1 = 3, x2 = 10, y2 = 3, z = 1}
+                   B[91] = {jobs = {}}; B[90] = {jobs = {}}""")
+    pulls = []
+
+    def fake_pull(lid):
+        pulls.append(("instant", lid))
+        LUA.execute("local lid = ...; if lid == 90 then B[7].door_flags.closed = not B[7].door_flags.closed end", lid)
+        return True
+    M.pull_instant = fake_pull
+    hatch = LUA.table_from({"id": 7, "kind": "hatch", "lever_driven": True, "drive_lever": drive, "drive_ai": ai,
+                            "levers": LUA.table_from({1: lever_t(90)})})
+    e = {"id": 1, "kind": kind, "x": 10, "y": 8, "z": 0, "equipment": LUA.table_from({1: hatch}),
+         "outs": LUA.table_from({(1 * 4096 + 8) * 4096 + 10: True}), "inside_list": LUA.table()}
+    if outer:
+        e["outer"] = LUA.table_from({1: LUA.table_from({"id": 40, "kind": "bridge", "lever_id": 91})})
+    M.GATES = LUA.table_from({"scanned": True, "armed": False, "closed": LUA.table(),
+                              "entrances": LUA.table_from({1: LUA.table_from(e)})})
+    return pulls
+
+
+def run_log():
+    return [str(LUA.eval("RUN")[i]) for i in range(1, len(LUA.eval("RUN")) + 1)]
+
+
+@test("0.105.23 keep open: a hatch its new link shut is opened at once by its AI lever; not a cavern's, not the player's")
+def _():
+    try:
+        pulls = watch_world()
+        assert M.open_lever_hatches() == 1 and pulls == [("instant", 90)], pulls
+        assert LUA.eval("B[7].door_flags.closed") is False
+        assert M.open_lever_hatches() == 0 and len(pulls) == 1                # open already: no pull (it would shut it)
+        for kw in ({"kind": "cavern"}, {"ai": False}, {"drive": None}):
+            pulls = watch_world(**kw)
+            assert M.open_lever_hatches() == 0 and not pulls, (kw, pulls)
+        pulls = watch_world()
+        M.GATES.closed[1] = True                                             # the watcher holds it shut
+        assert M.open_lever_hatches() == 0 and not pulls
+        # open_all (the brain's "open the gates") opens it too
+        pulls = watch_world()
+        M.GATES_ORIG.open_all()
+        assert pulls == [("instant", 90)], pulls
+    finally:
+        LUA.execute("local M = ...; M.df = nil; M.dfhack = nil; M.CR_OK = nil", M)
+        M.GATES = LUA.table_from({"scanned": False})
+
+
+@test("0.105.23 watcher: closing raises the gatehouse bridge, then shuts the hatch by its lever; opening the other way")
+def _():
+    try:
+        pulls = watch_world()
+        LUA.execute("B[7].door_flags.closed = false")
+        LUA.execute("local M = ...; M._vd = M.visible_dangers; "
+                    "M.visible_dangers = function() return {{pos = {x = 12, y = 8, z = 1}, invader = true}} end", M)
+        M.GATES.armed = True
+        M.GATES_ORIG.check()
+        assert M.GATES.closed[1], "closed"
+        assert run_log() == ["lever pull --id 91"], run_log()                 # the bridge's lever (a dwarf pulls it)
+        assert pulls == [("instant", 90)] and LUA.eval("B[7].door_flags.closed") is True, pulls
+        assert LUA.eval("B[7].door_flags.forbidden") is False                 # driven by its lever, not a lock
+        # opened: the hatch at once, the bridge lowered after (the pull waits for a dwarf: still raised, kept closed)
+        LUA.execute("B[40].gate_flags.raised = true; RUN = {}")
+        r = M.GATES_ORIG.open_all()
+        assert pulls[-1] == ("instant", 90) and LUA.eval("B[7].door_flags.closed") is False, pulls
+        assert run_log() == ["lever pull --id 91"], run_log()
+        assert r.waiting == 1 and M.GATES.closed[1], dict(r)                  # until the bridge is down
+        # a lever that works another entrance's gate too: the hatch is only locked, as before
+        pulls = watch_world(drive=None)
+        LUA.execute("B[7].door_flags.closed = false")
+        M.GATES.armed = True
+        M.GATES_ORIG.check()
+        assert not pulls and LUA.eval("B[7].door_flags.forbidden") is True, pulls
+    finally:
+        LUA.execute("local M = ...; M.visible_dangers = M._vd or M.visible_dangers; M.df = nil; M.dfhack = nil; "
+                    "M.CR_OK = nil", M)
+        M.GATES = LUA.table_from({"scanned": False})
+
+
+@test("0.105.23 armed, no danger near: the watcher opens a hatch its link shut (citizens outside get back in)")
+def _():
+    try:
+        pulls = watch_world()
+        LUA.execute("local M = ...; M._vd = M.visible_dangers; M.visible_dangers = function() return {} end", M)
+        M.GATES.armed = True
+        M.GATES_ORIG.check()
+        assert not M.GATES.closed[1] and pulls == [("instant", 90)], pulls
+    finally:
+        LUA.execute("local M = ...; M.visible_dangers = M._vd or M.visible_dangers; M.df = nil; M.dfhack = nil; "
+                    "M.CR_OK = nil", M)
+        M.GATES = LUA.table_from({"scanned": False})
+
+
+@test("0.105.23 a link made: the gate takes its lever at once, a rescan is asked, the hatch opened; saved gates too")
+def _():
+    try:
+        pulls = watch_world(drive=None, outer=False)
+        g = M.GATES.entrances[1].equipment[1]
+        g.lever_driven, g.levers, g.drive_ai = None, LUA.table(), None
+        LUA.execute("""local M = ...
+          M._ll = M.lever_links
+          M.lever_links = function() return {[7] = {90}}, {[90] = {x = 32, y = 10, z = 0, name = 'AI gate lever'}} end""", M)
+        assert M.attach_links() == 1 and M.GATES.rescan
+        assert g.lever_driven and g.drive_lever == 90 and g.drive_ai, (g.lever_driven, g.drive_lever)
+        assert M.attach_links() == 0                                          # once
+        assert M.open_lever_hatches() == 1 and pulls == [("instant", 90)]
+        # after a reload: a saved shut gate on a lever is opened by its lever
+        LUA.execute("B[7].door_flags.closed = true")
+        saved = LUA.table_from({"gates": LUA.table_from({1: LUA.table_from({"id": 7, "kind": "hatch", "drive_lever": 90})})})
+        opened, waiting = M.open_saved_gates(saved)
+        assert opened == 1 and waiting == 0 and LUA.eval("B[7].door_flags.closed") is False, (opened, waiting)
+    finally:
+        LUA.execute("local M = ...; M.lever_links = M._ll or M.lever_links; M.df = nil; M.dfhack = nil; M.CR_OK = nil", M)
+        M.GATES = LUA.table_from({"scanned": False})
+
+
+@test("0.105.23 build_gatehouse: the bridge first (named), walls, traps, a lever; refused bridge: nothing placed")
+def _():
+    s0 = shaft_world()
+    W.buildings = LUA.table_from({1: LUA.table_from(hatch_b())})
+    es, _, _ = M.find_entrances(s0, W.buildings)
+    e = es[1]
+    e.id = 1
+    M.GATES = LUA.table_from({"entrances": LUA.table_from({1: e})})
+    placed, named = [], []
+    M.place_hook = lambda text, pos: placed.append((text, pos.x, pos.y, pos.z)) or True
+    M.name_hook = lambda pos, name: named.append((pos.x, pos.y, pos.z, name))
+    try:
+        r = M.build_gatehouse(1, "weapon", 3, True, s0)
+        assert r.ok and r.dry_run and r.walls == 15 and r.traps == 3 and not placed, dict(r)
+        r = M.build_gatehouse(1, "weapon", 3, False, s0)
+        assert r.ok and r.walls == 15 and r.traps == 3 and r.kind == "weapon", dict(r)
+        assert placed[0] == ("gw(1x1)", 10, 3, 1), placed[0]
+        assert named[0] == (10, 3, 1, "AI gatehouse bridge"), named
+        assert sum(1 for t in placed if t[0] == "Cw") == 15 and sum(1 for t in placed if t[0] == "Tw") == 3
+        assert [t[1:3] for t in placed if t[0] == "Tw"] == [(10, 7), (10, 6), (10, 5)], placed   # nearest the hatch first
+        lev = [t for t in placed if t[0] == "Tl"]
+        assert lev and lev[0][3] == 0 and named[-1][3] == "AI gate lever", (lev, named)
+        assert len(r.pieces) == 1 + 15 + 3
+        placed.clear()
+        M.place_hook = lambda text, pos: placed.append(text) or (text != "gw(1x1)", "build_unsuitable")
+        r = M.build_gatehouse(1, "cage", 3, False, s0)
+        assert not r.ok and "drawbridge" in r.error and placed == ["gw(1x1)"], (dict(r), placed)
+        e.gatehouse = "standing"
+        assert M.build_gatehouse(1, "cage", 3, False, s0).rejected
+        assert M.build_gatehouse(9, "cage", 3, False, s0).rejected
+    finally:
+        M.place_hook = None
+        M.name_hook = None
+        M.GATES = LUA.table_from({"scanned": False})
+
 if __name__ == "__main__":
     for name, ok, msg in RESULTS:
         print(f"[{'PASS' if ok else 'FAIL'}] {name}" + (f"\n        {msg}" if msg else ""))

@@ -649,6 +649,21 @@ def _():
     assert r.ok and M._tav.flags.VISITORS_ALLOWED is True
 
 
+@test("build_gatehouse (0.105.23): the entrance, kind and count checked, then handed to ai-gates")
+def _():
+    M = H.module()
+    calls = []
+    H.scripts = t({"ai-gates": {"build_gatehouse": lambda *a: calls.append(tuple(a)) or t({"ok": True})}})
+    act = M.ACTIONS.build_gatehouse
+    assert LUA.eval("function(M) return M.ACTIONS.build_gatehouse == M.act_build_gatehouse end")(M)
+    assert not act(t({})).ok                                                    # entrance_id needed
+    assert not act(t({"entrance_id": 1, "kind": "lava"})).ok
+    assert not act(t({"entrance_id": 1, "count": 9})).ok                        # 0-4 traps
+    assert act(t({"entrance_id": 2, "kind": "weapon", "count": 3})).ok
+    assert calls[-1] == (2, "weapon", 3, False), calls
+    assert act(t({"entrance_id": 2, "dry_run": True})).ok and calls[-1] == (2, "cage", 4, True), calls
+
+
 @test("petition orders (0.87): set only from 0/1 to 0/1; refused when any reads otherwise; dry run says what")
 def _():
     M = H.module()

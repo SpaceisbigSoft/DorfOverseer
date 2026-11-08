@@ -13,7 +13,7 @@ from quirks import has_rule
 from digest import _d, _l, normalize
 from planner_core import *  # noqa: F401,F403
 
-__all__ = ["lone_intruders", "hunted_outside", "few_ordinary", "few_alert_over", "ai_gates_shut", "lockdown_released", "lone_alert_over", "note_lockdown", "_lone_squad", "quick_clear", "PASTURE_ACTIONS", "_pasture_hold", "gate_invaders", "main_gate", "_gate_guard_rule", "_gate_dogs_rule", "GEAR_HELD", "_shelter_possible", "soldier_share", "_gate_rules", "_free_gate_lever", "_free_gate_levers", "_lever_far_enough", "_link_wanted", "_lever_rule", "_trap_rule", "_near_spot", "soldiers_wanted", "civilian_cap", "crossing_value", "_crossing_rule", "ALERT_DANGERS", "alert_ages", "_alerts_rule", "_war_animal_rule", "hazard_alert", "_hazard_rules", "_military_rules", "_training_rotation", "_ranged_squad_rule", "WEAPON_IDS", "_uniform_weapon_rule", "_anvil_rule", "idle_hands"]
+__all__ = ["lone_intruders", "hunted_outside", "few_ordinary", "few_alert_over", "ai_gates_shut", "lockdown_released", "lone_alert_over", "note_lockdown", "_lone_squad", "quick_clear", "PASTURE_ACTIONS", "_pasture_hold", "gate_invaders", "main_gate", "_gate_guard_rule", "_gate_dogs_rule", "GEAR_HELD", "_shelter_possible", "soldier_share", "_gate_rules", "_free_gate_lever", "_free_gate_levers", "_lever_far_enough", "_link_wanted", "_lever_rule", "_trap_rule", "_gatehouse_rule", "_lever_hatches_ok", "_near_spot", "soldiers_wanted", "civilian_cap", "crossing_value", "_crossing_rule", "ALERT_DANGERS", "alert_ages", "_alerts_rule", "_war_animal_rule", "hazard_alert", "_hazard_rules", "_military_rules", "_training_rotation", "_ranged_squad_rule", "WEAPON_IDS", "_uniform_weapon_rule", "_anvil_rule", "idle_hands"]
 
 
 
@@ -48,7 +48,8 @@ def _gate_rules(s: dict, memory, cfg: dict, rules_: dict, any_reach: bool,
     now = abs_tick(s)
     age = now - ent["scanned_tick"] if isinstance(ent.get("scanned_tick"), int) else None
     stale = (not ent.get("scanned") or age is None or not 0 <= age < cfg["entrance_scan_ticks"]
-             or memory.rescan_entrances)
+             or memory.rescan_entrances
+             or ent.get("rescan"))           # (0.105.23) a lever linked since the scan (the bridge saw it)
     if stale:
         proposals.append(Proposal("entrances", {"type": "scan_entrances"},
                                   "map the fort's entrances and what closes them", 0 if any_reach else 5))
@@ -177,6 +178,7 @@ def _gate_rules(s: dict, memory, cfg: dict, rules_: dict, any_reach: bool,
         _lever_rule(s, memory, cfg, es, now, proposals, traits or {})
     if not any_reach and rules_["fortify_entrances"]:
         _trap_rule(s, memory, cfg, es, now, traits or {}, proposals)
+        _gatehouse_rule(s, memory, cfg, es, now, traits or {}, proposals)     # (0.105.23)
     if refused:
         def short_why(text: str, n: int = 140) -> str:
             text = str(text)
@@ -383,20 +385,32 @@ def machinery_wanted(traits: dict) -> bool:
     return ((traits or {}).get("engineering", 0) or 0) >= 40 or ((traits or {}).get("fortification", 0) or 0) >= 60
 
 
+def _lever_hatches_ok(e: dict, cfg: dict) -> bool:
+    """(0.105.23) An entrance whose hatches get levers: not a cut (its many
+    hatches, a lever each), at most hatch_lever_max_hatches of them."""
+    if e.get("cut") or (isinstance(e.get("cut_hatches"), int) and e["cut_hatches"] > 0):
+        return False
+    n = sum(1 for b in _l(e.get("equipment")) if isinstance(b, dict) and b.get("kind") == "hatch")
+    return n <= cfg.get("hatch_lever_max_hatches", 2)
+
+
 def _link_wanted(s: dict, e: dict, lever_id=None, hatches: bool = False) -> list:
     """Drawbridges at this entrance the AI gate lever should be linked to:
     ones no lever inside the fort works, and watched ones whose levers are
     all at the gate. [] with an older bridge (no lever details). (0.105.12)
-    hatches: a hatch no lever works, too."""
+    hatches: a hatch no lever works, too. (0.105.23) Drawbridges first."""
     out = [bid for bid in _l(e.get("bridges_unworked")) if isinstance(bid, int)]
+    later = []
+    if e.get("gatehouse") == "standing" and not e.get("outer"):
+        hatches = False                     # (0.105.23) the gatehouse's drawbridge gets its lever first
     for b in _l(e.get("equipment")):
         if (isinstance(b, dict) and b.get("kind") == "bridge" and "lever_away" in b and not b["lever_away"]
                 and not (lever_id is not None and lever_id in _l(b.get("levers")))):
             out.append(b.get("id"))
         elif (hatches and isinstance(b, dict) and b.get("kind") == "hatch" and "levers" in b
               and not _l(b.get("levers")) and isinstance(b.get("id"), int)):
-            out.append(b["id"])
-    return out
+            later.append(b["id"])
+    return out + later
 
 
 def _lever_rule(s: dict, memory, cfg: dict, es: list, now: int, proposals: list, traits: dict | None = None) -> None:
@@ -404,17 +418,41 @@ def _lever_rule(s: dict, memory, cfg: dict, es: list, now: int, proposals: list,
     at the gate: the lever named "AI gate", while it's linked to nothing (and
     is itself away from that gate), is linked to it, so a dwarf can close it
     from inside, away from the danger. Two free mechanisms are needed; if
-    there aren't, they're ordered."""
+    there aren't, they're ordered.
+    (0.105.23, 14.1 step 4a) A fort that works its gates by machinery
+    (machinery_wanted) gets a lever for its hatches too (hatch_levers): the
+    gate watcher drives a hatch on a lever by DFHack's instant pull, and a
+    hatch the link shut is opened at once. One lever for each gate: a free
+    lever is linked once, and the next gate gets a lever of its own.
+    Drawbridges before hatches; a lever is placed only with 3 mechanisms
+    free (its own and the link's two), else they're ordered."""
     hatches = (cfg.get("hatch_levers") and machinery_wanted(traits or {})
                and not _d(s.get("others_on_map")).get("threats_that_can_reach_dwarves"))
+    ent = _d(s.get("entrances"))
+    # (0.105.23) drawbridges before hatches: entrances with a bridge to link come first
+    def bridge_first(e):
+        wanted = _link_wanted(s, e, None, hatches=False)
+        return 0 if wanted else 1
+    es = sorted(es, key=bridge_first)
     levers = _free_gate_levers(s)
     if not levers:
         # (0.105.12) a fort that wants machinery and has a gate no lever works: a lever of its own
         if hatches:
             for e in es:
-                if e.get("sealed") and _link_wanted(s, e, None, hatches=True):
+                if (e.get("sealed") and _lever_hatches_ok(e, cfg)
+                        and _link_wanted(s, e, None, hatches=True)):
                     off = _d(s.get("map")).get("elevation_offset")
                     elev = (e.get("z") or 0) + (off if isinstance(off, int) else 0)
+                    free = ent.get("free_mechanisms")
+                    need = cfg.get("hatch_lever_mechanisms", 3)
+                    if isinstance(free, int) and free < need:
+                        # (0.105.23) the lever and its link's two first: never a lever left unlinked for want
+                        if not queued(s, {"mechanisms"}):
+                            proposals.append(Proposal("mechanisms", {"type": "work_order", "recipe": "mechanisms",
+                                                                     "amount": need - free},
+                                                      f"{need - free} mechanism(s) for a gate lever and its link "
+                                                      f"({free} free)", 6, is_order=True))
+                        break
                     proposals.append(Proposal("gate_lever", {"type": "place_gate_lever", "entrance_id": e["id"]},
                                               f"the gate at the {e.get('kind')} entrance at elevation {elev} has no "
                                               "lever, and this fort works its gates by machinery: a lever inside, "
@@ -426,7 +464,7 @@ def _lever_rule(s: dict, memory, cfg: dict, es: list, now: int, proposals: list,
         lever = next((lv for lv in levers if _lever_far_enough(lv, e)), None)
         if not lever:
             continue
-        for bid in _link_wanted(s, e, lever["id"], hatches=hatches):
+        for bid in _link_wanted(s, e, lever["id"], hatches=hatches and _lever_hatches_ok(e, cfg)):
             key = f"lever:{lever['id']}>{bid}"
             why = memory.gate_failures.get(key)
             when = memory.gate_failure_ticks.get(key)
@@ -495,6 +533,49 @@ def _trap_rule(s: dict, memory, cfg: dict, es: list, now: int, traits: dict, pro
             proposals.append(Proposal("mechanisms", {"type": "work_order", "recipe": "mechanisms",
                                                      "amount": n - free},
                                       f"{n - free} mechanisms for the traps at {where}", 6, is_order=True))
+        return
+
+
+def _gatehouse_rule(s: dict, memory, cfg: dict, es: list, now: int, traits: dict, proposals: list) -> None:
+    """(0.105.23, 14.1 step 4a) The War-hold's gate as a level: a fort of
+    Fortification gatehouse_fortification+ builds a gatehouse in front of
+    the founding stair's hatch (lua/ai-gates.lua build_gatehouse): a walled
+    corridor on the surface, its floor set with traps in the fort's style
+    (cage when it has none), ended by a drawbridge the gate rule then gives
+    a lever. Once at a spot, never while a threat can reach the dwarves (the
+    caller), one a cycle; a refusal waits gate_retry_ticks. Mechanisms for
+    the traps, the lever and its link are ordered when short."""
+    import defence
+    if (traits.get("fortification", 0) or 0) < cfg["gatehouse_fortification"]:
+        return
+    ent = _d(s.get("entrances"))
+    off = _d(s.get("map")).get("elevation_offset")
+    off = off if isinstance(off, int) else 0
+    built = getattr(memory, "gatehouses", None) or {}
+    for e in es:
+        if not (e.get("sealed") and e.get("kind") == "surface" and e.get("gatehouse") == "possible"):
+            continue
+        spot = f"{e.get('x')},{e.get('y')},{e.get('z')}"
+        if _near_spot(e, built):
+            continue                            # built here once: the scan sees its bridge, or it was taken down
+        why, when = memory.gate_failures.get("gatehouse:" + spot), memory.gate_failure_ticks.get("gatehouse:" + spot)
+        if why and isinstance(when, int) and 0 <= now - when < cfg["gate_retry_ticks"]:
+            continue
+        kind = profile_from(traits, memory.culture)["traps"]
+        kind = kind if kind in ("cage", "stonefall", "weapon") else "cage"
+        n = max(2, min(4, defence.trap_count(traits)))
+        where = f"the founding stair at elevation {(e.get('z') or 0) + off + 1} (x{e.get('x')} y{e.get('y')})"
+        proposals.append(Proposal("gatehouse", {"type": "build_gatehouse", "entrance_id": e["id"], "kind": kind,
+                                                "count": n},
+                                  f"a fortified fort (Fortification {int(traits.get('fortification', 0)):+d}): a "
+                                  f"gatehouse in front of the hatch at {where}: a walled corridor with {n} {kind} "
+                                  "trap(s) and a drawbridge, raised with the hatch when danger comes", 6))
+        need = n + 3                            # the traps, the bridge's lever and its link
+        free = ent.get("free_mechanisms")
+        if isinstance(free, int) and free < need and not queued(s, {"mechanisms"}):
+            proposals.append(Proposal("mechanisms", {"type": "work_order", "recipe": "mechanisms",
+                                                     "amount": need - free},
+                                      f"{need - free} mechanisms for the gatehouse at {where}", 6, is_order=True))
         return
 
 

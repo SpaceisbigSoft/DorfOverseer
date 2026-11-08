@@ -383,6 +383,22 @@ def note_actions(results, state: dict, memory) -> list[str]:
                 rec = a["entrances"].get(spot)
                 out.append(f"{r.get('traps')} {act.get('kind')} trap(s) went in behind the gate at "
                            + (_where(rec, spot) if isinstance(rec, dict) else f"x{x} y{y}"))
+        elif t == "build_gatehouse" and not act.get("dry_run"):
+            # (0.105.23, 14.1 step 4a) the War-hold's gatehouse at the founding stair
+            spot = _entrance_spot(state, act.get("entrance_id"))
+            if spot:
+                x, y, z = (int(v) for v in spot.split(","))
+                br = _d(r.get("bridge"))
+                a["registry"]["gatehouse:" + spot] = dict(
+                    base, kind="gatehouse", variant=str(act.get("kind") or "cage"), traps=r.get("traps"),
+                    walls=r.get("walls"), elevation=z + 1 + off, b=[x, y, x, y, z + 1],
+                    bridge=[br.get("x"), br.get("y"), br.get("z")] if br else None,
+                    pieces=[str(k) for k in (r.get("pieces") or []) if isinstance(k, str)][:80])
+                rec = a["entrances"].get(spot)
+                out.append(f"a gatehouse went up in front of the hatch at "
+                           + (_where(rec, spot) if isinstance(rec, dict) else f"x{x} y{y}")
+                           + f": {r.get('walls')} walls, {r.get('traps')} {act.get('kind') or 'cage'} trap(s) in "
+                           f"its corridor and a drawbridge" + (" with a lever placed for it" if r.get("lever") else ""))
         elif t == "link_lever" and not act.get("dry_run"):
             rid = f"lever:{act.get('lever_id')}>{act.get('target_id')}"
             a["registry"][rid] = dict(base, kind="lever_link", variant=str(r.get("target") or "bridge").lower(),
