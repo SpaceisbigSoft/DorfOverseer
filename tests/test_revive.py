@@ -186,6 +186,15 @@ def _():
         assert lines[0].startswith("13 action(s)") and "12 done, 1 refused" in lines[0], lines
         assert "trade: bring_goods x12" in text and "well: place_well x1 (no water)" in text, text
         assert "POSSIBLE LOOPS" in text and "old" not in text, text
+        # (0.105.24) the water survey's slices are no loop; a refusal is counted as one
+        rows += [{"time": now.isoformat(), "kind": "decision", "mode": "autopilot", "rule": "water",
+                  "action": {"type": "survey_water"}, "result": {"ok": True}}] * 20
+        rows += [{"time": now.isoformat(), "kind": "decision", "mode": "autopilot", "rule": "quarry",
+                  "action": {"type": "quarry", "count": 60}, "result": {"ok": False, "error": "quarry needs count 1-30"}}] * 11
+        (fort / "journal.jsonl").write_text("\n".join(json.dumps(r) for r in rows), encoding="utf-8")
+        text = "\n".join(run_summary.summarize(now - timedelta(hours=1), Path(d)))
+        loops = next(x for x in text.splitlines() if x.startswith("POSSIBLE LOOPS"))
+        assert "survey_water" not in loops and "quarry: quarry x11 (11 refused)" in loops, loops
 
 
 

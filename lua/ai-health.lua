@@ -177,9 +177,10 @@ local function each_job(fn)
     end)
 end
 
--- The hospital zones' finished beds nobody lies in, is on the way to, or
--- uses (the bed's own users list).
-local function free_beds(zones)
+-- The hospital zones' finished beds (or, with `kind`, traction benches:
+-- 0.105.24) nobody lies in, is on the way to, or uses (its users list).
+local function free_beds(zones, kind)
+    kind = kind or 'Bed'
     local taken = {}
     pcall(function()
         for _, u in ipairs(df.global.world.units.active) do
@@ -195,7 +196,7 @@ local function free_beds(zones)
     for _, z in pairs(zones) do
         pcall(function()
             for _, b in ipairs(z.contained_buildings) do
-                if df.building_type[b:getType()] == 'Bed' then
+                if df.building_type[b:getType()] == kind then
                     local done = true
                     pcall(function() done = b:getBuildStage() >= b:getMaxBuildStage() end)
                     if done then
@@ -344,6 +345,7 @@ function survey(txt)
     out.failed = count(d.cooldown)
     out.helped = count(d.helped)
     out.rest_days = REST_DAYS
+    pcall(function() out.traction = traction_survey(zones) end)     -- (0.105.24)
     return out
 end
 
@@ -447,4 +449,116 @@ function add_doctor_post(loc_id, dry_run)
     df.global.world.occupations.all:insert('#', o)
     loc.occupations:insert('#', o)
     return {ok = true, posts = n + 1}
+end
+
+-- --- (0.105.24) traction --------------------------------------------------------
+--
+-- Teacheroar (31 Oct - 1 Nov): a farmer waited 759-828 days "for immobilize,
+-- traction" with a traction bench standing in the hospital and splints in
+-- store; others waited 500+ days for immobilize alone. DF lays a patient who
+-- needs traction on a traction bench when it picks where the patient rests;
+-- one already lying in an ordinary bed (put there before the bench stood, or
+-- when it was taken) keeps that bed, and the doctors never set the bone. So
+-- such a patient is got up (the Rest job removed, as `tend` does), one at a
+-- time while a finished bench in a hospital zone stands free, and DF picks
+-- his resting place again. Not the same dwarf again for TRACTION_UP_DAYS.
+TRACTION_UP_DAYS = 28
+TRACTION_KEY = 'ai-overseer/traction-up'
+
+local function needs_traction(u)
+    local ok, r = pcall(function() return u.health ~= nil and u.health.flags.rq_traction == true end)
+    return ok and r
+end
+
+-- the building at the dwarf's tile, by type name (Bed, TractionBench), or nil
+local function lying_on(u)
+    local ok, t = pcall(function()
+        local b = dfhack.buildings.findAtTile(u.pos)
+        return b and df.building_type[b:getType()] or nil
+    end)
+    return ok and t or nil
+end
+
+-- Pure: who to get up, lowest id first: needing traction, resting, on a
+-- bed (not a bench), not got up lately; at most `max`.
+function traction_picks(cands, max)
+    local list = {}
+    for _, c in ipairs(cands) do
+        if c.traction and c.resting and c.on == 'Bed' and not c.up then table.insert(list, c) end
+    end
+    table.sort(list, function(a, b) return a.id < b.id end)
+    local out = {}
+    for i = 1, math.min(max or #list, #list) do out[i] = list[i] end
+    return out
+end
+
+local function traction_state(t, dry_run)
+    local ok, d = pcall(dfhack.persistent.getSiteData, TRACTION_KEY, {})
+    d = ok and type(d) == 'table' and d or {}
+    d.up = type(d.up) == 'table' and d.up or {}
+    if not dry_run then
+        for k, w in pairs(d.up) do
+            if t < (tonumber(w) or 0) or t - (tonumber(w) or 0) >= TRACTION_UP_DAYS * DAY then d.up[k] = nil end
+        end
+    end
+    return d
+end
+
+local function traction_cands(d)
+    local out = {}
+    for _, u in ipairs(dfhack.units.getCitizens(true)) do
+        if needs_traction(u) then
+            table.insert(out, {id = u.id, unit = u, traction = true, resting = rest_job(u) ~= nil,
+                               on = lying_on(u), up = d.up[tostring(u.id)] ~= nil})
+        end
+    end
+    return out
+end
+
+-- The report: patients who need traction, how many rest on a bed and on a
+-- bench, and the free finished benches in the hospitals.
+function traction_survey(zones)
+    local d = traction_state(now_tick(), true)
+    local out = {waiting = 0, in_bed = 0, on_bench = 0, got_up = 0}
+    for _, c in ipairs(traction_cands(d)) do
+        out.waiting = out.waiting + 1
+        if c.resting and c.on == 'Bed' then out.in_bed = out.in_bed + 1 end
+        if c.on == 'TractionBench' then out.on_bench = out.on_bench + 1 end
+        if c.up then out.got_up = out.got_up + 1 end
+    end
+    local benches, total = free_beds(zones, 'TractionBench')
+    out.benches, out.benches_free = total, #benches
+    return out
+end
+
+-- Get up to `max` patients needing traction out of an ordinary bed while
+-- a finished traction bench in a hospital zone stands free.
+function traction_rest(max, dry_run, txt)
+    local t = now_tick()
+    local d = traction_state(t, dry_run)
+    local zones = hospitals()
+    if next(zones) == nil then return {ok = false, rejected = true, error = 'the fort has no hospital zone'} end
+    local benches = free_beds(zones, 'TractionBench')
+    if #benches == 0 then
+        return {ok = false, rejected = true, error = 'no free, finished traction bench in a hospital zone'}
+    end
+    local picks = traction_picks(traction_cands(d), math.min(max or 1, #benches))
+    if #picks == 0 then
+        return {ok = false, rejected = true,
+                error = 'no patient needing traction lies in an ordinary bed (or each was got up lately)'}
+    end
+    local up = {}
+    for _, c in ipairs(picks) do
+        local name = (txt or tostring)(dfhack.units.getReadableName(c.unit))
+        local done = dry_run
+        if not dry_run then
+            local j = rest_job(c.unit)
+            done = j ~= nil and pcall(dfhack.job.removeJob, j)
+            if done then d.up[tostring(c.id)] = t end
+        end
+        if done then table.insert(up, {unit_id = c.id, name = name}) end
+    end
+    if not dry_run then pcall(dfhack.persistent.saveSiteData, TRACTION_KEY, d) end
+    if #up == 0 then return {ok = false, error = 'the game kept them in bed (the Rest job could not be removed)'} end
+    return {ok = true, dry_run = dry_run or nil, got_up = up, benches_free = #benches}
 end

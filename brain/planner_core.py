@@ -12,7 +12,7 @@ import phases
 from quirks import has_rule
 from digest import _d, _l, normalize
 
-__all__ = ["great_present", "all_clear", "STEER_PROTECTED", "STEER_MAX_DAYS", "steer_of", "PLANNER_CONFIG", "BREW_RECIPES", "MEAL_RECIPES", "MANDATE_RECIPES", "BUILDABLE_SHOPS", "SHOP_ALIASES", "SURVIVAL_SHOPS", "TICKS_PER_DAY", "TICKS_PER_YEAR", "NO_COOLDOWN", "MULTI_PER_CYCLE", "EMERGENCY", "STUCK_HOLD_EXEMPT", "LIMIT_EXEMPT", "Proposal", "Memory", "abs_tick", "game_day", "factor", "ADJUST_BOUNDS", "_number", "effective_config", "queued", "unstored_cups", "free_stock", "watch_since", "_clamp", "MEMORIAL_SPAN", "OPTIONAL_LEVELS", "GEAR_WEAPONS", "GEAR_METALS", "GEAR_RECIPES", "NEEDS_YOU", "ask_player", "player_rules", "MAINTAIN_SKIPS", "level_refused", "_traits", "reachable_threats", "held_off_threats", "_holding_off", "ONE_A_CYCLE", "growth_mode", "growth_target", "JOB_SHOPS", "RECIPE_SHOPS", "WOOD_ELSEWHERE", "recipe_shop", "brewable_counts", "brew_recipe", "_watchdog_notes", "jobs_reported", "order_job_state", "masons_jammed", "stuck_hold_days", "_stuck_before", "stone_short", "_office_held", "tantrums_recent", "justice_held", "_restraint_order", "manager_needs_office", "suites_short", "wool_route", "thread_plants_here", "MINING_NEED_ONLY", "mining_plan", "noble_room_kinds", "SOCIAL_NEEDS", "care_waiting", "unmet", "_soldier_swap", "recently_home", "LOCATION_UNITS", "_location", "_location_short", "_real_locations", "can_fight", "is_ranged", "STALE_PROJECT_DAYS", "_workshops_busy", "shop_count", "shops_max", "_has_shop", "RAW_FOOD", "ALL_FOOD", "_idle_share", "update_idle", "AGENDA_THEMES", "agenda", "food_per_dwarf", "WINTER_STOCK", "winter_factor", "young_fort", "established", "has_farms", "_best_metal", "REFUSAL_FIRST_DAYS", "REFUSAL_MAX_DAYS", "REFUSAL_IDLE_DAYS", "REFUSAL_KEYS", "refusal_key", "_refused_wait", "note_refusal", "LOOP_LIMITS", "LOOP_LIMIT_DEFAULT", "LOOP_EXEMPT", "_loop_count", "_stalled_days", "_entrance_spot", "_record_any_outcome", "_weapon_gaps", "spare_sig"]
+__all__ = ["great_present", "all_clear", "STEER_PROTECTED", "STEER_MAX_DAYS", "steer_of", "PLANNER_CONFIG", "BREW_RECIPES", "MEAL_RECIPES", "MANDATE_RECIPES", "BUILDABLE_SHOPS", "SHOP_ALIASES", "SURVIVAL_SHOPS", "TICKS_PER_DAY", "TICKS_PER_YEAR", "NO_COOLDOWN", "MULTI_PER_CYCLE", "EMERGENCY", "STUCK_HOLD_EXEMPT", "LIMIT_EXEMPT", "Proposal", "Memory", "abs_tick", "game_day", "factor", "ADJUST_BOUNDS", "_number", "effective_config", "queued", "unstored_cups", "free_stock", "watch_since", "_clamp", "MEMORIAL_SPAN", "OPTIONAL_LEVELS", "GEAR_WEAPONS", "GEAR_METALS", "GEAR_RECIPES", "NEEDS_YOU", "ask_player", "player_rules", "MAINTAIN_SKIPS", "level_refused", "_traits", "reachable_threats", "held_off_threats", "_holding_off", "ONE_A_CYCLE", "growth_mode", "growth_target", "JOB_SHOPS", "RECIPE_SHOPS", "WOOD_ELSEWHERE", "recipe_shop", "brewable_counts", "brew_recipe", "_watchdog_notes", "jobs_reported", "order_job_state", "masons_jammed", "stuck_hold_days", "_stuck_before", "stone_short", "_office_held", "tantrums_recent", "justice_held", "_restraint_order", "manager_needs_office", "suites_short", "wool_route", "thread_plants_here", "MINING_NEED_ONLY", "mining_plan", "noble_room_kinds", "SOCIAL_NEEDS", "care_waiting", "unmet", "_soldier_swap", "recently_home", "LOCATION_UNITS", "_location", "_location_short", "_real_locations", "can_fight", "is_ranged", "STALE_PROJECT_DAYS", "_workshops_busy", "shop_count", "shops_max", "_has_shop", "RAW_FOOD", "ALL_FOOD", "_idle_share", "update_idle", "AGENDA_THEMES", "agenda", "food_per_dwarf", "WINTER_STOCK", "winter_factor", "young_fort", "established", "has_farms", "_best_metal", "REFUSAL_FIRST_DAYS", "REFUSAL_MAX_DAYS", "REFUSAL_IDLE_DAYS", "REFUSAL_KEYS", "refusal_key", "_refused_wait", "note_refusal", "LOOP_LIMITS", "LOOP_LIMIT_DEFAULT", "LOOP_EXEMPT", "_loop_count", "NO_EFFECT_RULES", "NO_EFFECT_WHY", "note_no_effect", "no_effect_wait", "_stalled_days", "_entrance_spot", "_record_any_outcome", "_weapon_gaps", "spare_sig"]
 
 PLANNER_CONFIG = {
     # Starting guesses, tuned from experience. Per citizen, before trait factors.
@@ -358,6 +358,8 @@ PLANNER_CONFIG = {
     "order_stuck_you_days": 28,
     "order_hold_days": 3,              # (0.104.0, was 7: the run check found 89 bag orders, 66 cancelled as stuck, in a day)
     "loop_hold_days": 28,              # an action done too often in a year (a loop) waits this long
+    "no_effect_max": 4,                # (0.105.24) done this often, each time for the very same reason ...
+    "no_effect_hold_days": 56,         # ... (nothing it did changed what asked for it): held this long
     "needs_meal_max_pd": 15,
     "unload_depot_max": 50,            # (0.103.9) goods taken back out of the depot at a time
     "unload_depot_cooldown_ticks": 2 * 1200,
@@ -394,6 +396,8 @@ PLANNER_CONFIG = {
     "hospital_traction": 1,            # traction benches a hospital keeps (0.88)
     "traction_cooldown_ticks": 14 * 1200,
     "traction_parts_cooldown_ticks": 3 * 1200,
+    "traction_rest_wait_days": 7,      # (0.105.24) a traction patient in an ordinary bed this long is got up
+    "traction_rest_cooldown_ticks": 3 * 1200,
     "alert_keep_days": 1,              # alert icons cleared once this old (0.88)
     "alert_danger_days": 7,            # deaths, ambushes, beasts... kept this long
     "alerts_per_cycle": 50,
@@ -722,6 +726,7 @@ class Memory:
     tree_year: dict = field(default_factory=dict)        # (0.89) {year, base}: trees_removed when the game year began
     world_seen: dict = field(default_factory=dict)       # (0.105.0) grudges (civs that besieged us), export wishes, contact said
     polished_upto: int | None = None                     # finished-level count when every level was found polished
+    no_effect: dict = field(default_factory=dict)        # (0.105.24) action key -> {reason, n, tick}: done for the same reason again
     story_season: str = ""                                # the last season the AI-written chronicle told ("y<year> <season>")
     gate_closed_by_ai: bool = False                      # the AI pulled the gate lever to close it
     squads_trained: list = field(default_factory=list)   # squads the AI put on training (ids)
@@ -1437,7 +1442,7 @@ def mining_plan(traits: dict, cfg: dict) -> dict:
     tombs, hospital, tavern, wells and farms still dug); -50 or lower: no ore
     veins mined (metal comes by trade); otherwise veins are mined while bars
     run under 50 x factor (25 at -100, 100 at +100), 40 x factor tiles at a
-    time; quarries 30 x factor (10-60)."""
+    time; quarries 20 x factor (10-30: the bridge's quarry takes 1-30)."""
     m = traits.get("mining", 0) or 0
     f = factor(traits, "mining")
     return {"need_only": m <= -100,
@@ -1445,7 +1450,10 @@ def mining_plan(traits: dict, cfg: dict) -> dict:
             "bars_below": int(cfg["smelt_when_bars_below"] * f),
             "ore_stock_max": int(cfg["ore_stock_max"] * f),
             "vein_tiles": max(10, min(80, int(40 * f))),
-            "quarry": max(10, min(60, int(30 * f)))}
+            # (0.105.24) at most 30, what act_quarry accepts: A, B, D and E (2-5
+            # Nov) asked 60 at Mining +100 and were refused "quarry needs count
+            # 1-30" 112-174 times each (20 x factor keeps the slider graded)
+            "quarry": max(10, min(30, int(20 * f)))}
 
 
 def noble_room_kinds(traits: dict, memory=None) -> tuple:
@@ -1693,6 +1701,7 @@ AGENDA_THEMES = {
     "stuck_order": "clear stuck work", "unsuspend": "resume suspended work", "stray_gear": "hand out lost gear", "assign_weapons": "arm the soldiers", "assign_kit": "armour the soldiers", "soldier_swap": "let the keen train", "temple_chest": "a chest for the temple", "instrument_orders": "clear the instrument backlog", "pair_chairs": "seat dwarves together", "recreation": "time off for the unhappiest", "hospital_burrow": "keep the wounded in the hospital", "calm_burrow": "keep a tantrum away from the others", "dairy": "milk and cheese", "eggs": "nest boxes for the hens", "war_animals": "train war animals", "gate_guard": "hold the gate", "gate_dogs": "war dogs at the gate", "gem_cutting": "cut the rough gems", "stairwell": "a new stairwell", "animal_trainer": "an animal trainer", "nest_box_order": "make nest boxes", "library_chest": "a chest for the library", "orphan_jobs": "clear jobs whose order is gone", "slabs_free": "free the memorial slabs", "water_traffic": "keep paths off the ice", "jail_size": "a bigger jail", "jail_more": "another jail", "break_fights": "break up the fights among the fort's own", "burial": "bury the dead", "rooms": "mend the rooms' walls", "coffins": "coffins for the tombs", "order_slots": "free the workshop's order slots", "fat_ban": "keep fat for soap", "jail_urgent": "a jail against the beatings", "tavern_urgent": "a tavern for company", "quarry": "quarry stone", "cloth": "weave cloth",
 }
 AGENDA_THEMES["vermin"] = "keep cats against the vermin"     # (0.104.168)
+AGENDA_THEMES["traction_rest"] = "care for the injured"       # (0.105.24)
 
 AGENDA_THEMES["cups_home"] = "shoes and cups for the fort"      # (0.104.168)
 
@@ -1880,6 +1889,49 @@ def _loop_count(memory: Memory, p: Proposal, now: int) -> int | None:
     if len(recent) >= limit and recent and now - max(recent) < PLANNER_CONFIG["loop_hold_days"] * TICKS_PER_DAY:
         return len(recent)
     return None
+
+
+# (0.105.24) Rules whose action can succeed without changing what asked for
+# it: a crossbow made that never reaches the squad, a quiver handed out that
+# the game takes back. Done no_effect_max times in a row for the very same
+# reason (the same counts in its words), the rule waits no_effect_hold_days,
+# then tries once more. C (2-5 Nov) ordered a crossbow every week for 35 game
+# years, "4 crossbow soldiers and 3 with a crossbow" each time (962 orders);
+# F gave the same one quiver 171 times ("1 without a quiver and 1 free").
+NO_EFFECT_RULES = {"arms", "quivers"}
+NO_EFFECT_WHY = {"arms": "the crossbows made don't reach the crossbow squad (a hunter may take them, or the "
+                         "uniform asks for another kind): look in the game",
+                 "quivers": "the quiver handed out doesn't stay with the soldier (the game takes it back): "
+                            "look in the game"}
+
+
+def note_no_effect(memory: Memory, p: Proposal, ok, now: int) -> None:
+    """(0.105.24) Count a done action of a NO_EFFECT_RULES rule: again for the
+    same reason, or a new count."""
+    if p.rule not in NO_EFFECT_RULES or ok is not True:
+        return
+    if not isinstance(getattr(memory, "no_effect", None), dict):
+        memory.no_effect = {}
+    k = refusal_key(p)
+    old = _d(memory.no_effect.get(k))
+    n = int(old.get("n") or 0) + 1 if old.get("reason") == p.reason else 1
+    memory.no_effect[k] = {"reason": p.reason, "n": n, "tick": now}
+    if len(memory.no_effect) > 40:
+        for kk in sorted(memory.no_effect, key=lambda x: int(_d(memory.no_effect[x]).get("tick") or 0))[:-40]:
+            del memory.no_effect[kk]
+
+
+def no_effect_wait(memory: Memory, p: Proposal, now: int, cfg: dict = PLANNER_CONFIG) -> int | None:
+    """(0.105.24) Days left to wait when this action was done no_effect_max
+    times in a row for this same reason (else None)."""
+    if p.rule not in NO_EFFECT_RULES:
+        return None
+    r = _d(_d(getattr(memory, "no_effect", None)).get(refusal_key(p)))
+    most = cfg.get("no_effect_max", PLANNER_CONFIG["no_effect_max"])
+    if r.get("reason") != p.reason or int(r.get("n") or 0) < most or not isinstance(r.get("tick"), int):
+        return None
+    left = r["tick"] + cfg.get("no_effect_hold_days", PLANNER_CONFIG["no_effect_hold_days"]) * TICKS_PER_DAY - now
+    return max(1, -(-left // TICKS_PER_DAY)) if 0 < left else None
 
 
 def _stalled_days(memory: Memory, recipe: str, now: int) -> int | None:

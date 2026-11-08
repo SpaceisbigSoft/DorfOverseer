@@ -35,7 +35,7 @@ from planner_industry import *  # noqa: E402,F401,F403  (0.104.83: the planner i
 from planner_society import *  # noqa: E402,F401,F403  (0.104.83: the planner in parts)
 import crisis  # noqa: E402  (0.104.137)
 from planner_building import *  # noqa: E402,F401,F403  (0.104.83: the planner in parts)
-from planner_care import _doctor_post_rule, _infection_rule, _offices_refill_rule  # noqa: E402  (0.104.168)
+from planner_care import _doctor_post_rule, _infection_rule, _offices_refill_rule, _traction_rest_rule  # noqa: E402  (0.104.168)
 from planner_water import _waterworks_rule  # noqa: E402  (0.105.0) moat, pumps, irrigation, magma workshops
 from planner_homes import *  # noqa: E402,F401,F403  (0.104.168: homes and households)
 from planner_threats import _threat_rules  # noqa: E402  (0.105.0 round 3: threats answered)
@@ -151,6 +151,7 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
             _guard(_doctor_post_rule, s, cfg, proposals)        # (0.104.168)
     if can_use("infection"):
         _guard(_infection_rule, s, cfg, proposals, notes)       # (0.104.168)
+        _guard(_traction_rest_rule, s, cfg, proposals, notes, memory)   # (0.105.24)
     # (0.104.167) the wounded kept inside; (review) outside the health gate:
     # a failed health section must not freeze the members (the rule reads it if there)
     _guard(_hospital_burrow_rule, s, cfg, proposals, memory)
@@ -773,6 +774,11 @@ def select(proposals: list[Proposal], state: dict, memory: Memory,
             held.append(f"{p.rule}: done {loop} times in the last year, a possible loop: held "
                         f"{cfg['loop_hold_days']} days (see the run summary)")
             continue
+        ne = no_effect_wait(memory, p, now, cfg)
+        if ne is not None:
+            held.append(f"{p.rule}: done {cfg.get('no_effect_max', 4)}+ times for the same reason and nothing changed: "
+                        f"held {ne} more day(s); {NO_EFFECT_WHY.get(p.rule, 'look in the game')}")
+            continue
         stalled = _stalled_days(memory, str(p.action.get("recipe")), now)
         if (p.action.get("type") == "work_order" and p.rule not in EMERGENCY
                 and stalled is not None and stalled >= cfg["order_hold_days"]):
@@ -821,6 +827,7 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
         ok = r.get("ok")
         _record_any_outcome(p.action, r, state, memory, now)
         note_refusal(memory, p, r, now, state.get("bridge_version"))
+        note_no_effect(memory, p, ok, now)                 # (0.105.24)
         if p.action.get("type") == "squad_swap" and p.action.get("unit_id") is not None:
             # (0.104.78) sent home, or found already out: not asked for again a week
             memory.swapped[str(p.action["unit_id"])] = now
