@@ -976,6 +976,8 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
             memory.kitchen_ban = a.get("ban") is True
         if a["type"] == "kitchen_fat" and ok is True:          # (0.104.30)
             memory.fat_ban = a.get("ban") is True
+        if a["type"] == "slaughter_one" and ok is True and a.get("mood_unit") is not None:
+            memory.mood_slaughter[str(a["mood_unit"])] = now     # (0.105.30) one animal a mood
         if a["type"] == "start_project" and a.get("kind") == "memorial":
             # recorded even when the result is unknown: better one memorial than two
             built = memory.culture.setdefault("memorials_built", [])
@@ -1179,6 +1181,20 @@ def note_cycle(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> list[
         memory.moods_seen = {k: v for k, v in memory.moods_seen.items() if k in current}
         for k in current:
             memory.moods_seen.setdefault(k, now)
+        # (0.105.30) a mood's progress: the items it has fetched, and since when
+        # that count last changed (a mood that fetches nothing for a week is
+        # said in Needs you, whatever the counts read: D, 8 Nov)
+        have = {str(m.get("unit_id")): m.get("items_have") for m in _l(s["moods"].get("list"))
+                if m.get("craft") and m.get("workshop")}
+        prog = {k: v for k, v in _d(memory.mood_progress).items() if k in current and isinstance(v, dict)}
+        for k, n in have.items():
+            if not isinstance(n, int):
+                continue
+            if _d(prog.get(k)).get("have") != n:
+                prog[k] = {"have": n, "since": now}
+        memory.mood_progress = prog
+        memory.mood_slaughter = {k: v for k, v in _d(memory.mood_slaughter).items() if k in current}
+        memory.mood_logged = {k: v for k, v in _d(memory.mood_logged).items() if k in current}
 
     if "others_on_map" not in errors:
         ids = reachable_threats(s, _traits(s), cfg)

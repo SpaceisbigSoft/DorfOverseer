@@ -143,6 +143,9 @@ class Memory:
     recent_actions: list = field(default_factory=list)   # last few actions taken, any rule
     prev_snapshot: dict = field(default_factory=dict)    # small slice of the last report
     moods_seen: dict = field(default_factory=dict)       # unit id -> tick its mood was first seen
+    mood_progress: dict = field(default_factory=dict)    # (0.105.30) unit id -> {have, since}: a mood's items fetched, and since when
+    mood_slaughter: dict = field(default_factory=dict)   # (0.105.30) unit id -> tick an animal went to the butcher for that mood (one a mood)
+    mood_logged: dict = field(default_factory=dict)      # (0.105.30) unit id -> game day its requests were last journalled
     order_watch: dict = field(default_factory=dict)      # order id (str) -> {left, since, what, by_ai}
     pop_watch: dict = field(default_factory=dict)        # {pop, since}: the population and since when
     quick_locations: dict = field(default_factory=dict)  # (0.102.5) kind -> tick the dining hall was made one
@@ -922,7 +925,9 @@ def mood_on_hand(x: dict) -> bool | None:
     av = _d(x).get("avail")
     if not isinstance(av, dict):
         return None
-    return bool(av.get("enough")) or int(av.get("reach") or 0) >= max(1, int(_d(x).get("quantity") or 1))
+    want = max(1, int(_d(x).get("quantity") or 1))
+    # (0.105.30) what the dwarf already carries that suits it counts too
+    return bool(av.get("enough")) or int(av.get("reach") or 0) + int(av.get("held") or 0) >= want
 
 
 def mood_waits(s: dict) -> set:

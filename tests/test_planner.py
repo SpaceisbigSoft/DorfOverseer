@@ -6268,7 +6268,7 @@ def _():
     o = [p.action for p in by_rule(props, "mood")]
     assert {"type": "work_order", "recipe": "stone_blocks", "amount": 2} in o, o
     # (0.105.24) a bone: one spare tame animal to the butcher; iron with no iron ore: named
-    assert {"type": "slaughter_one"} in o, o
+    assert {"type": "slaughter_one", "oldest": True, "mood_unit": 5} in o, o     # (0.105.30) the oldest, one a mood
     assert any("1 bar of iron" in n for n in notes), notes
     # (0.103.8) on day 4 the dwarf may still be fetching it: a note; Needs you from day 7
     assert not any(n.startswith(planner.NEEDS_YOU) and "still lacks" in n for n in notes), notes

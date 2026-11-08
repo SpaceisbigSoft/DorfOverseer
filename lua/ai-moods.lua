@@ -145,9 +145,12 @@ local function own_items(unit)
     return ids
 end
 
+-- (0.105.30) returns true when the search was cut short: the scan cap, or
+-- an error part way (E, 8 Nov: "no loose stone" from a search that may not
+-- have looked)
 local function each_suitable(ji, entry, from, fn, own)
     own = own or {}
-    local scanned = 0
+    local scanned, failed = 0, false
     for _, list in ipairs(search_lists(entry.item, entry.flags)) do
         local ok = pcall(function()
             for _, it in ipairs(df.global.world.items.other[df.items_other_id[list]]) do
@@ -160,25 +163,39 @@ local function each_suitable(ji, entry, from, fn, own)
                 end
             end
         end)
+        if not ok then failed = true end
         if not ok or scanned > SCAN_CAP then break end
     end
-    return scanned > SCAN_CAP
+    return scanned > SCAN_CAP or failed
+end
+
+-- (0.105.30) the unit carrying an item, if any
+local function holder_of(it)
+    local ok, u = pcall(dfhack.items.getHolderUnit, it)
+    return ok and u or nil
 end
 
 -- {free, reach, forbidden, forbidden_reach, dump, job, other, capped,
 -- enough}: the walk stops once enough lies free within reach (`enough`:
 -- the other counts are then partial); a stone or a log is found at once.
+-- (0.105.30) `held`: what the dwarf itself carries that suits (counted only
+-- there; it is on its way to the workshop)
 function request_avail(ji, entry, unit)
-    local a = {free = 0, reach = 0, forbidden = 0, forbidden_reach = 0, dump = 0, job = 0, other = 0}
+    local a = {free = 0, reach = 0, forbidden = 0, forbidden_reach = 0, dump = 0, job = 0, other = 0, held = 0}
     local from = unit and unit.pos or nil
     local want = math.max(1, tonumber(entry.quantity) or 1)
     local capped = each_suitable(ji, entry, from, function(it, st, r)
         local n = 1
         pcall(function() n = it:getStackSize() end)
-        a[st] = a[st] + n
-        if st == 'free' and r then a.reach = a.reach + n end
-        if (st == 'forbidden' or st == 'dump') and r then a.forbidden_reach = a.forbidden_reach + n end
-        if a.reach >= want then a.enough = true return false end
+        local h = unit and holder_of(it)
+        if h and h.id == unit.id then
+            a.held = a.held + n
+        else
+            a[st] = a[st] + n
+            if st == 'free' and r then a.reach = a.reach + n end
+            if (st == 'forbidden' or st == 'dump') and r then a.forbidden_reach = a.forbidden_reach + n end
+        end
+        if a.reach + a.held >= want then a.enough = true return false end
     end, unit and own_items(unit) or nil)
     if capped then a.capped = true end
     return a

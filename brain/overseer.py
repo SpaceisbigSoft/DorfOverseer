@@ -39,6 +39,7 @@ from util import folder_lock, load_json  # noqa: E402
 from planner import (NEEDS_YOU, PLANNER_CONFIG, TICKS_PER_YEAR, Memory, abs_tick,  # noqa: E402
                      effective_config, note_cycle, note_tantrums, plan, record, select)
 from planner_society import note_heists  # noqa: E402  (0.105.24)
+from planner_moods import mood_journal  # noqa: E402  (0.105.30)
 import atlas  # noqa: E402
 import backup  # noqa: E402
 import health_check  # noqa: E402
@@ -322,6 +323,21 @@ CAMERA_QUIET = {"census", "join_levels", "dismiss_alerts", "sand_zone", "report_
 _CAMERA_LEVELS: list = []   # (0.104.91) the newest "dig a new ... level" lines, while the keeper runs
 
 
+FAILED_MOOD_WORDS = {"berserk": "berserk"}      # melancholy and raving read plainly already ("in a melancholy mood")
+
+
+def _victim_mood(ev: dict) -> str:
+    """(0.105.30) The dead dwarf's own mood, said as theirs: "in a berserk
+    mood" beside "by <killer>" read as if the killer was berserk (D and F,
+    8 Nov). The killer's is `killer_mood` ("the killer ...")."""
+    mood = str(ev.get("mood")).lower()
+    if mood in FAILED_MOOD_WORDS:
+        who = " ".join(str(ev.get("name") or "the dwarf").split()).split(",")[0]
+        who = who.split(' "')[0].strip() or "the dwarf"
+        return f"({who} was {FAILED_MOOD_WORDS[mood]} after a failed mood)"
+    return f"in a {mood} mood"
+
+
 def death_words(ev: dict) -> str:
     """(0.104.100) A death in a line: who, how (DF's cause), by whom, where."""
     who = " ".join(str(ev.get("name") or "someone").split())
@@ -342,7 +358,7 @@ def death_words(ev: dict) -> str:
                          ev.get("patient") and "a patient waiting for care",
                          ev.get("infected") and "infected",
                          # (0.104.148) the victim insane or in a mood (melancholy and raving dwarves stop drinking)
-                         ev.get("mood") and f"in a {str(ev['mood']).lower()} mood") if w]
+                         ev.get("mood") and _victim_mood(ev)) if w]
     if extra and not ev.get("again"):
         bits.append("; ".join(extra))
     if ev.get("x") is not None:
@@ -844,6 +860,8 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
         learned_now = learning.observe(state, memory, line, write_pc=autopilot)   # before note_cycle: it reads the tools
         expire_adjustments(memory, state)
         notes = note_cycle(state, memory)
+        for e in mood_journal(state, memory):     # (0.105.30) each mood's requests, once a day
+            journal({"kind": "mood", "fort": key, "date": state["date"], **e})
         note_tantrums(state, memory, events)     # (0.104.31) tantrums counted for the jail
         note_heists(state, memory, events)       # (0.105.24) heists and visitors' killings: visitors kept out a while
         crisis.note_deaths(state, memory, events)   # (0.104.137) deaths counted for crisis mode
