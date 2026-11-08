@@ -13,7 +13,7 @@ from quirks import has_rule
 from digest import _d, _l, normalize
 from planner_core import *  # noqa: F401,F403
 
-__all__ = ["CONTAINER_RECIPES", "GEAR_ORDER_METALS", "_supply_rules", "_slow_game_rules", "_clutter_rules", "_kiln_rules", "_soap_rule", "_pasture_rule", "LABOR_MODES_FIXED", "INDUSTRY_SHOPS", "_industry_rules", "_steel_rule", "_bottleneck_rule", "drink_short", "_crop_rules", "_farm_crops_rule", "farm_plots_live", "crops_owned", "drink_known_short", "_kitchen_rule", "_fishery_rule", "_bench_coffins_rule", "STONE_CRAFTS", "order_shop", "_order_slots_rule", "_orphan_jobs_rule", "_unsuspend_rule", "_approve_rule", "_stuck_orders_rule", "COAL_STONES", "_coal_rule", "_picks_order", "_stone_rule", "stone_crisis", "PRECIOUS_ORES", "_cloth_rule", "_trade_rules", "_gems_rule", "trade_wants", "_spare_mechanisms_rule", "_hauling_rule", "_surface_basics", "trees_this_year", "_keep_rule", "_free_time_rule", "_labor_rules", "OWN_LABOR_RULES", "FEEDER_ORDER", "_feeder_rule", "woodcutters", "gatherers", "trade_margin_for", "keeps_treasures", "spare_mechanisms", "_dairy_rule", "_eggs_rule", "EXCESS_SHOPS", "_excess_shops_rule", "drink_below_target", "drink_crisis", "drink_target_per_dwarf", "crisis_brew_room", "brew_jobs_open", "_labor_waiting_rule", "farm_target", "_farm_rule", "_smelting_rule", "_shoes_recipe", "_glass_rule", "PRECIOUS_METALS", "precious_metal"]
+__all__ = ["CONTAINER_RECIPES", "GEAR_ORDER_METALS", "_supply_rules", "_slow_game_rules", "_clutter_rules", "_kiln_rules", "_soap_rule", "_pasture_rule", "LABOR_MODES_FIXED", "INDUSTRY_SHOPS", "_industry_rules", "_steel_rule", "_bottleneck_rule", "drink_short", "_crop_rules", "_farm_crops_rule", "farm_plots_live", "crops_owned", "drink_known_short", "_kitchen_rule", "_fishery_rule", "_bench_coffins_rule", "STONE_CRAFTS", "order_shop", "_order_slots_rule", "_orphan_jobs_rule", "_unsuspend_rule", "_approve_rule", "_stuck_orders_rule", "COAL_STONES", "_coal_rule", "_picks_order", "_stone_rule", "stone_crisis", "PRECIOUS_ORES", "_cloth_rule", "_trade_rules", "_gems_rule", "trade_wants", "_spare_mechanisms_rule", "_hauling_rule", "_surface_basics", "trees_this_year", "_keep_rule", "DEEP_SURFACE_KINDS", "_deep_surface_filter", "_free_time_rule", "_labor_rules", "OWN_LABOR_RULES", "FEEDER_ORDER", "_feeder_rule", "woodcutters", "gatherers", "trade_margin_for", "keeps_treasures", "spare_mechanisms", "_dairy_rule", "_eggs_rule", "EXCESS_SHOPS", "_excess_shops_rule", "drink_below_target", "drink_crisis", "drink_target_per_dwarf", "crisis_brew_room", "brew_jobs_open", "_labor_waiting_rule", "farm_target", "_farm_rule", "_smelting_rule", "_shoes_recipe", "_glass_rule", "PRECIOUS_METALS", "precious_metal"]
 
 CONTAINER_RECIPES = {"wooden_barrel", "stone_large_pot"}
 # ore worth mining for gear, most wanted first (iron makes steel; tin with copper makes bronze)
@@ -1787,6 +1787,8 @@ def _keep_rule(s: dict, cfg: dict, citizens: int, traits: dict, proposals: list,
     if traits.get("surface", 0) < cfg["keep_surface_min"] and not (
             memory is not None and has_rule(memory.culture, "keep_above")):     # (0.103.18) Sky-reachers
         return
+    if masterplan.underground_only(traits):
+        return          # (0.105.23) the Deep mine raises nothing above ground, whatever its quirks
     b = _d(s.get("buildings"))
     k = b.get("keep")
     if isinstance(k, dict):
@@ -1811,8 +1813,10 @@ def _keep_rule(s: dict, cfg: dict, citizens: int, traits: dict, proposals: list,
         notes.append(f"the keep waits for building stone, blocks or logs (needs {cfg['keep_min_material']})")
         return
     if not isinstance(k, dict):
-        why = ("Surface ambition: wall in the way in from the surface, a keep with one door, "
-               "the first building above ground")
+        # (0.105.23) the bridge looks round every way in first, then for open
+        # flat ground near the surface farms (F: 39 refusals on a slope)
+        why = ("Surface ambition: a walled keep with one door, the first building above ground: "
+               "round the way in from the surface, else on open ground near the fields")
     elif k.get("stage") == "clearing":
         why = "the keep: the trees are down, raise its walls and door"
     elif k.get("stage") == "walls":
@@ -1820,6 +1824,56 @@ def _keep_rule(s: dict, cfg: dict, citizens: int, traits: dict, proposals: list,
     else:
         why = "the keep: its roof is built, call it finished"
     proposals.append(Proposal("keep", {"type": "place_keep"}, why, 7))
+
+
+# (0.105.23, 14.1 step 4c) Surface -80 or lower (the Deep mine): what may
+# still go above ground. The trade depot (caravans' wagons can't come down;
+# placed at the way in, the nearest open spot 4 tiles out), the refuse pile
+# (rot indoors makes miasma), the garbage dump and the cage pile (marked
+# ground, nothing built). Pastures stay too: grazers starve without grass and
+# the AI has no underground pasture (cavern moss is not looked for). Farm
+# plots go underground only (on the surface only before the first stair);
+# no keep, no surface farm, no level at or above the surface.
+DEEP_SURFACE_KINDS = ("depot", "refuse", "dump", "cages")
+
+
+def _deep_surface_filter(s: dict, traits: dict, memory, proposals: list, notes: list) -> list:
+    """(0.105.23, 14.1 step 4c) The Deep mine keeps under the ground: the
+    six forts at y257 each had a level at or above the surface, E (Surface
+    -100) as much as F (+80). Drops what would go above ground, sends every
+    new level (and farm level) a ceiling one under the surface (`max_elev`,
+    the builder's search keeps under it), and farms underground only."""
+    if not masterplan.underground_only(traits):
+        return proposals
+    ceil = masterplan.ceiling(memory, traits) if memory is not None else None
+    founding = _d(s.get("founding")).get("stairs") is False
+    out, dropped = [], []
+    for p in proposals:
+        a = p.action
+        t = a.get("type")
+        if t == "place_keep" or p.rule == "surface_farm":
+            dropped.append(p.rule)
+            continue
+        if t == "place_surface" and a.get("kind") not in DEEP_SURFACE_KINDS:
+            dropped.append(p.rule)
+            continue
+        if t == "farm_plots":
+            a = dict(a)
+            if a.get("outside") and not founding:
+                a.pop("outside", None)          # soil or muddy floor inside the fort only
+            if a.get("dig") and ceil is not None:
+                a["max_elev"] = ceil
+            p.action = a
+        elif t == "start_project" and ceil is not None:
+            p.action = dict(a, max_elev=ceil)
+        elif t == "place_surface" and a.get("kind") == "depot" and "the way in" not in p.reason:
+            p.reason += " (the Deep mine's one building above ground: at the way in, for the caravans' wagons)"
+        out.append(p)
+    if dropped:
+        notes.append("Surface " + str(traits.get("surface", 0)) + ": nothing above ground ("
+                     + ", ".join(sorted(set(dropped))) + " left out); only the trade depot at the way in, "
+                     "the refuse pile and the pastures stay outside")
+    return out
 
 
 def _free_time_rule(s: dict, citizens: int, cfg: dict, proposals: list, notes: list) -> None:

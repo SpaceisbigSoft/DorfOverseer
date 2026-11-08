@@ -3234,12 +3234,92 @@ def _():
       df.global.world = df.global.world or {}
       df.global.world.buildings = {other = {TRADE_DEPOT = {{x1 = 29, x2 = 31, y1 = 29, y2 = 31, z = 70}}}}
     """)
+    real = B.find_keep_court
+    B.find_keep_court = LUA.eval("function() return nil, 'no court' end")
+    try:
+        r = B.place_keep(True)
+        assert not r.ok and "underground" in r.error, dict(r)
+    finally:
+        B.find_keep_court = real
+    # (0.105.23) a court away from the way in leaves the wagons' road alone: it may go up
     r = B.place_keep(True)
-    assert not r.ok and "underground" in r.error, dict(r)
+    assert r.ok and r.court and max(abs(r.x - 60), abs(r.y - 60)) > r.r + 3, dict(r)
     W.set(30, 30, 70, LUA.table_from({"outside": True}))                  # a depot outside: the keep may go up
     r = B.place_keep(True)
-    assert r.ok, dict(r)
+    assert r.ok and not r.court, dict(r)
     LUA.execute("df.global.world.buildings = {other = {TRADE_DEPOT = {}}}")
+
+
+def _slope():
+    """(0.105.23) F's site: the way in (the stair at 60,60, z80) inside the
+    mountain (the fort's floors round it are under a roof: no ring), open
+    flat ground under the sky two levels down, east of x85."""
+    for x in range(85, 116):
+        for y in range(40, 81):
+            W.set(x, y, 78, LUA.table_from({"shape": "FLOOR", "material": "SOIL", "outside": True}))
+            W.set(x, y, 79, LUA.table_from({"shape": "EMPTY", "outside": True}))
+
+
+@test("the keep (0.105.23): no ring round the way in (a slope) -> a court on the open flat ground below, walls and a door")
+def _():
+    _slope()
+    site, why = B.find_keep_ring(B.pasture_anchors())
+    assert site is None and "no ring of open ground" in why, why
+    d = B.place_keep(True)
+    assert d.ok and d.dry_run and d.court and d.stage == "walls", dict(d)
+    # the nearest the way in, the hillside's rock (x84, y39) two of its walls
+    assert (d.x, d.y, d.elevation, d.r) == (88, 43, 78, 4), dict(d)
+    r = B.place_keep(False)
+    assert r.ok and r.court and r.stage == "walls", dict(r)
+    built = [c for c in W.placed.values() if c.mode == "build"]
+    assert len([c for c in built if c.text == "d"]) == 1 and len(built) == 15, len(built)
+    assert all(c.z == 78 and max(abs(c.x - 88), abs(c.y - 43)) == 4 and c.x > 84 and c.y > 39 for c in built)
+    st = B.keep_status()
+    assert st.court and st.stage == "walls", dict(st)
+
+
+@test("the keep (0.105.23): the court goes by the surface farm plots, never over them")
+def _():
+    _slope()
+    for x in range(103, 108):
+        for y in range(68, 73):
+            W.set(x, y, 78, LUA.table_from({"building": True}))          # the plot
+    real = B.surface_farm_spots
+    B.surface_farm_spots = LUA.eval("function() return {{x = 105, y = 70, z = 78}} end")
+    try:
+        d = B.place_keep(True)
+    finally:
+        B.surface_farm_spots = real
+    assert d.ok and d.court, dict(d)
+    assert max(abs(d.x - 105), abs(d.y - 70)) <= 10, dict(d)              # by the fields, not by the slope (x89)
+    assert not (abs(d.x - 105) <= d.r + 2 and abs(d.y - 70) <= d.r + 2), dict(d)   # its square clear of the plot
+
+
+@test("the keep (0.105.23): no court on ground the dwarves can't walk to, nor with sky closed above; says why")
+def _():
+    _slope()
+    real = B.walk_group
+    B.walk_group = LUA.eval("function(x, y, z) if z == 78 then return 2 end return 1 end")
+    try:
+        r = B.place_keep(True)
+    finally:
+        B.walk_group = real
+    assert not r.ok and "no ring of open ground" in r.error and "open, flat ground" in r.error, dict(r)
+    for x in range(85, 116):
+        for y in range(40, 81):
+            W.set(x, y, 79, LUA.table_from({"shape": "FLOOR"}))           # an overhang: not open sky
+    r = B.place_keep(True)
+    assert not r.ok, dict(r)
+
+
+@test("levels (0.105.23): max_elev keeps every new level under it (the Deep mine); none found says so")
+def _():
+    r = B.start_project(params(kind="bedrooms", rooms=8, room_size=3), LUA.table(), True)
+    assert r.ok and r.z == 65, dict(r)
+    r = B.start_project(params(kind="bedrooms", rooms=8, room_size=3, max_elev=62), LUA.table(), True)
+    assert r.ok and r.z <= 62, dict(r)
+    r = B.start_project(params(kind="bedrooms", rooms=8, room_size=3, max_elev=0), LUA.table(), True)
+    assert not r.ok and "under the surface only" in r.error, dict(r)
 
 
 @test("extra workshops: all but one soap maker's taken down, the idle ones, at work kept first")

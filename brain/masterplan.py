@@ -129,6 +129,62 @@ def _axis(memory, spine: dict) -> str:
 
 
 DEEP_EXTEND = 20           # (0.105.14, 14.1 step 4c) a deep fort's plan reaches this far below the spine
+# (0.105.23, 14.1 step 4c) Surface this low or lower (the Deep mine, -100):
+# no level at or above the surface. The six-preset test (y257) found E with
+# a level at the surface like every other fort: the plan's range began at
+# the spine's top (the founding stair's top is the surface) and the
+# builder's ordinary search tried every level the stair passes through.
+DEEP_SURFACE = -80
+
+
+def underground_only(traits: dict | None) -> bool:
+    """(0.105.23) Surface -80 or lower: the fort lives under the ground."""
+    return isinstance(traits, dict) and (traits.get("surface", 0) or 0) <= DEEP_SURFACE
+
+
+def surface_elevation(memory, spine: dict | None = None) -> int | None:
+    """(0.105.23) The elevation of the ground at the fort's way in: the
+    surface entrance nearest the spine (the atlas keeps each entrance's
+    elevation), else the lowest known surface entrance, else the top of the
+    spine (the founding stair is dug down from the surface). None when
+    nothing is known."""
+    a = memory.atlas if isinstance(getattr(memory, "atlas", None), dict) else {}
+    best, best_d = None, None
+    for k, e in _d(a.get("entrances")).items():
+        if not isinstance(e, dict) or e.get("kind") != "surface" or not isinstance(e.get("elevation"), int):
+            continue
+        d = 0
+        if isinstance(spine, dict) and isinstance(spine.get("x"), int) and isinstance(spine.get("y"), int):
+            try:
+                x, y, _z = (int(v) for v in str(k).split(","))
+            except ValueError:
+                continue
+            d = abs(x - spine["x"]) + abs(y - spine["y"])
+        if best is None or d < best_d or (d == best_d and e["elevation"] < best):
+            best, best_d = e["elevation"], d
+    if best is not None:
+        return best
+    if isinstance(spine, dict) and isinstance(spine.get("top"), int):
+        return spine["top"]
+    return None
+
+
+def ceiling(memory, traits: dict | None) -> int | None:
+    """(0.105.23) The highest elevation a new level may use: one below the
+    surface when the fort is underground only (Surface -80 or lower), else
+    None (no limit). The plan's own ceiling when it was drawn with one."""
+    if not underground_only(traits):
+        return None
+    p = _peek(memory) if memory is not None else {}
+    if isinstance(p.get("ceiling"), int):
+        return p["ceiling"]
+    surf = surface_elevation(memory, p.get("spine") if isinstance(p.get("spine"), dict) else None)
+    if surf is None:
+        sv = _d(_d((getattr(memory, "atlas", None) or {})).get("survey"))
+        st = next((x for x in _l(_d(sv.get("site")).get("stairs")) if isinstance(x, dict)), None)
+        if st and isinstance(st.get("elev_top"), int):
+            surf = st["elev_top"]
+    return surf - 1 if surf is not None else None
 
 
 def _range(survey: dict, off: int, spine: dict, deep: bool = False) -> tuple[int, int] | None:
@@ -204,11 +260,21 @@ def draw(state: dict, memory, site: dict, traits: dict, profile: dict) -> dict |
     if rng is None:
         return None
     lo, hi = rng
+    ceil = None
+    if underground_only(traits):
+        # (0.105.23) the Deep mine: the plan stops a level under the surface
+        surf = surface_elevation(memory, spine)
+        if surf is not None:
+            ceil = surf - 1
+            hi = min(hi, ceil)
+            if hi - lo + 1 < MIN_RANGE:
+                return None
     heart = max(lo, min(hi, heart))
     axis = _axis(memory, spine)
     pattern = profile.get("layout") if profile.get("layout") in ("grid", "rings", "branching", "stacked") else "grid"
     spread = 1 if (traits.get("spacing", 0) or 0) >= 50 else 0
-    soil = sorted(e for e in _l(site.get("soil")) if isinstance(e, int))
+    soil = sorted(e for e in _l(site.get("soil")) if isinstance(e, int)
+                  and (ceil is None or e <= ceil))       # (0.105.23) no farm level at the surface either
     fort = traits.get("fortification", 0) or 0
 
     kinds = [k for k in STACK if k != "defence" or fort >= 30]
@@ -279,6 +345,8 @@ def draw(state: dict, memory, site: dict, traits: dict, profile: dict) -> dict |
                  "range": [lo, hi], "heart": heart, "grammar": _grammar(traits, profile), "formula": FORMULA,
                  "pop_at_draw": _d(state.get("dwarves")).get("total") or 0,
                  "districts": districts, "slots": slots, "era": era})
+    if ceil is not None:
+        plan["ceiling"] = ceil         # (0.105.23) underground only: hints never go above it
     return plan
 
 
@@ -330,6 +398,13 @@ def hint(memory, kind: str, slot: str | None = None, traits: dict | None = None,
     spine = p.get("spine") or {}
     out = {"elev_lo": int(d["lo"]), "elev_hi": int(d["hi"]), "elev_target": int(d.get("target", d["lo"])),
            "district": _plain(d.get("name") or d["kind"])}
+    # (0.105.23) underground only (Surface -80 or lower): the band stops under
+    # the surface, also for a plan drawn before (E's) or a district grown up
+    ceil = ceiling(memory, traits)
+    if ceil is not None:
+        out["elev_hi"] = min(out["elev_hi"], ceil)
+        out["elev_lo"] = min(out["elev_lo"], out["elev_hi"])
+        out["elev_target"] = max(out["elev_lo"], min(out["elev_hi"], out["elev_target"]))
     if p.get("vertical") == "deep":
         out["extend"] = DEEP_EXTEND      # (0.105.14) the builder may take the stair this far down for it
     dirs = [x for x in (d.get("dirs") or []) if x in DIRS]
@@ -354,9 +429,10 @@ def hint(memory, kind: str, slot: str | None = None, traits: dict | None = None,
         out["dirs"] = [p.get("axis")] if p.get("axis") in DIRS else out.get("dirs", [])[:1]
     # spread the district's levels through its band: the level used least so far
     used = [lv.get("elevation") for lv in d.get("levels") or [] if isinstance(lv, dict)]
-    band = list(range(int(d["lo"]), int(d["hi"]) + 1))
+    band = list(range(out["elev_lo"], out["elev_hi"] + 1))
     if band:
-        out["elev_target"] = min(band, key=lambda e: (used.count(e), abs(e - d.get("target", e))))
+        out["elev_target"] = min(band, key=lambda e: (used.count(e), abs(e - (out["elev_target"] if ceil is not None
+                                                                      else d.get("target", e)))))
     return out
 
 

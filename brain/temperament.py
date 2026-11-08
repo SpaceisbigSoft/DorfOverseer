@@ -92,8 +92,11 @@ def effects(state: dict, cfg: dict | None = None) -> dict:
     out["grandeur"] = (("statue gardens every " + f"{cfg['garden_every_years'] / factor(t, 'grandeur'):.1f} years"
                         if g > 0 or craft > 0 else "no statue gardens")
                        + f"; style: {style_leanings('grandeur')}")
-    out["surface"] = (("a walled keep above the way in" if v("surface") >= cfg["keep_surface_min"]
-                       else "no keep (from +50)")
+    out["surface"] = (("a walled keep above the way in, else on open ground near the fields"
+                       if v("surface") >= cfg["keep_surface_min"]
+                       # (0.105.23) the Deep mine
+                       else "nothing above ground but the trade depot at the way in; every level under the surface"
+                       if v("surface") <= -80 else "no keep (from +50)")
                       + f"; woodcutters {woodcutters(t, False)}, gatherers {gatherers(t, False)}")
     mp = mining_plan(t, cfg)
     out["mining"] = (("only the levels it needs; " if mp["need_only"] else "")

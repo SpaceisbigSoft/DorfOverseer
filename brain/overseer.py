@@ -890,7 +890,14 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
                 say(line)
             if outcome.journal:
                 journal({"fort": key, "date": state["date"], **outcome.journal})
-            proposals = outcome.proposals + proposals
+            ai_props = outcome.proposals
+            try:     # (0.105.23) the strategist's levels keep under the surface in the Deep mine too
+                from planner import _deep_surface_filter, _traits as _plan_traits
+                ns = normalize(state)
+                ai_props = _deep_surface_filter(ns, _plan_traits(ns), memory, list(ai_props), notes)
+            except Exception:  # noqa: BLE001  (never stops the cycle; the bridge's own checks still hold)
+                pass
+            proposals = ai_props + proposals
             _note_adjust(state, memory, outcome.journal, cfg)
             try:
                 story = maybe_tell({**state, "settings": _d(normalize(state)["settings"])}, memory, bank, backend)
