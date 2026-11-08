@@ -12,7 +12,24 @@
 
 local U = reqscript('ai-util')      -- (13c) helpers shared by the modules
 -- (13c) the gear half: lua/ai-military-gear.lua (see the end of this file)
-local function gear() return reqscript('ai-military-gear') end
+-- (0.105.26) kept after the first lookup: reqscript finds the file again on
+-- every call (5-7 file checks on Windows), and the forwarders below call it
+-- for every name. One check of the file's time a call instead; when the file
+-- changed, reqscript again, which reloads it. DFHack reloads a module into the
+-- table it already has (its script environment is kept), so the one kept here
+-- is the live module before and after a reload.
+local GEAR, GEAR_PATH, GEAR_MTIME
+local function gear()
+    if GEAR then
+        local ok, t = pcall(function() return dfhack.filesystem.mtime(GEAR_PATH) end)
+        if ok and t ~= nil and t == GEAR_MTIME then return GEAR end
+    end
+    local m = reqscript('ai-military-gear')
+    local okp, p = pcall(function() return dfhack.findScript('ai-military-gear') end)
+    local okt, t = pcall(function() return dfhack.filesystem.mtime(p) end)
+    GEAR, GEAR_PATH, GEAR_MTIME = m, okp and p or nil, okt and t or nil
+    return m
+end
 
 AI_ORDER_TITLE = 'AI overseer'
 GATE_NAME = 'ai gate'          -- a lever named like this (any case) is the gate

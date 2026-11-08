@@ -17,7 +17,7 @@ from lua_modules_util import UTIL_SRC, module_src  # (13c lua-modules)
 RESULTS = []
 
 try:
-    from lupa import LuaRuntime
+    from lupa.lua53 import LuaRuntime
 except ImportError:
     print("SKIPPED: these tests need the lupa package (pip install lupa)")
     sys.exit(0)

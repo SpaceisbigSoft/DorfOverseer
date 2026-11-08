@@ -40,6 +40,53 @@ def expected_bridge_version() -> str | None:
     return m.group(1) if m else None
 
 
+def report_errors(state: dict, limit: int = 40) -> list[str]:
+    """(0.105.26) Where the fort report holds a failure: a section, or a part
+    of one, that came back as {"error": ...} alone (the bridge's safe() and
+    the sections' own pcalls, e.g. society.hospital_burrow), as
+    "path.error: message". A refusal or a reason beside other fields (a
+    project's "error" with its stage) is not one."""
+    out: list[str] = []
+
+    def walk(v, path: str, depth: int) -> None:
+        if len(out) >= limit or depth > 6:
+            return
+        if isinstance(v, dict):
+            if set(v) == {"error"}:
+                out.append(f"{path}.error: {str(v['error'])[:160]}")
+                return
+            for k, x in v.items():
+                if not str(k).startswith("_"):
+                    walk(x, f"{path}.{k}" if path else str(k), depth + 1)
+        elif isinstance(v, list):
+            for i, x in enumerate(v[:200]):
+                walk(x, f"{path}[{i}]", depth + 1)
+
+    walk(state, "", 0)
+    return out
+
+
+def check_modules(bridge: Bridge) -> None:
+    """(0.105.26) Every Lua module loads and every part compiles in the game
+    (ai-bridge modules): a broken split module showed only as one report
+    section's error, or not at all."""
+    try:
+        r = bridge._call("modules")
+    except (BridgeError, DFHackError) as e:
+        check("every Lua module and part loads", "FAIL", str(e)[:200])
+        return
+    failed = r.get("failed") or []
+    stale = r.get("stale_parts") or []
+    if failed:
+        check("every Lua module and part loads", "FAIL",
+              f"{len(failed)} failed: " + "; ".join(f"{x.get('name')}: {str(x.get('error'))[:120]}"
+                                                    for x in failed[:5] if isinstance(x, dict)))
+    elif not r.get("ok") and not stale:
+        check("every Lua module and part loads", "FAIL", str(r.get("error") or r)[:200])
+    else:
+        check("every Lua module and part loads", "PASS", f"{r.get('modules')} modules, {r.get('parts')} parts")
+
+
 def must_refuse(bridge: Bridge, name: str, action: dict, halted: bool) -> None:
     """A bad action must be refused before anything happens."""
     try:
@@ -128,6 +175,16 @@ def main() -> int:
               "folder (see docs/setup-guide.md) and restart DF")
     else:
         check("installed bridge is current", "PASS", f"ai-bridge {have}")
+    # (0.105.26) each part's version mark: one left behind at delivery, or a
+    # builder part still loaded from before (touch ai-builder.lua)
+    stale = info.get("stale_parts") or []
+    if stale:
+        check("every part is from this version", "FAIL",
+              f"{len(stale)} not {have}: " + "; ".join(str(x) for x in stale[:6])
+              + " (copy all of lua\\*.lua, then touch ai-builder.lua, or restart DF)")
+    else:
+        check("every part is from this version", "PASS")
+    check_modules(bridge)
     for key in ("dfhack_version", "df_version"):
         if info.get(key):
             check(f"{key.replace('_', ' ')}", "PASS", str(info[key]))
@@ -185,9 +242,10 @@ def main() -> int:
     absent = [k for k in REQUIRED if k not in state]
     check("report has every section", "FAIL" if absent else "PASS",
           f"missing: {', '.join(absent)}" if absent else f"{len(REQUIRED)} required sections")
-    errs = state.get("_errors")
+    errs = report_errors(state)          # (0.105.26) nested ones too, and a FAIL
     if errs:
-        check("report sections built without errors", "WARN", json.dumps(errs)[:300])
+        check("report sections built without errors", "FAIL",
+              f"{len(errs)}: " + "; ".join(errs[:6]) + (" ..." if len(errs) > 6 else ""))
     else:
         check("report sections built without errors", "PASS")
     try:

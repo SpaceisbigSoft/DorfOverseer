@@ -374,7 +374,7 @@ def _():
 @test("AI sliders: the panel (Lua) shows the same plan and words as the brain; old saves move over")
 def _():
     try:
-        from lupa import LuaRuntime
+        from lupa.lua53 import LuaRuntime
     except ImportError:
         return
     lua = LuaRuntime(unpack_returned_tuples=True)
@@ -408,7 +408,7 @@ def _():
 @test("presets: the six ready-made fort characters are listed and load (extreme past 100); a saved one wins")
 def _():
     try:
-        from lupa import LuaRuntime
+        from lupa.lua53 import LuaRuntime
     except ImportError:
         return
     lua = LuaRuntime(unpack_returned_tuples=True)
@@ -441,7 +441,7 @@ def _():
 @test("sliders (0.94): Hostility and Hospitality move over as Outsiders; Growth's panel text matches the brain")
 def _():
     try:
-        from lupa import LuaRuntime
+        from lupa.lua53 import LuaRuntime
     except ImportError:
         return
     from planner import PLANNER_CONFIG, growth_mode
@@ -483,7 +483,7 @@ def _():
 @test("opposite forts (0.99): each preset pair, on the same fort, differs in style, numbers and what it builds first")
 def _():
     try:
-        from lupa import LuaRuntime
+        from lupa.lua53 import LuaRuntime
     except ImportError:
         return
     import planner
@@ -538,7 +538,7 @@ def _():
     # 2 jail cells, 2 temples, a sheriff, a crossbow squad) runs three
     # seasons under each preset; what it builds and answers must differ in kind.
     try:
-        from lupa import LuaRuntime
+        from lupa.lua53 import LuaRuntime
     except ImportError:
         return
     import planner
@@ -613,7 +613,7 @@ def _():
 def _preset_fort(name):
     """The exit test's calm mature fort under a built-in preset (None without lupa)."""
     try:
-        from lupa import LuaRuntime
+        from lupa.lua53 import LuaRuntime
     except ImportError:
         return None
     lua = LuaRuntime(unpack_returned_tuples=True)

@@ -5,7 +5,7 @@ import copy
 import sys
 from pathlib import Path
 
-from lupa import LuaRuntime
+from lupa.lua53 import LuaRuntime
 
 ROOT = Path(__file__).resolve().parent.parent
 from harness import test, finish, code_has  # noqa: E402

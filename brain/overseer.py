@@ -386,7 +386,6 @@ SHORT_WORDS = {
     "quarry": "dig a small quarry in ordinary stone",
     "adopt_uniform": "take charge of a squad's copied uniform",
     "idle_crafting": "let idle dwarves craft for themselves",
-    "tidy": "send worn-out clothes to the dump",
     "order_instrument": "order instruments for the tavern and temples",
     "slaughter_one": "send a spare animal to the butcher",
     "sand_zone": "make a sand collection zone (for glass)",

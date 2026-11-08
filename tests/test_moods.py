@@ -16,7 +16,7 @@ from lua_modules_util import module_src  # (13c lua-modules) the modules' source
 from harness import test, finish, code_has  # noqa: E402
 
 try:
-    from lupa import LuaRuntime
+    from lupa.lua53 import LuaRuntime
 except ImportError:
     print("SKIPPED: these tests need the lupa package (pip install lupa)")
     sys.exit(0)

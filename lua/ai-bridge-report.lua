@@ -9,6 +9,7 @@
 -- in_fort, NOT_IN_FORT, OUT_DIR) are at hand. Not a command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-report is a part of ai-bridge; run ai-bridge') end
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-report'] = '0.105.25'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local utils = require('utils')
 
@@ -150,39 +151,6 @@ function get_dwarves(include_units)
         end
     end
     return summary, include_units and units or nil
-end
-
-function get_instruments()
-    local out = {known = {}, jobs = {}}
-    for _, j in ipairs({'MakeInstrument', 'MakeInstrumentPiece', 'AssembleInstrument'}) do
-        local ok, v = pcall(function() return df.job_type[j] end)
-        if ok and v ~= nil then table.insert(out.jobs, j) end
-    end
-    local civ = df.historical_entity.find(df.global.plotinfo.civ_id)
-    local allowed = {}
-    pcall(function() for _, i in ipairs(civ.resources.instrument_type) do allowed[i] = true end end)
-    pcall(function()
-        for i, d in ipairs(df.global.world.raws.itemdefs.instruments) do
-            local e = {id = d.id, name = txt(d.name), known = allowed[d.subtype] or allowed[i] or nil,
-                       pieces = 0, flags = {}, materials = {}}
-            pcall(function() e.pieces = #d.pieces end)
-            pcall(function()
-                for k, v in pairs(d.flags) do if v == true then table.insert(e.flags, tostring(k)) end end
-            end)
-            pcall(function()
-                for k, v in pairs(d.material_str or {}) do table.insert(e.materials, txt(tostring(v))) end
-            end)
-            pcall(function() e.size = d.size end)
-            pcall(function()
-                e.piece_list = {}
-                for _, pc in ipairs(d.pieces) do
-                    table.insert(e.piece_list, {type = txt(tostring(pc.type)), name = txt(tostring(pc.name))})
-                end
-            end)
-            table.insert(out.known, e)
-        end
-    end)
-    return out
 end
 
 -- What the dwarves miss: for each need (df.need_type), how many citizens

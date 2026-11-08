@@ -15,7 +15,7 @@ from harness import test, finish  # noqa: E402
 sys.path.insert(0, str(ROOT / "brain"))
 
 try:
-    from lupa import LuaRuntime
+    from lupa.lua53 import LuaRuntime
 except ImportError:
     print("SKIPPED: these tests need the lupa package (pip install lupa)")
     sys.exit(0)

@@ -487,7 +487,7 @@ def _():
 @test("the panel's settings (Lua) keep the wipe counters, and an odd value becomes 0")
 def _():
     try:
-        from lupa import LuaRuntime
+        from lupa.lua53 import LuaRuntime
     except ImportError:
         return
     lua = LuaRuntime(unpack_returned_tuples=True)
@@ -510,7 +510,7 @@ def _():
 @test("the hospital burrow's Rules switch (0.104.168): on by default, saved, sent to the AI; the panel shows it")
 def _():
     try:
-        from lupa import LuaRuntime
+        from lupa.lua53 import LuaRuntime
     except ImportError:
         return
     lua = LuaRuntime(unpack_returned_tuples=True)

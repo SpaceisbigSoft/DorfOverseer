@@ -2205,7 +2205,24 @@ end
 -- name they export is still reachable here (the bridge calls them as
 -- reqscript('ai-society').<name>). Looked up on call: that module loads this
 -- one, so this one must not load it while loading.
-local function burrows() return reqscript('ai-society-burrows') end
+-- (0.105.26) kept after the first lookup: reqscript finds the file again on
+-- every call (5-7 file checks on Windows), and the forwarders below call it
+-- for every name. One check of the file's time a call instead; when the file
+-- changed, reqscript again, which reloads it. DFHack reloads a module into the
+-- table it already has (its script environment is kept), so the one kept here
+-- is the live module before and after a reload.
+local BURROWS, BURROWS_PATH, BURROWS_MTIME
+local function burrows()
+    if BURROWS then
+        local ok, t = pcall(function() return dfhack.filesystem.mtime(BURROWS_PATH) end)
+        if ok and t ~= nil and t == BURROWS_MTIME then return BURROWS end
+    end
+    local m = reqscript('ai-society-burrows')
+    local okp, p = pcall(function() return dfhack.findScript('ai-society-burrows') end)
+    local okt, t = pcall(function() return dfhack.filesystem.mtime(p) end)
+    BURROWS, BURROWS_PATH, BURROWS_MTIME = m, okp and p or nil, okt and t or nil
+    return m
+end
 for _, name in ipairs({'fill_recreation', 'badly_wants_friends', 'recreation_status', 'recreation_tick', 'hospital_zones',
                        'well_gives_water', 'is_patient', 'hospital_burrow_status', 'hospital_burrow_tick', 'calm_burrow_status',
                        'calm_burrow_tick'}) do

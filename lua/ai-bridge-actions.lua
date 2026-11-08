@@ -9,6 +9,7 @@
 -- in_fort, NOT_IN_FORT, OUT_DIR) are at hand. Not a command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-actions is a part of ai-bridge; run ai-bridge') end
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-actions'] = '0.105.25'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local json = require('json')
 local utils = require('utils')
@@ -1849,19 +1850,6 @@ function act_trim_labor(a)
     local n = int_in(a.keep == nil and 2 or a.keep, 0, 30)
     if not n then return reject('trim_labor needs keep 0-30') end
     return reqscript('ai-labor').trim(a.job, n, a.dry_run == true, txt)
-end
-
--- Worn-out clothes lying about marked for the garbage dump (DFHack's
--- cleanowned: "scattered" = only things on the ground, "x" = only the badly
--- worn), when the game runs slowly from too many items.
-function act_tidy(a)
-    if a.dry_run then return {ok = true, dry_run = true} end
-    local out, rv = dfhack.run_command_silent('cleanowned', 'scattered', 'x')
-    if rv ~= CR_OK then return {ok = false, error = 'cleanowned failed: ' .. tostring(out):sub(1, 160)} end
-    local n = 0
-    for _ in tostring(out):gmatch('[Mm]arked') do n = n + 1 end
-    for _ in tostring(out):gmatch('[Dd]ump') do n = math.max(n, 1) end
-    return {ok = true, marked_lines = n, said = tostring(out):sub(1, 200)}
 end
 
 -- (0.104.139, phase 11) Fights among the fort's own: DF's conflicts drag
