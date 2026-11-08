@@ -40,6 +40,7 @@ from planner import (NEEDS_YOU, PLANNER_CONFIG, TICKS_PER_YEAR, Memory, abs_tick
                      effective_config, note_cycle, note_tantrums, plan, record, select)
 from planner_society import note_heists  # noqa: E402  (0.105.24)
 from planner_moods import mood_journal  # noqa: E402  (0.105.30)
+from planner_threats import note_intrusions  # noqa: E402  (0.105.30 live fixes)
 import atlas  # noqa: E402
 import backup  # noqa: E402
 import health_check  # noqa: E402
@@ -864,6 +865,7 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
             journal({"kind": "mood", "fort": key, "date": state["date"], **e})
         note_tantrums(state, memory, events)     # (0.104.31) tantrums counted for the jail
         note_heists(state, memory, events)       # (0.105.24) heists and visitors' killings: visitors kept out a while
+        note_intrusions(state, memory, events)   # (0.105.30) DF's invasion records: the alarm before a thief strikes
         crisis.note_deaths(state, memory, events)   # (0.104.137) deaths counted for crisis mode
         note_events(state, memory, bank if backend else None, events)
         for line in learned_now:

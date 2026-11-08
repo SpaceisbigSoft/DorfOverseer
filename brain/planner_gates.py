@@ -14,7 +14,7 @@ from digest import _d, _l
 from planner_core import *  # noqa: F401,F403
 from planner_construct import _wings_rule, cavern_wall_style  # (0.105.30) wing walls, the Hermit's cavern walls
 
-__all__ = ["_gate_rules", "_stranded_rule", "STRANDED_CONFIG", "GATE_PART_RECIPES", "GATE_PART_STUCK_DAYS", "_gate_parts_rule", "_free_gate_levers", "_lever_far_enough", "machinery_wanted", "_lever_hatches_ok", "_link_wanted", "_lever_rule", "_trap_rule", "_gatehouse_rule", "_near_spot", "lone_intruders", "few_ordinary", "few_alert_over", "hunted_outside", "ai_gates_shut", "_Rec", "_lockdown", "lockdown_released", "lone_alert_over", "_lockdown_ids", "_lockdown_cap_why", "note_lockdown", "quick_clear", "PASTURE_ACTIONS", "_pasture_hold", "gate_invaders", "main_gate", "_gate_guard_rule", "_gate_dogs_rule"]
+__all__ = ["_gate_rules", "_stranded_rule", "STRANDED_CONFIG", "GATE_PART_RECIPES", "GATE_PART_STUCK_DAYS", "_gate_parts_rule", "_free_gate_levers", "_lever_far_enough", "machinery_wanted", "_lever_hatches_ok", "_link_wanted", "_lever_rule", "_trap_rule", "_gatehouse_rule", "_near_spot", "lone_intruders", "few_ordinary", "few_alert_over", "few_near", "hunted_outside", "ai_gates_shut", "_Rec", "_lockdown", "lockdown_released", "lone_alert_over", "_lockdown_ids", "_lockdown_cap_why", "note_lockdown", "quick_clear", "PASTURE_ACTIONS", "_pasture_hold", "gate_invaders", "main_gate", "_gate_guard_rule", "_gate_dogs_rule"]
 
 
 # (0.105.26) citizens stranded outside (lua/ai-gates.lua stranded_citizens)
@@ -641,10 +641,34 @@ def few_alert_over(s: dict, memory, cfg: dict) -> bool:
     """(0.105.8) The alarm has been up `lone_intruder_alert_ticks` while only a
     few ordinary enemies were about, inside or out. B (Monastery, 2 Nov): one
     thief outside, the alarm up 70 real minutes at 1-3 FPS; the shelter held
-    the civilians from the drink and 31 died of thirst when it came down."""
-    since, now = _lockdown(memory).get("few_since"), abs_tick(s)
+    the civilians from the drink and 31 died of thirst when it came down.
+    (0.105.30 live fixes) Counted from the last cycle one of them was seen
+    near a dwarf (few_near, note_lockdown), not from when the few began: E
+    (8 Nov 13:51) lowered the alarm 635 ticks after raising it, the thief 1
+    tile from the citizens and still killing (3 citizens dead)."""
+    rec = _lockdown(memory)
+    since, now = rec.get("few_since"), abs_tick(s)
+    near = rec.get("few_near")
+    if isinstance(since, int) and isinstance(near, int) and near > since:
+        since = near
     return (isinstance(since, int) and isinstance(now, int)
             and now - since >= cfg.get("lone_intruder_alert_ticks", 600))
+
+
+def few_near(s: dict, cfg: dict, ids: list) -> bool:
+    """(0.105.30 live fixes) Is one of these enemies within
+    `few_alert_near_tiles` of a dwarf (and 2 levels): among the citizens, not
+    one waiting about far off (B's thief outside)?"""
+    want = set(ids)
+    tiles = cfg.get("few_alert_near_tiles", 12)
+    for t in _l(_d(s.get("others_on_map")).get("threats")):
+        if not isinstance(t, dict) or t.get("id") not in want:
+            continue
+        d, dz = t.get("distance_to_nearest_dwarf"), t.get("levels_from_nearest_dwarf")
+        if (isinstance(d, (int, float)) and d <= tiles
+                and (not isinstance(dz, (int, float)) or abs(dz) <= 2)):
+            return True
+    return False
 
 
 def hunted_outside(s: dict, cfg: dict, traits: dict | None = None, memory=None) -> list:
@@ -783,8 +807,13 @@ def note_lockdown(s: dict, memory, cfg: dict) -> list[str]:
     if few:
         if not isinstance(rec.get("few_since"), int) or rec["few_since"] > now:
             rec["few_since"] = now
+        if few_near(s, cfg, few):           # (0.105.30 live fixes) seen among the dwarves: the half-day again
+            rec["few_near"] = now
+        elif isinstance(rec.get("few_near"), int) and rec["few_near"] > now:
+            rec.pop("few_near", None)
     else:
         rec.pop("few_since", None)
+        rec.pop("few_near", None)
     lone = lone_intruders(s, cfg, traits, _Rec(rec))
     if lone:
         if not isinstance(rec.get("lone_since"), int) or rec["lone_since"] > now:

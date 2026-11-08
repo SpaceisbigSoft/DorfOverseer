@@ -179,12 +179,11 @@ def _():
     assert "may be yours" in n[0] and "disposal_player_items" in n[0], n
 
 
-@test("3. a census without unknown_reachable falls back on by_reason.unknown")
+@test("3. (0.105.30) a census without unknown_reachable (0.105.27's: REMAINS in unknown) raises no Needs you")
 def _():
     _, notes = brain_census({"by_reason": {"own_dead": 0, "used_ammo": 0, "other_dead": 0, "dumped": 0, "ai": 0,
                                            "unknown": 450}})
-    n = you(notes)
-    assert n and "450 items" in n[0] and "about the map" in n[0], notes
+    assert not you(notes), notes
     _, notes = brain_census({"by_reason": {"own_dead": 0, "used_ammo": 0, "other_dead": 0, "dumped": 0, "ai": 0,
                                            "unknown": 150}})
     assert not you(notes), notes

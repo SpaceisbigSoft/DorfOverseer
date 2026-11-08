@@ -724,6 +724,12 @@ function prioritize_project(id, pri, dry_run)
     local p = find(data, id)
     if not p then return {ok = false, rejected = true, error = 'no such AI project'} end
     if p.phase ~= 'dig' then return {ok = false, rejected = true, error = 'project is not being dug'} end
+    -- (0.105.30 live fixes) a channel level (a well's hole, dig_done 'open'):
+    -- its tile is a floor to channel, which this (WALL tiles, 'd') can't raise
+    -- and would turn into a plain dig; the brain no longer asks for wells
+    if p.dig_done == 'open' then
+        return {ok = false, rejected = true, error = 'a channel (a well\'s hole) is not raised: nothing to dig in rock'}
+    end
     -- (0.104.134) the dig jobs DF made before at the old priority keep it: those
     -- nobody holds are taken away, and DF makes them again from the raised
     -- designation (Teacheroar's hospital: raised to 2, still 0 of 175 dug 18

@@ -470,6 +470,11 @@ PLANNER_CONFIG = {
     "visitor_shut_share": 0.5,         # ...and at least this share of them (B and F: about half)
     "visitor_shut_days": 56,           # ...shut this long (two months), then open again and looked at afresh
     "visitor_shut_welcoming": 100,     # never at this Outsiders or more (the Merchant city's 100: visitors its point)
+    # (0.105.30 live fixes) 19 of 23 thieves (2-5 Nov) asked the mayor for a meeting first; E's (8 Nov) asked
+    # from 13:44 and struck at 13:51. A visitor not of the fort's race and not a resident seeking a meeting
+    # shuts the tavern, temples, library and guildhalls to visitors a while (the Rules switch heist_lockout)
+    "stranger_shut_days": 7,           # ...this long after the last such meeting seen
+    "stranger_shut_outsiders": 50,     # ...only below this Outsiders (the Merchant city, 100, stays open)
     "residency_accept_outsiders": 30,  # agree from this Outsiders (welcoming); decline below -30 (closed)
     "petition_citizen_margin": 5,      # citizenship while citizens are this far under the population target
     "bag_sink_days": 28,               # this many bag orders in so many days with no empty bag: a sink (0.87.1)
@@ -689,4 +694,13 @@ PLANNER_CONFIG = {
     "lockdown_clear_ticks": 300,        # ...citizens or visitors shut out: open after 6 game hours
     "lockdown_visitors": 20,            # ...this many visitors outside the fort count as shut out (0.105.4: outside only)
     "small_alert_ticks": 1200,          # ...only a few ordinary enemies all along (a sneaker): after a day
+    # (0.105.30 live fixes) E (8 Nov 13:50): DF's invasion record of a lone
+    # thief (civ -1, 1 invader) came 2,000 ticks before she was "spotted
+    # sneaking around" in the middle of the fort; the alarm only sounded then,
+    # and a mass fight killed 3 citizens. The alarm sounds on the record itself:
+    "intrusion_alert_days": 2,          # ...and is held this long while nobody is seen (phases' CONFIRM_DAYS)
+    # ...and the half-day for a few ordinary enemies counts from the last
+    # cycle one was this near a dwarf (E: the alarm came down 635 ticks after
+    # it went up, the thief 1 tile from the citizens and still alive)
+    "few_alert_near_tiles": 12,
 }

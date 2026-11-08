@@ -419,11 +419,16 @@ def _standing_key(standing: dict, name: str) -> str | None:
 def _unknown_reachable(fb: dict, reason: dict) -> tuple[int, str]:
     """(0.105.28) The forbidden items of no game reason the fort can reach
     outside the caverns (census forbidden.unknown_reachable), and where they
-    lie in words ("on the surface (12) and inside the fort (3)"). A census
-    from before the field: by_reason.unknown, "about the map"."""
+    lie in words ("on the surface (12) and inside the fort (3)").
+    (0.105.30 live fixes) A census from before the field (0.105.27's): 0, so
+    no Needs you from it. Its by_reason.unknown held the caverns' REMAINS
+    (8 Nov: E's 410 and F's 366 "for no reason the game gives" were all
+    REMAINS), and the first cycles on 0.105.28 still read that census ("about
+    the map") until the next count; the census since has the field (E, F:
+    0-9, the dead's own gear and a bard's instruments)."""
     n = fb.get("unknown_reachable")
     if not isinstance(n, (int, float)) or isinstance(n, bool):
-        return int(reason.get("unknown", 0)), "about the map"
+        return 0, "about the map"
     uw = _d(fb.get("unknown_where"))
     parts = [f"{label} ({int(uw[k])})" for k, label in (("surface", "on the surface"), ("inside", "inside the fort"))
              if isinstance(uw.get(k), (int, float)) and uw[k] > 0]
@@ -532,7 +537,17 @@ def _disposal_rules(s: dict, cfg: dict, proposals: list, notes: list, memory=Non
     metal = int(fb.get("metal") or 0)
     smelters = int(dis.get("smelters") or 0) + int(dis.get("magma_smelters") or 0)
     marked = int(dis.get("marked_melt") or 0)
-    if level >= 1 and metal >= cfg["disposal_melt_min"] and counted_since("disposal_melt"):
+    # (0.105.30 live fixes) the census' `meltable` (ai-disposal melt_check, the
+    # bridge's own test: loose, worn or the enemy's, no tool, masterwork or
+    # squad's gear) when it has one: the raw forbidden-metal count asked
+    # mark_melt 49 times on 8 Nov for gear the bridge then refused ("no worn
+    # or enemy metal gear may be marked"). Nothing meltable: nothing asked.
+    melt_key = "meltable_keep_enemy" if keep_enemy else "meltable"
+    meltable = fb.get(melt_key) if isinstance(fb.get(melt_key), int) and not isinstance(fb.get(melt_key), bool) else None
+    if meltable is not None:
+        metal = meltable
+    if (level >= 1 and metal >= (cfg["disposal_melt_min"] if meltable is None else 1)
+            and counted_since("disposal_melt")):
         if not smelters:
             notes.append(f"{metal} forbidden metal items could be melted down, but the fort has no smelter")
         elif marked >= cfg["disposal_melt_backlog"]:
@@ -541,7 +556,9 @@ def _disposal_rules(s: dict, cfg: dict, proposals: list, notes: list, memory=Non
             most = min(cfg["disposal_melt_max"], DISPOSAL_ACTION_MAX)
             proposals.append(Proposal("disposal_melt", {"type": "mark_melt", "max": most, "keep_masterwork": True,
                                                          "keep_enemy_gear": keep_enemy},
-                                      f"{metal} metal items lie forbidden: mark up to {most} surplus or worn ones to "
+                                      (f"{metal} worn or enemy metal items lie loose" if meltable is not None
+                                       else f"{metal} metal items lie forbidden")
+                                      + f": mark up to {most} surplus or worn ones to "
                                       "melt into bars (never masterworks or artifacts"
                                       + ("; the enemy's gear is kept, as the Rules say)" if keep_enemy else ")"), 7))
 

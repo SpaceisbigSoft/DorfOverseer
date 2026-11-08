@@ -31,7 +31,8 @@ from digest import _d, _l
 from planner_core import (AGENDA_THEMES, LIMIT_EXEMPT, PLANNER_CONFIG, Proposal, STEER_PROTECTED, TICKS_PER_DAY, abs_tick, ask_player,
                           can_fight, player_rules, reachable_threats, _traits)
 
-__all__ = ["_threat_rules", "threat_alert", "threat_rules_of", "moon_due", "PRISONER_CHOICES", "THREAT_CONFIG"]
+__all__ = ["_threat_rules", "threat_alert", "threat_rules_of", "moon_due", "PRISONER_CHOICES", "THREAT_CONFIG",
+           "note_intrusions", "unseen_intrusion"]
 
 PRISONER_CHOICES = ("keep", "release", "kill")
 
@@ -69,6 +70,47 @@ AGENDA_THEMES.update({"fire_guard": "keep the dwarves away from the fire", "pris
                       "moon_cell": "lock the werebeasts in for the full moon",
                       "seal_cavern": "seal the cavern against a beast", "rescue_labor": "fetch the wounded",
                       "cavern_openings": "doors on the ways into the caverns"})
+
+
+def note_intrusions(state: dict, memory, events: list) -> int:
+    """(0.105.30 live fixes) DF's invasion records, from the bridge's events,
+    kept for the alarm (unseen_intrusion): {tick, civ, invaders}. E (8 Nov):
+    `invasion civ_id -1, invaders_now 1` at 13:50:49 was the hidden thief, a
+    weasel woman who had asked the mayor for meetings since 13:44; she was
+    "spotted sneaking around" only at 13:51:07, among the dwarves, and the
+    alarm came then, with the fight already on (3 citizens dead). A new
+    record replaces the last (and what the player did about it). Returns how
+    many records came."""
+    now = abs_tick(state)
+    if not isinstance(now, int):
+        return 0
+    n = 0
+    for e in events or []:
+        if isinstance(e, dict) and e.get("kind") == "invasion":
+            memory.intrusion = {"tick": now, "civ": e.get("civ_id"),
+                                "invaders": e.get("invaders_now") if isinstance(e.get("invaders_now"), int) else None}
+            n += 1
+    return n
+
+
+def unseen_intrusion(s: dict, memory, cfg: dict):
+    """(0.105.30 live fixes) DF's last invasion record ({tick, civ, invaders})
+    while it is under `intrusion_alert_days` old and the player hasn't
+    lowered the alarm the AI sounded for it, and no enemy able to reach the
+    dwarves has been seen since (then the usual rules have them), else None.
+    Thieves and snatchers hide until spotted; the record is the only word of
+    them."""
+    rec = getattr(memory, "intrusion", None)
+    if not isinstance(rec, dict) or not isinstance(rec.get("tick"), int) or rec.get("cleared"):
+        return None
+    seen = getattr(memory, "last_threat_tick", None)
+    if isinstance(seen, int) and seen >= rec["tick"]:
+        return None
+    now = abs_tick(s)
+    days = int(cfg.get("intrusion_alert_days", 2) or 0)
+    if not isinstance(now, int) or days <= 0 or not 0 <= now - rec["tick"] < days * TICKS_PER_DAY:
+        return None
+    return rec
 
 
 def threat_rules_of(s: dict) -> dict:
