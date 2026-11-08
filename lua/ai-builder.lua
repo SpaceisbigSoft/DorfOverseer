@@ -934,6 +934,19 @@ function level_areas()
     for _, a in ipairs(type(data.old_areas) == 'table' and data.old_areas or {}) do
         table.insert(out, a)
     end
+    -- (0.105.23, 14.1 step 4c) the underground depot's road and hall, one box
+    -- a level: the quarry and vein drifts keep out of its walls too
+    local okd, deep = pcall(function() return deep_depot_data() end)
+    if okd and deep and type(deep.tiles) == 'table' then
+        local box = {}
+        for _, t in ipairs(deep.tiles) do
+            local b = box[t.z]
+            if not b then b = {x1 = t.x, y1 = t.y, x2 = t.x, y2 = t.y, z = t.z}; box[t.z] = b end
+            b.x1, b.y1 = math.min(b.x1, t.x), math.min(b.y1, t.y)
+            b.x2, b.y2 = math.max(b.x2, t.x), math.max(b.y2, t.y)
+        end
+        for _, b in pairs(box) do table.insert(out, b) end
+    end
     return out
 end
 
@@ -7515,6 +7528,440 @@ function place_keep(dry_run)
     end
     if not dry_run then k.stage = 'done'; save_keep(k) end
     return {ok = true, stage = 'done', x = k.x, y = k.y, holes = st.roof_left, dry_run = dry_run or nil}
+end
+
+-- --- the underground trade depot (the Deep mine) ----------------------------------
+--
+-- (0.105.23, 14.1 step 4c) Surface -80 or lower builds nothing above ground,
+-- and the player's correction: a trade depot can be underground in Dwarf
+-- Fortress when the wagons' way to it is right. The game's rules (the wiki's
+-- "Trade depot" and "Wagon"): a wagon is 3x3, so its whole way from the map's
+-- edge is 3 tiles wide; it can't use stairs, only ramps, and a ramp way is 3
+-- wide too with the tile over each ramp open; trees, boulders and most
+-- buildings stop it; the game itself marks a depot "accessible" to wagons.
+-- So: a straight road, 3 wide, from open ground near the fort's way in, down
+-- DEEP_DEPOT_LEVELS levels at most, one channel per level (a channel turns
+-- the rock under it into a ramp and leaves the ramp's top open), a flat tile
+-- between ramps, then a hall (DEEP_HALL x DEEP_HALL) with the 5x5 depot in
+-- its middle and 2 tiles round it for the wagon to stand and turn:
+--
+--   surface   ..A A S             A approach (open ground, wagons come in)
+--   level -1        R f S         S channel (ramp below, open above)
+--   level -2            R f f H H H ... the hall       R ramp, f road floor
+--
+-- Every tile dug is untouched natural wall, safe (no aquifer, water,
+-- cavern, warm stone), with solid rock round it, over it and under it (the
+-- surface's own ground as the roof of the first level), within no level the
+-- AI dug and next to no open space: the hall never opens into the fort (its
+-- dwarves come by the surface, as to a depot outside; no new way into the
+-- fort for the gates to guard). Hall and road stay under the gates' "ledge"
+-- size (ai-gates LEDGE_MAX, 120 tiles): a hauler standing there at a scan
+-- doesn't make the hall the fort. Built in stages, one action each:
+--   (search) -> digging -> placed (the depot ordered) ; or no_road
+-- The state lives in the save (site data 'ai-overseer/deep_depot').
+DEEP_DEPOT_KEY = 'ai-overseer/deep_depot'
+DEEP_DEPOT_LEVELS = 3        -- levels the road goes down at most
+DEEP_DEPOT_REACH = 20        -- tiles from a way in to the road's start at most
+DEEP_DEPOT_CLEAR = 3         -- tiles kept open round the way in (the dwarves' own door)
+DEEP_DEPOT_SECONDS = 1.5     -- the search stops here (like KEEP_COURT_SECONDS)
+DEEP_ROAD_MAX = 40           -- tiles of road dug (not the hall) at most
+DEEP_ROAD_RUN = 2            -- flat road between the last ramp and the hall
+DEEP_HALL = 9                -- the hall's side: the 5x5 depot and 2 tiles round it
+DEEP_DEPOT_RETRY_TICKS = 403200   -- a search that found nothing is tried again after a year
+DEEP_REDIG_MAX = 30          -- lost designations put back in one call
+local DEEP_DIRS = {{0, -1}, {1, 0}, {0, 1}, {-1, 0}}
+local DEEP_ROOF = {WALL = true, FLOOR = true, PEBBLES = true, BOULDER = true, TWIG = true, SAPLING = true,
+                   SHRUB = true, RAMP = true}
+
+function deep_depot_data()
+    local ok, d = pcall(dfhack.persistent.getSiteData, DEEP_DEPOT_KEY, {})
+    return ok and type(d) == 'table' and d.stage and d or nil
+end
+
+local function save_deep_depot(d)
+    pcall(dfhack.persistent.saveSiteData, DEEP_DEPOT_KEY, d or {})
+end
+
+local function deep_now()
+    local ok, t = pcall(function() return df.global.cur_year * 403200 + df.global.cur_year_tick end)
+    return ok and math.tointeger(t) or nil
+end
+
+-- The road and hall for a start (sx, sy) on the surface level z, heading d,
+-- k levels down: {tiles = {{x, y, z, r}}, depot = {x, y, z}, hall = {x1, y1,
+-- x2, y2, z}, road = n}. r: 'h' channel, 'd' dug floor, 'ramp' (the rock a
+-- channel above turns into a ramp: not designated).
+function deep_depot_layout(sx, sy, z, d, k)
+    local dx, dy = d[1], d[2]
+    local px, py = -dy, dx
+    local function at(u, v) return sx + u * dx + v * px, sy + u * dy + v * py end
+    local tiles, road = {}, 0
+    local function row(u, zz, r, v1, v2)
+        for v = v1 or -1, v2 or 1 do
+            local x, y = at(u, v)
+            table.insert(tiles, {x = x, y = y, z = zz, r = r})
+        end
+    end
+    row(1, z, 'h')                                      -- the surface's channel
+    for i = 1, k do
+        local L, u = z - i, 1 + (i - 1) * 2
+        row(u, L, 'ramp')
+        if i < k then row(u + 1, L, 'd'); row(u + 2, L, 'h') end
+    end
+    local D, uk = z - k, 1 + (k - 1) * 2
+    for u = uk + 1, uk + DEEP_ROAD_RUN do row(u, D, 'd') end
+    road = #tiles
+    local h0, half = uk + DEEP_ROAD_RUN + 1, DEEP_HALL // 2
+    for u = h0, h0 + DEEP_HALL - 1 do row(u, D, 'd', -half, half) end
+    local cx, cy = at(h0 + half, 0)
+    local ax, ay = at(h0, -half)
+    local bx, by = at(h0 + DEEP_HALL - 1, half)
+    return {tiles = tiles, road = road, depot = {x = cx, y = cy, z = D}, levels = k,
+            hall = {x1 = math.min(ax, bx), y1 = math.min(ay, by), x2 = math.max(ax, bx), y2 = math.max(ay, by), z = D}}
+end
+
+-- Is the plan safe to dig? true, or false and why. `surf` the surface level;
+-- `reserved` the AI's levels; `info` a cached tile_info.
+local function deep_plan_ok(plan, surf, reserved, info)
+    if plan.road > DEEP_ROAD_MAX then return false, 'the road would be too long' end
+    local mw, mh = map_size()
+    local mine = {}
+    for _, t in ipairs(plan.tiles) do mine[(t.z * 4096 + t.y) * 4096 + t.x] = t.r end
+    local function planned(x, y, z) return mine[(z * 4096 + y) * 4096 + x] end
+    for _, p in ipairs(plan.tiles) do
+        if p.x < 2 or p.y < 2 or p.x > mw - 3 or p.y > mh - 3 then return false, 'off the map\'s edge' end
+        if p.z < surf then
+            local t = info(p.x, p.y, p.z)
+            local ok, why = natural_wall(t)
+            if not ok then return false, why end
+            for ddx = -1, 1 do
+                for ddy = -1, 1 do
+                    if inside_any(reserved, p.x + ddx, p.y + ddy, p.z) then return false, 'by one of the fort\'s levels' end
+                    if (ddx ~= 0 or ddy ~= 0) and not planned(p.x + ddx, p.y + ddy, p.z) then
+                        local n = info(p.x + ddx, p.y + ddy, p.z)
+                        if not n or n.shape ~= 'WALL' or n.aquifer or n.liquid or n.feature or n.designated then
+                            return false, 'open space, water or an aquifer beside it'
+                        end
+                    end
+                end
+            end
+            if not planned(p.x, p.y, p.z + 1) then
+                local up = info(p.x, p.y, p.z + 1)
+                local roof = up and not up.liquid and not up.aquifer and not up.designated
+                    and (up.shape == 'WALL' or (p.z + 1 == surf and DEEP_ROOF[up.shape]))
+                if not roof then return false, 'no solid roof over it' end
+            end
+            if not planned(p.x, p.y, p.z - 1) then
+                local dn = info(p.x, p.y, p.z - 1)
+                if not dn or dn.shape ~= 'WALL' or dn.aquifer or dn.liquid or dn.feature or dn.designated then
+                    return false, 'no solid rock under it'
+                end
+            end
+        end
+    end
+    return true
+end
+
+-- The road's start: three rows of open ground (the approach, the start, the
+-- surface channel) a wagon can stand on, rock under the last two.
+local function deep_start_ok(x, y, z, d, ground)
+    local px, py = -d[2], d[1]
+    for u = -1, 1 do
+        for v = -1, 1 do
+            local tx, ty = x + u * d[1] + v * px, y + u * d[2] + v * py
+            if not ground(tx, ty, z) then return false end
+        end
+    end
+    return true
+end
+
+-- The road and hall nearest the fort's ways in: the plan, or nil and why.
+function find_deep_depot(reserved)
+    local anchors = pasture_anchors()
+    if #anchors == 0 then return nil, 'no surface entrance or staircase to start from' end
+    local groups = {}
+    for _, p in ipairs(citizen_positions()) do
+        local g = walk_group(p.x, p.y, p.z)
+        if g ~= 0 then groups[g] = true end
+    end
+    local mw, mh = map_size()
+    local cache = {}
+    local function info(x, y, z)
+        local k = (z * 4096 + y) * 4096 + x
+        local v = cache[k]
+        if v == nil then v = tile_info(x, y, z) or false; cache[k] = v end
+        return v or nil
+    end
+    local gcache = {}
+    local function ground(x, y, z)
+        local k = (z * 4096 + y) * 4096 + x
+        local v = gcache[k]
+        if v ~= nil then return v end
+        v = false
+        if x >= 2 and y >= 2 and x <= mw - 3 and y <= mh - 3 then
+            local t = info(x, y, z)
+            v = t ~= nil and t.outside == true and not t.hidden and not t.liquid and not t.feature
+                and not t.building and not t.designated and GROUND[t.shape] == true and not is_tree(t)
+                and not tile_taken(x, y, z) and groups[walk_group(x, y, z)] == true
+            for _, a in ipairs(anchors) do
+                if v and a.z == z and math.max(math.abs(a.x - x), math.abs(a.y - y)) < DEEP_DEPOT_CLEAR then v = false end
+            end
+        end
+        gcache[k] = v
+        return v
+    end
+    local deadline = os.clock() + DEEP_DEPOT_SECONDS
+    local cands, seen = {}, {}
+    for _, a in ipairs(anchors) do
+        for z = a.z + 1, a.z - 1, -1 do
+            for y = a.y - DEEP_DEPOT_REACH, a.y + DEEP_DEPOT_REACH do
+                if os.clock() > deadline then break end
+                for x = a.x - DEEP_DEPOT_REACH, a.x + DEEP_DEPOT_REACH do
+                    local k = (z * 4096 + y) * 4096 + x
+                    if not seen[k] and ground(x, y, z) then
+                        seen[k] = true
+                        for i, d in ipairs(DEEP_DIRS) do
+                            if deep_start_ok(x, y, z, d, ground) then
+                                table.insert(cands, {x = x, y = y, z = z, d = d, i = i,
+                                    dist = math.max(math.abs(a.x - x), math.abs(a.y - y)) + 3 * math.abs(a.z - z)})
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    if #cands == 0 then
+        return nil, ('no open ground 3 tiles wide within %d tiles of the way in for a wagon road to start on')
+            :format(DEEP_DEPOT_REACH)
+    end
+    table.sort(cands, function(p, q)
+        if p.dist ~= q.dist then return p.dist < q.dist end
+        if p.z ~= q.z then return p.z > q.z end
+        if p.y ~= q.y then return p.y < q.y end
+        if p.x ~= q.x then return p.x < q.x end
+        return p.i < q.i
+    end)
+    local last = 'no way down'
+    for i, c in ipairs(cands) do
+        if os.clock() > deadline then
+            return nil, ('the search ran out of time after %d of %d starts (%s)'):format(i - 1, #cands, last)
+        end
+        for k = 1, DEEP_DEPOT_LEVELS do
+            local plan = deep_depot_layout(c.x, c.y, c.z, c.d, k)
+            -- the surface channel's ramp needs rock under the start row too
+            local ok, why = true, nil
+            local px, py = -c.d[2], c.d[1]
+            for v = -1, 1 do
+                local under = info(c.x + v * px, c.y + v * py, c.z - 1)
+                if under and under.aquifer then
+                    ok, why = false, 'an aquifer under the road\'s start'
+                elseif not under or under.shape ~= 'WALL' or under.liquid then
+                    ok, why = false, 'no rock under the road\'s start'
+                end
+            end
+            if ok then ok, why = deep_plan_ok(plan, c.z, reserved, info) end
+            if ok then
+                plan.start = {x = c.x, y = c.y, z = c.z}
+                plan.dir = c.d
+                return plan
+            end
+            last = why
+        end
+    end
+    return nil, ('no wagon road of %d tiles at most and %d levels down through safe rock from near the way in (%s)')
+        :format(DEEP_ROAD_MAX, DEEP_DEPOT_LEVELS, last)
+end
+
+-- The depot standing in the hall, if any.
+local function deep_depot_building(d)
+    if not (d and d.depot) then return nil end
+    local ok, b = pcall(function()
+        for _, b in ipairs(df.global.world.buildings.other.TRADE_DEPOT) do
+            if b.z == d.depot.z and b.x1 <= d.depot.x and b.x2 >= d.depot.x and b.y1 <= d.depot.y and b.y2 >= d.depot.y then
+                return b
+            end
+        end
+    end)
+    return ok and b or nil
+end
+
+local function any_depot()
+    local ok, n = pcall(function() return #df.global.world.buildings.other.TRADE_DEPOT end)
+    return ok and n and n > 0
+end
+
+-- Built? (a planned or half-built depot is not)
+local function depot_built(b)
+    local ok, v = pcall(function() return b:getBuildStage() >= b:getMaxBuildStage() end)
+    if ok then return v end
+    return nil
+end
+
+-- What the game says of the wagons: true (accessible), false (not), or nil
+-- when this DF/DFHack doesn't show it. building_tradedepotst.accessible is
+-- set by the game's own wagon path check (the depot's sheet shows it).
+function depot_wagon_access(b)
+    if not b then return nil end
+    local ok, v = pcall(function() return b.accessible end)
+    if not ok or v == nil then return nil end
+    if type(v) == 'boolean' then return v end
+    if type(v) == 'number' then return v ~= 0 end
+    return nil
+end
+
+-- A tile of the plan dug as it should be?
+local function deep_tile_done(t, r)
+    if not t then return false end
+    if r == 'd' then return t.shape ~= 'WALL' end
+    if r == 'h' then return t.shape == 'EMPTY' or t.shape == 'RAMP_TOP' end
+    return t.shape == 'RAMP'
+end
+
+-- Tiles left to dig, and the ones that lost their designation (no job on them).
+local function deep_dig_left(d)
+    local left, stalled = 0, {}
+    local jobs = job_tiles()
+    local done = {}
+    for _, p in ipairs(d.tiles or {}) do
+        local t = tile_info(p.x, p.y, p.z)
+        local ok = deep_tile_done(t, p.r)
+        done[(p.z * 4096 + p.y) * 4096 + p.x] = ok
+        if not ok then left = left + 1 end
+    end
+    for _, p in ipairs(d.tiles or {}) do
+        if not done[(p.z * 4096 + p.y) * 4096 + p.x] then
+            local t = tile_info(p.x, p.y, p.z)
+            local px, py, pz = math.tointeger(p.x) or p.x, math.tointeger(p.y) or p.y, math.tointeger(p.z) or p.z
+            local busy = jobs[px .. ',' .. py .. ',' .. pz] ~= nil
+            if t and not t.designated and not busy then
+                if p.r ~= 'ramp' then
+                    table.insert(stalled, {x = p.x, y = p.y, z = p.z, key = p.r})
+                elseif done[((p.z + 1) * 4096 + p.y) * 4096 + p.x] and t.shape == 'WALL' then
+                    -- the channel above is open but the rock under it stayed: dig the ramp itself
+                    table.insert(stalled, {x = p.x, y = p.y, z = p.z, key = 'r'})
+                end
+            end
+        end
+    end
+    return left, stalled
+end
+
+-- The report's view, once begun: {stage, x, y, elevation, levels, road,
+-- tiles_left, stalled, depot = none|building|built, wagon_access, why}.
+function deep_depot_status()
+    local d = deep_depot_data()
+    if not d then return nil end
+    if d.stage == 'no_road' then
+        local now = deep_now()
+        if now and d.tick and now - d.tick >= DEEP_DEPOT_RETRY_TICKS then return nil end
+        return {stage = 'no_road', why = d.why}
+    end
+    local out = {stage = d.stage, levels = d.levels, road = d.road}
+    if d.depot then out.x, out.y, out.elevation = d.depot.x, d.depot.y, ez(d.depot.z) end
+    local left, stalled = deep_dig_left(d)
+    out.tiles_left, out.stalled = left, #stalled
+    if d.stage == 'placed' then
+        local b = deep_depot_building(d)
+        if not b then
+            out.depot = 'none'
+        else
+            local built = depot_built(b)
+            out.depot = built == false and 'building' or 'built'
+            if built ~= false then out.wagon_access = depot_wagon_access(b) end
+        end
+    end
+    return out
+end
+
+-- One step of the underground depot (see above).
+function place_deep_depot(dry_run)
+    OFFSET = elevation_offset()
+    local d = deep_depot_data()
+    if d and d.stage == 'no_road' then
+        local now = deep_now()
+        if not (now and d.tick and now - d.tick >= DEEP_DEPOT_RETRY_TICKS) then
+            return {ok = false, rejected = true, no_road = true,
+                    error = 'no wagon road down was found (' .. tostring(d.why) .. '): the depot goes on the surface'}
+        end
+        d = nil
+    end
+    if not d then
+        if any_depot() then
+            return {ok = false, rejected = true, error = 'a trade depot already stands'}
+        end
+        local plan, why = find_deep_depot(level_areas())
+        if not plan then
+            if not dry_run then save_deep_depot({stage = 'no_road', why = why, tick = deep_now()}) end
+            return {ok = false, rejected = true, no_road = true, error = why, dry_run = dry_run or nil}
+        end
+        local out = {ok = true, stage = 'digging', x = plan.depot.x, y = plan.depot.y,
+                     elevation = ez(plan.depot.z), levels = plan.levels, road = plan.road,
+                     tiles = #plan.tiles, start = {x = plan.start.x, y = plan.start.y, elevation = ez(plan.start.z)},
+                     dry_run = dry_run or nil}
+        if dry_run then return out end
+        -- designated level by level, the surface first (the miners come down the road)
+        local by_z, zs = {}, {}
+        for _, p in ipairs(plan.tiles) do
+            if p.r ~= 'ramp' then
+                if not by_z[p.z] then by_z[p.z] = {}; table.insert(zs, p.z) end
+                table.insert(by_z[p.z], {x = p.x, y = p.y, text = p.r})
+            end
+        end
+        table.sort(zs, function(a, b) return a > b end)
+        for _, z in ipairs(zs) do
+            local okd, dry = pcall(quickfort_apply, 'dig', by_z[z], z, 0, 0, 'run', true)
+            if not okd or stat(dry, 'dig_designated') < #by_z[z] then
+                return {ok = false, error = ('the game would not designate the wagon road at elevation %d'):format(ez(z))}
+            end
+        end
+        for _, z in ipairs(zs) do pcall(quickfort_apply, 'dig', by_z[z], z, 0, 0) end
+        save_deep_depot({stage = 'digging', tiles = plan.tiles, depot = plan.depot, hall = plan.hall,
+                         levels = plan.levels, road = plan.road, start = plan.start})
+        return out
+    end
+    if d.stage == 'digging' then
+        local left, stalled = deep_dig_left(d)
+        if left > 0 then
+            if #stalled == 0 then
+                return {ok = false, rejected = true, waiting = true, stage = 'digging', tiles_left = left,
+                        error = ('the wagon road and depot hall are being dug: %d tile(s) left'):format(left)}
+            end
+            if dry_run then return {ok = true, stage = 'digging', redig = #stalled, dry_run = true} end
+            local n = 0
+            for i = 1, math.min(#stalled, DEEP_REDIG_MAX) do
+                local s = stalled[i]
+                local ok = pcall(quickfort_apply, 'dig', {{x = 0, y = 0, text = s.key}}, s.z, s.x, s.y)
+                if ok then n = n + 1 end
+            end
+            return {ok = n > 0, stage = 'digging', redig = n, tiles_left = left,
+                    error = n == 0 and 'the game would not designate the road\'s lost tiles again' or nil}
+        end
+        d.stage = 'placed'          -- dug: the depot goes in (below)
+    end
+    -- placed: the depot in the hall's middle (again if it was taken down)
+    local b = deep_depot_building(d)
+    if b then
+        return {ok = false, rejected = true, done = true, stage = 'placed',
+                depot = depot_built(b) == false and 'building' or 'built', wagon_access = depot_wagon_access(b),
+                error = 'the underground trade depot is placed'}
+    end
+    if any_depot() then return {ok = false, rejected = true, error = 'a trade depot already stands'} end
+    local c = d.depot
+    local cell = {{x = 0, y = 0, text = 'D'}}
+    local okd, dry = pcall(quickfort_apply, 'build', cell, c.z, c.x, c.y, 'run', true)
+    if not okd or stat(dry, 'build_designated') < 1 or stat(dry, 'invalid_keys') > 0 then
+        return {ok = false, error = ('the game would not place the trade depot in the hall at x%d y%d elevation %d')
+                    :format(c.x, c.y, ez(c.z))}
+    end
+    local out = {ok = true, stage = 'placed', x = c.x, y = c.y, elevation = ez(c.z), dry_run = dry_run or nil}
+    if dry_run then return out end
+    local okr, real = pcall(quickfort_apply, 'build', cell, c.z, c.x, c.y)
+    if not okr or stat(real, 'build_designated') < 1 then
+        return {ok = false, error = ('the game refused the trade depot at x%d y%d'):format(c.x, c.y)}
+    end
+    save_deep_depot(d)
+    return out
 end
 
 -- --- extra workshops ----------------------------------------------------------------

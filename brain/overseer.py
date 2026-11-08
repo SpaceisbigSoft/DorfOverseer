@@ -273,7 +273,7 @@ MODES = {"advisor": "Advisor", "copilot": "Co-pilot", "autopilot": "Autopilot"}
 # What the co-pilot asks you about first (in the game's on-screen panel).
 BIG_MOVES = {"start_project", "cancel_project", "cancel_work_order", "squad_fill", "import_orders",
              "build_gate_doors", "fortify_entrance", "expel_dwarf", "place_well", "link_lever", "place_traps",
-             "remove_workshops",
+             "remove_workshops", "deep_depot",      # (0.105.23) a wagon road and a hall dug
              "cut_entrance"}                     # (0.105.0) hatches across the fort's stairs: asked first
 DECLINE_DAYS = 7          # a "No" holds this many in-game days before it may ask again
 
@@ -417,6 +417,8 @@ def short(a: dict) -> str:
         return f"take down extra {a.get('kind')} workshops"
     if t == "place_keep":
         return "build the keep above ground (next step)"
+    if t == "deep_depot":        # (0.105.23)
+        return "dig a wagon road down to an underground trade depot (next step)"
     if t == "trim_gathering":
         return f"cancel waiting plant-gathering jobs, keeping {a.get('keep')}"
     if t == "polish":

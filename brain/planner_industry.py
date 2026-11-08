@@ -13,7 +13,7 @@ from quirks import has_rule
 from digest import _d, _l, normalize
 from planner_core import *  # noqa: F401,F403
 
-__all__ = ["CONTAINER_RECIPES", "GEAR_ORDER_METALS", "_supply_rules", "_slow_game_rules", "_clutter_rules", "_kiln_rules", "_soap_rule", "_pasture_rule", "LABOR_MODES_FIXED", "INDUSTRY_SHOPS", "_industry_rules", "_steel_rule", "_bottleneck_rule", "drink_short", "_crop_rules", "_farm_crops_rule", "farm_plots_live", "crops_owned", "drink_known_short", "_kitchen_rule", "_fishery_rule", "_bench_coffins_rule", "STONE_CRAFTS", "order_shop", "_order_slots_rule", "_orphan_jobs_rule", "_unsuspend_rule", "_approve_rule", "_stuck_orders_rule", "COAL_STONES", "_coal_rule", "_picks_order", "_stone_rule", "stone_crisis", "PRECIOUS_ORES", "_cloth_rule", "_trade_rules", "_gems_rule", "trade_wants", "_spare_mechanisms_rule", "_hauling_rule", "_surface_basics", "trees_this_year", "_keep_rule", "DEEP_SURFACE_KINDS", "_deep_surface_filter", "_free_time_rule", "_labor_rules", "OWN_LABOR_RULES", "FEEDER_ORDER", "_feeder_rule", "woodcutters", "gatherers", "trade_margin_for", "keeps_treasures", "spare_mechanisms", "_dairy_rule", "_eggs_rule", "EXCESS_SHOPS", "_excess_shops_rule", "drink_below_target", "drink_crisis", "drink_target_per_dwarf", "crisis_brew_room", "brew_jobs_open", "_labor_waiting_rule", "farm_target", "thirsty_farm_extra", "_farm_rule", "_smelting_rule", "_shoes_recipe", "_glass_rule", "PRECIOUS_METALS", "precious_metal"]
+__all__ = ["CONTAINER_RECIPES", "GEAR_ORDER_METALS", "_supply_rules", "_slow_game_rules", "_clutter_rules", "_kiln_rules", "_soap_rule", "_pasture_rule", "LABOR_MODES_FIXED", "INDUSTRY_SHOPS", "_industry_rules", "_steel_rule", "_bottleneck_rule", "drink_short", "_crop_rules", "_farm_crops_rule", "farm_plots_live", "crops_owned", "drink_known_short", "_kitchen_rule", "_fishery_rule", "_bench_coffins_rule", "STONE_CRAFTS", "order_shop", "_order_slots_rule", "_orphan_jobs_rule", "_unsuspend_rule", "_approve_rule", "_stuck_orders_rule", "COAL_STONES", "_coal_rule", "_picks_order", "_stone_rule", "stone_crisis", "PRECIOUS_ORES", "_cloth_rule", "_trade_rules", "_gems_rule", "trade_wants", "_spare_mechanisms_rule", "_hauling_rule", "_surface_basics", "trees_this_year", "_keep_rule", "DEEP_SURFACE_KINDS", "_deep_surface_filter", "_deep_depot_choice", "_deep_depot_watch", "_free_time_rule", "_labor_rules", "OWN_LABOR_RULES", "FEEDER_ORDER", "_feeder_rule", "woodcutters", "gatherers", "trade_margin_for", "keeps_treasures", "spare_mechanisms", "_dairy_rule", "_eggs_rule", "EXCESS_SHOPS", "_excess_shops_rule", "drink_below_target", "drink_crisis", "drink_target_per_dwarf", "crisis_brew_room", "brew_jobs_open", "_labor_waiting_rule", "farm_target", "thirsty_farm_extra", "_farm_rule", "_smelting_rule", "_shoes_recipe", "_glass_rule", "PRECIOUS_METALS", "precious_metal"]
 
 CONTAINER_RECIPES = {"wooden_barrel", "stone_large_pot"}
 # ore worth mining for gear, most wanted first (iron makes steel; tin with copper makes bronze)
@@ -1827,8 +1827,10 @@ def _keep_rule(s: dict, cfg: dict, citizens: int, traits: dict, proposals: list,
 
 
 # (0.105.23, 14.1 step 4c) Surface -80 or lower (the Deep mine): what may
-# still go above ground. The trade depot (caravans' wagons can't come down;
-# placed at the way in, the nearest open spot 4 tiles out), the refuse pile
+# still go above ground. The trade depot only when no wagon road down was
+# found (then at the way in, the nearest open spot 4 tiles out; the player:
+# a depot can be underground when the wagons' way is 3 wide with ramps, so
+# it goes down a road the bridge digs: `deep_depot`), the refuse pile
 # (rot indoors makes miasma), the garbage dump and the cage pile (marked
 # ground, nothing built). Pastures stay too: grazers starve without grass and
 # the AI has no underground pasture (cavern moss is not looked for). Farm
@@ -1866,14 +1868,60 @@ def _deep_surface_filter(s: dict, traits: dict, memory, proposals: list, notes: 
             p.action = a
         elif t == "start_project" and ceil is not None:
             p.action = dict(a, max_elev=ceil)
-        elif t == "place_surface" and a.get("kind") == "depot" and "the way in" not in p.reason:
-            p.reason += " (the Deep mine's one building above ground: at the way in, for the caravans' wagons)"
+        elif t == "place_surface" and a.get("kind") == "depot":
+            p = _deep_depot_choice(s, p, notes)
+            if p is None:
+                continue
         out.append(p)
     if dropped:
         notes.append("Surface " + str(traits.get("surface", 0)) + ": nothing above ground ("
-                     + ", ".join(sorted(set(dropped))) + " left out); only the trade depot at the way in, "
-                     "the refuse pile and the pastures stay outside")
+                     + ", ".join(sorted(set(dropped))) + " left out); the trade depot goes underground down a "
+                     "wagon road, only the refuse pile and the pastures stay outside")
     return out
+
+
+def _deep_depot_choice(s: dict, p, notes: list):
+    """(0.105.23, 14.1 step 4c) The Deep mine's trade depot: underground,
+    down a 3-wide ramp road the wagons can use (the player: a depot can be
+    underground when the wagons' way is right), dug by the bridge a step at a
+    time (`deep_depot`); while the road is being dug, a note; when no road
+    was found (the bridge says `no_road`), the surface depot at the way in."""
+    dd = _d(_d(s.get("buildings")).get("deep_depot"))
+    stage = dd.get("stage")
+    if stage == "no_road":
+        why = dd.get("why") or "no safe way down"
+        if "the way in" not in p.reason:
+            p.reason += " (the Deep mine's one building above ground: at the way in; no wagon road down was found)"
+        notes.append(f"the underground trade depot: no wagon road down ({why}); the depot goes up at the way in")
+        return p
+    if stage == "digging" and (dd.get("tiles_left") or 0) > 0 and not dd.get("stalled"):
+        notes.append(f"the underground trade depot: {dd['tiles_left']} tile(s) of its wagon road and hall "
+                     "still to dig")
+        return None
+    if stage == "digging" and (dd.get("tiles_left") or 0) > 0:
+        why = f"the underground trade depot: {dd['stalled']} tile(s) of the wagon road lost their digging, mark them again"
+    elif stage in ("digging", "placed"):
+        why = "the underground trade depot: its road and hall are dug, place the depot in the hall"
+    else:
+        why = ("no trade depot: the Deep mine's goes underground: a wagon road 3 tiles wide, ramps not stairs, "
+               "down from open ground by the way in to a hall with the depot (cloth, rope, metal, seeds the "
+               "fort can't make)")
+    return Proposal(p.rule, {"type": "deep_depot"}, why, p.priority, p.is_order)
+
+
+def _deep_depot_watch(s: dict, notes: list) -> None:
+    """(0.105.23, 14.1 step 4c) Once the underground depot stands, what the
+    game says of the wagons: when it says they can't reach it, a Needs you
+    line (the AI doesn't dig on blindly). Nothing when the game doesn't show
+    it (the report's `wagon_access` is then missing)."""
+    dd = _d(_d(s.get("buildings")).get("deep_depot"))
+    if dd.get("depot") != "built":
+        return
+    at = f"x{dd.get('x')} y{dd.get('y')} elevation {dd.get('elevation')}"
+    if dd.get("wagon_access") is False:
+        notes.append(NEEDS_YOU + f"the game says the caravans' wagons can't reach the underground trade depot at {at}: "
+                     "look at its road (3 tiles wide all the way from the map's edge, ramps not stairs, nothing "
+                     "built, no trees or boulders on it) or build a depot on the surface")
 
 
 def _free_time_rule(s: dict, citizens: int, cfg: dict, proposals: list, notes: list) -> None:

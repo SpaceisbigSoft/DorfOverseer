@@ -1964,6 +1964,9 @@ function get_buildings()
     -- the keep above ground (the Surface ambition), once begun
     local okk, keep = pcall(function() return reqscript('ai-builder').keep_status() end)
     out.keep = okk and keep or nil
+    -- (0.105.23, 14.1 step 4c) the Deep mine's underground trade depot, once begun
+    local okd, deep = pcall(function() return reqscript('ai-builder').deep_depot_status() end)
+    out.deep_depot = okd and deep or nil
     return out
 end
 
@@ -5600,6 +5603,12 @@ function act_place_keep(a)
     return reqscript('ai-builder').place_keep(a.dry_run == true)
 end
 
+-- (0.105.23, 14.1 step 4c) The Deep mine's trade depot underground: a 3-wide
+-- ramp road for the wagons and a hall, dug, then the depot (lua/ai-builder.lua).
+function act_deep_depot(a)
+    return reqscript('ai-builder').place_deep_depot(a.dry_run == true)
+end
+
 -- Worn-out clothes lying about marked for the garbage dump (DFHack's
 -- cleanowned: "scattered" = only things on the ground, "x" = only the badly
 -- worn), when the game runs slowly from too many items.
@@ -6623,6 +6632,7 @@ ACTIONS = {
     build_crossing = act_build_crossing,
     remove_crossing = act_remove_crossing,
     place_keep = act_place_keep,
+    deep_depot = act_deep_depot,                 -- (0.105.23)
     tidy = act_tidy,
     narrow_detail = act_narrow_detail,
     trim_labor = act_trim_labor,
@@ -7324,7 +7334,7 @@ local function cmd_act(args)
                  or action.type == 'assign_miners' or action.type == 'assign_labor'
                  or action.type == 'gather_plants' or action.type == 'trim_gathering'
                  or action.type == 'appoint'
-                 or action.type == 'place_surface' or action.type == 'place_keep' or action.type == 'make_squad'
+                 or action.type == 'place_surface' or action.type == 'place_keep' or action.type == 'deep_depot' or action.type == 'make_squad'
                  or action.type == 'mine_ore' or action.type == 'clear_gate' or action.type == 'bring_goods'
                  or action.type == 'unload_depot' or action.type == 'kitchen_skill' or action.type == 'place_slabs'
                  or action.type == 'give_room' or action.type == 'set_uniform' or action.type == 'adopt_uniform' or action.type == 'petition_orders'
