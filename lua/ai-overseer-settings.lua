@@ -274,6 +274,9 @@ function defaults()
         -- (0.105.24) the same locations shut to visitors a while when the mayor's
         -- meetings are mostly with visitors and citizens go unheard
         shut_to_visitors = true,
+        -- (0.105.30) construction: the surface hall, gate wings, soil floors and their
+        -- blocks (brain/planner_construct.py); off: none of these is started
+        construct = true,
         -- (0.105.27) forbidden items and junk (DISPOSAL_CHOICES); items forbidden
         -- for no reason the game gives count as the player's and are left alone
         -- unless disposal_player_items; keep_enemy_gear: invaders' gear never melted
@@ -370,6 +373,7 @@ function sanitize(s)
                         'make_contact',             -- (0.105.0) the messenger and Make contact
                         'send_messenger',           -- (0.105.24) the World screen driven to send it
                         'heist_lockout', 'shut_to_visitors',   -- (0.105.24) locations shut to visitors a while
+                        'construct',                -- (0.105.30) building above ground (hall, wings, floors)
                         'moat', 'magma_workshops', 'irrigation',   -- (0.105.0) the water works' switches
                         'open_caverns',             -- (0.105.4 review) a cavern well into an undiscovered cavern
                         'disposal_player_items', 'keep_enemy_gear',   -- (0.105.27) disposal
@@ -457,6 +461,7 @@ function for_ai(s)
         send_messenger = s.send_messenger,         -- (0.105.24)
         heist_lockout = s.heist_lockout,           -- (0.105.24)
         shut_to_visitors = s.shut_to_visitors,     -- (0.105.24)
+        construct = s.construct,                   -- (0.105.30)
         disposal = s.disposal,                     -- (0.105.27)
         disposal_player_items = s.disposal_player_items,
         keep_enemy_gear = s.keep_enemy_gear,

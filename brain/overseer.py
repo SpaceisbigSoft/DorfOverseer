@@ -607,6 +607,10 @@ def short(a: dict) -> str:
     if t == "location_access":
         return ("open" if a.get("visitors") else "close") + f" {len(a.get('ids') or [])} location(s) to visitors"
     if t == "fortify_entrance":
+        if a.get("style") == "sealed":         # (0.105.30) the Hermit's cavern walls
+            return "wall a narrow cavern opening shut"
+        if a.get("style") == "wagon":          # (0.105.30) the deep depot's road
+            return "put a drawbridge across the depot's wagon road"
         return f"wall an entrance down to a {a.get('style')} gate"
     if t == "pasture":
         return f"put {a.get('count')} animals in a pasture"

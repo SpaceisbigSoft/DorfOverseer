@@ -185,6 +185,15 @@ function ai_regions()
         end)
     end)
     if not ok then err('soil_floors', e) end
+    -- (0.105.30 seams) the wing walls, from ai-gates' saved record (by way
+    -- in), so they count as wings before a scan and never as gate pieces
+    ok, e = pcall(function()
+        local d = site_get('ai-overseer/wings')
+        for _, list in pairs(type(d) == 'table' and d or {}) do
+            each(list, function(v) claim('wings', unkey(v)) end)
+        end
+    end)
+    if not ok then err('wings', e) end
     -- the ways in (scanned this session: ai-gates keeps them in memory)
     ok, e = pcall(function()
         local G = reqscript('ai-gates')

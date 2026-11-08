@@ -38,7 +38,7 @@ from planner_core import *  # noqa: F401,F403
 
 __all__ = ["HALL_STAGES", "HALL_OPEN", "KEEP_OPEN", "HALL_MAX_INTERIOR", "SOIL_FLOOR_KINDS",
            "construct_quiet", "hall_kind", "hall_status", "keep_wanted", "keep_open", "hall_open",
-           "keep_failures", "planned_constructions", "hall_next", "hall_blocks_needed", "_hall_rule", "_construction_blocks_rule",
+           "keep_failures", "planned_constructions", "hall_next", "hall_opts", "hall_blocks_needed", "_hall_rule", "_construction_blocks_rule",
            "wings_wanted", "_wings_rule", "cavern_wall_style", "soil_floor_wanted", "_soil_floor_rule",
            "note_construct_cycle", "note_construct", "construct_memory"]
 
@@ -76,7 +76,7 @@ def construct_quiet(s: dict, memory, traits: dict, cfg: dict, rules_: dict | Non
     if s.get("halted") is True:
         return "halted in the game"
     st = s.get("settings") if isinstance(s.get("settings"), dict) else {}
-    if st.get("construct") is False:
+    if st.get("construct") is False or _d(rules_).get("construct") is False:
         return "building above ground is off on the Rules tab"
     if memory is not None and _d(getattr(memory, "crisis", None)).get("why"):
         return "the fort is in crisis"
@@ -286,7 +286,20 @@ def _hall_rule(s: dict, cfg: dict, citizens: int, traits: dict, proposals: list,
         notes.append(d[-1])
         return
     _, kind, stage, tiles, why = d
-    proposals.append(Proposal("hall", {"type": "place_hall", "kind": kind}, why, 7))
+    proposals.append(Proposal("hall", {"type": "place_hall", "kind": kind, **hall_opts(traits, cfg)}, why, 7))
+
+
+def hall_opts(traits: dict, cfg: dict) -> dict:
+    """(0.105.30, construction seams) What the sliders give the hall
+    (place_hall's opts, spec 3.1): glass windows with Grandeur 40+, a block
+    floor over the soil with Craftsmanship 40+, a statue with Grandeur 40+
+    (the bridge places windows and the statue only when free ones lie in
+    stock)."""
+    g = traits.get("grandeur", 0) or 0
+    c = traits.get("craftsmanship", 0) or 0
+    return {"windows": g >= cfg["hall_windows_grandeur"],
+            "floor": c >= cfg["hall_floor_craftsmanship"],
+            "statue": g >= cfg["hall_statue_grandeur"]}
 
 
 def wings_wanted(traits: dict, cfg: dict) -> bool:

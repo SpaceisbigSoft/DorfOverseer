@@ -417,6 +417,16 @@ function RulesPage:init()
         initial_option = p.settings.shut_to_visitors ~= false,
         on_change = function(v) p:set_field('shut_to_visitors', v) end,
     })
+    -- (0.105.30) construction: the surface hall, the gate wings, soil floors
+    -- (the right-hand column's free row under the visitors' switches)
+    table.insert(views, widgets.ToggleHotkeyLabel{
+        view_id = 'construct',
+        frame = {t = 12 + jrow, l = 62, w = 56},
+        label = 'Construct halls, gate wings, floors:',
+        label_width = 44,
+        initial_option = p.settings.construct ~= false,
+        on_change = function(v) p:set_field('construct', v) end,
+    })
     local t = 6 + #S.OPTIONAL_LEVELS
     table.insert(views, widgets.ToggleHotkeyLabel{
         view_id = 'order_supplies',
@@ -719,6 +729,7 @@ function RulesPage:refresh()
     self.subviews.send_messenger:setOption(s.send_messenger == true, false)        -- (0.105.24)
     self.subviews.heist_lockout:setOption(s.heist_lockout ~= false, false)         -- (0.105.24)
     self.subviews.shut_to_visitors:setOption(s.shut_to_visitors ~= false, false)   -- (0.105.24)
+    self.subviews.construct:setOption(s.construct ~= false, false)                 -- (0.105.30)
     for _, k in ipairs({'moat', 'magma_workshops', 'irrigation'}) do               -- (0.105.0)
         self.subviews[k]:setOption(s[k] ~= false, false)
     end

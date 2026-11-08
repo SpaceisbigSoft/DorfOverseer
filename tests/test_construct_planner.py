@@ -116,7 +116,7 @@ def _():
     ps, _ = run(s, keep_refused(Memory(), 2))
     assert not hall_props(ps)
     ps, _ = run(s, keep_refused(Memory(), 3))
-    assert [p.action for p in hall_props(ps)] == [{"type": "place_hall", "kind": "field_hall"}], ps
+    assert [p.action for p in hall_props(ps)] == [{"type": "place_hall", "kind": "field_hall", "windows": True, "floor": False, "statue": True}], ps
     assert hall_props(ps)[0].priority == 7
 
 
@@ -124,7 +124,7 @@ def _():
 def _():
     s = fort(MERCHANT)
     ps, _ = run(s)
-    assert [p.action for p in hall_props(ps)] == [{"type": "place_hall", "kind": "market_hall"}], ps
+    assert [p.action for p in hall_props(ps)] == [{"type": "place_hall", "kind": "market_hall", "windows": False, "floor": True, "statue": False}], ps
     s["buildings"]["other"].pop("TradeDepot")
     ps, _ = run(s)
     assert not hall_props(ps)

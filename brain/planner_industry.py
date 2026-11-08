@@ -1417,7 +1417,12 @@ def _keep_rule(s: dict, cfg: dict, citizens: int, traits: dict, proposals: list,
         if stage == "walls" and k.get("walls_planned"):
             notes.append(f"the keep: {k['walls_planned']} wall tile(s) still to build")
             return
-        if stage in ("stair", "roof") and k.get("roof_planned"):     # (0.105.30) the stair to the roof counts too
+        if stage == "stair" and (k.get("stair_planned") or k.get("roof_planned")):
+            # (0.105.30, construction seams) the stair up to the roof, waiting
+            # to be built (keep_status stair_planned; roof_planned counts it too)
+            notes.append("the keep: its stair up to the roof is still to build")
+            return
+        if stage == "roof" and k.get("roof_planned"):
             notes.append(f"the keep: {k['roof_planned']} roof tile(s) still to build")
             return
     if young_fort(s, cfg) or citizens < cfg["keep_min_citizens"]:

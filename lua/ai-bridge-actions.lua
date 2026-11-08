@@ -1681,13 +1681,25 @@ end
 
 HALL_KINDS = {field_hall = true, market_hall = true}
 
+HALL_OPTS = {'windows', 'floor', 'statue'}
+
 -- One stage of a surface hall (lua/ai-builder-halls.lua place_hall):
--- {type = 'place_hall', kind = 'field_hall'|'market_hall', dry_run}
+-- {type = 'place_hall', kind = 'field_hall'|'market_hall', windows, floor,
+-- statue, dry_run}. The three options are the brain's (by the sliders):
+-- true or false, or left out (false); anything else is refused.
 function act_place_hall(a)
     if not HALL_KINDS[a.kind] then return reject('place_hall needs kind field_hall|market_hall') end
+    local opts = {}
+    for _, k in ipairs(HALL_OPTS) do
+        local v = a[k]
+        if v ~= nil and type(v) ~= 'boolean' then
+            return reject(('place_hall: %s must be true or false'):format(k))
+        end
+        opts[k] = v == true
+    end
     local f, r = construct_call('ai-builder', 'place_hall', 'place_hall')
     if not f then return r end
-    return f(a.kind, a.dry_run == true)
+    return f(a.kind, a.dry_run == true, opts)
 end
 
 -- The two wall arms out from a standing gatehouse (lua/ai-gates.lua

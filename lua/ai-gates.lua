@@ -693,6 +693,9 @@ function find_entrances(starts, buildings)
                 if gatehouse_here then
                     e.gatehouse = 'standing'
                     e.gatehouse_bridge = gatehouse_bridge
+                    -- (0.105.30 seams) its wing walls, as recorded when placed
+                    local okw, wp = pcall(wing_pieces_of, e)
+                    if okw and wp then e.wing_pieces = wp end
                 else
                     local okp, plan, why = pcall(plan_gatehouse, e, h)
                     if okp and plan then e.gatehouse = 'possible'
@@ -3144,6 +3147,41 @@ end
 WING_LEN, WING_MIN = 5, 3
 WING_KEEP_OFF, WING_WATER = 3, 2
 
+-- (0.105.30, construction seams) The wing tiles placed, kept with the save
+-- by the entrance's spot: {["x,y,z" of the way in] = {"x,y,z", ...}}. A scan
+-- puts them back on the entrance (e.wing_pieces); ai-constructions counts
+-- them as ai.wings (not as gate pieces), and the summary says wings = 'standing'.
+WINGS_KEY = 'ai-overseer/wings'
+WINGS_MAX = 40                 -- tiles kept a way in (two arms of WING_LEN, built again a few times)
+
+function wing_records()
+    local d = U.site_get(WINGS_KEY, {})
+    return type(d) == 'table' and d or {}
+end
+
+local function spot_of(e) return ('%d,%d,%d'):format(e.x, e.y, e.z) end
+
+-- The wing tiles recorded for this way in (nil: none).
+function wing_pieces_of(e)
+    local list = wing_records()[spot_of(e)]
+    return (type(list) == 'table' and #list > 0) and list or nil
+end
+
+local function note_wings(e, pieces)
+    if #pieces == 0 then return end
+    local d = wing_records()
+    local list, seen = {}, {}
+    for _, k in ipairs(type(d[spot_of(e)]) == 'table' and d[spot_of(e)] or {}) do
+        if not seen[k] then seen[k] = true; table.insert(list, k) end
+    end
+    for _, k in ipairs(pieces) do
+        if not seen[k] and #list < WINGS_MAX then seen[k] = true; table.insert(list, k) end
+    end
+    d[spot_of(e)] = list
+    U.site_put(WINGS_KEY, d)
+    e.wing_pieces = list
+end
+
 -- Zones, farm plots and depots on level z: {{x1, y1, x2, y2, kind}} with kind
 -- 'zone', 'pasture', 'farm' or 'depot' (tests replace this).
 function wing_keepouts(z)
@@ -3332,6 +3370,7 @@ function build_wings(id, dry_run)
     out.ok = out.walls > 0
     if #failed > 0 then out.failed = table.concat(failed, '; '):sub(1, 300) end
     if not out.ok then out.error = 'no wing wall could be placed (' .. (out.failed or '?') .. ')' end
+    pcall(note_wings, e, out.pieces)      -- (0.105.30 seams) on the entrance's saved record
     return out
 end
 
@@ -3399,6 +3438,7 @@ function summary()
                             closed = GATES.closed and GATES.closed[e.id] or false,
                             -- (0.105.23) the founding stair's lid, a gatehouse in front of it
                             lid = e.lid, gatehouse = e.gatehouse, gatehouse_why = e.gatehouse_why,
+                            wings = e.wing_pieces and 'standing' or nil,   -- (0.105.30 seams) recorded wing walls
                             deep_road = e.deep_road,        -- (0.105.30) the depot's wagon road: a drawbridge only
                             outer = #outer > 0 and outer or nil})
     end

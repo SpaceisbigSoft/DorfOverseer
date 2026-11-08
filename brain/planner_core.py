@@ -445,6 +445,8 @@ def player_rules(s: dict) -> dict:
             # (0.105.24) locations shut to visitors a while after a heist / when the mayor is swamped by visitors
             "heist_lockout": st.get("heist_lockout") is not False,
             "shut_to_visitors": st.get("shut_to_visitors") is not False,
+            # (0.105.30) construction above ground (the hall, gate wings, soil floors): off only when the settings say so
+            "construct": st.get("construct") is not False,
             # (0.105.0) water works: the moat (on by default only where the survey found a river:
             # the planner wants one only then), magma workshops, the muddied farm level
             "moat": st.get("moat") is not False,

@@ -157,6 +157,12 @@ hall, basic workshops and stockpiles are always built when missing.
   can't complain and at least 3 of the mayor's meetings, half or more of
   them, are with visitors. Then they reopen and are looked at afresh. Never
   at Outsiders 100+. A location you shut is never reopened.
+- **Construct halls, gate wings, floors** (`construct`, on, 0.105.30): the
+  AI builds above ground by its sliders: the surface hall (Garden fort,
+  Merchant city), the wall arms at a gatehouse (War-hold), block floors over
+  the soil of finished halls, and the stone blocks for them. Off: none of
+  these is started or carried on; what is built stays. The keep (Surface
+  50+) is not under this switch.
 
 ### Supplies, care and the fort's works
 

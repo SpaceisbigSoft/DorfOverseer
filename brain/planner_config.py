@@ -166,6 +166,8 @@ PLANNER_CONFIG = {
     "hall_min_citizens": 30,
     "hall_keep_failures": 3,                 # the keep refused this often in a row: the hall may go first
     "hall_floor_craftsmanship": 40,          # a block floor over the soil inside
+    "hall_windows_grandeur": 40,             # (0.105.30 seams) glass windows on its long sides
+    "hall_statue_grandeur": 40,              # (0.105.30 seams) a statue inside, when one is free
     "hall_max_planned": 100,                 # planned construction tiles at once, the fort over (FPS)
     "hall_stage_tiles": {"walls": 28, "floor": 35, "roof": 36},
     "hall_block_wait_ticks": 2 * 84 * 1200,  # two seasons short of blocks: build with any material
