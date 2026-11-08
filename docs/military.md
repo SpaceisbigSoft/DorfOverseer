@@ -1,9 +1,9 @@
-# Military and defence (step 4)
+# Military and defence
 
-The AI runs the fort's squads; it doesn't create them. DFHack can add and
-remove soldiers, but it can't appoint a squad's captain, so **create the
-squads yourself once** in the military screen (like setting up the burrow
-for the civilian alert). From then on the AI:
+The AI runs the fort's squads, and makes them too. When it wants soldiers
+and no squad has room, it makes a new squad with a captain's post (`make_squad`
+in `lua/ai-military.lua`). Every fort of 15+ adults keeps at least 3 soldiers,
+whatever the Militarism slider says. From then on the AI:
 
 - **Fills them.** The share of citizens the fort wants as soldiers follows
   the Militarism slider: 5% at -100, 10% at 0, 40% at +100 (in a straight
@@ -148,19 +148,27 @@ then hid again. Now:
 
 ## Rules tab
 
+The military block of the Rules tab (all of it is in [controls.md](controls.md)):
+
 | Setting | Default |
 | --- | --- |
-| Send squads against | ordinary enemies, not great beasts (or: everything, never) |
-| Fill squads with suitable dwarves | on |
+| Send squads against | ordinary enemies, not great beasts (or: everything that can reach us, never) |
+| Raise and fill squads | on |
 | Put idle squads on training | on |
-| Close the entrances when danger comes | on |
+| Close gates and link levers | on |
 | Put doors on entrances that have none | on |
-| Wall wide entrances to a gate | on |
+| Wall entrances, trap behind | on |
 | Make weapons, armour and helms | on |
+| Appoint the six officials | on |
+| When hiding, squads wait in the shelter | on |
 | Weapon to make | battle axes (or spears, maces) |
+| Invaders caught in cages | keep them caged (release and put to death only ask you) |
+| Lock werebeasts in at the full moon | on |
+| Seal a cavern a beast is in | on |
 
 ## Not done yet
 
-Setting up uniforms (do that in the military screen), greaves, gauntlets,
-boots and shields, ranged squads and ammunition, and building walls, traps
-or a moat (the Fortification trait).
+Siege engines and archers' fortifications; missions other than Make contact
+(raids, rescues, tribute and artifacts: Phase 13b). The messenger itself is
+sent by the World screen only with the Rules trial switch on, and only up to
+the step nobody has recorded yet.

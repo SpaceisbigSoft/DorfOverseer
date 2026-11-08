@@ -1,5 +1,8 @@
 {
   "dfhack_run": "C:\\path\\to\\steamapps\\common\\DFHack\\hack\\dfhack-run.exe",
   "timeout_s": 10,
+  "dfhack_port": 5000,
+  "df_launch": "C:\\path\\to\\steamapps\\common\\Dwarf Fortress\\Dwarf Fortress.exe",
+  "df_save_dir": "C:\\Users\\you\\AppData\\Roaming\\Bay 12 Games\\Dwarf Fortress\\save",
   "strategist_backend": "subscription"
 }

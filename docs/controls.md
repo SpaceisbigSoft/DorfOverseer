@@ -1,4 +1,4 @@
-# Watching and controlling the AI (Phase 5)
+# Watching and controlling the AI
 
 ## The on-screen panel
 
@@ -51,10 +51,11 @@ and after a second No it leaves it to you (see below).
 
 ## Needs you
 
-Some things only you can do: set up the civilian-alert burrow, link the "AI
-gate" lever, give squads a uniform, build a workshop the AI can't (a glass
-furnace for a mood), dig a well, engrave a memorial slab for a ghost... When
-the AI needs one of these, it says so in three places:
+Some things only you can do: answer a citizenship petition (DFHack 53.16-r3
+can't), send a Make contact messenger while the trial switch is off, agree to
+a residency on DF's petitions screen, answer a meeting the AI can't, give
+a strange mood a material the fort can't make or buy... When the AI needs one
+of these, it says so in three places:
 
 - the on-screen panel: a purple "Needs you" line with the first one
 - the panel's **Needs you** tab (Ctrl-Shift-O): the full list
@@ -73,19 +74,32 @@ or for all your forts; Shift-V again goes back to the culture. Details:
 
 ## The Rules tab
 
-Ctrl-Shift-O, **Rules** tab: what the AI may build and do on its own.
+Ctrl-Shift-O, **Rules** tab: what the AI may build and do on its own. Every
+control is listed below in the window's order, with its default. Changes are
+saved with the fort and apply at the AI's next check.
+
+On/off switches can also be set from outside the game. Put
+`logs\rules-request.json`, for example `{"rules": {"open_caverns": true}}`, in
+the fort's DF-AI folder. The overseer applies it once, through the bridge's
+`set_rules`, and renames it `rules-request.done.json` with the answer. Only
+switches whose default is on or off can be set this way.
+
+### The fort
 
 - **The fort should:** *Expand toward the Growth target* (the default) or
   *Maintain: keep it as it is*. Expand digs bedrooms up to 20 ahead of the
   population, toward the target, and builds new halls. Maintain holds the
-  population where it was when you chose it (no new migrants; births only
-  replace losses), keeps everything running, and builds no new memorials,
+  population where it was when you chose it: no new migrants, and births only
+  replace losses. It keeps everything running, and builds no new memorials,
   temples or libraries. Sending dwarves away (Extreme low Growth) is asked
   first in Co-pilot mode.
-- **Set the population cap from Growth:** the AI sets DF's population cap
-  (which decides how many migrants come) to the Growth target, or to the
-  held size in Maintain. It lasts for the session; the AI sets it again
-  after a restart.
+- **Memorial halls for slain beasts:** one for every beast, at most one per
+  season (the default), at most one per year, or never. A memorial that has
+  to wait is shown as a note.
+- **DF pop cap from Growth/Maintain** (on): the AI sets DF's population cap,
+  which decides how many migrants come, to the Growth target, or to the held
+  size under Maintain. It lasts for the session; the AI sets it again after a
+  restart.
 
 The **Growth** slider (Society tab) sets the target population:
 
@@ -101,23 +115,115 @@ Without Extreme it goes in a straight line between those (-50 = 63,
 +50 = 175). The window shows what the value you pick means. Maintain wins
 over Growth: a fort set to Maintain never shrinks or grows.
 
-- **Memorial halls for slain beasts:** one for every beast, at most one per
-  season (the default), at most one per year, or never. A memorial that has
-  to wait is shown as a note.
-- **Levels the AI may build when needed:** tombs, hospital, tavern, library,
-  barracks, temple. Switch one off and the AI moves on to its next need.
-  Bedrooms, the dining hall, basic workshops and stockpiles are always built
-  when missing.
-- **Keep the wounded in an "AI hospital" burrow** (beside the Hospital
-  level, 0.104.168): the patients DF wants treated are kept in a burrow over
-  the hospitals and the nearest drink and food, and let out when healed. Off:
-  everyone in it is let out at once.
-- **Order barrels, pots, bags, hospital supplies:** on by default. Off, the
-  shortages are still reported.
-- **Build the workshop a strange mood needs:** on by default. Off, the AI
-  says which workshop to build instead.
+### Levels the AI may build when needed
 
-Changes are saved with the fort and apply at the AI's next check.
+Tombs (coffins for the dead), Hospital, Tavern, Library, Barracks (militant
+forts), Archery range (crossbow squads), Statue gardens (in good times), Jail
+(cells for the sheriff) and Temple (devout forts) are all on by default.
+Switch one off and the AI moves on to its next need. Bedrooms, the dining
+hall, basic workshops and stockpiles are always built when missing.
+
+### Burrows, the world outside and visitors (the right-hand column)
+
+- **Keep the wounded in an "AI hospital" burrow** (on; beside the Hospital
+  level, 0.104.168). The patients DF wants treated are kept in a burrow over
+  the hospitals and the nearest drink and food, and let out when healed.
+  A member who grows very thirsty or hungry is let out at once, and none such
+  is moved in. A bedridden patient stays only where the burrow has a well
+  (0.105.22). Off: everyone in it is let out at once.
+- **Keep a dwarf in a tantrum in an "AI calm" burrow** (on; beside the Jail
+  level, 0.104.169). The dwarf goes to a free bedroom away from the patients,
+  with drink, until calm. The burrows retire themselves in a fort where
+  dwarves in a tantrum are seen outside them 90% of 40+ times: DF doesn't
+  hold them to a burrow (0.105.24).
+- **Tribute a civilisation asks** (0.105.0): *pay small, refuse large* (the
+  default), *always pay* or *always refuse*. It answers a meeting's tribute
+  demand.
+- **Appoint a messenger, make contact** (on, 0.105.0): a Messenger is
+  appointed, and the nearest site not in contact is named for Make contact.
+- **Send it by the World screen (trial)** (off, 0.105.24): the AI drives DF's
+  World screen to send the messenger itself. It stops at the first step
+  nobody has recorded yet, which today is step 4 of 6, logs what it saw and
+  shuts the screen. Off, the AI only names the site for you to send.
+- **Shut to visitors a while after a theft** (on, 0.105.24): after an
+  artifact heist, or a visitor killing a citizen, the tavern, temples,
+  library and guildhalls are shut to visitors for 168 days. Residents are
+  still welcome, and the hospital is never shut. Only the locations the AI
+  shut reopen. Off: no lockout, and one under way is lifted.
+- **Shut to visitors when mayor swamped** (on; the Merchant city preset turns
+  it off; 0.105.24): the same locations shut for 56 days when 5+ citizens
+  can't complain and at least 3 of the mayor's meetings, half or more of
+  them, are with visitors. Then they reopen and are looked at afresh. Never
+  at Outsiders 100+. A location you shut is never reopened.
+
+### Supplies, care and the fort's works
+
+- **Order barrels, pots, bags, hospital supplies** (on). Off, the shortages
+  are still reported.
+- **Build the workshop a strange mood needs** (on). Off, the AI says which
+  workshop to build instead. Either way, it frees, makes or asks for the
+  mood's materials (0.105.24).
+- **Memorial slabs for ghosts (autoslab)** (on): DFHack's autoslab, and blank
+  slabs for it.
+- **Smelt ore when metal runs low** (on): the AI's own smelting orders.
+- **Set up an "AI shelter" for the alarm** (on): the burrow the civilian
+  alert sends dwarves to. It is remade over the whole fort before each alarm,
+  and since 0.105.23 it keeps away from entrances that aren't shut.
+- **Put grazing animals in a pasture** (on).
+- **Give trinkets to dwarves who want to own** (on): a free trinket for a
+  dwarf who badly wants something of their own.
+- **Build water works (a cistern, ...)** (on), with its own switches beside
+  it (all on, 0.105.0):
+  - **A moat from the river at the gate**, only where a river is found;
+  - **Magma workshops** (forge, smelter, glass);
+  - **Muddy a stone farm level with water**.
+- **Cavern well into an unfound cavern** (off, 0.105.4). A cavern well may
+  break into a cavern layer the dwarves haven't found yet, and the first
+  breach can bring forgotten beasts. Off, a cavern well goes only to a cavern
+  already found.
+- **Send away vampires found among the dwarves** (on): at most one dwarf a
+  game week.
+- **Let useful visitors stay (and become citizens)** (on): residency
+  petitions are answered by the Outsiders slider. Citizenship petitions are
+  shown as a Needs you line with counts; DFHack 53.16-r3 can't answer them.
+- **Clear the alert icons:** *old ones; dangers kept a week* (the default),
+  *all once a day old*, or *none (yours)*. These are the icons down the left
+  of the screen.
+- **Build the temples and guildhalls asked for** (on): petitions agreed by
+  the fort's leanings, then built and dedicated.
+- **Camera (when the keeper runs unattended):** *follows what happens, tours
+  between* (the default), *tours the fort only*, or *off (the view is
+  yours)*. It runs only while the keeper runs unattended, and never moves
+  while you are using the game.
+  - **Camera pace:** *normal (20-40 s a place)*, *slow* or *fast*.
+
+### Military
+
+The window still labels this block "squads are yours to create"; the AI
+makes squads itself now (see [military.md](military.md)).
+
+- **Send squads against:** *ordinary enemies, not great beasts* (the
+  default), *everything that can reach us*, or *never (alert and gate only)*.
+- **Raise and fill squads** (on): filling squads and making new ones.
+- **Put idle squads on training** (on).
+- **Close gates and link levers** (on): only closing and opening the
+  entrances in danger, and linking the AI's gate levers.
+- **Put doors on entrances that have none** (on).
+- **Wall entrances, trap behind** (on): walling wide entrances down to a
+  gate, and the traps behind each gate.
+- **Make weapons, armour and helms** (on).
+- **Appoint the six officials** (on): manager, bookkeeper, broker, chief
+  medical dwarf, sheriff, captain of the guard.
+- **When hiding, squads wait in the shelter** (on, 0.105.0): while the AI
+  hides from a great danger, the squads wait with the civilians.
+- **Weapon to make:** *battle axes* (the default), *spears* or *maces*.
+- **Invaders caught in cages:** *keep them caged* (the default), *release
+  outside (asks you)* or *put to death (asks you)*. Only keeping can be done
+  safely through DFHack; the other two are said, and the prisoners are kept.
+- **Lock werebeasts in at the full moon** (on): a werebeast citizen is locked
+  in a cell round the full moon.
+- **Seal a cavern a beast is in** (on): the way down is locked while a beast
+  the squads can't take is in a cavern.
 
 ## Token use
 
@@ -142,8 +248,10 @@ the save from just before.
 
 ## What the seven graded sliders do (0.96)
 
-Each acts across its whole range (the numbers live in `brain/planner.py`, beside
-`stone_tidiness`; the window's "Now:" line shows them for your fort):
+Each acts across its whole range (the numbers live in `PLANNER_CONFIG`,
+`brain/planner_config.py`, and in helpers such as `stone_tidiness` in
+`brain/planner_building.py` and `mining_plan` in `brain/planner_core.py`; the
+window's "Now:" line shows them for your fort):
 
 | Slider | Low end | 0 | High end |
 | --- | --- | --- | --- |
@@ -155,8 +263,11 @@ Each acts across its whole range (the numbers live in `brain/planner.py`, beside
 | Engineering | -100: the cistern from 60 dwarves; -150: none | from 30 | +100: from 15; from +50, 2 spare mechanisms per 50 |
 | Outsiders | -30: guests asked about; -50: no residents, hunters, mercenaries or new citizens; tavern x0.71 at -100 | guests accepted | tavern x1.41 at +100 |
 
-Outsiders acts through DF's petition standing orders, which DFHack 53.16-r3
-can't reach yet: until a newer DFHack, only the tavern's size shows it.
+Outsiders also answers residency petitions (0.105.9: declined in batches when
+closed, the visitors who left cleared, welcoming forts told to agree on DF's
+petitions screen) and, at -50 or lower, shuts the tavern, temples, library and
+guildhalls to visitors (0.105.12). DF's petition standing orders themselves
+need a DFHack newer than 53.16-r3.
 
 ## What a mature fort keeps building, and which petitions it agrees (0.104.161)
 

@@ -57,7 +57,7 @@ x2, -100 gives x0.5, and the Extreme range gives x0.25 to x4.
 Targets per dwarf (10 drinks, 8 meals, 5 blocks) are item counts; work orders
 count jobs, and one job makes several items (5 drinks, 4 blocks, at least 2
 meals), so order sizes are converted. These are starting guesses, kept in one
-place (`PLANNER_CONFIG` in `brain\planner.py`), and the AI strategist may tune
+place (`PLANNER_CONFIG` in `brain\planner_config.py`), and the AI strategist may tune
 the per-dwarf targets within fixed bounds.
 
 ## Limits (defaults)
@@ -110,7 +110,7 @@ Things that stop a fort without anyone noticing:
 - **Water.** Injured dwarves only drink water, carried from a well. With no
   well the AI places one (see Wells below). Wells without buckets get buckets.
 
-The amounts are in `PLANNER_CONFIG` in `brain/planner.py`. The AI's summary
+The amounts are in `PLANNER_CONFIG` in `brain/planner_config.py`. The AI's summary
 has a `SUPPLIES` line with the same numbers.
 
 ## The dead, strange moods, tavern and library

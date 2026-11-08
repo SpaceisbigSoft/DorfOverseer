@@ -1,170 +1,150 @@
-# DF-AI: Dwarf Fortress Autorun
+# DorfOverseer: an AI that runs your Dwarf Fortress fort
 
-An AI overseer that runs your fortress in real time through DFHack, while you watch.
+An AI overseer runs a Dwarf Fortress fort through DFHack while you watch. A
+Python "brain" reads the fort through a Lua bridge inside the game. It plans
+with a free local planner and acts in the game. An optional AI strategist,
+which spends tokens, can steer it.
 
-**Status:** Phase 1 (the bridge). Python can read a full fort report from the
-live game and pause or resume it. No AI decisions yet.
-The full plan lives in the "DF AI Overseer — Project To-Do" doc.
+You steer it from an in-game window:
+- sliders give the fort its character;
+- a **Rules** tab says what it may do;
+- a **Needs you** tab lists what only you can do.
 
-## See your fort the way the AI does
+For your own use only.
 
-With a fort loaded in DF:
+**Status:** version 0.105.25, Phase 14 of the plan (`handoff.md` holds the plan, the changelog and where things stand).
+- **Seen working in game:**
+  - founding a fort from scratch, then digging and furnishing levels from a master plan;
+  - labour, farms, wells, pastures, metal and smelting;
+  - trade end to end;
+  - nobles and offices;
+  - squads made, filled and armed;
+  - dwarves' needs, locations staffed;
+  - the camera director;
+  - the keeper's unattended run, relaunching DF when it closes.
+- **Built but not yet seen in game:** most combat responses, presets and their signatures, the keep, the cavern well's landing, the messenger, the visitor lockouts and the mood materials.
 
-```
-python brain\show_fort.py
-```
+## Quick start
 
-Prints a summary (dwarves, moods, stocks, buildings, jobs, threats, recent
-announcements) and saves the full report to `logs\snapshots\`.
+On a PC that already has Dwarf Fortress 53.16 (Steam), DFHack and Python 3.10 or newer
+(the full guide is [docs/setup-guide.md](docs/setup-guide.md)):
 
-In-game, the DFHack launcher also accepts `ai-bridge version`, `ai-bridge status`,
-`ai-bridge state`, `ai-bridge pause` and `ai-bridge run <ticks>` (1200 ticks = 1 day),
-plus `ai-bridge map` (caverns, magma sea and underworld depths) and
-`ai-bridge events` (deaths, arrivals and invasions since it was last asked).
+1. Put this folder at `Documents\DF-AI`.
+2. Point DFHack at its scripts: add the line `+C:\Users\<you>\Documents\DF-AI\lua` to the game's `dfhack-config\script-paths.txt`.
+3. Copy `config.example.json` to `config.json` and set `dfhack_run` to your `dfhack-run.exe`.
+4. Optional: `pip install -r requirements.txt` (the AI strategist and the Lua tests).
+5. Start DF from Steam's DFHack entry, load a fort, then check the connection:
+   ```
+   python brain\check_connection.py
+   ```
+6. Watch it plan without acting (a dry run):
+   ```
+   python brain\overseer.py
+   ```
+7. Let it run the fort unattended (autopilot, unpauses, saves each season, restarts itself):
+   ```
+   python brain\keeper.py --revive --preset "War-hold"
+   ```
 
-The fort report includes:
-- dwarves as population summaries (moods, idle and soldier counts, professions)
-- stocks, workshops, zones and jobs
-- threats grouped by kind, with the layer they're in and whether they can
-  actually reach your dwarves
-- the map's cavern / magma / underworld layers and which are discovered
-- nobles, their mandates, and the civilian alert state
+In the game, **Ctrl-Shift-O** opens the control window and **Ctrl-Shift-H** halts every AI action at once.
 
-**Design rule:** the AI is an overseer. It sets fort-wide policy and never
-manages individual dwarves, so what it reads is summarized the same way.
+## Running it
 
-## The control panel
+From the DF-AI folder, with the game running and a fort loaded:
 
-In fortress mode press **Ctrl-Shift-O** (or type `gui/ai-overseer` in the
-DFHack launcher). Tabs:
+| Command | What it does |
+| --- | --- |
+| `python brain\overseer.py` | A dry run: shows what it would do and changes nothing |
+| `python brain\overseer.py --autopilot` | Does it. A hand-run autopilot refuses to start beside a running keeper (they share `logs\keeper.lock`) |
+| `python brain\keeper.py` | The long unattended run: autopilot, unpauses, saves each season, takes off popups, restarts the overseer if it stops, and runs the health check daily |
+| `... keeper.py --revive` | Also starts DF again if it closes (`df_launch` in `config.json`) and loads the fort's newest save from the title screen |
+| `... keeper.py --preset "Monastery"` | Applies a built-in or saved preset once, before the first cycle. A restart doesn't apply it again over your changes |
+| `... --ai` | Lets the AI strategist review now and then (spends tokens; set it up with [docs/ai-setup.md](docs/ai-setup.md)) |
+| `python brain\selftest.py` | Checks the bridge inside the running game, changing nothing |
+| `python brain\health_check.py` | The run check by hand (`--hours N`, `--no-selftest`): self-test, loops, refusals, standing Needs you, FPS, housekeeping |
+| `python brain\scorecard.py` | The slider scorecard: compares the forts in the DF-AI folders beside this one (`DF-AI`, `DF-AI-B`, ...) at one game season, writes `logs\scorecard.md` |
+| `python brain\show_fort.py` | Prints a readable fort report and saves the raw one to `logs\snapshots\` |
+| `python tests\run_all.py` | Every test, no game needed (about 30 s; the Lua tests need `lupa`) |
 
-- **Temperament, Construction, Economy, Society**: 23 personality traits. Each
-  has a slider from -100 to +100 (steps of 10) and an **Extreme** toggle that
-  doubles it. Click a trait's name to see what its ends mean; Ctrl-E types an
-  exact value for the selected trait.
-- **AI & tokens**: two sliders, **How often it reviews** (Rare to Often) and
-  **How long it thinks** (Short to Long), Normal by default, each with Extreme;
-  the estimated token cost per review and per in-game year; an optional
-  real-world daily cap; and what the AI may do.
+To stop all AI actions at once:
+- press Ctrl-Shift-H in the game, or the panel's [Halt];
+- or create a file named `STOP` in this folder.
 
-Shift-R resets the selected trait, Shift-X resets all, Shift-S / Shift-L save
-and load named presets (shared between forts). Settings save automatically
-with the fort and appear in the fort report under "AI SETTINGS".
+Each fort's record goes to `logs\forts\<fort>\`:
+- every decision and its answer (`journal.jsonl`);
+- a copy of the AI's memory;
+- the daily numbers;
+- the season reports (`report.md`, `states\`).
 
-## Check that the AI can act, safely
+The keeper's own log is `logs\unattended.log`.
 
-With your TEST fort loaded:
+## Six forts at once
 
-```
-python brain\tools\try_actions.py
-```
+Each fort is its own copy of Dwarf Fortress. It gets its own save folder, DFHack port, DF-AI folder and preset:
+- `DF-AI` runs the Steam game on port 5000;
+- `DF-AI-B` to `DF-AI-F` run copies at `D:\DF-B` to `D:\DF-F` on ports 5001-5005.
 
-Queues a 1-drink brewing order and cancels it, proves four unsafe actions are
-refused, then lets exactly one in-game day pass.
+The six built-in presets are War-hold, Monastery, Merchant city, Hermit hold, Deep mine and Garden fort. One keeper runs per folder, and `start-keepers.bat` starts all six. See [docs/setup-guide.md](docs/setup-guide.md) and [docs/two-forts.md](docs/two-forts.md).
 
-What the AI can do so far (all easy to undo):
-- **work_order**: queue one of 44 approved recipes (brewing, meals, furniture,
-  blocks...), copied from DFHack's own order sets; max 500 per order
-- **cancel_work_order**: only orders the AI created itself, never yours
-- **tool**: switch 8 DFHack automation tools on or off (not autolabor)
-- **civ_alert**: sound or clear the civilian alert (needs a burrow you set up)
-- **start_project**: dig and furnish a new level by the main staircase
-  (bedrooms, dining hall, storage, workshops). The AI names only the kind and
-  size; the game picks a safe spot and checks every tile for aquifers, water,
-  caverns and the surface first. See [docs/building.md](docs/building.md).
-  `python brain\tools\try_building.py` shows where each kind would go, changing nothing.
-- **Culture:** every fort builds in its own style (hall shapes, smoothing and
-  engraving, statues, a signature stone, temples, memorial halls for slain
-  beasts), set by your sliders and shaped by the fort's history. See the
-  panel's Culture tab and [docs/culture.md](docs/culture.md).
-- **Learning:** what you decline or undo becomes a preference (two of a kind,
-  a lesson shared by all your forts); drink, meal, farm and pasture targets tune
-  themselves to the fort; and each decision is judged by the fort's numbers.
-  Culture tab, Shift-V. See [docs/learning.md](docs/learning.md).
-- **run**: let the game run for a set time, then pause. There is no plain
-  "unpause", so the game is never left running unattended.
+## In the game
 
-## Let the overseer run the fort
+**The on-screen panel** sits on the right of the fort screen and shows:
+- the mode and the building project under way;
+- the last actions and why each was taken;
+- notes, the first Needs you line, and [Halt].
 
-```
-python brain\overseer.py               (dry run: only shows what it would do)
-python brain\overseer.py --autopilot   (does it)
-```
+In Co-pilot mode it also shows the AI's questions with Yes/No buttons.
 
-The local planner keeps drink, food, noble mandates, automation tools and the
-civilian alert in hand, once per in-game day, for **no tokens**. Add `--ai` to
-let the AI strategist review the fort now and then and steer the planner
-(set it up first with [docs/ai-setup.md](docs/ai-setup.md)). Create a file
-named `STOP` in this folder to halt all actions at once. Every decision is
-logged in the fort's journal (`logs\forts\<fort>\journal.jsonl`). Details: [docs/local-planner.md](docs/local-planner.md).
+**The control window** opens with Ctrl-Shift-O, or `gui/ai-overseer` in the DFHack launcher. It has these tabs:
+- **Temperament, Construction, Economy, Society**: 23 sliders for the fort's character, -100 to +100, each with an Extreme toggle that doubles it. Each slider has a "Now:" line saying what it does in this fort. Presets are loaded and saved here (Shift-S / Shift-L).
+- **AI & tokens**: the mode, chosen from these:
+  - Advisor suggests only;
+  - Co-pilot asks before big moves;
+  - Autopilot does everything.
 
-Tests (no game needed): `python tests\test_planner.py`, `python tests\test_strategist.py`,
-`python tests\test_overseer.py`, `python tests\test_culture.py`, `python tests\test_weights.py`,
-`python tests\test_learning.py`, and (with `pip install lupa`) `python tests\test_layouts.py`,
-`python tests\test_builder.py`, `python tests\test_status.py`.
+  The tab also holds how often the strategist reviews and how long it thinks, the token cost and an optional daily cap, and "save before each new level".
+- **Rules**: what the AI may build and do on its own. It has about 40 switches: the fort goal (Expand or Maintain), the levels it may dig, the hospital and calm burrows, the visitor shut-outs, tribute and the messenger, water works and the cavern well, the camera, the military, prisoners and the caverns. See [docs/controls.md](docs/controls.md).
+- **Needs you**: what only you can do, and why the AI couldn't.
+- **Culture**: the fort's style, phase, master plan and story. Shift-V shows what the AI has learned; Shift-W wipes it.
+- **Camera**: what the camera director showed last. While the keeper runs unattended, the view moves to fights, arrivals, moods and artifacts, and tours the fort in between.
 
-## Watching and stopping it in the game
+The fort's settings and the AI's memory are saved with the fort. Load an older save and the AI remembers exactly what it knew then.
 
-- An **AI Overseer panel** on the main fort screen shows what it's doing and
-  why, the building project, and (in Co-pilot mode) its questions with Yes/No
-  buttons.
-- **Ctrl-Shift-H** halts every AI action at once; press again to resume.
-- **Modes** (panel, AI & tokens tab): Advisor (suggests only), Co-pilot (asks
-  before big moves like new levels), Autopilot.
+## What it does
 
-See [docs/controls.md](docs/controls.md).
+All of this comes from the local planner, with no tokens:
+- **Building:** a master plan drawn for the site, then levels dug and furnished to it. These include bedrooms, dining halls, workshops, storage, tombs, a hospital, taverns, temples, a library, barracks and jails, statue gardens and the keep. Every tile is checked for water, aquifers, caverns and the surface first. Each fort builds in its own style. See [docs/building.md](docs/building.md) and [docs/culture.md](docs/culture.md).
+- **Supplies:** drink, food, farms and crops, wells and cisterns, smelting, gear, cloth, soap, containers and work orders kept moving. See [docs/local-planner.md](docs/local-planner.md).
+- **People:** labour through DF's work details, offices and appointments, needs (trinkets, instruments, lavish meals, temples), the hospital burrow, calm burrows, strange moods' materials, burials and ghosts, and justice.
+- **Defence:** the AI maps the entrances and builds gates, doors, hatches on levers, traps and the War-hold's gatehouse. On an alarm it fills a shelter and closes the gates. It makes squads, fills, arms and trains them, sends them at what can reach the dwarves, or hides from a great danger. It also handles fire, thieves, prisoners, werebeasts and the caverns. See [docs/military.md](docs/military.md).
+- **The world outside:** trade by the Trade slider (the AI opens the screen, makes the deal and presses Trade), petitions answered by the Outsiders slider, meetings, tribute, the elves' tree quota, and visitors shut out after a theft. A messenger is sent by the World screen; this is a trial, off by default.
+- **Learning:** what you decline or undo becomes a lesson, and targets tune themselves to the fort. See [docs/learning.md](docs/learning.md).
 
 ## Military
 
-Create your squads in the military screen; the AI fills them, trains them,
-sends them at threats that can reach the dwarves, and pulls a lever you name
-**AI gate**. See [docs/military.md](docs/military.md).
+The AI does the military itself:
+- **Squads:** it makes squads (with a captain's post when none is free), fills them up to the Militarism slider's share, with a guard of 3 in any fort of 15+ adults, and arms, equips and trains them.
+- **Levers:** it builds the gate levers, names them `AI gate N`, links them to the gate and pulls them on an alarm.
 
-## Testing and measuring it
+The Rules tab sets:
+- what squads are sent against;
+- whether it raises squads, closes gates or walls entrances;
+- which weapon it makes;
+- whether squads wait in the shelter when it hides.
 
-- `python tests\run_all.py`: every test, without the game.
-- `python brain\selftest.py`: checks the bridge inside the running game,
-  changing nothing.
-- `python brain\scenario.py`: lets a copy of a test fort play for a set
-  number of in-game days (planner, AI, DFHack tools only, or nobody) and
-  records population, deaths, wealth, stress, idle time, tokens and FPS each
-  day; `compare` puts runs side by side; `fps` measures the overseer's cost.
-- `python brain\replay.py`: step through a run (or your games) day by day:
-  what happened and what the AI did about it.
-
-See [docs/testing.md](docs/testing.md).
-
-## Token use
-
-`python brain\digest.py` prints the compact fort summary the AI will read
-(about 2% of the raw report). See `docs\token-efficiency.md`.
+See [docs/military.md](docs/military.md).
 
 ## Folders
 
 | Folder | What's in it |
 | --- | --- |
-| `lua/` | Scripts that run inside the game. DFHack loads them directly from here (see `docs/setup-guide.md`) |
-| `brain/` | The Python side: talks to the game, plans and decides |
+| `lua/` | The scripts that run inside the game; DFHack loads them from here (`script-paths.txt`). `ai-bridge.lua` and `ai-builder.lua` are hubs that load their `ai-bridge-*` and `ai-builder-*` parts; `gui/ai-overseer.lua` is the window |
+| `brain/` | The Python side: `overseer.py` (the loop), `keeper.py` (unattended runs), `planner.py` and the `planner_*.py` rule modules (`PLANNER_CONFIG` in `planner_config.py`), the strategist; one-off scripts in `brain/tools/` |
 | `tests/` | Tests that run without the game (`python tests\run_all.py`) |
-| `blueprints/` | Quickfort layouts the AI will build from |
-| `saves/` | Backup copies of test fortresses (not tracked in git) |
-| `logs/runs/` | Scenario runs: daily numbers, events, decisions, summaries |
-| `docs/` | Setup guide, DFHack reference notes, notes on earlier projects |
+| `docs/` | Setup, controls, and design notes per area |
+| `blueprints/` | Quickfort layouts |
+| `logs/`, `backups/` | Run output and save copies (local, not in git) |
 
-## Quick check
+## Versions
 
-With Dwarf Fortress running (started from the DFHack entry in Steam):
-
-```
-python brain\check_connection.py
-```
-
-It should print your DF and DFHack versions, your citizen count and the in-game year.
-
-## Setup
-
-See [docs/setup-guide.md](docs/setup-guide.md).
-
-## Current versions
-
-Dwarf Fortress 53.16 (Steam) with DFHack 53.16-r3, on Windows.
+Dwarf Fortress 53.16 (Steam) on Windows, with DFHack 53.16-r3. Answering residency and citizenship petitions through DF's standing orders needs a DFHack newer than 53.16-r3. On 53.16-r3 they wait for you, or arrive as a Needs you.
