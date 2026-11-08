@@ -399,6 +399,24 @@ function RulesPage:init()
         initial_option = p.settings.send_messenger == true,
         on_change = function(v) p:set_field('send_messenger', v) end,
     })
+    -- (0.105.24) the tavern, temples and library shut to visitors a while: after a
+    -- theft (or a visitor's killing), and when the mayor's meetings are mostly visitors
+    table.insert(views, widgets.ToggleHotkeyLabel{
+        view_id = 'heist_lockout',
+        frame = {t = 10 + jrow, l = 62, w = 56},
+        label = 'Shut to visitors a while after a theft:',
+        label_width = 44,
+        initial_option = p.settings.heist_lockout ~= false,
+        on_change = function(v) p:set_field('heist_lockout', v) end,
+    })
+    table.insert(views, widgets.ToggleHotkeyLabel{
+        view_id = 'shut_to_visitors',
+        frame = {t = 11 + jrow, l = 62, w = 56},
+        label = 'Shut to visitors when mayor swamped:',
+        label_width = 44,
+        initial_option = p.settings.shut_to_visitors ~= false,
+        on_change = function(v) p:set_field('shut_to_visitors', v) end,
+    })
     local t = 6 + #S.OPTIONAL_LEVELS
     table.insert(views, widgets.ToggleHotkeyLabel{
         view_id = 'order_supplies',
@@ -665,6 +683,8 @@ function RulesPage:refresh()
     self.subviews.tribute:setOption(s.tribute or 'small', false)                   -- (0.105.0)
     self.subviews.make_contact:setOption(s.make_contact ~= false, false)           -- (0.105.0)
     self.subviews.send_messenger:setOption(s.send_messenger == true, false)        -- (0.105.24)
+    self.subviews.heist_lockout:setOption(s.heist_lockout ~= false, false)         -- (0.105.24)
+    self.subviews.shut_to_visitors:setOption(s.shut_to_visitors ~= false, false)   -- (0.105.24)
     for _, k in ipairs({'moat', 'magma_workshops', 'irrigation'}) do               -- (0.105.0)
         self.subviews[k]:setOption(s[k] ~= false, false)
     end

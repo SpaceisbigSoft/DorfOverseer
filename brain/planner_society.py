@@ -13,7 +13,7 @@ from quirks import has_rule
 from digest import _d, _l, normalize
 from planner_core import *  # noqa: F401,F403
 
-__all__ = ["_people_rules", "_comfort_rules", "stress_causes", "THOUGHT_WORDS", "_doctor_patient_rule", "_hospital_burrow_rule", "_calm_burrow_rule", "MOOD_WORKSHOPS", "PETITION_KINDS", "petition_orders_wanted", "_petition_rules", "_citizenship_notes", "_residency_rule", "residency_stance", "_location_access_rule", "note_heists", "heist_lockout", "HEISTS_KEEP", "_jail_size_rule", "_convict_rule", "_break_fights_rule", "_sync_offices_rule", "patient_waits", "_health_rules", "TANTRUM_KEEP", "note_tantrums", "_noble_rooms_rule", "outsider_orders", "NEED_ADVICE", "JEWEL_RECIPES", "_recreation_rule", "_stress_care", "_needs_notes", "_location_supply_rules", "POST_LABORS", "STAFF_POSTS", "STAFF_MAX", "_traction_rule", "_wish_words", "_wish_met", "wish_key", "petition_lean", "_location_petition_rules", "_meeting_notes", "_grandeur_rule", "_location_value_rule", "_staff_rule", "_quick_location_rule", "_needs_rules", "_mood_rules", "mood_item_text", "_mood_materials", "_dead_notes", "AI_OFFICES", "_society_notes", "_booze_variety_rule", "drink_known_short_s", "_mood_make", "_mood_slaughter", "MOOD_CONSUMERS", "MOOD_TRADE_KEYS", "mood_trade_wants"]
+__all__ = ["_people_rules", "_comfort_rules", "stress_causes", "THOUGHT_WORDS", "_doctor_patient_rule", "_hospital_burrow_rule", "_calm_burrow_rule", "MOOD_WORKSHOPS", "PETITION_KINDS", "petition_orders_wanted", "_petition_rules", "_citizenship_notes", "_residency_rule", "residency_stance", "_location_access_rule", "note_heists", "heist_lockout", "visitor_shut", "mayor_meetings", "HEISTS_KEEP", "_jail_size_rule", "_convict_rule", "_break_fights_rule", "_sync_offices_rule", "patient_waits", "_health_rules", "TANTRUM_KEEP", "note_tantrums", "_noble_rooms_rule", "outsider_orders", "NEED_ADVICE", "JEWEL_RECIPES", "_recreation_rule", "_stress_care", "_needs_notes", "_location_supply_rules", "POST_LABORS", "STAFF_POSTS", "STAFF_MAX", "_traction_rule", "_wish_words", "_wish_met", "wish_key", "petition_lean", "_location_petition_rules", "_meeting_notes", "_grandeur_rule", "_location_value_rule", "_staff_rule", "_quick_location_rule", "_needs_rules", "_mood_rules", "mood_item_text", "_mood_materials", "_dead_notes", "AI_OFFICES", "_society_notes", "_booze_variety_rule", "drink_known_short_s", "_mood_make", "_mood_slaughter", "MOOD_CONSUMERS", "MOOD_TRADE_KEYS", "mood_trade_wants"]
 
 
 # A crafting mood's skill -> the workshop (or furnace) the dwarf must claim.
@@ -295,14 +295,88 @@ def note_heists(state: dict, memory, events: list) -> int:
 
 
 def heist_lockout(s: dict, memory, cfg: dict):
-    """(0.105.24) The last heist still inside the lockout ([tick, who]), or None."""
+    """(0.105.24) The last heist still inside the lockout ([tick, who]), or None.
+    (0.105.24) None too while the Rules switch heist_lockout is off."""
     days = int(cfg.get("heist_lockout_days") or 0)
     if days <= 0:
+        return None
+    if isinstance(s.get("settings"), dict) and not player_rules(s)["heist_lockout"]:
         return None
     now = abs_tick(s)
     recent = [t for t in _l(getattr(memory, "heists", None)) if isinstance(t, list) and len(t) == 2
               and isinstance(t[0], int) and 0 <= now - t[0] < days * TICKS_PER_DAY]
     return max(recent, key=lambda t: t[0]) if recent else None
+
+
+def mayor_meetings(s: dict, first: str = "") -> tuple:
+    """(0.105.24) The meetings of the noble who hears complaints (`first`: the
+    start of their name, "" for any noble): (under way, waiting, with visitors)."""
+    m = _d(s.get("meetings"))
+    acts = [a for a in _l(m.get("activities")) if isinstance(a, dict)
+            and (not first or first in str(a.get("noble") or ""))]
+    waiting = int(m.get("requests") or 0)
+    vis = int(m.get("requests_visitors") or 0) + sum(1 for a in acts if a.get("visitor"))
+    return acts, waiting, vis
+
+
+def _complaint_holder(s: dict):
+    """(0.105.24) The mayor (or expedition leader): (office code, [names]), or None."""
+    offices = _d(_d(s.get("offices")).get("offices"))
+    return next(((code, _l(_d(offices.get(code)).get("held"))) for code in ("MAYOR", "EXPEDITION_LEADER")
+                 if _l(_d(offices.get(code)).get("held"))), None)
+
+
+def visitor_shut(s: dict, memory, cfg: dict):
+    """(0.105.24) The mayor's rest from visitors: memory.visitor_shut while it
+    lasts, or None. It starts when the mayor's meetings (under way and
+    waiting) are mostly with visitors (`visitor_shut_share`, at least
+    `visitor_shut_meetings_min`) while `visitor_shut_unheard_min` citizens
+    went unable to complain lately; it lasts `visitor_shut_days`, then the
+    locations open and it is looked at afresh. Never with the Rules switch
+    shut_to_visitors off, nor in a fort whose point is visitors (Outsiders
+    `visitor_shut_welcoming` or more: the Merchant city)."""
+    w = memory.visitor_shut if isinstance(getattr(memory, "visitor_shut", None), dict) else {}
+    memory.visitor_shut = w
+    traits = _traits(s) if isinstance(s.get("settings"), dict) else {}
+    if isinstance(s.get("settings"), dict) and not player_rules(s)["shut_to_visitors"]:
+        return None
+    if int(traits.get("outsiders", 0) or 0) >= cfg["visitor_shut_welcoming"]:
+        return None
+    now = abs_tick(s)
+    until = w.get("until")
+    if isinstance(until, int):
+        if int(w.get("tick") or 0) <= now < until:
+            return w
+        if now >= until:
+            return None         # over: the locations open first (the rule then forgets it), then looked at afresh
+        w.clear()               # (a save from before it)
+    unheard = _cause_citizens(s, "UnableComplain")
+    if unheard < cfg["visitor_shut_unheard_min"]:
+        return None
+    holder = _complaint_holder(s)
+    name = str(holder[1][0]) if holder else ""
+    acts, waiting, vis = mayor_meetings(s, name.split(" ")[0] if name else "")
+    total = len(acts) + waiting
+    if vis < cfg["visitor_shut_meetings_min"] or total <= 0 or vis < cfg["visitor_shut_share"] * total:
+        return None
+    w.clear()
+    w.update({"tick": now, "until": now + int(cfg["visitor_shut_days"]) * TICKS_PER_DAY,
+              "visitors": vis, "meetings": total, "unheard": unheard})
+    return w
+
+
+LOCATION_WORDS = {"INN_TAVERN": "tavern", "TEMPLE": "temple", "LIBRARY": "library", "GUILDHALL": "guildhall"}
+
+
+def _location_words(locs: list, ids) -> str:
+    """(0.105.24) "the tavern, 2 temples and the library", in plain words."""
+    n = {}
+    for e in locs:
+        if e["id"] in ids and e.get("type") in LOCATION_WORDS:
+            n[e["type"]] = n.get(e["type"], 0) + 1
+    parts = [(f"the {LOCATION_WORDS[k]}" if c == 1 else f"{c} {LOCATION_WORDS[k]}s")
+             for k, c in sorted(n.items(), key=lambda kv: CLOSABLE_LOCATIONS.index(kv[0]))]
+    return (", ".join(parts[:-1]) + " and " + parts[-1]) if len(parts) > 1 else (parts[0] if parts else "")
 
 
 def _location_access_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> None:
@@ -316,7 +390,12 @@ def _location_access_rule(s: dict, memory, cfg: dict, proposals: list, notes: li
     artifact heist or a visitor's killing (note_heists): the 2-5 Nov thieves
     were visitors first; D, shut at 23:06 2 Nov, had 8 heists before and none
     after, and A's later thieves all came from the map's edge, where the
-    gate and the squad meet them. Then the ones the AI shut open again."""
+    gate and the squad meet them. Then the ones the AI shut open again.
+    (0.105.24) The lockout has its Rules switch (heist_lockout; off, a
+    lockout under way is lifted); and the same locations shut for
+    `visitor_shut_days` when the mayor is swamped by visitors (visitor_shut,
+    its switch shut_to_visitors). Shut while either holds, the longer
+    winning; one the player shut is never the AI's to open."""
     locs = [e for e in _l(_d(s.get("locations")).get("list"))
             if isinstance(e, dict) and isinstance(e.get("id"), int) and isinstance(e.get("flags"), list)]
     if not locs:
@@ -324,8 +403,11 @@ def _location_access_rule(s: dict, memory, cfg: dict, proposals: list, notes: li
     traits = _traits(s) if isinstance(s.get("settings"), dict) else {}
     closed = outsider_orders(traits)["closed"]
     lock = None if closed else heist_lockout(s, memory, cfg)
+    was = dict(memory.visitor_shut) if isinstance(getattr(memory, "visitor_shut", None), dict) else {}
+    swamp = None if closed else visitor_shut(s, memory, cfg)
+    now = abs_tick(s)
     mine = [i for i in (memory.locations_closed or []) if isinstance(i, int)]
-    if closed or lock:
+    if closed or lock or swamp:
         # (review) one the AI shut and you opened again is yours: forgotten, never shut again
         yours = {e["id"] for e in locs if e["id"] in mine and "VISITORS_ALLOWED" in e["flags"]}
         if yours:
@@ -334,24 +416,47 @@ def _location_access_rule(s: dict, memory, cfg: dict, proposals: list, notes: li
         left_open = set(memory.locations_yours or [])
         shut = [e["id"] for e in locs if e.get("type") in CLOSABLE_LOCATIONS and "VISITORS_ALLOWED" in e["flags"]
                 and e["id"] not in left_open]
+        lock_left = (int(cfg.get("heist_lockout_days") or 0) - (now - lock[0]) // TICKS_PER_DAY) if lock else 0
+        swamp_left = -(-(int(swamp["until"]) - now) // TICKS_PER_DAY) if swamp else 0
+        # (0.105.24) the mayor's rest said while it lasts, with what is shut
+        held = [i for i in (memory.locations_closed or []) if isinstance(i, int)]
+        if swamp and not closed and swamp_left >= lock_left and (shut or held):
+            notes.append(f"visitors kept out of {_location_words(locs, set(shut) | set(held)) or 'the locations'} "
+                         f"for {max(1, swamp_left)} more day(s) (residents still welcome): {swamp.get('visitors')} "
+                         f"of the mayor's {swamp.get('meetings')} meetings were with visitors (performers and "
+                         f"scholars asking to stay) and {swamp.get('unheard')} citizens couldn't lodge a complaint; "
+                         "the Rules switch \"Shut to visitors when mayor swamped\" turns this off")
         if shut:
             if closed:
                 why = f"this fort keeps to itself (Outsiders {traits.get('outsiders', 0)})"
-            else:
-                left = int(cfg.get("heist_lockout_days") or 0) - (abs_tick(s) - lock[0]) // TICKS_PER_DAY
+            elif lock and lock_left >= swamp_left:
                 why = (f"a thief or a violent visitor ({lock[1]}) struck: visitors kept out "
-                       f"for {max(1, left)} more day(s) (thieves came as guests)")
+                       f"for {max(1, lock_left)} more day(s) (thieves came as guests)")
+            else:
+                why = (f"the mayor is swamped by visitors ({swamp.get('visitors')} of {swamp.get('meetings')} "
+                       f"meetings; {swamp.get('unheard')} citizens couldn't lodge a complaint): visitors kept "
+                       f"out for {max(1, swamp_left)} day(s) so the citizens are heard")
             proposals.append(Proposal("location_access", {"type": "location_access", "ids": shut, "visitors": False},
-                                      f"{why}: {len(shut)} location(s) closed to visitors (residents still welcome)",
-                                      3 if lock else 6))
+                                      f"{why}: {_location_words(locs, set(shut))} ({len(shut)} location(s)) "
+                                      "closed to visitors (residents still welcome)",
+                                      3 if lock else 5 if swamp and not closed else 6))
         return
     reopen = [e["id"] for e in locs if e["id"] in mine and "VISITORS_ALLOWED" not in e["flags"]]
-    if reopen:
-        proposals.append(Proposal("location_access", {"type": "location_access", "ids": reopen, "visitors": True},
-                                  f"the fort opens up again (Outsiders {traits.get('outsiders', 0)}"
-                                  + (f"; no heist for {int(cfg.get('heist_lockout_days') or 0)} days"
-                                     if _l(getattr(memory, "heists", None)) else "") + "): "
-                                  f"{len(reopen)} location(s) the AI closed let visitors in again", 6))
+    if not reopen:
+        memory.visitor_shut = {}                  # (0.105.24) nothing held: the mayor's rest forgotten
+        return
+    rules_ = player_rules(s) if isinstance(s.get("settings"), dict) else {}
+    why = [f"Outsiders {traits.get('outsiders', 0)}"]
+    if _l(getattr(memory, "heists", None)):
+        why.append("the lockout after a theft is off on the Rules tab" if rules_.get("heist_lockout") is False
+                   else f"no heist for {int(cfg.get('heist_lockout_days') or 0)} days")
+    if was:
+        why.append("shutting out visitors for the mayor is off on the Rules tab"
+                   if rules_.get("shut_to_visitors") is False
+                   else f"the mayor's {int(cfg['visitor_shut_days'])} days without visitors are over")
+    proposals.append(Proposal("location_access", {"type": "location_access", "ids": reopen, "visitors": True},
+                              f"the fort opens up again ({'; '.join(why)}): "
+                              f"{len(reopen)} location(s) the AI closed let visitors in again", 6))
 
 
 def _convict_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> None:
@@ -2422,23 +2527,17 @@ def _complaint_notes(s: dict, cfg: dict, notes: list) -> None:
     words = "; ".join(f"{COMPLAINT_WORDS.get(k, k.replace('_', ' '))} {v}" for k, v in about[:3])
     text = f"{n} citizens couldn't lodge a complaint lately" + (f" ({words})" if words else "")
     offices = _d(_d(s.get("offices")).get("offices"))
-    holder = next(((code, _l(_d(offices.get(code)).get("held"))) for code in ("MAYOR", "EXPEDITION_LEADER")
-                   if _l(_d(offices.get(code)).get("held"))), None)
+    holder = _complaint_holder(s)
     if offices and holder is None:
         notes.append(text + ": the fort has no mayor (or expedition leader) to hear them; DF holds the election")
         return
     name = str(holder[1][0]) if holder else ""
     who = f"the {holder[0].lower().replace('_', ' ')}, {name}" if holder else "the mayor"
-    m = _d(s.get("meetings"))
-    first = name.split(" ")[0] if name else ""
-    acts = [a for a in _l(m.get("activities")) if isinstance(a, dict)
-            and (not first or first in str(a.get("noble") or ""))]
-    waiting = int(m.get("requests") or 0)
+    acts, waiting, vis = mayor_meetings(s, name.split(" ")[0] if name else "")
     busy = (f", is in meetings back to back ({waiting} waiting)" if acts and waiting
             else ", is in a meeting" if acts else ", is the only one DF sends them to")
     # (0.105.24) visitors take the mayor's time too: B and F (2-5 Nov) met
     # poets, dancers and bards (who come to ask to stay) as often as citizens
-    vis = int(m.get("requests_visitors") or 0) + sum(1 for a in acts if a.get("visitor"))
     if vis:
         busy += (f"; {vis} of those meetings are with visitors (performers and scholars asking to stay: "
                  "fewer come with a lower Outsiders, or the tavern, temples and library shut to visitors)")

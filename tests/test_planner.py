@@ -3571,6 +3571,171 @@ def _():
     assert props and "keeps to itself" in props[0].reason and 2 not in props[0].action["ids"], props
 
 
+@test("0.105.24 heist_lockout switch: off, no lockout and one under way lifted; on, as before")
+def _():
+    from planner import _location_access_rule, record, player_rules
+    from planner_society import note_heists, heist_lockout
+    both = ["VISITORS_ALLOWED", "NON_CITIZENS_ALLOWED"]
+    s = fort()
+    s["locations"] = {"count": {}, "list": [{"id": 1, "type": "INN_TAVERN", "flags": list(both)},
+                                            {"id": 3, "type": "LIBRARY", "flags": list(both)}]}
+    s["settings"]["traits"] = {"outsiders": 0}
+    assert player_rules(s)["heist_lockout"] is True and player_rules(s)["shut_to_visitors"] is True
+    heist = {"kind": "report", "topic": "thief", "text": "The Human baroness consort Lalgi Aspaescu was spotted "
+             "sneaking around!  \"You will not stand between me and Oiledgullies the Drips of Helping!\""}
+    # off: a heist shuts nothing
+    m = Memory()
+    off = copy.deepcopy(s)
+    off["settings"]["heist_lockout"] = False
+    assert note_heists(off, m, [heist]) == 1 and heist_lockout(off, m, PLANNER_CONFIG) is None
+    props = []
+    _location_access_rule(off, m, PLANNER_CONFIG, props, [])
+    assert not props, props
+    # on: shut (as before)
+    props = []
+    _location_access_rule(s, m, PLANNER_CONFIG, props, [])
+    assert len(props) == 1 and props[0].action == {"type": "location_access", "ids": [1, 3], "visitors": False}, props
+    record([(props[0], {"ok": True, "changed": [1, 3]})], s, m)
+    # a library the player shut before: never the AI's
+    s["locations"]["list"].append({"id": 4, "type": "LIBRARY", "flags": ["NON_CITIZENS_ALLOWED"]})
+    for e in s["locations"]["list"]:
+        e["flags"] = ["NON_CITIZENS_ALLOWED"]
+    # switched off mid-lockout: the ones the AI shut open again at once, the player's stays shut
+    off = copy.deepcopy(s)
+    off["settings"]["heist_lockout"] = False
+    props = []
+    _location_access_rule(off, m, PLANNER_CONFIG, props, [])
+    assert len(props) == 1 and props[0].action == {"type": "location_access", "ids": [1, 3], "visitors": True}, props
+    assert "off on the Rules tab" in props[0].reason, props[0].reason
+    # a closed fort keeps them shut whatever the switch says
+    off["settings"]["traits"] = {"outsiders": -150}
+    props = []
+    _location_access_rule(off, m, PLANNER_CONFIG, props, [])
+    assert not props, props
+
+
+def _swamped_fort(visitors=3, citizens=1, unheard=9, outsiders=60):
+    s = fort()
+    both = ["VISITORS_ALLOWED", "NON_CITIZENS_ALLOWED"]
+    s["locations"] = {"count": {}, "list": [{"id": 1, "type": "INN_TAVERN", "flags": list(both)},
+                                            {"id": 2, "type": "HOSPITAL", "flags": list(both)},
+                                            {"id": 3, "type": "TEMPLE", "flags": list(both)},
+                                            {"id": 5, "type": "TEMPLE", "flags": list(both)},
+                                            {"id": 6, "type": "LIBRARY", "flags": ["NON_CITIZENS_ALLOWED"]}]}
+    s["settings"]["traits"] = {"outsiders": outsiders}
+    s["needs"] = dict(s.get("needs") or {}, stress_causes={"causes": [
+        {"thought": "UnableComplain", "citizens": unheard, "about": {"vent_at_boss": unheard}}]})
+    s["offices"] = {"offices": {"MAYOR": {"held": ["Oddom Nomaluker"]}}}
+    s["meetings"] = {"activities": [{"actor": "Mosus, Poet", "noble": "Oddom Nomaluker, mayor", "visitor": True}],
+                     "requests": visitors - 1 + citizens, "requests_visitors": visitors - 1}
+    return s
+
+
+@test("0.105.24 shut_to_visitors: a mayor swamped by visitors gets the locations shut to visitors a while, then open")
+def _():
+    from planner import _location_access_rule, record
+    from planner_society import visitor_shut
+    s = _swamped_fort()
+    m = Memory()
+    props, notes = [], []
+    _location_access_rule(s, m, PLANNER_CONFIG, props, notes)
+    # the library the player shut stays as it is (not the AI's); the hospital never
+    assert len(props) == 1 and props[0].action == {"type": "location_access", "ids": [1, 3, 5], "visitors": False}, props
+    assert "mayor is swamped" in props[0].reason and "the tavern and 2 temples" in props[0].reason, props[0].reason
+    assert m.visitor_shut["until"] - m.visitor_shut["tick"] == 56 * TICKS_PER_DAY, m.visitor_shut
+    assert notes and "3 of the mayor's 4 meetings" in notes[0] and "56 more day" in notes[0], notes
+    record([(props[0], {"ok": True, "changed": [1, 3, 5]})], s, m)
+    for e in s["locations"]["list"]:
+        if e["id"] in (1, 3, 5):
+            e["flags"] = ["NON_CITIZENS_ALLOWED"]
+    # held while it lasts, even with the mayor no longer swamped
+    calm = copy.deepcopy(s)
+    calm["meetings"] = {}
+    calm["date"]["tick"] += 20 * TICKS_PER_DAY
+    props, notes = [], []
+    _location_access_rule(calm, m, PLANNER_CONFIG, props, notes)
+    assert not props and notes and "36 more day" in notes[0], (props, notes)
+    # over: the ones the AI shut open again (never the player's library), then looked at afresh
+    later = copy.deepcopy(s)
+    later["date"]["tick"] += 57 * TICKS_PER_DAY
+    props = []
+    _location_access_rule(later, m, PLANNER_CONFIG, props, [])
+    assert len(props) == 1 and props[0].action == {"type": "location_access", "ids": [1, 3, 5], "visitors": True}, props
+    assert "56 days without visitors are over" in props[0].reason, props[0].reason
+    record([(props[0], {"ok": True, "changed": [1, 3, 5]})], later, m)
+    for e in later["locations"]["list"]:
+        if e["id"] in (1, 3, 5):
+            e["flags"] = ["VISITORS_ALLOWED", "NON_CITIZENS_ALLOWED"]
+    props = []
+    _location_access_rule(later, m, PLANNER_CONFIG, props, [])
+    assert not props and m.visitor_shut == {}, (props, m.visitor_shut)        # opened: forgotten
+    props = []
+    _location_access_rule(later, m, PLANNER_CONFIG, props, [])
+    assert props and props[0].action["visitors"] is False, props            # still swamped: shut afresh
+    # not swamped: too few unheard, too few visitors, visitors not most of the meetings
+    for kw in ({"unheard": 4}, {"visitors": 2, "citizens": 0}, {"visitors": 3, "citizens": 4}):
+        props = []
+        _location_access_rule(_swamped_fort(**kw), Memory(), PLANNER_CONFIG, props, [])
+        assert not props, (kw, props)
+    # the switch off, or a fort whose point is visitors (the Merchant city's Outsiders 100): nothing
+    off = _swamped_fort()
+    off["settings"]["shut_to_visitors"] = False
+    for st in (off, _swamped_fort(outsiders=100)):
+        props = []
+        _location_access_rule(st, Memory(), PLANNER_CONFIG, props, [])
+        assert not props and visitor_shut(st, Memory(), PLANNER_CONFIG) is None, props
+    # switched off while it lasts: the AI's open again
+    m2 = Memory()
+    s2 = _swamped_fort()
+    props = []
+    _location_access_rule(s2, m2, PLANNER_CONFIG, props, [])
+    record([(props[0], {"ok": True, "changed": [1, 3, 5]})], s2, m2)
+    for e in s2["locations"]["list"]:
+        e["flags"] = ["NON_CITIZENS_ALLOWED"]
+    s2["settings"]["shut_to_visitors"] = False
+    props = []
+    _location_access_rule(s2, m2, PLANNER_CONFIG, props, [])
+    assert len(props) == 1 and props[0].action == {"type": "location_access", "ids": [1, 3, 5], "visitors": True}, props
+    assert "mayor is off on the Rules tab" in props[0].reason, props[0].reason
+
+
+@test("0.105.24 shut_to_visitors and the heist lockout: shut while either holds, the longer winning")
+def _():
+    from planner import _location_access_rule, record
+    from planner_society import note_heists
+    s = _swamped_fort()
+    m = Memory()
+    heist = {"kind": "report", "topic": "thief", "text": "The Goblin Thief Snodub was spotted "
+             "sneaking around!  \"You will not stand between me and Bluegold!\""}
+    assert note_heists(s, m, [heist]) == 1
+    props, notes = [], []
+    _location_access_rule(s, m, PLANNER_CONFIG, props, notes)
+    assert len(props) == 1 and "Snodub" in props[0].reason and props[0].priority == 3, props   # the lockout: longer
+    record([(props[0], {"ok": True, "changed": [1, 3, 5]})], s, m)
+    for e in s["locations"]["list"]:
+        e["flags"] = ["NON_CITIZENS_ALLOWED"]
+    # the mayor's 56 days over, the lockout's 168 not: still shut
+    later = copy.deepcopy(s)
+    later["date"]["tick"] += 60 * TICKS_PER_DAY
+    props = []
+    _location_access_rule(later, m, PLANNER_CONFIG, props, [])
+    assert not props, props
+    # the heist switch off then: the mayor's rest is over too, so they open
+    later["settings"]["heist_lockout"] = False
+    props = []
+    _location_access_rule(later, m, PLANNER_CONFIG, props, [])
+    assert len(props) == 1 and props[0].action["visitors"] is True, props
+
+
+@test("0.105.24 presets: the Merchant city turns shut_to_visitors off (visitors are its point)")
+def _():
+    src = (ROOT / "lua" / "ai-overseer-settings.lua").read_text(encoding="utf-8")
+    assert "shut_to_visitors = false}" in src and "'shut_to_visitors'}" in src
+    assert "heist_lockout = true," in src and "shut_to_visitors = true," in src
+    gui = (ROOT / "lua" / "gui" / "ai-overseer.lua").read_text(encoding="utf-8")
+    assert "subviews.heist_lockout:setOption" in gui and "subviews.shut_to_visitors:setOption" in gui
+
+
 @test("0.105.9 traps: the founding stair's hatch is a gate: traps behind it")
 def _():
     hatch = [{"id": 7, "kind": "hatch", "lever_away": False, "levers": []}]

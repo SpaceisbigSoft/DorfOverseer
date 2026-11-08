@@ -259,6 +259,12 @@ function defaults()
         -- screen (lua/ai-mission-send.lua): off by default until its last steps
         -- are recorded; off, the AI only names the site for the player to send
         send_messenger = false,
+        -- (0.105.24) after an artifact heist (or a visitor killing a citizen) the
+        -- tavern, temples and library shut to visitors a while; off: never (a lockout lifted)
+        heist_lockout = true,
+        -- (0.105.24) the same locations shut to visitors a while when the mayor's
+        -- meetings are mostly with visitors and citizens go unheard
+        shut_to_visitors = true,
         -- (0.105.0) water works: a moat from the river (only where one is found), magma workshops, a muddied farm level
         moat = true, magma_workshops = true, irrigation = true,
         -- (0.105.4 review) a cavern well may break into a cavern layer the dwarves
@@ -348,6 +354,7 @@ function sanitize(s)
                         'moon_cells', 'seal_caverns',   -- (0.105.0) round 3's switches
                         'make_contact',             -- (0.105.0) the messenger and Make contact
                         'send_messenger',           -- (0.105.24) the World screen driven to send it
+                        'heist_lockout', 'shut_to_visitors',   -- (0.105.24) locations shut to visitors a while
                         'moat', 'magma_workshops', 'irrigation',   -- (0.105.0) the water works' switches
                         'open_caverns',             -- (0.105.4 review) a cavern well into an undiscovered cavern
                         'squads_shelter'}) do       -- (0.105.0) the squads hide in the shelter too
@@ -431,6 +438,8 @@ function for_ai(s)
         tribute = s.tribute,                       -- (0.105.0)
         make_contact = s.make_contact,             -- (0.105.0)
         send_messenger = s.send_messenger,         -- (0.105.24)
+        heist_lockout = s.heist_lockout,           -- (0.105.24)
+        shut_to_visitors = s.shut_to_visitors,     -- (0.105.24)
         moat = s.moat, magma_workshops = s.magma_workshops, irrigation = s.irrigation,   -- (0.105.0)
         open_caverns = s.open_caverns,             -- (0.105.4 review)
         squads_shelter = s.squads_shelter,         -- (0.105.0)
@@ -477,12 +486,14 @@ BUILTIN_PRESETS = {
 -- it is). Saved presets keep the same keys.
 PRESET_RULE_KEYS = {'attack_policy', 'fill_squads', 'train_squads', 'gate_lever', 'fortify_entrances',
                     'build_gate_doors', 'accept_visitors', 'answer_locations', 'pasture_animals', 'make_gear',
-                    'water_works', 'fort_goal'}
+                    'water_works', 'fort_goal',
+                    'shut_to_visitors'}     -- (0.105.24)
 BUILTIN_PRESET_RULES = {
     ['War-hold'] = {attack_policy = 'all', fill_squads = true, train_squads = true, gate_lever = true,
                     fortify_entrances = true, levels = {garden = false}},
     ['Monastery'] = {attack_policy = 'never', levels = {barracks = false, archery = false, jail = false}},
-    ['Merchant city'] = {accept_visitors = true, answer_locations = true},
+    -- (0.105.24) visitors are the Merchant city's point: never shut out for the mayor's sake
+    ['Merchant city'] = {accept_visitors = true, answer_locations = true, shut_to_visitors = false},
     ['Hermit hold'] = {accept_visitors = false, answer_locations = false, fortify_entrances = true},
     ['Deep mine'] = {water_works = true, levels = {garden = false}},
     ['Garden fort'] = {pasture_animals = true, levels = {archery = false}},

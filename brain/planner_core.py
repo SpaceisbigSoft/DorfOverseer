@@ -397,6 +397,16 @@ PLANNER_CONFIG = {
                                        # temples, library and guildhalls are shut to visitors this long (0: never).
                                        # 2-5 Nov: the thieves came as visitors (19 of 23 had asked the mayor for a
                                        # meeting); D shut its locations at 23:06 2 Nov: 8 heists before, none after
+                                       # (0.105.24) the Rules switch heist_lockout (on by default) turns it off
+    # (0.105.24) the mayor swamped by visitors: B and F (2-5 Nov) met poets, dancers and bards (asking to
+    # stay) about as often as citizens, and citizens went "unable to complain". When the mayor's meetings
+    # (under way and waiting) are mostly with visitors and enough citizens went unheard, the tavern,
+    # temples, library and guildhalls are shut to visitors a while (Rules switch shut_to_visitors)
+    "visitor_shut_unheard_min": 5,     # ...at least this many citizens unable to complain lately (the note's 5)
+    "visitor_shut_meetings_min": 3,    # ...at least this many of the mayor's meetings with visitors
+    "visitor_shut_share": 0.5,         # ...and at least this share of them (B and F: about half)
+    "visitor_shut_days": 56,           # ...shut this long (two months), then open again and looked at afresh
+    "visitor_shut_welcoming": 100,     # never at this Outsiders or more (the Merchant city's 100: visitors its point)
     "residency_accept_outsiders": 30,  # agree from this Outsiders (welcoming); decline below -30 (closed)
     "petition_citizen_margin": 5,      # citizenship while citizens are this far under the population target
     "bag_sink_days": 28,               # this many bag orders in so many days with no empty bag: a sink (0.87.1)
@@ -790,6 +800,7 @@ class Memory:
     gatehouses: dict = field(default_factory=dict)           # (0.105.23) entrance "x,y,z" -> {tick, bridge} built
     locations_yours: list = field(default_factory=list)      # (0.105.12) ones the AI shut and you opened: left alone
     heists: list = field(default_factory=list)               # (0.105.24) [tick, who] artifact heists and visitors' killings
+    visitor_shut: dict = field(default_factory=dict)         # (0.105.24) {tick, until, visitors, meetings, unheard}: shut for the mayor
     gear_spare_since: dict = field(default_factory=dict)  # "weapons"/"body"/"helms" -> when 3+ spares sat unused
     swapped: dict = field(default_factory=dict)  # (0.104.78) unit id -> when the swap sent them home
     drafted: dict = field(default_factory=dict)  # (0.104.138) unit id -> when a fill or swap drafted them
@@ -1001,6 +1012,9 @@ def player_rules(s: dict) -> dict:
             "make_contact": st.get("make_contact") is not False,
             # (0.105.24, 13b) the AI drives DF's World screen to send the messenger: on only when the player says so
             "send_messenger": st.get("send_messenger") is True,
+            # (0.105.24) locations shut to visitors a while after a heist / when the mayor is swamped by visitors
+            "heist_lockout": st.get("heist_lockout") is not False,
+            "shut_to_visitors": st.get("shut_to_visitors") is not False,
             # (0.105.0) water works: the moat (on by default only where the survey found a river:
             # the planner wants one only then), magma workshops, the muddied farm level
             "moat": st.get("moat") is not False,
