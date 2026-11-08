@@ -13,7 +13,7 @@ from quirks import has_rule
 from digest import _d, _l, normalize
 from planner_core import *  # noqa: F401,F403
 
-__all__ = ["STUCK_FALLBACKS", "stuck_fallback", "magma_access", "GROWTH", "GROWTH_EXTRA_SCORE", "GROWTH_MAX", "growth_want", "growth_candidates", "settled_times", "growth_wait", "GROWTH_SOLDIERS", "GROWTH_ZONES", "GROWTH_MAX_OF", "GROWTH_AT", "TRAIT_NAMES_SHORT", "FURNITURE_RECIPES", "METAL_FURNITURE", "spare_metal", "WOODEN_FURNITURE", "BASIC_WORKSHOPS", "BASIC_STOCKPILES", "memorial_due", "_well_rule", "_well_lid_rule", "cavern_danger", "_planned_note", "_planned_parts_rule", "planned_wants", "_water_zone_rule", "cavern_well_need", "cavern_points", "cavern_action", "cavern_well_safe", "WELL_PARTS_SHOPS", "chain_metal", "well_parts_plan", "_well_parts", "_room_repair_rule", "_water_traffic_rule", "_cleanup_rule", "STORE_GROW", "stone_tidiness", "jail_plan", "cistern_pop", "tavern_factor", "full_stores", "LEARNING_NEEDS", "_stairwell_rule", "WATER_WORDS", "water_summary", "_water_rules", "CISTERN_WORDS", "_cistern_parts", "_cistern_rule", "_deep_notes", "good_times", "ORDINALS", "garden_name", "_pop_cap_rule", "fort_strain", "hospital_shortfall", "dining_shortfall", "social_shortfall", "SOCIAL_KINDS", "_join_rule", "_dig_stall_rule", "_shrink_rule", "room_size", "_project_rules", "CHARACTER_KINDS", "is_character_level", "character_slot_reserved", "character_slot_filter", "more_temple", "LADDER_BASE", "LADDER_TRAITS", "_ladder_kind", "_ladder_word", "ladder_score", "tombs_short"]
+__all__ = ["STUCK_FALLBACKS", "stuck_fallback", "magma_access", "GROWTH", "GROWTH_EXTRA_SCORE", "GROWTH_MAX", "growth_want", "growth_candidates", "settled_times", "growth_wait", "GROWTH_SOLDIERS", "GROWTH_ZONES", "GROWTH_MAX_OF", "GROWTH_AT", "TRAIT_NAMES_SHORT", "FURNITURE_RECIPES", "METAL_FURNITURE", "spare_metal", "WOODEN_FURNITURE", "BASIC_WORKSHOPS", "BASIC_STOCKPILES", "memorial_due", "_well_rule", "_well_lid_rule", "cavern_danger", "_planned_note", "_planned_parts_rule", "planned_wants", "_water_zone_rule", "cavern_well_need", "cavern_points", "cavern_action", "cavern_well_safe", "WELL_PARTS_SHOPS", "chain_metal", "well_parts_plan", "_well_parts", "_room_repair_rule", "_water_traffic_rule", "_cleanup_rule", "STORE_GROW", "stone_tidiness", "jail_plan", "cistern_pop", "tavern_factor", "full_stores", "LEARNING_NEEDS", "_stairwell_rule", "WATER_WORDS", "water_summary", "_water_rules", "CISTERN_WORDS", "_cistern_parts", "_cistern_rule", "_deep_notes", "good_times", "ORDINALS", "garden_name", "_pop_cap_rule", "fort_strain", "hospital_shortfall", "dining_shortfall", "social_shortfall", "SOCIAL_KINDS", "_join_rule", "_dig_stall_rule", "_shrink_rule", "room_size", "_project_rules", "CHARACTER_KINDS", "is_character_level", "character_slot_reserved", "character_slot_filter", "temple_size", "more_temple", "has_grand_temple", "piety_slot", "LADDER_BASE", "LADDER_TRAITS", "_ladder_kind", "_ladder_word", "ladder_score", "tombs_short"]
 
 
 # Furniture waiting in a project -> the recipe that makes it.
@@ -1836,6 +1836,10 @@ def _project_rules(s, traits, cfg, proposals, notes, can_use, memory) -> None:
             action = {"type": "start_project", "kind": kind, "urgent": True}
             if kind == "tavern":
                 action["tables"] = 20
+            else:
+                # (0.105.23) the bridge knows "shrine" and "grand" only: this temple
+                # went without a size and was refused 83 times (fort E, 5 Nov)
+                action["size"] = temple_size(traits)
             proposals.append(Proposal("build", action, cap, 2))
             break                                   # one a cycle
     # (0.104.146) a temple to all gods while many pray to gods no temple here
@@ -2172,10 +2176,24 @@ def _project_rules(s, traits, cfg, proposals, notes, can_use, memory) -> None:
         if more:
             god, hf, n = more
             # (0.103.12) the bridge knows "shrine" and "grand" only: "temple" was refused
-            size = "grand" if traits.get("piety", 0) >= 100 else "shrine"
+            size = temple_size(traits)
             cands.append(({"type": "start_project", "kind": "temple", "size": size, "deity_hf": hf},
-                          f"a devout fort (Piety {int(traits.get('piety', 0)):+d}): {n} dwarves long to pray to "
-                          f"{god}, who has no temple here: raise one"))
+                          f"a devout fort (Piety {int(traits.get('piety', 0)):+d}): {n} dwarves "
+                          + ("long to pray to" if n <= int(_d(_d(s.get("needs")).get("deities")).get(god) or 0)
+                             else "pray to")
+                          + f" {god}, who has no temple here: raise one"))
+        # (0.105.23, 14.1 step 4b) a fort this devout has a grand temple: when
+        # no god asks for one of its own, a grand temple to all gods (B's
+        # first was a shrine dug urgently; the ladder's grand one never came)
+        elif (allow["temple"] and goal != "maintain" and "temple" not in kinds_open
+              and (traits.get("piety", 0) or 0) >= cfg["temple_grand_piety"]
+              and "locations" not in s["_errors"]
+              and _real_locations(locations, "TEMPLE", memory, _l(loc.get("list")))
+              and int(locations.get("TEMPLE") or 0) < 1 + int((traits.get("piety", 0) or 0) // 50)
+              and not has_grand_temple(s, memory)):
+            cands.append(({"type": "start_project", "kind": "temple", "size": "grand"},
+                          f"a devout fort (Piety {int(traits.get('piety', 0)):+d}) with no grand temple: "
+                          "raise a grand temple to all gods"))
         if (allow.get("garden", True) and goal != "maintain" and "garden" not in kinds_open
               and memory is not None and good_times(s, memory, traits, cfg)):
             name = garden_name(s, memory)
@@ -2199,6 +2217,10 @@ def _project_rules(s, traits, cfg, proposals, notes, can_use, memory) -> None:
         # sliders built the same 20 levels; Enxah: 20 finished, none open)
         if memory is not None and goal != "maintain" and not young:
             cands.extend(growth_candidates(s, traits, cfg, memory, allow, kinds_open, locations, zones, citizens))
+            # (0.105.23) a grand temple grown with the fort is the grand temple: not two
+            if any(c[0].get("growth") and c[0].get("kind") == "temple" and c[0].get("size") == "grand" for c in cands):
+                cands = [c for c in cands if not (c[0].get("kind") == "temple" and c[0].get("size") == "grand"
+                                                  and not c[0].get("growth") and "deity_hf" not in c[0])]
         action, reason = need_action, need_reason
         if cands:
             scored = sorted(cands, key=lambda c: -ladder_score(c[0], s, traits, cfg, memory))
@@ -2211,6 +2233,23 @@ def _project_rules(s, traits, cfg, proposals, notes, can_use, memory) -> None:
                 if all(_refused_wait(memory, Proposal("build", c[0], c[1], 6), now_r, s.get("bridge_version"))
                        is not None for c in scored):
                     reserved = None
+            # (0.105.23, 14.1 step 4b) the Monastery's bend: before the basics
+            # are met, a devout fort's last slot may go to a shrine (only a
+            # temple, shrine-sized: quick to dig, the food and drink still short)
+            if not reserved:
+                bend = piety_slot(s, traits, cfg, memory, open_)
+                temples = [c for c in scored if c[0].get("kind") == "temple"] if bend else []
+                if memory is not None:
+                    now_r = abs_tick(s)
+                    temples = [c for c in temples if _refused_wait(
+                        memory, Proposal("build", dict(c[0], size="shrine"), c[1], 6), now_r,
+                        s.get("bridge_version")) is None]
+                if temples:
+                    scored = [(dict(c[0], size="shrine"),
+                               c[1].replace("grand temple", "shrine").replace("build a grand", "build a shrine")
+                               + " (a shrine for now: the food and drink aren't all there yet)")
+                              for c in temples]
+                    reserved = bend
             # (review) care comes first: tombs and a hospital aren't put off
             if reserved and action is not None and action.get("kind") in ("tombs", "hospital"):
                 reserved = None
@@ -2327,11 +2366,21 @@ def character_slot_filter(s: dict, proposals: list, notes: list) -> list:
     return [p for p in proposals if p not in held]
 
 
+def temple_size(traits: dict) -> str:
+    """(0.105.23) The size of a temple the bridge takes ("shrine" or "grand"):
+    grand at Piety +100 and up."""
+    return "grand" if (traits.get("piety", 0) or 0) >= 100 else "shrine"
+
+
 def more_temple(s: dict, traits: dict, cfg: dict):
     """(0.102.1) The god most of the fort's distracted dwarves pray to with
     no temple of their own, for a devout fort that has its first temple:
     (name, deity hf id, dwarves), or None. At most one temple per 50 Piety
-    beyond the first."""
+    beyond the first. (0.105.23, 14.1 step 4b) At Piety `temple_god_piety`
+    and up, the god most citizens pray to (met or not: the bridge's
+    `worship`) with no temple of their own, once no distracted dwarves ask:
+    the Monastery's temple per god (Piety 150 built one temple to all gods,
+    and nobody was distracted enough to ask for more)."""
     piety = traits.get("piety", 0) or 0
     if piety < cfg["temple_more_piety"]:
         return None
@@ -2340,12 +2389,67 @@ def more_temple(s: dict, traits: dict, cfg: dict):
     temples = [e for e in _l(_d(s.get("locations")).get("list")) if isinstance(e, dict) and e.get("type") == "TEMPLE"]
     if len(temples) >= 1 + int(piety // 50):
         return None
-    have = {e.get("deity_hf") for e in temples}
+    # (0.105.23) a god served by a religion's temple has one too
+    have = {e.get("deity_hf") for e in temples} | {h for e in temples for h in _l(e.get("religion_deities"))}
     for n, god in sorted(((int(v or 0), g) for g, v in _d(nd.get("deities")).items()), reverse=True):
         hf = ids.get(god)
         if n >= cfg["temple_more_worshippers"] and isinstance(hf, int) and hf not in have:
             return god, hf, n
+    if piety >= cfg["temple_god_piety"]:
+        for n, god in sorted(((int(v or 0), g) for g, v in _d(nd.get("worship")).items()), reverse=True):
+            hf = ids.get(god)
+            if n >= cfg["temple_god_worshippers"] and isinstance(hf, int) and hf not in have:
+                return god, hf, n
     return None
+
+
+def has_grand_temple(s: dict, memory) -> bool:
+    """(0.105.23, 14.1 step 4b) The fort has a grand temple, or one under
+    way: a temple complex (DF's tier 2), an open temple level dug grand, or
+    a grand temple the AI started (remembered: the report keeps no size)."""
+    if any(isinstance(e, dict) and e.get("type") == "TEMPLE" and int(e.get("tier") or 0) >= 2
+           for e in _l(_d(s.get("locations")).get("list"))):
+        return True
+    if any(isinstance(p, dict) and p.get("kind") == "temple" and _d(p.get("summary")).get("temple") == "grand"
+           for p in _l(_d(s.get("projects")).get("open"))):
+        return True
+    return bool(memory is not None and _d(getattr(memory, "culture", None)).get("grand_temple"))
+
+
+def piety_slot(s: dict, traits: dict, cfg: dict, memory, open_: list) -> str | None:
+    """(0.105.23, 14.1 step 4b) The Monastery's bend of the character slot:
+    at Piety `character_piety_bend` and up, the last free slot may go to a
+    shrine before food and drink reach the basics (B: its slot shut for
+    want of drink while it held 3 drink a dwarf, the ladder's temple behind
+    storage), with beds for all, a dining hall and the basic workshops, food
+    and drink over their own lower lines, and never in a crisis or a slow
+    game. A reason in words, or None (character_slot_reserved holds the slot
+    itself once the basics are met)."""
+    if (traits.get("piety", 0) or 0) < cfg["character_piety_bend"]:
+        return None
+    if young_fort(s, cfg) or player_rules(s)["fort_goal"] == "maintain":
+        return None
+    if s.get("fps_low") or (memory is not None and _d(getattr(memory, "crisis", None)).get("why")):
+        return None
+    if "stocks" in _d(s.get("_errors")):
+        return None
+    max_open = _d(s.get("projects")).get("max_open") or 2
+    mine = set(getattr(memory, "character_projects", None) or []) if memory is not None else set()
+    if len(open_) != max_open - 1 or any(is_character_level(p) or p.get("id") in mine for p in open_):
+        return None
+    citizens = max(1, int(_d(s.get("dwarves")).get("total") or 0))
+    b = _d(s.get("buildings"))
+    if int(_d(b.get("other")).get("Bed") or 0) < citizens or not _d(b.get("zones")).get("DiningHall"):
+        return None
+    shops = {**_d(b.get("workshops")), **_d(b.get("furnaces"))}
+    if any(not shops.get(w) for w in BASIC_WORKSHOPS):
+        return None
+    drink = int(_d(s.get("stocks")).get("drink") or 0) / citizens
+    if (food_per_dwarf(s) < cfg["character_piety_food_per_dwarf"]
+            or drink < max(cfg["character_piety_drink_per_dwarf"], cfg["urgent_drink_per_dwarf"])):
+        return None
+    return (f"Piety {int(traits.get('piety', 0)):+d}: a shrine before food and drink are met "
+            f"({food_per_dwarf(s):.0f} food, {drink:.1f} drink a dwarf)")
 
 
 LADDER_BASE = {"jail": 9.5, "suites": 9.0, "tavern": 8.5, "library": 8.0, "barracks": 7.5, "archery": 7.0,

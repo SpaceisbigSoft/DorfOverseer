@@ -13,7 +13,7 @@ from quirks import has_rule
 from digest import _d, _l, normalize
 from planner_core import *  # noqa: F401,F403
 
-__all__ = ["CONTAINER_RECIPES", "GEAR_ORDER_METALS", "_supply_rules", "_slow_game_rules", "_clutter_rules", "_kiln_rules", "_soap_rule", "_pasture_rule", "LABOR_MODES_FIXED", "INDUSTRY_SHOPS", "_industry_rules", "_steel_rule", "_bottleneck_rule", "drink_short", "_crop_rules", "_farm_crops_rule", "farm_plots_live", "crops_owned", "drink_known_short", "_kitchen_rule", "_fishery_rule", "_bench_coffins_rule", "STONE_CRAFTS", "order_shop", "_order_slots_rule", "_orphan_jobs_rule", "_unsuspend_rule", "_approve_rule", "_stuck_orders_rule", "COAL_STONES", "_coal_rule", "_picks_order", "_stone_rule", "stone_crisis", "PRECIOUS_ORES", "_cloth_rule", "_trade_rules", "_gems_rule", "trade_wants", "_spare_mechanisms_rule", "_hauling_rule", "_surface_basics", "trees_this_year", "_keep_rule", "_free_time_rule", "_labor_rules", "OWN_LABOR_RULES", "FEEDER_ORDER", "_feeder_rule", "woodcutters", "gatherers", "trade_margin_for", "keeps_treasures", "spare_mechanisms", "_dairy_rule", "_eggs_rule", "EXCESS_SHOPS", "_excess_shops_rule", "drink_below_target", "drink_crisis", "drink_target_per_dwarf", "crisis_brew_room", "brew_jobs_open", "_labor_waiting_rule", "farm_target", "_farm_rule", "_smelting_rule", "_shoes_recipe", "_glass_rule", "PRECIOUS_METALS", "precious_metal"]
+__all__ = ["CONTAINER_RECIPES", "GEAR_ORDER_METALS", "_supply_rules", "_slow_game_rules", "_clutter_rules", "_kiln_rules", "_soap_rule", "_pasture_rule", "LABOR_MODES_FIXED", "INDUSTRY_SHOPS", "_industry_rules", "_steel_rule", "_bottleneck_rule", "drink_short", "_crop_rules", "_farm_crops_rule", "farm_plots_live", "crops_owned", "drink_known_short", "_kitchen_rule", "_fishery_rule", "_bench_coffins_rule", "STONE_CRAFTS", "order_shop", "_order_slots_rule", "_orphan_jobs_rule", "_unsuspend_rule", "_approve_rule", "_stuck_orders_rule", "COAL_STONES", "_coal_rule", "_picks_order", "_stone_rule", "stone_crisis", "PRECIOUS_ORES", "_cloth_rule", "_trade_rules", "_gems_rule", "trade_wants", "_spare_mechanisms_rule", "_hauling_rule", "_surface_basics", "trees_this_year", "_keep_rule", "_free_time_rule", "_labor_rules", "OWN_LABOR_RULES", "FEEDER_ORDER", "_feeder_rule", "woodcutters", "gatherers", "trade_margin_for", "keeps_treasures", "spare_mechanisms", "_dairy_rule", "_eggs_rule", "EXCESS_SHOPS", "_excess_shops_rule", "drink_below_target", "drink_crisis", "drink_target_per_dwarf", "crisis_brew_room", "brew_jobs_open", "_labor_waiting_rule", "farm_target", "thirsty_farm_extra", "_farm_rule", "_smelting_rule", "_shoes_recipe", "_glass_rule", "PRECIOUS_METALS", "precious_metal"]
 
 CONTAINER_RECIPES = {"wooden_barrel", "stone_large_pot"}
 # ore worth mining for gear, most wanted first (iron makes steel; tin with copper makes bronze)
@@ -2212,6 +2212,29 @@ def farm_target(s: dict, traits: dict, citizens: int, cfg: dict) -> int:
     return max(cfg["min_farm_tiles"], min(cfg["max_farm_tiles"], tiles))
 
 
+def thirsty_farm_extra(s: dict, memory, citizens: int, cfg: dict, want: int) -> tuple[int, bool]:
+    """(0.105.23, 14.1 step 4b) Farm tiles beyond the target while drink is
+    under its own target (not only under the urgent line): (tiles, whether
+    the brewable seeds are mostly underground crops). B, the Monastery (2 Nov
+    23:20): 74 tiles of plump helmets met `farm_target` (66 at 1 a dwarf),
+    yet drink stayed at 3 a dwarf with 4 brewable plants in store: the
+    harvest was eaten before the stills had it. x(1 + `farm_thirsty_share`),
+    at most `farm_thirsty_max_tiles` more, and only with brewable seeds to sow
+    in them and somewhere to lay plots (no farm failure on record)."""
+    if "stocks" in _d(s.get("_errors")) or memory is None or getattr(memory, "farm_failure", ""):
+        return 0, False
+    if not drink_below_target(s, citizens, cfg, memory):
+        return 0, False
+    crops = [v for v in _d(_d(s.get("farms")).get("crops")).values() if isinstance(v, dict)]
+    brew = [v for v in crops if v.get("brews") and int(v.get("seeds") or 0) > 0 and _l(v.get("seasons"))]
+    seeds = sum(int(v.get("seeds") or 0) for v in brew)
+    if seeds <= 0:
+        return 0, False
+    under = sum(int(v.get("seeds") or 0) for v in brew if v.get("underground"))
+    extra = min(math.ceil(want * cfg["farm_thirsty_share"]), cfg["farm_thirsty_max_tiles"], seeds)
+    return max(0, extra), under * 2 > seeds
+
+
 def _farm_rule(s: dict, memory, traits: dict, citizens: int, cfg: dict, proposals: list, notes: list) -> None:
     """Farm plots, placed by the AI itself: on soil or muddy floor the fort
     already has, else a farm level dug in a soil layer."""
@@ -2261,6 +2284,9 @@ def _farm_rule(s: dict, memory, traits: dict, citizens: int, cfg: dict, proposal
     want = farm_target(s, traits, citizens, cfg)
     if under_need:
         want = max(want, min(under_seeds, cfg["under_farm_tiles"]))
+    # (0.105.23, 14.1 step 4b) a thirsty fort farms more for its stills
+    extra, extra_under = thirsty_farm_extra(s, memory, citizens, cfg, want)
+    want = min(cfg["max_farm_tiles"], want + extra)
     if have + coming >= want * cfg["farm_refill_share"]:
         return
     if memory.farm_failure:
@@ -2292,7 +2318,8 @@ def _farm_rule(s: dict, memory, traits: dict, citizens: int, cfg: dict, proposal
         action["outside"] = True     # no farm at all: soil or grass under the sky will do until there's better
     if dig:
         action["style"] = layout_style(profile_from(traits, memory.culture or new_history()))
-    if under_need:
+    if under_need or (extra and extra_under and not first):
+        # (0.105.23) the thirsty fort's extra tiles go where its brewable seeds grow (plump helmets: underground)
         action["underground"] = True     # (0.105.5) subterranean floor only: plump helmets don't grow under the sky
         action.pop("outside", None)
     proposals.append(Proposal(
@@ -2303,7 +2330,8 @@ def _farm_rule(s: dict, memory, traits: dict, citizens: int, cfg: dict, proposal
         + (", or dig a farm level in soil" if dig else "")
         + (" (or on the surface: the fort has no farm)" if first and not under_need else "")
         + (f" (underground: {under_seeds} seeds of underground crops and {under_tiles} underground tiles"
-           + (", drink is short" if thirsty else "") + ")" if under_need else ""),
+           + (", drink is short" if thirsty else "") + ")" if under_need else "")
+        + (f" (drink is under its target: {extra} tiles more for the brewable crops)" if extra else ""),
         2 if first or (under_need and thirsty) else 5))
 
 

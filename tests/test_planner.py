@@ -1268,6 +1268,8 @@ def _():
     s["supplies"]["brewable_growths"] = 12
     assert brew_recipe(s) == "brew_drink_from_fruit"
     s["supplies"]["brewable_plants"] = 5
+    assert brew_recipe(s) == "brew_drink_from_fruit"           # (0.105.23) more fruit than plants: the fruit
+    s["supplies"]["brewable_plants"] = 12
     assert brew_recipe(s) == "brew_drink"
     del s["supplies"]["brewable_plants"]                     # an older bridge: the raw stocks
     s["stocks"]["plants"] = 3
@@ -10086,6 +10088,207 @@ def _():
     props, notes = plan(copy.deepcopy(s), Memory())[:2]
     assert not by_rule(props, "water_zone") and any("threat can reach" in n for n in notes), notes
 
+
+
+def _thirsty_b():
+    """(0.105.23) B, the Monastery (2 Nov 23:20): drink 3 a dwarf, the farm target met with plump helmets."""
+    from planner import farm_target
+    s = _fort_b()
+    s["dwarves"]["total"] = 46
+    s["stocks"]["drink"] = 138
+    s["farms"]["crops"]["BERRIES_PRICKLE"]["seeds"] = 0
+    s["farms"]["crops"]["MUSHROOM_HELMET_PLUMP"]["seeds"] = 200
+    want = farm_target(s, {}, 46, PLANNER_CONFIG)
+    plots = [{"id": 1, "tiles": want, "underground": True, "crops": ["MUSHROOM_HELMET_PLUMP"] * 4, "fallow": False,
+              "ok_now": True, "options": 1, "options_any": 1}]
+    plots += [{"id": i, "tiles": 9, "underground": False, "crops": ["", "", "", ""], "fallow": True, "ok_now": False,
+               "options": 0, "options_any": 0, "dead": True} for i in range(2, 6)]
+    s["farms"].update(plot_list=plots, plots=5, plots_underground=1, plots_surface=4, tiles=want + 36)
+    return s, want
+
+
+@test("4b farms (0.105.23): drink under its target -> more farm tiles for the brewable crops, capped, underground for helmets")
+def _():
+    from planner import thirsty_farm_extra
+    import math
+    s, want = _thirsty_b()
+    f = by_rule(plan(copy.deepcopy(s), Memory())[0], "farms")
+    assert f and f[0].action.get("underground") is True and "outside" not in f[0].action, f
+    extra = min(math.ceil(want * PLANNER_CONFIG["farm_thirsty_share"]), PLANNER_CONFIG["farm_thirsty_max_tiles"], 200)
+    assert f[0].action["tiles"] == max(4, extra) and "drink is under its target" in f[0].reason, (f[0].action, f[0].reason)
+    # capped by the brewable seeds there are to sow
+    s2 = copy.deepcopy(s)
+    s2["farms"]["crops"]["MUSHROOM_HELMET_PLUMP"]["seeds"] = 7
+    assert thirsty_farm_extra(s2, Memory(), 46, PLANNER_CONFIG, want) == (7, True)
+    # drink at its target: the farm target as it was (met)
+    s3 = copy.deepcopy(s)
+    s3["stocks"]["drink"] = 46 * PLANNER_CONFIG["drink_per_dwarf"]
+    assert not by_rule(plan(s3, Memory())[0], "farms")
+    # no brewable seeds: nothing more
+    s4 = copy.deepcopy(s)
+    s4["farms"]["crops"]["MUSHROOM_HELMET_PLUMP"]["seeds"] = 0
+    assert not by_rule(plan(s4, Memory())[0], "farms")
+    # nowhere to lay plots (a farm failure on record): no extra
+    m = Memory()
+    m.farm_failure = "no soil"
+    assert thirsty_farm_extra(s, m, 46, PLANNER_CONFIG, want) == (0, False)
+    # an unread stocks section isn't thirst
+    s5 = copy.deepcopy(s)
+    s5["_errors"] = {"stocks": "boom"}
+    assert thirsty_farm_extra(s5, Memory(), 46, PLANNER_CONFIG, want) == (0, False)
+
+
+@test("4b brewing (0.105.23): the larger brewable source is brewed first, and needs_drink brews no more than there is")
+def _():
+    s = fort()
+    s["orders"] = []
+    s["stocks"].update(drink=100, plants=55, plant_growths=300)
+    s["supplies"].update(brewable_plants=4, brewable_growths=200, empty_barrels=40, empty_pots=0)
+    d = by_rule(plan(copy.deepcopy(s), Memory())[0], "drink")
+    assert d and d[0].action["recipe"] == "brew_drink_from_fruit", d
+    s["supplies"].update(brewable_plants=150, brewable_growths=20)
+    d = by_rule(plan(copy.deepcopy(s), Memory())[0], "drink")
+    assert d and d[0].action["recipe"] == "brew_drink" and d[0].action["amount"] <= 150, d
+    # needs_drink: 3 brewable plants, room for 10 -> 3 brews
+    from planner import brew_recipe
+    n = fort()
+    n["orders"] = []
+    n["stocks"].update(drink=10, plants=300)
+    n["dwarves"]["total"] = 94
+    n["supplies"].update(brewable_plants=3, brewable_growths=0, empty_barrels=17, empty_pots=1)
+    n.setdefault("needs", {}).setdefault("needs", {})["DrinkAlcohol"] = {"distracted": 14, "badly": 1}
+    props = plan(copy.deepcopy(n), Memory())[0]
+    nd = by_rule(props, "needs_drink")
+    if nd:
+        assert nd[0].action["amount"] == 3, nd
+    assert brew_recipe(n) == "brew_drink"
+
+
+@test("4b temples (0.105.23): the urgent temple by need carries a size the bridge takes (fort E: refused 83 times)")
+def _():
+    s = settled_fort(piety=0)
+    s["dwarves"]["total"] = 221
+    s["locations"] = {"count": {"INN_TAVERN": 4, "TEMPLE": 2, "HOSPITAL": 1, "LIBRARY": 1}, "total": 8}
+    s["needs"] = {"needs": {"PrayOrMeditate": {"badly": 63, "distracted": 90}}}
+    props = plan(copy.deepcopy(s), Memory())[0]
+    t = [p for p in props if p.action.get("type") == "start_project" and p.action.get("kind") == "temple"]
+    assert t and all(p.action.get("size") in ("shrine", "grand") for p in t), [p.action for p in t]
+    assert any(p.action.get("urgent") and p.action["size"] == "shrine" for p in t), [p.action for p in t]
+    s["settings"]["traits"] = {"piety": 150}
+    t = [p for p in plan(copy.deepcopy(s), Memory())[0]
+         if p.action.get("type") == "start_project" and p.action.get("kind") == "temple" and p.action.get("urgent")]
+    assert t and t[0].action["size"] == "grand", [p.action for p in t]
+
+
+@test("4b temples (0.105.23): Piety 120+ raises a temple to each god most citizens pray to, met or not")
+def _():
+    from planner import more_temple
+    cfg = dict(PLANNER_CONFIG)
+    s = fort()
+    s["needs"] = {"needs": {}, "deities": {}, "worship": {"Teshkad": 14, "Tobul": 6, "Nish": 2},
+                  "deity_ids": {"Teshkad": 77, "Tobul": 78, "Nish": 79}}
+    s["locations"] = {"list": [{"type": "TEMPLE", "any_deity": True, "tier": 1}]}
+    assert more_temple(s, {"piety": 60}, cfg) is None                 # only the distracted ask below 120
+    assert more_temple(s, {"piety": 150}, cfg) == ("Teshkad", 77, 14)
+    s["locations"]["list"].append({"type": "TEMPLE", "religion_deities": [77, 80]})   # a religion's temple has him
+    assert more_temple(s, {"piety": 150}, cfg) == ("Tobul", 78, 6)
+    s["locations"]["list"].append({"type": "TEMPLE", "deity_hf": 78})
+    assert more_temple(s, {"piety": 150}, cfg) is None                 # Nish: too few pray to him
+    # the ladder: a dedicated, grand temple to the god
+    f = settled_fort(piety=150)
+    f["needs"] = {"needs": {}, "deities": {}, "worship": {"Teshkad": 14}, "deity_ids": {"Teshkad": 77}}
+    f["locations"] = {"count": {"TEMPLE": 1, "HOSPITAL": 1, "INN_TAVERN": 1, "LIBRARY": 1}, "total": 4,
+                      "list": [{"type": "TEMPLE", "any_deity": True, "tier": 1}]}
+    t = [p for p in plan(copy.deepcopy(f), Memory())[0] if p.action.get("kind") == "temple"]
+    assert t and t[0].action.get("deity_hf") == 77 and t[0].action["size"] == "grand" and "pray to Teshkad" in t[0].reason, \
+        [(p.action, p.reason) for p in t]
+
+
+@test("4b temples (0.105.23): Piety 120+ has a grand temple; one is remembered once started")
+def _():
+    from planner import has_grand_temple
+    s = settled_fort(piety=150)
+    s["needs"] = {"needs": {}, "deities": {}, "worship": {}, "deity_ids": {}}
+    s["locations"] = {"count": {"TEMPLE": 1, "HOSPITAL": 1, "INN_TAVERN": 1, "LIBRARY": 1}, "total": 4,
+                      "list": [{"type": "TEMPLE", "any_deity": True, "tier": 1}]}
+    m = Memory()
+    t = [p for p in plan(copy.deepcopy(s), m)[0] if p.action.get("kind") == "temple"]
+    assert t and t[0].action["size"] == "grand" and "deity_hf" not in t[0].action, [p.action for p in t]
+    assert not has_grand_temple(s, m)
+    record([(t[0], {"ok": True, "project_id": 41})], s, m)
+    assert has_grand_temple(s, m)
+    m.last_fired.clear()
+    assert not [p for p in plan(copy.deepcopy(s), m)[0] if p.action.get("kind") == "temple"
+                and not p.action.get("growth")]
+    # a temple complex (tier 2) is one; an open grand level is one
+    g = copy.deepcopy(s)
+    g["locations"]["list"][0]["tier"] = 2
+    assert has_grand_temple(g, Memory())
+    g = copy.deepcopy(s)
+    g["projects"]["open"] = [{"id": 9, "kind": "temple", "phase": "dig", "summary": {"temple": "grand"}}]
+    assert has_grand_temple(g, Memory())
+    # less devout: no grand temple asked for by this rule
+    s["settings"]["traits"] = {"piety": 60}
+    assert not [p for p in plan(copy.deepcopy(s), Memory())[0] if p.action.get("kind") == "temple"
+                and p.action.get("size") == "grand"]
+
+
+@test("4b the Monastery's bend (0.105.23): Piety 120+ takes the last slot for a shrine before drink is met; never in a crisis")
+def _():
+    from planner import piety_slot
+    s = fort()
+    s["projects"]["open"] = [{"id": 3, "kind": "storage", "phase": "dig", "dig": {"total": 50, "dug": 10}}]
+    s["settings"]["traits"] = {"piety": 150}
+    s["stocks"]["drink"] = round(3.5 * s["dwarves"]["total"])             # basics not met: 3.5 drink a dwarf
+    s["locations"] = {"count": {"HOSPITAL": 1, "INN_TAVERN": 1, "LIBRARY": 1}, "total": 3}
+    props, notes = plan(copy.deepcopy(s), Memory())
+    starts = [p for p in props if p.action.get("type") == "start_project" and not p.action.get("urgent")]
+    assert starts and all(p.action.get("kind") == "temple" and p.action.get("size") == "shrine" for p in starts), \
+        [(p.rule, p.action) for p in starts]
+    assert "a shrine for now" in starts[0].reason and "build a shrine" in starts[0].reason, starts[0].reason
+    open_ = s["projects"]["open"]
+    assert piety_slot(s, {"piety": 150}, PLANNER_CONFIG, Memory(), open_)
+    assert piety_slot(s, {"piety": 100}, PLANNER_CONFIG, Memory(), open_) is None       # not devout enough
+    mc = Memory()
+    mc.crisis = {"why": ["thirst"]}
+    assert piety_slot(s, {"piety": 150}, PLANNER_CONFIG, mc, open_) is None             # never in a crisis
+    dry = copy.deepcopy(s)
+    dry["stocks"]["drink"] = 2 * s["dwarves"]["total"]
+    assert piety_slot(dry, {"piety": 150}, PLANNER_CONFIG, Memory(), open_) is None     # too thirsty
+    beds = copy.deepcopy(s)
+    beds["buildings"]["other"]["Bed"] = 3
+    assert piety_slot(beds, {"piety": 150}, PLANNER_CONFIG, Memory(), open_) is None    # beds first
+    assert piety_slot(s, {"piety": 150}, PLANNER_CONFIG, Memory(), []) is None          # both slots free: need first
+    # B's case: full stores asked for storage; the shrine goes ahead of it
+    s.setdefault("logistics", {})["storage"] = {"furniture": {"tiles": 20, "used": 20, "loose": 200}}
+    s["projects"]["open"] = [{"id": 5, "kind": "workshops", "phase": "dig", "dig": {"total": 50, "dug": 10}}]
+    props, notes = plan(copy.deepcopy(s), Memory())
+    starts = [p for p in props if p.action.get("type") == "start_project" and not p.action.get("urgent")]
+    assert [(p.action["kind"], p.action.get("size")) for p in starts] == [("temple", "shrine")], [p.action for p in starts]
+    assert any("goes ahead of the storage level" in n for n in notes), notes
+    # Piety 60 at the same drink: the slot isn't held, storage goes ahead
+    s["settings"]["traits"] = {"piety": 60}
+    props, notes = plan(copy.deepcopy(s), Memory())
+    assert not any("the fort's own building slot" in p.reason for p in props), [p.reason for p in props]
+    assert [p.action["kind"] for p in props if p.rule == "build"] == ["storage"], [p.action for p in props]
+
+
+@test("4b temples (0.105.23): a temple without a size the bridge takes is sent as a shrine")
+def _():
+    import planner_building as pb
+    real = pb.social_shortfall
+    try:
+        pb.social_shortfall = lambda s, cfg: [("temple", "test")]
+        import planner_building
+        orig_size = planner_building.temple_size
+        planner_building.temple_size = lambda traits: "temple"           # a bad size from some rule
+        s = settled_fort(piety=0)
+        s["locations"] = {"count": {"INN_TAVERN": 1, "TEMPLE": 2, "HOSPITAL": 1, "LIBRARY": 1}, "total": 5}
+        t = [p for p in plan(copy.deepcopy(s), Memory())[0] if p.action.get("kind") == "temple"]
+        assert t and all(p.action["size"] in ("shrine", "grand") for p in t), [p.action for p in t]
+    finally:
+        pb.social_shortfall = real
+        planner_building.temple_size = orig_size
 
 if __name__ == "__main__":
     for name, ok, msg in RESULTS:

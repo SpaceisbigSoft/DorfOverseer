@@ -217,7 +217,11 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
                 notes.append(f"drink {drink} + ~{pending} queued is below the target of {round(target)}: "
                              "the stills work through the brew orders there are before more")
             else:
-                recipe, have = sources[0]
+                # (0.105.23) the larger source first: 4 brewable plants made a
+                # brew of 4 while the fruit waited for the next cycle (B)
+                # (an older bridge's raw growths are mostly leaves: plants first then)
+                recipe, have = (max(sources, key=lambda x: x[1]) if isinstance(sup_.get("brewable_plants"), int)
+                                else sources[0])
                 jobs = _clamp(math.ceil((target - drink - pending) / per_job), cfg["min_order"], cfg["max_order"])
                 jobs = min(jobs, have)
                 kept_for_kitchen = False
@@ -617,6 +621,12 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
     kept_ = _guard(character_slot_filter, s, proposals, notes)
     if kept_ is not None:
         proposals = kept_
+    # 7c. (0.105.23) a temple goes to the bridge with a size it knows: fort E's
+    # urgent temple went without one, "temple needs size" 83 times
+    for p_ in proposals:
+        if (p_.action.get("type") == "start_project" and p_.action.get("kind") == "temple"
+                and p_.action.get("size") not in ("shrine", "grand")):
+            p_.action["size"] = "shrine"
 
     # 8. The game runs slowly (the overseer measured it while unattended): no
     # newcomers and no new luxury levels until it recovers
@@ -919,6 +929,9 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
             memory.cavern_well_failure = "the last cavern well's shaft was under half dug in a game year: given up"
         if a["type"] == "start_project" and a.get("kind") == "storage":
             memory.storage_started = now                 # (0.104.38)
+        if (a["type"] == "start_project" and a.get("kind") == "temple" and a.get("size") == "grand"
+                and isinstance(memory.culture, dict)):
+            memory.culture["grand_temple"] = now         # (0.105.23) the report keeps no temple's size
         if a["type"] == "start_project" and a.get("growth") and isinstance(memory.culture, dict):
             # (0.104.161) a further hall of a kind: one a season, a lifetime cap (growth_wait)
             gl = memory.culture.setdefault("growth_levels", {})

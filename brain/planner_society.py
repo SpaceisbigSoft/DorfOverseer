@@ -1678,7 +1678,10 @@ def _needs_rules(s: dict, cfg: dict, proposals: list, rules_: dict | None = None
             and recipe is not None and room > 0 and not brewing_now and not plenty):
         # (13c) what a still can brew, as the drink rule chooses: this rule
         # ordered fruit brews the drink_fruit rule then cancelled
-        proposals.append(Proposal("needs_drink", {"type": "work_order", "recipe": recipe, "amount": min(10, room)},
+        # (0.105.23) no more brews than there are plants or fruit to brew
+        have_b = brewable_counts(s)[0 if recipe == "brew_drink" else 1]
+        proposals.append(Proposal("needs_drink", {"type": "work_order", "recipe": recipe,
+                                                  "amount": max(1, min(10, room, have_b))},
                                   f"{unmet(s, 'DrinkAlcohol')} dwarves are distracted for want of a drink: brew more",
                                   4, True))
     pop = max(1, int(_d(s.get("dwarves")).get("total") or 1))

@@ -12,7 +12,7 @@ import phases
 from quirks import has_rule
 from digest import _d, _l, normalize
 
-__all__ = ["great_present", "all_clear", "STEER_PROTECTED", "STEER_MAX_DAYS", "steer_of", "PLANNER_CONFIG", "BREW_RECIPES", "MEAL_RECIPES", "MANDATE_RECIPES", "BUILDABLE_SHOPS", "SHOP_ALIASES", "SURVIVAL_SHOPS", "TICKS_PER_DAY", "TICKS_PER_YEAR", "NO_COOLDOWN", "MULTI_PER_CYCLE", "EMERGENCY", "STUCK_HOLD_EXEMPT", "LIMIT_EXEMPT", "Proposal", "Memory", "abs_tick", "game_day", "factor", "ADJUST_BOUNDS", "_number", "effective_config", "queued", "unstored_cups", "free_stock", "watch_since", "_clamp", "MEMORIAL_SPAN", "OPTIONAL_LEVELS", "GEAR_WEAPONS", "GEAR_METALS", "GEAR_RECIPES", "NEEDS_YOU", "ask_player", "player_rules", "MAINTAIN_SKIPS", "level_refused", "_traits", "reachable_threats", "held_off_threats", "_holding_off", "ONE_A_CYCLE", "growth_mode", "growth_target", "JOB_SHOPS", "RECIPE_SHOPS", "WOOD_ELSEWHERE", "recipe_shop", "brew_recipe", "_watchdog_notes", "jobs_reported", "order_job_state", "masons_jammed", "stuck_hold_days", "_stuck_before", "stone_short", "_office_held", "tantrums_recent", "justice_held", "_restraint_order", "manager_needs_office", "suites_short", "wool_route", "thread_plants_here", "MINING_NEED_ONLY", "mining_plan", "noble_room_kinds", "SOCIAL_NEEDS", "care_waiting", "unmet", "_soldier_swap", "recently_home", "LOCATION_UNITS", "_location", "_location_short", "_real_locations", "can_fight", "is_ranged", "STALE_PROJECT_DAYS", "_workshops_busy", "shop_count", "shops_max", "_has_shop", "RAW_FOOD", "ALL_FOOD", "_idle_share", "update_idle", "AGENDA_THEMES", "agenda", "food_per_dwarf", "WINTER_STOCK", "winter_factor", "young_fort", "established", "has_farms", "_best_metal", "REFUSAL_FIRST_DAYS", "REFUSAL_MAX_DAYS", "REFUSAL_IDLE_DAYS", "REFUSAL_KEYS", "refusal_key", "_refused_wait", "note_refusal", "LOOP_LIMITS", "LOOP_LIMIT_DEFAULT", "LOOP_EXEMPT", "_loop_count", "_stalled_days", "_entrance_spot", "_record_any_outcome", "_weapon_gaps", "spare_sig"]
+__all__ = ["great_present", "all_clear", "STEER_PROTECTED", "STEER_MAX_DAYS", "steer_of", "PLANNER_CONFIG", "BREW_RECIPES", "MEAL_RECIPES", "MANDATE_RECIPES", "BUILDABLE_SHOPS", "SHOP_ALIASES", "SURVIVAL_SHOPS", "TICKS_PER_DAY", "TICKS_PER_YEAR", "NO_COOLDOWN", "MULTI_PER_CYCLE", "EMERGENCY", "STUCK_HOLD_EXEMPT", "LIMIT_EXEMPT", "Proposal", "Memory", "abs_tick", "game_day", "factor", "ADJUST_BOUNDS", "_number", "effective_config", "queued", "unstored_cups", "free_stock", "watch_since", "_clamp", "MEMORIAL_SPAN", "OPTIONAL_LEVELS", "GEAR_WEAPONS", "GEAR_METALS", "GEAR_RECIPES", "NEEDS_YOU", "ask_player", "player_rules", "MAINTAIN_SKIPS", "level_refused", "_traits", "reachable_threats", "held_off_threats", "_holding_off", "ONE_A_CYCLE", "growth_mode", "growth_target", "JOB_SHOPS", "RECIPE_SHOPS", "WOOD_ELSEWHERE", "recipe_shop", "brewable_counts", "brew_recipe", "_watchdog_notes", "jobs_reported", "order_job_state", "masons_jammed", "stuck_hold_days", "_stuck_before", "stone_short", "_office_held", "tantrums_recent", "justice_held", "_restraint_order", "manager_needs_office", "suites_short", "wool_route", "thread_plants_here", "MINING_NEED_ONLY", "mining_plan", "noble_room_kinds", "SOCIAL_NEEDS", "care_waiting", "unmet", "_soldier_swap", "recently_home", "LOCATION_UNITS", "_location", "_location_short", "_real_locations", "can_fight", "is_ranged", "STALE_PROJECT_DAYS", "_workshops_busy", "shop_count", "shops_max", "_has_shop", "RAW_FOOD", "ALL_FOOD", "_idle_share", "update_idle", "AGENDA_THEMES", "agenda", "food_per_dwarf", "WINTER_STOCK", "winter_factor", "young_fort", "established", "has_farms", "_best_metal", "REFUSAL_FIRST_DAYS", "REFUSAL_MAX_DAYS", "REFUSAL_IDLE_DAYS", "REFUSAL_KEYS", "refusal_key", "_refused_wait", "note_refusal", "LOOP_LIMITS", "LOOP_LIMIT_DEFAULT", "LOOP_EXEMPT", "_loop_count", "_stalled_days", "_entrance_spot", "_record_any_outcome", "_weapon_gaps", "spare_sig"]
 
 PLANNER_CONFIG = {
     # Starting guesses, tuned from experience. Per citizen, before trait factors.
@@ -177,6 +177,9 @@ PLANNER_CONFIG = {
     "temple_uncovered_min": 10,        # (0.104.146) dwarves praying to gods no temple serves, before a temple to all...
     "temple_uncovered_share": 0.05,    # ...or this share of the fort
     "temple_more_piety": 50,           # (0.102.1) a devout fort raises a temple to each god many pray to
+    "temple_god_piety": 120,           # (0.105.23, 14.1 step 4b) a fort this devout raises a temple to each god...
+    "temple_god_worshippers": 5,       # ...this many citizens pray to (met or not: one to all gods doesn't do)
+    "temple_grand_piety": 120,         # (0.105.23) a fort this devout has a grand temple (one, to all gods if no god wants one)
     "temple_more_worshippers": 5,      # ...this many distracted for want of prayer to that god           # ...and none started this long (halved at Grandeur +100)
     "metal_furniture_bars": 10,        # bars of a non-gear metal kept after furniture is made from it
     "encrust_cooldown_ticks": 3 * 1200,
@@ -481,6 +484,9 @@ PLANNER_CONFIG = {
     "found_food_per_dwarf": 15,
     "character_food_per_dwarf": 10,    # (0.105.10, 14.1 step 3) the basics met before a slot is the character's:
     "character_drink_per_dwarf": 10,   # ... food and drink a dwarf, beds for all, the basic workshops, a dining hall
+    "character_piety_bend": 120,       # (0.105.23, 14.1 step 4b) Piety this high: a shrine may take the slot before food and drink are met...
+    "character_piety_food_per_dwarf": 5,    # ...with this much food a dwarf...
+    "character_piety_drink_per_dwarf": 3,   # ...and drink (beds, dining hall and workshops still met; never in a crisis)
     "established_food_per_dwarf": 40,  # a small fort with farms, this much food and the drink below is no longer young
     "established_drink_per_dwarf": 15,
     "gather_jobs_max": 60,             # more plant-gathering jobs than this in a fed fort: trimmed...
@@ -528,6 +534,8 @@ PLANNER_CONFIG = {
     "min_farm_tiles": 9,
     "max_farm_tiles": 400,
     "farm_refill_share": 0.75,     # lay out more when below this share of the target
+    "farm_thirsty_share": 0.5,     # (0.105.23) drink under its target: the farm target x (1 + this), for brewable seeds...
+    "farm_thirsty_max_tiles": 60,  # ...at most this many tiles more (and no more than the brewable seeds)
     "farms_cooldown_ticks": 3 * 1200,
     "farm_dig_retry_days": 28,     # no soil for a farm level: look again (and ask again) after this
     "well_cooldown_ticks": 3 * 1200,
@@ -1183,16 +1191,27 @@ def recipe_shop(recipe) -> str | None:
     return None
 
 
-def brew_recipe(s: dict) -> str | None:
-    """(13c) The brew recipe a still can do now: from plants if any can be
-    brewed, else from fruit, else None. The bridge's brewable counts
-    (0.99.5) when it sends them, the raw stocks otherwise."""
+def brewable_counts(s: dict) -> tuple[int, int]:
+    """(0.105.23) (plants, fruit) a still can brew: the bridge's brewable
+    counts (0.99.5: each material's DRINK_MAT, items not in a job) when it
+    sends them, the raw stocks otherwise."""
     st, sup = _d(s.get("stocks")), _d(s.get("supplies"))
     if isinstance(sup.get("brewable_plants"), int):
-        plants, fruit = sup["brewable_plants"], int(sup.get("brewable_growths") or 0)
-    else:
-        plants, fruit = int(st.get("plants") or 0), int(st.get("plant_growths") or 0)
-    return "brew_drink" if plants > 0 else "brew_drink_from_fruit" if fruit > 0 else None
+        return int(sup["brewable_plants"] or 0), int(sup.get("brewable_growths") or 0)
+    return int(st.get("plants") or 0), int(st.get("plant_growths") or 0)
+
+
+def brew_recipe(s: dict) -> str | None:
+    """(13c) The brew recipe a still can do now: from plants if any can be
+    brewed, else from fruit, else None. (0.105.23) From fruit when there is
+    more of it than of plants: B (the Monastery) had 4 brewable plants, and a
+    brew of 10 from plants found 4 and stood still."""
+    plants, fruit = brewable_counts(s)
+    # (an older bridge's raw growths are mostly leaves, not fruit: plants first then)
+    counted = isinstance(_d(s.get("supplies")).get("brewable_plants"), int)
+    if plants > 0 and (plants >= fruit or not counted):
+        return "brew_drink"
+    return "brew_drink_from_fruit" if fruit > 0 else None
 
 
 def _watchdog_notes(s: dict, memory, cfg: dict, notes: list) -> None:
