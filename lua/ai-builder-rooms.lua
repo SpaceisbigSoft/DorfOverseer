@@ -292,6 +292,111 @@ function repair_rooms(dry_run)
             dry_run = dry_run or nil}
 end
 
+-- --- soil floors finished with blocks (0.105.30, construction spec 3.3) -------------
+--
+-- Soil and sand can't be smoothed or engraved, so a hall dug in soil (the
+-- Garden fort's dining on its farm level) stays a mud floor however grand
+-- the fort. In a finished project of a hall kind, each interior floor tile
+-- of SOIL material with nothing on it (no building, door, farm plot, stair,
+-- zone furniture, dig mark or water) gets a constructed floor (`Cf`), at
+-- most SOIL_FLOOR_MAX a call. Rock floors are left to smoothing. The tiles
+-- placed go on the project's record (p.soil_floors, "x,y" at p.z).
+-- Material: buildingplan's filter is left as it is [verify: no per-building
+-- item filter is relied on]; the brain waits until free blocks cover the
+-- tiles, so blocks are what lies nearest.
+SOIL_FLOOR_KINDS = {dining = true, tavern = true, temple = true, library = true, memorial = true}
+SOIL_FLOOR_MAX = 60
+SOIL_FLOOR_PHASES = {decorate = true, done = true}       -- finished (finish_project has run)
+
+local function soil_floor_tiles(p, limit)
+    local out, total = {}, 0
+    local a = anchor_of(p)
+    if not a or not p.z then return out, 0 end
+    local done = {}
+    for _, k in ipairs(type(p.soil_floors) == 'table' and p.soil_floors or {}) do done[tostring(k)] = true end
+    local xs = {}
+    for x, col in pairs(layouts.tiles_from_dig(cells_of(p, 'dig'))) do
+        for y in pairs(col) do table.insert(xs, {a.x + x, a.y + y}) end
+    end
+    table.sort(xs, function(u, v) return u[2] < v[2] or (u[2] == v[2] and u[1] < v[1]) end)
+    for _, xy in ipairs(xs) do
+        local x, y, z = xy[1], xy[2], p.z
+        local t = tile_info(x, y, z)
+        if t and t.shape == 'FLOOR' and t.material == 'SOIL' and not t.building and not t.designated
+                and not t.liquid and not t.outside and not t.hidden and not done[x .. ',' .. y]
+                and not building_at(x, y, z) then
+            local farm = false
+            for _, kz in ipairs(zone_types(x, y, z)) do
+                if kz == 'FarmPlot' or kz == 'Pen' or kz == 'Pond' then farm = true end
+            end
+            if not farm then
+                total = total + 1
+                if #out < (limit or SOIL_FLOOR_MAX) then table.insert(out, {x = x, y = y, z = z}) end
+            end
+        end
+    end
+    return out, total
+end
+
+local function soil_floor_project(p)
+    return type(p) == 'table' and SOIL_FLOOR_KINDS[p.kind] and SOIL_FLOOR_PHASES[p.phase] and type(p.cells) == 'table'
+end
+
+-- {projects = {{project_id, kind, elevation, tiles, floored}}, tiles, floored, blocks_needed}
+function soil_floor_report()
+    OFFSET = elevation_offset()
+    local out = {projects = {}, tiles = 0, floored = 0, blocks_needed = 0}
+    local ok, data = pcall(load_projects)
+    if not ok or type(data) ~= 'table' then return out end
+    for _, p in ipairs(data.list or {}) do
+        if soil_floor_project(p) then
+            local okt, _, n = pcall(soil_floor_tiles, p, 0)
+            n = okt and n or 0
+            local floored = type(p.soil_floors) == 'table' and #p.soil_floors or 0
+            if n > 0 or floored > 0 then
+                table.insert(out.projects, {project_id = p.id, kind = p.kind, elevation = ez(p.z),
+                                            tiles = n, floored = floored})
+                out.tiles = out.tiles + n
+                out.floored = out.floored + floored
+            end
+        end
+    end
+    out.blocks_needed = out.tiles
+    return out
+end
+
+function floor_soil_rooms(project_id, dry_run)
+    OFFSET = elevation_offset()
+    local data = load_projects()
+    local p
+    for _, q in ipairs(data.list or {}) do if q.id == project_id then p = q end end
+    if not p then return {ok = false, rejected = true, error = 'no such project'} end
+    if not SOIL_FLOOR_KINDS[p.kind] then
+        return {ok = false, rejected = true, error = 'soil floors are finished in halls only (dining, tavern, temple, library, memorial)'}
+    end
+    if not SOIL_FLOOR_PHASES[p.phase] then
+        return {ok = false, rejected = true, error = 'that project is not finished yet'}
+    end
+    local tiles, total = soil_floor_tiles(p, SOIL_FLOOR_MAX)
+    if #tiles == 0 then return {ok = false, rejected = true, error = 'no soil floor left bare in that project'} end
+    local cells = {}
+    for _, t in ipairs(tiles) do table.insert(cells, {x = t.x, y = t.y, text = 'Cf'}) end
+    local good, failed, stats = qf_try('build', cells, p.z, 0, 0, dry_run, 1, false)
+    if not good then
+        return {ok = false, rejected = failed == 'dry' or nil,
+                error = 'the game would not place floors there' .. (failed == 'dry' and ' (dry run refused)' or '')}
+    end
+    local placed = stat(stats, 'build_designated')
+    if not dry_run then
+        p.soil_floors = type(p.soil_floors) == 'table' and p.soil_floors or {}
+        for _, t in ipairs(tiles) do table.insert(p.soil_floors, t.x .. ',' .. t.y) end
+        save_projects(data)
+    end
+    return {ok = true, project_id = p.id, kind = p.kind, floors = placed, tiles = total,
+            left = math.max(0, total - #tiles), elevation = ez(p.z), blocks_needed = #tiles,
+            dry_run = dry_run or nil}
+end
+
 -- --- extra workshops ----------------------------------------------------------------
 --
 -- Workshops the fort has far too many of (0.75.0 built 116 soap maker's:
