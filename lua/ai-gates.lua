@@ -3626,6 +3626,28 @@ function ai_surface_box_keys()
             if h.x1 and h.y1 and h.x2 and h.y2 and h.z then box(h.x1, h.y1, h.x2, h.y2, h.z) end
         end
     end)
+    pcall(deep_hall_keys, out)              -- (0.105.31)
+    return out
+end
+
+-- (0.105.31) The deep depot's hall and wagon road (their own level only:
+-- the level above an underground hall is rock or the fort's own rooms),
+-- added to `out`. A dwarf standing in the hall (a trader's helper, a hauler
+-- at the depot) seeded a "fort" there at the gates' scan, and the road out
+-- of it looked like a way in.
+function deep_hall_keys(out)
+    local B = reqscript('ai-builder')
+    local d = B.deep_depot_data and B.deep_depot_data()
+    if type(d) ~= 'table' or d.stage == 'no_road' then return out end
+    local h = d.hall
+    if type(h) == 'table' and h.x1 and h.y1 and h.x2 and h.y2 and h.z then
+        for x = h.x1, h.x2 do
+            for y = h.y1, h.y2 do out[key(x, y, h.z)] = true end
+        end
+    end
+    for _, t in ipairs(type(d.tiles) == 'table' and d.tiles or {}) do
+        if t.x and t.y and t.z then out[key(t.x, t.y, t.z)] = true end
+    end
     return out
 end
 
@@ -3633,7 +3655,8 @@ function fort_starts(starts)
     cache, edge_cache = {}, {}           -- (read fresh: it runs before a scan or a cut)
     local big, groups, order = {}, {}, {}
     local keep_big, seen_tile = {}, {}
-    -- (0.105.30 fixes) not from the AI's keep or hall, while anyone stands elsewhere
+    -- (0.105.30 fixes) not from the AI's keep or hall, (0.105.31) or its deep depot hall,
+    -- while anyone stands elsewhere
     local okb, boxes = pcall(ai_surface_box_keys)
     if okb and type(boxes) == 'table' and next(boxes) then
         local rest = {}
