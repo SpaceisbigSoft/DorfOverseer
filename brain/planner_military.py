@@ -14,7 +14,7 @@ from digest import _d, _l, normalize
 from planner_core import *  # noqa: F401,F403
 from planner_gates import *  # noqa: F401,F403  (13c: split out by theme)
 
-__all__ = ["lone_intruders", "hunted_outside", "few_ordinary", "few_alert_over", "ai_gates_shut", "lockdown_released", "lone_alert_over", "note_lockdown", "_lone_squad", "quick_clear", "PASTURE_ACTIONS", "_pasture_hold", "gate_invaders", "main_gate", "_gate_guard_rule", "_gate_dogs_rule", "GEAR_HELD", "_shelter_possible", "soldier_share", "_gate_rules", "_free_gate_levers", "_lever_far_enough", "_link_wanted", "_lever_rule", "_trap_rule", "_gatehouse_rule", "_lever_hatches_ok", "_near_spot", "soldiers_wanted", "civilian_cap", "crossing_value", "_crossing_rule", "ALERT_DANGERS", "alert_ages", "_alerts_rule", "_war_animal_rule", "hazard_alert", "_hazard_rules", "_military_rules", "_training_rotation", "_ranged_squad_rule", "WEAPON_IDS", "_uniform_weapon_rule", "_anvil_rule", "idle_hands"]
+__all__ = ["called_off_ids", "FIGHT_FACTOR_MAX", "lone_intruders", "hunted_outside", "few_ordinary", "few_alert_over", "ai_gates_shut", "lockdown_released", "lone_alert_over", "note_lockdown", "_lone_squad", "quick_clear", "PASTURE_ACTIONS", "_pasture_hold", "gate_invaders", "main_gate", "_gate_guard_rule", "_gate_dogs_rule", "GEAR_HELD", "_shelter_possible", "soldier_share", "_gate_rules", "_free_gate_levers", "_lever_far_enough", "_link_wanted", "_lever_rule", "_trap_rule", "_gatehouse_rule", "_lever_hatches_ok", "_near_spot", "soldiers_wanted", "civilian_cap", "crossing_value", "_crossing_rule", "ALERT_DANGERS", "alert_ages", "_alerts_rule", "_war_animal_rule", "hazard_alert", "_hazard_rules", "_military_rules", "_training_rotation", "_ranged_squad_rule", "WEAPON_IDS", "_uniform_weapon_rule", "_anvil_rule", "idle_hands"]
 
 
 GEAR_HELD = {"weapons": "armed", "body": "armored", "helms": "helmed", "shields": "shielded", "pants": "legged",
@@ -72,11 +72,40 @@ def fight_key(t: dict) -> str:
     return kinds[0] if kinds else "beast"
 
 
+FIGHT_FACTOR_MAX = 50.0     # (0.105.26) a called-off fight can teach more than the usual cap of 4
+
+
+def called_off_ids(s: dict, memory) -> set:
+    """(0.105.26) Great dangers whose fight was called off (a third of the
+    soldiers who went lost): no squad is sent at them again while they stay
+    on the map. The flag goes when the danger leaves the map or dies (it is
+    no longer in the report's threats)."""
+    co = getattr(memory, "called_off", None) if memory is not None else None
+    if not isinstance(co, dict) or not co:
+        return set()
+    oth = s.get("others_on_map")
+    if isinstance(oth, dict) and "others_on_map" not in _d(s.get("_errors")) and isinstance(oth.get("threats"), list):
+        here = {str(t.get("id")) for t in oth["threats"] if isinstance(t, dict)}
+        for k in [k for k in co if k not in here]:
+            del co[k]
+    out = set()
+    for k in co:
+        try:
+            out.add(int(k))
+        except (TypeError, ValueError):
+            pass
+    return out
+
+
 def fight_or_hide(s: dict, memory, cfg: dict, great: list, able: list) -> tuple[bool, str]:
     """Squads' strength (the bridge's per-squad `power`) against the great
     dangers' (threat_power), times what the fort learned from its own fights
     of that kind (memory.fight_factor). Fight at fight_ratio or better."""
     army = sum(float(_d(q.get("power")).get("power") or 0) for q in able)
+    off = called_off_ids(s, memory) & {t.get("id") for t in great}
+    if off:
+        # (0.105.26) A's titan was sent at three times: once called off, never again while it's here
+        return False, f"the fight with {len(off)} of them was called off: no squad goes at them again while they're here"
     if not army:
         return False, "the squads' strength isn't known (older bridge)" if able else "no squad to send"
     need = 0.0
@@ -92,16 +121,29 @@ def fight_or_hide(s: dict, memory, cfg: dict, great: list, able: list) -> tuple[
           and 0 <= abs_tick(s) - int(f.get("tick") or 0) < cfg["fight_freeze_days"] * TICKS_PER_DAY)
     # (0.105.22) a fight going badly ends now, not when the danger leaves (A's
     # titan never left: the squads were sent three times as they died). A
-    # third of the soldiers who went lost: that kind counts 50% stronger at
-    # once (learned once a fight), and the fort hides
+    # third of the soldiers who went lost: the fight is called off
     if isinstance(f, dict) and f and f.get("soldiers"):
         now_ = int(_d(s.get("military")).get("soldiers") or 0)
         lost = max(0, int(f["soldiers"]) - now_)
         if lost * 3 >= int(f["soldiers"]):
+            # (0.105.26) the dangers fought are flagged (never sent at again
+            # while on the map), and the kind is learned strong enough that
+            # even the squads at full strength would hide: x1.5 needed about
+            # four lost fights before A's titan was hidden from
+            if memory is not None:
+                co = memory.called_off if isinstance(getattr(memory, "called_off", None), dict) else {}
+                for t in great:
+                    if t.get("id") is not None:
+                        co.setdefault(str(t["id"]), abs_tick(s))
+                memory.called_off = co
             if not f.get("learned"):
                 ff = memory.fight_factor if isinstance(getattr(memory, "fight_factor", None), dict) else {}
+                full = army * max(int(f["soldiers"]), now_) / max(1, now_)
+                base = sum(threat_power(t) for t in great) or 1.0
+                hide_at = full / (cfg["fight_ratio"] * base) * 1.25
                 for k in _l(f.get("keys")):
-                    ff[k] = round(min(4.0, max(0.5, float(ff.get(k) or 1.0) * 1.5)), 2)
+                    old = float(ff.get(k) or 1.0)
+                    ff[k] = round(min(FIGHT_FACTOR_MAX, max(0.5, old * 1.5, hide_at)), 2)
                 memory.fight_factor = ff
                 f["learned"] = True
             return False, words + f"; {lost} of the {f['soldiers']} soldiers who went are lost: the squads come back"
@@ -131,7 +173,8 @@ def _fight_outcome(s: dict, memory, cfg: dict) -> None:
     for k in _l(f.get("keys")):
         if f.get("learned"):            # (0.105.22) already counted mid-fight
             continue
-        ff[k] = round(min(4.0, max(0.5, float(ff.get(k) or 1.0) * (1.5 if bad else 0.9))), 2)
+        old = float(ff.get(k) or 1.0)
+        ff[k] = round(min(max(4.0, old), max(0.5, old * (1.5 if bad else 0.9))), 2)
     memory.fight_factor = ff
     memory.fights = (list(getattr(memory, "fights", None) or []) +
                      [{"tick": abs_tick(s), "keys": f.get("keys"), "lost": lost, "of": f.get("soldiers")}])[-20:]
@@ -495,8 +538,23 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
     # (0.104.118, phase 11) a great danger is fought when the squads are
     # strong enough for it (judged), else the dwarves hide behind shut gates
     fight, verdict = fight_or_hide(s, memory, cfg, [threats[i] for i in great], able) if great else (False, "")
-    targets = [i for i in reach if policy == "all" or (policy == "ordinary" and (not threats[i].get("great_danger")
-                                                                                 or fight))]
+    # (0.105.26) a great danger whose fight was called off: never a target
+    # again while it's on the map (unless the player's rule is attack everything)
+    off = called_off_ids(s, memory)
+    targets = [i for i in reach if policy == "all" or (policy == "ordinary" and i not in off
+                                                       and (not threats[i].get("great_danger") or fight))]
+    recalled = set()
+    if off and policy != "all":
+        # (0.105.26) the squads whose kill order names it come back, whatever
+        # else is about (hiding() is false with a goblin in reach, and the
+        # order on the titan stayed); free, they are sent at the others
+        for q in squads:
+            kill = {x for x in _l(q.get("kill_ids")) if isinstance(x, int)}
+            if q.get("ai_orders") and kill & off:
+                recalled.add(q.get("id"))
+                proposals.append(Proposal("squad_recall", {"type": "squad_orders", "squad_id": q["id"], "clear": True},
+                                          f"the fight with the great danger was called off: "
+                                          f"{q.get('name') or 'the squad'} comes back", 0))
     held_back = [i for i in reach if i not in targets]
     if great and fight and policy == "ordinary":
         # (0.104.139) recorded even when the squads were already out at others
@@ -506,6 +564,8 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
         _lone_squad(s, memory, cfg, squads, lone, threats, proposals, notes)
     elif targets:
         for q in able:
+            if q.get("id") in recalled:
+                continue                 # (0.105.26) called back this cycle: sent again next
             names = ", ".join(sorted({str(threats[i].get("name") or "?") for i in targets}))[:80]
             # (0.105.0) a squad waiting in the shelter goes out when it's sent
             if not q.get("ai_orders") or q.get("sheltering"):
@@ -518,7 +578,7 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
                 # (review) The new order keeps the old targets (a berserk dwarf,
                 # one behind a gate), and an id once sent isn't new again (one
                 # the game refuses, a war animal, would re-order every cycle)
-                known = [int(x) for x in q["kill_ids"] if isinstance(x, int)]
+                known = [int(x) for x in q["kill_ids"] if isinstance(x, int) and x not in off]
                 sent = {int(x) for x in _l(_d(getattr(memory, "kill_sent", None)).get(str(q["id"])))
                         if isinstance(x, int)}
                 new = [i for i in targets[:50] if isinstance(i, int) and i not in known and i not in sent]

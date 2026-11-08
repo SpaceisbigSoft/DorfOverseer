@@ -446,6 +446,13 @@ function report(txt)
     out.barracks = okb and bar or {}
     local okr, rng = pcall(ranges_report)
     out.ranges = okr and rng or {}
+    -- (0.105.26) the alarm is on and an entrance shut when the AI's shelter
+    -- was made is open now (its gate broken, or a building destroyer at it):
+    -- the planner has the shelter made again (refresh_shelter)
+    pcall(function()
+        local n = reqscript('ai-society').shelter_stale()
+        if type(n) == 'number' and n > 0 then out.shelter_stale = n end
+    end)
     -- (0.104.159) soldiers with a baby (drafted before it came): {id, name, leader}
     pcall(function()
         local mothers = nursing_mothers()
@@ -1861,6 +1868,6 @@ end
 for _, name in ipairs({'stray_report', 'free_stray_gear', 'weapon_gaps', 'fix_weapon_colours', 'weapon_def',
                        'weapon_is_ranged', 'weapon_fits', 'assign_weapons', 'gear_report', 'gaps_why',
                        'quiver_report', 'assign_quivers', 'squad_ammo', 'squad_bolts', 'unforbid_spares',
-                       'fix_gear_gaps', 'kit_report', 'assign_kit', 'army_gear'}) do
+                       'fix_gear_gaps', 'kit_report', 'assign_kit', 'army_gear', 'flask_report'}) do
     _ENV[name] = function(...) return gear()[name](...) end
 end

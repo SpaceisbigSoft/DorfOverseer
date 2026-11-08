@@ -54,7 +54,7 @@ MULTI_PER_CYCLE = {"stuck_order", "uniform", "noble_rooms", "tools", "strategist
                    "mood"}   # (0.105.24) a mood's materials: weave, tan, smelt, free, cancel in one cycle
 # Responses to an attack: never held back by the per-cycle action limit.
 EMERGENCY = {"threat_alert", "gate", "gates", "squad_attack", "flood", "gate_guard",   # (0.104.83 gate_guard)
-             "shelter_squads"}                                                      # (0.105.0)
+             "shelter_squads", "shelter_refresh"}                                   # (0.105.0; 0.105.26)
 # (0.104.89) rules the strategist may never hold: survival, safety and the
 # answers to danger (it may still raise them)
 STEER_PROTECTED = EMERGENCY | {"shelter", "alerts", "squad_recall", "hazard", "water", "well", "drink",
@@ -214,6 +214,7 @@ class Memory:
     shelter_since: dict = field(default_factory=dict)    # (0.105.22) squad id -> tick it took the shelter order
     shelter_rest: dict = field(default_factory=dict)     # (0.105.22) squad id -> tick it may shelter again
     fights: list = field(default_factory=list)           # (0.104.118) the last fights: {tick, keys, lost, of}
+    called_off: dict = field(default_factory=dict)       # (0.105.26) great danger id -> tick its fight was called off
     dig_seen: dict = field(default_factory=dict)         # (0.104.110) project id -> {"dug", "tick" (last progress), "freed"}
     join_wait_days: int = 2                              # (0.104.108) days to the next look (longer once all were seen)
     culture: dict = field(default_factory=dict)          # culture history (see culture.py)

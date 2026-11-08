@@ -915,6 +915,38 @@ function quiver_report()
     return out
 end
 
+-- (0.105.26) Flasks and waterskins: a squad set to carry water (carry_water,
+-- ai-military) fills nothing without one. Each soldier's place and its
+-- `flask` (df-structures squad_position_equipmentst), and the free ones
+-- (DF hands those out itself). {flask_places, flasks_assigned, flasks_free}
+function flask_report()
+    local out = {flask_places = 0, flasks_assigned = 0, flasks_free = 0}
+    local fort = U.fort_entity()
+    if not fort then return out end
+    for _, sid in ipairs(fort.squads) do
+        local sq = df.squad.find(sid)
+        for _, pos in ipairs(sq and sq.positions or {}) do
+            if pos.occupant ~= -1 then
+                out.flask_places = out.flask_places + 1
+                local okf, fid = pcall(function() return pos.equipment.flask end)
+                if okf and fid ~= nil and fid ~= -1 then out.flasks_assigned = out.flasks_assigned + 1 end
+            end
+        end
+    end
+    local eq = equipment_lists()
+    local una = eq and id_set(eq.items_unassigned.FLASK) or {}
+    pcall(function()
+        for _, it in ipairs(df.global.world.items.other.FLASK) do
+            local f = it.flags
+            if una[it.id] and not (f.forbid or f.owned or f.trader or f.removed or f.garbage_collect or f.dump
+                    or f.hostile or f.in_job or f.construction or f.in_inventory or f.in_building or f.artifact) then
+                out.flasks_free = out.flasks_free + 1
+            end
+        end
+    end)
+    return out
+end
+
 -- Give each crossbow soldier without one a free quiver: the place's quiver
 -- field, and DF told to look at quivers again (its own update flags).
 function assign_quivers(dry_run, limit)
@@ -1503,5 +1535,9 @@ function army_gear(out)
     local okq, q = pcall(quiver_report)
     if okq and q then
         for k, v in pairs(q) do out[k] = v end
+    end
+    local okf, fl = pcall(flask_report)          -- (0.105.26)
+    if okf and fl then
+        for k, v in pairs(fl) do out[k] = v end
     end
 end

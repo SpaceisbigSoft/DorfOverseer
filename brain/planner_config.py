@@ -42,6 +42,7 @@ PLANNER_CONFIG = {
     "alert_quiet_days_great": 7,
     "shelter_max_days": 3,             # (0.105.22) a squad on the shelter order this long at most...
     "shelter_rest_days": 2,            # ...then this long off it to eat and drink
+    "shelter_hold_tiles": 20,          # (0.105.26) ...but not while a great danger or siege is this close to the dwarves
     "fight_ratio": 2.0,            # (0.104.118) squads at least this many times a great danger's strength: they go
     "cautious_alert_levels": 10,   # Caution +100: react to unknown-reach threats this close
     # Building (docs/building.md)

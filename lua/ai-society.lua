@@ -114,14 +114,79 @@ end
 -- Is the entrance shut now? Every gate of it there and closed (a door or
 -- hatch locked, a bridge raised), read from the game; a gate gone (a
 -- building destroyer breaks them) or unreadable leaves it open.
-local function entrance_shut(e)
+-- (0.105.26) Read as ai-gates gate_buildings reads it: a door or hatch on a
+-- lever (the gatehouse's, hatch_levers) is shut by DF's `closed`, not the
+-- lock (set_lever_door unlocks it), a bridge by `raised`, any other door or
+-- hatch by its lock. `live` (gate_buildings' list by id) when it could be
+-- read: a gate missing from it is gone. A gate a building destroyer on the
+-- map can walk to (`dgroups`, its walk groups) counts as open: it breaks it.
+local function gate_shut(g, b, live)
+    local l = live and live[g.id]
+    if live and not l then return false end
+    if g.kind == 'bridge' then return b.gate_flags.raised == true end
+    if l and l.closed ~= nil then return l.closed == true end
+    if g.lever_driven then return b.door_flags.closed == true end
+    return b.door_flags.forbidden == true
+end
+
+-- (0.105.26) The walk groups of the building destroyers on the map (nil: none).
+function destroyer_groups()
+    local groups, any = {}, false
+    for _, u in ipairs(df.global.world.units.active) do
+        local ok, yes = pcall(function()
+            if not dfhack.units.isActive(u) or dfhack.units.isDead(u) or dfhack.units.isCitizen(u, true) then
+                return false
+            end
+            if u.flags1.caged or u.flags1.chained or not dfhack.units.isDanger(u) then return false end
+            local c = df.creature_raw.find(u.race).caste[u.caste]
+            return (c.misc.buildingdestroyer or 0) > 0
+        end)
+        if ok and yes then
+            local okg, g = pcall(dfhack.maps.getWalkableGroup, {x = u.pos.x, y = u.pos.y, z = u.pos.z})
+            if okg and g and g ~= 0 then groups[g] = true; any = true end
+        end
+    end
+    return any and groups or nil
+end
+
+-- (0.105.26) Can one of those walk to the gate (a tile round it, or above
+-- and below a hatch, in its walk group)?
+local function destroyer_at(b, dgroups)
+    if not dgroups then return false end
+    local zs = {b.z}
+    pcall(function()
+        if b:getType() == df.building_type.Hatch then zs = {b.z, b.z + 1, b.z - 1} end
+    end)
+    for _, z in ipairs(zs) do
+        for x = b.x1 - 1, b.x2 + 1 do
+            for y = b.y1 - 1, b.y2 + 1 do
+                local ok, g = pcall(dfhack.maps.getWalkableGroup, {x = x, y = y, z = z})
+                if ok and g and g ~= 0 and dgroups[g] then return true end
+            end
+        end
+    end
+    return false
+end
+
+-- (0.105.26) gate_buildings' reading by id (nil when ai-gates can't be read)
+local function live_gates()
+    local ok, list = pcall(function() return reqscript('ai-gates').gate_buildings() end)
+    if not ok or type(list) ~= 'table' then return nil end
+    local out = {}
+    for _, g in ipairs(list) do
+        if g.kind ~= 'pending' and g.id ~= nil then out[g.id] = g end
+    end
+    return out
+end
+
+local function entrance_shut(e, live, dgroups)
     if not e.sealed or type(e.equipment) ~= 'table' or #e.equipment == 0 then return false end
     for _, g in ipairs(e.equipment) do
         local ok, shut = pcall(function()
             local b = df.building.find(g.id)
             if not b then return false end
-            if g.kind == 'bridge' then return b.gate_flags.raised == true end
-            return b.door_flags.forbidden == true
+            if destroyer_at(b, dgroups) then return false end
+            return gate_shut(g, b, live)
         end)
         if not ok or not shut then return false end
     end
@@ -152,11 +217,14 @@ function open_entrances()
     local ok, G = pcall(function() return reqscript('ai-gates').GATES end)
     if not ok or type(G) ~= 'table' or not G.scanned or type(G.entrances) ~= 'table' then return {}, false end
     local out = {}
+    local live = live_gates()                                  -- (0.105.26)
+    local okd, dgroups = pcall(destroyer_groups)
+    dgroups = okd and dgroups or nil
     for _, e in ipairs(G.entrances) do
         local okp = pcall(function() return e.x + e.y + e.z end)
-        if okp and not entrance_shut(e) then
+        if okp and not entrance_shut(e, live, dgroups) then
             local why = (not e.sealed or #(e.equipment or {}) == 0)
-                and (e.closing and 'its gate still to come' or 'no gate') or 'its gate open'
+                and (e.closing and 'its gate still to come' or 'no gate') or 'its gate open or lost'
             local okc, cols = pcall(stair_columns, e)
             table.insert(out, {id = e.id, kind = e.kind, x = e.x, y = e.y, z = e.z, why = why,
                                columns = okc and cols or {}})
@@ -201,8 +269,81 @@ local function entrances_for_block(list, bx, by, z)
     return out
 end
 
+-- (0.105.26) The Deep mine's underground depot hall and its road (ai-builder-
+-- surface's deep depot): open to the surface for the wagons, never shelter.
+-- A set of "x,y,z" keys, and how many.
+local function deep_depot_tiles()
+    local ok, d = pcall(function() return reqscript('ai-builder').deep_depot_data() end)
+    if not ok or type(d) ~= 'table' then return nil, 0 end
+    local out, n = {}, 0
+    local function add(x, y, z)
+        local k = x .. ',' .. y .. ',' .. z
+        if not out[k] then out[k] = true; n = n + 1 end
+    end
+    for _, p in ipairs(d.tiles or {}) do
+        pcall(function() add(math.tointeger(p.x) or p.x, math.tointeger(p.y) or p.y, math.tointeger(p.z) or p.z) end)
+    end
+    local h = d.hall
+    if type(h) == 'table' and h.x1 and h.x2 and h.y1 and h.y2 and h.z then
+        for x = h.x1 - 1, h.x2 + 1 do          -- the hall and the ring round it
+            for y = h.y1 - 1, h.y2 + 1 do add(x, y, h.z) end
+        end
+    end
+    if n == 0 then return nil, 0 end
+    return out, n
+end
+
+-- (0.105.26) Where drink and water are: "x,y,z" -> 'drink' or 'well'.
+-- Drink: the tiles where (not forbidden) drink lies, in a pile's barrel or
+-- loose; a well: one built (and, when ai-society-burrows can tell, giving
+-- water). SHELTER_DRINK_SCAN drinks looked at at most.
+SHELTER_DRINK_SCAN = 4000
+local function drink_and_wells()
+    local out = {}
+    pcall(function()
+        local n = 0
+        for _, it in ipairs(df.global.world.items.other.DRINK) do
+            n = n + 1
+            if n > SHELTER_DRINK_SCAN then break end
+            local ok, pos = pcall(function()
+                if it.flags.forbid or it.flags.garbage_collect or it.flags.in_inventory then return nil end
+                local c = dfhack.items.getContainer and dfhack.items.getContainer(it)
+                if c and (c.flags.forbid or c.flags.in_inventory) then return nil end
+                local x, y, z = dfhack.items.getPosition(it)
+                if type(x) == 'table' then return x end
+                if x and x >= 0 then return {x = x, y = y, z = z} end
+                return nil
+            end)
+            if ok and pos then out[pos.x .. ',' .. pos.y .. ',' .. pos.z] = 'drink' end
+        end
+    end)
+    pcall(function()
+        local okb, B = pcall(reqscript, 'ai-society-burrows')
+        for _, b in ipairs(df.global.world.buildings.other.WELL) do
+            local ok, good = pcall(function()
+                if b:getBuildStage() < b:getMaxBuildStage() then return false end
+                if okb and B and B.well_gives_water then return B.well_gives_water(b) ~= false end
+                return true
+            end)
+            if not ok or good then out[b.centerx .. ',' .. b.centery .. ',' .. b.z] = 'well' end
+        end
+    end)
+    return out
+end
+
+SHELTER_OPEN_KEY = 'ai-overseer/shelter_open'       -- (0.105.26) the entrances open when it was made
+SHELTER_DRINK_BACK = 30                             -- drink tiles taken back at most
+
+local function entrance_keys(list)
+    local keys = {}
+    for _, e in ipairs(list or {}) do table.insert(keys, e.x .. ',' .. e.y .. ',' .. e.z) end
+    table.sort(keys)
+    return keys
+end
+
 -- Fills the burrow; returns the tiles in it and what was left out:
--- {excluded, open_entrances, entrances_scanned, fallback, note, why}.
+-- {excluded, open_entrances, entrances_scanned, fallback, note, why,
+-- drink_tiles, well_tiles, deep_depot_tiles, drink_back}.
 function fill_shelter(b)
     local info = {excluded = 0, margin = SHELTER_MARGIN, margin_levels = SHELTER_MARGIN_Z}
     local lo, hi = fort_levels()
@@ -211,8 +352,13 @@ function fill_shelter(b)
     if not okl then open, scanned, info.entrances_error = {}, false, tostring(open):sub(1, 120) end
     info.entrances_scanned = scanned
     info.open_entrances = #open
+    pcall(function() U.site_put(SHELTER_OPEN_KEY, {keys = entrance_keys(open), scanned = scanned and true or false}) end)
+    local deep, deep_n = deep_depot_tiles()                  -- (0.105.26)
+    local okw, water = pcall(drink_and_wells)
+    water = okw and water or {}
+    local drink_tiles, well_tiles, deep_out = 0, 0, 0
     local n = 0
-    local held = {}          -- the tiles left out: {block, x, y, far}
+    local held = {}          -- the tiles left out: {block, x, y, far, kind}
     for _, block in ipairs(df.global.world.map.map_blocks) do
         local z = block.map_pos.z
         if z >= lo and z <= hi then
@@ -225,7 +371,10 @@ function fill_shelter(b)
                             and d.flow_size == 0 then
                         local tt = block.tiletype[x][y]
                         local shape = df.tiletype_shape[df.tiletype.attrs[tt].shape]
-                        if OPEN[shape] then
+                        local k = (bx + x) .. ',' .. (by + y) .. ',' .. z
+                        if OPEN[shape] and deep and deep[k] then
+                            deep_out = deep_out + 1
+                        elseif OPEN[shape] then
                             local near, far = false, nil
                             if near_list then near = near_entrance(near_list, bx + x, by + y, z) end
                             if near then
@@ -235,15 +384,44 @@ function fill_shelter(b)
                                 else
                                     far = select(2, near_entrance(near_list, bx + x, by + y, z))
                                 end
-                                table.insert(held, {block, x, y, far or 0})
+                                table.insert(held, {block, x, y, far or 0, water[k]})
                             else
                                 dfhack.burrows.setAssignedBlockTile(b, block, x, y, true)
                                 n = n + 1
+                                if water[k] == 'drink' then drink_tiles = drink_tiles + 1
+                                elseif water[k] == 'well' then well_tiles = well_tiles + 1 end
                             end
                         end
                     end
                 end
             end
+        end
+    end
+    if deep_out > 0 then info.deep_depot_tiles = deep_out end
+    -- (0.105.26) B (2 Nov) and A: a shelter with no drink nor well in it
+    -- killed by thirst. Neither inside: the left-out drink and well tiles
+    -- farthest from the open entrances come back first (a well, and up to
+    -- SHELTER_DRINK_BACK drink tiles)
+    local back = 0
+    if drink_tiles + well_tiles == 0 and #held > 0 then
+        table.sort(held, function(a, c) return a[4] > c[4] end)
+        local rest = {}
+        for _, h in ipairs(held) do
+            if h[5] == 'well' and well_tiles == 0 then
+                dfhack.burrows.setAssignedBlockTile(b, h[1], h[2], h[3], true)
+                n, back, well_tiles = n + 1, back + 1, well_tiles + 1
+            elseif h[5] == 'drink' and drink_tiles < SHELTER_DRINK_BACK then
+                dfhack.burrows.setAssignedBlockTile(b, h[1], h[2], h[3], true)
+                n, back, drink_tiles = n + 1, back + 1, drink_tiles + 1
+            else
+                table.insert(rest, h)
+            end
+        end
+        held = rest
+        if back > 0 then
+            info.drink_back = back
+            info.drink_note = ('no drink nor well away from the open entrances: %d drink and well tile%s near them taken back')
+                :format(back, back == 1 and '' or 's')
         end
     end
     info.excluded = #held
@@ -262,20 +440,51 @@ function fill_shelter(b)
         if n < need then
             -- too few away from them: the farthest of the left-out tiles back
             table.sort(held, function(a, c) return a[4] > c[4] end)
-            local back = 0
+            local fb = 0
             for _, t in ipairs(held) do
                 if n >= need then break end
                 dfhack.burrows.setAssignedBlockTile(b, t[1], t[2], t[3], true)
-                n, back = n + 1, back + 1
+                n, fb = n + 1, fb + 1
+                if t[5] == 'drink' then drink_tiles = drink_tiles + 1
+                elseif t[5] == 'well' then well_tiles = well_tiles + 1 end
             end
-            info.excluded = #held - back
+            info.excluded = #held - fb
             info.fallback = true
-            info.taken_back = back
+            info.taken_back = fb
             info.note = ('only %d tiles away from the open entrances (needs %d): the %d farthest of the left-out tiles taken back')
-                :format(n - back, need, back)
+                :format(n - fb, need, fb)
         end
     end
+    info.drink_tiles, info.well_tiles = drink_tiles, well_tiles
+    if drink_tiles + well_tiles == 0 then
+        info.no_water = 'the shelter holds no drink and no well'
+    end
     return n, info
+end
+
+-- (0.105.26) Entrances open now that were shut (or not yet known) when the
+-- AI's shelter was made: a gate lost (broken, or a building destroyer at
+-- it) while the alarm is on. How many (0: none, or the shelter isn't the
+-- AI's on an alarm sounding).
+function shelter_stale()
+    local okc, on = pcall(function() return df.global.plotinfo.alerts.civ_alert_idx ~= 0 end)
+    if not (okc and on) then return 0 end
+    local b = find_burrow(SHELTER_NAME)
+    if not b then return 0 end
+    local mine = false
+    pcall(function()
+        for _, id in ipairs(civ_alert().burrows) do if id == b.id then mine = true end end
+    end)
+    if not mine then return 0 end
+    local saved = U.site_get(SHELTER_OPEN_KEY, {})
+    if type(saved) ~= 'table' or type(saved.keys) ~= 'table' then return 0 end
+    local was = {}
+    for _, k in ipairs(saved.keys) do was[k] = true end
+    local okl, open, scanned = pcall(open_entrances)
+    if not okl or not scanned then return 0 end
+    local n = 0
+    for _, k in ipairs(entrance_keys(open)) do if not was[k] then n = n + 1 end end
+    return n
 end
 
 -- (0.105.23) what the shelter left out near open entrances, in an action's result
@@ -289,6 +498,9 @@ function shelter_result(r, info)
     r.fallback = info.fallback
     r.taken_back = info.taken_back
     r.note = info.note
+    r.drink_tiles, r.well_tiles = info.drink_tiles, info.well_tiles      -- (0.105.26)
+    r.drink_back, r.drink_note, r.no_water = info.drink_back, info.drink_note, info.no_water
+    r.deep_depot_tiles = info.deep_depot_tiles
     return r
 end
 

@@ -114,6 +114,7 @@ ORDER_RECIPES = {
     leather_low_boots = {job = 'MakeShoes', item_subtype = 'ITEM_SHOES_BOOTS_LOW', material_category = {'leather'}},
     -- (0.100) crossbow soldiers carry bolts in a quiver (DFHack's military.json order)
     leather_quiver = {job = 'MakeQuiver', material_category = {'leather'}},
+    leather_waterskin = {job = 'MakeFlask', material_category = {'leather'}}, glass_vial = {job = 'MakeFlask', material = 'GLASS_GREEN'},  -- (0.105.26) a soldier's water
     wooden_bin = {job = 'ConstructBin', material_category = {'wood'}},
     wooden_bucket = {job = 'MakeBucket', material_category = {'wood'}},
     wooden_barrel = {job = 'MakeBarrel', material_category = {'wood'}},
