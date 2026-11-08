@@ -1,0 +1,95 @@
+# Watch in game
+
+What to look for in the six forts after each delivery, kept with the code (moved out of the handoff 8 Nov). Close a line here once it is seen to work, or move it to the Gap Checklist if it fails.
+
+Where to look:
+- **state.json**: the live report, `dfhack-config\ai-overseer\state.json` in each game's folder.
+- **journal**: `DF-AI-x\logs\forts\<fort>\journal.jsonl`, the AI's actions and their answers.
+- **keeper log**: `DF-AI-x\logs\unattended.log`, the overseer's lines, including `Died:` lines and notes.
+- **bridge log**: `DF-AI-x\logs\bridge.log`, every call and its JSON answer.
+
+The forts are A War-hold, B Monastery, C Merchant city, D Hermit hold, E Deep mine and F Garden fort. "All" means every fort.
+
+
+## 0.105.22 to 0.105.26
+
+Suggested placement: in "Starting the next step", in place of the current "then watch:" bullets. It covers them and the three versions before.
+
+**First start (0.105.25 split, all).** In each game, `ai-bridge version` should answer with the delivered `BRIDGE_VERSION` and no load error. The self-test should pass. In the first full report (state.json), no section should hold `{"error": ...}`. Look especially at sections served by the split parts: `ai-bridge-report/-actions/-orders/-probes`, `ai-builder-*`, `ai-military-gear`, `ai-society-burrows` and `ai-util`. A part that fails to load names itself in the keeper log. Also check:
+- that `touch lua/*.lua` ran in every folder, or the game keeps the old hub;
+- that a hand-run `overseer.py --autopilot` beside a keeper refuses (`logs\keeper.lock`).
+
+**0.105.22: the 3-5 Nov deaths**
+- **Shelter (B most, all).** A squad on the shelter order comes off it after `shelter_max_days` (3) and stays off for `shelter_rest_days` (2). Look in the journal for squad orders, and in memory for `shelter_since` and `shelter_rest`. No soldier should appear in the keeper log's `Died:` lines with thirst as the cause.
+- **Hospital burrow (A, B, E).** In state.json's `society.hospital_burrow`, members past thirst 25000 or hunger 50000 are let out, and no such dwarf is moved in. Bedridden patients are kept in only where the burrow has a well (`drink` reads `well`).
+- **Fight or hide (A: titans).** Once a third of the soldiers sent are lost, the fight is called off at once, noted in the keeper log and journal. The threat's kind then counts 1.5x, once (`learned`). A great danger at ability 3 or more is hidden from, not fought.
+- **Ghosts (B, C, F).** No `stone_slab` or `stone_coffin` order is cancelled as stuck while ghosts walk or bodies wait. While the fort is haunted, one waiting MASON, DETAIL or STONE_CRAFT job gets a worker.
+- **Unreached levels (all).** A level with nothing dug for 56 days (`unreached_dig_days`) is cancelled with `unreached: true` in the journal. No new level is placed in its area for 5 years (`UNREACHED_YEARS`).
+
+**0.105.23: 14.1 step 4 and the shelter**
+- **Shelter away from open entrances (A first).** In the bridge log, the `civ_alert` (`setup_shelter`/`refresh_shelter`) result should carry `excluded_tiles`, `excluded_why` and `open_entrances`. A `fallback` or `taken_back` note means the shelter was small, so less was left out.
+- **4a: the hatch lever and the gatehouse (A, D).**
+  - The founding hatch gets a lever (`hatch_levers` on). The gate watcher drives it by `lever pull --instant`; `open_lever_hatches` reopens a hatch the link shut. The hatch should be open in quiet times, shut only when danger is near.
+  - The gatehouse is built at Fortification 80+: A at 120, D at 100. Look for `build_gatehouse` in the journal, then "AI gatehouse bridge" in game: a walled corridor of 2-4 traps in front of the hatch. The gate scan should report the bridge as the entrance's outer gate. Expect the scorecard's Fortification and Engineering lines to move for A and D.
+- **4b: the Monastery (B).**
+  - Farms get +50% (`thirsty_farm_extra`) while drink is under its target.
+  - Brewing takes the larger brewable source, fruit first.
+  - A temple per god that 5+ citizens pray to (state.json `needs.worship`), then a grand temple at Piety 120+.
+  - A shrine may take the character slot before food and drink are met (`piety_slot`).
+  - Fort E's temple with no size: no more refusals of `start_project` "temple".
+- **4c: the Garden fort and the Deep mine (F, E).**
+  - F's keep: `place_keep` finds a court (`find_keep_court`) instead of "no ring of open ground around the way in".
+  - E: nothing above the surface (`max_elev` on every new level), and the trade depot underground. Look at state.json `buildings.deep_depot`: its `stage`, `tiles_left`, `stalled`, `depot` and `wagon_access`. When the game says wagons can't reach it, a Needs you line appears. With no road found, `no_road` and a surface depot.
+
+**0.105.24: items 6-11**
+- **Cavern well (C, F).**
+  - Old projects #110 and #114 are taken up again (`revive_cavern_well`), and a landing is dug beside the shaft top (`well_landing`, `well_floor_beside`).
+  - If quickfort refuses the well, the project holds `well_refused` and `well_diag` with tile names. It is retried and given up after 3 refusals.
+  - Then the hospital burrow's `drink` should read `well`.
+- **Squads (all).**
+  - A recall, gate hold or shelter clears the AI's order off each soldier's own list. The `squad_order` recall result says `member_orders` (does DF copy orders onto soldiers?).
+  - A squad with a soldier at thirst 25000 or hunger 50000 (`parched` in the military report's squads) is never sheltered, and is let out at once.
+  - In DF's squad screen, sheltered squads carry water and food.
+- **Moods (all; B and E for drink variety).**
+  - In state.json's moods, `missing[i].avail` is filled per request, and cloth reads "1 cloth" (not 10000).
+  - Journal results to read: `mood_free_items`, and the orders `tan_hide`, `raw_green_glass`, `smelt_ore`, weave, cut, blocks and one animal butchered. Two job names and DFHack's `isSuitableItem`/`isSuitableMaterial` are unverified. A wrong name is refused and the old behaviour comes back.
+  - The failed share of moods should fall from 45%. A Needs you line names a material the fort can't supply.
+  - Keeper log: a "calm burrows retired" note once 90% of 40+ tantrum sightings are outside the burrow. The 2-5 Nov logs had 344 of 349 outside.
+  - SameBooze stress shrinking (`_booze_variety_rule`: a fruit brew, a second brewable crop; supplies `drink_kinds`).
+- **Visitors (all; B and F for meetings, C never).**
+  - After a heist or a visitor's killing, the tavern, temples, library and guildhalls are shut to visitors for `heist_lockout_days` (168). Look for `location_access` in the journal, and for `killer_visitor` or `killer_dead` on the `Died:` lines.
+  - With 5+ citizens unable to complain and at least 3 meetings that are half or more with visitors, the same locations shut for 56 days (`visitor_shut`). This never happens at Outsiders 100+, and the Merchant city preset has it off.
+  - "Unable to complain" in `needs.stress_causes` should fall. The bridge counts every non-citizen, residents too, as a visitor in meetings.
+  - An unattended meeting screen is left after 2 minutes.
+  - Citizenship petitions show as Needs you with counts.
+  - The two new Rules toggles (`heist_lockout`, `shut_to_visitors`) should sit in the right-hand column without overlap.
+- **Messenger (any fort with `send_messenger` switched on; off by default).**
+  - `send_mission` in the journal; `missions.send` in state.json; and `dfhack-config\ai-overseer\mission-send.json`.
+  - The run should stop at step 4 of 6 (Make contact, the messenger and the confirm were never recorded), and the World screen should be shut after.
+  - Record the later steps first with `probe_missions.py --here World|Diplomacy` and `--watch`.
+- **Phase 12 leftovers (C, D, E; F for quivers).**
+  - Library: a dwarf takes the quire or parchment job (`_labor_waiting_rule`: 1 waiting job when nobody outside the squads holds the labour), and quires reach the library.
+  - Traction: state.json `infection.traction` lists patients and free benches. `traction_rest` lifts a patient onto a free bench after 7 days' wait.
+  - Quarry counts stay at 30 or less: no "quarry needs count 1-30" refusal.
+  - A stone door cancelled as stuck is ordered in wood next (`stuck_fallback`).
+  - Crossbow and quiver orders done 4 times for the same reason are held 56 days (memory `no_effect`). Still unexplained: where C's 962 crossbows went, and why the game takes a handed-out quiver back.
+
+**0.105.25: Phase 13c (meant to change nothing the forts do)**
+- **Searches cut short (all; E and F for the outdoor farm).** Farm, well, cistern, pasture, sand and surface searches that hit their time limit answer `timed_out` with "search cut short", not "nothing found". From 0.105.26 the brain retries them in 1-2 days, the long back-off only after 3 in a row.
+- **Speed (all).** Full report time `_timing` in the bridge log should be the same or lower: boulders, caverns, pastures and gate floods are walked once. FPS should be the same.
+- **Dry runs while halted.** With Ctrl-Shift-H on, dry runs of the actions in `DRY_OK` go through (0.105.26: about 90, and a dry run of anything else is refused with "has no dry run" in the bridge log). `tidy` is gone in 0.105.26.
+- **No new `water-map.txt`** in `dfhack-config\ai-overseer` (the weekly probe is gone).
+- **Window.** The six actions that had no panel words now show them, and the slider says "Outsiders", not "Hostility".
+
+**0.105.26: the fix round (eight groups)**
+- **First start (all).** `python brain\selftest.py` passes "every Lua module and part loads" and "every part is from this version" (the bridge's new `modules` command; `ai-bridge version` lists `stale_parts`, which should be empty). Per-command time in the bridge log drops (parts no longer compiled every call). No "has no dry run" refusals of the overseer's own dry runs.
+- **Titans and great beasts (A first).** A fight called off: every squad with the danger in its kill list gets `squad_recall`, memory `called_off` holds the enemy until it leaves or dies, no squad sent at it meanwhile, the learned factor jumps (A's titan: 6.75, not 1.5). The Rules tab's "attack everything" still overrides.
+- **Shelter (all; B, E).** The alarm's `civ_alert` result has `drink_tiles`/`well_tiles` > 0 (or `drink_back` when they were taken back; `no_water` if none). Lever hatches count as shut; a destroyer on the map marks gates open; `military.shelter_stale` > 0 during an alarm proposes `refresh_shelter`. E: `deep_depot_tiles` left out. Sheltered squads stay in while a great danger or siege is within 20 tiles (`shelter_hold_tiles`).
+- **Water for soldiers (all).** `military.gear.flask_places`/`flasks_assigned`/`flasks_free`; leather waterskin (or green-glass vial) orders for the shortfall; check `pos.equipment.flask` holds an item.
+- **Visitors (B, C, F).** After a `location_access` shut the next report's `locations` shows the places shut (cache cleared; `locations.built`), and they reopen when the window ends (no longer filed under `locations_yours`). C's heist lockout 28 days. The swamped-mayor shut repeats only on new complaints; `meetings.requests_residents` and `activities[].resident` mark residents (check `isResident` tells residents from performers).
+- **Moods (all).** `tan_hide` runs as the `TAN_A_HIDE` reaction at the tanner's; a mood's orders never held; while a mood waits, other orders of its material are dropped (an iron-bar mood holds iron weapon orders too).
+- **Holds and loops (all).** A timed-out search retried in 1-2 days, back-off from the 3rd; one fruit brew, not two; a stuck brew waits 5 days (none when urgent); `needs_drink` gone; the prison room's 7-day cooldown; `unreached` only when nothing was dug, and B's unreachable stair column dropped at every level (check `getWalkableGroup` on stairs); ghost slabs that can't be made: a Needs you saying why.
+- **Stranded outside (any; E's case).** `entrances.stranded` rows (cause `lockdown`/`gate_shut`/`no_path`, `in_cavern`); after about 4 game hours an AI-shut gate is opened (`open_gates`) when no enemy is within 30 tiles, otherwise a Needs you. Watch the gate watcher doesn't re-close at once.
+- **Cavern openings (C, F, E).** `threats.openings` lists cavern entrances, well shaft hatches and doors (capped 60); a cavern entrance gets doors at once (`cavern_openings`); a forgotten beast or other great danger in the caverns seals every opening ("all caverns", announced), the cavern well's shaft hatch shut too (the brain says the well is dry; Needs you if injured wait on it); never with citizens below; reopened once it's gone. Whether a locked door or hatch really keeps a forgotten beast out is the open question.
+- **Strategist (`--ai`, when tried).** The first live review returns JSON; life-saving rules can't be held; the shown rules can be steered; the API backend uses adaptive thinking on 4.6+ models (the subscription backend unchanged).
+- **Scorecard (the exit test).** `keeper-preset.json` entries carry a `"run"` stamp after the fresh start, unchanged by a revive; each kept state starts with `"_run"`; `python brain\scorecard.py --every 2y` writes `logs\scorecards\<season>.md` and `summary.md`, with no "older run left out" notes.
