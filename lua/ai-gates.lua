@@ -587,9 +587,12 @@ function find_entrances(starts, buildings)
         -- the gates near it that can be closed (a bridge only with a lever)
         local cands, pending = {}, {}
         e.bridges_unworked = {}
-        local gatehouse_here = false
+        local gatehouse_here, gatehouse_bridge = false, nil
         for _, b in ipairs(buildings) do
-            if near(b, g) and is_gatehouse(b) then gatehouse_here = true end   -- (0.105.23)
+            if near(b, g) and is_gatehouse(b) then                             -- (0.105.23)
+                gatehouse_here = true
+                gatehouse_bridge = {x = b.x1, y = b.y1, z = b.z}               -- (0.105.30) for the wings
+            end
             if near(b, g) then
                 if b.kind == 'pending' then
                     table.insert(pending, b)
@@ -644,6 +647,7 @@ function find_entrances(starts, buildings)
                 e.lid = true
                 if gatehouse_here then
                     e.gatehouse = 'standing'
+                    e.gatehouse_bridge = gatehouse_bridge
                 else
                     local okp, plan, why = pcall(plan_gatehouse, e, h)
                     if okp and plan then e.gatehouse = 'possible'
@@ -1520,7 +1524,8 @@ end
 
 -- (grand is 2, not 3: the middle door of a 3-wide gap would never have a wall
 -- beside it, and DF only builds a door next to a wall)
-GAP = {plain = 2, narrow = 1, fortified = 1, gatehouse = 1, grand = 2, drawbridge = 2}
+GAP = {plain = 2, narrow = 1, fortified = 1, gatehouse = 1, grand = 2, drawbridge = 2,
+       sealed = 0}       -- (0.105.30) walls only, no door: a cavern opening walled for good (plan_sealed)
 
 local function nbrs4(k)
     local x, y, z = unkey(k)
@@ -1799,7 +1804,114 @@ end
 -- further in (plan.moved_in steps), or a hatch closes stairs whose outside is
 -- straight below. doors_present: keys of opening tiles that already have a
 -- door (built or planned): they become the gate, and walls go on the rest.
+---------------------------------------------------------------------------
+-- (0.105.30, construction spec 3.4) The `sealed` style: a cavern opening up
+-- to SEALED_MAX_WIDTH tiles walled shut, no door (the Hermit's hold). Only
+-- when the fort uses nothing on that cavern layer (no cavern well, no
+-- cistern drawing on a cavern lake there), no citizen stands beyond it (in
+-- the cavern, in the walk group of its outside tiles, or on the opening),
+-- and the walls cut nothing of the fort off (not a tile but the walls'
+-- own). The pieces are recorded like any gate's, and clear_gate takes
+-- built walls in a cavern opening down again.
+---------------------------------------------------------------------------
+SEALED_MAX_WIDTH = 3
+
+local function layer_gid(x, y, z)
+    local ok, gid = pcall(function()
+        local b = dfhack.maps.getTileBlock(xyz2pos(x, y, z))
+        return b and b.global_feature
+    end)
+    return ok and gid or nil
+end
+
+-- Why the fort uses this opening's cavern layer, or nil (tests replace this).
+function sealed_layer_use(e)
+    local out_k = next(e.outs or {})
+    if not out_k then return 'its cavern side could not be read' end
+    local gid = layer_gid(unkey(out_k))
+    if gid == nil or gid < 0 then return 'its cavern layer could not be read' end
+    local B
+    local okb = pcall(function() B = reqscript('ai-builder') end)
+    if not okb or not B then return 'the cavern wells could not be read' end
+    local okw, wells = pcall(B.well_lids, false)
+    if not okw then return 'the cavern wells could not be read' end
+    for _, w in ipairs(wells or {}) do
+        local h = type(w.shaft_hatch) == 'table' and w.shaft_hatch or w
+        if h.x and layer_gid(h.x, h.y, h.z) == gid then
+            return ('cavern well %s draws on that cavern'):format(tostring(w.project_id))
+        end
+    end
+    local okc, d = pcall(B.cistern_data)
+    if okc and type(d) == 'table' and type(d.plan) == 'table' then
+        local p = d.plan
+        if p.source == 'cavern lake' and type(p.water) == 'table' then
+            local z = p.water.z or p.intake_z or (p.cistern and p.cistern.z)
+            if z and layer_gid(p.water.x, p.water.y, z) == gid then return 'the cistern draws on a lake in that cavern' end
+        end
+    end
+    return nil
+end
+
+-- Citizens beyond the opening: in the cavern, in the walk group of its
+-- outside tiles, or standing on the opening (tests replace this).
+function citizens_beyond(e)
+    local groups, on = {}, {}
+    for k in pairs(e.outs or {}) do
+        local x, y, z = unkey(k)
+        local ok, g = pcall(dfhack.maps.getWalkableGroup, xyz2pos(x, y, z))
+        if ok and g and g ~= 0 then groups[g] = true end
+    end
+    for _, k in ipairs(e.inside_list or {}) do on[k] = true end
+    local n = 0
+    for _, u in ipairs(dfhack.units.getCitizens(true)) do
+        local p = u.pos
+        if on[key(p.x, p.y, p.z)] then
+            n = n + 1
+        else
+            local ok, yes = pcall(function()
+                local des = dfhack.maps.getTileFlags(p.x, p.y, p.z)
+                if not (des and (des.feature_global or des.feature_local)) then return false end
+                local g = dfhack.maps.getWalkableGroup(xyz2pos(p.x, p.y, p.z))
+                return g ~= 0 and groups[g] == true
+            end)
+            if not ok or yes then n = n + 1 end
+        end
+    end
+    return n
+end
+
+function plan_sealed(e, starts)
+    if e.kind ~= 'cavern' then return nil, 'a sealed gate walls a cavern opening only' end
+    local width = #(e.inside_list or {})
+    if width == 0 then return nil, 'the opening has no tiles' end
+    if width > SEALED_MAX_WIDTH then
+        return nil, ('the opening is %d wide: the AI walls cavern openings up to %d'):format(width, SEALED_MAX_WIDTH)
+    end
+    local why = line_blocked(e.inside_list, {})
+    if why then return nil, why end
+    local okl, use = pcall(sealed_layer_use, e)
+    if not okl then return nil, 'the cavern layer could not be checked' end
+    if use then return nil, 'the fort uses that cavern: ' .. use end
+    local okc, n = pcall(citizens_beyond, e)
+    if not okc then return nil, 'the citizens beyond it could not be counted' end
+    if n > 0 then return nil, ('%d citizen%s beyond it in the cavern'):format(n, n == 1 and '' or 's') end
+    local memo = {}
+    local plan, why2 = plan_line(e, 'sealed', starts, {}, memo)
+    if not plan then return nil, why2 end
+    if #plan.walls ~= width or #plan.doors > 0 then return nil, 'the opening could not be walled whole' end
+    -- the cistern's rule: the walls cut nothing of the fort off
+    local wall_only = {}
+    for _, k in ipairs(plan.walls) do wall_only[k] = true end
+    local _, after = explore(starts, wall_only)
+    if (memo.before or 0) - after > #plan.walls then
+        return nil, ('walls there would cut off %d tiles of the fort'):format(memo.before - after - #plan.walls)
+    end
+    plan.sealed = true
+    return plan
+end
+
 function plan_gate(e, style, starts, doors_present)
+    if style == 'sealed' then return plan_sealed(e, starts) end         -- (0.105.30)
     doors_present = doors_present or {}
     -- (13c) the fort's size before any wall, flooded once for every line tried
     -- here (each plan_line flooded it again: up to 8 floods of the fort a plan)
@@ -1938,6 +2050,7 @@ function plan_line(e, style, starts, doors_present, memo)
     local first = list[1]
     for _, k in ipairs(list) do if d2(k) < d2(first) then first = k end end
     local gap, in_gap = {first}, {[first] = true}
+    if gap_n == 0 then gap, in_gap = {}, {} end        -- (0.105.30) sealed: walls on every tile
     while #gap < gap_n do
         local best
         for _, g in ipairs(gap) do
@@ -2592,8 +2705,29 @@ local function surface_tile(x, y, z)
     return d ~= nil and not d.subterranean
 end
 
+-- (0.105.30) A wall the AI built in a cavern opening (a sealed gate): a
+-- construction with a cavern tile beside it. Only such walls are taken
+-- down under rock.
+local function sealed_wall_tile(x, y, z)
+    local ok, yes = pcall(function()
+        local pos = xyz2pos(x, y, z)
+        local built = dfhack.constructions.findAtTile(pos)
+        if not built then
+            local b = dfhack.buildings.findAtTile(pos)
+            built = b and df.building_type[b:getType()] == 'Construction'
+        end
+        if not built then return false end
+        for _, d in ipairs({{1, 0}, {-1, 0}, {0, 1}, {0, -1}}) do
+            local des = dfhack.maps.getTileFlags(x + d[1], y + d[2], z)
+            if des and (des.feature_global or des.feature_local) then return true end
+        end
+        return false
+    end)
+    return ok and yes or false
+end
+
 function clear_gate(x, y, z, pieces, dry_run)
-    if not surface_tile(x, y, z) then
+    if not surface_tile(x, y, z) and not sealed_wall_tile(x, y, z) then
         return {ok = false, rejected = true, error = 'that gate is under rock: part of the fort, kept'}
     end
     if not GATES.scanned then return {ok = false, rejected = true, error = 'map the entrances first'} end
@@ -2628,8 +2762,12 @@ function clear_gate(x, y, z, pieces, dry_run)
             local px, py, pz = tostring(k):match('^(%-?%d+),(%-?%d+),(%-?%d+)$')
             px, py, pz = tonumber(px), tonumber(py), tonumber(pz)
             if px and math.abs(px - x) <= GATE_PIECE_REACH and math.abs(py - y) <= GATE_PIECE_REACH
-                    and math.abs(pz - z) <= 1 and surface_tile(px, py, pz) then
-                table.insert(spots, {x = px, y = py, z = pz})
+                    and math.abs(pz - z) <= 1 then
+                if surface_tile(px, py, pz) then
+                    table.insert(spots, {x = px, y = py, z = pz})
+                elseif sealed_wall_tile(px, py, pz) then
+                    table.insert(spots, {x = px, y = py, z = pz, cavern = true})   -- (0.105.30) walls only
+                end
             end
         end
     else
@@ -2647,6 +2785,8 @@ function clear_gate(x, y, z, pieces, dry_run)
         local kind = b and df.building_type[b:getType()]
         if near_live(p.x, p.y, p.z, 1) or (b and keep_ids[b.id]) then
             -- beside a live entrance, or one of its gates: never a leftover
+        elseif p.cavern and b and kind ~= 'Construction' then
+            -- (0.105.30) under rock only the sealed gate's walls
         elseif b and kind == 'Trap' and b.trap_type == df.trap_type.Lever then
             -- a lever is never a gate piece (it may work the fort's real gate)
         elseif b and (KINDS[kind] or kind == 'Construction') then
@@ -2922,6 +3062,218 @@ function build_gatehouse(id, kind, n, dry_run, starts)
         end
     end
     if #failed > 0 then out.failed = table.concat(failed, '; '):sub(1, 300) end
+    return out
+end
+
+---------------------------------------------------------------------------
+-- (0.105.30, construction spec 3.2) The War-hold's wing walls: once a
+-- gatehouse stands, two straight arms of wall run from its front corners
+-- (beside the drawbridge), across the corridor's line, WING_LEN tiles each,
+-- a barbican's funnel on the surface. Seen from above, the corridor going
+-- north (B the bridge, W the gatehouse walls, A the arms):
+--     A A A A A W B W A A A A A
+--               W T W
+--               W H W
+-- Each arm tile: ground a wall stands on (not open space, not a ramp top),
+-- the open surface (open_ground: nothing built, no water, not a courtyard),
+-- in no zone, with no farm plot, pasture or depot within WING_KEEP_OFF and
+-- no water within WING_WATER. An arm stops at its first bad tile and is
+-- dropped when shorter than WING_MIN. The arms must close no courtyard:
+-- with them and the gatehouse's walls standing, every open tile beside an
+-- arm, and the tile in front of the bridge, still reaches the map's edge;
+-- an arm that would close one is dropped. The pieces go on the gate's record.
+---------------------------------------------------------------------------
+WING_LEN, WING_MIN = 5, 3
+WING_KEEP_OFF, WING_WATER = 3, 2
+
+-- Zones, farm plots and depots on level z: {{x1, y1, x2, y2, kind}} with kind
+-- 'zone', 'pasture', 'farm' or 'depot' (tests replace this).
+function wing_keepouts(z)
+    local out = {}
+    pcall(function()
+        for _, b in ipairs(df.global.world.buildings.all) do
+            if b.z == z then
+                local t = df.building_type[b:getType()]
+                local kind
+                if t == 'Civzone' then
+                    kind = (df.civzone_type[b.type] == 'Pen') and 'pasture' or 'zone'
+                elseif t == 'FarmPlot' then kind = 'farm'
+                elseif t == 'TradeDepot' then kind = 'depot' end
+                if kind then table.insert(out, {x1 = b.x1, y1 = b.y1, x2 = b.x2, y2 = b.y2, kind = kind}) end
+            end
+        end
+    end)
+    return out
+end
+
+-- An outside tile walks to the map's edge with `blocked` standing (no cache).
+local function edge_without(k, blocked)
+    local W, H = map_size()
+    local seen, queue, head = {[k] = true}, {k}, 1
+    while head <= #queue do
+        local ck = queue[head]
+        head = head + 1
+        local x, y, z = unkey(ck)
+        if x <= 0 or y <= 0 or x >= W - 1 or y >= H - 1 then return true end
+        if #queue > COURTYARD_LIMIT then return true end
+        moves(x, y, z, T(x, y, z), function(nx, ny, nz)
+            local nk = key(nx, ny, nz)
+            if seen[nk] or blocked[nk] then return end
+            local nt = T(nx, ny, nz)
+            if nt and nt.walk and nt.outside and not nt.hidden then
+                seen[nk] = true
+                table.insert(queue, nk)
+            end
+        end)
+    end
+    return false
+end
+
+-- The wings for an entrance whose gatehouse stands: {arms = {{keys}, ...},
+-- walls = {keys}, dropped = {why...}, len, dir} or nil and why.
+function plan_wings(e)
+    if e.gatehouse ~= 'standing' then return nil, 'no gatehouse stands there' end
+    local h = lid_hatch(e)
+    local br = e.gatehouse_bridge
+    if not h or type(br) ~= 'table' then return nil, 'the gatehouse\'s hatch or bridge could not be found' end
+    local dx, dy = br.x - h.x, br.y - h.y
+    if br.z ~= h.z or (dx ~= 0 and dy ~= 0) or (dx == 0 and dy == 0) then
+        return nil, 'the gatehouse does not run straight from its hatch'
+    end
+    local d = {dx > 0 and 1 or (dx < 0 and -1 or 0), dy > 0 and 1 or (dy < 0 and -1 or 0)}
+    local len = math.max(math.abs(dx), math.abs(dy)) - 1
+    local z = h.z
+    local px, py = math.abs(d[2]), math.abs(d[1])
+    local function at(u, v) return h.x + d[1] * u + px * v, h.y + d[2] * u + py * v end
+    -- the gatehouse's own walls, as they stand once built
+    local house = {}
+    local function wall(u, v) local x, y = at(u, v); house[key(x, y, z)] = true end
+    wall(-1, 0)
+    for u = -1, len + 1 do wall(u, -1); wall(u, 1) end
+    local keepouts = wing_keepouts(z) or {}
+    local function kept_off(x, y)
+        for _, r in ipairs(keepouts) do
+            local m = (r.kind == 'zone') and 0 or WING_KEEP_OFF
+            if x >= r.x1 - m and x <= r.x2 + m and y >= r.y1 - m and y <= r.y2 + m then return r.kind end
+        end
+        return nil
+    end
+    local function wet(x, y)
+        for ax = x - WING_WATER, x + WING_WATER do
+            for ay = y - WING_WATER, y + WING_WATER do
+                local t = T(ax, ay, z)
+                if t and t.liquid then return true end
+            end
+        end
+        return false
+    end
+    local arms, dropped, standing = {}, {}, 0
+    for _, side in ipairs({-1, 1}) do
+        local arm, stop = {}, nil
+        for i = 1, WING_LEN do
+            local x, y = at(len + 1, side * (1 + i))
+            local t = T(x, y, z)
+            if i == 1 and t and t.shape == 'WALL' and t.material == 'CONSTRUCTION' then standing = standing + 1 end
+            local why
+            if not t then why = 'off the map'
+            elseif not WALL_GROUND[t.shape] or t.shape == 'EMPTY' or t.shape == 'RAMP_TOP' then
+                why = tostring(t.shape):lower():gsub('_', ' ')
+            elseif not open_ground(x, y, z) then why = 'not open ground'
+            elseif wet(x, y) then why = 'water near'
+            else
+                local k = kept_off(x, y)
+                if k then why = (k == 'zone') and 'a zone' or ('a ' .. k .. ' near') end
+            end
+            if why then stop = ('x%d y%d (%s)'):format(x, y, why) break end
+            table.insert(arm, key(x, y, z))
+        end
+        if #arm >= WING_MIN then
+            table.insert(arms, arm)
+        else
+            table.insert(dropped, ('the %s arm stops after %d tile%s at %s'):format(side < 0 and 'first' or 'second',
+                #arm, #arm == 1 and '' or 's', tostring(stop)))
+        end
+    end
+    if standing == 2 then return nil, 'the wings stand there already' end
+    -- no courtyard: with the arms and the gatehouse standing, the tiles by
+    -- each arm and in front of the bridge still reach the map's edge
+    local fx, fy = at(len + 2, 0)
+    local function closes(list)
+        local blocked = {}
+        for k in pairs(house) do blocked[k] = true end
+        for _, arm in ipairs(list) do for _, k in ipairs(arm) do blocked[k] = true end end
+        local check = {[key(fx, fy, z)] = true}
+        for _, arm in ipairs(list) do
+            for _, k in ipairs(arm) do
+                local x, y = unkey(k)
+                for ax = -1, 1 do
+                    for ay = -1, 1 do
+                        local nk = key(x + ax, y + ay, z)
+                        local nt = T(x + ax, y + ay, z)
+                        if not blocked[nk] and nt and nt.walk and nt.outside and not nt.hidden then check[nk] = true end
+                    end
+                end
+            end
+        end
+        for k in pairs(check) do
+            if not edge_without(k, blocked) then
+                local x, y = unkey(k)
+                return ('x%d y%d'):format(x, y)
+            end
+        end
+        return nil
+    end
+    if #arms > 0 and closes(arms) then
+        local kept = {}
+        for _, arm in ipairs(arms) do
+            local where = closes({arm})
+            if where then
+                table.insert(dropped, ('an arm would close a courtyard at %s'):format(where))
+            else
+                table.insert(kept, arm)
+            end
+        end
+        if #kept == 2 and closes(kept) then kept = {kept[1]} end
+        arms = kept
+    end
+    if #arms == 0 then
+        return nil, 'no room for wing walls: ' .. (dropped[1] or 'no arm fits')
+            .. (dropped[2] and ('; ' .. dropped[2]) or '')
+    end
+    local walls = {}
+    for _, arm in ipairs(arms) do for _, k in ipairs(arm) do table.insert(walls, k) end end
+    return {arms = arms, walls = walls, dropped = dropped, len = len, dir = d}
+end
+
+-- Build the wings (plan_wings): walls only, any material (buildingplan).
+function build_wings(id, dry_run)
+    local e = entrance(id)
+    if not e then return {ok = false, rejected = true, error = 'no such entrance (scan first)'} end
+    if e.gatehouse ~= 'standing' then return {ok = false, rejected = true, error = 'wings go on a gatehouse that stands'} end
+    cache, edge_cache = {}, {}            -- the map may have changed since the scan
+    local plan, why = plan_wings(e)
+    if not plan then return {ok = false, rejected = true, error = why} end
+    local arms = {}
+    for _, arm in ipairs(plan.arms) do table.insert(arms, #arm) end
+    local note = #plan.dropped > 0 and table.concat(plan.dropped, '; ') or nil
+    if dry_run then
+        return {ok = true, dry_run = true, walls = #plan.walls, arms = arms, blocks_needed = #plan.walls, note = note}
+    end
+    local out = {walls = 0, arms = arms, pieces = {}, blocks_needed = #plan.walls, note = note}
+    local failed = {}
+    for _, k in ipairs(plan.walls) do
+        local x, y, z = unkey(k)
+        local ok, w = place('Cw', {x = x, y = y, z = z})
+        if ok then
+            out.walls = out.walls + 1
+            table.insert(out.pieces, ('%d,%d,%d'):format(x, y, z))
+        else
+            table.insert(failed, 'Cw:' .. tostring(w))
+        end
+    end
+    out.ok = out.walls > 0
+    if #failed > 0 then out.failed = table.concat(failed, '; '):sub(1, 300) end
+    if not out.ok then out.error = 'no wing wall could be placed (' .. (out.failed or '?') .. ')' end
     return out
 end
 
