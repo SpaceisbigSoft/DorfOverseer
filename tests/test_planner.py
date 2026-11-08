@@ -3490,6 +3490,66 @@ def _():
     assert m.locations_closed == []
 
 
+@test("0.105.24 heists: an artifact thief or a visitor's killing shuts the locations to visitors a while, then reopens")
+def _():
+    from planner import _location_access_rule, record
+    from planner_society import note_heists, heist_lockout
+    s = fort()
+    both = ["VISITORS_ALLOWED", "NON_CITIZENS_ALLOWED"]
+    s["locations"] = {"count": {}, "list": [{"id": 1, "type": "INN_TAVERN", "flags": list(both)},
+                                            {"id": 2, "type": "HOSPITAL", "flags": list(both)},
+                                            {"id": 3, "type": "LIBRARY", "flags": list(both)}]}
+    s["settings"]["traits"] = {"outsiders": 0}
+    m = Memory()
+    props = []
+    _location_access_rule(s, m, PLANNER_CONFIG, props, [])
+    assert not props                                                  # a neutral fort with no heist: open
+    # what doesn't count: a snatcher's words, a berserk citizen killed by a bard, an old wound, a raider's killing
+    n = note_heists(s, m, [
+        {"kind": "report", "topic": "thief", "text": "The Goblin Snatcher Ngom was spotted sneaking around!  \"I'll live to fight another day!\""},
+        {"kind": "death", "own_civ": True, "killer": "Thîkut, Bard", "killer_kind": "outsider", "killer_visitor": True,
+         "mood": "Berserk"},
+        {"kind": "death", "own_civ": True, "killer": "Amxu, Goblin Dancer", "killer_kind": "outsider",
+         "killer_visitor": True, "killer_dead": True},
+        {"kind": "death", "own_civ": True, "killer": "Gulo, Human Spearman", "killer_kind": "outsider"}])
+    assert n == 0 and not m.heists and heist_lockout(s, m, PLANNER_CONFIG) is None, m.heists
+    # (E, 3 Nov 00:49) the baroness consort who had met the mayor, after an artifact
+    heist = {"kind": "report", "topic": "thief", "text": "The Human baroness consort Lalgi Aspaescu was spotted "
+             "sneaking around!  \"You will not stand between me and Oiledgullies the Drips of Helping!\""}
+    assert note_heists(s, m, [heist, dict(heist)]) == 1 and m.heists[0][1] == "Human baroness consort Lalgi Aspaescu", m.heists
+    props = []
+    _location_access_rule(s, m, PLANNER_CONFIG, props, [])
+    assert len(props) == 1 and props[0].action == {"type": "location_access", "ids": [1, 3], "visitors": False}, props
+    assert "Lalgi" in props[0].reason and "168 more day" in props[0].reason, props[0].reason
+    record([(props[0], {"ok": True, "changed": [1, 3]})], s, m)
+    for e in s["locations"]["list"]:
+        if e["id"] in (1, 3):
+            e["flags"] = ["NON_CITIZENS_ALLOWED"]
+    props = []
+    _location_access_rule(s, m, PLANNER_CONFIG, props, [])
+    assert not props                                                  # shut: nothing more
+    # the lockout over: the ones the AI shut open again
+    later = copy.deepcopy(s)
+    later["date"]["tick"] += 169 * TICKS_PER_DAY
+    props = []
+    _location_access_rule(later, m, PLANNER_CONFIG, props, [])
+    assert len(props) == 1 and props[0].action == {"type": "location_access", "ids": [1, 3], "visitors": True}, props
+    assert "no heist for 168 days" in props[0].reason, props[0].reason
+    # a visitor who killed a citizen (not berserk, alive) counts too; off at 0 days
+    m2 = Memory()
+    assert note_heists(s, m2, [{"kind": "death", "own_civ": True, "killer": "Lòr Kadolmigrur, Scholar",
+                                "killer_kind": "outsider", "killer_visitor": True}]) == 1
+    assert heist_lockout(s, m2, PLANNER_CONFIG) and heist_lockout(s, m2, dict(PLANNER_CONFIG, heist_lockout_days=0)) is None
+    # a closed fort's own reason stands; the hospital is never shut
+    s2 = copy.deepcopy(s)
+    for e in s2["locations"]["list"]:
+        e["flags"] = list(both)
+    s2["settings"]["traits"] = {"outsiders": -150}
+    props = []
+    _location_access_rule(s2, m2, PLANNER_CONFIG, props, [])
+    assert props and "keeps to itself" in props[0].reason and 2 not in props[0].action["ids"], props
+
+
 @test("0.105.9 traps: the founding stair's hatch is a gate: traps behind it")
 def _():
     hatch = [{"id": 7, "kind": "hatch", "lever_away": False, "levers": []}]
@@ -4471,6 +4531,38 @@ def _():
     s["petitions"]["orders"] = []
     props, notes = plan(s, Memory())
     assert not by_rule(props, "petitions") and any("can't reach DF's petition standing orders" in n for n in notes)
+
+
+@test("citizenship (0.105.24): petitions the fort would take are a Needs you with counts; else a note; the gone apart")
+def _():
+    from planner import NEEDS_YOU
+    s = fort()
+    s["dwarves"]["total"] = 40
+    here = {"on_map": True, "unit": 5}
+    s["petitions"] = {"orders": [], "pending": [
+        {"type": "Citizenship", "name": "Lòr, Scholar", "applicant": dict(here)},
+        {"type": "Citizenship", "name": "Bim, Bard", "applicant": dict(here)},
+        {"type": "Citizenship", "name": "Urist", "applicant": dict(here), "vampire": True},
+        {"type": "Citizenship", "name": "Gone", "applicant": {"on_map": False}},
+        {"type": "Residency", "name": "Ast", "applicant": dict(here)}]}
+    notes = plan(s, Memory())[1]
+    ask = [n for n in notes if n.startswith(NEEDS_YOU) and "citizenship petition" in n]
+    assert len(ask) == 1 and "2 citizenship petition(s) wait and the fort would take them (40 citizens" in ask[0], notes
+    assert "Lòr, Scholar" in ask[0] and "1 more from visitors who left or died" in ask[0] and "1 of them a vampire" in ask[0]
+    # past the population target, or a closed fort: a note, no Needs you
+    s["dwarves"]["total"] = 400
+    notes = plan(s, Memory())[1]
+    assert not [n for n in notes if n.startswith(NEEDS_YOU) and "citizenship" in n], notes
+    assert any("citizenship petition(s) wait" in n and "isn't taking citizens" in n for n in notes), notes
+    s["dwarves"]["total"] = 40
+    s["settings"]["traits"] = {"outsiders": -150}
+    assert not [n for n in plan(s, Memory())[1] if n.startswith(NEEDS_YOU) and "citizenship" in n]
+    # only the gone: a note
+    s["settings"]["traits"] = {}
+    s["petitions"]["pending"] = [{"type": "Citizenship", "applicant": {"on_map": True, "dead": True}}]
+    notes = plan(s, Memory())[1]
+    assert not [n for n in notes if n.startswith(NEEDS_YOU) and "citizenship" in n]
+    assert any("1 citizenship petition(s) from visitors who left or died" in n for n in notes), notes
 
 
 @test("bags (0.87.1, live): filled as fast as they're made: no more orders after 3 in 28 days with none empty")
