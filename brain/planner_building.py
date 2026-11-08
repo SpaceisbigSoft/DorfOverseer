@@ -1777,8 +1777,8 @@ def _project_rules(s, traits, cfg, proposals, notes, can_use, memory) -> None:
 
     # One new level at a time, most urgent need first.
     if traits.get("surface", 0) >= 50:
-        notes.append("Surface ambition: the AI builds a walled, roofed keep round the way in; "
-                     "new levels still go underground")
+        notes.append("Surface ambition: the AI builds a walled, roofed keep round the way in (or on open "
+                     "ground near the fields); new levels still go underground")
     # (0.100.1, overnight run) a still, a kitchen and a carpenter's workshop
     # before anything else, with a slot of their own (as a farm level has):
     # a fresh fort built a mason's, a mechanic's and the metal works first

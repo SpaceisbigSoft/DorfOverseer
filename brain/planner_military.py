@@ -637,8 +637,11 @@ def _crossing_rule(s: dict, cfg: dict, citizens: int, traits: dict, proposals: l
     where = f"x{best.get('x')} y{best.get('y')}"
     what = (f"{far.get('trees', 0)} trees, {far.get('shrubs', 0)} shrubs, {far.get('grass', 0)} grass"
             + (", the map's edge" if far.get("edge") else ""))
+    deep = masterplan.underground_only(traits)
     if not mine:
         near = _d(c.get("near"))
+        if deep and not (far.get("edge") and not near.get("edge")):
+            return      # (0.105.23) the Deep mine bridges the water only to reach the map's edge (caravans)
         worth = far_v >= cfg["crossing_min_value"] and (
             far_v >= near_v * cfg["crossing_far_share"]
             or (near.get("trees") or 0) < citizens
@@ -654,8 +657,8 @@ def _crossing_rule(s: dict, cfg: dict, citizens: int, traits: dict, proposals: l
                                   f"water cuts the fort off from land worth reaching ({what} over there, "
                                   f"{best['len']} tiles across at {where}): a narrow bridge for now", 6))
         return
-    if any(m.get("kind") == "refined" for m in mine) or traits.get("grandeur", 0) <= -50:
-        return
+    if any(m.get("kind") == "refined" for m in mine) or traits.get("grandeur", 0) <= -50 or deep:
+        return          # (0.105.23) nor a wider one above ground in the Deep mine
     wealth = s.get("wealth") if isinstance(s.get("wealth"), (int, float)) else 0
     # (0.103) Riverfolk bridge their river properly at half the size and wealth
     river = 0.5 if memory is not None and has_rule(memory.culture, "river_bridges") else 1.0

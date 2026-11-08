@@ -785,7 +785,7 @@ local function stair_levels(stair, band, only_band, may_extend)
     return out
 end
 
-function choose_site(L, stairs, reserved, plan)
+function choose_site(L, stairs, reserved, plan, ceil_z)
     CACHE = {}
     local started = os.clock()
     local reasons = {centred = {}, beside = {}, below = {}}
@@ -818,6 +818,8 @@ function choose_site(L, stairs, reserved, plan)
                 for _, lv in ipairs(levels) do
                     local z = lv.z
                     if os.clock() > deadline then out_of_time = true return end
+                    -- (0.105.23) above the ceiling (at or above the surface, the Deep mine): never
+                    if ceil_z and z > ceil_z then goto continue end
                     local key = ('%d,%d,%d,%s'):format(stair.x, stair.y, z, tostring(lv.extend))
                     if tried[key] then goto continue end
                     tried[key] = band_pass or nil
@@ -877,6 +879,7 @@ function choose_site(L, stairs, reserved, plan)
     end
     local head = timed_out and 'no safe level found within the time limit' or
         ('no safe level found near %d staircase(s)'):format(#stairs)
+    if ceil_z then head = head .. (', none above elevation %d (under the surface only)'):format(ez(ceil_z)) end
     return nil, head .. ' (' .. table.concat(tried, '; ') .. ')'
 end
 
@@ -1098,7 +1101,9 @@ function start_project(params, now, dry_run)
         end
     end
     local plan = type(params.plan) == 'table' and params.plan or nil
-    local site, why2 = choose_site(L, stairs, reserved, plan)
+    -- (0.105.23, 14.1 step 4c) max_elev: no level above it (the Deep mine keeps under the surface)
+    local ceil = math.tointeger(params.max_elev)
+    local site, why2 = choose_site(L, stairs, reserved, plan, ceil and (ceil - OFFSET) or nil)
     if not site then return {ok = false, error = why2} end
 
     -- Dry run: Quickfort must agree that every tile can be designated.
@@ -2385,7 +2390,8 @@ function farm_plots(params, now, dry_run)
     local short = want - tiles
     if short > 0 and params.dig then
         local plots = math.max(1, math.min(12, math.ceil(short / (FARM_PLOT_W * 3))))
-        out.level = start_project({kind = 'farms', plots = plots, plot_w = FARM_PLOT_W, style = params.style},
+        out.level = start_project({kind = 'farms', plots = plots, plot_w = FARM_PLOT_W, style = params.style,
+                                   max_elev = params.max_elev},          -- (0.105.23)
                                   now, dry_run)
     end
     if tiles == 0 and not (out.level and out.level.ok) then
@@ -7177,10 +7183,177 @@ local function keep_door(cx, cy, z, r)
     end
 end
 
+-- (0.105.23, 14.1 step 4c) The keep away from the way in: fort F (Garden
+-- fort, Surface +80) asked 39 times and was refused every time ("no ring of
+-- open ground around the way in"): its founding stair sits on a mountain
+-- slope, so every ring round it ran into rock, ramps and the hillside. When
+-- no way in has a ring, the keep goes on the flattest open ground near the
+-- fort: a square court whose inside is all open, flat ground under the open
+-- sky (on one level, nothing above it), within KEEP_COURT_REACH tiles of a
+-- way in and up to KEEP_COURT_LEVELS levels below it (or within
+-- KEEP_COURT_FARM_REACH of a surface field), the dwarves able to walk to it; nearest the surface farm plots when there are any (a walled
+-- garden court by the fields), else nearest the way in. Never over the
+-- plots themselves (a building or zone inside rules a spot out), never round
+-- the way in (that was the first try) nor within KEEP_COURT_CLEAR of it (the
+-- caravans' road), never round the trade depot. A court away from the way
+-- in can go up with the depot underground (the wagons pass it by).
+KEEP_COURT_REACH = 30
+KEEP_COURT_LEVELS = 4
+KEEP_COURT_RADII = {4, 5}
+KEEP_COURT_SECONDS = 1.5
+KEEP_COURT_CANDIDATES = 400  -- centres checked in full, best first
+KEEP_COURT_FARMS = 6         -- fields looked round (the first ones DF lists)
+KEEP_COURT_FARM_REACH = 12   -- tiles round a field
+KEEP_COURT_CLEAR = 3         -- open tiles kept between the court's walls and a way in (the wagons' road)
+
+-- The centres of the farm plots under the sky: {{x, y, z}, ...}.
+function surface_farm_spots()
+    local out = {}
+    pcall(function()
+        for _, b in ipairs(df.global.world.buildings.other.FARM_PLOT) do
+            local cx, cy = (b.x1 + b.x2) // 2, (b.y1 + b.y2) // 2
+            local t = tile_info(cx, cy, b.z)
+            if t and t.outside then table.insert(out, {x = cx, y = cy, z = b.z}) end
+        end
+    end)
+    return out
+end
+
+-- A court site on open ground near the fort: {x, y, z, r, door, trees, court = true}, or nil and why.
+function find_keep_court(anchors)
+    local groups = citizen_groups()
+    local any_group = next(groups) == nil
+    local farms = surface_farm_spots()
+    local cache = {}
+    local function kt(x, y, z)
+        local k = (z * 4096 + y) * 4096 + x
+        local v = cache[k]
+        if v == nil then v = keep_tile(x, y, z) or false; cache[k] = v end
+        return v
+    end
+    local function reach(x, y, z)
+        local g = walk_group(x, y, z)
+        return g ~= 0 and (any_group or groups[g] == true)
+    end
+    local function open_above(x, y, z)
+        local t = tile_info(x, y, z + 1)
+        return t ~= nil and t.shape == 'EMPTY'
+    end
+    -- the centres worth a full look: open, reachable ground under the open
+    -- sky, scored by the walk from the fields (or the way in)
+    -- (round the ways in, and round the first few fields: a field may lie
+    -- further out than the reach)
+    local areas = {}
+    for _, a in ipairs(anchors) do
+        table.insert(areas, {x = a.x, y = a.y, z1 = a.z - KEEP_COURT_LEVELS, z2 = a.z + 1, reach = KEEP_COURT_REACH})
+    end
+    for i, f in ipairs(farms) do
+        if i > KEEP_COURT_FARMS then break end
+        table.insert(areas, {x = f.x, y = f.y, z1 = f.z - 1, z2 = f.z + 1, reach = KEEP_COURT_FARM_REACH})
+    end
+    local cands, seen = {}, {}
+    local deadline = os.clock() + KEEP_COURT_SECONDS
+    local cut = false
+    for _, ar in ipairs(areas) do
+        for z = ar.z1, ar.z2 do
+            for y = ar.y - ar.reach, ar.y + ar.reach do
+                if os.clock() > deadline then cut = true break end
+                for x = ar.x - ar.reach, ar.x + ar.reach do
+                    local k = (z * 4096 + y) * 4096 + x
+                    if not seen[k] and kt(x, y, z) == 'ground' and open_above(x, y, z) and reach(x, y, z) then
+                        seen[k] = true
+                        local score = math.huge
+                        for _, a in ipairs(anchors) do
+                            local ad = math.max(math.abs(x - a.x), math.abs(y - a.y)) + 3 * math.abs(z - a.z)
+                            if ad < score then score = ad end
+                        end
+                        for _, f in ipairs(farms) do
+                            local fd = math.max(math.abs(x - f.x), math.abs(y - f.y)) + 3 * math.abs(z - f.z)
+                            if fd < score then score = fd end
+                        end
+                        table.insert(cands, {x = x, y = y, z = z, score = score})
+                    end
+                end
+            end
+            if cut then break end
+        end
+        if cut then break end
+    end
+    table.sort(cands, function(p, q)
+        if p.score ~= q.score then return p.score < q.score end
+        if p.z ~= q.z then return p.z > q.z end
+        if p.y ~= q.y then return p.y < q.y end
+        return p.x < q.x
+    end)
+    local last = 'no open, flat ground the dwarves can reach within ' .. KEEP_COURT_REACH .. ' tiles of the way in'
+    local best, best_score
+    for i, c in ipairs(cands) do
+        if i > KEEP_COURT_CANDIDATES or os.clock() > deadline + KEEP_COURT_SECONDS then break end
+        if best_score and c.score >= best_score then break end
+        for _, r in ipairs(KEEP_COURT_RADII) do
+            local fits = true
+            -- the inside: open flat ground, the sky open above, the way in not in it
+            for y = c.y - r + 1, c.y + r - 1 do
+                for x = c.x - r + 1, c.x + r - 1 do
+                    if kt(x, y, c.z) ~= 'ground' or not open_above(x, y, c.z) then fits = false break end
+                end
+                if not fits then break end
+            end
+            if fits then
+                for _, a in ipairs(anchors) do
+                    local clear = r + KEEP_COURT_CLEAR
+                    if math.abs(a.z - c.z) <= 1 and math.abs(a.x - c.x) <= clear and math.abs(a.y - c.y) <= clear then
+                        fits = false
+                    end
+                end
+            end
+            local trees, ground = {}, 0
+            if fits then
+                for _, p in ipairs(ring_tiles(c.x, c.y, r)) do
+                    local k = kt(p.x, p.y, c.z)
+                    if not k or k == 'planned' then fits = false break end
+                    if k == 'tree' then table.insert(trees, {x = p.x, y = p.y, z = c.z}) end
+                    if k == 'ground' then ground = ground + 1 end
+                end
+            end
+            if fits and (#trees > SURFACE_MAX_TREES or ground == 0) then fits = false end
+            if fits and depot_inside(c.x - r, c.y - r, c.x + r, c.y + r, c.z) then
+                fits, last = false, 'the open ground near the fort holds the trade depot'
+            end
+            local door = fits and keep_door(c.x, c.y, c.z, r)
+            if door then
+                local d = {x = door.x - c.x, y = door.y - c.y}
+                local ox, oy = door.x + (d.x > 0 and 1 or d.x < 0 and -1 or 0), door.y + (d.y > 0 and 1 or d.y < 0 and -1 or 0)
+                if not reach(ox, oy, c.z) then door = nil end
+            end
+            if fits and door then
+                local score = c.score + SURFACE_TREE_COST * #trees
+                if not best_score or score < best_score then
+                    best, best_score = {x = c.x, y = c.y, z = c.z, r = r, door = door, trees = trees, court = true}, score
+                end
+                break
+            end
+        end
+    end
+    if best then return best end
+    return nil, last
+end
+
 -- A site for the keep around the surface entrance: {x, y, z, r, door, trees}.
+-- (0.105.23) Every way in first; with no ring round any, a court on open
+-- ground near the fields (find_keep_court).
 function find_keep_site()
     local anchors = pasture_anchors()
     if #anchors == 0 then return nil, 'no surface entrance or staircase to build the keep around' end
+    local site, last = find_keep_ring(anchors)
+    if site then return site end
+    local okc, court, why = pcall(find_keep_court, anchors)
+    if okc and court then return court end
+    return nil, ('%s; %s'):format(last, okc and why or ('the search for open ground failed: ' .. tostring(court)))
+end
+
+-- A ring round one of the ways in, or nil and why.
+function find_keep_ring(anchors)
     local under = depot_underground()
     if under then return nil, under end
     local last
@@ -7215,7 +7388,7 @@ function keep_status()
     local k = keep_data()
     if not k then return nil end
     local out = {stage = k.stage, x = k.x, y = k.y, z = k.z, r = k.r, walls_left = 0, walls_planned = 0,
-                 roof_left = 0, roof_planned = 0, trees_left = 0}
+                 roof_left = 0, roof_planned = 0, trees_left = 0, court = k.court}
     for _, p in ipairs(ring_tiles(k.x, k.y, k.r)) do
         local t = keep_tile(p.x, p.y, k.z)
         if t == 'tree' then out.trees_left = out.trees_left + 1 end
@@ -7259,10 +7432,11 @@ function place_keep(dry_run)
     if not k then
         local site, why = find_keep_site()
         if not site then return {ok = false, error = why} end
-        k = {x = site.x, y = site.y, z = site.z, r = site.r, door = site.door, stage = 'clearing'}
+        k = {x = site.x, y = site.y, z = site.z, r = site.r, door = site.door, stage = 'clearing',
+             court = site.court or nil}
         if #site.trees > 0 then
             local out = {ok = true, stage = 'clearing', clearing = true, trees = #site.trees, x = k.x, y = k.y,
-                         r = k.r, elevation = ez(k.z), dry_run = dry_run or nil}
+                         r = k.r, elevation = ez(k.z), court = k.court, dry_run = dry_run or nil}
             if dry_run then return out end
             for _, t in ipairs(site.trees) do fell_tree(t.x, t.y, t.z) end
             save_keep(k)
@@ -7271,7 +7445,9 @@ function place_keep(dry_run)
     end
     local st = {}
     if k.stage == 'clearing' then
-        local under = depot_underground()     -- (0.104.0) a depot dug underground since the site was chosen
+        -- (0.104.0) a depot dug underground since the site was chosen
+        -- ((0.105.23) a court away from the way in doesn't stand in the wagons' way)
+        local under = not k.court and depot_underground()
         if under then
             if not dry_run then save_keep(nil) end
             return {ok = false, error = under}
@@ -7300,7 +7476,7 @@ function place_keep(dry_run)
         local n, why = keep_apply(cells, k.z, 'the keep\'s walls', dry_run)
         if not n then return {ok = false, error = why} end
         local out = {ok = true, stage = 'walls', walls = n, x = k.x, y = k.y, r = k.r, door = k.door,
-                     elevation = ez(k.z), dry_run = dry_run or nil}
+                     elevation = ez(k.z), court = k.court, dry_run = dry_run or nil}
         if not dry_run then k.stage = 'walls'; save_keep(k) end
         return out
     end

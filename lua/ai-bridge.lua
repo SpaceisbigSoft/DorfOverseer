@@ -4274,6 +4274,11 @@ function act_start_project(a)
     if perr then return reject(perr) end
     p.plan = plan
     p.urgent = a.urgent == true or nil       -- a well's or a mood's workshop: one slot more
+    -- (0.105.23, 14.1 step 4c) the Deep mine: no level above this elevation (one under the surface)
+    if a.max_elev ~= nil then
+        p.max_elev = int_in(a.max_elev, -400, 400)
+        if not p.max_elev then return reject('max_elev must be -400 to 400') end
+    end
     return reqscript('ai-builder').start_project(p, get_date(), a.dry_run == true)
 end
 
@@ -4289,8 +4294,14 @@ function act_farm_plots(a)
     if a.outside ~= nil and type(a.outside) ~= 'boolean' then return reject('outside must be true or false') end
     -- (0.99.10) `outside` reaches the builder: it was dropped here, so the
     -- outdoor search never ran (region2's "no free soil" seven times over)
+    local max_elev                           -- (0.105.23) a farm level's ceiling (the Deep mine)
+    if a.max_elev ~= nil then
+        max_elev = int_in(a.max_elev, -400, 400)
+        if not max_elev then return reject('max_elev must be -400 to 400') end
+    end
     return reqscript('ai-builder').farm_plots({tiles = tiles, dig = a.dig == true, outside = a.outside == true,
         underground = a.underground == true,   -- (0.105.5) for underground crops: subterranean floor only
+                                               max_elev = max_elev,
                                                style = style}, get_date(), a.dry_run == true)
 end
 

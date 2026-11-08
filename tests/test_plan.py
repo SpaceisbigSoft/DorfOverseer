@@ -696,6 +696,41 @@ def _():
     f = overseer.world_facts(s, m)
     assert f["materials_pd"] == 2.0, f
 
+@test("Deep mine (0.105.23): Surface -80 or lower: no district, farm band or hint at or above the surface")
+def _():
+    site = dict(SITE, soil=[58, 60])
+    m = mem_with_survey()
+    m.atlas["entrances"]["100,101,160"] = {"kind": "surface", "elevation": 60}
+    m.atlas["entrances"]["10,10,140"] = {"kind": "surface", "elevation": 40}     # further from the spine
+    assert masterplan.surface_elevation(m, {"x": 100, "y": 100}) == 60
+    assert masterplan.surface_elevation(m) == 40                                 # no spine: the lowest
+    p = masterplan.draw(state_at(50000), m, site, traits(verticality=120, surface=-100), profile())
+    assert p["range"][1] == 59 and p["ceiling"] == 59, (p["range"], p.get("ceiling"))
+    for d in p["districts"]:
+        assert d["hi"] <= 59, d
+    assert next(d for d in p["districts"] if d["kind"] == "farms")["lo"] == 58, "the soil at 60 is the surface"
+    for kind in ("bedrooms", "temple", "workshops", "barracks"):
+        h = masterplan.hint(m, kind, traits=traits(verticality=120, surface=-100))
+        if h:
+            assert h["elev_hi"] <= 59 and h["elev_lo"] <= h["elev_target"] <= h["elev_hi"], h
+    # the Garden fort and Surface 0: the plan reaches the stair's top as before
+    p0 = masterplan.draw(state_at(50000), mem_with_survey(), site, traits(verticality=120, surface=80), profile())
+    assert p0["range"][1] == 60 and "ceiling" not in p0
+    assert masterplan.ceiling(m, traits(surface=-79)) is None
+
+
+@test("Deep mine (0.105.23): a plan drawn before (E's) has its hints held under the surface by the slider")
+def _():
+    m = mem_with_survey()
+    masterplan.ensure(state_at(50000), m, SITE, traits(verticality=-80), profile())     # flat, round the heart
+    for d in m.atlas["plan"]["districts"]:
+        d["lo"], d["hi"], d["target"] = 59, 61, 60                                     # grown up to the surface
+    h = masterplan.hint(m, "bedrooms", traits=traits(surface=-100))
+    assert h["elev_hi"] == 59 and h["elev_lo"] == 59 and h["elev_target"] == 59, h      # spine top 60: the surface
+    h = masterplan.hint(m, "bedrooms", traits=traits(surface=0))
+    assert h["elev_hi"] == 61, h
+
+
 for name, ok, msg in RESULTS:
     print(f"[{'PASS' if ok else 'FAIL'}] {name}")
     if not ok:

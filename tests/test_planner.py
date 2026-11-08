@@ -858,6 +858,76 @@ def _():
     assert not any("isn't supported yet" in x for x in notes)
 
 
+@test("Deep mine (0.105.23): Surface -100 drops the keep (Sky-reachers too) and the surface farm; levels get a ceiling")
+def _():
+    from planner import _deep_surface_filter, _keep_rule, Proposal
+    cfg = dict(PLANNER_CONFIG)
+    s = fort()
+    s["stocks"]["boulders"] = 500
+    m = Memory()
+    m.culture = {"quirks": {"sky_reachers": {"earned": True}}}
+    m.atlas = {"entrances": {"10,10,168": {"kind": "surface", "elevation": 68}}}
+    deep = {"surface": -100}
+    # the keep: never, whatever the quirks
+    p, n = [], []
+    _keep_rule(s, cfg, 30, deep, p, n, m)
+    assert not p, p
+    props = [Proposal("keep", {"type": "place_keep"}, "k", 7),
+             Proposal("surface_farm", {"type": "farm_plots", "tiles": 20, "dig": False, "outside": True}, "f", 2),
+             Proposal("farms", {"type": "farm_plots", "tiles": 30, "dig": True, "outside": True}, "f", 2),
+             Proposal("build", {"type": "start_project", "kind": "bedrooms", "rooms": 4}, "b", 6),
+             Proposal("depot", {"type": "place_surface", "kind": "depot"}, "no trade depot", 6),
+             Proposal("refuse", {"type": "place_surface", "kind": "refuse"}, "r", 5),
+             Proposal("pasture", {"type": "make_pasture", "tiles": 40}, "p", 5)]
+    notes = []
+    out = _deep_surface_filter(s, deep, m, props, notes)
+    rules = [x.rule for x in out]
+    assert rules == ["farms", "build", "depot", "refuse", "pasture"], rules
+    farms = out[0].action
+    assert "outside" not in farms and farms["max_elev"] == 67 and farms["dig"], farms
+    assert out[1].action["max_elev"] == 67, out[1].action                # one under the surface (68)
+    assert "at the way in" in out[2].reason, out[2].reason
+    assert any("nothing above ground" in x for x in notes), notes
+    # a fresh embark before its first stair may still farm under the sky
+    s2 = fort()
+    s2["founding"] = {"stairs": False}
+    props = [Proposal("farms", {"type": "farm_plots", "tiles": 30, "outside": True}, "f", 2)]
+    assert _deep_surface_filter(s2, deep, m, props, [])[0].action.get("outside") is True
+    # Surface 0 and the Garden fort: untouched
+    props = [Proposal("keep", {"type": "place_keep"}, "k", 7),
+             Proposal("build", {"type": "start_project", "kind": "bedrooms", "rooms": 4}, "b", 6)]
+    for t in ({"surface": 0}, {"surface": 80}):
+        out = _deep_surface_filter(s, t, m, list(props), [])
+        assert [x.rule for x in out] == ["keep", "build"] and "max_elev" not in out[1].action, out
+    # through plan(): no keep, a Deep mine's levels carry the ceiling
+    s3 = fort()
+    s3["settings"]["traits"] = {"surface": -100, "verticality": 120}
+    s3["stocks"]["boulders"] = 500
+    got, _n = plan(s3, m)
+    assert not any(x.rule == "keep" for x in got)
+    assert all(x.action.get("max_elev") == 67 for x in got if x.action.get("type") == "start_project"), \
+        [x.action for x in got if x.action.get("type") == "start_project"]
+
+
+@test("Deep mine (0.105.23): a bridge over the water only to reach the map's edge, never the wider one")
+def _():
+    from planner import _crossing_rule
+    cfg = dict(PLANNER_CONFIG)
+    s = fort()
+    s["stocks"]["wood"] = 100
+    far = {"trees": 80, "shrubs": 40, "grass": 400, "edge": False}
+    s["crossings"] = {"near": {"trees": 2, "shrubs": 1, "grass": 10, "edge": True},
+                      "crossings": [{"x": 5, "y": 5, "z": 160, "dir": "e", "len": 3, "width": 1, "far_side": far}]}
+    def run(t):
+        p, n = [], []
+        _crossing_rule(s, cfg, 30, t, p, n)
+        return p
+    assert run({"surface": 0}), "a fort reaches its trees"
+    assert not run({"surface": -100}), "the Deep mine needs no trees over the water"
+    far["edge"], s["crossings"]["near"]["edge"] = True, False
+    assert run({"surface": -100}), "the caravans' way to the map's edge"
+
+
 @test("overnight loops: no new order of a recipe whose AI order stands still; empty polish backs off; depot reset only if the AI opened it")
 def _():
     from planner import Proposal, note_refusal, refusal_key, TICKS_PER_DAY
