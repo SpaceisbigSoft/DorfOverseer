@@ -994,6 +994,38 @@ function door_shut(b)
     return nil
 end
 
+-- (0.105.26 seal fix) What the cavern seal (ai-threats) holds: {ids =
+-- {building id = true}, levers = {lever id = true}}. While it stands the
+-- watcher opens none of them (F lost 54 and C 12 to forgotten beasts that
+-- came up through the caverns): not by its reopen, open_all or a lever's
+-- hatch. Empty when it can't be read. Tests replace this.
+function seal_holds()
+    local ok, r = pcall(function() return reqscript('ai-threats').seal_holds() end)
+    if ok and type(r) == 'table' and type(r.ids) == 'table' then
+        r.levers = type(r.levers) == 'table' and r.levers or {}
+        return r
+    end
+    return {ids = {}, levers = {}}
+end
+
+-- Is this gate held by the seal (h: seal_holds())?
+function seal_has(h, g)
+    if not h or not g then return false end
+    return (h.ids[g.id] or (g.drive_lever ~= nil and h.levers[g.drive_lever])
+        or (g.lever_id ~= nil and h.levers[g.lever_id])) and true or false
+end
+
+-- Does the seal hold any gate of this entrance?
+function sealed_entrance(e, h)
+    h = h or seal_holds()
+    for _, list in ipairs({e.equipment or {}, e.outer or {}}) do
+        for _, g in ipairs(list) do
+            if seal_has(h, g) then return true end
+        end
+    end
+    return false
+end
+
 -- (0.105.23) A door or hatch on a lever, set by its lever: true if it was
 -- pulled. Without a lever of this entrance's own to pull, it's only locked
 -- (as before 0.105.23). `pulled` keeps one pull per lever per call.
@@ -1021,16 +1053,23 @@ end
 -- drawbridge is raised before the hatch shuts, and lowered after it opens.
 local function set_entrance(e, close)
     local done, pulled = 0, {}
+    -- (0.105.26 seal fix) opening: what the cavern seal holds stays shut
+    -- (and keeps the entrance closed: tried again once the seal is gone)
+    local held, kept = not close and seal_holds() or nil, 0
     local function outer()
         for _, g in ipairs(e.outer or {}) do
             local b = df.building.find(g.id)
-            if b and set_bridge(g, b, close) then done = done + 1 end
+            if b and held and seal_has(held, g) then
+                kept = kept + 1
+            elseif b and set_bridge(g, b, close) then done = done + 1 end
         end
     end
     if close then outer() end
     for _, g in ipairs(e.equipment) do
         local b = df.building.find(g.id)
-        if b then
+        if b and held and seal_has(held, g) then
+            kept = kept + 1
+        elseif b then
             if g.kind == 'bridge' then
                 if set_bridge(g, b, close) then done = done + 1 end
             elseif g.lever_driven then
@@ -1047,12 +1086,14 @@ local function set_entrance(e, close)
     -- (0.100, review) a bridge left up (someone on it, a pull waiting) keeps
     -- the entrance closed, so opening tries it again; (0.105.23) so does a
     -- lever's hatch still shut, and the gatehouse's bridge
-    local waiting = 0
+    local waiting = kept
     if not close then
         for _, list in ipairs({e.equipment, e.outer or {}}) do
             for _, g in ipairs(list) do
                 local b = df.building.find(g.id)
-                if b and g.kind == 'bridge' then
+                if b and held and seal_has(held, g) then
+                    -- (counted above)
+                elseif b and g.kind == 'bridge' then
                     local ok, raised = pcall(function() return b.gate_flags.raised end)
                     if ok and raised then waiting = waiting + 1 end
                 elseif b and g.lever_driven and g.drive_lever and door_shut(b) then
@@ -1077,11 +1118,12 @@ function open_lever_hatches(only_e)
     local opened = 0
     for _, e in ipairs(only_e and {only_e} or GATES.entrances or {}) do
         if e.kind == 'surface' and not (GATES.closed and GATES.closed[e.id]) then
-            local pulled = {}
+            local pulled, held = {}, nil
             for _, g in ipairs(e.equipment or {}) do
                 if g.lever_driven and g.drive_lever and g.drive_ai and not pulled[g.drive_lever] then
                     local b = df.building.find(g.id)
-                    if b and door_shut(b) then
+                    held = (b and door_shut(b)) and (held or seal_holds()) or held   -- (0.105.26 seal fix)
+                    if b and door_shut(b) and not seal_has(held, g) then
                         pulled[g.drive_lever] = true
                         if pull_instant(g.drive_lever) then opened = opened + 1 end
                     end
@@ -1253,7 +1295,12 @@ function check()
             for _, p in ipairs(ds) do nearest = math.min(nearest, distance_to(e, p)) end
             if may_reopen(nearest, invaders, great, GATES.peak) then
                 GATES.clear_looks[e.id] = (GATES.clear_looks[e.id] or 0) + 1
-                if GATES.clear_looks[e.id] >= REOPEN_CHECKS then
+                -- (0.105.26 seal fix) not while the cavern seal holds any of
+                -- its gates (a hidden forgotten beast is out of sight, not
+                -- gone): kept shut, and opened at the first look after the seal
+                if GATES.clear_looks[e.id] >= REOPEN_CHECKS and sealed_entrance(e) then
+                    GATES.seal_kept = (GATES.seal_kept or 0) + 1
+                elseif GATES.clear_looks[e.id] >= REOPEN_CHECKS then
                     GATES.clear_looks[e.id] = nil
                     set_entrance(e, false)
                     GATES.reopened = (GATES.reopened or 0) + 1
@@ -1268,6 +1315,7 @@ function check()
         local watched = {}                    -- (0.105.23) the gatehouse's bridge watched too
         for _, g in ipairs(e.equipment) do table.insert(watched, g) end
         for _, g in ipairs(e.outer or {}) do table.insert(watched, g) end
+        local repulled, drift_open = {}, false
         for _, g in ipairs(watched) do
             local b = df.building.find(g.id)
             GATES.gone_ids = GATES.gone_ids or {}
@@ -1295,8 +1343,23 @@ function check()
                     GATES.repulled[g.id] = now
                     pcall(pull, g.lever_id)
                 end
+            elseif GATES.closed[e.id] and g.kind ~= 'bridge' and g.lever_driven and g.drive_lever
+                    and door_shut(b) == false then
+                -- (0.105.26 seal fix) a lever's hatch the watcher holds shut
+                -- reads open (the seal opened it, the player pulled it, a pull
+                -- went astray): its lever pulled again, at once. Still open
+                -- after: the watcher's view corrected (not closed), so its
+                -- next look decides again
+                if not repulled[g.drive_lever] then
+                    repulled[g.drive_lever] = true
+                    local okp, done = pcall(pull_instant, g.drive_lever)
+                    GATES.hatch_repulled = (GATES.hatch_repulled or 0) + 1
+                    if not (okp and done) then drift_open = true end
+                end
+                if door_shut(b) == false then drift_open = true end
             end
         end
+        if drift_open then GATES.closed[e.id] = nil end
         if not GATES.closed[e.id] and #e.equipment > 0 then
             local nearest = math.huge
             for _, p in ipairs(ds) do nearest = math.min(nearest, distance_to(e, p)) end
@@ -3325,9 +3388,12 @@ end
 -- Returns opened, still waiting.
 function open_saved_gates(saved)
     local opened, waiting = 0, 0
+    local held = seal_holds()            -- (0.105.26 seal fix) the cavern seal's stay shut
     for _, g in ipairs(saved.gates or {}) do
         local b = df.building.find(g.id)
-        if b then
+        if b and seal_has(held, g) then
+            waiting = waiting + 1
+        elseif b then
             if g.kind == 'bridge' then
                 local ok, raised = pcall(function() return b.gate_flags.raised end)
                 if ok and raised then

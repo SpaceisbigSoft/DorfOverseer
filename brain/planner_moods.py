@@ -106,7 +106,8 @@ def mood_item_text(x: dict) -> str:
 # order drops its jobs nobody works, and their items with them)
 MOOD_CONSUMERS = {"rough": ("cut_gems",), "cut_gem": ("encrust_goods",), "bone": ("bone_crafts",),
                   "cloth": ("cloth_bag", "yarn_bag", "silk_bag", "cloth_socks", "cloth_shoes"),
-                  "leather": ("leather_shoes", "leather_low_boots", "leather_quiver"),
+                  "leather": ("leather_shoes", "leather_low_boots", "leather_quiver",
+                           "leather_waterskin"),          # (0.105.26 seal fix) the flasks order too
                   "bar": ("metal_crafts", "metal_amulet", "metal_bracelet", "metal_ring", "metal_earring")}
 
 
@@ -115,7 +116,8 @@ MOOD_CONSUMERS = {"rough": ("cut_gems",), "cut_gem": ("encrust_goods",), "bone":
 # crafts and cloth rules re-ordered what a mood had just cancelled); cloth and
 # thread by the kind of thread a request names (none named: every kind)
 MOOD_BLOCKS = {"rough": ("cut_gems",), "cut_gem": ("encrust_goods",), "bone": ("bone_crafts",),
-               "leather": ("leather_shoes", "leather_low_boots", "leather_quiver"),
+               "leather": ("leather_shoes", "leather_low_boots", "leather_quiver",
+                           "leather_waterskin"),          # (0.105.26 seal fix) the flasks order too
                "bar": ("metal_crafts", "metal_amulet", "metal_bracelet", "metal_ring", "metal_earring")}
 MOOD_CLOTH_BLOCKS = {"plant": ("cloth_bag", "cloth_socks", "cloth_shoes"), "silk": ("silk_bag",),
                      "yarn": ("yarn_bag",)}

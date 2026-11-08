@@ -60,9 +60,9 @@ EMERGENCY = {"threat_alert", "gate", "gates", "squad_attack", "flood", "gate_gua
              "shelter_squads", "shelter_refresh"}                                   # (0.105.0; 0.105.26)
 # (0.104.89) rules the strategist may never hold: survival, safety and the
 # answers to danger (it may still raise them)
-STEER_PROTECTED = EMERGENCY | {"shelter", "alerts", "squad_recall", "hazard", "water", "well", "drink",
-                               "food", "farm", "farm_crops", "gather", "care", "staff", "burial", "unsuspend",
-                               "stuck_order", "tools", "found", "entrances", "trouble",
+STEER_PROTECTED = EMERGENCY | {"shelter", "alerts", "squad_recall", "water", "well", "drink",
+                               "food", "farm_crops", "gather", "staff", "burial", "unsuspend",
+                               "stuck_order", "tools", "found", "entrances",
                                "hospital_burrow",   # (0.104.167, review) never held: members are let out by it
                                "calm_burrow",       # (0.104.169) likewise
                                # (0.105.26) a life on each: a held mood goes insane; the infected, the
@@ -75,7 +75,10 @@ STEER_PROTECTED = EMERGENCY | {"shelter", "alerts", "squad_recall", "hazard", "w
                                "water_traffic", "waterworks_shut",
                                # the gate that closes in an attack; the undead, curses, webs; the heist lockout
                                "gate_lever", "gate_doors", "gate_parts", "cursed", "reanimation",
-                               "siege_cleanup", "webs", "remove_webs", "location_access"}
+                               "siege_cleanup", "webs", "remove_webs", "location_access",
+                               # (0.105.26 seal fix) a soldier's water; doors on a cavern opening, the
+                               # caverns sealed against a great beast; citizens shut outside
+                               "flasks_order", "cavern_openings", "seal_cavern", "stranded"}
 STEER_MAX_DAYS = 84
 
 

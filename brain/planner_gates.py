@@ -65,6 +65,22 @@ def _stranded_rule(s: dict, cfg: dict, proposals: list, notes: list) -> bool:
     other_gate = [r for r in gate if not r.get("by_ai")]
     nopath = [r for r in rows if not r.get("in_cavern") and r.get("cause") == "no_path"]
     opening = False
+    # (0.105.26 seal fix) not a cavern-side entrance while a forgotten beast or
+    # other great danger is in the caverns (open_gates would open the way it
+    # comes up by): put to the player instead
+    from planner_threats import cavern_great
+    great = cavern_great(s)
+    if great:
+        cave_gate = [r for r in ai_gate if _d(r.get("entrance")).get("kind") == "cavern"]
+        ai_gate = [r for r in ai_gate if r not in cave_gate]
+        if cave_gate:
+            e = _d(cave_gate[0].get("entrance"))
+            g0 = _d(great[0])
+            ask_player(notes, f"{len(cave_gate)} citizen(s) shut outside for {days(cave_gate)} at the cavern "
+                              f"entrance at x{e.get('x')} y{e.get('y')} elevation {(e.get('z') or 0) + off} "
+                              f"({', '.join(where(r) for r in cave_gate[:3])}), but {g0.get('name') or 'a great beast'} "
+                              f"({g0.get('kind') or 'great danger'}) is in the caverns: the AI keeps that way shut; "
+                              "open it yourself if they must come in now")
     if ai_gate:
         lock = any(r.get("cause") == "lockdown" for r in ai_gate)
         e = _d(ai_gate[0].get("entrance"))

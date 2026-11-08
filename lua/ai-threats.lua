@@ -581,22 +581,62 @@ local function opening_state(o)
     return row
 end
 
--- {list = [{x, y, z, kind, source, building?, id?, built?, locked?, closed?,
--- sealed? (the seal locked it, or shut it by its lever)}], n}
-function openings_report(d, t, txt)
-    gather_openings(d, t)
-    local ai = {}             -- the doors and hatches the seal locked or shut by their lever
+-- (0.105.26 seal fix) What the seal holds, from its record: {ids = {building
+-- id = true} (locked by it, or shut by their lever), locked = {id = true}
+-- (the lock), pulled = {id = true} (shut by their lever), levers = {lever id
+-- = true}}. The gate watcher (ai-gates) opens none of these while it stands.
+function seal_holds(d)
+    d = d or load_state()
+    local out = {ids = {}, locked = {}, pulled = {}, levers = {}}
     for _, rec in pairs(d.sealed) do
         if type(rec) == 'table' then
-            for _, id in ipairs(rec.ids or {}) do ai[id] = true end
-            for sid in pairs(type(rec.pulled) == 'table' and rec.pulled or {}) do ai[tonumber(sid) or sid] = true end
+            for _, id in ipairs(type(rec.ids) == 'table' and rec.ids or {}) do
+                id = tonumber(id) or id
+                out.ids[id], out.locked[id] = true, true
+            end
+            for sid, lever in pairs(type(rec.pulled) == 'table' and rec.pulled or {}) do
+                local id = tonumber(sid) or sid
+                out.ids[id], out.pulled[id] = true, true
+                if lever ~= nil then out.levers[tonumber(lever) or lever] = true end
+            end
         end
     end
+    return out
+end
+
+-- (0.105.26 seal fix) The doors, hatches and bridges of the entrances the
+-- gate watcher holds shut now: {building id = true}. The seal's open path
+-- leaves these shut (the watcher opens them again when its danger is gone).
+local function watcher_held()
+    local out = {}
+    pcall(function()
+        local G = reqscript('ai-gates').GATES
+        if type(G) ~= 'table' or type(G.closed) ~= 'table' then return end
+        for _, e in ipairs(G.entrances or {}) do
+            if G.closed[e.id] then
+                for _, list in ipairs({e.equipment or {}, e.outer or {}}) do
+                    for _, g in ipairs(list) do if g.id ~= nil then out[g.id] = true end end
+                end
+            end
+        end
+    end)
+    return out
+end
+
+-- {list = [{x, y, z, kind, source, building?, id?, built?, locked?, closed?,
+-- sealed? (the seal locked it, or shut it by its lever, and (0.105.26 seal
+-- fix) it is locked, or shut, now: one opened again since reads unsealed,
+-- so the brain seals it again)}], n}
+function openings_report(d, t, txt)
+    gather_openings(d, t)
+    local held = seal_holds(d)   -- the doors and hatches the seal locked or shut by their lever
     local list = {}
     for _, o in pairs(d.openings) do
         if type(o) == 'table' and o.x and o.y and o.z then
             local row = opening_state(o)
-            if row.id and ai[row.id] then row.sealed = true end
+            if row.id and ((held.locked[row.id] and row.locked) or (held.pulled[row.id] and row.closed)) then
+                row.sealed = true
+            end
             row.x, row.y, row.z, row.kind, row.source = o.x, o.y, o.z, o.kind, o.source
             table.insert(list, row)
         end
@@ -1044,11 +1084,16 @@ function seal_cavern(layer, tiles, open, dry_run, z1, z2, openings)
     local rec = type(d.sealed[layer]) == 'table' and d.sealed[layer] or nil
     if open then
         if not rec then return {ok = false, rejected = true, nothing_to_do = true, error = 'the AI sealed nothing there'} end
-        local n = 0
+        -- (0.105.26 seal fix) an entrance the gate watcher holds shut (an
+        -- ordinary danger at it) is left shut: the watcher opens it later
+        local watched = watcher_held()
+        local n, kept = 0, 0
         for _, bid in ipairs(rec.ids or {}) do
             pcall(function()
                 local b = df.building.find(bid)
-                if b then
+                if b and watched[b.id] then
+                    kept = kept + 1
+                elseif b then
                     if not dry_run then b.door_flags.forbidden = false end
                     n = n + 1
                 end
@@ -1057,7 +1102,9 @@ function seal_cavern(layer, tiles, open, dry_run, z1, z2, openings)
         for sid, lever in pairs(type(rec.pulled) == 'table' and rec.pulled or {}) do
             pcall(function()
                 local b = df.building.find(tonumber(sid))
-                if b and b.door_flags.closed then
+                if b and watched[b.id] then
+                    kept = kept + 1
+                elseif b and b.door_flags.closed then
                     if not dry_run then reqscript('ai-gates').pull_instant(lever) end
                     n = n + 1
                 end
@@ -1069,7 +1116,7 @@ function seal_cavern(layer, tiles, open, dry_run, z1, z2, openings)
             announce(('the ways into the caverns opened again (%s): no great beast left'):format(tostring(layer)),
                      COLOR_GREEN)
         end
-        return {ok = true, unlocked = n, layer = layer, dry_run = dry_run or nil}
+        return {ok = true, unlocked = n, layer = layer, watcher_kept = kept > 0 and kept or nil, dry_run = dry_run or nil}
     end
     local inside = citizen_in_cavern(z1, z2)
     if inside then
@@ -1106,8 +1153,11 @@ function seal_cavern(layer, tiles, open, dry_run, z1, z2, openings)
     end
     rec = rec or {ids = {}, tick = t}
     rec.pulled = type(rec.pulled) == 'table' and rec.pulled or {}
-    local have, n, already = {}, 0, 0
+    local have, n, already, adopted = {}, 0, 0, 0
     for _, id in ipairs(rec.ids) do have[id] = true end
+    -- (0.105.26 seal fix) one the gate watcher already holds shut goes on
+    -- the record too, so the watcher doesn't open it while the beast is about
+    local watched = watcher_held()
     for id, b in pairs(found) do
         local lever = own_lever(id)
         if lever then
@@ -1120,23 +1170,39 @@ function seal_cavern(layer, tiles, open, dry_run, z1, z2, openings)
                 n = n + 1
             elseif okc then
                 already = already + 1
+                if watched[id] and rec.pulled[tostring(id)] == nil then
+                    if not dry_run then rec.pulled[tostring(id)] = lever end
+                    adopted = adopted + 1
+                end
             end
         else
             local okf, f = pcall(function() return b.door_flags.forbidden end)
             if okf and not f then
                 if not dry_run then
                     b.door_flags.forbidden = true
-                    if not have[id] then table.insert(rec.ids, id) end
+                    if not have[id] then table.insert(rec.ids, id); have[id] = true end
                 end
                 n = n + 1
             elseif okf then
                 already = already + 1
+                if watched[id] and not have[id] then
+                    if not dry_run then table.insert(rec.ids, id); have[id] = true end
+                    adopted = adopted + 1
+                end
             end
         end
         local p = at[id]
         if p and given[okey(p.x, p.y, p.z)] and not dry_run then
             note_opening(d, p.x, p.y, p.z, 'way_down', tostring(layer), t)
         end
+    end
+    if n == 0 and adopted > 0 then
+        -- everything locked already, some by the gate watcher: on the seal's record now
+        if not dry_run then
+            d.sealed[layer] = rec
+            save_state(d)
+        end
+        return {ok = true, locked = 0, adopted = adopted, layer = layer, dry_run = dry_run or nil}
     end
     if n == 0 then
         if not dry_run then save_state(d) end          -- (the openings found are kept)
@@ -1149,5 +1215,5 @@ function seal_cavern(layer, tiles, open, dry_run, z1, z2, openings)
         save_state(d)
         announce(('%d way(s) into the caverns locked against a great beast (%s)'):format(n, tostring(layer)))
     end
-    return {ok = true, locked = n, layer = layer, dry_run = dry_run or nil}
+    return {ok = true, locked = n, adopted = adopted > 0 and adopted or nil, layer = layer, dry_run = dry_run or nil}
 end
