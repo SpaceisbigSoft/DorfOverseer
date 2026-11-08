@@ -235,9 +235,13 @@ def _gate_rules(s: dict, memory, cfg: dict, rules_: dict, any_reach: bool,
                 doors_proposed = True
         elif (rules_["fortify_entrances"] and (e.get("width") or 0) <= cfg["fortify_max_width"]):
             if not fortify_proposed:
+                # (0.105.30) the underground depot's wagon road: a 3-wide drawbridge, never doors
+                st = "wagon" if e.get("deep_road") else style
+                why_f = (f"{where} is the underground trade depot's wagon road: a 3-wide drawbridge across it "
+                         "(wagons roll over it lowered; a door would shut them out)" if e.get("deep_road")
+                         else f"{where} is {e.get('width')} wide: wall it down to a {style} gate")
                 proposals.append(Proposal("fortify", {"type": "fortify_entrance", "entrance_id": e["id"],
-                                                      "style": style},
-                                          f"{where} is {e.get('width')} wide: wall it down to a {style} gate", 5))
+                                                      "style": st}, why_f, 5))
                 fortify_proposed = True
         elif not (isinstance(e.get("cut_hatches"), int) and e["cut_hatches"] > 0):
             open_wide.append((e, where))        # (0.105.0) one a cut closes is _gate_cut_rule's (planner_army)

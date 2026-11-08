@@ -516,6 +516,18 @@ local function gatehouse_layout(h, d, len)
     -- the walls: either side from behind the hatch to the bridge, and behind it
     local wall_uv = {{-1, 0}}
     for u = -1, len + 1 do table.insert(wall_uv, {u, -1}); table.insert(wall_uv, {u, 1}) end
+    -- (0.105.30) nothing of it on the depot's wagon road or in front of its mouth
+    local road = deep_road_keys(true)
+    if next(road) then
+        for u = -1, len + 3 do
+            for v = -1, 1 do
+                local x, y = at(u, v)
+                if road[key(x, y, h.z)] then
+                    return nil, ('x%d y%d is the underground depot\'s wagon road'):format(x, y)
+                end
+            end
+        end
+    end
     for _, uv in ipairs(wall_uv) do
         local x, y = at(uv[1], uv[2])
         local t = T(x, y, h.z)
@@ -572,6 +584,37 @@ function plan_gatehouse(e, h)
     return nil, 'no room for a gatehouse round the hatch: ' .. tostring(why)
 end
 
+-- (0.105.30, deep depot) The underground trade depot's wagon road: its dug
+-- tiles and the ground in front of its mouth (key -> true), from the
+-- builder's save; empty when there is none. Wagons pass no door and no
+-- hatch on a ramp (the wiki's "Wagon"; DFHack's pathable plugin), so no
+-- door goes on it, a gate there is a 3-wide drawbridge (lowered, wagons roll
+-- over it), and no gatehouse wall goes in front of it. with_mouth: the
+-- ground in front of the mouth too (for walls; an entrance is the road's
+-- only by its dug tiles: the fort's own way in may be a few tiles off the
+-- mouth). Tests replace this.
+function deep_road_keys(with_mouth)
+    local out = {}
+    pcall(function()
+        local B = reqscript('ai-builder')
+        local d = B.deep_depot_data()
+        if d and type(d.tiles) == 'table' and d.stage ~= 'no_road' then
+            for _, t in ipairs(d.tiles) do out[key(t.x, t.y, t.z)] = true end
+        end
+        if with_mouth then
+            for _, t in ipairs(B.deep_depot_mouth() or {}) do out[key(t.x, t.y, t.z)] = true end
+        end
+    end)
+    return out
+end
+
+local function on_deep_road(g, road)
+    if not next(road) then return false end
+    for _, k in ipairs(g.inside_list or {}) do if road[k] then return true end end
+    for k in pairs(g.outs or {}) do if road[k] then return true end end
+    return false
+end
+
 -- The whole scan. starts: tiles where citizens stand (inside).
 function find_entrances(starts, buildings)
     cache, edge_cache = {}, {}
@@ -579,9 +622,11 @@ function find_entrances(starts, buildings)
     local groups = cluster(openings)
     local entrances = {}
     local cut_checked = 0        -- (0.105.0 review)
+    local road = deep_road_keys()        -- (0.105.30)
     for i, g in ipairs(groups) do
         local e = {id = i, kind = g.kind, width = #g.inside_list, inside_list = g.inside_list,
                    outs = g.outs, equipment = {}, sealed = false, door_spots = {}}
+        e.deep_road = on_deep_road(g, road) or nil
         local x, y, z = unkey(g.inside_list[1])
         e.x, e.y, e.z = x, y, z
         -- the gates near it that can be closed (a bridge only with a lever)
@@ -667,7 +712,8 @@ function find_entrances(starts, buildings)
             end
             if seals(starts, g, blocked) then e.closing = true end
         end
-        if not e.sealed and not e.closing and e.width <= MAX_DOORS then
+        -- (0.105.30) never doors on the depot's wagon road: a wagon passes no door
+        if not e.sealed and not e.closing and e.width <= MAX_DOORS and not e.deep_road then
             -- no gate that closes it: doors on the opening's inside tiles.
             -- Tiles that already have a door (built or planned: some of an
             -- earlier set may have been refused) are left as they are; every
@@ -1520,7 +1566,9 @@ end
 
 -- (grand is 2, not 3: the middle door of a 3-wide gap would never have a wall
 -- beside it, and DF only builds a door next to a wall)
-GAP = {plain = 2, narrow = 1, fortified = 1, gatehouse = 1, grand = 2, drawbridge = 2}
+-- (0.105.30) wagon: the underground depot's road, 3 wide: a 3-wide raising
+-- drawbridge across it (a lowered bridge is floor to a wagon), never doors
+GAP = {plain = 2, narrow = 1, fortified = 1, gatehouse = 1, grand = 2, drawbridge = 2, wagon = 3}
 
 local function nbrs4(k)
     local x, y, z = unkey(k)
@@ -1974,7 +2022,7 @@ function plan_line(e, style, starts, doors_present, memo)
     local plan = {walls = walls, doors = new_doors, inner = {}, traps = {}, statues = {},
                   support = {}, hatches = {}, kept_doors = #gap - #new_doors}
     if style == 'fortified' or style == 'gatehouse' then plan.inner = behind end
-    if style == 'drawbridge' and #new_doors == #gap and #gap > 0 then
+    if (style == 'drawbridge' or style == 'wagon') and #new_doors == #gap and #gap > 0 then
         -- a raising drawbridge over the gap instead of doors (worked by a
         -- lever inside, placed and linked afterwards). It must be a straight
         -- run of tiles, raised toward the outside.
@@ -1999,6 +2047,11 @@ function plan_line(e, style, starts, doors_present, memo)
             plan.doors = {}
             new_doors = {}
         end
+    end
+    if style == 'wagon' and not plan.bridge then
+        -- (0.105.30) the depot's wagon road: doors would shut the wagons out
+        return nil, 'the underground depot\'s wagon road takes no door, and a straight 3-wide drawbridge '
+            .. 'does not fit across it'
     end
     if style == 'gatehouse' then
         -- cage traps: the tiles just behind the inner doors
@@ -2293,7 +2346,11 @@ function fortify(id, style, starts)
         else
             out.bridge_note = 'no free floor for its lever where the dwarves are, away from the gate: doors instead'
         end
-        if not placed_bridge then
+        if not placed_bridge and style == 'wagon' then
+            -- (0.105.30) never doors on the depot's wagon road: left open, said so
+            out.bridge_note = (out.bridge_note and (out.bridge_note .. '; ') or '')
+                .. 'no doors on the underground depot\'s wagon road: it stays open'
+        elseif not placed_bridge then
             put(br.keys, 'd', 'doors')
             out.style = 'plain'
         end
@@ -2989,6 +3046,7 @@ function summary()
                             closed = GATES.closed and GATES.closed[e.id] or false,
                             -- (0.105.23) the founding stair's lid, a gatehouse in front of it
                             lid = e.lid, gatehouse = e.gatehouse, gatehouse_why = e.gatehouse_why,
+                            deep_road = e.deep_road,        -- (0.105.30) the depot's wagon road: a drawbridge only
                             outer = #outer > 0 and outer or nil})
     end
     local okf, fl = pcall(free_levers)

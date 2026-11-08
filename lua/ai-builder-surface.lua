@@ -639,6 +639,8 @@ function find_keep_court(anchors)
     local groups = citizen_groups()
     local any_group = next(groups) == nil
     local farms = surface_farm_spots()
+    local okm, mouth = pcall(deep_depot_mouth)       -- (0.105.30)
+    mouth = okm and mouth or nil
     local cache = {}
     local function kt(x, y, z)
         local k = (z * 4096 + y) * 4096 + x
@@ -734,6 +736,15 @@ function find_keep_court(anchors)
             if fits and (#trees > SURFACE_MAX_TREES or ground == 0) then fits = false end
             if fits and depot_inside(c.x - r, c.y - r, c.x + r, c.y + r, c.z) then
                 fits, last = false, 'the open ground near the fort holds the trade depot'
+            end
+            if fits and mouth then
+                -- (0.105.30) no wall in front of the underground depot's road (the wagons turn in there)
+                for _, m in ipairs(mouth) do
+                    if math.abs(m.z - c.z) <= 1 and math.abs(m.x - c.x) <= r + 1 and math.abs(m.y - c.y) <= r + 1 then
+                        fits, last = false, 'the open ground near the fort is the underground depot\'s wagon road'
+                        break
+                    end
+                end
             end
             local door = fits and keep_door(c.x, c.y, c.z, r)
             if door then
@@ -1018,6 +1029,324 @@ function deep_depot_layout(sx, sy, z, d, k)
             hall = {x1 = math.min(ax, bx), y1 = math.min(ay, by), x2 = math.max(ax, bx), y2 = math.max(ay, by), z = D}}
 end
 
+-- --- (0.105.30, deep depot) the wagons' way ---------------------------------------
+--
+-- Fort E (Deep mine) built its depot down a 1-level road; the game said the
+-- wagons couldn't reach it, and a caravan came with pack animals only. The
+-- search had checked the road's own 3x3 start and nothing between it and the
+-- map's edge. The wagons' rule, as DFHack's own depot check models it
+-- (plugins/pathable.cpp, getDepotAccessibleByWagons; the wiki's "Wagon"):
+-- a wagon moves only straight (no diagonals) and every tile of the 3x3 round
+-- its middle must be passable: no tree, boulder, stair, open space, minecart
+-- track, murky pool or river floor, no door, trap, lever, statue or raised
+-- bridge (a lowered bridge, a closed hatch or floor grate is fine; a hatch on
+-- a ramp's top is not). It changes level by a ramp: standing on a ramp, the
+-- rock beside it counts when the tile on top of that rock is walkable (the
+-- wagon goes up there); the open top of a ramp counts when the ramp under it
+-- is walkable (it goes down). And the 3-wide way must reach the map's edge.
+DEEP_WAGON_NODES = 20000     -- wagon positions looked at, at most, between the road and the map's edge
+DEEP_WAGON_SECONDS = 0.8     -- and that long at most
+DEEP_WAGON_CHECK_TICKS = 1200    -- the report's check is kept this long (an in-game day)
+DEEP_FIX_MAX = 9             -- blocking tiles a fix marks in one call
+
+-- What stands on a tile, as a wagon sees it: nil (nothing), or {occ =
+-- DF's tile_building_occ name (Passable, Floored, Dynamic, Obstacle...),
+-- kind = building type name, closed, id, name}. Tests replace this.
+function wagon_building(x, y, z)
+    local ok, r = pcall(function()
+        local _, occ = dfhack.maps.getTileFlags(x, y, z)
+        if not occ or occ.building == df.tile_building_occ.None then return nil end
+        local out = {occ = df.tile_building_occ[occ.building]}
+        local b = dfhack.buildings.findAtTile(xyz2pos(x, y, z))
+        if b then
+            out.kind, out.id, out.name = df.building_type[b:getType()], b.id, tostring(b.name or '')
+            pcall(function() out.closed = b.door_flags.closed end)
+            if out.closed == nil then pcall(function() out.closed = b.gate_flags.closed end) end
+        end
+        return out
+    end)
+    return ok and r or nil
+end
+
+-- DFHack's own wagon check of the depot, when this DFHack has it: true/false, or nil.
+function dfhack_wagon_access()
+    local ok, v = pcall(function()
+        local p = require('plugins.pathable')
+        return p.getDepotAccessibleByWagons(false)
+    end)
+    if ok and type(v) == 'boolean' then return v end
+    return nil
+end
+
+local WAGON_STOP = {STAIR_UP = 'a staircase', STAIR_DOWN = 'a staircase', STAIR_UPDOWN = 'a staircase',
+                    BOULDER = 'a boulder', EMPTY = 'open space', NONE = 'open space'}
+local WAGON_BUILT = {Door = 'a door', Hatch = 'a hatch', Trap = 'a trap or lever', Statue = 'a statue',
+                     Bridge = 'a raised bridge', Well = 'a well', Support = 'a support', Floodgate = 'a floodgate',
+                     WindowGlass = 'a window', WindowGem = 'a window', GrateWall = 'a grate', BarsVertical = 'bars',
+                     Weapon = 'a weapon trap'}
+
+local function building_words(b)
+    return WAGON_BUILT[b.kind or ''] or ('a building (%s)'):format(tostring(b.kind or b.occ):lower())
+end
+
+-- Why a wagon can't roll over this tile's ground, or nil (the tile check of
+-- DFHack's is_wagon_tile_traversible, which lets walls through: they are
+-- judged by the walking test after it).
+local function wagon_ground(t)
+    if t.shape == 'RAMP_TOP' then return nil end
+    if WAGON_STOP[t.shape] then return WAGON_STOP[t.shape] end
+    if t.track then return 'a minecart track' end
+    if t.material == 'POOL' or t.material == 'RIVER' then return 'a pool or river bed' end
+    return nil
+end
+
+-- What a blocking tile is, in words.
+local function wall_words(t)
+    if is_tree(t) or t.material == 'TREE' or t.material == 'ROOT' then return 'a tree' end
+    if t.shape == 'WALL' then
+        return t.material == 'CONSTRUCTION' and 'a built wall' or 'rock'
+    end
+    return ('%s the wagons can\'t reach'):format(tostring(t.shape):lower():gsub('_', ' '))
+end
+
+-- What a building on a tile does to a wagon: nil (passes), 'floored' (it
+-- rolls over it: the depot, a lowered bridge), or what blocks it.
+local function building_blocks(b, t)
+    if not b then return nil end
+    local occ = b.occ
+    if occ == 'Obstacle' or occ == 'Well' or occ == 'Impassable' then return building_words(b) end
+    if occ == 'Dynamic' then
+        if b.kind == 'Hatch' then
+            if t and t.shape == 'RAMP_TOP' then return 'a hatch over the ramp' end
+            if not b.closed then return 'an open hatch' end
+            return nil
+        elseif (b.kind == 'GrateFloor' or b.kind == 'BarsFloor') and b.closed then
+            return nil
+        end
+        return building_words(b)
+    end
+    if occ == 'Floored' then return 'floored' end
+    return nil
+end
+
+-- One tile of a wagon's 3x3, as DFHack's is_wagon_traversible judges it.
+-- true (and maybe a level change pushed), or false and what is there.
+local function wagon_tile(look, x, y, z, centre_ramp, g, push)
+    local t = look.tile(x, y, z)
+    if not t then return false, 'the map\'s edge' end
+    local b = look.building(x, y, z)
+    local bb = building_blocks(b, t)
+    if bb and bb ~= 'floored' then return false, bb, b end
+    local floored = bb == 'floored'
+    if not floored then
+        local why = wagon_ground(t)
+        if why then return false, why end
+    end
+    local wg = look.group(x, y, z)
+    if wg ~= 0 and wg == g then return true end
+    if t.shape == 'RAMP_TOP' then
+        if look.group(x, y, z - 1) ~= 0 then push(x, y, z - 1) return true end
+        return false, 'a ramp\'s top with no ramp under it'
+    elseif t.shape == 'WALL' and centre_ramp and not is_tree(t) then
+        if look.group(x, y, z + 1) ~= 0 then push(x, y, z + 1) return true end
+    end
+    if wg ~= 0 then return false, 'ground the wagons can\'t get to' end
+    return false, wall_words(t)
+end
+
+local WAGON_AROUND = {{0, 0}, {-1, -1}, {0, -1}, {1, -1}, {-1, 0}, {1, 0}, {-1, 1}, {0, 1}, {1, 1}}
+
+-- Can a wagon stand with its middle here? true and the level changes it
+-- opens, or false and every blocking tile of its 3x3 ({x, y, z, what, b}).
+local function wagon_fits(look, cx, cy, cz, g)
+    local ct = look.tile(cx, cy, cz)
+    local ramp = ct ~= nil and ct.shape == 'RAMP'
+    local pushes, blocks = {}, {}
+    local function push(x, y, z) table.insert(pushes, {x = x, y = y, z = z}) end
+    for _, o in ipairs(WAGON_AROUND) do
+        local x, y = cx + o[1], cy + o[2]
+        local ok, what, b = wagon_tile(look, x, y, cz, ramp, g, push)
+        if not ok then table.insert(blocks, {x = x, y = y, z = cz, what = what, b = b}) end
+    end
+    if #blocks > 0 then return false, blocks end
+    return true, pushes
+end
+
+-- The map look-ups the wagon check uses: `info` a cached tile_info.
+local function wagon_look(info)
+    local bcache, gcache = {}, {}
+    return {
+        tile = info,
+        building = function(x, y, z)
+            local k = (z * 4096 + y) * 4096 + x
+            local v = bcache[k]
+            if v == nil then v = wagon_building(x, y, z) or false; bcache[k] = v end
+            return v or nil
+        end,
+        group = function(x, y, z)
+            local k = (z * 4096 + y) * 4096 + x
+            local v = gcache[k]
+            if v == nil then v = walk_group(x, y, z) or 0; gcache[k] = v end
+            return v
+        end,
+    }
+end
+
+-- One wagon position, read fresh (tests, and a look by hand): true and the
+-- level changes, or false and the blocking tiles. g: the walking group
+-- (default: the tile's own).
+function wagon_fits_at(x, y, z, g)
+    local look = wagon_look(tile_info)
+    return wagon_fits(look, x, y, z, g or look.group(x, y, z))
+end
+
+-- A fresh look-up set for wagon_reaches_edge (tests, and a look by hand).
+function wagon_lookup()
+    return wagon_look(tile_info)
+end
+
+-- How a blocking tile could be cleared by the AI: 'fell', 'smooth', or nil.
+local function wagon_fix_of(look, blk)
+    if blk.b then return nil end
+    local t = look.tile(blk.x, blk.y, blk.z)
+    if not t then return nil end
+    if is_tree(t) then return 'fell' end
+    if t.shape == 'BOULDER' then return 'smooth' end
+    return nil
+end
+
+-- From the road's mouth (seeds: the surface tiles a wagon comes up onto),
+-- out to the map's edge, the way DFHack walks it (straight steps, the 3x3
+-- round each). skip: tiles not to step back onto (the road itself).
+-- Returns {reached, cut, n, blocks}: blocks are the blocking tiles round the
+-- positions that failed, nearest the map's edge first, those the AI could
+-- clear (trees, boulders) ahead of the rest. `dead`: positions already known
+-- to lead nowhere (filled here when the edge isn't reached).
+function wagon_reaches_edge(look, seeds, g, skip, dead)
+    local W, H = map_size()
+    local function edge_d(x, y) return math.min(x, y, W - 1 - x, H - 1 - y) end
+    local seen, heap = {}, {}
+    local function key(x, y, z) return (z * 4096 + y) * 4096 + x end
+    -- a binary heap by distance to the map's edge (nearest first: the way out is found soon on open ground)
+    local function hpush(p)
+        table.insert(heap, p)
+        local i = #heap
+        while i > 1 do
+            local j = i // 2
+            if heap[j].d <= heap[i].d then break end
+            heap[i], heap[j] = heap[j], heap[i]
+            i = j
+        end
+    end
+    local function hpop()
+        local top = heap[1]
+        local last = table.remove(heap)
+        if #heap > 0 then
+            heap[1] = last
+            local i = 1
+            while true do
+                local l, r, m = 2 * i, 2 * i + 1, i
+                if l <= #heap and heap[l].d < heap[m].d then m = l end
+                if r <= #heap and heap[r].d < heap[m].d then m = r end
+                if m == i then break end
+                heap[i], heap[m] = heap[m], heap[i]
+                i = m
+            end
+        end
+        return top
+    end
+    for k in pairs(skip or {}) do seen[k] = true end
+    for _, s in ipairs(seeds) do
+        local k = key(s.x, s.y, s.z)
+        seen[k] = true
+        hpush({x = s.x, y = s.y, z = s.z, d = edge_d(s.x, s.y)})
+    end
+    local deadline = os.clock() + DEEP_WAGON_SECONDS
+    local n, failed = 0, {}
+    local visited = {}
+    while #heap > 0 do
+        if n >= DEEP_WAGON_NODES or os.clock() > deadline then return {reached = false, cut = true, n = n} end
+        local p = hpop()
+        table.insert(visited, key(p.x, p.y, p.z))
+        if dead and dead[key(p.x, p.y, p.z)] then
+            -- (the search's earlier floods: from here nothing gets out)
+        else
+            for _, d in ipairs(DEEP_DIRS) do
+                local x, y, z = p.x + d[1], p.y + d[2], p.z
+                local k = key(x, y, z)
+                if not seen[k] then
+                    seen[k] = true
+                    n = n + 1
+                    local ok, r = wagon_fits(look, x, y, z, g)
+                    if ok then
+                        if x <= 1 or y <= 1 or x >= W - 2 or y >= H - 2 then
+                            return {reached = true, n = n}
+                        end
+                        hpush({x = x, y = y, z = z, d = edge_d(x, y)})
+                        for _, q in ipairs(r) do
+                            local qk = key(q.x, q.y, q.z)
+                            if not seen[qk] then
+                                seen[qk] = true
+                                hpush({x = q.x, y = q.y, z = q.z, d = edge_d(q.x, q.y)})
+                            end
+                        end
+                    else
+                        for _, blk in ipairs(r) do
+                            blk.d = edge_d(x, y)
+                            blk.fix = wagon_fix_of(look, blk)
+                            table.insert(failed, blk)
+                        end
+                    end
+                end
+            end
+        end
+    end
+    if dead then for _, k in ipairs(visited) do dead[k] = true end end
+    table.sort(failed, function(a, b)
+        if (a.fix ~= nil) ~= (b.fix ~= nil) then return a.fix ~= nil end
+        if a.d ~= b.d then return a.d < b.d end
+        if a.z ~= b.z then return a.z > b.z end
+        if a.y ~= b.y then return a.y < b.y end
+        return a.x < b.x
+    end)
+    -- one entry a tile
+    local out, once = {}, {}
+    for _, blk in ipairs(failed) do
+        local k = key(blk.x, blk.y, blk.z)
+        if not once[k] then once[k] = true; table.insert(out, blk) end
+    end
+    return {reached = false, n = n, blocks = out}
+end
+
+-- The road's heading: saved since 0.105.30, else from its start and the
+-- middle of the surface channel (the plan's second tile).
+local function deep_dir(d)
+    if type(d.dir) == 'table' and d.dir[1] then return {d.dir[1], d.dir[2]} end
+    local s, t = d.start, d.tiles and d.tiles[2]
+    if not (s and t) then return nil end
+    local dx, dy = t.x - s.x, t.y - s.y
+    if math.abs(dx) + math.abs(dy) ~= 1 then return nil end
+    return {dx, dy}
+end
+
+-- The surface tiles in front of the road's mouth where the wagons turn in:
+-- {{x, y, z}, ...} (rows u = -2 .. 0, v = -2 .. 2 off the start). nil before
+-- a road is planned. For the keep's court and the gatehouse: no wall there.
+function deep_depot_mouth()
+    local d = deep_depot_data()
+    if not (d and d.start and d.stage ~= 'no_road') then return nil end
+    local dir = deep_dir(d)
+    if not dir then return nil end
+    local px, py = -dir[2], dir[1]
+    local out = {}
+    for u = -2, 1 do
+        for v = -2, 2 do
+            table.insert(out, {x = d.start.x + u * dir[1] + v * px, y = d.start.y + u * dir[2] + v * py, z = d.start.z})
+        end
+    end
+    return out
+end
+
 -- Is the plan safe to dig? true, or false and why. `surf` the surface level;
 -- `reserved` the AI's levels; `info` a cached tile_info.
 local function deep_plan_ok(plan, surf, reserved, info)
@@ -1141,6 +1470,21 @@ function find_deep_depot(reserved)
         return p.i < q.i
     end)
     local last = 'no way down'
+    -- (0.105.30) the wagons' way from the map's edge to the road's start
+    local look, dead = wagon_look(info), {}
+    local edge_ok = {}            -- start (x, y, z, dir) -> the flood's answer
+    local function wagons_reach(c)
+        local px, py = -c.d[2], c.d[1]
+        local seeds = {}
+        for v = -1, 1 do table.insert(seeds, {x = c.x + v * px, y = c.y + v * py, z = c.z}) end
+        local g = look.group(c.x, c.y, c.z)
+        if g == 0 then return false, 'its start is not ground the dwarves walk' end
+        local res = wagon_reaches_edge(look, seeds, g, nil, dead)
+        if res.reached or res.cut then return true end         -- (cut short: not known, not ruled out)
+        local b = res.blocks and res.blocks[1]
+        return false, b and ('no 3-wide way for wagons from the map\'s edge to its start (%s at x%d y%d)')
+            :format(b.what, b.x, b.y) or 'no 3-wide way for wagons from the map\'s edge to its start'
+    end
     for i, c in ipairs(cands) do
         if os.clock() > deadline then
             return nil, ('the search ran out of time after %d of %d starts (%s)'):format(i - 1, #cands, last)
@@ -1159,6 +1503,17 @@ function find_deep_depot(reserved)
                 end
             end
             if ok then ok, why = deep_plan_ok(plan, c.z, reserved, info) end
+            if ok then
+                local ek = ((c.z * 4096 + c.y) * 4096 + c.x) * 4 + c.i
+                if edge_ok[ek] == nil then
+                    local okw, w = wagons_reach(c)
+                    edge_ok[ek] = okw and true or (w or false)
+                end
+                if edge_ok[ek] ~= true then
+                    last = edge_ok[ek] or 'no way for wagons to its start'
+                    break                  -- (the same start at any depth: the wagons still can't get to it)
+                end
+            end
             if ok then
                 plan.start = {x = c.x, y = c.y, z = c.z}
                 plan.dir = c.d
@@ -1245,8 +1600,237 @@ local function deep_dig_left(d)
     return left, stalled
 end
 
+-- --- (0.105.30) the built road, checked for the wagons ---------------------------
+--
+-- deep_wagon_check(d): the AI's best guess at what stops the wagons, along
+-- its own road in the order a wagon drives it: the two rows of ground in
+-- front of the mouth, the channel's open tops, the ramps, the road's floor,
+-- the hall; then the way over the surface from the mouth to the map's edge.
+-- {state = 'clear'|'blocked'|'unknown', block = {x, y, z, what, text, fix,
+-- key, id, pending, tiles}, opens = {x, y, z}}. fix: 'fell' (a tree),
+-- 'smooth' (a boulder), 'redig' (key: h channel, r ramp, d floor), 'remove'
+-- (a door, hatch, trap... on the AI's own road), or nil (a Needs you).
+-- opens: where the hall or road opens into the fort (it shouldn't: then a
+-- door there guards the fort, and is not the AI's to take away).
+local DEEP_WANT = {h = 'the ramp\'s open top', ramp = 'a ramp', d = 'dug floor'}
+DEEP_REMOVING = DEEP_REMOVING or {}      -- building id -> true: its removal was ordered
+DEEP_CHECK = DEEP_CHECK or {}            -- {tick, at, res}: the report's last check
+
+-- (tests replace this) take a building down: DFHack's own call
+function remove_building(id)
+    local ok, r = pcall(function()
+        local b = df.building.find(id)
+        if not b then return false end
+        dfhack.buildings.deconstruct(b)
+        return true
+    end)
+    return ok and r == true
+end
+
+local function shape_words(t)
+    if not t then return 'off the map' end
+    if is_tree(t) then return 'a tree' end
+    local s = tostring(t.shape)
+    if s == 'WALL' then return t.material == 'CONSTRUCTION' and 'a built wall' or 'solid rock' end
+    if s == 'EMPTY' then return 'open space' end
+    if s == 'RAMP_TOP' then return 'a ramp\'s open top' end
+    return s:lower():gsub('_', ' ')
+end
+
+function deep_wagon_check(d)
+    local cache = {}
+    local function info(x, y, z)
+        local k = (z * 4096 + y) * 4096 + x
+        local v = cache[k]
+        if v == nil then v = tile_info(x, y, z) or false; cache[k] = v end
+        return v or nil
+    end
+    local look = wagon_look(info)
+    local dir = d and deep_dir(d)
+    if not (dir and d.start and d.tiles and d.depot) then
+        return {state = 'unknown', why = 'the road\'s plan is not in the save'}
+    end
+    local function k3(x, y, z) return (z * 4096 + y) * 4096 + x end
+    local px, py = -dir[2], dir[1]
+    local sx, sy, sz = d.start.x, d.start.y, d.start.z
+    local plan = {}
+    for _, p in ipairs(d.tiles) do plan[k3(p.x, p.y, p.z)] = p.r end
+    -- where the hall or road opens into anything walkable that isn't its own
+    local opens
+    for _, p in ipairs(d.tiles) do
+        if p.z < sz and not opens then
+            for dx = -1, 1 do
+                for dy = -1, 1 do
+                    local x, y = p.x + dx, p.y + dy
+                    if not opens and (dx ~= 0 or dy ~= 0) and not plan[k3(x, y, p.z)] and look.group(x, y, p.z) ~= 0 then
+                        local t = info(x, y, p.z)
+                        -- (the rock round the ramps' foot is walked over from the surface: not an opening)
+                        if t and t.shape ~= 'WALL' then opens = {x = x, y = y, z = p.z} end
+                    end
+                end
+            end
+        end
+    end
+    local function block(x, y, z, what, fix, extra)
+        local b = {x = x, y = y, z = z, elevation = ez(z), what = what, fix = fix}
+        for k, v in pairs(extra or {}) do b[k] = v end
+        b.text = b.text or ('%s at x%d y%d elevation %d on the depot road'):format(what, x, y, ez(z))
+        local t = info(x, y, z)
+        if fix == 'fell' or fix == 'redig' then
+            b.pending = t ~= nil and t.designated == true
+        elseif fix == 'smooth' then
+            b.pending = t ~= nil and (t.smoothing == true or t.designated == true)
+        elseif fix == 'remove' then
+            b.pending = b.id ~= nil and DEEP_REMOVING[b.id] == true
+        end
+        return {state = 'blocked', block = b, opens = opens}
+    end
+    -- what a building on the AI's road does: removed, unless the road opens
+    -- into the fort (then a door or hatch there may be the fort's gate)
+    local function building_fix(b)
+        if opens and (b.kind == 'Door' or b.kind == 'Hatch' or b.kind == 'Bridge') then return nil end
+        return b.id and 'remove' or nil
+    end
+    -- 1. the ground in front of the mouth (u = -1, 0)
+    for u = -1, 0 do
+        for v = -1, 1 do
+            local x, y = sx + u * dir[1] + v * px, sy + u * dir[2] + v * py
+            local t = info(x, y, sz)
+            local b = look.building(x, y, sz)
+            local bb = building_blocks(b, t)
+            if bb and bb ~= 'floored' then
+                return block(x, y, sz, bb, nil, {id = b.id,
+                    text = ('%s at x%d y%d elevation %d, in front of the depot road\'s mouth'):format(bb, x, y, ez(sz))})
+            end
+            local why = t and wagon_ground(t) or (not t and 'off the map') or nil
+            if not why and t and (t.shape == 'WALL' or is_tree(t)) then why = shape_words(t) end
+            if why then
+                local fix = (t and is_tree(t)) and 'fell' or (t and t.shape == 'BOULDER') and 'smooth' or nil
+                return block(x, y, sz, why, fix,
+                    {text = ('%s at x%d y%d elevation %d, in front of the depot road\'s mouth'):format(why, x, y, ez(sz))})
+            end
+        end
+    end
+    -- 2. the road and the hall, as dug (the plan's own order: down the road)
+    for _, p in ipairs(d.tiles) do
+        local t = info(p.x, p.y, p.z)
+        local b = look.building(p.x, p.y, p.z)
+        local bb = building_blocks(b, t)
+        if bb and bb ~= 'floored' then
+            return block(p.x, p.y, p.z, bb, building_fix(b), {id = b.id, kind = b.kind})
+        end
+        local shape = t and t.shape
+        if p.r == 'h' then
+            if shape == 'EMPTY' then
+                local dn = info(p.x, p.y, p.z - 1)
+                return block(p.x, p.y, p.z, 'open space where a ramp\'s top should be (no ramp under it)',
+                    (dn and dn.shape == 'WALL') and 'redig' or nil, {key = 'r', at = {x = p.x, y = p.y, z = p.z - 1}})
+            elseif shape ~= 'RAMP_TOP' then
+                return block(p.x, p.y, p.z, ('%s where %s should be'):format(shape_words(t), DEEP_WANT.h),
+                    (shape == 'WALL' or GROUND[shape or '']) and 'redig' or nil, {key = 'h'})
+            end
+        elseif p.r == 'ramp' then
+            if shape ~= 'RAMP' then
+                local good = 0
+                for _, q in ipairs(d.tiles) do
+                    if q.r == 'ramp' and q.z == p.z then
+                        local qt = info(q.x, q.y, q.z)
+                        if qt and qt.shape == 'RAMP' then good = good + 1 end
+                    end
+                end
+                return block(p.x, p.y, p.z, ('%s where a ramp should be'):format(shape_words(t)),
+                    shape == 'WALL' and 'redig' or nil, {key = 'r',
+                    text = ('the ramp at x%d y%d elevation %d is %s, so the ramp row is %d wide (a wagon needs 3)')
+                        :format(p.x, p.y, ez(p.z), shape_words(t), good)})
+            end
+        else
+            if shape == 'WALL' then
+                return block(p.x, p.y, p.z, 'solid rock where the road\'s floor should be', 'redig', {key = 'd'})
+            end
+            local why = t and wagon_ground(t) or (not t and 'off the map') or nil
+            if why then
+                return block(p.x, p.y, p.z, why, shape == 'BOULDER' and 'smooth' or nil)
+            end
+        end
+    end
+    -- 3. from the mouth over the surface to the map's edge
+    local g = look.group(sx, sy, sz)
+    if g == 0 then
+        return block(sx, sy, sz, ('%s at the road\'s start'):format(shape_words(info(sx, sy, sz))), nil)
+    end
+    local seeds, skip = {}, {}
+    for v = -1, 1 do table.insert(seeds, {x = sx + v * px, y = sy + v * py, z = sz}) end
+    for _, p in ipairs(d.tiles) do skip[k3(p.x, p.y, p.z)] = true end
+    local res = wagon_reaches_edge(look, seeds, g, skip)
+    if res.reached then return {state = 'clear', opens = opens} end
+    if res.cut then return {state = 'unknown', opens = opens, why = 'the way to the map\'s edge is too long to check'} end
+    local first = res.blocks and res.blocks[1]
+    if not first then
+        return block(sx, sy, sz, 'no room to turn', nil, {text = ('no 3-wide way for wagons from the depot road\'s '
+            .. 'mouth at x%d y%d elevation %d to the map\'s edge'):format(sx, sy, ez(sz))})
+    end
+    local tiles = {}
+    for _, b in ipairs(res.blocks) do
+        if b.fix == first.fix and first.fix and #tiles < DEEP_FIX_MAX then
+            table.insert(tiles, {x = b.x, y = b.y, z = b.z})
+        end
+    end
+    return block(first.x, first.y, first.z, first.what, first.fix, {id = first.b and first.b.id,
+        tiles = #tiles > 0 and tiles or nil,
+        text = ('%s at x%d y%d elevation %d, on the wagons\' way from the depot road\'s mouth (x%d y%d) to the '
+                .. 'map\'s edge (no 3-wide way past it)'):format(first.what, first.x, first.y, ez(first.z), sx, sy)})
+end
+
+-- The block for the report: {x, y, elevation, what, text, fix, pending}.
+local function block_report(b)
+    if not b then return nil end
+    return {x = b.x, y = b.y, elevation = b.elevation, what = b.what, text = b.text, fix = b.fix,
+            pending = b.pending or nil}
+end
+
+-- Clear a block: the number of tiles marked (or buildings taken down).
+local function deep_fix(b)
+    local n = 0
+    if b.fix == 'fell' then
+        for _, p in ipairs(b.tiles or {b}) do
+            local t = tile_info(p.x, p.y, p.z)
+            if t and is_tree(t) and not t.designated and fell_tree(p.x, p.y, p.z) then n = n + 1 end
+        end
+    elseif b.fix == 'smooth' then
+        for _, p in ipairs(b.tiles or {b}) do
+            local ok = pcall(quickfort_apply, 'dig', {{x = 0, y = 0, text = 's'}}, p.z, p.x, p.y)
+            if ok then n = n + 1 end
+        end
+    elseif b.fix == 'redig' then
+        local at = b.at or b
+        local ok = pcall(quickfort_apply, 'dig', {{x = 0, y = 0, text = b.key or 'd'}}, at.z, at.x, at.y)
+        if ok then n = 1 end
+    elseif b.fix == 'remove' and b.id then
+        if remove_building(b.id) then DEEP_REMOVING[b.id] = true; n = 1 end
+    end
+    return n
+end
+
+local FIX_WORDS = {fell = 'tree(s) marked for felling', smooth = 'boulder(s) marked for smoothing',
+                   redig = 'tile(s) marked for digging again', remove = 'building(s) taken down'}
+
+-- The report's check, kept for an in-game day (the surface walk is not free).
+local function deep_check_cached(d)
+    local now = deep_now() or 0
+    local at = d.depot and ('%s,%s,%s'):format(d.depot.x, d.depot.y, d.depot.z) or ''
+    local c = DEEP_CHECK
+    if c.res and c.at == at and c.tick and now >= c.tick and now - c.tick < DEEP_WAGON_CHECK_TICKS then return c.res end
+    local ok, res = pcall(deep_wagon_check, d)
+    res = ok and res or {state = 'unknown', why = tostring(res)}
+    DEEP_CHECK = {tick = now, at = at, res = res}
+    return res
+end
+
 -- The report's view, once begun: {stage, x, y, elevation, levels, road,
 -- tiles_left, stalled, depot = none|building|built, wagon_access, why}.
+-- (0.105.30) built and the wagons not known to get there: dfhack_wagon_access
+-- (DFHack's own check), wagon_check (clear|blocked|unknown), wagon_block
+-- ({x, y, elevation, what, text, fix, pending}), opens_fort ({x, y, elevation}).
 function deep_depot_status()
     local d = deep_depot_data()
     if not d then return nil end
@@ -1267,6 +1851,17 @@ function deep_depot_status()
             local built = depot_built(b)
             out.depot = built == false and 'building' or 'built'
             if built ~= false then out.wagon_access = depot_wagon_access(b) end
+            if built ~= false and out.wagon_access ~= true then
+                out.dfhack_wagon_access = dfhack_wagon_access()
+                if out.dfhack_wagon_access ~= true then
+                    local chk = deep_check_cached(d)
+                    out.wagon_check = chk.state
+                    out.wagon_block = block_report(chk.block)
+                    if chk.opens then
+                        out.opens_fort = {x = chk.opens.x, y = chk.opens.y, elevation = ez(chk.opens.z)}
+                    end
+                end
+            end
         end
     end
     return out
@@ -1315,7 +1910,8 @@ function place_deep_depot(dry_run)
         end
         for _, z in ipairs(zs) do pcall(quickfort_apply, 'dig', by_z[z], z, 0, 0) end
         save_deep_depot({stage = 'digging', tiles = plan.tiles, depot = plan.depot, hall = plan.hall,
-                         levels = plan.levels, road = plan.road, start = plan.start})
+                         levels = plan.levels, road = plan.road, start = plan.start,
+                         dir = {plan.dir[1], plan.dir[2]}})
         return out
     end
     if d.stage == 'digging' then
@@ -1340,9 +1936,44 @@ function place_deep_depot(dry_run)
     -- placed: the depot in the hall's middle (again if it was taken down)
     local b = deep_depot_building(d)
     if b then
-        return {ok = false, rejected = true, done = true, stage = 'placed',
-                depot = depot_built(b) == false and 'building' or 'built', wagon_access = depot_wagon_access(b),
-                error = 'the underground trade depot is placed'}
+        local built, acc = depot_built(b), depot_wagon_access(b)
+        local out = {ok = false, rejected = true, done = true, stage = 'placed',
+                     depot = built == false and 'building' or 'built', wagon_access = acc,
+                     error = 'the underground trade depot is placed'}
+        -- (0.105.30) built, and the game doesn't say the wagons get there:
+        -- the first thing in their way, cleared when the AI can
+        if built == false or acc == true then return out end
+        out.dfhack_wagon_access = dfhack_wagon_access()
+        if out.dfhack_wagon_access == true then return out end
+        local okc, chk = pcall(deep_wagon_check, d)
+        if not okc then out.error = 'the wagons\' way could not be checked: ' .. tostring(chk) return out end
+        DEEP_CHECK = {}                            -- the report looks again
+        out.wagon_check = chk.state
+        out.wagon_block = block_report(chk.block)
+        if chk.state ~= 'blocked' then
+            if chk.state == 'clear' then
+                out.error = 'the underground trade depot is placed; the AI finds nothing in the wagons\' way'
+            end
+            return out
+        end
+        local blk = chk.block
+        if blk.fix and not blk.pending then
+            if dry_run then
+                return {ok = true, stage = 'placed', fix = blk.fix, wagon_block = out.wagon_block, dry_run = true}
+            end
+            local n = deep_fix(blk)
+            return {ok = n > 0, stage = 'placed', fixed = blk.fix, marked = n, wagon_block = out.wagon_block,
+                    wagon_access = acc,
+                    error = n == 0 and ('the game would not take the fix for ' .. blk.text) or nil,
+                    note = n > 0 and ('%d %s: %s'):format(n, FIX_WORDS[blk.fix] or blk.fix, blk.text) or nil}
+        elseif blk.fix then
+            out.waiting = true
+            out.error = 'the wagons\' way is being cleared: ' .. blk.text
+        else
+            out.needs_you = true
+            out.error = 'the wagons can\'t reach the underground depot: ' .. blk.text .. ' (not the AI\'s to clear)'
+        end
+        return out
     end
     if any_depot() then return {ok = false, rejected = true, error = 'a trade depot already stands'} end
     local c = d.depot

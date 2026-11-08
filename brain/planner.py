@@ -534,7 +534,7 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
     # 6e. Basics outside: a refuse pile (rot indoors makes miasma), a trade depot
     if can_use("buildings", "projects"):
         _guard(_surface_basics, s, cfg, citizens, proposals)
-        _guard(_deep_depot_watch, s, notes)      # (0.105.23) the underground depot's wagons
+        _guard(_deep_depot_watch, s, notes, proposals)   # (0.105.23) the underground depot's wagons (0.105.30: cleared)
     # 6e-0a. (0.101) Water cutting the fort off from land it would use: a bridge
     if can_use("crossings", "stocks"):
         _guard(_crossing_rule, s, cfg, citizens, traits, proposals, notes, memory)

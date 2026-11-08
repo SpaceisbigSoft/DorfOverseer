@@ -1538,16 +1538,66 @@ def _deep_depot_choice(s: dict, p, notes: list):
     return Proposal(p.rule, {"type": "deep_depot"}, why, p.priority, p.is_order)
 
 
-def _deep_depot_watch(s: dict, notes: list) -> None:
+def _deep_depot_watch(s: dict, notes: list, proposals: list | None = None) -> None:
     """(0.105.23, 14.1 step 4c) Once the underground depot stands, what the
     game says of the wagons: when it says they can't reach it, a Needs you
     line (the AI doesn't dig on blindly). Nothing when the game doesn't show
-    it (the report's `wagon_access` is then missing)."""
+    it (the report's `wagon_access` is then missing).
+
+    (0.105.30, deep depot) Fort E's depot read "wagons can't reach it" and the
+    line said only "look at its road". The bridge now walks the road as a
+    wagon would (DFHack's own rule: 3x3 round every step, ramps, no doors) and
+    names the first thing in the way (`wagon_block`); DFHack's own check is
+    read too (`dfhack_wagon_access`). A tree, a boulder, a tile left undug or
+    a door on the AI's own road: `deep_depot` clears it. Anything else: a
+    Needs you that names the tile."""
     dd = _d(_d(s.get("buildings")).get("deep_depot"))
     if dd.get("depot") != "built":
         return
     at = f"x{dd.get('x')} y{dd.get('y')} elevation {dd.get('elevation')}"
-    if dd.get("wagon_access") is False:
+    acc, dh = dd.get("wagon_access"), dd.get("dfhack_wagon_access")
+    if acc is True:
+        return
+    if acc is False and dh is True:
+        notes.append(NEEDS_YOU + f"the game says the caravans' wagons can't reach the underground trade depot at {at}, "
+                     "but DFHack's own wagon check finds a 3-wide way to it: open the depot's sheet in the game "
+                     "(it checks the wagons' way again)")
+        return
+    blk = _d(dd.get("wagon_block"))
+    check = dd.get("wagon_check")
+    text = blk.get("text") or (f"{blk.get('what')} at x{blk.get('x')} y{blk.get('y')} "
+                               f"elevation {blk.get('elevation')}" if blk else "")
+    opens = _d(dd.get("opens_fort"))
+    open_words = (f"; the depot's hall opens into the fort at x{opens.get('x')} y{opens.get('y')} elevation "
+                  f"{opens.get('elevation')}, so a door there may be the fort's gate: put a drawbridge on a lever "
+                  "in its place (wagons cross it lowered)") if opens else ""
+    if check == "blocked" and blk:
+        fix = blk.get("fix")
+        if fix and blk.get("pending"):
+            notes.append(f"the underground trade depot: its wagons' way is being cleared ({text})")
+            return
+        if fix and proposals is not None:
+            what = {"fell": "fell the tree(s)", "smooth": "smooth the boulder(s)", "redig": "dig it again",
+                    "remove": "take it down (no door, hatch or trap on the wagons' road)"}.get(fix, fix)
+            proposals.append(Proposal("depot", {"type": "deep_depot"},
+                                      f"the caravans' wagons can't reach the underground trade depot at {at}: "
+                                      f"{text}: {what}", 6))
+            return
+        if acc is False:
+            notes.append(NEEDS_YOU + f"the game says the caravans' wagons can't reach the underground trade depot at "
+                         f"{at}; the first thing in their way, as the AI sees it: {text}. The AI can't clear that "
+                         f"itself: clear it, or build a depot on the surface{open_words}")
+        else:
+            notes.append(f"the underground trade depot at {at}: the AI's own wagon check finds {text}")
+        return
+    if acc is False and check == "clear":
+        notes.append(NEEDS_YOU + f"the game says the caravans' wagons can't reach the underground trade depot at {at}, "
+                     "but the AI finds nothing in their way along its road and over the surface to the map's edge: "
+                     "open the depot's sheet in the game (it checks again) and look along the road for what "
+                     "the AI can't see (caravans bring wagons only to a fort with a landholder, a baron or "
+                     f"higher, or the capital){open_words}")
+        return
+    if acc is False:
         notes.append(NEEDS_YOU + f"the game says the caravans' wagons can't reach the underground trade depot at {at}: "
                      "look at its road (3 tiles wide all the way from the map's edge, ramps not stairs, nothing "
                      "built, no trees or boulders on it) or build a depot on the surface")

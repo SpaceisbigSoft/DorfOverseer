@@ -859,12 +859,13 @@ function act_build_gate_doors(a)
     return reqscript('ai-gates').build_doors(id)
 end
 
-local GATE_STYLES = {plain = true, narrow = true, fortified = true, gatehouse = true, grand = true, drawbridge = true}
+local GATE_STYLES = {plain = true, narrow = true, fortified = true, gatehouse = true, grand = true, drawbridge = true,
+                     wagon = true}     -- (0.105.30) the underground depot's road: a 3-wide drawbridge
 
 function act_fortify_entrance(a)
     local id = whole_number(a.entrance_id)
     if not id then return reject('fortify_entrance needs entrance_id') end
-    if not GATE_STYLES[a.style] then return reject('fortify_entrance needs style plain|narrow|fortified|gatehouse|grand|drawbridge') end
+    if not GATE_STYLES[a.style] then return reject('fortify_entrance needs style plain|narrow|fortified|gatehouse|grand|drawbridge|wagon') end
     return reqscript('ai-gates').fortify(id, a.style)
 end
 

@@ -3942,9 +3942,10 @@ def _():
 
 def _deep_ground():
     """Open ground under the sky at z80 round the fort (its own floors at
-    x40-80 y55-65 stay inside); the way in is the stair's top (60,60,80)."""
+    x40-80 y55-65 stay inside); the way in is the stair's top (60,60,80).
+    (0.105.30) out to the map's edges: the wagons come from there."""
     LUA.eval("""function(W)
-      for x = 20, 100 do for y = 20, 100 do
+      for x = 0, 119 do for y = 0, 119 do
         local t = W.get(x, y, 80)
         if t.shape == 'WALL' then W.set(x, y, 80, {shape='FLOOR', material='SOIL', outside=true}) end
         W.set(x, y, 81, {shape='EMPTY', outside=true})

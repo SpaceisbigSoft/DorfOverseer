@@ -57,7 +57,7 @@ KEEP_CLOSED_PROJECTS = 20  -- finished/cancelled projects kept in the save
 NATURAL = {STONE = true, MINERAL = true, SOIL = true, LAVA_STONE = true}
 
 -- {shape=<name>, material=<name>, aquifer, liquid, feature, outside, designated,
---  marked, building} or nil when off the map.
+--  marked, building, track} or nil when off the map.
 function tile_info(x, y, z)
     local tt = dfhack.maps.getTileType(x, y, z)
     if not tt then return nil end
@@ -88,6 +88,7 @@ function tile_info(x, y, z)
         -- "marker only" (blueprint) designations: dwarves won't dig them
         marked = occ.dig_marked,
         smoothed = df.tiletype_special[attrs.special] == 'SMOOTH',
+        track = df.tiletype_special[attrs.special] == 'TRACK',   -- (0.105.30) minecart track: wagons can't cross it
         smoothing = des.smooth ~= 0,          -- smooth/engrave job designated
         building = occ.building ~= df.tile_building_occ.None,
         warm = warm,
