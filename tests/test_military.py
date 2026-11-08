@@ -11,7 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 from lua_modules_util import module_src  # (13c lua-modules) the modules' sources, with lua/ai-util.lua
-RESULTS = []
+from harness import test, finish  # noqa: E402
 
 try:
     from lupa import LuaRuntime
@@ -26,19 +26,6 @@ local env = setmetatable({}, {__index = _G})
 assert(load(src, 'ai-military', 't', env))()
 return env
 """, module_src("ai-military.lua"))
-
-
-def test(name):
-    def wrap(fn):
-        try:
-            fn()
-            RESULTS.append((name, True, ""))
-        except AssertionError as e:
-            RESULTS.append((name, False, str(e)))
-        except Exception as e:  # noqa: BLE001
-            RESULTS.append((name, False, f"{type(e).__name__}: {e}"))
-        return fn
-    return wrap
 
 
 def cands(*rows):
@@ -88,7 +75,6 @@ def _():
 def _():
     assert ids(M.pick_soldiers(cands((5, 1, 1)), 4)) == [5]
     assert ids(M.pick_soldiers(cands(), 3)) == []
-
 
 
 @test("uniform template: leather or metal as asked, melee before crossbows; else the first")
@@ -718,7 +704,6 @@ def _():
     assert r.ok is False and "posts are in use" in r.error, dict(r)
 
 
-
 @test("kill orders (0.100 security): only threats or berserk dwarves, never citizens, merchants or pets")
 def _():
     LUA.execute(r"""
@@ -1282,7 +1267,6 @@ def _():
     assert env.shelter(7, False).rejected                              # no shelter burrow
 
 
-
 @test("0.105.0 review: a player's own shelter order isn't the AI's (only the ones shelter() marked); marks pruned")
 def _():
     lua, n, env, eq, sq7, sq8 = army()
@@ -1414,8 +1398,4 @@ def _():
     assert n(sq7.positions[3].equipment.assigned_items) == 1
 
 if __name__ == "__main__":
-    for name, ok, msg in RESULTS:
-        print(f"[{'PASS' if ok else 'FAIL'}] {name}" + (f"\n        {msg}" if msg else ""))
-    failed = sum(1 for _, ok, _ in RESULTS if not ok)
-    print(f"\n{len(RESULTS) - failed} passed, {failed} failed")
-    sys.exit(1 if failed else 0)
+    finish()

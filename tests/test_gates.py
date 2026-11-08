@@ -11,7 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 from lua_modules_util import module_src  # (13c lua-modules) the modules' sources, with lua/ai-util.lua
-RESULTS = []
+from harness import test, finish  # noqa: E402
 
 try:
     from lupa import LuaRuntime
@@ -106,19 +106,6 @@ def find():
 
 def by_kind_and_y(es):
     return {(e.kind, e.y): e for e in es}
-
-
-def test(name):
-    def wrap(fn):
-        try:
-            fn()
-            RESULTS.append((name, True, ""))
-        except AssertionError as e:
-            RESULTS.append((name, False, str(e)))
-        except Exception as e:  # noqa: BLE001
-            RESULTS.append((name, False, f"{type(e).__name__}: {e}"))
-        return fn
-    return wrap
 
 
 DOOR_A = {"id": 1, "kind": "door", "x1": 8, "y1": 2, "x2": 8, "y2": 2, "z": 0, "name": ""}
@@ -908,6 +895,7 @@ def _():
     plan = M.plan_gate(c, "fortified", starts())
     plan = plan[0] if isinstance(plan, tuple) else plan
     door = keys_xy(plan.doors)[0]
+    assert keys_xy(plan.support), "(13c) a support wall is planned"
     for x, y in keys_xy(plan.support):
         assert y != door[1], (keys_xy(plan.support), door)       # never in line with the door
     saved = M.wall_beside
@@ -923,22 +911,26 @@ def _():
 
 @test("5a review: no hatch when the outside below is beside the stair (a ramp would walk onto the lid)")
 def _():
-    up = ["#" * 30] * 3 + ["##########s" + "." * 19] + ["#" * 10 + "." * 20] * 4 + ["#" * 30] * 11
-    down = ["#" * 30] * 2 + ["#########cR" + "#" * 19] + ["cccccccccc" + "S" + "#" * 19] + ["#" * 30] * 15
-    m = LUA.table()
-    for z, rows in ((0, down), (1, up)):
-        level = LUA.table()
-        for y, r in enumerate(rows):
-            level[y] = r
-        m[z] = level
-    W.map = m
-    W.buildings = LUA.table()
-    s1 = LUA.table_from({1: LUA.table_from({"x": 20, "y": 5, "z": 1})})
-    es, _, _ = M.find_entrances(s1, W.buildings)
-    e = [es[i] for i in range(1, len(es) + 1) if es[i].z == 1][0]
-    res = M.plan_gate(e, "plain", s1)
-    plan = res[0] if isinstance(res, tuple) else res
-    assert plan is None or len(plan.hatches) == 0, plan
+    def hatches(ramp_row):
+        up = ["#" * 30] * 3 + ["##########s" + "." * 19] + ["#" * 10 + "." * 20] * 4 + ["#" * 30] * 11
+        down = ["#" * 30] * 2 + [ramp_row] + ["cccccccccc" + "S" + "#" * 19] + ["#" * 30] * 15
+        m = LUA.table()
+        for z, rows in ((0, down), (1, up)):
+            level = LUA.table()
+            for y, r in enumerate(rows):
+                level[y] = r
+            m[z] = level
+        W.map = m
+        W.buildings = LUA.table()
+        s1 = LUA.table_from({1: LUA.table_from({"x": 20, "y": 5, "z": 1})})
+        es, _, _ = M.find_entrances(s1, W.buildings)
+        e = [es[i] for i in range(1, len(es) + 1) if es[i].z == 1][0]
+        res = M.plan_gate(e, "plain", s1)
+        plan = res[0] if isinstance(res, tuple) else res
+        assert plan is not None, res                      # (13c) a gate is planned, only without the hatch
+        return len(plan.hatches)
+    assert hatches("#########cR" + "#" * 19) == 0         # the ramp up beside the stair
+    assert hatches("#####cR####" + "#" * 19) == 1         # (13c) the same ramp further off: the hatch
 
 
 @test("5b: drawbridge style: walls and a raising bridge over the gap (raised toward the outside), and a lever where the dwarves are")
@@ -1023,7 +1015,6 @@ def _():
             M.place_hook = None
             M.wall_beside = saved
         assert r.ok and r[want] > 0, (style, dict(r))
-
 
 
 CLEAR = r"""
@@ -1400,7 +1391,6 @@ def _():
         M.GATES = LUA.table_from({"scanned": False})
 
 
-
 @test("0.105.4 review: visitors outside counts only visitors off the map of the inside")
 def _():
     LUA.execute("""
@@ -1422,7 +1412,6 @@ def _():
     finally:
         M.GATES = old
         LUA.execute("df = nil; dfhack = nil")
-
 
 
 # --- (0.105.23, 14.1 step 4a) the hatch on a lever, and the gatehouse ----------------
@@ -1698,8 +1687,4 @@ def _():
         M.GATES = LUA.table_from({"scanned": False})
 
 if __name__ == "__main__":
-    for name, ok, msg in RESULTS:
-        print(f"[{'PASS' if ok else 'FAIL'}] {name}" + (f"\n        {msg}" if msg else ""))
-    failed = sum(1 for _, ok, _ in RESULTS if not ok)
-    print(f"\n{len(RESULTS) - failed} passed, {failed} failed")
-    sys.exit(1 if failed else 0)
+    finish()

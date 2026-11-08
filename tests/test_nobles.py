@@ -11,7 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 from lua_modules_util import module_src  # (13c lua-modules) the modules' sources, with lua/ai-util.lua
-RESULTS = []
+from harness import test, finish  # noqa: E402
 
 try:
     from lupa import LuaRuntime
@@ -127,19 +127,6 @@ def game(units, offices=("MANAGER", "BOOKKEEPER", "BROKER", "SHERIFF"), **kw):
     return env, ent, figs
 
 
-def test(name):
-    def wrap(fn):
-        try:
-            fn()
-            RESULTS.append((name, True, ""))
-        except AssertionError as e:
-            RESULTS.append((name, False, str(e)))
-        except Exception as e:  # noqa: BLE001
-            RESULTS.append((name, False, f"{type(e).__name__}: {e}"))
-        return fn
-    return wrap
-
-
 FOLK = [{"id": 1, "hf": 11, "skills": [("ORGANIZATION", 1)]},
         {"id": 2, "hf": 12, "skills": [("ORGANIZATION", 4), ("RECORD_KEEPING", 1)]},
         {"id": 3, "hf": 13, "skills": [("ORGANIZATION", 9)], "child": True},
@@ -181,8 +168,6 @@ def _():
     assert env.appoint("MILITIA_COMMANDER", False).rejected
     assert env.appoint("SHERIFF", True).ok                                  # justice: the AI's since 0.44
     assert "no CHIEF_MEDICAL_DWARF office" in env.appoint("CHIEF_MEDICAL_DWARF", False).error
-
-
 
 
 @test("a dwarf holding an office gets a second only when nobody else will do (the 0.44 sheriff was the doctor)")
@@ -253,8 +238,4 @@ def _():
     assert list(list(s.nobles.values())[0].needs.values()) == ["bedroom"], "office no longer needed"
 
 if __name__ == "__main__":
-    for name, ok, msg in RESULTS:
-        print(f"[{'PASS' if ok else 'FAIL'}] {name}" + (f"\n        {msg}" if msg else ""))
-    failed = sum(1 for _, ok, _ in RESULTS if not ok)
-    print(f"\n{len(RESULTS) - failed} passed, {failed} failed")
-    sys.exit(1 if failed else 0)
+    finish()

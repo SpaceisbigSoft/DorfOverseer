@@ -11,7 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 from lua_modules_util import module_src  # (13c lua-modules) the modules' sources, with lua/ai-util.lua
-RESULTS = []
+from harness import test, finish  # noqa: E402
 
 try:
     from lupa import LuaRuntime
@@ -163,19 +163,6 @@ def game(units, zones):
             return lua.table_from([lt(x) for x in v])
         return v
     return lua.execute(FAKE, SRC, lt({"units": units, "zones": zones}))
-
-
-def test(name):
-    def wrap(fn):
-        try:
-            fn()
-            RESULTS.append((name, True, ""))
-        except AssertionError as e:
-            RESULTS.append((name, False, str(e)))
-        except Exception as e:  # noqa: BLE001
-            RESULTS.append((name, False, f"{type(e).__name__}: {e}"))
-        return fn
-    return wrap
 
 
 BED = [{"v": 10}]
@@ -330,8 +317,5 @@ def _():
     assert r.housed == 1 and owner_of(10) == 5 and owner_of(11) == -1, (dict(r), owner_of(10), owner_of(11))
 
 
-for name, ok, why in RESULTS:
-    print(("[ ok ] " if ok else "[FAIL] ") + name + ("" if ok else "\n    " + why))
-passed = sum(1 for _, ok, _ in RESULTS if ok)
-print(f"{passed} passed, {len(RESULTS) - passed} failed")
-sys.exit(0 if passed == len(RESULTS) else 1)
+if __name__ == "__main__":
+    finish()

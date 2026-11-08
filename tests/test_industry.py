@@ -11,7 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 from lua_modules_util import module_src  # (13c lua-modules) the modules' sources, with lua/ai-util.lua
-RESULTS = []
+from harness import test, finish  # noqa: E402
 
 try:
     from lupa import LuaRuntime
@@ -116,19 +116,6 @@ def game(rows=MAP):
     return env, dig
 
 
-def test(name):
-    def wrap(fn):
-        try:
-            fn()
-            RESULTS.append((name, True, ""))
-        except AssertionError as e:
-            RESULTS.append((name, False, str(e)))
-        except Exception as e:  # noqa: BLE001
-            RESULTS.append((name, False, f"{type(e).__name__}: {e}"))
-        return fn
-    return wrap
-
-
 @test("the survey counts only uncovered ore, by the metal it smelts into")
 def _():
     env, _ = game()
@@ -171,7 +158,6 @@ def _():
     env, dig = game(rows)
     r = env.mine("COPPER", 40, False)
     assert r.ok and r.tiles == 4 and dig(11, 4) == 1 and dig(12, 4) == 0, (dict(r), dig(12, 4))   # beside water: never
-
 
 
 @test("mining (0.104.0): never into the AI's levels or their walls (2 tiles round each project)")
@@ -332,11 +318,8 @@ def _():
             if dig(x, y) == 1:
                 L.execute("local env, x, y = ...; env.dfhack.maps.getTileFlags(x, y, 10).dig = 0", env, x, y)
     r2 = env.quarry(4, False)
-    if r2.ok:
-        assert (r2.x, r2.y) != first and r2.tried == 1, (dict(r2), first)
-        assert abs(r2.x - first[0]) > 4 or abs(r2.y - first[1]) > 4, (dict(r2), first)
-    else:
-        assert "marked lately" in r2.error, dict(r2)
+    assert r2.ok and (r2.x, r2.y) != first and r2.tried == 1, (dict(r2), first)
+    assert abs(r2.x - first[0]) > 4 or abs(r2.y - first[1]) > 4, (dict(r2), first)
     L.execute("local env = ...; env.df.global.cur_year_tick = 1000 + 57 * 1200", env)
     for y in range(16):
         for x in range(16):
@@ -347,8 +330,4 @@ def _():
 
 
 if __name__ == "__main__":
-    for name, ok, msg in RESULTS:
-        print(f"[{'PASS' if ok else 'FAIL'}] {name}" + (f"\n        {msg}" if msg else ""))
-    failed = sum(1 for _, ok, _ in RESULTS if not ok)
-    print(f"\n{len(RESULTS) - failed} passed, {failed} failed")
-    sys.exit(1 if failed else 0)
+    finish()

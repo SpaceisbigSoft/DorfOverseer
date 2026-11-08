@@ -14,27 +14,14 @@ from contextlib import redirect_stdout
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+from harness import test, finish  # noqa: E402
 sys.path.insert(0, str(ROOT / "brain"))
 
 import metrics  # noqa: E402
 import scenario  # noqa: E402
 
 BASE = json.loads((ROOT / "tests" / "fixtures" / "test_fort.json").read_text(encoding="utf-8"))
-RESULTS = []
 TMP = Path(tempfile.mkdtemp())
-
-
-def test(name):
-    def wrap(fn):
-        try:
-            fn()
-            RESULTS.append((name, True, ""))
-        except AssertionError as e:
-            RESULTS.append((name, False, str(e)))
-        except Exception as e:  # noqa: BLE001
-            RESULTS.append((name, False, f"{type(e).__name__}: {e}"))
-        return fn
-    return wrap
 
 
 DEATH = {"kind": "death", "own_civ": True, "animal": False}
@@ -304,7 +291,6 @@ def _():
     assert scenario.cmd_run(args) == 1 and game.acted == []
 
 
-
 @test("scenario (0.100): a stalled run takes the popup off; announcements quieted at the start")
 def _():
     import scenario
@@ -328,8 +314,4 @@ def _():
         scenario.say = old
 
 if __name__ == "__main__":
-    for name, ok, msg in RESULTS:
-        print(f"[{'PASS' if ok else 'FAIL'}] {name}" + (f"\n        {msg}" if msg else ""))
-    failed = sum(1 for _, ok, _ in RESULTS if not ok)
-    print(f"\n{len(RESULTS) - failed} passed, {failed} failed")
-    sys.exit(1 if failed else 0)
+    finish()

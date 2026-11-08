@@ -13,26 +13,13 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 from lua_modules_util import module_src  # (13c lua-modules) the modules' sources, with lua/ai-util.lua
-RESULTS = []
+from harness import test, finish, code_has  # noqa: E402
 
 try:
     from lupa import LuaRuntime
 except ImportError:
     print("SKIPPED: these tests need the lupa package (pip install lupa)")
     sys.exit(0)
-
-
-def test(name):
-    def wrap(fn):
-        try:
-            fn()
-            RESULTS.append((name, True, ""))
-        except AssertionError as e:
-            RESULTS.append((name, False, str(e)))
-        except Exception as e:  # noqa: BLE001
-            RESULTS.append((name, False, f"{type(e).__name__}: {e}"))
-        return fn
-    return wrap
 
 
 SRC = module_src("ai-moods.lua")
@@ -241,10 +228,10 @@ def _():
 @test("bridge: mood_free_items is in the action table, bounded, passed to ai-moods; get_moods asks ai-moods first")
 def _():
     src = "".join(f.read_text(encoding="utf-8") for f in sorted((ROOT / "lua").glob("ai-bridge*.lua")))   # (13c) with its parts
-    assert "    mood_free_items = act_mood_free_items," in src
-    assert "CACHE_INVALIDATES.mood_free_items = {'moods'}" in src
-    assert "pcall(M.mood_report, job, u, txt)" in src
-    assert "tan_hide = {job = 'TanAHide'}" in src and "raw_green_glass = {job = 'MakeRawGlass'" in src
+    assert code_has(src, "    mood_free_items = act_mood_free_items,")
+    assert code_has(src, "CACHE_INVALIDATES.mood_free_items = {'moods'}")
+    assert code_has(src, "pcall(M.mood_report, job, u, txt)")
+    assert code_has(src, "tan_hide = {job = 'TanAHide'}") and code_has(src, "raw_green_glass = {job = 'MakeRawGlass'")
     body = src[src.index("function act_mood_free_items"):]
     body = body[:body.index("\nend\n") + 5]
     L = LuaRuntime(unpack_returned_tuples=True)
@@ -269,8 +256,4 @@ def _():
 
 
 if __name__ == "__main__":
-    for name, ok, msg in RESULTS:
-        print(f"[{'PASS' if ok else 'FAIL'}] {name}" + (f"\n        {msg}" if msg else ""))
-    failed = sum(1 for _, ok, _ in RESULTS if not ok)
-    print(f"\n{len(RESULTS) - failed} passed, {failed} failed")
-    sys.exit(1 if failed else 0)
+    finish()

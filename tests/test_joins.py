@@ -5,7 +5,6 @@ or building on it), '~' water, 'X' rock that can't be dug (a cavern wall).
 """
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 from lupa import LuaRuntime
@@ -16,20 +15,8 @@ LUA = LuaRuntime(unpack_returned_tuples=True)
 M = LUA.execute("local src = ...; local env = setmetatable({}, {__index = _G}); "
                 "assert(load(src, 'ai-joins', 't', env))(); return env",
                 module_src("ai-joins.lua"))
-RESULTS = []
 
-
-def test(name):
-    def wrap(fn):
-        try:
-            fn()
-            RESULTS.append((name, True, ""))
-        except AssertionError as e:
-            RESULTS.append((name, False, str(e)))
-        except Exception as e:  # noqa: BLE001
-            RESULTS.append((name, False, f"{type(e).__name__}: {e}"))
-        return fn
-    return wrap
+from harness import test, finish  # noqa: E402
 
 
 def reader(rows):
@@ -203,8 +190,4 @@ def _():
 
 
 if __name__ == "__main__":
-    for name, ok, msg in RESULTS:
-        print(f"[{'PASS' if ok else 'FAIL'}] {name}" + (f"\n        {msg}" if msg else ""))
-    failed = sum(1 for _, ok, _ in RESULTS if not ok)
-    print(f"\n{len(RESULTS) - failed} passed, {failed} failed")
-    sys.exit(1 if failed else 0)
+    finish()

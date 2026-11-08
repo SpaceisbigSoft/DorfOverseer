@@ -15,12 +15,12 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+from harness import run, finish  # noqa: E402
 sys.path.insert(0, str(ROOT / "brain"))
 
 from digest import normalize  # noqa: E402
 from planner import Memory, plan, record, select  # noqa: E402
 
-RESULTS = []
 STATES = sorted((ROOT / "tests" / "fixtures" / "real").glob("*.json"))
 
 
@@ -39,14 +39,8 @@ def check(path: Path) -> None:
 
 
 for path in STATES:
-    try:
-        check(path)
-        RESULTS.append((path.name, True, ""))
-    except AssertionError as e:
-        RESULTS.append((path.name, False, str(e)[:300]))
-    except Exception as e:  # noqa: BLE001
-        import traceback
-        RESULTS.append((path.name, False, f"{type(e).__name__}: {e}\n{traceback.format_exc()[-800:]}"))
+    run(path.name, lambda path=path: check(path))
+
 
 def _region2() -> dict:
     return normalize(json.loads((ROOT / "tests" / "fixtures" / "real" / "region2-0.42-y51-winter.json")
@@ -82,18 +76,8 @@ def _readiness() -> None:
 
 for name, fn in (("a fed fort of 18 is not young; it orders bins", _fed_small_fort),
                  ("ready for a siege? region2 in spring y52: not yet, and why", _readiness)):
-    try:
-        fn()
-        RESULTS.append((name, True, ""))
-    except AssertionError as e:
-        RESULTS.append((name, False, str(e)[:300]))
+    run(name, fn)
 
 
 if __name__ == "__main__":
-    if not STATES:
-        print("SKIPPED: no real states in tests/fixtures/real yet")
-    for name, ok, msg in RESULTS:
-        print(f"[{'PASS' if ok else 'FAIL'}] {name}" + (f"\n        {msg}" if msg else ""))
-    failed = sum(1 for _, ok, _ in RESULTS if not ok)
-    print(f"\n{len(RESULTS) - failed} passed, {failed} failed")
-    sys.exit(1 if failed else 0)
+    finish(skipped=None if STATES else "no real states in tests/fixtures/real yet")

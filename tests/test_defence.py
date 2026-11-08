@@ -11,6 +11,7 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+from harness import make_test, finish  # noqa: E402
 sys.path.insert(0, str(ROOT / "brain"))
 
 import defence  # noqa: E402
@@ -20,24 +21,15 @@ from weights import choose  # noqa: E402
 
 TMP = Path(tempfile.mkdtemp())
 learning.PLAYER_FILE = TMP / "player-memory.json"
-RESULTS = []
 YEAR = 403200
 DAY = 1200
 
 
-def test(name):
-    def wrap(fn):
-        learning.PLAYER_FILE.unlink(missing_ok=True)
-        try:
-            fn()
-            RESULTS.append((name, True, ""))
-        except AssertionError as e:
-            RESULTS.append((name, False, str(e)))
-        except Exception as e:  # noqa: BLE001
-            import traceback
-            RESULTS.append((name, False, f"{type(e).__name__}: {e}\n{traceback.format_exc()}"))
-        return fn
-    return wrap
+def _before():
+    learning.PLAYER_FILE.unlink(missing_ok=True)
+
+
+test = make_test(before=_before)
 
 
 def state_at(tick, year=150):
@@ -187,8 +179,4 @@ def _():
 
 
 if __name__ == "__main__":
-    for name, ok, msg in RESULTS:
-        print(f"[{'PASS' if ok else 'FAIL'}] {name}" + (f"\n        {msg}" if msg else ""))
-    failed = sum(1 for _, ok, _ in RESULTS if not ok)
-    print(f"\n{len(RESULTS) - failed} passed, {failed} failed")
-    sys.exit(1 if failed else 0)
+    finish()

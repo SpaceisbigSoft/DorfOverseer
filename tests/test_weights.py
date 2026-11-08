@@ -11,27 +11,13 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+from harness import test, finish  # noqa: E402
 sys.path.insert(0, str(ROOT / "brain"))
 
 import weights  # noqa: E402
 from culture import apply_style, explain, new_history, profile_from  # noqa: E402
 from quirks import describe, fade_text, has_rule, update  # noqa: E402
 from weights import TRAIT_NAMES, areas, choose, choose_all, data  # noqa: E402
-
-RESULTS = []
-
-
-def test(name):
-    def wrap(fn):
-        try:
-            fn()
-            RESULTS.append((name, True, ""))
-        except AssertionError as e:
-            RESULTS.append((name, False, str(e)))
-        except Exception as e:  # noqa: BLE001
-            RESULTS.append((name, False, f"{type(e).__name__}: {e}"))
-        return fn
-    return wrap
 
 
 SLIDERS = sorted(TRAIT_NAMES)
@@ -370,8 +356,4 @@ def _():
     assert "leans" not in temperament.effects(SITE_STATE)["fortification"]
 
 if __name__ == "__main__":
-    for name, ok, msg in RESULTS:
-        print(f"[{'PASS' if ok else 'FAIL'}] {name}" + (f"\n        {msg}" if msg else ""))
-    failed = sum(1 for _, ok, _ in RESULTS if not ok)
-    print(f"\n{len(RESULTS) - failed} passed, {failed} failed")
-    sys.exit(1 if failed else 0)
+    finish()

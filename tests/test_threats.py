@@ -15,6 +15,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 from lua_modules_util import module_src  # (13c lua-modules) the modules' sources, with lua/ai-util.lua
+from harness import test, finish, code_has  # noqa: E402
 sys.path.insert(0, str(ROOT / "brain"))
 
 import planner  # noqa: E402
@@ -22,20 +23,6 @@ from planner import Memory, plan, PLANNER_CONFIG, TICKS_PER_DAY, abs_tick  # noq
 import planner_threats as PT  # noqa: E402
 
 BASE = json.loads((ROOT / "tests" / "fixtures" / "test_fort.json").read_text(encoding="utf-8"))
-RESULTS = []
-
-
-def test(name):
-    def wrap(fn):
-        try:
-            fn()
-            RESULTS.append((name, True, ""))
-        except AssertionError as e:
-            RESULTS.append((name, False, str(e)))
-        except Exception as e:  # noqa: BLE001
-            RESULTS.append((name, False, f"{type(e).__name__}: {e}"))
-        return fn
-    return wrap
 
 
 def fort(threats: dict, **kw) -> dict:
@@ -345,8 +332,8 @@ return e
     def _():
         src = (ROOT / "lua" / "ai-bridge.lua").read_text(encoding="utf-8")
         for name in ("fire_guard", "prisoner_room", "moon_cell", "seal_cavern"):
-            assert f"    {name} = act_{name}," in src, name
-        assert "threats = function() return safe(function() return reqscript('ai-threats').survey(txt) end) end" in src
+            assert code_has(src, f"    {name} = act_{name},"), name
+        assert code_has(src, "threats = function() return safe(function() return reqscript('ai-threats').survey(txt) end) end")
         ns = {}
         harness = BRIDGE_TEST.split("LUA = LuaRuntime")[0].split('HARNESS = r"""', 1)[1].split('"""', 1)[0]
         H = LUA.execute(harness, src, str(ROOT / "lua"))   # (13c) where the bridge's parts are
@@ -379,8 +366,4 @@ return e
 
 
 if __name__ == "__main__":
-    for name, ok, msg in RESULTS:
-        print(f"[{'PASS' if ok else 'FAIL'}] {name}" + (f"\n        {msg}" if msg else ""))
-    failed = sum(1 for _, ok, _ in RESULTS if not ok)
-    print(f"\n{len(RESULTS) - failed} passed, {failed} failed")
-    sys.exit(1 if failed else 0)
+    finish()

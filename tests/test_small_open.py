@@ -16,13 +16,13 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 from lua_modules_util import module_src  # (13c lua-modules) the modules' sources, with lua/ai-util.lua
+from harness import test, finish, code_has  # noqa: E402
 sys.path.insert(0, str(ROOT / "brain"))
 
 import planner  # noqa: E402
 from planner import PLANNER_CONFIG, Memory, Proposal, abs_tick, note_cycle, plan, record, select  # noqa: E402
 
 BASE = json.loads((ROOT / "tests" / "fixtures" / "test_fort.json").read_text(encoding="utf-8"))
-RESULTS = []
 
 
 def fort() -> dict:
@@ -33,19 +33,6 @@ def fort() -> dict:
 
 def by_rule(props, rule):
     return [p for p in props if p.rule == rule]
-
-
-def test(name):
-    def wrap(fn):
-        try:
-            fn()
-            RESULTS.append((name, True, ""))
-        except AssertionError as e:
-            RESULTS.append((name, False, str(e)))
-        except Exception as e:  # noqa: BLE001
-            RESULTS.append((name, False, f"{type(e).__name__}: {e}"))
-        return fn
-    return wrap
 
 
 # --- the quarry's count -------------------------------------------------------
@@ -324,7 +311,7 @@ if LuaRuntime is not None:
     @test("traction_rest is in the bridge's action table, bounded 1-3")
     def _():
         src = "".join(f.read_text(encoding="utf-8") for f in sorted((ROOT / "lua").glob("ai-bridge*.lua")))   # (13c) with its parts
-        assert "traction_rest = act_traction_rest" in src and "int_in(a.max or 1, 1, 3)" in src
+        assert code_has(src, "traction_rest = act_traction_rest") and code_has(src, "int_in(a.max or 1, 1, 3)")
 
 
 # --- the mayor's meetings ---------------------------------------------------------
@@ -351,8 +338,4 @@ def _():
 
 
 if __name__ == "__main__":
-    for name, ok, msg in RESULTS:
-        print(f"[{'PASS' if ok else 'FAIL'}] {name}" + (f"\n        {msg}" if msg else ""))
-    failed = sum(1 for _, ok, _ in RESULTS if not ok)
-    print(f"\n{len(RESULTS) - failed} passed, {failed} failed")
-    sys.exit(1 if failed else 0)
+    finish()

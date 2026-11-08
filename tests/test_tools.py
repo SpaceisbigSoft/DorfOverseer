@@ -14,6 +14,7 @@ from contextlib import redirect_stdout
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+from harness import test, finish  # noqa: E402
 sys.path.insert(0, str(ROOT / "brain"))
 
 import replay  # noqa: E402
@@ -21,21 +22,7 @@ import selftest  # noqa: E402
 from bridge import BridgeError  # noqa: E402
 
 BASE = json.loads((ROOT / "tests" / "fixtures" / "test_fort.json").read_text(encoding="utf-8"))
-RESULTS = []
 TMP = Path(tempfile.mkdtemp())
-
-
-def test(name):
-    def wrap(fn):
-        try:
-            fn()
-            RESULTS.append((name, True, ""))
-        except AssertionError as e:
-            RESULTS.append((name, False, str(e)))
-        except Exception as e:  # noqa: BLE001
-            RESULTS.append((name, False, f"{type(e).__name__}: {e}"))
-        return fn
-    return wrap
 
 
 class FakeGame:
@@ -231,7 +218,6 @@ def _():
     assert "would do" in replay.show_day(days[1], 2)
 
 
-
 @test("probe_justice (0.104.129): a watch prints only what changed, the screen's fields in one level")
 def _():
     import probe_justice
@@ -242,8 +228,4 @@ def _():
     assert probe_justice.changes(b, b) == {}
 
 if __name__ == "__main__":
-    for name, ok, msg in RESULTS:
-        print(f"[{'PASS' if ok else 'FAIL'}] {name}" + (f"\n        {msg}" if msg else ""))
-    failed = sum(1 for _, ok, _ in RESULTS if not ok)
-    print(f"\n{len(RESULTS) - failed} passed, {failed} failed")
-    sys.exit(1 if failed else 0)
+    finish()
