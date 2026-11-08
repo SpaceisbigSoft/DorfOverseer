@@ -1121,6 +1121,23 @@ function get_supplies()
     each('PLANT_GROWTH', function(it)
         if brewable(it) then out.brewable_growths = out.brewable_growths + it:getStackSize() end
     end)
+    -- (0.105.24) drink by kind (its material): dwarves who drink the same
+    -- booze day after day are upset by it (SameBooze: B and E's worst stress)
+    out.drink_kinds = 0
+    pcall(function()
+        local kinds = {}
+        each('DRINK', function(it)
+            local _, mi = mat_flags(it)
+            local tok = mi and mi:getToken()
+            if tok then kinds[tok] = (kinds[tok] or 0) + it:getStackSize() end
+        end)
+        local list = {}
+        for tok, n in pairs(kinds) do table.insert(list, {tok, n}) end
+        table.sort(list, function(a, b) return a[2] > b[2] end)
+        out.drink_kinds = #list
+        out.drink_by_kind = {}
+        for i = 1, math.min(5, #list) do out.drink_by_kind[list[i][1]] = list[i][2] end
+    end)
     -- (0.104.28) the wool route: tame animals that can be shorn (their caste
     -- has a shearable layer: sheep, llamas, alpacas, goats...). Enxah had no
     -- fibre crop and waited for caravans while patients went without sutures.
@@ -1799,6 +1816,8 @@ local function list_len(v)
 end
 
 -- A mood job's requests not yet met: {item, material, flags, quantity}.
+-- (0.105.24) the fallback only: lua/ai-moods.lua's mood_report counts cloth
+-- by its dimension and says what the fort holds for each request.
 function mood_missing(job)
     local got = {}
     for _, ref in ipairs(job.items) do
@@ -1846,8 +1865,13 @@ function get_moods()
                     e.job = df.job_type[job.job_type]
                     e.items_needed = list_len(job.job_items)
                     e.items_have = list_len(job.items)
-                    -- what each of the mood's requests still lacks (what showmood shows)
-                    local ok, missing = pcall(mood_missing, job)
+                    -- what each of the mood's requests still lacks (what showmood shows);
+                    -- (0.105.24) in the mood's order, each with what the fort holds for
+                    -- it (free within reach, forbidden, claimed by a job: lua/ai-moods.lua)
+                    local okm, M = pcall(reqscript, 'ai-moods')
+                    local ok, missing = false, nil
+                    if okm and M then ok, missing = pcall(M.mood_report, job, u, txt) end
+                    if not ok then ok, missing = pcall(mood_missing, job) end
                     if ok then e.missing = missing end
                     local holder = dfhack.job.getHolder(job)
                     if holder then
@@ -3224,6 +3248,10 @@ ORDER_RECIPES = {
     weave_plant_cloth = {job = 'WeaveCloth', material_category = {'plant'}},
     weave_yarn_cloth = {job = 'WeaveCloth', material_category = {'yarn'}},
     weave_silk_cloth = {job = 'WeaveCloth', material_category = {'silk'}},
+    -- (0.105.24) a strange mood's leather (F: 8 of 103 failed moods waited on
+    -- it first) and green glass (4 glassmakers' moods: "rough gem of green glass")
+    tan_hide = {job = 'TanAHide'},
+    raw_green_glass = {job = 'MakeRawGlass', material = 'GLASS_GREEN'},
     cloth_bag = {job = 'ConstructBag', material_category = {'cloth'}},
     silk_bag = {job = 'ConstructBag', material_category = {'silk'}},         -- (0.86) bags of the cloth there is
     yarn_bag = {job = 'ConstructBag', material_category = {'yarn'}},
@@ -5272,7 +5300,9 @@ end
 function act_set_farm_crops(a)
     if a.drink ~= nil and type(a.drink) ~= 'boolean' then return reject('set_farm_crops: drink is true or false') end
     if a.thread ~= nil and type(a.thread) ~= 'boolean' then return reject('set_farm_crops: thread is true or false') end
-    local r = reqscript('ai-builder').set_farm_crops({drink = a.drink == true, thread = a.thread == true},
+    if a.variety ~= nil and type(a.variety) ~= 'boolean' then return reject('set_farm_crops: variety is true or false') end
+    local r = reqscript('ai-builder').set_farm_crops({drink = a.drink == true, thread = a.thread == true,
+                                                      variety = a.variety == true},
                                                      a.dry_run == true)
     if r.ok and not a.dry_run and plugin_enabled('autofarm') then
         dfhack.run_command_silent('disable', 'autofarm')
@@ -5601,6 +5631,15 @@ function act_traction_rest(a)
     local n = int_in(a.max or 1, 1, 3)
     if not n then return reject('traction_rest: max 1-3') end
     return reqscript('ai-health').traction_rest(n, a.dry_run == true, txt)
+end
+
+-- (0.105.24) A dwarf in a strange mood: the materials it can use that lie
+-- forbidden or marked for the dump within its walk are freed (lua/ai-moods.lua).
+function act_mood_free_items(a)
+    local id = math.tointeger(tonumber(a.unit_id))
+    local n = int_in(a.max or 10, 1, 10)
+    if not id or not n then return reject('mood_free_items needs unit_id and max 1-10') end
+    return reqscript('ai-moods').free_items(id, a.dry_run == true, n, txt)
 end
 
 function act_add_doctor_post(a)
@@ -6677,6 +6716,7 @@ ACTIONS = {
     accept_cups = act_accept_cups,           -- (0.104.168)
     rest_infected = act_rest_infected,       -- (0.104.168)
     traction_rest = act_traction_rest,       -- (0.105.24)
+    mood_free_items = act_mood_free_items,   -- (0.105.24) a mood's forbidden or dumped materials freed
     add_doctor_post = act_add_doctor_post,   -- (0.104.168)
     squad_trim = act_squad_trim,
     squad_release = act_squad_release,
@@ -7208,7 +7248,8 @@ CACHE_INVALIDATES = {
     house_dwarves = {'homes', 'noble_rooms'},   -- (0.104.168)
 }
 CACHE_INVALIDATES.set_farm_crops = {'farms'}   -- (0.105.5) the plots' crops read again
-CACHE_INVALIDATES.accept_cups = {'needs'}      -- (0.104.168) the cups census shows what it changed
+CACHE_INVALIDATES.accept_cups = {'needs'}
+CACHE_INVALIDATES.mood_free_items = {'moods'}  -- (0.105.24) what the mood can reach now      -- (0.104.168) the cups census shows what it changed
 SECTION_CACHE = SECTION_CACHE or {}
 -- (0.104.8) a new bridge starts with an empty cache: DFHack keeps a script's
 -- globals across runs, so a section cached by older code (0.104.7's

@@ -3852,6 +3852,25 @@ def _():
     assert crops_of(b)[1] == "BERRIES_PRICKLE"
 
 
+@test("farm crops (0.105.24): variety: the AI's own brewable crop on every plot gives way on one to a second brewable crop")
+def _():
+    plots = farm_setup([[1, 60]], [[71, True, 0], [72, True, 10], [73, True, 20]])
+    r = B.set_farm_crops(LUA.table_from({"drink": True}), False)
+    season = B.current_season()
+    assert r.ok and all(crops_of(b)[season] == "MUSHROOM_HELMET_PLUMP" for b in plots.values())
+    # cave wheat seeds come in (a caravan): without variety the AI's plump helmets stay
+    LUA.execute("table.insert(df.global.world.items.other.SEEDS, {flags = {}, getMaterialIndex = function() return 2 end, "
+                "getStackSize = function() return 30 end})")
+    again = B.set_farm_crops(LUA.table_from({"drink": True}), False)
+    assert again.changed == 0, dict(again)
+    v = B.set_farm_crops(LUA.table_from({"variety": True}), False)
+    now = sorted(crops_of(b)[season] for b in plots.values())
+    assert v.ok and v.changed >= 1 and "GRASS_WHEAT_CAVE" in now and "MUSHROOM_HELMET_PLUMP" in now, (dict(v), now)
+    # a second call keeps the mix (no churn)
+    assert B.set_farm_crops(LUA.table_from({"variety": True}), False).changed == 0
+    assert sorted(crops_of(b)[season] for b in plots.values()) == now
+
+
 @test("farms review (0.105.7) SHOULD 5: underground plots only where DF's subterranean flag reads true")
 def _():
     soil_floor(42, 56, 47, 59, 71)                     # flag unreadable (nil): not taken for underground

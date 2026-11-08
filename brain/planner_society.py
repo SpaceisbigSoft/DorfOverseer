@@ -13,7 +13,7 @@ from quirks import has_rule
 from digest import _d, _l, normalize
 from planner_core import *  # noqa: F401,F403
 
-__all__ = ["_people_rules", "_comfort_rules", "stress_causes", "THOUGHT_WORDS", "_doctor_patient_rule", "_hospital_burrow_rule", "_calm_burrow_rule", "MOOD_WORKSHOPS", "PETITION_KINDS", "petition_orders_wanted", "_petition_rules", "_citizenship_notes", "_residency_rule", "residency_stance", "_location_access_rule", "note_heists", "heist_lockout", "HEISTS_KEEP", "_jail_size_rule", "_convict_rule", "_break_fights_rule", "_sync_offices_rule", "patient_waits", "_health_rules", "TANTRUM_KEEP", "note_tantrums", "_noble_rooms_rule", "outsider_orders", "NEED_ADVICE", "JEWEL_RECIPES", "_recreation_rule", "_stress_care", "_needs_notes", "_location_supply_rules", "POST_LABORS", "STAFF_POSTS", "STAFF_MAX", "_traction_rule", "_wish_words", "_wish_met", "wish_key", "petition_lean", "_location_petition_rules", "_meeting_notes", "_grandeur_rule", "_location_value_rule", "_staff_rule", "_quick_location_rule", "_needs_rules", "_mood_rules", "mood_item_text", "_mood_materials", "_dead_notes", "AI_OFFICES", "_society_notes"]
+__all__ = ["_people_rules", "_comfort_rules", "stress_causes", "THOUGHT_WORDS", "_doctor_patient_rule", "_hospital_burrow_rule", "_calm_burrow_rule", "MOOD_WORKSHOPS", "PETITION_KINDS", "petition_orders_wanted", "_petition_rules", "_citizenship_notes", "_residency_rule", "residency_stance", "_location_access_rule", "note_heists", "heist_lockout", "HEISTS_KEEP", "_jail_size_rule", "_convict_rule", "_break_fights_rule", "_sync_offices_rule", "patient_waits", "_health_rules", "TANTRUM_KEEP", "note_tantrums", "_noble_rooms_rule", "outsider_orders", "NEED_ADVICE", "JEWEL_RECIPES", "_recreation_rule", "_stress_care", "_needs_notes", "_location_supply_rules", "POST_LABORS", "STAFF_POSTS", "STAFF_MAX", "_traction_rule", "_wish_words", "_wish_met", "wish_key", "petition_lean", "_location_petition_rules", "_meeting_notes", "_grandeur_rule", "_location_value_rule", "_staff_rule", "_quick_location_rule", "_needs_rules", "_mood_rules", "mood_item_text", "_mood_materials", "_dead_notes", "AI_OFFICES", "_society_notes", "_booze_variety_rule", "drink_known_short_s", "_mood_make", "_mood_slaughter", "MOOD_CONSUMERS", "MOOD_TRADE_KEYS", "mood_trade_wants"]
 
 
 # A crafting mood's skill -> the workshop (or furnace) the dwarf must claim.
@@ -707,11 +707,27 @@ def _calm_burrow_rule(s: dict, cfg: dict, proposals: list, notes: list | None = 
                                   + "): their dwarves let out, so none is kept from drink unseen", 2))
         return
     seen_in, seen_out = int(cb.get("seen_in") or 0), int(cb.get("seen_out") or 0)
-    if notes is not None and seen_in + seen_out >= cfg["calm_burrow_judge_after"]:
-        share = seen_out / (seen_in + seen_out)
+    seen = seen_in + seen_out
+    share = seen_out / seen if seen else 0.0
+    # (0.105.24) the measure has spoken: 2-5 Nov, five forts, members seen
+    # outside their burrow 25/25, 92/92, 29/29, 100/103 and 20/20 times (344 of
+    # 349) while the rule fired ~940 times; tantrum kills went on (citizens
+    # killed by citizens in a tantrum: A 9, B 3, C 10, E 22, F 5). DF doesn't
+    # hold a tantrum to a burrow: the lever is retired for this fort (its
+    # members let out), and the effort goes to the causes of the stress.
+    if seen >= cfg["calm_burrow_retire_after"] and share >= cfg["calm_burrow_retire_share"]:
+        if notes is not None:
+            notes.append(f"calm burrows retired: dwarves in a tantrum were seen outside their burrow {seen_out} of "
+                         f"{seen} times: DF doesn't hold a tantrum to a burrow")
+        if members:
+            proposals.append(Proposal("calm_burrow", release,
+                                      f"the calm-down burrows don't hold a tantrum (seen outside {seen_out} of {seen} "
+                                      f"times): their {members} dwarf(s) let out, the burrows retired", 2))
+        return
+    if notes is not None and seen >= cfg["calm_burrow_judge_after"]:
         if share >= cfg["calm_burrow_outside_share"]:
             notes.append(f"calm burrows: dwarves in a tantrum were seen outside their burrow {seen_out} of "
-                         f"{seen_in + seen_out} times: DF doesn't seem to hold a tantrum to a burrow")
+                         f"{seen} times: DF doesn't seem to hold a tantrum to a burrow")
     free = int(cb.get("free") or 0)
     if not free and not members:
         return
@@ -955,6 +971,68 @@ THOUGHT_WORDS = {"NoShoes": "no shoes", "DrinkWithoutCup": "drinking without a c
                  "Decay": "rotting bodies", "SleptRoughFloor": "sleeping on the floor", "Uncovered": "no clothes on",
                  "Rest": "being kept resting", "NeedsUnfulfilled": "unmet needs"}
 THOUGHT_WORDS.update({"UnableComplain": "complaints nobody heard"})   # (0.104.168)
+THOUGHT_WORDS.update({"SameBooze": "drinking the same booze"})      # (0.105.24)
+
+
+def _booze_variety_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> None:
+    """(0.105.24) Drink of one kind. 2-5 Nov the stress census named
+    SameBooze ("the same old booze") the worst cause in B and E (citizens
+    upset by it summed over the night's notes: E 74,107, B 61,527, C 11,126;
+    the next, arguments, 23,286 in E) and the AI had no rule for it: the forts
+    brewed one crop. Drinks of more kinds: fruit brewed (another drink than
+    the plants'), and the AI's own farm plots set to grow a second brewable
+    crop the fort has seeds of (set_farm_crops variety)."""
+    n = _cause_citizens(s, "SameBooze")
+    citizens = max(1, int(_d(s.get("dwarves")).get("total") or 1))
+    if n < max(cfg["booze_variety_min"], citizens * cfg["booze_variety_share"]):
+        return
+    su, b = _d(s.get("supplies")), _d(s.get("buildings"))
+    kinds = su.get("drink_kinds")
+    if isinstance(kinds, int) and kinds >= cfg["booze_kinds_enough"]:
+        notes.append(f"{n} citizens upset by drinking the same booze, with {kinds} kinds of drink in store")
+        return
+    did = []
+    growths = int(su.get("brewable_growths") or 0)
+    room = int(su.get("empty_barrels") or 0) + int(su.get("empty_pots") or 0)
+    if (growths >= cfg["booze_fruit_min"] and _has_shop(b, "Still") and room > 0
+            and not queued(s, {"brew_drink_from_fruit"})):
+        amount = max(1, min(cfg["booze_fruit_batch"], growths // 5, room))
+        proposals.append(Proposal("booze_variety", {"type": "work_order", "recipe": "brew_drink_from_fruit",
+                                                    "amount": amount},
+                                  f"{n} citizens are upset at drinking the same booze"
+                                  + (f" ({kinds} kind(s) in store)" if isinstance(kinds, int) else "")
+                                  + f": brew {amount} from the {growths} fermentable fruit and leaves "
+                                    "(a drink of another kind)", 4, True))
+        did.append("fruit")
+    from planner_industry import crops_owned
+    fm = _d(s.get("farms"))
+    crops = {k: v for k, v in _d(fm.get("crops")).items() if isinstance(v, dict)}
+    season = str(fm.get("season") or "")
+    under, surface = int(fm.get("plots_underground") or 0), int(fm.get("plots_surface") or 0)
+
+    def grows(c):
+        return (season in _l(c.get("seasons")) and int(c.get("seeds") or 0) > 0
+                and ((under > 0) if c.get("underground") else (surface > 0)))
+
+    brew = [k for k, c in crops.items() if c.get("brews")]
+    planted = [k for k in brew if int(crops[k].get("planted") or 0) > 0]
+    spare = [k for k in brew if k not in planted and grows(crops[k])]
+    if crops_owned(s, memory) and len(planted) <= 1 and spare:
+        proposals.append(Proposal("booze_variety", {"type": "set_farm_crops", "variety": True,
+                                                    "drink": drink_known_short_s(s, cfg)},
+                                  f"{n} citizens are upset at drinking the same booze and the farms grow "
+                                  f"{'only ' + planted[0].lower().replace('_', ' ') if planted else 'no brewable crop'} "
+                                  f"this season: a plot of {spare[0].lower().replace('_', ' ')} too (another drink)", 4))
+        did.append("crops")
+    if not did:
+        notes.append(f"{n} citizens are upset at drinking the same booze"
+                     + (f" ({kinds} kind(s) in store)" if isinstance(kinds, int) else "")
+                     + ": no fruit to brew and no second brewable crop to plant; a caravan's drink would help")
+
+
+def drink_known_short_s(s: dict, cfg: dict) -> bool:
+    from planner_industry import drink_known_short
+    return drink_known_short(s, cfg)
 
 
 def _comfort_rules(s: dict, cfg: dict, proposals: list, notes: list) -> None:
@@ -1737,7 +1815,9 @@ def _needs_rules(s: dict, cfg: dict, proposals: list, rules_: dict | None = None
             kinds_q = [r_ for r_ in ("stone_crafts", "wood_crafts", "bone_crafts", *JEWEL_RECIPES) if queued(s, {r_})]
             bones = int(nd.get("bones") or 0)
             wood_free = wood - int(_d(s.get("dwarves")).get("total") or 0) * cfg["wood_per_dwarf"]
+            # (0.105.24) not while a strange mood waits for a bone it can't find
             alt = ("bone_crafts" if bones >= cfg["bone_crafts_min"] and "bone_crafts" not in kinds_q
+                   and "bone" not in mood_waits(s)
                    else "wood_crafts" if wood_free >= cfg["wood_crafts_min_logs"] and "wood_crafts" not in kinds_q
                    else None)
             if alt and len(kinds_q) < cfg["trinket_parallel"]:
@@ -1862,7 +1942,11 @@ def _needs_rules(s: dict, cfg: dict, proposals: list, rules_: dict | None = None
 
 def _mood_rules(s: dict, memory, cfg: dict, proposals: list, notes: list) -> None:
     """A dwarf in a crafting mood needs the right workshop, then materials;
-    without them the dwarf goes insane. Insanity itself is only reported."""
+    without them the dwarf goes insane. Insanity itself is only reported:
+    (0.105.24) a melancholy or stark raving dwarf stops drinking and DF lets
+    nobody give them water (DF's doctors water only patients in bed, and the
+    insane are no patients), a berserk one fights until killed; none of it
+    can be undone. The only lever is the mood: get it its materials."""
     now = abs_tick(s)
     b = s["buildings"]
     for m in _l(s["moods"].get("list")):
@@ -1878,8 +1962,13 @@ def _mood_rules(s: dict, memory, cfg: dict, proposals: list, notes: list) -> Non
         if m.get("workshop"):
             have, want = m.get("items_have"), m.get("items_needed")
             missing = [x for x in _l(m.get("missing")) if isinstance(x, dict)]
-            if missing and days >= cfg["mood_wait_days"]:
-                _mood_materials(s, name, mood, missing, days, proposals, notes, cfg)
+            # (0.105.24) a bridge that counts what the fort holds: act at once
+            # (a mood fails in 30-40 days; 2-5 Nov a failed one was seen
+            # waiting on its first request for most of them)
+            counted = any(isinstance(x.get("avail"), dict) for x in missing)
+            if missing and (counted or days >= cfg["mood_wait_days"]):
+                _mood_materials(s, name, mood, missing, days, proposals, notes, cfg, memory=memory,
+                                unit_id=m.get("unit_id"))
             elif isinstance(have, int) and isinstance(want, int) and have < want and days >= 3:
                 notes.append(f"{name}'s {mood.lower()} mood: gathering materials ({have}/{want}) for "
                              f"{days} days; if it stalls, DFHack's showmood says what's missing")
@@ -1903,56 +1992,271 @@ def _mood_rules(s: dict, memory, cfg: dict, proposals: list, notes: list) -> Non
 
 
 def mood_item_text(x: dict) -> str:
-    """'2 cloth (plant)', '1 bar of iron', in words."""
+    """'2 cloth (plant)', '1 bar of iron', '1 bone', in words.
+    (0.105.24) "any stone, gem or metal" (material "rock" from an older
+    bridge) and the item NONE of a bone or shell request read plainly: the
+    log said "1 none (bone)", "1 rough gem of rock", "1 bar of rock (metal)"."""
     item = str(x.get("item") or "item").lower().replace("_", " ")
+    flags = [f for f in _l(x.get("flags")) if isinstance(f, str)]
+    if item == "none" and set(flags) & set(MOOD_BODY_FLAGS):
+        item = next(f for f in flags if f in MOOD_BODY_FLAGS)
+        flags = [f for f in flags if f != item]
     item = {"skin tanned": "leather", "corpsepiece": "bone or shell", "rough": "rough gem",
             "smallgem": "cut gem", "boulder": "stone", "wood": "log", "blocks": "block"}.get(item, item)
     q = int(x.get("quantity") or 1)
+    if item == "cloth" and q >= 1000:
+        q = math.ceil(q / 10000)             # (0.105.24) an older bridge: DF's cloth units
     what = f"{q} {item}" + ("s" if q > 1 and not item.endswith("s") else "")
-    if x.get("material"):
-        what += f" of {str(x['material']).lower()}"
-    kinds = [f for f in _l(x.get("flags")) if f in ("bone", "shell", "metal", "plant", "silk", "leather",
-                                                   "yarn", "hard", "glass", "wood")]
+    mat = str(x.get("material") or "")
+    if mat and mat.lower() != "rock":
+        what += f" of {mat.lower()}"
+    kinds = [f for f in flags if f in ("bone", "shell", "metal", "plant", "silk", "leather",
+                                       "yarn", "hard", "glass", "wood")]
     return what + (f" ({', '.join(kinds)})" if kinds else "")
 
 
+# (0.105.24) the AI's own orders that use up what a mood waits for: cancelled
+# while the mood finds none free and another job holds it (cancelling an
+# order drops its jobs nobody works, and their items with them)
+MOOD_CONSUMERS = {"rough": ("cut_gems",), "cut_gem": ("encrust_goods",), "bone": ("bone_crafts",),
+                  "cloth": ("cloth_bag", "yarn_bag", "silk_bag", "cloth_socks", "cloth_shoes"),
+                  "leather": ("leather_shoes", "leather_low_boots", "leather_quiver"),
+                  "bar": ("metal_crafts", "metal_amulet", "metal_bracelet", "metal_ring", "metal_earring")}
+# what a caravan is asked for, for a mood the fort can't supply (lua/ai-trade.lua's categories)
+MOOD_TRADE_KEYS = {"cloth": "CLOTH", "leather": "SKIN_TANNED", "log": "WOOD", "rough": "ROUGH",
+                   "cut_gem": "SMALLGEM"}
+
+
+def _mood_make(s: dict, x: dict, kind: str, memory, cfg: dict) -> tuple[list, str | None]:
+    """(0.105.24) How the fort makes what a mood request asks for: a list of
+    (action, why) to propose (empty when nothing is to be done now), and,
+    when it can't be made here, the reason in words."""
+    st, su = _d(s.get("stocks")), _d(s.get("supplies"))
+    b = _d(s.get("buildings"))
+    q = int(x.get("quantity") or 1)
+    if kind == "cloth" and q >= 1000:
+        q = math.ceil(q / 10000)              # an older bridge: DF's cloth units
+    q = max(1, min(10, q))
+    flags = set(_l(x.get("flags")))
+    acts: list = []
+
+    def order(recipe, amount, why, material=None):
+        if queued(s, {recipe}):
+            return True                    # already on order: wait for it
+        a = {"type": "work_order", "recipe": recipe, "amount": max(1, int(amount))}
+        if material:
+            a["material"] = material
+        acts.append((a, why))
+        return True
+
+    if kind == "cloth":
+        thread = _d(su.get("thread_kinds"))
+        kinds = [k for k in ("silk", "yarn", "plant") if k in flags] or \
+            sorted(("plant", "yarn", "silk"), key=lambda k: -int(thread.get(k) or 0))
+        if not _has_shop(b, "Loom"):
+            return acts, "no loom to weave it at"
+        for k in kinds:
+            # an older bridge (no thread by kind): plant thread where plants give
+            # it or no wool comes in (0.104.36: a plant-cloth order where the
+            # thread is all wool only cancels at the loom)
+            old_plant = (not thread and k == "plant" and int(st.get("thread") or 0) > 0
+                         and (thread_plants_here(s) or not wool_route(s)))
+            if int(thread.get(k) or 0) > 0 or old_plant:
+                order(f"weave_{k}_cloth", q, f"weave {k} cloth")
+                return acts, None
+        k = kinds[0]
+        if k == "plant" and thread_plants_here(s) and _has_shop(b, "Farmers"):
+            order("process_plants", 3, "process plants for thread (then weave it)")
+            return acts, None
+        if k == "yarn" and wool_route(s):
+            order("shear_creature", 1, "shear an animal for wool (then spin and weave it)")
+            order("spin_thread", 1, "spin the wool into yarn")
+            return acts, None
+        return acts, (f"no {k} thread to weave" + (" (silk comes from webs or caravans)" if k == "silk" else
+                                                  " (no sheep, llama or alpaca to shear)" if k == "yarn" else ""))
+    if kind == "leather":
+        if int(su.get("hides") or 0) > 0 and _has_shop(b, "Tanners"):
+            order("tan_hide", q, "tan a hide")
+            return acts, None
+        why = "no hide to tan" + ("" if _has_shop(b, "Tanners") else " and no tanner's")
+        if _mood_slaughter(s, memory, cfg, acts, "its hide tanned for leather"):
+            return acts, None
+        return acts, why
+    if kind in ("bone", "shell"):
+        if kind == "shell":
+            return acts, "no shell (shells come from turtles and shellfish: fishing, or a caravan's)"
+        if _mood_slaughter(s, memory, cfg, acts, "its bones for the mood"):
+            return acts, None
+        return acts, "no bone and no spare tame animal to butcher"
+    if kind == "bar":
+        furnaces = _d(b.get("furnaces"))
+        magma = bool(furnaces.get("MagmaSmelter"))
+        if not (furnaces.get("Smelter") or magma):
+            return acts, "no smelter"
+        if not magma and int(su.get("fuel") or 0) <= 0:
+            return acts, "no fuel for the smelter"
+        metal = str(x.get("material") or "").upper().replace(" ", "_")
+        if metal == "ROCK":
+            metal = ""
+        by_ore = {k: v for k, v in _d(_d(s.get("industry")).get("ore_stock_by")).items()
+                  if isinstance(v, dict) and int(v.get("n") or 0) > 0
+                  and (not metal or metal in [str(m).upper() for m in _l(v.get("metals"))])}
+        if not by_ore:
+            return acts, f"no {metal.lower() + ' ' if metal else ''}ore to smelt"
+        ore = max(sorted(by_ore), key=lambda k: int(by_ore[k].get("n") or 0))
+        order("smelt_ore", q, f"smelt {ore.lower()} ore", f"INORGANIC:{ore}")
+        return acts, None
+    if kind == "glass_rough":
+        furnaces = _d(b.get("furnaces"))
+        if not (_has_shop(b, "GlassFurnace") or furnaces.get("MagmaGlassFurnace")):
+            return acts, "no glass furnace"
+        if int(su.get("sand_bags") or 0) > 0 and (int(su.get("fuel") or 0) > 0 or furnaces.get("MagmaGlassFurnace")):
+            order("raw_green_glass", q, "make raw green glass")
+            return acts, None
+        if int(su.get("empty_bags") or 0) > 0:
+            order("collect_sand", 2, "fill bags with sand for raw glass")
+            return acts, None
+        return acts, "no bag of sand (or no fuel) for raw glass"
+    if kind == "cut_gem":
+        rg = _d(_d(s.get("trade")).get("rough_gem"))
+        if (_has_shop(b, "Jewelers") and int(rg.get("n") or 0) > 0
+                and str(rg.get("token", "")).startswith("INORGANIC:")):
+            order("cut_gems", q, "cut a gem", rg["token"])
+            return acts, None
+        return acts, "no rough gem to cut"
+    if kind == "block" and not x.get("material") and not flags & {"metal", "glass", "wood"}:
+        order("stone_blocks", q, "make stone blocks")
+        return acts, None
+    if kind == "rough":
+        return acts, "no rough gem (they come from mining gem veins, or a caravan's)"
+    if kind == "log":
+        return acts, "no log (trees felled, or a caravan's wood)"
+    if kind == "stone":
+        return acts, "no loose stone"
+    return acts, "no recipe makes it"
+
+
+def _mood_slaughter(s: dict, memory, cfg: dict, acts: list, why: str) -> bool:
+    """(0.105.24) One spare tame animal to the butcher for a mood's bone or
+    leather (the slaughter rule's own guards: a butcher's, enough tame
+    animals, never a fort of Beast-friends)."""
+    tame = int(_d(s.get("others_on_map")).get("tame_animals") or 0)
+    if (tame >= cfg["slaughter_min_tame"] and _has_shop(_d(s.get("buildings")), "Butchers")
+            and not (memory is not None and has_rule(getattr(memory, "culture", None), "no_slaughter"))):
+        if not any(a.get("type") == "slaughter_one" for a, _ in acts):
+            acts.append(({"type": "slaughter_one"}, f"one spare tame animal of the {tame} to the butcher: {why}"))
+        return True
+    return False
+
+
 def _mood_materials(s: dict, name: str, mood: str, missing: list, days: int,
-                    proposals: list, notes: list, cfg: dict | None = None) -> None:
-    """A mood gathering materials for days: order what a recipe can make,
-    and say exactly what's still missing (a mood that never gets its
-    materials ends in madness)."""
-    st = _d(s.get("stocks"))
-    ordered, lacking = [], []
-    for x in missing:
-        item = str(x.get("item") or "")
-        flags = set(_l(x.get("flags")))
-        recipe = None
-        if item == "BLOCKS" and not x.get("material") and not flags & {"metal", "glass", "wood"}:
-            recipe = "stone_blocks"
-        elif (item == "CLOTH" and st.get("thread") and not flags & {"silk", "yarn"}
-              and (thread_plants_here(s) or not wool_route(s))):
-            # (0.104.36) not where the thread is all wool: a plant-cloth order
-            # then only cancels at the loom, "needs plant thread" (Enxah's
-            # weaver's mood, no fibre crop; the cloth comes from a caravan)
-            recipe = "weave_plant_cloth"
-        if recipe and not queued(s, {recipe}):
-            ordered.append(recipe)
-            proposals.append(Proposal("mood", {"type": "work_order", "recipe": recipe,
-                                               "amount": max(1, min(10, int(x.get("quantity") or 1)))},
-                                      f"{name}'s {mood.lower()} mood needs {mood_item_text(x)}: make it", 1, True))
-        elif not recipe:
-            lacking.append(mood_item_text(x))
+                    proposals: list, notes: list, cfg: dict | None = None, memory=None, unit_id=None) -> None:
+    """A mood gathering materials: get it what it waits for, and say exactly
+    what the fort can't supply (a mood that never gets its materials ends in
+    madness).
+
+    (0.105.24) The overnight run (2-5 Nov, six forts): 103 of 231 moods
+    failed; the AI had ordered only plant cloth (and blocks), and named the
+    rest in Needs you from day 7, the dwarf's whole unmet list among it, so
+    the notes said nothing about what the fort had. Now, with the bridge's
+    count for each request (lua/ai-moods.lua: free within the dwarf's walk,
+    forbidden or dumped, held by another job): what lies free is left to the
+    dwarf; forbidden or dumped items are freed (mood_free_items); the AI's
+    own orders that would use the last of it are cancelled; the rest is made
+    (cloth woven by kind, a hide tanned, bars smelted, a gem cut, raw green
+    glass, blocks; an animal butchered for bone or leather); what can't be
+    made here goes into Needs you at once, named, and on the caravans' list.
+    From an older bridge (no count) as before: day 3, then Needs you on day 7."""
     cfg = cfg or PLANNER_CONFIG
-    if lacking and days < cfg["mood_lacking_days"]:
+    counted = any(isinstance(x.get("avail"), dict) for x in missing)
+    ordered, lacking, freeing, far = [], [], False, []
+    taken = {p.action.get("order_id") for p in proposals if p.action.get("type") == "cancel_work_order"}
+    for i, x in enumerate(missing):
+        kind = mood_kind(x)
+        av = _d(x.get("avail"))
+        here = mood_on_hand(x)
+        if here:
+            continue                                   # free within reach: the dwarf will fetch it
+        want = max(1, int(x.get("quantity") or 1))
+        if counted and int(av.get("forbidden_reach") or 0) > 0:
+            freeing = True
+            if int(av.get("reach") or 0) + int(av.get("forbidden_reach") or 0) >= want:
+                continue
+        if counted and int(av.get("free") or 0) > int(av.get("reach") or 0):
+            far.append(mood_item_text(x))              # in the fort, but where the dwarf can't walk
+        if counted and int(av.get("job") or 0) > 0:
+            for o in _l(s.get("orders")):
+                if (isinstance(o, dict) and o.get("by_ai") and o.get("recipe") in MOOD_CONSUMERS.get(kind, ())
+                        and o.get("id") is not None and o.get("id") not in taken):
+                    taken.add(o.get("id"))
+                    proposals.append(Proposal("mood", {"type": "cancel_work_order", "order_id": o["id"]},
+                                              f"{name}'s {mood.lower()} mood waits for {mood_item_text(x)} and "
+                                              f"another job holds the fort's last: cancel the AI's {o['recipe']} "
+                                              "order (its jobs let go of it)", 1))
+                    break
+        acts, why = _mood_make(s, x, kind, memory, cfg)
+        for a, how in acts:
+            if a.get("type") == "work_order" and any(p.action == a for p in proposals):
+                continue
+            proposals.append(Proposal("mood", a, f"{name}'s {mood.lower()} mood needs {mood_item_text(x)}"
+                                      + (" (the one it is fetching now)" if i == 0 else "") + f": {how}",
+                                      1, a.get("type") == "work_order"))
+            if a.get("type") == "work_order":
+                ordered.append(a.get("recipe"))
+        if why and not acts and not (counted and int(av.get("job") or 0) > 0):
+            lacking.append((mood_item_text(x), why, kind))
+    if freeing and unit_id is not None:
+        proposals.append(Proposal("mood", {"type": "mood_free_items", "unit_id": unit_id, "max": 10},
+                                  f"{name}'s {mood.lower()} mood can use items that lie forbidden or marked for "
+                                  "the dump: free them", 1))
+    first = mood_item_text(missing[0]) if missing else ""
+    if far:
+        ask_player(notes, f"{name}'s {mood.lower()} mood waits for {', '.join(far)}: the fort has it, but "
+                   "where the dwarf can't walk: open the way, or bring it in, or the dwarf goes insane")
+    if not lacking:
+        if counted and (ordered or freeing):
+            notes.append(f"{name}'s {mood.lower()} mood (day {days}): fetching {first}"
+                         + (f"; ordered {', '.join(ordered)}" if ordered else "")
+                         + ("; forbidden materials freed" if freeing else ""))
+        return
+    words = [w for w, _, _ in lacking]
+    if counted:
+        # the bridge counted: none within the fort the mood can use, none made here
+        ask_player(notes, f"{name}'s {mood.lower()} mood (day {days}) needs what the fort can't supply: "
+                   + "; ".join(f"{w}: {why}" for w, why, _ in lacking)
+                   + ". Buy it from a caravan (asked for), or the dwarf goes insane")
+    elif days < cfg["mood_lacking_days"]:
         # (0.103.8) the dwarf may still be fetching it: Enxah's fisherdwarf
         # claimed the mason's on day 3, "lacked" rock that day and the next
         # (51 boulders about) and began the work on day 5
         notes.append(f"{name}'s {mood.lower()} mood: still gathering after {days} days, waiting on "
-                     f"{', '.join(lacking)}")
-    elif lacking:
-        ask_player(notes, f"{name}'s {mood.lower()} mood still lacks, after {days} days: {', '.join(lacking)}. "
+                     f"{', '.join(words)}")
+    else:
+        ask_player(notes, f"{name}'s {mood.lower()} mood still lacks, after {days} days: {', '.join(words)}. "
                    "The fort probably has none the dwarf can reach or use: make it, dig it, buy it from a "
                    "caravan, or unforbid it, or the dwarf goes insane")
+
+
+def mood_trade_wants(s: dict) -> list[dict]:
+    """(0.105.24) What the moods wait for and the fort doesn't have within
+    reach, as caravan wants (first on the list: a life hangs on it)."""
+    out, seen = [], set()
+    for m in _l(_d(s.get("moods")).get("list")):
+        if not isinstance(m, dict) or not m.get("craft") or not m.get("workshop"):
+            continue
+        for x in _l(m.get("missing")):
+            if not isinstance(x, dict) or mood_on_hand(x) is not False:
+                continue
+            av = _d(x.get("avail"))
+            if int(av.get("forbidden_reach") or 0) or int(av.get("job") or 0):
+                continue
+            key = MOOD_TRADE_KEYS.get(mood_kind(x))
+            if not key and mood_kind(x) == "bar" and x.get("material") and str(x["material"]).lower() != "rock":
+                key = "BAR:" + str(x["material"]).upper().replace(" ", "_")
+            if key and key not in seen:
+                seen.add(key)
+                out.append({"key": key, "count": max(1, min(10, int(x.get("quantity") or 1)))})
+    return out
 
 
 def _dead_notes(s: dict, notes: list, proposals: list | None = None, rules_: dict | None = None) -> None:
