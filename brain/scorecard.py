@@ -41,6 +41,7 @@ from collections import Counter
 from datetime import datetime
 from pathlib import Path
 
+import customs
 from digest import _d, _l
 from util import load_json
 
@@ -54,6 +55,11 @@ SHORT = {"War-hold": "War", "Monastery": "Mon", "Merchant city": "Mer", "Hermit 
 GATE_WORKS = ("build_gate_doors", "fortify_entrance", "cut_entrance", "link_lever", "place_traps",
               "guard_gate", "gate_dogs", "arm_gates",
               "build_gatehouse")                 # (0.105.23) the War-hold's gatehouse
+
+# (0.105.29) the customs' measure keys, by owner preset: custom_M = Monastery levels built by its customs
+CUSTOM_KEYS = {"War-hold": "W", "Monastery": "M", "Merchant city": "ME", "Hermit hold": "H",
+               "Deep mine": "D", "Garden fort": "G"}
+CUSTOM_IDS = {o: {c for c, (_cond, own, _w) in customs.CUSTOMS.items() if own == o} for o in CUSTOM_KEYS}
 
 
 
@@ -275,7 +281,8 @@ def journal_counts(entries: list[dict], date: dict) -> dict:
                 petitions_no += 1
         elif t == "start_project":
             levels.append({"kind": r.get("kind") or a.get("kind"), "z": r.get("z"),
-                           "tiles": r.get("tiles") or r.get("designated")})
+                           "tiles": r.get("tiles") or r.get("designated"),
+                           "customs": [c for c in _l(a.get("customs")) if isinstance(c, str)]})
         elif t == "location_access" and not r.get("dry_run") and isinstance(e.get("date"), dict):
             ids = r.get("changed") if isinstance(r.get("changed"), list) else _l(a.get("ids"))
             vis = r.get("visitors") if isinstance(r.get("visitors"), bool) else a.get("visitors")
@@ -367,7 +374,7 @@ def measures(s: dict, j: dict) -> dict:
         same_booze = pct(same.get("citizens") or 0, sc.get("citizens"))
     else:
         same_booze = None
-    return {
+    out = {
         "pop": total,
         "soldier_pct": pct(dw.get("in_squads"), adults),
         "barracks": zones.get("Barracks", 0) + zones.get("ArcheryRange", 0) + kinds.get("barracks", 0),
@@ -426,6 +433,10 @@ def measures(s: dict, j: dict) -> dict:
         "drink_kinds": _d(s.get("supplies")).get("drink_kinds"),
         "same_booze_pct": same_booze,
     }
+    # (0.105.29) levels that a preset's customs placed or shaped (journal action "customs")
+    for owner, k in CUSTOM_KEYS.items():
+        out["custom_" + k] = sum(1 for lv in levels if CUSTOM_IDS[owner] & set(lv.get("customs") or []))
+    return out
 
 
 # ---------------------------------------------------------------- the lines
@@ -486,6 +497,13 @@ LINES = [
     ("Spacing", "tiles a level (smallest wins)", "-level_tiles", {W, D}, set()),
     ("Stockpile", "stockpiles", "stockpiles", {H, ME}, set()),
     ("Stockpile", "drink and meals a dwarf", "stores_pd", {H, ME}, set()),
+    # (0.105.29) the customs: levels each preset's two customs placed or shaped (Hermit also on levels_up)
+    ("Piety", "cloister temples and cells", "custom_M", {M}, set()),
+    ("Trade", "wide ways, tavern by the gate", "custom_ME", {ME}, set()),
+    ("Outsiders", "winding ways, hidden levels", "custom_H", {H}, set()),
+    ("Militarism", "barracks by the gate, armouries", "custom_W", {W}, set()),
+    ("Mining", "deep halls, ore piles", "custom_D", {D}, set()),
+    ("Agriculture", "halls and kitchens by the fields", "custom_G", {G}, set()),
 ]
 
 
