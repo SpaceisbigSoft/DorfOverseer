@@ -80,3 +80,75 @@ end
 function item_free(it, allow)
     return item_unfree(it, allow) == nil
 end
+
+-- --- near danger? -------------------------------------------------------------------
+--
+-- (0.105.27, moved from ai-military-gear) Where the live dangers stand, and
+-- whether a tile lies within DANGER_TILES of one (and 3 levels): no dwarf is
+-- sent there for an item (a field of the dead under fire is no place to fetch
+-- a sword), and the disposal actions leave such items alone.
+DANGER_TILES = 20
+
+-- {{x, y, z}...}: every live unit that is a danger or an invader, but a
+-- caged or chained captive.
+function danger_spots()
+    local out = {}
+    local okl, active = pcall(function() return df.global.world.units.active end)
+    for _, u in ipairs(okl and active or {}) do
+        local ok, bad = pcall(function()
+            local Un = dfhack.units
+            -- (0.105.2 review) a caged or chained captive is no danger
+            local f1 = u.flags1
+            if f1 and (f1.caged or f1.chained) then return false end
+            return not Un.isDead(u) and (Un.isDanger(u) or Un.isInvader(u))
+        end)
+        if ok and bad then
+            local x, y, z = dfhack.units.getPosition(u)
+            if x then table.insert(out, {x = x, y = y, z = z}) end
+        end
+    end
+    return out
+end
+
+-- true if (x, y, z) lies within `tiles` (default DANGER_TILES, walked
+-- across: |dx| + |dy|) and 3 levels of a spot.
+function near_danger(spots, x, y, z, tiles)
+    tiles = tiles or DANGER_TILES
+    for _, d in ipairs(spots or {}) do
+        if math.abs(d.x - x) + math.abs(d.y - y) <= tiles and math.abs(d.z - z) <= 3 then
+            return true
+        end
+    end
+    return false
+end
+
+-- --- the cistern's tiles ------------------------------------------------------------
+--
+-- (0.105.27) The tiles the AI's cistern fills ("x,y,z" = true): its room on
+-- its level, the tunnel on the source's level, and the shaft. The AI forbids
+-- what lies there before the flood (ai-builder-cistern forbid_items_on); the
+-- disposal actions and the census leave those items be. Read from the save
+-- (the cistern's record), so no builder load is needed. {} with no cistern.
+CISTERN_KEY = 'ai-overseer/cistern'
+
+function cistern_tiles()
+    local set = {}
+    pcall(function()
+        local d = site_get(CISTERN_KEY, {})
+        local p = type(d) == 'table' and d.plan
+        if type(p) ~= 'table' or type(p.cistern) ~= 'table' then return end
+        local c = p.cistern
+        local z = c.z
+        local zi = p.intake_z or z
+        for y = c.y1, c.y2 do
+            for x = c.x1, c.x2 do set[x .. ',' .. y .. ',' .. z] = true end
+        end
+        for _, q in ipairs(type(p.tunnel_path) == 'table' and p.tunnel_path or {}) do
+            if q.x and q.y then set[q.x .. ',' .. q.y .. ',' .. zi] = true end
+        end
+        if type(p.shaft) == 'table' and p.shaft.x then
+            for zz = math.min(z, zi), math.max(z, zi) do set[p.shaft.x .. ',' .. p.shaft.y .. ',' .. zz] = true end
+        end
+    end)
+    return set
+end

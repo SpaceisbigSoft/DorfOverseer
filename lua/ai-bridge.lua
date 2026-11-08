@@ -311,6 +311,13 @@ ACTIONS = {
     report_status = act_report_status,
     save_memory = act_save_memory,
     cancel_project = act_cancel_project,
+    -- (0.105.27) disposal: the forbidden things lying about (lua/ai-disposal.lua)
+    unforbid_items = act_unforbid_items,
+    mark_melt = act_mark_melt,
+    mark_dump = act_mark_dump,
+    empty_dump = act_empty_dump,
+    set_standing_orders = act_set_standing_orders,
+    place_dump = act_place_dump,
 }
 
 -- (13c) The actions whose dry run changes nothing in the fort, all the way
@@ -348,6 +355,8 @@ for _, name in ipairs({
     'traction_rest', 'train_war', 'trim_instrument_orders', 'trim_labor', 'unforbid_dead',
     'unsuspend_orders', 'well_shaft',
     'refresh_shelter',   -- (0.105.26)
+    -- (0.105.27) disposal: each dry run returns before it changes anything
+    'unforbid_items', 'mark_melt', 'mark_dump', 'empty_dump', 'set_standing_orders', 'place_dump',
 }) do DRY_OK[name] = true end
 
 -- These only change what's displayed, so they still work while halted, dry
@@ -399,7 +408,7 @@ end
 -- `--@ module = true`, but this one and the parts, which are no modules);
 -- `modules` loads each. tests/test_fix26_bridge.py keeps it in step with lua/.
 BRIDGE_MODULES = {
-    'ai-builder', 'ai-camera', 'ai-census', 'ai-diplomacy', 'ai-gates', 'ai-health', 'ai-homes',
+    'ai-builder', 'ai-camera', 'ai-census', 'ai-diplomacy', 'ai-disposal', 'ai-gates', 'ai-health', 'ai-homes',
     'ai-industry', 'ai-joins', 'ai-labor', 'ai-layouts', 'ai-military', 'ai-military-gear',
     'ai-mission-send', 'ai-missions', 'ai-moods', 'ai-nobles', 'ai-overlay', 'ai-overseer-settings',
     'ai-ping', 'ai-reports', 'ai-society', 'ai-society-burrows', 'ai-status', 'ai-threats', 'ai-title',
@@ -672,6 +681,10 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
     -- (0.104.0) the AI's ledger, as saved with this game
     ledger = function() return safe(ledger_data) end,
     recent_announcements = function() return safe(get_recent_announcements, 15) end,
+    -- (0.105.27) the dump zones, the melt and dump marks, the smelters, the
+    -- seal and the siege (lua/ai-disposal.lua); cached a day, cleared by the
+    -- disposal actions
+    disposal = function() return safe(function() return reqscript('ai-disposal').report() end) end,
 }
 
 -- The pulse: a small report for the frequent check between full ones.
@@ -691,7 +704,8 @@ SECTION_CACHE_DAYS = {logistics = 3, industry = 7,   -- industry: 300-450 ms liv
     -- orders, and a stale count made them order twice; review 24 Oct)
     room_gaps = 3, planned = 1, needs = 1, registry = 3, noble_rooms = 3, locations = 2, petitions = 2, diplomacy = 7, crossings = 7,
     missions = 1,   -- (0.104.95) every world site walked
-    homes = 1}      -- (0.104.168) each citizen's thoughts and every bedroom zone read
+    homes = 1,      -- (0.104.168) each citizen's thoughts and every bedroom zone read
+    disposal = 1}   -- (0.105.27) every item in play walked once for the marks
 SECTION_REBUILDS = 2       -- expired cached sections rebuilt in one report (a missing one always is)
 -- (0.100) the cached sections each action changes (cleared when it succeeds)
 CACHE_INVALIDATES = {
@@ -719,6 +733,11 @@ CACHE_INVALIDATES.set_farm_crops = {'farms'}   -- (0.105.5) the plots' crops rea
 CACHE_INVALIDATES.accept_cups = {'needs'}       -- (0.104.168) the cups census shows what it changed
 CACHE_INVALIDATES.mood_free_items = {'moods'}  -- (0.105.24) what the mood can reach now
 CACHE_INVALIDATES.location_access = {'locations'}  -- (0.105.26) shut places read shut, not "opened by you"
+-- (0.105.27) the disposal section read again after each disposal action
+for _, name in ipairs({'unforbid_items', 'mark_melt', 'mark_dump', 'empty_dump', 'place_dump'}) do
+    CACHE_INVALIDATES[name] = {'disposal'}
+end
+CACHE_INVALIDATES.set_standing_orders = {'disposal', 'dead'}
 SECTION_CACHE = SECTION_CACHE or {}
 -- (0.104.8) a new bridge starts with an empty cache: DFHack keeps a script's
 -- globals across runs, so a section cached by older code (0.104.7's

@@ -1159,34 +1159,16 @@ end
 -- one weapon per empty entry, the nearest the soldier can walk to, and none
 -- lying within UNFORBID_DANGER_TILES of a live enemy (a field of the dead
 -- under fire is no place to send a dwarf for a sword).
-UNFORBID_DANGER_TILES = 20
+UNFORBID_DANGER_TILES = U.DANGER_TILES or 20
 
+-- (0.105.27) danger_spots / near_danger moved to ai-util (the disposal
+-- actions use them too); these forward to it.
 local function danger_spots()
-    local out = {}
-    local okl, active = pcall(function() return df.global.world.units.active end)
-    for _, u in ipairs(okl and active or {}) do
-        local ok, bad = pcall(function()
-            local U = dfhack.units
-            -- (0.105.2 review) a caged or chained captive is no danger
-            local f1 = u.flags1
-            if f1 and (f1.caged or f1.chained) then return false end
-            return not U.isDead(u) and (U.isDanger(u) or U.isInvader(u))
-        end)
-        if ok and bad then
-            local x, y, z = dfhack.units.getPosition(u)
-            if x then table.insert(out, {x = x, y = y, z = z}) end
-        end
-    end
-    return out
+    return U.danger_spots()
 end
 
 local function near_danger(spots, x, y, z)
-    for _, d in ipairs(spots) do
-        if math.abs(d.x - x) + math.abs(d.y - y) <= UNFORBID_DANGER_TILES and math.abs(d.z - z) <= 3 then
-            return true
-        end
-    end
-    return false
+    return U.near_danger(spots, x, y, z, UNFORBID_DANGER_TILES)
 end
 
 function unforbid_spares(dry_run, limit)

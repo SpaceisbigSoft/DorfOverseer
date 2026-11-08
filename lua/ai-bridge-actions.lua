@@ -2618,3 +2618,110 @@ function act_set_rules(a)
     if next(changed) and a.dry_run ~= true then S.save_settings(cur) end
     return {ok = true, changed = changed, dry_run = a.dry_run == true or nil}
 end
+
+---------------------------------------------------------------------------
+-- (0.105.27) Disposal (lua/ai-disposal.lua): the forbidden things lying
+-- about let go, melted, dumped, or (the dump's) removed; DF's standing
+-- orders on refuse; a dump zone placed. Every item action leaves alone what
+-- lies near danger, everything during a siege, the sealed caverns, the
+-- cistern's tiles, artifacts, a living dwarf's things and (without
+-- player_items) what no game reason explains.
+---------------------------------------------------------------------------
+
+local DISPOSAL_REASONS = {own_dead = true, used_ammo = true, other_dead = true, dumped = true, unknown = true}
+local DUMP_REASONS = {own_dead = true, used_ammo = true, other_dead = true, free = true, unknown = true}
+
+-- opts for the item actions: reasons (a list from `allowed`), max (1..500),
+-- player_items (bool); or nil, error
+local function disposal_opts(a, allowed, name)
+    local o = {}
+    if a.reasons ~= nil then
+        o.reasons = string_list(a.reasons, allowed, 10)
+        if not o.reasons then
+            return nil, ('%s: reasons is a list of %s'):format(name, table.concat(sorted_keys(allowed), ', '))
+        end
+    end
+    if a.max ~= nil then
+        o.max = int_in(a.max, 1, 500)
+        if not o.max then return nil, name .. ': max is 1-500' end
+    end
+    for _, k in ipairs({'player_items', 'keep_masterwork', 'keep_enemy_gear'}) do
+        if a[k] ~= nil and type(a[k]) ~= 'boolean' then return nil, ('%s: %s is true or false'):format(name, k) end
+        o[k] = a[k]
+    end
+    return o
+end
+
+function act_unforbid_items(a)
+    local o, err = disposal_opts(a, DISPOSAL_REASONS, 'unforbid_items')
+    if not o then return reject(err) end
+    return reqscript('ai-disposal').unforbid_items(o, a.dry_run == true)
+end
+
+-- The marks set, then (not in a dry run) a smelter work order "melt a metal
+-- object" when one is needed: DF 50 makes no melt job by itself (DF wiki,
+-- Melt: "the job order will still need to be made at a smelter").
+function act_mark_melt(a)
+    local o, err = disposal_opts(a, {}, 'mark_melt')
+    if not o then return reject(err) end
+    local r = reqscript('ai-disposal').mark_melt(o, a.dry_run == true)
+    if r.needs_order and a.dry_run ~= true then
+        local want = math.max(1, math.min((r.n or 0) + (r.already or 0), 20))
+        local ok, wo = pcall(act_work_order, {type = 'work_order', recipe = 'melt_metal', amount = want})
+        if ok and type(wo) == 'table' and wo.ok then
+            r.melt_order, r.order_added = wo.order_id, want
+            r.ok, r.rejected, r.error = true, nil, nil
+        else
+            r.order_error = ok and type(wo) == 'table' and wo.error or tostring(wo)
+        end
+    end
+    return r
+end
+
+function act_mark_dump(a)
+    local o, err = disposal_opts(a, DUMP_REASONS, 'mark_dump')
+    if not o then return reject(err) end
+    return reqscript('ai-disposal').mark_dump(o, a.dry_run == true)
+end
+
+function act_empty_dump(a)
+    local o, err = disposal_opts(a, {}, 'empty_dump')
+    if not o then return reject(err) end
+    return reqscript('ai-disposal').empty_dump(o, a.dry_run == true)
+end
+
+function act_set_standing_orders(a)
+    if type(a.orders) ~= 'table' then return reject('set_standing_orders needs orders {name = 0|1}') end
+    return reqscript('ai-disposal').set_standing_orders(a.orders, a.dry_run == true)
+end
+
+-- A garbage dump zone: on the surface, or (inside = true) in a dug room near
+-- the entrance. The builder places it (ai-builder-surface place_dump_zone,
+-- group settings'); refused while the fort has one of that kind already.
+-- place_dump_zone(inside, dry_run) is expected to return a table as
+-- place_surface does: {ok = true, kind = 'dump', x, y, z or elevation,
+-- inside, dry_run} or {ok = false, rejected?, waiting?, error}.
+function act_place_dump(a)
+    if a.inside ~= nil and type(a.inside) ~= 'boolean' then return reject('place_dump: inside is true or false') end
+    local inside = a.inside == true
+    local okz, zones = pcall(function() return reqscript('ai-disposal').dump_zones() end)
+    if okz then
+        for _, zn in ipairs(zones) do
+            if zn.inside == inside then
+                return {ok = false, rejected = true, nothing_to_do = true, stale = {'disposal'}, zone_id = zn.id,
+                        error = ('the fort has a garbage dump %s already (zone %d at x%d y%d)')
+                            :format(inside and 'inside' or 'outside', zn.id, zn.x, zn.y)}
+            end
+        end
+    end
+    local okb, B = pcall(reqscript, 'ai-builder')
+    if not okb or type(B) ~= 'table' or type(B.place_dump_zone) ~= 'function' then
+        return {ok = false, error = 'the builder has no place_dump_zone (ai-builder-surface.lua is older than this bridge)'}
+    end
+    local ok, r = pcall(B.place_dump_zone, inside, a.dry_run == true)
+    if not ok then return {ok = false, error = 'place_dump_zone failed: ' .. tostring(r):sub(1, 300)} end
+    if type(r) ~= 'table' then return {ok = false, error = 'place_dump_zone returned ' .. type(r) .. ', not a table'} end
+    if r.ok == nil then r.ok = false end
+    r.inside = inside
+    return r
+end
