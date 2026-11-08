@@ -396,6 +396,10 @@ end
 ---------------------------------------------------------------------------
 
 PARTS = {'sites', 'projects', 'farms', 'wells', 'cistern', 'surface', 'rooms'}
+-- (0.105.26) each part marks the version it came with (the bridge's
+-- `version` lists one that differs from BRIDGE_VERSION); started afresh at
+-- each load, so a part that failed to load shows as unmarked
+PART_VERSIONS = {['ai-builder'] = '0.105.25'}   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local function part_path(name)
     local dir = debug.getinfo(1, 'S').source:match('^@(.*[/\\])')

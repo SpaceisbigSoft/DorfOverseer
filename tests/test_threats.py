@@ -237,7 +237,7 @@ def _():
 # --- the Lua side ----------------------------------------------------------------
 
 try:
-    from lupa import LuaRuntime
+    from lupa.lua53 import LuaRuntime
 except ImportError:
     LuaRuntime = None
 

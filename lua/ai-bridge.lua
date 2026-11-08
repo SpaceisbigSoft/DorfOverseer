@@ -24,6 +24,8 @@
 --   ai-bridge survey             staircases, the dwarves' busiest level and
 --                                soil levels, as elevations (read-only; for
 --                                the overseer's master plan)
+--   ai-bridge modules            (0.105.26) loads every module and compiles
+--                                every part; lists any that fail (self-test)
 --
 -- Every command prints exactly one line of JSON: {"ok": true, ...} or
 -- {"ok": false, "error": "..."}. The fort report itself goes to a UTF-8 file
@@ -106,15 +108,45 @@ NOT_IN_FORT = {ok = false, error = 'no fortress is loaded (the game is at a menu
 -- stay here. Read from this file's own folder (DFHack loads a script by its
 -- path), else wherever DFHack finds them.
 BRIDGE_PARTS = {'ai-bridge-report', 'ai-bridge-orders', 'ai-bridge-actions', 'ai-bridge-probes'}
-do
-    local here = tostring(debug.getinfo(1, 'S').source or ''):match('^@(.*[/\\])')
-    for _, name in ipairs(BRIDGE_PARTS) do
-        local path = here and here .. name .. '.lua'
-        local f = path and io.open(path, 'rb')
-        if f then f:close() else path = dfhack.findScript(name) end
-        if not path then error(('ai-bridge: %s.lua is missing (it goes beside ai-bridge.lua)'):format(name)) end
-        assert(loadfile(path, 't', _ENV))()
-    end
+-- (0.105.26) Each part carries a marker, PART_VERSIONS['<part>'] = '<version>',
+-- the same string as BRIDGE_VERSION: one find-replace of the quoted version
+-- across lua/*.lua bumps them all. `version` lists a part whose marker differs
+-- (stale_parts): one left behind at delivery, or a builder part still loaded
+-- from before.
+PART_VERSIONS = PART_VERSIONS or {}
+
+-- (0.105.26) `dfhack-run ai-bridge ...` runs this file again on every
+-- command, and the parts with it (~364 KB). Their compiled chunks are kept
+-- here (a global: DFHack keeps a script's environment between runs), by path
+-- and modification time, so a part is compiled again only when its file
+-- changes; it still runs every time. The chunk is bound to this environment
+-- (the same table each run), so the env is kept and checked too.
+PART_CHUNKS = PART_CHUNKS or {}
+
+function part_chunk(path)
+    local okm, mtime = pcall(function() return dfhack.filesystem.mtime(path) end)
+    mtime = okm and mtime or nil
+    local c = PART_CHUNKS[path]
+    if c and mtime ~= nil and c.mtime == mtime and c.env == _ENV then return c.fn end
+    local fn, err = loadfile(path, 't', _ENV)
+    if not fn then error(err, 0) end
+    PART_CHUNKS[path] = {fn = fn, mtime = mtime, env = _ENV}
+    return fn
+end
+
+-- A bridge part's file: beside this one, else wherever DFHack finds it.
+local HERE = tostring(debug.getinfo(1, 'S').source or ''):match('^@(.*[/\\])')
+function bridge_part_path(name)
+    local path = HERE and HERE .. name .. '.lua'
+    local f = path and io.open(path, 'rb')
+    if f then f:close() return path end
+    return dfhack.findScript(name)
+end
+
+for _, name in ipairs(BRIDGE_PARTS) do
+    local path = bridge_part_path(name)
+    if not path then error(('ai-bridge: %s.lua is missing (it goes beside ai-bridge.lua)'):format(name)) end
+    part_chunk(path)()
 end
 
 ACTIONS = {
@@ -182,7 +214,6 @@ ACTIONS = {
     remove_crossing = act_remove_crossing,
     place_keep = act_place_keep,
     deep_depot = act_deep_depot,                 -- (0.105.23)
-    tidy = act_tidy,
     narrow_detail = act_narrow_detail,
     trim_labor = act_trim_labor,
     order_instrument = act_order_instrument,
@@ -284,8 +315,12 @@ ACTIONS = {
 -- (13c) The actions whose dry run changes nothing in the fort, all the way
 -- down: their dry runs get through while the AI is halted (cmd_act). A new
 -- action whose dry run is read-only goes here too. (Was a chain of names kept
--- by hand in cmd_act; farm_thresholds, unstick_uniforms, tidy and set_rules
--- were missing.)
+-- by hand in cmd_act; farm_thresholds, unstick_uniforms and set_rules were
+-- missing.) (0.105.26) Only these take a dry run at all: cmd_act refuses
+-- dry_run for any other action, as their handlers ignored it and acted for
+-- real. The second list was checked handler by handler (each one's dry run
+-- returns before it changes anything); unpause, pull_gate and narrow_detail
+-- (its widen writes before its dry-run return) are not on it.
 DRY_OK = {}
 for _, name in ipairs({
     'start_project', 'farm_plots', 'place_well', 'make_pasture', 'link_lever', 'save_game',
@@ -297,7 +332,20 @@ for _, name in ipairs({
     'idle_crafting', 'give_trinkets', 'staff_location', 'vacate_post', 'add_posts', 'staff_labors',
     'dismiss_alerts', 'place_in_zone', 'answer_petition', 'retarget_hall', 'remove_workshops',
     'survey_water', 'cistern_step', 'water_zone', 'sand_zone', 'water_work', 'set_farm_crops',
-    'kitchen_brewables', 'farm_thresholds', 'unstick_uniforms', 'tidy', 'set_rules'
+    'kitchen_brewables', 'farm_thresholds', 'unstick_uniforms', 'set_rules',
+    -- (0.105.26) honoured all the way down, not listed before
+    'accept_cups', 'add_doctor_post', 'allow_burial', 'answer_meeting', 'apply_preset', 'approve_orders',
+    'assign_kit', 'assign_quivers', 'assign_weapons', 'bench_jobs', 'bootstrap_chair', 'break_fights',
+    'build_crossing', 'build_gatehouse', 'calm_burrow', 'clear_orphan_jobs', 'clear_webs', 'close_meeting',
+    'cut_entrance', 'dig_stairwell', 'fire_guard', 'fix_gear_gaps', 'free_slabs', 'free_stray_gear',
+    'gate_dogs', 'guard_gate', 'hospital_burrow', 'house_dwarves', 'join_levels', 'keep_mousers',
+    'kitchen_fat', 'ledger_set', 'location_access', 'mark_run', 'mood_free_items', 'moon_cell', 'nest_boxes',
+    'order_instrument', 'order_slots', 'pair_chairs', 'place_gate_lever', 'prisoner_room', 'prune_remains',
+    'quick_location', 'recreation', 'remove_crossing', 'remove_webs', 'repair_rooms', 'rest_infected',
+    'restrict_water', 'scrub_dead_units', 'seal_cavern', 'seal_well_stairs', 'send_mission', 'shelter_squads',
+    'slaughter_one', 'squad_bolts', 'squad_release', 'squad_swap', 'squad_trim', 'sync_offices',
+    'traction_rest', 'train_war', 'trim_instrument_orders', 'trim_labor', 'unforbid_dead',
+    'unsuspend_orders', 'well_shaft',
 }) do DRY_OK[name] = true end
 
 -- These only change what's displayed, so they still work while halted, dry
@@ -340,7 +388,108 @@ function version_info()
         level_kinds = reqscript('ai-layouts').KINDS,
         stockpiles = sorted_keys(reqscript('ai-layouts').STOCKPILES),
         workshops = sorted_keys(reqscript('ai-layouts').WORKSHOPS),
+        -- (0.105.26) parts whose version mark isn't BRIDGE_VERSION (nil: none)
+        stale_parts = (function() local s = stale_parts(); return #s > 0 and s or nil end)(),
     }
+end
+
+-- (0.105.26) Every module the AI's Lua is made of (lua/*.lua with
+-- `--@ module = true`, but this one and the parts, which are no modules);
+-- `modules` loads each. tests/test_fix26_bridge.py keeps it in step with lua/.
+BRIDGE_MODULES = {
+    'ai-builder', 'ai-camera', 'ai-census', 'ai-diplomacy', 'ai-gates', 'ai-health', 'ai-homes',
+    'ai-industry', 'ai-joins', 'ai-labor', 'ai-layouts', 'ai-military', 'ai-military-gear',
+    'ai-mission-send', 'ai-missions', 'ai-moods', 'ai-nobles', 'ai-overlay', 'ai-overseer-settings',
+    'ai-ping', 'ai-reports', 'ai-society', 'ai-society-burrows', 'ai-status', 'ai-threats', 'ai-title',
+    'ai-trade', 'ai-util', 'ai-water', 'ai-waterworks', 'gui/ai-overseer',
+}
+-- the split-off modules that carry a version mark of their own
+MARKED_MODULES = {'ai-military-gear', 'ai-society-burrows'}
+
+-- The builder's parts by name ('ai-builder-sites', ...): from the loaded
+-- builder, else read from ai-builder.lua (a builder that fails to load).
+function builder_part_names()
+    local parts
+    local ok, B = pcall(reqscript, 'ai-builder')
+    if ok and type(B.PARTS) == 'table' then
+        parts = B.PARTS
+    else
+        pcall(function()
+            local f = io.open(bridge_part_path('ai-builder'), 'rb')
+            local src = f:read('*a')
+            f:close()
+            local list = src:match('\nPARTS = (%b{})')
+            parts = {}
+            for p in list:gmatch("'([%w_-]+)'") do table.insert(parts, p) end
+        end)
+    end
+    local out = {}
+    for _, p in ipairs(parts or {}) do table.insert(out, 'ai-builder-' .. p) end
+    return out
+end
+
+-- (0.105.26) The parts whose version mark isn't BRIDGE_VERSION, as
+-- 'name (mark)': a file left behind at delivery, or (the builder's) still the
+-- one loaded before it changed (touch ai-builder.lua). The bridge's own parts
+-- run each command, so theirs is the file's.
+function stale_parts()
+    local out = {}
+    local function check(name, marks)
+        local v = type(marks) == 'table' and marks[name] or nil
+        if v ~= BRIDGE_VERSION then table.insert(out, ('%s (%s)'):format(name, v and tostring(v) or 'no version mark')) end
+    end
+    for _, n in ipairs(BRIDGE_PARTS) do check(n, PART_VERSIONS) end
+    local okb, B = pcall(reqscript, 'ai-builder')
+    if okb then
+        check('ai-builder', B.PART_VERSIONS)
+        for _, n in ipairs(builder_part_names()) do check(n, B.PART_VERSIONS) end
+    else
+        table.insert(out, 'ai-builder (does not load: ' .. tostring(B):sub(1, 160) .. ')')
+    end
+    for _, m in ipairs(MARKED_MODULES) do
+        local ok, M = pcall(reqscript, m)
+        if ok then check(m, M.PART_VERSIONS)
+        else table.insert(out, m .. ' (does not load: ' .. tostring(M):sub(1, 160) .. ')') end
+    end
+    return out
+end
+
+-- ai-bridge modules: (0.105.26) every module loaded (reqscript) and every
+-- part's file compiled, for the self-test: a broken module or part showed only
+-- as a report section's error, or not at all. {ok, modules, parts, failed =
+-- {{name, error}...}, stale_parts}; ok is false when anything failed.
+local function cmd_modules()
+    local failed, loaded = {}, 0
+    for _, m in ipairs(BRIDGE_MODULES) do
+        local ok, err = pcall(reqscript, m)
+        -- compiled too: a module whose load failed once is not loaded again
+        -- by DFHack until its file changes (reqscript then hands back what it
+        -- got of it, without the error), so a file that doesn't compile is
+        -- caught here every time
+        if ok then
+            local okp, path = pcall(function() return dfhack.findScript(m) end)
+            local fn, cerr = true, nil
+            if okp and path then fn, cerr = loadfile(path, 't', {}) end
+            if fn then loaded = loaded + 1 else ok, err = false, cerr end
+        end
+        if not ok then table.insert(failed, {name = m, error = tostring(err):sub(1, 300)}) end
+    end
+    local parts = {}
+    for _, n in ipairs(BRIDGE_PARTS) do table.insert(parts, n) end
+    for _, n in ipairs(builder_part_names()) do table.insert(parts, n) end
+    if #parts == #BRIDGE_PARTS then table.insert(failed, {name = 'ai-builder', error = 'its list of parts could not be read'}) end
+    for _, n in ipairs(parts) do
+        local path = bridge_part_path(n)
+        if not path then
+            table.insert(failed, {name = n, error = n .. '.lua is missing'})
+        else
+            local fn, err = loadfile(path, 't', {})     -- compiled only: the hub runs it
+            if not fn then table.insert(failed, {name = n, error = tostring(err):sub(1, 300)}) end
+        end
+    end
+    local stale = stale_parts()
+    return {ok = #failed == 0 and #stale == 0, modules = loaded, parts = #parts,
+            failed = #failed > 0 and failed or nil, stale_parts = #stale > 0 and stale or nil}
 end
 
 -- Run one section of the report; if it fails, keep the rest of the report
@@ -518,9 +667,6 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
         end)
     end,
     events_waiting = function() return #EVENT_QUEUE end,
-    -- (0.104.7, a probe) the instruments the fort's civilisation knows (each
-    -- world invents its own): parts, size, materials, and DF's instrument jobs
-    instruments = function() return safe(get_instruments) end,
     -- (0.104.0) the AI's ledger, as saved with this game
     ledger = function() return safe(ledger_data) end,
     recent_announcements = function() return safe(get_recent_announcements, 15) end,
@@ -541,7 +687,7 @@ SECTION_CACHE_DAYS = {logistics = 3, industry = 7,   -- industry: 300-450 ms liv
     -- report pays for all of them (region2: a full report froze ~250 ms)
     -- (supplies isn't cached: "have + queued" rules read it against live
     -- orders, and a stale count made them order twice; review 24 Oct)
-    room_gaps = 3, planned = 1, needs = 1, instruments = 28, registry = 3, noble_rooms = 3, locations = 2, petitions = 2, diplomacy = 7, crossings = 7,
+    room_gaps = 3, planned = 1, needs = 1, registry = 3, noble_rooms = 3, locations = 2, petitions = 2, diplomacy = 7, crossings = 7,
     missions = 1,   -- (0.104.95) every world site walked
     homes = 1}      -- (0.104.168) each citizen's thoughts and every bedroom zone read
 SECTION_REBUILDS = 2       -- expired cached sections rebuilt in one report (a missing one always is)
@@ -756,6 +902,14 @@ local function cmd_act(args)
         return reject(('unknown action type: %s (known: %s)'):format(
             tostring(action.type), table.concat(sorted_keys(ACTIONS), ', ')))
     end
+    -- (0.105.26) a dry run only for an action whose handler honours it
+    -- (DRY_OK): the others ignored dry_run and acted for real
+    if action.dry_run ~= nil and action.dry_run ~= false then
+        if action.dry_run ~= true then return reject('dry_run must be true or false') end
+        if not DRY_OK[action.type] then
+            return reject(('%s has no dry run (it would act for real)'):format(action.type))
+        end
+    end
     -- The in-game kill switch: while halted, nothing that changes the fort
     -- gets through, whatever the overseer asks. A dry run of an action in
     -- DRY_OK changes nothing, so it's allowed while halted.
@@ -916,6 +1070,7 @@ local COMMANDS = {
     test_threat = cmd_test_threat,
     trade_press = cmd_trade_press,
     assumptions = cmd_assumptions,
+    modules = cmd_modules,                -- (0.105.26) every module and part loads
     map = cmd_map,
     version = function() return version_info() end,
     status = cmd_status,

@@ -5,6 +5,8 @@
 -- into its own environment, so every name here is reqscript('ai-builder').name
 -- and the helpers defined there (info, quickfort_apply, ...) are in reach.
 
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-sites'] = '0.105.25'   -- (0.105.26) bumped with BRIDGE_VERSION
+
 local info, has, add, overlaps, ez = info, has, add, overlaps, ez
 
 -- A "site" puts a layout's (0, 0) at anchor (ax, ay) on level z, plus

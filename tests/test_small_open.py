@@ -191,7 +191,7 @@ def _():
 # --- traction (the bridge, lua/ai-health.lua) ----------------------------------
 
 try:
-    from lupa import LuaRuntime
+    from lupa.lua53 import LuaRuntime
 except ImportError:
     LuaRuntime = None
 

@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parent.parent
 RESULTS = []
 
 try:
-    from lupa import LuaRuntime
+    from lupa.lua53 import LuaRuntime
 except ImportError:
     print("SKIPPED: these tests need the lupa package (pip install lupa)")
     sys.exit(0)
@@ -132,9 +132,9 @@ def _():
     cmds = src[src.index("local COMMANDS = {"):]
     for fn in re.findall(r"= (cmd_\w+),", cmds[:cmds.index("\n}\n")]):
         if fn not in ("cmd_status", "cmd_state", "cmd_run", "cmd_act", "cmd_halt", "cmd_memory", "cmd_survey",
-                      "cmd_watch", "cmd_events", "cmd_map"):
+                      "cmd_watch", "cmd_events", "cmd_map", "cmd_modules"):
             assert LUA.eval(f"function(M) return type(M.{fn}) == 'function' end")(M), fn
-    for g in ("get_supplies", "get_order_desk", "boulder_census", "act_work_order", "act_tidy", "act_civ_alert",
+    for g in ("get_supplies", "get_order_desk", "boulder_census", "act_work_order", "act_civ_alert",
               "citizen_anchor", "abs_tick", "translate_name"):
         assert LUA.eval(f"function(M) return type(M.{g}) == 'function' end")(M), g
     assert M.BRIDGE_VERSION and M.SECTIONS.protocol is None and M.ACTIONS.assign_miners is None
@@ -145,21 +145,27 @@ def _():
     M = H.module()
     text = bridge_text()
     names = list(LUA.eval("function(M) local o = {} for k in pairs(M.DRY_OK) do o[#o + 1] = k end return o end")(M).values())
-    assert len(names) >= 60 and "tidy" in names and "farm_thresholds" in names and "unstick_uniforms" in names
+    assert len(names) >= 60 and "farm_thresholds" in names and "unstick_uniforms" in names
+    hub = (LUA_DIR / "ai-bridge.lua").read_text(encoding="utf-8")
     for n in names:
         assert LUA.eval(f"function(M) return M.ACTIONS['{n}'] ~= nil end")(M), n
-        i = text.index(f"function act_{n}(a)")
-        body = text[i:text.index("\nend\n", i)]
+        if f"function act_{n}(a)" in text:
+            i = text.index(f"function act_{n}(a)")
+            body = text[i:text.index("\nend\n", i)]
+        else:                                     # (0.105.26) a handler written in ACTIONS itself
+            i = hub.index(f"    {n} = function(a)")
+            body = hub[i:re.compile(r"\n    \w").search(hub, i + 1).start()]   # to the next entry
         assert "dry_run" in body, n
     for n in LUA.eval("function(M) local o = {} for k in pairs(M.DISPLAY_ONLY) do o[#o + 1] = k end return o end")(M).values():
         assert LUA.eval(f"function(M) return M.ACTIONS['{n}'] ~= nil end")(M), n
     H.halted = True
-    r = H.act(M, t({"type": "tidy", "dry_run": True}))
+    H.scripts["ai-joins"] = LUA.eval("{join_levels = function(dry) return {ok = true, dry_run = dry} end}")
+    r = H.act(M, t({"type": "join_levels", "dry_run": True}))
     assert r.ok and r.dry_run, dict(r)
-    r = H.act(M, t({"type": "tidy"}))
+    r = H.act(M, t({"type": "join_levels"}))
     assert not r.ok and r.halted, dict(r)
-    r = H.act(M, t({"type": "break_fights", "dry_run": True}))      # its dry run isn't on the list
-    assert not r.ok and r.halted, dict(r)
+    r = H.act(M, t({"type": "unpause", "dry_run": True}))      # (0.105.26) no dry run: refused, halted or not
+    assert not r.ok and r.rejected and "no dry run" in r.error, dict(r)
 
 
 @test("report: the boulders are walked once a report for stocks, stone_types and stone_use; afresh outside one")

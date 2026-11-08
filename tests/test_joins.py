@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lupa import LuaRuntime
+from lupa.lua53 import LuaRuntime
 
 ROOT = Path(__file__).resolve().parent.parent
 from lua_modules_util import module_src  # (13c lua-modules) the modules' sources, with lua/ai-util.lua
