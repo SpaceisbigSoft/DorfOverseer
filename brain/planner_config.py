@@ -155,6 +155,42 @@ PLANNER_CONFIG = {
     "keep_surface_min": 50,
     "keep_min_citizens": 15,
     "keep_min_material": 60,
+    # (0.105.30, construction G4: brain/planner_construct.py) building above ground.
+    # Every construction waits out a threat seen this recently
+    "construct_quiet_ticks": 3 * 1200,
+    # the surface hall: one stage every 2 days at most (and only once the last is built)
+    "hall_cooldown_ticks": 2 * 1200,
+    "hall_surface_min": 50,                  # the Garden fort's field hall
+    "hall_merchant_surface_min": 30,         # the Merchant city's market hall by the depot...
+    "hall_merchant_trade_min": 80,           # ...with Trade this high
+    "hall_min_citizens": 30,
+    "hall_keep_failures": 3,                 # the keep refused this often in a row: the hall may go first
+    "hall_floor_craftsmanship": 40,          # a block floor over the soil inside
+    "hall_max_planned": 100,                 # planned construction tiles at once, the fort over (FPS)
+    "hall_stage_tiles": {"walls": 28, "floor": 35, "roof": 36},
+    "hall_block_wait_ticks": 2 * 84 * 1200,  # two seasons short of blocks: build with any material
+    # stone blocks for what is to be built (outside the idle-hands cap)
+    "construct_blocks_cooldown_ticks": 3 * 1200,
+    "construct_blocks_max_jobs": 10,
+    "construct_blocks_margin": 1.1,
+    # wing walls at a standing gatehouse (the War-hold), once per entrance
+    "wings_cooldown_ticks": 7 * 1200,
+    "wings_fortification": 100,
+    "wings_surface_above": -50,
+    "wings_len": 5,
+    "wings_blocks": 10,
+    # block floors over the soil of a finished hall, once per project
+    "soil_floor_cooldown_ticks": 3 * 1200,
+    "soil_floor_grandeur": 40,
+    "soil_floor_craftsmanship": 60,
+    "soil_floor_max_tiles": 60,
+    "soil_floor_tries": 3,                   # refused this often: that project is left as it is
+    # the Hermit's cavern walls (gate style `sealed`)
+    "cavern_wall_fortification": 80,
+    "cavern_wall_surface_max": -50,
+    "cavern_wall_outsiders_max": -100,
+    "cavern_wall_max_width": 3,
+    "cavern_wall_retry_ticks": 112 * 1200,   # a refused seal: the usual gate there for a while
     "needs_craft_cooldown_ticks": 28 * 1200,
     "needs_meal_cooldown_ticks": 3 * 1200,
     "needs_build_at": 3,               # this many distracted by a need a tavern/library/shrine serves: build it early

@@ -1417,16 +1417,28 @@ def _keep_rule(s: dict, cfg: dict, citizens: int, traits: dict, proposals: list,
         if stage == "walls" and k.get("walls_planned"):
             notes.append(f"the keep: {k['walls_planned']} wall tile(s) still to build")
             return
-        if stage == "roof" and k.get("roof_planned"):
+        if stage in ("stair", "roof") and k.get("roof_planned"):     # (0.105.30) the stair to the roof counts too
             notes.append(f"the keep: {k['roof_planned']} roof tile(s) still to build")
             return
     if young_fort(s, cfg) or citizens < cfg["keep_min_citizens"]:
         return
     if _d(s.get("others_on_map")).get("threats_that_can_reach_dwarves"):
         return
+    # (0.105.30, construction) one building above ground at a time: the keep
+    # waits while a surface hall builds (clearing to roof)
+    hs = _d(b.get("halls"))
+    hs = next((x for x in _l(hs.get("list")) if isinstance(x, dict)), hs)
+    if hs.get("stage") in ("clearing", "walls", "floor", "roof"):
+        notes.append(f"the keep waits for the hall ({hs['stage']}): one building above ground at a time")
+        return
+    # (0.105.30) blocks first (free ones: faster to build, lighter to haul),
+    # then boulders and logs
     st = _d(s.get("stocks"))
-    if st.get("boulders", 0) + st.get("blocks", 0) + st.get("wood", 0) < cfg["keep_min_material"]:
-        notes.append(f"the keep waits for building stone, blocks or logs (needs {cfg['keep_min_material']})")
+    blocks = free_stock(s, "blocks")
+    if blocks < cfg["keep_min_material"] and (
+            blocks + st.get("boulders", 0) + st.get("wood", 0) < cfg["keep_min_material"]):
+        notes.append(f"the keep waits for blocks, building stone or logs (needs {cfg['keep_min_material']}, "
+                     f"{blocks} free blocks)")
         return
     if not isinstance(k, dict):
         # (0.105.23) the bridge looks round every way in first, then for open
@@ -1437,6 +1449,8 @@ def _keep_rule(s: dict, cfg: dict, citizens: int, traits: dict, proposals: list,
         why = "the keep: the trees are down, raise its walls and door"
     elif k.get("stage") == "walls":
         why = "the keep: its walls stand, put a roof over the inside"
+    elif k.get("stage") == "stair":
+        why = "the keep: a stair up to its roof is built, put the roof over the inside"
     else:
         why = "the keep: its roof is built, call it finished"
     proposals.append(Proposal("keep", {"type": "place_keep"}, why, 7))

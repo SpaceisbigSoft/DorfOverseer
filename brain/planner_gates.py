@@ -12,6 +12,7 @@ from culture import profile_from
 from quirks import has_rule
 from digest import _d, _l
 from planner_core import *  # noqa: F401,F403
+from planner_construct import _wings_rule, cavern_wall_style  # (0.105.30) wing walls, the Hermit's cavern walls
 
 __all__ = ["_gate_rules", "_stranded_rule", "STRANDED_CONFIG", "GATE_PART_RECIPES", "GATE_PART_STUCK_DAYS", "_gate_parts_rule", "_free_gate_levers", "_lever_far_enough", "machinery_wanted", "_lever_hatches_ok", "_link_wanted", "_lever_rule", "_trap_rule", "_gatehouse_rule", "_near_spot", "lone_intruders", "few_ordinary", "few_alert_over", "hunted_outside", "ai_gates_shut", "_Rec", "_lockdown", "lockdown_released", "lone_alert_over", "_lockdown_ids", "_lockdown_cap_why", "note_lockdown", "quick_clear", "PASTURE_ACTIONS", "_pasture_hold", "gate_invaders", "main_gate", "_gate_guard_rule", "_gate_dogs_rule"]
 
@@ -227,6 +228,17 @@ def _gate_rules(s: dict, memory, cfg: dict, rules_: dict, any_reach: bool,
         if built_here and not (e.get("door_spots") and "doors later" in str(built_here)):
             continue                        # walled: waiting on the dwarves, then the weekly rescan
                                             # (doors that had to wait for their walls go in once they stand)
+        # (0.105.30, construction 3.4) the Hermit hold walls a narrow cavern
+        # opening for good (walls, no door), the doors' turn or not
+        e_style = cavern_wall_style(e, traits or {}, cfg, memory, style, now) if rules_["fortify_entrances"] else style
+        if e_style == "sealed":
+            if not fortify_proposed:
+                proposals.append(Proposal("fortify", {"type": "fortify_entrance", "entrance_id": e["id"],
+                                                      "style": "sealed"},
+                                          f"{where} is {e.get('width')} wide and leads to the caverns: wall it up "
+                                          "for good (a hidden hold keeps no door there)", 5))
+                fortify_proposed = True
+            continue
         if e.get("door_spots"):
             if rules_["build_gate_doors"] and spot not in memory.gate_doors_requested and not doors_proposed:
                 proposals.append(Proposal("gate_doors", {"type": "build_gate_doors", "entrance_id": e["id"]},
@@ -246,6 +258,10 @@ def _gate_rules(s: dict, memory, cfg: dict, rules_: dict, any_reach: bool,
     if not any_reach and rules_["fortify_entrances"]:
         _trap_rule(s, memory, cfg, es, now, traits or {}, proposals)
         _gatehouse_rule(s, memory, cfg, es, now, traits or {}, proposals)     # (0.105.23)
+        try:
+            _wings_rule(s, memory, cfg, es, now, traits or {}, proposals, notes)  # (0.105.30) its wing walls
+        except Exception as e_:  # noqa: BLE001  (an odd report value: the gates go on)
+            notes.append(f"rule _wings_rule failed ({type(e_).__name__}: {str(e_)[:120]}); the others ran")
     if refused:
         def short_why(text: str, n: int = 140) -> str:
             text = str(text)

@@ -214,6 +214,7 @@ class Memory:
     character_projects: list = field(default_factory=list)   # (0.105.10) project ids the AI started as the fort's own
     locations_closed: list = field(default_factory=list)     # (0.105.12) location ids the AI shut to visitors
     gatehouses: dict = field(default_factory=dict)           # (0.105.23) entrance "x,y,z" -> {tick, bridge} built
+    construct: dict = field(default_factory=dict)            # (0.105.30) wings built, soil floors done, the hall's block wait
     locations_yours: list = field(default_factory=list)      # (0.105.12) ones the AI shut and you opened: left alone
     heists: list = field(default_factory=list)               # (0.105.24) [tick, who] artifact heists and visitors' killings
     visitor_shut: dict = field(default_factory=dict)         # (0.105.24) {tick, until, visitors, meetings, unheard}: shut for the mayor
