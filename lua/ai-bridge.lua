@@ -4962,6 +4962,18 @@ function act_place_gate_lever(a)
     return reqscript('ai-gates').place_gate_lever(id, a.dry_run == true)
 end
 
+-- (0.105.23, 14.1 step 4a) A gatehouse in front of the founding stair's hatch:
+-- walls, a trap corridor and a drawbridge (lua/ai-gates.lua build_gatehouse).
+function act_build_gatehouse(a)
+    local id = whole_number(a.entrance_id)
+    local n = int_in(a.count or 4, 0, 4)
+    if not id or not n then return reject('build_gatehouse needs entrance_id (and count 0-4)') end
+    if not (a.kind == nil or a.kind == 'cage' or a.kind == 'stonefall' or a.kind == 'weapon') then
+        return reject('build_gatehouse needs kind cage|stonefall|weapon')
+    end
+    return reqscript('ai-gates').build_gatehouse(id, a.kind or 'cage', n, a.dry_run == true)
+end
+
 -- (0.105.12) Who may come into a location (DF's location screen): visitors
 -- allowed or not, at the fort's own site only, never a hospital
 function act_location_access(a)
@@ -6576,6 +6588,7 @@ ACTIONS = {
     link_lever = act_link_lever,
     place_traps = act_place_traps,
     place_gate_lever = act_place_gate_lever,          -- (0.105.12)
+    build_gatehouse = act_build_gatehouse,            -- (0.105.23)
     location_access = act_location_access,            -- (0.105.12)
     unpause = act_unpause,
     found_fort = act_found_fort,

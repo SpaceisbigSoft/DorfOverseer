@@ -3280,26 +3280,111 @@ def _():
     assert not by_rule(plan(s, m)[0], "fortify")
 
 
-@test("0.105.12 machinery: off by default; switched on, a lever for the founding hatch, then linked; none elsewhere")
+@test("0.105.12/0.105.23 machinery: on by default; a lever for the founding hatch, then linked; none elsewhere")
 def _():
     hatch = [{"id": 7, "kind": "hatch", "lever_away": False, "levers": []}]
     s = entrances({"door_spots": 0, "width": 1, "x": 108, "y": 149, "sealed": True, "equipment": hatch})
     s["settings"]["traits"] = {"engineering": 60}
     eid = s["entrances"]["entrances"][0]["id"]
-    assert not by_rule(plan(s, Memory())[0], "gate_lever")             # (review) off by default
-    PLANNER_CONFIG["hatch_levers"] = True
+    assert PLANNER_CONFIG["hatch_levers"] is True                      # (0.105.23) switched on
+    g = by_rule(plan(s, Memory())[0], "gate_lever")
+    assert g and g[0].action == {"type": "place_gate_lever", "entrance_id": eid}, [p.action for p in g]
+    s["entrances"]["free_levers"] = [{"id": 90, "x": 108, "y": 120, "z": 160}]
+    g = by_rule(plan(s, Memory())[0], "gate_lever")
+    assert g and g[0].action == {"type": "link_lever", "lever_id": 90, "target_id": 7}, [p.action for p in g]
+    s["settings"]["traits"] = {"engineering": 0, "fortification": 0}
+    assert not by_rule(plan(s, Memory())[0], "gate_lever")
+    s["entrances"]["free_levers"] = []
+    assert not by_rule(plan(s, Memory())[0], "gate_lever")
+    PLANNER_CONFIG["hatch_levers"] = False
     try:
-        g = by_rule(plan(s, Memory())[0], "gate_lever")
-        assert g and g[0].action == {"type": "place_gate_lever", "entrance_id": eid}, [p.action for p in g]
-        s["entrances"]["free_levers"] = [{"id": 90, "x": 108, "y": 120, "z": 160}]
-        g = by_rule(plan(s, Memory())[0], "gate_lever")
-        assert g and g[0].action == {"type": "link_lever", "lever_id": 90, "target_id": 7}, [p.action for p in g]
-        s["settings"]["traits"] = {"engineering": 0, "fortification": 0}
-        assert not by_rule(plan(s, Memory())[0], "gate_lever")
-        s["entrances"]["free_levers"] = []
-        assert not by_rule(plan(s, Memory())[0], "gate_lever")
+        s["settings"]["traits"] = {"engineering": 60}
+        assert not by_rule(plan(s, Memory())[0], "gate_lever")         # switched off: nothing
     finally:
-        PLANNER_CONFIG["hatch_levers"] = False
+        PLANNER_CONFIG["hatch_levers"] = True
+
+
+@test("0.105.23 hatch levers: 3 free mechanisms before a lever; a cut's many hatches get none; drawbridges first")
+def _():
+    hatch = [{"id": 7, "kind": "hatch", "lever_away": False, "levers": []}]
+    s = entrances({"door_spots": 0, "width": 1, "x": 108, "y": 149, "sealed": True, "equipment": hatch})
+    s["settings"]["traits"] = {"fortification": 120}
+    s["entrances"]["free_mechanisms"] = 1
+    p, _ = plan(copy.deepcopy(s), Memory())[:2]
+    assert not by_rule(p, "gate_lever"), [x.action for x in by_rule(p, "gate_lever")]
+    m = [x for x in by_rule(p, "mechanisms") if "gate lever" in x.reason]
+    assert m and m[0].action["amount"] == 2 and m[0].is_order, [x.action for x in by_rule(p, "mechanisms")]
+    s["entrances"]["free_mechanisms"] = 3
+    assert by_rule(plan(copy.deepcopy(s), Memory())[0], "gate_lever")
+    # a cut entrance (hatches on every stair down): no lever for its hatches
+    cut = copy.deepcopy(s)
+    cut["entrances"]["entrances"][0].update(cut=True, cut_hatches=5, equipment=[
+        {"id": 20 + i, "kind": "hatch", "lever_away": False, "levers": []} for i in range(5)])
+    assert not by_rule(plan(cut, Memory())[0], "gate_lever")
+    # a hatch and an unworked drawbridge at another entrance: the bridge takes the free lever first
+    two = entrances({"door_spots": 0, "width": 1, "x": 108, "y": 149, "sealed": True, "equipment": hatch},
+                    {"door_spots": 0, "width": 2, "x": 140, "y": 149, "sealed": True,
+                     "equipment": [{"id": 30, "kind": "door", "levers": []}], "bridges_unworked": [31]})
+    two["settings"]["traits"] = {"fortification": 120}
+    two["entrances"]["free_levers"] = [{"id": 90, "x": 108, "y": 120, "z": 160}]
+    g = by_rule(plan(two, Memory())[0], "gate_lever")
+    assert g and g[0].action == {"type": "link_lever", "lever_id": 90, "target_id": 31}, [x.action for x in g]
+    # a gatehouse standing, its drawbridge not built yet: the hatch waits for it (the bridge's lever first)
+    gh = copy.deepcopy(s)
+    gh["entrances"]["entrances"][0]["gatehouse"] = "standing"
+    gh["entrances"]["free_levers"] = [{"id": 90, "x": 108, "y": 120, "z": 160}]
+    assert not by_rule(plan(copy.deepcopy(gh), Memory())[0], "gate_lever")
+    gh["entrances"]["entrances"][0]["outer"] = [{"id": 40, "kind": "bridge", "lever_id": 91}]
+    assert by_rule(plan(gh, Memory())[0], "gate_lever")
+
+
+@test("0.105.23 rescan: a lever linked since the scan (the bridge's `rescan`) maps the entrances again")
+def _():
+    s = entrances({"door_spots": 0, "width": 1, "sealed": True,
+                   "equipment": [{"id": 7, "kind": "hatch", "levers": [90], "lever_driven": True}]})
+    assert not by_rule(plan(copy.deepcopy(s), Memory())[0], "entrances")
+    s["entrances"]["rescan"] = True
+    assert by_rule(plan(copy.deepcopy(s), Memory())[0], "entrances")
+
+
+def gatehouse_fort(fortification=120, **e):
+    s = entrances(dict({"door_spots": 0, "width": 1, "x": 108, "y": 149, "z": 160, "sealed": True, "lid": True,
+                        "gatehouse": "possible",
+                        "equipment": [{"id": 7, "kind": "hatch", "levers": [90], "lever_driven": True}]}, **e))
+    s["settings"]["traits"] = {"fortification": fortification}
+    s["entrances"]["free_mechanisms"] = 20
+    return s
+
+
+@test("0.105.23 gatehouse: a fortified fort builds one at the founding stair, once; not a mild fort, not in danger")
+def _():
+    s = gatehouse_fort()
+    g = by_rule(plan(copy.deepcopy(s), Memory())[0], "gatehouse")
+    assert g and g[0].action["type"] == "build_gatehouse" and g[0].action["entrance_id"] == 1, [x.action for x in g]
+    assert g[0].action["kind"] in ("cage", "stonefall", "weapon") and 2 <= g[0].action["count"] <= 4, g[0].action
+    assert not by_rule(plan(gatehouse_fort(fortification=40), Memory())[0], "gatehouse")
+    assert not by_rule(plan(gatehouse_fort(gatehouse="standing"), Memory())[0], "gatehouse")
+    assert not by_rule(plan(gatehouse_fort(gatehouse="none", gatehouse_why="no room"), Memory())[0], "gatehouse")
+    # built: remembered by its spot, never again there
+    m = Memory()
+    record([(g[0], {"ok": True, "bridge": {"x": 112, "y": 149, "z": 161}, "dir": "gd"})], s, m)
+    assert "108,149,160" in m.gatehouses, m.gatehouses
+    assert not by_rule(plan(copy.deepcopy(s), m)[0], "gatehouse")
+    # refused: waits gate_retry_ticks
+    m = Memory()
+    record([(g[0], {"ok": False, "error": "the game would not place the drawbridge: x"})], s, m)
+    assert "gatehouse:108,149,160" in m.gate_failures
+    assert not by_rule(plan(copy.deepcopy(s), m)[0], "gatehouse")
+    # a threat that can reach the dwarves: not now
+    d = copy.deepcopy(s)
+    d.setdefault("others_on_map", {})["threats_that_can_reach_dwarves"] = 2
+    d["others_on_map"]["threats"] = [{"id": 5, "name": "goblin", "can_reach_dwarves": True}]
+    assert not by_rule(plan(d, Memory())[0], "gatehouse")
+    # short of mechanisms: ordered beside it
+    s["entrances"]["free_mechanisms"] = 1
+    p = plan(copy.deepcopy(s), Memory())[0]
+    assert by_rule(p, "gatehouse") and any("gatehouse" in x.reason for x in by_rule(p, "mechanisms")), \
+        [x.reason for x in by_rule(p, "mechanisms")]
 
 
 @test("0.105.12 locations: a closed fort shuts its tavern, temple, library, guildhalls to visitors; reopened later")

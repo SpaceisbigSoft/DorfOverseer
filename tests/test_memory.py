@@ -521,6 +521,21 @@ def _():
     assert m.atlas["registry"]["project:7"]["status"] == "digging"
 
 
+@test("atlas (0.105.23): a gatehouse goes in the registry with its pieces, said in the fort's story")
+def _():
+    from planner import Proposal
+    m = Memory()
+    s = with_entrance(state_at(1000))
+    atlas.note_entrances(s, m)
+    p = Proposal("gatehouse", {"type": "build_gatehouse", "entrance_id": 1, "kind": "cage", "count": 4}, "build", 6)
+    r = {"ok": True, "walls": 15, "traps": 4, "bridge": {"x": 31, "y": 135, "z": 174}, "lever": {"x": 1},
+         "pieces": ["31,135,174", "30,139,174"]}
+    out = atlas.note_actions([(p, r)], s, m)
+    assert out and "gatehouse" in out[0] and "4 cage trap(s)" in out[0], out
+    g = m.atlas["registry"]["gatehouse:31,140,173"]
+    assert g["kind"] == "gatehouse" and g["bridge"] == [31, 135, 174] and len(g["pieces"]) == 2, g
+
+
 @test("atlas: a walled gate goes in the registry and the entrance's history; open again is noticed")
 def _():
     from planner import Proposal

@@ -371,8 +371,13 @@ PLANNER_CONFIG = {
     "petition_mercenaries_militarism": 30,  # mercenaries from this
     "residency_probe_days": 3,         # (0.105.9) an agreed residency petition: seen as a resident within this
     "residency_batch": 25,             # residency petitions answered in one go
-    "hatch_levers": False,             # (0.105.12 review) a lever linked to the founding hatch shuts it and the gate
-                                       # watcher only locks hatches: off until the watcher works hatches by lever
+    "hatch_levers": True,              # (0.105.12 review) off: a lever linked to the founding hatch shuts it, and the
+                                       # watcher only locked hatches. (0.105.23) on: the watcher drives a hatch on a
+                                       # lever by `lever pull --instant`, and a hatch its link shut is opened at once
+    "hatch_lever_mechanisms": 3,       # (0.105.23) free mechanisms before a gate lever is placed (1 lever, 2 link)
+    "hatch_lever_max_hatches": 2,      # (0.105.23) an entrance with more hatches (a cut) gets no levers: one each
+    "gatehouse_fortification": 80,     # (0.105.23, 14.1 step 4a) a gatehouse at the founding stair from this
+                                       # Fortification (the War-hold's 120)
     "residency_accept_by_flag": False, # (0.105.11) seen 2 Nov in B: an agreement set by the flag left the visitor a
                                        # guest (DF's Other list, not Residents): welcoming forts leave them to you
     "residency_cooldown_ticks": 1200,  # (review) a batch a day, not the default 2 days
@@ -761,6 +766,7 @@ class Memory:
     residency: dict = field(default_factory=dict)        # (0.105.9) {probe: {id, unit, tick}, works: True|False, since}
     character_projects: list = field(default_factory=list)   # (0.105.10) project ids the AI started as the fort's own
     locations_closed: list = field(default_factory=list)     # (0.105.12) location ids the AI shut to visitors
+    gatehouses: dict = field(default_factory=dict)           # (0.105.23) entrance "x,y,z" -> {tick, bridge} built
     locations_yours: list = field(default_factory=list)      # (0.105.12) ones the AI shut and you opened: left alone
     gear_spare_since: dict = field(default_factory=dict)  # "weapons"/"body"/"helms" -> when 3+ spares sat unused
     swapped: dict = field(default_factory=dict)  # (0.104.78) unit id -> when the swap sent them home
@@ -1977,6 +1983,17 @@ def _record_any_outcome(a: dict, r: dict, state: dict, memory, now: int) -> None
         elif spot:
             memory.gate_failures.pop("traps:" + spot, None)
             memory.gate_failure_ticks.pop("traps:" + spot, None)
+    elif t == "build_gatehouse" and not a.get("dry_run"):
+        # (0.105.23) built once at a spot: never again there (a second would
+        # stand beside the first); a refusal waits gate_retry_ticks
+        spot = _entrance_spot(state, a.get("entrance_id"))
+        if spot and r.get("ok") is True:
+            memory.gatehouses[spot] = {"tick": now, "bridge": r.get("bridge"), "dir": r.get("dir")}
+            memory.gate_failures.pop("gatehouse:" + spot, None)
+            memory.gate_failure_ticks.pop("gatehouse:" + spot, None)
+        elif spot:
+            memory.gate_failures["gatehouse:" + spot] = str(r.get("error") or "no answer from the game")[:300]
+            memory.gate_failure_ticks["gatehouse:" + spot] = now
     elif t == "link_lever" and not a.get("dry_run"):
         key = f"lever:{a.get('lever_id')}>{a.get('target_id')}"
         if r.get("ok") is False:
