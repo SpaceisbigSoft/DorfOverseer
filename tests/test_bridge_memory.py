@@ -959,6 +959,36 @@ def _():
         ("STRUCK_DOWN", "Ume, Swamp Titan", "great beast", False, True), dict(r)
 
 
+@test("death_details (0.105.24): an outsider killer says whether it is a visitor, and whether it died first (an old wound)")
+def _():
+    env = H.module()
+    r = LUA.execute(r"""
+    local env, df, dfhack = ...
+    df.death_type = {[2] = 'STRUCK_DOWN', [3] = 'SUFFOCATE'}
+    local v1, v2 = {id = 5, counters = {death_id = 70}}, {id = 6, counters = {death_id = 71}}
+    local bard, dancer = {id = 9}, {id = 10}
+    df.unit = {find = function(id) return ({[5] = v1, [6] = v2, [9] = bard, [10] = dancer})[id] end}
+    df.incident = {find = function(id) return ({[70] = {death_cause = 2, criminal = 9},
+                                                [71] = {death_cause = 3, criminal = 10}})[id] end}
+    dfhack.units.getReadableName = function(u) return u == bard and 'Bewa, Human Bard' or 'Amxu, Goblin Dancer' end
+    dfhack.units.isGhost = function() return false end
+    dfhack.units.isGreatDanger = function() return false end
+    dfhack.units.isCitizen = function() return false end
+    dfhack.units.isOwnCiv = function() return false end
+    dfhack.units.isAnimal = function() return false end
+    dfhack.units.isVisitor = function(u) return u == bard end
+    dfhack.units.isDead = function(u) return u == dancer end
+    env.DEATHS_TOLD = {}
+    local a, b = {}, {}
+    env.death_details(a, 5)
+    env.death_details(b, 6)
+    return {ka = a.killer_kind, va = a.killer_visitor or false, da = a.killer_dead or false,
+            kb = b.killer_kind, vb = b.killer_visitor or false, db = b.killer_dead or false}
+    """, env, H.df, H.dfhack)
+    assert (r["ka"], r["va"], r["da"]) == ("outsider", True, False), dict(r)
+    assert (r["kb"], r["vb"], r["db"]) == ("outsider", False, True), dict(r)
+
+
 @test("free_slabs (0.104.42): forbidden memorial slabs unforbidden, their suspended slab buildings resumed")
 def _():
     env = H.module()

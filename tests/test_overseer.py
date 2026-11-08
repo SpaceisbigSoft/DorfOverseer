@@ -797,6 +797,13 @@ def _():
     assert overseer.death_words(thirsty) == "Ast, thirst, in a melancholy mood, at x1 y2 z3", overseer.death_words(thirsty)
     walking = {"name": "Ast", "cause": "SUFFOCATE", "killer": "Bo", "killer_kind": "citizen", "infected": True}  # (0.104.150)
     assert overseer.death_words(walking) == "Ast, suffocate, by Bo (citizen), infected", overseer.death_words(walking)
+    # (0.105.24) a visitor's killing, and an old wound whose giver died first
+    guest = {"name": "Ast", "cause": "STRUCK_DOWN", "killer": "Bo, Bard", "killer_kind": "outsider", "killer_visitor": True}
+    assert overseer.death_words(guest) == "Ast, struck down, by Bo, Bard (outsider), the killer a visitor", overseer.death_words(guest)
+    old = {"name": "Ast", "cause": "SUFFOCATE", "killer": "Amxu", "killer_kind": "outsider", "killer_dead": True,
+           "patient": True}
+    assert overseer.death_words(old) == ("Ast, suffocate, by Amxu (outsider), an old wound (the killer died before); "
+                                         "a patient waiting for care"), overseer.death_words(old)
     import timeline, metrics
     events = [ev, again]
     assert sum(1 for e in events if e.get("kind") == "death" and e.get("own_civ") and not e.get("again")) == 1
@@ -837,6 +844,14 @@ def _():
             "set Rules switches: open_caverns on"
     finally:
         overseer.LOG_DIR = old_dir
+
+
+@test("meetings (0.105.24): an unattended meeting screen the AI can't answer is left after 2 minutes, not 10")
+def _():
+    assert overseer.meeting_leave_after(True) == overseer.MEETING_GIVEUP_S == 120.0
+    assert overseer.meeting_leave_after(False) == overseer.MEETING_CLOSE_S == 600.0
+    # the give-up comes after the first answer try (20 s), never before it
+    assert overseer.MEETING_ANSWER_S < overseer.MEETING_GIVEUP_S < overseer.MEETING_CLOSE_S
 
 
 if __name__ == "__main__":

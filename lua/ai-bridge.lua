@@ -3047,6 +3047,13 @@ function death_details(ev, id)
             or (dfhack.units.isCitizen(k) or dfhack.units.isOwnCiv(k)) and 'citizen'
             or dfhack.units.isAnimal(k) and 'animal'
             or 'outsider'
+        -- (0.105.24) which outsider: a visitor (DF's guest flag; the 2-5 Nov
+        -- "outsider" killers were mostly artifact thieves who had come as
+        -- visitors and asked the mayor for a meeting), or one dead already
+        -- (an old wound: F's farmer suffocated in the hospital 3 years after
+        -- the goblin dancer who wounded her died)
+        pcall(function() if dfhack.units.isVisitor(k) then ev.killer_visitor = true end end)
+        pcall(function() if dfhack.units.isDead(k) then ev.killer_dead = true end end)
     end
 end
 

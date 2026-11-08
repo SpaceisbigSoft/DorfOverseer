@@ -382,6 +382,10 @@ PLANNER_CONFIG = {
                                        # guest (DF's Other list, not Residents): welcoming forts leave them to you
     "residency_cooldown_ticks": 1200,  # (review) a batch a day, not the default 2 days
     "residency_reprobe_days": 336,     # a failed probe is tried again a year on (a DFHack update may help)
+    "heist_lockout_days": 168,         # (0.105.24) after an artifact heist (or a visitor killing a citizen) the tavern,
+                                       # temples, library and guildhalls are shut to visitors this long (0: never).
+                                       # 2-5 Nov: the thieves came as visitors (19 of 23 had asked the mayor for a
+                                       # meeting); D shut its locations at 23:06 2 Nov: 8 heists before, none after
     "residency_accept_outsiders": 30,  # agree from this Outsiders (welcoming); decline below -30 (closed)
     "petition_citizen_margin": 5,      # citizenship while citizens are this far under the population target
     "bag_sink_days": 28,               # this many bag orders in so many days with no empty bag: a sink (0.87.1)
@@ -768,6 +772,7 @@ class Memory:
     locations_closed: list = field(default_factory=list)     # (0.105.12) location ids the AI shut to visitors
     gatehouses: dict = field(default_factory=dict)           # (0.105.23) entrance "x,y,z" -> {tick, bridge} built
     locations_yours: list = field(default_factory=list)      # (0.105.12) ones the AI shut and you opened: left alone
+    heists: list = field(default_factory=list)               # (0.105.24) [tick, who] artifact heists and visitors' killings
     gear_spare_since: dict = field(default_factory=dict)  # "weapons"/"body"/"helms" -> when 3+ spares sat unused
     swapped: dict = field(default_factory=dict)  # (0.104.78) unit id -> when the swap sent them home
     drafted: dict = field(default_factory=dict)  # (0.104.138) unit id -> when a fill or swap drafted them

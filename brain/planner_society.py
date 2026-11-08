@@ -13,7 +13,7 @@ from quirks import has_rule
 from digest import _d, _l, normalize
 from planner_core import *  # noqa: F401,F403
 
-__all__ = ["_people_rules", "_comfort_rules", "stress_causes", "THOUGHT_WORDS", "_doctor_patient_rule", "_hospital_burrow_rule", "_calm_burrow_rule", "MOOD_WORKSHOPS", "PETITION_KINDS", "petition_orders_wanted", "_petition_rules", "_residency_rule", "residency_stance", "_location_access_rule", "_jail_size_rule", "_convict_rule", "_break_fights_rule", "_sync_offices_rule", "patient_waits", "_health_rules", "TANTRUM_KEEP", "note_tantrums", "_noble_rooms_rule", "outsider_orders", "NEED_ADVICE", "JEWEL_RECIPES", "_recreation_rule", "_stress_care", "_needs_notes", "_location_supply_rules", "POST_LABORS", "STAFF_POSTS", "STAFF_MAX", "_traction_rule", "_wish_words", "_wish_met", "wish_key", "petition_lean", "_location_petition_rules", "_meeting_notes", "_grandeur_rule", "_location_value_rule", "_staff_rule", "_quick_location_rule", "_needs_rules", "_mood_rules", "mood_item_text", "_mood_materials", "_dead_notes", "AI_OFFICES", "_society_notes"]
+__all__ = ["_people_rules", "_comfort_rules", "stress_causes", "THOUGHT_WORDS", "_doctor_patient_rule", "_hospital_burrow_rule", "_calm_burrow_rule", "MOOD_WORKSHOPS", "PETITION_KINDS", "petition_orders_wanted", "_petition_rules", "_citizenship_notes", "_residency_rule", "residency_stance", "_location_access_rule", "note_heists", "heist_lockout", "HEISTS_KEEP", "_jail_size_rule", "_convict_rule", "_break_fights_rule", "_sync_offices_rule", "patient_waits", "_health_rules", "TANTRUM_KEEP", "note_tantrums", "_noble_rooms_rule", "outsider_orders", "NEED_ADVICE", "JEWEL_RECIPES", "_recreation_rule", "_stress_care", "_needs_notes", "_location_supply_rules", "POST_LABORS", "STAFF_POSTS", "STAFF_MAX", "_traction_rule", "_wish_words", "_wish_met", "wish_key", "petition_lean", "_location_petition_rules", "_meeting_notes", "_grandeur_rule", "_location_value_rule", "_staff_rule", "_quick_location_rule", "_needs_rules", "_mood_rules", "mood_item_text", "_mood_materials", "_dead_notes", "AI_OFFICES", "_society_notes"]
 
 
 # A crafting mood's skill -> the workshop (or furnace) the dwarf must claim.
@@ -69,6 +69,7 @@ def _petition_rules(s: dict, cfg: dict, proposals: list, notes: list) -> None:
         vamp = [e.get("name") for e in pending if e.get("vampire")]
         notes.append("petitions waiting for an answer: " + ", ".join(f"{k} {n}" for k, n in sorted(kinds.items()))
                      + (f" (a vampire among them: {', '.join(str(v) for v in vamp)})" if vamp else ""))
+        _citizenship_notes(s, cfg, pending, notes)
     orders = _d(pt.get("orders"))
     if not player_rules(s).get("accept_visitors", True):
         return
@@ -88,6 +89,45 @@ def _petition_rules(s: dict, cfg: dict, proposals: list, notes: list) -> None:
         what = ", ".join(f"{'accept' if v else 'ask about'} {k.replace('_', ' ')}" for k, v in change.items())
         proposals.append(Proposal("petitions", {"type": "petition_orders", "orders": change},
                                   f"petitions to stay: {what} (DF's standing orders answer them)", 6))
+
+
+def _citizenship_notes(s: dict, cfg: dict, pending: list, notes: list) -> None:
+    """(0.105.24, 12b) Citizenship petitions are the player's: DFHack 53.16-r3
+    can't reach DF's standing order for them (the self-test's missing
+    standing_orders_petition_citizenship), the bridge answers only temple,
+    guildhall and residency petitions, and agreeing by the agreement's flag
+    left a residency applicant a guest in B (0.105.11), so agreeing to
+    citizenship that way isn't known to make a citizen. Said with counts:
+    a Needs you when the fort would take them (under its population target,
+    not closed, the Rules let visitors stay), else a note. Applicants who
+    left or died are counted apart (nothing to agree to)."""
+    cit = [e for e in pending if str(e.get("type") or "").lower() == "citizenship"]
+    if not cit:
+        return
+    gone = [e for e in cit if not _d(e.get("applicant")).get("on_map") or _d(e.get("applicant")).get("dead")]
+    here = [e for e in cit if e not in gone]
+    tail = f" ({len(gone)} more from visitors who left or died)" if gone else ""
+    if not here:
+        notes.append(f"{len(gone)} citizenship petition(s) from visitors who left or died wait on DF's petitions "
+                     "screen (the AI can't answer citizenship)")
+        return
+    vamp = [e for e in here if e.get("vampire")]
+    names = ", ".join(str(e.get("name")) for e in here[:3] if e.get("name"))
+    citizens = int(_d(s.get("dwarves")).get("total") or 0)
+    target = growth_target(s, cfg)
+    wanted = petition_orders_wanted(s, cfg).get("citizenship") == 1 and player_rules(s).get("accept_visitors", True)
+    if wanted and len(vamp) < len(here):
+        ask_player(notes, f"{len(here) - len(vamp)} citizenship petition(s) wait and the fort would take them "
+                          f"({citizens} citizens, the target {target}): agree on DF's petitions screen"
+                          + (f" ({names})" if names else "") + tail
+                          + "; the AI can't (DFHack can't reach the standing order, and agreeing outside the "
+                            "screen isn't known to make a citizen)"
+                          + (f"; {len(vamp)} of them a vampire: leave that one" if vamp else ""))
+    else:
+        why = ("a vampire" if wanted else "this fort isn't taking citizens now (closed, at its population target, "
+                                          "or the Rules keep visitors out)")
+        notes.append(f"{len(here)} citizenship petition(s) wait{tail}: {why}; decline them on DF's petitions "
+                     "screen if you like (the AI can't answer citizenship)")
 
 
 def residency_stance(traits: dict, cfg: dict) -> str:
@@ -215,21 +255,77 @@ def _residency_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) ->
 CLOSABLE_LOCATIONS = ("INN_TAVERN", "TEMPLE", "LIBRARY", "GUILDHALL")
 
 
+HEISTS_KEEP = 20            # (0.105.24) heists remembered (each [tick, who])
+
+
+def note_heists(state: dict, memory, events: list) -> int:
+    """(0.105.24) Artifact heists and visitors' killings, from the bridge's
+    events, one a thief a day. A heist is DF's "X was spotted sneaking
+    around! "You will not stand between me and <artifact>!"" (a snatcher or a
+    raider fleeing says other words). A citizen killed by a visitor counts
+    too, unless the citizen was berserk (C, E, F, 2 Nov: three failed moods
+    went berserk and the bards and poets fought back) or the killer died
+    first (an old wound, not a visitor about now). 2-5 Nov forensics: 34
+    citizens killed by outsiders; 24 by artifact thieves, most of whom had
+    come in as visitors (19 of 23 asked the mayor for a meeting first)."""
+    now = abs_tick(state)
+    day = now // TICKS_PER_DAY
+    have = {(int(t[0]) // TICKS_PER_DAY, str(t[1])) for t in memory.heists
+            if isinstance(t, list) and len(t) == 2 and isinstance(t[0], int)}
+    n = 0
+    for e in events or []:
+        if not isinstance(e, dict):
+            continue
+        who = None
+        if e.get("kind") == "report":
+            text = " ".join(str(e.get("text") or "").split())
+            if "sneaking around" in text and "stand between me and" in text:
+                who = text.split(" was spotted")[0].replace("The ", "", 1)[:40]
+        elif (e.get("kind") == "death" and e.get("own_civ") and not e.get("animal") and not e.get("again")
+                and e.get("killer_visitor") and not e.get("killer_dead")
+                and str(e.get("mood") or "").lower() != "berserk"):
+            who = str(e.get("killer") or "a visitor").split(",")[0][:40]
+        if not who or (day, who) in have:
+            continue
+        have.add((day, who))
+        memory.heists.append([now, who])
+        n += 1
+    memory.heists = [t for t in memory.heists if isinstance(t, list) and len(t) == 2][-HEISTS_KEEP:]
+    return n
+
+
+def heist_lockout(s: dict, memory, cfg: dict):
+    """(0.105.24) The last heist still inside the lockout ([tick, who]), or None."""
+    days = int(cfg.get("heist_lockout_days") or 0)
+    if days <= 0:
+        return None
+    now = abs_tick(s)
+    recent = [t for t in _l(getattr(memory, "heists", None)) if isinstance(t, list) and len(t) == 2
+              and isinstance(t[0], int) and 0 <= now - t[0] < days * TICKS_PER_DAY]
+    return max(recent, key=lambda t: t[0]) if recent else None
+
+
 def _location_access_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> None:
     """(0.105.12, 14.1 step 4) A closed fort (Outsiders -50 or lower: the
     Hermit hold, the War-hold) keeps its tavern, temples, library and
     guildhalls to its own: visitors not allowed (DF's location screen;
     residents still welcome; a hospital always open). A fort that opens up
     again gets back the ones the AI shut. Why: at y257 the Hermit hold had the
-    most visitors of the six (92), Outsiders -150 showing nothing."""
+    most visitors of the six (92), Outsiders -150 showing nothing.
+    (0.105.24) Any fort does the same for `heist_lockout_days` after an
+    artifact heist or a visitor's killing (note_heists): the 2-5 Nov thieves
+    were visitors first; D, shut at 23:06 2 Nov, had 8 heists before and none
+    after, and A's later thieves all came from the map's edge, where the
+    gate and the squad meet them. Then the ones the AI shut open again."""
     locs = [e for e in _l(_d(s.get("locations")).get("list"))
             if isinstance(e, dict) and isinstance(e.get("id"), int) and isinstance(e.get("flags"), list)]
     if not locs:
         return
     traits = _traits(s) if isinstance(s.get("settings"), dict) else {}
     closed = outsider_orders(traits)["closed"]
+    lock = None if closed else heist_lockout(s, memory, cfg)
     mine = [i for i in (memory.locations_closed or []) if isinstance(i, int)]
-    if closed:
+    if closed or lock:
         # (review) one the AI shut and you opened again is yours: forgotten, never shut again
         yours = {e["id"] for e in locs if e["id"] in mine and "VISITORS_ALLOWED" in e["flags"]}
         if yours:
@@ -239,14 +335,22 @@ def _location_access_rule(s: dict, memory, cfg: dict, proposals: list, notes: li
         shut = [e["id"] for e in locs if e.get("type") in CLOSABLE_LOCATIONS and "VISITORS_ALLOWED" in e["flags"]
                 and e["id"] not in left_open]
         if shut:
+            if closed:
+                why = f"this fort keeps to itself (Outsiders {traits.get('outsiders', 0)})"
+            else:
+                left = int(cfg.get("heist_lockout_days") or 0) - (abs_tick(s) - lock[0]) // TICKS_PER_DAY
+                why = (f"a thief or a violent visitor ({lock[1]}) struck: visitors kept out "
+                       f"for {max(1, left)} more day(s) (thieves came as guests)")
             proposals.append(Proposal("location_access", {"type": "location_access", "ids": shut, "visitors": False},
-                                      f"this fort keeps to itself (Outsiders {traits.get('outsiders', 0)}): "
-                                      f"{len(shut)} location(s) closed to visitors (residents still welcome)", 6))
+                                      f"{why}: {len(shut)} location(s) closed to visitors (residents still welcome)",
+                                      3 if lock else 6))
         return
     reopen = [e["id"] for e in locs if e["id"] in mine and "VISITORS_ALLOWED" not in e["flags"]]
     if reopen:
         proposals.append(Proposal("location_access", {"type": "location_access", "ids": reopen, "visitors": True},
-                                  f"the fort opens up again (Outsiders {traits.get('outsiders', 0)}): "
+                                  f"the fort opens up again (Outsiders {traits.get('outsiders', 0)}"
+                                  + (f"; no heist for {int(cfg.get('heist_lockout_days') or 0)} days"
+                                     if _l(getattr(memory, "heists", None)) else "") + "): "
                                   f"{len(reopen)} location(s) the AI closed let visitors in again", 6))
 
 
@@ -1394,10 +1498,15 @@ def _meeting_notes(s: dict, notes: list) -> None:
         ask_player(notes, f"DF's meeting screen is open and waits for your answers ({who}): the AI answers "
                           "meetings once it knows the screen's buttons (with one open, the mouse on Yes: python "
                           "brain\\probe_meeting.py --here Yes; then No, and Done on the requests screen); in an "
-                          "unattended run it leaves the screen after 10 minutes")
+                          "unattended run it leaves the screen (the meeting ends without an agreement) after 2 minutes "
+                          "when it can't answer, or 10 when the topic is left to you")
     elif int(m.get("popups") or 0) > 0:
         # (0.94.1) a queued meeting popup doesn't hold the game (region2 ran
         # on through days of them): a note, not a Needs you
+        # (0.105.24) 2-5 Nov, six forts: 295 such notes, the screen never
+        # opened, each popup gone on its own in 5-28 real minutes. DFHack has
+        # no safe way to show or drop one (taking it off DF's list could
+        # leave the noble's meeting half done), so it stays a note.
         notes.append(f"a meeting waits to be shown in DF ({who}); the game runs on meanwhile")
     elif acts:
         notes.append("meetings under way: " + "; ".join(

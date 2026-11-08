@@ -36,6 +36,7 @@ from bridge import LOG_DIR, Bridge, BridgeError  # noqa: E402
 from dfhack import PROJECT_ROOT, DFHackError, GameNotRunning  # noqa: E402
 from planner import (NEEDS_YOU, PLANNER_CONFIG, TICKS_PER_YEAR, Memory, abs_tick,  # noqa: E402
                      effective_config, note_cycle, note_tantrums, plan, record, select)
+from planner_society import note_heists  # noqa: E402  (0.105.24)
 import atlas  # noqa: E402
 import backup  # noqa: E402
 import health_check  # noqa: E402
@@ -80,6 +81,17 @@ SOAK_EVERY_S = 600
 LAST_CYCLE: dict = {}            # the last cycle's numbers, for the soak row
 MEETING_CLOSE_S = 600.0          # (0.104.0, unattended) a meeting screen holding the game this long is left
 MEETING_ANSWER_S = 20.0          # (0.105.0) a meeting screen holding the game this long is answered (every 30 s)
+MEETING_GIVEUP_S = 120.0         # (0.105.24) left this soon when the AI knows it can't answer it (no button shown
+                                 # yet, or a press changed nothing): nobody else will, so no 10-minute stall
+
+
+def meeting_leave_after(cant_answer: bool) -> float:
+    """(0.105.24) How long DF's meeting screen may hold an unattended game
+    before the overseer leaves it: 10 minutes for a player to answer, or 2
+    when the AI's own answer came back "no button known" or a press changed
+    nothing (either way nobody will answer it). Leaving ends the meeting
+    without an agreement, as the 10-minute leave always did."""
+    return MEETING_GIVEUP_S if cant_answer else MEETING_CLOSE_S
 STALL_AFTER_S = 60.0             # (unattended) running, but the date hasn't moved this long: a popup
 HEARTBEAT = LOG_DIR / "heartbeat"   # touched every loop: brain/keeper.py restarts a stuck overseer
 PLAN_EVERY_TICKS = 1200          # one in-game day
@@ -318,6 +330,9 @@ def death_words(ev: dict) -> str:
     # (0.104.139) the fight's level, the killer's state and the victim's
     extra = [w for w in (ev.get("conflict") not in (None, "None") and f"a {str(ev['conflict']).lower()} fight",
                          ev.get("killer_mood") and f"the killer {str(ev['killer_mood']).lower()}",
+                         # (0.105.24) which outsider: a visitor; or an old wound (the killer died first)
+                         ev.get("killer_visitor") and "the killer a visitor",
+                         ev.get("killer_dead") and "an old wound (the killer died before)",
                          ev.get("patient") and "a patient waiting for care",
                          ev.get("infected") and "infected",
                          # (0.104.148) the victim insane or in a mood (melancholy and raving dwarves stop drinking)
@@ -833,6 +848,7 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
         expire_adjustments(memory, state)
         notes = note_cycle(state, memory)
         note_tantrums(state, memory, events)     # (0.104.31) tantrums counted for the jail
+        note_heists(state, memory, events)       # (0.105.24) heists and visitors' killings: visitors kept out a while
         crisis.note_deaths(state, memory, events)   # (0.104.137) deaths counted for crisis mode
         note_events(state, memory, bank if backend else None, events)
         for line in learned_now:
@@ -1804,6 +1820,7 @@ def main() -> int:
     held_date, held_since, meeting_tried = None, 0.0, float("-inf")   # (0.104.0) paused or not: for meetings
     answer_tried = float("-inf")  # (0.105.0) the last try at answering the meeting screen
     answer_dead = None           # (0.105.0 review) held_since of a meeting where a press changed nothing: no more presses
+    answer_cant = None           # (0.105.24) held_since of a meeting the AI can't answer (no button, a dead press)
     stall_said = float("-inf")
     stall_wait = STALL_AFTER_S   # the wait before the next try at the same stall (doubles, up to 10 min)
     quieted = False              # (unattended) announcements told not to pause or pop up, this fort
@@ -1870,13 +1887,15 @@ def main() -> int:
                     r = bridge.act({"type": "answer_meeting"})
                     if r.get("pressed") and not r.get("ok"):
                         answer_dead = held_since
+                    if r.get("needs_button") or (r.get("pressed") and not r.get("ok")):
+                        answer_cant = held_since
                     if r.get("pressed") or r.get("needs_button") or r.get("left_to_player"):
                         say("DF's meeting screen: " + (f"answered {r.get('answer')} ({r.get('why') or r.get('topic')})"
                                                        if r.get("ok") else str(r.get("error"))))
                 except (BridgeError, DFHackError):
                     pass
             if (args.unattended and args.autopilot and st.get("in_fort") and not controls["halted"]
-                    and not STOP_FILE.exists() and nowt - held_since >= MEETING_CLOSE_S
+                    and not STOP_FILE.exists() and nowt - held_since >= meeting_leave_after(answer_cant == held_since)
                     and nowt - meeting_tried >= MEETING_CLOSE_S):
                 meeting_tried = nowt
                 try:
