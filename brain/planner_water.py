@@ -14,7 +14,7 @@ the planner shuts it when the bridge reports a leak or dwarves in deep water.
 from __future__ import annotations
 
 from digest import _d, _l
-from planner_core import Proposal, ask_player, player_rules, young_fort, _traits
+from planner_core import TICKS_PER_YEAR, Proposal, ask_player, player_rules, young_fort, _traits
 
 __all__ = ["_waterworks_rule", "WORK_WORDS", "STAGE_WORDS", "moat_wanted", "magma_shop_wanted",
            "irrigation_wanted", "pump_wanted", "river_found"]
@@ -152,7 +152,7 @@ def _waterworks_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -
         return
     if young_fort(s, cfg) or _d(s.get("others_on_map")).get("threats_that_can_reach_dwarves"):
         return
-    now = int(_d(s.get("date")).get("year") or 0) * 403200 + int(_d(s.get("date")).get("tick") or 0)
+    now = int(_d(s.get("date")).get("year") or 0) * TICKS_PER_YEAR + int(_d(s.get("date")).get("tick") or 0)
 
     def retry_ok(id_: str) -> bool:
         r = refused.get(id_)

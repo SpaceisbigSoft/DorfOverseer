@@ -8,11 +8,17 @@ Pure rules, no tokens. Each cycle the overseer calls, in this order:
 See docs/local-planner.md. Every proposal carries the rule that made it and a
 plain-English reason.
 
-(0.104.83) The planner is in parts: planner_core (config, memory, shared
-helpers), planner_military, planner_industry, planner_society and
-planner_building (the rules by area); this file keeps plan(), select(),
-record() and note_cycle() and re-exports every name, so `from planner
-import X` works as before.
+(0.104.83) The planner is in parts: planner_core (memory, shared helpers,
+the refusal, loop and no-effect holds), planner_military, planner_industry,
+planner_society and planner_building (the rules by area); this file keeps
+plan(), select(), record() and note_cycle() and re-exports every name, so
+`from planner import X` works as before. (0.105.25, 13c) Split further by
+theme, each re-exported by the part it came from: planner_config
+(PLANNER_CONFIG) from core; planner_wells and planner_growth from building;
+planner_moods, planner_visitors, planner_health and planner_locations from
+society; planner_farms, planner_labor, planner_trade and planner_orders from
+industry; planner_gates from military. Later parts: planner_care,
+planner_homes, planner_water, planner_threats, planner_world, planner_army.
 """
 
 from __future__ import annotations
@@ -83,6 +89,7 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
             notes.append(f"rule {fn.__name__} failed ({type(e).__name__}: {str(e)[:120]}); the others ran")
             return None
 
+    rules_ = player_rules(s)                        # the Rules tab, read once a plan
     buffer = factor(traits, "stockpile")
     winter = winter_factor(s, memory)               # stock up before winter (and through it)
 
@@ -138,7 +145,7 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
 
     # 1b. Hazards: fire, clouds, flooding, berserk citizens, cursed, prisoners
     if can_use("hazards"):
-        _guard(_hazard_rules, s, memory, cfg, proposals, notes, player_rules(s))
+        _guard(_hazard_rules, s, memory, cfg, proposals, notes, rules_)
     # (0.105.0) round 3: fire guarded, prisoners, thieves, the undead, werebeasts, cavern beasts, the wounded
     if can_use("threats"):
         _guard(_threat_rules, s, memory, cfg, proposals, notes)
@@ -396,7 +403,7 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
             "autogems": ((st.get("rough_gems") or 0) >= cfg["gems_cut_at"]
                          and _has_shop(s["buildings"], "Jewelers"),
                          f"cuts the {st.get('rough_gems') or 0} rough gems at the jeweller's (cut gems sell well)"),
-            "autoslab": (_d(s.get("dead")).get("ghosts", 0) > 0 and player_rules(s)["engrave_slabs"],
+            "autoslab": (_d(s.get("dead")).get("ghosts", 0) > 0 and rules_["engrave_slabs"],
                          f"engraves memorial slabs for the {_d(s.get('dead')).get('ghosts', 0)} ghost(s)"),
         }
         for name, (want, why) in wanted.items():
@@ -409,7 +416,6 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
                                       f"turn on {name}: {why}", 4))
 
     # 6a. Supplies: free containers, hospital and well supplies, water -----
-    rules_ = player_rules(s)
     if can_use("stocks", "orders", "supplies", "locations"):
         found: list[Proposal] = []
         _supply_rules(s, citizens, cfg, found, notes, stonebound=has_rule(memory.culture, "stone_containers"),
@@ -541,15 +547,15 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
         _guard(_watchdog_notes, s, memory, cfg, notes)
         _guard(_deep_notes, s, notes)
         _guard(_needs_notes, s, cfg, notes, proposals, memory)
-        _guard(_needs_rules, s, cfg, proposals, player_rules(s), young_fort(s, cfg))
+        _guard(_needs_rules, s, cfg, proposals, rules_, young_fort(s, cfg))
         _guard(_dairy_rule, s, cfg, citizens, proposals)
         _guard(_eggs_rule, s, cfg, proposals)
         _guard(_war_animal_rule, s, cfg, proposals)
         _guard(_stairwell_rule, s, memory, cfg, traits, proposals)
         _guard(_staff_rule, s, cfg, proposals)
         _guard(_traction_rule, s, cfg, proposals, notes)
-        _guard(_alerts_rule, s, memory, cfg, proposals, player_rules(s))
-        _guard(_location_petition_rules, s, cfg, proposals, notes, player_rules(s), memory)
+        _guard(_alerts_rule, s, memory, cfg, proposals, rules_)
+        _guard(_location_petition_rules, s, cfg, proposals, notes, rules_, memory)
         _guard(_location_value_rule, s, cfg, proposals, notes)
         _guard(_grandeur_rule, s, cfg, proposals, notes)
         _guard(_meeting_notes, s, notes)
@@ -577,7 +583,7 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
         _guard(_anvil_rule, s, cfg, proposals, notes)
         _guard(_excess_shops_rule, s, cfg, proposals)
         _guard(_water_rules, s, cfg, proposals, notes)
-        _guard(_cistern_rule, s, memory, cfg, proposals, notes, player_rules(s))
+        _guard(_cistern_rule, s, memory, cfg, proposals, notes, rules_)
         _guard(_waterworks_rule, s, memory, cfg, proposals, notes)    # (0.105.0)
         _guard(_feeder_rule, s, cfg, proposals)
         _guard(_stone_rule, s, memory, cfg, proposals, notes)
@@ -853,7 +859,7 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
             memory.kill_sent.pop(str(p.action.get("squad_id")), None)
         if p.action.get("type") == "unstick_uniforms" and ok is True:
             sig = spare_sig(_d(_d(state.get("military")).get("gear")))   # (0.104.138)
-            prev = memory.unstick_seen if isinstance(memory.unstick_seen, dict) else {}
+            prev = _d(memory.unstick_seen)
             memory.unstick_seen = {"sig": sig, "n": (int(prev.get("n") or 0) + 1) if prev.get("sig") == sig else 1}
         if p.action.get("type") in ("squad_swap", "squad_fill") and ok is True:
             # (0.104.138) who was drafted when: not sent home again for 84 days
@@ -869,7 +875,7 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
             # (0.105.3) a batch of webs removed (or none left to take): the
             # census' count follows, so the next batch comes in days while
             # more are left, not in a week, and none while all are kept
-            cen_ = memory.census if isinstance(memory.census, dict) else {}
+            cen_ = _d(memory.census)
             ic_ = cen_.setdefault("items", {}).setdefault("counts", {})
             if isinstance(ic_, dict):
                 ic_["webs_removable"] = left_
@@ -877,7 +883,7 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
                     ic_["webs"] = r["webs"]
                 cen_["webs_left"] = {"more": bool(r.get("more")), "tick": now}
         if p.action.get("type") == "dig_stairwell" and ok is True and isinstance(r.get("x"), int):
-            import masterplan          # (0.104.82) the district's levels grow from it
+            # (0.104.82) the district's levels grow from it
             masterplan.note_stairwell(memory, str(p.action.get("district")), r["x"], r["y"])
         if p.action.get("type") == "polish" and "every finished level is polished" in str(r.get("error") or ""):
             memory.polished_upto = _d(state.get("projects")).get("finished")   # again once a level is finished
@@ -907,7 +913,6 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
                 memory.shops_started[str(shop)] = memory.shops_started.get(str(shop), 0) + 1
                 if str(shop) not in memory.shops_seen:          # the count before the first unanswered start
                     memory.shops_seen[str(shop)] = shop_count(_d(state.get("buildings")), str(shop))
-        a = p.action
         # (0.105.7 review) a set_farm_crops in this batch wins: a threshold
         # recorded after it put the mode back to "drink"
         if a["type"] == "farm_thresholds" and ok is True and not crops_set_now:
@@ -955,7 +960,7 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
             # time (Enxah: gauntlets ordered 43 times, cancelled stuck 11)
             prev = _d(memory.stuck_cancelled.get(str(a["stuck"])))
             n = 1
-            if isinstance(prev.get("tick"), int) and now - prev["tick"] < PLANNER_CONFIG["stuck_again_days"] * TICKS_PER_DAY:
+            if isinstance(prev.get("tick"), int) and now - prev["tick"] < cfg["stuck_again_days"] * TICKS_PER_DAY:
                 n = int(prev.get("n") or 1) + 1
             memory.stuck_cancelled[str(a["stuck"])] = {"tick": now, "n": n}
         if a["type"] == "trade_deal" and isinstance(memory.culture, dict) and r.get("traded"):
@@ -964,7 +969,6 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
         if a["type"] == "quick_location" and a.get("kind"):
             memory.quick_locations[str(a["kind"])] = now
         if a["type"] == "start_project" and r.get("ok") is True and isinstance(r.get("project_id"), int):
-            from planner_building import is_character_level
             if is_character_level(a):
                 # (0.105.10 review) the report doesn't carry growth or set_piece: remembered here
                 memory.character_projects = (list(memory.character_projects or []) + [r["project_id"]])[-40:]
@@ -1107,7 +1111,7 @@ def note_cycle(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> list[
     tr = _d(s.get("diplomacy")).get("trees_removed")
     year = _d(s.get("date")).get("year")
     if isinstance(tr, int) and isinstance(year, int):
-        ty = memory.tree_year if isinstance(memory.tree_year, dict) else {}
+        ty = _d(memory.tree_year)
         if ty.get("year") != year or not isinstance(ty.get("base"), int) or tr < ty["base"]:
             memory.tree_year = {"year": year, "base": tr}
 

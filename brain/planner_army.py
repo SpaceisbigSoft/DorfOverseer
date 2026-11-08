@@ -198,9 +198,9 @@ def _shelter_squads_rule(s: dict, memory, cfg: dict, proposals: list, notes: lis
     # they had killed the titan, 44 of the 49 hungry or parched were soldiers
     now = abs_tick(s)
     since = getattr(memory, "shelter_since", None) if memory is not None else None
-    since = since if isinstance(since, dict) else {}
+    since = _d(since)
     rest = getattr(memory, "shelter_rest", None) if memory is not None else None
-    rest = rest if isinstance(rest, dict) else {}
+    rest = _d(rest)
     for q in inside:
         since.setdefault(str(q["id"]), now)
     for k in [k for k in since if k not in {str(q["id"]) for q in inside}]:

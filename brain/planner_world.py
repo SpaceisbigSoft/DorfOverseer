@@ -35,9 +35,8 @@ from planner_core import (PLANNER_CONFIG, Proposal, TICKS_PER_DAY, TICKS_PER_YEA
 
 __all__ = ["_meeting_answer_rule", "_world_notes", "_hostile_trade_filter", "_export_rule", "_messenger_rule",
            "_contact_rule", "grudge_facts", "note_grudges", "note_world", "export_wishes", "EXPORT_RECIPES",
-           "TRIBUTE_POLICIES", "TRADE_ACTIONS", "meeting_wishes", "WISH_CATEGORIES"]
+           "TRADE_ACTIONS", "meeting_wishes", "WISH_CATEGORIES"]
 
-TRIBUTE_POLICIES = ("small", "pay", "refuse")
 HOSTILE = ("TotalWar", "Skirmishing")
 # the bridge's trade actions: none while only a hostile civ's caravan is here
 TRADE_ACTIONS = ("bring_goods", "call_trader", "open_trade", "trade_deal")
@@ -70,7 +69,7 @@ def _seen(memory) -> dict:
     """The world's memory (memory.world_seen): grudges, export wishes, the
     last contact named. Read only (note_world writes it, before planning)."""
     ws = getattr(memory, "world_seen", None) if memory is not None else None
-    return ws if isinstance(ws, dict) else {}
+    return _d(ws)
 
 
 def note_world(s: dict, memory) -> None:
