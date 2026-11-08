@@ -156,6 +156,15 @@ ATTACK_POLICY_NAMES = {ordinary = 'ordinary enemies, not great beasts', all = 'e
 -- be done safely through DFHack: the others are said, the prisoners kept)
 PRISONER_CHOICES = {'keep', 'release', 'kill'}
 PRISONER_NAMES = {keep = 'keep them caged', release = 'release outside (asks you)', kill = 'put to death (asks you)'}
+-- (0.105.27) forbidden items and junk: what the AI does with them. Each level
+-- does everything the ones before it do: store (unforbid what is useful),
+-- melt (and mark surplus metal for melting), dump (and junk to a garbage
+-- dump), destroy (and DFHack removes what piles up in the dump)
+DISPOSAL_CHOICES = {'store', 'melt', 'dump', 'destroy'}
+DISPOSAL_NAMES = {store = 'store what is useful', melt = 'store, melt surplus metal',
+                  dump = 'store, melt, dump the junk', destroy = 'all, and empty a full dump'}
+-- (0.105.27) the cycles set_rules may set from outside the window (key -> choices)
+RULE_CHOICES = {disposal = DISPOSAL_CHOICES}
 GEAR_WEAPONS = {'axe', 'spear', 'mace'}
 GEAR_WEAPON_NAMES = {axe = 'battle axes', spear = 'spears', mace = 'maces'}
 OPTIONAL_LEVELS = {
@@ -265,6 +274,12 @@ function defaults()
         -- (0.105.24) the same locations shut to visitors a while when the mayor's
         -- meetings are mostly with visitors and citizens go unheard
         shut_to_visitors = true,
+        -- (0.105.27) forbidden items and junk (DISPOSAL_CHOICES); items forbidden
+        -- for no reason the game gives count as the player's and are left alone
+        -- unless disposal_player_items; keep_enemy_gear: invaders' gear never melted
+        disposal = 'destroy',
+        disposal_player_items = false,
+        keep_enemy_gear = false,
         -- (0.105.0) water works: a moat from the river (only where one is found), magma workshops, a muddied farm level
         moat = true, magma_workshops = true, irrigation = true,
         -- (0.105.4 review) a cavern well may break into a cavern layer the dwarves
@@ -357,11 +372,13 @@ function sanitize(s)
                         'heist_lockout', 'shut_to_visitors',   -- (0.105.24) locations shut to visitors a while
                         'moat', 'magma_workshops', 'irrigation',   -- (0.105.0) the water works' switches
                         'open_caverns',             -- (0.105.4 review) a cavern well into an undiscovered cavern
+                        'disposal_player_items', 'keep_enemy_gear',   -- (0.105.27) disposal
                         'squads_shelter'}) do       -- (0.105.0) the squads hide in the shelter too
         if s[k] ~= nil then out[k] = s[k] == true end
     end
     out.gear_weapon = one_of(s.gear_weapon, GEAR_WEAPONS, d.gear_weapon)
     out.prisoners = one_of(s.prisoners, PRISONER_CHOICES, d.prisoners)   -- (0.105.0)
+    out.disposal = one_of(s.disposal, DISPOSAL_CHOICES, d.disposal)       -- (0.105.27)
     for _, k in ipairs({'wipe_learned', 'wipe_learned_all'}) do
         local n = math.tointeger(tonumber(s[k]))
         out[k] = (n and n >= 0) and n or 0
@@ -440,6 +457,9 @@ function for_ai(s)
         send_messenger = s.send_messenger,         -- (0.105.24)
         heist_lockout = s.heist_lockout,           -- (0.105.24)
         shut_to_visitors = s.shut_to_visitors,     -- (0.105.24)
+        disposal = s.disposal,                     -- (0.105.27)
+        disposal_player_items = s.disposal_player_items,
+        keep_enemy_gear = s.keep_enemy_gear,
         moat = s.moat, magma_workshops = s.magma_workshops, irrigation = s.irrigation,   -- (0.105.0)
         open_caverns = s.open_caverns,             -- (0.105.4 review)
         squads_shelter = s.squads_shelter,         -- (0.105.0)
@@ -488,9 +508,11 @@ PRESET_RULE_KEYS = {'attack_policy', 'fill_squads', 'train_squads', 'gate_lever'
                     'build_gate_doors', 'accept_visitors', 'answer_locations', 'pasture_animals', 'make_gear',
                     'water_works', 'fort_goal',
                     'shut_to_visitors'}     -- (0.105.24)
+table.insert(PRESET_RULE_KEYS, 'keep_enemy_gear')   -- (0.105.27) invaders' gear kept (War-hold)
 BUILTIN_PRESET_RULES = {
     ['War-hold'] = {attack_policy = 'all', fill_squads = true, train_squads = true, gate_lever = true,
-                    fortify_entrances = true, levels = {garden = false}},
+                    fortify_entrances = true, levels = {garden = false},
+                    keep_enemy_gear = true},     -- (0.105.27) invaders' gear kept, not melted
     ['Monastery'] = {attack_policy = 'never', levels = {barracks = false, archery = false, jail = false}},
     -- (0.105.24) visitors are the Merchant city's point: never shut out for the mayor's sake
     ['Merchant city'] = {accept_visitors = true, answer_locations = true, shut_to_visitors = false},

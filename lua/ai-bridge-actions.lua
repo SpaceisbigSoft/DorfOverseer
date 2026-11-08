@@ -2603,8 +2603,15 @@ function act_set_rules(a)
     local defs = S.defaults()
     local cur = S.load_settings()
     local changed, unknown = {}, {}
+    -- (0.105.27) a cycle named in RULE_CHOICES (disposal) takes one of its choices
+    local function choice_ok(k, v)
+        local choices = type(k) == 'string' and type(S.RULE_CHOICES) == 'table' and S.RULE_CHOICES[k]
+        if type(choices) ~= 'table' or type(v) ~= 'string' then return false end
+        for _, c in ipairs(choices) do if c == v then return true end end
+        return false
+    end
     for k, v in pairs(a.rules) do
-        if type(k) ~= 'string' or type(defs[k]) ~= 'boolean' or type(v) ~= 'boolean' then
+        if not choice_ok(k, v) and (type(k) ~= 'string' or type(defs[k]) ~= 'boolean' or type(v) ~= 'boolean') then
             table.insert(unknown, tostring(k))
         elseif cur[k] ~= v then
             changed[k] = {old = cur[k], new = v}
@@ -2613,7 +2620,8 @@ function act_set_rules(a)
     end
     if #unknown > 0 then
         table.sort(unknown)
-        return reject('set_rules: not an on/off switch of the Rules tab: ' .. table.concat(unknown, ', '))
+        return reject('set_rules: not an on/off switch (or a choice of disposal) of the Rules tab: '
+                      .. table.concat(unknown, ', '))
     end
     if next(changed) and a.dry_run ~= true then S.save_settings(cur) end
     return {ok = true, changed = changed, dry_run = a.dry_run == true or nil}

@@ -82,7 +82,9 @@ On/off switches can also be set from outside the game. Put
 `logs\rules-request.json`, for example `{"rules": {"open_caverns": true}}`, in
 the fort's DF-AI folder. The overseer applies it once, through the bridge's
 `set_rules`, and renames it `rules-request.done.json` with the answer. Only
-switches whose default is on or off can be set this way.
+switches whose default is on or off can be set this way, and (0.105.27)
+**Dispose of them**, as `{"rules": {"disposal": "dump"}}`
+(`store`, `melt`, `dump` or `destroy`).
 
 ### The fort
 
@@ -224,6 +226,34 @@ The AI makes and sends squads itself (see [military.md](military.md)).
 - **Seal a cavern a beast is in** (on): the way down is locked while a beast
   the squads can't take is in a cavern.
 
+### Forbidden items and junk (beside Military, 0.105.27)
+
+The game forbids items itself (the lock symbol): used ammo, the dead's
+belongings, and everything it dumps. These say what the AI does with them.
+Nothing near danger, during a siege, in a sealed cavern, on the cistern's
+tiles, an artifact or a living citizen's own is ever touched.
+
+- **Dispose of them** (`disposal`): each choice does everything the ones
+  above it do.
+  - *store what is useful* (`store`): unforbids useful items (the dead's
+    after burial, used ammo, enemy metal gear, cloth, leather, gems, coins)
+    so the haulers store them.
+  - *store, melt surplus metal* (`melt`): also marks surplus and worn metal
+    weapons and armour for melting at a smelter (never masterworks).
+  - *store, melt, dump the junk* (`dump`): also marks junk (worn clothes,
+    rags, rotten and non-metal enemy items) for a garbage dump, and makes a
+    dump zone when there is none: outside, or in a small room dug near the
+    entrance for a closed fort (Hermit hold, or Outsiders or Surface at -50
+    or lower).
+  - *all, and empty a full dump* (`destroy`, the default): also has DFHack
+    remove what piles up in the dump past a limit.
+- **Also items you forbade** (`disposal_player_items`, off): an item
+  forbidden for no reason the game gives is taken to be yours and left
+  alone; on, the AI treats it like the rest.
+- **Keep invaders' gear (no melting)** (`keep_enemy_gear`, off): enemy
+  weapons and armour are stored, never melted. The War-hold preset turns it
+  on.
+
 ## Token use
 
 With `--ai`, the panel's AI & tokens tab shows tokens saved, used today and
@@ -311,7 +341,7 @@ Six ready-made fort characters, in opposite pairs, each with the Rules choices t
 
 | Preset | Character | Rules it brings |
 | --- | --- | --- |
-| War-hold | Militarism and Fortification at Extreme, Caution, Engineering, Justice harsh, closed to outsiders, plain and cramped | squads attack all, raise, fill and train; close gates, wall entrances; no garden |
+| War-hold | Militarism and Fortification at Extreme, Caution, Engineering, Justice harsh, closed to outsiders, plain and cramped | squads attack all, raise, fill and train; close gates, wall entrances; no garden; invaders' gear kept |
 | Monastery | Piety at Extreme, Welfare, Grandeur, open to guests; few soldiers, lenient, generous | squads never attack; no barracks, archery or jail |
 | Merchant city | Trade at Extreme, Greed, Outsiders (welcoming), Craft, Growth, Surface | visitors in; petition halls built |
 | Hermit hold | Outsiders at Extreme closed, no trade, small, careful, underground, nobles ignored | no visitors; petition halls left to you; entrances walled |
