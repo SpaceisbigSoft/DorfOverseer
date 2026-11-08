@@ -185,7 +185,7 @@ def _():
     for absent in ("supplies", "map", "jobs", "recent_announcements", "registry"):
         assert absent not in keys, absent
     daily = M.build_state(True)
-    assert daily.tier == "daily" and daily.units[1].id == 1 and daily.bridge_version == "0.105.22"
+    assert daily.tier == "daily" and daily.units[1].id == 1 and daily.bridge_version == "0.105.23"
     assert set(pulse.keys()) - {"tier"} <= set(daily.keys())
     assert daily.registry.error is not None                         # no builder here, but the section is there
     assert M.build_state(False, "survey").tier == "survey"
@@ -1306,6 +1306,20 @@ def _():
     assert M.act_cut_entrance(t({})).rejected
     assert len(H.calls) == 6                                          # a refused call never reaches the game
 
+
+
+@test("0.105.23: deep_depot is in the action table and passes dry_run to the builder")
+def _():
+    M = H.module()
+    calls = LUA.execute("""
+    local H = ...
+    local c = {}
+    H.scripts = {['ai-builder'] = {place_deep_depot = function(dry) table.insert(c, dry)
+        return {ok = true, stage = 'digging', dry_run = dry or nil} end}}
+    return c""", H)
+    assert LUA.eval("function(M) return M.ACTIONS.deep_depot == M.act_deep_depot end")(M)
+    assert M.act_deep_depot(t({"dry_run": True})).dry_run and calls[1] is True
+    assert M.act_deep_depot(t({})).ok and calls[2] is False
 
 if __name__ == "__main__":
     for name, ok, msg in RESULTS:

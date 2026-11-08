@@ -3701,6 +3701,191 @@ def _():
     r = B.farm_plots(params(tiles=20, underground=True), LUA.table_from({"year": 148, "tick": 100}), True)
     assert r.ok and r.tiles >= 20, (r.ok, r.tiles, r.error)
 
+
+# --- (0.105.23, 14.1 step 4c) the Deep mine's trade depot underground ---------------
+
+def _deep_ground():
+    """Open ground under the sky at z80 round the fort (its own floors at
+    x40-80 y55-65 stay inside); the way in is the stair's top (60,60,80)."""
+    LUA.eval("""function(W)
+      for x = 20, 100 do for y = 20, 100 do
+        local t = W.get(x, y, 80)
+        if t.shape == 'WALL' then W.set(x, y, 80, {shape='FLOOR', material='SOIL', outside=true}) end
+        W.set(x, y, 81, {shape='EMPTY', outside=true})
+      end end
+    end""")(W)
+
+
+def _deep_reset():
+    LUA.execute("df = df or {}; df.global = {cur_year = 150, cur_year_tick = 0, "
+                "world = {buildings = {other = {TRADE_DEPOT = {}}}}}")
+    # the way in: the stair's top (an earlier test leaves its own anchors and offset)
+    LUA.eval("""function(B)
+      B.pasture_anchors = function() return {{x = 60, y = 60, z = 80}} end
+      B.elevation_offset = function() return 0 end
+    end""")(B)
+
+
+def _deep_plan_tiles():
+    d = B.deep_depot_data()
+    return [(t.x, t.y, t.z, t.r) for t in d.tiles.values()]
+
+
+def _deep_sealed(tiles):
+    """Every tile round the plan (not in it) is solid wall below the surface."""
+    mine = {(x, y, z) for x, y, z, _r in tiles}
+    for x, y, z, _r in tiles:
+        if z >= 80:
+            continue
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                for dz in (-1, 0, 1):
+                    n = (x + dx, y + dy, z + dz)
+                    if n in mine or n[2] >= 80:
+                        continue
+                    if dz != 0 and (dx or dy):
+                        continue          # (diagonals above and below don't touch)
+                    t = W.get(*n)
+                    assert t.shape == "WALL", ("opens onto", n, t.shape)
+
+
+@test("deep depot (0.105.23): the layout: a 3-wide road, a channel and a ramp a level, a 9x9 hall; small enough for the gates' ledge")
+def _():
+    for k in (1, 2, 3):
+        plan = B.deep_depot_layout(60, 53, 80, LUA.table_from([0, -1]), k)
+        tiles = [(t.x, t.y, t.z, t.r) for t in plan.tiles.values()]
+        assert len(set((x, y, z) for x, y, z, _ in tiles)) == len(tiles)
+        assert {z for _, _, z, _ in tiles} == set(range(80 - k, 81)), sorted({z for _, _, z, _ in tiles})
+        for z in range(80 - k + 1, 81):
+            hs = [(x, y) for x, y, zz, r in tiles if zz == z and r == "h"]
+            ramps = [(x, y) for x, y, zz, r in tiles if zz == z - 1 and r == "ramp"]
+            assert len(hs) == 3 and sorted(hs) == sorted(ramps), (z, hs, ramps)     # a ramp under each channel
+        assert plan.road <= B.DEEP_ROAD_MAX and len(tiles) - plan.road == 81, (plan.road, len(tiles))
+        assert len(tiles) < 120, len(tiles)
+        assert (plan.depot.x, plan.depot.z) == (60, 80 - k)
+        h = plan.hall
+        assert (h.x2 - h.x1, h.y2 - h.y1) == (8, 8) and h.x1 <= 58 and h.x2 >= 62, dict(h)
+    two = B.deep_depot_layout(60, 53, 80, LUA.table_from([0, -1]), 2)
+    t2 = {(x, y, z): r for x, y, z, r in [(t.x, t.y, t.z, t.r) for t in two.tiles.values()]}
+    assert t2[(60, 52, 80)] == "h" and t2[(60, 52, 79)] == "ramp" and t2[(60, 51, 79)] == "d"
+    assert t2[(60, 50, 79)] == "h" and t2[(60, 50, 78)] == "ramp" and t2[(60, 49, 78)] == "d"
+
+
+@test("deep depot (0.105.23): a road down from open ground by the way in, sealed from the fort; dug, then the depot; the game's wagon access read")
+def _():
+    _deep_reset()
+    _deep_ground()
+    d = B.place_deep_depot(True)
+    assert d.ok and d.dry_run and d.stage == "digging" and d.levels == 1, dict(d)
+    assert not any(t.designated for t in W.tiles.values())
+    r = B.place_deep_depot(False)
+    assert r.ok and r.stage == "digging" and r.elevation == 79 and r.levels == 1, dict(r)
+    tiles = _deep_plan_tiles()
+    _deep_sealed(tiles)
+    for x, y, z, rr in tiles:
+        t = W.get(x, y, z)
+        if rr == "ramp":
+            assert not t.designated
+        else:
+            assert t.designated and t.dig_text == rr, (x, y, z, rr, t.dig_text)
+        assert not (40 <= x <= 80 and 55 <= y <= 65), "into the fort's own floors"
+    st = B.deep_depot_status()
+    assert st.stage == "digging" and st.tiles_left == len(tiles) and st.stalled == 0, dict(st)
+    w = B.place_deep_depot(False)
+    assert not w.ok and w.waiting and w.tiles_left == len(tiles), dict(w)
+    # a lost designation is put back
+    lost = [(x, y, z) for x, y, z, rr in tiles if rr == "d"][:2]
+    for x, y, z in lost:
+        W.set(x, y, z, LUA.table_from({"designated": False}))
+    assert B.deep_depot_status().stalled == 2
+    g = B.place_deep_depot(False)
+    assert g.ok and g.redig == 2 and all(W.get(*c).designated for c in lost), dict(g)
+    # dug as the game digs it
+    shape = {"h": "RAMP_TOP", "ramp": "RAMP", "d": "FLOOR"}
+    for x, y, z, rr in tiles:
+        W.set(x, y, z, LUA.table_from({"shape": shape[rr], "designated": False}))
+    assert B.deep_depot_status().tiles_left == 0
+    W.placed = LUA.table_from([])
+    p = B.place_deep_depot(False)
+    assert p.ok and p.stage == "placed", dict(p)
+    built = [c for c in W.placed.values() if c.mode == "build"]
+    assert len(built) == 1 and built[0].text == "D" and (built[0].x, built[0].y, built[0].z) == (st.x, st.y, 79), \
+        [(c.x, c.y, c.z, c.text) for c in built]
+    assert B.deep_depot_status().depot == "none"           # (not in the game's list yet)
+    LUA.eval("""function(x, y, z, stage, acc)
+      df.global.world.buildings.other.TRADE_DEPOT = {{x1 = x - 2, x2 = x + 2, y1 = y - 2, y2 = y + 2, z = z,
+        accessible = acc, getBuildStage = function(self) return stage end, getMaxBuildStage = function(self) return 3 end}}
+    end""")(st.x, st.y, 79, 1, None)
+    s2 = B.deep_depot_status()
+    assert s2.depot == "building" and s2.wagon_access is None, dict(s2)
+    LUA.eval("function() df.global.world.buildings.other.TRADE_DEPOT[1].getBuildStage = function() return 3 end end")()
+    LUA.eval("function() df.global.world.buildings.other.TRADE_DEPOT[1].accessible = 1 end")()
+    s3 = B.deep_depot_status()
+    assert s3.depot == "built" and s3.wagon_access is True, dict(s3)
+    LUA.eval("function() df.global.world.buildings.other.TRADE_DEPOT[1].accessible = 0 end")()
+    assert B.deep_depot_status().wagon_access is False
+    again = B.place_deep_depot(False)
+    assert not again.ok and again.done and again.wagon_access is False, dict(again)
+    # its walls are kept by the quarry and the vein drifts
+    areas = [dict(a) for a in B.level_areas().values()]
+    assert any(a["z"] == 79 and a["x1"] <= st.x <= a["x2"] and a["y1"] <= st.y <= a["y2"] for a in areas), areas
+    _deep_reset()
+
+
+@test("deep depot (0.105.23): an open cavern under one side: the road goes the other way; never through an aquifer")
+def _():
+    _deep_reset()
+    _deep_ground()
+    LUA.eval("""function(W)
+      for x = 20, 100 do for y = 20, 54 do for z = 76, 79 do
+        W.set(x, y, z, {shape='EMPTY', feature=true, hidden=true})
+      end end end
+    end""")(W)
+    r = B.place_deep_depot(False)
+    assert r.ok, dict(r)
+    tiles = _deep_plan_tiles()
+    assert all(y >= 66 for _x, y, _z, _r in tiles), sorted({y for _x, y, _z, _r in tiles})
+    _deep_sealed(tiles)
+    # an aquifer everywhere under the ground: no road; the surface depot instead
+    W.reset()
+    _deep_reset()
+    _deep_ground()
+    LUA.eval("""function(W)
+      for x = 15, 105 do for y = 15, 105 do for z = 75, 79 do
+        local t = W.get(x, y, z); if t.shape == 'WALL' then t.aquifer = true end
+      end end end
+    end""")(W)
+    n = B.place_deep_depot(False)
+    assert not n.ok and n.rejected and n.no_road and "aquifer" in n.error, dict(n)
+    assert not any(t.designated for t in W.tiles.values())
+    st = B.deep_depot_status()
+    assert st.stage == "no_road" and "aquifer" in st.why, dict(st)
+    again = B.place_deep_depot(False)
+    assert not again.ok and again.no_road and "surface" in again.error, dict(again)
+    # a year on, it looks again
+    LUA.execute("df.global.cur_year = 151")
+    assert B.deep_depot_status() is None
+    _deep_reset()
+
+
+@test("deep depot (0.105.23): no road onto ground the dwarves can't reach, nor while a depot stands; one of the AI's levels is kept clear")
+def _():
+    _deep_reset()
+    assert not B.place_deep_depot(True).ok                 # no open ground: nothing to start from
+    _deep_ground()
+    LUA.execute("df.global.world.buildings.other.TRADE_DEPOT = {{x1 = 1, x2 = 5, y1 = 1, y2 = 5, z = 80}}")
+    r = B.place_deep_depot(True)
+    assert not r.ok and "already stands" in r.error, dict(r)
+    _deep_reset()
+    # a level the AI has planned (not dug yet) north of the fort: the road keeps off it
+    LUA.eval("""function(W)
+      W.persist['ai-overseer/projects'] = {next_id = 2, list = {{id = 1, phase = 'dig', kind = 'bedrooms',
+        area = {x1 = 20, y1 = 20, x2 = 100, y2 = 54, z = 79}}}}
+    end""")(W)
+    r = B.place_deep_depot(True)
+    assert r.ok and (r.levels > 1 or r.y >= 66), dict(r)
+    _deep_reset()
+
 if __name__ == "__main__":
     for name, ok, msg in RESULTS:
         print(f"[{'PASS' if ok else 'FAIL'}] {name}" + (f"\n        {msg}" if msg else ""))

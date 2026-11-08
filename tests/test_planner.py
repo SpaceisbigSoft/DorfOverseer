@@ -886,7 +886,8 @@ def _():
     farms = out[0].action
     assert "outside" not in farms and farms["max_elev"] == 67 and farms["dig"], farms
     assert out[1].action["max_elev"] == 67, out[1].action                # one under the surface (68)
-    assert "at the way in" in out[2].reason, out[2].reason
+    # (0.105.23) the depot goes underground, down a wagon road the bridge digs
+    assert out[2].action == {"type": "deep_depot"} and "wagon road" in out[2].reason, (out[2].action, out[2].reason)
     assert any("nothing above ground" in x for x in notes), notes
     # a fresh embark before its first stair may still farm under the sky
     s2 = fort()
@@ -907,6 +908,74 @@ def _():
     assert not any(x.rule == "keep" for x in got)
     assert all(x.action.get("max_elev") == 67 for x in got if x.action.get("type") == "start_project"), \
         [x.action for x in got if x.action.get("type") == "start_project"]
+
+
+@test("Deep mine (0.105.23): the trade depot goes underground down a wagon road; notes while dug; the surface depot when no road; Needs you when wagons can't reach it")
+def _():
+    from planner import _deep_surface_filter, _deep_depot_watch, _surface_basics, Proposal, NEEDS_YOU
+    m = Memory()
+    deep = {"surface": -100}
+    def depot():
+        return [Proposal("depot", {"type": "place_surface", "kind": "depot"}, "no trade depot", 6)]
+    s = fort()
+    # no road begun: the underground depot
+    out = _deep_surface_filter(s, deep, m, depot(), [])
+    assert out[0].action == {"type": "deep_depot"} and out[0].rule == "depot" and out[0].priority == 6, out
+    # every other preset keeps the surface depot
+    for t in ({"surface": 0}, {"surface": -79}, {"surface": 80}):
+        out = _deep_surface_filter(s, t, m, depot(), [])
+        assert out[0].action == {"type": "place_surface", "kind": "depot"}, (t, out)
+    # being dug: a note, nothing asked
+    s["buildings"]["deep_depot"] = {"stage": "digging", "tiles_left": 40, "stalled": 0}
+    notes = []
+    assert _deep_surface_filter(s, deep, m, depot(), notes) == []
+    assert any("40 tile(s)" in n for n in notes), notes
+    # designations lost: asked again (the bridge marks them again)
+    s["buildings"]["deep_depot"] = {"stage": "digging", "tiles_left": 40, "stalled": 3}
+    out = _deep_surface_filter(s, deep, m, depot(), [])
+    assert out[0].action == {"type": "deep_depot"} and "mark them again" in out[0].reason, out
+    # dug: place the depot
+    s["buildings"]["deep_depot"] = {"stage": "digging", "tiles_left": 0, "stalled": 0}
+    out = _deep_surface_filter(s, deep, m, depot(), [])
+    assert out[0].action == {"type": "deep_depot"} and "place the depot" in out[0].reason, out
+    # no road down: the depot at the way in, with a note
+    s["buildings"]["deep_depot"] = {"stage": "no_road", "why": "an aquifer under the road's start"}
+    notes = []
+    out = _deep_surface_filter(s, deep, m, depot(), notes)
+    assert out[0].action == {"type": "place_surface", "kind": "depot"} and "at the way in" in out[0].reason, out
+    assert any("no wagon road down (an aquifer" in n for n in notes), notes
+    # the depot rule itself: none while a depot stands (the underground one included)
+    s2 = fort()
+    s2["buildings"]["other"] = {"TradeDepot": 1}
+    p = []
+    _surface_basics(s2, dict(PLANNER_CONFIG), 30, p)
+    assert not any(x.rule == "depot" for x in p), p
+    # built: what the game says of the wagons
+    s3 = fort()
+    s3["buildings"]["deep_depot"] = {"stage": "placed", "depot": "built", "wagon_access": False,
+                                     "x": 60, "y": 45, "elevation": 79}
+    notes = []
+    _deep_depot_watch(s3, notes)
+    assert len(notes) == 1 and notes[0].startswith(NEEDS_YOU) and "can't reach" in notes[0], notes
+    for ok in (True, None):
+        s3["buildings"]["deep_depot"]["wagon_access"] = ok
+        notes = []
+        _deep_depot_watch(s3, notes)
+        assert notes == [], notes
+    s3["buildings"]["deep_depot"] = {"stage": "placed", "depot": "building", "wagon_access": False}
+    notes = []
+    _deep_depot_watch(s3, notes)
+    assert notes == []
+    # through plan(): a Deep mine with no depot asks for the underground one
+    s4 = fort()
+    s4["settings"]["traits"] = {"surface": -100}
+    s4["buildings"]["other"].pop("TradeDepot", None)
+    got, _n = plan(s4, m)
+    dep = [x for x in got if x.rule == "depot"]
+    assert [x.action for x in dep] == [{"type": "deep_depot"}], [x.action for x in dep]
+    s4["settings"]["traits"] = {"surface": 0}
+    got, _n = plan(s4, m)
+    assert [x.action for x in got if x.rule == "depot"] == [{"type": "place_surface", "kind": "depot"}]
 
 
 @test("Deep mine (0.105.23): a bridge over the water only to reach the map's edge, never the wider one")

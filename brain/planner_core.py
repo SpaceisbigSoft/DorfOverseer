@@ -1855,6 +1855,7 @@ def note_refusal(memory: Memory, p: Proposal, r: dict, now: int, bridge: str | N
 # loop (the soak run: 125 soap-maker levels, 184 meal orders): held a while.
 # Rules that repeat by design aren't counted.
 LOOP_LIMITS = {"start_project": 12, "place_surface": 12, "place_well": 12, "make_pasture": 20,
+               "deep_depot": 12,                                # (0.105.23) the underground depot's road
                "dismiss_alerts": 400, "answer_petition": 400}   # (0.105.9) residency batches by the hundred
 LOOP_LIMIT_DEFAULT = 80
 LOOP_EXEMPT = {"entrances", "needs_trinkets", "trinket_orders", "excess_shops", "cistern", "call_trader", "open_trade",
