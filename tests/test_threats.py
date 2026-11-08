@@ -151,7 +151,8 @@ def _():
                  "cursed": []}
     s["military"]["squads"] = []
     p = acts(plan(s, Memory())[0], "seal_cavern")
-    assert p and p[0].action["layer"] == "Cavern1" and {"x": 5, "y": 6, "z": 8} not in p[0].action["tiles"], p
+    # (0.105.26) one seal for every cavern opening on record ("all caverns")
+    assert p and p[0].action["layer"] == "all caverns" and {"x": 5, "y": 6, "z": 8} not in p[0].action["tiles"], p
     # (0.105.0 review) only the column's stair/ramp/hatch tiles, and the cavern's levels sent
     s["deep"]["caverns"][0].update(column=[{"z": 8, "shape": "STAIR_UPDOWN"}, {"z": 9, "shape": "FLOOR"},
                                            {"z": 10, "shape": "FLOOR", "building": "Hatch"}], z_top=7, z_bottom=3)

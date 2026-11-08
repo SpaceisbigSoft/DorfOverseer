@@ -562,6 +562,8 @@ def short(a: dict) -> str:
     if t == "moon_cell":
         return "let the werebeasts out of their cells" if a.get("release") else "lock the werebeasts in for the full moon"
     if t == "seal_cavern":
+        if a.get("openings") or a.get("layer") == "all caverns":       # (0.105.26) every cavern opening
+            return "open the ways into the caverns again" if a.get("open") else "lock every way into the caverns"
         return f"unlock the way down to {a.get('layer')}" if a.get("open") else f"lock the way down to {a.get('layer')}"
     if t == "rest_infected":     # (0.104.168)
         return f"put up to {a.get('max', 3)} dwarves with infected wounds to bed in the hospital, for the doctors"

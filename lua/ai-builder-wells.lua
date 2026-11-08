@@ -1122,7 +1122,26 @@ SHAFT_NEAR = 60
 SHAFT_CLOSE = 20
 SHAFT_WATCH = SHAFT_WATCH or {on = false}
 
+-- (0.105.26) a citizen down in a cavern (on a cavern tile): a far great
+-- beast doesn't shut the shaft on them (the brain tells the player)
+local function citizen_in_caverns()
+    local ok, yes = pcall(function()
+        for _, c in ipairs(dfhack.units.getCitizens(true)) do
+            local des = dfhack.maps.getTileFlags(c.pos.x, c.pos.y, c.pos.z)
+            if des and (des.feature_global or des.feature_local) then return true end
+        end
+        return false
+    end)
+    return ok and yes or false
+end
+
+-- (0.105.26) F lost 54 and C 12 to forgotten beasts come up through
+-- caverns the AI opened: a forgotten beast or other great danger anywhere
+-- below the shaft (in the caverns), however far, shuts it too, and keeps
+-- it shut (the brain opens it again once none is about: the well draws no
+-- water through a shut hatch). Not while a citizen is down in a cavern.
 local function shaft_threat_near(wells)
+    local below_ok                 -- nil: not asked yet
     for _, u in ipairs(df.global.world.units.active) do
         local ok, hit = pcall(function()
             if not dfhack.units.isActive(u) or dfhack.units.isDead(u) or dfhack.units.isCitizen(u, true) then return false end
@@ -1131,10 +1150,16 @@ local function shaft_threat_near(wells)
             local wild = not danger and hostile_wild(u)
             if not (danger or wild) then return false end
             local fly = unit_flies(u)
+            local okg, great = pcall(dfhack.units.isGreatDanger, u)
+            great = okg and great or false
             for _, w in ipairs(wells) do
                 local d = math.max(math.abs(u.pos.x - w.x), math.abs(u.pos.y - w.y))
                 if u.pos.z < w.hz then
                     if d <= SHAFT_CLOSE or (d <= SHAFT_NEAR and (danger or fly)) then return w end
+                    if great then
+                        if below_ok == nil then below_ok = not citizen_in_caverns() end
+                        if below_ok then return w end
+                    end
                 elseif u.pos.z < w.z and d <= 2 then
                     return w                        -- in the shaft or on its stairs
                 end
@@ -1197,6 +1222,9 @@ function well_lids(probe, data)
                 or (p.phase == 'dig' and (p.held or p.released))) then   -- (0.105.4 review) the gate before the breach
             local top = st[1]
             local r = {project_id = p.id, x = top.x, y = top.y, z = top.z, elevation = ez(top.z)}
+            -- (0.105.26) the shaft's opening into the cavern (where its gate's hatch goes)
+            local an0 = anchor_of(p)
+            r.shaft_hatch = {x = an0.x, y = an0.y, z = shaft_bottom(p)}
             -- (0.105.4 review) the shaft's last level held undug till the gate's parts are in store
             if p.held then r.held = true; r.hatch_covers = shaft_hatch_covers() end
             if p.released and p.phase == 'dig' then r.breaking = true end
@@ -1252,6 +1280,8 @@ function well_lids(probe, data)
                         if okr and dfhack.df2utf then local okc, c = pcall(dfhack.df2utf, nm); if okc and c then nm = c end end
                         r.watch_near = {id = u.id, name = okr and nm or nil,
                                         pos = {x = u.pos.x, y = u.pos.y, z = u.pos.z}}
+                        local okgd, gd = pcall(dfhack.units.isGreatDanger, u)          -- (0.105.26)
+                        if okgd and gd then r.watch_near.great = true end
                     end
                 end
             else

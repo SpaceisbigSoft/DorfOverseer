@@ -3385,6 +3385,199 @@ function gates_restore()
     return GATES_SAVE.restored_from_save
 end
 
+---------------------------------------------------------------------------
+-- (0.105.26) Citizens stranded outside. E (3-5 Nov): 8 citizens were shut
+-- out after a surface fire and died there; nothing saw it. A citizen is
+-- stranded when they stand outside the map of the inside (or on a cut
+-- entrance's porch) and can't walk back in: their walk group isn't the
+-- fort's interior (the founding stair under its lid, else a meeting hall,
+-- else where most citizens inside stand), or every way in from where they
+-- stand is shut. Why, when it can be told: a gate the watcher holds shut
+-- ("lockdown"), another gate shut ("gate_shut": a raised bridge, a locked
+-- door, a lever's hatch), or no way at all ("no_path": a collapse, a fire's
+-- ruin, a channel). How long each has been out is counted from the first
+-- report that saw them out (a reload starts the count again).
+---------------------------------------------------------------------------
+
+STRANDED_SINCE = STRANDED_SINCE or {}      -- unit id -> abs tick first seen outside
+STRANDED_MAX = 20                          -- rows reported at most
+STRANDED_OUTS = 40                         -- each entrance's outside tiles read for their walk groups
+
+local function wgroup(x, y, z)
+    local ok, g = pcall(dfhack.maps.getWalkableGroup, xyz2pos(x, y, z))
+    return ok and type(g) == 'number' and g or 0
+end
+
+-- The fort's interior: {what, x, y, z, group}, or nil.
+function fort_interior()
+    for _, e in ipairs(GATES.entrances or {}) do
+        if e.lid then
+            local okh, h = pcall(lid_hatch, e)
+            if okh and h then
+                local g = wgroup(h.x, h.y, h.z - 1)
+                if g ~= 0 then return {what = 'founding stair', x = h.x, y = h.y, z = h.z - 1, group = g} end
+            end
+        end
+    end
+    local okz, zones = pcall(function() return df.global.world.buildings.other.ZONE_MEETING_HALL end)
+    for _, zn in ipairs(okz and zones or {}) do
+        local okp, x, y, z = pcall(function() return zn.centerx, zn.centery, zn.z end)
+        if okp and x then
+            local g = wgroup(x, y, z)
+            if g ~= 0 then return {what = 'meeting hall', x = x, y = y, z = z, group = g} end
+        end
+    end
+    if GATES.inside then
+        local count, best, bg = {}, 0, nil
+        for _, u in ipairs(dfhack.units.getCitizens(true)) do
+            if GATES.inside[key(u.pos.x, u.pos.y, u.pos.z)] then
+                local g = wgroup(u.pos.x, u.pos.y, u.pos.z)
+                if g ~= 0 then
+                    count[g] = (count[g] or 0) + 1
+                    if count[g] > best then best, bg = count[g], g end
+                end
+            end
+        end
+        if bg then return {what = 'citizens inside', group = bg} end
+    end
+end
+
+-- Is one gate shut now? A lever's door or hatch by DF's `closed`, a bridge
+-- raised, any other door or hatch locked.
+local function gate_shut_now(g)
+    local okb, b = pcall(df.building.find, g.id)
+    if not okb or not b then return false end
+    if g.kind == 'bridge' then
+        local ok, r = pcall(function() return b.gate_flags.raised end)
+        return ok and r or false
+    end
+    if g.lever_driven then return door_shut(b) == true end
+    local ok, f = pcall(function() return b.door_flags.forbidden end)
+    return ok and f or false
+end
+
+-- One entrance: shut (and by the AI's watcher?), and the walk groups of its
+-- outside tiles (where a citizen stands who would come in by it).
+local function entrance_ways(e)
+    local groups, n = {}, 0
+    for k in pairs(e.outs or {}) do
+        local x, y, z = unkey(k)
+        local g = wgroup(x, y, z)
+        if g ~= 0 then groups[g] = true end
+        n = n + 1
+        if n >= STRANDED_OUTS then break end
+    end
+    local shut, by_ai = false, false
+    if GATES.closed and GATES.closed[e.id] then
+        shut, by_ai = true, true
+    elseif #(e.equipment or {}) > 0 then
+        -- shut when every gate it needs is shut (each one seals it alone? no:
+        -- the scan keeps only the ones it needs, so any one open lets them in)
+        shut = true
+        for _, g in ipairs(e.equipment) do
+            if not gate_shut_now(g) then shut = false end
+        end
+    end
+    return {e = e, groups = groups, shut = shut, by_ai = by_ai}
+end
+
+local function readable(u)
+    local ok, n = pcall(dfhack.units.getReadableName, u)
+    if not ok then return 'unit ' .. tostring(u.id) end
+    if dfhack.df2utf then
+        local okc, c = pcall(dfhack.df2utf, n)
+        if okc and c then n = c end
+    end
+    return n
+end
+
+local function on_cavern_tile(p)
+    local ok, des = pcall(dfhack.maps.getTileFlags, p.x, p.y, p.z)
+    return ok and des and (des.feature_global or des.feature_local) and true or false
+end
+
+-- Pure: why a citizen outside can't come in, from their walk group, the
+-- interior's, and the ways in. nil: not stranded. Returns cause, way.
+function stranded_cause(g, interior_group, ways)
+    local mine, open_way = {}, false
+    for _, w in ipairs(ways) do
+        if g ~= 0 and w.groups[g] then
+            table.insert(mine, w)
+            if not w.shut then open_way = true end
+        end
+    end
+    local cut_off = interior_group ~= nil and g ~= 0 and g ~= interior_group
+    if #mine > 0 and not open_way then
+        -- every way in from where they stand is shut
+        local w = mine[1]
+        for _, m in ipairs(mine) do if m.by_ai then w = m break end end
+        return w.by_ai and (GATES.armed and 'lockdown' or 'gate_shut') or 'gate_shut', w
+    end
+    if cut_off then return 'no_path', nil end
+    return nil
+end
+
+-- {interior, list = [{id, name, x, y, z, out_ticks, out_days, cause,
+-- in_cavern?, entrance?, by_ai?, danger_near?, gate_danger?}], total} or
+-- nil without a map of the inside.
+function stranded_citizens()
+    if not GATES.scanned or not GATES.inside then return nil end
+    local now = U.abs_tick()
+    local interior = fort_interior()
+    local ways = {}
+    for _, e in ipairs(GATES.entrances or {}) do
+        local ok, w = pcall(entrance_ways, e)
+        if ok and w then table.insert(ways, w) end
+    end
+    local porches = {}
+    for _, e in ipairs(GATES.entrances or {}) do if e.porch then table.insert(porches, e.porch) end end
+    local okv, vis = pcall(visible_dangers)
+    vis = okv and vis or {}
+    local seen, list, total = {}, {}, 0
+    for _, u in ipairs(dfhack.units.getCitizens(true)) do
+        seen[u.id] = true
+        local p = u.pos
+        local k = key(p.x, p.y, p.z)
+        local out = not GATES.inside[k]
+        for _, po in ipairs(porches) do if po[k] then out = true end end
+        if not out then
+            STRANDED_SINCE[u.id] = nil
+        else
+            STRANDED_SINCE[u.id] = STRANDED_SINCE[u.id] or now
+            local g = wgroup(p.x, p.y, p.z)
+            local cause, w = stranded_cause(g, interior and interior.group or nil, ways)
+            if cause then
+                total = total + 1
+                if #list < STRANDED_MAX then
+                    local t = now - STRANDED_SINCE[u.id]
+                    local row = {id = u.id, name = readable(u), x = p.x, y = p.y, z = p.z, cause = cause,
+                                 out_ticks = t, out_days = t // DAY_TICKS, group = g}
+                    if on_cavern_tile(p) then row.in_cavern = true end
+                    local near = math.huge
+                    for _, d in ipairs(vis) do
+                        near = math.min(near, math.max(math.abs(d.pos.x - p.x), math.abs(d.pos.y - p.y))
+                                        + 3 * math.abs(d.pos.z - p.z))
+                    end
+                    if near < math.huge then row.danger_near = near end
+                    if w then
+                        row.entrance = {id = w.e.id, kind = w.e.kind, x = w.e.x, y = w.e.y, z = w.e.z}
+                        row.by_ai = w.by_ai
+                        local gd = math.huge
+                        for _, d in ipairs(vis) do
+                            local okd, dd = pcall(distance_to, w.e, d.pos)
+                            if okd then gd = math.min(gd, dd) end
+                        end
+                        if gd < math.huge then row.gate_danger = gd end
+                    end
+                    table.insert(list, row)
+                end
+            end
+        end
+    end
+    for id in pairs(STRANDED_SINCE) do if not seen[id] then STRANDED_SINCE[id] = nil end end
+    return {interior = interior, list = list, total = total}
+end
+
 -- (the file's own functions, as just defined above: a reload of the script takes the new ones)
 GATES_ORIG = {arm = arm, open_all = open_all, check = check, summary = summary}
 
@@ -3432,6 +3625,14 @@ function summary()
         if link_jobs_pending() then pcall(link_watch_start) end
     end
     local out = GATES_ORIG.summary()
+    -- (0.105.26) citizens outside who can't walk back in (nil without a map of the inside)
+    local oks, st = pcall(stranded_citizens)
+    if oks and st then
+        out.stranded, out.stranded_total = st.list, st.total
+        out.interior = st.interior
+    elseif not oks then
+        out.stranded_error = tostring(st):sub(1, 160)
+    end
     pcall(gates_persist)
     -- what came back from the save after a load (the brain says it once)
     out.restored = GATES_SAVE.restored_from_save

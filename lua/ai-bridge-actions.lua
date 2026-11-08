@@ -1563,8 +1563,11 @@ end
 function act_seal_cavern(a)
     if type(a.layer) ~= 'string' or #a.layer == 0 then return reject('seal_cavern needs layer') end
     if a.open ~= nil and type(a.open) ~= 'boolean' then return reject('seal_cavern: open is true or false') end
+    if a.openings ~= nil and type(a.openings) ~= 'boolean' then return reject('seal_cavern: openings is true or false') end
     local tiles = {}
     if not a.open then
+        -- (0.105.26) openings: every cavern opening on record too (tiles may then be none)
+        if a.openings == true and a.tiles == nil then a.tiles = {} end
         if type(a.tiles) ~= 'table' then return reject('seal_cavern needs tiles {x, y, z}') end
         for _, p in ipairs(a.tiles) do
             if type(p) ~= 'table' or not whole_number(p.x) or not whole_number(p.y) or not whole_number(p.z) then
@@ -1572,14 +1575,15 @@ function act_seal_cavern(a)
             end
             table.insert(tiles, {x = whole_number(p.x), y = whole_number(p.y), z = whole_number(p.z)})
         end
-        if #tiles == 0 or #tiles > 20 then return reject('seal_cavern: 1-20 tiles') end
+        if (#tiles == 0 and a.openings ~= true) or #tiles > 20 then return reject('seal_cavern: 1-20 tiles') end
     end
     -- (0.105.0 review) the cavern's levels, so no dwarf is sealed out on the far side
     if (a.z1 ~= nil and not whole_number(a.z1)) or (a.z2 ~= nil and not whole_number(a.z2)) then
         return reject('seal_cavern: z1 and z2 are whole numbers')
     end
     return reqscript('ai-threats').seal_cavern(a.layer, tiles, a.open == true, a.dry_run == true,
-                                               a.z1 and whole_number(a.z1), a.z2 and whole_number(a.z2))
+                                               a.z1 and whole_number(a.z1), a.z2 and whole_number(a.z2),
+                                               a.openings == true)
 end
 
 -- (0.104.168) Infected dwarves DF asks no treatment for, put to rest in a

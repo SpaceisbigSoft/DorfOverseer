@@ -18,8 +18,9 @@ dangers out on the surface, and who fetches the wounded. Each gets a rule:
   5. werebeast citizens: a cell (a jail or a free bedroom, its doors locked
      once they're in) for the days round the full moon, learned from the
      changes seen; let out after;
-  6. great beasts in an open cavern the squads can't take: the doors and
-     hatches on the way down locked; unlocked once it has gone;
+  6. great beasts in the caverns: every cavern opening on record locked,
+     whatever the squads could do (0.105.26); unlocked once it has gone;
+     every opening onto a cavern gets a door or hatch straight away;
   7. a great danger on the surface near dwarves out there: the alarm;
   8. nobody has DF's Recover wounded labour: two dwarves put on it.
 """
@@ -28,7 +29,7 @@ from __future__ import annotations
 
 from digest import _d, _l
 from planner_core import (AGENDA_THEMES, LIMIT_EXEMPT, PLANNER_CONFIG, Proposal, STEER_PROTECTED, TICKS_PER_DAY, abs_tick, ask_player,
-                          can_fight, reachable_threats, _traits)
+                          can_fight, player_rules, reachable_threats, _traits)
 
 __all__ = ["_threat_rules", "threat_alert", "threat_rules_of", "moon_due", "PRISONER_CHOICES", "THREAT_CONFIG"]
 
@@ -66,7 +67,8 @@ AGENDA_THEMES.update({"fire_guard": "keep the dwarves away from the fire", "pris
                       "thieves": "keep thieves and snatchers out", "undead": "keep the dwarves in from the dead",
                       "reanimation": "rot the bodies an evil land would raise",
                       "moon_cell": "lock the werebeasts in for the full moon",
-                      "seal_cavern": "seal the cavern against a beast", "rescue_labor": "fetch the wounded"})
+                      "seal_cavern": "seal the cavern against a beast", "rescue_labor": "fetch the wounded",
+                      "cavern_openings": "doors on the ways into the caverns"})
 
 
 def threat_rules_of(s: dict) -> dict:
@@ -261,56 +263,152 @@ def _were(s, cfg, t, rules, proposals, notes):
                                   f"the full moon is past: let {len(cells)} werebeast(s) out of their cells", 3))
 
 
+ALL_CAVERNS = "all caverns"        # (0.105.26) the seal's record: every cavern opening on record
+GREAT_KINDS = ("forgotten beast", "titan", "megabeast", "demon")
+
+
+def cavern_great(s: dict) -> list:
+    """(0.105.26) The forgotten beasts and other great dangers loose in the
+    caverns (in a cavern layer; a forgotten beast anywhere: it comes from
+    there and tunnels)."""
+    out = []
+    for x in _l(_d(s.get("deep")).get("dangers")):
+        if not isinstance(x, dict) or x.get("caged") or x.get("kind") not in GREAT_KINDS:
+            continue
+        if str(x.get("layer") or "").startswith("Cavern") or x.get("kind") == "forgotten beast":
+            out.append(x)
+    return out
+
+
+def _cavern_doors(s, memory, proposals, notes) -> None:
+    """(0.105.26) Every opening onto a cavern gets a lockable door or hatch
+    straight away (the gates scan finds them), not only once a beast is seen:
+    put on before the gate rule's turn comes, each once."""
+    if not player_rules(s)["build_gate_doors"]:
+        return
+    off = _d(s.get("map")).get("elevation_offset")
+    off = off if isinstance(off, int) else 0
+    asked = set(getattr(memory, "gate_doors_requested", None) or [])
+    fails = getattr(memory, "gate_failures", None) or {}
+    for e in _l(_d(s.get("entrances")).get("entrances")):
+        if not isinstance(e, dict) or e.get("kind") != "cavern" or e.get("sealed") or e.get("closing"):
+            continue
+        spot = f"{e.get('x')},{e.get('y')},{e.get('z')}"
+        if not e.get("door_spots") or spot in asked or spot in fails or e.get("id") is None:
+            continue
+        proposals.append(Proposal("cavern_openings", {"type": "build_gate_doors", "entrance_id": e["id"]},
+                                  f"the fort is open to a cavern at x{e.get('x')} y{e.get('y')} elevation "
+                                  f"{(e.get('z') or 0) + off}: {e['door_spots']} door(s) or hatch(es) on it now, "
+                                  "to be locked whenever a forgotten beast is about", 2))
+        return
+
+
 def _cavern_beasts(s, cfg, memory, t, rules, proposals, notes):
+    """(0.105.26) F lost 54 and C 12 to forgotten beasts that came in through
+    caverns the AI opened. While a forgotten beast or other great danger is
+    loose in the caverns, every cavern opening on record (the bridge keeps
+    them: the gates' cavern entrances, the doors and hatches on the way down)
+    is locked, whatever the squads could do; not while citizens are down
+    there (the player is told). A cavern well's shaft is shut by its own
+    watcher meanwhile (no water through it). Opened again once it's gone."""
     d = _d(s.get("deep"))
     sealed = _d(t.get("sealed"))
-    dangers = [x for x in _l(d.get("dangers")) if isinstance(x, dict) and not x.get("caged")
-               and x.get("kind") in ("forgotten beast", "titan", "megabeast", "demon")]
-    for c in [c for c in _l(d.get("caverns")) if isinstance(c, dict)]:
-        name = c.get("name")
-        here = [x for x in dangers if x.get("layer") == name]
-        if here and c.get("open") and rules["seal_caverns"]:
-            from planner_military import fight_or_hide
-            mil = _d(s.get("military"))
-            able = [q for q in _l(mil.get("squads")) if isinstance(q, dict) and can_fight(q, cfg)]
-            th = {str(o.get("id")): o for o in _l(_d(s.get("others_on_map")).get("threats")) if isinstance(o, dict)}
-            great = [th.get(str(x.get("id"))) or {"name": x.get("name")} for x in here]
-            try:
-                fight, verdict = fight_or_hide(s, memory, cfg, great, able)
-            except Exception:  # noqa: BLE001
-                fight, verdict = False, "the squads' strength unknown"
-            if fight and player_attack(s) != "never":
-                notes.append(f"{here[0].get('name')} ({here[0].get('kind')}) in {name}: the squads are strong "
-                             f"enough ({verdict}); the cavern is left open for them")
-                continue
-            tiles = [p for p in seal_tiles(c) if all(_num(p.get(k)) for k in ("x", "y", "z"))]
-            if tiles and name not in sealed:
-                act = {"type": "seal_cavern", "layer": name, "tiles": tiles[:12]}
-                # (0.105.0 review) the cavern's levels: the bridge refuses while a dwarf is down there
-                if _num(c.get("z_top")) and _num(c.get("z_bottom")):
-                    act["z1"], act["z2"] = int(c["z_bottom"]), int(c["z_top"])
-                proposals.append(Proposal("seal_cavern", act,
-                                          f"{here[0].get('name')} ({here[0].get('kind')}) is in {name}, open to the "
-                                          f"fort, and the squads can't take it ({verdict}): lock the doors and "
-                                          "hatches on the way down", 1))
-            elif not tiles and name not in sealed:
-                ask_player(notes, f"{here[0].get('name')} is in {name}, open to the fort, and no door or hatch "
-                                  "known on the way down: wall it off")
-        elif name in sealed and not here:
-            proposals.append(Proposal("seal_cavern", {"type": "seal_cavern", "layer": name, "open": True},
-                                      f"no great beast left in {name}: unlock the way down again", 3))
-    # (0.105.0 review) a sealed layer the deep report no longer lists: unlocked after some days
-    names = {c.get("name") for c in _l(d.get("caverns")) if isinstance(c, dict)}
-    for name, rec in sealed.items():
-        days = _d(rec).get("days")
-        if (rules["seal_caverns"] and name not in names and _num(days)
-                and days >= _c(cfg, "seal_missing_days")):
-            proposals.append(Proposal("seal_cavern", {"type": "seal_cavern", "layer": name, "open": True},
-                                      f"{name} sealed {days} days and no longer in the deep report: unlock the way down", 3))
+    _cavern_doors(s, memory, proposals, notes)
     if not rules["seal_caverns"]:
         for name in sealed:
             proposals.append(Proposal("seal_cavern", {"type": "seal_cavern", "layer": name, "open": True},
                                       "sealing the caverns is off on the Rules tab: unlock the way down", 3))
+        return
+    great = cavern_great(s)
+    caverns = [c for c in _l(d.get("caverns")) if isinstance(c, dict)]
+    ops = [o for o in _l(_d(t.get("openings")).get("list")) if isinstance(o, dict)]
+    off = _d(s.get("map")).get("elevation_offset")
+    off = off if isinstance(off, int) else 0
+    if great:
+        beast = great[0]
+        who = f"{beast.get('name') or 'a great beast'} ({beast.get('kind')}" + (
+            f", in {beast['layer']})" if beast.get("layer") else ")")
+        tiles, seen = [], set()
+        for c in caverns:
+            if c.get("open"):
+                for p in seal_tiles(c):
+                    k = tuple(p.get(q) for q in ("x", "y", "z"))
+                    if all(_num(v) for v in k) and k not in seen:
+                        seen.add(k)
+                        tiles.append({"x": p["x"], "y": p["y"], "z": p["z"]})
+        lockable = [o for o in ops if o.get("kind") != "well" and o.get("building") in ("Door", "Hatch")]
+        # (a door reads closed whenever nobody passes: only the lock, or the seal's own lever pull, counts)
+        unlocked = [o for o in lockable if o.get("built") is not False and not o.get("locked") and not o.get("sealed")]
+        down = _l(_d(t.get("cavern_citizens")).get("list"))
+        if ALL_CAVERNS not in sealed or unlocked:
+            if down:
+                n = int(_d(t.get("cavern_citizens")).get("n") or len(down))
+                ask_player(notes, f"{who} is about, and the ways into the caverns are not locked while "
+                                  f"{n} citizen(s) are down there ("
+                                  + ", ".join(f"{_d(x).get('name')} at x{_d(x).get('x')} y{_d(x).get('y')} "
+                                              f"elevation {(_d(x).get('z') or 0) + off}" for x in down[:3])
+                                  + "): call them up, and the AI locks them")
+            elif tiles or lockable:
+                act = {"type": "seal_cavern", "layer": ALL_CAVERNS, "openings": True}
+                if tiles:
+                    act["tiles"] = tiles[:20]
+                zs = [(c["z_bottom"], c["z_top"]) for c in caverns if _num(c.get("z_top")) and _num(c.get("z_bottom"))]
+                if zs:
+                    act["z1"], act["z2"] = int(min(z[0] for z in zs)), int(max(z[1] for z in zs))
+                proposals.append(Proposal("seal_cavern", act,
+                                          f"{who} is on the map: lock every way into the caverns "
+                                          f"({len(lockable)} door(s) and hatch(es) on record"
+                                          + (f", {len(unlocked)} open" if unlocked else "")
+                                          + "), whatever the squads could do", 1))
+            elif any(c.get("open") for c in caverns):
+                ask_player(notes, f"{who} is about, the fort is open to the caverns, and no door or hatch is "
+                                  "known on the way down: wall it off")
+        # the squads' word, said (the openings stay locked all the same)
+        mil = _d(s.get("military"))
+        able = [q for q in _l(mil.get("squads")) if isinstance(q, dict) and can_fight(q, cfg)]
+        if able:
+            try:
+                from planner_military import fight_or_hide
+                th = {str(o.get("id")): o for o in _l(_d(s.get("others_on_map")).get("threats")) if isinstance(o, dict)}
+                fight, verdict = fight_or_hide(s, memory, cfg, [th.get(str(x.get("id"))) or {"name": x.get("name")}
+                                                                for x in great], able)
+            except Exception:  # noqa: BLE001
+                fight, verdict = False, ""
+            if fight:
+                notes.append(f"{who}: the squads could take it ({verdict}), but the ways into the caverns stay "
+                             "locked while it is about; send them through by hand if you want the fight")
+        shafts = [x for x in _l(_d(s.get("projects")).get("well_lids")) if isinstance(x, dict)
+                  and x.get("gate") in ("open", "closed", "pulling")]
+        if shafts:
+            notes.append(f"the cavern well's shaft is shut while {who} is about: the well draws no water until "
+                         "it's gone (then it's opened again)")
+            patients = int(_d(s.get("dwarves")).get("needs_medical_care") or 0)
+            wells = int(_d(_d(s.get("buildings")).get("other")).get("Well") or 0)
+            if patients and wells <= len(shafts):
+                ask_player(notes, f"{patients} injured dwarves need water and the only well is the cavern well, "
+                                  f"shut against {who}: give them water by hand (a bucket from open water) "
+                                  "or build another well")
+    else:
+        if ALL_CAVERNS in sealed:
+            proposals.append(Proposal("seal_cavern", {"type": "seal_cavern", "layer": ALL_CAVERNS, "open": True},
+                                      "no forgotten beast or other great danger left in the caverns: the ways "
+                                      "into them opened again", 3))
+    # seals from before 0.105.26, one per layer: opened once no great beast is in that layer
+    here = {x.get("layer") for x in great}
+    names = {c.get("name") for c in caverns}
+    for name, rec in sealed.items():
+        if name == ALL_CAVERNS:
+            continue
+        if name in names and name not in here:
+            proposals.append(Proposal("seal_cavern", {"type": "seal_cavern", "layer": name, "open": True},
+                                      f"no great beast left in {name}: unlock the way down again", 3))
+        elif name not in names:
+            # (0.105.0 review) a sealed layer the deep report no longer lists: unlocked after some days
+            days = _d(rec).get("days")
+            if _num(days) and days >= _c(cfg, "seal_missing_days"):
+                proposals.append(Proposal("seal_cavern", {"type": "seal_cavern", "layer": name, "open": True},
+                                          f"{name} sealed {days} days and no longer in the deep report: unlock "
+                                          "the way down", 3))
 
 
 STAIRISH = ("STAIR", "RAMP")
