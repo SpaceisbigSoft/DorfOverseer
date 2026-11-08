@@ -1671,7 +1671,16 @@ function well_dig_check(p, jobs)
     return out('waiting', 'designated as a channel, waiting for a miner')
 end
 
--- The well level's channel renewed: an unworked job on its tile taken away
+-- (0.105.31 reserve fixes) the jobs renew_well_dig may take away: the
+-- channel (or a dig) on the well's tile, never another job standing there
+-- (a construction, a haul, a building's)
+WELL_RENEW_JOBS = {DigChannel = true, Dig = true}
+function well_dig_job(j)
+    local ok, name = pcall(function() return df.job_type[j.job_type] end)
+    return ok and name ~= nil and WELL_RENEW_JOBS[name] == true
+end
+
+-- The well level's channel renewed: its unworked channel (or dig) job taken away
 -- and the floor designated a channel again at priority `pri` (DF makes a
 -- fresh job from it). Rock left under a cavern shaft is not touched here.
 function renew_well_dig(id, pri, dry_run)
@@ -1698,7 +1707,7 @@ function renew_well_dig(id, pri, dry_run)
         local link = df.global.world.jobs.list.next
         while link do
             local j, nxt = link.item, link.next
-            if j and j.pos.x == a.x and j.pos.y == a.y and j.pos.z == p.z then
+            if j and j.pos.x == a.x and j.pos.y == a.y and j.pos.z == p.z and well_dig_job(j) then
                 local okw, w = pcall(dfhack.job.getWorker, j)
                 if not (okw and w) and pcall(dfhack.job.removeJob, j) then gone = gone + 1 end
             end

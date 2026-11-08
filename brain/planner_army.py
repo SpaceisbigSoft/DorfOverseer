@@ -161,8 +161,12 @@ def _flask_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> Non
     leather = int(_d(s.get("stocks")).get("leather") or 0)
     sup = _d(s.get("supplies"))
     bags, fuel = int(sup.get("sand_bags") or 0), int(sup.get("fuel") or 0)
-    if leather > 0 and _has_shop(b, "Leatherworks"):
-        n = min(short, leather, cfg["max_quiver_order"])
+    # (0.105.31 reserve fixes) leather kept for strange moods isn't spare:
+    # glass vials whenever only the reserve (or less) is left, not only at 0
+    keep = int(cfg.get("reserve_leather") or 0) if isinstance(_d(s.get("stocks")).get("leather"), int) else 0
+    spare = leather - keep
+    if spare > 0 and _has_shop(b, "Leatherworks"):
+        n = min(short, spare, cfg["max_quiver_order"])
         proposals.append(Proposal("flasks_order", {"type": "work_order", "recipe": "leather_waterskin", "amount": n},
                                   f"{short} soldier(s) without a waterskin or flask (they carry no water out): "
                                   f"make {n} of leather", 4, True))
@@ -170,7 +174,8 @@ def _flask_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> Non
         n = min(short, bags, fuel, cfg["max_quiver_order"])
         proposals.append(Proposal("flasks_order", {"type": "work_order", "recipe": "glass_vial", "amount": n},
                                   f"{short} soldier(s) without a waterskin or flask (they carry no water out) and "
-                                  f"no leather: make {n} glass vials", 4, True))
+                                  + ("no leather" if leather <= 0 else f"only the {leather} leather kept for strange moods")
+                                  + f": make {n} glass vials", 4, True))
     else:
         notes.append(f"{short} soldier(s) without a waterskin or flask: no leather and leather works, nor glass "
                      "furnace with sand and fuel, to make one")

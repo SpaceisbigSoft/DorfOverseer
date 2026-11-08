@@ -1069,11 +1069,15 @@ function get_supplies()
     -- (0.104.138) one pass for both, ai-builder looked up once and each plant
     -- kind's answer kept (the supplies section ran ~255 ms every report)
     out.thread_plants = 0
+    -- (0.105.31 reserve fixes) the thread plants a still could brew too: the
+    -- mood reserve's processing for thread leaves the drink's plants alone
+    out.thread_brewable_plants = 0
     local okB, B = pcall(reqscript, 'ai-builder')
     local thread_of = {}
     each('PLANT', function(it)
         local n = it:getStackSize()
-        if brewable(it) then out.brewable_plants = out.brewable_plants + n end
+        local brews = brewable(it)
+        if brews then out.brewable_plants = out.brewable_plants + n end
         local okp, yes = pcall(function()
             local okk, key = pcall(function() return it:getActualMaterialIndex() end)
             if okk and key ~= nil and thread_of[key] ~= nil then return thread_of[key] end
@@ -1082,7 +1086,10 @@ function get_supplies()
             if okk and key ~= nil then thread_of[key] = yes_ end
             return yes_
         end)
-        if okp and yes then out.thread_plants = out.thread_plants + n end
+        if okp and yes then
+            out.thread_plants = out.thread_plants + n
+            if brews then out.thread_brewable_plants = out.thread_brewable_plants + n end
+        end
     end)
     each('PLANT_GROWTH', function(it)
         if brewable(it) then out.brewable_growths = out.brewable_growths + it:getStackSize() end

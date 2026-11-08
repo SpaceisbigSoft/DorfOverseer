@@ -86,10 +86,11 @@ def _():
 @test("reserves 2: plant thread at hand -> woven; fibre plants -> processed before the still; fibre seeds -> a fibre plot")
 def _():
     props, _ = reserve_props(garden(thread_kinds={"plant": 5}))
-    assert props[0].action == {"type": "work_order", "recipe": "weave_plant_cloth", "amount": 1}, props
+    # (reserve fixes) up to a batch over the line: 3 + 2 - 2
+    assert props[0].action == {"type": "work_order", "recipe": "weave_plant_cloth", "amount": 3}, props
     assert "kept for strange moods" in props[0].reason
     props, _ = reserve_props(garden(thread_plants=4))
-    assert props[0].action == {"type": "work_order", "recipe": "process_plants", "amount": 1}, props
+    assert props[0].action == {"type": "work_order", "recipe": "process_plants", "amount": 3}, props
     assert "before the still" in props[0].reason
     s = garden()
     s["farms"]["crops"]["GRASS_TAIL_PIG"] = {"name": "pig tail", "seeds": 6, "planted": 0, "thread": True}
@@ -101,22 +102,22 @@ def _():
     assert reserve_trade_wants(s, CFG) == []                      # it can be made here
 
 
-@test("reserves 3: at the reserve nothing is ordered; leather tanned, a gem cut over the rough reserve, blocks made")
+@test("reserves 3: at the reserve nothing is ordered with nothing to make it of; leather tanned, a gem cut over the rough reserve, blocks made")
 def _():
     s = garden(cloth_kinds={"plant": 3, "silk": 2, "yarn": 0})
     assert not reserve_props(s)[0]
     s["stocks"]["leather"] = 0
     s["supplies"]["hides"] = 4
-    assert reserve_props(s)[0][0].action == {"type": "work_order", "recipe": "tan_hide", "amount": 2}
+    assert reserve_props(s)[0][0].action == {"type": "work_order", "recipe": "tan_hide", "amount": 4}
     s["stocks"]["leather"] = 5
     s["stocks"]["cut_gems"], s["stocks"]["rough_gems"] = 0, 3
     s["trade"] = dict(s.get("trade") or {}, rough_gem={"n": 3, "token": "INORGANIC:AGATE"})
     a = reserve_props(s)[0][0].action
-    assert a == {"type": "work_order", "recipe": "cut_gems", "amount": 1, "material": "INORGANIC:AGATE"}, a
+    assert a == {"type": "work_order", "recipe": "cut_gems", "amount": 1, "material": "INORGANIC:AGATE"}, a   # rough 3 - 2 kept
     s["stocks"]["rough_gems"] = 2                                 # only its own reserve: not cut
     assert not reserve_props(s)[0]
     s["stocks"]["blocks"] = 1
-    assert reserve_props(s)[0][0].action == {"type": "work_order", "recipe": "stone_blocks", "amount": 4}
+    assert reserve_props(s)[0][0].action == {"type": "work_order", "recipe": "stone_blocks", "amount": 6}
     cfg = dict(CFG, reserve_blocks=0)                             # 0 turns a reserve off
     props = []
     _mood_reserve_rule(s, Memory(), cfg, props, [])

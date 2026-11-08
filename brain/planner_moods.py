@@ -13,7 +13,7 @@ from quirks import has_rule
 from digest import _d, _l
 from planner_core import *  # noqa: F401,F403
 
-__all__ = ["MOOD_WORKSHOPS", "_mood_rules", "mood_item_text", "MOOD_CONSUMERS", "MOOD_TRADE_KEYS", "_mood_make", "_mood_slaughter", "_mood_materials", "mood_counts_text", "mood_journal", "mood_trade_wants", "MOOD_BLOCKS", "mood_blocked", "MOOD_RESERVES", "mood_reserve_counts", "reserve_blocked", "_mood_reserve_rule", "reserve_trade_wants", "reserve_words"]
+__all__ = ["MOOD_WORKSHOPS", "_mood_rules", "mood_item_text", "MOOD_CONSUMERS", "MOOD_TRADE_KEYS", "_mood_make", "_mood_slaughter", "_mood_materials", "mood_counts_text", "mood_journal", "mood_trade_wants", "MOOD_BLOCKS", "mood_blocked", "MOOD_RESERVES", "mood_reserve_counts", "reserve_blocked", "reserve_room", "RESERVE_BATCH", "note_reserve_swap", "_mood_reserve_rule", "reserve_trade_wants", "reserve_words"]
 
 
 # A crafting mood's skill -> the workshop (or furnace) the dwarf must claim.
@@ -617,6 +617,28 @@ def reserve_blocked(s: dict, cfg: dict) -> dict:
     return out
 
 
+# (0.105.31 reserve fixes) the reserve rule tops a reserve up when the fort
+# is AT or under it, to RESERVE_BATCH over it: select() holds the other
+# orders at or under the line and caps them at what lies over it, so an
+# order waits only while nothing can be made (no hides, thread, plants)
+RESERVE_BATCH = 2
+
+
+def reserve_room(s: dict, cfg: dict) -> dict:
+    """(0.105.31 reserve fixes) {recipe: (room, words)}: how many of a
+    reserve's material lie over its line (0 or less: the order is held, else
+    its amount is capped at it). Reserves turned off or not reported: absent."""
+    out = {}
+    counts = mood_reserve_counts(s)
+    for k, (key, words, recipes) in MOOD_RESERVES.items():
+        want, have = int(cfg.get(key) or 0), counts.get(k)
+        if want > 0 and have is not None:
+            for r in recipes:
+                if r not in out or have - want < out[r][0]:
+                    out[r] = (have - want, f"the {have} {words} kept for strange moods (a reserve of {want})")
+    return out
+
+
 def _fibre_seeds(s: dict) -> list:
     """The fibre crops the fort has seeds of (names), and whether one grows now."""
     crops = _d(_d(s.get("farms")).get("crops"))
@@ -696,9 +718,11 @@ def _mood_reserve_rule(s: dict, memory, cfg: dict, proposals: list, notes: list)
     FOR = "kept for strange moods, which can't wait for it to be grown or made"
 
     def gap(k):
+        # (0.105.31 reserve fixes) at the line too, up to a batch over it:
+        # the other orders wait at the line, so stopping there held them for good
         key = MOOD_RESERVES[k][0]
         want, have = int(cfg.get(key) or 0), counts.get(k)
-        return (want - have if want > 0 and have is not None and have < want else 0), have, want
+        return (want + RESERVE_BATCH - have if want > 0 and have is not None and have <= want else 0), have, want
 
     def order(recipe, n, why, material=None):
         if queued(s, {recipe}):
@@ -718,9 +742,24 @@ def _mood_reserve_rule(s: dict, memory, cfg: dict, proposals: list, notes: list)
             if order("weave_plant_cloth", min(n, int(thread.get("plant") or 0)), f"{head}: weave plant cloth"):
                 return
         elif route == "plants" and _has_shop(b, "Farmers"):
-            if order("process_plants", n, f"{head}: process the fibre plants for thread before the still "
-                                          "brews them"):
+            # (0.105.31 reserve fixes) never the drink's plants: not while drink
+            # is urgent, nor when the brewable plants left (less the brew
+            # orders' jobs) would fall to the drink line (a plant for each dwarf)
+            keep_ok, why_not = _plants_spare(s, cfg, n)
+            if not keep_ok:
+                if memory is not None and getattr(memory, "reserve_noted", "") != "plant_cloth_drink":
+                    memory.reserve_noted = "plant_cloth_drink"
+                    notes.append(f"{head}: the fibre plants aren't processed for thread while {why_not}")
+            elif order("process_plants", n, f"{head}: process the fibre plants for thread before the still "
+                                            "brews them"):
                 return
+        elif route == "seeds" and _swap_off(s, memory):
+            pass        # (0.105.31 reserve fixes) no fibre crop grows on the plots this season
+        elif route == "seeds" and _drink_short_any(s, cfg):
+            # (0.105.31 reserve fixes) no brewable plot goes to fibre while drink is short
+            if memory is not None and getattr(memory, "reserve_noted", "") != "plant_cloth_drink":
+                memory.reserve_noted = "plant_cloth_drink"
+                notes.append(f"{head}: no plot goes to a fibre crop while drink is short")
         elif route == "seeds" and farm_plots_any(s) and memory is not None and not memory.farm_crops_player:
             proposals.append(Proposal("mood_reserve", {"type": "set_farm_crops", "thread": True,
                                                        "drink": False},
@@ -756,6 +795,60 @@ def _mood_reserve_rule(s: dict, memory, cfg: dict, proposals: list, notes: list)
     n, have, want = gap("blocks")
     if n and _has_shop(b, "Masons") and int(_d(s.get("stocks")).get("boulders") or 0) > 0:
         order("stone_blocks", n, f"{have} blocks, a reserve of {want} {FOR}: make stone blocks")
+
+
+def _drink_short_any(s: dict, cfg: dict) -> bool:
+    from planner_farms import drink_short, drink_known_short
+    return drink_known_short(s, cfg) or (isinstance(_d(s.get("stocks")).get("drink"), (int, float))
+                                         and drink_short(s, cfg))
+
+
+def _plants_spare(s: dict, cfg: dict, n: int) -> tuple[bool, str]:
+    """(0.105.31 reserve fixes) May n fibre plants be processed for thread?
+    Not while drink is urgent, nor when the brewable plants left after it
+    (and after the open brew orders) stay no higher than the drink line,
+    a brewable plant for each dwarf (drink_short's). Of the fibre plants,
+    only the brewable ones count against it (the bridge's
+    thread_brewable_plants; an older bridge: all of them)."""
+    if _drink_short_any(s, cfg):
+        return False, "drink is short"
+    su = _d(s.get("supplies"))
+    citizens = max(1, int(_d(s.get("dwarves")).get("total") or 1))
+    brewable = brewable_counts(s)[0]
+    overlap = su.get("thread_brewable_plants")
+    overlap = int(overlap) if isinstance(overlap, int) else int(su.get("thread_plants") or 0)
+    left = brewable - queued(s, {"brew_drink"}) - min(n, overlap)
+    if overlap > 0 and left <= citizens:
+        return False, (f"the brewable plants left ({max(0, left)}) would be no more than the drink "
+                       f"keeps ({citizens}, one a dwarf)")
+    return True, ""
+
+
+def _season_index(s: dict) -> int | None:
+    d = _d(s.get("date"))
+    if not isinstance(d.get("year"), int) or not isinstance(d.get("tick"), int):
+        return None
+    return abs_tick(s) // (TICKS_PER_YEAR // 4)
+
+
+def _swap_off(s: dict, memory) -> bool:
+    """(0.105.31 reserve fixes) The fibre swap changed nothing this season
+    (no fibre crop the fort has seeds of grows on its plots now)."""
+    if memory is None:
+        return False
+    i = _season_index(s)
+    return i is not None and getattr(memory, "reserve_swap_off", None) == i
+
+
+def note_reserve_swap(p, r: dict, state: dict, memory) -> None:
+    """(0.105.31 reserve fixes) After the mood reserve's fibre swap: when the
+    bridge changed nothing and says why (`thread_none`), the swap waits for
+    the next season (it was asked again every 2 days)."""
+    a = _d(getattr(p, "action", None))
+    if getattr(p, "rule", "") != "mood_reserve" or a.get("type") != "set_farm_crops" or not a.get("thread"):
+        return
+    if _d(r).get("ok") is True and int(_d(r).get("changed") or 0) == 0 and _d(r).get("thread_none"):
+        memory.reserve_swap_off = _season_index(state)
 
 
 def farm_plots_any(s: dict) -> bool:

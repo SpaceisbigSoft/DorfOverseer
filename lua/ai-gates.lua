@@ -3651,20 +3651,33 @@ function deep_hall_keys(out)
     return out
 end
 
-function fort_starts(starts)
-    cache, edge_cache = {}, {}           -- (read fresh: it runs before a scan or a cut)
-    local big, groups, order = {}, {}, {}
-    local keep_big, seen_tile = {}, {}
-    -- (0.105.30 fixes) not from the AI's keep or hall, (0.105.31) or its deep depot hall,
-    -- while anyone stands elsewhere
-    local okb, boxes = pcall(ai_surface_box_keys)
-    if okb and type(boxes) == 'table' and next(boxes) then
-        local rest = {}
-        for _, p in ipairs(starts or {}) do
-            if not boxes[key(p.x, p.y, p.z)] then table.insert(rest, p) end
+-- (0.105.31 reserve fixes) Where the fort's own inside is when no citizen
+-- stands in it: the founding stair under its lid, else a meeting hall (as
+-- fort_interior). Points {x, y, z}; tests replace this.
+function fort_anchor_starts()
+    local out = {}
+    pcall(function()
+        for _, e in ipairs(GATES.entrances or {}) do
+            if e.lid then
+                local okh, h = pcall(lid_hatch, e)
+                if okh and h then table.insert(out, {x = h.x, y = h.y, z = h.z - 1}) end
+            end
         end
-        if #rest > 0 then starts = rest end
-    end
+    end)
+    pcall(function()
+        for _, zn in ipairs(df.global.world.buildings.other.ZONE_MEETING_HALL) do
+            local okp, x, y, z = pcall(function() return zn.centerx, zn.centery, zn.z end)
+            if okp and x then table.insert(out, {x = x, y = y, z = z}) end
+        end
+    end)
+    return out
+end
+
+-- the starts that stand somewhere big (keep_big), and the small pockets'
+-- (grouped, in order); `big` is shared between calls of one fort_starts
+local function sort_starts(starts, big)
+    local groups, order = {}, {}
+    local keep_big, seen_tile = {}, {}
     for _, p in ipairs(starts or {}) do
         local k = key(p.x, p.y, p.z)
         local t = T(p.x, p.y, p.z)
@@ -3704,15 +3717,50 @@ function fort_starts(starts)
             end
         end
     end
-    if #keep_big > 0 then return keep_big end
     -- no citizen in a big place (a new fort's first room): the pocket(s) with the most
     local most = 0
     for _, id in ipairs(order) do most = math.max(most, #groups[id]) end
-    local out = {}
+    local pockets = {}
     for _, id in ipairs(order) do
-        if #groups[id] == most then for _, p in ipairs(groups[id]) do table.insert(out, p) end end
+        if #groups[id] == most then for _, p in ipairs(groups[id]) do table.insert(pockets, p) end end
     end
-    return out
+    return keep_big, pockets
+end
+
+function fort_starts(starts)
+    cache, edge_cache = {}, {}           -- (read fresh: it runs before a scan or a cut)
+    local big = {}
+    -- (0.105.30 fixes) not from the AI's keep or hall, (0.105.31) or its deep depot hall,
+    -- while anyone stands elsewhere
+    local all, left_out = starts, false
+    local okb, boxes = pcall(ai_surface_box_keys)
+    if okb and type(boxes) == 'table' and next(boxes) then
+        local rest = {}
+        for _, p in ipairs(starts or {}) do
+            if not boxes[key(p.x, p.y, p.z)] then table.insert(rest, p) end
+        end
+        left_out = #rest < #(starts or {})
+        starts = rest
+    end
+    local keep_big, pockets = sort_starts(starts, big)
+    if #keep_big > 0 then return keep_big end
+    -- (0.105.31 reserve fixes) leaving the keep, hall or depot hall out left
+    -- no start in the fort itself (only a pocket, or none: F's case, the one
+    -- citizen of the main area in the depot hall): the founding stair or the
+    -- meeting hall is the start instead, else the starts left out after all
+-- (when they stand somewhere big)
+    if left_out then
+        local oka, anchors = pcall(fort_anchor_starts)
+        if oka and type(anchors) == 'table' then
+            local anchor_big = sort_starts(anchors, big)
+            if #anchor_big > 0 then return anchor_big end
+        end
+        -- (a road taken for a way in is better than the fort's real ways in missed)
+        local all_big, all_pockets = sort_starts(all, big)
+        if #all_big > 0 then return all_big end
+        if #pockets == 0 then return all_pockets end
+    end
+    return pockets
 end
 
 -- The porch and its ways down: {n = tiles, stairs = {key...}, ramps = {key...},

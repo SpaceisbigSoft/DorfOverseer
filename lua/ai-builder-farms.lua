@@ -466,12 +466,19 @@ function set_farm_crops(params, dry_run)
             if okr and r and plant_thread(r) then thread_now[k] = true end
         end
     end
+    -- (0.105.31 reserve fixes) a plot season swapped back for drink
+    -- (params.drink) belongs to the drink for that season and the next: the
+    -- thread swap doesn't take it again (they swapped it to and fro each call)
+    local okn, now_season = pcall(function() return (tonumber(df.global.cur_year) or 0) * 4 + season end)
+    now_season = okn and now_season or season
+    if type(data.drink_held) ~= 'table' then data.drink_held = {} end
     local changed, dead, kept, set_plots = 0, 0, 0, {}
     for _, b in ipairs(plots) do
         local place = plot_place(b.centerx, b.centery, b.z)
         local tiles = (b.x2 - b.x1 + 1) * (b.y2 - b.y1 + 1)
         local key = tostring(b.id)
         local mine = type(data.set[key]) == 'table' and data.set[key] or {}
+        local held = type(data.drink_held[key]) == 'table' and data.drink_held[key] or {}
         local plot_out, any = {id = b.id, crops = {}}, false
         for k = 0, 3 do
             local s = (season + k) % 4
@@ -518,8 +525,9 @@ function set_farm_crops(params, dry_run)
             -- (0.105.31) params.thread: one of the AI's own plots gives way to a
             -- fibre crop in a season no plot grows one (F, 8 Nov: a weaver's
             -- mood needed plant cloth, no fibre crop on any plot, and died)
+            local drink_owns = tonumber(held[s + 1]) ~= nil and now_season - tonumber(held[s + 1]) <= 1
             if cur_ok and ours and not swap and params.thread == true and not thread_now[s]
-                    and not thread_set[s] and not plant_thread(cur_raw) then
+                    and not thread_set[s] and not plant_thread(cur_raw) and not drink_owns then
                 for _, c in ipairs(cands) do if c.thread then swap = true break end end
             end
             if cur_ok and not swap then
@@ -545,6 +553,8 @@ function set_farm_crops(params, dry_run)
                     return a.idx < c.idx
                 end)
                 local pick = cands[1]
+                -- (0.105.31 reserve fixes) swapped back for drink: the drink's for a season
+                if swap and params.drink == true and pick.brews and pick.idx ~= cur then held[s + 1] = now_season end
                 used[s][pick.idx] = (used[s][pick.idx] or 0) + 1
                 if pick.thread then thread_set[s] = true end
                 if s == season then left[pick.idx] = (left[pick.idx] or 0) - tiles end
@@ -558,12 +568,21 @@ function set_farm_crops(params, dry_run)
         end
         if not any then dead = dead + 1 end
         data.set[key] = mine
+        data.drink_held[key] = next(held) and held or nil
         table.insert(set_plots, plot_out)
     end
     local out = {ok = true, plots = #plots, changed = changed, kept = kept, dead = dead > 0 and dead or nil,
                  dry_run = dry_run or nil, set = set_plots}
     local any_set = false
     for _, p in ipairs(set_plots) do if next(p.crops) then any_set = true break end end
+    -- (0.105.31 reserve fixes) a fibre crop asked and none grows on any plot
+    -- this season (no fibre seed grows where the plots are, or the plots are
+    -- the drink's): said, so the brain waits for the next season
+    if params.thread == true and not thread_now[season] and not thread_set[season] then
+        out.thread_none = true
+        out.reason = 'no fibre crop the fort has seeds of can go on its plots this season '
+            .. '(none grows where they are, or the plots are kept for drink)'
+    end
     if changed == 0 and kept == 0 and not any_set then
         out.ok, out.error = false, ('no crop the fort has seeds of grows on any of its %d plot(s) '
             .. '(underground crops need underground plots)'):format(#plots)

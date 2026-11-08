@@ -215,13 +215,30 @@ end
 -- a list grows (F, 8 Nov: the supplies counted 2 plant cloth, woven after
 -- the weaver's request was counted 0, and the AI said "can't supply" for
 -- half a day)
+-- (0.105.31 reserve fixes) only a list of the requested kind (CLOTH, BONES...)
+-- is taken again at once when it grows; the catch-all lists (IN_PLAY, body
+-- parts) grow and shrink nearly every tick: at most once a game hour for them
+AVAIL_RECOUNT_TICKS = 50
+local CATCH_ALL = {IN_PLAY = true, CORPSEPIECE = true}
 local function list_sizes(entry)
     local out = {}
     for _, list in ipairs(search_lists(entry.item, entry.flags)) do
         local ok, n = pcall(function() return #df.global.world.items.other[df.items_other_id[list]] end)
-        table.insert(out, ok and tostring(n) or '?')
+        out[list] = ok and tonumber(n) or nil
     end
-    return table.concat(out, ',')
+    return out
+end
+
+-- a new item that may suit: a list of the requested kind longer than at the
+-- count, or a catch-all list longer and the count an hour old
+local function grew(old, sizes, age)
+    for list, n in pairs(sizes) do
+        local was = type(old) == 'table' and old[list] or nil
+        if was == nil or n > was then
+            if not CATCH_ALL[list] or age >= AVAIL_RECOUNT_TICKS then return true end
+        end
+    end
+    return false
 end
 
 local function cached_avail(ji, entry, unit)
@@ -230,7 +247,7 @@ local function cached_avail(ji, entry, unit)
     local c = AVAIL_CACHE[key]
     local sizes = list_sizes(entry)
     if c and now - c.at >= 0 and now - c.at < AVAIL_TICKS
-            and (c.avail.enough or c.sizes == sizes) then return c.avail end
+            and (c.avail.enough or not grew(c.sizes, sizes, now - c.at)) then return c.avail end
     local a = request_avail(ji, entry, unit)
     local n = 0
     for _ in pairs(AVAIL_CACHE) do n = n + 1 end

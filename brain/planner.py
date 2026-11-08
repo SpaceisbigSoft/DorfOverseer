@@ -41,7 +41,7 @@ from planner_industry import *  # noqa: E402,F401,F403  (0.104.83: the planner i
 from planner_society import *  # noqa: E402,F401,F403  (0.104.83: the planner in parts)
 import crisis  # noqa: E402  (0.104.137)
 from planner_moods import mood_blocked  # noqa: E402  (0.105.26) a waiting mood's materials held from other orders
-from planner_moods import reserve_blocked, _mood_reserve_rule  # noqa: E402  (0.105.31) the mood reserves
+from planner_moods import reserve_room, note_reserve_swap, _mood_reserve_rule  # noqa: E402  (0.105.31) the mood reserves
 from planner_building import *  # noqa: E402,F401,F403  (0.104.83: the planner in parts)
 from planner_care import _doctor_post_rule, _infection_rule, _offices_refill_rule, _traction_rest_rule  # noqa: E402  (0.104.168)
 from planner_water import _waterworks_rule  # noqa: E402  (0.105.0) moat, pumps, irrigation, magma workshops
@@ -775,7 +775,10 @@ def select(proposals: list[Proposal], state: dict, memory: Memory,
     # what a mood had just cancelled)
     mood_recipes, mood_mats = mood_blocked(state)
     # (0.105.31) and the mood reserves: no other rule's order takes the last few
-    reserve_recipes = reserve_blocked(state, cfg)
+    # (reserve fixes: held at or under the line, else capped at what lies over
+    # it; the reserve rule tops a reserve up at the line, so nothing waits for
+    # good while it can be made; a noble's mandate is never held by it)
+    reserve_recipes = reserve_room(state, cfg)
     for p in sorted(proposals, key=lambda p: p.priority - (2 if (_steer(p) or {}).get("mode") == "raise" else 0)):
         st_ = _steer(p)
         if st_ and st_["mode"] == "hold":
@@ -787,9 +790,13 @@ def select(proposals: list[Proposal], state: dict, memory: Memory,
             if what:
                 held.append(f"{p.rule}: a strange mood waits for {what}; no {r_} order to use it up meanwhile")
                 continue
-            if p.rule != "mood_reserve" and reserve_recipes.get(r_):
-                held.append(f"{p.rule}: no {r_} order: it would use up {reserve_recipes[r_]}")
+            room = reserve_recipes.get(r_) if p.rule not in ("mood_reserve", "mandate") else None
+            if room and room[0] <= 0:
+                held.append(f"{p.rule}: no {r_} order: it would use up {room[1]}")
                 continue
+            if room and isinstance(p.action.get("amount"), int) and p.action["amount"] > room[0]:
+                p.action = dict(p.action, amount=room[0])
+                p.reason = f"{p.reason} (at most {room[0]}: {room[1]})"
         last = memory.last_fired.get(p.rule)
         cooldown = cfg.get(COOLDOWN_KEYS.get(p.rule, f"{p.rule}_cooldown_ticks"), cfg["rule_cooldown_ticks"])
         if (p.rule not in NO_COOLDOWN and last is not None and not (st_ and st_["mode"] == "raise")
@@ -907,6 +914,7 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
         note_refusal(memory, p, r, now, state.get("bridge_version"))
         note_no_effect(memory, p, ok, now)                 # (0.105.24)
         note_construct(p, r, state, memory, now)           # (0.105.30) wings, seals, soil floors, the hall
+        note_reserve_swap(p, r, state, memory)             # (0.105.31 reserve fixes) a fibre swap that did nothing
         if p.action.get("type") == "squad_swap" and p.action.get("unit_id") is not None:
             # (0.104.78) sent home, or found already out: not asked for again a week
             memory.swapped[str(p.action["unit_id"])] = now
