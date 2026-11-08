@@ -93,3 +93,10 @@ Suggested placement: in "Starting the next step", in place of the current "then 
 - **Cavern openings (C, F, E).** `threats.openings` lists cavern entrances, well shaft hatches and doors (capped 60); a cavern entrance gets doors at once (`cavern_openings`); a forgotten beast or other great danger in the caverns seals every opening ("all caverns", announced), the cavern well's shaft hatch shut too (the brain says the well is dry; Needs you if injured wait on it); never with citizens below; reopened once it's gone. Whether a locked door or hatch really keeps a forgotten beast out is the open question.
 - **Strategist (`--ai`, when tried).** The first live review returns JSON; life-saving rules can't be held; the shown rules can be steered; the API backend uses adaptive thinking on 4.6+ models (the subscription backend unchanged).
 - **Scorecard (the exit test).** `keeper-preset.json` entries carry a `"run"` stamp after the fresh start, unchanged by a revive; each kept state starts with `"_run"`; `python brain\scorecard.py --every 2y` writes `logs\scorecards\<season>.md` and `summary.md`, with no "older run left out" notes.
+
+**0.105.27: disposal of forbidden clutter (all six)**
+- The census's `items.forbidden` in memory: counts by reason and place; `dead.standing` lists the standing orders with real 0/1 values.
+- The journal shows `set_standing_orders` (gather_refuse on), then `unforbid_items` batches (used ammo, dead enemies' things, dead citizens' things once all are buried), `mark_melt` with a melt work order when a smelter stands, `place_dump` (inside for D, the Hermit hold), `mark_dump`, and `empty_dump` once a dump holds 150+.
+- Lock symbols on the map should thin out over a few game months; nothing near enemies or in a siege is touched; no citizen's body vanishes; picks and axes stay.
+- The Rules tab's "Forbidden items and junk" block fits the window (Dispose / Yours too / Keep enemy gear).
+- A Needs you appears if 200+ locked items match no game reason (maybe yours).
