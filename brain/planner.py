@@ -48,6 +48,8 @@ from planner_homes import *  # noqa: E402,F401,F403  (0.104.168: homes and house
 from planner_threats import _threat_rules  # noqa: E402  (0.105.0 round 3: threats answered)
 from planner_world import (_contact_rule, _export_rule, _hostile_trade_filter, _meeting_answer_rule,  # noqa: E402
                            _messenger_rule, _world_notes, note_world)  # (0.105.0: the world outside, 12b and 13b)
+from planner_construct import (_hall_rule, _construction_blocks_rule,  # noqa: E402  (0.105.30) construction
+                               note_construct, note_construct_cycle)
 from planner_army import (_army_gear_rule, _quiver_rule, _bolts_rule, _flask_rule,  # noqa: E402  (0.105.0, round 2)
                           _shelter_squads_rule, _gate_cut_rule)
 
@@ -541,6 +543,11 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
     # 6e-0. Above ground: the keep round the way in (the Surface ambition)
     if can_use("buildings", "projects"):
         _guard(_keep_rule, s, cfg, citizens, traits, proposals, notes, memory)
+        # 6e-0b. (0.105.30) the surface hall (one building above ground at a time)
+        _guard(_hall_rule, s, cfg, citizens, traits, proposals, notes, memory, rules_)
+    # 6e-0c. (0.105.30) blocks for what is to be built (after the idle hands: not ordered twice)
+    if can_use("stocks", "orders", "buildings"):
+        _guard(_construction_blocks_rule, s, cfg, citizens, traits, proposals, notes, memory)
     # 6e-1. Trade: goods to the depot for a caravan, crafts to sell; hauling
     if can_use("buildings", "orders"):
         _guard(_trade_rules, s, cfg, citizens, proposals, notes, traits, memory)
@@ -870,6 +877,7 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
         _record_any_outcome(p.action, r, state, memory, now, brief=brief_timeout_now)
         note_refusal(memory, p, r, now, state.get("bridge_version"))
         note_no_effect(memory, p, ok, now)                 # (0.105.24)
+        note_construct(p, r, state, memory, now)           # (0.105.30) wings, seals, soil floors, the hall
         if p.action.get("type") == "squad_swap" and p.action.get("unit_id") is not None:
             # (0.104.78) sent home, or found already out: not asked for again a week
             memory.swapped[str(p.action["unit_id"])] = now
@@ -1120,6 +1128,10 @@ def note_cycle(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> list[
         notes += note_lockdown(s, memory, cfg)                   # (0.105.3) B's sealed hatch: lone intruders, the cap
     if "locations" not in errors:
         note_locations(s, memory, cfg)                           # (0.105.26) moved out of plan()
+    try:
+        note_construct_cycle(s, memory, cfg)                     # (0.105.30) the hall's wait for blocks
+    except Exception as e:  # noqa: BLE001
+        notes.append(f"construction bookkeeping failed ({type(e).__name__}: {str(e)[:120]})")
     # (0.104.89) the strategist's raised and held rules run out
     if isinstance(getattr(memory, "steer", None), dict):
         for k in [k for k, v in memory.steer.items() if not (isinstance(v, dict) and isinstance(v.get("until"), int)

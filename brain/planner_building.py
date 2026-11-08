@@ -13,6 +13,7 @@ import phases
 from quirks import has_rule
 from digest import _d, _l, normalize
 from planner_core import *  # noqa: F401,F403
+from planner_construct import _soil_floor_rule  # (0.105.30) block floors over a finished hall's soil
 from planner_growth import *  # noqa: F401,F403  (13c: split out by theme)
 from planner_wells import *  # noqa: F401,F403  (13c: split out by theme)
 
@@ -694,6 +695,12 @@ def _project_rules(s, traits, cfg, proposals, notes, can_use, memory) -> None:
                     ask_player(notes, f"{what}: {dig['stuck']} tiles are no longer designated, so it won't "
                                  "finish (cancel it, or re-designate them)")
 
+    # (0.105.30, construction 3.3) a finished hall's own step `floor`: block
+    # floors over its soil (soil can't be smoothed), once per project
+    try:
+        _soil_floor_rule(s, traits, cfg, proposals, notes, memory)
+    except Exception as e:  # noqa: BLE001  (an odd report value: the project steps go on)
+        notes.append(f"rule _soil_floor_rule failed ({type(e).__name__}: {str(e)[:120]}); the others ran")
     _dig_stall_rule(s, memory, cfg, open_, proposals)
 
     # (0.104.12) projects that hold a building slot for good: a dig that has

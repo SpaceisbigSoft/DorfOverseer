@@ -292,7 +292,8 @@ BIG_MOVES = {"start_project", "cancel_project", "cancel_work_order", "squad_fill
              "build_gate_doors", "fortify_entrance", "expel_dwarf", "place_well", "link_lever", "place_traps",
              "remove_workshops", "deep_depot",      # (0.105.23) a wagon road and a hall dug
              "cut_entrance",                     # (0.105.0) hatches across the fort's stairs: asked first
-             "build_gatehouse"}                  # (0.105.23) walls and a drawbridge on the surface
+             "build_gatehouse",                  # (0.105.23) walls and a drawbridge on the surface
+             "place_hall", "build_wings"}        # (0.105.30) a hall above ground; wall arms at the gatehouse
 DECLINE_DAYS = 7          # a "No" holds this many in-game days before it may ask again
 
 
@@ -381,6 +382,9 @@ SHORT_WORDS = {
     "vacate_post": "give a patient's hospital post to a healthy dwarf",  # (0.104.111)
     "give_trinkets": "give trinkets to dwarves who want something to own",
     "place_keep": "build the keep above ground (next step)",
+    "place_hall": "build the hall above ground (next step)",               # (0.105.30) construction
+    "build_wings": "build wall arms out from the gatehouse",
+    "floor_rooms": "lay block floors over a finished hall's soil",
     "deep_depot": "dig a wagon road down to an underground trade depot (next step)",  # (0.105.23)
     "polish": "smooth or engrave a finished level",
     "quarry": "dig a small quarry in ordinary stone",
