@@ -253,6 +253,7 @@ def journal_counts(entries: list[dict], date: dict) -> dict:
     levels = []
     reports, deaths = Counter(), Counter()
     access = []         # (when, visitors allowed, location ids) from location_access
+    soil_floored = 0    # (0.105.30) tiles floor_rooms placed
     for e in entries:
         if e.get("kind") == "event" and before(e, date):
             ev = _d(e.get("event"))
@@ -283,6 +284,11 @@ def journal_counts(entries: list[dict], date: dict) -> dict:
             levels.append({"kind": r.get("kind") or a.get("kind"), "z": r.get("z"),
                            "tiles": r.get("tiles") or r.get("designated"),
                            "customs": [c for c in _l(a.get("customs")) if isinstance(c, str)]})
+        elif t == "floor_rooms" and not r.get("dry_run"):
+            # (0.105.30) soil floors the keeper finished: tiles placed (any count field the bridge gives)
+            n = next((r[k] for k in ("placed", "tiles", "floored", "n") if isinstance(r.get(k), int)
+                      and not isinstance(r.get(k), bool)), None)
+            soil_floored += n if n is not None else len(_l(r.get("cells")))
         elif t == "location_access" and not r.get("dry_run") and isinstance(e.get("date"), dict):
             ids = r.get("changed") if isinstance(r.get("changed"), list) else _l(a.get("ids"))
             vis = r.get("visitors") if isinstance(r.get("visitors"), bool) else a.get("visitors")
@@ -290,7 +296,7 @@ def journal_counts(entries: list[dict], date: dict) -> dict:
                 access.append((abs_ticks(e["date"]), vis, ids))
     return {"ok": ok, "seen": seen, "trade_value": trade_value, "petitions_yes": petitions_yes,
             "petitions_no": petitions_no, "levels": levels, "reports": reports, "deaths": deaths,
-            "shut_days": shut_days(access, abs_ticks(date))}
+            "shut_days": shut_days(access, abs_ticks(date)), "soil_floored": soil_floored}
 
 
 def shut_days(access: list, until: int) -> float:
@@ -436,6 +442,68 @@ def measures(s: dict, j: dict) -> dict:
     # (0.105.29) levels that a preset's customs placed or shaped (journal action "customs")
     for owner, k in CUSTOM_KEYS.items():
         out["custom_" + k] = sum(1 for lv in levels if CUSTOM_IDS[owner] & set(lv.get("customs") or []))
+    out.update(construction_measures(s, j))
+    return out
+
+
+# ---------------------------------------------------------------- (0.105.30) constructions
+
+def constructions_section(s: dict) -> dict | None:
+    """The report's `constructions` section (lua/ai-constructions.lua survey),
+    or the census's copy; None when neither is there or the survey failed."""
+    for c in (s.get("constructions"), _d(s.get("census")).get("constructions")):
+        if isinstance(c, dict) and c and "error" not in c:
+            return c
+    return None
+
+
+def _count(v) -> int | None:
+    """One of the survey's `ai` registry entries: a number, a list of tiles or
+    pieces, or a dict carrying a count (built, walls, tiles, total or n)."""
+    if isinstance(v, bool):
+        return None
+    if isinstance(v, (int, float)):
+        return int(v)
+    if isinstance(v, list):
+        return len(v)
+    if isinstance(v, dict):
+        for k in ("built", "walls", "tiles", "total", "n"):
+            x = v.get(k)
+            if isinstance(x, (int, float)) and not isinstance(x, bool):
+                return int(x)
+            if isinstance(x, list):
+                return len(x)
+    return None
+
+
+def _num_or_none(v):
+    return v if isinstance(v, (int, float)) and not isinstance(v, bool) else None
+
+
+def construction_measures(s: dict, j: dict) -> dict:
+    """built_up, roofed_up, gate_walls, cavern_walls, block_pct and soil_floors.
+    All None when the report has no constructions section (an older bridge),
+    so those lines read "no data", never a false 0."""
+    c = constructions_section(s)
+    out = dict.fromkeys(("built_up", "roofed_up", "gate_walls", "cavern_walls", "block_pct", "soil_floors"))
+    floored = j.get("soil_floored") if isinstance(j, dict) else None
+    if c is None:
+        return out
+    total = _num_or_none(c.get("total"))
+    surface = c.get("surface")
+    out["built_up"] = _num_or_none(_d(surface).get("total")) if isinstance(surface, dict) else _num_or_none(surface)
+    out["roofed_up"] = _num_or_none(c.get("roofed_surface_tiles"))
+    ai = c.get("ai")
+    if isinstance(ai, dict):
+        parts = [_count(ai.get(k)) for k in ("gate_pieces", "wings")]
+        out["gate_walls"] = sum(x for x in parts if x is not None) if any(x is not None for x in parts) else None
+        out["cavern_walls"] = _count(ai.get("cavern_walls"))
+        out["soil_floors"] = _count(ai.get("soil_floors"))
+    blocks = _num_or_none(_d(c.get("by_item")).get("blocks"))
+    out["block_pct"] = (pct(blocks, total) if total else 0.0) if blocks is not None and total is not None else None
+    if out["soil_floors"] is None:
+        # the survey keeps no soil-floor registry: the tiles floor_rooms placed (journal)
+        out["soil_floors"] = floored if isinstance(floored, int) else None
     return out
 
 
@@ -504,6 +572,13 @@ LINES = [
     ("Militarism", "barracks by the gate, armouries", "custom_W", {W}, set()),
     ("Mining", "deep halls, ore piles", "custom_D", {D}, set()),
     ("Agriculture", "halls and kitchens by the fields", "custom_G", {G}, set()),
+    # (0.105.30) construction: the keeper builds, not only digs (lua/ai-constructions.lua survey)
+    ("Surface", "constructed tiles above ground", "built_up", {G, ME}, {D, H}),
+    ("Surface", "roofed surface tiles", "roofed_up", {G, ME}, {D, H}),
+    ("Fortification", "gate walls and wings", "gate_walls", {W}, set()),
+    ("Fortification", "cavern openings walled", "cavern_walls", {H}, set()),
+    ("Craftsmanship", "constructions of blocks, %", "block_pct", {ME, M}, set()),
+    ("Grandeur", "soil floors finished", "soil_floors", {G, M}, {W}),
 ]
 
 

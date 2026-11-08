@@ -109,3 +109,22 @@ Suggested placement: in "Starting the next step", in place of the current "then 
 - **A War-hold.** New barracks and archery levels 1-3 levels under the hatch, on the side facing the way in (`gate_barracks`). Barracks have an alcove past the racks with a weapon and an armour pile (`armoury`; layout summary `armoury = true`).
 - **E Deep mine.** A new dining level in the forge (industry) band (`deep_hall`). Workshop levels get one 5x5 stone stockpile room (`ore_piles`; check stone is hauled there and stone tidiness does not fight it).
 - **F Garden fort.** A new dining level and food-only workshop levels (still, kitchen, farmer's, quern, millstone, butcher's, fishery) on the farm level (`field_hall`, `field_kitchens`); a mixed workshop level goes where it always did.
+
+**0.105.30: construction (the keeper builds, not only digs)**
+- **Check first (the spec's [verify] points; any fort).**
+  - Quickfort takes `Cu`, `Cd`, `y` and `CF`: a dry run of `place_hall` should not list them in `invalid_keys` (bridge log). A key refused there only drops that piece (window, stair).
+  - The roof at z+1 over a walled court or hall: built from below, or suspended as inaccessible? Look at state.json `planned` (suspendmanager's reason) and the `roof_planned` count in `buildings.keep` / `buildings.halls`. If it stays stuck, the corner stair (`ROOF_STAIR`) must be on.
+  - A built wall makes a walkable floor on the tile above (wall top).
+  - buildingplan's per-building item filter: the bridge log says whether "blocks only" was set or the build fell back to any material.
+  - `df.global.world.constructions` exists with `item_type` and `flags.top_of_wall`: state.json `constructions` has a `total` and no `{"error": ...}`.
+  - `BUILD_CONSTRUCTION` reaches enough dwarves: waiting construction jobs in `labor` get hands.
+  - A roofed hall reads `outside = false`, `subterranean = false`, and the alarm's `civ_alert` result shows `surface_out` > 0 (those tiles left out of the shelter).
+  - FPS with about 100 planned tiles waiting.
+- **Digest (all).** The keeper's digest has a `BUILT ... walls, ... floors (..% blocks), .. above ground` line once anything is built; the block share should rise as `stone_blocks` orders from the construction rule come through.
+- **F Garden fort.** `place_hall` with `field_hall` in the journal, by the surface fields; stage by stage to `done`, then a dining zone over it. Soil floors (`floor_rooms`) in the farm-level dining hall. F's keep refusals (133 last run) should not hold the hall back once 3 have failed.
+- **C Merchant city.** `place_hall` with `market_hall`, 6-15 tiles from the depot and not on the wagon road: wagons still reach the depot (`trade.depot`, no "wagons can't reach" Needs you). Its first building above ground.
+- **A War-hold.** `build_wings` after the gatehouse stands: two arms of up to 5 walls, no new entrance appearing in `entrances` (no courtyard), and the gate's `pieces` list holds them.
+- **D Hermit hold.** Small cavern openings walled (`sealed`), never with a citizen beyond or with a cavern well on that layer; nothing new above ground (`built_up` flat).
+- **E Deep mine.** Nothing new above ground; only blocks orders may change.
+- **B Monastery.** Nothing new built at its sliders except soil floors if a finished hall sits on soil.
+- **Scorecard (all).** The six new lines (Surface "constructed tiles above ground" and "roofed surface tiles", Fortification "gate walls and wings" and "cavern openings walled", Craftsmanship "constructions of blocks, %", Grandeur "soil floors finished") read numbers, not "no data", and are won by F/C, A, D and C/B as the table in building.md says.

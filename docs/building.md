@@ -243,11 +243,77 @@ own rule of thumb: a cow about 38, a horse 33, a llama 16, a sheep or goat 6.
 
 ## Not yet
 
-- Above-ground building (the **Surface vs underground** trait is noted but not
-  used yet)
+- Grand design above ground: towers, second storeys, surface houses, a walled
+  town (left to the future AI agent; the keeper's fixed pieces are below)
 
 ## Since 0.98: the plan keeps acting, set pieces, the weighted ladder
 
 - **The weighted ladder.** After the levels a fort needs to live (workshops, storage, bedrooms, dining, tombs, hospital), every optional level whose time has come is scored (`planner.ladder_score`): its old place (jail 9.5, suites 9, tavern 8.5, library 8, barracks 7.5, archery 7, memorial 6.5, temple 6, garden 5.5, great hall 5), plus the sliders that care for it (Militarism +100 adds 2.5 to barracks, Piety +100 adds 3 to the temple, Grandeur +100 adds 2.5 to the great hall ...), plus 2 when dwarves are distracted by the need it meets, plus half the fort's own leanings on those sliders as a tie-breaker. Neutral sliders keep the old order. The notes show the top four scores.
 - **Set pieces.** The plan's places kept for a great hall, a temple and memorials are filled by those levels (and shown as built). The great hall is a dining hall of up to 90 tables among the halls, raised in good times once the fort has 60 dwarves and a first dining hall. The inner keep's place (Last Stand) has no builder yet.
 - **The plan keeps acting.** A new era's wings take their direction from the layout the engine picks today (and say so when it changed), and a deep fort (Depth +40) reaches each district a level deeper. New levels' corridors follow today's Grandeur, Spacing and Fortification, not the founding ones.
+
+## Construction (0.105.30)
+
+Until 0.105.29 the only constructions the AI placed were bedroom wall repairs
+(`repair_rooms`); the keep was refused 130+ times in C and F for want of open
+ground, and the gates are hatches over stairs. 0.105.30 adds a fixed,
+small vocabulary. Every piece goes through quickfort `build` mode and waits on
+buildingplan; finished constructions are map tiles and cost no FPS, so at most
+about 100 planned tiles stand at once (one stage at a time).
+
+- **Surface hall** (`lua/ai-builder-halls.lua`, brain `planner_construct._hall_rule`).
+  One per fort, a 9x7 footprint with a 7x5 dining interior. `field_hall` by the
+  surface farms (Garden fort), `market_hall` 6-15 tiles from the depot and off
+  the wagon road (Merchant city). The site is flat open ground under the sky,
+  no zone, building or liquid within 2, no channel within 2 (cave-ins), clear
+  of every way in and within 30 tiles of one. Stages: `clearing` (fell trees),
+  `walls` (a ring, one door toward the way in, glass windows on the long sides
+  with Grandeur 40+), `floor` (block floor on soil, Craftsmanship 40+), `roof`
+  (z+1 over the interior and windows, with a corner stair while `ROOF_STAIR`),
+  `furnish` (3 tables, 3 chairs, a statue with Grandeur 40+), `zone` (a dining
+  hall zone), `done`. It waits while the keep is between `clearing` and `roof`,
+  but goes ahead when the keep has failed 3 times.
+- **The keep** counts blocks first in its material check, and gets a `stair`
+  stage before `roof` if its roof jobs turn out to be unreachable.
+- **Gate wings** (`ai-gates.lua plan_wings`/`build_wings`, brain
+  `planner_gates._wings_rule`): War-hold, once a gatehouse stands. The arms are
+  added to the gate's pieces, so removing the gate takes them down.
+- **Soil floors** (`ai-builder-rooms.lua floor_soil_rooms`, the project step
+  `floor` after `finish`): soil and sand can't be smoothed, so finished halls
+  on soil get block floors, at most 60 tiles a call, never under a building,
+  stair, door or farm plot.
+- **Sealed cavern openings** (gate style `sealed`): the Hermit hold walls small
+  cavern openings instead of locking doors on them.
+- **Blocks** (`planner_construct._construction_blocks_rule`): the sum of what
+  the open pieces still need, plus 10%, ordered as `stone_blocks` (up to 10
+  jobs) when the masons have usable stone; the idle-hands cap of 500 does not
+  apply.
+- **The shelter** leaves out roofed surface tiles (inside but not
+  subterranean), so civilians never shelter in a hall outside the gate.
+
+**Reporting.** `lua/ai-constructions.lua survey()` counts finished
+constructions by shape, by item (blocks, boulder, log, bar), above and below
+ground, the roofed surface tiles, the planned ones waiting, and the AI's own by
+registry. It is the report section `constructions` (cached 3 days) and part of
+the census. The digest shows it as one line:
+`BUILT 40 walls, 70 floors (80% blocks), 60 above ground; 12 waiting | roofed surface 35 | keep roof (9 left), field hall walls (20 left)`.
+
+**Scorecard** (`brain/scorecard.py`, measure keys in brackets):
+
+| Slider | Line | Should win | Should lose |
+| --- | --- | --- | --- |
+| Surface | constructed tiles above ground (`built_up`) | Garden, Merchant | Deep mine, Hermit |
+| Surface | roofed surface tiles (`roofed_up`) | Garden, Merchant | Deep mine, Hermit |
+| Fortification | gate walls and wings (`gate_walls`) | War-hold | |
+| Fortification | cavern openings walled (`cavern_walls`) | Hermit | |
+| Craftsmanship | constructions of blocks, % (`block_pct`) | Merchant, Monastery | |
+| Grandeur | soil floors finished (`soil_floors`) | Garden, Monastery | War-hold |
+
+A report without the `constructions` section (an older bridge) reads "no data"
+on these lines, not 0. `soil_floors` comes from the survey's `ai.soil_floors`
+when it has one, else from the tiles the journal's `floor_rooms` placed.
+
+**Left out on purpose:** towers and spires (no preset has both Verticality and
+Surface), roofed gatehouses (the gate finds its lid hatch by the open sky),
+surface cottages (dwarves would sleep outside the gate), rebuilding rough rock
+walls in blocks, the Merchant's surface tavern (phase 2), second storeys.
