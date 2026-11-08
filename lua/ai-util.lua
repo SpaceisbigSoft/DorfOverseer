@@ -190,6 +190,12 @@ DEAD_GEAR = {WEAPON = true, ARMOR = true, HELM = true, SHOES = true, GLOVES = tr
              SHIELD = true, AMMO = true, QUIVER = true, BACKPACK = true, FLASK = true, CROWN = true,
              RING = true, EARRING = true, BRACELET = true, AMULET = true, SCEPTER = true}
 CORPSE_KINDS = {CORPSE = true, CORPSEPIECE = true}
+-- (0.105.28) every dead creature's item type DF 50 has (df-structures
+-- item_type: CORPSE, CORPSEPIECE and REMAINS, the remains of vermin and small
+-- creatures, which carry a race but no unit). All are bodies to the
+-- classifier (corpse_side, fort_remains); only CORPSE_KINDS mark the tiles
+-- whose gear is a dead other's (a dead rat by a helm says nothing of it).
+DEAD_KINDS = {CORPSE = true, CORPSEPIECE = true, REMAINS = true}
 
 local function tkey(x, y, z) return x .. ',' .. y .. ',' .. z end
 
@@ -247,11 +253,11 @@ function corpse_race_civ(it)
     return okr and tonumber(race) or nil, okc and tonumber(civ) or nil
 end
 
--- A body or part of a kind (CORPSE / CORPSEPIECE): 'own' (the fort's race
+-- A body, part or remains (DEAD_KINDS): 'own' (the fort's race
 -- and civ) or 'other'; nil for anything else. A race that can't be read
 -- counts as another's; a civ that can't be read as the fort's.
 function corpse_side(it, kind, ctx)
-    if not CORPSE_KINDS[kind or ''] then return nil end
+    if not DEAD_KINDS[kind or ''] then return nil end
     local race, civ = corpse_race_civ(it)
     if race == nil or ctx.race == nil or race ~= ctx.race then return 'other' end
     if civ ~= nil and ctx.civ ~= nil and civ ~= ctx.civ then return 'other' end
@@ -260,11 +266,11 @@ end
 
 -- The remains of one of the fort's own, in the widest sense (nothing ever
 -- destroys these): the dead_dwarf flag, or a body or part of the fort's
--- race OR its civ (or whose race, or kind, can't be read).
+-- race OR its civ (or whose race, or kind, can't be read); REMAINS too.
 function fort_remains(it, kind, ctx)
     if it.flags.dead_dwarf then return true end
     if kind == nil then return true end         -- can't tell what it is: kept
-    if not CORPSE_KINDS[kind] then return false end
+    if not DEAD_KINDS[kind] then return false end
     local race, civ = corpse_race_civ(it)
     if race == nil or (ctx.race ~= nil and race == ctx.race) then return true end
     if civ ~= nil and ctx.civ ~= nil and civ == ctx.civ then return true end

@@ -415,6 +415,20 @@ def _standing_key(standing: dict, name: str) -> str | None:
     return None
 
 
+def _unknown_reachable(fb: dict, reason: dict) -> tuple[int, str]:
+    """(0.105.28) The forbidden items of no game reason the fort can reach
+    outside the caverns (census forbidden.unknown_reachable), and where they
+    lie in words ("on the surface (12) and inside the fort (3)"). A census
+    from before the field: by_reason.unknown, "about the map"."""
+    n = fb.get("unknown_reachable")
+    if not isinstance(n, (int, float)) or isinstance(n, bool):
+        return int(reason.get("unknown", 0)), "about the map"
+    uw = _d(fb.get("unknown_where"))
+    parts = [f"{label} ({int(uw[k])})" for k, label in (("surface", "on the surface"), ("inside", "inside the fort"))
+             if isinstance(uw.get(k), (int, float)) and uw[k] > 0]
+    return int(n), " and ".join(parts) if parts else "within the fort's reach (not in the caverns)"
+
+
 def _disposal_rules(s: dict, cfg: dict, proposals: list, notes: list, memory=None, rules: dict | None = None) -> None:
     """(0.105.27) Forbidden items (lock symbols) lie about everywhere: the
     game's standing orders forbid used ammo and the dead's things, and what it
@@ -462,12 +476,15 @@ def _disposal_rules(s: dict, cfg: dict, proposals: list, notes: list, memory=Non
                                   "count the forbidden items lying about again" if fresh else
                                   "count what lies about the map, forbidden items too", 7))
 
-    # the player's own forbidden things (no game reason): theirs unless the switch says otherwise
-    unknown = reason.get("unknown", 0)
+    # the player's own forbidden things (no game reason): theirs unless the switch says otherwise.
+    # (0.105.28) Only those the fort can reach outside the caverns (unknown_reachable):
+    # the caverns' and the unreachable ones are the game's, not the player's. A census
+    # without the field falls back on by_reason.unknown.
+    unknown, where = _unknown_reachable(fb, reason)
     if unknown > cfg["disposal_unknown_note"] and not player_items:
-        ask_player(notes, f"{unknown} items lie forbidden for no reason the game gives (not the dead's, not used "
-                          "ammo, not dumped): they may be yours, so the AI leaves them. To let the AI store or "
-                          "dispose of them too, switch on \"forbidden items of the player\" "
+        ask_player(notes, f"{unknown} items lie forbidden {where} for no reason the game gives (not the dead's, "
+                          "not used ammo, not dumped): they may be yours, so the AI leaves them. To let the AI "
+                          "store or dispose of them too, switch on \"forbidden items of the player\" "
                           "(disposal_player_items) in the Rules tab")
 
     # a siege: the haulers stay in (the bridge refuses too); said once a cycle

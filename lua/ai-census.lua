@@ -120,6 +120,11 @@ end
 -- And where it lies: surface / inside / caverns (one of them), and besides
 -- near_danger (FORBID_DANGER_TILES of a live enemy) and unreachable (no
 -- citizen's walk group reaches its tile). Folded into items()' own walk.
+-- (0.105.28) Dead creatures' REMAINS (vermin, small creatures) are bodies
+-- too (ai-util DEAD_KINDS), counted under corpses. unknown_reachable: the
+-- unknown items neither in the caverns nor unreachable (the ones the player
+-- may have forbidden; the caverns' are the game's), and unknown_where
+-- {surface, inside} says where those lie.
 ---------------------------------------------------------------------------
 FORBID_REASONS = {'own_dead', 'used_ammo', 'other_dead', 'dumped', 'ai', 'unknown'}
 FORBID_WHERE = {'surface', 'inside', 'caverns', 'near_danger', 'unreachable'}
@@ -254,7 +259,7 @@ end
 
 local function new_forbidden()
     local f = {total = 0, by_type = {}, by_reason = {}, by_where = {}, metal = 0, worn = 0, valuable = 0,
-               corpses = {own = 0, other = 0}}
+               corpses = {own = 0, other = 0}, unknown_reachable = 0, unknown_where = {surface = 0, inside = 0}}
     for _, k in ipairs(FORBID_REASONS) do f.by_reason[k] = 0 end
     for _, k in ipairs(FORBID_WHERE) do f.by_where[k] = 0 end
     return f
@@ -299,13 +304,16 @@ local function count_forbidden(fb, ctx, it, t, wear)
     end)
     if okm and metal then fb.metal = fb.metal + 1 end
     local x, y, z = item_xyz(it)
+    local where, unreach
     if x then
         local okh, des = pcall(function() return dfhack.maps.getTileFlags(x, y, z) end)
-        if okh and des and (des.feature_global or des.feature_local) then fb.by_where.caverns = fb.by_where.caverns + 1
-        elseif okh and des and des.outside then fb.by_where.surface = fb.by_where.surface + 1
-        else fb.by_where.inside = fb.by_where.inside + 1 end
+        if okh and des and (des.feature_global or des.feature_local) then where = 'caverns'
+        elseif okh and des and des.outside then where = 'surface'
+        else where = 'inside' end
+        fb.by_where[where] = fb.by_where[where] + 1
         if ctx.near(x, y, z) then fb.by_where.near_danger = fb.by_where.near_danger + 1 end
-        if reachable(ctx, x, y, z) == false then fb.by_where.unreachable = fb.by_where.unreachable + 1 end
+        unreach = reachable(ctx, x, y, z) == false
+        if unreach then fb.by_where.unreachable = fb.by_where.unreachable + 1 end
     end
     local reason, corpse = 'unknown', nil
     if ctx.U then
@@ -316,6 +324,10 @@ local function count_forbidden(fb, ctx, it, t, wear)
         fb.corpses[corpse] = fb.corpses[corpse] + 1
     else
         fb.by_reason[reason] = fb.by_reason[reason] + 1
+        if reason == 'unknown' and where and where ~= 'caverns' and not unreach then
+            fb.unknown_reachable = fb.unknown_reachable + 1
+            fb.unknown_where[where] = fb.unknown_where[where] + 1
+        end
     end
 end
 
