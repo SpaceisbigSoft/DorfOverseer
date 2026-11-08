@@ -8,11 +8,12 @@ re-exports every name here."""
 from __future__ import annotations
 
 import math
+import quirks
 from quirks import has_rule
 from digest import _d, _l
 from planner_core import *  # noqa: F401,F403
 
-__all__ = ["MOOD_WORKSHOPS", "_mood_rules", "mood_item_text", "MOOD_CONSUMERS", "MOOD_TRADE_KEYS", "_mood_make", "_mood_slaughter", "_mood_materials", "mood_trade_wants", "MOOD_BLOCKS", "mood_blocked"]
+__all__ = ["MOOD_WORKSHOPS", "_mood_rules", "mood_item_text", "MOOD_CONSUMERS", "MOOD_TRADE_KEYS", "_mood_make", "_mood_slaughter", "_mood_materials", "mood_counts_text", "mood_journal", "mood_trade_wants", "MOOD_BLOCKS", "mood_blocked"]
 
 
 # A crafting mood's skill -> the workshop (or furnace) the dwarf must claim.
@@ -52,9 +53,13 @@ def _mood_rules(s: dict, memory, cfg: dict, proposals: list, notes: list) -> Non
             # (a mood fails in 30-40 days; 2-5 Nov a failed one was seen
             # waiting on its first request for most of them)
             counted = any(isinstance(x.get("avail"), dict) for x in missing)
-            if missing and (counted or days >= cfg["mood_wait_days"]):
+            prog = _d(_d(getattr(memory, "mood_progress", None)).get(str(m.get("unit_id"))))
+            stalled = ((now - prog["since"]) // TICKS_PER_DAY if isinstance(prog.get("since"), int)
+                       else days)
+            if missing and (counted or days >= cfg["mood_wait_days"]
+                            or stalled >= cfg.get("mood_stall_days", 7)):
                 _mood_materials(s, name, mood, missing, days, proposals, notes, cfg, memory=memory,
-                                unit_id=m.get("unit_id"))
+                                unit_id=m.get("unit_id"), stalled=stalled)
             elif isinstance(have, int) and isinstance(want, int) and have < want and days >= 3:
                 notes.append(f"{name}'s {mood.lower()} mood: gathering materials ({have}/{want}) for "
                              f"{days} days; if it stalls, DFHack's showmood says what's missing")
@@ -159,10 +164,18 @@ MOOD_TRADE_KEYS = {"cloth": "CLOTH", "leather": "SKIN_TANNED", "log": "WOOD", "r
                    "cut_gem": "SMALLGEM"}
 
 
-def _mood_make(s: dict, x: dict, kind: str, memory, cfg: dict) -> tuple[list, str | None]:
+def _mood_make(s: dict, x: dict, kind: str, memory, cfg: dict, mood: dict | None = None) -> tuple[list, str | None]:
     """(0.105.24) How the fort makes what a mood request asks for: a list of
     (action, why) to propose (empty when nothing is to be done now), and,
-    when it can't be made here, the reason in words."""
+    when it can't be made here, the reason in words.
+
+    (0.105.30) `mood` ({name, unit_id}): the dwarf whose mood it is; a life
+    at stake sets the fort's no-slaughter ban aside for one animal (F, 8 Nov:
+    a fey mood waited for 1 bone, the fort's bone out of the dwarf's walk, the
+    Beast-friends ban held, and the dwarf went berserk). The bridge's count
+    (x["avail"]) is read before "none" is said: stone the dwarf already holds,
+    or a search cut short (`capped`), is no "no loose stone" (E, 8 Nov: said
+    70 s before the artifact was made)."""
     st, su = _d(s.get("stocks")), _d(s.get("supplies"))
     b = _d(s.get("buildings"))
     q = int(x.get("quantity") or 1)
@@ -211,15 +224,15 @@ def _mood_make(s: dict, x: dict, kind: str, memory, cfg: dict) -> tuple[list, st
             order("tan_hide", q, "tan a hide")
             return acts, None
         why = "no hide to tan" + ("" if _has_shop(b, "Tanners") else " and no tanner's")
-        if _mood_slaughter(s, memory, cfg, acts, "its hide tanned for leather"):
+        if _mood_slaughter(s, memory, cfg, acts, "its hide tanned for leather", mood=mood):
             return acts, None
-        return acts, why
+        return acts, why + "; " + _slaughter_why(s, memory, cfg, mood)
     if kind in ("bone", "shell"):
         if kind == "shell":
             return acts, "no shell (shells come from turtles and shellfish: fishing, or a caravan's)"
-        if _mood_slaughter(s, memory, cfg, acts, "its bones for the mood"):
+        if _mood_slaughter(s, memory, cfg, acts, "its bones for the mood", mood=mood):
             return acts, None
-        return acts, "no bone and no spare tame animal to butcher"
+        return acts, "no bone the dwarf can use; " + _slaughter_why(s, memory, cfg, mood)
     if kind == "bar":
         furnaces = _d(b.get("furnaces"))
         magma = bool(furnaces.get("MagmaSmelter"))
@@ -264,25 +277,105 @@ def _mood_make(s: dict, x: dict, kind: str, memory, cfg: dict) -> tuple[list, st
     if kind == "log":
         return acts, "no log (trees felled, or a caravan's wood)"
     if kind == "stone":
-        return acts, "no loose stone"
+        av = _d(x.get("avail"))
+        if int(av.get("held") or 0) > 0:
+            return acts, None                  # the dwarf holds stone that suits: it is on its way
+        if av.get("capped"):
+            return acts, None                  # the bridge's search was cut short: not known to be none
+        if int(av.get("free") or 0) > 0 or int(av.get("forbidden") or 0) > 0:
+            return acts, None                  # the fort has some (out of reach, or forbidden: said elsewhere)
+        return acts, "no loose stone of the kind it wants"
     return acts, "no recipe makes it"
 
 
-def _mood_slaughter(s: dict, memory, cfg: dict, acts: list, why: str) -> bool:
+MOOD_SLAUGHTER_MIN_TAME = 3     # (0.105.30) for a mood: the bridge keeps the last two of a kind anyway
+
+
+def _mood_slaughter(s: dict, memory, cfg: dict, acts: list, why: str, mood: dict | None = None) -> bool:
     """(0.105.24) One spare tame animal to the butcher for a mood's bone or
     leather (the slaughter rule's own guards: a butcher's, enough tame
-    animals, never a fort of Beast-friends)."""
+    animals, never a fort of Beast-friends).
+
+    (0.105.30) For a named mood (`mood`: {name, unit_id}) a life is at
+    stake: the fort's no-slaughter ban is set aside, said so plainly, for one
+    animal only, the oldest spare adult (lua: never a pet, a war or hunting
+    animal, a child, a caged one or the last two of a kind; a male while the
+    kind has more than one), and at most one a mood. True when an animal is
+    asked for or already went for this mood (its bone or hide is coming)."""
+    uid = None if not mood else mood.get("unit_id")
+    if uid is not None and memory is not None and str(uid) in _d(getattr(memory, "mood_slaughter", None)):
+        return True                                   # this mood's one animal went already
     tame = int(_d(s.get("others_on_map")).get("tame_animals") or 0)
-    if (tame >= cfg["slaughter_min_tame"] and _has_shop(_d(s.get("buildings")), "Butchers")
-            and not (memory is not None and has_rule(getattr(memory, "culture", None), "no_slaughter"))):
-        if not any(a.get("type") == "slaughter_one" for a, _ in acts):
-            acts.append(({"type": "slaughter_one"}, f"one spare tame animal of the {tame} to the butcher: {why}"))
+    banned = memory is not None and has_rule(getattr(memory, "culture", None), "no_slaughter")
+    least = MOOD_SLAUGHTER_MIN_TAME if mood else cfg["slaughter_min_tame"]
+    if not (tame >= least and _has_shop(_d(s.get("buildings")), "Butchers")):
+        return False
+    if banned and not mood:
+        return False
+    if any(a.get("type") == "slaughter_one" for a, _ in acts):
         return True
-    return False
+    if mood:
+        a = {"type": "slaughter_one", "oldest": True}
+        if uid is not None:
+            a["mood_unit"] = uid
+        who = mood.get("name") or "a dwarf"
+        text = f"the oldest spare tame animal of the {tame} to the butcher: {why}"
+        if banned:
+            text = (f"the fort's {_ban_name(memory)} ban is set aside to save {who}'s mood: one animal only, "
+                    + text)
+        acts.append((a, text))
+    else:
+        acts.append(({"type": "slaughter_one"}, f"one spare tame animal of the {tame} to the butcher: {why}"))
+    return True
+
+
+def _ban_name(memory) -> str:
+    """The fort's trait whose rule bans slaughter, by name ("Beast-friends")."""
+    try:
+        qs = quirks.data()["quirks"]
+        held = _d(_d(getattr(memory, "culture", None)).get("quirks"))
+        for q in sorted(held):
+            if q in qs and "no_slaughter" in (qs[q].get("rules") or []):
+                return str(qs[q].get("name") or "no-slaughter")
+    except Exception:              # noqa: BLE001  (a name only)
+        pass
+    return "no-slaughter"
+
+
+def _slaughter_why(s: dict, memory, cfg: dict, mood: dict | None) -> str:
+    """Why no animal can go to the butcher for it, in words."""
+    tame = int(_d(s.get("others_on_map")).get("tame_animals") or 0)
+    if not _has_shop(_d(s.get("buildings")), "Butchers"):
+        return "no butcher's shop to butcher an animal at"
+    least = MOOD_SLAUGHTER_MIN_TAME if mood else cfg["slaughter_min_tame"]
+    if tame < least:
+        return f"only {tame} tame animal(s), none to spare for the butcher"
+    if not mood and memory is not None and has_rule(getattr(memory, "culture", None), "no_slaughter"):
+        return "the fort never slaughters its animals"
+    return "no spare tame animal to butcher"
+
+
+def mood_counts_text(x: dict) -> str:
+    """(0.105.30) One request with the bridge's count, compactly: "1 bone:
+    3 free (1 in walk), 2 forbidden, 1 in other jobs"."""
+    what = mood_item_text(x)
+    av = x.get("avail")
+    if not isinstance(av, dict):
+        return f"{what}: no count from this bridge"
+    n = lambda k: int(av.get(k) or 0)            # noqa: E731
+    bits = [f"{n('free')} free ({n('reach')} in walk)"]
+    for k, w in (("forbidden", "forbidden"), ("dump", "for the dump"), ("job", "in other jobs"),
+                 ("other", "in use"), ("held", "carried by the dwarf")):
+        if n(k):
+            bits.append(f"{n(k)} {w}")
+    if av.get("capped"):
+        bits.append("search cut short")
+    return f"{what}: " + ", ".join(bits)
 
 
 def _mood_materials(s: dict, name: str, mood: str, missing: list, days: int,
-                    proposals: list, notes: list, cfg: dict | None = None, memory=None, unit_id=None) -> None:
+                    proposals: list, notes: list, cfg: dict | None = None, memory=None, unit_id=None,
+                    stalled: int | None = None) -> None:
     """A mood gathering materials: get it what it waits for, and say exactly
     what the fort can't supply (a mood that never gets its materials ends in
     madness).
@@ -298,10 +391,20 @@ def _mood_materials(s: dict, name: str, mood: str, missing: list, days: int,
     (cloth woven by kind, a hide tanned, bars smelted, a gem cut, raw green
     glass, blocks; an animal butchered for bone or leather); what can't be
     made here goes into Needs you at once, named, and on the caravans' list.
-    From an older bridge (no count) as before: day 3, then Needs you on day 7."""
+    From an older bridge (no count) as before: day 3, then Needs you on day 7.
+
+    (0.105.30) What the fort has out of the dwarf's walk is one Needs you,
+    never "none" beside it (F, 8 Nov: "the fort has it, but where the dwarf
+    can't walk" next to "no bone and no spare tame animal"); a mood that has
+    fetched nothing for `mood_stall_days` (`stalled`, days) is said in Needs
+    you with the bridge's count for each request, even when all of it reads
+    on hand (D, 8 Nov: a secretive mood had no line for 40 days, then went
+    berserk)."""
     cfg = cfg or PLANNER_CONFIG
     counted = any(isinstance(x.get("avail"), dict) for x in missing)
     ordered, lacking, freeing, far = [], [], False, []
+    asks: list[str] = []
+    who = {"name": name, "unit_id": unit_id}
     taken = {p.action.get("order_id") for p in proposals if p.action.get("type") == "cancel_work_order"}
     for i, x in enumerate(missing):
         kind = mood_kind(x)
@@ -314,8 +417,7 @@ def _mood_materials(s: dict, name: str, mood: str, missing: list, days: int,
             freeing = True
             if int(av.get("reach") or 0) + int(av.get("forbidden_reach") or 0) >= want:
                 continue
-        if counted and int(av.get("free") or 0) > int(av.get("reach") or 0):
-            far.append(mood_item_text(x))              # in the fort, but where the dwarf can't walk
+        out_of_walk = counted and int(av.get("free") or 0) > int(av.get("reach") or 0)
         if counted and int(av.get("job") or 0) > 0:
             for o in _l(s.get("orders")):
                 if (isinstance(o, dict) and o.get("by_ai") and o.get("recipe") in MOOD_CONSUMERS.get(kind, ())
@@ -326,16 +428,22 @@ def _mood_materials(s: dict, name: str, mood: str, missing: list, days: int,
                                               f"another job holds the fort's last: cancel the AI's {o['recipe']} "
                                               "order (its jobs let go of it)", 1))
                     break
-        acts, why = _mood_make(s, x, kind, memory, cfg)
+        acts, why = _mood_make(s, x, kind, memory, cfg, mood=who)
         for a, how in acts:
             if a.get("type") == "work_order" and any(p.action == a for p in proposals):
                 continue
             proposals.append(Proposal("mood", a, f"{name}'s {mood.lower()} mood needs {mood_item_text(x)}"
-                                      + (" (the one it is fetching now)" if i == 0 else "") + f": {how}",
-                                      1, a.get("type") == "work_order"))
+                                      + (" (the one it is fetching now)" if i == 0 else "")
+                                      + (" (the fort's lies where the dwarf can't walk)" if out_of_walk else "")
+                                      + f": {how}", 1, a.get("type") == "work_order"))
             if a.get("type") == "work_order":
                 ordered.append(a.get("recipe"))
-        if why and not acts and not (counted and int(av.get("job") or 0) > 0):
+        if acts:
+            continue
+        if out_of_walk:
+            # in the fort, but where the dwarf can't walk: never "none" (F, 8 Nov)
+            far.append(mood_item_text(x) + (f" (none to be made here: {why})" if why else ""))
+        elif why and not (counted and int(av.get("job") or 0) > 0):
             lacking.append((mood_item_text(x), why, kind))
     if freeing and unit_id is not None:
         proposals.append(Proposal("mood", {"type": "mood_free_items", "unit_id": unit_id, "max": 10},
@@ -343,30 +451,39 @@ def _mood_materials(s: dict, name: str, mood: str, missing: list, days: int,
                                   "the dump: free them", 1))
     first = mood_item_text(missing[0]) if missing else ""
     if far:
-        ask_player(notes, f"{name}'s {mood.lower()} mood waits for {', '.join(far)}: the fort has it, but "
-                   "where the dwarf can't walk: open the way, or bring it in, or the dwarf goes insane")
-    if not lacking:
-        if counted and (ordered or freeing):
-            notes.append(f"{name}'s {mood.lower()} mood (day {days}): fetching {first}"
-                         + (f"; ordered {', '.join(ordered)}" if ordered else "")
-                         + ("; forbidden materials freed" if freeing else ""))
-        return
+        asks.append(f"{name}'s {mood.lower()} mood waits for {'; '.join(far)}: the fort has it, but "
+                    "where the dwarf can't walk: open the way, or bring it in, or the dwarf goes insane")
     words = [w for w, _, _ in lacking]
-    if counted:
+    if lacking and counted:
         # the bridge counted: none within the fort the mood can use, none made here
-        ask_player(notes, f"{name}'s {mood.lower()} mood (day {days}) needs what the fort can't supply: "
-                   + "; ".join(f"{w}: {why}" for w, why, _ in lacking)
-                   + ". Buy it from a caravan (asked for), or the dwarf goes insane")
-    elif days < cfg["mood_lacking_days"]:
+        asks.append(f"{name}'s {mood.lower()} mood (day {days}) needs what the fort can't supply: "
+                    + "; ".join(f"{w}: {why}" for w, why, _ in lacking)
+                    + ". Buy it from a caravan (asked for), or the dwarf goes insane")
+    elif lacking and days >= cfg["mood_lacking_days"]:
+        asks.append(f"{name}'s {mood.lower()} mood still lacks, after {days} days: {', '.join(words)}. "
+                    "The fort probably has none the dwarf can reach or use: make it, dig it, buy it from a "
+                    "caravan, or unforbid it, or the dwarf goes insane")
+    elif lacking:
         # (0.103.8) the dwarf may still be fetching it: Enxah's fisherdwarf
         # claimed the mason's on day 3, "lacked" rock that day and the next
         # (51 boulders about) and began the work on day 5
         notes.append(f"{name}'s {mood.lower()} mood: still gathering after {days} days, waiting on "
                      f"{', '.join(words)}")
-    else:
-        ask_player(notes, f"{name}'s {mood.lower()} mood still lacks, after {days} days: {', '.join(words)}. "
-                   "The fort probably has none the dwarf can reach or use: make it, dig it, buy it from a "
-                   "caravan, or unforbid it, or the dwarf goes insane")
+    if stalled is not None and stalled >= cfg.get("mood_stall_days", 7) and missing:
+        counts = "; ".join(mood_counts_text(x) for x in missing)
+        line = (f"no progress for {stalled} days; what the fort holds for each request: {counts}")
+        if asks:
+            asks[-1] += f" ({line})"
+        else:
+            asks.append(f"{name}'s {mood.lower()} mood has fetched nothing for {stalled} days although the fort "
+                        f"seems to hold it ({counts}): is the way from the workshop to it open (a door, a "
+                        "burrow, a forbidden or flooded path)? Or the dwarf goes insane")
+    for a in asks:
+        ask_player(notes, a)
+    if not lacking and not asks and counted and (ordered or freeing):
+        notes.append(f"{name}'s {mood.lower()} mood (day {days}): fetching {first}"
+                     + (f"; ordered {', '.join(ordered)}" if ordered else "")
+                     + ("; forbidden materials freed" if freeing else ""))
 
 
 def mood_trade_wants(s: dict) -> list[dict]:
@@ -388,4 +505,48 @@ def mood_trade_wants(s: dict) -> list[dict]:
             if key and key not in seen:
                 seen.add(key)
                 out.append({"key": key, "count": max(1, min(10, int(x.get("quantity") or 1)))})
+    return out
+
+
+MOOD_JOURNAL_KEYS = ("free", "reach", "forbidden", "forbidden_reach", "dump", "job", "other", "held")
+
+
+def mood_journal(s: dict, memory) -> list[dict]:
+    """(0.105.30) Each crafting mood's requests and what the fort holds for
+    them, once a game day, compactly, for the journal (D, 8 Nov: a mood
+    failed with no line from the AI, and nothing showed why). Marks the day
+    in memory.mood_logged."""
+    out = []
+    today = abs_tick(s) // TICKS_PER_DAY
+    logged = _d(getattr(memory, "mood_logged", None)) if memory is not None else {}
+    for m in _l(_d(s.get("moods")).get("list")):
+        if not isinstance(m, dict) or not m.get("craft"):
+            continue
+        uid = str(m.get("unit_id"))
+        if logged.get(uid) == today:
+            continue
+        reqs = []
+        for x in _l(m.get("missing")):
+            if not isinstance(x, dict):
+                continue
+            r = {"what": mood_item_text(x), "on_hand": mood_on_hand(x)}
+            av = x.get("avail")
+            if isinstance(av, dict):
+                r["avail"] = {k: int(av[k]) for k in MOOD_JOURNAL_KEYS if isinstance(av.get(k), int) and av[k]}
+                if av.get("capped"):
+                    r["avail"]["capped"] = True
+            reqs.append(r)
+        seen = _d(getattr(memory, "moods_seen", None)).get(uid)
+        prog = _d(_d(getattr(memory, "mood_progress", None)).get(uid))
+        e = {"unit_id": m.get("unit_id"), "name": m.get("name"), "mood": m.get("mood"),
+             "skill": m.get("skill"), "workshop": m.get("workshop"),
+             "have": m.get("items_have"), "needed": m.get("items_needed"), "requests": reqs}
+        if isinstance(seen, int):
+            e["day"] = (abs_tick(s) - seen) // TICKS_PER_DAY
+        if isinstance(prog.get("since"), int):
+            e["stalled"] = (abs_tick(s) - prog["since"]) // TICKS_PER_DAY
+        out.append(e)
+        logged[uid] = today
+    if memory is not None:
+        memory.mood_logged = logged
     return out

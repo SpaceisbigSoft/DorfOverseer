@@ -1733,7 +1733,9 @@ end
 -- animals). Never a pet, a war or hunting animal, a caged or wild one, a
 -- child, or the last two of a kind; from the most numerous kind, a male while
 -- the kind has more than one. The game's butcher does the rest.
-function slaughter_pick(animals)
+-- (0.105.30) `oldest`: for a strange mood (a life at stake), the oldest of
+-- the chosen kind and sex (`born`: smaller is older).
+function slaughter_pick(animals, oldest)
     local by_race = {}
     for _, a in ipairs(animals) do
         local r = by_race[a.race] or {n = 0, males = 0, list = {}}
@@ -1754,6 +1756,7 @@ function slaughter_pick(animals)
     table.sort(best.list, function(x, y)
         local xw, yw = (x.male == want_male), (y.male == want_male)
         if xw ~= yw then return xw end
+        if oldest and (x.born or 0) ~= (y.born or 0) then return (x.born or 0) < (y.born or 0) end
         return x.id < y.id
     end)
     return best.list[1], best_race, best.n
@@ -1772,14 +1775,17 @@ function act_slaughter_one(a)
         end)
         if ok and fit then
             local race = df.creature_raw.find(u.race)
+            local born = 0
+            pcall(function() born = u.birth_year * 403200 + u.birth_time end)
             table.insert(cands, {id = u.id, unit = u, race = race and race.creature_id or tostring(u.race),
-                                 male = dfhack.units.isMale(u)})
+                                 male = dfhack.units.isMale(u), born = born})
         end
     end
     if marked > 0 then return {ok = false, rejected = true, waiting = true, error = ('%d animal(s) already wait for the butcher'):format(marked)} end
-    local pick, race, n = slaughter_pick(cands)
+    local pick, race, n = slaughter_pick(cands, a.oldest == true)
     if not pick then return {ok = false, rejected = true, error = 'no spare tame animal (three or more of a kind, adult, no pet or war animal)'} end
-    local out = {ok = true, race = race, of = n, unit_id = pick.id, dry_run = a.dry_run or nil}
+    local out = {ok = true, race = race, of = n, unit_id = pick.id, dry_run = a.dry_run or nil,
+                 oldest = a.oldest == true or nil, mood_unit = a.mood_unit}
     if a.dry_run then return out end
     pick.unit.flags2.slaughter = true
     return out

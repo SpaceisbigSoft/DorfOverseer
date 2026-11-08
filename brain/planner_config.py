@@ -228,6 +228,7 @@ PLANNER_CONFIG = {
     "labor_moves_per_cycle": 3,      # more dwarves on a job: at most once a day
     "appoint_cooldown_ticks": 1200,    # an office filled: at most one a day
     "mood_wait_days": 3,
+    "mood_stall_days": 7,             # (0.105.30) a mood that fetched nothing this long: Needs you with the counts
     "mood_lacking_days": 7,           # (0.103.8) a mood still lacking what no recipe makes: Needs you from this day
     "mood_cooldown_ticks": 300,       # (0.105.24) a quarter day (was the 2-day default): a mood fails in 30-40 days
     "fuel_min": 10,
