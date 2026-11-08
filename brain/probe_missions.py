@@ -3,6 +3,9 @@ Read only: nothing in the game is changed.
 
     python brain\\probe_missions.py            what the World screen holds now
     python brain\\probe_missions.py --watch    watch for 3 minutes (--watch 300 for 5)
+    python brain\\probe_missions.py --here World      (0.105.24) the mouse is on DF's World
+                                                  button: the AI remembers where
+    python brain\\probe_missions.py --here Diplomacy  the same for Diplomacy on a site's New mission
 
 While it watches, send one mission by hand in DF: open the World screen,
 go to Missions, start a new mission, pick an abandoned site (a ruin) and
@@ -47,6 +50,12 @@ def changes(old: dict, new: dict) -> dict:
 
 def main(argv: list[str]) -> int:
     b = Bridge()
+    if "--here" in argv:
+        # (0.105.24) show the AI a button of the World screen once (lua/ai-mission-send.lua)
+        i = argv.index("--here")
+        name = argv[i + 1] if i + 1 < len(argv) else "World"
+        print(json.dumps(b._call("mission_here", name), indent=1, ensure_ascii=False))
+        return 0
     if "--watch" not in argv:
         r = b._call("probe_missions")
         print(json.dumps({k: v for k, v in r.items() if k != "fields"}, indent=1, ensure_ascii=False))

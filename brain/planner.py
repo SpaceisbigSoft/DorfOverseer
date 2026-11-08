@@ -561,7 +561,7 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
         if can_use("offices"):
             _guard(_messenger_rule, s, cfg, proposals, notes)
             if can_use("missions"):
-                _guard(_contact_rule, s, cfg, notes, memory)
+                _guard(_contact_rule, s, cfg, proposals, notes, memory)   # (0.105.24) proposals: send_mission
         _guard(_complaint_notes, s, cfg, notes)                     # (0.104.168)
         _guard(_vermin_rule, s, cfg, proposals, notes)              # (0.104.168)
         _guard(_location_supply_rules, s, cfg, proposals, notes)

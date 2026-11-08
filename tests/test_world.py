@@ -337,7 +337,7 @@ G.focus = 'dwarfmode/Diplomacy/Requests'
 
 # --- the messenger (lua/ai-nobles.lua) ---------------------------------------------
 
-@test("the messenger: appointed only where the post exists; never a soldier, staff, a patient, a mother or an office holder")
+@test("the messenger: appointed only where the post exists; never a soldier, staff, a patient, the wounded, a mother or an office holder")
 def _():
     import importlib.util
     spec = importlib.util.spec_from_file_location("test_care", ROOT / "tests" / "test_care.py")
@@ -349,13 +349,14 @@ def _():
             {"id": 2, "hf": 12, "skills": [("ORGANIZATION", 9)], "squad": 50},  # a soldier
             {"id": 3, "hf": 13, "skills": [("ORGANIZATION", 9)], "staff": True},
             {"id": 4, "hf": 14, "skills": [("ORGANIZATION", 9)], "patient": True},
+            {"id": 7, "hf": 17, "skills": [("ORGANIZATION", 9)], "wounds": True},   # (0.105.24) hurt
             {"id": 5, "hf": 15, "skills": [("ORGANIZATION", 2)]},
             {"id": 6, "hf": 16}]
     a = [{"id": 201, "pos": 1, "hf": 11}, {"id": 209, "pos": 9}]
     env, ent, _ = care.nobles(a, units=folk, positions=pos)
     r = env.appoint("MESSENGER", False)
     assert r.ok and r.name in ("dwarf 5", "dwarf 6"), dict(r)
-    env, ent, _ = care.nobles(a, units=[u for u in folk if u["id"] <= 4], positions=pos)
+    env, ent, _ = care.nobles(a, units=[u for u in folk if u["id"] <= 4 or u["id"] == 7], positions=pos)
     r = env.appoint("MESSENGER", False)
     assert not r.ok, dict(r)                                    # only the leader (an office) and key workers
     env, _, _ = care.nobles([{"id": 201, "pos": 1, "hf": 11}], units=folk)
@@ -556,6 +557,115 @@ def _():
     notes = plan(out, Memory())[1]
     assert any("on the way home from Cottageflings" in n for n in notes), notes
     assert not any("Make contact (13b)" in n for n in notes)
+
+
+@test("planner 13b (0.105.24): with send_messenger on, one send_mission to the nearest site not in contact; waits for the run, "
+      "the messenger's return, a stopped run (a year), the World button; off: the site named for the player")
+def _():
+    held = {"offices": {"MESSENGER": {"vacant": 0, "held": ["Urist"], "appointable": True}}}
+    sites = {"nearest": [{"id": 7, "name": "Far Hall", "relation": "Peace", "dist": 3},
+                         {"id": 9, "name": "Cottageflings", "relation": "NoContact", "dist": 5},
+                         {"id": 8, "name": "Dark Pits", "relation": "NoContact", "dist": 12}]}
+    send = {"buttons": ["Diplomacy", "World"], "on": True}
+
+    def mk(send_=send, on=True, controllers=()):
+        st = fort({}, offices=held, missions={"controllers": list(controllers), "sites": sites, "send": send_})
+        st["settings"]["send_messenger"] = on
+        return st
+
+    s = mk()
+    m = Memory()
+    note_cycle(s, m)
+    props, notes = plan(s, m)
+    p = by_rule(props, "contact")
+    assert p and p[0].action == {"type": "send_mission", "goal": "make_contact", "site_id": 9}, p
+    assert "Cottageflings" in p[0].reason and not any("Make contact (13b)" in n for n in notes), notes
+    import overseer
+    assert "make contact" in overseer.short(p[0].action)
+    # the default is off: the site is named for the player instead, the switch mentioned
+    assert player_rules({"settings": {}})["send_messenger"] is False
+    off = mk(on=False)
+    props, notes = plan(off, Memory())
+    assert not by_rule(props, "contact")
+    assert any("Make contact (13b)" in n and "Send it by the World screen" in n for n in notes), notes
+    # an older bridge (no `send` in the report): nothing sent
+    assert not by_rule(plan(mk(send_={}), Memory())[0], "contact")
+    # the World button never shown: the Needs-you says how, nothing sent
+    props, notes = plan(mk(send_={"buttons": [], "on": True}), Memory())
+    assert not by_rule(props, "contact")
+    assert any("--here World" in n and "--here Diplomacy" in n for n in notes), notes
+    # a run under way, or the messenger out: one at a time
+    props, notes = plan(mk(send_=dict(send, running={"site_id": 9, "step": "site"})), Memory())
+    assert not by_rule(props, "contact") and any("being sent" in n for n in notes), notes
+    props, notes = plan(mk(controllers=[{"goal": "DIPLOMACY", "site": "Cottageflings", "returning": False}]), Memory())
+    assert not by_rule(props, "contact") and any("away to Cottageflings" in n for n in notes), notes
+    # the last run stopped (a step never recorded): said, not tried again for a year
+    now = W.abs_tick(s)
+    stopped = dict(send, last={"site_id": 9, "site": "Cottageflings", "result": "stopped", "step": "make_contact",
+                               "reason": "not_recorded", "why": "never been recorded", "tick": now - 1000,
+                               "controller_left": True})
+    props, notes = plan(mk(send_=stopped), Memory())
+    assert not by_rule(props, "contact")
+    assert any("stopped at the World screen's \"make_contact\" step" in n and "army controller was left" in n
+               for n in notes), notes
+    old = dict(send, last=dict(stopped["last"], tick=now - W.TICKS_PER_YEAR - 1))
+    assert by_rule(plan(mk(send_=old), Memory())[0], "contact")
+    # sent this season: waits for its controller to show
+    sent = dict(send, last={"site_id": 9, "result": "sent", "tick": now - 100})
+    assert not by_rule(plan(mk(send_=sent), Memory())[0], "contact")
+    # a threat near: not sent
+    s = mk()
+    s["settings"]["send_messenger"] = True
+    import planner_world
+    orig = planner_world.reachable_threats
+    planner_world.reachable_threats = lambda *a, **k: [{"name": "goblin"}]
+    try:
+        props, notes = plan(s, Memory())
+    finally:
+        planner_world.reachable_threats = orig
+    assert not by_rule(props, "contact") and any("not while a threat is near" in n for n in notes), notes
+
+
+@test("(0.105.24) the bridge: send_mission in the action table, checked, to ai-mission-send; mission_here; the switch on the Rules")
+def _():
+    src = (ROOT / "lua" / "ai-bridge.lua").read_text(encoding="utf-8")
+    assert "send_mission = act_send_mission," in src and "mission_here = cmd_mission_here," in src
+    assert "reqscript('ai-mission-send').status()" in src and "send_mission = {'missions'}" in src
+    spec = __import__("importlib.util").util.spec_from_file_location("tbm2", ROOT / "tests" / "test_bridge_memory.py")
+    tbm = __import__("importlib.util").util.module_from_spec(spec)
+    spec.loader.exec_module(tbm)
+    tbm.reset()
+    M = tbm.H.module()
+    tbm.LUA.execute("""local M, H = ...
+      H.calls = {}
+      H.scripts = {['ai-mission-send'] = {start = function(a) table.insert(H.calls, a); return {ok = true, sending = true} end}}
+    """, M, tbm.H)
+    assert tbm.LUA.eval("function(M) return M.ACTIONS.send_mission == M.act_send_mission end")(M)
+    r = M.act_send_mission(tbm.t({"site_id": 42, "goal": "make_contact"}))
+    assert r.ok and tbm.H.calls[1].site_id == 42 and tbm.H.calls[1].goal == "make_contact" and tbm.H.calls[1].dry_run is False
+    for bad in ({"site_id": -1}, {"site_id": "x"}, {}, {"site_id": 4, "goal": "raid"}):
+        r = M.act_send_mission(tbm.t(bad))
+        assert not r.ok and r.rejected, bad
+    assert len(tbm.H.calls) == 1
+    lua = LuaRuntime(unpack_returned_tuples=True)
+    ssrc = (ROOT / "lua" / "ai-overseer-settings.lua").read_text(encoding="utf-8")
+    S = lua.eval("""function(src)
+      local env = setmetatable({dfhack_flags = {module = true}, dfhack = {getDFPath = function() return '.' end,
+                                          isMapLoaded = function() return false end}}, {__index = _G})
+      env.require = function(n) if n == 'json' then return {} end return require(n) end
+      assert(load(src, 'settings', 't', env))()
+      return env end""")(ssrc)
+    d = S.defaults()
+    assert d.send_messenger is False and S.for_ai(d).send_messenger is False
+    s2 = S.sanitize(lua.table_from({"send_messenger": True}))
+    assert s2.send_messenger is True and S.for_ai(s2).send_messenger is True
+    assert player_rules({"settings": {"send_messenger": True}})["send_messenger"] is True
+    gui = (ROOT / "lua" / "gui" / "ai-overseer.lua").read_text(encoding="utf-8")
+    assert "view_id = 'send_messenger'" in gui and "p:set_field('send_messenger', v)" in gui
+    assert "self.subviews.send_messenger:setOption(" in gui
+    ok = lua.eval("function(src) local f, e = load(src, 'm', 't', {}); return f ~= nil, e end")(
+        (ROOT / "lua" / "ai-mission-send.lua").read_text(encoding="utf-8"))
+    assert ok[0], ok
 
 
 if __name__ == "__main__":
