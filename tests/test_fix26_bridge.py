@@ -29,7 +29,7 @@ sys.path.insert(0, str(ROOT / "brain"))
 LUA_DIR = ROOT / "lua"
 HUB = (LUA_DIR / "ai-bridge.lua").read_text(encoding="utf-8")
 BRIDGE_PARTS = ["ai-bridge-report", "ai-bridge-orders", "ai-bridge-actions", "ai-bridge-probes"]
-BUILDER_PARTS = ["ai-builder-" + p for p in ("sites", "projects", "farms", "wells", "cistern", "surface", "rooms")]
+BUILDER_PARTS = ["ai-builder-" + p for p in ("sites", "projects", "farms", "wells", "cistern", "surface", "rooms", "halls")]
 VERSION = re.search(r"^BRIDGE_VERSION = '([^']+)'", HUB, re.M).group(1)
 
 # the stub DFHack of tests/test_hygiene_bridge.py, read from it (not copied)

@@ -3388,6 +3388,7 @@ def _():
                 W.set(x, y, 80, LUA.table_from({"shape": "FLOOR", "material": "SOIL", "outside": True}))
             W.set(x, y, 81, LUA.table_from({"shape": "EMPTY", "outside": True}))
     W.set(64, 58, 80, LUA.table_from({"shape": "WALL", "material": "TREE", "outside": True}))   # in the r=4 ring
+    B.ROOF_STAIR = False                                  # (0.105.30: the stair stage is in test_halls.py)
     felled = []
     B.fell_tree = lambda x, y, z: felled.append((x, y)) or True
     d = B.place_keep(True)
@@ -3422,6 +3423,7 @@ def _():
     e = B.place_keep(False)
     assert e.ok and e.stage == "done", dict(e)
     assert B.place_keep(False).done and B.keep_status().stage == "done"
+    B.ROOF_STAIR = True
 
 
 @test("the keep: never round a spot with water or a zone in the ring, nor with nothing outside")

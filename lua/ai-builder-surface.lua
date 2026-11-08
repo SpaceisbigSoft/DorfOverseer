@@ -87,8 +87,11 @@ function find_surface_rect(w, h, min_d, reserved, shapes, max_trees, empty)
                         d = d + SURFACE_TREE_COST * #trees
                         -- and nothing of it within min_d of the way in
                         if fits then
+                            -- (0.105.30) a level either side too: a stair's way in
+                            -- is the inside tile, one level under the open ground
+                            -- (F and C: the refuse pile went 4 tiles from it)
                             for _, b in ipairs(anchors) do
-                                if b.z == z and x - min_d < b.x and b.x < x + w + min_d
+                                if math.abs(b.z - z) <= 1 and x - min_d < b.x and b.x < x + w + min_d
                                         and y - min_d < b.y and b.y < y + h + min_d then
                                     fits = false
                                 end
@@ -516,10 +519,41 @@ end
 -- counts as wall already; trees in the ring are felled first. Never put
 -- around a trade depot (the wagons couldn't reach it), never over water,
 -- buildings, zones or slopes. Built in stages, one action each:
---   clearing -> walls (+ door) -> roof -> done
+--   clearing -> walls (+ door) -> stair (0.105.30, ROOF_STAIR) -> roof -> done
 -- The state lives in the save (site data 'ai-overseer/keep').
 KEEP_KEY = 'ai-overseer/keep'
 KEEP_RADII = {4, 5, 6}
+-- (0.105.30, construction 3.0.2) A stair up from the inside to the roof:
+-- whether the game builds a roof over an enclosed court from below is
+-- [verify]; set false once it is seen to. The keep (stage 'stair') and the
+-- surface hall use it.
+ROOF_STAIR = true
+
+-- The inside corner for the roof stair (x1..x2, y1..y2: the inside at z),
+-- the one farthest from `away` (the door): open flat ground with nothing on
+-- it and the open sky above. {x, y, z} or nil (ROOF_STAIR off, no corner).
+function roof_access(x1, y1, x2, y2, z, away)
+    if not ROOF_STAIR then return nil end
+    local corners = {{x = x1, y = y1}, {x = x2, y = y1}, {x = x1, y = y2}, {x = x2, y = y2}}
+    local function far(c)
+        if not away then return 0 end
+        return math.abs(c.x - away.x) + math.abs(c.y - away.y)
+    end
+    table.sort(corners, function(a, b)
+        local fa, fb = far(a), far(b)
+        if fa ~= fb then return fa > fb end
+        if a.y ~= b.y then return a.y < b.y end
+        return a.x < b.x
+    end)
+    for _, c in ipairs(corners) do
+        local t, up = tile_info(c.x, c.y, z), tile_info(c.x, c.y, z + 1)
+        if t and up and t.shape == 'FLOOR' and not t.building and not t.liquid and not t.designated
+                and up.shape == 'EMPTY' and not up.building then
+            return {x = c.x, y = c.y, z = z}
+        end
+    end
+    return nil
+end
 
 function keep_data()
     local d = site_get(KEEP_KEY)
@@ -545,7 +579,7 @@ end
 
 -- What a ring tile is: 'ground' (a wall can go up), 'tree', 'wall' (rock or a
 -- wall already: closed), 'planned' (a wall waiting to be built) or nil (no use).
-local function keep_tile(x, y, z)
+function keep_tile(x, y, z)
     local t = tile_info(x, y, z)
     if not t or t.liquid or t.feature then return nil end
     if is_tree(t) then return 'tree' end
@@ -556,7 +590,45 @@ local function keep_tile(x, y, z)
     return nil
 end
 
-local function depot_inside(x1, y1, x2, y2, z)
+-- (0.105.30) Why keep_tile gives nil there, in words (the refusal names the
+-- tile: F and C were refused 133 and 138 times with no tile named).
+function keep_tile_why(x, y, z)
+    local t = tile_info(x, y, z)
+    if not t then return 'the map\'s edge' end
+    if t.liquid then return 'water' end
+    if t.feature then return 'a cavern' end
+    if t.hidden then return 'unseen ground' end
+    if not t.outside then return 'the fort\'s own rock or rooms (under a roof)' end
+    if t.designated then return 'a tile designated for digging' end
+    if tile_taken(x, y, z) then return 'a stockpile, zone or building' end
+    return ('a %s tile'):format(tostring(t.shape):lower())
+end
+
+-- (0.105.30) The ways in, each on the level of the open ground. The gates
+-- give a way in as its inside tile: for a stair up to the surface (the
+-- founding stair under its hatch) that is the stair one level under the
+-- ground, so every keep ring was looked for in the rock (F and C's 271
+-- refusals, "no ring of open ground around the way in"). A stair that goes
+-- on up to an outside tile is followed up (at most 2 levels).
+function surface_anchors(anchors)
+    local out = {}
+    for _, a in ipairs(anchors or pasture_anchors()) do
+        local z = a.z
+        local t = tile_info(a.x, a.y, a.z)
+        if t and not t.outside and stair_shape(a.x, a.y, a.z) then
+            for zz = a.z + 1, a.z + 2 do
+                local sh = stair_shape(a.x, a.y, zz)
+                if not (sh == 'STAIR_DOWN' or sh == 'STAIR_UPDOWN') then break end
+                local up = tile_info(a.x, a.y, zz)
+                if up and up.outside then z = zz break end
+            end
+        end
+        table.insert(out, {x = a.x, y = a.y, z = z, below = z ~= a.z and a.z or nil})
+    end
+    return out
+end
+
+function depot_inside(x1, y1, x2, y2, z)
     local ok, found = pcall(function()
         for _, b in ipairs(df.global.world.buildings.other.TRADE_DEPOT) do
             if b.z == z and b.x2 >= x1 and b.x1 <= x2 and b.y2 >= y1 and b.y1 <= y2 then return true end
@@ -769,7 +841,7 @@ end
 -- (0.105.23) Every way in first; with no ring round any, a court on open
 -- ground near the fields (find_keep_court).
 function find_keep_site()
-    local anchors = pasture_anchors()
+    local anchors = surface_anchors()          -- (0.105.30) on the open ground's level
     if #anchors == 0 then return nil, 'no surface entrance or staircase to build the keep around' end
     local site, last = find_keep_ring(anchors)
     if site then return site end
@@ -782,20 +854,29 @@ end
 function find_keep_ring(anchors)
     local under = depot_underground()
     if under then return nil, under end
-    local last
+    local last, first_bad
     for _, a in ipairs(anchors) do
         for _, r in ipairs(KEEP_RADII) do
             local fits, trees, ground = true, {}, 0
             for _, p in ipairs(ring_tiles(a.x, a.y, r)) do
                 local k = keep_tile(p.x, p.y, a.z)
-                if not k or k == 'planned' then fits = false break end
+                if not k or k == 'planned' then
+                    -- (0.105.30) the first ring's first bad tile, named
+                    first_bad = first_bad or ('r%d meets %s at x%d y%d, elevation %d'):format(r,
+                        k and 'a wall waiting to be built' or keep_tile_why(p.x, p.y, a.z), p.x, p.y, ez(a.z))
+                    fits = false
+                    break
+                end
                 if k == 'tree' then table.insert(trees, {x = p.x, y = p.y, z = a.z}) end
                 if k == 'ground' then ground = ground + 1 end
             end
             if fits and #trees > SURFACE_MAX_TREES then
                 fits, last = false, ('too many trees around the way in (%d to fell)'):format(#trees)
             end
-            if fits and ground == 0 and #trees == 0 then fits = false end
+            if fits and ground == 0 and #trees == 0 then
+                fits = false
+                first_bad = first_bad or ('r%d is all rock'):format(r)
+            end
             if fits and depot_inside(a.x - r, a.y - r, a.x + r, a.y + r, a.z) then
                 fits, last = false, 'the trade depot is right by the way in (a wall round it would shut out the wagons)'
             end
@@ -806,7 +887,8 @@ function find_keep_ring(anchors)
             end
         end
     end
-    return nil, last or 'no ring of open ground around the way in (water, slopes, buildings or zones in the way)'
+    return nil, last or ('no ring of open ground around the way in (%s)'):format(
+        first_bad or 'water, slopes, buildings or zones in the way')
 end
 
 -- How far it's got: {stage, x, y, z, r, walls_left, roof_left, trees_left}.
@@ -822,6 +904,14 @@ function keep_status()
         if not is_door and t ~= 'wall' then out.walls_left = out.walls_left + 1 end
         if not is_door and t == 'planned' then out.walls_planned = out.walls_planned + 1 end
     end
+    -- (0.105.30) the roof stair: its lower half waiting counts as roof to build
+    if k.stage == 'stair' and k.stair then
+        local t = tile_info(k.stair.x, k.stair.y, k.z)
+        if t and t.building and t.shape ~= 'STAIR_UP' then
+            out.stair_planned, out.roof_planned = 1, 1
+        end
+    end
+    out.stair = k.stair
     if k.stage == 'roof' or k.stage == 'done' then
         for y = k.y - k.r + 1, k.y + k.r - 1 do
             for x = k.x - k.r + 1, k.x + k.r - 1 do
@@ -842,6 +932,37 @@ local function keep_apply(cells, z, what, dry_run)
     if failed == 'dry' then return nil, ('the game would not place %s'):format(what) end
     if not good then return nil, ('the game refused %s'):format(what) end
     return stat(res, 'build_designated')
+end
+
+-- (0.105.30) The roof at z+1 over the inside; over a built roof stair a
+-- stair down (Cd), dropped if the game won't take it.
+local function keep_roof(k, dry_run)
+    local cells, stair_cell = {}, nil
+    local built = k.stair and stair_shape(k.stair.x, k.stair.y, k.z) == 'STAIR_UP'
+    for y = k.y - k.r + 1, k.y + k.r - 1 do
+        for x = k.x - k.r + 1, k.x + k.r - 1 do
+            local t = tile_info(x, y, k.z + 1)
+            if t and t.shape == 'EMPTY' and not t.building then
+                local is_stair = built and x == k.stair.x and y == k.stair.y
+                table.insert(cells, {x = x, y = y, text = is_stair and 'Cd' or 'Cf'})
+                if is_stair then stair_cell = cells[#cells] end
+            end
+        end
+    end
+    if #cells == 0 then
+        if not dry_run then k.stage = 'done'; save_keep(k) end
+        return {ok = true, stage = 'done', x = k.x, y = k.y, dry_run = dry_run or nil}
+    end
+    local n, why = keep_apply(cells, k.z + 1, 'the keep\'s roof', dry_run)
+    if not n and stair_cell then                -- (a stair down the game won't take: a floor there)
+        stair_cell.text = 'Cf'
+        n, why = keep_apply(cells, k.z + 1, 'the keep\'s roof', dry_run)
+        stair_cell = nil
+    end
+    if not n then return {ok = false, error = why} end
+    if not dry_run then k.stage = 'roof'; save_keep(k) end
+    return {ok = true, stage = 'roof', roof = n, stair = stair_cell and true or nil, x = k.x, y = k.y, r = k.r,
+            elevation = ez(k.z + 1), dry_run = dry_run or nil}
 end
 
 -- One step of the keep (see above).
@@ -910,24 +1031,28 @@ function place_keep(dry_run)
             return {ok = false, rejected = true, waiting = true, stage = 'walls', walls_left = st.walls_planned,
                     error = ('the keep\'s walls are going up: %d to build'):format(st.walls_planned)}
         end
-        local cells = {}
-        for y = k.y - k.r + 1, k.y + k.r - 1 do
-            for x = k.x - k.r + 1, k.x + k.r - 1 do
-                local t = tile_info(x, y, k.z + 1)
-                if t and t.shape == 'EMPTY' and not t.building then
-                    table.insert(cells, {x = x, y = y, text = 'Cf'})
-                end
+        -- (0.105.30, construction 3.0.2) a stair up in an inside corner first,
+        -- so the roof can be reached ([verify] in game; ROOF_STAIR = false
+        -- once the game is seen building the roof from below). Refused: the
+        -- roof goes on without it.
+        local s = roof_access(k.x - k.r + 1, k.y - k.r + 1, k.x + k.r - 1, k.y + k.r - 1, k.z, k.door)
+        if s then
+            local good, failed = qf_try('build', {{x = s.x, y = s.y, text = 'Cu'}}, k.z, 0, 0, dry_run)
+            if good then
+                if not dry_run then k.stage = 'stair'; k.stair = {x = s.x, y = s.y}; save_keep(k) end
+                return {ok = true, stage = 'stair', stair = {x = s.x, y = s.y}, x = k.x, y = k.y, r = k.r,
+                        elevation = ez(k.z), dry_run = dry_run or nil}
             end
         end
-        if #cells == 0 then
-            if not dry_run then k.stage = 'done'; save_keep(k) end
-            return {ok = true, stage = 'done', x = k.x, y = k.y, dry_run = dry_run or nil}
+        return keep_roof(k, dry_run)
+    end
+    if k.stage == 'stair' then
+        st = keep_status() or {}
+        if (st.stair_planned or 0) > 0 then
+            return {ok = false, rejected = true, waiting = true, stage = 'stair', roof_left = st.roof_planned,
+                    error = 'the keep\'s stair to the roof is being built'}
         end
-        local n, why = keep_apply(cells, k.z + 1, 'the keep\'s roof', dry_run)
-        if not n then return {ok = false, error = why} end
-        if not dry_run then k.stage = 'roof'; save_keep(k) end
-        return {ok = true, stage = 'roof', roof = n, x = k.x, y = k.y, r = k.r, elevation = ez(k.z + 1),
-                dry_run = dry_run or nil}
+        return keep_roof(k, dry_run)
     end
     -- the roof is going up
     st = keep_status() or {}
