@@ -141,8 +141,14 @@ local function parse_style(st)
         rhythm = int_in(st.rhythm, 3, 6)
         if not rhythm then return nil, 'style.rhythm must be 3-6' end
     end
+    local customs        -- (0.105.29) fort customs the layouts read; unknown names dropped
+    for _, c in ipairs(type(st.customs) == 'table' and st.customs or {}) do
+        if c == 'cloister' or c == 'armoury' or c == 'ore_piles' then
+            customs = customs or {}; table.insert(customs, c)
+        end
+    end
     return {hall = hall, smooth = smooth, statues = statues, entry_door = st.entry_door == true,
-            spacing = spacing, orient = orient, rhythm = rhythm}
+            spacing = spacing, orient = orient, rhythm = rhythm, customs = customs}
 end
 
 -- The overseer's master plan for a new level: a hint where to put it (the

@@ -511,6 +511,137 @@ def _():
     assert L.furniture.Door == 6 and all(c[3].startswith("b(") for c in cells if c[0] == "zone")
 
 
+
+# --- (0.105.29) fort customs in the layouts: cloister, armoury, ore_piles -------------
+
+def with_customs(*ids, **kw):
+    st = LUA.table_from(kw)
+    st["customs"] = LUA.table_from(list(ids))
+    return {"style": st}
+
+
+def same(a, b):
+    return a[1] == b[1] and sorted(a[2]) == sorted(b[2])
+
+
+@test("customs: none, empty or unknown -> every layout exactly as before")
+def _():
+    for kind, params in (("temple", {"size": "shrine"}), ("temple", {"size": "grand"}),
+                         ("barracks", {"beds": 8}), ("workshops", {"shops": ["Masons", "Still"]}),
+                         ("storage", {"piles": ["food"], "room_size": 5}), ("dining", {"tables": 8})):
+        base = layout(kind, **params)
+        for extra in (with_customs(), with_customs("nonsense", "wide_ways", "narrow_ways"),
+                      {"style": {"hall": "plain"}}):
+            got = layout(kind, **params, **extra)
+            assert same(base, got), (kind, extra)
+        assert not base[0].summary.cloister and not base[0].summary.armoury and not base[0].summary.ore_pile
+    # a custom for another kind changes nothing either
+    assert same(layout("temple", size="grand"), layout("temple", size="grand", **with_customs("armoury", "ore_piles")))
+    assert same(layout("barracks", beds=8), layout("barracks", beds=8, **with_customs("cloister")))
+
+
+@test("custom cloister: a pillared walk 1 in from the walls; doorway row and statue column clear")
+def _():
+    for size, w, h in (("shrine", 7, 7), ("grand", 15, 11)):
+        base = layout("temple", size=size)[1]
+        L, tiles, cells = layout("temple", size=size, **with_customs("cloister", statues=4))
+        common_checks(L, tiles, cells)
+        top = -(h // 2)
+        pillars = {(x, y) for x in range(4, 2 + w - 2, 2) for y in (top + 1, top + h - 2)}
+        pillars |= {(3, y) for y in range(top + 1, top + h - 1, 2) if abs(y) > 1}
+        assert not (pillars & tiles), sorted(pillars & tiles)
+        hall = {(x, y) for x in range(2, 2 + w) for y in range(top, top + h)}
+        if size == "grand":
+            hall -= {(2, top), (1 + w, top), (2, top + h - 1), (1 + w, top + h - 1)}     # its rounded corners
+        assert {t for t in tiles if t[0] >= 2} == hall - pillars, sorted(hall - pillars ^ tiles)
+        assert {t for t in tiles if t[0] < 2} == {t for t in base if t[0] < 2}
+        assert all((x, y) in tiles for x in range(2, 2 + w) for y in (-1, 0, 1)), "doorway rows"
+        assert all((2 + w - 2, y) in tiles for y in range(top + 1, top + h - 1)), "statue column"
+        assert all((2, y) in tiles for y in range(top + 1, top + h - 1)), "the west walk"
+        assert L.summary.cloister is True
+        statues = [(x, y) for ph, x, y, t in cells if ph == "build" and t == "s"]
+        assert statues and all(x == 2 + w - 2 for x, _ in statues), statues
+    # the grand temple's own pillar rows give way to the ring
+    L, tiles, _ = layout("temple", size="grand", **with_customs("cloister"))
+    assert (5, -3) in tiles and (5, 3) in tiles and (9, -3) in tiles
+
+
+@test("custom armoury: a 2x5 alcove past the racks with a weapon and an armour pile")
+def _():
+    for beds in (4, 8, 20):
+        base_L, base, _ = layout("barracks", beds=beds)
+        L, tiles, cells = layout("barracks", beds=beds, **with_customs("armoury", hall="rounded"))
+        common_checks(L, tiles, cells)
+        far = base_L.bounds.x2
+        alcove = {(x, y) for x in (far + 1, far + 2) for y in range(-2, 3)}
+        assert alcove <= tiles and (tiles - base) - alcove <= set(), sorted(tiles - base)
+        places = sorted((x, y, t) for ph, x, y, t in cells if ph == "place")
+        assert places == [(far + 1, -2, "p(2x2)"), (far + 1, 1, "d(2x2)")], places
+        assert L.bounds.x2 == far + 2 and L.summary.armoury is True
+        racks = [(x, y) for ph, x, y, t in cells if ph == "build" and t == "r"]
+        assert racks == [(far, -1), (far, 1)], racks
+    # turned with the level: the piles stay inside the dug tiles
+    L, tiles, cells = layout("barracks", beds=8, **with_customs("armoury", orient=3))
+    common_checks(L, tiles, cells)
+    for ph, x, y, t in cells:
+        if ph == "place":
+            assert {(x + dx, y + dy) for dx in (0, 1) for dy in (0, 1)} <= tiles, (x, y, t)
+
+
+@test("custom ore_piles: one room more with a 5x5 stone pile; 12 shops get none")
+def _():
+    shops = ["Masons", "Carpenters", "Still"]
+    _, base, base_cells = layout("workshops", shops=shops)
+    L, tiles, cells = layout("workshops", shops=shops, **with_customs("ore_piles"))
+    common_checks(L, tiles, cells)
+    builds = [c for c in cells if c[0] == "build"]
+    assert builds == [c for c in base_cells if c[0] == "build"], builds
+    places = [c for c in cells if c[0] == "place"]
+    assert len(places) == 1 and places[0][3] == "s(5x5)", places
+    _, x, y, _t = places[0]
+    assert {(x + dx, y + dy) for dx in range(5) for dy in range(5)} <= tiles
+    assert len(tiles - base) == 25 + 3 and L.summary.ore_pile is True   # the room and its 3-wide opening
+    twelve = ["Masons"] * 12
+    assert same(layout("workshops", shops=twelve), layout("workshops", shops=twelve, **with_customs("ore_piles")))
+    assert not layout("workshops", shops=twelve, **with_customs("ore_piles"))[0].summary.ore_pile
+    # rounded rooms: the pile still sits in its room
+    L, tiles, cells = layout("workshops", shops=["Masons"] * 4, **with_customs("ore_piles", hall="rounded"))
+    common_checks(L, tiles, cells)
+    assert [c[3] for c in cells if c[0] == "place"] == ["s(5x5)"]
+
+
+def bridge_parse_style():
+    import re
+    src = (ROOT / "lua" / "ai-bridge-actions.lua").read_text(encoding="utf-8")
+    fn = re.search(r"\nlocal function parse_style\(st\)\n.*?\nend\n", src, re.S).group(0)
+    lua = LuaRuntime(unpack_returned_tuples=True)
+    return lua, lua.execute("""
+        function int_in(v, lo, hi)
+            v = math.tointeger(tonumber(v)); if v == nil or v < lo or v > hi then return nil end; return v
+        end
+    """ + fn + "\nreturn parse_style")
+
+
+@test("bridge parse_style: style.customs kept for the three layout customs only; old styles unchanged")
+def _():
+    lua, lua_parse = bridge_parse_style()
+    def parse(t):
+        res = lua_parse(t)
+        return res if isinstance(res, tuple) else (res, None)
+    def st(**kw):
+        t = lua.table_from(kw)
+        if "customs" in kw:
+            t["customs"] = lua.table_from(kw["customs"])
+        return t
+    out, err = parse(st(customs=["cloister", "wide_ways", 7, "armoury", "ore_piles", "quirk"]))
+    assert err is None and list(out.customs.values()) == ["cloister", "armoury", "ore_piles"], list(out.customs.values())
+    out, err = parse(st(customs=["wide_ways"]))
+    assert err is None and out.customs is None
+    out, err = parse(st(hall="pillared"))
+    assert err is None and out.customs is None and out.hall == "pillared"
+    out, err = parse(st(customs="cloister"))          # not a list: dropped, never a refusal
+    assert err is None and out.customs is None
+
 if __name__ == "__main__":
     if "--show" in sys.argv:
         for kind, params in (("bedrooms", {"rooms": 16, "room_size": 3}), ("dining", {"tables": 12}),

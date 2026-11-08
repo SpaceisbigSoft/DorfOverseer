@@ -20,6 +20,10 @@
 KINDS = {'bedrooms', 'suites', 'jail', 'dining', 'storage', 'workshops', 'temple', 'memorial', 'hospital', 'barracks',
          'tombs', 'tavern', 'library', 'archery', 'garden'}
 HALLS = {plain = true, rounded = true, pillared = true}
+-- (0.105.29) Fort customs the layouts read (style.customs; brain/customs.py
+-- LAYOUT): a cloister round the temple, an armoury alcove in the barracks,
+-- a stone and ore pile on workshop levels. Unknown names are ignored.
+LAYOUT_CUSTOMS = {cloister = true, armoury = true, ore_piles = true}
 
 -- Quickfort stockpile keys the AI may use, and what they hold.
 STOCKPILES = {
@@ -48,7 +52,12 @@ end
 -- Without a style, levels are plain and undecorated.
 local function style_of(p)
     local st = type(p.style) == 'table' and p.style or {}
-    return {hall = HALLS[st.hall] and st.hall or 'plain',
+    local customs = {}
+    for _, c in ipairs(type(st.customs) == 'table' and st.customs or {}) do
+        if LAYOUT_CUSTOMS[c] then customs[c] = true end
+    end
+    return {customs = customs,                          -- (0.105.29) a set: customs.cloister = true
+            hall = HALLS[st.hall] and st.hall or 'plain',
             smooth = clamp(st.smooth or 0, 0, 3),
             statues = clamp(st.statues or 0, 0, 4),
             spacing = clamp(st.spacing or 0, -200, 200),
@@ -476,11 +485,17 @@ function workshops(p)
     end
     if #shops == 0 then return nil, 'no valid workshop types' end
     local L = new_layout('workshops', p)
-    local slots = corridor_rooms(L, #shops, 5, L.style.hall ~= 'plain')
+    -- (0.105.29, custom ore_piles) one room more, a 5x5 stone (and ore) pile, under 12 shops
+    local ore = L.style.customs.ore_piles and #shops < 12
+    local slots = corridor_rooms(L, #shops + (ore and 1 or 0), 5, L.style.hall ~= 'plain')
     for i, s in ipairs(slots) do
-        add(L, 'build', s.x + 2, s.y + 2, WORKSHOPS[shops[i]], shops[i])
+        if shops[i] then
+            add(L, 'build', s.x + 2, s.y + 2, WORKSHOPS[shops[i]], shops[i])
+        else
+            add(L, 'place', s.x, s.y, ('%s(5x5)'):format(STOCKPILES.stone))
+        end
     end
-    L.summary = {workshops = shops}
+    L.summary = {workshops = shops, ore_pile = ore or nil}
     return finish(L)
 end
 
@@ -494,11 +509,21 @@ function temple(p)
     local top = -(h // 2)
     local skip = {}
     if L.style.hall ~= 'plain' or grand then corners_of(2, top, w, h, skip) end
-    local pillars = {}
-    if grand then
+    local cloister = L.style.customs.cloister
+    if cloister then
+        -- (0.105.29, custom cloister) a pillared walk 1 tile in from the walls:
+        -- pillars on the second and second-last rows and the west column (not
+        -- the doorway row); the statue column (2+w-2) stays clear. In a grand
+        -- temple the ring takes the place of its own two pillar rows.
+        for x = 4, 2 + w - 3, 2 do
+            mark(skip, x, top + 1); mark(skip, x, top + h - 2)
+        end
+        for y = top + 1, top + h - 2, 2 do
+            if math.abs(y) > 1 then mark(skip, 3, y) end
+        end
+    elseif grand then
         for x = 5, 2 + w - 4, L.style.rhythm do
             mark(skip, x, top + 2); mark(skip, x, top + h - 3)
-            table.insert(pillars, x)
         end
     end
     dig_rect_except(L, 2, top, w, h, skip)
@@ -523,7 +548,7 @@ function temple(p)
     -- guildhall): every wall and floor of the hall engraved
     if p.deity_hf or p.religion or prof then L.engrave_all = true end
     L.summary = {temple = grand and 'grand' or 'shrine', statues = placed, guildhall = prof,
-                 deity_hf = p.deity_hf, religion = p.religion}
+                 deity_hf = p.deity_hf, religion = p.religion, cloister = cloister or nil}
     return finish(L)
 end
 
@@ -631,7 +656,15 @@ function barracks(p)
     add(L, 'build', far, -1, 'r', 'Weaponrack')
     add(L, 'build', far, 1, 'r', 'Weaponrack')
     add(L, 'zone', 2, -3, ('B(%dx7)'):format(width))
-    L.summary = {barracks_beds = beds, armor_stands = stands}
+    local armoury = L.style.customs.armoury
+    if armoury then
+        -- (0.105.29, custom armoury) a 2x5 alcove past the racks: a weapon pile
+        -- north, an armour pile south, the middle row (y = 0) open
+        dig_rect(L, far + 1, -2, 2, 5)
+        add(L, 'place', far + 1, -2, ('%s(2x2)'):format(STOCKPILES.weapons))
+        add(L, 'place', far + 1, 1, ('%s(2x2)'):format(STOCKPILES.armor))
+    end
+    L.summary = {barracks_beds = beds, armor_stands = stands, armoury = armoury or nil}
     return finish(L)
 end
 
