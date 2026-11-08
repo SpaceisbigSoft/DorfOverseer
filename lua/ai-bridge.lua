@@ -793,6 +793,13 @@ function get_meetings()
                 pcall(function() if a.flags[f] then table.insert(e.flags, f) end end)
             end
             if a.tree_quota and a.tree_quota ~= -1 then e.tree_quota = a.tree_quota end
+            -- (0.105.24) a visitor (not a citizen) meeting the noble: B and F's
+            -- mayors (2-5 Nov) met poets, dancers and bards, who come to ask to
+            -- stay, as often as their own citizens ("unable to complain")
+            pcall(function()
+                local u = df.unit.find(a.unit_actor)
+                if u and not dfhack.units.isCitizen(u) then e.visitor = true end
+            end)
             out.activities = out.activities or {}
             table.insert(out.activities, e)
         end
@@ -811,6 +818,17 @@ function get_meetings()
         end
     end)
     pcall(function() out.requests = #df.global.plotinfo.meeting_requests end)
+    -- (0.105.24) of those waiting, the visitors (an entry that is a unit id or holds one)
+    pcall(function()
+        local n = 0
+        for _, r in ipairs(df.global.plotinfo.meeting_requests) do
+            local id = type(r) == 'number' and r or nil
+            if not id then pcall(function() id = r.unit_id end) end
+            local u = id and df.unit.find(id)
+            if u and not dfhack.units.isCitizen(u) then n = n + 1 end
+        end
+        out.requests_visitors = n
+    end)
     pcall(function() out.popups = #df.global.plotinfo.dipscript_popups end)
     pcall(function() out.screen = dfhack.gui.getCurFocus(true)[1] end)
     return out
@@ -5570,6 +5588,14 @@ function act_rest_infected(a)
     return reqscript('ai-health').rest_infected(n, a.dry_run == true, txt, cap, keep)
 end
 
+-- (0.105.24) A patient needing traction got up from an ordinary bed while a
+-- traction bench in a hospital stands free, so DF lays him on it.
+function act_traction_rest(a)
+    local n = int_in(a.max or 1, 1, 3)
+    if not n then return reject('traction_rest: max 1-3') end
+    return reqscript('ai-health').traction_rest(n, a.dry_run == true, txt)
+end
+
 function act_add_doctor_post(a)
     local id = tonumber(a.location_id)
     if not id then return reject('add_doctor_post needs location_id') end
@@ -6631,6 +6657,7 @@ ACTIONS = {
     seal_cavern = act_seal_cavern,
     accept_cups = act_accept_cups,           -- (0.104.168)
     rest_infected = act_rest_infected,       -- (0.104.168)
+    traction_rest = act_traction_rest,       -- (0.105.24)
     add_doctor_post = act_add_doctor_post,   -- (0.104.168)
     squad_trim = act_squad_trim,
     squad_release = act_squad_release,

@@ -25,7 +25,13 @@ LOOP_AT = 10            # the same action this many times: named as a possible l
 # icons cleared, the manager's approvals, the recreation burrow refilled, a few
 # the level joins: each call different work)
 EXPECTED = {"scan_entrances", "dismiss_alerts", "approve_orders", "recreation", "hospital_burrow", "join_levels",
-            "calm_burrow"}    # (0.104.169) a call each tantrum
+            "calm_burrow",    # (0.104.169) a call each tantrum
+            # (0.105.24) as the run check's LOOP_EXPECTED: the water survey goes
+            # a slice a cycle (15-16 a season), trinkets a few at a time; they
+            # filled the top of every fort's list in the 2-5 Nov run (survey_water
+            # x541-884, give_trinkets x278-596) and hid the real loops
+            "survey_water", "cistern_step", "open_trade", "trade_deal", "close_trade", "call_trader", "unpause",
+            "give_trinkets"}
 
 
 def _what(a: dict) -> str:
@@ -75,10 +81,14 @@ def summarize(since: datetime, root: Path = FORTS, top: int = 5) -> list[str]:
     if refused:
         lines.append("most refused: " + "; ".join(f"{r}: {w} x{c} ({why[(r, w)]})"
                                                    for (r, w), c in refused.most_common(top)))
-    loops = [(k, c) for k, c in (done + refused).most_common() if c >= LOOP_AT and k[1] not in EXPECTED]
+    loops = [(k, c) for k, c in (done + refused).most_common()
+             if c >= LOOP_AT and k[1].split(" ")[0] not in EXPECTED]
     if loops:
+        # (0.105.24) how many of them the game refused: a refusal asked again
+        # is a loop, work done again may be the rule's own pace
         lines.append("POSSIBLE LOOPS (the same thing " + f"{LOOP_AT}+ times): "
-                     + "; ".join(f"{r}: {w} x{c}" for (r, w), c in loops[:top]))
+                     + "; ".join(f"{r}: {w} x{c}" + (f" ({refused[(r, w)]} refused)" if refused[(r, w)] else "")
+                                 for (r, w), c in loops[:top]))
     return lines
 
 

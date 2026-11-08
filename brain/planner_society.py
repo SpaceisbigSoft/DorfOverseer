@@ -2023,6 +2023,12 @@ def _complaint_notes(s: dict, cfg: dict, notes: list) -> None:
     waiting = int(m.get("requests") or 0)
     busy = (f", is in meetings back to back ({waiting} waiting)" if acts and waiting
             else ", is in a meeting" if acts else ", is the only one DF sends them to")
+    # (0.105.24) visitors take the mayor's time too: B and F (2-5 Nov) met
+    # poets, dancers and bards (who come to ask to stay) as often as citizens
+    vis = int(m.get("requests_visitors") or 0) + sum(1 for a in acts if a.get("visitor"))
+    if vis:
+        busy += (f"; {vis} of those meetings are with visitors (performers and scholars asking to stay: "
+                 "fewer come with a lower Outsiders, or the tavern, temples and library shut to visitors)")
     no_office = any(isinstance(x, dict) and "office" in _l(x.get("needs"))
                     and x.get("office") in ("MAYOR", "EXPEDITION_LEADER")
                     for x in _l(_d(s.get("noble_rooms")).get("nobles")))

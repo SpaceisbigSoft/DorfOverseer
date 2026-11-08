@@ -527,6 +527,8 @@ def short(a: dict) -> str:
         return f"unlock the way down to {a.get('layer')}" if a.get("open") else f"lock the way down to {a.get('layer')}"
     if t == "rest_infected":     # (0.104.168)
         return f"put up to {a.get('max', 3)} dwarves with infected wounds to bed in the hospital, for the doctors"
+    if t == "traction_rest":     # (0.105.24)
+        return "get a patient who needs traction out of an ordinary bed, so the game lays him on the traction bench"
     if t == "add_doctor_post":   # (0.104.168)
         return "add a second doctor's post at a hospital"
     if t == "recreation":        # (0.104.78)

@@ -6270,15 +6270,18 @@ def _():
         {"labor": "COOK", "jobs": 5, "holders": 2, "idle": 1},                       # someone is free: no
         {"labor": "MINE", "jobs": 40, "holders": 1, "idle": 0},                      # its own rule
         {"labor": "HAUL_STONE", "jobs": 90, "holders": 0, "idle": 0},                # everyone hauls
-        {"labor": "SMELT", "jobs": 2, "holders": 0, "idle": 0},                      # too few to bother
+        {"labor": "SMELT", "jobs": 2, "holders": 1, "idle": 0},                      # too few to bother
+        # (0.105.24) nobody has it at all: one waiting job is enough
+        {"labor": "BOOKBINDING", "jobs": 1, "holders": 0, "idle": 0},
         {"labor": "MASON", "jobs": 8, "holders": 3, "idle": 0, "mode": "EverybodyDoesThis"}]
     s["labor"]["skilled_off"] = [{"labor": "FISH", "skilled": 2, "detail": "Fisherdwarves"},
                                  {"labor": "MINE", "skilled": 1, "detail": "Miners"}]
     props = [p for p in plan(s, Memory())[0] if p.rule == "labor" and p.action.get("job") in ("BREWER", "COOK",
-             "MINE", "HAUL_STONE", "SMELT", "MASON", "FISH") and p.action.get("count") != 0]
+             "MINE", "HAUL_STONE", "SMELT", "MASON", "FISH", "BOOKBINDING") and p.action.get("count") != 0]
     acts = [(p.action["job"], p.action["count"], p.action.get("min_skill")) for p in props
             if p.action["job"] != "MINE" or p.action.get("min_skill")]
     assert ("BREWER", 3, None) in acts and ("FISH", 2, 3) in acts, acts
+    assert ("BOOKBINDING", 1, None) in acts, acts
     assert not any(j in ("COOK", "HAUL_STONE", "SMELT", "MASON") for j, _, _ in acts), acts
     assert not any(j == "MINE" and m for j, _, m in acts), acts
 
@@ -6665,9 +6668,9 @@ def _():
     later["date"]["tick"] += 15 * 1200
     p_later = plan(later, m)[0]
     st = by_rule(p_later, "stone")
-    assert st and st[0].action == {"type": "cancel_work_order", "order_id": 41}, st
+    assert st and st[0].action == {"type": "cancel_work_order", "order_id": 41, "stuck": "stone_chest"}, st
     q = by_rule(p_later, "quarry")
-    assert q and q[0].action == {"type": "quarry", "count": 30}, q             # and dig some ordinary stone
+    assert q and q[0].action == {"type": "quarry", "count": 20}, q             # and dig some ordinary stone
     s["stone_use"]["usable"] = 500
     assert not by_rule(plan(s, Memory())[0], "stone")                          # plenty: nothing to do
     from planner import stone_short

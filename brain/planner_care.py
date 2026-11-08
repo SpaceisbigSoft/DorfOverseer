@@ -18,9 +18,9 @@ monarch-appointed ones left to DF.
 from __future__ import annotations
 
 from digest import _d, _l
-from planner_core import Proposal, ask_player, care_waiting, player_rules, refusal_key
+from planner_core import Proposal, TICKS_PER_DAY, abs_tick, ask_player, care_waiting, player_rules, refusal_key
 
-__all__ = ["_infection_rule", "_doctor_post_rule", "_offices_refill_rule", "MILITARY_OFFICES"]
+__all__ = ["_infection_rule", "_doctor_post_rule", "_offices_refill_rule", "MILITARY_OFFICES", "_traction_rest_rule"]
 
 MILITARY_OFFICES = ("MILITIA_COMMANDER", "MILITIA_CAPTAIN")
 
@@ -83,6 +83,40 @@ def _infection_rule(s: dict, cfg: dict, proposals: list, notes: list) -> None:
                               + (f" ({bleeding} bleeding from it)" if bleeding else "")
                               + f" and {free} hospital bed(s) are free: the {m} worst of the idle put to bed "
                                 "there, for the doctors to diagnose and clean", 2 if bleeding else 4))
+
+
+def _traction_rest_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None) -> None:
+    """(0.105.24) Teacheroar: a farmer waited 759-828 days "for immobilize,
+    traction" with a traction bench in the hospital and splints in store. DF
+    lays a patient who needs traction on a bench only when it picks where he
+    rests: one already in an ordinary bed stays there. While such a patient
+    has waited traction_rest_wait_days and a finished bench stands free in a
+    hospital zone, the bridge gets him up (lua/ai-health.lua traction_rest)
+    so DF lays him again; the reasons it can't are said."""
+    tr = _d(_d(s.get("infection")).get("traction"))
+    if not tr or not int(tr.get("waiting") or 0):
+        return
+    now = abs_tick(s)
+    since = _d(getattr(memory, "patient_since", None)) if memory is not None else {}
+    waits = [p for p in _l(_d(s.get("health")).get("patients")) if isinstance(p, dict)
+             and "traction" in _l(p.get("needs"))]
+    long = [p for p in waits if isinstance(since.get(str(p.get("id"))), int)
+            and (now - since[str(p.get("id"))]) // TICKS_PER_DAY >= cfg["traction_rest_wait_days"]]
+    if not long:
+        return
+    in_bed, free = int(tr.get("in_bed") or 0), int(tr.get("benches_free") or 0)
+    if not int(tr.get("benches") or 0):
+        notes.append(f"{tr.get('waiting')} patient(s) wait for traction and no finished traction bench stands in a "
+                     "hospital zone (the traction rule orders and places one)")
+        return
+    if in_bed and free and proposals is not None:
+        who = long[0].get("name") or long[0].get("id")
+        proposals.append(Proposal("traction_rest", {"type": "traction_rest", "max": 1},
+                                  f"{in_bed} patient(s) needing traction lie in an ordinary bed ({who} waited "
+                                  f"{(now - since[str(long[0].get('id'))]) // TICKS_PER_DAY} days) while {free} "
+                                  "traction bench(es) stand free: get one up, so the game lays him on the bench", 3))
+    elif in_bed and not free:
+        notes.append(f"{in_bed} patient(s) needing traction lie in an ordinary bed and every traction bench is taken")
 
 
 def _doctor_post_rule(s: dict, cfg: dict, proposals: list) -> None:

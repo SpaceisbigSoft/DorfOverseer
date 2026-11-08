@@ -1360,7 +1360,12 @@ def _stone_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> Non
         if (isinstance(w, dict) and w.get("by_ai") and str(w.get("what", "")).startswith("stone_")
                 and str(w.get("what")) not in keep
                 and isinstance(w.get("since"), int) and (now - watch_since(w)) // TICKS_PER_DAY >= cfg["order_stuck_days"]):
-            proposals.append(Proposal("stone", {"type": "cancel_work_order", "order_id": int(k)},
+            # (0.105.24) booked as stuck (`stuck`), so the recipe waits its 28-112
+            # days and a rule asking again gets the wooden one (stuck_fallback):
+            # A (2-5 Nov) cancelled stone_door and stone_slab 276 times, the
+            # planned-parts rule ordering stone_door again after each
+            proposals.append(Proposal("stone", {"type": "cancel_work_order", "order_id": int(k),
+                                                "stuck": str(w.get("what"))},
                                       f"no stone the masons may use and {w.get('what')} hasn't moved in "
                                       f"{(now - watch_since(w)) // TICKS_PER_DAY} days: cancel it (made in wood instead)", 4))
             return
@@ -2277,7 +2282,13 @@ def _labor_waiting_rule(lb: dict, citizens: int, cfg: dict, proposals: list, thi
         # (0.105.22) and the dead's work while ghosts walk or bodies wait: B
         # (4-5 Nov) had 41 ghosts, the slab order's one job waiting at the
         # workshop "for a worker with the labour" 30 times, no mason added
-        least = 1 if ((thirsty and lab == "BREWER") or (haunted and lab in DEAD_LABORS)) \
+        # (0.105.24) and work nobody in the fort can do at all (no dwarf outside
+        # the squads has the labour): one job waits for ever. D and E (2-5 Nov)
+        # bound the library's quires one sheet at a time: make_quire "1 job
+        # waits at the workshop for a worker with the labour" 60 days, then
+        # cancelled as stuck, 140 and 73 times, and the library kept 0 of 10
+        # writing materials (parchment in C 51 times, likewise)
+        least = 1 if ((thirsty and lab == "BREWER") or (haunted and lab in DEAD_LABORS) or holders == 0) \
             else cfg["labor_waiting_jobs"]
         if (lab in OWN_LABOR_RULES or lab.startswith("HAUL") or jobs < least
                 or (w.get("idle") or 0) > 0 or w.get("mode") in LABOR_MODES_FIXED
