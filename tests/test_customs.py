@@ -113,12 +113,12 @@ def _():
     h = masterplan.hint(m, "bedrooms", traits=t, profile=PROFILE)
     assert h["avenue"] == 3 and h["customs"] == ["wide_ways"], h
     tv = masterplan.hint(m, "tavern", traits=t, profile=PROFILE)
-    assert (tv["elev_lo"], tv["elev_hi"], tv["elev_target"]) == (57, 59, 57), tv
+    assert (tv["elev_lo"], tv["elev_hi"], tv["elev_target"]) == (55, 57, 57), tv     # (customs fixes) s-5 .. s-3
     assert tv["dirs"][0] == "north" and tv["customs"] == ["market_gate", "wide_ways"], tv
     # the way in is the founding stair itself: the district's own directions
     m2 = planned(t, "101,100,160", 60)
     tv2 = masterplan.hint(m2, "tavern", traits=t, profile=PROFILE)
-    assert tv2["dirs"] == district(m2, "homes")["dirs"] and tv2["elev_lo"] == 57, tv2
+    assert tv2["dirs"] == district(m2, "homes")["dirs"] and tv2["elev_lo"] == 55, tv2
 
 
 @test("Hermit hold: 1-wide dog-leg ways while 80 citizens or fewer; nothing at or above the surface")
@@ -137,22 +137,22 @@ def _():
         assert h is None or h["elev_hi"] <= 59, (k, h)
 
 
-@test("War-hold: barracks and ranges in the 3 levels under the way in, the top one first")
+@test("War-hold: barracks and ranges in the 3 levels from 2 under the way in, the top one first")
 def _():
     t = PRESETS["War-hold"]
     m = planned(t, "140,100,160", 60)                   # east of the stair
     for k in ("barracks", "archery"):
         h = masterplan.hint(m, k, traits=t, profile=PROFILE)
-        assert (h["elev_lo"], h["elev_hi"], h["elev_target"]) == (57, 59, 59), h
+        assert (h["elev_lo"], h["elev_hi"], h["elev_target"]) == (56, 58, 58), h      # (customs fixes) s-4 .. s-2
         assert h["dirs"][0] == "east" and h["customs"] == ["gate_barracks"], h
     h = masterplan.hint(m, "bedrooms", traits=t, profile=PROFILE)
     assert "customs" not in h, h
     # a level used: the next goes to the next least-used level of the band
     h_ = masterplan.hint(m, "barracks", traits=t, profile=PROFILE)
     masterplan.note_result(m, {"type": "start_project", "kind": "barracks", "plan": h_},
-                           {"ok": True, "project_id": 1, "elevation": 59, "in_district": True}, STATE)
+                           {"ok": True, "project_id": 1, "elevation": 58, "in_district": True}, STATE)
     assert h_["district"] == district(m, "defence")["name"][:40]
-    assert masterplan.hint(m, "barracks", traits=t, profile=PROFILE)["elev_target"] == 58
+    assert masterplan.hint(m, "barracks", traits=t, profile=PROFILE)["elev_target"] == 57
 
 
 @test("Monastery: bedrooms go to the halls; note_result credits the halls, not the homes")
@@ -191,14 +191,15 @@ def _():
 @test("Garden fort: dining and food workshops at the farms' elevation; a mason's level not")
 def _():
     t = PRESETS["Garden fort"]
-    m = planned(t)
+    m = mem()                       # (customs fixes) soil 5 under the surface: the hall goes 3 under at most
+    assert masterplan.ensure(copy.deepcopy(STATE), m, dict(SITE, soil=[55, 56]), t, PROFILE)
     farms = district(m, "farms")
-    assert farms["lo"] == farms["hi"] == 58, farms
+    assert farms["lo"] == farms["hi"] == 55, farms
     h = masterplan.hint(m, "dining", traits=t, profile=PROFILE)
-    assert (h["elev_lo"], h["elev_hi"], h["elev_target"]) == (58, 58, 58) and h["customs"] == ["field_hall"], h
+    assert (h["elev_lo"], h["elev_hi"], h["elev_target"]) == (55, 55, 55) and h["customs"] == ["field_hall"], h
     food = {"type": "start_project", "kind": "workshops", "shops": ["Still", "Kitchen"]}
     w = masterplan.hint(m, "workshops", traits=t, profile=PROFILE, action=food)
-    assert w["elev_target"] == 58 and w["customs"] == ["field_kitchens"], w
+    assert w["elev_target"] == 55 and w["customs"] == ["field_kitchens"], w
     stone = {"type": "start_project", "kind": "workshops", "shops": ["Masons"]}
     w2 = masterplan.hint(m, "workshops", traits=t, profile=PROFILE, action=stone)
     ind = district(m, "industry")
@@ -206,7 +207,7 @@ def _():
     assert "customs" not in masterplan.hint(m, "workshops", traits=t, profile=PROFILE), "no action: no custom"
     # the farms district credited for the hall
     masterplan.note_result(m, {"type": "start_project", "kind": "dining", "plan": h},
-                           {"ok": True, "project_id": 1, "elevation": 58, "in_district": True}, STATE)
+                           {"ok": True, "project_id": 1, "elevation": 55, "in_district": True}, STATE)
     assert len(farms["levels"]) == 1 and district(m, "homes")["missed"] == 0
     # no farms district (no soil found): unchanged
     m2 = mem()
@@ -227,7 +228,7 @@ def _():
     out = _deep_surface_filter({}, t, m, props, [])
     assert len(out) == 4
     assert out[0].action["max_elev"] == 59 and out[0].action["customs"] == ["hidden_hold"], out[0].action
-    assert out[1].action["max_elev"] == 40 and out[1].action["customs"] == ["hidden_hold"], out[1].action
+    assert out[1].action == before[1], out[1].action     # (customs fixes) already under the ceiling: no stamp
     assert out[2].action == before[2] and out[3].action == before[3]
     # other forts: nothing changes
     props2 = [Proposal("build", {"type": "start_project", "kind": "bedrooms"}, "beds", 6)]

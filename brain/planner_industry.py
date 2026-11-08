@@ -1471,7 +1471,9 @@ def _deep_surface_filter(s: dict, traits: dict, memory, proposals: list, notes: 
                     a = p.action
                     if isinstance(a, dict) and a.get("type") == "start_project":
                         own = a.get("max_elev")
-                        p.action = dict(a, max_elev=min(own, ceil) if isinstance(own, int) else ceil,
+                        if isinstance(own, int) and own <= ceil:
+                            continue       # (customs fixes) already under it: the custom changed nothing
+                        p.action = dict(a, max_elev=ceil,
                                         customs=sorted(set(_l(a.get("customs"))) | {"hidden_hold"}))
         return proposals
     ceil = masterplan.ceiling(memory, traits) if memory is not None else None

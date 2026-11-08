@@ -229,7 +229,11 @@ def maybe_review(state: dict, memory: Memory, bank: TokenBank, backend, bridge_i
             continue
         if a["type"] == "start_project":
             a = dict(a, style=layout_style(profile_from(traits, memory.culture or new_history())))
-            lc = customs.layout_customs(traits, a.get("kind"))    # (0.105.29) the fort's customs, whoever proposes
+            # (0.105.29) the fort's layout customs, whoever proposes. Only these:
+            # the strategist chose its own level, and its placement is not the
+            # plan's (planner.plan's customs_pass, the planner's own levels'
+            # placement customs, does not run over these; left so by design)
+            lc = customs.layout_customs(traits, a.get("kind"))
             if lc:
                 a["style"]["customs"], a["customs"] = lc, sorted(lc)
         if a["type"] == "civ_alert" and not a["on"] and s.get("civ_alert") and not memory.ai_alert_raised:

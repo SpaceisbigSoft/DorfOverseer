@@ -709,6 +709,10 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
         kept = _guard(_pasture_hold, s, memory, proposals, notes)
         if kept is not None:            # (0.105.4 review) [] is an answer (all held), not a failure
             proposals = kept
+    # (0.105.29 customs fixes) the fort's customs on every new level the rules
+    # proposed without them (one pass, after every rule; before the Hermit
+    # hold's hidden_hold filter below, which stamps its own)
+    _guard(customs_pass, proposals, memory, traits, citizens)
     # (0.105.23, 14.1 step 4c) Surface -80 or lower: nothing above ground, no level at or above the surface
     kept = _guard(_deep_surface_filter, s, traits, memory, proposals, notes)
     if kept is not None:

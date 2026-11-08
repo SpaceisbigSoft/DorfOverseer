@@ -20,6 +20,7 @@ sys.path.insert(0, str(ROOT / "brain"))
 
 import customs  # noqa: E402
 import masterplan  # noqa: E402
+import planner as pl  # noqa: E402
 import planner_building as pb  # noqa: E402
 from planner import Memory, plan  # noqa: E402
 
@@ -41,7 +42,10 @@ HERMIT = {"outsiders": -120, "caution": 30}
 ALL = [DEFAULT, MONASTERY, MERCHANT, DEEP, GARDEN, WAR, HERMIT]
 
 
-def memory(traits) -> Memory:
+LOW_SOIL = [55, 56]     # (customs fixes) field_hall / field_kitchens: farms 3 or more under the surface
+
+
+def memory(traits, soil=None) -> Memory:
     """A fort with its master plan drawn (as test_customs.py's)."""
     m = Memory()
     m.culture = {"seed": "Test#1", "eras": [{"year": 150, "title": "Plain era"}]}
@@ -50,7 +54,7 @@ def memory(traits) -> Memory:
                "entrances": {}}
     st = {"date": {"year": 150, "tick": 0, "day": 1, "month": "Granite", "season": "spring"},
           "dwarves": {"total": 40}}
-    assert masterplan.ensure(st, m, SITE, traits, PROFILE)
+    assert masterplan.ensure(st, m, dict(SITE, soil=soil) if soil else SITE, traits, PROFILE)
     return m
 
 
@@ -88,10 +92,11 @@ def urgent(s, m, kind) -> list:
 
 
 def today(s, traits, kind) -> list:
-    """The urgent proposals as before this change: the urgent paths without
-    the customs helper (the Hermit hold's hidden_hold filter, group A's,
-    still applies to every start_project, as it did)."""
-    with Patched(pb, _urgent=lambda action, *a: action):
+    """The urgent proposals as before this change: plan() without its customs
+    pass (customs fixes: the one place the urgent levels get them; the Hermit
+    hold's hidden_hold filter, group A's, still applies to every
+    start_project, as it did)."""
+    with Patched(pl, customs_pass=lambda *a: None):
         return urgent(s, memory(traits), kind)
 
 
@@ -147,8 +152,8 @@ def _():
         assert ind["lo"] <= a[0]["plan"]["elev_target"] <= ind["hi"], (a[0]["plan"], ind)
         assert "customs" not in (a[0].get("style") or {})              # placement only
         assert a[0]["tables"] == 15 and a[0]["urgent"] is True
-        a = urgent(fort(GARDEN), memory(GARDEN), "dining")
-        farms = district(memory(GARDEN), "farms")
+        a = urgent(fort(GARDEN), memory(GARDEN, LOW_SOIL), "dining")
+        farms = district(memory(GARDEN, LOW_SOIL), "farms")
         assert a and a[0]["customs"] == ["field_hall"], a
         assert (a[0]["plan"]["elev_lo"], a[0]["plan"]["elev_hi"]) == (farms["lo"], farms["hi"]), (a[0]["plan"], farms)
         for t in (DEFAULT, MONASTERY, MERCHANT, WAR, HERMIT):
@@ -209,9 +214,9 @@ def _():
 @test("urgent survival workshops: food shops only -> field_kitchens; with Carpenters, as today")
 def _():
     food = survival_fort(["Still", "Kitchen"])
-    a = urgent(food(GARDEN), memory(GARDEN), "workshops")
+    a = urgent(food(GARDEN), memory(GARDEN, LOW_SOIL), "workshops")
     assert a and a[0]["shops"] == ["Still", "Kitchen"] and a[0]["customs"] == ["field_kitchens"], a
-    farms = district(memory(GARDEN), "farms")
+    farms = district(memory(GARDEN, LOW_SOIL), "farms")
     assert (a[0]["plan"]["elev_lo"], a[0]["plan"]["elev_hi"]) == (farms["lo"], farms["hi"]), a[0]["plan"]
     mixed = survival_fort(["Still", "Kitchen", "Carpenters"])
     assert_today(mixed, GARDEN, "workshops")             # not all food: the custom doesn't concern it

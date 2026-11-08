@@ -421,18 +421,28 @@ def _toward_way_in(memory, spine: dict) -> str | None:
     return "south" if dy >= 0 else "north"
 
 
-def _gate_band(memory, traits: dict | None) -> tuple[int, int, str | None] | None:
-    """(0.105.29) The gate band: the GATE_BAND levels just under the way in,
-    inside the plan's range and under any ceiling, as (lo, hi, toward);
-    toward is the way from the spine to the way in (None: the founding
-    stair is the way in). None when the surface isn't known."""
+# (0.105.29 customs fixes) the top of each gate custom's band, in levels under
+# the way in. The shelter keeps SHELTER_MARGIN_Z (2) levels round an unshut way
+# in (lua/ai-society.lua): the tavern, a civilians' room, stays out of it
+# (s-5 .. s-3); the barracks and range may take its last level (s-4 .. s-2):
+# soldiers on duty are not held by the shelter, and s-1 (next to the way in,
+# where an enemy comes in) is left to the gatehouse.
+GATE_TOP = {"market_gate": 3, "gate_barracks": 2}
+FIELD_TOP = 3       # field_hall / field_kitchens: no hall at or just under the surface (as the tavern)
+
+
+def _gate_band(memory, traits: dict | None, gate: str = "market_gate") -> tuple[int, int, str | None] | None:
+    """(0.105.29) The gate band: the GATE_BAND levels from GATE_TOP[gate]
+    under the way in down, inside the plan's range and under any ceiling, as
+    (lo, hi, toward); toward is the way from the spine to the way in (None:
+    the founding stair is the way in). None when the surface isn't known."""
     p = _peek(memory)
     spine = p.get("spine") if isinstance(p.get("spine"), dict) else None
     s = surface_elevation(memory, spine)
     if s is None:
         return None
     rng = p.get("range") if isinstance(p.get("range"), list) and len(p["range"]) == 2 else [None, None]
-    hi = s - 1
+    hi = s - GATE_TOP.get(gate, 3)
     if isinstance(rng[1], int):
         hi = min(hi, rng[1])
     ceil = ceiling(memory, traits)
@@ -444,6 +454,29 @@ def _gate_band(memory, traits: dict | None) -> tuple[int, int, str | None] | Non
     if lo > hi:
         return None
     return lo, hi, _toward_way_in(memory, spine)
+
+
+def _field_band(memory, farms: dict) -> tuple[int, int, int] | None:
+    """(0.105.29 customs fixes) field_hall / field_kitchens: the farms
+    district's band kept FIELD_TOP levels under the surface and inside the
+    plan's range, as (lo, hi, target); None when none of it is (soil at or
+    just under the surface: the custom doesn't apply)."""
+    p = _peek(memory)
+    spine = p.get("spine") if isinstance(p.get("spine"), dict) else None
+    s = surface_elevation(memory, spine)
+    if s is None or not isinstance(farms.get("lo"), int) or not isinstance(farms.get("hi"), int):
+        return None
+    rng = p.get("range") if isinstance(p.get("range"), list) and len(p["range"]) == 2 else [None, None]
+    hi = min(int(farms["hi"]), s - FIELD_TOP)
+    lo = int(farms["lo"])
+    if isinstance(rng[1], int):
+        hi = min(hi, rng[1])
+    if isinstance(rng[0], int):
+        lo = max(lo, rng[0])
+    if lo > hi:
+        return None
+    tg = farms.get("target") if isinstance(farms.get("target"), int) else lo
+    return lo, hi, max(lo, min(hi, tg))
 
 
 def hint(memory, kind: str, slot: str | None = None, traits: dict | None = None,
@@ -462,6 +495,7 @@ def hint(memory, kind: str, slot: str | None = None, traits: dict | None = None,
     if not d or kind == "farms":
         return None                    # farm levels follow the soil (the builder's own search)
     applied: list[str] = []
+    field = None                       # field_hall / field_kitchens: the farms band, clamped
     act = set(customs.active(traits)) if traits is not None else set()
     # (0.105.29) customs that send the level to another district
     if not slot:
@@ -475,12 +509,20 @@ def hint(memory, kind: str, slot: str | None = None, traits: dict | None = None,
         elif (kind == "workshops" and "field_kitchens" in act and isinstance(action, dict)
               and _l(action.get("shops")) and all(x in customs.FOOD_SHOPS for x in _l(action.get("shops")))):
             alt, cid = _district_of_kind(memory, "farms"), "field_kitchens"
+        if alt is not None and (alt is d or alt.get("kind") == d.get("kind")):
+            alt = None                 # (customs fixes) the default district already: nothing changed
+        if alt and cid in ("field_hall", "field_kitchens"):
+            field = _field_band(memory, alt)
+            if field is None:
+                alt = None             # no farms level 3 under the surface: the normal district
         if alt:
             d = alt
             applied.append(cid)
     spine = p.get("spine") or {}
     out = {"elev_lo": int(d["lo"]), "elev_hi": int(d["hi"]), "elev_target": int(d.get("target", d["lo"])),
            "district": _plain(d.get("name") or d["kind"])}
+    if field:
+        out["elev_lo"], out["elev_hi"], out["elev_target"] = field
     # (0.105.23) underground only (Surface -80 or lower): the band stops under
     # the surface, also for a plan drawn before (E's) or a district grown up
     ceil = ceiling(memory, traits)
@@ -499,16 +541,16 @@ def hint(memory, kind: str, slot: str | None = None, traits: dict | None = None,
     if isinstance(st, dict) and isinstance(st.get("x"), int) and isinstance(st.get("y"), int):
         out["spine"] = {"x": st["x"], "y": st["y"]}      # (0.104.82) the district's own stairwell
     # (0.105.29) customs that put the level in the gate band, just under the way in
-    aim = None
+    aim = field[2] if field else None
     gate = None
     if kind == "tavern" and "market_gate" in act:
         gate = "market_gate"
     elif kind in ("barracks", "archery") and "gate_barracks" in act:
         gate = "gate_barracks"
-    gb = _gate_band(memory, traits) if gate else None
+    gb = _gate_band(memory, traits, gate) if gate else None
     if gb:
         lo, hi, toward = gb
-        aim = lo if gate == "market_gate" else hi       # the tavern outside the shelter's margin
+        aim = hi                       # the band's top: as near the way in as the custom goes
         out["elev_lo"], out["elev_hi"], out["elev_target"] = lo, hi, aim
         if toward:
             out["dirs"] = list(dict.fromkeys([toward] + out.get("dirs", [])))[:4]
@@ -519,18 +561,28 @@ def hint(memory, kind: str, slot: str | None = None, traits: dict | None = None,
     out["corridors"] = g.get("corridors") if g.get("corridors") in ("straight", "dog-leg") else "straight"
     if g.get("doors") in ("open", "doored", "fortified"):
         out["doors"] = g["doors"]
-    # (0.105.29) customs of the ways (the earned quirks below keep the last word)
-    if "wide_ways" in act:
-        out["avenue"] = 3
-        applied.append("wide_ways")
-    if "winding_ways" in act and citizens is not None and citizens <= customs.WINDING_MAX_CITIZENS:
-        out["avenue"], out["corridors"] = 1, "dog-leg"
-        applied.append("winding_ways")
     culture = memory.culture if isinstance(memory.culture, dict) else {}
-    if has_rule(culture, "narrow_ways"):            # Warren
-        out["avenue"], out["corridors"] = 1, "dog-leg"
-    if has_rule(culture, "great_shaft"):            # The Great Shaft: close around the stair
-        out["avenue"] = 3
+
+    def quirks(ways):
+        """The earned quirks' last word on (avenue, corridors)."""
+        if has_rule(culture, "narrow_ways"):            # Warren
+            ways = (1, "dog-leg")
+        if has_rule(culture, "great_shaft"):            # The Great Shaft: close around the stair
+            ways = (3, ways[1])
+        return ways
+    # (0.105.29) customs of the ways (the earned quirks keep the last word);
+    # (customs fixes) stamped only when they change the final ways
+    plain = quirks((out["avenue"], out["corridors"]))
+    ways = (out["avenue"], out["corridors"])
+    for cid, on, new in (("wide_ways", "wide_ways" in act, (3, None)),
+                         ("winding_ways", "winding_ways" in act and citizens is not None
+                          and citizens <= customs.WINDING_MAX_CITIZENS, (1, "dog-leg"))):
+        if on:
+            ways = (new[0], new[1] or ways[1])
+            if quirks(ways) != plain:
+                applied.append(cid)
+    out["avenue"], out["corridors"] = quirks(ways)
+    if has_rule(culture, "great_shaft"):
         out["dirs"] = [p.get("axis")] if p.get("axis") in DIRS else out.get("dirs", [])[:1]
     # spread the district's levels through its band: the level used least so far
     used = [lv.get("elevation") for lv in d.get("levels") or [] if isinstance(lv, dict)]
