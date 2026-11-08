@@ -117,7 +117,8 @@ _G.reqscript = function(name)
 end
 _G.dfhack = {persistent = {
   getSiteData = function(k, default) return W.persist[k] or default end,
-  saveSiteData = function(k, v) W.persist[k] = v end}}
+  saveSiteData = function(k, v) W.persist[k] = v end},
+  findScript = function(name) return LUA_DIR .. '/' .. name .. '.lua' end}   -- (13c) ai-builder's parts
 LAYOUTS = load_module(layouts_src, 'ai-layouts')
 local B = load_module(builder_src, 'ai-builder')
 B.tile_info = function(x,y,z) local t = W.get(x,y,z); if not t then return nil end
@@ -127,6 +128,8 @@ B.stair_shape = function(x,y,z) local t = W.get(x,y,z)
   return t and (t.shape:find('^STAIR') and t.shape) or nil end
 B.citizen_positions = function() return W.citizens end
 B.job_tiles = function() return W.jobs end
+-- (13c) the builder's check_level was used only here: a layout centred on a stair
+B.check_level = function(L, sx, sy, z, reserved) return B.check_site(L, {}, sx, sy, z, reserved, {x = 0, y = 0}) end
 -- one connected walking area: every open tile on the fort levels
 B.walk_group = function(x,y,z) local t = W.get(x,y,z)
   if t and t.shape ~= 'WALL' and z >= 60 and z <= 80 then return 1 end
@@ -148,6 +151,7 @@ return B, W
 
 def boot():
     lua = LuaRuntime(unpack_returned_tuples=True)
+    lua.globals().LUA_DIR = str(ROOT / "lua")
     layouts = (ROOT / "lua" / "ai-layouts.lua").read_text(encoding="utf-8")
     builder = (ROOT / "lua" / "ai-builder.lua").read_text(encoding="utf-8")
     B, W = lua.execute(HARNESS, layouts, builder)

@@ -85,20 +85,10 @@ function occupants(box)
     return out
 end
 
+-- (13c) the builder's: every cell in the dry run, then for real
 function designate(cells, z, mode)
-    local ok, r = pcall(function()
-        local qf, L = reqscript('quickfort'), reqscript('ai-layouts')
-        local function run(dry)
-            return qf.apply_blueprint{mode = mode, command = 'run', dry_run = dry,
-                                      data = L.to_data(cells, z), pos = {x = 0, y = 0, z = 0}}
-        end
-        local k = mode .. '_designated'
-        local d = run(true)
-        if not d[k] or d[k].value < #cells then return false end
-        local s = run(false)
-        return s[k] and s[k].value >= 1
-    end)
-    return ok and r
+    local ok, r = pcall(function() return reqscript('ai-builder').designate(cells, z, mode) end)
+    return ok and r == true
 end
 
 -- {id, built, closed} of a building of `kind` (a df.building_type name) at a tile
@@ -131,18 +121,9 @@ function link_pending(lever_id)
     return ok and yes
 end
 
+-- (13c) the builder's (a pull already on its way counts as done)
 function pull(lever_id, instant)
-    local okp, pending = pcall(function()
-        for _, j in ipairs(df.building.find(lever_id).jobs) do
-            if j.job_type == df.job_type.PullLever then return true end
-        end
-        return false
-    end)
-    if okp and pending and not instant then return true end
-    local args = {'lever', 'pull', '--id', tostring(lever_id)}
-    if instant then table.insert(args, '--instant') end
-    local _, rv = dfhack.run_command_silent(table.unpack(args))
-    return rv == CR_OK
+    return reqscript('ai-builder').pull(lever_id, instant) == true
 end
 
 function dig_now(x, y, z)
@@ -214,10 +195,9 @@ function magma_parts()
     for k, tname in pairs(MAGMA_PARTS) do
         out[k] = 0
         pcall(function()
+            local B = reqscript('ai-builder')       -- (13c) its item_held, the one copy
             for _, it in ipairs(df.global.world.items.other[tname]) do
-                local f = it.flags
-                if not (f.forbid or f.in_building or f.construction or f.removed or f.garbage_collect
-                        or f.trader or f.dump or f.hostile or f.in_job) and item_magma_safe(it) then
+                if not (B.item_held(it) or it.flags.in_job) and item_magma_safe(it) then
                     out[k] = out[k] + 1
                 end
             end
@@ -1132,6 +1112,7 @@ end
 function report()
     local st = load_state()
     local out = {works = {}, refused = {}}
+    local parts          -- (13c) the parts in store, counted once a report (not once a work)
     for id, wk in pairs(st.works) do
         local p = wk.plan or {}
         local g = p.gate and building(p.gate.x, p.gate.y, p.gate.z, 'Floodgate')
@@ -1145,10 +1126,12 @@ function report()
                      gate_at = p.gate and {x = p.gate.x, y = p.gate.y, e = ez(p.gate.z)} or nil}
         pcall(function()
             if wk.stage == 'linking' or wk.stage == 'building' then
-                local B = reqscript('ai-builder')
-                row.floodgates_free = B.count_items('FLOODGATE')
-                row.mechanisms_free = B.count_items('TRAPPARTS')
-                row.pipes_free = B.count_items('PIPE_SECTION')
+                if not parts then
+                    local B = reqscript('ai-builder')
+                    parts = {floodgates = B.count_items('FLOODGATE'), mechanisms = B.count_items('TRAPPARTS'),
+                             pipes = B.count_items('PIPE_SECTION')}
+                end
+                row.floodgates_free, row.mechanisms_free, row.pipes_free = parts.floodgates, parts.mechanisms, parts.pipes
             end
         end)
         out.works[id] = row
