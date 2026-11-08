@@ -210,16 +210,32 @@ local function now_tick()
     return U.abs_tick()
 end
 
+-- (0.105.31) the sizes of the item lists a request is looked for in: a
+-- count kept while nothing within reach would do is taken again at once when
+-- a list grows (F, 8 Nov: the supplies counted 2 plant cloth, woven after
+-- the weaver's request was counted 0, and the AI said "can't supply" for
+-- half a day)
+local function list_sizes(entry)
+    local out = {}
+    for _, list in ipairs(search_lists(entry.item, entry.flags)) do
+        local ok, n = pcall(function() return #df.global.world.items.other[df.items_other_id[list]] end)
+        table.insert(out, ok and tostring(n) or '?')
+    end
+    return table.concat(out, ',')
+end
+
 local function cached_avail(ji, entry, unit)
     local key = tostring(unit and unit.id) .. ':' .. tostring(entry.index) .. ':' .. tostring(entry.quantity)
     local now = now_tick()
     local c = AVAIL_CACHE[key]
-    if c and now - c.at >= 0 and now - c.at < AVAIL_TICKS then return c.avail end
+    local sizes = list_sizes(entry)
+    if c and now - c.at >= 0 and now - c.at < AVAIL_TICKS
+            and (c.avail.enough or c.sizes == sizes) then return c.avail end
     local a = request_avail(ji, entry, unit)
     local n = 0
     for _ in pairs(AVAIL_CACHE) do n = n + 1 end
     if n >= 200 then AVAIL_CACHE = {} end           -- moods long over
-    AVAIL_CACHE[key] = {at = now, avail = a}
+    AVAIL_CACHE[key] = {at = now, avail = a, sizes = sizes}
     return a
 end
 

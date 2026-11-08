@@ -456,6 +456,16 @@ function set_farm_crops(params, dry_run)
     for k, v in pairs(seeds) do left[k] = v end
     local used = {[0] = {}, {}, {}, {}}
     local thread_set = {}
+    -- (0.105.31) seasons some plot already grows a fibre crop in (the mood
+    -- reserve's plant cloth: params.thread swaps one AI-set plot to fibre
+    -- only where none does)
+    local thread_now = {}
+    for _, b in ipairs(plots) do
+        for k = 0, 3 do
+            local okr, r = pcall(plant_raw, b.plant_id[k])
+            if okr and r and plant_thread(r) then thread_now[k] = true end
+        end
+    end
     local changed, dead, kept, set_plots = 0, 0, 0, {}
     for _, b in ipairs(plots) do
         local place = plot_place(b.centerx, b.centery, b.z)
@@ -504,6 +514,13 @@ function set_farm_crops(params, dry_run)
                 for _, c in ipairs(cands) do
                     if c.brews and c.idx ~= cur and (used[s][c.idx] or 0) == 0 then swap = true break end
                 end
+            end
+            -- (0.105.31) params.thread: one of the AI's own plots gives way to a
+            -- fibre crop in a season no plot grows one (F, 8 Nov: a weaver's
+            -- mood needed plant cloth, no fibre crop on any plot, and died)
+            if cur_ok and ours and not swap and params.thread == true and not thread_now[s]
+                    and not thread_set[s] and not plant_thread(cur_raw) then
+                for _, c in ipairs(cands) do if c.thread then swap = true break end end
             end
             if cur_ok and not swap then
                 if not ours then kept = kept + 1 end

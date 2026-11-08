@@ -41,6 +41,7 @@ from planner_industry import *  # noqa: E402,F401,F403  (0.104.83: the planner i
 from planner_society import *  # noqa: E402,F401,F403  (0.104.83: the planner in parts)
 import crisis  # noqa: E402  (0.104.137)
 from planner_moods import mood_blocked  # noqa: E402  (0.105.26) a waiting mood's materials held from other orders
+from planner_moods import reserve_blocked, _mood_reserve_rule  # noqa: E402  (0.105.31) the mood reserves
 from planner_building import *  # noqa: E402,F401,F403  (0.104.83: the planner in parts)
 from planner_care import _doctor_post_rule, _infection_rule, _offices_refill_rule, _traction_rest_rule  # noqa: E402  (0.104.168)
 from planner_water import _waterworks_rule  # noqa: E402  (0.105.0) moat, pumps, irrigation, magma workshops
@@ -476,6 +477,8 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
             proposals += found
         else:
             notes += [f"{p.reason} (building it is switched off in the Rules tab)" for p in found]
+    if can_use("stocks", "supplies", "buildings"):
+        _guard(_mood_reserve_rule, s, memory, cfg, proposals, notes)     # (0.105.31) the mood reserves
     if can_use("dead"):
         _guard(_dead_notes, s, notes, proposals, rules_, memory)
 
@@ -771,6 +774,8 @@ def select(proposals: list[Proposal], state: dict, memory: Memory,
     # uses them up (bags, quivers, shoes, jewellery, crafts and cloth re-ordered
     # what a mood had just cancelled)
     mood_recipes, mood_mats = mood_blocked(state)
+    # (0.105.31) and the mood reserves: no other rule's order takes the last few
+    reserve_recipes = reserve_blocked(state, cfg)
     for p in sorted(proposals, key=lambda p: p.priority - (2 if (_steer(p) or {}).get("mode") == "raise" else 0)):
         st_ = _steer(p)
         if st_ and st_["mode"] == "hold":
@@ -781,6 +786,9 @@ def select(proposals: list[Proposal], state: dict, memory: Memory,
             what = mood_recipes.get(r_) or (mood_mats.get(m_) if m_ and not r_.startswith("smelt") else None)
             if what:
                 held.append(f"{p.rule}: a strange mood waits for {what}; no {r_} order to use it up meanwhile")
+                continue
+            if p.rule != "mood_reserve" and reserve_recipes.get(r_):
+                held.append(f"{p.rule}: no {r_} order: it would use up {reserve_recipes[r_]}")
                 continue
         last = memory.last_fired.get(p.rule)
         cooldown = cfg.get(COOLDOWN_KEYS.get(p.rule, f"{p.rule}_cooldown_ticks"), cfg["rule_cooldown_ticks"])

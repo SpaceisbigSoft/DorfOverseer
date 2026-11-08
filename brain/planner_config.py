@@ -284,6 +284,20 @@ PLANNER_CONFIG = {
     "convict_rest_days": 84,
     "dig_raise_days": 14,               # (0.104.128) a level with nothing dug this long is dug before the rest
     "dig_raise_again_days": 7,         # (0.104.134) ...and again a week on while still nothing is dug
+    # (0.105.31) small reserves of what strange moods ask for most, kept so a
+    # mood (about 40 days, too short to grow fibre) finds them on hand (F, 8
+    # Nov: two weavers died wanting plant cloth): made by the existing
+    # recipes, and the AI's other orders that would use them up wait at or
+    # under the reserve. 0 turns one off.
+    "reserve_plant_cloth": 3,          # plant cloth (a fibre crop, its plants processed for thread, woven)
+    "reserve_animal_cloth": 2,         # silk or yarn cloth (woven from silk or yarn thread at hand)
+    "reserve_leather": 2,              # leather (a hide tanned)
+    "reserve_bones": 5,                # bones (bone crafts stop at it)
+    "reserve_rough_gems": 2,           # rough gems (gem cutting stops at it)
+    "reserve_cut_gems": 2,             # cut gems (cut from rough over its reserve; encrusting stops at it)
+    "reserve_bars": 3,                 # metal bars (metal crafts and jewellery stop at it)
+    "reserve_blocks": 5,               # stone blocks (made at the mason's)
+    "reserve_logs": 5,                 # logs (only said: felling is the wood rule's)
     "well_renew_days": 7,              # (0.105.31) a well's channel not dug this long: its job renewed (then weekly)
     "stone_ore_ghost_min": 10,         # (0.105.19) ...or this many while ghosts wait for slabs
     "stone_ore_min": 30,               # (0.104.124) an ore freed for the masons in a crisis only with this many boulders

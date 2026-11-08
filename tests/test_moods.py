@@ -194,9 +194,10 @@ def _():
     u = W.unit(6, j)
     assert list(M.search_lists("NONE", t(["bone"])).values()) == ["CORPSEPIECE"]
     assert list(M.search_lists("NONE", t([])).values()) == ["IN_PLAY"]
+    bone = W.item(CORPSE, "bone", 1, t({"forbid": True}))
     a = M.mood_report(j, u)[1].avail
     assert a.reach == 0
-    W.item(CORPSE, "bone", 1)
+    bone.flags.forbid = False                                      # (0.105.31) no list grew
     assert M.mood_report(j, u)[1].avail.reach == 0                # cached
     M.df["global"].cur_year_tick = M.df["global"].cur_year_tick + 700
     assert M.mood_report(j, u)[1].avail.reach == 1                # half a day on: counted again

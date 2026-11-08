@@ -168,6 +168,12 @@ def trade_wants(s: dict, cfg: dict, citizens: int) -> list[dict]:
     for w in mood_trade_wants(s):
         wants.append(w)
 
+    # (0.105.31) a mood reserve the fort can't make (plant cloth: no fibre here)
+    from planner_moods import reserve_trade_wants
+    for w in reserve_trade_wants(s, cfg):
+        if not any(x["key"] == w["key"] for x in wants):
+            wants.append(w)
+
     def want(key: str, n: float) -> None:
         n = int(n)
         if n > 0 and not any(w["key"] == key for w in wants):

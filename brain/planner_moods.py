@@ -13,7 +13,7 @@ from quirks import has_rule
 from digest import _d, _l
 from planner_core import *  # noqa: F401,F403
 
-__all__ = ["MOOD_WORKSHOPS", "_mood_rules", "mood_item_text", "MOOD_CONSUMERS", "MOOD_TRADE_KEYS", "_mood_make", "_mood_slaughter", "_mood_materials", "mood_counts_text", "mood_journal", "mood_trade_wants", "MOOD_BLOCKS", "mood_blocked"]
+__all__ = ["MOOD_WORKSHOPS", "_mood_rules", "mood_item_text", "MOOD_CONSUMERS", "MOOD_TRADE_KEYS", "_mood_make", "_mood_slaughter", "_mood_materials", "mood_counts_text", "mood_journal", "mood_trade_wants", "MOOD_BLOCKS", "mood_blocked", "MOOD_RESERVES", "mood_reserve_counts", "reserve_blocked", "_mood_reserve_rule", "reserve_trade_wants", "reserve_words"]
 
 
 # A crafting mood's skill -> the workshop (or furnace) the dwarf must claim.
@@ -444,7 +444,11 @@ def _mood_materials(s: dict, name: str, mood: str, missing: list, days: int,
             # in the fort, but where the dwarf can't walk: never "none" (F, 8 Nov)
             far.append(mood_item_text(x) + (f" (none to be made here: {why})" if why else ""))
         elif why and not (counted and int(av.get("job") or 0) > 0):
-            lacking.append((mood_item_text(x), why, kind))
+            try:
+                rw = reserve_words(s, cfg, x)          # (0.105.31) the reserve and what is being done
+            except Exception:                        # noqa: BLE001  (words only)
+                rw = ""
+            lacking.append((mood_item_text(x), why + (f" ({rw})" if rw else ""), kind))
     if freeing and unit_id is not None:
         proposals.append(Proposal("mood", {"type": "mood_free_items", "unit_id": unit_id, "max": 10},
                                   f"{name}'s {mood.lower()} mood can use items that lie forbidden or marked for "
@@ -550,3 +554,209 @@ def mood_journal(s: dict, memory) -> list[dict]:
     if memory is not None:
         memory.mood_logged = logged
     return out
+
+
+# --- (0.105.31) the mood reserves ------------------------------------------------
+#
+# F (the Garden fort), 8 Nov: two dwarves died after failed strange moods, the
+# latest a weaver wanting 3 plant cloth while the fort had 2, no plant thread
+# and no fibre crop on any plot. A mood lasts about 40 days, too short to
+# grow fibre from scratch, so the fort keeps a few of each common mood
+# material on hand: made by the existing recipes (a fibre crop on a plot, its
+# plants processed for thread before the still takes them, the thread woven;
+# a hide tanned; a gem cut; blocks), and the AI's other orders that would use
+# one up (the ones mood_blocked holds for a waiting mood) wait while the
+# fort is at or under its reserve. Never a slaughter for a reserve.
+
+# reserve -> (config key, words, the AI's orders that use it up)
+MOOD_RESERVES = {
+    "plant_cloth": ("reserve_plant_cloth", "plant cloth", MOOD_CLOTH_BLOCKS["plant"]),
+    "animal_cloth": ("reserve_animal_cloth", "silk or yarn cloth", MOOD_CLOTH_BLOCKS["silk"] + MOOD_CLOTH_BLOCKS["yarn"]),
+    "leather": ("reserve_leather", "leather", MOOD_BLOCKS["leather"]),
+    "bones": ("reserve_bones", "bones", MOOD_BLOCKS["bone"]),
+    "rough_gems": ("reserve_rough_gems", "rough gems", MOOD_BLOCKS["rough"]),
+    "cut_gems": ("reserve_cut_gems", "cut gems", MOOD_BLOCKS["cut_gem"]),
+    "bars": ("reserve_bars", "metal bars", MOOD_BLOCKS["bar"]),
+    "blocks": ("reserve_blocks", "blocks", ()),
+    "logs": ("reserve_logs", "logs", ()),
+}
+
+
+def _int_or_none(v):
+    return int(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else None
+
+
+def mood_reserve_counts(s: dict) -> dict:
+    """What the fort holds of each reserve's material (None: not reported)."""
+    su, st, nd = _d(s.get("supplies")), _d(s.get("stocks")), _d(s.get("needs"))
+    ck = su.get("cloth_kinds")
+    ck = ck if isinstance(ck, dict) else None
+    return {
+        "plant_cloth": _int_or_none(ck.get("plant")) if ck else None,
+        "animal_cloth": (int(ck.get("silk") or 0) + int(ck.get("yarn") or 0)) if ck else None,
+        "leather": _int_or_none(st.get("leather")),
+        "bones": _int_or_none(nd.get("bones")),
+        "rough_gems": _int_or_none(st.get("rough_gems")),
+        "cut_gems": _int_or_none(st.get("cut_gems")),
+        "bars": _int_or_none(st.get("metal_bars")),
+        "blocks": _int_or_none(st.get("blocks")),
+        "logs": _int_or_none(st.get("wood")),
+    }
+
+
+def reserve_blocked(s: dict, cfg: dict) -> dict:
+    """{recipe: words}: the AI's orders that would use up a mood reserve the
+    fort is at or under (held in select(), as mood_blocked's are)."""
+    out = {}
+    counts = mood_reserve_counts(s)
+    for k, (key, words, recipes) in MOOD_RESERVES.items():
+        want, have = int(cfg.get(key) or 0), counts.get(k)
+        if want > 0 and have is not None and have <= want:
+            for r in recipes:
+                out.setdefault(r, f"the {have} {words} kept for strange moods (a reserve of {want})")
+    return out
+
+
+def _fibre_seeds(s: dict) -> list:
+    """The fibre crops the fort has seeds of (names), and whether one grows now."""
+    crops = _d(_d(s.get("farms")).get("crops"))
+    return [str(_d(c).get("name") or k) for k, c in sorted(crops.items())
+            if _d(c).get("thread") and int(_d(c).get("seeds") or 0) > 0]
+
+
+def _fibre_planted(s: dict) -> bool:
+    crops = _d(_d(s.get("farms")).get("crops"))
+    return any(_d(c).get("thread") and int(_d(c).get("planted") or 0) > 0 for c in crops.values())
+
+
+def _plant_cloth_route(s: dict) -> str:
+    """How plant cloth comes now: 'thread', 'plants', 'crop' (planted),
+    'seeds' (fibre seeds, none planted), or 'none'."""
+    su = _d(s.get("supplies"))
+    if int(_d(su.get("thread_kinds")).get("plant") or 0) > 0:
+        return "thread"
+    if int(su.get("thread_plants") or 0) > 0:
+        return "plants"
+    if _fibre_planted(s):
+        return "crop"
+    if _fibre_seeds(s):
+        return "seeds"
+    return "none"
+
+
+def reserve_words(s: dict, cfg: dict, x: dict) -> str:
+    """(0.105.31) For a mood's Needs you: the reserve of what it asks and
+    what is being done about it ('' when no reserve is kept of it)."""
+    kind = mood_kind(x)
+    flags = set(str(f) for f in _l(x.get("flags")))
+    counts = mood_reserve_counts(s)
+    if kind == "cloth" and ("plant" in flags or not flags & {"silk", "yarn"}):
+        want, have = int(cfg.get("reserve_plant_cloth") or 0), counts["plant_cloth"]
+        if not want:
+            return ""
+        av = _d(x.get("avail"))
+        seen = sum(int(av.get(k) or 0) for k in ("free", "forbidden", "dump", "job", "other", "held"))
+        bits = [f"the fort's reserve of plant cloth for moods is {have if have is not None else '?'} of {want}"]
+        if have and isinstance(x.get("avail"), dict) and seen == 0:
+            bits.append(f"(the {have} counted may be newer than the mood's count, or not fit for it)")
+        route = _plant_cloth_route(s)
+        bits.append({"thread": "plant thread at hand is woven",
+                     "plants": "the fibre plants in store are processed for thread before the still brews them",
+                     "crop": "a fibre crop grows on the farms (too slow for this mood)",
+                     "seeds": f"a fibre crop ({', '.join(_fibre_seeds(s))}) is set on the farms "
+                              "(too slow for this mood)",
+                     "none": "no fibre crop, seed or plant here: plant cloth and seeds are asked of the caravans"}[route])
+        return "; ".join(bits)
+    key = {"leather": "leather", "bone": "bones", "rough": "rough_gems", "cut_gem": "cut_gems",
+           "bar": "bars", "block": "blocks", "log": "logs"}.get(kind)
+    if key and kind != "cloth":
+        ckey, words, _ = MOOD_RESERVES[key]
+        want, have = int(cfg.get(ckey) or 0), counts.get(key)
+        if want and have is not None and have < want:
+            return f"the fort's reserve of {words} for moods is {have} of {want}"
+    return ""
+
+
+def reserve_trade_wants(s: dict, cfg: dict) -> list[dict]:
+    """(0.105.31) A plant-cloth reserve the fort can't make (no fibre crop,
+    seed or plant): plant cloth and seeds on the caravans' list."""
+    want, have = int(cfg.get("reserve_plant_cloth") or 0), mood_reserve_counts(s)["plant_cloth"]
+    if not want or have is None or have >= want or _plant_cloth_route(s) != "none":
+        return []
+    return [{"key": "CLOTH", "count": want - have}, {"key": "SEEDS", "count": 5}]
+
+
+def _mood_reserve_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> None:
+    """(0.105.31) Keep a few of each common mood material (MOOD_RESERVES):
+    one step a cycle, plant cloth first (the commonest failed request)."""
+    if young_fort(s, cfg):
+        return
+    counts = mood_reserve_counts(s)
+    su, b = _d(s.get("supplies")), _d(s.get("buildings"))
+    FOR = "kept for strange moods, which can't wait for it to be grown or made"
+
+    def gap(k):
+        key = MOOD_RESERVES[k][0]
+        want, have = int(cfg.get(key) or 0), counts.get(k)
+        return (want - have if want > 0 and have is not None and have < want else 0), have, want
+
+    def order(recipe, n, why, material=None):
+        if queued(s, {recipe}):
+            return False
+        a = {"type": "work_order", "recipe": recipe, "amount": max(1, int(n))}
+        if material:
+            a["material"] = material
+        proposals.append(Proposal("mood_reserve", a, why, 5, True))
+        return True
+
+    n, have, want = gap("plant_cloth")
+    if n:
+        head = f"{have} plant cloth, a reserve of {want} {FOR}"
+        thread = _d(su.get("thread_kinds"))
+        route = _plant_cloth_route(s)
+        if route == "thread" and _has_shop(b, "Loom"):
+            if order("weave_plant_cloth", min(n, int(thread.get("plant") or 0)), f"{head}: weave plant cloth"):
+                return
+        elif route == "plants" and _has_shop(b, "Farmers"):
+            if order("process_plants", n, f"{head}: process the fibre plants for thread before the still "
+                                          "brews them"):
+                return
+        elif route == "seeds" and farm_plots_any(s) and memory is not None and not memory.farm_crops_player:
+            proposals.append(Proposal("mood_reserve", {"type": "set_farm_crops", "thread": True,
+                                                       "drink": False},
+                                      f"{head}, and no plot grows a fibre crop: one plot grows "
+                                      f"{', '.join(_fibre_seeds(s))} (its plants processed for thread)", 5))
+            return
+        elif route == "none" and memory is not None and getattr(memory, "reserve_noted", "") != "plant_cloth":
+            memory.reserve_noted = "plant_cloth"
+            notes.append(f"{head}: no fibre crop, seed or plant here, so plant cloth and seeds are on the "
+                         "caravans' list")
+    n, have, want = gap("animal_cloth")
+    if n:
+        thread = _d(su.get("thread_kinds"))
+        for k in ("silk", "yarn"):
+            if int(thread.get(k) or 0) > 0 and _has_shop(b, "Loom"):
+                if order(f"weave_{k}_cloth", min(n, int(thread.get(k) or 0)),
+                         f"{have} silk or yarn cloth, a reserve of {want} {FOR}: weave {k} cloth"):
+                    return
+                break
+    n, have, want = gap("leather")
+    if n and int(su.get("hides") or 0) > 0 and _has_shop(b, "Tanners"):
+        if order("tan_hide", min(n, int(su.get("hides") or 0)), f"{have} leather, a reserve of {want} {FOR}: "
+                                                                 "tan a hide"):
+            return
+    n, have, want = gap("cut_gems")
+    rough, rough_keep = counts.get("rough_gems"), int(cfg.get("reserve_rough_gems") or 0)
+    rg = _d(_d(s.get("trade")).get("rough_gem"))
+    if (n and rough is not None and rough > rough_keep and _has_shop(b, "Jewelers")
+            and str(rg.get("token", "")).startswith("INORGANIC:")):
+        if order("cut_gems", min(n, rough - rough_keep), f"{have} cut gems, a reserve of {want} {FOR}: cut "
+                                                         "a rough gem (its own reserve kept)", rg["token"]):
+            return
+    n, have, want = gap("blocks")
+    if n and _has_shop(b, "Masons") and int(_d(s.get("stocks")).get("boulders") or 0) > 0:
+        order("stone_blocks", n, f"{have} blocks, a reserve of {want} {FOR}: make stone blocks")
+
+
+def farm_plots_any(s: dict) -> bool:
+    return bool([p for p in _l(_d(s.get("farms")).get("plot_list")) if isinstance(p, dict) and not p.get("dead")])

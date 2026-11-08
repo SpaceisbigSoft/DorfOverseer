@@ -199,6 +199,7 @@ class Memory:
     farm_failure_tick: int | None = None                 # when a farm level last couldn't be dug
     farm_crops_player: bool = False                      # (0.105.7 review) the player switched autofarm back on: the AI leaves the crops to it
     farm_dead_noted: str = ""                            # (0.105.7 review) the season the dead plots were last said
+    reserve_noted: str = ""                              # (0.105.31) the mood reserve last said can't be made here
     farm_under_asked: dict = field(default_factory=dict)  # (0.105.7 review) {tick, tiles}: underground plots last laid out
     report_season: str = ""                              # the last season the player's report was written for
     found_failure: str = ""                              # why the first staircase couldn't be dug (Needs you)
