@@ -12,7 +12,7 @@ from planner_core import TICKS_PER_DAY, _d, abs_tick, tantrums_recent
 RECOVERY_RULES = {
     "burial", "tombs_ghosts", "slabs", "slabs_free", "coffins", "hospital", "doctor_patient", "staff",
     "stress_care", "soap", "cloth", "needs_craft", "needs_shops", "needs_trinkets", "trinket_orders", "needs_finery",
-    "needs_drink", "needs_meal", "good_cooks", "recreation", "hospital_burrow", "tavern", "tavern_chest", "temple_chest",
+    "needs_meal", "good_cooks", "recreation", "hospital_burrow", "tavern", "tavern_chest", "temple_chest",
     "tavern_urgent", "jail_urgent", "jail_size", "jail_more", "break_fights", "convict", "mood", "rooms", "drink", "drink_fruit",
     "food", "farms", "kitchen", "water", "well", "well_parts", "pop_cap", "dig_first", "fat_ban",
     "labor", "stone", "furniture",

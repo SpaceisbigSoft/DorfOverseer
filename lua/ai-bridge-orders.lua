@@ -67,7 +67,7 @@ ORDER_RECIPES = {
     weave_silk_cloth = {job = 'WeaveCloth', material_category = {'silk'}},
     -- (0.105.24) a strange mood's leather (F: 8 of 103 failed moods waited on
     -- it first) and green glass (4 glassmakers' moods: "rough gem of green glass")
-    tan_hide = {job = 'TanAHide'},
+    tan_hide = {job = 'CustomReaction', reaction = 'TAN_A_HIDE'},
     raw_green_glass = {job = 'MakeRawGlass', material = 'GLASS_GREEN'},
     cloth_bag = {job = 'ConstructBag', material_category = {'cloth'}},
     silk_bag = {job = 'ConstructBag', material_category = {'silk'}},         -- (0.86) bags of the cloth there is

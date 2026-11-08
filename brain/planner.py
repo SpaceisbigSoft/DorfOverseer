@@ -40,6 +40,7 @@ from planner_military import *  # noqa: E402,F401,F403  (0.104.83: the planner i
 from planner_industry import *  # noqa: E402,F401,F403  (0.104.83: the planner in parts)
 from planner_society import *  # noqa: E402,F401,F403  (0.104.83: the planner in parts)
 import crisis  # noqa: E402  (0.104.137)
+from planner_moods import mood_blocked  # noqa: E402  (0.105.26) a waiting mood's materials held from other orders
 from planner_building import *  # noqa: E402,F401,F403  (0.104.83: the planner in parts)
 from planner_care import _doctor_post_rule, _infection_rule, _offices_refill_rule, _traction_rest_rule  # noqa: E402  (0.104.168)
 from planner_water import _waterworks_rule  # noqa: E402  (0.105.0) moat, pumps, irrigation, magma workshops
@@ -198,9 +199,13 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
             # (0.103.4) a source whose order just got stuck and was cancelled
             # waits (Enxah: the fruit brew cancelled as stuck and ordered again
             # the next cycle); the drink rule itself is never held
+            # (0.105.26) a short wait (drink_stuck_wait_days, not the 28 days
+            # stuck_retry_days holds other orders), and none while drink is urgent
+            stuck_wait = 0 if urgent else cfg["drink_stuck_wait_days"]
+
             def stuck_recently(r):
                 st_ = _d(_d(getattr(memory, "stuck_cancelled", None)).get(r))
-                return isinstance(st_.get("tick"), int) and 0 <= abs_tick(s) - st_["tick"] < cfg["stuck_retry_days"] * TICKS_PER_DAY
+                return isinstance(st_.get("tick"), int) and 0 <= abs_tick(s) - st_["tick"] < stuck_wait * TICKS_PER_DAY
             # (0.104.169) in a crisis, far under the target, the next batch is
             # queued once the open one's remaining work is all on the stills
             # (crisis_brew_room), up to crisis_brew_orders_max orders a recipe:
@@ -222,8 +227,18 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
                 ask_player(notes, f"drink is low ({drink} for {citizens} dwarves) but there are no plants or "
                            "fruit a still can brew (farm brewable crops: plump helmets, and others by the season)")
             elif not sources:
-                notes.append(f"drink {drink} + ~{pending} queued is below the target of {round(target)}: "
-                             "the stills work through the brew orders there are before more")
+                stuck_ = [r for r, n in (("brew_drink", plants), ("brew_drink_from_fruit", fruit))
+                          if n > 0 and stuck_recently(r)]
+                if pending > 0 or queued(s, BREW_RECIPES):
+                    notes.append(f"drink {drink} + ~{pending} queued is below the target of {round(target)}: "
+                                 "the stills work through the brew orders there are before more")
+                else:
+                    # (0.105.26) nothing ordered: say why ("the stills work
+                    # through the brew orders there are" when there were none)
+                    notes.append(f"drink {drink} is below the target of {round(target)} and nothing is brewing: "
+                                 + (f"the last {' and '.join(r.replace('_', ' ') for r in stuck_)} order got stuck "
+                                    f"and was cancelled; ordered again within {stuck_wait} days"
+                                    if stuck_ else "no brew order can be placed now"))
             else:
                 # (0.105.23) the larger source first: 4 brewable plants made a
                 # brew of 4 while the fruit waited for the next cycle (B)
@@ -439,7 +454,7 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
         else:
             notes += [f"{p.reason} (building it is switched off in the Rules tab)" for p in found]
     if can_use("dead"):
-        _guard(_dead_notes, s, notes, proposals, rules_)
+        _guard(_dead_notes, s, notes, proposals, rules_, memory)
 
     # 6c-2. Set-ups the AI does itself: the alert shelter, pastures ----------
     if _shelter_possible(s, memory):
@@ -716,13 +731,23 @@ def select(proposals: list[Proposal], state: dict, memory: Memory,
     # cooldown; a held one waits (never a survival or safety rule)
     def _steer(p):
         return steer_of(memory, p.rule, now)
+    # (0.105.26) a waiting strange mood's materials: no other rule's work order
+    # uses them up (bags, quivers, shoes, jewellery, crafts and cloth re-ordered
+    # what a mood had just cancelled)
+    mood_recipes, mood_mats = mood_blocked(state)
     for p in sorted(proposals, key=lambda p: p.priority - (2 if (_steer(p) or {}).get("mode") == "raise" else 0)):
         st_ = _steer(p)
         if st_ and st_["mode"] == "hold":
             held.append(f"{p.rule}: held by the strategist ({str(st_.get('why') or 'no reason')[:80]})")
             continue
+        if p.action.get("type") == "work_order" and p.rule != "mood":
+            r_, m_ = str(p.action.get("recipe")), str(p.action.get("material") or "").upper()
+            what = mood_recipes.get(r_) or (mood_mats.get(m_) if m_ and not r_.startswith("smelt") else None)
+            if what:
+                held.append(f"{p.rule}: a strange mood waits for {what}; no {r_} order to use it up meanwhile")
+                continue
         last = memory.last_fired.get(p.rule)
-        cooldown = cfg.get(f"{p.rule}_cooldown_ticks", cfg["rule_cooldown_ticks"])
+        cooldown = cfg.get(COOLDOWN_KEYS.get(p.rule, f"{p.rule}_cooldown_ticks"), cfg["rule_cooldown_ticks"])
         if (p.rule not in NO_COOLDOWN and last is not None and not (st_ and st_["mode"] == "raise")
                 and 0 <= now - last < cooldown):
             held.append(f"{p.rule}: waiting for its cooldown")
@@ -788,7 +813,7 @@ def select(proposals: list[Proposal], state: dict, memory: Memory,
             continue
         stalled = _stalled_days(memory, str(p.action.get("recipe")), now)
         if (p.action.get("type") == "work_order" and p.rule not in EMERGENCY
-                and stalled is not None and stalled >= cfg["order_hold_days"]):
+                and p.rule not in ORDER_HOLD_EXEMPT and stalled is not None and stalled >= cfg["order_hold_days"]):
             held.append(f"{p.rule}: the AI's {p.action.get('recipe')} order hasn't moved in {stalled} days; "
                         "no more until it does")
             continue
@@ -807,7 +832,8 @@ def select(proposals: list[Proposal], state: dict, memory: Memory,
                 and len([a for a in allowed if a.rule not in LIMIT_EXEMPT]) >= limit):
             held.append(f"{p.rule}: action limit for this cycle reached")
             continue
-        if p.is_order and orders_today >= cfg["max_orders_per_game_day"]:
+        if (p.is_order and p.rule not in ORDER_HOLD_EXEMPT
+                and orders_today >= cfg["max_orders_per_game_day"]):
             held.append(f"{p.rule}: work-order limit for today reached")
             continue
         kind = p.action.get("kind") if p.action.get("type") == "start_project" else None
@@ -832,7 +858,8 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
     crops_set_now = any(p.action.get("type") == "set_farm_crops" and r.get("ok") is True for p, r in results)
     for p, r in results:
         ok = r.get("ok")
-        _record_any_outcome(p.action, r, state, memory, now)
+        brief_timeout_now = brief_timeout(memory, p, r)       # (0.105.26) a search cut short
+        _record_any_outcome(p.action, r, state, memory, now, brief=brief_timeout_now)
         note_refusal(memory, p, r, now, state.get("bridge_version"))
         note_no_effect(memory, p, ok, now)                 # (0.105.24)
         if p.action.get("type") == "squad_swap" and p.action.get("unit_id") is not None:
@@ -894,7 +921,7 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
                 # try again in a day.
                 cooldown = cfg.get("build_cooldown_ticks", cfg["rule_cooldown_ticks"])
                 memory.last_fired[p.rule] = now - cooldown + TICKS_PER_DAY
-            elif p.rule == "found":
+            elif p.rule == "found" and not brief_timeout_now:
                 memory.last_fired[p.rule] = now          # the ground won't allow it: ask again in 3 days
             continue
         memory.last_fired[p.rule] = now

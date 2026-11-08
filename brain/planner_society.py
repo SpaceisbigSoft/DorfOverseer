@@ -17,7 +17,7 @@ from planner_health import *  # noqa: F401,F403  (13c: split out by theme)
 from planner_visitors import *  # noqa: F401,F403  (13c: split out by theme)
 from planner_moods import *  # noqa: F401,F403  (13c: split out by theme)
 
-__all__ = ["_people_rules", "_comfort_rules", "stress_causes", "THOUGHT_WORDS", "_doctor_patient_rule", "_hospital_burrow_rule", "_calm_burrow_rule", "MOOD_WORKSHOPS", "PETITION_KINDS", "petition_orders_wanted", "_petition_rules", "_citizenship_notes", "_residency_rule", "residency_stance", "_location_access_rule", "note_heists", "heist_lockout", "visitor_shut", "mayor_meetings", "HEISTS_KEEP", "_jail_size_rule", "_convict_rule", "_break_fights_rule", "_sync_offices_rule", "patient_waits", "_health_rules", "TANTRUM_KEEP", "note_tantrums", "_noble_rooms_rule", "outsider_orders", "NEED_ADVICE", "JEWEL_RECIPES", "_recreation_rule", "_stress_care", "_needs_notes", "_location_supply_rules", "POST_LABORS", "STAFF_POSTS", "STAFF_MAX", "_traction_rule", "_wish_words", "_wish_met", "wish_key", "petition_lean", "_location_petition_rules", "_meeting_notes", "_grandeur_rule", "_location_value_rule", "_staff_rule", "_quick_location_rule", "_needs_rules", "_mood_rules", "mood_item_text", "_mood_materials", "_dead_notes", "AI_OFFICES", "_society_notes", "_booze_variety_rule", "drink_known_short_s", "_mood_make", "_mood_slaughter", "MOOD_CONSUMERS", "MOOD_TRADE_KEYS", "mood_trade_wants"]
+__all__ = ["_people_rules", "_comfort_rules", "stress_causes", "THOUGHT_WORDS", "_doctor_patient_rule", "_hospital_burrow_rule", "ghost_work_blocked", "_calm_burrow_rule", "MOOD_WORKSHOPS", "PETITION_KINDS", "petition_orders_wanted", "_petition_rules", "_citizenship_notes", "_residency_rule", "residency_stance", "_location_access_rule", "note_heists", "heist_lockout", "visitor_shut", "mayor_meetings", "HEISTS_KEEP", "_jail_size_rule", "_convict_rule", "_break_fights_rule", "_sync_offices_rule", "patient_waits", "_health_rules", "TANTRUM_KEEP", "note_tantrums", "_noble_rooms_rule", "outsider_orders", "NEED_ADVICE", "JEWEL_RECIPES", "_recreation_rule", "_stress_care", "_needs_notes", "_location_supply_rules", "POST_LABORS", "STAFF_POSTS", "STAFF_MAX", "_traction_rule", "_wish_words", "_wish_met", "wish_key", "petition_lean", "_location_petition_rules", "_meeting_notes", "_grandeur_rule", "_location_value_rule", "_staff_rule", "_quick_location_rule", "_needs_rules", "_mood_rules", "mood_item_text", "_mood_materials", "_dead_notes", "AI_OFFICES", "_society_notes", "_booze_variety_rule", "drink_known_short_s", "_mood_make", "_mood_slaughter", "MOOD_CONSUMERS", "MOOD_TRADE_KEYS", "mood_trade_wants"]
 
 
 def _convict_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> None:
@@ -382,7 +382,15 @@ def _booze_variety_rule(s: dict, memory, cfg: dict, proposals: list, notes: list
     did = []
     growths = int(su.get("brewable_growths") or 0)
     room = int(su.get("empty_barrels") or 0) + int(su.get("empty_pots") or 0)
-    if (growths >= cfg["booze_fruit_min"] and _has_shop(b, "Still") and room > 0
+    # (0.105.26) the barrels the AI's open brew jobs and this cycle's brews
+    # will fill are no room; and a fruit brew the drink rule asks for this
+    # cycle is the variety (both passed select: 12 + 5 brews for 12 barrels)
+    from planner_farms import brew_jobs_open
+    brewing = [p for p in proposals if isinstance(p.action, dict) and p.action.get("type") == "work_order"
+               and p.action.get("recipe") in BREW_RECIPES]
+    room -= brew_jobs_open(s) + sum(int(p.action.get("amount") or 0) for p in brewing)
+    fruit_now = any(p.action.get("recipe") == "brew_drink_from_fruit" for p in brewing)
+    if (growths >= cfg["booze_fruit_min"] and _has_shop(b, "Still") and room > 0 and not fruit_now
             and not queued(s, {"brew_drink_from_fruit"})):
         amount = max(1, min(cfg["booze_fruit_batch"], growths // 5, room))
         proposals.append(Proposal("booze_variety", {"type": "work_order", "recipe": "brew_drink_from_fruit",
@@ -412,6 +420,8 @@ def _booze_variety_rule(s: dict, memory, cfg: dict, proposals: list, notes: list
                                   f"{'only ' + planted[0].lower().replace('_', ' ') if planted else 'no brewable crop'} "
                                   f"this season: a plot of {spare[0].lower().replace('_', ' ')} too (another drink)", 4))
         did.append("crops")
+    if fruit_now:
+        did.append("fruit")                       # the drink rule brews the fruit this cycle
     if not did:
         notes.append(f"{n} citizens are upset at drinking the same booze"
                      + (f" ({kinds} kind(s) in store)" if isinstance(kinds, int) else "")
@@ -694,30 +704,8 @@ def _needs_rules(s: dict, cfg: dict, proposals: list, rules_: dict | None = None
                                                            "material": f"INORGANIC:{metal}"},
                                           f"{ext} dwarves are distracted for want of finery and no stone is "
                                           f"spare: make {metal.lower()} {mj.split('_', 1)[1]}s to wear at the forge", 5, True))
-    recipe = brew_recipe(s)
-    # (0.100.1, review) as many brews as there are empty barrels and pots: an
-    # order with nowhere to put the drink stood still, was cancelled as stuck,
-    # and held all brewing 28 days
-    sup_n = _d(s.get("supplies"))
-    room = int(sup_n.get("empty_barrels") or 0) + int(sup_n.get("empty_pots") or 0)
-    # (0.104.71) nor when the drink rule asks for a brew this cycle: both
-    # brewed at once (16:32: 11 and 10) and the extra order was cancelled as
-    # stuck ("2 brew orders and this one"), 11 of 61 in 3.5 hours
-    brewing_now = any(isinstance(p.action, dict) and p.action.get("recipe") in BREW_RECIPES for p in proposals)
-    # (0.104.137) not when drink is already plentiful: the want is for a place
-    # to drink with others (taverns: social_shortfall), not more barrels
-    # (Teacheroar: 56 badly wanting a drink with 8.7 drinks a dwarf)
-    plenty = int(_d(s.get("stocks")).get("drink") or 0) >= cfg["drink_per_dwarf"] * int(_d(s.get("dwarves")).get("total") or 0)
-    if (unmet(s, "DrinkAlcohol") >= at and _has_shop(b, "Still") and not queued(s, set(BREW_RECIPES))
-            and recipe is not None and room > 0 and not brewing_now and not plenty):
-        # (13c) what a still can brew, as the drink rule chooses: this rule
-        # ordered fruit brews the drink_fruit rule then cancelled
-        # (0.105.23) no more brews than there are plants or fruit to brew
-        have_b = brewable_counts(s)[0 if recipe == "brew_drink" else 1]
-        proposals.append(Proposal("needs_drink", {"type": "work_order", "recipe": recipe,
-                                                  "amount": max(1, min(10, room, have_b))},
-                                  f"{unmet(s, 'DrinkAlcohol')} dwarves are distracted for want of a drink: brew more",
-                                  4, True))
+    # (0.105.26) no needs_drink rule: the drink rule ordered first unless the
+    # stock was below zero, so it almost never fired (the player: removed)
     pop = max(1, int(_d(s.get("dwarves")).get("total") or 1))
     meals_pd = (_d(s.get("stocks")).get("prepared_meals") or 0) / pop
     sup = _d(s.get("supplies"))
@@ -785,7 +773,55 @@ def _needs_rules(s: dict, cfg: dict, proposals: list, rules_: dict | None = None
                                   "cook fine meals", 5, True))
 
 
-def _dead_notes(s: dict, notes: list, proposals: list | None = None, rules_: dict | None = None) -> None:
+def ghost_work_blocked(s: dict, memory=None, slabs: bool = True) -> list[str]:
+    """(0.105.26) Why the ghosts' memorial slabs or coffins can't be made
+    now, in words (empty when nothing stands in the way): no stone the masons
+    may use, no mason's workshop or nobody with the labour, an order the game
+    refused or that got stuck and was cancelled. A slab order that couldn't
+    be made sat silently while the ghosts walked."""
+    ai_slabs = slabs                    # the AI makes the slabs (autoslab engraves them)
+    d, su, b = _d(s.get("dead")), _d(s.get("supplies")), _d(s.get("buildings"))
+    ghosts = int(d.get("ghosts") or 0)
+    if ghosts <= 0:
+        return []
+    slabs, ms = su.get("slabs"), su.get("memorial_slabs")
+    slabs_short = (ai_slabs and isinstance(slabs, int) and slabs < ghosts
+                   and not (isinstance(ms, int) and ms > 0))
+    coffins = sum(int(_d(_d(p.get("furnish")).get("waiting")).get("Coffin") or 0)
+                  for p in _l(_d(s.get("projects")).get("open")) if isinstance(p, dict))
+    if not slabs_short and coffins <= 0:
+        return []
+    out = []
+    what = " and ".join((["memorial slabs"] if slabs_short else []) + (["coffins"] if coffins > 0 else []))
+    if slabs_short and stone_short(s, 1):
+        out.append("no stone the masons may use: waiting for quarried stone to make them")
+    elif coffins > 0 and stone_short(s, 1) and int(_d(s.get("stocks")).get("wood") or 0) <= 0:
+        out.append("no stone or wood for coffins")
+    if (b.get("workshops") is not None and not _has_shop(b, "Masons")
+            and not (coffins > 0 and not slabs_short and _has_shop(b, "Carpenters"))):
+        out.append("no mason's workshop")
+    if any(isinstance(w, dict) and w.get("labor") == "MASON" and int(w.get("holders") or 0) == 0
+           for w in _l(_d(s.get("labor")).get("waiting"))):
+        out.append("nobody outside the squads has the mason labour")
+    if memory is not None:
+        now = abs_tick(s)
+        for key, r in _d(getattr(memory, "refusals", None)).items():
+            if (str(key).split(":", 1)[0] in ("slabs", "coffins") and isinstance(r, dict)
+                    and int(r.get("n") or 0) > 0 and isinstance(r.get("until"), int) and now < r["until"]):
+                out.append(f"the game refused it ({str(r.get('why') or 'no reason given')[:80]})")
+                break
+        sc = _d(getattr(memory, "stuck_cancelled", None))
+        for rec in ["stone_slab"] + [k for k in sc if str(k).endswith("_coffin")]:
+            t = _d(sc.get(rec)).get("tick")
+            if isinstance(t, int) and 0 <= now - t < 28 * TICKS_PER_DAY:
+                out.append(f"the {rec.replace('_', ' ')} order got stuck and was cancelled "
+                           f"{(now - t) // TICKS_PER_DAY} day(s) ago")
+                break
+    return [f"{ghosts} ghost(s) wait for {what}, which can't be made now: {w}" for w in out[:1]] + out[1:]
+
+
+def _dead_notes(s: dict, notes: list, proposals: list | None = None, rules_: dict | None = None,
+                memory=None) -> None:
     d = s["dead"]
     if d.get("ghosts"):
         who = ", ".join(_l(d.get("ghost_names"))[:3])
@@ -819,7 +855,7 @@ def _dead_notes(s: dict, notes: list, proposals: list | None = None, rules_: dic
                     and queued(s, {"stone_slab"}) == 0 and stone_short(s, 1)):
                 # (0.104.14) no stone the masons may use: an order would only
                 # stand still and be cancelled as stuck (the quarry comes first)
-                notes.append(f"{d['ghosts']} ghost(s) need memorial slabs: waiting for quarried stone to make them")
+                pass                     # (0.105.26) said in Needs you below (ghost_work_blocked)
             elif (proposals is not None and isinstance(slabs, int) and slabs < d["ghosts"]
                     and masons_jammed(s)):
                 # (0.104.32) autoslab's engrave jobs fill the mason's list
@@ -836,6 +872,12 @@ def _dead_notes(s: dict, notes: list, proposals: list | None = None, rules_: dic
                 proposals.append(Proposal(
                     "slabs", {"type": "work_order", "recipe": "stone_slab", "amount": d["ghosts"] - slabs + 1},
                     f"{d['ghosts']} ghost(s){who} need memorial slabs and there are {slabs} blank ones", 3, True))
+    # (0.105.26) a slab or coffin for the ghosts that can't be made: said, with why
+    if d.get("ghosts"):
+        ai_slabs = _d(s.get("tools")).get("autoslab") is not None and (rules_ or {}).get("engrave_slabs", True)
+        blocked = ghost_work_blocked(s, memory, slabs=ai_slabs)
+        if blocked:
+            ask_player(notes, "; ".join(blocked))
     # (0.104.15) why the unburied wait (Enxah: 104 bodies, 7 free tombs, a season)
     why = _d(d.get("why"))
     # (0.104.17) the free tombs turn citizens away (automatic burial off):

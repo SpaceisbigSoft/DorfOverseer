@@ -148,7 +148,6 @@ PLANNER_CONFIG = {
     "keep_min_citizens": 15,
     "keep_min_material": 60,
     "needs_craft_cooldown_ticks": 28 * 1200,
-    "needs_drink_cooldown_ticks": 3 * 1200,
     "needs_meal_cooldown_ticks": 3 * 1200,
     "needs_build_at": 3,               # this many distracted by a need a tavern/library/shrine serves: build it early
     "needs_note_at": 2,                # a need this many are distracted by is named
@@ -459,6 +458,7 @@ PLANNER_CONFIG = {
     "stuck_order_cooldown_ticks": 0,   # (cancelling the AI's own stuck orders: several a cycle)
     "stuck_cancel_max": 5,             # ...at most this many a cycle
     "stuck_retry_days": 28,            # an order the AI cancelled as stuck isn't placed again for this long...
+    "drink_stuck_wait_days": 5,        # (0.105.26) a brew source whose order was cancelled as stuck waits this long (none while drink is urgent)
     "stuck_retry_max_days": 112,       # (0.104.37) ...doubled each time it sticks again, to this
     "stuck_again_days": 90,            # ...and stuck again within this long: held longer (doubled, up to stuck_retry_max_days)
     "ore_stock_max": 30,               # dug ore waiting for the smelter: no new vein past this

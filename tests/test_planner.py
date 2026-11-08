@@ -1378,14 +1378,15 @@ def _():
     s["buildings"]["workshops"]["Still"] = None                   # an odd value: _needs_rules used to raise
     s["stocks"]["drink"] = 0                                      # something else to do
     props, notes = plan(copy.deepcopy(s), Memory())[:2]
-    assert any(n.startswith("rule _needs_rules failed") for n in notes), [n for n in notes if "fail" in n]
+    # (0.105.26: _needs_rules no longer reads the Still since needs_drink went; another rule fails)
+    assert any(n.startswith("rule _") and " failed (" in n for n in notes), [n for n in notes if "fail" in n]
     assert any(p.rule == "drink" for p in props), [p.rule for p in props]
     s2 = fort()
     del s2["dwarves"]                                             # a missing section: defaults, no crash
     plan(copy.deepcopy(s2), Memory())
 
 
-@test("needs_drink (13c): brews only what a still can brew (it ordered fruit that drink_fruit cancelled)")
+@test("brew_recipe (13c): only what a still can brew (needs_drink ordered fruit that drink_fruit cancelled)")
 def _():
     from planner import brew_recipe
     s = fort()
@@ -1403,7 +1404,7 @@ def _():
     assert brew_recipe(s) == "brew_drink"
 
 
-@test("needs_drink (0.104.71): no second brew in the cycle the drink rule brews")
+@test("drink (0.104.71; 0.105.26 no needs_drink): one brew in the cycle the drink rule brews")
 def _():
     s = fort()
     s["stocks"].update(drink=10, plants=300)
@@ -4371,12 +4372,12 @@ def _():
     props = plan(s, Memory())[0]
     assert by_rule(props, "needs_craft")[0].action == {"type": "idle_crafting"}
     plenty = s["stocks"].get("drink", 0) >= PLANNER_CONFIG["drink_per_dwarf"] * s["dwarves"]["total"]
-    assert bool(by_rule(props, "needs_drink")) != plenty, "(0.104.137) brewed for the need only while drink is short"
+    assert not by_rule(props, "needs_drink"), "(0.105.26) no needs_drink rule: the drink rule brews"
     assert by_rule(props, "needs_meal")[0].action == {"type": "work_order", "recipe": "prepare_fine_meal", "amount": 5}
     s["needs"]["idle_crafting"] = {"enabled": True, "workshops": 1}
     s["needs"]["needs"]["DrinkAlcohol"]["distracted"] = 1
     props = plan(s, Memory())[0]
-    assert not by_rule(props, "needs_craft") and not by_rule(props, "needs_drink")
+    assert not by_rule(props, "needs_craft")
     s["stocks"]["prepared_meals"] = 194 * 20                  # plenty in store: cooking more won't help
     assert not by_rule(plan(s, Memory())[0], "needs_meal")
 
@@ -7694,17 +7695,17 @@ def _():
     assert props == [] and "dwarves" in notes[0], notes
 
 
-@test("stuck orders (0.100.1 review): a cancelled stuck brew never holds the fort's own drink rule; needs_drink brews only into empty containers")
+@test("stuck orders (0.100.1 review): a cancelled stuck brew never holds the fort's own drink rule; another rule's brew is held")
 def _():
     from planner import Proposal
     s = fort()
     m = Memory()
     m.stuck_cancelled = {"brew_drink": {"tick": abs_tick(s) - 1200}}
     ps = [Proposal("drink", {"type": "work_order", "recipe": "brew_drink", "amount": 5}, "x", 1, True),
-          Proposal("needs_drink", {"type": "work_order", "recipe": "brew_drink", "amount": 5}, "x", 4, True)]
+          Proposal("booze_variety", {"type": "work_order", "recipe": "brew_drink", "amount": 5}, "x", 4, True)]
     allowed, held = select(ps, s, m, dict(PLANNER_CONFIG, max_actions_per_cycle=10))
     assert [p.rule for p in allowed] == ["drink"], (held, [p.rule for p in allowed])
-    assert any(h.startswith("needs_drink: an order for brew_drink got stuck") for h in held), held
+    assert any(h.startswith("booze_variety: an order for brew_drink got stuck") for h in held), held
 
 
 @test("siege behind a raised bridge (0.100.1 review): invaders who can't walk in keep the alarm and gates up")
@@ -8023,7 +8024,7 @@ def _():
 @test("brew churn (0.103.4): a brew source whose order was cancelled as stuck isn't ordered again at once")
 def _():
     s = fort()
-    s["stocks"]["drink"] = 0
+    s["stocks"]["drink"] = 500           # (0.105.26) short but not urgent: an urgent fort waits for nothing
     s["supplies"]["brewable_plants"], s["supplies"]["brewable_growths"] = 0, 30
     m = Memory()
     d = by_rule(plan(s, m)[0], "drink")
@@ -8222,10 +8223,6 @@ def _():
     assert f and f[0].action["recipe"].startswith("metal_") and f[0].action["material"] == "INORGANIC:COPPER", f
     s["needs"]["trinkets"] = 50                                                    # enough free: none made
     assert not by_rule(plan(copy.deepcopy(s), Memory())[0], "trinket_orders")
-    s["needs"] = {"needs": {"DrinkAlcohol": {"distracted": 60}}}
-    s["stocks"]["drink"] = 221 * 9
-    s["supplies"] = dict(s.get("supplies") or {}, empty_barrels=50)
-    assert not by_rule(plan(copy.deepcopy(s), Memory())[0], "needs_drink"), "plenty of drink: no brewing for the need"
 
 
 @test("urgent tombs (0.104.12): many dead unburied with both slots taken: a tomb level of its own slot, beside urgent workshops")
@@ -8255,7 +8252,8 @@ def _():
     s["stone_use"] = {"usable": 0, "economic": {}}
     pj = by_rule(plan(s, Memory())[0], "project")
     acts = [p.action for p in pj]
-    assert {"type": "cancel_project", "project_id": 25, "unreached": True, "cavern_well": True} in acts, acts
+    # (0.105.26) 2 of 24 dug: slow, not unreached (a cavern well given up as slow stays revivable)
+    assert {"type": "cancel_project", "project_id": 25, "cavern_well": True} in acts, acts
     assert {"type": "finish_project", "project_id": 42, "decor_only": True} in acts, acts
     from planner import record, Proposal
     m = Memory()
@@ -10745,7 +10743,7 @@ def _():
     assert thirsty_farm_extra(s5, Memory(), 46, PLANNER_CONFIG, want) == (0, False)
 
 
-@test("4b brewing (0.105.23): the larger brewable source is brewed first, and needs_drink brews no more than there is")
+@test("4b brewing (0.105.23): the larger brewable source is brewed first")
 def _():
     s = fort()
     s["orders"] = []
@@ -10756,21 +10754,10 @@ def _():
     s["supplies"].update(brewable_plants=150, brewable_growths=20)
     d = by_rule(plan(copy.deepcopy(s), Memory())[0], "drink")
     assert d and d[0].action["recipe"] == "brew_drink" and d[0].action["amount"] <= 150, d
-    # needs_drink: 3 brewable plants, room for 10 -> 3 brews
+    # (0.105.26) needs_drink removed: brew_recipe still picks what a still can brew
     from planner import brew_recipe
     n = fort()
-    n["orders"] = []
-    n["stocks"].update(drink=10, plants=300)
-    n["dwarves"]["total"] = 94
-    n["supplies"].update(brewable_plants=3, brewable_growths=0, empty_barrels=17, empty_pots=1)
-    n.setdefault("needs", {}).setdefault("needs", {})["DrinkAlcohol"] = {"distracted": 14, "badly": 1}
-    # (13c) drink above the drink rule's target (Stockpile -100) but short of plenty: else the
-    # drink rule brews this cycle and needs_drink was never reached
-    n["stocks"]["drink"] = 600
-    n["settings"]["traits"] = {"stockpile": -100}
-    props = plan(copy.deepcopy(n), Memory())[0]
-    nd = by_rule(props, "needs_drink")
-    assert nd and nd[0].action["amount"] == 3 and not by_rule(props, "drink"), [p.rule for p in props]
+    n["supplies"].update(brewable_plants=3, brewable_growths=0)
     assert brew_recipe(n) == "brew_drink"
 
 

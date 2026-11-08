@@ -202,10 +202,26 @@ function start_project(params, now, dry_run)
     local reserved = {}
     for _, p in ipairs(open) do table.insert(reserved, p.area) end
     -- (0.105.22) nor where a level was given up as out of reach lately
+    local banned = {}
     for _, p in ipairs(data.list) do
         if p.unreached and type(p.area) == 'table' and tonumber(p.cancelled_year)
                 and df.global.cur_year - p.cancelled_year < UNREACHED_YEARS then
             table.insert(reserved, p.area)
+            if type(p.stair) == 'table' and math.tointeger(p.stair.x) and math.tointeger(p.stair.y) then
+                banned[math.tointeger(p.stair.x) * 100000 + math.tointeger(p.stair.y)] = true
+            end
+        end
+    end
+    -- (0.105.26) the area reserve holds on its own level only: B's stair
+    -- column nobody reached was still offered at every other level. A stair
+    -- a level was given up on as out of reach isn't used again, at any
+    -- level, while no citizen can walk to it (its walk group isn't one of
+    -- theirs; unknown counts as not reached)
+    if next(banned) then
+        stairs = unreached_stairs_dropped(stairs, banned)
+        if #stairs == 0 then
+            return {ok = false, error = 'every staircase near the dwarves leads only to levels given up as '
+                                        .. 'out of reach (no citizen can walk to it)'}
         end
     end
     local plan = type(params.plan) == 'table' and params.plan or nil
@@ -1163,6 +1179,38 @@ end
 -- reach, given up after 336 days each time): its area is kept off-limits to
 -- new levels for UNREACHED_YEARS
 UNREACHED_YEARS = 5
+
+-- (0.105.26) The staircases less those in `banned` (x * 100000 + y: the stair
+-- of a level given up as out of reach) that no citizen can walk to: none of
+-- the column's tiles is in a walk group a citizen stands in. When the walk
+-- groups can't be read, a banned stair counts as not reached.
+function unreached_stairs_dropped(stairs, banned)
+    local groups
+    local okp, pos = pcall(citizen_positions)
+    if okp and type(pos) == 'table' then
+        groups = {}
+        for _, cp in ipairs(pos) do
+            local okg, g = pcall(dfhack.maps.getWalkableGroup, xyz2pos(cp.x, cp.y, cp.z))
+            if not okg then groups = nil break end
+            if g and g ~= 0 then groups[g] = true end
+        end
+    end
+    local function reached(st)
+        if not groups then return false end
+        local zb, zt = math.tointeger(st.z_bottom) or st.z, math.tointeger(st.z_top) or st.z
+        if not zb or not zt then return false end
+        for z = zb, zt do
+            local okg, g = pcall(dfhack.maps.getWalkableGroup, xyz2pos(st.x, st.y, z))
+            if okg and g and g ~= 0 and groups[g] then return true end
+        end
+        return false
+    end
+    local kept = {}
+    for _, st in ipairs(stairs) do
+        if not (banned[st.x * 100000 + st.y] and not reached(st)) then table.insert(kept, st) end
+    end
+    return kept
+end
 
 function cancel_project(id, unreached)
     local data = load_projects()
