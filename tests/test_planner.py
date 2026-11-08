@@ -2118,7 +2118,7 @@ def _():
     assert not by_rule(plan(s, Memory())[0], "soap")
 
 
-@test("burial (0.104.15): free tombs and the dead forbidden -> unforbidden; the standing order -> Needs you; unreachable said")
+@test("burial (0.104.15): free tombs and the dead forbidden -> unforbidden (the standing order on too, 0.105.27); unreachable said")
 def _():
     s = fort()
     s["dead"] = {"ghosts": 0, "free_tombs": 7, "unburied": 104,
@@ -2128,10 +2128,11 @@ def _():
     b = by_rule(props, "burial")
     assert b and b[0].action == {"type": "unforbid_dead", "max": 20} and "60" in b[0].reason, b
     assert any("4 of the unburied dead lie where the dwarves can't walk (4 outside)" in n for n in notes), notes
-    s["dead"]["forbid_own_dead"] = True
+    s["dead"]["forbid_own_dead"] = True          # (0.105.27) the order on: still unforbidden by the AI, said why
     props, notes = plan(s, Memory())
-    assert not by_rule(props, "burial")
-    assert any(n.startswith("[you] ") and "forbid your dead" in n for n in notes), notes
+    b = by_rule(props, "burial")
+    assert b and b[0].action == {"type": "unforbid_dead", "max": 20} and "forbid your dead" in b[0].reason, b
+    assert not any(n.startswith("[you] ") and "forbid your dead" in n for n in notes), notes
     s["dead"]["forbid_own_dead"] = False
     s["dead"]["why"]["forbidden"] = 0
     assert not by_rule(plan(s, Memory())[0], "burial")

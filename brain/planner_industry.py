@@ -17,7 +17,7 @@ from planner_trade import *  # noqa: F401,F403  (13c: split out by theme)
 from planner_labor import *  # noqa: F401,F403  (13c: split out by theme)
 from planner_farms import *  # noqa: F401,F403  (13c: split out by theme)
 
-__all__ = ["CONTAINER_RECIPES", "GEAR_ORDER_METALS", "_supply_rules", "_slow_game_rules", "_clutter_rules", "_kiln_rules", "_soap_rule", "_pasture_rule", "LABOR_MODES_FIXED", "INDUSTRY_SHOPS", "_industry_rules", "_steel_rule", "_bottleneck_rule", "drink_short", "_crop_rules", "_farm_crops_rule", "farm_plots_live", "crops_owned", "drink_known_short", "_kitchen_rule", "_fishery_rule", "_bench_coffins_rule", "STONE_CRAFTS", "order_shop", "_order_slots_rule", "_orphan_jobs_rule", "_unsuspend_rule", "_approve_rule", "_stuck_orders_rule", "COAL_STONES", "_coal_rule", "_picks_order", "_stone_rule", "stone_crisis", "PRECIOUS_ORES", "_cloth_rule", "_trade_rules", "_gems_rule", "trade_wants", "_spare_mechanisms_rule", "_hauling_rule", "_surface_basics", "trees_this_year", "_keep_rule", "DEEP_SURFACE_KINDS", "_deep_surface_filter", "_deep_depot_choice", "_deep_depot_watch", "_free_time_rule", "_labor_rules", "OWN_LABOR_RULES", "FEEDER_ORDER", "_feeder_rule", "woodcutters", "gatherers", "trade_margin_for", "keeps_treasures", "spare_mechanisms", "_dairy_rule", "_eggs_rule", "EXCESS_SHOPS", "_excess_shops_rule", "drink_below_target", "drink_crisis", "drink_target_per_dwarf", "crisis_brew_room", "brew_jobs_open", "_labor_waiting_rule", "farm_target", "thirsty_farm_extra", "_farm_rule", "_smelting_rule", "_shoes_recipe", "_glass_rule", "PRECIOUS_METALS", "precious_metal"]
+__all__ = ["CONTAINER_RECIPES", "GEAR_ORDER_METALS", "_supply_rules", "_slow_game_rules", "_clutter_rules", "_disposal_rules", "DISPOSAL_RULES", "disposal_report", "_kiln_rules", "_soap_rule", "_pasture_rule", "LABOR_MODES_FIXED", "INDUSTRY_SHOPS", "_industry_rules", "_steel_rule", "_bottleneck_rule", "drink_short", "_crop_rules", "_farm_crops_rule", "farm_plots_live", "crops_owned", "drink_known_short", "_kitchen_rule", "_fishery_rule", "_bench_coffins_rule", "STONE_CRAFTS", "order_shop", "_order_slots_rule", "_orphan_jobs_rule", "_unsuspend_rule", "_approve_rule", "_stuck_orders_rule", "COAL_STONES", "_coal_rule", "_picks_order", "_stone_rule", "stone_crisis", "PRECIOUS_ORES", "_cloth_rule", "_trade_rules", "_gems_rule", "trade_wants", "_spare_mechanisms_rule", "_hauling_rule", "_surface_basics", "trees_this_year", "_keep_rule", "DEEP_SURFACE_KINDS", "_deep_surface_filter", "_deep_depot_choice", "_deep_depot_watch", "_free_time_rule", "_labor_rules", "OWN_LABOR_RULES", "FEEDER_ORDER", "_feeder_rule", "woodcutters", "gatherers", "trade_margin_for", "keeps_treasures", "spare_mechanisms", "_dairy_rule", "_eggs_rule", "EXCESS_SHOPS", "_excess_shops_rule", "drink_below_target", "drink_crisis", "drink_target_per_dwarf", "crisis_brew_room", "brew_jobs_open", "_labor_waiting_rule", "farm_target", "thirsty_farm_extra", "_farm_rule", "_smelting_rule", "_shoes_recipe", "_glass_rule", "PRECIOUS_METALS", "precious_metal"]
 
 CONTAINER_RECIPES = {"wooden_barrel", "stone_large_pot"}
 # ore worth mining for gear, most wanted first (iron makes steel; tin with copper makes bronze)
@@ -266,7 +266,8 @@ def _slow_game_rules(s: dict, citizens: int, cfg: dict, proposals: list, notes: 
                  f"{c.get('jobs')} jobs on the map")
     if items >= cfg["fps_items_heavy"]:
         zones = _d(_d(s.get("buildings")).get("zones"))
-        if not zones.get("Dump") and not _d(_d(s.get("buildings")).get("clearing")).get("dump"):
+        if (not zones.get("Dump") and not _d(_d(s.get("buildings")).get("clearing")).get("dump")
+                and disposal_report(s) is None):    # (0.105.27) else _disposal_rules places it (Rules key)
             proposals.append(Proposal("dump", {"type": "place_surface", "kind": "dump"},
                                       f"{items} items on the map slow the game: make a garbage dump outside "
                                       "for worn-out things", 5))
@@ -375,6 +376,180 @@ def _clutter_rules(s: dict, cfg: dict, proposals: list, notes: list, memory=None
         reason = (f"{bodies} corpses and remains lie on the ground while the game runs slowly: they rot "
                   f"away{what} (no citizen waits for burial; entombed dead are kept)")
     proposals.append(Proposal("prune", action, reason, 7))
+
+
+# (0.105.27) The rules that dispose of forbidden items, one rule each (each
+# with its own `<rule>_cooldown_ticks` in planner_config)
+DISPOSAL_RULES = ("disposal_unforbid", "disposal_melt", "disposal_dump", "disposal_place_dump",
+                  "disposal_empty", "disposal_orders")
+# the game's own reasons for a forbidden item that are worth storing again
+DISPOSAL_REASON_WORDS = {"used_ammo": "used bolts and arrows", "other_dead": "the enemy's and animals' dead and gear",
+                         "own_dead": "the buried dead's belongings", "unknown": "items forbidden for no game reason"}
+
+
+def disposal_report(s: dict) -> dict | None:
+    """(0.105.27) The bridge's disposal section (lua/ai-disposal.lua), or None
+    from an older bridge or when it failed: then no disposal action exists."""
+    d = s.get("disposal")
+    return d if isinstance(d, dict) and "error" not in d else None
+
+
+def _standing_key(standing: dict, name: str) -> str | None:
+    """The key a standing order goes under in dead.standing ("gather_refuse"
+    or the global's full name), or None when the game hasn't it."""
+    for k in (name, "standing_orders_" + name):
+        if k in standing:
+            return k
+    return None
+
+
+def _disposal_rules(s: dict, cfg: dict, proposals: list, notes: list, memory=None, rules: dict | None = None) -> None:
+    """(0.105.27) Forbidden items (lock symbols) lie about everywhere: the
+    game's standing orders forbid used ammo and the dead's things, and what it
+    dumps lands forbidden. The DF way first, then DFHack, as far as the Rules
+    key `disposal` goes (store < melt < dump < destroy, each doing the ones
+    before): unforbid what is worth storing (the haulers take it), mark surplus
+    metal to melt, mark junk for a garbage dump (one placed when there is none,
+    inside for a fort that keeps to itself), and past disposal_destroy_min
+    items in the dump DFHack removes them. Nothing during a siege. The counts
+    come from the census (items.forbidden), taken again a few days after a
+    batch; the dump's from the disposal report. The bridge keeps its own
+    guards (danger, siege, sealed caverns, the cistern, artifacts, owned
+    things, the player's items)."""
+    dis = disposal_report(s)
+    if dis is None:
+        return
+    rules = rules or player_rules(s)
+    level = DISPOSAL_LEVELS.index(rules["disposal"]) if rules.get("disposal") in DISPOSAL_LEVELS else 3
+    player_items = bool(rules.get("disposal_player_items"))
+    keep_enemy = bool(rules.get("keep_enemy_gear"))
+    now = abs_tick(s)
+    last = (lambda r: memory.last_fired.get(r)) if memory is not None else (lambda r: None)
+    cen = _d(getattr(memory, "census", None)) if memory is not None else {}
+    fresh = isinstance(cen.get("tick"), int) and 0 <= now - cen["tick"] < cfg["disposal_census_days"] * TICKS_PER_DAY
+    fb = _d(_d(cen.get("items")).get("forbidden")) if fresh else {}
+    reason = {k: int(v or 0) for k, v in _d(fb.get("by_reason")).items() if isinstance(v, (int, float))}
+
+    def counted_since(rule):
+        """A census taken after this rule's last batch: its counts show what is left."""
+        t = last(rule)
+        return fresh and (t is None or cen["tick"] > t)
+
+    # count again: never counted (or a month ago), or a batch done since the last count
+    done_since = [r for r in DISPOSAL_RULES if r != "disposal_orders" and isinstance(last(r), int)
+                  and fresh and last(r) >= cen["tick"]]
+    if ((not fresh or (done_since and now - cen["tick"] >= cfg["disposal_recount_days"] * TICKS_PER_DAY))
+            and not any(p.rule == "census" for p in proposals)):
+        proposals.append(Proposal("census", {"type": "census"},
+                                  "count the forbidden items lying about again" if fresh else
+                                  "count what lies about the map, forbidden items too", 7))
+
+    # the player's own forbidden things (no game reason): theirs unless the switch says otherwise
+    unknown = reason.get("unknown", 0)
+    if unknown > cfg["disposal_unknown_note"] and not player_items:
+        ask_player(notes, f"{unknown} items lie forbidden for no reason the game gives (not the dead's, not used "
+                          "ammo, not dumped): they may be yours, so the AI leaves them. To let the AI store or "
+                          "dispose of them too, switch on \"forbidden items of the player\" "
+                          "(disposal_player_items) in the Rules tab")
+
+    # a siege: the haulers stay in (the bridge refuses too); said once a cycle
+    threats = _l(_d(s.get("others_on_map")).get("threats"))
+    siege = bool(dis.get("siege")) or any(isinstance(t, dict) and t.get("invader") for t in threats)
+    if siege:
+        if fb.get("total"):
+            notes.append(f"a siege is on: the {fb.get('total')} forbidden items wait until it is over")
+        return
+
+    st_ = _d(_d(s.get("dead")).get("standing"))
+    unburied = _d(s.get("dead")).get("unburied")
+    # 1. the game's refuse order: the haulers take corpses and remains to the refuse pile.
+    # The dead-items orders stay as they are (the rules below unforbid instead)
+    key = _standing_key(st_, "gather_refuse")
+    if key is not None and not st_.get(key):
+        if last("disposal_orders") is None:
+            proposals.append(Proposal("disposal_orders", {"type": "set_standing_orders", "orders": {key: 1}},
+                                      "the game's standing order to gather refuse is off, so corpses and remains "
+                                      "lie where they fell: switch it on", 6))
+        elif not 0 <= now - last("disposal_orders") < cfg["disposal_orders_cooldown_ticks"]:
+            notes.append("the game's standing order to gather refuse is off again after the AI switched it on: "
+                         "left as you set it")
+
+    # 2. store: unforbid what is worth keeping (the haulers store it)
+    why = ["used_ammo"]
+    if not unburied:
+        why.append("own_dead")          # bodies waiting for a tomb are the burial rule's (unforbid_dead)
+    why.append("other_dead")
+    if player_items:
+        why.append("unknown")
+    n_un = sum(reason.get(r, 0) for r in why)
+    if n_un >= cfg["disposal_unforbid_min"] and counted_since("disposal_unforbid"):
+        most = cfg["disposal_unforbid_max"]
+        parts = ", ".join(f"{reason[r]} {DISPOSAL_REASON_WORDS[r]}" for r in why if reason.get(r))
+        a = {"type": "unforbid_items", "reasons": why, "max": most}
+        if player_items:
+            a["player_items"] = True
+        proposals.append(Proposal("disposal_unforbid", a,
+                                  f"{n_un} items worth keeping lie forbidden ({parts}): unforbid up to {most} so the "
+                                  "haulers store them (none near danger, owned or made by the AI)", 8))
+
+    # 3. melt: surplus and worn metal to the smelters (never masterworks or artifacts)
+    metal = int(fb.get("metal") or 0)
+    smelters = int(dis.get("smelters") or 0) + int(dis.get("magma_smelters") or 0)
+    marked = int(dis.get("marked_melt") or 0)
+    if level >= 1 and metal >= cfg["disposal_melt_min"] and counted_since("disposal_melt"):
+        if not smelters:
+            notes.append(f"{metal} forbidden metal items could be melted down, but the fort has no smelter")
+        elif marked >= cfg["disposal_melt_backlog"]:
+            notes.append(f"{marked} items marked to melt still wait for the smelters: no more marked yet")
+        else:
+            most = cfg["disposal_melt_max"]
+            proposals.append(Proposal("disposal_melt", {"type": "mark_melt", "max": most, "keep_masterwork": True,
+                                                         "keep_enemy_gear": keep_enemy},
+                                      f"{metal} metal items lie forbidden: mark up to {most} surplus or worn ones to "
+                                      "melt into bars (never masterworks or artifacts"
+                                      + ("; the enemy's gear is kept, as the Rules say)" if keep_enemy else ")"), 7))
+
+    if level < 2:
+        return
+    # 4. dump: worn clothes, rags, rotten things and the enemy's non-metal junk to a garbage dump
+    zones = [z for z in _l(dis.get("dump_zones")) if isinstance(z, dict)]
+    worn = int(fb.get("worn") or 0)
+    dump_why = ["other_dead"] if not keep_enemy else []
+    if not unburied:
+        dump_why.append("own_dead")
+    if player_items:
+        dump_why.append("unknown")
+    junk = worn + sum(reason.get(r, 0) for r in dump_why if r != "own_dead")
+    traits = _traits(s) if isinstance(s.get("settings"), dict) else {}
+    inside = (int(traits.get("outsiders", 0) or 0) <= -50 or int(traits.get("surface", 0) or 0) <= -50)
+    if not zones and (junk >= cfg["disposal_dump_min"] or int(dis.get("marked_dump") or 0) > 0):
+        proposals.append(Proposal("disposal_place_dump", {"type": "place_dump", "inside": inside},
+                                  f"{junk} worn or useless items lie about and there is no garbage dump: make one "
+                                  + ("inside the fort, near the entrance (a fort that keeps to itself)" if inside
+                                     else "outside"), 6))
+    elif zones and junk >= cfg["disposal_dump_min"] and counted_since("disposal_dump"):
+        rot = any(p.rule == "prune" and "clothes" in _l(p.action.get("extra")) for p in proposals)
+        if int(dis.get("marked_dump") or 0) >= cfg["disposal_dump_backlog"]:
+            notes.append(f"{dis.get('marked_dump')} items marked for the dump still wait for the haulers")
+        elif rot:
+            notes.append("worn clothes rot away this cycle (the game runs slowly): nothing marked for the dump")
+        else:
+            most = cfg["disposal_dump_max"]
+            proposals.append(Proposal("disposal_dump", {"type": "mark_dump", "reasons": dump_why, "max": most},
+                                      f"{worn} worn clothes and other junk lie about"
+                                      + (f" ({reason.get('other_dead')} with the enemy's and animals' dead)"
+                                         if "other_dead" in dump_why and reason.get("other_dead") else "")
+                                      + f": mark up to {most} (rags, rotten and worn non-metal things) for the "
+                                      "garbage dump", 7))
+
+    # 5. destroy: what piles up in the dump past the limit, removed by DFHack (never artifacts)
+    dumped = int(dis.get("dumped_items") or 0)
+    if level >= 3 and zones and dumped >= cfg["disposal_destroy_min"]:
+        most = min(cfg["disposal_empty_max"], dumped)
+        proposals.append(Proposal("disposal_empty", {"type": "empty_dump", "max": most},
+                                  f"{dumped} items lie in the garbage dump (past {cfg['disposal_destroy_min']}): "
+                                  f"remove up to {most} of them for good (DFHack's autodump destroy; never "
+                                  "artifacts), so they no longer slow the game", 8))
 
 
 def _kiln_rules(s: dict, cfg: dict, proposals: list, notes: list) -> None:
