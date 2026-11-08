@@ -215,13 +215,23 @@ def _shelter_squads_rule(s: dict, memory, cfg: dict, proposals: list, notes: lis
                                   f"{q.get('name') or 'the squad'} has held the shelter {cfg['shelter_max_days']} "
                                   f"days: out for {cfg['shelter_rest_days']} to eat and drink", 1))
         rest[str(q["id"])] = now + cfg["shelter_rest_days"] * TICKS_PER_DAY
+    # (0.105.24) a sheltered squad whose soldiers are thirsty or hungry (the
+    # bridge's `parched`, ai-military members_state) is let out at once, as
+    # the hospital burrow lets its thirsty out (0.105.22), and rests
+    for q in inside:
+        if q in long_in or not int(q.get("parched") or 0):
+            continue
+        proposals.append(Proposal("squad_recall", {"type": "squad_orders", "squad_id": q["id"], "clear": True},
+                                  f"{q['parched']} soldier(s) of {q.get('name') or 'the squad'} in the shelter are "
+                                  f"thirsty or hungry: out for {cfg['shelter_rest_days']} days to eat and drink", 1))
+        rest[str(q["id"])] = now + cfg["shelter_rest_days"] * TICKS_PER_DAY
     if hide:
         if not player_rules(s).get("squads_shelter", True):
             return
         if s.get("civ_alert_ready") is not True and not s.get("civ_alert"):
             return                       # no shelter burrow yet (the alarm rule sets one up)
         out = [q for q in squads if (q.get("members") or 0) > 0 and not q.get("sheltering")
-               and str(q["id"]) not in rest
+               and str(q["id"]) not in rest and not int(q.get("parched") or 0)      # (0.105.24)
                and not (q.get("orders") or 0) > int(q.get("ai_orders") or 0)]
         if out:
             proposals.append(Proposal("shelter_squads", {"type": "shelter_squads", "squads": [q["id"] for q in out]},
@@ -234,7 +244,7 @@ def _shelter_squads_rule(s: dict, memory, cfg: dict, proposals: list, notes: lis
     if inside and not targets and not s.get("civ_alert") and reachable_threats(
             s, _d(_d(s.get("settings")).get("traits")), cfg):
         for q in inside:
-            if q in long_in:
+            if q in long_in or int(q.get("parched") or 0):
                 continue
             proposals.append(Proposal("squad_recall", {"type": "squad_orders", "squad_id": q["id"], "clear": True},
                                       f"the alarm is over: {q.get('name') or 'the squad'} leaves the shelter", 1))

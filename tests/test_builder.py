@@ -2549,7 +2549,7 @@ def _():
     assert not r.ok or r.y >= 50, (r.x, r.y)
 
 
-@test("wells: if the game won't put a well over the dug hole, the project ends and says so")
+@test("wells (0.105.24): the game won't put the well over the dug hole: why, tried again a day later, given up after 3")
 def _():
     water_column(70, 58, 71)
     r = well()
@@ -2557,12 +2557,172 @@ def _():
     real = LUA.globals().reqscript("quickfort").apply_blueprint
     LUA.globals().reqscript("quickfort").apply_blueprint = LUA.eval(
         "function(real) return function(p) local s = real(p); if p.mode == 'build' then s.build_designated.value = 0 end; return s end end")(real)
+    saved_now = B.now_tick
+    B.now_tick = LUA.eval("function() return 1000 end")
+    try:
+        f = B.furnish_project(r.project_id, True)
+        # a floor beside it, so no landing: tried again in a day, and says what it saw
+        assert not f.ok and f.retry and "tried again in a day" in f.error and "tiles: z71 EMPTY" in f.error, f.error
+        assert "would not place the well" not in f.error           # (the brain's "no well can be placed")
+        assert f.diagnosis.floor_beside is True and f.diagnosis.levels[1].tiletype == "EMPTY", dict(f.diagnosis)
+        p = B.projects_report().open[1]
+        assert p.phase == "dig" and p.next is False and p.well_refused.times == 1, (p.phase, p.next)
+        B.now_tick = LUA.eval("function() return 2300 end")         # a day and more later
+        nxt = B.projects_report().open[1].next
+        assert nxt == "furnish", nxt
+        f2 = B.furnish_project(r.project_id, True)
+        assert f2.retry, f2.error
+        B.now_tick = LUA.eval("function() return 3600 end")
+        f = B.furnish_project(r.project_id, True)
+    finally:
+        LUA.globals().reqscript("quickfort").apply_blueprint = real
+        B.now_tick = saved_now
+    assert not f.ok and not f.retry and "would not place the well" in f.error and "3 tries" in f.error, f.error
+    assert "tiles:" in f.error and "beside: FLOOR" in f.error, f.error
+    assert len(B.projects_report().open) == 0
+
+
+QF_WELL_TEST = """function(real, W) return function(p)
+    -- quickfort's well test (build.lua is_tile_empty_and_floor_adjacent): open
+    -- space or a ramp top, with a floor on one of its four sides
+    if p.mode == 'build' then
+      for z, grid in pairs(p.data) do for y, row in pairs(grid) do for x, text in pairs(row) do
+        if text == 'l' then
+          local tx, ty, tz = x + p.pos.x, y + p.pos.y, z + p.pos.z
+          local t, ok = W.get(tx, ty, tz), false
+          for _, d in ipairs({{1, 0}, {-1, 0}, {0, 1}, {0, -1}}) do
+            local n = W.get(tx + d[1], ty + d[2], tz)
+            if n and n.shape == 'FLOOR' and not n.building then ok = true end
+          end
+          if not (t.shape == 'EMPTY' or t.shape == 'RAMP_TOP') then ok = false end
+          if not ok then
+            WELL_REFUSED = (WELL_REFUSED or 0) + 1
+            return {dig_designated = {value = 0}, build_designated = {value = 0}, invalid_keys = {value = 0}}
+          end
+        end
+      end end end
+    end
+    return real(p)
+  end end"""
+
+DIG_ALL = """function(W)
+    -- every designated tile dug as its key says
+    for _, t in pairs(W.tiles) do
+      if t.designated then
+        local k = (t.dig_text or 'd'):sub(1, 1)
+        t.designated = false
+        t.shape = (k == 'h') and 'EMPTY' or (k == 'j') and 'STAIR_DOWN' or (k == 'i') and 'STAIR_UPDOWN'
+          or (k == 'u') and 'STAIR_UP' or 'FLOOR'
+      end
+    end
+  end"""
+
+
+def dig_gallery_well(r, landing=True):
+    """The gallery well of `r` dug out (its held level too); without its
+    landing when `landing` is False (a well from before 0.105.24)."""
+    release_hold(r.project_id)
+    LUA.execute("""local B, W, pid, keep_landing = ...
+      local d = B.load_projects()
+      for _, p in ipairs(d.list) do if p.id == pid then
+        local a = p.anchor
+        if not keep_landing and p.landing then
+          local t = W.get(p.landing.x, p.landing.y, p.z); t.designated = false; t.dig_text = nil
+          for i = #p.gallery, 1, -1 do
+            if p.gallery[i].x == p.landing.x and p.gallery[i].y == p.landing.y then table.remove(p.gallery, i) end
+          end
+          p.landing = nil
+        end
+        local low = p.shaft[#p.shaft]
+        local t = W.get(a.x, a.y, low); t.designated = true; t.dig_text = 'h'
+        local st = p.shaft_stairs[#p.shaft_stairs]
+        local u = W.get(st.x, st.y, st.z); u.designated = true; u.dig_text = 'u'
+      end end
+      B.save_projects(d)""", B, W, r.project_id, landing)
+    LUA.eval(DIG_ALL)(W)
+
+
+@test("cavern well (0.105.24): a gallery's shaft top gets a floor dug beside it, so the game takes the well")
+def _():
+    lake_beside()
+    r = gallery_well()
+    assert r.ok and r.landing, (r.ok, r.error)
+    lx, ly = r.landing.x, r.landing.y
+    p = B.load_projects().list[1]
+    st = p.shaft_stairs[1]
+    assert abs(lx - r.x) + abs(ly - r.y) == 1 and (lx, ly) != (st.x, st.y)       # a side of the shaft, not its stair
+    assert max(abs(lx - st.x), abs(ly - st.y)) == 1                              # next to the stair (the builder's way)
+    assert W.get(lx, ly, 70).designated and W.get(lx, ly, 70).dig_text == "d"
+    assert W.get(lx, ly, 69).shape == "WALL" and not W.get(lx, ly, 69).designated     # rock left under it
+    assert p.dig is None or True
+    assert B.projects_report().open[1].dig.total == r.gallery + 16
+    dig_gallery_well(r)
+    assert B.projects_report().open[1].next == "furnish"
+    real = LUA.globals().reqscript("quickfort").apply_blueprint
+    LUA.globals().reqscript("quickfort").apply_blueprint = LUA.eval(QF_WELL_TEST)(real, W)
     try:
         f = B.furnish_project(r.project_id, True)
     finally:
         LUA.globals().reqscript("quickfort").apply_blueprint = real
-    assert not f.ok and "would not place the well" in f.error, f.error
+    assert f.ok, f.error
+    assert [(c.x, c.y, c.text) for c in W.placed.values() if c.mode == "build"] == [(r.x, r.y, "l")]
+
+
+@test("cavern well (0.105.24): a gallery well from before (no floor beside its top): refused, says why, a landing dug, then built")
+def _():
+    lake_beside()
+    r = gallery_well()
+    assert r.ok, r.error
+    dig_gallery_well(r, landing=False)
+    real = LUA.globals().reqscript("quickfort").apply_blueprint
+    LUA.globals().reqscript("quickfort").apply_blueprint = LUA.eval(QF_WELL_TEST)(real, W)
+    try:
+        f = B.furnish_project(r.project_id, True)
+        assert not f.ok and f.retry and f.landing and "no floor beside it" in f.error, f.error
+        d = f.diagnosis
+        assert d.floor_beside is False and "STAIR_DOWN" in d.text and "WALL" in d.text, d.text
+        assert [lv.tiletype for lv in d.levels.values()] == ["EMPTY", "EMPTY", "EMPTY"], d.text
+        rep = B.projects_report().open[1]
+        assert rep.phase == "dig" and rep.next is False and rep.well_refused.times == 1   # the landing to dig first
+        LUA.eval(DIG_ALL)(W)
+        assert B.projects_report().open[1].next == "furnish"
+        f = B.furnish_project(r.project_id, True)
+        assert f.ok, f.error
+    finally:
+        LUA.globals().reqscript("quickfort").apply_blueprint = real
+
+
+@test("cavern well (0.105.24): one given up over its dug shaft (C, F) is taken up again once, with a floor beside it")
+def _():
+    lake_beside()
+    r = gallery_well()
+    assert r.ok, r.error
+    dig_gallery_well(r, landing=False)
+    LUA.execute("""local B, pid = ...
+      local d = B.load_projects()
+      for _, p in ipairs(d.list) do if p.id == pid then p.phase = 'cancelled' end end
+      B.save_projects(d)""", B, r.project_id)
     assert len(B.projects_report().open) == 0
+    dry = gallery_well(dry=True)
+    assert dry.ok and dry.revived and dry.dry_run and dry.project_id == r.project_id and dry.landing, dict(dry)
+    assert len(B.projects_report().open) == 0                          # a dry run changes nothing
+    again = gallery_well()
+    assert again.ok and again.revived and again.project_id == r.project_id, (again.ok, again.error)
+    lx, ly = again.landing.x, again.landing.y
+    assert W.get(lx, ly, 70).designated and abs(lx - r.x) + abs(ly - r.y) == 1
+    rep = B.projects_report().open[1]
+    assert rep.id == r.project_id and rep.phase == "dig" and rep.next is False
+    # no second shaft was dug
+    assert sum(1 for t in W.tiles.values() if t.designated) == 1
+    LUA.eval(DIG_ALL)(W)
+    assert B.projects_report().open[1].next == "furnish"
+    # given up again: never taken up a second time (a new spot is looked for instead)
+    LUA.execute("""local B, pid = ...
+      local d = B.load_projects()
+      for _, p in ipairs(d.list) do if p.id == pid then p.phase = 'cancelled' end end
+      B.save_projects(d)""", B, r.project_id)
+    third = gallery_well(dry=True)
+    assert not third.revived, dict(third)
 
 
 # --- pastures ------------------------------------------------------------------------

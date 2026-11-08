@@ -1408,6 +1408,10 @@ end
 
 -- What the overseer should do next for this project, if anything.
 local function next_step(p, r)
+    -- (0.105.24) a well the game refused: tried again only after its wait
+    if p.kind == 'well' and p.phase == 'dig' and tonumber(p.well_retry_at) and now_tick() < p.well_retry_at then
+        return false
+    end
     if p.phase == 'dig' and r.dig and r.dig.total > 0 and r.dig.dug == r.dig.total then
         return 'furnish'
     elseif p.phase == 'dig' and r.dig and r.dig.stuck > 0 and r.dig.shaft_open ~= false
@@ -1446,6 +1450,11 @@ function projects_report()
                 r.furnish.days = since and math.max(0, (now_tick() - since) // 1200) or 0
             end
             if p.phase ~= 'dig' then r.decor = decor_progress(p) end
+            -- (0.105.24) a well the game refused: how often, and what it showed
+            if p.kind == 'well' and p.well_refusals then
+                r.well_refused = {times = p.well_refusals, landing = p.landing,
+                                  seen = type(p.well_diag) == 'table' and p.well_diag.text or nil}
+            end
             r.next = next_step(p, r) or false
             table.insert(p.phase == 'decorate' and decorating or out, r)
         elseif p.phase == 'done' then
@@ -1670,6 +1679,82 @@ end
 -- the two building slots) is furnished without them when the brain says so
 STALLED_SHARE = 0.9
 
+-- (0.105.24) The game wouldn't place the well over the dug hole. Was: the
+-- project cancelled for good at the first refusal, with no word on why (C,
+-- F, 3 Nov). Now the refusal says what the game shows there (the tile and
+-- the two below by DF's tiletype names, its four sides, a building on it,
+-- quickfort's counts: `diagnosis`, kept in the project as `well_diag`), and
+-- it is tried again before it is given up:
+--   1. no floor on any side (quickfort's well test): a landing dug beside the
+--      shaft's top (well_landing), the project back to digging, then furnished;
+--   2. otherwise again a day later (WELL_RETRY_DAYS), WELL_REFUSALS_MAX times
+--      in all; then cancelled, the last diagnosis in the error.
+-- A refusal that will be tried again comes back with `retry` (the brain
+-- doesn't take it for "no well can be placed").
+WELL_REFUSALS_MAX = 3
+WELL_RETRY_DAYS = 1
+
+function well_refused(data, p, results, qf_build)
+    local a = anchor_of(p)
+    -- the well there after all (placed, the count read wrong): furnished
+    local okb, here = pcall(function()
+        local b = dfhack.buildings.findAtTile(xyz2pos(a.x, a.y, p.z))
+        return b ~= nil and b:getType() == df.building_type.Well
+    end)
+    if okb and here then
+        p.phase = 'furnish'
+        p.furnish_started = {year = now_tick() // 403200, tick = now_tick() % 403200}
+        save_projects(data)
+        return {ok = true, project_id = p.id, placed = results, note = 'the well stands there already'}
+    end
+    local okd, diag = pcall(well_diagnosis, a.x, a.y, p.z)
+    diag = okd and diag or {text = 'unreadable: ' .. tostring(diag):sub(1, 100)}
+    diag.quickfort = qf_build
+    diag.build = results.build
+    p.well_refusals = (tonumber(p.well_refusals) or 0) + 1
+    p.well_diag = diag
+    local where = ('x%d y%d z%d'):format(a.x, a.y, ez(p.z))
+    -- 1. no floor beside it: a landing dug (once)
+    local stair = type(p.shaft_stairs) == 'table' and p.shaft_stairs[1] or nil
+    if not well_floor_beside(a.x, a.y, p.z, nil, stair) and not p.landing then
+        local galls = {}
+        for _, g in ipairs(type(p.gallery) == 'table' and p.gallery or {}) do galls[g.x .. ',' .. g.y] = true end
+        local land, lwhy = well_landing(a.x, a.y, p.z, stair, galls)
+        local pri = type(p.params) == 'table' and p.params.pri or ''
+        if land then
+            local okq, s = pcall(quickfort_apply, 'dig', {{x = 0, y = 0, text = 'd' .. (pri or '')}}, p.z, land.x, land.y)
+            if okq and stat(s, 'dig_designated') == 1 then
+                p.landing = {x = land.x, y = land.y}
+                p.gallery = type(p.gallery) == 'table' and p.gallery or {}
+                table.insert(p.gallery, {x = land.x, y = land.y})
+                save_projects(data)
+                return {ok = false, retry = true, project_id = p.id, placed = results, diagnosis = diag,
+                        landing = p.landing,
+                        error = ('the game would not put the well over the hole at %s yet: no floor beside it (%s); '
+                            .. 'a floor is dug beside it at x%d y%d, then the well again'):format(where, diag.text, land.x, land.y)}
+            end
+            diag.landing_refused = true
+        else
+            diag.no_landing = lwhy
+        end
+    end
+    -- 2. again a day later, WELL_REFUSALS_MAX times in all
+    if p.well_refusals < WELL_REFUSALS_MAX then
+        p.well_retry_at = now_tick() + WELL_RETRY_DAYS * 1200
+        save_projects(data)
+        return {ok = false, retry = true, project_id = p.id, placed = results, diagnosis = diag,
+                refusals = p.well_refusals,
+                error = ('the game would not put the well over the hole at %s (%d of %d tries; %s): tried again in a day')
+                    :format(where, p.well_refusals, WELL_REFUSALS_MAX, diag.text)}
+    end
+    -- given up (a new well would only dig another hole)
+    p.phase = 'cancelled'
+    save_projects(data)
+    return {ok = false, project_id = p.id, placed = results, diagnosis = diag, refusals = p.well_refusals,
+            error = ('the game would not place the well over the hole at %s (%d tries; %s)'):format(
+                where, p.well_refusals, diag.text)}
+end
+
 function furnish_project(id, buildingplan_on, stalled)
     OFFSET = elevation_offset()
     local data = load_projects()
@@ -1692,12 +1777,20 @@ function furnish_project(id, buildingplan_on, stalled)
         return {ok = false, rejected = true,
                 error = 'buildingplan is off: furniture without materials would vanish'}
     end
-    local results = {}
+    local results, qf_build = {}, nil
     for _, mode in ipairs({'build', 'place', 'zone'}) do
         local cells = cells_of(p, mode)
         if #cells > 0 then
             local ok, s = pcall(quickfort_apply, mode, cells, p.z, anchor_of(p).x, anchor_of(p).y)
             results[mode] = ok and stat(s, mode .. '_designated') or ('failed: ' .. tostring(s))
+            -- (0.105.24) quickfort's own counts for a well (which of its tests said no)
+            if mode == 'build' and p.kind == 'well' and ok and type(s) == 'table' then
+                qf_build = {}
+                for k, v in pairs(s) do
+                    local okv, n = pcall(function() return v.value end)
+                    if okv and type(n) == 'number' and n ~= 0 then qf_build[tostring(k)] = n end
+                end
+            end
         end
     end
     -- smoothing (a dig-mode designation) goes on at the same time, but only
@@ -1722,13 +1815,7 @@ function furnish_project(id, buildingplan_on, stalled)
         results.dedicated = okd and ded or ('failed: ' .. tostring(ded))
     end
     if p.kind == 'well' and results.build ~= 1 then
-        -- the hole is dug but the game won't put a well over it: stop here
-        -- (a new well would only dig another hole)
-        p.phase = 'cancelled'
-        save_projects(data)
-        return {ok = false, project_id = id, placed = results,
-                error = ('the game would not place the well over the hole at x%d y%d z%d'):format(
-                    anchor_of(p).x, anchor_of(p).y, ez(p.z))}
+        return well_refused(data, p, results, qf_build)
     end
     p.phase = 'furnish'
     p.furnish_started = {year = now_tick() // 403200, tick = now_tick() % 403200}
@@ -3177,6 +3264,120 @@ function shaft_stair_cells(side, z, rock)
 end
 
 STAIR_SHAPES = {j = 'STAIR_DOWN', i = 'STAIR_UPDOWN', u = 'STAIR_UP'}
+
+-- (0.105.24) A floor beside the well. C and F (3 Nov): both cavern wells
+-- came out at the end of a gallery (0.105.3) and quickfort refused the Well
+-- over the dug shaft ("the game would not place the well over the hole at
+-- x131 y129 z24", the project cancelled for good). Quickfort's test for a
+-- well ('l'; DFHack's quickfort build.lua, is_tile_empty_and_floor_adjacent
+-- as we know it, not yet seen failing live): the tile open space or a ramp
+-- top, and a floor beside it on one of its four sides (a floor-shaped tile
+-- with no building, not hidden). The shore wells had learned the same
+-- (find_shore_well_spot), and the refusal now says what the game showed
+-- (well_diagnosis) in case it is something else. A gallery's shaft top
+-- has its stair column's down stair on one side (a stair isn't a floor) and
+-- solid rock on the other three, so no well could ever go on it; a hall's
+-- shaft has hall floor round it. Now the shaft top gets a floor beside it: a
+-- "landing", one more tile dug to floor on the fort level next to it (rock
+-- with rock under it and a dry cap, nothing but rock or the fort's dry space
+-- round it), dug with the gallery.
+WELL_FLOOR_SHAPES = {FLOOR = true, BOULDER = true, PEBBLES = true, TWIG = true, SAPLING = true, SHRUB = true}
+local W_DIR4 = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}}
+local W_DIR8 = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, 1}, {1, -1}, {-1, 1}, {-1, -1}}
+
+-- a side of (x, y, z) quickfort takes as the well's floor: {x, y} or nil
+-- (`floors`: "x,y" -> true for tiles that will be dug to floor, counted too;
+-- `except`: {x, y}, a side that won't stay a floor: the shaft's stair)
+function well_floor_beside(x, y, z, floors, except)
+    for _, d in ipairs(W_DIR4) do
+        local nx, ny = x + d[1], y + d[2]
+        if except and nx == except.x and ny == except.y then
+            -- the stair column's top: a down stair, never the well's floor
+        elseif floors and floors[nx .. ',' .. ny] then return {x = nx, y = ny} end
+        local n = not (except and nx == except.x and ny == except.y) and tile_info(nx, ny, z) or nil
+        if n and WELL_FLOOR_SHAPES[n.shape] and not n.building and not n.hidden then      -- (occupancy, as quickfort)
+            return {x = nx, y = ny}
+        end
+    end
+    return nil
+end
+
+-- The landing for a shaft top at (x, y, z) whose stair column's top is
+-- `stair` ({x, y}): a side of the shaft (not the stair) that can be dug to a
+-- floor safely, and a miner reaches (next to the stair, a gallery tile or a
+-- walkable floor, diagonals too). `floors` as above. {x, y} or nil, why.
+function well_landing(x, y, z, stair, floors)
+    floors = floors or {}
+    local best, why = nil, 'no rock beside the shaft to dig a floor in for the well'
+    for _, d in ipairs(W_DIR4) do
+        local lx, ly = x + d[1], y + d[2]
+        if not (stair and lx == stair.x and ly == stair.y) and not floors[lx .. ',' .. ly] then
+            local t, under, up = tile_info(lx, ly, z), tile_info(lx, ly, z - 1), tile_info(lx, ly, z + 1)
+            local ok = solid_rock(t) and not t.designated and not t.building and solid_rock(under)
+                and up ~= nil and not up.liquid and not up.aquifer and (up.shape == 'WALL' or up.shape == 'FLOOR')
+            local reach = false
+            for _, e in ipairs(ok and W_DIR8 or {}) do
+                local nx, ny = lx + e[1], ly + e[2]
+                if not (nx == x and ny == y) then
+                    local n = tile_info(nx, ny, z)
+                    if not n or n.liquid or n.aquifer or n.outside or n.feature then ok = false break end
+                    if (stair and nx == stair.x and ny == stair.y) or floors[nx .. ',' .. ny]
+                            or (n.shape == 'FLOOR' and walk_group(nx, ny, z) ~= 0) then
+                        reach = true
+                    end
+                end
+            end
+            if ok and not reach then why = 'no floor beside the shaft a miner could reach to dig' end
+            if ok and reach then
+                -- next to the stair first (the well's builder steps off it)
+                local by_stair = stair and math.max(math.abs(lx - stair.x), math.abs(ly - stair.y)) == 1
+                if not best or (by_stair and not best.by_stair) then
+                    best = {x = lx, y = ly, by_stair = by_stair or nil}
+                end
+            end
+        end
+    end
+    if best then best.by_stair = nil return best end
+    return nil, why
+end
+
+-- (0.105.24) What the game shows at a well spot, for the next live look at a
+-- refusal: the tile and the two below (DF's tiletype names), its four sides,
+-- any building on it. {levels = {...}, beside = {...}, text}
+local function tiletype_name(x, y, z)
+    local ok, n = pcall(function() return df.tiletype[dfhack.maps.getTileType(x, y, z)] end)
+    if ok and n then return tostring(n) end
+    local t = tile_info(x, y, z)
+    return t and t.shape or 'off the map'
+end
+
+function well_diagnosis(x, y, z)
+    local out, words = {x = x, y = y, elevation = ez(z), levels = {}, beside = {}}, {}
+    for k = 0, 2 do
+        local t = tile_info(x, y, z - k)
+        local l = {elevation = ez(z - k), tiletype = tiletype_name(x, y, z - k),
+                   building = t and t.building or nil, hidden = t and t.hidden or nil,
+                   designated = t and t.designated or nil}
+        table.insert(out.levels, l)
+        table.insert(words, ('z%d %s%s'):format(l.elevation, l.tiletype, l.building and ' (a building)' or ''))
+    end
+    local side = {}
+    for _, d in ipairs(W_DIR4) do
+        local nx, ny = x + d[1], y + d[2]
+        local t = tile_info(nx, ny, z)
+        local b = (t and t.building) or building_at(nx, ny, z) or nil
+        table.insert(out.beside, {x = nx, y = ny, tiletype = tiletype_name(nx, ny, z), building = b or nil})
+        table.insert(side, tiletype_name(nx, ny, z) .. (b and ' (a building)' or ''))
+    end
+    pcall(function()
+        local b = dfhack.buildings.findAtTile(xyz2pos(x, y, z))
+        if b then out.building_type = tostring(df.building_type[b:getType()]) end
+    end)
+    out.floor_beside = well_floor_beside(x, y, z) ~= nil
+    out.text = 'tiles: ' .. table.concat(words, ', ') .. '; beside: ' .. table.concat(side, ', ')
+        .. (out.building_type and ('; on it: ' .. out.building_type) or '')
+    return out
+end
 
 
 -- (0.104.83) A small pen for war dogs just inside a gate: a free 3x3 of
@@ -6037,6 +6238,62 @@ function cistern_step(dry_run, prefs, tunnel)
             error = 'the cistern is built and full enough'}
 end
 
+-- (0.105.24) A cavern well given up over a dug shaft (the game wouldn't place
+-- the well: C's #110, F's #114, 3 Nov) taken up again, once: its shaft still
+-- open all the way down, nothing built on its top, a floor beside the top
+-- (or a landing to dig, as place_well digs one). The project goes back to
+-- digging (the landing), then to furnish as before. nil when there is none
+-- (or none that can be taken up: then `why` is kept for the next look).
+local OPEN_SHAPE = function(t) return t ~= nil and t.shape ~= 'WALL' and t.shape ~= 'FLOOR' and t.shape ~= 'RAMP' end
+
+function revive_cavern_well(data, pri, dry_run)
+    for _, p in ipairs(data.list) do
+        if p.kind == 'well' and p.phase == 'cancelled' and type(p.shaft) == 'table' and #p.shaft > 0
+                and type(p.shaft_stairs) == 'table' and p.shaft_stairs[1] and not p.revived and not p.unreached
+                and not p.held then
+            local a = anchor_of(p)
+            local top = tile_info(a.x, a.y, p.z)
+            local open = top ~= nil and (top.shape == 'EMPTY' or top.shape == 'RAMP_TOP') and not top.building
+            for _, zk in ipairs(p.shaft) do
+                if not OPEN_SHAPE(tile_info(a.x, a.y, zk)) then open = false end
+            end
+            if open then
+                local st = p.shaft_stairs[1]
+                local floors = {}
+                for _, g in ipairs(type(p.gallery) == 'table' and p.gallery or {}) do floors[g.x .. ',' .. g.y] = true end
+                local landing, lwhy
+                if not well_floor_beside(a.x, a.y, p.z, floors, st) then
+                    landing, lwhy = well_landing(a.x, a.y, p.z, st, floors)
+                    if not landing then
+                        p.revive_why = lwhy
+                        if not dry_run then save_projects(data) end
+                        return nil
+                    end
+                end
+                local out = {ok = true, project_id = p.id, revived = true, cavern = true, x = a.x, y = a.y,
+                             elevation = ez(p.z), landing = landing and {x = landing.x, y = landing.y} or nil,
+                             dry_run = dry_run or nil}
+                if dry_run then return out end
+                if landing then
+                    local s = quickfort_apply('dig', {{x = 0, y = 0, text = 'd' .. (pri or '')}}, p.z, landing.x, landing.y)
+                    if stat(s, 'dig_designated') ~= 1 then
+                        return {ok = false, error = ('the game would not dig a floor beside the old well shaft at x%d y%d elevation %d')
+                            :format(landing.x, landing.y, ez(p.z))}
+                    end
+                    p.gallery = type(p.gallery) == 'table' and p.gallery or {}
+                    table.insert(p.gallery, {x = landing.x, y = landing.y})
+                    p.landing = {x = landing.x, y = landing.y}
+                end
+                p.phase, p.revived = 'dig', true
+                p.well_refusals, p.well_retry_at = nil, nil
+                if not save_projects(data) then return {ok = false, error = 'could not save the project with the fort'} end
+                return out
+            end
+        end
+    end
+    return nil
+end
+
 -- Start a well: channel the spot now; the well itself is placed when the
 -- hole is dug (furnish), like any other project.
 function place_well(params, now, dry_run)
@@ -6057,6 +6314,11 @@ function place_well(params, now, dry_run)
     for _, p in ipairs(open) do table.insert(reserved, p.area) end
     local spot, why
     if params.cavern then
+        -- (0.105.24) a cavern well given up because the game wouldn't place
+        -- the well over its dug shaft (C, F) is taken up again first, with a
+        -- floor dug beside the shaft's top: no second shaft into the cavern
+        local okr, rv = pcall(revive_cavern_well, data, pri, dry_run)
+        if okr and rv then return rv end
         -- (0.105.4 review) a "no spot" kept since the last survey: not searched again
         local okw, wl = pcall(function() return reqscript('ai-water').last() end)
         local stamp = ('%s/%s'):format(okw and type(wl) == 'table' and tostring(wl.tick) or '-', tostring(params.gallery))
@@ -6117,6 +6379,23 @@ function place_well(params, now, dry_run)
         end
         table.insert(shaft, zk)
     end
+    -- (0.105.24) the well needs a floor on one of its sides (quickfort's well
+    -- test): the gallery's or the hall's; else a landing dug beside the shaft
+    local galls = {}
+    for _, g in ipairs(spot.gallery or {}) do galls[g.x .. ',' .. g.y] = true end
+    local landing
+    if spot.cavern then
+        if not well_floor_beside(spot.x, spot.y, spot.z, galls, spot.side) then
+            local lwhy
+            landing, lwhy = well_landing(spot.x, spot.y, spot.z, spot.side, galls)
+            if not landing then
+                return {ok = false, error = ('no floor beside the well spot at x%d y%d elevation %d for its builder (%s)')
+                    :format(spot.x, spot.y, ez(spot.z), lwhy)}
+            end
+            spot.gallery = spot.gallery or {}
+            table.insert(spot.gallery, {x = landing.x, y = landing.y})
+        end
+    end
     -- (0.105.3) the gallery out to the shaft, dug as plain floor through the rock
     local gallery = {}
     for _, g in ipairs(spot.gallery or {}) do
@@ -6147,7 +6426,7 @@ function place_well(params, now, dry_run)
                    shore = spot.shore, stagnant = spot.stagnant, cavern = spot.cavern, shaft = #shaft,
                    stairs = #stairs > 0 and #stairs or nil, urgent = params.urgent == true or nil,
                    gallery = #gallery > 0 and #gallery or nil, from = spot.from, from_gate = spot.from_gate,
-                   held = held and 2 or nil}
+                   held = held and 2 or nil, landing = landing and {x = landing.x, y = landing.y} or nil}   -- (0.105.24)
     if dry_run then
         where.ok, where.dry_run = true, true
         return where
@@ -6176,6 +6455,7 @@ function place_well(params, now, dry_run)
         shaft_stairs = #stairs > 0 and stairs or nil, urgent = params.urgent == true or nil,
         gallery = #gallery > 0 and gallery or nil,      -- (0.105.3)
         held = held,                                    -- (0.105.4 review)
+        landing = landing,                              -- (0.105.24) the floor dug beside the shaft's top
         summary = {well = 1, drop = spot.drop, cavern = spot.cavern}, furniture = {Well = 1},
         cells = {dig = dig, build = {{x = 0, y = 0, text = 'l'}}, place = {}, zone = {},
                  smooth = {}, engrave = {}},

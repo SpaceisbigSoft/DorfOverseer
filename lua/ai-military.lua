@@ -175,6 +175,115 @@ local function is_ai_order(o, squad_id)
     return is_guard_order(o)
 end
 
+-- (0.105.24) Clearing an order the whole way. B (4 Nov): 7 squads recalled
+-- from the shelter ("cleared": 1 each) and 28 soldiers still died of thirst
+-- on one tile (x109 y153 z165) 20 minutes later. The recall took the order
+-- off the squad's list and deleted it, but a squad's soldiers also carry
+-- orders of their own (each squad_position.orders: the individual orders DF
+-- hands out), which the recall never looked at: a copy there keeps a soldier
+-- on it, and the very order pointed to there was left dangling once deleted.
+-- Now, as DF's own "cancel orders" does, an order taken off the squad is taken
+-- off every position too (the same object, or a copy: the same kind naming
+-- the same burrows or targets) before it is deleted, each step in a pcall.
+local function same_obj(a, b)
+    if rawequal(a, b) then return true end
+    local ok, eq = pcall(function() return a == b end)
+    if ok and eq == true then return true end
+    local oka, _, pa = pcall(df.sizeof, a)
+    local okb, _, pb = pcall(df.sizeof, b)
+    return oka and okb and pa ~= nil and pa == pb
+end
+
+-- the kind of an order and what it names, e.g. 'defend:5,9' or 'kill:1203'
+-- (nil when it can't be read)
+function order_sig(o)
+    local ok, s = pcall(function()
+        local list, kind
+        if df.squad_order_defend_burrowsst:is_instance(o) then kind, list = 'defend', o.burrows
+        elseif df.squad_order_kill_listst and df.squad_order_kill_listst:is_instance(o) then kind, list = 'kill', o.units
+        else return nil end
+        local ids = {}
+        for _, id in ipairs(list) do table.insert(ids, id) end
+        table.sort(ids)
+        return kind .. ':' .. table.concat(ids, ',')
+    end)
+    return ok and s or nil
+end
+
+-- the positions' own orders that are `removed` (objects) or copies of them
+-- (their sigs) taken off; deleted unless they were one of `removed` (those
+-- the caller deletes once). Returns how many.
+local function clear_position_orders(sq, removed, sigs)
+    local n = 0
+    pcall(function()
+        for _, pos in ipairs(sq.positions) do
+            local po = pos.orders
+            if po ~= nil then
+                for j = #po - 1, 0, -1 do
+                    local o = po[j]
+                    local mine = false
+                    for _, r in ipairs(removed) do if same_obj(o, r) then mine = 'same' end end
+                    if not mine then
+                        local s = order_sig(o)
+                        if s and sigs[s] then mine = 'copy' end
+                    end
+                    if mine then
+                        local oke = pcall(function() po:erase(j) end)
+                        if oke then
+                            n = n + 1
+                            if mine == 'copy' then pcall(function() o:delete() end) end
+                        end
+                    end
+                end
+            end
+        end
+    end)
+    return n
+end
+
+-- Takes the squad's orders that `pick(o)` says off it, off its soldiers'
+-- own lists too, then deletes them. Returns removed, members' orders cleared.
+function drop_orders(sq, pick)
+    local removed, sigs = {}, {}
+    for i = #sq.orders - 1, 0, -1 do
+        local o = sq.orders[i]
+        if pick(o) then
+            sq.orders:erase(i)
+            table.insert(removed, o)
+            local s = order_sig(o)
+            if s then sigs[s] = true end
+        end
+    end
+    local member = #removed > 0 and clear_position_orders(sq, removed, sigs) or 0
+    for _, o in ipairs(removed) do pcall(function() o:delete() end) end
+    return #removed, member
+end
+
+-- (0.105.24) The squad's soldiers: how many, how many are thirsty or hungry
+-- (the hospital burrow's marks, ai-society HOSP_THIRST/HOSP_HUNGER), and how
+-- many orders of their own they still hold. {n, parched?, own_orders?}
+SHELTER_THIRST = 25000       -- DFHack's "thirsty"
+SHELTER_HUNGER = 50000       -- DF's "hungry"
+
+function members_state(sq)
+    local n, parched, own = 0, 0, 0
+    for _, pos in ipairs(sq.positions) do
+        if pos.occupant ~= -1 then
+            n = n + 1
+            pcall(function() own = own + #pos.orders end)
+            pcall(function()
+                local hf = df.historical_figure.find(pos.occupant)
+                local u = hf and df.unit.find(hf.unit_id)
+                local c = u and u.counters2
+                if c and (c.thirst_timer >= SHELTER_THIRST or c.hunger_timer >= SHELTER_HUNGER) then
+                    parched = parched + 1
+                end
+            end)
+        end
+    end
+    return {n = n, parched = parched > 0 and parched or nil, own_orders = own > 0 and own or nil}
+end
+
 function fort_squad(squad_id)
     local fort = fort_entity()
     if not fort then return nil end
@@ -300,7 +409,10 @@ function report(txt)
                     end
                 end
                 local ok, idx = pcall(function() return sq.cur_routine_idx end)
+                -- (0.105.24) soldiers thirsty or hungry (a sheltered squad is let out)
+                local okm, ms = pcall(members_state, sq)
                 table.insert(out.squads, {
+                    parched = okm and ms and ms.parched or nil,
                     id = sid, name = txt(dfhack.military.getSquadName(sid)),
                     members = members, size = #sq.positions,
                     leader = #sq.positions > 0 and sq.positions[0].occupant ~= -1,
@@ -1181,17 +1293,16 @@ end
 function orders(squad_id, kill, clear)
     local sq = fort_squad(squad_id)
     if not sq then return {ok = false, rejected = true, error = 'no such squad in this fort'} end
-    local removed = 0
-    for i = #sq.orders - 1, 0, -1 do
-        if is_ai_order(sq.orders[i], squad_id) then
-            local o = sq.orders[i]
-            sq.orders:erase(i)
-            o:delete()
-            removed = removed + 1
-        end
-    end
+    -- (0.105.24) off the soldiers' own order lists too (drop_orders)
+    local removed, member = drop_orders(sq, function(o) return is_ai_order(o, squad_id) end)
     if removed > 0 then pcall(prune_shelter_marks) end      -- (0.105.0 review)
-    if clear then return {ok = true, cleared = removed} end
+    if clear then
+        local out = {ok = true, cleared = removed, member_orders = member > 0 and member or nil}
+        -- (0.105.24) what the soldiers are left doing, for the next live look
+        local okm, m = pcall(members_state, sq)
+        if okm and m then out.members = m end
+        return out
+    end
     local o = df.squad_order_kill_listst:new()
     local n, refused = 0, 0
     for _, id in ipairs(kill or {}) do
@@ -1227,18 +1338,13 @@ function defend(squad_id, burrow_id)
     for _, o in ipairs(sq.orders) do
         if not is_ai_order(o, squad_id) then return {ok = false, rejected = true, error = 'the squad is on your orders'} end
     end
-    local removed = 0
-    for i = #sq.orders - 1, 0, -1 do
-        local o = sq.orders[i]
-        if is_ai_order(o, squad_id) then
-            if df.squad_order_defend_burrowsst:is_instance(o) then
-                return {ok = false, rejected = true, error = 'the squad already holds the gate'}
-            end
-            sq.orders:erase(i)
-            o:delete()
-            removed = removed + 1
+    for _, o in ipairs(sq.orders) do
+        if is_ai_order(o, squad_id) and df.squad_order_defend_burrowsst:is_instance(o) then
+            return {ok = false, rejected = true, error = 'the squad already holds the gate'}
         end
     end
+    -- (0.105.24) off the soldiers' own order lists too (drop_orders)
+    local removed = drop_orders(sq, function(o) return is_ai_order(o, squad_id) end)
     local o = df.squad_order_defend_burrowsst:new()
     o.burrows:insert('#', burrow_id)
     pcall(function() o.year = df.global.cur_year; o.year_tick = df.global.cur_year_tick end)
@@ -2995,14 +3101,27 @@ function shelter(squad_id, dry_run)
         if not is_ai_order(o, squad_id) then return {ok = false, rejected = true, error = 'the squad is on your orders'} end
         if is_shelter_order(o, squad_id) then return {ok = false, rejected = true, error = 'the squad is in the shelter already'} end
     end
-    if dry_run then return {ok = true, dry_run = true, burrows = #ids} end
-    local removed = 0
-    for i = #sq.orders - 1, 0, -1 do
-        local o = sq.orders[i]
-        sq.orders:erase(i)
-        pcall(function() o:delete() end)
-        removed = removed + 1
+    -- (0.105.24) thirsty or hungry soldiers are not shut in (as the hospital
+    -- burrow, 0.105.22): they drink and eat first
+    local okm, m = pcall(members_state, sq)
+    if okm and m and (m.parched or 0) > 0 then
+        return {ok = false, rejected = true, parched = m.parched,
+                error = ('%d of its soldiers are thirsty or hungry: they eat and drink first'):format(m.parched)}
     end
+    if dry_run then return {ok = true, dry_run = true, burrows = #ids} end
+    -- (0.105.24) off the soldiers' own order lists too (drop_orders)
+    local removed = drop_orders(sq, function() return true end)
+    -- (0.105.24) the squad's supplies: soldiers on the shelter order carry
+    -- food and water (DFHack's makeSquad gives a squad carry_food 2 and
+    -- carry_water 1; a squad set to carry none is set so), so a long hold
+    -- doesn't keep them from drink
+    local supplies
+    pcall(function()
+        if sq.carry_water == 0 then sq.carry_water = 1; supplies = 'water' end
+    end)
+    pcall(function()
+        if sq.carry_food == 0 then sq.carry_food = 2; supplies = supplies and (supplies .. ', food') or 'food' end
+    end)
     local o = df.squad_order_defend_burrowsst:new()
     for _, id in ipairs(ids) do o.burrows:insert('#', id) end
     pcall(function() o.year = df.global.cur_year; o.year_tick = df.global.cur_year_tick end)
@@ -3011,7 +3130,7 @@ function shelter(squad_id, dry_run)
     local marks = shelter_marks()
     marks[tostring(squad_id)] = order_tick(o)
     save_shelter_marks(marks)
-    return {ok = true, burrows = #ids, replaced = removed}
+    return {ok = true, burrows = #ids, replaced = removed, supplies = supplies}
 end
 
 -- (0.105.8) Every armour slot, as for weapons and shields: why each empty

@@ -743,6 +743,7 @@ class Memory:
     cavern_well_failure: str = ""                        # why no cavern well could be placed either
     cavern_shaft_stairs: bool = False                     # (0.104.13) the old shaft's give-up was cleared once
     cavern_gallery_retried: bool = False                  # (0.105.4 review) the old cavern refusal cleared once for the gallery
+    well_floor_retried: bool = False                      # (0.105.24) the old "would not place the well" cleared once (a floor beside it)
     patient_since: dict = field(default_factory=dict)    # citizen id (str) -> tick first seen needing care
     pasture_failure: str = ""                            # why no pasture could be made (Needs you)
     farm_failure: str = ""                               # why no farm plots could be placed (Needs you)
@@ -1951,7 +1952,10 @@ def _record_any_outcome(a: dict, r: dict, state: dict, memory, now: int) -> None
         elif r.get("ok") is False and not r.get("rejected"):
             memory.well_failure = str(r.get("error") or "refused")[:300]
     elif t == "furnish_project" and r.get("ok") is False and "well" in str(r.get("error") or ""):
-        memory.well_failure = str(r.get("error"))[:300]
+        # (0.105.24) a well the game refused that the bridge tries again (a
+        # floor dug beside it, or a day later) is not "no well can be placed"
+        if not r.get("retry"):
+            memory.well_failure = str(r.get("error"))[:300]
     elif t == "farm_plots":
         memory.last_fired["farms"] = now         # refused or not: wait the full spell
         if r.get("ok") is True:

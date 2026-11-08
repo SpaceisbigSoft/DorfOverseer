@@ -1302,6 +1302,68 @@ def _():
     assert env.shelter_marks()["7"] is None                         # the order gone: unmarked
 
 
+@test("0.105.24: the recall takes the order off the soldiers' own lists too (the same object or a copy); the player's kept")
+def _():
+    lua, n, env, eq, sq7, sq8 = army()
+    lua.execute("""local env, sq7 = ...
+        env.fort_squad = function(id) return env.df.squad.find(id) end
+        DELETED = {}
+        local DEF = env.df.squad_order_defend_burrowsst
+        local mk = DEF.new
+        DEF.new = function() local o = mk(); getmetatable(o).__index = {delete = function(self) table.insert(DELETED, self) end}; return o end
+        -- each soldier's own order list (squad_position.orders)
+        local vec = getmetatable(sq7.orders).__index
+        for i = 0, 3 do
+            local p = sq7.positions[i]
+            p.orders = setmetatable({}, getmetatable(sq7.orders))
+        end""", env, sq7)
+    r = env.shelter(7, False)
+    assert r.ok, dict(r)
+    shelter_order = sq7.orders[0]
+    lua.execute("""local env, sq7, o = ...
+        local DEF = env.df.squad_order_defend_burrowsst
+        sq7.positions[0].orders:insert('#', o)                  -- the very order (DF points to it)
+        local copy = DEF.new(); copy.burrows:insert('#', 5)
+        sq7.positions[1].orders:insert('#', copy)               -- a copy of it
+        local own = DEF.new(); own.burrows:insert('#', 9)
+        sq7.positions[2].orders:insert('#', own)                -- another order of the soldier's own""",
+                env, sq7, shelter_order)
+    c = env.orders(7, None, True)
+    assert c.ok and c.cleared == 1 and c.member_orders == 2, dict(c)
+    assert n(sq7.orders) == 0 and n(sq7.positions[0].orders) == 0 and n(sq7.positions[1].orders) == 0
+    assert n(sq7.positions[2].orders) == 1 and sq7.positions[2].orders[0].burrows[0] == 9     # not the shelter's: kept
+    deleted = lua.eval("DELETED")
+    assert n(deleted) == 2, n(deleted)                                  # the order once, its copy once
+    assert c.members.n == 4 and c.members.own_orders == 1, dict(c.members)
+    # nothing to clear: nothing touched
+    c = env.orders(7, None, True)
+    assert c.ok and c.cleared == 0 and c.member_orders is None and n(sq7.positions[2].orders) == 1
+
+
+@test("0.105.24: holding the gate replaces the AI's orders on the soldiers' lists too; a thirsty squad isn't shut in")
+def _():
+    lua, n, env, eq, sq7, sq8 = army()
+    lua.execute("""local env, sq7 = ...
+        env.fort_squad = function(id) return env.df.squad.find(id) end
+        env.df.global.plotinfo.burrows.list:insert('#', {id = 42, name = env.GUARD_BURROW_NAME})
+        for i = 0, 3 do sq7.positions[i].orders = setmetatable({}, getmetatable(sq7.orders)) end""", env, sq7)
+    lua.execute("""local sq7 = ...
+        local o = setmetatable({title = 'AI overseer'}, {__index = {delete = function() end}})   -- an AI kill order
+        sq7.orders:insert('#', o)
+        sq7.positions[3].orders:insert('#', o)""", sq7)
+    r = env.defend(7, 42)
+    assert r.ok and r.replaced == 1 and n(sq7.orders) == 1 and sq7.orders[0].burrows[0] == 42, dict(r)
+    assert n(sq7.positions[3].orders) == 0
+    # a soldier parched (thirst 30000): the squad isn't sent into the shelter
+    lua.execute("""local env = ...
+        env.df.unit.find = function(id) return {id = id, counters2 = {thirst_timer = id == 101 and 30000 or 0,
+                                                                     hunger_timer = 0}} end""", env)
+    env.orders(7, None, True)
+    r = env.shelter(7, False)
+    assert not r.ok and r.rejected and r.parched == 1 and "thirsty" in r.error, dict(r)
+    assert env.members_state(sq7).parched == 1
+
+
 @test("0.105.0 review: quivers move to the assigned list; only ones on the unassigned list; a bad field reported")
 def _():
     lua, n, env, eq, sq7, sq8 = army()

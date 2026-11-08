@@ -226,6 +226,33 @@ def _():
     assert sh and 11 in sh[0].action["squads"], sh                    # rested: back in
 
 
+@test("0.105.24 hide: a sheltered squad with thirsty or hungry soldiers is let out at once and rests; none sent in")
+def _():
+    s = titan(10)
+    for q in s["military"]["squads"]:
+        q.update(sheltering=True, ai_orders=1, orders=1)
+    s["military"]["squads"][1]["parched"] = 2
+    s["civ_alert"] = True
+    m = Memory()
+    rc = by_rule(plan(copy.deepcopy(s), m)[0], "squad_recall")
+    assert [p.action for p in rc] == [{"type": "squad_orders", "squad_id": 12, "clear": True}], rc
+    assert "thirsty or hungry" in rc[0].reason and "12" in m.shelter_rest, rc[0].reason
+    # out, still thirsty: not sent back in (nor, rested, while thirsty)
+    out = titan(10)
+    out["military"]["squads"][1]["parched"] = 1
+    m2 = Memory()
+    sh = by_rule(plan(copy.deepcopy(out), m2)[0], "shelter_squads")
+    assert sh and sh[0].action["squads"] == [11], sh
+    # the alarm lowered: both out (the shelter rule's own recall not twice for the thirsty squad)
+    gone = copy.deepcopy(s)
+    gone["others_on_map"]["threats"] = []
+    gone["others_on_map"]["threats_that_can_reach_dwarves"] = 0
+    gone["civ_alert"] = False
+    r = by_rule(plan(gone, Memory())[0], "squad_recall")
+    assert {p.action["squad_id"] for p in r} == {11, 12}, r
+    assert not [p for p in r if p.action["squad_id"] == 12 and "leaves the shelter" in p.reason], r
+
+
 @test("hide: the squads in the shelter stay while the alarm is up, come out when it clears, and go when sent")
 def _():
     s = titan(10)
