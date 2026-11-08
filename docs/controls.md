@@ -199,8 +199,7 @@ hall, basic workshops and stockpiles are always built when missing.
 
 ### Military
 
-The window still labels this block "squads are yours to create"; the AI
-makes squads itself now (see [military.md](military.md)).
+The AI makes and sends squads itself (see [military.md](military.md)).
 
 - **Send squads against:** *ordinary enemies, not great beasts* (the
   default), *everything that can reach us*, or *never (alert and gate only)*.

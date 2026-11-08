@@ -569,7 +569,7 @@ function RulesPage:init()
         on_change = function(v) p:set_field('camera_pace', v) end,
     })
     t = t + 11
-    table.insert(views, widgets.Label{frame = {t = t + 3, l = 0}, text = {{text = 'Military (squads are yours to create):'}}})
+    table.insert(views, widgets.Label{frame = {t = t + 3, l = 0}, text = {{text = 'Military (the AI makes and sends squads):'}}})
     table.insert(views, widgets.CycleHotkeyLabel{
         view_id = 'attack_policy',
         frame = {t = t + 4, l = 2, w = 72},
