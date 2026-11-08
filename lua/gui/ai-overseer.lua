@@ -601,6 +601,38 @@ function RulesPage:init()
             on_change = function(v) p:set_field(f[1], v) end,
         })
     end
+    -- (0.105.27) forbidden items and junk: the right-hand column beside the
+    -- military switches (rows t+5..t+8; the left column ends at l=52 there)
+    table.insert(views, widgets.Label{frame = {t = t + 5, l = 56}, text = {{text = 'Forbidden items and junk:'}}})
+    table.insert(views, widgets.CycleHotkeyLabel{
+        view_id = 'disposal',
+        frame = {t = t + 6, l = 58, w = 60},
+        label = 'Dispose of them:',
+        label_width = 30,
+        options = (function()
+            local out = {}
+            for _, m in ipairs(S.DISPOSAL_CHOICES) do table.insert(out, {label = S.DISPOSAL_NAMES[m], value = m}) end
+            return out
+        end)(),
+        initial_option = p.settings.disposal or 'destroy',
+        on_change = function(v) p:set_field('disposal', v) end,
+    })
+    table.insert(views, widgets.ToggleHotkeyLabel{
+        view_id = 'disposal_player_items',
+        frame = {t = t + 7, l = 58, w = 60},
+        label = 'Also items you forbade:',
+        label_width = 30,
+        initial_option = p.settings.disposal_player_items == true,
+        on_change = function(v) p:set_field('disposal_player_items', v) end,
+    })
+    table.insert(views, widgets.ToggleHotkeyLabel{
+        view_id = 'keep_enemy_gear',
+        frame = {t = t + 8, l = 58, w = 60},
+        label = 'Keep invaders\' gear (no melting):',
+        label_width = 36,
+        initial_option = p.settings.keep_enemy_gear == true,
+        on_change = function(v) p:set_field('keep_enemy_gear', v) end,
+    })
     -- (0.105.0) the squads hide with the civilians (the row under the list's seven; merge: was t+11, on appoint_nobles)
     table.insert(views, widgets.ToggleHotkeyLabel{
         view_id = 'squads_shelter',
@@ -703,6 +735,9 @@ function RulesPage:refresh()
     self.subviews.prisoners:setOption(s.prisoners or 'keep', false)                -- (0.105.0)
     self.subviews.moon_cells:setOption(s.moon_cells ~= false, false)
     self.subviews.seal_caverns:setOption(s.seal_caverns ~= false, false)
+    self.subviews.disposal:setOption(s.disposal or 'destroy', false)                      -- (0.105.27)
+    self.subviews.disposal_player_items:setOption(s.disposal_player_items == true, false)
+    self.subviews.keep_enemy_gear:setOption(s.keep_enemy_gear == true, false)
 end
 
 ---------------------------------------------------------------------------
