@@ -274,7 +274,7 @@ def _lua_fn(name: str) -> str:
 @test("10 unreached (lua): a given-up level's stair column is dropped at every level unless a citizen reaches it")
 def _():
     try:
-        from lupa import LuaRuntime
+        from lupa.lua53 import LuaRuntime
     except ImportError:
         return
     src = (ROOT / "lua" / "ai-builder-projects.lua").read_text(encoding="utf-8")

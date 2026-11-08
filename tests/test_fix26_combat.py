@@ -22,7 +22,7 @@ from planner_core import abs_tick  # noqa: E402
 from planner_military import threat_power  # noqa: E402
 
 try:
-    from lupa import LuaRuntime
+    from lupa.lua53 import LuaRuntime
 except ImportError:
     LuaRuntime = None
 

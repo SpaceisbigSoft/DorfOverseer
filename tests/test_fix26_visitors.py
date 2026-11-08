@@ -73,7 +73,7 @@ def later(s, days):
 @test("1 the bridge: location_access clears the cached locations section; the section says when it was built")
 def _():
     try:
-        from lupa import LuaRuntime
+        from lupa.lua53 import LuaRuntime
     except ImportError:
         return
     src = (ROOT / "tests" / "test_bridge_memory.py").read_text(encoding="utf-8")
