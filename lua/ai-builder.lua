@@ -12,8 +12,9 @@
 -- a level goes, the survey, stairwells), projects (their life from start to
 -- polish; founding), farms (plots, crops, water and sand zones, pastures),
 -- wells, cistern, surface (spots outside, crossings, the keep, the deep
--- depot) and rooms (walls back, workshops, feeders, stockpiles, zones,
--- slabs, planned buildings). DFHack reloads a module when its own file
+-- depot), rooms (walls back, workshops, feeders, stockpiles, zones,
+-- slabs, planned buildings) and halls (0.105.30: the surface hall). DFHack
+-- reloads a module when its own file
 -- changes: a change to a part alone is picked up once ai-builder.lua is
 -- touched too, or the game restarts.
 --@ module = true
@@ -395,7 +396,7 @@ end
 -- modules, and a test's swap (B.tile_info = ...) reaches every part.
 ---------------------------------------------------------------------------
 
-PARTS = {'sites', 'projects', 'farms', 'wells', 'cistern', 'surface', 'rooms'}
+PARTS = {'sites', 'projects', 'farms', 'wells', 'cistern', 'surface', 'rooms', 'halls'}   -- (0.105.30) halls
 -- (0.105.26) each part marks the version it came with (the bridge's
 -- `version` lists one that differs from BRIDGE_VERSION); started afresh at
 -- each load, so a part that failed to load shows as unmarked
