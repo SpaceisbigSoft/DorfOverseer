@@ -20,17 +20,14 @@ from datetime import datetime
 from pathlib import Path
 
 from dfhack import PROJECT_ROOT
+from util import load_json
 
 PENDING = Path(os.environ.get("DFAI_LOG_DIR") or PROJECT_ROOT / "logs") / "scenario-pending.json"
 PENDING_MAX = 20
 
 
 def _read() -> dict:
-    try:
-        d = json.loads(PENDING.read_text(encoding="utf-8"))
-        return d if isinstance(d, dict) else {}
-    except (OSError, ValueError):
-        return {}
+    return load_json(PENDING, {})
 
 
 def new_run(save_dir: str) -> str:

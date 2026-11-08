@@ -2,7 +2,8 @@
 alongside your game.
 
     python brain/overseer.py                   dry run: shows what it WOULD do
-    python brain/overseer.py --autopilot       actually does it
+    python brain/overseer.py --autopilot       actually does it (one autopilot per DF-AI folder:
+                                               it refuses while a keeper runs, logs/keeper.lock)
     python brain/overseer.py --ai --autopilot  ...and lets the AI strategist steer
     python brain/overseer.py --once            plan a single cycle and exit
 
@@ -34,6 +35,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from bridge import LOG_DIR, Bridge, BridgeError  # noqa: E402
 from dfhack import PROJECT_ROOT, DFHackError, GameNotRunning  # noqa: E402
+from util import folder_lock, load_json  # noqa: E402
 from planner import (NEEDS_YOU, PLANNER_CONFIG, TICKS_PER_YEAR, Memory, abs_tick,  # noqa: E402
                      effective_config, note_cycle, note_tantrums, plan, record, select)
 from planner_society import note_heists  # noqa: E402  (0.105.24)
@@ -214,7 +216,7 @@ def seed_squads_made(memory: Memory, key: str) -> None:
                         e = json.loads(line)
                     except ValueError:
                         continue
-                    r = e.get("result") if isinstance(e.get("result"), dict) else {}
+                    r = _d(e.get("result"))
                     if (e.get("action") or {}).get("type") == "make_squad" and r.get("ok") is True \
                             and isinstance(r.get("squad_id"), int) and r["squad_id"] not in found:
                         found.append(r["squad_id"])
@@ -367,9 +369,100 @@ def camera_feed(memory) -> dict:
     return {"districts": masterplan.camera_districts(memory), "news": (list(_CAMERA_LEVELS) + other)[:6]}
 
 
+# (13c) The actions said the same way every time, for short() below.
+SHORT_WORDS = {
+    "survey_water": "survey the water near the fort",
+    "staff_labors": "give the hospital's staff the labours of their posts",
+    "retarget_hall": "give a hall being dug to another petition",
+    "dismiss_alerts": "clear old alert icons from the screen",
+    "vacate_post": "give a patient's hospital post to a healthy dwarf",  # (0.104.111)
+    "give_trinkets": "give trinkets to dwarves who want something to own",
+    "place_keep": "build the keep above ground (next step)",
+    "deep_depot": "dig a wagon road down to an underground trade depot (next step)",  # (0.105.23)
+    "polish": "smooth or engrave a finished level",
+    "quarry": "dig a small quarry in ordinary stone",
+    "adopt_uniform": "take charge of a squad's copied uniform",
+    "idle_crafting": "let idle dwarves craft for themselves",
+    "tidy": "send worn-out clothes to the dump",
+    "order_instrument": "order instruments for the tavern and temples",
+    "slaughter_one": "send a spare animal to the butcher",
+    "sand_zone": "make a sand collection zone (for glass)",
+    "water_zone": "mark open water as a water source for the injured",
+    "close_meeting": "leave DF's meeting screen",
+    "answer_meeting": "answer the diplomat's meeting",  # (0.105.0)
+    "prune_remains": "let old corpses and useless body parts rot away",
+    "feeder_pile": "put a feeder stockpile beside a workshop",
+    "squad_barracks": "give a squad its barracks",
+    "open_trade": "open the trade screen at the depot",
+    "close_trade": "close the trade screen",
+    "call_trader": "send someone to the trade depot",
+    "place_slabs": "put up the engraved memorial slabs",
+    "unload_depot": "take the fort's goods back out of the trade depot",
+    "make_squad": "make a squad and appoint its leader",
+    "gather_plants": "gather the shrubs near the fort",
+    "unstick_uniforms": "untangle the soldiers' uniforms (uniform-unstick)",
+    "free_stray_gear": "hand out the gear the game had lost track of",  # (0.104.58)
+    "guard_gate": "send the squads to hold the main gate",  # (0.104.83)
+    "gate_dogs": "pen the war dogs inside the main gate",  # (0.104.83)
+    "train_war": "put tame animals to war training",  # (0.104.81)
+    "nest_boxes": "pen the hens together and put nest boxes in their pasture",  # (0.104.80)
+    "accept_cups": "let the finished goods piles take the loose cups",  # (0.104.168)
+    "prisoner_room": "a cage room for the prisoners inside the fort",
+    "traction_rest": "get a patient who needs traction out of an ordinary bed, so the game lays him on the traction bench",  # (0.105.24)
+    "mood_free_items": "free the forbidden materials a strange mood is waiting for",  # (0.105.24)
+    "add_doctor_post": "add a second doctor's post at a hospital",  # (0.104.168)
+    "recreation": "move the unhappiest into the recreation burrow, the recovered back to work",  # (0.104.78)
+    "pair_chairs": "put a chair beside each lone chair in the tavern",  # (0.104.77)
+    "squad_swap": "send a soldier back to work and draft a keen dwarf in his place",  # (0.104.65)
+    "assign_kit": "give the soldiers the free armour the game won't hand out",  # (0.105.8)
+    "assign_weapons": "give the soldiers the free weapons the game won't hand out",  # (0.104.60)
+    "assign_quivers": "give the crossbow soldiers quivers",
+    "squad_bolts": "bolts for a crossbow squad",
+    "cut_entrance": "hatches on the stairs down from a wide opening",
+    "farm_thresholds": "set which crops the farms favour (autofarm)",
+    "pull_gate": "pull the AI gate lever",
+    "clear_webs": "clear the spider webs",  # (0.104.116)
+    "remove_webs": "remove spider webs far from the fort",  # (0.105.3)
+    "scrub_dead_units": "clear old dead creatures from the game's unit list",  # (0.104.158)
+    "census": "count what fills the map",  # (0.104.113)
+    "seal_well_stairs": "close the cavern wells' stair columns",  # (0.104.151)
+    "join_levels": "join areas on one level that meet only through the stairs",  # (0.104.108)
+    "scan_entrances": "map the fort's entrances",
+    "arm_gates": "watch the gates (close when danger nears)",
+    "open_gates": "open the gates",
+    "found_fort": "dig the fort's first staircase",
+    "link_lever": "link the AI gate lever to a drawbridge or hatch",
+    "place_gate_lever": "put a lever inside the fort for the gate",
+    "build_gate_doors": "put doors on an open entrance",
+    "expel_dwarf": "send a dwarf away",
+    "setup_shelter": "set up the AI shelter burrow",
+    "sync_offices": "put the appointed nobles on the game's duty lists",
+    "bootstrap_chair": "make one chair straight at a workshop (for the manager's office)",
+    "approve_orders": "approve the AI's waiting work orders (no manager's office yet)",
+    "unsuspend_orders": "resume the AI's suspended work-order jobs",
+    "restrict_water": "mark the tiles over the water as restricted traffic",
+    "free_slabs": "unforbid the memorial slabs and resume their building",
+    "clear_orphan_jobs": "take jobs off the benches whose work order is gone",
+    "repair_rooms": "build back the walls dug out of rooms",
+    "allow_burial": "let the AI's tombs take the fort's dead",
+    "unforbid_dead": "unforbid the fort's dead so they can be buried",
+    # (13c) planner actions that had no words (the panel showed their type)
+    "break_fights": "end the citizens' fights (fix/loyaltycascade)",
+    "build_crossing": "build a bridge across a gap",
+    "remove_crossing": "take down one of the AI's bridges",
+    "free_dig_jobs": "free the workers held by a stalled level's dig jobs",
+    "trim_instrument_orders": "cancel extra instrument orders",
+}
+
+
 def short(a: dict) -> str:
     """An action in a few words, for the on-screen panel."""
     t = a.get("type")
+    words = SHORT_WORDS.get(t)
+    if words is not None:
+        return words
+    if t == "set_population_cap":
+        return f"set the population cap to {a.get('cap')}"
     if t == "work_order":
         return f"order {a.get('amount')} x {str(a.get('recipe')).replace('_', ' ')}"
     if t == "tool":
@@ -382,8 +475,6 @@ def short(a: dict) -> str:
         return "call the squad back" if a.get("clear") else f"send a squad at {len(a.get('kill') or [])} enemies"
     if t == "squad_routine":
         return f"squad on {str(a.get('routine')).lower()}"
-    if t == "assign_miners":
-        return f"let {a.get('count')} more dwarves mine"
     if t == "assign_labor":
         return (f"put {a.get('count')} more dwarves on {a.get('job')}" if a.get("count")
                 else "put the work details in order")
@@ -393,26 +484,18 @@ def short(a: dict) -> str:
             a.get("kind"), "build a trade depot outside")
     if t == "cistern_step":
         return "shut the cistern's floodgate" if a.get("shut") else "the cistern: next step"
-    if t == "survey_water":
-        return "survey the water near the fort"
     if t == "water_work":        # (0.105.0)
         what = {"moat": "the moat", "pump": "the pump stack", "irrigation": "the muddied farm level",
                 "magma": f"the {a.get('shop') or 'magma workshop'}"}.get(a.get("kind"), "a water work")
         if a.get("shut"):
             return f"shut {what}'s floodgate"
         return f"{what}: next step"
-    if t == "staff_labors":
-        return "give the hospital's staff the labours of their posts"
-    if t == "retarget_hall":
-        return "give a hall being dug to another petition"
     if t == "answer_petition":
         if a.get("ids"):
             return ("agree to" if a.get("accept") else "decline") + f" {len(a['ids'])} petitions to stay"
         if a.get("residency"):
             return ("agree to" if a.get("accept") else "decline") + " a petition to stay"
         return ("agree to" if a.get("accept") else "decline") + " a petition for a temple or guildhall"
-    if t == "dismiss_alerts":
-        return "clear old alert icons from the screen"
     if t == "place_in_zone":
         return f"put {str(a.get('what') or 'furniture').replace('_', ' ')} in a zone"
     if t == "petition_orders":
@@ -420,27 +503,15 @@ def short(a: dict) -> str:
             f"{'accept' if v else 'ask about'} {str(k).replace('_', ' ')}" for k, v in (a.get("orders") or {}).items())
     if t == "add_posts":
         return "make posts at a location (" + ", ".join(str(k).lower().replace("_", " ") for k in (a.get("posts") or [])) + ")"
-    if t == "vacate_post":       # (0.104.111)
-        return "give a patient's hospital post to a healthy dwarf"
     if t == "staff_location":
         return f"give a dwarf the {str(a.get('post') or 'post').lower().replace('_', ' ')} post"
-    if t == "give_trinkets":
-        return "give trinkets to dwarves who want something to own"
     if t == "house_dwarves":     # (0.104.168)
         return ("move stressed dwarves to rooms they like better" if not a.get("house")
                 else "one bedroom per household (couples together, a room for those with none)")
     if t == "remove_workshops":
         return f"take down extra {a.get('kind')} workshops"
-    if t == "place_keep":
-        return "build the keep above ground (next step)"
-    if t == "deep_depot":        # (0.105.23)
-        return "dig a wagon road down to an underground trade depot (next step)"
     if t == "trim_gathering":
         return f"cancel waiting plant-gathering jobs, keeping {a.get('keep')}"
-    if t == "polish":
-        return "smooth or engrave a finished level"
-    if t == "quarry":
-        return "dig a small quarry in ordinary stone"
     if t == "allow_stone":
         stone = str(a.get('stone')).lower().replace('_', ' ')
         return f"keep {stone} from the masons" if a.get("keep") else f"let the masons use {stone}"
@@ -448,83 +519,31 @@ def short(a: dict) -> str:
         return f"arm a squad with {str(a.get('weapon')).replace('ITEM_WEAPON_', '').lower().replace('_', ' ')}s"
     if t == "set_uniform":
         return f"give a squad the {a.get('kind')} {'crossbow ' if a.get('ranged') else ''}uniform"
-    if t == "adopt_uniform":
-        return "take charge of a squad's copied uniform"
     if t == "give_room":
         return f"give {a.get('name') or 'a noble'} a {a.get('kind')}"
-    if t == "idle_crafting":
-        return "let idle dwarves craft for themselves"
-    if t == "tidy":
-        return "send worn-out clothes to the dump"
     if t == "trim_labor":
         return f"take all but {a.get('keep')} off the {a.get('job')} work detail"
     if t == "narrow_detail":
         return f"{'widen' if a.get('widen') else 'narrow'} the {a.get('job')} work detail"
-    if t == "order_instrument":
-        return "order instruments for the tavern and temples"
-    if t == "slaughter_one":
-        return "send a spare animal to the butcher"
-    if t == "sand_zone":
-        return "make a sand collection zone (for glass)"
-    if t == "water_zone":
-        return "mark open water as a water source for the injured"
-    if t == "close_meeting":
-        return "leave DF's meeting screen"
-    if t == "answer_meeting":    # (0.105.0)
-        return "answer the diplomat's meeting"
     if t == "send_mission":      # (0.105.24, 13b)
         return f"send the messenger to make contact with site {a.get('site_id')} (World screen)"
     if t == "keep_mousers":      # (0.104.168)
         return f"keep {a.get('count') or 'a few'} cats from the butcher to hunt the vermin"
-    if t == "prune_remains":
-        return "let old corpses and useless body parts rot away"
-    if t == "feeder_pile":
-        return "put a feeder stockpile beside a workshop"
-    if t == "squad_barracks":
-        return "give a squad its barracks"
-    if t == "open_trade":
-        return "open the trade screen at the depot"
-    if t == "close_trade":
-        return "close the trade screen"
-    if t == "call_trader":
-        return "send someone to the trade depot"
     if t == "trade_deal":
         return "trade with the caravan" + (" (and press Trade)" if a.get("press") else "")
     if t == "bring_goods":
         return f"take {a.get('count')} crafts to the trade depot"
-    if t == "place_slabs":
-        return "put up the engraved memorial slabs"
     if t == "kitchen_skill":
         return (f"let only cooks of skill {a.get('min_level')}+ work the kitchens" if a.get("min_level") else
                 "let any cook work the kitchens again")
-    if t == "unload_depot":
-        return "take the fort's goods back out of the trade depot"
     if t == "clear_gate":
         return f"take down the gate at x{a.get('x')} y{a.get('y')}"
     if t == "mine_ore":
         return f"mine a vein of {str(a.get('metal')).lower()} ore"
-    if t == "make_squad":
-        return "make a squad and appoint its leader"
     if t == "appoint":
         return f"appoint a {str(a.get('office')).lower().replace('_', ' ')}"
-    if t == "gather_plants":
-        return "gather the shrubs near the fort"
-    if t == "unstick_uniforms":
-        return "untangle the soldiers' uniforms (uniform-unstick)"
-    if t == "free_stray_gear":   # (0.104.58)
-        return "hand out the gear the game had lost track of"
-    if t == "guard_gate":        # (0.104.83)
-        return "send the squads to hold the main gate"
-    if t == "gate_dogs":         # (0.104.83)
-        return "pen the war dogs inside the main gate"
     if t == "dig_stairwell":     # (0.104.82)
         return f"dig a new stairwell {a.get('dir')} of the main stair"
-    if t == "train_war":         # (0.104.81)
-        return "put tame animals to war training"
-    if t == "nest_boxes":        # (0.104.80)
-        return "pen the hens together and put nest boxes in their pasture"
-    if t == "accept_cups":       # (0.104.168)
-        return "let the finished goods piles take the loose cups"
     if t == "hospital_burrow":   # (0.104.167)
         if a.get("release"):
             return "let every patient out of the hospital burrow"
@@ -536,59 +555,23 @@ def short(a: dict) -> str:
     # (0.105.0) round 3: threats answered
     if t == "fire_guard":
         return "the fire is out: paths round it back to normal" if a.get("lift") else "keep the dwarves away from the fire"
-    if t == "prisoner_room":
-        return "a cage room for the prisoners inside the fort"
     if t == "moon_cell":
         return "let the werebeasts out of their cells" if a.get("release") else "lock the werebeasts in for the full moon"
     if t == "seal_cavern":
         return f"unlock the way down to {a.get('layer')}" if a.get("open") else f"lock the way down to {a.get('layer')}"
     if t == "rest_infected":     # (0.104.168)
         return f"put up to {a.get('max', 3)} dwarves with infected wounds to bed in the hospital, for the doctors"
-    if t == "traction_rest":     # (0.105.24)
-        return "get a patient who needs traction out of an ordinary bed, so the game lays him on the traction bench"
-    if t == "mood_free_items":   # (0.105.24)
-        return "free the forbidden materials a strange mood is waiting for"
-    if t == "add_doctor_post":   # (0.104.168)
-        return "add a second doctor's post at a hospital"
-    if t == "recreation":        # (0.104.78)
-        return "move the unhappiest into the recreation burrow, the recovered back to work"
-    if t == "pair_chairs":       # (0.104.77)
-        return "put a chair beside each lone chair in the tavern"
-    if t == "squad_swap":        # (0.104.65)
-        return "send a soldier back to work and draft a keen dwarf in his place"
-    if t == "assign_kit":        # (0.105.8)
-        return "give the soldiers the free armour the game won't hand out"
-    if t == "assign_weapons":    # (0.104.60)
-        return "give the soldiers the free weapons the game won't hand out"
     # (0.105.0, round 2) an army that can fight
     if t == "fix_gear_gaps":
         return "mend the uniforms so the soldiers get weapons" + (" and shields" if a.get("shields") else "")
-    if t == "assign_quivers":
-        return "give the crossbow soldiers quivers"
-    if t == "squad_bolts":
-        return "bolts for a crossbow squad"
     if t == "shelter_squads":
         return f"send {len(a.get('squads') or [])} squad(s) to wait in the shelter"
-    if t == "cut_entrance":
-        return "hatches on the stairs down from a wide opening"
-    if t == "farm_thresholds":
-        return "set which crops the farms favour (autofarm)"
     if t == "set_farm_crops":      # (0.105.5) Hammerstirred: the plots lay fallow under autofarm
         return ("set each farm plot's crops" + (" (brewable first)" if a.get("drink") else "")
                 + (" (a second brewable crop: drinks of more kinds)" if a.get("variety") else ""))
     if t == "kitchen_brewables":   # (0.100) the kitchen ban on cooking brewables
         return ("stop the kitchen cooking brewable plants" if a.get("ban") else
                 "let the kitchen cook brewable plants again")
-    if t == "pull_gate":
-        return "pull the AI gate lever"
-    if t == "clear_webs":        # (0.104.116)
-        return "clear the spider webs"
-    if t == "remove_webs":       # (0.105.3)
-        return "remove spider webs far from the fort"
-    if t == "scrub_dead_units":  # (0.104.158)
-        return "clear old dead creatures from the game's unit list"
-    if t == "census":            # (0.104.113)
-        return "count what fills the map"
     if t == "set_rules":         # (0.105.20) logs/rules-request.json
         return "set Rules switches: " + ", ".join(f"{k} {'on' if v else 'off'}" for k, v in sorted(_d(a.get("rules")).items()))
     if t == "apply_preset":      # (0.105.4) keeper.py --preset
@@ -597,40 +580,18 @@ def short(a: dict) -> str:
         return f"convict {a.get('max')} solved case(s)"
     if t == "well_shaft":        # (0.104.152)
         return "shut the cavern well's shaft" if a.get("close") else "the cavern well's shaft gate: its next step"
-    if t == "seal_well_stairs":  # (0.104.151)
-        return "close the cavern wells' stair columns"
     if t == "prioritize_dig":    # (0.104.128)
         return f"dig level {a.get('project_id')} before the rest"
-    if t == "join_levels":       # (0.104.108)
-        return "join areas on one level that meet only through the stairs"
-    if t == "scan_entrances":
-        return "map the fort's entrances"
-    if t == "arm_gates":
-        return "watch the gates (close when danger nears)"
     if t == "mark_run":          # (0.105.0)
         return f"mark this save as test run {a.get('run_id')}"
-    if t == "open_gates":
-        return "open the gates"
-    if t == "found_fort":
-        return "dig the fort's first staircase"
     if t == "place_traps":
         return f"put {a.get('count')} {a.get('kind')} traps behind a gate"
-    if t == "link_lever":
-        return f"link the AI gate lever to a drawbridge or hatch"
-    if t == "place_gate_lever":
-        return "put a lever inside the fort for the gate"
     if t == "build_gatehouse":     # (0.105.23, 14.1 step 4a)
         return f"build a gatehouse at the founding stair (drawbridge, walls, {a.get('kind') or 'cage'} trap corridor)"
     if t == "location_access":
         return ("open" if a.get("visitors") else "close") + f" {len(a.get('ids') or [])} location(s) to visitors"
-    if t == "build_gate_doors":
-        return "put doors on an open entrance"
     if t == "fortify_entrance":
         return f"wall an entrance down to a {a.get('style')} gate"
-    if t == "expel_dwarf":
-        return "send a dwarf away"
-    if t == "setup_shelter":
-        return "set up the AI shelter burrow"
     if t == "pasture":
         return f"put {a.get('count')} animals in a pasture"
     if t == "import_orders":
@@ -655,32 +616,12 @@ def short(a: dict) -> str:
         return f"take unit {a.get('unit_id')} out of the squad"
     if t == "squad_trim":
         return f"send {a.get('count')} soldier(s) back to work"
-    if t == "sync_offices":
-        return "put the appointed nobles on the game's duty lists"
-    if t == "bootstrap_chair":
-        return "make one chair straight at a workshop (for the manager's office)"
-    if t == "approve_orders":
-        return "approve the AI's waiting work orders (no manager's office yet)"
-    if t == "unsuspend_orders":
-        return "resume the AI's suspended work-order jobs"
     if t == "kitchen_fat":
         return "keep fat and tallow from the cooks" if a.get("ban") else "let the cooks use fat and tallow again"
     if t == "order_slots":
         return f"let workshop #{a.get('workshop_id')} take {a.get('max')} jobs from work orders"
-    if t == "restrict_water":
-        return "mark the tiles over the water as restricted traffic"
-    if t == "free_slabs":
-        return "unforbid the memorial slabs and resume their building"
-    if t == "clear_orphan_jobs":
-        return "take jobs off the benches whose work order is gone"
     if t == "bench_jobs":
         return f"put {a.get('count')} {a.get('kind')} job(s) straight on a workshop's bench"
-    if t == "repair_rooms":
-        return "build back the walls dug out of rooms"
-    if t == "allow_burial":
-        return "let the AI's tombs take the fort's dead"
-    if t == "unforbid_dead":
-        return "unforbid the fort's dead so they can be buried"
     return str(t)
 
 
@@ -706,12 +647,22 @@ def keep_state(state: dict, key: str) -> None:
         pass
 
 
+STATUS_SENT: dict = {}      # (13c) the panel's last report: {"bridge", "payload", "at"}
+STATUS_REFRESH_S = 300      # the same report again after this long (a reloaded game forgot it)
+
+
 def report_status(bridge: Bridge, payload: dict) -> None:
-    """Tell the on-screen panel what's going on (display only; never fails the cycle)."""
+    """Tell the on-screen panel what's going on (display only; never fails the
+    cycle). (13c) Not sent again when it says what the last one said, unless
+    that was STATUS_REFRESH_S ago (the panel forgets it when a map unloads)."""
+    if (STATUS_SENT.get("bridge") is bridge and STATUS_SENT.get("payload") == payload
+            and time.monotonic() - STATUS_SENT.get("at", 0.0) < STATUS_REFRESH_S):
+        return
     try:
         bridge.act({"type": "report_status", "status": payload})
+        STATUS_SENT.update(bridge=bridge, payload=payload, at=time.monotonic())
     except (BridgeError, DFHackError):
-        pass
+        STATUS_SENT.clear()
 
 
 # The last full (daily) report, so a cycle in between (after an event, or
@@ -791,7 +742,7 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
             st = {}
         controls = {"halted": st.get("halted") is True, "decisions": st.get("decisions") or {}}
     state = get_state(bridge, tier)
-    if controls and controls.get("fps_low"):
+    if controls.get("fps_low"):
         state["fps_low"] = controls["fps_low"]     # measured by the main loop (unattended)
     key = fort_key(state)
     if key is None:
@@ -800,7 +751,7 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
     # (0.105.0) under the keeper: only the fort it pinned (brain/pin.py)
     try:
         import pin
-        _f = state.get("fort") if isinstance(state.get("fort"), dict) else {}
+        _f = _d(state.get("fort"))
         refused = pin.refusal(_f.get("world"), _f.get("site_id"))
     except Exception:  # noqa: BLE001
         refused = None
@@ -851,6 +802,7 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
         # (0.97.1) your memory on the PC knows the fort by its line (world and
         # site: its autosaves and copies are one fort); a dry run doesn't write it
         line = learning.line_key(key, (state.get("fort") or {}).get("world"))
+        normalize(state)      # (13c) once, in place: the steps below read the sections as they are
         learned_now = learning.observe(state, memory, line, write_pc=autopilot)   # before note_cycle: it reads the tools
         expire_adjustments(memory, state)
         notes = note_cycle(state, memory)
@@ -921,14 +873,13 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
             ai_props = outcome.proposals
             try:     # (0.105.23) the strategist's levels keep under the surface in the Deep mine too
                 from planner import _deep_surface_filter, _traits as _plan_traits
-                ns = normalize(state)
-                ai_props = _deep_surface_filter(ns, _plan_traits(ns), memory, list(ai_props), notes)
+                ai_props = _deep_surface_filter(state, _plan_traits(state), memory, list(ai_props), notes)
             except Exception:  # noqa: BLE001  (never stops the cycle; the bridge's own checks still hold)
                 pass
             proposals = ai_props + proposals
             _note_adjust(state, memory, outcome.journal, cfg)
             try:
-                story = maybe_tell({**state, "settings": _d(normalize(state)["settings"])}, memory, bank, backend)
+                story = maybe_tell(state, memory, bank, backend)
                 for line in story.say:
                     say(line)
                 if story.text:
@@ -943,8 +894,8 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
         allowed, held = select(proposals, state, memory, cfg)
         stopped = STOP_FILE.exists()
         halted = controls.get("halted") is True
-        decisions = controls.get("decisions") if isinstance(controls.get("decisions"), dict) else {}
-        settings = _d(normalize(state)["settings"])
+        decisions = _d(controls.get("decisions"))
+        settings = _d(state["settings"])
         mode = settings.get("mode") if settings.get("mode") in MODES else "autopilot"
         if mode_override in MODES:
             mode = mode_override      # scenario runs play unattended: nobody to ask
@@ -1086,10 +1037,10 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
                 say(f"THE FORT IS IN TROUBLE: {bad}" if bad else "The fort is out of trouble.")
                 chronicle.add(memory, state, "trouble", bad or "out of trouble")
                 memory.trouble_seen = bad
-            line = report.maybe_write(state, memory, key, todo, (controls or {}).get("fps"))
+            line = report.maybe_write(state, memory, key, todo, controls.get("fps"))
             if line:
                 say(f"Report: {line}")
-                if (controls or {}).get("save_seasons") and acting and not line.startswith("couldn't"):
+                if controls.get("save_seasons") and acting and not line.startswith("couldn't"):
                     # only with --save-seasons: DF's own seasonal autosave does this (Oct 21: it
                     # saved every season by itself, and a second save only made the game stall)
                     try:
@@ -1106,15 +1057,15 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
         try:
             # where the save lives, for the keeper's --revive (load-save after a crash)
             import revive
-            f0 = state.get("fort") if isinstance(state.get("fort"), dict) else {}
+            f0 = _d(state.get("fort"))
             revive.write_last_fort((bridge.version or {}).get("df_path"), f0.get("save_dir"), key,
                                    world=f0.get("world"))
         except Exception:  # noqa: BLE001
             pass
-        if (controls or {}).get("unattended") and not (controls or {}).get("no_backup"):
+        if controls.get("unattended") and not controls.get("no_backup"):
             # a long run alone: a copy of the save once a real day (backups/)
             try:
-                f = state.get("fort") if isinstance(state.get("fort"), dict) else {}
+                f = _d(state.get("fort"))
                 root = (bridge.version or {}).get("df_path")
                 # (0.99.13) the folder the save is really in (DF's user folder, not the game's)
                 # only when a copy is due: the lookup can walk both save trees
@@ -1135,7 +1086,7 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
             "last": (recent if acting else would[:5] or recent),
             "notes": notes[:2],
             "todo": list(dict.fromkeys(todo))[:10],   # things only the player can do
-            "building": [t for t in project_text(normalize(state)["projects"]).split("; ") if t][:2],
+            "building": [t for t in project_text(state["projects"]).split("; ") if t][:2],
             "ai": (f"AI strategist: {int(bank.balance):,} tokens saved" if backend else None),
             "tokens": ({"saved": int(bank.balance), "total": int(bank.total_used),
                         "today": int(bank.real_day_used) if bank.real_day == date.today().isoformat() else 0}
@@ -1629,11 +1580,7 @@ def preset_due(key: str, name: str, fort_preset) -> str | None:
     or when the fort's site data shows no preset at all (an older save, from
     before it was applied). Never over the player's own later choice: once
     applied, a revive or a restart leaves the window's changes alone."""
-    try:
-        done = json.loads(PRESET_FILE.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        done = {}
-    rec = done.get(key) if isinstance(done, dict) else None
+    rec = load_json(PRESET_FILE, {}).get(key)
     if not isinstance(rec, dict) or rec.get("name") != name:
         return "first time for this fort" if fort_preset != name else None
     if not fort_preset:
@@ -1642,11 +1589,7 @@ def preset_due(key: str, name: str, fort_preset) -> str | None:
 
 
 def note_preset(key: str, name: str) -> None:
-    try:
-        done = json.loads(PRESET_FILE.read_text(encoding="utf-8"))
-        done = done if isinstance(done, dict) else {}
-    except (OSError, ValueError):
-        done = {}
+    done = load_json(PRESET_FILE, {})
     done[key] = {"name": name, "at": datetime.now().isoformat(timespec="seconds")}
     try:
         from dfhack import write_atomic
@@ -1686,7 +1629,7 @@ def rules_request(bridge: Bridge, autopilot: bool) -> None:
         say(f"Rules: would set {rules} (dry run: nothing changed).")
         return
     if r.get("ok"):
-        ch = r.get("changed") if isinstance(r.get("changed"), dict) else {}
+        ch = _d(r.get("changed"))
         words = ", ".join(f"{k} {'on' if v.get('new') else 'off'}" for k, v in sorted(ch.items())) or "nothing to change"
         say(f"Rules: set from {RULES_REQUEST}: {words}.")
     else:
@@ -1706,7 +1649,7 @@ def apply_preset(bridge: Bridge, state: dict, key: str, autopilot: bool) -> None
     name = PRESET
     if not name or key in PRESET_DONE:
         return
-    st = state.get("settings") if isinstance(state.get("settings"), dict) else {}
+    st = _d(state.get("settings"))
     why = preset_due(key, name, st.get("preset"))
     if why is None:
         PRESET_DONE.add(key)
@@ -1722,11 +1665,11 @@ def apply_preset(bridge: Bridge, state: dict, key: str, autopilot: bool) -> None
     if not r.get("ok"):
         say(f"Preset: {name} not applied: {r.get('error')}")
         return
-    traits = r.get("traits") if isinstance(r.get("traits"), dict) else {}
+    traits = _d(r.get("traits"))
     shown = " ".join(f"{k}:{v:+d}" for k, v in sorted(traits.items(), key=lambda kv: -abs(kv[1])) if isinstance(v, int))
-    rules = r.get("rules") if isinstance(r.get("rules"), dict) else {}
+    rules = _d(r.get("rules"))
     rule_words = ", ".join(f"{k}={v}" for k, v in sorted(rules.items()) if k != "levels")
-    levels = rules.get("levels") if isinstance(rules.get("levels"), dict) else {}
+    levels = _d(rules.get("levels"))
     if levels:
         rule_words += (", " if rule_words else "") + "levels " + " ".join(
             f"{k}:{'on' if v else 'off'}" for k, v in sorted(levels.items()))
@@ -1806,6 +1749,25 @@ def main() -> int:
 
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(errors="replace")
+    # (13c) one autopilot per folder: a manual --autopilot takes the keeper's
+    # lock (logs/keeper.lock), and refuses beside a running keeper; the
+    # overseer the keeper starts (DFAI_PIN) runs under the keeper's own lock
+    lock = None
+    if args.autopilot and not os.environ.get("DFAI_PIN"):
+        lock = folder_lock(LOG_DIR)
+        if lock is None:
+            say("A keeper (or another autopilot) is already running for this folder: not starting a second "
+                "autopilot (two would fight over the fort and its memory). A dry run (no --autopilot) can watch.")
+            return 1
+    try:
+        return _run(args)
+    finally:
+        if lock is not None:
+            lock.close()
+
+
+def _run(args) -> int:
+    """The main loop (main() above parses the command line and takes the lock)."""
     mode = "AUTOPILOT" if args.autopilot else "DRY RUN (nothing will be changed)"
     say(f"Overseer starting in {mode}. Ctrl-C to quit; create a file named STOP to halt actions.")
     backend = make_backend() if args.ai else None
@@ -1852,7 +1814,7 @@ def main() -> int:
             st = bridge.status()
             if st.get("saving"):
                 saving_at = time.time()
-            _d0 = st.get("date") if isinstance(st.get("date"), dict) else {}
+            _d0 = _d(st.get("date"))
             season_end = isinstance(_d0.get("tick"), int) and (_d0["tick"] // 33600) % 3 == 2 and int(_d0.get("day") or 0) >= 26
             save_said, quiet_wait = False, 10
             controls = {"halted": st.get("halted") is True, "decisions": st.get("decisions") or {}}

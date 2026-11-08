@@ -25,7 +25,7 @@ from __future__ import annotations
 import colorsys
 import re
 
-from weights import areas, choose, choose_all, why_text
+from weights import areas, choose_all, why_text
 
 HALLS = ("plain", "rounded", "pillared")
 PALETTES = ("any", "dark", "light", "warm", "cool", "precious", "purpose", "wood")
@@ -148,23 +148,14 @@ def explain(traits: dict, history: dict | None = None) -> list[dict]:
 
 STYLE_KEYS = ("hall", "smooth", "statues", "palette", "entry_doors", "temple")
 
+# How a fort closes a wide opening (lua/ai-gates.lua fortify; the weights
+# engine's Defence area picks one): plain, walls with a 2-tile gap (1 to a
+# cavern) and doors in it; narrow, a 1-tile gap and one door; fortified, two
+# doors one behind the other; gatehouse, fortified plus cage traps behind it;
+# grand, a 2-tile gap, 2 doors, statues inside; drawbridge, a 2-tile gap closed
+# by a raising drawbridge and its lever. Walls first, doors once the walls
+# beside them stand (DF builds a door only next to a wall).
 GATE_STYLES = ("plain", "narrow", "fortified", "gatehouse", "grand", "drawbridge")
-
-
-def gate_style(t: dict, h: dict) -> str:
-    """How this fort closes a wide opening (lua/ai-gates.lua fortify), chosen
-    by the engine's Defence area:
-      plain      walls with a 2-tile gap (1 to a cavern), doors in it
-      narrow     a 1-tile gap, one door
-      fortified  a 1-tile gap, two doors one behind the other
-      gatehouse  fortified, plus cage traps behind it
-      grand      a 2-tile gap, 2 doors, statues inside
-      drawbridge a 2-tile gap closed by a raising
-                 drawbridge, with a lever placed where the dwarves are and
-                 linked by the AI once both are built
-    Walls go up first; the doors follow once the walls beside them are built
-    (DF only builds a door next to a wall)."""
-    return choose("defence", t, h)["value"]
 
 
 def era_title(p: dict) -> str:

@@ -25,9 +25,10 @@ and the located events are what will judge a gate or a farm.
 from __future__ import annotations
 
 from digest import _d, _l, normalize
+from util import YEAR_TICKS
+from util import state_tick as _now
 
 DAY = 1200
-YEAR_TICKS = 403200
 SEASON_TICKS = YEAR_TICKS // 4
 MAX_EVENTS = 150
 MAX_CLUSTERS = 80
@@ -35,9 +36,6 @@ MAX_REGISTRY = 400
 GATE_NEAR = 12            # tiles: a threat this close to an entrance is "at the gate"
 GATE_NEAR_Z = 3
 PLACE_CELL = 16           # events away from any entrance or building are grouped on a 16x16 grid
-EVENT_KINDS = {"death": "a citizen died", "kill": "an enemy died", "beast_slain": "a great beast was slain",
-               "threat_at_gate": "a threat came to the gate", "beast_seen": "a great beast was seen",
-               "flood": "a flood", "cave_in": "a cave-in", "ghost": "a ghost"}
 REPORT_TOPICS = {"flood": "flood", "cave_in": "cave_in", "ghost": "ghost"}
 GATE_ACTIONS = ("fortify_entrance", "build_gate_doors")
 
@@ -50,11 +48,6 @@ def _state(memory) -> dict:
         if not isinstance(a.get(k), type(default)):
             a[k] = default
     return a
-
-
-def _now(state: dict) -> int:
-    d = state["date"]
-    return d["year"] * YEAR_TICKS + d["tick"]
 
 
 def _date(state: dict) -> str:
@@ -360,7 +353,7 @@ def note_actions(results, state: dict, memory) -> list[str]:
             del rec["gates"][:-8]
             if t == "fortify_entrance":
                 how = ("closed with a hatch over the stairs" if r.get("hatches")
-                       else (f"walled to a drawbridge gate" + (f", its lever placed at x{_d(r.get('lever')).get('x')} "
+                       else ("walled to a drawbridge gate" + (f", its lever placed at x{_d(r.get('lever')).get('x')} "
                              f"y{_d(r.get('lever')).get('y')} (linked once both are built)" if r.get("lever")
                              else " (no lever placed yet)")) if r.get("bridge")
                        else (f"left to its water, which walkers don't path through ({r.get('water')}; checked "
@@ -395,7 +388,7 @@ def note_actions(results, state: dict, memory) -> list[str]:
                     bridge=[br.get("x"), br.get("y"), br.get("z")] if br else None,
                     pieces=[str(k) for k in (r.get("pieces") or []) if isinstance(k, str)][:80])
                 rec = a["entrances"].get(spot)
-                out.append(f"a gatehouse went up in front of the hatch at "
+                out.append("a gatehouse went up in front of the hatch at "
                            + (_where(rec, spot) if isinstance(rec, dict) else f"x{x} y{y}")
                            + f": {r.get('walls')} walls, {r.get('traps')} {act.get('kind') or 'cage'} trap(s) in "
                            f"its corridor and a drawbridge" + (" with a lever placed for it" if r.get("lever") else ""))

@@ -2,7 +2,7 @@
 
 Measured 2026-10-19 on the real "AI Test Run" fort (194 citizens, year 148).
 Token counts are **estimates** at 2.5 characters per token (Anthropic's figure for
-current Claude models). Run `python brain\token_test.py` with an API key for
+current Claude models). Run `python brain\tools\token_test.py` with an API key for
 exact counts; Anthropic's token-counting endpoint is free and runs no model.
 
 ## How to describe the fort to the AI

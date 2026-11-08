@@ -33,9 +33,10 @@ from __future__ import annotations
 
 import timeline
 from digest import _d
+from util import YEAR_TICKS
+from util import state_tick as _now
 
 DAY = 1200
-YEAR_TICKS = 403200
 MIN_DAYS = 14
 # Only grand halls are held back: taverns and temples meet needs that keep
 # dwarves happy, which a fort under strain needs most.
@@ -69,11 +70,6 @@ def current(memory) -> str:
     c = memory.chronicle if isinstance(memory.chronicle, dict) else {}
     ph = c.get("phase") if isinstance(c.get("phase"), dict) else {}
     return ph.get("now") if ph.get("now") in PHASES else "growth"
-
-
-def _now(state: dict) -> int:
-    d = state["date"]
-    return d["year"] * YEAR_TICKS + d["tick"]
 
 
 SIEGE_MIN_INVADERS = 3     # a siege: this many invaders on the map at once
@@ -136,7 +132,6 @@ def judge(state: dict, memory, events: list[dict] | None = None) -> str:
     now = _now(state)
     today = now // DAY
     pop = _d(state.get("dwarves")).get("total") or 0
-    rows = timeline.window(memory, today - 4, today)
     # a siege: an invasion seen lately, or threats able to reach the dwarves
     # (an older save: forget invasions and danger days that haven't happened yet)
     ph["invasions"] = [t for t in ph.get("invasions") or [] if isinstance(t, int) and t <= now]

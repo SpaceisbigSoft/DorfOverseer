@@ -1,8 +1,8 @@
 """The title screen, for the keeper's --revive. Start Dwarf Fortress and leave
 it at the title screen (no world loaded), then:
 
-    python brain\\probe_title.py            what the title screen holds (read only)
-    python brain\\probe_title.py --load     load the fort's newest save from it, step by step
+    python brain\\tools\\probe_title.py            what the title screen holds (read only)
+    python brain\\tools\\probe_title.py --load     load the fort's newest save from it, step by step
 
 Writes what DF's title screen holds to logs/title-probe.json (and where the
 fort's save is listed on it), so loading a save from there can be written
@@ -15,7 +15,7 @@ import json
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent.parent.parent   # (13c) the script lives in brain/tools/
 sys.path.insert(0, str(ROOT / "brain"))
 
 from dfhack import DFHack  # noqa: E402

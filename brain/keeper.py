@@ -26,6 +26,8 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+from util import folder_lock
+
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
 LOG_DIR = Path(os.environ.get("DFAI_LOG_DIR") or ROOT / "logs")   # (13c) tests: a temp folder
@@ -292,22 +294,10 @@ def quick_edit_off() -> None:
 
 
 def single_instance():
-    """An open, locked file while this keeper runs: a second keeper refuses
-    (two autopilots on one fort would fight). Returns the file, or None."""
-    LOG_DIR.mkdir(parents=True, exist_ok=True)
-    f = open(LOG_DIR / "keeper.lock", "a+")
-    try:
-        if os.name == "nt":
-            import msvcrt
-            f.seek(0)
-            msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
-        else:
-            import fcntl
-            fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-        return f
-    except OSError:
-        f.close()
-        return None
+    """An open, locked file (logs/keeper.lock) while this keeper runs: a second
+    keeper, or a manual overseer.py --autopilot, refuses (two autopilots on
+    one fort would fight). Returns the file, or None."""
+    return folder_lock(LOG_DIR)
 
 
 def main(argv=None, popen=subprocess.Popen, sleep=time.sleep, max_runs: int | None = None) -> int:

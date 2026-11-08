@@ -31,6 +31,8 @@ from dataclasses import asdict, dataclass, field
 from datetime import date
 from pathlib import Path
 
+from util import load_json
+
 # (0.99.1, B10) Today's real-world spend across every fort and save on this
 # PC: {"day", "used"}. The bank in each save counted only itself, so a reload
 # or another fort started the day's cap again. Set by the overseer's main()
@@ -41,10 +43,10 @@ DAY_FILE: Path | None = None
 def pc_used_today(today: date) -> int:
     if DAY_FILE is None:
         return 0
+    d = load_json(DAY_FILE, {})
     try:
-        d = json.loads(DAY_FILE.read_text(encoding="utf-8"))
         return int(d.get("used") or 0) if d.get("day") == today.isoformat() else 0
-    except (OSError, ValueError, AttributeError):
+    except (TypeError, ValueError):
         return 0
 
 

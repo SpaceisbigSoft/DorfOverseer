@@ -39,11 +39,11 @@ from __future__ import annotations
 import hashlib
 import json
 
-from digest import _d, _l, normalize
+from digest import _d, _l
 from quirks import has_rule
+from util import date_tick
 
 DIRS = ("north", "east", "south", "west")
-DIR_VEC = {"north": (0, -1), "south": (0, 1), "east": (1, 0), "west": (-1, 0)}
 PLAN_EXTEND = 3            # the plan reaches at most this far below the spine's bottom
                            # (lua/ai-builder.lua PLAN_EXTEND: the band pass extends no further)
 MIN_RANGE = 3              # fewer usable levels than this: no plan yet
@@ -339,7 +339,7 @@ def draw(state: dict, memory, site: dict, traits: dict, profile: dict) -> dict |
     plan = _plan(memory)
     plan.clear()
     plan.update({"v": 1, "drawn": f"{d.get('day')} {d.get('month')} y{d.get('year')}",
-                 "tick": d.get("year", 0) * 403200 + d.get("tick", 0), "by": "scripts",
+                 "tick": date_tick(d), "by": "scripts",
                  "spine": spine, "axis": axis, "pattern": pattern, "vertical": vertical,
                  "symmetry": (traits.get("grandeur", 0) or 0) >= 60 and (traits.get("craftsmanship", 0) or 0) >= 60,
                  "range": [lo, hi], "heart": heart, "grammar": _grammar(traits, profile), "formula": FORMULA,

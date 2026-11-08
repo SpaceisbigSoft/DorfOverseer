@@ -18,7 +18,6 @@ A script writes these in plain words; the AI-written chronicle
 
 from __future__ import annotations
 
-YEAR_TICKS = 403200
 MAX_ENTRIES = 300
 MINOR = {"built": ("level finished", "levels finished"), "gate": ("gate walled", "gates walled"),
          "learned": ("lesson learned", "lessons learned"), "registry": ("change noticed", "changes noticed"),

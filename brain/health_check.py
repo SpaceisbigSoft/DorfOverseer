@@ -41,12 +41,13 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
 sys.path.insert(0, str(HERE))
+from util import load_json  # noqa: E402
+from util import YEAR_TICKS as TICKS_PER_YEAR  # noqa: E402
 LOG_DIR = Path(os.environ.get("DFAI_LOG_DIR") or ROOT / "logs")
 STANDING = LOG_DIR / "standing.json"
 REPORT = LOG_DIR / "health-check.txt"
 FLAGS = LOG_DIR / "health-check.json"
 
-TICKS_PER_YEAR = 403200
 TICKS_PER_DAY = 1200
 
 # thresholds
@@ -96,11 +97,7 @@ STANDING_FORTS = 10           # forts kept
 
 
 def _load_standing(path: Path) -> dict:
-    try:
-        d = json.loads(path.read_text(encoding="utf-8"))
-        return d if isinstance(d, dict) else {}
-    except (OSError, ValueError):
-        return {}
+    return load_json(path, {})
 
 
 def track_standing(fort: str, todo: list, notes: list, tick: int | None,
@@ -422,10 +419,7 @@ def housekeeping(save_roots: list[Path], current: str | None, backup_dir: Path,
 # ---------------------------------------------------------------------------
 
 def _last_fort() -> dict:
-    try:
-        return json.loads((LOG_DIR / "last-fort.json").read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
+    return load_json(LOG_DIR / "last-fort.json", {})
 
 
 def check(hours: float = 24.0, selftest: bool = True, now: datetime | None = None,

@@ -18,9 +18,9 @@ Everything lives in the fort's culture history (kept in the save):
 from __future__ import annotations
 
 from weights import TRAIT_NAMES, data
+from util import date_tick as abs_tick
 
 DAY = 1200
-YEAR_TICKS = 403200
 LOG_MAX = 20
 
 FACT_TEXT = {
@@ -65,10 +65,6 @@ FACT_TEXT = {
     "surface_share": "{v:g} of the dwarves living out under the sky",
     "materials_pd": "{v:g} logs and stones a dwarf",
 }
-
-
-def abs_tick(date: dict) -> int:
-    return int(date.get("year", 0)) * YEAR_TICKS + int(date.get("tick", 0))
 
 
 def facts(history: dict, stocks: dict | None, year: int, extra: dict | None = None) -> dict:

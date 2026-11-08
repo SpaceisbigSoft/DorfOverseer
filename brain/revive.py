@@ -24,8 +24,8 @@ import time
 from pathlib import Path
 
 from backup import newest_folder
-from dfhack import (CONFIG_PATH, PROJECT_ROOT, DFHack, DFHackError, GameNotRunning, configured_port,  # noqa: E501
-                    port_env, save_root)
+from dfhack import (PROJECT_ROOT, DFHack, DFHackError, GameNotRunning, configured_port,  # noqa: E501
+                    port_env, read_config, save_root)
 
 LAST_FORT = Path(os.environ.get("DFAI_LOG_DIR") or PROJECT_ROOT / "logs") / "last-fort.json"
 PROBE_EVERY_S = 60
@@ -170,11 +170,7 @@ def save_written_within(seconds: float, clock=time.time) -> bool:
 
 
 def launch_command() -> str | None:
-    try:
-        cfg = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return None
-    cmd = cfg.get("df_launch")
+    cmd = read_config().get("df_launch")
     return cmd if isinstance(cmd, str) and cmd.strip() else None
 
 
@@ -272,7 +268,7 @@ class Reviver:
         self.loading = None
         n = self.load_fails[folder] = self.load_fails.get(folder, 0) + 1
         self.log(f"Revive: loading '{folder}' failed ({why}); {n} failed load(s) of it"
-                 + (f": it isn't tried again, the next older save is." if n >= LOAD_FAILS_MAX else "."))
+                 + (": it isn't tried again, the next older save is." if n >= LOAD_FAILS_MAX else "."))
 
     def _watch_load(self, state: str, now: float) -> None:
         if self.loading is None:
