@@ -187,6 +187,8 @@ DAYS_PER_YEAR = 336
 BUDGET_HEADROOM = 1.5            # the bank fills 1.5x faster than the plan spends
 BANK_DAYS = 60                   # and holds 60 days of it
 MIN_BANK = 20000
+BANK_EVENT_REVIEWS = 5           # (0.105.26) and room for 5 event reviews: a new fort's half-full bank
+                                 # clears the reserve for its first review at any slider setting
 THINKING_MIN = 1024              # the API's smallest thinking budget
 FREQ_WORDS = ("Very rare", "Rare", "Normal", "Often", "Very often")
 EFFORT_WORDS = ("Very short", "Short", "Normal", "Long", "Very long")
@@ -234,7 +236,8 @@ def ai_plan(settings: dict) -> dict:
         "answer_tokens": answer, "news": max(1, min(8, 4 + int(e // 50))),
         "est_routine": est_routine, "est_event": est_event,
         "reviews_per_year": int(routine_year + events_year + 0.5), "tokens_per_year": per_year,
-        "tokens_per_game_day": per_day, "token_bank_max": max(MIN_BANK, per_day * BANK_DAYS),
+        "tokens_per_game_day": per_day,
+        "token_bank_max": max(MIN_BANK, per_day * BANK_DAYS, BANK_EVENT_REVIEWS * est_event),
     }
 
 

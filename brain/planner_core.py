@@ -61,7 +61,18 @@ STEER_PROTECTED = EMERGENCY | {"shelter", "alerts", "squad_recall", "hazard", "w
                                "needs_drink", "food", "farm", "farm_crops", "gather", "care", "staff", "burial", "unsuspend",
                                "stuck_order", "tools", "found", "entrances", "trouble",
                                "hospital_burrow",   # (0.104.167, review) never held: members are let out by it
-                               "calm_burrow"}       # (0.104.169) likewise
+                               "calm_burrow",       # (0.104.169) likewise
+                               # (0.105.26) a life on each: a held mood goes insane; the infected, the
+                               # injured, the hospital's soap and staff; fights among the fort's own
+                               "mood", "infected_rest", "traction_rest", "traction", "traction_parts",
+                               "soap_rush", "break_fights", "hospital", "doctor_post", "doctor_patient",
+                               "rescue_labor", "stress_care", "jail_urgent",
+                               # thirst and water: the well's parts and lids, the cistern's shut, drownings
+                               "drink_fruit", "well_parts", "well_lid", "well_shaft", "cistern",
+                               "water_traffic", "waterworks_shut",
+                               # the gate that closes in an attack; the undead, curses, webs; the heist lockout
+                               "gate_lever", "gate_doors", "gate_parts", "cursed", "reanimation",
+                               "siege_cleanup", "webs", "remove_webs", "location_access"}
 STEER_MAX_DAYS = 84
 
 

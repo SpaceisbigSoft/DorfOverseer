@@ -157,7 +157,10 @@ def load(key: str, bridge=None, prefer_logs: bool = False, state: dict | None = 
     largest share of the keeper's lag), so it is read once and then kept
     here while the game's clock runs on; a clock that went back (an older
     save reloaded) or jumped far ahead reads the save again."""
-    now = abs_tick(state) if state and isinstance(state.get("date"), dict) else None
+    d = state.get("date") if state else None
+    # (0.105.26) a date that failed in the game ({"error": ...}) is no clock: read the save, cache nothing
+    now = (abs_tick(state) if isinstance(d, dict) and isinstance(d.get("year"), int)
+           and isinstance(d.get("tick"), int) else None)
     c = MEMORY_CACHE.get(key)
     if (THROTTLE_MEMORY_SAVE and c is not None and now is not None and c["prefer_logs"] == prefer_logs
             and 0 <= now - c["tick"] <= MEMORY_REREAD_GAP):

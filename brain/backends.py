@@ -99,12 +99,11 @@ class ApiBackend:
 
     def ask(self, instructions: str, message: str, important: bool = False, effort: dict | None = None) -> Reply:
         model, thinking, answer = pick(self, important, effort)
-        extra = {}
-        if thinking:
-            extra["thinking"] = {"type": "enabled", "budget_tokens": thinking}
+        body, max_tokens = thinking_params(model, thinking, answer)
+        extra = {"extra_body": body} if body else {}
         resp = self.client.messages.create(
             model=model,
-            max_tokens=answer + thinking,
+            max_tokens=max_tokens,
             # The fixed instructions are cached for an hour: later reviews read
             # them at a fraction of the normal price.
             system=[{"type": "text", "text": instructions,
@@ -129,6 +128,36 @@ def pick(backend, important: bool, effort: dict | None) -> tuple[str, int, int]:
              "top": backend.model_top}.get(effort.get("model"), backend.model)
     thinking = int(effort.get("thinking") or 0)
     return model, (thinking if thinking >= 1024 else 0), int(effort.get("answer_tokens") or MAX_ANSWER_TOKENS)
+
+
+ADAPTIVE_HEADROOM = 2048   # (0.105.26) output room for a model's own thinking above the answer
+
+
+def _generation(model: str) -> tuple:
+    """(major, minor) from a model id ("claude-haiku-5-5" -> (5, 5),
+    "claude-3-5-haiku-20241022" -> (3, 5), "claude-sonnet-4-20250514" -> (4, 0));
+    () when it names none (an alias such as "haiku")."""
+    nums = [int(x) for x in str(model).split("-") if x.isdigit() and len(x) <= 2]
+    return tuple((nums + [0])[:2]) if nums else ()
+
+
+def thinking_params(model: str, thinking: int, answer: int) -> tuple[dict, int]:
+    """(0.105.26) The thinking request and max_tokens for one call. Models
+    before 4.6 take the manual {"type": "enabled", "budget_tokens"}; from 4.6
+    on the API wants adaptive thinking steered by effort (manual thinking is
+    refused on the newest models, and Opus 5.5 thinks always): there, no
+    thinking asked means effort "low", and the answer gets headroom so the
+    model's own thinking can't eat it."""
+    gen = _generation(model)
+    if gen and gen < (4, 6):
+        if thinking:
+            return {"thinking": {"type": "enabled", "budget_tokens": thinking}}, answer + thinking
+        return {}, answer
+    effort = "low" if not thinking else "medium" if thinking < 3000 else "high"
+    body = {"output_config": {"effort": effort}}
+    if thinking:
+        body["thinking"] = {"type": "adaptive"}
+    return body, answer + max(thinking, ADAPTIVE_HEADROOM)
 
 
 def _options(cls, extra: dict, **kw):

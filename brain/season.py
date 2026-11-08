@@ -47,6 +47,8 @@ def season_key(state: dict) -> str | None:
     d = _d(state.get("date"))
     if not isinstance(d.get("year"), int) or d.get("season") not in SEASONS:
         return None
+    if "date" in _d(state.get("_errors")) or "error" in d:
+        return None        # (0.105.26) a failed date (normalize's y0 stand-in) is no season
     return f"{d['year']}-{d['season']}"
 
 
@@ -121,6 +123,14 @@ def apply(choice: dict, state: dict, memory, adjust: dict | None = None) -> list
     said = []
     kind, _, what = choice["choice"].partition(":")
     if kind == "raise":
+        # (0.105.26) a hall the Rules tab, Maintain or Mining -100 refuse is no choice: kept to its ways
+        from planner import level_refused
+        why_not = level_refused(state, what)
+        if why_not:
+            kept["choice"] = "keep"
+            said.append(f"the fort keeps to its ways this season (the {what} can't come first: {why_not})")
+            kind = "keep"
+    if kind == "raise":
         said.append(f"this season the {what} comes first among the halls")
     elif kind == "focus":
         bundle, words = FOCUS[what]
@@ -134,7 +144,7 @@ def apply(choice: dict, state: dict, memory, adjust: dict | None = None) -> list
         if isinstance(memory.adjust_at, dict):
             memory.adjust_at.update({k: now for k in new})      # they last a season, as the strategist's do
         said.append(words + " (" + ", ".join(f"{k} {v:g}" for k, v in new.items()) + ")")
-    else:
+    elif not said:
         said.append("the fort keeps to its ways this season")
     if choice.get("name"):
         c["set_piece_name"] = choice["name"]
