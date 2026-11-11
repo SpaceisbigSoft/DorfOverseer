@@ -14,7 +14,7 @@ from digest import _d, _l
 from planner_core import *  # noqa: F401,F403
 from planner_construct import _wings_rule, cavern_wall_style  # (0.105.30) wing walls, the Hermit's cavern walls
 
-__all__ = ["_gate_rules", "_stranded_rule", "split_pieces", "stuck_rows", "note_gate_stuck", "note_gate_stuck_cycle", "WAY_IN_KINDS", "GATE_STUCK_TRIED", "STRANDED_CONFIG", "GATE_PART_RECIPES", "GATE_PART_STUCK_DAYS", "_gate_parts_rule", "_free_gate_levers", "_lever_far_enough", "machinery_wanted", "_lever_hatches_ok", "_link_wanted", "_lever_rule", "_trap_rule", "_gatehouse_rule", "_near_spot", "lone_intruders", "few_ordinary", "few_alert_over", "few_near", "hunted_outside", "ai_gates_shut", "_Rec", "_lockdown", "lockdown_released", "lone_alert_over", "_lockdown_ids", "_lockdown_cap_why", "note_lockdown", "quick_clear", "PASTURE_ACTIONS", "_pasture_hold", "gate_invaders", "main_gate", "_gate_guard_rule", "_gate_dogs_rule"]
+__all__ = ["_gate_rules", "_stranded_rule", "split_pieces", "stuck_rows", "note_gate_stuck", "note_gate_stuck_cycle", "note_second_way", "_second_way_rule", "WAY_IN_KINDS", "GATE_STUCK_TRIED", "STRANDED_CONFIG", "GATE_PART_RECIPES", "GATE_PART_STUCK_DAYS", "_gate_parts_rule", "_free_gate_levers", "_lever_far_enough", "machinery_wanted", "_lever_hatches_ok", "_link_wanted", "_lever_rule", "_trap_rule", "_gatehouse_rule", "_near_spot", "lone_intruders", "few_ordinary", "few_alert_over", "few_near", "hunted_outside", "ai_gates_shut", "_Rec", "_lockdown", "lockdown_released", "lone_alert_over", "_lockdown_ids", "_lockdown_cap_why", "note_lockdown", "quick_clear", "PASTURE_ACTIONS", "_pasture_hold", "gate_invaders", "main_gate", "_gate_guard_rule", "_gate_dogs_rule"]
 
 
 # (0.105.26) citizens stranded outside (lua/ai-gates.lua stranded_citizens)
@@ -40,6 +40,7 @@ AGENDA_THEMES["stranded"] = "bring in the dwarves shut outside"
 WAY_IN_KINDS = ("way_in", "dig_way_in")      # the project dig_way_in starts (the report's projects)
 AGENDA_THEMES["gate_stuck"] = "free the gate the game holds shut"
 AGENDA_THEMES["way_in"] = "dig a way in for the dwarves cut off"
+AGENDA_THEMES["second_way"] = "a second way to the surface"     # (0.105.33)
 GATE_STUCK_TRIED = {1: "its forbid and shut flags cleared and the walk map rebuilt",
                     2: "its lever pulled shut and open again",
                     3: "taken down"}
@@ -336,6 +337,14 @@ def note_gate_stuck(p, r: dict, state: dict, memory, now: int) -> None:
         memory.gate_unstick[str(a["id"])] = rec
         if r.get("ok") is not False:
             memory.rescan_entrances = True
+    elif t == "dig_way_in" and a.get("second") is True:
+        # (0.105.33) the second way to the surface: tried (ok or refused); the
+        # next try waits `second_way_retry_days`
+        sw = dict(_d(getattr(memory, "second_way", None)))
+        sw.update(tick=now, ok=r.get("ok"), project_id=r.get("project_id"),
+                  why=str(r.get("why") or r.get("error") or "")[:160])
+        sw.pop("rescanned", None)
+        memory.second_way = sw
     elif t == "dig_way_in" and all(isinstance(a.get(k), int) for k in ("x", "y", "z")):
         if not isinstance(getattr(memory, "way_in", None), dict):
             memory.way_in = {}
@@ -382,6 +391,96 @@ def note_gate_stuck_cycle(s: dict, memory) -> None:
             memory.gate_unstick[k] = {"prevent": prev}
         else:
             del memory.gate_unstick[k]
+
+
+# (0.105.33) E (8 Nov) had one way in, the founding stair under a hatch: when
+# DF's walk map held that hatch shut, everyone outside was cut off and 64 died
+# of thirst. A fort of `second_way_min_citizens` or more with one surface
+# entrance digs a second one by design (dig_way_in second = true), in peace.
+def note_second_way(s: dict, memory) -> None:
+    """(0.105.33) Citizens ever stranded (cut off with no way back in, or by a
+    gate the game holds shut): remembered for good. The Hermit hold then
+    gets its second way in too. Two surface entrances seen: done for good."""
+    if memory is None:
+        return
+    after = int(PLANNER_CONFIG.get("stranded_after_ticks", 200))
+    for r in _l(_d(s.get("entrances")).get("stranded")):
+        if (isinstance(r, dict) and (r.get("out_ticks") or 0) >= after
+                and (r.get("cause") in ("no_path", "gate_stuck") or r.get("stuck_gate") is not None)):
+            sw = dict(_d(getattr(memory, "second_way", None)))
+            if not sw.get("stranded_ever"):
+                sw["stranded_ever"] = abs_tick(s)
+                memory.second_way = sw
+            break
+    # two ways to the surface seen (an old map of the entrances counts): never again
+    if len(_surface_entrances(s)) >= 2 and not _d(getattr(memory, "second_way", None)).get("done"):
+        sw = dict(_d(getattr(memory, "second_way", None)))
+        sw["done"] = abs_tick(s)
+        memory.second_way = sw
+
+
+def _surface_entrances(s: dict) -> list:
+    return [e for e in _l(_d(s.get("entrances")).get("entrances"))
+            if isinstance(e, dict) and e.get("kind") == "surface"]
+
+
+def _second_way_rule(s: dict, memory, cfg: dict, traits: dict, proposals: list, notes: list) -> None:
+    """(0.105.33) A second way to the surface by design: a fort of
+    `second_way_min_citizens` (30) or more with exactly one surface entrance,
+    no enemy that can reach the dwarves, the watcher not armed and no way in
+    being dug: dig_way_in {second: true} (the bridge picks open ground under
+    the sky 15-40 tiles from the entrance). Not for the Hermit hold's
+    character (hidden_hold or winding_ways, or Outsiders at
+    `second_way_hermit_outsiders` or lower) unless citizens were ever
+    stranded. Refused: again after `second_way_retry_days`; never again once
+    a second surface entrance exists."""
+    import customs
+    sw = dict(_d(getattr(memory, "second_way", None)))
+    if sw.get("done"):
+        return
+    surf = _surface_entrances(s)
+    if len(surf) >= 2:
+        sw["done"] = abs_tick(s)
+        memory.second_way = sw
+        return
+    if len(surf) != 1:
+        return
+    dw = _d(s.get("dwarves"))
+    if int(dw.get("total") or 0) < int(cfg.get("second_way_min_citizens", 30)):
+        return
+    traits = traits or {}
+    try:
+        outsiders = float(traits.get("outsiders", 0) or 0)
+    except (TypeError, ValueError):
+        outsiders = 0.0
+    hermit = (customs.has(traits, "hidden_hold") or customs.has(traits, "winding_ways")
+              or outsiders <= int(cfg.get("second_way_hermit_outsiders", -50)))
+    if hermit and not sw.get("stranded_ever"):
+        return
+    ent = _d(s.get("entrances"))
+    reach = int(_d(s.get("others_on_map")).get("threats_that_can_reach_dwarves") or 0)
+    if reach > 0 or ent.get("armed"):
+        return                              # a new hole in the fort in a siege lets them in
+    if _way_in_doing(s, memory):
+        return
+    now = abs_tick(s)
+    t = sw.get("tick")
+    if isinstance(t, int) and 0 <= now - t < int(cfg.get("second_way_retry_days", 60)) * TICKS_PER_DAY:
+        if sw.get("ok") is True and not sw.get("rescanned"):
+            open_ids = {p.get("id") for p in _l(_d(s.get("projects")).get("open")) if isinstance(p, dict)}
+            if sw.get("project_id") not in open_ids and now - t >= TICKS_PER_DAY:
+                # dug (the project closed): the new stair is mapped as an entrance
+                memory.rescan_entrances = True
+                sw["rescanned"] = now
+                memory.second_way = sw
+        return
+    e = surf[0]
+    off = _d(s.get("map")).get("elevation_offset")
+    off = off if isinstance(off, int) else 0
+    why = ("citizens were stranded outside once; " if hermit else "")
+    proposals.append(Proposal("second_way", {"type": "dig_way_in", "second": True},
+                              f"{why}one way to the surface (x{e.get('x')} y{e.get('y')} elevation "
+                              f"{(e.get('z') or 0) + off}): dig a second, 15-40 tiles off", 9))
 
 
 def _stranded_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None) -> bool:
@@ -478,6 +577,7 @@ def _gate_rules(s: dict, memory, cfg: dict, rules_: dict, any_reach: bool,
     ent = _d(s.get("entrances"))
     now = abs_tick(s)
     letting_in = _stranded_rule(s, cfg, proposals, notes, memory)       # (0.105.26; 0.105.32 memory)
+    note_second_way(s, memory)                                           # (0.105.33)
     age = now - ent["scanned_tick"] if isinstance(ent.get("scanned_tick"), int) else None
     stale = (not ent.get("scanned") or age is None or not 0 <= age < cfg["entrance_scan_ticks"]
              or memory.rescan_entrances
@@ -534,6 +634,7 @@ def _gate_rules(s: dict, memory, cfg: dict, rules_: dict, any_reach: bool,
     if stale:
         return                              # building gates waits for the new map
     _gate_parts_rule(s, ent, es, off, proposals, notes, memory)
+    _second_way_rule(s, memory, cfg, traits or {}, proposals, notes)     # (0.105.33)
     doors_proposed = fortify_proposed = False
     open_wide: list = []
     refused: list = []
