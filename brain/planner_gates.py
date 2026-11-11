@@ -115,6 +115,10 @@ def _gate_stuck_rule(s: dict, memory, cfg: dict, proposals: list, notes: list, o
     step_ticks = int(cfg.get("gate_stuck_step_hours", 6)) * hour
     near_d = cfg.get("stranded_danger_near", 30)
     scanned = ent.get("scanned_tick") if isinstance(ent.get("scanned_tick"), int) else None
+    # (merge32 review) a siege: the lever pulled shut and open, the gate taken
+    # down, only once nothing can reach the dwarves and the watcher is down
+    reach = int(_d(s.get("others_on_map")).get("threats_that_can_reach_dwarves") or 0)
+    siege = reach > 0 or bool(ent.get("armed"))
     acting = False
     for pid in list(dict.fromkeys(list(rows_by) + list(pieces))):
         pc, e = pieces.get(pid, ({}, {}))
@@ -150,6 +154,13 @@ def _gate_stuck_rule(s: dict, memory, cfg: dict, proposals: list, notes: list, o
                 # player's own piece): no more steps; the way in is dug
                 # instead (_way_in_rule, gate_exhausted)
                 step = None
+            elif last_step >= 2 and (rec.get("cavern") or e.get("kind") == "cavern"):
+                # (merge32 review) a cavern's way: never pulled shut and open
+                # nor taken down (the bridge refuses it): the player's
+                step = None
+            elif (rec.get("ok") is False and last_step == 2 and "no lever" in str(rec.get("done") or "")
+                  and since >= step_ticks):
+                step = 3                         # (merge32 review) an older bridge's "no lever" refusal: on to step 3
             elif rec.get("ok") is False and since >= step_ticks:
                 step = last_step                 # refused (a reason given): the same step again
             elif still and since >= step_ticks:
@@ -157,10 +168,16 @@ def _gate_stuck_rule(s: dict, memory, cfg: dict, proposals: list, notes: list, o
             why = (f"{len(rows)} citizen(s) can't get back in ({', '.join(str(r.get('name') or 'a dwarf') for r in rows[:3])}"
                    + (f" and {len(rows) - 3} more" if len(rows) > 3 else "")
                    + f"): {name} reads open, but the game's walk map holds it shut")
+            if step in (2, 3) and (e.get("kind") == "cavern"):
+                step = None                      # (merge32 review) a cavern's: step 1 only
+            if step in (2, 3) and siege:
+                notes.append(f"{name} still holds {len(rows)} citizen(s) out, but "
+                             + (f"{reach} enemy(ies) can reach the dwarves" if reach else "the gate watcher is armed")
+                             + f": step {step} ({GATE_STUCK_TRIED[step]}) waits until that is over")
+                step = None
         else:
             prev = rec.get("prevent") if isinstance(rec.get("prevent"), int) else None
             days = int(cfg.get("gate_stuck_prevent_days", 1))
-            reach = int(_d(s.get("others_on_map")).get("threats_that_can_reach_dwarves") or 0)
             if (not reach and not ent.get("armed") and (prev is None or not 0 <= now - prev < days * TICKS_PER_DAY)
                     and (since is None or since >= step_ticks)):
                 step = 1
@@ -207,12 +224,31 @@ def _way_in_doing(s: dict, memory) -> str:
     return ""
 
 
+def _way_in_area(memory, x: int, y: int, z: int, cfg: dict) -> list:
+    """(merge32 review) The way-in records (spot text, record) in the area
+    of (x, y, z): within `way_in_area_tiles` across and 10 levels."""
+    area = int(cfg.get("way_in_area_tiles", 20))
+    out = []
+    for sp, v in _d(getattr(memory, "way_in", None)).items():
+        try:
+            vx, vy, vz = (int(c) for c in str(sp).split(","))
+        except ValueError:
+            continue
+        v = _d(v)
+        if isinstance(v.get("tick"), int) and max(abs(vx - x), abs(vy - y)) <= area and abs(vz - z) <= 10:
+            out.append((sp, v))
+    return out
+
+
 def _way_in_rule(s: dict, memory, cfg: dict, proposals: list, notes: list, off: int = 0) -> str:
     """(0.105.32) Citizens cut off with no gate to blame (no split explains
     them), out `way_in_after_days` or more, at least `way_in_min_stranded`,
     not in a cavern, no enemy near: dig_way_in at their spot (the median of
-    where they stand), once a `way_in_repeat_days` an area; never while one
-    is being dug. The Needs you stays (_stranded_rule): the words for it
+    where they stand); never while one is being dug, nor while enemies can
+    reach the dwarves or the watcher is armed; one dwarf alone after
+    `way_in_single_days`; refused, again in that area after 1, 2, 4... days,
+    `way_in_max_refusals` at most; one dug there and they're still out: no
+    more there (merge32 review). The Needs you stays (_stranded_rule): the words for it
     when one is proposed, else ''."""
     ent = _d(s.get("entrances"))
     done = gate_exhausted(s, memory, cfg)
@@ -230,6 +266,18 @@ def _way_in_rule(s: dict, memory, cfg: dict, proposals: list, notes: list, off: 
     near_d = cfg.get("stranded_danger_near", 30)
     if any(_row_danger(r) is not None and _row_danger(r) <= near_d for r in rows):
         return ""                         # _stranded_rule says the enemy is near
+    # (merge32 review) one dwarf alone (a ledge, a tree) waits longer: they
+    # may still find their own way
+    if len(rows) == 1 and (rows[0].get("out_ticks") or 0) < int(cfg.get("way_in_single_days", 3)) * TICKS_PER_DAY \
+            and id(rows[0]) not in given_up:
+        return ""
+    # (merge32 review) not during a siege: a new hole in the fort lets them in
+    reach = int(_d(s.get("others_on_map")).get("threats_that_can_reach_dwarves") or 0)
+    if reach > 0 or ent.get("armed"):
+        notes.append(f"{len(rows)} citizen(s) cut off outside, but "
+                     + (f"{reach} enemy(ies) can reach the dwarves" if reach else "the gate watcher is armed")
+                     + ": no way in is dug until that is over")
+        return ""
     if _way_in_doing(s, memory):
         return ""
     import statistics
@@ -237,18 +285,28 @@ def _way_in_rule(s: dict, memory, cfg: dict, proposals: list, notes: list, off: 
     now = abs_tick(s)
     if not isinstance(getattr(memory, "way_in", None), dict):
         memory.way_in = {}
-    area = int(cfg.get("way_in_area_tiles", 20))
-    for sp, v in memory.way_in.items():
-        try:
-            vx, vy, vz = (int(c) for c in str(sp).split(","))
-        except ValueError:
-            continue
-        v = _d(v)
-        if not isinstance(v.get("tick"), int) or max(abs(vx - x), abs(vy - y)) > area or abs(vz - z) > 10:
-            continue
-        wait = (TICKS_PER_DAY if v.get("ok") is False else int(cfg.get("way_in_repeat_days", 7)) * TICKS_PER_DAY)
-        if 0 <= now - v["tick"] < wait:
+    open_ids = {p.get("id") for p in _l(_d(s.get("projects")).get("open")) if isinstance(p, dict)}
+    refused, last_refused = 0, None
+    for sp, v in _way_in_area(memory, x, y, z, cfg):
+        if v.get("ok") is False:
+            refused = max(refused, int(v.get("refusals") or 1))
+            last_refused = max(last_refused or v["tick"], v["tick"])
+        elif v.get("ok") is True:
+            if v.get("project_id") in open_ids or 0 <= now - v["tick"] < TICKS_PER_DAY:
+                return ""                 # being dug (or not in the report yet)
+            # (merge32 review) one dug here and they're still out: no more
+            # digging here (the next would fail the same way); the player's
+            notes.append(f"a way in was already dug near x{x} y{y} elevation {z + off} and "
+                         f"{len(rows)} citizen(s) are still cut off there: the AI digs no more there")
             return ""
+    # (merge32 review) refused: again after 1, 2, 4, 8 days; after
+    # `way_in_max_refusals` only the Needs you
+    if refused >= int(cfg.get("way_in_max_refusals", 3)):
+        notes.append(f"a way in near x{x} y{y} elevation {z + off} was refused {refused} time(s): "
+                     "the AI stops trying there")
+        return ""
+    if refused and last_refused is not None and 0 <= now - last_refused < min(8, 2 ** (refused - 1)) * TICKS_PER_DAY:
+        return ""
     days = max(int(r.get("out_days") or 0) for r in rows)
     proposals.append(Proposal("way_in", {"type": "dig_way_in", "x": x, "y": y, "z": z},
                               f"{len(rows)} citizen(s) cut off outside for {days} day(s) with no gate to blame "
@@ -271,6 +329,8 @@ def note_gate_stuck(p, r: dict, state: dict, memory, now: int) -> None:
         step = a.get("step") if isinstance(a.get("step"), int) else 1
         rec.update(step=step, tick=now, ok=r.get("ok"), split_after=r.get("split_after"),
                    done=str(r.get("done") or r.get("error") or "")[:160])
+        if r.get("cavern"):
+            rec["cavern"] = True                 # (merge32 review) a cavern's way: no step 2 or 3 again
         if step == 1:
             rec["prevent"] = now
         memory.gate_unstick[str(a["id"])] = rec
@@ -279,13 +339,22 @@ def note_gate_stuck(p, r: dict, state: dict, memory, now: int) -> None:
     elif t == "dig_way_in" and all(isinstance(a.get(k), int) for k in ("x", "y", "z")):
         if not isinstance(getattr(memory, "way_in", None), dict):
             memory.way_in = {}
-        memory.way_in[f"{a['x']},{a['y']},{a['z']}"] = {
-            "tick": now, "ok": r.get("ok"), "project_id": r.get("project_id"),
-            "why": str(r.get("why") or r.get("error") or "")[:160]}
+        # (merge32 review) refusals counted over the area (the back-off)
+        before = _way_in_area(memory, a["x"], a["y"], a["z"], PLANNER_CONFIG)
+        n = max([int(_d(v).get("refusals") or 0) for _sp, v in before] + [0])
+        rec = {"tick": now, "ok": r.get("ok"), "project_id": r.get("project_id"),
+               "why": str(r.get("why") or r.get("error") or "")[:160]}
+        if r.get("ok") is False:
+            rec["refusals"] = n + 1
+        for sp, _v in before:
+            if _d(_v).get("ok") is False:
+                del memory.way_in[sp]             # the area's count is the new record's
+        memory.way_in[f"{a['x']},{a['y']},{a['z']}"] = rec
         if r.get("ok") is True:
             memory.rescan_entrances = True    # the new stair is an entrance
+        # (kept while anyone is cut off: note_gate_stuck_cycle forgets them once nobody is)
         for k in [k for k, v in memory.way_in.items()
-                  if not isinstance(_d(v).get("tick"), int) or not 0 <= now - v["tick"] < 28 * TICKS_PER_DAY]:
+                  if not isinstance(_d(v).get("tick"), int) or now < v["tick"]]:
             del memory.way_in[k]
 
 
@@ -293,9 +362,14 @@ def note_gate_stuck_cycle(s: dict, memory) -> None:
     """(0.105.32) A piece no longer split and shutting nobody out: its
     steps forgotten (the day's prevention mark kept, so a split that comes
     and goes isn't stepped every scan)."""
+    ent = _d(s.get("entrances"))
+    # (merge32 review) nobody cut off any more: the way-in records (their
+    # back-off, the "dug here already") forgotten
+    if (ent.get("scanned") and isinstance(getattr(memory, "way_in", None), dict) and memory.way_in
+            and not [r for r in _l(ent.get("stranded")) if isinstance(r, dict)]):
+        memory.way_in = {}
     if not isinstance(getattr(memory, "gate_unstick", None), dict) or not memory.gate_unstick:
         return
-    ent = _d(s.get("entrances"))
     if not ent.get("scanned"):
         return
     live = {str(k) for k in split_pieces(s)} | {str(k) for k in stuck_rows(s)}

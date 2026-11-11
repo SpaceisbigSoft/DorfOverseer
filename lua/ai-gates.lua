@@ -4660,6 +4660,49 @@ function unstick_gate(id, step, dry_run)
         return {ok = false, rejected = true, step = step, enemy_near = near,
                 error = ('an enemy is in sight %d tiles from the gate: it is left as it is until they are gone'):format(near)}
     end
+    -- (merge32 review) the split read again now, not trusted from the scan:
+    -- a piece whose two sides walk together is left alone (no pull, no
+    -- taking down)
+    local split_now, sa, sc, sga, sgc = sides_now(g.kind, x, y, z)
+    if split_now ~= true then
+        return {ok = false, rejected = true, step = step, split_after = split_now,
+                error = split_now == false and 'it is not stuck now (both sides are one walk group again): left as it is'
+                    or 'its two sides can\'t be read now: left as it is'}
+    end
+    -- (merge32 review) a cavern's way: never pulled open and shut or taken
+    -- down (a hatch the AI put on a cavern's way keeps what's down there out)
+    local oki, interior = pcall(fort_interior)
+    local og = side_roles(e, g.kind, sa, sc, sga, sgc, oki and interior and interior.group or nil)
+    local out_tile = og == sga and sa or sc
+    local cavern = e.kind == 'cavern' or on_cavern_tile(out_tile)
+    if cavern and step >= 2 then
+        return {ok = false, rejected = true, step = step, cavern = true,
+                error = 'this gate is on a cavern\'s way: the AI does not pull it open and shut or take it down; '
+                    .. 'see to it by hand'}
+    end
+    -- (merge32 review) the gate watcher's: an entrance it holds shut isn't
+    -- opened by a pull; nothing is taken down while it is armed or an invader
+    -- is in sight
+    local held = GATES.closed and GATES.closed[e.id] and true or false
+    local okf, locked = pcall(function() return b.door_flags.forbidden end)
+    if held and (step == 2 or (step == 1 and (door_shut(b) or (okf and locked)))) then
+        return {ok = false, rejected = true, step = step, watcher = true,
+                error = 'the gate watcher holds this entrance shut (danger near): it is not pulled until the watcher opens it'}
+    end
+    if step == 1 and GATES.armed and door_shut(b) then
+        return {ok = false, rejected = true, step = step, watcher = true,
+                error = 'the gate watcher is armed and this gate reads shut: it is not opened until the alarm is over'}
+    end
+    if step == 3 then
+        local okv, vis = pcall(visible_dangers)
+        local invader = false
+        for _, d in ipairs(okv and vis or {}) do if d.invader then invader = true end end
+        if GATES.armed or invader then
+            return {ok = false, rejected = true, step = step, watcher = true,
+                    error = GATES.armed and 'the gate watcher is armed: no gate is taken down until the alarm is over'
+                        or 'an invader is in sight on the map: no gate is taken down until they are gone'}
+        end
+    end
     local before = piece_flags(b)
     local out = {ok = true, step = step, id = id, flags_before = before, dry_run = dry_run or nil}
     local lever = g.drive_lever
@@ -4699,8 +4742,13 @@ function unstick_gate(id, step, dry_run)
         finish_step()
     elseif step == 2 then
         if not lever then
-            return {ok = false, rejected = true, step = step, flags_before = before,
-                    error = 'no lever of its own works this gate: nothing to pull (step 3 takes it down)'}
+            -- (merge32 review) nothing to pull: the step done as nothing, so
+            -- the brain goes on to step 3 (a refusal was asked again for ever)
+            out.done = 'no lever: skipped'
+            out.split_after = split_now
+            out.skipped = true
+            if not dry_run then out.split_after = sides_now(g.kind, x, y, z); out.flags_after = before end
+            return out
         end
         if dry_run then
             table.insert(did, ('would pull its lever %d twice at once (shut, then open)'):format(lever))
@@ -4717,10 +4765,6 @@ function unstick_gate(id, step, dry_run)
             return {ok = false, rejected = true, step = step, flags_before = before,
                     error = 'this gate is the player\'s own (no "AI gate" lever works it): the AI does not take it down; '
                         .. 'take it down by hand, or name its lever "AI gate"'}
-        end
-        if sides_now(g.kind, x, y, z) == false then
-            return {ok = false, rejected = true, step = step, flags_before = before, split_after = false,
-                    error = 'it is not stuck now (both sides are one walk group again): left standing'}
         end
         local okj, going = pcall(function()
             for _, j in ipairs(b.jobs or {}) do

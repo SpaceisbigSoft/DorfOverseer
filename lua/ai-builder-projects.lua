@@ -1276,6 +1276,7 @@ WAY_IN_TUNNEL = 8         -- longest tunnel on the fort's level to the column
 WAY_IN_ZSPAN = 8          -- the stranded ground's end of the column: this many levels up or down
 WAY_IN_PRIORITY = '1'     -- dig priority: they are dying of thirst out there
 WAY_IN_SECONDS = 2        -- the search stops here
+WAY_IN_INVADER_NEAR = 30  -- (merge32 review) no way in dug with an invader in sight this near its ends
 
 local WAY_IN_SIDES = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}}
 WAY_IN_NO_GROUND = 'no open ground of theirs to come up (or down) to'
@@ -1455,6 +1456,12 @@ function way_in_plan_and_dig(params, now, dry_run)
     end
     if here.feature then
         return refuse('that spot is in a cavern: no way in is dug from a cavern (it would open the fort to it)')
+    end
+    -- (merge32 review) not during a siege: a new hole in the fort while the
+    -- gate watcher has it shut lets the enemy in by it
+    local GM = way_in_gates()
+    if GM and type(GM.GATES) == 'table' and GM.GATES.armed then
+        return refuse('the gate watcher is armed (enemies about): no new way in is dug until the alarm is over')
     end
     local fort, fwhy = way_in_fort()
     if not fort then return refuse(fwhy) end
@@ -1658,6 +1665,21 @@ function way_in_plan_and_dig(params, now, dry_run)
         if near_gate > 0 then table.insert(bits, ('the nearer spots are within %d tiles of the gate'):format(WAY_IN_GATE_APART)) end
         return refuse(('no safe way in found near x%d y%d z%d%s%s'):format(sx, sy, ez(sz),
             #bits > 0 and ': ' or '', table.concat(bits, '; ')) .. (timed_out and ' (search cut short)' or ''))
+    end
+    -- (merge32 review) an invader in sight near either end: not now
+    if GM and type(GM.visible_dangers) == 'function' then
+        local okv, vis = pcall(GM.visible_dangers)
+        for _, d in ipairs(okv and type(vis) == 'table' and vis or {}) do
+            if d.invader and d.pos then
+                for _, e in ipairs({best.from, best.to}) do
+                    local dd = e and math.max(math.abs(d.pos.x - e.x), math.abs(d.pos.y - e.y), math.abs(d.pos.z - e.z))
+                    if dd and dd <= WAY_IN_INVADER_NEAR then
+                        return refuse(('an invader is in sight %d tiles from where the way in would come out: '
+                            .. 'not dug until they are gone'):format(dd))
+                    end
+                end
+            end
+        end
     end
     -- the keys, at the way-in's priority: each tile one quickfort cell
     local pri = WAY_IN_PRIORITY

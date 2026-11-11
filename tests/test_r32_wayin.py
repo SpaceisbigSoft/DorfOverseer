@@ -379,6 +379,30 @@ def _():
     assert designated() == [] and projects() == []
 
 
+@test("(merge32 review) way in: not while the gate watcher is armed, nor with an invader in sight within 30 tiles of its ends")
+def _():
+    W.GATES.armed = True
+    r = way_in()
+    assert not r.ok and r.rejected and "watcher is armed" in r.error and designated() == [], dict(r)
+    W.GATES.armed = False
+    gm = B.way_in_gates()
+    try:
+        # an invader 20 tiles from the column's top (41, 25, 30): refused, nothing designated
+        gm.visible_dangers = LUA.eval("function() return {{pos = {x = 61, y = 25, z = 30}, invader = true}} end")
+        r = way_in()
+        assert not r.ok and r.rejected and "invader" in r.error and designated() == [] and projects() == [], dict(r)
+        r = way_in(dry=True)
+        assert not r.ok and "invader" in r.error, dict(r)
+        # a beast that is no invader, or an invader far off: dug
+        gm.visible_dangers = LUA.eval("function() return {{pos = {x = 61, y = 25, z = 30}, invader = false}} end")
+        assert way_in(dry=True).ok
+        gm.visible_dangers = LUA.eval("function() return {{pos = {x = 41, y = 63, z = 39}, invader = true}} end")
+        r = way_in()
+        assert r.ok and r.project_id == 1, dict(r)
+    finally:
+        gm.visible_dangers = None
+
+
 @test("way in: with no gate scan, the founding stair's walk group is the fort")
 def _():
     W.use_gates = False

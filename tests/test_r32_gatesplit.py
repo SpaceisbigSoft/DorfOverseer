@@ -220,11 +220,12 @@ def _():
     r = E.unstick_gate(7, 2, False)
     assert r.ok and lst(G.pulled) == [137, 137] and r.pulls == 2, r.done
     assert G.blds[7].door_flags.closed is False and r.split_after is False
-    # no lever of its own: refused
+    # (merge32 review) no lever of its own: done as nothing (the brain goes on to step 3)
     E, G = rig()
     E.GATES.entrances[1].equipment[1].drive_lever = None
     r = E.unstick_gate(7, 2, False)
-    assert not r.ok and r.rejected and "no lever" in r.error
+    assert r.ok and not r.rejected and r.done == "no lever: skipped" and r.split_after is True, r.done
+    assert len(G.pulled) == 0
 
 
 @test("unstick step 3: the AI's hatch taken down, the spot kept (and saved); dry run changes nothing")
@@ -332,6 +333,65 @@ def _():
     G.blds[7].door_flags.closed = True
     E.GATES.split_seen = None
     assert E.note_split_after_open(t({"kind": "hatch"}), G.blds[7]) is False
+
+
+@test("(merge32 review) a cavern's way: step 2's pulls and step 3's taking down refused; step 1 still goes")
+def _():
+    E, G = rig()
+    E.GATES.entrances[1].kind = "cavern"
+    for step in (2, 3):
+        r = E.unstick_gate(7, step, False)
+        assert not r.ok and r.rejected and r.cavern and "cavern" in r.error, r.error
+    assert len(G.pulled) == 0 and len(G.removed) == 0
+    assert E.unstick_gate(7, 1, False).ok
+    # a surface entrance whose outside side is a cavern's tile: the same
+    E, G = rig()
+    E.dfhack.maps.getTileFlags = LUA.eval(
+        "function(x, y, z) return {feature_global = (z == 171)} end")
+    r = E.unstick_gate(7, 3, False)
+    assert not r.ok and r.cavern and len(G.removed) == 0, r.error
+
+
+@test("(merge32 review) the split read again: a piece not split now is left alone at every step")
+def _():
+    E, G = rig(closed=True)
+    G.groups["108,149,171"] = 1702
+    for step in (1, 2, 3):
+        r = E.unstick_gate(7, step, False)
+        assert not r.ok and r.rejected and "not stuck now" in r.error and r.split_after is False, r.error
+    assert len(G.pulled) == 0 and len(G.removed) == 0 and G.blds[7].door_flags.closed is True
+    E, G = rig()
+    G.groups["108,149,170"] = 0                 # a side unread
+    r = E.unstick_gate(7, 1, False)
+    assert not r.ok and r.rejected and len(G.pulled) == 0
+
+
+@test("(merge32 review) the watcher: an entrance it holds shut isn't pulled; nothing taken down while armed or an invader is in sight")
+def _():
+    t = LUA.table_from
+    E, G = rig(closed=True)
+    E.GATES.closed = t({1: True})
+    for step in (1, 2):
+        r = E.unstick_gate(7, step, False)
+        assert not r.ok and r.rejected and r.watcher and "watcher" in r.error, r.error
+    assert len(G.pulled) == 0 and G.blds[7].door_flags.closed is True
+    E, G = rig(closed=True)
+    E.GATES.armed = True                         # armed, the hatch reads shut: no pull
+    r = E.unstick_gate(7, 1, False)
+    assert not r.ok and r.watcher and len(G.pulled) == 0, r.error
+    E, G = rig()
+    E.GATES.armed = True                         # armed, the hatch open: step 1 only asks the walk map again
+    r = E.unstick_gate(7, 1, False)
+    assert r.ok and len(G.pulled) == 0, r.error
+    r = E.unstick_gate(7, 3, False)
+    assert not r.ok and r.watcher and "armed" in r.error and len(G.removed) == 0, r.error
+    E, G = rig()                                 # not armed, an invader far off in sight
+    E.dfhack.units.isInvader = LUA.eval("function(u) return u.invader == true end")
+    G.units[1] = t({"id": 9, "danger": True, "invader": True, "pos": t({"x": 170, "y": 149, "z": 171}), "flags1": t({})})
+    r = E.unstick_gate(7, 3, False)
+    assert not r.ok and r.watcher and "invader" in r.error and len(G.removed) == 0, r.error
+    G.units[1].invader = False                   # a far beast, no invader: it goes
+    assert E.unstick_gate(7, 3, False).ok and lst(G.removed) == [7]
 
 
 @test("bridge: unstick_gate is an action, its dry run allowed")

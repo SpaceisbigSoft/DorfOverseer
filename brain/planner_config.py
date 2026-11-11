@@ -727,6 +727,9 @@ PLANNER_CONFIG = {
     # ...and citizens cut off with no gate to blame (no split): dig_way_in
     "way_in_after_days": 2,             # ...once they've been out this many game days
     "way_in_min_stranded": 1,           # ...and at least this many are
-    "way_in_repeat_days": 7,            # ...one an area this often at most (refused: again in a day)
+    # (merge32 review) ...refused: again in an area after 1, 2, 4 days, and after this many refusals only the Needs you;
+    # one dug there and they're still out: no more there
+    "way_in_max_refusals": 3,
+    "way_in_single_days": 3,            # ...one dwarf alone: once out this many game days
     "way_in_area_tiles": 20,            # ...an "area": within this many tiles of the last one
 }

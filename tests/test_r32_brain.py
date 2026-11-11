@@ -253,22 +253,30 @@ def _():
     assert not acts(props, "way_in") and any("enemy is 5 tiles away" in n for n in notes), notes
 
 
-@test("dig_way_in: once; none while it is dug; again only 7 days on in the same area")
+@test("dig_way_in: once; none while it is dug; done and they're still out: never again there, only the Needs you")
 def _():
     m = Memory()
     s = cut_off()
     w = acts(cycle(s, m)[0], "way_in")[0]
     record([(w, {"ok": True, "project_id": 55, "from": {}, "to": {}, "tiles": 12})], s, m)
     assert m.way_in["101,150,171"]["project_id"] == 55
+    assert not acts(cycle(later(s, 600), m)[0], "way_in")     # (not in the report yet)
     s2 = later(s, 1200)
     s2["projects"]["open"] = [{"id": 55, "kind": "way_in", "phase": "dig"}]
     props, notes = cycle(s2, m)
     assert not acts(props, "way_in"), props
     assert any("project #55" in n for n in needs_you(notes)), notes
-    s3 = later(s, 3 * 1200)                                   # project done, still out: under 7 days
-    assert not acts(cycle(s3, m)[0], "way_in")
-    s4 = later(s, 8 * 1200)
-    assert acts(cycle(s4, m)[0], "way_in")
+    # (merge32 review) the project done, still out: no more digging there, ever
+    for d in (3, 8, 20, 40):
+        props, notes = cycle(later(s, d * 1200), m)
+        assert not acts(props, "way_in"), (d, props)
+        assert any("digs no more there" in n for n in notes), notes
+        assert [n for n in needs_you(notes) if "dig or build them a way in" in n], notes
+    # everyone home: forgotten (a new stranding there may be dug for)
+    home = later(fort(split=False, stranded=0), 0)
+    home["date"]["tick"] = later(s, 41 * 1200)["date"]["tick"]
+    cycle(home, m)
+    assert m.way_in == {}, m.way_in
     # a refusal: again a day on, not a week
     m2 = Memory()
     w = acts(cycle(s, m2)[0], "way_in")[0]
@@ -341,4 +349,115 @@ def _():
     assert "GATE_SPLIT" not in digest.digest(copy.deepcopy(BASE))
 
 
-finish()
+@test("(merge32 review) a siege (threats that can reach the dwarves, or the watcher armed): steps 2 and 3 and the way in held, said why; step 1 still goes")
+def _():
+    for kind in ("reach", "armed"):
+        def siege(st):
+            if kind == "reach":
+                st["others_on_map"]["threats_that_can_reach_dwarves"] = 8
+            else:
+                st["entrances"]["armed"] = True
+            return st
+        s = siege(fort(danger_near=40, gate_danger=35))
+        props = cycle(s, Memory())[0]
+        u = acts(props, "gate_stuck")
+        assert len(u) == 1 and u[0].action["step"] == 1, (kind, u)
+        for st in (2, 3):
+            m = Memory()
+            m.gate_unstick = {"7": {"step": st - 1, "tick": planner_core.abs_tick(s) - 7 * HOUR, "ok": True,
+                                    "split_after": True}}
+            props, notes = cycle(s, m)
+            assert not acts(props, "gate_stuck"), (kind, st, props)
+            assert any(f"step {st}" in n and "waits until that is over" in n for n in notes), notes
+        # a way in during the siege: not dug
+        s = siege(cut_off(days=3, danger_near=40))
+        props, notes = cycle(s, Memory())
+        assert not acts(props, "way_in"), (kind, props)
+        assert any("no way in is dug until that is over" in n for n in notes), notes
+    # the siege over: step 2 goes
+    s = fort(danger_near=40)
+    m = Memory()
+    m.gate_unstick = {"7": {"step": 1, "tick": planner_core.abs_tick(s) - 7 * HOUR, "ok": True, "split_after": True}}
+    assert acts(cycle(s, m)[0], "gate_stuck")[0].action["step"] == 2
+
+
+@test("(merge32 review) step 2 with no lever: answered done ('no lever: skipped'), step 3 next; an older bridge's refusal too")
+def _():
+    for answer_kw in ({"ok": True, "done": "no lever: skipped", "split_after": True},
+                      {"ok": False, "rejected": True, "error": "no lever of its own works this gate: nothing to pull"}):
+        m = Memory()
+        s = fort()
+        answer(s, m, acts(cycle(s, m)[0], "gate_stuck")[0], split_after=True)
+        s = later(s, 6 * HOUR, rescan=True)
+        u = acts(cycle(s, m)[0], "gate_stuck")
+        assert u[0].action["step"] == 2, u
+        answer(s, m, u[0], **answer_kw)
+        s = later(s, 6 * HOUR, rescan=True)
+        u = acts(cycle(s, m)[0], "gate_stuck")
+        assert len(u) == 1 and u[0].action["step"] == 3, (answer_kw, u)
+
+
+@test("(merge32 review) a cavern's gate: step 1 only (the bridge won't pull or take it down); the Needs you stays")
+def _():
+    m = Memory()
+    s = fort()
+    s["entrances"]["entrances"][0]["kind"] = "cavern"
+    answer(s, m, acts(cycle(s, m)[0], "gate_stuck")[0], split_after=True)
+    for k in (1, 2, 4):
+        props, notes = cycle(later(s, 6 * k * HOUR + 10, rescan=True), m)
+        assert not acts(props, "gate_stuck"), props
+        assert [n for n in needs_you(notes) if "building 7" in n], notes
+    # a surface entrance the bridge answered "a cavern's way": no step 2 again
+    m = Memory()
+    s = fort()
+    m.gate_unstick = {"7": {"step": 2, "tick": planner_core.abs_tick(s) - 7 * HOUR, "ok": False, "cavern": True,
+                            "done": "this gate is on a cavern's way"}}
+    assert not acts(cycle(s, m)[0], "gate_stuck")
+    m = Memory()
+    record([(Proposal("gate_stuck", {"type": "unstick_gate", "id": 7, "step": 2}, "x", -1),
+             {"ok": False, "rejected": True, "cavern": True, "error": "a cavern's way"})], s, m)
+    assert m.gate_unstick["7"]["cavern"] is True
+
+
+@test("(merge32 review) a refused way in backs off per area: 1, then 2 days; after 3 refusals only the Needs you")
+def _():
+    m = Memory()
+    s = cut_off(days=3)
+    t0 = 0
+    tries = []
+    for h in range(0, 12 * 24, 6):
+        sx = later(s, h * HOUR)
+        props, notes = cycle(sx, m)
+        for w in acts(props, "way_in"):
+            tries.append(h // 24)
+            record([(w, {"ok": False, "rejected": True, "error": "no safe way in found"})], sx, m)
+    assert tries == [0, 1, 3], tries
+    assert len(m.way_in) == 1 and list(m.way_in.values())[0]["refusals"] == 3, m.way_in
+    props, notes = cycle(later(s, 30 * 1200), m)
+    assert not acts(props, "way_in")
+    assert any("refused 3 time(s)" in n for n in notes), notes
+    assert [n for n in needs_you(notes) if "dig or build them a way in" in n], notes
+    # another area, far off: its own count
+    s2 = cut_off(days=3)
+    for r in s2["entrances"]["stranded"]:
+        r["x"] += 60
+    assert acts(cycle(later(s2, 30 * 1200), m)[0], "way_in")
+
+
+@test("(merge32 review) one dwarf alone: a way in only after way_in_single_days (3) out")
+def _():
+    assert PLANNER_CONFIG["way_in_single_days"] == 3
+    assert not acts(cycle(cut_off(n=1, days=2), Memory())[0], "way_in")
+    assert acts(cycle(cut_off(n=1, days=3), Memory())[0], "way_in")
+    assert acts(cycle(cut_off(n=2, days=2), Memory())[0], "way_in")
+
+
+@test("(merge32 review) the panel's words: one branch for unstick_gate")
+def _():
+    src = (ROOT / "brain" / "overseer.py").read_text(encoding="utf-8")
+    assert src.count('if t == "unstick_gate"') == 1
+    assert overseer.short({"type": "unstick_gate", "id": 7, "step": 3}) == "free a gate the game holds shut (step 3 of 3)"
+
+
+if __name__ == "__main__":
+    finish()
