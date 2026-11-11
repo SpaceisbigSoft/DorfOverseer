@@ -41,7 +41,7 @@ from planner_building import *  # noqa: E402,F401,F403  (0.104.83: the planner i
 from planner_care import _doctor_post_rule, _infection_rule, _offices_refill_rule, _traction_rest_rule  # noqa: E402  (0.104.168)
 from planner_water import _waterworks_rule  # noqa: E402  (0.105.0) moat, pumps, irrigation, magma workshops
 from planner_homes import *  # noqa: E402,F401,F403  (0.104.168: homes and households)
-from planner_threats import _threat_rules, unseen_intrusion  # noqa: E402  (0.105.0 round 3: threats answered)
+from planner_threats import _threat_rules, unseen_intrusion, alarm_held  # noqa: E402  (0.105.0 round 3; 0.105.36)
 from planner_world import (_contact_rule, _export_rule, _hostile_trade_filter, _meeting_answer_rule,  # noqa: E402
                            _messenger_rule, _world_notes, note_world)  # (0.105.0: the world outside, 12b and 13b)
 from planner_construct import (_hall_rule, _construction_blocks_rule,  # noqa: E402  (0.105.30) construction
@@ -50,41 +50,11 @@ from planner_army import (_army_gear_rule, _quiver_rule, _bolts_rule, _flask_rul
                           _shelter_squads_rule, _gate_cut_rule)
 
 
-# (0.105.35) Nothing waits for the player: the AI shelter the game refused
-# twice is tried again, every SHELTER_RETRY_DAYS (SHELTER_RETRY_THREAT_DAYS
-# while a threat can reach the dwarves), not left to the player for good.
-SHELTER_RETRY_DAYS = 28
-SHELTER_RETRY_THREAT_DAYS = 3
+# (0.105.36) SHELTER_RETRY_DAYS, _shelter_due and _no_shelter_note moved to
+# planner_military, beside no_shelter, so every caller paces the shelter alike
 SHOPS_RETRY_DAYS = 56          # (0.105.35) a workshops level started twice and not seen built: once more after this
 SHOPS_RETRY_MAX = 3            # (v35 fix) and so at most this many times
-
-
-def _shelter_due(s: dict, memory, threat: bool = False) -> bool:
-    """(0.105.35) The AI shelter may be set up now: its first two tries, then
-    again after a wait. The Rules switch (alert_shelter off) is the player's."""
-    if _shelter_possible(s, memory):
-        return True
-    if s.get("civ_alert_ready") is not False or not player_rules(s)["alert_shelter"]:
-        return False
-    last = getattr(memory, "shelter_tick", None)
-    if not isinstance(last, int):
-        return True                     # (tried before the tick was kept: once more)
-    wait = (SHELTER_RETRY_THREAT_DAYS if threat else SHELTER_RETRY_DAYS) * TICKS_PER_DAY
-    return not 0 <= abs_tick(s) - last < wait
-
-
-def _no_shelter_note(s: dict, memory, what: str) -> str:
-    """(0.105.35) Said (not Needs you) when no alarm can sound: what the AI
-    does meanwhile."""
-    meanwhile = "meanwhile the gates close when an enemy comes near and the squads answer by the Rules"
-    if not player_rules(s)["alert_shelter"]:
-        return (f"{what}, but there is no civilian-alert burrow and the AI shelter is off on the Rules tab, "
-                f"so no alarm sounds: {meanwhile}")
-    last = getattr(memory, "shelter_tick", None)
-    left = (max(1, -(-(last + SHELTER_RETRY_THREAT_DAYS * TICKS_PER_DAY - abs_tick(s)) // TICKS_PER_DAY))
-            if isinstance(last, int) else 1)
-    return (f"{what}, but the game refused the AI shelter burrow ({memory.shelter_attempts} tries), so no alarm "
-            f"can sound yet: it is tried again in {left} day(s); {meanwhile}")
+GATE_PULL_SEEN_DAYS = 3        # (0.105.36) a gate read shut this soon after the AI pulled its lever is the AI's
 
 
 def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[Proposal], list[str]]:
@@ -131,6 +101,12 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
 
     # 1. Threat alert ------------------------------------------------------
     def _threat_alert():
+        if "civ_alert" in errors:
+            # (0.105.36) unread is not "off": nothing raised or lowered on a
+            # guess (the gates and squads act all the same); next cycle reads it
+            notes.append(f"the alarm couldn't be read this cycle ({str(errors['civ_alert'])[:80]}): it is left as "
+                         "it is until the next report")
+            return
         if can_use("others_on_map"):
             ids = reachable_threats(s, traits, cfg)
             fresh = [i for i in ids if i not in memory.alert_suppressed]
@@ -804,7 +780,10 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
                         shops_ = list(a.get("shops") or [])
                         add = [w for w in missing_ if w not in shops_]
                         if add:
-                            p.action = dict(a, shops=add + shops_)
+                            # (0.105.36) marked: select() leaves an added shop out of the
+                            # level when it is held, and never holds a level for it
+                            p.action = dict(a, shops=add + shops_,
+                                            added_shops=[str(w) for w in add] + list(a.get("added_shops") or []))
                             p.reason += f" (and {', '.join(add)}, which the fort lacks)"
     _guard(_survival_shops)
     # (0.100.1, review) a fresh embark before its first staircase: new levels
@@ -889,6 +868,14 @@ def select(proposals: list[Proposal], state: dict, memory: Memory,
     reserve_recipes = reserve_room(state, cfg)
     for p in sorted(proposals, key=lambda p: p.priority - (2 if (_steer(p) or {}).get("mode") == "raise" else 0)):
         st_ = _steer(p)
+        if p.rule == "strategist" and p.action.get("type") == "civ_alert" and not p.action.get("on"):
+            # (0.105.36) the strategist's alarm-off is added after plan(): the
+            # plan's own holds on the alarm (a berserk dwarf, the undead,
+            # citizens in the caverns with a beast) apply to it here
+            why_ = alarm_held(normalize(state), memory, cfg)
+            if why_:
+                held.append(f"strategist: the alarm stays up ({why_[:100]})")
+                continue
         if st_ and st_["mode"] == "hold":
             held.append(f"{p.rule}: held by the strategist ({str(st_.get('why') or 'no reason')[:80]})")
             continue
@@ -962,13 +949,18 @@ def select(proposals: list[Proposal], state: dict, memory: Memory,
                 seen.pop(str(w), None)
                 if isinstance(getattr(memory, "shops_retried", None), dict):
                     memory.shops_retried.pop(str(w), None)     # (v35 fix) built: its re-starts begin again
+                if isinstance(getattr(memory, "shops_held_since", None), dict):
+                    memory.shops_held_since.pop(str(w), None)  # (0.105.36) and its hold's clock with them
             elif str(w) not in seen and (memory.shops_started or {}).get(str(w), 0) >= 2:
                 # counted before 0.99.4, with nothing to tell a start that worked
                 # from one that didn't: one more try, from today's count
                 memory.shops_started[str(w)] = 1
                 seen[str(w)] = shop_count(b, str(w))
         again = [w for w in (p.action.get("shops") or []) if (memory.shops_started or {}).get(str(w), 0) >= 2]
-        if p.action.get("type") == "start_project" and p.action.get("kind") == "workshops" and again:
+        # (0.105.36) a strange mood's level is never held by this guard: the
+        # count is per shop, whoever started it, and a mood fails in 30-40 days
+        if (p.action.get("type") == "start_project" and p.action.get("kind") == "workshops" and again
+                and p.rule != "mood"):
             # (0.105.35) nothing waits for the player: held SHOPS_RETRY_DAYS, then
             # one more start (was held for good, "Needs you")
             if not isinstance(getattr(memory, "shops_held_since", None), dict):
@@ -983,22 +975,37 @@ def select(proposals: list[Proposal], state: dict, memory: Memory,
                 memory.shops_retried = {}
             tried = memory.shops_retried
             spent = [w for w in again if int(tried.get(str(w)) or 0) >= SHOPS_RETRY_MAX]
-            if spent:
-                held.append(f"{p.rule}: a workshops level for {', '.join(spent)} was started "
-                            f"{2 + SHOPS_RETRY_MAX} times and the fort report never showed it built: the AI "
-                            "starts it no more (it starts again once one is seen built)")
-                continue
-            due = [w for w in again if now - since[str(w)] >= SHOPS_RETRY_DAYS * TICKS_PER_DAY]
+            due = [w for w in again if w not in spent and now - since[str(w)] >= SHOPS_RETRY_DAYS * TICKS_PER_DAY]
             for w in due:
                 memory.shops_started[str(w)] = 1
                 tried[str(w)] = int(tried.get(str(w)) or 0) + 1
                 since.pop(str(w), None)
-            again = [w for w in again if w not in due]
-            if again:
-                left = max(1, SHOPS_RETRY_DAYS - min((now - since[str(w)]) // TICKS_PER_DAY for w in again))
-                held.append(f"{p.rule}: a workshops level for {', '.join(again)} was started twice already and "
-                            f"the fort report doesn't show it built: started once more in {left} day(s)")
-                continue
+            waiting = [w for w in again if w not in due and w not in spent]
+            why = []
+            if spent:
+                why.append(f"a workshops level for {', '.join(spent)} was started "
+                           f"{2 + SHOPS_RETRY_MAX} times and the fort report never showed it built: the AI "
+                           "starts it no more (it starts again once one is seen built)")
+            if waiting:
+                left = max(1, SHOPS_RETRY_DAYS - min((now - since[str(w)]) // TICKS_PER_DAY for w in waiting))
+                why.append(f"a workshops level for {', '.join(waiting)} was started twice already and "
+                           f"the fort report doesn't show it built: started once more in {left} day(s)")
+            out = {str(w) for w in spent + waiting}
+            if out:
+                # (0.105.36) only the held shops are left out (was: the whole
+                # level, so two starts that carried the added Still held every
+                # workshops level); held whole when none of its own shops is left
+                shops = list(p.action.get("shops") or [])
+                added = {str(w) for w in (p.action.get("added_shops") or [])}
+                kept = [w for w in shops if str(w) not in out]
+                own = [w for w in shops if str(w) not in added]
+                if not kept or (own and not [w for w in kept if str(w) not in added]):
+                    held.append(f"{p.rule}: {'; '.join(why)}")
+                    continue
+                held.append(f"{p.rule}: {', '.join(sorted(out))} left out of this level ({'; '.join(why)}); "
+                            "the rest of it goes ahead")
+                p.action = dict(p.action, shops=kept,
+                                added_shops=[w for w in (p.action.get("added_shops") or []) if str(w) not in out])
         loop = _loop_count(memory, p, now)
         if loop is not None:
             held.append(f"{p.rule}: done {loop} times in the last year, a possible loop: held "
@@ -1078,7 +1085,8 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
         if p.rule == "siege_cleanup" and ok is not None:
             memory.pruned_after = int(memory.last_threat_tick or 0)        # (0.104.140) once an attack, done or not
         if (p.action.get("type") == "squad_orders" and isinstance(p.action.get("kill"), list)
-                and p.action.get("squad_id") is not None):
+                and p.action.get("squad_id") is not None and ok is not False):
+            # (0.105.36) not for a refused send: it held a new send a day
             # (0.104.140) what each squad was last sent after (the second wave's memory)
             if not isinstance(getattr(memory, "kill_sent", None), dict):
                 memory.kill_sent = {}
@@ -1251,6 +1259,7 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
                           if isinstance(g, dict) and g.get("id") == a.get("lever_id")), None)
             if not (isinstance(lever, dict) and _lever_state(lever) is not None):
                 memory.gate_closed_by_ai = not memory.gate_closed_by_ai
+            memory.gate_pull_asked = now          # (0.105.36) a shut read after this is the AI's
         if a["type"] == "set_population_cap":
             slow, strained = "runs slowly" in p.reason, "is strained" in p.reason
             memory.fps_cap = (memory.fps_cap or a.get("cap")) if slow else None
@@ -1349,6 +1358,21 @@ def note_gate_lever(s: dict, memory: Memory) -> None:
         if st is None or not g.get("linked") or g["id"] in watched:
             continue
         k = str(g["id"])
+        shut = g.get("shut")
+        if isinstance(shut, bool) and not g.get("pending"):
+            # (0.105.36) the report reads the gate itself: the lever's open
+            # state is learnt from it, and the gate counts as the AI's shut
+            # only if the AI shut it (it pulled, or held it shut before). A
+            # gate the player had shut is never learnt as "open" (and opened)
+            if not shut:
+                opens[k] = st
+            elif k not in opens:
+                opens[k] = 1 - st
+            if closed is None:
+                asked = getattr(memory, "gate_pull_asked", None)
+                closed = shut and bool(memory.gate_closed_by_ai or (
+                    isinstance(asked, int) and 0 <= abs_tick(s) - asked < GATE_PULL_SEEN_DAYS * TICKS_PER_DAY))
+            continue
         if k not in opens:
             opens[k] = (1 - st) if memory.gate_closed_by_ai else st
         if closed is None and not g.get("pending"):
@@ -1495,6 +1519,12 @@ def note_cycle(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> list[
             else:
                 memory.quiet_cycles += 1
                 memory.alert_suppressed = []
+            # (0.105.36) a failed or missing civ_alert read is not "off": the
+            # alarm's ownership and an unanswered change wait for a good read
+            # (one bad read read as the player's lowering: the AI never lowered
+            # its own alarm again, and the fort stayed in the shelter)
+            if "civ_alert" in errors:
+                return
             asked = _d(memory.alert_asked)
             if isinstance(asked.get("tick"), int):
                 # (0.105.33) an alarm change that got no reply: the report says
@@ -1530,8 +1560,10 @@ def note_cycle(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> list[
             elif af is False and memory.farm_crops_player:
                 memory.farm_crops_player = False
                 memory.farm_steer = "crops"
-            off_asked = {k: t for k, t in _d(memory.tool_off_asked).items()
-                         if isinstance(t, int) and 0 <= now - t < ASKED_TICKS}
+            # (0.105.36) matched on this good read first, however old: the
+            # tools section failing for a day after the ask no longer lets it
+            # expire unmatched (the AI's switch-off then read as the player's)
+            off_asked = {k: t for k, t in _d(memory.tool_off_asked).items() if isinstance(t, int)}
             for name, on in s["tools"].items():
                 if on is True:
                     if name not in memory.tools_seen_on:
@@ -1549,7 +1581,8 @@ def note_cycle(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> list[
                     memory.tools_player_disabled.append(name)
                     notes.append(f"{name} was switched off; the AI will leave it off")
             # an asked switch-off is settled by this report (off: the AI's; on: it didn't happen)
-            memory.tool_off_asked = {k: t for k, t in off_asked.items() if not isinstance(s["tools"].get(k), bool)}
+            memory.tool_off_asked = {k: t for k, t in off_asked.items() if not isinstance(s["tools"].get(k), bool)
+                                     and 0 <= now - t < ASKED_TICKS}
 
     _step(tools_seen)
 

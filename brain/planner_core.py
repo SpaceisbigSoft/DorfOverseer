@@ -179,6 +179,7 @@ class Memory:
     # (str) -> state): gate_closed_by_ai is read from the lever each cycle
     # (note_cycle), not toggled on a pull that may never happen
     gate_open_state: dict = field(default_factory=dict)
+    gate_pull_asked: int | None = None                   # (0.105.36) when the AI last pulled the gate lever
     # (0.105.33) an alarm change or a tool switch-off whose reply never came
     # (ok None): {on, tick} / tool name -> tick; the next report says whether it went through
     alert_asked: dict = field(default_factory=dict)
@@ -1497,10 +1498,13 @@ def labor_given(memory, rule: str, now: int) -> int:
 
 def note_labor_given(memory, p, r: dict, now: int) -> None:
     """(v35 fix) A LABOR_CAPS rule's labour given: booked (the dwarves named,
-    else the count asked)."""
-    if p.rule not in LABOR_CAPS or _d(p.action).get("type") != "assign_labor" or _d(r).get("ok") is not True:
+    else the count asked). (0.105.36) An unknown answer (ok None: a timeout
+    that may have gone through) books the count asked, to be safe against
+    passing the yearly cap, as the cooldown does."""
+    ok = _d(r).get("ok")
+    if p.rule not in LABOR_CAPS or _d(p.action).get("type") != "assign_labor" or ok is False:
         return
-    names = _d(r).get("assigned")
+    names = _d(r).get("assigned") if ok is True else None
     n = len(names) if isinstance(names, list) else int(_d(p.action).get("count") or 0)
     if n <= 0:
         return
@@ -1534,12 +1538,18 @@ def cooldown_key(p: Proposal) -> str:
     return p.rule
 
 
+# (0.105.36) actions whose rule paces its own tries after a refusal: no
+# refusal back-off on top (the shelter's "tried again in 1 day(s)" stretched
+# to weeks under a siege: SHELTER_RETRY_*_DAYS is its pace)
+OWN_PACE = {"setup_shelter"}
+
+
 def _refused_wait(memory: Memory, p: Proposal, now: int, bridge: str | None = None) -> int | None:
     """Days left before a refused action may be tried again, or None. A
     refusal booked under another bridge version is tried again at once: new
     code may do what the old couldn't (0.81: squads refused for want of a
     captain's post waited up to 84 days after the bridge learned to add one)."""
-    if p.rule in EMERGENCY:
+    if p.rule in EMERGENCY or p.action.get("type") in OWN_PACE:
         return None
     r = _d((memory.refusals or {}).get(refusal_key(p)))
     if bridge and r and r.get("v") != bridge:   # (refusals from before 0.81 carry no version: once more)
@@ -1588,7 +1598,7 @@ def note_refusal(memory: Memory, p: Proposal, r: dict, now: int, bridge: str | N
         else:
             memory.refusals.pop(key, None)
         return
-    if r.get("ok") is not False or r.get("halted") or p.rule in EMERGENCY:
+    if r.get("ok") is not False or r.get("halted") or p.rule in EMERGENCY or p.action.get("type") in OWN_PACE:
         return                     # unknown, or stopped by the in-game halt: not the game saying no
     if r.get("waiting"):           # work under way (trees being felled): look again in 2 days, no back-off
         memory.refusals[key] = {"n": 0, "until": now + 2 * TICKS_PER_DAY, "at": now,
@@ -1755,6 +1765,10 @@ def _record_any_outcome(a: dict, r: dict, state: dict, memory, now: int, brief: 
     if t == "setup_shelter":
         memory.shelter_attempts += 1          # refused or not: two tries, then again after a wait (0.105.35)
         memory.shelter_tick = now
+        if r.get("ok") is True:
+            # (0.105.36) one that worked isn't a refusal: two good set-ups over a
+            # fort's life (the player removed one) read as "refused twice"
+            memory.shelter_attempts = 0
     elif t == "scan_entrances":
         memory.rescan_entrances = False
     elif t == "expel_dwarf":
