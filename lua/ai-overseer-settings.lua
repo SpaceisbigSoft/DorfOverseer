@@ -18,11 +18,11 @@ PRESET_DIR = dfhack.getDFPath() .. '/dfhack-config/ai-overseer/presets'
 TRAIT_GROUPS = {
     {name = 'Temperament', traits = {
         {id = 'caution', name = 'Caution',
-         low = 'Bold, accepts big risks', high = 'Careful, always plays safe'},
+         low = 'Bold, accepts big risks', high = 'Careful: plays safe, a second stairwell'},
         {id = 'outsiders', name = 'Outsiders',
          low = 'Closed: no residents, no new citizens', high = 'Welcoming: guests, residents, a bigger tavern'},
         {id = 'greed', name = 'Greed',
-         low = 'Generous: pays the caravans well', high = 'Grasping: hard bargains, gems kept home'},
+         low = 'Generous: pays well, sets gems into goods', high = 'Grasping: hard bargains, gems hoarded'},
         {id = 'piety', name = 'Piety',
          low = 'Ignores religion', high = 'Devout: temples and shrines'},
         {id = 'industriousness', name = 'Industry',

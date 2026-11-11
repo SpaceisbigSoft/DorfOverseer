@@ -11,7 +11,7 @@ from quirks import has_rule
 from digest import _d, _l
 from planner_core import *  # noqa: F401,F403
 
-__all__ = ["BASIC_WORKSHOPS", "jail_plan", "tavern_factor", "LEARNING_NEEDS", "good_times", "fort_strain", "_pop_cap_rule", "_join_rule", "_shrink_rule", "CHARACTER_KINDS", "is_character_level", "character_slot_reserved", "character_slot_filter", "piety_slot", "LADDER_BASE", "LADDER_TRAITS", "_ladder_kind", "_ladder_word", "ladder_score", "GROWTH", "GROWTH_SOLDIERS", "GROWTH_ZONES", "GROWTH_MAX_OF", "GROWTH_AT", "GROWTH_EXTRA_SCORE", "GROWTH_MAX", "growth_want", "settled_times", "growth_wait", "growth_candidates", "TRAIT_NAMES_SHORT"]
+__all__ = ["BASIC_WORKSHOPS", "jail_plan", "tavern_factor", "LEARNING_NEEDS", "good_times", "strain_unhappy_lines", "fort_strain", "_pop_cap_rule", "_join_rule", "_shrink_rule", "CHARACTER_KINDS", "is_character_level", "character_slot_reserved", "character_slot_filter", "piety_slot", "LADDER_BASE", "LADDER_TRAITS", "_ladder_kind", "_ladder_word", "ladder_score", "GROWTH", "GROWTH_SOLDIERS", "GROWTH_ZONES", "GROWTH_MAX_OF", "GROWTH_AT", "GROWTH_EXTRA_SCORE", "GROWTH_MAX", "growth_want", "settled_times", "growth_wait", "growth_candidates", "TRAIT_NAMES_SHORT"]
 
 
 # Workshops every fort needs; a workshops level is built when any is missing.
@@ -71,10 +71,27 @@ def good_times(s: dict, memory, traits: dict, cfg: dict) -> bool:
     return last is None or abs_tick(s) - last >= every * TICKS_PER_YEAR
 
 
-def fort_strain(s: dict, cfg: dict, held: bool = False) -> list:
+def strain_unhappy_lines(s: dict, cfg: dict, traits: dict | None = None) -> tuple[float, float]:
+    """(0.105.33) The unhappy shares that hold newcomers and let them come
+    again, leaned by Growth: x factor(growth), kept within x0.5..x2 (the
+    Merchant city at +60 holds at 30% and lets go at 18%, the Hermit hold at
+    -60 at 13% and 8%; neutral forts 20% and 12%). Drink and meals stay
+    unscaled: those are survival, not character."""
+    t = traits if traits is not None else _traits(s)
+    f = max(0.5, min(2.0, factor({"growth": float(_d(t).get("growth", 0) or 0)}, "growth")))
+    return (round(cfg["strain_unhappy_pct"] * f, 1), round(cfg["strain_unhappy_ok_pct"] * f, 1))
+
+
+def fort_strain(s: dict, cfg: dict, held: bool = False, traits: dict | None = None) -> list:
     """(0.104.106) Why the fort can't take more dwarves now: too many
     unhappy, drink or meals too short a dwarf. While held, the "ok" levels
-    must all be reached to let go (no flicker). [] when it's fine or unread."""
+    must all be reached to let go (no flicker). [] when it's fine or unread.
+    (0.105.33) Never while the fort is young: on day 17 of every fort of the
+    8 Nov run there were no meals yet ("meals 0 a dwarf"), and the cap sat at
+    7 through year 250, turning away the first waves. The unhappy lines lean
+    with Growth (strain_unhappy_lines)."""
+    if young_fort(s, cfg):
+        return []
     import outcomes
     m = outcomes.measure(s)
     out = []
@@ -85,7 +102,8 @@ def fort_strain(s: dict, cfg: dict, held: bool = False) -> list:
     # the 12% to let go), the only way under it nobody unhappy at all
     pop = int(_d(s.get("dwarves")).get("total") or 0)
     few = isinstance(un, (int, float)) and pop > 0 and un * pop / 100 < cfg.get("strain_unhappy_min", 3) - 0.01
-    if isinstance(un, (int, float)) and un >= cfg["strain_unhappy" + k + "_pct"] and not few:
+    hold_at, ok_at = strain_unhappy_lines(s, cfg, traits)
+    if isinstance(un, (int, float)) and un >= (ok_at if held else hold_at) and not few:
         out.append(f"{un:g}% unhappy")
     if isinstance(dr, (int, float)) and dr < cfg["strain_drink" + k + "_pd"]:
         out.append(f"drink {dr:g} a dwarf")

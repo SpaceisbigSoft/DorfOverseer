@@ -8,7 +8,7 @@ from quirks import has_rule
 from digest import _d, _l
 from planner_core import *  # noqa: F401,F403
 
-__all__ = ["_trade_rules", "PRECIOUS_METALS", "precious_metal", "trade_wants", "trade_margin_for", "keeps_treasures"]
+__all__ = ["_trade_rules", "PRECIOUS_METALS", "precious_metal", "trade_wants", "trade_margin_for", "keeps_treasures", "KEEP_TREASURES_GREED"]
 
 
 def _trade_rules(s: dict, cfg: dict, citizens: int, proposals: list, notes: list,
@@ -40,9 +40,11 @@ def _trade_rules(s: dict, cfg: dict, citizens: int, proposals: list, notes: list
     # every craft went to the depot, 163 there after the caravan left)
     keep_trinkets = acq >= cfg["needs_note_at"] and isinstance(nd.get("trinkets"), int) and nd["trinkets"] < acq
     if cs and (tr.get("goods") or 0) > 0:
-        # (0.105.13) a trading fort (Trade 50+) sells its treasures, however
-        # grasping (the Merchant city, Greed 80, kept its gems and silver home)
-        keep = keeps_treasures(traits or _traits(s), memory) and tv < 50
+        # (0.105.33) a grasping fort keeps its treasures home whatever its
+        # Trade: the 0.105.13 "Trade 50+ sells them" turned Greed off in the one
+        # fort that reached it (the Merchant city, Greed 80, Trade 120), so only
+        # Gem-mad forts ever kept a gem back (8 Nov run)
+        keep = keeps_treasures(traits or _traits(s), memory)
         # (0.104.78) the finished-goods piles full of crafts: more to the depot
         # at a time (40 a call while 1520 of 1522 tiles were used)
         fg = _d(_d(_d(s.get("logistics")).get("storage")).get("finished_goods"))
@@ -206,8 +208,12 @@ def trade_margin_for(traits: dict, cfg: dict) -> float:
     return round(max(1.05, min(1.6, cfg["trade_margin"] - 0.15 * g / 100)), 2)
 
 
+KEEP_TREASURES_GREED = 30      # (0.105.33) was 50: the Hermit hold (Greed 40) counts too
+
+
 def keeps_treasures(traits: dict, memory=None) -> bool:
-    """Greed +50 or more: gems and precious-metal goods stay home, never to
-    the depot. (0.103.15) Gem-mad too."""
-    return ((traits.get("greed", 0) or 0) >= 50
+    """Greed +30 or more: gems and precious-metal goods stay home, never to
+    the depot, and cut gems are hoarded, not set into crafts (_gems_rule).
+    (0.103.15) Gem-mad too."""
+    return ((_d(traits).get("greed", 0) or 0) >= KEEP_TREASURES_GREED
             or (memory is not None and has_rule(getattr(memory, "culture", None), "keep_gems")))

@@ -7406,7 +7406,7 @@ def _():
     assert jail_plan({"justice": 100}, c, 100)["cells"] > jail_plan({}, c, 100)["cells"]
     assert trade_margin_for({"greed": -100}, c) > trade_margin_for({}, c) == 1.2 > trade_margin_for({"greed": 100}, c)
     assert trade_margin_for({"greed": 200}, c) == 1.05 and keeps_treasures({"greed": 50})
-    assert not keeps_treasures({"greed": 40})
+    assert keeps_treasures({"greed": 40}) and not keeps_treasures({"greed": 20})    # (0.105.33) +30 now
     assert noble_room_kinds({"deference": -100}) == () and noble_room_kinds({"deference": -60}) == ("bedroom",)
     assert noble_room_kinds({"deference": -10}) == ("bedroom", "office") and len(noble_room_kinds({})) == 4
     assert cistern_pop({"engineering": -200}, c) is None
@@ -8348,14 +8348,15 @@ def _():
     assert any("wooden_bucket" in n and "suspended" in n for n in notes), notes
 
 
-@test("0.105.13 trade by the slider: more goods a caravan, treasures sold by a trading fort; none from a closed one")
+@test("0.105.13 trade by the slider: more goods a caravan, treasures kept by a grasping fort; none from a closed one")
 def _():
     s = fort()
     s["trade"] = {"depot": True, "caravans": [{"civ": "the Mountainhomes", "state": "Approaching"}], "goods": 327,
                   "at_depot": 0}
     s["settings"]["traits"] = {"trade": 120, "greed": 80}
     t = by_rule(plan(s, Memory())[0], "trade")
-    assert t and t[0].action["count"] > 40 and "keep_treasures" not in t[0].action, t[0].action
+    # (0.105.33) a grasping trading fort keeps its treasures too (Greed was off in the Merchant city)
+    assert t and t[0].action["count"] > 40 and t[0].action.get("keep_treasures") is True, t[0].action
     s["settings"]["traits"] = {"trade": 0, "greed": 80}
     t = by_rule(plan(s, Memory())[0], "trade")
     assert t[0].action == {"type": "bring_goods", "count": 40, "keep_treasures": True}, t[0].action

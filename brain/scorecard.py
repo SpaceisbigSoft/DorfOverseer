@@ -221,6 +221,29 @@ class Fort:
             self._journal = out
         return self._journal
 
+    def timeline(self) -> list[tuple[int, int]]:
+        """(0.105.33) The fort's daily (game day, population) rows from
+        timeline.csv; [] when there is none."""
+        if getattr(self, "_timeline", None) is None:
+            rows = []
+            f = self.fort_dir / "timeline.csv" if self.fort_dir else None
+            try:
+                text = f.read_text(encoding="utf-8", errors="replace") if f else ""
+            except OSError:
+                text = ""
+            lines = text.splitlines()
+            head = lines[0].split(",") if lines else []
+            if "day" in head and "pop" in head:
+                di, pi = head.index("day"), head.index("pop")
+                for line in lines[1:]:
+                    c = line.split(",")
+                    try:
+                        rows.append((int(float(c[di])), int(float(c[pi]))))
+                    except (ValueError, IndexError):
+                        continue
+            self._timeline = rows
+        return self._timeline
+
     def state_at(self, key) -> dict | None:
         p = self.states.get(key)
         return load_json(p) if p else None
@@ -246,9 +269,14 @@ def abs_ticks(d: dict) -> int:
     return (d.get("year") or 0) * TICKS_PER_YEAR + (d.get("tick") or 0)
 
 
-def journal_counts(entries: list[dict], date: dict) -> dict:
-    """What the fort did up to the date: actions that worked, by type, and a few sums."""
+def journal_counts(entries: list[dict], date: dict, timeline: list | None = None) -> dict:
+    """What the fort did up to the date: actions that worked, by type, and a few sums.
+    `timeline`: the fort's daily (day, population) rows, for welcome_pct."""
     ok, seen = Counter(), Counter()
+    alarms_on = 0       # (0.105.33) civ_alert raises (a lowering is not an alarm)
+    gems_set = gems_cut = treasures_kept = 0     # (0.105.33) Greed: encrust_goods, cut_gems amounts
+    caps = []           # (0.105.33) (when, cap, held) from set_population_cap
+    first = None        # the first dated decision of this run (older timeline rows are left out)
     trade_value, petitions_yes, petitions_no = 0, 0, 0
     levels = []
     reports, deaths = Counter(), Counter()
@@ -258,7 +286,12 @@ def journal_counts(entries: list[dict], date: dict) -> dict:
         if e.get("kind") == "event" and before(e, date):
             ev = _d(e.get("event"))
             if ev.get("kind") == "report":
-                reports[ev.get("topic")] += 1
+                topic = ev.get("topic")
+                # (0.105.33) a soldier naming a weapon (NAMED_ARTIFACT) is not a mood's artifact
+                if topic == "artifact_made" and (ev.get("type") == "NAMED_ARTIFACT"
+                                                 or "bestowed the name" in str(ev.get("text") or "")):
+                    topic = "artifact_named"
+                reports[topic] += 1
             elif (ev.get("kind") == "death" and ev.get("own_civ") and not ev.get("animal")
                   and not ev.get("again")):
                 deaths[str(ev.get("cause") or "unknown")] += 1
@@ -269,20 +302,42 @@ def journal_counts(entries: list[dict], date: dict) -> dict:
         t = a.get("type")
         if not t:
             continue
+        if first is None and isinstance(e.get("date"), dict):
+            first = abs_ticks(e["date"])
         seen[t] += 1
         if not r.get("ok"):
             continue
         ok[t] += 1
         if t == "bring_goods":
             trade_value += r.get("value") or 0
+            treasures_kept += bool(a.get("keep_treasures"))
+        elif t == "civ_alert":
+            alarms_on += bool(r.get("on") if isinstance(r.get("on"), bool) else a.get("on"))
+        elif t == "work_order" and a.get("recipe") in ("encrust_goods", "cut_gems") and not r.get("dry_run"):
+            n = r.get("amount") if isinstance(r.get("amount"), int) else a.get("amount")
+            n = n if isinstance(n, int) and not isinstance(n, bool) else 0
+            if a.get("recipe") == "encrust_goods":
+                gems_set += n
+            else:
+                gems_cut += n
+        elif t == "set_population_cap" and isinstance(e.get("date"), dict) and not r.get("dry_run"):
+            cap = r.get("cap") if isinstance(r.get("cap"), int) else a.get("cap")
+            if isinstance(cap, int):
+                caps.append((abs_ticks(e["date"]), cap, "no newcomers for now" in str(e.get("reason") or "")))
         elif t == "answer_petition":
             if r.get("accepted") or a.get("accept"):
                 petitions_yes += 1
             else:
                 petitions_no += 1
         elif t == "start_project":
+            # (0.105.33) Spacing: the new corridor dug for the level (the bridge's
+            # `new_corridor`; `corridor`, which also counts walked fort tiles, before it)
+            cor = r.get("new_corridor") if _num_or_none(r.get("new_corridor")) is not None else r.get("corridor")
+            rooms = _d(r.get("summary")).get("rooms")
+            rooms = rooms if _num_or_none(rooms) is not None else a.get("rooms")
             levels.append({"kind": r.get("kind") or a.get("kind"), "z": r.get("z"),
                            "tiles": r.get("tiles") or r.get("designated"),
+                           "corridor": _num_or_none(cor), "rooms": _num_or_none(rooms),
                            "customs": [c for c in _l(a.get("customs")) if isinstance(c, str)]})
         elif t == "floor_rooms" and not r.get("dry_run"):
             # (0.105.30) soil floors the keeper finished: tiles placed (any count field the bridge gives)
@@ -294,9 +349,41 @@ def journal_counts(entries: list[dict], date: dict) -> dict:
             vis = r.get("visitors") if isinstance(r.get("visitors"), bool) else a.get("visitors")
             if isinstance(vis, bool):
                 access.append((abs_ticks(e["date"]), vis, ids))
+    until = abs_ticks(date)
     return {"ok": ok, "seen": seen, "trade_value": trade_value, "petitions_yes": petitions_yes,
             "petitions_no": petitions_no, "levels": levels, "reports": reports, "deaths": deaths,
-            "shut_days": shut_days(access, abs_ticks(date)), "soil_floored": soil_floored}
+            "shut_days": shut_days(access, until), "soil_floored": soil_floored,
+            "alarms_on": alarms_on, "gems_set": gems_set, "gems_cut": gems_cut, "treasures_kept": treasures_kept,
+            "caps": caps, "welcome": welcome_rows(caps, timeline or [], until, first)}
+
+
+DAYS_PER_YEAR = 336
+
+
+def welcome_rows(caps: list, timeline: list, until: int, since: int | None = None) -> tuple[int, int] | None:
+    """(0.105.33, Growth) Of the last game year's days up to `until` (the
+    timeline's daily rows), how many had a population cap above the
+    population (newcomers welcome), and how many days had a cap known:
+    (welcome, known), or None without a cap change or a timeline. Rows before
+    this run's first decision (`since`) are another run's and left out."""
+    if not caps or not timeline:
+        return None
+    caps = sorted(caps, key=lambda c: c[0])
+    end = until // TICKS_PER_DAY
+    lo = max(end - DAYS_PER_YEAR, (since // TICKS_PER_DAY) if since is not None else end - DAYS_PER_YEAR)
+    welcome = known = 0
+    i, cap = 0, None
+    for day, pop in sorted(timeline):
+        if day < lo or day > end:
+            continue
+        while i < len(caps) and caps[i][0] <= day * TICKS_PER_DAY:
+            cap = caps[i][1]
+            i += 1
+        if cap is None:
+            continue
+        known += 1
+        welcome += cap > pop
+    return (welcome, known) if known else None
 
 
 def shut_days(access: list, until: int) -> float:
@@ -380,6 +467,24 @@ def measures(s: dict, j: dict) -> dict:
         same_booze = pct(same.get("citizens") or 0, sc.get("citizens"))
     else:
         same_booze = None
+    # (0.105.33, Industry) idle: adults with no job, no social activity (prayer,
+    # the tavern, reading) and not in a squad, of the adults not in squads.
+    # The bridge's `idle_free` first; then the needs report's stricter count
+    # (needs.social.idle); then the old idle_adults (activity counted as idle)
+    in_squads = dw.get("in_squads") if isinstance(dw.get("in_squads"), int) else 0
+    civilians = max(0, adults - in_squads)
+    social = _d(needs.get("social"))
+    if _num_or_none(dw.get("idle_free")) is not None:
+        idle_n = dw["idle_free"]
+    elif _num_or_none(social.get("idle")) is not None:
+        idle_n = social["idle"]
+    else:
+        idle_n = dw.get("idle_adults")
+    cor = [lv["corridor"] for lv in levels if _num_or_none(lv.get("corridor")) is not None]
+    beds = [lv for lv in levels if lv.get("kind") == "bedrooms" and (lv.get("rooms") or 0) > 0
+            and isinstance(lv.get("tiles"), (int, float)) and lv["tiles"] > 0]
+    cut_stock = (stocks.get("cut_gems") or 0) + (stocks.get("rough_gems") or 0)
+    wl = j.get("welcome")
     out = {
         "pop": total,
         "soldier_pct": pct(dw.get("in_squads"), adults),
@@ -389,7 +494,8 @@ def measures(s: dict, j: dict) -> dict:
         "gate_works": sum(ok.get(t, 0) for t in GATE_WORKS),
         "levers": other.get("Lever", 0),
         "mechanisms": stocks.get("mechanisms"),
-        "alerts": ok.get("civ_alert", 0),
+        "alerts": j.get("alarms_on", 0),                  # (0.105.33) raises only
+        "stairwells_dug": ok.get("dig_stairwell", 0),     # (0.105.33) Caution's escape route
         "jails": zones.get("Dungeon", 0) + len(_l(_d(s.get("justice")).get("jails"))),
         "restraints": _d(s.get("justice")).get("restraints"),
         "temples": locs.get("TEMPLE", 0),
@@ -404,7 +510,12 @@ def measures(s: dict, j: dict) -> dict:
         "trade_runs": ok.get("bring_goods", 0),
         "trade_value": j["trade_value"],
         "wealth_pd": per(s.get("wealth"), total),
-        "gems": (stocks.get("cut_gems") or 0) + (stocks.get("rough_gems") or 0),
+        "gems": cut_stock,
+        # (0.105.33) Greed: gems spent on goods, gems kept of those cut, treasures held from the caravans
+        "gems_set": j.get("gems_set", 0),
+        "gems_kept_pct": pct(cut_stock, (j.get("gems_cut") or 0) + (stocks.get("rough_gems") or 0)),
+        "treasures_kept": j.get("treasures_kept", 0),
+        "welcome_pct": pct(wl[0], wl[1]) if wl else None,      # (0.105.33) Growth
         "statues": other.get("Statue", 0),
         "halls": zones.get("MeetingHall", 0),
         "gardens": kinds.get("garden", 0),
@@ -420,10 +531,15 @@ def measures(s: dict, j: dict) -> dict:
         "plots": farms.get("plots"),
         "animals": others.get("tame_animals"),
         "pastures": _d(s.get("society")).get("pastures"),
-        "idle_pct": pct(dw.get("idle_adults"), adults),
+        "idle_pct": pct(idle_n, civilians),
+        "polish_runs": ok.get("polish", 0),               # (0.105.33) Industry: levels smoothed or engraved
         "suites": kinds.get("suites", 0),
         "offices": zones.get("Office", 0),
         "level_tiles": round(sum(tiles) / len(tiles)) if tiles else None,
+        # (0.105.33) Spacing: the new corridor a level, and tiles a bedroom (room count taken out)
+        "corridor_mean": round(sum(cor) / len(cor), 1) if cor else None,
+        "bedroom_tiles": round(sum(lv["tiles"] for lv in beds) / sum(lv["rooms"] for lv in beds), 1)
+        if beds else None,
         "stockpiles": b.get("stockpiles"),
         "stores_pd": per((stocks.get("drink") or 0) + (meals or 0), total),
         "levels": len(levels),
@@ -524,6 +640,7 @@ LINES = [
     ("Engineering", "lever-driven gates", "lever_gates", {W, D}, set()),
     ("Engineering", "mechanisms in store", "mechanisms", {W, D}, set()),
     ("Caution", "alarms raised", "alerts", {W, H}, {D}),
+    ("Caution", "second stairwells dug", "stairwells_dug", {W, H}, {D}),      # (0.105.33)
     ("Justice", "jail cells", "jails", {W}, {M}),
     ("Justice", "restraints", "restraints", {W}, {M}),
     ("Piety", "temples", "temples", {M}, set()),
@@ -542,14 +659,17 @@ LINES = [
     ("Outsiders", "petitions declined", "petitions_no", {H, W}, {ME, M}),
     ("Trade", "goods taken to caravans", "trade_runs", {ME}, {H}),
     ("Trade", "value taken to caravans", "trade_value", {ME}, {H}),
-    ("Greed", "wealth a dwarf", "wealth_pd", {ME, H}, {M}),
-    ("Greed", "gems kept", "gems", {ME, H}, {M}),
+    # (0.105.33) "wealth a dwarf" and "gems kept" measured building and mining luck
+    ("Greed", "gems set into goods (fewest wins)", "-gems_set", {ME, H}, {M}),
+    ("Greed", "gems kept, % of gems cut", "gems_kept_pct", {ME, H}, {M}),
+    ("Greed", "treasures kept from the caravans", "treasures_kept", {ME, H}, set()),
     ("Grandeur", "statues", "statues", {M, G}, {W}),
     ("Grandeur", "meeting halls", "halls", {M, G}, {W}),
     ("Grandeur", "garden levels", "gardens", {M, G}, {W}),
     ("Craftsmanship", "legendary, % of adults", "legendary_pct", {ME, M}, set()),
     ("Craftsmanship", "craftsdwarf's shops", "craft_shops", {ME, M}, set()),
     ("Growth", "population", "pop", {ME}, {H}),
+    ("Growth", "newcomers welcome, % of the last year's days", "welcome_pct", {ME}, {H}),    # (0.105.33)
     ("Mining", "ore in store", "ore", {D}, {G}),
     ("Mining", "veins mined", "ore_runs", {D}, {G}),
     ("Mining", "underground depot built", "deep_depot", {D}, set()),
@@ -561,10 +681,13 @@ LINES = [
     ("Agriculture", "farm plots", "plots", {G}, {D}),
     ("Husbandry", "tame animals", "animals", {G}, set()),
     ("Husbandry", "pastures", "pastures", {G}, set()),
-    ("Industriousness", "idle, % of adults (lowest wins)", "-idle_pct", {D}, {M}),
+    ("Industriousness", "idle, % of adults not in squads (lowest wins)", "-idle_pct", {D}, {M}),
+    ("Industriousness", "levels smoothed or engraved", "polish_runs", {D}, {M}),     # (0.105.33)
     ("Deference", "suite levels", "suites", {W, ME}, {H}),
     ("Deference", "offices", "offices", {W, ME}, {H}),
-    ("Spacing", "tiles a level (smallest wins)", "-level_tiles", {W, D}, set()),
+    # (0.105.33) "tiles a level" measured the mix of level kinds
+    ("Spacing", "new corridor tiles a level (fewest wins)", "-corridor_mean", {W, D}, set()),
+    ("Spacing", "tiles a bedroom (smallest wins)", "-bedroom_tiles", {W, D}, set()),
     ("Stockpile", "stockpiles", "stockpiles", {H, ME}, set()),
     ("Stockpile", "drink and meals a dwarf", "stores_pd", {H, ME}, set()),
     # (0.105.29) the customs: levels each preset's two customs placed or shaped (Hermit also on levels_up)
@@ -628,6 +751,10 @@ def health(s: dict, j: dict) -> dict:
     stress = _d(dw.get("stress"))
     unhappy = sum(stress.get(k, 0) for k in ("unhappy", "very_unhappy", "miserable"))
     rep = j.get("reports") or Counter()
+    in_squads = dw.get("in_squads") if isinstance(dw.get("in_squads"), int) else 0
+    social = _d(_d(s.get("needs")).get("social"))
+    idle_n = next((x for x in (dw.get("idle_free"), social.get("idle")) if _num_or_none(x) is not None),
+                  dw.get("idle_adults"))
     working = sum(1 for m in _l(_d(s.get("moods")).get("list")) if _d(m).get("craft"))
     # the journal's deaths (this run), or the game's own count from last year
     # on when that is more (a journal rotated, or deaths before it was kept)
@@ -639,7 +766,7 @@ def health(s: dict, j: dict) -> dict:
     return {"failed_moods": max(0, rep.get("mood", 0) - rep.get("artifact_made", 0) - working),
             "moods": rep.get("mood", 0), "artifacts": rep.get("artifact_made", 0),
             "thirst_deaths": deaths.get("THIRST", 0),
-            "unhappy_pct": pct(unhappy, total), "idle_pct": pct(dw.get("idle_adults"), adults),
+            "unhappy_pct": pct(unhappy, total), "idle_pct": pct(idle_n, max(0, adults - in_squads)),
             "deaths": dict(deaths)}
 
 
@@ -648,7 +775,7 @@ HEALTH_BARS = [
     ("failed moods", "failed_moods", 0, "<="),
     ("deaths by thirst", "thirst_deaths", 0, "<="),
     ("unhappy, %", "unhappy_pct", 10, "<"),
-    ("idle adults, % (Phase 12's exit)", "idle_pct", 40, "<"),
+    ("idle adults not in squads, % (Phase 12's exit)", "idle_pct", 40, "<"),
 ]
 
 
@@ -707,7 +834,7 @@ def score_full(forts: list[Fort], at: str | None, now: bool) -> tuple[str, list[
         s = f.state_at(keys[f.label])
         if s is None:
             continue
-        j = journal_counts(f.journal(), _d(s.get("date")))
+        j = journal_counts(f.journal(), _d(s.get("date")), f.timeline())
         data[f.label] = (f, s, measures(s, j), health(s, j))
     labels = list(data)
     head = ["Slider", "Line"] + [f"{lb} {SHORT.get(data[lb][0].preset, data[lb][0].preset)}" for lb in labels] + \

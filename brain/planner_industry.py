@@ -18,7 +18,7 @@ from planner_trade import *  # noqa: F401,F403  (13c: split out by theme)
 from planner_labor import *  # noqa: F401,F403  (13c: split out by theme)
 from planner_farms import *  # noqa: F401,F403  (13c: split out by theme)
 
-__all__ = ["CONTAINER_RECIPES", "GEAR_ORDER_METALS", "_supply_rules", "_slow_game_rules", "_clutter_rules", "_disposal_rules", "DISPOSAL_RULES", "disposal_report", "disposal_places_dump", "_kiln_rules", "_soap_rule", "_pasture_rule", "LABOR_MODES_FIXED", "INDUSTRY_SHOPS", "_industry_rules", "_steel_rule", "_bottleneck_rule", "drink_short", "_crop_rules", "_farm_crops_rule", "farm_plots_live", "crops_owned", "drink_known_short", "_kitchen_rule", "_fishery_rule", "_bench_coffins_rule", "STONE_CRAFTS", "order_shop", "_order_slots_rule", "_orphan_jobs_rule", "_unsuspend_rule", "_approve_rule", "_stuck_orders_rule", "COAL_STONES", "_coal_rule", "_picks_order", "_stone_rule", "stone_crisis", "PRECIOUS_ORES", "_cloth_rule", "_trade_rules", "_gems_rule", "trade_wants", "_spare_mechanisms_rule", "_hauling_rule", "_surface_basics", "trees_this_year", "_keep_rule", "DEEP_SURFACE_KINDS", "_deep_surface_filter", "_deep_depot_choice", "_deep_depot_watch", "_free_time_rule", "_labor_rules", "OWN_LABOR_RULES", "FEEDER_ORDER", "_feeder_rule", "woodcutters", "gatherers", "trade_margin_for", "keeps_treasures", "spare_mechanisms", "_dairy_rule", "_eggs_rule", "EXCESS_SHOPS", "_excess_shops_rule", "drink_below_target", "drink_crisis", "drink_target_per_dwarf", "crisis_brew_room", "brew_jobs_open", "_labor_waiting_rule", "farm_target", "thirsty_farm_extra", "_farm_rule", "_smelting_rule", "_shoes_recipe", "_glass_rule", "PRECIOUS_METALS", "precious_metal"]
+__all__ = ["CONTAINER_RECIPES", "GEAR_ORDER_METALS", "_supply_rules", "_slow_game_rules", "_clutter_rules", "_disposal_rules", "DISPOSAL_RULES", "disposal_report", "disposal_places_dump", "_kiln_rules", "_soap_rule", "_pasture_rule", "LABOR_MODES_FIXED", "INDUSTRY_SHOPS", "_industry_rules", "_steel_rule", "_bottleneck_rule", "drink_short", "_crop_rules", "_farm_crops_rule", "farm_plots_live", "crops_owned", "drink_known_short", "_kitchen_rule", "_fishery_rule", "_bench_coffins_rule", "STONE_CRAFTS", "order_shop", "_order_slots_rule", "_orphan_jobs_rule", "_unsuspend_rule", "_approve_rule", "_stuck_orders_rule", "COAL_STONES", "_coal_rule", "_picks_order", "_stone_rule", "stone_crisis", "PRECIOUS_ORES", "_cloth_rule", "_trade_rules", "_gems_rule", "GEMS_GENEROUS_GREED", "trade_wants", "_spare_mechanisms_rule", "_hauling_rule", "_surface_basics", "trees_this_year", "_keep_rule", "DEEP_SURFACE_KINDS", "_deep_surface_filter", "_deep_depot_choice", "_deep_depot_watch", "_free_time_rule", "_labor_rules", "OWN_LABOR_RULES", "FEEDER_ORDER", "_feeder_rule", "woodcutters", "gatherers", "trade_margin_for", "keeps_treasures", "spare_mechanisms", "_dairy_rule", "_eggs_rule", "EXCESS_SHOPS", "_excess_shops_rule", "drink_below_target", "drink_crisis", "drink_target_per_dwarf", "crisis_brew_room", "brew_jobs_open", "_labor_waiting_rule", "farm_target", "thirsty_farm_extra", "_farm_rule", "_smelting_rule", "_shoes_recipe", "_glass_rule", "PRECIOUS_METALS", "precious_metal"]
 
 CONTAINER_RECIPES = {"wooden_barrel", "stone_large_pot"}
 # ore worth mining for gear, most wanted first (iron makes steel; tin with copper makes bronze)
@@ -1318,12 +1318,23 @@ def _glass_rule(s: dict, cfg: dict, proposals: list, notes: list) -> None:
                               f"crafts to sell: make {n} of green glass", 6, True))
 
 
-def _gems_rule(s: dict, cfg: dict, proposals: list) -> None:
+GEMS_GENEROUS_GREED = -30     # (0.105.33) at or under this, twice the gems set into goods to give away
+
+
+def _gems_rule(s: dict, cfg: dict, proposals: list, traits: dict | None = None, memory=None,
+               notes: list | None = None) -> None:
     """Gems: rough gems are cut at a jeweller's (DFHack's autogems, the tools
     rule) and sold; the workshop first. Cut gems in stock are set into the
-    crafts waiting to be sold (several times their value), a few at a time."""
+    crafts waiting to be sold (several times their value), a few at a time.
+    (0.105.33, Greed) A grasping fort (keeps_treasures: Greed +30, or
+    Gem-mad) never sets them: its cut gems are the hoard. A generous one
+    (Greed -30 or less) sets up to 10 at a time, not 5. `traits` defaults to
+    the report's; without `memory` Gem-mad isn't seen (Greed alone is)."""
     tr = _d(s.get("trade"))
     cg = _d(tr.get("cut_gem"))
+    t = traits if traits is not None else _traits(s)
+    greed = _d(t).get("greed", 0) or 0
+    hoard = keeps_treasures(t, memory)
     # (0.105.24) a strange mood waiting for a rough or a cut gem it can't find:
     # the jewellers leave the last ones alone (E, 3 Nov: moods failed on "a
     # rough gem" while the AI cut 4-7 at a time down to under 5)
@@ -1332,7 +1343,17 @@ def _gems_rule(s: dict, cfg: dict, proposals: list) -> None:
             and "cut_gem" not in waits
             and int(tr.get("goods") or 0) >= cfg["gems_cut_at"] and str(cg.get("token", "")).startswith("INORGANIC:")
             and not queued(s, {"encrust_goods"})):
-        n = min(5, int(cg["n"]) // 2)
+        if hoard:
+            if notes is not None:
+                notes.append(f"{cg.get('total')} cut gems kept in store, not set into crafts: "
+                             + (f"Greed {int(greed):+d}" if greed >= KEEP_TREASURES_GREED else "Gem-mad")
+                             + ", the fort hoards its gems")
+            n = 0
+        else:
+            n = min(10 if greed <= GEMS_GENEROUS_GREED else 5, int(cg["n"]) // 2)
+    else:
+        n = 0
+    if n > 0:
         proposals.append(Proposal("encrust", {"type": "work_order", "recipe": "encrust_goods", "amount": n,
                                               "material": cg["token"]},
                                   f"{cg.get('total')} cut gems and {tr.get('goods')} crafts to sell: set {n} "
