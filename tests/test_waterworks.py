@@ -95,6 +95,8 @@ env.reqscript = function() error('no reqscript in the tests') end
 env.magma_parts = function() return W.parts or {floodgates = 1, hatches = 1, mechanisms = 3} end
 env.building_magma_safe = function(id) if W.unsafe and W.unsafe[id] then return false end return true end
 env.magma_filter = function(on) W.filter = on return on == true and {} or nil end
+-- (0.105.36) the screw pumps' "Start pump manually" (building_screw_pumpst.pump_manually)
+env.set_pump_manual = function(id, on) W.manual = W.manual or {}; W.manual[id] = on == true; return true end
 return env
 """
 

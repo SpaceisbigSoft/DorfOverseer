@@ -539,6 +539,10 @@ def short(a: dict) -> str:
             return f"shut {what}'s floodgate"
         if a.get("retire"):      # (0.105.35)
             return f"retire {what} (its floodgate shut)"
+        if a.get("reopen"):      # (0.105.36)
+            return f"open {what}'s floodgate again (the flood is over)"
+        if a.get("recheck"):     # (0.105.36)
+            return f"{what}: look again at its leak watch"
         return f"{what}: next step"
     if t == "answer_petition":
         if a.get("ids"):

@@ -288,10 +288,13 @@ def _():
     assert r.waiting and "filling" in r.error, dict(r)
 
 
-@test("waterworks: shut three times for a flood: held for the player")
+@test("waterworks: shut three times for a flood (dwarves in deep water near it, within 28 days): held")
 def _():
     env, W = moat_world()
-    to_filling(env, W, "moat")
+    wk, _g = to_filling(env, W, "moat")
+    c = wk.plan.wet[1]                   # (0.105.36) a citizen in deep water in the work itself
+    W.set(c.x, c.y, c.z, T(liquid=True, depth=7))
+    W.citizens = L(T(x=c.x, y=c.y, z=c.z))
     for _ in range(3):
         r = step(env, "moat", shut=True, why="dwarves in deep water")
     assert r.stage == "held" and "3 times" in works(W).moat.why

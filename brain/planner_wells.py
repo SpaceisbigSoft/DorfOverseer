@@ -44,9 +44,25 @@ def usable_wells(s: dict, states: tuple = ("closed", "pulling")) -> int:
 def _well_rule(s: dict, memory, traits: dict, cfg: dict, proposals: list, notes: list) -> None:
     """A well when there's none, placed by the AI itself; and what a new well
     is still waiting for."""
-    # (0.105.33 B4) a cavern well with its shaft gate shut draws no water
-    wells = usable_wells(s, ("closed",))
+    # (0.105.33 B4) a cavern well with its shaft gate shut draws no water.
+    # (0.105.36) But a shaft shut for a danger near it is shut for a while
+    # only: still a well (no second shaft into the same cavern for a passing
+    # cave spider), and no cavern well is begun while the danger is near
     pr = _d(s.get("projects"))
+    lids = [x for x in _l(pr.get("well_lids")) if isinstance(x, dict) and x.get("gate")]
+    shaft_danger = ""
+    if lids:
+        shaft_danger = cavern_danger(s, lids, SHAFT_DANGER_OPEN)
+        if not shaft_danger:
+            near = next((_d(x.get("watch_near")) for x in lids if _d(x.get("watch_near"))), None)
+            if near:
+                shaft_danger = str(near.get("name") or "a wild beast")
+    if shaft_danger:
+        wells = int(_d(_d(s.get("buildings")).get("other")).get("Well", 0) or 0)
+        if shut_wells(s, ("closed",)):
+            notes.append(f"the cavern well's shaft is shut while {shaft_danger} is near: still counted as a well")
+    else:
+        wells = usable_wells(s, ("closed",))
     open_ = [p for p in _l(pr.get("open")) if isinstance(p, dict)]
     building = [p for p in open_ if p.get("kind") == "well"]
     if building:
@@ -81,6 +97,8 @@ def _well_rule(s: dict, memory, traits: dict, cfg: dict, proposals: list, notes:
             patients = int(_d(s.get("dwarves")).get("needs_medical_care") or 0)
             need = cavern_well_need(s, cfg, patients) or f"{cit} dwarves share {wells} well(s)"
             safe = cavern_well_safe(s, cfg)
+            if safe is True and shaft_danger:
+                safe = f"{shaft_danger} is near the cavern well"
             if safe is True:
                 urgent = bool(patients or int(_d(s.get("society")).get("parched") or 0))
                 action = cavern_action(s, cfg, urgent)       # (0.105.3)
@@ -170,6 +188,8 @@ def _well_rule(s: dict, memory, traits: dict, cfg: dict, proposals: list, notes:
     if memory.well_failure and not cavern_failure and len(open_) < limit:
         need = cavern_well_need(s, cfg, patients) or (f"{parched} parched dwarves need water" if parched else "")
         safe = cavern_well_safe(s, cfg)
+        if safe is True and shaft_danger:
+            safe = f"{shaft_danger} is near the cavern well"
         if need and safe is True:
             action = cavern_action(s, cfg, urgent)           # (0.105.3)
             proposals.append(Proposal("well", action,
@@ -523,10 +543,12 @@ def unfound_cavern(s: dict) -> str | None:
 
 def ai_opens_cavern(s: dict, cfg: dict) -> tuple[bool, str]:
     """(0.105.35) The player (11 Nov): nothing waits for the player. With the
-    Rules switch "Cavern well into an unfound cavern" off (its default), the
-    AI decides itself whether a cavern well may open a cavern no dwarf has
-    found: only when the fort is short of water (the injured, the parched, or
-    drink under `cavern_well_drink_pd` a dwarf) and has armed soldiers (v35
+    Rules switch "Cavern well into an unfound cavern" at "ai" (its default;
+    the switch is three-state: never / ai / always), the AI decides itself
+    whether a cavern well may open a cavern no dwarf has found: only when the
+    fort is short of water (the injured, the parched, or drink under
+    `cavern_well_drink_pd` a dwarf; (0.105.36) unknown drink, a missing
+    stocks section, is not short) and has armed soldiers (v35
     fix: armed, not only drafted) for what comes out (`unfound_cavern_soldiers`, +2 at Caution 50+, -1 at Militarism
     50+); at Caution +100 only for the injured or the parched. (ok, why)."""
     tr = _traits(s) if isinstance(s.get("settings"), dict) else {}
@@ -535,10 +557,15 @@ def ai_opens_cavern(s: dict, cfg: dict) -> tuple[bool, str]:
     pop = max(1, int(_d(s.get("dwarves")).get("total") or 1))
     patients = int(_d(s.get("dwarves")).get("needs_medical_care") or 0)
     parched = int(_d(s.get("society")).get("parched") or 0)
-    drink = (_d(s.get("stocks")).get("drink") or 0) / pop
+    raw_drink = _d(s.get("stocks")).get("drink")
+    known = (isinstance(raw_drink, (int, float)) and not isinstance(raw_drink, bool)
+             and "stocks" not in _d(s.get("_errors")))
+    drink = (raw_drink if known else 0) / pop
     if patients or parched:
         short = " and ".join(x for x in (f"{patients} injured" if patients else "",
                                           f"{parched} parched" if parched else "") if x)
+    elif not known:
+        return False, "the fort's drink is not known (no stocks report): not counted as short"
     elif drink < cfg["cavern_well_drink_pd"] and caution < 100:
         short = f"drink is down to {drink:.1f} a dwarf"
     elif drink < cfg["cavern_well_drink_pd"]:
