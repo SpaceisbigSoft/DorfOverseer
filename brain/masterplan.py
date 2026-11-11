@@ -37,7 +37,6 @@ map; the AI strategist never sends coordinates.
 from __future__ import annotations
 
 import hashlib
-import json
 
 import customs
 from digest import _d, _l
@@ -764,11 +763,9 @@ def ensure(state: dict, memory, site: dict | None, traits: dict, profile: dict) 
     redraw = needs_redraw(memory)
     if (has_plan(memory) and not redraw) or not site:
         return []
-    old = json.loads(json.dumps(_peek(memory))) if redraw else None
+    # (draw() changes the memory only once it has a plan: a None leaves the old one as it was)
     plan = draw(state, memory, site, traits, profile)
     if not plan:
-        if old:                                    # keep the old one rather than none
-            memory.atlas["plan"] = old
         return []
     return [f"the master plan was {'redrawn' if redraw else 'drawn'}: {plan['pattern']} around the main stair "
             f"at x{plan['spine']['x']} y{plan['spine']['y']}, facing {plan['axis']}, {plan['vertical']}"]
