@@ -310,6 +310,7 @@ ACTIONS = {
     free_dig_jobs = act_free_dig_jobs,
     prioritize_dig = act_prioritize_dig,
     renew_well_dig = act_renew_well_dig,      -- (0.105.31)
+    unmark_project_dig = act_unmark_project_dig,   -- (0.105.35) a level's marker-only dig tiles made real
     seal_well_stairs = act_seal_well_stairs,
     well_shaft = act_well_shaft,
     finish_project = act_finish_project,
@@ -371,6 +372,7 @@ for _, name in ipairs({
     'unstick_gate',      -- (0.105.32) its dry run says what it would do, and changes nothing
     -- (0.105.32) the way in: planned (and quickfort's dry run) before anything is designated
     'dig_way_in',
+    'unmark_project_dig',   -- (0.105.35) its dry run counts the marked tiles and changes nothing
 }) do DRY_OK[name] = true end
 
 -- These only change what's displayed, so they still work while halted, dry

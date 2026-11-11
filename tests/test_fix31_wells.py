@@ -199,22 +199,23 @@ def _():
     assert not [p for p in run(s, m)[0] if p.action["type"] == "renew_well_dig"]
 
 
-@plain_test("wells 6: from dig_stall_days the cause and what is done go to Needs you")
+@plain_test("wells 6: from dig_stall_days the cause and what the AI does are said (0.105.35: a note, not Needs you)")
 def _():
     s, m = stuck_well(30, UNWORKED)
     props, notes = run(s, m)
-    asks = [n for n in notes if n.startswith(NEEDS_YOU)]
-    assert len(asks) == 1 and "x67 y122 elevation 42" in asks[0] and "renews the channel job" in asks[0], asks
-    assert "given up in 26 days" in asks[0], asks
+    assert not [n for n in notes if n.startswith(NEEDS_YOU)], notes
+    said = [n for n in notes if "well's channel" in n]
+    assert len(said) == 1 and "x67 y122 elevation 42" in said[0] and "renews the channel job" in said[0], said
+    assert "given up in 26 days" in said[0], said
     s, m = stuck_well(30, {"cause": "no_miners", "text": "no citizen has the mining labour", "x": 1, "y": 2,
                            "elevation": 3})
     props, notes = run(s, m)
-    asks = [n for n in notes if n.startswith(NEEDS_YOU)]
-    assert asks and "Mining labour" in asks[0]
+    said = [n for n in notes if "well's channel" in n]
+    assert said and "Mining" in said[0] and "the ai" in said[0].lower() and not said[0].startswith(NEEDS_YOU), said
     assert not [p for p in props if p.action["type"] == "renew_well_dig"]   # renewing wouldn't help
     s, m = stuck_well(30, {"cause": "unreached", "text": "none of the 4 miners can walk to beside it"})
-    asks = [n for n in run(s, m)[1] if n.startswith(NEEDS_YOU)]
-    assert asks and "can walk to beside it" in asks[0] and "open the way" in asks[0].lower()
+    said = [n for n in run(s, m)[1] if "well's channel" in n]
+    assert said and "can walk to beside it" in said[0] and "gives the spot up" in said[0]
 
 
 if __name__ == "__main__":

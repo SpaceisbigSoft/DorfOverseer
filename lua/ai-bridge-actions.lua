@@ -442,6 +442,13 @@ function act_prioritize_dig(a)
     return reqscript('ai-builder').prioritize_project(id, a.priority, a.dry_run == true)
 end
 
+-- (0.105.35) an AI level's marker-only (blueprint) dig tiles made real designations
+function act_unmark_project_dig(a)
+    local id = project_id(a)
+    if not id then return reject('project_id must be a whole number') end
+    return reqscript('ai-builder').unmark_project_dig(id, a.dry_run == true)
+end
+
 -- (0.105.31) a well level's channel nobody digs: its job renewed
 function act_renew_well_dig(a)
     local id = project_id(a)
@@ -882,7 +889,7 @@ end
 
 -- A fresh embark: the fort's first staircase (lua/ai-builder.lua found_fort).
 function act_found_fort(a)
-    return reqscript('ai-builder').found_fort(a.dry_run == true)
+    return reqscript('ai-builder').found_fort(a.dry_run == true, a.wide == true)   -- (0.105.35) wide: further out
 end
 
 -- (unattended) Unpause the game: DF pauses itself for many announcements,

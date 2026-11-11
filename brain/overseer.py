@@ -484,6 +484,7 @@ SHORT_WORDS = {
     "remove_crossing": "take down one of the AI's bridges",
     "free_dig_jobs": "free the workers held by a stalled level's dig jobs",
     "renew_well_dig": "renew a well's channel job nobody takes",   # (0.105.31)
+    "unmark_project_dig": "make a level's marker-only dig tiles real",   # (0.105.35)
     "trim_instrument_orders": "cancel extra instrument orders",
 }
 
@@ -491,6 +492,8 @@ SHORT_WORDS = {
 def short(a: dict) -> str:
     """An action in a few words, for the on-screen panel."""
     t = a.get("type")
+    if t == "found_fort" and a.get("wide"):      # (0.105.35)
+        return "dig the first staircase, further from the wagon"
     words = SHORT_WORDS.get(t)
     if words is not None:
         return words
@@ -1096,11 +1099,13 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
                             c = r.get("counter") or {}
                             if c:
                                 outcome_txt += (f" (they asked for {c.get('items')} more worth {c.get('value')}: "
-                                                + ("given" if c.get("accepted") else "refused, left to you") + ")")
+                                                + ("given" if c.get("accepted") else "refused") + ")")
                             if r.get("traded") and not r.get("closed"):
                                 outcome_txt += "; the trade screen is still open"
                         elif not r.get("calibrated"):
-                            outcome_txt += "; press Trade yourself (the AI hasn't been shown the button)"
+                            # (0.105.35) kept: the AI presses only a button it has been shown
+                            outcome_txt += ("; not pressed: the AI hasn't been shown the Trade button (python "
+                                            "brain\\probe_trade.py --here), so the goods stay ticked on the screen")
                     elif r.get("waiting"):
                         outcome_txt = f"waiting: {r.get('error')}"
                     say(f"  {p.rule}: {p.reason} -> {json.dumps(p.action)} [{outcome_txt}]")
@@ -1805,7 +1810,17 @@ def rules_request(bridge: Bridge, autopilot: bool) -> None:
         if not isinstance(rules, dict) or not rules:
             raise ValueError("no rules")
     except (OSError, ValueError) as e:
-        say(f"Rules: {RULES_REQUEST} couldn't be read ({e}); left for you to fix.")
+        # (0.105.35) set aside, not left in the way: the next request is read afresh
+        # (a dry run moves nothing)
+        bad = path.with_name(RULES_REQUEST.replace(".json", ".bad.json"))
+        said = "left where it is (a dry run)"
+        if autopilot:
+            try:
+                path.replace(bad)
+                said = f"set aside as {bad.name}"
+            except OSError:
+                said = "left where it is"
+        say(f"Rules: {RULES_REQUEST} couldn't be read ({e}); nothing applied, {said}.")
         return
     try:
         r = bridge.act({"type": "set_rules", "rules": rules, "dry_run": not autopilot})
@@ -2051,7 +2066,9 @@ def _run(args) -> int:
                     r = bridge.act({"type": "answer_meeting"})
                     if r.get("pressed") and not r.get("ok"):
                         answer_dead = held_since
-                    if r.get("needs_button") or (r.get("pressed") and not r.get("ok")):
+                    # (0.105.35) or a topic the AI can't answer (a barony's holder): left soon,
+                    # nobody being there to answer it
+                    if r.get("needs_button") or (r.get("pressed") and not r.get("ok")) or r.get("left_to_player"):
                         answer_cant = held_since
                     if r.get("pressed") or r.get("needs_button") or r.get("left_to_player"):
                         say("DF's meeting screen: " + (f"answered {r.get('answer')} ({r.get('why') or r.get('topic')})"

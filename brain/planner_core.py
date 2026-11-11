@@ -8,7 +8,7 @@ from quirks import has_rule
 from digest import _d, _l, normalize
 from planner_config import PLANNER_CONFIG, DISPOSAL_ACTION_MAX  # noqa: F401  (13c: the tuning numbers, split out)
 
-__all__ = ["great_present", "all_clear", "STEER_PROTECTED", "STEER_MAX_DAYS", "steer_of", "PLANNER_CONFIG", "BREW_RECIPES", "MEAL_RECIPES", "MANDATE_RECIPES", "BUILDABLE_SHOPS", "SHOP_ALIASES", "SURVIVAL_SHOPS", "TICKS_PER_DAY", "TICKS_PER_YEAR", "NO_COOLDOWN", "COOLDOWN_KEYS", "MULTI_PER_CYCLE", "EMERGENCY", "STUCK_HOLD_EXEMPT", "ORDER_HOLD_EXEMPT", "LIMIT_EXEMPT", "Proposal", "Memory", "abs_tick", "stamp_tick", "game_day", "factor", "ADJUST_BOUNDS", "_number", "effective_config", "queued", "unstored_cups", "free_stock", "watch_since", "_clamp", "MEMORIAL_SPAN", "OPTIONAL_LEVELS", "GEAR_WEAPONS", "GEAR_METALS", "NEEDS_YOU", "ask_player", "DISPOSAL_LEVELS", "DISPOSAL_ACTION_MAX", "player_rules", "MAINTAIN_SKIPS", "level_refused", "_traits", "reachable_threats", "held_off_threats", "_holding_off", "ONE_A_CYCLE", "growth_mode", "growth_target", "JOB_SHOPS", "RECIPE_SHOPS", "WOOD_ELSEWHERE", "recipe_shop", "brewable_counts", "brew_recipe", "_watchdog_notes", "jobs_reported", "order_job_state", "masons_jammed", "stuck_hold_days", "_stuck_before", "stone_short", "_office_held", "tantrums_recent", "justice_held", "_restraint_order", "manager_needs_office", "suites_short", "wool_route", "thread_plants_here", "MINING_NEED_ONLY", "mining_plan", "noble_room_kinds", "SOCIAL_NEEDS", "care_waiting", "unmet", "_soldier_swap", "recently_home", "LOCATION_UNITS", "_location", "_location_short", "_real_locations", "can_fight", "is_ranged", "STALE_PROJECT_DAYS", "_workshops_busy", "shop_count", "shops_max", "_has_shop", "RAW_FOOD", "ALL_FOOD", "_idle_share", "idle_line", "IDLE_OLD_LINES", "levels_done", "_lever_state", "update_idle", "AGENDA_THEMES", "agenda", "food_per_dwarf", "WINTER_STOCK", "winter_factor", "young_fort", "established", "has_farms", "_best_metal", "REFUSAL_FIRST_DAYS", "REFUSAL_MAX_DAYS", "REFUSAL_IDLE_DAYS", "REFUSAL_KEYS", "refusal_key", "_refused_wait", "note_refusal", "TIMEOUT_TRIES", "timeout_streak", "brief_timeout", "LOOP_LIMITS", "LOOP_LIMIT_DEFAULT", "LOOP_EXEMPT", "_loop_count", "NO_EFFECT_RULES", "NO_EFFECT_WHY", "note_no_effect", "no_effect_wait", "_stalled_days", "_entrance_spot", "_record_any_outcome", "_weapon_gaps", "spare_sig", "MOOD_BODY_FLAGS", "mood_kind", "mood_on_hand", "mood_waits"]
+__all__ = ["great_present", "all_clear", "STEER_PROTECTED", "STEER_MAX_DAYS", "steer_of", "PLANNER_CONFIG", "BREW_RECIPES", "MEAL_RECIPES", "MANDATE_RECIPES", "BUILDABLE_SHOPS", "SHOP_ALIASES", "SURVIVAL_SHOPS", "TICKS_PER_DAY", "TICKS_PER_YEAR", "NO_COOLDOWN", "COOLDOWN_KEYS", "MULTI_PER_CYCLE", "EMERGENCY", "STUCK_HOLD_EXEMPT", "ORDER_HOLD_EXEMPT", "LIMIT_EXEMPT", "Proposal", "Memory", "abs_tick", "stamp_tick", "game_day", "factor", "ADJUST_BOUNDS", "_number", "effective_config", "queued", "unstored_cups", "free_stock", "watch_since", "_clamp", "MEMORIAL_SPAN", "OPTIONAL_LEVELS", "GEAR_WEAPONS", "GEAR_METALS", "NEEDS_YOU", "ask_player", "DISPOSAL_LEVELS", "DISPOSAL_ACTION_MAX", "player_rules", "MAINTAIN_SKIPS", "level_refused", "_traits", "reachable_threats", "held_off_threats", "_holding_off", "ONE_A_CYCLE", "growth_mode", "growth_target", "JOB_SHOPS", "RECIPE_SHOPS", "WOOD_ELSEWHERE", "recipe_shop", "brewable_counts", "brew_recipe", "_watchdog_notes", "jobs_reported", "order_job_state", "masons_jammed", "stuck_hold_days", "_stuck_before", "stone_short", "_office_held", "tantrums_recent", "justice_held", "_restraint_order", "manager_needs_office", "suites_short", "wool_route", "thread_plants_here", "MINING_NEED_ONLY", "mining_plan", "noble_room_kinds", "SOCIAL_NEEDS", "care_waiting", "unmet", "_soldier_swap", "recently_home", "LOCATION_UNITS", "_location", "_location_short", "_real_locations", "can_fight", "is_ranged", "STALE_PROJECT_DAYS", "_workshops_busy", "shop_count", "shops_max", "_has_shop", "RAW_FOOD", "ALL_FOOD", "_idle_share", "idle_line", "IDLE_OLD_LINES", "levels_done", "_lever_state", "update_idle", "AGENDA_THEMES", "agenda", "food_per_dwarf", "WINTER_STOCK", "winter_factor", "young_fort", "established", "has_farms", "_best_metal", "REFUSAL_FIRST_DAYS", "REFUSAL_MAX_DAYS", "REFUSAL_IDLE_DAYS", "REFUSAL_KEYS", "refusal_key", "_refused_wait", "note_refusal", "TIMEOUT_TRIES", "timeout_streak", "brief_timeout", "LOOP_LIMITS", "LOOP_LIMIT_DEFAULT", "LOOP_EXEMPT", "_loop_count", "NO_EFFECT_RULES", "NO_EFFECT_WHY", "note_no_effect", "no_effect_wait", "_stalled_days", "_entrance_spot", "_record_any_outcome", "_weapon_gaps", "spare_sig", "MOOD_BODY_FLAGS", "mood_kind", "mood_on_hand", "mood_waits", "_stuck_again_rule"]
 
 BREW_RECIPES = {"brew_drink", "brew_drink_from_fruit", "make_mead"}
 MEAL_RECIPES = {"prepare_easy_meal", "prepare_fine_meal", "prepare_lavish_meal"}
@@ -192,6 +192,7 @@ class Memory:
     last_train_tick: int | None = None                   # when it last did
     libraries_imported: list = field(default_factory=list)  # DFHack order libraries the AI imported
     shelter_attempts: int = 0                            # tries at setting up the alert shelter
+    shelter_tick: int | None = None                      # (0.105.35) the last try (after two: tried again later)
     gate_doors_requested: list = field(default_factory=list)  # entrances ("x,y,z") given doors
     rescan_entrances: bool = False                       # map the entrances again next cycle
     caverns_open: list = field(default_factory=list)     # caverns seen joined to the fort's ground
@@ -215,7 +216,9 @@ class Memory:
     reserve_swap_off: int | None = None                  # (0.105.31 reserve fixes) the season the fibre swap changed nothing
     farm_under_asked: dict = field(default_factory=dict)  # (0.105.7 review) {tick, tiles}: underground plots last laid out
     report_season: str = ""                              # the last season the player's report was written for
-    found_failure: str = ""                              # why the first staircase couldn't be dug (Needs you)
+    found_failure: str = ""                              # why the first staircase couldn't be dug near the wagon
+    found_wide_failure: str = ""                         # (0.105.35) ...nor further out (found_fort wide): Needs you
+    shops_held_since: dict = field(default_factory=dict)  # (0.105.35) workshop -> when its "started twice" hold began
     fps_cap: int | None = None                           # the population cap held while the game runs slowly
     strain_hold: bool = False                            # (0.104.106) newcomers held while the fort is strained
     strain_cap: int | None = None                        # (0.104.120) the cap held while strained (its size then)
@@ -411,8 +414,10 @@ GEAR_WEAPONS = {"axe": "metal_battle_axe", "spear": "metal_spear", "mace": "meta
 GEAR_METALS = ("STEEL", "IRON", "BRONZE", "BISMUTH_BRONZE", "COPPER")     # best first
 
 
-# Notes that ask the PLAYER to do something the AI can't (set up a burrow,
-# link a lever...). The overseer shows them apart: "Needs you".
+# Notes for what the game truly won't let the AI do (a screen it can't press,
+# a choice DFHack can't make), each saying what the AI does meanwhile. The
+# overseer shows them apart: "Needs you". (0.105.35, the player's standing
+# decision: nothing waits for the player; what the AI can do, it does.)
 NEEDS_YOU = "[you] "
 
 
@@ -737,8 +742,11 @@ def _watchdog_notes(s: dict, memory, cfg: dict, notes: list) -> None:
             continue
         shop = JOB_SHOPS.get(str(w.get("job")))
         state = order_job_state(by_id.get(str(k))) if jobs_reported(s) else ""   # (0.104.13) what its job is doing
+        # (0.105.35) what the AI does about it, not "check ..." for the player
         why = (f"the fort has no {shop}" if shop and not _has_shop(_d(s.get("buildings")), shop)
-               else (state + "; " if state else "") + "check its workshop, who may do the job, and its materials")
+               else state or "its workshop, workers or materials hold it")
+        why += (f"; the AI cancels it at {cfg['order_stuck_you_days']} days" if w.get("by_ai")
+                and days < cfg["order_stuck_you_days"] else "" if w.get("by_ai") else "; the player's order: left as it is")
         text = f"{w.get('what')} ({w.get('left')} left, {'the AI' if w.get('by_ai') else 'yours'}) for {days} days: {why}"
         if w.get("by_ai") and days >= cfg["order_stuck_you_days"]:
             if _stuck_before(memory, w.get("what"), now, cfg):
@@ -749,16 +757,63 @@ def _watchdog_notes(s: dict, memory, cfg: dict, notes: list) -> None:
     if stuck_note:
         notes.append(f"{len(stuck_note)} work order(s) haven't moved: " + "; ".join(sorted(stuck_note)[:3]))
     if stuck_you:
-        ask_player(notes, f"{len(stuck_you)} of the AI's work order(s) keep getting stuck (cancelled once, "
-                   "stuck again): "
-                   + "; ".join(sorted(stuck_you)[:3]))
+        # (0.105.35) said, not Needs you: _stuck_again_rule cancels them again
+        # and each is held longer (stuck_hold_days, doubled up to 112 days)
+        notes.append(f"{len(stuck_you)} of the AI's work order(s) got stuck again after a cancel: "
+                     + "; ".join(sorted(stuck_you)[:3])
+                     + " (the AI cancels each again and holds it longer before ordering it again)")
     pw = _d(memory.pop_watch)
     cap = _d(s.get("society")).get("pop_cap")
     if isinstance(pw.get("since"), int) and now - pw["since"] >= TICKS_PER_YEAR and (not cap or pw.get("pop", 0) < cap):
         notes.append(f"the fort has had {pw.get('pop')} dwarves for a year or more"
                      + (f" (population cap {cap})" if cap else "")
-                     + ": migrants come to a fort that grows richer (crafts for the caravans, built rooms); "
-                     "if none come at all, check the population cap in DF's settings")
+                     + ": migrants come to a fort that grows richer (crafts for the caravans, built rooms)"
+                     + ("; the AI sets the population cap itself" if player_rules(s)["set_pop_cap"]
+                        else "; the population cap is the player's (its Rules switch is off)"))
+
+
+def _stuck_again_rule(s: dict, memory, cfg: dict, proposals: list) -> None:
+    """(0.105.35) Nothing waits for the player: the AI's own order stuck
+    again after it was cancelled as stuck (_stuck_before) is cancelled again
+    (was Needs you, left standing for good); the cancel's `stuck` books it
+    once more, so the recipe is held longer each time (stuck_hold_days, to
+    stuck_retry_max_days). As _stuck_orders_rule: not on a stale or unapproved
+    order list, not while no order at all has started, and the last slab or
+    coffin for the waiting dead stays."""
+    if memory is None or "orders" in _d(s.get("_errors")):
+        return
+    orders = [o for o in _l(s.get("orders")) if isinstance(o, dict)]
+    if any("validated" in o for o in orders) and not any(o.get("active") for o in orders):
+        return
+    unapproved = {str(o.get("id")) for o in orders if o.get("validated") is False}
+    live = {str(o.get("id")) for o in orders}
+    dead = int(_d(s.get("dead")).get("ghosts") or 0) > 0 or int(_d(s.get("dead")).get("unburied") or 0) > 0
+    taken = {p.action.get("order_id") for p in proposals if p.action.get("type") == "cancel_work_order"}
+    now = abs_tick(s)
+    n = sum(1 for p in proposals if p.rule == "stuck_order")
+    for k, w in sorted(memory.order_watch.items()):
+        if n >= cfg["stuck_cancel_max"]:
+            break
+        if (k in unapproved or k not in live or not isinstance(w, dict) or not w.get("by_ai")
+                or not isinstance(w.get("since"), int) or not (w.get("left") or 0) > 0):
+            continue
+        what = str(w.get("what"))
+        days = (now - watch_since(w)) // TICKS_PER_DAY
+        if days < cfg["order_stuck_you_days"] or not _stuck_before(memory, what, now, cfg):
+            continue
+        if dead and what in ("stone_slab", "stone_coffin"):
+            continue
+        try:
+            oid = int(k)
+        except ValueError:
+            continue
+        if oid in taken:
+            continue
+        hold = stuck_hold_days({"n": int(_d(memory.stuck_cancelled.get(what)).get("n") or 1) + 1}, cfg)
+        proposals.append(Proposal("stuck_order", {"type": "cancel_work_order", "order_id": oid, "stuck": what},
+                                  f"the AI's {what} order ({w.get('left')} left) got stuck again after a cancel "
+                                  f"({days} days without moving): cancel it again (not placed again for {hold} days)", 6))
+        n += 1
 
 
 def jobs_reported(s: dict) -> bool:
@@ -1621,7 +1676,8 @@ def _record_any_outcome(a: dict, r: dict, state: dict, memory, now: int, brief: 
             if isinstance(rec, dict):
                 rec["status"] = "taken down" if "nothing" in str(r.get("error")) else "kept"
     if t == "setup_shelter":
-        memory.shelter_attempts += 1          # refused or not: two tries, then it's yours
+        memory.shelter_attempts += 1          # refused or not: two tries, then again after a wait (0.105.35)
+        memory.shelter_tick = now
     elif t == "scan_entrances":
         memory.rescan_entrances = False
     elif t == "expel_dwarf":
@@ -1685,9 +1741,14 @@ def _record_any_outcome(a: dict, r: dict, state: dict, memory, now: int, brief: 
                 memory.farm_failure_tick = now - max(0, PLANNER_CONFIG["farm_dig_retry_days"] - 3) * TICKS_PER_DAY
     elif t == "found_fort":
         if r.get("ok") is True:
-            memory.found_failure = ""
+            memory.found_failure = memory.found_wide_failure = ""
         elif r.get("ok") is False and not r.get("rejected"):
-            memory.found_failure = str(r.get("error") or "refused")[:300]
+            # (0.105.35) a refusal near the wagon is tried further out (wide); only
+            # a wide refusal is Needs you
+            if a.get("wide"):
+                memory.found_wide_failure = str(r.get("error") or "refused")[:300]
+            else:
+                memory.found_failure = str(r.get("error") or "refused")[:300]
     elif t == "place_traps":
         spot = _entrance_spot(state, a.get("entrance_id"))
         if spot and r.get("ok") is None:
