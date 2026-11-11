@@ -215,12 +215,20 @@ def gate_exhausted(s: dict, memory, cfg: dict) -> set:
     return out
 
 
-def _way_in_doing(s: dict, memory) -> str:
-    """(0.105.32) A way in being dug (the report's projects), as words, or ''."""
+def _way_in_doing(s: dict, memory, second: bool = True) -> str:
+    """(0.105.32) A way in being dug (the report's projects), as words, or ''.
+    (fix33) second=False (the stranded's emergency way in): the second way to
+    the surface (summary.second, or memory.second_way's project) doesn't count:
+    a slow second way never holds the way in for dwarves cut off."""
     ids = {v.get("project_id") for v in _d(getattr(memory, "way_in", None)).values()
            if isinstance(v, dict) and v.get("project_id") is not None}
+    sid = _d(getattr(memory, "second_way", None)).get("project_id")
     for p in _l(_d(s.get("projects")).get("open")):
-        if isinstance(p, dict) and (p.get("kind") in WAY_IN_KINDS or (p.get("id") in ids and p.get("id") is not None)):
+        if not isinstance(p, dict):
+            continue
+        if not second and (_d(p.get("summary")).get("second") or (sid is not None and p.get("id") == sid)):
+            continue
+        if p.get("kind") in WAY_IN_KINDS or (p.get("id") in ids and p.get("id") is not None):
             return f"project #{p.get('id')}, {p.get('phase') or 'under way'}"
     return ""
 
@@ -279,7 +287,7 @@ def _way_in_rule(s: dict, memory, cfg: dict, proposals: list, notes: list, off: 
                      + (f"{reach} enemy(ies) can reach the dwarves" if reach else "the gate watcher is armed")
                      + ": no way in is dug until that is over")
         return ""
-    if _way_in_doing(s, memory):
+    if _way_in_doing(s, memory, second=False):
         return ""
     import statistics
     x, y, z = (int(statistics.median_low([r[k] for r in rows])) for k in ("x", "y", "z"))
@@ -344,6 +352,7 @@ def note_gate_stuck(p, r: dict, state: dict, memory, now: int) -> None:
         sw.update(tick=now, ok=r.get("ok"), project_id=r.get("project_id"),
                   why=str(r.get("why") or r.get("error") or "")[:160])
         sw.pop("rescanned", None)
+        sw.pop("closed_phase", None)             # (fix33) the new try's own
         memory.second_way = sw
     elif t == "dig_way_in" and all(isinstance(a.get(k), int) for k in ("x", "y", "z")):
         if not isinstance(getattr(memory, "way_in", None), dict):
@@ -424,7 +433,8 @@ def _surface_entrances(s: dict) -> list:
             if isinstance(e, dict) and e.get("kind") == "surface"]
 
 
-def _second_way_rule(s: dict, memory, cfg: dict, traits: dict, proposals: list, notes: list) -> None:
+def _second_way_rule(s: dict, memory, cfg: dict, traits: dict, proposals: list, notes: list,
+                     rules_: dict | None = None) -> None:
     """(0.105.33) A second way to the surface by design: a fort of
     `second_way_min_citizens` (30) or more with exactly one surface entrance,
     no enemy that can reach the dwarves, the watcher not armed and no way in
@@ -433,10 +443,13 @@ def _second_way_rule(s: dict, memory, cfg: dict, traits: dict, proposals: list, 
     character (hidden_hold or winding_ways, or Outsiders at
     `second_way_hermit_outsiders` or lower) unless citizens were ever
     stranded. Refused: again after `second_way_retry_days`; never again once
-    a second surface entrance exists."""
+    a second surface entrance exists. (fix33) Only while the Rules let the
+    AI close an entrance (build_gate_doors or fortify_entrances): a new hole
+    nothing closes is the player's to make. One dug (its project done) and
+    the scan still sees one surface entrance: no more, put to the player."""
     import customs
     sw = dict(_d(getattr(memory, "second_way", None)))
-    if sw.get("done"):
+    if sw.get("done") or sw.get("dug_unseen"):
         return
     surf = _surface_entrances(s)
     if len(surf) >= 2:
@@ -472,7 +485,27 @@ def _second_way_rule(s: dict, memory, cfg: dict, traits: dict, proposals: list, 
                 # dug (the project closed): the new stair is mapped as an entrance
                 memory.rescan_entrances = True
                 sw["rescanned"] = now
+                # (fix33) how it closed (the registry): cancelled is not dug
+                for rp in _l(s.get("registry")):
+                    if isinstance(rp, dict) and rp.get("id") == sw.get("project_id") and rp.get("id") is not None:
+                        sw["closed_phase"] = rp.get("phase")
                 memory.second_way = sw
+        return
+    if sw.get("ok") is True and sw.get("rescanned") and sw.get("closed_phase") != "cancelled":
+        # (fix33) dug, mapped again, and still one surface entrance: the new
+        # stair comes out where the scan counts it inside (a courtyard): no
+        # more digging, said once
+        sw["dug_unseen"] = now
+        memory.second_way = sw
+        ask_player(notes, f"a second way to the surface was dug (project #{sw.get('project_id')}), but the map of "
+                          "the entrances still shows one surface entrance: the AI digs no more; look at where it "
+                          "came out (a walled courtyard?) and open a second way out yourself if it doesn't reach "
+                          "the outside")
+        return
+    rules_ = rules_ if isinstance(rules_, dict) else player_rules(s)
+    if not (rules_.get("build_gate_doors", True) or rules_.get("fortify_entrances", True)):
+        notes.append("one way to the surface, but doors and walls on entrances are both off on the Rules tab: "
+                     "the AI digs no second way (it could put nothing on it to close it)")
         return
     e = surf[0]
     off = _d(s.get("map")).get("elevation_offset")
@@ -583,7 +616,7 @@ def _stranded_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None
                           f"y{e.get('y')} elevation {(e.get('z') or 0) + off} is shut, not by the AI (a raised "
                           "bridge or a locked door): open it")
     if nopath:
-        way = way_new or (_way_in_doing(s, memory) if memory is not None else "")
+        way = way_new or (_way_in_doing(s, memory, second=False) if memory is not None else "")
         ask_player(notes, f"{len(nopath)} citizen(s) stranded outside for {days(nopath)} with no way back in "
                           f"(a collapse or a fire?): {', '.join(where(r) for r in nopath[:5])}"
                           + (f" and {len(nopath) - 5} more" if len(nopath) > 5 else "")
@@ -676,7 +709,7 @@ def _gate_rules(s: dict, memory, cfg: dict, rules_: dict, any_reach: bool,
     if stale:
         return                              # building gates waits for the new map
     _gate_parts_rule(s, ent, es, off, proposals, notes, memory)
-    _second_way_rule(s, memory, cfg, traits or {}, proposals, notes)     # (0.105.33)
+    _second_way_rule(s, memory, cfg, traits or {}, proposals, notes, rules_)     # (0.105.33; fix33 rules_)
     doors_proposed = fortify_proposed = False
     open_wide: list = []
     refused: list = []
