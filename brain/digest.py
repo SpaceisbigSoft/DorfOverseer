@@ -147,7 +147,15 @@ SECTION_DEFAULTS = {
     "trade": {},             # {depot, caravans: [{civ, state}], goods, goods_value, at_depot} (lua/ai-trade.lua)          # {ores: {METAL: {tiles, ore}}} uncovered near the fort (lua/ai-industry.lua)             # {miners, picks, soldier_picks, dig, want, need, candidates} (lua/ai-labor.lua)
     "founding": {},          # {stairs: has the fort a staircase, near: the wagon or the dwarves}
     "constructions": {},     # (0.105.30) built walls, floors...: by shape, item, surface (lua/ai-constructions.lua)
+    "civ_alert": False,      # (0.105.33) a failed read ({error}) read as "the alarm is on"
 }
+
+# (0.105.33) Sections the rules read through their own guards (`"error" in d`,
+# `is True`, or "None: no such section"): a failure is listed in _errors, so
+# the planner sees "failed", not "nothing there", but the value is left as
+# it came (an empty default would read as a working, empty section).
+LISTED_ONLY = ("needs", "deep", "water", "disposal", "offices", "crossings", "logistics",
+               "order_desk", "civ_alert_ready", "units")
 
 # Sections the planner decides from. If one of these is MISSING (e.g. a report
 # from an older bridge), that's treated as a failure, not as "nothing there":
@@ -185,6 +193,10 @@ def normalize(s: dict) -> dict:
     elif w is not None and (isinstance(w, bool) or not isinstance(w, (int, float))):
         errors["wealth"] = f"unexpected type {type(w).__name__}"
         s["wealth"] = None
+    for key in LISTED_ONLY:
+        v = s.get(key)
+        if isinstance(v, dict) and "error" in v and key not in errors:
+            errors[key] = v["error"]
     m = s.get("map")
     # (0.105.26) the whole map section failed: said, not shown as an empty map
     if isinstance(m, dict) and "error" in m and not isinstance(m.get("layers"), list):
@@ -193,6 +205,8 @@ def normalize(s: dict) -> dict:
     elif m is not None and not isinstance(m, dict):
         errors["map"] = f"unexpected type {type(m).__name__}"
         s["map"] = m = {}
+    elif isinstance(m, dict) and "error" in m:
+        errors["map.size"] = m["error"]          # (0.105.33) only the header (size, elevation) failed
     if isinstance(m, dict):
         for key in ("layers", "dwarves"):
             v = m.get(key)
