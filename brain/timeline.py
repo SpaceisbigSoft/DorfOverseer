@@ -179,8 +179,12 @@ def _rewind(t: dict, day: int) -> None:
 
 def record(state: dict, memory, events: list[dict] | None = None, cfg: dict | None = None) -> dict | None:
     """Add (or update) today's row, and roll up finished seasons and years.
-    Returns the finished day's row when a new day began (for the log file), else None."""
+    Returns the finished day's row when a new day began (for the log file), else None.
+    (0.105.33, B5) A report whose date failed reads as year 0, tick 0: not an
+    older save. Nothing is recorded (or rewound) for it."""
     t = _state(memory)
+    if "date" in normalize(state)["_errors"]:
+        return None
     row = row_for(state, events, cfg)
     day = row["day"]
     finished = None

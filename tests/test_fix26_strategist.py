@@ -18,6 +18,7 @@ from backends import Reply  # noqa: E402
 from digest import digest, normalize  # noqa: E402
 from planner import Memory, Proposal, STEER_PROTECTED, TICKS_PER_DAY, abs_tick, plan, steer_of  # noqa: E402
 from strategist import SECTIONS, check_answer, cut_json, review_message, rules_line, shown_rules  # noqa: E402
+from strategist import RAISE_FORBIDDEN  # noqa: E402
 from tokens import TokenBank  # noqa: E402
 
 BASE = json.loads((ROOT / "tests" / "fixtures" / "test_fort.json").read_text(encoding="utf-8"))
@@ -57,8 +58,9 @@ def _():
         assert rule in STEER_PROTECTED, rule
         a = _steer({"type": "hold", "rule": rule, "days": 84, "why": "x"}, shown={rule})
         assert not a.steer and "can't be held" in a.rejected[0], (rule, a.rejected)
-        # a raise is still fine
-        assert _steer({"type": "raise", "rule": rule, "why": "x"}, shown={rule}).steer, rule
+        # a raise is still fine (r33, B5: not of the rules paced only by their wait)
+        if rule not in RAISE_FORBIDDEN:
+            assert _steer({"type": "raise", "rule": rule, "why": "x"}, shown={rule}).steer, rule
     # and a hold saved earlier (an older version let it through) is ignored
     m = Memory()
     m.steer = {"mood": {"mode": "hold", "until": 10 ** 9, "why": "x"}}

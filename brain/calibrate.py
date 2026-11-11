@@ -186,6 +186,8 @@ def _decide(key: str, days: list[dict]) -> tuple[bool | None, str]:
 def update(state: dict, memory, cfg: dict, adjust: dict | None = None) -> list[dict]:
     """Gather today's evidence; at the end of a window, maybe move a value.
     Returns the changes: [{"key", "name", "old", "new", "up", "why"}]."""
+    if "date" in normalize(state)["_errors"]:
+        return []        # (0.105.33, B5) tick 0 is no older save: the windows and changes are kept
     c = _state(memory)
     now = _now(state)
     today = now // DAY
