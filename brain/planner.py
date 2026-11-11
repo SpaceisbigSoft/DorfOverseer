@@ -42,6 +42,7 @@ from planner_society import *  # noqa: E402,F401,F403  (0.104.83: the planner in
 import crisis  # noqa: E402  (0.104.137)
 from planner_moods import mood_blocked  # noqa: E402  (0.105.26) a waiting mood's materials held from other orders
 from planner_moods import reserve_room, note_reserve_swap, _mood_reserve_rule  # noqa: E402  (0.105.31) the mood reserves
+from planner_gates import note_gate_stuck, note_gate_stuck_cycle  # noqa: E402  (0.105.32) a gate the game holds shut
 from planner_building import *  # noqa: E402,F401,F403  (0.104.83: the planner in parts)
 from planner_care import _doctor_post_rule, _infection_rule, _offices_refill_rule, _traction_rest_rule  # noqa: E402  (0.104.168)
 from planner_water import _waterworks_rule  # noqa: E402  (0.105.0) moat, pumps, irrigation, magma workshops
@@ -915,6 +916,7 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
         note_no_effect(memory, p, ok, now)                 # (0.105.24)
         note_construct(p, r, state, memory, now)           # (0.105.30) wings, seals, soil floors, the hall
         note_reserve_swap(p, r, state, memory)             # (0.105.31 reserve fixes) a fibre swap that did nothing
+        note_gate_stuck(p, r, state, memory, now)          # (0.105.32) the unstick step tried, a way dug in
         if p.action.get("type") == "squad_swap" and p.action.get("unit_id") is not None:
             # (0.104.78) sent home, or found already out: not asked for again a week
             memory.swapped[str(p.action["unit_id"])] = now
@@ -1167,6 +1169,8 @@ def note_cycle(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> list[
         notes += note_lockdown(s, memory, cfg)                   # (0.105.3) B's sealed hatch: lone intruders, the cap
     if "locations" not in errors:
         note_locations(s, memory, cfg)                           # (0.105.26) moved out of plan()
+    if "entrances" not in errors:
+        note_gate_stuck_cycle(s, memory)                         # (0.105.32) a gate piece no longer split: forgotten
     try:
         note_construct_cycle(s, memory, cfg)                     # (0.105.30) the hall's wait for blocks
     except Exception as e:  # noqa: BLE001

@@ -495,6 +495,10 @@ def short(a: dict) -> str:
         return words
     if t == "set_population_cap":
         return f"set the population cap to {a.get('cap')}"
+    if t == "unstick_gate":          # (0.105.32) an open gate the game holds shut; the step in the words
+        return f"free a gate the game holds shut (step {a.get('step') or 1} of 3)"
+    if t == "dig_way_in":            # (0.105.32)
+        return "dig a stair in for the citizens cut off outside"
     if t == "work_order":
         return f"order {a.get('amount')} x {str(a.get('recipe')).replace('_', ' ')}"
     if t == "tool":
