@@ -2804,6 +2804,8 @@ function act_set_rules(a)
         return false
     end
     for k, v in pairs(a.rules) do
+        -- (v35 fix) open_caverns is three-state: an old request's true is always, false the AI decides
+        if k == 'open_caverns' and type(v) == 'boolean' and S.open_caverns_choice then v = S.open_caverns_choice(v) end
         if not choice_ok(k, v) and (type(k) ~= 'string' or type(defs[k]) ~= 'boolean' or type(v) ~= 'boolean') then
             table.insert(unknown, tostring(k))
         elseif cur[k] ~= v then

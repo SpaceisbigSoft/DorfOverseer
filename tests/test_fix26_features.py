@@ -100,11 +100,13 @@ def _():
     line = [n for n in notes if "no way back in" in n]
     assert line and "Dwarf0 (x40 y41 elevation 50)" in line[0] and "7 citizen(s)" in line[0] and "2 more" in line[0], line
     assert "the AI digs them a way in" in line[0] and not [n for n in needs_you(notes) if "no way back in" in n], notes
-    # (0.105.35) a gate shut, but not by the AI (a raised bridge, a locked door): that entrance opened, no Needs you
+    # (v35) a gate shut, but not by the AI (a raised bridge, a locked door): never opened by the AI,
+    # a plain note (a way is dug in for them), no Needs you
     s["entrances"]["stranded"] = [dict(ROW, cause="gate_shut", by_ai=False)]
     props, notes = plan(s, Memory())
-    assert [p.action for p in acts(props, "stranded")] == [{"type": "open_entrance", "id": 1}], props
-    assert not any("not by the AI" in n for n in needs_you(notes)), notes
+    assert not acts(props, "stranded"), props
+    assert any("the gate is the player's" in n for n in notes), notes
+    assert not any("didn't shut" in n for n in needs_you(notes)), notes
     # (0.105.35) down in the caverns behind the AI's gate: their entrance opened when the caverns read
     # safe, else kept shut and said; never a Needs you, never open_gates
     s["entrances"]["stranded"] = [dict(ROW, in_cavern=True)]

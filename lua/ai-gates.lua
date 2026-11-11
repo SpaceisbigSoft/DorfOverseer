@@ -1649,7 +1649,45 @@ end
 -- isn't, what quickfort counted instead (e.g. build_unsuitable), so a refusal
 -- can say why.
 place_hook = nil       -- tests replace this
-local function place(key_text, pos)
+-- (v35 fix) The tiles where the AI planned a gate piece (a door, hatch,
+-- wall, bridge), kept with the save ({"x,y,z", ...}): free_gate_jobs resumes
+-- the suspended jobs of these only, never of what the player planned.
+GATE_PLANNED_KEY = 'ai-overseer/gate_planned'
+GATE_PLANNED_MAX = 400
+
+function gate_planned_records()
+    local d = U.site_get(GATE_PLANNED_KEY, {})
+    local list = type(d) == 'table' and type(d.tiles) == 'table' and d.tiles or {}
+    local set = {}
+    for _, k in ipairs(list) do set[k] = true end
+    return set, list
+end
+
+function note_gate_planned(pos)
+    if not (pos and pos.x and pos.y and pos.z) then return end
+    local k = ('%d,%d,%d'):format(pos.x, pos.y, pos.z)
+    local set, list = gate_planned_records()
+    if set[k] then return end
+    local out = {}
+    for _, v in ipairs(list) do table.insert(out, v) end
+    table.insert(out, k)
+    while #out > GATE_PLANNED_MAX do table.remove(out, 1) end
+    U.site_put(GATE_PLANNED_KEY, {tiles = out})
+end
+
+-- (v35 fix) Is any tile of this planned building one the AI planned?
+function ai_planned_building(b)
+    local okr, set = pcall(gate_planned_records)
+    if not okr or not b or b.x1 == nil or b.z == nil then return false end
+    for x = b.x1, b.x2 or b.x1 do
+        for y = b.y1, b.y2 or b.y1 do
+            if set[('%d,%d,%d'):format(x, y, b.z)] then return true end
+        end
+    end
+    return false
+end
+
+local function place_raw(key_text, pos)
     if place_hook then return place_hook(key_text, pos) end
     local qf = reqscript('quickfort')
     -- the same data shape ai-builder uses: {[z] = {[y] = {[x] = text}}}
@@ -1666,6 +1704,12 @@ local function place(key_text, pos)
     end
     local seen = what_is_there(pos)
     return false, (#why > 0 and table.concat(why, ',') or 'not placed') .. (seen and (' ' .. seen) or '')
+end
+
+local function place(key_text, pos)
+    local ok, why = place_raw(key_text, pos)
+    if ok then pcall(note_gate_planned, pos) end       -- (v35 fix) the AI's own, recorded
+    return ok, why
 end
 
 -- What's on a tile, in a few words, so a refusal says why ("SAPLING, a
@@ -4781,8 +4825,9 @@ local function where(x, y, z) return ('x%d y%d z%d'):format(x, y, z) end
 -- One step (1-3) at a gate piece that reads open but DF holds shut.
 -- {ok, step, done, split_after, flags_before, flags_after, dry_run?}.
 -- (0.105.35) cavern_ok: the brain read the caverns and found no great
--- danger there: a cavern's way gets steps 2 and 3 too (the AI's own piece
--- only, as anywhere), for citizens cut off on its far side.
+-- danger there: a cavern's way gets step 2 too (the AI's own piece
+-- only, as anywhere), for citizens cut off on its far side; (v35 fix) never
+-- step 3 (taken down) on a cavern's way.
 function unstick_gate(id, step, dry_run, cavern_ok)
     pcall(gates_restore)        -- (the save's record read back before this one is added)
     if not GATES.scanned then return {ok = false, rejected = true, error = 'map the entrances first'} end
@@ -4827,6 +4872,13 @@ function unstick_gate(id, step, dry_run, cavern_ok)
         return {ok = false, rejected = true, step = step, cavern = true,
                 error = 'this gate is on a cavern\'s way: the AI does not pull it open and shut or take it down; '
                     .. 'see to it by hand'}
+    end
+    -- (v35 fix) never taken down on a cavern's way, even with the caverns read
+    -- safe now: that way into the caverns would stay open until a door is rebuilt
+    if cavern and step == 3 then
+        return {ok = false, rejected = true, step = step, cavern = true,
+                error = 'this gate is on a cavern\'s way: the AI does not take it down (the way into the caverns '
+                    .. 'would stay open)'}
     end
     -- (merge32 review) the gate watcher's: an entrance it holds shut isn't
     -- opened by a pull; nothing is taken down while it is armed or an invader
@@ -4997,7 +5049,7 @@ end
 -- (0.105.35) cavern_ok: the brain read the caverns and found no great danger
 -- there (its cavern_great, deep_read): a cavern entrance opens too, for
 -- citizens shut out on its far side (the seal and a great danger in sight
--- still refuse it).
+-- still refuse it). (v35 fix) Only an entrance the AI shut (GATES.closed).
 function open_entrance(id, dry_run, cavern_ok)
     local e
     for _, x in ipairs(GATES.entrances or {}) do if x.id == id then e = x end end
@@ -5017,15 +5069,16 @@ function open_entrance(id, dry_run, cavern_ok)
         return {ok = false, rejected = true, waiting = true, nearest = nearest,
                 error = ('an enemy is %d tiles from this entrance'):format(nearest)}
     end
-    -- (0.105.35 merge) a gate the AI didn't shut: the player's own lever is
-    -- pulled only when it works nothing but this entrance's gates
+    -- (v35 fix) a gate the AI didn't shut is the player's: never opened by
+    -- the AI (no lever of the player's pulled, no door the player locked
+    -- unlocked); the brain digs the shut-out a way in instead
     if not (GATES.closed and GATES.closed[e.id]) then
         local okp, shared = pcall(players_shared_levers, e)
-        if okp and shared[1] then
-            return {ok = false, rejected = true, shared_lever = shared[1].lever, works_other = shared[1].others,
-                    error = ('its gate is on the player\'s lever %d, which works %d other thing(s): the AI '
-                             .. 'leaves it'):format(shared[1].lever, shared[1].others)}
-        end
+        local sh = okp and shared and shared[1] or nil
+        return {ok = false, rejected = true, not_ai = true,
+                shared_lever = sh and sh.lever or nil, works_other = sh and sh.others or nil,
+                error = 'its gate was not shut by the AI: the AI does not open the player\'s gate'
+                    .. (sh and (' (the player\'s lever %d works %d other thing(s))'):format(sh.lever, sh.others) or '')}
     end
     if dry_run then return {ok = true, dry_run = true, entrance = id, nearest = nearest < math.huge and nearest or nil} end
     local done = set_entrance(e, false)
@@ -5071,27 +5124,36 @@ end
 
 -- (0.105.35) A gate planned at an entrance waits a week with parts free:
 -- the building jobs of what is planned there unsuspended (a suspended job
--- is the usual cause). Refused when none is suspended.
+-- is the usual cause). Refused when none is suspended. (v35 fix) Only the
+-- pieces the AI planned (gate_planned_records).
 function free_gate_jobs(id, dry_run)
     local e
     for _, x in ipairs(GATES.entrances or {}) do if x.id == id then e = x end end
     if not e then return {ok = false, rejected = true, error = 'no entrance ' .. tostring(id)} end
-    local n, seen = 0, 0
+    local n, seen, theirs = 0, 0, 0
     for _, bid in ipairs(e.pending_ids or {}) do
         local okb, b = pcall(df.building.find, bid)
         if okb and b then
             seen = seen + 1
+            -- (v35 fix) only what the AI planned: the player's suspended job stays theirs
+            local mine = ai_planned_building(b)
             for _, j in ipairs(b.jobs or {}) do
                 if j.flags and j.flags.suspend then
-                    n = n + 1
-                    if not dry_run then j.flags.suspend = false end
+                    if mine then
+                        n = n + 1
+                        if not dry_run then j.flags.suspend = false end
+                    else
+                        theirs = theirs + 1
+                    end
                 end
             end
         end
     end
     if n == 0 then
-        return {ok = false, rejected = true,
-                error = ('no suspended job at the %d piece(s) planned there'):format(seen)}
+        return {ok = false, rejected = true, players = theirs > 0 or nil,
+                error = theirs > 0 and ('the %d suspended job(s) there are on what the player planned: the AI '
+                                        .. 'leaves them'):format(theirs)
+                    or ('no suspended job at the %d piece(s) planned there'):format(seen)}
     end
     return {ok = true, unsuspended = n, dry_run = dry_run or nil}
 end

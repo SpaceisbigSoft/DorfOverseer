@@ -884,13 +884,19 @@ function cistern_retire(dry_run, why)
     local old = site_get(CISTERN_KEY .. '/retired', {})
     local by_ai = 0
     for _, r in ipairs(old) do if r.by_ai then by_ai = by_ai + 1 end end
-    if by_ai >= CISTERN_RETIRE_MAX then
-        return {ok = false, rejected = true,
-                error = ('the AI has retired %d cisterns already: this one is left as it is, its floodgate shut')
-                        :format(by_ai)}
-    end
     local p = d.plan
     local gate = building_info(p.floodgate.x, p.floodgate.y, p.intake_z or p.cistern.z, 'Floodgate')
+    if by_ai >= CISTERN_RETIRE_MAX then
+        -- (v35 nit) its floodgate shut, as said (not on a dry run)
+        local shut = gate and gate.built and gate.closed
+        if not dry_run and gate and gate.built and not gate.closed and d.lever_id then
+            if lever_pull_pending(d.lever_id) then cancel_lever_pulls(d.lever_id) end
+            shut = pull(d.lever_id, true) and true or false
+        end
+        return {ok = false, rejected = true,
+                error = ('the AI has retired %d cisterns already: this one is left as it is, its floodgate %s')
+                        :format(by_ai, shut and 'shut' or 'not shut (no lever linked to it)')}
+    end
     if dry_run then return {ok = true, dry_run = true, retire = true} end
     if gate and gate.built and not gate.closed and d.lever_id then
         if lever_pull_pending(d.lever_id) then cancel_lever_pulls(d.lever_id) end
@@ -1506,15 +1512,19 @@ function cistern_step(dry_run, prefs, tunnel)
             if ok_ == true and (d.leaks or 0) < 2 and not dry_run then d.leak = nil; save_cistern(d) end
         end
         if d.leak and not leak then
-            return {ok = false, rejected = true, needs_player = true, leak = d.leak,
-                    error = 'the cistern leaked at ' .. d.leak .. ': its floodgate stays shut'}
+            -- (v35 fix) waiting (the brain asks again in 2 days), not a refusal
+            return {ok = false, rejected = true, waiting = true, leak = d.leak, leaks = math.tointeger(d.leaks),
+                    error = 'the cistern leaked at ' .. d.leak .. ': its floodgate stays shut until it is closed '
+                        .. 'all round again'}
         end
         if leak then
             if gate and gate.built and not gate.closed and d.lever_id and not dry_run then pull(d.lever_id, true) end
+            -- (v35 fix) one leak is counted once, not on every step while the water stands over it
+            if not d.leak then d.leaks = (d.leaks or 0) + 1 end
             d.leak = leak
-            d.leaks = (d.leaks or 0) + 1
             if not dry_run then save_cistern(d) end
-            return {ok = false, needs_player = true, leak = leak, shut = true,
+            return {ok = false, rejected = true, waiting = true, leak = leak, shut = true,
+                    leaks = math.tointeger(d.leaks),
                     error = 'water over the cistern at ' .. leak .. ': its floodgate shut at once'}
         end
     end

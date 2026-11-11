@@ -14,7 +14,7 @@ from digest import _d, _l
 from planner_core import *  # noqa: F401,F403
 from planner_construct import _wings_rule, cavern_wall_style  # (0.105.30) wing walls, the Hermit's cavern walls
 
-__all__ = ["_gate_rules", "_stranded_rule", "shared_lever_row", "split_pieces", "stuck_rows", "note_gate_stuck", "note_gate_stuck_cycle", "note_second_way", "_second_way_rule", "WAY_IN_KINDS", "GATE_STUCK_TRIED", "STRANDED_CONFIG", "GATE_PART_RECIPES", "GATE_PART_STUCK_DAYS", "_gate_parts_rule", "_free_gate_levers", "_lever_far_enough", "machinery_wanted", "_lever_hatches_ok", "_link_wanted", "_lever_rule", "_trap_rule", "_gatehouse_rule", "_near_spot", "lone_intruders", "few_ordinary", "few_alert_over", "few_near", "hunted_outside", "ai_gates_shut", "_Rec", "_lockdown", "lockdown_released", "lone_alert_over", "_lockdown_ids", "_lockdown_cap_why", "note_lockdown", "quick_clear", "PASTURE_ACTIONS", "_pasture_hold", "gate_invaders", "main_gate", "_gate_guard_rule", "_gate_dogs_rule"]
+__all__ = ["_gate_rules", "_stranded_rule", "shared_lever_row", "player_gate_row", "split_pieces", "stuck_rows", "note_gate_stuck", "note_gate_stuck_cycle", "note_second_way", "_second_way_rule", "WAY_IN_KINDS", "GATE_STUCK_TRIED", "STRANDED_CONFIG", "GATE_PART_RECIPES", "GATE_PART_STUCK_DAYS", "_gate_parts_rule", "_free_gate_levers", "_lever_far_enough", "machinery_wanted", "_lever_hatches_ok", "_link_wanted", "_lever_rule", "_trap_rule", "_gatehouse_rule", "_near_spot", "lone_intruders", "few_ordinary", "few_alert_over", "few_near", "hunted_outside", "ai_gates_shut", "_Rec", "_lockdown", "lockdown_released", "lone_alert_over", "_lockdown_ids", "_lockdown_cap_why", "note_lockdown", "quick_clear", "PASTURE_ACTIONS", "_pasture_hold", "gate_invaders", "main_gate", "_gate_guard_rule", "_gate_dogs_rule"]
 
 
 # (0.105.26) citizens stranded outside (lua/ai-gates.lua stranded_citizens)
@@ -121,9 +121,10 @@ def _gate_stuck_rule(s: dict, memory, cfg: dict, proposals: list, notes: list, o
     # down, only once nothing can reach the dwarves and the watcher is down
     reach = int(_d(s.get("others_on_map")).get("threats_that_can_reach_dwarves") or 0)
     siege = reach > 0 or bool(ent.get("armed"))
-    # (0.105.35, the player: nothing waits for them) a cavern's way gets steps
-    # 2 and 3 too (cavern_ok) once the caverns are read and hold no great
-    # danger, nothing can reach the dwarves and the watcher is down
+    # (0.105.35, the player: nothing waits for them) a cavern's way gets step
+    # 2 too (cavern_ok) once the caverns are read and hold no great danger,
+    # nothing can reach the dwarves and the watcher is down; (v35 fix) never
+    # step 3 (taken down)
     from planner_threats import cavern_great, deep_read
     cave_safe = not siege and deep_read(s) and not cavern_great(s)
     acting = False
@@ -181,6 +182,11 @@ def _gate_stuck_rule(s: dict, memory, cfg: dict, proposals: list, notes: list, o
                                 else "can't be trusted in a siege")
                              + f": step {step} ({GATE_STUCK_TRIED[step]}) waits until they're safe")
                 step = None
+            # (v35 fix) a cavern's way is never taken down (step 3): the way
+            # into the caverns would stay open until a door is rebuilt; after
+            # step 2 every step is tried there
+            if step == 3 and cavern:
+                step = None
             if step in (2, 3) and siege:
                 notes.append(f"{name} still holds {len(rows)} citizen(s) out, but "
                              + (f"{reach} enemy(ies) can reach the dwarves" if reach else "the gate watcher is armed")
@@ -212,7 +218,8 @@ def _gate_stuck_rule(s: dict, memory, cfg: dict, proposals: list, notes: list, o
             head = (f"{len(rows)} citizen(s) shut outside by {name}: it reads open, but the walk "
                     f"groups on its two sides don't join (outside {pc.get('outside_group', rows[0].get('group', '?'))}, "
                     f"inside {pc.get('inside_group', '?')}); flags read: {_flags_text(pc)}; tried: {tried}")
-            done_all = last_step >= 3 and since is not None and since >= step_ticks
+            done_all = (last_step >= (2 if cavern else 3) and since is not None and since >= step_ticks
+                        and not (cavern and last_step == 2 and rec.get("ok") is False))
             own = rec.get("ok") is False and "player's own" in str(rec.get("done") or "")
             if done_all and cavern:
                 ask_player(notes, f"{head}. Every step is tried, and the AI digs no way in from a cavern (it would "
@@ -224,7 +231,7 @@ def _gate_stuck_rule(s: dict, memory, cfg: dict, proposals: list, notes: list, o
                              + "the AI digs them a way in instead")
             else:
                 notes.append(f"{head}. DF's walk map holds an open {kind} shut: the AI tries each step in turn"
-                             + (" (on a cavern's way, steps 2 and 3 while the caverns are safe)"
+                             + (" (on a cavern's way, step 2 while the caverns are safe; never taken down)"
                                 if cavern else ", then digs them a way in if they're still out"))
     return acting
 
@@ -239,7 +246,8 @@ def gate_exhausted(s: dict, memory, cfg: dict) -> set:
     for pid, rec in _d(getattr(memory, "gate_unstick", None)).items():
         rec = _d(rec)
         t = rec.get("tick")
-        if (rec.get("step") or 0) >= 3 and isinstance(t, int) and now - t >= step_ticks:
+        if ((rec.get("step") or 0) >= (2 if rec.get("cavern") else 3) and isinstance(t, int)
+                and now - t >= step_ticks):
             out.add(str(pid))
     return out
 
@@ -287,6 +295,14 @@ def shared_lever_row(r: dict) -> bool:
             and _d(r.get("entrance")).get("shared_lever") is not None)
 
 
+def player_gate_row(r: dict) -> bool:
+    """(v35 fix) A citizen shut out by a gate the AI didn't shut (the player's
+    raised bridge, lever or locked door): the AI never opens the player's gate
+    (open_entrance refuses it too); they count as having no way in, and a
+    stair is dug for them (_way_in_rule)."""
+    return (isinstance(r, dict) and not r.get("by_ai") and r.get("cause") in ("gate_shut", "lockdown"))
+
+
 def _way_in_rule(s: dict, memory, cfg: dict, proposals: list, notes: list, off: int = 0,
                  status: dict | None = None) -> str:
     """(0.105.32) Citizens cut off with no gate to blame (no split explains
@@ -310,7 +326,7 @@ def _way_in_rule(s: dict, memory, cfg: dict, proposals: list, notes: list, off: 
             (given_up if str(pid) in done else explained).add(id(r))
     after = int(cfg.get("way_in_after_days", 2)) * TICKS_PER_DAY
     rows = [r for r in _l(ent.get("stranded")) if isinstance(r, dict) and id(r) not in explained
-            and (id(r) in given_up or ((r.get("cause") == "no_path" or shared_lever_row(r))
+            and (id(r) in given_up or ((r.get("cause") == "no_path" or player_gate_row(r))
                                        and (r.get("out_ticks") or 0) >= after))
             and not r.get("in_cavern")
             and all(isinstance(r.get(k), int) for k in ("x", "y", "z"))]
@@ -370,8 +386,10 @@ def _way_in_rule(s: dict, memory, cfg: dict, proposals: list, notes: list, off: 
                           + (f": {why_r[:100]}" if why_r else "") + ")")
         return ""
     days = max(int(r.get("out_days") or 0) for r in rows)
+    blame = ("behind a gate the AI didn't shut (the player's, left as it is)" if any(player_gate_row(r) for r in rows)
+             else "with no gate to blame")
     proposals.append(Proposal("way_in", {"type": "dig_way_in", "x": x, "y": y, "z": z},
-                              f"{len(rows)} citizen(s) cut off outside for {days} day(s) with no gate to blame "
+                              f"{len(rows)} citizen(s) cut off outside for {days} day(s) {blame} "
                               f"({', '.join(str(r.get('name') or 'a dwarf') for r in rows[:3])}): dig them a stair "
                               f"in from where they stand (x{x} y{y} elevation {z + off})", -1))
     return f"a stair dug in at x{x} y{y} elevation {z + off}"
@@ -642,10 +660,11 @@ def _stranded_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None
         return bool(r.get("in_cavern")) or _d(r.get("entrance")).get("kind") == "cavern"
 
     if great or not deep_ok:
-        cave_gate = [r for r in ai_gate + other_gate + cave_shut if cavern_side(r)]
+        # (v35 fix) only the AI's own gates wait for that: the player's are
+        # never opened (a way is dug in for them below)
+        cave_gate = [r for r in ai_gate + cave_shut if cavern_side(r) and r.get("by_ai")]
         ai_gate = [r for r in ai_gate if r not in cave_gate]
-        other_gate = [r for r in other_gate if r not in cave_gate]
-        cave_shut = []
+        cave_shut = [r for r in cave_shut if not r.get("by_ai")]
         if cave_gate:
             e = _d(cave_gate[0].get("entrance"))
             g0 = _d(great[0]) if great else {}
@@ -731,35 +750,43 @@ def _stranded_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None
                                   + f" at x{e.get('x')} y{e.get('y')} ({', '.join(where(r) for r in ai_gate[:3])}) "
                                   "and no enemy near: open the gates to let them in", 0))
         opening = True
-    # (0.105.35 merge) a gate shut not by the AI on the player's own lever
-    # that works other things too: the lever isn't pulled (it would work the
-    # player's other things); the AI digs them a way in (_way_in_rule), said
-    shared = [r for r in other_gate if shared_lever_row(r)]
-    other_gate = [r for r in other_gate if r not in shared]
-    if shared:
-        e = _d(shared[0].get("entrance"))
-        head = (f"{len(shared)} citizen(s) shut outside for {days(shared)} at the gate at x{e.get('x')} "
-                f"y{e.get('y')} elevation {(e.get('z') or 0) + off} ({', '.join(where(r) for r in shared[:3])}): "
-                f"it is on the player's lever {e.get('shared_lever')}, which works "
-                f"{e.get('works_other') or 'other'} other thing(s) too, so the AI leaves that gate as it is")
+    # (v35 fix, the player: the player's things stay the player's) a gate shut
+    # not by the AI (a raised bridge, the player's lever, a locked door): the
+    # AI never opens it (no lever of the player's pulled, no door unlocked);
+    # it digs them a way in instead (_way_in_rule), said as a plain note
+    player_cave = [r for r in cave_shut if not r.get("by_ai")]
+    cave_shut = [r for r in cave_shut if r.get("by_ai")]
+    if other_gate:
+        e = _d(other_gate[0].get("entrance"))
+        at = (f" at x{e.get('x')} y{e.get('y')} elevation {(e.get('z') or 0) + off}"
+              if e.get("x") is not None else "")
+        lever = (f" (on the player's lever {e.get('shared_lever')}, which works "
+                 f"{e.get('works_other') or 'other'} other thing(s) too)" if e.get("shared_lever") is not None else "")
+        head = (f"{len(other_gate)} citizen(s) shut outside for {days(other_gate)} by a gate the AI didn't shut"
+                f"{at}{lever} ({', '.join(where(r) for r in other_gate[:3])}): the gate is the player's, so the AI "
+                "leaves it as it is")
         way = way_new or (_way_in_doing(s, memory, second=False) if memory is not None else "")
         if way:
             notes.append(f"{head} and digs them a way in ({way})")
         elif way_status.get("kept"):
-            ask_player(notes, f"{head}; {way_status['kept']}")
+            notes.append(f"{head}; {way_status['kept']}")
         else:
             notes.append(f"{head} and digs them a stair in " + (way_status.get("when") or "when it can"))
-    # (0.105.35, the player: nothing waits for them) a gate shut not by the AI
-    # (a raised bridge, a locked door) and the citizens down in the caverns
-    # behind a shut gate: that entrance opened by the AI (open_entrance: it
-    # opens only that entrance's gates, refused with an enemy within 12
-    # tiles of it, a great danger in sight or the cavern seal on it)
-    loose = open_one(other_gate + cave_shut,
-                     ": its gate is shut, not by the AI (a raised bridge or a locked door): open that "
+    if player_cave:
+        notes.append(f"{len(player_cave)} citizen(s) down in the caverns shut out for {days(player_cave)} by a gate "
+                     f"the AI didn't shut ({', '.join(where(r) for r in player_cave[:3])}): the gate is the "
+                     "player's, so the AI leaves it as it is, and it digs no way in from a cavern (it would open "
+                     "the fort to the cavern); it looks again each cycle")
+    # the AI's own gate on a cavern's way, the caverns read safe: that entrance
+    # opened by the AI (open_entrance cavern_ok: only that entrance's gates,
+    # refused with an enemy within 12 tiles of it, a great danger in sight or
+    # the cavern seal on it)
+    loose = open_one(cave_shut,
+                     ": its gate was shut by the AI and the caverns hold no great danger: open that "
                      "entrance to let them in")
     if loose:
         notes.append(f"{len(loose)} citizen(s) shut outside for {days(loose)} "
-                     f"({', '.join(where(r) for r in loose[:4])}) by a gate shut not by the AI, and the "
+                     f"({', '.join(where(r) for r in loose[:4])}) by a gate the AI shut, and the "
                      "map of the entrances doesn't say which: the AI maps the entrances again and opens "
                      "it once it knows it")
         if memory is not None:

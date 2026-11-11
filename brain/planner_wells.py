@@ -465,7 +465,8 @@ def cavern_action(s: dict, cfg: dict, urgent: bool) -> dict:
     action["gallery"] = int(cfg["cavern_well_gallery"])
     # (0.105.4 review) the bridge's own check follows the Rules tab; (0.105.35)
     # with the switch off the AI decides itself (ai_opens_cavern)
-    if player_rules(s)["open_caverns"] or (unfound_cavern(s) and ai_opens_cavern(s, cfg)[0]):
+    mode = player_rules(s)["open_caverns"]
+    if mode == "always" or (mode == "ai" and unfound_cavern(s) and ai_opens_cavern(s, cfg)[0]):
         action["open_caverns"] = True
     pts = cavern_points(s)
     if pts and action["gallery"] > 0:
@@ -525,8 +526,8 @@ def ai_opens_cavern(s: dict, cfg: dict) -> tuple[bool, str]:
     Rules switch "Cavern well into an unfound cavern" off (its default), the
     AI decides itself whether a cavern well may open a cavern no dwarf has
     found: only when the fort is short of water (the injured, the parched, or
-    drink under `cavern_well_drink_pd` a dwarf) and has soldiers for what
-    comes out (`unfound_cavern_soldiers`, +2 at Caution 50+, -1 at Militarism
+    drink under `cavern_well_drink_pd` a dwarf) and has armed soldiers (v35
+    fix: armed, not only drafted) for what comes out (`unfound_cavern_soldiers`, +2 at Caution 50+, -1 at Militarism
     50+); at Caution +100 only for the injured or the parched. (ok, why)."""
     tr = _traits(s) if isinstance(s.get("settings"), dict) else {}
     caution = tr.get("caution", 0) or 0
@@ -548,16 +549,21 @@ def ai_opens_cavern(s: dict, cfg: dict) -> tuple[bool, str]:
     need += 2 if caution >= 50 else 0
     need -= 1 if militarism >= 50 else 0
     need = max(1, need)
-    soldiers = int(_d(s.get("military")).get("soldiers") or 0)
+    # (v35 fix) armed soldiers only (the squads' `power.armed`; a bridge
+    # without the count: their members, as can_fight reads it)
+    def armed_of(q):
+        a = _d(q.get("power")).get("armed")
+        return a if isinstance(a, int) and not isinstance(a, bool) else int(q.get("members") or 0)
+    soldiers = sum(armed_of(q) for q in _l(_d(s.get("military")).get("squads")) if isinstance(q, dict))
     if soldiers < need:
-        return False, f"{short}, but only {soldiers} soldier(s) to meet what comes out ({need} wanted)"
-    return True, f"{short}, and {soldiers} soldiers to meet what comes out"
+        return False, f"{short}, but only {soldiers} armed soldier(s) to meet what comes out ({need} wanted)"
+    return True, f"{short}, and {soldiers} armed soldiers to meet what comes out"
 
 
 def cavern_open_words(s: dict, cfg: dict) -> str:
     """(0.105.35) The proposal's words when the AI itself opens an unfound cavern ("" otherwise)."""
     layer = unfound_cavern(s)
-    if not layer or player_rules(s)["open_caverns"]:
+    if not layer or player_rules(s)["open_caverns"] != "ai":
         return ""
     ok, why = ai_opens_cavern(s, cfg)
     return (f" (it opens {layer} for the first time: the AI's call, {why}; the shaft's hatch shuts while a "
@@ -571,7 +577,11 @@ def cavern_well_safe(s: dict, cfg: dict):
     # (0.105.4 review) a cavern nobody has found: the Rules switch on allows it;
     # (0.105.35) off (the default), the AI decides by the fort's state and sliders
     layer = unfound_cavern(s)
-    if layer and not player_rules(s)["open_caverns"]:
+    mode = player_rules(s)["open_caverns"]
+    if layer and mode == "never":
+        return (f"a cavern well would open {layer} for the first time, and the Rules tab says never "
+                "(\"Cavern well into an unfound cavern\": Never)")
+    if layer and mode == "ai":
         ok, why = ai_opens_cavern(s, cfg)
         if not ok:
             return (f"a cavern well would open {layer} for the first time (cavern creatures and forgotten "
@@ -938,9 +948,15 @@ def _cistern_rule(s: dict, memory, cfg: dict, proposals: list, notes: list, rule
                                           f"water got out of the cistern again (over it at {st['leak']}): retire it, "
                                           "its floodgate shut for good; another cistern is planned elsewhere", 2))
             else:
+                # (v35 fix) the step the bridge clears the leak in (the water
+                # gone and closed all round) and carries on from: asked for,
+                # every 2 days while the water still stands over it
                 notes.append(f"water got out of the cistern (over it at {st['leak']}): its floodgate was shut. The AI "
                              "lets water in again once the water over it is gone and it is closed all round; "
                              "a second leak retires it")
+                proposals.append(Proposal("cistern", dict(step),
+                                          f"the cistern leaked once (over it at {st['leak']}): its next step, once the "
+                                          "water over it is gone and it is closed all round", 4))
             return
         if st.get("unsealed"):
             # (0.104.168) the AI walls the gaps up itself (cistern_step); the

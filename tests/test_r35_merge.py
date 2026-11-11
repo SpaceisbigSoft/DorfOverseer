@@ -61,17 +61,18 @@ def player_gate_rig(works):
 
 # --- the Rules switch: off means the AI decides -------------------------------------
 
-@test("open_caverns: the switch reads Always / AI decides; the settings and docs say off means the AI decides")
+@test("open_caverns: (v35) the switch reads AI decides / Always / Never; the settings and docs say the AI decides by default")
 def _():
     gui = (ROOT / "lua" / "gui" / "ai-overseer.lua").read_text(encoding="utf-8")
     i = gui.index("view_id = 'open_caverns'")
     block = gui[i:gui.index("})", i)]
-    assert "label = 'Always', value = true" in block and "label = 'AI decides', value = false" in block, block
+    for lab, val in (("AI decides", "ai"), ("Always", "always"), ("Never", "never")):
+        assert f"label = '{lab}', value = '{val}'" in block, block
     st = (ROOT / "lua" / "ai-overseer-settings.lua").read_text(encoding="utf-8")
-    j = st.index("open_caverns = false")
+    j = st.index("open_caverns = 'ai'")
     assert "the AI decides" in st[j - 400:j], st[j - 400:j]
     ctl = (ROOT / "docs" / "controls.md").read_text(encoding="utf-8")
-    assert "Off (\"AI decides\", the default), the AI decides" in ctl
+    assert "\"AI decides\" (the default): the AI opens one only" in ctl and "\"Never\": never" in ctl
 
 
 @test("open_caverns: the strategist's Rules line says the AI decides, not plain 'off'")
@@ -80,8 +81,11 @@ def _():
     line = rules_line(player_rules({"settings": {}}))
     assert "AI decides: open_caverns" in line, line
     assert "open_caverns" not in line.split("| off: ")[1].split("|")[0], line
+    # (v35) an old save's true is Always; "never" is said as never
     line = rules_line(player_rules({"settings": {"open_caverns": True}}))
-    assert "open_caverns" not in line, line
+    assert "open_caverns=always" in line and "AI decides" not in line, line
+    line = rules_line(player_rules({"settings": {"open_caverns": "never"}}))
+    assert "open_caverns=never" in line, line
 
 
 # --- the deep notes: a beast in an open cavern --------------------------------------
@@ -122,22 +126,23 @@ def _():
     assert len(list(G.pulled.values())) == 0 and G.blds[7].door_flags.closed
 
 
-@test("lua: the player's lever that works only this entrance's gates is pulled; an AI-shut entrance isn't checked")
+@test("lua: (v35) the player's lever, even one that works only this entrance, is never pulled; an AI-shut entrance opens")
 def _():
     E, G = player_gate_rig([7])
-    r = E.open_entrance(1, False)
-    assert r.ok and not G.blds[7].door_flags.closed, dict(r)
-    assert list(G.pulled.values()) == [137]
-    # the AI's own lockdown shut it: the check is for the player's gates only
+    for dry in (True, False):
+        r = E.open_entrance(1, dry)
+        assert not r.ok and r.rejected and r.not_ai and "not shut by the AI" in r.error, dict(r)
+    assert len(list(G.pulled.values())) == 0 and G.blds[7].door_flags.closed
+    # the AI's own lockdown shut it: opened (the shared-lever check is for the player's gates only)
     E, G = player_gate_rig([7, 99])
     E.GATES.closed[1] = True
     r = E.open_entrance(1, False)
     assert r.ok and r.shared_lever is None, dict(r)
-    # an "AI gate" lever: the AI's own, never refused for it
+    # an "AI gate" lever the AI didn't shut it by: not opened either (v35: only what the AI shut)
     E, G = player_gate_rig([7, 99])
     G.blds[137].name = "AI gate lever"
     r = E.open_entrance(1, True)
-    assert r.ok and r.dry_run, dict(r)
+    assert not r.ok and r.not_ai, dict(r)
 
 
 @test("lua: the stranded row of a gate shut on a shared player's lever carries it (entrance.shared_lever)")
@@ -172,11 +177,12 @@ def _():
     said = [n for n in notes if "player's lever 137" in n]
     assert said and "digs them a way in" in said[0] and "works 2 other thing(s)" in said[0], notes
     assert not [n for n in needs_you(notes) if "shut outside" in n], notes
-    # without the flag: the entrance opened, as the gates group made it
+    # (v35) without the flag: still the player's gate: never opened, a stair dug in all the same
     for r in s["entrances"]["stranded"]:
         r["entrance"].pop("shared_lever")
     props, _n = plan(s, Memory())
-    assert [p.action for p in props if p.rule == "stranded"] == [{"type": "open_entrance", "id": 2}], props
+    assert not [p for p in props if p.rule == "stranded"], props
+    assert [p.action["type"] for p in props if p.rule == "way_in"] == ["dig_way_in"], props
 
 
 @test("brain: not out long enough for a stair yet: said with when, no Needs you")

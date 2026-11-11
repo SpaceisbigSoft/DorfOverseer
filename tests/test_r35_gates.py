@@ -3,9 +3,11 @@ every Needs you that handed the AI's work to the player is now the AI's own
 act, or a plain note of what it does, or (only where the game won't let it)
 a Needs you that says what the AI does meanwhile:
 
-- a cavern's stuck gate: steps 2 and 3 once the caverns read safe (cavern_ok);
-- citizens behind a gate the AI didn't shut, or down in the caverns behind a
-  shut gate: their entrance opened (open_entrance, cavern_ok on a cavern's);
+- a cavern's stuck gate: step 2 once the caverns read safe (cavern_ok);
+  (v35) never step 3 there;
+- citizens behind a gate the AI didn't shut: (v35) a way dug in (the player's
+  gate never opened); down in the caverns behind the AI's shut gate: their
+  entrance opened (open_entrance, cavern_ok);
 - cut off with no way in: said when the AI digs (refused: every 8 days, never
   given up);
 - the gate watcher failing: close_threatened_gates shuts what an enemy is near;
@@ -57,7 +59,7 @@ def safe_caverns(s):
 
 # --- brain ------------------------------------------------------------------------------
 
-@test("a cavern's stuck gate, the caverns read safe: step 2 then 3 with cavern_ok; no Needs you until every step is tried")
+@test("a cavern's stuck gate, the caverns read safe: step 2 with cavern_ok, never step 3 (v35); no Needs you until every step is tried")
 def _():
     m = Memory()
     s = safe_caverns(fort())
@@ -71,12 +73,9 @@ def _():
     assert p2 and p2[0].action == {"type": "unstick_gate", "id": 7, "step": 2, "cavern_ok": True}, props
     assert not [n for n in needs_you(notes) if "building 7" in n], notes
     answer(s2, m, p2[0], split_after=True)
-    s3 = safe_caverns(later(s, 12 * HOUR + 20, rescan=True))
-    p3 = acts(cycle(s3, m)[0], "gate_stuck")
-    assert p3 and p3[0].action["step"] == 3 and p3[0].action.get("cavern_ok") is True, p3
-    answer(s3, m, p3[0], split_after=True)
+    # (v35 fix) never taken down (step 3) on a cavern's way: step 2 is the last
     # every step tried, still out, on a cavern's way: the one kept Needs you (no way in from a cavern)
-    props, notes = cycle(safe_caverns(later(s, 19 * HOUR + 30, rescan=True)), m)
+    props, notes = cycle(safe_caverns(later(s, 12 * HOUR + 20, rescan=True)), m)
     assert not acts(props, "gate_stuck"), props
     ny = [n for n in needs_you(notes) if "building 7" in n]
     assert ny and "digs no way in from a cavern" in ny[0] and "yourself" not in ny[0], notes
@@ -95,14 +94,16 @@ def _():
     assert not needs_you([n for n in notes if "building 7" in n]), notes
 
 
-@test("a gate not shut by the AI: open_entrance for it; an enemy 8 tiles off: kept shut and said; never a Needs you")
+@test("a gate not shut by the AI: (v35) never opened, a way dug in; an enemy 8 tiles off: kept shut and said; never a Needs you")
 def _():
     s = F.stranded_state({"invader": False, "pos": {"x": 10, "y": 150, "z": 173}})
     s["entrances"]["armed"] = False
     for r in s["entrances"]["stranded"]:
         r.update(cause="gate_shut", by_ai=False)
     props, notes = plan(s, Memory())
-    assert [p.action for p in props if p.rule == "stranded"] == [{"type": "open_entrance", "id": 2}], props
+    assert not [p for p in props if p.rule == "stranded"], props
+    assert [p.action["type"] for p in props if p.rule == "way_in"] == ["dig_way_in"], props
+    assert [n for n in notes if "the gate is the player's" in n and "digs them a way in" in n], notes
     assert not [n for n in needs_you(notes) if "shut outside" in n], notes
     for r in s["entrances"]["stranded"]:
         r["gate_danger"] = 8
@@ -220,8 +221,9 @@ def _():
     E, G = _ns["rig"]()
     t = LUA.table_from
     job = t({"flags": t({"suspend": True})})
-    G.blds[50] = t({"id": 50, "jobs": t([job])})
+    G.blds[50] = t({"id": 50, "x1": 30, "y1": 31, "x2": 30, "y2": 31, "z": 170, "jobs": t([job])})
     E.GATES.entrances[1].pending_ids = t([50])
+    E.note_gate_planned(t({"x": 30, "y": 31, "z": 170}))      # (v35) the AI planned it
     r = E.free_gate_jobs(1, True)
     assert r.ok and r.unsuspended == 1 and job.flags.suspend, dict(r)
     r = E.free_gate_jobs(1, False)

@@ -997,6 +997,13 @@ function step(kind, opts)
     -- the emergency stop, and retiring
     if opts.shut or opts.retire then
         if not wk then return {ok = false, rejected = true, error = 'no ' .. kind .. ' work to shut'} end
+        -- (v35 fix) a hold that watches for water still getting in (or whose
+        -- floodgate is gone) is never retired: the watch would stop
+        if opts.retire and wk.stage == 'held' and type(wk.why) == 'string'
+                and (wk.why:find('water is still getting in', 1, true) or wk.why:find('the floodgate is gone', 1, true)) then
+            return {ok = false, rejected = true, stage = 'held', leak_watch = true,
+                    error = 'held while water may still get in (' .. wk.why:sub(1, 80) .. '): not retired, kept watched'}
+        end
         local g = gate_of(wk.plan)
         if dry then return {ok = true, dry_run = true, stage = wk.stage} end
         local was_open = shut_now(g)

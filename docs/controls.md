@@ -84,7 +84,9 @@ the fort's DF-AI folder. The overseer applies it once, through the bridge's
 `set_rules`, and renames it `rules-request.done.json` with the answer. Only
 switches whose default is on or off can be set this way, and (0.105.27)
 **Dispose**, as `{"rules": {"disposal": "dump"}}`
-(`store`, `melt`, `dump` or `destroy`).
+(`store`, `melt`, `dump` or `destroy`), and (v35) **Cavern well into an
+unfound cavern**, as `{"rules": {"open_caverns": "never"}}` (`ai`, `always`
+or `never`; `true` is `always`, `false` is `ai`).
 
 ### The fort
 
@@ -185,13 +187,16 @@ hall, basic workshops and stockpiles are always built when missing.
   - **A moat from the river at the gate**, only where a river is found;
   - **Magma workshops** (forge, smelter, glass);
   - **Muddy a stone farm level with water**.
-- **Cavern well into an unfound cavern** (AI decides, 0.105.4; 0.105.35). A
-  cavern well may break into a cavern layer the dwarves haven't found yet, and
-  the first breach can bring forgotten beasts. On ("Always"), it is always
-  allowed. Off ("AI decides", the default), the AI decides: it opens one only
-  when the fort is short of water (the injured, the parched, or drink running
-  low) and has soldiers for what comes out (3, +2 at Caution 50+, -1 at
-  Militarism 50+); otherwise a cavern well goes only to a cavern already found.
+- **Cavern well into an unfound cavern** (AI decides, 0.105.4; 0.105.35;
+  three-state since v35). A cavern well may break into a cavern layer the
+  dwarves haven't found yet, and the first breach can bring forgotten beasts.
+  "AI decides" (the default): the AI opens one only when the fort is short of
+  water (the injured, the parched, or drink running low) and has armed
+  soldiers for what comes out (3 in squads that can fight, +2 at Caution 50+,
+  -1 at Militarism 50+); otherwise a cavern well goes only to a cavern
+  already found. "Always": always allowed. "Never": never (a cavern well goes
+  only to a cavern already found). An old save's on reads as Always, its off
+  as AI decides.
 - **Send away vampires found among the dwarves** (on): at most one dwarf a
   game week.
 - **Let useful visitors stay (and become citizens)** (on): residency

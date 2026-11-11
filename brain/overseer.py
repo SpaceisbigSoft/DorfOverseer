@@ -625,7 +625,8 @@ def short(a: dict) -> str:
         return ("stop the kitchen cooking brewable plants" if a.get("ban") else
                 "let the kitchen cook brewable plants again")
     if t == "set_rules":         # (0.105.20) logs/rules-request.json
-        return "set Rules switches: " + ", ".join(f"{k} {'on' if v else 'off'}" for k, v in sorted(_d(a.get("rules")).items()))
+        return "set Rules switches: " + ", ".join(f"{k} {('on' if v else 'off') if isinstance(v, bool) else v}"
+                                                   for k, v in sorted(_d(a.get("rules")).items()))
     if t == "apply_preset":      # (0.105.4) keeper.py --preset
         return f"apply the {a.get('name')} preset"
     if t == "convict":           # (0.104.131)

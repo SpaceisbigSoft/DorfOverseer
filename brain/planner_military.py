@@ -490,23 +490,55 @@ def _hazard_rules(s: dict, memory, cfg: dict, proposals: list, notes: list, rule
         # takes the berserk one on too, else the best squad with anyone armed
         busy = [q for q in squads if can_fight(q, cfg) and q.get("ai_orders") and not q.get("guarding")
                 and isinstance(q.get("kill_ids"), list)]
-        if able:
+        # (v35 fix) a squad sent at these same targets within
+        # `berserk_resend_ticks` isn't sent again (its order may simply not show
+        # yet); the loop guard counts these sends (guard)
+        now = abs_tick(s)
+        sent = _d(getattr(memory, "kill_sent", None)) if memory is not None else {}
+        sent_at = _d(getattr(memory, "kill_sent_at", None)) if memory is not None else {}
+        resend = int(cfg.get("berserk_resend_ticks", TICKS_PER_DAY))
+
+        def just_sent(q):
+            t_ = sent_at.get(str(q.get("id")))
+            return (set(ids) <= {x for x in _l(sent.get(str(q.get("id")))) if isinstance(x, int)}
+                    and isinstance(t_, int) and 0 <= now - t_ < resend)
+
+        def on_it(q):
+            return isinstance(q.get("kill_ids"), list) and set(ids) <= set(q["kill_ids"])
+
+        changed = any(b.get("changed") for b in berserk)
+        weak = None if able or busy else weak_squad(squads)
+        if able and just_sent(able[0]):
+            notes.append(f"{names} gone berserk: {able[0].get('name') or 'a squad'} was sent after them "
+                         f"{(now - sent_at[str(able[0]['id'])]) // 50} hour(s) ago")
+        elif able:
             proposals.append(Proposal("squad_attack", {"type": "squad_orders", "squad_id": able[0]["id"],
                                                        "kill": ids},
-                                      f"{names} gone berserk and attacking others: send {able[0].get('name') or 'the squad'}", 0))
-        elif busy and not set(ids) <= set(busy[0]["kill_ids"]):
+                                      f"{names} gone berserk and attacking others: send {able[0].get('name') or 'the squad'}",
+                                      0, guard=True))
+        elif busy and not set(ids) <= set(busy[0]["kill_ids"]) and not just_sent(busy[0]):
             q = busy[0]
             kill = list(dict.fromkeys(ids + [x for x in q["kill_ids"] if isinstance(x, int)]))[:50]
             proposals.append(Proposal("squad_attack", {"type": "squad_orders", "squad_id": q["id"], "kill": kill},
                                       f"{names} gone berserk and no squad free: {q.get('name') or 'the squad'} "
-                                      "takes them on too", 0))
+                                      "takes them on too", 0, guard=True))
         elif busy:
             notes.append(f"{names} gone berserk: {busy[0].get('name') or 'a squad'} is after them")
-        elif weak_squad(squads) is not None:
-            q = weak_squad(squads)
+        elif weak is not None and (on_it(weak) or just_sent(weak)):
+            notes.append(f"{names} gone berserk: {weak.get('name') or 'a squad'} "
+                         f"({_d(weak.get('power')).get('armed')} armed) is after them")
+        elif weak is not None and changed and int(_d(weak.get("power")).get("armed") or 0) < int(weak.get("members") or 0):
+            # (v35 fix) a werebeast is not taken on by a squad only partly armed
+            notes.append(f"{names} gone berserk and no squad has {cfg['min_squad_to_fight']}+ armed: the best has "
+                         f"{_d(weak.get('power')).get('armed')} of {weak.get('members')} armed, too few against a "
+                         "changed beast; the alarm keeps the others in the shelter meanwhile, and the squads are "
+                         "armed first")
+        elif weak is not None:
+            q = weak
             proposals.append(Proposal("squad_attack", {"type": "squad_orders", "squad_id": q["id"], "kill": ids},
                                       f"{names} gone berserk and no squad has {cfg['min_squad_to_fight']}+ armed: "
-                                      f"send {q.get('name') or 'the squad'} ({_d(q.get('power')).get('armed')} armed)", 0))
+                                      f"send {q.get('name') or 'the squad'} ({_d(q.get('power')).get('armed')} armed)",
+                                      0, guard=True))
         else:
             notes.append(f"{names} gone berserk and no squad has anyone armed: the alarm keeps the others in "
                          "the shelter meanwhile, and the squads are armed first")

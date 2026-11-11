@@ -8,7 +8,7 @@ from quirks import has_rule
 from digest import _d, _l, normalize
 from planner_config import PLANNER_CONFIG, DISPOSAL_ACTION_MAX  # noqa: F401  (13c: the tuning numbers, split out)
 
-__all__ = ["great_present", "all_clear", "STEER_PROTECTED", "STEER_MAX_DAYS", "steer_of", "PLANNER_CONFIG", "BREW_RECIPES", "MEAL_RECIPES", "MANDATE_RECIPES", "BUILDABLE_SHOPS", "SHOP_ALIASES", "SURVIVAL_SHOPS", "TICKS_PER_DAY", "TICKS_PER_YEAR", "NO_COOLDOWN", "COOLDOWN_KEYS", "MULTI_PER_CYCLE", "EMERGENCY", "STUCK_HOLD_EXEMPT", "ORDER_HOLD_EXEMPT", "LIMIT_EXEMPT", "Proposal", "Memory", "abs_tick", "stamp_tick", "game_day", "factor", "ADJUST_BOUNDS", "_number", "effective_config", "queued", "unstored_cups", "free_stock", "watch_since", "_clamp", "MEMORIAL_SPAN", "OPTIONAL_LEVELS", "GEAR_WEAPONS", "GEAR_METALS", "NEEDS_YOU", "ask_player", "DISPOSAL_LEVELS", "DISPOSAL_ACTION_MAX", "player_rules", "MAINTAIN_SKIPS", "level_refused", "_traits", "reachable_threats", "held_off_threats", "_holding_off", "ONE_A_CYCLE", "growth_mode", "growth_target", "JOB_SHOPS", "RECIPE_SHOPS", "WOOD_ELSEWHERE", "recipe_shop", "brewable_counts", "brew_recipe", "_watchdog_notes", "jobs_reported", "order_job_state", "masons_jammed", "stuck_hold_days", "_stuck_before", "stone_short", "_office_held", "tantrums_recent", "justice_held", "_restraint_order", "manager_needs_office", "suites_short", "wool_route", "thread_plants_here", "MINING_NEED_ONLY", "mining_plan", "noble_room_kinds", "SOCIAL_NEEDS", "care_waiting", "unmet", "_soldier_swap", "recently_home", "LOCATION_UNITS", "_location", "_location_short", "_real_locations", "can_fight", "is_ranged", "STALE_PROJECT_DAYS", "_workshops_busy", "shop_count", "shops_max", "_has_shop", "RAW_FOOD", "ALL_FOOD", "_idle_share", "idle_line", "IDLE_OLD_LINES", "levels_done", "_lever_state", "update_idle", "AGENDA_THEMES", "agenda", "food_per_dwarf", "WINTER_STOCK", "winter_factor", "young_fort", "established", "has_farms", "_best_metal", "REFUSAL_FIRST_DAYS", "REFUSAL_MAX_DAYS", "REFUSAL_IDLE_DAYS", "REFUSAL_KEYS", "refusal_key", "_refused_wait", "note_refusal", "TIMEOUT_TRIES", "timeout_streak", "brief_timeout", "LOOP_LIMITS", "LOOP_LIMIT_DEFAULT", "LOOP_EXEMPT", "_loop_count", "NO_EFFECT_RULES", "NO_EFFECT_WHY", "note_no_effect", "no_effect_wait", "_stalled_days", "_entrance_spot", "_record_any_outcome", "_weapon_gaps", "spare_sig", "MOOD_BODY_FLAGS", "mood_kind", "mood_on_hand", "mood_waits", "_stuck_again_rule"]
+__all__ = ["great_present", "all_clear", "STEER_PROTECTED", "STEER_MAX_DAYS", "steer_of", "PLANNER_CONFIG", "BREW_RECIPES", "MEAL_RECIPES", "MANDATE_RECIPES", "BUILDABLE_SHOPS", "SHOP_ALIASES", "SURVIVAL_SHOPS", "TICKS_PER_DAY", "TICKS_PER_YEAR", "NO_COOLDOWN", "COOLDOWN_KEYS", "MULTI_PER_CYCLE", "EMERGENCY", "STUCK_HOLD_EXEMPT", "ORDER_HOLD_EXEMPT", "LIMIT_EXEMPT", "Proposal", "Memory", "abs_tick", "stamp_tick", "game_day", "factor", "ADJUST_BOUNDS", "_number", "effective_config", "queued", "unstored_cups", "free_stock", "watch_since", "_clamp", "MEMORIAL_SPAN", "OPTIONAL_LEVELS", "GEAR_WEAPONS", "GEAR_METALS", "NEEDS_YOU", "ask_player", "DISPOSAL_LEVELS", "DISPOSAL_ACTION_MAX", "player_rules", "OPEN_CAVERNS_MODES", "open_caverns_mode", "MAINTAIN_SKIPS", "level_refused", "_traits", "reachable_threats", "held_off_threats", "_holding_off", "ONE_A_CYCLE", "growth_mode", "growth_target", "JOB_SHOPS", "RECIPE_SHOPS", "WOOD_ELSEWHERE", "recipe_shop", "brewable_counts", "brew_recipe", "_watchdog_notes", "jobs_reported", "order_job_state", "masons_jammed", "stuck_hold_days", "_stuck_before", "stone_short", "_office_held", "tantrums_recent", "justice_held", "_restraint_order", "manager_needs_office", "suites_short", "wool_route", "thread_plants_here", "MINING_NEED_ONLY", "mining_plan", "noble_room_kinds", "SOCIAL_NEEDS", "care_waiting", "unmet", "_soldier_swap", "recently_home", "LOCATION_UNITS", "_location", "_location_short", "_real_locations", "can_fight", "is_ranged", "STALE_PROJECT_DAYS", "_workshops_busy", "shop_count", "shops_max", "_has_shop", "RAW_FOOD", "ALL_FOOD", "_idle_share", "idle_line", "IDLE_OLD_LINES", "levels_done", "_lever_state", "update_idle", "AGENDA_THEMES", "agenda", "food_per_dwarf", "WINTER_STOCK", "winter_factor", "young_fort", "established", "has_farms", "_best_metal", "REFUSAL_FIRST_DAYS", "REFUSAL_MAX_DAYS", "REFUSAL_IDLE_DAYS", "REFUSAL_KEYS", "LABOR_CAPS", "labor_given", "note_labor_given", "REFUSAL_ID_TYPES", "PER_ID_COOLDOWN", "refusal_key", "cooldown_key", "_refused_wait", "note_refusal", "TIMEOUT_TRIES", "timeout_streak", "brief_timeout", "LOOP_LIMITS", "LOOP_LIMIT_DEFAULT", "LOOP_EXEMPT", "_loop_count", "NO_EFFECT_RULES", "NO_EFFECT_WHY", "note_no_effect", "no_effect_wait", "_stalled_days", "_entrance_spot", "_record_any_outcome", "_weapon_gaps", "spare_sig", "MOOD_BODY_FLAGS", "mood_kind", "mood_on_hand", "mood_waits", "_stuck_again_rule"]
 
 BREW_RECIPES = {"brew_drink", "brew_drink_from_fruit", "make_mead"}
 MEAL_RECIPES = {"prepare_easy_meal", "prepare_fine_meal", "prepare_lavish_meal"}
@@ -120,6 +120,7 @@ class Proposal:
     reason: str
     priority: int  # lower runs first
     is_order: bool = False
+    guard: bool = False    # (v35 fix) an EMERGENCY rule's proposal the loop guard still counts
 
 
 @dataclass
@@ -129,6 +130,7 @@ class Memory:
     orders_by_day: dict = field(default_factory=dict)    # absolute game day (str) -> count
     ai_alert_raised: bool = False
     threat_alarm: dict = field(default_factory=dict)   # (0.105.0 review) {since, why}: the threats round's alarm, capped
+    cavern_alarm: dict = field(default_factory=dict)   # (v35 fix) {since}: the alarm held for citizens in the caverns, capped
     quiet_cycles: int = 0
     last_threat_tick: int = 0          # (0.104.100) a threat could reach the dwarves
     last_great_tick: int = 0           # (0.104.100) a great danger on the surface or in reach
@@ -219,6 +221,7 @@ class Memory:
     found_failure: str = ""                              # why the first staircase couldn't be dug near the wagon
     found_wide_failure: str = ""                         # (0.105.35) ...nor further out (found_fort wide): Needs you
     shops_held_since: dict = field(default_factory=dict)  # (0.105.35) workshop -> when its "started twice" hold began
+    shops_retried: dict = field(default_factory=dict)     # (v35 fix) workshop -> re-starts after the hold (SHOPS_RETRY_MAX)
     fps_cap: int | None = None                           # the population cap held while the game runs slowly
     strain_hold: bool = False                            # (0.104.106) newcomers held while the fort is strained
     strain_cap: int | None = None                        # (0.104.120) the cap held while strained (its size then)
@@ -230,6 +233,8 @@ class Memory:
     gate_part_extra: dict = field(default_factory=dict)   # (0.104.139) stuck entrances given one more part
     pruned_after: int = 0                                 # (0.104.140) the threat tick last cleaned up after
     kill_sent: dict = field(default_factory=dict)        # (0.104.140) squad id -> unit ids last sent after
+    kill_sent_at: dict = field(default_factory=dict)     # (v35 fix) squad id -> tick it was last sent (kill_sent)
+    labor_given: dict = field(default_factory=dict)      # (v35 fix) rule -> [[tick, dwarves], ...]: labours the AI gave (LABOR_CAPS)
     residency: dict = field(default_factory=dict)        # (0.105.9) {probe: {id, unit, tick}, works: True|False, since}
     character_projects: list = field(default_factory=list)   # (0.105.10) project ids the AI started as the fort's own
     locations_closed: list = field(default_factory=list)     # (0.105.12) location ids the AI shut to visitors
@@ -479,8 +484,10 @@ def player_rules(s: dict) -> dict:
             "moat": st.get("moat") is not False,
             "magma_workshops": st.get("magma_workshops") is not False,
             "irrigation": st.get("irrigation") is not False,
-            # (0.105.4 review) a cavern well into a cavern layer not yet discovered: on only when the player says so
-            "open_caverns": st.get("open_caverns") is True,
+            # (0.105.4 review) a cavern well into a cavern layer not yet discovered. (v35 fix)
+            # three-state: "ai" (the default: the AI decides), "always", "never"; an old
+            # save's true is "always", false "ai"
+            "open_caverns": open_caverns_mode(st.get("open_caverns")),
             # (0.105.0) the squads wait in the shelter while the AI hides: off only when the settings say so
             "squads_shelter": st.get("squads_shelter") is not False,
             # (0.105.27) forbidden items: store < melt < dump < destroy (each does the ones before);
@@ -490,6 +497,18 @@ def player_rules(s: dict) -> dict:
             "disposal_player_items": st.get("disposal_player_items") is True,
             "keep_enemy_gear": st.get("keep_enemy_gear") is True,
             "clear_alerts": st.get("clear_alerts") if st.get("clear_alerts") in ("all", "quiet", "none") else "quiet"}
+
+
+OPEN_CAVERNS_MODES = ("ai", "always", "never")
+
+
+def open_caverns_mode(v) -> str:
+    """(v35 fix) The Rules switch "Cavern well into an unfound cavern":
+    "ai" (the default), "always" or "never"; an old save's true is "always",
+    its false "ai"."""
+    if v is True:
+        return "always"
+    return v if v in OPEN_CAVERNS_MODES else "ai"
 
 
 MAINTAIN_SKIPS = ("library", "memorial", "temple", "garden")
@@ -1461,9 +1480,57 @@ REFUSAL_KEYS = ("type", "kind", "recipe", "job", "entrance_id", "project_id", "n
                 "accept")                                        # (0.105.9) declining isn't agreeing
 
 
+# (v35 fix) labour rules that add dwarves every cooldown while their need
+# lasts: each gives at most its config key's dwarves in a game year
+LABOR_CAPS = {"care_feed": "care_feed_labor_cap", "care_clean": "care_clean_labor_cap",
+              "care_diagnose": "care_diagnose_labor_cap", "ghost_mason": "ghost_mason_labor_cap",
+              "waterworks_pump_labor": "pump_labor_cap"}
+
+
+def labor_given(memory, rule: str, now: int) -> int:
+    """(v35 fix) Dwarves the AI gave this rule's labour in the last game year."""
+    rows = _l(_d(getattr(memory, "labor_given", None)).get(rule))
+    return sum(int(r[1]) for r in rows if isinstance(r, list) and len(r) == 2 and isinstance(r[0], int)
+               and isinstance(r[1], int) and 0 <= now - r[0] < TICKS_PER_YEAR)
+
+
+def note_labor_given(memory, p, r: dict, now: int) -> None:
+    """(v35 fix) A LABOR_CAPS rule's labour given: booked (the dwarves named,
+    else the count asked)."""
+    if p.rule not in LABOR_CAPS or _d(p.action).get("type") != "assign_labor" or _d(r).get("ok") is not True:
+        return
+    names = _d(r).get("assigned")
+    n = len(names) if isinstance(names, list) else int(_d(p.action).get("count") or 0)
+    if n <= 0:
+        return
+    if not isinstance(getattr(memory, "labor_given", None), dict):
+        memory.labor_given = {}
+    rows = [x for x in _l(memory.labor_given.get(p.rule)) if isinstance(x, list) and len(x) == 2
+            and isinstance(x[0], int) and 0 <= now - x[0] < TICKS_PER_YEAR]
+    memory.labor_given[p.rule] = rows + [[now, n]]
+
+
+# (v35 fix) actions whose "id" names one entrance: one entrance's refusal (the
+# cavern seal, an enemy near it) isn't another's
+REFUSAL_ID_TYPES = ("open_entrance",)
+# (v35 fix) rules whose proposals for different entrances each keep their own
+# cooldown (and may act for several entrances in one cycle)
+PER_ID_COOLDOWN = {"stranded"}
+
+
 def refusal_key(p: Proposal) -> str:
     a = _d(p.action)
-    return p.rule + ":" + json.dumps({k: a.get(k) for k in REFUSAL_KEYS if k in a}, sort_keys=True)
+    keys = REFUSAL_KEYS + (("id",) if a.get("type") in REFUSAL_ID_TYPES else ())
+    return p.rule + ":" + json.dumps({k: a.get(k) for k in keys if k in a}, sort_keys=True)
+
+
+def cooldown_key(p: Proposal) -> str:
+    """(v35 fix) The key of p's cooldown in memory.last_fired: its rule, or for
+    a PER_ID_COOLDOWN rule's action on one entrance, the rule and that id."""
+    a = _d(getattr(p, "action", None))
+    if p.rule in PER_ID_COOLDOWN and a.get("id") is not None:
+        return f"{p.rule}:{a['id']}"
+    return p.rule
 
 
 def _refused_wait(memory: Memory, p: Proposal, now: int, bridge: str | None = None) -> int | None:
@@ -1578,7 +1645,7 @@ LOOP_EXEMPT = {"entrances", "needs_trinkets", "trinket_orders", "excess_shops", 
 def _loop_count(memory: Memory, p: Proposal, now: int) -> int | None:
     """How often this action was done in the last game year, when that is
     over its limit and it was done again recently (else None)."""
-    if p.rule in LOOP_EXEMPT or p.rule in EMERGENCY:
+    if p.rule in LOOP_EXEMPT or (p.rule in EMERGENCY and not getattr(p, "guard", False)):
         return None
     log = (getattr(memory, "action_log", None) or {}).get(refusal_key(p)) or []
     recent = [t for t in log if isinstance(t, int) and 0 <= now - t < TICKS_PER_YEAR]
@@ -1746,7 +1813,9 @@ def _record_any_outcome(a: dict, r: dict, state: dict, memory, now: int, brief: 
             # (0.105.35) a refusal near the wagon is tried further out (wide); only
             # a wide refusal is Needs you
             if a.get("wide"):
-                memory.found_wide_failure = str(r.get("error") or "refused")[:300]
+                # (v35 nit) a search that ran out of time isn't "no spot further out"
+                if not r.get("timed_out"):
+                    memory.found_wide_failure = str(r.get("error") or "refused")[:300]
             else:
                 memory.found_failure = str(r.get("error") or "refused")[:300]
     elif t == "place_traps":

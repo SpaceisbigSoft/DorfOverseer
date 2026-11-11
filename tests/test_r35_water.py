@@ -62,30 +62,35 @@ def thirsty(**kw) -> dict:
     return s
 
 
+def army(n: int) -> dict:
+    """(v35) n armed soldiers (ai_opens_cavern counts the armed only)."""
+    return {"soldiers": n, "squads": [{"id": 1, "members": max(n, 1), "power": {"armed": n}}]}
+
+
 @plain_test("cavern well into an unfound cavern: the AI decides by the fort's water and soldiers, and its sliders")
 def _():
     ok, why = planner_wells.ai_opens_cavern(thirsty(), CFG)
     assert not ok and "isn't short of water" in why, why
-    s = thirsty(dwarves={"needs_medical_care": 3}, military={"soldiers": 2})
+    s = thirsty(dwarves={"needs_medical_care": 3}, military=army(2))
     ok, why = planner_wells.ai_opens_cavern(s, CFG)
-    assert not ok and "only 2 soldier(s)" in why and "(3 wanted)" in why, why
-    s["military"]["soldiers"] = 3
+    assert not ok and "only 2 armed soldier(s)" in why and "(3 wanted)" in why, why
+    s["military"].update(army(3))
     assert planner_wells.ai_opens_cavern(s, CFG)[0]
     # Caution 50+: two more soldiers wanted; Militarism 50+: one fewer
     s["settings"]["traits"] = {"caution": 60}
     ok, why = planner_wells.ai_opens_cavern(s, CFG)
     assert not ok and "(5 wanted)" in why, why
     s["settings"]["traits"] = {"militarism": 60}
-    s["military"]["soldiers"] = 2
+    s["military"].update(army(2))
     assert planner_wells.ai_opens_cavern(s, CFG)[0]
     # drink short: enough, but not at Caution +100 (only for the injured or parched)
-    d = thirsty(stocks={"drink": 10}, military={"soldiers": 4})
+    d = thirsty(stocks={"drink": 10}, military=army(4))
     assert planner_wells.ai_opens_cavern(d, CFG)[0]
     d["settings"]["traits"] = {"caution": 100}
     ok, why = planner_wells.ai_opens_cavern(d, CFG)
     assert not ok and "Caution" in why, why
     d["society"]["parched"] = 2
-    d["military"]["soldiers"] = 6
+    d["military"].update(army(6))
     assert planner_wells.ai_opens_cavern(d, CFG)[0]
 
 
@@ -105,14 +110,14 @@ def unfound_fort() -> dict:
 @plain_test("cavern well: the switch off and no soldiers -> a plain note, never 'allow it on the Rules tab'")
 def _():
     s = unfound_fort()
-    s.setdefault("military", {})["soldiers"] = 0
+    s.setdefault("military", {}).update(army(0))
     m = Memory()
     m.well_failure = "no open drop from a free floor inside the fort to clean water (the water below is in a cavern)"
     props, notes = plan(copy.deepcopy(s), m)
     assert not [p for p in props if p.rule == "well" and p.action.get("cavern")]
     assert not any("allow it" in n or "Rules tab" in n for n in notes), notes
     assert not you(notes), you(notes)
-    s["military"]["soldiers"] = 4
+    s["military"].update(army(4))
     props, notes = plan(copy.deepcopy(s), m)
     w = [p for p in props if p.rule == "well" and p.action.get("cavern")]
     assert w and w[0].action["open_caverns"] is True and "opens Cavern1 for the first time" in w[0].reason, \
@@ -195,7 +200,9 @@ def cistern(**st) -> dict:
 @plain_test("cistern: one leak waits (the bridge tries once more), a second retires it; never a Needs you")
 def _():
     props, notes = plan(cistern(leak="x5 y6 elevation 41", leaks=1), Memory())
-    assert not [p for p in props if p.rule == "cistern"] and not you(notes), notes
+    # (v35) the plain step: the bridge clears the leak in it once dry and closed all round
+    c = [p for p in props if p.rule == "cistern"]
+    assert [p.action.get("retire") for p in c] == [None] and not you(notes), (c, notes)
     props, notes = plan(cistern(leak="x5 y6 elevation 41", leaks=2), Memory())
     c = [p for p in props if p.rule == "cistern"]
     assert len(c) == 1 and c[0].action["type"] == "cistern_step" and c[0].action["retire"] is True, \

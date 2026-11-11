@@ -56,6 +56,7 @@ from planner_army import (_army_gear_rule, _quiver_rule, _bolts_rule, _flask_rul
 SHELTER_RETRY_DAYS = 28
 SHELTER_RETRY_THREAT_DAYS = 3
 SHOPS_RETRY_DAYS = 56          # (0.105.35) a workshops level started twice and not seen built: once more after this
+SHOPS_RETRY_MAX = 3            # (v35 fix) and so at most this many times
 
 
 def _shelter_due(s: dict, memory, threat: bool = False) -> bool:
@@ -904,13 +905,23 @@ def select(proposals: list[Proposal], state: dict, memory: Memory,
             if room and isinstance(p.action.get("amount"), int) and p.action["amount"] > room[0]:
                 p.action = dict(p.action, amount=room[0])
                 p.reason = f"{p.reason} (at most {room[0]}: {room[1]})"
-        last = memory.last_fired.get(p.rule)
+        last = memory.last_fired.get(cooldown_key(p))      # (v35 fix) per entrance for "stranded"
         cooldown = cfg.get(COOLDOWN_KEYS.get(p.rule, f"{p.rule}_cooldown_ticks"), cfg["rule_cooldown_ticks"])
         if (p.rule not in NO_COOLDOWN and last is not None and not (st_ and st_["mode"] == "raise")
                 and 0 <= now - last < cooldown):
             held.append(f"{p.rule}: waiting for its cooldown")
             continue
-        if p.rule in fired_this_cycle and p.rule not in MULTI_PER_CYCLE:
+        if p.rule in LABOR_CAPS and p.action.get("type") == "assign_labor":
+            # (v35 fix) at most the rule's cap of dwarves given its labour in a year
+            cap = int(cfg.get(LABOR_CAPS[p.rule], 4))
+            given = labor_given(memory, p.rule, now)
+            if given >= cap:
+                held.append(f"{p.rule}: the AI gave {given} dwarves the {p.action.get('job')} labour this year "
+                            f"already (at most {cap})")
+                continue
+            if int(p.action.get("count") or 0) > cap - given:
+                p.action = dict(p.action, count=cap - given)
+        if cooldown_key(p) in fired_this_cycle and p.rule not in MULTI_PER_CYCLE:
             held.append(f"{p.rule}: already acted this cycle")
             continue
         sc = _d(_d(getattr(memory, "stuck_cancelled", None)).get(str(p.action.get("recipe"))))
@@ -949,6 +960,8 @@ def select(proposals: list[Proposal], state: dict, memory: Memory,
             if str(w) in seen and shop_count(b, str(w)) > int(seen[str(w)] or 0):
                 memory.shops_started[str(w)] = 0
                 seen.pop(str(w), None)
+                if isinstance(getattr(memory, "shops_retried", None), dict):
+                    memory.shops_retried.pop(str(w), None)     # (v35 fix) built: its re-starts begin again
             elif str(w) not in seen and (memory.shops_started or {}).get(str(w), 0) >= 2:
                 # counted before 0.99.4, with nothing to tell a start that worked
                 # from one that didn't: one more try, from today's count
@@ -964,9 +977,21 @@ def select(proposals: list[Proposal], state: dict, memory: Memory,
             for w in again:
                 if not isinstance(since.get(str(w)), int) or since[str(w)] > now:
                     since[str(w)] = now
+            # (v35 fix) re-started SHOPS_RETRY_MAX times at most (bounded in
+            # total, not only in rate)
+            if not isinstance(getattr(memory, "shops_retried", None), dict):
+                memory.shops_retried = {}
+            tried = memory.shops_retried
+            spent = [w for w in again if int(tried.get(str(w)) or 0) >= SHOPS_RETRY_MAX]
+            if spent:
+                held.append(f"{p.rule}: a workshops level for {', '.join(spent)} was started "
+                            f"{2 + SHOPS_RETRY_MAX} times and the fort report never showed it built: the AI "
+                            "starts it no more (it starts again once one is seen built)")
+                continue
             due = [w for w in again if now - since[str(w)] >= SHOPS_RETRY_DAYS * TICKS_PER_DAY]
             for w in due:
                 memory.shops_started[str(w)] = 1
+                tried[str(w)] = int(tried.get(str(w)) or 0) + 1
                 since.pop(str(w), None)
             again = [w for w in again if w not in due]
             if again:
@@ -1015,7 +1040,7 @@ def select(proposals: list[Proposal], state: dict, memory: Memory,
             held.append(f"{p.rule}: one new {kind} level a cycle; this one waits its turn")
             continue
         allowed.append(p)
-        fired_this_cycle.add(p.rule)
+        fired_this_cycle.add(cooldown_key(p))
         if p.is_order:
             orders_today += 1
     return allowed, held
@@ -1032,6 +1057,7 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
     for p, r in results:
         ok = r.get("ok")
         brief_timeout_now = brief_timeout(memory, p, r)       # (0.105.26) a search cut short
+        note_labor_given(memory, p, r, now)                   # (v35 fix) LABOR_CAPS
         _record_any_outcome(p.action, r, state, memory, now, brief=brief_timeout_now)
         note_refusal(memory, p, r, now, state.get("bridge_version"))
         note_no_effect(memory, p, ok, now)                 # (0.105.24)
@@ -1057,9 +1083,14 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
             if not isinstance(getattr(memory, "kill_sent", None), dict):
                 memory.kill_sent = {}
             memory.kill_sent[str(p.action["squad_id"])] = [i for i in p.action["kill"] if isinstance(i, int)][:50]
+            if not isinstance(getattr(memory, "kill_sent_at", None), dict):
+                memory.kill_sent_at = {}
+            memory.kill_sent_at[str(p.action["squad_id"])] = now          # (v35 fix) the berserk re-send's cooldown
         if p.action.get("type") == "squad_orders" and p.action.get("clear") and isinstance(
                 getattr(memory, "kill_sent", None), dict):
             memory.kill_sent.pop(str(p.action.get("squad_id")), None)
+            if isinstance(getattr(memory, "kill_sent_at", None), dict):
+                memory.kill_sent_at.pop(str(p.action.get("squad_id")), None)
         if p.action.get("type") == "unstick_uniforms" and ok is True:
             sig = spare_sig(_d(_d(state.get("military")).get("gear")))   # (0.104.138)
             prev = _d(memory.unstick_seen)
@@ -1100,7 +1131,7 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
             elif p.rule == "found" and not brief_timeout_now:
                 memory.last_fired[p.rule] = now          # the ground won't allow it: ask again in 3 days
             continue
-        memory.last_fired[p.rule] = now
+        memory.last_fired[cooldown_key(p)] = now
         if p.rule not in LOOP_EXEMPT:
             log = memory.action_log.setdefault(refusal_key(p), [])
             log.append(now)

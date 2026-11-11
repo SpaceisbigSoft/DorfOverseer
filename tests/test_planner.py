@@ -9312,7 +9312,9 @@ def _():
     # (0.105.35) the first leak: a note (the bridge lets water in again once); the second: retired
     assert any("x5 y6 elevation 41" in n and "second leak retires it" in n for n in notes), notes
     assert not any(n.startswith(planner.NEEDS_YOU) and "cistern" in n for n in notes), notes
-    assert not by_rule(props, "cistern")
+    # (v35) and the plain step the bridge clears the leak in once dry and closed all round
+    assert [x.action.get("type") for x in by_rule(props, "cistern")] == ["cistern_step"], by_rule(props, "cistern")
+    assert not any(x.action.get("retire") for x in by_rule(props, "cistern"))
     s["water"]["cistern_status"]["leaks"] = 2
     c = by_rule(plan(copy.deepcopy(s), Memory())[0], "cistern")
     assert c and c[0].action.get("retire") is True and "x5 y6" in c[0].action["why"], [x.action for x in c]
@@ -10552,19 +10554,23 @@ def _():
     m = Memory()
     m.well_failure = "no open drop from a free floor inside the fort to clean water (the water below is in a cavern)"
     # (0.105.35) the switch off: no soldiers for what comes out -> not now, and nothing asked of the player
-    s.setdefault("military", {})["soldiers"] = 0
+    s.setdefault("military", {}).update(soldiers=0, squads=[{"id": 1, "members": 5, "power": {"armed": 0}}])
     props, notes = plan(copy.deepcopy(s), m)
     assert not [x for x in by_rule(props, "well") if x.action.get("cavern")], [x.action for x in by_rule(props, "well")]
-    assert any("would open Cavern1 for the first time" in n and "0 soldier(s)" in n for n in notes), notes
+    assert any("would open Cavern1 for the first time" in n and "0 armed soldier(s)" in n for n in notes), notes
     assert not any("Rules tab" in n or n.startswith("[you]") and "cavern" in n for n in notes), notes
     # short of water (4 injured) and soldiers: the AI opens it itself
-    s["military"]["soldiers"] = 5
+    s["military"].update(soldiers=5, squads=[{"id": 1, "members": 5, "power": {"armed": 5}}])
     w = [x for x in by_rule(plan(copy.deepcopy(s), m)[0], "well") if x.action.get("cavern")]
     assert w and w[0].action.get("open_caverns") is True and "the AI's call" in w[0].reason, [x.action for x in w]
-    s["military"]["soldiers"] = 0
+    s["military"].update(soldiers=0, squads=[{"id": 1, "members": 5, "power": {"armed": 0}}])
     s["settings"] = dict(s.get("settings") or {}, open_caverns=True)
     w = [x for x in by_rule(plan(copy.deepcopy(s), m)[0], "well") if x.action.get("cavern")]
     assert w and w[0].action.get("open_caverns") is True, [x.action for x in w]
+    # (v35) Never: no cavern well into the unfound cavern, whatever the need
+    s["settings"]["open_caverns"] = "never"
+    s["military"].update(soldiers=5, squads=[{"id": 1, "members": 5, "power": {"armed": 5}}])
+    assert not [x for x in by_rule(plan(copy.deepcopy(s), m)[0], "well") if x.action.get("cavern")]
     # a cavern already found: no switch needed
     s["settings"]["open_caverns"] = False
     for l in s["map"]["layers"]:

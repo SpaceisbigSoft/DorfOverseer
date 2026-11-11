@@ -56,6 +56,7 @@ THREAT_CONFIG = {
     "seal_cavern_cooldown_ticks": 600,
     "seal_missing_days": 7,                  # (0.105.0 review) a sealed layer gone from the report: unlocked after
     "threat_alarm_max_days": 7,              # (0.105.0 review) the threats round holds the alarm this long at most
+    "cavern_alarm_max_days": 3,              # (v35 fix) the alarm held for citizens in the caverns this long at most
     "rescue_labor_cooldown_ticks": 14 * 1200,
 }
 PLANNER_CONFIG.update({k: v for k, v in THREAT_CONFIG.items() if k not in PLANNER_CONFIG})
@@ -422,6 +423,35 @@ def _cavern_beasts(s, cfg, memory, t, rules, proposals, notes):
         # (a door reads closed whenever nobody passes: only the lock, or the seal's own lever pull, counts)
         unlocked = [o for o in lockable if o.get("built") is not False and not o.get("locked") and not o.get("sealed")]
         down = _l(_d(t.get("cavern_citizens")).get("list"))
+        # (v35 fix) the alarm is held for them `cavern_alarm_max_days` at most:
+        # then let down and the ways locked (whoever can't climb out is the
+        # stranded rules': their gate opened once the caverns hold no great danger)
+        held_days, over = 0, False
+        if memory is not None:
+            ca = memory.cavern_alarm if isinstance(getattr(memory, "cavern_alarm", None), dict) else {}
+            now = abs_tick(s)
+            if down and (ALL_CAVERNS not in sealed or unlocked):
+                since = ca.get("since")
+                if not isinstance(since, int) or isinstance(since, bool) or since > now:
+                    since = now
+                    memory.cavern_alarm = {"since": now}
+                held_days = (now - since) // TICKS_PER_DAY
+                over = held_days >= _c(cfg, "cavern_alarm_max_days")
+            elif ca:
+                memory.cavern_alarm = {}
+        if over:
+            n = int(_d(t.get("cavern_citizens")).get("n") or len(down))
+            notes.append(f"{who} is about and {n} citizen(s) are still in the caverns after {held_days} day(s) of "
+                         "the alarm: the AI lets the alarm down and locks the ways down (the fort can't wait on "
+                         "them); whoever can't climb out is let in by their gate once the caverns hold no great "
+                         "danger")
+            down = []
+            reach = int(_d(s.get("others_on_map")).get("threats_that_can_reach_dwarves") or 0)
+            if (s.get("civ_alert") and getattr(memory, "ai_alert_raised", False) and not reach
+                    and not any(p.action == {"type": "civ_alert", "on": False} for p in proposals)):
+                proposals.append(Proposal("threat_alert", {"type": "civ_alert", "on": False},
+                                          f"the alarm held {held_days} day(s) for citizens in the caverns: it comes "
+                                          "down, and the ways down are locked", 0))
         if ALL_CAVERNS not in sealed or unlocked:
             if down:
                 n = int(_d(t.get("cavern_citizens")).get("n") or len(down))
