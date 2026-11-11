@@ -1059,6 +1059,14 @@ function act_link_lever(a)
     return reqscript('ai-gates').link_lever(lid, tid, a.dry_run == true)
 end
 
+-- (0.105.32) A gate that reads open but DF's walk map treats as shut (E: 64
+-- dead at the founding stair's hatch): one step a call (lua/ai-gates.lua unstick_gate).
+function act_unstick_gate(a)
+    local id, step = whole_number(a.id), int_in(a.step, 1, 3)
+    if not id or not step then return reject('unstick_gate needs id and step 1-3') end
+    return reqscript('ai-gates').unstick_gate(id, step, a.dry_run == true)
+end
+
 function act_arm_gates(a) return reqscript('ai-gates').arm() end
 function act_open_gates(a) return reqscript('ai-gates').open_all() end
 

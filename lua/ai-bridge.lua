@@ -165,6 +165,7 @@ ACTIONS = {
     place_traps = act_place_traps,
     place_gate_lever = act_place_gate_lever,          -- (0.105.12)
     build_gatehouse = act_build_gatehouse,            -- (0.105.23)
+    unstick_gate = act_unstick_gate,                  -- (0.105.32)
     location_access = act_location_access,            -- (0.105.12)
     unpause = act_unpause,
     found_fort = act_found_fort,
@@ -364,6 +365,7 @@ for _, name in ipairs({
     'unforbid_items', 'mark_melt', 'mark_dump', 'empty_dump', 'set_standing_orders', 'place_dump',
     -- (0.105.30) construction: each plans and returns before it places anything
     'place_hall', 'build_wings', 'floor_rooms',
+    'unstick_gate',      -- (0.105.32) its dry run says what it would do, and changes nothing
 }) do DRY_OK[name] = true end
 
 -- These only change what's displayed, so they still work while halted, dry

@@ -905,7 +905,8 @@ function scan(now_tick)
              scanned_tick = now_tick, armed = GATES.armed, closed = closed,
              closing_since = since, timer = GATES.timer, reopen_timer = GATES.reopen_timer,
              watch_error = GATES.watch_error, gone_ids = GATES.gone_ids, repulled = GATES.repulled,
-             peak = GATES.peak, clear_looks = GATES.clear_looks}      -- (0.105.4 review)
+             peak = GATES.peak, clear_looks = GATES.clear_looks,      -- (0.105.4 review)
+             stuck_removed = GATES.stuck_removed, split_seen = GATES.split_seen}   -- (0.105.32)
     -- (0.105.23) a hatch its new lever link shut, with no watcher holding it: opened
     if not GATES.armed then pcall(open_lever_hatches) end
     return summary()
@@ -1091,7 +1092,10 @@ local function set_lever_door(g, b, close, pulled)
     local shut = door_shut(b)
     if shut == nil or shut == close or pulled[g.drive_lever] then return false end
     pulled[g.drive_lever] = true
-    return pull_instant(g.drive_lever)
+    local ok = pull_instant(g.drive_lever)
+    -- (0.105.32) E: an instant pull opened the hatch, and DF's walk map stayed split at it
+    if ok and not close then pcall(note_split_after_open, g, b) end
+    return ok
 end
 
 local function set_bridge(g, b, close)
@@ -1178,7 +1182,10 @@ function open_lever_hatches(only_e)
                     held = (b and door_shut(b)) and (held or seal_holds()) or held   -- (0.105.26 seal fix)
                     if b and door_shut(b) and not seal_has(held, g) then
                         pulled[g.drive_lever] = true
-                        if pull_instant(g.drive_lever) then opened = opened + 1 end
+                        if pull_instant(g.drive_lever) then
+                            opened = opened + 1
+                            pcall(note_split_after_open, g, b)      -- (0.105.32)
+                        end
                     end
                 end
             end
@@ -2514,6 +2521,18 @@ function fortify(id, style, starts)
     put(plan.traps, 'Tc', 'traps')
     put(plan.statues, 's', 'statues')
     out.kept_doors = plan.kept_doors
+    -- (0.105.32) a door or hatch put where a stuck one was taken down: never on a lever for a year
+    for _, list in ipairs({plan.hatches or {}, plan.doors or {}}) do
+        for _, k in ipairs(list) do
+            local hx, hy, hz = unkey(k)
+            local oks, at = pcall(stuck_spot, hx, hy, hz)
+            if oks and at and not out.no_lever then
+                out.no_lever = {x = hx, y = hy, z = hz}
+                out.no_lever_why = 'a gate there stayed shut for DF though it read open and was taken down: '
+                    .. 'no lever drives the new one for a year (the watcher locks it)'
+            end
+        end
+    end
     if plan.water then out.water = plan.water end
     if plan.water_gate then
         out.ok, out.water_gate, out.style = true, true, style
@@ -2699,6 +2718,17 @@ function link_lever(lever_id, target_id, dry_run)
     for _, b in ipairs({lever, target}) do
         if b:getBuildStage() < b:getMaxBuildStage() then
             return {ok = false, rejected = true, error = 'building ' .. b.id .. ' is not built yet'}
+        end
+    end
+    -- (0.105.32) a gate DF held shut though it read open was taken down here:
+    -- no lever drives a piece at this spot for a year (the watcher locks it)
+    if (tname == 'Hatch' or tname == 'Door') and stuck_spot then
+        local oks, at = pcall(stuck_spot, target.x1, target.y1, target.z)
+        if oks and at then
+            return {ok = false, rejected = true, stuck_spot = true,
+                    error = ('a gate at x%d y%d z%d stayed shut for DF though it read open and was taken down: '
+                        .. 'no lever drives a new one there for a year (the watcher locks it instead)'):format(
+                        target.x1, target.y1, target.z)}
         end
     end
     local levers = lever_links()
@@ -2984,6 +3014,15 @@ function place_gate_lever(id, dry_run, starts)
     if not e then return {ok = false, rejected = true, error = 'no such entrance (scan first)'} end
     if #(e.equipment or {}) == 0 then
         return {ok = false, rejected = true, error = 'that entrance has no gate yet: a lever works a gate'}
+    end
+    -- (0.105.32) a gate there stuck shut for DF and was taken down: no lever for a year
+    for _, g in ipairs(e.equipment) do
+        local oks, at = pcall(stuck_spot, g.x1, g.y1, g.z)
+        if (g.kind == 'door' or g.kind == 'hatch') and oks and at then
+            return {ok = false, rejected = true, stuck_spot = true,
+                    error = ('a gate at x%d y%d z%d stayed shut for DF though it read open and was taken down: '
+                        .. 'no lever for a gate there for a year (the watcher locks it instead)'):format(g.x1, g.y1, g.z)}
+        end
     end
     local waiting = false
     pcall(function()
@@ -3525,6 +3564,7 @@ function summary()
                             lid = e.lid, gatehouse = e.gatehouse, gatehouse_why = e.gatehouse_why,
                             wings = e.wing_pieces and 'standing' or nil,   -- (0.105.30 seams) recorded wing walls
                             deep_road = e.deep_road,        -- (0.105.30) the depot's wagon road: a drawbridge only
+                            split = e.split,                -- (0.105.32) open gates DF's walk map treats as shut
                             outer = #outer > 0 and outer or nil})
     end
     local okf, fl = pcall(free_levers)
@@ -3993,11 +4033,15 @@ function gates_snapshot()
             end
         end
     end
-    return {armed = GATES.armed == true, gates = gates}
+    -- (0.105.32) where a stuck gate was taken down (no lever-driven piece there for a year)
+    return {armed = GATES.armed == true, gates = gates, stuck_removed = stuck_removed_live()}
 end
 
 local function same_snapshot(a, b)
     if (a.armed == true) ~= (b.armed == true) then return false end
+    local sa, sb = a.stuck_removed or {}, b.stuck_removed or {}
+    for k, v in pairs(sa) do if sb[k] ~= v then return false end end
+    for k, v in pairs(sb) do if sa[k] ~= v then return false end end
     local ga, gb = a.gates or {}, b.gates or {}
     if #ga ~= #gb then return false end
     for i = 1, #ga do
@@ -4055,7 +4099,12 @@ function open_saved_gates(saved)
                 if not ok then waiting = waiting + 1 end
                 -- (0.105.23) a hatch on a lever: its lever opens it (at once)
                 if ok and g.drive_lever and door_shut(b) then
-                    if pull_instant(g.drive_lever) then opened = opened + 1 else waiting = waiting + 1 end
+                    if pull_instant(g.drive_lever) then
+                        opened = opened + 1
+                        pcall(note_split_after_open, g, b)      -- (0.105.32)
+                    else
+                        waiting = waiting + 1
+                    end
                 end
             end
         end
@@ -4070,6 +4119,8 @@ function gates_restore()
         GATES_SAVE.restored = true
         local saved = saved_read()
         GATES_SAVE.persisted = saved
+        -- (0.105.32) the stuck gates taken down, kept whatever else was saved
+        GATES.stuck_removed = type(saved.stuck_removed) == 'table' and copy_stuck(saved.stuck_removed) or nil
         -- (nothing closed and not armed: nothing to bring back)
         if saved.armed or next(saved.gates or {}) ~= nil then GATES_SAVE.saved = saved end
     end
@@ -4208,8 +4259,16 @@ local function on_cavern_tile(p)
 end
 
 -- Pure: why a citizen outside can't come in, from their walk group, the
--- interior's, and the ways in. nil: not stranded. Returns cause, way.
-function stranded_cause(g, interior_group, ways)
+-- interior's, and the ways in. nil: not stranded. Returns cause, way, and
+-- (gate_stuck) the piece. (0.105.32) splits: {{e, piece}, ...}, the gates
+-- that read open with DF's walk map split at them: a citizen in a split's
+-- outside group is held out by that gate ("gate_stuck"), not by no path.
+function stranded_cause(g, interior_group, ways, splits)
+    if g ~= 0 and g ~= interior_group then
+        for _, sp in ipairs(splits or {}) do
+            if sp.piece.outside_group == g then return 'gate_stuck', {e = sp.e}, sp.piece end
+        end
+    end
     local mine, open_way = {}, false
     for _, w in ipairs(ways) do
         if g ~= 0 and w.groups[g] then
@@ -4229,11 +4288,17 @@ function stranded_cause(g, interior_group, ways)
 end
 
 -- {interior, list = [{id, name, x, y, z, out_ticks, out_days, cause,
--- in_cavern?, entrance?, by_ai?, danger_near?, gate_danger?}], total} or
--- nil without a map of the inside.
+-- in_cavern?, entrance?, by_ai?, danger_near?, gate_danger?, stuck_gate?}],
+-- total} or nil without a map of the inside.
 function stranded_citizens()
     if not GATES.scanned or not GATES.inside then return nil end
     local now = U.abs_tick()
+    -- (0.105.32) the split gates, read now unless the report just did
+    if GATES.splits_at ~= now then pcall(gate_splits) end
+    local splits = {}
+    for _, e in ipairs(GATES.entrances or {}) do
+        for _, piece in ipairs(e.split or {}) do table.insert(splits, {e = e, piece = piece}) end
+    end
     local interior = fort_interior()
     local ways = {}
     for _, e in ipairs(GATES.entrances or {}) do
@@ -4256,7 +4321,7 @@ function stranded_citizens()
         else
             STRANDED_SINCE[u.id] = STRANDED_SINCE[u.id] or now
             local g = wgroup(p.x, p.y, p.z)
-            local cause, w = stranded_cause(g, interior and interior.group or nil, ways)
+            local cause, w, stuck = stranded_cause(g, interior and interior.group or nil, ways, splits)
             if cause then
                 total = total + 1
                 if #list < STRANDED_MAX then
@@ -4264,6 +4329,7 @@ function stranded_citizens()
                     local row = {id = u.id, name = readable(u), x = p.x, y = p.y, z = p.z, cause = cause,
                                  out_ticks = t, out_days = t // DAY_TICKS, group = g}
                     if on_cavern_tile(p) then row.in_cavern = true end
+                    if stuck then row.stuck_gate = stuck.id end           -- (0.105.32)
                     local near = math.huge
                     for _, d in ipairs(vis) do
                         near = math.min(near, math.max(math.abs(d.pos.x - p.x), math.abs(d.pos.y - p.y))
@@ -4289,6 +4355,415 @@ function stranded_citizens()
     return {interior = interior, list = list, total = total}
 end
 
+---------------------------------------------------------------------------
+-- (0.105.32) A gate the game treats as shut. E (8 Nov): the founding
+-- stair's hatch, on its lever, was shut and opened again by instant pulls
+-- in a brief alarm; from then on it read open (`closed` false) but DF's walk
+-- map was split at it (the hatch and the surface one group, the stair under
+-- it and the fort another). Every citizen who went out, and every migrant
+-- wave, was stranded there and reported as "no path"; 64 died of thirst
+-- with 470+ drinks in store. Why DF held it is not known (a flag the report
+-- didn't read, the walk map not redone after the instant pull, the half-done
+-- link), so the fix doesn't need to know it:
+--   gate_splits()   each entrance's doors and hatches that read open (not
+--                   closed, not locked) with their two sides in different
+--                   walk groups: the entrance's `split`, with everything
+--                   about the piece (flags, tiles, link). A few walk-group
+--                   reads a piece, at each report.
+--   unstick_gate()  one step a call: 1 unlock and open it, and ask DF to
+--                   redo its walk map; 2 its own lever pulled twice (shut,
+--                   open); 3 the piece taken down (the AI's only), and the
+--                   spot remembered (GATES.stuck_removed, kept with the
+--                   save): no lever drives a new piece there for a year.
+-- After each instant pull that opens a gate, its sides are read again; a
+-- split is noted (GATES.split_seen: id -> tick) so the report shows since
+-- when (a split the report then finds joined is dropped).
+---------------------------------------------------------------------------
+
+STUCK_ENEMY_NEAR = 12           -- tiles: no unsticking with an enemy in sight this close to the gate
+local DOOR_FLAG_NAMES = {'forbidden', 'internal', 'taken_by_invaders', 'used_by_intruder', 'closed',
+                         'operated_by_mechanisms', 'pet_passable', 'accept_pets'}   -- read when pairs can't
+local BUILDING_FIELDS = {'close_timer'}        -- other fields a door or hatch may be held by
+
+local function stuck_key(x, y, z) return ('%d:%d:%d'):format(x, y, z) end
+
+function copy_stuck(t)
+    local out = {}
+    for k, v in pairs(t or {}) do
+        if type(k) == 'string' and type(v) == 'number' then out[k] = v end
+    end
+    return out
+end
+
+-- The stuck gates taken down less than a year ago ("x:y:z" -> tick), the
+-- older ones dropped.
+function stuck_removed_live()
+    local okn, now = pcall(U.abs_tick)
+    local out = {}
+    for k, v in pairs(copy_stuck(GATES.stuck_removed)) do
+        if not okn or now - v < U.TICKS_PER_YEAR then out[k] = v end
+    end
+    GATES.stuck_removed = next(out) and out or nil
+    return out
+end
+
+-- When a stuck gate at this spot was taken down (tick), if less than a year ago.
+function stuck_spot(x, y, z)
+    if type(GATES.stuck_removed) ~= 'table' or x == nil then return nil end
+    return stuck_removed_live()[stuck_key(x, y, z)]
+end
+
+local function piece_pos(g)
+    return g.x or g.x1, g.y or g.y1, g.z
+end
+
+local function shape_at(x, y, z)
+    local ok, t = pcall(tile, x, y, z)
+    return ok and t and t.shape or nil
+end
+
+-- The two tiles a piece joins: a hatch, its own tile and the stair under
+-- it; a door, its two walkable neighbours along the way through. nil when
+-- it joins nothing (a hatch over no stair).
+function piece_sides(kind, x, y, z)
+    if kind == 'hatch' then
+        local s = shape_at(x, y, z - 1)
+        if not (s and STAIR_UP[s]) then return nil end
+        return {x = x, y = y, z = z}, {x = x, y = y, z = z - 1}
+    elseif kind == 'door' then
+        for _, d in ipairs({{1, 0}, {0, 1}}) do
+            local a, c = {x = x + d[1], y = y + d[2], z = z}, {x = x - d[1], y = y - d[2], z = z}
+            if wgroup(a.x, a.y, a.z) ~= 0 and wgroup(c.x, c.y, c.z) ~= 0 then return a, c end
+        end
+    end
+    return nil
+end
+
+-- Reads open: not shut by DF's flag and not locked.
+local function reads_open(b)
+    local okc, c = pcall(function() return b.door_flags.closed end)
+    local okf, f = pcall(function() return b.door_flags.forbidden end)
+    return okc and okf and not c and not f
+end
+
+-- Every door flag (by pairs, else by name), and the building's other
+-- fields that may hold it: what the report can show of why DF holds it.
+function piece_flags(b)
+    local out = {}
+    pcall(function()
+        for k, v in pairs(b.door_flags) do
+            if type(k) == 'string' and (type(v) == 'boolean' or type(v) == 'number') then out[k] = v end
+        end
+    end)
+    if next(out) == nil then
+        for _, n in ipairs(DOOR_FLAG_NAMES) do
+            local ok, v = pcall(function() return b.door_flags[n] end)
+            if ok and (type(v) == 'boolean' or type(v) == 'number') then out[n] = v end
+        end
+    end
+    for _, f in ipairs(BUILDING_FIELDS) do
+        local ok, v = pcall(function() return b[f] end)
+        if ok and (type(v) == 'boolean' or type(v) == 'number') then out[f] = v end
+    end
+    pcall(function()        -- the building's own flags, the ones set
+        for k, v in pairs(b.flags) do
+            if type(k) == 'string' and v == true then out['building_' .. k] = true end
+        end
+    end)
+    pcall(function() out.jobs = #b.jobs end)
+    return out
+end
+
+local function tile_name(x, y, z)
+    local ok, n = pcall(function()
+        local tt = dfhack.maps.getTileType(x, y, z)
+        return tt and df.tiletype[tt] or nil
+    end)
+    return ok and n or nil
+end
+
+-- The driving lever, its links, the mechanisms the piece holds.
+function piece_link(g, b)
+    local out = {status = 'none'}
+    local lid = g.drive_lever or g.lever_id
+    if lid then
+        out.lever_id = lid
+        out.status = 'linked'
+        pcall(function()
+            local lv = df.building.find(lid)
+            out.lever_name = tostring(lv.name or '')
+            out.linked_mechanisms = #lv.linked_mechanisms
+            for _, j in ipairs(lv.jobs or {}) do
+                if j.job_type == df.job_type.LinkBuildingToTrigger then out.status = 'linking' end
+                if j.job_type == df.job_type.PullLever then out.pull_waiting = true end
+            end
+        end)
+    end
+    if g.levers and #g.levers > 1 then
+        out.levers = {}
+        for _, l in ipairs(g.levers) do table.insert(out.levers, l.id) end
+    end
+    pcall(function()
+        local n, trig = 0, 0
+        for _, ci in ipairs(b.contained_items or {}) do
+            local it = ci.item
+            if it:getType() == df.item_type.TRAPPARTS then n = n + 1 end
+            if #ref_ids(it, df.general_ref_type.BUILDING_TRIGGER) > 0 then trig = trig + 1 end
+        end
+        out.mechanisms, out.trigger_refs = n, trig
+    end)
+    return out
+end
+
+-- Which side is out: the one not in the fort's interior group, else the
+-- one off the map of the inside, else (a hatch) the one above it, under it
+-- for a cavern's.
+local function side_roles(e, kind, a, c, ga, gc, interior_group)
+    if interior_group == ga then return gc, ga end
+    if interior_group == gc then return ga, gc end
+    local ins = GATES.inside or {}
+    local ia, ic = ins[key(a.x, a.y, a.z)] == true, ins[key(c.x, c.y, c.z)] == true
+    if ia and not ic then return gc, ga end
+    if ic and not ia then return ga, gc end
+    if kind == 'hatch' and e and e.kind == 'cavern' then return gc, ga end
+    return ga, gc
+end
+
+-- One piece's walk groups now: split (true/false), and the two groups;
+-- nil when it can't be told.
+local function sides_now(kind, x, y, z)
+    local a, c = piece_sides(kind, x, y, z)
+    if not a then return nil end
+    local ga, gc = wgroup(a.x, a.y, a.z), wgroup(c.x, c.y, c.z)
+    if ga == 0 or gc == 0 then return nil end
+    return ga ~= gc, a, c, ga, gc
+end
+
+-- The split record of a gate piece, or nil (not split, not open, unread).
+function piece_split(e, g, interior_group)
+    if g.kind ~= 'door' and g.kind ~= 'hatch' then return nil end
+    local okb, b = pcall(df.building.find, g.id)
+    if not okb or not b or not reads_open(b) then return nil end
+    local x, y, z = piece_pos(g)
+    local split, a, c, ga, gc = sides_now(g.kind, x, y, z)
+    if not split then return nil end
+    local og, ig = side_roles(e, g.kind, a, c, ga, gc, interior_group)
+    return {id = g.id, kind = g.kind, x = x, y = y, z = z, outside_group = og, inside_group = ig,
+            flags = piece_flags(b),
+            tiles = {above = tile_name(x, y, z + 1), at = tile_name(x, y, z), below = tile_name(x, y, z - 1)},
+            link = piece_link(g, b)}
+end
+
+-- Every entrance's split pieces (e.split, nil when none); split_seen kept
+-- for the ones still split. Returns how many.
+function gate_splits()
+    local okn, now = pcall(U.abs_tick)
+    now = okn and now or 0
+    local oki, interior = pcall(fort_interior)
+    local ig = oki and interior and interior.group or nil
+    local seen_old, seen, n = GATES.split_seen or {}, {}, 0
+    for _, e in ipairs(GATES.entrances or {}) do
+        local list = {}
+        for _, g in ipairs(e.equipment or {}) do
+            local ok, p = pcall(piece_split, e, g, ig)
+            if ok and p then
+                seen[p.id] = seen_old[p.id] or now
+                p.since = seen[p.id]
+                table.insert(list, p)
+            end
+        end
+        e.split = #list > 0 and list or nil
+        n = n + #list
+    end
+    GATES.split_seen = next(seen) and seen or nil
+    GATES.splits_at = now
+    return n
+end
+
+-- After an instant pull meant to open a gate: its sides read again; split
+-- ones noted (the report then reads them itself).
+function note_split_after_open(g, b)
+    local kind = g.kind
+    if kind ~= 'door' and kind ~= 'hatch' then return false end
+    if not reads_open(b) then return false end
+    local split = sides_now(kind, b.x1, b.y1, b.z)
+    if not split then return false end
+    local okn, now = pcall(U.abs_tick)
+    GATES.split_seen = GATES.split_seen or {}
+    GATES.split_seen[b.id] = GATES.split_seen[b.id] or (okn and now or 0)
+    return true
+end
+
+local function find_piece(id)
+    for _, e in ipairs(GATES.entrances or {}) do
+        for _, g in ipairs(e.equipment or {}) do
+            if g.id == id then return e, g end
+        end
+    end
+    return nil
+end
+
+local function enemy_near(x, y, z)
+    local ok, vis = pcall(visible_dangers)
+    local best
+    for _, d in ipairs(ok and vis or {}) do
+        local dd = math.max(math.abs(d.pos.x - x), math.abs(d.pos.y - y)) + 3 * math.abs(d.pos.z - z)
+        if not best or dd < best then best = dd end
+    end
+    return best
+end
+
+-- DF asked to redo its walk map, where the field exists. true if set.
+function reindex_paths()
+    return pcall(function()
+        if df.global.world.reindex_pathfinding == nil then error('no such field') end
+        df.global.world.reindex_pathfinding = true
+    end) == true
+end
+
+-- The AI's own piece: worked by an "AI gate..." lever, or a hatch of a cut
+-- the AI made. A player's own gate is never taken down.
+local function ai_piece(e, g)
+    if g.drive_ai then return true end
+    for _, l in ipairs(g.levers or {}) do
+        if ai_lever_name(l.name) then return true end
+    end
+    return e.cut == true and g.kind == 'hatch'
+end
+
+local function where(x, y, z) return ('x%d y%d z%d'):format(x, y, z) end
+
+-- One step (1-3) at a gate piece that reads open but DF holds shut.
+-- {ok, step, done, split_after, flags_before, flags_after, dry_run?}.
+function unstick_gate(id, step, dry_run)
+    pcall(gates_restore)        -- (the save's record read back before this one is added)
+    if not GATES.scanned then return {ok = false, rejected = true, error = 'map the entrances first'} end
+    if step ~= 1 and step ~= 2 and step ~= 3 then
+        return {ok = false, rejected = true, error = 'unstick_gate needs step 1, 2 or 3'}
+    end
+    local e, g = find_piece(id)
+    if not g then
+        return {ok = false, rejected = true, error = ('no gate %s at a mapped entrance (scan first)'):format(tostring(id))}
+    end
+    if g.kind ~= 'door' and g.kind ~= 'hatch' then
+        return {ok = false, rejected = true, error = 'only a door or hatch is unstuck (a drawbridge is its lever\'s)'}
+    end
+    local okb, b = pcall(df.building.find, id)
+    if not okb or not b then return {ok = false, rejected = true, error = 'that gate is gone'} end
+    local x, y, z = piece_pos(g)
+    if seal_has(seal_holds(), g) then
+        return {ok = false, rejected = true, step = step,
+                error = 'the cavern seal holds this gate shut (a great beast in the caverns): it stays until the seal lifts'}
+    end
+    local near = enemy_near(x, y, z)
+    if near and near <= STUCK_ENEMY_NEAR then
+        return {ok = false, rejected = true, step = step, enemy_near = near,
+                error = ('an enemy is in sight %d tiles from the gate: it is left as it is until they are gone'):format(near)}
+    end
+    local before = piece_flags(b)
+    local out = {ok = true, step = step, id = id, flags_before = before, dry_run = dry_run or nil}
+    local lever = g.drive_lever
+    local did = {}
+    local function finish_step()
+        if dry_run then
+            table.insert(did, 'would ask DF to redo its walk map')
+        else
+            out.reindexed = reindex_paths()
+            table.insert(did, out.reindexed and 'asked DF to redo its walk map'
+                or 'DF\'s walk map could not be asked to redo (no such field here)')
+            local split = sides_now(g.kind, x, y, z)
+            out.split_after = split
+            out.shut_after = door_shut(b)
+        end
+    end
+    if step == 1 then
+        local shut = door_shut(b)
+        if before.forbidden then table.insert(did, (dry_run and 'would unlock it' or 'unlocked it')) end
+        if shut then
+            if lever then
+                table.insert(did, ('%s its lever %d (it read shut)'):format(dry_run and 'would open it by' or 'opened it by', lever))
+            else
+                table.insert(did, dry_run and 'would set it open (it read shut, no lever of its own)'
+                    or 'set it open (it read shut, no lever of its own)')
+            end
+        end
+        if not dry_run then
+            pcall(function() b.door_flags.forbidden = false end)
+            if shut and lever then
+                out.pulled = pull_instant(lever)
+                if not out.pulled then table.insert(did, 'the lever pull was refused') end
+            elseif shut then
+                pcall(function() b.door_flags.closed = false end)
+            end
+        end
+        finish_step()
+    elseif step == 2 then
+        if not lever then
+            return {ok = false, rejected = true, step = step, flags_before = before,
+                    error = 'no lever of its own works this gate: nothing to pull (step 3 takes it down)'}
+        end
+        if dry_run then
+            table.insert(did, ('would pull its lever %d twice at once (shut, then open)'):format(lever))
+        else
+            local n = 0
+            for _ = 1, 2 do if pull_instant(lever) then n = n + 1 end end
+            out.pulls = n
+            table.insert(did, ('pulled its lever %d %d time(s) at once (shut, then open)'):format(lever, n))
+            if n < 2 then out.ok = false; out.error = 'the lever would not be pulled twice' end
+        end
+        finish_step()
+    else
+        if not ai_piece(e, g) then
+            return {ok = false, rejected = true, step = step, flags_before = before,
+                    error = 'this gate is the player\'s own (no "AI gate" lever works it): the AI does not take it down; '
+                        .. 'take it down by hand, or name its lever "AI gate"'}
+        end
+        if sides_now(g.kind, x, y, z) == false then
+            return {ok = false, rejected = true, step = step, flags_before = before, split_after = false,
+                    error = 'it is not stuck now (both sides are one walk group again): left standing'}
+        end
+        local okj, going = pcall(function()
+            for _, j in ipairs(b.jobs or {}) do
+                if j.job_type == df.job_type.DestroyBuilding then return true end
+            end
+            return false
+        end)
+        if okj and going then
+            return {ok = false, rejected = true, step = step, flags_before = before,
+                    error = 'it is already being taken down'}
+        end
+        local what = ('the %s at %s'):format(g.kind, where(x, y, z))
+        if dry_run then
+            table.insert(did, ('would take down %s%s; no lever-driven piece goes back there for a year'):format(
+                what, lever and (' (its link to lever ' .. lever .. ' goes with it)') or ''))
+        else
+            -- DFHack has no call to undo a link: the link goes with the piece
+            local okd, gone = pcall(dfhack.buildings.deconstruct, b)
+            if not okd then
+                return {ok = false, step = step, flags_before = before,
+                        error = 'the game would not take it down: ' .. tostring(gone):sub(1, 120)}
+            end
+            out.removed_now = gone == true
+            table.insert(did, ('%s %s%s'):format(gone == true and 'took down' or 'marked for taking down', what,
+                lever and (' (its link to lever ' .. lever .. ' goes with it)') or ''))
+            local okn, now = pcall(U.abs_tick)
+            local s = stuck_removed_live()
+            s[stuck_key(x, y, z)] = okn and now or 0
+            GATES.stuck_removed = s
+            if GATES.split_seen then GATES.split_seen[id] = nil end
+            pcall(gates_persist)
+            table.insert(did, 'no lever-driven piece goes back there for a year')
+            out.split_after = sides_now(g.kind, x, y, z)
+        end
+    end
+    out.done = table.concat(did, '; ')
+    if not dry_run then
+        local okf, b2 = pcall(df.building.find, id)
+        out.flags_after = okf and b2 and piece_flags(b2) or nil
+    end
+    return out
+end
+
 -- (the file's own functions, as just defined above: a reload of the script takes the new ones)
 GATES_ORIG = {arm = arm, open_all = open_all, check = check, summary = summary}
 
@@ -4311,7 +4786,7 @@ function open_all()
             r.opened = (r.opened or 0) + opened
             if waiting > 0 then r.waiting = (r.waiting or 0) + waiting end
             saved.armed = false
-            if waiting == 0 then GATES_SAVE.saved = {armed = false, gates = {}} end
+            if waiting == 0 then GATES_SAVE.saved = {armed = false, gates = {}, stuck_removed = stuck_removed_live()} end
             U.site_put(GATES_SAVE_KEY, GATES_SAVE.saved)
             GATES_SAVE.persisted = GATES_SAVE.saved
         end
@@ -4334,6 +4809,7 @@ function summary()
         pcall(attach_links)
         if not GATES.armed then pcall(open_lever_hatches) end
         if link_jobs_pending() then pcall(link_watch_start) end
+        pcall(gate_splits)        -- (0.105.32) each entrance's gates that read open but DF holds shut
     end
     local out = GATES_ORIG.summary()
     -- (0.105.26) citizens outside who can't walk back in (nil without a map of the inside)

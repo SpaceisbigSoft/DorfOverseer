@@ -570,6 +570,9 @@ def short(a: dict) -> str:
                 "let any cook work the kitchens again")
     if t == "clear_gate":
         return f"take down the gate at x{a.get('x')} y{a.get('y')}"
+    if t == "unstick_gate":      # (0.105.32)
+        return {3: "take down the gate the game holds shut"}.get(a.get("step"),
+                                                                f"free the gate the game holds shut (step {a.get('step')})")
     if t == "mine_ore":
         return f"mine a vein of {str(a.get('metal')).lower()} ore"
     if t == "appoint":
