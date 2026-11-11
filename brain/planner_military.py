@@ -1269,7 +1269,7 @@ def idle_hands(s: dict, memory, cfg: dict) -> bool:
     """Many idle hands (see update_idle); without memory, today's share alone."""
     if memory is not None and isinstance(getattr(memory, "idle_avg", None), (int, float)):
         return bool(memory.idle_hands)
-    return _idle_share(s) >= cfg["idle_train_share"]
+    return _idle_share(s) >= idle_line(s, cfg, "idle_train_share")
 
 
 # --- (0.105.3) a lone intruder doesn't seal the fort; no AI lockdown without end ----------

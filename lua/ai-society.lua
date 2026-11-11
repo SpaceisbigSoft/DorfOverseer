@@ -308,9 +308,20 @@ local function item_spots(list, out, units)
         n = n + 1
         if n > SHELTER_DRINK_SCAN then break end
         local ok, pos = pcall(function()
-            if it.flags.forbid or it.flags.garbage_collect or it.flags.in_inventory or it.flags.rotten then return nil end
+            if it.flags.forbid or it.flags.garbage_collect or it.flags.rotten then return nil end
+            -- (0.105.33 fix) DF sets in_inventory on what lies in a barrel or
+            -- bin too: only what a unit carries is skipped (U.item_unfree's
+            -- rule), and what lies in a forbidden or carried container
+            if it.flags.in_inventory then
+                local okh, u = pcall(dfhack.items.getHolderUnit, it)
+                if okh and u ~= nil then return nil end
+            end
             local c = dfhack.items.getContainer and dfhack.items.getContainer(it)
-            if c and (c.flags.forbid or c.flags.in_inventory) then return nil end
+            if c then
+                if c.flags.forbid then return nil end
+                local okh, u = pcall(dfhack.items.getHolderUnit, c)
+                if c.flags.in_inventory and okh and u ~= nil then return nil end
+            end
             local x, y, z = dfhack.items.getPosition(it)
             if type(x) == 'table' then return x end
             if x and x >= 0 then return {x = x, y = y, z = z} end

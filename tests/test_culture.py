@@ -186,8 +186,9 @@ def _():
     import quirks
     h = {}
     extra = {"gems": 120, "cut_gems": 0, "jewelers": 0, "nobles": 3}
-    quirks.update(h, {}, None, {"year": 50, "tick": 0}, extra)
-    quirks.update(h, {}, None, {"year": 50, "tick": 85 * 1200}, extra)
+    # (0.105.33 fix) a fort leaning to Greed: a neutral one keeps encrusting (test_r33_fix_people)
+    quirks.update(h, {"greed": 1}, None, {"year": 50, "tick": 0}, extra)
+    quirks.update(h, {"greed": 1}, None, {"year": 50, "tick": 85 * 1200}, extra)
     assert list(h["quirks"]) == ["gem_mad"], h.get("quirks")
     h = {}
     extra = {"gems": 10, "cut_gems": 0, "jewelers": 0, "nobles": 8}

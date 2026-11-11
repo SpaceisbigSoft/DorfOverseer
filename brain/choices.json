@@ -1519,7 +1519,7 @@
       "all": [
        {
         "slider": "greed",
-        "min": 0
+        "min": 1
        },
        {
         "fact": "gems",
@@ -1531,7 +1531,7 @@
       "all": [
        {
         "slider": "greed",
-        "min": 0
+        "min": 1
        },
        {
         "fact": "jewelers",

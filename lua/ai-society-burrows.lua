@@ -92,7 +92,20 @@ local function rec_water(burrow, cx)
             seen = seen + 1
             if seen > REC_DRINK_SCAN then break end
             local ok, yes = pcall(function()
-                if it.flags.forbid or it.flags.in_inventory or it.flags.garbage_collect then return false end
+                if it.flags.forbid or it.flags.garbage_collect then return false end
+                -- (0.105.33 fix) DF sets in_inventory on drink in a barrel
+                -- too: only drink a unit carries is skipped, and drink in a
+                -- forbidden or carried barrel
+                if it.flags.in_inventory then
+                    local okh, u = pcall(dfhack.items.getHolderUnit, it)
+                    if okh and u ~= nil then return false end
+                end
+                local okc, c = pcall(dfhack.items.getContainer, it)
+                if okc and c then
+                    if c.flags.forbid then return false end
+                    local okh, u = pcall(dfhack.items.getHolderUnit, c)
+                    if c.flags.in_inventory and okh and u ~= nil then return false end
+                end
                 local x, y, z = dfhack.items.getPosition(it)
                 if type(x) == 'table' then x, y, z = x.x, x.y, x.z end
                 if not x or x < 0 then return false end
@@ -733,15 +746,37 @@ end
 -- HB_SRC_TTL ticks for the same zones, the chosen piles and well re-checked
 -- at each report (still holding drink and food, the well still giving water).
 HB_SRC_TTL = 600             -- half a day
-local HB_SRC = nil           -- {key, at, src}
+-- (0.105.33 fix) the cache keeps the buildings' ids, never the objects: a
+-- pile or well the player removed meanwhile is freed by DF (reading it, a
+-- use-after-free no pcall catches). Each is found again by id at the next
+-- report; one gone, the sources are worked out afresh. Cleared when the map
+-- unloads (a reload within half a day keeps the same zone ids).
+local HB_SRC = nil           -- {key, at, ids = {drink, food, well}, dist}
+local function hb_find(id)
+    if id == nil then return nil end
+    local ok, b = pcall(function() return df.building.find(id) end)
+    if ok and b then return b end
+    local okl, found = pcall(function()
+        for _, x in ipairs(df.global.world.buildings.all) do
+            if x.id == id then return x end
+        end
+    end)
+    return okl and found or nil
+end
 local function hospital_sources_cached(zones, now)
     local parts = {}
     for _, z in ipairs(zones) do table.insert(parts, tostring(z.id)) end
     local key = table.concat(parts, ',')
     local c = HB_SRC
     if c and c.key == key and now >= c.at and now - c.at < HB_SRC_TTL then
-        local src, good = c.src, true
-        if src.drink then
+        local src, good = {dist = c.dist}, true
+        for _, k in ipairs({'drink', 'food', 'well'}) do
+            if c.ids[k] ~= nil then
+                src[k] = hb_find(c.ids[k])
+                if not src[k] then good = false end
+            end
+        end
+        if good and src.drink then
             local okd, dr = pcall(pile_holds, src.drink)
             if not (okd and dr) then good = false end
         end
@@ -756,8 +791,17 @@ local function hospital_sources_cached(zones, now)
         if good then return src end
     end
     local src = hospital_sources(zones)
-    HB_SRC = {key = key, at = now, src = src}
+    local ids = {}
+    for _, k in ipairs({'drink', 'food', 'well'}) do
+        if src[k] then ids[k] = src[k].id end
+    end
+    HB_SRC = {key = key, at = now, ids = ids, dist = src.dist}
     return src
+end
+if dfhack and dfhack.onStateChange then
+    dfhack.onStateChange['ai-society-burrows-hb'] = function(sc)
+        if sc == SC_MAP_UNLOADED or sc == SC_WORLD_UNLOADED then HB_SRC = nil end
+    end
 end
 
 -- The members' checks (the burrow already reconciled). With no hospital

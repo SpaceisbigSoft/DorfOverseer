@@ -49,7 +49,7 @@ def strained(pop=50, unhappy=0, traits=None, drink=None, meals=None):
 
 @test("Growth: no strain hold while the fort is young (day 17: no meals yet, cap held at 7)")
 def _():
-    young = strained(pop=7, drink=0, meals=0)
+    young = strained(pop=7, meals=0)          # (0.105.33 fix) drink short still holds: test_r33_fix_people
     young["farms"] = {}
     assert fort_strain(young, CFG) == [], fort_strain(young, CFG)
     assert fort_strain(young, CFG, held=True) == []
@@ -134,11 +134,12 @@ def _():
     assert not by_rule(plan(s, Memory())[0], "encrust")
 
 
-@test("Greed: Gem-mad's jeweller and 100-gem branches need Greed 0 or more (B at -60 no longer earns it)")
+@test("Greed: Gem-mad's jeweller and 100-gem branches need Greed above 0 (B at -60 no longer earns it)")
 def _():
     q = quirks.data()["quirks"]["gem_mad"]
     for f in ({"jewelers": 1, "gems": 60}, {"gems": 120}):
-        assert quirks._test(q["earn"], {"greed": 0}, f)[0], f
+        assert quirks._test(q["earn"], {"greed": 1}, f)[0], f
+        assert not quirks._test(q["earn"], {"greed": 0}, f)[0], f     # (0.105.33 fix) neutral forts encrust
         assert not quirks._test(q["earn"], {"greed": -60}, f)[0], f
     assert quirks._test(q["earn"], {"greed": 80}, {"cut_gems": 60})[0]
 

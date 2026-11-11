@@ -1964,6 +1964,28 @@ end
 -- items: DFHack's deteriorate for non-entombed corpses and body parts nobody
 -- can craft with (its defaults). Usable parts (bones, hair, wool) and food are
 -- left alone; entombed dead are never touched. Stays on in this save.
+-- (0.105.33 fix) The fort's dead still lying unburied, whatever their race:
+-- a corpse (not in a coffin or tomb, not removed) whose unit is of the
+-- fort's civilisation, or of the fort's race when its unit can't be found.
+-- get_dead's `unburied` counts the fort's race only (a goblin or elf citizen
+-- waiting for burial didn't stop the one pass). nil when unreadable.
+function unburied_citizens()
+    local ok, n = pcall(function()
+        local race, civ = df.global.plotinfo.race_id, df.global.plotinfo.civ_id
+        local c = 0
+        for _, it in ipairs(df.global.world.items.other.CORPSE) do
+            if not it.flags.in_building and not it.flags.removed then
+                local oku, du = pcall(df.unit.find, it.unit_id)
+                local ours
+                if oku and du then ours = du.civ_id == civ else ours = it.race == race end
+                if ours then c = c + 1 end
+            end
+        end
+        return c
+    end)
+    return ok and n or nil
+end
+
 function act_prune_remains(a)
     if not dfhack.findScript('deteriorate') then
         return {ok = false, error = 'DFHack has no deteriorate script in this version'}
@@ -1998,8 +2020,8 @@ function act_prune_remains(a)
     for _, c in ipairs(type(a.extra) == 'table' and a.extra or {}) do
         if c == 'clothes' or c == 'usable-parts' then table.insert(cats, c) end
     end
-    local okd, dead = pcall(get_dead)
-    local unburied = okd and type(dead) == 'table' and tonumber(dead.unburied) or nil
+    -- (0.105.33 fix) every citizen's corpse counted, not the fort's race only
+    local unburied = unburied_citizens()
     local corpses_now = unburied == 0
     if a.dry_run then
         return {ok = true, dry_run = true, categories = cats, corpses_now = corpses_now,
