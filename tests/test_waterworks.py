@@ -34,7 +34,7 @@ function W.key(x, y, z) return x .. ',' .. y .. ',' .. z end
 function W.get(x, y, z)
   local t = W.tiles[W.key(x, y, z)]
   if t then return t end
-  if z > 100 then return {shape = 'OPEN_SPACE', material = 'AIR', outside = true} end
+  if z > 100 then return {shape = 'EMPTY', material = 'AIR', outside = true} end
   if z == 100 then return {shape = 'FLOOR', material = 'SOIL', outside = true} end
   return {shape = 'WALL', material = 'STONE'}
 end
@@ -46,7 +46,7 @@ function W.set(x, y, z, f)
 end
 function W.dig_all(cells)
   for _, c in ipairs(cells) do
-    local shape = ({h = 'OPEN_SPACE', j = 'STAIR_DOWN', u = 'STAIR_UP', i = 'STAIR_UPDOWN', z = 'FLOOR'})[c.text] or 'FLOOR'
+    local shape = ({h = 'EMPTY', j = 'STAIR_DOWN', u = 'STAIR_UP', i = 'STAIR_UPDOWN', z = 'FLOOR'})[c.text] or 'FLOOR'
     W.set(c.x, c.y, c.z, {shape = shape})
   end
 end
@@ -80,7 +80,8 @@ env.pull = function(id, instant)
   for _, b in pairs(W.buildings) do if b.closed ~= nil then b.closed = not b.closed end end
   return true
 end
-env.dig_now = function(x, y, z) W.set(x, y, z, {shape = 'OPEN_SPACE'}) end
+env.cancel_pulls = function(id) W.cancelled = (W.cancelled or 0) + 1 end
+env.dig_now = function(x, y, z) W.set(x, y, z, {shape = 'EMPTY'}) end
 env.citizens = function() return W.citizens end
 env.water_survey = function() return W.survey end
 env.mud = function(x, y, z) return W.mud[W.key(x, y, z)] == true end
@@ -125,7 +126,7 @@ def moat_world():
     # a river one level under the ground, west of the approach
     for y in range(52, 58):
         W.set(40, y, 99, T(shape="FLOOR", material="RIVER", liquid=True, depth=7, outside=True))
-        W.set(40, y, 100, T(shape="OPEN_SPACE", outside=True))
+        W.set(40, y, 100, T(shape="EMPTY", outside=True))
     W.survey = T(bodies=L(T(kind="river", tiles=6, nearest=T(x=40, y=54, z=99))))
     return env, W
 
@@ -288,7 +289,7 @@ def _():
     env, W = magma_world()
     for x in range(40, 80):
         for y in range(40, 80):
-            W.set(x, y, 70, T(shape="OPEN_SPACE", feature=True))
+            W.set(x, y, 70, T(shape="EMPTY", feature=True))
     r = step(env, "magma")
     assert r.rejected and "cavern" in r.error, r.error
     env, W = magma_world()
