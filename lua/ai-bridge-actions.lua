@@ -9,7 +9,7 @@
 -- in_fort, NOT_IN_FORT, OUT_DIR) are at hand. Not a command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-actions is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-actions'] = '0.105.31'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-actions'] = '0.105.32'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local json = require('json')
 local utils = require('utils')
@@ -1059,6 +1059,14 @@ function act_link_lever(a)
     return reqscript('ai-gates').link_lever(lid, tid, a.dry_run == true)
 end
 
+-- (0.105.32) A gate that reads open but DF's walk map treats as shut (E: 64
+-- dead at the founding stair's hatch): one step a call (lua/ai-gates.lua unstick_gate).
+function act_unstick_gate(a)
+    local id, step = whole_number(a.id), int_in(a.step, 1, 3)
+    if not id or not step then return reject('unstick_gate needs id and step 1-3') end
+    return reqscript('ai-gates').unstick_gate(id, step, a.dry_run == true)
+end
+
 function act_arm_gates(a) return reqscript('ai-gates').arm() end
 function act_open_gates(a) return reqscript('ai-gates').open_all() end
 
@@ -1185,6 +1193,14 @@ function act_dig_stairwell(a)
     if type(a.spine) == 'table' then spine = {x = int_in(a.spine.x, 0, 1000), y = int_in(a.spine.y, 0, 1000)} end
     return reqscript('ai-builder').dig_stairwell({dir = a.dir, elev_lo = lo, elev_hi = hi, spine = spine,
         min_dist = int_in(a.min_dist or 10, 4, 60), max_dist = int_in(a.max_dist or 40, 6, 80)}, a.dry_run == true)
+end
+
+-- (0.105.32) An emergency way in for citizens stranded outside with no gate
+-- to blame (lua/ai-builder-projects.lua dig_way_in): x, y, z of where they stand.
+function act_dig_way_in(a)
+    local x, y, z = int_in(a.x, 0, 1000), int_in(a.y, 0, 1000), int_in(a.z, 0, 1000)
+    if not x or not y or not z then return reject('dig_way_in needs x, y, z (where the stranded stand)') end
+    return reqscript('ai-builder').dig_way_in({x = x, y = y, z = z}, get_date(), a.dry_run == true)
 end
 
 -- (0.104.81) Tame animals put to war training (lua/ai-society.lua train_war).

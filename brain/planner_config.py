@@ -718,4 +718,18 @@ PLANNER_CONFIG = {
     # cycle one was this near a dwarf (E: the alarm came down 635 ticks after
     # it went up, the thief 1 tile from the citizens and still alive)
     "few_alert_near_tiles": 12,
+    # (0.105.32) E (8 Nov): the founding stair's hatch read open after an
+    # instant lever pull, but DF's walk map was split at it; every citizen who
+    # went out was stranded there and 64 died of thirst. planner_gates
+    # _stranded_rule: unstick_gate at once, one step at a time:
+    "gate_stuck_step_hours": 6,         # ...this many game hours between steps (the split still there)
+    "gate_stuck_prevent_days": 1,       # ...a split with nobody shut out yet: step 1 at most this often
+    # ...and citizens cut off with no gate to blame (no split): dig_way_in
+    "way_in_after_days": 2,             # ...once they've been out this many game days
+    "way_in_min_stranded": 1,           # ...and at least this many are
+    # (merge32 review) ...refused: again in an area after 1, 2, 4 days, and after this many refusals only the Needs you;
+    # one dug there and they're still out: no more there
+    "way_in_max_refusals": 3,
+    "way_in_single_days": 3,            # ...one dwarf alone: once out this many game days
+    "way_in_area_tiles": 20,            # ...an "area": within this many tiles of the last one
 }

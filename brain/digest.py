@@ -400,6 +400,27 @@ def built_line(s: dict) -> str:
     return line
 
 
+def gate_split_line(s: dict) -> str:
+    """(0.105.32) A gate piece that reads open while DF's walk map is split
+    at it (an entrance's `split`): who it shuts out. '' when there's none."""
+    ent = _d(s.get("entrances"))
+    off = _d(s.get("map")).get("elevation_offset")
+    off = off if isinstance(off, int) else 0
+    pieces = [pc for e in _l(ent.get("entrances")) if isinstance(e, dict)
+              for pc in _l(e.get("split")) if isinstance(pc, dict)]
+    if not pieces:
+        return ""
+    stuck = [r for r in _l(ent.get("stranded")) if isinstance(r, dict) and r.get("cause") == "gate_stuck"]
+    parts = []
+    for pc in pieces[:3]:
+        z = pc.get("z")
+        n = sum(1 for r in stuck if r.get("stuck_gate") == pc.get("id"))
+        parts.append(f"{pc.get('kind') or 'gate'} #{pc.get('id')} x{pc.get('x')} y{pc.get('y')} elevation "
+                     f"{z + off if isinstance(z, int) else '?'} (walk groups {pc.get('outside_group')} | "
+                     f"{pc.get('inside_group')}, {n} shut out)")
+    return "GATE_SPLIT open but the game holds it shut: " + "; ".join(parts)
+
+
 def digest(s: dict, news: int = 5) -> str:
     s = normalize(s)
     d, dw, b, o = _d(s.get("date")), _d(s.get("dwarves")), _d(s.get("buildings")), _d(s.get("others_on_map"))
@@ -441,7 +462,7 @@ def digest(s: dict, news: int = 5) -> str:
         f" contained {o.get('contained_dangers', 0)}",
     ]
 
-    for extra in (threat_line(s), world_line(s), infection_line(s), built_line(s)):
+    for extra in (threat_line(s), world_line(s), infection_line(s), built_line(s), gate_split_line(s)):
         if extra:
             lines.append(extra)
     m = _d(s.get("map"))

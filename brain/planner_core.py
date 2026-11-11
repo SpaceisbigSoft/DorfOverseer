@@ -47,17 +47,24 @@ TICKS_PER_YEAR = 403200
 # Rules exempt from the per-rule cooldown (select()).
 NO_COOLDOWN = {"threat_alert", "strategist", "squad_attack", "squad_recall", "train", "gates", "water", "flood",
                "trade_deal", "close_trade",       # time stands still while the trade screen is open
-               "shelter_squads"}                  # (0.105.0 review) an emergency, as in EMERGENCY
+               "shelter_squads",                  # (0.105.0 review) an emergency, as in EMERGENCY
+               "gate_stuck", "way_in"}            # (0.105.32) they pace themselves (planner_gates)
 # (0.105.26) a rule whose cooldown key isn't "<rule>_cooldown_ticks" (select()):
 # the prisoners rule waited the 2-day default instead of its 7 days
 COOLDOWN_KEYS = {"prisoners": "prisoner_room_cooldown_ticks"}
 # Rules that may act more than once a cycle (select()).
 MULTI_PER_CYCLE = {"stuck_order", "uniform", "noble_rooms", "tools", "strategist", "squad_attack", "squad_recall", "train",
                    "labor", "well_parts",
-                   "mood"}   # (0.105.24) a mood's materials: weave, tan, smelt, free, cancel in one cycle
+                   "mood",   # (0.105.24) a mood's materials: weave, tan, smelt, free, cancel in one cycle
+                   "gate_stuck"}   # (0.105.32) each split gate piece its own step
 # Responses to an attack: never held back by the per-cycle action limit.
 EMERGENCY = {"threat_alert", "gate", "gates", "squad_attack", "flood", "gate_guard",   # (0.104.83 gate_guard)
-             "shelter_squads", "shelter_refresh"}                                   # (0.105.0; 0.105.26)
+             "shelter_squads", "shelter_refresh",                                   # (0.105.0; 0.105.26)
+             # (0.105.32) E (8 Nov): an open hatch DF's walk map held shut, 64
+             # dead of thirst outside it; and a way dug in for the cut off. A
+             # life on each: no action limit, no refusal back-off or loop hold
+             # (each rule paces its own tries: planner_gates)
+             "gate_stuck", "way_in"}
 # (0.104.89) rules the strategist may never hold: survival, safety and the
 # answers to danger (it may still raise them)
 STEER_PROTECTED = EMERGENCY | {"shelter", "alerts", "squad_recall", "water", "well", "drink",
@@ -78,7 +85,9 @@ STEER_PROTECTED = EMERGENCY | {"shelter", "alerts", "squad_recall", "water", "we
                                "siege_cleanup", "webs", "remove_webs", "location_access",
                                # (0.105.26 seal fix) a soldier's water; doors on a cavern opening, the
                                # caverns sealed against a great beast; citizens shut outside
-                               "flasks_order", "cavern_openings", "seal_cavern", "stranded"}
+                               "flasks_order", "cavern_openings", "seal_cavern", "stranded",
+                               # (0.105.32) an open gate the game holds shut; a way dug in
+                               "gate_stuck", "way_in"}
 STEER_MAX_DAYS = 84
 
 
@@ -226,6 +235,8 @@ class Memory:
     locations_acted: dict = field(default_factory=dict)      # (0.105.26) location id (str) -> tick the AI last shut or opened it
     intrusion: dict = field(default_factory=dict)            # (0.105.30) {tick, civ, invaders, cleared}: DF's last invasion record
     stranger_shut: dict = field(default_factory=dict)        # (0.105.30) {seen, who}: a stranger last seen seeking a meeting
+    gate_unstick: dict = field(default_factory=dict)         # (0.105.32) gate piece id (str) -> {step, tick, ok, split_after, done, prevent}
+    way_in: dict = field(default_factory=dict)               # (0.105.32) "x,y,z" -> {tick, ok, project_id, why}: ways dug in
     gear_spare_since: dict = field(default_factory=dict)  # "weapons"/"body"/"helms" -> when 3+ spares sat unused
     swapped: dict = field(default_factory=dict)  # (0.104.78) unit id -> when the swap sent them home
     drafted: dict = field(default_factory=dict)  # (0.104.138) unit id -> when a fill or swap drafted them

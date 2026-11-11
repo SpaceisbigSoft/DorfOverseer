@@ -44,7 +44,7 @@
 local json = require('json')
 local utils = require('utils')
 
-BRIDGE_VERSION = '0.105.31'
+BRIDGE_VERSION = '0.105.32'
 PROTOCOL = 1 -- bump when the report's shape changes in a breaking way
 
 OUT_DIR = dfhack.getDFPath() .. '/dfhack-config/ai-overseer'   -- (a global: the parts write there too)
@@ -165,6 +165,7 @@ ACTIONS = {
     place_traps = act_place_traps,
     place_gate_lever = act_place_gate_lever,          -- (0.105.12)
     build_gatehouse = act_build_gatehouse,            -- (0.105.23)
+    unstick_gate = act_unstick_gate,                  -- (0.105.32)
     location_access = act_location_access,            -- (0.105.12)
     unpause = act_unpause,
     found_fort = act_found_fort,
@@ -179,6 +180,7 @@ ACTIONS = {
     nest_boxes = act_nest_boxes,             -- (0.104.80)
     train_war = act_train_war,               -- (0.104.81)
     dig_stairwell = act_dig_stairwell,       -- (0.104.82)
+    dig_way_in = act_dig_way_in,             -- (0.105.32) an emergency way in for the stranded
     guard_gate = act_guard_gate,             -- (0.104.83)
     -- (0.105.0, round 2) an army that can fight
     fix_gear_gaps = act_fix_gear_gaps, assign_quivers = act_assign_quivers, squad_bolts = act_squad_bolts,
@@ -364,6 +366,9 @@ for _, name in ipairs({
     'unforbid_items', 'mark_melt', 'mark_dump', 'empty_dump', 'set_standing_orders', 'place_dump',
     -- (0.105.30) construction: each plans and returns before it places anything
     'place_hall', 'build_wings', 'floor_rooms',
+    'unstick_gate',      -- (0.105.32) its dry run says what it would do, and changes nothing
+    -- (0.105.32) the way in: planned (and quickfort's dry run) before anything is designated
+    'dig_way_in',
 }) do DRY_OK[name] = true end
 
 -- These only change what's displayed, so they still work while halted, dry
