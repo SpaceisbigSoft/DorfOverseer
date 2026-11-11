@@ -122,12 +122,20 @@ end
 -- the keyboard's Enter on it instead (`go_key`): the cause doesn't change
 -- between tries, so a stop here stopped every revive of a world that isn't
 -- first in a short list. Neither held: stop with a note.
-function then_if_scrolled(scr, field, want, go, go_key)
+-- (0.105.36, D7) `selected` is set by this script just before, so it alone
+-- proves little: Enter is pressed only when DF pulled the scroll back toward
+-- the top (a short list: the wanted line is on screen, below the top one) and
+-- the line at `want` is still the wanted world or save (`line_ok`). Whether
+-- DF's SELECT acts on `selected` is still to be seen in game; a wrong fort
+-- loaded is caught by the reviver (another site: a failed load).
+function then_if_scrolled(scr, field, want, go, go_key, line_ok)
     dfhack.timeout(3, 'frames', function()
         local ok, v = pcall(function() return scr[field] end)
         if ok and v == want then return go() end
         local oks, sel = pcall(function() return scr.selected end)
-        if go_key and oks and sel == want then
+        local okl, lok = pcall(function() return line_ok == nil or line_ok() == true end)
+        local clamped = ok and type(v) == 'number' and type(want) == 'number' and v >= 0 and v < want
+        if go_key and oks and sel == want and clamped and okl and lok then
             say('the list would not scroll (' .. field .. ' is ' .. tostring(v) .. ', wanted ' .. tostring(want) ..
                 '): line ' .. tostring(want) .. ' is highlighted, Enter pressed on it', scr)
             return go_key()
@@ -210,12 +218,14 @@ function load(folder)
             end)
             end
             then_if_scrolled(t3, 'scroll_position_game_choice', gi,
-                function() load_step(click_top) end, function() load_step(press_select) end)
+                function() load_step(click_top) end, function() load_step(press_select) end,
+                function() return t3.savegame_header_game[gi].filename_noext == folder end)
         end)
         end
         -- (a wrong world opened shows no such save: the step above stops there)
         then_if_scrolled(t2, 'scroll_position_world_choice', wi,
-            function() saves_step(click_top) end, function() saves_step(press_select) end)
+            function() saves_step(click_top) end, function() saves_step(press_select) end,
+            function() return t2.savegame_header_world[wi].world_name == world end)
     end)
     return {ok = true, started = true, folder = folder, world = world}
 end

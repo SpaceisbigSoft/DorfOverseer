@@ -860,6 +860,29 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
             + (f" ({memory._texts.get('save_unread_why')})" if memory._texts.get("save_unread_why") else "") + ".")
     to_save = False
     try:
+        normalize(state)      # (13c) once, in place: the steps below read the sections as they are
+        # (0.105.33 fix, runs) the report's date failed (normalize made it year
+        # 0, tick 0): no learning, no note_cycle (it would wipe every cooldown,
+        # loop count and "No" as from the future), no plan, no act and no record
+        # at tick 0 this cycle; memory is left as the last good cycle saved it
+        # (0.105.36, D7) checked before bridge.events() drains the game's
+        # events: DF keeps them (deaths, heists, tantrums) for the next good cycle
+        if chronicle.date_failed(state):
+            say("The report's date couldn't be read this cycle: nothing planned, done or written into "
+                "the fort's memory until it can be")
+            try:
+                when = date_str(state)
+            except Exception:  # noqa: BLE001
+                when = "?"
+            report_status(bridge, {
+                "mode": MODES.get(_d(state.get("settings")).get("mode"), MODES["autopilot"]),
+                "acting": "waiting: the report's date couldn't be read", "date": when,
+                "last": [f"{short(a['action'])}: {a.get('reason', '')}".rstrip(": ")
+                         for a in memory.recent_actions[-5:]][::-1],
+                "notes": [], "todo": [], "pending": [], "ack": [],
+                "unattended": UNATTENDED,
+            })
+            return
         events = bridge.events()
         seen: dict[str, int] = {}
         for ev in events:
@@ -878,52 +901,22 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
         # (0.97.1) your memory on the PC knows the fort by its line (world and
         # site: its autosaves and copies are one fort); a dry run doesn't write it
         line = learning.line_key(key, (state.get("fort") or {}).get("world"))
-        normalize(state)      # (13c) once, in place: the steps below read the sections as they are
-        # (0.105.33 fix, runs) the report's date failed (normalize made it year
-        # 0, tick 0): no learning, no note_cycle (it would wipe every cooldown,
-        # loop count and "No" as from the future), no plan, no act and no record
-        # at tick 0 this cycle; memory is left as the last good cycle saved it
-        if chronicle.date_failed(state):
-            say("The report's date couldn't be read this cycle: nothing planned, done or written into "
-                "the fort's memory until it can be")
-            try:
-                when = date_str(state)
-            except Exception:  # noqa: BLE001
-                when = "?"
-            report_status(bridge, {
-                "mode": MODES.get(_d(state.get("settings")).get("mode"), MODES["autopilot"]),
-                "acting": "waiting: the report's date couldn't be read", "date": when,
-                "last": [f"{short(a['action'])}: {a.get('reason', '')}".rstrip(": ")
-                         for a in memory.recent_actions[-5:]][::-1],
-                "notes": [], "todo": [], "pending": [], "ack": [],
-                "unattended": UNATTENDED,
-            })
-            return
         learned_now = learning.observe(state, memory, line, write_pc=autopilot)   # before note_cycle: it reads the tools
         expire_adjustments(memory, state)
         notes = note_cycle(state, memory)
-        # (0.105.33 merge, B5) the report's date failed (it reads as year 0,
-        # tick 0): nothing dated goes into memory this cycle (the moods'
-        # journal, tantrums, heists, intrusions, deaths, events, the day's row,
-        # the atlas and the chronicle); the next good report carries on
-        date_bad = chronicle.date_failed(state)
-        if date_bad:
-            say("The report's date couldn't be read this cycle: nothing is written into the fort's memory "
-                "until it can be")
-        else:
-            for e in mood_journal(state, memory):     # (0.105.30) each mood's requests, once a day
-                journal({"kind": "mood", "fort": key, "date": state["date"], **e})
-            note_tantrums(state, memory, events)     # (0.104.31) tantrums counted for the jail
-            note_heists(state, memory, events)       # (0.105.24) heists and visitors' killings: visitors kept out a while
-            note_intrusions(state, memory, events)   # (0.105.30) DF's invasion records: the alarm before a thief strikes
-            crisis.note_deaths(state, memory, events)   # (0.104.137) deaths counted for crisis mode
-            note_events(state, memory, bank if backend else None, events)
+        # (0.105.36, D7) a date-failed report returned above, so the date is good from here
+        for e in mood_journal(state, memory):     # (0.105.30) each mood's requests, once a day
+            journal({"kind": "mood", "fort": key, "date": state["date"], **e})
+        note_tantrums(state, memory, events)     # (0.104.31) tantrums counted for the jail
+        note_heists(state, memory, events)       # (0.105.24) heists and visitors' killings: visitors kept out a while
+        note_intrusions(state, memory, events)   # (0.105.30) DF's invasion records: the alarm before a thief strikes
+        crisis.note_deaths(state, memory, events)   # (0.104.137) deaths counted for crisis mode
+        note_events(state, memory, bank if backend else None, events)
         for line in learned_now:
             say(f"Learned: {line}")
             journal({"kind": "learned", "fort": key, "date": state["date"], "text": line})
         cfg = effective_config(memory.adjust, calibration=calibrate.values(memory))
-        if not date_bad:
-            remember_world(state, memory, events, key, cfg, learned_now, bridge)
+        remember_world(state, memory, events, key, cfg, learned_now, bridge)
         for ch in calibrate.update(state, memory, cfg, memory.adjust):
             say(f"Self-tuned: {ch['name']} {ch['old']} -> {ch['new']} ({ch['why']})")
             journal({"kind": "calibration", "fort": key, "date": state["date"], **ch})
@@ -1130,7 +1123,7 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
                 record(results, state, memory, cfg)
                 learning.note_actions(results, state, memory)
                 outcomes.record_actions(results, state, memory)
-                for line in ([] if chronicle.date_failed(state) else atlas.note_actions(results, state, memory)):
+                for line in atlas.note_actions(results, state, memory):
                     say(f"Atlas: {line}")              # what was built, or what the AI found and chose
                     chronicle.add(memory, state, "gate", line)
                 for p, r in results:
@@ -1800,6 +1793,11 @@ def note_preset(key: str, name: str) -> None:
         pass
 
 
+def _onoff(v) -> str:
+    """(0.105.36, D7) a Rules value in words: on/off for a switch, the word itself for a three-state one."""
+    return ("on" if v else "off") if isinstance(v, bool) or v is None else str(v)
+
+
 RULES_REQUEST = "rules-request.json"     # (0.105.20) in the logs folder: {"rules": {"open_caverns": true}}
 
 
@@ -1841,7 +1839,7 @@ def rules_request(bridge: Bridge, autopilot: bool) -> None:
         return
     if r.get("ok"):
         ch = _d(r.get("changed"))
-        words = ", ".join(f"{k} {'on' if v.get('new') else 'off'}" for k, v in sorted(ch.items())) or "nothing to change"
+        words = ", ".join(f"{k} {_onoff(_d(v).get('new'))}" for k, v in sorted(ch.items())) or "nothing to change"
         say(f"Rules: set from {RULES_REQUEST}: {words}.")
     else:
         say(f"Rules: {RULES_REQUEST} not applied: {r.get('error')}")

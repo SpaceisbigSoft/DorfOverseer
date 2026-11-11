@@ -1995,6 +1995,8 @@ end
 -- fort's civilisation, or of the fort's race when its unit can't be found.
 -- get_dead's `unburied` counts the fort's race only (a goblin or elf citizen
 -- waiting for burial didn't stop the one pass). nil when unreadable.
+-- (0.105.36) animals and visitors of the civ are left out: a dead cat on the
+-- refuse pile stopped the corpse pass for good.
 function unburied_citizens()
     local ok, n = pcall(function()
         local race, civ = df.global.plotinfo.race_id, df.global.plotinfo.civ_id
@@ -2003,7 +2005,17 @@ function unburied_citizens()
             if not it.flags.in_building and not it.flags.removed then
                 local oku, du = pcall(df.unit.find, it.unit_id)
                 local ours
-                if oku and du then ours = du.civ_id == civ else ours = it.race == race end
+                if oku and du then
+                    -- (0.105.36, D6) the fort's people only: not its dead pets and
+                    -- livestock, nor a dead merchant, guard, envoy or visitor of its civ
+                    local function is(f)
+                        local okf, r = pcall(f, du)
+                        return okf and r == true
+                    end
+                    local U = dfhack.units
+                    ours = du.civ_id == civ and not is(U.isAnimal) and not is(U.isMerchant)
+                        and not is(U.isDiplomat) and not is(U.isVisitor)
+                else ours = it.race == race end
                 if ours then c = c + 1 end
             end
         end
@@ -2804,8 +2816,10 @@ function act_set_rules(a)
         return false
     end
     for k, v in pairs(a.rules) do
-        -- (v35 fix) open_caverns is three-state: an old request's true is always, false the AI decides
-        if k == 'open_caverns' and type(v) == 'boolean' and S.open_caverns_choice then v = S.open_caverns_choice(v) end
+        -- (v35 fix) open_caverns is three-state: a request's true is always.
+        -- (0.105.36, D7) a request's false is the player's explicit off: never
+        -- (only a stored setting's false, the old default, means the AI decides)
+        if k == 'open_caverns' and type(v) == 'boolean' then v = v and 'always' or 'never' end
         if not choice_ok(k, v) and (type(k) ~= 'string' or type(defs[k]) ~= 'boolean' or type(v) ~= 'boolean') then
             table.insert(unknown, tostring(k))
         elseif cur[k] ~= v then
