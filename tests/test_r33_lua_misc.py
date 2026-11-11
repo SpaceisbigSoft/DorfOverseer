@@ -159,7 +159,7 @@ def old_industry_src():
     global OLD_INDUSTRY
     if OLD_INDUSTRY is None:
         try:
-            OLD_INDUSTRY = subprocess.run(["git", "show", "merge33:lua/ai-industry.lua"], cwd=ROOT,
+            OLD_INDUSTRY = subprocess.run(["git", "show", "53d5066:lua/ai-industry.lua"], cwd=ROOT,
                                           capture_output=True, text=True, check=True).stdout
         except Exception:  # noqa: BLE001
             OLD_INDUSTRY = ""
