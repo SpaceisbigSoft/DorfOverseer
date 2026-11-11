@@ -426,10 +426,11 @@ def _check_steer(act, shown: set | None = None) -> tuple[dict | None, str]:
         return {"type": "raise", "rule": rule, "why": why}, ""
     if rule in STEER_PROTECTED or rule in HOLD_PROTECTED:
         return None, f"hold: {rule} keeps the fort safe and can't be held"
-    most = BUILD_HOLD_MAX_DAYS if rule == "build" else STEER_MAX_DAYS
-    days = _int_in(act.get("days"), 1, most)
+    days = _int_in(act.get("days"), 1, STEER_MAX_DAYS)
     if days is None:
-        return None, f"hold: days must be 1-{most}" + (" for build" if rule == "build" else "")
+        return None, f"hold: days must be 1-{STEER_MAX_DAYS}"
+    if rule == "build":
+        days = min(days, BUILD_HOLD_MAX_DAYS)     # (0.105.33 fix) a longer build hold is shortened, not lost
     return {"type": "hold", "rule": rule, "days": days, "why": why}, ""
 
 

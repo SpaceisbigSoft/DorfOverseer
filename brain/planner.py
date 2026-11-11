@@ -794,8 +794,10 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
     # (0.105.33) [] is an answer (every proposal was trade with an enemy), not a failure
     if "world" not in errors:
         kept = _guard(_hostile_trade_filter, s, proposals, notes)
-        if kept is not None:
-            proposals = kept
+        if kept is None:      # (0.105.33 fix) the filter failed: no trade this cycle (fails closed)
+            from planner_world import TRADE_ACTIONS
+            kept = [p for p in proposals if p.action.get("type") not in TRADE_ACTIONS]
+        proposals = kept
     # (0.104.137) crisis mode: expansion waits, recovery goes first
     why = _d(getattr(memory, "crisis", None)).get("why") if memory is not None else None
     if why:
@@ -1295,6 +1297,19 @@ def note_cycle(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> list[
     if isinstance(getattr(memory, "steer", None), dict):
         for k in [k for k, v in memory.steer.items() if not (isinstance(v, dict) and isinstance(v.get("until"), int)
                                                               and now < v["until"])]:
+            del memory.steer[k]
+        # (0.105.33 fix) a raise or hold stored before the strategist refused it
+        # (a raised slaughter, a held containers) goes now, not when it runs out
+        try:
+            from strategist import BUILD_HOLD_MAX_DAYS, HOLD_PROTECTED, RAISE_FORBIDDEN
+        except Exception:  # noqa: BLE001
+            BUILD_HOLD_MAX_DAYS, HOLD_PROTECTED, RAISE_FORBIDDEN = 14, set(), set()
+        b_ = memory.steer.get("build")
+        if b_ and b_.get("mode") == "hold":       # and an older, longer hold of build is cut to its two weeks
+            b_["until"] = min(b_["until"], now + BUILD_HOLD_MAX_DAYS * TICKS_PER_DAY)
+        for k in [k for k, v in memory.steer.items()
+                  if (v.get("mode") == "raise" and k in RAISE_FORBIDDEN)
+                  or (v.get("mode") == "hold" and (k in HOLD_PROTECTED or k in STEER_PROTECTED))]:
             del memory.steer[k]
     # (0.104.81) one-off keys (a zone, a dwarf, an order) left in the loop
     # log: each key's ticks are kept a year, but the keys themselves grew
