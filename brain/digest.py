@@ -149,13 +149,17 @@ SECTION_DEFAULTS = {
     "constructions": {},     # (0.105.30) built walls, floors...: by shape, item, surface (lua/ai-constructions.lua)
     "civ_alert": False,      # (0.105.33) a failed read ({error}) read as "the alarm is on"
 }
+# (0.105.36) not REQUIRED (the plan goes on without them), but a missing one is
+# listed in _errors as a failed one is: the default (civ_alert False) is not
+# what the game said, and note_cycle must not take it as the player's lowering
+UNREAD_IS_ERROR = ("civ_alert",)
 
 # (0.105.33) Sections the rules read through their own guards (`"error" in d`,
 # `is True`, or "None: no such section"): a failure is listed in _errors, so
 # the planner sees "failed", not "nothing there", but the value is left as
 # it came (an empty default would read as a working, empty section).
 LISTED_ONLY = ("needs", "deep", "water", "disposal", "offices", "crossings", "logistics",
-               "order_desk", "civ_alert_ready", "units")
+               "order_desk", "civ_alert_ready", "civ_alert_shelter", "units")
 
 # Sections the planner decides from. If one of these is MISSING (e.g. a report
 # from an older bridge), that's treated as a failure, not as "nothing there":
@@ -176,7 +180,7 @@ def normalize(s: dict) -> dict:
             errors[key] = v["error"]
             s[key] = json.loads(json.dumps(default))
         elif v is None:
-            if key in REQUIRED and key not in errors:
+            if (key in REQUIRED or key in UNREAD_IS_ERROR) and key not in errors:
                 errors[key] = "missing from the report (older ai-bridge?)"
             s[key] = json.loads(json.dumps(default))
         elif isinstance(default, dict) and v == []:

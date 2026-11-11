@@ -179,6 +179,7 @@ class Memory:
     # (str) -> state): gate_closed_by_ai is read from the lever each cycle
     # (note_cycle), not toggled on a pull that may never happen
     gate_open_state: dict = field(default_factory=dict)
+    gate_pull_asked: int | None = None                   # (0.105.36) when the AI last pulled the gate lever
     # (0.105.33) an alarm change or a tool switch-off whose reply never came
     # (ok None): {on, tick} / tool name -> tick; the next report says whether it went through
     alert_asked: dict = field(default_factory=dict)
@@ -267,6 +268,7 @@ class Memory:
     fight_factor: dict = field(default_factory=dict)     # (0.104.118) kind -> how much stronger than estimated (learned)
     shelter_since: dict = field(default_factory=dict)    # (0.105.22) squad id -> tick it took the shelter order
     shelter_rest: dict = field(default_factory=dict)     # (0.105.22) squad id -> tick it may shelter again
+    shelter_supply: dict = field(default_factory=dict)   # (0.105.36, D5) the AI shelter's last fill: {tick, drink_short, no_water, no_food, ...}
     fights: list = field(default_factory=list)           # (0.104.118) the last fights: {tick, keys, lost, of}
     called_off: dict = field(default_factory=dict)       # (0.105.26) great danger id -> tick its fight was called off
     dig_seen: dict = field(default_factory=dict)         # (0.104.110) project id -> {"dug", "tick" (last progress), "freed"}
@@ -1496,10 +1498,13 @@ def labor_given(memory, rule: str, now: int) -> int:
 
 def note_labor_given(memory, p, r: dict, now: int) -> None:
     """(v35 fix) A LABOR_CAPS rule's labour given: booked (the dwarves named,
-    else the count asked)."""
-    if p.rule not in LABOR_CAPS or _d(p.action).get("type") != "assign_labor" or _d(r).get("ok") is not True:
+    else the count asked). (0.105.36) An unknown answer (ok None: a timeout
+    that may have gone through) books the count asked, to be safe against
+    passing the yearly cap, as the cooldown does."""
+    ok = _d(r).get("ok")
+    if p.rule not in LABOR_CAPS or _d(p.action).get("type") != "assign_labor" or ok is False:
         return
-    names = _d(r).get("assigned")
+    names = _d(r).get("assigned") if ok is True else None
     n = len(names) if isinstance(names, list) else int(_d(p.action).get("count") or 0)
     if n <= 0:
         return
@@ -1533,12 +1538,18 @@ def cooldown_key(p: Proposal) -> str:
     return p.rule
 
 
+# (0.105.36) actions whose rule paces its own tries after a refusal: no
+# refusal back-off on top (the shelter's "tried again in 1 day(s)" stretched
+# to weeks under a siege: SHELTER_RETRY_*_DAYS is its pace)
+OWN_PACE = {"setup_shelter"}
+
+
 def _refused_wait(memory: Memory, p: Proposal, now: int, bridge: str | None = None) -> int | None:
     """Days left before a refused action may be tried again, or None. A
     refusal booked under another bridge version is tried again at once: new
     code may do what the old couldn't (0.81: squads refused for want of a
     captain's post waited up to 84 days after the bridge learned to add one)."""
-    if p.rule in EMERGENCY:
+    if p.rule in EMERGENCY or p.action.get("type") in OWN_PACE:
         return None
     r = _d((memory.refusals or {}).get(refusal_key(p)))
     if bridge and r and r.get("v") != bridge:   # (refusals from before 0.81 carry no version: once more)
@@ -1587,7 +1598,7 @@ def note_refusal(memory: Memory, p: Proposal, r: dict, now: int, bridge: str | N
         else:
             memory.refusals.pop(key, None)
         return
-    if r.get("ok") is not False or r.get("halted") or p.rule in EMERGENCY:
+    if r.get("ok") is not False or r.get("halted") or p.rule in EMERGENCY or p.action.get("type") in OWN_PACE:
         return                     # unknown, or stopped by the in-game halt: not the game saying no
     if r.get("waiting"):           # work under way (trees being felled): look again in 2 days, no back-off
         memory.refusals[key] = {"n": 0, "until": now + 2 * TICKS_PER_DAY, "at": now,
@@ -1742,9 +1753,26 @@ def _record_any_outcome(a: dict, r: dict, state: dict, memory, now: int, brief: 
             rec = reg.get(prefix + a["spot"])
             if isinstance(rec, dict):
                 rec["status"] = "taken down" if "nothing" in str(r.get("error")) else "kept"
+    # (0.105.36, D5) what the AI shelter holds, from each fill of it (made,
+    # made again, or made again as the AI sounds the alarm): read by
+    # planner_society's _shelter_supply_rule
+    sh = r if t in ("setup_shelter", "refresh_shelter") else (
+        r.get("shelter") if t == "civ_alert" and a.get("on") is True else None)
+    if isinstance(sh, dict) and sh.get("ok") is not False and isinstance(sh.get("tiles"), int):
+        memory.shelter_supply = {"tick": now, "tiles": sh["tiles"],
+                                 **{k: sh[k] for k in ("drink_short", "no_water", "no_food", "drink_units",
+                                                       "food_units", "well_tiles") if sh.get(k) is not None}}
+    # (0.105.36 fix) the alarm's burrow isn't the AI shelter (the player set
+    # their own): its fill record forgotten (the AI no longer fills it)
+    if t == "refresh_shelter" and r.get("ok") is False and "not the AI shelter" in str(r.get("error") or ""):
+        memory.shelter_supply = {}
     if t == "setup_shelter":
         memory.shelter_attempts += 1          # refused or not: two tries, then again after a wait (0.105.35)
         memory.shelter_tick = now
+        if r.get("ok") is True:
+            # (0.105.36) one that worked isn't a refusal: two good set-ups over a
+            # fort's life (the player removed one) read as "refused twice"
+            memory.shelter_attempts = 0
     elif t == "scan_entrances":
         memory.rescan_entrances = False
     elif t == "expel_dwarf":
@@ -1791,6 +1819,9 @@ def _record_any_outcome(a: dict, r: dict, state: dict, memory, now: int, brief: 
         # floor dug beside it, or a day later) is not "no well can be placed"
         if not r.get("retry"):
             memory.well_failure = str(r.get("error"))[:300]
+            # (0.105.36) the well_retry_days wait counts from this refusal (the
+            # dig may have taken longer than the wait), not from the place_well
+            memory.last_fired["well"] = now
     elif t == "farm_plots":
         memory.last_fired["farms"] = now         # refused or not: wait the full spell
         if r.get("ok") is True:

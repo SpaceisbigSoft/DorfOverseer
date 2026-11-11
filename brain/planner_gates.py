@@ -14,7 +14,7 @@ from digest import _d, _l
 from planner_core import *  # noqa: F401,F403
 from planner_construct import _wings_rule, cavern_wall_style  # (0.105.30) wing walls, the Hermit's cavern walls
 
-__all__ = ["_gate_rules", "_stranded_rule", "shared_lever_row", "player_gate_row", "split_pieces", "stuck_rows", "note_gate_stuck", "note_gate_stuck_cycle", "note_second_way", "_second_way_rule", "WAY_IN_KINDS", "GATE_STUCK_TRIED", "STRANDED_CONFIG", "GATE_PART_RECIPES", "GATE_PART_STUCK_DAYS", "_gate_parts_rule", "_free_gate_levers", "_lever_far_enough", "machinery_wanted", "_lever_hatches_ok", "_link_wanted", "_lever_rule", "_trap_rule", "_gatehouse_rule", "_near_spot", "lone_intruders", "few_ordinary", "few_alert_over", "few_near", "hunted_outside", "ai_gates_shut", "_Rec", "_lockdown", "lockdown_released", "lone_alert_over", "_lockdown_ids", "_lockdown_cap_why", "note_lockdown", "quick_clear", "PASTURE_ACTIONS", "_pasture_hold", "gate_invaders", "main_gate", "_gate_guard_rule", "_gate_dogs_rule"]
+__all__ = ["_gate_rules", "_stranded_rule", "player_gate_row", "split_pieces", "stuck_rows", "note_gate_stuck", "note_gate_stuck_cycle", "note_second_way", "_second_way_rule", "WAY_IN_KINDS", "GATE_STUCK_TRIED", "STRANDED_CONFIG", "GATE_PART_RECIPES", "GATE_PART_STUCK_DAYS", "_gate_parts_rule", "_free_gate_levers", "_lever_far_enough", "machinery_wanted", "_lever_hatches_ok", "_link_wanted", "_lever_rule", "_trap_rule", "_gatehouse_rule", "_near_spot", "lone_intruders", "few_ordinary", "few_alert_over", "few_near", "hunted_outside", "ai_gates_shut", "_Rec", "_lockdown", "lockdown_released", "lone_alert_over", "_lockdown_ids", "_lockdown_cap_why", "note_lockdown", "quick_clear", "PASTURE_ACTIONS", "_pasture_hold", "gate_invaders", "main_gate", "_gate_guard_rule", "_gate_dogs_rule"]
 
 
 # (0.105.26) citizens stranded outside (lua/ai-gates.lua stranded_citizens)
@@ -286,15 +286,6 @@ def _way_in_area(memory, x: int, y: int, z: int, cfg: dict) -> list:
     return out
 
 
-def shared_lever_row(r: dict) -> bool:
-    """(0.105.35 merge) A citizen shut out by a gate the AI didn't shut, on the
-    player's own lever that also works other things (the bridge's
-    `entrance.shared_lever`): the AI doesn't pull it (open_entrance refuses
-    it too), so they count as having no way in (a stair is dug for them)."""
-    return (isinstance(r, dict) and not r.get("by_ai") and r.get("cause") in ("gate_shut", "lockdown")
-            and _d(r.get("entrance")).get("shared_lever") is not None)
-
-
 def player_gate_row(r: dict) -> bool:
     """(v35 fix) A citizen shut out by a gate the AI didn't shut (the player's
     raised bridge, lever or locked door): the AI never opens the player's gate
@@ -370,6 +361,19 @@ def _way_in_rule(s: dict, memory, cfg: dict, proposals: list, notes: list, off: 
             if v.get("project_id") in open_ids or 0 <= now - v["tick"] < TICKS_PER_DAY:
                 status["when"] = "(a stair is being dug)"
                 return ""                 # being dug (or not in the report yet)
+            # (0.105.36, X1) how it closed (the registry, as _second_way_rule
+            # reads it): cancelled (the game's cancelled tiles, a cancel_project)
+            # is not dug: booked as a refusal there, so the back-off digs again
+            phase = next((rp.get("phase") for rp in _l(s.get("registry"))
+                          if isinstance(rp, dict) and rp.get("id") is not None
+                          and rp.get("id") == v.get("project_id")), None)
+            if phase == "cancelled":
+                n = int(v.get("refusals") or 0) + 1
+                memory.way_in[sp] = {"tick": now, "ok": False, "project_id": v.get("project_id"),
+                                     "refusals": n, "why": f"the way in (project #{v.get('project_id')}) was cancelled"}
+                refused = max(refused, n)
+                last_refused = max(last_refused or now, now)
+                continue
             # (merge32 review) one dug here and they're still out: no more
             # digging here (the next would fail the same way); the player's
             status["kept"] = (f"a way in was already dug near x{x} y{y} elevation {z + off} and they are still "
@@ -435,6 +439,8 @@ def note_gate_stuck(p, r: dict, state: dict, memory, now: int) -> None:
                "why": str(r.get("why") or r.get("error") or "")[:160]}
         if r.get("ok") is False:
             rec["refusals"] = n + 1
+        elif n:
+            rec["refusals"] = n               # (0.105.36) kept: a cancel then backs off further
         for sp, _v in before:
             if _d(_v).get("ok") is False:
                 del memory.way_in[sp]             # the area's count is the new record's
@@ -586,7 +592,25 @@ def _second_way_rule(s: dict, memory, cfg: dict, traits: dict, proposals: list, 
     why = ("citizens were stranded outside once; " if hermit else "")
     proposals.append(Proposal("second_way", {"type": "dig_way_in", "second": True},
                               f"{why}one way to the surface (x{e.get('x')} y{e.get('y')} elevation "
-                              f"{(e.get('z') or 0) + off}): dig a second, 15-40 tiles off", 9))
+                              f"{(e.get('z') or 0) + off}): dig a second, 15-40 tiles off",
+                              5 if sw.get("stranded_ever") else 9))   # (0.105.36, X1) not behind routine work then
+
+
+def _stranded_relook(memory, p, s: dict, cfg: dict) -> None:
+    """(0.105.36, X1) open_entrance answered waiting (an enemy near the gate,
+    a great danger in sight, the cavern seal): looked at again after the
+    rule's own cooldown (`stranded_cooldown_ticks`), not the 2 days every
+    waiting answer gets: citizens shut out go thirsty. A back-off (n > 0)
+    is kept."""
+    refs = getattr(memory, "refusals", None) if memory is not None else None
+    if not isinstance(refs, dict):
+        return
+    key = refusal_key(p)
+    r = _d(refs.get(key))
+    at, now = r.get("at"), abs_tick(s)
+    if (r and not int(r.get("n") or 0) and isinstance(at, int)
+            and not 0 <= now - at < int(cfg.get("stranded_cooldown_ticks", 300))):
+        refs.pop(key, None)
 
 
 def _stranded_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None, any_reach=None) -> bool:
@@ -632,11 +656,23 @@ def _stranded_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None
 
     danger = _row_danger
 
+    # (0.105.36, X1) an enemy near one of them no longer holds every entrance:
+    # a gate the AI shut is judged per entrance in open_one, at the gates'
+    # close distance (gate_close_tiles); the `stranded_danger_near` hold is
+    # for the rows themselves (a way dug in: _way_in_rule; open_gates, which
+    # disarms the watcher, gives way to open_one below)
     hot = [r for r in rows if danger(r) is not None and danger(r) <= near_d]
-    if hot:
-        notes.append(f"{len(rows)} citizen(s) can't get back into the fort ({', '.join(where(r) for r in rows[:3])}), "
-                     f"but an enemy is {min(danger(r) for r in hot)} tiles away: the gates stay as they are for now")
-        return unsticking
+    hot_rest = [r for r in hot if not (r.get("by_ai") and r.get("cause") in ("gate_shut", "lockdown")
+                                       and isinstance(_d(r.get("entrance")).get("id"), int))]
+    if hot_rest:
+        notes.append(f"{len(hot_rest)} citizen(s) can't get back into the fort "
+                     f"({', '.join(where(r) for r in hot_rest[:3])}), but an enemy is "
+                     f"{min(danger(r) for r in hot_rest)} tiles away: the AI leaves them as they are for now "
+                     "(no way dug in, no gate the AI didn't shut touched) and looks again each cycle")
+        rest = {id(r) for r in hot_rest}
+        rows = [r for r in rows if id(r) not in rest]
+        if not rows:
+            return unsticking
     cave = [r for r in rows if r.get("in_cavern")]
     gate = [r for r in rows if not r.get("in_cavern") and r.get("cause") in ("gate_shut", "lockdown")]
     ai_gate = [r for r in gate if r.get("by_ai")]
@@ -689,7 +725,11 @@ def _stranded_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None
             else:
                 loose.append(r)
         for eid, (e, rs) in by_ent.items():
-            gd = [r.get("gate_danger") for r in rs if isinstance(r.get("gate_danger"), (int, float))]
+            # (0.105.36, X1) the enemy's distance from this gate (from the
+            # citizen when the gate's isn't read)
+            gd = [r.get("gate_danger") if isinstance(r.get("gate_danger"), (int, float)) else r.get("danger_near")
+                  for r in rs]
+            gd = [d for d in gd if isinstance(d, (int, float))]
             near = min(gd) if gd else None
             at = f"x{e.get('x')} y{e.get('y')} elevation {(e.get('z') or 0) + off}"
             if near is not None and near <= close_d:
@@ -700,6 +740,7 @@ def _stranded_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None
             act = {"type": "open_entrance", "id": eid}
             if e.get("kind") == "cavern" or any(r.get("in_cavern") for r in rs):
                 act["cavern_ok"] = True
+            _stranded_relook(memory, Proposal("stranded", act, "", 0), s, cfg)
             proposals.append(Proposal("stranded", act,
                                       f"{len(rs)} citizen(s) shut outside for {days(rs)} at the gate at {at} "
                                       f"({', '.join(where(r) for r in rs[:3])}){why_tail}", 0))
@@ -731,15 +772,17 @@ def _stranded_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None
         return False
     held = [t for t in held if t.get("invader") or t.get("great_danger") or _near_shut(t)]
     siege_on = bool(any_reach or reach_n > 0 or held)
-    if ai_gate and siege_on:
+    if ai_gate and (siege_on or any(r in hot for r in ai_gate)):
         # (0.105.34, the player: nothing waits for them) open_gates would open
         # every gate the watcher shut and disarm it: a siege held off at
         # another gate would walk in. So only the entrance they stand at
         # opens (open_entrance), while no enemy is within the gates' close
         # distance of it; the watcher stays armed and shuts it again if
         # danger comes. Closer: kept shut, said, tried again each cycle.
-        open_one(ai_gate, " while enemies are about elsewhere: open that gate alone to let them in "
-                          "(the watcher stays armed)")
+        # (0.105.36, X1) an enemy within `stranded_danger_near` of them, no
+        # siege: the same (open_gates would disarm the watcher with it near)
+        open_one(ai_gate, (" while enemies are about elsewhere" if siege_on else " with an enemy about")
+                 + ": open that gate alone to let them in (the watcher stays armed)")
         ai_gate = []
     if ai_gate:
         lock = any(r.get("cause") == "lockdown" for r in ai_gate)
@@ -1074,14 +1117,18 @@ def _gate_parts_rule(s: dict, ent: dict, es: list, off: int, proposals: list, no
                     w[0] += n
                     w.append(ek)
                 if not jobs_freed and isinstance(e.get("id"), int):
-                    proposals.append(Proposal("gate_jobs", {"type": "free_gate_jobs", "entrance_id": e["id"]},
+                    act = {"type": "free_gate_jobs", "entrance_id": e["id"]}
+                    # (0.105.36, D2) the AI fortified it: a piece it planned before v35's records is its own
+                    if memory is not None and _near_spot(e, getattr(memory, "gates_fortified", None) or {}):
+                        act["ai_plan"] = True
+                    proposals.append(Proposal("gate_jobs", act,
                                               f"the {word} planned at {where} has waited {e['closing_days']} days "
                                               f"with {free} free: resume its suspended building job", 3))
                     jobs_freed = True
                 if e["closing_days"] >= 2 * GATE_PART_STUCK_DAYS:
                     ask_player(notes, f"a {word} planned at {where} has waited {e['closing_days']} days though "
-                                      f"{free} {word}(s) are free, one more was made and its suspended jobs "
-                                      "resumed: something the AI can't see holds it (the spot blocked?); the AI "
+                                      f"{free} {word}(s) are free, one more was made and the suspended jobs "
+                                      "on what the AI planned there resumed: something the AI can't see holds it (the spot blocked?); the AI "
                                       "keeps it planned and maps the entrances again each week")
                 else:
                     notes.append(f"a {word} planned at {where} has waited {e['closing_days']} days though "

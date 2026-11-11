@@ -236,7 +236,8 @@ def _():
     lua, env, units, assigned, ntiles, g = soc()
     lua.execute("local env = ...; env.df.global.world.items.other.DRINK = {}", env)
     r = env.recreation_tick(8, 28, False)
-    assert "no drink" in r.error and r.members == 0 and not assigned[1], dict(r)
+    # (0.105.36) waiting, not a refusal (no back-off on the shared key)
+    assert r.ok and r.waiting and "no drink" in r.note and r.members == 0 and not assigned[1], dict(r)
     assert env.recreation_status().water is False
 
 
@@ -300,16 +301,17 @@ def _():
 def _():
     lua = LuaRuntime(unpack_returned_tuples=True)
     env, w = lua.execute(HOSP, module_src("ai-society.lua"))
-    env.hospital_burrow_tick(30, 10, False)
     lua.execute("""local env = ...
         local real = env.dfhack.buildings.getStockpileContents
         env.READS = 0
         env.dfhack.buildings.getStockpileContents = function(b) env.READS = env.READS + 1; return real(b) end""", env)
+    env.hospital_burrow_tick(30, 10, False)
+    tick = env.READS
+    env.hospital_burrow_status()          # (0.105.36) the tick's fresh sources are the report's cache
+    first = env.READS - tick
     env.hospital_burrow_status()
-    first = env.READS
-    env.hospital_burrow_status()
-    second = env.READS - first
-    assert first > second and second <= 2, (first, second)
+    second = env.READS - tick - first
+    assert tick > first and first <= 2 and second <= 2, (tick, first, second)
     lua.execute("local W = ...; W.drink.contents = {}", w)            # the chosen pile drunk dry: looked again
     s = env.hospital_burrow_status()
     assert s.drink != "stockpile" or s.members == 0 or s.why, dict(s)

@@ -213,8 +213,11 @@ def drink_swap_wanted(s: dict, plots: list) -> bool:
                 continue
             seen = True
             c = crops.get(pc[i])
-            if (c is not None and not c.get("brews") and p.get("ai_now") is not False
-                    and brew_for(p.get("underground"))):
+            # (0.105.36) the bridge's own count for this plot (its biome and
+            # alignment, as set_farm_crops tests them) when it gives one
+            bo = p.get("brew_options")
+            can = (bo > 0) if isinstance(bo, int) and not isinstance(bo, bool) else brew_for(p.get("underground"))
+            if c is not None and not c.get("brews") and p.get("ai_now") is not False and can:
                 return True
     if seen:
         return False

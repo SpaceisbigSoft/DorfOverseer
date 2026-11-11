@@ -331,6 +331,8 @@ def _stress_care(s: dict, cfg: dict, worst: list, proposals: list | None, memory
 
 def _needs_notes(s: dict, cfg: dict, notes: list, proposals: list | None = None, memory=None) -> None:
     """What the dwarves miss most, and the most stressed of them."""
+    if memory is not None and proposals is not None:
+        _shelter_supply_rule(s, memory, proposals, notes)       # (0.105.36, D5)
     nd = s.get("needs")
     if not isinstance(nd, dict) or "error" in nd:
         # (0.105.33, B4) the recreation burrow's members still let out
@@ -586,6 +588,38 @@ def _cups_home_rule(cl: dict, cupless: int, proposals: list, notes: list) -> Non
         proposals.append(Proposal("cups_home", {"type": "accept_cups"},
                                   f"{forbidden} cup(s) lie forbidden in the halls and {cupless} citizens drank "
                                   "without a cup lately: unforbidden", 5))
+
+
+def _shelter_supply_rule(s: dict, memory, proposals: list, notes: list) -> None:
+    """(0.105.36, D5) The AI shelter short of drink or food at its last fill
+    (the bridge's drink_short, no_water, no_food): with the alarm on, it is
+    made again over the fort as it is now once a day, taking in drink and
+    food brought inside since and the left-out drink and food tiles (fill_shelter
+    takes them back when short); with the alarm off, said, as it is filled
+    again when the AI next sounds the alarm."""
+    sup = _d(getattr(memory, "shelter_supply", None))
+    # (0.105.36 fix) the alarm sends citizens to the player's own burrow (or
+    # to none): the AI shelter's last fill says nothing now, and the AI never
+    # makes the player's burrow again: forgotten
+    if sup and s.get("civ_alert_shelter") in ("player", "none") and memory is not None:
+        memory.shelter_supply = {}
+        return
+    short = [str(sup[k]) for k in ("no_water", "drink_short", "no_food") if sup.get(k)]
+    if not short or not isinstance(sup.get("tick"), int):
+        return
+    what = "; ".join(short)
+    if s.get("civ_alert") is True:
+        now = abs_tick(s)
+        if now - sup["tick"] >= TICKS_PER_DAY:
+            proposals.append(Proposal("shelter_supply", {"type": "refresh_shelter"},
+                                      f"the alarm is on and {what}: the shelter is made again over the fort as it "
+                                      "is now, to take in the drink and food brought inside since", 1))
+        else:
+            notes.append(f"the alarm is on and {what}: the AI makes the shelter again each day to take in "
+                         "drink and food")
+    else:
+        notes.append(f"{what} (at its last fill): the AI fills it again, with what drink and food is inside "
+                     "then, when it next sounds the alarm")
 
 
 def _people_rules(s: dict, cfg: dict, proposals: list, notes: list) -> None:

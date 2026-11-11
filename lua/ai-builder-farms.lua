@@ -4,7 +4,7 @@
 -- into its own environment, so every name here is reqscript('ai-builder').name
 -- and the helpers defined there (info, quickfort_apply, ...) are in reach.
 
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-farms'] = '0.105.35'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-farms'] = '0.105.36'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local ez = ez
 
@@ -414,16 +414,21 @@ function farm_plot_list(seeds, season)
             local id = b.plant_id[s]
             local raw = plant_raw(id)
             p.crops[s + 1] = raw and raw.id or ''
-            local n = 0
+            local n, nb = 0, 0
             for idx, c in pairs(seeds) do
                 local r = c > 0 and plant_raw(idx)
                 if r and crop_in_season(r, s) and crop_grows_on(r, place) then
                     n = n + 1
                     any[idx] = true
+                    if s == season and plant_brews(r) ~= nil then nb = nb + 1 end
                 end
             end
             if s == season then
                 p.options = n
+                -- (0.105.36) the brewable crops that grow on this plot this
+                -- season (its biome too, as set_farm_crops tests it): the
+                -- brain asks for a drink swap only where one can be made
+                p.brew_options = nb
                 p.fallow = raw == nil
                 -- (0.105.7 review) a crop whose seeds have run out can't be
                 -- sown again: not "fine" (no_seeds), so the plot is moved on

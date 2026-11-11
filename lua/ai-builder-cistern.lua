@@ -4,7 +4,7 @@
 -- into its own environment, so every name here is reqscript('ai-builder').name
 -- and the helpers defined there (info, quickfort_apply, ...) are in reach.
 
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-cistern'] = '0.105.35'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-cistern'] = '0.105.36'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local ez = ez
 
@@ -731,7 +731,8 @@ function count_items(tname)
     local free, reserved = 0, 0
     pcall(function()
         for _, item in ipairs(df.global.world.items.other[tname]) do
-            if not item_held(item) then
+            -- (0.105.36 D3) a part carried to its job is reserved, not uncounted
+            if not item_held(item, item.flags.in_job and {held = true} or nil) then
                 if item.flags.in_job then reserved = reserved + 1 else free = free + 1 end
             end
         end
@@ -897,10 +898,22 @@ function cistern_retire(dry_run, why)
                 error = ('the AI has retired %d cisterns already: this one is left as it is, its floodgate %s')
                         :format(by_ai, shut and 'shut' or 'not shut (no lever linked to it)')}
     end
+    -- (0.105.36 D3) retired only with its floodgate shut (as the first-design
+    -- retire): nothing watches that floodgate once it is retired
+    if gate and gate.built and not gate.closed and not d.lever_id then
+        return {ok = false, rejected = true, needs_player = true,
+                error = 'the cistern\'s floodgate is open and no lever is linked to it: the AI can\'t shut it, so it '
+                        .. 'is not retired (it keeps watching it); shut it by hand'}
+    end
     if dry_run then return {ok = true, dry_run = true, retire = true} end
-    if gate and gate.built and not gate.closed and d.lever_id then
+    if gate and gate.built and not gate.closed then
         if lever_pull_pending(d.lever_id) then cancel_lever_pulls(d.lever_id) end
-        pull(d.lever_id, true)
+        local okp, out = pull(d.lever_id, true)
+        local g2 = building_info(p.floodgate.x, p.floodgate.y, p.intake_z or p.cistern.z, 'Floodgate')
+        if not okp and not (g2 and g2.closed) then
+            return {ok = false, error = 'the cistern\'s floodgate would not shut (lever pull failed: '
+                        .. tostring(out) .. '): it is not retired until it is shut'}
+        end
     end
     table.insert(old, {cistern = p.cistern, source = p.source, tunnel_path = p.tunnel_path, intake_z = p.intake_z,
                        shaft = p.shaft, why = type(why) == 'string' and why:sub(1, 120) or 'retired by the AI',
@@ -1508,8 +1521,20 @@ function cistern_step(dry_run, prefs, tunnel)
         if not leak and d.leak and gate and gate.closed then
             -- the water gone from over it and it is closed again: tried once
             -- more (a second leak keeps it shut for good)
-            local ok_ = cistern_sealed(p, d.stage)
-            if ok_ == true and (d.leaks or 0) < 2 and not dry_run then d.leak = nil; save_cistern(d) end
+            local ok_, where, gaps = cistern_sealed(p, d.stage)
+            if ok_ == true and (d.leaks or 0) < 2 and not dry_run then
+                d.leak = nil
+                d.unsealed, d.sealing, d.unsealed_why = nil, nil, nil
+                save_cistern(d)
+            elseif ok_ ~= true and (d.leaks or 0) < 2 then
+                -- (0.105.36 D3) a gap is why it leaked: walled up by the AI
+                -- (the leak kept, so no water comes in until it is closed;
+                -- a gap the game won't let it close retires it in the brain)
+                if not dry_run then d.unsealed = where or d.unsealed; save_cistern(d) end
+                local r = cistern_close_gaps(d, p, gaps, dry_run, save_cistern)
+                r.leak, r.leaks = d.leak, math.tointeger(d.leaks)
+                return r
+            end
         end
         if d.leak and not leak then
             -- (v35 fix) waiting (the brain asks again in 2 days), not a refusal

@@ -5,7 +5,7 @@
 -- into its own environment, so every name here is reqscript('ai-builder').name
 -- and the helpers defined there (info, quickfort_apply, ...) are in reach.
 
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-projects'] = '0.105.35'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-projects'] = '0.105.36'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local info, ez = info, ez
 
@@ -570,7 +570,9 @@ local function next_step(p, r)
     -- (0.105.33, L4) a way in with a step missing is no way in: never
     -- furnished as if dug; once nothing else is left, it is given up
     if p.kind == 'way_in' then
-        if p.phase == 'dig' and r.dig and r.dig.stuck > 0
+        -- (0.105.36 D3) a marker-only step the AI already tried to make real counts as missing
+        local missing = r.dig and (r.dig.stuck + (p.unmark_tried and r.dig.marked or 0)) or 0
+        if p.phase == 'dig' and r.dig and missing > 0
                 and r.dig.dug + r.dig.stuck + r.dig.marked == r.dig.total then
             return 'cancel'
         end
@@ -878,6 +880,13 @@ function unmark_project_dig(id, dry_run)
     if type(p.stair) == 'table' then
         for _, c in ipairs(p.stairs or {}) do table.insert(spots, {p.stair.x, p.stair.y, c.z}) end
     end
+    -- (0.105.36 D3) and the tiles dig_progress keeps: a cavern well's shaft
+    -- (at the anchor), a way in's or well's shaft stairs, a gallery out to it
+    for _, zk in ipairs(type(p.shaft) == 'table' and p.shaft or {}) do table.insert(spots, {anchor.x, anchor.y, zk}) end
+    for _, c in ipairs(type(p.shaft_stairs) == 'table' and p.shaft_stairs or {}) do
+        table.insert(spots, {c.x, c.y, c.z})
+    end
+    for _, g in ipairs(type(p.gallery) == 'table' and p.gallery or {}) do table.insert(spots, {g.x, g.y, p.z}) end
     local marked = {}
     for _, q in ipairs(spots) do
         local t = tile_info(q[1], q[2], q[3])
@@ -890,6 +899,10 @@ function unmark_project_dig(id, dry_run)
         local ok, done = pcall(make_dig_real, q[1], q[2], q[3])
         if ok and done then n = n + 1 end
     end
+    -- (0.105.36 D3) tried: a way in's marker tile left after this counts as
+    -- a missing step (next_step), so the way in can end
+    p.unmark_tried = true
+    save_projects(data)
     if n == 0 then return {ok = false, error = 'none of the marker designations could be made real'} end
     return {ok = true, tiles = n, marked = #marked}
 end

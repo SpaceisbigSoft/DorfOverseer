@@ -114,6 +114,52 @@ def _():
 
 # --- marker-only dig tiles -----------------------------------------------------------
 
+# (0.105.36 D3) DF's tile flags over the fake map: a marker-only tile (t.marked)
+# is a dig designation with occupancy.dig_marked; clearing dig_marked makes it
+# a real one (t.designated). Returns the blocks touched. TILE_FLAGS_CLEAN undoes it.
+TILE_FLAGS_FAKE = """
+  local W = ...
+  SAVED_TF = {df = rawget(_G, 'df'), maps = dfhack.maps}
+  df = df or {}
+  df.tile_dig_designation = df.tile_dig_designation or {No = 0, Default = 1}
+  local BLOCKS = {}
+  dfhack.maps = setmetatable({
+    getTileFlags = function(x, y, z)
+      local t = W.get(x, y, z)
+      if not t then return nil end
+      local des = {dig = (t.designated or t.marked) and df.tile_dig_designation.Default or df.tile_dig_designation.No}
+      local occ = setmetatable({}, {
+        __index = function(_, k) if k == 'dig_marked' then return t.marked == true end end,
+        __newindex = function(_, k, v)
+          if k == 'dig_marked' then
+            if t.marked and not v then t.designated = true end
+            t.marked = v
+          end
+        end})
+      return des, occ
+    end,
+    getTileBlock = function(x, y, z)
+      local k = (x // 16) .. ',' .. (y // 16) .. ',' .. z
+      BLOCKS[k] = BLOCKS[k] or {flags = {designated = false}}
+      return BLOCKS[k]
+    end}, {__index = SAVED_TF.maps})
+  return BLOCKS
+"""
+TILE_FLAGS_CLEAN = "df, dfhack.maps = SAVED_TF.df, SAVED_TF.maps"
+
+
+def _unmark_checks(TB, n):
+    pid = TB.B.projects_report().open[1].id
+    d = TB.B.unmark_project_dig(pid, True)
+    assert d.ok and d.dry_run and d.tiles == n and TB.designated_count() == 0, dict(d)
+    d = TB.B.unmark_project_dig(pid, False)
+    assert d.ok and d.tiles == n and TB.designated_count() == n, dict(d)
+    assert TB.B.projects_report().open[1].dig.marked == 0
+    again = TB.B.unmark_project_dig(pid, False)
+    assert again.rejected and "marker" in again.error, dict(again)
+    assert TB.B.unmark_project_dig(999, True).rejected
+
+
 @test("marker-only dig tiles (Lua): unmark_project_dig counts them on a dry run, then makes them real; nothing to do: refused")
 def _():
     import test_builder as TB
@@ -124,24 +170,13 @@ def _():
         if t.designated:
             t.designated, t.marked = False, True
             n += 1
-    made = []
-    TB.LUA.execute("""local B, W, made = ...
-      B.make_dig_real = function(x, y, z)
-        local t = W.get(x, y, z)
-        if not t.marked then return false end
-        t.marked, t.designated = false, true
-        table.insert(made, x .. ',' .. y .. ',' .. z)
-        return true
-      end""", TB.B, TB.W, TB.LUA.table())
-    pid = TB.B.projects_report().open[1].id
-    d = TB.B.unmark_project_dig(pid, True)
-    assert d.ok and d.dry_run and d.tiles == n and TB.designated_count() == 0, dict(d)
-    d = TB.B.unmark_project_dig(pid, False)
-    assert d.ok and d.tiles == n and TB.designated_count() == n, dict(d)
-    assert TB.B.projects_report().open[1].dig.marked == 0
-    again = TB.B.unmark_project_dig(pid, False)
-    assert again.rejected and "marker" in again.error, dict(again)
-    assert TB.B.unmark_project_dig(999, True).rejected
+    # (0.105.36 D3) the real make_dig_real, over a fake getTileFlags/getTileBlock
+    blocks = TB.LUA.execute(TILE_FLAGS_FAKE, TB.W)
+    try:
+        _unmark_checks(TB, n)
+        assert any(b.flags.designated for b in blocks.values()), "the block not flagged for new dig jobs"
+    finally:
+        TB.LUA.execute(TILE_FLAGS_CLEAN)
 
 
 @test("marker-only dig tiles: wired as a bridge action whose dry run passes while halted, with words on the panel")

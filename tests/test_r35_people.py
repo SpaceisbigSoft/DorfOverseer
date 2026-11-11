@@ -58,7 +58,8 @@ def _():
     assert not any(n.startswith(NEEDS) and "Kib" in n for n in notes), notes
     # a workshops level already under way: a note, nothing more
     s2 = fort()
-    s2["projects"]["open"] = [{"id": 3, "kind": "workshops", "phase": "dig"}]
+    s2["projects"]["open"] = [{"id": 3, "kind": "workshops", "phase": "dig",
+                               "summary": {"workshops": ["Mechanics"]}}]   # (0.105.36) a level with its kind
     props, notes = plan(s2, unclaimed(s2))
     assert not [p for p in by_rule(props, "mood") if p.action.get("type") == "start_project"]
     assert any("Kib" in n and "already being built" in n for n in notes), notes

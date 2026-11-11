@@ -2720,7 +2720,11 @@ def _():
     m = by_rule(p, "mood")
     assert m and m[0].action == {"type": "start_project", "kind": "workshops", "shops": ["Jewelers"], "urgent": True}, m
     assert m[0].priority <= 1
-    s["projects"]["open"].append({"id": 9, "kind": "workshops", "phase": "dig"})
+    # (0.105.36, X1) only a level building its kind holds it; another workshops level does not
+    s["projects"]["open"].append({"id": 9, "kind": "workshops", "phase": "dig", "summary": {"workshops": ["Masons"]}})
+    p, notes = plan(s, Memory())
+    assert by_rule(p, "mood"), notes
+    s["projects"]["open"].append({"id": 10, "kind": "workshops", "phase": "dig", "summary": {"workshops": ["Jewelers"]}})
     p, notes = plan(s, Memory())
     assert not by_rule(p, "mood") and any("already being built" in n for n in notes), notes
 
@@ -9305,7 +9309,8 @@ def _():
     s = fort()
     s["water"] = dict(s.get("water") or {}, cistern_status={"v": 2, "stage": "filling", "gate": "open", "depth": 3,
                                                             "sealed_now": False, "unsealed": "the shaft is open at x1 y2 elevation 3"})
-    c = by_rule(plan(copy.deepcopy(s), Memory())[0], "cistern")
+    # (0.105.36 X1) its own rule: never waits out the cistern rule's cooldown
+    c = by_rule(plan(copy.deepcopy(s), Memory())[0], "cistern_shut")
     assert c and c[0].action == {"type": "cistern_step", "shut": True} and c[0].priority == 0, [x.action for x in c]
     s["water"]["cistern_status"] = {"v": 2, "stage": "filling", "gate": "shut", "leak": "x5 y6 elevation 41"}
     props, notes = plan(copy.deepcopy(s), Memory())

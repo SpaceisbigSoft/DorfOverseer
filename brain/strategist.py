@@ -126,8 +126,10 @@ NOT_STEERABLE = {"strategist"}     # (0.105.26) its own actions: nothing to rais
 # (0.105.33, B5) never raised: a raise skips the cooldown, and these are paced
 # by it alone (or pace themselves). Kill orders, expulsions, gate clearing,
 # levers and gates, trading, the butcher, convictions. Holding them is fine.
+# (0.105.36) and the stranded rule: it opens gates (open_entrance, open_gates)
+# on its own per-entrance cooldown
 RAISE_FORBIDDEN = {"slaughter", "cleanup", "gate_lever", "gate", "squad_attack", "convict", "expel", "cursed",
-                   "trade", "trade_deal", "call_trader", "open_trade", "close_trade"}
+                   "trade", "trade_deal", "call_trader", "open_trade", "close_trade", "stranded"}
 # (0.105.33, B5) never held, beside the planner's STEER_PROTECTED: the barrels
 # and pots the brewing waits for, soap for infected wounds, the farms
 HOLD_PROTECTED = {"containers", "soap", "farms"}

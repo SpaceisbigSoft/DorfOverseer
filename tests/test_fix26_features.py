@@ -78,12 +78,19 @@ def _():
 
 @test("stranded: held while an enemy is near them or the gate")
 def _():
+    # (0.105.36, X1) the AI's own gate: judged at that gate, at its close distance (12)
     for k in ("danger_near", "gate_danger"):
         s = fort()
         s["entrances"]["stranded"] = [dict(ROW, **{k: 12})]
         props, notes = plan(s, Memory())
         assert not acts(props, "stranded"), props
-        assert any("enemy is 12 tiles away" in n for n in notes), notes
+        assert any("an enemy 12 tiles from it: the AI keeps it shut" in n for n in notes), notes
+    # no gate of the AI's to open (no way in): still held while an enemy is near them
+    s = fort()
+    s["entrances"]["stranded"] = [dict(ROW, cause="no_path", by_ai=None, entrance=None, danger_near=12)]
+    props, notes = plan(s, Memory())
+    assert not acts(props, "stranded") and not acts(props, "way_in"), props
+    assert any("enemy is 12 tiles away" in n for n in notes), notes
     s = fort()
     s["entrances"]["stranded"] = [dict(ROW, danger_near=200, gate_danger=150)]
     assert acts(plan(s, Memory())[0], "stranded", "open_gates")          # far: opened
