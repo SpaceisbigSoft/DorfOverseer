@@ -137,6 +137,7 @@ def _():
     props, notes = plan(s, Memory())
     assert not acts(props, "stranded", "open_gates"), [(p.rule, p.action) for p in props]
     assert [n for n in needs_you(notes) if "couldn't be read" in n and "Urist 0" in n], needs_you(notes)
+    s = siege_fort(goblins=0, cavern=True)      # (merge33) a fresh report: normalize() keeps the first's _errors.deep
     s["deep"] = {"caverns": [], "dangers": []}
     props, _ = plan(s, Memory())
     assert acts(props, "stranded", "open_gates"), [(p.rule, p.action) for p in props]
