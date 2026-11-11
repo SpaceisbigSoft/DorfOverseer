@@ -321,13 +321,13 @@ def _():
     assert not [k for k in m.refusals if k.startswith("way_in:")], m.refusals
 
 
-@test("the gate watcher isn't armed in the cycle a gate is unstuck")
+@test("(0.105.33) a gate being unstuck doesn't hold the gate watcher while a threat can reach the dwarves")
 def _():
     s = fort()
     s["entrances"]["armed"] = False
     s["others_on_map"]["threats_that_can_reach_dwarves"] = 1
     props, _ = cycle(s, Memory())
-    assert acts(props, "gate_stuck") and not acts(props, typ="arm_gates"), [(p.rule, p.action) for p in props]
+    assert acts(props, "gate_stuck") and acts(props, typ="arm_gates"), [(p.rule, p.action) for p in props]
     # nothing to unstick: armed as before
     s2 = fort(split=False, stranded=0)
     s2["others_on_map"]["threats_that_can_reach_dwarves"] = 1

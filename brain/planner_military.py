@@ -427,8 +427,8 @@ def hazard_alert(s: dict, cfg: dict) -> str:
         return f"fire {h['fire_near']} tiles from the dwarves"
     if h.get("cloud_near") is not None and h["cloud_near"] <= cfg["hazard_near"]:
         return f"a cloud (gas or vapour) {h['cloud_near']} tiles from the dwarves"
-    if _l(h.get("berserk")):
-        b0 = _l(h['berserk'])[0]
+    b0 = next((b for b in _l(h.get("berserk")) if isinstance(b, dict)), None)    # (0.105.33) a dict row only
+    if b0 is not None:
         return f"{b0.get('name') or 'a dwarf'} " + ("has changed into a beast" if b0.get("changed") else "has gone berserk")
     return ""
 
@@ -513,6 +513,9 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
     # (one linked to an entrance's drawbridge is the gate watcher's to pull)
     watched = {lid for e in _l(_d(s.get("entrances")).get("entrances")) if isinstance(e, dict)
                for b in _l(e.get("equipment")) if isinstance(b, dict) for lid in _l(b.get("levers"))}
+    # (0.105.33) and a gatehouse's outer drawbridge: its rows carry one lever_id
+    watched |= {b.get("lever_id") for e in _l(_d(s.get("entrances")).get("entrances")) if isinstance(e, dict)
+                for b in _l(e.get("outer")) if isinstance(b, dict) and b.get("lever_id") is not None}
     gates = [g for g in gates if g.get("id") not in watched]
     # (0.105.3) not for a lone intruder inside, nor after the lockdown was lifted
     lone = lone_intruders(s, cfg, traits, memory) if any_reach else []
@@ -610,9 +613,17 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
     berserk_now = bool(_l(_d(s.get("hazards")).get("berserk")))
     if not any_reach and not berserk_now:
         invaders_near = bool(gate_invaders(s))
+        # (0.105.33) a thief inside the game doesn't count as a threat: the
+        # squad _thieves sent stays on them (recalled, it was sent again next
+        # cycle, and so on, the thief never caught)
+        thieves_in = {x.get("id") for x in _l(_d(_d(s.get("threats")).get("thieves")).get("list"))
+                      if isinstance(x, dict) and x.get("id") is not None
+                      and (x.get("inside") or x.get("can_reach_dwarves") is True)}
         for q in squads:
             if q.get("guarding") and invaders_near:
                 continue                     # (0.104.83) holding the gate while invaders are about
+            if thieves_in and set(_l(q.get("kill_ids"))) & thieves_in:
+                continue                     # (0.105.33) after a thief still inside
             if q.get("sheltering") and s.get("civ_alert"):
                 continue                     # (0.105.0) in the shelter until the alarm is over (planner_army)
             if q.get("ai_orders"):
