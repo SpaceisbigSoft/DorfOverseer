@@ -11,6 +11,15 @@ Where to look:
 The forts are A War-hold, B Monastery, C Merchant city, D Hermit hold, E Deep mine and F Garden fort. "All" means every fort.
 
 
+## 0.105.33 (11 Nov): the audit's fixes and the slider changes
+
+- **All**: `python brain\selftest.py`; the first report of each fort for `{"error"}` sections; the window's new **Army** tab (military, junk, prisoners) and the Rules tab fitting.
+- **All, thirst**: the recreation burrow letting out the thirsty (journal `recreation` with `release`), the shelter holding its well, a refused well retried after 28 days, a drink-short plot swapped to a brewable crop.
+- **All, sliders**: `dwarves.idle_free` and `projects.done_total` in state.json; polishing going on past 20 finished levels; the stone list (`stone_types`) no longer empty; Greed forts keeping cut gems; War-hold and Hermit hold digging a second stairwell; `python brain\scorecard.py --every 2y` with the new lines.
+- **Forts of 30+ with one way in**: a `way_in` project with `second: true` dug 15-40 tiles from the entrance, then seen by the gate scan as an entrance and fortified; never for the Hermit hold unless citizens were stranded.
+- **Unattended**: revive at the title with a failed load counts it and restores a backup (`<copy>.fort.json` beside each copy); a cycle whose date failed says so and does nothing else.
+- **Moods**: no glass counted from plain rough gems; the hospital's thread and cloth not counted for moods; a mood stalled 7 days on an "on hand" item made anyway.
+
 ## 0.105.32 (11 Nov): an open gate the game holds shut
 
 First on E's own save (8 Nov 17:05, 23 stranded at the founding hatch), then on all six.
