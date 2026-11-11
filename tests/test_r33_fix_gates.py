@@ -103,7 +103,7 @@ def _():
     assert not [p for p in props if p.action.get("type") == "pull_gate"]
 
 
-@test("gates_snapshot: an entrance being opened is not saved as closed; a closed one still is")
+@test("gates_snapshot: an entrance being opened is saved with `opening` (0.105.36: not left out); a closed one plainly")
 def _():
     L = LuaRuntime(unpack_returned_tuples=True)
     M = L.execute(r"""
@@ -119,7 +119,8 @@ M.GATES = {armed = true, peak = 0, closed = {[1] = true, [2] = true}, opening = 
                {id = 2, equipment = {{id = 50, kind = 'bridge', lever_id = 92}}}}}
 """, M)
     snap = M.gates_snapshot()
-    assert [g.id for g in snap.gates.values()] == [50], list(snap.gates.values())
+    got = {g.id: g.opening for g in snap.gates.values()}
+    assert got == {40: True, 50: None}, got
 
 
 @test("prune: a bone mood or bones at the reserve, after a prune, takes usable parts off the timer")

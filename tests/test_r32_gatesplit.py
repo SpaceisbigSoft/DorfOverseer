@@ -126,7 +126,7 @@ def rig(*, player=False, closed=False, forbidden=False):
                "levers": t([t({"id": 137, "x": 100, "y": 100, "z": 170, "name": lever_name})])})
     ent = t({"id": 1, "kind": "surface", "x": 108, "y": 149, "z": 170,
              "inside_list": t([K(108, 149, 170)]), "outs": t({K(108, 149, 171): True}),
-             "equipment": t([hatch]), "door_spots": t({})})
+             "equipment": t([hatch]), "door_spots": t({}), "sealed": True})   # (0.105.36) as the scan sets it
     inside = t({K(108, 149, 170): True, K(100, 100, 170): True})
     E.GATES = t({"scanned": True, "inside": inside, "entrances": t([ent]), "closed": t({})})
     E.GATES_SAVE = t({"restored": True, "persisted": t({})})

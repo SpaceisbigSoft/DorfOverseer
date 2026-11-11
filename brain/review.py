@@ -136,8 +136,11 @@ def maybe_review(state: dict, memory: Memory, bank: TokenBank, backend, bridge_i
     tools = set(bridge_info.get("tools") or [])
     my_orders = {o["id"] for o in s["orders"] if o.get("by_ai") and isinstance(o.get("id"), int)}
     build = {k: bridge_info.get(k) or [] for k in ("level_kinds", "stockpiles", "workshops")}
+    # (0.105.36, X1) not the way in dug for the cut off, nor the second way:
+    # a cancel there left them out (the way-in rule read it as dug)
     build["digging_ids"] = [p.get("id") for p in s["projects"].get("open") or []
-                            if isinstance(p, dict) and p.get("phase") == "dig"]
+                            if isinstance(p, dict) and p.get("phase") == "dig"
+                            and p.get("kind") not in ("way_in", "dig_way_in")]
     history = memory.culture or new_history()
     traits = _d(s["settings"].get("traits"))
     profile = profile_from(traits, history)

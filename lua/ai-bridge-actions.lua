@@ -1096,7 +1096,7 @@ end
 function act_free_gate_jobs(a)
     local id = tonumber(a.entrance_id)
     if not id then return reject('free_gate_jobs needs the entrance_id') end
-    return reqscript('ai-gates').free_gate_jobs(id, a.dry_run == true)
+    return reqscript('ai-gates').free_gate_jobs(id, a.dry_run == true, a.ai_plan == true)   -- (0.105.36)
 end
 
 -- Set-ups the AI does itself (lua/ai-society.lua).
