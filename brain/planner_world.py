@@ -90,12 +90,18 @@ def note_world(s: dict, memory) -> None:
 def _meeting_answer_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None) -> None:
     """DF's meeting screen is open: answer it (lua/ai-diplomacy.lua
     answer_meeting) with the Rules' tribute choice. A barony's holder is the
-    player's. When the button to press hasn't been shown to the AI, say how."""
+    player's to choose on DF's screen (no way known to pick there): Needs
+    you, with what the AI does meanwhile. When the button to press hasn't
+    been shown to the AI, say how."""
     m = _d(_world(s).get("meeting"))
     if not m.get("open"):
         return
     if m.get("land_holder"):
-        ask_player(notes, "a meeting asks who should hold a barony: that choice is yours (DF's meeting screen)")
+        # (0.105.35) kept: the AI can't pick on DF's barony screen (no button or field
+        # for it is known); unattended, the overseer leaves the screen soon instead
+        ask_player(notes, "a meeting asks who should hold a barony: the AI can't pick on DF's barony screen (no "
+                          "way to choose there is known to it), so it doesn't answer; unattended, it leaves the "
+                          "screen after a few minutes (the meeting ends without a holder) so the game goes on")
         return
     rules = player_rules(s)
     known = set(str(b) for b in _l(m.get("buttons")))
@@ -338,10 +344,11 @@ def _contact_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None)
             ask_player(notes, f"Make contact (13b): the AI's try to send the messenger to "
                               f"{last.get('site') or 'site ' + str(last.get('site_id'))} stopped at the World screen's "
                               f"\"{last.get('step')}\" step: {last.get('why') or last.get('reason')}. "
-                              + ("A new army controller was left behind: look at the World screen's missions. "
+                              + ("A new army controller was left behind on the World screen's missions. "
                                  if last.get("controller_left") else "")
-                              + "Send one by hand while python brain\\probe_missions.py --watch records the steps "
-                              "(the AI tries again in a year)")
+                              + "The AI can't press a step nobody has recorded (DFHack can't make the mission "
+                              "itself): the messenger stays home and the AI tries again in a year; a mission sent "
+                              "while python brain\\probe_missions.py --watch runs records the steps for it")
         return
     site = _contact_site(s, memory)
     if site is None:
@@ -350,10 +357,12 @@ def _contact_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None)
     if rules["send_messenger"] and send:
         known = set(str(b) for b in _l(send.get("buttons")))
         if "World" not in known:
-            ask_player(notes, "Make contact (13b): to send the messenger the AI needs to see DF's World button "
-                              "once: put the mouse on it and run python brain\\probe_missions.py --here World"
+            ask_player(notes, f"Make contact (13b): {name} waits, but the AI can't find DF's World button "
+                              "until it has been shown it once (the mouse on it and python "
+                              "brain\\probe_missions.py --here World"
                               + ("" if "Diplomacy" in known else "; then, with a site's New mission showing, "
-                                 "on Diplomacy: --here Diplomacy"))
+                                 "on Diplomacy: --here Diplomacy")
+                              + "): the messenger stays home meanwhile and the site is named again next season")
             return
         if last.get("result") == "sent" and recent and now - last_tick < TICKS_PER_YEAR // 4:
             return          # sent this season: its controller shows in `missions` soon
@@ -361,8 +370,12 @@ def _contact_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None)
                                   f"send the messenger ({_l(o.get('held'))[0]}) to make contact with {name} "
                                   f"({site.get('dist')} tiles away, not in contact), by the World screen", 7))
         return
-    ask_player(notes, f"Make contact (13b): the messenger ({_l(o.get('held'))[0]}) can go to "
-                      f"{name} ({site.get('dist')} tiles away), a site "
-                      "not in contact: World screen, the site, Diplomacy, Make contact. The AI can't press those "
-                      "buttons yet (the Rules switch \"Send it by the World screen\" tries); send it by hand while "
-                      "python brain\\probe_missions.py --watch records the steps")
+    # (0.105.35) kept: DFHack can't make a mission, and the World screen's last
+    # steps are unrecorded (the switch stays off by default for that reason)
+    ask_player(notes, f"Make contact (13b): the messenger ({_l(o.get('held'))[0]}) could go to "
+                      f"{name} ({site.get('dist')} tiles away), a site not in contact, but DFHack can't make the "
+                      "mission and the World screen's last steps (Make contact, the messenger, the confirm) were "
+                      "never recorded, so the AI doesn't press them (the Rules switch \"Send it by the World "
+                      "screen\" tries the recorded ones): the messenger stays home and the site is named again "
+                      "next season; sending it by hand while python brain\\probe_missions.py --watch runs "
+                      "records the steps")

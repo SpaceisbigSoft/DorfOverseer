@@ -9,7 +9,7 @@
 -- in_fort, NOT_IN_FORT, OUT_DIR) are at hand. Not a command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-actions is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-actions'] = '0.105.34'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-actions'] = '0.105.35'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local json = require('json')
 local utils = require('utils')
@@ -440,6 +440,13 @@ function act_prioritize_dig(a)
     local id = project_id(a)
     if not id then return reject('project_id must be a whole number') end
     return reqscript('ai-builder').prioritize_project(id, a.priority, a.dry_run == true)
+end
+
+-- (0.105.35) an AI level's marker-only (blueprint) dig tiles made real designations
+function act_unmark_project_dig(a)
+    local id = project_id(a)
+    if not id then return reject('project_id must be a whole number') end
+    return reqscript('ai-builder').unmark_project_dig(id, a.dry_run == true)
 end
 
 -- (0.105.31) a well level's channel nobody digs: its job renewed
@@ -882,7 +889,7 @@ end
 
 -- A fresh embark: the fort's first staircase (lua/ai-builder.lua found_fort).
 function act_found_fort(a)
-    return reqscript('ai-builder').found_fort(a.dry_run == true)
+    return reqscript('ai-builder').found_fort(a.dry_run == true, a.wide == true)   -- (0.105.35) wide: further out
 end
 
 -- (unattended) Unpause the game: DF pauses itself for many announcements,
@@ -1067,7 +1074,7 @@ end
 function act_unstick_gate(a)
     local id, step = whole_number(a.id), int_in(a.step, 1, 3)
     if not id or not step then return reject('unstick_gate needs id and step 1-3') end
-    return reqscript('ai-gates').unstick_gate(id, step, a.dry_run == true)
+    return reqscript('ai-gates').unstick_gate(id, step, a.dry_run == true, a.cavern_ok == true)
 end
 
 function act_arm_gates(a) return reqscript('ai-gates').arm() end
@@ -1077,7 +1084,19 @@ function act_open_gates(a) return reqscript('ai-gates').open_all() end
 function act_open_entrance(a)
     local id = tonumber(a.id)
     if not id then return reject('open_entrance needs the entrance id') end
-    return reqscript('ai-gates').open_entrance(id, a.dry_run == true)
+    return reqscript('ai-gates').open_entrance(id, a.dry_run == true, a.cavern_ok == true)
+end
+
+-- (0.105.35) The gate watcher failing: the entrances an enemy is close to shut now.
+function act_close_threatened_gates(a)
+    return reqscript('ai-gates').close_threatened_gates(a.dry_run == true)
+end
+
+-- (0.105.35) A gate planned at an entrance, waiting with parts free: its building jobs unsuspended.
+function act_free_gate_jobs(a)
+    local id = tonumber(a.entrance_id)
+    if not id then return reject('free_gate_jobs needs the entrance_id') end
+    return reqscript('ai-gates').free_gate_jobs(id, a.dry_run == true)
 end
 
 -- Set-ups the AI does itself (lua/ai-society.lua).
@@ -2178,6 +2197,11 @@ end
 -- The cistern (lua/ai-builder.lua): one step of building it, or keeping it filled.
 function act_cistern_step(a)
     if a.shut == true then return reqscript('ai-builder').cistern_shut(a.dry_run == true) end
+    -- (0.105.35) retired by the AI (leaked twice, a gap it can't close, a lever that won't link), or relinked
+    if a.retire == true then
+        return reqscript('ai-builder').cistern_retire(a.dry_run == true, type(a.why) == 'string' and a.why:sub(1, 120) or nil)
+    end
+    if a.relink == true then return reqscript('ai-builder').cistern_relink(a.dry_run == true) end
     -- (0.104.145) what the brain knows that weighs the source: the climate
     -- freezes, a danger in the caverns
     local prefs = type(a.prefs) == 'table' and {freezes = a.prefs.freezes == true,
@@ -2780,6 +2804,8 @@ function act_set_rules(a)
         return false
     end
     for k, v in pairs(a.rules) do
+        -- (v35 fix) open_caverns is three-state: an old request's true is always, false the AI decides
+        if k == 'open_caverns' and type(v) == 'boolean' and S.open_caverns_choice then v = S.open_caverns_choice(v) end
         if not choice_ok(k, v) and (type(k) ~= 'string' or type(defs[k]) ~= 'boolean' or type(v) ~= 'boolean') then
             table.insert(unknown, tostring(k))
         elseif cur[k] ~= v then

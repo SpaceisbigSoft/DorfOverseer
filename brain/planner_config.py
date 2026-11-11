@@ -119,6 +119,10 @@ PLANNER_CONFIG = {
     "soldier_share_high": 0.40,
     "soldier_share_extreme_high": 0.90,
     "min_squad_to_fight": 3,       # members a squad needs before it's sent at a threat
+    "berserk_resend_ticks": 1200,  # (v35 fix) a squad sent at a berserk dwarf is not sent at them again for a day
+    # (v35 fix) the most dwarves a labour rule gives its labour in a game year
+    "care_feed_labor_cap": 4, "care_clean_labor_cap": 4, "care_diagnose_labor_cap": 4,
+    "ghost_mason_labor_cap": 4, "pump_labor_cap": 6,
     "max_fill_per_cycle": 5,
     "gate_cooldown_ticks": 600,
     "entrance_scan_ticks": 7 * 1200,   # map the entrances again once a week

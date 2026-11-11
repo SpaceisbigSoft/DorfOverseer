@@ -14,7 +14,7 @@ from digest import _d, _l, normalize
 from planner_core import *  # noqa: F401,F403
 from planner_gates import *  # noqa: F401,F403  (13c: split out by theme)
 
-__all__ = ["called_off_ids", "FIGHT_FACTOR_MAX", "lone_intruders", "hunted_outside", "few_ordinary", "few_alert_over", "ai_gates_shut", "lockdown_released", "lone_alert_over", "note_lockdown", "_lone_squad", "quick_clear", "PASTURE_ACTIONS", "_pasture_hold", "gate_invaders", "main_gate", "_gate_guard_rule", "_gate_dogs_rule", "GEAR_HELD", "_shelter_possible", "soldier_share", "_gate_rules", "_free_gate_levers", "_lever_far_enough", "_link_wanted", "_lever_rule", "_trap_rule", "_gatehouse_rule", "_lever_hatches_ok", "_near_spot", "soldiers_wanted", "civilian_cap", "crossing_value", "_crossing_rule", "ALERT_DANGERS", "alert_ages", "_alerts_rule", "_war_animal_rule", "hazard_alert", "_hazard_rules", "_military_rules", "watched_gate_levers", "_training_rotation", "_ranged_squad_rule", "WEAPON_IDS", "_uniform_weapon_rule", "_anvil_rule", "idle_hands"]
+__all__ = ["called_off_ids", "FIGHT_FACTOR_MAX", "lone_intruders", "hunted_outside", "few_ordinary", "few_alert_over", "ai_gates_shut", "lockdown_released", "lone_alert_over", "note_lockdown", "_lone_squad", "quick_clear", "PASTURE_ACTIONS", "_pasture_hold", "gate_invaders", "main_gate", "_gate_guard_rule", "_gate_dogs_rule", "GEAR_HELD", "_shelter_possible", "no_shelter", "weak_squad", "soldier_share", "_gate_rules", "_free_gate_levers", "_lever_far_enough", "_link_wanted", "_lever_rule", "_trap_rule", "_gatehouse_rule", "_lever_hatches_ok", "_near_spot", "soldiers_wanted", "civilian_cap", "crossing_value", "_crossing_rule", "ALERT_DANGERS", "alert_ages", "_alerts_rule", "_war_animal_rule", "hazard_alert", "_hazard_rules", "_military_rules", "watched_gate_levers", "_training_rotation", "_ranged_squad_rule", "WEAPON_IDS", "_uniform_weapon_rule", "_anvil_rule", "idle_hands"]
 
 
 GEAR_HELD = {"weapons": "armed", "body": "armored", "helms": "helmed", "shields": "shielded", "pants": "legged",
@@ -24,6 +24,37 @@ GEAR_HELD = {"weapons": "armed", "body": "armored", "helms": "helmed", "shields"
 def _shelter_possible(s: dict, memory) -> bool:
     return (s.get("civ_alert_ready") is False and player_rules(s)["alert_shelter"]
             and memory.shelter_attempts < 2)
+
+
+def no_shelter(s: dict, memory, why: str, proposals: list, notes: list) -> None:
+    """(0.105.35) An alarm wanted and no civilian-alert burrow to sound it with:
+    the AI makes its own shelter now (at once, not at the set-up's leisure);
+    with the Rules tab's "AI shelter" off, said (the player's switch); only
+    when DF refused the AI's burrow twice is the player told, with what the
+    AI does meanwhile."""
+    if memory is not None and _shelter_possible(s, memory):
+        proposals.append(Proposal("shelter", {"type": "setup_shelter"},
+                                  f"{why}: no civilian-alert burrow, so the AI makes an \"AI shelter\" burrow "
+                                  "over the inside of the fort and sounds the alarm with it", 0))
+        notes.append(f"{why}: setting up a shelter so the alarm can sound")
+    elif not player_rules(s)["alert_shelter"]:
+        notes.append(f"{why}: no civilian-alert burrow and the AI's shelter is off on the Rules tab, "
+                     "so no alarm sounds (the squads and gates act all the same)")
+    else:
+        ask_player(notes, f"{why}, and no civilian-alert burrow: DF refused the AI's shelter burrow twice, so "
+                          "the AI can't sound the alarm; meanwhile its squads and gates act all the same")
+
+
+def weak_squad(squads: list) -> dict | None:
+    """(0.105.35) When no squad has `min_squad_to_fight` armed: the best one
+    with an armed soldier at all (most armed, then most members), for a lone
+    enemy or a berserk dwarf inside rather than nobody."""
+    rows = [q for q in squads if isinstance(q, dict) and q.get("id") is not None and (q.get("members") or 0) > 0]
+    armed = [q for q in rows if isinstance(_d(q.get("power")).get("armed"), int)
+             and not isinstance(_d(q.get("power")).get("armed"), bool) and _d(q.get("power"))["armed"] > 0]
+    if not armed:
+        return None
+    return max(armed, key=lambda q: (int(_d(q.get("power")).get("armed") or 0), int(q.get("members") or 0)))
 
 
 def soldier_share(s: dict, cfg: dict) -> float:
@@ -446,37 +477,97 @@ def _hazard_rules(s: dict, memory, cfg: dict, proposals: list, notes: list, rule
             proposals.append(Proposal("threat_alert", {"type": "civ_alert", "on": True},
                                       f"{why}: sound the alarm (the civilians go to the shelter)", 0))
         else:
-            ask_player(notes, f"{why}, and no civilian-alert burrow is set up to keep the others safe")
+            no_shelter(s, memory, why, proposals, notes)        # (0.105.35) the AI makes one
     berserk = [b for b in _l(h.get("berserk")) if isinstance(b, dict) and b.get("id") is not None]
     mil = _d(s.get("military"))
     if berserk:
-        able = [q for q in _l(mil.get("squads")) if isinstance(q, dict)
-                and can_fight(q, cfg) and not q.get("ai_orders")]
+        squads = [q for q in _l(mil.get("squads")) if isinstance(q, dict)]
+        able = [q for q in squads if can_fight(q, cfg) and not q.get("ai_orders")]
         names = ", ".join(str(b.get("name")) + (" (changed into a beast)" if b.get("changed") else "")
                           for b in berserk[:3])
-        if able:
+        ids = [b["id"] for b in berserk][:10]
+        # (0.105.35) nothing waits for the player: a squad out on other orders
+        # takes the berserk one on too, else the best squad with anyone armed
+        busy = [q for q in squads if can_fight(q, cfg) and q.get("ai_orders") and not q.get("guarding")
+                and isinstance(q.get("kill_ids"), list)]
+        # (v35 fix) a squad sent at these same targets within
+        # `berserk_resend_ticks` isn't sent again (its order may simply not show
+        # yet); the loop guard counts these sends (guard)
+        now = abs_tick(s)
+        sent = _d(getattr(memory, "kill_sent", None)) if memory is not None else {}
+        sent_at = _d(getattr(memory, "kill_sent_at", None)) if memory is not None else {}
+        resend = int(cfg.get("berserk_resend_ticks", TICKS_PER_DAY))
+
+        def just_sent(q):
+            t_ = sent_at.get(str(q.get("id")))
+            return (set(ids) <= {x for x in _l(sent.get(str(q.get("id")))) if isinstance(x, int)}
+                    and isinstance(t_, int) and 0 <= now - t_ < resend)
+
+        def on_it(q):
+            return isinstance(q.get("kill_ids"), list) and set(ids) <= set(q["kill_ids"])
+
+        changed = any(b.get("changed") for b in berserk)
+        weak = None if able or busy else weak_squad(squads)
+        if able and just_sent(able[0]):
+            notes.append(f"{names} gone berserk: {able[0].get('name') or 'a squad'} was sent after them "
+                         f"{(now - sent_at[str(able[0]['id'])]) // 50} hour(s) ago")
+        elif able:
             proposals.append(Proposal("squad_attack", {"type": "squad_orders", "squad_id": able[0]["id"],
-                                                       "kill": [b["id"] for b in berserk][:10]},
-                                      f"{names} gone berserk and attacking others: send {able[0].get('name') or 'the squad'}", 0))
+                                                       "kill": ids},
+                                      f"{names} gone berserk and attacking others: send {able[0].get('name') or 'the squad'}",
+                                      0, guard=True))
+        elif busy and not set(ids) <= set(busy[0]["kill_ids"]) and not just_sent(busy[0]):
+            q = busy[0]
+            kill = list(dict.fromkeys(ids + [x for x in q["kill_ids"] if isinstance(x, int)]))[:50]
+            proposals.append(Proposal("squad_attack", {"type": "squad_orders", "squad_id": q["id"], "kill": kill},
+                                      f"{names} gone berserk and no squad free: {q.get('name') or 'the squad'} "
+                                      "takes them on too", 0, guard=True))
+        elif busy:
+            notes.append(f"{names} gone berserk: {busy[0].get('name') or 'a squad'} is after them")
+        elif weak is not None and (on_it(weak) or just_sent(weak)):
+            notes.append(f"{names} gone berserk: {weak.get('name') or 'a squad'} "
+                         f"({_d(weak.get('power')).get('armed')} armed) is after them")
+        elif weak is not None and changed and int(_d(weak.get("power")).get("armed") or 0) < int(weak.get("members") or 0):
+            # (v35 fix) a werebeast is not taken on by a squad only partly armed
+            notes.append(f"{names} gone berserk and no squad has {cfg['min_squad_to_fight']}+ armed: the best has "
+                         f"{_d(weak.get('power')).get('armed')} of {weak.get('members')} armed, too few against a "
+                         "changed beast; the alarm keeps the others in the shelter meanwhile, and the squads are "
+                         "armed first")
+        elif weak is not None:
+            q = weak
+            proposals.append(Proposal("squad_attack", {"type": "squad_orders", "squad_id": q["id"], "kill": ids},
+                                      f"{names} gone berserk and no squad has {cfg['min_squad_to_fight']}+ armed: "
+                                      f"send {q.get('name') or 'the squad'} ({_d(q.get('power')).get('armed')} armed)",
+                                      0, guard=True))
         else:
-            ask_player(notes, f"{names} gone berserk, and no squad to stop them: keep the others away")
+            notes.append(f"{names} gone berserk and no squad has anyone armed: the alarm keeps the others in "
+                         "the shelter meanwhile, and the squads are armed first")
     wet, burning = _l(h.get("wet")), _l(h.get("burning"))
     if burning:
-        ask_player(notes, f"{len(burning)} dwarf(s) in magma: " + ", ".join(str(b.get("name")) for b in burning[:3]))
+        # (0.105.35) a plain note: nobody, the AI or the player, can reach them in time
+        notes.append(f"{len(burning)} dwarf(s) in magma: " + ", ".join(str(b.get("name")) for b in burning[:3])
+                     + " (nothing can reach them in time)")
     if len(wet) >= cfg["flood_wet_dwarves"]:
         cs = _d(_d(s.get("water")).get("cistern_status"))
+        names = ", ".join(str(b.get("name")) for b in wet[:3])
         if cs.get("gate") == "open":
             proposals.append(Proposal("flood", {"type": "cistern_step", "shut": True},
                                       f"{len(wet)} dwarves stand in deep water: shut the cistern's floodgate", 0))
-        ask_player(notes, f"{len(wet)} dwarves stand in deep water (a flood?): "
-                   + ", ".join(str(b.get("name")) for b in wet[:3]))
+            notes.append(f"{len(wet)} dwarves stand in deep water (a flood?): {names}; the cistern's floodgate "
+                         "is shut")
+        else:
+            # (0.105.35) kept: the game says who is wet, not where the water comes from
+            ask_player(notes, f"{len(wet)} dwarves stand in deep water (a flood?): {names}; the cistern's "
+                              "floodgate is not open, and DFHack doesn't say where water flows from, so the AI "
+                              "can't find the leak; meanwhile the cistern's floodgate (if any) stays shut and the "
+                              "wet are watched")
     for c in [c for c in _l(_d(s.get("deep")).get("cursed")) if isinstance(c, dict)]:
         if c.get("kind") == "vampire" and rules_.get("expel_vampires", True) and c.get("id") is not None:
             proposals.append(Proposal("cursed", {"type": "expel_dwarf", "unit_id": c["id"]},
                                       f"{c.get('name')} is a vampire (drinks sleeping dwarves' blood): send them away", 1))
     if (h.get("caged") or 0) > 0:
-        notes.append(f"{h['caged']} invader(s) caught in cages: they stay caged (what to do with prisoners "
-                     "is a decision for the AI agent; for now they are kept)")
+        notes.append(f"{h['caged']} invader(s) caught in cages: they stay caged (the prisoners rule decides "
+                     "what becomes of them)")
     # cage traps re-armed: full cages need an animal stockpile to go to, and
     # empty cages to take their place
     full = int(h.get("cage_traps_full") or 0)
@@ -600,8 +691,11 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
                         f"{len(new)} more enemies can reach the dwarves ({names}): "
                         f"{q.get('name') or 'the squad'} goes after them too", 0))
         if not able:
-            ask_player(notes, f"{len(targets)} enemies can reach the dwarves and no squad has "
-                         f"{cfg['min_squad_to_fight']}+ armed soldiers to send")
+            # (0.105.35) said, not asked: the alarm and the gates keep the dwarves
+            # in meanwhile, and the squads are filled and armed by the rules below
+            notes.append(f"{len(targets)} enemies can reach the dwarves and no squad has "
+                         f"{cfg['min_squad_to_fight']}+ armed soldiers to send: the dwarves keep behind the alarm "
+                         "and the gates meanwhile, while the squads are filled and armed")
     if held_back and policy != "never":
         notes.append(f"{len(held_back)} great danger(s) (beast, titan...) can reach the dwarves: the dwarves hide "
                      f"behind the gates ({verdict}; Rules tab: attack everything)")
@@ -811,25 +905,48 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
             # (0.104.138) armour and helms too: Teacheroar's 5 body armour and 4
             # helms lay unused 6,600 days (loose on floors, never handed out)
             # while ~20 soldiers went without, and none was made again
-            if (k in ("weapons", "body", "helms") and isinstance(since, int)
+            # (0.105.35) every kind of the kit: shields, greaves, boots and
+            # gauntlets too (nothing waits for the player to check the uniforms)
+            if (isinstance(since, int)
                     and abs_tick(s) - since >= cfg["gear_weapons_anyway_ticks"]):
                 released.append(k)
                 notes.append(f"{spare.get(k)} spare {what} lie unused for a month: making new ones anyway")
                 continue
             if isinstance(since, int) and abs_tick(s) - since >= cfg["gear_unused_ticks"]:
-                ask_player(notes, f"{spare.get(k)} {what} lie unused while soldiers go without: check the squads' "
-                           f"uniforms (they may ask for something other than what the AI makes: "
-                           f"{rules_['gear_weapon']}s for weapons, set on the Rules tab)")
+                days = max(1, (since + cfg["gear_weapons_anyway_ticks"] - abs_tick(s)) // TICKS_PER_DAY)
+                notes.append(f"{spare.get(k)} {what} lie unused while soldiers go without (they may not fit the "
+                             f"squads' uniforms: the AI makes {rules_['gear_weapon']}s for weapons): the uniforms "
+                             f"are untangled and the gear handed out, and new ones are made if they still lie "
+                             f"unused in {days} days")
             else:
                 notes.append(f"{spare.get(k)} spare {what} not picked up yet: waiting before making more")
         short = [x for x in short if x not in waiting or x[0] in released]
         if short and not gear.get("forges"):
-            ask_player(notes, f"soldiers lack {short[0][2]} and the fort has no forge to make them")
+            # (0.105.35) the AI builds the forge itself (it asked the player before)
+            open_ = [p for p in _l(_d(s.get("projects")).get("open")) if isinstance(p, dict)]
+            forge_planned = any(isinstance(p, dict) and any(k in _d(p.get("furniture"))
+                                                             for k in ("MetalsmithsForge", "MagmaForge"))
+                                for p in open_)
+            if forge_planned or _has_shop(_d(s.get("buildings")), "MetalsmithsForge"):
+                notes.append(f"soldiers lack {short[0][2]} and no forge is ready to make them: waiting for "
+                             "the forge being built")
+            elif _workshops_busy(open_):
+                notes.append(f"soldiers lack {short[0][2]} and the fort has no forge: one is built once the "
+                             "workshops under way are done")
+            else:
+                proposals.append(Proposal("arms_forge", {"type": "start_project", "kind": "workshops",
+                                                         "shops": ["MetalsmithsForge"]},
+                                          f"soldiers lack {short[0][2]} and the fort has no forge to make them: "
+                                          "build one", 4))
         elif (short and not gear.get("squads_with_uniform")
               and not [t for t in _l(mil.get("uniform_templates")) if isinstance(t, str)]):
             # (with the fort's uniform templates the AI gives the squad one itself)
-            ask_player(notes, f"soldiers lack {', '.join(x[2] for x in short)}, but no squad has a uniform, so "
-                         "gear wouldn't be handed out: set one in the military screen (Equip)")
+            # (0.105.35) kept: the AI's uniforms are the fort's templates, and
+            # the bridge has no way to make a template
+            ask_player(notes, f"soldiers lack {', '.join(x[2] for x in short)}, but no squad has a uniform and "
+                              "the fort has no uniform template, which the AI can't make: the gear isn't handed "
+                              "out meanwhile; the AI gives every squad one as soon as a template exists "
+                              "(military screen, Equip)")
         elif short:
             key, recipe, what, n = short[0]
             n = min(n, cfg["max_gear_order"])
@@ -847,8 +964,14 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
                 notes.append(f"soldiers lack {what}: waiting for {need} bars of weapon-grade metal "
                              "(the ore is being mined and smelted)")
             else:
-                ask_player(notes, f"soldiers lack {what} and there aren't {need} bars of a weapon-grade metal "
-                             "(steel, iron, bronze, copper): smelt some ore")
+                # (0.105.35) said, not asked: the industry rule builds the
+                # furnaces and mines a vein once ore is uncovered near the fort
+                ores = _d(_d(s.get("industry")).get("ores"))
+                notes.append(f"soldiers lack {what} and there aren't {need} bars of a weapon-grade metal "
+                             "(steel, iron, bronze, copper): "
+                             + ("the AI mines the ore and builds the smelter for it" if ores else
+                                "no ore of it uncovered yet: the AI smelts once the miners find some, or a "
+                                "caravan brings bars"))
 
     # Barracks: each squad trains (and keeps its gear) in one, as the zone's
     # squad screen does; one squad a cycle
@@ -900,8 +1023,8 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
                                   f"{have} soldiers, the fort wants {want} (Militarism "
                                   f"{int(traits.get('militarism', 0) or 0):+d}): {count} go back to work", 5))
     if have < want and not rules_["fill_squads"]:
-        notes.append(f"{have} soldiers, the fort wants {want}: raising and filling squads is off on the Rules tab "
-                     "(yours to do)")
+        notes.append(f"{have} soldiers, the fort wants {want}: raising and filling squads is off on the Rules tab, "
+                     "so the AI leaves the squads as they are")
     elif (have < want and isinstance(getattr(memory, "fight", None), dict) and memory.fight
           and 0 <= abs_tick(s) - int(memory.fight.get("tick") or 0) < cfg["fight_freeze_days"] * TICKS_PER_DAY):
         # (0.104.139) no new soldiers mid-fight: the losses are read from the
@@ -947,9 +1070,14 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
             ref = _d((getattr(memory, "refusals", None) or {}).get(
                 refusal_key(Proposal("squad_make", {"type": "make_squad"}, "", 3))))
             if "no military office" in str(ref.get("why") or ""):
-                ask_player(notes, f"{have} soldiers, the fort wants {want}, every squad is full and no military "
-                                  "office is free to lead another: add a captain's post (nobles screen) or create "
-                                  "a squad in the military screen; the AI fills and trains it")
+                # (0.105.35) said, not asked: make_squad adds a captain's post
+                # itself when DF lets it; what's left is the game's own limit
+                why_ = str(ref.get("why") or "")
+                why_ = why_[why_.find("(") + 1:why_.rfind(")")] if "(" in why_ and ")" in why_ else ""
+                notes.append(f"{have} soldiers, the fort wants {want}, every squad is full and no military "
+                             "office is free to lead another" + (f" ({why_[:100]})" if why_ else "")
+                             + ": the AI trains the squads it has and makes another once DF allows one "
+                             "(a militia commander appointed, a captain's post free)")
             proposals.append(Proposal("squad_make", {"type": "make_squad"},
                                       (f"the fort wants {want} soldiers and has no squad" if not squads else
                                        f"{have} soldiers, the fort wants {want}, and every squad is full")
@@ -1000,9 +1128,18 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
         _ranged_squad_rule(s, g, squads, templates, cfg, proposals, getattr(memory, "squads_made", None))
         _uniform_weapon_rule(s, g, squads, rules_, proposals)
     elif isinstance(g.get("squads"), int) and g["squads"] > (g.get("squads_with_uniform") or 0):
-        ask_player(notes, f"{g['squads'] - (g.get('squads_with_uniform') or 0)} squad(s) have no uniform, so "
-                   "they'd fight in their clothes: set one in the military screen (Equip); the AI copies it to "
-                   "the squads it makes later")
+        n_bare = g["squads"] - (g.get("squads_with_uniform") or 0)
+        if not rules_["make_gear"]:
+            # (0.105.35) the player's switch: said, not asked
+            notes.append(f"{n_bare} squad(s) have no uniform (they'd fight in their clothes): making and "
+                         "handing out gear is off on the Rules tab, so the AI leaves their uniforms alone")
+        else:
+            # kept: the AI's uniforms are the fort's templates, and the bridge
+            # has no way to make a template
+            ask_player(notes, f"{n_bare} squad(s) have no uniform, so they'd fight in their clothes, and the fort "
+                              "has no uniform template, which the AI can't make; meanwhile they train as they "
+                              "are, and the AI gives every squad one (and copies it to the squads it makes) as "
+                              "soon as a template exists (military screen, Equip)")
 
 
 def _train_mode_held(s: dict, memory, cfg: dict, want_all: bool) -> bool:
@@ -1253,7 +1390,8 @@ def _anvil_rule(s: dict, cfg: dict, proposals: list, notes: list) -> None:
     if not stuck or "anvils" not in sup or (sup.get("anvils") or 0) > 0 or queued(s, {"metal_anvil"}):
         return
     if not _has_shop(s["buildings"], "MetalsmithsForge"):
-        notes.append("a new forge waits for an anvil and there is no forge to make one: buy one from a caravan")
+        notes.append("a new forge waits for an anvil and there is no forge to make one: it waits for one from a "
+                     "caravan")
         return
     metal = _best_metal(s, 2)
     if not metal:
@@ -1312,9 +1450,18 @@ def _lone_squad(s: dict, memory, cfg: dict, squads: list, lone: list, rows: dict
     # (a squad still on the siege's old orders may go too: a free one first)
     able = [q for q in squads if can_fight(q, cfg) and q.get("id") is not None]
     if not able:
-        ask_player(notes, f"{names} inside the fort and no squad has {cfg['min_squad_to_fight']}+ armed soldiers "
-                          "to send: the gates stay open (shut, they keep only the others out); arm a squad or "
-                          "deal with them yourself")
+        # (0.105.35) nothing waits for the player: the best squad with anyone
+        # armed goes (a lone intruder, not a siege), else said what the AI does
+        q = weak_squad(squads)
+        if q is not None:
+            proposals.append(Proposal("squad_attack", {"type": "squad_orders", "squad_id": q["id"], "kill": lone[:10]},
+                                      f"only {names} left, inside the fort, and no squad has "
+                                      f"{cfg['min_squad_to_fight']}+ armed: send {q.get('name') or 'the squad'} "
+                                      f"({_d(q.get('power')).get('armed')} armed; the gates stay open)", 0))
+            return
+        notes.append(f"{names} inside the fort and no squad has anyone armed to send: the gates stay open "
+                     "(shut, they keep only the others out), the alarm keeps the civilians in the shelter "
+                     "meanwhile, and the squads are armed first")
         return
     q = max(able, key=lambda q: (not q.get("ai_orders") or bool(q.get("sheltering")),
                                  int(_d(q.get("power")).get("armed") or 0), int(q.get("members") or 0)))

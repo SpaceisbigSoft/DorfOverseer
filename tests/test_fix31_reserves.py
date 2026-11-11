@@ -166,12 +166,13 @@ WEAVER = [{"item": "CLOTH", "flags": ["plant"], "quantity": 3,
           {"item": "WOOD", "quantity": 1, "avail": {"free": 8, "reach": 1, "other": 3, "enough": True}}]
 
 
-@test("reserves 6: F's weaver: the Needs you names the reserve gap, the count mismatch and what is done")
+@test("reserves 6: F's weaver: the note (0.105.35: no Needs you) names the reserve gap, the count mismatch and what is done")
 def _():
     s = garden()
     props, notes = [], []
     _mood_materials(s, "Logem", "Fey", copy.deepcopy(WEAVER), 5, props, notes, CFG, memory=Memory(), unit_id=7)
-    asks = [n for n in notes if n.startswith(NEEDS_YOU)]
+    assert not any(n.startswith(NEEDS_YOU) for n in notes), notes
+    asks = [n for n in notes if "can't supply" in n]
     assert asks, notes
     a = asks[0]
     assert "no plant thread to weave" in a and "reserve of plant cloth for moods is 2 of 3" in a, a
@@ -181,7 +182,7 @@ def _():
     s["farms"]["crops"]["GRASS_TAIL_PIG"] = {"name": "pig tail", "seeds": 6, "planted": 0, "thread": True}
     props, notes = [], []
     _mood_materials(s, "Logem", "Fey", copy.deepcopy(WEAVER), 5, props, notes, CFG, memory=Memory(), unit_id=7)
-    a = [n for n in notes if n.startswith(NEEDS_YOU)][0]
+    a = [n for n in notes if "can't supply" in n][0]
     assert "fibre crop (pig tail) is set on the farms" in a, a
 
 

@@ -345,7 +345,9 @@ def _stairwell_rule(s: dict, memory, cfg: dict, traits: dict, proposals: list) -
 def _deep_notes(s: dict, notes: list) -> None:
     """The deep (the bridge's `deep` report): caverns found and whether the
     fort's ground joins them, great dangers on the map and where, cursed
-    citizens. Said, and Needs you where only the player can act."""
+    citizens. (0.105.35) Said, with what the AI does about each: the cavern
+    seal, the moon cells and sending vampires away are its own rules
+    (planner_threats, planner_military); a Rules switch off is the player's."""
     d = s.get("deep")
     if not isinstance(d, dict) or "error" in d:
         return
@@ -357,9 +359,20 @@ def _deep_notes(s: dict, notes: list) -> None:
         where_ = f" (the dwarves' ground meets it at x{at.get('x')} y{at.get('y')} z{at.get('z')})" if at else ""
         here = [x for x in dangers if x.get("layer") == c.get("name")]
         if here:
-            ask_player(notes, f"{c['name']} is open to the fort{where_} and {here[0].get('name')} ({here[0].get('kind')}) "
-                              f"is in it: seal the way down (the AI walls cavern openings it finds; check "
-                              "the entrances line) and keep the dwarves inside")
+            # (0.105.35 merge) the threats rule's own test (planner_threats
+            # _cavern_beasts: seal_cavern on every way down, the cavern doors)
+            from planner_threats import cavern_great
+            great = [x for x in cavern_great(s) if x in here]
+            if great:
+                here = great + [x for x in here if x not in great]
+            seal = _d(s.get("settings")).get("seal_caverns") is not False and bool(great)
+            notes.append(f"{c['name']} is open to the fort{where_} and {here[0].get('name')} ({here[0].get('kind')}) "
+                         "is in it: " + ("the AI locks every way into the caverns while it's there (doors and "
+                                         "hatches on the openings, the cavern seal)" if seal else
+                                         "the AI walls the openings it finds and its squads and gates answer "
+                                         "it when it comes near")
+                         + ("" if seal or _d(s.get("settings")).get("seal_caverns") is not False
+                            else " (sealing the caverns is off on the Rules tab)"))
         else:
             notes.append(f"{c['name']} is open to the fort's ground (z{c.get('z_bottom')}-{c.get('z_top')}){where_}: the AI "
                          "walls the openings it finds; cavern creatures can walk in until then")
@@ -373,12 +386,17 @@ def _deep_notes(s: dict, notes: list) -> None:
         if c.get("kind") == "vampire" and player_rules(s).get("expel_vampires", True):
             notes.append(f"{c.get('name')} is a vampire: the AI sends them away (Rules tab)")
         elif c.get("kind") == "vampire":
-            ask_player(notes, f"{c.get('name')} is a vampire: they drink sleeping dwarves' blood (dwarves die "
-                              "drained, and the sheriff may convict the wrong one). Lock them away or give them "
-                              "work away from the others")
+            # (0.105.35) the player's switch: kept, and said (not Needs you)
+            notes.append(f"{c.get('name')} is a vampire: they drink sleeping dwarves' blood (dwarves die "
+                         "drained, and the sheriff may convict the wrong one); sending vampires away is off on "
+                         "the Rules tab, so the AI keeps them")
+        elif _d(s.get("settings")).get("moon_cells") is not False:
+            notes.append(f"{c.get('name')} carries a {c.get('kind')} curse: they change at the full moon and "
+                         "attack: the AI locks them in a cell (a jail or a free bedroom) for the full moon")
         else:
-            ask_player(notes, f"{c.get('name')} carries a {c.get('kind')} curse: they change at the full moon "
-                              "and attack: keep them in a locked room on those nights, or away from the fort")
+            notes.append(f"{c.get('name')} carries a {c.get('kind')} curse: they change at the full moon and "
+                         "attack; moon cells are off on the Rules tab, so the AI leaves them free and its squads "
+                         "answer the beast")
 
 
 ORDINALS = ("", "Second", "Third", "Fourth", "Fifth", "Sixth", "Seventh", "Eighth")
@@ -488,12 +506,13 @@ DIG_FIRST_KINDS = {"hospital", "tombs"}      # (0.104.128) levels dug before the
 
 
 # (0.105.31) what a well's undug channel waits on (the bridge's well_check
-# cause) -> what the player can do; causes left out the AI handles itself
+# cause) -> what the AI does about it. (0.105.35) Said, not Needs you: nothing
+# here waits for the player (was "what the player can do")
 WELL_DIG_ASK = {
-    "no_miners": "give a dwarf the Mining labour (a pick and the Miners work detail)",
-    "unreached": "open the way out to it (a shut door, a raised bridge, a burrow), or the AI gives the spot up",
+    "no_miners": "the AI's labour rules put dwarves on Mining (and the fort makes a pick when it has none)",
+    "unreached": "the AI gives the spot up and picks another if no dwarf gets to it",
     "no_ground": "the AI gives the spot up and picks another",
-    "marked": "turn its designation from marker to dig (or the AI renews it)",
+    "marked": "the AI designates it a channel again (marker designations are never dug)",
     "wrong_designation": "the AI designates it a channel again",
     "unworked": "the AI renews the channel job at a higher priority; if still nothing, it gives the spot up "
                 "and picks another",
@@ -507,7 +526,7 @@ def _well_dig_rule(s: dict, memory, cfg: dict, p: dict, rec: dict, days: int, no
     "0 of 1 tiles dug" 14-80 days (E: a year, four times on one tile), a
     DigChannel job no miner took, and nothing could raise a channel. Its job
     renewed (well_renew_days, then weekly), and from dig_stall_days the
-    cause named in Needs you with what is being done."""
+    cause said with what is being done (0.105.35: a note, not Needs you)."""
     dig = _d(p.get("dig"))
     if int(dig.get("dug") or 0) > 0:
         return
@@ -528,9 +547,9 @@ def _well_dig_rule(s: dict, memory, cfg: dict, p: dict, rec: dict, days: int, no
         where = (f" at x{chk.get('x')} y{chk.get('y')} elevation {chk.get('elevation')}"
                  if chk.get("x") is not None else "")
         give_up = max(0, int(cfg["unreached_dig_days"]) - days)
-        ask_player(notes, f"the well's channel{where} hasn't been dug in {days} days: {chk.get('text') or cause}. "
-                          f"{WELL_DIG_ASK[cause][0].upper()}{WELL_DIG_ASK[cause][1:]}"
-                          + (f" (the spot is given up in {give_up} days)" if give_up else ""))
+        notes.append(f"the well's channel{where} hasn't been dug in {days} days: {chk.get('text') or cause}. "
+                     f"{WELL_DIG_ASK[cause][0].upper()}{WELL_DIG_ASK[cause][1:]}"
+                     + (f" (the spot is given up in {give_up} days)" if give_up else ""))
 
 
 def _dig_stall_rule(s: dict, memory, cfg: dict, open_: list, proposals: list, notes: list | None = None) -> None:
@@ -742,8 +761,10 @@ def _project_rules(s, traits, cfg, proposals, notes, can_use, memory) -> None:
                                       f"{what} is smoothed: engrave its halls", 3))
         elif step != "furnish" and p.get("phase") == "dig" and (dig.get("stuck") or dig.get("marked")):
             if dig.get("marked"):
-                ask_player(notes, f"{what}: {dig['marked']} tiles are designated in marker (blueprint) mode, "
-                             "so dwarves won't dig them; check Quickfort's marker settings")
+                # (0.105.35) nothing waits for the player: the AI makes them real (was Needs you)
+                proposals.append(Proposal("project", {"type": "unmark_project_dig", "project_id": p["id"]},
+                                          f"{what}: {dig['marked']} tiles are designated in marker (blueprint) "
+                                          "mode, which dwarves never dig: make them real dig designations", 3))
             if dig.get("stuck"):
                 # (0.100.1, overnight run) nothing left being dug and the rest no
                 # longer designated: it never finishes, and it held a building
@@ -757,9 +778,13 @@ def _project_rules(s, traits, cfg, proposals, notes, can_use, memory) -> None:
                                               f"{what}: {dig['stuck']} tiles are no longer designated and nothing "
                                               f"is being dug ({age} days since it started): give it up, so the "
                                               "slot goes to the next level", 3))
-                else:
-                    ask_player(notes, f"{what}: {dig['stuck']} tiles are no longer designated, so it won't "
-                                 "finish (cancel it, or re-designate them)")
+                elif not dig.get("marked"):
+                    # (0.105.35) said, not Needs you: the AI gives it up itself
+                    left = (" once its stalled dig is given up (it has no start date)" if age is None
+                            else " once nothing more is being dug" if dig.get("digging")
+                            else f" in {max(1, cfg['stuck_project_days'] - age)} day(s)")
+                    notes.append(f"{what}: {dig['stuck']} tiles are no longer designated, so it won't finish: "
+                                 f"the AI gives it up{left}, so the slot goes to the next level")
 
     # (0.105.30, construction 3.3) a finished hall's own step `floor`: block
     # floors over its soil (soil can't be smoothed), once per project

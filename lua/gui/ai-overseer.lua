@@ -507,13 +507,18 @@ function RulesPage:init()
             on_change = function(v) p:set_field(f[1], v) end,
         })
     end
-    -- (0.105.4 review) a cavern well may open a cavern nobody has found yet (off by default)
-    table.insert(views, widgets.ToggleHotkeyLabel{
+    -- (0.105.4 review) a cavern well may open a cavern nobody has found yet.
+    -- (v35 fix) three-state: AI decides (the default: only when the fort is
+    -- short of water and has armed soldiers for what comes out), Always, Never
+    table.insert(views, widgets.CycleHotkeyLabel{
         view_id = 'open_caverns',
         frame = {t = t + 11, l = 62, w = 56},
         label = 'Cavern well into an unfound cavern:',
         label_width = 42,
-        initial_option = p.settings.open_caverns == true,
+        options = {{label = 'AI decides', value = 'ai', pen = COLOR_YELLOW},
+                   {label = 'Always', value = 'always', pen = COLOR_GREEN},
+                   {label = 'Never', value = 'never', pen = COLOR_RED}},
+        initial_option = S.open_caverns_choice(p.settings.open_caverns),
         on_change = function(v) p:set_field('open_caverns', v) end,
     })
     table.insert(views, widgets.ToggleHotkeyLabel{
@@ -749,7 +754,7 @@ function RulesPage:refresh()
     for _, k in ipairs({'moat', 'magma_workshops', 'irrigation'}) do               -- (0.105.0)
         self.subviews[k]:setOption(s[k] ~= false, false)
     end
-    self.subviews.open_caverns:setOption(s.open_caverns == true, false)            -- (0.105.4 review)
+    self.subviews.open_caverns:setOption(S.open_caverns_choice(s.open_caverns), false)   -- (v35 fix) three-state
     self.subviews.engrave_slabs:setOption(s.engrave_slabs, false)
     self.subviews.import_smelting:setOption(s.import_smelting, false)
     self.subviews.alert_shelter:setOption(s.alert_shelter, false)

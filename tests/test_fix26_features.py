@@ -89,23 +89,37 @@ def _():
     assert acts(plan(s, Memory())[0], "stranded", "open_gates")          # far: opened
 
 
-@test("stranded: no way back in (collapse, fire): Needs you with their names and where; no gate opened")
+@test("stranded: no way back in (collapse, fire): (0.105.35) a plain note with their names and where, a way dug in; no gate opened")
 def _():
     s = fort()
     rows = [dict(ROW, id=i, name=f"Dwarf{i}", cause="no_path", by_ai=None, entrance=None) for i in range(7)]
     s["entrances"]["stranded"] = rows
     props, notes = plan(s, Memory())
     assert not acts(props, "stranded"), props
-    ny = [n for n in needs_you(notes) if "no way back in" in n]
-    assert ny and "Dwarf0 (x40 y41 elevation 50)" in ny[0] and "7 citizen(s)" in ny[0] and "2 more" in ny[0], ny
-    # a gate shut, but not by the AI (a raised bridge, a locked door): told, not opened
+    assert acts(props, "way_in", "dig_way_in"), [(p.rule, p.action) for p in props]
+    line = [n for n in notes if "no way back in" in n]
+    assert line and "Dwarf0 (x40 y41 elevation 50)" in line[0] and "7 citizen(s)" in line[0] and "2 more" in line[0], line
+    assert "the AI digs them a way in" in line[0] and not [n for n in needs_you(notes) if "no way back in" in n], notes
+    # (v35) a gate shut, but not by the AI (a raised bridge, a locked door): never opened by the AI,
+    # a plain note (a way is dug in for them), no Needs you
     s["entrances"]["stranded"] = [dict(ROW, cause="gate_shut", by_ai=False)]
     props, notes = plan(s, Memory())
-    assert not acts(props, "stranded") and any("not by the AI" in n for n in needs_you(notes)), notes
-    # down in the caverns: told (the cavern seal keeps them out until the beast is gone)
+    assert not acts(props, "stranded"), props
+    assert any("the gate is the player's" in n for n in notes), notes
+    assert not any("didn't shut" in n for n in needs_you(notes)), notes
+    # (0.105.35) down in the caverns behind the AI's gate: their entrance opened when the caverns read
+    # safe, else kept shut and said; never a Needs you, never open_gates
     s["entrances"]["stranded"] = [dict(ROW, in_cavern=True)]
     props, notes = plan(s, Memory())
-    assert not acts(props, "stranded") and any("down in the caverns" in n for n in needs_you(notes)), notes
+    got = [p.action for p in acts(props, "stranded")]
+    assert got == [{"type": "open_entrance", "id": 1, "cavern_ok": True}] or (
+        not got and any("keeps that way shut" in n for n in notes)), (got, notes)
+    assert not any("down in the caverns" in n for n in needs_you(notes)), notes
+    # down in the caverns with no way up at all: kept as Needs you, saying the AI digs none from a cavern
+    s["entrances"]["stranded"] = [dict(ROW, in_cavern=True, cause="no_path")]
+    props, notes = plan(s, Memory())
+    ny = [n for n in needs_you(notes) if "down in the caverns" in n]
+    assert not acts(props, "stranded") and ny and "digs no way in from a cavern" in ny[0] and "yourself" not in ny[0], notes
 
 
 # --- 2. cavern openings: the brain --------------------------------------------------
@@ -161,14 +175,16 @@ def _():
     assert not acts(plan(s, Memory())[0], "seal_cavern")
 
 
-@test("cavern beast: not sealed while citizens are down in the caverns; the player told")
+@test("cavern beast: not sealed while citizens are down in the caverns; the AI calls them up (0.105.35)")
 def _():
     s = cave_fort(threats={"sealed": {}, "cavern_citizens": {"n": 2, "list": [
         {"id": 3, "name": "Kib", "x": 9, "y": 9, "z": 115}, {"id": 4, "name": "Zon", "x": 9, "y": 8, "z": 115}]}})
+    s["civ_alert"], s["civ_alert_ready"] = False, True
     props, notes = plan(s, Memory())
     assert not acts(props, "seal_cavern"), props
-    ny = [n for n in needs_you(notes) if "down there" in n]
-    assert ny and "Kib at x9 y9 elevation 15" in ny[0] and "2 citizen(s)" in ny[0], notes
+    assert not [n for n in needs_you(notes) if "caverns" in n and "citizen" in n], notes
+    a = [p for p in props if p.action == {"type": "civ_alert", "on": True}]
+    assert a and "Kib at x9 y9 elevation 15" in a[0].reason and "2 citizen(s)" in a[0].reason, props
 
 
 @test("cavern beast gone: the openings opened again, and said; old per-layer seals still opened")
@@ -198,7 +214,7 @@ def _():
     assert not acts(plan(s, m)[0], "cavern_openings")
 
 
-@test("cavern beast: the cavern well's shaft said shut (no water) and the injured put to the player")
+@test("cavern beast: the cavern well's shaft said shut (no water); the injured's water said (0.105.35: not asked)")
 def _():
     s = cave_fort()
     s["projects"]["well_lids"] = [{"project_id": 3, "x": 1, "y": 1, "z": 1, "gate": "closed"}]
@@ -206,7 +222,8 @@ def _():
     s["buildings"].setdefault("other", {})["Well"] = 1
     props, notes = plan(s, Memory())
     assert any("draws no water" in n for n in notes), notes
-    assert any("only well is the cavern well" in n for n in needs_you(notes)), notes
+    assert any("only well is the cavern well" in n and "water source meanwhile" in n for n in notes), notes
+    assert not any("only well is the cavern well" in n for n in needs_you(notes)), notes
 
 
 # --- the Lua side ------------------------------------------------------------------

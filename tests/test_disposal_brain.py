@@ -180,14 +180,15 @@ def _():
     assert run(s, m)[0]["disposal_empty"].action["max"] == PLANNER_CONFIG["disposal_empty_max"]
 
 
-@test("unknown items: Needs you past 200, saying they may be the player's and naming the switch; on: the AI takes them")
+@test("unknown items: a note past 200 (0.105.35: no Needs you), saying they may be the player's and naming the switch; on: the AI takes them")
 def _():
     s, m = state()
     m.census["items"]["forbidden"]["by_reason"]["unknown"] = 450
     m.census["items"]["forbidden"]["unknown_reachable"] = 450     # (0.105.30) the note reads only this
     got, notes = run(s, m)
-    you = [n for n in notes if n.startswith("[you] ")]
-    assert you and "450 items" in you[0] and "may be yours" in you[0] and "disposal_player_items" in you[0], notes
+    assert not [n for n in notes if n.startswith("[you] ")], notes
+    you = [n for n in notes if "450 items" in n]
+    assert you and "may be yours" in you[0] and "disposal_player_items" in you[0], notes
     assert "unknown" not in got["disposal_unforbid"].action["reasons"]
     s["settings"]["disposal_player_items"] = True
     got, notes = run(s, m)

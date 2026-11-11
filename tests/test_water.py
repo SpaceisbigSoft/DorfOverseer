@@ -154,12 +154,16 @@ def _():
       assert(load(src, 'settings', 't', env))()
       return env end""")(src)
     d = S.defaults()
-    assert d.open_caverns is False and S.for_ai(d).open_caverns is False
+    # (v35) three-state: 'ai' by default; an old save's true is 'always', false 'ai'
+    assert d.open_caverns == "ai" and S.for_ai(d).open_caverns == "ai"
     s = S.sanitize(lua.table_from({"open_caverns": True}))
-    assert s.open_caverns is True and S.for_ai(s).open_caverns is True
-    assert S.sanitize(lua.table_from({})).open_caverns is False
-    assert player_rules({"settings": {}})["open_caverns"] is False
-    assert player_rules({"settings": {"open_caverns": True}})["open_caverns"] is True
+    assert s.open_caverns == "always" and S.for_ai(s).open_caverns == "always"
+    assert S.sanitize(lua.table_from({"open_caverns": False})).open_caverns == "ai"
+    assert S.sanitize(lua.table_from({"open_caverns": "never"})).open_caverns == "never"
+    assert S.sanitize(lua.table_from({})).open_caverns == "ai"
+    assert player_rules({"settings": {}})["open_caverns"] == "ai"
+    assert player_rules({"settings": {"open_caverns": True}})["open_caverns"] == "always"
+    assert player_rules({"settings": {"open_caverns": False}})["open_caverns"] == "ai"
     gui = (ROOT / "lua" / "gui" / "ai-overseer.lua").read_text(encoding="utf-8")
     assert code_has(gui, "view_id = 'open_caverns'") and code_has(gui, "subviews.open_caverns:setOption")
 

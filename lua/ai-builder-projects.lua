@@ -5,7 +5,7 @@
 -- into its own environment, so every name here is reqscript('ai-builder').name
 -- and the helpers defined there (info, quickfort_apply, ...) are in reach.
 
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-projects'] = '0.105.34'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-projects'] = '0.105.35'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local info, ez = info, ez
 
@@ -851,6 +851,49 @@ function prioritize_project(id, pri, dry_run)
     return {ok = true, tiles = n, priority = pri, renewed = okr and gone or 0}
 end
 
+-- (0.105.35) A tile's marker-only (blueprint) dig designation made a real
+-- one, so the dwarves dig it: only where a dig designation stands under the
+-- marker (nothing new is designated). True when it was changed.
+function make_dig_real(x, y, z)
+    local des, occ = dfhack.maps.getTileFlags(x, y, z)
+    if not des or not occ or not occ.dig_marked or des.dig == df.tile_dig_designation.No then return false end
+    occ.dig_marked = false
+    local blk = dfhack.maps.getTileBlock(x, y, z)
+    if blk then blk.flags.designated = true end      -- DF looks for new dig jobs in this block
+    return true
+end
+
+-- (0.105.35) An AI level whose dig tiles are marker-only designations (DF's
+-- blueprint mode, or quickfort's marker setting): nobody digs them. Each one
+-- of the project's own tiles made a real designation; the dry run counts them.
+function unmark_project_dig(id, dry_run)
+    local data = load_projects()
+    local p = find(data, id)
+    if not p then return {ok = false, rejected = true, error = 'no such AI project'} end
+    if p.phase ~= 'dig' then return {ok = false, rejected = true, error = 'project is not being dug'} end
+    local anchor, spots = anchor_of(p), {}
+    for x, col in pairs(layouts.tiles_from_dig(cells_of(p, 'dig'))) do
+        for y in pairs(col) do table.insert(spots, {anchor.x + x, anchor.y + y, p.z}) end
+    end
+    if type(p.stair) == 'table' then
+        for _, c in ipairs(p.stairs or {}) do table.insert(spots, {p.stair.x, p.stair.y, c.z}) end
+    end
+    local marked = {}
+    for _, q in ipairs(spots) do
+        local t = tile_info(q[1], q[2], q[3])
+        if t and t.marked then table.insert(marked, q) end
+    end
+    if #marked == 0 then return {ok = false, rejected = true, error = 'none of its tiles is a marker designation'} end
+    if dry_run then return {ok = true, dry_run = true, tiles = #marked} end
+    local n = 0
+    for _, q in ipairs(marked) do
+        local ok, done = pcall(make_dig_real, q[1], q[2], q[3])
+        if ok and done then n = n + 1 end
+    end
+    if n == 0 then return {ok = false, error = 'none of the marker designations could be made real'} end
+    return {ok = true, tiles = n, marked = #marked}
+end
+
 -- (0.104.110) a level 90%+ dug whose last tiles haven't moved for weeks
 -- (Teacheroar's tomb level: 235 of 240 for three game years, holding one of
 -- the two building slots) is furnished without them when the brain says so
@@ -1083,6 +1126,7 @@ end
 FOUND_RADIUS = 10        -- tiles from the wagon (or the dwarves) to look for the shaft (the builder
                          -- finds stairs within 10 of where the dwarves are)
 FOUND_MAX_DEPTH = 8      -- levels the shaft may go down to reach rock
+FOUND_WIDE_RADIUS = 20   -- (0.105.35) found_fort{wide}: looked for this far out when nothing near fits
 FOUND_SURFACE = {FLOOR = true, PEBBLES = true, SHRUB = true, BOULDER = false}
 
 -- Where the dwarves' wagon stands (a fresh embark), else the middle of the
@@ -1137,12 +1181,18 @@ function found_column(x, y, z)
     return {rock = rock}
 end
 
-function found_site()
+function found_site(radius)
+    radius = radius or FOUND_RADIUS
     local c = found_center()
     if not c then return nil, 'no citizens and no wagon' end
     local best, best_score, why_not = nil, nil, {}
     local w, h = map_size()
-    for r = 2, FOUND_RADIUS do
+    local t0 = os.clock()
+    for r = 2, radius do
+        -- (0.105.35) a wide search stops short of the bridge's answer time (tried again soon)
+        if radius > FOUND_RADIUS and not best and os.clock() - t0 > SEARCH_SECONDS then
+            return nil, ('the search stopped at %d tiles from %s (out of time)'):format(r - 1, c.what), true
+        end
         for dx = -r, r do
             for dy = -r, r do
                 if math.max(math.abs(dx), math.abs(dy)) == r then
@@ -1170,7 +1220,7 @@ function found_site()
         for k in pairs(why_not) do table.insert(list, k) end
         table.sort(list)
         return nil, ('no tile within %d of %s with solid, dry ground under it%s'):format(
-            FOUND_RADIUS, c.what, #list > 0 and (' (found: ' .. table.concat(list, ', ') .. ')') or '')
+            radius, c.what, #list > 0 and (' (found: ' .. table.concat(list, ', ') .. ')') or '')
     end
     best.near = c.what
     return best
@@ -1208,7 +1258,7 @@ function has_staircase()
     return false
 end
 
-function found_fort(dry_run)
+function found_fort(dry_run, wide)
     if has_staircase() then return {ok = false, rejected = true, error = 'the fort already has a staircase'} end
     -- a shaft already designated (by the AI earlier, or by you) that the miners
     -- haven't dug yet: wait for it rather than start a second
@@ -1234,8 +1284,9 @@ function found_fort(dry_run)
             end
         end
     end
-    local site, why = found_site()
-    if not site then return {ok = false, error = why} end
+    -- (0.105.35) wide: nothing near the wagon fits, so further out (FOUND_WIDE_RADIUS)
+    local site, why, timed_out = found_site(wide and FOUND_WIDE_RADIUS or nil)
+    if not site then return {ok = false, error = why, timed_out = timed_out or nil} end
     local depth = site.rock or 3
     local cells = {{z = site.z, text = 'j'}}
     for d = 1, depth - 1 do table.insert(cells, {z = site.z - d, text = 'i'}) end

@@ -48,11 +48,17 @@ def _health_rules(s: dict, memory, cfg: dict, notes: list) -> None:
     hospital = _d(_d(s.get("locations")).get("count")).get("HOSPITAL", 0)
     doctor = not ("CHIEF_MEDICAL_DWARF" in _l(_d(s.get("society")).get("vacant")))
     soap = _d(s.get("supplies")).get("soap") or 0
+    # (0.105.35) nothing waits for the player: each cause said with what the
+    # AI does about it (the hospital rules build one, the offices rule
+    # appoints, the staffing rule turns the posts' labours on, the doctor's
+    # post rule adds a doctor), in a note, not a Needs you
     why = []
     if not hospital:
-        why.append("there is no hospital")
+        why.append("there is no hospital (the AI's hospital rules build one)")
     if not doctor:
-        why.append("nobody is chief medical dwarf")
+        why.append("nobody is chief medical dwarf ("
+                   + ("the AI appoints one" if player_rules(s)["appoint_nobles"]
+                      else "the AI's appointing is off on the Rules tab") + ")")
     long = []
     for p in patients:
         if str(p["id"]) not in since:
@@ -71,9 +77,10 @@ def _health_rules(s: dict, memory, cfg: dict, notes: list) -> None:
         n_long = len(long)
         if isinstance(_d(s.get("health")).get("waiting_ids"), list):    # (0.104.133) every one, not the listed
             n_long = sum(1 for k, v in since.items() if (now - v) // TICKS_PER_DAY >= cfg["health_wait_days"])
-        ask_player(notes, f"{n_long} dwarves have waited a long time for care: {who}"
-                   + (": " + " and ".join(why) if why
-                      else ": check the doctors' labours (diagnose, surgery, suturing, bone setting)"))
+        notes.append(f"{n_long} dwarves have waited a long time for care: {who}"
+                     + (": " + " and ".join(why) if why
+                        else ": the AI turns the hospital staff's labours on, seats the best at its posts and "
+                             "adds a doctor's post while treatments outrun them"))
     # (0.104.122) the full count (the list stops at 30) and the hospital's own
     # bars (it said "28 ... no soap" with 112 infected and 5 bars kept there)
     n_inf = _d(s.get("health")).get("infected")
@@ -82,8 +89,9 @@ def _health_rules(s: dict, memory, cfg: dict, notes: list) -> None:
     if hosp is not None:
         soap += int(_d(hosp.get("have")).get("soap") or 0) // LOCATION_UNITS["soap"]
     if n_inf and not soap:
-        ask_player(notes, f"{n_inf} dwarves have infected wounds and the fort has no soap "
-                   "(wounds are cleaned with soap)")
+        notes.append(f"{n_inf} dwarves have infected wounds and the fort has no soap (wounds are cleaned with "
+                     "soap): the AI's soap rule makes it (fat from the butcher, lye from the ashery), or buys it "
+                     "from the caravans")
 
 
 def _doctor_patient_rule(s: dict, proposals: list) -> None:

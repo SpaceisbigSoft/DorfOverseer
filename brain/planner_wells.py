@@ -9,11 +9,15 @@ import math
 from digest import _d, _l
 from planner_core import *  # noqa: F401,F403
 
-__all__ = ["_well_rule", "_well_lid_rule", "SHAFT_LINK_LOST_MAX", "SHAFT_DANGER_TILES", "SHAFT_DANGER_OPEN", "cavern_danger", "_water_zone_rule", "cavern_points", "cavern_action", "cavern_well_need", "unfound_cavern", "cavern_well_safe", "WELL_PARTS_SHOPS", "CHAIN_SKIP", "chain_metal", "well_parts_plan", "_well_parts", "_water_traffic_rule", "cistern_pop", "WATER_WORDS", "magma_access", "water_summary", "_water_rules", "CISTERN_WORDS", "_cistern_parts", "_cistern_rule", "WELLS_CONFIG", "shut_wells", "usable_wells"]
+__all__ = ["_well_rule", "_well_lid_rule", "SHAFT_LINK_LOST_MAX", "SHAFT_DANGER_TILES", "SHAFT_DANGER_OPEN", "cavern_danger", "_water_zone_rule", "cavern_points", "cavern_action", "cavern_well_need", "unfound_cavern", "cavern_well_safe", "WELL_PARTS_SHOPS", "CHAIN_SKIP", "chain_metal", "well_parts_plan", "_well_parts", "_water_traffic_rule", "cistern_pop", "WATER_WORDS", "magma_access", "water_summary", "_water_rules", "CISTERN_WORDS", "_cistern_parts", "_cistern_rule", "WELLS_CONFIG", "shut_wells", "usable_wells", "ai_opens_cavern", "cavern_open_words", "CISTERN_RETRY_SEALS", "CISTERN_RELINK_ROUNDS"]
 
 # (0.105.33 B4) the wells' own settings (merged into PLANNER_CONFIG, as planner_threats does)
 WELLS_CONFIG = {
     "well_retry_days": 28,      # a well the game refused (given up): another spot tried this long after
+    # (0.105.35) a cavern well into a cavern no dwarf has found, the Rules switch off:
+    # the AI opens it itself when the fort is short of water and has this many
+    # soldiers for what comes out (+2 at Caution 50+, -1 at Militarism 50+)
+    "unfound_cavern_soldiers": 3,
 }
 PLANNER_CONFIG.update({k: v for k, v in WELLS_CONFIG.items() if k not in PLANNER_CONFIG})
 
@@ -85,7 +89,8 @@ def _well_rule(s: dict, memory, traits: dict, cfg: dict, proposals: list, notes:
                                           "can't be placed (the water below is in a cavern): dig a one-tile shaft "
                                           "through solid rock to the cavern lake, from a stair beside it (out to "
                                           "it along a short tunnel if no fort floor is over it), and "
-                                          "build the well over it" + (" (urgent: dug first)" if urgent else ""),
+                                          "build the well over it" + (" (urgent: dug first)" if urgent else "")
+                                          + cavern_open_words(s, cfg),
                                           1 if urgent else 4))
                 return
             notes.append(f"a cavern well would help ({need}) but not now: {safe}")
@@ -139,10 +144,14 @@ def _well_rule(s: dict, memory, traits: dict, cfg: dict, proposals: list, notes:
             notes.append(f"no ordinary well could be placed ({memory.well_failure[:120]}): a well to the "
                          "cavern instead")
             return
-        text = (f"no well could be placed: {memory.well_failure}. Make a hole to clean water inside "
-                "the fort (or build a well yourself) and the AI will use it")
+        # (0.105.35) nothing waits for the player: the AI tries another spot
+        # (or the cavern) itself, and the water zone gives the injured water meanwhile
+        days = cfg.get("well_retry_days", WELLS_CONFIG["well_retry_days"])
+        text = (f"no well could be placed: {memory.well_failure}. The AI tries another spot (or the cavern) "
+                f"within {days} days")
         if patients:
-            ask_player(notes, "injured dwarves need water and " + text)
+            notes.append(f"{patients} injured dwarves need water and " + text
+                         + "; a water source zone at open water gives them water meanwhile")
         else:
             notes.append(text + " (no one is hurt, so it can wait)")
     if "place the well" in memory.well_failure:
@@ -168,7 +177,8 @@ def _well_rule(s: dict, memory, traits: dict, cfg: dict, proposals: list, notes:
                                       "dig a one-tile shaft through solid rock to the cavern lake, from a stair "
                                       "beside it (out to it along a short tunnel if no fort floor is over it), "
                                       "and build the well over it"
-                                      + (" (urgent: dug first)" if urgent else ""), 1 if urgent else 4))
+                                      + (" (urgent: dug first)" if urgent else "") + cavern_open_words(s, cfg),
+                                      1 if urgent else 4))
             say_failure(True)
             return
         if need:
@@ -453,7 +463,10 @@ def cavern_action(s: dict, cfg: dict, urgent: bool) -> dict:
     if urgent:
         action["urgent"] = True
     action["gallery"] = int(cfg["cavern_well_gallery"])
-    if player_rules(s)["open_caverns"]:          # (0.105.4 review) the bridge's own check follows the Rules tab
+    # (0.105.4 review) the bridge's own check follows the Rules tab; (0.105.35)
+    # with the switch off the AI decides itself (ai_opens_cavern)
+    mode = player_rules(s)["open_caverns"]
+    if mode == "always" or (mode == "ai" and unfound_cavern(s) and ai_opens_cavern(s, cfg)[0]):
         action["open_caverns"] = True
     pts = cavern_points(s)
     if pts and action["gallery"] > 0:
@@ -508,15 +521,72 @@ def unfound_cavern(s: dict) -> str | None:
     return None
 
 
+def ai_opens_cavern(s: dict, cfg: dict) -> tuple[bool, str]:
+    """(0.105.35) The player (11 Nov): nothing waits for the player. With the
+    Rules switch "Cavern well into an unfound cavern" off (its default), the
+    AI decides itself whether a cavern well may open a cavern no dwarf has
+    found: only when the fort is short of water (the injured, the parched, or
+    drink under `cavern_well_drink_pd` a dwarf) and has armed soldiers (v35
+    fix: armed, not only drafted) for what comes out (`unfound_cavern_soldiers`, +2 at Caution 50+, -1 at Militarism
+    50+); at Caution +100 only for the injured or the parched. (ok, why)."""
+    tr = _traits(s) if isinstance(s.get("settings"), dict) else {}
+    caution = tr.get("caution", 0) or 0
+    militarism = tr.get("militarism", 0) or 0
+    pop = max(1, int(_d(s.get("dwarves")).get("total") or 1))
+    patients = int(_d(s.get("dwarves")).get("needs_medical_care") or 0)
+    parched = int(_d(s.get("society")).get("parched") or 0)
+    drink = (_d(s.get("stocks")).get("drink") or 0) / pop
+    if patients or parched:
+        short = " and ".join(x for x in (f"{patients} injured" if patients else "",
+                                          f"{parched} parched" if parched else "") if x)
+    elif drink < cfg["cavern_well_drink_pd"] and caution < 100:
+        short = f"drink is down to {drink:.1f} a dwarf"
+    elif drink < cfg["cavern_well_drink_pd"]:
+        return False, "Caution is at its highest: only for the injured or the parched"
+    else:
+        return False, "the fort isn't short of water"
+    need = int(cfg.get("unfound_cavern_soldiers", WELLS_CONFIG["unfound_cavern_soldiers"]))
+    need += 2 if caution >= 50 else 0
+    need -= 1 if militarism >= 50 else 0
+    need = max(1, need)
+    # (v35 fix) armed soldiers only (the squads' `power.armed`; a bridge
+    # without the count: their members, as can_fight reads it)
+    def armed_of(q):
+        a = _d(q.get("power")).get("armed")
+        return a if isinstance(a, int) and not isinstance(a, bool) else int(q.get("members") or 0)
+    soldiers = sum(armed_of(q) for q in _l(_d(s.get("military")).get("squads")) if isinstance(q, dict))
+    if soldiers < need:
+        return False, f"{short}, but only {soldiers} armed soldier(s) to meet what comes out ({need} wanted)"
+    return True, f"{short}, and {soldiers} armed soldiers to meet what comes out"
+
+
+def cavern_open_words(s: dict, cfg: dict) -> str:
+    """(0.105.35) The proposal's words when the AI itself opens an unfound cavern ("" otherwise)."""
+    layer = unfound_cavern(s)
+    if not layer or player_rules(s)["open_caverns"] != "ai":
+        return ""
+    ok, why = ai_opens_cavern(s, cfg)
+    return (f" (it opens {layer} for the first time: the AI's call, {why}; the shaft's hatch shuts while a "
+            "danger is near)") if ok else ""
+
+
 def cavern_well_safe(s: dict, cfg: dict):
     """True, or why a shaft into the caverns shouldn't be dug now."""
     if young_fort(s, cfg) or int(_d(s.get("dwarves")).get("total") or 0) < cfg["cavern_well_min_pop"]:
         return "the fort is too young or small"
-    # (0.105.4 review) a cavern nobody has found: only when the Rules tab allows it
+    # (0.105.4 review) a cavern nobody has found: the Rules switch on allows it;
+    # (0.105.35) off (the default), the AI decides by the fort's state and sliders
     layer = unfound_cavern(s)
-    if layer and not player_rules(s)["open_caverns"]:
-        return (f"a cavern well would open {layer} for the first time (cavern creatures and forgotten beasts "
-                "follow): allow it on the Rules tab (\"Cavern well into an unfound cavern\")")
+    mode = player_rules(s)["open_caverns"]
+    if layer and mode == "never":
+        return (f"a cavern well would open {layer} for the first time, and the Rules tab says never "
+                "(\"Cavern well into an unfound cavern\": Never)")
+    if layer and mode == "ai":
+        ok, why = ai_opens_cavern(s, cfg)
+        if not ok:
+            return (f"a cavern well would open {layer} for the first time (cavern creatures and forgotten "
+                    f"beasts follow), and the AI does that only when the fort is short of water and has "
+                    f"soldiers: {why}")
     if _d(s.get("others_on_map")).get("threats_that_can_reach_dwarves"):
         return "enemies can reach the dwarves"
     d = _d(s.get("deep"))
@@ -528,7 +598,8 @@ def cavern_well_safe(s: dict, cfg: dict):
 
 WELL_PARTS_SHOPS = {"stone_blocks": "Masons", "wooden_bucket": "Carpenters", "mechanisms": "Mechanics",
                     "cloth_rope": "Clothiers", "weave_plant_cloth": "Loom", "weave_yarn_cloth": "Loom",
-                    "weave_silk_cloth": "Loom", "yarn_rope": "Clothiers", "silk_rope": "Clothiers"}
+                    "weave_silk_cloth": "Loom", "yarn_rope": "Clothiers", "silk_rope": "Clothiers",
+                    "process_plants": "Farmers", "shear_creature": "Farmers", "spin_thread": "Farmers"}
 
 
 # (0.105.18) a well's chain: one bar of any metal but pig iron, the metals
@@ -608,9 +679,16 @@ def well_parts_plan(s: dict) -> tuple[list, list, list]:
             want("weave_yarn_cloth", "cloth for a rope (of yarn)")
         elif kinds and int(tk.get("silk") or 0) > 0:
             want("weave_silk_cloth", "cloth for a rope (of silk)")
+        # (0.105.35) nothing waits for the player: thread made by the AI itself,
+        # from fibre plants in store, else from shorn wool
+        elif (int(su.get("thread_plants") or 0) if "thread_plants" in su else 0) > 0:
+            want("process_plants", "thread for a rope (from the fibre plants in store)")
+        elif wool_route(s):
+            want("shear_creature", "wool for a rope's thread")
+            want("spin_thread", "thread for a rope (of the wool)")
         else:
-            stuck.append("a rope or chain (no cloth, thread or metal bars to make one from: buy one from a "
-                         "caravan, or spin thread from plants at a farmer's workshop)")
+            stuck.append("a rope or chain (no cloth, thread, fibre plants or metal bars to make one from: the "
+                         "AI's trade asks the next caravan for cloth and thread, and makes the rope then)")
     return orders, need_shops, stuck
 
 
@@ -630,7 +708,7 @@ def _well_parts(s: dict, memory, cfg: dict, building: list, proposals: list, not
                                   "lacks: dig and build it", 3))
     days = max((_d(p.get("furnish")).get("days") or 0) for p in building)
     if stuck and days >= cfg["well_parts_days"]:
-        ask_player(notes, f"the new well has waited {days} days: it needs " + "; ".join(stuck))
+        notes.append(f"the new well has waited {days} days: it needs " + "; ".join(stuck))   # (0.105.35)
 
 
 def _water_traffic_rule(s: dict, proposals: list) -> None:
@@ -764,6 +842,10 @@ def _water_rules(s: dict, cfg: dict, proposals: list, notes: list) -> None:
             notes.append(f"no cistern site: {c.get('why')}")
 
 
+CISTERN_RETRY_SEALS = 3         # (0.105.35) the game refused a wall/floor closing the cistern this often: retired
+CISTERN_RELINK_ROUNDS = 2       # (0.105.35) rounds of 3 lost lever links asked afresh before the cistern is retired
+
+
 CISTERN_WORDS = {"digging": "being dug", "building": "its floodgate and lever being built",
                  "linking": "its lever being linked", "opening": "its floodgate opening",
                  "plug": "its plug being dug", "filling": "filling", "hole": "its well's hole being dug",
@@ -786,11 +868,18 @@ def _cistern_parts(s: dict, st: dict, proposals: list, notes: list | None = None
         for recipe, why, extra in orders:
             proposals.append(Proposal("cistern_parts", {"type": "work_order", "recipe": recipe, "amount": 1, **extra},
                                       f"the cistern's well needs {why}: make one", 4, is_order=True))
-        if need_shops:
-            ask_player(notes, f"the cistern's well needs parts made at a {', '.join(need_shops)} workshop "
-                       "the fort lacks")
-        elif stuck:
-            ask_player(notes, "the cistern's well waits for " + "; ".join(stuck))
+        # (0.105.35) nothing waits for the player: the workshop dug and built by the AI
+        open_ = [p for p in _l(_d(s.get("projects")).get("open")) if isinstance(p, dict)]
+        if need_shops and not _workshops_busy(open_):
+            proposals.append(Proposal("cistern_parts", {"type": "start_project", "kind": "workshops",
+                                                        "shops": need_shops, "urgent": True},
+                                      f"the cistern's well's parts are made at a {', '.join(need_shops)} workshop "
+                                      "the fort lacks: dig and build it", 4))
+        elif need_shops:
+            notes.append(f"the cistern's well needs parts made at a {', '.join(need_shops)} workshop: built "
+                         "once the workshops being dug are done")
+        if stuck:
+            notes.append("the cistern's well waits for " + "; ".join(stuck))
         return
     fg_free, fg_res = st.get("floodgates_free"), st.get("floodgates_reserved")
     if (stage == "building" and st.get("gate") == "planned" and isinstance(fg_free, int)
@@ -848,17 +937,44 @@ def _cistern_rule(s: dict, memory, cfg: dict, proposals: list, notes: list, rule
                                       f"the cistern's floodgate is open and it isn't closed where the water goes "
                                       f"({st.get('unsealed')}): shut it now", 0))
         # (0.104.145) the leak guard shut it, or it isn't closed where the water goes
+        # (0.105.35) nothing waits for the player: a cistern that leaked twice
+        # (the bridge lets water in again once after the first, when dry and
+        # closed all round) is retired by the AI, its floodgate shut, and the
+        # next one planned elsewhere
         if st.get("leak"):
-            ask_player(notes, f"water got out of the cistern (over it at {st['leak']}): its floodgate was shut. "
-                              "Look at the cistern's walls and roof; the AI won't open it again until you rebuild it")
+            if int(st.get("leaks") or 1) >= 2:
+                proposals.append(Proposal("cistern", {"type": "cistern_step", "retire": True,
+                                                      "why": f"leaked twice (at {st['leak']})"},
+                                          f"water got out of the cistern again (over it at {st['leak']}): retire it, "
+                                          "its floodgate shut for good; another cistern is planned elsewhere", 2))
+            else:
+                # (v35 fix) the step the bridge clears the leak in (the water
+                # gone and closed all round) and carries on from: asked for,
+                # every 2 days while the water still stands over it
+                notes.append(f"water got out of the cistern (over it at {st['leak']}): its floodgate was shut. The AI "
+                             "lets water in again once the water over it is gone and it is closed all round; "
+                             "a second leak retires it")
+                proposals.append(Proposal("cistern", dict(step),
+                                          f"the cistern leaked once (over it at {st['leak']}): its next step, once the "
+                                          "water over it is gone and it is closed all round", 4))
             return
         if st.get("unsealed"):
             # (0.104.168) the AI walls the gaps up itself (cistern_step); the
             # player is asked only for a gap it can't close (water, a stair,
             # a wall that would cut a way), with the bridge's why
+            # (0.105.35) a gap the game won't let it close: tried again, then
+            # the cistern retired (no water ever let in) and another planned
+            if st.get("unsealed_why") and int(st.get("unsealed_refusals") or 0) >= CISTERN_RETRY_SEALS:
+                proposals.append(Proposal("cistern", {"type": "cistern_step", "retire": True,
+                                                      "why": f"could not be closed ({st['unsealed_why']})"[:120]},
+                                          f"the cistern isn't closed where its water would go and the game won't let "
+                                          f"the AI close it ({st['unsealed_why']}; {st.get('unsealed_refusals')} "
+                                          "tries): retire it before any water comes in; another is planned elsewhere", 3))
+                return
             if st.get("unsealed_why"):
-                ask_player(notes, f"the cistern isn't closed where its water would go ({st['unsealed_why']}): wall it "
-                                  "up (or build a floor there); the AI lets no water in until it is")
+                notes.append(f"the cistern isn't closed where its water would go ({st['unsealed_why']}): the AI tries "
+                             f"again ({int(st.get('unsealed_refusals') or 1)} of {CISTERN_RETRY_SEALS}), then retires it "
+                             "and plans another; no water comes in until then")
             else:
                 notes.append(f"the cistern isn't closed where its water would go ({st['unsealed']}): the AI builds "
                              "a wall or floor there itself"
@@ -869,22 +985,24 @@ def _cistern_rule(s: dict, memory, cfg: dict, proposals: list, notes: list, rule
                                       "the cistern is of the first design (its water could reach the fort under "
                                       "pressure): shut its floodgate and retire it; a new one is planned", 2))
             return
-        # (0.104.141) the bridge gave up relinking (3 links lost): one Needs you,
-        # not a refused step every few minutes (09:57-19:04, back after each
-        # new bridge wiped the refusal backoff)
+        # (0.104.141) the bridge gave up relinking (3 links lost): not a refused
+        # step every few minutes. (0.105.35) nothing waits for the player: the
+        # AI asks for the link afresh (another 3 tries), CISTERN_RELINK_ROUNDS
+        # times, then retires the cistern (no water was ever let in) and plans another
         if (st.get("stage") == "linking" and int(st.get("relinks") or 0) >= 3 and not st.get("linked")
                 and not st.get("link_pending")):
-            lv = _d(st.get("lever_at"))
-            fg = _d(st.get("gate_at"))
-            def where(a: dict) -> str:
-                # (0.104.143) the elevation the game shows, where the bridge says it
-                lvl = f"elevation {a['e']}" if isinstance(a.get("e"), int) else f"z{a.get('z')}"
-                return f" at x{a.get('x')} y{a.get('y')}, {lvl}"
-            ask_player(notes, "the cistern's lever won't stay linked to its floodgate (the link job was lost 3 times"
-                              + (f": {st.get('link_why')}" if st.get("link_why") else "") + "): link the lever"
-                              + (where(lv) + " (beside the well)" if lv else " beside the well")
-                              + " to the floodgate" + (where(fg) if fg else "")
-                              + " by hand (q, the lever, Link up a floodgate); the AI carries on from there")
+            why = f": {st.get('link_why')}" if st.get("link_why") else ""
+            rounds = int(st.get("relink_rounds") or 0)
+            if rounds < CISTERN_RELINK_ROUNDS:
+                proposals.append(Proposal("cistern", {"type": "cistern_step", "relink": True},
+                                          f"the cistern's lever link to its floodgate was lost 3 times{why}: ask for "
+                                          f"it afresh (round {rounds + 1} of {CISTERN_RELINK_ROUNDS})", 4))
+            else:
+                proposals.append(Proposal("cistern", {"type": "cistern_step", "retire": True,
+                                                      "why": "its lever would not stay linked"},
+                                          f"the cistern's lever won't stay linked to its floodgate{why} "
+                                          f"({CISTERN_RELINK_ROUNDS} rounds of 3 links lost): retire it before any "
+                                          "water comes in; another is planned elsewhere", 4))
             return
         if st.get("stage") != "done":
             notes.append(f"the cistern: {CISTERN_WORDS.get(st.get('stage'), st.get('stage'))}"

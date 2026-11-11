@@ -50,6 +50,43 @@ from planner_army import (_army_gear_rule, _quiver_rule, _bolts_rule, _flask_rul
                           _shelter_squads_rule, _gate_cut_rule)
 
 
+# (0.105.35) Nothing waits for the player: the AI shelter the game refused
+# twice is tried again, every SHELTER_RETRY_DAYS (SHELTER_RETRY_THREAT_DAYS
+# while a threat can reach the dwarves), not left to the player for good.
+SHELTER_RETRY_DAYS = 28
+SHELTER_RETRY_THREAT_DAYS = 3
+SHOPS_RETRY_DAYS = 56          # (0.105.35) a workshops level started twice and not seen built: once more after this
+SHOPS_RETRY_MAX = 3            # (v35 fix) and so at most this many times
+
+
+def _shelter_due(s: dict, memory, threat: bool = False) -> bool:
+    """(0.105.35) The AI shelter may be set up now: its first two tries, then
+    again after a wait. The Rules switch (alert_shelter off) is the player's."""
+    if _shelter_possible(s, memory):
+        return True
+    if s.get("civ_alert_ready") is not False or not player_rules(s)["alert_shelter"]:
+        return False
+    last = getattr(memory, "shelter_tick", None)
+    if not isinstance(last, int):
+        return True                     # (tried before the tick was kept: once more)
+    wait = (SHELTER_RETRY_THREAT_DAYS if threat else SHELTER_RETRY_DAYS) * TICKS_PER_DAY
+    return not 0 <= abs_tick(s) - last < wait
+
+
+def _no_shelter_note(s: dict, memory, what: str) -> str:
+    """(0.105.35) Said (not Needs you) when no alarm can sound: what the AI
+    does meanwhile."""
+    meanwhile = "meanwhile the gates close when an enemy comes near and the squads answer by the Rules"
+    if not player_rules(s)["alert_shelter"]:
+        return (f"{what}, but there is no civilian-alert burrow and the AI shelter is off on the Rules tab, "
+                f"so no alarm sounds: {meanwhile}")
+    last = getattr(memory, "shelter_tick", None)
+    left = (max(1, -(-(last + SHELTER_RETRY_THREAT_DAYS * TICKS_PER_DAY - abs_tick(s)) // TICKS_PER_DAY))
+            if isinstance(last, int) else 1)
+    return (f"{what}, but the game refused the AI shelter burrow ({memory.shelter_attempts} tries), so no alarm "
+            f"can sound yet: it is tried again in {left} day(s); {meanwhile}")
+
+
 def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[Proposal], list[str]]:
     """Return (proposals, notes). Notes say what the planner wanted but couldn't do.
     Reads memory; never changes it."""
@@ -121,12 +158,11 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
                 if ready:
                     proposals.append(Proposal("threat_alert", {"type": "civ_alert", "on": True},
                                               f"{len(fresh)} threat(s) can reach the dwarves", 0))
-                elif _shelter_possible(s, memory):
+                elif _shelter_due(s, memory, True):
                     notes.append(f"{len(fresh)} threat(s) can reach the dwarves: setting up a shelter so the "
                                  "alarm can sound")
                 else:
-                    ask_player(notes, f"{len(fresh)} threat(s) can reach the dwarves, but no civilian-alert "
-                                 "burrow is set up, so the AI can't sound the alarm")
+                    notes.append(_no_shelter_note(s, memory, f"{len(fresh)} threat(s) can reach the dwarves"))
             elif ids and not fresh and not alert_on:
                 notes.append(f"{len(ids)} threat(s) can reach the dwarves; you cleared the alert for "
                              "them, so the AI is leaving it off")
@@ -140,12 +176,11 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
                     proposals.append(Proposal("threat_alert", {"type": "civ_alert", "on": True},
                                               f"DF reports {what} on the map ({hours} game hour(s) ago), nobody seen yet "
                                               "(a thief hides until spotted): sound the alarm before they strike", 0))
-                elif _shelter_possible(s, memory):
+                elif _shelter_due(s, memory, True):
                     notes.append(f"DF reports {what} on the map, nobody seen yet: setting up a shelter so the "
                                  "alarm can sound")
                 else:
-                    ask_player(notes, f"DF reports {what} on the map, nobody seen yet, but no civilian-alert "
-                                      "burrow is set up, so the AI can't sound the alarm")
+                    notes.append(_no_shelter_note(s, memory, f"DF reports {what} on the map, nobody seen yet"))
             elif not ids and alert_on and memory.ai_alert_raised and not hazard_alert(s, cfg) and intrusion:
                 notes.append("the alarm stays up: DF reported an intruder "
                              f"{max(0, (abs_tick(s) - intrusion['tick']) // 50)} game hour(s) ago and nobody has been "
@@ -245,8 +280,10 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
                 sources = [(r, n) for r, n in (("brew_drink", plants), ("brew_drink_from_fruit", fruit))
                            if n > 0 and room(r) and not stuck_recently(r)]
                 if plants <= 0 and fruit <= 0:
-                    ask_player(notes, f"drink is low ({drink} for {citizens} dwarves) but there are no plants or "
-                               "fruit a still can brew (farm brewable crops: plump helmets, and others by the season)")
+                    # (0.105.35) said, not Needs you: the AI's own rules answer it
+                    notes.append(f"drink is low ({drink} for {citizens} dwarves) and there are no plants or fruit a "
+                                 "still can brew: the AI gathers the wild shrubs and its farms grow brewable crops "
+                                 "(plump helmets, and others by the season); the dwarves drink water meanwhile")
                 elif not sources:
                     stuck_ = [r for r, n in (("brew_drink", plants), ("brew_drink_from_fruit", fruit))
                               if n > 0 and stuck_recently(r)]
@@ -339,7 +376,10 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
                     stacks = raw // cfg["food_stack_size"]
                 jobs = min(jobs, stacks // ingredients)
                 if jobs < 1:
-                    ask_player(notes, f"meals are low ({meals} for {citizens} dwarves) but there is too little raw food")
+                    # (0.105.35) said, not Needs you: gathering, fishing and the farms answer it
+                    notes.append(f"meals are low ({meals} for {citizens} dwarves) and there is too little raw food "
+                                 "to cook: the AI gathers, fishes and farms for more; the dwarves eat the raw food "
+                                 "there is meanwhile")
                 else:
                     proposals.append(Proposal(
                         "food", {"type": "work_order", "recipe": recipe, "amount": jobs},
@@ -362,7 +402,9 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
                     if recipe == "metal_high_boots":
                         metal = _best_metal(s, m.get("remaining") or 1, m.get("material_token"))
                         if metal is None:
-                            ask_player(notes, "mandate for high boots: not enough weapon-grade metal bars")
+                            # (0.105.35) the AI's call: left unmade until the bars are smelted
+                            notes.append("mandate for high boots: not enough weapon-grade metal bars (2 a boot): "
+                                         "made once the smelters have them, else the mandate lapses")
                             continue
                 if not recipe:
                     notes.append(f"mandate for {item} has no approved recipe yet")
@@ -376,8 +418,9 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
                     if recipe.startswith("stone_") and m.get("material_is_stone") and m.get("material_token"):
                         action["material"] = m["material_token"]
                     else:
-                        ask_player(notes, f"mandate for {m['material']} {item.lower()} needs a material "
-                                     "the AI can't choose yet")
+                        # (0.105.35) the AI's call: no recipe takes that material, so it lapses
+                        notes.append(f"mandate for {m['material']} {item.lower()}: no recipe the AI has takes that "
+                                     "material, so it is left to lapse (the noble is upset and a dwarf may be blamed for it)")
                         continue
                 if queued(s, {recipe}) > 0:
                     continue
@@ -490,8 +533,10 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
 
     # 6c-2. Set-ups the AI does itself: the alert shelter, pastures ----------
     def _shelter_rule():
-        if _shelter_possible(s, memory):
-            threat = bool(reachable_threats(s, traits, cfg)) if "others_on_map" not in errors else False
+        threat = bool(reachable_threats(s, traits, cfg)) if "others_on_map" not in errors else False
+        intrusion_ = "others_on_map" not in errors and bool(unseen_intrusion(s, memory, cfg))
+        if _shelter_due(s, memory, threat or intrusion_):
+            threat = threat or intrusion_
             proposals.append(Proposal("shelter", {"type": "setup_shelter"},
                                       "no civilian-alert burrow: make an \"AI shelter\" burrow over the inside "
                                       "of the fort and use it for the alarm", 0 if threat else 4))
@@ -570,12 +615,22 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
     fd = _d(s.get("founding"))
     def _found_rule():
         if fd.get("stairs") is False and "founding" not in errors:
-            if memory.found_failure:
-                ask_player(notes, f"the AI can't start the fort: {memory.found_failure}. Dig a staircase down from "
-                                  "the surface into the ground yourself, and the AI builds everything from it")
-            proposals.append(Proposal("found", {"type": "found_fort"},
+            # (0.105.35) nothing waits for the player: no spot near the wagon, the
+            # shaft is looked for further out (found_fort wide); only when that
+            # fails too is it Needs you, and the AI keeps trying meanwhile
+            if memory.found_failure and memory.found_wide_failure:
+                ask_player(notes, f"the AI can't start the fort: no spot for the first staircase near "
+                                  f"{fd.get('near') or 'the dwarves'} ({memory.found_failure[:120]}) nor further out "
+                                  f"({memory.found_wide_failure[:120]}). The AI digs no shaft into an aquifer, water, "
+                                  "a cavern or open space below; it looks again, waiting longer each time, and "
+                                  "builds the fort from any staircase down that appears")
+            wide = bool(memory.found_failure)
+            action = {"type": "found_fort", "wide": True} if wide else {"type": "found_fort"}
+            proposals.append(Proposal("found", action,
                                       f"a new fort with no staircase: dig the first stair shaft down from beside "
-                                      f"{fd.get('near') or 'the dwarves'}, through the soil to the first rock", 1))
+                                      f"{fd.get('near') or 'the dwarves'}"
+                                      + (" (further out: the ground near it won't take one)" if wide else "")
+                                      + ", through the soil to the first rock", 1))
     _guard(_found_rule)
 
     # 6e. Basics outside: a refuse pile (rot indoors makes miasma), a trade depot
@@ -665,6 +720,7 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
         _guard(_bench_coffins_rule, s, memory, proposals)
         _guard(_order_slots_rule, s, proposals)
         _guard(_stuck_orders_rule, s, memory, cfg, proposals)
+        _guard(_stuck_again_rule, s, memory, cfg, proposals)     # (0.105.35) stuck again: cancelled again
         _guard(_approve_rule, s, memory, cfg, proposals, notes)
         _guard(_sync_offices_rule, s, proposals)
     if can_use("orders", "buildings", "projects"):
@@ -849,13 +905,23 @@ def select(proposals: list[Proposal], state: dict, memory: Memory,
             if room and isinstance(p.action.get("amount"), int) and p.action["amount"] > room[0]:
                 p.action = dict(p.action, amount=room[0])
                 p.reason = f"{p.reason} (at most {room[0]}: {room[1]})"
-        last = memory.last_fired.get(p.rule)
+        last = memory.last_fired.get(cooldown_key(p))      # (v35 fix) per entrance for "stranded"
         cooldown = cfg.get(COOLDOWN_KEYS.get(p.rule, f"{p.rule}_cooldown_ticks"), cfg["rule_cooldown_ticks"])
         if (p.rule not in NO_COOLDOWN and last is not None and not (st_ and st_["mode"] == "raise")
                 and 0 <= now - last < cooldown):
             held.append(f"{p.rule}: waiting for its cooldown")
             continue
-        if p.rule in fired_this_cycle and p.rule not in MULTI_PER_CYCLE:
+        if p.rule in LABOR_CAPS and p.action.get("type") == "assign_labor":
+            # (v35 fix) at most the rule's cap of dwarves given its labour in a year
+            cap = int(cfg.get(LABOR_CAPS[p.rule], 4))
+            given = labor_given(memory, p.rule, now)
+            if given >= cap:
+                held.append(f"{p.rule}: the AI gave {given} dwarves the {p.action.get('job')} labour this year "
+                            f"already (at most {cap})")
+                continue
+            if int(p.action.get("count") or 0) > cap - given:
+                p.action = dict(p.action, count=cap - given)
+        if cooldown_key(p) in fired_this_cycle and p.rule not in MULTI_PER_CYCLE:
             held.append(f"{p.rule}: already acted this cycle")
             continue
         sc = _d(_d(getattr(memory, "stuck_cancelled", None)).get(str(p.action.get("recipe"))))
@@ -894,6 +960,8 @@ def select(proposals: list[Proposal], state: dict, memory: Memory,
             if str(w) in seen and shop_count(b, str(w)) > int(seen[str(w)] or 0):
                 memory.shops_started[str(w)] = 0
                 seen.pop(str(w), None)
+                if isinstance(getattr(memory, "shops_retried", None), dict):
+                    memory.shops_retried.pop(str(w), None)     # (v35 fix) built: its re-starts begin again
             elif str(w) not in seen and (memory.shops_started or {}).get(str(w), 0) >= 2:
                 # counted before 0.99.4, with nothing to tell a start that worked
                 # from one that didn't: one more try, from today's count
@@ -901,9 +969,36 @@ def select(proposals: list[Proposal], state: dict, memory: Memory,
                 seen[str(w)] = shop_count(b, str(w))
         again = [w for w in (p.action.get("shops") or []) if (memory.shops_started or {}).get(str(w), 0) >= 2]
         if p.action.get("type") == "start_project" and p.action.get("kind") == "workshops" and again:
-            held.append(f"{p.rule}: a workshops level for {', '.join(again)} was started twice already; "
-                        "the fort report doesn't show it built (Needs you)")
-            continue
+            # (0.105.35) nothing waits for the player: held SHOPS_RETRY_DAYS, then
+            # one more start (was held for good, "Needs you")
+            if not isinstance(getattr(memory, "shops_held_since", None), dict):
+                memory.shops_held_since = {}
+            since = memory.shops_held_since
+            for w in again:
+                if not isinstance(since.get(str(w)), int) or since[str(w)] > now:
+                    since[str(w)] = now
+            # (v35 fix) re-started SHOPS_RETRY_MAX times at most (bounded in
+            # total, not only in rate)
+            if not isinstance(getattr(memory, "shops_retried", None), dict):
+                memory.shops_retried = {}
+            tried = memory.shops_retried
+            spent = [w for w in again if int(tried.get(str(w)) or 0) >= SHOPS_RETRY_MAX]
+            if spent:
+                held.append(f"{p.rule}: a workshops level for {', '.join(spent)} was started "
+                            f"{2 + SHOPS_RETRY_MAX} times and the fort report never showed it built: the AI "
+                            "starts it no more (it starts again once one is seen built)")
+                continue
+            due = [w for w in again if now - since[str(w)] >= SHOPS_RETRY_DAYS * TICKS_PER_DAY]
+            for w in due:
+                memory.shops_started[str(w)] = 1
+                tried[str(w)] = int(tried.get(str(w)) or 0) + 1
+                since.pop(str(w), None)
+            again = [w for w in again if w not in due]
+            if again:
+                left = max(1, SHOPS_RETRY_DAYS - min((now - since[str(w)]) // TICKS_PER_DAY for w in again))
+                held.append(f"{p.rule}: a workshops level for {', '.join(again)} was started twice already and "
+                            f"the fort report doesn't show it built: started once more in {left} day(s)")
+                continue
         loop = _loop_count(memory, p, now)
         if loop is not None:
             held.append(f"{p.rule}: done {loop} times in the last year, a possible loop: held "
@@ -945,7 +1040,7 @@ def select(proposals: list[Proposal], state: dict, memory: Memory,
             held.append(f"{p.rule}: one new {kind} level a cycle; this one waits its turn")
             continue
         allowed.append(p)
-        fired_this_cycle.add(p.rule)
+        fired_this_cycle.add(cooldown_key(p))
         if p.is_order:
             orders_today += 1
     return allowed, held
@@ -962,6 +1057,7 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
     for p, r in results:
         ok = r.get("ok")
         brief_timeout_now = brief_timeout(memory, p, r)       # (0.105.26) a search cut short
+        note_labor_given(memory, p, r, now)                   # (v35 fix) LABOR_CAPS
         _record_any_outcome(p.action, r, state, memory, now, brief=brief_timeout_now)
         note_refusal(memory, p, r, now, state.get("bridge_version"))
         note_no_effect(memory, p, ok, now)                 # (0.105.24)
@@ -987,9 +1083,14 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
             if not isinstance(getattr(memory, "kill_sent", None), dict):
                 memory.kill_sent = {}
             memory.kill_sent[str(p.action["squad_id"])] = [i for i in p.action["kill"] if isinstance(i, int)][:50]
+            if not isinstance(getattr(memory, "kill_sent_at", None), dict):
+                memory.kill_sent_at = {}
+            memory.kill_sent_at[str(p.action["squad_id"])] = now          # (v35 fix) the berserk re-send's cooldown
         if p.action.get("type") == "squad_orders" and p.action.get("clear") and isinstance(
                 getattr(memory, "kill_sent", None), dict):
             memory.kill_sent.pop(str(p.action.get("squad_id")), None)
+            if isinstance(getattr(memory, "kill_sent_at", None), dict):
+                memory.kill_sent_at.pop(str(p.action.get("squad_id")), None)
         if p.action.get("type") == "unstick_uniforms" and ok is True:
             sig = spare_sig(_d(_d(state.get("military")).get("gear")))   # (0.104.138)
             prev = _d(memory.unstick_seen)
@@ -1030,7 +1131,7 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
             elif p.rule == "found" and not brief_timeout_now:
                 memory.last_fired[p.rule] = now          # the ground won't allow it: ask again in 3 days
             continue
-        memory.last_fired[p.rule] = now
+        memory.last_fired[cooldown_key(p)] = now
         if p.rule not in LOOP_EXEMPT:
             log = memory.action_log.setdefault(refusal_key(p), [])
             log.append(now)

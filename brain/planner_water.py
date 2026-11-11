@@ -14,9 +14,13 @@ the planner shuts it when the bridge reports a leak or dwarves in deep water.
 from __future__ import annotations
 
 from digest import _d, _l
-from planner_core import TICKS_PER_YEAR, Proposal, ask_player, player_rules, young_fort, _traits
+from planner_core import PLANNER_CONFIG, TICKS_PER_YEAR, Proposal, player_rules, young_fort, _traits
 
-__all__ = ["_waterworks_rule", "WORK_WORDS", "STAGE_WORDS", "moat_wanted", "magma_shop_wanted",
+# (0.105.35) the pump labour given at most once a fortnight (assign_labor adds
+# dwarves each time; the bridge holds the stack after its own stall wait)
+PLANNER_CONFIG.setdefault("waterworks_pump_labor_cooldown_ticks", 14 * 1200)
+
+__all__ = ["_waterworks_rule", "LEAK_WATCH_HOLDS", "leak_watch_hold", "WORK_WORDS", "STAGE_WORDS", "moat_wanted", "magma_shop_wanted",
            "irrigation_wanted", "pump_wanted", "river_found"]
 
 WORK_WORDS = {"moat": "the moat", "pump": "the pump stack", "irrigation": "the muddied farm level",
@@ -83,6 +87,18 @@ def pump_wanted(s: dict, cfg: dict) -> str | None:
     return "the fort has no well, no cistern site, and still water only below it"
 
 
+# (v35 fix) holds that watch for water still coming in: never retired
+LEAK_WATCH_HOLDS = ("water is still getting in", "the floodgate is gone")
+
+
+def leak_watch_hold(row: dict) -> bool:
+    """(v35 fix) A held work whose hold watches for water still getting in
+    (the farm room still wet) or whose floodgate is gone: retiring it would
+    stop the watch while water may still flow into the fort."""
+    why = str(_d(row).get("why") or "")
+    return any(w in why for w in LEAK_WATCH_HOLDS)
+
+
 def _work_notes(id_: str, row: dict, s: dict, proposals: list, notes: list, flooding: bool = False) -> bool:
     """A work under way: its line, and its next step (True: one asked).
     (0.105.33) A work its emergency stop shut waits: no step is asked (the
@@ -104,11 +120,27 @@ def _work_notes(id_: str, row: dict, s: dict, proposals: list, notes: list, floo
     step = {"type": "water_work", "kind": kind}
     if kind == "magma" and row.get("shop"):
         step["shop"] = row["shop"]
+    if stage == "held" and leak_watch_hold(row):
+        # (v35 fix) water may still be getting in, or no floodgate is left to
+        # shut: never retired (retiring stops the watch); kept watched, its
+        # floodgate shut if it is open
+        notes.append(f"{words} is held ({row.get('why')}): the AI keeps it watched and doesn't retire it while "
+                     "water may still get in" + ("" if "floodgate is gone" not in str(row.get("why") or "")
+                                                 else " (no floodgate is left to shut)"))
+        if row.get("gate") == "open":
+            proposals.append(Proposal(f"waterworks_{kind}", dict(step, shut=True, why="held: water still getting in"),
+                                      f"{words} is held with its floodgate open ({row.get('why')}): shut it", 2))
+        return True                      # (no new work begun while water may get in)
     if stage == "held":
-        # (0.105.0 review) the AI never retires a held work itself: said so
-        ask_player(notes, f"{words} is held: {row.get('why')}. Mend it by hand; the AI leaves it held "
-                          "(its floodgate stays shut)")
-        return False
+        # (0.105.35) nothing waits for the player: a held work (a leak, a lost
+        # link, a floodgate shut again and again, a floor dried without mud)
+        # is retired by the AI, its floodgate shut for good; the bridge keeps
+        # it from being begun again for the retry wait, and for good after twice
+        act = dict(step, retire=True, why=str(row.get("why") or "held")[:110])
+        proposals.append(Proposal(f"waterworks_{kind}", act,
+                                  f"{words} is held ({row.get('why')}): retire it, its floodgate shut for good "
+                                  "(tried again elsewhere after a while, at most twice)", 4))
+        return True
     if row.get("shut") and stage != "retired":
         notes.append(f"{words}: its floodgate was shut ({row['shut']})")
         if flooding:
@@ -125,8 +157,11 @@ def _work_notes(id_: str, row: dict, s: dict, proposals: list, notes: list, floo
             proposals.append(Proposal("waterworks_check", step, f"{words}: done: the leak check", 7))
         return False
     if row.get("stalled"):
-        ask_player(notes, "the pump stack's reservoir isn't rising: give a dwarf the pump operator labour "
-                          "(or the pumps lack power)")
+        # (0.105.35) nothing waits for the player: the AI gives the pump operator labour itself
+        n = max(1, min(6, int(row.get("lift") or 1)))
+        proposals.append(Proposal("waterworks_pump_labor", {"type": "assign_labor", "job": "OPERATE_PUMP", "count": n},
+                                  f"the pump stack's reservoir isn't rising: put {n} dwarf(s) on the pump operator "
+                                  "labour (one a pump)", 3))
     for part, key in (("floodgate", "floodgates_free"), ("mechanisms", "mechanisms_free")):
         if row.get(key) == 0 and stage == "building":
             notes.append(f"{words} waits for {part} (none free)")

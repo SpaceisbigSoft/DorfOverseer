@@ -590,11 +590,14 @@ def _():
     b = FakeBridge()
     b._state["others_on_map"]["threats_that_can_reach_dwarves"] = 1
     b._state["civ_alert_ready"] = False
-    b._state["settings"]["alert_shelter"] = False        # so the AI can't set it up itself
+    b._state["settings"]["alert_shelter"] = False        # the player's switch: said, not Needs you (0.105.35)
+    # (0.105.35) what the game won't let the AI do: a barony's holder on DF's meeting screen
+    b._state["world"] = {"meeting": {"open": True, "land_holder": True}}
     overseer.one_cycle(b, autopilot=True)
     st = b.reports[-1]
-    assert any("civilian-alert" in t for t in st["todo"]), st
-    assert not any("civilian-alert" in n for n in st["notes"]) and not any(t.startswith("[you]") for t in st["todo"])
+    assert any("barony" in t for t in st["todo"]), st
+    assert not any("barony" in n for n in st["notes"]) and not any(t.startswith("[you]") for t in st["todo"])
+    assert any("civilian-alert" in n for n in st["notes"]) and not any("civilian-alert" in t for t in st["todo"])
     assert any(m.startswith("  NEEDS YOU:") for m in SAID), SAID
 
 
@@ -841,8 +844,11 @@ def _():
         overseer.rules_request(FakeBridge(), True)                       # applied once
         assert len(sent) == 2
         (d / "rules-request.json").write_text("not json", encoding="utf-8")
-        overseer.rules_request(FakeBridge(), True)                       # unreadable: left alone, nothing sent
+        overseer.rules_request(FakeBridge(), False)                      # unreadable, a dry run: left, nothing sent
         assert len(sent) == 2 and (d / "rules-request.json").exists()
+        overseer.rules_request(FakeBridge(), True)                       # (0.105.35) unreadable: set aside, nothing sent
+        assert len(sent) == 2 and not (d / "rules-request.json").exists()
+        assert (d / "rules-request.bad.json").read_text(encoding="utf-8") == "not json"
         assert overseer.short({"type": "set_rules", "rules": {"open_caverns": True}}) == \
             "set Rules switches: open_caverns on"
     finally:

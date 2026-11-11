@@ -226,7 +226,8 @@ def _():
 def _():
     from planner import player_rules
     line = rules_line(player_rules({"settings": {}}))
-    assert "switched off by the player" not in line and "off: disposal_player_items, keep_enemy_gear, open_caverns, send_messenger" in line, line
+    assert "switched off by the player" not in line and "off: disposal_player_items, keep_enemy_gear, send_messenger" in line, line
+    assert "AI decides: open_caverns" in line, line        # (0.105.35 merge) off: the AI decides
     line = rules_line(player_rules({"settings": {"fill_squads": False}}))
     assert "switched off by the player: fill_squads" in line and "open_caverns" not in line.split("player:")[1].split("|")[0]
 

@@ -143,8 +143,11 @@ def _():
     s["moods"] = {"list": [mood([{"index": 0, "item": "NONE", "quantity": 1, "flags": ["bone"], "avail": av()}])]}
     m = Memory()
     m.moods_seen = {"5": abs_tick(s)}
-    asks = [n for n in plan(s, m)[1] if n.startswith(NEEDS) and "Logem" in n]
-    assert len(asks) == 1 and "can't supply" in asks[0] and "no butcher's" in asks[0], asks
+    notes = plan(s, m)[1]
+    # (0.105.35) a note: the caravans are asked and the AI buys it (no Needs you)
+    assert not any(n.startswith(NEEDS) and "Logem" in n for n in notes), notes
+    asks = [n for n in notes if "Logem" in n and "can't supply" in n]
+    assert len(asks) == 1 and "no butcher's" in asks[0] and "caravan" in asks[0], asks
     assert "can't walk" not in asks[0], asks
 
 
@@ -179,9 +182,13 @@ def _():
     notes = plan(s, m)[1]
     assert not any(n.startswith(NEEDS) and "Åblel" in n for n in notes), notes      # 3 days: not yet
     m.mood_progress = {"5": {"have": 0, "since": now - 8 * TICKS_PER_DAY}}
-    asks = [n for n in plan(s, m)[1] if n.startswith(NEEDS) and "Åblel" in n]
+    props, notes = plan(s, m)[:2]
+    # (0.105.35) a note of what the AI does (more made, the forbidden freed), not a Needs you
+    assert not any(n.startswith(NEEDS) and "Åblel" in n for n in notes), notes
+    asks = [n for n in notes if "Åblel" in n and "fetched nothing" in n]
     assert len(asks) == 1, asks
     assert "fetched nothing for 8 days" in asks[0] and "1 bone: 3 free (3 in walk)" in asks[0], asks
+    assert any(p.action.get("type") == "mood_free_items" for p in props), [p.action for p in props]
     assert PLANNER_CONFIG["mood_stall_days"] == 7
 
 
@@ -194,7 +201,9 @@ def _():
     now = abs_tick(s)
     m.moods_seen = {"5": now - 9 * TICKS_PER_DAY}
     m.mood_progress = {"5": {"have": 0, "since": now - 9 * TICKS_PER_DAY}}
-    asks = [n for n in plan(s, m)[1] if n.startswith(NEEDS) and "Logem" in n]
+    notes = plan(s, m)[1]
+    assert not any(n.startswith(NEEDS) and "Logem" in n for n in notes), notes     # (0.105.35) a note
+    asks = [n for n in notes if "Logem" in n and ("can't supply" in n or "fetched nothing" in n)]
     assert len(asks) == 1 and "can't supply" in asks[0] and "no progress for 9 days" in asks[0], asks
 
 
@@ -249,7 +258,13 @@ def _():
     assert asks(av(capped=True)) == []
     far = asks(av(free=5, reach=0))
     assert len(far) == 1 and "can't walk" in far[0] and "no loose stone" not in far[0], far
-    none = asks(av())
+    assert asks(av()) == []                             # (0.105.35) a note, the caravans asked
+    s = fort()
+    s["moods"] = {"list": [mood([{"index": 0, "item": "BOULDER", "quantity": 1, "flags": ["hard"],
+                                  "avail": av()}], mood="Possessed", name="Zasit")]}
+    m = Memory()
+    m.moods_seen = {"5": abs_tick(s)}
+    none = [n for n in plan(s, m)[1] if "Zasit" in n and "can't supply" in n]
     assert len(none) == 1 and "no loose stone of the kind it wants" in none[0], none
     assert mood_on_hand({"quantity": 1, "avail": av(held=1)}) is True
     assert mood_on_hand({"quantity": 2, "avail": av(held=1)}) is False

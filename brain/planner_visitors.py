@@ -63,8 +63,9 @@ def _petition_rules(s: dict, cfg: dict, proposals: list, notes: list) -> None:
         # (live, 0.87.0: DFHack 53.16-r3 doesn't expose these globals; newer
         # df-structures have them for 53.16, so a DFHack update turns this on)
         if pending:
-            notes.append("this DFHack can't reach DF's petition standing orders: petitions to stay wait for "
-                         "you (a newer DFHack lets the AI answer them)")
+            # (0.105.35) the residency rule answers them one by one meanwhile
+            notes.append("this DFHack can't reach DF's petition standing orders: the AI answers the petitions "
+                         "to stay one by one instead (a newer DFHack lets it set the orders)")
         return
     if any(orders.get(k) not in (0, 1) for k in PETITION_KINDS):
         notes.append("DF's petition standing orders hold values the AI doesn't know: left alone")
@@ -107,13 +108,14 @@ def _citizenship_notes(s: dict, cfg: dict, pending: list, notes: list) -> None:
                           f"({citizens} citizens, the target {target}): agree on DF's petitions screen"
                           + (f" ({names})" if names else "") + tail
                           + "; the AI can't (DFHack can't reach the standing order, and agreeing outside the "
-                            "screen isn't known to make a citizen)"
+                            "screen isn't known to make a citizen); meanwhile the applicants stay as visitors "
+                            "and the AI grows the fort by its migrants"
                           + (f"; {len(vamp)} of them a vampire: leave that one" if vamp else ""))
     else:
         why = ("a vampire" if wanted else "this fort isn't taking citizens now (closed, at its population target, "
                                           "or the Rules keep visitors out)")
-        notes.append(f"{len(here)} citizenship petition(s) wait{tail}: {why}; decline them on DF's petitions "
-                     "screen if you like (the AI can't answer citizenship)")
+        notes.append(f"{len(here)} citizenship petition(s) wait{tail}: {why}; they are left waiting (the AI "
+                     "can't answer citizenship)")
 
 
 def residency_stance(traits: dict, cfg: dict) -> str:
@@ -215,11 +217,14 @@ def _residency_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) ->
         # kept her a guest (the player looked: Other, "Guest / Listen to Story")
         ask_player(notes, f"{len(here)} petition(s) to stay from visitors this welcoming fort would take: agree to "
                           "them on DF's petitions screen (the AI can only decline; agreeing from outside the "
-                          "screen leaves the visitor a guest)")
+                          "screen leaves the visitor a guest); meanwhile the AI clears the ones whose visitor "
+                          "left and leaves these waiting")
         return
     if works is False:
         ask_player(notes, f"the AI agreed to a petition to stay and DF didn't make the visitor a resident: "
-                          f"{len(pending)} petition(s) to stay wait for you on DF's petitions screen")
+                          f"{len(pending)} petition(s) to stay can be agreed only on DF's petitions screen; "
+                          f"meanwhile the AI clears the ones whose visitor left and tries one again in "
+                          f"{int(cfg['residency_reprobe_days'])} days")
         return
     if works is None and not probe:
         e = here[0]

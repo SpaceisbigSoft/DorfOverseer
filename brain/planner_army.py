@@ -29,7 +29,7 @@ wherever they were. Here:
 from __future__ import annotations
 
 from digest import _d, _l
-from planner_core import (AGENDA_THEMES, Proposal, all_clear, ask_player, can_fight, is_ranged, player_rules, queued,
+from planner_core import (AGENDA_THEMES, GEAR_WEAPONS, Proposal, all_clear, can_fight, is_ranged, player_rules, queued,
                           reachable_threats, _has_shop)
 
 __all__ = ["_army_gear_rule", "_quiver_rule", "_bolts_rule", "_shelter_squads_rule", "_gate_cut_rule",
@@ -106,12 +106,35 @@ def _army_gear_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) ->
                                       f"none: make {n} in {metal.lower().replace('_', ' ')}", 3, True))
         break
     if why.get("unreachable"):
-        ask_player(notes, f"{why['unreachable']} soldier(s) can't get to the free weapons (behind a closed door "
-                   "or outside the gates): open the way or haul them in")
+        # (0.105.35) nothing waits for the player: weapons they can reach are
+        # made for them (the AI's weapon, in the best metal with bars enough)
+        n = min(why["unreachable"], cfg["max_gear_order"])
+        recipe = GEAR_WEAPONS.get(rules_["gear_weapon"], "metal_battle_axe")
+        metal = next((m for m in ("STEEL", "IRON", "BRONZE", "BISMUTH_BRONZE", "COPPER")
+                      if (bars.get(m) or 0) >= n * 2), None)
+        made = any(p.rule == "gear_fix_order" for p in proposals) or queued(s, {recipe})
+        # (a weapon pile they can't reach would take every new one too: none
+        # made once twice as many of the AI's weapon lie spare)
+        from planner_military import WEAPON_IDS
+        spare_ai = int(_d(g.get("spare_weapons")).get(WEAPON_IDS.get(rules_["gear_weapon"])) or 0)
+        if spare_ai >= 2 * max(1, why["unreachable"]):
+            notes.append(f"{why['unreachable']} soldier(s) can't get to the free weapons (behind a closed door "
+                         f"or outside the gates) and {spare_ai} lie spare: no more made while that many lie "
+                         "spare")
+        elif metal and g.get("forges") and not made:
+            proposals.append(Proposal("gear_fix_order", {"type": "work_order", "recipe": recipe, "amount": n,
+                                                          "material": f"INORGANIC:{metal}"},
+                                      f"{why['unreachable']} soldier(s) can't get to the free weapons (behind a "
+                                      f"closed door or outside the gates): make {n} they can reach, in "
+                                      f"{metal.lower().replace('_', ' ')}", 3, True))
+        else:
+            notes.append(f"{why['unreachable']} soldier(s) can't get to the free weapons (behind a closed door "
+                         "or outside the gates): "
+                         + ("new ones are on order" if made else "new ones are made once there is a forge and bars"))
     if why.get("forbidden, dumped or to melt"):
         notes.append(f"{why['forbidden, dumped or to melt']} weapon place(s) wait on weapons that are forbidden, "
                      "dumped or set to melt: the forbidden and dumped are let go when no enemy is near "
-                     "(those set to melt are yours to unmark)")
+                     "(those set to melt go to the smelter; new ones are made in their place)")
 
 
 def _quiver_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> None:

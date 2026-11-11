@@ -133,7 +133,7 @@ def _():
     assert p[0].rule == "threat_alert" and p[0].action == {"type": "civ_alert", "on": True}, p[:1]
 
 
-@test("threat but no alert burrow: the AI sets up its own shelter, urgently; can't -> needs you")
+@test("threat but no alert burrow: the AI sets up its own shelter, urgently; refused twice -> tried again later (0.105.35)")
 def _():
     s = fort(civ_alert_ready=False)
     s["others_on_map"]["threats_that_can_reach_dwarves"] = 1
@@ -141,12 +141,19 @@ def _():
     sh = [x for x in p if x.rule == "shelter"]
     assert "threat_alert" not in rules(p) and sh and sh[0].priority == 0, rules(p)
     assert any("setting up a shelter" in n for n in notes), notes
-    s["settings"]["alert_shelter"] = False
+    s["settings"]["alert_shelter"] = False                        # the player's switch: no shelter, said
     p, notes = plan(s, Memory())
-    assert "shelter" not in rules(p) and any(n.startswith("[you] ") and "burrow" in n for n in notes), notes
+    assert "shelter" not in rules(p) and any("burrow" in n and "Rules tab" in n for n in notes), notes
+    assert not any(n.startswith("[you] ") for n in notes), notes
     s["settings"]["alert_shelter"] = True
-    p, notes = plan(s, Memory(shelter_attempts=2))                # tried twice: over to you
-    assert "shelter" not in rules(p) and any(n.startswith("[you] ") and "burrow" in n for n in notes)
+    now = s["date"]["year"] * 403200 + s["date"]["tick"]
+    p, notes = plan(s, Memory(shelter_attempts=2, shelter_tick=now - 1200))   # refused twice a day ago: waits
+    assert "shelter" not in rules(p) and any("tried again in 2 day(s)" in n for n in notes), notes
+    assert not any(n.startswith("[you] ") for n in notes), notes
+    p, notes = plan(s, Memory(shelter_attempts=2, shelter_tick=now - 3 * 1200))   # 3 days on, a threat: again
+    assert [x for x in p if x.rule == "shelter"][0].priority == 0, rules(p)
+    p, _ = plan(fort(civ_alert_ready=False), Memory(shelter_attempts=2, shelter_tick=now - 3 * 1200))
+    assert "shelter" not in rules(p)                              # no threat: the 28-day wait
     assert [x for x in plan(fort(civ_alert_ready=False), Memory())[0] if x.rule == "shelter"][0].priority == 4
 
 
@@ -944,7 +951,8 @@ def _():
                                      "x": 60, "y": 45, "elevation": 79}
     notes = []
     _deep_depot_watch(s3, notes)
-    assert len(notes) == 1 and notes[0].startswith(NEEDS_YOU) and "can't reach" in notes[0], notes
+    assert len(notes) == 1 and not notes[0].startswith(NEEDS_YOU) and "can't reach" in notes[0] \
+        and "pack animals" in notes[0], notes                             # (0.105.35) a note of what goes on
     for ok in (True, None):
         s3["buildings"]["deep_depot"]["wagon_access"] = ok
         notes = []
@@ -1851,12 +1859,15 @@ def _():
     assert b and b[0].action["kind"] == "dining", b[0].action
 
 
-@test("review: marker-mode designations get their own note")
+@test("review: marker-mode designations: the AI makes them real (0.105.35: was a Needs you note)")
 def _():
     s = fort()
     s["projects"]["open"] = [{"id": 3, "kind": "storage", "phase": "dig",
                               "dig": {"total": 50, "dug": 0, "stuck": 0, "marked": 50}}]
-    assert any("marker" in n for n in plan(s, Memory())[1])
+    p, notes = plan(s, Memory())
+    um = [x for x in p if x.action.get("type") == "unmark_project_dig"]
+    assert um and um[0].action["project_id"] == 3 and "marker" in um[0].reason, p
+    assert not any(n.startswith("[you] ") and "marker" in n for n in notes), notes
 
 
 # --- culture (Phase 4c) ----------------------------------------------------------------
@@ -2297,7 +2308,8 @@ def _():
     s["supplies"]["shearable"] = 0                                    # nothing to shear: the old Needs you
     props, notes = plan(s, Memory())
     assert not any(p.action.get("recipe") == "shear_creature" for p in props)
-    assert any(n.startswith("[you] ") and "no animal to shear" in n for n in notes), notes
+    assert any("no animal to shear" in n and "the AI buys them" in n for n in notes), notes      # (0.105.35) a note
+    assert not any(n.startswith("[you] ") and "no animal to shear" in n for n in notes), notes
     from planner import wool_route
     s["supplies"]["shearable"] = 2
     assert wool_route(s)
@@ -2626,7 +2638,7 @@ def _():
     assert m.well_failure == ""
 
 
-@test("wells: waiting for parts -> the missing ones ordered; after 3 days, Needs you names what it can't make")
+@test("wells: waiting for parts -> the missing ones ordered; after 3 days, a note names what it can't make (0.105.35: no Needs you)")
 def _():
     s = fort()
     s["buildings"]["other"].pop("Well")
@@ -2642,7 +2654,9 @@ def _():
     assert not any("rope" in n for n in notes), notes
     s["projects"]["open"][0]["furnish"]["days"] = 3
     notes = plan(s, Memory())[1]
-    assert any(n.startswith("[you] the new well has waited 3 days") and "rope or chain" in n for n in notes), notes
+    assert any(n.startswith("the new well has waited 3 days") and "rope or chain" in n and "caravan" in n
+               for n in notes), notes
+    assert not any(n.startswith("[you]") and "well" in n for n in notes), notes
 
 
 @test("wells: the game refused the well over the dug hole -> Needs you, and no second hole")
@@ -2787,7 +2801,8 @@ def _():
     assert not any("ghost" in n for n in notes), notes                       # handled, not your job
     s["settings"]["engrave_slabs"] = False
     p, notes = plan(s, Memory())
-    assert not by_rule(p, "slabs") and any(n.startswith("[you] 2 ghost(s)") for n in notes), notes
+    # (0.105.35) the player's own switch: a note, not a Needs you
+    assert not by_rule(p, "slabs") and any(n.startswith("2 ghost(s)") and "switch" in n for n in notes), notes
 
 
 @test("tavern from 15 dwarves, library from 40; coffins and bookcases waiting get ordered")
@@ -3176,7 +3191,9 @@ def _():
     s["civ_alert_ready"] = False
     s["settings"]["alert_shelter"] = False
     _, notes = plan(s, Memory())
-    assert any(n.startswith("[you] ") and "civilian-alert" in n for n in notes), notes
+    # (0.105.35) the player's switch: said with what the AI does meanwhile, not Needs you
+    assert any(not n.startswith("[you] ") and "civilian-alert" in n and "meanwhile" in n for n in notes), notes
+    assert not any(n.startswith("[you] ") and "civilian-alert" in n for n in notes), notes
 
 
 def entrances(*es, armed=False, age_days=1):
@@ -3249,7 +3266,7 @@ def _():
     assert not by_rule(plan(s, Memory())[0], "gates")                        # already watching
 
 
-@test("gates (0.104.81): a gate watcher that errors is said as Needs you, not swallowed")
+@test("gates (0.104.81): a gate watcher that errors is said, not swallowed; (0.105.35) a plain note of what the AI does")
 def _():
     s = entrances({"sealed": True, "equipment": [{"id": 1, "kind": "door"}]}, armed=True)
     _, notes = plan(s, Memory())
@@ -3257,7 +3274,7 @@ def _():
     s["entrances"]["watch_error"] = {"n": 4, "error": "attempt to index a nil value", "tick": 100}
     _, notes = plan(s, Memory())
     n = [x for x in notes if "gate watcher failed 4 time(s)" in x]
-    assert n and n[0].startswith("Needs you") and "nil value" in n[0], notes
+    assert n and not n[0].startswith(("Needs you", "[you]")) and "nil value" in n[0], notes
 
 
 @test("gates: quiet for 3 cycles -> opened again")
@@ -3829,17 +3846,25 @@ def _():
     assert p and p[0].action == {"type": "link_lever", "lever_id": 555, "target_id": 900}, p
 
 
-@test("founding: a fort with no staircase digs its first; if the ground won't allow it, Needs you says why")
+@test("founding: a fort with no staircase digs its first; refused, further out; refused there too, Needs you says why")
 def _():
     s = fort()
     s["founding"] = {"stairs": False, "near": "the wagon"}
     m = Memory()
     p = by_rule(plan(s, m)[0], "found")
     assert p and p[0].action == {"type": "found_fort"} and "beside the wagon" in p[0].reason, p
+    record([(p[0], {"ok": False, "error": "no tile within 10 of the wagon with solid, dry ground under it "
+                                         "(found: an aquifer below)"})], s, m)
+    # (0.105.35) nothing waits for the player: looked for further out first
+    p, notes = plan(s, m)
+    p = by_rule(p, "found")
+    assert p and p[0].action == {"type": "found_fort", "wide": True}, p
+    assert not any(n.startswith("[you] ") and "can't start the fort" in n for n in notes), notes
     record([(p[0], {"ok": False, "error": "no tile within 20 of the wagon with solid, dry ground under it "
                                          "(found: an aquifer below)"})], s, m)
     _, notes = plan(s, m)
-    assert any("can't start the fort" in n and "aquifer" in n for n in notes), notes
+    assert any(n.startswith("[you] ") and "can't start the fort" in n and "aquifer" in n and "looks again" in n
+               for n in notes), notes
     allowed, _ = select(plan(s, m)[0], s, m)
     assert not [x for x in allowed if x.rule == "found"]           # (its cooldown: 3 days for the miners)
     s["founding"] = {"stairs": True}
@@ -4249,7 +4274,7 @@ def _():
     assert all(r == "Constant training" for r in moves(copy.deepcopy(s)).values()), moves(s)
 
 
-@test("the deep: an open cavern is said; a great danger in it is Needs you; vampires and werebeasts are Needs you")
+@test("the deep: an open cavern is said; a great danger in it, vampires and werebeasts: said with what the AI does (0.105.35)")
 def _():
     s = fort()
     s["deep"] = {"caverns": [{"name": "Cavern1", "discovered": True, "open": True, "z_top": 40, "z_bottom": 30},
@@ -4260,7 +4285,8 @@ def _():
     s["deep"]["dangers"] = [{"name": "Ubbul the Toad", "kind": "forgotten beast", "layer": "Cavern1"},
                             {"name": "a titan", "kind": "titan", "layer": "upper_levels", "can_reach_dwarves": True}]
     notes = plan(s, Memory())[1]
-    assert any(n.startswith("[you] Cavern1 is open to the fort and Ubbul the Toad") for n in notes), notes
+    assert any(n.startswith("Cavern1 is open to the fort and Ubbul the Toad") and "locks" in n for n in notes), notes
+    assert not any(n.startswith("[you] ") for n in notes), notes
     assert any("a titan (titan) is in upper levels and can reach the dwarves" in n for n in notes), notes
     m = Memory()
     note_cycle(s, m)
@@ -4272,10 +4298,11 @@ def _():
     props, notes = plan(s, Memory())
     assert any(p.action == {"type": "expel_dwarf", "unit_id": 77} for p in props)        # sent away (Rules tab)
     assert any(n.startswith("Urist is a vampire: the AI sends them away") for n in notes)
-    assert any(n.startswith("[you] Bomrek carries a werebeast curse") for n in notes)
-    s["settings"]["expel_vampires"] = False
+    assert any(n.startswith("Bomrek carries a werebeast curse") and "cell" in n for n in notes), notes
+    s["settings"]["expel_vampires"] = False                                # the player's switch: kept, said
     notes = plan(s, Memory())[1]
-    assert any(n.startswith("[you] Urist is a vampire") for n in notes)
+    assert any(n.startswith("Urist is a vampire") and "Rules tab" in n for n in notes), notes
+    assert not any(n.startswith("[you] ") for n in notes), notes
 
 
 @test("feeders: a workshop without a pile beside it gets one, busiest kind first; none in a young fort")
@@ -4376,7 +4403,7 @@ def _():
     assert t, "autobutcher"
 
 
-@test("needs: unmet needs named with what helps; miserable dwarves are Needs you; prayer builds a shrine early")
+@test("needs: unmet needs named with what helps; miserable dwarves noted with what the AI does (0.105.35); prayer builds a shrine early")
 def _():
     s = fort()
     s["needs"] = {"needs": {"PrayOrMeditate": {"have": 10, "distracted": 4}, "DrinkAlcohol": {"have": 18, "distracted": 3},
@@ -4387,11 +4414,11 @@ def _():
     s["settings"]["answer_locations"] = False                         # (0.89) else the AI builds them itself
     notes = plan(s, Memory())[1]
     assert any("PrayOrMeditate 4 (a temple)" in n and "DrinkAlcohol 3 (more drink" in n for n in notes), notes
-    assert any(n.startswith("[you] the fort agreed to petitions") and "a temple to Ilbat the Gold" in n
-               and "a miner guildhall" in n for n in notes), notes
+    assert any(n.startswith("the fort agreed to petitions") and "a temple to Ilbat the Gold" in n
+               and "a miner guildhall" in n and "switch" in n for n in notes), notes
     assert any("Ilbat the Gold 3" in n for n in notes)
-    assert any(n.startswith("[you] 1 dwarf(s) are miserable") and "Urist (missing DrinkAlcohol, Socialize)" in n
-               for n in notes), notes
+    assert any(n.startswith("1 dwarf(s) are miserable") and "Urist (missing DrinkAlcohol, Socialize)" in n
+               and "recreation" in n for n in notes), notes
     s["locations"]["count"].pop("TEMPLE", None)
     s["projects"]["open"] = []
     found = None
@@ -4959,12 +4986,15 @@ def _():
     s["settings"]["answer_locations"] = False
     props = plan(s, Memory())[0]
     assert not by_rule(props, "petition_build") and not by_rule(props, "petition_answer")
-    # a tier-2 wish in a fort that doesn't care for grandeur: left
+    # a tier-2 wish in a fort that doesn't care for grandeur: declined
     s["settings"]["answer_locations"] = True
     s["petitions"] = {"pending": [{"id": 176, "type": "Location", "loc": "GUILDHALL", "tier": 2, "profession": "MINER"}]}
     s["settings"]["traits"] = {}
     props, notes = plan(s, Memory())
-    assert not by_rule(props, "petition_answer") and any("left to you" in n for n in notes), notes
+    # (0.105.35) nothing waits for the player: the AI declines it
+    d = by_rule(props, "petition_answer")
+    assert d and d[0].action["id"] == 176 and d[0].action["accept"] is False, d
+    assert not any("left to you" in n for n in notes), notes
 
 
 @test("a hall being dug whose petition was met meanwhile (0.92) goes to the next petition")
@@ -5446,7 +5476,7 @@ def _():
     assert "armour" in overseer.short({"type": "assign_kit", "limit": 20})
 
 
-@test("gear (game): 3+ spares lying unused -> no more made; after a week Needs you says to check uniforms")
+@test("gear (game): 3+ spares lying unused -> no more made; after a week a note (0.105.35: not Needs you), a month: made")
 def _():
     s = geared(soldiers=33, on_duty=33, armed=17, armored=33, helmed=33, spare={"weapons": 7},
                bars={"STEEL": 64})
@@ -5461,7 +5491,8 @@ def _():
     later["date"]["tick"] += 7 * 1200
     note_cycle(later, m)
     notes = plan(later, m)[1]
-    assert any(n.startswith("[you] 7 weapons lie unused") and "uniforms" in n for n in notes), notes
+    assert any(n.startswith("7 weapons lie unused") and "uniforms" in n for n in notes), notes
+    assert not any(n.startswith("[you]") and "lie unused" in n for n in notes), notes
     picked = copy.deepcopy(later)                                  # soldiers took them
     picked["military"]["gear"]["spare"] = {"weapons": 0}
     picked["military"]["gear"]["armed"] = 24
@@ -5514,15 +5545,28 @@ def _():
     assert not by_rule(p, "arms") and any("no squad has a uniform" in n for n in notes), notes
     p, notes = plan(geared(armed=0, forges=0), Memory())
     assert not by_rule(p, "arms") and any("no forge" in n for n in notes), notes
+    # (0.105.35) no forge at all: the AI builds one (it asked the player before)
+    s = geared(armed=0, forges=0)
+    for k in ("workshops", "furnaces"):
+        for w in ("MetalsmithsForge", "MagmaForge"):
+            _d_ = s["buildings"].get(k)
+            if isinstance(_d_, dict):
+                _d_.pop(w, None)
+    s["projects"]["open"] = []
+    p, notes = plan(s, Memory())
+    f = by_rule(p, "arms_forge")
+    assert f and f[0].action == {"type": "start_project", "kind": "workshops", "shops": ["MetalsmithsForge"]}, f
+    assert not any(n.startswith("[you]") and "forge" in n for n in notes), notes
     p, notes = plan(geared(armed=0, bars={"GOLD": 500, "COPPER": 3}), Memory())
-    assert not by_rule(p, "arms") and any("smelt some ore" in n for n in notes), notes
+    assert not by_rule(p, "arms") and any("weapon-grade metal" in n for n in notes), notes
+    assert not any(n.startswith("[you]") and "weapon-grade" in n for n in notes), notes
     s = geared(armed=0, bars={})                                  # the AI is smelting: a note, not Needs you
     s["buildings"]["furnaces"]["Smelter"] = 1
     s["industry"] = {"ores": {"IRON": {"tiles": 50, "ore": "MAGNETITE"}}}
     m = Memory()
     m.libraries_imported = ["smelting"]
     notes = plan(s, m)[1]
-    assert any("being mined and smelted" in n for n in notes) and not any("smelt some ore" in n for n in notes), notes
+    assert any("being mined and smelted" in n for n in notes) and not any("no ore of it" in n for n in notes), notes
     s = geared(armed=0, squads_with_uniform=0)                    # templates: the AI gives a uniform itself
     s["military"]["uniform_templates"] = ["Melee, leather armor"]
     assert not any("no squad has a uniform" in n for n in plan(s, Memory())[1])
@@ -5550,14 +5594,18 @@ def _():
     props, notes = plan(s, Memory())
     you = [n for n in notes if n.startswith("[you] ")]
     text = " | ".join(you)
-    assert "broker" not in text and "2 dwarves are starving" in text, text        # the AI appoints those
+    assert "broker" not in text and "starving" not in text, text        # the AI appoints those
+    # (0.105.35) starving: a note of what the AI does, not "check they can reach"
+    assert any(n.startswith("2 dwarves are starving") and "check" not in n for n in notes), notes
     ap = sorted(p.action["office"] for p in by_rule(props, "appoint"))
     assert ap == ["BROKER", "CHIEF_MEDICAL_DWARF"], ap
     s2 = copy.deepcopy(s)
     s2["settings"]["appoint_nobles"] = False                                    # switched off: asks you
     _, notes2 = plan(s2, Memory())
     assert any("broker (trading), chief medical dwarf" in n for n in notes2), notes2
-    assert "6 grazing animals" in text and "farm" not in text, text
+    # (0.105.35) no grass figures: the AI makes a pasture by a guess, no Needs you
+    assert "grazing" not in text and "farm" not in text, text
+    assert by_rule(props, "new_pasture"), rules(props)
     assert by_rule(props, "farms"), rules(props)
     s["society"]["vacant"] = ["SHERIFF"]                  # a captain of the guard holds the job
     _, notes = plan(s, Memory())
@@ -5590,7 +5638,7 @@ def _():
     assert not by_rule(plan(geared(), Memory())[0], "smelting")            # plenty of bars
 
 
-@test("pastures (older bridge, no grass figures): into an existing pasture; none -> needs you, saying how")
+@test("pastures (older bridge, no grass figures): into an existing pasture; none -> the AI makes one by a guess (0.105.35)")
 def _():
     s = fort()
     s["society"] = {"vacant": [], "grazers_unpastured": 3, "pastures": 2}
@@ -5599,7 +5647,10 @@ def _():
     assert pa and pa[0].action == {"type": "pasture", "count": 3} and not any("grazing" in n for n in notes)
     s["society"]["pastures"] = 0
     p, notes = plan(s, Memory())
-    assert not by_rule(p, "pasture") and any("make a pasture zone" in n for n in notes), notes
+    np_ = by_rule(p, "new_pasture")
+    assert not by_rule(p, "pasture") and np_ and np_[0].action == {"type": "make_pasture", "tiles": 75} \
+        and "a guess" in np_[0].reason, (np_, notes)                      # 3 x 20 x 1.25
+    assert not any(n.startswith("[you]") for n in notes if "grazing" in n), notes
 
 
 @test("mandates: socks in cloth, low boots in leather, high boots in steel at a forge")
@@ -5866,7 +5917,7 @@ def _():
     assert a["dig"] is True, a
 
 
-@test("farms: nowhere to put them -> Needs you says why (only when food runs low); waits 3 days")
+@test("farms: nowhere to put them -> a note says why and what the AI does (0.105.35: no Needs you); waits 3 days")
 def _():
     s = farmless()
     s["stocks"]["drink"] = 10                         # 194 dwarves: going thirsty
@@ -5878,7 +5929,9 @@ def _():
     allowed, _ = select(plan(s, m)[0], s, m)
     assert not by_rule(allowed, "farms"), "asked again straight away"
     notes = plan(s, m)[1]
-    assert any(n.startswith("[you] farm plots: no free soil") and "running low" in n for n in notes), notes
+    assert any(n.startswith("farm plots: no free soil") and "running low" in n and "irrigation" in n
+               for n in notes), notes
+    assert not any(n.startswith("[you] farm") for n in notes), notes
     fed = farmless()                                   # the real fort is well fed: a quiet note only
     notes = plan(fed, m)[1]
     assert not any(n.startswith("[you] farm") for n in notes), notes
@@ -5947,14 +6000,15 @@ def _():
     assert np_ and not by_rule(p, "pasture") and "no pasture has room" in np_[0].reason, rules(p)
 
 
-@test("pastures: nowhere to make one -> Needs you with the reason; waits 3 days; switch off -> yours")
+@test("pastures: nowhere to make one -> a note with the reason, tried again (0.105.35); waits 3 days; switch off -> yours")
 def _():
     s, m = herd(), Memory()
     p = by_rule(plan(s, m)[0], "new_pasture")[0]
     record([(p, {"ok": False, "error": "no living grass near the fort's surface entrances"})], s, m)
     props, notes = plan(s, m)
-    assert any(n.startswith("[you] 3 grazing animals have no pasture") and "no living grass" in n
+    assert any(n.startswith("3 grazing animals have no pasture") and "no living grass" in n and "tries again" in n
                for n in notes), notes
+    assert not any(n.startswith("[you]") and "grazing" in n for n in notes), notes
     allowed, _ = select(props, s, m)
     assert not by_rule(allowed, "new_pasture"), "asked again straight away"
     record([(p, {"ok": True, "tiles": 75})], s, m)
@@ -5992,7 +6046,7 @@ def _():
     assert by_rule(plan(s, old)[0], "gate_doors")
 
 
-@test("gates (game): the Needs you note cuts long reasons at a word, and says the AI will try again")
+@test("gates (game): the refusals' note cuts long reasons at a word, and says the AI will try again")
 def _():
     s = entrances({"door_spots": 2, "width": 2}, {"door_spots": 2, "width": 3, "x": 40, "y": 50})
     m = Memory()
@@ -6303,7 +6357,11 @@ def _():
     assert not any(n.startswith(planner.NEEDS_YOU) and "still lacks" in n for n in notes), notes
     m.moods_seen = {"5": abs_tick(s) - 8 * 1200}
     notes = plan(s, m)[1]
-    assert any(n.startswith(planner.NEEDS_YOU) and "still lacks" in n and "1 bar of iron" in n for n in notes), notes
+    # (0.105.35) a note: the forbidden freed, the rest bought from the caravans
+    props, notes = plan(s, m)
+    assert not any(n.startswith(planner.NEEDS_YOU) and "Urist" in n for n in notes), notes
+    assert any("still lacks" in n and "1 bar of iron" in n and "caravan" in n for n in notes), notes
+    assert {"type": "mood_free_items", "unit_id": 5, "max": 10} in [p.action for p in by_rule(props, "mood")]
 
 
 def _counted_mood(missing, **kw):
@@ -6369,7 +6427,9 @@ def _():
     props, notes = plan(s, m)
     o = [p.action for p in by_rule(props, "mood")]
     assert {"type": "cancel_work_order", "order_id": 77} in o, o
-    need = [n for n in notes if n.startswith(planner.NEEDS_YOU) and "can't supply" in n]
+    # (0.105.35) a note: on the caravans' list, the AI buys it (no Needs you)
+    assert not any(n.startswith(planner.NEEDS_YOU) and "can't supply" in n for n in notes), notes
+    need = [n for n in notes if "can't supply" in n]
     assert need and "1 cloth (silk): no silk thread to weave" in need[0] and "1 shell" in need[0], need
     assert "rough gem" not in need[0], need                # another job holds it: let go, not asked for
     assert any(n.startswith(planner.NEEDS_YOU) and "where the dwarf can't walk" in n and "1 log" in n for n in notes), notes
@@ -6897,7 +6957,9 @@ def _():
     assert not any(n.startswith("[you] ") and "well" in n for n in notes), notes
     assert any("no one is hurt" in n for n in notes)
     s["dwarves"]["needs_medical_care"] = 2
-    assert any(n.startswith("[you] injured dwarves need water") for n in plan(s, m)[1])
+    notes = plan(s, m)[1]
+    assert not any(n.startswith("[you] ") and "well" in n for n in notes), notes      # (0.105.35)
+    assert any("injured dwarves need water" in n and "water source zone" in n for n in notes), notes
 
 
 @test("gates: a gate the AI built, and 4 weeks later the entrance still open -> built again (0.40's lost hatch)")
@@ -6950,7 +7012,7 @@ def _():
     assert not by_rule(plan(s, Memory())[0], "smelting")                               # no library import any more
 
 
-@test("watchdog: an order that doesn't move is named after 2 weeks (with a missing workshop), the AI's is Needs you after 4")
+@test("watchdog: an order that doesn't move is named after 2 weeks (with a missing workshop); the AI's stuck again is cancelled again (0.105.35)")
 def _():
     from planner import note_cycle
     s = fort()
@@ -6988,11 +7050,15 @@ def _():
     allowed, held = select([Proposal("smelt", {"type": "work_order", "recipe": "smelt_ore", "amount": 5}, "x", 4, True)],
                            t, m)
     assert not allowed and any("got stuck and was cancelled" in h for h in held), held
-    # stuck again within 90 days: Needs you, not cancelled again
+    # stuck again within 90 days: said, and cancelled again, held longer (was Needs you, left standing)
     notes = at(29 + 40)
     t = copy.deepcopy(s); t["date"]["tick"] += (29 + 40) * 1200
-    assert any(n.startswith("[you] 1 of the AI's work order(s) keep getting stuck") for n in notes), notes
-    assert not by_rule(plan(t, m)[0], "stuck_order")
+    assert any(n.startswith("1 of the AI's work order(s) got stuck again") for n in notes), notes
+    assert not any(n.startswith("[you]") and "work order" in n for n in notes), notes
+    c2 = by_rule(plan(t, m)[0], "stuck_order")
+    assert c2 and c2[0].action == {"type": "cancel_work_order", "order_id": 7, "stuck": "smelt_ore"}, c2
+    assert "56 days" in c2[0].reason, c2[0].reason
+    assert not any(p.action.get("order_id") == 8 for p in c2)                 # never the player's
     s["orders"][0]["amount_left"] = 6                                         # it moved: the clock starts again
     notes = at(70)
     assert not any("smelt_ore" in n for n in notes if "haven't moved" in n or "stuck" in n), notes
@@ -7590,11 +7656,11 @@ def _():
     props, notes = plan(s, Memory())
     p = by_rule(props, "petition_answer")
     assert p and p[0].action["id"] == 175, p
-    assert any("temple petitions are left to you: the Temple level is off" in n for n in notes), notes
+    assert any("temple petitions aren't answered or built while the Temple level is off" in n for n in notes), notes
     s["settings"]["levels"] = {}
     s["settings"]["fort_goal"] = "maintain"
     notes = plan(s, Memory())[1]
-    assert any("temple petitions are left to you: the fort's goal is Maintain" in n for n in notes), notes
+    assert any("temple petitions aren't answered or built while the fort's goal is Maintain" in n for n in notes), notes
 
 
 @test("Rules (0.97): level_refused speaks for the switches, Maintain and Mining -100 (the strategist obeys it)")
@@ -8817,18 +8883,21 @@ def _body():
         "v": 2, "stage": "linking", "gate": "shut", "lever": "built", "depth": 0, "relinks": 3,
         "lever_at": {"x": 109, "y": 38, "z": 168}, "gate_at": {"x": 110, "y": 40, "z": 160}})
     props, notes = plan(copy.deepcopy(s), Memory())
-    assert not by_rule(props, "cistern"), [p.action for p in by_rule(props, "cistern")]
-    assert any(n.startswith(planner.NEEDS_YOU) and "x109 y38, z168" in n and "x110 y40, z160" in n for n in notes), notes
-    s["water"]["cistern_status"]["lever_at"]["e"] = 41
-    notes = plan(copy.deepcopy(s), Memory())[1]
-    assert any("x109 y38, elevation 41" in n for n in notes), notes
+    # (0.105.35) nothing waits for the player: the link asked afresh, then the cistern retired
+    c = by_rule(props, "cistern")
+    assert [p.action for p in c] == [{"type": "cistern_step", "relink": True}], [p.action for p in c]
+    assert not any(n.startswith(planner.NEEDS_YOU) and "cistern" in n for n in notes), notes
+    s["water"]["cistern_status"]["relink_rounds"] = 2
+    c = by_rule(plan(copy.deepcopy(s), Memory())[0], "cistern")
+    assert [p.action.get("retire") for p in c] == [True], [p.action for p in c]
+    s["water"]["cistern_status"]["relink_rounds"] = 0
     s["water"]["cistern_status"]["relinks"] = 1
     assert by_rule(plan(copy.deepcopy(s), Memory())[0], "cistern")
     s["water"]["cistern_status"].update(relinks=3, linked=True)
     assert by_rule(plan(copy.deepcopy(s), Memory())[0], "cistern")
 
 
-@test("cistern (0.104.141): the lever's link lost 3 times -> one Needs you with where, no refused step each cycle")
+@test("cistern (0.104.141): the lever's link lost 3 times -> asked afresh, then retired (0.105.35), no refused step each cycle")
 def _():
     PLANNER_CONFIG["cistern_hold"] = False      # (0.104.144) the design under the hold
     try:
@@ -9231,7 +9300,7 @@ def _():
         PLANNER_CONFIG["cistern_hold"] = False
 
 
-@test("cistern v2 (0.104.145): open and no longer closed -> shut at once; a leak -> Needs you; the first design retired")
+@test("cistern v2 (0.104.145): open and no longer closed -> shut at once; a second leak -> retired (0.105.35); the first design retired")
 def _():
     s = fort()
     s["water"] = dict(s.get("water") or {}, cistern_status={"v": 2, "stage": "filling", "gate": "open", "depth": 3,
@@ -9240,7 +9309,15 @@ def _():
     assert c and c[0].action == {"type": "cistern_step", "shut": True} and c[0].priority == 0, [x.action for x in c]
     s["water"]["cistern_status"] = {"v": 2, "stage": "filling", "gate": "shut", "leak": "x5 y6 elevation 41"}
     props, notes = plan(copy.deepcopy(s), Memory())
-    assert any(n.startswith(planner.NEEDS_YOU) and "x5 y6 elevation 41" in n for n in notes)
+    # (0.105.35) the first leak: a note (the bridge lets water in again once); the second: retired
+    assert any("x5 y6 elevation 41" in n and "second leak retires it" in n for n in notes), notes
+    assert not any(n.startswith(planner.NEEDS_YOU) and "cistern" in n for n in notes), notes
+    # (v35) and the plain step the bridge clears the leak in once dry and closed all round
+    assert [x.action.get("type") for x in by_rule(props, "cistern")] == ["cistern_step"], by_rule(props, "cistern")
+    assert not any(x.action.get("retire") for x in by_rule(props, "cistern"))
+    s["water"]["cistern_status"]["leaks"] = 2
+    c = by_rule(plan(copy.deepcopy(s), Memory())[0], "cistern")
+    assert c and c[0].action.get("retire") is True and "x5 y6" in c[0].action["why"], [x.action for x in c]
     s["water"]["cistern_status"] = {"stage": "filling", "gate": "shut", "depth": 0}          # no v: the first design
     c = by_rule(plan(copy.deepcopy(s), Memory())[0], "cistern")
     assert c and "retire" in c[0].reason and c[0].action["type"] == "cistern_step", [x.reason for x in c]
@@ -9596,7 +9673,7 @@ def _():
     assert planner.PLANNER_CONFIG["vermin_cooldown_ticks"] == 7 * 1200
 
 
-@test("cistern gaps (0.104.168): an open spot the AI walls itself is a note and the step goes on; only one it can't close asks the player")
+@test("cistern gaps (0.104.168): an open spot the AI walls itself is a note and the step goes on; one it can't close is retired (0.105.35)")
 def _():
     s = fort()
     st = {"v": 2, "stage": "linking", "gate": "shut", "depth": 0, "lever": "built", "linked": True,
@@ -9610,7 +9687,12 @@ def _():
     s["water"]["cistern_status"] = dict(st, unsealed_why="the cistern's shaft is open at x105 y128 elevation 38: "
                                                          "it is stair_updown (a way up or down the dwarves may walk)")
     props, notes = plan(copy.deepcopy(s), Memory())
-    assert any(n.startswith(planner.NEEDS_YOU) and "stair_updown" in n for n in notes), notes
+    # (0.105.35) tried again, then the cistern retired (no water let in): no Needs you
+    assert any("stair_updown" in n and "1 of 3" in n for n in notes), notes
+    assert not any(n.startswith(planner.NEEDS_YOU) and "cistern" in n for n in notes), notes
+    s["water"]["cistern_status"]["unsealed_refusals"] = 3
+    c = by_rule(plan(copy.deepcopy(s), Memory())[0], "cistern")
+    assert [x.action.get("retire") for x in c] == [True], [x.action for x in c]
 
 
 @test("cups (0.104.168): loose cups no pile takes -> accept_cups; forbidden ones in a hall -> accept_cups; a tavern's only said")
@@ -9672,10 +9754,15 @@ def _():
     assert not by_rule(plan(_infected_fort(idle_untreated=0), Memory())[0], "infected_rest")
     assert not by_rule(plan(_infected_fort(hospital_zones=0), Memory())[0], "infected_rest")
     props, notes = plan(_infected_fort(diagnosers=0), Memory())
-    assert not by_rule(props, "infected_rest") and any("nobody outside the military can diagnose" in n for n in notes)
-    # nobody with the cleaning labour: the player is asked
-    notes = plan(_infected_fort(cleaners=0), Memory())[1]
-    assert any("cleaning labour" in n for n in notes), notes
+    assert not by_rule(props, "infected_rest")
+    # (0.105.35) nobody to diagnose, or to clean: the AI gives the labour (no Needs you)
+    d = by_rule(props, "care_diagnose")
+    assert d and d[0].action == {"type": "assign_labor", "job": "DIAGNOSE", "count": 1}, rules(props)
+    assert "nobody outside the military can diagnose" in d[0].reason
+    props, notes = plan(_infected_fort(cleaners=0), Memory())
+    c = by_rule(props, "care_clean")
+    assert c and c[0].action == {"type": "assign_labor", "job": "CLEAN", "count": 2}, rules(props)
+    assert not any(n.startswith(planner.NEEDS_YOU) and "cleaning labour" in n for n in notes), notes
     # an older bridge (no section) or a failed one: nothing
     s = fort(); s.pop("infection", None)
     assert not by_rule(plan(s, Memory())[0], "infected_rest")
@@ -10130,15 +10217,16 @@ def _():
     assert not by_rule(plan(s3, m)[0], "squad_attack")
 
 
-@test("0.105.3 B: a lone thief inside and no armed squad -> Needs you once, the gates still open")
+@test("0.105.3 B: a lone thief inside and no armed squad -> said (0.105.35: not Needs you), the gates still open")
 def _():
     s = b_thief(armed=0)
     m = Memory(ai_alert_raised=True)
     p, notes = plan(s, m)
     assert not by_rule(p, "squad_attack")
     assert by_rule(p, "gates")[0].action == {"type": "open_gates"}
-    you = [n for n in notes if n.startswith("[you] ") and "Trustdaub" in n]
-    assert len(you) == 1 and "no squad has 3+ armed soldiers" in you[0], notes
+    assert not [n for n in notes if n.startswith("[you] ") and "Trustdaub" in n], notes
+    said = [n for n in notes if "Trustdaub" in n and "no squad has anyone armed" in n]
+    assert len(said) == 1, notes
 
 
 @test("0.105.3 B: the alarm for a lone thief inside is held half a day at most")
@@ -10452,7 +10540,7 @@ def _():
     assert not [x for x in by_rule(props, "well") if x.action.get("cavern")]
 
 
-@test("wells (0.105.4 review): a cavern no dwarf has found is opened only when the Rules tab allows it")
+@test("wells (0.105.4 review): a cavern no dwarf has found: the Rules switch on allows it; off, the AI decides (0.105.35)")
 def _():
     s = fort()
     s["buildings"]["other"].pop("Well", None)
@@ -10465,12 +10553,24 @@ def _():
             l["discovered"] = False                    # Hammerstirred: Cavern1 undiscovered
     m = Memory()
     m.well_failure = "no open drop from a free floor inside the fort to clean water (the water below is in a cavern)"
+    # (0.105.35) the switch off: no soldiers for what comes out -> not now, and nothing asked of the player
+    s.setdefault("military", {}).update(soldiers=0, squads=[{"id": 1, "members": 5, "power": {"armed": 0}}])
     props, notes = plan(copy.deepcopy(s), m)
     assert not [x for x in by_rule(props, "well") if x.action.get("cavern")], [x.action for x in by_rule(props, "well")]
-    assert any("would open Cavern1 for the first time" in n and "Rules tab" in n for n in notes), notes
+    assert any("would open Cavern1 for the first time" in n and "0 armed soldier(s)" in n for n in notes), notes
+    assert not any("Rules tab" in n or n.startswith("[you]") and "cavern" in n for n in notes), notes
+    # short of water (4 injured) and soldiers: the AI opens it itself
+    s["military"].update(soldiers=5, squads=[{"id": 1, "members": 5, "power": {"armed": 5}}])
+    w = [x for x in by_rule(plan(copy.deepcopy(s), m)[0], "well") if x.action.get("cavern")]
+    assert w and w[0].action.get("open_caverns") is True and "the AI's call" in w[0].reason, [x.action for x in w]
+    s["military"].update(soldiers=0, squads=[{"id": 1, "members": 5, "power": {"armed": 0}}])
     s["settings"] = dict(s.get("settings") or {}, open_caverns=True)
     w = [x for x in by_rule(plan(copy.deepcopy(s), m)[0], "well") if x.action.get("cavern")]
     assert w and w[0].action.get("open_caverns") is True, [x.action for x in w]
+    # (v35) Never: no cavern well into the unfound cavern, whatever the need
+    s["settings"]["open_caverns"] = "never"
+    s["military"].update(soldiers=5, squads=[{"id": 1, "members": 5, "power": {"armed": 5}}])
+    assert not [x for x in by_rule(plan(copy.deepcopy(s), m)[0], "well") if x.action.get("cavern")]
     # a cavern already found: no switch needed
     s["settings"]["open_caverns"] = False
     for l in s["map"]["layers"]:

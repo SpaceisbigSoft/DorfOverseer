@@ -202,26 +202,32 @@ def _():
 
 # --- the Needs you line -------------------------------------------------------------
 
-@test("Needs you: one line naming the gate, where, the walk groups, the flags, what was tried; the same shape each cycle")
+def gate_line(notes):
+    """(0.105.35) the stuck gate's line: a plain note of what the AI does, not a Needs you."""
+    assert not [n for n in needs_you(notes) if "building 7" in n], notes
+    return [n for n in notes if "building 7" in n and "shut outside by" in n]
+
+
+@test("the gate's line (0.105.35: a plain note): naming the gate, where, the walk groups, the flags, what was tried; the same shape each cycle")
 def _():
     m = Memory()
     s = fort()
     props, notes = cycle(s, m)
-    ny = [n for n in needs_you(notes) if "building 7" in n]
+    ny = gate_line(notes)
     assert len(ny) == 1, notes
     t = ny[0]
     for want in ("12 citizen(s)", "hatch (building 7) at x108 y149 elevation 71", "outside 5151", "inside 1702",
                  "closed=false", "forbidden=false", "operated_by_mechanisms=true", "tried: nothing yet",
-                 "DF's walk map holding an open hatch shut"):
+                 "DF's walk map holds an open hatch shut", "then digs them a way in"):
         assert want in t, (want, t)
     answer(s, m, acts(props, "gate_stuck")[0], split_after=True, done="forbid cleared")
     _, notes2 = cycle(later(s, HOUR), m)
-    t2 = [n for n in needs_you(notes2) if "building 7" in n][0]
+    t2 = gate_line(notes2)[0]
     assert "tried: step 1" in t2 and "forbid cleared" in t2, t2
     s3 = later(s, 2 * HOUR)
     s3["entrances"]["stranded"] = s3["entrances"]["stranded"][:9]
     _, notes3 = cycle(s3, m)
-    t3 = [n for n in needs_you(notes3) if "building 7" in n][0]
+    t3 = gate_line(notes3)[0]
     assert overseer._shape(t3) == overseer._shape(t2), (t2, t3)     # printed once (show_changed)
 
 
@@ -235,7 +241,7 @@ def cut_off(n=3, days=2, **row):
     return s
 
 
-@test("dig_way_in: cut off 2 days with no split: a stair at their median spot; not before; the Needs you kept")
+@test("dig_way_in: cut off 2 days with no split: a stair at their median spot; not before; (0.105.35) said plainly")
 def _():
     assert not acts(cycle(cut_off(days=1), Memory())[0], "way_in")
     m = Memory()
@@ -244,8 +250,13 @@ def _():
     w = acts(props, "way_in", "dig_way_in")
     assert len(w) == 1 and w[0].action == {"type": "dig_way_in", "x": 101, "y": 150, "z": 171}, w
     assert w[0].priority < 0
-    ny = [n for n in needs_you(notes) if "no way back in" in n]
+    ny = [n for n in notes if "no way back in" in n]
     assert ny and "digs them a way in" in ny[0] and "x101 y150 elevation 71" in ny[0], ny
+    assert not [n for n in needs_you(notes) if "no way back in" in n], notes
+    # (0.105.35) not yet two days out: said when the AI digs, not left to the player
+    notes = cycle(cut_off(days=1), Memory())[1]
+    assert [n for n in notes if "no way back in" in n and "once they've been out 2 day(s)" in n], notes
+    assert not [n for n in needs_you(notes) if "no way back in" in n], notes
     assert not acts(props, "gate_stuck")
     # in a cavern, or an enemy near: not dug
     assert not acts(cycle(cut_off(in_cavern=True), Memory())[0], "way_in")
@@ -253,7 +264,7 @@ def _():
     assert not acts(props, "way_in") and any("enemy is 5 tiles away" in n for n in notes), notes
 
 
-@test("dig_way_in: once; none while it is dug; done and they're still out: never again there, only the Needs you")
+@test("dig_way_in: once; none while it is dug; done and they're still out: never again there, the Needs you says why")
 def _():
     m = Memory()
     s = cut_off()
@@ -265,13 +276,14 @@ def _():
     s2["projects"]["open"] = [{"id": 55, "kind": "way_in", "phase": "dig"}]
     props, notes = cycle(s2, m)
     assert not acts(props, "way_in"), props
-    assert any("project #55" in n for n in needs_you(notes)), notes
+    assert any("project #55" in n for n in notes) and not any("project #55" in n for n in needs_you(notes)), notes
     # (merge32 review) the project done, still out: no more digging there, ever
     for d in (3, 8, 20, 40):
         props, notes = cycle(later(s, d * 1200), m)
         assert not acts(props, "way_in"), (d, props)
         assert any("digs no more there" in n for n in notes), notes
-        assert [n for n in needs_you(notes) if "dig or build them a way in" in n], notes
+        ny = [n for n in needs_you(notes) if "digs no more there" in n]
+        assert ny and "dig or build" not in ny[0] and "yourself" not in ny[0], notes
     # everyone home: forgotten (a new stranding there may be dug for)
     home = later(fort(split=False, stranded=0), 0)
     home["date"]["tick"] = later(s, 41 * 1200)["date"]["tick"]
@@ -397,7 +409,7 @@ def _():
         assert len(u) == 1 and u[0].action["step"] == 3, (answer_kw, u)
 
 
-@test("(merge32 review) a cavern's gate: step 1 only (the bridge won't pull or take it down); the Needs you stays")
+@test("(merge32 review) a cavern's gate, the caverns unread: step 1 only; (0.105.35) said as a wait, no Needs you")
 def _():
     m = Memory()
     s = fort()
@@ -406,7 +418,7 @@ def _():
     for k in (1, 2, 4):
         props, notes = cycle(later(s, 6 * k * HOUR + 10, rescan=True), m)
         assert not acts(props, "gate_stuck"), props
-        assert [n for n in needs_you(notes) if "building 7" in n], notes
+        assert gate_line(notes) and [n for n in notes if "waits until they're safe" in n], notes
     # a surface entrance the bridge answered "a cavern's way": no step 2 again
     m = Memory()
     s = fort()
@@ -419,7 +431,7 @@ def _():
     assert m.gate_unstick["7"]["cavern"] is True
 
 
-@test("(merge32 review) a refused way in backs off per area: 1, then 2 days; after 3 refusals only the Needs you")
+@test("(merge32 review) a refused way in backs off per area: 1, 2, 4 days; (0.105.35) then every 8 days, never left to the player")
 def _():
     m = Memory()
     s = cut_off(days=3)
@@ -431,12 +443,13 @@ def _():
         for w in acts(props, "way_in"):
             tries.append(h // 24)
             record([(w, {"ok": False, "rejected": True, "error": "no safe way in found"})], sx, m)
-    assert tries == [0, 1, 3], tries
-    assert len(m.way_in) == 1 and list(m.way_in.values())[0]["refusals"] == 3, m.way_in
-    props, notes = cycle(later(s, 30 * 1200), m)
+    assert tries == [0, 1, 3, 7], tries
+    assert len(m.way_in) == 1 and list(m.way_in.values())[0]["refusals"] == 4, m.way_in
+    props, notes = cycle(later(s, 10 * 1200), m)
     assert not acts(props, "way_in")
-    assert any("refused 3 time(s)" in n for n in notes), notes
-    assert [n for n in needs_you(notes) if "dig or build them a way in" in n], notes
+    assert any("refused it 4 time(s)" in n and "again in" in n for n in notes), notes
+    assert not [n for n in needs_you(notes) if "no way back in" in n], notes
+    assert acts(cycle(later(s, 15 * 1200 + 10), m)[0], "way_in")
     # another area, far off: its own count
     s2 = cut_off(days=3)
     for r in s2["entrances"]["stranded"]:

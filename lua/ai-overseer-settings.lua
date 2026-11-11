@@ -163,8 +163,18 @@ PRISONER_NAMES = {keep = 'keep them caged', release = 'release outside (asks you
 DISPOSAL_CHOICES = {'store', 'melt', 'dump', 'destroy'}
 DISPOSAL_NAMES = {store = 'store what is useful', melt = 'store, melt surplus metal',
                   dump = 'store, melt, dump the junk', destroy = 'all, and empty a full dump'}
+-- (v35 fix) a cavern well into an unfound cavern: the AI decides (the
+-- default), always, or never. Old saves' true is always, false the AI decides.
+OPEN_CAVERNS_CHOICES = {'ai', 'always', 'never'}
+OPEN_CAVERNS_NAMES = {ai = 'AI decides', always = 'Always', never = 'Never'}
+function open_caverns_choice(v)
+    if v == true then return 'always' end
+    if v == false or v == nil then return 'ai' end
+    for _, o in ipairs(OPEN_CAVERNS_CHOICES) do if o == v then return v end end
+    return 'ai'
+end
 -- (0.105.27) the cycles set_rules may set from outside the window (key -> choices)
-RULE_CHOICES = {disposal = DISPOSAL_CHOICES}
+RULE_CHOICES = {disposal = DISPOSAL_CHOICES, open_caverns = OPEN_CAVERNS_CHOICES}
 GEAR_WEAPONS = {'axe', 'spear', 'mace'}
 GEAR_WEAPON_NAMES = {axe = 'battle axes', spear = 'spears', mace = 'maces'}
 OPTIONAL_LEVELS = {
@@ -286,8 +296,10 @@ function defaults()
         -- (0.105.0) water works: a moat from the river (only where one is found), magma workshops, a muddied farm level
         moat = true, magma_workshops = true, irrigation = true,
         -- (0.105.4 review) a cavern well may break into a cavern layer the dwarves
-        -- haven't found yet (the first breach brings forgotten beasts): off by default
-        open_caverns = false,
+        -- haven't found yet (the first breach brings forgotten beasts). (v35 fix)
+        -- 'ai' (the default): the AI decides, only when the fort is short of
+        -- water and has armed soldiers for what comes out; 'always'; 'never'
+        open_caverns = 'ai',
         squads_shelter = true,     -- (0.105.0) while the AI hides from a great danger, the squads wait in the shelter
         expel_vampires = true,     -- a vampire found among the citizens is sent away      -- with --ai: a short AI-written story of each season (costs tokens)
         -- "Wipe what the AI learned" (Culture tab, Shift-V): each press adds 1;
@@ -375,7 +387,6 @@ function sanitize(s)
                         'heist_lockout', 'shut_to_visitors',   -- (0.105.24) locations shut to visitors a while
                         'construct',                -- (0.105.30) building above ground (hall, wings, floors)
                         'moat', 'magma_workshops', 'irrigation',   -- (0.105.0) the water works' switches
-                        'open_caverns',             -- (0.105.4 review) a cavern well into an undiscovered cavern
                         'disposal_player_items', 'keep_enemy_gear',   -- (0.105.27) disposal
                         'squads_shelter'}) do       -- (0.105.0) the squads hide in the shelter too
         if s[k] ~= nil then out[k] = s[k] == true end
@@ -383,6 +394,7 @@ function sanitize(s)
     out.gear_weapon = one_of(s.gear_weapon, GEAR_WEAPONS, d.gear_weapon)
     out.prisoners = one_of(s.prisoners, PRISONER_CHOICES, d.prisoners)   -- (0.105.0)
     out.disposal = one_of(s.disposal, DISPOSAL_CHOICES, d.disposal)       -- (0.105.27)
+    out.open_caverns = open_caverns_choice(s.open_caverns)               -- (v35 fix) three-state
     for _, k in ipairs({'wipe_learned', 'wipe_learned_all'}) do
         local n = math.tointeger(tonumber(s[k]))
         out[k] = (n and n >= 0) and n or 0

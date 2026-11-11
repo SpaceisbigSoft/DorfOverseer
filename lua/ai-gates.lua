@@ -677,6 +677,9 @@ function find_entrances(starts, buildings, now_tick, wait_since)
             if near(b, g) then
                 if b.kind == 'pending' then
                     table.insert(pending, b)
+                    -- (0.105.35) its id: free_gate_jobs unsuspends its building job
+                    e.pending_ids = e.pending_ids or {}
+                    table.insert(e.pending_ids, b.id)
                     -- (0.104.105) what it waits for, by kind: a hatch planned
                     -- over the main stair waited 15 hours for a hatch cover
                     -- nobody made, and the entrance read "closing" all along
@@ -1646,7 +1649,45 @@ end
 -- isn't, what quickfort counted instead (e.g. build_unsuitable), so a refusal
 -- can say why.
 place_hook = nil       -- tests replace this
-local function place(key_text, pos)
+-- (v35 fix) The tiles where the AI planned a gate piece (a door, hatch,
+-- wall, bridge), kept with the save ({"x,y,z", ...}): free_gate_jobs resumes
+-- the suspended jobs of these only, never of what the player planned.
+GATE_PLANNED_KEY = 'ai-overseer/gate_planned'
+GATE_PLANNED_MAX = 400
+
+function gate_planned_records()
+    local d = U.site_get(GATE_PLANNED_KEY, {})
+    local list = type(d) == 'table' and type(d.tiles) == 'table' and d.tiles or {}
+    local set = {}
+    for _, k in ipairs(list) do set[k] = true end
+    return set, list
+end
+
+function note_gate_planned(pos)
+    if not (pos and pos.x and pos.y and pos.z) then return end
+    local k = ('%d,%d,%d'):format(pos.x, pos.y, pos.z)
+    local set, list = gate_planned_records()
+    if set[k] then return end
+    local out = {}
+    for _, v in ipairs(list) do table.insert(out, v) end
+    table.insert(out, k)
+    while #out > GATE_PLANNED_MAX do table.remove(out, 1) end
+    U.site_put(GATE_PLANNED_KEY, {tiles = out})
+end
+
+-- (v35 fix) Is any tile of this planned building one the AI planned?
+function ai_planned_building(b)
+    local okr, set = pcall(gate_planned_records)
+    if not okr or not b or b.x1 == nil or b.z == nil then return false end
+    for x = b.x1, b.x2 or b.x1 do
+        for y = b.y1, b.y2 or b.y1 do
+            if set[('%d,%d,%d'):format(x, y, b.z)] then return true end
+        end
+    end
+    return false
+end
+
+local function place_raw(key_text, pos)
     if place_hook then return place_hook(key_text, pos) end
     local qf = reqscript('quickfort')
     -- the same data shape ai-builder uses: {[z] = {[y] = {[x] = text}}}
@@ -1663,6 +1704,12 @@ local function place(key_text, pos)
     end
     local seen = what_is_there(pos)
     return false, (#why > 0 and table.concat(why, ',') or 'not placed') .. (seen and (' ' .. seen) or '')
+end
+
+local function place(key_text, pos)
+    local ok, why = place_raw(key_text, pos)
+    if ok then pcall(note_gate_planned, pos) end       -- (v35 fix) the AI's own, recorded
+    return ok, why
 end
 
 -- What's on a tile, in a few words, so a refusal says why ("SAPLING, a
@@ -4434,6 +4481,18 @@ function stranded_citizens()
     for _, e in ipairs(GATES.entrances or {}) do if e.porch then table.insert(porches, e.porch) end end
     local okv, vis = pcall(visible_dangers)
     vis = okv and vis or {}
+    local shared_at, links = {}, nil     -- (0.105.35 merge) an entrance's shared player lever, once a call
+    local function shared_of(e)
+        if shared_at[e.id] == nil then
+            if links == nil then
+                local okl, l = pcall(lever_links)
+                links = okl and l or {}
+            end
+            local okp, sh = pcall(players_shared_levers, e, links)
+            shared_at[e.id] = okp and sh[1] or false
+        end
+        return shared_at[e.id] or nil
+    end
     local seen, list, total = {}, {}, 0
     for _, u in ipairs(dfhack.units.getCitizens(true)) do
         seen[u.id] = true
@@ -4464,6 +4523,11 @@ function stranded_citizens()
                     if w then
                         row.entrance = {id = w.e.id, kind = w.e.kind, x = w.e.x, y = w.e.y, z = w.e.z}
                         row.by_ai = w.by_ai
+                        if not w.by_ai then
+                            -- (0.105.35 merge) shut on the player's lever that works other things too
+                            local sh = shared_of(w.e)
+                            if sh then row.entrance.shared_lever, row.entrance.works_other = sh.lever, sh.others end
+                        end
                         local gd = math.huge
                         for _, d in ipairs(vis) do
                             local okd, dd = pcall(distance_to, w.e, d.pos)
@@ -4760,7 +4824,11 @@ local function where(x, y, z) return ('x%d y%d z%d'):format(x, y, z) end
 
 -- One step (1-3) at a gate piece that reads open but DF holds shut.
 -- {ok, step, done, split_after, flags_before, flags_after, dry_run?}.
-function unstick_gate(id, step, dry_run)
+-- (0.105.35) cavern_ok: the brain read the caverns and found no great
+-- danger there: a cavern's way gets step 2 too (the AI's own piece
+-- only, as anywhere), for citizens cut off on its far side; (v35 fix) never
+-- step 3 (taken down) on a cavern's way.
+function unstick_gate(id, step, dry_run, cavern_ok)
     pcall(gates_restore)        -- (the save's record read back before this one is added)
     if not GATES.scanned then return {ok = false, rejected = true, error = 'map the entrances first'} end
     if step ~= 1 and step ~= 2 and step ~= 3 then
@@ -4800,10 +4868,17 @@ function unstick_gate(id, step, dry_run)
     local og = side_roles(e, g.kind, sa, sc, sga, sgc, oki and interior and interior.group or nil)
     local out_tile = og == sga and sa or sc
     local cavern = e.kind == 'cavern' or on_cavern_tile(out_tile)
-    if cavern and step >= 2 then
+    if cavern and step >= 2 and cavern_ok ~= true then
         return {ok = false, rejected = true, step = step, cavern = true,
                 error = 'this gate is on a cavern\'s way: the AI does not pull it open and shut or take it down; '
                     .. 'see to it by hand'}
+    end
+    -- (v35 fix) never taken down on a cavern's way, even with the caverns read
+    -- safe now: that way into the caverns would stay open until a door is rebuilt
+    if cavern and step == 3 then
+        return {ok = false, rejected = true, step = step, cavern = true,
+                error = 'this gate is on a cavern\'s way: the AI does not take it down (the way into the caverns '
+                    .. 'would stay open)'}
     end
     -- (merge32 review) the gate watcher's: an entrance it holds shut isn't
     -- opened by a pull; nothing is taken down while it is armed or an invader
@@ -4933,16 +5008,53 @@ function unstick_gate(id, step, dry_run)
     return out
 end
 
+-- (0.105.35 merge) The player's own levers (not named "AI gate...") that
+-- opening this entrance would pull (a drawbridge's lever_id, a door's or
+-- hatch's drive_lever) and that also work something besides this
+-- entrance's gates, read live from the links: {{lever = id, others = n}}.
+-- Such a lever is never pulled for the entrance (the pull would work the
+-- player's other things too). levers: lever_links()'s map, if already read.
+function players_shared_levers(e, levers)
+    if not levers then
+        local okl, l = pcall(lever_links)
+        levers = okl and l or {}
+    end
+    local mine = entrance_gate_ids(e)
+    local out, seen = {}, {}
+    for _, list in ipairs({e.equipment or {}, e.outer or {}}) do
+        for _, g in ipairs(list) do
+            local lid = g.kind == 'bridge' and g.lever_id or (g.lever_driven and g.drive_lever) or nil
+            if lid and not seen[lid] then
+                seen[lid] = true
+                local okb, lv = pcall(df.building.find, lid)
+                local name = okb and lv and tostring(lv.name or '') or ''
+                if not ai_lever_name(name) then
+                    local others = 0
+                    for _, tid in ipairs(lever_targets(levers, lid)) do
+                        if not mine[tid] then others = others + 1 end
+                    end
+                    if others > 0 then table.insert(out, {lever = lid, others = others}) end
+                end
+            end
+        end
+    end
+    return out
+end
+
 -- (0.105.34) One entrance opened for citizens the AI's gates shut out, while
 -- a siege is held off elsewhere (the player: nothing waits for them). Only
 -- the gates of this entrance; the watcher stays armed and shuts it again if
 -- danger comes within IMMINENT. Refused while a visible danger (or any great
 -- danger in sight) is within IMMINENT of it, or the cavern seal holds it.
-function open_entrance(id, dry_run)
+-- (0.105.35) cavern_ok: the brain read the caverns and found no great danger
+-- there (its cavern_great, deep_read): a cavern entrance opens too, for
+-- citizens shut out on its far side (the seal and a great danger in sight
+-- still refuse it). (v35 fix) Only an entrance the AI shut (GATES.closed).
+function open_entrance(id, dry_run, cavern_ok)
     local e
     for _, x in ipairs(GATES.entrances or {}) do if x.id == id then e = x end end
     if not e then return {ok = false, rejected = true, error = 'no entrance ' .. tostring(id)} end
-    if e.kind == 'cavern' then
+    if e.kind == 'cavern' and cavern_ok ~= true then
         return {ok = false, rejected = true, error = 'a cavern entrance stays as the cavern rules keep it'}
     end
     if sealed_entrance(e) then return {ok = false, rejected = true, error = 'the cavern seal holds this entrance'} end
@@ -4957,11 +5069,93 @@ function open_entrance(id, dry_run)
         return {ok = false, rejected = true, waiting = true, nearest = nearest,
                 error = ('an enemy is %d tiles from this entrance'):format(nearest)}
     end
+    -- (v35 fix) a gate the AI didn't shut is the player's: never opened by
+    -- the AI (no lever of the player's pulled, no door the player locked
+    -- unlocked); the brain digs the shut-out a way in instead
+    if not (GATES.closed and GATES.closed[e.id]) then
+        local okp, shared = pcall(players_shared_levers, e)
+        local sh = okp and shared and shared[1] or nil
+        return {ok = false, rejected = true, not_ai = true,
+                shared_lever = sh and sh.lever or nil, works_other = sh and sh.others or nil,
+                error = 'its gate was not shut by the AI: the AI does not open the player\'s gate'
+                    .. (sh and (' (the player\'s lever %d works %d other thing(s))'):format(sh.lever, sh.others) or '')}
+    end
     if dry_run then return {ok = true, dry_run = true, entrance = id, nearest = nearest < math.huge and nearest or nil} end
     local done = set_entrance(e, false)
     pcall(gates_persist)
     return {ok = true, entrance = id, opened = done, still_shut = GATES.closed[e.id] and true or nil,
             nearest = nearest < math.huge and nearest or nil}
+end
+
+-- (0.105.35) The gate watcher failing (the player: nothing waits for them):
+-- every entrance with a visible danger within IMMINENT of it shut now, as
+-- the watcher's own look would. Refused (waiting) when none is that close.
+function close_threatened_gates(dry_run)
+    if not GATES.scanned or not GATES.entrances then
+        return {ok = false, rejected = true, error = 'map the entrances first'}
+    end
+    local okv, vis = pcall(visible_dangers)
+    if not okv then return {ok = false, error = 'the dangers could not be read: ' .. tostring(vis):sub(1, 120)} end
+    local ids, done = {}, 0
+    GATES.closed = GATES.closed or {}
+    for _, e in ipairs(GATES.entrances) do
+        if #(e.equipment or {}) > 0 and not GATES.closed[e.id] and not e.sealed then
+            local nearest = math.huge
+            for _, d in ipairs(vis or {}) do
+                local okd, dd = pcall(distance_to, e, d.pos)
+                if okd and dd < nearest then nearest = dd end
+            end
+            if nearest <= IMMINENT then
+                table.insert(ids, e.id)
+                if not dry_run then
+                    local okc, n = pcall(set_entrance, e, true)
+                    if okc then done = done + (n or 0) end
+                end
+            end
+        end
+    end
+    if #ids == 0 then
+        return {ok = false, rejected = true, waiting = true,
+                error = ('no enemy within %d tiles of an open gate'):format(IMMINENT)}
+    end
+    if not dry_run then pcall(gates_persist) end
+    return {ok = true, entrances = ids, closed = done, dry_run = dry_run or nil}
+end
+
+-- (0.105.35) A gate planned at an entrance waits a week with parts free:
+-- the building jobs of what is planned there unsuspended (a suspended job
+-- is the usual cause). Refused when none is suspended. (v35 fix) Only the
+-- pieces the AI planned (gate_planned_records).
+function free_gate_jobs(id, dry_run)
+    local e
+    for _, x in ipairs(GATES.entrances or {}) do if x.id == id then e = x end end
+    if not e then return {ok = false, rejected = true, error = 'no entrance ' .. tostring(id)} end
+    local n, seen, theirs = 0, 0, 0
+    for _, bid in ipairs(e.pending_ids or {}) do
+        local okb, b = pcall(df.building.find, bid)
+        if okb and b then
+            seen = seen + 1
+            -- (v35 fix) only what the AI planned: the player's suspended job stays theirs
+            local mine = ai_planned_building(b)
+            for _, j in ipairs(b.jobs or {}) do
+                if j.flags and j.flags.suspend then
+                    if mine then
+                        n = n + 1
+                        if not dry_run then j.flags.suspend = false end
+                    else
+                        theirs = theirs + 1
+                    end
+                end
+            end
+        end
+    end
+    if n == 0 then
+        return {ok = false, rejected = true, players = theirs > 0 or nil,
+                error = theirs > 0 and ('the %d suspended job(s) there are on what the player planned: the AI '
+                                        .. 'leaves them'):format(theirs)
+                    or ('no suspended job at the %d piece(s) planned there'):format(seen)}
+    end
+    return {ok = true, unsuspended = n, dry_run = dry_run or nil}
 end
 
 -- (the file's own functions, as just defined above: a reload of the script takes the new ones)

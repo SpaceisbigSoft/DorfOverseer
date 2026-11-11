@@ -44,7 +44,7 @@
 local json = require('json')
 local utils = require('utils')
 
-BRIDGE_VERSION = '0.105.34'
+BRIDGE_VERSION = '0.105.35'
 PROTOCOL = 1 -- bump when the report's shape changes in a breaking way
 
 OUT_DIR = dfhack.getDFPath() .. '/dfhack-config/ai-overseer'   -- (a global: the parts write there too)
@@ -173,6 +173,8 @@ ACTIONS = {
     save_game = act_save_game,
     open_gates = act_open_gates,
     open_entrance = act_open_entrance,     -- (0.105.34)
+    close_threatened_gates = act_close_threatened_gates,   -- (0.105.35) the watcher failing
+    free_gate_jobs = act_free_gate_jobs,                   -- (0.105.35) a planned gate's suspended jobs
     setup_shelter = act_setup_shelter,
     refresh_shelter = act_refresh_shelter,       -- (0.105.26)
     set_population_cap = act_set_population_cap,
@@ -310,6 +312,7 @@ ACTIONS = {
     free_dig_jobs = act_free_dig_jobs,
     prioritize_dig = act_prioritize_dig,
     renew_well_dig = act_renew_well_dig,      -- (0.105.31)
+    unmark_project_dig = act_unmark_project_dig,   -- (0.105.35) a level's marker-only dig tiles made real
     seal_well_stairs = act_seal_well_stairs,
     well_shaft = act_well_shaft,
     finish_project = act_finish_project,
@@ -368,9 +371,11 @@ for _, name in ipairs({
     -- (0.105.30) construction: each plans and returns before it places anything
     'place_hall', 'build_wings', 'floor_rooms',
     'open_entrance',     -- (0.105.34) its dry run checks the distance and changes nothing
+    'close_threatened_gates', 'free_gate_jobs',   -- (0.105.35) each dry run only counts
     'unstick_gate',      -- (0.105.32) its dry run says what it would do, and changes nothing
     -- (0.105.32) the way in: planned (and quickfort's dry run) before anything is designated
     'dig_way_in',
+    'unmark_project_dig',   -- (0.105.35) its dry run counts the marked tiles and changes nothing
 }) do DRY_OK[name] = true end
 
 -- These only change what's displayed, so they still work while halted, dry
