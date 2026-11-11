@@ -7963,8 +7963,7 @@ def _():
     s["supplies"]["statues"] = 2
     p = []
     _grandeur_rule(s, cfg, p, [])
-    if not p:
-        return            # (the test fort counts as young or hungry)
+    assert p, "a grand, fed fort with two free statues proposes nothing"
     assert p[0].action == {"type": "place_in_zone", "zone_id": 6, "what": "statue"}, p
     s["settings"]["traits"] = {"grandeur": 0}
     p = []

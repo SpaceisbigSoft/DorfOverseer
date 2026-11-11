@@ -24,6 +24,12 @@ from planner import Memory, plan, record, select  # noqa: E402
 STATES = sorted((ROOT / "tests" / "fixtures" / "real").glob("*.json"))
 
 
+def crashed(notes: list) -> list:
+    """The notes plan()._guard writes for a rule that raised (13c): the cycle
+    goes on, so only these notes show that a rule crashed on the report."""
+    return [n for n in notes if isinstance(n, str) and n.startswith("rule ") and " failed (" in n]
+
+
 def check(path: Path) -> None:
     state = normalize(json.loads(path.read_text(encoding="utf-8")))
     m = Memory()
@@ -34,6 +40,7 @@ def check(path: Path) -> None:
             assert isinstance(p.reason, str) and p.reason, p
             json.dumps(p.action)                         # it must go over the wire
         assert all(isinstance(n, str) for n in notes), notes
+        assert not crashed(notes), crashed(notes)        # no rule raised on this report
         allowed, _ = select(props, state, m)
         record([(p, {"ok": False, "error": "refused (test)"}) for p in allowed], state, m)
 
@@ -55,7 +62,8 @@ def _fed_small_fort() -> None:
     s = _region2()
     assert s["dwarves"]["total"] == 18
     assert not young_fort(s, PLANNER_CONFIG)
-    props, _ = plan(copy.deepcopy(s), Memory())
+    props, notes = plan(copy.deepcopy(s), Memory())
+    assert not crashed(notes), crashed(notes)
     b = [p for p in props if p.rule == "bins"]
     assert b and b[0].action == {"type": "work_order", "recipe": "wooden_bin", "amount": 9}, b
     hungry = copy.deepcopy(s)
