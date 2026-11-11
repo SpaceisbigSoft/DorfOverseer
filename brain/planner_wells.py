@@ -9,13 +9,39 @@ import math
 from digest import _d, _l
 from planner_core import *  # noqa: F401,F403
 
-__all__ = ["_well_rule", "_well_lid_rule", "SHAFT_LINK_LOST_MAX", "SHAFT_DANGER_TILES", "SHAFT_DANGER_OPEN", "cavern_danger", "_water_zone_rule", "cavern_points", "cavern_action", "cavern_well_need", "unfound_cavern", "cavern_well_safe", "WELL_PARTS_SHOPS", "CHAIN_SKIP", "chain_metal", "well_parts_plan", "_well_parts", "_water_traffic_rule", "cistern_pop", "WATER_WORDS", "magma_access", "water_summary", "_water_rules", "CISTERN_WORDS", "_cistern_parts", "_cistern_rule"]
+__all__ = ["_well_rule", "_well_lid_rule", "SHAFT_LINK_LOST_MAX", "SHAFT_DANGER_TILES", "SHAFT_DANGER_OPEN", "cavern_danger", "_water_zone_rule", "cavern_points", "cavern_action", "cavern_well_need", "unfound_cavern", "cavern_well_safe", "WELL_PARTS_SHOPS", "CHAIN_SKIP", "chain_metal", "well_parts_plan", "_well_parts", "_water_traffic_rule", "cistern_pop", "WATER_WORDS", "magma_access", "water_summary", "_water_rules", "CISTERN_WORDS", "_cistern_parts", "_cistern_rule", "WELLS_CONFIG", "shut_wells", "usable_wells"]
+
+# (0.105.33 B4) the wells' own settings (merged into PLANNER_CONFIG, as planner_threats does)
+WELLS_CONFIG = {
+    "well_retry_days": 28,      # a well the game refused (given up): another spot tried this long after
+}
+PLANNER_CONFIG.update({k: v for k, v in WELLS_CONFIG.items() if k not in PLANNER_CONFIG})
+
+
+def shut_wells(s: dict, states: tuple = ("closed", "pulling")) -> int:
+    """(0.105.33 B4) Built cavern wells whose shaft gate is shut (or being
+    pulled): the bucket can't reach the water through a shut hatch. Wells
+    still being dug or furnished (in the open list) and given-up shafts are
+    not built wells and are not counted."""
+    pr = _d(s.get("projects"))
+    open_ids = {p.get("id") for p in _l(pr.get("open")) if isinstance(p, dict)}
+    return sum(1 for x in _l(pr.get("well_lids")) if isinstance(x, dict)
+               and x.get("gate") in states and not x.get("cancelled")
+               and (x.get("project_id") is None or x.get("project_id") not in open_ids))
+
+
+def usable_wells(s: dict, states: tuple = ("closed", "pulling")) -> int:
+    """(0.105.33 B4) The wells a bucket can draw from: the built ones less the
+    cavern wells whose shaft gate is shut."""
+    wells = int(_d(_d(s.get("buildings")).get("other")).get("Well", 0) or 0)
+    return max(0, wells - shut_wells(s, states))
 
 
 def _well_rule(s: dict, memory, traits: dict, cfg: dict, proposals: list, notes: list) -> None:
     """A well when there's none, placed by the AI itself; and what a new well
     is still waiting for."""
-    wells = _d(s["buildings"].get("other")).get("Well", 0)
+    # (0.105.33 B4) a cavern well with its shaft gate shut draws no water
+    wells = usable_wells(s, ("closed",))
     pr = _d(s.get("projects"))
     open_ = [p for p in _l(pr.get("open")) if isinstance(p, dict)]
     building = [p for p in open_ if p.get("kind") == "well"]
@@ -120,8 +146,17 @@ def _well_rule(s: dict, memory, traits: dict, cfg: dict, proposals: list, notes:
         else:
             notes.append(text + " (no one is hurt, so it can wait)")
     if "place the well" in memory.well_failure:
-        say_failure(False)
-        return                  # the game refused a well over a hole the AI dug: not another hole
+        # the game refused a well over a hole the AI dug: not another hole at
+        # once. (0.105.33 B4) But not for ever either: a well_retry_days after
+        # the last try the cavern well (below) or another spot is tried (the
+        # bridge keeps off the refused hole's spot).
+        last = memory.last_fired.get("well")
+        days = cfg.get("well_retry_days", WELLS_CONFIG["well_retry_days"])
+        if isinstance(last, int) and 0 <= abs_tick(s) - last < days * TICKS_PER_DAY:
+            say_failure(False)
+            return
+        notes.append(f"the game refused the last well over its hole ({memory.well_failure[:100]}): "
+                     f"tried again after {days} days, on another spot (or to the cavern)")
     # no ordinary spot: the AI decides whether a well into a cavern is worth it
     if memory.well_failure and not cavern_failure and len(open_) < limit:
         need = cavern_well_need(s, cfg, patients) or (f"{parched} parched dwarves need water" if parched else "")
@@ -248,8 +283,9 @@ def _well_lid_rule(s: dict, proposals: list, notes: list) -> None:
                 pool -= 2
     build = [] if danger else ok_gates
     # (0.104.164) a pull a dwarf never made ("pulling" for good) is turned too: the bridge sets the gate at once
-    turn = [x for x in gates if (x.get("gate") in ("open", "pulling") and danger)
-            or (x.get("gate") in ("closed", "pulling") and not danger)]
+    # (0.105.33 L5) a given-up well's shaft (no well over it) is kept shut, never opened
+    turn = [x for x in gates if (x.get("gate") in ("open", "pulling") and (danger or x.get("cancelled")))
+            or (x.get("gate") in ("closed", "pulling") and not danger and not x.get("cancelled"))]
     if danger and turn:
         proposals.append(Proposal("well_shaft", {"type": "well_shaft", "close": True},
                                   f"{danger} near the cavern well: shut its shaft (its hatch, at once)", 2))
@@ -269,6 +305,8 @@ def _well_lid_rule(s: dict, proposals: list, notes: list) -> None:
             why = "; ".join(steps)
         elif not turn:
             why = "the cavern well's shaft watcher isn't running (the game was loaded): start it"
+        elif all(x.get("cancelled") for x in turn):
+            why = "a given-up cavern well's shaft stands open to the cavern: shut its hatch"
         else:
             why = "no danger near the cavern well now: open its shaft again"
         proposals.append(Proposal("well_shaft", {"type": "well_shaft", "close": bool(danger)}, why, 3))
@@ -334,14 +372,17 @@ def cavern_danger(s: dict, wells: list | None = None, radius: int = SHAFT_DANGER
     return ""
 
 
-def _water_zone_rule(s: dict, proposals: list, notes: list) -> None:
+def _water_zone_rule(s: dict, proposals: list, notes: list, cfg: dict | None = None) -> None:
     """(0.104.2) No well, and the injured or the parched wait for water
     (Enxah, winter y56: 10 patients, 16 parched, 17 GiveWater jobs going
     nowhere while the well's mechanism was held as a stuck order): a Water
     Source zone over open water the dwarves can walk to, where buckets are
     filled at once. Water near the fort first, fresh before stagnant, cavern
-    water last (the dwarves walk into the cavern for it)."""
-    if _d(_d(s.get("buildings")).get("other")).get("Well", 0):
+    water last (the dwarves walk into the cavern for it). (0.105.33 B4) A
+    cavern well whose shaft gate is shut is no well; `cfg` the plan's own
+    (PLANNER_CONFIG when not given)."""
+    cfg = PLANNER_CONFIG if cfg is None else cfg
+    if usable_wells(s):
         return
     if _d(_d(s.get("buildings")).get("zones")).get("WaterSource"):
         # (0.104.13) the zone is there but the game says it holds no water
@@ -361,7 +402,7 @@ def _water_zone_rule(s: dict, proposals: list, notes: list) -> None:
     # reason enough: dwarves drink from a water source when there's no booze.
     citizens = max(1, int(_d(s.get("dwarves")).get("total") or 1))
     drink = _d(s.get("stocks")).get("drink")
-    dry = isinstance(drink, (int, float)) and drink < citizens * PLANNER_CONFIG["urgent_drink_per_dwarf"]
+    dry = isinstance(drink, (int, float)) and drink < citizens * cfg["urgent_drink_per_dwarf"]
     if not patients and not parched and not dry:
         return
     # (0.105.7 review) not while a threat can reach the dwarves (they walk
@@ -370,7 +411,7 @@ def _water_zone_rule(s: dict, proposals: list, notes: list) -> None:
         notes.append("the dwarves need a water source but a threat can reach them: no walk to open water now")
         return
     danger = cavern_danger(s)
-    far = PLANNER_CONFIG["water_zone_max_d"]
+    far = cfg["water_zone_max_d"]
     bodies = [b for b in _l(_d(s.get("water")).get("bodies"))
               if isinstance(b, dict) and isinstance(b.get("nearest"), dict)
               and (b.get("salt_share") or 0) < 50
@@ -390,7 +431,8 @@ def _water_zone_rule(s: dict, proposals: list, notes: list) -> None:
                      "is known for a water source")
         return
     proposals.append(Proposal("water_zone", {"type": "water_zone", "points": points},
-                              f"{who} dwarves wait for water and there is no well: a water source zone at the "
+                              f"{who} dwarves wait for water and there is no well"
+                              + (" whose shaft is open" if shut_wells(s) else "") + ": a water source zone at the "
                               "nearest open water, where buckets are filled until the well stands", 1))
 
 
@@ -696,17 +738,16 @@ def _water_rules(s: dict, cfg: dict, proposals: list, notes: list) -> None:
         return
     now = abs_tick(s)
     tick = w.get("tick")
-    if w.get("scanning"):
-        act = {"type": "survey_water"}
-        if cfg["cistern_tunnel_max"] != 30:          # (0.105.3)
-            act["tunnel"] = int(cfg["cistern_tunnel_max"])
-        proposals.append(Proposal("water", act,
-                                  "the water survey goes on (a slice a cycle, so the game doesn't stall)", 7))
-    elif w.get("none") or not isinstance(tick, int) or not 0 <= now - tick < cfg["water_survey_ticks"]:
+    def survey() -> dict:
         act = {"type": "survey_water"}
         if cfg["cistern_tunnel_max"] != 30:          # (0.105.3) the cistern's tunnel may reach further
             act["tunnel"] = int(cfg["cistern_tunnel_max"])
-        proposals.append(Proposal("water", act,
+        return act
+    if w.get("scanning"):
+        proposals.append(Proposal("water", survey(),
+                                  "the water survey goes on (a slice a cycle, so the game doesn't stall)", 7))
+    elif w.get("none") or not isinstance(tick, int) or not 0 <= now - tick < cfg["water_survey_ticks"]:
+        proposals.append(Proposal("water", survey(),
                                   "survey the water near the fort (rivers, pools, caverns, aquifer, magma)", 7))
     if not w.get("none"):
         elev = int(_d(s.get("map")).get("elevation_offset") or 0)

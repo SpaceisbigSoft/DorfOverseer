@@ -871,8 +871,12 @@ function well_refused(data, p, results, qf_build)
                 error = ('the game would not put the well over the hole at %s (%d of %d tries; %s): tried again in a day')
                     :format(where, p.well_refusals, WELL_REFUSALS_MAX, diag.text)}
     end
-    -- given up (a new well would only dig another hole)
+    -- given up (a new well would only dig another hole). (0.105.33 B4) Marked
+    -- refused: the brain tries again later, and well_spots_unreached keeps a
+    -- new well off this spot (a revived cavern well may still take it up)
     p.phase = 'cancelled'
+    p.refused = true
+    p.cancelled_year = df.global.cur_year
     save_projects(data)
     return {ok = false, project_id = p.id, placed = results, diagnosis = diag, refusals = p.well_refusals,
             error = ('the game would not place the well over the hole at %s (%d tries; %s)'):format(

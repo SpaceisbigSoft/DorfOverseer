@@ -2635,6 +2635,7 @@ def _():
     # (0.105.24) the bridge's give-up (3 tries, what it saw)
     record([(p, {"ok": False, "error": "the game would not place the well over the hole at x1 y2 z3 (3 tries; "
                                        "tiles: z3 OpenSpace, z2 OpenSpace, z1 OpenSpace; beside: StoneFloor1)"})], s, m)
+    m.last_fired["well"] = abs_tick(s)          # (0.105.33) the stop lasts well_retry_days from the last try
     props, notes = plan(s, m)
     assert not by_rule(props, "well"), "would dig another hole"
     assert any(n.startswith("no well could be placed: the game would not place") for n in notes), notes
@@ -2655,6 +2656,7 @@ def _():
     props, notes = plan(s, m)
     assert by_rule(props, "well") and m.well_floor_retried and m.well_failure == "", notes
     m.well_failure = "the game would not place the well over the hole at x131 y129 z24"
+    m.last_fired["well"] = abs_tick(s)          # (0.105.33) tried just now: the stop holds (well_retry_days)
     props, notes = plan(s, m)
     assert not by_rule(props, "well")                              # once only
 

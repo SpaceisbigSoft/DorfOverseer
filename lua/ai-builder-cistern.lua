@@ -470,7 +470,12 @@ function plan_cistern(first, last, opts)
                                     local score = #tun.path * 3 + o.rise * 4 + math.abs(x - area.cx) + math.abs(y - area.cy)
                                         + (i - 1) * 20 + cost
                                     if not considered[kind] or score < considered[kind] then considered[kind] = score end
-                                    if not best_score or score < best_score then
+                                    -- (0.105.33 L5) only a plan with a spot for its lever: one
+                                    -- without was dug in full and then stalled at the lever for ever
+                                    local lever = (not best_score or score < best_score) and cistern_lever_spot(x, y, zw) or nil
+                                    if (not best_score or score < best_score) and not lever then
+                                        why = 'no free floor for the floodgate\'s lever near the well'
+                                    elseif not best_score or score < best_score then
                                         best_score = score
                                         best = {v = CISTERN_V, score = score, cistern = c, well = {x = x, y = y, z = zw},
                                                 floodgate = tun.path[1], plug = tun.path[#tun.path],
@@ -478,7 +483,7 @@ function plan_cistern(first, last, opts)
                                                 intake_z = zs, shaft = o.shaft, corner = o.corner, rise = o.rise,
                                                 source = kind, source_why = #whys > 0 and table.concat(whys, ', ') or nil,
                                                 stagnant = w.stagnant or nil, extent = ext,
-                                                elevation = ez(z), intake_elevation = ez(zs)}
+                                                elevation = ez(z), intake_elevation = ez(zs), lever = lever}
                                     end
                                 end
                             end
@@ -490,15 +495,7 @@ function plan_cistern(first, last, opts)
     end
     if best then
         best.considered = considered
-        -- a lever on the fort floor beside the well
-        for _, d in ipairs(DIR8) do
-            local lx, ly = best.well.x + d[1] * 2, best.well.y + d[2] * 2
-            local t = tile_info(lx, ly, best.well.z)
-            if t and t.shape == 'FLOOR' and not t.building and not building_at(lx, ly, best.well.z) then
-                best.lever = {x = lx, y = ly, z = best.well.z}
-                break
-            end
-        end
+        -- a lever on the fort floor beside the well (found as `best` was chosen)
         return best
     end
     if cut then
@@ -514,6 +511,25 @@ function plan_cistern(first, last, opts)
         if okr and far ~= '' then why = why .. ' (' .. far .. ', not on a level 0-' .. CISTERN_MAX_RISE .. ' over a cistern under a fort floor)' end
     end
     return nil, why
+end
+
+-- (0.105.33 L5) A spot for the floodgate's lever: a free fort floor 2 tiles
+-- from the well (as before), else 3 tiles off. nil when there is none.
+function cistern_lever_spot(wx, wy, zw)
+    for r = 2, 3 do
+        for dx = -r, r do
+            for dy = -r, r do
+                if math.max(math.abs(dx), math.abs(dy)) == r then
+                    local lx, ly = wx + dx, wy + dy
+                    local t = tile_info(lx, ly, zw)
+                    if t and t.shape == 'FLOOR' and not t.building and not building_at(lx, ly, zw) then
+                        return {x = lx, y = ly, z = zw}
+                    end
+                end
+            end
+        end
+    end
+    return nil
 end
 
 -- (0.104.145) Is the cistern still closed where the water goes? The room's
@@ -679,6 +695,23 @@ function lever_pull_pending(lever_id)
     return ok and yes
 end
 
+-- (0.105.33 L5) Every PullLever job queued on the lever taken away (a dwarf
+-- on the way would toggle the gate back after an instant pull). The count.
+function cancel_lever_pulls(lever_id)
+    local n = 0
+    pcall(function()
+        local b = df.building.find(lever_id)
+        local jobs = {}
+        for _, j in ipairs(b and b.jobs or {}) do
+            if j.job_type == df.job_type.PullLever then table.insert(jobs, j) end
+        end
+        for _, j in ipairs(jobs) do
+            if pcall(dfhack.job.removeJob, j) then n = n + 1 end
+        end
+    end)
+    return n
+end
+
 -- instant: the lever acts now, no dwarf needed (DFHack's lever --instant),
 -- for a flood in the fort, when the lever may stand in the water
 function pull(lever_id, instant)
@@ -840,8 +873,18 @@ function cistern_shut(dry_run)
     if not d or not d.lever_id then return {ok = false, rejected = true, error = 'no cistern lever linked yet'} end
     local p = d.plan
     local gate = building_info(p.floodgate.x, p.floodgate.y, p.intake_z or p.cistern.z, 'Floodgate')
+    -- (0.105.33 L5) a refill or shut pull queued for a dwarf is taken away
+    -- first: walked to after the instant shut, it would open the gate again
+    local pending = lever_pull_pending(d.lever_id)
+    if gate and gate.closed and pending then
+        if dry_run then return {ok = true, dry_run = true, cancel_pull = true} end
+        local n = cancel_lever_pulls(d.lever_id)
+        return {ok = n > 0, shut = true, cancelled_pulls = n,
+                error = n == 0 and 'the pull queued on the lever could not be taken away' or nil}
+    end
     if not gate or gate.closed then return {ok = false, rejected = true, error = 'the floodgate is already shut'} end
     if dry_run then return {ok = true, dry_run = true} end
+    if pending then cancel_lever_pulls(d.lever_id) end
     -- (0.100, review) at once: a queued pull waits for a dwarf to wade to
     -- the lever, and the planner asks again every cycle while dwarves are wet
     local ok, out = pull(d.lever_id, true)
@@ -1204,7 +1247,13 @@ function cistern_step(dry_run, prefs, tunnel)
         if left > 0 then return wait(('the cistern is being dug: %d tile(s) left'):format(left)) end
         if dry_run then return {ok = true, dry_run = true, stage = 'build'} end
         local fg, lv = p.floodgate, p.lever
-        if not lv then return {ok = false, error = 'no spot for the lever beside the well'} end
+        if not lv then
+            -- (0.105.33 L5) looked for again (an old plan, or a floor dug since)
+            lv = cistern_lever_spot(wx, wy, zw)
+            if not lv then return wait('no free floor for the lever near the well (2-3 tiles from it)') end
+            p.lever = lv
+            save_cistern(d)
+        end
         if not designate({{x = fg.x, y = fg.y, text = 'x'}}, zi, 'build')
                 or not designate({{x = lv.x, y = lv.y, text = 'Tl'}}, zw, 'build') then
             return {ok = false, error = 'the game would not place the floodgate or the lever'}
@@ -1307,6 +1356,15 @@ function cistern_step(dry_run, prefs, tunnel)
         if gate and gate.closed and d.plug_by_hand then
             return wait('a dwarf is on the way to pull the lever (open the floodgate)')
         end
+        -- (0.105.33 L5) the gate open before the plug is dug (the player opened
+        -- it, or a late pull did): shut at once, the plug dug with it shut
+        if not d.plug_by_hand and gate and gate.built and not gate.closed and d.lever_id then
+            if dry_run then return {ok = true, dry_run = true, stage = 'shut'} end
+            cancel_lever_pulls(d.lever_id)
+            local ok, out = pull(d.lever_id, true)
+            if not ok then return {ok = false, error = 'lever pull failed: ' .. tostring(out)} end
+            return wait('the floodgate stood open before the plug was dug: shut at once, the plug next')
+        end
         -- (0.104.0, map safety) the water comes in when the plug is dug: no one
         -- else may be in the cistern or its tunnel then. The plug waits until
         -- both are empty, and what lies there is forbidden (no hauler goes in
@@ -1357,6 +1415,11 @@ function cistern_step(dry_run, prefs, tunnel)
             local ok, out = pull(d.lever_id)
             if not ok then return {ok = false, error = 'lever pull failed: ' .. tostring(out)} end
             return wait('dig-now isn\'t here: the gate opened, a miner digs the plug')
+        end
+        -- (0.105.33 L5) never by hand down a shaft (the miner would drown in it)
+        if p.shaft then
+            return {ok = false, rejected = true, needs_player = true,
+                    error = 'the plug can\'t be dug by hand: a miner digging it would drown in the shaft'}
         end
         if not designate({{x = p.plug.x, y = p.plug.y, text = 'd'}}, zi, 'dig') then
             return {ok = false, error = 'the game would not designate the plug'}
