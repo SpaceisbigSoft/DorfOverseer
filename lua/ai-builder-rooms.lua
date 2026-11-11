@@ -15,30 +15,36 @@ local info, has, ez = info, has, ez
 -- tiles of the gate, on its level or the two below, nearest first.
 function gate_dog_pen(params, dry_run)
     OFFSET = elevation_offset()
+    -- (0.105.33) the tile cache only for the search, cleared on every way out
     CACHE = {}
-    local gx, gy, gz = params.x, params.y, params.z
-    local function free(x, y, z)
-        local t = info(x, y, z)
-        return t and t.shape == 'FLOOR' and not t.liquid and not t.outside and not t.building
-            and not t.designated and not tile_taken(x, y, z) and walk_group(x, y, z) ~= 0
-    end
-    local best
-    for zz = gz, gz - 2, -1 do
-        for x = gx - 8, gx + 6 do
-            for y = gy - 8, gy + 6 do
-                local d = math.max(math.abs(x + 1 - gx), math.abs(y + 1 - gy)) + 3 * (gz - zz)
-                if (not best or d < best.d) and d >= 2 then
-                    local ok = true
-                    for dx = 0, 2 do
-                        for dy = 0, 2 do
-                            if ok and not free(x + dx, y + dy, zz) then ok = false end
+    local okp, best = pcall(function()
+        local gx, gy, gz = params.x, params.y, params.z
+        local function free(x, y, z)
+            local t = info(x, y, z)
+            return t and t.shape == 'FLOOR' and not t.liquid and not t.outside and not t.building
+                and not t.designated and not tile_taken(x, y, z) and walk_group(x, y, z) ~= 0
+        end
+        local best
+        for zz = gz, gz - 2, -1 do
+            for x = gx - 8, gx + 6 do
+                for y = gy - 8, gy + 6 do
+                    local d = math.max(math.abs(x + 1 - gx), math.abs(y + 1 - gy)) + 3 * (gz - zz)
+                    if (not best or d < best.d) and d >= 2 then
+                        local ok = true
+                        for dx = 0, 2 do
+                            for dy = 0, 2 do
+                                if ok and not free(x + dx, y + dy, zz) then ok = false end
+                            end
                         end
+                        if ok then best = {x = x, y = y, z = zz, d = d} end
                     end
-                    if ok then best = {x = x, y = y, z = zz, d = d} end
                 end
             end
         end
-    end
+        return best
+    end)
+    CACHE = nil
+    if not okp then return {ok = false, error = 'the pen search failed: ' .. tostring(best):sub(1, 160)} end
     if not best then return {ok = false, rejected = true, error = 'no free 3x3 of inside floor near the gate'} end
     local cell = {{x = 0, y = 0, text = ('n{name="%s"}(3x3)'):format(params.name or 'AI gate dogs')}}
     local good, failed = qf_try('zone', cell, best.z, best.x, best.y, dry_run)

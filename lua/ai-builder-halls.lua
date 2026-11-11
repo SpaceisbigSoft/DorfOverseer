@@ -228,6 +228,10 @@ function find_hall_site(kind)
     end
     local channels = planned_channels()
     local mw, mh = map_size()
+    -- (0.105.33) the underground depot road's mouth, where the wagons turn
+    -- in (the keep's court keeps clear of it too)
+    local okm, mouth = pcall(deep_depot_mouth)
+    mouth = okm and type(mouth) == 'table' and mouth or {}
 
     local function score_of(cx, cy, z)
         local best = math.huge
@@ -271,6 +275,11 @@ function find_hall_site(kind)
         end
         for _, dp in ipairs(depots) do
             if dp.z == s.z and rects_dist(s, dp) == 0 then return false, 'the trade depot is there' end
+        end
+        for _, m in ipairs(mouth) do
+            if math.abs(m.z - s.z) <= 1 and rect_dist(s.x1, s.y1, s.x2, s.y2, m.x, m.y) <= 1 then
+                return false, 'the underground depot\'s wagon road'
+            end
         end
         for _, st in ipairs(strips) do
             if rects_dist(s, st) == 0 and math.abs(s.z - st.z) <= 1 then

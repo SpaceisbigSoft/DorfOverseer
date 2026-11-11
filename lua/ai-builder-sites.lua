@@ -90,12 +90,14 @@ end
 
 -- Can the staircase at (sx, sy) be extended from its bottom (zb) down to z?
 -- Each new stair tile and its 8 neighbours must be untouched natural wall.
-function check_extension(sx, sy, zb, z)
+-- (0.105.33) all_last: the 8 neighbours on z are read too (a new stairwell
+-- has no hub check on its bottom level to cover them)
+function check_extension(sx, sy, zb, z, all_last)
     for zz = zb - 1, z, -1 do
         for dx = -1, 1 do
             for dy = -1, 1 do
                 -- on the target level, the hub check covers the neighbours
-                if zz ~= z or (dx == 0 and dy == 0) then
+                if zz ~= z or all_last or (dx == 0 and dy == 0) then
                     local ok, why = natural_wall(info(sx + dx, sy + dy, zz))
                     if ok and dx == 0 and dy == 0 then
                         local up = info(sx, sy, zz + 1)
@@ -407,6 +409,9 @@ local function offset_sites(L, stair, z, reserved, try, dirs, grammar)
                 local site = try(ok, why, {z = z, extend = false, anchor = {x = ax, y = ay},
                                            extra = extra, area = area,
                                            corridor = corridor + walked + (side ~= 0 and 2 or 0),
+                                           -- (0.105.33) the new corridor alone (Spacing's
+                                           -- scorecard line: walked tiles aren't dug)
+                                           new_corridor = corridor,
                                            -- first new corridor tile, where a fortified fort puts a door
                                            join = join,
                                            -- the plan's doors, and the inner door's tile (fortified)
@@ -599,14 +604,14 @@ function choose_site(L, stairs, reserved, plan, ceil_z)
                         end
                         if ok then
                             found = {z = z, extend = true, anchor = {x = stair.x, y = stair.y},
-                                     extra = {}, area = area, stair = stair, corridor = 0}
+                                     extra = {}, area = area, stair = stair, corridor = 0, new_corridor = 0}
                             return
                         end
                         note('below', why, z)
                     else
                         if ok then
                             found = {z = z, extend = false, anchor = {x = stair.x, y = stair.y},
-                                     extra = {}, area = area, stair = stair, corridor = 0}
+                                     extra = {}, area = area, stair = stair, corridor = 0, new_corridor = 0}
                             return
                         end
                         note('centred', why, z)
@@ -823,9 +828,20 @@ end
 -- it. params: dir, elev_lo, elev_hi, min_dist, max_dist, spine {x, y}.
 local STAIR_DIRS = {north = {0, -1}, south = {0, 1}, east = {1, 0}, west = {-1, 0}}
 
+local stairwell_search
+
 function dig_stairwell(params, dry_run)
     OFFSET = elevation_offset()
+    -- (0.105.33) the tile cache only for this search, cleared on every way
+    -- out (it was left live: every later info() read answered stale tiles)
     CACHE = {}
+    local ok, r = pcall(stairwell_search, params, dry_run)
+    CACHE = nil
+    if not ok then return {ok = false, error = 'the stairwell search failed: ' .. tostring(r):sub(1, 160)} end
+    return r
+end
+
+stairwell_search = function(params, dry_run)
     local v = STAIR_DIRS[params.dir]
     if not v then return {ok = false, rejected = true, error = 'dir must be north, east, south or west'} end
     local stairs = find_stairs(10) or {}
@@ -888,7 +904,7 @@ function dig_stairwell(params, dry_run)
                         if not ok then why = 'too near another stair' end
                     end
                     if ok then
-                        local okx, w = check_extension(x, y, z, lo_z)
+                        local okx, w = check_extension(x, y, z, lo_z, true)
                         if not okx then ok, why = false, w end
                     end
                     if ok then
@@ -916,5 +932,3 @@ function dig_stairwell(params, dry_run)
     end
     return {ok = false, rejected = true, error = ('no place for a stairwell %s of the main stair: %s'):format(params.dir, why)}
 end
-
--- {drop, rock = levels of rock to channel, cavern_z} or nil, why.

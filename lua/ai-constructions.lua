@@ -54,6 +54,7 @@ WALKABLE = {floor = true, ramp = true, stair_up = true, stair_down = true, stair
             BOULDER = true, PEBBLES = true}
 
 SURVEY_CACHE = SURVEY_CACHE or nil
+SURVEY_RESUME = SURVEY_RESUME or nil   -- (0.105.33) {site, at}: where a cut-short walk stopped
 
 local function counts(keys)
     local t = {}
@@ -95,6 +96,14 @@ end
 local function flags_at(x, y, z)
     local ok, d = pcall(dfhack.maps.getTileFlags, x, y, z)
     return ok and d or nil
+end
+
+-- (0.105.33) designation.subterranean, pcalled as ai-builder's tile_info
+-- does (a missing field throws): nil when it can't be read
+local function subterranean(d)
+    local ok, v = pcall(function() return d.subterranean end)
+    if ok then return v end
+    return nil
 end
 
 local function item_name(it)
@@ -304,12 +313,17 @@ function survey(fresh)
     if list == nil then
         out.missing = true          -- [verify] neither field: the structure moved
     else
-        local n = 0
-        for _, con in ipairs(list) do
+        -- (0.105.33) a walk cut short resumes next time where it stopped
+        -- (it always restarted at the first record: a big fort's counts were
+        -- always the same first records), round to the start again
+        local start = (SURVEY_RESUME and SURVEY_RESUME.site == site) and SURVEY_RESUME.at or 0
+        local n, stopped = 0, nil
+        local function visit(i, con)
             n = n + 1
             if n % 256 == 0 and os.clock() - t0 > SURVEY_SECONDS then
                 out.partial = true
-                break
+                stopped = i - 1
+                return false
             end
             local okp, x, y, z, top, item = pcall(function()
                 local p = con.pos
@@ -322,7 +336,7 @@ function survey(fresh)
                     local shape = shape_at(x, y, z)
                     if not SHAPES[shape:upper()] then shape = 'other' end
                     local d = flags_at(x, y, z)
-                    local surface = d ~= nil and not d.subterranean
+                    local surface = d ~= nil and not subterranean(d)
                     out.total = out.total + 1
                     out.by_shape[shape] = out.by_shape[shape] + 1
                     local it = item_name(item)
@@ -333,7 +347,7 @@ function survey(fresh)
                     -- a built floor on the surface roofs the tile under it
                     if surface and shape == 'floor' then
                         local below = flags_at(x, y, z - 1)
-                        if below and not below.outside and not below.subterranean
+                        if below and not below.outside and not subterranean(below)
                                 and WALKABLE[shape_at(x, y, z - 1)] then
                             out.roofed_surface_tiles = out.roofed_surface_tiles + 1
                         end
@@ -344,7 +358,22 @@ function survey(fresh)
                     if cat then out.ai[cat] = out.ai[cat] + 1 end
                 end
             end
+            return true
         end
+        local i = 0
+        for _, con in ipairs(list) do          -- from the resume point on
+            i = i + 1
+            if i > start and not visit(i, con) then break end
+        end
+        if stopped == nil and start > 0 then
+            i = 0
+            for _, con in ipairs(list) do      -- then the records before it
+                i = i + 1
+                if i > start or not visit(i, con) then break end
+            end
+        end
+        SURVEY_RESUME = stopped and {site = site, at = stopped} or nil
+        if start > 0 then out.resumed_at = start end
     end
     local okq, planned = pcall(planned_constructions)
     out.planned = okq and planned or {n = 0, by_type = {}, error = tostring(planned):sub(1, 120)}
