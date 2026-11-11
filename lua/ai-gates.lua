@@ -1595,12 +1595,24 @@ function arm(from_save)
     if not GATES.scanned then return {ok = false, rejected = true, error = 'entrances not scanned yet'} end
     if not GATES.armed then
         -- (0.100, review) gates still waiting to open: forgotten; the watcher
-        -- closes what needs closing from the bridges as they stand
+        -- closes what needs closing from the bridges as they stand.
+        -- (0.105.36, D2) except an entrance still being opened (a bridge up
+        -- with someone on it, a pull on its way): kept closed and opening, so
+        -- it stays the AI's and the watcher's look goes on opening it (or
+        -- shuts it again if danger comes); forgotten, it read as the player's
         if GATES.reopen_timer then pcall(dfhack.timeout_active, GATES.reopen_timer, nil) end
+        local kept = {}
+        for id, v in pairs(GATES.opening or {}) do
+            if v and GATES.closed and GATES.closed[id] then kept[id] = true end
+        end
         GATES.reopen_timer, GATES.closed, GATES.opening = nil, {}, {}
+        for id in pairs(kept) do GATES.closed[id], GATES.opening[id] = true, true end
         GATES.peak, GATES.clear_looks = 0, {}       -- (0.105.4 review) dangers seen at once since armed
         if type(from_save) == 'table' then
             for id, v in pairs(from_save.closed or {}) do if v then GATES.closed[id] = true end end
+            for id, v in pairs(from_save.opening or {}) do
+                if v and GATES.closed[id] then GATES.opening[id] = true end
+            end
             GATES.peak = type(from_save.peak) == 'number' and from_save.peak or nil
         end
         GATES.armed = true
@@ -1655,33 +1667,77 @@ place_hook = nil       -- tests replace this
 GATE_PLANNED_KEY = 'ai-overseer/gate_planned'
 GATE_PLANNED_MAX = 400
 
+-- (0.105.36, D2) a record is "x,y,z@building id" (the building the AI's
+-- plan made there), or "x,y,z" (v35's, or the building unread): set maps
+-- the tile to that id, or to true.
 function gate_planned_records()
     local d = U.site_get(GATE_PLANNED_KEY, {})
     local list = type(d) == 'table' and type(d.tiles) == 'table' and d.tiles or {}
     local set = {}
-    for _, k in ipairs(list) do set[k] = true end
+    for _, k in ipairs(list) do
+        local tile, id = tostring(k):match('^([%-%d]+,[%-%d]+,[%-%d]+)@(%d+)$')
+        if tile then set[tile] = tonumber(id) else set[tostring(k)] = true end
+    end
     return set, list
+end
+
+-- (0.105.36, D2) Is this planned building still unbuilt? nil if unread.
+local function still_planned(b)
+    local ok, yes = pcall(function() return b:getBuildStage() < b:getMaxBuildStage() end)
+    if ok then return yes end
+    return nil
+end
+
+-- (0.105.36, D2) Records whose building is gone or built forgotten (a
+-- later building of the player's on that tile is theirs). One unread kept.
+function prune_gate_planned(list)
+    if not list then local _; _, list = gate_planned_records() end
+    local out = {}
+    for _, k in ipairs(list) do
+        local tile, id = tostring(k):match('^([%-%d]+,[%-%d]+,[%-%d]+)@(%d+)$')
+        local b, read = nil, false
+        if tile then
+            local okb, bb = pcall(df.building.find, tonumber(id))
+            if okb then b, read = bb, true end
+        else
+            local x, y, z = tostring(k):match('^([%-%d]+),([%-%d]+),([%-%d]+)$')
+            if x then
+                local okb, bb = pcall(dfhack.buildings.findAtTile, xyz2pos(tonumber(x), tonumber(y), tonumber(z)))
+                if okb then b, read = bb, true end
+            end
+        end
+        if not read or (b and still_planned(b) ~= false) then table.insert(out, k) end
+    end
+    return out
 end
 
 function note_gate_planned(pos)
     if not (pos and pos.x and pos.y and pos.z) then return end
     local k = ('%d,%d,%d'):format(pos.x, pos.y, pos.z)
+    -- (0.105.36, D2) with the id of the building planned there
+    local okb, b = pcall(dfhack.buildings.findAtTile, xyz2pos(pos.x, pos.y, pos.z))
+    local id = okb and b and tonumber(b.id) or nil
     local set, list = gate_planned_records()
-    if set[k] then return end
+    if set[k] ~= nil and (set[k] == true or set[k] == id) then return end
+    local okp, kept = pcall(prune_gate_planned, list)
     local out = {}
-    for _, v in ipairs(list) do table.insert(out, v) end
-    table.insert(out, k)
+    for _, v in ipairs(okp and kept or list) do
+        if tostring(v) ~= k and not tostring(v):match('^' .. k:gsub('%-', '%%-') .. '@') then table.insert(out, v) end
+    end
+    table.insert(out, id and (k .. '@' .. id) or k)
     while #out > GATE_PLANNED_MAX do table.remove(out, 1) end
     U.site_put(GATE_PLANNED_KEY, {tiles = out})
 end
 
 -- (v35 fix) Is any tile of this planned building one the AI planned?
+-- (0.105.36, D2) a record with an id: only that building
 function ai_planned_building(b)
     local okr, set = pcall(gate_planned_records)
     if not okr or not b or b.x1 == nil or b.z == nil then return false end
     for x = b.x1, b.x2 or b.x1 do
         for y = b.y1, b.y2 or b.y1 do
-            if set[('%d,%d,%d'):format(x, y, b.z)] then return true end
+            local v = set[('%d,%d,%d'):format(x, y, b.z)]
+            if v == true or (v ~= nil and v == b.id) then return true end
         end
     end
     return false
@@ -4201,15 +4257,20 @@ end
 function gates_snapshot()
     local gates = {}
     for _, e in ipairs(GATES.entrances or {}) do
-        -- (0.105.33 fix) not one being opened (the dwarf's pull is on its way and
-        -- survives the reload: saved as closed, it was raised again once lowered)
-        if GATES.closed and GATES.closed[e.id] and not (GATES.opening and GATES.opening[e.id]) then
+        -- (0.105.33 fix) one being opened (the dwarf's pull is on its way and
+        -- survives the reload) is not saved as a plain close (it was raised
+        -- again once lowered); (0.105.36, D2) it is saved with `opening`, so
+        -- after a reload it is still the AI's and its opening goes on (left
+        -- out, a bridge still up read as the player's gate: never lowered)
+        if GATES.closed and GATES.closed[e.id] then
+            local opening = (GATES.opening and GATES.opening[e.id]) and true or nil
             for _, g in ipairs(e.equipment or {}) do
                 table.insert(gates, {id = g.id, kind = g.kind, lever_id = g.lever_id,
-                                     drive_lever = g.lever_driven and g.drive_lever or nil})     -- (0.105.23)
+                                     drive_lever = g.lever_driven and g.drive_lever or nil,     -- (0.105.23)
+                                     opening = opening})
             end
             for _, g in ipairs(e.outer or {}) do         -- (0.105.23) the gatehouse's bridge
-                table.insert(gates, {id = g.id, kind = g.kind, lever_id = g.lever_id})
+                table.insert(gates, {id = g.id, kind = g.kind, lever_id = g.lever_id, opening = opening})
             end
         end
     end
@@ -4229,6 +4290,7 @@ local function same_snapshot(a, b)
     if #ga ~= #gb then return false end
     for i = 1, #ga do
         if ga[i].id ~= gb[i].id or ga[i].lever_id ~= gb[i].lever_id then return false end
+        if (ga[i].opening == true) ~= (gb[i].opening == true) then return false end   -- (0.105.36)
     end
     return true
 end
@@ -4298,20 +4360,27 @@ function gates_restore()
     local saved = GATES_SAVE.saved
     if not saved or not GATES.scanned or not GATES.entrances then return nil end
     GATES_SAVE.saved = nil
-    local ids = {}
-    for _, g in ipairs(saved.gates or {}) do ids[g.id] = true end
-    local closed = {}
+    local ids, op = {}, {}
+    for _, g in ipairs(saved.gates or {}) do
+        ids[g.id] = true
+        if g.opening then op[g.id] = true end       -- (0.105.36, D2) being opened when saved
+    end
+    local closed, opening = {}, {}
     for _, e in ipairs(GATES.entrances) do
         for id in pairs(entrance_gate_ids(e)) do       -- (0.105.33) the outer drawbridge too
             if ids[id] then closed[e.id] = true end
+            if op[id] then opening[e.id] = true end
         end
     end
     if saved.armed and not GATES.armed then
         -- (0.105.33) the closed entrances (and the peak) in place before the first look
-        pcall(GATES_ORIG.arm, {closed = closed, peak = saved.peak})
+        pcall(GATES_ORIG.arm, {closed = closed, opening = opening, peak = saved.peak})
     end
     GATES.closed = GATES.closed or {}
+    GATES.opening = GATES.opening or {}
     for id in pairs(closed) do GATES.closed[id] = true end
+    -- (0.105.36, D2) still the AI's, and opened (not pulled back shut as a lost close)
+    for id in pairs(opening) do if GATES.closed[id] then GATES.opening[id] = true end end
     if not GATES.armed and next(GATES.closed) ~= nil then
         pcall(GATES_ORIG.open_all)     -- (waiting gates: its reopen timer tries again)
     end
@@ -5057,11 +5126,16 @@ function open_entrance(id, dry_run, cavern_ok)
     if e.kind == 'cavern' and cavern_ok ~= true then
         return {ok = false, rejected = true, error = 'a cavern entrance stays as the cavern rules keep it'}
     end
-    if sealed_entrance(e) then return {ok = false, rejected = true, error = 'the cavern seal holds this entrance'} end
+    -- (0.105.36, D2) the seal and a great danger in sight pass (a siege's titan
+    -- held off at another gate): waiting, so the brain looks again soon
+    -- instead of backing off for days while the shut-out go thirsty
+    if sealed_entrance(e) then
+        return {ok = false, rejected = true, waiting = true, error = 'the cavern seal holds this entrance'}
+    end
     local okv, vis = pcall(visible_dangers)
     local nearest = math.huge
     for _, d in ipairs(okv and vis or {}) do
-        if d.great then return {ok = false, rejected = true, error = 'a great danger is in sight'} end
+        if d.great then return {ok = false, rejected = true, waiting = true, error = 'a great danger is in sight'} end
         local okd, dd = pcall(distance_to, e, d.pos)
         if okd and dd < nearest then nearest = dd end
     end
@@ -5099,7 +5173,13 @@ function close_threatened_gates(dry_run)
     local ids, done = {}, 0
     GATES.closed = GATES.closed or {}
     for _, e in ipairs(GATES.entrances) do
-        if #(e.equipment or {}) > 0 and not GATES.closed[e.id] and not e.sealed then
+        -- (0.105.36, X1) not `e.sealed`: the scan sets it on every entrance whose
+        -- gates seal it, so no gate was ever shut here (the cavern seal is
+        -- sealed_entrance(e), and a seal-held gate is shut already)
+        -- (0.105.36) one being opened (a bridge still up, a pull on its way) is
+        -- shut again too, as the watcher's look would
+        local opening = GATES.opening and GATES.opening[e.id]
+        if #(e.equipment or {}) > 0 and (not GATES.closed[e.id] or opening) then
             local nearest = math.huge
             for _, d in ipairs(vis or {}) do
                 local okd, dd = pcall(distance_to, e, d.pos)
@@ -5108,6 +5188,7 @@ function close_threatened_gates(dry_run)
             if nearest <= IMMINENT then
                 table.insert(ids, e.id)
                 if not dry_run then
+                    if GATES.opening then GATES.opening[e.id] = nil end
                     local okc, n = pcall(set_entrance, e, true)
                     if okc then done = done + (n or 0) end
                 end
@@ -5126,17 +5207,40 @@ end
 -- the building jobs of what is planned there unsuspended (a suspended job
 -- is the usual cause). Refused when none is suspended. (v35 fix) Only the
 -- pieces the AI planned (gate_planned_records).
-function free_gate_jobs(id, dry_run)
+-- (0.105.36, D2) ai_plan: the brain's memory says the AI fortified this
+-- entrance (memory.gates_fortified): a piece planned there with no record
+-- (planned before v35 kept them) is the AI's too; a record of another
+-- building on its tile still says it isn't. Records of what is gone or
+-- built are forgotten first.
+function free_gate_jobs(id, dry_run, ai_plan)
     local e
     for _, x in ipairs(GATES.entrances or {}) do if x.id == id then e = x end end
     if not e then return {ok = false, rejected = true, error = 'no entrance ' .. tostring(id)} end
+    if not dry_run then
+        pcall(function()
+            local _, list = gate_planned_records()
+            local kept = prune_gate_planned(list)
+            if #kept ~= #list then U.site_put(GATE_PLANNED_KEY, {tiles = kept}) end
+        end)
+    end
+    local okr, recs = pcall(gate_planned_records)
+    recs = okr and recs or {}
+    local function unrecorded(b)
+        if b.x1 == nil or b.z == nil then return false end
+        for x = b.x1, b.x2 or b.x1 do
+            for y = b.y1, b.y2 or b.y1 do
+                if recs[('%d,%d,%d'):format(x, y, b.z)] ~= nil then return false end
+            end
+        end
+        return true
+    end
     local n, seen, theirs = 0, 0, 0
     for _, bid in ipairs(e.pending_ids or {}) do
         local okb, b = pcall(df.building.find, bid)
         if okb and b then
             seen = seen + 1
             -- (v35 fix) only what the AI planned: the player's suspended job stays theirs
-            local mine = ai_planned_building(b)
+            local mine = ai_planned_building(b) or (ai_plan == true and unrecorded(b))
             for _, j in ipairs(b.jobs or {}) do
                 if j.flags and j.flags.suspend then
                     if mine then
