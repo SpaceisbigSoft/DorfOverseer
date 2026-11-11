@@ -611,6 +611,7 @@ def _():
     # the status call (every report) refills too, when the sources change
     lua.execute("local W = ...; table.insert(W.all, W.bld(83, 'Stockpile', 3, 0, 3, 0, 10, "
                 "{settings = {flags = {food = true}}, contents = {W.item(1)}}))", w)
+    w.day(0.6)        # (0.105.36) past the report's source cache, which the tick now fills
     env.hospital_burrow_status()
     assert w.ntiles() == 6 + 1 + 1 + 1, w.ntiles()                         # the nearer drink pile (83) instead of 80
 

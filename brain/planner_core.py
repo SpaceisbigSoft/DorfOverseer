@@ -267,6 +267,7 @@ class Memory:
     fight_factor: dict = field(default_factory=dict)     # (0.104.118) kind -> how much stronger than estimated (learned)
     shelter_since: dict = field(default_factory=dict)    # (0.105.22) squad id -> tick it took the shelter order
     shelter_rest: dict = field(default_factory=dict)     # (0.105.22) squad id -> tick it may shelter again
+    shelter_supply: dict = field(default_factory=dict)   # (0.105.36, D5) the AI shelter's last fill: {tick, drink_short, no_water, no_food, ...}
     fights: list = field(default_factory=list)           # (0.104.118) the last fights: {tick, keys, lost, of}
     called_off: dict = field(default_factory=dict)       # (0.105.26) great danger id -> tick its fight was called off
     dig_seen: dict = field(default_factory=dict)         # (0.104.110) project id -> {"dug", "tick" (last progress), "freed"}
@@ -1742,6 +1743,15 @@ def _record_any_outcome(a: dict, r: dict, state: dict, memory, now: int, brief: 
             rec = reg.get(prefix + a["spot"])
             if isinstance(rec, dict):
                 rec["status"] = "taken down" if "nothing" in str(r.get("error")) else "kept"
+    # (0.105.36, D5) what the AI shelter holds, from each fill of it (made,
+    # made again, or made again as the AI sounds the alarm): read by
+    # planner_society's _shelter_supply_rule
+    sh = r if t in ("setup_shelter", "refresh_shelter") else (
+        r.get("shelter") if t == "civ_alert" and a.get("on") is True else None)
+    if isinstance(sh, dict) and sh.get("ok") is not False and isinstance(sh.get("tiles"), int):
+        memory.shelter_supply = {"tick": now, "tiles": sh["tiles"],
+                                 **{k: sh[k] for k in ("drink_short", "no_water", "no_food", "drink_units",
+                                                       "food_units", "well_tiles") if sh.get(k) is not None}}
     if t == "setup_shelter":
         memory.shelter_attempts += 1          # refused or not: two tries, then again after a wait (0.105.35)
         memory.shelter_tick = now

@@ -60,7 +60,7 @@ def _():
     env.hospital_burrow_status()
     assert not env.TOUCHED[80], "the removed pile 80 was read"
     src = (LUA_DIR / "ai-society-burrows.lua").read_text(encoding="utf-8")
-    body = src[src.index("local function hospital_sources_cached"):src.index("-- The members' checks")]
+    body = src[src.index("local function hb_src_store"):src.index("-- The members' checks")]
     assert "ids = ids" in body and "src = c.src" not in body
     assert "dfhack.onStateChange['ai-society-burrows-hb']" in src and "HB_SRC = nil" in src
 

@@ -2720,7 +2720,11 @@ def _():
     m = by_rule(p, "mood")
     assert m and m[0].action == {"type": "start_project", "kind": "workshops", "shops": ["Jewelers"], "urgent": True}, m
     assert m[0].priority <= 1
-    s["projects"]["open"].append({"id": 9, "kind": "workshops", "phase": "dig"})
+    # (0.105.36, X1) only a level building its kind holds it; another workshops level does not
+    s["projects"]["open"].append({"id": 9, "kind": "workshops", "phase": "dig", "summary": {"workshops": ["Masons"]}})
+    p, notes = plan(s, Memory())
+    assert by_rule(p, "mood"), notes
+    s["projects"]["open"].append({"id": 10, "kind": "workshops", "phase": "dig", "summary": {"workshops": ["Jewelers"]}})
     p, notes = plan(s, Memory())
     assert not by_rule(p, "mood") and any("already being built" in n for n in notes), notes
 
