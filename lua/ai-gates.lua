@@ -4154,7 +4154,9 @@ end
 function gates_snapshot()
     local gates = {}
     for _, e in ipairs(GATES.entrances or {}) do
-        if GATES.closed and GATES.closed[e.id] then
+        -- (0.105.33 fix) not one being opened (the dwarf's pull is on its way and
+        -- survives the reload: saved as closed, it was raised again once lowered)
+        if GATES.closed and GATES.closed[e.id] and not (GATES.opening and GATES.opening[e.id]) then
             for _, g in ipairs(e.equipment or {}) do
                 table.insert(gates, {id = g.id, kind = g.kind, lever_id = g.lever_id,
                                      drive_lever = g.lever_driven and g.drive_lever or nil})     -- (0.105.23)

@@ -1978,6 +1978,22 @@ function act_prune_remains(a)
     -- coffin rotted away unburied (a ghost). Corpses go in one pass now, and
     -- only while no citizen lies unburied; the timer keeps the parts and
     -- clothes only (deteriorate's own default has corpses on: turned off).
+    -- (0.105.33 fix) keep = {'usable-parts'}: only take the bones and shells off
+    -- the timer (an earlier prune put them on, and it stays on in the save: a
+    -- strange mood's bone or the fort's bone reserve would rot away)
+    if type(a.keep) == 'table' then
+        local keep = {}
+        for _, c in ipairs(a.keep) do
+            if c == 'usable-parts' or c == 'clothes' then table.insert(keep, c) end
+        end
+        if #keep == 0 then return {ok = false, error = 'prune_remains keep: nothing to keep'} end
+        if a.dry_run then return {ok = true, dry_run = true, kept = keep} end
+        local out, rv = dfhack.run_command_silent('deteriorate', 'disable', table.concat(keep, ','))
+        if rv ~= CR_OK then
+            return {ok = false, error = 'deteriorate failed: ' .. tostring(out):sub(1, 160)}
+        end
+        return {ok = true, kept = keep}
+    end
     local cats = {'unusable-parts'}
     for _, c in ipairs(type(a.extra) == 'table' and a.extra or {}) do
         if c == 'clothes' or c == 'usable-parts' then table.insert(cats, c) end

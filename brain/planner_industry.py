@@ -343,6 +343,22 @@ def _clutter_rules(s: dict, cfg: dict, proposals: list, notes: list, memory=None
                                       f"{uc.get('dead')} of the {uc.get('total')} creatures on the game's list are dead "
                                       f"(up to {scrub} slaughtered or nameless): clear the old ones (DFHack's "
                                       "fix/dead-units; the fort's own dead are kept)", 7))
+    # (0.105.33 fix) a strange mood wants bone or shell, or the fort is at or
+    # under its bone reserve (planner_moods MOOD_RESERVES), after a prune put
+    # usable parts on deteriorate's timer (it stays on in the save): taken off
+    # it, so the loose bones and shells stop rotting
+    mood_bone = any(isinstance(x, dict) and mood_kind(x) in ("bone", "shell")
+                    for m in _l(_d(s.get("moods")).get("list")) if isinstance(m, dict)
+                    for x in _l(m.get("missing")))
+    bones = _d(s.get("needs")).get("bones")
+    low = (isinstance(bones, (int, float)) and not isinstance(bones, bool)
+           and bones <= cfg.get("reserve_bones", 5))
+    if (mood_bone or low) and last("prune") is not None and due("prune_keep_parts", 7):
+        proposals.append(Proposal("prune_keep_parts", {"type": "prune_remains", "keep": ["usable-parts"]},
+                                  ("a strange mood wants bone or shell" if mood_bone else
+                                   f"the fort has {bones} bone(s), at or under its reserve")
+                                  + ": loose bones and shells come off deteriorate's timer (an earlier prune "
+                                    "put them on it)", 5))
     if not slow:
         return
     # (0.104.0) old remains rot away: non-entombed corpses and body parts
@@ -365,12 +381,7 @@ def _clutter_rules(s: dict, cfg: dict, proposals: list, notes: list, memory=None
         # (0.105.33) not while a strange mood asks for bone or shell (on hand
         # or not: what lies loose would rot), nor with the fort at or under
         # its bone reserve (planner_moods MOOD_RESERVES): a failed mood kills
-        mood_bone = any(isinstance(x, dict) and mood_kind(x) in ("bone", "shell")
-                        for m in _l(_d(s.get("moods")).get("list")) if isinstance(m, dict)
-                        for x in _l(m.get("missing")))
-        bones = _d(s.get("needs")).get("bones")
-        low = (isinstance(bones, (int, float)) and not isinstance(bones, bool)
-               and bones <= cfg.get("reserve_bones", 5))
+        # (mood_bone and low: read above)
         if not (mood_bone or low):
             extra.append("usable-parts")
     worn = {str(_d(x).get("name")): int(_d(x).get("n") or 0) for x in _l(_d(cen.get("items")).get("worn"))}

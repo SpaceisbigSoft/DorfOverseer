@@ -554,6 +554,26 @@ def _stranded_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None
                               f"entrance at x{e.get('x')} y{e.get('y')} elevation {(e.get('z') or 0) + off} "
                               f"({', '.join(where(r) for r in cave_gate[:3])}), but {what}: the AI keeps that way "
                               "shut; open it yourself if they must come in now")
+    # (0.105.33 fix) held off means a siege at the gates: invaders, a great
+    # danger, or a held-off threat near a gate the AI shut. A wild animal far
+    # out on the surface doesn't keep the AI's own lockdown shut on citizens
+    # (main let them in; E 3-5 Nov left them out to die of thirst).
+    shut_ents = [e for e in _l(ent.get("entrances")) if isinstance(e, dict) and e.get("closed")]
+
+    def _near_shut(t):
+        pos = _d(t.get("pos"))
+        if not all(isinstance(pos.get(k), (int, float)) for k in ("x", "y", "z")):
+            dn = t.get("distance_to_nearest_dwarf")      # unplaced: how far from any dwarf
+            return not isinstance(dn, (int, float)) or dn <= near_d
+        for e in shut_ents:
+            if not all(isinstance(e.get(k), (int, float)) for k in ("x", "y", "z")):
+                continue
+            d = (max(abs(pos["x"] - e["x"]), abs(pos["y"] - e["y"])) - int(e.get("width") or 1)
+                 + 3 * abs(pos["z"] - e["z"]))
+            if d <= near_d:
+                return True
+        return False
+    held = [t for t in held if t.get("invader") or t.get("great_danger") or _near_shut(t)]
     if ai_gate and (any_reach or reach_n > 0 or held):
         # (0.105.33) open_gates opens every gate the watcher shut and disarms
         # it: a siege held off at another gate would walk in. Put to the player.
