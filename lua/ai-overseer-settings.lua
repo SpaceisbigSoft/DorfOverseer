@@ -286,7 +286,9 @@ function defaults()
         -- (0.105.0) water works: a moat from the river (only where one is found), magma workshops, a muddied farm level
         moat = true, magma_workshops = true, irrigation = true,
         -- (0.105.4 review) a cavern well may break into a cavern layer the dwarves
-        -- haven't found yet (the first breach brings forgotten beasts): off by default
+        -- haven't found yet (the first breach brings forgotten beasts). (0.105.35)
+        -- on: always allowed; off (the default): the AI decides, only when the fort
+        -- is short of water and has soldiers for what comes out
         open_caverns = false,
         squads_shelter = true,     -- (0.105.0) while the AI hides from a great danger, the squads wait in the shelter
         expel_vampires = true,     -- a vampire found among the citizens is sent away      -- with --ai: a short AI-written story of each season (costs tokens)

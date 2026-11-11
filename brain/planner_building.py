@@ -359,8 +359,13 @@ def _deep_notes(s: dict, notes: list) -> None:
         where_ = f" (the dwarves' ground meets it at x{at.get('x')} y{at.get('y')} z{at.get('z')})" if at else ""
         here = [x for x in dangers if x.get("layer") == c.get("name")]
         if here:
-            seal = (_d(s.get("settings")).get("seal_caverns") is not False
-                    and here[0].get("kind") in ("forgotten beast", "titan", "megabeast", "demon"))
+            # (0.105.35 merge) the threats rule's own test (planner_threats
+            # _cavern_beasts: seal_cavern on every way down, the cavern doors)
+            from planner_threats import cavern_great
+            great = [x for x in cavern_great(s) if x in here]
+            if great:
+                here = great + [x for x in here if x not in great]
+            seal = _d(s.get("settings")).get("seal_caverns") is not False and bool(great)
             notes.append(f"{c['name']} is open to the fort{where_} and {here[0].get('name')} ({here[0].get('kind')}) "
                          "is in it: " + ("the AI locks every way into the caverns while it's there (doors and "
                                          "hatches on the openings, the cavern seal)" if seal else

@@ -265,18 +265,28 @@ def shown_rules(proposals: list | None, recent_decisions: list | None) -> set:
     return {n for n in names if isinstance(n, str) and n and n not in NOT_STEERABLE}
 
 
+# (0.105.35) Rules switches whose off (the default) means the AI decides, not "never"
+AI_DECIDES_WHEN_OFF = {"open_caverns"}
+
+
 def rules_line(rules: dict) -> str:
     """(0.105.26) The Rules tab in one line. A switch that is off by default
-    (open_caverns, send_messenger) is just "off"; one that is on by default
-    and now off was switched off by the player."""
+    (send_messenger) is just "off"; one that is on by default and now off was
+    switched off by the player. (0.105.35) open_caverns off means the AI
+    decides (a cavern well into an unfound cavern when the fort is short of
+    water and has soldiers); on, it is always allowed."""
     from planner import player_rules
     defaults = player_rules({"settings": {}})
     flat = {k: v for k, v in rules.items() if isinstance(v, (bool, str, int))}
     by_player = sorted(k for k, v in flat.items() if v is False and defaults.get(k) is not False)
     off = sorted(k for k, v in flat.items() if v is False and defaults.get(k) is False)
+    # (0.105.35) open_caverns off (its default) means the AI decides (on: always allowed)
+    ai_decides = sorted(k for k in off if k in AI_DECIDES_WHEN_OFF)
+    off = [k for k in off if k not in AI_DECIDES_WHEN_OFF]
     return ("RULES TAB " + ", ".join(f"{k}={v}" for k, v in sorted(flat.items()) if not isinstance(v, bool))
             + (f" | switched off by the player: {', '.join(by_player)}" if by_player else "")
-            + (f" | off: {', '.join(off)}" if off else ""))
+            + (f" | off: {', '.join(off)}" if off else "")
+            + (f" | AI decides: {', '.join(ai_decides)}" if ai_decides else ""))
 
 
 def _event_text(e: dict) -> str:

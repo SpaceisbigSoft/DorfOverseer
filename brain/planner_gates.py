@@ -14,7 +14,7 @@ from digest import _d, _l
 from planner_core import *  # noqa: F401,F403
 from planner_construct import _wings_rule, cavern_wall_style  # (0.105.30) wing walls, the Hermit's cavern walls
 
-__all__ = ["_gate_rules", "_stranded_rule", "split_pieces", "stuck_rows", "note_gate_stuck", "note_gate_stuck_cycle", "note_second_way", "_second_way_rule", "WAY_IN_KINDS", "GATE_STUCK_TRIED", "STRANDED_CONFIG", "GATE_PART_RECIPES", "GATE_PART_STUCK_DAYS", "_gate_parts_rule", "_free_gate_levers", "_lever_far_enough", "machinery_wanted", "_lever_hatches_ok", "_link_wanted", "_lever_rule", "_trap_rule", "_gatehouse_rule", "_near_spot", "lone_intruders", "few_ordinary", "few_alert_over", "few_near", "hunted_outside", "ai_gates_shut", "_Rec", "_lockdown", "lockdown_released", "lone_alert_over", "_lockdown_ids", "_lockdown_cap_why", "note_lockdown", "quick_clear", "PASTURE_ACTIONS", "_pasture_hold", "gate_invaders", "main_gate", "_gate_guard_rule", "_gate_dogs_rule"]
+__all__ = ["_gate_rules", "_stranded_rule", "shared_lever_row", "split_pieces", "stuck_rows", "note_gate_stuck", "note_gate_stuck_cycle", "note_second_way", "_second_way_rule", "WAY_IN_KINDS", "GATE_STUCK_TRIED", "STRANDED_CONFIG", "GATE_PART_RECIPES", "GATE_PART_STUCK_DAYS", "_gate_parts_rule", "_free_gate_levers", "_lever_far_enough", "machinery_wanted", "_lever_hatches_ok", "_link_wanted", "_lever_rule", "_trap_rule", "_gatehouse_rule", "_near_spot", "lone_intruders", "few_ordinary", "few_alert_over", "few_near", "hunted_outside", "ai_gates_shut", "_Rec", "_lockdown", "lockdown_released", "lone_alert_over", "_lockdown_ids", "_lockdown_cap_why", "note_lockdown", "quick_clear", "PASTURE_ACTIONS", "_pasture_hold", "gate_invaders", "main_gate", "_gate_guard_rule", "_gate_dogs_rule"]
 
 
 # (0.105.26) citizens stranded outside (lua/ai-gates.lua stranded_citizens)
@@ -278,6 +278,15 @@ def _way_in_area(memory, x: int, y: int, z: int, cfg: dict) -> list:
     return out
 
 
+def shared_lever_row(r: dict) -> bool:
+    """(0.105.35 merge) A citizen shut out by a gate the AI didn't shut, on the
+    player's own lever that also works other things (the bridge's
+    `entrance.shared_lever`): the AI doesn't pull it (open_entrance refuses
+    it too), so they count as having no way in (a stair is dug for them)."""
+    return (isinstance(r, dict) and not r.get("by_ai") and r.get("cause") in ("gate_shut", "lockdown")
+            and _d(r.get("entrance")).get("shared_lever") is not None)
+
+
 def _way_in_rule(s: dict, memory, cfg: dict, proposals: list, notes: list, off: int = 0,
                  status: dict | None = None) -> str:
     """(0.105.32) Citizens cut off with no gate to blame (no split explains
@@ -301,7 +310,8 @@ def _way_in_rule(s: dict, memory, cfg: dict, proposals: list, notes: list, off: 
             (given_up if str(pid) in done else explained).add(id(r))
     after = int(cfg.get("way_in_after_days", 2)) * TICKS_PER_DAY
     rows = [r for r in _l(ent.get("stranded")) if isinstance(r, dict) and id(r) not in explained
-            and (id(r) in given_up or (r.get("cause") == "no_path" and (r.get("out_ticks") or 0) >= after))
+            and (id(r) in given_up or ((r.get("cause") == "no_path" or shared_lever_row(r))
+                                       and (r.get("out_ticks") or 0) >= after))
             and not r.get("in_cavern")
             and all(isinstance(r.get(k), int) for k in ("x", "y", "z"))]
     if len(rows) < max(1, int(cfg.get("way_in_min_stranded", 1))):
@@ -721,6 +731,24 @@ def _stranded_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None
                                   + f" at x{e.get('x')} y{e.get('y')} ({', '.join(where(r) for r in ai_gate[:3])}) "
                                   "and no enemy near: open the gates to let them in", 0))
         opening = True
+    # (0.105.35 merge) a gate shut not by the AI on the player's own lever
+    # that works other things too: the lever isn't pulled (it would work the
+    # player's other things); the AI digs them a way in (_way_in_rule), said
+    shared = [r for r in other_gate if shared_lever_row(r)]
+    other_gate = [r for r in other_gate if r not in shared]
+    if shared:
+        e = _d(shared[0].get("entrance"))
+        head = (f"{len(shared)} citizen(s) shut outside for {days(shared)} at the gate at x{e.get('x')} "
+                f"y{e.get('y')} elevation {(e.get('z') or 0) + off} ({', '.join(where(r) for r in shared[:3])}): "
+                f"it is on the player's lever {e.get('shared_lever')}, which works "
+                f"{e.get('works_other') or 'other'} other thing(s) too, so the AI leaves that gate as it is")
+        way = way_new or (_way_in_doing(s, memory, second=False) if memory is not None else "")
+        if way:
+            notes.append(f"{head} and digs them a way in ({way})")
+        elif way_status.get("kept"):
+            ask_player(notes, f"{head}; {way_status['kept']}")
+        else:
+            notes.append(f"{head} and digs them a stair in " + (way_status.get("when") or "when it can"))
     # (0.105.35, the player: nothing waits for them) a gate shut not by the AI
     # (a raised bridge, a locked door) and the citizens down in the caverns
     # behind a shut gate: that entrance opened by the AI (open_entrance: it

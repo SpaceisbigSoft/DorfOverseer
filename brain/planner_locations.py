@@ -349,11 +349,15 @@ def _meeting_notes(s: dict, notes: list) -> None:
         if wm.get("open") and not wm.get("land_holder") and need <= known:
             notes.append(f"DF's meeting screen is open ({who}): the AI answers it")
             return
+        if wm.get("open") and wm.get("land_holder"):
+            # (0.105.35 merge) the barony's own Needs you is planner_world's; here only said
+            notes.append(f"DF's meeting screen is open ({who}) and asks for a barony's holder, which the AI "
+                         "can't pick: it leaves the screen after 2 minutes so the game goes on")
+            return
         ask_player(notes, f"DF's meeting screen is open ({who}) and the AI can't press its buttons yet (it hasn't "
                           "been shown where they are; with one open, the mouse on Yes: python brain\\probe_meeting.py "
                           "--here Yes; then No, and Done on the requests screen); meanwhile it leaves the screen "
-                          "after 2 minutes (the meeting ends without an agreement), or 10 when the topic is left "
-                          "to you")
+                          "after 2 minutes (the meeting ends without an agreement) so the game goes on")
     elif int(m.get("popups") or 0) > 0:
         # (0.94.1) a queued meeting popup doesn't hold the game (region2 ran
         # on through days of them): a note, not a Needs you

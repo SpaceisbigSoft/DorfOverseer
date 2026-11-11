@@ -4437,6 +4437,18 @@ function stranded_citizens()
     for _, e in ipairs(GATES.entrances or {}) do if e.porch then table.insert(porches, e.porch) end end
     local okv, vis = pcall(visible_dangers)
     vis = okv and vis or {}
+    local shared_at, links = {}, nil     -- (0.105.35 merge) an entrance's shared player lever, once a call
+    local function shared_of(e)
+        if shared_at[e.id] == nil then
+            if links == nil then
+                local okl, l = pcall(lever_links)
+                links = okl and l or {}
+            end
+            local okp, sh = pcall(players_shared_levers, e, links)
+            shared_at[e.id] = okp and sh[1] or false
+        end
+        return shared_at[e.id] or nil
+    end
     local seen, list, total = {}, {}, 0
     for _, u in ipairs(dfhack.units.getCitizens(true)) do
         seen[u.id] = true
@@ -4467,6 +4479,11 @@ function stranded_citizens()
                     if w then
                         row.entrance = {id = w.e.id, kind = w.e.kind, x = w.e.x, y = w.e.y, z = w.e.z}
                         row.by_ai = w.by_ai
+                        if not w.by_ai then
+                            -- (0.105.35 merge) shut on the player's lever that works other things too
+                            local sh = shared_of(w.e)
+                            if sh then row.entrance.shared_lever, row.entrance.works_other = sh.lever, sh.others end
+                        end
                         local gd = math.huge
                         for _, d in ipairs(vis) do
                             local okd, dd = pcall(distance_to, w.e, d.pos)
@@ -4939,6 +4956,39 @@ function unstick_gate(id, step, dry_run, cavern_ok)
     return out
 end
 
+-- (0.105.35 merge) The player's own levers (not named "AI gate...") that
+-- opening this entrance would pull (a drawbridge's lever_id, a door's or
+-- hatch's drive_lever) and that also work something besides this
+-- entrance's gates, read live from the links: {{lever = id, others = n}}.
+-- Such a lever is never pulled for the entrance (the pull would work the
+-- player's other things too). levers: lever_links()'s map, if already read.
+function players_shared_levers(e, levers)
+    if not levers then
+        local okl, l = pcall(lever_links)
+        levers = okl and l or {}
+    end
+    local mine = entrance_gate_ids(e)
+    local out, seen = {}, {}
+    for _, list in ipairs({e.equipment or {}, e.outer or {}}) do
+        for _, g in ipairs(list) do
+            local lid = g.kind == 'bridge' and g.lever_id or (g.lever_driven and g.drive_lever) or nil
+            if lid and not seen[lid] then
+                seen[lid] = true
+                local okb, lv = pcall(df.building.find, lid)
+                local name = okb and lv and tostring(lv.name or '') or ''
+                if not ai_lever_name(name) then
+                    local others = 0
+                    for _, tid in ipairs(lever_targets(levers, lid)) do
+                        if not mine[tid] then others = others + 1 end
+                    end
+                    if others > 0 then table.insert(out, {lever = lid, others = others}) end
+                end
+            end
+        end
+    end
+    return out
+end
+
 -- (0.105.34) One entrance opened for citizens the AI's gates shut out, while
 -- a siege is held off elsewhere (the player: nothing waits for them). Only
 -- the gates of this entrance; the watcher stays armed and shuts it again if
@@ -4966,6 +5016,16 @@ function open_entrance(id, dry_run, cavern_ok)
     if nearest <= IMMINENT then
         return {ok = false, rejected = true, waiting = true, nearest = nearest,
                 error = ('an enemy is %d tiles from this entrance'):format(nearest)}
+    end
+    -- (0.105.35 merge) a gate the AI didn't shut: the player's own lever is
+    -- pulled only when it works nothing but this entrance's gates
+    if not (GATES.closed and GATES.closed[e.id]) then
+        local okp, shared = pcall(players_shared_levers, e)
+        if okp and shared[1] then
+            return {ok = false, rejected = true, shared_lever = shared[1].lever, works_other = shared[1].others,
+                    error = ('its gate is on the player\'s lever %d, which works %d other thing(s): the AI '
+                             .. 'leaves it'):format(shared[1].lever, shared[1].others)}
+        end
     end
     if dry_run then return {ok = true, dry_run = true, entrance = id, nearest = nearest < math.huge and nearest or nil} end
     local done = set_entrance(e, false)

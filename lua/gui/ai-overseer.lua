@@ -507,12 +507,16 @@ function RulesPage:init()
             on_change = function(v) p:set_field(f[1], v) end,
         })
     end
-    -- (0.105.4 review) a cavern well may open a cavern nobody has found yet (off by default)
+    -- (0.105.4 review) a cavern well may open a cavern nobody has found yet.
+    -- (0.105.35) on: always allowed; off (the default): the AI decides (only when
+    -- the fort is short of water and has soldiers for what comes out)
     table.insert(views, widgets.ToggleHotkeyLabel{
         view_id = 'open_caverns',
         frame = {t = t + 11, l = 62, w = 56},
         label = 'Cavern well into an unfound cavern:',
         label_width = 42,
+        options = {{label = 'Always', value = true, pen = COLOR_GREEN},
+                   {label = 'AI decides', value = false, pen = COLOR_YELLOW}},
         initial_option = p.settings.open_caverns == true,
         on_change = function(v) p:set_field('open_caverns', v) end,
     })

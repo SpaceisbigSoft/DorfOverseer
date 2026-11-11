@@ -206,9 +206,10 @@ further, each still bounded and with the same safety checks:
   and the stair step beside it stay undug until the gate's lever stands and a
   hatch cover and 2 mechanisms are in store. Only then is that level dug, and
   the hatch goes on the opening straight after. A cavern no dwarf has found
-  yet is never opened unless the Rules tab's "Cavern well into an unfound
-  cavern" is on (off by default): the first breach brings cavern creatures
-  and forgotten beasts. The cavern and gallery searches take at most 1.5 s of
+  yet is opened only when the Rules tab's "Cavern well into an unfound
+  cavern" is on ("Always"), or, off ("AI decides", the default), when the AI
+  decides the fort is short of water and has soldiers for what comes out: the
+  first breach brings cavern creatures and forgotten beasts. The cavern and gallery searches take at most 1.5 s of
   the game's time, and a "no spot" answer is kept until the next water survey
   (or 28 days).
 - *Cistern tunnel.* The cistern's tunnel to still water may be up to

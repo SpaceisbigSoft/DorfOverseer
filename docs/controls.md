@@ -185,10 +185,13 @@ hall, basic workshops and stockpiles are always built when missing.
   - **A moat from the river at the gate**, only where a river is found;
   - **Magma workshops** (forge, smelter, glass);
   - **Muddy a stone farm level with water**.
-- **Cavern well into an unfound cavern** (off, 0.105.4). A cavern well may
-  break into a cavern layer the dwarves haven't found yet, and the first
-  breach can bring forgotten beasts. Off, a cavern well goes only to a cavern
-  already found.
+- **Cavern well into an unfound cavern** (AI decides, 0.105.4; 0.105.35). A
+  cavern well may break into a cavern layer the dwarves haven't found yet, and
+  the first breach can bring forgotten beasts. On ("Always"), it is always
+  allowed. Off ("AI decides", the default), the AI decides: it opens one only
+  when the fort is short of water (the injured, the parched, or drink running
+  low) and has soldiers for what comes out (3, +2 at Caution 50+, -1 at
+  Militarism 50+); otherwise a cavern well goes only to a cavern already found.
 - **Send away vampires found among the dwarves** (on): at most one dwarf a
   game week.
 - **Let useful visitors stay (and become citizens)** (on): residency
