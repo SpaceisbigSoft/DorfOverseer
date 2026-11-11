@@ -188,6 +188,8 @@ def _():
     got = [p for p in props if p.action["type"] == "renew_well_dig"]
     assert got and got[0].action == {"type": "renew_well_dig", "project_id": 6, "priority": 2}, props
     assert not [n for n in notes if n.startswith(NEEDS_YOU)]          # not yet: under dig_stall_days
+    from planner import record
+    record([(got[0], {"ok": True})], s, m)                              # (0.105.33) marked once done
     props, _ = run(s, m)                                                # the same cycle again: not twice
     assert not [p for p in props if p.action["type"] == "renew_well_dig"]
     s, m = stuck_well(10, UNWORKED, urgent=True)

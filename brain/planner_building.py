@@ -1,10 +1,8 @@
 """planner_building: part of the planner (split out of planner.py in 0.104.83; see planner.py)."""
 
 from __future__ import annotations
-import json
 import math
 import re
-from dataclasses import asdict, dataclass, field
 from culture import layout_style, new_history, pick_stone, profile_from, stone_for
 from learning import held_levels
 import customs
@@ -328,7 +326,6 @@ def _stairwell_rule(s: dict, memory, cfg: dict, traits: dict, proposals: list) -
         want += 2
     if have >= want:
         return
-    import masterplan
     d = masterplan.stairwell_district(memory)
     if not d:
         return
@@ -525,7 +522,8 @@ def _well_dig_rule(s: dict, memory, cfg: dict, p: dict, rec: dict, days: int, no
                                   f"the well level (project {p['id']}): its channel not dug in {days} days"
                                   + (f" ({chk.get('text')})" if chk.get("text") else "")
                                   + f": the channel job renewed at priority {pri}", 3))
-        rec["renewed"] = now
+        # (0.105.33) rec["renewed"] is set in planner.record once done: one
+        # held by the cycle's limits is asked again
     if notes is not None and cause in WELL_DIG_ASK and days >= cfg["dig_stall_days"]:
         where = (f" at x{chk.get('x')} y{chk.get('y')} elevation {chk.get('elevation')}"
                  if chk.get("x") is not None else "")
@@ -597,7 +595,7 @@ def _dig_stall_rule(s: dict, memory, cfg: dict, open_: list, proposals: list, no
             proposals.append(Proposal("dig_jobs", {"type": "free_dig_jobs", "project_id": p["id"]},
                                       f"{what}: no tile dug for {days} days though {dig.get('digging')} are "
                                       "taken" + (f" ({jobs})" if jobs else "") + ": let other miners take them", 3))
-            rec["freed"] = now
+            # (0.105.33) rec["freed"] is set in planner.record once done
     for k in list(seen):
         if k not in live:
             del seen[k]
@@ -661,10 +659,26 @@ def customs_pass(proposals: list, memory, traits: dict, citizens: int) -> None:
     stands), the layout customs always. The ladder's level (it has "plan" or
     "customs" from apply_customs already) is left as it is. Nothing at all
     changes for a fort with no custom on. The strategist's levels
-    (review.py) get the layout customs only."""
+    (review.py) get the layout customs only.
+    (0.105.33) And the fort's Spacing on every new level whose style has
+    none: only the build rule's levels carried it, so 40% of the levels
+    (needs_shops, bottleneck, kiln, industry, mood, well_parts, homes_dig,
+    petition_build...) ignored the slider. A fort at spacing 0 changes nothing."""
+    profile = None
+    for p in proposals:
+        a = p.action
+        if not isinstance(a, dict) or a.get("type") != "start_project" or not isinstance(a.get("kind"), str):
+            continue
+        style = a.get("style")
+        if isinstance(style, dict) and "spacing" in style:
+            continue
+        if profile is None:
+            profile = profile_from(traits, (memory.culture if memory is not None else None) or new_history())
+        spacing = int(profile.get("spacing", 0) or 0)
+        if spacing:
+            p.action = dict(a, style=dict(style if isinstance(style, dict) else {}, spacing=spacing))
     if not customs.active(traits):
         return
-    profile = None
     for p in proposals:
         a = p.action
         if not isinstance(a, dict) or a.get("type") != "start_project" or not isinstance(a.get("kind"), str) \

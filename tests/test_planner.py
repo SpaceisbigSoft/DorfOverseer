@@ -1724,12 +1724,18 @@ def _():
         {"id": 173, "kind": "bedrooms", "phase": "dig", "started": {"year": s["date"]["year"], "tick": 0},
          "dig": {"total": 89, "dug": 0, "digging": 1, "stuck": 0}}]
     m = Memory()
-    acts = lambda: [x.action for x in plan(copy.deepcopy(s), m)[0]
-                    if x.action.get("type") in ("free_dig_jobs", "furnish_project")]
+    from planner import record
+
+    def acts(done=False):
+        got = [x for x in plan(copy.deepcopy(s), m)[0] if x.action.get("type") in ("free_dig_jobs", "furnish_project")]
+        if done:            # (0.105.33) marked "freed" in record(), once done
+            record([(x, {"ok": True}) for x in got if x.action["type"] == "free_dig_jobs"], s, m)
+        return [x.action for x in got]
     assert acts() == []                                          # first look: progress noted
     s["date"]["tick"] += 28 * 1200
     got = acts()
     assert {"type": "free_dig_jobs", "project_id": 170} in got and {"type": "free_dig_jobs", "project_id": 173} in got, got
+    assert [a for a in acts(done=True) if a["type"] == "free_dig_jobs"], "(0.105.33) not done: asked again"
     assert not [a for a in acts() if a["type"] == "free_dig_jobs"], "let go once"
     s["date"]["tick"] += 28 * 1200
     got = acts()
@@ -3121,21 +3127,28 @@ def _():
 
 @test("military: the AI gate lever is pulled on a threat, and back after it's quiet")
 def _():
+    from planner import note_gate_lever as note_cycle    # (0.105.33) the lever read each cycle
     s = under_attack()
     s["military"]["gates"] = [{"id": 77, "state": 0, "linked": 1, "pending": False}]
     m = Memory()
+    note_cycle(s, m)                                                       # the lever's open state learnt
     g = by_rule(plan(s, m)[0], "gate")
     assert g and g[0].action == {"type": "pull_gate", "lever_id": 77}, g
     record([(g[0], {"ok": True})], s, m)
+    s["military"]["gates"] = [{"id": 77, "state": 1, "linked": 1, "pending": False}]   # (0.105.33) the dwarf pulled it
+    note_cycle(s, m)
     assert m.gate_closed_by_ai and not by_rule(plan(s, m)[0], "gate")     # not pulled twice
     quiet = fort()
     quiet["military"]["gates"] = s["military"]["gates"]
+    note_cycle(quiet, m)
     m.quiet_cycles = 1
     assert not by_rule(plan(quiet, m)[0], "gate")                          # not yet
     m.quiet_cycles = 3
     g = by_rule(plan(quiet, m)[0], "gate")
     assert g, "pulled back after 3 quiet cycles"
     record([(g[0], {"ok": True})], quiet, m)
+    quiet["military"]["gates"] = [{"id": 77, "state": 0, "linked": 1, "pending": False}]
+    note_cycle(quiet, m)
     assert not m.gate_closed_by_ai
 
 
