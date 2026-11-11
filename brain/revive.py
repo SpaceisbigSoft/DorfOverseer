@@ -34,6 +34,10 @@ DOWN_S = 180
 # almost at once, probing every START_PROBE_S
 START_PROBE_S = 15
 START_DOWN_S = 15
+# (0.105.33) ... unless a Dwarf Fortress process already runs (started with the
+# keeper, still loading before DFHack listens): a second copy isn't started
+# until this long
+START_BUSY_S = 120
 TITLE_S = 120
 LAUNCH_EVERY_S = 900
 LOADS_PER_HOUR = 3
@@ -114,7 +118,7 @@ RESTORE_PREFIX = "AI restore"
 
 def restore_from_backup(log=None) -> str | None:
     """(0.105.0) Every save of the pinned fort failed to load: the newest copy
-    in backups/ is copied into DF's save folder as "AI restore <date>" and its
+    of it in backups/ (any folder, by its world and site) is copied into DF's save folder as "AI restore <date>" and its
     folder name returned (None if there is none). Each copy is restored once."""
     import shutil
     import backup
@@ -122,12 +126,10 @@ def restore_from_backup(log=None) -> str | None:
     p = pin.current()
     if not p or not backup.safe_save_dir(p.get("save_dir")) or not p.get("df_path"):
         return None
-    src_root = backup.BACKUP_DIR / p["save_dir"]
-    try:
-        copies = sorted((c for c in src_root.iterdir() if c.is_dir() and backup.COPY_NAME.match(c.name)),
-                        key=lambda c: c.name, reverse=True)
-    except OSError:
-        return None
+    # (0.105.33) every backups/ folder's copies of the pinned world and site:
+    # the copies go to backups/<the save folder loaded>, which a revive (an
+    # "autosave N") or a restore changes; never another world's autosave copy
+    copies = backup.copies_of(p.get("world"), p.get("site"), p.get("save_dir"))
     root = save_root(p["df_path"], p["save_dir"]) or Path(p["df_path"]) / "save"
     for c in copies:
         name = f"{RESTORE_PREFIX} {c.name}"
@@ -167,6 +169,42 @@ def save_written_within(seconds: float, clock=time.time) -> bool:
         except OSError:
             continue
     return False
+
+
+# (0.105.33) lua/ai-title.lua's answers that last (the same try fails the same
+# way next time); "a list was open ... backed out", "not at the title screen"
+# and "a world is already loaded" pass, and aren't counted
+_NO_WORLD_SAVE = "no save of the world"
+_ONE_FOLDER = ("no save called", "is not listed")
+
+
+def refused_folders(out: str, folders: list[str], folder: str, matched: bool) -> list[str]:
+    """(0.105.33) The folders a refused load counts against. load-match
+    (`matched`): every folder offered, when none is a save of the world, or
+    when the world's save was refused (load-match tries only that world's
+    saves, and doesn't say which one). A plain load: the one folder, when
+    there is no save of that name or its world isn't listed."""
+    m = re.search(r'"error"\s*:\s*"((?:[^"\\]|\\.)*)"', out or "")
+    err = m.group(1) if m else (out or "")
+    if matched and (_NO_WORLD_SAVE in err or any(x in err for x in _ONE_FOLDER)):
+        return list(folders)
+    if any(x in err for x in _ONE_FOLDER):
+        return [folder]
+    return []
+
+
+def df_running(run=None) -> bool:
+    """(0.105.33) A Dwarf Fortress process exists (Windows' tasklist; False
+    elsewhere or when it can't tell)."""
+    if os.name != "nt" and run is None:
+        return False
+    run = run or subprocess.run
+    try:
+        lst = run(["tasklist", "/FI", f"IMAGENAME eq {DF_EXE}", "/FO", "CSV", "/NH"],
+                  capture_output=True, text=True, timeout=30).stdout or ""
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return any(DF_EXE.lower() in ln.lower() for ln in lst.splitlines())
 
 
 def launch_command() -> str | None:
@@ -224,6 +262,7 @@ class Reviver:
         self.loading: tuple[str, float] | None = None
         self.restore = restore_from_backup
         self.restored: list[str] = []
+        self.df_running = df_running     # (0.105.33) before a cold-start launch
 
     def _dfhack(self) -> DFHack:
         if self.df is None:
@@ -266,6 +305,9 @@ class Reviver:
         """(0.105.0) The load under way failed: counted against its folder."""
         folder = self.loading[0]
         self.loading = None
+        self._count_fail(folder, why)
+
+    def _count_fail(self, folder: str, why: str) -> None:
         n = self.load_fails[folder] = self.load_fails.get(folder, 0) + 1
         self.log(f"Revive: loading '{folder}' failed ({why}); {n} failed load(s) of it"
                  + (": it isn't tried again, the next older save is." if n >= LOAD_FAILS_MAX else "."))
@@ -309,6 +351,13 @@ class Reviver:
             self.title_since = None
             self.down_since = self.down_since or now
             wait = DOWN_S if self.seen_up else START_DOWN_S
+            if (not self.seen_up and now - self.down_since >= wait and now - self.down_since < START_BUSY_S
+                    and now - self.last_launch >= LAUNCH_EVERY_S and self.df_running()):
+                if not getattr(self, "busy_said", False):
+                    self.log("Revive: Dwarf Fortress is running but DFHack doesn't answer yet (still starting?): "
+                             f"waiting up to {START_BUSY_S} s before starting it.")
+                    self.busy_said = True
+                return
             if now - self.down_since >= wait and now - self.last_launch >= LAUNCH_EVERY_S:
                 cmd = launch_command()
                 if not cmd:
@@ -364,6 +413,12 @@ class Reviver:
                         self.log(f"Revive: the game sat at the title screen; loading the save '{folder}'.")
                     else:
                         self.log(f"Revive: couldn't load '{folder}' ({out.strip()[-200:]}).")
+                        # (0.105.33) a lasting refusal (no save of the world among
+                        # the folders, no save of that name, its world not listed)
+                        # counts as a failed load: else it was tried all night and
+                        # the backup restore was never reached
+                        for f in refused_folders(out, folders, folder, bool(world)):
+                            self._count_fail(f, "the title screen refused it")
                 except DFHackError as e:
                     self.log(f"Revive: couldn't load '{folder}' ({str(e)[:160]}).")
         elif state == "world":

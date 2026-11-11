@@ -204,8 +204,12 @@ def pin_fort() -> None:
         at_title = bool(rv is not None and getattr(rv, "title_since", None))
         EXTRAS["pinned"] = pin.take(EXTRAS["start_ts"], at_title=at_title, log=log)
     except Exception as e:  # noqa: BLE001  (a pin never stops the run)
-        log(f"Keeper: couldn't pin the fort ({e})")
-        EXTRAS["pinned"] = {"error": str(e)}
+        # (0.105.33) left None, so the next chore tries again (an error dict
+        # was truthy: the run went unpinned for good); said once
+        if not EXTRAS.get("pin_error_said"):
+            log(f"Keeper: couldn't pin the fort ({e}); trying again")
+            EXTRAS["pin_error_said"] = True
+        EXTRAS["pinned"] = None
 
 
 def chores() -> None:
@@ -300,7 +304,18 @@ def single_instance():
     return folder_lock(LOG_DIR)
 
 
-def main(argv=None, popen=subprocess.Popen, sleep=time.sleep, max_runs: int | None = None) -> int:
+def sleep_doing_chores(wait: float, step: float = 5.0, sleep=time.sleep) -> None:
+    """(0.105.33) The back-off between overseer runs, in 5-s steps with the
+    chores between (revive probe, pin, check): a run of overseer crashes no
+    longer delays bringing DF back by up to 10 minutes each."""
+    left = float(wait)
+    while left > 0:
+        sleep(min(step, left))
+        left -= step
+        chores()
+
+
+def main(argv=None, popen=subprocess.Popen, sleep=None, max_runs: int | None = None) -> int:
     ap = argparse.ArgumentParser(description="Keep the overseer running, unattended.")
     ap.add_argument("--ai", action="store_true", help="let the AI strategist review now and then (spends tokens)")
     ap.add_argument("--revive", action="store_true",
@@ -354,7 +369,10 @@ def main(argv=None, popen=subprocess.Popen, sleep=time.sleep, max_runs: int | No
             restarts += 1
             write_status(started, restarts, f"{why}; restarting in {wait} s")
             log(f"Restarting the overseer in {wait} s (restart {restarts}).")
-            sleep(wait)
+            if sleep is None:
+                sleep_doing_chores(wait)
+            else:
+                sleep(wait)                   # (tests)
     except KeyboardInterrupt:
         for line in summary_lines():
             log("Summary: " + line)

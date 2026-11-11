@@ -61,6 +61,7 @@ def entries(since: datetime, root: Path = FORTS):
 
 def summarize(since: datetime, root: Path = FORTS, top: int = 5) -> list[str]:
     done, refused, why = Counter(), Counter(), {}
+    unanswered = 0               # (0.105.33) ok None: the game didn't answer (may or may not have happened)
     n = 0
     for e in entries(since, root):
         if e.get("mode") != "autopilot":
@@ -71,11 +72,14 @@ def summarize(since: datetime, root: Path = FORTS, top: int = 5) -> list[str]:
         if r.get("ok") is False:
             refused[key] += 1
             why[key] = str(r.get("error") or "")[:90]
+        elif "ok" in r and r.get("ok") is None:
+            unanswered += 1
         else:
             done[key] += 1
     if not n:
         return [f"no actions since {since:%Y-%m-%d %H:%M}"]
-    lines = [f"{n} action(s) since {since:%Y-%m-%d %H:%M}: {sum(done.values())} done, {sum(refused.values())} refused"]
+    lines = [f"{n} action(s) since {since:%Y-%m-%d %H:%M}: {sum(done.values())} done, {sum(refused.values())} refused"
+             + (f", {unanswered} unanswered by the game" if unanswered else "")]
     if done:
         lines.append("most done: " + "; ".join(f"{r}: {w} x{c}" for (r, w), c in done.most_common(top)))
     if refused:
