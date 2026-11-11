@@ -1378,8 +1378,22 @@ def _():
     s["buildings"]["workshops"]["Still"] = None                   # an odd value: _needs_rules used to raise
     s["stocks"]["drink"] = 0                                      # something else to do
     props, notes = plan(copy.deepcopy(s), Memory())[:2]
-    # (0.105.26: _needs_rules no longer reads the Still since needs_drink went; another rule fails)
-    assert any(n.startswith("rule _") and " failed (" in n for n in notes), [n for n in notes if "fail" in n]
+    # (0.105.33 merge) no rule fails on it any more (_bottleneck_rule did): the
+    # guard is shown with a rule of the test's own that raises
+    assert not [n for n in notes if n.startswith("rule _") and " failed (" in n], \
+        [n for n in notes if "fail" in n]
+    import planner as _planner
+    real = _planner._bottleneck_rule
+
+    def _bottleneck_rule(*a, **k):
+        raise ValueError("the test's own odd value")
+    _planner._bottleneck_rule = _bottleneck_rule
+    try:
+        props, notes = plan(copy.deepcopy(s), Memory())[:2]
+    finally:
+        _planner._bottleneck_rule = real
+    assert any(n.startswith("rule _bottleneck_rule failed (ValueError") for n in notes), \
+        [n for n in notes if "fail" in n]
     assert any(p.rule == "drink" for p in props), [p.rule for p in props]
     s2 = fort()
     del s2["dwarves"]                                             # a missing section: defaults, no crash
@@ -1724,12 +1738,18 @@ def _():
         {"id": 173, "kind": "bedrooms", "phase": "dig", "started": {"year": s["date"]["year"], "tick": 0},
          "dig": {"total": 89, "dug": 0, "digging": 1, "stuck": 0}}]
     m = Memory()
-    acts = lambda: [x.action for x in plan(copy.deepcopy(s), m)[0]
-                    if x.action.get("type") in ("free_dig_jobs", "furnish_project")]
+    from planner import record
+
+    def acts(done=False):
+        got = [x for x in plan(copy.deepcopy(s), m)[0] if x.action.get("type") in ("free_dig_jobs", "furnish_project")]
+        if done:            # (0.105.33) marked "freed" in record(), once done
+            record([(x, {"ok": True}) for x in got if x.action["type"] == "free_dig_jobs"], s, m)
+        return [x.action for x in got]
     assert acts() == []                                          # first look: progress noted
     s["date"]["tick"] += 28 * 1200
     got = acts()
     assert {"type": "free_dig_jobs", "project_id": 170} in got and {"type": "free_dig_jobs", "project_id": 173} in got, got
+    assert [a for a in acts(done=True) if a["type"] == "free_dig_jobs"], "(0.105.33) not done: asked again"
     assert not [a for a in acts() if a["type"] == "free_dig_jobs"], "let go once"
     s["date"]["tick"] += 28 * 1200
     got = acts()
@@ -2635,6 +2655,7 @@ def _():
     # (0.105.24) the bridge's give-up (3 tries, what it saw)
     record([(p, {"ok": False, "error": "the game would not place the well over the hole at x1 y2 z3 (3 tries; "
                                        "tiles: z3 OpenSpace, z2 OpenSpace, z1 OpenSpace; beside: StoneFloor1)"})], s, m)
+    m.last_fired["well"] = abs_tick(s)          # (0.105.33) the stop lasts well_retry_days from the last try
     props, notes = plan(s, m)
     assert not by_rule(props, "well"), "would dig another hole"
     assert any(n.startswith("no well could be placed: the game would not place") for n in notes), notes
@@ -2655,6 +2676,7 @@ def _():
     props, notes = plan(s, m)
     assert by_rule(props, "well") and m.well_floor_retried and m.well_failure == "", notes
     m.well_failure = "the game would not place the well over the hole at x131 y129 z24"
+    m.last_fired["well"] = abs_tick(s)          # (0.105.33) tried just now: the stop holds (well_retry_days)
     props, notes = plan(s, m)
     assert not by_rule(props, "well")                              # once only
 
@@ -3119,21 +3141,28 @@ def _():
 
 @test("military: the AI gate lever is pulled on a threat, and back after it's quiet")
 def _():
+    from planner import note_gate_lever as note_cycle    # (0.105.33) the lever read each cycle
     s = under_attack()
     s["military"]["gates"] = [{"id": 77, "state": 0, "linked": 1, "pending": False}]
     m = Memory()
+    note_cycle(s, m)                                                       # the lever's open state learnt
     g = by_rule(plan(s, m)[0], "gate")
     assert g and g[0].action == {"type": "pull_gate", "lever_id": 77}, g
     record([(g[0], {"ok": True})], s, m)
+    s["military"]["gates"] = [{"id": 77, "state": 1, "linked": 1, "pending": False}]   # (0.105.33) the dwarf pulled it
+    note_cycle(s, m)
     assert m.gate_closed_by_ai and not by_rule(plan(s, m)[0], "gate")     # not pulled twice
     quiet = fort()
     quiet["military"]["gates"] = s["military"]["gates"]
+    note_cycle(quiet, m)
     m.quiet_cycles = 1
     assert not by_rule(plan(quiet, m)[0], "gate")                          # not yet
     m.quiet_cycles = 3
     g = by_rule(plan(quiet, m)[0], "gate")
     assert g, "pulled back after 3 quiet cycles"
     record([(g[0], {"ok": True})], quiet, m)
+    quiet["military"]["gates"] = [{"id": 77, "state": 0, "linked": 1, "pending": False}]
+    note_cycle(quiet, m)
     assert not m.gate_closed_by_ai
 
 
@@ -7406,7 +7435,7 @@ def _():
     assert jail_plan({"justice": 100}, c, 100)["cells"] > jail_plan({}, c, 100)["cells"]
     assert trade_margin_for({"greed": -100}, c) > trade_margin_for({}, c) == 1.2 > trade_margin_for({"greed": 100}, c)
     assert trade_margin_for({"greed": 200}, c) == 1.05 and keeps_treasures({"greed": 50})
-    assert not keeps_treasures({"greed": 40})
+    assert keeps_treasures({"greed": 40}) and not keeps_treasures({"greed": 20})    # (0.105.33) +30 now
     assert noble_room_kinds({"deference": -100}) == () and noble_room_kinds({"deference": -60}) == ("bedroom",)
     assert noble_room_kinds({"deference": -10}) == ("bedroom", "office") and len(noble_room_kinds({})) == 4
     assert cistern_pop({"engineering": -200}, c) is None
@@ -7963,8 +7992,7 @@ def _():
     s["supplies"]["statues"] = 2
     p = []
     _grandeur_rule(s, cfg, p, [])
-    if not p:
-        return            # (the test fort counts as young or hungry)
+    assert p, "a grand, fed fort with two free statues proposes nothing"
     assert p[0].action == {"type": "place_in_zone", "zone_id": 6, "what": "statue"}, p
     s["settings"]["traits"] = {"grandeur": 0}
     p = []
@@ -8348,14 +8376,15 @@ def _():
     assert any("wooden_bucket" in n and "suspended" in n for n in notes), notes
 
 
-@test("0.105.13 trade by the slider: more goods a caravan, treasures sold by a trading fort; none from a closed one")
+@test("0.105.13 trade by the slider: more goods a caravan, treasures kept by a grasping fort; none from a closed one")
 def _():
     s = fort()
     s["trade"] = {"depot": True, "caravans": [{"civ": "the Mountainhomes", "state": "Approaching"}], "goods": 327,
                   "at_depot": 0}
     s["settings"]["traits"] = {"trade": 120, "greed": 80}
     t = by_rule(plan(s, Memory())[0], "trade")
-    assert t and t[0].action["count"] > 40 and "keep_treasures" not in t[0].action, t[0].action
+    # (0.105.33) a grasping trading fort keeps its treasures too (Greed was off in the Merchant city)
+    assert t and t[0].action["count"] > 40 and t[0].action.get("keep_treasures") is True, t[0].action
     s["settings"]["traits"] = {"trade": 0, "greed": 80}
     t = by_rule(plan(s, Memory())[0], "trade")
     assert t[0].action == {"type": "bring_goods", "count": 40, "keep_treasures": True}, t[0].action

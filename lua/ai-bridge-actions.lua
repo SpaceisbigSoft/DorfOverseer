@@ -9,7 +9,7 @@
 -- in_fort, NOT_IN_FORT, OUT_DIR) are at hand. Not a command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-actions is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-actions'] = '0.105.32'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-actions'] = '0.105.33'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local json = require('json')
 local utils = require('utils')
@@ -143,7 +143,10 @@ local function parse_style(st)
     end
     local customs        -- (0.105.29) fort customs the layouts read; unknown names dropped
     for _, c in ipairs(type(st.customs) == 'table' and st.customs or {}) do
-        if c == 'cloister' or c == 'armoury' or c == 'ore_piles' then
+        -- (0.105.33) the layouts' own list (ai-layouts.LAYOUT_CUSTOMS), so a new custom isn't dropped here
+        local okl, known = pcall(function() return reqscript('ai-layouts').LAYOUT_CUSTOMS end)
+        if type(c) == 'string' and (okl and type(known) == 'table' and known[c]
+                or not (okl and type(known) == 'table') and (c == 'cloister' or c == 'armoury' or c == 'ore_piles')) then
             customs = customs or {}; table.insert(customs, c)
         end
     end
@@ -1198,6 +1201,10 @@ end
 -- (0.105.32) An emergency way in for citizens stranded outside with no gate
 -- to blame (lua/ai-builder-projects.lua dig_way_in): x, y, z of where they stand.
 function act_dig_way_in(a)
+    -- (0.105.33) second = true: a second way to the surface by design (no stranded spot)
+    if a.second == true then
+        return reqscript('ai-builder').dig_way_in({second = true}, get_date(), a.dry_run == true)
+    end
     local x, y, z = int_in(a.x, 0, 1000), int_in(a.y, 0, 1000), int_in(a.z, 0, 1000)
     if not x or not y or not z then return reject('dig_way_in needs x, y, z (where the stranded stand)') end
     return reqscript('ai-builder').dig_way_in({x = x, y = y, z = z}, get_date(), a.dry_run == true)
@@ -1372,32 +1379,42 @@ function act_kitchen_skill(a)
     return {ok = true, kitchens = set, min_level = n, dry_run = a.dry_run == true or nil}
 end
 
-function act_kitchen_brewables(a)
-    if type(a.ban) ~= 'boolean' then return reject('kitchen_brewables needs ban = true or false') end
-    local data = dfhack.persistent.getSiteData(KITCHEN_KEY, {bans = {}})
+-- (0.105.33) the kitchen bans both rules share: `keys` excluded from cooking
+-- (ban) and recorded under `key`, or the recorded ones lifted (only the AI's
+-- own; false from addExclusion means the player's or ours is there already)
+local function kitchen_ban(key, keys, ban, dry_run)
+    local data = dfhack.persistent.getSiteData(key, {bans = {}})
     local had = type(data.bans) == 'table' and data.bans or {}
-    if a.ban then
-        local ok, keys = pcall(brewable_cook_keys)
-        if not ok then return {ok = false, error = 'kitchen_brewables: ' .. tostring(keys):sub(1, 120)} end
-        if a.dry_run then return {ok = true, dry_run = true, kinds = #keys} end
+    if ban then
+        if dry_run then return {ok = true, dry_run = true, kinds = #keys} end
         local added = 0
         for _, k in ipairs(keys) do
-            -- false when the exclusion is there already (the player's own, or ours)
             if dfhack.kitchen.addExclusion({Cook = true}, k.t, k.s, k.mt, k.mi) then
                 table.insert(had, k)
                 added = added + 1
             end
         end
-        pcall(dfhack.persistent.saveSiteData, KITCHEN_KEY, {bans = had})
+        pcall(dfhack.persistent.saveSiteData, key, {bans = had})
         return {ok = true, banned = added, kinds = #keys, held = #had}
     end
-    if a.dry_run then return {ok = true, dry_run = true, held = #had} end
+    if dry_run then return {ok = true, dry_run = true, held = #had} end
     local lifted = 0
     for _, k in ipairs(had) do
         if dfhack.kitchen.removeExclusion({Cook = true}, k.t, k.s, k.mt, k.mi) then lifted = lifted + 1 end
     end
-    pcall(dfhack.persistent.saveSiteData, KITCHEN_KEY, {bans = {}})
+    pcall(dfhack.persistent.saveSiteData, key, {bans = {}})
     return {ok = true, lifted = lifted}
+end
+
+function act_kitchen_brewables(a)
+    if type(a.ban) ~= 'boolean' then return reject('kitchen_brewables needs ban = true or false') end
+    local keys = {}
+    if a.ban then
+        local ok, k = pcall(brewable_cook_keys)
+        if not ok then return {ok = false, error = 'kitchen_brewables: ' .. tostring(k):sub(1, 120)} end
+        keys = k
+    end
+    return kitchen_ban(KITCHEN_KEY, keys, a.ban, a.dry_run)
 end
 
 -- (0.104.30) Fat and tallow kept from the cooks while the hospital has no
@@ -1408,10 +1425,9 @@ KITCHEN_FAT_KEY = 'ai-overseer/kitchen-fat'
 
 function act_kitchen_fat(a)
     if type(a.ban) ~= 'boolean' then return reject('kitchen_fat needs ban = true or false') end
-    local data = dfhack.persistent.getSiteData(KITCHEN_FAT_KEY, {bans = {}})
-    local had = type(data.bans) == 'table' and data.bans or {}
+    local keys = {}
     if a.ban then
-        local seen, keys = {}, {}
+        local seen = {}
         for _, it in ipairs(df.global.world.items.other.GLOB) do
             local okm, mi = pcall(dfhack.matinfo.decode, it)
             local token = okm and mi and mi:getToken() or ''
@@ -1423,25 +1439,10 @@ function act_kitchen_fat(a)
                 end
             end
         end
-        if a.dry_run then return {ok = true, dry_run = true, kinds = #keys} end
-        local added = 0
-        for _, k in ipairs(keys) do
-            if dfhack.kitchen.addExclusion({Cook = true}, k.t, k.s, k.mt, k.mi) then
-                table.insert(had, k)
-                added = added + 1
-            end
-        end
-        pcall(dfhack.persistent.saveSiteData, KITCHEN_FAT_KEY, {bans = had})
-        if added == 0 and #keys == 0 then return reject('no fat or tallow in the fort') end
-        return {ok = true, banned = added, kinds = #keys, held = #had}
     end
-    if a.dry_run then return {ok = true, dry_run = true, held = #had} end
-    local lifted = 0
-    for _, k in ipairs(had) do
-        if dfhack.kitchen.removeExclusion({Cook = true}, k.t, k.s, k.mt, k.mi) then lifted = lifted + 1 end
-    end
-    pcall(dfhack.persistent.saveSiteData, KITCHEN_FAT_KEY, {bans = {}})
-    return {ok = true, lifted = lifted}
+    local r = kitchen_ban(KITCHEN_FAT_KEY, keys, a.ban, a.dry_run)
+    if a.ban and not a.dry_run and r.banned == 0 and #keys == 0 then return reject('no fat or tallow in the fort') end
+    return r
 end
 
 -- (0.99.7) Soldiers who don't pick up their uniforms: DFHack's
@@ -1519,7 +1520,7 @@ function act_recreation(a)
     -- (0.104.80) places for those who badly want friends, a short stay each
     local f, fd = int_in(a.friends or 0, 0, 10), int_in(a.friend_days or 7, 3, 28)
     if not f or not fd then return reject('recreation: friends 0-10, friend_days 3-28') end
-    return reqscript('ai-society').recreation_tick(n, days, a.dry_run == true, txt, f, fd)
+    return reqscript('ai-society').recreation_tick(n, days, a.dry_run == true, txt, f, fd, a.release == true)
 end
 
 -- (0.104.168) The loose cups no finished goods pile takes: the pile with the
@@ -1888,19 +1889,23 @@ function act_order_instrument(a)
 end
 
 -- (0.104.69) Instrument orders piled up (one a month asked, none counted as
--- queued): those the instruments tool makes (a custom reaction MAKE_<entity>
--- IN...), not yet begun, beyond `keep`, are cancelled; the rest become the
--- AI's.
+-- queued): those the instruments tool made for the AI (a custom reaction
+-- MAKE_<entity> IN..., recorded by act_order_instrument), not yet begun,
+-- beyond `keep`, are cancelled. (0.105.33) Only the AI's own: an instrument
+-- the player orders at DF's work-order screen has the same reaction and is
+-- neither adopted nor cancelled.
 function act_trim_instrument_orders(a)
     local keep = int_in(a.keep or 1, 0, 10)
     if not keep then return reject('trim_instrument_orders: keep 0-10') end
     local all = df.global.world.manager_orders.all
+    local ours = ai_orders().ids
     local mine, cancelled = {}, 0
     for _, o in ipairs(all) do
         local okr, r = pcall(function() return o.reaction_name end)
-        if okr and type(r) == 'string' and r:match('^MAKE_ENT%d+ IN') then table.insert(mine, o) end
+        if okr and type(r) == 'string' and r:match('^MAKE_ENT%d+ IN') and ours[tostring(o.id)] then
+            table.insert(mine, o)
+        end
     end
-    local data = ai_orders()
     -- begun ones (some made) first: they are kept
     table.sort(mine, function(x, y)
         local bx, by = x.amount_left < x.amount_total, y.amount_left < y.amount_total
@@ -1910,19 +1915,13 @@ function act_trim_instrument_orders(a)
     for i, o in ipairs(mine) do
         if i > keep and o.amount_left == o.amount_total then
             if not a.dry_run then
-                data.ids[tostring(o.id)] = true
-                save_ai_orders(data)
                 local r = act_cancel_work_order({order_id = o.id})
                 if r and r.ok then cancelled = cancelled + 1 end
-                data = ai_orders()
             else
                 cancelled = cancelled + 1
             end
-        elseif not a.dry_run then
-            data.ids[tostring(o.id)] = true
         end
     end
-    if not a.dry_run then save_ai_orders(data) end
     return {ok = true, found = #mine, cancelled = cancelled, kept = #mine - cancelled, dry_run = a.dry_run or nil}
 end
 
@@ -1965,6 +1964,28 @@ end
 -- items: DFHack's deteriorate for non-entombed corpses and body parts nobody
 -- can craft with (its defaults). Usable parts (bones, hair, wool) and food are
 -- left alone; entombed dead are never touched. Stays on in this save.
+-- (0.105.33 fix) The fort's dead still lying unburied, whatever their race:
+-- a corpse (not in a coffin or tomb, not removed) whose unit is of the
+-- fort's civilisation, or of the fort's race when its unit can't be found.
+-- get_dead's `unburied` counts the fort's race only (a goblin or elf citizen
+-- waiting for burial didn't stop the one pass). nil when unreadable.
+function unburied_citizens()
+    local ok, n = pcall(function()
+        local race, civ = df.global.plotinfo.race_id, df.global.plotinfo.civ_id
+        local c = 0
+        for _, it in ipairs(df.global.world.items.other.CORPSE) do
+            if not it.flags.in_building and not it.flags.removed then
+                local oku, du = pcall(df.unit.find, it.unit_id)
+                local ours
+                if oku and du then ours = du.civ_id == civ else ours = it.race == race end
+                if ours then c = c + 1 end
+            end
+        end
+        return c
+    end)
+    return ok and n or nil
+end
+
 function act_prune_remains(a)
     if not dfhack.findScript('deteriorate') then
         return {ok = false, error = 'DFHack has no deteriorate script in this version'}
@@ -1973,12 +1994,44 @@ function act_prune_remains(a)
     -- ('clothes': only on the ground and worn, never armour) and usable parts
     -- ('usable-parts': Teacheroar held 7,227 butchered bones and shells on the
     -- ground, 6,627 dead creatures still on the map's books)
-    local cats = {'corpses', 'unusable-parts'}
+    -- (0.105.33) corpses are never left on a timer: deteriorate's corpses
+    -- category takes the fort's own dead too ("this includes former members
+    -- of your fort"), and once on it stayed on, so a citizen waiting for a
+    -- coffin rotted away unburied (a ghost). Corpses go in one pass now, and
+    -- only while no citizen lies unburied; the timer keeps the parts and
+    -- clothes only (deteriorate's own default has corpses on: turned off).
+    -- (0.105.33 fix) keep = {'usable-parts'}: only take the bones and shells off
+    -- the timer (an earlier prune put them on, and it stays on in the save: a
+    -- strange mood's bone or the fort's bone reserve would rot away)
+    if type(a.keep) == 'table' then
+        local keep = {}
+        for _, c in ipairs(a.keep) do
+            if c == 'usable-parts' or c == 'clothes' then table.insert(keep, c) end
+        end
+        if #keep == 0 then return {ok = false, error = 'prune_remains keep: nothing to keep'} end
+        if a.dry_run then return {ok = true, dry_run = true, kept = keep} end
+        local out, rv = dfhack.run_command_silent('deteriorate', 'disable', table.concat(keep, ','))
+        if rv ~= CR_OK then
+            return {ok = false, error = 'deteriorate failed: ' .. tostring(out):sub(1, 160)}
+        end
+        return {ok = true, kept = keep}
+    end
+    local cats = {'unusable-parts'}
     for _, c in ipairs(type(a.extra) == 'table' and a.extra or {}) do
         if c == 'clothes' or c == 'usable-parts' then table.insert(cats, c) end
     end
-    if a.dry_run then return {ok = true, dry_run = true, categories = cats} end
-    local out, rv = dfhack.run_command_silent('deteriorate', 'enable', table.concat(cats, ','))
+    -- (0.105.33 fix) every citizen's corpse counted, not the fort's race only
+    local unburied = unburied_citizens()
+    local corpses_now = unburied == 0
+    if a.dry_run then
+        return {ok = true, dry_run = true, categories = cats, corpses_now = corpses_now,
+                unburied = unburied}
+    end
+    local out, rv = dfhack.run_command_silent('deteriorate', 'disable', 'corpses')
+    if rv ~= CR_OK then
+        return {ok = false, error = 'deteriorate failed: ' .. tostring(out):sub(1, 160)}
+    end
+    out, rv = dfhack.run_command_silent('deteriorate', 'enable', table.concat(cats, ','))
     if rv ~= CR_OK then
         return {ok = false, error = 'deteriorate failed: ' .. tostring(out):sub(1, 160)}
     end
@@ -1986,7 +2039,16 @@ function act_prune_remains(a)
     if rv ~= CR_OK then
         return {ok = false, error = 'enable deteriorate failed: ' .. tostring(out):sub(1, 160)}
     end
-    return {ok = true, categories = cats, said = tostring(out):sub(1, 200)}
+    local res = {ok = true, categories = cats, said = tostring(out):sub(1, 200)}
+    if corpses_now then
+        local o2, rv2 = dfhack.run_command_silent('deteriorate', 'now', 'corpses')
+        res.corpses = rv2 == CR_OK and tostring(o2):gsub('%s+$', ''):sub(1, 120)
+            or ('the one pass failed: ' .. tostring(o2):sub(1, 120))
+    else
+        res.corpses = unburied and ('left: %d citizen(s) wait for burial'):format(unburied)
+            or 'left: the dead could not be counted'
+    end
+    return res
 end
 
 -- An office filled by the AI (lua/ai-nobles.lua): manager, bookkeeper,
@@ -2128,7 +2190,7 @@ function act_water_work(a)
         return reject('water_work: shop is MagmaForge, MagmaSmelter or MagmaGlassFurnace')
     end
     return reqscript('ai-waterworks').step(a.kind, {dry_run = a.dry_run == true, shut = a.shut == true,
-        retire = a.retire == true, shop = a.shop, plain = a.plain == true,
+        retire = a.retire == true, shop = a.shop, plain = a.plain == true, reopen = a.reopen == true,
         why = type(a.why) == 'string' and a.why:sub(1, 120) or nil})
 end
 
@@ -2217,34 +2279,41 @@ function act_restrict_water(a)
     local zs = type(a.levels) == 'table' and a.levels or {}
     local cx, cy = whole_number(a.x), whole_number(a.y)
     local r = whole_number(a.radius) or 60
-    if #zs == 0 or #zs > 6 or not cx or not cy or r < 5 or r > 120 then
-        return reject('levels (1-6), x, y and radius 5-120 needed')
+    -- (0.105.33) up to 9 levels: the brain's drowning guard sends the top
+    -- three of every water body (planner_wells._water_traffic_rule, [:9]),
+    -- and a map with three such bodies was refused every cycle
+    if #zs == 0 or #zs > 9 or not cx or not cy or r < 5 or r > 120 then
+        return reject('levels (1-9), x, y and radius 5-120 needed')
     end
     local sx, sy, sz = dfhack.maps.getTileSize()
     local marked, seen = 0, 0
+    local frozen = df.tiletype_material.FROZEN_LIQUID
+    local x0, x1 = math.max(0, cx - r), math.min(sx - 1, cx + r)
+    -- (0.105.33) one protected call a row, not one closure a tile (~87k a call)
+    local function row(y, z)
+        for x = x0, x1 do
+            local pos = xyz2pos(x, y, z)
+            local d = dfhack.maps.getTileFlags(pos)
+            local wet = d and d.flow_size > 0 and not d.liquid_type
+            if d and not wet then
+                local tt = dfhack.maps.getTileType(pos)
+                wet = tt and df.tiletype.attrs[tt].material == frozen
+            end
+            if wet then
+                seen = seen + 1
+                local up = dfhack.maps.getTileFlags(xyz2pos(x, y, z + 1))
+                if up and up.traffic == df.tile_traffic.Normal then
+                    if not a.dry_run then up.traffic = df.tile_traffic.Restricted end
+                    marked = marked + 1
+                end
+            end
+        end
+    end
     for _, z0 in ipairs(zs) do
         local z = whole_number(z0)
         if z and z >= 0 and z + 1 < sz then
             for y = math.max(0, cy - r), math.min(sy - 1, cy + r) do
-                for x = math.max(0, cx - r), math.min(sx - 1, cx + r) do
-                    pcall(function()
-                        local pos = xyz2pos(x, y, z)
-                        local d = dfhack.maps.getTileFlags(pos)
-                        local wet = d and d.flow_size > 0 and not d.liquid_type
-                        if not wet then
-                            local tt = dfhack.maps.getTileType(pos)
-                            wet = tt and df.tiletype.attrs[tt].material == df.tiletype_material.FROZEN_LIQUID
-                        end
-                        if wet then
-                            seen = seen + 1
-                            local up = dfhack.maps.getTileFlags(xyz2pos(x, y, z + 1))
-                            if up and up.traffic == df.tile_traffic.Normal then
-                                if not a.dry_run then up.traffic = df.tile_traffic.Restricted end
-                                marked = marked + 1
-                            end
-                        end
-                    end)
-                end
+                pcall(row, y, z)
             end
         end
     end
@@ -2276,7 +2345,9 @@ function act_free_slabs(a)
                         -- (0.104.49) shut in the rock (Enxah's oldest ghost's slab lay
                         -- inside a wall tile, a wall built over where it lay): brought
                         -- out to where a dwarf stands, the way it would have been carried
-                        if not a.dry_run and dfhack.items.moveToGround(it, from) then
+                        if a.dry_run then
+                            moved = moved + 1     -- (0.105.33) counted in a dry run too
+                        elseif dfhack.items.moveToGround(it, from) then
                             moved = moved + 1
                             it.flags.forbid = false
                         end

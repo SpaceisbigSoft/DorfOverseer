@@ -14,6 +14,7 @@ backends (API key or Pro/Max subscription) live in backends.py.
 from __future__ import annotations
 
 import json
+import math
 import re
 from dataclasses import dataclass, field
 
@@ -112,7 +113,9 @@ def instructions(recipes: list[str], tools: list[str], build: dict | None = None
     return _format(recipes, tools, build, adj)
 
 
-STEER_RULES = {**{k: v for k, v in AGENDA_THEMES.items()},
+# (0.105.33, B5) agenda themes no Proposal is named after: a raise or hold of them did nothing
+NO_SUCH_RULE = {"quick_temple", "quick_tavern", "farm"}
+STEER_RULES = {**{k: v for k, v in AGENDA_THEMES.items() if k not in NO_SUCH_RULE},
                "traps": "traps behind the gates", "crops": "which crops the farms favour", "bins": "make bins",
                "bags": "make bags", "fishery": "a fishery", "kitchen": "the kitchen's bans"}
 
@@ -120,6 +123,15 @@ STEER_RULES = {**{k: v for k, v in AGENDA_THEMES.items()},
 PROPOSALS_SHOWN = 12               # THE PLANNER PROPOSES NOW
 RECENT_SHOWN = 6                   # RECENT ACTIONS
 NOT_STEERABLE = {"strategist"}     # (0.105.26) its own actions: nothing to raise or hold
+# (0.105.33, B5) never raised: a raise skips the cooldown, and these are paced
+# by it alone (or pace themselves). Kill orders, expulsions, gate clearing,
+# levers and gates, trading, the butcher, convictions. Holding them is fine.
+RAISE_FORBIDDEN = {"slaughter", "cleanup", "gate_lever", "gate", "squad_attack", "convict", "expel", "cursed",
+                   "trade", "trade_deal", "call_trader", "open_trade", "close_trade"}
+# (0.105.33, B5) never held, beside the planner's STEER_PROTECTED: the barrels
+# and pots the brewing waits for, soap for infected wounds, the farms
+HOLD_PROTECTED = {"containers", "soap", "farms"}
+BUILD_HOLD_MAX_DAYS = 14           # (0.105.33, B5) the whole level ladder: held two weeks at most
 
 
 STEER_EXTRA = ("build", "grandeur", "trade", "crafts", "gems", "encrust", "steel", "arms", "train", "squad_make",
@@ -172,7 +184,8 @@ def review_message(state: dict, reason: str, planner_notes: list[str], recent_de
     if adjustments:
         lines.append("CURRENT PLANNER ADJUSTMENTS " + json.dumps(adjustments, separators=(",", ":")))
     if planner_notes:
-        lines.append("PLANNER COULD NOT: " + "; ".join(planner_notes[:6]))
+        # (0.105.33, B5) game text (unit and civ names) quoted as data
+        lines.append("PLANNER COULD NOT: " + "; ".join(game_text(n, 160) for n in planner_notes[:6]))
     if recent_decisions:
         lines.append("RECENT ACTIONS " + "; ".join(
             f"{d.get('rule')}:{json.dumps(d.get('action'), separators=(',', ':'))}"
@@ -189,14 +202,15 @@ def review_message(state: dict, reason: str, planner_notes: list[str], recent_de
     if proposals:
         seen, shown = set(), []
         for p in proposals[:PROPOSALS_SHOWN]:
-            t = f"{getattr(p, 'rule', '?')}: {str(getattr(p, 'reason', ''))[:90]}"
+            t = f"{game_text(getattr(p, 'rule', '?'), 40)}: {game_text(getattr(p, 'reason', ''), 90)}"
             if t not in seen:            # the same rule and reason twice (two squads) is one line
                 seen.add(t)
                 shown.append(t)
         lines.append("THE PLANNER PROPOSES NOW " + "; ".join(shown))
     if steer:
         lines.append("YOUR STANDING RAISES AND HOLDS " + "; ".join(
-            f"{k} {v.get('mode')} ({str(v.get('why') or '')[:60]})" for k, v in steer.items() if isinstance(v, dict)))
+            f"{game_text(k, 40)} {game_text(v.get('mode'), 10)} ({game_text(v['why'], 60) if v.get('why') else ''})"
+            for k, v in steer.items() if isinstance(v, dict)))
     for sec in (wants or [])[:MAX_WANT]:
         if sec in SECTIONS and sec in state:
             text, cut = cut_json(state.get(sec), SECTION_CHARS)
@@ -369,7 +383,7 @@ def check_answer(text: str, recipes: set[str], tools: set[str], ai_order_ids: se
         if k not in ADJUSTABLE:
             a.rejected.append(f"adjust: unknown key {k!r}")
             continue
-        if isinstance(v, bool) or not isinstance(v, (int, float)):
+        if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v):
             a.rejected.append(f"adjust: {k} is not a number")
             continue
         lo, hi = ADJUSTABLE[k]
@@ -391,7 +405,7 @@ def check_answer(text: str, recipes: set[str], tools: set[str], ai_order_ids: se
             continue
         if len(a.actions) >= MAX_ACTIONS:
             a.rejected.append("more than the allowed number of actions")
-            break
+            continue     # (0.105.33, B5) a raise or hold after it is still read
         ok, why = _check_action(act, recipes, tools, ai_order_ids, build or {})
         if ok:
             a.actions.append(ok)
@@ -407,12 +421,16 @@ def _check_steer(act, shown: set | None = None) -> tuple[dict | None, str]:
         return None, f"{act.get('type')}: unknown rule {rule!r}"
     why = (why if isinstance(why, str) else "")[:120]
     if act["type"] == "raise":
+        if rule in RAISE_FORBIDDEN:
+            return None, f"raise: {rule} is paced by its wait and can't be raised"
         return {"type": "raise", "rule": rule, "why": why}, ""
-    if rule in STEER_PROTECTED:
+    if rule in STEER_PROTECTED or rule in HOLD_PROTECTED:
         return None, f"hold: {rule} keeps the fort safe and can't be held"
     days = _int_in(act.get("days"), 1, STEER_MAX_DAYS)
     if days is None:
         return None, f"hold: days must be 1-{STEER_MAX_DAYS}"
+    if rule == "build":
+        days = min(days, BUILD_HOLD_MAX_DAYS)     # (0.105.33 fix) a longer build hold is shortened, not lost
     return {"type": "hold", "rule": rule, "days": days, "why": why}, ""
 
 

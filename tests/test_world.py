@@ -251,7 +251,7 @@ def _():
     assert not nothing.ok and nothing.rejected                # no meeting open now
 
 
-@test("the meeting: a barony's holder left to the player; a tribute pressed only when the Rules say pay")
+@test("the meeting: a barony's holder left to the player; a tribute answered by the Rules (0.105.33: small and refuse too)")
 def _():
     env, G = world(MEETING + "df.global.game.main_interface.diplomacy.selecting_land_holder_position = true")
     r = env.answer_meeting(LUA.table_from({}))
@@ -259,10 +259,14 @@ def _():
     tribute = MEETING + "df.global.game.main_interface.diplomacy.dipev.topic_list = G.vec({9}); " \
                         "df.global.game.main_interface.diplomacy.dipev.agreement_topic = G.vec({}); " \
                         "df.global.game.main_interface.diplomacy.dipev.topic_parms = G.vec({%d})"
-    # (0.105.0 review) small or refuse: a tribute on the table is left to the player
+    # (0.105.33 review) 'small' with the amount known: a large one refused (it was left to the
+    # player whatever the Rules said: decide()'s refuse and small answers never ran)
     env, G = world(tribute % 3000)
     r = env.answer_meeting(LUA.table_from({"dry_run": True}))
-    assert not r.ok and r.left_to_player and "tribute" in r.error, dict(r)
+    assert r.ok and r.answer == "no" and not r.left_to_player, dict(r)
+    env, G = world(tribute % 3000)
+    G.tribute = "refuse"
+    assert env.answer_meeting(LUA.table_from({"dry_run": True})).answer == "no"
     env, G = world(tribute % 3000)
     G.tribute = "pay"                                          # the Rules tab's choice when none is passed
     assert env.answer_meeting(LUA.table_from({"dry_run": True})).answer == "yes"

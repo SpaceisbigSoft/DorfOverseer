@@ -427,7 +427,9 @@ function RulesPage:init()
         initial_option = p.settings.construct ~= false,
         on_change = function(v) p:set_field('construct', v) end,
     })
-    local t = 6 + #S.OPTIONAL_LEVELS
+    -- (0.105.33 review) one row up (the blank row under the levels): the
+    -- camera pace is the page's last row, 27 of the 28 the window shows
+    local t = 5 + #S.OPTIONAL_LEVELS
     table.insert(views, widgets.ToggleHotkeyLabel{
         view_id = 'order_supplies',
         frame = {t = t, l = 0, w = 60},
@@ -578,7 +580,22 @@ function RulesPage:init()
         initial_option = p.settings.camera_pace,
         on_change = function(v) p:set_field('camera_pace', v) end,
     })
-    t = t + 11
+    self:addviews(views)
+end
+
+---------------------------------------------------------------------------
+-- (0.105.33 review) The Army tab: the squads, the junk and the prisoners.
+-- They were rows 29-43 of the Rules page, past the 28 rows the window shows
+-- at its size (a Panel clips and does not scroll): unseen, unclickable.
+---------------------------------------------------------------------------
+
+MilitaryPage = defclass(MilitaryPage, widgets.Panel)
+MilitaryPage.ATTRS{panel = DEFAULT_NIL}
+
+function MilitaryPage:init()
+    local p = self.panel
+    local views = {}
+    local t = -3          -- the header at row 0 (the rows below are t + n)
     table.insert(views, widgets.Label{frame = {t = t + 3, l = 0}, text = {{text = 'Military (the AI makes and sends squads):'}}})
     table.insert(views, widgets.CycleHotkeyLabel{
         view_id = 'attack_policy',
@@ -692,8 +709,7 @@ function RulesPage:init()
             on_change = function(v) p:set_field(f[1], v) end,
         })
     end
-    t = t + 3
-    t = t + 11
+    t = t + 14
     table.insert(views, widgets.WrappedLabel{
         frame = {t = t + 3, l = 0, r = 2},
         text_to_wrap = 'Bedrooms, the dining hall, basic workshops and stockpiles are always built when '
@@ -733,17 +749,21 @@ function RulesPage:refresh()
     for _, k in ipairs({'moat', 'magma_workshops', 'irrigation'}) do               -- (0.105.0)
         self.subviews[k]:setOption(s[k] ~= false, false)
     end
-    self.subviews.squads_shelter:setOption(s.squads_shelter ~= false, false)       -- (0.105.0)
     self.subviews.open_caverns:setOption(s.open_caverns == true, false)            -- (0.105.4 review)
     self.subviews.engrave_slabs:setOption(s.engrave_slabs, false)
     self.subviews.import_smelting:setOption(s.import_smelting, false)
     self.subviews.alert_shelter:setOption(s.alert_shelter, false)
     self.subviews.pasture_animals:setOption(s.pasture_animals, false)
+end
+
+function MilitaryPage:refresh()
+    local s = self.panel.settings
     self.subviews.attack_policy:setOption(s.attack_policy, false)
     for _, k in ipairs({'fill_squads', 'train_squads', 'gate_lever', 'build_gate_doors', 'fortify_entrances',
                         'make_gear', 'appoint_nobles'}) do
         self.subviews[k]:setOption(s[k], false)
     end
+    self.subviews.squads_shelter:setOption(s.squads_shelter ~= false, false)       -- (0.105.0)
     self.subviews.gear_weapon:setOption(s.gear_weapon, false)
     self.subviews.prisoners:setOption(s.prisoners or 'keep', false)                -- (0.105.0)
     self.subviews.moon_cells:setOption(s.moon_cells ~= false, false)
@@ -1077,8 +1097,49 @@ OverseerWindow.ATTRS{
     resize_min = {w = EFFECTIVE_L + 10, h = 40},
 }
 
-function OverseerWindow:init()
+-- (0.105.33 review) The window's settings and the ones saved under it.
+-- The keeper (act_set_rules, act_apply_preset) may save while the window is
+-- open: a save from here writes only what the window changed since it last
+-- read them (a deep diff against `base`) onto a fresh read, so a Rules
+-- switch the keeper set is not turned back by the next slider move.
+local function deep_copy(v)
+    if type(v) ~= 'table' then return v end
+    local out = {}
+    for k, x in pairs(v) do out[k] = deep_copy(x) end
+    return out
+end
+
+local function deep_equal(a, b)
+    if type(a) ~= 'table' or type(b) ~= 'table' then return a == b end
+    for k, x in pairs(a) do if not deep_equal(x, b[k]) then return false end end
+    for k in pairs(b) do if a[k] == nil then return false end end
+    return true
+end
+
+-- every leaf of `cur` that differs from `base`, written into `into`
+function merge_changes(cur, base, into)
+    for k, v in pairs(cur) do
+        local b = nil
+        if type(base) == 'table' then b = base[k] end      -- (a false value kept: not `and ... or nil`)
+        if type(v) == 'table' and type(b) == 'table' and type(into[k]) == 'table' then
+            merge_changes(v, b, into[k])
+        elseif not deep_equal(v, b) then
+            into[k] = deep_copy(v)
+        end
+    end
+    if type(base) == 'table' then
+        for k in pairs(base) do if cur[k] == nil then into[k] = nil end end
+    end
+    return into
+end
+
+function OverseerWindow:reload()
     self.settings = S.load_settings()
+    self.base = deep_copy(self.settings)
+end
+
+function OverseerWindow:init()
+    self:reload()
     self.selected = S.TRAIT_GROUPS[1].traits[1].id
 
     local labels, pages = {}, {}
@@ -1090,6 +1151,10 @@ function OverseerWindow:init()
     table.insert(pages, AIPage{panel = self})
     table.insert(labels, 'Rules')
     table.insert(pages, RulesPage{panel = self})
+    -- (0.105.33 review) 'Army': ten tabs of #label + 4 columns must fit the
+    -- 120 inside on one row (the pages start at t = 3); 'Military' made 123
+    table.insert(labels, 'Army')
+    table.insert(pages, MilitaryPage{panel = self})
     table.insert(labels, 'Needs you')
     table.insert(pages, NeedsPage{panel = self})
     table.insert(labels, 'Culture')
@@ -1102,6 +1167,7 @@ function OverseerWindow:init()
             frame = {t = 0, l = 0},
             labels = labels,
             on_select = function(idx)
+                self:reload()            -- (0.105.33 review) what the keeper saved meanwhile
                 self.subviews.pages:setSelected(idx)
                 self.subviews.pages:getSelectedPage():refresh()
                 self:updateLayout()
@@ -1183,7 +1249,11 @@ function OverseerWindow:select(id)
 end
 
 function OverseerWindow:persist()
-    S.save_settings(self.settings)
+    local fresh = S.load_settings()
+    merge_changes(self.settings, self.base or {}, fresh)
+    S.save_settings(fresh)
+    self.settings = fresh
+    self.base = deep_copy(fresh)
 end
 
 function OverseerWindow:slider_idx(id)

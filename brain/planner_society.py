@@ -221,16 +221,35 @@ def _recreation_rule(s: dict, cfg: dict, worst: list, proposals: list | None, me
     unhappy, or after `recreation_days`. The bridge picks who; the planner asks
     while anyone civilian is that low, or while the burrow has members (to let
     them out). Not while threats can reach the fort (the alert's burrow rules
-    then), nor in a fort under `recreation_min_citizens`."""
-    if proposals is None or not player_rules(s).get("recreation", True):
+    then), nor in a fort under `recreation_min_citizens`.
+
+    (0.105.33, L6/B4) Members are never left behind: when the rule stops (a
+    threat, the fort shrunk, the report's recreation section unreadable) and
+    the burrow has members, the burrow is emptied ({"release": true}, with
+    max 1 so a bridge that doesn't know `release` only lets the recovered
+    out and moves nobody in). The bridge also checks the members at every
+    report (thirst, hunger, a tantrum, a patient, too long) and lets them
+    all out when no tick came for a long while. (The `recreation` Rules
+    switch it read never existed: dropped.)"""
+    if proposals is None:
         return
+    rec = _d(s.get("society")).get("recreation")
+    members = int(_d(rec).get("members") or 0)
     citizens = int(_d(s.get("dwarves")).get("total") or 0)
-    if citizens < cfg["recreation_min_citizens"]:
-        return
-    if _d(s.get("others_on_map")).get("threats_that_can_reach_dwarves"):
+    why = None
+    if isinstance(rec, dict) and rec.get("error"):
+        why = "the recreation burrow's status is unreadable"
+    elif citizens < cfg["recreation_min_citizens"]:
+        why = f"the fort is under {cfg['recreation_min_citizens']} citizens"
+    elif _d(s.get("others_on_map")).get("threats_that_can_reach_dwarves"):
+        why = "threats can reach the dwarves"
+    if why:
+        if members > 0 or (isinstance(rec, dict) and rec.get("error")):
+            proposals.append(Proposal("recreation", {"type": "recreation", "release": True, "max": 1,
+                                                     "days": cfg["recreation_days"]},
+                                      f"{why}: everyone in the recreation burrow back to the fort", 4))
         return
     low = [x for x in worst if x.get("stress") in ("miserable", "very_unhappy") and not x.get("squad")]
-    members = int(_d(_d(s.get("society")).get("recreation")).get("members") or 0)
     # (0.104.80) civilians badly wanting friends get a few short stays too
     bwf = _d(_d(_d(s.get("needs")).get("needs")).get("BeWithFriends"))
     lonely = int(bwf.get("badly") or 0) - int(bwf.get("badly_soldiers") or 0)
@@ -305,6 +324,8 @@ def _needs_notes(s: dict, cfg: dict, notes: list, proposals: list | None = None,
     """What the dwarves miss most, and the most stressed of them."""
     nd = s.get("needs")
     if not isinstance(nd, dict) or "error" in nd:
+        # (0.105.33, B4) the recreation burrow's members still let out
+        _recreation_rule(s, cfg, [], proposals, memory)
         return
     rows = sorted(((int(_d(v).get("distracted") or 0), k) for k, v in _d(nd.get("needs")).items()), reverse=True)
     top = [(n, k) for n, k in rows if n >= cfg["needs_note_at"]][:4]

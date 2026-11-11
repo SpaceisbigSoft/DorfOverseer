@@ -111,16 +111,82 @@ end
 -- every pulse report)
 local STANDING = {in_job = 'job', forbid = 'forbidden', dump = 'dump'}
 local HELD_OK = {held = true}
+
+-- (0.105.33) The hospital's stock: the chests standing in a hospital
+-- location's zones (chest building id -> true), read again every
+-- HOSPITAL_TICKS. What lies in them is the hospital's thread and cloth, not
+-- the mood's (C, 8 Nov: "5 yarn thread" counted for a mood, unchanged for 9
+-- seasons, were the hospital's; the mood waited on them and went melancholy).
+HOSPITAL_TICKS = 1200
+HOSPITAL_CACHE = HOSPITAL_CACHE or nil
+function hospital_boxes()
+    local now = U.abs_tick()
+    local c = HOSPITAL_CACHE
+    if c and now - c.at >= 0 and now - c.at < HOSPITAL_TICKS then return c.set end
+    local set = {}
+    pcall(function()
+        local site = dfhack.world.getCurrentSite()
+        for _, loc in ipairs(site and site.buildings or {}) do
+            if df.abstract_building_type[loc:getType()] == 'HOSPITAL' then
+                local ct = loc:getContents()
+                for _, bid in ipairs(ct and ct.building_ids or {}) do
+                    local z = df.building.find(bid)
+                    if z then
+                        pcall(function()
+                            for _, b in ipairs(z.contained_buildings) do
+                                if df.building_type[b:getType()] == 'Box' then set[b.id] = true end
+                            end
+                        end)
+                    end
+                end
+            end
+        end
+    end)
+    HOSPITAL_CACHE = {at = now, set = set}
+    return set
+end
+
+-- true for an item in one of the hospital's chests
+function hospital_stock(it)
+    local set = hospital_boxes()
+    if next(set) == nil then return false end
+    local ok, yes = pcall(function()
+        local cont = dfhack.items.getContainer(it)
+        if not cont then return false end
+        local b = dfhack.items.getHolderBuilding(cont)
+        return b ~= nil and set[b.id] == true
+    end)
+    return ok and yes == true
+end
+
 function item_standing(it)
     local why = U.item_unfree(it, HELD_OK)
-    if why == nil then return 'free' end
+    if why == nil then
+        if hospital_stock(it) then return 'other' end       -- (0.105.33) the hospital's, not the mood's
+        return 'free'
+    end
     return STANDING[why] or 'other'
+end
+
+-- (0.105.33) A request that names a material takes only that material:
+-- DFHack's isSuitableMaterial reads the request's flags, not its mat_type
+-- (C, E, F, 8 Nov: three glassmakers' "rough green glass" was counted from
+-- plain rough gems, "2 free, 2 in walk", in forts with no glass and no sand;
+-- the AI waited on items that were never there). mat_type 0 with no index is
+-- "any stone, gem or metal": any inorganic.
+local function material_ok(ji, it)
+    local mt = tonumber(ji.mat_type) or -1
+    if mt < 0 then return true end
+    if it:getMaterial() ~= mt then return false end
+    local mi = tonumber(ji.mat_index) or -1
+    return mi < 0 or it:getMaterialIndex() == mi
 end
 
 local function suits(ji, it)
     local ok, yes = pcall(function()
         return dfhack.job.isSuitableItem(ji, it:getType(), it:getSubtype())
             and dfhack.job.isSuitableMaterial(ji, it:getMaterial(), it:getMaterialIndex(), it:getType())
+            and material_ok(ji, it)
     end)
     return ok and yes == true
 end
@@ -281,6 +347,27 @@ end
 -- each request nothing free within reach would meet, as much as it lacks
 -- (at most `max` items a call). Nothing else is touched: never an item
 -- another job holds, a building, a construction, an owned or a trader's item.
+--
+-- (0.105.33) and never an item the disposal actions would leave alone
+-- (ai-disposal's blocked(): on the cistern's tiles the AI forbade before the
+-- flood, near a live danger, on a cavern tile while the seal holds, an
+-- artifact, owned): a moody dwarf isn't sent into a cistern about to flood
+-- or onto a battlefield. When those can't be read, nothing is freed.
+local function unforbid_guard()
+    local okd, D = pcall(reqscript, 'ai-disposal')
+    if not (okd and type(D) == 'table' and D.context and D.blocked) then return nil end
+    local okc, ctx = pcall(D.context)
+    if not (okc and type(ctx) == 'table') then return nil end
+    return function(it)
+        local ok, why = pcall(function()
+            local x, y, z = dfhack.items.getPosition(it)
+            return D.blocked(it, x, y, z, 'mood', ctx)
+        end)
+        if not ok then return 'error' end
+        return why
+    end
+end
+
 function free_items(unit_id, dry_run, max, txt)
     txt = txt or tostring
     max = math.min(FREE_MAX, math.max(1, tonumber(max) or FREE_MAX))
@@ -290,6 +377,14 @@ function free_items(unit_id, dry_run, max, txt)
     if not job then return {ok = false, rejected = true, error = 'that dwarf is not in a mood with a job'} end
     local reqs = job_requests(job)
     local freed, names = 0, {}
+    local guard, held = nil, {}
+    local function kept(it)
+        if guard == nil then
+            guard = unforbid_guard() or false
+        end
+        if guard == false then return 'unread' end
+        return guard(it)
+    end
     for _, e in ipairs(requests_missing(job, txt)) do
         local ji = reqs[e.index]
         if ji and freed < max then
@@ -297,7 +392,10 @@ function free_items(unit_id, dry_run, max, txt)
             local want = math.max(0, e.quantity - a.reach)
             if want > 0 then
                 each_suitable(ji, e, u.pos, function(it, st, r)
-                    if (st == 'forbidden' or st == 'dump') and r then
+                    local why = (st == 'forbidden' or st == 'dump') and r and kept(it) or nil
+                    if why then
+                        held[why] = (held[why] or 0) + 1
+                    elseif (st == 'forbidden' or st == 'dump') and r then
                         if not dry_run then
                             it.flags.forbid = false
                             it.flags.dump = false
@@ -314,8 +412,19 @@ function free_items(unit_id, dry_run, max, txt)
             end
         end
     end
+    local kept_n, kept_why = 0, {}
+    for why, n in pairs(held) do
+        kept_n = kept_n + n
+        table.insert(kept_why, n .. ' ' .. why)
+    end
+    table.sort(kept_why)
     if freed == 0 then
+        if kept_n > 0 then
+            return {ok = false, rejected = true, kept = kept_n,
+                    error = 'the forbidden items the mood can use are left alone (' .. table.concat(kept_why, ', ')
+                        .. '): a cistern about to flood, a danger, a sealed cavern, or the dangers unread'}
+        end
         return {ok = false, rejected = true, error = 'nothing forbidden or dumped within the dwarf\'s walk that the mood can use'}
     end
-    return {ok = true, freed = freed, items = names, dry_run = dry_run or nil}
+    return {ok = true, freed = freed, items = names, dry_run = dry_run or nil, kept = kept_n > 0 and kept_n or nil}
 end

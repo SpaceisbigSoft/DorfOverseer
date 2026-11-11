@@ -35,7 +35,9 @@ PLANNER_CONFIG = {
     "idle_order_max": 50,
     "mandate_max": 10,
     # Rules
-    "idle_share": 0.25,            # share of adults idle before "idle hands" fires
+    "idle_share": 0.25,            # share of adults idle before "idle hands" fires (idle_adults/adults: the industry, trade and world rules)
+    "idle_blocks_share": 0.14,     # (0.105.33 fix) the blocks rule's line on the stricter idle measure (_idle_share): was idle_share
+                                   # (0.25) on idle_adults/adults, 54 states over it in the 8 Nov run; 53 at 0.14. Leans with idle_share
     "glass_fuel_min": 2,           # (0.104.95) coal bars before a glass job is ordered
     "glass_sand_bags": 3,          # bags of sand kept filled
     "precious_crafts_bars": 10,    # bars of a precious metal kept back before crafts are made of it
@@ -201,7 +203,7 @@ PLANNER_CONFIG = {
     "gems_cooldown_ticks": 14 * 1200,
     "garden_min_citizens": 20,
     "great_hall_min_citizens": 60,     # (0.98) the plan's great hall: a fort this big, in good times; set pieces: a fort this big...
-    "garden_idle_share": 0.2,          # ...with this share idle...
+    "garden_idle_share": 0.14,         # ...with this share idle... (0.105.33 fix: 0.2 on the old idle measure; 60/59 states, 8 Nov run)
     "garden_every_years": 2,
     "good_times_food_per_dwarf": 15,   # (0.102.1) a set piece's "good times": fed...
     "good_times_drink_per_dwarf": 2,   # ...and watered (a big fort keeps ~2 drinks a dwarf)
@@ -234,7 +236,7 @@ PLANNER_CONFIG = {
     "fuel_min": 10,
     "smelt_batch": 10,
     "metal_kit_bars": 8,               # weapon-grade bars a soldier before a squad goes from leather to metal
-    "polish_idle_share": 0.3,          # this share idle: a finished level smoothed, then engraved
+    "polish_idle_share": 0.15,         # this share idle: a finished level smoothed, then engraved (0.105.33 fix: 0.3 on the old measure; 47/47)
     "polish_cooldown_ticks": 3 * 1200,
     "thirsty_still_backlog": 5,        # (0.103.3) brew jobs waiting on each still before another, while thirsty
     "shop_backlog": 15,                # the AI's jobs waiting per workshop of a kind before another is built...
@@ -529,8 +531,9 @@ PLANNER_CONFIG = {
     "fight_needs_at": 15,              # this many long to fight or train: more soldiers (they train)
     "fight_soldiers_max": 20,          # ... at most this many more
     "fight_share_max": 0.3,            # ... and never past this share of the citizens
-    "idle_train_share": 0.4,           # this share of adults idle: every squad trains, and more may join (0.83)
-    "idle_train_off_share": 0.25,      # ... until idle falls under this share
+    "idle_train_share": 0.2,           # this share of adults idle: every squad trains, and more may join (0.83)
+    "idle_train_off_share": 0.14,      # ... until idle falls under this share
+                                       # (0.105.33 fix: were 0.4 / 0.25 on the old idle measure; 34/34 and 53/53 states, 8 Nov run)
     "idle_avg_weight": 0.1,            # ... judged on a running average (this weight for each new reading)
     "idle_fight_soldiers_max": 40,     # ... then at most this many more soldiers for the needs (0.104.142: was 30)
     "idle_fight_share_max": 0.45,      # ... and at most this share of the citizens
@@ -732,4 +735,8 @@ PLANNER_CONFIG = {
     "way_in_max_refusals": 3,
     "way_in_single_days": 3,            # ...one dwarf alone: once out this many game days
     "way_in_area_tiles": 20,            # ...an "area": within this many tiles of the last one
+    # (0.105.33) a second way to the surface by design (planner_gates _second_way_rule):
+    "second_way_min_citizens": 30,      # ...a fort this big with one surface entrance digs another
+    "second_way_retry_days": 60,        # ...refused (or dug and not seen): again after this many game days
+    "second_way_hermit_outsiders": -50,  # ...not at Outsiders this low (nor hidden_hold, winding_ways) unless ever stranded
 }

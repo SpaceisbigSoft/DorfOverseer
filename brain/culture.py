@@ -23,6 +23,8 @@ style changes, a new era starts; the eras are the fort's architectural story.
 from __future__ import annotations
 
 import colorsys
+import copy
+import pickle
 import re
 
 from weights import areas, choose_all, why_text
@@ -103,9 +105,47 @@ def effective_traits(traits: dict, history: dict) -> dict:
     return t
 
 
+# (r33) profile_from is pure and a plan() asks for it 2-6 times with the same
+# sliders and history: the answer is kept by the CONTENT of its inputs, never
+# by which dict was passed (callers change memory.culture between calls). The
+# key is the inputs' pickle: the same bytes only for the same values of the
+# same types (a tuple is not a list, 1 is not 1.0 or True, "1" is not 1 as a
+# key); the same values in another order only miss. Each caller gets its own
+# copy, free to change it; the kept one shares nothing with the inputs.
+_PROFILE_CACHE: dict = {}
+_PROFILE_CACHE_MAX = 64
+
+
 def profile_from(traits: dict, history: dict | None = None) -> dict:
     """The style choices for new building, made by the weights engine
-    (brain/weights.py, brain/choices.json), plus the direct effects."""
+    (brain/weights.py, brain/choices.json), plus the direct effects.
+    Kept by the inputs' content (see _PROFILE_CACHE); always a fresh copy."""
+    from weights import data
+    try:
+        key = pickle.dumps((traits, history, data().get("settings")), protocol=4)
+    except Exception:  # noqa: BLE001  (something that can't be pickled: worked out, not kept)
+        key = None
+    if key is not None:
+        hit = _PROFILE_CACHE.get(key)
+        if hit is None:
+            hit = copy.deepcopy(_profile_from(traits, history))   # (shares nothing with the inputs)
+            if len(_PROFILE_CACHE) >= _PROFILE_CACHE_MAX:
+                _PROFILE_CACHE.pop(next(iter(_PROFILE_CACHE)))
+            _PROFILE_CACHE[key] = hit
+        return _copy(hit)
+    return _profile_from(traits, history)
+
+
+_PLAIN = (str, int, float, bool, type(None))
+
+
+def _copy(profile: dict) -> dict:
+    """A copy the caller may change: the plain values as they are, the rest
+    (the memorials, a strategist's value) copied deep."""
+    return {k: v if type(v) in _PLAIN else copy.deepcopy(v) for k, v in profile.items()}
+
+
+def _profile_from(traits: dict, history: dict | None = None) -> dict:
     h = history or new_history()
     t = effective_traits(traits, h)
     profile = {c["key"]: c["value"] for c in choose_all(traits, h).values()}

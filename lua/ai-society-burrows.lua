@@ -9,7 +9,7 @@
 
 local U = reqscript('ai-util')      -- (13c) helpers shared by the modules
 local S = reqscript('ai-society')   -- find_burrow, new_burrow
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-society-burrows'] = '0.105.32'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-society-burrows'] = '0.105.33'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 -- --- (0.104.78) the recreation burrow ----------------------------------------
 --
@@ -36,6 +36,33 @@ local function rec_state()
     return d
 end
 
+-- (0.105.33, L6) the members' checks, at every tick and every report: out
+-- when thirsty or hungry (the burrow need not hold drink), in a tantrum, in
+-- need of care (the burrow never covers a hospital), gone, drafted, a noble,
+-- recovered, or in too long. And when no tick came for REC_STALE_DAYS (the
+-- brain stopped asking: a siege, the fort shrunk, a section unreadable),
+-- everyone out.
+REC_THIRST = 25000           -- DFHack's "thirsty"
+REC_HUNGER = 50000           -- DF's "hungry"
+REC_STALE_DAYS = 9           -- the rule's cooldown (7 days) and two more
+
+local function rec_tantrum(u)
+    local okm, m = pcall(function() return df.soldier_mood_type[u.counters.soldier_mood] end)
+    return okm and (m == 'Tantrum' or m == 'Enraged') or false
+end
+
+local function rec_sick(u)
+    local okh, sick = pcall(function() return u.health and u.health.flags.needs_healthcare end)
+    return okh and sick and true or false
+end
+
+local function rec_dry(u)
+    local ok, yes = pcall(function()
+        return u.counters2.thirst_timer >= REC_THIRST or u.counters2.hunger_timer >= REC_HUNGER
+    end)
+    return ok and yes == true
+end
+
 local function zone_tiles(b, burrow)
     local n = 0
     for y = b.y1, b.y2 do
@@ -52,9 +79,68 @@ end
 -- The burrow's tiles: every zone of the fort's locations (tavern, temple,
 -- library...), the meeting, dining, bedroom and hospital zones, and the
 -- stockpiles that take food or drink.
+-- (0.105.33, L6) Drink in the burrow: 'drink' when (not forbidden) drink
+-- lies on one of its tiles; else the 3x3 of the working well nearest the
+-- burrow's zones (`cx`: their centres) added, 'well'; else nil (nobody is
+-- then kept in it). REC_DRINK_SCAN drinks looked at at most.
+REC_DRINK_SCAN = 4000
+local function rec_water(burrow, cx)
+    local found = false
+    pcall(function()
+        local seen = 0
+        for _, it in ipairs(df.global.world.items.other.DRINK) do
+            seen = seen + 1
+            if seen > REC_DRINK_SCAN then break end
+            local ok, yes = pcall(function()
+                if it.flags.forbid or it.flags.garbage_collect then return false end
+                -- (0.105.33 fix) DF sets in_inventory on drink in a barrel
+                -- too: only drink a unit carries is skipped, and drink in a
+                -- forbidden or carried barrel
+                if it.flags.in_inventory then
+                    local okh, u = pcall(dfhack.items.getHolderUnit, it)
+                    if okh and u ~= nil then return false end
+                end
+                local okc, c = pcall(dfhack.items.getContainer, it)
+                if okc and c then
+                    if c.flags.forbid then return false end
+                    local okh, u = pcall(dfhack.items.getHolderUnit, c)
+                    if c.flags.in_inventory and okh and u ~= nil then return false end
+                end
+                local x, y, z = dfhack.items.getPosition(it)
+                if type(x) == 'table' then x, y, z = x.x, x.y, x.z end
+                if not x or x < 0 then return false end
+                return dfhack.burrows.isAssignedTile(burrow, xyz2pos(x, y, z))
+            end)
+            if ok and yes then found = true; break end
+        end
+    end)
+    if found then return 'drink' end
+    local best, bd
+    pcall(function()
+        for _, w in ipairs(df.global.world.buildings.other.WELL) do
+            local okw, good = pcall(well_gives_water, w)
+            if okw and good then
+                local x, y = w.centerx or w.x1, w.centery or w.y1
+                local dd = 0
+                if cx and cx.n > 0 then
+                    dd = math.abs(x - cx.x / cx.n) + math.abs(y - cx.y / cx.n) + 3 * math.abs(w.z - cx.z / cx.n)
+                end
+                if not bd or dd < bd then best, bd = w, dd end
+            end
+        end
+    end)
+    if not best then return nil end
+    local x, y = best.centerx or best.x1, best.centery or best.y1
+    for dy = -1, 1 do
+        for dx = -1, 1 do pcall(dfhack.burrows.setAssignedTile, burrow, xyz2pos(x + dx, y + dy, best.z), true) end
+    end
+    return 'well'
+end
+
 function fill_recreation(burrow)
     dfhack.burrows.clearTiles(burrow)
     local n, loc_zone, hosp_zone = 0, {}, {}
+    local cx = {x = 0, y = 0, z = 0, n = 0}
     pcall(function()
         for _, b in ipairs(dfhack.world.getCurrentSite().buildings) do
             pcall(function()
@@ -71,13 +157,14 @@ function fill_recreation(burrow)
             local kind = df.civzone_type[b.type] or ''
             if not hosp_zone[b.id] and kind ~= 'Hospital' and (loc_zone[b.id] or REC_ZONES[kind]) then
                 n = n + zone_tiles(b, burrow)
+                cx.x, cx.y, cx.z, cx.n = cx.x + (b.x1 + b.x2) / 2, cx.y + (b.y1 + b.y2) / 2, cx.z + b.z, cx.n + 1
             end
         elseif t == df.building_type.Stockpile then
             local okf, food = pcall(function() return b.settings.flags.food end)
             if okf and food then n = n + zone_tiles(b, burrow) end
         end
     end
-    return n
+    return n, rec_water(burrow, cx)
 end
 
 -- (0.104.168) never a noble: the burrow covers no office, and a noble's
@@ -94,10 +181,9 @@ local function rec_base(u)
     if rec_noble(u) then return false end
     -- (0.104.169) never one in a tantrum, by the friends' places either: the
     -- recreation burrow is the taverns and halls, where the others are
-    local okm, m = pcall(function() return df.soldier_mood_type[u.counters.soldier_mood] end)
-    if okm and (m == 'Tantrum' or m == 'Enraged') then return false end
-    local okh, sick = pcall(function() return u.health and u.health.flags.needs_healthcare end)
-    return not (okh and sick)
+    if rec_tantrum(u) then return false end
+    if rec_dry(u) then return false end              -- (0.105.33) drink and eat first
+    return not rec_sick(u)
 end
 
 -- (0.104.80) BeWithFriends badly unmet: its focus level (lower is worse), else nil
@@ -111,32 +197,92 @@ function badly_wants_friends(u)
 end
 
 local function rec_eligible(u)
+    -- (0.104.139) never one in a tantrum or a rage: they start the fights (rec_base)
     if not rec_base(u) then return false end
-    -- (0.104.139) never one in a tantrum or a rage: they start the fights
-    local okm, m = pcall(function() return df.soldier_mood_type[u.counters.soldier_mood] end)
-    if okm and (m == 'Tantrum' or m == 'Enraged') then return false end
     local okc, cat = pcall(dfhack.units.getStressCategory, u)
     return okc and type(cat) == 'number' and cat <= 1
 end
 
--- Who is in the burrow now, for the report.
-function recreation_status()
+-- Is member `id` (in since `since`) kept? false and why when not.
+local function rec_keep(d, id, since, now, days, friend_days)
+    local u = df.unit.find(tonumber(id))
+    if not (u and dfhack.units.isCitizen(u) and u.military.squad_id == -1) then return false, 'gone or drafted', u end
+    if rec_noble(u) then return false, 'a noble', u end      -- (0.104.168) a noble since moved in: out
+    if rec_dry(u) then return false, 'thirsty or hungry', u end
+    if rec_tantrum(u) then return false, 'a tantrum', u end
+    if rec_sick(u) then return false, 'needs care', u end
+    since = tonumber(since) or now
+    if d.friends and d.friends[id] then
+        -- (0.104.80) in for friends: out after `friend_days`, or once the need is met
+        if now - since >= friend_days * 1200 or not badly_wants_friends(u) then return false, 'time', u end
+        return true, nil, u
+    end
+    local okc, cat = pcall(dfhack.units.getStressCategory, u)
+    if (okc and type(cat) == 'number' and cat >= 3) or now - since >= days * 1200 then return false, 'time', u end
+    return true, nil, u
+end
+
+local function rec_let_out(d, b, id, u, now, dry_run, txt, released)
+    if not dry_run and u and b then pcall(dfhack.burrows.setAssignedUnit, b, u, false) end
+    d.members[id] = nil
+    if d.friends then d.friends[id] = nil end
+    d.out[id] = now
+    table.insert(released, u and (txt or tostring)(dfhack.units.getReadableName(u)) or id)
+end
+
+-- Who is in the burrow now, for the report. (0.105.33, L6) Also the
+-- bridge's own guard, at every report, as the hospital burrow's: each member
+-- checked (rec_keep) and let out here, and everyone when no tick came for
+-- REC_STALE_DAYS or the burrow has no drink nor well.
+function recreation_status(txt)
     local d = rec_state()
     local out = {members = 0, burrow = nil}
     local b = S.find_burrow(RECREATION_NAME)
     if b then out.burrow = b.id end
+    if next(d.members) ~= nil then
+        local now = U.abs_tick()
+        local released = {}
+        local last = tonumber(d.ticked) or tonumber(d.filled)
+        local why_all
+        if not b then why_all = 'the burrow is gone'
+        elseif last and now - last >= REC_STALE_DAYS * 1200 then why_all = 'no tick for ' .. REC_STALE_DAYS .. ' days'
+        elseif d.water == false then why_all = 'no drink nor well in the burrow' end
+        local days, fdays = tonumber(d.days) or 28, tonumber(d.friend_days) or 7
+        for id, since in pairs(d.members) do
+            local keep, _, u = rec_keep(d, id, since, now, days, fdays)
+            if why_all or not keep then
+                if not u then u = df.unit.find(tonumber(id)) end
+                rec_let_out(d, b, id, u, now, false, txt, released)
+            end
+        end
+        if #released > 0 then
+            U.site_put(RECREATION_KEY, d)
+            out.released_now = released
+            out.why = why_all
+        end
+    end
     for _ in pairs(d.members) do out.members = out.members + 1 end
     for _ in pairs(d.friends or {}) do out.for_friends = (out.for_friends or 0) + 1 end   -- (0.104.80)
+    if d.water ~= nil then out.water = d.water end
     return out
 end
 
-function recreation_tick(max, days, dry_run, txt, friends, friend_days)
+-- `release` (0.105.33): the brain's word that the burrow is to be emptied
+-- (a threat, the fort shrunk, the status unreadable): everyone out, nobody in.
+function recreation_tick(max, days, dry_run, txt, friends, friend_days, release)
     max, days = max or 8, days or 28
     friends, friend_days = friends or 0, friend_days or 7
     local d = rec_state()
     d.friends = d.friends or {}
     local now = U.abs_tick()
     local b = S.find_burrow(RECREATION_NAME)
+    if release then
+        local released = {}
+        for id in pairs(d.members) do rec_let_out(d, b, id, df.unit.find(tonumber(id)), now, dry_run, txt, released) end
+        if not dry_run then d.ticked = now; U.site_put(RECREATION_KEY, d) end
+        return {ok = true, released = released, members = 0, release = true, dry_run = dry_run or nil,
+                unchanged = #released == 0 or nil}
+    end
     if not b and dry_run then
         return {ok = true, dry_run = true, note = 'the burrow would be made'}
     end
@@ -144,27 +290,29 @@ function recreation_tick(max, days, dry_run, txt, friends, friend_days)
     if not b then b = S.new_burrow(RECREATION_NAME); made = true end
     local tiles
     if made or not d.filled or now - d.filled >= 7 * 1200 then
-        if not dry_run then tiles = fill_recreation(b); d.filled = now end
-    end
-    local released, added = {}, {}
-    -- back to work: recovered, gone, drafted, or in long enough
-    for id, since in pairs(d.members) do
-        local u = df.unit.find(tonumber(id))
-        local keep = u and dfhack.units.isCitizen(u) and u.military.squad_id == -1
-        if keep and rec_noble(u) then keep = false end     -- (0.104.168) a noble since moved in: out
-        local okc, cat = false, nil
-        if keep then okc, cat = pcall(dfhack.units.getStressCategory, u) end
-        if keep and d.friends[id] then
-            -- (0.104.80) in for friends: out after `friend_days`, or once the need is met
-            if now - (tonumber(since) or now) >= friend_days * 1200 or not badly_wants_friends(u) then keep = false end
-        elseif keep and ((okc and cat >= 3) or now - (tonumber(since) or now) >= days * 1200) then keep = false end
-        if not keep then
-            if not dry_run and u then pcall(dfhack.burrows.setAssignedUnit, b, u, false) end
-            d.members[id] = nil
-            d.friends[id] = nil
-            d.out[id] = now
-            table.insert(released, u and (txt or tostring)(dfhack.units.getReadableName(u)) or id)
+        if not dry_run then
+            local water
+            tiles, water = fill_recreation(b)
+            d.filled, d.water = now, water ~= nil and water or false
         end
+    end
+    if not dry_run then d.ticked, d.days, d.friend_days = now, days, friend_days end
+    local released, added = {}, {}
+    -- back to work: recovered, gone, drafted, thirsty, raging, sick, or in long enough
+    local dry_burrow = d.water == false
+    for id, since in pairs(d.members) do
+        local keep, _, u = rec_keep(d, id, since, now, days, friend_days)
+        if dry_burrow or not keep then
+            if not u then u = df.unit.find(tonumber(id)) end
+            rec_let_out(d, b, id, u, now, dry_run, txt, released)
+        end
+    end
+    if dry_burrow then
+        -- (0.105.33) no drink nor well inside: nobody kept, nobody moved in
+        if not dry_run then U.site_put(RECREATION_KEY, d) end
+        return {ok = #released > 0 or tiles ~= nil, rejected = not (#released > 0 or tiles ~= nil) or nil,
+                error = 'the recreation burrow holds no drink and no well giving water: nobody is kept in it',
+                burrow_id = b.id, tiles = tiles, released = released, members = 0, dry_run = dry_run or nil}
     end
     local count, fcount = 0, 0
     for id in pairs(d.members) do
@@ -593,6 +741,69 @@ local function hb_eligible(u, staff, own_id, rec_id)
     return true, rec
 end
 
+-- (0.105.33, L6) The report's sources, cached: hospital_sources reads every
+-- food pile's contents and walks from each hospital zone to each pile. Kept
+-- HB_SRC_TTL ticks for the same zones, the chosen piles and well re-checked
+-- at each report (still holding drink and food, the well still giving water).
+HB_SRC_TTL = 600             -- half a day
+-- (0.105.33 fix) the cache keeps the buildings' ids, never the objects: a
+-- pile or well the player removed meanwhile is freed by DF (reading it, a
+-- use-after-free no pcall catches). Each is found again by id at the next
+-- report; one gone, the sources are worked out afresh. Cleared when the map
+-- unloads (a reload within half a day keeps the same zone ids).
+local HB_SRC = nil           -- {key, at, ids = {drink, food, well}, dist}
+local function hb_find(id)
+    if id == nil then return nil end
+    local ok, b = pcall(function() return df.building.find(id) end)
+    if ok and b then return b end
+    local okl, found = pcall(function()
+        for _, x in ipairs(df.global.world.buildings.all) do
+            if x.id == id then return x end
+        end
+    end)
+    return okl and found or nil
+end
+local function hospital_sources_cached(zones, now)
+    local parts = {}
+    for _, z in ipairs(zones) do table.insert(parts, tostring(z.id)) end
+    local key = table.concat(parts, ',')
+    local c = HB_SRC
+    if c and c.key == key and now >= c.at and now - c.at < HB_SRC_TTL then
+        local src, good = {dist = c.dist}, true
+        for _, k in ipairs({'drink', 'food', 'well'}) do
+            if c.ids[k] ~= nil then
+                src[k] = hb_find(c.ids[k])
+                if not src[k] then good = false end
+            end
+        end
+        if good and src.drink then
+            local okd, dr = pcall(pile_holds, src.drink)
+            if not (okd and dr) then good = false end
+        end
+        if good and src.food and src.food ~= src.drink then
+            local okf, _, fo = pcall(pile_holds, src.food)
+            if not (okf and fo) then good = false end
+        end
+        if good and src.well then
+            local okw, w = pcall(well_gives_water, src.well)
+            if not (okw and w) then good = false end
+        end
+        if good then return src end
+    end
+    local src = hospital_sources(zones)
+    local ids = {}
+    for _, k in ipairs({'drink', 'food', 'well'}) do
+        if src[k] then ids[k] = src[k].id end
+    end
+    HB_SRC = {key = key, at = now, ids = ids, dist = src.dist}
+    return src
+end
+if dfhack and dfhack.onStateChange then
+    dfhack.onStateChange['ai-society-burrows-hb'] = function(sc)
+        if sc == SC_MAP_UNLOADED or sc == SC_WORLD_UNLOADED then HB_SRC = nil end
+    end
+end
+
 -- The members' checks (the burrow already reconciled). With no hospital
 -- zone or no drink reachable, everyone out: returns why. Else the tiles
 -- refilled when the sources changed (returns nil, tiles), and each member
@@ -678,7 +889,7 @@ function hospital_burrow_status(txt)
     if b then hb_reconcile(d, b, false, released, name) end
     local tiles
     if next(d.members) ~= nil then
-        local src = #zones > 0 and hospital_sources(zones) or {dist = {}}
+        local src = #zones > 0 and hospital_sources_cached(zones, now) or {dist = {}}
         local _
         _, tiles = hb_maintain(d, b, zones, staff, src, now, false, name, released)
     end
@@ -1171,11 +1382,25 @@ local function building_by_id(id)
 end
 
 -- The drink still there: the pile holds drink, the well gives water.
+-- (0.105.33, L6) For a pile, drink on one of the calm burrow's own tiles: a
+-- busy pile gives the burrow only its 2 nearest drink tiles, and those
+-- barrels emptied or moved left the member with no drink inside.
+CALM_DRINK_CHECK = 400       -- a pile's drink tiles looked at, at most
 local function drink_still(m)
     local b = building_by_id(m.src)
     if not b then return false end
     if m.kind == 'well' then return well_gives_water(b) end
-    return (pile_holds(b))
+    local cb = burrow_by_id(m.burrow)
+    if not cb then return (pile_holds(b)) end
+    local pos = xyz2pos(b.x1 or 0, b.y1 or 0, b.z or 0)
+    local list = pile_drink_tiles(b, pos, CALM_DRINK_CHECK)
+    if #list == 0 then return (pile_holds(b)) end      -- (no drink's place readable: the pile as before)
+    for _, p in ipairs(list) do
+        local ok, yes = pcall(dfhack.burrows.isAssignedTile, cb, p)
+        if not ok then return (pile_holds(b)) end      -- (no tile test: the pile as before)
+        if yes then return true end
+    end
+    return false
 end
 
 -- One member let out: off the burrow, its tiles cleared, the reason counted.

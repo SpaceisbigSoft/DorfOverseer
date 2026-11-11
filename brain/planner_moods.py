@@ -12,8 +12,9 @@ import quirks
 from quirks import has_rule
 from digest import _d, _l
 from planner_core import *  # noqa: F401,F403
+import planner_farms
 
-__all__ = ["MOOD_WORKSHOPS", "_mood_rules", "mood_item_text", "MOOD_CONSUMERS", "MOOD_TRADE_KEYS", "_mood_make", "_mood_slaughter", "_mood_materials", "mood_counts_text", "mood_journal", "mood_trade_wants", "MOOD_BLOCKS", "mood_blocked", "MOOD_RESERVES", "mood_reserve_counts", "reserve_blocked", "reserve_room", "RESERVE_BATCH", "note_reserve_swap", "_mood_reserve_rule", "reserve_trade_wants", "reserve_words"]
+__all__ = ["MOOD_WORKSHOPS", "_mood_rules", "mood_item_text", "MOOD_CONSUMERS", "MOOD_TRADE_KEYS", "_mood_make", "_mood_slaughter", "_mood_materials", "mood_counts_text", "mood_journal", "mood_trade_wants", "MOOD_BLOCKS", "mood_blocked", "MOOD_RESERVES", "mood_reserve_counts", "reserve_room", "RESERVE_BATCH", "note_reserve_swap", "_mood_reserve_rule", "reserve_trade_wants", "reserve_words"]
 
 
 # A crafting mood's skill -> the workshop (or furnace) the dwarf must claim.
@@ -184,6 +185,8 @@ def _mood_make(s: dict, x: dict, kind: str, memory, cfg: dict, mood: dict | None
     q = max(1, min(10, q))
     flags = set(_l(x.get("flags")))
     acts: list = []
+    stuck = int(_d(mood).get("stalled") or 0) >= cfg.get("mood_stall_days", 7)
+    unwoven = ""
 
     def order(recipe, amount, why, material=None):
         if queued(s, {recipe}):
@@ -207,8 +210,16 @@ def _mood_make(s: dict, x: dict, kind: str, memory, cfg: dict, mood: dict | None
             old_plant = (not thread and k == "plant" and int(st.get("thread") or 0) > 0
                          and (thread_plants_here(s) or not wool_route(s)))
             if int(thread.get(k) or 0) > 0 or old_plant:
+                # (0.105.33) the weaving already on order while the mood has
+                # stalled: the thread counted isn't woven (C, 8 Nov: 5 yarn
+                # thread, the hospital's, "woven" 6 times and never; shearing
+                # never tried): make the thread too
+                waited = stuck and queued(s, {f"weave_{k}_cloth"})
                 order(f"weave_{k}_cloth", q, f"weave {k} cloth")
-                return acts, None
+                if not waited:
+                    return acts, None
+                kinds, unwoven = [k], f" (the {int(thread.get(k) or 0)} {k} thread counted is never woven)"
+                break
         k = kinds[0]
         if k == "plant" and thread_plants_here(s) and _has_shop(b, "Farmers"):
             order("process_plants", 3, "process plants for thread (then weave it)")
@@ -218,7 +229,27 @@ def _mood_make(s: dict, x: dict, kind: str, memory, cfg: dict, mood: dict | None
             order("spin_thread", 1, "spin the wool into yarn")
             return acts, None
         return acts, (f"no {k} thread to weave" + (" (silk comes from webs or caravans)" if k == "silk" else
-                                                  " (no sheep, llama or alpaca to shear)" if k == "yarn" else ""))
+                                                  " (no sheep, llama or alpaca to shear)" if k == "yarn" else "")
+                      + unwoven)
+    if kind == "other" and str(x.get("item") or "").upper() == "THREAD":
+        # (0.105.33) thread itself (mood_kind says "other"): by the request's
+        # kind, the routes the cloth branch takes (B4: a plant-thread request
+        # was told "no recipe makes it" with fibre plants and a farmer's)
+        kinds = [k for k in ("plant", "yarn", "silk") if k in flags] or \
+            (["plant"] if thread_plants_here(s) else []) + (["yarn"] if wool_route(s) else []) or ["plant"]
+        for k in kinds:
+            if k == "plant" and thread_plants_here(s) and _has_shop(b, "Farmers"):
+                order("process_plants", 3, "process plants for thread")
+                return acts, None
+            if k == "yarn" and wool_route(s):
+                order("shear_creature", 1, "shear an animal for wool (then spin it)")
+                order("spin_thread", 1, "spin the wool into yarn")
+                return acts, None
+        k = kinds[0]
+        return acts, {"plant": "no fibre plant to process for thread" + ("" if _has_shop(b, "Farmers")
+                                                                        else " and no farmer's workshop"),
+                      "yarn": "no sheep, llama or alpaca to shear (or no farmer's workshop)",
+                      "silk": "no silk thread (silk comes from webs or caravans)"}.get(k, "no thread")
     if kind == "leather":
         if int(su.get("hides") or 0) > 0 and _has_shop(b, "Tanners"):
             order("tan_hide", q, "tan a hide")
@@ -404,13 +435,29 @@ def _mood_materials(s: dict, name: str, mood: str, missing: list, days: int,
     counted = any(isinstance(x.get("avail"), dict) for x in missing)
     ordered, lacking, freeing, far = [], [], False, []
     asks: list[str] = []
-    who = {"name": name, "unit_id": unit_id}
+    who = {"name": name, "unit_id": unit_id, "stalled": stalled}
     taken = {p.action.get("order_id") for p in proposals if p.action.get("type") == "cancel_work_order"}
     for i, x in enumerate(missing):
         kind = mood_kind(x)
         av = _d(x.get("avail"))
         here = mood_on_hand(x)
         if here:
+            # (0.105.33) counted free within the dwarf's walk, but the first
+            # request has waited `mood_stall_days`: what is counted isn't what
+            # DF will take (B, 8 Nov: 1 bone "free 1, in reach 1" for 40 days,
+            # 33 tame animals and a butcher's, nothing tried; the dwarf went
+            # raving). Make it as if missing; never "none" said for it.
+            if i == 0 and stalled is not None and stalled >= cfg.get("mood_stall_days", 7):
+                acts, _ = _mood_make(s, x, kind, memory, cfg, mood=who)
+                for a, how in acts:
+                    if a.get("type") == "work_order" and any(p.action == a for p in proposals):
+                        continue
+                    proposals.append(Proposal(
+                        "mood", a, f"{name}'s {mood.lower()} mood needs {mood_item_text(x)} (the one it is "
+                        f"fetching now): the fort's counts it within the dwarf's walk, but nothing was "
+                        f"fetched for {stalled} days, so more is made: {how}", 1, a.get("type") == "work_order"))
+                    if a.get("type") == "work_order":
+                        ordered.append(a.get("recipe"))
             continue                                   # free within reach: the dwarf will fetch it
         want = max(1, int(x.get("quantity") or 1))
         if counted and int(av.get("forbidden_reach") or 0) > 0:
@@ -604,19 +651,6 @@ def mood_reserve_counts(s: dict) -> dict:
     }
 
 
-def reserve_blocked(s: dict, cfg: dict) -> dict:
-    """{recipe: words}: the AI's orders that would use up a mood reserve the
-    fort is at or under (held in select(), as mood_blocked's are)."""
-    out = {}
-    counts = mood_reserve_counts(s)
-    for k, (key, words, recipes) in MOOD_RESERVES.items():
-        want, have = int(cfg.get(key) or 0), counts.get(k)
-        if want > 0 and have is not None and have <= want:
-            for r in recipes:
-                out.setdefault(r, f"the {have} {words} kept for strange moods (a reserve of {want})")
-    return out
-
-
 # (0.105.31 reserve fixes) the reserve rule tops a reserve up when the fort
 # is AT or under it, to RESERVE_BATCH over it: select() holds the other
 # orders at or under the line and caps them at what lies over it, so an
@@ -708,6 +742,13 @@ def reserve_trade_wants(s: dict, cfg: dict) -> list[dict]:
     return [{"key": "CLOTH", "count": want - have}, {"key": "SEEDS", "count": 5}]
 
 
+def _noted_key(s: dict, what: str) -> str:
+    """(0.105.33) memory.reserve_noted's value for a note: the note and the
+    season, so each is said again each season (one string shared by two notes
+    said each only once in a fort's life)."""
+    return f"{what}:{_season_index(s)}"
+
+
 def _mood_reserve_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> None:
     """(0.105.31) Keep a few of each common mood material (MOOD_RESERVES):
     one step a cycle, plant cloth first (the commonest failed request)."""
@@ -747,18 +788,18 @@ def _mood_reserve_rule(s: dict, memory, cfg: dict, proposals: list, notes: list)
             # orders' jobs) would fall to the drink line (a plant for each dwarf)
             keep_ok, why_not = _plants_spare(s, cfg, n)
             if not keep_ok:
-                if memory is not None and getattr(memory, "reserve_noted", "") != "plant_cloth_drink":
-                    memory.reserve_noted = "plant_cloth_drink"
+                if memory is not None and getattr(memory, "reserve_noted", "") != _noted_key(s, "plant_cloth_drink"):
+                    memory.reserve_noted = _noted_key(s, "plant_cloth_drink")
                     notes.append(f"{head}: the fibre plants aren't processed for thread while {why_not}")
             elif order("process_plants", n, f"{head}: process the fibre plants for thread before the still "
                                             "brews them"):
                 return
         elif route == "seeds" and _swap_off(s, memory):
             pass        # (0.105.31 reserve fixes) no fibre crop grows on the plots this season
-        elif route == "seeds" and _drink_short_any(s, cfg):
+        elif route == "seeds" and planner_farms.drink_known_short(s, cfg):
             # (0.105.31 reserve fixes) no brewable plot goes to fibre while drink is short
-            if memory is not None and getattr(memory, "reserve_noted", "") != "plant_cloth_drink":
-                memory.reserve_noted = "plant_cloth_drink"
+            if memory is not None and getattr(memory, "reserve_noted", "") != _noted_key(s, "plant_cloth_drink"):
+                memory.reserve_noted = _noted_key(s, "plant_cloth_drink")
                 notes.append(f"{head}: no plot goes to a fibre crop while drink is short")
         elif route == "seeds" and farm_plots_any(s) and memory is not None and not memory.farm_crops_player:
             proposals.append(Proposal("mood_reserve", {"type": "set_farm_crops", "thread": True,
@@ -766,8 +807,8 @@ def _mood_reserve_rule(s: dict, memory, cfg: dict, proposals: list, notes: list)
                                       f"{head}, and no plot grows a fibre crop: one plot grows "
                                       f"{', '.join(_fibre_seeds(s))} (its plants processed for thread)", 5))
             return
-        elif route == "none" and memory is not None and getattr(memory, "reserve_noted", "") != "plant_cloth":
-            memory.reserve_noted = "plant_cloth"
+        elif route == "none" and memory is not None and getattr(memory, "reserve_noted", "") != _noted_key(s, "plant_cloth"):
+            memory.reserve_noted = _noted_key(s, "plant_cloth")
             notes.append(f"{head}: no fibre crop, seed or plant here, so plant cloth and seeds are on the "
                          "caravans' list")
     n, have, want = gap("animal_cloth")
@@ -797,12 +838,6 @@ def _mood_reserve_rule(s: dict, memory, cfg: dict, proposals: list, notes: list)
         order("stone_blocks", n, f"{have} blocks, a reserve of {want} {FOR}: make stone blocks")
 
 
-def _drink_short_any(s: dict, cfg: dict) -> bool:
-    from planner_farms import drink_short, drink_known_short
-    return drink_known_short(s, cfg) or (isinstance(_d(s.get("stocks")).get("drink"), (int, float))
-                                         and drink_short(s, cfg))
-
-
 def _plants_spare(s: dict, cfg: dict, n: int) -> tuple[bool, str]:
     """(0.105.31 reserve fixes) May n fibre plants be processed for thread?
     Not while drink is urgent, nor when the brewable plants left after it
@@ -810,7 +845,7 @@ def _plants_spare(s: dict, cfg: dict, n: int) -> tuple[bool, str]:
     a brewable plant for each dwarf (drink_short's). Of the fibre plants,
     only the brewable ones count against it (the bridge's
     thread_brewable_plants; an older bridge: all of them)."""
-    if _drink_short_any(s, cfg):
+    if planner_farms.drink_known_short(s, cfg):
         return False, "drink is short"
     su = _d(s.get("supplies"))
     citizens = max(1, int(_d(s.get("dwarves")).get("total") or 1))

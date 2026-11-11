@@ -79,8 +79,10 @@ def _slider(traits: dict, k: str) -> float:
 
 
 def score_area(area_id: str, traits: dict, history: dict | None = None,
-               quirks: list[str] | None = None) -> list[dict]:
-    """Every option of an area with its score and what made it, best first."""
+               quirks: list[str] | None = None, extra: list | None = None) -> list[dict]:
+    """Every option of an area with its score and what made it, best first.
+    extra: leanings.extras(history), when the caller has it already (r33:
+    choose_all works it out once for all the areas, not once an area)."""
     area = areas()[area_id]
     counts = history_counts(history)
     quirks = held_quirks(history) if quirks is None else quirks
@@ -88,8 +90,17 @@ def score_area(area_id: str, traits: dict, history: dict | None = None,
     learned = learned.get(area_id) if isinstance(learned, dict) else None
     design = (history or {}).get("design")
     design = design.get(area_id) if isinstance(design, dict) else None
-    from leanings import extras         # (here: leanings imports this module)
-    extra = extras(history)
+    if extra is None:
+        from leanings import extras         # (here: leanings imports this module)
+        extra = extras(history)
+    # (r33) each slider's leanings, in extras' order, the zero ones left out
+    # (they changed nothing): the same sums, without asking every leaning
+    # about every slider of every option
+    by_slider: dict = {}
+    for label, d in extra:
+        for k, e in d.items():
+            if e:
+                by_slider.setdefault(k, []).append((label, e))
     out = []
     for oid, o in area["options"].items():
         parts = []          # (text, amount)
@@ -102,10 +113,7 @@ def score_area(area_id: str, traits: dict, history: dict | None = None,
             # (0.95) the fort's own leaning, the site's and its history, on
             # top of your slider (the sum kept within -200..200)
             room_hi, room_lo = 200 - v, -200 - v
-            for label, d in extra:
-                e = d.get(s)
-                if not e or not a:
-                    continue
+            for label, e in (by_slider.get(s, ()) if a else ()):
                 e = max(room_lo, min(room_hi, float(e)))
                 room_hi, room_lo = room_hi - e, room_lo - e
                 if e:
@@ -153,12 +161,12 @@ def _setting(name: str, quirks: list[str]) -> float:
     return float(v)
 
 
-def choose(area_id: str, traits: dict, history: dict | None = None) -> dict:
+def choose(area_id: str, traits: dict, history: dict | None = None, _extra: list | None = None) -> dict:
     """The area's choice: {area, name, key, id, value, label, score, drivers,
     kept, runner_up}. drivers: up to 3 texts for what pushed it most."""
     h = history or {}
     quirks = held_quirks(h)
-    ranked = score_area(area_id, traits, h, quirks)
+    ranked = score_area(area_id, traits, h, quirks, _extra)
     top = ranked[0]
     pick = top
     seed = h.get("seed")
@@ -198,7 +206,9 @@ def choose(area_id: str, traits: dict, history: dict | None = None) -> dict:
 
 
 def choose_all(traits: dict, history: dict | None = None) -> dict:
-    return {a: choose(a, traits, history) for a in areas()}
+    from leanings import extras         # (r33) the same for every area: worked out once
+    extra = extras(history or {})
+    return {a: choose(a, traits, history, extra) for a in areas()}
 
 
 def why_text(c: dict) -> str:

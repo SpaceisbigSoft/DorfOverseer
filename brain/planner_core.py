@@ -3,17 +3,12 @@
 from __future__ import annotations
 import json
 import math
-import re
 from dataclasses import asdict, dataclass, field
-from culture import layout_style, new_history, pick_stone, profile_from, stone_for
-from learning import held_levels
-import masterplan
-import phases
 from quirks import has_rule
 from digest import _d, _l, normalize
 from planner_config import PLANNER_CONFIG, DISPOSAL_ACTION_MAX  # noqa: F401  (13c: the tuning numbers, split out)
 
-__all__ = ["great_present", "all_clear", "STEER_PROTECTED", "STEER_MAX_DAYS", "steer_of", "PLANNER_CONFIG", "BREW_RECIPES", "MEAL_RECIPES", "MANDATE_RECIPES", "BUILDABLE_SHOPS", "SHOP_ALIASES", "SURVIVAL_SHOPS", "TICKS_PER_DAY", "TICKS_PER_YEAR", "NO_COOLDOWN", "COOLDOWN_KEYS", "MULTI_PER_CYCLE", "EMERGENCY", "STUCK_HOLD_EXEMPT", "ORDER_HOLD_EXEMPT", "LIMIT_EXEMPT", "Proposal", "Memory", "abs_tick", "stamp_tick", "game_day", "factor", "ADJUST_BOUNDS", "_number", "effective_config", "queued", "unstored_cups", "free_stock", "watch_since", "_clamp", "MEMORIAL_SPAN", "OPTIONAL_LEVELS", "GEAR_WEAPONS", "GEAR_METALS", "NEEDS_YOU", "ask_player", "DISPOSAL_LEVELS", "DISPOSAL_ACTION_MAX", "player_rules", "MAINTAIN_SKIPS", "level_refused", "_traits", "reachable_threats", "held_off_threats", "_holding_off", "ONE_A_CYCLE", "growth_mode", "growth_target", "JOB_SHOPS", "RECIPE_SHOPS", "WOOD_ELSEWHERE", "recipe_shop", "brewable_counts", "brew_recipe", "_watchdog_notes", "jobs_reported", "order_job_state", "masons_jammed", "stuck_hold_days", "_stuck_before", "stone_short", "_office_held", "tantrums_recent", "justice_held", "_restraint_order", "manager_needs_office", "suites_short", "wool_route", "thread_plants_here", "MINING_NEED_ONLY", "mining_plan", "noble_room_kinds", "SOCIAL_NEEDS", "care_waiting", "unmet", "_soldier_swap", "recently_home", "LOCATION_UNITS", "_location", "_location_short", "_real_locations", "can_fight", "is_ranged", "STALE_PROJECT_DAYS", "_workshops_busy", "shop_count", "shops_max", "_has_shop", "RAW_FOOD", "ALL_FOOD", "_idle_share", "update_idle", "AGENDA_THEMES", "agenda", "food_per_dwarf", "WINTER_STOCK", "winter_factor", "young_fort", "established", "has_farms", "_best_metal", "REFUSAL_FIRST_DAYS", "REFUSAL_MAX_DAYS", "REFUSAL_IDLE_DAYS", "REFUSAL_KEYS", "refusal_key", "_refused_wait", "note_refusal", "TIMEOUT_TRIES", "timeout_streak", "brief_timeout", "LOOP_LIMITS", "LOOP_LIMIT_DEFAULT", "LOOP_EXEMPT", "_loop_count", "NO_EFFECT_RULES", "NO_EFFECT_WHY", "note_no_effect", "no_effect_wait", "_stalled_days", "_entrance_spot", "_record_any_outcome", "_weapon_gaps", "spare_sig", "MOOD_BODY_FLAGS", "mood_kind", "mood_on_hand", "mood_waits"]
+__all__ = ["great_present", "all_clear", "STEER_PROTECTED", "STEER_MAX_DAYS", "steer_of", "PLANNER_CONFIG", "BREW_RECIPES", "MEAL_RECIPES", "MANDATE_RECIPES", "BUILDABLE_SHOPS", "SHOP_ALIASES", "SURVIVAL_SHOPS", "TICKS_PER_DAY", "TICKS_PER_YEAR", "NO_COOLDOWN", "COOLDOWN_KEYS", "MULTI_PER_CYCLE", "EMERGENCY", "STUCK_HOLD_EXEMPT", "ORDER_HOLD_EXEMPT", "LIMIT_EXEMPT", "Proposal", "Memory", "abs_tick", "stamp_tick", "game_day", "factor", "ADJUST_BOUNDS", "_number", "effective_config", "queued", "unstored_cups", "free_stock", "watch_since", "_clamp", "MEMORIAL_SPAN", "OPTIONAL_LEVELS", "GEAR_WEAPONS", "GEAR_METALS", "NEEDS_YOU", "ask_player", "DISPOSAL_LEVELS", "DISPOSAL_ACTION_MAX", "player_rules", "MAINTAIN_SKIPS", "level_refused", "_traits", "reachable_threats", "held_off_threats", "_holding_off", "ONE_A_CYCLE", "growth_mode", "growth_target", "JOB_SHOPS", "RECIPE_SHOPS", "WOOD_ELSEWHERE", "recipe_shop", "brewable_counts", "brew_recipe", "_watchdog_notes", "jobs_reported", "order_job_state", "masons_jammed", "stuck_hold_days", "_stuck_before", "stone_short", "_office_held", "tantrums_recent", "justice_held", "_restraint_order", "manager_needs_office", "suites_short", "wool_route", "thread_plants_here", "MINING_NEED_ONLY", "mining_plan", "noble_room_kinds", "SOCIAL_NEEDS", "care_waiting", "unmet", "_soldier_swap", "recently_home", "LOCATION_UNITS", "_location", "_location_short", "_real_locations", "can_fight", "is_ranged", "STALE_PROJECT_DAYS", "_workshops_busy", "shop_count", "shops_max", "_has_shop", "RAW_FOOD", "ALL_FOOD", "_idle_share", "idle_line", "IDLE_OLD_LINES", "levels_done", "_lever_state", "update_idle", "AGENDA_THEMES", "agenda", "food_per_dwarf", "WINTER_STOCK", "winter_factor", "young_fort", "established", "has_farms", "_best_metal", "REFUSAL_FIRST_DAYS", "REFUSAL_MAX_DAYS", "REFUSAL_IDLE_DAYS", "REFUSAL_KEYS", "refusal_key", "_refused_wait", "note_refusal", "TIMEOUT_TRIES", "timeout_streak", "brief_timeout", "LOOP_LIMITS", "LOOP_LIMIT_DEFAULT", "LOOP_EXEMPT", "_loop_count", "NO_EFFECT_RULES", "NO_EFFECT_WHY", "note_no_effect", "no_effect_wait", "_stalled_days", "_entrance_spot", "_record_any_outcome", "_weapon_gaps", "spare_sig", "MOOD_BODY_FLAGS", "mood_kind", "mood_on_hand", "mood_waits"]
 
 BREW_RECIPES = {"brew_drink", "brew_drink_from_fruit", "make_mead"}
 MEAL_RECIPES = {"prepare_easy_meal", "prepare_fine_meal", "prepare_lavish_meal"}
@@ -178,6 +173,14 @@ class Memory:
     no_effect: dict = field(default_factory=dict)        # (0.105.24) action key -> {reason, n, tick}: done for the same reason again
     story_season: str = ""                                # the last season the AI-written chronicle told ("y<year> <season>")
     gate_closed_by_ai: bool = False                      # the AI pulled the gate lever to close it
+    # (0.105.33) the "AI gate" lever's state when the gate is open (lever id
+    # (str) -> state): gate_closed_by_ai is read from the lever each cycle
+    # (note_cycle), not toggled on a pull that may never happen
+    gate_open_state: dict = field(default_factory=dict)
+    # (0.105.33) an alarm change or a tool switch-off whose reply never came
+    # (ok None): {on, tick} / tool name -> tick; the next report says whether it went through
+    alert_asked: dict = field(default_factory=dict)
+    tool_off_asked: dict = field(default_factory=dict)
     squads_trained: list = field(default_factory=list)   # squads the AI put on training (ids)
     squads_rested: list = field(default_factory=list)    # squads the AI sent back to work while the fort is small
     squads_made: list = field(default_factory=list)      # squads the AI made itself (ids; 0.82)
@@ -237,6 +240,7 @@ class Memory:
     stranger_shut: dict = field(default_factory=dict)        # (0.105.30) {seen, who}: a stranger last seen seeking a meeting
     gate_unstick: dict = field(default_factory=dict)         # (0.105.32) gate piece id (str) -> {step, tick, ok, split_after, done, prevent}
     way_in: dict = field(default_factory=dict)               # (0.105.32) "x,y,z" -> {tick, ok, project_id, why}: ways dug in
+    second_way: dict = field(default_factory=dict)           # (0.105.33) {stranded_ever, tick, ok, project_id, why, done}: a second way to the surface
     gear_spare_since: dict = field(default_factory=dict)  # "weapons"/"body"/"helms" -> when 3+ spares sat unused
     swapped: dict = field(default_factory=dict)  # (0.104.78) unit id -> when the swap sent them home
     drafted: dict = field(default_factory=dict)  # (0.104.138) unit id -> when a fill or swap drafted them
@@ -856,8 +860,11 @@ def _restraint_order(s: dict, n: int, cfg: dict, proposals: list, notes: list) -
     # rope order stuck, "Needs 1 unused plant cloth", while the 4-5 bolts
     # counted were the hospital's): the rope wants plant cloth
     kinds = _d(_d(s.get("supplies")).get("cloth_kinds"))
-    hosp = sum(int(_d(e.get("have")).get("cloth") or 0) for e in _l(_d(s.get("locations")).get("list"))
-               if isinstance(e, dict) and e.get("type") == "HOSPITAL")
+    # (0.105.33 merge) a bridge that reports supplies.hospital already leaves
+    # the hospital's cloth out of cloth_kinds: not taken off twice
+    hosp = 0 if (kinds and isinstance(_d(s.get("supplies")).get("hospital"), dict)) else sum(
+        int(_d(e.get("have")).get("cloth") or 0) for e in _l(_d(s.get("locations")).get("list"))
+        if isinstance(e, dict) and e.get("type") == "HOSPITAL")
     free_cloth = (int(kinds.get("plant") or 0) if kinds else int(st.get("cloth") or 0)) - hosp
     if free_cloth >= amount:
         proposals.append(Proposal("furniture", {"type": "work_order", "recipe": "cloth_rope", "amount": amount},
@@ -1206,9 +1213,66 @@ RAW_FOOD = ("meat", "fish", "plants", "plant_growths", "cheese", "eggs")
 ALL_FOOD = ("prepared_meals", "raw_fish") + RAW_FOOD
 
 
+def _idle_free_known(s: dict) -> bool:
+    free = _d(s.get("dwarves")).get("idle_free")
+    return isinstance(free, int) and not isinstance(free, bool)
+
+
 def _idle_share(s: dict) -> float:
+    """The share of the fort's working adults with nothing to do. (0.105.33)
+    From the bridge's `idle_free` (no job, no social activity, not in a
+    squad) over the adults outside the squads: prayer, the tavern and reading
+    are not idleness, and soldiers are never idle. An older bridge's report
+    has no idle_free: its idle_adults over all adults, as before."""
     dw = _d(s.get("dwarves"))
+    free = dw.get("idle_free")
+    if _idle_free_known(s):
+        squads = dw.get("in_squads")
+        squads = squads if isinstance(squads, int) and not isinstance(squads, bool) else 0
+        return max(0, free) / max(1, int(dw.get("adults") or 0) - max(0, squads))
     return (dw.get("idle_adults") or 0) / max(1, dw.get("adults") or 1)
+
+
+# (0.105.33 fix) The idle-driven rules' lines were set for the old measure
+# (idle_adults/adults); on the stricter one (_idle_share) the truly idle run
+# at 12-23% and the rules almost stopped. PLANNER_CONFIG now holds the lines
+# for the stricter measure, set to fire as often over the 8 Nov run's season
+# states as the old ones did on the old measure (polish 47 states before and
+# after, blocks 54/53, garden 60/59, idle_train 34/34, its off line 53/53).
+# These are the old lines, for a report with no idle_free (an older bridge):
+# there _idle_share is still the old measure.
+IDLE_OLD_LINES = {"polish_idle_share": 0.3, "garden_idle_share": 0.2, "idle_blocks_share": 0.25,
+                  "idle_train_share": 0.4, "idle_train_off_share": 0.25}
+
+
+def idle_line(s: dict, cfg: dict, key: str) -> float:
+    """(0.105.33 fix) An idle rule's line (`key` in IDLE_OLD_LINES) for the
+    measure _idle_share gives this report: cfg's own on the stricter one;
+    on the old one, scaled to the old line (a tuned value keeps its lean)."""
+    v = cfg[key]
+    if _idle_free_known(s):
+        return v
+    return v * IDLE_OLD_LINES[key] / PLANNER_CONFIG[key]
+
+
+def levels_done(state: dict):
+    """(0.105.33) How many levels the fort has finished, ever: the bridge's
+    `done_total` (it never stops counting), else its `finished`, which stops
+    at the 20 closed projects it keeps (the polish gate stuck there for good).
+    None when the report has neither."""
+    pr = _d(state.get("projects"))
+    n = pr.get("done_total")
+    if isinstance(n, int) and not isinstance(n, bool):
+        return n
+    return pr.get("finished")
+
+
+def _lever_state(lever: dict):
+    """(0.105.33) A gate lever's reported state (0 or 1, as DF keeps it), or None."""
+    v = _d(lever).get("state")
+    if isinstance(v, bool):
+        return int(v)
+    return v if isinstance(v, int) else None
 
 
 def update_idle(s: dict, memory, cfg: dict) -> None:
@@ -1216,15 +1280,17 @@ def update_idle(s: dict, memory, cfg: dict) -> None:
     the idle share (memory.idle_avg: the count of idle dwarves jumps from
     cycle to cycle; live, 0.83: over 40%, under 25% and back within three
     game days, so the rotation sent a squad off duty and back), and the band
-    on it (memory.idle_hands): on from `idle_train_share` (40%), off only
-    under `idle_train_off_share` (25%), since the dwarves who then train
-    aren't idle any more."""
+    on it (memory.idle_hands): on from `idle_train_share` (20%), off only
+    under `idle_train_off_share` (14%), since the dwarves who then train
+    aren't idle any more. (0.105.33 fix: were 40% / 25% on the old idle
+    measure, which counted prayer and the tavern as idle.)"""
     share = _idle_share(s)
     avg = memory.idle_avg
     if isinstance(avg, (int, float)):
         share = (1 - cfg["idle_avg_weight"]) * avg + cfg["idle_avg_weight"] * share
     memory.idle_avg = round(share, 4)
-    memory.idle_hands = share >= cfg["idle_train_share"] or (memory.idle_hands and share >= cfg["idle_train_off_share"])
+    memory.idle_hands = (share >= idle_line(s, cfg, "idle_train_share")
+                         or (memory.idle_hands and share >= idle_line(s, cfg, "idle_train_off_share")))
 
 
 # What a rule works toward, in a few words (the season's agenda)
@@ -1236,7 +1302,7 @@ AGENDA_THEMES = {
     "trade": "trade with the caravans", "trade_deal": "trade with the caravans", "crafts": "make goods to sell",
     "gems": "cut gems", "encrust": "set gems into crafts", "drink": "keep the drink flowing",
     "needs_meal": "cook good meals", "needs_craft": "let dwarves craft",
-    "food": "keep the fort fed", "farm": "farm", "hospital": "stock the hospital", "soap": "make soap",
+    "food": "keep the fort fed", "farms": "farm", "hospital": "stock the hospital", "soap": "make soap",
     "feeder": "shorten the hauling", "labor": "put idle hands to work", "labor_trim": "take the extra hands off fishing", "well": "find water for a well", "well_lid": "close the cavern well's stairs", "well_shaft": "a gate in the cavern well's shaft", "planned_parts": "parts the planned buildings wait for", "comfort": "shoes and cups for the fort", "mothers": "mothers home from the squads", "dead_units": "clear old dead from the unit list", "herd": "keep the herds the fort's size",
     "stuck_order": "clear stuck work", "unsuspend": "resume suspended work", "stray_gear": "hand out lost gear", "assign_weapons": "arm the soldiers", "assign_kit": "armour the soldiers", "soldier_swap": "let the keen train", "temple_chest": "a chest for the temple", "instrument_orders": "clear the instrument backlog", "pair_chairs": "seat dwarves together", "recreation": "time off for the unhappiest", "hospital_burrow": "keep the wounded in the hospital", "calm_burrow": "keep a tantrum away from the others", "dairy": "milk and cheese", "eggs": "nest boxes for the hens", "war_animals": "train war animals", "gate_guard": "hold the gate", "gate_dogs": "war dogs at the gate", "gem_cutting": "cut the rough gems", "stairwell": "a new stairwell", "animal_trainer": "an animal trainer", "nest_box_order": "make nest boxes", "library_chest": "a chest for the library", "orphan_jobs": "clear jobs whose order is gone", "slabs_free": "free the memorial slabs", "water_traffic": "keep paths off the ice", "jail_size": "a bigger jail", "jail_more": "another jail", "break_fights": "break up the fights among the fort's own", "burial": "bury the dead", "rooms": "mend the rooms' walls", "coffins": "coffins for the tombs", "order_slots": "free the workshop's order slots", "fat_ban": "keep fat for soap", "jail_urgent": "a jail against the beatings", "tavern_urgent": "a tavern for company", "quarry": "quarry stone", "cloth": "weave cloth",
 }

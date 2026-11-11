@@ -44,7 +44,7 @@
 local json = require('json')
 local utils = require('utils')
 
-BRIDGE_VERSION = '0.105.32'
+BRIDGE_VERSION = '0.105.33'
 PROTOCOL = 1 -- bump when the report's shape changes in a breaking way
 
 OUT_DIR = dfhack.getDFPath() .. '/dfhack-config/ai-overseer'   -- (a global: the parts write there too)
@@ -523,11 +523,20 @@ local function safe(fn, ...)
     return {error = tostring(result)}
 end
 
+-- (0.105.33) which fort a per-site memory belongs to: the save folder and the
+-- site, so a save of the same site id (another copy, another world) loaded in
+-- the same DF session is not taken for the fort seen before
+function fort_key()
+    local okd, dir = pcall(function() return df.global.world.cur_savegame.save_dir end)
+    return tostring(okd and dir or '?') .. '#' .. tostring(df.global.plotinfo.site_id)
+end
+
 -- The report's sections: name -> function(ctx) returning that section.
 -- ctx.dwarves / ctx.units come from one get_dwarves call shared by both.
 SECTIONS = {   -- (0.100) a module field: the tests swap in their own
     bridge_version = function() return BRIDGE_VERSION end,
-    paused = function() return df.global.pause_state end,
+    -- (0.105.33) the plain reads are wrapped too: one throw used to lose the whole report
+    paused = function() return safe(function() return df.global.pause_state end) end,
     fort = function()
         return safe(function()
             local okw, world = pcall(function() return txt(translate_name(df.global.world.world_data.name)) end)
@@ -541,8 +550,8 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
                     run_id = run_mark()}       -- (0.105.0) a scenario copy's mark, or nil
         end)
     end,
-    date = function() return get_date() end,
-    wealth = function() return df.global.plotinfo.tasks.wealth.total end,
+    date = function() return safe(get_date) end,
+    wealth = function() return safe(function() return df.global.plotinfo.tasks.wealth.total end) end,
     dwarves = function(ctx) return ctx.dwarves end,
     units = function(ctx) return ctx.units end,
     stocks = function() return safe(get_stocks) end,
@@ -611,17 +620,21 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
                                       or type(r.storage) == 'table' and r.storage.error ~= nil)
     end,
     map = function()
-        return {
-            size = {dfhack.maps.getTileSize()},
+        local okh, size, off = pcall(function()
             -- add to a z-level to get the elevation the game shows on screen
-            elevation_offset = df.global.world.map.region_z - 100,
+            return {dfhack.maps.getTileSize()}, df.global.world.map.region_z - 100
+        end)
+        return {
+            size = okh and size or nil,
+            elevation_offset = okh and off or nil,
+            error = (not okh) and tostring(size) or nil,   -- (0.105.33) the header failed: said
             layers = safe(layers_summary),
             dwarves = safe(get_dwarf_levels),
         }
     end,
     nobles = function() return safe(get_nobles) end,
     mandates = function() return safe(get_mandates) end,
-    civ_alert = function() return df.global.plotinfo.alerts.civ_alert_idx ~= 0 end,
+    civ_alert = function() return safe(function() return df.global.plotinfo.alerts.civ_alert_idx ~= 0 end) end,
     -- Read directly: gui/civ-alert's can_sound_alarm() creates alert
     -- entries when they're missing, and a report must not change the game.
     civ_alert_ready = function()
@@ -658,7 +671,9 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
             -- (0.100) a fort with its staircase keeps it: the scan (up to 12
             -- levels across the fort, ~12 ms a report) runs until it's found,
             -- then not again this session for that site
-            local site = df.global.plotinfo.site_id
+            -- (0.105.33) keyed by save and site, and forgotten when the map
+            -- unloads: a fresh copy of a site seen earlier is scanned again
+            local site = fort_key()
             if FOUNDED_SITE == site then return {stairs = true, near = FOUNDED_NEAR} end
             local B = reqscript('ai-builder')
             local c = B.found_center()
@@ -700,7 +715,14 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
     -- (0.105.30) what the fort has built: finished constructions by shape and
     -- material, above or below ground, roofed surface tiles, the waiting ones
     -- and the AI's own (lua/ai-constructions.lua; one pass, every 3 days)
-    constructions = function() return safe(function() return reqscript('ai-constructions').survey() end) end,
+    -- (0.105.33) after an action cleared it, the module's own day-long survey
+    -- cache is passed by too (else the "read again" copy was up to a day old)
+    constructions = function()
+        local fresh = CONSTRUCTIONS_FRESH == true
+        local r = safe(function() return reqscript('ai-constructions').survey(fresh) end)
+        if fresh and not (type(r) == 'table' and r.error) then CONSTRUCTIONS_FRESH = nil end
+        return r
+    end,
 }
 
 -- The pulse: a small report for the frequent check between full ones.
@@ -784,13 +806,21 @@ function build_state(include_units, tier)
     local clock = os.clock
     local t0 = clock()
     REPORT_MEMO = {}       -- (13c) lists more than one section reads, walked once
-    ctx.dwarves, ctx.units = get_dwarves(include_units)
+    -- (0.105.33) a throw here no longer loses the whole report: the section
+    -- says it failed (the brain plans nothing without it) and the rest is sent
+    local okd, dw, units = pcall(get_dwarves, include_units)
+    if okd then
+        ctx.dwarves, ctx.units = dw, units
+    else
+        ctx.dwarves = {error = tostring(dw)}
+        ctx.units = include_units and {error = tostring(dw)} or nil
+    end
     -- how long each section takes inside the game (the lag pass, Oct 23):
     -- sections over 5 ms, in the report's _timing
     local timing = {dwarves = math.floor((clock() - t0) * 1000 + 0.5)}
     local state = {}
     local now = abs_tick()
-    local site = df.global.plotinfo.site_id
+    local site = fort_key()     -- (0.105.33) save and site: another save of the same site id is another fort
     -- (0.100) which expired cached sections are rebuilt this time: the
     -- stalest SECTION_REBUILDS of them; the rest send their last copy a
     -- report longer (a section never built, or from another site, always is)
@@ -967,7 +997,10 @@ local function cmd_act(args)
     -- (0.100) an action that changed what a cached section shows: built again
     -- in the next report (else e.g. a room given looked still free for days)
     if result.ok == true and not action.dry_run then
-        for _, name in ipairs(CACHE_INVALIDATES[action.type] or {}) do SECTION_CACHE[name] = nil end
+        for _, name in ipairs(CACHE_INVALIDATES[action.type] or {}) do
+            SECTION_CACHE[name] = nil
+            if name == 'constructions' then CONSTRUCTIONS_FRESH = true end
+        end
     end
     -- (0.104.141) a refusal that says the report is out of date ("already
     -- has a pile") clears the sections it names too

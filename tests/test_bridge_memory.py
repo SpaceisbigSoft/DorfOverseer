@@ -174,7 +174,7 @@ def _():
     for absent in ("supplies", "map", "jobs", "recent_announcements", "registry"):
         assert absent not in keys, absent
     daily = M.build_state(True)
-    assert daily.tier == "daily" and daily.units[1].id == 1 and daily.bridge_version == "0.105.32"
+    assert daily.tier == "daily" and daily.units[1].id == 1 and daily.bridge_version == "0.105.33"
     assert set(pulse.keys()) - {"tier"} <= set(daily.keys())
     assert daily.registry.error is not None                         # no builder here, but the section is there
     assert M.build_state(False, "survey").tier == "survey"
@@ -462,7 +462,7 @@ CR_OK = 0
 """
 
 
-@test("prune_remains (0.104): deteriorate for corpses and useless parts only, then enabled; dry run and no script")
+@test("prune_remains (0.104, 0.105.33): corpses off the timer, useless parts on it, then enabled; dry run and no script")
 def _():
     LUA.execute(PRUNE_STUB, H)
     H.no_script = False
@@ -472,7 +472,10 @@ def _():
     H.action = t({"type": "prune_remains"})
     r = H.run("act", "{}")
     cmds = [H.cmds[i] for i in range(1, len(H.cmds) + 1)]
-    assert r.ok and cmds == ["deteriorate enable corpses,unusable-parts", "enable deteriorate"], (dict(r), cmds)
+    # (0.105.33) the dead can't be counted on this stub: corpses are left, never on a timer
+    assert r.ok and cmds == ["deteriorate disable corpses", "deteriorate enable unusable-parts",
+                             "enable deteriorate"], (dict(r), cmds)
+    assert "left" in r.corpses, dict(r)
     H.no_script = True
     r = H.run("act", "{}")
     assert not r.ok and "deteriorate" in r.error, dict(r)

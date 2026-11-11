@@ -270,6 +270,8 @@ def _():
         s["dwarves"]["total"], s["dwarves"]["adults"] = 100, 100
         s["dwarves"]["stress"] = {"unhappy": 20 if p == "War-hold" else 1}
         s["dwarves"]["idle_adults"] = 50 if p == "Deep mine" else 10
+        # (0.105.33) the bar reads the bridge's idle_free, of the adults not in squads
+        s["dwarves"]["idle_free"], s["dwarves"]["in_squads"] = s["dwarves"]["idle_adults"], 0
         s["dead"] = {}
         s["moods"] = {"list": [{"mood": "Fey", "craft": True}]} if p == "Monastery" else {"list": []}
         if p == "Monastery":
@@ -289,7 +291,7 @@ def _():
     assert "| 1 **over** |" in fm, fm                       # 3 moods, 1 artifact, 1 still working
     assert "| 2 **over** |" in lines["deaths by thirst <= 0"]
     assert "20 **over**" in lines["unhappy, % < 10"]
-    assert "50 **over**" in lines["idle adults, % (Phase 12's exit) < 40"]
+    assert "50 **over**" in lines["idle adults not in squads, % (Phase 12's exit) < 40"]
     assert lines["THIRST"].startswith("| THIRST | 0 | 2 |") and lines["DROWN"].startswith("| DROWN | 0 | 1 |")
 
 

@@ -186,12 +186,31 @@ end
 -- survey (kept in the save) when done.
 SLICE_SECONDS = 0.15
 JOB = JOB or nil
+
+-- (0.105.33) the fort a sliced survey belongs to (the world's save and the
+-- site): a survey begun in one fort is never finished into another's save
+local function fort_id()
+    local ok, v = pcall(function()
+        return tostring(df.global.world.cur_savegame.save_dir) .. ':' .. tostring(df.global.plotinfo.site_id)
+    end)
+    return ok and v or nil
+end
+
+-- (0.105.33) the half-done survey belongs to the fort unloaded
+if dfhack and dfhack.onStateChange then
+    dfhack.onStateChange['ai-water'] = function(sc)
+        if sc == SC_MAP_UNLOADED then JOB = nil end
+    end
+end
+
 function scan_step(now_tick, seconds)
+    if JOB and JOB.fort ~= fort_id() then JOB = nil end
     if not JOB then
         local why
         JOB, why = start_survey()
         if not JOB then return {ok = false, error = why} end
         JOB.started = now_tick
+        JOB.fort = fort_id()
     end
     if not survey_step(JOB, seconds or SLICE_SECONDS) then
         return {ok = true, done = false, level = JOB.z, left = JOB.z - JOB.z1 + 1}

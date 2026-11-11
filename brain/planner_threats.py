@@ -322,7 +322,15 @@ def cavern_great(s: dict) -> list:
     return out
 
 
-def _cavern_doors(s, memory, proposals, notes) -> None:
+def deep_read(s: dict) -> bool:
+    """(0.105.33) The deep section read this cycle: present, and not the
+    {error=...} a failed get_deep sends. Without it no beast is seen, which
+    is not the same as none being there."""
+    d = s.get("deep")
+    return isinstance(d, dict) and "error" not in d and "deep" not in _d(s.get("_errors"))
+
+
+def _cavern_doors(s, memory, proposals, notes, cfg=None) -> None:
     """(0.105.26) Every opening onto a cavern gets a lockable door or hatch
     straight away (the gates scan finds them), not only once a beast is seen:
     put on before the gate rule's turn comes, each once."""
@@ -332,12 +340,21 @@ def _cavern_doors(s, memory, proposals, notes) -> None:
     off = off if isinstance(off, int) else 0
     asked = set(getattr(memory, "gate_doors_requested", None) or [])
     fails = getattr(memory, "gate_failures", None) or {}
+    fail_ticks = getattr(memory, "gate_failure_ticks", None) or {}
+    retry = _d(cfg).get("gate_retry_ticks", PLANNER_CONFIG["gate_retry_ticks"])
+    now = abs_tick(s)
     for e in _l(_d(s.get("entrances")).get("entrances")):
         if not isinstance(e, dict) or e.get("kind") != "cavern" or e.get("sealed") or e.get("closing"):
             continue
         spot = f"{e.get('x')},{e.get('y')},{e.get('z')}"
-        if not e.get("door_spots") or spot in asked or spot in fails or e.get("id") is None:
+        if not e.get("door_spots") or spot in asked or e.get("id") is None:
             continue
+        if spot in fails:
+            # (0.105.33) a refusal is tried again after `gate_retry_ticks`, as
+            # the gate rule does (an undated one: from before, tried again)
+            when = fail_ticks.get(spot)
+            if isinstance(when, int) and isinstance(now, int) and 0 <= now - when < retry:
+                continue
         proposals.append(Proposal("cavern_openings", {"type": "build_gate_doors", "entrance_id": e["id"]},
                                   f"the fort is open to a cavern at x{e.get('x')} y{e.get('y')} elevation "
                                   f"{(e.get('z') or 0) + off}: {e['door_spots']} door(s) or hatch(es) on it now, "
@@ -355,11 +372,19 @@ def _cavern_beasts(s, cfg, memory, t, rules, proposals, notes):
     watcher meanwhile (no water through it). Opened again once it's gone."""
     d = _d(s.get("deep"))
     sealed = _d(t.get("sealed"))
-    _cavern_doors(s, memory, proposals, notes)
+    _cavern_doors(s, memory, proposals, notes, cfg)
     if not rules["seal_caverns"]:
         for name in sealed:
             proposals.append(Proposal("seal_cavern", {"type": "seal_cavern", "layer": name, "open": True},
                                       "sealing the caverns is off on the Rules tab: unlock the way down", 3))
+        return
+    if not deep_read(s):
+        # (0.105.33) get_deep failed (or wasn't sent): the seals stay as they
+        # are until a good read says the caverns are clear
+        if sealed:
+            err = str(_d(s.get("deep")).get("error") or _d(s.get("_errors")).get("deep") or "not in the report")
+            notes.append(f"the caverns couldn't be read this cycle ({err[:80]}): the ways into them stay "
+                         "locked until they can")
         return
     great = cavern_great(s)
     caverns = [c for c in _l(d.get("caverns")) if isinstance(c, dict)]
@@ -474,11 +499,6 @@ def seal_tiles(c: dict) -> list:
                                       or col.get("building") == "Hatch"):
             out.append({"x": oa.get("x"), "y": oa.get("y"), "z": col.get("z")})
     return out
-
-
-def player_attack(s: dict) -> str:
-    st = s.get("settings") if isinstance(s.get("settings"), dict) else {}
-    return st.get("attack_policy") if st.get("attack_policy") in ("all", "ordinary", "never") else "ordinary"
 
 
 def _rescue(s, cfg, t, proposals, notes):

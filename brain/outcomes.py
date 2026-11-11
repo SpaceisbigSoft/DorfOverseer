@@ -272,6 +272,8 @@ def _level_open(state: dict, kind: str) -> bool:
 def judge(state: dict, memory, now: int | None = None) -> list[dict]:
     """Judge every entry whose day has come. Returns the judged entries."""
     o = _state(memory)
+    if "date" in normalize(state)["_errors"]:
+        return []        # (0.105.33, B5) tick 0 is no older save: every open entry would "never happen"
     if now is None:
         now = state_tick(state)
     after, ctx = measure(state), _context(state, memory)

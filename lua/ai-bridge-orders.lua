@@ -8,7 +8,7 @@
 -- in_fort, NOT_IN_FORT, OUT_DIR) are at hand. Not a command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-orders is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-orders'] = '0.105.32'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-orders'] = '0.105.33'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 
 ---------------------------------------------------------------------------
@@ -597,6 +597,30 @@ function act_unsuspend_orders(a)
     return {ok = true, unsuspended = n, kinds = kinds, dry_run = a.dry_run or nil}
 end
 
+-- (0.105.33) one job on a workshop's bench, of one wood or one hard boulder
+-- (the chair and the coffin/slab jobs share it)
+local function bench_job(b, jt, wood)
+    local job = dfhack.job.createLinked()
+    job.job_type = jt
+    job.mat_type = -1
+    local ji = df.job_item:new()
+    ji.mat_type = -1
+    ji.mat_index = -1
+    ji.quantity = 1
+    if wood then
+        job.material_category.wood = true
+        ji.item_type = df.item_type.WOOD
+        ji.vector_id = df.job_item_vector_id.WOOD
+    else
+        ji.item_type = df.item_type.BOULDER
+        ji.vector_id = df.job_item_vector_id.BOULDER
+        ji.flags3.hard = true
+    end
+    job.job_items.elements:insert('#', ji)
+    dfhack.job.assignToWorkshop(job, b)
+    return job
+end
+
 -- (0.101.4) Below 20 citizens orders need no approval, but the manager hands
 -- them out only from an office with a chair; with no chair in the fort every
 -- order waits forever (the Enxah fort never ran one in 3 years). One chair is
@@ -625,24 +649,7 @@ function act_bootstrap_chair(a)
     end
     local wood = b.type == df.workshop_type.Carpenters
     if a.dry_run then return {ok = true, dry_run = true, workshop = b.id, wood = wood} end
-    local job = dfhack.job.createLinked()
-    job.job_type = df.job_type.ConstructThrone
-    job.mat_type = -1
-    local ji = df.job_item:new()
-    ji.mat_type = -1
-    ji.mat_index = -1
-    ji.quantity = 1
-    if wood then
-        job.material_category.wood = true
-        ji.item_type = df.item_type.WOOD
-        ji.vector_id = df.job_item_vector_id.WOOD
-    else
-        ji.item_type = df.item_type.BOULDER
-        ji.vector_id = df.job_item_vector_id.BOULDER
-        ji.flags3.hard = true
-    end
-    job.job_items.elements:insert('#', ji)
-    dfhack.job.assignToWorkshop(job, b)
+    local job = bench_job(b, df.job_type.ConstructThrone, wood)
     return {ok = true, workshop = b.id, job_id = job.id, material = wood and 'wood' or 'stone'}
 end
 
@@ -669,7 +676,8 @@ BENCH_MAX = 5
 -- craftsdwarf's benches, 2 engrave jobs on the masons'). Only unworked jobs
 -- with an order id that is gone; never a player's job (no order) or a
 -- construction. count_only: just count them.
-function orphan_jobs(count_only, max)
+-- (0.105.33) only_id: just the jobs of that (cancelled) order
+function orphan_jobs(count_only, max, only_id)
     local live = {}
     for _, o in ipairs(df.global.world.manager_orders.all) do live[o.id] = true end
     local found, kinds = {}, {}
@@ -678,7 +686,8 @@ function orphan_jobs(count_only, max)
         local j = link.item
         if j then
             local ok, oid = pcall(function() return j.order_id end)
-            if ok and oid and oid ~= -1 and not live[oid] and not dfhack.job.getWorker(j)
+            if ok and oid and oid ~= -1 and not live[oid] and (only_id == nil or oid == only_id)
+                    and not dfhack.job.getWorker(j)
                     and dfhack.job.getHolder and dfhack.job.getHolder(j) then
                 table.insert(found, j)
                 local k = df.job_type[j.job_type] or tostring(j.job_type)
@@ -753,7 +762,9 @@ function act_bench_jobs(a)
         local lift = {}
         for _, j in ipairs(bench.jobs) do
             if BENCH_LIFT[df.job_type[j.job_type]] and not dfhack.job.getWorker(j)
-                    and not (j.order_id ~= -1 and mine[tostring(j.order_id)]) then
+                    -- (0.105.33) only jobs of orders that are not the AI's: a
+                    -- job with no order (the player's, added at the bench) stays
+                    and j.order_id ~= -1 and not mine[tostring(j.order_id)] then
                 table.insert(lift, j)
             end
         end
@@ -770,26 +781,7 @@ function act_bench_jobs(a)
     if n < 1 then return reject('the workshop\'s job list is full') end
     local wood = spec.shops[df.workshop_type[bench.type]] == 'wood'
     if a.dry_run then return {ok = true, dry_run = true, workshop = bench.id, count = n, lifted = lifted, material = wood and 'wood' or 'stone'} end
-    for _ = 1, n do
-        local job = dfhack.job.createLinked()
-        job.job_type = jt
-        job.mat_type = -1
-        local ji = df.job_item:new()
-        ji.mat_type = -1
-        ji.mat_index = -1
-        ji.quantity = 1
-        if wood then
-            job.material_category.wood = true
-            ji.item_type = df.item_type.WOOD
-            ji.vector_id = df.job_item_vector_id.WOOD
-        else
-            ji.item_type = df.item_type.BOULDER
-            ji.vector_id = df.job_item_vector_id.BOULDER
-            ji.flags3.hard = true
-        end
-        job.job_items.elements:insert('#', ji)
-        dfhack.job.assignToWorkshop(job, bench)
-    end
+    for _ = 1, n do bench_job(bench, jt, wood) end
     return {ok = true, workshop = bench.id, count = n, lifted = lifted > 0 and lifted or nil,
             material = wood and 'wood' or 'stone'}
 end
@@ -825,7 +817,8 @@ function act_cancel_work_order(a)
             save_ai_orders(data)
             -- (0.104.34) its jobs that nobody works go with it (DF leaves them)
             local gone = 0
-            pcall(function() gone = orphan_jobs(false, 30) end)
+            -- (0.105.33) only this order's: the fort-wide sweep is clear_orphan_jobs' own rule
+            pcall(function() gone = orphan_jobs(false, 30, id) end)
             return {ok = true, order_id = id, cancelled = true, jobs_removed = gone > 0 and gone or nil}
         end
     end

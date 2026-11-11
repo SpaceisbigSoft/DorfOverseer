@@ -18,7 +18,7 @@ from planner_trade import *  # noqa: F401,F403  (13c: split out by theme)
 from planner_labor import *  # noqa: F401,F403  (13c: split out by theme)
 from planner_farms import *  # noqa: F401,F403  (13c: split out by theme)
 
-__all__ = ["CONTAINER_RECIPES", "GEAR_ORDER_METALS", "_supply_rules", "_slow_game_rules", "_clutter_rules", "_disposal_rules", "DISPOSAL_RULES", "disposal_report", "disposal_places_dump", "_kiln_rules", "_soap_rule", "_pasture_rule", "LABOR_MODES_FIXED", "INDUSTRY_SHOPS", "_industry_rules", "_steel_rule", "_bottleneck_rule", "drink_short", "_crop_rules", "_farm_crops_rule", "farm_plots_live", "crops_owned", "drink_known_short", "_kitchen_rule", "_fishery_rule", "_bench_coffins_rule", "STONE_CRAFTS", "order_shop", "_order_slots_rule", "_orphan_jobs_rule", "_unsuspend_rule", "_approve_rule", "_stuck_orders_rule", "COAL_STONES", "_coal_rule", "_picks_order", "_stone_rule", "stone_crisis", "PRECIOUS_ORES", "_cloth_rule", "_trade_rules", "_gems_rule", "trade_wants", "_spare_mechanisms_rule", "_hauling_rule", "_surface_basics", "trees_this_year", "_keep_rule", "DEEP_SURFACE_KINDS", "_deep_surface_filter", "_deep_depot_choice", "_deep_depot_watch", "_free_time_rule", "_labor_rules", "OWN_LABOR_RULES", "FEEDER_ORDER", "_feeder_rule", "woodcutters", "gatherers", "trade_margin_for", "keeps_treasures", "spare_mechanisms", "_dairy_rule", "_eggs_rule", "EXCESS_SHOPS", "_excess_shops_rule", "drink_below_target", "drink_crisis", "drink_target_per_dwarf", "crisis_brew_room", "brew_jobs_open", "_labor_waiting_rule", "farm_target", "thirsty_farm_extra", "_farm_rule", "_smelting_rule", "_shoes_recipe", "_glass_rule", "PRECIOUS_METALS", "precious_metal"]
+__all__ = ["CONTAINER_RECIPES", "GEAR_ORDER_METALS", "_supply_rules", "_slow_game_rules", "_clutter_rules", "_disposal_rules", "DISPOSAL_RULES", "disposal_report", "disposal_places_dump", "_kiln_rules", "_soap_rule", "_pasture_rule", "LABOR_MODES_FIXED", "INDUSTRY_SHOPS", "_industry_rules", "_steel_rule", "_bottleneck_rule", "drink_short", "_crop_rules", "_farm_crops_rule", "farm_plots_live", "crops_owned", "drink_known_short", "_kitchen_rule", "_fishery_rule", "_bench_coffins_rule", "STONE_CRAFTS", "order_shop", "_order_slots_rule", "_orphan_jobs_rule", "_unsuspend_rule", "_approve_rule", "_stuck_orders_rule", "COAL_STONES", "_coal_rule", "_picks_order", "_stone_rule", "stone_crisis", "PRECIOUS_ORES", "_cloth_rule", "_trade_rules", "_gems_rule", "GEMS_GENEROUS_GREED", "trade_wants", "_spare_mechanisms_rule", "_hauling_rule", "_surface_basics", "trees_this_year", "_keep_rule", "DEEP_SURFACE_KINDS", "_deep_surface_filter", "_deep_depot_choice", "_deep_depot_watch", "_free_time_rule", "_labor_rules", "OWN_LABOR_RULES", "FEEDER_ORDER", "_feeder_rule", "woodcutters", "gatherers", "trade_margin_for", "keeps_treasures", "spare_mechanisms", "_dairy_rule", "_eggs_rule", "EXCESS_SHOPS", "_excess_shops_rule", "drink_below_target", "drink_crisis", "drink_target_per_dwarf", "crisis_brew_room", "brew_jobs_open", "_labor_waiting_rule", "farm_target", "thirsty_farm_extra", "_farm_rule", "_smelting_rule", "_shoes_recipe", "_glass_rule", "PRECIOUS_METALS", "precious_metal"]
 
 CONTAINER_RECIPES = {"wooden_barrel", "stone_large_pot"}
 # ore worth mining for gear, most wanted first (iron makes steel; tin with copper makes bronze)
@@ -343,6 +343,22 @@ def _clutter_rules(s: dict, cfg: dict, proposals: list, notes: list, memory=None
                                       f"{uc.get('dead')} of the {uc.get('total')} creatures on the game's list are dead "
                                       f"(up to {scrub} slaughtered or nameless): clear the old ones (DFHack's "
                                       "fix/dead-units; the fort's own dead are kept)", 7))
+    # (0.105.33 fix) a strange mood wants bone or shell, or the fort is at or
+    # under its bone reserve (planner_moods MOOD_RESERVES), after a prune put
+    # usable parts on deteriorate's timer (it stays on in the save): taken off
+    # it, so the loose bones and shells stop rotting
+    mood_bone = any(isinstance(x, dict) and mood_kind(x) in ("bone", "shell")
+                    for m in _l(_d(s.get("moods")).get("list")) if isinstance(m, dict)
+                    for x in _l(m.get("missing")))
+    bones = _d(s.get("needs")).get("bones")
+    low = (isinstance(bones, (int, float)) and not isinstance(bones, bool)
+           and bones <= cfg.get("reserve_bones", 5))
+    if (mood_bone or low) and last("prune") is not None and due("prune_keep_parts", 7):
+        proposals.append(Proposal("prune_keep_parts", {"type": "prune_remains", "keep": ["usable-parts"]},
+                                  ("a strange mood wants bone or shell" if mood_bone else
+                                   f"the fort has {bones} bone(s), at or under its reserve")
+                                  + ": loose bones and shells come off deteriorate's timer (an earlier prune "
+                                    "put them on it)", 5))
     if not slow:
         return
     # (0.104.0) old remains rot away: non-entombed corpses and body parts
@@ -362,7 +378,12 @@ def _clutter_rules(s: dict, cfg: dict, proposals: list, notes: list, memory=None
         return
     extra = []
     if ground.get("CORPSEPIECE", 0) >= cfg["prune_parts_min"]:
-        extra.append("usable-parts")
+        # (0.105.33) not while a strange mood asks for bone or shell (on hand
+        # or not: what lies loose would rot), nor with the fort at or under
+        # its bone reserve (planner_moods MOOD_RESERVES): a failed mood kills
+        # (mood_bone and low: read above)
+        if not (mood_bone or low):
+            extra.append("usable-parts")
     worn = {str(_d(x).get("name")): int(_d(x).get("n") or 0) for x in _l(_d(cen.get("items")).get("worn"))}
     if sum(worn.get(k, 0) for k in ("SHOES", "GLOVES", "PANTS", "ARMOR", "HELM")) >= cfg["prune_worn_min"]:
         extra.append("clothes")
@@ -987,7 +1008,10 @@ def _bottleneck_rule(s: dict, cfg: dict, citizens: int, proposals: list, memory=
     if _workshops_busy(open_):
         return
     b = _d(s.get("buildings"))
-    places = {**_d(b.get("workshops")), **_d(b.get("furnaces"))}
+    # (0.105.33 merge, T1) a count that isn't a number (a None from an odd
+    # report) is none: `None >= 1` stopped the rule
+    places = {k: (v if isinstance(v, int) and not isinstance(v, bool) else 0)
+              for k, v in {**_d(b.get("workshops")), **_d(b.get("furnaces"))}.items()}
     backlog: dict[str, int] = {}
     for o in _l(s.get("orders")):
         if not isinstance(o, dict) or not o.get("by_ai"):
@@ -1318,12 +1342,23 @@ def _glass_rule(s: dict, cfg: dict, proposals: list, notes: list) -> None:
                               f"crafts to sell: make {n} of green glass", 6, True))
 
 
-def _gems_rule(s: dict, cfg: dict, proposals: list) -> None:
+GEMS_GENEROUS_GREED = -30     # (0.105.33) at or under this, twice the gems set into goods to give away
+
+
+def _gems_rule(s: dict, cfg: dict, proposals: list, traits: dict | None = None, memory=None,
+               notes: list | None = None) -> None:
     """Gems: rough gems are cut at a jeweller's (DFHack's autogems, the tools
     rule) and sold; the workshop first. Cut gems in stock are set into the
-    crafts waiting to be sold (several times their value), a few at a time."""
+    crafts waiting to be sold (several times their value), a few at a time.
+    (0.105.33, Greed) A grasping fort (keeps_treasures: Greed +30, or
+    Gem-mad) never sets them: its cut gems are the hoard. A generous one
+    (Greed -30 or less) sets up to 10 at a time, not 5. `traits` defaults to
+    the report's; without `memory` Gem-mad isn't seen (Greed alone is)."""
     tr = _d(s.get("trade"))
     cg = _d(tr.get("cut_gem"))
+    t = traits if traits is not None else _traits(s)
+    greed = _d(t).get("greed", 0) or 0
+    hoard = keeps_treasures(t, memory)
     # (0.105.24) a strange mood waiting for a rough or a cut gem it can't find:
     # the jewellers leave the last ones alone (E, 3 Nov: moods failed on "a
     # rough gem" while the AI cut 4-7 at a time down to under 5)
@@ -1332,7 +1367,17 @@ def _gems_rule(s: dict, cfg: dict, proposals: list) -> None:
             and "cut_gem" not in waits
             and int(tr.get("goods") or 0) >= cfg["gems_cut_at"] and str(cg.get("token", "")).startswith("INORGANIC:")
             and not queued(s, {"encrust_goods"})):
-        n = min(5, int(cg["n"]) // 2)
+        if hoard:
+            if notes is not None:
+                notes.append(f"{cg.get('total')} cut gems kept in store, not set into crafts: "
+                             + (f"Greed {int(greed):+d}" if greed >= KEEP_TREASURES_GREED else "Gem-mad")
+                             + ", the fort hoards its gems")
+            n = 0
+        else:
+            n = min(10 if greed <= GEMS_GENEROUS_GREED else 5, int(cg["n"]) // 2)
+    else:
+        n = 0
+    if n > 0:
         proposals.append(Proposal("encrust", {"type": "work_order", "recipe": "encrust_goods", "amount": n,
                                               "material": cg["token"]},
                                   f"{cg.get('total')} cut gems and {tr.get('goods')} crafts to sell: set {n} "

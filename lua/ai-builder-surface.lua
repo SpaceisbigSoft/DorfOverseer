@@ -5,7 +5,7 @@
 -- into its own environment, so every name here is reqscript('ai-builder').name
 -- and the helpers defined there (info, quickfort_apply, ...) are in reach.
 
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-surface'] = '0.105.32'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-surface'] = '0.105.33'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local info, ez = info, ez
 
@@ -438,6 +438,8 @@ function crossings_report()
     local mine = {}
     for i, b in ipairs(d.list) do
         local bld = b.x and dfhack.buildings.findAtTile(xyz2pos(b.x, b.y, b.z))
+        -- (0.105.33) somebody else's bridge there is not the AI's one standing
+        if bld and bld:getType() == df.building_type.Bridge and not crossing_is_mine(b, bld) then bld = nil end
         local built = bld and bld:getType() == df.building_type.Bridge
             and bld:getBuildStage() >= bld:getMaxBuildStage() or false
         table.insert(mine, {index = i, x = b.x, y = b.y, z = b.z, len = b.len, width = b.width, kind = b.kind,
@@ -488,10 +490,23 @@ function build_crossing(x, y, z, dir, len, width, kind, now, dry_run)
     local out = {ok = true, x = x1, y = y1, elevation = ez(z), w = w, h = h, kind = kind, dry_run = dry_run or nil}
     if dry_run then return out end
     local data = crossings_data()
+    -- (0.105.33) the bridge's building id, so only this one is ever taken down
+    local okb, id = pcall(function()
+        local bld = dfhack.buildings.findAtTile(xyz2pos(x1, y1, z))
+        return bld and bld:getType() == df.building_type.Bridge and bld.id or nil
+    end)
+    id = okb and id or nil
     table.insert(data.list, {x = x1, y = y1, z = z, w = w, h = h, len = len, width = width, dir = dir,
-                             kind = kind or 'cheap', tick = now})
+                             kind = kind or 'cheap', tick = now, id = id})
     site_put(CROSS_KEY, data)
     return out
+end
+
+-- (0.105.33) Is this bridge building the one the record `b` is of?
+function crossing_is_mine(b, bld)
+    if b.id ~= nil then return bld.id == b.id end
+    local w, h = b.w or 1, b.h or 1
+    return bld.x1 == b.x and bld.y1 == b.y and bld.x2 == b.x + w - 1 and bld.y2 == b.y + h - 1 and bld.z == b.z
 end
 
 -- Take down one of the AI's own bridges (an older, narrower one once its
@@ -504,6 +519,10 @@ function remove_crossing(index, dry_run)
     if bld and bld:getType() ~= df.building_type.Bridge then
         return {ok = false, rejected = true, error = 'that spot holds something else now: left alone'}
     end
+    -- (0.105.33) a bridge there that isn't the AI's (its id, or for a record
+    -- without one its exact rectangle): the player's, left standing; the
+    -- AI's record of a bridge gone is dropped
+    if bld and not crossing_is_mine(b, bld) then bld = nil end
     if dry_run then return {ok = true, dry_run = true, index = index} end
     if bld then dfhack.buildings.deconstruct(bld) end
     table.remove(data.list, index)
@@ -588,6 +607,19 @@ function keep_tile(x, y, z)
     if t.hidden or not t.outside or t.designated or tile_taken(x, y, z) then return nil end
     if GROUND[t.shape] then return 'ground' end
     return nil
+end
+
+-- (0.105.33) A 'planned' ring tile that is a wall waiting to be built: a
+-- Construction there (any other building, a trap, a statue, the player's
+-- door, is a gap: counted as such it kept the keep "going up" forever).
+-- When the building can't be read it is taken as a wall waiting (as before).
+-- Tests swap it.
+function keep_wall_waits(x, y, z)
+    local ok, other = pcall(function()
+        local b = dfhack.buildings.findAtTile(xyz2pos(x, y, z))
+        return b ~= nil and b:getType() ~= df.building_type.Construction
+    end)
+    return not (ok and other)
 end
 
 -- (0.105.30) Why keep_tile gives nil there, in words (the refusal names the
@@ -902,7 +934,9 @@ function keep_status()
         if t == 'tree' then out.trees_left = out.trees_left + 1 end
         local is_door = k.door and p.x == k.door.x and p.y == k.door.y
         if not is_door and t ~= 'wall' then out.walls_left = out.walls_left + 1 end
-        if not is_door and t == 'planned' then out.walls_planned = out.walls_planned + 1 end
+        if not is_door and t == 'planned' and keep_wall_waits(p.x, p.y, k.z) then
+            out.walls_planned = out.walls_planned + 1
+        end
     end
     -- (0.105.30) the roof stair: its lower half waiting counts as roof to build
     if k.stage == 'stair' and k.stair then
@@ -922,6 +956,19 @@ function keep_status()
                 end
             end
         end
+    end
+    -- (0.105.33) the blocks still to go into it, for the brain's stone-blocks
+    -- order (it read keep.blocks_needed, which was never written): the walls
+    -- not built yet (planned ones wait for blocks too), the roof (its whole
+    -- inside before the roof stage) and the roof stair's two halves
+    if k.stage == 'done' then
+        out.blocks_needed = 0
+    else
+        local inner = math.max(0, 2 * k.r - 1)
+        local roof = (k.stage == 'roof') and out.roof_left or inner * inner
+        local stair = 0
+        if ROOF_STAIR and k.stage ~= 'roof' then stair = (k.stage == 'stair') and 1 or 2 end
+        out.blocks_needed = out.walls_left + roof + stair
     end
     out.elevation = ez(k.z)
     return out
@@ -2365,111 +2412,118 @@ function place_dump_zone(inside, dry_run)
     local anchors = pasture_anchors()
     if #anchors == 0 then return dump_fail(true, 'no entrance or staircase to start from') end
     local a = anchors[1]
+    -- (0.105.33) the tile cache only for this search, cleared on every way
+    -- out (an error in it left the module-wide cache live: every later read
+    -- answered stale tiles)
     CACHE = {}
-    local reserved = {}
-    for _, p in ipairs(open_projects(load_projects())) do table.insert(reserved, p.area) end
-    local away = dump_keep_away()
-    local function ok_spot(x1, y1, x2, y2, z)
-        return not near_any(away, x1, y1, x2, y2, z, DUMP_KEEP_AWAY)
-    end
-    -- (0.105.27 fixes) no item on it (what lies in a dump zone may be removed)
-    local function free(x, y, z)
-        local t = info(x, y, z)
-        return t and t.shape == 'FLOOR' and not t.liquid and not t.outside and not t.building and not t.items
-            and not t.designated and not tile_taken(x, y, z) and walk_group(x, y, z) ~= 0
-            and not inside_any(reserved, x, y, z)
-    end
-    -- (0.105.27 fixes) a dead end: the 16 tiles round the 3x3 open in ONE
-    -- run of at most DUMP_OPENING tiles (a doorway or a corridor's end), so
-    -- the dump is no through-path and no part of a hall or corridor
-    local RING = {}
-    for i = 0, 4 do table.insert(RING, {i - 1, -1}) end
-    for i = 1, 4 do table.insert(RING, {3, i - 1}) end
-    for i = 1, 4 do table.insert(RING, {3 - i, 3}) end
-    for i = 1, 3 do table.insert(RING, {-1, 3 - i}) end
-    local function dead_end(x, y, z)
-        local open = {}
-        for i, d in ipairs(RING) do
-            local t = info(x + d[1], y + d[2], z)
-            open[i] = t ~= nil and t.shape ~= 'WALL'
+    local okf, best, on_floor = pcall(function()
+        local reserved = {}
+        for _, p in ipairs(open_projects(load_projects())) do table.insert(reserved, p.area) end
+        local away = dump_keep_away()
+        local function ok_spot(x1, y1, x2, y2, z)
+            return not near_any(away, x1, y1, x2, y2, z, DUMP_KEEP_AWAY)
         end
-        local n, runs = #RING, 0
-        local total = 0
-        for i = 1, n do
-            if open[i] then
-                total = total + 1
-                if not open[(i - 2) % n + 1] then runs = runs + 1 end
+        -- (0.105.27 fixes) no item on it (what lies in a dump zone may be removed)
+        local function free(x, y, z)
+            local t = info(x, y, z)
+            return t and t.shape == 'FLOOR' and not t.liquid and not t.outside and not t.building and not t.items
+                and not t.designated and not tile_taken(x, y, z) and walk_group(x, y, z) ~= 0
+                and not inside_any(reserved, x, y, z)
+        end
+        -- (0.105.27 fixes) a dead end: the 16 tiles round the 3x3 open in ONE
+        -- run of at most DUMP_OPENING tiles (a doorway or a corridor's end), so
+        -- the dump is no through-path and no part of a hall or corridor
+        local RING = {}
+        for i = 0, 4 do table.insert(RING, {i - 1, -1}) end
+        for i = 1, 4 do table.insert(RING, {3, i - 1}) end
+        for i = 1, 4 do table.insert(RING, {3 - i, 3}) end
+        for i = 1, 3 do table.insert(RING, {-1, 3 - i}) end
+        local function dead_end(x, y, z)
+            local open = {}
+            for i, d in ipairs(RING) do
+                local t = info(x + d[1], y + d[2], z)
+                open[i] = t ~= nil and t.shape ~= 'WALL'
             end
+            local n, runs = #RING, 0
+            local total = 0
+            for i = 1, n do
+                if open[i] then
+                    total = total + 1
+                    if not open[(i - 2) % n + 1] then runs = runs + 1 end
+                end
+            end
+            return runs == 1 and total <= DUMP_OPENING
         end
-        return runs == 1 and total <= DUMP_OPENING
-    end
-    local function dist(x, y, z) return math.max(math.abs(x + 1 - a.x), math.abs(y + 1 - a.y)) + 3 * math.abs(a.z - z) end
-    -- 1) a free 3x3 of inside floor
-    local best
-    for z = a.z, a.z - DUMP_INSIDE_DEPTH + 1, -1 do
-        for y = a.y - DUMP_INSIDE_RADIUS, a.y + DUMP_INSIDE_RADIUS do
-            for x = a.x - DUMP_INSIDE_RADIUS, a.x + DUMP_INSIDE_RADIUS do
-                local d = dist(x, y, z)
-                if (not best or d < best.d) and math.max(math.abs(x + 1 - a.x), math.abs(y + 1 - a.y)) >= DUMP_KEEP_ENTRANCE
-                        and ok_spot(x, y, x + 2, y + 2, z) then
-                    local fits = true
-                    for dy = 0, 2 do
-                        for dx = 0, 2 do
-                            if fits and not free(x + dx, y + dy, z) then fits = false end
+        local function dist(x, y, z) return math.max(math.abs(x + 1 - a.x), math.abs(y + 1 - a.y)) + 3 * math.abs(a.z - z) end
+        -- 1) a free 3x3 of inside floor
+        local best
+        for z = a.z, a.z - DUMP_INSIDE_DEPTH + 1, -1 do
+            for y = a.y - DUMP_INSIDE_RADIUS, a.y + DUMP_INSIDE_RADIUS do
+                for x = a.x - DUMP_INSIDE_RADIUS, a.x + DUMP_INSIDE_RADIUS do
+                    local d = dist(x, y, z)
+                    if (not best or d < best.d) and math.max(math.abs(x + 1 - a.x), math.abs(y + 1 - a.y)) >= DUMP_KEEP_ENTRANCE
+                            and ok_spot(x, y, x + 2, y + 2, z) then
+                        local fits = true
+                        for dy = 0, 2 do
+                            for dx = 0, 2 do
+                                if fits and not free(x + dx, y + dy, z) then fits = false end
+                            end
                         end
+                        if fits and dead_end(x, y, z) then best = {x = x, y = y, z = z, d = d} end
                     end
-                    if fits and dead_end(x, y, z) then best = {x = x, y = y, z = z, d = d} end
                 end
             end
         end
-    end
-    if best then
-        CACHE = nil
-        return zone_inside(best.x, best.y, best.z, dry_run, 'a garbage dump on free floor inside, near the entrance')
-    end
-    -- 2) a 3x3 room dug off a corridor, through a one-tile doorway
-    local function solid(x, y, z) return (natural_wall(info(x, y, z))) end
-    local function safe(x, y, z)
-        local t = info(x, y, z)
-        return t ~= nil and not t.liquid and not t.aquifer and not t.feature and not t.outside and not t.warm
-    end
-    local DIRS = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}}
-    for z = a.z, a.z - DUMP_INSIDE_DEPTH + 1, -1 do
-        for y = a.y - DUMP_INSIDE_RADIUS, a.y + DUMP_INSIDE_RADIUS do
-            for x = a.x - DUMP_INSIDE_RADIUS, a.x + DUMP_INSIDE_RADIUS do
-                local t = info(x, y, z)
-                if t and t.shape == 'FLOOR' and not t.outside and not t.liquid and not t.building
-                        and walk_group(x, y, z) ~= 0 then
-                    for _, dv in ipairs(DIRS) do
-                        local ex, ey = x + dv[1], y + dv[2]                 -- the doorway
-                        local mx, my = ex + dv[1], ey + dv[2]               -- the room's middle of its near side
-                        local rx, ry
-                        if dv[1] ~= 0 then rx, ry = (dv[1] > 0) and mx or mx - 2, my - 1
-                        else rx, ry = mx - 1, (dv[2] > 0) and my or my - 2 end
-                        local d = dist(rx, ry, z)
-                        if (not best or d < best.d) and ok_spot(rx, ry, rx + 2, ry + 2, z)
-                                and solid(ex, ey, z) and not inside_any(reserved, ex, ey, z) then
-                            local fits = true
-                            for yy = ry - 1, ry + 3 do
-                                for xx = rx - 1, rx + 3 do
-                                    if fits then
-                                        local in_room = xx >= rx and xx <= rx + 2 and yy >= ry and yy <= ry + 2
-                                        if in_room then
-                                            fits = solid(xx, yy, z) and not inside_any(reserved, xx, yy, z)
-                                        elseif not (xx == ex and yy == ey) then
-                                            fits = safe(xx, yy, z)
+        if best then return best, true end
+        -- 2) a 3x3 room dug off a corridor, through a one-tile doorway
+        local function solid(x, y, z) return (natural_wall(info(x, y, z))) end
+        local function safe(x, y, z)
+            local t = info(x, y, z)
+            return t ~= nil and not t.liquid and not t.aquifer and not t.feature and not t.outside and not t.warm
+        end
+        local DIRS = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}}
+        for z = a.z, a.z - DUMP_INSIDE_DEPTH + 1, -1 do
+            for y = a.y - DUMP_INSIDE_RADIUS, a.y + DUMP_INSIDE_RADIUS do
+                for x = a.x - DUMP_INSIDE_RADIUS, a.x + DUMP_INSIDE_RADIUS do
+                    local t = info(x, y, z)
+                    if t and t.shape == 'FLOOR' and not t.outside and not t.liquid and not t.building
+                            and walk_group(x, y, z) ~= 0 then
+                        for _, dv in ipairs(DIRS) do
+                            local ex, ey = x + dv[1], y + dv[2]                 -- the doorway
+                            local mx, my = ex + dv[1], ey + dv[2]               -- the room's middle of its near side
+                            local rx, ry
+                            if dv[1] ~= 0 then rx, ry = (dv[1] > 0) and mx or mx - 2, my - 1
+                            else rx, ry = mx - 1, (dv[2] > 0) and my or my - 2 end
+                            local d = dist(rx, ry, z)
+                            if (not best or d < best.d) and ok_spot(rx, ry, rx + 2, ry + 2, z)
+                                    and solid(ex, ey, z) and not inside_any(reserved, ex, ey, z) then
+                                local fits = true
+                                for yy = ry - 1, ry + 3 do
+                                    for xx = rx - 1, rx + 3 do
+                                        if fits then
+                                            local in_room = xx >= rx and xx <= rx + 2 and yy >= ry and yy <= ry + 2
+                                            if in_room then
+                                                fits = solid(xx, yy, z) and not inside_any(reserved, xx, yy, z)
+                                            elseif not (xx == ex and yy == ey) then
+                                                fits = safe(xx, yy, z)
+                                            end
                                         end
                                     end
                                 end
+                                if fits then best = {x = rx, y = ry, z = z, d = d, ex = ex, ey = ey} end
                             end
-                            if fits then best = {x = rx, y = ry, z = z, d = d, ex = ex, ey = ey} end
                         end
                     end
                 end
             end
         end
-    end
+        return best, false
+    end)
     CACHE = nil
+    if not okf then return dump_fail(true, 'the dump search failed: ' .. tostring(best):sub(1, 160)) end
+    if best and on_floor then
+        return zone_inside(best.x, best.y, best.z, dry_run, 'a garbage dump on free floor inside, near the entrance')
+    end
     if not best then
         return dump_fail(true, 'no free floor and no solid rock for a small room near the entrance, '
             .. 'away from the meeting hall and the food')

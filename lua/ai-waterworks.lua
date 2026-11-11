@@ -39,10 +39,15 @@ IRR_DRY_DAYS = 28       -- still wet this long: said so
 MAGMA_REACH = 10        -- the workshop's pit this near the magma
 MAGMA_STAIR_MAX = 60    -- levels of stair down to the magma at most
 PATH_MAX = 400          -- tiles the water may reach (outside, for a moat)
+FILL_STALL_DAYS = 28    -- (0.105.33) filling with no rise this long: held, said why
+REOPEN_AFTER_DAYS = 3   -- (0.105.33) a shut floodgate opened again no sooner than this
+SHUTS_MAX = 3           -- (0.105.33) shut this often for a flood: held for the player
 DAY = 1200
 
 local NATURAL = {STONE = true, MINERAL = true, SOIL = true, LAVA_STONE = true}
-local OPEN = {FLOOR = true, OPEN_SPACE = true, RAMP = true, RAMP_TOP = true, STAIR_UP = true,
+-- (0.105.33) open space is 'EMPTY' in df.tiletype_shape (what tile_info gives);
+-- 'OPEN_SPACE' is no shape name, so tests for it never matched in the game
+local OPEN = {FLOOR = true, RAMP = true, RAMP_TOP = true, STAIR_UP = true,
               STAIR_DOWN = true, STAIR_UPDOWN = true, SHRUB = true, SAPLING = true, PEBBLES = true,
               BOULDER = true, EMPTY = true, BROOK_TOP = true}
 local function key(x, y, z) return x .. ',' .. y .. ',' .. z end
@@ -104,9 +109,16 @@ end
 
 function link(lever_id, target_id) return reqscript('ai-gates').link_lever(lever_id, target_id, false) end
 
-function is_linked(lever_id, target_id)
+-- every lever's links (ai-gates), or nil
+function lever_links()
     local ok, links = pcall(function() return reqscript('ai-gates').lever_links() end)
-    if not ok then return false end
+    return ok and type(links) == 'table' and links or nil
+end
+
+-- links: lever_links() already fetched (the report fetches them once)
+function is_linked(lever_id, target_id, links)
+    links = links or lever_links()
+    if not links then return false end
     for _, l in ipairs(links[target_id] or {}) do if l == lever_id then return true end end
     return false
 end
@@ -124,6 +136,25 @@ end
 -- (13c) the builder's (a pull already on its way counts as done)
 function pull(lever_id, instant)
     return reqscript('ai-builder').pull(lever_id, instant) == true
+end
+
+-- (0.105.33) a dwarf's pull on its way called off: after an instant shut,
+-- a late pull would toggle the floodgate open again. (0.105.33 merge) the
+-- builder's one copy (ai-builder-cistern.lua cancel_lever_pulls); this loop
+-- only when it can't be had
+function cancel_pulls(lever_id)
+    local okb, B = pcall(reqscript, 'ai-builder')
+    if okb and type(B) == 'table' and type(B.cancel_lever_pulls) == 'function' then
+        local okc, n = pcall(B.cancel_lever_pulls, lever_id)
+        if okc then return n end
+    end
+    pcall(function()
+        local list = {}
+        for _, j in ipairs(df.building.find(lever_id).jobs) do
+            if j.job_type == df.job_type.PullLever then table.insert(list, j) end
+        end
+        for _, j in ipairs(list) do dfhack.job.removeJob(j) end
+    end)
 end
 
 function dig_now(x, y, z)
@@ -286,9 +317,10 @@ local function still_water(t)
 end
 
 -- An L-shaped run of tiles from a (included) to b (excluded) on one level,
--- each passing ok(x, y); the x-first or the y-first way, whichever passes.
-local function l_path(a, b, ok)
-    for _, xfirst in ipairs({true, false}) do
+-- each passing ok(x, y); the x-first or the y-first way, whichever passes
+-- (only: true or false, that way alone).
+local function l_path(a, b, ok, only)
+    for _, xfirst in ipairs(only == nil and {true, false} or {only}) do
         local path, x, y, good = {}, a.x, a.y, true
         local function walk(tx, ty)
             while (x ~= tx or y ~= ty) and good do
@@ -310,11 +342,62 @@ local N8 = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, 1}, {1, -1}, {-1, 1}, {-1, -1}
 -- The dry run: where the water (or magma) would go
 ---------------------------------------------------------------------------
 
+-- (0.105.33) The source's side of the floodgate: the plug's wet tile and
+-- the plan's `upstream` tiles (a tunnel between the plug and the gate).
+local function upstream_of(p)
+    local up = {}
+    if p.plug and p.gate then up[key(p.plug.x, p.plug.y, p.gate.z)] = true end
+    for _, c in ipairs(p.upstream or {}) do up[key(c.x, c.y, c.z)] = true end
+    return up
+end
+
+-- (0.105.33) Pure: does the liquid get round the floodgate? Water and magma
+-- flow diagonally, so a dug tile (other than the plug) with liquid among its
+-- 8 neighbours fills as soon as it is dug, before the floodgate is built;
+-- and a tile on the fort's side (other than the gate) touching the source's
+-- side lets the liquid skip the gate. nil, or {why, x, y, z}.
+function bypass(p)
+    local up = upstream_of(p)
+    local gk = p.gate and key(p.gate.x, p.gate.y, p.gate.z)
+    local exempt = {}
+    if p.plug then
+        exempt[key(p.plug.x, p.plug.y, p.plug.z)] = true
+        if p.gate then exempt[key(p.plug.x, p.plug.y, p.gate.z)] = true end
+    end
+    local seen = {}
+    for _, list in ipairs({p.tiles or {}, p.wet or {}, p.dig or {}, p.dig2 or {}}) do
+        for _, c in ipairs(list) do
+            local k = key(c.x, c.y, c.z)
+            if not seen[k] then
+                seen[k] = true
+                for _, d in ipairs(N8) do
+                    local x, y = c.x + d[1], c.y + d[2]
+                    local nk = key(x, y, c.z)
+                    if not exempt[k] then
+                        local t = T(x, y, c.z)
+                        if t and t.liquid then
+                            return {why = ('liquid beside the dug tile at x%d y%d (only the plug may touch it): '
+                                           .. 'it would get round the floodgate'):format(c.x, c.y), x = x, y = y, z = c.z}
+                        end
+                    end
+                    if not up[k] and k ~= gk and up[nk] then
+                        return {why = ('the tile at x%d y%d touches the source\'s side of the floodgate: '
+                                       .. 'the liquid would go round the floodgate'):format(c.x, c.y), x = c.x, y = c.y, z = c.z}
+                    end
+                end
+            end
+        end
+    end
+    return nil
+end
+
 -- Walks the liquid from the work's own tiles (the plan's `wet`), over its
 -- planned tiles and any open tile beside them, on the level and down through
--- open space (liquid never climbs: no source here is under pressure). Stops
--- at the source (liquid not in the plan). Refuses at a citizen, workshop,
--- bed, stockpile or other building, the fort's inside (a moat), or any tile
+-- open space (and, under pressure, up: a pumped stack, or a river whose
+-- higher reaches push it, to `pressure_top` at most). Liquid met from the
+-- source's side is the source; met from any other tile, the floodgate is
+-- bypassed: refused (0.105.33). Refuses at a citizen, workshop, bed,
+-- stockpile or other building, the fort's inside (a moat), or any tile
 -- outside the plan underground. {ok, tiles, outside, why, at}
 function path_check(p)
     local planned, wet = {}, {}
@@ -329,6 +412,9 @@ function path_check(p)
     local function refuse(why, x, y, z)
         return {ok = false, tiles = #queue, why = why, at = {x = x, y = y, z = z, e = ez(z)}}
     end
+    local by = bypass(p)
+    if by then return refuse(by.why, by.x, by.y, by.z) end
+    local up_side = upstream_of(p)
     for _, c in ipairs(p.wet) do
         local k = key(c.x, c.y, c.z)
         if not seen[k] then seen[k] = true; table.insert(queue, c) end
@@ -349,29 +435,40 @@ function path_check(p)
             end
         end
         if #queue > PATH_MAX then return refuse('the water could spread past ' .. PATH_MAX .. ' tiles', c.x, c.y, c.z) end
+        local from_source, met = up_side[k], nil
         local function visit(x, y, z)
             local nk = key(x, y, z)
             if seen[nk] or (p.stops and p.stops[nk]) then return end
             local t = T(x, y, z)
             if not t then return end
             if planned[nk] then seen[nk] = true; table.insert(queue, {x = x, y = y, z = z}) return end
-            if t.liquid then return end                     -- the source itself
+            if t.liquid then                                -- the source itself, from its side only
+                if not from_source then met = met or {x = x, y = y, z = z} end
+                return
+            end
             if OPEN[t.shape] then seen[nk] = true; table.insert(queue, {x = x, y = y, z = z}) end
         end
         for _, d in ipairs(N8) do visit(c.x + d[1], c.y + d[2], c.z) end
-        if p.pressure then
-            -- (pumped water is under pressure: it climbs through any opening above)
+        if p.pressure and (p.pressure_top == nil or c.z + 1 <= p.pressure_top) then
+            -- (water under pressure climbs through any opening above: the work's
+            -- own channels count, dug or not)
+            local uk = key(c.x, c.y, c.z + 1)
             local up = T(c.x, c.y, c.z + 1)
-            if up and (up.shape == 'OPEN_SPACE' or up.shape == 'STAIR_DOWN' or up.shape == 'STAIR_UPDOWN'
-                       or up.shape == 'RAMP_TOP') and not (p.stops and p.stops[key(c.x, c.y, c.z + 1)]) then
+            if up and (up.shape == 'EMPTY' or up.shape == 'STAIR_DOWN' or up.shape == 'STAIR_UPDOWN'
+                       or up.shape == 'RAMP_TOP' or (p.channels and p.channels[uk]))
+                    and not (p.stops and p.stops[uk]) then
                 visit(c.x, c.y, c.z + 1)
             end
         end
         local below = T(c.x, c.y, c.z - 1)
         local here = T(c.x, c.y, c.z)
-        if below and (here == nil or here.shape == 'OPEN_SPACE' or here.shape == 'STAIR_DOWN'
+        if below and (here == nil or here.shape == 'EMPTY' or here.shape == 'STAIR_DOWN'
                       or here.shape == 'STAIR_UPDOWN' or planned[k] and p.down and p.down[k]) then
             visit(c.x, c.y, c.z - 1)
+        end
+        if met then
+            return refuse('liquid that is not the work\'s source lies beside its water\'s way: '
+                          .. 'it would get round the floodgate', met.x, met.y, met.z)
         end
     end
     return {ok = true, tiles = #queue, outside = outside_n}
@@ -429,8 +526,8 @@ function plan_moat(opts)
     opts = opts or {}
     local w = water_survey()
     if not w then return nil, 'no water survey yet' end
-    local river
-    for _, b in ipairs(w.bodies or {}) do if b.kind == 'river' then river = b.nearest end end
+    local river, river_z2
+    for _, b in ipairs(w.bodies or {}) do if b.kind == 'river' then river, river_z2 = b.nearest, b.z2 end end
     if not river then return nil, 'no river or brook near the fort' end
     local es = entrances()
     if #es == 0 then return nil, 'no surface entrance found (scan the entrances first)' end
@@ -463,14 +560,27 @@ function plan_moat(opts)
             local function dist(t) return math.max(math.abs(t.x - river.x), math.abs(t.y - river.y)) end
             local from = dist(a) <= dist(b) and a or b
             local start = {x = from.x + (from == a and -px or px), y = from.y + (from == a and -py or py)}
-            local feed = l_path(start, river, function(x, y) return ground(x, y, z) end)
-            if not feed then why = why or 'no diggable ground for a channel from the river to the trench' goto next end
-            -- the feed stops at the tile beside the river (the plug)
-            while #feed > 0 do
-                local l = feed[#feed]
-                local nb = T(l.x, l.y, z)
-                if math.max(math.abs(l.x - river.x), math.abs(l.y - river.y)) <= 1 then break end
-                if nb and nb.liquid then table.remove(feed) else break end
+            -- (0.105.33) the feed stops at the tile beside the river (the plug);
+            -- its corner never at the floodgate: the tile before the gate would
+            -- touch the plug diagonally and the water go round the gate
+            local feed, cornered
+            for _, xfirst in ipairs({true, false}) do
+                local f = l_path(start, river, function(x, y) return ground(x, y, z) end, xfirst)
+                while f and #f > 0 do
+                    local l = f[#f]
+                    local nb = T(l.x, l.y, z)
+                    if math.max(math.abs(l.x - river.x), math.abs(l.y - river.y)) <= 1 then break end
+                    if nb and nb.liquid then table.remove(f) else break end
+                end
+                if f and #f >= 3 and math.max(math.abs(f[#f - 2].x - f[#f].x), math.abs(f[#f - 2].y - f[#f].y)) <= 1 then
+                    cornered, f = true, nil
+                end
+                if f then feed = f break end
+            end
+            if not feed then
+                why = why or (cornered and 'the feed channel would turn its corner at the floodgate (the water would go round it)'
+                              or 'no diggable ground for a channel from the river to the trench')
+                goto next
             end
             if #feed < 3 then why = why or 'the river is too close to the trench for a floodgate between' goto next end
             if #feed > MOAT_FEED_MAX then why = why or ('the river is %d tiles from the trench (%d at most)'):format(#feed, MOAT_FEED_MAX) goto next end
@@ -494,6 +604,14 @@ function plan_moat(opts)
                 table.insert(p.wet, {x = feed[i].x, y = feed[i].y, z = z - 1})
             end
             table.insert(p.wet, {x = plug.x, y = plug.y, z = z - 1})
+            -- (0.105.33) river water can be under pressure (from the river's
+            -- higher reaches): the dry run lets it climb to one level under the
+            -- river's highest water the survey saw, up through the channels dug
+            p.pressure = true
+            p.pressure_top = math.max(tonumber(river_z2) or river.z, river.z) - 1
+            p.channels = {}
+            for _, c in ipairs(p.dig) do p.channels[key(c.x, c.y, c.z)] = true end
+            p.channels[key(plug.x, plug.y, z)] = true
             -- the floodgate stands on a floor: the ramp a channel leaves under it removed
             table.insert(p.dig2, {x = gate.x, y = gate.y, z = z - 1, text = 'z'})
             add_tiles(p, p.wet)
@@ -504,6 +622,8 @@ function plan_moat(opts)
             local bx, by = math.min(bx1, cx + px), math.min(by1, cy + py)
             p.bridge = {x = bx, y = by, z = z, w = bw, h = bh, drawbridge = opts.plain ~= true}
             table.insert(p.builds, {x = bx, y = by, z = z, text = ('%s(%dx%d)'):format(bdir, bw, bh), kind = 'Bridge'})
+            local by = bypass(p)             -- (0.105.33) the water never round the floodgate
+            if by then why = why or by.why goto next end
             return p
         end
         ::next::
@@ -515,6 +635,7 @@ end
 -- reservoir under the fort's lowest level (a well goes over it later).
 -- Worked by a dwarf (the pump operator labour).
 function plan_pump(opts)
+    local why_b
     local fb = fort_box()
     if not fb then return nil, 'no citizens' end
     local w = water_survey()
@@ -609,10 +730,12 @@ function plan_pump(opts)
             p.lever = lv
             -- the pump's water wheel: only beside a river (said, not built yet)
             for _, b in ipairs(w.bodies or {}) do if b.kind == 'river' then p.wheel = 'possible on the river' end end
-            return p
+            local by = bypass(p)         -- (0.105.33) the water never round the floodgate
+            if not by then return p end
+            why_b = why_b or by.why
         end
     end
-    return nil, 'no solid rock beside the water for a sump, pumps and a reservoir'
+    return nil, why_b or 'no solid rock beside the water for a sump, pumps and a reservoir'
 end
 
 -- W5: a 5x5 room in stone under a fort level, muddied by a little water
@@ -656,9 +779,11 @@ function plan_irrigation()
                                 table.insert(p.wet, {x = x, y = y, z = z})
                             end end
                             table.insert(p.dig, {x = cx - 2, y = cy - 2, z = zf, text = 'j'})
+                            p.upstream = {}     -- (0.105.33) the tunnel between the gate and the plug
                             for i = 1, #path - 1 do
                                 table.insert(p.dig, {x = path[i].x, y = path[i].y, z = z, text = 'd'})
                                 table.insert(p.wet, {x = path[i].x, y = path[i].y, z = z})
+                                if i >= 2 then table.insert(p.upstream, {x = path[i].x, y = path[i].y, z = z}) end
                             end
                             table.insert(p.wet, {x = p.plug.x, y = p.plug.y, z = z})
                             add_tiles(p, p.wet)
@@ -666,7 +791,9 @@ function plan_irrigation()
                             if not lv then why = why or 'no free floor for the lever' goto skip end
                             lv.name = 'AI irrigation'
                             p.lever = lv
-                            return p
+                            local by = bypass(p)     -- (0.105.33) the water never round the floodgate
+                            if not by then return p end
+                            why = why or by.why
                         end
                     end
                     ::skip::
@@ -683,6 +810,7 @@ end
 -- level covered by a locked hatch. Never through a cavern.
 function plan_magma(shop)
     shop = MAGMA_SHOPS[shop] and shop or 'MagmaForge'
+    local why_b
     local fb = fort_box()
     if not fb then return nil, 'no citizens' end
     local w = water_survey()
@@ -704,11 +832,10 @@ function plan_magma(shop)
             local S2 = {x = P.x + 2, y = P.y + 2}            -- the service stair to the tunnel
             local S2t = T(S2.x, S2.y, zm)
             if ok and not rock(S2t, true) then ok = false end
-            -- the service stair's foot must touch the tunnel
-            local touches = false
-            for _, q in ipairs(path or {}) do
-                if math.abs(q.x - S2.x) <= 1 and math.abs(q.y - S2.y) <= 1 then touches = true end
-            end
+            -- the service stair's foot must touch the tunnel on the pit's side
+            -- of the floodgate (0.105.33: it joined the gate's own tile, and the
+            -- tile beside the gate touched the tunnel on the magma's side too)
+            local touches = path ~= nil and math.abs(path[1].x - S2.x) <= 1 and math.abs(path[1].y - S2.y) <= 1
             local why_s
             if ok then
                 for z = zw + 1, fb.z_low do
@@ -735,15 +862,17 @@ function plan_magma(shop)
                 end
                 table.insert(p.dig, {x = S2.x, y = S2.y, z = zm, text = 'u'})
                 if not touches then
-                    local con = l_path({x = S2.x, y = S2.y}, path[2], function(x, y) return rock(T(x, y, zm), true) or (x == S2.x and y == S2.y) end)
+                    local con = l_path({x = S2.x, y = S2.y}, path[1], function(x, y) return rock(T(x, y, zm), true) or (x == S2.x and y == S2.y) end)
                     for i = 2, #(con or {}) do
                         table.insert(p.dig, {x = con[i].x, y = con[i].y, z = zm, text = 'd'})
                         table.insert(p.wet, {x = con[i].x, y = con[i].y, z = zm})
                     end
                 end
+                p.upstream = {}                 -- (0.105.33) the tunnel between the gate and the plug
                 for i = 1, #path - 1 do
                     table.insert(p.dig, {x = path[i].x, y = path[i].y, z = zm, text = 'd'})
                     table.insert(p.wet, {x = path[i].x, y = path[i].y, z = zm})
+                    if i >= 3 then table.insert(p.upstream, {x = path[i].x, y = path[i].y, z = zm}) end
                 end
                 table.insert(p.wet, {x = S2.x, y = S2.y, z = zm})
                 table.insert(p.wet, {x = p.plug.x, y = p.plug.y, z = zm})
@@ -757,11 +886,13 @@ function plan_magma(shop)
                 lv = lv or {x = P.x + 2, y = P.y - 2, z = zw}
                 lv.name = 'AI magma'
                 p.lever = lv
-                return p
+                local by = bypass(p)             -- (0.105.33) the magma never round the floodgate
+                if not by then return p end
+                why_b = why_b or by.why
             end
         end
     end
-    return nil, 'no solid rock between the magma and a workshop site within reach'
+    return nil, why_b or 'no solid rock between the magma and a workshop site within reach'
 end
 
 PLANNERS = {moat = plan_moat, pump = plan_pump, irrigation = plan_irrigation, magma = plan_magma}
@@ -772,7 +903,7 @@ PLANNERS = {moat = plan_moat, pump = plan_pump, irrigation = plan_irrigation, ma
 
 local function dug(t, text)
     if not t then return false end
-    if text == 'h' then return t.shape == 'OPEN_SPACE' or t.shape == 'RAMP_TOP' end
+    if text == 'h' then return t.shape == 'EMPTY' or t.shape == 'RAMP_TOP' end
     if text == 'j' then return t.shape == 'STAIR_DOWN' or t.shape == 'STAIR_UPDOWN' end
     if text == 'u' then return t.shape == 'STAIR_UP' or t.shape == 'STAIR_UPDOWN' end
     if text == 'i' then return t.shape == 'STAIR_UPDOWN' end
@@ -848,17 +979,41 @@ function step(kind, opts)
         if not dry then wk.stage = 'held'; wk.why = why; save() end
         return {ok = false, rejected = true, stage = 'held', error = why}
     end
+    -- (0.105.33) the floodgate shut at once, any pull on its way called off;
+    -- true: it was open (and so pulled)
+    local function shut_now(g)
+        if dry or not wk.lever_id then return false end
+        cancel_pulls(wk.lever_id)
+        if g and g.built and not g.closed then pull(wk.lever_id, true) return true end
+        return false
+    end
+    -- (0.105.33) filling that never ends: the floodgate shut, held, with why
+    local function stalled(g, why)
+        shut_now(g)
+        return hold(why)
+    end
 
     -- the emergency stop, and retiring
     if opts.shut or opts.retire then
         if not wk then return {ok = false, rejected = true, error = 'no ' .. kind .. ' work to shut'} end
         local g = gate_of(wk.plan)
         if dry then return {ok = true, dry_run = true, stage = wk.stage} end
-        if g and g.built and not g.closed and wk.lever_id then pull(wk.lever_id, true) end
+        local was_open = shut_now(g)
         if opts.retire then
             wk.stage = 'retired'; wk.why = opts.why or 'retired'
+            wk.shut, wk.shut_open = nil, nil
         else
+            -- (0.105.33) kept shut: the steps wait (and pull nothing) until the
+            -- brain asks for it to be opened again (reopen)
             wk.shut = opts.why or 'shut'
+            wk.shut_at = now()
+            wk.shut_open = wk.shut_open or was_open or nil
+            wk.shuts = (wk.shuts or 0) + 1
+            if wk.shuts >= SHUTS_MAX and wk.stage ~= 'held' then
+                wk.stage = 'held'
+                wk.why = ('the floodgate was shut %d times (%s): mend it by hand, then retire it or let it go on')
+                    :format(wk.shuts, wk.shut)
+            end
         end
         save()
         return {ok = true, stage = wk.stage, shut = true}
@@ -886,6 +1041,30 @@ function step(kind, opts)
     end
     local p = wk.plan
     if wk.stage == 'held' then return {ok = false, rejected = true, stage = 'held', error = wk.why} end
+
+    -- (0.105.33) shut by the emergency stop: nothing pulled until the brain
+    -- asks for it again (reopen; the bridge passes `why`, so a why starting
+    -- "reopen" asks too), and then no sooner than REOPEN_AFTER_DAYS
+    if wk.shut then
+        local again = opts.reopen == true or (type(opts.why) == 'string' and opts.why:match('^reopen') ~= nil)
+        if not again then return wait(('the floodgate is shut (%s): waiting to be opened again'):format(wk.shut)) end
+        local since = now() - (wk.shut_at or 0)
+        if since < REOPEN_AFTER_DAYS * DAY then
+            return wait(('the floodgate was shut (%s) under %d days ago: not opened yet'):format(wk.shut, REOPEN_AFTER_DAYS))
+        end
+        if dry then return {ok = true, dry_run = true, stage = wk.stage, reopen = true} end
+        local g = gate_of(p)
+        local opened = false
+        if wk.shut_open and g and g.built and g.closed and wk.lever_id
+                and (wk.stage == 'filling' or wk.stage == 'done') then
+            pull(wk.lever_id, false)
+            opened = true
+            if wk.stage == 'filling' then wk.opened_at = now() end
+        end
+        wk.shut, wk.shut_at, wk.shut_open = nil, nil, nil
+        save()
+        return {ok = true, stage = wk.stage, reopened = true, opening = opened or nil}
+    end
 
     if wk.stage == 'planned' then
         if dry then return {ok = true, dry_run = true, stage = 'digging'} end
@@ -922,10 +1101,9 @@ function step(kind, opts)
                 return wait('magma works need magma-safe parts (e.g. of green glass, or of a metal like steel): '
                             .. table.concat(short, ', '))
             end
-            if dry then return {ok = true, dry_run = true, stage = 'building'} end
-            filtered = magma_filter(true)
         end
         if dry then return {ok = true, dry_run = true, stage = 'building'} end
+        if p.kind == 'magma' then filtered = magma_filter(true) end
         local cells = {{x = p.gate.x, y = p.gate.y, z = p.gate.z, text = 'x'},
                        {x = p.lever.x, y = p.lever.y, z = p.lever.z, text = 'Tl'}}
         for _, b in ipairs(p.builds or {}) do table.insert(cells, b) end
@@ -996,7 +1174,7 @@ function step(kind, opts)
         if not g then return hold('the floodgate is gone') end
         local lk = leak(p)
         if lk then
-            if g.built and not g.closed and not dry then pull(wk.lever_id, true) end
+            shut_now(g)
             return hold(('liquid got out at x%d y%d, elevation %d: the floodgate was shut'):format(lk.x, lk.y, ez(lk.z)))
         end
         -- the plug: dug with the gate shut, after the path is walked again
@@ -1019,22 +1197,44 @@ function step(kind, opts)
             return {ok = true, stage = 'filling', plug_dug = true, opening = true}
         end
         if g.closed and not wk.opened_once then
+            -- (0.105.33) not waited on for ever: held when nobody opened it
+            if not dry and not wk.open_from then wk.open_from = wk.opened_at or now() save() end
+            if now() - (wk.open_from or now()) > FILL_STALL_DAYS * DAY then
+                return hold(('the floodgate was not opened in %d days: can a dwarf reach its lever?'):format(FILL_STALL_DAYS))
+            end
             if wk.opened_at and now() - wk.opened_at > 2 * DAY and not dry then pull(wk.lever_id, false) wk.opened_at = now() save() end
             return wait('a dwarf is on the way to open the floodgate')
         end
         if not dry and not wk.opened_once then wk.opened_once = true; wk.test_from = now(); save() end
         local t = p.test
+        -- (0.105.33) the last rise, for the stall test (a frozen or dry source, a blocked way)
+        local function rose(d)
+            if not dry and (wk.best == nil or d > wk.best) then wk.best = d; wk.rise_at = now() end
+            return now() - (wk.rise_at or wk.test_from or now()) > FILL_STALL_DAYS * DAY
+        end
         if t.mode == 'deep' then
             local d = depth_at(t)
             wk.depth = d
-            if d < t.want then save() return wait(('filling: %d/7 (wants %d/7)'):format(d, t.want)) end
+            if d < t.want then
+                if rose(d) then
+                    return stalled(g, ('%s has not risen in %d days (%d/7): the source may be frozen or dry, or its way '
+                                       .. 'blocked; the floodgate was shut'):format(kind == 'moat' and 'the moat' or 'the magma pit',
+                                                                                    FILL_STALL_DAYS, d))
+                end
+                save()
+                return wait(('filling: %d/7 (wants %d/7)'):format(d, t.want))
+            end
             return advance('finishing', {depth = d})
         elseif t.mode == 'rise' then
             local d = depth_at(t)
             if wk.start_depth == nil and not dry then wk.start_depth = d end
             wk.depth = d
             if d >= t.want then return advance('done', {depth = d, rose = d - (wk.start_depth or 0)}) end
-            if now() - (wk.test_from or now()) > PUMP_TEST_DAYS * DAY then
+            if rose(d) then
+                return stalled(g, ('the reservoir has not risen in %d days (%d/7): the pumps are not worked, or the '
+                                   .. 'water is gone; the floodgate was shut'):format(FILL_STALL_DAYS, d))
+            end
+            if now() - (wk.rise_at or wk.test_from or now()) > PUMP_TEST_DAYS * DAY then
                 wk.stalled = true
                 save()
                 return wait(('the reservoir has not risen in %d days (%d/7): is a dwarf working the pumps (the pump operator labour)?'):format(PUMP_TEST_DAYS, d))
@@ -1045,9 +1245,17 @@ function step(kind, opts)
             local r = p.room
             local wet = 0
             for x = r.x1, r.x2 do for y = r.y1, r.y2 do if depth_at({x = x, y = y, z = r.z}) > 0 then wet = wet + 1 end end end
-            if wet == 0 then return wait('the water is on its way into the farm room') end
+            if wet == 0 then
+                if now() - (wk.test_from or now()) > FILL_STALL_DAYS * DAY then
+                    return stalled(g, ('no water reached the farm room in %d days: the source may be frozen or dry, '
+                                       .. 'or the tunnel blocked; the floodgate was shut'):format(FILL_STALL_DAYS))
+                end
+                return wait('the water is on its way into the farm room')
+            end
             if dry then return {ok = true, dry_run = true, stage = 'drying'} end
-            pull(wk.lever_id, true)               -- enough: a little water muddies the floor
+            -- enough: a little water muddies the floor. (0.105.33) Shut, not
+            -- toggled: the lever pulled only while the floodgate is open
+            shut_now(g)
             return advance('drying', {wet = wet})
         end
     end
@@ -1099,7 +1307,7 @@ function step(kind, opts)
         local lk = leak(p)
         local g = gate_of(p)
         if lk and g and not g.closed then
-            if not dry then pull(wk.lever_id, true) end
+            shut_now(g)
             return hold(('liquid got out at x%d y%d, elevation %d: the floodgate was shut'):format(lk.x, lk.y, ez(lk.z)))
         end
         -- (0.105.0 review) waiting: the planner looks again in a few days (the leak check)
@@ -1113,13 +1321,15 @@ function report()
     local st = load_state()
     local out = {works = {}, refused = {}}
     local parts          -- (13c) the parts in store, counted once a report (not once a work)
+    local links          -- (0.105.33) the levers' links, fetched once a report (not once a work)
     for id, wk in pairs(st.works) do
+        if wk.lever_id and not links then links = lever_links() or {} end
         local p = wk.plan or {}
         local g = p.gate and building(p.gate.x, p.gate.y, p.gate.z, 'Floodgate')
         local row = {kind = wk.kind, stage = wk.stage, why = wk.why, depth = wk.depth, wet = wk.wet,
                      stalled = wk.stalled or nil, slow = wk.slow or nil, shut = wk.shut,
                      gate = g and (g.built and (g.closed and 'shut' or 'open') or 'planned') or nil,
-                     linked = wk.lever_id and is_linked(wk.lever_id, wk.gate_id) or nil,
+                     linked = wk.lever_id and is_linked(wk.lever_id, wk.gate_id, links) or nil,
                      path_tiles = wk.path and wk.path.tiles, lift = p.lift, power = p.power, wheel = p.wheel,
                      shop = p.shop, bridge = p.bridge and (p.bridge.drawbridge and 'drawbridge' or 'bridge') or nil,
                      lever_at = p.lever and {x = p.lever.x, y = p.lever.y, e = ez(p.lever.z)} or nil,

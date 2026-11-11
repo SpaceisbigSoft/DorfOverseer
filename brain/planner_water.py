@@ -83,8 +83,11 @@ def pump_wanted(s: dict, cfg: dict) -> str | None:
     return "the fort has no well, no cistern site, and still water only below it"
 
 
-def _work_notes(id_: str, row: dict, s: dict, proposals: list, notes: list) -> bool:
-    """A work under way: its line, and its next step (True: one asked)."""
+def _work_notes(id_: str, row: dict, s: dict, proposals: list, notes: list, flooding: bool = False) -> bool:
+    """A work under way: its line, and its next step (True: one asked).
+    (0.105.33) A work its emergency stop shut waits: no step is asked (the
+    next one would open the floodgate again) until the flood is over, then
+    it is asked to open again (`reopen`; the bridge waits a few days more)."""
     kind = row.get("kind")
     stage = row.get("stage")
     words = WORK_WORDS.get(kind, kind)
@@ -106,6 +109,14 @@ def _work_notes(id_: str, row: dict, s: dict, proposals: list, notes: list) -> b
         ask_player(notes, f"{words} is held: {row.get('why')}. Mend it by hand; the AI leaves it held "
                           "(its floodgate stays shut)")
         return False
+    if row.get("shut") and stage != "retired":
+        notes.append(f"{words}: its floodgate was shut ({row['shut']})")
+        if flooding:
+            return True
+        act = dict(step, reopen=True, why="reopen: no dwarves in deep water now")
+        proposals.append(Proposal(f"waterworks_{kind}", act,
+                                  f"{words}: the flood is over: open its floodgate again", 5))
+        return True
     if stage in ("done", "retired"):
         # (0.105.0 review) a done work with its floodgate open: the bridge's done
         # step looks for a leak (and shuts it); it answers "waiting", so the
@@ -135,7 +146,8 @@ def _waterworks_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -
     # the emergency stop: dwarves in deep water near a work with an open floodgate
     h = _d(s.get("hazards"))
     flooded = len(_l(h.get("wet")))
-    if flooded >= cfg["flood_wet_dwarves"]:
+    flooding = flooded >= cfg["flood_wet_dwarves"]
+    if flooding:
         for id_, row in works.items():
             if row.get("gate") == "open" and row.get("stage") != "retired":     # (0.105.0 review) done works too
                 act = {"type": "water_work", "kind": row.get("kind"), "shut": True, "why": "dwarves in deep water"}
@@ -145,7 +157,7 @@ def _waterworks_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -
                                           f"{flooded} dwarves in deep water: shut {WORK_WORDS.get(row.get('kind'))}'s floodgate", 0))
     busy = False
     for id_, row in sorted(works.items()):
-        busy = _work_notes(id_, row, s, proposals, notes) or busy
+        busy = _work_notes(id_, row, s, proposals, notes, flooding) or busy
     for id_, r in sorted(refused.items()):
         notes.append(f"{WORK_WORDS.get(id_.split(':')[0], id_)} not built: {r.get('why')}")
     if busy or not rules_["water_works"]:

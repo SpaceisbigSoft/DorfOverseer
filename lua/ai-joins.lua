@@ -16,7 +16,7 @@
 -- tested without the game: T returns nil off the map, else
 --   {open = walkable fort floor, rock = safe natural rock to dig,
 --    passage = open with no building or zone on it, danger = water, magma,
---    aquifer or warm stone}
+--    aquifer, warm stone, a cavern, open sky or open air}
 --@ module = true
 
 local U = reqscript('ai-util')      -- (13c) helpers shared by the modules
@@ -154,7 +154,7 @@ function route(T, a, b, owner, ia, ib, y_first)
                 if not dug[key(nx, ny)] then
                     local n = T(nx, ny)
                     if not n then return nil, 'off the map' end
-                    if n.danger then return nil, ('water, magma or warm stone beside x%d y%d'):format(nx, ny) end
+                    if n.danger then return nil, ('water, magma, warm stone, a cavern or open air beside x%d y%d'):format(nx, ny) end
                     if n.open then
                         local o = owner[key(nx, ny)]
                         local near_a = o == ia and math.max(math.abs(nx - a.x), math.abs(ny - a.y)) <= 1
@@ -326,7 +326,7 @@ function widen_run(T, run)
                     if ok and not new[nk] and not corridor[nk] then
                         local n = T(q.x + dx, q.y + dy)
                         if not n then ok, last = false, 'off the map'
-                        elseif n.danger then ok, last = false, 'water, magma or warm stone beside it'
+                        elseif n.danger then ok, last = false, 'water, magma, warm stone, a cavern or open air beside it'
                         elseif n.open then ok, last = false, ('it would open onto other space at x%d y%d'):format(q.x + dx, q.y + dy)
                         end
                     end
@@ -385,7 +385,9 @@ function game_reader(z)
             return passage
         end}
         v = setmetatable({open = open, recent = recent[('%d,%d,%d'):format(x, y, z)] ~= nil, rock = (B.natural_wall(t)) == true and not t.smoothed,      -- (never an engraved wall)
-             danger = t.liquid or t.aquifer or t.warm or false}, lazy)
+             -- (0.105.33) a cavern, open sky or open air (a chasm, a shaft)
+             -- beside the corridor counts too: it would open the fort onto it
+             danger = t.liquid or t.aquifer or t.warm or t.feature or t.outside or t.shape == 'EMPTY' or false}, lazy)
         cache[k] = v
         return v
     end

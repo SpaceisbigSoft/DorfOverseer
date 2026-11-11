@@ -497,6 +497,8 @@ def short(a: dict) -> str:
         return f"set the population cap to {a.get('cap')}"
     if t == "unstick_gate":          # (0.105.32) an open gate the game holds shut; the step in the words
         return f"free a gate the game holds shut (step {a.get('step') or 1} of 3)"
+    if t == "dig_way_in" and a.get("second"):     # (0.105.33)
+        return "dig a second way in from the surface"
     if t == "dig_way_in":            # (0.105.32)
         return "dig a stair in for the citizens cut off outside"
     if t == "work_order":
@@ -815,6 +817,7 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
         refused = pin.refusal(_f.get("world"), _f.get("site_id"))
     except Exception:  # noqa: BLE001
         refused = None
+    PIN_SEEN["checked"], PIN_SEEN["refused"] = True, refused
     if refused:
         if refused not in WARNED:
             WARNED.add(refused)
@@ -863,21 +866,51 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
         # site: its autosaves and copies are one fort); a dry run doesn't write it
         line = learning.line_key(key, (state.get("fort") or {}).get("world"))
         normalize(state)      # (13c) once, in place: the steps below read the sections as they are
+        # (0.105.33 fix, runs) the report's date failed (normalize made it year
+        # 0, tick 0): no learning, no note_cycle (it would wipe every cooldown,
+        # loop count and "No" as from the future), no plan, no act and no record
+        # at tick 0 this cycle; memory is left as the last good cycle saved it
+        if chronicle.date_failed(state):
+            say("The report's date couldn't be read this cycle: nothing planned, done or written into "
+                "the fort's memory until it can be")
+            try:
+                when = date_str(state)
+            except Exception:  # noqa: BLE001
+                when = "?"
+            report_status(bridge, {
+                "mode": MODES.get(_d(state.get("settings")).get("mode"), MODES["autopilot"]),
+                "acting": "waiting: the report's date couldn't be read", "date": when,
+                "last": [f"{short(a['action'])}: {a.get('reason', '')}".rstrip(": ")
+                         for a in memory.recent_actions[-5:]][::-1],
+                "notes": [], "todo": [], "pending": [], "ack": [],
+                "unattended": UNATTENDED,
+            })
+            return
         learned_now = learning.observe(state, memory, line, write_pc=autopilot)   # before note_cycle: it reads the tools
         expire_adjustments(memory, state)
         notes = note_cycle(state, memory)
-        for e in mood_journal(state, memory):     # (0.105.30) each mood's requests, once a day
-            journal({"kind": "mood", "fort": key, "date": state["date"], **e})
-        note_tantrums(state, memory, events)     # (0.104.31) tantrums counted for the jail
-        note_heists(state, memory, events)       # (0.105.24) heists and visitors' killings: visitors kept out a while
-        note_intrusions(state, memory, events)   # (0.105.30) DF's invasion records: the alarm before a thief strikes
-        crisis.note_deaths(state, memory, events)   # (0.104.137) deaths counted for crisis mode
-        note_events(state, memory, bank if backend else None, events)
+        # (0.105.33 merge, B5) the report's date failed (it reads as year 0,
+        # tick 0): nothing dated goes into memory this cycle (the moods'
+        # journal, tantrums, heists, intrusions, deaths, events, the day's row,
+        # the atlas and the chronicle); the next good report carries on
+        date_bad = chronicle.date_failed(state)
+        if date_bad:
+            say("The report's date couldn't be read this cycle: nothing is written into the fort's memory "
+                "until it can be")
+        else:
+            for e in mood_journal(state, memory):     # (0.105.30) each mood's requests, once a day
+                journal({"kind": "mood", "fort": key, "date": state["date"], **e})
+            note_tantrums(state, memory, events)     # (0.104.31) tantrums counted for the jail
+            note_heists(state, memory, events)       # (0.105.24) heists and visitors' killings: visitors kept out a while
+            note_intrusions(state, memory, events)   # (0.105.30) DF's invasion records: the alarm before a thief strikes
+            crisis.note_deaths(state, memory, events)   # (0.104.137) deaths counted for crisis mode
+            note_events(state, memory, bank if backend else None, events)
         for line in learned_now:
             say(f"Learned: {line}")
             journal({"kind": "learned", "fort": key, "date": state["date"], "text": line})
         cfg = effective_config(memory.adjust, calibration=calibrate.values(memory))
-        remember_world(state, memory, events, key, cfg, learned_now, bridge)
+        if not date_bad:
+            remember_world(state, memory, events, key, cfg, learned_now, bridge)
         for ch in calibrate.update(state, memory, cfg, memory.adjust):
             say(f"Self-tuned: {ch['name']} {ch['old']} -> {ch['new']} ({ch['why']})")
             journal({"kind": "calibration", "fort": key, "date": state["date"], **ch})
@@ -982,6 +1015,7 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
         pending, would = [], []
         memory.declined = {k: t for k, t in memory.declined.items() if 0 <= now - t < DECLINE_DAYS * 1200}
         results = []
+        looked: set = set()          # (0.105.33) the answers read this cycle (only these are acknowledged)
         no_answer = False            # (0.104.138) an action the game didn't answer: the rest wait
         try:
             for p in allowed:
@@ -992,6 +1026,7 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
                 if acting and mode == "copilot" and is_big(p.action):
                     pid = proposal_id(p)
                     answer = decisions.get(pid)
+                    looked.add(pid)
                     if memory.saved_before == pid:
                         answer = "yes"        # you said Yes; the game was saved first
                     if answer == "no":
@@ -1080,7 +1115,7 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
                 record(results, state, memory, cfg)
                 learning.note_actions(results, state, memory)
                 outcomes.record_actions(results, state, memory)
-                for line in atlas.note_actions(results, state, memory):
+                for line in ([] if chronicle.date_failed(state) else atlas.note_actions(results, state, memory)):
                     say(f"Atlas: {line}")              # what was built, or what the AI found and chose
                     chronicle.add(memory, state, "gate", line)
                 for p, r in results:
@@ -1155,7 +1190,10 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
                         "today": int(bank.real_day_used) if bank.real_day == date.today().isoformat() else 0}
                        if backend else None),
             "pending": pending,
-            "ack": list(decisions.keys()),       # answers seen; the panel forgets them
+            # (0.105.33) the answers read this cycle, and every "no" (kept as
+            # declined): a "yes" to a proposal this cycle held or didn't make
+            # waits in the panel for the cycle that makes it
+            "ack": acknowledged(decisions, looked, memory, now),   # the panel forgets these
             "unattended": UNATTENDED,             # (0.104.88) the camera director runs only then
             # (0.104.90) what only the brain knows, for the camera's captions
             "camera": camera_feed(memory) if UNATTENDED else None,
@@ -1573,7 +1611,9 @@ def probe_gear(bridge, state: dict, key: str) -> None:
     so the cause can be read without running the self-test. Never raises."""
     try:
         g = _d(_d(state.get("military")).get("gear"))
-        soldiers = int(g.get("soldiers") or 0)
+        # (0.105.33) armed/helmed count soldiers on duty only (lua/ai-military-gear.lua):
+        # against them, not every soldier (one off duty made it "short" each month)
+        soldiers = int(g.get("on_duty") if g.get("on_duty") is not None else g.get("soldiers") or 0)
         short = soldiers and (int(g.get("armed") or 0) < soldiers or int(g.get("helmed") or 0) < soldiers)
         now = abs_tick(state)
         last = LAST_GEAR_PROBE.get(key)
@@ -1625,6 +1665,49 @@ def probe_posts(bridge, state: dict, key: str) -> None:
             pass
 
 
+# (0.105.33) the pin as one_cycle last found it for the loaded fort (reset when
+# no fort is loaded): the main loop's unattended actions (quiet announcements,
+# meetings, unpausing, popups, the trade screen) wait for it
+PIN_SEEN: dict = {"checked": False, "refused": None}
+
+
+def pin_hold() -> bool:
+    """(0.105.33) Under the keeper (DFAI_PIN): True while the loaded fort
+    isn't known to be the pinned one (not yet checked by a cycle, or refused),
+    so the main loop runs nothing unattended on another fort."""
+    if not os.environ.get("DFAI_PIN"):
+        return False
+    return not PIN_SEEN.get("checked") or bool(PIN_SEEN.get("refused"))
+
+
+PIN_RETRY_S = 60.0     # (0.105.33 fix) a pin check that couldn't tell waits this long before the next
+
+
+def check_pin(bridge) -> None:
+    """(0.105.33) The main loop, a fort just loaded under the keeper: the pin
+    checked from the small report (one_cycle only runs once the game runs,
+    and the loop's unpause waits for this). Left unchecked if it can't tell;
+    (0.105.33 fix) then tried again only after PIN_RETRY_S, not every poll."""
+    nowm = time.monotonic()
+    if nowm - PIN_SEEN.get("failed_at", float("-inf")) < PIN_RETRY_S:
+        return
+    try:
+        import pin
+        f = _d(_d(bridge.state(include_units=False, tier="pulse")).get("fort"))
+        if not f.get("world") or f.get("site_id") is None:
+            PIN_SEEN["failed_at"] = nowm
+            return
+        refused = pin.refusal(f.get("world"), f.get("site_id"))
+    except (BridgeError, DFHackError, TypeError, ValueError, ImportError):
+        PIN_SEEN["failed_at"] = nowm
+        return
+    PIN_SEEN.pop("failed_at", None)
+    PIN_SEEN["checked"], PIN_SEEN["refused"] = True, refused
+    if refused and refused not in WARNED:
+        WARNED.add(refused)
+        say(refused)
+
+
 def meeting_unattended(args) -> bool:
     """(0.105.0 review) Nobody at the game: --unattended, or run by the keeper
     (brain/keeper.py sets DFAI_PIN for the overseer it starts)."""
@@ -1637,14 +1720,32 @@ PRESET_FILE = LOG_DIR / "keeper-preset.json"   # {fort key: {"name", "at"}}: wha
 PRESET_DONE: set = set()    # fort keys seen this process (asked once per fort, not every cycle)
 
 
+def acknowledged(decisions: dict, looked: set, memory, now: int) -> list[str]:
+    """(0.105.33) The in-game answers the panel may forget: those read this
+    cycle, and every "no" (a "no" to a proposal not made this cycle goes
+    straight into memory.declined, so it isn't asked again)."""
+    out = []
+    for pid, ans in decisions.items():
+        if pid in looked:
+            out.append(pid)
+        elif ans == "no":
+            memory.declined.setdefault(pid, now)
+            out.append(pid)
+    return out
+
+
 def preset_due(key: str, name: str, fort_preset) -> str | None:
     """(0.105.4) Why --preset NAME should be applied to this fort now, or None.
     Applied when this fort never had NAME from --preset (logs/keeper-preset.json),
     or when the fort's site data shows no preset at all (an older save, from
     before it was applied). Never over the player's own later choice: once
     applied, a revive or a restart leaves the window's changes alone."""
-    rec = load_json(PRESET_FILE, {}).get(key)
-    if not isinstance(rec, dict) or rec.get("name") != name:
+    # (0.105.33) by the site, as fort_run: the same fort read from another
+    # folder ("autosave 2#7" after a revive, "region1#7" before) had no record
+    # of its own, and the preset went on again over the player's later choice
+    recs = [r for k, r in load_json(PRESET_FILE, {}).items()
+            if _site(k) == _site(key) and isinstance(r, dict)]
+    if not any(r.get("name") == name for r in recs):
         return "first time for this fort" if fort_preset != name else None
     if not fort_preset:
         return "the save shows no preset"
@@ -1919,8 +2020,13 @@ def _run(args) -> int:
                 stall_said, stall_wait = float("-inf"), STALL_AFTER_S     # time moves: a new stall starts afresh
             if not st.get("in_fort"):
                 quieted = False
+                PIN_SEEN["checked"], PIN_SEEN["refused"] = False, None    # (0.105.33) the next fort is checked afresh
+                PIN_SEEN.pop("failed_at", None)
+            if st.get("in_fort") and os.environ.get("DFAI_PIN") and not PIN_SEEN.get("checked"):
+                check_pin(bridge)
+            held_pin = pin_hold()
             if (args.unattended and args.autopilot and st.get("in_fort") and not quieted
-                    and not controls["halted"]):
+                    and not controls["halted"] and not held_pin):
                 quieted = True
                 r = bridge.act({"type": "quiet_announcements"})
                 say(f"Unattended: announcements no longer pause the game or open a box ({r.get('pausing', 0)} "
@@ -1937,7 +2043,7 @@ def _run(args) -> int:
             # keeper's DFAI_PIN): a player at the screen answers it; and after a press
             # that changed nothing, no more presses for that meeting
             if (args.autopilot and meeting_unattended(args) and st.get("in_fort") and st.get("meeting")
-                    and not controls["halted"] and answer_dead != held_since
+                    and not controls["halted"] and not held_pin and answer_dead != held_since
                     and not STOP_FILE.exists() and MEETING_ANSWER_S <= nowt - held_since < MEETING_CLOSE_S and nowt - answer_tried >= 30):
                 answer_tried = nowt
                 try:
@@ -1951,7 +2057,7 @@ def _run(args) -> int:
                                                        if r.get("ok") else str(r.get("error"))))
                 except (BridgeError, DFHackError):
                     pass
-            if (args.unattended and args.autopilot and st.get("in_fort") and not controls["halted"]
+            if (args.unattended and args.autopilot and st.get("in_fort") and not controls["halted"] and not held_pin
                     and not STOP_FILE.exists() and nowt - held_since >= meeting_leave_after(answer_cant == held_since)
                     and nowt - meeting_tried >= MEETING_CLOSE_S):
                 meeting_tried = nowt
@@ -1970,7 +2076,7 @@ def _run(args) -> int:
                 # (0.104.138) DF is saving itself: time stands still for minutes
                 # (2-10 on Teacheroar), nothing to take off or say
                 pass
-            elif (stalled and args.unattended and args.autopilot and not controls["halted"]
+            elif (stalled and args.unattended and args.autopilot and not controls["halted"] and not held_pin
                     and not STOP_FILE.exists() and nowt - stall_said >= stall_wait):
                 # running, but time stands still: DF waits on a popup. Take it off
                 # (again a minute later if that didn't help, then 2, 4, 8, 10 minutes)
@@ -1997,7 +2103,7 @@ def _run(args) -> int:
             controls["unattended"] = args.unattended
             controls["save_seasons"] = args.save_seasons
             if (args.unattended and args.autopilot and st.get("in_fort") and st.get("paused")
-                    and not controls["halted"] and not STOP_FILE.exists()):
+                    and not controls["halted"] and not held_pin and not STOP_FILE.exists()):
                 paused_since = paused_since or nowt
                 if nowt - paused_since >= UNPAUSE_AFTER_S:
                     r = bridge.act({"type": "unpause"})
@@ -2013,7 +2119,7 @@ def _run(args) -> int:
                 msg = "Waiting for a fortress to be loaded..."
             elif st.get("paused") and not answered:
                 msg = ("Game is paused; unpausing it in 30 s (unattended)." if args.unattended and args.autopilot
-                       and not controls["halted"] else "Game is paused; planning resumes when it runs.")
+                       and not controls["halted"] and not held_pin else "Game is paused; planning resumes when it runs.")
             else:
                 msg = None
                 now = st["date"]["year"] * TICKS_PER_YEAR + st["date"]["tick"]
@@ -2030,7 +2136,7 @@ def _run(args) -> int:
                         trade_open_since = nowt
                     if trade_cycles < TRADE_CYCLES_MAX and nowt - trade_cycle_at >= TRADE_CYCLE_S:
                         trade_now, trade_cycles, trade_cycle_at = True, trade_cycles + 1, nowt
-                    elif (args.unattended and trade_cycles >= TRADE_CYCLES_MAX and not controls["halted"]
+                    elif (args.unattended and trade_cycles >= TRADE_CYCLES_MAX and not controls["halted"] and not held_pin
                           and nowt - trade_open_since >= TRADE_STUCK_S and nowt - trade_close_tried >= TRADE_STUCK_S):
                         # (0.100.1) time stands still while the screen is open, so it
                         # can't change by itself: the AI's own screen is closed after

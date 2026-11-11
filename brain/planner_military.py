@@ -14,7 +14,7 @@ from digest import _d, _l, normalize
 from planner_core import *  # noqa: F401,F403
 from planner_gates import *  # noqa: F401,F403  (13c: split out by theme)
 
-__all__ = ["called_off_ids", "FIGHT_FACTOR_MAX", "lone_intruders", "hunted_outside", "few_ordinary", "few_alert_over", "ai_gates_shut", "lockdown_released", "lone_alert_over", "note_lockdown", "_lone_squad", "quick_clear", "PASTURE_ACTIONS", "_pasture_hold", "gate_invaders", "main_gate", "_gate_guard_rule", "_gate_dogs_rule", "GEAR_HELD", "_shelter_possible", "soldier_share", "_gate_rules", "_free_gate_levers", "_lever_far_enough", "_link_wanted", "_lever_rule", "_trap_rule", "_gatehouse_rule", "_lever_hatches_ok", "_near_spot", "soldiers_wanted", "civilian_cap", "crossing_value", "_crossing_rule", "ALERT_DANGERS", "alert_ages", "_alerts_rule", "_war_animal_rule", "hazard_alert", "_hazard_rules", "_military_rules", "_training_rotation", "_ranged_squad_rule", "WEAPON_IDS", "_uniform_weapon_rule", "_anvil_rule", "idle_hands"]
+__all__ = ["called_off_ids", "FIGHT_FACTOR_MAX", "lone_intruders", "hunted_outside", "few_ordinary", "few_alert_over", "ai_gates_shut", "lockdown_released", "lone_alert_over", "note_lockdown", "_lone_squad", "quick_clear", "PASTURE_ACTIONS", "_pasture_hold", "gate_invaders", "main_gate", "_gate_guard_rule", "_gate_dogs_rule", "GEAR_HELD", "_shelter_possible", "soldier_share", "_gate_rules", "_free_gate_levers", "_lever_far_enough", "_link_wanted", "_lever_rule", "_trap_rule", "_gatehouse_rule", "_lever_hatches_ok", "_near_spot", "soldiers_wanted", "civilian_cap", "crossing_value", "_crossing_rule", "ALERT_DANGERS", "alert_ages", "_alerts_rule", "_war_animal_rule", "hazard_alert", "_hazard_rules", "_military_rules", "watched_gate_levers", "_training_rotation", "_ranged_squad_rule", "WEAPON_IDS", "_uniform_weapon_rule", "_anvil_rule", "idle_hands"]
 
 
 GEAR_HELD = {"weapons": "armed", "body": "armored", "helms": "helmed", "shields": "shielded", "pants": "legged",
@@ -427,8 +427,8 @@ def hazard_alert(s: dict, cfg: dict) -> str:
         return f"fire {h['fire_near']} tiles from the dwarves"
     if h.get("cloud_near") is not None and h["cloud_near"] <= cfg["hazard_near"]:
         return f"a cloud (gas or vapour) {h['cloud_near']} tiles from the dwarves"
-    if _l(h.get("berserk")):
-        b0 = _l(h['berserk'])[0]
+    b0 = next((b for b in _l(h.get("berserk")) if isinstance(b, dict)), None)    # (0.105.33) a dict row only
+    if b0 is not None:
         return f"{b0.get('name') or 'a dwarf'} " + ("has changed into a beast" if b0.get("changed") else "has gone berserk")
     return ""
 
@@ -493,6 +493,18 @@ def _hazard_rules(s: dict, memory, cfg: dict, proposals: list, notes: list, rule
         notes.append(f"miasma in {h['miasma']} places: rot lying indoors (a refuse pile outside takes it)")
 
 
+def watched_gate_levers(s: dict) -> set:
+    """(0.105.33 fix) The levers the gate watcher pulls: each entrance's gate
+    levers and a gatehouse's outer drawbridge (its rows carry one lever_id).
+    A player's "AI gate" lever among them is the watcher's, not the AI gate's
+    (_military_rules and note_gate_lever read the same set)."""
+    ents = [e for e in _l(_d(s.get("entrances")).get("entrances")) if isinstance(e, dict)]
+    watched = {lid for e in ents for b in _l(e.get("equipment")) if isinstance(b, dict) for lid in _l(b.get("levers"))}
+    watched |= {b.get("lever_id") for e in ents for b in _l(e.get("outer"))
+                if isinstance(b, dict) and b.get("lever_id") is not None}
+    return watched
+
+
 def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
                     proposals: list, notes: list) -> None:
     mil, rules_ = s["military"], player_rules(s)
@@ -511,8 +523,7 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
     # A lever the player named "AI gate" and linked to something: pulled too.
     gates = [g for g in _l(mil.get("gates")) if isinstance(g, dict) and not g.get("pending") and g.get("linked")]
     # (one linked to an entrance's drawbridge is the gate watcher's to pull)
-    watched = {lid for e in _l(_d(s.get("entrances")).get("entrances")) if isinstance(e, dict)
-               for b in _l(e.get("equipment")) if isinstance(b, dict) for lid in _l(b.get("levers"))}
+    watched = watched_gate_levers(s)
     gates = [g for g in gates if g.get("id") not in watched]
     # (0.105.3) not for a lone intruder inside, nor after the lockdown was lifted
     lone = lone_intruders(s, cfg, traits, memory) if any_reach else []
@@ -610,9 +621,17 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
     berserk_now = bool(_l(_d(s.get("hazards")).get("berserk")))
     if not any_reach and not berserk_now:
         invaders_near = bool(gate_invaders(s))
+        # (0.105.33) a thief inside the game doesn't count as a threat: the
+        # squad _thieves sent stays on them (recalled, it was sent again next
+        # cycle, and so on, the thief never caught)
+        thieves_in = {x.get("id") for x in _l(_d(_d(s.get("threats")).get("thieves")).get("list"))
+                      if isinstance(x, dict) and x.get("id") is not None
+                      and (x.get("inside") or x.get("can_reach_dwarves") is True)}
         for q in squads:
             if q.get("guarding") and invaders_near:
                 continue                     # (0.104.83) holding the gate while invaders are about
+            if thieves_in and set(_l(q.get("kill_ids"))) & thieves_in:
+                continue                     # (0.105.33) after a thief still inside
             if q.get("sheltering") and s.get("civ_alert"):
                 continue                     # (0.105.0) in the shelter until the alarm is over (planner_army)
             if q.get("ai_orders"):
@@ -1250,7 +1269,7 @@ def idle_hands(s: dict, memory, cfg: dict) -> bool:
     """Many idle hands (see update_idle); without memory, today's share alone."""
     if memory is not None and isinstance(getattr(memory, "idle_avg", None), (int, float)):
         return bool(memory.idle_hands)
-    return _idle_share(s) >= cfg["idle_train_share"]
+    return _idle_share(s) >= idle_line(s, cfg, "idle_train_share")
 
 
 # --- (0.105.3) a lone intruder doesn't seal the fort; no AI lockdown without end ----------

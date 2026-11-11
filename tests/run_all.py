@@ -92,14 +92,19 @@ def main(argv: list[str]) -> int:
              for t in files for i in range(SHARDS.get(t.name, 1))]
     tasks.sort(key=lambda x: x[1] is None)            # the split (slow) files start first
     t0 = time.perf_counter()
-    failed = []
+    failed, skipped = [], []
     with ThreadPoolExecutor(max_workers=max(1, jobs)) as pool:
         futures = {task: pool.submit(run_one, *task) for task in tasks}
         for t in files:                                # print in file order, as each is ready
             parts = [f.result() for (p, _), f in futures.items() if p == t]
-            if not show(t.name, merge(parts)):
+            r = merge(parts)
+            if not show(t.name, r):
                 failed.append(t.name)
+            elif r["skipped"]:
+                skipped.append(t.name)
     print(f"\n{len(files)} files in {time.perf_counter() - t0:.0f} s.")
+    if skipped:
+        print(f"{len(skipped)} file(s) skipped: {', '.join(skipped)}")
     print("All passed." if not failed else f"Failed: {', '.join(failed)}")
     return 1 if failed else 0
 

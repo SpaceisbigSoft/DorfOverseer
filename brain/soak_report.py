@@ -19,8 +19,11 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-LOGS = ROOT / "logs"
 sys.path.insert(0, str(ROOT / "brain"))
+from dfhack import logs_dir  # noqa: E402
+
+LOGS = logs_dir()            # (0.105.33) DFAI_LOG_DIR too, as the other modules'
+LOG_OLD_KEPT = 5             # the keeper's rotations (brain/keeper.py): .old5 ... .old2, .old
 
 # keeper/overseer log lines worth counting (label, pattern)
 EVENTS = [
@@ -60,7 +63,10 @@ def soak_rows(since: datetime, path: Path | None = None) -> list[dict]:
 def log_lines(since: datetime, path: Path | None = None) -> list[str]:
     path = path or LOGS / "unattended.log"
     out = []
-    for p in (path.with_suffix(".old.log"), path):
+    # (0.105.33) every rotation the keeper keeps, oldest first (a busy day
+    # rotates more than once)
+    olds = [path.with_suffix(f".old{i}.log") for i in range(LOG_OLD_KEPT, 1, -1)] + [path.with_suffix(".old.log")]
+    for p in olds + [path]:
         try:
             with p.open(encoding="utf-8", errors="replace") as f:
                 for line in f:

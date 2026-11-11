@@ -83,6 +83,58 @@ def newest_folder(save_root: Path, save_dir: str) -> Path | None:
     return max(cands, key=folder_mtime)
 
 
+def fort_mark_path(copy: Path) -> Path:
+    """(0.105.33) Beside each copy (never inside: the copy is restored whole
+    into DF's saves): "<date time>.fort.json", the world and site it holds."""
+    return copy.with_name(copy.name + ".fort.json")
+
+
+def _write_fort_mark(copy: Path, fort: dict, save_dir: str) -> None:
+    try:
+        fort_mark_path(copy).write_text(json.dumps({
+            "world": fort.get("world"), "site": str(fort.get("site_id") if fort.get("site_id") is not None else ""),
+            "save_dir": save_dir}, ensure_ascii=False), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def copy_fort(copy: Path) -> dict | None:
+    """(0.105.33) The world and site a copy holds, or None (a copy made before
+    they were marked, or without the report's fort section)."""
+    d = load_json(fort_mark_path(copy), None)
+    return d if isinstance(d, dict) and d.get("world") else None
+
+
+SHARED_PREFIXES = ("autosave", "ai restore")     # save folders any world may write
+
+
+def copies_of(world, site, save_dir: str | None) -> list[Path]:
+    """(0.105.33) Every finished copy in backups/ of the fort (world, site),
+    newest first, whichever save folder it was copied from (a revive loading
+    "autosave 2", or a restore, changes the folder the copies go to). A copy
+    with no mark counts only under backups/<save_dir>, and never when that is
+    one of DF's shared autosave folders (another world's may be there)."""
+    out = []
+    try:
+        dirs = [d for d in BACKUP_DIR.iterdir() if d.is_dir()]
+    except OSError:
+        return []
+    legacy_ok = bool(save_dir) and not str(save_dir).lower().startswith(SHARED_PREFIXES)
+    for d in dirs:
+        try:
+            copies = [c for c in d.iterdir() if c.is_dir() and COPY_NAME.match(c.name)]
+        except OSError:
+            continue
+        for c in copies:
+            m = copy_fort(c)
+            if m is not None:
+                if str(m.get("world")) == str(world) and str(m.get("site")) == str(site):
+                    out.append(c)
+            elif legacy_ok and d.name == save_dir:
+                out.append(c)
+    return sorted(out, key=lambda c: c.name, reverse=True)
+
+
 def _last() -> dict:
     return load_json(STATE, {})
 
@@ -225,10 +277,23 @@ def maybe(save_root, save_dir: str | None, now: float | None = None,
         shutil.rmtree(part, ignore_errors=True)
         _mark(now - EVERY_S + RETRY_S, "", "")          # tried: again in an hour, not every cycle
         return f"couldn't copy the save to {dest} ({e}); trying again in an hour"
-    # only the finished copies this module made (dated names) are cleared out
+    if fort is not None:
+        _write_fort_mark(dest, fort, save_dir)
+    # only the finished copies this module made (dated names) are cleared out;
+    # (0.105.33) KEEP per fort: DF's "autosave N" folders are shared by every
+    # world, so another world's copies never push this fort's out
     copies = sorted((p for p in dest_root.iterdir() if p.is_dir() and COPY_NAME.match(p.name)),
                     key=lambda p: p.name)
-    for old in copies[:-KEEP]:
-        shutil.rmtree(old, ignore_errors=True)
+    groups: dict = {}
+    for c in copies:
+        m = copy_fort(c)
+        groups.setdefault((m.get("world"), m.get("site")) if m else None, []).append(c)
+    for group in groups.values():
+        for old in group[:-KEEP]:
+            shutil.rmtree(old, ignore_errors=True)
+            try:
+                fort_mark_path(old).unlink(missing_ok=True)
+            except OSError:
+                pass
     _mark(now, str(dest), str(src))
     return f"a copy of the save ({src.name}) is in {dest}; the newest {KEEP} are kept"

@@ -55,7 +55,7 @@ ROW = {"id": 7, "name": "Urist", "x": 40, "y": 41, "z": 150, "cause": "lockdown"
 
 # --- 1. stranded outside: the brain -------------------------------------------------
 
-@test("stranded: shut out by the AI's lockdown, no enemy near: the gates opened, and not armed again that cycle")
+@test("stranded: shut out by the AI's lockdown, no enemy near: the gates opened; (0.105.33) not while a threat can reach the dwarves (armed, Needs you)")
 def _():
     s = fort()
     s["entrances"]["armed"] = True
@@ -64,11 +64,13 @@ def _():
     p = acts(props, "stranded", "open_gates")
     assert p and p[0].priority == 0 and "Urist" in p[0].reason and "lockdown" in p[0].reason, props
     assert "elevation 50" in p[0].reason, p[0].reason
-    # not armed again in the same cycle while letting them in
+    # (0.105.33) a threat that can reach the dwarves: open_gates would let it
+    # in; the gates are armed and the player told
     s["entrances"]["armed"] = False
     s["others_on_map"]["threats_that_can_reach_dwarves"] = 1
-    props, _ = plan(s, Memory())
-    assert acts(props, "stranded", "open_gates") and not acts(props, typ="arm_gates"), props
+    props, notes = plan(s, Memory())
+    assert not acts(props, "stranded", "open_gates") and acts(props, typ="arm_gates"), props
+    assert [n for n in needs_you(notes) if "Urist" in n and "can reach the dwarves" in n], needs_you(notes)
     # just out (under ~4 hours): nothing yet
     s["entrances"]["stranded"] = [dict(ROW, out_ticks=50, out_days=0)]
     assert not acts(plan(s, Memory())[0], "stranded")

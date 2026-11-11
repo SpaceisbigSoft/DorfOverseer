@@ -53,7 +53,9 @@ env.xyz2pos = function(x, y, z) return {x = x, y = y, z = z} end
 env.require = function(name) if name == 'utils' then return {insert_sorted = function() end} end return require(name) end
 local zone = {id = 50, x1 = 0, y1 = 0, x2 = 2, y2 = 1, z = 10, type = 1, getType = function() return 'Civzone' end}
 env.df = {global = {cur_year = 76, cur_year_tick = 1000, plotinfo = {burrows = {list = burrows, next_id = 1}},
-                    world = {buildings = {all = vec({zone})}}},
+                    world = {buildings = {all = vec({zone})},
+                             -- (0.105.33) a barrel's drink in the hall: the burrow holds drink
+                             items = {other = {DRINK = vec({{flags = {}, pos = {x = 1, y = 1, z = 10}}})}}}},
           burrow = {new = function() return {} end},
           building_type = {Civzone = 'Civzone', Stockpile = 'Stockpile'},
           civzone_type = {[1] = 'MeetingHall'},
@@ -64,7 +66,9 @@ env.dfhack = {
     buildings = {containsTile = function() return true end},
     burrows = {clearTiles = function() tiles = {} end,
                setAssignedTile = function(b, p, on) tiles[p.x .. ',' .. p.y] = on; return true end,
-               setAssignedUnit = function(b, u, on) assigned[u.id] = on or nil end},
+               setAssignedUnit = function(b, u, on) assigned[u.id] = on or nil end,
+               isAssignedTile = function(b, p) return tiles[p.x .. ',' .. p.y] == true end},
+    items = {getPosition = function(it) return it.pos.x, it.pos.y, it.pos.z end},
     units = {getCitizens = function() return cits end, isAdult = function(u) return u.adult end,
              isCitizen = function(u) return true end, getStressCategory = function(u) return u.cat end,
              getReadableName = function(u) return 'dwarf ' .. u.id end}}

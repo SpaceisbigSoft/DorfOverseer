@@ -3,7 +3,7 @@ after failed strange moods, the latest a weaver wanting 3 plant cloth while
 the supplies counted 2 (the mood's own count: 0), no plant thread and no
 fibre crop. A mood lasts about 40 days, too short to grow fibre, so the fort
 keeps a few of each common mood material on hand (brain/planner_moods.py
-_mood_reserve_rule, by the existing recipes; reserve_blocked holds the AI's
+_mood_reserve_rule, by the existing recipes; reserve_room holds the AI's
 other orders that would use one up), the farms put a fibre crop on one plot
 (lua set_farm_crops, params.thread), the mood's count is taken again when a
 new item of its kind is made (lua/ai-moods.lua cached_avail), and the Needs
@@ -27,7 +27,7 @@ from harness import test, finish  # noqa: E402
 from lua_modules_util import module_src  # noqa: E402
 from planner import PLANNER_CONFIG, Memory, plan, select  # noqa: E402
 from planner_core import NEEDS_YOU, Proposal  # noqa: E402
-from planner_moods import (_mood_materials, _mood_reserve_rule, reserve_blocked,  # noqa: E402
+from planner_moods import (_mood_materials, _mood_reserve_rule, reserve_room,  # noqa: E402
                            reserve_trade_wants, mood_reserve_counts)
 from planner_trade import trade_wants  # noqa: E402
 
@@ -124,15 +124,20 @@ def _():
     assert not props
 
 
+def _held(s):
+    """(0.105.33) the orders select() holds for a reserve: no room over its line"""
+    return {r: w for r, (room, w) in reserve_room(s, CFG).items() if room <= 0}
+
+
 @test("reserves 4: the AI's orders that would use a reserve up wait at or under it (bags, bone crafts, gem cutting)")
 def _():
     s = garden(cloth_kinds={"plant": 3, "silk": 0, "yarn": 9})
     s["needs"] = dict(s.get("needs") or {}, bones=5)
-    held = reserve_blocked(s, CFG)
+    held = _held(s)
     assert "cloth_bag" in held and "bone_crafts" in held and "yarn_bag" not in held, held
     s["needs"]["bones"] = 6
     s["supplies"]["cloth_kinds"]["plant"] = 4
-    held = reserve_blocked(s, CFG)
+    held = _held(s)
     assert "cloth_bag" not in held and "bone_crafts" not in held, held
     s["supplies"]["cloth_kinds"]["plant"] = 1
     p_bag = Proposal("bags", {"type": "work_order", "recipe": "cloth_bag", "amount": 5}, "bags", 5, True)
@@ -142,7 +147,7 @@ def _():
     allowed, _ = select([p_res], s, Memory())
     assert allowed
     # unknown counts (an older bridge) hold nothing
-    assert reserve_blocked(copy.deepcopy(BASE), CFG) == {}
+    assert _held(copy.deepcopy(BASE)) == {}
 
 
 @test("reserves 5: default plan() unchanged where no reserve applies (the big fort: counts unknown or plenty)")

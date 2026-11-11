@@ -285,23 +285,37 @@ function stat(stats, name)
     return stats and stats[name] and stats[name].value or 0
 end
 
+-- (0.105.33, L8) ai-util, the modules' shared helpers: reqscript in the game;
+-- where reqscript doesn't know it (a test's stand-in), the file beside this
+-- one, loaded into its own environment (as reqscript would)
+local UTIL
+local function util()
+    if UTIL then return UTIL end
+    local ok, m = pcall(reqscript, 'ai-util')
+    if not (ok and type(m) == 'table') then
+        local dir = debug.getinfo(1, 'S').source:match('^@(.*[/\\])')
+        local path = dir and (dir .. 'ai-util.lua') or (dfhack.findScript and dfhack.findScript('ai-util'))
+        local env = setmetatable({}, {__index = _G})
+        assert(loadfile(assert(path, 'ai-util.lua not found'), 't', env))()
+        m = env
+    end
+    UTIL = m
+    return UTIL
+end
+
 -- (13c) A table kept in the save's site data: {} when it's missing, can't be
 -- read or isn't a table. site_put: saved, never an error (ok, why).
-function site_get(key)
-    local ok, d = pcall(dfhack.persistent.getSiteData, key, {})
-    return ok and type(d) == 'table' and d or {}
-end
-function site_put(key, d) return pcall(dfhack.persistent.saveSiteData, key, d) end
+-- (0.105.33, L8) ai-util's own copies, not a second pair
+function site_get(key) return util().site_get(key, {}) end
+function site_put(key, d) return util().site_put(key, d) end
 
--- (13c) An item nobody may take as it lies: forbidden, part of a building
--- or a construction, being removed or dumped, marked for collection, a
--- trader's or a hostile's. Whether a job holds it is the caller's to say
--- (some count those as reserved). The one copy of a check the builder and
--- the waterworks wrote out six times, with flags that disagreed.
+-- (13c) An item nobody may take as it lies. Whether a job holds it is the
+-- caller's to say (some count those as reserved).
+-- (0.105.33, L8) ai-util's one list (UNFREE), so rotten, encased, on fire, a
+-- web, owned, an artifact, murder evidence, a dead dwarf's or an item a unit
+-- carries count too (the builder's own list had drifted from it)
 function item_held(it)
-    local f = it.flags
-    return f.forbid or f.in_building or f.construction or f.removed or f.garbage_collect
-        or f.trader or f.dump or f.hostile
+    return not util().item_free(it, {in_job = true})
 end
 
 -- (13c) Quickfort's dry run, then the real one unless dry_run: the one copy
@@ -403,7 +417,7 @@ PARTS = {'sites', 'projects', 'farms', 'wells', 'cistern', 'surface', 'rooms', '
 -- (0.105.26) each part marks the version it came with (the bridge's
 -- `version` lists one that differs from BRIDGE_VERSION); started afresh at
 -- each load, so a part that failed to load shows as unmarked
-PART_VERSIONS = {['ai-builder'] = '0.105.32'}   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = {['ai-builder'] = '0.105.33'}   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local function part_path(name)
     local dir = debug.getinfo(1, 'S').source:match('^@(.*[/\\])')

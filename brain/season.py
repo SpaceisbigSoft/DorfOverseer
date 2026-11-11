@@ -138,7 +138,14 @@ def apply(choice: dict, state: dict, memory, adjust: dict | None = None) -> list
         new = {}
         for k, mult in bundle.items():
             lo, hi = ADJUST_BOUNDS[k]
-            new[k] = round(max(lo, min(hi, float(cur.get(k, lo)) * mult)), 2)
+            # (0.105.33, B5) the planner's own value times the focus: two drink
+            # focuses in a row are not 1.5 x 1.5. A value already further that
+            # way (the strategist's) is kept.
+            v = float(PLANNER_CONFIG.get(k, lo)) * mult
+            now_v = float(cur.get(k, lo))
+            if (mult >= 1 and now_v > v) or (mult < 1 and now_v < v):
+                v = now_v
+            new[k] = round(max(lo, min(hi, v)), 2)
         kept["adjust"] = new
         memory.adjust.update(new)
         if isinstance(memory.adjust_at, dict):

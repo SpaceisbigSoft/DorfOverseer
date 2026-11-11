@@ -120,7 +120,11 @@ def maybe_review(state: dict, memory: Memory, bank: TokenBank, backend, bridge_i
     # (0.103.20) one character decision a season, at any setting: the review
     # that makes it may come early (the lowest setting reviews rarely)
     season_due = season_mod.due(state, memory) and not season_mod.waiting(memory, now)
-    if kinds and event_review_allowed(bank, now, plan):
+    # (0.105.33, B5) an event review that couldn't be paid for waits a day
+    # (retry_at on its kinds); a kind that came since is tried at once
+    kinds_due = any(not 0 <= k.get("retry_at", 0) - now <= TICKS_PER_DAY
+                    for k in memory.pending_kinds if isinstance(k, dict))
+    if kinds and kinds_due and event_review_allowed(bank, now, plan):
         reason, important = "event: " + ", ".join(kinds), True
     elif routine_due(bank, now, plan) or season_due:
         reason, important = ("season" if season_due else "routine"), False
@@ -180,6 +184,10 @@ def maybe_review(state: dict, memory: Memory, bank: TokenBank, backend, bridge_i
         # Try again tomorrow (game time) rather than every cycle.
         if not important:
             bank.last_routine_tick = now - routine_interval_ticks(plan) + TICKS_PER_DAY
+        else:       # (0.105.33, B5) the event review too: tried again tomorrow, not every cycle
+            for k in memory.pending_kinds:
+                if isinstance(k, dict):
+                    k["retry_at"] = now + TICKS_PER_DAY
         if season_due:
             season_mod.wait(memory, now)        # the season's decision: tried again in a week, not every cycle
         out.say.append(f"AI review ({reason}) skipped: {why}")

@@ -5,7 +5,7 @@
 -- into its own environment, so every name here is reqscript('ai-builder').name
 -- and the helpers defined there (info, quickfort_apply, ...) are in reach.
 
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-projects'] = '0.105.32'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-projects'] = '0.105.33'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local info, ez = info, ez
 
@@ -14,7 +14,8 @@ local info, ez = info, ez
 ---------------------------------------------------------------------------
 
 function load_projects()
-    local data = dfhack.persistent.getSiteData(PROJECTS_KEY, {next_id = 1, list = {}})
+    -- (0.105.33, L8) through ai-util's site_get: a value that isn't a table reads as none
+    local data = site_get(PROJECTS_KEY)
     data.next_id = math.tointeger(data.next_id) or 1
     data.list = type(data.list) == 'table' and data.list or {}
     return data
@@ -29,24 +30,51 @@ function save_projects(data)
     -- last 20 (Enxah: the quarry ate the walls of the older bedroom levels)
     local closed = 0
     data.old_areas = type(data.old_areas) == 'table' and data.old_areas or {}
+    -- (0.105.33, industry 2) finished projects dropped from the list, so the
+    -- report's done_total never stops at KEEP_CLOSED_PROJECTS; an older save
+    -- starts from its dropped outlines (the closest count it has)
+    data.dropped_done = math.tointeger(data.dropped_done) or #data.old_areas
     for i = #data.list, 1, -1 do
         local p = data.list[i]
+        p.redug_changed = nil        -- (0.105.33) the report's own mark, not kept
         -- (0.104.152, review) a cavern well is never dropped: its shaft gate and
         -- stair lid are run from its project for as long as the well stands
         local cavern_well = p.kind == 'well' and (type(p.shaft_stairs) == 'table' or p.shaft_gate ~= nil)
         if p.phase ~= 'dig' and p.phase ~= 'furnish' and p.phase ~= 'decorate' and not cavern_well then
             closed = closed + 1
             if closed > KEEP_CLOSED_PROJECTS then
-                local a = p.area
-                if type(a) == 'table' then
+                for _, a in ipairs(project_areas(p)) do
                     table.insert(data.old_areas, {x1 = a.x1, y1 = a.y1, x2 = a.x2, y2 = a.y2, z = a.z})
                 end
+                if p.phase == 'done' then data.dropped_done = data.dropped_done + 1 end
                 table.remove(data.list, i)
             end
         end
     end
     while #data.old_areas > OLD_AREAS_MAX do table.remove(data.old_areas, 1) end
-    return pcall(dfhack.persistent.saveSiteData, PROJECTS_KEY, data)
+    return site_put(PROJECTS_KEY, data)
+end
+
+-- (0.105.33, L4) The boxes a project keeps others out of: its level's area,
+-- and (a way in) one box for each other level its column crosses.
+function project_areas(p)
+    local out = {}
+    if type(p.area) == 'table' then table.insert(out, p.area) end
+    for _, a in ipairs(type(p.areas) == 'table' and p.areas or {}) do
+        if type(a) == 'table' then table.insert(out, a) end
+    end
+    return out
+end
+
+-- (0.105.33, industry 2) Every project ever finished: those still listed and
+-- those dropped from the list since. Never saturates.
+function done_total(data)
+    local n = math.tointeger(data.dropped_done)
+        or (type(data.old_areas) == 'table' and #data.old_areas or 0)
+    for _, p in ipairs(data.list) do
+        if p.phase == 'done' then n = n + 1 end
+    end
+    return n
 end
 
 -- (0.104.19) Every level the AI has dug or is digging: the open and recent
@@ -55,7 +83,7 @@ function level_areas()
     local data = load_projects()
     local out = {}
     for _, p in ipairs(data.list) do
-        if type(p.area) == 'table' then table.insert(out, p.area) end
+        for _, a in ipairs(project_areas(p)) do table.insert(out, a) end
     end
     for _, a in ipairs(type(data.old_areas) == 'table' and data.old_areas or {}) do
         table.insert(out, a)
@@ -249,11 +277,11 @@ function start_project(params, now, dry_run)
     local decor = decoration_cells(L, site, build)
     local where = {stair = {x = stair.x, y = stair.y, z_top = stair.z_top, z_bottom = stair.z_bottom,
                             elevation_top = ez(stair.z_top), elevation_bottom = ez(stair.z_bottom)},
-                   anchor = a, corridor = site.corridor}
+                   anchor = a, corridor = site.corridor, new_corridor = site.new_corridor}
     if dry_run then
         return {ok = true, dry_run = true, kind = kind, z = site.z, elevation = ez(site.z),
                 extends_stairs = site.extend, in_district = site.in_district,
-                stair = where.stair, anchor = a, corridor = site.corridor,
+                stair = where.stair, anchor = a, corridor = site.corridor, new_corridor = site.new_corridor,
                 area = site.area, tiles = expected, summary = L.summary, furniture = furniture,
                 decoration = {smooth = #decor.smooth, engrave = #decor.engrave}}
     end
@@ -284,7 +312,7 @@ function start_project(params, now, dry_run)
                   name = params.name, style = params.style,
                   deity_hf = params.deity_hf, religion = params.religion, profession = params.profession},
         stair = {x = stair.x, y = stair.y}, anchor = {x = a.x, y = a.y},
-        z = site.z, area = site.area, corridor = site.corridor,
+        z = site.z, area = site.area, corridor = site.corridor, new_corridor = site.new_corridor,
         stairs = stairs_cells, summary = L.summary, furniture = furniture,
         -- the exact cells, so later steps never depend on regenerating the layout
         cells = {dig = dig, build = build, place = L.place, zone = L.zone,
@@ -302,7 +330,7 @@ function start_project(params, now, dry_run)
     return {ok = true, project_id = p.id, kind = kind, z = site.z, elevation = ez(site.z),
             extends_stairs = site.extend, in_district = site.in_district,
             stair = {x = stair.x, y = stair.y},
-            anchor = a, corridor = site.corridor,
+            anchor = a, corridor = site.corridor, new_corridor = site.new_corridor,   -- (0.105.33) Spacing
             tiles = expected, designated = result, summary = L.summary,
             warning = (result ~= expected) and ('only %d of %d tiles designated'):format(result, expected) or nil}
 end
@@ -312,6 +340,8 @@ function cells_of(p, phase)
 end
 
 -- How far the digging has got, and whether it's stuck.
+REDIG_MAX = 3        -- (0.105.33, L4) times a lost shaft, stair or gallery tile is designated again
+
 function dig_progress(p)
     local total, dug, stuck, marked, digging = 0, 0, 0, 0, 0
     local jobs = job_tiles()
@@ -407,16 +437,23 @@ function dig_progress(p)
     local open_shape = function(t) return t.shape ~= 'WALL' and t.shape ~= 'FLOOR' and t.shape ~= 'RAMP' end
     local pri = type(p.params) == 'table' and p.params.pri or ''
     local shaft_open, redug = true, 0
+    -- (0.105.33, L4) each tile at most REDIG_MAX times (counted in the
+    -- project): one the game (or the player) keeps taking off stays stuck,
+    -- so the project can end instead of putting it back for ever
     local function keep(x, y, z, done, key)
         local before = stuck
         check(x, y, z, done)
         local t = tile_info(x, y, z)
         if not (t and done(t)) then shaft_open = false end
-        if stuck > before and t and not t.marked then
+        local tk = x .. ',' .. y .. ',' .. z
+        local times = type(p.redug) == 'table' and tonumber(p.redug[tk]) or 0
+        if stuck > before and t and not t.marked and times < REDIG_MAX then
             local ok, s = pcall(quickfort_apply, 'dig', {{x = 0, y = 0, text = key .. (pri or '')}}, z, x, y)
             if ok and stat(s, 'dig_designated') == 1 then
                 stuck, redug = stuck - 1, redug + 1
             end
+            if type(p.redug) ~= 'table' then p.redug = {} end
+            p.redug[tk], p.redug_changed = times + 1, true
         end
     end
     -- (0.105.4 review) the shaft's last level (it opens into the cavern) and
@@ -530,6 +567,15 @@ local function next_step(p, r)
     if p.kind == 'way_in' and p.phase == 'dig' and r.dig and r.dig.total > 0 and r.dig.dug == r.dig.total then
         return 'finish'
     end
+    -- (0.105.33, L4) a way in with a step missing is no way in: never
+    -- furnished as if dug; once nothing else is left, it is given up
+    if p.kind == 'way_in' then
+        if p.phase == 'dig' and r.dig and r.dig.stuck > 0
+                and r.dig.dug + r.dig.stuck + r.dig.marked == r.dig.total then
+            return 'cancel'
+        end
+        return false
+    end
     if p.phase == 'dig' and r.dig and r.dig.total > 0 and r.dig.dug == r.dig.total then
         return 'furnish'
     elseif p.phase == 'dig' and r.dig and r.dig.stuck > 0 and r.dig.shaft_open ~= false
@@ -552,6 +598,7 @@ function projects_report()
     OFFSET = elevation_offset()
     local data = load_projects()
     local out, decorating, finished = {}, {}, 0
+    local redug_seen = false
     for _, p in ipairs(data.list) do
         if p.phase == 'dig' or p.phase == 'furnish' or p.phase == 'decorate' then
             local r = {id = p.id, kind = p.kind, phase = p.phase, z = p.z, elevation = ez(p.z),
@@ -574,14 +621,20 @@ function projects_report()
                                   seen = type(p.well_diag) == 'table' and p.well_diag.text or nil}
             end
             r.next = next_step(p, r) or false
+            if p.redug_changed then p.redug_changed, redug_seen = nil, true end
             table.insert(p.phase == 'decorate' and decorating or out, r)
         elseif p.phase == 'done' then
             finished = finished + 1
         end
     end
+    -- (0.105.33, L4) the tiles the report designated again are counted with the fort
+    if redug_seen then pcall(save_projects, data) end
     local okc, cap = pcall(slot_cap, open_projects(data))
     local okl, lids = pcall(well_lids, true, data)     -- (0.104.151)
-    return {open = out, decorating = decorating, finished = finished, max_open = okc and cap or MAX_OPEN_PROJECTS,
+    -- (0.105.33, industry 2) `finished` counts only the KEEP_CLOSED_PROJECTS
+    -- kept closed ones (20 at most); done_total every level ever finished
+    return {open = out, decorating = decorating, finished = finished, done_total = done_total(data),
+            max_open = okc and cap or MAX_OPEN_PROJECTS,
             max_open_base = MAX_OPEN_PROJECTS, well_lids = (okl and #lids > 0) and lids or nil,
             well_lids_error = (not okl) and tostring(lids):sub(1, 120) or nil}
 end
@@ -871,8 +924,12 @@ function well_refused(data, p, results, qf_build)
                 error = ('the game would not put the well over the hole at %s (%d of %d tries; %s): tried again in a day')
                     :format(where, p.well_refusals, WELL_REFUSALS_MAX, diag.text)}
     end
-    -- given up (a new well would only dig another hole)
+    -- given up (a new well would only dig another hole). (0.105.33 B4) Marked
+    -- refused: the brain tries again later, and well_spots_unreached keeps a
+    -- new well off this spot (a revived cavern well may still take it up)
     p.phase = 'cancelled'
+    p.refused = true
+    p.cancelled_year = df.global.cur_year
     save_projects(data)
     return {ok = false, project_id = p.id, placed = results, diagnosis = diag, refusals = p.well_refusals,
             error = ('the game would not place the well over the hole at %s (%d tries; %s)'):format(
@@ -886,6 +943,10 @@ function furnish_project(id, buildingplan_on, stalled)
     if not p then return {ok = false, rejected = true, error = 'no such AI project'} end
     if p.phase ~= 'dig' then
         return {ok = false, rejected = true, error = ('project is already %s'):format(p.phase)}
+    end
+    -- (0.105.33, L4) a way in has nothing to furnish: finished when every step is dug
+    if p.kind == 'way_in' then
+        return {ok = false, rejected = true, error = 'a way in is finished when every step is dug, never furnished'}
     end
     local prog = dig_progress(p)
     local accept_rock = prog.stuck > 0 and prog.dug + prog.stuck + prog.marked == prog.total
@@ -1244,6 +1305,27 @@ function cancel_project(id, unreached)
         return {ok = false, rejected = true, error = 'only projects still being dug can be cancelled'}
     end
     undo_dig(cells_of(p, 'dig'), p.stairs, p.z, anchor_of(p), p.stair)
+    -- (0.105.33, L4) and what dig_progress keeps designated: a well's shaft,
+    -- the stairs it is dug from and its gallery, a way in's column and tunnel
+    local pri = type(p.params) == 'table' and p.params.pri or ''
+    local function undo_one(x, y, z, key)
+        pcall(quickfort_apply, 'dig', {{x = 0, y = 0, text = key .. pri}}, z, x, y, 'undo')
+    end
+    local a = anchor_of(p)
+    -- (0.105.33 merge) a well's own undo (ai-builder-wells.lua undo_well_cells),
+    -- one place for what a well designates beyond cells.dig
+    if p.kind == 'well' and type(undo_well_cells) == 'function' and type(a) == 'table'
+            and pcall(undo_well_cells, p) then
+        -- done
+    else
+        for _, zk in ipairs(type(p.shaft) == 'table' and p.shaft or {}) do
+            if type(a) == 'table' then undo_one(a.x, a.y, zk, 'h') end
+        end
+        for _, c in ipairs(type(p.shaft_stairs) == 'table' and p.shaft_stairs or {}) do
+            undo_one(c.x, c.y, c.z, c.key)
+        end
+        for _, g in ipairs(type(p.gallery) == 'table' and p.gallery or {}) do undo_one(g.x, g.y, p.z, 'd') end
+    end
     p.phase = 'cancelled'
     if unreached then
         p.unreached = true
@@ -1277,6 +1359,14 @@ WAY_IN_ZSPAN = 8          -- the stranded ground's end of the column: this many 
 WAY_IN_PRIORITY = '1'     -- dig priority: they are dying of thirst out there
 WAY_IN_SECONDS = 2        -- the search stops here
 WAY_IN_INVADER_NEAR = 30  -- (merge32 review) no way in dug with an invader in sight this near its ends
+WAY_IN_TRIES = 3          -- (0.105.33, L4) searches, each without the columns quickfort refused
+
+-- (0.105.33, secondway) a second way to the surface by design: the same digger,
+-- from open ground under the sky this far (across) from the existing entrance
+WAY_IN_SECOND_MIN = 15
+WAY_IN_SECOND_MAX = 40
+WAY_IN_SECOND_PRIORITY = '4'   -- nobody is dying: the ordinary dig priority
+WAY_IN_SECOND_CENTERS = 4      -- surface spots searched round (the best first)
 
 local WAY_IN_SIDES = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}}
 WAY_IN_NO_GROUND = 'no open ground of theirs to come up (or down) to'
@@ -1300,7 +1390,10 @@ function way_in_fort()
         local okf, fi = pcall(function() return G.fort_interior() end)
         if okf and type(fi) == 'table' and math.tointeger(fi.group) and fi.group ~= 0 then
             out.group = fi.group
-            table.insert(out.anchors, {x = fi.x, y = fi.y, z = fi.z})
+            -- (0.105.33, L4) 'citizens inside' gives a group and no tile: no anchor
+            if math.tointeger(fi.x) and math.tointeger(fi.y) and math.tointeger(fi.z) then
+                table.insert(out.anchors, {x = fi.x, y = fi.y, z = fi.z})
+            end
         end
         for _, e in ipairs(type(GT.entrances) == 'table' and GT.entrances or {}) do
             if math.tointeger(e.x) then table.insert(out.pieces, {x1 = e.x, y1 = e.y, x2 = e.x, y2 = e.y}) end
@@ -1370,8 +1463,10 @@ local function way_in_column(ctx, cx, cy, fort_below)
     local why = WAY_IN_NO_GROUND
     for z = zs, ze, step do
         local t = info(cx, cy, z)
-        if fort_below and way_in_ground(t, cx, cy, z, target) and not t.designated and not t.building
-                and not building_at(cx, cy, z) then
+        -- (0.105.33, L4) the top 'j' goes into natural ground: quickfort
+        -- won't dig one into a built floor
+        if fort_below and way_in_ground(t, cx, cy, z, target) and NATURAL[t.material] and not t.designated
+                and not t.building and not building_at(cx, cy, z) then
             local ok, w = ctx.safe(cx, cy, z - 1)
             local okn, wn = ctx.dry_beside(cx, cy, z)
             if ok and okn then top, top_key, out_tile, first = z, 'j', {x = cx, y = cy, z = z}, z - 1 break end
@@ -1420,7 +1515,132 @@ local function way_in_column(ctx, cx, cy, fort_below)
     end
 end
 
--- dig_way_in{x, y, z}: the stranded spot (map coordinates). Returns
+-- (0.105.33) Open ground under the sky (not a building, not dug, not a cavern
+-- or water) a stair can come up to.
+local function way_in_sky(t)
+    return t ~= nil and t.shape == 'FLOOR' and t.outside and not t.subterranean and not t.hidden
+        and not t.liquid and not t.feature and not t.building and not t.designated
+end
+
+-- (0.105.33) The second way in's surface end: the fort's one surface entrance
+-- (the gate scan's) and the surface spots 15-40 tiles from it in the outside
+-- walk group, best first (over the fort's inside, then nearer the entrance).
+-- Returns {entrance = {x, y, z}, group, spots = {{x, y, z}}} or nil, why.
+function way_in_second_spots(fort, GM, deadline_all)
+    local GT = GM and GM.GATES
+    if not (type(GT) == 'table' and GT.scanned and type(GT.entrances) == 'table') then
+        return nil, 'the entrances are not mapped yet (scan them first)'
+    end
+    local surf = {}
+    for _, e in ipairs(GT.entrances) do
+        if e.kind == 'surface' and math.tointeger(e.x) then table.insert(surf, e) end
+    end
+    if #surf == 0 then return nil, 'the fort has no surface entrance to keep the new one apart from' end
+    if #surf > 1 then
+        return nil, ('the fort already has %d ways to the surface: no second one is needed'):format(#surf)
+    end
+    local e = surf[1]
+    -- the outside walk group: the entrance's outside tiles (or the ground over it)
+    local group = 0
+    for k in pairs(type(e.outs) == 'table' and e.outs or {}) do
+        local kk = math.tointeger(k)
+        if kk then
+            local g = walk_group(kk % 4096, (kk // 4096) % 4096, kk // (4096 * 4096))
+            if g ~= 0 then group = g break end
+        end
+    end
+    if group == 0 then
+        for dz = 1, 2 do
+            for dx = -1, 1 do
+                for dy = -1, 1 do
+                    local t = info(e.x + dx, e.y + dy, e.z + dz)
+                    if group == 0 and t and t.outside and t.shape ~= 'WALL' and t.shape ~= 'EMPTY' then
+                        group = walk_group(e.x + dx, e.y + dy, e.z + dz)
+                    end
+                end
+            end
+        end
+    end
+    if group == 0 then return nil, 'no outside ground found at the entrance' end
+    local W, H = map_size()
+    local R = WAY_IN_SECOND_MAX
+    local bx1, by1 = math.max(2, e.x - R), math.max(2, e.y - R)
+    local bx2, by2 = math.min(W - 3, e.x + R), math.min(H - 3, e.y + R)
+    -- how far (across) each column is from the fort's inside: a distance map from
+    -- the inside's columns, over the box
+    local dist, queue, head = {}, {}, 1
+    local function ck(x, y) return y * 4096 + x end
+    if fort.set then
+        for k in pairs(fort.set) do
+            local x, y = k % 4096, (k // 4096) % 4096
+            if x >= bx1 and x <= bx2 and y >= by1 and y <= by2 and not dist[ck(x, y)] then
+                dist[ck(x, y)] = 0
+                table.insert(queue, {x, y})
+            end
+        end
+        while head <= #queue do
+            local c = queue[head]
+            head = head + 1
+            local d = dist[ck(c[1], c[2])] + 1
+            for dx = -1, 1 do
+                for dy = -1, 1 do
+                    local nx, ny = c[1] + dx, c[2] + dy
+                    if nx >= bx1 and nx <= bx2 and ny >= by1 and ny <= by2 and not dist[ck(nx, ny)] then
+                        dist[ck(nx, ny)] = d
+                        table.insert(queue, {nx, ny})
+                    end
+                end
+            end
+        end
+    end
+    local zs = {0}
+    for i = 1, WAY_IN_ZSPAN do table.insert(zs, i); table.insert(zs, -i) end
+    local spots = {}
+    local deadline = math.min(os.clock() + WAY_IN_SECONDS, deadline_all or math.huge)
+    for x = bx1, bx2 do
+        if os.clock() > deadline then break end
+        for y = by1, by2 do
+            local de = math.max(math.abs(x - e.x), math.abs(y - e.y))
+            if de >= WAY_IN_SECOND_MIN and de <= WAY_IN_SECOND_MAX and (x + y) % 2 == 0 then
+                for _, dz in ipairs(zs) do
+                    local z = e.z + 1 + dz
+                    local t = info(x, y, z)
+                    -- (fix33) not on the fort's inside (a walled courtyard the
+                    -- scan counts in): the top there is no second way out
+                    if way_in_sky(t) and not (fort.set and fort.set[wkey(x, y, z)])
+                            and walk_group(x, y, z) == group and not building_at(x, y, z) then
+                        local di = dist[ck(x, y)] or 999
+                        table.insert(spots, {x = x, y = y, z = z, rank = di * 1000 + de})
+                        break
+                    end
+                end
+            end
+        end
+    end
+    if #spots == 0 then
+        return nil, ('no open ground under the sky %d-%d tiles from the entrance'):format(WAY_IN_SECOND_MIN, WAY_IN_SECOND_MAX)
+    end
+    table.sort(spots, function(a, b)
+        if a.rank ~= b.rank then return a.rank < b.rank end
+        if a.x ~= b.x then return a.x < b.x end
+        return a.y < b.y
+    end)
+    -- the best few, apart from each other (round different sides of the fort)
+    local picked = {}
+    for _, sp in ipairs(spots) do
+        local apart = true
+        for _, q in ipairs(picked) do
+            if math.max(math.abs(q.x - sp.x), math.abs(q.y - sp.y)) < 2 * WAY_IN_RADIUS then apart = false break end
+        end
+        if apart then table.insert(picked, sp) end
+        if #picked >= WAY_IN_SECOND_CENTERS then break end
+    end
+    return {entrance = {x = e.x, y = e.y, z = e.z}, group = group, spots = picked}
+end
+
+-- dig_way_in{x, y, z}: the stranded spot (map coordinates). (0.105.33)
+-- dig_way_in{second = true}: no stranded spot; a second way to the surface,
+-- its top 15-40 tiles from the fort's one surface entrance. Returns
 -- {ok, project_id, from, to, tiles, levels, column, tunnel, dry_run} or
 -- {ok = false, rejected = true, error = why, why = why}.
 function dig_way_in(params, now, dry_run)
@@ -1439,34 +1659,62 @@ local function pos_out(p)
 end
 
 function way_in_plan_and_dig(params, now, dry_run)
+    local second = params.second == true
     local sx, sy, sz = math.tointeger(params.x), math.tointeger(params.y), math.tointeger(params.z)
-    if not sx or not sy or not sz then return refuse('dig_way_in needs x, y, z') end
+    if not second and (not sx or not sy or not sz) then return refuse('dig_way_in needs x, y, z') end
     local W, H, D = map_size()
-    if sx < 0 or sy < 0 or sx >= W or sy >= H or sz < 0 or (D and sz >= D) then return refuse('that spot is off the map') end
+    if not second and (sx < 0 or sy < 0 or sx >= W or sy >= H or sz < 0 or (D and sz >= D)) then
+        return refuse('that spot is off the map')
+    end
     local data = load_projects()
+    -- (fix33) the second way to the surface never holds the emergency way in
+    -- for dwarves cut off (the two dig side by side; reserved keeps them apart)
     for _, p in ipairs(data.list) do
-        if p.kind == 'way_in' and p.phase == 'dig' then
+        if p.kind == 'way_in' and p.phase == 'dig' and (second or not p.second) then
             return refuse(('a way in is already being dug (project %d)'):format(p.id))
         end
     end
-    local here = info(sx, sy, sz)
-    local target = walk_group(sx, sy, sz)
-    if not here or target == 0 then
-        return refuse(('nobody can stand at x%d y%d z%d (no walkable ground there)'):format(sx, sy, ez(sz)))
-    end
-    if here.feature then
-        return refuse('that spot is in a cavern: no way in is dug from a cavern (it would open the fort to it)')
-    end
+    -- (fix33) one deadline for the whole search (the second way's spot scan
+    -- and every column search): the game's freeze stays short
+    local deadline_all = os.clock() + WAY_IN_SECONDS * WAY_IN_TRIES
     -- (merge32 review) not during a siege: a new hole in the fort while the
     -- gate watcher has it shut lets the enemy in by it
     local GM = way_in_gates()
     if GM and type(GM.GATES) == 'table' and GM.GATES.armed then
         return refuse('the gate watcher is armed (enemies about): no new way in is dug until the alarm is over')
     end
-    local fort, fwhy = way_in_fort()
+    local target, extra_centers, second_e, fort0
+    if second then
+        local fwhy0
+        fort0, fwhy0 = way_in_fort()
+        if not fort0 then return refuse(fwhy0) end
+        local pick, pwhy = way_in_second_spots(fort0, GM, deadline_all)
+        if not pick then return refuse(pwhy) end
+        target, second_e = pick.group, pick.entrance
+        sx, sy, sz = pick.spots[1].x, pick.spots[1].y, pick.spots[1].z
+        extra_centers = {}
+        for i = 2, #pick.spots do table.insert(extra_centers, {x = pick.spots[i].x, y = pick.spots[i].y}) end
+    else
+        local here = info(sx, sy, sz)
+        target = walk_group(sx, sy, sz)
+        if not here or target == 0 then
+            return refuse(('nobody can stand at x%d y%d z%d (no walkable ground there)'):format(sx, sy, ez(sz)))
+        end
+        if here.feature then
+            return refuse('that spot is in a cavern: no way in is dug from a cavern (it would open the fort to it)')
+        end
+    end
+    local fort, fwhy = fort0, nil
+    if not fort then fort, fwhy = way_in_fort() end
     if not fort then return refuse(fwhy) end
-    if target == fort.group then
+    if not second and target == fort.group then
         return refuse('that spot already joins the fort\'s inside (the same walk group): no way in is needed')
+    end
+    -- (0.105.33) the second way's top: 15-40 tiles (across) from the entrance
+    local function in_band(x, y)
+        if not second_e then return true end
+        local d = math.max(math.abs(x - second_e.x), math.abs(y - second_e.y))
+        return d >= WAY_IN_SECOND_MIN and d <= WAY_IN_SECOND_MAX
     end
     -- the AI's other projects, by level
     local areas = {}
@@ -1546,6 +1794,7 @@ function way_in_plan_and_dig(params, now, dry_run)
     end
     best_in = best_in or fort.anchors[1]
     if best_in and (best_in.x ~= sx or best_in.y ~= sy) then table.insert(centers, {x = best_in.x, y = best_in.y}) end
+    for _, c in ipairs(extra_centers or {}) do table.insert(centers, c) end      -- (0.105.33)
     -- "is the fort within reach of a tunnel on this level?": inside tiles per level, as
     -- prefix sums over the box (round the center being searched) the columns and their
     -- tunnels can reach
@@ -1608,9 +1857,18 @@ function way_in_plan_and_dig(params, now, dry_run)
     end
     local ctx = {z = sz, target = target, safe = safe, dry_beside = dry_beside, near = near, tunnel = tunnel,
                  best_cost = WAY_IN_MAX_DIG + 1}
-    local best, best_rank
-    local whys, tried, near_gate, too_long, no_ground = {}, {}, 0, 0, 0
-    local deadline = os.clock() + WAY_IN_SECONDS
+    -- (0.105.33, L4) a column whose cells quickfort's dry run refuses is
+    -- left out and the search run again (WAY_IN_TRIES times in all)
+    local banned, refused_last = {}, nil
+    local pri = second and WAY_IN_SECOND_PRIORITY or WAY_IN_PRIORITY
+    local best, cells, out
+    for attempt = 1, WAY_IN_TRIES do
+    ctx.best_cost = WAY_IN_MAX_DIG + 1
+    local best_rank
+    best = nil
+    local whys, tried, near_gate, too_long, no_ground, off_band = {}, {}, 0, 0, 0, 0
+    for k in pairs(banned) do tried[k] = true end
+    local deadline = math.min(os.clock() + WAY_IN_SECONDS, deadline_all)
     local timed_out = false
     for _, c in ipairs(centers) do
         cur = c
@@ -1625,9 +1883,15 @@ function way_in_plan_and_dig(params, now, dry_run)
                             if os.clock() > deadline then timed_out = true break end
                             if gate_dist(x, y) < WAY_IN_GATE_APART then
                                 near_gate = near_gate + 1
+                            elseif not in_band(x, y) then
+                                off_band = off_band + 1
                             else
                                 for _, below in ipairs({true, false}) do
                                     local plan, why, long = way_in_column(ctx, x, y, below)
+                                    if plan and second and not (plan.to and in_band(plan.to.x, plan.to.y)
+                                            and not (fort.set and fort.set[wkey(plan.to.x, plan.to.y, plan.to.z)])) then
+                                        plan, why = nil, nil       -- (its top steps off out of the band, or
+                                    end                            -- (fix33) into the fort's inside: a courtyard)
                                     if plan then
                                         local rank = plan.tiles * 1000000 + (x - sx) ^ 2 + (y - sy) ^ 2
                                         if not best_rank or rank < best_rank then
@@ -1655,6 +1919,7 @@ function way_in_plan_and_dig(params, now, dry_run)
         if timed_out then break end
     end
     if not best then
+        if refused_last then return refuse(refused_last) end
         local words = {}
         for w, n in pairs(whys) do table.insert(words, {w = w, n = n}) end
         table.sort(words, function(a, b) if a.n ~= b.n then return a.n > b.n end return a.w < b.w end)
@@ -1663,40 +1928,50 @@ function way_in_plan_and_dig(params, now, dry_run)
         for i = 1, math.min(2, #words) do table.insert(bits, words[i].w) end
         if #bits == 0 and no_ground > 0 then table.insert(bits, WAY_IN_NO_GROUND) end
         if near_gate > 0 then table.insert(bits, ('the nearer spots are within %d tiles of the gate'):format(WAY_IN_GATE_APART)) end
-        return refuse(('no safe way in found near x%d y%d z%d%s%s'):format(sx, sy, ez(sz),
+        return refuse(('no safe %s found near x%d y%d z%d%s%s'):format(second and 'second way in' or 'way in', sx, sy, ez(sz),
             #bits > 0 and ': ' or '', table.concat(bits, '; ')) .. (timed_out and ' (search cut short)' or ''))
     end
     -- (merge32 review) an invader in sight near either end: not now
+    -- (0.105.33, L4) nor a great danger (a forgotten beast, a megabeast)
     if GM and type(GM.visible_dangers) == 'function' then
         local okv, vis = pcall(GM.visible_dangers)
         for _, d in ipairs(okv and type(vis) == 'table' and vis or {}) do
-            if d.invader and d.pos then
+            if (d.invader or d.great) and d.pos then
                 for _, e in ipairs({best.from, best.to}) do
                     local dd = e and math.max(math.abs(d.pos.x - e.x), math.abs(d.pos.y - e.y), math.abs(d.pos.z - e.z))
                     if dd and dd <= WAY_IN_INVADER_NEAR then
-                        return refuse(('an invader is in sight %d tiles from where the way in would come out: '
-                            .. 'not dug until they are gone'):format(dd))
+                        return refuse(('%s is in sight %d tiles from where the way in would come out: '
+                            .. 'not dug until they are gone'):format(d.invader and 'an invader' or 'a great danger', dd))
                     end
                 end
             end
         end
     end
     -- the keys, at the way-in's priority: each tile one quickfort cell
-    local pri = WAY_IN_PRIORITY
-    local cells = {}
+    cells = {}
     for _, c in ipairs(best.cells) do table.insert(cells, {x = c.x, y = c.y, z = c.z, key = c.key}) end
     for _, t in ipairs(best.tunnel) do table.insert(cells, {x = t.x, y = t.y, z = best.z_fort, key = 'd'}) end
     local zlo, zhi = best.z_fort, best.z_fort
     for _, c in ipairs(best.cells) do zlo, zhi = math.min(zlo, c.z), math.max(zhi, c.z) end
-    local out = {ok = true, from = pos_out(best.from), to = pos_out(best.to), tiles = best.tiles,
-                 levels = zhi - zlo + 1, column = {x = best.x, y = best.y, elevation_top = ez(zhi), elevation_bottom = ez(zlo)},
-                 tunnel = #best.tunnel, dry_run = dry_run or nil}
+    out = {ok = true, from = pos_out(best.from), to = pos_out(best.to), tiles = best.tiles,
+           levels = zhi - zlo + 1, column = {x = best.x, y = best.y, elevation_top = ez(zhi), elevation_bottom = ez(zlo)},
+           tunnel = #best.tunnel, dry_run = dry_run or nil, second = second or nil}
+    if second_e then
+        out.entrance = pos_out(second_e)
+        out.apart = math.max(math.abs(best.to.x - second_e.x), math.abs(best.to.y - second_e.y))
+    end
     for _, c in ipairs(cells) do
         local okd, st = pcall(quickfort_apply, 'dig', {{x = 0, y = 0, text = c.key .. pri}}, c.z, c.x, c.y, 'run', true)
         if not okd or stat(st, 'dig_designated') ~= 1 then
-            return refuse(('the game would not dig x%d y%d z%d (%s)'):format(c.x, c.y, ez(c.z), c.key))
+            refused_last = ('the game would not dig x%d y%d z%d (%s)'):format(c.x, c.y, ez(c.z), c.key)
+            banned[best.y * 4096 + best.x] = true
+            best = nil
+            break
         end
     end
+    if best then break end
+    end
+    if not best then return refuse(refused_last) end
     if dry_run then return out end
     local done, err = pcall(function()
         for _, c in ipairs(cells) do
@@ -1714,13 +1989,25 @@ function way_in_plan_and_dig(params, now, dry_run)
         x1, y1, x2, y2 = math.min(x1, t.x), math.min(y1, t.y), math.max(x2, t.x), math.max(y2, t.y)
         table.insert(gallery, {x = t.x, y = t.y})
     end
+    -- (0.105.33, L4) the column's other levels kept out of the quarry, the
+    -- vein drifts and other projects too (level_areas)
+    local col_areas = {}
+    for _, c in ipairs(best.cells) do
+        if c.z ~= best.z_fort then
+            table.insert(col_areas, {x1 = c.x, y1 = c.y, x2 = c.x, y2 = c.y, z = c.z})
+        end
+    end
     local p = {
-        id = data.next_id, kind = 'way_in', phase = 'dig', emergency = true,
+        id = data.next_id, kind = 'way_in', phase = 'dig', emergency = (not second) or nil, second = second or nil,
         params = {pri = pri}, z = best.z_fort, anchor = {x = best.x, y = best.y}, stair = {x = best.x, y = best.y},
         area = {x1 = x1, y1 = y1, x2 = x2, y2 = y2, z = best.z_fort},
+        areas = col_areas,
         cells = {dig = {}}, shaft_stairs = best.cells, gallery = gallery,
-        from = best.from, to = best.to, stranded = {x = sx, y = sy, z = sz, group = target},
-        summary = {way_in = true, emergency = true, tiles = best.tiles, levels = out.levels, tunnel = #gallery},
+        from = best.from, to = best.to,
+        stranded = (not second) and {x = sx, y = sy, z = sz, group = target} or nil,
+        entrance = second_e,
+        summary = {way_in = true, emergency = (not second) or nil, second = second or nil, tiles = best.tiles,
+                   levels = out.levels, tunnel = #gallery},
         started = now, designated = #cells,
     }
     data.next_id = data.next_id + 1
