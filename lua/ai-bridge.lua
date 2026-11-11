@@ -180,6 +180,7 @@ ACTIONS = {
     nest_boxes = act_nest_boxes,             -- (0.104.80)
     train_war = act_train_war,               -- (0.104.81)
     dig_stairwell = act_dig_stairwell,       -- (0.104.82)
+    dig_way_in = act_dig_way_in,             -- (0.105.32) an emergency way in for the stranded
     guard_gate = act_guard_gate,             -- (0.104.83)
     -- (0.105.0, round 2) an army that can fight
     fix_gear_gaps = act_fix_gear_gaps, assign_quivers = act_assign_quivers, squad_bolts = act_squad_bolts,
@@ -366,6 +367,8 @@ for _, name in ipairs({
     -- (0.105.30) construction: each plans and returns before it places anything
     'place_hall', 'build_wings', 'floor_rooms',
     'unstick_gate',      -- (0.105.32) its dry run says what it would do, and changes nothing
+    -- (0.105.32) the way in: planned (and quickfort's dry run) before anything is designated
+    'dig_way_in',
 }) do DRY_OK[name] = true end
 
 -- These only change what's displayed, so they still work while halted, dry
