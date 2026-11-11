@@ -308,6 +308,10 @@ def observe(state: dict, memory, fort: str | None = None, write_pc: bool = True)
     memory on the PC is read, never written."""
     s = normalize(state)
     err = s["_errors"]
+    if "date" in err:
+        # (0.105.33, B5) tick 0 is no older save: recent_ai would be dropped
+        # and every preference's "last" set to 0 (faded on the next real cycle)
+        return []
     l = _state(memory)
     seen = l["seen"]
     now = _now(state)
@@ -737,10 +741,16 @@ def describe(memory, now: int) -> list[dict]:
         if not isinstance(p, dict) or w <= 0:
             continue
         verdict, _ = hold(memory, subject, now, "", 9)
-        exempt = subject in EXEMPT_SUBJECTS or subject.startswith(("order:brew", "order:prepare"))
+        exempt = subject in EXEMPT_SUBJECTS
+        # (0.105.33, B5) hold() exempts the drink and food rules, not the subject:
+        # the strategist's or a variety order of it is held like any other
+        drink_food = subject.startswith(("order:brew", "order:prepare"))
         effect = ("still done when the fort needs it" if exempt
-                  else "left to you" if verdict == "leave" else "the AI waits before doing it again"
-                  if verdict == "wait" else "the AI leans away from it")
+                  else ("the fort's own drink and meals are still made; " if drink_food else "")
+                  + ("other orders of it are left to you" if drink_food and verdict == "leave"
+                     else "left to you" if verdict == "leave"
+                     else "the AI waits before doing it again" if verdict == "wait"
+                     else "the AI leans away from it"))
         out.append({"subject": subject, "text": subject_text(subject), "weight": round(w, 2),
                     "lesson": w >= LESSON_WEIGHT, "inherited": float(p.get("inherited") or 0) > 0,
                     "how": "; ".join(f"{x.get('how')}" + (f" ({x.get('date')})" if x.get("date") else "")

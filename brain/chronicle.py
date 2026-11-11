@@ -47,7 +47,10 @@ def add(memory, state: dict, kind: str, text: str) -> dict | None:
     if not text:
         return None
     year = (state.get("date") or {}).get("year")
-    e = {"y": year, "d": _date(state), "k": kind, "t": text}
+    if date_failed(state):     # (0.105.33, B5) kept, but undated: no year 0 to rewind or sum up
+        e = {"y": None, "d": "date unknown", "k": kind, "t": text}
+    else:
+        e = {"y": year, "d": _date(state), "k": kind, "t": text}
     for old in c["entries"][-12:]:
         if old.get("d") == e["d"] and old.get("t") == text:
             return None
@@ -60,8 +63,20 @@ def add(memory, state: dict, kind: str, text: str) -> dict | None:
     return e
 
 
-def rewind(memory, year: int) -> None:
-    """An older save was loaded: forget entries from years after it."""
+def date_failed(state) -> bool:
+    """(0.105.33, B5) The report's date section failed: its year 0 is not a date."""
+    if not isinstance(state, dict):
+        return False
+    d = state.get("date")
+    return "date" in (state.get("_errors") or {}) or (isinstance(d, dict) and "error" in d)
+
+
+def rewind(memory, year: int, state: dict | None = None) -> None:
+    """An older save was loaded: forget entries from years after it.
+    (0.105.33, B5) Not for a year below 1 or a report whose date failed
+    (normalize() puts in year 0): that is no save, and would wipe it all."""
+    if not isinstance(year, int) or isinstance(year, bool) or year < 1 or date_failed(state):
+        return
     c = _state(memory)
     c["entries"] = [e for e in c["entries"] if not isinstance(e.get("y"), int) or e["y"] <= year]
     c["years"] = {k: v for k, v in c["years"].items() if not str(k).isdigit() or int(k) <= year}

@@ -160,19 +160,46 @@ def thinking_params(model: str, thinking: int, answer: int) -> tuple[dict, int]:
     return body, answer + max(thinking, ADAPTIVE_HEADROOM)
 
 
-def _options(cls, extra: dict, **kw):
+def _options(cls, extra, **kw):
     """ClaudeAgentOptions, with thinking and the newer options this SDK
     version knows: each optional group in `extra` is kept if it's accepted
-    (an older SDK refuses an unknown option with a TypeError)."""
-    groups = [g for g in (extra if isinstance(extra, list) else [extra]) if g]
+    (an older SDK refuses an unknown option with a TypeError).
+    (0.105.33, B5) A group may be a tuple of alternatives, tried in order
+    (the newer option first). Groups are listed least important first: a
+    refused one is dropped on its own, so a later one the SDK does know (the
+    `tools=[]` lock) is never lost with it."""
+    groups = []
+    for g in (extra if isinstance(extra, list) else [extra]):
+        alts = [a for a in (g if isinstance(g, tuple) else (g,)) if a]
+        if alts:
+            groups.append(alts)
+
+    def build(choice):
+        merged = {k: v for alts, i in zip(groups, choice) if i is not None for k, v in alts[i].items()}
+        return cls(**kw, **merged)
+
+    choice = [0] * len(groups)
     while True:
-        merged = {k: v for g in groups for k, v in g.items()}
         try:
-            return cls(**kw, **merged)
+            return build(choice)
         except TypeError:
-            if not groups:
-                raise
-            groups.pop()
+            pass
+        # which one group is refused: change it alone (next alternative, then none)
+        for n in range(len(groups)):
+            if choice[n] is None:
+                continue
+            nxt = choice[n] + 1 if choice[n] + 1 < len(groups[n]) else None
+            trial = choice[:n] + [nxt] + choice[n + 1:]
+            try:
+                return build(trial)
+            except TypeError:
+                continue
+        # more than one refused: step the least important that's left, and go on
+        live = [n for n in range(len(groups)) if choice[n] is not None]
+        if not live:
+            return build(choice)     # (the base options themselves: let its TypeError through)
+        n = live[0]
+        choice[n] = choice[n] + 1 if choice[n] + 1 < len(groups[n]) else None
 
 
 # --- Subscription backend (Claude Agent SDK) -----------------------------------------
@@ -203,13 +230,20 @@ class SubscriptionBackend:
         from claude_agent_sdk import ClaudeAgentOptions, ResultMessage, query
 
         model, thinking, _answer = pick(self, important, effort)
+        # (0.105.33, B5) the same effort as the API path (low with no thinking);
+        # `thinking` replaces the deprecated max_thinking_tokens, which stays as
+        # the fallback for an older SDK. (The answer cap has no SDK option.)
+        level = "low" if not thinking else "medium" if thinking < 3000 else "high"
         # (0.100, security pass) no tools at all: tools=[] is the SDK's own
         # switch for "no built-in tools" (the "*" rule is kept as a second
         # lock for an older SDK). No settings files either: the user's
         # settings may hold allow rules or hooks that run commands.
-        # (the last group is dropped first if the SDK refuses an option: an
-        # SDK that knows thinking but not `tools` keeps its thinking)
-        groups = [{"max_thinking_tokens": thinking} if thinking else {}, {"tools": []}]
+        # (each group is dropped on its own if the SDK refuses it, least
+        # important first: `tools` is kept by any SDK that knows it)
+        groups = [{"effort": level},
+                  ({"thinking": {"type": "adaptive"} if thinking else {"type": "disabled"}},
+                   {"max_thinking_tokens": thinking} if thinking else {}),
+                  {"tools": []}]
         options = _options(ClaudeAgentOptions, groups,
             system_prompt=instructions,   # replaces Claude Code's coding prompt
             disallowed_tools=["*"],       # no tools of any kind: text answers only
