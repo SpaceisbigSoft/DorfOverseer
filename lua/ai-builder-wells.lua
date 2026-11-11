@@ -915,18 +915,39 @@ function shaft_hatch_covers()
     return ok and n or 0
 end
 
--- One step for each cavern well's shaft gate toward `want_closed`.
--- {ok, wells = [{project_id, was, stage?, error?}]}
+-- (0.105.33 L5) A cavern well given up (the game refused the well, or it was
+-- cancelled) over a shaft dug open into the cavern: its shaft still opens
+-- the fort to the cavern, so its gate and lid are still kept (the gate
+-- always shut: no bucket goes down it).
+function shaft_left_open(p)
+    return p.kind == 'well' and p.phase == 'cancelled' and not p.held
+        and type(p.shaft) == 'table' and #p.shaft > 0
+        and type(p.shaft_stairs) == 'table' and p.shaft_stairs[1] ~= nil
+        and shaft_bottom_open(p)
+end
+
+-- The cavern wells whose shaft gate and lid the AI keeps.
+local function shaft_kept(p)
+    local st = p.shaft_stairs
+    if p.kind ~= 'well' or type(st) ~= 'table' or not st[1] then return false end
+    if p.phase == 'furnish' or p.phase == 'done' then return true end
+    if p.phase == 'dig' and (p.held or p.released) then return true end   -- (0.105.4 review) the gate before the breach
+    return shaft_left_open(p)
+end
+
+-- One step for each cavern well's shaft gate toward `want_closed` (a given-up
+-- shaft's always toward shut). {ok, wells = [{project_id, was, stage?, error?}]}
 function well_shaft_step(want_closed, dry_run)
     local data = load_projects()
     local wells, changed = {}, false
+    local all_closed = want_closed
     for _, p in ipairs(data.list) do
         local st = p.shaft_stairs
-        if p.kind == 'well' and type(st) == 'table' and st[1] and (p.phase == 'furnish' or p.phase == 'done'
-                or (p.phase == 'dig' and (p.held or p.released))) then   -- (0.105.4 review) the gate before the breach
+        if shaft_kept(p) then
+            local want_closed = all_closed or p.phase == 'cancelled'
             local a, hz = anchor_of(p), shaft_bottom(p)
             local g = shaft_gate_state(p)
-            local r = {project_id = p.id, was = g.state}
+            local r = {project_id = p.id, was = g.state, cancelled = p.phase == 'cancelled' or nil}
             local sg = p.shaft_gate
             -- rv 3: work below needs the stairs: a locked lid is unlocked
             if g.state ~= 'open' and g.state ~= 'closed' and g.state ~= 'none_possible' and not dry_run then
@@ -1124,6 +1145,21 @@ SHAFT_NEAR = 60
 SHAFT_CLOSE = 20
 SHAFT_WATCH = SHAFT_WATCH or {on = false}
 
+-- (0.105.33 L5) DFHack cancels every non-'frames' timer when the world
+-- unloads, so a saved timer id can be dead: ask DFHack, not the id.
+local function shaft_watch_alive()
+    if not (SHAFT_WATCH.on and SHAFT_WATCH.timer) then return false end
+    if type(dfhack.timeout_active) ~= 'function' then return true end   -- (no way to ask: the id taken at its word)
+    local ok, active = pcall(dfhack.timeout_active, SHAFT_WATCH.timer)
+    return (ok and active) and true or false
+end
+
+if dfhack and dfhack.onStateChange then
+    dfhack.onStateChange['ai-builder-wells-watch'] = function(sc)
+        if sc == SC_MAP_UNLOADED then SHAFT_WATCH = {on = false} end
+    end
+end
+
 -- (0.105.26) a citizen down in a cavern (on a cavern tile): a far great
 -- beast doesn't shut the shaft on them (the brain tells the player)
 local function citizen_in_caverns()
@@ -1205,7 +1241,7 @@ local function shaft_watch_tick()
 end
 
 function shaft_watch_start()
-    if SHAFT_WATCH.on and SHAFT_WATCH.timer then return false end
+    if shaft_watch_alive() then return false end
     SHAFT_WATCH.on = true
     SHAFT_WATCH.timer = dfhack.timeout(SHAFT_WATCH_TICKS, 'ticks', shaft_watch_tick)
     return true
@@ -1220,10 +1256,10 @@ function well_lids(probe, data)
     data = data or load_projects()      -- (13c) projects_report passes its own
     for _, p in ipairs(data.list) do
         local st = p.shaft_stairs
-        if p.kind == 'well' and type(st) == 'table' and st[1] and (p.phase == 'furnish' or p.phase == 'done'
-                or (p.phase == 'dig' and (p.held or p.released))) then   -- (0.105.4 review) the gate before the breach
+        if shaft_kept(p) then
             local top = st[1]
             local r = {project_id = p.id, x = top.x, y = top.y, z = top.z, elevation = ez(top.z)}
+            if p.phase == 'cancelled' then r.cancelled = true end    -- (0.105.33 L5) given up, its shaft open
             -- (0.105.26) the shaft's opening into the cavern (where its gate's hatch goes)
             local an0 = anchor_of(p)
             r.shaft_hatch = {x = an0.x, y = an0.y, z = shaft_bottom(p)}
@@ -1268,7 +1304,7 @@ function well_lids(probe, data)
                 if g.hatch then r.gate_hatch_built = g.hatch.built and true or false end
                 r.gate_hatch_standing = g.hatch ~= nil or nil     -- rv2 1: a hatch still at the shaft's bottom
                 if g.state == 'open' or g.state == 'closed' or g.state == 'pulling' then     -- (0.104.153)
-                    r.watching = (SHAFT_WATCH.on and SHAFT_WATCH.timer ~= nil) and true or false
+                    r.watching = shaft_watch_alive()
                     r.watch_error = SHAFT_WATCH.error
                     if SHAFT_WATCH.last and SHAFT_WATCH.last.project_id == p.id then r.watch_last = SHAFT_WATCH.last end
                     -- (0.104.165) what the watcher would shut it for now, by its own test: the
@@ -1384,6 +1420,23 @@ function revive_cavern_well(data, pri, dry_run)
         end
     end
     return nil
+end
+
+-- (0.105.33 L5) A cavern well's other designations taken back: the shaft's
+-- levels, the stair column beside it and the gallery (the top channel is
+-- cells.dig, undone by the caller). Tiles already dug stay dug.
+function undo_well_cells(p)
+    local a = anchor_of(p)
+    local pri = type(p.params) == 'table' and p.params.pri or ''
+    for _, zk in ipairs(type(p.shaft) == 'table' and p.shaft or {}) do
+        pcall(quickfort_apply, 'dig', {{x = 0, y = 0, text = 'h' .. pri}}, zk, a.x, a.y, 'undo')
+    end
+    for _, c in ipairs(type(p.shaft_stairs) == 'table' and p.shaft_stairs or {}) do
+        pcall(quickfort_apply, 'dig', {{x = 0, y = 0, text = c.key .. pri}}, c.z, c.x, c.y, 'undo')
+    end
+    for _, g in ipairs(type(p.gallery) == 'table' and p.gallery or {}) do
+        pcall(quickfort_apply, 'dig', {{x = 0, y = 0, text = 'd' .. pri}}, p.z, g.x, g.y, 'undo')
+    end
 end
 
 -- Start a well: channel the spot now; the well itself is placed when the
@@ -1559,7 +1612,9 @@ function place_well(params, now, dry_run)
     data.next_id = data.next_id + 1
     table.insert(data.list, p)
     if not save_projects(data) then
+        -- (0.105.33 L5) every cell designated taken back, not the top channel only
         pcall(quickfort_apply, 'dig', dig, spot.z, spot.x, spot.y, 'undo')
+        undo_well_cells(p)
         return {ok = false, error = 'could not save the project with the fort, so it was undone'}
     end
     where.ok, where.project_id = true, p.id
@@ -1578,12 +1633,13 @@ end
 -- channel again at a higher priority; DF makes a fresh job) and a spot given
 -- up as out of reach isn't chosen again for UNREACHED_YEARS.
 
--- The areas of wells given up as out of reach in the last UNREACHED_YEARS.
+-- The areas of wells given up as out of reach, or (0.105.33 B4) whose well
+-- the game refused to place, in the last UNREACHED_YEARS.
 function well_spots_unreached(data)
     local out = {}
     local okc, year = pcall(function() return df.global.cur_year end)
     for _, p in ipairs(type(data) == 'table' and data.list or {}) do
-        if p.kind == 'well' and p.unreached and type(p.area) == 'table' then
+        if p.kind == 'well' and (p.unreached or p.refused) and type(p.area) == 'table' then
             local y = tonumber(p.cancelled_year)
             if not (okc and y) or year - y < (UNREACHED_YEARS or 5) then table.insert(out, p.area) end
         end

@@ -11,7 +11,7 @@ from culture import layout_style, new_history, profile_from
 from digest import _d, _l
 from planner_core import *  # noqa: F401,F403
 
-__all__ = ["drink_short", "_crop_rules", "farm_plots_live", "crops_owned", "drink_known_short", "_farm_crops_rule", "_kitchen_rule", "_fishery_rule", "_dairy_rule", "_eggs_rule", "drink_below_target", "drink_crisis", "drink_target_per_dwarf", "crisis_brew_room", "brew_jobs_open", "farm_target", "thirsty_farm_extra", "_farm_rule"]
+__all__ = ["drink_short", "_crop_rules", "farm_plots_live", "crops_owned", "drink_known_short", "_farm_crops_rule", "_kitchen_rule", "_fishery_rule", "_dairy_rule", "_eggs_rule", "drink_below_target", "drink_crisis", "drink_target_per_dwarf", "crisis_brew_room", "brew_jobs_open", "farm_target", "thirsty_farm_extra", "_farm_rule", "drink_swap_wanted"]
 
 
 def drink_short(s: dict, cfg: dict) -> bool:
@@ -162,7 +162,11 @@ def _farm_crops_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -
             and (p.get("fallow") or not p.get("ok_now"))]
     # the AI hasn't set the crops yet: the later seasons too (autofarm sets only the current one)
     unset = memory.farm_steer != "crops" and any(not p.get("dead") for p in plots)
-    if not idle and not unset:
+    # (0.105.33 B4) drink short and the AI's own plots all sown with crops a
+    # still can't brew: the bridge swaps them for brewable ones only when
+    # asked with drink, and nothing else asked
+    swap = short and memory.farm_steer == "crops" and drink_swap_wanted(s, plots)
+    if not idle and not unset and not swap:
         return
     action = {"type": "set_farm_crops", "drink": short}
     if not thread_plants_here(s) and any(_d(c).get("thread") and int(_d(c).get("seeds") or 0) > 0
@@ -170,11 +174,51 @@ def _farm_crops_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -
         action["thread"] = True
     why = (f"{len(idle)} of {len(plots)} farm plot(s) lie fallow (or hold a crop that can't grow there) "
            "while the fort has seeds that grow there" if idle else
-           f"the {len(plots)} farm plot(s) get a crop for every season the fort's seeds grow in")
+           f"the {len(plots)} farm plot(s) get a crop for every season the fort's seeds grow in" if unset else
+           "the AI's farm plots grow crops a still can't brew while a brewable crop the fort has seeds of "
+           "could grow there")
     proposals.append(Proposal("farm_crops", action,
                               why + (f": brewable crops first, drink is short ({drink} for {citizens})"
                                      if short else ": set each plot's crop (autofarm off)"),
-                              1 if short and idle else 4))
+                              1 if short and idle else 2 if swap else 4))
+
+
+CROP_SEASONS = ("spring", "summer", "autumn", "winter")
+
+
+def drink_swap_wanted(s: dict, plots: list) -> bool:
+    """(0.105.33 B4) A live plot grows, this season, a crop the AI set that a
+    still can't brew, while a brewable crop the fort has seeds of grows there
+    this season (underground crops underground, the rest on the surface).
+    From the plots' crops when the report gives them (and, from 0.105.33,
+    whether the AI set them: ai_now), else from the crops sown this season."""
+    fm = _d(s.get("farms"))
+    crops = {k: v for k, v in _d(fm.get("crops")).items() if isinstance(v, dict)}
+    season = str(fm.get("season") or _d(s.get("date")).get("season") or "")
+    def grows_now(c: dict) -> bool:
+        ss = c.get("seasons")
+        return ss is None or season in _l(ss)
+    def brew_for(under) -> bool:
+        return any(c.get("brews") and int(c.get("seeds") or 0) > 0 and grows_now(c)
+                   and bool(c.get("underground")) == bool(under) for c in crops.values())
+    live = [p for p in plots if not p.get("dead")]
+    seen = False
+    if season in CROP_SEASONS:
+        i = CROP_SEASONS.index(season)
+        for p in live:
+            pc = p.get("crops")
+            if not isinstance(pc, list) or len(pc) <= i:
+                continue
+            seen = True
+            c = crops.get(pc[i])
+            if (c is not None and not c.get("brews") and p.get("ai_now") is not False
+                    and brew_for(p.get("underground"))):
+                return True
+    if seen:
+        return False
+    # an older report (no crops per plot): a crop that doesn't brew is sown
+    return any(not c.get("brews") and int(c.get("planted") or 0) > 0 and brew_for(c.get("underground"))
+               for c in crops.values())
 
 
 def _kitchen_rule(s: dict, memory, cfg: dict, proposals: list) -> None:
@@ -404,14 +448,17 @@ def _farm_rule(s: dict, memory, traits: dict, citizens: int, cfg: dict, proposal
     asked = _d(getattr(memory, "farm_under_asked", None))
     if (isinstance(asked.get("tick"), int)
             and 0 <= abs_tick(s) - asked["tick"] < cfg["farm_under_wait_days"] * TICKS_PER_DAY):
+        # (0.105.33 B4) only the part the plot list doesn't show yet: the
+        # bridge lists a placed plot at once, so it was counted twice
+        pending = max(0, int(asked.get("tiles") or 0) - under_tiles)
         under_tiles = max(under_tiles, int(asked.get("tiles") or 0))
-        have += int(asked.get("tiles") or 0)
+        have += pending
     # underground crops' seeds wait and no (or too few) underground plots for them
     under_need = (under_seeds >= cfg["seeds_per_plot"] and live
                   and under_tiles < min(under_seeds, cfg["under_farm_tiles"]) and (thirsty or under == 0))
     if under_need:
         have = min(have, under_tiles)
-    idle_surface -= have
+    idle_surface = max(0, idle_surface - have)       # (0.105.33 B4) never "+-20"
     pr = _d(s.get("projects"))
     open_ = [p for p in _l(pr.get("open")) if isinstance(p, dict)]
     levels = [p for p in open_ if p.get("kind") == "farms"]

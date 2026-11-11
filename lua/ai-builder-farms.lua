@@ -190,6 +190,7 @@ function farm_plots(params, now, dry_run)
     UNDER_ONLY = params.underground == true
     local okf, spots, why, cut = pcall(find_farm_spots, want, reserved, params.outside == true and not UNDER_ONLY)
     UNDER_ONLY = false
+    PASS_OUTSIDE = false        -- (0.105.33 L5) also when the search threw in its second pass
     if not okf then error(spots) end
     local placed, refused, tiles = {}, 0, 0
     for _, sp in ipairs(spots) do
@@ -397,6 +398,10 @@ end
 -- grows there, and what it could grow from the seeds in store (DF's menu).
 function farm_plot_list(seeds, season)
     local out = {}
+    -- (0.105.33 B4) the crops the AI set itself (ai_now: this season's is
+    -- the AI's), so the brain asks for a drink swap only where the bridge makes one
+    local okd, cd = pcall(farm_crops_data)
+    local set = okd and type(cd) == 'table' and type(cd.set) == 'table' and cd.set or {}
     for _, b in ipairs(farm_plot_buildings()) do
         if #out >= 40 then break end
         local place = plot_place(b.centerx, b.centery, b.z)
@@ -425,6 +430,8 @@ function farm_plot_list(seeds, season)
                 p.ok_now = raw ~= nil and crop_in_season(raw, s) and crop_grows_on(raw, place)
                     and (seeds[id] or 0) > 0
                 if raw ~= nil and (seeds[id] or 0) <= 0 then p.no_seeds = true end
+                local mine = set[tostring(b.id)]
+                p.ai_now = raw ~= nil and type(mine) == 'table' and mine[s + 1] == id or false
             end
         end
         for _ in pairs(any) do p.options_any = p.options_any + 1 end
@@ -589,6 +596,15 @@ function set_farm_crops(params, dry_run)
         return out
     end
     if not dry_run then
+        -- (0.105.33 L5) plots gone since: their entries dropped (the site data
+        -- grew without bound)
+        local live = {}
+        for _, b in ipairs(plots) do live[tostring(b.id)] = true end
+        for _, t in ipairs({data.set, data.drink_held}) do
+            local gone = {}
+            for k in pairs(t) do if not live[tostring(k)] then table.insert(gone, k) end end
+            for _, k in ipairs(gone) do t[k] = nil end
+        end
         data.ai = true
         site_put(FARM_CROPS_KEY, data)
     end
@@ -744,7 +760,6 @@ function water_zone(points, dry_run)
             for i = 1, math.min(#near, WATER_BANK_TRIES) do table.insert(tries, near[i]) end
         end
     end
-    local said = {}
     for _, p in ipairs(tries) do
         local x, y, z = math.tointeger(p.x), math.tointeger(p.y), math.tointeger(p.z)
         local t = x and y and z and tile_info(x, y, z)
@@ -766,8 +781,7 @@ function water_zone(points, dry_run)
                 if bank then break end
             end
             if not bank then
-                if p.first and not said[p] then
-                    said[p] = true
+                if p.first then
                     note(('no bank the dwarves reach beside the water at x%d y%d'):format(x, y))
                 end
             else
@@ -883,7 +897,6 @@ end
 
 PASTURE_RADIUS = 40        -- tiles around a surface entrance
 PASTURE_LEVELS = 2         -- levels above and below it (the surface is uneven)
-PASTURE_MAX_SIDE = 15
 PASTURE_MIN_SIDE = 3
 PASTURE_MAX_ZONES = 4
 PASTURE_BIG_SIDE = 31        -- one pasture as big as this (a herd grazes in one zone, not across several)

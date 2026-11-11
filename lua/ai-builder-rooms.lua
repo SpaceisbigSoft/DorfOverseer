@@ -94,8 +94,53 @@ local function designed_open()
     return set
 end
 
+-- (0.105.33 L5) May a wall go on this room's gap? Not with a creature on it,
+-- and not where it cuts a way the dwarves walk: the gap's walkable
+-- neighbours on its level (the walls already accepted this pass counted as
+-- built) must still meet round it, by a walk that stops once they all have
+-- met (ROOM_WALL_WALK_MAX tiles at most: past that, unsure, so no wall). As
+-- the cistern's gap filler does (cistern_gap_plan). true, or false and why.
+ROOM_WALL_WALK_MAX = 2000
+local R_DIR8 = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, 1}, {1, -1}, {-1, 1}, {-1, -1}}
+function room_wall_ok(g, walled)
+    local function key(x, y) return x .. ',' .. y end
+    local function open_at(x, y)
+        if (x == g.x and y == g.y) or walled[key(x, y) .. ',' .. g.z] then return false end
+        local t = tile_info(x, y, g.z)
+        return t ~= nil and (CISTERN_STANDABLE or {})[tostring(t.shape)] == true
+            and not (t.liquid and (t.depth or 0) >= 4)
+    end
+    if units_on_tiles({{x = g.x, y = g.y}}, g.z) > 0 then return false, 'a creature stands there' end
+    local starts, want = {}, {}
+    for _, e in ipairs(R_DIR8) do
+        local nx, ny = g.x + e[1], g.y + e[2]
+        if open_at(nx, ny) then table.insert(starts, {x = nx, y = ny}); want[key(nx, ny)] = true end
+    end
+    if #starts < 2 then return true end
+    local left = #starts - 1
+    local seen, queue, i = {[key(starts[1].x, starts[1].y)] = true}, {starts[1]}, 1
+    while i <= #queue do
+        if i > ROOM_WALL_WALK_MAX then return false, 'too much ground round it to be sure the wall cuts no way' end
+        local q = queue[i]; i = i + 1
+        for _, e in ipairs(R_DIR8) do
+            local nx, ny = q.x + e[1], q.y + e[2]
+            local k = key(nx, ny)
+            if not seen[k] and open_at(nx, ny) then
+                seen[k] = true
+                if want[k] then
+                    left = left - 1
+                    if left == 0 then return true end
+                end
+                table.insert(queue, {x = nx, y = ny})
+            end
+        end
+    end
+    return false, 'a wall there would cut a way the dwarves walk'
+end
+
 function room_gaps(limit)
     local open_set = designed_open()
+    local walled = {}           -- (0.105.33 L5) the walls accepted so far
     local seen, out, rooms, total = {}, {}, 0, 0
     for _, r in ipairs(room_zones()) do
         local ring = {}
@@ -160,10 +205,15 @@ function room_gaps(limit)
                 local gaps = 0
                 for _, p in ipairs(open_ring) do
                     seen[p.k] = true
-                    gaps = gaps + 1
-                    total = total + 1
-                    if #out < (limit or REPAIR_MAX) then
-                        table.insert(out, {x = p.x, y = p.y, z = p.z, door = (p == door_at) or nil})
+                    -- (0.105.33 L5) a wall only where it cuts no way and shuts nobody in
+                    local ok = p == door_at or room_wall_ok(p, walled)
+                    if ok then
+                        if p ~= door_at then walled[p.k] = true end
+                        gaps = gaps + 1
+                        total = total + 1
+                        if #out < (limit or REPAIR_MAX) then
+                            table.insert(out, {x = p.x, y = p.y, z = p.z, door = (p == door_at) or nil})
+                        end
                     end
                 end
                 if gaps > 0 then rooms = rooms + 1 end
