@@ -89,7 +89,8 @@ whatever the Militarism slider says. From then on the AI:
   locked by DFHack directly, at once; no dwarf has to pull anything. After
   3 quiet checks everything opens again. A lever you named "AI gate"
   yourself, and linked to something the watcher doesn't run, is still
-  pulled too.
+  pulled too. If you pull that lever yourself, the AI reads it as its own
+  close and opens it again at the all-clear.
 - **Traps and learning (0.35+, milestone 5b).** Each gate the AI runs gets
   traps just inside it (never outside it, never on the tile right behind a
   door) in the fort's trap style, the engine's Traps area: none, cage

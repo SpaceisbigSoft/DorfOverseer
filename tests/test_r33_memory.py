@@ -151,7 +151,7 @@ def _():
         a = _ask([{"type": "hold", "rule": rule, "days": 84}], shown={rule})
         assert not a.steer and "can't be held" in a.rejected[0], (rule, a.rejected)
     a = _ask([{"type": "hold", "rule": "build", "days": 84}])
-    assert not a.steer and "1-14" in a.rejected[0], a.rejected
+    assert a.steer and a.steer[0]["days"] == 14, a.rejected      # (0.105.33 fix) shortened, not lost
     a = _ask([{"type": "hold", "rule": "build", "days": 14}])
     assert a.steer and a.steer[0]["days"] == 14
     a = _ask([{"type": "hold", "rule": "crafts", "days": 84}])

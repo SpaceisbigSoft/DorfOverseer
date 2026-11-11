@@ -866,6 +866,26 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
         # site: its autosaves and copies are one fort); a dry run doesn't write it
         line = learning.line_key(key, (state.get("fort") or {}).get("world"))
         normalize(state)      # (13c) once, in place: the steps below read the sections as they are
+        # (0.105.33 fix, runs) the report's date failed (normalize made it year
+        # 0, tick 0): no learning, no note_cycle (it would wipe every cooldown,
+        # loop count and "No" as from the future), no plan, no act and no record
+        # at tick 0 this cycle; memory is left as the last good cycle saved it
+        if chronicle.date_failed(state):
+            say("The report's date couldn't be read this cycle: nothing planned, done or written into "
+                "the fort's memory until it can be")
+            try:
+                when = date_str(state)
+            except Exception:  # noqa: BLE001
+                when = "?"
+            report_status(bridge, {
+                "mode": MODES.get(_d(state.get("settings")).get("mode"), MODES["autopilot"]),
+                "acting": "waiting: the report's date couldn't be read", "date": when,
+                "last": [f"{short(a['action'])}: {a.get('reason', '')}".rstrip(": ")
+                         for a in memory.recent_actions[-5:]][::-1],
+                "notes": [], "todo": [], "pending": [], "ack": [],
+                "unattended": UNATTENDED,
+            })
+            return
         learned_now = learning.observe(state, memory, line, write_pc=autopilot)   # before note_cycle: it reads the tools
         expire_adjustments(memory, state)
         notes = note_cycle(state, memory)
@@ -1660,18 +1680,28 @@ def pin_hold() -> bool:
     return not PIN_SEEN.get("checked") or bool(PIN_SEEN.get("refused"))
 
 
+PIN_RETRY_S = 60.0     # (0.105.33 fix) a pin check that couldn't tell waits this long before the next
+
+
 def check_pin(bridge) -> None:
     """(0.105.33) The main loop, a fort just loaded under the keeper: the pin
     checked from the small report (one_cycle only runs once the game runs,
-    and the loop's unpause waits for this). Left unchecked if it can't tell."""
+    and the loop's unpause waits for this). Left unchecked if it can't tell;
+    (0.105.33 fix) then tried again only after PIN_RETRY_S, not every poll."""
+    nowm = time.monotonic()
+    if nowm - PIN_SEEN.get("failed_at", float("-inf")) < PIN_RETRY_S:
+        return
     try:
         import pin
         f = _d(_d(bridge.state(include_units=False, tier="pulse")).get("fort"))
         if not f.get("world") or f.get("site_id") is None:
+            PIN_SEEN["failed_at"] = nowm
             return
         refused = pin.refusal(f.get("world"), f.get("site_id"))
     except (BridgeError, DFHackError, TypeError, ValueError, ImportError):
+        PIN_SEEN["failed_at"] = nowm
         return
+    PIN_SEEN.pop("failed_at", None)
     PIN_SEEN["checked"], PIN_SEEN["refused"] = True, refused
     if refused and refused not in WARNED:
         WARNED.add(refused)
@@ -1991,6 +2021,7 @@ def _run(args) -> int:
             if not st.get("in_fort"):
                 quieted = False
                 PIN_SEEN["checked"], PIN_SEEN["refused"] = False, None    # (0.105.33) the next fort is checked afresh
+                PIN_SEEN.pop("failed_at", None)
             if st.get("in_fort") and os.environ.get("DFAI_PIN") and not PIN_SEEN.get("checked"):
                 check_pin(bridge)
             held_pin = pin_hold()
