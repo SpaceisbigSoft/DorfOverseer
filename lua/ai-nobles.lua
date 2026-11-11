@@ -218,7 +218,7 @@ end
 local function candidates(code)
     local wants = OFFICES[code]
     local military = MILITARY_OFFICES[code]
-    local moms = military and mothers() or {}
+    local moms = (military or CIVILIAN_AWAY_OFFICES[code]) and mothers() or {}   -- (0.105.33 review) once, not per candidate
     local out = {}
     for _, u in ipairs(dfhack.units.getCitizens(true)) do
         -- (0.104.168) a military office's holder takes a squad's leader seat:
@@ -237,7 +237,7 @@ local function candidates(code)
             if away then          -- (0.105.0) no key worker: staff, patients, mothers, office holders out
                 pcall(function() c.patient = (u.health and u.health.flags.needs_healthcare) or nil end)
                 pcall(function() c.staff = #u.occupations > 0 or nil end)
-                c.mother = mothers()[u.id] or nil
+                c.mother = moms[u.id] or nil
                 -- (0.105.24) healthy: never one with an open wound (seasons on the road)
                 pcall(function() c.hurt = (#u.body.wounds > 0) or nil end)
                 c.away_post = true

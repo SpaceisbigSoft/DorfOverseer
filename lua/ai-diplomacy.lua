@@ -125,13 +125,20 @@ end
 
 -- (0.105.0 review) Pure: why the AI must not press anything (nil: it may).
 -- The screen may show any unconcluded topic, so only when exactly one is
--- left is the topic known; and never on war, surrender or (unless the
--- Rules say pay) tribute, whatever the guess.
+-- left is the topic known; and never on war or surrender, whatever the
+-- guess. (0.105.33 review) Tribute is pressed when the Rules say pay or
+-- refuse (No is always safe), or 'small' with the amount asked known
+-- (tribute_known); before, only 'pay' ever got past here, so decide()'s
+-- refuse and small answers never ran and the meeting waited for a person.
 NEVER_PRESSED = {DemandSurrender = true, DeclareWar = true, InduceWar = true}
-function press_guard(pending, policy)
+function press_guard(pending, policy, tribute_known)
     for _, t in ipairs(pending or {}) do
         if NEVER_PRESSED[t] then return t .. ' is on the table: left to you' end
-        if t == 'TributeAgreement' and policy ~= 'pay' then return 'a tribute is on the table: left to you' end
+        if t == 'TributeAgreement' and not (policy == 'pay' or policy == 'refuse'
+                or (policy == 'small' and tribute_known)) then
+            return policy == 'small' and 'a tribute is on the table and how much is asked is not known: left to you'
+                or 'a tribute is on the table: left to you'
+        end
     end
     local n = #(pending or {})
     if n ~= 1 then
@@ -621,7 +628,8 @@ function answer_meeting(a, txt)
                 error = 'a barony\'s holder is the player\'s to choose: left to you'}
     end
     -- (0.105.0 review) pressed only when the topic is certain and safe
-    local guard = press_guard(pending_topics(st.topics, st.concluded), policy)
+    local guard = press_guard(pending_topics(st.topics, st.concluded), policy,
+                              tonumber(st.tribute_asked) ~= nil and tonumber(st.tribute_asked) >= 0)
     if guard then
         return {ok = false, rejected = true, left_to_player = true, topic = st.topic, topics = st.topics, error = guard}
     end

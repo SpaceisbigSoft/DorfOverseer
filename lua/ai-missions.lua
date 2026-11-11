@@ -303,8 +303,9 @@ end
 -- ---------------------------------------------------------------------------
 -- sites near the fort and how the fort's civ stands with their owners
 
+-- (0.105.33 review) Skirmishing is hostile too, as in ai-diplomacy's HOSTILE
 local function hostile(rel)
-    return type(rel) == 'string' and rel:find('War') ~= nil
+    return type(rel) == 'string' and (rel:find('War') ~= nil or rel == 'Skirmishing')
 end
 
 local function sites(R, civ, group, fort_site)

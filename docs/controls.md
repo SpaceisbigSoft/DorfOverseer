@@ -207,7 +207,10 @@ hall, basic workshops and stockpiles are always built when missing.
 
 ### Military
 
-The AI makes and sends squads itself (see [military.md](military.md)).
+On its own tab, **Army**, next to Rules (0.105.33: on the Rules page these
+rows fell past the window's bottom and could not be seen or clicked). The
+forbidden items and junk and the caged invaders' switches below are there
+too. The AI makes and sends squads itself (see [military.md](military.md)).
 
 - **Send squads against:** *ordinary enemies, not great beasts* (the
   default), *everything that can reach us*, or *never (alert and gate only)*.

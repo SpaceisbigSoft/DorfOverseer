@@ -67,10 +67,9 @@ function probe()
 end
 
 -- Load `folder` from the title screen (DF 53: Continue -> the world -> the
--- save). One step every STEP_FRAMES frames, each checked; what happened is
--- kept in LOAD_LOG (ai-title status). The title screen's `selected` is the
--- highlighted line of whichever list it shows.
-STEP_FRAMES = 15
+-- save). Each step checked (wait_for every 5 frames, then_if_scrolled after
+-- 3); what happened is kept in LOAD_LOG (ai-title status). The title
+-- screen's `selected` is the highlighted line of whichever list it shows.
 LOAD_LOG = LOAD_LOG or {}
 
 local function title_screen()
@@ -117,15 +116,31 @@ function click_top(scr)
     require('gui').simulateInput(scr, '_MOUSE_L')
 end
 
--- A few frames after scrolling a list: go on only if the scroll held (DF
--- may pull it back when the list is short), else stop with a note.
-function then_if_scrolled(scr, field, want, go)
+-- A few frames after scrolling a list: go on (a click on the top line) only
+-- if the scroll held (DF may pull it back when the list is short).
+-- (0.105.33 review) Else, with the wanted line highlighted (`selected` held),
+-- the keyboard's Enter on it instead (`go_key`): the cause doesn't change
+-- between tries, so a stop here stopped every revive of a world that isn't
+-- first in a short list. Neither held: stop with a note.
+function then_if_scrolled(scr, field, want, go, go_key)
     dfhack.timeout(3, 'frames', function()
         local ok, v = pcall(function() return scr[field] end)
         if ok and v == want then return go() end
+        local oks, sel = pcall(function() return scr.selected end)
+        if go_key and oks and sel == want then
+            say('the list would not scroll (' .. field .. ' is ' .. tostring(v) .. ', wanted ' .. tostring(want) ..
+                '): line ' .. tostring(want) .. ' is highlighted, Enter pressed on it', scr)
+            return go_key()
+        end
         say('stopped: the list would not scroll to the save (' .. field .. ' is ' .. tostring(v) ..
-            ', wanted ' .. tostring(want) .. '): not clicking, it could open another save', scr)
+            ', wanted ' .. tostring(want) .. ', highlighted ' .. tostring(sel) ..
+            '): not clicking, it could open another save', scr)
     end)
+end
+
+-- Enter on the highlighted line (the fallback of then_if_scrolled)
+function press_select(scr)
+    require('gui').simulateInput(scr, 'SELECT')
 end
 
 -- Check `test` every 5 frames, up to `frames`; then done(true|false).
@@ -176,8 +191,8 @@ function load(folder)
         pcall(function() t2.scroll_position_world_choice = wi end)
         t2.selected = wi
         -- (only if the scroll held: else the top button is another world)
-        then_if_scrolled(t2, 'scroll_position_world_choice', wi, function()
-        click_top(t2)
+        local function saves_step(open)
+        open(t2)
         wait_for(function() local x = title_screen() return x == nil or x.mode == 3 end, function(ok2)
             local t3 = title_screen()
             local gi = t3 and find_in(t3.savegame_header_game, folder)
@@ -185,17 +200,22 @@ function load(folder)
             if not ok2 or not t3 or not gi then return end
             pcall(function() t3.scroll_position_game_choice = gi end)
             t3.selected = gi
-            then_if_scrolled(t3, 'scroll_position_game_choice', gi, function()
-            click_top(t3)
+            local function load_step(open)
+            open(t3)
             wait_for(function()
                 return dfhack.isWorldLoaded() or dfhack.gui.matchFocusString('loadgame') or title_screen() == nil
             end, function(ok3)
                 -- (the title screen is gone once the load starts: its memory isn't read again)
                 say('save clicked', title_screen(), {ok = ok3, loading = ok3})
             end)
-            end)
+            end
+            then_if_scrolled(t3, 'scroll_position_game_choice', gi,
+                function() load_step(click_top) end, function() load_step(press_select) end)
         end)
-        end)
+        end
+        -- (a wrong world opened shows no such save: the step above stops there)
+        then_if_scrolled(t2, 'scroll_position_world_choice', wi,
+            function() saves_step(click_top) end, function() saves_step(press_select) end)
     end)
     return {ok = true, started = true, folder = folder, world = world}
 end

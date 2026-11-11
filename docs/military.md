@@ -148,7 +148,7 @@ then hid again. Now:
 
 ## Rules tab
 
-The military block of the Rules tab (all of it is in [controls.md](controls.md)):
+The military block, on the Army tab beside Rules (0.105.33; all of it is in [controls.md](controls.md)):
 
 | Setting | Default |
 | --- | --- |
