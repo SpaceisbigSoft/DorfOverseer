@@ -146,19 +146,53 @@ function lever_targets(levers, lever_id)
     return out
 end
 
--- Set by gate_buildings: an "AI gate..." lever with no link yet (built or
--- planned) exists, so a bridge no lever works may be waiting for it.
+-- (0.105.33) The "AI gate..." levers with no link yet (built or planned):
+-- {{id, x, y, z}}. Empty when they can't be read.
+function unlinked_ai_levers()
+    local out = {}
+    pcall(function()
+        for _, b in ipairs(df.global.world.buildings.other.TRAP) do
+            if b.trap_type == df.trap_type.Lever and tostring(b.name or ''):lower():find('^ai gate')
+                    and #b.linked_mechanisms == 0 then
+                table.insert(out, {id = b.id, x = b.x1, y = b.y1, z = b.z})
+            end
+        end
+    end)
+    return out
+end
+
+-- (0.105.33) Can this unlinked lever work this entrance's drawbridge? Inside
+-- the fort (when the map of the inside is given) and away from the gate (20+
+-- tiles or 4+ levels: the brain's _lever_far_enough, the one it links).
+-- Unknown position: yes.
+function lever_serves(l, e, inside)
+    if type(l.x) ~= 'number' or type(l.y) ~= 'number' or type(l.z) ~= 'number' then return true end
+    if inside and not inside[key(l.x, l.y, l.z)] then return false end
+    local ex, ey, ez = e.x or 0, e.y or 0, e.z or 0
+    return math.abs(l.z - ez) > 3 or math.max(math.abs(l.x - ex), math.abs(l.y - ey)) >= 20
+end
+
+-- (0.105.33) An unlinked AI lever that can serve this entrance (inside: the map of the inside, or nil)?
+function lever_waiting_for(e, inside, levers)
+    for _, l in ipairs(levers or AI_LEVERS_WAITING or {}) do
+        if lever_serves(l, e, inside) then return l end
+    end
+    return nil
+end
+
+-- Set by gate_buildings: the unlinked "AI gate..." levers (unlinked_ai_levers),
+-- so a bridge no lever works may be waiting for one. AI_LEVER_WAITING: any.
+AI_LEVERS_WAITING = {}
 AI_LEVER_WAITING = false
+-- (0.105.33) An entrance whose drawbridge waits for such a lever reads
+-- "closing" for at most LEVER_WAIT_DAYS days (the lever never linked: open
+-- again, so the brain closes it some other way)
+LEVER_WAIT_DAYS = 7
 
 function gate_buildings()
     local levers, lever_pos = lever_links()
-    AI_LEVER_WAITING = false
-    for _, b in ipairs(df.global.world.buildings.other.TRAP) do
-        if b.trap_type == df.trap_type.Lever and tostring(b.name or ''):lower():find('^ai gate')
-                and #b.linked_mechanisms == 0 then
-            AI_LEVER_WAITING = true
-        end
-    end
+    AI_LEVERS_WAITING = unlinked_ai_levers()
+    AI_LEVER_WAITING = #AI_LEVERS_WAITING > 0
     local out = {}
     for _, b in ipairs(df.global.world.buildings.all) do
         local t = b:getType()
@@ -615,8 +649,10 @@ local function on_deep_road(g, road)
     return false
 end
 
--- The whole scan. starts: tiles where citizens stand (inside).
-function find_entrances(starts, buildings)
+-- The whole scan. starts: tiles where citizens stand (inside). (0.105.33)
+-- now_tick, wait_since ({bridge id = tick}): since when a drawbridge waits
+-- for an unlinked lever (optional)
+function find_entrances(starts, buildings, now_tick, wait_since)
     cache, edge_cache = {}, {}
     local inside, n, openings = explore(starts)
     local groups = cluster(openings)
@@ -703,10 +739,25 @@ function find_entrances(starts, buildings)
                 end
             end
         end
-        if not e.sealed and #e.bridges_unworked > 0 and AI_LEVER_WAITING then
+        if not e.sealed and #e.bridges_unworked > 0 and lever_waiting_for(e, inside) then
             -- a drawbridge there waits for its lever to be linked (the lever
-            -- rule does it): it's being closed, not open
-            e.closing = true
+            -- rule does it): it's being closed, not open. (0.105.33) Only for
+            -- a lever that can work it (inside, away from the gate), and for
+            -- LEVER_WAIT_DAYS at most (since: by the bridges' ids)
+            local since
+            for _, bid in ipairs(e.bridges_unworked) do
+                local t = wait_since and wait_since[bid]
+                if type(t) == 'number' and (not since or t < since) then since = t end
+            end
+            if type(now_tick) == 'number' and since and since > now_tick then since = nil end   -- (a new year's tick)
+            since = since or now_tick
+            e.lever_wait_since = since
+            if type(now_tick) == 'number' and type(since) == 'number'
+                    and now_tick - since >= LEVER_WAIT_DAYS * 1200 then
+                e.lever_wait_over = math.floor((now_tick - since) / 1200)
+            else
+                e.closing = true
+            end
         end
         if not e.sealed and not e.closing and #pending > 0 then
             -- walls or doors planned there (the AI's own, or yours) would
@@ -864,11 +915,51 @@ function ai_lever_name(name)
     return tostring(name or ''):lower():find('^ai gate') ~= nil
 end
 
+-- (0.105.33) The building ids of an entrance's gates (its equipment and the
+-- gatehouse's outer drawbridge): a set.
+function entrance_gate_ids(e)
+    local ids = {}
+    for _, list in ipairs({e.equipment or {}, e.outer or {}}) do
+        for _, g in ipairs(list) do if g.id ~= nil then ids[g.id] = true end end
+    end
+    return ids
+end
+
+-- (0.105.33) Which new entrance each old one is, across a rescan: {old id =
+-- new id}. The one holding any of its gates; else (none of its gates in a
+-- new entrance: one gone) the one at its spot.
+function carry_ids(old, new)
+    local owner = {}
+    for _, e in ipairs(new or {}) do
+        for id in pairs(entrance_gate_ids(e)) do owner[id] = owner[id] or e.id end
+    end
+    local at = {}
+    for _, e in ipairs(new or {}) do
+        if e.x then at[key(e.x, e.y, e.z)] = at[key(e.x, e.y, e.z)] or e.id end
+    end
+    local out = {}
+    for _, e in ipairs(old or {}) do
+        local nid
+        for id in pairs(entrance_gate_ids(e)) do
+            if owner[id] and (not nid or owner[id] < nid) then nid = owner[id] end
+        end
+        if not nid and e.x then nid = at[key(e.x, e.y, e.z)] end
+        out[e.id] = nid
+    end
+    return out
+end
+
 function scan(now_tick)
     cache, edge_cache = {}, {}
     -- (0.105.0) citizens on a ledge or a treetop don't seed a fort of their own
     local fstarts = fort_starts(citizen_starts())
-    local entrances, inside, n = find_entrances(fstarts, gate_buildings())
+    local entrances, inside, n = find_entrances(fstarts, gate_buildings(), now_tick, GATES.lever_wait_since)
+    local lever_wait = {}             -- (0.105.33) since when each bridge waits for a lever
+    for _, e in ipairs(entrances) do
+        if e.lever_wait_since then
+            for _, bid in ipairs(e.bridges_unworked or {}) do lever_wait[bid] = e.lever_wait_since end
+        end
+    end
     pick_levers(entrances, inside)
     drive_levers(entrances)
     pcall(cut_survey, entrances, fstarts)        -- (0.105.0)
@@ -891,21 +982,28 @@ function scan(now_tick)
         end
     end
     -- (0.104.139, review) the entrances' ids are list places and a rescan can
-    -- number them anew: what was closed is carried by its spot, and the
-    -- watcher's timers are kept
-    local closed_at = {}
-    for _, e in ipairs(GATES.entrances or {}) do
-        if GATES.closed and GATES.closed[e.id] then closed_at[key(e.x, e.y, e.z)] = true end
+    -- number them anew: what was closed is carried, and the watcher's timers
+    -- are kept. (0.105.33) Carried by the gates' building ids (the entrance's
+    -- spot is the first opening tile the map reached, and moves with where
+    -- the citizens stand); by the spot only for an entrance none of whose
+    -- gates is in the new one (a gate gone)
+    local new_of = carry_ids(GATES.entrances or {}, entrances)
+    local function carried(t)
+        local out = {}
+        for old_id, v in pairs(t or {}) do
+            local nid = new_of[old_id]
+            if nid and out[nid] == nil then out[nid] = v end
+        end
+        return out
     end
-    local closed = {}
-    for _, e in ipairs(entrances) do
-        if closed_at[key(e.x, e.y, e.z)] then closed[e.id] = true end
-    end
+    local closed = carried(GATES.closed)
     GATES = {scanned = true, entrances = entrances, inside = inside, inside_tiles = n,
              scanned_tick = now_tick, armed = GATES.armed, closed = closed,
+             opening = carried(GATES.opening),                        -- (0.105.33)
+             lever_wait_since = lever_wait,                           -- (0.105.33)
              closing_since = since, timer = GATES.timer, reopen_timer = GATES.reopen_timer,
              watch_error = GATES.watch_error, gone_ids = GATES.gone_ids, repulled = GATES.repulled,
-             peak = GATES.peak, clear_looks = GATES.clear_looks,      -- (0.105.4 review)
+             peak = GATES.peak, clear_looks = carried(GATES.clear_looks),      -- (0.105.4 review)
              stuck_removed = GATES.stuck_removed, split_seen = GATES.split_seen}   -- (0.105.32)
     -- (0.105.23) a hatch its new lever link shut, with no watcher holding it: opened
     if not GATES.armed then pcall(open_lever_hatches) end
@@ -995,8 +1093,8 @@ function visitors_outside()
     return n
 end
 
-local function pull(lever_id)
-    -- (0.100, review) a pull already waiting at the lever: a second would undo it
+-- A pull job waiting at this lever?
+local function lever_pull_pending(lever_id)
     local okp, pending = pcall(function()
         local lv = df.building.find(lever_id)
         for _, j in ipairs(lv and lv.jobs or {}) do
@@ -1004,7 +1102,12 @@ local function pull(lever_id)
         end
         return false
     end)
-    if okp and pending then return false end
+    return okp and pending
+end
+
+local function pull(lever_id)
+    -- (0.100, review) a pull already waiting at the lever: a second would undo it
+    if lever_pull_pending(lever_id) then return false end
     local out, rv = dfhack.run_command_silent('lever', 'pull', '--id', tostring(lever_id))
     return rv == CR_OK
 end
@@ -1100,10 +1203,12 @@ end
 
 local function set_bridge(g, b, close)
     local ok, c = pcall(function() return b.gate_flags.raised end)   -- (13c) not `closed`
+    -- (0.105.33) nor while it moves (a pull now would send it back)
+    local okm, moving = pcall(function() return b.gate_flags.raising or b.gate_flags.lowering end)
     -- lowering (opening) waits while anyone stands where it comes down;
     -- raising goes ahead (a threat is why it's raised)
-    return ok and c ~= close and g.lever_id and #b.jobs == 0 and (close or not bridge_occupied(b))
-        and pull(g.lever_id) or false
+    return ok and c ~= close and not (okm and moving) and g.lever_id and #b.jobs == 0
+        and (close or not bridge_occupied(b)) and pull(g.lever_id) or false
 end
 
 -- Close (or open) one entrance's gates. (0.105.23) A gatehouse's outer
@@ -1143,7 +1248,7 @@ local function set_entrance(e, close)
     -- (0.100, review) a bridge left up (someone on it, a pull waiting) keeps
     -- the entrance closed, so opening tries it again; (0.105.23) so does a
     -- lever's hatch still shut, and the gatehouse's bridge
-    local waiting = kept
+    local waiting, moving = kept, 0
     if not close then
         for _, list in ipairs({e.equipment, e.outer or {}}) do
             for _, g in ipairs(list) do
@@ -1151,15 +1256,24 @@ local function set_entrance(e, close)
                 if b and held and seal_has(held, g) then
                     -- (counted above)
                 elseif b and g.kind == 'bridge' then
-                    local ok, raised = pcall(function() return b.gate_flags.raised end)
-                    if ok and raised then waiting = waiting + 1 end
+                    local ok, raised = pcall(function()
+                        local f = b.gate_flags
+                        return f.raised or f.lowering
+                    end)
+                    if ok and raised then waiting, moving = waiting + 1, moving + 1 end
                 elseif b and g.lever_driven and g.drive_lever and door_shut(b) then
-                    waiting = waiting + 1
+                    waiting, moving = waiting + 1, moving + 1
                 end
             end
         end
     end
     GATES.closed[e.id] = (close or waiting > 0) or nil   -- (a pull on its way still reads raised: retried harmlessly)
+    -- (0.105.33) opening, a gate not down yet (a dwarf's pull on its way, someone
+    -- on the bridge): the entrance is being opened, not held shut. The watcher's
+    -- look then neither re-pulls it as a lost close nor counts clear looks again;
+    -- it tries the opening again (what the cavern seal keeps is the old wait)
+    GATES.opening = GATES.opening or {}
+    GATES.opening[e.id] = (not close and moving > 0) or nil
     return done
 end
 
@@ -1292,12 +1406,6 @@ function visible_dangers()
     return out
 end
 
-local function dangers()
-    local out = {}
-    for _, d in ipairs(visible_dangers()) do table.insert(out, d.pos) end
-    return out
-end
-
 -- (0.105.3) A gate the watcher shut opens again (the watcher stays armed and
 -- shuts it again if danger comes) once, for REOPEN_CHECKS looks in a row
 -- (half a day), no visible invader is on the map and no other visible
@@ -1349,8 +1457,26 @@ function check()
     if type(GATES.peak) == 'number' then GATES.peak = math.max(GATES.peak, #vis) end
     local outside = citizens_outside()
     GATES.clear_looks = GATES.clear_looks or {}
+    GATES.opening = GATES.opening or {}
     for _, e in ipairs(GATES.entrances) do
-        if GATES.closed[e.id] and #e.equipment > 0 then
+        if not GATES.closed[e.id] then GATES.opening[e.id] = nil end
+        if GATES.opening[e.id] and #e.equipment > 0 then
+            -- (0.105.33) being opened (a dwarf on the way to the lever): its
+            -- bridge still up, or down already, isn't a lost close. Danger
+            -- comes: closed again; else the opening tried again (pulls only
+            -- what is still up and still), and done once every gate is open
+            local nearest = math.huge
+            for _, p in ipairs(ds) do nearest = math.min(nearest, distance_to(e, p)) end
+            GATES.clear_looks[e.id] = nil
+            if should_close(nearest, outside) then
+                GATES.opening[e.id] = nil
+                set_entrance(e, true)
+                pcall(dfhack.gui.showAnnouncement, ('AI Overseer: %s closed again while opening (danger %s tiles away)')
+                    :format(gate_name(e), nearest == math.huge and '?' or tostring(nearest)), COLOR_YELLOW, true)
+            else
+                set_entrance(e, false)
+            end
+        elseif GATES.closed[e.id] and #e.equipment > 0 then
             local nearest = math.huge
             for _, p in ipairs(ds) do nearest = math.min(nearest, distance_to(e, p)) end
             if may_reopen(nearest, invaders, great, GATES.peak) then
@@ -1389,6 +1515,8 @@ function check()
                     GATES.scanned = false
                     GATES.gone = (GATES.gone or 0) + 1
                 end
+            elseif GATES.opening[e.id] then
+                -- (0.105.33) being opened: none of its gates is pulled back shut
             elseif GATES.closed[e.id] and g.kind == 'bridge' and g.lever_id then
                 -- (0.104.139) closed, but the pull's job was lost: the bridge is
                 -- still down, not moving. Pulled again, not within 10 checks of
@@ -1456,14 +1584,22 @@ local function tick()
     GATES.timer = dfhack.timeout(CHECK_TICKS, 'ticks', tick)
 end
 
-function arm()
+-- (0.105.33) from_save (gates_restore): {closed = {entrance id = true}, peak =
+-- number or nil}: what the save says the watcher held is in place before its
+-- first look (that look would open a saved-shut lever hatch), and the peak
+-- comes back (unknown, nil, keeps a restored lockdown shut)
+function arm(from_save)
     if not GATES.scanned then return {ok = false, rejected = true, error = 'entrances not scanned yet'} end
     if not GATES.armed then
         -- (0.100, review) gates still waiting to open: forgotten; the watcher
         -- closes what needs closing from the bridges as they stand
         if GATES.reopen_timer then pcall(dfhack.timeout_active, GATES.reopen_timer, nil) end
-        GATES.reopen_timer, GATES.closed = nil, {}
+        GATES.reopen_timer, GATES.closed, GATES.opening = nil, {}, {}
         GATES.peak, GATES.clear_looks = 0, {}       -- (0.105.4 review) dangers seen at once since armed
+        if type(from_save) == 'table' then
+            for id, v in pairs(from_save.closed or {}) do if v then GATES.closed[id] = true end end
+            GATES.peak = type(from_save.peak) == 'number' and from_save.peak or nil
+        end
         GATES.armed = true
         GATES.timer = dfhack.timeout(CHECK_TICKS, 'ticks', tick)
         watched_check()
@@ -2432,6 +2568,9 @@ function fortify(id, style, starts)
     -- is asked: the wagon style (a 3-wide drawbridge, or left open)
     local asked_style
     if e.deep_road and style ~= 'wagon' then asked_style, style = style, 'wagon' end
+    -- (0.105.33) where the fort's citizens are, as the scan reads them
+    -- (fort_starts: not a ledge, a treetop, the AI keep/hall or the deep depot hall)
+    starts = starts or fort_starts(citizen_starts())
     cache, edge_cache = {}, {}      -- the map may have changed since the scan
     -- stockpiles in the opening are moved out of the way first
     local moved = {}
@@ -2447,7 +2586,7 @@ function fortify(id, style, starts)
         table.insert(moved, text)
     end
     local okd, doors_present = pcall(doors_in, e.inside_list)
-    local plan, why = plan_gate(e, style, starts or citizen_starts(), okd and doors_present or {})
+    local plan, why = plan_gate(e, style, starts, okd and doors_present or {})
     if not plan then return {ok = false, error = why} end
     local out, failed = {walls = 0, doors = 0, inner_doors = 0, traps = 0, statues = 0, doors_later = 0,
                          support_walls = 0, hatches = 0}, {}
@@ -2486,7 +2625,7 @@ function fortify(id, style, starts)
         -- spot, or the game refuses the bridge: doors in the gap instead, so
         -- the opening is never left with nothing to close it
         local br = plan.bridge
-        local spot = lever_spot(starts or citizen_starts(), e)
+        local spot = lever_spot(starts, e)
         local placed_bridge = false
         if spot then
             local text = ('%s(%dx%d)'):format(br.dir, br.w, br.h)
@@ -2822,12 +2961,9 @@ function lever_spot(starts, e)
 end
 
 -- Take down a gate the AI built at an entrance that turned out not to be one
--- (0.39 walled the shade of trees): the pieces it recorded, or, for gates
--- from before pieces were recorded, the walls, doors, hatches, traps and
--- statues within GATE_CLEAR_RADIUS of the spot on the surface only (never a
--- tile under rock: those are the fort's own). Planned pieces are cancelled,
--- built ones are marked for removal by the dwarves.
-GATE_CLEAR_RADIUS = 4
+-- (0.39 walled the shade of trees): the pieces it recorded (a gate with no
+-- record is refused). Planned pieces are cancelled, built ones are marked for
+-- removal by the dwarves.
 GATE_PIECES_MAX, GATE_PIECE_REACH = 80, 15
 local function surface_tile(x, y, z)
     local d = dfhack.maps.getTileFlags(x, y, z)
@@ -3024,16 +3160,9 @@ function place_gate_lever(id, dry_run, starts)
                         .. 'no lever for a gate there for a year (the watcher locks it instead)'):format(g.x1, g.y1, g.z)}
         end
     end
-    local waiting = false
-    pcall(function()
-        for _, b in ipairs(df.global.world.buildings.other.TRAP) do
-            if b.trap_type == df.trap_type.Lever and tostring(b.name or ''):lower():find('^ai gate')
-                    and #b.linked_mechanisms == 0 then
-                waiting = true
-            end
-        end
-    end)
-    if waiting then
+    -- (0.105.33) only one that can work this entrance (inside, away from it):
+    -- a lever never linked elsewhere no longer stops every other one
+    if lever_waiting_for(e, GATES.inside, unlinked_ai_levers()) then
         return {ok = false, waiting = true, error = 'an AI gate lever stands unlinked or is being built: it goes first'}
     end
     cache, edge_cache = {}, {}
@@ -3154,8 +3283,9 @@ function place_traps(id, kind, n, starts)
     if #(e.equipment or {}) == 0 then
         return {ok = false, rejected = true, error = 'that entrance has no gate yet: traps go behind a gate'}
     end
+    starts = starts or fort_starts(citizen_starts())      -- (0.105.33) as the scan reads them
     cache, edge_cache = {}, {}
-    local tiles = trap_tiles(e, n, starts or citizen_starts())
+    local tiles = trap_tiles(e, n, starts)
     if #tiles == 0 then return {ok = false, error = 'no free floor just inside that gate for traps'} end
     local placed, failed = 0, {}
     local first
@@ -3227,15 +3357,7 @@ function build_gatehouse(id, kind, n, dry_run, starts)
             table.insert(failed, tk .. ':' .. tostring(w))
         end
     end
-    local waiting = false
-    pcall(function()
-        for _, b in ipairs(df.global.world.buildings.other.TRAP) do
-            if b.trap_type == df.trap_type.Lever and ai_lever_name(b.name) and #b.linked_mechanisms == 0 then
-                waiting = true
-            end
-        end
-    end)
-    if waiting then
+    if lever_waiting_for(e, GATES.inside, unlinked_ai_levers()) then      -- (0.105.33)
         out.lever_note = 'an AI gate lever stands unlinked: it works the bridge'
     else
         local spot = lever_spot(starts or fort_starts(citizen_starts()), e)
@@ -3533,7 +3655,7 @@ end
 function summary()
     local list = {}
     for _, e in ipairs(GATES.entrances or {}) do
-        local eq = {}
+        local eq, e_lock_only = {}, nil
         for _, b in ipairs(e.equipment) do
             local ids = {}
             for _, l in ipairs(b.levers or {}) do table.insert(ids, l.id) end
@@ -3542,10 +3664,14 @@ function summary()
                 local okb, bb = pcall(df.building.find, b.id)
                 if okb and bb then shut = door_shut(bb) end
             end
+            -- (0.105.33) on a lever that also works another gate: the watcher
+            -- has no lever of this entrance's own to pull and only locks it
+            local lock_only = (b.kind ~= 'bridge' and b.lever_driven and not b.drive_lever) or nil
+            if lock_only then e_lock_only = true end
             table.insert(eq, {id = b.id, kind = b.kind, lever_id = b.lever_id, levers = ids,
                               lever_away = b.lever_away == true,
                               lever_driven = b.lever_driven or nil, drive_lever = b.drive_lever,
-                              shut = shut})
+                              lock_only = lock_only, shut = shut})
         end
         local outer = {}
         for _, b in ipairs(e.outer or {}) do
@@ -3559,6 +3685,10 @@ function summary()
                             cut_hatches = e.cut_hatches, cut_why = e.cut_why,
                             waiting = e.waiting,
                             closing_days = closing_days(e),
+                            -- (0.105.33) days its drawbridge waited for an unlinked lever, given up
+                            lever_wait_days = e.lever_wait_over,
+                            -- (0.105.33) a door or hatch on a shared lever: only locked when "closed"
+                            lock_only = e_lock_only,
                             closed = GATES.closed and GATES.closed[e.id] or false,
                             -- (0.105.23) the founding stair's lid, a gatehouse in front of it
                             lid = e.lid, gatehouse = e.gatehouse, gatehouse_why = e.gatehouse_why,
@@ -3866,10 +3996,11 @@ local function cut_seals(starts, e, blocked, porch_n)
 end
 
 -- The cut for one entrance: {hatches = {key...}, porch = n} or nil, why.
-function plan_cut(e, starts)
+-- (0.105.33) fort_ready: the starts are fort_starts already (the scan's survey)
+function plan_cut(e, starts, fort_ready)
     cache = cache or {}
     edge_cache = edge_cache or {}
-    starts = fort_starts(starts)
+    if not fort_ready then starts = fort_starts(starts) end
     local p = porch_of(e, starts)
     if p.capped then
         return nil, ('the open area behind it runs on for more than %d tiles (it is the fort, not a porch)'):format(CUT_MAX_PORCH)
@@ -3950,7 +4081,7 @@ function cut_survey(entrances, starts)
     table.sort(list, function(a, b) return a.width > b.width end)
     for i = 1, math.min(#list, CUT_SURVEY_MAX) do
         local e = list[i]
-        local ok, plan, why = pcall(plan_cut, e, starts)
+        local ok, plan, why = pcall(plan_cut, e, starts, true)     -- (0.105.33) the scan's fort starts
         if ok and plan then e.cut_hatches = #plan.hatches
         else e.cut_why = ok and why or ('error: ' .. tostring(plan):sub(1, 100)) end
     end
@@ -4034,11 +4165,14 @@ function gates_snapshot()
         end
     end
     -- (0.105.32) where a stuck gate was taken down (no lever-driven piece there for a year)
-    return {armed = GATES.armed == true, gates = gates, stuck_removed = stuck_removed_live()}
+    -- (0.105.33) the most dangers seen at once since armed (a restored lockdown keeps its rule)
+    return {armed = GATES.armed == true, gates = gates, stuck_removed = stuck_removed_live(),
+            peak = GATES.armed and type(GATES.peak) == 'number' and GATES.peak or nil}
 end
 
 local function same_snapshot(a, b)
     if (a.armed == true) ~= (b.armed == true) then return false end
+    if a.peak ~= b.peak then return false end         -- (0.105.33)
     local sa, sb = a.stuck_removed or {}, b.stuck_removed or {}
     for k, v in pairs(sa) do if sb[k] ~= v then return false end end
     for k, v in pairs(sb) do if sa[k] ~= v then return false end end
@@ -4062,17 +4196,6 @@ function gates_persist()
     return ok
 end
 
-local function lever_pull_pending(lever_id)
-    local okp, pending = pcall(function()
-        local lv = df.building.find(lever_id)
-        for _, j in ipairs(lv and lv.jobs or {}) do
-            if j.job_type == df.job_type.PullLever then return true end
-        end
-        return false
-    end)
-    return okp and pending
-end
-
 -- Open the saved gates straight from their building ids (no scan needed).
 -- Returns opened, still waiting.
 function open_saved_gates(saved)
@@ -4086,9 +4209,8 @@ function open_saved_gates(saved)
             if g.kind == 'bridge' then
                 local ok, raised = pcall(function() return b.gate_flags.raised end)
                 if ok and raised then
-                    if g.lever_id and #b.jobs == 0 and not bridge_occupied(b) and not lever_pull_pending(g.lever_id) then
-                        local _, rv = dfhack.run_command_silent('lever', 'pull', '--id', tostring(g.lever_id))
-                        if rv == CR_OK then opened = opened + 1 end
+                    if g.lever_id and #b.jobs == 0 and not bridge_occupied(b) and pull(g.lever_id) then
+                        opened = opened + 1
                     end
                     waiting = waiting + 1
                 end
@@ -4131,12 +4253,13 @@ function gates_restore()
     for _, g in ipairs(saved.gates or {}) do ids[g.id] = true end
     local closed = {}
     for _, e in ipairs(GATES.entrances) do
-        for _, g in ipairs(e.equipment or {}) do
-            if ids[g.id] then closed[e.id] = true end
+        for id in pairs(entrance_gate_ids(e)) do       -- (0.105.33) the outer drawbridge too
+            if ids[id] then closed[e.id] = true end
         end
     end
     if saved.armed and not GATES.armed then
-        pcall(GATES_ORIG.arm)
+        -- (0.105.33) the closed entrances (and the peak) in place before the first look
+        pcall(GATES_ORIG.arm, {closed = closed, peak = saved.peak})
     end
     GATES.closed = GATES.closed or {}
     for id in pairs(closed) do GATES.closed[id] = true end
