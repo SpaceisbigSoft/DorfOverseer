@@ -1233,8 +1233,7 @@ def note_gate_lever(s: dict, memory: Memory) -> None:
     last reading. The levers the gate watcher pulls (an entrance's
     drawbridge) are not this gate's, as in _military_rules."""
     mil = _d(s.get("military"))
-    watched = {lid for e in _l(_d(s.get("entrances")).get("entrances")) if isinstance(e, dict)
-               for b in _l(e.get("equipment")) if isinstance(b, dict) for lid in _l(b.get("levers"))}
+    watched = watched_gate_levers(s)           # (0.105.33 fix) the outer bridge's lever too
     levers = [g for g in _l(mil.get("gates")) if isinstance(g, dict) and g.get("id") is not None]
     opens = {k: v for k, v in _d(memory.gate_open_state).items()
              if k in {str(g["id"]) for g in levers} and isinstance(v, int)}
