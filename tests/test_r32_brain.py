@@ -152,15 +152,18 @@ def _():
     assert not [n for n in notes if "no way back in" in n], notes
 
 
-@test("step 3 refused (the player's own hatch): no step 3 every 6 hours; the steps again a day on")
+@test("all three steps tried (step 3 refused: the player's own hatch): no more steps; the way in is dug")
 def _():
     m = Memory()
     s = fort()
     m.gate_unstick["7"] = {"step": 3, "tick": planner_core.abs_tick(s) - 7 * HOUR, "ok": False,
                            "split_after": None, "done": "not the AI's hatch"}
-    assert not acts(cycle(s, m)[0], "gate_stuck")
-    u = acts(cycle(later(s, 18 * HOUR), m)[0], "gate_stuck")
-    assert u and u[0].action["step"] == 1, u
+    props = cycle(s, m)[0]
+    assert not acts(props, "gate_stuck"), props
+    w = acts(props, "way_in")
+    assert w and w[0].action["type"] == "dig_way_in", props
+    props = cycle(later(s, 30 * HOUR), m)[0]
+    assert not acts(props, "gate_stuck"), props          # never back to step 1
 
 
 # --- prevention, the enemy hold ---------------------------------------------------

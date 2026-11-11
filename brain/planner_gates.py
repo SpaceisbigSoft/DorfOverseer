@@ -145,12 +145,15 @@ def _gate_stuck_rule(s: dict, memory, cfg: dict, proposals: list, notes: list, o
             still = rec.get("split_after") is not False or fresh
             if not last_step or since is None:
                 step = 1
+            elif last_step >= 3 and since >= step_ticks:
+                # (merge32) every step tried (or taking it down refused: the
+                # player's own piece): no more steps; the way in is dug
+                # instead (_way_in_rule, gate_exhausted)
+                step = None
             elif rec.get("ok") is False and since >= step_ticks:
-                # refused (a reason given): the same step again; taking it
-                # down refused (the player's own piece): the steps again in a day
-                step = last_step if last_step < 3 else (1 if since >= TICKS_PER_DAY else None)
+                step = last_step                 # refused (a reason given): the same step again
             elif still and since >= step_ticks:
-                step = last_step + 1 if last_step < 3 else (1 if since >= TICKS_PER_DAY else None)
+                step = last_step + 1
             why = (f"{len(rows)} citizen(s) can't get back in ({', '.join(str(r.get('name') or 'a dwarf') for r in rows[:3])}"
                    + (f" and {len(rows) - 3} more" if len(rows) > 3 else "")
                    + f"): {name} reads open, but the game's walk map holds it shut")
@@ -179,6 +182,21 @@ def _gate_stuck_rule(s: dict, memory, cfg: dict, proposals: list, notes: list, o
     return acting
 
 
+def gate_exhausted(s: dict, memory, cfg: dict) -> set:
+    """(merge32) Piece ids (as text) whose three unstick steps are all tried
+    (the last `gate_stuck_step_hours` ago or more) and which still hold
+    citizens out: their stranded go to the way in, not back to step 1."""
+    now = abs_tick(s)
+    step_ticks = int(cfg.get("gate_stuck_step_hours", 6)) * (TICKS_PER_DAY // 24)
+    out = set()
+    for pid, rec in _d(getattr(memory, "gate_unstick", None)).items():
+        rec = _d(rec)
+        t = rec.get("tick")
+        if (rec.get("step") or 0) >= 3 and isinstance(t, int) and now - t >= step_ticks:
+            out.add(str(pid))
+    return out
+
+
 def _way_in_doing(s: dict, memory) -> str:
     """(0.105.32) A way in being dug (the report's projects), as words, or ''."""
     ids = {v.get("project_id") for v in _d(getattr(memory, "way_in", None)).values()
@@ -197,11 +215,15 @@ def _way_in_rule(s: dict, memory, cfg: dict, proposals: list, notes: list, off: 
     is being dug. The Needs you stays (_stranded_rule): the words for it
     when one is proposed, else ''."""
     ent = _d(s.get("entrances"))
-    explained = {id(r) for rs in stuck_rows(s).values() for r in rs}
+    done = gate_exhausted(s, memory, cfg)
+    explained, given_up = set(), set()
+    for pid, rs in stuck_rows(s).items():
+        for r in rs:
+            (given_up if str(pid) in done else explained).add(id(r))
     after = int(cfg.get("way_in_after_days", 2)) * TICKS_PER_DAY
     rows = [r for r in _l(ent.get("stranded")) if isinstance(r, dict) and id(r) not in explained
-            and r.get("cause") == "no_path" and not r.get("in_cavern")
-            and (r.get("out_ticks") or 0) >= after
+            and (id(r) in given_up or (r.get("cause") == "no_path" and (r.get("out_ticks") or 0) >= after))
+            and not r.get("in_cavern")
             and all(isinstance(r.get(k), int) for k in ("x", "y", "z"))]
     if len(rows) < max(1, int(cfg.get("way_in_min_stranded", 1))):
         return ""

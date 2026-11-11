@@ -238,7 +238,7 @@ def _():
     W.dig_all()
     rep = B.projects_report()
     o = rep.open[1]
-    assert o.dig.dug == 7 and o.next == "furnish", (dict(o.dig), o.next)
+    assert o.dig.dug == 7 and o.next == "finish", (dict(o.dig), o.next)
     r2 = way_in()
     assert not r2.ok and r2.rejected and "already being dug (project 1)" in r2.error, dict(r2)
 

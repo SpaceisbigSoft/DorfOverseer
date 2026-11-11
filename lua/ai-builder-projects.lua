@@ -526,6 +526,10 @@ local function next_step(p, r)
     if p.kind == 'well' and p.phase == 'dig' and tonumber(p.well_retry_at) and now_tick() < p.well_retry_at then
         return false
     end
+    -- (merge32) an emergency way in has nothing to build: finished once dug
+    if p.kind == 'way_in' and p.phase == 'dig' and r.dig and r.dig.total > 0 and r.dig.dug == r.dig.total then
+        return 'finish'
+    end
     if p.phase == 'dig' and r.dig and r.dig.total > 0 and r.dig.dug == r.dig.total then
         return 'furnish'
     elseif p.phase == 'dig' and r.dig and r.dig.stuck > 0 and r.dig.shaft_open ~= false
@@ -954,6 +958,12 @@ DECOR_ONLY = {Statue = true}
 function finish_project(id, decor_only, stalled)
     local data = load_projects()
     local p = find(data, id)
+    -- (merge32) a dug way in finishes from its dig (nothing to furnish)
+    if p and p.kind == 'way_in' and p.phase == 'dig' then
+        p.phase = 'done'
+        save_projects(data)
+        return {ok = true, project_id = id, phase = 'done'}
+    end
     if not p or p.phase ~= 'furnish' then
         return {ok = false, rejected = true, error = 'not a project being furnished'}
     end
