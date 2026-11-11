@@ -133,7 +133,7 @@ def _():
     assert p[0].rule == "threat_alert" and p[0].action == {"type": "civ_alert", "on": True}, p[:1]
 
 
-@test("threat but no alert burrow: the AI sets up its own shelter, urgently; can't -> needs you")
+@test("threat but no alert burrow: the AI sets up its own shelter, urgently; refused twice -> tried again later (0.105.35)")
 def _():
     s = fort(civ_alert_ready=False)
     s["others_on_map"]["threats_that_can_reach_dwarves"] = 1
@@ -141,12 +141,19 @@ def _():
     sh = [x for x in p if x.rule == "shelter"]
     assert "threat_alert" not in rules(p) and sh and sh[0].priority == 0, rules(p)
     assert any("setting up a shelter" in n for n in notes), notes
-    s["settings"]["alert_shelter"] = False
+    s["settings"]["alert_shelter"] = False                        # the player's switch: no shelter, said
     p, notes = plan(s, Memory())
-    assert "shelter" not in rules(p) and any(n.startswith("[you] ") and "burrow" in n for n in notes), notes
+    assert "shelter" not in rules(p) and any("burrow" in n and "Rules tab" in n for n in notes), notes
+    assert not any(n.startswith("[you] ") for n in notes), notes
     s["settings"]["alert_shelter"] = True
-    p, notes = plan(s, Memory(shelter_attempts=2))                # tried twice: over to you
-    assert "shelter" not in rules(p) and any(n.startswith("[you] ") and "burrow" in n for n in notes)
+    now = s["date"]["year"] * 403200 + s["date"]["tick"]
+    p, notes = plan(s, Memory(shelter_attempts=2, shelter_tick=now - 1200))   # refused twice a day ago: waits
+    assert "shelter" not in rules(p) and any("tried again in 2 day(s)" in n for n in notes), notes
+    assert not any(n.startswith("[you] ") for n in notes), notes
+    p, notes = plan(s, Memory(shelter_attempts=2, shelter_tick=now - 3 * 1200))   # 3 days on, a threat: again
+    assert [x for x in p if x.rule == "shelter"][0].priority == 0, rules(p)
+    p, _ = plan(fort(civ_alert_ready=False), Memory(shelter_attempts=2, shelter_tick=now - 3 * 1200))
+    assert "shelter" not in rules(p)                              # no threat: the 28-day wait
     assert [x for x in plan(fort(civ_alert_ready=False), Memory())[0] if x.rule == "shelter"][0].priority == 4
 
 
@@ -1851,12 +1858,15 @@ def _():
     assert b and b[0].action["kind"] == "dining", b[0].action
 
 
-@test("review: marker-mode designations get their own note")
+@test("review: marker-mode designations: the AI makes them real (0.105.35: was a Needs you note)")
 def _():
     s = fort()
     s["projects"]["open"] = [{"id": 3, "kind": "storage", "phase": "dig",
                               "dig": {"total": 50, "dug": 0, "stuck": 0, "marked": 50}}]
-    assert any("marker" in n for n in plan(s, Memory())[1])
+    p, notes = plan(s, Memory())
+    um = [x for x in p if x.action.get("type") == "unmark_project_dig"]
+    assert um and um[0].action["project_id"] == 3 and "marker" in um[0].reason, p
+    assert not any(n.startswith("[you] ") and "marker" in n for n in notes), notes
 
 
 # --- culture (Phase 4c) ----------------------------------------------------------------
@@ -3176,7 +3186,9 @@ def _():
     s["civ_alert_ready"] = False
     s["settings"]["alert_shelter"] = False
     _, notes = plan(s, Memory())
-    assert any(n.startswith("[you] ") and "civilian-alert" in n for n in notes), notes
+    # (0.105.35) the player's switch: said with what the AI does meanwhile, not Needs you
+    assert any(not n.startswith("[you] ") and "civilian-alert" in n and "meanwhile" in n for n in notes), notes
+    assert not any(n.startswith("[you] ") and "civilian-alert" in n for n in notes), notes
 
 
 def entrances(*es, armed=False, age_days=1):
@@ -3829,17 +3841,25 @@ def _():
     assert p and p[0].action == {"type": "link_lever", "lever_id": 555, "target_id": 900}, p
 
 
-@test("founding: a fort with no staircase digs its first; if the ground won't allow it, Needs you says why")
+@test("founding: a fort with no staircase digs its first; refused, further out; refused there too, Needs you says why")
 def _():
     s = fort()
     s["founding"] = {"stairs": False, "near": "the wagon"}
     m = Memory()
     p = by_rule(plan(s, m)[0], "found")
     assert p and p[0].action == {"type": "found_fort"} and "beside the wagon" in p[0].reason, p
+    record([(p[0], {"ok": False, "error": "no tile within 10 of the wagon with solid, dry ground under it "
+                                         "(found: an aquifer below)"})], s, m)
+    # (0.105.35) nothing waits for the player: looked for further out first
+    p, notes = plan(s, m)
+    p = by_rule(p, "found")
+    assert p and p[0].action == {"type": "found_fort", "wide": True}, p
+    assert not any(n.startswith("[you] ") and "can't start the fort" in n for n in notes), notes
     record([(p[0], {"ok": False, "error": "no tile within 20 of the wagon with solid, dry ground under it "
                                          "(found: an aquifer below)"})], s, m)
     _, notes = plan(s, m)
-    assert any("can't start the fort" in n and "aquifer" in n for n in notes), notes
+    assert any(n.startswith("[you] ") and "can't start the fort" in n and "aquifer" in n and "looks again" in n
+               for n in notes), notes
     allowed, _ = select(plan(s, m)[0], s, m)
     assert not [x for x in allowed if x.rule == "found"]           # (its cooldown: 3 days for the miners)
     s["founding"] = {"stairs": True}
@@ -4249,7 +4269,7 @@ def _():
     assert all(r == "Constant training" for r in moves(copy.deepcopy(s)).values()), moves(s)
 
 
-@test("the deep: an open cavern is said; a great danger in it is Needs you; vampires and werebeasts are Needs you")
+@test("the deep: an open cavern is said; a great danger in it, vampires and werebeasts: said with what the AI does (0.105.35)")
 def _():
     s = fort()
     s["deep"] = {"caverns": [{"name": "Cavern1", "discovered": True, "open": True, "z_top": 40, "z_bottom": 30},
@@ -4260,7 +4280,8 @@ def _():
     s["deep"]["dangers"] = [{"name": "Ubbul the Toad", "kind": "forgotten beast", "layer": "Cavern1"},
                             {"name": "a titan", "kind": "titan", "layer": "upper_levels", "can_reach_dwarves": True}]
     notes = plan(s, Memory())[1]
-    assert any(n.startswith("[you] Cavern1 is open to the fort and Ubbul the Toad") for n in notes), notes
+    assert any(n.startswith("Cavern1 is open to the fort and Ubbul the Toad") and "locks" in n for n in notes), notes
+    assert not any(n.startswith("[you] ") for n in notes), notes
     assert any("a titan (titan) is in upper levels and can reach the dwarves" in n for n in notes), notes
     m = Memory()
     note_cycle(s, m)
@@ -4272,10 +4293,11 @@ def _():
     props, notes = plan(s, Memory())
     assert any(p.action == {"type": "expel_dwarf", "unit_id": 77} for p in props)        # sent away (Rules tab)
     assert any(n.startswith("Urist is a vampire: the AI sends them away") for n in notes)
-    assert any(n.startswith("[you] Bomrek carries a werebeast curse") for n in notes)
-    s["settings"]["expel_vampires"] = False
+    assert any(n.startswith("Bomrek carries a werebeast curse") and "cell" in n for n in notes), notes
+    s["settings"]["expel_vampires"] = False                                # the player's switch: kept, said
     notes = plan(s, Memory())[1]
-    assert any(n.startswith("[you] Urist is a vampire") for n in notes)
+    assert any(n.startswith("Urist is a vampire") and "Rules tab" in n for n in notes), notes
+    assert not any(n.startswith("[you] ") for n in notes), notes
 
 
 @test("feeders: a workshop without a pile beside it gets one, busiest kind first; none in a young fort")
@@ -6950,7 +6972,7 @@ def _():
     assert not by_rule(plan(s, Memory())[0], "smelting")                               # no library import any more
 
 
-@test("watchdog: an order that doesn't move is named after 2 weeks (with a missing workshop), the AI's is Needs you after 4")
+@test("watchdog: an order that doesn't move is named after 2 weeks (with a missing workshop); the AI's stuck again is cancelled again (0.105.35)")
 def _():
     from planner import note_cycle
     s = fort()
@@ -6988,11 +7010,15 @@ def _():
     allowed, held = select([Proposal("smelt", {"type": "work_order", "recipe": "smelt_ore", "amount": 5}, "x", 4, True)],
                            t, m)
     assert not allowed and any("got stuck and was cancelled" in h for h in held), held
-    # stuck again within 90 days: Needs you, not cancelled again
+    # stuck again within 90 days: said, and cancelled again, held longer (was Needs you, left standing)
     notes = at(29 + 40)
     t = copy.deepcopy(s); t["date"]["tick"] += (29 + 40) * 1200
-    assert any(n.startswith("[you] 1 of the AI's work order(s) keep getting stuck") for n in notes), notes
-    assert not by_rule(plan(t, m)[0], "stuck_order")
+    assert any(n.startswith("1 of the AI's work order(s) got stuck again") for n in notes), notes
+    assert not any(n.startswith("[you]") and "work order" in n for n in notes), notes
+    c2 = by_rule(plan(t, m)[0], "stuck_order")
+    assert c2 and c2[0].action == {"type": "cancel_work_order", "order_id": 7, "stuck": "smelt_ore"}, c2
+    assert "56 days" in c2[0].reason, c2[0].reason
+    assert not any(p.action.get("order_id") == 8 for p in c2)                 # never the player's
     s["orders"][0]["amount_left"] = 6                                         # it moved: the clock starts again
     notes = at(70)
     assert not any("smelt_ore" in n for n in notes if "haven't moved" in n or "stuck" in n), notes
