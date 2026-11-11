@@ -168,6 +168,13 @@ def moon_due(changes: list, now: int, cfg: dict) -> bool | None:
     return since >= period - _c(cfg, "moon_before_days") * TICKS_PER_DAY or since <= _c(cfg, "moon_after_days") * TICKS_PER_DAY
 
 
+def _weak_free(s: dict):
+    """(0.105.35) The best free squad with anyone armed (planner_military weak_squad)."""
+    from planner_military import weak_squad
+    return weak_squad([q for q in _l(_d(s.get("military")).get("squads")) if isinstance(q, dict)
+                       and not q.get("ai_orders")])
+
+
 def _able_squads(s: dict, cfg: dict) -> list:
     return [q for q in _l(_d(s.get("military")).get("squads")) if isinstance(q, dict)
             and can_fight(q, cfg) and not q.get("ai_orders")]
@@ -207,7 +214,7 @@ def _prisoners(s, cfg, t, rules, proposals, notes):
     else:
         what = "released outside" if choice == "release" else "put to death"
         notes.append(f"{n} prisoner(s) to be {what} (Rules tab), but DFHack offers no safe way to do it: "
-                     "they stay caged (a pit zone over a drop, or a cage opened by a lever, is yours to build)")
+                     "they stay caged in the cage room meanwhile")
 
 
 def _thieves(s, cfg, t, memory, proposals, notes):
@@ -227,8 +234,16 @@ def _thieves(s, cfg, t, memory, proposals, notes):
         elif able and hit:
             proposals.append(Proposal("squad_attack", {"type": "squad_orders", "squad_id": able[0]["id"], "kill": hit[:10]},
                                       f"{names} in the fort: send {able[0].get('name') or 'the squad'}", 0))
+        elif hit and _weak_free(s) is not None:
+            # (0.105.35) no squad with enough armed: the best free one with anyone armed
+            q = _weak_free(s)
+            proposals.append(Proposal("squad_attack", {"type": "squad_orders", "squad_id": q["id"], "kill": hit[:10]},
+                                      f"{names} in the fort and no squad with {cfg.get('min_squad_to_fight', 3)}+ armed "
+                                      f"free: send {q.get('name') or 'the squad'} "
+                                      f"({_d(q.get('power')).get('armed')} armed)", 0))
         else:
-            notes.append(f"{names} in the fort" + (" and no squad free to send" if not able else
+            notes.append(f"{names} in the fort" + (" and no squad free to send: watched, and sent at once a squad "
+                                                    "is free" if not able else
                                                     " (the game doesn't count them as a threat: watched)"))
     elif rows:
         notes.append(f"{len(rows)} thief/snatcher(s) about, not inside yet: " + ", ".join(str(x.get("name")) for x in rows[:3]))
@@ -410,11 +425,26 @@ def _cavern_beasts(s, cfg, memory, t, rules, proposals, notes):
         if ALL_CAVERNS not in sealed or unlocked:
             if down:
                 n = int(_d(t.get("cavern_citizens")).get("n") or len(down))
-                ask_player(notes, f"{who} is about, and the ways into the caverns are not locked while "
-                                  f"{n} citizen(s) are down there ("
-                                  + ", ".join(f"{_d(x).get('name')} at x{_d(x).get('x')} y{_d(x).get('y')} "
-                                              f"elevation {(_d(x).get('z') or 0) + off}" for x in down[:3])
-                                  + "): call them up, and the AI locks them")
+                where = ", ".join(f"{_d(x).get('name')} at x{_d(x).get('x')} y{_d(x).get('y')} "
+                                  f"elevation {(_d(x).get('z') or 0) + off}" for x in down[:3])
+                # (0.105.35) the AI calls them up itself: the alarm sends the
+                # civilians into the shelter (inside the fort), and holds while
+                # they are down there; the ways are locked once they're out
+                proposals[:] = [p for p in proposals if p.action != {"type": "civ_alert", "on": False}]
+                if s.get("civ_alert"):
+                    notes.append(f"{who} is about and {n} citizen(s) are still in the caverns ({where}): the alarm "
+                                 "calls them up; the ways down are locked once they're out")
+                elif s.get("civ_alert_ready") is True:
+                    if not any(p.action == {"type": "civ_alert", "on": True} for p in proposals):
+                        proposals.append(Proposal("threat_alert", {"type": "civ_alert", "on": True},
+                                                  f"{who} is about and {n} citizen(s) are in the caverns ({where}): "
+                                                  "sound the alarm to call them up, then lock the ways down", 0))
+                    notes.append(f"{who} is about and {n} citizen(s) are in the caverns: the alarm calls them up "
+                                 "before the ways down are locked")
+                else:
+                    from planner_military import no_shelter
+                    no_shelter(s, memory, f"{who} is about and {n} citizen(s) are in the caverns ({where})",
+                               proposals, notes)
             elif tiles or lockable:
                 act = {"type": "seal_cavern", "layer": ALL_CAVERNS, "openings": True}
                 if tiles:
@@ -428,8 +458,21 @@ def _cavern_beasts(s, cfg, memory, t, rules, proposals, notes):
                                           + (f", {len(unlocked)} open" if unlocked else "")
                                           + "), whatever the squads could do", 1))
             elif any(c.get("open") for c in caverns):
-                ask_player(notes, f"{who} is about, the fort is open to the caverns, and no door or hatch is "
-                                  "known on the way down: wall it off")
+                # (0.105.35) the AI maps the entrances again (a cavern opening it
+                # finds gets its door or hatch, _cavern_doors); only when a fresh
+                # map finds none is the player told, with what the AI does
+                ent = _d(s.get("entrances"))
+                age = (abs_tick(s) - ent["scanned_tick"]) if isinstance(ent.get("scanned_tick"), int) else None
+                if age is None or not 0 <= age < TICKS_PER_DAY:
+                    proposals.append(Proposal("cavern_scan", {"type": "scan_entrances"},
+                                              f"{who} is about and the fort is open to the caverns with no door or "
+                                              "hatch known on the way down: map the entrances again to find the "
+                                              "openings and put doors on them", 1))
+                else:
+                    ask_player(notes, f"{who} is about and the fort is open to the caverns, but the entrances "
+                                      "mapped today show no spot for a door or hatch on the way down, and the AI "
+                                      "can't wall an opening it hasn't mapped; meanwhile it maps them again each "
+                                      "day and puts a door on any opening it finds")
         # the squads' word, said (the openings stay locked all the same)
         mil = _d(s.get("military"))
         able = [q for q in _l(mil.get("squads")) if isinstance(q, dict) and can_fight(q, cfg)]
@@ -443,7 +486,7 @@ def _cavern_beasts(s, cfg, memory, t, rules, proposals, notes):
                 fight, verdict = False, ""
             if fight:
                 notes.append(f"{who}: the squads could take it ({verdict}), but the ways into the caverns stay "
-                             "locked while it is about; send them through by hand if you want the fight")
+                             "locked while it is about: the AI doesn't send them down after it")
         shafts = [x for x in _l(_d(s.get("projects")).get("well_lids")) if isinstance(x, dict)
                   and x.get("gate") in ("open", "closed", "pulling")]
         if shafts:
@@ -452,9 +495,12 @@ def _cavern_beasts(s, cfg, memory, t, rules, proposals, notes):
             patients = int(_d(s.get("dwarves")).get("needs_medical_care") or 0)
             wells = int(_d(_d(s.get("buildings")).get("other")).get("Well") or 0)
             if patients and wells <= len(shafts):
-                ask_player(notes, f"{patients} injured dwarves need water and the only well is the cavern well, "
-                                  f"shut against {who}: give them water by hand (a bucket from open water) "
-                                  "or build another well")
+                # (0.105.35) said, not asked: the water rule marks the nearest
+                # open water (not the caverns') a water source meanwhile, and the
+                # wells rule places another well
+                notes.append(f"{patients} injured dwarves need water and the only well is the cavern well, "
+                             f"shut against {who}: the nearest open water outside the caverns is made a water "
+                             "source meanwhile, and another well is placed when it can be")
     else:
         if ALL_CAVERNS in sealed:
             proposals.append(Proposal("seal_cavern", {"type": "seal_cavern", "layer": ALL_CAVERNS, "open": True},
@@ -534,7 +580,8 @@ def _threat_rules(s: dict, memory, cfg: dict, proposals: list, notes: list) -> N
             notes.append(f"threat rule {name} failed ({type(e).__name__}: {str(e)[:100]})")
     # the alarm: up for the undead, an evil cloud or a surface beast; kept up while they last
     why = threat_alert(s, cfg)
-    # (0.105.0 review) held at most threat_alarm_max_days: past that it is the player's call
+    # (0.105.0 review) held at most threat_alarm_max_days: past that the AI lets
+    # it down (0.105.35: said, not put to the player)
     if why:
         held = memory.threat_alarm if isinstance(getattr(memory, "threat_alarm", None), dict) else {}
         now = abs_tick(s)
@@ -544,8 +591,8 @@ def _threat_rules(s: dict, memory, cfg: dict, proposals: list, notes: list) -> N
             since = now
         days = (now - since) // TICKS_PER_DAY
         if days >= _c(cfg, "threat_alarm_max_days"):
-            ask_player(notes, f"{why} for {days} days: the AI no longer holds the alarm for it "
-                              "(sound it, or wall the danger off, yourself)")
+            notes.append(f"{why} for {days} days: the AI no longer holds the alarm for it (the fort can't "
+                         "stay indoors for ever); the danger is still watched, and a new threat sounds it again")
             return
     else:
         memory.threat_alarm = {}
@@ -556,4 +603,5 @@ def _threat_rules(s: dict, memory, cfg: dict, proposals: list, notes: list) -> N
                 proposals.append(Proposal("threat_alert", {"type": "civ_alert", "on": True},
                                           f"{why}: sound the alarm (everyone inside, no work on the surface)", 0))
             else:
-                ask_player(notes, f"{why}, and no civilian-alert burrow is set up to keep the dwarves inside")
+                from planner_military import no_shelter
+                no_shelter(s, memory, why, proposals, notes)        # (0.105.35) the AI makes one

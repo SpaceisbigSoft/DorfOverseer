@@ -5468,7 +5468,7 @@ def _():
     assert "armour" in overseer.short({"type": "assign_kit", "limit": 20})
 
 
-@test("gear (game): 3+ spares lying unused -> no more made; after a week Needs you says to check uniforms")
+@test("gear (game): 3+ spares lying unused -> no more made; after a week a note (0.105.35: not Needs you), a month: made")
 def _():
     s = geared(soldiers=33, on_duty=33, armed=17, armored=33, helmed=33, spare={"weapons": 7},
                bars={"STEEL": 64})
@@ -5483,7 +5483,8 @@ def _():
     later["date"]["tick"] += 7 * 1200
     note_cycle(later, m)
     notes = plan(later, m)[1]
-    assert any(n.startswith("[you] 7 weapons lie unused") and "uniforms" in n for n in notes), notes
+    assert any(n.startswith("7 weapons lie unused") and "uniforms" in n for n in notes), notes
+    assert not any(n.startswith("[you]") and "lie unused" in n for n in notes), notes
     picked = copy.deepcopy(later)                                  # soldiers took them
     picked["military"]["gear"]["spare"] = {"weapons": 0}
     picked["military"]["gear"]["armed"] = 24
@@ -5536,15 +5537,28 @@ def _():
     assert not by_rule(p, "arms") and any("no squad has a uniform" in n for n in notes), notes
     p, notes = plan(geared(armed=0, forges=0), Memory())
     assert not by_rule(p, "arms") and any("no forge" in n for n in notes), notes
+    # (0.105.35) no forge at all: the AI builds one (it asked the player before)
+    s = geared(armed=0, forges=0)
+    for k in ("workshops", "furnaces"):
+        for w in ("MetalsmithsForge", "MagmaForge"):
+            _d_ = s["buildings"].get(k)
+            if isinstance(_d_, dict):
+                _d_.pop(w, None)
+    s["projects"]["open"] = []
+    p, notes = plan(s, Memory())
+    f = by_rule(p, "arms_forge")
+    assert f and f[0].action == {"type": "start_project", "kind": "workshops", "shops": ["MetalsmithsForge"]}, f
+    assert not any(n.startswith("[you]") and "forge" in n for n in notes), notes
     p, notes = plan(geared(armed=0, bars={"GOLD": 500, "COPPER": 3}), Memory())
-    assert not by_rule(p, "arms") and any("smelt some ore" in n for n in notes), notes
+    assert not by_rule(p, "arms") and any("weapon-grade metal" in n for n in notes), notes
+    assert not any(n.startswith("[you]") and "weapon-grade" in n for n in notes), notes
     s = geared(armed=0, bars={})                                  # the AI is smelting: a note, not Needs you
     s["buildings"]["furnaces"]["Smelter"] = 1
     s["industry"] = {"ores": {"IRON": {"tiles": 50, "ore": "MAGNETITE"}}}
     m = Memory()
     m.libraries_imported = ["smelting"]
     notes = plan(s, m)[1]
-    assert any("being mined and smelted" in n for n in notes) and not any("smelt some ore" in n for n in notes), notes
+    assert any("being mined and smelted" in n for n in notes) and not any("no ore of it" in n for n in notes), notes
     s = geared(armed=0, squads_with_uniform=0)                    # templates: the AI gives a uniform itself
     s["military"]["uniform_templates"] = ["Melee, leather armor"]
     assert not any("no squad has a uniform" in n for n in plan(s, Memory())[1])
@@ -10156,15 +10170,16 @@ def _():
     assert not by_rule(plan(s3, m)[0], "squad_attack")
 
 
-@test("0.105.3 B: a lone thief inside and no armed squad -> Needs you once, the gates still open")
+@test("0.105.3 B: a lone thief inside and no armed squad -> said (0.105.35: not Needs you), the gates still open")
 def _():
     s = b_thief(armed=0)
     m = Memory(ai_alert_raised=True)
     p, notes = plan(s, m)
     assert not by_rule(p, "squad_attack")
     assert by_rule(p, "gates")[0].action == {"type": "open_gates"}
-    you = [n for n in notes if n.startswith("[you] ") and "Trustdaub" in n]
-    assert len(you) == 1 and "no squad has 3+ armed soldiers" in you[0], notes
+    assert not [n for n in notes if n.startswith("[you] ") and "Trustdaub" in n], notes
+    said = [n for n in notes if "Trustdaub" in n and "no squad has anyone armed" in n]
+    assert len(said) == 1, notes
 
 
 @test("0.105.3 B: the alarm for a lone thief inside is held half a day at most")

@@ -80,11 +80,14 @@ def _():
     assert p and p[0].action == {"type": "work_order", "recipe": "wooden_crossbow", "amount": 3}, p
 
 
-@test("unreachable weapons are put to the player; forbidden ones noted and let go (0.105.2)")
+@test("unreachable weapons: new ones made (0.105.35, not put to the player); forbidden ones noted and let go (0.105.2)")
 def _():
     s = teacheroar_gear(weapon_gaps_why={"unreachable": 5, "forbidden, dumped or to melt": 2})
+    s["orders"] = []
     props, notes = plan(s, Memory())
-    assert any(n.startswith("[you] 5 soldier(s) can't get to the free weapons") for n in notes), notes
+    assert not any(n.startswith("[you]") and "free weapons" in n for n in notes), notes
+    o = by_rule(props, "gear_fix_order")
+    assert o and o[0].action["recipe"] == "metal_battle_axe" and o[0].action["amount"] == 5, o
     assert any("forbidden, dumped or set to melt" in n for n in notes), notes
     p = by_rule(props, "gear_fix")
     assert p and "2 forbidden, dumped or to melt" in p[0].reason, p

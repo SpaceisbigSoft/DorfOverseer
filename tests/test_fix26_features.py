@@ -173,14 +173,16 @@ def _():
     assert not acts(plan(s, Memory())[0], "seal_cavern")
 
 
-@test("cavern beast: not sealed while citizens are down in the caverns; the player told")
+@test("cavern beast: not sealed while citizens are down in the caverns; the AI calls them up (0.105.35)")
 def _():
     s = cave_fort(threats={"sealed": {}, "cavern_citizens": {"n": 2, "list": [
         {"id": 3, "name": "Kib", "x": 9, "y": 9, "z": 115}, {"id": 4, "name": "Zon", "x": 9, "y": 8, "z": 115}]}})
+    s["civ_alert"], s["civ_alert_ready"] = False, True
     props, notes = plan(s, Memory())
     assert not acts(props, "seal_cavern"), props
-    ny = [n for n in needs_you(notes) if "down there" in n]
-    assert ny and "Kib at x9 y9 elevation 15" in ny[0] and "2 citizen(s)" in ny[0], notes
+    assert not [n for n in needs_you(notes) if "caverns" in n and "citizen" in n], notes
+    a = [p for p in props if p.action == {"type": "civ_alert", "on": True}]
+    assert a and "Kib at x9 y9 elevation 15" in a[0].reason and "2 citizen(s)" in a[0].reason, props
 
 
 @test("cavern beast gone: the openings opened again, and said; old per-layer seals still opened")
@@ -210,7 +212,7 @@ def _():
     assert not acts(plan(s, m)[0], "cavern_openings")
 
 
-@test("cavern beast: the cavern well's shaft said shut (no water) and the injured put to the player")
+@test("cavern beast: the cavern well's shaft said shut (no water); the injured's water said (0.105.35: not asked)")
 def _():
     s = cave_fort()
     s["projects"]["well_lids"] = [{"project_id": 3, "x": 1, "y": 1, "z": 1, "gate": "closed"}]
@@ -218,7 +220,8 @@ def _():
     s["buildings"].setdefault("other", {})["Well"] = 1
     props, notes = plan(s, Memory())
     assert any("draws no water" in n for n in notes), notes
-    assert any("only well is the cavern well" in n for n in needs_you(notes)), notes
+    assert any("only well is the cavern well" in n and "water source meanwhile" in n for n in notes), notes
+    assert not any("only well is the cavern well" in n for n in needs_you(notes)), notes
 
 
 # --- the Lua side ------------------------------------------------------------------
