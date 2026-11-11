@@ -375,6 +375,7 @@ class Reviver:
                     self.log(f"Revive: couldn't start Dwarf Fortress ({e}).")
         elif state == "title":
             self.down_since = None
+            self.busy_said = False        # (0.105.36, D7) said again the next time DF starts slowly
             self.title_since = self.title_since or now
             self.loads = [t for t in self.loads if now - t < 3600]
             if now - self.title_since >= TITLE_S and len(self.loads) < LOADS_PER_HOUR:
@@ -423,6 +424,7 @@ class Reviver:
                     self.log(f"Revive: couldn't load '{folder}' ({str(e)[:160]}).")
         elif state == "world":
             self.down_since = self.title_since = None
+            self.busy_said = False
         # (0.100.1, review) running but not answering (a hang, not a crash):
         # dfhack-run times out every time, the overseer keeps its heartbeat,
         # and nothing ever recovered it. After HUNG_S of that, DF is closed;

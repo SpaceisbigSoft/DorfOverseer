@@ -1089,7 +1089,15 @@ function hospital_store_test()
             if not c then return false end
             if seen[c.id] ~= nil then return seen[c.id] end
             local ans = false
-            local bld = dfhack.items.getHolderBuilding(c)
+            -- (0.105.36, D6) thread in a bag in the chest: the bag has no holder
+            -- building, so walk up the containers (a few levels) to the one that has
+            local bld, up = nil, c
+            for _ = 1, 4 do
+                bld = dfhack.items.getHolderBuilding(up)
+                if bld then break end
+                up = dfhack.items.getContainer(up)
+                if not up then break end
+            end
             if bld then
                 for _, z in ipairs(dfhack.buildings.findCivzonesAt(xyz2pos(bld.centerx, bld.centery, bld.z)) or {}) do
                     if zones[z.id] then ans = true break end

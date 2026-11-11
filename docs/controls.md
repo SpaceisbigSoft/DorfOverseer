@@ -86,7 +86,9 @@ switches whose default is on or off can be set this way, and (0.105.27)
 **Dispose**, as `{"rules": {"disposal": "dump"}}`
 (`store`, `melt`, `dump` or `destroy`), and (v35) **Cavern well into an
 unfound cavern**, as `{"rules": {"open_caverns": "never"}}` (`ai`, `always`
-or `never`; `true` is `always`, `false` is `ai`).
+or `never`; `true` is `always`, and (0.105.36) `false` is `never`:
+an off asked for is obeyed. A setting stored as `false` by an older version
+reads as `ai`, its default then).
 
 ### The fort
 
