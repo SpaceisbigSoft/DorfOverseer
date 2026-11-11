@@ -182,12 +182,15 @@ def _location_petition_rules(s: dict, cfg: dict, proposals: list, notes: list, r
     traits = _traits(s)
     open_ = [p for p in _l(_d(s.get("projects")).get("open")) if isinstance(p, dict)]
     # (0.97) the Temple level switch, and the Maintain goal (no temple), cover
-    # petition temples too: those are left to you; guildhalls go on
+    # petition temples too: those are not answered (the player's switch); guildhalls go on
     no_temples = (not _d(rules_.get("levels")).get("temple", True)) or rules_.get("fort_goal") == "maintain"
     if no_temples and any(w.get("loc") == "TEMPLE" for w in pending + agreed):
-        notes.append("temple petitions are left to you: " + ("the fort's goal is Maintain"
-                                                             if rules_.get("fort_goal") == "maintain"
-                                                             else "the Temple level is off on the Rules tab"))
+        # (0.105.35) the player's own goal or switch: said, not handed back
+        notes.append("temple petitions aren't answered or built while " + ("the fort's goal is Maintain"
+                                                                          if rules_.get("fort_goal") == "maintain"
+                                                                          else "the Temple level is off on the "
+                                                                               "Rules tab")
+                     + " (DF lets them lapse)")
         pending = [w for w in pending if w.get("loc") != "TEMPLE"]
         agreed = [w for w in agreed if w.get("loc") != "TEMPLE"]
     # agreed: build what isn't there yet. (0.104.163) A hall of the wish's
@@ -299,9 +302,13 @@ def _location_petition_rules(s: dict, cfg: dict, proposals: list, notes: list, r
                                       f"a petition asks for {_wish_words(w)}: decline ({why})", 6))
             return
         if tier >= 2 and not (traits.get("grandeur", 0) > 0 or (w.get("loc") == "TEMPLE" and traits.get("piety", 0) > 0)):
-            notes.append(f"a petition asks for {_wish_words(w)}: left to you (a fort that doesn't care for grandeur "
-                         "agrees to temples and guildhalls, not their grand tier)")
-            continue
+            # (0.105.35) nothing waits for the player: the AI declines it (was
+            # "left to you"); declining makes no promise to keep
+            proposals.append(Proposal("petition_answer", {"type": "answer_petition", "id": w.get("id"),
+                                                          "accept": False, "wish": wish_key(w)},
+                                      f"a petition asks for {_wish_words(w)}: decline (a fort that doesn't care "
+                                      "for grandeur agrees to temples and guildhalls, not their grand tier)", 6))
+            return
         # (0.102.2) the same wish again within a year of agreeing to it (War-hold
         # agreed 120 in a game year, mostly the same halls): DF didn't count the
         # hall the fort already had; agreeing again only makes another promise
@@ -334,11 +341,19 @@ def _meeting_notes(s: dict, notes: list) -> None:
         # (0.94.1) only the meeting screen itself, which holds the game until
         # answered, is a Needs you
         # (0.105.0) the AI answers it once shown the screen's buttons (brain/planner_world.py)
-        ask_player(notes, f"DF's meeting screen is open and waits for your answers ({who}): the AI answers "
-                          "meetings once it knows the screen's buttons (with one open, the mouse on Yes: python "
-                          "brain\\probe_meeting.py --here Yes; then No, and Done on the requests screen); in an "
-                          "unattended run it leaves the screen (the meeting ends without an agreement) after 2 minutes "
-                          "when it can't answer, or 10 when the topic is left to you")
+        # (0.105.35) nothing waits for the player: when it knows the buttons
+        # the AI answers (a note); else the Needs you says what it does meanwhile
+        wm = _d(_d(s.get("world")).get("meeting"))
+        known = set(str(b) for b in _l(wm.get("buttons")))
+        need = {"Done"} if wm.get("requests") else {"Yes", "No"}
+        if wm.get("open") and not wm.get("land_holder") and need <= known:
+            notes.append(f"DF's meeting screen is open ({who}): the AI answers it")
+            return
+        ask_player(notes, f"DF's meeting screen is open ({who}) and the AI can't press its buttons yet (it hasn't "
+                          "been shown where they are; with one open, the mouse on Yes: python brain\\probe_meeting.py "
+                          "--here Yes; then No, and Done on the requests screen); meanwhile it leaves the screen "
+                          "after 2 minutes (the meeting ends without an agreement), or 10 when the topic is left "
+                          "to you")
     elif int(m.get("popups") or 0) > 0:
         # (0.94.1) a queued meeting popup doesn't hold the game (region2 ran
         # on through days of them): a note, not a Needs you

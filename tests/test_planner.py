@@ -2787,7 +2787,8 @@ def _():
     assert not any("ghost" in n for n in notes), notes                       # handled, not your job
     s["settings"]["engrave_slabs"] = False
     p, notes = plan(s, Memory())
-    assert not by_rule(p, "slabs") and any(n.startswith("[you] 2 ghost(s)") for n in notes), notes
+    # (0.105.35) the player's own switch: a note, not a Needs you
+    assert not by_rule(p, "slabs") and any(n.startswith("2 ghost(s)") and "switch" in n for n in notes), notes
 
 
 @test("tavern from 15 dwarves, library from 40; coffins and bookcases waiting get ordered")
@@ -4376,7 +4377,7 @@ def _():
     assert t, "autobutcher"
 
 
-@test("needs: unmet needs named with what helps; miserable dwarves are Needs you; prayer builds a shrine early")
+@test("needs: unmet needs named with what helps; miserable dwarves noted with what the AI does (0.105.35); prayer builds a shrine early")
 def _():
     s = fort()
     s["needs"] = {"needs": {"PrayOrMeditate": {"have": 10, "distracted": 4}, "DrinkAlcohol": {"have": 18, "distracted": 3},
@@ -4387,11 +4388,11 @@ def _():
     s["settings"]["answer_locations"] = False                         # (0.89) else the AI builds them itself
     notes = plan(s, Memory())[1]
     assert any("PrayOrMeditate 4 (a temple)" in n and "DrinkAlcohol 3 (more drink" in n for n in notes), notes
-    assert any(n.startswith("[you] the fort agreed to petitions") and "a temple to Ilbat the Gold" in n
-               and "a miner guildhall" in n for n in notes), notes
+    assert any(n.startswith("the fort agreed to petitions") and "a temple to Ilbat the Gold" in n
+               and "a miner guildhall" in n and "switch" in n for n in notes), notes
     assert any("Ilbat the Gold 3" in n for n in notes)
-    assert any(n.startswith("[you] 1 dwarf(s) are miserable") and "Urist (missing DrinkAlcohol, Socialize)" in n
-               for n in notes), notes
+    assert any(n.startswith("1 dwarf(s) are miserable") and "Urist (missing DrinkAlcohol, Socialize)" in n
+               and "recreation" in n for n in notes), notes
     s["locations"]["count"].pop("TEMPLE", None)
     s["projects"]["open"] = []
     found = None
@@ -4959,12 +4960,15 @@ def _():
     s["settings"]["answer_locations"] = False
     props = plan(s, Memory())[0]
     assert not by_rule(props, "petition_build") and not by_rule(props, "petition_answer")
-    # a tier-2 wish in a fort that doesn't care for grandeur: left
+    # a tier-2 wish in a fort that doesn't care for grandeur: declined
     s["settings"]["answer_locations"] = True
     s["petitions"] = {"pending": [{"id": 176, "type": "Location", "loc": "GUILDHALL", "tier": 2, "profession": "MINER"}]}
     s["settings"]["traits"] = {}
     props, notes = plan(s, Memory())
-    assert not by_rule(props, "petition_answer") and any("left to you" in n for n in notes), notes
+    # (0.105.35) nothing waits for the player: the AI declines it
+    d = by_rule(props, "petition_answer")
+    assert d and d[0].action["id"] == 176 and d[0].action["accept"] is False, d
+    assert not any("left to you" in n for n in notes), notes
 
 
 @test("a hall being dug whose petition was met meanwhile (0.92) goes to the next petition")
@@ -5550,7 +5554,9 @@ def _():
     props, notes = plan(s, Memory())
     you = [n for n in notes if n.startswith("[you] ")]
     text = " | ".join(you)
-    assert "broker" not in text and "2 dwarves are starving" in text, text        # the AI appoints those
+    assert "broker" not in text and "starving" not in text, text        # the AI appoints those
+    # (0.105.35) starving: a note of what the AI does, not "check they can reach"
+    assert any(n.startswith("2 dwarves are starving") and "check" not in n for n in notes), notes
     ap = sorted(p.action["office"] for p in by_rule(props, "appoint"))
     assert ap == ["BROKER", "CHIEF_MEDICAL_DWARF"], ap
     s2 = copy.deepcopy(s)
@@ -6303,7 +6309,11 @@ def _():
     assert not any(n.startswith(planner.NEEDS_YOU) and "still lacks" in n for n in notes), notes
     m.moods_seen = {"5": abs_tick(s) - 8 * 1200}
     notes = plan(s, m)[1]
-    assert any(n.startswith(planner.NEEDS_YOU) and "still lacks" in n and "1 bar of iron" in n for n in notes), notes
+    # (0.105.35) a note: the forbidden freed, the rest bought from the caravans
+    props, notes = plan(s, m)
+    assert not any(n.startswith(planner.NEEDS_YOU) and "Urist" in n for n in notes), notes
+    assert any("still lacks" in n and "1 bar of iron" in n and "caravan" in n for n in notes), notes
+    assert {"type": "mood_free_items", "unit_id": 5, "max": 10} in [p.action for p in by_rule(props, "mood")]
 
 
 def _counted_mood(missing, **kw):
@@ -6369,7 +6379,9 @@ def _():
     props, notes = plan(s, m)
     o = [p.action for p in by_rule(props, "mood")]
     assert {"type": "cancel_work_order", "order_id": 77} in o, o
-    need = [n for n in notes if n.startswith(planner.NEEDS_YOU) and "can't supply" in n]
+    # (0.105.35) a note: on the caravans' list, the AI buys it (no Needs you)
+    assert not any(n.startswith(planner.NEEDS_YOU) and "can't supply" in n for n in notes), notes
+    need = [n for n in notes if "can't supply" in n]
     assert need and "1 cloth (silk): no silk thread to weave" in need[0] and "1 shell" in need[0], need
     assert "rough gem" not in need[0], need                # another job holds it: let go, not asked for
     assert any(n.startswith(planner.NEEDS_YOU) and "where the dwarf can't walk" in n and "1 log" in n for n in notes), notes
@@ -7590,11 +7602,11 @@ def _():
     props, notes = plan(s, Memory())
     p = by_rule(props, "petition_answer")
     assert p and p[0].action["id"] == 175, p
-    assert any("temple petitions are left to you: the Temple level is off" in n for n in notes), notes
+    assert any("temple petitions aren't answered or built while the Temple level is off" in n for n in notes), notes
     s["settings"]["levels"] = {}
     s["settings"]["fort_goal"] = "maintain"
     notes = plan(s, Memory())[1]
-    assert any("temple petitions are left to you: the fort's goal is Maintain" in n for n in notes), notes
+    assert any("temple petitions aren't answered or built while the fort's goal is Maintain" in n for n in notes), notes
 
 
 @test("Rules (0.97): level_refused speaks for the switches, Maintain and Mining -100 (the strategist obeys it)")
@@ -9672,10 +9684,15 @@ def _():
     assert not by_rule(plan(_infected_fort(idle_untreated=0), Memory())[0], "infected_rest")
     assert not by_rule(plan(_infected_fort(hospital_zones=0), Memory())[0], "infected_rest")
     props, notes = plan(_infected_fort(diagnosers=0), Memory())
-    assert not by_rule(props, "infected_rest") and any("nobody outside the military can diagnose" in n for n in notes)
-    # nobody with the cleaning labour: the player is asked
-    notes = plan(_infected_fort(cleaners=0), Memory())[1]
-    assert any("cleaning labour" in n for n in notes), notes
+    assert not by_rule(props, "infected_rest")
+    # (0.105.35) nobody to diagnose, or to clean: the AI gives the labour (no Needs you)
+    d = by_rule(props, "care_diagnose")
+    assert d and d[0].action == {"type": "assign_labor", "job": "DIAGNOSE", "count": 1}, rules(props)
+    assert "nobody outside the military can diagnose" in d[0].reason
+    props, notes = plan(_infected_fort(cleaners=0), Memory())
+    c = by_rule(props, "care_clean")
+    assert c and c[0].action == {"type": "assign_labor", "job": "CLEAN", "count": 2}, rules(props)
+    assert not any(n.startswith(planner.NEEDS_YOU) and "cleaning labour" in n for n in notes), notes
     # an older bridge (no section) or a failed one: nothing
     s = fort(); s.pop("infection", None)
     assert not by_rule(plan(s, Memory())[0], "infected_rest")

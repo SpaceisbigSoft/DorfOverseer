@@ -76,11 +76,30 @@ def _mood_rules(s: dict, memory, cfg: dict, proposals: list, notes: list) -> Non
                     f"{name} is in a {mood.lower()} mood and needs a {need} workshop, which the fort "
                     "doesn't have; without one they go insane", 1))
             else:
+                # (0.105.35) no mood workshop today is outside BUILDABLE_SHOPS: kept
+                # for a new one, said with what the AI does meanwhile
                 ask_player(notes, f"{name} is in a {mood.lower()} mood and needs a {need}, which the fort "
-                             "doesn't have and the AI can't build: build one, or they go insane")
+                             "doesn't have and the AI's builder can't place (DFHack gives it no layout for one); "
+                             "the AI keeps the mood's materials ready meanwhile, and the dwarf goes insane "
+                             "without one")
         elif days >= cfg["mood_claim_days"]:
-            ask_player(notes, f"{name} has been in a {mood.lower()} mood for {days} days without claiming a "
-                         f"workshop{' (' + need + ')' if need else ''}: is one free and reachable?")
+            # (0.105.35) nothing waits for the player: the fort's ones are taken
+            # or out of the dwarf's walk, so another is built (one workshops
+            # level at a time, never past the AI's cap for the kind)
+            busy = _workshops_busy([p for p in _l(_d(s.get("projects")).get("open")) if isinstance(p, dict)])
+            citizens = int(_d(s.get("dwarves")).get("total") or 0)
+            what = f"{name} has been in a {mood.lower()} mood for {days} days without claiming a workshop"
+            if need in BUILDABLE_SHOPS and not busy and shop_count(b, need) < shops_max(cfg, citizens):
+                proposals.append(Proposal(
+                    "mood", {"type": "start_project", "kind": "workshops", "shops": [need], "urgent": True},
+                    f"{what}: the fort's {need} may be in use or out of the dwarf's walk, so another is "
+                    "built; without one they go insane", 1))
+            elif need and busy:
+                notes.append(f"{what} ({need}); a workshops level is already being built")
+            else:
+                notes.append(f"{what}{' (' + need + ')' if need else ''}: DF lets the dwarf choose it, and the "
+                             "AI has no more to build for it" + (f" ({shop_count(b, need)} stand, the AI's cap)"
+                                                                 if need in BUILDABLE_SHOPS else ""))
 
 
 def mood_item_text(x: dict) -> str:
@@ -421,8 +440,9 @@ def _mood_materials(s: dict, name: str, mood: str, missing: list, days: int,
     own orders that would use the last of it are cancelled; the rest is made
     (cloth woven by kind, a hide tanned, bars smelted, a gem cut, raw green
     glass, blocks; an animal butchered for bone or leather); what can't be
-    made here goes into Needs you at once, named, and on the caravans' list.
-    From an older bridge (no count) as before: day 3, then Needs you on day 7.
+    made here goes on the caravans' list (0.105.35: a note, the trade rules
+    buy it; no Needs you). From an older bridge (no count): day 3, then on
+    day 7 its forbidden items freed and the rest asked of the caravans.
 
     (0.105.30) What the fort has out of the dwarf's walk is one Needs you,
     never "none" beside it (F, 8 Nov: "the fort has it, but where the dwarf
@@ -496,24 +516,34 @@ def _mood_materials(s: dict, name: str, mood: str, missing: list, days: int,
             except Exception:                        # noqa: BLE001  (words only)
                 rw = ""
             lacking.append((mood_item_text(x), why + (f" ({rw})" if rw else ""), kind))
-    if freeing and unit_id is not None:
-        proposals.append(Proposal("mood", {"type": "mood_free_items", "unit_id": unit_id, "max": 10},
-                                  f"{name}'s {mood.lower()} mood can use items that lie forbidden or marked for "
-                                  "the dump: free them", 1))
     first = mood_item_text(missing[0]) if missing else ""
+    stall_noted = False
+    # (0.105.35) nothing waits for the player: what the AI can do is done
+    # (made, freed, cancelled, asked of the caravans, bought by the trade
+    # rules); only what DF won't let it do stays in Needs you, with what the
+    # AI does meanwhile
     if far:
+        keyed = any(MOOD_TRADE_KEYS.get(mood_kind(x)) for x in missing)
         asks.append(f"{name}'s {mood.lower()} mood waits for {'; '.join(far)}: the fort has it, but "
-                    "where the dwarf can't walk: open the way, or bring it in, or the dwarf goes insane")
+                    "where the dwarf can't walk, and the AI can't carry it there (DF hauls only along a path "
+                    "the dwarf can walk too)"
+                    + ("; meanwhile it is on the caravans' list, bought when one comes" if keyed else "")
+                    + ", or the dwarf goes insane")
     words = [w for w, _, _ in lacking]
+    lack_at = None                        # (0.105.35) the index of the lacking note in notes
     if lacking and counted:
         # the bridge counted: none within the fort the mood can use, none made here
-        asks.append(f"{name}'s {mood.lower()} mood (day {days}) needs what the fort can't supply: "
-                    + "; ".join(f"{w}: {why}" for w, why, _ in lacking)
-                    + ". Buy it from a caravan (asked for), or the dwarf goes insane")
+        lack_at = len(notes)
+        notes.append(f"{name}'s {mood.lower()} mood (day {days}) needs what the fort can't supply: "
+                     + "; ".join(f"{w}: {why}" for w, why, _ in lacking)
+                     + ". On the caravans' list: the AI buys it from the next caravan")
     elif lacking and days >= cfg["mood_lacking_days"]:
-        asks.append(f"{name}'s {mood.lower()} mood still lacks, after {days} days: {', '.join(words)}. "
-                    "The fort probably has none the dwarf can reach or use: make it, dig it, buy it from a "
-                    "caravan, or unforbid it, or the dwarf goes insane")
+        # (an older bridge, no count) what is forbidden or dumped is freed, the rest asked of the caravans
+        if unit_id is not None and not freeing:
+            freeing = True
+        lack_at = len(notes)
+        notes.append(f"{name}'s {mood.lower()} mood still lacks, after {days} days: {', '.join(words)}. "
+                     "The AI frees what lies forbidden or dumped, and buys the rest from the next caravan")
     elif lacking:
         # (0.103.8) the dwarf may still be fetching it: Enxah's fisherdwarf
         # claimed the mason's on day 3, "lacked" rock that day and the next
@@ -525,13 +555,24 @@ def _mood_materials(s: dict, name: str, mood: str, missing: list, days: int,
         line = (f"no progress for {stalled} days; what the fort holds for each request: {counts}")
         if asks:
             asks[-1] += f" ({line})"
+        elif lack_at is not None:
+            notes[lack_at] += f" ({line})"
         else:
-            asks.append(f"{name}'s {mood.lower()} mood has fetched nothing for {stalled} days although the fort "
-                        f"seems to hold it ({counts}): is the way from the workshop to it open (a door, a "
-                        "burrow, a forbidden or flooded path)? Or the dwarf goes insane")
+            # (0.105.35) the AI makes more of the first request (above) and frees
+            # what lies forbidden in the dwarf's walk; DF says no more of why
+            if unit_id is not None:
+                freeing = True
+            stall_noted = True
+            notes.append(f"{name}'s {mood.lower()} mood has fetched nothing for {stalled} days although the fort "
+                         f"seems to hold it ({counts}): the AI makes more of what it fetches first and frees "
+                         "what lies forbidden in the dwarf's walk")
+    if freeing and unit_id is not None:
+        proposals.append(Proposal("mood", {"type": "mood_free_items", "unit_id": unit_id, "max": 10},
+                                  f"{name}'s {mood.lower()} mood can use items that lie forbidden or marked for "
+                                  "the dump: free them", 1))
     for a in asks:
         ask_player(notes, a)
-    if not lacking and not asks and counted and (ordered or freeing):
+    if not lacking and not asks and not stall_noted and counted and (ordered or freeing):
         notes.append(f"{name}'s {mood.lower()} mood (day {days}): fetching {first}"
                      + (f"; ordered {', '.join(ordered)}" if ordered else "")
                      + ("; forbidden materials freed" if freeing else ""))
