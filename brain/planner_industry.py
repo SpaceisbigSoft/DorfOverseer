@@ -997,7 +997,10 @@ def _bottleneck_rule(s: dict, cfg: dict, citizens: int, proposals: list, memory=
     if _workshops_busy(open_):
         return
     b = _d(s.get("buildings"))
-    places = {**_d(b.get("workshops")), **_d(b.get("furnaces"))}
+    # (0.105.33 merge, T1) a count that isn't a number (a None from an odd
+    # report) is none: `None >= 1` stopped the rule
+    places = {k: (v if isinstance(v, int) and not isinstance(v, bool) else 0)
+              for k, v in {**_d(b.get("workshops")), **_d(b.get("furnaces"))}.items()}
     backlog: dict[str, int] = {}
     for o in _l(s.get("orders")):
         if not isinstance(o, dict) or not o.get("by_ai"):

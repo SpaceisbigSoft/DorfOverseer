@@ -277,11 +277,11 @@ function start_project(params, now, dry_run)
     local decor = decoration_cells(L, site, build)
     local where = {stair = {x = stair.x, y = stair.y, z_top = stair.z_top, z_bottom = stair.z_bottom,
                             elevation_top = ez(stair.z_top), elevation_bottom = ez(stair.z_bottom)},
-                   anchor = a, corridor = site.corridor}
+                   anchor = a, corridor = site.corridor, new_corridor = site.new_corridor}
     if dry_run then
         return {ok = true, dry_run = true, kind = kind, z = site.z, elevation = ez(site.z),
                 extends_stairs = site.extend, in_district = site.in_district,
-                stair = where.stair, anchor = a, corridor = site.corridor,
+                stair = where.stair, anchor = a, corridor = site.corridor, new_corridor = site.new_corridor,
                 area = site.area, tiles = expected, summary = L.summary, furniture = furniture,
                 decoration = {smooth = #decor.smooth, engrave = #decor.engrave}}
     end
@@ -312,7 +312,7 @@ function start_project(params, now, dry_run)
                   name = params.name, style = params.style,
                   deity_hf = params.deity_hf, religion = params.religion, profession = params.profession},
         stair = {x = stair.x, y = stair.y}, anchor = {x = a.x, y = a.y},
-        z = site.z, area = site.area, corridor = site.corridor,
+        z = site.z, area = site.area, corridor = site.corridor, new_corridor = site.new_corridor,
         stairs = stairs_cells, summary = L.summary, furniture = furniture,
         -- the exact cells, so later steps never depend on regenerating the layout
         cells = {dig = dig, build = build, place = L.place, zone = L.zone,
@@ -330,7 +330,7 @@ function start_project(params, now, dry_run)
     return {ok = true, project_id = p.id, kind = kind, z = site.z, elevation = ez(site.z),
             extends_stairs = site.extend, in_district = site.in_district,
             stair = {x = stair.x, y = stair.y},
-            anchor = a, corridor = site.corridor,
+            anchor = a, corridor = site.corridor, new_corridor = site.new_corridor,   -- (0.105.33) Spacing
             tiles = expected, designated = result, summary = L.summary,
             warning = (result ~= expected) and ('only %d of %d tiles designated'):format(result, expected) or nil}
 end
@@ -1312,13 +1312,20 @@ function cancel_project(id, unreached)
         pcall(quickfort_apply, 'dig', {{x = 0, y = 0, text = key .. pri}}, z, x, y, 'undo')
     end
     local a = anchor_of(p)
-    for _, zk in ipairs(type(p.shaft) == 'table' and p.shaft or {}) do
-        if type(a) == 'table' then undo_one(a.x, a.y, zk, 'h') end
+    -- (0.105.33 merge) a well's own undo (ai-builder-wells.lua undo_well_cells),
+    -- one place for what a well designates beyond cells.dig
+    if p.kind == 'well' and type(undo_well_cells) == 'function' and type(a) == 'table'
+            and pcall(undo_well_cells, p) then
+        -- done
+    else
+        for _, zk in ipairs(type(p.shaft) == 'table' and p.shaft or {}) do
+            if type(a) == 'table' then undo_one(a.x, a.y, zk, 'h') end
+        end
+        for _, c in ipairs(type(p.shaft_stairs) == 'table' and p.shaft_stairs or {}) do
+            undo_one(c.x, c.y, c.z, c.key)
+        end
+        for _, g in ipairs(type(p.gallery) == 'table' and p.gallery or {}) do undo_one(g.x, g.y, p.z, 'd') end
     end
-    for _, c in ipairs(type(p.shaft_stairs) == 'table' and p.shaft_stairs or {}) do
-        undo_one(c.x, c.y, c.z, c.key)
-    end
-    for _, g in ipairs(type(p.gallery) == 'table' and p.gallery or {}) do undo_one(g.x, g.y, p.z, 'd') end
     p.phase = 'cancelled'
     if unreached then
         p.unreached = true

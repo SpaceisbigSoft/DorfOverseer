@@ -1378,8 +1378,22 @@ def _():
     s["buildings"]["workshops"]["Still"] = None                   # an odd value: _needs_rules used to raise
     s["stocks"]["drink"] = 0                                      # something else to do
     props, notes = plan(copy.deepcopy(s), Memory())[:2]
-    # (0.105.26: _needs_rules no longer reads the Still since needs_drink went; another rule fails)
-    assert any(n.startswith("rule _") and " failed (" in n for n in notes), [n for n in notes if "fail" in n]
+    # (0.105.33 merge) no rule fails on it any more (_bottleneck_rule did): the
+    # guard is shown with a rule of the test's own that raises
+    assert not [n for n in notes if n.startswith("rule _") and " failed (" in n], \
+        [n for n in notes if "fail" in n]
+    import planner as _planner
+    real = _planner._bottleneck_rule
+
+    def _bottleneck_rule(*a, **k):
+        raise ValueError("the test's own odd value")
+    _planner._bottleneck_rule = _bottleneck_rule
+    try:
+        props, notes = plan(copy.deepcopy(s), Memory())[:2]
+    finally:
+        _planner._bottleneck_rule = real
+    assert any(n.startswith("rule _bottleneck_rule failed (ValueError") for n in notes), \
+        [n for n in notes if "fail" in n]
     assert any(p.rule == "drink" for p in props), [p.rule for p in props]
     s2 = fort()
     del s2["dwarves"]                                             # a missing section: defaults, no crash

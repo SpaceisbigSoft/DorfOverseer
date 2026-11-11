@@ -869,18 +869,28 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
         learned_now = learning.observe(state, memory, line, write_pc=autopilot)   # before note_cycle: it reads the tools
         expire_adjustments(memory, state)
         notes = note_cycle(state, memory)
-        for e in mood_journal(state, memory):     # (0.105.30) each mood's requests, once a day
-            journal({"kind": "mood", "fort": key, "date": state["date"], **e})
-        note_tantrums(state, memory, events)     # (0.104.31) tantrums counted for the jail
-        note_heists(state, memory, events)       # (0.105.24) heists and visitors' killings: visitors kept out a while
-        note_intrusions(state, memory, events)   # (0.105.30) DF's invasion records: the alarm before a thief strikes
-        crisis.note_deaths(state, memory, events)   # (0.104.137) deaths counted for crisis mode
-        note_events(state, memory, bank if backend else None, events)
+        # (0.105.33 merge, B5) the report's date failed (it reads as year 0,
+        # tick 0): nothing dated goes into memory this cycle (the moods'
+        # journal, tantrums, heists, intrusions, deaths, events, the day's row,
+        # the atlas and the chronicle); the next good report carries on
+        date_bad = chronicle.date_failed(state)
+        if date_bad:
+            say("The report's date couldn't be read this cycle: nothing is written into the fort's memory "
+                "until it can be")
+        else:
+            for e in mood_journal(state, memory):     # (0.105.30) each mood's requests, once a day
+                journal({"kind": "mood", "fort": key, "date": state["date"], **e})
+            note_tantrums(state, memory, events)     # (0.104.31) tantrums counted for the jail
+            note_heists(state, memory, events)       # (0.105.24) heists and visitors' killings: visitors kept out a while
+            note_intrusions(state, memory, events)   # (0.105.30) DF's invasion records: the alarm before a thief strikes
+            crisis.note_deaths(state, memory, events)   # (0.104.137) deaths counted for crisis mode
+            note_events(state, memory, bank if backend else None, events)
         for line in learned_now:
             say(f"Learned: {line}")
             journal({"kind": "learned", "fort": key, "date": state["date"], "text": line})
         cfg = effective_config(memory.adjust, calibration=calibrate.values(memory))
-        remember_world(state, memory, events, key, cfg, learned_now, bridge)
+        if not date_bad:
+            remember_world(state, memory, events, key, cfg, learned_now, bridge)
         for ch in calibrate.update(state, memory, cfg, memory.adjust):
             say(f"Self-tuned: {ch['name']} {ch['old']} -> {ch['new']} ({ch['why']})")
             journal({"kind": "calibration", "fort": key, "date": state["date"], **ch})
@@ -1085,7 +1095,7 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
                 record(results, state, memory, cfg)
                 learning.note_actions(results, state, memory)
                 outcomes.record_actions(results, state, memory)
-                for line in atlas.note_actions(results, state, memory):
+                for line in ([] if chronicle.date_failed(state) else atlas.note_actions(results, state, memory)):
                     say(f"Atlas: {line}")              # what was built, or what the AI found and chose
                     chronicle.add(memory, state, "gate", line)
                 for p, r in results:

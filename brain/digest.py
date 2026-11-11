@@ -112,7 +112,7 @@ SECTION_DEFAULTS = {
     "orders": [],
     "tools": {},
     "settings": {"traits": {}},
-    "projects": {"open": [], "decorating": [], "finished": 0, "max_open": 2},
+    "projects": {"open": [], "decorating": [], "finished": 0, "done_total": 0, "max_open": 2},   # (0.105.33) done_total: levels ever finished
     "stone_types": [],
     "stone_use": {},          # {usable, economic: {TOKEN: {n, ore, flux}}} (bridge 0.51)
     "locations": {"count": {}, "total": 0},

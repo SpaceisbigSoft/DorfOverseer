@@ -1520,7 +1520,7 @@ function act_recreation(a)
     -- (0.104.80) places for those who badly want friends, a short stay each
     local f, fd = int_in(a.friends or 0, 0, 10), int_in(a.friend_days or 7, 3, 28)
     if not f or not fd then return reject('recreation: friends 0-10, friend_days 3-28') end
-    return reqscript('ai-society').recreation_tick(n, days, a.dry_run == true, txt, f, fd)
+    return reqscript('ai-society').recreation_tick(n, days, a.dry_run == true, txt, f, fd, a.release == true)
 end
 
 -- (0.104.168) The loose cups no finished goods pile takes: the pile with the
@@ -2152,7 +2152,7 @@ function act_water_work(a)
         return reject('water_work: shop is MagmaForge, MagmaSmelter or MagmaGlassFurnace')
     end
     return reqscript('ai-waterworks').step(a.kind, {dry_run = a.dry_run == true, shut = a.shut == true,
-        retire = a.retire == true, shop = a.shop, plain = a.plain == true,
+        retire = a.retire == true, shop = a.shop, plain = a.plain == true, reopen = a.reopen == true,
         why = type(a.why) == 'string' and a.why:sub(1, 120) or nil})
 end
 

@@ -601,6 +601,11 @@ def _gate_rules(s: dict, memory, cfg: dict, rules_: dict, any_reach: bool,
     ent = _d(s.get("entrances"))
     now = abs_tick(s)
     letting_in = _stranded_rule(s, cfg, proposals, notes, memory, any_reach)   # (0.105.26; 0.105.32 memory)
+    if ent.get("stranded_error"):
+        # (0.105.33 merge) the stranded check failed in the game: said as the
+        # watcher's failure is, not read as "nobody shut outside"
+        notes.append(f"Needs you: the check for citizens shut outside failed ({str(ent['stranded_error'])[:120]}); "
+                     "no one left outside is let in by the AI this cycle: look at the gates for dwarves left out")
     note_second_way(s, memory)                                           # (0.105.33)
     age = now - ent["scanned_tick"] if isinstance(ent.get("scanned_tick"), int) else None
     stale = (not ent.get("scanned") or age is None or not 0 <= age < cfg["entrance_scan_ticks"]
@@ -655,6 +660,19 @@ def _gate_rules(s: dict, memory, cfg: dict, rules_: dict, any_reach: bool,
         # (0.104.81, 13c) the gate watcher errors: it closes nothing
         notes.append(f"Needs you: the gate watcher failed {werr.get('n', 1)} time(s) and closes no gate "
                      f"({str(werr['error'])[:120]}); close the gates by hand while a threat is near")
+    # (0.105.33 merge) the gates group's report fields, said: a drawbridge that
+    # waited too long for a lever that can work it (counted open now), and a
+    # door or hatch on a lever shared with another gate (the watcher only
+    # locks it, it doesn't pull)
+    for e in es:
+        where = f"the {e.get('kind')} entrance at elevation {(e.get('z') or 0) + off} (x{e.get('x')} y{e.get('y')})"
+        wait = e.get("lever_wait_days")
+        if isinstance(wait, int) and not isinstance(wait, bool) and wait > 0 and not e.get("sealed"):
+            notes.append(f"{where}: its drawbridge waited {wait} day(s) for a lever that can work it; "
+                         "counted as open now")
+        if e.get("lock_only") and ent.get("armed"):
+            notes.append(f"{where}: its door or hatch shares a lever with another gate; the watcher only "
+                         "locks it, it pulls no lever there")
     if stale:
         return                              # building gates waits for the new map
     _gate_parts_rule(s, ent, es, off, proposals, notes, memory)

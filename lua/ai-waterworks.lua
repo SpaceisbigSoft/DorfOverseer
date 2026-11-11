@@ -139,8 +139,15 @@ function pull(lever_id, instant)
 end
 
 -- (0.105.33) a dwarf's pull on its way called off: after an instant shut,
--- a late pull would toggle the floodgate open again
+-- a late pull would toggle the floodgate open again. (0.105.33 merge) the
+-- builder's one copy (ai-builder-cistern.lua cancel_lever_pulls); this loop
+-- only when it can't be had
 function cancel_pulls(lever_id)
+    local okb, B = pcall(reqscript, 'ai-builder')
+    if okb and type(B) == 'table' and type(B.cancel_lever_pulls) == 'function' then
+        local okc, n = pcall(B.cancel_lever_pulls, lever_id)
+        if okc then return n end
+    end
     pcall(function()
         local list = {}
         for _, j in ipairs(df.building.find(lever_id).jobs) do

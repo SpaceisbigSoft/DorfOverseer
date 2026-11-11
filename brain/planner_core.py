@@ -860,8 +860,11 @@ def _restraint_order(s: dict, n: int, cfg: dict, proposals: list, notes: list) -
     # rope order stuck, "Needs 1 unused plant cloth", while the 4-5 bolts
     # counted were the hospital's): the rope wants plant cloth
     kinds = _d(_d(s.get("supplies")).get("cloth_kinds"))
-    hosp = sum(int(_d(e.get("have")).get("cloth") or 0) for e in _l(_d(s.get("locations")).get("list"))
-               if isinstance(e, dict) and e.get("type") == "HOSPITAL")
+    # (0.105.33 merge) a bridge that reports supplies.hospital already leaves
+    # the hospital's cloth out of cloth_kinds: not taken off twice
+    hosp = 0 if (kinds and isinstance(_d(s.get("supplies")).get("hospital"), dict)) else sum(
+        int(_d(e.get("have")).get("cloth") or 0) for e in _l(_d(s.get("locations")).get("list"))
+        if isinstance(e, dict) and e.get("type") == "HOSPITAL")
     free_cloth = (int(kinds.get("plant") or 0) if kinds else int(st.get("cloth") or 0)) - hosp
     if free_cloth >= amount:
         proposals.append(Proposal("furniture", {"type": "work_order", "recipe": "cloth_rope", "amount": amount},

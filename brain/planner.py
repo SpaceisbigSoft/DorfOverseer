@@ -473,7 +473,7 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
         _guard(_well_lid_rule, s, proposals, notes)
         _guard(_planned_note, s, notes)
         _guard(_planned_parts_rule, s, proposals, notes)
-        _guard(_water_zone_rule, s, proposals, notes)
+        _guard(_water_zone_rule, s, proposals, notes, cfg)
 
     # 6b. Strange moods, the dead ------------------------------------------
     if can_use("moods", "buildings"):
@@ -593,7 +593,7 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
     # 6e-1. Trade: goods to the depot for a caravan, crafts to sell; hauling
     if can_use("buildings", "orders"):
         _guard(_trade_rules, s, cfg, citizens, proposals, notes, traits, memory)
-        _guard(_gems_rule, s, cfg, proposals)
+        _guard(_gems_rule, s, cfg, proposals, traits, memory, notes)
         _guard(_cloth_rule, s, cfg, citizens, proposals)
         _guard(_noble_rooms_rule, s, cfg, proposals, memory)
         _guard(_hauling_rule, s, cfg, citizens, proposals)
