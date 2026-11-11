@@ -483,7 +483,7 @@ def _second_way_rule(s: dict, memory, cfg: dict, traits: dict, proposals: list, 
                               f"{(e.get('z') or 0) + off}): dig a second, 15-40 tiles off", 9))
 
 
-def _stranded_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None) -> bool:
+def _stranded_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None, any_reach=None) -> bool:
     """(0.105.26) E (3-5 Nov): 8 citizens shut outside after a surface fire
     died there. A gate the AI shut (the watcher's lockdown or another) with
     no enemy near it or them: the gates opened (open_gates). No way in at all
@@ -491,11 +491,22 @@ def _stranded_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None
     while an enemy is near. True when the gates are being opened or a gate
     unstuck (the gate rule then doesn't arm them in the same cycle).
     (0.105.32) an open gate DF's walk map holds shut (_gate_stuck_rule) and a
-    way dug in for the cut off (_way_in_rule) go first."""
+    way dug in for the cut off (_way_in_rule) go first.
+    (0.105.33) open_gates opens every gate the watcher shut: never while an
+    enemy can reach the dwarves or is held off at a gate (put to the player),
+    so the return is True only when nothing threatens; an unstick under way
+    doesn't hold arm_gates while a threat can reach the dwarves."""
     ent = _d(s.get("entrances"))
     off = _d(s.get("map")).get("elevation_offset")
     off = off if isinstance(off, int) else 0
+    if any_reach is None:
+        any_reach = (bool(reachable_threats(s, _d(_d(s.get("settings")).get("traits")), cfg))
+                     if isinstance(s.get("others_on_map"), dict) else False)
+    reach_n = int(_d(s.get("others_on_map")).get("threats_that_can_reach_dwarves") or 0)
+    held = held_off_threats(s)
     unsticking = _gate_stuck_rule(s, memory, cfg, proposals, notes, off) if memory is not None else False
+    if any_reach:
+        unsticking = False                  # (0.105.33) the watcher arms all the same
     way_new = _way_in_rule(s, memory, cfg, proposals, notes, off) if memory is not None else ""
     stuck = {id(r) for rs in stuck_rows(s).values() for r in rs}      # theirs is the gate's line, not "no way in"
     rows = [r for r in _l(ent.get("stranded")) if isinstance(r, dict)
@@ -512,9 +523,7 @@ def _stranded_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None
         d = max(int(r.get("out_days") or 0) for r in rs)
         return f"{d} day(s)" if d else f"{max(int(r.get('out_ticks') or 0) for r in rs) // 50} hour(s)"
 
-    def danger(r):
-        ds = [r.get(k) for k in ("danger_near", "gate_danger") if isinstance(r.get(k), (int, float))]
-        return min(ds) if ds else None
+    danger = _row_danger
 
     hot = [r for r in rows if danger(r) is not None and danger(r) <= near_d]
     if hot:
@@ -530,19 +539,34 @@ def _stranded_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None
     # (0.105.26 seal fix) not a cavern-side entrance while a forgotten beast or
     # other great danger is in the caverns (open_gates would open the way it
     # comes up by): put to the player instead
-    from planner_threats import cavern_great
+    from planner_threats import cavern_great, deep_read
     great = cavern_great(s)
-    if great:
+    deep_ok = deep_read(s)              # (0.105.33) the caverns unread: no beast seen is no beast gone
+    if great or not deep_ok:
         cave_gate = [r for r in ai_gate if _d(r.get("entrance")).get("kind") == "cavern"]
         ai_gate = [r for r in ai_gate if r not in cave_gate]
         if cave_gate:
             e = _d(cave_gate[0].get("entrance"))
-            g0 = _d(great[0])
+            g0 = _d(great[0]) if great else {}
+            what = (f"{g0.get('name') or 'a great beast'} ({g0.get('kind') or 'great danger'}) is in the caverns"
+                    if great else "the caverns couldn't be read this cycle (a forgotten beast may be down there)")
             ask_player(notes, f"{len(cave_gate)} citizen(s) shut outside for {days(cave_gate)} at the cavern "
                               f"entrance at x{e.get('x')} y{e.get('y')} elevation {(e.get('z') or 0) + off} "
-                              f"({', '.join(where(r) for r in cave_gate[:3])}), but {g0.get('name') or 'a great beast'} "
-                              f"({g0.get('kind') or 'great danger'}) is in the caverns: the AI keeps that way shut; "
-                              "open it yourself if they must come in now")
+                              f"({', '.join(where(r) for r in cave_gate[:3])}), but {what}: the AI keeps that way "
+                              "shut; open it yourself if they must come in now")
+    if ai_gate and (any_reach or reach_n > 0 or held):
+        # (0.105.33) open_gates opens every gate the watcher shut and disarms
+        # it: a siege held off at another gate would walk in. Put to the player.
+        e = _d(ai_gate[0].get("entrance"))
+        ask_player(notes, f"{len(ai_gate)} citizen(s) shut outside for {days(ai_gate)} by the AI's gates at "
+                          f"x{e.get('x')} y{e.get('y')} elevation {(e.get('z') or 0) + off} "
+                          f"({', '.join(where(r) for r in ai_gate[:3])}), but "
+                          + (f"{reach_n} enemy(ies) can reach the dwarves" if reach_n else
+                             "an enemy can reach the dwarves" if any_reach else
+                             f"{len(held)} enemy(ies) are held off at the gates")
+                          + ": the AI keeps the gates as they are (opening them lets the enemy in); open "
+                            "their gate yourself if they must come in now")
+        ai_gate = []
     if ai_gate:
         lock = any(r.get("cause") == "lockdown" for r in ai_gate)
         e = _d(ai_gate[0].get("entrance"))
@@ -576,7 +600,7 @@ def _gate_rules(s: dict, memory, cfg: dict, rules_: dict, any_reach: bool,
                 proposals: list, notes: list, traits: dict | None = None) -> None:
     ent = _d(s.get("entrances"))
     now = abs_tick(s)
-    letting_in = _stranded_rule(s, cfg, proposals, notes, memory)       # (0.105.26; 0.105.32 memory)
+    letting_in = _stranded_rule(s, cfg, proposals, notes, memory, any_reach)   # (0.105.26; 0.105.32 memory)
     note_second_way(s, memory)                                           # (0.105.33)
     age = now - ent["scanned_tick"] if isinstance(ent.get("scanned_tick"), int) else None
     stale = (not ent.get("scanned") or age is None or not 0 <= age < cfg["entrance_scan_ticks"]

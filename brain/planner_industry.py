@@ -362,7 +362,17 @@ def _clutter_rules(s: dict, cfg: dict, proposals: list, notes: list, memory=None
         return
     extra = []
     if ground.get("CORPSEPIECE", 0) >= cfg["prune_parts_min"]:
-        extra.append("usable-parts")
+        # (0.105.33) not while a strange mood asks for bone or shell (on hand
+        # or not: what lies loose would rot), nor with the fort at or under
+        # its bone reserve (planner_moods MOOD_RESERVES): a failed mood kills
+        mood_bone = any(isinstance(x, dict) and mood_kind(x) in ("bone", "shell")
+                        for m in _l(_d(s.get("moods")).get("list")) if isinstance(m, dict)
+                        for x in _l(m.get("missing")))
+        bones = _d(s.get("needs")).get("bones")
+        low = (isinstance(bones, (int, float)) and not isinstance(bones, bool)
+               and bones <= cfg.get("reserve_bones", 5))
+        if not (mood_bone or low):
+            extra.append("usable-parts")
     worn = {str(_d(x).get("name")): int(_d(x).get("n") or 0) for x in _l(_d(cen.get("items")).get("worn"))}
     if sum(worn.get(k, 0) for k in ("SHOES", "GLOVES", "PANTS", "ARMOR", "HELM")) >= cfg["prune_worn_min"]:
         extra.append("clothes")
