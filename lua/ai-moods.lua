@@ -145,6 +145,12 @@ function hospital_boxes()
     HOSPITAL_CACHE = {at = now, set = set}
     return set
 end
+-- (0.105.36, D5) another fort's chest ids are not this one's
+if dfhack and dfhack.onStateChange then
+    dfhack.onStateChange['ai-moods-hospital'] = function(sc)
+        if sc == SC_MAP_UNLOADED or sc == SC_WORLD_UNLOADED then HOSPITAL_CACHE = nil end
+    end
+end
 
 -- true for an item in one of the hospital's chests
 function hospital_stock(it)

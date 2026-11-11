@@ -242,7 +242,11 @@ function recreation_status(txt)
     if next(d.members) ~= nil then
         local now = U.abs_tick()
         local released = {}
-        local last = tonumber(d.ticked) or tonumber(d.filled)
+        -- (0.105.36, D5) a save from before 0.105.33 has no `ticked`: its
+        -- clock starts now, the stale guard skipped this once (`filled` can
+        -- be two weeks old with the ticks running)
+        local last = tonumber(d.ticked)
+        if not last then d.ticked = now; U.site_put(RECREATION_KEY, d) end
         local why_all
         if not b then why_all = 'the burrow is gone'
         elseif last and now - last >= REC_STALE_DAYS * 1200 then why_all = 'no tick for ' .. REC_STALE_DAYS .. ' days'
@@ -289,7 +293,10 @@ function recreation_tick(max, days, dry_run, txt, friends, friend_days, release)
     local made = false
     if not b then b = S.new_burrow(RECREATION_NAME); made = true end
     local tiles
-    if made or not d.filled or now - d.filled >= 7 * 1200 then
+    -- (0.105.36, D5) a dry burrow is looked at again each day: drink brought
+    -- in is seen then, not at the weekly refill
+    if made or not d.filled or now - d.filled >= 7 * 1200
+            or (d.water == false and now - d.filled >= 1200) then
         if not dry_run then
             local water
             tiles, water = fill_recreation(b)
@@ -309,9 +316,12 @@ function recreation_tick(max, days, dry_run, txt, friends, friend_days, release)
     end
     if dry_burrow then
         -- (0.105.33) no drink nor well inside: nobody kept, nobody moved in
+        -- (0.105.36, D5) waiting, not a refusal: no backoff on the shared
+        -- refusal key, the burrow looked at again the next day
         if not dry_run then U.site_put(RECREATION_KEY, d) end
-        return {ok = #released > 0 or tiles ~= nil, rejected = not (#released > 0 or tiles ~= nil) or nil,
-                error = 'the recreation burrow holds no drink and no well giving water: nobody is kept in it',
+        return {ok = true, waiting = true, unchanged = not (#released > 0 or tiles ~= nil) or nil,
+                note = 'the recreation burrow holds no drink and no well giving water: nobody is kept in it '
+                       .. '(looked at again each day)',
                 burrow_id = b.id, tiles = tiles, released = released, members = 0, dry_run = dry_run or nil}
     end
     local count, fcount = 0, 0
@@ -763,10 +773,24 @@ local function hb_find(id)
     end)
     return okl and found or nil
 end
-local function hospital_sources_cached(zones, now)
+local function hb_src_key(zones)
     local parts = {}
     for _, z in ipairs(zones) do table.insert(parts, tostring(z.id)) end
-    local key = table.concat(parts, ',')
+    return table.concat(parts, ',')
+end
+-- (0.105.36, D5) only sources that found drink or a well are kept: a cached
+-- "no drink" (nothing in it to re-check) let out, within half a day, the
+-- patients the tick had just moved in on drink brought back
+local function hb_src_store(key, now, src)
+    if not (src.drink or src.well) then HB_SRC = nil; return end
+    local ids = {}
+    for _, k in ipairs({'drink', 'food', 'well'}) do
+        if src[k] then ids[k] = src[k].id end
+    end
+    HB_SRC = {key = key, at = now, ids = ids, dist = src.dist}
+end
+local function hospital_sources_cached(zones, now)
+    local key = hb_src_key(zones)
     local c = HB_SRC
     if c and c.key == key and now >= c.at and now - c.at < HB_SRC_TTL then
         local src, good = {dist = c.dist}, true
@@ -791,11 +815,7 @@ local function hospital_sources_cached(zones, now)
         if good then return src end
     end
     local src = hospital_sources(zones)
-    local ids = {}
-    for _, k in ipairs({'drink', 'food', 'well'}) do
-        if src[k] then ids[k] = src[k].id end
-    end
-    HB_SRC = {key = key, at = now, ids = ids, dist = src.dist}
+    hb_src_store(key, now, src)
     return src
 end
 if dfhack and dfhack.onStateChange then
@@ -937,6 +957,9 @@ function hospital_burrow_tick(max, per, dry_run, txt, days, release)
     end
     d.days = days
     local src = #zones > 0 and hospital_sources(zones) or {dist = {}}
+    -- (0.105.36, D5) the report's cache takes the tick's fresh sources, so
+    -- the two agree on the drink and on the tiles' signature
+    if #zones > 0 then hb_src_store(hb_src_key(zones), now, src) end
     local why, tiles = hb_maintain(d, b, zones, staff, src, now, dry_run, name, released)
     if why then
         if not dry_run then hb_save(d) end

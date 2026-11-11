@@ -28,6 +28,22 @@ MOOD_WORKSHOPS = {
 }
 
 
+def _shop_coming(s: dict, need) -> bool:
+    """(0.105.36, X1) A workshops level under way (not stuck furnishing,
+    as _workshops_busy) that builds this kind of shop."""
+    if not need:
+        return False
+    names = set(SHOP_ALIASES.get(need, (need,))) | {need}
+    for p in _l(_d(s.get("projects")).get("open")):
+        if not (isinstance(p, dict) and _workshops_busy([p])):
+            continue
+        sm = _d(p.get("summary"))
+        shops = set(_l(sm.get("workshops"))) | set(_l(sm.get("shops"))) | set(_d(p.get("furniture")).keys())
+        if shops & names:
+            return True
+    return False
+
+
 def _mood_rules(s: dict, memory, cfg: dict, proposals: list, notes: list) -> None:
     """A dwarf in a crafting mood needs the right workshop, then materials;
     without them the dwarf goes insane. Insanity itself is only reported:
@@ -65,16 +81,21 @@ def _mood_rules(s: dict, memory, cfg: dict, proposals: list, notes: list) -> Non
                 notes.append(f"{name}'s {mood.lower()} mood: gathering materials ({have}/{want}) for "
                              f"{days} days; if it stalls, DFHack's showmood says what's missing")
             continue
+        # (0.105.36, X1) a mood's level waits only for a level that is
+        # building its kind, not for any workshops level (a gems rule's
+        # Jewelers held a mood's Carpenters up to 28 days): urgent levels
+        # have a slot of their own in the builder, and priority 0 wins the
+        # cycle's one workshops level (ONE_A_CYCLE)
+        coming = _shop_coming(s, need)
         if need and not _has_shop(b, need):
-            building = _workshops_busy([p for p in _l(_d(s.get("projects")).get("open")) if isinstance(p, dict)])
-            if building:
+            if coming:
                 notes.append(f"{name} is in a {mood.lower()} mood and needs a {need}; a workshops level "
-                             "is already being built")
+                             f"with a {need} is already being built")
             elif need in BUILDABLE_SHOPS:
                 proposals.append(Proposal(
                     "mood", {"type": "start_project", "kind": "workshops", "shops": [need], "urgent": True},
                     f"{name} is in a {mood.lower()} mood and needs a {need} workshop, which the fort "
-                    "doesn't have; without one they go insane", 1))
+                    "doesn't have; without one they go insane", 0))
             else:
                 # (0.105.35) no mood workshop today is outside BUILDABLE_SHOPS: kept
                 # for a new one, said with what the AI does meanwhile
@@ -86,16 +107,15 @@ def _mood_rules(s: dict, memory, cfg: dict, proposals: list, notes: list) -> Non
             # (0.105.35) nothing waits for the player: the fort's ones are taken
             # or out of the dwarf's walk, so another is built (one workshops
             # level at a time, never past the AI's cap for the kind)
-            busy = _workshops_busy([p for p in _l(_d(s.get("projects")).get("open")) if isinstance(p, dict)])
             citizens = int(_d(s.get("dwarves")).get("total") or 0)
             what = f"{name} has been in a {mood.lower()} mood for {days} days without claiming a workshop"
-            if need in BUILDABLE_SHOPS and not busy and shop_count(b, need) < shops_max(cfg, citizens):
+            if need in BUILDABLE_SHOPS and not coming and shop_count(b, need) < shops_max(cfg, citizens):
                 proposals.append(Proposal(
                     "mood", {"type": "start_project", "kind": "workshops", "shops": [need], "urgent": True},
                     f"{what}: the fort's {need} may be in use or out of the dwarf's walk, so another is "
-                    "built; without one they go insane", 1))
-            elif need and busy:
-                notes.append(f"{what} ({need}); a workshops level is already being built")
+                    "built; without one they go insane", 0))
+            elif need and coming:
+                notes.append(f"{what} ({need}); a workshops level with a {need} is already being built")
             else:
                 notes.append(f"{what}{' (' + need + ')' if need else ''}: DF lets the dwarf choose it, and the "
                              "AI has no more to build for it" + (f" ({shop_count(b, need)} stand, the AI's cap)"
