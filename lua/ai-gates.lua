@@ -4933,6 +4933,37 @@ function unstick_gate(id, step, dry_run)
     return out
 end
 
+-- (0.105.34) One entrance opened for citizens the AI's gates shut out, while
+-- a siege is held off elsewhere (the player: nothing waits for them). Only
+-- the gates of this entrance; the watcher stays armed and shuts it again if
+-- danger comes within IMMINENT. Refused while a visible danger (or any great
+-- danger in sight) is within IMMINENT of it, or the cavern seal holds it.
+function open_entrance(id, dry_run)
+    local e
+    for _, x in ipairs(GATES.entrances or {}) do if x.id == id then e = x end end
+    if not e then return {ok = false, rejected = true, error = 'no entrance ' .. tostring(id)} end
+    if e.kind == 'cavern' then
+        return {ok = false, rejected = true, error = 'a cavern entrance stays as the cavern rules keep it'}
+    end
+    if sealed_entrance(e) then return {ok = false, rejected = true, error = 'the cavern seal holds this entrance'} end
+    local okv, vis = pcall(visible_dangers)
+    local nearest = math.huge
+    for _, d in ipairs(okv and vis or {}) do
+        if d.great then return {ok = false, rejected = true, error = 'a great danger is in sight'} end
+        local okd, dd = pcall(distance_to, e, d.pos)
+        if okd and dd < nearest then nearest = dd end
+    end
+    if nearest <= IMMINENT then
+        return {ok = false, rejected = true, waiting = true, nearest = nearest,
+                error = ('an enemy is %d tiles from this entrance'):format(nearest)}
+    end
+    if dry_run then return {ok = true, dry_run = true, entrance = id, nearest = nearest < math.huge and nearest or nil} end
+    local done = set_entrance(e, false)
+    pcall(gates_persist)
+    return {ok = true, entrance = id, opened = done, still_shut = GATES.closed[e.id] and true or nil,
+            nearest = nearest < math.huge and nearest or nil}
+end
+
 -- (the file's own functions, as just defined above: a reload of the script takes the new ones)
 GATES_ORIG = {arm = arm, open_all = open_all, check = check, summary = summary}
 

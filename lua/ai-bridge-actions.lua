@@ -9,7 +9,7 @@
 -- in_fort, NOT_IN_FORT, OUT_DIR) are at hand. Not a command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-actions is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-actions'] = '0.105.33'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-actions'] = '0.105.34'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local json = require('json')
 local utils = require('utils')
@@ -1072,6 +1072,13 @@ end
 
 function act_arm_gates(a) return reqscript('ai-gates').arm() end
 function act_open_gates(a) return reqscript('ai-gates').open_all() end
+
+-- (0.105.34) One entrance opened for its stranded during a siege elsewhere.
+function act_open_entrance(a)
+    local id = tonumber(a.id)
+    if not id then return reject('open_entrance needs the entrance id') end
+    return reqscript('ai-gates').open_entrance(id, a.dry_run == true)
+end
 
 -- Set-ups the AI does itself (lua/ai-society.lua).
 function act_setup_shelter(a)

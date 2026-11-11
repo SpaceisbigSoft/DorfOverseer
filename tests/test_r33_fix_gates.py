@@ -67,14 +67,17 @@ def _():
         assert got == ["open_gates"] and not notes, (extra, got, notes)
 
 
-@test("stranded: an invader held off, a great danger, or a wild one at a shut gate still keeps the gates shut")
+@test("stranded: an invader held off, a great danger, or a wild one at a shut gate: never open_gates; their gate alone or a wait")
 def _():
     for extra in ({"invader": True, "pos": {"x": 10, "y": 150, "z": 173}},
                   {"great_danger": True, "pos": {"x": 10, "y": 150, "z": 173}},
                   {"pos": {"x": 150, "y": 45, "z": 173}},          # 25 tiles off the AI-shut gate
                   {"distance_to_nearest_dwarf": 12}):              # unplaced, close to a dwarf
         got, notes = opens(stranded_state(extra))
-        assert got == [] and notes and "held off at the gates" in notes[0], (extra, got, notes)
+        # (0.105.34) the AI opens their gate alone, or says it waits for the enemy
+        # to move off: never open_gates, never a question for the player
+        assert "open_gates" not in got, (extra, got, notes)
+        assert got == ["open_entrance"] or (notes and "keeps it shut" in notes[0]), (extra, got, notes)
 
 
 @test("note_gate_lever: the watcher's outer drawbridge lever is not the AI gate (no pull of the other lever)")

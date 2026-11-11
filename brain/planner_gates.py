@@ -21,6 +21,7 @@ __all__ = ["_gate_rules", "_stranded_rule", "split_pieces", "stuck_rows", "note_
 STRANDED_CONFIG = {
     "stranded_after_ticks": 200,         # out this long (~4 game hours) before the rule acts
     "stranded_danger_near": 30,          # an enemy this close to them or the gate: held back
+    "gate_close_tiles": 12,              # (0.105.34) an enemy this close to their gate keeps it shut for the stranded
     "stranded_cooldown_ticks": 300,
 }
 PLANNER_CONFIG.update({k: v for k, v in STRANDED_CONFIG.items() if k not in PLANNER_CONFIG})
@@ -608,17 +609,36 @@ def _stranded_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None
         return False
     held = [t for t in held if t.get("invader") or t.get("great_danger") or _near_shut(t)]
     if ai_gate and (any_reach or reach_n > 0 or held):
-        # (0.105.33) open_gates opens every gate the watcher shut and disarms
-        # it: a siege held off at another gate would walk in. Put to the player.
-        e = _d(ai_gate[0].get("entrance"))
-        ask_player(notes, f"{len(ai_gate)} citizen(s) shut outside for {days(ai_gate)} by the AI's gates at "
-                          f"x{e.get('x')} y{e.get('y')} elevation {(e.get('z') or 0) + off} "
-                          f"({', '.join(where(r) for r in ai_gate[:3])}), but "
-                          + (f"{reach_n} enemy(ies) can reach the dwarves" if reach_n else
-                             "an enemy can reach the dwarves" if any_reach else
-                             f"{len(held)} enemy(ies) are held off at the gates")
-                          + ": the AI keeps the gates as they are (opening them lets the enemy in); open "
-                            "their gate yourself if they must come in now")
+        # (0.105.34, the player: nothing waits for them) open_gates would open
+        # every gate the watcher shut and disarm it: a siege held off at
+        # another gate would walk in. So only the entrance they stand at
+        # opens (open_entrance), while no enemy is within the gates' close
+        # distance of it; the watcher stays armed and shuts it again if
+        # danger comes. Closer: kept shut, said, tried again each cycle.
+        close_d = int(cfg.get("gate_close_tiles", 12))
+        by_ent = {}
+        for r in ai_gate:
+            e = _d(r.get("entrance"))
+            if isinstance(e.get("id"), int):
+                by_ent.setdefault(e["id"], (e, []))[1].append(r)
+        for eid, (e, rs) in by_ent.items():
+            gd = [r.get("gate_danger") for r in rs if isinstance(r.get("gate_danger"), (int, float))]
+            near = min(gd) if gd else None
+            at = f"x{e.get('x')} y{e.get('y')} elevation {(e.get('z') or 0) + off}"
+            if near is not None and near <= close_d:
+                notes.append(f"{len(rs)} citizen(s) shut outside for {days(rs)} at the gate at {at} "
+                             f"({', '.join(where(r) for r in rs[:3])}), an enemy {near} tiles from it: the AI keeps "
+                             "it shut and opens it for them once the enemy is farther off")
+                continue
+            proposals.append(Proposal("stranded", {"type": "open_entrance", "id": eid},
+                                      f"{len(rs)} citizen(s) shut outside for {days(rs)} at the gate at {at} "
+                                      f"({', '.join(where(r) for r in rs[:3])}) while enemies are about elsewhere: "
+                                      "open that gate alone to let them in (the watcher stays armed)", 0))
+            # the watcher may still arm this cycle while an enemy can reach the
+            # dwarves (open_entrance doesn't disarm it, and it shuts the gate
+            # again if danger comes within its close distance)
+            if not (any_reach or reach_n > 0):
+                opening = True
         ai_gate = []
     if ai_gate:
         lock = any(r.get("cause") == "lockdown" for r in ai_gate)

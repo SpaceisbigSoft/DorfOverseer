@@ -61,15 +61,17 @@ def siege_fort(goblins: int = 12, cavern: bool = False) -> dict:
 
 # --- B3 High: planner_gates _stranded_rule ------------------------------------------
 
-@test("stranded: a siege held off at another gate: no open_gates (it opens every gate), put to the player")
+@test("stranded: a siege held off at another gate: no open_gates (it opens every gate); their gate alone or a wait, nothing for the player")
 def _():
     s = siege_fort()
     s["deep"] = {"caverns": [], "dangers": []}
     props, notes = plan(s, Memory())
     assert not acts(props, "stranded", "open_gates") and not acts(props, typ="open_gates"), \
         [(p.rule, p.action) for p in props]
-    ny = [n for n in needs_you(notes) if "Urist 0" in n and "held off" in n]
-    assert ny and "12 enemy(ies)" in ny[0], needs_you(notes)
+    # (0.105.34) nothing waits for the player: their gate alone, or a wait said
+    assert not [n for n in needs_you(notes) if "Urist 0" in n], needs_you(notes)
+    assert acts(props, "stranded", "open_entrance") or [n for n in notes if "keeps it shut" in n or
+                                                        "stay as they are" in n], (props, notes)
 
 
 @test("stranded: no enemy on the map at all: the gates opened as before")
@@ -90,7 +92,7 @@ def _():
     props, notes = plan(s, Memory())
     assert not acts(props, "stranded", "open_gates"), [(p.rule, p.action) for p in props]
     assert acts(props, "gates", "arm_gates"), [(p.rule, p.action) for p in props]
-    assert [n for n in needs_you(notes) if "can reach the dwarves" in n and "Urist" in n], needs_you(notes)
+    assert not [n for n in needs_you(notes) if "Urist" in n], needs_you(notes)   # (0.105.34) nothing waits for the player
 
 
 # --- B3 High: the deep section failed ------------------------------------------------

@@ -291,7 +291,7 @@ def _():
     assert "| 1 **over** |" in fm, fm                       # 3 moods, 1 artifact, 1 still working
     assert "| 2 **over** |" in lines["deaths by thirst <= 0"]
     assert "20 **over**" in lines["unhappy, % < 10"]
-    assert "50 **over**" in lines["idle adults not in squads, % (Phase 12's exit) < 40"]
+    assert "50 **over**" in lines["truly idle adults not in squads, % (no job, no leisure) < 25"]
     assert lines["THIRST"].startswith("| THIRST | 0 | 2 |") and lines["DROWN"].startswith("| DROWN | 0 | 1 |")
 
 

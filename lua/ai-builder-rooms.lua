@@ -6,7 +6,7 @@
 -- into its own environment, so every name here is reqscript('ai-builder').name
 -- and the helpers defined there (info, quickfort_apply, ...) are in reach.
 
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-rooms'] = '0.105.33'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-rooms'] = '0.105.34'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local info, has, ez = info, has, ez
 

@@ -44,7 +44,7 @@
 local json = require('json')
 local utils = require('utils')
 
-BRIDGE_VERSION = '0.105.33'
+BRIDGE_VERSION = '0.105.34'
 PROTOCOL = 1 -- bump when the report's shape changes in a breaking way
 
 OUT_DIR = dfhack.getDFPath() .. '/dfhack-config/ai-overseer'   -- (a global: the parts write there too)
@@ -172,6 +172,7 @@ ACTIONS = {
     quiet_announcements = act_quiet_announcements,
     save_game = act_save_game,
     open_gates = act_open_gates,
+    open_entrance = act_open_entrance,     -- (0.105.34)
     setup_shelter = act_setup_shelter,
     refresh_shelter = act_refresh_shelter,       -- (0.105.26)
     set_population_cap = act_set_population_cap,
@@ -366,6 +367,7 @@ for _, name in ipairs({
     'unforbid_items', 'mark_melt', 'mark_dump', 'empty_dump', 'set_standing_orders', 'place_dump',
     -- (0.105.30) construction: each plans and returns before it places anything
     'place_hall', 'build_wings', 'floor_rooms',
+    'open_entrance',     -- (0.105.34) its dry run checks the distance and changes nothing
     'unstick_gate',      -- (0.105.32) its dry run says what it would do, and changes nothing
     -- (0.105.32) the way in: planned (and quickfort's dry run) before anything is designated
     'dig_way_in',

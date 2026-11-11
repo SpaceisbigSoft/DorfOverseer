@@ -775,7 +775,7 @@ HEALTH_BARS = [
     ("failed moods", "failed_moods", 0, "<="),
     ("deaths by thirst", "thirst_deaths", 0, "<="),
     ("unhappy, %", "unhappy_pct", 10, "<"),
-    ("idle adults not in squads, % (Phase 12's exit)", "idle_pct", 40, "<"),
+    ("truly idle adults not in squads, % (no job, no leisure)", "idle_pct", 25, "<"),   # (0.105.34) 25: idle_free counts only the truly idle
 ]
 
 
