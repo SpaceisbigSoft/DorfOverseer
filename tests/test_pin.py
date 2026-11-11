@@ -214,7 +214,7 @@ def _():
     fort = {"world": "Enxah", "site_id": 7, "save_dir": "region2"}
     line = backup.maybe(root, "region2", now=now, fort=fort, date={"tick": 1000})
     assert line and "region2" in line and "autosave" not in line, line
-    copies = list((backup.BACKUP_DIR / "region2").iterdir())
+    copies = [c for c in (backup.BACKUP_DIR / "region2").iterdir() if c.is_dir()]   # (0.105.33) the .fort.json mark sits beside
     assert (copies[0] / "world.sav").read_text() == "region2"
     # another world loaded (a daytime run): no copy, whatever is due
     assert backup.maybe(root, "region5", now=now + 2 * 86400, fort={"world": "Other", "site_id": 3}) is None
