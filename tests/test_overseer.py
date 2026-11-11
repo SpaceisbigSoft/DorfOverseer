@@ -319,7 +319,8 @@ def _():
     # Rules tab, what the planner proposes): about 3.6k tokens, in line with
     # what 14.0's audit measured a real call to cost
     # (0.105.27) +25 for the Rules tab's three disposal keys (some 60 characters)
-    assert (len(instr) + len(msg)) / 2.5 < 3725, len(instr) + len(msg)
+    # (0.105.33) +25: the test fort (194 citizens, one way in) proposes its second way to the surface
+    assert (len(instr) + len(msg)) / 2.5 < 3750, len(instr) + len(msg)
 
 
 @test("AI (0.104.89): a review's raise and hold reach the planner's memory, are said, and the token ratio is learned")
@@ -392,7 +393,9 @@ def _():
     assert cul["guide"].startswith("Low dark")
     pushes = [a for a in b.acted if a["type"] == "set_culture"]
     assert pushes and pushes[-1]["culture"]["guide"].startswith("Low dark")
-    assert not [a for a in b.acted if a["type"] not in ("set_culture", "set_learned", "tool", "ledger_set", "join_levels")]
+    # (0.105.33) dig_way_in: the test fort's second way to the surface (194 citizens, one way in)
+    assert not [a for a in b.acted if a["type"] not in ("set_culture", "set_learned", "tool", "ledger_set", "join_levels",
+                                                        "dig_way_in")]
 
 
 # --- Phase 5: in-game controls ------------------------------------------------------------

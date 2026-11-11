@@ -732,4 +732,8 @@ PLANNER_CONFIG = {
     "way_in_max_refusals": 3,
     "way_in_single_days": 3,            # ...one dwarf alone: once out this many game days
     "way_in_area_tiles": 20,            # ...an "area": within this many tiles of the last one
+    # (0.105.33) a second way to the surface by design (planner_gates _second_way_rule):
+    "second_way_min_citizens": 30,      # ...a fort this big with one surface entrance digs another
+    "second_way_retry_days": 60,        # ...refused (or dug and not seen): again after this many game days
+    "second_way_hermit_outsiders": -50,  # ...not at Outsiders this low (nor hidden_hold, winding_ways) unless ever stranded
 }

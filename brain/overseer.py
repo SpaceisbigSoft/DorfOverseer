@@ -497,6 +497,8 @@ def short(a: dict) -> str:
         return f"set the population cap to {a.get('cap')}"
     if t == "unstick_gate":          # (0.105.32) an open gate the game holds shut; the step in the words
         return f"free a gate the game holds shut (step {a.get('step') or 1} of 3)"
+    if t == "dig_way_in" and a.get("second"):     # (0.105.33)
+        return "dig a second way in from the surface"
     if t == "dig_way_in":            # (0.105.32)
         return "dig a stair in for the citizens cut off outside"
     if t == "work_order":

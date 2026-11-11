@@ -1198,6 +1198,10 @@ end
 -- (0.105.32) An emergency way in for citizens stranded outside with no gate
 -- to blame (lua/ai-builder-projects.lua dig_way_in): x, y, z of where they stand.
 function act_dig_way_in(a)
+    -- (0.105.33) second = true: a second way to the surface by design (no stranded spot)
+    if a.second == true then
+        return reqscript('ai-builder').dig_way_in({second = true}, get_date(), a.dry_run == true)
+    end
     local x, y, z = int_in(a.x, 0, 1000), int_in(a.y, 0, 1000), int_in(a.z, 0, 1000)
     if not x or not y or not z then return reject('dig_way_in needs x, y, z (where the stranded stand)') end
     return reqscript('ai-builder').dig_way_in({x = x, y = y, z = z}, get_date(), a.dry_run == true)

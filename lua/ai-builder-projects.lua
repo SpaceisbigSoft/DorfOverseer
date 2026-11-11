@@ -1278,6 +1278,13 @@ WAY_IN_PRIORITY = '1'     -- dig priority: they are dying of thirst out there
 WAY_IN_SECONDS = 2        -- the search stops here
 WAY_IN_INVADER_NEAR = 30  -- (merge32 review) no way in dug with an invader in sight this near its ends
 
+-- (0.105.33, secondway) a second way to the surface by design: the same digger,
+-- from open ground under the sky this far (across) from the existing entrance
+WAY_IN_SECOND_MIN = 15
+WAY_IN_SECOND_MAX = 40
+WAY_IN_SECOND_PRIORITY = '4'   -- nobody is dying: the ordinary dig priority
+WAY_IN_SECOND_CENTERS = 4      -- surface spots searched round (the best first)
+
 local WAY_IN_SIDES = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}}
 WAY_IN_NO_GROUND = 'no open ground of theirs to come up (or down) to'
 
@@ -1420,7 +1427,129 @@ local function way_in_column(ctx, cx, cy, fort_below)
     end
 end
 
--- dig_way_in{x, y, z}: the stranded spot (map coordinates). Returns
+-- (0.105.33) Open ground under the sky (not a building, not dug, not a cavern
+-- or water) a stair can come up to.
+local function way_in_sky(t)
+    return t ~= nil and t.shape == 'FLOOR' and t.outside and not t.subterranean and not t.hidden
+        and not t.liquid and not t.feature and not t.building and not t.designated
+end
+
+-- (0.105.33) The second way in's surface end: the fort's one surface entrance
+-- (the gate scan's) and the surface spots 15-40 tiles from it in the outside
+-- walk group, best first (over the fort's inside, then nearer the entrance).
+-- Returns {entrance = {x, y, z}, group, spots = {{x, y, z}}} or nil, why.
+function way_in_second_spots(fort, GM)
+    local GT = GM and GM.GATES
+    if not (type(GT) == 'table' and GT.scanned and type(GT.entrances) == 'table') then
+        return nil, 'the entrances are not mapped yet (scan them first)'
+    end
+    local surf = {}
+    for _, e in ipairs(GT.entrances) do
+        if e.kind == 'surface' and math.tointeger(e.x) then table.insert(surf, e) end
+    end
+    if #surf == 0 then return nil, 'the fort has no surface entrance to keep the new one apart from' end
+    if #surf > 1 then
+        return nil, ('the fort already has %d ways to the surface: no second one is needed'):format(#surf)
+    end
+    local e = surf[1]
+    -- the outside walk group: the entrance's outside tiles (or the ground over it)
+    local group = 0
+    for k in pairs(type(e.outs) == 'table' and e.outs or {}) do
+        local kk = math.tointeger(k)
+        if kk then
+            local g = walk_group(kk % 4096, (kk // 4096) % 4096, kk // (4096 * 4096))
+            if g ~= 0 then group = g break end
+        end
+    end
+    if group == 0 then
+        for dz = 1, 2 do
+            for dx = -1, 1 do
+                for dy = -1, 1 do
+                    local t = info(e.x + dx, e.y + dy, e.z + dz)
+                    if group == 0 and t and t.outside and t.shape ~= 'WALL' and t.shape ~= 'EMPTY' then
+                        group = walk_group(e.x + dx, e.y + dy, e.z + dz)
+                    end
+                end
+            end
+        end
+    end
+    if group == 0 then return nil, 'no outside ground found at the entrance' end
+    local W, H = map_size()
+    local R = WAY_IN_SECOND_MAX
+    local bx1, by1 = math.max(2, e.x - R), math.max(2, e.y - R)
+    local bx2, by2 = math.min(W - 3, e.x + R), math.min(H - 3, e.y + R)
+    -- how far (across) each column is from the fort's inside: a distance map from
+    -- the inside's columns, over the box
+    local dist, queue, head = {}, {}, 1
+    local function ck(x, y) return y * 4096 + x end
+    if fort.set then
+        for k in pairs(fort.set) do
+            local x, y = k % 4096, (k // 4096) % 4096
+            if x >= bx1 and x <= bx2 and y >= by1 and y <= by2 and not dist[ck(x, y)] then
+                dist[ck(x, y)] = 0
+                table.insert(queue, {x, y})
+            end
+        end
+        while head <= #queue do
+            local c = queue[head]
+            head = head + 1
+            local d = dist[ck(c[1], c[2])] + 1
+            for dx = -1, 1 do
+                for dy = -1, 1 do
+                    local nx, ny = c[1] + dx, c[2] + dy
+                    if nx >= bx1 and nx <= bx2 and ny >= by1 and ny <= by2 and not dist[ck(nx, ny)] then
+                        dist[ck(nx, ny)] = d
+                        table.insert(queue, {nx, ny})
+                    end
+                end
+            end
+        end
+    end
+    local zs = {0}
+    for i = 1, WAY_IN_ZSPAN do table.insert(zs, i); table.insert(zs, -i) end
+    local spots = {}
+    local deadline = os.clock() + WAY_IN_SECONDS
+    for x = bx1, bx2 do
+        if os.clock() > deadline then break end
+        for y = by1, by2 do
+            local de = math.max(math.abs(x - e.x), math.abs(y - e.y))
+            if de >= WAY_IN_SECOND_MIN and de <= WAY_IN_SECOND_MAX and (x + y) % 2 == 0 then
+                for _, dz in ipairs(zs) do
+                    local z = e.z + 1 + dz
+                    local t = info(x, y, z)
+                    if way_in_sky(t) and walk_group(x, y, z) == group and not building_at(x, y, z) then
+                        local di = dist[ck(x, y)] or 999
+                        table.insert(spots, {x = x, y = y, z = z, rank = di * 1000 + de})
+                        break
+                    end
+                end
+            end
+        end
+    end
+    if #spots == 0 then
+        return nil, ('no open ground under the sky %d-%d tiles from the entrance'):format(WAY_IN_SECOND_MIN, WAY_IN_SECOND_MAX)
+    end
+    table.sort(spots, function(a, b)
+        if a.rank ~= b.rank then return a.rank < b.rank end
+        if a.x ~= b.x then return a.x < b.x end
+        return a.y < b.y
+    end)
+    -- the best few, apart from each other (round different sides of the fort)
+    local picked = {}
+    for _, sp in ipairs(spots) do
+        local apart = true
+        for _, q in ipairs(picked) do
+            if math.max(math.abs(q.x - sp.x), math.abs(q.y - sp.y)) < 2 * WAY_IN_RADIUS then apart = false break end
+        end
+        if apart then table.insert(picked, sp) end
+        if #picked >= WAY_IN_SECOND_CENTERS then break end
+    end
+    return {entrance = {x = e.x, y = e.y, z = e.z}, group = group, spots = picked}
+end
+
+-- dig_way_in{x, y, z}: the stranded spot (map coordinates). (0.105.33)
+-- dig_way_in{second = true}: no stranded spot; a second way to the surface,
+-- its top 15-40 tiles from the fort's one surface entrance. Returns
 -- {ok, project_id, from, to, tiles, levels, column, tunnel, dry_run} or
 -- {ok = false, rejected = true, error = why, why = why}.
 function dig_way_in(params, now, dry_run)
@@ -1439,23 +1568,18 @@ local function pos_out(p)
 end
 
 function way_in_plan_and_dig(params, now, dry_run)
+    local second = params.second == true
     local sx, sy, sz = math.tointeger(params.x), math.tointeger(params.y), math.tointeger(params.z)
-    if not sx or not sy or not sz then return refuse('dig_way_in needs x, y, z') end
+    if not second and (not sx or not sy or not sz) then return refuse('dig_way_in needs x, y, z') end
     local W, H, D = map_size()
-    if sx < 0 or sy < 0 or sx >= W or sy >= H or sz < 0 or (D and sz >= D) then return refuse('that spot is off the map') end
+    if not second and (sx < 0 or sy < 0 or sx >= W or sy >= H or sz < 0 or (D and sz >= D)) then
+        return refuse('that spot is off the map')
+    end
     local data = load_projects()
     for _, p in ipairs(data.list) do
         if p.kind == 'way_in' and p.phase == 'dig' then
             return refuse(('a way in is already being dug (project %d)'):format(p.id))
         end
-    end
-    local here = info(sx, sy, sz)
-    local target = walk_group(sx, sy, sz)
-    if not here or target == 0 then
-        return refuse(('nobody can stand at x%d y%d z%d (no walkable ground there)'):format(sx, sy, ez(sz)))
-    end
-    if here.feature then
-        return refuse('that spot is in a cavern: no way in is dug from a cavern (it would open the fort to it)')
     end
     -- (merge32 review) not during a siege: a new hole in the fort while the
     -- gate watcher has it shut lets the enemy in by it
@@ -1463,10 +1587,38 @@ function way_in_plan_and_dig(params, now, dry_run)
     if GM and type(GM.GATES) == 'table' and GM.GATES.armed then
         return refuse('the gate watcher is armed (enemies about): no new way in is dug until the alarm is over')
     end
-    local fort, fwhy = way_in_fort()
+    local target, extra_centers, second_e, fort0
+    if second then
+        local fwhy0
+        fort0, fwhy0 = way_in_fort()
+        if not fort0 then return refuse(fwhy0) end
+        local pick, pwhy = way_in_second_spots(fort0, GM)
+        if not pick then return refuse(pwhy) end
+        target, second_e = pick.group, pick.entrance
+        sx, sy, sz = pick.spots[1].x, pick.spots[1].y, pick.spots[1].z
+        extra_centers = {}
+        for i = 2, #pick.spots do table.insert(extra_centers, {x = pick.spots[i].x, y = pick.spots[i].y}) end
+    else
+        local here = info(sx, sy, sz)
+        target = walk_group(sx, sy, sz)
+        if not here or target == 0 then
+            return refuse(('nobody can stand at x%d y%d z%d (no walkable ground there)'):format(sx, sy, ez(sz)))
+        end
+        if here.feature then
+            return refuse('that spot is in a cavern: no way in is dug from a cavern (it would open the fort to it)')
+        end
+    end
+    local fort, fwhy = fort0, nil
+    if not fort then fort, fwhy = way_in_fort() end
     if not fort then return refuse(fwhy) end
-    if target == fort.group then
+    if not second and target == fort.group then
         return refuse('that spot already joins the fort\'s inside (the same walk group): no way in is needed')
+    end
+    -- (0.105.33) the second way's top: 15-40 tiles (across) from the entrance
+    local function in_band(x, y)
+        if not second_e then return true end
+        local d = math.max(math.abs(x - second_e.x), math.abs(y - second_e.y))
+        return d >= WAY_IN_SECOND_MIN and d <= WAY_IN_SECOND_MAX
     end
     -- the AI's other projects, by level
     local areas = {}
@@ -1546,6 +1698,7 @@ function way_in_plan_and_dig(params, now, dry_run)
     end
     best_in = best_in or fort.anchors[1]
     if best_in and (best_in.x ~= sx or best_in.y ~= sy) then table.insert(centers, {x = best_in.x, y = best_in.y}) end
+    for _, c in ipairs(extra_centers or {}) do table.insert(centers, c) end      -- (0.105.33)
     -- "is the fort within reach of a tunnel on this level?": inside tiles per level, as
     -- prefix sums over the box (round the center being searched) the columns and their
     -- tunnels can reach
@@ -1609,7 +1762,7 @@ function way_in_plan_and_dig(params, now, dry_run)
     local ctx = {z = sz, target = target, safe = safe, dry_beside = dry_beside, near = near, tunnel = tunnel,
                  best_cost = WAY_IN_MAX_DIG + 1}
     local best, best_rank
-    local whys, tried, near_gate, too_long, no_ground = {}, {}, 0, 0, 0
+    local whys, tried, near_gate, too_long, no_ground, off_band = {}, {}, 0, 0, 0, 0
     local deadline = os.clock() + WAY_IN_SECONDS
     local timed_out = false
     for _, c in ipairs(centers) do
@@ -1625,9 +1778,14 @@ function way_in_plan_and_dig(params, now, dry_run)
                             if os.clock() > deadline then timed_out = true break end
                             if gate_dist(x, y) < WAY_IN_GATE_APART then
                                 near_gate = near_gate + 1
+                            elseif not in_band(x, y) then
+                                off_band = off_band + 1
                             else
                                 for _, below in ipairs({true, false}) do
                                     local plan, why, long = way_in_column(ctx, x, y, below)
+                                    if plan and second and not (plan.to and in_band(plan.to.x, plan.to.y)) then
+                                        plan, why = nil, nil       -- (its top steps off out of the band)
+                                    end
                                     if plan then
                                         local rank = plan.tiles * 1000000 + (x - sx) ^ 2 + (y - sy) ^ 2
                                         if not best_rank or rank < best_rank then
@@ -1663,7 +1821,7 @@ function way_in_plan_and_dig(params, now, dry_run)
         for i = 1, math.min(2, #words) do table.insert(bits, words[i].w) end
         if #bits == 0 and no_ground > 0 then table.insert(bits, WAY_IN_NO_GROUND) end
         if near_gate > 0 then table.insert(bits, ('the nearer spots are within %d tiles of the gate'):format(WAY_IN_GATE_APART)) end
-        return refuse(('no safe way in found near x%d y%d z%d%s%s'):format(sx, sy, ez(sz),
+        return refuse(('no safe %s found near x%d y%d z%d%s%s'):format(second and 'second way in' or 'way in', sx, sy, ez(sz),
             #bits > 0 and ': ' or '', table.concat(bits, '; ')) .. (timed_out and ' (search cut short)' or ''))
     end
     -- (merge32 review) an invader in sight near either end: not now
@@ -1682,7 +1840,7 @@ function way_in_plan_and_dig(params, now, dry_run)
         end
     end
     -- the keys, at the way-in's priority: each tile one quickfort cell
-    local pri = WAY_IN_PRIORITY
+    local pri = second and WAY_IN_SECOND_PRIORITY or WAY_IN_PRIORITY
     local cells = {}
     for _, c in ipairs(best.cells) do table.insert(cells, {x = c.x, y = c.y, z = c.z, key = c.key}) end
     for _, t in ipairs(best.tunnel) do table.insert(cells, {x = t.x, y = t.y, z = best.z_fort, key = 'd'}) end
@@ -1690,7 +1848,11 @@ function way_in_plan_and_dig(params, now, dry_run)
     for _, c in ipairs(best.cells) do zlo, zhi = math.min(zlo, c.z), math.max(zhi, c.z) end
     local out = {ok = true, from = pos_out(best.from), to = pos_out(best.to), tiles = best.tiles,
                  levels = zhi - zlo + 1, column = {x = best.x, y = best.y, elevation_top = ez(zhi), elevation_bottom = ez(zlo)},
-                 tunnel = #best.tunnel, dry_run = dry_run or nil}
+                 tunnel = #best.tunnel, dry_run = dry_run or nil, second = second or nil}
+    if second_e then
+        out.entrance = pos_out(second_e)
+        out.apart = math.max(math.abs(best.to.x - second_e.x), math.abs(best.to.y - second_e.y))
+    end
     for _, c in ipairs(cells) do
         local okd, st = pcall(quickfort_apply, 'dig', {{x = 0, y = 0, text = c.key .. pri}}, c.z, c.x, c.y, 'run', true)
         if not okd or stat(st, 'dig_designated') ~= 1 then
@@ -1715,12 +1877,15 @@ function way_in_plan_and_dig(params, now, dry_run)
         table.insert(gallery, {x = t.x, y = t.y})
     end
     local p = {
-        id = data.next_id, kind = 'way_in', phase = 'dig', emergency = true,
+        id = data.next_id, kind = 'way_in', phase = 'dig', emergency = (not second) or nil, second = second or nil,
         params = {pri = pri}, z = best.z_fort, anchor = {x = best.x, y = best.y}, stair = {x = best.x, y = best.y},
         area = {x1 = x1, y1 = y1, x2 = x2, y2 = y2, z = best.z_fort},
         cells = {dig = {}}, shaft_stairs = best.cells, gallery = gallery,
-        from = best.from, to = best.to, stranded = {x = sx, y = sy, z = sz, group = target},
-        summary = {way_in = true, emergency = true, tiles = best.tiles, levels = out.levels, tunnel = #gallery},
+        from = best.from, to = best.to,
+        stranded = (not second) and {x = sx, y = sy, z = sz, group = target} or nil,
+        entrance = second_e,
+        summary = {way_in = true, emergency = (not second) or nil, second = second or nil, tiles = best.tiles,
+                   levels = out.levels, tunnel = #gallery},
         started = now, designated = #cells,
     }
     data.next_id = data.next_id + 1
