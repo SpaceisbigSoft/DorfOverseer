@@ -775,6 +775,9 @@ function cistern_status()
             -- (0.104.145) the design, where the water comes from, a leak seen
             v = p.v or 1, intake_elevation = p.intake_z and ez(p.intake_z) or nil, shaft = p.shaft and true or nil,
             source_why = p.source_why, leak = d.leak, unsealed = d.unsealed,
+            -- (0.105.35) the leaks seen, the game's refusals to close a gap, the relink rounds asked
+            leaks = math.tointeger(d.leaks) or nil, unsealed_refusals = math.tointeger(d.unsealed_refusals) or nil,
+            relink_rounds = math.tointeger(d.relink_rounds) or nil,
             -- (0.104.168) why the AI can't close a gap itself (the player's then),
             -- and how many walls/floors it placed to close them
             unsealed_why = d.unsealed and d.unsealed_why or nil, sealing = nil}
@@ -868,6 +871,57 @@ function cistern_status()
 end
 
 -- Shut the cistern's floodgate now (a flood in the fort), whatever the stage.
+-- (0.105.35) nothing waits for the player. The brain retires a cistern that
+-- leaked twice, whose gap the game won't let the AI close, or whose lever
+-- won't stay linked: its floodgate shut at once (when a lever is linked), the
+-- cistern put with the retired ones (its tiles' items stay forbidden) and
+-- the next one planned afresh (its dug room no longer counts as solid rock).
+-- At most CISTERN_RETIRE_MAX retired so; a dry run changes nothing.
+CISTERN_RETIRE_MAX = 3
+function cistern_retire(dry_run, why)
+    local d = cistern_data()
+    if not d then return {ok = false, rejected = true, error = 'no cistern to retire'} end
+    local old = site_get(CISTERN_KEY .. '/retired', {})
+    local by_ai = 0
+    for _, r in ipairs(old) do if r.by_ai then by_ai = by_ai + 1 end end
+    if by_ai >= CISTERN_RETIRE_MAX then
+        return {ok = false, rejected = true,
+                error = ('the AI has retired %d cisterns already: this one is left as it is, its floodgate shut')
+                        :format(by_ai)}
+    end
+    local p = d.plan
+    local gate = building_info(p.floodgate.x, p.floodgate.y, p.intake_z or p.cistern.z, 'Floodgate')
+    if dry_run then return {ok = true, dry_run = true, retire = true} end
+    if gate and gate.built and not gate.closed and d.lever_id then
+        if lever_pull_pending(d.lever_id) then cancel_lever_pulls(d.lever_id) end
+        pull(d.lever_id, true)
+    end
+    table.insert(old, {cistern = p.cistern, source = p.source, tunnel_path = p.tunnel_path, intake_z = p.intake_z,
+                       shaft = p.shaft, why = type(why) == 'string' and why:sub(1, 120) or 'retired by the AI',
+                       by_ai = true, at = game_tick()})
+    site_put(CISTERN_KEY .. '/retired', old)
+    site_put(CISTERN_KEY, {})
+    return {ok = true, stage = 'retired', retired = true,
+            error = 'the cistern retired (' .. (why or 'by the AI') .. '), its floodgate shut: another is planned next'}
+end
+
+-- (0.105.35) the lever's link lost 3 times: asked for afresh (another 3
+-- tries), CISTERN_RELINK_MAX rounds at most; a dry run changes nothing
+CISTERN_RELINK_MAX = 2
+function cistern_relink(dry_run)
+    local d = cistern_data()
+    if not d or d.stage ~= 'linking' then return {ok = false, rejected = true, error = 'no cistern lever being linked'} end
+    local rounds = math.tointeger(d.relink_rounds) or 0
+    if rounds >= CISTERN_RELINK_MAX then
+        return {ok = false, rejected = true, error = 'the lever link was asked afresh ' .. rounds .. ' times already'}
+    end
+    if dry_run then return {ok = true, dry_run = true, relink = true} end
+    d.relinks, d.relink_rounds = 0, rounds + 1
+    save_cistern(d)
+    return {ok = true, stage = d.stage, relink = true,
+            error = ('the lever link asked for afresh (round %d of %d)'):format(rounds + 1, CISTERN_RELINK_MAX)}
+end
+
 function cistern_shut(dry_run)
     local d = cistern_data()
     if not d or not d.lever_id then return {ok = false, rejected = true, error = 'no cistern lever linked yet'} end
@@ -1107,6 +1161,7 @@ function cistern_close_gaps(d, p, gaps, dry_run, save)
         d.sealing = d.sealing or {}
         for _, cell in ipairs(placed) do d.sealing[cell.x .. ',' .. cell.y .. ',' .. cell.z] = cell.text end
         d.unsealed_why = refused
+        d.unsealed_refusals = refused and ((math.tointeger(d.unsealed_refusals) or 0) + 1) or nil   -- (0.105.35)
         d.unsealed = gaps and gaps[1] and gaps[1].words or d.unsealed
         save(d)
     end

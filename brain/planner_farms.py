@@ -63,9 +63,11 @@ def _crop_rules(s: dict, memory, cfg: dict, proposals: list, notes: list) -> Non
                                       f"{surface_brew} seeds of surface crops wait: lay out {n} tiles of plots "
                                       "on the surface's soil for them", 2))
         if not brew:
-            ask_player(notes, f"drink is short ({drink} for {citizens}) and the fort has no seeds of a crop a "
-                       "still can brew: buy seeds or brewable plants from a caravan (the dwarves gather shrubs "
-                       "meanwhile)")
+            # (0.105.35) nothing waits for the player: the AI's own trade asks
+            # the next caravan for drink, and the gatherers bring in shrubs and their seeds
+            notes.append(f"drink is short ({drink} for {citizens}) and the fort has no seeds of a crop a "
+                         "still can brew: the dwarves gather shrubs (for brewing and their seeds) and the AI's "
+                         "trade asks the next caravan for drink")
             return
         if memory.farm_steer in ("drink", "crops"):     # (0.105.5) "crops": set_farm_crops sets the plots itself
             notes.append("the farms grow brewable crops while drink is short: " + ", ".join(
@@ -481,9 +483,15 @@ def _farm_rule(s: dict, memory, traits: dict, citizens: int, cfg: dict, proposal
                        or st.get("prepared_meals", 0) < citizens * cfg["urgent_meals_per_dwarf"]))
         text = f"farm plots: {memory.farm_failure}"
         if hungry:
-            ask_player(notes, f"{text}. Food or drink is running low: make soil or muddy floor inside "
-                       "the fort (dig into soil, or flood a floor to muddy it) and the AI will lay the "
-                       "plots out")
+            # (0.105.35) nothing waits for the player: the AI muddies a farm room
+            # itself (the water works' irrigation), unless the player switched it off
+            rules_ = player_rules(s)
+            if rules_.get("irrigation", True) and rules_.get("water_works", True):
+                notes.append(f"{text}. Food or drink is running low: the AI muddies a farm room in stone itself "
+                             "(the water works' irrigation) and gathers shrubs meanwhile")
+            else:
+                notes.append(f"{text}. Food or drink is running low, and the muddied farm level is off on the "
+                             "Rules tab: the AI gathers shrubs and trades for food and drink instead")
         else:
             notes.append(f"{text} (the fort is fed, so this can wait)")
     # a farm level that couldn't be dug (no soil) isn't tried, or asked about, again for 4 weeks
