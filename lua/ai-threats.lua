@@ -1153,7 +1153,7 @@ function seal_cavern(layer, tiles, open, dry_run, z1, z2, openings)
     end
     rec = rec or {ids = {}, tick = t}
     rec.pulled = type(rec.pulled) == 'table' and rec.pulled or {}
-    local have, n, already, adopted = {}, 0, 0, 0
+    local have, n, already, adopted, pull_failed = {}, 0, 0, 0, 0
     for _, id in ipairs(rec.ids) do have[id] = true end
     -- (0.105.26 seal fix) one the gate watcher already holds shut goes on
     -- the record too, so the watcher doesn't open it while the beast is about
@@ -1163,11 +1163,19 @@ function seal_cavern(layer, tiles, open, dry_run, z1, z2, openings)
         if lever then
             local okc, c = pcall(function() return b.door_flags.closed end)
             if okc and not c then
+                -- (0.105.33 review) counted only when the pull worked (a failed
+                -- pull said "locked" and the opening still read unsealed)
                 if not dry_run then
                     local okp, pulled = pcall(function() return reqscript('ai-gates').pull_instant(lever) end)
-                    if okp and pulled then rec.pulled[tostring(id)] = lever end
+                    if okp and pulled then
+                        rec.pulled[tostring(id)] = lever
+                        n = n + 1
+                    else
+                        pull_failed = pull_failed + 1
+                    end
+                else
+                    n = n + 1
                 end
-                n = n + 1
             elseif okc then
                 already = already + 1
                 if watched[id] and rec.pulled[tostring(id)] == nil then
@@ -1206,8 +1214,10 @@ function seal_cavern(layer, tiles, open, dry_run, z1, z2, openings)
     end
     if n == 0 then
         if not dry_run then save_state(d) end          -- (the openings found are kept)
-        return {ok = false, rejected = true, nothing_to_do = already > 0,
-                error = already > 0 and 'every door and hatch on the way down is locked already'
+        return {ok = false, rejected = true, nothing_to_do = already > 0 and pull_failed == 0,
+                pull_failed = pull_failed > 0 and pull_failed or nil,
+                error = pull_failed > 0 and (pull_failed .. ' lever(s) on the way down would not pull: the doors stay open')
+                    or already > 0 and 'every door and hatch on the way down is locked already'
                     or 'no door or hatch on the way down to lock'}
     end
     if not dry_run then
@@ -1215,5 +1225,6 @@ function seal_cavern(layer, tiles, open, dry_run, z1, z2, openings)
         save_state(d)
         announce(('%d way(s) into the caverns locked against a great beast (%s)'):format(n, tostring(layer)))
     end
-    return {ok = true, locked = n, adopted = adopted > 0 and adopted or nil, layer = layer, dry_run = dry_run or nil}
+    return {ok = true, locked = n, adopted = adopted > 0 and adopted or nil, layer = layer, dry_run = dry_run or nil,
+            pull_failed = pull_failed > 0 and pull_failed or nil}
 end

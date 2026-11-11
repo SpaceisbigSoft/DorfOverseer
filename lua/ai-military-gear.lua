@@ -49,10 +49,41 @@ function id_set(v)
     return s
 end
 
+-- (0.105.33 review) The fort's own squads: only they can claim the fort's
+-- items. world.squads.all is every squad of every entity in the world (a
+-- big world: thousands), walked several times a pulse. Falls back to it
+-- only when the fort's entity can't be read.
+local function fort_squads()
+    local out = {}
+    local okf, fort = pcall(U.fort_entity)
+    if okf and fort then
+        pcall(function()
+            for _, sid in ipairs(fort.squads) do
+                local sq = df.squad.find(sid)
+                if sq then table.insert(out, sq) end
+            end
+        end)
+        return out
+    end
+    pcall(function() for _, sq in ipairs(df.global.world.squads.all) do table.insert(out, sq) end end)
+    return out
+end
+
+-- (0.105.33 review) gear_report builds the claim sets once (it only reads):
+-- set for the length of one report, nil otherwise (actions build their own)
+CLAIM_MEMO = nil
+local function memo(key, build)
+    local m = CLAIM_MEMO
+    if not m then return build() end
+    if m[key] == nil then m[key] = table.pack(build()) end
+    return table.unpack(m[key], 1, m[key].n)
+end
+
 -- every item any squad place claims (its own list or a uniform entry's)
 local function claimed_items()
+    return memo('claimed', function()
     local c = {}
-    for _, sq in ipairs(df.global.world.squads.all) do
+    for _, sq in ipairs(fort_squads()) do
         for _, pos in ipairs(sq.positions) do
             pcall(function() for _, iid in ipairs(pos.equipment.assigned_items) do c[iid] = true end end)
             pcall(function()
@@ -65,6 +96,7 @@ local function claimed_items()
         end
     end
     return c
+    end)
 end
 
 -- An item DF could hand to a soldier: none a unit holds, a trader's, an
@@ -517,7 +549,18 @@ local SPARE_OK = {in_job = true, held = true}
 local CROSSBOW_OK = {in_job = true, in_building = true, held = true}
 local HELD_OK = {held = true}
 
+local gear_report_body
 function gear_report()
+    -- (0.105.33 review) the claim sets built once for the whole report
+    local outer = CLAIM_MEMO == nil
+    if outer then CLAIM_MEMO = {} end
+    local ok, out = pcall(gear_report_body)
+    if outer then CLAIM_MEMO = nil end
+    if not ok then error(out, 0) end
+    return out
+end
+
+gear_report_body = function()        -- (the local declared above gear_report)
     -- armed/armored/helmed count only soldiers ON DUTY: off duty they put
     -- their weapons (and sometimes armour) away, which isn't a shortage
     local out = {soldiers = 0, on_duty = 0, armed = 0, armored = 0, helmed = 0, squads_with_uniform = 0,
@@ -710,8 +753,9 @@ end
 
 -- who claims what: an entry's own assigned list, or only a place's list
 local function claim_map()
+    return memo('claim_map', function()
     local entry, place = {}, {}
-    for _, sq in ipairs(df.global.world.squads.all) do
+    for _, sq in ipairs(fort_squads()) do
         for _, pos in ipairs(sq.positions) do
             local mine = {}
             pcall(function()
@@ -729,6 +773,7 @@ local function claim_map()
         end
     end
     return entry, place
+    end)
 end
 
 local function spec_text(spec)
@@ -797,6 +842,37 @@ function gaps_why(cat_name, list_name)
     local entry, place = claim_map()
     local ctx = {entry = entry, place = place, work = id_set(eq.work_weapons), una = id_set(eq.items_unassigned[list_name])}
     local items = df.global.world.items.other[list_name]
+    -- (0.105.33 review) an entry's stage depends only on what it asks for and
+    -- where its soldier can walk: worked out once per (entry kind, walk
+    -- group), not entries x every item (16 empty entries x a post-siege
+    -- pile of thousands of weapons, every pulse)
+    local stage_memo = {}
+    local function spec_key(spec)
+        local ok, k = pcall(function()
+            local c = spec.indiv_choice
+            return table.concat({tostring(spec.item_subtype), tostring(spec.mattype), tostring(spec.matindex),
+                tostring(spec.material_class), tostring(c and c.melee), tostring(c and c.ranged)}, ':')
+        end)
+        return ok and k or nil
+    end
+    local function walk_key(upos)
+        local ok, g = pcall(dfhack.maps.getWalkableGroup, upos)
+        if ok and type(g) == 'number' and g ~= 0 then return 'g' .. g end
+        return ('p%s,%s,%s'):format(upos.x, upos.y, upos.z)
+    end
+    local function best_stage(spec, upos)
+        local sk = spec_key(spec)
+        local key = sk and (sk .. '@' .. walk_key(upos))
+        if key and stage_memo[key] then return stage_memo[key] end
+        local best = 0
+        for _, it in ipairs(items) do
+            local st = item_stage(spec, it, is_weapon, ctx, upos)
+            if st > best then best = st end
+            if best == #GAP_STAGES then break end
+        end
+        if key then stage_memo[key] = best end
+        return best
+    end
     for _, sid in ipairs(fort.squads) do
         local sq = df.squad.find(sid)
         for pi, pos in ipairs(sq and sq.positions or {}) do
@@ -822,12 +898,7 @@ function gaps_why(cat_name, list_name)
                     else
                         local best = 0
                         if upos then
-                            for _, it in ipairs(items) do
-                                local st = item_stage(spec, it, is_weapon, ctx, upos)
-                                if st > best then best = st end
-                                if best == #GAP_STAGES then break end
-                            end
-                            best = math.max(best, 1)
+                            best = math.max(best_stage(spec, upos), 1)
                         end
                         local why = best == 0 and 'no soldier on the map' or GAP_STAGES[best]
                         out.why[why] = (out.why[why] or 0) + 1
@@ -862,13 +933,15 @@ local function ranged_place(pos)
 end
 
 local function quiver_claims()
+    return memo('quivers', function()
     local c = {}
-    for _, sq in ipairs(df.global.world.squads.all) do
+    for _, sq in ipairs(fort_squads()) do
         for _, pos in ipairs(sq.positions) do
             pcall(function() if pos.equipment.quiver ~= -1 then c[pos.equipment.quiver] = true end end)
         end
     end
     return c
+    end)
 end
 
 local function free_quivers(claimed)
@@ -1068,7 +1141,7 @@ local function stale_places(dry_run)
         return okf and ok
     end
     local n = 0
-    for _, sq in ipairs(df.global.world.squads.all) do
+    for _, sq in ipairs(fort_squads()) do
         for _, pos in ipairs(sq.positions) do
             pcall(function()
                 local mine = {}
@@ -1349,7 +1422,7 @@ function kit_report()
                 local hist = {}
                 pcall(function()
                     local c = df.uniform_category[cat]
-                    for _, sq in ipairs(df.global.world.squads.all) do
+                    for _, sq in ipairs(fort_squads()) do
                         for _, pos in ipairs(sq.positions) do
                             if pos.occupant ~= -1 then
                                 for _, spec in ipairs(pos.equipment.uniform[c]) do

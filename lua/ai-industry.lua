@@ -16,7 +16,6 @@ LEVELS_BELOW = 12           -- levels below the deepest citizen looked at
 VEIN_MAX = 80               -- tiles marked in one go (0.105.9: 80, Mining's top; was 60)
 
 -- Pure: the order metals are wanted in for gear (steel comes from iron).
-METAL_ORDER = {'IRON', 'COPPER', 'TIN', 'SILVER', 'ZINC', 'BISMUTH', 'NICKEL', 'LEAD', 'GOLD', 'PLATINUM'}
 
 local function inorganic(idx)
     local ok, v = pcall(function() return df.global.world.raws.inorganics.all[idx] end)
@@ -494,6 +493,7 @@ end
 -- cavern or open sky (the same check as ore veins).
 QUARRY_MAX = 30
 QUARRY_REACH = 3          -- tiles from the first one (a chamber, not a tunnel)
+QUARRY_SCAN_MAX = 200000  -- (0.105.33 review) floor tiles read at most looking for the wall
 
 local function economic(idx)
     local ok, v = pcall(function()
@@ -600,19 +600,43 @@ function quarry(count, dry_run)
         local inorg = idx and inorganic(idx)
         return inorg ~= nil and quarry_stone(idx, economic(idx), #metals_of(idx) > 0), idx
     end
+    -- (0.105.33 review) outward from the citizens' middle, nearest first,
+    -- stopping once no nearer wall can come: the old scan read every tile of
+    -- the citizens' box + 40 and 12 levels down (millions of tiles in one
+    -- action, seconds of frozen game) to keep the nearest. A floor tile at
+    -- distance D has its walls at D-1..D+1, so past best_d + 1 nothing wins.
+    -- QUARRY_SCAN_MAX caps the floor tiles read when no wall is found.
     local best, best_d, best_idx
-    for z = a.z1, a.z2 do
-        for y = a.y1, a.y2 do
-            for x = a.x1, a.x2 do
-                if walkable(x, y, z) then
-                    local g = dfhack.maps.getWalkableGroup(xyz2pos(x, y, z))
-                    if g and groups[g] then
-                        for _, d in ipairs({{1, 0}, {-1, 0}, {0, 1}, {0, -1}}) do
-                            local tx, ty = x + d[1], y + d[2]
-                            local dist = math.abs(tx - a.cx) + math.abs(ty - a.cy) + 3 * math.abs(z - a.cz)
-                            if not best_d or dist < best_d then
-                                local good, idx = ok_tile(tx, ty, z)
-                                if good then best, best_d, best_idx = {x = tx, y = ty, z = z}, dist, idx end
+    local function try_floor(x, y, z)
+        if not walkable(x, y, z) then return end
+        local g = dfhack.maps.getWalkableGroup(xyz2pos(x, y, z))
+        if not (g and groups[g]) then return end
+        for _, d in ipairs({{1, 0}, {-1, 0}, {0, 1}, {0, -1}}) do
+            local tx, ty = x + d[1], y + d[2]
+            local dist = math.abs(tx - a.cx) + math.abs(ty - a.cy) + 3 * math.abs(z - a.cz)
+            if not best_d or dist < best_d then
+                local good, idx = ok_tile(tx, ty, z)
+                if good then best, best_d, best_idx = {x = tx, y = ty, z = z}, dist, idx end
+            end
+        end
+    end
+    local dx_max = math.max(math.abs(a.x1 - a.cx), math.abs(a.x2 - a.cx))
+    local dy_max = math.max(math.abs(a.y1 - a.cy), math.abs(a.y2 - a.cy))
+    local dz_max = math.max(math.abs(a.z1 - a.cz), math.abs(a.z2 - a.cz))
+    local read = 0
+    for D = 0, dx_max + dy_max + 3 * dz_max do
+        if (best_d and D > best_d + 1) or read >= QUARRY_SCAN_MAX then break end
+        for dz = 0, math.min(dz_max, D // 3) do
+            local r = D - 3 * dz
+            for _, z in ipairs(dz == 0 and {a.cz} or {a.cz - dz, a.cz + dz}) do
+                if z >= a.z1 and z <= a.z2 then
+                    for i = math.max(-r, a.x1 - a.cx), math.min(r, a.x2 - a.cx) do
+                        local j = r - math.abs(i)
+                        local x = a.cx + i
+                        for _, y in ipairs(j == 0 and {a.cy} or {a.cy - j, a.cy + j}) do
+                            if y >= a.y1 and y <= a.y2 then
+                                read = read + 1
+                                try_floor(x, y, z)
                             end
                         end
                     end

@@ -1043,6 +1043,14 @@ end
 -- to metal); a uniform you set yourself is never touched.
 -- (UNIFORMS_KEY and ai_uniforms() are defined above make_squad)
 
+-- (0.105.33 review) Pure: a template's name says crossbows. One test for
+-- pick_template and set_uniform (a fort with only a "Ranged" template was
+-- picked it, then refused it: "no crossbow uniform template").
+function ranged_template_name(name)
+    local l = tostring(name):lower()
+    return l:find('crossbow', 1, true) ~= nil or l:find('archer', 1, true) ~= nil or l:find('ranged', 1, true) ~= nil
+end
+
 -- Pure: the template to use from their names. kind 'metal' or 'leather';
 -- melee before crossbows; else the first one.
 function pick_template(names, kind, ranged)
@@ -1052,7 +1060,7 @@ function pick_template(names, kind, ranged)
         local score = 0
         if l:find(kind or 'leather', 1, true) then score = score + 2 end
         if ranged then
-            if l:find('crossbow', 1, true) or l:find('archer', 1, true) or l:find('ranged', 1, true) then
+            if ranged_template_name(l) then
                 score = score + 4
             end
         elseif l:find('melee', 1, true) then score = score + 1 end
@@ -1189,7 +1197,7 @@ function set_uniform(squad_id, kind, dry_run, txt, ranged)
     for i, uf in ipairs(fort.uniforms) do names[i + 1] = uf.name end
     local idx = pick_template(names, kind, ranged)
     local uf = fort.uniforms[idx - 1]
-    if ranged and not tostring(uf.name):lower():find('crossbow', 1, true) then
+    if ranged and not ranged_template_name(uf.name) then
         return {ok = false, rejected = true, error = 'the fort has no crossbow uniform template'}
     end
     local mine = ai_uniforms()
@@ -1399,15 +1407,21 @@ function orders(squad_id, kill, clear)
     local sq = fort_squad(squad_id)
     if not sq then return {ok = false, rejected = true, error = 'no such squad in this fort'} end
     -- (0.105.24) off the soldiers' own order lists too (drop_orders)
-    local removed, member = drop_orders(sq, function(o) return is_ai_order(o, squad_id) end)
-    if removed > 0 then pcall(prune_shelter_marks) end      -- (0.105.0 review)
+    local function drop()
+        local removed, member = drop_orders(sq, function(o) return is_ai_order(o, squad_id) end)
+        if removed > 0 then pcall(prune_shelter_marks) end      -- (0.105.0 review)
+        return removed, member
+    end
     if clear then
+        local removed, member = drop()
         local out = {ok = true, cleared = removed, member_orders = member > 0 and member or nil}
         -- (0.105.24) what the soldiers are left doing, for the next live look
         local okm, m = pcall(members_state, sq)
         if okm and m then out.members = m end
         return out
     end
+    -- (0.105.33 review) the targets are checked BEFORE the AI's orders come
+    -- off: a refused kill list leaves the shelter / gate order standing.
     local o = df.squad_order_kill_listst:new()
     local n, refused = 0, 0
     for _, id in ipairs(kill or {}) do
@@ -1427,6 +1441,7 @@ function orders(squad_id, kill, clear)
                 error = refused > 0 and 'none of those units is a threat (a dangerous creature, an invader or a berserk dwarf)'
                     or 'none of those units is on the map and alive'}
     end
+    local removed = drop()
     o.title = AI_ORDER_TITLE
     -- stamped with today's date where the order has one (DF ages orders)
     pcall(function() o.year = df.global.cur_year; o.year_tick = df.global.cur_year_tick end)
@@ -1444,7 +1459,9 @@ function defend(squad_id, burrow_id)
         if not is_ai_order(o, squad_id) then return {ok = false, rejected = true, error = 'the squad is on your orders'} end
     end
     for _, o in ipairs(sq.orders) do
-        if is_ai_order(o, squad_id) and df.squad_order_defend_burrowsst:is_instance(o) then
+        -- (0.105.33 review) a shelter order is a defend order too: only the
+        -- gate guard order means the squad already holds the gate
+        if is_ai_order(o, squad_id) and is_guard_order(o) then
             return {ok = false, rejected = true, error = 'the squad already holds the gate'}
         end
     end
