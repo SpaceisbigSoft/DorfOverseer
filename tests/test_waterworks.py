@@ -440,14 +440,16 @@ def _():
     assert not run(s)[0]
 
 
-@test("planner: a work under way is stepped on; a held one asks the player; a refusal waits 4 weeks")
+@test("planner: a work under way is stepped on; a held one is retired by the AI (0.105.35); a refusal waits 4 weeks")
 def _():
     s = state(waterworks={"works": {"moat": {"kind": "moat", "stage": "digging"}}, "refused": {}})
     props, notes = run(s)
     assert len(props) == 1 and props[0].action == {"type": "water_work", "kind": "moat"} and "being dug" in notes[0]
     s = state(waterworks={"works": {"moat": {"kind": "moat", "stage": "held", "why": "liquid got out"}}, "refused": {}})
     props, notes = run(s)
-    assert not props and any("liquid got out" in n for n in notes)
+    assert len(props) == 1 and props[0].action == {"type": "water_work", "kind": "moat", "retire": True,
+                                                   "why": "liquid got out"}, [p.action for p in props]
+    assert "liquid got out" in props[0].reason and not any(n.startswith("[you]") for n in notes), notes
     s = state(waterworks={"works": {}, "refused": {"moat": {"tick": 10 * 403200 - 100, "why": "no gate"}}})
     props, notes = run(s)
     assert not props and any("not built: no gate" in n for n in notes)

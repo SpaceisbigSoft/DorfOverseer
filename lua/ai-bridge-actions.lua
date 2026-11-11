@@ -2178,6 +2178,11 @@ end
 -- The cistern (lua/ai-builder.lua): one step of building it, or keeping it filled.
 function act_cistern_step(a)
     if a.shut == true then return reqscript('ai-builder').cistern_shut(a.dry_run == true) end
+    -- (0.105.35) retired by the AI (leaked twice, a gap it can't close, a lever that won't link), or relinked
+    if a.retire == true then
+        return reqscript('ai-builder').cistern_retire(a.dry_run == true, type(a.why) == 'string' and a.why:sub(1, 120) or nil)
+    end
+    if a.relink == true then return reqscript('ai-builder').cistern_relink(a.dry_run == true) end
     -- (0.104.145) what the brain knows that weighs the source: the climate
     -- freezes, a danger in the caverns
     local prefs = type(a.prefs) == 'table' and {freezes = a.prefs.freezes == true,

@@ -32,6 +32,7 @@ MAGMA_SHOPS = {MagmaForge = 'wv', MagmaSmelter = 'el', MagmaGlassFurnace = 'ea'}
 MOAT_GAP = 3            -- tiles from the gate's outside tile to the trench
 MOAT_HALF = 3           -- the trench runs this far each side of the gate's line
 MOAT_FEED_MAX = 40      -- tiles of feed channel from the river at most
+RETIRE_MAX = 2          -- (0.105.35) a work retired this often (held, retired by the AI) is not begun again
 PUMP_MAX_LIFT = 6       -- levels a pump stack lifts at most (one dwarf a pump)
 PUMP_TEST_DAYS = 14     -- no rise in the reservoir this long: said so
 IRR_REACH = 14          -- the farm room this near its water
@@ -1002,6 +1003,11 @@ function step(kind, opts)
         if opts.retire then
             wk.stage = 'retired'; wk.why = opts.why or 'retired'
             wk.shut, wk.shut_open = nil, nil
+            -- (0.105.35) retired by the AI (a held work): not begun again for a
+            -- while (the brain's retry wait), and never after RETIRE_MAX times
+            st.retired_n = type(st.retired_n) == 'table' and st.retired_n or {}
+            st.retired_n[id] = (math.tointeger(st.retired_n[id]) or 0) + 1
+            st.refused[id] = {tick = now(), why = 'retired: ' .. wk.why, retired = st.retired_n[id]}
         else
             -- (0.105.33) kept shut: the steps wait (and pull nothing) until the
             -- brain asks for it to be opened again (reopen)
@@ -1020,6 +1026,11 @@ function step(kind, opts)
     end
 
     if not wk or wk.stage == 'retired' then
+        local n_ret = type(st.retired_n) == 'table' and math.tointeger(st.retired_n[id]) or 0
+        if n_ret >= RETIRE_MAX then
+            return {ok = false, rejected = true,
+                    error = ('retired %d times already: not begun again'):format(n_ret)}
+        end
         local plan, why
         if kind == 'moat' then plan, why = plan_moat({plain = opts.plain})
         elseif kind == 'magma' then plan, why = plan_magma(opts.shop)

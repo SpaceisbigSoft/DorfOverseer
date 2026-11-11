@@ -522,12 +522,18 @@ def short(a: dict) -> str:
                 "cages": "make a stockpile for full cages"}.get(
             a.get("kind"), "build a trade depot outside")
     if t == "cistern_step":
+        if a.get("retire"):      # (0.105.35)
+            return "retire the cistern (its floodgate shut)"
+        if a.get("relink"):
+            return "the cistern: ask for its lever link afresh"
         return "shut the cistern's floodgate" if a.get("shut") else "the cistern: next step"
     if t == "water_work":        # (0.105.0)
         what = {"moat": "the moat", "pump": "the pump stack", "irrigation": "the muddied farm level",
                 "magma": f"the {a.get('shop') or 'magma workshop'}"}.get(a.get("kind"), "a water work")
         if a.get("shut"):
             return f"shut {what}'s floodgate"
+        if a.get("retire"):      # (0.105.35)
+            return f"retire {what} (its floodgate shut)"
         return f"{what}: next step"
     if t == "answer_petition":
         if a.get("ids"):
