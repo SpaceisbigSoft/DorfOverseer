@@ -9,7 +9,7 @@ import math
 from digest import _d, _l
 from planner_core import *  # noqa: F401,F403
 
-__all__ = ["_well_rule", "_well_lid_rule", "SHAFT_LINK_LOST_MAX", "SHAFT_DANGER_TILES", "SHAFT_DANGER_OPEN", "cavern_danger", "_water_zone_rule", "cavern_points", "cavern_action", "cavern_well_need", "unfound_cavern", "cavern_well_safe", "WELL_PARTS_SHOPS", "CHAIN_SKIP", "chain_metal", "well_parts_plan", "_well_parts", "_water_traffic_rule", "cistern_pop", "WATER_WORDS", "magma_access", "water_summary", "_water_rules", "CISTERN_WORDS", "_cistern_parts", "_cistern_rule", "WELLS_CONFIG", "shut_wells", "usable_wells", "ai_opens_cavern", "cavern_open_words", "CISTERN_RETRY_SEALS", "CISTERN_RELINK_ROUNDS"]
+__all__ = ["_well_rule", "_well_lid_rule", "SHAFT_LINK_LOST_MAX", "SHAFT_DANGER_TILES", "SHAFT_DANGER_OPEN", "cavern_danger", "_water_zone_rule", "cavern_points", "cavern_action", "cavern_well_need", "unfound_cavern", "cavern_well_safe", "WELL_PARTS_SHOPS", "CHAIN_SKIP", "chain_metal", "well_parts_plan", "_well_parts", "_water_traffic_rule", "cistern_pop", "WATER_WORDS", "magma_access", "water_summary", "_water_rules", "CISTERN_WORDS", "_cistern_parts", "_cistern_rule", "WELLS_CONFIG", "shut_wells", "usable_wells", "ai_opens_cavern", "cavern_open_words", "CISTERN_RETRY_SEALS", "CISTERN_RELINK_ROUNDS", "CISTERN_SHUT_RULE"]
 
 # (0.105.33 B4) the wells' own settings (merged into PLANNER_CONFIG, as planner_threats does)
 WELLS_CONFIG = {
@@ -846,6 +846,13 @@ CISTERN_RETRY_SEALS = 3         # (0.105.35) the game refused a wall/floor closi
 CISTERN_RELINK_ROUNDS = 2       # (0.105.35) rounds of 3 lost lever links asked afresh before the cistern is retired
 
 
+# (0.105.36 X1) the cistern's "shut it now" (open, not closed all round): a
+# rule of its own, outside the cooldown, the action limit and the back-off
+CISTERN_SHUT_RULE = "cistern_shut"
+NO_COOLDOWN.add(CISTERN_SHUT_RULE)
+EMERGENCY.add(CISTERN_SHUT_RULE)
+LIMIT_EXEMPT.add(CISTERN_SHUT_RULE)
+STEER_PROTECTED.add(CISTERN_SHUT_RULE)
 CISTERN_WORDS = {"digging": "being dug", "building": "its floodgate and lever being built",
                  "linking": "its lever being linked", "opening": "its floodgate opening",
                  "plug": "its plug being dug", "filling": "filling", "hole": "its well's hole being dug",
@@ -932,8 +939,11 @@ def _cistern_rule(s: dict, memory, cfg: dict, proposals: list, notes: list, rule
     if isinstance(st, dict):
         # (0.104.145) open and no longer closed all round (a dig beside the
         # shaft or tunnel): shut at once
+        # (0.105.36 X1) its own rule, CISTERN_SHUT_RULE: never waits out the
+        # cistern rule's cooldown after a routine step (priority 0: before
+        # any other cistern step this cycle)
         if st.get("gate") == "open" and st.get("sealed_now") is False:
-            proposals.append(Proposal("cistern", {"type": "cistern_step", "shut": True},
+            proposals.append(Proposal(CISTERN_SHUT_RULE, {"type": "cistern_step", "shut": True},
                                       f"the cistern's floodgate is open and it isn't closed where the water goes "
                                       f"({st.get('unsealed')}): shut it now", 0))
         # (0.104.145) the leak guard shut it, or it isn't closed where the water goes
@@ -942,18 +952,30 @@ def _cistern_rule(s: dict, memory, cfg: dict, proposals: list, notes: list, rule
         # closed all round) is retired by the AI, its floodgate shut, and the
         # next one planned elsewhere
         if st.get("leak"):
+            gap_refused = (st.get("unsealed_why")
+                           and int(st.get("unsealed_refusals") or 0) >= CISTERN_RETRY_SEALS)
             if int(st.get("leaks") or 1) >= 2:
                 proposals.append(Proposal("cistern", {"type": "cistern_step", "retire": True,
                                                       "why": f"leaked twice (at {st['leak']})"},
                                           f"water got out of the cistern again (over it at {st['leak']}): retire it, "
                                           "its floodgate shut for good; another cistern is planned elsewhere", 2))
+            elif gap_refused:
+                # (0.105.36 D3) it leaked through a gap the game won't let the
+                # AI close: retired (the bridge walls a gap up after a leak)
+                proposals.append(Proposal("cistern", {"type": "cistern_step", "retire": True,
+                                                      "why": f"leaked, could not be closed ({st['unsealed_why']})"[:120]},
+                                          f"water got out of the cistern (over it at {st['leak']}) and the game won't "
+                                          f"let the AI close it where it leaks ({st['unsealed_why']}; "
+                                          f"{st.get('unsealed_refusals')} tries): retire it, its floodgate shut; "
+                                          "another is planned elsewhere", 3))
             else:
                 # (v35 fix) the step the bridge clears the leak in (the water
                 # gone and closed all round) and carries on from: asked for,
                 # every 2 days while the water still stands over it
                 notes.append(f"water got out of the cistern (over it at {st['leak']}): its floodgate was shut. The AI "
-                             "lets water in again once the water over it is gone and it is closed all round; "
-                             "a second leak retires it")
+                             "lets water in again once the water over it is gone and it is closed all round"
+                             + (f" (it walls up the gap at {st['unsealed']} itself)" if st.get("unsealed") else "")
+                             + "; a second leak retires it")
                 proposals.append(Proposal("cistern", dict(step),
                                           f"the cistern leaked once (over it at {st['leak']}): its next step, once the "
                                           "water over it is gone and it is closed all round", 4))
