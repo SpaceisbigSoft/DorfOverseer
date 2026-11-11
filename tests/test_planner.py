@@ -9305,7 +9305,8 @@ def _():
     s = fort()
     s["water"] = dict(s.get("water") or {}, cistern_status={"v": 2, "stage": "filling", "gate": "open", "depth": 3,
                                                             "sealed_now": False, "unsealed": "the shaft is open at x1 y2 elevation 3"})
-    c = by_rule(plan(copy.deepcopy(s), Memory())[0], "cistern")
+    # (0.105.36 X1) its own rule: never waits out the cistern rule's cooldown
+    c = by_rule(plan(copy.deepcopy(s), Memory())[0], "cistern_shut")
     assert c and c[0].action == {"type": "cistern_step", "shut": True} and c[0].priority == 0, [x.action for x in c]
     s["water"]["cistern_status"] = {"v": 2, "stage": "filling", "gate": "shut", "leak": "x5 y6 elevation 41"}
     props, notes = plan(copy.deepcopy(s), Memory())

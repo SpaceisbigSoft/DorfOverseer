@@ -314,8 +314,12 @@ function site_put(key, d) return util().site_put(key, d) end
 -- (0.105.33, L8) ai-util's one list (UNFREE), so rotten, encased, on fire, a
 -- web, owned, an artifact, murder evidence, a dead dwarf's or an item a unit
 -- carries count too (the builder's own list had drifted from it)
-function item_held(it)
-    return not util().item_free(it, {in_job = true})
+-- (0.105.36 D3) `also` (optional): more of item_unfree's names the caller
+-- doesn't mind, e.g. {held = true} for a part carried to its job
+function item_held(it, also)
+    local allow = {in_job = true}
+    for k, v in pairs(also or {}) do allow[k] = v end
+    return not util().item_free(it, allow)
 end
 
 -- (13c) Quickfort's dry run, then the real one unless dry_run: the one copy
