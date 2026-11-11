@@ -1801,6 +1801,9 @@ def _record_any_outcome(a: dict, r: dict, state: dict, memory, now: int, brief: 
         # floor dug beside it, or a day later) is not "no well can be placed"
         if not r.get("retry"):
             memory.well_failure = str(r.get("error"))[:300]
+            # (0.105.36) the well_retry_days wait counts from this refusal (the
+            # dig may have taken longer than the wait), not from the place_well
+            memory.last_fired["well"] = now
     elif t == "farm_plots":
         memory.last_fired["farms"] = now         # refused or not: wait the full spell
         if r.get("ok") is True:

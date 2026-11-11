@@ -87,6 +87,9 @@ def pump_wanted(s: dict, cfg: dict) -> str | None:
     return "the fort has no well, no cistern site, and still water only below it"
 
 
+# (0.105.36) the bridge's RETIRE_MAX (lua/ai-waterworks.lua): retired this often, never begun again
+WATERWORKS_RETIRE_MAX = 2
+
 # (v35 fix) holds that watch for water still coming in: never retired
 LEAK_WATCH_HOLDS = ("water is still getting in", "the floodgate is gone")
 
@@ -99,8 +102,10 @@ def leak_watch_hold(row: dict) -> bool:
     return any(w in why for w in LEAK_WATCH_HOLDS)
 
 
-def _work_notes(id_: str, row: dict, s: dict, proposals: list, notes: list, flooding: bool = False) -> bool:
-    """A work under way: its line, and its next step (True: one asked).
+def _work_notes(id_: str, row: dict, s: dict, proposals: list, notes: list, flooding: bool = False,
+                now: int | None = None) -> bool:
+    """A work under way: its line, and its next step (True: one asked; a
+    leak-watch hold asks for a re-check but isn't busy: works elsewhere go on).
     (0.105.33) A work its emergency stop shut waits: no step is asked (the
     next one would open the floodgate again) until the flood is over, then
     it is asked to open again (`reopen`; the bridge waits a few days more)."""
@@ -124,13 +129,21 @@ def _work_notes(id_: str, row: dict, s: dict, proposals: list, notes: list, floo
         # (v35 fix) water may still be getting in, or no floodgate is left to
         # shut: never retired (retiring stops the watch); kept watched, its
         # floodgate shut if it is open
+        gone = "floodgate is gone" in str(row.get("why") or "")
         notes.append(f"{words} is held ({row.get('why')}): the AI keeps it watched and doesn't retire it while "
-                     "water may still get in" + ("" if "floodgate is gone" not in str(row.get("why") or "")
-                                                 else " (no floodgate is left to shut)"))
+                     "water may still get in" + (" (a new floodgate is placed where it stood)" if gone else ""))
         if row.get("gate") == "open":
             proposals.append(Proposal(f"waterworks_{kind}", dict(step, shut=True, why="held: water still getting in"),
                                       f"{words} is held with its floodgate open ({row.get('why')}): shut it", 2))
-        return True                      # (no new work begun while water may get in)
+        else:
+            # (0.105.36) looked at again (the bridge answers "waiting", so the
+            # refusal book asks every few days): the floodgate placed again if
+            # it is gone, the room's wet tiles counted; un-held once dry
+            proposals.append(Proposal(f"waterworks_{kind}", dict(step, recheck=True, why="recheck: the leak watch"),
+                                      f"{words} is held ({row.get('why')}): look again"
+                                      + (": place a new floodgate where it stood" if gone else
+                                         ": un-held once it is dry"), 6))
+        return False                     # (0.105.36) not busy: works elsewhere go on
     if stage == "held":
         # (0.105.35) nothing waits for the player: a held work (a leak, a lost
         # link, a floodgate shut again and again, a floor dried without mud)
@@ -139,7 +152,8 @@ def _work_notes(id_: str, row: dict, s: dict, proposals: list, notes: list, floo
         act = dict(step, retire=True, why=str(row.get("why") or "held")[:110])
         proposals.append(Proposal(f"waterworks_{kind}", act,
                                   f"{words} is held ({row.get('why')}): retire it, its floodgate shut for good "
-                                  "(tried again elsewhere after a while, at most twice)", 4))
+                                  "(planned afresh after a while, at most twice; the old site only if its dry run "
+                                  "passes again)", 4))
         return True
     if row.get("shut") and stage != "retired":
         notes.append(f"{words}: its floodgate was shut ({row['shut']})")
@@ -156,12 +170,18 @@ def _work_notes(id_: str, row: dict, s: dict, proposals: list, notes: list, floo
         if stage == "done" and row.get("gate") == "open":
             proposals.append(Proposal("waterworks_check", step, f"{words}: done: the leak check", 7))
         return False
-    if row.get("stalled"):
+    # (0.105.36) the bridge sets the screw pumps to "Start pump manually"
+    # (`manual`: how many); then the labour is given, once as pumping starts
+    # and again when the reservoir stalls
+    fresh = (isinstance(row.get("manual_since"), int) and isinstance(now, int)
+             and 0 <= now - row["manual_since"] < 3 * 1200)
+    if kind == "pump" and stage == "filling" and row.get("manual") and (row.get("stalled") or fresh):
         # (0.105.35) nothing waits for the player: the AI gives the pump operator labour itself
         n = max(1, min(6, int(row.get("lift") or 1)))
         proposals.append(Proposal("waterworks_pump_labor", {"type": "assign_labor", "job": "OPERATE_PUMP", "count": n},
-                                  f"the pump stack's reservoir isn't rising: put {n} dwarf(s) on the pump operator "
-                                  "labour (one a pump)", 3))
+                                  (f"the pump stack's reservoir isn't rising" if row.get("stalled") else
+                                   f"the pump stack's {row.get('manual')} screw pump(s) are set to be worked by hand")
+                                  + f": put {n} dwarf(s) on the pump operator labour (one a pump)", 3))
     for part, key in (("floodgate", "floodgates_free"), ("mechanisms", "mechanisms_free")):
         if row.get(key) == 0 and stage == "building":
             notes.append(f"{words} waits for {part} (none free)")
@@ -190,19 +210,23 @@ def _waterworks_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -
                     act["shop"] = row["shop"]
                 proposals.append(Proposal("waterworks_shut", act,
                                           f"{flooded} dwarves in deep water: shut {WORK_WORDS.get(row.get('kind'))}'s floodgate", 0))
+    now = int(_d(s.get("date")).get("year") or 0) * TICKS_PER_YEAR + int(_d(s.get("date")).get("tick") or 0)
     busy = False
     for id_, row in sorted(works.items()):
-        busy = _work_notes(id_, row, s, proposals, notes, flooding) or busy
+        busy = _work_notes(id_, row, s, proposals, notes, flooding, now) or busy
     for id_, r in sorted(refused.items()):
         notes.append(f"{WORK_WORDS.get(id_.split(':')[0], id_)} not built: {r.get('why')}")
     if busy or not rules_["water_works"]:
         return
     if young_fort(s, cfg) or _d(s.get("others_on_map")).get("threats_that_can_reach_dwarves"):
         return
-    now = int(_d(s.get("date")).get("year") or 0) * TICKS_PER_YEAR + int(_d(s.get("date")).get("tick") or 0)
 
     def retry_ok(id_: str) -> bool:
         r = refused.get(id_)
+        # (0.105.36) retired RETIRE_MAX (2) times: the bridge never begins it
+        # again, so it is skipped and the next kind is looked at
+        if r and isinstance(r.get("retired"), int) and r["retired"] >= WATERWORKS_RETIRE_MAX:
+            return False
         return not r or not isinstance(r.get("tick"), int) or now - r["tick"] >= cfg["waterworks_retry_ticks"]
 
     def started(id_: str) -> bool:

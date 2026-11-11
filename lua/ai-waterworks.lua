@@ -42,7 +42,9 @@ MAGMA_STAIR_MAX = 60    -- levels of stair down to the magma at most
 PATH_MAX = 400          -- tiles the water may reach (outside, for a moat)
 FILL_STALL_DAYS = 28    -- (0.105.33) filling with no rise this long: held, said why
 REOPEN_AFTER_DAYS = 3   -- (0.105.33) a shut floodgate opened again no sooner than this
-SHUTS_MAX = 3           -- (0.105.33) shut this often for a flood: held for the player
+SHUTS_MAX = 3           -- (0.105.33) shut this often for a flood (within SHUTS_WINDOW_DAYS): held, then retired by the AI
+SHUTS_WINDOW_DAYS = 28  -- (0.105.36) only the shuts this recent count (floods years apart don't add up)
+FLOOD_NEAR = 30         -- (0.105.36) a shut counts only with a citizen in deep water this near the work's tiles
 DAY = 1200
 
 local NATURAL = {STONE = true, MINERAL = true, SOIL = true, LAVA_STONE = true}
@@ -184,6 +186,14 @@ end
 
 function set_name(id, name)
     pcall(function() df.building.find(id).name = name end)
+end
+
+-- (0.105.36) a screw pump set to be worked by hand (DF's "Start pump
+-- manually"; df-structures building_screw_pumpst.pump_manually, the game's
+-- wants_to_pump): without it no dwarf with the pump operator labour works it
+function set_pump_manual(id, on)
+    local ok = pcall(function() df.building.find(id).pump_manually = on == true end)
+    return ok
 end
 
 -- a hatch locked (DFHack forbids it, as the gates do): nothing walks through
@@ -976,7 +986,27 @@ function step(kind, opts)
     end
     local function gate_of(p) return building(p.gate.x, p.gate.y, p.gate.z, 'Floodgate') end
     local function lever_of(p) return building(p.lever.x, p.lever.y, p.lever.z, 'Trap') end
+    -- (0.105.36) the pump stack's screw pumps set to be worked by hand while
+    -- it fills (DF's "Start pump manually"), unset when it stops; how many
+    local function pumps_manual(on)
+        if dry or not wk or type(wk.plan) ~= 'table' or wk.plan.kind ~= 'pump' then return 0 end
+        local n = 0
+        for _, b in ipairs(wk.plan.builds or {}) do
+            if b.kind == 'ScrewPump' then
+                local bb = building(b.x, b.y, b.z, 'ScrewPump')
+                if bb and bb.built and set_pump_manual(bb.id, on) then n = n + 1 end
+            end
+        end
+        if on and n > 0 then
+            wk.manual = n
+            wk.manual_since = wk.manual_since or now()
+        elseif not on then
+            wk.manual, wk.manual_since = nil, nil
+        end
+        return n
+    end
     local function hold(why)
+        pumps_manual(false)        -- (0.105.36) a held stack isn't worked
         if not dry then wk.stage = 'held'; wk.why = why; save() end
         return {ok = false, rejected = true, stage = 'held', error = why}
     end
@@ -991,7 +1021,26 @@ function step(kind, opts)
     -- (0.105.33) filling that never ends: the floodgate shut, held, with why
     local function stalled(g, why)
         shut_now(g)
+        pumps_manual(false)
         return hold(why)
+    end
+    -- (0.105.36) a citizen in deep water near the work's own tiles (a flood
+    -- shut counts toward SHUTS_MAX only then: the report's "dwarves in deep
+    -- water" is anywhere on the map). Unknown (no citizens): counted.
+    local function flood_near()
+        local okc, cs = pcall(citizens)
+        local tiles = type(wk.plan) == 'table' and (wk.plan.tiles or wk.plan.wet) or nil
+        if not okc or type(cs) ~= 'table' or type(tiles) ~= 'table' or next(tiles) == nil then return true end
+        for _, c in ipairs(cs) do
+            if type(c) == 'table' and c.x and depth_at(c) >= 4 then
+                for _, t in ipairs(tiles) do
+                    if math.abs(c.z - t.z) <= 3 and math.max(math.abs(c.x - t.x), math.abs(c.y - t.y)) <= FLOOD_NEAR then
+                        return true
+                    end
+                end
+            end
+        end
+        return false
     end
 
     -- the emergency stop, and retiring
@@ -1007,6 +1056,7 @@ function step(kind, opts)
         local g = gate_of(wk.plan)
         if dry then return {ok = true, dry_run = true, stage = wk.stage} end
         local was_open = shut_now(g)
+        pumps_manual(false)
         if opts.retire then
             wk.stage = 'retired'; wk.why = opts.why or 'retired'
             wk.shut, wk.shut_open = nil, nil
@@ -1021,11 +1071,20 @@ function step(kind, opts)
             wk.shut = opts.why or 'shut'
             wk.shut_at = now()
             wk.shut_open = wk.shut_open or was_open or nil
-            wk.shuts = (wk.shuts or 0) + 1
+            -- (0.105.36) only the shuts of the last SHUTS_WINDOW_DAYS count,
+            -- and only with a citizen in deep water near the work (floods
+            -- elsewhere, years apart, never hold a work)
+            local recent = {}
+            for _, t in ipairs(type(wk.shut_ticks) == 'table' and wk.shut_ticks or {}) do
+                if math.tointeger(t) and now() - t < SHUTS_WINDOW_DAYS * DAY then table.insert(recent, t) end
+            end
+            if flood_near() then table.insert(recent, now()) end
+            wk.shut_ticks = recent
+            wk.shuts = #recent
             if wk.shuts >= SHUTS_MAX and wk.stage ~= 'held' then
                 wk.stage = 'held'
-                wk.why = ('the floodgate was shut %d times (%s): mend it by hand, then retire it or let it go on')
-                    :format(wk.shuts, wk.shut)
+                wk.why = ('the floodgate was shut %d times in %d days (%s), with dwarves in deep water near it: '
+                          .. 'the AI retires it, its floodgate shut for good'):format(wk.shuts, SHUTS_WINDOW_DAYS, wk.shut)
             end
         end
         save()
@@ -1035,8 +1094,15 @@ function step(kind, opts)
     if not wk or wk.stage == 'retired' then
         local n_ret = type(st.retired_n) == 'table' and math.tointeger(st.retired_n[id]) or 0
         if n_ret >= RETIRE_MAX then
-            return {ok = false, rejected = true,
-                    error = ('retired %d times already: not begun again'):format(n_ret)}
+            -- (0.105.36) the refusal stamped (with `retired`, so the brain
+            -- skips this work and goes on to the next kind)
+            local why0 = ('retired %d times already: not begun again'):format(n_ret)
+            if not dry then
+                local old = type(st.refused[id]) == 'table' and st.refused[id] or {}
+                st.refused[id] = {tick = now(), why = old.why or why0, retired = n_ret}
+                save_state(st)
+            end
+            return {ok = false, rejected = true, retired = n_ret, error = why0}
         end
         local plan, why
         if kind == 'moat' then plan, why = plan_moat({plain = opts.plain})
@@ -1058,7 +1124,57 @@ function step(kind, opts)
         return advance('planned', {path = path})
     end
     local p = wk.plan
-    if wk.stage == 'held' then return {ok = false, rejected = true, stage = 'held', error = wk.why} end
+    if wk.stage == 'held' then
+        -- (0.105.36) a leak-watch hold looked at again (the brain asks for a
+        -- `recheck`, or a why starting "recheck"): the floodgate rebuilt if it
+        -- is gone, the farm room's wet tiles counted again; un-held when dry
+        local again = opts.recheck == true or (type(opts.why) == 'string' and opts.why:match('^recheck') ~= nil)
+        local why0 = type(wk.why) == 'string' and wk.why or ''
+        local gone_hold = why0:find('the floodgate is gone', 1, true) ~= nil
+        local wet_hold = why0:find('water is still getting in', 1, true) ~= nil
+        if not (again and (gone_hold or wet_hold)) then
+            return {ok = false, rejected = true, stage = 'held', error = wk.why}
+        end
+        if dry then return {ok = true, dry_run = true, stage = 'held', recheck = true} end
+        local function watching(why) save() return {ok = false, rejected = true, waiting = true, stage = 'held', error = why} end
+        local g, l = gate_of(p), lever_of(p)
+        if not g or not l then
+            -- gone (a building destroyer): a new one placed where it stood
+            -- (magma: magma-safe, the building stage checks it)
+            if not gone_hold then wk.why = 'the floodgate is gone (destroyed while held): a new one is placed' end
+            local cells = {}
+            if not g then table.insert(cells, {x = p.gate.x, y = p.gate.y, z = p.gate.z, text = 'x'}) end
+            if not l then table.insert(cells, {x = p.lever.x, y = p.lever.y, z = p.lever.z, text = 'Tl'}) end
+            local filtered = p.kind == 'magma' and magma_filter(true) or nil
+            local ok = designate_all(cells, 'build')
+            if filtered then magma_filter(filtered) end
+            if not ok then
+                return watching(('the floodgate or its lever is gone and the game would not place a new one at x%d y%d, '
+                                 .. 'elevation %d: kept watched, tried again in a few days'):format(p.gate.x, p.gate.y, ez(p.gate.z)))
+            end
+            return watching('the floodgate or its lever is gone: a new one is placed where it stood')
+        end
+        if gone_hold then
+            -- a floodgate stands there again: built, linked and opened as before
+            wk.why, wk.opened_once, wk.open_from, wk.opened_at, wk.relinks = nil, nil, nil, nil, nil
+            wk.rise_at, wk.test_from = nil, nil
+            return advance('building')
+        end
+        if g.built and not g.closed then shut_now(g) end
+        if p.room then
+            local r = p.room
+            local wet = 0
+            for x = r.x1, r.x2 do for y = r.y1, r.y2 do if depth_at({x = x, y = y, z = r.z}) > 0 then wet = wet + 1 end end end
+            wk.wet = wet
+            if wet == 0 then
+                wk.why, wk.slow = nil, nil
+                return advance('drying', {wet = 0})       -- dry now: the next step finishes it
+            end
+            return watching(('the farm room is still wet (%d tile(s)): kept watched, its floodgate shut'):format(wet))
+        end
+        wk.why = nil
+        return advance('filling')
+    end
 
     -- (0.105.33) shut by the emergency stop: nothing pulled until the brain
     -- asks for it again (reopen; the bridge passes `why`, so a why starting
@@ -1078,6 +1194,13 @@ function step(kind, opts)
             pull(wk.lever_id, false)
             opened = true
             if wk.stage == 'filling' then wk.opened_at = now() end
+        end
+        if wk.stage == 'filling' then
+            -- (0.105.36) the stall clocks start again: the days shut don't
+            -- count, and a pull not made yet is waited on (and asked again)
+            -- as at the first opening
+            if opened then wk.opened_once, wk.open_from = nil, now() end
+            wk.rise_at, wk.test_from, wk.stalled = nil, now(), nil
         end
         wk.shut, wk.shut_at, wk.shut_open = nil, nil, nil
         save()
@@ -1170,7 +1293,7 @@ function step(kind, opts)
         if not is_linked(wk.lever_id, wk.gate_id) then
             if link_pending(wk.lever_id) or dry then return wait('the lever is being linked to the floodgate') end
             wk.relinks = (wk.relinks or 0) + 1
-            if wk.relinks > 3 then return hold('the lever\'s link to the floodgate was lost 3 times: link it by hand') end
+            if wk.relinks > 3 then return hold('the lever\'s link to the floodgate was lost 3 times: the AI retires it') end
             local r = link(wk.lever_id, wk.gate_id)
             save()
             if not r.ok then return r end
@@ -1220,14 +1343,18 @@ function step(kind, opts)
             if now() - (wk.open_from or now()) > FILL_STALL_DAYS * DAY then
                 return hold(('the floodgate was not opened in %d days: can a dwarf reach its lever?'):format(FILL_STALL_DAYS))
             end
-            if wk.opened_at and now() - wk.opened_at > 2 * DAY and not dry then pull(wk.lever_id, false) wk.opened_at = now() save() end
+            -- (0.105.36) no pull yet (a floodgate placed again after it was gone): one now
+            if (not wk.opened_at or now() - wk.opened_at > 2 * DAY) and not dry then pull(wk.lever_id, false) wk.opened_at = now() save() end
             return wait('a dwarf is on the way to open the floodgate')
         end
         if not dry and not wk.opened_once then wk.opened_once = true; wk.test_from = now(); save() end
         local t = p.test
         -- (0.105.33) the last rise, for the stall test (a frozen or dry source, a blocked way)
         local function rose(d)
-            if not dry and (wk.best == nil or d > wk.best) then wk.best = d; wk.rise_at = now() end
+            if not dry and (wk.best == nil or d > wk.best) then
+                wk.best = d; wk.rise_at = now()
+                wk.stalled = nil             -- (0.105.36) rising again: no more pump labour asked
+            end
             return now() - (wk.rise_at or wk.test_from or now()) > FILL_STALL_DAYS * DAY
         end
         if t.mode == 'deep' then
@@ -1244,10 +1371,17 @@ function step(kind, opts)
             end
             return advance('finishing', {depth = d})
         elseif t.mode == 'rise' then
+            -- (0.105.36) the pumps worked by hand (set again each step: cheap)
+            local manual = pumps_manual(true)
             local d = depth_at(t)
             if wk.start_depth == nil and not dry then wk.start_depth = d end
             wk.depth = d
-            if d >= t.want then return advance('done', {depth = d, rose = d - (wk.start_depth or 0)}) end
+            if d >= t.want then
+                pumps_manual(false)
+                return advance('done', {depth = d, rose = d - (wk.start_depth or 0)})
+            end
+            -- (said in the stall text; the stall wait still runs, so it never waits for ever)
+            if not dry then wk.manual_failed = manual == 0 or nil end
             if rose(d) then
                 return stalled(g, ('the reservoir has not risen in %d days (%d/7): the pumps are not worked, or the '
                                    .. 'water is gone; the floodgate was shut'):format(FILL_STALL_DAYS, d))
@@ -1255,7 +1389,8 @@ function step(kind, opts)
             if now() - (wk.rise_at or wk.test_from or now()) > PUMP_TEST_DAYS * DAY then
                 wk.stalled = true
                 save()
-                return wait(('the reservoir has not risen in %d days (%d/7): is a dwarf working the pumps (the pump operator labour)?'):format(PUMP_TEST_DAYS, d))
+                return wait(('the reservoir has not risen in %d days (%d/7): is a dwarf working the pumps (the pump operator labour)?%s')
+                    :format(PUMP_TEST_DAYS, d, wk.manual_failed and ' (the pumps could not be set to "Start pump manually")' or ''))
             end
             save()
             return wait(('pumping: the reservoir %d/7 (from %d/7)'):format(d, wk.start_depth or 0))
@@ -1286,8 +1421,10 @@ function step(kind, opts)
             -- (0.105.0 review) not waited on for ever: held, with why
             if now() - (wk.since or now()) > IRR_DRY_DAYS * DAY then
                 wk.slow = true
+                shut_now(gate_of(p))
                 return hold(('the farm room is still wet after %d days (%d tile(s)): water is still getting in '
-                             .. '(the floodgate leaks, or a second way in); dry it by hand, or retire it'):format(IRR_DRY_DAYS, wet))
+                             .. '(the floodgate leaks, or a second way in); the AI keeps it watched, its floodgate shut, '
+                             .. 'and looks again every few days'):format(IRR_DRY_DAYS, wet))
             end
             save()
             return wait(('the farm room is drying: %d tile(s) still wet'):format(wet))
@@ -1304,7 +1441,7 @@ function step(kind, opts)
                     table.insert(cells, {x = x, y = y, z = r.z, text = 'p'})
                 end
             end end
-            if muddy == 0 then return hold('the floor dried without mud: let water in again by hand, or retire it') end
+            if muddy == 0 then return hold('the floor dried without mud: the AI retires it') end
             if dry then return {ok = true, dry_run = true, stage = 'done', muddy = muddy} end
             if not designate_all(cells, 'build') then return {ok = false, error = 'the game would not place the farm plots'} end
             return advance('done', {muddy = muddy})
@@ -1346,6 +1483,7 @@ function report()
         local g = p.gate and building(p.gate.x, p.gate.y, p.gate.z, 'Floodgate')
         local row = {kind = wk.kind, stage = wk.stage, why = wk.why, depth = wk.depth, wet = wk.wet,
                      stalled = wk.stalled or nil, slow = wk.slow or nil, shut = wk.shut,
+                     manual = wk.manual, manual_since = wk.manual_since,
                      gate = g and (g.built and (g.closed and 'shut' or 'open') or 'planned') or nil,
                      linked = wk.lever_id and is_linked(wk.lever_id, wk.gate_id, links) or nil,
                      path_tiles = wk.path and wk.path.tiles, lift = p.lift, power = p.power, wheel = p.wheel,

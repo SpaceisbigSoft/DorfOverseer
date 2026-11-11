@@ -223,7 +223,8 @@ def _():
                                           "why": "the floor dried without mud"}], [p.action for p in props]
     assert not you(notes), notes
     assert overseer.short(props[0].action) == "retire the muddied farm level (its floodgate shut)"
-    s["waterworks"] = {"works": {"pump": {"kind": "pump", "stage": "filling", "stalled": True, "lift": 3}},
+    s["waterworks"] = {"works": {"pump": {"kind": "pump", "stage": "filling", "stalled": True, "lift": 3,
+                                          "manual": 3}},
                        "refused": {}}
     props, notes = [], []
     planner_water._waterworks_rule(s, Memory(), CFG, props, notes)

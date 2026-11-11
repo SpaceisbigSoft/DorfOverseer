@@ -117,6 +117,7 @@ def _():
     s["buildings"]["other"]["Well"] = 1
     s["projects"]["open"] = []
     s["dwarves"]["total"] = 10
+    s["others_on_map"]["threats"] = []    # (0.105.36) no danger near: shut for no danger, so not a well
     s["projects"]["well_lids"] = [{"project_id": 4, "gate": "closed"}]
     m = Memory()
     m.well_floor_retried = True
