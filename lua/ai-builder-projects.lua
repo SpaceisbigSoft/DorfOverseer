@@ -1526,7 +1526,7 @@ end
 -- (the gate scan's) and the surface spots 15-40 tiles from it in the outside
 -- walk group, best first (over the fort's inside, then nearer the entrance).
 -- Returns {entrance = {x, y, z}, group, spots = {{x, y, z}}} or nil, why.
-function way_in_second_spots(fort, GM)
+function way_in_second_spots(fort, GM, deadline_all)
     local GT = GM and GM.GATES
     if not (type(GT) == 'table' and GT.scanned and type(GT.entrances) == 'table') then
         return nil, 'the entrances are not mapped yet (scan them first)'
@@ -1596,7 +1596,7 @@ function way_in_second_spots(fort, GM)
     local zs = {0}
     for i = 1, WAY_IN_ZSPAN do table.insert(zs, i); table.insert(zs, -i) end
     local spots = {}
-    local deadline = os.clock() + WAY_IN_SECONDS
+    local deadline = math.min(os.clock() + WAY_IN_SECONDS, deadline_all or math.huge)
     for x = bx1, bx2 do
         if os.clock() > deadline then break end
         for y = by1, by2 do
@@ -1605,7 +1605,10 @@ function way_in_second_spots(fort, GM)
                 for _, dz in ipairs(zs) do
                     local z = e.z + 1 + dz
                     local t = info(x, y, z)
-                    if way_in_sky(t) and walk_group(x, y, z) == group and not building_at(x, y, z) then
+                    -- (fix33) not on the fort's inside (a walled courtyard the
+                    -- scan counts in): the top there is no second way out
+                    if way_in_sky(t) and not (fort.set and fort.set[wkey(x, y, z)])
+                            and walk_group(x, y, z) == group and not building_at(x, y, z) then
                         local di = dist[ck(x, y)] or 999
                         table.insert(spots, {x = x, y = y, z = z, rank = di * 1000 + de})
                         break
@@ -1664,11 +1667,16 @@ function way_in_plan_and_dig(params, now, dry_run)
         return refuse('that spot is off the map')
     end
     local data = load_projects()
+    -- (fix33) the second way to the surface never holds the emergency way in
+    -- for dwarves cut off (the two dig side by side; reserved keeps them apart)
     for _, p in ipairs(data.list) do
-        if p.kind == 'way_in' and p.phase == 'dig' then
+        if p.kind == 'way_in' and p.phase == 'dig' and (second or not p.second) then
             return refuse(('a way in is already being dug (project %d)'):format(p.id))
         end
     end
+    -- (fix33) one deadline for the whole search (the second way's spot scan
+    -- and every column search): the game's freeze stays short
+    local deadline_all = os.clock() + WAY_IN_SECONDS * WAY_IN_TRIES
     -- (merge32 review) not during a siege: a new hole in the fort while the
     -- gate watcher has it shut lets the enemy in by it
     local GM = way_in_gates()
@@ -1680,7 +1688,7 @@ function way_in_plan_and_dig(params, now, dry_run)
         local fwhy0
         fort0, fwhy0 = way_in_fort()
         if not fort0 then return refuse(fwhy0) end
-        local pick, pwhy = way_in_second_spots(fort0, GM)
+        local pick, pwhy = way_in_second_spots(fort0, GM, deadline_all)
         if not pick then return refuse(pwhy) end
         target, second_e = pick.group, pick.entrance
         sx, sy, sz = pick.spots[1].x, pick.spots[1].y, pick.spots[1].z
@@ -1860,7 +1868,7 @@ function way_in_plan_and_dig(params, now, dry_run)
     best = nil
     local whys, tried, near_gate, too_long, no_ground, off_band = {}, {}, 0, 0, 0, 0
     for k in pairs(banned) do tried[k] = true end
-    local deadline = os.clock() + WAY_IN_SECONDS
+    local deadline = math.min(os.clock() + WAY_IN_SECONDS, deadline_all)
     local timed_out = false
     for _, c in ipairs(centers) do
         cur = c
@@ -1880,9 +1888,10 @@ function way_in_plan_and_dig(params, now, dry_run)
                             else
                                 for _, below in ipairs({true, false}) do
                                     local plan, why, long = way_in_column(ctx, x, y, below)
-                                    if plan and second and not (plan.to and in_band(plan.to.x, plan.to.y)) then
-                                        plan, why = nil, nil       -- (its top steps off out of the band)
-                                    end
+                                    if plan and second and not (plan.to and in_band(plan.to.x, plan.to.y)
+                                            and not (fort.set and fort.set[wkey(plan.to.x, plan.to.y, plan.to.z)])) then
+                                        plan, why = nil, nil       -- (its top steps off out of the band, or
+                                    end                            -- (fix33) into the fort's inside: a courtyard)
                                     if plan then
                                         local rank = plan.tiles * 1000000 + (x - sx) ^ 2 + (y - sy) ^ 2
                                         if not best_rank or rank < best_rank then
