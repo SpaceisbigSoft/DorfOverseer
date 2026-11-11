@@ -302,7 +302,7 @@ def _():
 
 # --- 11. the ghosts' slab or coffin that can't be made ----------------------------------------------
 
-@test("11 ghosts: a slab or coffin that can't be made is said in Needs you, with why")
+@test("11 ghosts: a slab or coffin that can't be made is said, with why (0.105.35: a note; the AI builds the mason's)")
 def _():
     s = fort()
     s["dead"] = {"ghosts": 3, "ghost_names": ["A"], "free_tombs": 2, "unburied": 0}
@@ -311,7 +311,7 @@ def _():
     s["tools"] = dict(s.get("tools") or {}, autoslab=True)
     s["stone_use"] = {"usable": 0, "economic": {}}
     notes = plan(copy.deepcopy(s), Memory())[1]
-    you = [n for n in notes if n.startswith("[you] ") and "ghost" in n and "can't be made" in n]
+    you = [n for n in notes if not n.startswith("[you] ") and "ghost" in n and "can't be made" in n]
     assert you and "stone" in you[0], [n for n in notes if "ghost" in n]
     # stone enough, but the game refused the slabs
     s["stone_use"] = {"usable": 30, "economic": {}}
@@ -319,15 +319,17 @@ def _():
     m.refusals = {'slabs:{"recipe": "stone_slab", "type": "work_order"}': {
         "n": 2, "until": abs_tick(s) + 3 * TPD, "at": abs_tick(s), "why": "no mason may use the stone"}}
     notes = plan(copy.deepcopy(s), m)[1]
-    you = [n for n in notes if n.startswith("[you] ") and "can't be made" in n]
+    you = [n for n in notes if not n.startswith("[you] ") and "can't be made" in n]
     assert you and "refused" in you[0] and "no mason may use" in you[0], you
     # no mason's workshop
     s2 = copy.deepcopy(s)
     for k in list(s2["buildings"]["workshops"]):
         if k.startswith("Mason"):
             del s2["buildings"]["workshops"][k]
-    notes = plan(s2, Memory())[1]
-    assert any(n.startswith("[you] ") and "no mason's workshop" in n for n in notes), \
+    props, notes = plan(s2, Memory())[:2]
+    assert any(p.rule == "ghost_masons" and p.action.get("shops") == ["Masons"] for p in props), \
+        [p.action for p in props]
+    assert any(not n.startswith("[you] ") and "no mason's workshop" in n for n in notes), \
         [n for n in notes if "ghost" in n]
     # a coffin a tomb level waits for, with no stone and no wood
     s3 = copy.deepcopy(s)
@@ -337,7 +339,7 @@ def _():
     s3["projects"] = {"max_open": 2, "open": [{"id": 4, "kind": "tombs", "phase": "furnish",
                                                "furnish": {"waiting": {"Coffin": 4}}}]}
     notes = plan(s3, Memory())[1]
-    assert any(n.startswith("[you] ") and "coffins" in n and "no stone or wood" in n for n in notes), \
+    assert any(not n.startswith("[you] ") and "coffins" in n and "no stone or wood" in n for n in notes), \
         [n for n in notes if "ghost" in n]
     # nothing in the way: no such note
     ok = copy.deepcopy(s)

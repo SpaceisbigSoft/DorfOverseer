@@ -20,6 +20,14 @@ from planner_moods import *  # noqa: F401,F403  (13c: split out by theme)
 __all__ = ["_people_rules", "_comfort_rules", "stress_causes", "THOUGHT_WORDS", "_doctor_patient_rule", "_hospital_burrow_rule", "_calm_burrow_rule", "MOOD_WORKSHOPS", "PETITION_KINDS", "petition_orders_wanted", "_petition_rules", "_citizenship_notes", "_residency_rule", "residency_stance", "_location_access_rule", "note_heists", "heist_lockout", "heist_lockout_days", "visitor_shut", "location_stale", "note_locations", "mayor_meetings", "HEISTS_KEEP", "_jail_size_rule", "_convict_rule", "_break_fights_rule", "_sync_offices_rule", "patient_waits", "_health_rules", "TANTRUM_KEEP", "note_tantrums", "_noble_rooms_rule", "outsider_orders", "NEED_ADVICE", "JEWEL_RECIPES", "_recreation_rule", "_stress_care", "_needs_notes", "_location_supply_rules", "POST_LABORS", "STAFF_POSTS", "STAFF_MAX", "_traction_rule", "_wish_words", "_wish_met", "wish_key", "petition_lean", "_location_petition_rules", "_meeting_notes", "_grandeur_rule", "_location_value_rule", "_staff_rule", "_quick_location_rule", "_needs_rules", "_mood_rules", "mood_item_text", "_mood_materials", "_dead_notes", "AI_OFFICES", "_society_notes", "_booze_variety_rule", "drink_known_short_s", "_mood_make", "_mood_slaughter", "MOOD_CONSUMERS", "MOOD_TRADE_KEYS", "mood_trade_wants", "ghost_work_blocked"]
 
 
+# (0.105.35) nothing waits for the player: the rules that took over what the
+# Needs you asked (a mason for the ghosts' slabs, water for the bedridden)
+for _k, _theme in (("ghost_masons", "a mason's for the ghosts' slabs"), ("ghost_mason", "a mason for the ghosts"),
+                   ("care_feed", "water for the bedridden")):
+    PLANNER_CONFIG.setdefault(f"{_k}_cooldown_ticks", 7 * TICKS_PER_DAY)
+    AGENDA_THEMES.setdefault(_k, _theme)
+
+
 def _convict_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> None:
     """(0.104.131, 12i) DF passes a sentence only once a case is convicted on
     its Justice screen, and nobody did: Teacheroar held 1,623 crimes, 399
@@ -42,8 +50,9 @@ def _convict_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> N
     # when the jail can hold every sentence (cfg convict_on)
     if not cfg["convict_on"]:
         if n >= cfg["jail_convicts_wait"]:
+            # (0.105.35) the AI's own decision, said as one (it was handed to the player)
             notes.append(f"{n} solved case(s) wait for a trial: the AI convicts no one (DF's beatings killed "
-                         "patients); yours to judge on the Justice screen")
+                         "patients), so they wait unjudged")
         return
     sentenced = int(crimes["sentenced_all"] if isinstance(crimes.get("sentenced_all"), int)
                     else _d(crimes.get("flags")).get("sentenced") or 0)
@@ -339,9 +348,9 @@ def _needs_notes(s: dict, cfg: dict, notes: list, proposals: list | None = None,
     want = [f"a temple to {g}" for g in _l(pet.get("temples"))] + [f"a {p} guildhall" for p in _l(pet.get("guildhalls"))]
     # (0.89) the AI builds them itself unless the Rules switch is off
     if want and not player_rules(s).get("answer_locations", True):
-        ask_player(notes, f"the fort agreed to petitions it hasn't kept: {', '.join(want[:4])}. Make a meeting-area "
-                          "zone a location of that kind and choose the god or profession in the location screen "
-                          "(the Rules switch for building them is off)")
+        # (0.105.35) the player's own switch: said, not handed back to them
+        notes.append(f"the fort agreed to petitions it hasn't kept: {', '.join(want[:4])}; the AI doesn't build "
+                     "them while the Rules switch for building them is off")
     worst = [x for x in _l(nd.get("stressed")) if isinstance(x, dict)]
     miserable = [x for x in worst if x.get("stress") == "miserable"]
     _stress_care(s, cfg, worst, proposals, memory)
@@ -353,9 +362,13 @@ def _needs_notes(s: dict, cfg: dict, notes: list, proposals: list | None = None,
     n_mis = max(len(miserable), stress["miserable"] if isinstance(stress.get("miserable"), int) else 0)
     n_worst = max(len(worst), n_mis + (stress["very_unhappy"] if isinstance(stress.get("very_unhappy"), int) else 0))
     if miserable:
-        ask_player(notes, f"{n_mis} dwarf(s) are miserable and may throw tantrums (the worst: "
-                   + "; ".join(f"{x.get('name')} (missing {', '.join(x.get('unmet') or []) or '?'})"
-                               for x in miserable[:3]) + ")")
+        # (0.105.35) a note of what the AI does (stress care, time off, the
+        # calm burrow for a tantrum), not a Needs you
+        notes.append(f"{n_mis} dwarf(s) are miserable and may throw tantrums (the worst: "
+                     + "; ".join(f"{x.get('name')} (missing {', '.join(x.get('unmet') or []) or '?'})"
+                                 for x in miserable[:3])
+                     + "): the AI gives them what they miss where it can, time off in the recreation burrow, "
+                       "and keeps a tantrum away from the others")
     elif worst:
         notes.append(f"{n_worst} dwarf(s) very unhappy: "
                      + "; ".join(f"{x.get('name')} (missing {', '.join(x.get('unmet') or []) or '?'})"
@@ -848,9 +861,16 @@ def _dead_notes(s: dict, notes: list, proposals: list | None = None, rules_: dic
         who = ", ".join(_l(d.get("ghost_names"))[:3])
         who = f" ({who})" if who else ""
         autoslab = _d(s.get("tools")).get("autoslab")
-        if autoslab is None or not (rules_ or {}).get("engrave_slabs", True):
-            ask_player(notes, f"{d['ghosts']} ghost(s) haunt the fort{who}: bury the body in a coffin, or "
-                              "engrave a memorial slab for them at a craftsdwarf's workshop")
+        if not (rules_ or {}).get("engrave_slabs", True):
+            # (0.105.35) the player's own switch: said, not handed back
+            notes.append(f"{d['ghosts']} ghost(s) haunt the fort{who}: the AI buries the bodies it can and "
+                         "engraves no memorial slabs while the Rules switch for them is off")
+        elif autoslab is None:
+            # DF engraves a slab only for a named dead dwarf, a job no work order
+            # makes; DFHack's autoslab makes it, and this DFHack has none
+            ask_player(notes, f"{d['ghosts']} ghost(s) haunt the fort{who}: the AI can't engrave their memorial "
+                              "slabs (DFHack's autoslab, which makes that job, isn't to be had here); meanwhile it "
+                              "buries the bodies it can in the tombs")
         else:
             # DFHack's autoslab engraves the slabs; it needs blank ones in stock
             slabs = _d(s.get("supplies")).get("slabs")
@@ -898,7 +918,20 @@ def _dead_notes(s: dict, notes: list, proposals: list | None = None, rules_: dic
         ai_slabs = _d(s.get("tools")).get("autoslab") is not None and (rules_ or {}).get("engrave_slabs", True)
         blocked = ghost_work_blocked(s, memory, slabs=ai_slabs)
         if blocked:
-            ask_player(notes, "; ".join(blocked))
+            # (0.105.35) what the AI can mend, it does (a mason's workshop, the
+            # mason labour); stone comes from the quarry rule: a note, no Needs you
+            text = "; ".join(blocked)
+            open_ = [p for p in _l(_d(s.get("projects")).get("open")) if isinstance(p, dict)]
+            if proposals is not None and "no mason's workshop" in text and not _workshops_busy(open_):
+                proposals.append(Proposal("ghost_masons", {"type": "start_project", "kind": "workshops",
+                                                           "shops": ["Masons"]},
+                                          f"{d['ghosts']} ghost(s) wait for slabs or coffins and the fort has no "
+                                          "mason's workshop: build one", 3))
+            if proposals is not None and "mason labour" in text:
+                proposals.append(Proposal("ghost_mason", {"type": "assign_labor", "job": "MASON", "count": 1},
+                                          f"{d['ghosts']} ghost(s) wait for slabs or coffins and nobody outside "
+                                          "the squads has the mason labour: the best at it given it", 3))
+            notes.append(text + " (the AI builds what is missing; the quarry rule brings stone)")
     # (0.104.15) why the unburied wait (Enxah: 104 bodies, 7 free tombs, a season)
     why = _d(d.get("why"))
     # (0.104.17) the free tombs turn citizens away (automatic burial off):
@@ -924,10 +957,13 @@ def _dead_notes(s: dict, notes: list, proposals: list | None = None, rules_: dic
         if why.get("unreachable"):
             notes.append(f"{why['unreachable']} of the unburied dead lie where the dwarves can't walk"
                          + (f" ({why.get('outside')} outside)" if why.get("outside") else ""))
+    # (0.105.35) the tombs rule digs a tomb level with its coffins (planner_building): a note
     if d.get("unburied") and not d.get("free_tombs"):
-        ask_player(notes, f"{d['unburied']} citizen bodies wait for burial and there is no free tomb")
+        notes.append(f"{d['unburied']} citizen bodies wait for burial and there is no free tomb: the AI digs a "
+                     "tomb level for them")
     if d.get("loose_coffins") and not d.get("free_tombs"):
-        ask_player(notes, f"{d['loose_coffins']} coffins aren't in a tomb zone, so nobody is buried in them")
+        notes.append(f"{d['loose_coffins']} coffins aren't in a tomb zone, so nobody is buried in them: the AI's "
+                     "next tomb level places them")
 
 
 # Offices the AI fills itself (lua/ai-nobles.lua), most needed first: from 20
@@ -962,17 +998,30 @@ def _society_notes(s: dict, traits: dict, citizens: int, cfg: dict, notes: list,
         raw = [v for v in raw if v not in AI_OFFICES]
     vacant = [names.get(v, v.lower()) for v in raw]
     if vacant:
-        ask_player(notes, "nobody holds these offices: " + ", ".join(vacant)
-                   + " (appoint someone in the nobles screen; "
-                   + ("the AI appoints only the manager, bookkeeper, broker, chief medical dwarf, sheriff and captain of the guard)"
-                      if appoint else "the AI's appointing is switched off in the Rules tab)"))
+        # (0.105.35) a note: the player's switch (or no proposals this cycle), not a task for them
+        notes.append("nobody holds these offices: " + ", ".join(vacant)
+                     + (" (the AI appoints only the manager, bookkeeper, broker, chief medical dwarf, sheriff and "
+                        "captain of the guard)" if appoint
+                        else " (the AI's appointing is switched off on the Rules tab)"
+                        if not player_rules(s)["appoint_nobles"] else ""))
     if so.get("starving") or so.get("parched"):
         who = ", ".join(_l(so.get("hungry_names"))[:3])
-        ask_player(notes, f"{so.get('starving', 0)} dwarves are starving and {so.get('parched', 0)} parched"
-                   + (f" ({who})" if who else "") + ": check they can reach food, drink and water")
+        # (0.105.35) what the AI does (no longer a check for the player): a dwarf in
+        # bed drinks only what one with the labour brings; the AI's burrows
+        # let out the thirsty and the hungry at each report
+        if so.get("parched") and proposals is not None:
+            proposals.append(Proposal("care_feed", {"type": "assign_labor", "job": "FEED_WATER_CIVILIANS",
+                                                    "count": 2},
+                                      f"{so.get('parched')} dwarves are parched: two more given the labour "
+                                      "that brings food and water to the bedridden", 2))
+        notes.append(f"{so.get('starving', 0)} dwarves are starving and {so.get('parched', 0)} parched"
+                     + (f" ({who})" if who else "") + ": the AI's food and drink rules keep the stocks up and "
+                       "its burrows let the thirsty out"
+                     + ("; two more dwarves bring water to the bedridden" if so.get("parched") else ""))
     if so.get("grazers_unpastured") and not player_rules(s)["pasture_animals"]:
-        ask_player(notes, f"{so['grazers_unpastured']} grazing animals have no pasture and will starve: "
-                   "assign them to a pasture zone (the AI's pasture switch is off in the Rules tab)")
+        # (0.105.35) the player's own switch: said, not handed back
+        notes.append(f"{so['grazers_unpastured']} grazing animals have no pasture and will starve: the AI "
+                     "leaves pastures alone while its pasture switch is off on the Rules tab")
 
 
 # --- (0.104.168) complaints nobody heard; vermin ---------------------------------

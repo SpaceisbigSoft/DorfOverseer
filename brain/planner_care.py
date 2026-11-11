@@ -18,11 +18,18 @@ monarch-appointed ones left to DF.
 from __future__ import annotations
 
 from digest import _d, _l
-from planner_core import Proposal, TICKS_PER_DAY, abs_tick, ask_player, care_waiting, player_rules, refusal_key
+from planner_core import (AGENDA_THEMES, PLANNER_CONFIG, Proposal, TICKS_PER_DAY, abs_tick, care_waiting,
+                          player_rules, refusal_key)
 
 __all__ = ["_infection_rule", "_doctor_post_rule", "_offices_refill_rule", "MILITARY_OFFICES", "_traction_rest_rule"]
 
 MILITARY_OFFICES = ("MILITIA_COMMANDER", "MILITIA_CAPTAIN")
+
+# (0.105.35) nothing waits for the player: the labours the infected wait on
+# (cleaning, diagnosis) given by the AI (assign_labor), a week apart
+for _k in ("care_clean", "care_diagnose"):
+    PLANNER_CONFIG.setdefault(f"{_k}_cooldown_ticks", 7 * TICKS_PER_DAY)
+    AGENDA_THEMES.setdefault(_k, "care for the infected")
 
 
 def _infection_rule(s: dict, cfg: dict, proposals: list, notes: list) -> None:
@@ -43,8 +50,16 @@ def _infection_rule(s: dict, cfg: dict, proposals: list, notes: list) -> None:
         text += "; worst: " + ", ".join(f"{w.get('name') or w.get('id')} ({w.get('load')})" for w in worst[:3])
     notes.append(text)
     if inf.get("cleaners") == 0:
-        ask_player(notes, f"{n} dwarves have infected wounds and no civilian has the cleaning labour: patients' "
-                          "wounds are cleaned (with soap and water) by dwarves with that labour")
+        # (0.105.35) given by the AI (was a Needs you): the work detail's own
+        # "nobody does this" is left alone by the bridge
+        if proposals is not None:
+            proposals.append(Proposal("care_clean", {"type": "assign_labor", "job": "CLEAN", "count": 2},
+                                      f"{n} dwarves have infected wounds and no civilian has the cleaning labour "
+                                      "(patients' wounds are cleaned with soap and water by it): two dwarves "
+                                      "given it", 3))
+        else:
+            notes.append(f"{n} dwarves have infected wounds and no civilian has the cleaning labour: the AI "
+                         "gives it to two")
     if proposals is None or not untreated:
         return
     # (review) the give-up: of those put to bed lately, none got a treatment
@@ -59,8 +74,11 @@ def _infection_rule(s: dict, cfg: dict, proposals: list, notes: list) -> None:
     if not inf.get("hospital_zones"):
         return                                 # the hospital rules build one
     if inf.get("diagnosers") == 0:
-        ask_player(notes, f"{untreated} infected dwarves wait and nobody outside the military can diagnose "
-                          "(the hospital's diagnostician or doctor posts)")
+        # (0.105.35) the labour given by the AI (was a Needs you); the staffing
+        # rule seats a diagnostician or doctor at the hospital's posts
+        proposals.append(Proposal("care_diagnose", {"type": "assign_labor", "job": "DIAGNOSE", "count": 1},
+                                  f"{untreated} infected dwarves wait and nobody outside the military can "
+                                  "diagnose: the best civilian at it given the labour", 3))
         return
     free = int(inf.get("free_beds") or 0)
     idle = int(inf.get("idle_untreated") or 0)
