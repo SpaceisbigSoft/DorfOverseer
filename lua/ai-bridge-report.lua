@@ -99,6 +99,11 @@ function get_dwarves(include_units)
     local summary = {
         total = 0, adults = 0, children = 0, legendary = 0,
         idle_adults = 0, in_squads = 0, needs_medical_care = 0,
+        -- (0.105.33) idle_adults split: in a social activity (praying, the
+        -- tavern, a performance, reading: DF's u.social_activities, not a
+        -- job) and truly free (no job, no activity). in_activity + idle_free
+        -- == idle_adults; soldiers are in neither (they are never idle here)
+        in_activity = 0, idle_free = 0,
         stress = {},
         professions = {},
     }
@@ -122,6 +127,12 @@ function get_dwarves(include_units)
             summary.adults = summary.adults + 1
             if not job and not in_squad then
                 summary.idle_adults = summary.idle_adults + 1
+                local oka, busy = pcall(function() return #u.social_activities > 0 end)
+                if oka and busy then
+                    summary.in_activity = summary.in_activity + 1
+                else
+                    summary.idle_free = summary.idle_free + 1
+                end
             end
         end
         if in_squad then summary.in_squads = summary.in_squads + 1 end
@@ -489,6 +500,14 @@ function stock_walk(list_name)
     return w
 end
 
+-- Is stone `idx` "economic" (plotinfo.economic_stone holds 0/1 numbers, and
+-- 0 is truthy in Lua, so the value itself must be checked)?  0.105.33: the
+-- stone list tested only `economic[idx]` and so was always empty.
+local function stone_is_economic(economic, idx)
+    return idx < #economic and economic[idx] ~= nil and economic[idx] ~= 0
+        and economic[idx] ~= false
+end
+
 -- Stone in stock, for the culture's material picker: the commonest stone
 -- types among loose boulders, with their colour (0-1 RGB) and base value.
 function get_stone_types()
@@ -500,7 +519,7 @@ function get_stone_types()
         local mi = dfhack.matinfo.decode(0, idx)
         -- ores and other "economic" stone are kept for their real use
         if mi and mi.material and mi.material.flags.IS_STONE
-                and not (idx < #economic and economic[idx]) then
+                and not stone_is_economic(economic, idx) then
             local ci = mi.material.state_color.Solid
             local c = (ci >= 0 and ci < #colors) and colors[ci] or nil
             table.insert(out, {
@@ -531,7 +550,7 @@ function get_stone_use()
     for idx, n in pairs(counts) do
         local inorg = df.global.world.raws.inorganics.all[idx] or df.global.world.raws.inorganics[idx]
         if inorg then
-            local econ = idx < #economic and economic[idx] and economic[idx] ~= 0
+            local econ = stone_is_economic(economic, idx)
             local fuel = FUEL_STONES[inorg.id] or false
             if not econ and fuel then
                 out.fuel_free[inorg.id] = n           -- coal the masons may use: should be coke
@@ -1048,6 +1067,41 @@ GOOD_MEAL_VALUE = 20
 -- Supplies that stall a fort without anyone noticing: empty containers
 -- (brewing and cooking stop without them) and what a hospital and wells use.
 -- Items already in a job don't count as free.
+-- (0.105.33) A test: is this item kept in a chest (or other container
+-- building) inside a hospital's zone? The hospital zones are found once, each
+-- container's answer kept for the call.
+function hospital_store_test()
+    local zones = {}
+    pcall(function()
+        for _, b in ipairs(dfhack.world.getCurrentSite().buildings) do
+            pcall(function()
+                if df.abstract_building_type[b:getType()] == 'HOSPITAL' then
+                    for _, bid in ipairs(b:getContents().building_ids) do zones[bid] = true end
+                end
+            end)
+        end
+    end)
+    if next(zones) == nil then return function() return false end end
+    local seen = {}
+    return function(it)
+        local ok, r = pcall(function()
+            local c = dfhack.items.getContainer(it)
+            if not c then return false end
+            if seen[c.id] ~= nil then return seen[c.id] end
+            local ans = false
+            local bld = dfhack.items.getHolderBuilding(c)
+            if bld then
+                for _, z in ipairs(dfhack.buildings.findCivzonesAt(xyz2pos(bld.centerx, bld.centery, bld.z)) or {}) do
+                    if zones[z.id] then ans = true break end
+                end
+            end
+            seen[c.id] = ans
+            return ans
+        end)
+        return ok and r == true
+    end
+end
+
 function get_supplies()
     local out = {empty_barrels = 0, empty_pots = 0, empty_bags = 0, buckets = 0, slabs = 0, fuel = 0, wheelbarrows = 0,
                  splints = 0, crutches = 0, soap = 0, ash = 0, lye = 0, tallow = 0, fat = 0, errors = {}}
@@ -1424,7 +1478,14 @@ function get_supplies()
     else
         out.errors.BOULDER = tostring(census):sub(1, 120)
     end
+    -- (0.105.33) the hospital's stock (thread and cloth kept in its chests
+    -- for sutures and dressings) is not the fort's: counted apart, so a mood
+    -- or a reserve doesn't read it as weaving stock (C's yarn reserve
+    -- re-ordered six times from it; F's silk/yarn looked met by it)
+    out.hospital = {thread = 0, cloth = 0}
+    local in_hospital = hospital_store_test()
     each('CLOTH', function(it)
+        if in_hospital(it) then out.hospital.cloth = out.hospital.cloth + it:getStackSize() return end
         local f = mat_flags(it)
         local k = f and (f.SILK and 'silk' or f.YARN and 'yarn' or f.THREAD_PLANT and 'plant') or nil
         if k then out.cloth_kinds[k] = out.cloth_kinds[k] + it:getStackSize() end
@@ -1433,6 +1494,7 @@ function get_supplies()
     -- to silk or yarn thread at hand (webs collected, wool spun)
     out.thread_kinds = {plant = 0, silk = 0, yarn = 0}
     each('THREAD', function(it)
+        if in_hospital(it) then out.hospital.thread = out.hospital.thread + it:getStackSize() return end
         local f = mat_flags(it)
         local k = f and (f.SILK and 'silk' or f.YARN and 'yarn' or f.THREAD_PLANT and 'plant') or nil
         if k then out.thread_kinds[k] = out.thread_kinds[k] + it:getStackSize() end
@@ -3287,6 +3349,9 @@ function start_watching()
             WATER_PLAN = nil           -- (0.104.81, 13c) a half-done cistern plan belongs to the fort unloaded
             DEATHS_TOLD = {}
             JUNCTIONS = {}
+            -- (0.105.33) the fort's cached sections and its "has stairs" go with it
+            SECTION_CACHE = {}
+            FOUNDED_SITE, FOUNDED_NEAR = nil, nil
         end
     end
     -- Stamped with the bridge version, so an updated script re-registers
