@@ -14,8 +14,9 @@ __all__ = ["_trade_rules", "PRECIOUS_METALS", "precious_metal", "trade_wants", "
 def _trade_rules(s: dict, cfg: dict, citizens: int, proposals: list, notes: list,
                  traits: dict | None = None, memory=None) -> None:
     """Caravans: the fort's crafts taken to the depot while one is coming or
-    there (the trade itself is yours: DFHack can't barter); crafts made in
-    quiet times so there is something to sell."""
+    there, the broker called, the trade screen opened and the deal made by
+    the AI (0.105.35: a Needs you only when it can't open the screen);
+    crafts made in quiet times so there is something to sell."""
     tr = _d(s.get("trade"))
     if not tr.get("depot"):
         return
@@ -105,11 +106,17 @@ def _trade_rules(s: dict, cfg: dict, citizens: int, proposals: list, notes: list
                                   "the trade screen opened while the merchants were still unloading (time stands "
                                   "still while it's open): close it and open it again once they're done", 2))
     elif here and trader.get("at_depot") and not trader.get("can_open"):
+        # (0.105.35) kept a Needs you: DFHack can't open the trade screen, the
+        # AI clicks the depot's Trade button, and only the player can show it
+        # where that button is (once). What the AI does meanwhile is said.
         ask_player(notes, f"a caravan from {cs[0].get('civ')} is at the trade depot "
                           f"and {'the broker' if not trader.get('anyone') else 'a trader'} is there "
-                          f"({tr.get('at_depot') or 0} of the fort's goods there): open the trade screen; "
-                          "the AI then ticks a deal and presses Trade. To let the AI open it too, show it the "
-                          "depot's Trade button once: python brain\\probe_trade.py --here-depot")
+                          f"({tr.get('at_depot') or 0} of the fort's goods there), but the AI can't open the "
+                          "trade screen: DFHack has no way to, and it hasn't been shown where the depot's Trade "
+                          "button is. Meanwhile the AI keeps the goods at the depot and takes them back out when "
+                          "the caravan leaves. Once the screen is open (by you), the AI ticks a deal and presses "
+                          "Trade; to let it open the screen itself, show it the button once: "
+                          "python brain\\probe_trade.py --here-depot")
     dw = _d(s.get("dwarves"))
     idle = (dw.get("idle_adults") or 0) / max(1, dw.get("adults") or 1)
     # (0.105.13) a trading fort (Trade 50+) makes goods to sell as its trade,

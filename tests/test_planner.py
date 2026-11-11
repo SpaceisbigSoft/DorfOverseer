@@ -944,7 +944,8 @@ def _():
                                      "x": 60, "y": 45, "elevation": 79}
     notes = []
     _deep_depot_watch(s3, notes)
-    assert len(notes) == 1 and notes[0].startswith(NEEDS_YOU) and "can't reach" in notes[0], notes
+    assert len(notes) == 1 and not notes[0].startswith(NEEDS_YOU) and "can't reach" in notes[0] \
+        and "pack animals" in notes[0], notes                             # (0.105.35) a note of what goes on
     for ok in (True, None):
         s3["buildings"]["deep_depot"]["wagon_access"] = ok
         notes = []
@@ -2297,7 +2298,8 @@ def _():
     s["supplies"]["shearable"] = 0                                    # nothing to shear: the old Needs you
     props, notes = plan(s, Memory())
     assert not any(p.action.get("recipe") == "shear_creature" for p in props)
-    assert any(n.startswith("[you] ") and "no animal to shear" in n for n in notes), notes
+    assert any("no animal to shear" in n and "the AI buys them" in n for n in notes), notes      # (0.105.35) a note
+    assert not any(n.startswith("[you] ") and "no animal to shear" in n for n in notes), notes
     from planner import wool_route
     s["supplies"]["shearable"] = 2
     assert wool_route(s)
@@ -5557,7 +5559,9 @@ def _():
     s2["settings"]["appoint_nobles"] = False                                    # switched off: asks you
     _, notes2 = plan(s2, Memory())
     assert any("broker (trading), chief medical dwarf" in n for n in notes2), notes2
-    assert "6 grazing animals" in text and "farm" not in text, text
+    # (0.105.35) no grass figures: the AI makes a pasture by a guess, no Needs you
+    assert "grazing" not in text and "farm" not in text, text
+    assert by_rule(props, "new_pasture"), rules(props)
     assert by_rule(props, "farms"), rules(props)
     s["society"]["vacant"] = ["SHERIFF"]                  # a captain of the guard holds the job
     _, notes = plan(s, Memory())
@@ -5590,7 +5594,7 @@ def _():
     assert not by_rule(plan(geared(), Memory())[0], "smelting")            # plenty of bars
 
 
-@test("pastures (older bridge, no grass figures): into an existing pasture; none -> needs you, saying how")
+@test("pastures (older bridge, no grass figures): into an existing pasture; none -> the AI makes one by a guess (0.105.35)")
 def _():
     s = fort()
     s["society"] = {"vacant": [], "grazers_unpastured": 3, "pastures": 2}
@@ -5599,7 +5603,10 @@ def _():
     assert pa and pa[0].action == {"type": "pasture", "count": 3} and not any("grazing" in n for n in notes)
     s["society"]["pastures"] = 0
     p, notes = plan(s, Memory())
-    assert not by_rule(p, "pasture") and any("make a pasture zone" in n for n in notes), notes
+    np_ = by_rule(p, "new_pasture")
+    assert not by_rule(p, "pasture") and np_ and np_[0].action == {"type": "make_pasture", "tiles": 75} \
+        and "a guess" in np_[0].reason, (np_, notes)                      # 3 x 20 x 1.25
+    assert not any(n.startswith("[you]") for n in notes if "grazing" in n), notes
 
 
 @test("mandates: socks in cloth, low boots in leather, high boots in steel at a forge")
@@ -5947,14 +5954,15 @@ def _():
     assert np_ and not by_rule(p, "pasture") and "no pasture has room" in np_[0].reason, rules(p)
 
 
-@test("pastures: nowhere to make one -> Needs you with the reason; waits 3 days; switch off -> yours")
+@test("pastures: nowhere to make one -> a note with the reason, tried again (0.105.35); waits 3 days; switch off -> yours")
 def _():
     s, m = herd(), Memory()
     p = by_rule(plan(s, m)[0], "new_pasture")[0]
     record([(p, {"ok": False, "error": "no living grass near the fort's surface entrances"})], s, m)
     props, notes = plan(s, m)
-    assert any(n.startswith("[you] 3 grazing animals have no pasture") and "no living grass" in n
+    assert any(n.startswith("3 grazing animals have no pasture") and "no living grass" in n and "tries again" in n
                for n in notes), notes
+    assert not any(n.startswith("[you]") and "grazing" in n for n in notes), notes
     allowed, _ = select(props, s, m)
     assert not by_rule(allowed, "new_pasture"), "asked again straight away"
     record([(p, {"ok": True, "tiles": 75})], s, m)

@@ -15,6 +15,7 @@ __all__ = ["LABOR_MODES_FIXED", "trees_this_year", "_free_time_rule", "_labor_ru
 
 
 LABOR_MODES_FIXED = ("EverybodyDoesThis", "NobodyDoesThis")
+PICK_METALS = ("COPPER", "BRONZE", "IRON", "STEEL")    # (0.105.35) a pick's metal, the soldiers' steel last
 
 
 def trees_this_year(s: dict, memory) -> tuple[int, int | None]:
@@ -97,8 +98,24 @@ def _labor_rules(s: dict, citizens: int, cfg: dict, proposals: list, notes: list
     if dig and (lb.get("miners") or 0) == 0 and (lb.get("picks") or 0) == 0:
         why = (f"{lb['soldier_picks']} pick(s) are in soldiers' hands (a uniform with \"any weapon\" takes them)"
                if lb.get("soldier_picks") else "the fort has no pick")
-        ask_player(notes, f"{dig} tile(s) wait to be dug and nobody can dig: {why}. Give the squad a uniform "
-                          "with a real weapon, or make a pick at a forge")
+        # (0.105.35) nothing waits for the player: the AI forges a pick itself
+        # when it has a forge and the bars; else a note of what it does meanwhile
+        bars = _d(_d(_d(s.get("military")).get("gear")).get("bars"))
+        metal = next((m for m in PICK_METALS if (bars.get(m) or 0) >= 2), None)
+        forge = _has_shop(_d(s.get("buildings")), "MetalsmithsForge")
+        if queued(s, {"metal_pick"}):
+            notes.append(f"{dig} tile(s) wait to be dug and nobody can dig: {why}; a pick is being forged")
+        elif forge and metal:
+            proposals.append(Proposal("picks", {"type": "work_order", "recipe": "metal_pick", "amount": 2,
+                                                "material": f"INORGANIC:{metal}"},
+                                      f"{dig} tile(s) wait to be dug and nobody can dig ({why}): forge 2 picks "
+                                      f"in {metal.lower()}", 2, True))
+        else:
+            notes.append(f"{dig} tile(s) wait to be dug and nobody can dig: {why}. The AI forges picks as soon as "
+                         + ("it has bars of copper, bronze, iron or steel (it buys iron from the caravans)" if forge
+                            else "it has a forge (built once ore is found) and bars")
+                         + (", and its own squads' uniforms ask for a real weapon once there are enough"
+                            if lb.get("soldier_picks") else ""))
     elif lb.get("soldier_picks"):
         notes.append(f"{lb['soldier_picks']} pick(s) are in soldiers' hands, so fewer dwarves can dig")
 

@@ -58,8 +58,10 @@ def _supply_rules(s: dict, citizens: int, cfg: dict, proposals: list, notes: lis
             recipe, what = "stone_large_pot", "rock pots"
         else:
             recipe = None
-            ask_player(notes, f"only {free} empty barrels/pots (brewing and cooking stop without them), "
-                         "and too little wood or stone to make more")
+            # (0.105.35) nothing waits for the player: what the AI does about it
+            notes.append(f"only {free} empty barrels/pots (brewing and cooking stop without them), "
+                         "and too little wood or stone to make more: the AI makes them as soon as there is "
+                         "(its woodcutters fell trees, it quarries stone and buys wood from the caravans)")
         if recipe:
             proposals.append(Proposal(
                 "containers", {"type": "work_order", "recipe": recipe, "amount": amount},
@@ -173,9 +175,12 @@ def _supply_rules(s: dict, citizens: int, cfg: dict, proposals: list, notes: lis
                     "hospital", {"type": "work_order", "recipe": r, "amount": n},
                     f"the hospital has {sup.get(k) or 0} {k}; it should keep {n + (sup.get(k) or 0)}", 2, True))
             else:
-                ask_player(notes, f"the hospital is short of {k} but there is no wood to make them")
-        # Needs you only while someone needs care; otherwise a note
-        say = (lambda t: ask_player(notes, t)) if patients else notes.append
+                notes.append(f"the hospital is short of {k} but there is no wood to make them: the AI makes them "
+                             "as soon as there is (its woodcutters fell trees, it buys wood from the caravans)")
+        # (0.105.35) nothing waits for the player: the hospital's shortages are
+        # notes of what the AI does about them (it makes, orders and buys what
+        # it can), never a Needs you
+        say = notes.append
         _soap_rule(s, cfg, proposals, notes, say, memory)
         # (0.84) the hospital's own stock against what it keeps (DF's location
         # screen: thread and cloth in 15000 and 10000 units, soap and plaster
@@ -207,7 +212,7 @@ def _supply_rules(s: dict, citizens: int, cfg: dict, proposals: list, notes: lis
             text = ("no plant here gives thread (pig tail, rope reed, hemp...) and no animal to shear: thread and "
                     "cloth come only from the caravans (the AI buys them) or from seeds of a fibre plant")
             if needing:
-                ask_player(notes, f"{needing} patient(s) wait for sutures or dressings and " + text)
+                notes.append(f"{needing} patient(s) wait for sutures or dressings and " + text)
             else:
                 notes.append(text)
         elif (thread_short and _has_shop(s["buildings"], "Farmers")
@@ -226,7 +231,8 @@ def _supply_rules(s: dict, citizens: int, cfg: dict, proposals: list, notes: lis
                 # player for 83 days while the kiln waited for bags); the rest a note
                 text_ = ("the hospital keeps less than it should: " + ", ".join(
                     f"{k} {h} of {w}" for k, (h, w) in short.items())
-                    + ("; plaster powder comes from gypsum at a kiln" if "powder" in short else ""))
+                    + ("; plaster powder comes from gypsum at a kiln" if "powder" in short else "")
+                    + ": the AI makes what it has the means for and buys the rest from the caravans")
                 making = {"splints": "wooden_splint", "crutches": "wooden_crutch", "soap": "make_soap_from_tallow",
                           "powder": "make_plaster_powder"}
                 lacking = [k for k in short
@@ -238,7 +244,8 @@ def _supply_rules(s: dict, citizens: int, cfg: dict, proposals: list, notes: lis
                 (say if lacking else notes.append)(text_)
         elif st.get("thread", 0) < 10 or st.get("cloth", 0) < 10:
             say(f"the hospital needs thread and cloth for stitches and dressings "
-                f"(thread {st.get('thread', 0)}, cloth {st.get('cloth', 0)})")
+                f"(thread {st.get('thread', 0)}, cloth {st.get('cloth', 0)}): the AI has them made from plants "
+                "where it can and buys them from the caravans")
         # (its staff: _staff_rule makes the posts and fills them, 0.85)
 
     # Water: the injured can only drink water, carried from a well. With no
@@ -509,10 +516,12 @@ def _disposal_rules(s: dict, cfg: dict, proposals: list, notes: list, memory=Non
     # without the field falls back on by_reason.unknown.
     unknown, where = _unknown_reachable(fb, reason)
     if unknown > cfg["disposal_unknown_note"] and not player_items:
-        ask_player(notes, f"{unknown} items lie forbidden {where} for no reason the game gives (not the dead's, "
-                          "not used ammo, not dumped): they may be yours, so the AI leaves them. To let the AI "
-                          "store or dispose of them too, switch on \"forbidden items of the player\" "
-                          "(disposal_player_items) in the Rules tab")
+        # (0.105.35) nothing waits for the player: a note. The Rules switch
+        # (disposal_player_items, "Yours too") is about the player's own things
+        # and stays theirs; off, the AI leaves these alone and goes on
+        notes.append(f"{unknown} items lie forbidden {where} for no reason the game gives (not the dead's, "
+                     "not used ammo, not dumped): they may be yours, so the AI leaves them where they lie and "
+                     "disposes of the rest (the Rules' \"Yours too\", disposal_player_items, is off)")
 
     # a siege: the haulers stay in (the bridge refuses too); said once a cycle
     threats = _l(_d(s.get("others_on_map")).get("threats"))
@@ -712,7 +721,8 @@ def _soap_rule(s: dict, cfg: dict, proposals: list, notes: list, say, memory=Non
     sup = _d(s.get("supplies"))
     if "ash" not in sup:                      # an older bridge: just say it
         if (sup.get("soap") or 0) == 0:
-            say("no soap for the hospital (wounds get infected): it needs lye and tallow at a soap maker's workshop")
+            say("no soap for the hospital (wounds get infected): it needs lye and tallow at a soap maker's workshop; "
+                "the AI buys soap from the caravans meanwhile")
         return
     soap = int(sup.get("soap") or 0)
     # (0.104.37) and the bars the hospital keeps (its location stock, 150 a bar):
@@ -828,6 +838,9 @@ def _soap_rule(s: dict, cfg: dict, proposals: list, notes: list, say, memory=Non
                                       f"{nxt[2]} at the same time", 3, True))
 
 
+PASTURE_TILES_GUESS = 20       # (0.105.35) grass tiles an animal needs, when the bridge doesn't say
+
+
 def _pasture_rule(s: dict, memory, traits: dict, cfg: dict, proposals: list, notes: list) -> None:
     """Grazers without a pasture: into a pasture with room for them, else a
     new pasture on grass near the fort, sized for the herd."""
@@ -845,18 +858,21 @@ def _pasture_rule(s: dict, memory, traits: dict, cfg: dict, proposals: list, not
                                   f"{waiting} grazing animal(s) without a pasture: put up to {n} where "
                                   "there's grass for them", 3))
         return
-    if need is None:
-        ask_player(notes, f"{waiting} grazing animals have no pasture and will starve: make a pasture zone "
-                   "on grass; the AI puts animals in it")
-        return
+    guessed = need is None
+    if guessed:
+        # (0.105.35) nothing waits for the player: an older bridge says nothing
+        # of the grass the herd needs, so a pasture sized by a guess per animal
+        need = waiting * PASTURE_TILES_GUESS
     if memory.pasture_failure:
-        ask_player(notes, f"{waiting} grazing animals have no pasture and will starve, and the AI couldn't "
-                   f"make one: {memory.pasture_failure}. Make a pasture zone on grass and the AI will fill it")
+        notes.append(f"{waiting} grazing animals have no pasture and will starve, and the AI couldn't "
+                     f"make one: {memory.pasture_failure}. It tries again every few days (the grass may "
+                     "grow back, or another spot may do) and puts the animals in any pasture there is")
     # room for the herd to grow with Husbandry ("large herds")
     tiles = math.ceil(need * cfg["pasture_margin"] * max(1.0, factor(traits, "husbandry")))
     tiles = max(9, min(600, tiles))
     proposals.append(Proposal("new_pasture", {"type": "make_pasture", "tiles": tiles},
-                              f"{waiting} grazing animal(s) need about {need} tiles of grass and "
+                              f"{waiting} grazing animal(s) need about {need} tiles of grass"
+                              + (" (a guess: this bridge doesn't say)" if guessed else "") + " and "
                               + ("no pasture has room" if so.get("pastures") else "there is no pasture")
                               + f": make a {tiles}-tile pasture on grass near the fort", 3))
 
@@ -1078,7 +1094,8 @@ def _picks_order(s: dict, cfg: dict, proposals: list) -> None:
     first of copper, bronze, iron or steel there are bars for (steel last:
     the soldiers want it)."""
     lb = _d(s.get("labor"))
-    if not isinstance(lb.get("picks"), int) or queued(s, {"metal_pick"}):
+    if (not isinstance(lb.get("picks"), int) or queued(s, {"metal_pick"})
+            or any(p.rule == "picks" for p in proposals)):      # (0.105.35) the labour rule's, this cycle
         return
     citizens = int(_d(s.get("dwarves")).get("total") or 0)
     # (0.104.4) and one more for every picks_per_backlog tiles waiting to be dug
@@ -1621,8 +1638,8 @@ def _deep_depot_choice(s: dict, p, notes: list):
 
 def _deep_depot_watch(s: dict, notes: list, proposals: list | None = None) -> None:
     """(0.105.23, 14.1 step 4c) Once the underground depot stands, what the
-    game says of the wagons: when it says they can't reach it, a Needs you
-    line (the AI doesn't dig on blindly). Nothing when the game doesn't show
+    game says of the wagons: when it says they can't reach it, a note
+    (the AI doesn't dig on blindly). Nothing when the game doesn't show
     it (the report's `wagon_access` is then missing).
 
     (0.105.30, deep depot) Fort E's depot read "wagons can't reach it" and the
@@ -1631,7 +1648,8 @@ def _deep_depot_watch(s: dict, notes: list, proposals: list | None = None) -> No
     names the first thing in the way (`wagon_block`); DFHack's own check is
     read too (`dfhack_wagon_access`). A tree, a boulder, a tile left undug or
     a door on the AI's own road: `deep_depot` clears it. Anything else: a
-    Needs you that names the tile."""
+    note that names the tile (0.105.35: never a Needs you; the caravans'
+    pack animals still come)."""
     dd = _d(_d(s.get("buildings")).get("deep_depot"))
     if dd.get("depot") != "built":
         return
@@ -1639,10 +1657,17 @@ def _deep_depot_watch(s: dict, notes: list, proposals: list | None = None) -> No
     acc, dh = dd.get("wagon_access"), dd.get("dfhack_wagon_access")
     if acc is True:
         return
+    # (0.105.35) nothing waits for the player: whatever the AI can't clear,
+    # the caravans still come, their pack animals walking to the depot without
+    # the wagons (DF wiki, "Their wagons have bypassed your inaccessible
+    # site"), and the AI trades with them as with any; the game looks at the
+    # wagons' way again as each caravan comes. A note, never a Needs you.
+    meanwhile = ("; meanwhile the caravans still come, with pack animals and no wagons (fewer goods), and the "
+                 "AI trades with them as usual")
     if acc is False and dh is True:
-        notes.append(NEEDS_YOU + f"the game says the caravans' wagons can't reach the underground trade depot at {at}, "
-                     "but DFHack's own wagon check finds a 3-wide way to it: open the depot's sheet in the game "
-                     "(it checks the wagons' way again)")
+        notes.append(f"the game says the caravans' wagons can't reach the underground trade depot at {at}, "
+                     "but DFHack's own wagon check finds a 3-wide way to it: the game looks at the wagons' way "
+                     "again when the next caravan comes" + meanwhile)
         return
     blk = _d(dd.get("wagon_block"))
     check = dd.get("wagon_check")
@@ -1650,8 +1675,8 @@ def _deep_depot_watch(s: dict, notes: list, proposals: list | None = None) -> No
                                f"elevation {blk.get('elevation')}" if blk else "")
     opens = _d(dd.get("opens_fort"))
     open_words = (f"; the depot's hall opens into the fort at x{opens.get('x')} y{opens.get('y')} elevation "
-                  f"{opens.get('elevation')}, so a door there may be the fort's gate: put a drawbridge on a lever "
-                  "in its place (wagons cross it lowered)") if opens else ""
+                  f"{opens.get('elevation')}, and what stands there may be the fort's gate, so the AI leaves "
+                  "it") if opens else ""
     if check == "blocked" and blk:
         fix = blk.get("fix")
         if fix and blk.get("pending"):
@@ -1665,23 +1690,24 @@ def _deep_depot_watch(s: dict, notes: list, proposals: list | None = None) -> No
                                       f"{text}: {what}", 6))
             return
         if acc is False:
-            notes.append(NEEDS_YOU + f"the game says the caravans' wagons can't reach the underground trade depot at "
-                         f"{at}; the first thing in their way, as the AI sees it: {text}. The AI can't clear that "
-                         f"itself: clear it, or build a depot on the surface{open_words}")
+            notes.append(f"the game says the caravans' wagons can't reach the underground trade depot at "
+                         f"{at}; the first thing in their way, as the AI sees it: {text}"
+                         + (f" (the AI clears it: {fix})" if fix else
+                            " (not the AI's to clear: the fort's own or the land's)")
+                         + open_words + meanwhile)
         else:
             notes.append(f"the underground trade depot at {at}: the AI's own wagon check finds {text}")
         return
     if acc is False and check == "clear":
-        notes.append(NEEDS_YOU + f"the game says the caravans' wagons can't reach the underground trade depot at {at}, "
-                     "but the AI finds nothing in their way along its road and over the surface to the map's edge: "
-                     "open the depot's sheet in the game (it checks again) and look along the road for what "
-                     "the AI can't see (caravans bring wagons only to a fort with a landholder, a baron or "
-                     f"higher, or the capital){open_words}")
+        notes.append(f"the game says the caravans' wagons can't reach the underground trade depot at {at}, "
+                     "but the AI finds nothing in their way along its road and over the surface to the map's edge "
+                     "(caravans bring wagons only to a fort with a landholder, a baron or higher, or the "
+                     f"capital){open_words}" + meanwhile)
         return
     if acc is False:
-        notes.append(NEEDS_YOU + f"the game says the caravans' wagons can't reach the underground trade depot at {at}: "
-                     "look at its road (3 tiles wide all the way from the map's edge, ramps not stairs, nothing "
-                     "built, no trees or boulders on it) or build a depot on the surface")
+        notes.append(f"the game says the caravans' wagons can't reach the underground trade depot at {at}, and "
+                     "the AI's own wagon check can't tell what is in the way (3 tiles wide all the way from the map's "
+                     "edge, ramps not stairs, nothing built, no trees or boulders)" + meanwhile)
 
 
 # workshops given a feeder stockpile first (the busiest hauling first)
@@ -1759,29 +1785,34 @@ def _smelting_rule(s: dict, memory, cfg: dict, rules_: dict, proposals: list, no
 
 def _shoes_recipe(m: dict, stocks: dict, notes: list) -> str | None:
     """Footwear for a mandate: shoes in leather (else cloth), socks in cloth,
-    low boots in leather, high boots in metal at a forge. Sandals and the
-    rest are left to you."""
+    low boots in leather, high boots in metal at a forge. (0.105.35) Short
+    of leather or cloth, or a kind the AI has no recipe for: a note of what
+    the AI does (it buys leather and cloth from the caravans and orders the
+    footwear once there is enough), never a Needs you."""
     sub = m.get("subtype")
     need = m.get("remaining") or 1
     if sub == "ITEM_SHOES_SOCKS":
         if stocks.get("cloth", 0) >= need:
             return "cloth_socks"
-        ask_player(notes, "mandate for socks: not enough cloth")
+        notes.append("mandate for socks: not enough cloth: the AI buys cloth from the caravans and makes "
+                     "them once there is")
         return None
     if sub == "ITEM_SHOES_BOOTS_LOW":
         if stocks.get("leather", 0) >= need:
             return "leather_low_boots"
-        ask_player(notes, "mandate for low boots: not enough leather")
+        notes.append("mandate for low boots: not enough leather: the AI buys leather from the caravans and "
+                     "makes them once there is")
         return None
     if sub == "ITEM_SHOES_BOOTS":
         return "metal_high_boots"
     if sub not in (None, "ITEM_SHOES_SHOES"):
-        ask_player(notes, f"mandate for {str(sub).replace('ITEM_SHOES_', '').lower()}: the AI has no "
-                          "recipe for these; make them yourself")
+        notes.append(f"mandate for {str(sub).replace('ITEM_SHOES_', '').lower()}: the AI has no recipe for "
+                     "these (dwarves don't make them), so this mandate goes unmet; the AI meets the others")
         return None
     if stocks.get("leather", 0) >= need:
         return "leather_shoes"
     if stocks.get("cloth", 0) >= need:
         return "cloth_shoes"
-    ask_player(notes, "mandate for shoes: not enough leather or cloth")
+    notes.append("mandate for shoes: not enough leather or cloth: the AI buys both from the caravans and "
+                 "makes them once there is")
     return None

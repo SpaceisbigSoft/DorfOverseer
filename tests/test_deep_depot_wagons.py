@@ -431,7 +431,7 @@ def fort(dd):
                                               "elevation": 41, "levels": 1, "road": 12}, **dd)}}
 
 
-@test("brain: a block the AI can clear is a deep_depot step; one it can't is a Needs you naming the tile")
+@test("brain: a block the AI can clear is a deep_depot step; one it can't is a note naming the tile (0.105.35: no Needs you)")
 def _():
     blk = {"x": 112, "y": 150, "elevation": 42, "what": "a tree", "fix": "fell",
            "text": "a tree at x112 y150 elevation 42, in front of the depot road's mouth"}
@@ -450,24 +450,25 @@ def _():
                     "to the map's edge (no 3-wide way past it)"}
     notes, props = [], []
     _deep_depot_watch(fort({"wagon_access": False, "wagon_check": "blocked", "wagon_block": wall}), notes, props)
-    assert props == [] and len(notes) == 1 and notes[0].startswith(NEEDS_YOU) and "x100 y150 elevation 42" in notes[0], notes
+    assert props == [] and len(notes) == 1 and not notes[0].startswith(NEEDS_YOU) \
+        and "x100 y150 elevation 42" in notes[0] and "pack animals" in notes[0], notes
     # the AI finds nothing: a Needs you that says so (and what else keeps wagons away)
     notes = []
     _deep_depot_watch(fort({"wagon_access": False, "wagon_check": "clear"}), notes, [])
-    assert notes[0].startswith(NEEDS_YOU) and "finds nothing" in notes[0] and "landholder" in notes[0], notes
+    assert not notes[0].startswith(NEEDS_YOU) and "finds nothing" in notes[0] and "landholder" in notes[0], notes
     # DFHack's own check says yes: open the depot's sheet
     notes = []
     _deep_depot_watch(fort({"wagon_access": False, "dfhack_wagon_access": True}), notes, [])
-    assert "DFHack's own wagon check" in notes[0], notes
+    assert "DFHack's own wagon check" in notes[0] and not notes[0].startswith(NEEDS_YOU), notes
     # the game says yes, or the depot isn't built: nothing, as before
     for dd in ({"wagon_access": True}, {"depot": "building", "wagon_access": False}, {"wagon_access": None}):
         notes, props = [], []
         _deep_depot_watch(fort(dd), notes, props)
         assert notes == [] and props == [], (dd, notes, props)
-    # an old call with no proposals list: a Needs you rather than nothing
+    # an old call with no proposals list: a note rather than nothing
     notes = []
     _deep_depot_watch(fort({"wagon_access": False, "wagon_check": "blocked", "wagon_block": blk}), notes)
-    assert notes[0].startswith(NEEDS_YOU) and "x112 y150" in notes[0], notes
+    assert not notes[0].startswith(NEEDS_YOU) and "x112 y150" in notes[0], notes
 
 
 @test("brain: an entrance on the depot's wagon road is gated with the wagon style (a drawbridge), never doors; others as before")
