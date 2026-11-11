@@ -534,7 +534,10 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
     def _idle_rule():
         if can_use("stocks", "orders"):
             ind = factor(traits, "industriousness")
-            idle_share = cfg["idle_share"] / ind
+            # (0.105.33 fix) the line on the stricter measure (idle_blocks_share,
+            # 0.14 for the old 0.25), still leaning with the strategist's idle_share
+            idle_share = (idle_line(s, cfg, "idle_blocks_share") * cfg["idle_share"]
+                          / PLANNER_CONFIG["idle_share"] / ind)
             # (0.105.33) the truly idle (no job, no prayer or tavern, not a
             # soldier) when the bridge counts them; else idle_adults, as before
             idle_now = _idle_share(s)
@@ -680,7 +683,7 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
             # polishing stopped for good once that count saturated
             finished_n = levels_done(s)
             # (0.105.33) Industriousness: a driven fort polishes from fewer idle hands
-            share = (cfg["polish_idle_share"] / factor(traits, "industriousness")
+            share = (idle_line(s, cfg, "polish_idle_share") / factor(traits, "industriousness")
                      / (2 if memory is not None and has_rule(memory.culture, "engrave_history") else 1))
             if idle >= share and not (memory is not None and memory.polished_upto is not None
                                                          and memory.polished_upto == finished_n):

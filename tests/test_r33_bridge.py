@@ -325,7 +325,7 @@ local env, H, unburied = ...
 H.cmds = {}
 H.dfhack.findScript = function() return '/df/hack/scripts/deteriorate.lua' end
 H.dfhack.run_command_silent = function(...) table.insert(H.cmds, table.concat({...}, ' ')); return 'Deteriorated 3 items', 0 end
-env.get_dead = function() return {unburied = unburied} end
+env.unburied_citizens = function() return unburied end   -- (0.105.33 fix: test_r33_fix_people)
 local r = env.act_prune_remains({extra = {'clothes'}})
 local d = env.act_prune_remains({dry_run = true})
 return r.ok, table.concat(H.cmds, '|'), r.corpses, d.corpses_now

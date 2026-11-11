@@ -2013,8 +2013,11 @@ function get_society()
     local okp, cap = pcall(soc.get_popcap)
     if okp and cap then out.pop_cap, out.strict_pop_cap = cap.cap, cap.strict end
     -- (0.104.78) the recreation burrow's members
-    local okr, rec = pcall(soc.recreation_status)
-    if okr and rec then out.recreation = rec end
+    -- (0.105.33 fix) txt for the released names; a failure reported (the
+    -- brain then lets everyone out), not a missing section
+    local okr, rec = pcall(soc.recreation_status, txt)
+    if okr and rec then out.recreation = rec
+    elseif not okr then out.recreation = {error = tostring(rec):sub(1, 160)} end
     -- (0.104.167) the hospital burrow: its members and tiles, the patients walking outside;
     -- (review) the members re-checked here at every report (no drink, no hospital: let out)
     local okh, hb = pcall(soc.hospital_burrow_status, txt)

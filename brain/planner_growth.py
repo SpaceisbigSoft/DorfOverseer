@@ -63,7 +63,7 @@ def good_times(s: dict, memory, traits: dict, cfg: dict) -> bool:
         return False
     if _d(s.get("others_on_map")).get("threats_that_can_reach_dwarves"):
         return False
-    idle_need = cfg["garden_idle_share"] / (2 if traits.get("grandeur", 0) >= 50 else 1)
+    idle_need = idle_line(s, cfg, "garden_idle_share") / (2 if traits.get("grandeur", 0) >= 50 else 1)
     if _idle_share(s) < idle_need:
         return False
     last = memory.last_garden_tick
@@ -89,9 +89,10 @@ def fort_strain(s: dict, cfg: dict, held: bool = False, traits: dict | None = No
     (0.105.33) Never while the fort is young: on day 17 of every fort of the
     8 Nov run there were no meals yet ("meals 0 a dwarf"), and the cap sat at
     7 through year 250, turning away the first waves. The unhappy lines lean
-    with Growth (strain_unhappy_lines)."""
-    if young_fort(s, cfg):
-        return []
+    with Growth (strain_unhappy_lines).
+    (0.105.33 fix) A young fort skips only the unhappy and meals lines: one
+    short of drink still takes no newcomers."""
+    young = young_fort(s, cfg)
     import outcomes
     m = outcomes.measure(s)
     out = []
@@ -103,11 +104,11 @@ def fort_strain(s: dict, cfg: dict, held: bool = False, traits: dict | None = No
     pop = int(_d(s.get("dwarves")).get("total") or 0)
     few = isinstance(un, (int, float)) and pop > 0 and un * pop / 100 < cfg.get("strain_unhappy_min", 3) - 0.01
     hold_at, ok_at = strain_unhappy_lines(s, cfg, traits)
-    if isinstance(un, (int, float)) and un >= (ok_at if held else hold_at) and not few:
+    if isinstance(un, (int, float)) and un >= (ok_at if held else hold_at) and not few and not young:
         out.append(f"{un:g}% unhappy")
     if isinstance(dr, (int, float)) and dr < cfg["strain_drink" + k + "_pd"]:
         out.append(f"drink {dr:g} a dwarf")
-    if isinstance(me, (int, float)) and me < cfg["strain_meals" + k + "_pd"]:
+    if isinstance(me, (int, float)) and me < cfg["strain_meals" + k + "_pd"] and not young:
         out.append(f"meals {me:g} a dwarf")
     return out
 
