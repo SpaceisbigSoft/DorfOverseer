@@ -9,7 +9,7 @@
 
 local U = reqscript('ai-util')      -- (13c) helpers shared by the modules
 local S = reqscript('ai-society')   -- find_burrow, new_burrow
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-society-burrows'] = '0.105.35'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-society-burrows'] = '0.105.36'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 -- --- (0.104.78) the recreation burrow ----------------------------------------
 --
