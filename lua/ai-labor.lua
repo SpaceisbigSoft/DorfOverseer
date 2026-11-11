@@ -256,6 +256,22 @@ end
 
 -- memo (optional, one survey's): the citizens and who holds an office, read
 -- once for all the jobs (13c: they were read again for each of the five)
+-- One citizen as a pick_workers candidate for `job` (sk: its skill id).
+local function cand_of(u, job, sk, memo)
+    local noble, busy = memo.noble[u.id], 0
+    if noble == nil then
+        noble = false
+        pcall(function() noble = #dfhack.units.getNoblePositions(u) > 0 end)
+        memo.noble[u.id] = noble
+    end
+    for _, other in ipairs(JOB_ORDER) do
+        local l = enum(df.unit_labor, JOBS[other].labor)
+        if other ~= job and l and has_labor(u, l) then busy = busy + 1 end
+    end
+    return {id = u.id, skill = skill(u, sk), other = best_other(u, sk),
+            idle = u.job.current_job == nil, noble = noble, busy = busy}
+end
+
 local function citizens(job, memo)
     local J = job_spec(job)
     local labor, sk = enum(df.unit_labor, J.labor), enum(df.job_skill, J.skill)
@@ -268,18 +284,7 @@ local function citizens(job, memo)
             if labor and has_labor(u, labor) then
                 if in_squad(u) then soldiers = soldiers + 1 else table.insert(doing, u) end
             elseif not in_squad(u) then
-                local noble, busy = memo.noble[u.id], 0
-                if noble == nil then
-                    noble = false
-                    pcall(function() noble = #dfhack.units.getNoblePositions(u) > 0 end)
-                    memo.noble[u.id] = noble
-                end
-                for _, other in ipairs(JOB_ORDER) do
-                    local l = enum(df.unit_labor, JOBS[other].labor)
-                    if other ~= job and l and has_labor(u, l) then busy = busy + 1 end
-                end
-                table.insert(cands, {id = u.id, skill = skill(u, sk), other = best_other(u, sk),
-                                     idle = u.job.current_job == nil, noble = noble, busy = busy})
+                table.insert(cands, cand_of(u, job, sk, memo))
             end
         end
     end
@@ -292,8 +297,8 @@ local function centre()
     return ok and c or nil
 end
 
--- Water to fish in near the fort: tiles of water 4/7 deep or more, not in a
--- well, within FISH_RADIUS and 6 levels of the centre; and ice there (the
+-- Water to fish in near the fort: tiles of water 4/7 deep or more (a cistern's
+-- or a well shaft's water counts too), within FISH_RADIUS and 6 levels of the centre; and ice there (the
 -- water freezes in winter).
 local function fish_water(c)
     if not c then return 0, 0 end
@@ -633,8 +638,20 @@ function narrow(job, keep, dry_run, txt)
             tostring(wd.name), tostring(mode))}
     end
     keep = math.max(1, math.min(30, keep or 5))
-    local _, cands = citizens(job)
-    local picked = pick_workers(cands, keep)
+    -- (0.105.33) An "everybody" detail has already given the labour to nearly
+    -- every civilian, so those holding it are candidates too (they were left
+    -- out, and the narrowed detail kept nobody).
+    local memo = {noble = {}}
+    local doing, cands = citizens(job, memo)
+    local sk = enum(df.job_skill, J.skill)
+    local pool = {}
+    for _, u in ipairs(doing) do table.insert(pool, cand_of(u, job, sk, memo)) end
+    for _, c in ipairs(cands) do table.insert(pool, c) end
+    local picked = pick_workers(pool, keep)
+    if #picked < keep then
+        return {ok = false, rejected = true, error = ('only %d civilians could take the %s work detail (keep %d): left as it is'):format(
+            #picked, tostring(wd.name), keep)}
+    end
     local names = {}
     for _, c in ipairs(picked) do
         local u = df.unit.find(c.id)
@@ -707,6 +724,15 @@ function trim(job, keep, dry_run, txt)
         return {ok = false, rejected = true, error = ('only %d on the %s work detail (keep %d)'):format(#all, tostring(wd.name), keep)}
     end
     local kept = pick_workers(calm, keep)
+    if #kept < keep then
+        -- (0.105.33) too few calm ones: the rest from those breaking down,
+        -- rather than nobody on the detail at all
+        local have = {}
+        for _, c in ipairs(kept) do have[c.id] = true end
+        local rest = {}
+        for _, c in ipairs(all) do if not have[c.id] then table.insert(rest, c) end end
+        for _, c in ipairs(pick_workers(rest, keep - #kept)) do table.insert(kept, c) end
+    end
     local names = {}
     for _, c in ipairs(kept) do
         local u = df.unit.find(c.id)

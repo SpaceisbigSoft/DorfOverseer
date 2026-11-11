@@ -70,6 +70,21 @@ local function bedroom_zones()
     return out
 end
 
+-- (0.105.33, L6) The zones of the fort's locations (a tavern's guest rooms,
+-- a temple's): id -> true. Never a citizen's home, never counted free (the
+-- calm burrows leave them out too).
+local function location_zone_ids()
+    local ids = {}
+    pcall(function()
+        for _, l in ipairs(dfhack.world.getCurrentSite().buildings) do
+            pcall(function()
+                for _, bid in ipairs(l:getContents().building_ids) do ids[bid] = true end
+            end)
+        end
+    end)
+    return ids
+end
+
 -- {bed = bool, statue = bool, bed_pos, items = {{v, mt, mi, it, st}}} of a
 -- bedroom zone's furniture (with `items`, the values too: the action only)
 local function furnish(z, items)
@@ -288,8 +303,9 @@ function census(units, txt)
         end
     end
     local free_beds = {}
+    local loc = location_zone_ids()
     for _, z in ipairs(bedroom_zones()) do
-        if z.assigned_unit_id == -1 then
+        if z.assigned_unit_id == -1 and not loc[z.id] then
             local f = furnish(z)
             if not f.bed then c.free_bedless = c.free_bedless + 1
             elseif f.statue then c.free_suites = c.free_suites + 1
@@ -400,8 +416,9 @@ function house(n_house, n_upgrade, dry_run, txt, units)
             if type(m) == 'table' and m.room then calm[tonumber(m.room)] = true end
         end
     end)
+    local loc = location_zone_ids()
     for _, z in ipairs(bedroom_zones()) do
-        if z.assigned_unit_id == -1 and not calm[z.id] then
+        if z.assigned_unit_id == -1 and not calm[z.id] and not loc[z.id] then
             local r = room_of(z)
             if r.bed and not r.statue then table.insert(pool, r) end
         end

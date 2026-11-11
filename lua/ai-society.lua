@@ -297,26 +297,47 @@ end
 -- Drink: the tiles where (not forbidden) drink lies, in a pile's barrel or
 -- loose; a well: one built (and, when ai-society-burrows can tell, giving
 -- water). SHELTER_DRINK_SCAN drinks looked at at most.
+-- (0.105.33) Also returns the drink units on each tile ("x,y,z" -> units),
+-- the wells as a list {x, y, z} (a well stands on its channelled hole, a tile
+-- of shape EMPTY that the inside scan never takes: they are added apart),
+-- and the food units on each tile.
 SHELTER_DRINK_SCAN = 4000
-local function drink_and_wells()
-    local out = {}
-    pcall(function()
-        local n = 0
-        for _, it in ipairs(df.global.world.items.other.DRINK) do
-            n = n + 1
-            if n > SHELTER_DRINK_SCAN then break end
-            local ok, pos = pcall(function()
-                if it.flags.forbid or it.flags.garbage_collect or it.flags.in_inventory then return nil end
-                local c = dfhack.items.getContainer and dfhack.items.getContainer(it)
-                if c and (c.flags.forbid or c.flags.in_inventory) then return nil end
-                local x, y, z = dfhack.items.getPosition(it)
-                if type(x) == 'table' then return x end
-                if x and x >= 0 then return {x = x, y = y, z = z} end
-                return nil
-            end)
-            if ok and pos then out[pos.x .. ',' .. pos.y .. ',' .. pos.z] = 'drink' end
+local function item_spots(list, out, units)
+    local n = 0
+    for _, it in ipairs(list) do
+        n = n + 1
+        if n > SHELTER_DRINK_SCAN then break end
+        local ok, pos = pcall(function()
+            if it.flags.forbid or it.flags.garbage_collect or it.flags.in_inventory or it.flags.rotten then return nil end
+            local c = dfhack.items.getContainer and dfhack.items.getContainer(it)
+            if c and (c.flags.forbid or c.flags.in_inventory) then return nil end
+            local x, y, z = dfhack.items.getPosition(it)
+            if type(x) == 'table' then return x end
+            if x and x >= 0 then return {x = x, y = y, z = z} end
+            return nil
+        end)
+        if ok and pos then
+            local k = pos.x .. ',' .. pos.y .. ',' .. pos.z
+            if out then out[k] = 'drink' end
+            local st = 1
+            pcall(function() if type(it.stack_size) == 'number' and it.stack_size > 0 then st = it.stack_size end end)
+            units[k] = (units[k] or 0) + st
         end
-    end)
+    end
+end
+
+local function drink_and_wells()
+    local out, units, wells, food = {}, {}, {}, {}
+    pcall(function() item_spots(df.global.world.items.other.DRINK, out, units) end)
+    -- food: the good food (meals among it), else the meals alone (pcall: an
+    -- id this DF lacks)
+    for _, id in ipairs({'ANY_GOOD_FOOD', 'FOOD'}) do
+        local okf, list = pcall(function() return df.global.world.items.other[id] end)
+        if okf and list then
+            pcall(item_spots, list, nil, food)
+            break
+        end
+    end
     pcall(function()
         local okb, B = pcall(reqscript, 'ai-society-burrows')
         for _, b in ipairs(df.global.world.buildings.other.WELL) do
@@ -325,14 +346,20 @@ local function drink_and_wells()
                 if okb and B and B.well_gives_water then return B.well_gives_water(b) ~= false end
                 return true
             end)
-            if not ok or good then out[b.centerx .. ',' .. b.centery .. ',' .. b.z] = 'well' end
+            if not ok or good then
+                out[b.centerx .. ',' .. b.centery .. ',' .. b.z] = 'well'
+                table.insert(wells, {x = b.centerx, y = b.centery, z = b.z})
+            end
         end
     end)
-    return out
+    return out, units, wells, food
 end
 
 SHELTER_OPEN_KEY = 'ai-overseer/shelter_open'       -- (0.105.26) the entrances open when it was made
 SHELTER_DRINK_BACK = 30                             -- drink tiles taken back at most
+SHELTER_DRINK_PER_CITIZEN = 2                       -- (0.105.33) drink units a citizen, short of a well
+SHELTER_FOOD_PER_CITIZEN = 2                        -- (0.105.33) food units a citizen
+SHELTER_FOOD_BACK = 30                              -- food tiles taken back at most
 
 local function entrance_keys(list)
     local keys = {}
@@ -405,12 +432,26 @@ function fill_shelter(b)
     info.open_entrances = #open
     pcall(function() U.site_put(SHELTER_OPEN_KEY, {keys = entrance_keys(open), scanned = scanned and true or false}) end)
     local deep, deep_n = deep_depot_tiles()                  -- (0.105.26)
-    local okw, water = pcall(drink_and_wells)
-    water = okw and water or {}
+    local okw, water, dunits, wells, food = pcall(drink_and_wells)
+    if not okw then water = nil end
+    water, dunits, wells, food = water or {}, dunits or {}, wells or {}, food or {}
     local okh, ai_box = pcall(ai_surface_boxes)
     ai_box = okh and ai_box or nil
     local drink_tiles, well_tiles, deep_out, ai_out = 0, 0, 0, 0
+    local drink_units, food_units, food_tiles = 0, 0, 0
     local n = 0
+    -- (0.105.33) each well's own tile and its 8 neighbours: "x,y,z" -> wells
+    local wkey, blocks = {}, {}
+    for _, w in ipairs(wells) do
+        w.members = {}
+        for dy = -1, 1 do
+            for dx = -1, 1 do
+                local k = (w.x + dx) .. ',' .. (w.y + dy) .. ',' .. w.z
+                wkey[k] = wkey[k] or {}
+                table.insert(wkey[k], w)
+            end
+        end
+    end
     -- the tiles left out: {block, x, y, far, kind, light, surface}
     local held = {}          -- near an open entrance
     local dark_surface = {}  -- (0.105.30) inside, not subterranean, dark: {.., near}
@@ -419,13 +460,59 @@ function fill_shelter(b)
         dfhack.burrows.setAssignedBlockTile(b, t[1], t[2], t[3], true)
         t.taken = true
         n = n + 1
-        if t[5] == 'drink' then drink_tiles = drink_tiles + 1
-        elseif t[5] == 'well' then well_tiles = well_tiles + 1 end
+        if t[5] == 'drink' then
+            drink_tiles = drink_tiles + 1
+            drink_units = drink_units + (dunits[t.k] or 1)
+        end
+        if food[t.k] then
+            food_tiles = food_tiles + 1
+            food_units = food_units + food[t.k]
+        end
+    end
+    -- (0.105.33) L6: a well stands on its channelled hole (shape EMPTY), so
+    -- the scan never takes the well's own tile, the one DF checks. A well
+    -- with a neighbour in the shelter gets its own tile too; `all` (a well
+    -- taken back) takes its neighbours as well.
+    local function take_well(w, all)
+        if w.taken then return end
+        if all then
+            for _, m in ipairs(w.members) do if not m.taken then take(m) end end
+        end
+        if not w.self_taken then
+            for _, m in ipairs(w.members) do
+                if m[1].map_pos.x + m[2] == w.x and m[1].map_pos.y + m[3] == w.y then
+                    if not m.taken then take(m) end
+                    w.self_taken = true
+                end
+            end
+        end
+        if not w.self_taken then
+            local blk = blocks[(w.x - w.x % 16) .. ',' .. (w.y - w.y % 16) .. ',' .. w.z]
+            if blk then
+                dfhack.burrows.setAssignedBlockTile(b, blk, w.x % 16, w.y % 16, true)
+                n = n + 1
+                w.self_taken = true
+            end
+        end
+        if w.self_taken then
+            w.taken = true
+            well_tiles = well_tiles + 1
+        end
+    end
+    local function wells_inside()
+        for _, w in ipairs(wells) do
+            if not w.taken then
+                for _, m in ipairs(w.members) do
+                    if m.taken then take_well(w, false); break end
+                end
+            end
+        end
     end
     for _, block in ipairs(df.global.world.map.map_blocks) do
         local z = block.map_pos.z
         if z >= lo and z <= hi then
             local bx, by = block.map_pos.x or 0, block.map_pos.y or 0
+            blocks[bx .. ',' .. by .. ',' .. z] = block
             local near_list = #open > 0 and entrances_for_block(open, bx, by, z) or nil
             for x = 0, 15 do
                 for y = 0, 15 do
@@ -452,7 +539,9 @@ function fill_shelter(b)
                             elseif #open > 0 and d.subterranean == false then
                                 far = select(2, near_entrance(open, bx + x, by + y, z))
                             end
-                            local t = {block, x, y, far or 0, water[k], d.light == true}
+                            local t = {block, x, y, far or 0, water[k] == 'drink' and 'drink' or nil, d.light == true}
+                            t.k = k
+                            for _, w in ipairs(wkey[k] or {}) do table.insert(w.members, t) end
                             if d.subterranean == false then
                                 t.surface, t.near = true, near and true or false
                                 table.insert(t[6] and sunlit or dark_surface, t)
@@ -495,12 +584,29 @@ function fill_shelter(b)
     -- farthest from the open entrances come back first (a well, and up to
     -- SHELTER_DRINK_BACK drink tiles); (0.105.30 fixes) from the margins and
     -- the dark not-subterranean tiles alike, the sunlit ones last.
+    -- (0.105.33) L6: and with too little: a mug is not drink for forty. Under
+    -- SHELTER_DRINK_PER_CITIZEN units a citizen and no well, the same.
+    wells_inside()
+    local okc0, cits0 = pcall(function() return #dfhack.units.getCitizens(true) end)
+    cits0 = okc0 and cits0 or 0
+    local want_drink = math.max(1, SHELTER_DRINK_PER_CITIZEN * cits0)
+    local want_food = math.max(1, SHELTER_FOOD_PER_CITIZEN * cits0)
     local back = 0
-    if drink_tiles + well_tiles == 0 then
+    if well_tiles == 0 and drink_units < want_drink then
         local cand = {}
         for _, list in ipairs({held, dark_surface, sunlit}) do
             for _, t in ipairs(list) do
-                if (t[5] == 'drink' or t[5] == 'well') and not t.taken then table.insert(cand, t) end
+                if t[5] == 'drink' and not t.taken then table.insert(cand, t) end
+            end
+        end
+        for _, w in ipairs(wells) do
+            if not w.taken and #w.members > 0 then
+                local far, light = nil, true
+                for _, m in ipairs(w.members) do
+                    if far == nil or m[4] < far then far = m[4] end
+                    if not m[6] then light = false end
+                end
+                table.insert(cand, {nil, nil, nil, far or 0, 'well', light, well = w})
             end
         end
         table.sort(cand, function(a, c)
@@ -511,17 +617,43 @@ function fill_shelter(b)
         for _, t in ipairs(cand) do
             -- (a sunlit one only when nothing in the dark gave drink or a well)
             if t[6] and drink_tiles + well_tiles > 0 then break end
-            if t[5] == 'drink' and drink_tiles < SHELTER_DRINK_BACK then
+            if t[5] == 'drink' and drink_tiles < SHELTER_DRINK_BACK and drink_units < want_drink then
                 take(t); back = back + 1
             elseif t[5] == 'well' and well_tiles == 0 then
-                take(t); back = back + 1
+                take_well(t.well, true)
+                if t.well.taken then back = back + 1 end
             end
-            if drink_tiles >= SHELTER_DRINK_BACK and well_tiles > 0 then break end
+            if well_tiles > 0 or drink_units >= want_drink then break end
         end
         if back > 0 then
             info.drink_back = back
             info.drink_note = ('no drink nor well away from the open entrances and the surface: %d drink and well tile%s taken back')
                 :format(back, back == 1 and '' or 's')
+        end
+    end
+    -- (0.105.33) food the same way: under SHELTER_FOOD_PER_CITIZEN units a
+    -- citizen, the left-out food tiles come back, dark and far first
+    if food_units < want_food then
+        local cand = {}
+        for _, list in ipairs({held, dark_surface, sunlit}) do
+            for _, t in ipairs(list) do
+                if food[t.k] and not t.taken then table.insert(cand, t) end
+            end
+        end
+        table.sort(cand, function(a, c)
+            if a[6] ~= c[6] then return not a[6] end
+            return a[4] > c[4]
+        end)
+        local fb = 0
+        for _, t in ipairs(cand) do
+            if t[6] and food_units > 0 then break end
+            if fb >= SHELTER_FOOD_BACK or food_units >= want_food then break end
+            take(t); fb = fb + 1
+        end
+        if fb > 0 then
+            info.food_back = fb
+            info.food_note = ('too little food away from the open entrances and the surface: %d food tile%s taken back')
+                :format(fb, fb == 1 and '' or 's')
         end
     end
     local rest = {}
@@ -563,10 +695,17 @@ function fill_shelter(b)
     end
     if surface_out > 0 or surface_back > 0 then info.surface_out = surface_out end
     if surface_back > 0 then info.surface_back = surface_back end
+    wells_inside()                -- (a well beside the tiles taken back above)
     if n < need then info.short = ('the shelter holds %d tiles (needs %d): the sunlit surface and the AI\'s hall and keep stay out'):format(n, need) end
     info.drink_tiles, info.well_tiles = drink_tiles, well_tiles
+    info.drink_units, info.food_units, info.food_tiles = drink_units, food_units, food_tiles
     if drink_tiles + well_tiles == 0 then
         info.no_water = 'the shelter holds no drink and no well'
+    elseif well_tiles == 0 and drink_units < want_drink then
+        info.drink_short = ('the shelter holds %d drink for %d citizens and no well'):format(drink_units, cits0)
+    end
+    if food_units == 0 then
+        info.no_food = 'the shelter holds no food'
     end
     return n, info
 end
@@ -609,6 +748,9 @@ function shelter_result(r, info)
     r.note = info.note
     r.drink_tiles, r.well_tiles = info.drink_tiles, info.well_tiles      -- (0.105.26)
     r.drink_back, r.drink_note, r.no_water = info.drink_back, info.drink_note, info.no_water
+    r.drink_units, r.drink_short = info.drink_units, info.drink_short                     -- (0.105.33)
+    r.food_units, r.food_tiles, r.food_back = info.food_units, info.food_tiles, info.food_back
+    r.food_note, r.no_food = info.food_note, info.no_food
     r.deep_depot_tiles = info.deep_depot_tiles
     r.surface_out, r.surface_back, r.surface_note = info.surface_out, info.surface_back, info.surface_note   -- (0.105.30)
     r.surface_mode, r.ai_hall_tiles, r.short = info.surface_mode, info.ai_hall_tiles, info.short
@@ -696,11 +838,39 @@ local function pens()
     return out
 end
 
+-- (0.105.33, L6) An animal that came with a caravan, a visitor or a
+-- diplomat (a dwarven caravan's pack animals are own-civ and tame), or one
+-- following such a unit: never pastured, never trained (DFHack's old zone
+-- tool skipped flags1.merchant too). Pinned to a pasture, it can hold up the
+-- caravan.
+function visiting_animal(u)
+    local function yes(f)
+        local ok, v = pcall(f)
+        return ok and v and true or false
+    end
+    local function outsider(x)
+        return yes(function() return x.flags1.merchant end)
+            or yes(function() return dfhack.units.isMerchant(x) end)
+            or yes(function() return dfhack.units.isVisitor(x) end)
+            or yes(function() return dfhack.units.isDiplomat(x) end)
+            or yes(function() return x.flags1.diplomat end)
+    end
+    if outsider(u) then return true end
+    local okf, lead = pcall(function()
+        local id = u.following and u.following.id
+        if id == nil or id < 0 then id = u.relationship_ids and u.relationship_ids.PetOwner end
+        if id ~= nil and id >= 0 then return df.unit.find(id) end
+        return nil
+    end)
+    if okf and lead and outsider(lead) then return true end
+    return false
+end
+
 function unpastured_grazers()
     local out = {}
     for _, u in ipairs(df.global.world.units.active) do
         if dfhack.units.isAlive(u) and dfhack.units.isTame(u) and dfhack.units.isOwnCiv(u)
-                and not u.flags1.caged and dfhack.units.isGrazer(u)
+                and not u.flags1.caged and dfhack.units.isGrazer(u) and not visiting_animal(u)
                 and not dfhack.units.getGeneralRef(u, df.general_ref_type.BUILDING_CIVZONE_ASSIGNED) then
             table.insert(out, u)
         end
@@ -762,7 +932,7 @@ end
 -- each once a nest box item is free).
 local function egg_layer(u)
     if not (dfhack.units.isAlive(u) and dfhack.units.isTame(u) and dfhack.units.isOwnCiv(u)
-            and dfhack.units.isAdult(u) and dfhack.units.isFemale(u)) or u.flags1.caged then
+            and dfhack.units.isAdult(u) and dfhack.units.isFemale(u)) or u.flags1.caged or visiting_animal(u) then
         return false
     end
     local ok, e = pcall(function() return df.creature_raw.find(u.race).caste[u.caste].flags.LAYS_EGGS end)
@@ -849,7 +1019,7 @@ end
 
 local function war_trainable(u)
     if not (dfhack.units.isAlive(u) and dfhack.units.isTame(u) and dfhack.units.isOwnCiv(u)
-            and dfhack.units.isAdult(u)) or dfhack.units.isCitizen(u) then
+            and dfhack.units.isAdult(u)) or dfhack.units.isCitizen(u) or visiting_animal(u) then
         return false
     end
     local ok, yes = pcall(function() return df.creature_raw.find(u.race).caste[u.caste].flags.TRAINABLE_WAR end)

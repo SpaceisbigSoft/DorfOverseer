@@ -301,13 +301,20 @@ end
 
 local function count(t) local n = 0 for _ in pairs(t) do n = n + 1 end return n end
 
+-- (0.105.33) tend() only ever drops entries (and notes a dropped sleeper in
+-- cooldown/helped), so the counts tell whether it changed anything
+local function state_sig(d)
+    return count(d.sent or {}) .. '/' .. count(d.cooldown or {}) .. '/' .. count(d.helped or {})
+end
+
 -- The fort's infected, the hospital beds free, and the AI's sleepers (tended
 -- here: see the top).
 function survey(txt)
     local d = load_state()
     local t = now_tick()
+    local before = state_sig(d)
     local tended = tend(d, t, false)
-    save_state(d)
+    if state_sig(d) ~= before then save_state(d) end      -- (0.105.33) only on a change
     local zones, staff = hospitals()
     local citizens = dfhack.units.getCitizens(true)
     local out = {infected = 0, untreated = 0, bleeding = 0, in_hospital = 0, idle_untreated = 0, max_load = 0,
@@ -353,6 +360,8 @@ end
 -- Put idle infected citizens DF asks no treatment for to rest in a free
 -- hospital bed they can walk to, the worst first; as dwarfvet does. At
 -- most `max` now, `cap` of the AI's sleepers at once, `keep_free` beds left.
+REST_THIRST = 20000          -- (0.105.33) as the calm burrow: drink first
+REST_HUNGER = 40000
 function rest_infected(max, dry_run, txt, cap, keep_free)
     cap, keep_free = cap or 3, keep_free or 2
     local d = load_state()
@@ -381,6 +390,11 @@ function rest_infected(max, dry_run, txt, cap, keep_free)
     for _, c in ipairs(picks) do
         if #sent >= n then break end
         local u = c.unit
+        -- (0.105.33) never one already thirsty or hungry into a 3-day rest
+        local okd, dry = pcall(function()
+            return u.counters2.thirst_timer >= REST_THIRST or u.counters2.hunger_timer >= REST_HUNGER
+        end)
+        if okd and dry then goto next_pick end
         local bed
         for i, b in ipairs(beds) do
             if not used[i] then
@@ -412,6 +426,7 @@ function rest_infected(max, dry_run, txt, cap, keep_free)
                 table.insert(sent, {unit_id = u.id, name = name, load = c.load})
             end
         end
+        ::next_pick::
     end
     if not dry_run then save_state(d) end
     if #sent == 0 then
