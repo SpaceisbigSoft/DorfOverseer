@@ -108,6 +108,10 @@ function W.unit(id, job)
     W.units[id] = u
     return u
 end
+-- (0.105.33) ai-disposal's guard for free_items: W.blocked(it) says why an item is kept (nil: free it)
+W.disposal = {context = function() return {} end,
+              blocked = function(it, x, y, z, reason, ctx) return W.blocked and W.blocked(it) or nil end}
+env.reqscript = function(n) if n == 'ai-disposal' then return W.disposal end error('reqscript ' .. tostring(n)) end
 W.reset()
 assert(load(src, 'ai-moods', 't', env))()
 W.env = env
