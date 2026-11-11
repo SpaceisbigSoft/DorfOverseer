@@ -132,13 +132,15 @@ def _():
         [(p.rule, p.action) for p in props]
 
 
-@test("stranded: a cavern gate with the deep section unread: not opened, put to the player")
+@test("stranded: a cavern gate with the deep section unread: not opened; (0.105.35) said as the AI's wait, no Needs you")
 def _():
     s = siege_fort(goblins=0, cavern=True)
     s["deep"] = {"error": "get_deep failed"}
     props, notes = plan(s, Memory())
     assert not acts(props, "stranded", "open_gates"), [(p.rule, p.action) for p in props]
-    assert [n for n in needs_you(notes) if "couldn't be read" in n and "Urist 0" in n], needs_you(notes)
+    assert not acts(props, "stranded", "open_entrance"), [(p.rule, p.action) for p in props]
+    assert [n for n in notes if "couldn't be read" in n and "Urist 0" in n and "keeps that way shut" in n], notes
+    assert not [n for n in needs_you(notes) if "couldn't be read" in n], needs_you(notes)
     s = siege_fort(goblins=0, cavern=True)      # (merge33) a fresh report: normalize() keeps the first's _errors.deep
     s["deep"] = {"caverns": [], "dangers": []}
     props, _ = plan(s, Memory())

@@ -677,6 +677,9 @@ function find_entrances(starts, buildings, now_tick, wait_since)
             if near(b, g) then
                 if b.kind == 'pending' then
                     table.insert(pending, b)
+                    -- (0.105.35) its id: free_gate_jobs unsuspends its building job
+                    e.pending_ids = e.pending_ids or {}
+                    table.insert(e.pending_ids, b.id)
                     -- (0.104.105) what it waits for, by kind: a hatch planned
                     -- over the main stair waited 15 hours for a hatch cover
                     -- nobody made, and the entrance read "closing" all along
@@ -4760,7 +4763,10 @@ local function where(x, y, z) return ('x%d y%d z%d'):format(x, y, z) end
 
 -- One step (1-3) at a gate piece that reads open but DF holds shut.
 -- {ok, step, done, split_after, flags_before, flags_after, dry_run?}.
-function unstick_gate(id, step, dry_run)
+-- (0.105.35) cavern_ok: the brain read the caverns and found no great
+-- danger there: a cavern's way gets steps 2 and 3 too (the AI's own piece
+-- only, as anywhere), for citizens cut off on its far side.
+function unstick_gate(id, step, dry_run, cavern_ok)
     pcall(gates_restore)        -- (the save's record read back before this one is added)
     if not GATES.scanned then return {ok = false, rejected = true, error = 'map the entrances first'} end
     if step ~= 1 and step ~= 2 and step ~= 3 then
@@ -4800,7 +4806,7 @@ function unstick_gate(id, step, dry_run)
     local og = side_roles(e, g.kind, sa, sc, sga, sgc, oki and interior and interior.group or nil)
     local out_tile = og == sga and sa or sc
     local cavern = e.kind == 'cavern' or on_cavern_tile(out_tile)
-    if cavern and step >= 2 then
+    if cavern and step >= 2 and cavern_ok ~= true then
         return {ok = false, rejected = true, step = step, cavern = true,
                 error = 'this gate is on a cavern\'s way: the AI does not pull it open and shut or take it down; '
                     .. 'see to it by hand'}
@@ -4938,11 +4944,15 @@ end
 -- the gates of this entrance; the watcher stays armed and shuts it again if
 -- danger comes within IMMINENT. Refused while a visible danger (or any great
 -- danger in sight) is within IMMINENT of it, or the cavern seal holds it.
-function open_entrance(id, dry_run)
+-- (0.105.35) cavern_ok: the brain read the caverns and found no great danger
+-- there (its cavern_great, deep_read): a cavern entrance opens too, for
+-- citizens shut out on its far side (the seal and a great danger in sight
+-- still refuse it).
+function open_entrance(id, dry_run, cavern_ok)
     local e
     for _, x in ipairs(GATES.entrances or {}) do if x.id == id then e = x end end
     if not e then return {ok = false, rejected = true, error = 'no entrance ' .. tostring(id)} end
-    if e.kind == 'cavern' then
+    if e.kind == 'cavern' and cavern_ok ~= true then
         return {ok = false, rejected = true, error = 'a cavern entrance stays as the cavern rules keep it'}
     end
     if sealed_entrance(e) then return {ok = false, rejected = true, error = 'the cavern seal holds this entrance'} end
@@ -4962,6 +4972,68 @@ function open_entrance(id, dry_run)
     pcall(gates_persist)
     return {ok = true, entrance = id, opened = done, still_shut = GATES.closed[e.id] and true or nil,
             nearest = nearest < math.huge and nearest or nil}
+end
+
+-- (0.105.35) The gate watcher failing (the player: nothing waits for them):
+-- every entrance with a visible danger within IMMINENT of it shut now, as
+-- the watcher's own look would. Refused (waiting) when none is that close.
+function close_threatened_gates(dry_run)
+    if not GATES.scanned or not GATES.entrances then
+        return {ok = false, rejected = true, error = 'map the entrances first'}
+    end
+    local okv, vis = pcall(visible_dangers)
+    if not okv then return {ok = false, error = 'the dangers could not be read: ' .. tostring(vis):sub(1, 120)} end
+    local ids, done = {}, 0
+    GATES.closed = GATES.closed or {}
+    for _, e in ipairs(GATES.entrances) do
+        if #(e.equipment or {}) > 0 and not GATES.closed[e.id] and not e.sealed then
+            local nearest = math.huge
+            for _, d in ipairs(vis or {}) do
+                local okd, dd = pcall(distance_to, e, d.pos)
+                if okd and dd < nearest then nearest = dd end
+            end
+            if nearest <= IMMINENT then
+                table.insert(ids, e.id)
+                if not dry_run then
+                    local okc, n = pcall(set_entrance, e, true)
+                    if okc then done = done + (n or 0) end
+                end
+            end
+        end
+    end
+    if #ids == 0 then
+        return {ok = false, rejected = true, waiting = true,
+                error = ('no enemy within %d tiles of an open gate'):format(IMMINENT)}
+    end
+    if not dry_run then pcall(gates_persist) end
+    return {ok = true, entrances = ids, closed = done, dry_run = dry_run or nil}
+end
+
+-- (0.105.35) A gate planned at an entrance waits a week with parts free:
+-- the building jobs of what is planned there unsuspended (a suspended job
+-- is the usual cause). Refused when none is suspended.
+function free_gate_jobs(id, dry_run)
+    local e
+    for _, x in ipairs(GATES.entrances or {}) do if x.id == id then e = x end end
+    if not e then return {ok = false, rejected = true, error = 'no entrance ' .. tostring(id)} end
+    local n, seen = 0, 0
+    for _, bid in ipairs(e.pending_ids or {}) do
+        local okb, b = pcall(df.building.find, bid)
+        if okb and b then
+            seen = seen + 1
+            for _, j in ipairs(b.jobs or {}) do
+                if j.flags and j.flags.suspend then
+                    n = n + 1
+                    if not dry_run then j.flags.suspend = false end
+                end
+            end
+        end
+    end
+    if n == 0 then
+        return {ok = false, rejected = true,
+                error = ('no suspended job at the %d piece(s) planned there'):format(seen)}
+    end
+    return {ok = true, unsuspended = n, dry_run = dry_run or nil}
 end
 
 -- (the file's own functions, as just defined above: a reload of the script takes the new ones)

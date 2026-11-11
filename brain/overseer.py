@@ -454,6 +454,8 @@ SHORT_WORDS = {
     "arm_gates": "watch the gates (close when danger nears)",
     "open_gates": "open the gates",
     "open_entrance": "open one gate for citizens shut out",
+    "close_threatened_gates": "shut the gates an enemy is close to (the watcher failed)",   # (0.105.35)
+    "free_gate_jobs": "resume the suspended jobs of a gate planned at an entrance",       # (0.105.35)
     "found_fort": "dig the fort's first staircase",
     "link_lever": "link the AI gate lever to a drawbridge or hatch",
     "place_gate_lever": "put a lever inside the fort for the gate",

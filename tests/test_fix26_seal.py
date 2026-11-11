@@ -73,7 +73,7 @@ ROW = {"id": 7, "name": "Urist", "x": 40, "y": 41, "z": 150, "cause": "lockdown"
 
 # --- the brain ----------------------------------------------------------------------
 
-@test("stranded: a cavern entrance isn't opened while a forgotten beast is in the caverns: Needs you instead")
+@test("stranded: a cavern entrance isn't opened while a forgotten beast is in the caverns: (0.105.35) kept shut, said, no Needs you")
 def _():
     cave_row = dict(ROW, entrance={"id": 4, "kind": "cavern", "x": 9, "y": 9, "z": 110})
     s = cave_fort()
@@ -81,8 +81,9 @@ def _():
     s["entrances"]["stranded"] = [dict(cave_row)]
     props, notes = plan(s, Memory())
     assert not acts(props, typ="open_gates"), [(p.rule, p.action) for p in acts(props, typ="open_gates")]
-    ny = [n for n in needs_you(notes) if "cavern entrance" in n]
-    assert ny and "Ozkak" in ny[0] and "Urist" in ny[0], needs_you(notes)
+    assert not acts(props, typ="open_entrance"), [(p.rule, p.action) for p in acts(props, typ="open_entrance")]
+    line = [n for n in notes if "cavern entrance" in n and "keeps that way shut" in n]
+    assert line and "Ozkak" in line[0] and "Urist" in line[0] and not line[0].startswith("[you]"), notes
     # no beast: opened as before
     s = cave_fort(dangers=[])
     s["entrances"]["armed"] = True
