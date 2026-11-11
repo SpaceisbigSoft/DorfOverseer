@@ -174,8 +174,9 @@ def _():
     _, notes = brain_census({"by_reason": {"own_dead": 0, "used_ammo": 0, "other_dead": 0, "dumped": 0, "ai": 0,
                                            "unknown": 700},
                              "unknown_reachable": 300, "unknown_where": {"surface": 260, "inside": 40}})
-    n = you(notes)
-    assert n and "300 items" in n[0] and "on the surface (260) and inside the fort (40)" in n[0], notes
+    assert not you(notes), notes                                  # (0.105.35) a note, not a Needs you
+    n = [x for x in notes if "300 items" in x]
+    assert n and "on the surface (260) and inside the fort (40)" in n[0], notes
     assert "may be yours" in n[0] and "disposal_player_items" in n[0], n
 
 
