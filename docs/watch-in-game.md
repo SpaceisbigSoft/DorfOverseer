@@ -11,6 +11,16 @@ Where to look:
 The forts are A War-hold, B Monastery, C Merchant city, D Hermit hold, E Deep mine and F Garden fort. "All" means every fort.
 
 
+## 0.105.32 (11 Nov): an open gate the game holds shut
+
+First on E's own save (8 Nov 17:05, 23 stranded at the founding hatch), then on all six.
+- **state.json** `entrances.entrances[].split` on E's hatch 7 (x108 y149 z171): `outside_group` / `inside_group` differ, and `flags`, `tiles` (above, at, below) and `link`. **Record them**: they say why DF holds it shut (a flag such as `forbidden` or `operated_by_mechanisms`, the half-done link, or a stale walk map). Does `pairs(door_flags)` list the flags on 53.16-r3?
+- **journal** `unstick_gate` step 1 in the first cycle on E; its `split_after`. If still split, step 2 six game hours later, then step 3 (the hatch deconstructed). Which step joins the groups? Does `world.reindex_pathfinding` exist (step 1's `done` says)?
+- **state.json** stranded rows with `cause: "gate_stuck"` and `stuck_gate: 7`, then the stranded coming in and drinking.
+- **journal** after step 3, if the dwarves are still out: `dig_way_in` (a `way_in` project, its column and tunnel); do DF and Quickfort take the `u1`/`i1`/`j1` designations; does the next gate scan list it as a surface entrance; is it finished once dug.
+- **All**: no `split` on a hatch that is really shut, a locked door or a raised bridge; no `dig_way_in` for a lone dwarf on a ledge before 3 days, and none after 3 refusals.
+- **All**: in a siege or with the watcher armed, steps 2-3 and `dig_way_in` held (a note says why).
+
 ## 0.105.22 to 0.105.26
 
 Suggested placement: in "Starting the next step", in place of the current "then watch:" bullets. It covers them and the three versions before.
