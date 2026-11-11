@@ -31,7 +31,7 @@ from digest import _d, _l
 from planner_core import (AGENDA_THEMES, LIMIT_EXEMPT, PLANNER_CONFIG, Proposal, STEER_PROTECTED, TICKS_PER_DAY, abs_tick, ask_player,
                           can_fight, player_rules, reachable_threats, _traits)
 
-__all__ = ["_threat_rules", "threat_alert", "threat_rules_of", "moon_due", "PRISONER_CHOICES", "THREAT_CONFIG",
+__all__ = ["_threat_rules", "threat_alert", "alarm_held", "threat_rules_of", "moon_due", "PRISONER_CHOICES", "THREAT_CONFIG",
            "note_intrusions", "unseen_intrusion"]
 
 PRISONER_CHOICES = ("keep", "release", "kill")
@@ -325,6 +325,40 @@ ALL_CAVERNS = "all caverns"        # (0.105.26) the seal's record: every cavern 
 GREAT_KINDS = ("forgotten beast", "titan", "megabeast", "demon")
 
 
+def alarm_held(s: dict, memory, cfg: dict) -> str:
+    """(0.105.36) Why the plan keeps the alarm up this cycle ("" if nothing
+    does): a threat that can reach the dwarves (not one the player cleared),
+    a berserk dwarf, fire, flooding or the like (hazard_alert), this round's
+    undead, cloud or surface beast (threat_alert, within its cap), citizens
+    in the caverns with a great beast loose (within its cap). The
+    strategist's alarm-off came after plan() and got past all of them
+    (select() holds it with this)."""
+    from planner_military import hazard_alert
+    now = abs_tick(s)
+    if "others_on_map" not in _d(s.get("_errors")):
+        ids = [i for i in reachable_threats(s, _traits(s), cfg)
+               if memory is None or i not in (getattr(memory, "alert_suppressed", None) or [])]
+        if ids:
+            return f"{len(ids)} threat(s) can reach the dwarves"
+    why = hazard_alert(s, cfg)
+    if why:
+        return why
+    why = threat_alert(s, cfg)
+    if why:
+        since = _d(getattr(memory, "threat_alarm", None)).get("since")
+        if not (isinstance(since, int) and not isinstance(since, bool)
+                and (now - since) // TICKS_PER_DAY >= _c(cfg, "threat_alarm_max_days")):
+            return why
+    t = _d(s.get("threats"))
+    down = _l(_d(t.get("cavern_citizens")).get("list"))
+    if down and cavern_great(s):
+        since = _d(getattr(memory, "cavern_alarm", None)).get("since")
+        if not (isinstance(since, int) and not isinstance(since, bool)
+                and (now - since) // TICKS_PER_DAY >= _c(cfg, "cavern_alarm_max_days")):
+            return f"{len(down)} citizen(s) are in the caverns with a great beast loose"
+    return ""
+
+
 def cavern_great(s: dict) -> list:
     """(0.105.26) The forgotten beasts and other great dangers loose in the
     caverns (in a cavern layer; a forgotten beast anywhere: it comes from
@@ -441,13 +475,20 @@ def _cavern_beasts(s, cfg, memory, t, rules, proposals, notes):
                 memory.cavern_alarm = {}
         if over:
             n = int(_d(t.get("cavern_citizens")).get("n") or len(down))
+            # (0.105.36) not while another danger holds the alarm (a berserk
+            # dwarf, a werebeast, fire, a cloud, the undead): every other
+            # release checks them, and it flipped on and off
+            from planner_military import hazard_alert
+            other = hazard_alert(s, cfg) or threat_alert(s, cfg)
             notes.append(f"{who} is about and {n} citizen(s) are still in the caverns after {held_days} day(s) of "
-                         "the alarm: the AI lets the alarm down and locks the ways down (the fort can't wait on "
-                         "them); whoever can't climb out is let in by their gate once the caverns hold no great "
-                         "danger")
+                         + (f"the alarm: the AI locks the ways down (the fort can't wait on them; the alarm stays "
+                            f"up for {other}); " if other else
+                            "the alarm: the AI lets the alarm down and locks the ways down (the fort can't wait on "
+                            "them); ")
+                         + "whoever can't climb out is let in by their gate once the caverns hold no great danger")
             down = []
             reach = int(_d(s.get("others_on_map")).get("threats_that_can_reach_dwarves") or 0)
-            if (s.get("civ_alert") and getattr(memory, "ai_alert_raised", False) and not reach
+            if (s.get("civ_alert") and getattr(memory, "ai_alert_raised", False) and not reach and not other
                     and not any(p.action == {"type": "civ_alert", "on": False} for p in proposals)):
                 proposals.append(Proposal("threat_alert", {"type": "civ_alert", "on": False},
                                           f"the alarm held {held_days} day(s) for citizens in the caverns: it comes "

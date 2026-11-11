@@ -313,12 +313,48 @@ function fort_squad(squad_id)
     return nil
 end
 
+-- (0.105.36) Is what a lever works shut now? true/false from the linked
+-- buildings themselves (a bridge raised, a door, hatch, floodgate or bars
+-- closed), nil when one can't be read or they disagree. The brain no longer
+-- has to guess the shut state from the lever's position the first time it
+-- sees it (a gate the player had shut was learnt as "open", and opened).
+local function lever_shut(b)
+    local shut
+    for _, mech in ipairs(b.linked_mechanisms) do
+        local tid
+        for _, ref in ipairs(mech.general_refs or {}) do
+            local t = ref:getType()
+            if t == df.general_ref_type.BUILDING_HOLDER or t == df.general_ref_type.BUILDING_TRIGGERTARGET then
+                if ref.building_id ~= b.id then tid = ref.building_id break end
+            end
+        end
+        local t = tid and df.building.find(tid)
+        if not t then return nil end
+        local c
+        if df.building_bridgest:is_instance(t) then
+            local ok, v = pcall(function() return t.gate_flags.raised end)
+            if ok then c = v end
+        else
+            local ok, v = pcall(function() return t.door_flags.closed end)
+            if not ok then ok, v = pcall(function() return t.gate_flags.closed end) end
+            if ok then c = v end
+        end
+        if type(c) ~= 'boolean' then return nil end
+        if shut ~= nil and shut ~= c then return nil end
+        shut = c
+    end
+    return shut
+end
+
 function gate_levers()
     local out = {}
     for _, b in ipairs(df.global.world.buildings.other.TRAP) do
         if b.trap_type == df.trap_type.Lever and tostring(b.name or ''):lower() == GATE_NAME then
+            local ok, shut = pcall(lever_shut, b)
+            if not ok then shut = nil end
             table.insert(out, {id = b.id, state = b.state, linked = #b.linked_mechanisms,
-                               pending = #b.jobs > 0, x = b.centerx, y = b.centery, z = b.z})
+                               pending = #b.jobs > 0, x = b.centerx, y = b.centery, z = b.z,
+                               shut = shut})
         end
     end
     return out

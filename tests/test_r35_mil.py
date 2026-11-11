@@ -59,10 +59,13 @@ def _():
     props, notes = hazards(s)
     assert not [p for p in props if p.action == {"type": "setup_shelter"}] and not you(notes), notes
     assert any("off on the Rules tab" in n for n in notes), notes
-    # DF refused the AI's burrow twice: kept, with what the AI does meanwhile
+    # DF refused the AI's burrow twice, just now: (0.105.36) said as a note with
+    # what the AI does meanwhile and when it tries again (was a Needs you for good)
     s["settings"]["alert_shelter"] = True
-    props, notes = hazards(s, Memory(shelter_attempts=2))
-    assert len(you(notes)) == 1 and "meanwhile" in you(notes)[0] and "refused" in you(notes)[0], notes
+    props, notes = hazards(s, Memory(shelter_attempts=2, shelter_tick=pm.abs_tick(s)))
+    line = [n for n in notes if "refused" in n]
+    assert not you(notes) and line and "meanwhile" in line[0] and "tried again in 3 day(s)" in line[0], notes
+    assert not [p for p in props if p.action == {"type": "setup_shelter"}], props
 
 
 @test("a berserk dwarf, no squad free: a busy squad takes them on too, else the best with anyone armed; else said")

@@ -14,7 +14,7 @@ from digest import _d, _l, normalize
 from planner_core import *  # noqa: F401,F403
 from planner_gates import *  # noqa: F401,F403  (13c: split out by theme)
 
-__all__ = ["called_off_ids", "FIGHT_FACTOR_MAX", "lone_intruders", "hunted_outside", "few_ordinary", "few_alert_over", "ai_gates_shut", "lockdown_released", "lone_alert_over", "note_lockdown", "_lone_squad", "quick_clear", "PASTURE_ACTIONS", "_pasture_hold", "gate_invaders", "main_gate", "_gate_guard_rule", "_gate_dogs_rule", "GEAR_HELD", "_shelter_possible", "no_shelter", "weak_squad", "soldier_share", "_gate_rules", "_free_gate_levers", "_lever_far_enough", "_link_wanted", "_lever_rule", "_trap_rule", "_gatehouse_rule", "_lever_hatches_ok", "_near_spot", "soldiers_wanted", "civilian_cap", "crossing_value", "_crossing_rule", "ALERT_DANGERS", "alert_ages", "_alerts_rule", "_war_animal_rule", "hazard_alert", "_hazard_rules", "_military_rules", "watched_gate_levers", "_training_rotation", "_ranged_squad_rule", "WEAPON_IDS", "_uniform_weapon_rule", "_anvil_rule", "idle_hands"]
+__all__ = ["called_off_ids", "FIGHT_FACTOR_MAX", "lone_intruders", "hunted_outside", "few_ordinary", "few_alert_over", "ai_gates_shut", "lockdown_released", "lone_alert_over", "note_lockdown", "_lone_squad", "quick_clear", "PASTURE_ACTIONS", "_pasture_hold", "gate_invaders", "main_gate", "_gate_guard_rule", "_gate_dogs_rule", "GEAR_HELD", "_shelter_possible", "no_shelter", "SHELTER_RETRY_DAYS", "SHELTER_RETRY_THREAT_DAYS", "_shelter_due", "_no_shelter_note", "weak_squad", "soldier_share", "_gate_rules", "_free_gate_levers", "_lever_far_enough", "_link_wanted", "_lever_rule", "_trap_rule", "_gatehouse_rule", "_lever_hatches_ok", "_near_spot", "soldiers_wanted", "civilian_cap", "crossing_value", "_crossing_rule", "ALERT_DANGERS", "alert_ages", "_alerts_rule", "_war_animal_rule", "hazard_alert", "_hazard_rules", "_military_rules", "watched_gate_levers", "_training_rotation", "_ranged_squad_rule", "WEAPON_IDS", "_uniform_weapon_rule", "_anvil_rule", "idle_hands"]
 
 
 GEAR_HELD = {"weapons": "armed", "body": "armored", "helms": "helmed", "shields": "shielded", "pants": "legged",
@@ -26,23 +26,65 @@ def _shelter_possible(s: dict, memory) -> bool:
             and memory.shelter_attempts < 2)
 
 
+# (0.105.35) Nothing waits for the player: the AI shelter the game refused
+# twice is tried again, every SHELTER_RETRY_DAYS (SHELTER_RETRY_THREAT_DAYS
+# while a threat can reach the dwarves), not left to the player for good.
+# (0.105.36) This is the shelter's only pace: its refusals book no back-off
+# (planner_core note_refusal), so the note's "tried again in N day(s)" holds.
+SHELTER_RETRY_DAYS = 28
+SHELTER_RETRY_THREAT_DAYS = 3
+
+
+def _shelter_due(s: dict, memory, threat: bool = False) -> bool:
+    """(0.105.35) The AI shelter may be set up now: its first two tries, then
+    again after a wait. The Rules switch (alert_shelter off) is the player's."""
+    if _shelter_possible(s, memory):
+        return True
+    if s.get("civ_alert_ready") is not False or not player_rules(s)["alert_shelter"]:
+        return False
+    last = getattr(memory, "shelter_tick", None)
+    if not isinstance(last, int):
+        return True                     # (tried before the tick was kept: once more)
+    wait = (SHELTER_RETRY_THREAT_DAYS if threat else SHELTER_RETRY_DAYS) * TICKS_PER_DAY
+    return not 0 <= abs_tick(s) - last < wait
+
+
+def _no_shelter_note(s: dict, memory, what: str, threat: bool = True) -> str:
+    """(0.105.35) Said (not Needs you) when no alarm can sound: what the AI
+    does meanwhile. (0.105.36) An unread alarm burrow is said as unread (it
+    claimed a refusal that never happened); the days left use the pace
+    _shelter_due uses."""
+    meanwhile = "meanwhile the gates close when an enemy comes near and the squads answer by the Rules"
+    if not player_rules(s)["alert_shelter"]:
+        return (f"{what}, but there is no civilian-alert burrow and the AI shelter is off on the Rules tab, "
+                f"so no alarm sounds: {meanwhile}")
+    if not isinstance(s.get("civ_alert_ready"), bool):
+        return (f"{what}, but the alarm's burrow couldn't be read this cycle, so no alarm is sounded now: "
+                f"it is looked at again next cycle; {meanwhile}")
+    last = getattr(memory, "shelter_tick", None) if memory is not None else None
+    wait = SHELTER_RETRY_THREAT_DAYS if threat else SHELTER_RETRY_DAYS
+    left = (max(1, -(-(last + wait * TICKS_PER_DAY - abs_tick(s)) // TICKS_PER_DAY))
+            if isinstance(last, int) else 1)
+    tries = getattr(memory, "shelter_attempts", 0) if memory is not None else 0
+    return (f"{what}, but the game refused the AI shelter burrow ({tries} tries), so no alarm "
+            f"can sound yet: it is tried again in {left} day(s); {meanwhile}")
+
+
 def no_shelter(s: dict, memory, why: str, proposals: list, notes: list) -> None:
     """(0.105.35) An alarm wanted and no civilian-alert burrow to sound it with:
     the AI makes its own shelter now (at once, not at the set-up's leisure);
-    with the Rules tab's "AI shelter" off, said (the player's switch); only
-    when DF refused the AI's burrow twice is the player told, with what the
-    AI does meanwhile."""
-    if memory is not None and _shelter_possible(s, memory):
+    with the Rules tab's "AI shelter" off, said (the player's switch).
+    (0.105.36) Paced as plan()'s own shelter retry (_shelter_due), and said
+    as a note (_no_shelter_note), never a Needs you: it raised "DF refused
+    twice" for good while the AI kept trying, and when the burrow was only
+    unread."""
+    if memory is not None and _shelter_due(s, memory, True):
         proposals.append(Proposal("shelter", {"type": "setup_shelter"},
                                   f"{why}: no civilian-alert burrow, so the AI makes an \"AI shelter\" burrow "
                                   "over the inside of the fort and sounds the alarm with it", 0))
         notes.append(f"{why}: setting up a shelter so the alarm can sound")
-    elif not player_rules(s)["alert_shelter"]:
-        notes.append(f"{why}: no civilian-alert burrow and the AI's shelter is off on the Rules tab, "
-                     "so no alarm sounds (the squads and gates act all the same)")
     else:
-        ask_player(notes, f"{why}, and no civilian-alert burrow: DF refused the AI's shelter burrow twice, so "
-                          "the AI can't sound the alarm; meanwhile its squads and gates act all the same")
+        notes.append(_no_shelter_note(s, memory, why))
 
 
 def weak_squad(squads: list) -> dict | None:
@@ -620,7 +662,9 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
     lone = lone_intruders(s, cfg, traits, memory) if any_reach else []
     open_up = bool(lone) or lockdown_released(memory) or bool(any_reach and hunted_outside(s, cfg, traits, memory))
     if rules_["gate_lever"] and gates:
-        if any_reach and not memory.gate_closed_by_ai and not open_up:
+        # (0.105.36) never pulled while the report says the gate is already
+        # shut (the player's, or the AI's own not yet read back)
+        if any_reach and not memory.gate_closed_by_ai and not open_up and gates[0].get("shut") is not True:
             proposals.append(Proposal("gate", {"type": "pull_gate", "lever_id": gates[0]["id"]},
                                       "a threat can reach the dwarves: pull the AI gate lever", 0))
         elif memory.gate_closed_by_ai and any_reach and open_up:
