@@ -1762,6 +1762,10 @@ def _record_any_outcome(a: dict, r: dict, state: dict, memory, now: int, brief: 
         memory.shelter_supply = {"tick": now, "tiles": sh["tiles"],
                                  **{k: sh[k] for k in ("drink_short", "no_water", "no_food", "drink_units",
                                                        "food_units", "well_tiles") if sh.get(k) is not None}}
+    # (0.105.36 fix) the alarm's burrow isn't the AI shelter (the player set
+    # their own): its fill record forgotten (the AI no longer fills it)
+    if t == "refresh_shelter" and r.get("ok") is False and "not the AI shelter" in str(r.get("error") or ""):
+        memory.shelter_supply = {}
     if t == "setup_shelter":
         memory.shelter_attempts += 1          # refused or not: two tries, then again after a wait (0.105.35)
         memory.shelter_tick = now

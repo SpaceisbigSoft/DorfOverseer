@@ -282,10 +282,12 @@ def _():
 
 # --- X1: the cistern's shut never waits out the cistern rule's cooldown --------------
 
-@test("cistern shut: its own rule (no cooldown, emergency, never held by the strategist); allowed right after a step")
+@test("cistern shut: its own rule (no cooldown, no action limit, never held by the strategist); allowed right after a step")
 def _():
     r = pw.CISTERN_SHUT_RULE
-    assert r in planner_core.NO_COOLDOWN and r in planner_core.EMERGENCY and r in planner_core.LIMIT_EXEMPT
+    # (0.105.36 fix) not EMERGENCY: a refusal backs off (tests/test_r36_fix.py)
+    assert r in planner_core.NO_COOLDOWN and r not in planner_core.EMERGENCY and r in planner_core.LIMIT_EXEMPT
+    assert r in planner_core.LOOP_EXEMPT
     assert r in planner_core.STEER_PROTECTED
     s = _cistern_state(stage="done", gate="open", depth=3, sealed_now=False, unsealed="x10 y10 z100")
     m = Memory()

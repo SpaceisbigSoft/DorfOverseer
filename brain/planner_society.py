@@ -598,6 +598,12 @@ def _shelter_supply_rule(s: dict, memory, proposals: list, notes: list) -> None:
     takes them back when short); with the alarm off, said, as it is filled
     again when the AI next sounds the alarm."""
     sup = _d(getattr(memory, "shelter_supply", None))
+    # (0.105.36 fix) the alarm sends citizens to the player's own burrow (or
+    # to none): the AI shelter's last fill says nothing now, and the AI never
+    # makes the player's burrow again: forgotten
+    if sup and s.get("civ_alert_shelter") in ("player", "none") and memory is not None:
+        memory.shelter_supply = {}
+        return
     short = [str(sup[k]) for k in ("no_water", "drink_short", "no_food") if sup.get(k)]
     if not short or not isinstance(sup.get("tick"), int):
         return

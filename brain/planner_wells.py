@@ -874,11 +874,13 @@ CISTERN_RELINK_ROUNDS = 2       # (0.105.35) rounds of 3 lost lever links asked 
 
 
 # (0.105.36 X1) the cistern's "shut it now" (open, not closed all round): a
-# rule of its own, outside the cooldown, the action limit and the back-off
+# rule of its own, outside the cooldown and the action limit. (0.105.36 fix)
+# Not EMERGENCY: a refusal (no lever linked, the pull failed) backs off as
+# any refusal does, instead of being asked every cycle for ever
 CISTERN_SHUT_RULE = "cistern_shut"
 NO_COOLDOWN.add(CISTERN_SHUT_RULE)
-EMERGENCY.add(CISTERN_SHUT_RULE)
 LIMIT_EXEMPT.add(CISTERN_SHUT_RULE)
+LOOP_EXEMPT.add(CISTERN_SHUT_RULE)
 STEER_PROTECTED.add(CISTERN_SHUT_RULE)
 CISTERN_WORDS = {"digging": "being dug", "building": "its floodgate and lever being built",
                  "linking": "its lever being linked", "opening": "its floodgate opening",

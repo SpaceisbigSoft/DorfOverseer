@@ -651,6 +651,21 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
                 or df.global.plotinfo.alerts.civ_alert_idx ~= 0
         end)
     end,
+    -- (0.105.36 fix) whose burrow the civilian alert sends citizens to: 'ai'
+    -- (the AI shelter only), 'player' (a burrow of the player's), 'none'.
+    -- Read directly, as civ_alert_ready (nothing created)
+    civ_alert_shelter = function()
+        return safe(function()
+            local l = df.global.plotinfo.alerts.list
+            if #l < 2 or #l[1].burrows == 0 then return 'none' end
+            local names = {}
+            for _, b in ipairs(df.global.plotinfo.burrows.list) do names[b.id] = tostring(b.name):lower() end
+            for _, id in ipairs(l[1].burrows) do
+                if names[id] ~= 'ai shelter' then return 'player' end
+            end
+            return 'ai'
+        end)
+    end,
     orders = function() return safe(get_orders) end,
     -- (0.101.6) why orders don't start (get_order_desk)
     order_desk = function() return safe(get_order_desk) end,
@@ -735,7 +750,7 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
 -- The pulse: a small report for the frequent check between full ones.
 PULSE_SECTIONS = {
     'bridge_version', 'paused', 'fort', 'date', 'wealth', 'dwarves', 'stocks',
-    'others_on_map', 'civ_alert', 'civ_alert_ready', 'orders', 'projects', 'entrances',
+    'others_on_map', 'civ_alert', 'civ_alert_ready', 'civ_alert_shelter', 'orders', 'projects', 'entrances',
     'moods', 'military', 'settings', 'events_waiting', 'hazards', 'ledger',
 }
 TIERS = {pulse = true, daily = true, survey = true}

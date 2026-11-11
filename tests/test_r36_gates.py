@@ -150,6 +150,7 @@ def _():
                     "getBuildStage": LUA.eval("function() return 0 end"),
                     "getMaxBuildStage": LUA.eval("function() return 1 end")})
     E.GATES.entrances[1].pending_ids = t([50])
+    E.df["global"].building_next_id = 60        # (0.105.36 fix) the records began after building 50
     assert not E.free_gate_jobs(1, False).ok and job.flags.suspend                  # unknown: the player's
     r = E.free_gate_jobs(1, False, True)
     assert r.ok and r.unsuspended == 1 and not job.flags.suspend, dict(r)

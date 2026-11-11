@@ -159,7 +159,7 @@ UNREAD_IS_ERROR = ("civ_alert",)
 # the planner sees "failed", not "nothing there", but the value is left as
 # it came (an empty default would read as a working, empty section).
 LISTED_ONLY = ("needs", "deep", "water", "disposal", "offices", "crossings", "logistics",
-               "order_desk", "civ_alert_ready", "units")
+               "order_desk", "civ_alert_ready", "civ_alert_shelter", "units")
 
 # Sections the planner decides from. If one of these is MISSING (e.g. a report
 # from an older bridge), that's treated as a failure, not as "nothing there":
