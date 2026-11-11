@@ -3249,7 +3249,7 @@ def _():
     assert not by_rule(plan(s, Memory())[0], "gates")                        # already watching
 
 
-@test("gates (0.104.81): a gate watcher that errors is said as Needs you, not swallowed")
+@test("gates (0.104.81): a gate watcher that errors is said, not swallowed; (0.105.35) a plain note of what the AI does")
 def _():
     s = entrances({"sealed": True, "equipment": [{"id": 1, "kind": "door"}]}, armed=True)
     _, notes = plan(s, Memory())
@@ -3257,7 +3257,7 @@ def _():
     s["entrances"]["watch_error"] = {"n": 4, "error": "attempt to index a nil value", "tick": 100}
     _, notes = plan(s, Memory())
     n = [x for x in notes if "gate watcher failed 4 time(s)" in x]
-    assert n and n[0].startswith("Needs you") and "nil value" in n[0], notes
+    assert n and not n[0].startswith(("Needs you", "[you]")) and "nil value" in n[0], notes
 
 
 @test("gates: quiet for 3 cycles -> opened again")
@@ -5992,7 +5992,7 @@ def _():
     assert by_rule(plan(s, old)[0], "gate_doors")
 
 
-@test("gates (game): the Needs you note cuts long reasons at a word, and says the AI will try again")
+@test("gates (game): the refusals' note cuts long reasons at a word, and says the AI will try again")
 def _():
     s = entrances({"door_spots": 2, "width": 2}, {"door_spots": 2, "width": 3, "x": 40, "y": 50})
     m = Memory()

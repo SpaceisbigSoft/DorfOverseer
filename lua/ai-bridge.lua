@@ -173,6 +173,8 @@ ACTIONS = {
     save_game = act_save_game,
     open_gates = act_open_gates,
     open_entrance = act_open_entrance,     -- (0.105.34)
+    close_threatened_gates = act_close_threatened_gates,   -- (0.105.35) the watcher failing
+    free_gate_jobs = act_free_gate_jobs,                   -- (0.105.35) a planned gate's suspended jobs
     setup_shelter = act_setup_shelter,
     refresh_shelter = act_refresh_shelter,       -- (0.105.26)
     set_population_cap = act_set_population_cap,
@@ -368,6 +370,7 @@ for _, name in ipairs({
     -- (0.105.30) construction: each plans and returns before it places anything
     'place_hall', 'build_wings', 'floor_rooms',
     'open_entrance',     -- (0.105.34) its dry run checks the distance and changes nothing
+    'close_threatened_gates', 'free_gate_jobs',   -- (0.105.35) each dry run only counts
     'unstick_gate',      -- (0.105.32) its dry run says what it would do, and changes nothing
     -- (0.105.32) the way in: planned (and quickfort's dry run) before anything is designated
     'dig_way_in',

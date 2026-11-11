@@ -89,23 +89,35 @@ def _():
     assert acts(plan(s, Memory())[0], "stranded", "open_gates")          # far: opened
 
 
-@test("stranded: no way back in (collapse, fire): Needs you with their names and where; no gate opened")
+@test("stranded: no way back in (collapse, fire): (0.105.35) a plain note with their names and where, a way dug in; no gate opened")
 def _():
     s = fort()
     rows = [dict(ROW, id=i, name=f"Dwarf{i}", cause="no_path", by_ai=None, entrance=None) for i in range(7)]
     s["entrances"]["stranded"] = rows
     props, notes = plan(s, Memory())
     assert not acts(props, "stranded"), props
-    ny = [n for n in needs_you(notes) if "no way back in" in n]
-    assert ny and "Dwarf0 (x40 y41 elevation 50)" in ny[0] and "7 citizen(s)" in ny[0] and "2 more" in ny[0], ny
-    # a gate shut, but not by the AI (a raised bridge, a locked door): told, not opened
+    assert acts(props, "way_in", "dig_way_in"), [(p.rule, p.action) for p in props]
+    line = [n for n in notes if "no way back in" in n]
+    assert line and "Dwarf0 (x40 y41 elevation 50)" in line[0] and "7 citizen(s)" in line[0] and "2 more" in line[0], line
+    assert "the AI digs them a way in" in line[0] and not [n for n in needs_you(notes) if "no way back in" in n], notes
+    # (0.105.35) a gate shut, but not by the AI (a raised bridge, a locked door): that entrance opened, no Needs you
     s["entrances"]["stranded"] = [dict(ROW, cause="gate_shut", by_ai=False)]
     props, notes = plan(s, Memory())
-    assert not acts(props, "stranded") and any("not by the AI" in n for n in needs_you(notes)), notes
-    # down in the caverns: told (the cavern seal keeps them out until the beast is gone)
+    assert [p.action for p in acts(props, "stranded")] == [{"type": "open_entrance", "id": 1}], props
+    assert not any("not by the AI" in n for n in needs_you(notes)), notes
+    # (0.105.35) down in the caverns behind the AI's gate: their entrance opened when the caverns read
+    # safe, else kept shut and said; never a Needs you, never open_gates
     s["entrances"]["stranded"] = [dict(ROW, in_cavern=True)]
     props, notes = plan(s, Memory())
-    assert not acts(props, "stranded") and any("down in the caverns" in n for n in needs_you(notes)), notes
+    got = [p.action for p in acts(props, "stranded")]
+    assert got == [{"type": "open_entrance", "id": 1, "cavern_ok": True}] or (
+        not got and any("keeps that way shut" in n for n in notes)), (got, notes)
+    assert not any("down in the caverns" in n for n in needs_you(notes)), notes
+    # down in the caverns with no way up at all: kept as Needs you, saying the AI digs none from a cavern
+    s["entrances"]["stranded"] = [dict(ROW, in_cavern=True, cause="no_path")]
+    props, notes = plan(s, Memory())
+    ny = [n for n in needs_you(notes) if "down in the caverns" in n]
+    assert not acts(props, "stranded") and ny and "digs no way in from a cavern" in ny[0] and "yourself" not in ny[0], notes
 
 
 # --- 2. cavern openings: the brain --------------------------------------------------

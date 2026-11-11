@@ -1067,7 +1067,7 @@ end
 function act_unstick_gate(a)
     local id, step = whole_number(a.id), int_in(a.step, 1, 3)
     if not id or not step then return reject('unstick_gate needs id and step 1-3') end
-    return reqscript('ai-gates').unstick_gate(id, step, a.dry_run == true)
+    return reqscript('ai-gates').unstick_gate(id, step, a.dry_run == true, a.cavern_ok == true)
 end
 
 function act_arm_gates(a) return reqscript('ai-gates').arm() end
@@ -1077,7 +1077,19 @@ function act_open_gates(a) return reqscript('ai-gates').open_all() end
 function act_open_entrance(a)
     local id = tonumber(a.id)
     if not id then return reject('open_entrance needs the entrance id') end
-    return reqscript('ai-gates').open_entrance(id, a.dry_run == true)
+    return reqscript('ai-gates').open_entrance(id, a.dry_run == true, a.cavern_ok == true)
+end
+
+-- (0.105.35) The gate watcher failing: the entrances an enemy is close to shut now.
+function act_close_threatened_gates(a)
+    return reqscript('ai-gates').close_threatened_gates(a.dry_run == true)
+end
+
+-- (0.105.35) A gate planned at an entrance, waiting with parts free: its building jobs unsuspended.
+function act_free_gate_jobs(a)
+    local id = tonumber(a.entrance_id)
+    if not id then return reject('free_gate_jobs needs the entrance_id') end
+    return reqscript('ai-gates').free_gate_jobs(id, a.dry_run == true)
 end
 
 -- Set-ups the AI does itself (lua/ai-society.lua).
