@@ -225,7 +225,8 @@ def descent(levels=2, w=7, h=7):
 def tower():
     return {"v": 1, "name": "The Tower", "purpose": "tower", "ground": "surface",
             "levels": [{"grid": ["WW@WW", "W...W", "W.U.W", "W...W", "WWWWW"]},
-                       {"grid": ["FFFFF", "F___F", "F_D_F", "F___F", "FFFFF"]}],
+                       # level 2 by ai-blueprints' SUPPORT rule: '.' on a wall's top, 'F' over open floor
+                       {"grid": ["..F..", ".FFF.", ".FDF.", ".FFF.", "....."]}],
             "legend": {}, "zone": {"kind": "meeting", "level": 1}}
 
 
