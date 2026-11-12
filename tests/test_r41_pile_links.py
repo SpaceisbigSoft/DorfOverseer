@@ -429,6 +429,14 @@ def _():
     assert not mine(fort(None))                                                       # no section: nothing
 
 
+@test("brain barrows: the AI's own feeder piles (marked feeder) take none; the next AI stone pile does")
+def _():
+    big = dict(spile(2, 25), feeder=True)
+    p = by(mine(fort(section([spile(1, 9), big]))), "barrows")
+    assert len(p) == 1 and p[0].action == {"type": "pile_barrows", "pile_id": 1, "barrows": 1}, p
+    assert not by(mine(fort(section([big]))), "barrows")
+
+
 @test("brain barrow_order: the piles' unmet want past the free, in-job and ordered ones made at a carpenter's; "
       "not when the hauling rule orders them, without wood, or with supplies off")
 def _():
