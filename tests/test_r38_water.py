@@ -272,7 +272,8 @@ def _():
         saved = env.SAVED["ai-overseer/water"]
         if r.near_done and near_seen is None:
             near_seen = calls
-            assert saved.tick == 9 and saved.waters_pending is True
+            # (review 2nd 1) the survey's tick stays the last whole one's; near_tick is this one's
+            assert saved.tick == 5 and saved.near_tick == 9 and saved.waters_pending is True
             assert [b for b in saved.bodies.values() if b.kind == "river"]          # the near result
             assert len(waters(saved)) == n_before                                   # the old list kept
         if r.done:
@@ -280,6 +281,36 @@ def _():
     assert near_seen is not None and near_seen < calls, (near_seen, calls)
     saved = env.SAVED["ai-overseer/water"]
     assert saved.tick == 9 and not saved.waters_pending and saved.done
+
+
+@test("survey (review 2nd 1): a whole-map pass cut off after the near save (unloaded) is begun again at once, not a season on")
+def _():
+    from planner_wells import _water_rules
+    from planner import PLANNER_CONFIG
+    env = world()
+    river_far(env)
+    while True:                                   # the first survey ever: cut off after its near save
+        r, _ = env.TIMED(9, 0.01)
+        if r.near_done:
+            break
+    env.dfhack.onStateChange["ai-water"](env.SC_MAP_UNLOADED)
+    saved = env.SAVED["ai-overseer/water"]
+    assert saved.waters_pending and saved.tick is None and saved.near_tick == 9
+    w = {k: v for k, v in saved.items() if k in ("tick", "near_tick", "waters_pending", "ok")}
+    props, notes = [], []
+    _water_rules({"water": dict(w, bodies=[]), "date": {"year": 0, "tick": 20}}, PLANNER_CONFIG, props, notes)
+    assert props and props[0].action["type"] == "survey_water", props
+    # with a whole survey before (tick 5, a day ago): still due while the list is pending
+    w = {"ok": True, "tick": 5, "near_tick": 9, "waters_pending": True, "bodies": []}
+    props, notes = [], []
+    _water_rules({"water": w, "date": {"year": 0, "tick": 1205}}, PLANNER_CONFIG, props, notes)
+    assert props and "cut off" in props[0].reason, [p.reason for p in props]
+    w.pop("waters_pending")
+    props, notes = [], []
+    _water_rules({"water": w, "date": {"year": 0, "tick": 1205}}, PLANNER_CONFIG, props, notes)
+    assert not props
+    r, _ = run_slices(env, 0.15, tick=30)        # resumed: the whole survey done
+    assert r.done and not env.SAVED["ai-overseer/water"].waters_pending and env.SAVED["ai-overseer/water"].tick == 30
 
 
 @test("survey (review 3): magma read by the feature's type (getGlobalInitFeature); unknown: a cavern's pool, the scan not cut")
@@ -705,7 +736,17 @@ def _():
     assert magma_choice(s([dict(pipe, blocked="magma on the way")]), PLANNER_CONFIG) == ("", False)
     # AI decides: a cavern's way only when no other magma can be reached
     assert magma_choice(s([cav_pipe, sea], "ai"), PLANNER_CONFIG) == ("sea", False)
-    assert magma_choice(s([cav_pipe], "ai"), PLANNER_CONFIG) == ("pipe", True)
+    assert magma_choice(s([cav_pipe], "ai"), PLANNER_CONFIG) == ("", False)          # (2nd 2) no soldiers ready
+    armed = s([cav_pipe], "ai")
+    armed["military"] = {"squads": [{"members": 9, "power": {"armed": 8}}]}
+    assert magma_choice(armed, PLANNER_CONFIG) == ("pipe", True)
+    armed["settings"]["traits"] = {"caution": 100}                                    # Caution wants more
+    armed["military"]["squads"][0]["power"]["armed"] = PLANNER_CONFIG["unfound_cavern_soldiers"]
+    assert magma_choice(armed, PLANNER_CONFIG) == ("", False)
+    found = s([dict(cav_pipe, magma="cavern", cavern="Cavern1", cavern_found=True)], "ai")   # found: soldiers all the same
+    assert magma_choice(found, PLANNER_CONFIG) == ("", False)
+    found["military"] = {"squads": [{"members": 9, "power": {"armed": 9}}]}
+    assert magma_choice(found, PLANNER_CONFIG) == ("cavern", True)
     assert magma_choice(s([cav_pipe], "never"), PLANNER_CONFIG) == ("", False)
     assert magma_choice(s([cav_pipe, sea], "always"), PLANNER_CONFIG) == ("pipe", True)
     assert magma_choice(s([pipe], "never"), dict(PLANNER_CONFIG, water_far_reach=0)) == ("", False)
@@ -835,7 +876,7 @@ def _():
     assert ok(t(shape="WALL")) and ok(t(shape="FLOOR"))
     for bad in (t(shape="FLOOR", liquid=True), t(shape="EMPTY", liquid=True, depth=7), t(shape="FLOOR", feature=True),
                 t(shape="FLOOR", aquifer=True), t(shape="WALL", aquifer=True), t(shape="WALL", feature=True),
-                t(shape="WALL", liquid=True), None):
+                t(shape="WALL", liquid=True), t(shape="EMPTY"), t(shape="FLOOR", outside=True), None):
         assert not ok(bad), dict(bad) if bad else bad
     assert "tunnel_stretch_ok(t)" in src and "t.shape ~= 'WALL' or solid_rock(t)" not in src
 
@@ -870,6 +911,191 @@ def _():
     env, W = far_pump_world()
     r = TW.step(env, "pump", dry_run=True, job_max=0)
     assert r.rejected, dict(r)
+
+
+@test("survey (review 2nd 3a): the way to the magma sea through the sea's own layer is no block; a pipe's still is")
+def _():
+    env = world()
+    for z in (20, 21, 22):                                     # the sea under the fort's middle (block 2, 2)
+        env.FILL(2, 2, z, F(flow_size=7, liquid_type=True, feature_global=True), 2)
+    for z in (23, 24, 25):                                     # its layer's dry rock over it
+        env.FILL(2, 2, z, F(flow_size=0, feature_global=True), 2)
+    r = env.survey()
+    sea = [b for b in waters(r) if b.kind == "magma" and b.magma == "sea"][0]
+    assert sea.reach and not sea.blocked, (sea.reach, sea.blocked)
+
+
+@test("survey (review 2nd 12): ice where no river ran before (a glacier, a frozen lake) is no frozen river")
+def _():
+    env = world()
+    river_far(env)
+    assert env.scan_step(1, 1e9).river_seen
+    for y in range(0, 288):                                       # the river dries up; ice far from it
+        for x in range(200, 204):
+            env.SET(x, y, 149, F(flow_size=0, outside=False), 1)
+        env.SET(20, y, 149, F(flow_size=0, outside=True), 4)
+    r = env.scan_step(2, 1e9)
+    assert not r.frozen_river and not r.river_seen and [b for b in waters(r) if b.kind == "ice"]
+
+
+def sea_world():
+    env, W = magma_far_world()
+    W.survey.waters = L(W.survey.waters[1])                       # the sea alone
+    return env, W
+
+
+@test("magma (review 2nd 3b): a sea plan dug through all its segments; the sea's own layer under the room no cavern")
+def _():
+    env, W = sea_world()
+    r = TW.step(env, "magma", shop="MagmaForge")
+    assert r.ok and r.stage == "planned", dict(r)
+    wk = W.saved["ai-overseer/waterworks"].works["magma:MagmaForge"]
+    p = wk.plan
+    assert p.deep_z == 41 and p.source.magma == "sea" and p.stages
+    nst = len(list(p.stages.values()))
+    assert nst >= 2
+    # the sea's layer flag on the last segment's tiles at the magma's level (as the game sets it)
+    last = p.stages[nst]
+    for i in range(last[1], last[2] + 1):
+        c = p.dig[i]
+        if c.z <= 41:
+            W.set(c.x, c.y, c.z, T(feature=True, feature_global=True))
+    TW.step(env, "magma", shop="MagmaForge")
+    for k in range(1, nst + 1):
+        st = p.stages[k]
+        W.dig_all(L(*[p.dig[i] for i in range(st[1], st[2] + 1)]))
+        r = TW.step(env, "magma", shop="MagmaForge")
+        assert not (r.stage == "held"), r.error
+    assert r.stage == "building", dict(r)
+    # the same flag on a pipe's plan: a cavern, held
+    env, W = magma_far_world()
+    TW.step(env, "magma", shop="MagmaForge")
+    p = W.saved["ai-overseer/waterworks"].works["magma:MagmaForge"].plan
+    assert p.deep_z is None
+    c = p.dig[p.stages[2][1]]
+    W.set(c.x, c.y, c.z, T(feature=True, feature_global=True))
+    TW.step(env, "magma", shop="MagmaForge")
+    W.dig_all(L(*[p.dig[i] for i in range(1, p.stages[1][2] + 1)]))
+    r = TW.step(env, "magma", shop="MagmaForge")
+    assert r.stage == "held" and "a cavern at" in r.error, r.error
+
+
+@test("far checks (review 2nd 4, 9): the work's own source beside a dug tile allowed, other liquid not; a pipe is no cavern")
+def _():
+    env, W = irr_far_world()
+    W.set(11, 11, 50, T(shape="FLOOR", liquid=True, depth=7))
+    p = TW.LUA.table_from({"dig": L(T(x=10, y=10, z=50, text="d")), "src": T(x=12, y=12, z=50)})
+    assert env.far_route_check(p, False) is None and env.next_segment_bad(p, p.dig) is None
+    W.set(11, 11, 50, T(magma=True))                               # magma beside a water work: other liquid
+    assert "magma beside" in env.far_route_check(p, False)
+    assert "magma beside" in env.next_segment_bad(p, p.dig)
+    W.set(11, 11, 50, T(magma=False))
+    p.src = None                                                   # no source known: any liquid refuses
+    assert "water beside" in env.far_route_check(p, False)
+    # a local feature (a pipe's) on the dig: no cavern (the switch does not let it through either)
+    W.tiles["11,11,50"] = None
+    W.set(10, 10, 50, T(feature=True, feature_local=True, feature_global=False))
+    why = env.far_route_check(p, True)
+    assert why and "magma pipe or a pool" in why and "cavern" not in why, why
+    assert "magma pipe or a pool" in env.next_segment_bad(p, p.dig)
+    W.set(10, 10, 50, T(feature=True, feature_local=False, feature_global=True))
+    assert env.far_route_check(p, True) is None and "open a cavern" in env.far_route_check(p, False)[0]
+
+
+@test("retire (review 2nd 5): dig jobs on the undug plan tiles removed, the floodgate floor's dig called off; all dug: no half-dug")
+def _():
+    env, W = irr_far_world()
+    TW.step(env, "irrigation")
+    TW.step(env, "irrigation")
+    p = W.saved["ai-overseer/waterworks"].works.irrigation.plan
+    W.dig_all(L(*[p.dig[i] for i in range(1, 31)]))
+    W.jobs = L()
+    TW.LUA.execute("local env = ...; env.cancel_dig_jobs = function(cs) for _, c in ipairs(cs) do table.insert(env.W.jobs, c) end return #cs end", env)
+    TW.step(env, "irrigation", retire=True)
+    wk = W.saved["ai-overseer/waterworks"].works.irrigation
+    assert wk.half_dug.jobs_removed == 10 and len(list(W.jobs.values())) == 10
+    # every segment dug, the floodgate floor's dig designated, then retired: that dig called off, no half-dug
+    env, W = irr_far_world()
+    TW.step(env, "irrigation")
+    TW.step(env, "irrigation")
+    wk = W.saved["ai-overseer/waterworks"].works.irrigation
+    p = wk.plan
+    nst = len(list(p.stages.values()))
+    W.dig_all(p.dig)
+    wk.seg = nst
+    p.dig2 = L(T(x=p.gate.x, y=p.gate.y, z=p.gate.z - 1, text="z"))
+    wk.dig2 = True
+    TW.step(env, "irrigation", retire=True)
+    wk = W.saved["ai-overseer/waterworks"].works.irrigation
+    assert wk.stage == "retired" and wk.half_dug is None and not list(env.LOGS.values())
+    assert [(c.x, c.y, c.z) for c in W.undesignated.values()] == [(p.gate.x, p.gate.y, p.gate.z - 1)]
+    # the game's hook: only the dig jobs on these tiles
+    env2 = TW.LUA.execute(TW.FAKE, TW.SRC)
+    removed = TW.LUA.execute("""
+      local env = ...
+      local jobs = {{job_type = 1, pos = {x = 1, y = 1, z = 1}}, {job_type = 1, pos = {x = 2, y = 2, z = 2}},
+                    {job_type = 9, pos = {x = 1, y = 1, z = 1}}}
+      local head = {}
+      local link = head
+      for _, j in ipairs(jobs) do link.next = {item = j}; link = link.next end
+      local gone = {}
+      env.df = {global = {world = {jobs = {list = head}}}, job_type = {[1] = 'Dig', [9] = 'StoreItemInStockpile'}}
+      env.dfhack = {job = {removeJob = function(j) table.insert(gone, j) return true end}}
+      local n = env.cancel_dig_jobs({{x = 1, y = 1, z = 1}})
+      return n, #gone, gone[1] == jobs[1]
+    """, env2)
+    assert tuple(removed) == (1, 1, True), removed
+
+
+@test("brain (review 2nd 6, 7, 8): no open_caverns for the near magma; water_job_max 0 stops far tunnels and banks; floats; power's cfg")
+def _():
+    from planner_water import _int, far_args, power_wanted
+    from planner_wells import _far_args
+    from planner import PLANNER_CONFIG
+    st = TW.state(settings={"traits": {}, "open_caverns": "always"},
+                  buildings={"workshops": {"MetalsmithsForge": 1}, "furnaces": {}, "other": {}},
+                  water={"bodies": [], "magma": {"z1": 30, "z2": 40, "tiles": 9, "top_nearest": {"x": 1, "y": 1, "z": 40}}},
+                  map={"dwarves": {"z_bottom": 90}, "layers": []})
+    props, _ = TW.run(st)
+    acts = [p.action for p in props if p.action.get("kind") == "magma"]
+    assert acts == [{"type": "water_work", "kind": "magma", "shop": "MagmaForge"}], acts
+    assert _far_args(dict(PLANNER_CONFIG, water_job_max=0)) == {"job_max": 0, "far_reach": 0}
+    assert _far_args(PLANNER_CONFIG) == {}
+    assert _int(0.0, -1) == 0 and _int(2.5, -1) == -1 and _int(True, -1) == -1
+    assert far_args(dict(PLANNER_CONFIG, water_far_reach=0.0)) == {"far_reach": 0}
+    works = {"pump": {"stage": "done"}}
+    s = {"water": {"bodies": [], "waters": [{"kind": "river", "flow": "flowing", "tiles": 40}]}}
+    assert "river" in power_wanted(s, works, PLANNER_CONFIG)
+    assert "river" not in power_wanted(s, works, dict(PLANNER_CONFIG, water_far_reach=0))
+    # the bridge: job_max 0 sets the cistern's and the well's far reach to 0
+    import re
+    src = (ROOT / "lua" / "ai-bridge-actions.lua").read_text(encoding="utf-8")
+    fn = re.search(r"^function far_reach_of\(a\).*?^end", src, re.S | re.M).group(0)
+    lua = LuaRuntime(unpack_returned_tuples=True)
+    got = lua.execute("""
+      local fn = ...
+      local B = {}
+      local env = setmetatable({whole_number = function(v) return math.tointeger(tonumber(v)) end,
+                                reqscript = function() return B end}, {__index = _G})
+      assert(load(fn, 'f', 't', env))()
+      env.far_reach_of({job_max = 0, far_reach = 90})
+      local a, b = B.CISTERN_FAR_REACH, B.SHORE_FAR_REACH
+      env.far_reach_of({far_reach = 90})
+      return a, b, B.CISTERN_FAR_REACH
+    """, fn)
+    assert tuple(got) == (0, 0, 90), got
+
+
+@test("irrigation far (review 2nd 10): the far search within its time, else a clean 'try later' (sooner for the brain)")
+def _():
+    env, W = irr_far_world()
+    env.IRR_FAR_SECONDS = -1
+    r = TW.step(env, "irrigation")
+    assert r.rejected and r.later and "tried again later" in r.error, dict(r)
+    assert W.saved["ai-overseer/waterworks"].refused.irrigation.later is True
+    env, W = TW.irrigation_world()                                  # near water: no budget asked
+    env.IRR_FAR_SECONDS = -1
+    assert TW.step(env, "irrigation", dry_run=True).ok
 
 
 if __name__ == "__main__":

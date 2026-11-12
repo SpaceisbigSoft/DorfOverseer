@@ -62,6 +62,7 @@ FLOWING_MAX = 6          -- rivers and brooks always among them (the nearest fir
 MAGMA_MAX = 6            -- bodies of magma among them at most (one of each kind first)
 LAKE_TILES = 400         -- still surface water this big: a lake
 POND_TILES = 20          -- this big: a pond (smaller: a pool)
+RIVER_BLOCKS_MAX = 1500  -- (0.105.38 review) a river's blocks kept at most (ice there later: a frozen river)
 SEA_BELOW = 2            -- the scan goes this many levels under the magma sea's top, no further
 
 local function fort_middle()
@@ -398,6 +399,7 @@ local function reach_of(job, b)
     if not n then return {} end
     local mid = job.mid
     local magma = b.kind == 'magma'
+    local sea_body = magma and b.magma == 'sea'
     local zf = math.max(mid.z_low, math.min(mid.z_high, n.z))
     local best
     for _, xfirst in ipairs({true, false}) do
@@ -422,8 +424,11 @@ local function reach_of(job, b)
             -- (0.105.38 review) a global feature by its type: the sea or the
             -- underworld block the way; a cavern (or one of unknown kind) is
             -- opened by it
-            if d.feature_global and layer.kind ~= 'sea' and layer.kind ~= 'underworld' then
+            local deep = layer.kind == 'sea' or layer.kind == 'underworld'
+            if d.feature_global and not deep then
                 issue.opens_cavern = issue.opens_cavern or layer.name or 'a cavern'
+            elseif d.feature_global and sea_body and layer.kind == 'sea' then
+                -- (0.105.38 review) the sea's own layer, on the way to the sea itself
             elseif d.feature_local or d.feature_global then
                 issue.blocked = issue.blocked or 'a deep feature (a pipe or the sea) on the way'
             end
@@ -645,6 +650,15 @@ function survey_step(job, seconds)
         job.found = #all
         job.waters = pick(all)
         job.phase, job.ri = 'reach', 1
+        -- (0.105.38 review) the blocks a river runs through (kept in the save,
+        -- RIVER_BLOCKS_MAX at most) and the ice's: ice where a river was seen
+        -- is a frozen river, other ice (a glacier, a frozen lake) is not
+        job.river_blocks, job.ice_blocks = {}, {}
+        for _, c in ipairs(job.list) do
+            local k = c.bx .. ',' .. c.by .. ',' .. c.z
+            if c.cls == 'f' and #job.river_blocks < RIVER_BLOCKS_MAX then table.insert(job.river_blocks, k)
+            elseif c.cls == 'i' then job.ice_blocks[k] = true end
+        end
         job.cells, job.list = nil, nil
     end
     -- each body's reach, a body a slice at least
@@ -727,9 +741,16 @@ function finish_survey(job, prev)
     -- choice of a water wheel over a windmill
     local river_now = out.nearest_flowing ~= nil
     for _, b in ipairs(out.bodies) do if b.kind == 'river' then river_now = true end end
-    local before = type(prev) == 'table' and (prev.river_seen == true) or false
-    if not river_now and ice and before then out.frozen_river = true end
+    -- (review) only ice in a block the river ran through before counts
+    local before = type(prev) == 'table' and type(prev.river_blocks) == 'table' and prev.river_blocks or {}
+    local on_river = false
+    if ice and not river_now then
+        for _, k in ipairs(before) do if (job.ice_blocks or {})[k] then on_river = true break end end
+    end
+    if on_river then out.frozen_river = true end
     out.river_seen = river_now or out.frozen_river == true or nil
+    if river_now then out.river_blocks = job.river_blocks
+    elseif on_river then out.river_blocks = before end
     return out
 end
 
@@ -787,13 +808,17 @@ end
 -- fields (and the cistern's plan) of the survey before kept until this one's
 -- whole map is done
 local KEEP = {'map', 'map_box', 'waters', 'waters_found', 'nearest_flowing', 'magma_sea_top', 'cistern',
-              'river_seen', 'frozen_river'}
+              'river_seen', 'frozen_river', 'river_blocks'}
 function save_near(job, now_tick)
     local r = finish_near(job)
     local prev = last()
     if prev then for _, k in ipairs(KEEP) do if r[k] == nil then r[k] = prev[k] end end end
     r.waters_pending = true
-    r.tick = now_tick
+    -- (0.105.38 review) the survey's tick stays the last whole survey's (none
+    -- before: none), so a whole-map pass cut off (a save, a quit, the map
+    -- unloaded) is begun again at once, not a season on; near_tick: this one's
+    r.tick = prev and prev.tick or nil
+    r.near_tick = now_tick
     U.site_put(WATER_KEY, r)
     return r
 end

@@ -346,10 +346,11 @@ CISTERN_FAR_REACH = nil
 CISTERN_SEGMENT = 40
 -- (0.105.38 review) A tile of the cistern tunnel's next stretch, checked
 -- before it is designated: solid rock, or a tile dug open meanwhile that
--- holds no liquid and is no cavern's or aquifer's (an open tile passed
--- before, whatever it held).
+-- holds no liquid, is no cavern's or aquifer's and is not open sky (review:
+-- EMPTY or outside refused).
 function tunnel_stretch_ok(t)
-    return t ~= nil and (solid_rock(t) or (t.shape ~= 'WALL' and not t.liquid and not t.feature and not t.aquifer))
+    return t ~= nil and (solid_rock(t) or (t.shape ~= 'WALL' and t.shape ~= 'EMPTY' and not t.outside
+                                            and not t.liquid and not t.feature and not t.aquifer))
 end
 
 function cistern_far_len(maxlen)

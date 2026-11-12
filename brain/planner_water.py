@@ -64,7 +64,11 @@ def far_on(cfg: dict | None) -> bool:
 
 
 def _int(v, default: int) -> int:
-    return v if isinstance(v, int) and not isinstance(v, bool) else default
+    if isinstance(v, bool):
+        return default
+    if isinstance(v, float) and v.is_integer():      # (review) 0.0 from a JSON config is 0
+        return int(v)
+    return v if isinstance(v, int) else default
 
 
 def near_river_found(s: dict) -> bool:
@@ -131,7 +135,8 @@ def magma_choice(s: dict, cfg: dict) -> tuple[str, bool]:
     "too deep" every time), and so is a body the survey found blocked. The
     switch: Never, none that opens a cavern; Always, any; AI decides (a
     workshop is wanted, or this is not called): one that opens a cavern only
-    when no other way to magma is left (not the cavern well's water test).
+    when no other way to magma is left and armed soldiers enough stand
+    ready (the cavern well's soldier test, not its water test).
     The bridge walks the planned dig again for a cavern (the survey's
     estimate is a straight shaft from the fort's middle)."""
     w = _d(s.get("water"))
@@ -161,7 +166,11 @@ def magma_choice(s: dict, cfg: dict) -> tuple[str, bool]:
     if mode == "always":
         pool = cands
     elif mode == "ai":
-        pool = shut or cands
+        # (0.105.38 review) the AI opens a cavern for magma only when no other
+        # way is left and armed soldiers enough stand ready for what comes
+        # out (the cavern well's soldier test; no water test), found or not
+        from planner_wells import cavern_soldiers_ready
+        pool = shut or (cands if cavern_soldiers_ready(s, cfg)[0] else [])
     else:
         pool = shut
     if not pool:
@@ -222,7 +231,7 @@ def pump_wanted(s: dict, cfg: dict) -> str | None:
     return "the fort has no well, no cistern site, and still water only below it"
 
 
-def power_wanted(s: dict, works: dict) -> str | None:
+def power_wanted(s: dict, works: dict, cfg: dict | None = None) -> str | None:
     """(0.105.37 E3) Why the pump stack wants power (None: it doesn't): the
     stack done (built, its reservoir filled once by hand) and not shut; a
     water wheel when a river runs near, else a windmill (the bridge finds out
@@ -230,7 +239,7 @@ def power_wanted(s: dict, works: dict) -> str | None:
     pump = _d(_d(works).get("pump"))
     if pump.get("stage") != "done" or pump.get("shut"):
         return None
-    if river_found(s, PLANNER_CONFIG):
+    if river_found(s, cfg if cfg is not None else PLANNER_CONFIG):
         return "the pump stack is worked by hand and a river runs near the fort"
     return "the pump stack is worked by hand"
 
@@ -466,7 +475,7 @@ def _waterworks_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -
                 notes.append("no magma workshop: the magma lies beneath a cavern (reaching it would open the cavern)")
             else:
                 act = {"type": "water_work", "kind": "magma", "shop": shop, **far_args(cfg)}
-                if opens or player_rules(s)["open_caverns"] == "always":
+                if choice != "near" and (opens or player_rules(s)["open_caverns"] == "always"):
                     # the cavern switch allows it (Always, or the AI's call:
                     # no other way to magma); the bridge walks the planned dig
                     act["open_caverns"] = True
@@ -491,7 +500,7 @@ def _waterworks_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -
                                   "(a dwarf works the pumps)", 6))
         return
     # (5) (0.105.37 E3) W7: the pump stack's power, at Guided and Architect
-    why = power_wanted(s, works)
+    why = power_wanted(s, works, cfg)
     if (why and eng >= cfg["pump_engineering"] and not started("power") and retry_ok("power")
             and _design_mode(s) != "scripts"):
         source = "wheel" if river_found(s, cfg) else "windmill"

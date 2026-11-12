@@ -2230,6 +2230,7 @@ end
 -- (none or below 0: the map's width; (review) 0: far sources off)
 function far_reach_of(a)
     local r = whole_number(a.far_reach)
+    if whole_number(a.job_max) == 0 then r = 0 end    -- (0.105.38 review) water_job_max 0: no far work either
     pcall(function()
         local B = reqscript('ai-builder')
         B.CISTERN_FAR_REACH = r
@@ -2309,9 +2310,10 @@ function act_water_work(a)
     return reqscript('ai-waterworks').step(a.kind, {dry_run = a.dry_run == true, shut = a.shut == true,
         retire = a.retire == true, shop = a.shop, plain = a.plain == true, reopen = a.reopen == true,
         source = a.source,
-        -- (0.105.38) far sources: the brain's reach (tiles; 0 or none: the map's
-        -- width), the job's size at most, a long dig's segment; and the cavern
-        -- switch's answer for magma whose way opens a cavern
+        -- (0.105.38) far sources: the brain's reach (tiles; none or below 0: the
+        -- map's width; 0: far sources off), the job's size at most (0: no far
+        -- work), a long dig's segment; and the cavern switch's answer for magma
+        -- whose way opens a cavern
         far_reach = whole_number(a.far_reach), job_max = whole_number(a.job_max), segment = whole_number(a.segment),
         open_caverns = a.open_caverns == true,
         why = type(a.why) == 'string' and a.why:sub(1, 120) or nil})

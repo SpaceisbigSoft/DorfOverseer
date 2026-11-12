@@ -80,6 +80,10 @@ function tile_info(x, y, z)
         stagnant = des.water_stagnant,
         salt = des.water_salt,
         feature = des.feature_local or des.feature_global,
+        -- (0.105.38 review) apart: a local feature is a magma pipe's (or an
+        -- underground pool's), a global one a deep layer's (a cavern, the sea)
+        feature_local = des.feature_local,
+        feature_global = des.feature_global,
         outside = des.outside,
         -- (0.105.5) DF's underground test for a farm plot; (0.105.7 review)
         -- nil when this DFHack can't read it (pcall: a missing field throws)

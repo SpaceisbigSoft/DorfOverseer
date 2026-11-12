@@ -11,11 +11,16 @@ from planner_core import *  # noqa: F401,F403
 
 
 def _far_args(cfg: dict) -> dict:
-    """(0.105.38 review) planner_water.far_args (imported late: no import loop)."""
-    from planner_water import far_args
-    return far_args(cfg)
+    """(0.105.38 review) planner_water.far_args (imported late: no import loop),
+    its far_reach 0 too when far sources are off by water_job_max 0 (the
+    cistern's far tunnel and the far-bank well take only the reach)."""
+    from planner_water import far_args, far_on
+    out = far_args(cfg)
+    if not far_on(cfg):
+        out["far_reach"] = 0
+    return out
 
-__all__ = ["_well_rule", "_well_lid_rule", "SHAFT_LINK_LOST_MAX", "SHAFT_DANGER_TILES", "SHAFT_DANGER_OPEN", "cavern_danger", "_water_zone_rule", "cavern_points", "cavern_action", "cavern_well_need", "unfound_cavern", "cavern_well_safe", "WELL_PARTS_SHOPS", "CHAIN_SKIP", "chain_metal", "well_parts_plan", "_well_parts", "_water_traffic_rule", "cistern_pop", "WATER_WORDS", "magma_access", "water_summary", "_water_rules", "CISTERN_WORDS", "_cistern_parts", "_cistern_rule", "WELLS_CONFIG", "shut_wells", "usable_wells", "ai_opens_cavern", "cavern_open_words", "CISTERN_RETRY_SEALS", "CISTERN_RELINK_ROUNDS", "CISTERN_SHUT_RULE"]
+__all__ = ["_well_rule", "_well_lid_rule", "SHAFT_LINK_LOST_MAX", "SHAFT_DANGER_TILES", "SHAFT_DANGER_OPEN", "cavern_danger", "_water_zone_rule", "cavern_points", "cavern_action", "cavern_well_need", "unfound_cavern", "cavern_well_safe", "WELL_PARTS_SHOPS", "CHAIN_SKIP", "chain_metal", "well_parts_plan", "_well_parts", "_water_traffic_rule", "cistern_pop", "WATER_WORDS", "magma_access", "water_summary", "_water_rules", "CISTERN_WORDS", "_cistern_parts", "_cistern_rule", "WELLS_CONFIG", "shut_wells", "usable_wells", "ai_opens_cavern", "cavern_soldiers_ready", "cavern_open_words", "CISTERN_RETRY_SEALS", "CISTERN_RELINK_ROUNDS", "CISTERN_SHUT_RULE"]
 
 # (0.105.33 B4) the wells' own settings (merged into PLANNER_CONFIG, as planner_threats does)
 WELLS_CONFIG = {
@@ -580,6 +585,19 @@ def ai_opens_cavern(s: dict, cfg: dict) -> tuple[bool, str]:
         return False, "Caution is at its highest: only for the injured or the parched"
     else:
         return False, "the fort isn't short of water"
+    ok, soldiers, need = cavern_soldiers_ready(s, cfg)
+    if not ok:
+        return False, f"{short}, but only {soldiers} armed soldier(s) to meet what comes out ({need} wanted)"
+    return True, f"{short}, and {soldiers} armed soldiers to meet what comes out"
+
+
+def cavern_soldiers_ready(s: dict, cfg: dict) -> tuple[bool, int, int]:
+    """(0.105.38 review) The soldier half of ai_opens_cavern: armed soldiers
+    enough for what comes out of an opened cavern (`unfound_cavern_soldiers`,
+    +2 at Caution 50+, -1 at Militarism 50+). (ok, soldiers, wanted)."""
+    tr = _traits(s) if isinstance(s.get("settings"), dict) else {}
+    caution = tr.get("caution", 0) or 0
+    militarism = tr.get("militarism", 0) or 0
     need = int(cfg.get("unfound_cavern_soldiers", WELLS_CONFIG["unfound_cavern_soldiers"]))
     need += 2 if caution >= 50 else 0
     need -= 1 if militarism >= 50 else 0
@@ -590,9 +608,7 @@ def ai_opens_cavern(s: dict, cfg: dict) -> tuple[bool, str]:
         a = _d(q.get("power")).get("armed")
         return a if isinstance(a, int) and not isinstance(a, bool) else int(q.get("members") or 0)
     soldiers = sum(armed_of(q) for q in _l(_d(s.get("military")).get("squads")) if isinstance(q, dict))
-    if soldiers < need:
-        return False, f"{short}, but only {soldiers} armed soldier(s) to meet what comes out ({need} wanted)"
-    return True, f"{short}, and {soldiers} armed soldiers to meet what comes out"
+    return soldiers >= need, soldiers, need
 
 
 def cavern_open_words(s: dict, cfg: dict) -> str:
@@ -864,6 +880,11 @@ def _water_rules(s: dict, cfg: dict, proposals: list, notes: list) -> None:
     elif w.get("none") or not isinstance(tick, int) or not 0 <= now - tick < cfg["water_survey_ticks"]:
         proposals.append(Proposal("water", survey(),
                                   "survey the water near the fort (rivers, pools, caverns, aquifer, magma)", 7))
+    elif w.get("waters_pending") is True:
+        # (0.105.38 review) the near box saved but the whole-map pass cut off
+        # (a save, a quit, the map unloaded): begun again now, not a season on
+        proposals.append(Proposal("water", survey(),
+                                  "the water survey of the whole map was cut off: begun again", 7))
     if not w.get("none"):
         elev = int(_d(s.get("map")).get("elevation_offset") or 0)
         notes.append("water near the fort: " + water_summary(w, elev, s.get("map")))

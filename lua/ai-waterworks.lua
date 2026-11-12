@@ -206,6 +206,30 @@ function undesignate(cells)
     end
     return n
 end
+-- (0.105.38 review) the dig jobs already made for these tiles (the AI's own
+-- plan tiles only) removed: how many
+local DIG_JOBS = {Dig = true, DigChannel = true, CarveUpwardStaircase = true, CarveDownwardStaircase = true,
+                  CarveUpDownStaircase = true, CarveRamp = true}
+function cancel_dig_jobs(cells)
+    local want = {}
+    for _, c in ipairs(cells) do want[key(c.x, c.y, c.z)] = true end
+    local n = 0
+    pcall(function()
+        local found = {}
+        local link = df.global.world.jobs.list.next
+        while link do
+            local job = link.item
+            link = link.next
+            if job and DIG_JOBS[df.job_type[job.job_type]] and want[key(job.pos.x, job.pos.y, job.pos.z)] then
+                table.insert(found, job)
+            end
+        end
+        for _, job in ipairs(found) do
+            if dfhack.job.removeJob(job) then n = n + 1 end
+        end
+    end)
+    return n
+end
 -- (0.105.38 review) a line in DFHack's console (a retired work's half-dug tunnel)
 function log_line(msg) pcall(function() print('[ai-waterworks] ' .. msg) end) end
 function water_survey() return reqscript('ai-water').last() end
@@ -403,6 +427,29 @@ local function rock(t, warm_ok)
         and not t.outside and NATURAL[t.material] == true and (warm_ok or not t.warm)
 end
 
+-- (0.105.38 review) a deep layer's tile (a cavern's, or the sea's): a
+-- global feature. A local one is a magma pipe's or a pool's, no cavern. A
+-- tile reader without the two apart: its `feature` taken for a cavern.
+local function cavern_tile(t)
+    if t == nil then return false end
+    if t.feature_global ~= nil or t.feature_local ~= nil then return t.feature_global == true end
+    return t.feature == true
+end
+
+-- (0.105.38 review) the work's own source (p.src {x, y, z, magma}): its
+-- liquid near the source's tile on its level is no other liquid (bypass,
+-- walked again before each segment, still keeps it off every dug tile but
+-- the plug); nil when the plan has none
+local function own_source(p)
+    local src = type(p.src) == 'table' and p.src or nil
+    if not src then return nil end
+    return function(x, y, z)
+        local t = T(x, y, z)
+        return t ~= nil and t.liquid and (t.magma == true) == (src.magma == true) and z == src.z
+            and math.max(math.abs(x - src.x), math.abs(y - src.y)) <= 16
+    end
+end
+
 -- open ground under the sky with natural rock or soil under it (a channel there)
 local function ground(x, y, z)
     local t, b = T(x, y, z), T(x, y, z - 1)
@@ -518,6 +565,9 @@ end
 -- work's own source (the magma sea's layer). nil, or why (and `opens`: true
 -- when it is a cavern the dig would open).
 function far_route_check(p, allow_cavern, feature_ok)
+    -- (review) the sea's own layer at and under p.deep_z (set on a sea plan)
+    if not feature_ok and p.deep_z then feature_ok = function(z) return z <= p.deep_z end end
+    local own = own_source(p)
     local exempt = {}
     if p.plug then exempt[key(p.plug.x, p.plug.y, p.plug.z)] = true end
     local seen = {}
@@ -527,12 +577,17 @@ function far_route_check(p, allow_cavern, feature_ok)
             if not seen[k] and not exempt[k] then
                 seen[k] = true
                 local t = T(c.x, c.y, c.z)
-                if t and t.feature and not allow_cavern and not (feature_ok and feature_ok(c.z)) then
+                local fok = feature_ok and feature_ok(c.z)
+                if cavern_tile(t) and not allow_cavern and not fok then
                     return ('the dig would open a cavern at x%d y%d, elevation %d (the cavern switch does not allow it)')
                         :format(c.x, c.y, ez(c.z)), true
                 end
+                if t and t.feature and not cavern_tile(t) and not fok then
+                    return ('the dig would cross a magma pipe or a pool (a local feature) at x%d y%d, elevation %d')
+                        :format(c.x, c.y, ez(c.z))
+                end
                 if t and t.aquifer then return ('the dig crosses an aquifer at x%d y%d, elevation %d'):format(c.x, c.y, ez(c.z)) end
-                local wb = wet_beside(c.x, c.y, c.z)
+                local wb = wet_beside(c.x, c.y, c.z, own)
                 if wb then return wb end
             end
         end
@@ -704,20 +759,23 @@ end
 function next_segment_bad(p, cells)
     local cav_ok = type(p.source) == 'table' and p.source.opens_cavern ~= nil
     local exempt = p.plug and key(p.plug.x, p.plug.y, p.plug.z) or nil
+    local own = own_source(p)
     for _, c in ipairs(cells or {}) do
         local t = T(c.x, c.y, c.z)
         local where = ('x%d y%d, elevation %d'):format(c.x, c.y, ez(c.z))
+        local deep_ok = p.deep_z ~= nil and c.z <= p.deep_z      -- (review) the sea's own layer
         if not t then return 'an unknown tile at ' .. where end
         if t.liquid then return 'liquid at ' .. where end
         if t.aquifer then return 'an aquifer at ' .. where end
-        if t.feature and not cav_ok then return 'a cavern at ' .. where end
+        if cavern_tile(t) and not cav_ok and not deep_ok then return 'a cavern at ' .. where end
+        if t.feature and not cavern_tile(t) and not deep_ok then return 'a magma pipe or a pool (a local feature) at ' .. where end
         if t.shape == 'WALL' then
             if NATURAL[t.material] ~= true then return 'no natural rock at ' .. where end
         elseif not OPEN[t.shape] or t.outside then
             return 'no longer solid rock at ' .. where
         end
         if key(c.x, c.y, c.z) ~= exempt then
-            local wb = wet_beside(c.x, c.y, c.z)
+            local wb = wet_beside(c.x, c.y, c.z, own)
             if wb then return wb end
         end
     end
@@ -942,6 +1000,7 @@ local function pump_at(src, fb, w, far)
             local p = {kind = 'pump', dig = {}, builds = {}, tiles = {}, wet = {}, down = {},
                        gate = {x = G.x, y = G.y, z = zs}, plug = {x = P.x, y = P.y, z = zs, text = 'd'},
                        lift = lift, power = 'dwarf', source = {x = src.x, y = src.y, z = zs},
+                       src = {x = src.x, y = src.y, z = zs},
                        reservoir = {x = rx, y = ry, z = zt},
                        test = {mode = 'rise', x = rx, y = ry, z = zt, want = 4}}
             table.insert(p.dig, {x = G.x, y = G.y, z = zs, text = 'd'})
@@ -1039,10 +1098,12 @@ end
 
 -- W5: a 5x5 room in stone under a fort level, muddied by a little water
 -- let in through a floodgate, dried, then farm plots on the mud.
+IRR_FAR_SECONDS = 0.25   -- (0.105.38 review) the far farm room's search this long at most (then: tried again later)
 function plan_irrigation()
     local fb = fort_box()
     if not fb then return nil, 'no citizens' end
     local why
+    local far_deadline
     for zf = fb.z_high, math.max(fb.z_low, fb.z_high - 3), -1 do
         local z = zf - 1
         -- still water on the room's level near the fort (the nearest 12 tiles)
@@ -1069,6 +1130,14 @@ function plan_irrigation()
         for _, wt in ipairs(waters) do
             for _, d in ipairs(N4) do
                 for gap = 3, wt.far or IRR_REACH do
+                    -- (0.105.38 review) a far source's long line within IRR_FAR_SECONDS in all
+                    if wt.far then
+                        far_deadline = far_deadline or (os.clock() + IRR_FAR_SECONDS)
+                        if os.clock() > far_deadline then
+                            return nil, (why and (why .. '; ') or '')
+                                .. 'the search for a far farm room ran out of time: tried again later', true
+                        end
+                    end
                     local cx, cy = wt.x + d[1] * (gap + 2), wt.y + d[2] * (gap + 2)
                     local above = T(cx - 2, cy - 2, zf)
                     local ok = true
@@ -1086,6 +1155,7 @@ function plan_irrigation()
                                        gate = {x = path[1].x, y = path[1].y, z = z},
                                        plug = {x = path[#path].x, y = path[#path].y, z = z, text = 'd'},
                                        room = {x1 = cx - 2, y1 = cy - 2, x2 = cx + 2, y2 = cy + 2, z = z},
+                                       src = {x = wt.x, y = wt.y, z = z},
                                        test = {mode = 'wet', z = z}}
                             for x = cx - 2, cx + 2 do for y = cy - 2, cy + 2 do
                                 local stair = x == cx - 2 and y == cy - 2
@@ -1149,7 +1219,7 @@ local function fort_tunnel(x, y, fb, allow_cavern)
                 local t = T(cx, cy, z)
                 local open = t and OPEN[t.shape] and t.shape ~= 'EMPTY' and not t.outside and not t.liquid
                 if open and not t.feature and not t.hidden and groups[walk_group(cx, cy, z)] == true then met = true
-                elseif t and t.feature then
+                elseif cavern_tile(t) then
                     if not allow_cavern then
                         ok = false
                         why = why or ('the tunnel to the fort would open a cavern at x%d y%d (the cavern switch does not allow it)')
@@ -1218,6 +1288,7 @@ local function magma_at(m, shop, fb, allow_cavern)
                            gate = {x = path[2].x, y = path[2].y, z = zm},
                            plug = {x = path[#path].x, y = path[#path].y, z = zm, text = 'd'},
                            pit = {x = P.x, y = P.y, z = zm}, room = {x = P.x, y = P.y, z = zw},
+                           src = {x = m.x, y = m.y, z = zm, magma = true},
                            test = {mode = 'deep', x = P.x, y = P.y, z = zm, want = 4}}
                 for x = P.x - 2, P.x + 2 do for y = P.y - 2, P.y + 2 do
                     local text = (x == S1.x and y == S1.y) and 'u' or (x == S2.x and y == S2.y) and 'j'
@@ -1317,13 +1388,14 @@ function plan_magma(shop, opts)
         if p and c.b then
             local deep = c.b.magma == 'sea' or c.b.magma == 'underworld'
             local zw = c.m.z + 1
-            local bad = far_route_check(p, allow, deep and function(z) return z <= zw end or nil)
+            if deep then p.deep_z = zw end      -- (review) the sea's own layer: next_segment_bad's too
+            local bad = far_route_check(p, allow)
             if not bad then
                 -- a cavern on the planned dig (allowed by the switch), or the body's own
                 local crossed
                 for _, d in ipairs(p.dig) do
                     local t = T(d.x, d.y, d.z)
-                    if t and t.feature and not (deep and d.z <= zw) then crossed = true break end
+                    if cavern_tile(t) and not (deep and d.z <= zw) then crossed = true break end
                 end
                 p.source = {magma = c.b.magma, d = c.b.d,
                             opens_cavern = (crossed or c.b.magma == 'cavern') and (c.b.opens_cavern or c.b.cavern or 'a cavern') or nil}
@@ -2442,20 +2514,28 @@ function step(kind, opts)
             -- source), and the half-dug tunnel is recorded and logged
             local p = wk.plan
             if type(p) == 'table' and p.stages and (wk.stage == 'digging' or (wk.stage == 'held' and wk.seg)) then
-                local upto = p.stages[math.min(#p.stages, math.tointeger(wk.seg) or 1)][2]
+                local seg = math.min(#p.stages, math.tointeger(wk.seg) or 1)
+                local upto = p.stages[seg][2]
                 local designated, open = {}, nil
                 for k = 1, upto do table.insert(designated, p.dig[k]) end
                 local left = undug(designated)
-                local n_off = #left > 0 and undesignate(left) or 0
-                for k = upto, 1, -1 do
-                    local c = p.dig[k]
-                    if dug(T(c.x, c.y, c.z), c.text) then open = {x = c.x, y = c.y, z = c.z} break end
+                -- (review) the floodgate's floor too, once designated
+                local cancel = {}
+                for _, c in ipairs(left) do table.insert(cancel, c) end
+                if wk.dig2 then for _, c in ipairs(undug(p.dig2)) do table.insert(cancel, c) end end
+                local n_off = #cancel > 0 and undesignate(cancel) or 0
+                local n_jobs = #cancel > 0 and cancel_dig_jobs(cancel) or 0
+                if not (seg == #p.stages and #left == 0) then     -- (review) all dug: no half-dug tunnel
+                    for k = upto, 1, -1 do
+                        local c = p.dig[k]
+                        if dug(T(c.x, c.y, c.z), c.text) then open = {x = c.x, y = c.y, z = c.z} break end
+                    end
+                    wk.half_dug = {dug = #designated - #left, of = #p.dig, segment = seg, segments = #p.stages,
+                                   called_off = n_off, jobs_removed = n_jobs, last = open}
+                    log_line(('%s retired half-dug: %d of %d tiles dug (segment %d of %d), %d designation(s) and %d dig job(s) called off%s')
+                        :format(id, wk.half_dug.dug, #p.dig, seg, #p.stages, n_off, n_jobs,
+                                open and (', its end at x%d y%d elevation %d'):format(open.x, open.y, ez(open.z)) or ''))
                 end
-                wk.half_dug = {dug = #designated - #left, of = #p.dig, segment = math.tointeger(wk.seg) or 1,
-                               segments = #p.stages, called_off = n_off, last = open}
-                log_line(('%s retired half-dug: %d of %d tiles dug (segment %d of %d), %d designation(s) called off%s')
-                    :format(id, wk.half_dug.dug, #p.dig, wk.half_dug.segment, #p.stages, n_off,
-                            open and (', its end at x%d y%d elevation %d'):format(open.x, open.y, ez(open.z)) or ''))
             end
             wk.stage = 'retired'; wk.why = opts.why or 'retired'
             wk.shut, wk.shut_open = nil, nil
@@ -2503,13 +2583,13 @@ function step(kind, opts)
             end
             return {ok = false, rejected = true, retired = n_ret, error = why0}
         end
-        local plan, why
+        local plan, why, later
         if kind == 'moat' then plan, why = plan_moat({plain = opts.plain})
         elseif kind == 'magma' then plan, why = plan_magma(opts.shop, {open_caverns = opts.open_caverns == true})
-        else plan, why = PLANNERS[kind]() end
+        else plan, why, later = PLANNERS[kind]() end
         if not plan then
-            if not dry then st.refused[id] = {tick = now(), why = why}; save_state(st) end
-            return {ok = false, rejected = true, error = why}
+            if not dry then st.refused[id] = {tick = now(), why = why, later = later or nil}; save_state(st) end
+            return {ok = false, rejected = true, error = why, later = later or nil}
         end
         local path = path_check(plan)
         if not path.ok then
