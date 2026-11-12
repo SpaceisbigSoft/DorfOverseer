@@ -3246,3 +3246,28 @@ function act_cleanup_dead_units(a)
     if off then return off end
     return reqscript('ai-cleanup').cleanup_dead_units(o, a.dry_run == true)
 end
+
+-- (0.105.40b, M6) The food store (lua/ai-food-store.lua): a food pile near a
+-- kitchen or still, about `tiles` tiles, taking `barrels` barrels (more: the
+-- near ones are full); an AI food pile's max barrels (never the player's).
+function act_food_pile(a)
+    local id = whole_number(a.building_id)
+    if not id then return reject('food_pile needs building_id (a kitchen or still)') end
+    local o = {building_id = id, more = a.more == true}
+    for _, k in ipairs({{'tiles', 4, 64}, {'barrels', 0, 100}, {'reach', 4, 30}}) do
+        if a[k[1]] ~= nil then
+            local n = int_in(a[k[1]], k[2], k[3])
+            if not n then return reject(('food_pile: %s is %d-%d'):format(k[1], k[2], k[3])) end
+            o[k[1]] = n
+        end
+    end
+    return reqscript('ai-food-store').food_pile(o, a.dry_run == true)
+end
+
+function act_food_barrels(a)
+    local id = whole_number(a.pile_id)
+    if not id then return reject('food_barrels needs pile_id') end
+    local n = int_in(a.barrels, 0, 100)
+    if not n then return reject('food_barrels: barrels is 0-100') end
+    return reqscript('ai-food-store').food_barrels({pile_id = id, barrels = n}, a.dry_run == true)
+end

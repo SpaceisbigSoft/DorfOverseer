@@ -336,6 +336,9 @@ ACTIONS = {
     cleanup_units = act_cleanup_units,
     cleanup_spatter = act_cleanup_spatter,
     cleanup_dead_units = act_cleanup_dead_units,
+    -- (0.105.40b, M6) the food store: a food pile near the kitchen and still, its barrels (lua/ai-food-store.lua)
+    food_pile = act_food_pile,
+    food_barrels = act_food_barrels,
     -- (D0) the Design track: a landmark's sites, its drawing built, its next stage (ai-bridge-design.lua)
     blueprint_sites = act_blueprint_sites,
     build_blueprint = act_build_blueprint,
@@ -391,6 +394,8 @@ for _, name in ipairs({
     'build_blueprint', 'landmark_step',
     -- (0.105.40) world cleanup: each dry run counts and returns before it removes anything
     'cleanup_items', 'cleanup_units', 'cleanup_spatter', 'cleanup_dead_units',
+    -- (0.105.40b, M6) the food store: each dry run finds the spot (quickfort's dry run) and changes nothing
+    'food_pile', 'food_barrels',
 }) do DRY_OK[name] = true end
 
 -- These only change what's displayed, so they still work while halted, dry
@@ -449,7 +454,7 @@ end
 -- `--@ module = true`, but this one and the parts, which are no modules);
 -- `modules` loads each. tests/test_fix26_bridge.py keeps it in step with lua/.
 BRIDGE_MODULES = {
-    'ai-blueprints', 'ai-builder', 'ai-camera', 'ai-census', 'ai-cleanup', 'ai-constructions', 'ai-diplomacy', 'ai-disposal', 'ai-gates', 'ai-health', 'ai-homes',
+    'ai-blueprints', 'ai-builder', 'ai-camera', 'ai-census', 'ai-cleanup', 'ai-constructions', 'ai-diplomacy', 'ai-disposal', 'ai-food-store', 'ai-gates', 'ai-health', 'ai-homes',
     'ai-industry', 'ai-joins', 'ai-labor', 'ai-layouts', 'ai-military', 'ai-military-gear',
     'ai-mission-send', 'ai-missions', 'ai-moods', 'ai-nobles', 'ai-overlay', 'ai-overseer-settings',
     'ai-ping', 'ai-reports', 'ai-society', 'ai-society-burrows', 'ai-status', 'ai-threats', 'ai-title',
@@ -780,6 +785,10 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
     -- (a pass spans many reports; a new one starts a game day after the last
     -- started at the soonest) and sends its last finished pass between
     cleanup = function() return safe(function() return reqscript('ai-cleanup').report() end) end,
+    -- (0.105.40b, M6) the food store: the piles that take food (barrels, size,
+    -- fullness, the AI's own), the kitchens and stills, the food lying out of
+    -- piles and barrels and the rotten (lua/ai-food-store.lua; cached a day)
+    food_store = function() return safe(function() return reqscript('ai-food-store').report() end) end,
     -- (0.105.30) what the fort has built: finished constructions by shape and
     -- material, above or below ground, roofed surface tiles, the waiting ones
     -- and the AI's own (lua/ai-constructions.lua; one pass, every 3 days)
@@ -814,6 +823,7 @@ SECTION_CACHE_DAYS = {logistics = 3, industry = 7,   -- industry: 300-450 ms liv
     citizens_taste = 3,   -- (E4) each citizen's soul and the free furniture read
     disposal = 1}   -- (0.105.27) every item in play walked once for the marks
 SECTION_CACHE_DAYS.constructions = 3   -- (0.105.30) every built tile walked once
+SECTION_CACHE_DAYS.food_store = 1      -- (0.105.40b, M6) every food item walked once
 SECTION_REBUILDS = 2       -- expired cached sections rebuilt in one report (a missing one always is)
 -- (0.100) the cached sections each action changes (cleared when it succeeds)
 CACHE_INVALIDATES = {
@@ -853,6 +863,8 @@ CACHE_INVALIDATES.set_standing_orders = {'disposal', 'dead'}
 CACHE_INVALIDATES.cleanup_items = {'disposal', 'industry'}
 CACHE_INVALIDATES.cleanup_units = {'disposal'}
 CACHE_INVALIDATES.cleanup_dead_units = {'disposal', 'dead'}
+CACHE_INVALIDATES.food_pile = {'food_store', 'logistics'}   -- (0.105.40b, M6) the new pile read again
+CACHE_INVALIDATES.food_barrels = {'food_store'}
 CACHE_INVALIDATES.renew_well_dig = {'registry'}   -- (0.105.31) as start_project
 CACHE_INVALIDATES.build_blueprint = {'registry'}   -- (D0) a landmark's levels are projects
 CACHE_INVALIDATES.landmark_step = {'registry'}

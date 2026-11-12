@@ -49,6 +49,7 @@ from planner_world import (_contact_rule, _export_rule, _hostile_trade_filter, _
                            _messenger_rule, _world_notes, note_world)  # (0.105.0: the world outside, 12b and 13b)
 from planner_missions import _mission_rule, note_missions  # noqa: E402  (0.105.39) missions on the world map
 from planner_cleanup import _world_cleanup_rule, note_cleanup  # noqa: E402  (0.105.40) world cleanup for the game's speed
+from planner_food import _food_store_rule, note_food  # noqa: E402  (0.105.40b, M6) the food store
 from planner_construct import (_hall_rule, _construction_blocks_rule,  # noqa: E402  (0.105.30) construction
                                note_construct, note_construct_cycle)
 from planner_army import (_army_gear_rule, _quiver_rule, _bolts_rule, _flask_rule,  # noqa: E402  (0.105.0, round 2)
@@ -795,6 +796,9 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
     # creatures, spatter, old dead units), past its thresholds
     if "cleanup" not in errors:
         _guard(_world_cleanup_rule, s, cfg, proposals, notes, memory, rules_)
+    # (0.105.40b, M6) a roofed food pile with barrels near the kitchen and still
+    if "food_store" not in errors:
+        _guard(_food_store_rule, s, cfg, proposals, notes, memory)
     # (0.100.1, overnight run) any workshops level another rule starts (a well's
     # parts, the metal works, a bottleneck) brings the missing still, kitchen
     # and carpenter's with it
@@ -1447,6 +1451,8 @@ def note_cycle(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> list[
         _step(note_world, s, memory)                            # (0.105.0) grudges, export wishes
     if "missions" not in errors:
         notes += _step(note_missions, s, memory) or []          # (0.105.39) missions followed out and back
+    if "food_store" not in errors:
+        notes += _step(note_food, s, memory, cfg) or []         # (0.105.40b, M6) the rotten food followed
     if "others_on_map" not in errors:
         notes += _step(note_lockdown, s, memory, cfg) or []     # (0.105.3) B's sealed hatch: lone intruders, the cap
     if "locations" not in errors:
