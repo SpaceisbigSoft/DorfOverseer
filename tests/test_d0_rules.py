@@ -390,9 +390,10 @@ def _():
 # --- the library -------------------------------------------------------------------------
 
 WANT = {"gate_hall": (15, 11, 1, "rock"), "god_hall": (23, 23, 1, "rock"), "great_hall": (31, 21, 1, "rock"),
-        "descent": (15, 15, 4, "rock"), "necropolis": (25, 25, 2, "rock"), "ziggurat": (21, 21, 3, "surface")}
+        "descent": (15, 15, 4, "rock"), "necropolis": (25, 25, 2, "rock"), "ziggurat": (21, 21, 3, "surface"),
+        "chronicle_hall": (21, 15, 2, "rock")}          # (E1) a hall two levels high, open in the middle
 LEGEND_NAMES = {"Statue", "Table", "Chair", "Bed", "Coffin", "Cabinet", "Chest", "Bookcase", "ArmorStand", "WeaponRack"}
-ROCK = set("_#.,@<>X^+")
+ROCK = set("_#.,@<>X^+*O")         # (E1) '*' open to the level below, 'O' a rail
 SURF = set("_.@WFRUDIO+")
 
 

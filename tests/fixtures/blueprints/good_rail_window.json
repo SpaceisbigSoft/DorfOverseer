@@ -1,0 +1,18 @@
+{
+ "v": 1,
+ "ground": "rock",
+ "levels": [
+  {
+   "grid": [
+    "###@###",
+    "#.....#",
+    "#O#O#.#",
+    "#.....#",
+    "#######"
+   ]
+  }
+ ],
+ "name": "The Window",
+ "purpose": "gate_hall",
+ "_doc": "fortifications in the rock with no opening: built once dug"
+}

@@ -9,8 +9,15 @@ Lua one; tests/test_d0_blueprints.py runs both over the same fixtures
 A reason is {"code", "level", "x", "y", "words"}: level from 1, x the
 column and y the row (both from 0) on the drawing as given, or None where a
 position doesn't apply. The codes: FORMAT SIZE SYMBOL LEGEND JOIN STAIRS
-REACH SUPPORT LIMIT. A blueprint's positions describe its own shape only;
-they are never map coordinates.
+REACH OPEN RAIL SUPPORT LIMIT. A blueprint's positions describe its own shape
+only; they are never map coordinates.
+
+(E1) Multi-storey openings, rock: '*' is open to the level below (dug, then
+cut as a channel once the level below is dug), 'O' a rail (a fortification:
+dug, the openings cut from it, then built). The tile below a '*' is dug in
+the drawing (or another '*'); every tile beside a '*' is '*', '#', 'O' or '_';
+every '*' is reached from an 'O' beside it; nothing is left hanging over a
+hole (SUPPORT).
 """
 
 from __future__ import annotations
@@ -21,9 +28,9 @@ from pathlib import Path
 
 LIMITS = {"w": 31, "h": 31, "levels": 5, "dug": 700, "built": 400, "items": 40, "statues": 16, "doors": 8,
           "stairs": 4, "legend": 12, "cost_max": 2500}
-ALPHABET = {"rock": "_#.,@<>X^+", "surface": "_.@WFRUDIO+"}
+ALPHABET = {"rock": "_#.,@<>X^+*O", "surface": "_.@WFRUDIO+"}
 MAX_REASONS = 24
-CODES = ("FORMAT", "SIZE", "SYMBOL", "LEGEND", "JOIN", "STAIRS", "REACH", "SUPPORT", "LIMIT")
+CODES = ("FORMAT", "SIZE", "SYMBOL", "LEGEND", "JOIN", "STAIRS", "REACH", "OPEN", "RAIL", "SUPPORT", "LIMIT")
 
 FURNITURE = ("Statue", "Table", "Chair", "Bed", "Coffin", "Cabinet", "Chest", "Bookcase", "ArmorStand",
              "WeaponRack")
@@ -42,8 +49,10 @@ LANDMARK_KINDS = ("descent", "god_hall", "ziggurat", "chronicle_hall", "great_ha
                   "gate_hall", "garden_court")
 ENGRAVE = ("none", "halls", "all")
 
-ROCK_DUG = set(".,@<>X^+")
-ROCK_WALK = ROCK_DUG
+ROCK_WALK = set(".,@<>X^+")
+ROCK_DUG = ROCK_WALK | {"*", "O"}
+RAIL_OK = set("*#O_")
+N4 = ((0, -1), (-1, 0), (1, 0), (0, 1))
 SURF_WALK = set(".@FRUDI+")
 SURF_BUILT = set("WFRUDIO")
 SURF_UNDER = set("WFRUDI")
@@ -133,7 +142,7 @@ def _grids(bp) -> list[list[str]]:
 def cost(bp) -> dict:
     """dug and built tiles, items (furniture and workshops; piles are free),
     statues, doors, stair columns, and jobs = dug + 4 x built + 10 x items."""
-    out = {"dug": 0, "built": 0, "items": 0, "statues": 0, "doors": 0, "stairs": 0, "jobs": 0}
+    out = {"dug": 0, "built": 0, "items": 0, "statues": 0, "doors": 0, "stairs": 0, "open": 0, "jobs": 0}
     if not isinstance(bp, dict) or not isinstance(bp.get("levels"), list):
         return out
     surface = bp.get("ground") == "surface"
@@ -161,6 +170,10 @@ def cost(bp) -> dict:
                         out["built"] += 1
                 elif ch in ROCK_DUG or _is_letter(ch):
                     out["dug"] += 1
+                    if ch == "O":
+                        out["built"] += 1
+                    if ch == "*":
+                        out["open"] += 1
                 if ch == "+":
                     out["doors"] += 1
                 if (surface and ch in "UDI") or (not surface and ch in "<>X"):
@@ -172,14 +185,42 @@ def cost(bp) -> dict:
                     if name == "Statue":
                         out["statues"] += 1
     out["stairs"] = len(columns)
-    out["jobs"] = out["dug"] + 4 * out["built"] + 10 * out["items"]
+    out["jobs"] = out["dug"] + out["open"] + 4 * out["built"] + 10 * out["items"]
     return out
+
+
+def open_distances(at, h, w) -> tuple[dict, int]:
+    """(E1) Each '*' of a level: its distance (4 ways, through '*') from an
+    'O' beside it, and the largest (0 with no '*'). The farthest are cut
+    first. at(x, y) -> the symbol or None."""
+    dist: dict = {}
+    queue = []
+    far = 0
+    for y in range(h):
+        for x in range(w):
+            if at(x, y) == "*":
+                for dx, dy in N4:
+                    if at(x + dx, y + dy) == "O" and (x, y) not in dist:
+                        dist[(x, y)] = 1
+                        queue.append((x, y))
+    head = 0
+    while head < len(queue):
+        x, y = queue[head]
+        head += 1
+        dd = dist[(x, y)]
+        far = max(far, dd)
+        for dx, dy in N4:
+            nx, ny = x + dx, y + dy
+            if at(nx, ny) == "*" and (nx, ny) not in dist:
+                dist[(nx, ny)] = dd + 1
+                queue.append((nx, ny))
+    return dist, far
 
 
 def check_format(bp) -> tuple[bool, list[dict]]:
     """Every check of the format, in the bridge's order: FORMAT SIZE SYMBOL
     (each stops the check when it fails), then LEGEND JOIN STAIRS REACH
-    SUPPORT LIMIT. Returns (ok, reasons), MAX_REASONS at most."""
+    OPEN RAIL SUPPORT LIMIT. Returns (ok, reasons), MAX_REASONS at most."""
     reasons: list[dict] = []
 
     def why(code, level, x, y, words):
@@ -456,13 +497,61 @@ def check_format(bp) -> tuple[bool, list[dict]]:
             for y in range(h):
                 for x in range(w):
                     ch = cell(i, x, y)
-                    must = ch in walkset or _is_letter(ch)
+                    rail = not surface and ch == "O"
+                    must = ch in walkset or _is_letter(ch) or rail
                     if must and (i, x, y) not in seen:
                         near = False
-                        if _is_letter(ch) and not walkable(ch):
+                        if (_is_letter(ch) and not walkable(ch)) or rail:
                             near = any((i, x + dx, y + dy) in seen for dx, dy in N8)
                         if not near:
                             why("REACH", i, x, y, "not reached from '@'")
+
+    # OPEN (E1)
+    any_open = not surface and any("*" in row for rows in g for row in rows)
+    if any_open:
+        for i in range(1, n + 1):
+            for y in range(h):
+                for x in range(w):
+                    if cell(i, x, y) != "*":
+                        continue
+                    below = cell(i + 1, x, y) if i < n else None
+                    if below is None:
+                        why("OPEN", i, x, y, "an opening ('*') on the lowest level: no level below it in the drawing")
+                    elif not (below == "*" or below in ROCK_WALK or _is_letter(below)):
+                        why("OPEN", i, x, y, "an opening ('*') needs the level below dug here, not %s"
+                            % _char_words(below))
+            dist, _ = open_distances(lambda x, y, i=i: cell(i, x, y), h, w)
+            told = set()
+            for y in range(h):
+                for x in range(w):
+                    if cell(i, x, y) == "*" and (x, y) not in dist and (x, y) not in told:
+                        why("OPEN", i, x, y, "no rail ('O') leads to this opening: the dwarves cut it standing on an "
+                                             "'O' beside it")
+                        stack = [(x, y)]
+                        told.add((x, y))
+                        while stack:
+                            px, py = stack.pop()
+                            for dx, dy in N4:
+                                nx, ny = px + dx, py + dy
+                                if cell(i, nx, ny) == "*" and (nx, ny) not in told:
+                                    told.add((nx, ny))
+                                    stack.append((nx, ny))
+
+    # RAIL (E1)
+    if any_open:
+        for i in range(1, n + 1):
+            told = set()
+            for y in range(h):
+                for x in range(w):
+                    if cell(i, x, y) != "*":
+                        continue
+                    for dx, dy in N8:
+                        nx, ny = x + dx, y + dy
+                        c = cell(i, nx, ny)
+                        if c is not None and c not in RAIL_OK and (nx, ny) not in told:
+                            told.add((nx, ny))
+                            why("RAIL", i, nx, ny, "%s beside an opening: a dwarf could fall; rail the edge "
+                                                   "with '#' or 'O'" % _char_words(c))
 
     # SUPPORT
     if surface:
@@ -479,6 +568,36 @@ def check_format(bp) -> tuple[bool, list[dict]]:
                                                 "for a floor" % _char_words(ch))
                     elif ch == "F" and below == "W":
                         why("SUPPORT", i, x, y, "the wall below already makes a floor here; use '.'")
+    elif any_open:
+        # (E1) the cave-in check: every tile but the openings is held by the
+        # rock outside the drawing, by rock below it, or through a held tile
+        # beside it (4 ways)
+        for i in range(1, n + 1):
+            held = set()
+            queue = []
+            for y in range(h):
+                for x in range(w):
+                    ch = cell(i, x, y)
+                    if ch == "*":
+                        continue
+                    below = cell(i + 1, x, y) if i < n else "#"
+                    if ch == "_" or x == 0 or y == 0 or x == w - 1 or y == h - 1 or below in ("#", "_"):
+                        held.add((x, y))
+                        queue.append((x, y))
+            head = 0
+            while head < len(queue):
+                x, y = queue[head]
+                head += 1
+                for dx, dy in N4:
+                    nx, ny = x + dx, y + dy
+                    c = cell(i, nx, ny)
+                    if c is not None and c != "*" and (nx, ny) not in held:
+                        held.add((nx, ny))
+                        queue.append((nx, ny))
+            for y in range(h):
+                for x in range(w):
+                    if cell(i, x, y) != "*" and (x, y) not in held:
+                        why("SUPPORT", i, x, y, "nothing holds this over the opening below: it would cave in")
 
     # LIMIT
     c = cost(bp)
