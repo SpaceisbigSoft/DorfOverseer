@@ -516,7 +516,9 @@ def _():
     s = _settled(militarism=100)
     s["settings"]["design"] = "guided"
     m = Memory()
-    m.culture = history_with(dict(FULL, emphasis=["barracks"]))
+    # by the AI (D0 merge): planner_design rewrites a rule language whose rules_key
+    # doesn't match the sliders, so the hand-made one here is kept as the AI's
+    m.culture = history_with(dict(FULL, emphasis=["barracks"]), by="ai")
     p, _ = plan(copy.deepcopy(s), m)
     lv = [x.action for x in p if x.action.get("type") == "start_project" and x.action.get("kind") == "barracks"]
     assert lv, [x.action for x in p if x.action.get("type") == "start_project"]
