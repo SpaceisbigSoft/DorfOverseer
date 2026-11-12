@@ -183,23 +183,73 @@ def load(key: str, bridge=None, prefer_logs: bool = False, state: dict | None = 
     return memory, bank
 
 
-def write_ledger(bridge, state: dict, memory: Memory) -> None:
+# (0.105.40, Phase 13e) The cycle's bookkeeping actions (report_status,
+# ledger_set, set_learned, set_culture) are held and go to the game in one
+# `batch` call with the next action or the memory's save_memory (Bridge.defer):
+# each dfhack-run call costs ~35 ms before it does anything. Each one's answer
+# is handled as before, by its own callback, in the order they were made.
+HELD_BEFORE_SAVE = {"set_learned", "set_culture"}   # their answers are written into the memory
+
+
+def defer_act(bridge, action: dict, on_result) -> None:
+    """Send `action` with the next call (a bridge with defer()), else now;
+    on_result(reply, error) gets the answer (error: the BridgeError or
+    DFHackError act() would raise)."""
+    d = getattr(bridge, "defer", None)
+    if callable(d) and isinstance(getattr(bridge, "pending", None), list):
+        d(action, on_result)
+        return
+    try:
+        r = bridge.act(action)
+    except (BridgeError, DFHackError) as e:
+        on_result(None, e)
+        return
+    on_result(r, None)
+
+
+def flush_held(bridge, only: set | None = None) -> None:
+    """Send what defer_act held (only when one of `only` is among it, if given).
+    Never raises."""
+    held = getattr(bridge, "pending", None)
+    if not isinstance(held, list) or not held:
+        return
+    if only and not any(isinstance(a, dict) and a.get("type") in only for a, _ in held):
+        return
+    try:
+        bridge.flush()
+    except Exception:  # noqa: BLE001  (each held action's own answer says what happened)
+        pass
+
+
+def write_ledger(bridge, state: dict, memory: Memory, defer: bool = False) -> None:
     """(0.104.0) The ledger into the save when it differs from the one the
-    game holds (a bridge from before 0.104.0 has none: nothing written)."""
+    game holds (a bridge from before 0.104.0 has none: nothing written).
+    (0.105.40) defer: sent with the cycle's next call (the end of the cycle)."""
     held = state.get("ledger") if isinstance(state, dict) else None
     if not isinstance(held, dict) or "error" in held:
         return
     snap = ledger.snapshot(memory)
     if ledger.same(snap, held):
         return
-    try:
-        r = bridge.act({"type": "ledger_set", "values": snap})
-        if r.get("ok"):
+
+    def done(r, err):
+        if err is not None:
+            say(f"Ledger: not saved with the game ({err})")
+        elif r.get("ok"):
             state["ledger"] = snap                 # (the next cycle's report will say so too)
         else:
             say(f"Ledger: not saved with the game ({r.get('error')})")
+
+    action = {"type": "ledger_set", "values": snap}
+    if defer:
+        defer_act(bridge, action, done)
+        return
+    try:
+        r = bridge.act(action)
     except (BridgeError, DFHackError) as e:
-        say(f"Ledger: not saved with the game ({e})")
+        done(None, e)
+        return
+    done(r, None)
 
 
 def seed_squads_made(memory: Memory, key: str) -> None:
@@ -753,11 +803,14 @@ def report_status(bridge: Bridge, payload: dict) -> None:
     if (STATUS_SENT.get("bridge") is bridge and STATUS_SENT.get("payload") == payload
             and time.monotonic() - STATUS_SENT.get("at", 0.0) < STATUS_REFRESH_S):
         return
-    try:
-        bridge.act({"type": "report_status", "status": payload})
-        STATUS_SENT.update(bridge=bridge, payload=payload, at=time.monotonic())
-    except (BridgeError, DFHackError):
-        STATUS_SENT.clear()
+    def done(r, err):
+        if err is not None:
+            STATUS_SENT.clear()
+        else:
+            STATUS_SENT.update(bridge=bridge, payload=payload, at=time.monotonic())
+
+    # (0.105.40) held: it goes with the cycle's next call (Bridge.defer)
+    defer_act(bridge, {"type": "report_status", "status": payload}, done)
 
 
 # The last full (daily) report, so a cycle in between (after an event, or
@@ -1082,6 +1135,7 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
                         # Save first; the new level starts next cycle, after the save.
                         try:
                             write_ledger(bridge, state, memory)    # (0.104.0) the save carries the ledger as of now
+                            flush_held(bridge)        # (0.105.40) what's held reaches the game before the save
                             bridge.df.run("quicksave")
                             memory.saved_before = pid
                             say("  saving the game before digging a new level; it starts next cycle")
@@ -1157,7 +1211,7 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
                         chronicle.add(memory, state, "plan", line)
         memory.notes = notes + [NEEDS_YOU + t for t in todo]
         if acting:
-            write_ledger(bridge, state, memory)
+            write_ledger(bridge, state, memory, defer=True)    # (0.105.40) with the cycle's last call
         if autopilot:
             try:
                 bad = "; ".join(report.trouble(state, memory))
@@ -1231,7 +1285,11 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
             "camera": camera_feed(memory) if UNATTENDED else None,
         })
     finally:
+        # (0.105.40) held set_learned / set_culture answered before the memory
+        # is written (their answers are part of it); the rest go with save_memory
+        flush_held(bridge, HELD_BEFORE_SAVE)
         save(key, memory, bank, bridge if to_save else None, state)
+        flush_held(bridge)
 
 
 STYLE_AREAS = ("halls", "finish", "statues", "materials", "worship")
@@ -1566,13 +1624,12 @@ def push_culture(bridge: Bridge, state: dict, memory) -> None:
     fingerprint = hashlib.sha1(json.dumps(payload, sort_keys=True).encode()).hexdigest()
     if fingerprint == memory.culture_pushed:
         return
-    try:
-        r = bridge.act({"type": "set_culture", "culture": payload})
-    except (BridgeError, DFHackError):
-        return
-    # (also when refused, e.g. by an older bridge: don't ask again every cycle)
-    if r.get("ok") or r.get("rejected"):
-        memory.culture_pushed = fingerprint
+    def done(r, err):
+        # (also when refused, e.g. by an older bridge: don't ask again every cycle)
+        if err is None and (r.get("ok") or r.get("rejected")):
+            memory.culture_pushed = fingerprint
+
+    defer_act(bridge, {"type": "set_culture", "culture": payload}, done)   # (0.105.40) with the next call
 
 
 def learned_payload(state: dict, memory) -> dict:
@@ -1598,12 +1655,11 @@ def push_learned(bridge: Bridge, state: dict, memory) -> None:
     seen = memory.learning.get("pushed") if isinstance(memory.learning, dict) else None
     if fingerprint == seen:
         return
-    try:
-        r = bridge.act({"type": "set_learned", "learned": payload})
-    except (BridgeError, DFHackError):
-        return
-    if r.get("ok") or r.get("rejected"):        # (an older bridge refuses it: don't ask every cycle)
-        memory.learning["pushed"] = fingerprint
+    def done(r, err):
+        if err is None and (r.get("ok") or r.get("rejected")):   # (an older bridge refuses it: don't ask every cycle)
+            memory.learning["pushed"] = fingerprint
+
+    defer_act(bridge, {"type": "set_learned", "learned": payload}, done)   # (0.105.40) with the next call
 
 
 def make_backend():
