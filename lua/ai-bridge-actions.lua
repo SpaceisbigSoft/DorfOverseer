@@ -2984,8 +2984,12 @@ function act_set_rules(a)
     end
     if #unknown > 0 then
         table.sort(unknown)
-        return reject('set_rules: not an on/off switch (or a choice of disposal) of the Rules tab: '
-                      .. table.concat(unknown, ', '))
+        -- (0.105.39) the choices named from RULE_CHOICES (disposal, missions, ...)
+        local cycles = {}
+        for c in pairs(type(S.RULE_CHOICES) == 'table' and S.RULE_CHOICES or {}) do table.insert(cycles, c) end
+        table.sort(cycles)
+        return reject('set_rules: not an on/off switch (or a choice of ' .. table.concat(cycles, ', ')
+                      .. ') of the Rules tab: ' .. table.concat(unknown, ', '))
     end
     if next(changed) and a.dry_run ~= true then S.save_settings(cur) end
     return {ok = true, changed = changed, dry_run = a.dry_run == true or nil}

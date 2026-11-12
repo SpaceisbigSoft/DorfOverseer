@@ -260,6 +260,23 @@ too. The AI makes and sends squads itself (see [military.md](military.md)).
   in a cell round the full moon.
 - **Seal a cavern a beast is in** (on): the way down is locked while a beast
   the squads can't take is in a cavern.
+- **Missions to send out** (`missions`, 0.105.39): which missions the AI
+  may send squads on (see [military.md](military.md#missions-13b)). Each
+  choice takes in the ones before it.
+  - *none* (`off`): no missions (the messenger has its own switches).
+  - *rescue and recover* (`rescue`, the default): rescue a kidnapped
+    citizen, recover a stolen artifact.
+  - *rescue, recover, explore* (`explore`): those, and exploring ruins.
+  - *all, raids too (war)* (`all`): those, and raids, pillage, demanding
+    tribute and conquest. These can start a war.
+  A reserve of soldiers always stays home (more with lower Militarism), one
+  mission at a time, never with a threat near or during a siege.
+- **Send them by the World screen (trial)** (`send_missions`, off,
+  0.105.39): the AI drives DF's World screen to send the mission itself, as
+  with the messenger, for each goal whose button you have shown it once. It
+  stops at the first step nobody has recorded yet, logs what it saw and shuts
+  the screen. Off, the AI names the target and the squads and Needs you says
+  what to send.
 
 ### Forbidden items and junk (beside Military, 0.105.27)
 

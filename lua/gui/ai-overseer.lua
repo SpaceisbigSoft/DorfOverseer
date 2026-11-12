@@ -759,7 +759,35 @@ function MilitaryPage:init()
             on_change = function(v) p:set_field(f[1], v) end,
         })
     end
-    t = t + 14
+    -- (0.105.39, 13b) missions out into the world: which kinds, and whether the
+    -- AI drives the World screen to send them (rows t+17..t+20, under the caverns)
+    table.insert(views, widgets.CycleHotkeyLabel{
+        view_id = 'missions',
+        frame = {t = t + 18, l = 2, w = 72},
+        label = 'Missions to send out:',
+        label_width = 34,
+        options = (function()
+            local out = {}
+            for _, m in ipairs(S.MISSION_CHOICES) do table.insert(out, {label = S.MISSION_NAMES[m], value = m}) end
+            return out
+        end)(),
+        initial_option = S.MISSION_NAMES[p.settings.missions] and p.settings.missions or 'rescue',
+        on_change = function(v) p:set_field('missions', v) end,
+    })
+    table.insert(views, widgets.ToggleHotkeyLabel{
+        view_id = 'send_missions',
+        frame = {t = t + 19, l = 2, w = 60},
+        label = 'Send them by the World screen (trial):',
+        label_width = 40,
+        initial_option = p.settings.send_missions == true,
+        on_change = function(v) p:set_field('send_missions', v) end,
+    })
+    table.insert(views, widgets.Label{frame = {t = t + 20, l = 4}, text = {
+        {text = S.MISSION_HELP, pen = COLOR_GREY}}})
+    table.insert(views, widgets.Label{frame = {t = t + 21, l = 4}, text = {
+        {text = 'a reserve stays home, one at a time, never with a threat near; off: you are told what to send',
+         pen = COLOR_GREY}}})
+    t = t + 20
     table.insert(views, widgets.WrappedLabel{
         frame = {t = t + 3, l = 0, r = 2},
         text_to_wrap = 'Bedrooms, the dining hall, basic workshops and stockpiles are always built when '
@@ -822,6 +850,8 @@ function MilitaryPage:refresh()
     self.subviews.disposal:setOption(s.disposal or 'destroy', false)                      -- (0.105.27)
     self.subviews.disposal_player_items:setOption(s.disposal_player_items == true, false)
     self.subviews.keep_enemy_gear:setOption(s.keep_enemy_gear == true, false)
+    self.subviews.missions:setOption(S.MISSION_NAMES[s.missions] and s.missions or 'rescue', false)   -- (0.105.39)
+    self.subviews.send_missions:setOption(s.send_missions == true, false)
 end
 
 ---------------------------------------------------------------------------

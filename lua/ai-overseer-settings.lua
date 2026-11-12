@@ -193,9 +193,21 @@ DESIGN_NEW = 'guided'         -- what a new fort starts with (defaults())
 -- (D0) how often an Architect fort starts a landmark (the Rules tab)
 LANDMARK_PACES = {'season', 'year', 'never'}
 LANDMARK_PACE_NAMES = {season = 'one a season', year = 'one a year', never = 'never'}
+-- (0.105.39, 13b) missions the AI may send out (the Army tab). Each level
+-- takes in the ones before it: rescue (a kidnapped citizen rescued, a stolen
+-- artifact recovered), explore (and ruins explored), all (and raids, pillage,
+-- tribute demanded, conquest: these can start a war). Off: none.
+MISSION_CHOICES = {'off', 'rescue', 'explore', 'all'}
+MISSION_NAMES = {off = 'none', rescue = 'rescue and recover', explore = 'rescue, recover, explore',
+                 all = 'all, raids too (war)'}
+MISSION_GOALS = {off = {}, rescue = {'rescue', 'recover_artifact'},
+                 explore = {'rescue', 'recover_artifact', 'explore'},
+                 all = {'rescue', 'recover_artifact', 'explore', 'raid', 'pillage', 'tribute', 'conquer'}}
+MISSION_HELP = 'rescue: citizens, artifacts; explore: + ruins; all: + raids, pillage, tribute, conquest (war)'
 -- (0.105.27) the cycles set_rules may set from outside the window (key -> choices)
 RULE_CHOICES = {disposal = DISPOSAL_CHOICES, open_caverns = OPEN_CAVERNS_CHOICES,
-                design = DESIGN_MODES, landmark_pace = LANDMARK_PACES}    -- (D0)
+                design = DESIGN_MODES, landmark_pace = LANDMARK_PACES,    -- (D0)
+                missions = MISSION_CHOICES}                               -- (0.105.39)
 GEAR_WEAPONS = {'axe', 'spear', 'mace'}
 GEAR_WEAPON_NAMES = {axe = 'battle axes', spear = 'spears', mace = 'maces'}
 OPTIONAL_LEVELS = {
@@ -301,6 +313,12 @@ function defaults()
         -- screen (lua/ai-mission-send.lua): off by default until its last steps
         -- are recorded; off, the AI only names the site for the player to send
         send_messenger = false,
+        -- (0.105.39, 13b) missions sent out (MISSION_CHOICES): rescue a citizen and
+        -- recover an artifact by default; raids and the rest (war) only at 'all'
+        missions = 'rescue',
+        -- (0.105.39) the World screen driven to send a mission (like send_messenger:
+        -- off by default; off, the AI names the target and the squads for you)
+        send_missions = false,
         -- (0.105.24) after an artifact heist (or a visitor killing a citizen) the
         -- tavern, temples and library shut to visitors a while; off: never (a lockout lifted)
         heist_lockout = true,
@@ -410,6 +428,7 @@ function sanitize(s)
                         'moon_cells', 'seal_caverns',   -- (0.105.0) round 3's switches
                         'make_contact',             -- (0.105.0) the messenger and Make contact
                         'send_messenger',           -- (0.105.24) the World screen driven to send it
+                        'send_missions',            -- (0.105.39) ... and a mission
                         'heist_lockout', 'shut_to_visitors',   -- (0.105.24) locations shut to visitors a while
                         'construct',                -- (0.105.30) building above ground (hall, wings, floors)
                         'moat', 'magma_workshops', 'irrigation',   -- (0.105.0) the water works' switches
@@ -421,6 +440,7 @@ function sanitize(s)
     out.prisoners = one_of(s.prisoners, PRISONER_CHOICES, d.prisoners)   -- (0.105.0)
     out.disposal = one_of(s.disposal, DISPOSAL_CHOICES, d.disposal)       -- (0.105.27)
     out.open_caverns = open_caverns_choice(s.open_caverns)               -- (v35 fix) three-state
+    out.missions = one_of(s.missions, MISSION_CHOICES, d.missions)        -- (0.105.39)
     for _, k in ipairs({'wipe_learned', 'wipe_learned_all'}) do
         local n = math.tointeger(tonumber(s[k]))
         out[k] = (n and n >= 0) and n or 0
@@ -503,6 +523,8 @@ function for_ai(s)
         tribute = s.tribute,                       -- (0.105.0)
         make_contact = s.make_contact,             -- (0.105.0)
         send_messenger = s.send_messenger,         -- (0.105.24)
+        missions = s.missions,                     -- (0.105.39) off | rescue | explore | all
+        send_missions = s.send_missions,           -- (0.105.39)
         heist_lockout = s.heist_lockout,           -- (0.105.24)
         shut_to_visitors = s.shut_to_visitors,     -- (0.105.24)
         construct = s.construct,                   -- (0.105.30)

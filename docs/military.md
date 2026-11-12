@@ -166,10 +166,65 @@ The military block, on the Army tab beside Rules (0.105.33; all of it is in [con
 | Invaders caught in cages | keep them caged (release and put to death only ask you) |
 | Lock werebeasts in at the full moon | on |
 | Seal a cavern a beast is in | on |
+| Missions to send out (`missions`, 0.105.39) | rescue and recover (or: none, rescue, recover, explore, all, raids too) |
+| Send them by the World screen (trial) (`send_missions`, 0.105.39) | off |
+
+## Missions (13b)
+
+From 0.105.39 the AI sends squads out into the world, not only the
+messenger (Make contact, 0.105.24).
+
+**Targets.** The bridge's `missions` report lists up to 12 targets, best
+first (`missions.targets`: goal, site, distance, civilisation, why, and the
+citizen or artifact when there is one, whether the civilisation is hostile or
+at war, and what the open World screen said of it). The goals, in the order
+the AI prefers them:
+
+1. **rescue**: a citizen kidnapped and held at a site;
+2. **recover_artifact**: an artifact of the fort's stolen and kept at a site;
+3. **explore**: a ruin near enough;
+4. **tribute**, **raid**, **pillage**, **conquer**: offensive goals, only
+   against a civilisation that is hostile or at war with the fort's. A
+   Hostility (aggression) slider raises their weight; ties go to the nearest.
+
+The **Missions to send out** switch on the Army tab (`missions`) says which
+goals the AI may choose: *none* (`off`), *rescue and recover* (`rescue`, the
+default: rescue a citizen, recover an artifact), *rescue, recover, explore*
+(`explore`: those and ruins) or *all, raids too (war)* (`all`: those and
+raids, pillage, tribute demanded and conquest). Raids and the rest can start
+a war, so they come only at `all`.
+
+**The reserve.** Soldiers stay home: at least 3 (the guard rule), and more
+by Militarism: three quarters of the soldiers at -100, half at 0, a quarter
+at +100. A mission needs at least 2 soldiers to send beyond the reserve, in
+whole squads that are armed, not on duty, not hiding and not fighting.
+
+**One at a time, never with a threat near.** No mission while another one
+(other than a messenger) is out or a send is under way, while a threat can
+reach the fort, or during a siege.
+
+**Driving the World screen.** DFHack can't safely make a mission from data,
+so the AI does what a player does: it opens the World screen, picks the site,
+the goal's button, the squads and confirms (`send_mission` with the goal,
+the site, the squads and the citizen or artifact). It does this only with
+**Send them by the World screen (trial)** (`send_missions`) on, and only
+for a goal whose button the player has shown it once (`python
+brain\probe_missions.py --here <Name>`). A run stops at the first step
+nobody has recorded yet or anything unexpected, logs exactly what it saw
+(`missions.send`, `dfhack-config\ai-overseer\mission-send.json`) and shuts
+the screen; a stopped goal is not tried again for a year. Off (the default),
+or with the button not yet shown, the AI names the target and the squads in a
+note and Needs you says what to send; the AI carries on with everything else
+meanwhile.
+
+**Following it home.** The AI follows each mission until its squads are home
+or the mission is gone from the world, then writes a journal line and a
+chronicle entry from the game's mission report and spoils (the game's words
+quoted, cut short), and counts the outcomes in the fort's memory
+(`missions_sent`, `missions_back`, `rescued`, `artifacts_recovered`).
 
 ## Not done yet
 
-Siege engines and archers' fortifications; missions other than Make contact
-(raids, rescues, tribute and artifacts: Phase 13b). The messenger itself is
-sent by the World screen only with the Rules trial switch on, and only up to
-the step nobody has recorded yet.
+Siege engines and archers' fortifications. The messenger and the missions
+(above) are sent by the World screen only with their trial switches on, and
+only up to the step nobody has recorded yet.
