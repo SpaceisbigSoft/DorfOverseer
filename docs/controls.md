@@ -271,7 +271,7 @@ too. The AI makes and sends squads itself (see [military.md](military.md)).
     tribute and conquest. These can start a war.
   A reserve of soldiers always stays home (more with lower Militarism), one
   mission at a time, never with a threat near or during a siege.
-- **Send them by the World screen (trial)** (`send_missions`, off,
+- **Send missions by the World screen** (`send_missions`, off,
   0.105.39): the AI drives DF's World screen to send the mission itself, as
   with the messenger, for each goal whose button you have shown it once. It
   stops at the first step nobody has recorded yet, logs what it saw and shuts

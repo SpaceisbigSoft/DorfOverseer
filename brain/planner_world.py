@@ -334,9 +334,11 @@ def _contact_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None)
                for x in _l(_d(ms.get("sites")).get("nearest"))):
             notes.append("a site waits for Make contact, but not while a threat is near")
         return
-    last = _d(send.get("last"))
-    if last.get("goal") not in (None, "make_contact"):
-        last = {}       # (0.105.39) another goal's run (a rescue...): planner_missions' to judge, not the messenger's
+    # (0.105.39 review) the messenger's own last run (the sender keeps one per
+    # goal: a rescue's run never hides it); an older bridge's single `last`
+    # only when it was Make contact's
+    from planner_missions import last_of_goal
+    last = last_of_goal(send, "make_contact")
     now = abs_tick(s)
     last_tick = last.get("tick") if isinstance(last.get("tick"), int) else None
     recent = last_tick is not None and 0 <= now - last_tick < SEND_RETRY_TICKS

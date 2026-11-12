@@ -199,7 +199,7 @@ def _():
               "recover_artifact", "explore", "raid", "`send_missions`"):
         assert k.lower() in mil.lower(), k
     ctl = (ROOT / "docs" / "controls.md").read_text(encoding="utf-8")
-    for k in ("**Missions to send out** (`missions`", "**Send them by the World screen (trial)** (`send_missions`",
+    for k in ("**Missions to send out** (`missions`", "**Send missions by the World screen** (`send_missions`",
               "military.md#missions-13b"):
         assert k in ctl, k
     w = (ROOT / "docs" / "watch-in-game.md").read_text(encoding="utf-8")

@@ -34,7 +34,11 @@
 -- recording a step later means writing its act/check in STEP_DEFS and its
 -- name in RECORDED. Everything after MISSION_DETAILS is unrecorded for every
 -- goal: a run stops there, writes all the Mission details screen and its
--- army controller held (run.details), and closes the World screen.
+-- army controller held (run.details), and closes the World screen. (0.105.39
+-- review) Only Diplomacy's goal button was seen pressed: the other goals'
+-- runs stop before pressing theirs (RECORDED = open, site). A run also stops
+-- when the player takes the game back (another screen on top, the pause
+-- changed), and each goal's last outcome is kept (status().last_by_goal).
 --
 --   start(a)        a = {site_id, goal = 'make_contact', squad_ids, hf_id,
 --                   artifact_id, dry_run}: begin a run
@@ -81,15 +85,14 @@ NEWM_FALLBACK = {[-1] = 'NONE', [0] = 'OKAY', 'NOT_DISPLAYED', 'OWN_SITE', 'OWN_
                  'NOT_IN_CONTACT', 'ALREADY_IN_CONTACT', 'ALREADY_AT_WAR', 'ALREADY_HAVE_PEACE',
                  'ALREADY_HAVE_ALLIANCE', 'AT_WAR', 'CANNOT_COMMUNICATE', 'HOSTILE_ENTITY', 'NOT_TRADING',
                  'ALREADY_TRADING', 'NO_CIVILIZATION_MILITARY_GOALS_HF'}
--- the Rules choice `missions` (lua/ai-overseer-settings.lua): which goals each allows
-MISSIONS_ALLOW = {
-    off = {},
-    rescue = {rescue = true, recover_artifact = true},
-    explore = {rescue = true, recover_artifact = true, explore = true},
-    all = {rescue = true, recover_artifact = true, explore = true, raid = true, pillage = true,
-           tribute = true, conquer = true},
-}
+-- (0.105.39 review) the Rules choice `missions`: which goals each allows is
+-- read from lua/ai-overseer-settings.lua's MISSION_GOALS (one table for the
+-- bridge, the sender and the GUI); settings that can't load: refused
 MISSIONS_DEFAULT = 'rescue'
+-- the switches as the Army tab names them (lua/gui/ai-overseer.lua)
+MISSIONS_LABEL = 'the Army tab\'s "Missions to send out"'
+SEND_MISSIONS_LABEL = 'the Army tab\'s "Send missions by the World screen"'
+STALE_MS = 2 * RUN_FRAMES * 50                     -- a run older than 2 x RUN_FRAMES (at 20 frames a second): stuck
 MAX_SQUADS = 20
 
 RUN = RUN or nil                             -- the run under way (one at a time)
@@ -139,6 +142,22 @@ end
 -- ---------------------------------------------------------------------------
 -- what the screen shows now: the few fields the steps are checked against
 
+-- (0.105.39 review) the army controller the screen's selected_ac names: an
+-- index into scr.army_controller (df-structures: an int32 next to that
+-- vector) when it is one, else an army controller's id. Returns the
+-- controller and 'index' / 'id', or nil.
+function selected_controller(scr, sel)
+    if scr == nil or type(sel) ~= 'number' or sel < 0 then return nil end
+    local oki, c = pcall(function()
+        local v = scr.army_controller
+        if v ~= nil and sel < #v then return v[sel] end
+    end)
+    if oki and c ~= nil then return c, 'index' end
+    local okf, c2 = pcall(function() return df.army_controller.find(sel) end)
+    if okf and c2 ~= nil then return c2, 'id' end
+    return nil
+end
+
 -- (0.105.39) a goal's index in new_mission: from DF's enum by name; the
 -- fallback table only where the enum is missing; else nil and why
 function df_goal(goal)
@@ -187,6 +206,16 @@ function read_state(run)
     end
     local oka, ac = pcall(function() return scr.selected_ac end)
     if oka then st.selected_ac = id_of(ac) end
+    -- (0.105.39 review) the controller selected_ac names: df-structures has it
+    -- an int32 beside the screen's army_controller vector (an index into it,
+    -- most likely); an army controller's id is read too, so either works
+    local c, how = selected_controller(scr, st.selected_ac)
+    if c then
+        st.ac_id = id_of(c)
+        st.ac_by = how
+        pcall(function() st.ac_goal = c.goal end)
+        st.ac_goal_name = enum_name(df.army_controller_goal_type, st.ac_goal)
+    end
     return st
 end
 
@@ -194,7 +223,7 @@ end
 local function seen(st)
     return {focus = st.focus, world = st.world, mode = st.mode, focus_site = st.focus_site,
             diplomacy = st.diplomacy, goal_ok = st.goal_ok, selected_ac = st.selected_ac,
-            controllers = st.controllers}
+            ac_id = st.ac_id, ac_by = st.ac_by, ac_goal = st.ac_goal_name, controllers = st.controllers}
 end
 
 -- (0.105.39) all the Mission details screen and its new army controller
@@ -261,8 +290,8 @@ function details(st)
     if oks then d.new_mission = nm end
     local id = st and st.selected_ac
     if id and df.army_controller then
-        local oka, ac = pcall(function() return df.army_controller.find(id) end)
-        if oka and ac then
+        local ac = selected_controller(scr, id)
+        if ac then
             d.ac = fields_of(ac, 40)
             pcall(function() d.ac.goal_name = enum_name(df.army_controller_goal_type, ac.goal) end)
             local okd, data = pcall(function() return ac.data end)
@@ -407,7 +436,16 @@ STEP_DEFS = {
              return 'bad', run.button .. ' led to world/' .. tostring(st.mode) .. ', not MISSION_DETAILS (recorded)'
          end
          if not st.selected_ac then return 'bad', 'MISSION_DETAILS shows no new army controller (selected_ac)' end
+         -- (0.105.39 review) the new controller is the run's goal, not another's
+         if not st.ac_id then
+             return 'bad', 'selected_ac ' .. tostring(st.selected_ac) .. ' names no army controller (as an index or an id)'
+         end
+         if st.ac_goal ~= run.df_goal then
+             return 'bad', 'the new army controller\'s goal is ' .. tostring(st.ac_goal_name or st.ac_goal) ..
+                           ', not ' .. tostring(run.df_goal_name)
+         end
          run.selected_ac = st.selected_ac
+         run.ac_id = st.ac_id
          return 'ok'
      end},
     -- never seen yet (no act): the next live run with the player watching
@@ -422,9 +460,13 @@ RECIPES = {
     recover_artifact = {'open', 'site', 'goal', 'target', 'squads', 'details', 'confirm'},
     explore = INVASION, raid = INVASION, pillage = INVASION, tribute = INVASION, conquer = INVASION,
 }
--- the steps recorded (seen, with an act in STEP_DEFS), per goal
+-- the steps recorded (seen, with an act in STEP_DEFS), per goal. (0.105.39
+-- review) Only Diplomacy's goal button was ever seen pressed: the other
+-- goals' runs stop before their goal button (a button nobody saw pressed is
+-- never pressed)
 RECORDED = {}
-for g in pairs(GOALS) do RECORDED[g] = {'open', 'site', 'goal'} end
+for g in pairs(GOALS) do RECORDED[g] = {'open', 'site'} end
+RECORDED.make_contact = {'open', 'site', 'goal'}
 
 -- a goal's steps: the recorded ones from STEP_DEFS, the rest bare (no act)
 function steps_for(goal)
@@ -483,31 +525,73 @@ local function save_log(run)
     end)
 end
 
+-- (0.105.39 review) the last outcome of EACH goal (`by_goal`, kept in the
+-- same site data as the last one), so a run of one goal never hides
+-- another's stopped run (the year-long retry block is per goal)
+local function small(o)
+    return {goal = o.goal or 'make_contact', site_id = o.site_id, site = o.site, result = o.result, step = o.step,
+            reason = o.reason, why = o.why, tick = o.tick, closed = o.closed, controller_left = o.controller_left,
+            hf_id = o.hf_id, artifact_id = o.artifact_id}
+end
+
+-- the per-goal outcomes of a saved record; an old save (no by_goal) has its
+-- one outcome under its goal (make_contact when it has none)
+local function by_goal_of(d)
+    if type(d) ~= 'table' then return {} end
+    if type(d.by_goal) == 'table' then return d.by_goal end
+    if d.result == nil then return {} end
+    local g = type(d.goal) == 'string' and GOALS[d.goal] and d.goal or 'make_contact'
+    return {[g] = small(d)}
+end
+
 local function save_outcome(run)
     local out = {goal = run.goal, site_id = run.site_id, site = run.site, result = run.result, step = run.stopped_at,
                  reason = run.reason, why = run.why, tick = now_tick(), closed = run.closed,
-                 controller_left = run.controller_left, saw = run.saw}
-    U.site_put(SEND_KEY, out)
+                 controller_left = run.controller_left, saw = run.saw, hf_id = run.hf_id,
+                 artifact_id = run.artifact_id}
+    local okp, old = pcall(function() return LAST or U.site_get(SEND_KEY, nil) end)
+    local by = by_goal_of(okp and old or nil)
+    by[run.goal or 'make_contact'] = small(out)
+    out.by_goal = by
     LAST = out
+    local ok, put, err = pcall(U.site_put, SEND_KEY, out)
+    if not ok or put == false then out.save_error = tostring(ok and err or put):sub(1, 120) end
     return out
 end
 
 function last_outcome()
     if LAST then return LAST end
-    local d = U.site_get(SEND_KEY, nil)
-    return type(d) == 'table' and d or nil
+    local ok, d = pcall(function() return U.site_get(SEND_KEY, nil) end)
+    return ok and type(d) == 'table' and d or nil
+end
+
+-- {goal = its last outcome (small)}
+function last_by_goal()
+    return by_goal_of(last_outcome())
 end
 
 -- ---------------------------------------------------------------------------
 -- the run
 
+local finish     -- (below) the run's end once the screen is shut
+
 local function later(n, fn)
     dfhack.timeout(n, 'frames', function()
         local ok, err = pcall(fn)
         if not ok and RUN then
-            -- an error inside a step: stopped like any other surprise
-            RUN.why = 'error: ' .. tostring(err):sub(1, 200)
-            pcall(function() stop(RUN, 'error') end)
+            if RUN.stopping then
+                -- (0.105.39 review) an error while closing: the run ends anyway
+                local run = RUN
+                run.why = (run.why and run.why .. '; ' or '') .. 'closing: ' .. tostring(err):sub(1, 120)
+                pcall(finish, run, world_screen() == nil)
+                if RUN == run then RUN = nil end
+            else
+                -- an error inside a step: stopped like any other surprise
+                RUN.why = 'error: ' .. tostring(err):sub(1, 200)
+                local run = RUN
+                local oks = pcall(function() stop(run, 'error') end)
+                if not oks and RUN == run then RUN = nil end
+            end
         end
     end)
 end
@@ -521,13 +605,38 @@ local function trail(run, what, st)
     end
 end
 
+-- the World screen is the top screen (the one a key press goes to)
+function world_on_top()
+    if not world_screen() then return false end
+    return focus_string():match('^world') ~= nil
+end
+
+-- (0.105.39 review) the World screen taken off the stack without a key
+-- press, when another screen (the player's) is on top of it: DFHack's
+-- dismiss, else DF's own breakdown flag; the player's screen is left be
+local function dismiss_world()
+    local scr = world_screen()
+    if not scr then return true end
+    local ok = pcall(function() dfhack.screen.dismiss(scr) end)
+    if not ok then
+        ok = pcall(function() scr.breakdown_level = df.interface_breakdown_types.STOPSCREEN end)
+    end
+    return ok
+end
+
 -- close the World screen (LEAVESCREEN, as Esc), checked a few frames later;
--- only ever that screen: if it isn't open, nothing is pressed
+-- only ever that screen: if it isn't open, nothing is pressed, and (0.105.39
+-- review) a key is pressed only while it is the top screen, so a window the
+-- player opened over it is never closed
 function close_world(run, tries, done)
     tries = tries or 0
     if not world_screen() then return done(true) end
     if tries >= CLOSE_TRIES then return done(false) end
-    pcall(function() require('gui').simulateInput(dfhack.gui.getDFViewscreen(true), 'LEAVESCREEN') end)
+    if world_on_top() then
+        pcall(function() require('gui').simulateInput(dfhack.gui.getDFViewscreen(true), 'LEAVESCREEN') end)
+    else
+        if run then run.dismissed = dismiss_world() end
+    end
     if not world_screen() then return done(true) end
     later(POLL_FRAMES, function() close_world(run, tries + 1, done) end)
 end
@@ -536,19 +645,11 @@ end
 -- outcome kept for the report. result: 'stopped' (a surprise or a step
 -- never recorded), 'error', 'sent' (all steps done: not reachable until the
 -- last steps are recorded).
-function stop(run, result, reason)
-    if run.stopping then return end
-    run.stopping = true
-    run.result = result
-    run.reason = reason or run.reason
-    run.stopped_at = run.step_name
-    local st = read_state(run)
-    run.saw = seen(st)
-    run.probe = probe()
-    -- (0.105.39) on Mission details: all it holds, for the steps to come
-    if st.mode == 'MISSION_DETAILS' then run.details = details(st) end
-    trail(run, 'stop', st)
-    close_world(run, 0, function(closed)
+-- (0.105.39 review) Every part inside pcall and RUN always cleared: an
+-- error while stopping (or in the callback once the screen shut) never
+-- leaves a run stuck that start() would wait on for ever.
+finish = function(run, closed)
+    pcall(function()
         run.closed = closed
         local after = read_state(run)
         run.controllers = {before = run.controllers_before, after = after.controllers}
@@ -557,10 +658,68 @@ function stop(run, result, reason)
         if run.controllers_before and after.controllers and after.controllers > run.controllers_before then
             run.controller_left = true
         end
-        save_log(run)
-        save_outcome(run)
-        if RUN == run then RUN = nil end
     end)
+    pcall(save_log, run)
+    pcall(save_outcome, run)
+    if RUN == run then RUN = nil end
+end
+
+function stop(run, result, reason)
+    if run.stopping then return end
+    run.stopping = true
+    run.result = result
+    run.reason = reason or run.reason
+    run.stopped_at = run.step_name
+    local ok, err = pcall(function()
+        local st = read_state(run)
+        run.saw = seen(st)
+        run.probe = probe()
+        -- (0.105.39) on Mission details: all it holds, for the steps to come
+        if st.mode == 'MISSION_DETAILS' then run.details = details(st) end
+        trail(run, 'stop', st)
+    end)
+    if not ok then run.why = (run.why and run.why .. '; ' or '') .. 'while stopping: ' .. tostring(err):sub(1, 120) end
+    local called = false
+    local okc, cerr = pcall(close_world, run, 0, function(closed)
+        if called then return end
+        called = true
+        finish(run, closed)
+    end)
+    if not okc and not called then
+        run.why = (run.why and run.why .. '; ' or '') .. 'closing: ' .. tostring(cerr):sub(1, 120)
+        called = true
+        finish(run, world_screen() == nil)
+    end
+end
+
+local function pause_state()
+    local ok, p = pcall(function() return df.global.pause_state end)
+    if ok and type(p) == 'boolean' then return p end
+    return nil
+end
+
+-- Why the run must stop for the player, or nil: before the World screen
+-- opened the screen must be the one the run began on; once it opened, the
+-- World screen must be on top; the pause state must be as it was (DF's own
+-- change as the World screen opens is taken at the open step)
+function player_took_over(run, st)
+    local f = st.focus or ''
+    if run.world_seen then
+        if not st.world then
+            return 'the World screen was closed by someone else'
+        end
+        if not f:match('^world') then return 'another screen (' .. f:sub(1, 40) .. ') is over the World screen' end
+    elseif st.world then
+        if not f:match('^world') then return 'another screen (' .. f:sub(1, 40) .. ') is over the World screen' end
+    elseif run.focus0 and f ~= run.focus0 then
+        return 'the screen changed (' .. f:sub(1, 40) .. ', not ' .. run.focus0:sub(1, 40) .. ')'
+    end
+    local p = pause_state()
+    local opening = st.world and not run.world_seen      -- DF's own reaction to the World button
+    if not opening and run.pause0 ~= nil and p ~= nil and p ~= run.pause0 then
+        return 'the game was ' .. (p and 'paused' or 'unpaused') .. ' during the run'
+    end
+    return nil
 end
 
 -- one look at the screen: the current step's check, then the next step
@@ -573,6 +732,13 @@ local function tick(run)
     end
     local step = run.steps[run.step]
     local st = read_state(run)
+    -- (0.105.39 review) the player took the game back mid-run: another
+    -- screen on top, or the game paused / unpaused by hand: stopped at once
+    local busy = player_took_over(run, st)
+    if busy then
+        run.why = busy
+        return stop(run, 'stopped', 'player_busy')
+    end
     if run.acted then
         local verdict, why = step.check(st, run)
         if verdict == 'wait' then
@@ -585,6 +751,8 @@ local function tick(run)
             return stop(run, 'stopped', 'unexpected')
         end
         trail(run, 'ok', st)
+        if st.world then run.world_seen = true end
+        if step.name == 'open' then run.pause0 = pause_state() end   -- DF's own pause as the screen opens
         run.step, run.acted, run.waited = run.step + 1, false, 0
         step = run.steps[run.step]
         if not step then return stop(run, 'sent') end
@@ -639,10 +807,27 @@ local function settings()
     return nil
 end
 
+-- (0.105.39 review) the goals each `missions` level allows, from
+-- ai-overseer-settings' MISSION_GOALS (the one table): {level = {goal = true}},
+-- or nil when the settings module can't load (then every goal is refused)
+function mission_goals()
+    local ok, t = pcall(function() return reqscript('ai-overseer-settings').MISSION_GOALS end)
+    if not ok or type(t) ~= 'table' then return nil end
+    local out = {}
+    for level, list in pairs(t) do
+        if type(level) == 'string' and type(list) == 'table' then
+            local set = {}
+            for _, g in ipairs(list) do if type(g) == 'string' then set[g] = true end end
+            out[level] = set
+        end
+    end
+    return out
+end
+
 -- (0.105.39) the Rules for a goal: make_contact needs make_contact (on by
 -- default) and send_messenger; the others the `missions` choice allowing the
 -- goal and send_missions. Returns true, or false and why.
-function goal_allowed(goal, s)
+function goal_allowed(goal, s, levels)
     if type(s) ~= 'table' then return false, 'the Rules could not be read' end
     if goal == 'make_contact' then
         if s.make_contact == false then return false, 'the Rules switch "Make contact" is off' end
@@ -652,19 +837,21 @@ function goal_allowed(goal, s)
         return true
     end
     if not GOALS[goal] then return false, 'unknown goal ' .. tostring(goal) end
+    if type(levels) ~= 'table' then return false, 'the Rules\' mission goals (ai-overseer-settings) could not be read' end
     local m = s.missions
     if m == nil then m = MISSIONS_DEFAULT end
-    local allow = MISSIONS_ALLOW[m]
-    if not allow then return false, 'the Rules choice "Missions" is ' .. tostring(m):sub(1, 20) .. ': not known' end
+    local allow = levels[m]
+    if not allow then return false, MISSIONS_LABEL .. ' is ' .. tostring(m):sub(1, 20) .. ': not known' end
     if not allow[goal] then
-        return false, 'the Rules choice "Missions" is ' .. m .. ': ' .. goal .. ' is not allowed'
+        return false, MISSIONS_LABEL .. ' is ' .. m .. ': ' .. goal .. ' is not allowed'
     end
-    if s.send_missions ~= true then return false, 'the Rules switch "Send missions by the World screen" is off' end
+    if s.send_missions ~= true then return false, SEND_MISSIONS_LABEL .. ' is off' end
     return true
 end
 
 local function switch_on(goal)
-    return goal_allowed(goal or 'make_contact', settings())
+    goal = goal or 'make_contact'
+    return goal_allowed(goal, settings(), goal ~= 'make_contact' and mission_goals() or nil)
 end
 
 local function player_busy()
@@ -678,6 +865,20 @@ local function sorted_buttons()
     for k in pairs(buttons()) do table.insert(o, k) end
     table.sort(o)
     return o
+end
+
+local function ms_now()
+    local ok, t = pcall(function() return dfhack.getTickCount() end)
+    if ok and type(t) == 'number' then return t end
+    return nil
+end
+
+-- a run older than 2 x RUN_FRAMES: by its own frame count, or by the clock
+-- (dfhack.getTickCount, ms, at 20 frames a second) when its frames stopped
+function run_stale(run)
+    if (run.frames or 0) > 2 * RUN_FRAMES then return true end
+    local t = ms_now()
+    return t ~= nil and run.started_ms ~= nil and t - run.started_ms > STALE_MS
 end
 
 local function opt_id(v)
@@ -721,6 +922,17 @@ function start(a)
     local okh, hf_id = opt_id(a.hf_id)
     local oka, artifact_id = opt_id(a.artifact_id)
     if not okh or not oka then return {ok = false, rejected = true, error = 'hf_id / artifact_id are ids'} end
+    -- (0.105.39 review) a run long past its time (its frames never came, or
+    -- it never ended): dropped, so one stuck run doesn't block every other
+    if RUN and run_stale(RUN) then
+        local old = RUN
+        RUN = nil
+        pcall(function()
+            old.why = 'dropped: the run was older than ' .. (2 * RUN_FRAMES) .. ' frames'
+            old.result, old.reason, old.stopped_at = 'error', 'stale', old.step_name
+            save_outcome(old)
+        end)
+    end
     if RUN then
         return {ok = false, waiting = true, error = 'a mission is being sent already (step ' .. tostring(RUN.step_name) .. ')'}
     end
@@ -770,7 +982,9 @@ function start(a)
                  site_id = site_id, site = name, messenger = mid, steps = steps_for(goal), step = 1, acted = false,
                  waited = 0, frames = 0, trail = {}, started = now_tick()}
     run.step_name = run.steps[1].name
-    run.controllers_before = read_state(run).controllers
+    local st0 = read_state(run)
+    run.controllers_before = st0.controllers
+    run.focus0, run.pause0, run.started_ms = st0.focus, pause_state(), ms_now()
     RUN = run
     later(1, function() tick(run) end)
     return {ok = true, sending = true, goal = goal, site_id = site_id, site = name, steps = steps, stops_at = stops_at}
@@ -782,9 +996,12 @@ function status()
     if RUN then out.running = {goal = RUN.goal, site_id = RUN.site_id, step = RUN.step_name, frames = RUN.frames} end
     local last = last_outcome()
     if last then
-        out.last = {goal = last.goal or 'make_contact', site_id = last.site_id, site = last.site, result = last.result,
-                    step = last.step, reason = last.reason, why = last.why, tick = last.tick, closed = last.closed,
-                    controller_left = last.controller_left}
+        out.last = small(last)
+        -- (0.105.39 review) each goal's last outcome: the retry block per goal
+        out.last_by_goal = {}
+        for g, o in pairs(by_goal_of(last)) do
+            if type(o) == 'table' then out.last_by_goal[g] = small(o) end
+        end
     end
     out.buttons = sorted_buttons()
     out.on = switch_on('make_contact') == true

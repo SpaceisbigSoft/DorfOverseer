@@ -167,7 +167,7 @@ The military block, on the Army tab beside Rules (0.105.33; all of it is in [con
 | Lock werebeasts in at the full moon | on |
 | Seal a cavern a beast is in | on |
 | Missions to send out (`missions`, 0.105.39) | rescue and recover (or: none, rescue, recover, explore, all, raids too) |
-| Send them by the World screen (trial) (`send_missions`, 0.105.39) | off |
+| Send missions by the World screen (`send_missions`, 0.105.39) | off |
 
 ## Missions (13b)
 
@@ -184,8 +184,9 @@ the AI prefers them:
 2. **recover_artifact**: an artifact of the fort's stolen and kept at a site;
 3. **explore**: a ruin near enough;
 4. **tribute**, **raid**, **pillage**, **conquer**: offensive goals, only
-   against a civilisation that is hostile or at war with the fort's. A
-   Hostility (aggression) slider raises their weight; ties go to the nearest.
+   against a civilisation that is hostile or at war with the fort's.
+
+Targets are chosen by this goal order first, then the nearest.
 
 The **Missions to send out** switch on the Army tab (`missions`) says which
 goals the AI may choose: *none* (`off`), *rescue and recover* (`rescue`, the
@@ -201,16 +202,20 @@ whole squads that are armed, not on duty, not hiding and not fighting.
 
 **One at a time, never with a threat near.** No mission while another one
 (other than a messenger) is out or a send is under way, while a threat can
-reach the fort, or during a siege.
+reach the fort, while the alarm is held (a fire, a berserk dwarf...), during
+a siege, or when the threats or the world couldn't be read.
 
 **Driving the World screen.** DFHack can't safely make a mission from data,
 so the AI does what a player does: it opens the World screen, picks the site,
 the goal's button, the squads and confirms (`send_mission` with the goal,
 the site, the squads and the citizen or artifact). It does this only with
-**Send them by the World screen (trial)** (`send_missions`) on, and only
+**Send missions by the World screen** (`send_missions`) on, and only
 for a goal whose button the player has shown it once (`python
 brain\probe_missions.py --here <Name>`). A run stops at the first step
-nobody has recorded yet or anything unexpected, logs exactly what it saw
+nobody has recorded yet (for every goal but Make contact that is the goal's
+own button: only Diplomacy's was ever seen pressed), when the player takes
+the game back (another window over the World screen, the game paused or
+unpaused), or at anything unexpected, logs exactly what it saw
 (`missions.send`, `dfhack-config\ai-overseer\mission-send.json`) and shuts
 the screen; a stopped goal is not tried again for a year. Off (the default),
 or with the button not yet shown, the AI names the target and the squads in a

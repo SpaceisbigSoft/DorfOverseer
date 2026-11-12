@@ -777,7 +777,7 @@ function MilitaryPage:init()
     table.insert(views, widgets.ToggleHotkeyLabel{
         view_id = 'send_missions',
         frame = {t = t + 19, l = 2, w = 60},
-        label = 'Send them by the World screen (trial):',
+        label = 'Send missions by the World screen:',
         label_width = 40,
         initial_option = p.settings.send_missions == true,
         on_change = function(v) p:set_field('send_missions', v) end,

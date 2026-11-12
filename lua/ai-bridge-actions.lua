@@ -2673,29 +2673,56 @@ end
 -- contact; the `missions` choice allowing the goal + send_missions for the rest.
 SEND_GOALS = {make_contact = true, rescue = true, recover_artifact = true, explore = true, raid = true,
               pillage = true, tribute = true, conquer = true}
-SEND_MISSIONS_ALLOW = {
-    off = {},
-    rescue = {rescue = true, recover_artifact = true},
-    explore = {rescue = true, recover_artifact = true, explore = true},
-    all = {rescue = true, recover_artifact = true, explore = true, raid = true, pillage = true,
-           tribute = true, conquer = true},
-}
+-- (0.105.39 review) the goals that can start a war: only against a site whose
+-- owner the fort's civ is hostile to or at war with (ai-missions.site_hostile)
+SEND_OFFENSIVE = {raid = true, pillage = true, tribute = true, conquer = true}
+SEND_MISSIONS_LABEL = 'the Army tab\'s "Missions to send out"'
+SEND_BY_SCREEN_LABEL = 'the Army tab\'s "Send missions by the World screen"'
 
+-- the Rules for a goal; the goals each `missions` level allows come from
+-- ai-overseer-settings' MISSION_GOALS (the one table): settings that can't
+-- load refuse every goal
 function send_mission_rules(goal)
-    local ok, s = pcall(function() return reqscript('ai-overseer-settings').load_settings() end)
-    if not ok or type(s) ~= 'table' then return false, 'the Rules could not be read' end
+    local okm, S = pcall(function() return reqscript('ai-overseer-settings') end)
+    local ok, s = pcall(function() return S.load_settings() end)
+    if not okm or not ok or type(s) ~= 'table' then return false, 'the Rules could not be read' end
     if goal == 'make_contact' then
         if s.make_contact == false then return false, 'the Rules switch "Make contact" is off' end
         if s.send_messenger ~= true then return false, 'the Rules switch "Send the messenger by the World screen" is off' end
         return true
     end
+    local okg, levels = pcall(function() return S.MISSION_GOALS end)
+    if not okg or type(levels) ~= 'table' then
+        return false, 'the Rules\' mission goals (ai-overseer-settings MISSION_GOALS) could not be read'
+    end
     local m = s.missions
     if m == nil then m = 'rescue' end
-    local allow = SEND_MISSIONS_ALLOW[m]
-    if not allow then return false, 'the Rules choice "Missions" is not known' end
-    if not allow[goal] then return false, 'the Rules choice "Missions" is ' .. m .. ': ' .. goal .. ' is not allowed' end
-    if s.send_missions ~= true then return false, 'the Rules switch "Send missions by the World screen" is off' end
+    local list = levels[m]
+    if type(list) ~= 'table' then return false, SEND_MISSIONS_LABEL .. ' is not known' end
+    local allowed = false
+    for _, g in ipairs(list) do if g == goal then allowed = true end end
+    if not allowed then return false, SEND_MISSIONS_LABEL .. ' is ' .. tostring(m):sub(1, 20) .. ': ' .. goal .. ' is not allowed' end
+    if s.send_missions ~= true then return false, SEND_BY_SCREEN_LABEL .. ' is off' end
     return true
+end
+
+-- (0.105.39 review) a siege on or the civilian alert up: no squad leaves
+-- (read as the report reads them: plotinfo.invasions' active flag,
+-- plotinfo.alerts.civ_alert_idx). Unreadable counts as on. Returns why, or nil.
+function send_mission_danger()
+    local oka, alert = pcall(function() return df.global.plotinfo.alerts.civ_alert_idx ~= 0 end)
+    if not oka then return 'the civilian alert could not be read' end
+    if alert then return 'the civilian alert is up' end
+    local oki, siege = pcall(function()
+        for _, v in ipairs(df.global.plotinfo.invasions.list) do
+            local okf, on = pcall(function() return v.flags.active end)
+            if okf and on then return true end
+        end
+        return false
+    end)
+    if not oki then return 'the sieges could not be read' end
+    if siege then return 'a siege is on' end
+    return nil
 end
 
 function act_send_mission(a)
@@ -2733,6 +2760,21 @@ function act_send_mission(a)
     end
     local on, why = send_mission_rules(goal)
     if not on then return reject('send_mission: ' .. why) end
+    if goal ~= 'make_contact' then
+        local danger = send_mission_danger()
+        if danger then return reject('send_mission: no squad goes out while ' .. danger) end
+    end
+    if SEND_OFFENSIVE[goal] then
+        local okh, h, hwhy = pcall(function() return reqscript('ai-missions').site_hostile(site) end)
+        if not okh or type(h) ~= 'table' then
+            return reject('send_mission: ' .. goal .. ' refused: who owns site ' .. site .. ' could not be read' ..
+                          (okh and hwhy and (' (' .. tostring(hwhy):sub(1, 60) .. ')') or ''))
+        end
+        if h.hostile ~= true and h.at_war ~= true then
+            return reject('send_mission: ' .. goal .. ' only against a site whose owner is hostile or at war with ' ..
+                          'the fort\'s civilisation (site ' .. site .. ': ' .. tostring(h.relation):sub(1, 30) .. ')')
+        end
+    end
     return reqscript('ai-mission-send').start({goal = goal, site_id = site, squad_ids = squads, hf_id = hf,
                                                artifact_id = art, dry_run = a.dry_run == true})
 end
