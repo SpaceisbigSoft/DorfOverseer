@@ -423,6 +423,8 @@ function version_info()
         map_loaded = dfhack.isMapLoaded(),
         df_path = dfhack.getDFPath(),     -- the game's folder (saves are in save/)
         actions = sorted_keys(ACTIONS),
+        -- (0.105.40) the commands this bridge knows (the brain sends `batch` only when listed)
+        commands = BRIDGE_COMMANDS and sorted_keys(BRIDGE_COMMANDS) or nil,
         recipes = sorted_keys(ORDER_RECIPES),
         tools = sorted_keys(TOOL_ALLOWLIST),
         level_kinds = reqscript('ai-layouts').KINDS,
@@ -1040,11 +1042,10 @@ end
 
 -- ai-bridge act <json>: run one action, e.g.
 --   ai-bridge act {"type":"work_order","recipe":"brew_drink","amount":10}
-local function cmd_act(args)
-    if not in_fort() then return NOT_IN_FORT end
-    local text = table.concat(args, ' ')
-    local ok, action = pcall(json.decode, text)
-    if not ok or type(action) ~= 'table' then
+-- (0.105.40) run_action: one decoded action, as `act` and `batch` run it
+-- (validation, DRY_OK, the halt, the handler, CACHE_INVALIDATES)
+function run_action(action)
+    if type(action) ~= 'table' then
         return reject('act needs one JSON object, e.g. {"type":"tool","name":"autochop","enabled":true}')
     end
     local fn = ACTIONS[action.type]
@@ -1084,6 +1085,75 @@ local function cmd_act(args)
         for _, name in ipairs(result.stale) do SECTION_CACHE[name] = nil end
     end
     return result
+end
+
+local function cmd_act(args)
+    if not in_fort() then return NOT_IN_FORT end
+    local text = table.concat(args, ' ')
+    local ok, action = pcall(json.decode, text)
+    if not ok or type(action) ~= 'table' then
+        return reject('act needs one JSON object, e.g. {"type":"tool","name":"autochop","enabled":true}')
+    end
+    return run_action(action)
+end
+
+-- (0.105.40, Phase 13e) ai-bridge batch <json list of actions>: several
+-- actions in one dfhack-run call (each call costs ~35 ms before it does
+-- anything; the brain's per-cycle bookkeeping was 3-5 of them). Each action
+-- runs exactly as `act` runs it (run_action), in order, each in its own
+-- protected call: one that fails or is refused doesn't stop the rest. The
+-- answer: {ok, results = {<each act's answer>}, times = {ms each}, ms}.
+-- The ones that drive a screen over later frames or run long are refused
+-- here (send them alone with `act`), so a batch never outlasts its time limit.
+BATCH_MAX_ACTIONS = 20
+BATCH_MAX_BYTES = 60000
+BATCH_NEVER = {}
+for _, name in ipairs({'send_mission', 'trade_deal', 'open_trade', 'close_trade', 'call_trader',
+                       'answer_meeting', 'close_meeting', 'save_game', 'unpause', 'quiet_announcements',
+                       'found_fort', 'survey_water', 'scan_entrances', 'place_well', 'restrict_water',
+                       'cistern_step'}) do
+    BATCH_NEVER[name] = true
+end
+
+function cmd_batch(args)
+    if not in_fort() then return NOT_IN_FORT end
+    local text = table.concat(args, ' ')
+    if #text > BATCH_MAX_BYTES then
+        return reject(('batch: %d bytes, more than %d (send fewer actions)'):format(#text, BATCH_MAX_BYTES))
+    end
+    local ok, list = pcall(json.decode, text)
+    if not ok or type(list) ~= 'table' or #list == 0 or list.type ~= nil then
+        return reject('batch needs a JSON list of action objects, e.g. [{"type":"report_status","status":{}}]')
+    end
+    if #list > BATCH_MAX_ACTIONS then
+        return reject(('batch: %d actions, at most %d'):format(#list, BATCH_MAX_ACTIONS))
+    end
+    local clock = os.clock
+    local start = clock()
+    local results, times = {}, {}
+    for i = 1, #list do
+        local action = list[i]
+        local t = clock()
+        local result
+        if type(action) == 'table' and BATCH_NEVER[action.type] then
+            result = reject(('%s is not run in a batch (send it alone with act)'):format(tostring(action.type)))
+            result.action = action.type
+        else
+            local okr, r = xpcall(run_action, debug.traceback, action)
+            if not okr then
+                result = {ok = false, error = tostring(r),
+                          action = type(action) == 'table' and action.type or nil}
+            elseif type(r) ~= 'table' then
+                result = {ok = false, error = 'the action gave no answer'}
+            else
+                result = r
+            end
+        end
+        results[i] = result
+        times[i] = math.floor((clock() - t) * 1000 + 0.5)
+    end
+    return {ok = true, results = results, times = times,
+            ms = math.floor((clock() - start) * 1000 + 0.5)}
 end
 
 -- ai-bridge watch: start the event feed (run from onMapLoad.init).
@@ -1231,7 +1301,9 @@ local COMMANDS = {
     pause = function() return cmd_pause(true) end,
     run = cmd_run,
     act = cmd_act,
+    batch = cmd_batch,                    -- (0.105.40) several actions in one call
 }
+BRIDGE_COMMANDS = COMMANDS               -- (0.105.40) for version's `commands`
 
 local function main(args)
     local name = table.remove(args, 1) or 'version'

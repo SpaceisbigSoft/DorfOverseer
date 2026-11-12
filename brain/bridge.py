@@ -44,6 +44,19 @@ def note_call_ms(ms: float) -> None:
     CALL_MS["ms"] += ms
     CALL_MS["calls"] += 1
 
+# (0.105.40, Phase 13e) `batch`: several actions in one dfhack-run call (each
+# call costs ~35 ms before it does anything). The caps match lua/ai-bridge.lua
+# (BATCH_MAX_ACTIONS); the size stays under Windows' 32,767-character command line.
+BATCH_MAX_ACTIONS = 20
+BATCH_MAX_CHARS = 24000
+# Never sent in a batch (as BATCH_NEVER in lua/ai-bridge.lua): they drive a
+# screen over later frames or run long; they go alone, as before
+BATCH_NEVER = frozenset({
+    "send_mission", "trade_deal", "open_trade", "close_trade", "call_trader",
+    "answer_meeting", "close_meeting", "save_game", "unpause", "quiet_announcements",
+    "found_fort", "survey_water", "scan_entrances", "place_well", "restrict_water",
+    "cistern_step"})
+
 
 class BridgeError(DFHackError):
     """The bridge script answered, but with an error."""
@@ -55,8 +68,12 @@ class Bridge:
         self.log = _setup_logger()
         self.version: dict | None = None
         self.out_dir: Path | None = None
+        # (0.105.40) actions held for the next call (defer): [(action, on_result)]
+        self.pending: list = []
 
     def _call(self, *args: str, timeout: float | None = None) -> dict:
+        if getattr(self, "pending", None):
+            self.flush()        # (0.105.40) what was held goes first: the game sees the same order
         start = time.perf_counter()
         try:
             reply = (self.df.run_json("ai-bridge", *args, timeout=timeout) if timeout
@@ -234,17 +251,172 @@ class Bridge:
         A refused action (bad values, not allowed) comes back with ok=False and
         rejected=True instead of raising, because the AI is expected to read
         the reason and try something else.
+
+        (0.105.40) Actions held by defer() go in the same call, before this
+        one, when the bridge has `batch` (and this action may go in one);
+        else they go first on their own.
         """
+        if getattr(self, "pending", None):
+            if self.can_batch() and action.get("type") not in BATCH_NEVER:
+                held, self.pending = self.pending, []
+                return self._send(held, host=action)
+            self.flush()
+        return self._act_one(action)
+
+    def _act_one(self, action: dict) -> dict:
         payload = json.dumps(action, separators=(",", ":"))
         start = time.perf_counter()
         reply = self.df.run_json("ai-bridge", "act", payload)
         ms = (time.perf_counter() - start) * 1000
         note_call_ms(ms)
-        level = logging.INFO if reply.get("ok") else logging.WARNING
-        self.log.log(level, "act %s -> %s (%.0f ms)", payload, json.dumps(reply), ms)
+        self._log_act(payload, reply, ms)
         if not reply.get("ok") and not reply.get("rejected"):
             raise BridgeError(reply.get("error", "action failed"))
         return reply
+
+    def _log_act(self, payload: str, reply: dict, ms: float) -> None:
+        level = logging.INFO if reply.get("ok") else logging.WARNING
+        self.log.log(level, "act %s -> %s (%.0f ms)", payload, json.dumps(reply), ms)
+
+    # --- (0.105.40, Phase 13e) several actions in one call -------------------
+
+    def can_batch(self) -> bool:
+        """The bridge's `version` lists the `batch` command (0.105.40 on)."""
+        v = getattr(self, "version", None)
+        cmds = v.get("commands") if isinstance(v, dict) else None
+        return isinstance(cmds, list) and "batch" in cmds
+
+    def defer(self, action: dict, on_result) -> None:
+        """Hold an action for the next call to the game: it goes in one call
+        with the next act() (or the end-of-cycle flush()). on_result(reply,
+        error) gets the action's answer (error: the BridgeError or
+        DFHackError act() would have raised, reply None). Without `batch`
+        (an older bridge, or a never-batched action) it is sent now, alone."""
+        if not self.can_batch() or action.get("type") in BATCH_NEVER:
+            self.flush()                       # (none held without `batch`; kept in order all the same)
+            self._deliver_one(action, on_result)
+            return
+        if not isinstance(getattr(self, "pending", None), list):
+            self.pending = []
+        self.pending.append((action, on_result))
+
+    def flush(self) -> None:
+        """Send the held actions now (one call per batch)."""
+        while getattr(self, "pending", None):
+            held, self.pending = self.pending, []
+            self._send(held)
+
+    @staticmethod
+    def _notify(on_result, reply, error) -> None:
+        if on_result is None:
+            return
+        try:
+            on_result(reply, error)
+        except Exception:  # noqa: BLE001  (one caller's bookkeeping never breaks another's call)
+            logging.getLogger("bridge").exception("a held action's answer could not be handled")
+
+    def _deliver_one(self, action: dict, on_result) -> None:
+        try:
+            reply = self._act_one(action)
+        except (BridgeError, DFHackError) as e:
+            self._notify(on_result, None, e)
+            return
+        self._notify(on_result, reply, None)
+
+    def _chunks(self, held: list, host: dict | None) -> list:
+        """The held actions (and the host, last) cut into calls under the caps;
+        an action too long for any batch alone goes by act."""
+        items = [(a, cb, False) for a, cb in held] + ([(host, None, True)] if host is not None else [])
+        chunks, cur, size = [], [], 2
+        for item in items:
+            n = len(json.dumps(item[0], separators=(",", ":"))) + 1
+            if n + 2 > BATCH_MAX_CHARS:
+                if cur:
+                    chunks.append(cur)
+                chunks.append([item])          # alone: by act
+                cur, size = [], 2
+                continue
+            if cur and (len(cur) >= BATCH_MAX_ACTIONS or size + n > BATCH_MAX_CHARS):
+                chunks.append(cur)
+                cur, size = [], 2
+            cur.append(item)
+            size += n
+        if cur:
+            chunks.append(cur)
+        return chunks
+
+    def _send(self, held: list, host: dict | None = None):
+        """Send held actions (and a host action last); return the host's reply
+        as act() would (raising as it would)."""
+        host_reply = None
+        for chunk in self._chunks(held, host):
+            has_host = chunk[-1][2]
+            if len(chunk) == 1:
+                a, cb, is_host = chunk[0]
+                if is_host:
+                    host_reply = self._act_one(a)
+                else:
+                    self._deliver_one(a, cb)
+                continue
+            replies = self._batch_call([a for a, _, _ in chunk], has_host)
+            if replies is None:
+                # the batch failed as a whole: each alone, as before (nothing ran)
+                for a, cb, is_host in chunk:
+                    if is_host:
+                        host_reply = self._act_one(a)
+                    else:
+                        self._deliver_one(a, cb)
+                continue
+            if isinstance(replies, Exception):
+                # no answer with a real action in it: it may have run, so
+                # nothing is sent again; each gets the error act() would raise
+                for a, cb, is_host in chunk:
+                    if not is_host:
+                        self._notify(cb, None, replies)
+                raise replies
+            for (a, cb, is_host), reply in zip(chunk, replies):
+                err = None
+                if not reply.get("ok") and not reply.get("rejected"):
+                    err = BridgeError(reply.get("error", "action failed"))
+                if is_host:
+                    if err is not None:
+                        raise err
+                    host_reply = reply
+                else:
+                    self._notify(cb, None if err else reply, err)
+        return host_reply
+
+    def _batch_call(self, actions: list, has_host: bool):
+        """One `batch` call: the replies in order, or None when it failed as a
+        whole and may be sent again action by action (refused, malformed, or
+        no answer while it held only bookkeeping), or the DFHackError when
+        no answer came and a real action was in it."""
+        payloads = [json.dumps(a, separators=(",", ":")) for a in actions]
+        text = "[" + ",".join(payloads) + "]"
+        start = time.perf_counter()
+        limit = self.df.timeout_s + 2.0 * (len(actions) - 1)
+        try:
+            reply = self.df.run_json("ai-bridge", "batch", text, timeout=limit)
+        except DFHackError as e:
+            self.log.error("batch of %d %s -> %s", len(actions), text, e)
+            return e if has_host else None
+        except ValueError as e:
+            self.log.error("batch of %d %s -> unreadable answer: %s", len(actions), text, e)
+            return None if not has_host else DFHackError(f"unreadable answer to batch: {e}")
+        ms = (time.perf_counter() - start) * 1000
+        note_call_ms(ms)        # (0.105.40) the batch's round trip counts as AI time too
+        results = reply.get("results") if isinstance(reply, dict) else None
+        if not reply.get("ok") or not isinstance(results, list) or len(results) != len(actions) \
+                or not all(isinstance(r, dict) for r in results):
+            self.log.warning("batch of %d -> %s (%.0f ms); sent one by one", len(actions), json.dumps(reply), ms)
+            return None
+        times = reply.get("times") if isinstance(reply.get("times"), list) else []
+        # each action's own line, as act writes it (its time in the game)
+        for i, (p, r) in enumerate(zip(payloads, results)):
+            t = times[i] if i < len(times) and isinstance(times[i], (int, float)) else 0
+            self._log_act(p, r, t)
+        self.log.info("batch of %d -> ok (%.0f ms, %s ms in the game)", len(actions), ms, reply.get("ms"))
+        return results
 
 
 def as_dict(value) -> dict:
