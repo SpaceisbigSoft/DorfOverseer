@@ -13,6 +13,8 @@
 -- of breaking it.
 --
 --   report()      the small table for the daily JSON report (lists capped)
+--   targets(R, civ, group, fort_site[, screen])  (0.105.39) where a mission
+--                 could go: rescue, recover_artifact, explore, raid...
 --   away_units()  set {unit_id = true} of citizens away on a mission
 --@ module = true
 
@@ -451,6 +453,314 @@ local function screen(R)
 end
 
 -- ---------------------------------------------------------------------------
+-- (0.105.39) targets: where a mission could go and why, best first.
+--
+--   rescue            a citizen (a historical figure of the fort's group)
+--                     held elsewhere: a PRISONER/SLAVE link to another
+--                     entity, a PRISON_* site link, or an abduction event
+--                     (newest events only) and not back home
+--   recover_artifact  an artifact the fort's group (or civ) claims, last
+--                     known at another site
+--   explore           a ruin (RUINED, or no owner and nobody living there)
+--   raid / pillage    a site of a civ the fort's civ is hostile to
+--   tribute / conquer only a hostile site smaller than the fort (its
+--                     resident_count below the group's member count) and
+--                     near; at war for conquer. Unknown sizes: no entry.
+--
+-- `ready` is the open World screen's verdict for the goal, only when the
+-- screen's focus site is the target's site. Everything is read through R.rd;
+-- the walk stops after TARGET_BUDGET seconds (os.clock) and says partial.
+
+MAX_TARGETS = 12
+TARGET_NAME = 40
+TARGET_BUDGET = 0.05
+MAX_EVENTS = 4000          -- the newest history events looked at for abductions
+TRIBUTE_DIST = 20
+CONQUER_DIST = 10
+GOAL_ORDER = {'rescue', 'recover_artifact', 'explore', 'raid', 'pillage', 'tribute', 'conquer'}
+GOAL_CAP = {rescue = 4, recover_artifact = 3, explore = 2, raid = 2, pillage = 1, tribute = 1, conquer = 1}
+-- the army_controller_goal_type the World screen's new_mission[] holds for each goal
+DF_GOAL = {rescue = 'RESCUE_HF', recover_artifact = 'RECOVER_ARTIFACT', explore = 'SITE_INVASION',
+           raid = 'SITE_INVASION', pillage = 'SITE_INVASION', tribute = 'SITE_INVASION',
+           conquer = 'SITE_INVASION'}
+
+-- the items of a vector, visited until fn returns true; newest first with
+-- rev, at most max of them
+local function walk(v, fn, rev, max)
+    if v == nil then return end
+    local ok, n = pcall(function() return #v end)
+    if not ok or type(n) ~= 'number' or n <= 0 then return end
+    local ok0, first = pcall(function() return v[0] end)
+    local base = (ok0 and first ~= nil) and 0 or 1
+    local lo, hi = base, base + n - 1
+    if max and n > max then
+        if rev then lo = hi - max + 1 else hi = lo + max - 1 end
+    end
+    local a, b, step = lo, hi, 1
+    if rev then a, b, step = hi, lo, -1 end
+    for i = a, b, step do
+        local okv, x = pcall(function() return v[i] end)
+        if okv and x ~= nil and fn(x) then return end
+    end
+end
+
+local function clock()
+    local ok, t = pcall(function() return os.clock() end)
+    return ok and tonumber(t) or nil
+end
+
+-- the fort civ's diplomacy: entity id -> relation name
+local function relations(R, civ)
+    local rel = {}
+    local civ_ent = civ and R.rd('historical_entity.find', function() return df.historical_entity.find(civ) end)
+    local states = civ_ent and R.rd('entity.relations.diplomacy.state',
+        function() return civ_ent.relations.diplomacy.state end)
+    for _, st in ipairs(each(states)) do
+        local gid = R.rd('diplomacy_state.group_id', function() return st.group_id end)
+        local r = R.rd('diplomacy_state.relation', function() return st.relation end)
+        if gid then rel[gid] = enum_name(df.diplomacy_state_type, r) end
+    end
+    return rel
+end
+
+local function link_type(R, enum, label, l)
+    local t = R.rd(label, function() return l:getType() end)
+    return enum_name(enum, t)
+end
+
+function targets(R, civ, group, fort_site, sc)
+    R = R or new_reader()
+    local t0 = clock()
+    local partial = false
+    local function over()
+        if partial then return true end
+        local t = t0 and clock()
+        if t and t - t0 > TARGET_BUDGET then partial = true end
+        return partial
+    end
+    local found = {}
+    for _, g in ipairs(GOAL_ORDER) do found[g] = {} end
+
+    -- the world's sites by id, and the fort's position
+    local by_id, list = {}, {}
+    local all = R.rd('world.world_data.sites', function() return df.global.world.world_data.sites end)
+    walk(all, function(s)
+        local ok, id = pcall(function() return s.id end)
+        if ok and id then by_id[id] = s; table.insert(list, s) end
+    end)
+    local function site_of(id)
+        if not id or id < 0 then return nil end
+        return by_id[id] or R.rd('world_site.find', function() return df.world_site.find(id) end)
+    end
+    local fs = site_of(fort_site)
+    local fx = fs and R.rd('world_site.pos', function() return fs.pos.x end)
+    local fy = fs and R.rd('world_site.pos', function() return fs.pos.y end)
+    local function dist_to(s)
+        if not (s and fx and fy) then return nil end
+        local ok, x, y = pcall(function() return s.pos.x, s.pos.y end)
+        if not ok then R.note('world_site.pos'); return nil end
+        return int(math.max(math.abs(x - fx), math.abs(y - fy)))
+    end
+    local rel = relations(R, civ)
+    local ent_names = {}
+    local function ent_name(id)
+        if not id or id < 0 then return nil end
+        if ent_names[id] == nil then
+            local e = R.rd('historical_entity.find', function() return df.historical_entity.find(id) end)
+            ent_names[id] = (e and short(R.rd('entity.name', function() return name_of(e.name) end), TARGET_NAME)) or false
+        end
+        return ent_names[id] or nil
+    end
+    local function owner_of(s)
+        local c = R.rd('world_site.civ_id', function() return s.civ_id end)
+        local okc, cur = pcall(function() return s.cur_owner_id end)   -- newer saves only
+        if not okc then cur = nil end
+        local r = (c and rel[c]) or (cur and rel[cur])
+        return (c and c >= 0 and c) or (cur and cur >= 0 and cur) or nil, cur, r
+    end
+    -- one target at a site; nil when the site is ours or unknown
+    local function add(goal, site_id, fields, rank)
+        if not site_id or site_id < 0 or site_id == fort_site then return false end
+        local s = site_of(site_id)
+        if not s then return false end
+        local who, _, r = owner_of(s)
+        local e = {goal = goal, site_id = int(site_id),
+                   site = short(R.rd('world_site.name', function() return name_of(s.name) end), TARGET_NAME),
+                   dist = dist_to(s), civ_id = who and int(who) or nil, civ = ent_name(who),
+                   hostile = hostile(r), at_war = type(r) == 'string' and r:find('War') ~= nil,
+                   _rank = rank or 0}
+        for k, v in pairs(fields) do e[k] = v end
+        table.insert(found[goal], e)
+        return true
+    end
+
+    -- rescue -----------------------------------------------------------------
+    local ours = {}        -- hf ids of the fort's group
+    local ent = group and R.rd('historical_entity.find', function() return df.historical_entity.find(group) end)
+    local members = ent and R.rd('entity.histfig_ids', function() return ent.histfig_ids end)
+    local n_members = 0
+    walk(members, function(id) ours[id] = true; n_members = n_members + 1 end)
+    if ent and members == nil then n_members = nil end
+    local seen_hf = {}
+    local function hf_home(hf)
+        local uid = R.rd('historical_figure.unit_id', function() return hf.unit_id end)
+        if not uid or uid < 0 then return false end
+        local u = R.rd('unit.find', function() return df.unit.find(uid) end)
+        if not u then return false end
+        local inactive = R.rd('unit.flags1.inactive', function() return u.flags1.inactive end)
+        return inactive == false
+    end
+    -- where a figure is held, and why we think so; nil when not held
+    local function held(hf, abducted)
+        local okd, died = pcall(function() return hf.died_year end)
+        if okd and died and died ~= -1 then return nil end
+        local where, why
+        walk(R.rd('historical_figure.site_links', function() return hf.site_links end), function(l)
+            local t = link_type(R, df.histfig_site_link_type, 'histfig_site_link.getType', l)
+            if t == 'PRISON_ABSTRACT_BUILDING' or t == 'PRISON_SITE_BUILDING_PROFILE' then
+                where = R.rd('histfig_site_link.site', function() return l.site end)
+                why = 'held in a prison'
+                return true
+            end
+        end)
+        if not why then
+            walk(R.rd('historical_figure.entity_links', function() return hf.entity_links end), function(l)
+                local t = link_type(R, df.histfig_entity_link_type, 'histfig_entity_link.getType', l)
+                local eid = R.rd('histfig_entity_link.entity_id', function() return l.entity_id end)
+                if (t == 'PRISONER' or t == 'SLAVE') and eid ~= civ and eid ~= group then
+                    why = (t == 'SLAVE') and 'enslaved' or 'a prisoner'
+                    return true
+                end
+            end)
+        end
+        if not why and abducted then why = 'abducted' end
+        if not why then return nil end
+        local wh = R.rd('hf.info.whereabouts', function() return hf.info.whereabouts end)
+        local wsite = wh and R.rd('hf.info.whereabouts.site_id', function() return wh.site_id end)
+        if wsite == fort_site and hf_home(hf) then return nil end
+        if not where or where < 0 then where = wsite end
+        if not where or where < 0 or where == fort_site then return nil end
+        return where, why
+    end
+    local function try_hf(id, abducted, where_hint)
+        if seen_hf[id] == 'found' or (seen_hf[id] and not where_hint) then return end
+        seen_hf[id] = 'tried'
+        local hf = R.rd('historical_figure.find', function() return df.historical_figure.find(id) end)
+        if not hf then return end
+        local where, why = held(hf, abducted)
+        if not where and where_hint then where, why = where_hint, 'held where the World screen shows' end
+        if where then
+            seen_hf[id] = 'found'
+            add('rescue', where, {hf_id = int(id), why = why,
+                hf = short(R.rd('historical_figure.name', function() return name_of(hf.name) end), TARGET_NAME)})
+        end
+    end
+    walk(members, function(id) try_hf(id, false); return over() end)
+    -- abductions, newest first: of a figure of ours or at the fort
+    if not over() then
+        local evs = R.rd('world.history.events', function() return df.global.world.history.events end)
+        walk(evs, function(ev)
+            if over() then return true end
+            local t = link_type(R, df.history_event_type, 'history_event.getType', ev)
+            if t == 'HIST_FIGURE_ABDUCTED' then
+                local tgt = R.rd('history_event_hist_figure_abductedst.target', function() return ev.target end)
+                local at = R.rd('history_event_hist_figure_abductedst.site', function() return ev.site end)
+                if tgt and tgt >= 0 and (ours[tgt] or at == fort_site) then try_hf(tgt, true) end
+            end
+        end, true, MAX_EVENTS)
+    end
+    -- the open World screen's prisoners at its focus site
+    local scr = sc and sc.focus_site and world_screen()
+    if scr and not over() then
+        walk(R.rd('viewscreen_worldst.focus_site_prisoner', function() return scr.focus_site_prisoner end), function(hf)
+            local okid, id = pcall(function() return hf.id end)
+            if okid and id and ours[id] then try_hf(id, false, sc.focus_site) end
+        end)
+    end
+
+    -- recover_artifact -------------------------------------------------------
+    if not over() then
+        local arts = R.rd('world.artifacts.all', function() return df.global.world.artifacts.all end)
+        walk(arts, function(a)
+            if over() then return true end
+            local claims = R.rd('artifact_record.entity_claims', function() return a.entity_claims end)
+            local tier
+            walk(claims, function(eid)
+                if group and eid == group then tier = 0; return true end
+                if civ and eid == civ then tier = 1 end
+            end)
+            if not tier then return end
+            local where = R.rd('artifact_record.storage_site', function() return a.storage_site end)
+            if not where or where < 0 then where = R.rd('artifact_record.site', function() return a.site end) end
+            if not where or where < 0 then
+                local h = R.rd('artifact_record.holder_hf', function() return a.holder_hf end)
+                local hf = h and h >= 0 and R.rd('historical_figure.find', function() return df.historical_figure.find(h) end)
+                where = hf and R.rd('hf.info.whereabouts.site_id', function() return hf.info.whereabouts.site_id end)
+            end
+            if not where or where < 0 or where == fort_site then return end
+            add('recover_artifact', where, {
+                artifact_id = int(R.rd('artifact_record.id', function() return a.id end)),
+                artifact = short(R.rd('artifact_record.name', function() return name_of(a.name) end), TARGET_NAME),
+                why = tier == 0 and 'claimed by the fort' or "claimed by the fort's civ"}, tier)
+        end)
+    end
+
+    -- explore and the offensive goals: one walk over the sites ---------------
+    for _, s in ipairs(list) do
+        if over() then break end
+        local okw = pcall(function()
+            local id = s.id
+            if id == fort_site then return end
+            local okh, hidden = pcall(function() return s.flag.HIDDEN end)
+            if okh and hidden then return end
+            local okf, ruined = pcall(function() return s.flag.RUINED end)
+            local who, cur, r = owner_of(s)
+            local okp, pop = pcall(function() return s.resident_count end)
+            local empty = (cur ~= nil and cur < 0) and who == nil and okp and pop == 0
+            if (okf and ruined) or empty then
+                add('explore', id, {why = (okf and ruined) and 'a ruin' or 'empty, nobody owns it'})
+                return
+            end
+            if not who or who == civ or who == group or cur == civ or cur == group then return end
+            if not hostile(r) then return end
+            add('raid', id, {why = 'hostile: ' .. r})
+            add('pillage', id, {why = 'hostile: ' .. r})
+            local d = dist_to(s)
+            local weaker = okp and type(pop) == 'number' and pop >= 0 and n_members and pop < n_members
+            if weaker and d and d <= TRIBUTE_DIST then
+                add('tribute', id, {why = 'hostile, smaller (' .. int(pop) .. ' living there), near'})
+            end
+            if weaker and d and d <= CONQUER_DIST and r:find('War') then
+                add('conquer', id, {why = 'at war, smaller (' .. int(pop) .. ' living there), near'})
+            end
+        end)
+        if not okw then R.note('world_site fields') end
+    end
+
+    -- best first: goal order, then the rank inside a goal, then nearest
+    local out = {}
+    for _, g in ipairs(GOAL_ORDER) do
+        local l = found[g]
+        table.sort(l, function(a, b)
+            if a._rank ~= b._rank then return a._rank < b._rank end
+            local da, db = a.dist or math.huge, b.dist or math.huge
+            if da ~= db then return da < db end
+            return (a.hf_id or a.artifact_id or a.site_id) < (b.hf_id or b.artifact_id or b.site_id)
+        end)
+        for i = 1, math.min(GOAL_CAP[g] or 1, #l) do
+            if #out >= MAX_TARGETS then break end
+            local e = l[i]
+            e._rank = nil
+            if sc and sc.focus_site and sc.focus_site == e.site_id and sc.allowed then
+                e.ready = sc.allowed[DF_GOAL[g]]
+            end
+            table.insert(out, e)
+        end
+    end
+    return out, partial
+end
+
+-- ---------------------------------------------------------------------------
 
 local function squad_ctl_set(squads)
     local set = {}
@@ -499,7 +809,12 @@ function report()
     if not okst then R.note('sites'); st = nil end
     local oksc, sc = pcall(screen, R)
     if not oksc then R.note('world screen'); sc = nil end
+    -- (0.105.39) where a mission could go, best first
+    local okt, tl, partial = pcall(targets, R, civ, group, fort_site, sc)
+    if not okt then R.note('targets'); tl, partial = {}, nil end
     return {
+        targets = tl,
+        targets_partial = partial or nil,
         controllers = out_ctl,
         squads = out_sq,
         reports = reports(R),

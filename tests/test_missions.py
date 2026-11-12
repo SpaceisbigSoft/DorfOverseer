@@ -60,6 +60,8 @@ env.df = {
       status = S{mission_reports = {}, spoils_reports = {},
                  flags = S{mission = false, spoils = false, tribute = false}},
       world_data = S{sites = {}},
+      history = S{events = {}},
+      artifacts = S{all = {}},
     },
   },
 }
@@ -71,7 +73,7 @@ local W = env.df.global.world
 -- builders the tests use
 local B = {S = S, G = G, W = W, ENTS = ENTS, SQUADS = SQUADS, UNITS = UNITS, SITES = SITES, env = env}
 function B.entity(id, fields)
-  local e = {id = id, squads = {}, relations = S{diplomacy = S{state = {}}}}
+  local e = {id = id, squads = {}, histfig_ids = {}, relations = S{diplomacy = S{state = {}}}}
   for k, v in pairs(fields or {}) do e[k] = v end
   ENTS[id] = S(e)
   return ENTS[id]
