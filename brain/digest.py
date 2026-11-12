@@ -153,6 +153,7 @@ SECTION_DEFAULTS = {
     "civ_alert": False,      # (0.105.33) a failed read ({error}) read as "the alarm is on"
     "perf": {},              # (0.105.40) the report's own cost: sections' ms, cached, total_ms, fps (lua/ai-bridge.lua perf_section)
     "cleanup": {},           # (0.105.40) world cleanup: unreachable items and creatures, spatter, dead units (lua/ai-cleanup.lua)
+    "hauling": {},           # (0.105.40 M5) haul jobs waiting, haulers, key workers hauling (lua/ai-hauling.lua)
 }
 # (0.105.36) not REQUIRED (the plan goes on without them), but a missing one is
 # listed in _errors as a failed one is: the default (civ_alert False) is not
@@ -265,6 +266,16 @@ def cleanup_line(s: dict) -> str:
     cleanup_line); "" without a cleanup section."""
     try:
         from planner_cleanup import cleanup_line as _line
+        return _line(s)
+    except Exception:  # noqa: BLE001  (a digest line never stops the digest)
+        return ""
+
+
+def hauling_line(s: dict) -> str:
+    """(0.105.40 M5) The hauling in one line (brain/planner_hauling.py
+    hauling_line); "" without a hauling section."""
+    try:
+        from planner_hauling import hauling_line as _line
         return _line(s)
     except Exception:  # noqa: BLE001  (a digest line never stops the digest)
         return ""
@@ -566,7 +577,7 @@ def digest(s: dict, news: int = 5) -> str:
     ]
 
     for extra in (threat_line(s), world_line(s), infection_line(s), built_line(s), gate_split_line(s), water_line(s),
-                  missions_line(s), perf_line(s), cleanup_line(s)):
+                  missions_line(s), perf_line(s), cleanup_line(s), hauling_line(s)):
         if extra:
             lines.append(extra)
     m = _d(s.get("map"))

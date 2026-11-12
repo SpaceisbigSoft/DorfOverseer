@@ -795,4 +795,22 @@ PLANNER_CONFIG = {
     "cleanup_dead_dry_cooldown_ticks": 1200,
     "cleanup_items_dry_cooldown_ticks": 1200,
     "cleanup_units_dry_cooldown_ticks": 1200,
+    # (0.105.40 M5) hauling balanced (brain/planner_hauling.py): haulers wanted =
+    # the larger of hauling_min_share of the civilians (hauling_min_haulers at
+    # least) and one per hauling_jobs_per_hauler jobs waiting, at most
+    # hauling_max_share; a stall: this many waiting, the oldest this many days,
+    # at most hauling_idle_max haulers idle
+    "hauling_min_haulers": 3,
+    "hauling_min_share": 0.15,
+    "hauling_jobs_per_hauler": 8,
+    "hauling_max_share": 0.6,
+    "hauling_backlog_min": 20,
+    "hauling_wait_days": 1,
+    "hauling_idle_max": 0,
+    "hauling_add_max": 5,                 # idle civilians made haulers a call
+    "hauling_relieve_max": 2,             # key workers taken off (or given back) hauling a call
+    "hauling_relieve_margin": 2,          # ...only while this many haulers more than wanted remain
+    "hauling_add_cooldown_ticks": 1200,
+    "hauling_relieve_cooldown_ticks": 7 * 1200,
+    "hauling_back_cooldown_ticks": 3 * 1200,
 }

@@ -49,6 +49,7 @@ from planner_world import (_contact_rule, _export_rule, _hostile_trade_filter, _
                            _messenger_rule, _world_notes, note_world)  # (0.105.0: the world outside, 12b and 13b)
 from planner_missions import _mission_rule, note_missions  # noqa: E402  (0.105.39) missions on the world map
 from planner_cleanup import _world_cleanup_rule, note_cleanup  # noqa: E402  (0.105.40) world cleanup for the game's speed
+from planner_hauling import _hauling_labor_rule  # noqa: E402  (0.105.40 M5) hauling balanced
 from planner_construct import (_hall_rule, _construction_blocks_rule,  # noqa: E402  (0.105.30) construction
                                note_construct, note_construct_cycle)
 from planner_army import (_army_gear_rule, _quiver_rule, _bolts_rule, _flask_rule,  # noqa: E402  (0.105.0, round 2)
@@ -609,6 +610,9 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
     if can_use("labor"):
         _guard(_labor_rules, s, citizens, cfg, proposals, notes, memory)
         _guard(_free_time_rule, s, citizens, cfg, proposals, notes)
+    # (0.105.40 M5) enough haulers for the haul jobs waiting; key workers off hauling
+    if "hauling" not in errors:
+        _guard(_hauling_labor_rule, s, cfg, citizens, proposals, notes)
 
     # 6b. A fresh embark: the first staircase, everything else grows from it ----
     fd = _d(s.get("founding"))

@@ -515,6 +515,8 @@ SHORT_WORDS = {
     "cleanup_units": "remove creatures no dwarf can reach (a season out of reach)",
     "cleanup_spatter": "clean blood and spatter off the map",
     "cleanup_dead_units": "take long-dead creatures off the game's active list",
+    "add_haulers": "put idle dwarves on hauling",  # (0.105.40 M5)
+    "relieve_haulers": "take key workers off hauling (or give it back)",
     "census": "count what fills the map",  # (0.104.113)
     "seal_well_stairs": "close the cavern wells' stair columns",  # (0.104.151)
     "join_levels": "join areas on one level that meet only through the stairs",  # (0.104.108)
