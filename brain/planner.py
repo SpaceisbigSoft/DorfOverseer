@@ -18,7 +18,8 @@ theme, each re-exported by the part it came from: planner_config
 planner_moods, planner_visitors, planner_health and planner_locations from
 society; planner_farms, planner_labor, planner_trade and planner_orders from
 industry; planner_gates from military. Later parts: planner_care,
-planner_homes, planner_water, planner_threats, planner_world, planner_army.
+planner_homes, planner_water, planner_threats, planner_world, planner_army,
+planner_missions.
 """
 
 from __future__ import annotations
@@ -46,6 +47,7 @@ from planner_homes import *  # noqa: E402,F401,F403  (0.104.168: homes and house
 from planner_threats import _threat_rules, unseen_intrusion, alarm_held  # noqa: E402  (0.105.0 round 3; 0.105.36)
 from planner_world import (_contact_rule, _export_rule, _hostile_trade_filter, _meeting_answer_rule,  # noqa: E402
                            _messenger_rule, _world_notes, note_world)  # (0.105.0: the world outside, 12b and 13b)
+from planner_missions import _mission_rule, note_missions  # noqa: E402  (0.105.39) missions on the world map
 from planner_construct import (_hall_rule, _construction_blocks_rule,  # noqa: E402  (0.105.30) construction
                                note_construct, note_construct_cycle)
 from planner_army import (_army_gear_rule, _quiver_rule, _bolts_rule, _flask_rule,  # noqa: E402  (0.105.0, round 2)
@@ -688,6 +690,8 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
             _guard(_messenger_rule, s, cfg, proposals, notes)
             if can_use("missions"):
                 _guard(_contact_rule, s, cfg, proposals, notes, memory)   # (0.105.24) proposals: send_mission
+        if can_use("missions"):
+            _guard(_mission_rule, s, cfg, proposals, notes, memory)   # (0.105.39) rescues, artifacts, ruins, raids
         _guard(_complaint_notes, s, cfg, notes)                     # (0.104.168)
         _guard(_vermin_rule, s, cfg, proposals, notes)              # (0.104.168)
         _guard(_location_supply_rules, s, cfg, proposals, notes)
@@ -1435,6 +1439,8 @@ def note_cycle(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> list[
         _step(crisis.update, s, memory, cfg, notes)             # (0.104.137) crisis mode
     if "world" not in errors:
         _step(note_world, s, memory)                            # (0.105.0) grudges, export wishes
+    if "missions" not in errors:
+        notes += _step(note_missions, s, memory) or []          # (0.105.39) missions followed out and back
     if "others_on_map" not in errors:
         notes += _step(note_lockdown, s, memory, cfg) or []     # (0.105.3) B's sealed hatch: lone intruders, the cap
     if "locations" not in errors:
