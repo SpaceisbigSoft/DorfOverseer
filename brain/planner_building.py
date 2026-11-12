@@ -4,6 +4,7 @@ from __future__ import annotations
 import math
 import re
 from culture import layout_style, new_history, pick_stone, profile_from, stone_for
+import design  # (D0) the design language's naming
 from learning import held_levels
 import customs
 import masterplan
@@ -413,6 +414,16 @@ def garden_name(s: dict, memory) -> str:
     chosen = _d(getattr(memory, "culture", None)).get("set_piece_name")
     if isinstance(chosen, str) and chosen and chosen not in (memory.gardens_built or []):
         return chosen[:40]
+    # (D0) the design language's words, when it has any (none at Scripts)
+    words = [w for w in (_d(design.naming(getattr(memory, "culture", None))).get("words") or [])
+             if isinstance(w, str) and w]
+    if words:
+        free = [w for w in words if w not in (memory.gardens_built or [])]
+        if free:
+            return free[0][:40]
+        w = words[n % len(words)]
+        k = n // len(words)
+        return (w + (" " + ORDINALS[k] if 0 < k < len(ORDINALS) else ""))[:40]
     return (base + (" " + ORDINALS[n] if 0 < n < len(ORDINALS) else ""))[:40]
 
 
@@ -915,8 +926,11 @@ def _project_rules(s, traits, cfg, proposals, notes, can_use, memory) -> None:
                     continue
                 else:
                     action = {"type": "work_order", "recipe": recipe, "amount": amount}
-                    kstone = (stone_for(stones, profile["palette"], kind)
-                              if profile["palette"] == "purpose" and not one_stone else stone)
+                    dz = profile.get("design") if isinstance(profile.get("design"), dict) else {}
+                    kstone = (stone_for(stones, profile["palette"], kind,
+                                        by_kind=dz.get("by_kind"), signature=dz.get("signature"))
+                              if (profile["palette"] == "purpose" or dz.get("by_kind") or dz.get("signature"))
+                              and not one_stone else stone)
                     if kstone and recipe.startswith("stone_"):
                         action["material"] = kstone["token"]
                         why += (f", in {kstone.get('name')} (each kind of furniture in its own stone)"
@@ -1065,7 +1079,7 @@ def _project_rules(s, traits, cfg, proposals, notes, can_use, memory) -> None:
             short = tombs_short(s, cit, cfg, memory) + (dead.get("ghosts") or 0)
             coffins = max(4, min(30, short * 2))
             proposals.append(Proposal("tombs_ghosts", {"type": "start_project", "kind": "tombs", "coffins": coffins,
-                                                       "urgent": True, "style": layout_style(profile)},
+                                                       "urgent": True, "style": layout_style(profile, "tombs")},
                                       f"{dead.get('unburied') or 0} dead unburied, {dead.get('ghosts') or 0} ghost(s) and "
                                       f"{dead.get('free_tombs', 0)} free tombs: dig a tomb level with {coffins} coffins "
                                       "now, ahead of the levels under way", 2))
@@ -1429,7 +1443,7 @@ def _project_rules(s, traits, cfg, proposals, notes, can_use, memory) -> None:
     # (0.105.26) the ghosts' own tomb level is proposed once, with the urgent
     # levels above (tombs_ghosts); a second copy here proposed it again
     if action:
-        action["style"] = layout_style(profile)
+        action["style"] = layout_style(profile, action["kind"])
         if memory is not None and has_rule(memory.culture, "doored_levels"):
             action["style"]["entry_door"] = True    # (0.103.1, Sealed Halls: the rule had no effect)
         if memory is not None:

@@ -4,6 +4,7 @@ earned quirks (quirks.py): a custom holds while its sliders do, nothing more.
     customs.active(traits)                -> ids, in precedence order
     customs.has(traits, cid)              -> bool
     customs.layout_customs(traits, kind)  -> ids the builder's layout reads (style.customs)
+    customs.set_adopted(ids)              -> (D0) the design language's adopted customs, added to active()
 """
 from __future__ import annotations
 
@@ -35,11 +36,30 @@ def _v(traits, k) -> float:
         return 0.0
 
 
+# (D0) The customs the fort's design language adopted (design.adopted_customs),
+# set by the planner at the start of each plan(); () at Scripts.
+ADOPTED: tuple = ()
+SLIDERS_ONLY = ("hidden_hold", "winding_ways")      # defence and the surface stay the sliders'
+
+
+def set_adopted(ids) -> None:
+    global ADOPTED
+    ids = [c for c in (ids or ()) if isinstance(c, str)]
+    ADOPTED = tuple(c for c in CUSTOMS if c in ids and c not in SLIDERS_ONLY)
+
+
+def adopted() -> list[str]:
+    return list(ADOPTED)
+
+
 def active(traits: dict | None) -> list[str]:
+    """The sliders' customs, then the adopted ones (each in CUSTOMS order, no
+    duplicates)."""
     out = []
     for cid, (conds, _owner, _words) in CUSTOMS.items():
         if all((_v(traits, k) >= n) if op == ">=" else (_v(traits, k) <= n) for k, op, n in conds):
             out.append(cid)
+    out.extend(c for c in ADOPTED if c not in out)
     return out
 
 
