@@ -172,14 +172,42 @@ function AIPage:init()
                      pen = COLOR_GREY}},
         })
     end
-    table.insert(views, widgets.Label{frame = {t = 7, l = 0}, text = {
+    -- (D0) the Design selector, under the two sliders: who designs how the
+    -- fort looks (independent of what the AI may do, below)
+    table.insert(views, widgets.CycleHotkeyLabel{
+        view_id = 'design',
+        frame = {t = 7, l = 0, w = 46},
+        label = 'Design (who designs the look):',
+        label_width = 32,
+        options = (function()
+            local out = {}
+            for _, m in ipairs(S.DESIGN_MODES) do
+                table.insert(out, {label = S.DESIGN_NAMES[m], value = m,
+                                   pen = m == 'scripts' and COLOR_GREY or COLOR_LIGHTCYAN})
+            end
+            return out
+        end)(),
+        initial_option = p.settings.design or S.DESIGN_DEFAULT,
+        on_change = function(v) p:set_field('design', v) end,
+    })
+    table.insert(views, widgets.Label{frame = {t = 8, l = 2}, text = {
+        {text = function()
+            local d = p.settings.design
+            return (S.DESIGN_NAMES[d] or S.DESIGN_NAMES[S.DESIGN_DEFAULT]) .. ': '
+                .. (S.DESIGN_WORDS[d] or S.DESIGN_WORDS[S.DESIGN_DEFAULT])
+        end, pen = COLOR_WHITE},
+    }})
+    table.insert(views, widgets.Label{frame = {t = 9, l = 2}, text = {
+        {text = S.DESIGN_TOKENS .. '. Switching down removes nothing.', pen = COLOR_GREY},
+    }})
+    table.insert(views, widgets.Label{frame = {t = 10, l = 0}, text = {
         {text = function()
             local pl = plan()
             return ('A routine review every %d days, and up to %s event reviews a month'):format(
                 pl.interval_days, ('%g'):format(math.floor(pl.events_per_month * 100 + 0.5) / 100))
         end, pen = COLOR_GREY},
     }})
-    table.insert(views, widgets.Label{frame = {t = 8, l = 0}, text = {
+    table.insert(views, widgets.Label{frame = {t = 11, l = 0}, text = {
         {text = function()
             local pl = plan()
             local function think(n) return n > 0 and ('thinks up to %s'):format(fmt_tokens(n)) or 'no extra thinking' end
@@ -187,7 +215,7 @@ function AIPage:init()
                 think(pl.thinking_routine), MODEL_WORDS[pl.model_events], think(pl.thinking_events))
         end, pen = COLOR_GREY},
     }})
-    table.insert(views, widgets.Label{frame = {t = 9, l = 0}, text = {
+    table.insert(views, widgets.Label{frame = {t = 12, l = 0}, text = {
         {text = function()
             local pl = plan()
             return ('Estimated cost: about %s tokens a review, about %s reviews and %s tokens per in-game year'):format(
@@ -195,7 +223,7 @@ function AIPage:init()
                 fmt_tokens(math.floor(pl.tokens_per_year / 1000 + 0.5) * 1000))
         end, pen = COLOR_WHITE},
     }})
-    table.insert(views, widgets.Label{frame = {t = 10, l = 0}, text = {
+    table.insert(views, widgets.Label{frame = {t = 13, l = 0}, text = {
         {text = function()
             local ok, st = pcall(reqscript, 'ai-status')
             local t = ok and st.STATUS and st.STATUS.tokens
@@ -206,7 +234,7 @@ function AIPage:init()
     }})
     table.insert(views, widgets.CycleHotkeyLabel{
         view_id = 'real_cap',
-        frame = {t = 12, l = 0, w = 44},
+        frame = {t = 15, l = 0, w = 44},
         label = 'Cap per real-world day:',
         label_width = 30,
         options = options_from(S.REAL_DAY_CAP_OPTIONS, fmt_tokens),
@@ -214,7 +242,7 @@ function AIPage:init()
         on_change = function(v) p:set_field('real_day_token_cap', v) end,
     })
     table.insert(views, widgets.WrappedLabel{
-        frame = {t = 14, l = 0, r = 2},
+        frame = {t = 17, l = 0, r = 2},
         text_to_wrap = 'Longer thinking uses larger models and more tokens per review; more often means more '
             .. 'reviews. Big events (sieges, beasts, deaths) can add a review between routine ones. The '
             .. 'real-world cap is a hard ceiling whatever happens in game. Estimates assume a normal fort '
@@ -223,13 +251,13 @@ function AIPage:init()
     })
     self:addviews(views)
     self:addviews{
-        widgets.Label{frame = {t = 20, l = 0}, text = {
+        widgets.Label{frame = {t = 22, l = 0}, text = {
             {text = 'The strategist runs when the overseer is started with --ai (see docs\\ai-setup.md).',
              pen = COLOR_GREY},
         }},
         widgets.CycleHotkeyLabel{
             view_id = 'mode',
-            frame = {t = 22, l = 0, w = 70},
+            frame = {t = 23, l = 0, w = 70},
             label = 'What the AI may do:',
             label_width = 30,
             options = (function()
@@ -242,7 +270,7 @@ function AIPage:init()
         },
         widgets.ToggleHotkeyLabel{
             view_id = 'save_first',
-            frame = {t = 23, l = 0, w = 50},
+            frame = {t = 24, l = 0, w = 50},
             label = 'Save the game before each new level:',
             label_width = 38,
             initial_option = p.settings.save_before_projects,
@@ -250,13 +278,13 @@ function AIPage:init()
         },
         widgets.ToggleHotkeyLabel{
             view_id = 'ai_chronicle',
-            frame = {t = 24, l = 0, w = 70},
+            frame = {t = 25, l = 0, w = 70},
             label = ('AI-written story each season (~%s tokens):'):format(fmt_tokens(S.STORY_TOKENS)),
             label_width = 46,
             initial_option = p.settings.ai_chronicle,
             on_change = function(v) p:set_field('ai_chronicle', v) end,
         },
-        widgets.Label{frame = {t = 26, l = 0}, text = {
+        widgets.Label{frame = {t = 27, l = 0}, text = {
             {text = 'Ctrl-Shift-H halts or resumes the AI at any time. Its on-screen panel shows what it does.',
              pen = COLOR_GREY},
         }},
@@ -270,6 +298,7 @@ function AIPage:refresh()
     end
     self.subviews.real_cap:setOption(s.real_day_token_cap, false)
     self.subviews.mode:setOption(s.mode, false)
+    self.subviews.design:setOption(s.design or S.DESIGN_DEFAULT, false)     -- (D0)
     self.subviews.save_first:setOption(s.save_before_projects, false)
     self.subviews.ai_chronicle:setOption(s.ai_chronicle, false)
 end
@@ -315,6 +344,22 @@ function RulesPage:init()
             end)(),
             initial_option = p.settings.memorial_pace,
             on_change = function(v) p:set_field('memorial_pace', v) end,
+        },
+        -- (D0) beside the memorials: how often an Architect fort starts a landmark
+        widgets.CycleHotkeyLabel{
+            view_id = 'landmark_pace',
+            frame = {t = 2, l = 72, w = 46},
+            label = 'Landmarks (Architect):',
+            label_width = 24,
+            options = (function()
+                local out = {}
+                for _, m in ipairs(S.LANDMARK_PACES) do
+                    table.insert(out, {label = S.LANDMARK_PACE_NAMES[m], value = m})
+                end
+                return out
+            end)(),
+            initial_option = p.settings.landmark_pace or 'season',
+            on_change = function(v) p:set_field('landmark_pace', v) end,
         },
         widgets.ToggleHotkeyLabel{
             view_id = 'set_pop_cap',
@@ -728,6 +773,7 @@ end
 function RulesPage:refresh()
     local s = self.panel.settings
     self.subviews.memorial_pace:setOption(s.memorial_pace, false)
+    self.subviews.landmark_pace:setOption(s.landmark_pace or 'season', false)     -- (D0)
     self.subviews.fort_goal:setOption(s.fort_goal, false)
     self.subviews.set_pop_cap:setOption(s.set_pop_cap, false)
     for _, l in ipairs(S.OPTIONAL_LEVELS) do
@@ -819,7 +865,10 @@ end
 ---------------------------------------------------------------------------
 
 local CULTURE_KEY = 'ai-overseer/culture'
-local HALL_TEXT = {plain = 'square and practical', rounded = 'rounded corners', pillared = 'grand, with pillars'}
+local HALL_TEXT = {plain = 'square and practical', rounded = 'rounded corners', pillared = 'grand, with pillars',
+                   -- (D0) the Design track's four
+                   octagonal = 'octagonal, corners cut', round = 'round', cruciform = 'cross-shaped',
+                   nave = 'a long nave between two aisles of pillars'}
 local SMOOTH_TEXT = {[0] = 'rough rock', 'smoothed floors', 'smoothed floors and walls',
                      'smoothed and engraved halls'}
 local PALETTE_TEXT = {any = 'whatever stone is plentiful', dark = 'dark stone', light = 'pale stone',
@@ -1033,6 +1082,17 @@ function CulturePage:refresh()
             -- the master plan: one design for the whole fort (brain/masterplan.py)
             table.insert(lines, 'THE MASTER PLAN  (drawn once; new eras add wings)')
             for _, x in ipairs(plan) do table.insert(lines, '  ' .. tostring(x)) end
+            table.insert(lines, '')
+        end
+        -- (D0) the fort's design language (brain/design.py lines), when it has one
+        local design = type(c.design) == 'table' and c.design or {}
+        if #design > 0 then
+            table.insert(lines, 'THE DESIGN LANGUAGE  (Design on the AI & tokens tab: '
+                .. (S.DESIGN_NAMES[self.panel.settings.design] or 'Scripts') .. ')')
+            for i, x in ipairs(design) do
+                if i > 6 then break end
+                table.insert(lines, '  ' .. tostring(x))
+            end
             table.insert(lines, '')
         end
         table.insert(lines, 'STYLE GUIDE')

@@ -478,7 +478,8 @@ end
 -- game reads it.
 CULTURE_KEY = 'ai-overseer/culture'
 local CULTURE_ENUMS = {
-    hall = {plain = true, rounded = true, pillared = true},
+    hall = {plain = true, rounded = true, pillared = true,
+            octagonal = true, round = true, cruciform = true, nave = true},   -- (D0) the Design track's halls
     palette = {any = true, dark = true, light = true, warm = true, cool = true, precious = true,
                purpose = true, wood = true},
     temple = {none = true, shrine = true, grand = true},
@@ -625,6 +626,12 @@ function act_set_culture(a)
         local t = says(s, 160)
         if t and #plan < 8 then table.insert(plan, t) end
     end
+    -- (D0) the design language in words (brain/design.py lines), for the panel
+    local design = {}
+    for _, x in ipairs(type(c.design) == 'table' and c.design or {}) do
+        local t = says(x, 160)
+        if t and #design < 6 then table.insert(design, t) end
+    end
     -- (0.94) what each slider does now (brain/temperament.py), for the panel
     local effects = {}
     for k, v in pairs(type(c.effects) == 'table' and c.effects or {}) do
@@ -642,6 +649,7 @@ function act_set_culture(a)
     local data = {
         choices = choices, quirks = quirks, effects = effects, leanings = leanings,
         plan = plan, phase = says(c.phase, 120),
+        design = #design > 0 and design or nil,     -- (D0)
         guide = clean_text(c.guide, 400) or '',
         stone = clean_text(c.stone, 40),
         profile = profile, eras = eras,

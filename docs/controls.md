@@ -44,6 +44,20 @@ Set on the panel's **AI & tokens** tab (Ctrl-Shift-O):
 The overseer must still be started with `--autopilot` before it acts at all;
 without it, every mode only watches.
 
+Under the two sliders, **Design** (`design`) sets who designs how the fort
+looks, apart from what the AI may do:
+
+| Design | What it does |
+| --- | --- |
+| Scripts | the layout library builds as it always has |
+| Guided | a design language for the fort: hall shapes, motifs, stone, names (from rules; with `--ai`, written by the strategist) |
+| Architect | Guided, plus a landmark now and then (library landmarks without `--ai`) |
+
+Guided costs about 4k tokens an era, Architect about 5-15k a landmark, and
+neither costs any without `--ai`. A new fort starts at Guided; a fort whose
+settings were saved before the Design track reads Scripts. Switching down
+removes nothing already built.
+
 In Co-pilot, answer in the panel: **Yes** and it acts within seconds (even
 while paused); **No** and it won't ask about that again for 7 in-game days.
 It also learns from the No: it holds back on that kind of thing for 4 weeks,
@@ -102,6 +116,8 @@ reads as `ai`, its default then).
 - **Memorial halls for slain beasts:** one for every beast, at most one per
   season (the default), at most one per year, or never. A memorial that has
   to wait is shown as a note.
+- **Landmarks (Architect)** (`landmark_pace`): one a season (the default), one
+  a year, or never. Only an Architect fort starts landmarks.
 - **DF pop cap from Growth/Maintain** (on): the AI sets DF's population cap,
   which decides how many migrants come, to the Growth target, or to the held
   size under Maintain. It lasts for the session; the AI sets it again after a
