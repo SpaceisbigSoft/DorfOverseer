@@ -211,7 +211,7 @@ def _():
     p, notes = rule(fort())
     assert not p
     named = [n for n in notes if "rescue Urist McHeld from Site101" in n]
-    assert named and "The Axes of Iron" in named[0] and "send missions" in named[0], notes
+    assert named and "The Axes of Iron" in named[0] and '"Send missions by the World screen" is off' in named[0], notes
     nd = needs(notes)
     assert len(nd) == 1 and "probe_missions.py --watch" in nd[0] and "meanwhile" in nd[0], nd
     p, notes = rule(fort(send=button("explore"), send_missions=True))
@@ -284,7 +284,7 @@ def _():
     s["missions"]["squads"][0].update(away=10, controller=70)
     s["missions"]["reports"] = {"n": 2, "unviewed": 0}
     notes = note_cycle(copy.deepcopy(s), m)
-    assert any("a mission went out: rescue Site3" in n for n in notes), notes
+    assert any('a mission went out: rescue "Site3"' in n for n in notes), notes
     assert m.missions_seen["missions_sent"] == 1 and m.missions_seen["out"]["70"]["hf_id"] == 903
     j = PM.mission_journal(m)
     assert j and j[0]["event"] == "out" and j[0]["goal"] == "rescue" and PM.mission_journal(m) == []
@@ -299,9 +299,10 @@ def _():
     s2["missions"]["targets"] = []
     s2["missions"]["reports"] = {"n": 3, "last": {"title": 'The rescue of "Urist" [at] {Site3} ' + "x" * 80, "year": 148}}
     s2["missions"]["spoils"] = {"n": 1, "last": {"kind": "spoils", "items": 4}}
+    s2["missions"]["status_of"] = {"hf": {"903": "home"}, "artifact": []}
     notes = note_cycle(s2, m)
     back = [n for n in notes if "came back" in n]
-    assert back and "the citizen is no longer held there" in back[0] and "spoils: 4 item(s)" in back[0], notes
+    assert back and "the citizen is home again" in back[0] and "spoils: 4 item(s)" in back[0], notes
     ms = m.missions_seen
     assert (ms["missions_back"], ms["rescued"], ms["artifacts_recovered"]) == (1, 1, 0) and ms["out"] == {}
     e = PM.mission_journal(m)[0]
@@ -329,9 +330,197 @@ def _():
     s["missions"]["controllers"][0].update(away=0, returning=True)
     s["missions"]["squads"][1].update(away=0)
     s["missions"]["targets"] = []
+    s["missions"]["status_of"] = {"hf": [], "artifact": {"504": "fort"}}
     notes = note_cycle(copy.deepcopy(s), m)
-    assert any("came back" in n and "artifact is no longer held" in n for n in notes), notes
+    assert any("came back" in n and "the artifact is back in the fort" in n for n in notes), notes
     assert m.missions_seen["artifacts_recovered"] == 1 and m.missions_seen["missions_back"] == 1
+
+
+# --- (0.105.39 review) ------------------------------------------------------------------
+
+@test("(0.105.39 review) the retry block per goal: a Make contact run doesn't hide a stopped rescue, and the "
+      "messenger keeps its own stopped run (no weekly alternation); an older bridge's single last read by its goal")
+def _():
+    from planner_world import _contact_rule
+    now = abs_tick(BASE)
+    rescue = {"goal": "rescue", "result": "stopped", "step": "goal", "tick": now - 100, "site": "Site3", "site_id": 3,
+              "why": "never recorded", "controller_left": True}
+    contact = {"goal": "make_contact", "result": "stopped", "step": "make_contact", "tick": now - 50, "site_id": 77}
+    send = button("rescue", last=contact)
+    send["last_by_goal"] = {"rescue": rescue, "make_contact": contact}
+    p, notes = rule(fort([target("rescue", 3)], send=send, send_missions=True))
+    assert not p and any("tried again in a year" in n for n in notes), notes
+    # the stopped run's Needs you: where it stopped, the controller left behind, what the AI does meanwhile
+    nd = needs(notes)
+    assert len(nd) == 1 and '"Site3"' in nd[0] and '"goal" step' in nd[0] and "left behind" in nd[0] \
+        and "the soldiers stay home" in nd[0], nd
+    assert needs(rule(fort([target("rescue", 3)], send=send, send_missions=True))[1]) == nd     # same words: once
+    # the messenger: its own stopped run still holds although the rescue's came after it
+    send2 = dict(send, last=rescue)
+    s = digest.normalize(fort(send=dict(send2, buttons=["World", "Diplomacy"]), send_messenger=True))
+    s["offices"] = {"offices": {"MESSENGER": {"held": ["Mafol"]}}}
+    s["missions"]["sites"] = {"nearest": [{"id": 77, "name": "Near", "dist": 3, "relation": "NoContact"}]}
+    props, notes = [], []
+    _contact_rule(s, CFG, props, notes, Memory())
+    assert not props, props
+    # an older bridge (no last_by_goal): `last` counts only for its own goal
+    assert PM.last_of_goal({"last": {"result": "stopped"}}, "make_contact") == {"result": "stopped"}
+    assert PM.last_of_goal({"last": {"result": "stopped", "goal": "rescue"}}, "make_contact") == {}
+    assert PM.last_of_goal({"last": {"result": "stopped", "goal": "rescue"}}, "rescue")["result"] == "stopped"
+    assert PM.last_of_goal({"last_by_goal": {"rescue": rescue}, "last": contact}, "make_contact") == {}
+
+
+@test("(0.105.39 review) a failed others_on_map, world or civ_alert read is no 'no threat'; the alarm held "
+      "(alarm_held: a fire, a berserk dwarf...) keeps the soldiers home too")
+def _():
+    for key in ("others_on_map", "world", "civ_alert"):
+        s = fort(send=button("rescue"), send_missions=True)
+        s[key] = {"error": "boom"}
+        p, notes = rule(s)
+        assert not p and any("couldn't be read" in n and key.replace("_", " ") in n for n in notes), (key, notes)
+        s = fort(send=button("rescue"), send_missions=True)
+        s["_errors"] = {key: "boom"}
+        assert not rule(s)[0], key
+    s = fort(send=button("rescue"), send_missions=True)
+    s["hazards"] = {"fire_near": 2}
+    p, notes = rule(s)
+    assert not p and any("not while a threat is near (the soldiers stay home): fire 2 tiles" in n for n in notes), notes
+
+
+@test("(0.105.39 review) a rescue or recovery counted only when status_of says home / fort; a partial target "
+      "list or a gone target is no success")
+def _():
+    def back(status_of, partial=False, goal="rescue"):
+        m = Memory()
+        tg = target(goal, 3)
+        s = fort([tg])
+        df_goal = "RESCUE_HF" if goal == "rescue" else "RECOVER_ARTIFACT"
+        s["missions"]["controllers"] = [{"id": 70, "goal": df_goal, "site_id": 3, "site": "Site3", "squads": [11],
+                                         "away": 10}]
+        s["missions"]["squads"][0].update(away=10, controller=70)
+        note_cycle(copy.deepcopy(s), m)
+        s["missions"]["controllers"] = []
+        s["missions"]["squads"][0].update(away=0, controller=None)
+        s["missions"]["targets"] = []
+        if partial:
+            s["missions"]["targets_partial"] = True
+        if status_of is not None:
+            s["missions"]["status_of"] = status_of
+        notes = note_cycle(s, m)
+        return m.missions_seen, [n for n in notes if "came back" in n]
+    seen, lines = back(None)
+    assert seen["rescued"] == 0 and seen["missions_back"] == 1 and "isn't known" in lines[0], lines
+    seen, lines = back({"hf": {"903": "held"}})
+    assert seen["rescued"] == 0 and "still held" in lines[0], lines
+    seen, lines = back({"hf": {"903": "home"}}, partial=True)
+    assert seen["rescued"] == 0, seen
+    seen, lines = back({"hf": {"903": "home"}})
+    assert seen["rescued"] == 1 and "home again" in lines[0]
+    seen, lines = back({"artifact": {"503": "away"}}, goal="recover_artifact")
+    assert seen["artifacts_recovered"] == 0 and "still away" in lines[0], lines
+    seen, lines = back({"artifact": {"503": "fort"}}, goal="recover_artifact")
+    assert seen["artifacts_recovered"] == 1
+
+
+@test("(0.105.39 review) the Needs you names the probe command for the button not shown, the target and the "
+      "squads; a squad missing from missions.squads isn't free")
+def _():
+    p, notes = rule(fort(send=button("explore"), send_missions=True))
+    nd = needs(notes)
+    assert len(nd) == 1 and "probe_missions.py --here Rescue" in nd[0] and "Urist McHeld" in nd[0] \
+        and "The Axes of Iron" in nd[0] and "meanwhile" in nd[0], nd
+    s = fort(militarism=100)
+    s["missions"]["squads"] = s["missions"]["squads"][:1]
+    sq = PM.sendable_squads(s)[0]
+    assert [q["id"] for q in sq] == [11], sq
+    assert PM._squad_free(s["military"]["squads"][1], PM._away_squads(s)) == "not in the missions report"
+
+
+@test("(0.105.39 review) a SITE_INVASION controller's goal by its intent, else 'invasion' (never guessed a raid); "
+      "site names quoted in the journal and chronicle")
+def _():
+    assert PM._goal_of({"goal": "SITE_INVASION", "intent": "EXPLORE"}, {}) == "explore"
+    assert PM._goal_of({"goal": "SITE_INVASION", "intent": "DEMAND_TRIBUTE"}, {}) == "tribute"
+    assert PM._goal_of({"goal": "SITE_INVASION", "intent": "TAKE_OVER_SITE"}, {}) == "conquer"
+    assert PM._goal_of({"goal": "SITE_INVASION"}, {}) == "invasion"
+    assert PM._goal_of({"goal": "RESCUE_HF"}, {}) == "rescue"
+    sent = {"last_by_goal": {"explore": {"goal": "explore", "result": "sent", "site_id": 4},
+                             "make_contact": {"goal": "make_contact", "result": "stopped", "site_id": 9}}}
+    assert PM._goal_of({"goal": "SITE_INVASION", "site_id": 4}, sent) == "explore"
+    m = Memory()
+    s = fort([])
+    s["missions"]["controllers"] = [{"id": 90, "goal": "SITE_INVASION", "intent": "RAID", "site_id": 4,
+                                     "site": 'Evil "Keep" [x]', "squads": [11], "away": 10}]
+    s["missions"]["squads"][0].update(away=10, controller=90)
+    note_cycle(copy.deepcopy(s), m)
+    j = PM.mission_journal(m)
+    assert j[0]["goal"] == "raid" and j[0]["site"] == "\"Evil 'Keep' x\"", j
+    s["missions"]["controllers"] = []
+    s["missions"]["squads"][0].update(away=0, controller=None)
+    note_cycle(s, m)
+    ch = [x for x in m.chronicle["entries"] if x["k"] == "mission"]
+    assert ch and "the mission to raid \"Evil 'Keep' x\" came back" in ch[0]["t"], ch
+
+
+@test("(0.105.39 review 2) a run the player interrupted (player_busy, timeout, stale) is tried again after a day, "
+      "with a short note and no Needs you; not_recorded / unexpected keep the year")
+def _():
+    from planner_world import _contact_rule
+    now = abs_tick(BASE)
+    for reason in ("player_busy", "timeout", "stale"):
+        last = {"goal": "rescue", "result": "stopped", "step": "site", "reason": reason, "tick": now - 100,
+                "why": "another screen"}
+        send = button("rescue")
+        send["last_by_goal"] = {"rescue": last}
+        p, notes = rule(fort([target("rescue", 3)], send=send, send_missions=True))
+        assert not p and any("interrupted by the player; tried again tomorrow" in n for n in notes), notes
+        assert not needs(notes), needs(notes)
+        last["tick"] = now - 1201                                     # a day and more ago
+        p, _ = rule(fort([target("rescue", 3)], send=send, send_missions=True))
+        assert p and p[0].action["goal"] == "rescue", reason
+    for reason in ("not_recorded", "unexpected"):
+        last = {"goal": "rescue", "result": "stopped", "step": "goal", "reason": reason, "tick": now - 5 * 1200}
+        send = button("rescue")
+        send["last_by_goal"] = {"rescue": last}
+        p, notes = rule(fort([target("rescue", 3)], send=send, send_missions=True))
+        assert not p and any("tried again in a year" in n for n in notes) and needs(notes), notes
+    # the messenger: the same
+    def contact(last, controllers=()):
+        send = dict(button(), buttons=["World", "Diplomacy"], last_by_goal={"make_contact": last})
+        s = digest.normalize(fort(send=send, send_messenger=True))
+        s["offices"] = {"offices": {"MESSENGER": {"held": ["Mafol"]}}}
+        s["missions"]["sites"] = {"nearest": [{"id": 77, "name": "Near", "dist": 3, "relation": "NoContact"}]}
+        s["missions"]["controllers"] = list(controllers)
+        props, notes = [], []
+        _contact_rule(s, CFG, props, notes, Memory())
+        return props, notes
+    last = {"goal": "make_contact", "result": "stopped", "step": "site", "reason": "player_busy", "tick": now - 100}
+    props, notes = contact(last)
+    assert not props and any("interrupted by the player" in n for n in notes) and not needs(notes), notes
+    last["tick"] = now - 2 * 1200
+    props, notes = contact(last)
+    assert props and props[0].action["goal"] == "make_contact", notes
+    # (9) a Diplomacy controller the stopped run left behind doesn't count as the messenger out
+    last = {"goal": "make_contact", "result": "stopped", "step": "make_contact", "reason": "not_recorded",
+            "tick": now - 2 * 1200 * 400, "left_ids": [901], "controller_left": True}
+    props, notes = contact(last, [{"id": 901, "goal": "DIPLOMACY", "squads": [], "away": 0}])
+    assert props and props[0].action["goal"] == "make_contact", notes
+    props, notes = contact(last, [{"id": 902, "goal": "DIPLOMACY", "squads": [], "away": 0}])
+    assert not props and any("Make contact): one mission at a time" in n for n in notes), notes
+
+
+@test("(0.105.39 review 2) the World screen left open under the player's window: one Needs you while it is open")
+def _():
+    send = button("rescue")
+    send["last_by_goal"] = {"rescue": {"goal": "rescue", "result": "stopped", "reason": "player_busy", "left_open": True,
+                                       "tick": abs_tick(BASE) - 10}}
+    s = fort(send=send, send_missions=True)
+    s["missions"]["screen"] = {"view_mode": "NORMAL", "allowed": {}}
+    p, notes = rule(s)
+    nd = needs(notes)
+    assert len(nd) == 1 and "left open under your window" in nd[0], nd
+    s["missions"]["screen"] = None
+    assert not needs(rule(s)[1])
 
 
 # --- the digest -------------------------------------------------------------------------

@@ -36,10 +36,11 @@ import math
 from digest import _d, _l, game_text
 from planner_core import (PLANNER_CONFIG, Proposal, TICKS_PER_DAY, abs_tick, ask_player, player_rules,
                           reachable_threats, _traits)
+from planner_threats import alarm_held
 
 __all__ = ["MISSION_GOALS", "OFFENSIVE_GOALS", "MISSION_LEVELS", "allowed_goals", "mission_reserve",
            "sendable_squads", "mission_target", "_mission_rule", "note_missions", "mission_journal",
-           "mission_line", "MISSION_WORDS"]
+           "mission_line", "MISSION_WORDS", "last_of_goal", "MISSIONS_SWITCH", "SEND_SWITCH"]
 
 # the goals in the order the AI prefers them (the contract's order)
 MISSION_GOALS = ("rescue", "recover_artifact", "explore", "tribute", "raid", "pillage", "conquer")
@@ -50,6 +51,9 @@ MISSION_LEVELS = {"off": (), "rescue": ("rescue", "recover_artifact"),
 MISSION_WORDS = {"rescue": "rescue", "recover_artifact": "recover an artifact", "explore": "explore",
                  "tribute": "demand tribute", "raid": "raid", "pillage": "pillage", "conquer": "conquer",
                  "make_contact": "make contact"}
+# (0.105.39 review) the switches as the Army tab names them (lua/gui/ai-overseer.lua)
+MISSIONS_SWITCH = 'the Army tab\'s "Missions to send out"'
+SEND_SWITCH = 'the Army tab\'s "Send missions by the World screen"'
 JOURNAL_MAX = 12          # mission journal entries waiting for the overseer at most
 TRACK_MAX = 10            # missions followed at most (the report's controllers cap)
 
@@ -104,6 +108,8 @@ def _squad_free(q: dict, away: dict) -> str | None:
     members = _int(q.get("members")) or 0
     if members <= 0:
         return "no members"
+    if q.get("id") not in away:
+        return "not in the missions report"      # (0.105.39 review) where it is isn't known: not free
     a = _d(away.get(q.get("id")))
     if (_int(a.get("away")) or 0) > 0 or _int(a.get("controller")) is not None:
         return "away"
@@ -146,16 +152,62 @@ def sendable_squads(s: dict, cfg: dict = PLANNER_CONFIG) -> tuple[list, int, int
 
 # --- the target ---------------------------------------------------------------------
 
+def last_of_goal(send: dict, goal: str) -> dict:
+    """(0.105.39 review) The sender's last run of this goal: `last_by_goal`
+    (one outcome per goal, so a Make contact run never hides a stopped
+    rescue); an older bridge's single `last` only when it is this goal's
+    (no goal: make_contact). {} when there is none."""
+    send = _d(send)
+    by = send.get("last_by_goal")
+    if isinstance(by, dict):
+        return _d(by.get(goal))
+    last = _d(send.get("last"))
+    if (last.get("goal") or "make_contact") == goal:
+        return last
+    return {}
+
+
+# (0.105.39 review 2) a run the player interrupted (took the game back, or it
+# ran out of time / went stale): tried again after a day, not a year, and no
+# "nobody recorded" Needs you
+INTERRUPTED = ("player_busy", "timeout", "stale")
+
+
+def interrupted(last: dict) -> bool:
+    return _d(last).get("reason") in INTERRUPTED
+
+
+def retry_ticks(last: dict, year_ticks: int) -> int:
+    """How long a stopped run blocks its goal: a day when the player
+    interrupted it, else `year_ticks` (a step nobody recorded, a surprise)."""
+    return TICKS_PER_DAY if interrupted(last) else year_ticks
+
+
 def _stopped(s: dict, goal: str, cfg: dict) -> dict | None:
     """The sender's last run for this goal when it stopped (or failed) within
-    `mission_retry_ticks`: not tried again until then."""
-    last = _d(_d(_m(s).get("send")).get("last"))
-    if last.get("goal") != goal or last.get("result") not in ("stopped", "error"):
+    `mission_retry_ticks` (a day when the player interrupted it): not tried
+    again until then."""
+    last = last_of_goal(_d(_m(s).get("send")), goal)
+    if last.get("result") not in ("stopped", "error"):
         return None
     t = _int(last.get("tick"))
-    if t is None or not 0 <= abs_tick(s) - t < cfg["mission_retry_ticks"]:
+    if t is None or not 0 <= abs_tick(s) - t < retry_ticks(last, cfg["mission_retry_ticks"]):
         return None
     return last
+
+
+def left_open_needs_you(s: dict, notes: list) -> None:
+    """(0.105.39 review 2) A run that couldn't shut the World screen because
+    the player's window was over it (left_open) while the World screen is
+    still open: one Needs you."""
+    ms = _m(s)
+    send = _d(ms.get("send"))
+    outs = list(_d(send.get("last_by_goal")).values()) or [_d(send.get("last"))]
+    if not ms.get("screen") or not any(_d(o).get("left_open") for o in outs):
+        return
+    ask_player(notes, "missions (13b): the AI's World screen was left open under your window (the AI never "
+                      "presses a key into a window of yours): close it (Esc) when you're done; the AI sends no "
+                      "mission and no messenger while it is open")
 
 
 def mission_target(s: dict, cfg: dict = PLANNER_CONFIG) -> tuple[dict | None, list]:
@@ -201,6 +253,39 @@ def _target_words(t: dict) -> str:
     return what
 
 
+# the goal buttons on DF's New mission panel (lua/ai-mission-send.lua GOALS)
+_GOAL_BUTTON = {"rescue": "Rescue", "recover_artifact": "Recover", "explore": "Explore", "raid": "Raid",
+                "pillage": "Pillage", "tribute": "Tribute", "conquer": "Conquer", "make_contact": "Diplomacy"}
+_DANGER_SECTIONS = ("others_on_map", "world", "civ_alert")
+
+
+def _unread_danger(s: dict) -> str:
+    """(0.105.39 review) The sections a threat is read from that failed
+    (in _errors, or still {"error": ...}): "" when all were read. A failed
+    read is never taken for "no threat"."""
+    errs = _d(s.get("_errors"))
+    bad = [k for k in _DANGER_SECTIONS if k in errs or (isinstance(s.get(k), dict) and "error" in s[k])]
+    return " and ".join(f"the {k.replace('_', ' ')} section" for k in bad)
+
+
+def _stopped_needs_you(s: dict, goal: str, cfg: dict, notes: list) -> None:
+    """(0.105.39 review) After a run of this goal stopped: one Needs you
+    (the same words each cycle, so listed once) saying where it stopped and
+    what the AI does meanwhile, a controller left behind included."""
+    last = _stopped(s, goal, cfg)
+    if not last or interrupted(last):
+        return                       # interrupted by the player: a short note, tried again tomorrow
+    site = game_text(last.get("site") or f"site {last.get('site_id')}", 40)
+    ask_player(notes, f"missions (13b): the AI's try to {MISSION_WORDS.get(goal, goal)} at \"{site}\" stopped at the "
+                      f"World screen's \"{game_text(last.get('step'), 20)}\" step: "
+                      f"{game_text(last.get('why') or last.get('reason'), 120)}. "
+                      + ("A new army controller was left behind on the World screen's missions. "
+                         if last.get("controller_left") else "")
+                      + "The AI can't press a step nobody has recorded (DFHack can't make the mission itself): "
+                      "the soldiers stay home and the AI tries again in a year; a mission sent by hand while "
+                      "python brain\\probe_missions.py --watch runs records the steps for it")
+
+
 def _fort_missions_out(s: dict) -> list:
     """The fort's missions out but the messenger's (DIPLOMACY): a controller
     with the fort's squads, or a squad away or under a controller."""
@@ -219,6 +304,7 @@ def _mission_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None)
     free. Sent by the World screen when `send_missions` is on and the goal's
     buttons were shown, else named for the player."""
     ms = _m(s)
+    left_open_needs_you(s, notes)
     if not isinstance(ms.get("targets"), list) or not ms["targets"]:
         return                       # nothing to go for (or an older bridge): silent
     rules = player_rules(s)
@@ -239,15 +325,29 @@ def _mission_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None)
     if any(p.action.get("type") == "send_mission" for p in proposals):
         return                       # the messenger goes first this cycle
     target, stopped = mission_target(s, cfg)
+    if stopped:
+        _stopped_needs_you(s, stopped[0], cfg, notes)
     if target is None:
         if stopped:
-            notes.append(f"a mission to {MISSION_WORDS.get(stopped[0], stopped[0])} waits: the last try stopped at a "
-                         "World-screen step nobody has recorded; tried again in a year")
+            g = stopped[0]
+            if interrupted(_stopped(s, g, cfg)):
+                notes.append(f"a mission to {MISSION_WORDS.get(g, g)} waits: the last try was interrupted by the "
+                             "player; tried again tomorrow")
+            else:
+                notes.append(f"a mission to {MISSION_WORDS.get(g, g)} waits: the last try stopped at a "
+                             "World-screen step nobody has recorded; tried again in a year")
         return
     what = _target_words(target)
+    unread = _unread_danger(s)
+    if unread:
+        notes.append(f"a mission could {what}, but {unread} couldn't be read, so whether a threat is near isn't "
+                     "known (the soldiers stay home)")
+        return
+    held = alarm_held(s, memory, cfg)
     if (reachable_threats(s, _traits(s), cfg) or any(_d(e).get("active") for e in _l(_d(s.get("world")).get("sieges")))
-            or s.get("civ_alert") is True):
-        notes.append(f"a mission could {what}, but not while a threat is near (the soldiers stay home)")
+            or s.get("civ_alert") is True or held):
+        notes.append(f"a mission could {what}, but not while a threat is near (the soldiers stay home)"
+                     + (f": {held}" if held else ""))
         return
     squads, sent, reserve = sendable_squads(s, cfg)
     if not squads:
@@ -259,9 +359,9 @@ def _mission_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None)
     goal = target["goal"]
     g = _d(_d(send.get("goals")).get(goal))
     if rules["send_missions"] and g.get("button") is True:
-        last = _d(send.get("last"))
+        last = last_of_goal(send, goal)
         lt = _int(last.get("tick"))
-        if (last.get("result") == "sent" and last.get("goal") == goal and lt is not None
+        if (last.get("result") == "sent" and lt is not None
                 and 0 <= abs_tick(s) - lt < cfg["mission_sent_wait_ticks"]):
             return                   # sent lately: its controller shows in `missions` soon
         action = {"type": "send_mission", "goal": goal, "site_id": target["site_id"],
@@ -273,32 +373,54 @@ def _mission_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None)
                                   f"send {names} ({sent} soldiers; {reserve} stay home) to {what}, by the World "
                                   "screen", 7))
         return
+    button = _GOAL_BUTTON.get(goal, goal.title())
     notes.append(f"a mission could {what}: {names} ({sent} soldiers, {reserve} stay home) are free to go; "
-                 + ("the AI doesn't send it (the Rules switch \"send missions\" is off)" if not rules["send_missions"]
-                    else "the AI hasn't been shown this mission's World-screen buttons yet"))
-    ask_player(notes, "missions (13b): send a mission by hand while python brain\\probe_missions.py --watch runs, "
-                      "so the AI can learn the last steps; meanwhile the AI names the target and the squads free "
-                      "to go in its notes, and keeps the soldiers home")
+                 + (f"the AI doesn't send it ({SEND_SWITCH} is off)" if not rules["send_missions"]
+                    else f"the AI hasn't been shown this mission's World-screen button ({button}) yet"))
+    if rules["send_missions"]:
+        # (0.105.39 review) the button not shown: the probe command for it, the target and the squads
+        ask_player(notes, f"missions (13b): to {what}, the AI needs DF's {button} button shown once: with a site's "
+                          f"New mission showing, the mouse on {button} and python brain\\probe_missions.py --here "
+                          f"{button}; meanwhile {names} stay home and the AI names the target in its notes")
+    else:
+        ask_player(notes, f"missions (13b): to {what}, send {names} by hand (or turn on {SEND_SWITCH}) while "
+                          "python brain\\probe_missions.py --watch runs, so the AI can learn the last steps; "
+                          "meanwhile the AI names the target and the squads free to go in its notes, and keeps the "
+                          "soldiers home")
 
 
 # --- following a mission to its return -----------------------------------------------
 
 GOAL_FROM_DF = (("RESCUE", "rescue"), ("ARTIFACT", "recover_artifact"), ("EXPLORE", "explore"),
-                ("TRIBUTE", "tribute"), ("RAID", "raid"), ("PILLAGE", "pillage"), ("CONQUER", "conquer"),
-                ("INVASION", "raid"))
+                ("TRIBUTE", "tribute"), ("RAID", "raid"), ("PILLAGE", "pillage"), ("CONQUER", "conquer"))
+# (0.105.39 review) a SITE_INVASION's intent (invasion_intent_type, the
+# report's controllers[].intent) -> our goal
+INTENT_GOAL = {"EXPLORE": "explore", "RAID": "raid", "PILLAGE": "pillage", "DEMAND_TRIBUTE": "tribute",
+               "TRIBUTE": "tribute", "TAKE_OVER_SITE": "conquer", "CONQUER": "conquer"}
 
 
 def _goal_of(c: dict, send: dict) -> str:
-    """Our goal name for a controller: the sender's last run when it went to
-    the same site, else from DF's goal name, else DF's name in lower case."""
-    last = _d(send.get("last"))
-    if last.get("result") == "sent" and last.get("goal") and last.get("site_id") == c.get("site_id"):
-        return str(last["goal"])
+    """Our goal name for a controller: the sender's last run of a goal that
+    went to the same site, else from DF's goal name (a SITE_INVASION by its
+    intent when the report gives it, else 'invasion'), else DF's name in
+    lower case."""
+    by = _d(send.get("last_by_goal")) or {"_": _d(send.get("last"))}
+    for o in by.values():
+        o = _d(o)
+        if o.get("result") == "sent" and o.get("goal") and o.get("site_id") == c.get("site_id"):
+            return str(o["goal"])
     df = str(c.get("goal") or "")
+    if "INVASION" in df.upper():
+        return INTENT_GOAL.get(str(c.get("intent") or "").upper(), "invasion")
     for k, g in GOAL_FROM_DF:
         if k in df.upper():
             return g
     return game_text(df.lower() or "unknown", 24)
+
+
+def _q(v, n: int = 40) -> str:
+    """Game text quoted as data: one line, cut short, in double quotes."""
+    return '"' + game_text(v, n).replace('"', "'") + '"'
 
 
 def _seen(memory) -> dict:
@@ -349,7 +471,7 @@ def note_missions(s: dict, memory) -> list[str]:
             if len(track) >= TRACK_MAX:
                 continue
             goal = _goal_of(c, send)
-            t = {"goal": goal, "site_id": c.get("site_id"), "site": game_text(c.get("site"), 40) if c.get("site") else None,
+            t = {"goal": goal, "site_id": c.get("site_id"), "site": _q(c.get("site"), 40) if c.get("site") else None,
                  "squads": sq, "since": now, "reports": _int(reports.get("n")) or 0,
                  "spoils": _int(spoils.get("n")) or 0, "seen_away": n_away > 0}
             for x in targets:
@@ -389,16 +511,31 @@ def note_missions(s: dict, memory) -> list[str]:
             e["spoils"] = {"kind": game_text(last.get("kind") or "spoils", 12), "items": _int(last.get("items"))}
             words.append(f"{e['spoils']['kind']}: {e['spoils']['items'] if e['spoils']['items'] is not None else 'some'} "
                          "item(s)")
-        ids = {(x.get("goal"), x.get(k)) for x in targets for k in ("hf_id", "artifact_id") if _int(x.get(k)) is not None}
-        if goal == "rescue" and _int(t.get("hf_id")) is not None and ("rescue", t["hf_id"]) not in ids:
-            seen["rescued"] += 1
-            e["outcome"] = "rescued"
-            words.append("the citizen is no longer held there")
-        if goal == "recover_artifact" and _int(t.get("artifact_id")) is not None \
-                and ("recover_artifact", t["artifact_id"]) not in ids:
-            seen["artifacts_recovered"] += 1
-            e["outcome"] = "recovered"
-            words.append("the artifact is no longer held there")
+        # (0.105.39 review) a rescue or recovery counted only when the report
+        # says so: the citizen home, the artifact at the fort (missions.status_of);
+        # never from a target merely gone from a partial or failed list
+        so = _d(ms.get("status_of"))
+        trusted = not ms.get("targets_partial") and "missions" not in _d(s.get("_errors"))
+        if goal == "rescue" and _int(t.get("hf_id")) is not None:
+            st = _d(so.get("hf")).get(str(t["hf_id"])) if trusted else None
+            if st == "home":
+                seen["rescued"] += 1
+                e["outcome"] = "rescued"
+                words.append("the citizen is home again")
+            else:
+                e["outcome"] = "unknown" if st in (None, "unknown") else st
+                words.append("whether the citizen came home isn't known" if st in (None, "unknown")
+                             else f"the citizen is {'still held' if st == 'held' else st}")
+        if goal == "recover_artifact" and _int(t.get("artifact_id")) is not None:
+            st = _d(so.get("artifact")).get(str(t["artifact_id"])) if trusted else None
+            if st == "fort":
+                seen["artifacts_recovered"] += 1
+                e["outcome"] = "recovered"
+                words.append("the artifact is back in the fort")
+            else:
+                e["outcome"] = "unknown" if st in (None, "unknown") else "not recovered"
+                words.append("whether the artifact came back isn't known" if st in (None, "unknown")
+                             else "the artifact is still away")
         pending.append(e)
         line = "; ".join(words)
         chronicle.add(memory, s, "mission", line)

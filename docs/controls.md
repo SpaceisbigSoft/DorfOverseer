@@ -163,7 +163,7 @@ hall, basic workshops and stockpiles are always built when missing.
   demand.
 - **Appoint a messenger, make contact** (on, 0.105.0): a Messenger is
   appointed, and the nearest site not in contact is named for Make contact.
-- **Send it by the World screen (trial)** (off, 0.105.24): the AI drives DF's
+- **Send the messenger by the World screen** (off, 0.105.24): the AI drives DF's
   World screen to send the messenger itself. It stops at the first step
   nobody has recorded yet, which today is step 4 of 6, logs what it saw and
   shuts the screen. Off, the AI only names the site for you to send.
@@ -286,7 +286,7 @@ too. The AI makes and sends squads itself (see [military.md](military.md)).
     tribute and conquest. These can start a war.
   A reserve of soldiers always stays home (more with lower Militarism), one
   mission at a time, never with a threat near or during a siege.
-- **Send them by the World screen (trial)** (`send_missions`, off,
+- **Send missions by the World screen** (`send_missions`, off,
   0.105.39): the AI drives DF's World screen to send the mission itself, as
   with the messenger, for each goal whose button you have shown it once. It
   stops at the first step nobody has recorded yet, logs what it saw and shuts

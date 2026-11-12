@@ -248,7 +248,7 @@ B.artifact(4, 'At Home', {claims = {200}, storage = 10})
         [(x.artifact_id, x.site_id, x.why) for x in t]
 
 
-@test("explore: RUINED or empty and unowned; not hidden; tribute/conquer need a known size and nearness")
+@test("explore: RUINED only (0.105.39 review: not an empty unowned site); not hidden; tribute/conquer need a known size and nearness")
 def _():
     env = world(r"""
 B.entity(300, 'Gobs')
@@ -261,10 +261,9 @@ for i = 1, 4 do B.hf(1100 + i, 'Citizen ' .. i, {unit = 100 + i, at = 10}) end  
 """)
     r = env.report()
     got = [(x.goal, x.site_id) for x in lst(r.targets)]
-    assert got == [("explore", 30), ("raid", 32), ("raid", 33), ("pillage", 32), ("tribute", 33)], got
+    assert got == [("raid", 32), ("raid", 33), ("pillage", 32), ("tribute", 33)], got
     t = lst(r.targets)
-    assert t[0].why == "empty, nobody owns it"
-    assert t[1].hostile is True and t[1].at_war is False and t[1].why == "hostile: Skirmishing"
+    assert t[0].hostile is True and t[0].at_war is False and t[0].why == "hostile: Skirmishing"
 
 
 @test("caps: at most 12, per-goal caps, the nearest kept; names truncated to 40")
@@ -358,6 +357,119 @@ for i = 1, 200 do B.event_other() end
     # direct call, with its own reader
     out, partial = env.targets(None, 100, 200, 10)
     assert partial is True
+
+
+# --- (0.105.39 review) -----------------------------------------------------------------
+
+@test("(0.105.39 review) explore: a ruined cave or lair is no ruin to explore; recover_artifact: not from a site "
+      "of the fort's own civ or group")
+def _():
+    env = world(r"""
+B.entity(300, 'Gobs')
+B.site(30, 'Ruined Cave', -1, 47, 50, {ruined = true, type = 2})          -- Cave
+B.site(31, 'Old Hall', -1, 48, 50, {ruined = true, type = 3})
+B.site(32, 'Kin Town', 100, 49, 50)                                        -- the fort's civ's
+B.site(33, 'Gob Keep', 300, 52, 50)
+B.artifact(1, 'Lent To Kin', {claims = {200}, site = 32})
+B.artifact(2, 'Stolen', {claims = {200}, site = 33})
+""")
+    got = brief(env.report())
+    assert got == [("recover_artifact", 33), ("explore", 31)], got
+    env.df.world_site_type = env.df.world_site_type      # LairShrine named too
+    assert env.EXPLORE_NOT.LairShrine and env.EXPLORE_NOT.Cave
+
+
+@test("(0.105.39 review) the time budget by dfhack.getTickCount (ms) when there is one")
+def _():
+    env = world(EVERY + r"""
+local ms = 0
+B.env.dfhack.getTickCount = function() ms = ms + 4; return ms end
+B.env.os = {clock = function() return 0 end}                 -- CPU time never moves: not used
+for i = 1, 200 do B.event_other() end
+""")
+    r = env.report()
+    assert r.targets_partial is True, "the ms clock wasn't used"
+    env = world(EVERY + r"""
+B.env.dfhack.getTickCount = function() return 1000 end
+""")
+    assert env.report().targets_partial is None
+
+
+@test("(0.105.39 review) the controllers' cap keeps the fort's own: those holding its squads or of its group first")
+def _():
+    env = world(r"""
+local W = B.W
+for i = 1, 14 do table.insert(W.army_controllers.all, B.S{id = i, entity_id = 100, goal = 0, site_id = -1,
+                                                         assigned_squads = {}}) end
+table.insert(W.army_controllers.all, B.S{id = 50, entity_id = 200, goal = 2, site_id = -1, assigned_squads = {}})
+table.insert(W.army_controllers.all, B.S{id = 51, entity_id = 100, goal = 1, site_id = -1, assigned_squads = {7}})
+B.ENTS[200].squads = {7}
+B.env.df.squad = {find = function(id) if id == 7 then return B.S{id = 7, alias = 'Axes', name = {text = 'x'},
+                                        assigned_army_controller_id = 51, positions = {}} end end}
+""")
+    ids = [c.id for c in lst(env.report().controllers)]
+    assert len(ids) == env.MAX_CONTROLLERS and ids[:2] == [50, 51] and ids[2:] == list(range(1, 9)), ids
+
+
+@test("(0.105.39 review) status_of: where the last runs' citizen and artifact are now (home / dead / held / "
+      "unknown; fort / away / unknown), string keys")
+def _():
+    env = world(r"""
+B.entity(300, 'Gobs')
+B.site(20, 'Pits', 300, 53, 50)
+B.hf(1, 'Home Again', {unit = 5, at = 10})
+B.hf(2, 'Still Held', {prisoner_of = 300, at = 20})
+B.hf(3, 'Dead', {died = 120})
+B.hf(4, 'Somewhere', {at = 20})
+B.artifact(7, 'Back', {claims = {200}, site = 10})
+B.artifact(8, 'Away', {claims = {200}, site = 20})
+B.artifact(9, 'Lost', {claims = {200}})
+B.env.reqscript = function(n)
+  if n == 'ai-mission-send' then
+    return {last_by_goal = function() return {rescue = {hf_id = 2}, recover_artifact = {artifact_id = 8},
+                                              make_contact = {}} end}
+  end
+  error('no ' .. n)
+end
+""")
+    so = env.status_of(None, 100, 200, 10, LUA.table_from({"hf": LUA.table_from([1, 2, 3, 4, 99]),
+                                                          "artifact": LUA.table_from([7, 8, 9])}))
+    assert dict(so.hf) == {"1": "home", "2": "held", "3": "dead", "4": "unknown", "99": "unknown"}, dict(so.hf)
+    assert dict(so.artifact) == {"7": "fort", "8": "away", "9": "unknown"}, dict(so.artifact)
+    r = env.report()
+    assert dict(r.status_of.hf) == {"2": "held"} and dict(r.status_of.artifact) == {"8": "away"}, \
+        (dict(r.status_of.hf), dict(r.status_of.artifact))
+
+
+@test("(0.105.39 review) site_hostile: the owner's relation to the fort's civ; the fort's own never hostile")
+def _():
+    env = world(r"""
+B.entity(300, 'Gobs'); B.entity(400, 'Elves')
+B.relation(300, 1); B.relation(400, 0)
+B.site(20, 'Pits', 300, 53, 50)
+B.site(22, 'Wood', 400, 52, 50)
+B.site(23, 'Kin', 100, 52, 52)
+""")
+    h = env.site_hostile(20)
+    assert h.hostile is True and h.at_war is True and h.relation == "War" and h.owner == 300
+    h = env.site_hostile(22)
+    assert h.hostile is False and h.relation == "Peace"
+    h = env.site_hostile(23)
+    assert h.hostile is False and h.ours is True
+    h, why = env.site_hostile(99)
+    assert h is None and "no site 99" in why
+
+
+@test("(0.105.39 review 2) explore needs a readable site type (not a cave or a lair shrine); no MonsterLair name")
+def _():
+    env = world(r"""
+B.site(30, 'No Type', -1, 47, 50, {ruined = true})
+rawset(B.SITES[30], 'type', nil)                     -- unreadable: the fake raises
+B.site(31, 'Odd Type', -1, 48, 50, {ruined = true, type = 77})
+B.site(32, 'Old Hall', -1, 49, 50, {ruined = true, type = 3})
+""")
+    assert brief(env.report()) == [("explore", 32)], brief(env.report())
+    assert env.EXPLORE_NOT.MonsterLair is None
 
 
 if __name__ == "__main__":

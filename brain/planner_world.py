@@ -268,6 +268,16 @@ def _messenger_rule(s: dict, cfg: dict, proposals: list, notes: list) -> None:
                               "isn't needed at home (Make contact needs one)", 5))
 
 
+def _messenger_out(ms: dict) -> list:
+    """The Diplomacy controllers out, but (0.105.39 review 2) one the
+    messenger's stopped run left behind (its id in the outcome's left_ids):
+    a leftover never blocks Make contact for good."""
+    from planner_missions import last_of_goal
+    left = set(_l(last_of_goal(_d(_d(ms).get("send")), "make_contact").get("left_ids")))
+    return [c for c in _l(_d(ms).get("controllers")) if isinstance(c, dict) and c.get("goal") == "DIPLOMACY"
+            and c.get("id") not in left]
+
+
 def _contact_site(s: dict, memory) -> dict | None:
     """The site to name for Make contact now, or None: the switch on, the
     messenger home (no Diplomacy mission out), a site not in contact, no
@@ -275,7 +285,7 @@ def _contact_site(s: dict, memory) -> dict | None:
     if not player_rules(s)["make_contact"]:
         return None
     ms = _d(s.get("missions"))
-    if any(isinstance(c, dict) and c.get("goal") == "DIPLOMACY" for c in _l(ms.get("controllers"))):
+    if _messenger_out(ms):
         return None
     o = _d(_d(_d(s.get("offices")).get("offices")).get("MESSENGER"))
     if not _l(o.get("held")):
@@ -315,7 +325,8 @@ def _contact_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None)
     if not rules["make_contact"]:
         return
     ms = _d(s.get("missions"))
-    out = [c for c in _l(ms.get("controllers")) if isinstance(c, dict) and c.get("goal") == "DIPLOMACY"]
+    from planner_missions import last_of_goal, interrupted, retry_ticks
+    out = _messenger_out(ms)      # (0.105.39 review 2) a leftover of a stopped run isn't the messenger out
     if out:
         c = out[0]
         notes.append(f"the messenger is {'on the way home from' if c.get('returning') else 'away to'} "
@@ -334,13 +345,20 @@ def _contact_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None)
                for x in _l(_d(ms.get("sites")).get("nearest"))):
             notes.append("a site waits for Make contact, but not while a threat is near")
         return
-    last = _d(send.get("last"))
-    if last.get("goal") not in (None, "make_contact"):
-        last = {}       # (0.105.39) another goal's run (a rescue...): planner_missions' to judge, not the messenger's
+    # (0.105.39 review) the messenger's own last run (the sender keeps one per
+    # goal: a rescue's run never hides it); an older bridge's single `last`
+    # only when it was Make contact's
+    last = last_of_goal(send, "make_contact")
     now = abs_tick(s)
     last_tick = last.get("tick") if isinstance(last.get("tick"), int) else None
     recent = last_tick is not None and 0 <= now - last_tick < SEND_RETRY_TICKS
-    if rules["send_messenger"] and recent and last.get("result") in ("stopped", "error"):
+    blocked = last_tick is not None and 0 <= now - last_tick < retry_ticks(last, SEND_RETRY_TICKS)
+    if rules["send_messenger"] and last.get("result") in ("stopped", "error") and interrupted(last):
+        # (0.105.39 review 2) the player took the game back: tried again after a day
+        if blocked:
+            notes.append("the messenger's last send was interrupted by the player; tried again tomorrow")
+            return
+    elif rules["send_messenger"] and recent and last.get("result") in ("stopped", "error"):
         # said once a season (the same cooldown as the site's name)
         if _contact_site(s, memory) is not None:
             ask_player(notes, f"Make contact (13b): the AI's try to send the messenger to "
@@ -377,7 +395,7 @@ def _contact_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None)
     ask_player(notes, f"Make contact (13b): the messenger ({_l(o.get('held'))[0]}) could go to "
                       f"{name} ({site.get('dist')} tiles away), a site not in contact, but DFHack can't make the "
                       "mission and the World screen's last steps (Make contact, the messenger, the confirm) were "
-                      "never recorded, so the AI doesn't press them (the Rules switch \"Send it by the World "
-                      "screen\" tries the recorded ones): the messenger stays home and the site is named again "
+                      "never recorded, so the AI doesn't press them (the Rules tab's \"Send the messenger by "
+                      "the World screen\" tries the recorded ones): the messenger stays home and the site is named again "
                       "next season; sending it by hand while python brain\\probe_missions.py --watch runs "
                       "records the steps")
