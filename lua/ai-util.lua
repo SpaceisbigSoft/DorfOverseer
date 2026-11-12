@@ -505,7 +505,7 @@ end
 -- that never dig).
 DIG_KEYS = {d = true, h = true, u = true, j = true, i = true, r = true, F = true}   -- quickfort keys that dig
 DIG_KEYS_SAFE = {x = true, s = true, e = true, T = true, v = true, M = true, t = true, p = true,
-                 z = true, n = true, o = true, c = true, a = true, b = true, m = true}
+                 z = true, o = true, c = true, a = true, b = true, m = true}
 GUARD_ERR = 'the dig guard could not read the tile'
 -- refusals since the map loaded, each tile counted once (tiles: the set)
 DIG_GUARD = DIG_GUARD or {refused = 0, by = {}, last = {}, tiles = {}}
@@ -761,7 +761,7 @@ function dig_guard_unload()
     DEEP_HAZARD_CACHE = nil
     DIG_GUARD = {refused = 0, by = {}, last = {}, tiles = {}}
 end
-if dfhack and type(dfhack.onStateChange) == 'table' then
+if dfhack and dfhack.onStateChange then   -- (in the game a userdata-wrapped event, not a table)
     pcall(function()
         dfhack.onStateChange['ai-util-dig-guard'] = function(sc)
             if sc == SC_MAP_UNLOADED or sc == SC_WORLD_UNLOADED then dig_guard_unload() end
@@ -888,8 +888,14 @@ function dig_forbidden(x, y, z)
         local g = DIG_GUARD
         local k = x .. ',' .. y .. ',' .. z
         g.unreadable_tiles = g.unreadable_tiles or {}
+        g.nunreadable = g.nunreadable or 0
         if not g.unreadable_tiles[k] then
-            g.unreadable_tiles[k] = true
+            -- (fix41-ff) remembered up to DIG_GUARD_TILES_MAX tiles, as the
+            -- refusals are (past it each is counted again, nothing kept)
+            if g.nunreadable < DIG_GUARD_TILES_MAX then
+                g.unreadable_tiles[k] = true
+                g.nunreadable = g.nunreadable + 1
+            end
             g.unreadable = (g.unreadable or 0) + 1
         end
         return GUARD_ERR

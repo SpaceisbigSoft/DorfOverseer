@@ -126,8 +126,18 @@ def weather_held(s: dict, memory, cfg: dict) -> str:
 def _weather_rules(s: dict, memory, cfg: dict, proposals: list, notes: list) -> None:
     """The alarm for evil weather, held while it lasts and `weather_lift_hours`
     after; lifted by the AI when it raised it for the weather."""
+    if memory is None:
+        return
     w = weather_of(s)
-    if not w or memory is None:
+    if not w:
+        # (fix41-ff) the weather unread this cycle (failed, or missing) while
+        # its spell still holds the alarm: nothing lowers it meanwhile
+        held = weather_held(s, memory, cfg)
+        if held:
+            off = [p for p in proposals if p.action == {"type": "civ_alert", "on": False}]
+            if off:
+                proposals[:] = [p for p in proposals if p not in off]
+                notes.append(f"the alarm stays up for {held}: the weather couldn't be read this cycle")
         return
     now = abs_tick(s)
     if not isinstance(now, int):
@@ -286,8 +296,10 @@ def _weather_squad_filter(s: dict, memory, cfg: dict, proposals: list, notes: li
     return out
 
 
-def weather_line(s: dict) -> str:
-    """The digest's word on evil weather ("" when none)."""
+def weather_line(s: dict, cfg: dict | None = None) -> str:
+    """The digest's word on evil weather ("" when none). (fix41-ff) A cloud
+    off the map is said only within `weather_edge_near` (the bridge reports
+    them farther out)."""
     w = weather_of(s)
     if not w:
         return ""
@@ -295,7 +307,7 @@ def weather_line(s: dict) -> str:
     if _num(w.get("evil_cloud")) and w["evil_cloud"] > 0:
         parts.append(f"evil_cloud_tiles:{int(w['evil_cloud'])}")
     reg = _d(w.get("region"))
-    if _num(reg.get("cloud_edge")):
+    if _num(reg.get("cloud_edge")) and reg["cloud_edge"] <= _c(cfg or {}, "weather_edge_near"):
         parts.append(f"evil_cloud_from_map_edge:{int(reg['cloud_edge'])}" + ("(approaching)" if reg.get("approaching") else ""))
     if w.get("rain") in ("evil", "blood"):
         parts.append(f"{w['rain']}_rain")

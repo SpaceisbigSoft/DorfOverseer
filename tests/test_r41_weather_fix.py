@@ -154,6 +154,53 @@ def _():
     assert not lifted(m)
 
 
+# --- (fix41-ff) the re-review ----------------------------------------------------------------
+
+@test("ff 4: the weather unread (failed or missing) while its spell holds the alarm: the alarm-off "
+      "proposals still stripped; with no spell, nothing touched")
+def _():
+    m = raised()
+    for wx in ({"error": "boom"}, None):
+        s = planner.normalize(fort(None, 100000 + 2 * HOUR, civ_alert=True, weather=wx) if wx else
+                              fort(None, 100000 + 2 * HOUR, civ_alert=True))
+        props = [Proposal("strategist", {"type": "civ_alert", "on": False}, "x", 0)]
+        notes = []
+        PW._weather_rules(s, m, PLANNER_CONFIG, props, notes)
+        assert props == [] and any("couldn't be read" in n for n in notes), (wx, notes)
+    s = planner.normalize(fort(None, civ_alert=True, weather={"error": "boom"}))
+    props = [Proposal("strategist", {"type": "civ_alert", "on": False}, "x", 0)]
+    PW._weather_rules(s, Memory(), PLANNER_CONFIG, props, [])
+    assert len(props) == 1
+    # through plan(): the threats and the weather both failed, the rule still runs
+    m = raised()
+    m.quiet_cycles = 50
+    props, _ = plan(fort(None, 100000 + 2 * HOUR, civ_alert=True, weather={"error": "x"},
+                         threats={"error": "y"}), m)
+    assert not alarms(props, False), [p.action for p in props]
+
+
+@test("ff 7: the digest names a cloud off the map only within weather_edge_near")
+def _():
+    far = dict(CALM, region={"clouds": 1, "rains": 0, "cloud_edge": 300, "approaching": True})
+    assert PW.weather_line(fort(far, own=True)) == ""
+    near = dict(CALM, region={"clouds": 1, "rains": 0, "cloud_edge": 140, "approaching": True})
+    assert "evil_cloud_from_map_edge:140(approaching)" in PW.weather_line(fort(near, own=True))
+    assert PW.weather_line(fort(near, own=True), dict(PLANNER_CONFIG, weather_edge_near=100)) == ""
+
+
+def ff7_lua():
+    for dx, walked in ((300, False), (140, True)):
+        E = game()
+        LUA.execute("""local G, dx = ...; table.insert(G.rw, {type = 'CreepingGas', mat_type = 1, mat_index = 1,
+            flags = {}, world_in_game_x = 7680 - dx, world_in_game_y = 15400, cloud_x_movement = 1,
+            cloud_y_movement = 0, remaining_duration = 900})
+            table.insert(G.units, {id = 501, invader = true, flags1 = {}, pos = {x = 30, y = 30, z = 100}})""",
+                    E.G, dx)
+        r = E.weather_report(LUA.table_from([]))
+        assert r.region.cloud_edge == dx and bool(r.near_fort) is walked, (dx, r.near_fort)
+        assert (r.enemies_outside is not None) is walked
+
+
 # --- 3. the pulse's weather section, the event, the edge --------------------------------
 
 @test("3: the brain reads the weather section first (threats.weather from an older bridge); the rule runs "
@@ -325,9 +372,12 @@ e.unkey = function(k) local x, y, z = k:match('^(-?%d+),(-?%d+),(-?%d+)$'); retu
 e.U, e.gate_name = {}, function() return 'g' end
 local inside = {}
 for x = 30, 60 do for y = 0, 20 do inside[x .. ',' .. y .. ',0'] = true end end
-e.GATES = {scanned = true, inside = inside, entrances = {{inside_list = {'30,10,0'}}}}
-local function u(id, x, y) return {id = id, pos = {x = x, y = y, z = 0}, flags1 = {}} end
-e.df = {global = {world = {units = {active = {u(1, 55, 10), u(2, 28, 10), u(3, 10, 10), u(4, 33, 10)}}}}}
+e.GATES = {scanned = true, inside = inside, entrances = {{inside_list = {'30,10,0'}, outs = {['29,10,0'] = true}}}}
+local function u(id, x, y, z) return {id = id, pos = {x = x, y = y, z = z or 0}, flags1 = {}} end
+local all = {u(1, 55, 10), u(2, 28, 10), u(3, 10, 10), u(4, 32, 10), u(5, 28, 0), u(6, 28, 10, 1)}
+local by = {}
+for _, x in ipairs(all) do by[x.id] = x end
+e.df = {global = {world = {units = {active = all}}}, unit = {find = function(id) return by[id] end}}
 e.dfhack = {units = {isAlive = function() return true end, isCitizen = function() return false end,
                      isDanger = function() return true end, isInvader = function() return false end},
             getCitizens = function() return {} end}
@@ -335,12 +385,15 @@ assert(load(src, 'ai-gates-watch', 't', e))()
 return e
 """, src)
         walls = env.intruders_at_walls()
-        assert sorted(walls.values()) == [2, 4], list(walls.values())       # 2 tiles out; in the gate's tunnel
+        # 2: a tile from the gate's outside; 4: in the gate's tunnel. (fix41-ff) not 5 (beside a wall of
+        # the fort far from any entrance), not 6 (a level up)
+        assert sorted(walls.values()) == [2, 4], list(walls.values())
+        assert list(env.intruders_at_walls(LUA.table_from([5, 2])).values()) == [2]   # only the ids asked
         assert list(env.intruders_inside().values()) == [1]                 # deep inside: not "at the walls"
         env.GATES.scanned = False
         assert env.intruders_at_walls() is None                             # no map: can't say
         br = (ROOT / "lua" / "ai-bridge.lua").read_text(encoding="utf-8")
-        assert "r.intruders_at_walls = reqscript('ai-gates').intruders_at_walls()" in br
+        assert "o.intruders_at_walls = reqscript('ai-gates').intruders_at_walls(ids)" in br
 
     # --- 8. the fire-breath cache: one world's ------------------------------------------------
 
@@ -429,6 +482,11 @@ def _():
     assert PF.fire_ranged_ok(dragon_fort(), Memory(), t) == ""
     doc = (ROOT / "brain" / "planner_firebreath.py").read_text(encoding="utf-8")
     assert "lua/ai-threats.lua fire_breath_of" in doc and "leaky path" in doc
+
+
+if LuaRuntime:
+    test("ff 7 lua: the units outside walked only for a cloud within WEATHER_EDGE_NEAR (not every one "
+         "reported out to WEATHER_EDGE_REPORT)")(ff7_lua)
 
 
 if __name__ == "__main__":

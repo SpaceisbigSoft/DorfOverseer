@@ -147,7 +147,7 @@ def _():
       "the others; the section wired through safe(); ai-bridge-report untouched")
 def _():
     bridge = (LUA_DIR / "ai-bridge.lua").read_text(encoding="utf-8")
-    assert code_has(bridge, "pcall(function() reqscript('ai-threats').mark_fire_breathers(o) end)")
+    assert code_has(bridge, "pcall(function() return reqscript('ai-threats').mark_fire_breathers(o) end)")
     assert code_has(bridge, "others_on_map = function() return safe(function() local o = get_others_on_map()")
     assert "fire_breath" not in (LUA_DIR / "ai-bridge-report.lua").read_text(encoding="utf-8")
     if LuaRuntime is None:

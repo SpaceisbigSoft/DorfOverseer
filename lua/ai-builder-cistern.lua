@@ -1549,8 +1549,13 @@ function cistern_step(dry_run, prefs, tunnel)
         -- refusal counted once for the tile however often this step runs
         local deep = dig_check_tiles({{x = p.plug.x, y = p.plug.y}}, zi, (not dry_run) and 'cistern_plug' or nil)
         if deep then
-            local why = ('the plug at x%d y%d, elevation %d is %s: left alone: it guards the underworld'):format(
+            local why = ('the plug at x%d y%d, elevation %d is left alone (%s): it guards the underworld'):format(
                 p.plug.x, p.plug.y, ez(zi), deep)
+            local okE, gerr = pcall(function() return util_module().GUARD_ERR end)
+            if okE and gerr and deep == gerr then     -- (fix41-ff) a read error: waits, read again next step
+                why = ('the plug at x%d y%d, elevation %d waits: %s (read again next time)'):format(
+                    p.plug.x, p.plug.y, ez(zi), deep)
+            end
             if not dry_run and d.guard_held ~= why then d.guard_held = why; save_cistern(d) end
             return {ok = false, rejected = true, held = true, stage = d.stage, error = why}
         end

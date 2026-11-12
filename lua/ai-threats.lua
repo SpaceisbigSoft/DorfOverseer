@@ -659,7 +659,11 @@ function weather_report(cit)
             end
         end
     end)
-    out.near_fort = out.evil_cloud > 0 or (region.cloud_edge ~= nil) or region.rain_here or false
+    -- (fix41-ff) near: a region cloud within WEATHER_EDGE_NEAR (the brain's
+    -- weather_edge_near), not every one reported out to WEATHER_EDGE_REPORT:
+    -- the walk of the units below runs only then
+    out.near_fort = out.evil_cloud > 0 or (region.cloud_edge ~= nil and region.cloud_edge <= WEATHER_EDGE_NEAR)
+        or region.rain_here or false
     -- the hostile units out under the sky, while any of it is about
     if out.near_fort then
         out.enemies_outside = {}

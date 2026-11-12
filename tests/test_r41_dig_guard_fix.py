@@ -461,6 +461,7 @@ def _():
         tl({"id": 3, "phase": "dig", "area": tl({"x1": 40, "y1": 25, "x2": 44, "y2": 26, "z": 27})}),
         tl({"id": 2, "phase": "done", "area": tl({"x1": 40, "y1": 24, "x2": 44, "y2": 24, "z": 27})})])})
     B.load_projects = lambda: projects
+    B.sweep_acting = lambda: True                            # (fix41-ff) the AI acting
     Uw.dig_guard_reset()
     r = B.dig_guard_sweep(True)                              # a dry run: counted, nothing changed
     assert r.removed == 3 and Dw.tile(41, 25, 27).dig == 1, dict(r)
@@ -479,6 +480,138 @@ def _():
     src = (LUA_DIR / "ai-bridge.lua").read_text(encoding="utf-8")
     fn = src[src.index("function deep_hazard_section()"):src.index("\nend\n", src.index("function deep_hazard_section()"))]
     assert "dig_guard_sweep()" in fn
+
+
+# --- (fix41-ff) the re-review -------------------------------------------------------------------
+
+@test("ff 1: every unload hook this round checks `dfhack.onStateChange` itself (a userdata in the game), "
+      "with its own key; the dig guard's hook registers on a userdata-like event")
+def _():
+    import glob
+    for f in glob.glob(str(LUA_DIR / "*.lua")):
+        assert "type(dfhack.onStateChange)" not in Path(f).read_text(encoding="utf-8"), f
+    keys = []
+    for name in ("ai-util.lua", "ai-hauling.lua", "ai-bridge-orders.lua"):
+        src = (LUA_DIR / name).read_text(encoding="utf-8")
+        assert "if dfhack and dfhack.onStateChange then" in src, name
+        keys += re.findall(r"dfhack\.onStateChange\['([^']+)'\]", src)
+    assert len(keys) == len(set(keys)) and "ai-util-dig-guard" in keys, keys
+    if LuaRuntime is None:
+        return
+    lua = LuaRuntime(unpack_returned_tuples=True)
+
+    class Event:                    # a Python object: a userdata in Lua, as DFHack's event is
+        pass
+    ev = Event()
+    assert lua.eval("type")(ev) == "userdata"
+    lua.execute("local src, ev = ...; local env = setmetatable({dfhack = {onStateChange = ev}, "
+                "SC_MAP_UNLOADED = 1, SC_WORLD_UNLOADED = 2}, {__index = _G}); assert(load(src, 'ai-util', 't', env))()",
+                UTIL_SRC, ev)
+    assert callable(getattr(ev, "ai-util-dig-guard", None)), vars(ev)
+
+
+@test("ff 5, 8: 'n' is no longer a key the guard calls safe; the unreadable tiles remembered up to "
+      "DIG_GUARD_TILES_MAX")
+def _():
+    if LuaRuntime is None:
+        return
+    assert U.DIG_KEYS_SAFE.n is None and U.dig_cell_unknown("n")
+    assert U.DIG_KEYS_SAFE.x is True and not U.dig_cell_unknown("x")
+    reset()
+    cavern(10, 12)
+    old = U.DIG_GUARD_TILES_MAX
+    U.DIG_GUARD_TILES_MAX = 3
+    try:
+        tiles = [(x, 5, 8) for x in range(5, 11)]
+        broken_at(*tiles)
+        for x, y, z in tiles:
+            assert guard(x, y, z) == ERR
+        g = U.DIG_GUARD
+        n = sum(1 for _ in g.unreadable_tiles.items())
+        assert n == 3 and g.nunreadable == 3 and g.unreadable == 6, (n, g.unreadable)
+    finally:
+        U.DIG_GUARD_TILES_MAX = old
+        reset()
+
+
+def _moat_to_filling(lua, env, W):
+    step = lambda: env.step("moat", lua.table_from({}))
+    assert step().stage == "planned"
+    assert step().stage == "digging"
+    wk = W.saved["ai-overseer/waterworks"].works.moat
+    W.dig_all(wk.plan.dig)
+    step()
+    W.dig_all(wk.plan.dig2)
+    assert step().stage == "building"
+    W.build_all()
+    step()
+    assert step().stage == "filling"
+    return step, wk
+
+
+@path_test("ff 3: the water works' plug: a guard read error waits (no lasting hold) and is read again; a "
+           "refused plug's hold is looked at again each step; the message reads right")
+def _():
+    state = {"why": None}
+    lua, env, W, Uu = moat_world(lambda x, y, z: state["why"])
+    step, wk = _moat_to_filling(lua, env, W)
+    state["why"] = ERR
+    r = step()
+    assert r.waiting and r.stage == "filling" and "waits: the dig guard could not read the tile" in r.error, dict(r)
+    assert wk.stage == "filling"
+    state["why"] = "next to raw adamantine"
+    r = step()
+    assert r.stage == "held" and r.error.endswith("is left alone (next to raw adamantine): it guards the underworld"), r.error
+    assert wk.plug_guard
+    assert step().stage == "held"                                     # still refused: still held
+    state["why"] = None
+    r = step()
+    assert r.stage == "filling" and wk.stage == "filling" and not wk.plug_guard, dict(r)
+    cis = (LUA_DIR / "ai-builder-cistern.lua").read_text(encoding="utf-8")
+    assert "is left alone (%s): it guards the underworld" in cis and "waits: %s (read again next time)" in cis
+
+
+@path_test("ff 6: the sweep: only while the AI acts; counted swept only once its walk has ended; the cap stops "
+           "the whole walk")
+def _():
+    lua, B, W, Dw, Uw = wayin_world()
+    B.df, B.dfhack = Dw.df, Dw.dfhack
+    B.print = lambda *a: None
+    tl = lua.table_from
+    Dw.global_types[2] = Dw.FT.subterranean_from_layer
+    Dw.feat(3, 3, 5, tl({"gf": 2}))
+    Dw.set(42, 25, 27, tl({"vein": Dw.ADAM, "mat": "MINERAL"}))
+    Dw.set(41, 25, 27, tl({"dig": 1}))
+    projects = tl({"list": tl([tl({"id": 3, "phase": "dig", "area": tl({"x1": 40, "y1": 25, "x2": 44, "y2": 26, "z": 27})})])})
+    B.load_projects = lambda: projects
+    acting = {"on": False}
+    B.sweep_acting = lambda: acting["on"]
+    Uw.dig_guard_reset()
+    assert B.dig_guard_sweep() is None and Dw.tile(41, 25, 27).dig == 1      # not acting: nothing, tried later
+    assert Uw.DIG_GUARD.swept_key is None
+    # a walk that throws: not counted as swept
+    B.load_projects = lambda: (_ for _ in ()).throw(RuntimeError("boom"))
+    acting["on"] = True
+    try:
+        B.dig_guard_sweep()
+    except Exception:  # noqa: BLE001
+        pass
+    assert Uw.DIG_GUARD.swept_key is None
+    B.load_projects = lambda: projects
+    old = B.SWEEP_TILES_MAX
+    B.SWEEP_TILES_MAX = 3
+    try:
+        r = B.dig_guard_sweep(True)
+        assert r.looked == 3 and r.capped, (r.looked, r.capped)          # all areas, not one row
+    finally:
+        B.SWEEP_TILES_MAX = old
+    r = B.dig_guard_sweep()
+    assert r.removed == 1 and Dw.tile(41, 25, 27).dig == 0 and Uw.DIG_GUARD.swept_key is not None
+    # the real check: halted, Advisor, or the overseer not acting -> false
+    src = (LUA_DIR / "ai-builder.lua").read_text(encoding="utf-8")
+    fn = src[src.index("function sweep_acting()"):src.index("function dig_guard_sweep(")]
+    assert "is_halted()" in fn and "'advisor'" in fn and "STATUS.acting == 'acting'" in fn
+    assert "the player's own designation" in src
 
 
 if LuaRuntime is None:
