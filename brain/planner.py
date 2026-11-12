@@ -69,6 +69,9 @@ from planner_paper import _paper_rule  # noqa: E402  (item9) paper from plants, 
 from planner_deep import _deep_hazard_rule  # noqa: E402  (0.105.40b) adamantine and the underworld: never dug
 from planner_construct import (_hall_rule, _construction_blocks_rule,  # noqa: E402  (0.105.30) construction
                                note_construct, note_construct_cycle)
+from planner_forestry import _cavern_logging_rule, _grove_rule  # noqa: E402  (item10) cavern logging, the grove
+from planner_benches import _bench_caps_rule  # noqa: E402  (item10) training benches
+from planner_leather import _leather_gear_rule  # noqa: E402  (item10) leather armour while metal is short
 from planner_army import (_army_gear_rule, _quiver_rule, _bolts_rule, _flask_rule,  # noqa: E402  (0.105.0, round 2)
                           _shelter_squads_rule, _gate_cut_rule)
 
@@ -651,6 +654,14 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
     # (0.105.40 M5) enough haulers for the haul jobs waiting; key workers off hauling
     if "hauling" not in errors:
         _guard(_hauling_labor_rule, s, cfg, citizens, proposals, notes, memory)
+    # (item10) wood that lasts: cavern trees when safe, the grove kept; training benches; leather armour
+    if "forestry" not in errors:
+        _guard(_cavern_logging_rule, s, memory, cfg, citizens, proposals, notes)
+        _guard(_grove_rule, s, cfg, citizens, proposals, notes)
+    if "benches" not in errors:
+        _guard(_bench_caps_rule, s, cfg, proposals, notes)
+    if "leather_gear" not in errors:
+        _guard(_leather_gear_rule, s, cfg, proposals, notes)
 
     # 6b. A fresh embark: the first staircase, everything else grows from it ----
     fd = _d(s.get("founding"))

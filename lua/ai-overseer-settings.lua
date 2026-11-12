@@ -360,6 +360,9 @@ function defaults()
         disposal = 'destroy',
         disposal_player_items = false,
         keep_enemy_gear = false,
+        -- (item10) cavern trees felled while wood is short and the caverns' ways in
+        -- are watched (brain/planner_forestry.py); off: the woodcutters stay out of them
+        cavern_logging = true,
         -- (0.105.40, 13e) world cleanup for the game's speed (WORLD_CLEANUP_CHOICES)
         world_cleanup = 'safe',
         -- (0.105.41, 13e) traffic zones on the AI's own finished levels: high on its
@@ -485,6 +488,7 @@ function sanitize(s)
                         'moat', 'magma_workshops', 'irrigation',   -- (0.105.0) the water works' switches
                         'magma_reclaim',            -- (0.105.41, item 7) cooled magma's walls dug out
                         'disposal_player_items', 'keep_enemy_gear',   -- (0.105.27) disposal
+                        'cavern_logging',           -- (item10) cavern trees felled when safe
                         'squads_shelter',           -- (0.105.0) the squads hide in the shelter too
                         'link_feeders',             -- (0.105.41, item 2) feeder piles linked to their workshops
                         'hunting', 'cavern_farms',  -- (0.105.41, item 4) provisions
@@ -590,6 +594,7 @@ function for_ai(s)
         disposal = s.disposal,                     -- (0.105.27)
         disposal_player_items = s.disposal_player_items,
         keep_enemy_gear = s.keep_enemy_gear,
+        cavern_logging = s.cavern_logging,         -- (item10)
         world_cleanup = s.world_cleanup,           -- (0.105.40) off | safe | full
         traffic = s.traffic,                       -- (0.105.41) traffic zones on the AI's levels
         moat = s.moat, magma_workshops = s.magma_workshops, irrigation = s.irrigation,   -- (0.105.0)

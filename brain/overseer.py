@@ -535,6 +535,9 @@ SHORT_WORDS = {
     "insane_guard": "lock the AI's own doors between an insane dwarf and deep water, magma or a drop while they are near",  # (0.105.40b)
     "magma_reclaim": "open the paths again where spilt magma cooled, and dig out what it left",  # (0.105.41, item 7)
     "add_haulers": "put idle dwarves on hauling",  # (0.105.40 M5)
+    "cavern_logging": "mark cavern trees for the woodcutters (or call them back)",  # (item10)
+    "keep_grove": "keep a grove of young trees from the axes",  # (item10)
+    "bench_caps": "make a second workshop a training bench (or lift its skill cap)",  # (item10)
     "relieve_haulers": "take key workers (or the AI's extra haulers) off hauling, or give it back",
     "paint_traffic": "mark high traffic on the AI's corridors and stairs, low on its rooms and fields",  # (0.105.41)
     "census": "count what fills the map",  # (0.104.113)

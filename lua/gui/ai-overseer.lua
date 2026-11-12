@@ -793,6 +793,16 @@ function MilitaryPage:init()
     })
     table.insert(views, widgets.Label{frame = {t = t + 11, l = 58}, text = {
         {text = S.PEACE_HELP, pen = COLOR_GREY}}})
+    -- (item10) cavern trees felled when wood is short and the caverns are watched
+    -- (the free row t+17, under the caverns' seal switch and over the missions)
+    table.insert(views, widgets.ToggleHotkeyLabel{
+        view_id = 'cavern_logging',
+        frame = {t = t + 17, l = 2, w = 50},
+        label = 'Fell cavern trees when it is safe:',
+        label_width = 36,
+        initial_option = p.settings.cavern_logging ~= false,
+        on_change = function(v) p:set_field('cavern_logging', v) end,
+    })
     table.insert(views, widgets.CycleHotkeyLabel{
         view_id = 'gear_weapon',
         frame = {t = t + 13, l = 2, w = 60},
@@ -943,6 +953,7 @@ function MilitaryPage:refresh()
     for _, k in ipairs({'hunting', 'cavern_farms'}) do                              -- (0.105.41, item 4)
         self.subviews[k]:setOption(s[k] ~= false, false)
     end
+    self.subviews.cavern_logging:setOption(s.cavern_logging ~= false, false)        -- (item10)
     self.subviews.missions:setOption(S.MISSION_NAMES[s.missions] and s.missions or 'rescue', false)   -- (0.105.39)
     self.subviews.send_missions:setOption(s.send_missions == true, false)
     self.subviews.peace:setOption(S.PEACE_NAMES[s.peace] and s.peace or 'ai', false)   -- (0.105.41, item 8)

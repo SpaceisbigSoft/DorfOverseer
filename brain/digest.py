@@ -167,6 +167,9 @@ SECTION_DEFAULTS = {
     "provisions": {},        # (0.105.41, item 4) game and hunters, butchery and tanning, fruit trees, meals by kind, cavern farms (lua/ai-provisions.lua)
     "siege": {},             # (item5) entrances' fortifications and posts, siege engines, parts, arrows, operators (lua/ai-siege.lua)
     "field_watch": {},       # (item5) hostiles near a caravan, hostile wild animals near the dwarves outside (lua/ai-siege.lua)
+    "forestry": {},          # (item10) trees by where they stand, cavern layers and dangers, the grove (lua/ai-forestry.lua)
+    "benches": {},           # (item10) the AI's workshops of a kind, their skill caps, the labour's skills (lua/ai-benches.lua)
+    "leather_gear": {},      # (item10) empty leather uniform entries, free leather gear (lua/ai-leather-gear.lua)
 }
 # (0.105.36) not REQUIRED (the plan goes on without them), but a missing one is
 # listed in _errors as a failed one is: the default (civ_alert False) is not
