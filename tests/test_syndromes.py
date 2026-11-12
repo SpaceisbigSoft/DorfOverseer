@@ -398,6 +398,88 @@ def _():
     assert py(env.clear_miasma(None, False))["rejected"] is True
 
 
+
+@test("(fix5) clear_miasma: no spot in the caverns or off the living areas; nothing marked near a danger, on a cavern "
+      "tile, out of the citizens' reach, or a whole corpse for the butcher while there is a butcher's shop")
+def _():
+    if LuaRuntime is None:
+        return
+    lua, env, w = world()
+    miasma_fort(lua, w)
+    w.dump(60, 60, 62, 62, 110, True)
+    flags = lua.eval("function(W, caves) return function(x, y, z) local k = x .. ',' .. y .. ',' .. z "
+                     "return {outside = W.outside[k] or false, feature_global = caves[k] or false} end end")
+    # a cavern's miasma (indoors, inside the box) with a body under it: no spot, nothing marked
+    lua.execute("CAVES = {}")
+    env.dfhack["maps"]["getTileFlags"] = flags(w, lua.globals().CAVES)
+    for x in range(20, 24):
+        w.flow(x, 20, 100)
+        lua.globals().CAVES[f"{x},20,100"] = True
+    w.item(T(lua, {"id": 30, "kind": "CORPSE", "race": 7, "pos": {"x": 21, "y": 21, "z": 100}}))
+    lua.globals().CAVES["21,21,100"] = True
+    r = py(env.miasma_report())
+    assert r["living"] == 4 and r["indoor"] == 9 and len(r["spots"]) == 1, r
+    assert 30 not in {x["id"] for x in r["items"]}, r
+    d = py(env.clear_miasma(None, True))
+    assert d["marked"] == 4, d
+    # a danger beside the goblin corpse (5,5): it is left
+    units = lua.eval("{}")
+    danger = T(lua, {"pos": {"x": 5, "y": 6, "z": 100}, "flags1": {}})
+    units[1] = danger
+    env.df["global"]["world"]["units"] = T(lua, {})
+    env.df["global"]["world"]["units"]["active"] = units
+    env.dfhack["units"]["isDead"] = lua.eval("function() return false end")
+    env.dfhack["units"]["isDanger"] = lua.eval("function() return true end")
+    env.dfhack["units"]["isInvader"] = lua.eval("function() return false end")
+    env.dfhack["units"]["getPosition"] = lua.eval("function(u) return u.pos.x, u.pos.y, u.pos.z end")
+    d = py(env.clear_miasma(None, True))
+    assert d["kept"].get("danger", 0) >= 1 and d["marked"] < 4, d
+    env.dfhack["units"]["isDanger"] = lua.eval("function() return false end")
+    # out of reach: the citizens stand in walk group 1, the rotten meat (7,5) in group 2
+    w.unit(T(lua, {"id": 1, "pos": {"x": 1, "y": 1, "z": 100}}))
+    env.dfhack["maps"]["getWalkableGroup"] = lua.eval(
+        "function(p) if p.x == 7 and p.y == 5 then return 2 end return 1 end")
+    d = py(env.clear_miasma(None, True))
+    assert d["kept"].get("unreachable") == 1 and d["marked"] == 3, d
+    env.dfhack["maps"]["getWalkableGroup"] = lua.eval("function() return 1 end")
+    # the butcher: the goblin is sapient (kept for nobody); an unbutchered beast's body waits while a shop stands
+    env.df["creature_raw"] = T(lua, {})
+    env.df["creature_raw"]["find"] = lua.eval(
+        "function(r) return {caste = {{flags = {CAN_LEARN = (r == 7)}}}} end")
+    w.item(T(lua, {"id": 31, "kind": "CORPSE", "race": 9, "corpse_flags": {"unbutchered": True},
+                   "pos": {"x": 6, "y": 4, "z": 100}}))
+    d = py(env.clear_miasma(None, True))
+    assert d.get("kept", {}).get("for_butcher") is None and d["marked"] == 5, d
+    shop = lua.eval("{type = 'Butchers', getType = function() return 'Workshop' end}")
+    env.df["building_type"]["Workshop"] = "Workshop"
+    env.df["workshop_type"] = lua.eval("setmetatable({}, {__index = function(_, k) return k end})")
+    w.buildings[len(w.buildings) + 1] = shop
+    d = py(env.clear_miasma(None, True))
+    assert d["kept"]["for_butcher"] == 1 and d["marked"] == 4, d
+
+
+@test("(fix5) quarantine: a squad member who carries is left out (the burrow doesn't hold soldiers) and counted; "
+      "one drafted since is let out; the report doesn't count him kept apart")
+def _():
+    if LuaRuntime is None:
+        return
+    lua, env, w = world()
+    fb_fort(lua, w)
+    w.unit(T(lua, {"id": 1, "body": {"spatters": [spat(lua, 200, 1)]}}))
+    sol = w.unit(T(lua, {"id": 2, "body": {"spatters": [spat(lua, 200, 1)]}, "military": {"squad_id": 4}}))
+    r = py(env.quarantine(None, False))
+    assert [a["id"] for a in r["added"]] == [1] and r["soldiers"] == 1, r
+    assert env.quarantined(1) and not env.quarantined(2)
+    rep = py(env.report())
+    assert rep["quarantined"] == 1 and rep["soldier_carriers"] == 1 and rep["carriers"] == 2, rep
+    w.units[1].military.squad_id = 5                         # drafted since
+    rep = py(env.report())
+    assert rep["quarantined"] == 0, rep
+    r = py(env.quarantine(None, False))
+    assert 1 in r["released"] and not env.quarantined(1), r
+    sol.military.squad_id = -1
+
+
 # --- 5. the bridge's wiring --------------------------------------------------------------------
 
 @test("bridge: the syndromes and miasma sections (safe), the three actions (dry runs, values checked), the module listed")
@@ -529,6 +611,18 @@ def _():
     assert run_syn(state(syndromes={"error": "boom"})) == ([], [])
 
 
+@test("(fix5) brain: soldier carriers said as not kept apart; only soldiers carrying: no quarantine asked")
+def _():
+    sec = {"afflicted": 0, "deadly": 0, "carriers": 2, "soldier_carriers": 2, "quarantined": 0, "list": [],
+           "floors": {"tiles": 0}}
+    props, notes = run_syn(state(syndromes=sec))
+    assert not [p for p in props if p.rule == "syndrome_quarantine"], props
+    assert any("in a squad" in n for n in notes), notes
+    props, _ = run_syn(state(syndromes=dict(sec, soldier_carriers=1)))
+    q = [p for p in props if p.rule == "syndrome_quarantine"]
+    assert len(q) == 1 and q[0].reason.startswith("1 citizen(s)"), q
+
+
 MIA = {"tiles": 9, "indoor": 6, "living": 4, "spots": [{"x": 5, "y": 4, "z": 100, "tiles": 4, "living": True}],
        "sources": {"own_dead": 1, "corpse": 2, "food": 1}, "markable": 3, "dumps": 1, "dump_outside": 1,
        "kept": {"own_dead": 1, "in_pile": 1}}
@@ -559,7 +653,9 @@ def _():
     s["buildings"]["refuse_list"].append({"id": 2, "outside": True})
     s["buildings"]["clearing"] = {"dump": {"x": 1}}
     assert run_mia(s)[0] == []
-    assert run_mia(state(miasma=dict(MIA, indoor=2))) == ([], [])
+    assert run_mia(state(miasma=dict(MIA, living=2))) == ([], [])
+    # (fix5) miasma indoors but none where the dwarves live (the caverns, far off): silent
+    assert run_mia(state(miasma=dict(MIA, indoor=50, living=0))) == ([], [])
     assert run_mia(state(miasma={})) == ([], [])
 
 

@@ -105,7 +105,7 @@ env.xyz2pos = function(x, y, z) return {x = x, y = y, z = z} end
 env.df = {
     global = {world = {artifacts = {all = W.records},
                        items = {other = {ANY_ARTIFACT = W.items, TOOL = W.tools}},
-                       buildings = {other = {DISPLAY_FURNITURE = W.displays, ZONE_DINING_HALL = W.dining,
+                       buildings = {other = {DISPLAY_CASE = W.displays, ZONE_DINING_HALL = W.dining,
                                              ZONE_MEETING_HALL = W.meeting}}},
               plotinfo = {civ_id = 1, group_id = 2, equipment = {items_assigned = {W.assigned}}}},
     general_ref_type = {IS_ARTIFACT = 'IS_ARTIFACT', BUILDING_HOLDER = 'BUILDING_HOLDER'},
@@ -385,6 +385,75 @@ def _():
     env.df.job_type.PutItemOnDisplay = None
     assert "no put-on-display job" in go(good, mine_d)["error"]
     assert not py(w.jobs)
+
+
+@test("(fix5) display_artifact: no hauler sent for an artifact near a danger or out of the citizens' reach "
+      "(or to a display out of reach); the game unable to say: as before")
+def _():
+    lua, env, w = world()
+    first(env, w, lua, 0)
+    temple(lua, w)
+    d = w.display(T(lua, {"x": 11, "y": 11}))
+    w.with_jobs(d)
+    reg = env.registry()
+    reg.displays[1] = d.id
+    w.site["ai-overseer/artifacts"] = reg
+    it = w.art(T(lua, {"id": 3}))                       # at (1, 1, 100)
+
+    def go():
+        return py(env.display_artifact(T(lua, {"item_id": it.id, "building_id": d.id}), True))
+    assert go()["ok"]
+    env.danger_spots = lua.eval("function() return {{x = 2, y = 2, z = 100}} end")
+    r = go()
+    assert r["rejected"] and "near a danger" in r["error"], r
+    env.danger_spots = lua.eval("function() return {{x = 12, y = 12, z = 100}} end")
+    r = go()
+    assert r["rejected"] and "the display" in r["error"], r
+    env.danger_spots = lua.eval("function() return {} end")
+    env.citizen_groups = lua.eval("function() return {[1] = true} end")
+    env.walk_group = lua.eval("function(x, y, z) if x < 5 then return 2 end return 1 end")
+    r = go()
+    assert r["rejected"] and "reach" in r["error"], r
+    env.walk_group = lua.eval("function(x, y, z) if x >= 10 then return 0 end return 1 end")
+    r = go()
+    assert r["rejected"] and "reach (the display)" in r["error"], r
+    env.walk_group = lua.eval("function(x, y, z) if x == 11 and y == 11 then return 0 end return 1 end")
+    assert go()["ok"]                                   # the pedestal's own tile unwalkable, beside it in reach
+
+
+@test("(fix5) the display list is buildings.other.DISPLAY_CASE (df-structures' name), every building the fallback; "
+      "the display_artifacts switch on the Rules tab, set on refresh, clear of the other controls")
+def _():
+    src = (LUA_DIR / "ai-artifacts.lua").read_text(encoding="utf-8")
+    assert "buildings.other.DISPLAY_CASE end" in src and "DISPLAY_FURNITURE end" not in src
+    lua, env, w = world()
+    w.display(T(lua, {"x": 11, "y": 11}))
+    assert len(py(env.display_buildings())) == 1
+    env.df["global"]["world"]["buildings"]["other"]["DISPLAY_CASE"] = None
+    env.df["global"]["world"]["buildings"]["all"] = w.displays
+    assert len(py(env.display_buildings())) == 1        # the fallback
+    gui = (LUA_DIR / "gui" / "ai-overseer.lua").read_text(encoding="utf-8")
+    assert "view_id = 'display_artifacts'" in gui and "subviews.display_artifacts:setOption" in gui
+    import re
+    jrow, hrow, t = 8, 2, 14
+    page = gui[gui.index("function RulesPage:init()"):gui.index("MilitaryPage = defclass")]
+    frames = []
+    for m in re.finditer(r"view_id = '(\w+)',\s*frame = \{t = ([^,]+), l = (\d+), w = (\d+)\}", page):
+        expr = m.group(2)
+        if "i" in expr.replace("hrow", "").replace("jrow", ""):
+            continue                                    # the levels' loop rows (left column, l < 56)
+        frames.append((eval(expr, {"jrow": jrow, "hrow": hrow, "t": t}), int(m.group(3)), int(m.group(4)),
+                       m.group(1)))
+    for m in re.finditer(r"widgets\.Label\{frame = \{t = ([^,]+), l = (\d+)\}, text = \{\s*\{text = '([^']*)'", page):
+        frames.append((eval(m.group(1), {"jrow": jrow, "hrow": hrow, "t": t}), int(m.group(2)), len(m.group(3)),
+                       "label"))
+    mine = [f for f in frames if f[3] == "display_artifacts"]
+    assert len(mine) == 1, frames
+    r, l, wd, _ = mine[0]
+    for r2, l2, w2, v in frames:
+        if v != "display_artifacts" and r2 == r:
+            assert l2 + w2 <= l or l + wd <= l2, (mine[0], (r2, l2, w2, v))
+    assert l >= 52                                      # clear of the levels' rows (l 2, w 50)
 
 
 # --- 3. the bridge and the guards ----------------------------------------------------------
