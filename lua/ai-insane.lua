@@ -253,9 +253,15 @@ end
 -- one is dropped unopened; one they only could need is freed as usual
 function adopted_ids()
     local ids = {}
-    pcall(function()
+    local ok = pcall(function()
         for id in pairs(reqscript('ai-threats').adopted_doors() or {}) do ids[tonumber(id) or id] = true end
     end)
+    -- (lead) the gate pieces too: a door that became an AI gate piece after
+    -- it was locked here is the gate watcher's now, left as it is
+    pcall(function() for id in pairs(gate_ids()) do ids[id] = true end end)
+    -- (lead) the threats rules unreadable: nothing freed this time (a cell's
+    -- or the seal's door could be among the locks), read again next cycle
+    if not ok then ids.__unknown = true end
     return ids
 end
 
@@ -537,6 +543,9 @@ function release_locks(st, guarded, now, dry, claimed)
         local free, forget = false, false
         if not b or not flag(b, 'forbidden') then
             forget = true
+        elseif claimed and claimed.__unknown and now - (l.since or now) < 2 * LOCK_MAX_TICKS then
+            -- (lead) whose doors are whose can't be read: kept locked for now
+            -- (at most twice the usual hold; then freed as usual below)
         elseif claimed and claimed[l.id] then
             forget = true          -- a cell's or the seal's now: theirs to open
         else
