@@ -160,6 +160,7 @@ SECTION_DEFAULTS = {
     "traffic": {},           # (0.105.41) traffic zones on the AI's finished levels: waiting, in progress, rechecks (lua/ai-traffic.lua)
     "food_store": {},        # (0.105.40b, M6) food piles, their barrels and fullness, food out of piles, rotten (lua/ai-food-store.lua)
     "pile_links": {},        # (0.105.41, item 2) wheelbarrows, the AI's stone piles, its feeders' links (lua/ai-pile-links.lua)
+    "provisions": {},        # (0.105.41, item 4) game and hunters, butchery and tanning, fruit trees, meals by kind, cavern farms (lua/ai-provisions.lua)
 }
 # (0.105.36) not REQUIRED (the plan goes on without them), but a missing one is
 # listed in _errors as a failed one is: the default (civ_alert False) is not

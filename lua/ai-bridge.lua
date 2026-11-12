@@ -366,6 +366,11 @@ ACTIONS = {
     -- (0.105.41, item 2) wheelbarrows for the AI's stone piles, its feeders linked to their workshops (lua/ai-pile-links.lua)
     pile_barrows = act_pile_barrows,
     feeder_link = act_feeder_link,
+    -- (0.105.41, item 4) provisions from the land: hunters, butchering and tanning orders, fruit zone, cavern farms
+    hunters = act_hunters,
+    food_standing = act_food_standing,
+    fruit_zone = act_fruit_zone,
+    cavern_farm = act_cavern_farm,
     -- (D0) the Design track: a landmark's sites, its drawing built, its next stage (ai-bridge-design.lua)
     blueprint_sites = act_blueprint_sites,
     build_blueprint = act_build_blueprint,
@@ -437,6 +442,8 @@ for _, name in ipairs({
     'food_pile', 'food_barrels',
     'pile_barrows', 'feeder_link',   -- (0.105.41, item 2) each dry run checks the pile and changes nothing
     'paint_traffic',   -- (0.105.41) its dry run counts the tiles and paints none
+    -- (0.105.41, item 4) provisions: each dry run names or finds (quickfort's dry run) and changes nothing
+    'hunters', 'food_standing', 'fruit_zone', 'cavern_farm',
 }) do DRY_OK[name] = true end
 
 -- These only change what's displayed, so they still work while halted, dry
@@ -503,9 +510,9 @@ BRIDGE_MODULES = {
     'ai-blueprints', 'ai-builder', 'ai-camera', 'ai-census', 'ai-cleanup', 'ai-constructions', 'ai-diplomacy', 'ai-disposal', 'ai-food-store', 'ai-gates', 'ai-hauling', 'ai-health', 'ai-homes',
     'ai-industry', 'ai-insane', 'ai-joins', 'ai-labor', 'ai-layouts', 'ai-military', 'ai-military-gear',
     'ai-mission-send', 'ai-missions', 'ai-moods', 'ai-noble-demands', 'ai-nobles', 'ai-overlay',
-    'ai-overseer-settings', 'ai-pile-links', 'ai-ping', 'ai-reports', 'ai-society', 'ai-society-burrows',
-    'ai-status', 'ai-threats', 'ai-title', 'ai-trade', 'ai-traffic', 'ai-util', 'ai-water', 'ai-waterworks',
-    'gui/ai-overseer',
+    'ai-overseer-settings', 'ai-pile-links', 'ai-ping', 'ai-provisions', 'ai-reports', 'ai-society',
+    'ai-society-burrows', 'ai-status', 'ai-threats', 'ai-title', 'ai-trade', 'ai-traffic', 'ai-util',
+    'ai-water', 'ai-waterworks', 'gui/ai-overseer',
 }
 -- the split-off modules that carry a version mark of their own
 MARKED_MODULES = {'ai-military-gear', 'ai-society-burrows', 'ai-constructions'}
@@ -894,6 +901,9 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
     -- (0.105.41, item 2) the wheelbarrows (owned, held by piles, wanted), the
     -- AI's stone piles and its feeder piles' links (lua/ai-pile-links.lua; cached a day)
     pile_links = function() return safe(function() return reqscript('ai-pile-links').report() end) end,
+    -- (0.105.41, item 4) provisions from the land: game and hunters, butchery and
+    -- tanning, fruit trees and their zones, meals by kind, cavern farms (lua/ai-provisions.lua)
+    provisions = function() return safe(function() return reqscript('ai-provisions').report() end) end,
     -- (0.105.30) what the fort has built: finished constructions by shape and
     -- material, above or below ground, roofed surface tiles, the waiting ones
     -- and the AI's own (lua/ai-constructions.lua; one pass, every 3 days)

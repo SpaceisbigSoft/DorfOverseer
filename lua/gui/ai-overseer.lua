@@ -788,6 +788,19 @@ function MilitaryPage:init()
             on_change = function(v) p:set_field(f[1], v) end,
         })
     end
+    -- (0.105.41, item 4) food from the land: the free row t+17 under the caverns'
+    -- switches, two short switches side by side (the left column, ending by l=56)
+    for i, f in ipairs({{'hunting', 'Hunters (when safe):'},
+                        {'cavern_farms', 'Cavern-soil farms:'}}) do
+        table.insert(views, widgets.ToggleHotkeyLabel{
+            view_id = f[1],
+            frame = {t = t + 17, l = 2 + (i - 1) * 28, w = 26},
+            label = f[2],
+            label_width = 21,
+            initial_option = p.settings[f[1]] ~= false,
+            on_change = function(v) p:set_field(f[1], v) end,
+        })
+    end
     -- (0.105.39, 13b) missions out into the world: which kinds, and whether the
     -- AI drives the World screen to send them (rows t+17..t+20, under the caverns)
     table.insert(views, widgets.CycleHotkeyLabel{
@@ -881,6 +894,9 @@ function MilitaryPage:refresh()
     self.subviews.disposal:setOption(s.disposal or 'destroy', false)                      -- (0.105.27)
     self.subviews.disposal_player_items:setOption(s.disposal_player_items == true, false)
     self.subviews.keep_enemy_gear:setOption(s.keep_enemy_gear == true, false)
+    for _, k in ipairs({'hunting', 'cavern_farms'}) do                              -- (0.105.41, item 4)
+        self.subviews[k]:setOption(s[k] ~= false, false)
+    end
     self.subviews.missions:setOption(S.MISSION_NAMES[s.missions] and s.missions or 'rescue', false)   -- (0.105.39)
     self.subviews.send_missions:setOption(s.send_missions == true, false)
 end

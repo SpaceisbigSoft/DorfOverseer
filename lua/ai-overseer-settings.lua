@@ -367,6 +367,10 @@ function defaults()
         -- isn't built yet. On or off, the dig guard (ai-util dig_forbidden)
         -- leaves adamantine, the spire and the underworld alone
         mine_adamantine = false,
+        -- (0.105.41, item 4) a hunter or two through the work detail while no danger is
+        -- about (off: the AI's own hunters called in); farm plots on a cavern's soil
+        -- near the fort's way in while no beast is in the caverns
+        hunting = true, cavern_farms = true,
         expel_vampires = true,     -- a vampire found among the citizens is sent away      -- with --ai: a short AI-written story of each season (costs tokens)
         -- "Wipe what the AI learned" (Culture tab, Shift-V): each press adds 1;
         -- the overseer wipes when it sees the number go up
@@ -460,6 +464,7 @@ function sanitize(s)
                         'disposal_player_items', 'keep_enemy_gear',   -- (0.105.27) disposal
                         'squads_shelter',           -- (0.105.0) the squads hide in the shelter too
                         'link_feeders',             -- (0.105.41, item 2) feeder piles linked to their workshops
+                        'hunting', 'cavern_farms',  -- (0.105.41, item 4) provisions
                         'mine_adamantine',          -- (0.105.40b) reserved: still refused (not built yet)
                         'traffic'}) do              -- (0.105.41) traffic zones on the AI's levels
         if s[k] ~= nil then out[k] = s[k] == true end
@@ -567,6 +572,7 @@ function for_ai(s)
         squads_shelter = s.squads_shelter,         -- (0.105.0)
         link_feeders = s.link_feeders,             -- (0.105.41, item 2)
         mine_adamantine = s.mine_adamantine,       -- (0.105.40b) reserved: adamantine still left alone
+        hunting = s.hunting, cavern_farms = s.cavern_farms,   -- (0.105.41, item 4)
         wipe_learned = s.wipe_learned,
         wipe_learned_all = s.wipe_learned_all,
     }

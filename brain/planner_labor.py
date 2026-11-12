@@ -191,7 +191,8 @@ def _labor_rules(s: dict, citizens: int, cfg: dict, proposals: list, notes: list
 
 # Labours with rules of their own (miners by the digging and picks, woodcutters
 # by the axes, gatherers, fishers, farmers by the work there)
-OWN_LABOR_RULES = {"MINE", "CUTWOOD", "HERBALIST", "FISH", "PLANT"}
+OWN_LABOR_RULES = {"MINE", "CUTWOOD", "HERBALIST", "FISH", "PLANT",
+                   "HUNT"}   # (0.105.41, item 4) hunters only while safe (planner_provisions)
 
 
 def woodcutters(traits: dict, small: bool) -> int:
@@ -254,7 +255,7 @@ def _labor_waiting_rule(lb: dict, citizens: int, cfg: dict, proposals: list, thi
         if not isinstance(k, dict) or made >= cfg["labor_moves_per_cycle"]:
             continue
         lab, n = str(k.get("labor")), int(k.get("skilled") or 0)
-        if lab in ("MINE", "CUTWOOD") or n <= 0:       # (those go by the picks and axes)
+        if lab in ("MINE", "CUTWOOD", "HUNT") or n <= 0:   # (those go by the picks and axes; hunters by planner_provisions)
             continue
         proposals.append(Proposal("labor", {"type": "assign_labor", "job": lab, "count": min(3, n),
                                             "min_skill": 3},

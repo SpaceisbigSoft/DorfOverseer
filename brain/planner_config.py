@@ -892,4 +892,34 @@ PLANNER_CONFIG = {
     "traffic_recheck_days": 168,          # ...only once it was painted (or last checked) this long ago
     "traffic_priority": 8,                # low: paths only
     "traffic_priority_slow": 6,           # while the game runs slowly (the paths are part of the cost)
+    # (0.105.41, item 4) provisions from the land (brain/planner_provisions.py)
+    "hunt_min_citizens": 7,               # hunters only in a fort of this many
+    "hunt_game_min": 1,                   # wild animals (no danger) on the surface before hunters go out
+    "hunters_max": 2,                     # a hunter or two
+    "hunt_bolts_per_hunter": 25,          # bolts to spare (after the crossbow squads' own) for each hunter
+    "hunt_quiet_days": 3,                 # no hunting this soon after a threat could reach the dwarves
+    "hunting_cooldown_ticks": 7 * 1200,
+    "hunting_stop_cooldown_ticks": 300,   # the AI's hunters called in: asked every quarter day while danger lasts
+    "butcher_corpses_min": 1,             # unbutchered bodies before a butcher is wanted
+    "butcher_shop_corpses": 3,            # ...and before a butcher's shop is built for them
+    "tan_hides_min": 2,                   # raw hides lying about before a tanner, a tanner's and a tan order
+    "tan_order_max": 10,
+    "food_standing_cooldown_ticks": 7 * 1200,
+    "butchery_labor_cooldown_ticks": 3 * 1200,
+    "butchery_shop_cooldown_ticks": 14 * 1200,
+    "tanning_cooldown_ticks": 3 * 1200,
+    "fruit_trees_min": 5,                 # fruit trees near the fort before a fruit-gathering zone
+    "fruit_stand_min": 3,                 # ...and at least this many in its stand
+    "fruit_min_citizens": 7,
+    "fruit_pickers": 1,                   # gatherers wanted while a fruit zone stands and nobody gathers
+    "fruit_zone_cooldown_ticks": 28 * 1200,
+    "fruit_pickers_cooldown_ticks": 7 * 1200,
+    "meal_variety_min_pd": 2,             # meals a dwarf before their kinds are looked at (the food rule fills short stores)
+    "meal_variety_share": 0.75,           # one kind this much of the servings...
+    "meal_variety_low": 0.15,             # ...and another under this much: a few jobs of it
+    "meal_variety_jobs": 3,
+    "meal_variety_cooldown_ticks": 7 * 1200,
+    "cavern_farm_tiles": 24,              # tiles of plots a call on cavern soil...
+    "cavern_farm_max_tiles": 60,          # ...and at most this many of the AI's there in all
+    "cavern_farm_cooldown_ticks": 14 * 1200,
 }

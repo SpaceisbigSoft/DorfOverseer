@@ -55,6 +55,7 @@ from planner_insane import _insane_rule  # noqa: E402  (0.105.40b) the insane: d
 from planner_hauling import _hauling_labor_rule, note_hauling  # noqa: E402  (0.105.40 M5) hauling balanced
 from planner_traffic import _traffic_rule  # noqa: E402  (0.105.41) traffic zones on the AI's own levels
 from planner_food import _food_store_rule, note_food  # noqa: E402  (0.105.40b, M6) the food store
+from planner_provisions import _provisions_rules  # noqa: E402  (0.105.41, item 4) hunting, butchery, fruit, meals, cavern farms
 from planner_food import note_food_level  # noqa: E402  (fix41) a food storage level booked per kitchen/still
 from planner_nobles import _noble_value_rule, nobles_view, noble_room_plan  # noqa: E402,F401  (0.105.41) nobles' room values
 from planner_piles import _pile_links_rule  # noqa: E402  (0.105.41, item 2) wheelbarrows and feeder links
@@ -833,6 +834,10 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
     # rule: not ordered twice), its feeders linked to its workshops
     if "pile_links" not in errors:
         _guard(_pile_links_rule, s, cfg, citizens, proposals, rules_)
+    # (0.105.41, item 4) provisions from the land: hunters while safe, butchery
+    # and tanning, a fruit zone, meals of more than one kind, cavern soil farms
+    if "provisions" not in errors:
+        _guard(_provisions_rules, s, cfg, citizens, proposals, notes, memory)
     # (0.100.1, overnight run) any workshops level another rule starts (a well's
     # parts, the metal works, a bottleneck) brings the missing still, kitchen
     # and carpenter's with it

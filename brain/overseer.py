@@ -485,6 +485,10 @@ SHORT_WORDS = {
     "food_barrels": "let the AI's food stockpile take barrels",
     "pile_barrows": "let the AI's stone stockpile take wheelbarrows",   # (0.105.41, item 2)
     "feeder_link": "link the AI's feeder stockpile to its workshop",
+    "hunters": "send a hunter or two out after game (or call the AI's hunters in)",   # (0.105.41, item 4)
+    "food_standing": "let the butchers, tanners and fishery work by themselves (DF's standing orders)",
+    "fruit_zone": "mark the fruit trees near the fort for picking",
+    "cavern_farm": "lay out farm plots on a cavern's soil",
     "squad_barracks": "give a squad its barracks",
     "open_trade": "open the trade screen at the depot",
     "close_trade": "close the trade screen",
