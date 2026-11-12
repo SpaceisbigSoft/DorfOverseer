@@ -12,7 +12,7 @@ You steer it from an in-game window:
 
 For your own use only.
 
-**Status:** version 0.105.25, Phase 14 of the plan (`handoff.md` holds the plan, the changelog and where things stand).
+**Status:** version 0.105.41, Phase 14 of the plan (`handoff.md` holds the plan, the changelog and where things stand).
 - **Seen working in game:**
   - founding a fort from scratch, then digging and furnishing levels from a master plan;
   - labour, farms, wells, pastures, metal and smelting;
@@ -22,11 +22,14 @@ For your own use only.
   - dwarves' needs, locations staffed;
   - the camera director;
   - the keeper's unattended run, relaunching DF when it closes.
-- **Built but not yet seen in game:** most combat responses, presets and their signatures, the keep, the cavern well's landing, the messenger, the visitor lockouts and the mood materials.
+- **Built but not yet seen in game:** most combat responses, presets and their signatures, the keep, the cavern well's landing, the messenger, the visitor lockouts and the mood materials; everything from 0.105.32 on, including:
+  - the design track's first stage (a Design setting on the AI tab: Scripts, Guided or Architect), the whole-map water and magma survey, missions and the performance work (0.105.37-0.105.39);
+  - the fort-ending gaps: adamantine and the underworld never dug, evil weather, fire breathers, insane dwarves, hauling, food storage, alloys (0.105.40);
+  - the coverage audit's "should" list (0.105.41): nobles' rooms, wheelbarrows and feeder links, traffic zones, hunting and butchery, siege works, prisoners and undead sieges, magma spills and cave-ins, peace and export bans, paper, training benches and forestry, syndromes and miasma, artifacts on display.
 
 ## Quick start
 
-On a PC that already has Dwarf Fortress 53.16 (Steam), DFHack and Python 3.10 or newer
+On a PC that already has Dwarf Fortress 53.17 (Steam), DFHack and Python 3.10 or newer
 (the full guide is [docs/setup-guide.md](docs/setup-guide.md)):
 
 1. Put this folder at `Documents\DF-AI`.
@@ -64,7 +67,7 @@ From the DF-AI folder, with the game running and a fort loaded:
 | `python brain\health_check.py` | The run check by hand (`--hours N`, `--no-selftest`): self-test, loops, refusals, standing Needs you, FPS, housekeeping |
 | `python brain\scorecard.py` | The slider scorecard: compares the forts in the DF-AI folders beside this one (`DF-AI`, `DF-AI-B`, ...) at one game season, writes `logs\scorecard.md` |
 | `python brain\show_fort.py` | Prints a readable fort report and saves the raw one to `logs\snapshots\` |
-| `python tests\run_all.py` | Every test, no game needed (about 30 s; the Lua tests need `lupa`) |
+| `python tests\run_all.py` | Every test, no game needed (about 2 minutes; the Lua tests need `lupa`) |
 
 To stop all AI actions at once:
 - press Ctrl-Shift-H in the game, or the panel's [Halt];
@@ -103,7 +106,7 @@ In Co-pilot mode it also shows the AI's questions with Yes/No buttons.
   - Autopilot does everything.
 
   The tab also holds how often the strategist reviews and how long it thinks, the token cost and an optional daily cap, and "save before each new level".
-- **Rules**: what the AI may build and do on its own. It has about 40 switches: the fort goal (Expand or Maintain), the levels it may dig, the hospital and calm burrows, the visitor shut-outs, tribute and the messenger, water works and the cavern well, the camera, the military, prisoners and the caverns. See [docs/controls.md](docs/controls.md).
+- **Rules**: what the AI may build and do on its own. It has about 55 switches: the fort goal (Expand or Maintain), the levels it may dig, the hospital and calm burrows, the visitor shut-outs, tribute and the messenger, water works and the cavern well, the camera, the military, prisoners and the caverns, traffic zones, feeder links, hunting, cavern farms and logging, siege works, peace, syndrome care, magma reclaim and artifact displays. See [docs/controls.md](docs/controls.md).
 - **Needs you**: what only you can do, and why the AI couldn't.
 - **Culture**: the fort's style, phase, master plan and story. Shift-V shows what the AI has learned; Shift-W wipes it.
 - **Camera**: what the camera director showed last. While the keeper runs unattended, the view moves to fights, arrivals, moods and artifacts, and tours the fort in between.
@@ -116,8 +119,10 @@ All of this comes from the local planner, with no tokens:
 - **Building:** a master plan drawn for the site, then levels dug and furnished to it. These include bedrooms, dining halls, workshops, storage, tombs, a hospital, taverns, temples, a library, barracks and jails, statue gardens and the keep. Every tile is checked for water, aquifers, caverns and the surface first. Each fort builds in its own style. See [docs/building.md](docs/building.md) and [docs/culture.md](docs/culture.md).
 - **Supplies:** drink, food, farms and crops, wells and cisterns, smelting, gear, cloth, soap, containers and work orders kept moving. See [docs/local-planner.md](docs/local-planner.md).
 - **People:** labour through DF's work details, offices and appointments, needs (trinkets, instruments, lavish meals, temples), the hospital burrow, calm burrows, strange moods' materials, burials and ghosts, and justice.
-- **Defence:** the AI maps the entrances and builds gates, doors, hatches on levers, traps and the War-hold's gatehouse. On an alarm it fills a shelter and closes the gates. It makes squads, fills, arms and trains them, sends them at what can reach the dwarves, or hides from a great danger. It also handles fire, thieves, prisoners, werebeasts and the caverns. See [docs/military.md](docs/military.md).
-- **The world outside:** trade by the Trade slider (the AI opens the screen, makes the deal and presses Trade), petitions answered by the Outsiders slider, meetings, tribute, the elves' tree quota, and visitors shut out after a theft. A messenger is sent by the World screen; this is a trial, off by default.
+- **Defence:** the AI maps the entrances and builds gates, doors, hatches on levers, traps and the War-hold's gatehouse. On an alarm it fills a shelter and closes the gates. It makes squads, fills, arms and trains them, sends them at what can reach the dwarves, or hides from a great danger. It also handles fire, fire breathers, thieves, prisoners (a pit if you choose), werebeasts, undead sieges and the caverns, and at fortified forts carves fortifications, places ballistae, posts marksdwarves, guards caravans and hunts dangerous wildlife. See [docs/military.md](docs/military.md).
+- **The world outside:** trade by the Trade slider (the AI opens the screen, makes the deal and presses Trade), petitions answered by the Outsiders slider, meetings, tribute, the elves' tree quota, and visitors shut out after a theft. A messenger is sent by the World screen; this is a trial, off by default. Peace offers from an enemy's diplomat are answered by a Rules choice, export bans are kept, nobles' rooms are raised to the value their titles demand, and artifacts are put on display behind doors.
+- **Industry and land (0.105.40-0.105.41):** bronze and other alloys, roofed food piles with barrels, wheelbarrows and linked feeder piles, hunting, butchery and tanning, fruit picking, varied meals, cavern-soil farms, paper, scrolls and codices, training workshops, cavern logging and a guarded grove, leather armour when metal runs short.
+- **Hazards and health (0.105.40-0.105.41):** adamantine and the underworld never dug, evil weather, insane dwarves kept from danger, spilt magma and cave-ins, frozen water sources, syndromes and quarantine, rot hauled from living areas, traffic zones for pathing.
 - **Learning:** what you decline or undo becomes a lesson, and targets tune themselves to the fort. See [docs/learning.md](docs/learning.md).
 
 ## Military
@@ -147,4 +152,4 @@ See [docs/military.md](docs/military.md).
 
 ## Versions
 
-Dwarf Fortress 53.16 (Steam) on Windows, with DFHack 53.16-r3. Answering residency and citizenship petitions through DF's standing orders needs a DFHack newer than 53.16-r3. On 53.16-r3 they wait for you, or arrive as a Needs you.
+Dwarf Fortress 53.17 (Steam) on Windows, with DFHack 53.17-r1 (built and tested against 53.16-r3; run `python brain\selftest.py` after a DFHack update). Answering residency and citizenship petitions through DF's standing orders needs a DFHack newer than 53.16-r3. On 53.16-r3 they wait for you, or arrive as a Needs you.
