@@ -735,6 +735,8 @@ function place_feeder(building_id, dry_run)
     local out = {ok = true, kind = kind, what = f.what, x = r.x, y = r.y, elevation = ez(r.z), size = r.w,
                  dry_run = dry_run or nil}
     if dry_run then return out end
+    -- (0.105.40b, M6) the kitchen's and still's food pile is the AI's own (its barrels set)
+    if f.flag == 'food' then pcall(function() reqscript('ai-food-store').remember(r.x, r.y, r.z) end) end
     return out
 end
 

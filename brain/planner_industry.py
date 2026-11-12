@@ -10,6 +10,7 @@ from learning import held_levels
 import customs
 import masterplan
 import phases
+from planner_food import food_containers_want  # (0.105.40b, M6)
 from quirks import has_rule
 from digest import _d, _l, normalize
 from planner_core import *  # noqa: F401,F403
@@ -46,6 +47,9 @@ def _supply_rules(s: dict, citizens: int, cfg: dict, proposals: list, notes: lis
                - queued(s, BREW_RECIPES) * cfg["drinks_per_job"])
         crisis_brew = min(cfg["crisis_containers_max"], max(0, math.ceil(gap / cfg["drinks_per_job"])))
         want = max(want, crisis_brew)
+    # (0.105.40b, M6) the food lying out of barrels wants some (0 without a food_store section)
+    food_want, food_more = food_containers_want(s, cfg), food_containers_want(s, cfg) > want
+    want = max(want, food_want)
     pending = queued(s, CONTAINER_RECIPES)
     if free + pending < want:
         amount = _clamp(want * 2 - free - pending, 5, 30)
@@ -67,7 +71,9 @@ def _supply_rules(s: dict, citizens: int, cfg: dict, proposals: list, notes: lis
                 "containers", {"type": "work_order", "recipe": recipe, "amount": amount},
                 f"only {free} empty barrels/pots (+{pending} queued) for {citizens} dwarves; "
                 f"brewing and cooking stop without them: make {what}"
-                + (f" (crisis: {crisis_brew} brew jobs wait for one)" if crisis_brew >= want else ""), 2, True))
+                + (f" (crisis: {crisis_brew} brew jobs wait for one)" if crisis_brew >= want else "")
+                + (" (food lies out of barrels, where it rots or vermin eat it)" if food_more else ""),
+                2, True))
 
     # Bins hold finished goods, bars, cloth and the like: a stockpile with
     # bins takes far more, and haulers carry a bin's worth in one trip.

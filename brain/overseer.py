@@ -479,6 +479,8 @@ SHORT_WORDS = {
     "answer_meeting": "answer the diplomat's meeting",  # (0.105.0)
     "prune_remains": "let old corpses and useless body parts rot away",
     "feeder_pile": "put a feeder stockpile beside a workshop",
+    "food_pile": "put a food stockpile with barrels near the kitchen and still",   # (0.105.40b, M6)
+    "food_barrels": "let the AI's food stockpile take barrels",
     "squad_barracks": "give a squad its barracks",
     "open_trade": "open the trade screen at the depot",
     "close_trade": "close the trade screen",

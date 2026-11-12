@@ -828,4 +828,25 @@ PLANNER_CONFIG = {
     "hauling_add_cooldown_ticks": 1200,
     "hauling_relieve_cooldown_ticks": 7 * 1200,
     "hauling_back_cooldown_ticks": 3 * 1200,
+    # (0.105.40b, M6) the food store (brain/planner_food.py): a roofed food pile
+    # taking barrels within reach of each kitchen and still, sized to the fort
+    "food_store_min_citizens": 7,
+    "food_store_reach": 20,               # tiles from the kitchen or still (a z-level counts food_store_dz_cost)
+    "food_store_dz_cost": 3,
+    "food_store_tiles_per_citizen": 0.5,  # tiles of food pile a citizen (a barrel a tile holds much)...
+    "food_store_tiles_min": 9,            # ...within these
+    "food_store_tiles_max": 49,
+    "food_store_barrel_share": 1.0,       # max barrels: a barrel a tile...
+    "food_store_barrels_max": 64,         # ...at most
+    "food_store_full_share": 0.9,         # the near piles this full, and...
+    "food_store_loose_min": 10,           # ...this much food lying outside a pile: another pile beside them
+    "food_store_tiles_cap_factor": 3,     # the AI's near food piles at most this many times the size wanted
+    "food_store_exposed_min": 10,         # food out of barrels (in piles or out): empty barrels wanted for it past this...
+    "food_store_per_container": 10,       # ...one per this many items...
+    "food_store_containers_max": 20,      # ...at most
+    "food_store_rot_rise_min": 10,        # rotten food risen this much within the window: said, cats kept
+    "food_store_rot_window_days": 28,
+    "food_store_cooldown_ticks": 3 * 1200,
+    "food_barrels_cooldown_ticks": 1200,
+    "food_store_level_cooldown_ticks": 28 * 1200,
 }

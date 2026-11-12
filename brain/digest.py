@@ -155,6 +155,7 @@ SECTION_DEFAULTS = {
     "cleanup": {},           # (0.105.40) world cleanup: unreachable items and creatures, spatter, dead units (lua/ai-cleanup.lua)
     "insane": {},            # (0.105.40b) the insane, the deadly ground near them, the AI's doors locked, the near-breaking (lua/ai-insane.lua)
     "hauling": {},           # (0.105.40 M5) haul jobs waiting, haulers, key workers hauling (lua/ai-hauling.lua)
+    "food_store": {},        # (0.105.40b, M6) food piles, their barrels and fullness, food out of piles, rotten (lua/ai-food-store.lua)
 }
 # (0.105.36) not REQUIRED (the plan goes on without them), but a missing one is
 # listed in _errors as a failed one is: the default (civ_alert False) is not
@@ -277,6 +278,16 @@ def hauling_line(s: dict) -> str:
     hauling_line); "" without a hauling section."""
     try:
         from planner_hauling import hauling_line as _line
+        return _line(s)
+    except Exception:  # noqa: BLE001  (a digest line never stops the digest)
+        return ""
+
+
+def food_line(s: dict) -> str:
+    """(0.105.40b, M6) The food store in one line (brain/planner_food.py
+    food_line); "" without a food_store section."""
+    try:
+        from planner_food import food_line as _line
         return _line(s)
     except Exception:  # noqa: BLE001  (a digest line never stops the digest)
         return ""
@@ -590,7 +601,7 @@ def digest(s: dict, news: int = 5) -> str:
     ]
 
     for extra in (threat_line(s), world_line(s), infection_line(s), built_line(s), gate_split_line(s), water_line(s),
-                  missions_line(s), perf_line(s), cleanup_line(s), hauling_line(s)):
+                  missions_line(s), perf_line(s), cleanup_line(s), hauling_line(s), food_line(s)):
         if extra:
             lines.append(extra)
     m = _d(s.get("map"))

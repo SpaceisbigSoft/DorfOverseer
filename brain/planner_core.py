@@ -176,6 +176,7 @@ class Memory:
     world_seen: dict = field(default_factory=dict)       # (0.105.0) grudges (civs that besieged us), export wishes, contact said
     missions_seen: dict = field(default_factory=dict)    # (0.105.39) missions followed out and back, counts, journal entries
     cleanup_seen: dict = field(default_factory=dict)     # (0.105.40) world cleanup: the dry runs done per kind, the counts removed
+    food_store_seen: dict = field(default_factory=dict)  # (0.105.40b, M6) the rotten food followed: {since, low, rotten, rise, rise_tick}
     polished_upto: int | None = None                     # finished-level count when every level was found polished
     no_effect: dict = field(default_factory=dict)        # (0.105.24) action key -> {reason, n, tick}: done for the same reason again
     story_season: str = ""                                # the last season the AI-written chronicle told ("y<year> <season>")
@@ -1397,6 +1398,7 @@ AGENDA_THEMES = {
     "stuck_order": "clear stuck work", "unsuspend": "resume suspended work", "stray_gear": "hand out lost gear", "assign_weapons": "arm the soldiers", "assign_kit": "armour the soldiers", "soldier_swap": "let the keen train", "temple_chest": "a chest for the temple", "instrument_orders": "clear the instrument backlog", "pair_chairs": "seat dwarves together", "recreation": "time off for the unhappiest", "hospital_burrow": "keep the wounded in the hospital", "calm_burrow": "keep a tantrum away from the others", "dairy": "milk and cheese", "eggs": "nest boxes for the hens", "war_animals": "train war animals", "gate_guard": "hold the gate", "gate_dogs": "war dogs at the gate", "gem_cutting": "cut the rough gems", "stairwell": "a new stairwell", "animal_trainer": "an animal trainer", "nest_box_order": "make nest boxes", "library_chest": "a chest for the library", "orphan_jobs": "clear jobs whose order is gone", "slabs_free": "free the memorial slabs", "water_traffic": "keep paths off the ice", "jail_size": "a bigger jail", "jail_more": "another jail", "break_fights": "break up the fights among the fort's own", "burial": "bury the dead", "rooms": "mend the rooms' walls", "coffins": "coffins for the tombs", "order_slots": "free the workshop's order slots", "fat_ban": "keep fat for soap", "jail_urgent": "a jail against the beatings", "tavern_urgent": "a tavern for company", "quarry": "quarry stone", "cloth": "weave cloth",
 }
 AGENDA_THEMES["vermin"] = "keep cats against the vermin"     # (0.104.168)
+AGENDA_THEMES["food_store"] = AGENDA_THEMES["food_barrels"] = AGENDA_THEMES["food_store_level"] = "keep the food from rotting"   # (0.105.40b)
 AGENDA_THEMES["traction_rest"] = "care for the injured"       # (0.105.24)
 
 AGENDA_THEMES["cups_home"] = "shoes and cups for the fort"      # (0.104.168)
