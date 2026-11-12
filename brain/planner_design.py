@@ -228,7 +228,10 @@ def keep_language(s: dict, traits: dict, memory, mode: str, now: int, notes: lis
             try:
                 from culture import profile_from
                 profile = profile_from(traits, history)
-                revised, changes = design_rules.revise_for_era(lang, profile, history)
+                # (E4) the citizens now (migrants and all) bend the era's revision
+                taste = s.get("citizens_taste") if isinstance(s.get("citizens_taste"), dict) else None
+                revised, changes = design_rules.revise_for_era(lang, profile, history,
+                                                               *((taste,) if taste else ()))
                 new = design.revise(lang, revised, changes) if changes else lang
             except Exception as e:  # noqa: BLE001
                 notes.append(f"design: the era's revision failed ({type(e).__name__}); the language stays")

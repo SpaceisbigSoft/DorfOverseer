@@ -570,6 +570,8 @@ def short(a: dict) -> str:
     if t == "house_dwarves":     # (0.104.168)
         return ("move stressed dwarves to rooms they like better" if not a.get("house")
                 else "one bedroom per household (couples together, a room for those with none)")
+    if t == "furnish_liked":     # (E4)
+        return "furnish citizens' rooms with pieces they like"
     if t == "remove_workshops":
         return f"take down extra {a.get('kind')} workshops"
     if t == "trim_gathering":

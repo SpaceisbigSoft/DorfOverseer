@@ -6,6 +6,21 @@ design-track.md section 3). Pure logic, no tokens, no game access.
     lang, changes = revise_for_era(lang, profile, history)
     text  = brief_text(facts)                         the D1 brief (game text quoted)
     sid   = pick_site(sites, kind, lang)              a script's choice of landmark site
+    tf    = taste_facts(section)                      (E4) the citizens' summed taste
+
+(E4) The citizens' taste (the report's citizens_taste section: each
+grown-up's values, dreams, traits and likes, summed by lua/ai-homes.lua)
+bends the language too, when it is in the state: a leaning held by a
+quarter of the grown-ups or more pulls the motif (nature the tree, craft the
+hammer, martial the shield...), takes the first place among the emphasised
+level kinds (nature the gardens, craft the workshops as showpieces, martial
+the barracks), and many nature lovers open the halls (scale) and wish for a
+garden court, many warriors put the barracks by the gate; a favourite
+material or creature brings its motif (a gem the star, gold the sun, a
+serpent the serpent...) and a favourite stone on hand is the signature. An
+era's revision follows the taste as migrants change it (the emphasis, the
+barracks by the gate, the garden court). With no such section, nothing
+changes.
 
 Each preset has a hand-written base (PRESET_BASE). The sliders pick the
 nearest base (by cosine, with the fort's own and the site's leanings, so a
@@ -170,6 +185,36 @@ MOTIF_WORDS = {"flame": ["Ember", "Forge"], "wave": ["Tide", "River"], "eye": ["
                "tree": ["Root", "Leaf"], "mountain": ["Peak", "Crag"], "serpent": ["Coil", "Venom"],
                "key": ["Lock", "Gate"], "ring": ["Circle", "Bond"], "spiral": ["Turning", "Coil"],
                "cross": ["Crossing", "Mercy"]}
+
+
+# (E4) the citizens' taste (lua/ai-homes.lua citizens_taste's leanings)
+TASTE_MIN = 5                # grown-ups before their taste bends the language
+TASTE_SHARE = 0.25           # a leaning held by this share of them counts
+TASTE_LIKE_SHARE = 0.15      # a favourite material or creature: liked by this share (3 at least)
+W_TASTE, W_TASTE_LIKE = 2.0, 1.0
+TASTE_LEANINGS = ("nature", "craft", "art", "martial", "rule", "family", "social", "quiet", "knowledge",
+                  "commerce", "peace")
+TASTE_MOTIF = {"nature": "tree", "craft": "hammer", "art": "star", "martial": "shield", "rule": "key",
+               "family": "ring", "social": "ring", "quiet": "moon", "knowledge": "eye", "commerce": "star",
+               "peace": "cross"}
+TASTE_EMPHASIS = {"nature": "garden", "craft": "workshops", "art": "workshops", "martial": "barracks",
+                  "rule": "dining", "family": "bedrooms", "social": "tavern", "quiet": "library",
+                  "knowledge": "library", "commerce": "tavern", "peace": "temple"}
+TASTE_WHY = {"nature": "its citizens' love of green things", "craft": "its crafters' pride",
+             "art": "its artists", "martial": "its warriors", "rule": "its would-be rulers",
+             "family": "its families", "social": "its merry citizens", "quiet": "its quiet souls",
+             "knowledge": "its scholars", "commerce": "its traders", "peace": "its peacemakers"}
+# a favourite creature's token (a word in it) -> motif
+CREATURE_MOTIF = (("SERPENT", "serpent"), ("SNAKE", "serpent"), ("VIPER", "serpent"), ("ADDER", "serpent"),
+                  ("COBRA", "serpent"), ("PYTHON", "serpent"), ("DRAGON", "flame"), ("FIRE", "flame"),
+                  ("FISH", "wave"), ("CARP", "wave"), ("SHARK", "wave"), ("WHALE", "wave"), ("EEL", "wave"),
+                  ("OCTOPUS", "wave"), ("TURTLE", "wave"), ("OWL", "moon"), ("BAT", "moon"), ("WOLF", "moon"),
+                  ("EAGLE", "sun"), ("HAWK", "sun"), ("LION", "sun"), ("PEACOCK", "star"), ("BEE", "tree"),
+                  ("DEER", "tree"), ("ELK", "tree"), ("BEAR", "mountain"), ("GOAT", "mountain"),
+                  ("MOLE", "mountain"))
+METAL_MOTIF = {"GOLD": "sun", "SILVER": "moon", "COPPER": "flame", "IRON": "hammer", "STEEL": "hammer",
+               "PLATINUM": "star", "ADAMANTINE": "star"}
+MATERIAL_KIND_MOTIF = {"gem": "star", "wood": "tree", "glass": "star"}
 
 
 # --- small helpers -------------------------------------------------------------------------
@@ -347,7 +392,80 @@ def world_facts(state: dict | None, history: dict | None, survey: dict | None = 
     cur = _d(h.get("design")).get("lang")
     if isinstance(cur, dict):
         f["current"] = {k: cur.get(k) for k in ("name", "motif", "hall", "arms") if cur.get(k) is not None}
+    # (E4) the citizens' taste, when the report has it (else no key at all)
+    tf = taste_facts(s.get("citizens_taste"))
+    if tf:
+        f["taste"] = tf
     return f
+
+
+def taste_facts(section: dict | None) -> dict | None:
+    """(E4) The citizens' taste, for the rules and the brief: None when the
+    section is missing, failed or counts no grown-up. {adults, shares
+    {leaning: 0..1}, place {kind: n}, materials [{token, name, kind, n}],
+    creatures [{token, name, n}], dreams [[name, n]] (top 3)}."""
+    t = _d(section)
+    adults = _int(t.get("adults"))
+    if adults <= 0 or "error" in t:
+        return None
+    lean = _d(t.get("leanings"))
+    shares = {k: round(_clamp(_int(lean.get(k)) / adults, 0.0, 1.0), 3) for k in TASTE_LEANINGS if _int(lean.get(k)) > 0}
+    likes = _d(t.get("likes"))
+
+    def likes_of(key, n=3):
+        out = []
+        for e in _l(likes.get(key))[:n]:
+            e = _d(e)
+            tok = re.sub(r"[^A-Za-z0-9_:]", "", str(e.get("token") or ""))[:40]
+            if tok and _int(e.get("n")) > 0:
+                r = {"token": tok, "name": game_text(e.get("name") or tok, 30), "n": _int(e.get("n"))}
+                if key == "materials":
+                    r["kind"] = e.get("kind") if e.get("kind") in ("stone", "metal", "gem", "glass", "wood") else "other"
+                out.append(r)
+        return out
+    dreams = sorted(((re.sub(r"[^A-Z_]", "", str(k))[:40], _int(v)) for k, v in _d(t.get("dreams")).items()
+                     if _int(v) > 0), key=lambda kv: (-kv[1], kv[0]))[:3]
+    return {"adults": adults, "shares": shares,
+            "place": {k: _int(v) for k, v in sorted(_d(t.get("place")).items()) if isinstance(k, str) and _int(v) > 0},
+            "materials": likes_of("materials"), "creatures": likes_of("creatures"),
+            "dreams": [[k, v] for k, v in dreams if k]}
+
+
+def _taste_leaders(tf: dict | None) -> list:
+    """The leanings held by TASTE_SHARE of the grown-ups or more, strongest
+    first (ties by name); none below TASTE_MIN grown-ups."""
+    if not tf or _int(tf.get("adults")) < TASTE_MIN:
+        return []
+    sh = _d(tf.get("shares"))
+    return [k for k, v in sorted(sh.items(), key=lambda kv: (-_num(kv[1]), kv[0])) if _num(v) >= TASTE_SHARE]
+
+
+def _favourite(tf: dict | None, key: str) -> dict | None:
+    """The most liked material or creature, when TASTE_LIKE_SHARE of the
+    grown-ups (3 at least) like it."""
+    if not tf or _int(tf.get("adults")) < TASTE_MIN:
+        return None
+    need = max(3, math.ceil(TASTE_LIKE_SHARE * _int(tf["adults"])))
+    first = next(iter(_l(tf.get(key))), None)
+    return first if first and _int(first.get("n")) >= need else None
+
+
+def _favourite_motif(tf: dict | None) -> list:
+    """[(motif, why)] from the favourite creature and material."""
+    out = []
+    c = _favourite(tf, "creatures")
+    if c:
+        tok = str(c.get("token") or "").upper()
+        m = next((mo for word, mo in CREATURE_MOTIF if word in tok), None)
+        if m:
+            out.append((m, "the creature its citizens love"))
+    mat = _favourite(tf, "materials")
+    if mat:
+        tok = str(mat.get("token") or "").upper().split(":")[-1]
+        m = METAL_MOTIF.get(tok) if mat.get("kind") == "metal" else MATERIAL_KIND_MOTIF.get(mat.get("kind"))
+        if m:
+            out.append((m, "the material its citizens love"))
+    return out
 
 
 def brief_names(facts: dict) -> set:
@@ -438,9 +556,24 @@ def rule_language(traits: dict | None, history: dict | None, state: dict | None,
     for qid in facts["quirks"]:
         if qid in QUIRK_MOTIF:
             add(QUIRK_MOTIF[qid], W_QUIRK)
+    # (E4) the citizens' taste: their leanings and their favourites
+    tf = facts.get("taste")
+    leaders = _taste_leaders(tf)
+    taste_why = {}
+    for k in leaders:
+        m = TASTE_MOTIF.get(k)
+        if m:
+            add(m, W_TASTE * min(1.0, 2 * _num(_d(tf["shares"]).get(k))))
+            taste_why.setdefault(m, TASTE_WHY[k])
+    for m, w_ in _favourite_motif(tf):
+        add(m, W_TASTE_LIKE)
+        taste_why.setdefault(m, w_)
     motif = _pick(scores, seed, "motif") or base["motif"]
     if motif != base["motif"]:
-        why.append({"flame": "magma below", "wave": "a river by the gate", "eye": "a cavern close under",
+        why.append(taste_why.get(motif) if motif in taste_why and not (
+            (motif == "flame" and facts["magma"]) or (motif == "wave" and facts["river"])
+            or (motif == "eye" and facts["cavern_near"]) or (motif == "shield" and facts["sieges"])) else
+                   {"flame": "magma below", "wave": "a river by the gate", "eye": "a cavern close under",
                     "shield": "sieges endured"}.get(motif, f"the {motif} of its gods and ways"))
 
     # the hall: the base's, unless the base barely pulls: then the seed among the new shapes
@@ -458,6 +591,8 @@ def rule_language(traits: dict | None, history: dict | None, state: dict | None,
 
     # scale: the base, bent by Grandeur and Room size, within 80-150
     scale = _clamp(int(base["scale"] + _num(traits.get("grandeur")) / 10 + _num(traits.get("size")) / 10), 80, 150)
+    if "nature" in leaders:
+        scale = _clamp(scale + 10, 80, 150)        # (E4) open halls for the nature lovers
 
     # finish: within +-1 of the sliders' profile (the slider window)
     fin = dict(base["finish"])
@@ -473,9 +608,13 @@ def rule_language(traits: dict | None, history: dict | None, state: dict | None,
     mat = copy.deepcopy(base["materials"])
     ok = [st for st in facts["stones"] if st["count"] >= SIGNATURE_NEED]
     if ok:
-        mat["signature"] = ok[0]["token"]
-        if mat.get("palette") == "any" and ok[0].get("tone"):
-            mat["palette"] = ok[0]["tone"]
+        # (E4) the citizens' favourite stone, when 20+ of it is on hand
+        fav = _favourite(tf, "materials")
+        sig = next((st for st in ok if fav and fav.get("kind") == "stone"
+                    and str(fav.get("token")).upper().split(":")[-1] == st["token"].upper().split(":")[-1]), ok[0])
+        mat["signature"] = sig["token"]
+        if mat.get("palette") == "any" and sig.get("tone"):
+            mat["palette"] = sig["tone"]
     if "stonebound" in facts["quirks"]:
         mat["blocks"] = True
     mat["by_kind"] = dict(list(_d(mat.get("by_kind")).items())[:6])
@@ -487,6 +626,13 @@ def rule_language(traits: dict | None, history: dict | None, state: dict | None,
         k = QUIRK_EMPHASIS.get(qid)
         if k and k not in emph:
             emph.append(k)
+    # (E4) the citizens' leading leaning takes the first place (its levels grand)
+    if leaders:
+        k = TASTE_EMPHASIS.get(leaders[0])
+        if k:
+            emph = [k] + [e for e in emph if e != k]
+    if "martial" in leaders and "gate_barracks" not in cust and len(cust) < 3:
+        cust.append("gate_barracks")               # the barracks in pride of place, by the gate
     emph = emph[:3]
 
     # naming: the base's tone and words, the motif's words, the signature stone
@@ -528,6 +674,8 @@ def rule_language(traits: dict | None, history: dict | None, state: dict | None,
     for qid in facts["quirks"]:
         if qid in QUIRK_LANDMARK:
             wish(QUIRK_LANDMARK[qid])
+    if "nature" in leaders:
+        wish("garden_court", None, "for the fort's nature lovers")
 
     eras = len(_l(history.get("eras")))
     story = ("A fort " + ", ".join(why) + f", in the sign of the {motif}.")[:200]
@@ -553,11 +701,15 @@ def rules_key(traits: dict | None, history: dict | None, state: dict | None, see
     return hashlib.sha256(repr(keep).encode()).hexdigest()[:16]
 
 
-def revise_for_era(lang: dict, profile: dict | None, history: dict | None) -> tuple[dict, list]:
+def revise_for_era(lang: dict, profile: dict | None, history: dict | None,
+                   taste: dict | None = None) -> tuple[dict, list]:
     """An era's revision by rules: the finish follows the new era's profile
     (within the window), sieges since bring the shield, a newly slain beast a
     chronicle hall; the era moves on. Returns (the new language, the fields
-    changed); design.revise keeps everything else."""
+    changed); design.revise keeps everything else.
+    (E4) `taste`: the report's citizens_taste section (the citizens now,
+    migrants and all): its leading leaning takes the first emphasis, many
+    warriors the barracks by the gate, many nature lovers a garden court."""
     old = _d(lang)
     new = copy.deepcopy(old)
     h, p = _d(history), _d(profile)
@@ -580,9 +732,25 @@ def revise_for_era(lang: dict, profile: dict | None, history: dict | None) -> tu
                 wishes.pop(0)
             wishes.append({"kind": "chronicle_hall", "for": b, "words": "the fall of the beast"})
             have.add(b)
+    leaders = _taste_leaders(taste_facts(taste)) if taste is not None else []
+    if "nature" in leaders and not any(w_.get("kind") == "garden_court" for w_ in wishes):
+        if len(wishes) >= 4:
+            wishes.pop(0)
+        wishes.append({"kind": "garden_court", "words": "for the fort's nature lovers"})
     if wishes != _l(old.get("landmarks")):
         new["landmarks"] = wishes
         changed.append("landmarks")
+    if leaders:
+        k = TASTE_EMPHASIS.get(leaders[0])
+        emph = [e for e in _l(old.get("emphasis")) if isinstance(e, str)]
+        if k and (not emph or emph[0] != k):
+            emph = ([k] + [e for e in emph if e != k])[:3]
+            new["emphasis"] = emph
+            changed.append("emphasis")
+        cust = [c for c in _l(old.get("customs")) if isinstance(c, str)]
+        if "martial" in leaders and "gate_barracks" not in cust and len(cust) < 3:
+            new["customs"] = cust + ["gate_barracks"]
+            changed.append("customs")
     if "motif" in changed:
         tone = _d(old.get("naming")).get("tone") or "plain"
         adjs = TONE_ADJ.get(tone, TONE_ADJ["plain"])
@@ -645,6 +813,21 @@ def brief_text(facts: dict) -> str:
         lines.append("PETITIONS: " + "; ".join(game_text(p_, 60) for p_ in _l(f.get("petitions"))[:4]))
     if _d(f.get("current")):
         lines.append("CURRENT LANGUAGE: " + ", ".join(f"{k} {_q(v)}" for k, v in _d(f.get("current")).items()))
+    tf = _d(f.get("taste"))
+    if tf:
+        bits = [f"{int(tf.get('adults') or 0)} grown-ups"]
+        sh = sorted(_d(tf.get("shares")).items(), key=lambda kv: (-_num(kv[1]), kv[0]))[:5]
+        if sh:
+            bits.append("leanings " + ", ".join(f"{game_text(k, 12)} {int(round(_num(v) * 100))}%" for k, v in sh))
+        for key, label in (("materials", "liked materials"), ("creatures", "liked creatures")):
+            ls = [f"{_q(e.get('name'), 24)} {int(e.get('n') or 0)}" for e in _l(tf.get(key))[:3] if isinstance(e, dict)]
+            if ls:
+                bits.append(label + " " + ", ".join(ls))
+        ds = [f"{game_text(k, 30).lower().replace('_', ' ')} {int(n)}" for k, n in _l(tf.get("dreams"))[:3]
+              if isinstance(k, str)]
+        if ds:
+            bits.append("dreams " + ", ".join(ds))
+        lines.append("CITIZENS: " + "; ".join(bits))
     out = []
     n = 0
     for ln in lines:

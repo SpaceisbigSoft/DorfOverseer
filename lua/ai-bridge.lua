@@ -249,6 +249,7 @@ ACTIONS = {
     idle_crafting = act_idle_crafting,
     give_trinkets = act_give_trinkets,
     house_dwarves = act_house_dwarves,   -- (0.104.168)
+    furnish_liked = act_furnish_liked,   -- (E4) a piece a dwarf likes in their own room
     staff_location = act_staff_location,
     add_posts = act_add_posts,
     staff_labors = act_staff_labors,
@@ -362,7 +363,7 @@ for _, name in ipairs({
     'assign_kit', 'assign_quivers', 'assign_weapons', 'bench_jobs', 'bootstrap_chair', 'break_fights',
     'build_crossing', 'build_gatehouse', 'calm_burrow', 'clear_orphan_jobs', 'clear_webs', 'close_meeting',
     'cut_entrance', 'dig_stairwell', 'fire_guard', 'fix_gear_gaps', 'free_slabs', 'free_stray_gear',
-    'gate_dogs', 'guard_gate', 'hospital_burrow', 'house_dwarves', 'join_levels', 'keep_mousers',
+    'gate_dogs', 'guard_gate', 'hospital_burrow', 'house_dwarves', 'furnish_liked', 'join_levels', 'keep_mousers',
     'kitchen_fat', 'ledger_set', 'location_access', 'mark_run', 'mood_free_items', 'moon_cell', 'nest_boxes',
     'order_instrument', 'order_slots', 'pair_chairs', 'place_gate_lever', 'prisoner_room', 'prune_remains',
     'quick_location', 'recreation', 'remove_crossing', 'remove_webs', 'repair_rooms', 'rest_infected',
@@ -730,6 +731,8 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
     noble_rooms = function() return safe(function() return reqscript('ai-nobles').rooms_survey(txt) end) end,
     -- (0.104.168) the households: who has a bedroom, couples in one room or two, who slept rough (lua/ai-homes.lua)
     homes = function() return safe(function() return reqscript('ai-homes').census(nil, txt) end) end,
+    -- (E4) the citizens' personalities, dreams and likes, summed (lua/ai-homes.lua citizens_taste)
+    citizens_taste = function() return safe(function() return reqscript('ai-homes').citizens_taste(nil, txt) end) end,
     tools = function() return safe(get_tools) end,
     -- the player's settings from the control panel (gui/ai-overseer)
     settings = function()
@@ -779,6 +782,7 @@ SECTION_CACHE_DAYS = {logistics = 3, industry = 7,   -- industry: 300-450 ms liv
     room_gaps = 3, planned = 1, needs = 1, registry = 3, noble_rooms = 3, locations = 2, petitions = 2, diplomacy = 7, crossings = 7,
     missions = 1,   -- (0.104.95) every world site walked
     homes = 1,      -- (0.104.168) each citizen's thoughts and every bedroom zone read
+    citizens_taste = 3,   -- (E4) each citizen's soul and the free furniture read
     disposal = 1}   -- (0.105.27) every item in play walked once for the marks
 SECTION_CACHE_DAYS.constructions = 3   -- (0.105.30) every built tile walked once
 SECTION_REBUILDS = 2       -- expired cached sections rebuilt in one report (a missing one always is)
@@ -803,6 +807,7 @@ CACHE_INVALIDATES = {
     feeder_pile = {'logistics'},
     add_doctor_post = {'locations'},   -- (0.104.168)
     house_dwarves = {'homes', 'noble_rooms'},   -- (0.104.168)
+    furnish_liked = {'homes', 'citizens_taste'},   -- (E4)
 }
 CACHE_INVALIDATES.set_farm_crops = {'farms'}   -- (0.105.5) the plots' crops read again
 CACHE_INVALIDATES.accept_cups = {'needs'}       -- (0.104.168) the cups census shows what it changed
