@@ -335,10 +335,41 @@ end
 -- skipped, and the rest are tried nearest the water first, so the longer
 -- reach costs no more time. The refusal says how far the water was.
 -- (13c) Out of time with nothing found: nil, 'search cut short: ...', true.
+-- (0.105.38) The tunnel's reach when the survey found no still water near
+-- enough for it: the cheapest still, fresh body further off on the whole map
+-- (its reach estimate through safe rock, else its distance), up to the map's
+-- width (CISTERN_FAR_REACH, the brain's water_far_reach, when set). nil: the
+-- asked reach stands (water near enough, or none further off), so a fort
+-- with water near plans as before. The tunnel is dug CISTERN_SEGMENT tiles
+-- at a time.
+CISTERN_FAR_REACH = nil
+CISTERN_SEGMENT = 40
+function cistern_far_len(maxlen)
+    local okw, w = pcall(function() return reqscript('ai-water').last() end)
+    if not okw or type(w) ~= 'table' or type(w.waters) ~= 'table' then return nil end
+    for _, b in ipairs(type(w.bodies) == 'table' and w.bodies or {}) do
+        if b.kind ~= 'river' and b.kind ~= 'cavern' and type(b.nearest) == 'table'
+                and (tonumber(b.nearest.d) or math.huge) <= maxlen + CISTERN_HALF + 2 then return nil end
+    end
+    local m = type(w.map) == 'table' and math.tointeger(tonumber(w.map.w)) or 192
+    local cap = math.tointeger(tonumber(CISTERN_FAR_REACH))
+    if not cap or cap <= 0 then cap = m end
+    local best
+    for _, b in ipairs(w.waters) do
+        if type(b) == 'table' and b.flow == 'stagnant' and (tonumber(b.salt_share) or 0) == 0 and type(b.nearest) == 'table' then
+            local cost = tonumber(b.reach) or tonumber(b.d)
+            if cost and cost > maxlen and cost <= cap and (not best or cost < best) then best = cost end
+        end
+    end
+    return best and math.min(cap, math.tointeger(best) + CISTERN_HALF + 4) or nil
+end
+
 function plan_cistern(first, last, opts)
     opts = type(opts) == 'table' and opts or {}
     local maxlen = math.tointeger(tonumber(opts.tunnel)) or CISTERN_MAX_TUNNEL
     if maxlen < 2 then maxlen = CISTERN_MAX_TUNNEL end
+    local okf, far_len = pcall(cistern_far_len, maxlen)
+    if okf and far_len and far_len > maxlen then maxlen = far_len end
     local area = fort_scan_area(math.max(CISTERN_RADIUS, maxlen + CISTERN_HALF + 2))
     if not area then return nil, 'no citizens' end
     local prefs = cistern_prefs()
@@ -356,6 +387,14 @@ function plan_cistern(first, last, opts)
         for _, b in ipairs(wl.bodies) do
             if b.kind ~= 'river' and tonumber(b.z1) and tonumber(b.z2) then
                 for zz = b.z1, b.z2 do wet_levels[zz] = true end
+            end
+        end
+        -- (0.105.38) a reach grown past the near box: the whole map's still water's levels too
+        if okf and far_len then
+            for _, b in ipairs(type(wl.waters) == 'table' and wl.waters or {}) do
+                if type(b) == 'table' and b.flow == 'stagnant' and tonumber(b.z1) and tonumber(b.z2) then
+                    for zz = b.z1, b.z2 do wet_levels[zz] = true end
+                end
             end
         end
     end
@@ -1280,9 +1319,13 @@ function cistern_step(dry_run, prefs, tunnel)
             if not (c.x == wx and c.y == wy) then table.insert(room, {x = c.x, y = c.y, text = 'd'}) end
         end
         local tunnel = {}
-        for i = 1, #p.tunnel_path - 1 do
+        -- (0.105.38) a long tunnel a segment at a time (from the cistern out)
+        local tn = #p.tunnel_path - 1
+        local first_seg = tn > CISTERN_SEGMENT and CISTERN_SEGMENT or tn
+        for i = 1, first_seg do
             table.insert(tunnel, {x = p.tunnel_path[i].x, y = p.tunnel_path[i].y, text = 'd'})
         end
+        if tn > first_seg then d.tseg = first_seg end
         if not designate({{x = wx, y = wy, text = 'j'}}, zw, 'dig')
                 or not designate({{x = wx, y = wy, text = 'u'}}, z, 'dig')
                 or not designate(room, z, 'dig') or (#tunnel > 0 and not designate(tunnel, zi, 'dig')) then
@@ -1306,9 +1349,32 @@ function cistern_step(dry_run, prefs, tunnel)
             local t = tile_info(c.x, c.y, z)
             if t and t.shape == 'WALL' then left = left + 1 end
         end
-        for i = 1, #p.tunnel_path - 1 do
+        local tdone = d.tseg or (#p.tunnel_path - 1)       -- (0.105.38) the tunnel designated so far
+        for i = 1, tdone do
             local t = tile_info(p.tunnel_path[i].x, p.tunnel_path[i].y, zi)
             if t and t.shape == 'WALL' then left = left + 1 end
+        end
+        if left == 0 and tdone < #p.tunnel_path - 1 then
+            -- the segment dug: the next one, its rock checked again first
+            -- (solid, no water, aquifer or cavern; the plug's tile stays)
+            local nxt = math.min(#p.tunnel_path - 1, tdone + CISTERN_SEGMENT)
+            local cells = {}
+            for i = tdone + 1, nxt do
+                local q = p.tunnel_path[i]
+                local t = tile_info(q.x, q.y, zi)
+                if not (t and t.shape ~= 'WALL' or solid_rock(t)) then
+                    return wait(('the tunnel\'s next stretch is no longer solid rock at x%d y%d (water, an aquifer '
+                                 .. 'or a cavern): not dug further'):format(q.x, q.y))
+                end
+                table.insert(cells, {x = q.x, y = q.y, text = 'd'})
+            end
+            if dry_run then return {ok = true, dry_run = true, stage = 'digging', tunnel_dug = tdone} end
+            if not designate(cells, zi, 'dig') then
+                return {ok = false, error = 'the game would not designate the cistern\'s tunnel'}
+            end
+            d.tseg = nxt < #p.tunnel_path - 1 and nxt or nil
+            save_cistern(d)
+            return wait(('the cistern\'s tunnel: %d of %d tile(s) designated'):format(nxt, #p.tunnel_path - 1))
         end
         if p.shaft then
             for zz = z, zi do

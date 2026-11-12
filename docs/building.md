@@ -222,6 +222,27 @@ further, each still bounded and with the same safety checks:
 
 Each refusal says how far the water was, so the log shows what limited it.
 
+(0.105.38) **The whole map.** The water survey reads every x and y, from
+the surface down to the magma sea's top, a slice of blocks a call (0.15 s
+at most), and lists every body it finds (river, brook, lake, pond, pool,
+sea, cavern, aquifer, magma by kind: pipe, volcano, a cavern's pool, the
+sea) with its nearest tile, its highest tile, and a reach estimate: the
+length of a dig from the fort's middle through safe rock, or why there is
+none (`opens_cavern`, `aquifer`). The keys above stay the near reach, tried
+first as before; when nothing near will do, each work weighs the far bodies
+by the dig's length (cheapest first; a magma pipe before the magma sea):
+a moat's long feed channel, a water wheel's long axle run, a farm room's
+long tunnel, a cistern tunnel out to a far pool, a well on a far bank the
+dwarves can walk to, a magma workshop over a far pipe (a tunnel joins its
+stair to the fort). Every safety rule holds along the whole length (no
+cavern, aquifer or magma on the way; the floodgate at the source's end; the
+dry run, walked again before each segment of a long dig). A way that opens
+a cavern only with the cavern switch's leave (Never / Always / AI decides).
+- `water_far_reach` = 0: a far source this many tiles off at most (0: the
+  map's width).
+- `water_job_max` = 600: tiles a far work digs and builds in all at most.
+- `water_dig_segment` = 40: a long dig designated this many tiles a step.
+
 ## Pastures
 
 Grazers eat living grass (dead grass doesn't feed them; eaten grass grows

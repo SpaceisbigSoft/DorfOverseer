@@ -682,6 +682,13 @@ PLANNER_CONFIG = {
     "cavern_well_gallery": 80,         # a tunnel this long at most out to a column over the cavern lake (0: none)
     "well_shore_reach": 60,            # a well on a pond's bank this far from a surface gate (40 before)
     "cistern_tunnel_max": 70,          # the cistern's tunnel to still water this long at most (30 before)
+    # (0.105.38) far sources (the player, 12 Nov: the whole map, not only near
+    # the fort). The keys above stay the near reach, tried first as before;
+    # past them each work weighs the whole-map survey's bodies by the dig's
+    # length (cheapest first) up to these:
+    "water_far_reach": 0,              # tiles a far source may lie off at most (0: the map's width)
+    "water_job_max": 600,              # tiles a far water work digs and builds in all at most
+    "water_dig_segment": 40,           # a long dig designated this many tiles a step (the dry run walked again before each)
     "new_pasture_cooldown_ticks": 3 * 1200,
     "pasture_margin": 1.25,        # a new pasture: the waiting herd's grass x this (x more at high Husbandry)
     "well_parts_days": 3,          # a well waiting this long for parts: say what to make

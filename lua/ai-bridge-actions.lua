@@ -409,13 +409,16 @@ function act_place_well(a)
     end
     local gallery = whole_number(a.gallery)
     local reach = whole_number(a.shore_reach)
+    -- (0.105.38) a far bank: up to the brain's water_far_reach, else the map's width
+    far_reach_of(a)
+    local map_w = math.max(100, map_width())
     return reqscript('ai-builder').place_well({inside_only = a.inside_only == true, cavern = a.cavern == true,
                                                urgent = a.urgent == true,
                                                -- (0.105.4 review) a cavern nobody has found: the Rules tab's say
                                                open_caverns = a.open_caverns == true,
                                                gallery = gallery and math.max(0, math.min(gallery, 80)) or nil,
                                                toward = toward,
-                                               shore_reach = reach and math.max(0, math.min(reach, 100)) or nil},
+                                               shore_reach = reach and math.max(0, math.min(reach, map_w)) or nil},
                                               get_date(), a.dry_run == true)
 end
 
@@ -2216,6 +2219,23 @@ function act_idle_crafting(a)
     return reqscript('ai-society').idle_crafting(a.dry_run == true)
 end
 
+-- (0.105.38) the map's width (at least 80): a far source's reach at most
+-- (the old fixed caps were 80 and 100 tiles)
+function map_width()
+    local ok, w = pcall(function() return (dfhack.maps.getTileSize()) end)
+    return math.max(80, ok and math.tointeger(w) or 80)
+end
+
+-- (0.105.38) the brain's water_far_reach for the cistern's and the shore well's far sources
+function far_reach_of(a)
+    local r = whole_number(a.far_reach)
+    pcall(function()
+        local B = reqscript('ai-builder')
+        B.CISTERN_FAR_REACH = r
+        B.SHORE_FAR_REACH = r
+    end)
+end
+
 -- Survey the water near the fort (lua/ai-water.lua): kept in the save. In
 -- slices: each call scans for at most ~0.15 s and says "done = false" until
 -- the survey is finished; then the cistern plan, one fort level a call
@@ -2233,10 +2253,11 @@ function act_survey_water(a)
         return {ok = true, done = false, planning = true}
     end
     local B = reqscript('ai-builder')
+    far_reach_of(a)
     local i = WATER_PLAN.i
     -- (0.105.3) Hammerstirred (2 Nov): the brain's cistern_tunnel_max (the pool 53-66 tiles off)
     local tun = whole_number(a.tunnel)
-    local okp, plan, why = pcall(B.plan_cistern, i, i, {tunnel = tun and math.max(2, math.min(tun, 80)) or nil})
+    local okp, plan, why = pcall(B.plan_cistern, i, i, {tunnel = tun and math.max(2, math.min(tun, map_width())) or nil})
     if okp and plan and (not WATER_PLAN.best or plan.score < WATER_PLAN.best.score) then WATER_PLAN.best = plan end
     if okp and not plan and why then WATER_PLAN.why = WATER_PLAN.why or why end
     if not okp then WATER_PLAN.why = tostring(plan):sub(1, 160) end
@@ -2267,7 +2288,8 @@ function act_cistern_step(a)
                                                cavern_danger = a.prefs.cavern_danger == true} or nil
     -- (0.105.3) the tunnel's reach, as the survey planned it (Hammerstirred's pool 53-66 tiles off)
     local tun = whole_number(a.tunnel)
-    return reqscript('ai-builder').cistern_step(a.dry_run == true, prefs, tun and math.max(2, math.min(tun, 80)) or nil)
+    far_reach_of(a)
+    return reqscript('ai-builder').cistern_step(a.dry_run == true, prefs, tun and math.max(2, math.min(tun, map_width())) or nil)
 end
 
 -- (0.105.0) Water works and magma (lua/ai-waterworks.lua): one step of the
@@ -2286,6 +2308,11 @@ function act_water_work(a)
     return reqscript('ai-waterworks').step(a.kind, {dry_run = a.dry_run == true, shut = a.shut == true,
         retire = a.retire == true, shop = a.shop, plain = a.plain == true, reopen = a.reopen == true,
         source = a.source,
+        -- (0.105.38) far sources: the brain's reach (tiles; 0 or none: the map's
+        -- width), the job's size at most, a long dig's segment; and the cavern
+        -- switch's answer for magma whose way opens a cavern
+        far_reach = whole_number(a.far_reach), job_max = whole_number(a.job_max), segment = whole_number(a.segment),
+        open_caverns = a.open_caverns == true,
         why = type(a.why) == 'string' and a.why:sub(1, 120) or nil})
 end
 

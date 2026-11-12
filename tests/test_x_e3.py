@@ -575,4 +575,5 @@ def _():
     assert "GearAssembly = true" in gates
 
 
-finish()
+if __name__ == "__main__":      # (0.105.38) imported by test_r38_water.py for its fake
+    finish()

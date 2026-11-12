@@ -219,9 +219,57 @@ def normalize(s: dict) -> dict:
             if isinstance(v, dict) and "error" in v and len(v) == 1:
                 errors[f"map.{key}"] = v["error"]
                 m[key] = [] if key == "layers" else {}
+    # (0.105.38) the whole-map water survey's list: a default when absent (an
+    # older bridge or survey) or of the wrong type; a failed section stays
+    # as it came (LISTED_ONLY)
+    w = s.get("water")
+    if isinstance(w, dict) and "error" not in w:
+        for key, default in WATER_DEFAULTS.items():
+            if not isinstance(w.get(key), type(default)) or isinstance(w.get(key), bool):
+                w[key] = json.loads(json.dumps(default))
     s["_errors"] = errors
     _magma_aliases(s)
     return s
+
+
+WATER_DEFAULTS = {"waters": [], "waters_found": 0}      # (0.105.38) lua/ai-water.lua
+
+
+def water_line(s: dict) -> str:
+    """(0.105.38) The whole-map water survey in a line: the nearest flowing
+    water (its distance and the dig's reach, or why none), how many bodies,
+    the magma's kinds. "" when the survey has no whole-map list (older)."""
+    w = _d(s.get("water"))
+    waters = [b for b in _l(w.get("waters")) if isinstance(b, dict)]
+    if not waters:
+        return ""
+    off = _d(s.get("map")).get("elevation_offset")
+    off = off if isinstance(off, int) and not isinstance(off, bool) else 0
+    flowing = sorted((b for b in waters if b.get("flow") == "flowing"),
+                     key=lambda b: b.get("d") if isinstance(b.get("d"), int) else 10 ** 6)
+    if flowing:
+        b = flowing[0]
+        reach = (f"reach {b['reach']}" if isinstance(b.get("reach"), int)
+                 else "no safe dig" + (f" (opens {game_text(b.get('opens_cavern'), 20)})" if b.get("opens_cavern")
+                                       else " (aquifer)" if b.get("aquifer") else ""))
+        line = f"WATER nearest flowing: {b.get('kind')} {b.get('d')} tiles off, {reach}"
+    else:
+        line = "WATER nearest flowing: none on the map"
+    line += f" | {len(waters)} bodies listed of {_n(w.get('waters_found')) or len(waters)}"
+    mags = []
+    for b in waters:
+        if b.get("kind") != "magma":
+            continue
+        top = _d(b.get("top")).get("z")
+        bit = str(b.get("magma") or "magma")
+        if isinstance(top, int):
+            bit += f" top {top + off}"
+        if b.get("opens_cavern"):
+            bit += f" (opens {game_text(b.get('opens_cavern'), 20)})"
+        mags.append(bit)
+    if mags:
+        line += " | magma: " + ", ".join(mags[:4])
+    return line
 
 
 # (0.104.81) A magma furnace or forge does its plain twin's work: the rules
@@ -482,7 +530,7 @@ def digest(s: dict, news: int = 5) -> str:
         f" contained {o.get('contained_dangers', 0)}",
     ]
 
-    for extra in (threat_line(s), world_line(s), infection_line(s), built_line(s), gate_split_line(s)):
+    for extra in (threat_line(s), world_line(s), infection_line(s), built_line(s), gate_split_line(s), water_line(s)):
         if extra:
             lines.append(extra)
     m = _d(s.get("map"))

@@ -144,6 +144,15 @@ end
 -- tiles of an entrance (the brain's well_shore_reach) and the dwarves can
 -- walk to the bank (the same walk-group test as before).
 WELL_SHORE_NEAR = 8
+-- (0.105.38) how far a far bank may lie: the brain's water_far_reach
+-- (SHORE_FAR_REACH, set per call), else the map's width
+SHORE_FAR_REACH = nil
+function shore_far_cap(w)
+    local r = math.tointeger(tonumber(SHORE_FAR_REACH))
+    if r and r > 0 then return r end
+    local m = type(w) == 'table' and w.map or nil
+    return type(m) == 'table' and math.tointeger(tonumber(m.w)) or 192
+end
 WELL_SHORE_FAR_MAX = 3         -- (0.105.4 review) far ponds looked round at most (the nearest first)
 function find_shore_well_spot(reserved, reach)
     local entrances = pasture_anchors()
@@ -175,6 +184,24 @@ function find_shore_well_spot(reserved, reach)
         -- (0.105.4 review) the review: no cap on far ponds: the nearest 3 only
         table.sort(far, function(p, q) return p.d < q.d end)
         for i = 1, math.min(#far, WELL_SHORE_FAR_MAX) do table.insert(anchors, far[i]) end
+        -- (0.105.38) the whole-map survey's fresh surface water beyond `reach`
+        -- (up to the map's width, or the brain's water_far_reach), nearest
+        -- first: a well there only where the dwarves can walk (the walk-group
+        -- test below); further than any near bank, so a near one still wins
+        local cap = shore_far_cap(okw and w or nil)
+        local far2 = {}
+        for _, b in ipairs(okw and type(w) == 'table' and type(w.waters) == 'table' and w.waters or {}) do
+            local n = type(b) == 'table' and b.nearest or nil
+            if (b.flow == 'flowing' or (b.flow == 'stagnant' and not b.underground)) and (tonumber(b.salt_share) or 0) == 0
+                    and type(n) == 'table' and n.x and n.y and n.z then
+                local d = from_gate(n.x, n.y)
+                if d > reach and d <= cap then
+                    table.insert(far2, {x = n.x, y = n.y, z = n.z + 1, r = WELL_SHORE_NEAR, far = true, d = d})
+                end
+            end
+        end
+        table.sort(far2, function(p, q) return p.d < q.d end)
+        for i = 1, math.min(#far2, WELL_SHORE_FAR_MAX) do table.insert(anchors, far2[i]) end
     end
     local groups = {}
     for _, p in ipairs(citizen_positions()) do
