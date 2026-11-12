@@ -176,6 +176,12 @@ function cancel_pulls(lever_id)
 end
 
 function dig_now(x, y, z)
+    -- (0.105.40b) the dig guard: never raw adamantine, the spire or the underworld (nor beside them)
+    local okg, why = pcall(function() return reqscript('ai-builder').dig_forbidden(x, y, z) end)
+    if okg and why then
+        pcall(function() reqscript('ai-util').dig_refused('dig_now', x, y, z, why) end)
+        return false, why
+    end
     local pos = ('%d,%d,%d'):format(x, y, z)
     pcall(dfhack.run_command_silent, 'dig-now', pos, pos)
 end

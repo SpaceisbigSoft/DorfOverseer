@@ -574,6 +574,22 @@ end
 
 -- The report's sections: name -> function(ctx) returning that section.
 -- ctx.dwarves / ctx.units come from one get_dwarves call shared by both.
+-- (0.105.40b) the deep section's deep_hazard: around the citizens' middle,
+-- with the Rules switch mine_adamantine (reserved: still refused)
+function deep_hazard_section()
+    local near
+    pcall(function()
+        local cs = dfhack.units.getCitizens()
+        if #cs > 0 then
+            local sx, sy, sz = 0, 0, 0
+            for _, u in ipairs(cs) do sx, sy, sz = sx + u.pos.x, sy + u.pos.y, sz + u.pos.z end
+            near = {x = sx // #cs, y = sy // #cs, z = sz // #cs}
+        end
+    end)
+    local okm, mine = pcall(function() return reqscript('ai-overseer-settings').load_settings().mine_adamantine end)
+    return reqscript('ai-util').deep_hazard(near, okm and mine == true)
+end
+
 SECTIONS = {   -- (0.100) a module field: the tests swap in their own
     bridge_version = function() return BRIDGE_VERSION end,
     -- (0.105.33) the plain reads are wrapped too: one throw used to lose the whole report
@@ -609,7 +625,15 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
     buildings = function() return safe(get_buildings) end,
     jobs = function() return safe(get_jobs) end,
     others_on_map = function() return safe(get_others_on_map) end,
-    deep = function() return safe(get_deep) end,
+    -- (0.105.40b) with `deep_hazard`: raw adamantine uncovered and the dig
+    -- guard's refusals (lua/ai-util.lua deep_hazard; brain/planner_deep.py)
+    deep = function() return safe(function()
+        local d = get_deep()
+        if type(d) == 'table' then
+            pcall(function() d.deep_hazard = deep_hazard_section() end)
+        end
+        return d
+    end) end,
     -- (0.104.95, 13b) the fort's world-map missions, read only (lua/ai-missions.lua)
     -- (0.105.24) with `send`: the World-screen sender's run under way and its last outcome
     missions = function() return safe(function()

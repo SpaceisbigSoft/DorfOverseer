@@ -119,7 +119,7 @@ function fell_tree(x, y, z)
     end)
     local d = dfhack.maps.getTileFlags(x, y, z)
     if d and d.dig == df.tile_dig_designation.No then
-        d.dig = df.tile_dig_designation.Default
+        d.dig = df.tile_dig_designation.Default   -- dig guard: a plant, not rock (0.105.40b)
         local block = dfhack.maps.getTileBlock(x, y, z)
         if block then block.flags.designated = true end
     end

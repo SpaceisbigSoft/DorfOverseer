@@ -286,10 +286,41 @@ function anchor_of(p)
 end
 
 -- Quickfort, through its API.
+-- (0.105.40b) Every dig blueprint the AI runs passes the dig guard (ai-util
+-- dig_forbidden): raw adamantine, the spire, the underworld and the tiles
+-- beside them are taken out of it, dry run or not (an undo is let by). The
+-- stats then carry dig_guard_refused (tiles) and dig_guard_why.
 function quickfort_apply(mode, cells, z, ax, ay, command, dry_run)
     local qf = reqscript('quickfort')
-    return qf.apply_blueprint{mode = mode, command = command or 'run', dry_run = dry_run,
-                              data = layouts.to_data(cells, z), pos = {x = ax, y = ay, z = 0}}
+    local data = layouts.to_data(cells, z)
+    local refused, why
+    if mode == 'dig' and (command or 'run') == 'run' then
+        local okg, d2, n, w = pcall(function() return util_module().dig_guard_data(data, ax, ay, 0, (not dry_run) and 'quickfort' or nil) end)
+        if okg and d2 then data, refused, why = d2, n, w end
+    end
+    local stats = qf.apply_blueprint{mode = mode, command = command or 'run', dry_run = dry_run,
+                                     data = data, pos = {x = ax, y = ay, z = 0}}
+    if refused and refused > 0 and type(stats) == 'table' then
+        pcall(function()
+            stats.dig_guard_refused = {value = refused}
+            stats.dig_guard_why = why
+        end)
+    end
+    return stats
+end
+
+-- (0.105.40b) why digging (x, y, z) is refused (ai-util dig_forbidden), or nil
+function dig_forbidden(x, y, z)
+    local ok, why = pcall(function() return util_module().dig_forbidden(x, y, z) end)
+    return ok and why or nil
+end
+
+-- (0.105.40b) the first refused tile of a list ({x, y, z}, or {x, y} on z):
+-- why, the tile; nil when all may be dug. by: kept as the report's refusal
+function dig_check_tiles(tiles, z, by)
+    local ok, why, at = pcall(function() return util_module().dig_check_tiles(tiles, z, by) end)
+    if ok then return why, at end
+    return nil
 end
 
 function stat(stats, name)
