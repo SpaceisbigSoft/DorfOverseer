@@ -3106,3 +3106,63 @@ function act_place_dump(a)
     r.inside = inside
     return r
 end
+
+---------------------------------------------------------------------------
+-- (0.105.40, 13e) World cleanup (lua/ai-cleanup.lua): what no dwarf can
+-- clean up, taken off the map only past the brain's thresholds. Each takes
+-- dry_run (counts, changes nothing).
+---------------------------------------------------------------------------
+
+local function cleanup_num(a, key, lo, hi, name)
+    if a[key] == nil then return true, nil end
+    local n = int_in(a[key], lo, hi)
+    if not n then return false, ('%s: %s is %d-%d'):format(name, key, lo, hi) end
+    return true, n
+end
+
+-- unreachable items, unreachable for a year (min_age), oldest first: max a call
+function act_cleanup_items(a)
+    local o = {}
+    for _, k in ipairs({{'max', 1, 500}, {'min_age', 100800, 40320000}, {'min_count', 0, 10000000}}) do
+        local ok, v = cleanup_num(a, k[1], k[2], k[3], 'cleanup_items')
+        if not ok then return reject(v) end
+        o[k[1]] = v
+    end
+    return reqscript('ai-cleanup').cleanup_items(o, a.dry_run == true)
+end
+
+-- unreachable hostile or wild creatures that are no historical figure, a season unreachable
+function act_cleanup_units(a)
+    local o = {}
+    for _, k in ipairs({{'max', 1, 100}, {'min_age', 100800, 40320000}}) do
+        local ok, v = cleanup_num(a, k[1], k[2], k[3], 'cleanup_units')
+        if not ok then return reject(v) end
+        o[k[1]] = v
+    end
+    if a.kinds ~= nil then
+        o.kinds = string_list(a.kinds, {hostile = true, wild = true}, 2)
+        if not o.kinds then return reject('cleanup_units: kinds is a list of hostile, wild') end
+    end
+    return reqscript('ai-cleanup').cleanup_units(o, a.dry_run == true)
+end
+
+-- the spatter on the map's blocks (scope outside the fort's areas, or all), budget_ms a call
+function act_cleanup_spatter(a)
+    if a.scope ~= nil and a.scope ~= 'outside' and a.scope ~= 'all' then
+        return reject('cleanup_spatter: scope is outside or all')
+    end
+    local ok, b = cleanup_num(a, 'budget_ms', 10, 500, 'cleanup_spatter')
+    if not ok then return reject(b) end
+    return reqscript('ai-cleanup').cleanup_spatter({scope = a.scope, budget_ms = b}, a.dry_run == true)
+end
+
+-- long-dead units nobody refers to, off the game's active list (as fix/dead-units)
+function act_cleanup_dead_units(a)
+    local o = {}
+    for _, k in ipairs({{'max', 1, 2000}, {'min_age', 100800, 40320000}}) do
+        local ok, v = cleanup_num(a, k[1], k[2], k[3], 'cleanup_dead_units')
+        if not ok then return reject(v) end
+        o[k[1]] = v
+    end
+    return reqscript('ai-cleanup').cleanup_dead_units(o, a.dry_run == true)
+end

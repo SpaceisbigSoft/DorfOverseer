@@ -183,6 +183,21 @@ hall, basic workshops and stockpiles are always built when missing.
   the soil of finished halls, and the stone blocks for them. Off: none of
   these is started or carried on; what is built stays. The keep (Surface
   50+) is not under this switch.
+- **World cleanup (speed)** (`world_cleanup`, 0.105.40): what slows the
+  game over the years and no dwarf can clean up, taken off the map only past
+  the AI's thresholds (lower while the game runs slowly), with a trial run
+  first and a journal line before every deletion. Refuse, the dump, the dead
+  and forbidden clutter stay the dwarves' (the disposal rules).
+  - *off*: nothing.
+  - *safe* (the default): spatter (blood, vomit) outside the fort's areas
+    (mud and snow kept), long-dead creatures nobody refers to off the game's
+    active list, and items no citizen has reached for a year, oldest first.
+    Never artifacts, named or written items, owned or stored items, items in
+    a building, bin or stockpile, your forbidden things, the fort's dead, or
+    anything a mood or a job needs.
+  - *full*: and hostile or wild creatures no citizen can reach for a season
+    (never citizens, pets, tame animals, visitors, merchants, prisoners or
+    historical figures).
 
 ### Supplies, care and the fort's works
 
