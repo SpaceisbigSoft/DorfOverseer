@@ -167,7 +167,7 @@ def _():
     M.get_dwarves = LUA.eval("function(inc) return {total = 7}, inc and {{id = 1}} or nil end")
     pulse = M.build_state(True, "pulse")
     keys = set(pulse.keys())
-    want = set(M.PULSE_SECTIONS.values()) | {"tier", "_timing"}
+    want = set(M.PULSE_SECTIONS.values()) | {"tier", "_timing", "perf"}   # (0.105.40) perf: the report's own cost
     assert keys == want, keys ^ want
     assert pulse.tier == "pulse" and pulse.units is None and pulse.dwarves.total == 7
     assert pulse.wealth == 1234 and pulse.fort.site_id == 7

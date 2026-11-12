@@ -151,6 +151,7 @@ SECTION_DEFAULTS = {
     "constructions": {},     # (0.105.30) built walls, floors...: by shape, item, surface (lua/ai-constructions.lua)
     "landmarks": {"list": []},   # (D0) the Design track's landmarks: id, name, purpose, status, stage, levels, project_ids
     "civ_alert": False,      # (0.105.33) a failed read ({error}) read as "the alarm is on"
+    "perf": {},              # (0.105.40) the report's own cost: sections' ms, cached, total_ms, fps (lua/ai-bridge.lua perf_section)
 }
 # (0.105.36) not REQUIRED (the plan goes on without them), but a missing one is
 # listed in _errors as a failed one is: the default (civ_alert False) is not
@@ -238,6 +239,13 @@ def normalize(s: dict) -> dict:
 
 
 WATER_DEFAULTS = {"waters": [], "waters_found": 0}      # (0.105.38) lua/ai-water.lua
+
+
+def perf_line(s: dict) -> str:
+    """(0.105.40) PERF: the report's total ms, its slowest sections, the FPS
+    (brain/perf.py); "" without a perf section."""
+    import perf
+    return perf.perf_line(s)
 
 
 def missions_line(s: dict) -> str:
@@ -547,7 +555,7 @@ def digest(s: dict, news: int = 5) -> str:
     ]
 
     for extra in (threat_line(s), world_line(s), infection_line(s), built_line(s), gate_split_line(s), water_line(s),
-                  missions_line(s)):
+                  missions_line(s), perf_line(s)):
         if extra:
             lines.append(extra)
     m = _d(s.get("map"))

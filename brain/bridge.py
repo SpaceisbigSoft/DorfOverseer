@@ -35,6 +35,14 @@ def _setup_logger() -> logging.Logger:
 
 
 REPORT_TIMEOUT_S = 30.0      # (0.100.1) the full report's own time limit
+# (0.105.40, 13e) every bridge call's time, summed for this process (across
+# reconnects): brain/perf.py turns it into the AI's ms per game day
+CALL_MS = {"ms": 0.0, "calls": 0}
+
+
+def note_call_ms(ms: float) -> None:
+    CALL_MS["ms"] += ms
+    CALL_MS["calls"] += 1
 
 
 class BridgeError(DFHackError):
@@ -57,6 +65,7 @@ class Bridge:
             self.log.error("%s -> %s", " ".join(args), e)
             raise
         ms = (time.perf_counter() - start) * 1000
+        note_call_ms(ms)
         # The overseer checks status every 2 s; logging each one would fill the
         # log with noise. Everything else (reports, actions, events) is logged.
         level = logging.DEBUG if args and args[0] == "status" and reply.get("ok") else logging.INFO
@@ -230,6 +239,7 @@ class Bridge:
         start = time.perf_counter()
         reply = self.df.run_json("ai-bridge", "act", payload)
         ms = (time.perf_counter() - start) * 1000
+        note_call_ms(ms)
         level = logging.INFO if reply.get("ok") else logging.WARNING
         self.log.log(level, "act %s -> %s (%.0f ms)", payload, json.dumps(reply), ms)
         if not reply.get("ok") and not reply.get("rejected"):

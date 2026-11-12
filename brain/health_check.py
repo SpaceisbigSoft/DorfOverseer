@@ -304,6 +304,9 @@ def fps_flags(rows: list[dict]) -> tuple[list[str], list[str]]:
             flags.append(f"the game runs slowly in {fort}: FPS median {late} lately (was {early})")
         elif early and late is not None and late < early * (1 - FPS_DROP):
             flags.append(f"the game is slowing down in {fort}: FPS median {early} -> {late}")
+    flags_ai, plain_ai = ai_cost_lines(rows)
+    flags += flags_ai
+    plain += plain_ai
     timing = defaultdict(list)
     for r in rows:
         for k, v in (r.get("report_timing") or {}).items():
@@ -316,6 +319,32 @@ def fps_flags(rows: list[dict]) -> tuple[list[str], list[str]]:
             if v is not None and v >= SECTION_SLOW_MS:
                 flags.append(f"report section '{k}' is slow: {v} ms median (the game waits while it's built)")
     return flags, plain
+
+
+def ai_cost_lines(rows: list[dict]) -> tuple[list[str], list[str]]:
+    """(0.105.40, 13e) The AI's own cost from the soak rows: its ms per game
+    day (every bridge call's time over the game days passed, brain/perf.py),
+    median and latest; the slowest report sections by the perf section;
+    and the FPS trend by thirds of the window. Plain lines only."""
+    plain = []
+    days = [r.get("ai_ms_day") for r in rows if isinstance(r.get("ai_ms_day"), (int, float))]
+    if days:
+        plain.append(f"AI ms per game day: median {_median(days):.0f}, latest {days[-1]:.0f} ({len(days)} rows)")
+    slow = defaultdict(list)
+    for r in rows:
+        for k, v in (r.get("perf_slow") or {}).items():
+            if isinstance(v, (int, float)):
+                slow[k].append(v)
+    if slow:
+        meds = sorted(((k, _median(v)) for k, v in slow.items()), key=lambda kv: (-(kv[1] or 0), kv[0]))
+        plain.append("slowest sections (perf), median ms: " + ", ".join(f"{k} {v:.0f}" for k, v in meds[:5]))
+    fps = [r["fps"] for r in rows if r.get("in_fort") and not r.get("paused")
+           and isinstance(r.get("fps"), (int, float))]
+    if len(fps) >= 6 and (days or slow):
+        third = len(fps) // 3
+        parts = [_median(fps[:third]), _median(fps[third:-third]), _median(fps[-third:])]
+        plain.append("FPS trend: " + " -> ".join(str(x) for x in parts))
+    return [], plain
 
 
 # ---------------------------------------------------------------------------

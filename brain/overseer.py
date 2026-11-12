@@ -69,6 +69,7 @@ from digest import _d, _l, normalize, project_text  # noqa: E402
 from review import maybe_review, note_events  # noqa: E402
 from storyteller import maybe_tell  # noqa: E402
 from tokens import TokenBank  # noqa: E402
+import perf  # noqa: E402  (0.105.40)
 
 POLL_SECONDS = 2.0
 UNPAUSE_AFTER_S = 30.0           # (unattended) the game paused itself this long ago: unpause it
@@ -101,6 +102,9 @@ STALL_AFTER_S = 60.0             # (unattended) running, but the date hasn't mov
 HEARTBEAT = LOG_DIR / "heartbeat"   # touched every loop: brain/keeper.py restarts a stuck overseer
 PLAN_EVERY_TICKS = 1200          # one in-game day
 SLOW_PLAN_FACTOR = 2             # (0.104.0) the full report this many times further apart while FPS is low
+                                 # (0.105.40: PLANNER_CONFIG perf_slow_cycle_factor, never while a threat is on)
+PERF_METER = perf.Meter()        # (0.105.40, 13e) the AI's ms per game day, per fort (logs/forts/<fort>/perf.jsonl)
+PERF_LAST: dict = {}             # the last cycle's: threat (the back-off's exemption), ai_ms_day, perf_slow (soak row)
 EVENT_CYCLE_MIN_TICKS = 100      # after an event, plan again this soon at the earliest
 STOP_FILE = PROJECT_ROOT / "STOP"
 JOURNAL: Path | None = None     # None: each fort's own journal (memstore.journal_path)
@@ -903,6 +907,7 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
                 "unattended": UNATTENDED,
             })
             return
+        note_perf(state, key)
         events = bridge.events()
         seen: dict[str, int] = {}
         for ev in events:
@@ -1618,6 +1623,33 @@ def make_backend():
     return b
 
 
+def note_perf(state: dict, key: str) -> None:
+    """(0.105.40, 13e) The cycle's perf: whether a threat is on (the slow
+    back-off's exemption) and the AI's ms per game day (the bridge's summed
+    call time over the game days passed: brain/perf.py). Never raises."""
+    try:
+        PERF_LAST["threat"] = perf.threat_active(state)
+        import bridge as _bridge
+        cm = _bridge.CALL_MS
+        row = PERF_METER.note(key, abs_tick(state), cm["ms"], cm["calls"], state.get("perf"),
+                              memstore.fort_dir(key))
+        if row is not None:
+            PERF_LAST["ai_ms_day"] = row.get("ms_per_day")
+        slow = perf.slow_sections(state.get("perf"))
+        if slow:
+            PERF_LAST["perf_slow"] = {k: v for k, v in slow}
+    except Exception:  # noqa: BLE001  (a measure never stops the fort)
+        pass
+
+
+def slow_factor(fps_low, unattended: bool) -> int:
+    """(0.105.40) How many times further apart the full report comes: the
+    config's perf_slow_cycle_factor while the game runs slowly (unattended),
+    1 otherwise and while the last report showed a threat or a siege."""
+    return perf.cycle_factor(bool(fps_low and unattended), bool(PERF_LAST.get("threat")),
+                             PLANNER_CONFIG.get("perf_slow_cycle_factor", SLOW_PLAN_FACTOR))
+
+
 def write_soak(st: dict, fps_samples: list, fps_low, unpauses: int, still_s: int, halted: bool) -> None:
     """(unattended) One row of how the run is going, every 10 real minutes, for
     a look over a whole night (brain/soak_report.py). Never raises."""
@@ -1630,7 +1662,8 @@ def write_soak(st: dict, fps_samples: list, fps_low, unpauses: int, still_s: int
                "year": d.get("year"), "tick": d.get("tick"),
                "fps": fps[len(fps) // 2] if fps else None, "fps_min": fps[0] if fps else None,
                "fps_low": bool(fps_low), "unpauses": unpauses, "time_still_s": still_s,
-               "stop_file": STOP_FILE.exists(), **LAST_CYCLE}
+               "stop_file": STOP_FILE.exists(), **LAST_CYCLE,
+               **{k: PERF_LAST[k] for k in ("ai_ms_day", "perf_slow") if k in PERF_LAST}}
         LOG_DIR.mkdir(exist_ok=True)
         memstore.cap_file(SOAK, SOAK_MAX_BYTES)
         with SOAK.open("a", encoding="utf-8") as f:
@@ -2186,7 +2219,8 @@ def _run(args) -> int:
                 now = st["date"]["year"] * TICKS_PER_YEAR + st["date"]["tick"]
                 # (0.104.0) while the game runs slowly the full report (the bridge's
                 # heaviest work, the game paused while it's built) comes every 2 days
-                every = PLAN_EVERY_TICKS * (SLOW_PLAN_FACTOR if fps_low and args.unattended else 1)
+                # (0.105.40) perf_slow_cycle_factor; never stretched while a threat is on
+                every = PLAN_EVERY_TICKS * slow_factor(fps_low, args.unattended)
                 daily = (last_plan_tick is None or now < last_plan_tick
                          or now - last_full_tick >= every)
                 # DF's trade screen holds time still: a few cycles while it's open

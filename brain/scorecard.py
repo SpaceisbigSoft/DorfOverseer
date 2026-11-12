@@ -938,6 +938,21 @@ HEALTH_BARS = [
 ]
 
 
+def ai_ms_day(f) -> float | None:
+    """(0.105.40) The median of a fort's AI ms per game day (brain/perf.py's
+    perf.jsonl rows, this run's: written since the run began); None without."""
+    import perf
+    d = getattr(f, "fort_dir", None)
+    if not d:
+        return None
+    rows = perf.read_rows(Path(d) / perf.PERF_FILE)
+    run = getattr(f, "run", None)
+    if run:
+        rows = [r for r in rows if not isinstance(r.get("time"), str) or r["time"] >= run]
+    m = perf.median(r.get("ms_per_day") for r in rows)
+    return round(m) if m is not None else None
+
+
 def health_ok(v, bar, how) -> bool | None:
     if v is None:
         return None
@@ -1049,6 +1064,11 @@ def score_full(forts: list[Fort], at: str | None, now: bool) -> tuple[str, list[
             if ok is False:
                 issues.setdefault(lb, []).append(f"{what.split(',')[0].split(' (')[0]} {fmt(v)}")
         md.append(f"| {what} {how} {bar} | " + " | ".join(cells) + f" | {fine} of {len(labels)} |")
+    # (0.105.40) the AI's own cost, when a fort has logs/forts/<fort>/perf.jsonl
+    ai_ms = {lb: ai_ms_day(data[lb][0]) for lb in labels}
+    if any(v is not None for v in ai_ms.values()):
+        md.append("| AI ms per game day (median, perf.jsonl) | " + " | ".join(
+            fmt(ai_ms[lb]) for lb in labels) + " | |")
     md.append("| moods / artifacts | " + " | ".join(
         f"{data[lb][3]['moods']} / {data[lb][3]['artifacts']}" for lb in labels) + " | |")
     causes = sorted({c for lb in labels for c in data[lb][3]["deaths"]})

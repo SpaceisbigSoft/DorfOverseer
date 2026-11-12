@@ -881,6 +881,9 @@ function build_state(include_units, tier)
         table.sort(due, function(a, b) return a.age > b.age end)
         for i = 1, math.min(SECTION_REBUILDS, #due) do rebuild[due[i].name] = true end
     end
+    -- (0.105.40, 13e) every section's time (os.clock, ms) and the ones sent
+    -- from the cache, for the perf section built last
+    local perf_ms, perf_cached = {}, {}
     for _, name in ipairs(names) do
         local t = clock()
         -- slow sections that change slowly are rebuilt only every few game
@@ -889,6 +892,7 @@ function build_state(include_units, tier)
         local fresh = c and c.site == site and now >= c.tick
         if days and fresh and (now - c.tick < days * 1200 or not rebuild[name]) then
             state[name] = c.value
+            perf_cached[name] = true
         else
             -- a section may return a second value, true: don't keep this copy
             -- (logistics with a part that failed)
@@ -898,13 +902,40 @@ function build_state(include_units, tier)
                 SECTION_CACHE[name] = {tick = now, site = site, value = v}
             end
         end
-        local ms = math.floor((clock() - t) * 1000 + 0.5)
+        local dt = (clock() - t) * 1000
+        local ms = math.floor(dt + 0.5)
         if ms >= 5 then timing[name] = ms end
+        perf_ms[name] = math.floor(dt * 10 + 0.5) / 10
     end
+    state.perf = perf_section(perf_ms, perf_cached, (clock() - t0) * 1000, now)
     REPORT_MEMO = nil
     state.tier = tier
     state._timing = timing
     return state
+end
+
+-- (0.105.40, 13e) The perf section: what this report cost the game. Built
+-- last, from numbers already measured (no walk of its own); never fails the
+-- report. sections: ms per section this report (0.1 ms, a cached one is
+-- the time to hand its copy over); cached: the sections sent from the cache;
+-- total_ms: the whole report so far (the dwarves' walk included); the
+-- shared walks of units and items this report (REPORT_CTX's counters, 0
+-- where nothing counts them); the game's FPS; the absolute tick.
+function perf_section(sections, cached, total_ms, tick)
+    local ok, r = pcall(function()
+        local walks = type(REPORT_CTX) == 'table' and REPORT_CTX or {}
+        local fps_ok, fps = pcall(function() return df.global.enabler.calculated_fps end)
+        return {
+            sections = sections, cached = cached,
+            total_ms = math.floor(total_ms * 10 + 0.5) / 10,
+            units_walks = tonumber(walks.units_walks) or 0,
+            items_walks = tonumber(walks.items_walks) or 0,
+            fps = fps_ok and tonumber(fps) or nil,
+            game_tick = tick,
+        }
+    end)
+    if ok then return r end
+    return {error = tostring(r)}
 end
 
 local function ensure_watching()

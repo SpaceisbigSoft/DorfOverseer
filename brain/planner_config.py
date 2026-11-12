@@ -135,6 +135,8 @@ PLANNER_CONFIG = {
     "labor_trim_margin": 5,              # (0.104.166) a detail this many over what the job wants: cut back
     "labor_trim_cooldown_ticks": 7 * 1200,   # ...a week apart
     "feeder_cooldown_ticks": 1200,     # a feeder stockpile: at most one a day
+    "perf_slow_cycle_factor": 2,      # (0.105.40) while the game runs slowly the full report this many times further apart
+                                      # (never while a threat or a siege is on: brain/perf.py cycle_factor)
     "fps_items_heavy": 30000,          # this many items while the game runs slowly: tidy up
     "urgent_unburied": 10,             # (0.104.12) this many dead unburied: a tomb level of its own slot
     "free_time_cooldown_ticks": 7 * 1200,   # (0.104.10) work details narrowed (or widened) a week apart
