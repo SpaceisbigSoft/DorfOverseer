@@ -45,6 +45,17 @@
 
 local U = reqscript('ai-util')      -- (13c) helpers shared by the modules
 
+-- (0.105.40 E3) inside a report, the report's one walk of the units
+-- (ai-util REPORT_CTX: the same units, same order); outside one, afresh
+local function report_citizens(...)
+    if U.REPORT_CTX and U.citizens then return U.citizens(...) end
+    return dfhack.units.getCitizens(...)
+end
+local function report_units()
+    if U.REPORT_CTX and U.units_active then return U.units_active() end
+    return df.global.world.units.active
+end
+
 ROUGH_THOUGHTS = {SleptFloor = true, SleptMud = true, SleptGrass = true, SleptRoughFloor = true,
                   SleptRocks = true, SleptIce = true, SleptDirt = true, SleptDriftwood = true}
 ROUGH_DAYS = 28
@@ -166,7 +177,7 @@ end
 -- mother, father (ids of citizens), cat (stress category)}.
 local function people(units)
     local by, order = {}, {}
-    for _, u in ipairs(units or dfhack.units.getCitizens()) do
+    for _, u in ipairs(units or report_citizens()) do
         local okc, child = pcall(function() return dfhack.units.isChild(u) or dfhack.units.isBaby(u) end)
         local p = {u = u, id = u.id, child = okc and child or false, own = {}, shared = {},
                    spouse = rel(u, 'Spouse'), mother = rel(u, 'Mother'), father = rel(u, 'Father')}

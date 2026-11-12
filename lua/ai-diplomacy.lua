@@ -30,6 +30,17 @@
 
 local U = reqscript('ai-util')      -- (13c) helpers shared by the modules
 
+-- (0.105.40 E3) inside a report, the report's one walk of the units
+-- (ai-util REPORT_CTX: the same units, same order); outside one, afresh
+local function report_citizens(...)
+    if U.REPORT_CTX and U.citizens then return U.citizens(...) end
+    return dfhack.units.getCitizens(...)
+end
+local function report_units()
+    if U.REPORT_CTX and U.units_active then return U.units_active() end
+    return df.global.world.units.active
+end
+
 PROBE_FILE = dfhack.getDFPath() .. '/dfhack-config/ai-overseer/meeting-probe.json'
 PROBE_KEEP = 12                       -- the last samples kept in the probe file
 BUTTONS_KEY = 'ai-overseer/meeting-buttons'
@@ -333,7 +344,7 @@ function world_report(txt)
     if next(hostile_civs) then
         local n = 0
         pcall(function()
-            for _, u in ipairs(df.global.world.units.active) do
+            for _, u in ipairs(report_units()) do
                 local okv, v = pcall(function()
                     return hostile_civs[u.civ_id] and not dfhack.units.isDead(u)
                         and not dfhack.units.isDanger(u) and not dfhack.units.isInvader(u)

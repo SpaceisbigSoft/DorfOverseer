@@ -31,6 +31,17 @@
 
 local U = reqscript('ai-util')      -- (13c) helpers shared by the modules
 
+-- (0.105.40 E3) inside a report, the report's one walk of the units
+-- (ai-util REPORT_CTX: the same units, same order); outside one, afresh
+local function report_citizens(...)
+    if U.REPORT_CTX and U.citizens then return U.citizens(...) end
+    return dfhack.units.getCitizens(...)
+end
+local function report_units()
+    if U.REPORT_CTX and U.units_active then return U.units_active() end
+    return df.global.world.units.active
+end
+
 STATE_KEY = 'ai-overseer/threats'
 FIRE_RADIUS = 6              -- tiles round a fire restricted, jobs taken off
 FIRE_MAX_TILES = 3000        -- tiles restricted at most (a forest fire)
@@ -164,7 +175,7 @@ end
 
 local function citizens()
     local list, groups = {}, {}
-    for _, u in ipairs(dfhack.units.getCitizens(true)) do
+    for _, u in ipairs(report_citizens(true)) do
         local p = {x = u.pos.x, y = u.pos.y, z = u.pos.z, id = u.id, unit = u}
         p.outside = outside_at(p.x, p.y, p.z)
         table.insert(list, p)
@@ -246,7 +257,7 @@ end
 local function prisoners_report(txt)
     local out = {caged = 0, in_traps = 0, inside = 0, outside = 0, list = {}, cage_rooms = 0, outside_piles = 0,
                  pit_zones = 0, release_supported = false, kill_supported = false}
-    for _, u in ipairs(df.global.world.units.active) do
+    for _, u in ipairs(report_units()) do
         if u.flags1.caged and dfhack.units.isActive(u) and not dfhack.units.isDead(u)
                 and not is(dfhack.units.isCitizen, u)
                 and (is(dfhack.units.isInvader, u) or is(dfhack.units.isDanger, u)) then
@@ -286,14 +297,25 @@ local function prisoners_report(txt)
     return out
 end
 
+-- (0.105.40 E3) every entity of the world was walked each report (a big
+-- world: thousands); the world's civilisations and their raws are made at
+-- world creation, so the answer is kept for the world loaded (its save
+-- folder and the entity count: a new entity of any kind reads it again)
 local function evil_civ()
+    local okk, key = pcall(function()
+        return tostring(df.global.world.cur_savegame.save_dir) .. '#' .. #df.global.world.entities.all
+    end)
+    local m = EVIL_CIV_MEMO
+    if okk and m and m.key == key then return m.yes end
     local ok, yes = pcall(function()
         for _, e in ipairs(df.global.world.entities.all) do
             if e.type == df.historical_entity_type.Civilization and e.entity_raw.code == 'EVIL' then return true end
         end
         return false
     end)
-    return ok and yes or false
+    local v = ok and yes or false
+    if okk and ok then EVIL_CIV_MEMO = {key = key, yes = v} end
+    return v
 end
 
 -- thieves and snatchers on the map, and the ones seen before (the save)
@@ -301,7 +323,7 @@ local function thieves_report(d, t, cit, groups, txt)
     local out = {list = {}, now = 0}
     local mil
     pcall(function() mil = reqscript('ai-military') end)
-    for _, u in ipairs(df.global.world.units.active) do
+    for _, u in ipairs(report_units()) do
         if loose(u) and not is(dfhack.units.isCitizen, u) then
             local prof, goal
             pcall(function() prof = df.profession[u.profession] end)
@@ -360,7 +382,7 @@ end
 -- the undead, evil clouds and a reanimating land
 local function undead_report(cit, groups, txt)
     local out = {undead = 0, list = {}, clouds = 0, cloud_near = nil, cloud_outside_near = nil, surface_corpses = 0}
-    for _, u in ipairs(df.global.world.units.active) do
+    for _, u in ipairs(report_units()) do
         if loose(u) and not is(dfhack.units.isCitizen, u) and is(dfhack.units.isUndead, u) then
             out.undead = out.undead + 1
             local pos = {x = u.pos.x, y = u.pos.y, z = u.pos.z}
@@ -429,7 +451,7 @@ local function were_report(d, t, txt)
     local out = {list = {}, cells = {}}
     pcall(function() out.moon_phase = df.global.world.world_data.moon_phase end)
     local any_changed = false
-    for _, u in ipairs(df.global.world.units.active) do
+    for _, u in ipairs(report_units()) do
         if dfhack.units.isActive(u) and not dfhack.units.isDead(u) then
             local own = is(dfhack.units.isCitizen, u)
             if not own then pcall(function() own = u.civ_id == df.global.plotinfo.civ_id and is(dfhack.units.isOwnGroup, u) end) end
@@ -464,7 +486,7 @@ end
 local function surface_report(cit, txt)
     local out = {list = {}, outside_dwarves = 0}
     for _, p in ipairs(cit) do if p.outside then out.outside_dwarves = out.outside_dwarves + 1 end end
-    for _, u in ipairs(df.global.world.units.active) do
+    for _, u in ipairs(report_units()) do
         if loose(u) and not is(dfhack.units.isCitizen, u) and is(dfhack.units.isDanger, u)
                 and not is(dfhack.units.isInvader, u) and not is(dfhack.units.isUndead, u)
                 and not is(dfhack.units.isTame, u) and outside_at(u.pos.x, u.pos.y, u.pos.z) then
@@ -486,7 +508,7 @@ local function rescue_report()
     local out = {holders = 0, down = 0}
     local labor = df.unit_labor.RECOVER_WOUNDED
     if not labor then out.error = 'no RECOVER_WOUNDED labour in this DF' return out end
-    for _, u in ipairs(dfhack.units.getCitizens(true)) do
+    for _, u in ipairs(report_citizens(true)) do
         local okl, has = pcall(function() return u.status.labors[labor] end)
         local soldier = u.military.squad_id >= 0
         if okl and has and not soldier then out.holders = out.holders + 1 end
@@ -652,7 +674,7 @@ end
 -- (0.105.26) Citizens down in a cavern (on a cavern tile): the seal waits for them.
 function cavern_citizens(txt)
     local out = {list = {}, n = 0}
-    for _, u in ipairs(dfhack.units.getCitizens(true)) do
+    for _, u in ipairs(report_citizens(true)) do
         local ok, cave = pcall(function()
             local des = dfhack.maps.getTileFlags(u.pos.x, u.pos.y, u.pos.z)
             return des and (des.feature_global or des.feature_local) and true or false
@@ -891,7 +913,7 @@ end
 -- (0.105.0 review) another citizen in the zone (never locked in with a werebeast)
 local function other_in_zone(z, uid)
     local ok, yes = pcall(function()
-        for _, c in ipairs(dfhack.units.getCitizens(true)) do
+        for _, c in ipairs(report_citizens(true)) do
             if c.id ~= uid and in_zone(z, c.pos.x, c.pos.y, c.pos.z) then return true end
         end
         return false
@@ -1039,7 +1061,7 @@ local function citizen_in_cavern(z1, z2)
     if not z1 or not z2 then return nil end
     local lo, hi = math.min(z1, z2), math.max(z1, z2)
     local ok, who = pcall(function()
-        for _, u in ipairs(dfhack.units.getCitizens(true)) do
+        for _, u in ipairs(report_citizens(true)) do
             local p = u.pos
             if p.z >= lo and p.z <= hi then
                 local des = dfhack.maps.getTileFlags(p.x, p.y, p.z)

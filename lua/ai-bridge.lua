@@ -838,7 +838,19 @@ end
 
 -- tier: 'pulse' (PULSE_SECTIONS only), or 'daily' / 'survey' (everything;
 -- survey is the same as daily for now). Default daily.
+local build_state_body
 function build_state(include_units, tier)
+    -- (0.105.40 E3) the report's shared walks (REPORT_CTX, lua/ai-util.lua),
+    -- cleared however the report ends: an action after it walks afresh
+    report_ctx_begin()
+    local ok, state = pcall(build_state_body, include_units, tier)
+    report_ctx_end()
+    REPORT_MEMO = nil
+    if not ok then error(state, 0) end
+    return state
+end
+
+build_state_body = function(include_units, tier)
     tier = tier or 'daily'
     local names
     if tier == 'pulse' then

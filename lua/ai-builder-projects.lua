@@ -13,12 +13,25 @@ local info, ez = info, ez
 -- Projects, saved with the fort
 ---------------------------------------------------------------------------
 
-function load_projects()
+local function decode_projects()
     -- (0.105.33, L8) through ai-util's site_get: a value that isn't a table reads as none
     local data = site_get(PROJECTS_KEY)
     data.next_id = math.tointeger(data.next_id) or 1
     data.list = type(data.list) == 'table' and data.list or {}
     return data
+end
+
+-- (0.105.40 E3) A report read the projects 10-20 times, each a JSON decode of
+-- the whole record (old_areas up to 600 boxes): inside a report (ai-util's
+-- REPORT_CTX) it is decoded once and each caller gets its own deep copy (a
+-- caller may change its copy and save it); save_projects drops the decoded
+-- one, so a read after a save decodes the saved record again. Outside a
+-- report every call decodes, as before.
+function load_projects()
+    local okc, ctx = pcall(function() return util_module().REPORT_CTX end)
+    if not (okc and type(ctx) == 'table') then return decode_projects() end
+    if ctx.projects == nil then ctx.projects = decode_projects() end
+    return util_module().deep_copy(ctx.projects)
 end
 
 OLD_AREAS_MAX = 600       -- (0.104.19) outlines of levels dropped from the list, kept for safety
@@ -52,6 +65,8 @@ function save_projects(data)
         end
     end
     while #data.old_areas > OLD_AREAS_MAX do table.remove(data.old_areas, 1) end
+    -- (0.105.40 E3) the report's decoded copy is stale now
+    pcall(function() local c = util_module().REPORT_CTX; if type(c) == 'table' then c.projects = nil end end)
     return site_put(PROJECTS_KEY, data)
 end
 

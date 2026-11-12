@@ -195,7 +195,14 @@ end
 -- Positions of citizens (where the fort is).
 function citizen_positions()
     local out = {}
-    for _, u in ipairs(dfhack.units.getCitizens(true)) do
+    -- (0.105.40) the report's one ask (ai-util citizens), afresh outside a report
+    local okc, cits = pcall(function()
+        local U = util_module()
+        if U.REPORT_CTX and type(U.citizens) == 'function' then return U.citizens(true) end
+        return dfhack.units.getCitizens(true)
+    end)
+    if not okc then cits = dfhack.units.getCitizens(true) end
+    for _, u in ipairs(cits) do
         local x, y, z = dfhack.units.getPosition(u)
         if x then table.insert(out, {x = x, y = y, z = z}) end
     end
@@ -310,6 +317,9 @@ end
 -- (13c) A table kept in the save's site data: {} when it's missing, can't be
 -- read or isn't a table. site_put: saved, never an error (ok, why).
 -- (0.105.33, L8) ai-util's own copies, not a second pair
+-- (0.105.40 E3) ai-util itself, for the builder's parts (its REPORT_CTX, deep_copy)
+function util_module() return util() end
+
 function site_get(key) return util().site_get(key, {}) end
 function site_put(key, d) return util().site_put(key, d) end
 

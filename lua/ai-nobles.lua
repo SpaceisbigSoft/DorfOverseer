@@ -18,6 +18,17 @@
 
 local U = reqscript('ai-util')      -- (13c) helpers shared by the modules
 
+-- (0.105.40 E3) inside a report, the report's one walk of the units
+-- (ai-util REPORT_CTX: the same units, same order); outside one, afresh
+local function report_citizens(...)
+    if U.REPORT_CTX and U.citizens then return U.citizens(...) end
+    return dfhack.units.getCitizens(...)
+end
+local function report_units()
+    if U.REPORT_CTX and U.units_active then return U.units_active() end
+    return df.global.world.units.active
+end
+
 -- A DF name in words (dfhack.TranslateName was renamed in DFHack 50.15).
 local function translate(name, english)
     local ok, s = pcall(function() return dfhack.translation.translateName(name, english) end)
@@ -205,7 +216,7 @@ end
 local function mothers()
     local out = {}
     pcall(function()
-        for _, u in ipairs(dfhack.units.getCitizens(true)) do
+        for _, u in ipairs(report_citizens(true)) do
             if dfhack.units.isBaby(u) then
                 local m = u.relationship_ids.Mother
                 if m and m ~= -1 then out[m] = true end
@@ -220,7 +231,7 @@ local function candidates(code)
     local military = MILITARY_OFFICES[code]
     local moms = (military or CIVILIAN_AWAY_OFFICES[code]) and mothers() or {}   -- (0.105.33 review) once, not per candidate
     local out = {}
-    for _, u in ipairs(dfhack.units.getCitizens(true)) do
+    for _, u in ipairs(report_citizens(true)) do
         -- (0.104.168) a military office's holder takes a squad's leader seat:
         -- never a soldier of a squad already
         -- (0.105.0) the messenger is away for seasons: never a soldier either
@@ -481,7 +492,7 @@ function rooms_survey(txt)
         if zt == 'DiningHall' then n = math.max(0, n - 1) end     -- the shared hall isn't given
         free[kind] = n
     end
-    for _, u in ipairs(dfhack.units.getCitizens(true)) do
+    for _, u in ipairs(report_citizens(true)) do
         local list = dfhack.units.getNoblePositions(u)
         if list then
             local needs, office = {}, nil
