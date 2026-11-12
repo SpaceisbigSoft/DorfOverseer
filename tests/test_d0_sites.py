@@ -569,7 +569,7 @@ def _():
     assert f.ok and f.placed.dedicated == 42 and LUA.eval("DEDICATED") == 7, dict(f.placed)
 
 
-@test("landmark_step: a surface tower walks clearing -> walls -> floor -> next level -> furnish -> zone -> done")
+@test("landmark_step: a surface tower walks clearing -> its build steps (E2: stair, walls, level 2) -> furnish -> zone -> done")
 def _():
     field(20, 40, 100, 80)
     st = surface_site(80, 50)
@@ -592,7 +592,7 @@ def _():
         stages.append((s.stage, bool(s.ok)))
         if s.done:
             break
-        if s.stage == "walls" and s.ok:
+        if s.stage == "build" and s.step == 2 and s.ok:
             # planned: waits; then built
             for c in lua_list(W.placed):
                 if c.mode == "build":
@@ -602,7 +602,7 @@ def _():
         build(80)
         build(81)
     assert stages[-1] == ("zone", True), stages
-    assert [st for st, _ in stages] == ["walls", "floor", "next level", "floor", "furnish", "zone"], stages
+    assert [st for st, _ in stages] == ["build", "build", "build", "furnish", "zone"], stages
     walls = [c for c in lua_list(W.placed) if c.text == "Cw"]
     assert len(walls) == 15 and all(c.z == 80 for c in walls), len(walls)
     assert any(c.text == "Cd" and c.z == 81 for c in lua_list(W.placed))
@@ -620,7 +620,7 @@ def _():
     assert B.build_landmark(lt(tower()), "S1", meta(), lt(NOW), False).ok
     n = len(lua_list(W.placed))
     s = B.landmark_step(1, True)
-    assert s.ok and s.dry_run and s.stage == "walls", dict(s)
+    assert s.ok and s.dry_run and s.stage == "build", dict(s)
     assert len(lua_list(W.placed)) == n and B.landmarks_data().list[1].stage == "clearing"
 
 
