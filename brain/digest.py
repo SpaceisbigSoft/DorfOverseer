@@ -129,7 +129,8 @@ SECTION_DEFAULTS = {
     "justice": {},                # (0.104.52) jail zones, restraints, punishments waiting
     "moods": {"list": []},
     "missions": {"controllers": [], "squads": [], "reports": {"n": 0, "unviewed": 0},   # (0.104.95, 13b)
-                 "spoils": {"n": 0}, "sites": {}, "unknown": []},
+                 "spoils": {"n": 0}, "sites": {}, "unknown": [],
+                 "targets": []},          # (0.105.39) what a mission could go for, best first (lua/ai-missions.lua)
     "hazards": {},
     "threats": {},                # (0.105.0) round 3: fire, prisoners, thieves, undead, werebeasts (lua/ai-threats.lua)
     "health": {},
@@ -227,12 +228,27 @@ def normalize(s: dict) -> dict:
         for key, default in WATER_DEFAULTS.items():
             if not isinstance(w.get(key), type(default)) or isinstance(w.get(key), bool):
                 w[key] = json.loads(json.dumps(default))
+    # (0.105.39) the missions' targets: [] when absent (an older bridge) or not a list
+    ms = s.get("missions")
+    if isinstance(ms, dict) and "error" not in ms and not isinstance(ms.get("targets"), list):
+        ms["targets"] = []
     s["_errors"] = errors
     _magma_aliases(s)
     return s
 
 
 WATER_DEFAULTS = {"waters": [], "waters_found": 0}      # (0.105.38) lua/ai-water.lua
+
+
+def missions_line(s: dict) -> str:
+    """(0.105.39) MISSIONS: the targets a mission could go for and the
+    missions out, no coordinates (brain/planner_missions.py mission_line);
+    "" with neither."""
+    try:
+        from planner_missions import mission_line
+    except Exception:  # noqa: BLE001
+        return ""
+    return mission_line(s)
 
 
 def water_line(s: dict) -> str:
@@ -530,7 +546,8 @@ def digest(s: dict, news: int = 5) -> str:
         f" contained {o.get('contained_dangers', 0)}",
     ]
 
-    for extra in (threat_line(s), world_line(s), infection_line(s), built_line(s), gate_split_line(s), water_line(s)):
+    for extra in (threat_line(s), world_line(s), infection_line(s), built_line(s), gate_split_line(s), water_line(s),
+                  missions_line(s)):
         if extra:
             lines.append(extra)
     m = _d(s.get("map"))

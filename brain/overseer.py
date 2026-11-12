@@ -40,6 +40,7 @@ from planner import (NEEDS_YOU, PLANNER_CONFIG, TICKS_PER_YEAR, Memory, abs_tick
                      effective_config, note_cycle, note_tantrums, plan, record, select)
 from planner_society import note_heists  # noqa: E402  (0.105.24)
 from planner_moods import mood_journal  # noqa: E402  (0.105.30)
+from planner_missions import mission_journal  # noqa: E402  (0.105.39)
 from planner_threats import note_intrusions  # noqa: E402  (0.105.30 live fixes)
 import atlas  # noqa: E402
 import backup  # noqa: E402
@@ -589,8 +590,13 @@ def short(a: dict) -> str:
         return f"take all but {a.get('keep')} off the {a.get('job')} work detail"
     if t == "narrow_detail":
         return f"{'widen' if a.get('widen') else 'narrow'} the {a.get('job')} work detail"
-    if t == "send_mission":      # (0.105.24, 13b)
-        return f"send the messenger to make contact with site {a.get('site_id')} (World screen)"
+    if t == "send_mission":      # (0.105.24, 13b; 0.105.39 the other goals)
+        if a.get("goal") in (None, "make_contact"):
+            return f"send the messenger to make contact with site {a.get('site_id')} (World screen)"
+        from planner_missions import MISSION_WORDS
+        n = len(a.get("squad_ids") or [])
+        return (f"send {n} squad{'s' if n != 1 else ''} to {MISSION_WORDS.get(a.get('goal'), str(a.get('goal')))} "
+                f"at site {a.get('site_id')} (World screen)")
     if t == "keep_mousers":      # (0.104.168)
         return f"keep {a.get('count') or 'a few'} cats from the butcher to hunt the vermin"
     if t == "trade_deal":
@@ -921,6 +927,8 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
         # (0.105.36, D7) a date-failed report returned above, so the date is good from here
         for e in mood_journal(state, memory):     # (0.105.30) each mood's requests, once a day
             journal({"kind": "mood", "fort": key, "date": state["date"], **e})
+        for e in mission_journal(memory):         # (0.105.39) missions out and back (planner_missions)
+            journal({"kind": "mission", "fort": key, "date": state["date"], **e})
         note_tantrums(state, memory, events)     # (0.104.31) tantrums counted for the jail
         note_heists(state, memory, events)       # (0.105.24) heists and visitors' killings: visitors kept out a while
         note_intrusions(state, memory, events)   # (0.105.30) DF's invasion records: the alarm before a thief strikes
@@ -1100,7 +1108,9 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
                     elif r.get("ok") is True and p.action["type"] == "open_trade" and r.get("clicking"):
                         outcome_txt = f"clicked the depot's Trade button at {r.get('at')} (the screen is checked next cycle)"
                     elif r.get("ok") is True and p.action["type"] == "send_mission" and r.get("sending"):   # (0.105.24)
-                        outcome_txt = (f"the World screen driven to send the messenger to {r.get('site') or r.get('site_id')} "
+                        outcome_txt = ("the World screen driven to send "
+                                       + ("the messenger" if p.action.get("goal") in (None, "make_contact")
+                                          else "the squads") + f" to {r.get('site') or r.get('site_id')} "
                                        "(each step checked over the next frames; the outcome in the missions report)")
                     elif r.get("ok") is True and p.action["type"] == "call_trader" and not r.get("waiting"):
                         outcome_txt = ("the trader is at the depot" if r.get("at_depot") else

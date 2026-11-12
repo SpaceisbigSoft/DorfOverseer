@@ -177,7 +177,8 @@ NOT_STEERABLE = {"strategist"}     # (0.105.26) its own actions: nothing to rais
 # (0.105.36) and the stranded rule: it opens gates (open_entrance, open_gates)
 # on its own per-entrance cooldown
 RAISE_FORBIDDEN = {"slaughter", "cleanup", "gate_lever", "gate", "squad_attack", "convict", "expel", "cursed",
-                   "trade", "trade_deal", "call_trader", "open_trade", "close_trade", "stranded"}
+                   "trade", "trade_deal", "call_trader", "open_trade", "close_trade", "stranded",
+                   "mission"}     # (0.105.39) missions (raids among them) only as the Rules and the reserve say
 # (0.105.33, B5) never held, beside the planner's STEER_PROTECTED: the barrels
 # and pots the brewing waits for, soap for infected wounds, the farms
 HOLD_PROTECTED = {"containers", "soap", "farms"}
@@ -318,6 +319,10 @@ def shown_rules(proposals: list | None, recent_decisions: list | None) -> set:
     return {n for n in names if isinstance(n, str) and n and n not in NOT_STEERABLE}
 
 
+# (0.105.39) Rules keys named only once the player changes them: the review
+# can't send a mission (nor raise the rule), and the line stays as it was
+QUIET_AT_DEFAULT = {"missions": "rescue", "send_missions": False}
+
 # (v35 fix) three-state Rules switches: "ai" (the AI decides), "always", "never"
 THREE_STATE = {"open_caverns": {"ai": "AI decides", "always": "always", "never": "never"}}
 
@@ -330,7 +335,8 @@ def rules_line(rules: dict) -> str:
     is short of water and has armed soldiers), always, or never."""
     from planner import player_rules
     defaults = player_rules({"settings": {}})
-    flat = {k: v for k, v in rules.items() if isinstance(v, (bool, str, int)) and k not in THREE_STATE}
+    flat = {k: v for k, v in rules.items() if isinstance(v, (bool, str, int)) and k not in THREE_STATE
+            and not (k in QUIET_AT_DEFAULT and v == QUIET_AT_DEFAULT[k])}
     by_player = sorted(k for k, v in flat.items() if v is False and defaults.get(k) is not False)
     off = sorted(k for k, v in flat.items() if v is False and defaults.get(k) is False)
     three = {k: words.get(rules.get(k), words.get("ai")) for k, words in THREE_STATE.items() if k in rules}

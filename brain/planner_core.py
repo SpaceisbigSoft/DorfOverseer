@@ -171,6 +171,7 @@ class Memory:
     shops_seen: dict = field(default_factory=dict)       # (0.99.4) workshop name -> how many stood at its last start
     tree_year: dict = field(default_factory=dict)        # (0.89) {year, base}: trees_removed when the game year began
     world_seen: dict = field(default_factory=dict)       # (0.105.0) grudges (civs that besieged us), export wishes, contact said
+    missions_seen: dict = field(default_factory=dict)    # (0.105.39) missions followed out and back, counts, journal entries
     polished_upto: int | None = None                     # finished-level count when every level was found polished
     no_effect: dict = field(default_factory=dict)        # (0.105.24) action key -> {reason, n, tick}: done for the same reason again
     story_season: str = ""                                # the last season the AI-written chronicle told ("y<year> <season>")
@@ -476,6 +477,11 @@ def player_rules(s: dict) -> dict:
             "make_contact": st.get("make_contact") is not False,
             # (0.105.24, 13b) the AI drives DF's World screen to send the messenger: on only when the player says so
             "send_messenger": st.get("send_messenger") is True,
+            # (0.105.39, 13b) missions on the world map: off / rescue (and stolen artifacts) /
+            # explore (and those) / all (raids, pillage, tribute, conquest too: they can start a war)
+            "missions": st.get("missions") if st.get("missions") in ("off", "rescue", "explore", "all") else "rescue",
+            # (0.105.39) the AI sends them itself by DF's World screen: on only when the player says so
+            "send_missions": st.get("send_missions") is True,
             # (0.105.24) locations shut to visitors a while after a heist / when the mayor is swamped by visitors
             "heist_lockout": st.get("heist_lockout") is not False,
             "shut_to_visitors": st.get("shut_to_visitors") is not False,

@@ -755,4 +755,14 @@ PLANNER_CONFIG = {
     "second_way_min_citizens": 30,      # ...a fort this big with one surface entrance digs another
     "second_way_retry_days": 60,        # ...refused (or dug and not seen): again after this many game days
     "second_way_hermit_outsiders": -50,  # ...not at Outsiders this low (nor hidden_hold, winding_ways) unless ever stranded
+    # (0.105.39, 13b) missions on the world map (planner_missions): the share of
+    # soldiers kept home at Militarism -100 / 0 / +100 (linear between), never
+    # fewer than guard_min_soldiers...
+    "mission_home_share_low": 0.75,
+    "mission_home_share_mid": 0.5,
+    "mission_home_share_high": 0.25,
+    "mission_min_soldiers": 2,          # ...and a mission only with this many sendable soldiers in whole squads
+    "mission_retry_ticks": 403200,      # a World-screen run for a goal that stopped: not tried again for a year
+    "mission_sent_wait_ticks": 100800,  # a mission sent: not proposed again for a season while its controller shows
+    "mission_cooldown_ticks": 7 * 1200,  # the mission rule's proposals a week apart
 }
