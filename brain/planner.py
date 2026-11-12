@@ -53,6 +53,7 @@ from planner_weather import _weather_rules, _weather_squad_filter  # noqa: E402 
 from planner_firebreath import _fire_breather_rule  # noqa: E402  (0.105.40b) no melee squad at a fire breather
 from planner_insane import _insane_rule  # noqa: E402  (0.105.40b) the insane: deadly ground near them, the AI's doors
 from planner_hauling import _hauling_labor_rule, note_hauling  # noqa: E402  (0.105.40 M5) hauling balanced
+from planner_traffic import _traffic_rule  # noqa: E402  (0.105.41) traffic zones on the AI's own levels
 from planner_food import _food_store_rule, note_food  # noqa: E402  (0.105.40b, M6) the food store
 from planner_food import note_food_level  # noqa: E402  (fix41) a food storage level booked per kitchen/still
 from planner_nobles import _noble_value_rule, nobles_view, noble_room_plan  # noqa: E402,F401  (0.105.41) nobles' room values
@@ -822,6 +823,9 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
     # creatures, spatter, old dead units), past its thresholds
     if "cleanup" not in errors:
         _guard(_world_cleanup_rule, s, cfg, proposals, notes, memory, rules_)
+    # (0.105.41, 13e) traffic zones on the AI's finished levels, a slice a cycle
+    if "traffic" not in errors:
+        _guard(_traffic_rule, s, cfg, proposals, rules_)
     # (0.105.40b, M6) a roofed food pile with barrels near the kitchen and still
     if "food_store" not in errors:
         _guard(_food_store_rule, s, cfg, proposals, notes, memory)

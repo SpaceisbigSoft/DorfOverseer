@@ -350,6 +350,9 @@ function defaults()
         keep_enemy_gear = false,
         -- (0.105.40, 13e) world cleanup for the game's speed (WORLD_CLEANUP_CHOICES)
         world_cleanup = 'safe',
+        -- (0.105.41, 13e) traffic zones on the AI's own finished levels: high on its
+        -- stairs and corridors, low on its rooms and fields (lua/ai-traffic.lua)
+        traffic = true,
         -- (0.105.0) water works: a moat from the river (only where one is found), magma workshops, a muddied farm level
         moat = true, magma_workshops = true, irrigation = true,
         -- (0.105.4 review) a cavern well may break into a cavern layer the dwarves
@@ -457,7 +460,8 @@ function sanitize(s)
                         'disposal_player_items', 'keep_enemy_gear',   -- (0.105.27) disposal
                         'squads_shelter',           -- (0.105.0) the squads hide in the shelter too
                         'link_feeders',             -- (0.105.41, item 2) feeder piles linked to their workshops
-                        'mine_adamantine'}) do      -- (0.105.40b) reserved: still refused (not built yet)
+                        'mine_adamantine',          -- (0.105.40b) reserved: still refused (not built yet)
+                        'traffic'}) do              -- (0.105.41) traffic zones on the AI's levels
         if s[k] ~= nil then out[k] = s[k] == true end
     end
     out.gear_weapon = one_of(s.gear_weapon, GEAR_WEAPONS, d.gear_weapon)
@@ -557,6 +561,7 @@ function for_ai(s)
         disposal_player_items = s.disposal_player_items,
         keep_enemy_gear = s.keep_enemy_gear,
         world_cleanup = s.world_cleanup,           -- (0.105.40) off | safe | full
+        traffic = s.traffic,                       -- (0.105.41) traffic zones on the AI's levels
         moat = s.moat, magma_workshops = s.magma_workshops, irrigation = s.irrigation,   -- (0.105.0)
         open_caverns = s.open_caverns,             -- (0.105.4 review)
         squads_shelter = s.squads_shelter,         -- (0.105.0)

@@ -1009,8 +1009,16 @@ end
 -- the save) and the jobs beside it taken off (at most max_jobs: DF gives
 -- back a designation's job, so it's done again while the fire burns);
 -- lift: those tiles back to Normal.
+-- (0.105.41) A tile the AI painted High or Low (lua/ai-traffic.lua) is
+-- restricted as a Normal one is, and lifted back to what the AI painted.
+local function traffic_painted(x, y, z, memo)
+    local ok, v = pcall(function() return reqscript('ai-traffic').ai_value(x, y, z, memo) end)
+    return ok and v or nil
+end
+
 function fire_guard(radius, max_jobs, lift, dry_run)
     local d = load_state()
+    local memo = {}
     if lift then
         local n = 0
         for _, k in ipairs(d.fire.tiles) do
@@ -1018,7 +1026,7 @@ function fire_guard(radius, max_jobs, lift, dry_run)
             pcall(function()
                 local des = dfhack.maps.getTileFlags(x, y, z)
                 if des and des.traffic == df.tile_traffic.Restricted then
-                    if not dry_run then des.traffic = df.tile_traffic.Normal end
+                    if not dry_run then des.traffic = traffic_painted(x, y, z, memo) or df.tile_traffic.Normal end
                     n = n + 1
                 end
             end)
@@ -1039,7 +1047,9 @@ function fire_guard(radius, max_jobs, lift, dry_run)
             local x, y, z = unkey(k)
             pcall(function()
                 local des = dfhack.maps.getTileFlags(x, y, z)
-                if des and des.traffic == df.tile_traffic.Normal then
+                if des and (des.traffic == df.tile_traffic.Normal
+                            or (des.traffic ~= df.tile_traffic.Restricted
+                                and des.traffic == traffic_painted(x, y, z, memo))) then
                     if not dry_run then
                         des.traffic = df.tile_traffic.Restricted
                         table.insert(d.fire.tiles, k)

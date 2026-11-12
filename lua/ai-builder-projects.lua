@@ -173,6 +173,17 @@ local function site_dig_cells(L, extra)
     return cells
 end
 
+-- (0.105.41) The corridor and avenue a site adds (its `extra`), as a list of
+-- anchor-relative tiles, sorted: kept with the project for ai-traffic (High).
+local function extra_list(extra)
+    local out = {}
+    for x, col in pairs(type(extra) == 'table' and extra or {}) do
+        for y in pairs(col) do table.insert(out, {x = x, y = y}) end
+    end
+    table.sort(out, function(a, b) return a.x < b.x or (a.x == b.x and a.y < b.y) end)
+    return out
+end
+
 -- A fortified fort closes each new level off with a door where its corridor
 -- leaves the existing fort (only when there is a new corridor to put it in).
 -- The plan's doors can say otherwise: 'open' puts no door there, 'fortified'
@@ -333,6 +344,7 @@ function start_project(params, now, dry_run)
         stair = {x = stair.x, y = stair.y}, anchor = {x = a.x, y = a.y},
         z = site.z, area = site.area, corridor = site.corridor, new_corridor = site.new_corridor,
         stairs = stairs_cells, summary = L.summary, furniture = furniture,
+        links = extra_list(site.extra),   -- (0.105.41) the corridor to the level: ai-traffic's High tiles
         -- the exact cells, so later steps never depend on regenerating the layout
         cells = {dig = dig, build = build, place = L.place, zone = L.zone,
                  smooth = decor.smooth, engrave = decor.engrave},

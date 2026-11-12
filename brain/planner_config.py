@@ -884,4 +884,12 @@ PLANNER_CONFIG = {
     "alloy_value_keep": 20,               # bars of each metal kept back before it's alloyed for value
     "alloy_value_want": 30,               # a value alloy's bars made while there are fewer than this
     "alloy_value_gain": 1.25,             # the alloy's bars worth this many times its parts, at least
+    # (0.105.41, 13e) traffic zones on the AI's finished levels (brain/planner_traffic.py, lua/ai-traffic.lua)
+    "traffic_slice_tiles": 1500,          # tiles a paint_traffic call reads (and paints) at most
+    "traffic_budget_ms": 40,              # ...and the ms it may take (it stops early, resumes next call)
+    "traffic_paint_cooldown_ticks": 300,  # a slice every quarter day at most while a level waits
+    "traffic_audit_cooldown_ticks": 7 * 1200,   # one painted level rechecked a week at most...
+    "traffic_recheck_days": 168,          # ...only once it was painted (or last checked) this long ago
+    "traffic_priority": 8,                # low: paths only
+    "traffic_priority_slow": 6,           # while the game runs slowly (the paths are part of the cost)
 }

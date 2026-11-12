@@ -157,6 +157,7 @@ SECTION_DEFAULTS = {
     "weather": {},           # (fix41) evil weather, read each pulse too (lua/ai-threats.lua weather_section)
     "insane": {},            # (0.105.40b) the insane, the deadly ground near them, the AI's doors locked, the near-breaking (lua/ai-insane.lua)
     "hauling": {},           # (0.105.40 M5) haul jobs waiting, haulers, key workers hauling (lua/ai-hauling.lua)
+    "traffic": {},           # (0.105.41) traffic zones on the AI's finished levels: waiting, in progress, rechecks (lua/ai-traffic.lua)
     "food_store": {},        # (0.105.40b, M6) food piles, their barrels and fullness, food out of piles, rotten (lua/ai-food-store.lua)
     "pile_links": {},        # (0.105.41, item 2) wheelbarrows, the AI's stone piles, its feeders' links (lua/ai-pile-links.lua)
 }
@@ -271,6 +272,16 @@ def cleanup_line(s: dict) -> str:
     cleanup_line); "" without a cleanup section."""
     try:
         from planner_cleanup import cleanup_line as _line
+        return _line(s)
+    except Exception:  # noqa: BLE001  (a digest line never stops the digest)
+        return ""
+
+
+def traffic_line(s: dict) -> str:
+    """(0.105.41) The traffic zones in one line (brain/planner_traffic.py
+    traffic_line); "" without a traffic section."""
+    try:
+        from planner_traffic import traffic_line as _line
         return _line(s)
     except Exception:  # noqa: BLE001  (a digest line never stops the digest)
         return ""
@@ -625,7 +636,7 @@ def digest(s: dict, news: int = 5) -> str:
 
     for extra in (threat_line(s), world_line(s), infection_line(s), built_line(s), gate_split_line(s), water_line(s),
                   missions_line(s), perf_line(s), cleanup_line(s), hauling_line(s), food_line(s),
-                  pile_links_line(s), deep_hazard_line(s)):
+                  pile_links_line(s), deep_hazard_line(s), traffic_line(s)):
         if extra:
             lines.append(extra)
     m = _d(s.get("map"))
