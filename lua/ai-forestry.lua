@@ -22,12 +22,16 @@
 --                 their trees and the dangers on cavern tiles near them, and
 --                 the grove. The tree census is rebuilt once a game day (the
 --                 plant list walked once); the dangers are read every report.
---   cavern_logging(limit, dry_run, stop, inside_only)
+--   cavern_logging(limit, dry_run, stop, inside_only, unsafe_only)
 --                 up to `limit` reachable cavern (and inside) trees marked for
 --                 felling, the nearest to the fort first; none in a layer with
 --                 a danger on a cavern tile near it, none within DANGER_TILES
 --                 of one. Remembered (site data FOREST_KEY). stop: every tree
---                 the AI marked and still standing unmarked (a danger came).
+--                 the AI marked and still standing unmarked (the caverns
+--                 unwatched, the switch off). unsafe_only (with stop): only the
+--                 AI's marks a new call would not make now (in a layer with a
+--                 danger near it, or within DANGER_TILES of a danger) lifted;
+--                 the safe layers' marks stand (the report's ai_marked_unsafe).
 --                 inside_only: the fort's own underground trees only.
 --   keep_grove(dry_run, guard)
 --                 the grove: a patch of surface soil near the fort with the
@@ -35,7 +39,14 @@
 --                 once and remembered; its tiles of normal traffic set to
 --                 restricted (fewer feet on the saplings). Each call (guard:
 --                 only this) unmarks the felling designations on the trees in
---                 it, autochop's or anyone's: the grove is the AI's own zone.
+--                 it, autochop's or anyone's: the grove is the AI's own zone,
+--                 and sets its tiles back at normal traffic to restricted again.
+--                 The guard reads only the grove's tiles, fresh (no census),
+--                 and the report counts the grove from its tiles every report,
+--                 so the brain can guard it within hours of autochop's marks.
+--                 (DFHack's autochop has no burrow or area to leave alone: its
+--                 burrow settings only limit felling TO burrows, which would
+--                 take over the player's autochop; so the AI unmarks instead.)
 --@ module = true
 
 local U = reqscript('ai-util')
@@ -208,20 +219,58 @@ function layer_unsafe(layer, cave_dangers)
     return false
 end
 
+-- The z levels of the cavern layers near a cavern danger: {[z] = true}.
+function unsafe_zs(trees, cave_dangers)
+    local unsafe = {}
+    for _, l in ipairs(layers_of(trees)) do
+        if layer_unsafe(l, cave_dangers) then
+            for z = l.z1, l.z2 do unsafe[z] = true end
+        end
+    end
+    return unsafe
+end
+
+-- Would cavern_logging refuse to mark this tree now? (a cavern tree in a layer
+-- near a danger, or any tree within DANGER_TILES of one)
+function mark_unsafe(t, unsafe, all_d)
+    if t.where == 'cavern' and unsafe[t.z] then return true end
+    return U.near_danger(all_d, t.x, t.y, t.z, DANGER_TILES) == true
+end
+
 local function in_rect(g, x, y, z)
     return type(g) == 'table' and g.z == z and x >= g.x1 and x <= g.x2 and y >= g.y1 and y <= g.y2
 end
 
-local function grove_counts(c, g)
-    local out = {x1 = g.x1, y1 = g.y1, x2 = g.x2, y2 = g.y2, z = g.z, made = g.made, trees = 0, saplings = 0, marked = 0}
-    for _, t in ipairs(c.trees) do
-        if in_rect(g, t.x, t.y, t.z) then
-            out.trees = out.trees + 1
-            if t.marked then out.marked = out.marked + 1 end
+-- The grove's trees and saplings read from its own tiles, now (GROVE_W x
+-- GROVE_H tiles: cheap enough for every report and every guard): {{x, y, z,
+-- kind, marked}...}, a tree once (at its plant's own tile when DF says which).
+local function grove_plants(g)
+    local out = {}
+    for y = g.y1, g.y2 do
+        for x = g.x1, g.x2 do
+            local kind, _, marked = tile_class(x, y, g.z)
+            if kind then
+                local base = true
+                pcall(function()
+                    local p = dfhack.maps.getPlantAtTile(x, y, g.z)
+                    if p and p.pos and (p.pos.x ~= x or p.pos.y ~= y or p.pos.z ~= g.z) then base = false end
+                end)
+                if base then table.insert(out, {x = x, y = y, z = g.z, kind = kind, marked = marked or nil}) end
+            end
         end
     end
-    for _, s in ipairs(c.saplings) do
-        if in_rect(g, s.x, s.y, s.z) then out.saplings = out.saplings + 1 end
+    return out
+end
+
+local function grove_counts(g)
+    local out = {x1 = g.x1, y1 = g.y1, x2 = g.x2, y2 = g.y2, z = g.z, made = g.made, trees = 0, saplings = 0, marked = 0}
+    for _, p in ipairs(grove_plants(g)) do
+        if p.kind == 'tree' then
+            out.trees = out.trees + 1
+            if p.marked then out.marked = out.marked + 1 end
+        else
+            out.saplings = out.saplings + 1
+        end
     end
     return out
 end
@@ -229,9 +278,10 @@ end
 function report()
     local c = census()
     local d = load_state()
-    local cave_d = dangers()
+    local cave_d, all_d = dangers()
     local out = {surface = {trees = 0, saplings = 0, marked = 0}, cavern = {trees = 0, reachable = 0, marked = 0},
-                 inside = {trees = 0, reachable = 0, marked = 0}, ai_marked = 0, cavern_dangers = #cave_d}
+                 inside = {trees = 0, reachable = 0, marked = 0}, ai_marked = 0, ai_marked_unsafe = 0,
+                 cavern_dangers = #cave_d}
     local standing = {}
     for _, t in ipairs(c.trees) do
         local b = out[t.where]
@@ -246,10 +296,12 @@ function report()
     end
     -- the AI's marks: still standing (and in which layer), or felled since
     local felled, changed = 0, false
+    local unsafe = unsafe_zs(c.trees, cave_d)
     for k in pairs(d.marked) do
         local t = standing[k]
         if t then
             out.ai_marked = out.ai_marked + 1
+            if mark_unsafe(t, unsafe, all_d) then out.ai_marked_unsafe = out.ai_marked_unsafe + 1 end
         else
             felled = felled + 1
             d.marked[k] = nil
@@ -265,20 +317,35 @@ function report()
         if layer_unsafe(l, cave_d) then l.danger = true end
     end
     if #out.layers == 0 then out.layers = nil end
-    if type(d.grove) == 'table' and d.grove.x1 then out.grove = grove_counts(c, d.grove) end
+    if type(d.grove) == 'table' and d.grove.x1 then out.grove = grove_counts(d.grove) end
     if changed then save_state(d) end
     out.census_age = now() - (c.tick or 0)
     return out
 end
 
-function cavern_logging(limit, dry_run, stop, inside_only)
+function cavern_logging(limit, dry_run, stop, inside_only, unsafe_only)
     local d = load_state()
     if stop then
-        local n = 0
+        local n, kept = 0, 0
+        local lift
+        if unsafe_only then
+            -- only the marks a new call would not make now; the safe layers' stand
+            local c = census()
+            local cave_d, all_d = dangers()
+            local unsafe = unsafe_zs(c.trees, cave_d)
+            local standing = {}
+            for _, t in ipairs(c.trees) do standing[key(t.x, t.y, t.z)] = t end
+            lift = function(k)
+                local t = standing[k]
+                return not t or mark_unsafe(t, unsafe, all_d)
+            end
+        end
         for k in pairs(d.marked) do
             local x, y, z = k:match('^(-?%d+),(-?%d+),(-?%d+)$')
             x, y, z = tonumber(x), tonumber(y), tonumber(z)
-            if x and not dry_run then
+            local keep = lift ~= nil and x ~= nil and not lift(k)
+            if keep then kept = kept + 1 end
+            if x and not keep and not dry_run then
                 pcall(function()
                     local plant = dfhack.maps.getPlantAtTile(x, y, z)
                     if plant then dfhack.designations.unmarkPlant(plant) end
@@ -288,23 +355,18 @@ function cavern_logging(limit, dry_run, stop, inside_only)
                     if des then des.dig = df.tile_dig_designation.No end
                 end)
             end
-            if x then n = n + 1 end
-            if not dry_run then d.marked[k] = nil end
+            if x and not keep then n = n + 1 end
+            if not dry_run and not keep then d.marked[k] = nil end
         end
         if not dry_run then save_state(d) end
-        return {ok = true, unmarked = n, dry_run = dry_run or nil}
+        return {ok = true, unmarked = n, kept = unsafe_only and kept or nil, dry_run = dry_run or nil}
     end
     limit = math.floor(tonumber(limit) or 0)
     if limit < 1 then return {ok = false, rejected = true, error = 'cavern_logging needs limit 1+'} end
     limit = math.min(limit, MARK_MAX)
     local c = census(true)
     local cave_d, all_d = dangers()
-    local unsafe = {}
-    for _, l in ipairs(layers_of(c.trees)) do
-        if layer_unsafe(l, cave_d) then
-            for z = l.z1, l.z2 do unsafe[z] = true end
-        end
-    end
+    local unsafe = unsafe_zs(c.trees, cave_d)
     local from = anchor()
     local picks = {}
     for _, t in ipairs(c.trees) do
@@ -434,10 +496,11 @@ function pick_grove(c, ctx, w, h)
     return nil, 'no clear patch of soil round the saplings near the fort'
 end
 
-local function unmark_in(g, c, dry_run)
+-- The grove's marked trees unmarked, read from its tiles now.
+local function unmark_in(g, dry_run)
     local n = 0
-    for _, t in ipairs(c.trees) do
-        if t.marked and in_rect(g, t.x, t.y, t.z) then
+    for _, t in ipairs(grove_plants(g)) do
+        if t.kind == 'tree' and t.marked then
             n = n + 1
             if not dry_run then
                 pcall(function()
@@ -455,27 +518,33 @@ local function unmark_in(g, c, dry_run)
     return n
 end
 
+-- The grove's tiles at normal traffic set to restricted (only those: a tile
+-- set high or low is someone's choice and kept). How many.
+local function restrict(g, dry_run)
+    local restricted = 0
+    for y = g.y1, g.y2 do
+        for x = g.x1, g.x2 do
+            pcall(function()
+                local des = dfhack.maps.getTileFlags(x, y, g.z)
+                if des and des.traffic == df.tile_traffic.Normal then
+                    if not dry_run then des.traffic = df.tile_traffic.Restricted end
+                    restricted = restricted + 1
+                end
+            end)
+        end
+    end
+    return restricted
+end
+
 function keep_grove(dry_run, guard)
     local d = load_state()
-    local c = census(true)
     local g = type(d.grove) == 'table' and d.grove.x1 and d.grove or nil
     if not g then
         if guard then return {ok = false, rejected = true, error = 'the AI keeps no grove yet'} end
         local why, score
-        g, why, score = pick_grove(c, grove_context())
+        g, why, score = pick_grove(census(true), grove_context())
         if not g then return {ok = false, error = why} end
-        local restricted = 0
-        for y = g.y1, g.y2 do
-            for x = g.x1, g.x2 do
-                pcall(function()
-                    local des = dfhack.maps.getTileFlags(x, y, g.z)
-                    if des and des.traffic == df.tile_traffic.Normal then
-                        if not dry_run then des.traffic = df.tile_traffic.Restricted end
-                        restricted = restricted + 1
-                    end
-                end)
-            end
-        end
+        local restricted = restrict(g, dry_run)
         if dry_run then
             return {ok = true, dry_run = true, grove = {x1 = g.x1, y1 = g.y1, x2 = g.x2, y2 = g.y2, z = g.z},
                     score = score, restricted = restricted}
@@ -483,10 +552,11 @@ function keep_grove(dry_run, guard)
         g.made = now()
         d.grove = g
         save_state(d)
-        local un = unmark_in(g, c, false)
+        local un = unmark_in(g, false)
         return {ok = true, made = true, grove = {x1 = g.x1, y1 = g.y1, x2 = g.x2, y2 = g.y2, z = g.z},
                 restricted = restricted, unmarked = un}
     end
-    local un = unmark_in(g, c, dry_run)
-    return {ok = true, unmarked = un, dry_run = dry_run or nil}
+    local un = unmark_in(g, dry_run)
+    local restricted = restrict(g, dry_run)
+    return {ok = true, unmarked = un, restricted = restricted, dry_run = dry_run or nil}
 end

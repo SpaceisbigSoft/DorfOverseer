@@ -53,10 +53,10 @@ env.df = {
               plotinfo = {site_id = 7, group_id = 1, equipment = {items_unassigned = W.una}},
               world = {buildings = {other = {WORKSHOP_ANY = W.shops}}, plants = {all = W.plants},
                        units = {active = {}}, items = {other = W.items}}},
-    workshop_type = both({Carpenters = 0, Masons = 1, Kitchen = 2}),
+    workshop_type = both({Carpenters = 0, Masons = 1, Kitchen = 2, Craftsdwarfs = 3, Jewelers = 4}),
     job_skill = both({CARPENTRY = 1, MASONRY = 2, STONECRAFT = 3, CUTGEM = 4, CLOTHESMAKING = 5,
                       LEATHERWORK = 6, BOWYER = 7, MECHANICS = 8}),
-    unit_labor = both({CARPENTER = 1, MASON = 2, STONECRAFTER = 3, CUTGEM = 4, CLOTHESMAKER = 5,
+    unit_labor = both({CARPENTER = 1, MASON = 2, STONE_CRAFT = 3, CUT_GEM = 4, CLOTHESMAKER = 5,
                        LEATHER = 6, BOWYER = 7, MECHANIC = 8}),
     tiletype = {attrs = setmetatable({}, {__index = function(_, t) return W.tiles[t] end})},
     tiletype_shape = ident, tiletype_material = ident,
@@ -209,6 +209,31 @@ def _():
     assert [s["id"] for s in c["shops"]] == [1, 2], c
     assert c["skills"] == [14, 2, 1, 0], c
     assert r["kinds"]["Masons"]["shops"][0]["id"] == 4 and "Kitchen" not in r["kinds"]
+
+
+#: df-structures' df.unit_labor and df.job_skill tokens the benches use (DF 53; unit_labor has STONE_CRAFT
+#: and CUT_GEM with underscores, job_skill STONECRAFT and CUTGEM without)
+UNIT_LABORS = {"CARPENTER", "MASON", "STONE_CRAFT", "CUT_GEM", "CLOTHESMAKER", "LEATHER", "BOWYER", "MECHANIC",
+               "WOOD_CRAFT", "BONE_CARVE", "ENCRUST_GEM", "METAL_CRAFT", "WEAVER", "TANNER", "SIEGECRAFT"}
+JOB_SKILLS = {"CARPENTRY", "MASONRY", "STONECRAFT", "CUTGEM", "CLOTHESMAKING", "LEATHERWORK", "BOWYER", "MECHANICS"}
+
+
+@test("lua benches: every kind's labour and skill a real df.unit_labor / df.job_skill token; the craftsdwarfs' "
+      "and jewelers' learners counted (STONE_CRAFT, CUT_GEM)")
+def _():
+    lua, env, w = world("ai-benches.lua")
+    kinds = py(env.BENCH_KINDS)
+    for kind, k in kinds.items():
+        assert k["labor"] in UNIT_LABORS, (kind, k)
+        assert k["skill"] in JOB_SKILLS, (kind, k)
+    env.ai_areas = lua.eval("function() return {{x1 = 0, y1 = 0, x2 = 20, y2 = 20, z = 10}} end")
+    w.shop(1, "Craftsdwarfs", 5, 5, 10)
+    w.shop(2, "Jewelers", 6, 6, 10)
+    w.citizen(1, _tbl(lua, {"STONECRAFT": 7}), _tbl(lua, ["STONE_CRAFT"]))
+    w.citizen(2, _tbl(lua, {"CUTGEM": 4}), _tbl(lua, ["CUT_GEM"]))
+    r = py(env.report())
+    assert r["kinds"]["Craftsdwarfs"]["skills"] == [7], r
+    assert r["kinds"]["Jewelers"]["skills"] == [4], r
 
 
 @test("lua cap_bench: the newest untouched one capped, the oldest kept for the masters; remembered; "
@@ -369,6 +394,36 @@ def _():
     assert not py(env.cavern_logging(0, False, False, False))["ok"]
 
 
+@test("lua cavern_logging: a danger near one layer: the report counts the AI's marks it makes unsafe, and "
+      "stop unsafe_only lifts only those (the safe layer's marks stand; no mark-unmark churn)")
+def _():
+    lua, env, w = world("ai-forestry.lua")
+    forest(lua, w)
+    w.walk_z[20] = True
+    w.tree(30, 30, 20, _tbl(lua, {"cave": True}))         # a second layer, far from the first
+    lua.execute("local env = ...; env.CENSUS = nil", env)
+    r = py(env.cavern_logging(5, False, False, False))
+    assert r["ok"] and r["marked"] == 3, r
+    rep = py(env.report())
+    assert rep["ai_marked"] == 3 and rep["ai_marked_unsafe"] == 0, rep
+    w.dangers[1] = _tbl(lua, {"x": 90, "y": 90, "z": 10})   # in the z 10-11 layer, far from z 20
+    w.tile(90, 90, 10, _tbl(lua, {"cave": True}))
+    rep = py(env.report())
+    assert rep["ai_marked"] == 3 and rep["ai_marked_unsafe"] == 2, rep
+    r = py(env.cavern_logging(None, True, True, False, True))
+    assert r["ok"] and r["dry_run"] and r["unmarked"] == 2 and r["kept"] == 1, r
+    assert w.tiles["5,5,10"].dig == "Default"
+    r = py(env.cavern_logging(None, False, True, False, True))
+    assert r["ok"] and r["unmarked"] == 2 and r["kept"] == 1, r
+    assert w.tiles["5,5,10"].dig == "No" and w.tiles["8,5,10"].dig == "No" and w.tiles["30,30,20"].dig == "Default"
+    assert py(w.site["ai-overseer/forestry"])["marked"].keys() == {"30,30,20"}
+    rep = py(env.report())
+    assert rep["ai_marked"] == 1 and rep["ai_marked_unsafe"] == 0, rep
+    # a danger near a tree of the safe layer (within DANGER_TILES) makes that mark unsafe too
+    w.dangers[2] = _tbl(lua, {"x": 33, "y": 30, "z": 20})
+    assert py(env.report())["ai_marked_unsafe"] == 1
+
+
 @test("lua cavern_logging: a felled tree the AI marked is forgotten and counted")
 def _():
     lua, env, w = world("ai-forestry.lua")
@@ -409,8 +464,17 @@ def _():
     rep = py(env.report())["grove"]
     assert rep["saplings"] == 5 and rep["trees"] == 1 and rep["marked"] == 0, rep
     w.tiles["18,18,30"].dig = "Default"                      # autochop again
+    assert py(env.report())["grove"]["marked"] == 1          # seen at once, not after the day's census
+    w.tiles["16,16,30"].traffic = "Normal"                   # restricted traffic lost
+    w.tiles["17,15,30"].traffic = "High"                     # someone's choice: kept
+    lua.execute("local env = ...; env.census = function() error('the guard reads the grove, no census') end", env)
+    r = py(env.keep_grove(True, True))
+    assert r["ok"] and r["dry_run"] and r["unmarked"] == 1 and r["restricted"] == 1, r
+    assert w.tiles["18,18,30"].dig == "Default" and w.tiles["16,16,30"].traffic == "Normal"
     r = py(env.keep_grove(False, True))
     assert r["ok"] and r["unmarked"] == 1 and w.tiles["18,18,30"].dig == "No", r
+    assert r["restricted"] == 1 and w.tiles["16,16,30"].traffic == "Restricted", r
+    assert w.tiles["17,15,30"].traffic == "High"
     lua, env, w = world("ai-forestry.lua")
     grove_fort(lua, env, w)
     assert not py(env.keep_grove(False, True))["ok"]        # guard with no grove
@@ -484,8 +548,9 @@ def _():
     s = forest_state()
     s["forestry"]["ai_marked"] = 4
     s["forestry"]["layers"][0]["danger"] = True
-    p, _ = run_cave(s)
-    assert len(p) == 1 and p[0].action == {"type": "cavern_logging", "stop": True} and p[0].priority == 2, p
+    p, _ = run_cave(s)                                         # an older report (no count): every mark
+    assert len(p) == 1 and p[0].action == {"type": "cavern_logging", "stop": True, "unsafe_only": True} \
+        and p[0].priority == 2, p
     s = forest_state()
     s["forestry"]["ai_marked"] = 4
     s["threats"]["sealed"] = {"c": {"doors": 1}}
@@ -494,6 +559,27 @@ def _():
     s["forestry"]["ai_marked"] = 4
     p, _ = run_cave(s)
     assert p and p[0].action["limit"] == 6, p                 # the batch less the marks standing
+
+
+@test("brain cavern_logging: a danger lifts only the marks it makes unsafe; with none unsafe the safe "
+      "layers' marks stand and the batch is topped up there (no mark-unmark churn every two days)")
+def _():
+    s = forest_state()
+    s["forestry"]["layers"] = [{"z1": 10, "z2": 12, "trees": 30, "reachable": 12, "danger": True},
+                               {"z1": 30, "z2": 31, "trees": 8, "reachable": 8}]
+    s["forestry"]["cavern_dangers"] = 1
+    s["forestry"]["ai_marked"] = 4
+    s["forestry"]["ai_marked_unsafe"] = 0
+    p, n = run_cave(s)
+    assert len(p) == 1 and p[0].rule == "cavern_logging" and p[0].action == {"type": "cavern_logging", "limit": 6}, p
+    assert any("safe layers" in x for x in n), n
+    s["forestry"]["ai_marked_unsafe"] = 3
+    p, _ = run_cave(s)
+    assert len(p) == 1 and p[0].rule == "cavern_logging_stop", p
+    assert p[0].action == {"type": "cavern_logging", "stop": True, "unsafe_only": True}, p
+    s["threats"]["sealed"] = {"c": {"doors": 1}}                 # a seal: every mark, whatever the danger
+    p, _ = run_cave(s)
+    assert p[0].action == {"type": "cavern_logging", "stop": True}, p
 
 
 @test("brain cavern_logging: caverns not watched but trees inside the fort: inside_only")
@@ -518,6 +604,9 @@ def _():
     p = []
     PF._grove_rule(s, CFG, 20, p, n)
     assert len(p) == 1 and p[0].action == {"type": "keep_grove", "guard": True}, p
+    # the guard is its own rule, answered within hours (autochop re-marks each cycle), never a "loop"
+    assert p[0].rule == "grove_guard" and CFG["grove_guard_cooldown_ticks"] <= 1200 // 4, p
+    assert "grove_guard" in planner_core.LOOP_EXEMPT
     s["stocks"]["wood"] = 1
     p, n = [], []
     PF._grove_rule(s, CFG, 20, p, n)

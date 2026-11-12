@@ -22,27 +22,38 @@ default) when all of these hold:
     toward it as well, so cavern logging stops where surface felling stops
     (`tree_quota_share` of the cap), and marks no more than the room left.
 
-`cavern_logging_stop` (stop: true): the AI's marks still standing are lifted
-while a danger is near a cavern layer, a seal is up, the switch is off, or
-an opening stands without a door.
+`cavern_logging_stop` (stop: true): every mark of the AI's still standing is
+lifted while a seal is up, the switch is off, or an opening stands without a
+door. A danger lifts only the marks it makes unsafe (`unsafe_only`: the
+report's `ai_marked_unsafe`, in a layer near the danger or within the
+bridge's DANGER_TILES of it); the safe layers' marks stand, and new marks go
+only to safe layers, so nothing is marked and unmarked over and over.
 
 The grove (`keep_grove`): once the fort has `grove_min_saplings` saplings on
 the surface, a patch near the fort with the most of them is kept (restricted
-traffic; its trees' felling marks lifted). Each day after, while wood is not
-in crisis (`grove_release_wood` logs or more), autochop's marks in it are
-lifted (guard). In a crisis the grove is left to the woodcutters (said).
+traffic; its trees' felling marks lifted). After, while wood is not in crisis
+(`grove_release_wood` logs or more), autochop's marks in it are lifted
+(`grove_guard`, keep_grove guard: true) as soon as the report sees them (it
+counts the grove from its tiles every report) and at most every
+`grove_guard_cooldown_ticks`: autochop re-marks trees each of its cycles and
+can't be told to leave an area alone (its burrows only limit felling TO
+them), so a weekly guard lost the grove. The guard also sets the grove's
+tiles back at normal traffic to restricted. In a crisis the grove is left to
+the woodcutters (said).
 """
 
 from __future__ import annotations
 
 from digest import _d, _l
-from planner_core import AGENDA_THEMES, Proposal, player_rules
+from planner_core import AGENDA_THEMES, LOOP_EXEMPT, Proposal, player_rules
 from planner_labor import trees_this_year
 
 __all__ = ["_cavern_logging_rule", "_grove_rule", "caverns_watched", "forestry_line"]
 
 AGENDA_THEMES.update({"cavern_logging": "fell cavern trees for wood", "cavern_logging_stop": "call the woodcutters back",
-                      "grove": "keep a grove of young trees"})
+                      "grove": "keep a grove of young trees", "grove_guard": "keep the axes off the grove"})
+# the guard answers autochop each of its cycles: often by design, never a loop
+LOOP_EXEMPT.add("grove_guard")
 
 
 def caverns_watched(s: dict) -> tuple[bool, str]:
@@ -76,12 +87,22 @@ def _cavern_logging_rule(s: dict, memory, cfg: dict, citizens: int, proposals: l
     layers = [l for l in _l(f.get("layers")) if isinstance(l, dict)]
     danger = any(l.get("danger") for l in layers) or int(f.get("cavern_dangers") or 0) > 0
     ai_marked = int(f.get("ai_marked") or 0)
-    if ai_marked > 0 and (danger or not watched or not rules_["cavern_logging"]):
-        reason = ("a danger is in the caverns" if danger else why if not watched
-                  else "cavern logging is switched off")
+    if ai_marked > 0 and (not watched or not rules_["cavern_logging"]):
+        reason = why if not watched else "cavern logging is switched off"
         proposals.append(Proposal("cavern_logging_stop", {"type": "cavern_logging", "stop": True},
                                   f"{ai_marked} cavern tree(s) marked for felling and {reason}: "
                                   "unmark them (the woodcutters stay out)", 2))
+        return
+    # a danger: only the marks it makes unsafe are lifted (the bridge knows which); the
+    # safe layers' stand. A report without the count: every mark, as before.
+    if "ai_marked_unsafe" in f:
+        unsafe = min(ai_marked, int(f.get("ai_marked_unsafe") or 0))
+    else:
+        unsafe = ai_marked if danger else 0
+    if unsafe > 0:
+        proposals.append(Proposal("cavern_logging_stop", {"type": "cavern_logging", "stop": True, "unsafe_only": True},
+                                  f"{unsafe} of the AI's {ai_marked} marked tree(s) stand near a danger: unmark "
+                                  "those (the woodcutters stay out of there; the safe layers' marks stand)", 2))
         return
     if not rules_["cavern_logging"]:
         return
@@ -115,8 +136,8 @@ def _cavern_logging_rule(s: dict, memory, cfg: dict, citizens: int, proposals: l
             return
         inside_only, reach = True, int(inside.get("reachable") or 0)
     if danger:
-        notes.append("wood is short, but a danger is in the caverns: the woodcutters fell none there "
-                     "(only trees inside the fort, if any)")
+        notes.append("wood is short, but a danger is in the caverns: the woodcutters fell none in the "
+                     "layers near it (only in the safe layers and inside the fort)")
     want = cfg["cavern_logging_batch"] - ai_marked
     if room is not None:
         want = min(want, room)
@@ -151,7 +172,7 @@ def _grove_rule(s: dict, cfg: dict, citizens: int, proposals: list, notes: list)
     if wood < cfg["grove_release_wood"]:
         notes.append(f"only {wood} logs: the grove's {g.get('marked')} marked tree(s) are left to the woodcutters")
         return
-    proposals.append(Proposal("grove", {"type": "keep_grove", "guard": True},
+    proposals.append(Proposal("grove_guard", {"type": "keep_grove", "guard": True},
                               f"{g.get('marked')} tree(s) in the AI's grove marked for felling: unmark them "
                               "(the grove grows the fort's wood for later years)", 6))
 

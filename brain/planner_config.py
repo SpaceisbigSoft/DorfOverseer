@@ -967,7 +967,8 @@ PLANNER_CONFIG = {
     "cavern_logging_cooldown_ticks": 2 * 1200,
     "grove_min_saplings": 6,              # saplings on the surface before a grove is kept
     "grove_release_wood": 5,              # fewer logs than this: the grove's trees are left to the woodcutters
-    "grove_cooldown_ticks": 7 * 1200,
+    "grove_cooldown_ticks": 7 * 1200,         # choosing the grove (a refusal waits this long)
+    "grove_guard_cooldown_ticks": 100,        # the grove's marks lifted at most this often (autochop re-marks each cycle)
     # (item10) training benches (brain/planner_benches.py)
     "bench_training_max_level": 5,        # the training bench's max skill (df skill rating: 5 Proficient)
     "bench_learners_min": 2,              # workers below it before a bench is capped
