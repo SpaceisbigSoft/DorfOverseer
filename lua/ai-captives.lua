@@ -333,6 +333,7 @@ function make_pit(opts, dry_run)
     local min_drop = tonumber(opts.min_drop) or PIT_MIN_DROP
     local have = ai_pit()
     if have then
+        pcall(function() have.zone_settings.pond.flag.keep_filled = false end)   -- (merge) never a pond
         return {ok = true, existing = true, zone_id = have.id, x = have.x1, y = have.y1, z = have.z}
     end
     local spot = find_drop(min_drop, tonumber(opts.radius) or PIT_RADIUS)
@@ -348,7 +349,12 @@ function make_pit(opts, dry_run)
     if not place_zone(spot, false) then return {ok = false, error = 'the game refused the pit zone'} end
     pcall(function()
         for _, zn in ipairs(dfhack.buildings.findCivzonesAt(xyz2pos(spot.x, spot.y, spot.z)) or {}) do
-            if is_ai_pit(zn) then out.zone_id = zn.id end
+            if is_ai_pit(zn) then
+                out.zone_id = zn.id
+                -- (merge) quickfort's `p` zone is made with keep_filled on (a pond:
+                -- DFHack 53.17-r1 zone.lua): a pit must stay dry
+                pcall(function() zn.zone_settings.pond.flag.keep_filled = false end)
+            end
         end
     end)
     return out
