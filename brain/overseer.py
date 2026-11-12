@@ -381,7 +381,8 @@ CAMERA_QUIET = {"census", "join_levels", "dismiss_alerts", "sand_zone", "report_
                 "cleanup_items", "cleanup_units", "cleanup_spatter", "cleanup_dead_units",
                 "insane_guard",   # (0.105.40b) doors locked and opened: nothing to look at
                 "add_haulers", "relieve_haulers",
-                "paint_traffic"}   # (0.105.41) traffic designations: nothing to look at   # (0.105.40b fix) a work detail changed: nothing to look at
+                "paint_traffic",   # (0.105.41) traffic designations: nothing to look at
+                "clean_contaminants", "quarantine_syndromes", "clear_miasma"}   # (0.105.41, item 11) nothing to look at   # (0.105.40b fix) a work detail changed: nothing to look at
 
 
 _CAMERA_LEVELS: list = []   # (0.104.91) the newest "dig a new ... level" lines, while the keeper runs
@@ -534,6 +535,9 @@ SHORT_WORDS = {
     "cleanup_dead_units": "take long-dead creatures off the game's active list",
     "insane_guard": "lock the AI's own doors between an insane dwarf and deep water, magma or a drop while they are near",  # (0.105.40b)
     "magma_reclaim": "open the paths again where spilt magma cooled, and dig out what it left",  # (0.105.41, item 7)
+    "clean_contaminants": "clean a syndrome's spreading material off the dwarves and floors",   # (0.105.41, item 11)
+    "quarantine_syndromes": "keep the carriers of a contact syndrome in the hospital",
+    "clear_miasma": "mark what rots indoors for the garbage dump",
     "add_haulers": "put idle dwarves on hauling",  # (0.105.40 M5)
     "cavern_logging": "mark cavern trees for the woodcutters (or call them back)",  # (item10)
     "keep_grove": "keep a grove of young trees from the axes",  # (item10)

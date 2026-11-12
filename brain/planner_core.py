@@ -182,6 +182,7 @@ class Memory:
     captives_seen: dict = field(default_factory=dict)    # (item6) {pit_trial, pitted, siege {since, peak}, tower_year}
     food_store_seen: dict = field(default_factory=dict)  # (0.105.40b, M6) the rotten food followed: {since, low, rotten, rise, rise_tick}
     alloy_seen: dict = field(default_factory=dict)       # (fix41) {fuel_note}: when the bronze-waits-for-fuel note was last said
+    syndromes_seen: dict = field(default_factory=dict)   # (0.105.41, item 11) {dry, cleaned, last}: the contaminant clean's trial and counts
     polished_upto: int | None = None                     # finished-level count when every level was found polished
     no_effect: dict = field(default_factory=dict)        # (0.105.24) action key -> {reason, n, tick}: done for the same reason again
     story_season: str = ""                                # the last season the AI-written chronicle told ("y<year> <season>")
@@ -525,6 +526,8 @@ def player_rules(s: dict) -> dict:
             # unreachable hostile or wild creatures)
             # (item10) cavern trees felled when the caverns are watched and wood is short: off only when the settings say so
             "cavern_logging": st.get("cavern_logging") is not False,
+            # (0.105.41, item 11) syndrome carriers kept apart and their spatter cleaned: off only when the settings say so
+            "syndrome_care": st.get("syndrome_care") is not False,
             "world_cleanup": st.get("world_cleanup") if st.get("world_cleanup") in ("off", "safe", "full") else "safe",
             "clear_alerts": st.get("clear_alerts") if st.get("clear_alerts") in ("all", "quiet", "none") else "quiet",
             # (0.105.41, item 4) a hunter or two out while it is safe; farm plots on a known, quiet cavern's soil

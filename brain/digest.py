@@ -170,6 +170,8 @@ SECTION_DEFAULTS = {
     "forestry": {},          # (item10) trees by where they stand, cavern layers and dangers, the grove (lua/ai-forestry.lua)
     "benches": {},           # (item10) the AI's workshops of a kind, their skill caps, the labour's skills (lua/ai-benches.lua)
     "leather_gear": {},      # (item10) empty leather uniform entries, free leather gear (lua/ai-leather-gear.lua)
+    "syndromes": {},         # (0.105.41, item 11) syndromes, their sources, carriers, floor spatter, quarantine (lua/ai-syndromes.lua)
+    "miasma": {},            # (0.105.41, item 11) miasma indoors, what rots near it, dump zones outside (lua/ai-syndromes.lua)
 }
 # (0.105.36) not REQUIRED (the plan goes on without them), but a missing one is
 # listed in _errors as a failed one is: the default (civ_alert False) is not
@@ -292,6 +294,16 @@ def traffic_line(s: dict) -> str:
     traffic_line); "" without a traffic section."""
     try:
         from planner_traffic import traffic_line as _line
+        return _line(s)
+    except Exception:  # noqa: BLE001  (a digest line never stops the digest)
+        return ""
+
+
+def sickness_line(s: dict) -> str:
+    """(0.105.41, item 11) Syndromes, carriers and miasma in one line
+    (brain/planner_syndromes.py syndrome_line); "" without them."""
+    try:
+        from planner_syndromes import syndrome_line as _line
         return _line(s)
     except Exception:  # noqa: BLE001  (a digest line never stops the digest)
         return ""
@@ -645,7 +657,7 @@ def digest(s: dict, news: int = 5) -> str:
     ]
 
     for extra in (threat_line(s), world_line(s), infection_line(s), built_line(s), gate_split_line(s), water_line(s),
-                  missions_line(s), perf_line(s), cleanup_line(s), hauling_line(s), food_line(s),
+                  missions_line(s), perf_line(s), cleanup_line(s), hauling_line(s), food_line(s), sickness_line(s),
                   pile_links_line(s), deep_hazard_line(s), traffic_line(s)):
         if extra:
             lines.append(extra)

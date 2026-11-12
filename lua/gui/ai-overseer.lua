@@ -410,6 +410,15 @@ function RulesPage:init()
     })
     table.insert(views, widgets.Label{frame = {t = 8 + hrow, l = 58}, text = {
         {text = 'high on its corridors and stairs, low on rooms and fields', pen = COLOR_GREY}}})
+    -- (0.105.41, item 11) syndrome care, under the hospital burrow's help line (the row is free)
+    table.insert(views, widgets.ToggleHotkeyLabel{
+        view_id = 'syndrome_care',
+        frame = {t = 6 + hrow, l = 56, w = 62},
+        label = 'Keep syndrome carriers apart, clean it off:',
+        label_width = 46,
+        initial_option = p.settings.syndrome_care ~= false,
+        on_change = function(v) p:set_field('syndrome_care', v) end,
+    })
     -- (0.104.169) the calm-down burrows' switch, beside the Jail level (the
     -- jail is the other answer to a tantrum), with its help line
     local jrow = 8
@@ -913,6 +922,7 @@ function RulesPage:refresh()
     self.subviews.camera_pace:setOption(s.camera_pace, false)
     self.subviews.answer_locations:setOption(s.answer_locations, false)
     self.subviews.hospital_burrow:setOption(s.hospital_burrow ~= false, false)     -- (0.104.168)
+    self.subviews.syndrome_care:setOption(s.syndrome_care ~= false, false)         -- (0.105.41, item 11)
     self.subviews.calm_burrow:setOption(s.calm_burrow ~= false, false)             -- (0.104.169)
     self.subviews.tribute:setOption(s.tribute or 'small', false)                   -- (0.105.0)
     self.subviews.make_contact:setOption(s.make_contact ~= false, false)           -- (0.105.0)

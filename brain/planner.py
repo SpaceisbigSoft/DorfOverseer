@@ -61,6 +61,7 @@ from planner_hauling import _hauling_labor_rule, note_hauling  # noqa: E402  (0.
 from planner_traffic import _traffic_rule  # noqa: E402  (0.105.41) traffic zones on the AI's own levels
 from planner_food import _food_store_rule, note_food  # noqa: E402  (0.105.40b, M6) the food store
 from planner_provisions import _provisions_rules  # noqa: E402  (0.105.41, item 4) hunting, butchery, fruit, meals, cavern farms
+from planner_syndromes import _miasma_rule, _syndrome_rule, note_syndromes  # noqa: E402  (0.105.41, item 11) syndromes, miasma
 from planner_food import note_food_level  # noqa: E402  (fix41) a food storage level booked per kitchen/still
 from planner_nobles import _noble_value_rule, nobles_view, noble_room_plan  # noqa: E402,F401  (0.105.41) nobles' room values
 from planner_piles import _pile_links_rule  # noqa: E402  (0.105.41, item 2) wheelbarrows and feeder links
@@ -558,6 +559,12 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
     # AI's own doors locked between; the near-breaking (planner_insane)
     if "insane" not in errors:
         _guard(_insane_rule, s, cfg, proposals, notes, memory)
+    # (0.105.41, item 11) syndromes beyond infection (carriers kept apart, the
+    # syndrome spatter cleaned) and miasma indoors (what rots marked for the dump)
+    if "syndromes" not in errors:
+        _guard(_syndrome_rule, s, cfg, proposals, notes, memory, rules_)
+    if "miasma" not in errors:
+        _guard(_miasma_rule, s, cfg, proposals, notes, memory)
     if can_use("dead"):
         _guard(_dead_notes, s, notes, proposals, rules_, memory)
 
@@ -1183,6 +1190,7 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
         note_gate_stuck(p, r, state, memory, now)          # (0.105.32) the unstick step tried, a way dug in
         note_cleanup(p, r, state, memory, now)             # (0.105.40) a cleanup's trial done, what it removed
         note_captives(p, r, memory, now)                   # (item6) the pit's trial done, the prisoners sent
+        note_syndromes(p, r, memory, now)                  # (0.105.41, item 11) the contaminant clean's trial done
         note_food_level(p, r, memory)                      # (fix41) one food storage level a kitchen or still
         try:
             note_design(p, r, state, memory, now)          # (D0) sites kept, a landmark's refusals and fallback
