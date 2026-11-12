@@ -378,7 +378,8 @@ CAMERA_QUIET = {"census", "join_levels", "dismiss_alerts", "sand_zone", "report_
                 "cistern_step", "water_work", "restrict_water", "save_memory", "pair_chairs", "approve_orders",
                 "blueprint_sites",   # (D0) looks for sites, changes no tile
                 # (0.105.40) world cleanup: nothing to look at
-                "cleanup_items", "cleanup_units", "cleanup_spatter", "cleanup_dead_units"}
+                "cleanup_items", "cleanup_units", "cleanup_spatter", "cleanup_dead_units",
+                "insane_guard"}   # (0.105.40b) doors locked and opened: nothing to look at
 
 
 _CAMERA_LEVELS: list = []   # (0.104.91) the newest "dig a new ... level" lines, while the keeper runs
@@ -515,6 +516,7 @@ SHORT_WORDS = {
     "cleanup_units": "remove creatures no dwarf can reach (a season out of reach)",
     "cleanup_spatter": "clean blood and spatter off the map",
     "cleanup_dead_units": "take long-dead creatures off the game's active list",
+    "insane_guard": "lock the AI's own doors between an insane dwarf and deep water, magma or a drop while they are near",  # (0.105.40b)
     "census": "count what fills the map",  # (0.104.113)
     "seal_well_stairs": "close the cavern wells' stair columns",  # (0.104.151)
     "join_levels": "join areas on one level that meet only through the stairs",  # (0.104.108)

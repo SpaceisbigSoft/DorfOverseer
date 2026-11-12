@@ -13,6 +13,7 @@ from quirks import has_rule
 from digest import _d, _l
 from planner_core import *  # noqa: F401,F403
 import planner_farms
+from planner_insane import INSANE_MOODS, insane_ids, insane_present  # (0.105.40b)
 
 __all__ = ["MOOD_WORKSHOPS", "_mood_rules", "mood_item_text", "MOOD_CONSUMERS", "MOOD_TRADE_KEYS", "_mood_make", "_mood_slaughter", "_mood_materials", "mood_counts_text", "mood_journal", "mood_trade_wants", "MOOD_BLOCKS", "mood_blocked", "MOOD_RESERVES", "mood_reserve_counts", "reserve_room", "RESERVE_BATCH", "note_reserve_swap", "_mood_reserve_rule", "reserve_trade_wants", "reserve_words"]
 
@@ -58,6 +59,10 @@ def _mood_rules(s: dict, memory, cfg: dict, proposals: list, notes: list) -> Non
         if mood == "Baby":
             continue                      # (older bridge) a baby being carried, not a mood
         if not m.get("craft"):
+            # (0.105.40b) with the bridge's `insane` section the insane are said
+            # there, with where they are and what the AI does (planner_insane)
+            if mood in INSANE_MOODS and insane_present(s) and m.get("unit_id") in insane_ids(s):
+                continue
             notes.append(f"{name} has gone {str(mood).lower()}: lost to the fort (this can't be undone)"
                          if mood in ("Melancholy", "Raving", "Berserk") else f"{name}: {mood}")
             continue

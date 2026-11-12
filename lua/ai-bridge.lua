@@ -336,6 +336,20 @@ ACTIONS = {
     cleanup_units = act_cleanup_units,
     cleanup_spatter = act_cleanup_spatter,
     cleanup_dead_units = act_cleanup_dead_units,
+    -- (0.105.40b) the AI's own doors locked between the insane and deadly ground (lua/ai-insane.lua)
+    insane_guard = function(a)
+        if a.units ~= nil and type(a.units) ~= 'table' then return reject('insane_guard: units is a list of unit ids') end
+        local ids
+        if a.units ~= nil then
+            ids = {}
+            for _, id in ipairs(a.units) do
+                local n = type(id) == 'number' and math.tointeger(id) or nil
+                if not n then return reject('insane_guard: units is a list of unit ids') end
+                table.insert(ids, n)
+            end
+        end
+        return reqscript('ai-insane').guard({units = ids}, a.dry_run == true)
+    end,
     -- (D0) the Design track: a landmark's sites, its drawing built, its next stage (ai-bridge-design.lua)
     blueprint_sites = act_blueprint_sites,
     build_blueprint = act_build_blueprint,
@@ -391,6 +405,7 @@ for _, name in ipairs({
     'build_blueprint', 'landmark_step',
     -- (0.105.40) world cleanup: each dry run counts and returns before it removes anything
     'cleanup_items', 'cleanup_units', 'cleanup_spatter', 'cleanup_dead_units',
+    'insane_guard',   -- (0.105.40b) its dry run counts the doors and changes nothing
 }) do DRY_OK[name] = true end
 
 -- These only change what's displayed, so they still work while halted, dry
@@ -450,7 +465,7 @@ end
 -- `modules` loads each. tests/test_fix26_bridge.py keeps it in step with lua/.
 BRIDGE_MODULES = {
     'ai-blueprints', 'ai-builder', 'ai-camera', 'ai-census', 'ai-cleanup', 'ai-constructions', 'ai-diplomacy', 'ai-disposal', 'ai-gates', 'ai-health', 'ai-homes',
-    'ai-industry', 'ai-joins', 'ai-labor', 'ai-layouts', 'ai-military', 'ai-military-gear',
+    'ai-industry', 'ai-insane', 'ai-joins', 'ai-labor', 'ai-layouts', 'ai-military', 'ai-military-gear',
     'ai-mission-send', 'ai-missions', 'ai-moods', 'ai-nobles', 'ai-overlay', 'ai-overseer-settings',
     'ai-ping', 'ai-reports', 'ai-society', 'ai-society-burrows', 'ai-status', 'ai-threats', 'ai-title',
     'ai-trade', 'ai-util', 'ai-water', 'ai-waterworks', 'gui/ai-overseer',
@@ -785,6 +800,10 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
     -- (a pass spans many reports; a new one starts a game day after the last
     -- started at the soonest) and sends its last finished pass between
     cleanup = function() return safe(function() return reqscript('ai-cleanup').report() end) end,
+    -- (0.105.40b) the fort's insane (melancholy, raving, berserk, catatonic):
+    -- where, the deadly ground near them, the AI's doors locked for them; the
+    -- citizens whose stress heads that way (lua/ai-insane.lua; in the pulse)
+    insane = function() return safe(function() return reqscript('ai-insane').report() end) end,
     -- (0.105.30) what the fort has built: finished constructions by shape and
     -- material, above or below ground, roofed surface tiles, the waiting ones
     -- and the AI's own (lua/ai-constructions.lua; one pass, every 3 days)
@@ -803,6 +822,7 @@ PULSE_SECTIONS = {
     'bridge_version', 'paused', 'fort', 'date', 'wealth', 'dwarves', 'stocks',
     'others_on_map', 'civ_alert', 'civ_alert_ready', 'civ_alert_shelter', 'orders', 'projects', 'entrances',
     'moods', 'military', 'settings', 'events_waiting', 'hazards', 'ledger',
+    'insane',   -- (0.105.40b) a melancholy dwarf walks to the water: read each cycle
 }
 TIERS = {pulse = true, daily = true, survey = true}
 -- report sections rebuilt only every so many game days (the lag pass, Oct 23:

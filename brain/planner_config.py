@@ -767,6 +767,14 @@ PLANNER_CONFIG = {
     "mission_retry_ticks": 403200,      # a World-screen run for a goal that stopped: not tried again for a year
     "mission_sent_wait_ticks": 100800,  # a mission sent: not proposed again for a season while its controller shows
     "mission_cooldown_ticks": 7 * 1200,  # the mission rule's proposals a week apart
+    # (0.105.40b) the insane (brain/planner_insane.py): the AI's doors between a
+    # melancholy or raving dwarf and deadly ground checked this often...
+    "insane_cooldown_ticks": 100,
+    # ...and (DF wiki, Stress) the citizens near breaking: long-term stress this
+    # high ("haggard") while very unhappy or worse, or this high ("harrowed")
+    # while unhappy or worse, first in the stress care
+    "insane_risk_longterm": 50000,
+    "insane_risk_harrowed": 100000,
     # (0.105.40, 13e) world cleanup (brain/planner_cleanup.py), only past these
     # counts; while the game runs slowly each threshold is divided by
     # cleanup_slow_factor, and the item one grows with the items on the map
