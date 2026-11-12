@@ -9,6 +9,12 @@ import math
 from digest import _d, _l
 from planner_core import *  # noqa: F401,F403
 
+
+def _far_args(cfg: dict) -> dict:
+    """(0.105.38 review) planner_water.far_args (imported late: no import loop)."""
+    from planner_water import far_args
+    return far_args(cfg)
+
 __all__ = ["_well_rule", "_well_lid_rule", "SHAFT_LINK_LOST_MAX", "SHAFT_DANGER_TILES", "SHAFT_DANGER_OPEN", "cavern_danger", "_water_zone_rule", "cavern_points", "cavern_action", "cavern_well_need", "unfound_cavern", "cavern_well_safe", "WELL_PARTS_SHOPS", "CHAIN_SKIP", "chain_metal", "well_parts_plan", "_well_parts", "_water_traffic_rule", "cistern_pop", "WATER_WORDS", "magma_access", "water_summary", "_water_rules", "CISTERN_WORDS", "_cistern_parts", "_cistern_rule", "WELLS_CONFIG", "shut_wells", "usable_wells", "ai_opens_cavern", "cavern_open_words", "CISTERN_RETRY_SEALS", "CISTERN_RELINK_ROUNDS", "CISTERN_SHUT_RULE"]
 
 # (0.105.33 B4) the wells' own settings (merged into PLANNER_CONFIG, as planner_threats does)
@@ -215,8 +221,8 @@ def _well_rule(s: dict, memory, traits: dict, cfg: dict, proposals: list, notes:
     # (0.105.3) Hammerstirred: the pond 51 tiles from the gate, past the 40 looked at
     if cfg["well_shore_reach"] != 40:
         action["shore_reach"] = int(cfg["well_shore_reach"])
-    if int(cfg.get("water_far_reach", 0) or 0) > 0:   # (0.105.38) a far bank: up to this (0: the map's width)
-        action["far_reach"] = int(cfg["water_far_reach"])
+    if "far_reach" in _far_args(cfg):   # (0.105.38) a far bank: up to this (-1: the map's width; 0: none)
+        action["far_reach"] = _far_args(cfg)["far_reach"]
     if memory.climate_freezes and _d(s.get("date")).get("season") == "winter":
         # a well right over surface water is dismantled into its parts when
         # the water freezes (the DF wiki; region2's shore well went in winter
@@ -849,8 +855,8 @@ def _water_rules(s: dict, cfg: dict, proposals: list, notes: list) -> None:
         act = {"type": "survey_water"}
         if cfg["cistern_tunnel_max"] != 30:          # (0.105.3) the cistern's tunnel may reach further
             act["tunnel"] = int(cfg["cistern_tunnel_max"])
-        if int(cfg.get("water_far_reach", 0) or 0) > 0:   # (0.105.38)
-            act["far_reach"] = int(cfg["water_far_reach"])
+        if "far_reach" in _far_args(cfg):   # (0.105.38; review: 0 sent too, far sources off)
+            act["far_reach"] = _far_args(cfg)["far_reach"]
         return act
     if w.get("scanning"):
         proposals.append(Proposal("water", survey(),
@@ -956,8 +962,8 @@ def _cistern_rule(s: dict, memory, cfg: dict, proposals: list, notes: list, rule
     step = {"type": "cistern_step", "prefs": prefs}
     if cfg["cistern_tunnel_max"] != 30:              # (0.105.3) the reach the survey planned it with
         step["tunnel"] = int(cfg["cistern_tunnel_max"])
-    if int(cfg.get("water_far_reach", 0) or 0) > 0:  # (0.105.38) a far pool's tunnel: up to this (0: the map's width)
-        step["far_reach"] = int(cfg["water_far_reach"])
+    if "far_reach" in _far_args(cfg):  # (0.105.38) a far pool's tunnel: up to this (-1: the map's width; 0: none)
+        step["far_reach"] = _far_args(cfg)["far_reach"]
     if cfg["cistern_hold"]:
         # (0.104.144) the player: as built, the cistern doesn't work and would
         # flood the fort if it did. No step (the bridge holds it too) until it

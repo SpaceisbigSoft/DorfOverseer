@@ -231,16 +231,23 @@ length of a dig from the fort's middle through safe rock, or why there is
 none (`opens_cavern`, `aquifer`). The keys above stay the near reach, tried
 first as before; when nothing near will do, each work weighs the far bodies
 by the dig's length (cheapest first; a magma pipe before the magma sea):
-a moat's long feed channel, a water wheel's long axle run, a farm room's
+a water wheel's long axle run, a farm room's
 long tunnel, a cistern tunnel out to a far pool, a well on a far bank the
 dwarves can walk to, a magma workshop over a far pipe (a tunnel joins its
 stair to the fort). Every safety rule holds along the whole length (no
 cavern, aquifer or magma on the way; the floodgate at the source's end; the
-dry run, walked again before each segment of a long dig). A way that opens
-a cavern only with the cavern switch's leave (Never / Always / AI decides).
-- `water_far_reach` = 0: a far source this many tiles off at most (0: the
-  map's width).
-- `water_job_max` = 600: tiles a far work digs and builds in all at most.
+dry run, walked again before each segment of a long dig, and the next
+segment's own rock checked again; no dug tile with an aquifer or other
+liquid beside or over it). The survey's reach estimate only sorts the
+bodies: the planned dig itself is walked. A way that opens a cavern only
+with the cavern switch's leave (Never / Always / AI decides: for magma, only
+when no other way to magma is left). The moat keeps to a near river (its
+feed is 40 tiles at most); magma deeper than a stair reaches (60 levels) is
+left out, and a refused magma workshop is tried again a season on.
+- `water_far_reach` = -1: a far source this many tiles off at most (-1:
+  the map's width; 0: far sources off).
+- `water_job_max` = 600: tiles a far work digs and builds in all at most
+  (0: no far work).
 - `water_dig_segment` = 40: a long dig designated this many tiles a step.
 
 ## Pastures

@@ -2227,6 +2227,7 @@ function map_width()
 end
 
 -- (0.105.38) the brain's water_far_reach for the cistern's and the shore well's far sources
+-- (none or below 0: the map's width; (review) 0: far sources off)
 function far_reach_of(a)
     local r = whole_number(a.far_reach)
     pcall(function()

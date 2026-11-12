@@ -36,6 +36,14 @@
 --   (river, surface, cavern, pool): what the water works chose from before,
 --   so a fort whose water is near makes the same choices as before.
 --
+-- (0.105.38 review) The near box is scanned first, its blocks as before
+-- 0.105.38, and its result saved at once (`waters_pending`: the whole map's
+-- list is the survey before's until this one's is done); the whole map's
+-- slices skip its blocks. Magma is read by its deep feature's type
+-- (getGlobalInitFeature): only the sea's sets the sea's top; unknown, a
+-- cavern's pool. Ice under the sky is a body of its own (`ice`); a river
+-- seen before and now ice is `frozen_river`.
+--
 -- Kept in the save (site data 'ai-overseer/water') and reported from there:
 -- the scan runs once a season (the survey_water action), the report costs
 -- nothing.
@@ -96,6 +104,44 @@ function layer_names()
     return out
 end
 
+-- (0.105.38 review) The kind of a global feature (a block's
+-- global_feature): 'sea' (the magma sea), 'underworld', 'cavern', or nil
+-- when unknown. DFHack's getGlobalInitFeature first (its type, not the layer
+-- names, which may fail), then the layer names. Unknown magma is read as a
+-- cavern's pool: only magma known to be the sea's sets the sea's top (and
+-- stops the scan under it). A global function, so the tests can swap it.
+function feature_kind(gid, names)
+    if gid == nil or gid < 0 then return nil end
+    local ok, k = pcall(function()
+        local f = dfhack.maps.getGlobalInitFeature(gid)
+        if not f then return nil end
+        local t = f:getType()
+        local ft = df.feature_type
+        if t == ft.magma_core_from_layer then return 'sea' end
+        if t == ft.underworld_from_layer then return 'underworld' end
+        if t == ft.subterranean_from_layer then return 'cavern' end
+        return nil
+    end)
+    if ok and k then return k end
+    local layer = names and names[gid]
+    local n = layer and tostring(layer.name) or ''
+    if n:find('Cavern') then return 'cavern' end
+    if n:find('MagmaSea') then return 'sea' end
+    if n:find('Underworld') then return 'underworld' end
+    return nil
+end
+
+-- the job's feature kinds, cached by global feature index (false: unknown)
+local function fkind(job, gid)
+    if gid == nil then return nil end
+    local c = job.fkinds[gid]
+    if c == nil then
+        c = feature_kind(gid, job.names) or false
+        job.fkinds[gid] = c
+    end
+    return c or nil
+end
+
 local function open_tiletype()
     local ok, v = pcall(function() return df.tiletype.OpenSpace end)
     return ok and v or nil
@@ -117,7 +163,7 @@ local function tt_names(tt)
 end
 
 -- the classes a body's blocks are joined by (cells of one class touching)
-local CLASSES = {'f', 's', 'l', 'u', 'c', 'a', 'mp', 'mc', 'ms', 'mo', 'mu'}
+local CLASSES = {'f', 's', 'l', 'u', 'c', 'a', 'mp', 'mc', 'ms', 'mo', 'mu', 'i'}   -- (i: ice, a frozen river or lake)
 local CLASS_ID = {}
 for i, c in ipairs(CLASSES) do CLASS_ID[c] = i end
 
@@ -138,15 +184,15 @@ function start_survey()
                  z1 = math.max(0, mid.z_low - DEPTH), z2 = z2,
                  bodies = {river = new_body('river'), surface = new_body('surface'), cavern = new_body('cavern'),
                            pool = new_body('pool')},
-                 aquifer = {}, magma = {},
-                 -- (0.105.38) the whole map
-                 phase = 'up', z = z2 + 1, bi = 0, ground = false, ztop = z2,
-                 cells = {}, list = {}, names = layer_names(), open = open_tiletype()}
-    if job.z > Z - 1 then job.phase, job.z = 'down', z2 end
+                 aquifer = {}, magma = {}, frozen = {},
+                 -- (0.105.38 review) the near box first (its blocks, as before
+                 -- 0.105.38), its result saved at once; then the whole map
+                 phase = 'near', z = z2, bi = 0, ground = false, ztop = z2,
+                 cells = {}, list = {}, names = layer_names(), fkinds = {}, open = open_tiletype()}
+    job.bx1, job.bx2, job.by1, job.by2 = job.x1 // 16, job.x2 // 16, job.y1 // 16, job.y2 // 16
     return job
 end
 
--- one tile of water (or magma) into its block's cell of the whole-map survey
 local function add_cell(job, cls, bx, by, bz, x, y, d, extra)
     local k = ((CLASS_ID[cls] * job.Z + bz) * job.nby + by) * job.nbx + bx
     local c = job.cells[k]
@@ -175,22 +221,23 @@ local function add_cell(job, cls, bx, by, bz, x, y, d, extra)
     if not c.td or flat < c.td then c.tx, c.ty, c.td, c.tout = x, y, flat, d.outside and true or nil end
 end
 
--- one map block: the near box's sums as before, and the whole map's cells.
--- true when it holds ground (anything but open space: the up phase's test)
-local function scan_block(job, bx, by, bz, want_ground)
+-- one map block: the near box's sums as before (`near`: the block is one of
+-- the near box's, every tile of it counted, as before 0.105.38), and the
+-- whole map's cells. true when it holds ground (anything but open space:
+-- the up phase's test)
+local FROZEN = 'FROZEN_LIQUID'
+local function scan_block(job, bx, by, bz, want_ground, near)
     local block = dfhack.maps.getBlock(bx, by, bz)
     if not block then return false end
     local mid, bodies, aquifer, magma = job.mid, job.bodies, job.aquifer, job.magma
-    local near_z = bz >= job.z1 and bz <= job.z2
-    local x1, x2, y1, y2 = job.x1, job.x2, job.y1, job.y2
+    local gk = fkind(job, block.global_feature)
     local layer = job.names[block.global_feature]
-    local lname = layer and layer.name or nil
+    local lname = gk == 'cavern' and (layer and layer.name or 'a cavern') or nil
     local ground = false
     local open = job.open
     for lx = 0, 15 do
         local col = block.designation[lx]
         local x = bx * 16 + lx
-        local in_x = near_z and x >= x1 and x <= x2
         for ly = 0, 15 do
             local d = col[ly]
             local y = by * 16 + ly
@@ -199,8 +246,18 @@ local function scan_block(job, bx, by, bz, want_ground)
                 if open == nil or tt ~= open then ground = true end
             end
             local fs = d.flow_size
+            -- (0.105.38 review) ice under the sky (a frozen river or lake: its
+            -- tiletype's material FROZEN_LIQUID), only outside tiles looked at
+            local frozen = false
+            if d.outside then
+                local _, mat = tt_names(block.tiletype[lx][ly])
+                if mat == FROZEN then
+                    frozen = true
+                    if near then job.frozen[bz] = (job.frozen[bz] or 0) + 1 end
+                    add_cell(job, 'i', bx, by, bz, x, y, d)
+                end
+            end
             if fs > 0 then
-                local near = in_x and y >= y1 and y <= y2
                 local is_magma = d.liquid_type == true or d.liquid_type == 1
                 local feat = d.feature_local or d.feature_global
                 if is_magma then
@@ -218,14 +275,16 @@ local function scan_block(job, bx, by, bz, want_ground)
                     end
                     -- (0.105.38) the magma's kind: the magma sea (or the
                     -- underworld) and the caverns are global features, the
-                    -- pipes local ones
+                    -- pipes local ones. (review) By the feature's type: only
+                    -- magma known to be the sea's is the sea; unknown, a
+                    -- cavern's pool (the scan goes on under it)
                     local cls
                     if d.feature_global then
-                        if lname and lname:find('Cavern') then cls = 'mc' else cls = 'ms' end
+                        cls = (gk == 'sea' or gk == 'underworld') and 'ms' or 'mc'
                     elseif d.feature_local then cls = 'mp'
                     elseif d.outside then cls = 'mo'
                     else cls = 'mu' end
-                    if cls == 'ms' and (not job.sea_top or bz > job.sea_top) then job.sea_top = bz end
+                    if cls == 'ms' and gk == 'sea' and (not job.sea_top or bz > job.sea_top) then job.sea_top = bz end
                     add_cell(job, cls, bx, by, bz, x, y, d)
                 else
                     local tt = block.tiletype[lx][ly]
@@ -250,10 +309,10 @@ local function scan_block(job, bx, by, bz, want_ground)
                     end
                     local cls = feat and 'c' or RIVER_MATS[mat] and 'f'
                         or (d.outside and d.water_salt) and 's' or d.outside and 'l' or 'u'
-                    add_cell(job, cls, bx, by, bz, x, y, d, mat)
+                    if not frozen then add_cell(job, cls, bx, by, bz, x, y, d, mat) end
                 end
             elseif d.water_table then
-                if near_z and in_x and y >= y1 and y <= y2 then aquifer[bz] = (aquifer[bz] or 0) + 1 end
+                if near then aquifer[bz] = (aquifer[bz] or 0) + 1 end
                 add_cell(job, 'a', bx, by, bz, x, y, d)
             end
         end
@@ -262,10 +321,16 @@ local function scan_block(job, bx, by, bz, want_ground)
         -- (the cells of this block learn their cavern's name)
         for _, cls in ipairs({'c', 'mc'}) do
             local c = job.cells[((CLASS_ID[cls] * job.Z + bz) * job.nby + by) * job.nbx + bx]
-            if c then c.cavern = lname; c.cavern_found = layer.found end
+            if c then c.cavern = lname; c.cavern_found = layer and layer.found or false end
         end
     end
     return ground
+end
+
+-- (0.105.38 review) a block of the near box (scanned in the near phase:
+-- the whole-map phases skip it)
+local function in_near(job, bx, by, bz)
+    return bz >= job.z1 and bz <= job.z2 and bx >= job.bx1 and bx <= job.bx2 and by >= job.by1 and by <= job.by2
 end
 
 -- the scan's lowest level: the map's floor, or a little under the magma
@@ -297,8 +362,30 @@ local function tile_at(job, x, y, z)
     if not block then return nil end
     local d = block.designation[x % 16][y % 16]
     local shape = tt_names(block.tiletype[x % 16][y % 16])
-    local layer = job.names[block.global_feature]
-    return d, shape, layer
+    local gid = block.global_feature
+    local layer = job.names[gid]
+    return d, shape, {name = layer and layer.name or nil, kind = fkind(job, gid)}
+end
+
+-- (0.105.38 review) the 8 tiles round (x, y, z) and the one above it: an
+-- aquifer's ('aquifer'), or liquid other than the body's own near its end
+-- ('magma' / 'water'), or nil. A dug tile beside either seeps or floods.
+local NB = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {1, 1, 0}, {1, -1, 0}, {-1, 1, 0}, {-1, -1, 0}, {0, 0, 1}}
+local function wet_beside(job, x, y, z, n, magma)
+    local aq
+    for _, o in ipairs(NB) do
+        local nx, ny, nz = x + o[1], y + o[2], z + o[3]
+        local d = tile_at(job, nx, ny, nz)
+        if d then
+            if (d.flow_size or 0) > 0 then
+                local is_magma = d.liquid_type == true or d.liquid_type == 1
+                local own = is_magma == magma and (nz == n.z or nz == n.z + 1)
+                    and math.max(math.abs(nx - n.x), math.abs(ny - n.y)) <= 16
+                if not own then return is_magma and 'magma' or 'water' end
+            elseif d.water_table then aq = 'aquifer' end
+        end
+    end
+    return aq
 end
 
 -- (0.105.38) The reach estimate of one body: a shaft at the fort's middle
@@ -332,11 +419,18 @@ local function reach_of(job, b)
                 return
             end
             if d.water_table then issue.aquifer = true end
-            if d.feature_global and layer and tostring(layer.name):find('Cavern') then
-                issue.opens_cavern = issue.opens_cavern or layer.name
+            -- (0.105.38 review) a global feature by its type: the sea or the
+            -- underworld block the way; a cavern (or one of unknown kind) is
+            -- opened by it
+            if d.feature_global and layer.kind ~= 'sea' and layer.kind ~= 'underworld' then
+                issue.opens_cavern = issue.opens_cavern or layer.name or 'a cavern'
             elseif d.feature_local or d.feature_global then
                 issue.blocked = issue.blocked or 'a deep feature (a pipe or the sea) on the way'
             end
+            -- (0.105.38 review) a dug tile with an aquifer or other liquid beside or above it
+            local wb = wet_beside(job, x, y, z, n, magma)
+            if wb == 'aquifer' then issue.aquifer = true
+            elseif wb then issue.blocked = issue.blocked or (wb == 'magma' and 'magma' or 'other water') .. ' beside the way' end
             if shape == 'EMPTY' and d.outside then issue.blocked = issue.blocked or 'open sky on the way' end
         end
         local step_z = n.z >= zf and 1 or -1
@@ -404,6 +498,7 @@ local function gather(job)
         elseif cls == 'u' then b.kind = 'pool'; b.flow = 'stagnant'; b.underground = true
         elseif cls == 'c' then b.kind = 'cavern'
         elseif cls == 'a' then b.kind = 'aquifer'
+        elseif cls == 'i' then b.kind = 'ice'; b.flow = 'frozen'    -- (0.105.38 review)
         else
             b.kind = 'magma'
             b.magma = cls == 'mp' and ((b.top and b.top.outside) and 'volcano' or 'pipe')
@@ -416,9 +511,9 @@ local function gather(job)
         b.d = b.nearest and b.nearest.d or nil
         if b.nearest then b.nearest.m = nil end
         if b.top then b.top.td, b.top.outside = nil, nil end
-        if b.kind == 'aquifer' or b.kind == 'cavern' then b.top = nil end
+        if b.kind == 'aquifer' or b.kind == 'cavern' or b.kind == 'ice' then b.top = nil end
         b.salt, b.stagnant, b.seen, b.river, b.brook, b.outside, b.cls = nil, nil, nil, nil, nil, nil, nil
-        if b.kind ~= 'magma' and b.kind ~= 'aquifer' and b.volume == 0 then b.volume = nil end
+        if b.kind ~= 'magma' and b.kind ~= 'aquifer' and b.kind ~= 'ice' and b.volume == 0 then b.volume = nil end
     end
     return out
 end
@@ -473,11 +568,28 @@ function survey_step(job, seconds)
         return os.clock() > deadline
     end
     local per_level = job.nbx * job.nby
+    -- (0.105.38 review) the near box first, its blocks level by level from
+    -- the top down (as before 0.105.38): its result is saved before the
+    -- whole map goes on (scan_step), so near water never waits for it
+    if job.phase == 'near' then
+        local nw = job.bx2 - job.bx1 + 1
+        local per_near = nw * (job.by2 - job.by1 + 1)
+        while job.z >= job.z1 do
+            if time_up() then return false end
+            scan_block(job, job.bx1 + job.bi % nw, job.by1 + job.bi // nw, job.z, false, true)
+            job.bi = job.bi + 1
+            if job.bi >= per_near then job.bi, job.z = 0, job.z - 1 end
+        end
+        job.near_ready = true
+        job.bi, job.z, job.ground = 0, job.z2 + 1, false
+        job.phase = 'up'
+        if job.z > job.Z - 1 then job.phase, job.z = 'down', job.z2 end
+    end
     -- the levels over the start, up to the last one with ground on it
     while job.phase == 'up' do
         if time_up() then return false end
         local bx, by = job.bi % job.nbx, job.bi // job.nbx
-        if scan_block(job, bx, by, job.z, not job.ground) then job.ground = true end
+        if scan_block(job, bx, by, job.z, not job.ground, false) then job.ground = true end
         job.bi = job.bi + 1
         if job.bi >= per_level then
             job.bi = 0
@@ -493,9 +605,12 @@ function survey_step(job, seconds)
     -- then down, the whole map, to the magma sea's top
     while job.phase == 'down' do
         if job.z < z_floor(job) then job.phase, job.ci = 'join', 1 break end
-        if time_up() then return false end
         local bx, by = job.bi % job.nbx, job.bi // job.nbx
-        scan_block(job, bx, by, job.z, false)
+        -- (0.105.38 review) the near box's blocks were scanned first
+        if not in_near(job, bx, by, job.z) then
+            if time_up() then return false end
+            scan_block(job, bx, by, job.z, false, false)
+        end
         job.bi = job.bi + 1
         if job.bi >= per_level then job.bi, job.z = 0, job.z - 1 end
     end
@@ -537,7 +652,7 @@ function survey_step(job, seconds)
         local b = job.waters[job.ri]
         if not b then job.phase = 'done' break end
         if time_up() then return false end
-        if b.kind ~= 'aquifer' then
+        if b.kind ~= 'aquifer' and b.kind ~= 'ice' then
             for k, v in pairs(reach_of(job, b)) do b[k] = v end
         end
         job.ri = job.ri + 1
@@ -545,57 +660,89 @@ function survey_step(job, seconds)
     return true
 end
 
-function finish_survey(job)
-    local bodies, aquifer, magma = job.bodies, job.aquifer, job.magma
+local function levels(t)
+    local lo, hi, n = math.huge, -math.huge, 0
+    for z, c in pairs(t) do
+        n = n + c
+        if z < lo then lo = z end
+        if z > hi then hi = z end
+    end
+    if n == 0 then return nil end
+    return {z1 = lo, z2 = hi, tiles = n}
+end
+
+-- (0.105.38 review) The near box's result (the fields of the survey before
+-- 0.105.38), from the near phase alone: saved as soon as that phase is done
+-- (the whole map goes on after it). The job's sums are copied, not changed.
+function finish_near(job)
+    local bodies = job.bodies
     local out = {ok = true, middle = job.mid, box = {x1 = job.x1, x2 = job.x2, y1 = job.y1, y2 = job.y2,
                                                      z1 = job.z1, z2 = job.z2},
-                 bodies = {}, aquifer = nil, magma = nil,
-                 -- (0.105.38) the whole map
-                 map = {w = job.W, h = job.H, z = job.Z},
-                 map_box = {x1 = 0, x2 = job.W - 1, y1 = 0, y2 = job.H - 1, z1 = z_floor(job), z2 = job.ztop},
-                 waters = job.waters or {}, waters_found = job.found or 0}
+                 bodies = {}, aquifer = nil, magma = nil}
     for _, kind in ipairs({'river', 'surface', 'cavern', 'pool'}) do
         local b = bodies[kind]
         if b.tiles > 0 then
-            b.salt_share = math.floor(100 * b.salt / b.tiles + 0.5)
-            b.stagnant_share = math.floor(100 * b.stagnant / b.tiles + 0.5)
-            b.seen_share = math.floor(100 * b.seen / b.tiles + 0.5)
-            b.salt, b.stagnant, b.seen = nil, nil, nil
-            table.insert(out.bodies, b)
+            local c = {}
+            for k, v in pairs(b) do c[k] = v end
+            c.salt_share = math.floor(100 * b.salt / b.tiles + 0.5)
+            c.stagnant_share = math.floor(100 * b.stagnant / b.tiles + 0.5)
+            -- (seen_share: hidden tiles are counted all the same, the
+            -- review's decision; the share says how much of it is known)
+            c.seen_share = math.floor(100 * b.seen / b.tiles + 0.5)
+            c.salt, c.stagnant, c.seen = nil, nil, nil
+            if b.nearest then c.nearest = {} for k, v in pairs(b.nearest) do c.nearest[k] = v end end
+            table.insert(out.bodies, c)
         end
     end
-    local function levels(t)
-        local lo, hi, n = math.huge, -math.huge, 0
-        for z, c in pairs(t) do
-            n = n + c
-            if z < lo then lo = z end
-            if z > hi then hi = z end
-        end
-        if n == 0 then return nil end
-        return {z1 = lo, z2 = hi, tiles = n}
+    out.aquifer = levels(job.aquifer)
+    out.magma = levels(job.magma)
+    if out.magma and job.magma_top then   -- (0.105.0)
+        local t = job.magma_top
+        out.magma.top_nearest = {x = t.x, y = t.y, z = t.z, d = t.d}
     end
-    out.aquifer = levels(aquifer)
-    out.magma = levels(magma)
-    if out.magma and job.magma_top then out.magma.top_nearest = job.magma_top end   -- (0.105.0)
+    out.ice = levels(job.frozen)          -- (0.105.38 review) ice under the sky near the fort
+    return out
+end
+
+-- The whole survey: the near box's result and the whole map's. `prev`: the
+-- survey before (a river it saw, now ice: a frozen river).
+function finish_survey(job, prev)
+    local out = finish_near(job)
+    -- (0.105.38) the whole map
+    out.map = {w = job.W, h = job.H, z = job.Z}
+    out.map_box = {x1 = 0, x2 = job.W - 1, y1 = 0, y2 = job.H - 1, z1 = z_floor(job), z2 = job.ztop}
+    out.waters, out.waters_found = job.waters or {}, job.found or 0
     -- (0.105.38) the nearest flowing water, and the nearest magma, in short
+    local ice = out.ice ~= nil
     for _, b in ipairs(out.waters) do
         if b.flow == 'flowing' and not out.nearest_flowing then
             out.nearest_flowing = {kind = b.kind, d = b.d, reach = b.reach, x = b.nearest.x, y = b.nearest.y,
                                    z = b.nearest.z}
         end
+        if b.kind == 'ice' then ice = true end
     end
     if job.sea_top then out.magma_sea_top = job.sea_top end
+    -- (0.105.38 review) a river seen by this survey or one before it, and
+    -- now ice (a winter survey): a frozen river, still a river for the
+    -- choice of a water wheel over a windmill
+    local river_now = out.nearest_flowing ~= nil
+    for _, b in ipairs(out.bodies) do if b.kind == 'river' then river_now = true end end
+    local before = type(prev) == 'table' and (prev.river_seen == true) or false
+    if not river_now and ice and before then out.frozen_river = true end
+    out.river_seen = river_now or out.frozen_river == true or nil
     return out
 end
 
+-- (test-only) the whole survey at once: the game uses scan_step (in slices)
 function survey()
     local job, why = start_survey()
     if not job then return {ok = false, error = why} end
     survey_step(job, 1e9)
-    return finish_survey(job)
+    return finish_survey(job, last())
 end
 
--- The scan, kept in the save with the tick it was made.
+-- (test-only) the whole survey at once, kept in the save with the tick it
+-- was made (the game uses scan_step)
 function scan(now_tick)
     local r = survey()
     if r.ok then
@@ -630,14 +777,30 @@ end
 -- how much is left, in levels (roughly: the levels still to scan, 1 while
 -- the bodies are joined and reached)
 local function left_of(job)
+    if job.phase == 'near' then return (job.z - job.z1 + 1) + (job.Z - job.z2) + (job.z2 - z_floor(job) + 1) end
     if job.phase == 'up' then return (job.Z - job.z) + (job.z2 - z_floor(job) + 1) end
     if job.phase == 'down' then return math.max(1, job.z - z_floor(job) + 1) end
     return 1
 end
 
+-- (0.105.38 review) the near box's result into the save, the whole map's
+-- fields (and the cistern's plan) of the survey before kept until this one's
+-- whole map is done
+local KEEP = {'map', 'map_box', 'waters', 'waters_found', 'nearest_flowing', 'magma_sea_top', 'cistern',
+              'river_seen', 'frozen_river'}
+function save_near(job, now_tick)
+    local r = finish_near(job)
+    local prev = last()
+    if prev then for _, k in ipairs(KEEP) do if r[k] == nil then r[k] = prev[k] end end end
+    r.waters_pending = true
+    r.tick = now_tick
+    U.site_put(WATER_KEY, r)
+    return r
+end
+
 function scan_step(now_tick, seconds)
     if JOB and JOB.fort ~= fort_id() then JOB = nil end
-    if JOB and not JOB.phase then JOB = nil end        -- (0.105.38) a half-done survey of the old kind
+    if JOB and (not JOB.phase or not JOB.fkinds) then JOB = nil end   -- (0.105.38) a half-done survey of an older kind
     if not JOB then
         local why
         JOB, why = start_survey()
@@ -646,9 +809,17 @@ function scan_step(now_tick, seconds)
         JOB.fort = fort_id()
     end
     if not survey_step(JOB, seconds or SLICE_SECONDS) then
-        return {ok = true, done = false, level = JOB.z, phase = JOB.phase, left = left_of(JOB)}
+        -- (0.105.38 review) the near box done: its result saved at once (the
+        -- whole-map list of the survey before kept, `waters_pending` until
+        -- the whole map is done)
+        if JOB.near_ready and not JOB.near_saved then
+            JOB.near_saved = true
+            save_near(JOB, now_tick)
+        end
+        return {ok = true, done = false, level = JOB.z, phase = JOB.phase, left = left_of(JOB),
+                near_done = JOB.near_saved or nil}
     end
-    local r = finish_survey(JOB)
+    local r = finish_survey(JOB, last())
     JOB = nil
     r.tick = now_tick
     r.done = true

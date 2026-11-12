@@ -669,6 +669,8 @@ PLANNER_CONFIG = {
     "moat_fortification": 50,          # a moat from this Fortification up (a river near the gate)
     "moat_drawbridge_engineering": -50,   # below this Engineering a plain bridge over it, no drawbridge
     "pump_engineering": 0,             # a pump stack from this Engineering up
+    "waterworks_magma_retry_ticks": 84 * 1200,   # (0.105.38 review) a refused magma workshop: tried again a season on
+    "waterworks_later_retry_ticks": 3 * 1200,    # (0.105.38 review) a search cut short (its time budget): 3 days on
     "waterworks_retry_ticks": 28 * 1200,  # a work refused (no site, path blocked): tried again 4 weeks on
     "waterworks_moat_cooldown_ticks": 1200, "waterworks_magma_cooldown_ticks": 1200,
     "waterworks_irrigation_cooldown_ticks": 1200, "waterworks_pump_cooldown_ticks": 1200,
@@ -686,8 +688,8 @@ PLANNER_CONFIG = {
     # the fort). The keys above stay the near reach, tried first as before;
     # past them each work weighs the whole-map survey's bodies by the dig's
     # length (cheapest first) up to these:
-    "water_far_reach": 0,              # tiles a far source may lie off at most (0: the map's width)
-    "water_job_max": 600,              # tiles a far water work digs and builds in all at most
+    "water_far_reach": -1,             # tiles a far source may lie off at most (-1: the map's width; 0: far sources off)
+    "water_job_max": 600,              # tiles a far water work digs and builds in all at most (0: no far works)
     "water_dig_segment": 40,           # a long dig designated this many tiles a step (the dry run walked again before each)
     "new_pasture_cooldown_ticks": 3 * 1200,
     "pasture_margin": 1.25,        # a new pasture: the waiting herd's grass x this (x more at high Husbandry)

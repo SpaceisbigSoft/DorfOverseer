@@ -26,7 +26,7 @@ from planner_core import (EMERGENCY, LIMIT_EXEMPT, LOOP_EXEMPT, NO_COOLDOWN, PLA
 PLANNER_CONFIG.setdefault("waterworks_pump_labor_cooldown_ticks", 14 * 1200)
 
 __all__ = ["_waterworks_rule", "LEAK_WATCH_HOLDS", "leak_watch_hold", "WORK_WORDS", "STAGE_WORDS", "moat_wanted", "magma_shop_wanted",
-           "irrigation_wanted", "pump_wanted", "river_found", "power_wanted", "power_line"]
+           "irrigation_wanted", "pump_wanted", "river_found", "near_river_found", "far_args", "magma_choice", "power_wanted", "power_line"]
 
 WORK_WORDS = {"moat": "the moat", "pump": "the pump stack", "irrigation": "the muddied farm level",
               "magma": "the magma workshop", "power": "the pump stack's power"}
@@ -49,66 +49,136 @@ def _design_mode(s: dict) -> str:
         return m if m in ("scripts", "guided", "architect") else "scripts"
 
 
-def river_found(s: dict) -> bool:
+MAGMA_STAIR_MAX = 60       # (0.105.38 review) lua/ai-waterworks.lua's: levels of stair down to the magma at most
+FAR_REACH_DEFAULT = -1     # (0.105.38 review) water_far_reach's default: the map's width (0: far sources off)
+JOB_MAX_DEFAULT = 600      # water_job_max's (0: no far works)
+SEGMENT_DEFAULT = 40       # water_dig_segment's
+
+
+def far_on(cfg: dict | None) -> bool:
+    """(0.105.38 review) Far sources on: water_far_reach not 0 and
+    water_job_max not 0 (each 0 turns them off)."""
+    cfg = cfg or {}
+    return (_int(cfg.get("water_far_reach"), FAR_REACH_DEFAULT) != 0
+            and _int(cfg.get("water_job_max"), JOB_MAX_DEFAULT) != 0)
+
+
+def _int(v, default: int) -> int:
+    return v if isinstance(v, int) and not isinstance(v, bool) else default
+
+
+def near_river_found(s: dict) -> bool:
+    """(0.105.38 review) A river or brook in the survey's near box (as before
+    0.105.38): the moat's feed is a short channel (40 tiles at most), so only
+    a near river counts for it."""
+    return any(isinstance(b, dict) and b.get("kind") == "river" and int(b.get("tiles") or 0) > 0
+               for b in _l(_d(s.get("water")).get("bodies")))
+
+
+def river_found(s: dict, cfg: dict | None = None) -> bool:
     """A river or brook near the fort, or (0.105.38) anywhere on the map by
-    the whole-map survey (a far one is reached by a long channel or axle run)."""
+    the whole-map survey (a far one is reached by a long axle run; not when
+    far sources are off), or (review) a river frozen over since a survey
+    saw it (a winter survey: still a river for a water wheel over a windmill)."""
     w = _d(s.get("water"))
-    return (any(isinstance(b, dict) and b.get("kind") == "river" and int(b.get("tiles") or 0) > 0
-                for b in _l(w.get("bodies")))
-            or any(isinstance(b, dict) and b.get("flow") == "flowing" and int(b.get("tiles") or 0) > 0
-                   for b in _l(w.get("waters"))))
+    if near_river_found(s) or w.get("frozen_river") is True:
+        return True
+    return far_on(cfg) and any(isinstance(b, dict) and b.get("flow") == "flowing" and int(b.get("tiles") or 0) > 0
+                               for b in _l(w.get("waters")))
 
 
 def far_args(cfg: dict) -> dict:
     """(0.105.38) The far-source settings an action carries, only those off
-    their defaults (the bridge's defaults are the same)."""
+    their defaults (the bridge's defaults are the same: the map's width, 600,
+    40). (review) 0 is sent too: water_far_reach 0 turns far sources off,
+    water_job_max 0 allows no far work."""
     out = {}
-    if int(cfg.get("water_far_reach", 0) or 0) > 0:
-        out["far_reach"] = int(cfg["water_far_reach"])
-    if int(cfg.get("water_job_max", 600) or 600) != 600:
-        out["job_max"] = int(cfg["water_job_max"])
-    if int(cfg.get("water_dig_segment", 40) or 40) != 40:
-        out["segment"] = int(cfg["water_dig_segment"])
+    r = _int(cfg.get("water_far_reach"), FAR_REACH_DEFAULT)
+    if r >= 0:
+        out["far_reach"] = r
+    j = _int(cfg.get("water_job_max"), JOB_MAX_DEFAULT)
+    if j != JOB_MAX_DEFAULT and j >= 0:
+        out["job_max"] = j
+    g = _int(cfg.get("water_dig_segment"), SEGMENT_DEFAULT)
+    if g != SEGMENT_DEFAULT and g > 0:
+        out["segment"] = g
     return out
+
+
+def _fort_z_low(w: dict):
+    z = _d(w.get("middle")).get("z_low")
+    return z if isinstance(z, int) and not isinstance(z, bool) else None
+
+
+def _too_deep(z_low, z) -> bool:
+    return z_low is not None and isinstance(z, int) and not isinstance(z, bool) and z_low - (z + 1) > MAGMA_STAIR_MAX
+
+
+def near_magma_too_deep(s: dict) -> bool:
+    """(0.105.38 review) The near box's highest magma lies deeper than a
+    stair reaches (MAGMA_STAIR_MAX levels under the fort's lowest)."""
+    w = _d(s.get("water"))
+    return _too_deep(_fort_z_low(w), _d(_d(w.get("magma")).get("top_nearest")).get("z"))
 
 
 def magma_choice(s: dict, cfg: dict) -> tuple[str, bool]:
     """(0.105.38) Which magma a workshop can be dug to, from the whole-map
     survey: ("near", False) the near box's highest magma (as before); ("pipe"
     / "sea" / ..., opens) the cheapest magma body (a pipe before the sea)
-    with whether its way opens a cavern, which only the cavern switch allows
-    (Never / Always / AI decides: the same call as the cavern well's);
-    ("", False) none. A body whose way opens a cavern the switch won't
-    allow is skipped."""
+    with whether its way opens a cavern, which only the cavern switch allows;
+    ("", False) none. (0.105.38 review) Magma deeper than MAGMA_STAIR_MAX
+    under the fort's lowest level is left out (the bridge would refuse it
+    "too deep" every time), and so is a body the survey found blocked. The
+    switch: Never, none that opens a cavern; Always, any; AI decides (a
+    workshop is wanted, or this is not called): one that opens a cavern only
+    when no other way to magma is left (not the cavern well's water test).
+    The bridge walks the planned dig again for a cavern (the survey's
+    estimate is a straight shaft from the fort's middle)."""
     w = _d(s.get("water"))
-    if _d(w.get("magma")).get("top_nearest"):
+    z_low = _fort_z_low(w)
+
+    def too_deep(z) -> bool:
+        return _too_deep(z_low, z)
+
+    top = _d(_d(w.get("magma")).get("top_nearest"))
+    if top and not too_deep(top.get("z")):
         return "near", False
+    if not far_on(cfg):
+        return "", False
     rank = {"pipe": 0, "volcano": 0, "pool": 0, "surface": 1, "cavern": 2, "sea": 3}
     mode = player_rules(s)["open_caverns"]
-    from planner_wells import ai_opens_cavern
-    best = None
+    cands = []
     for b in _l(w.get("waters")):
-        if not isinstance(b, dict) or b.get("kind") != "magma":
+        if not isinstance(b, dict) or b.get("kind") != "magma" or b.get("blocked"):
             continue
-        opens = bool(b.get("opens_cavern"))
-        if opens and not (mode == "always" or (mode == "ai" and ai_opens_cavern(s, cfg)[0])):
+        z = _d(b.get("top")).get("z", _d(b.get("nearest")).get("z"))
+        if too_deep(z):
             continue
-        if b.get("aquifer") and b.get("reach") is None:
-            continue
+        opens = bool(b.get("opens_cavern")) or b.get("magma") == "cavern"
         cost = b.get("reach") if isinstance(b.get("reach"), int) else int(b.get("reach_through") or b.get("d") or 10 ** 6) * 3 // 2
-        key = (rank.get(b.get("magma"), 2), cost)
-        if best is None or key < best[0]:
-            best = (key, str(b.get("magma") or "magma"), opens)
-    return (best[1], best[2]) if best else ("", False)
+        cands.append(((rank.get(b.get("magma"), 2), cost), str(b.get("magma") or "magma"), opens))
+    shut = [c for c in cands if not c[2]]
+    if mode == "always":
+        pool = cands
+    elif mode == "ai":
+        pool = shut or cands
+    else:
+        pool = shut
+    if not pool:
+        return "", False
+    best = min(pool, key=lambda c: c[0])
+    return best[1], best[2]
 
 
 def moat_wanted(s: dict, cfg: dict) -> str | None:
     """Why a moat (None: not wanted): Fortification high enough, a river
-    found, a surface gate scanned, no threat near (no digging under fire)."""
+    near the fort (the survey's near box: (0.105.38 review) a far river found
+    by the whole-map survey doesn't count, the bridge feeds a moat from a near
+    one only), a surface gate scanned, no threat near (no digging under fire)."""
     tr = _traits(s)
     if (tr.get("fortification", 0) or 0) < cfg["moat_fortification"]:
         return None
-    if not river_found(s):
+    if not near_river_found(s):
         return None
     ents = [e for e in _l(_d(s.get("entrances")).get("entrances")) if isinstance(e, dict) and e.get("kind") == "surface"]
     if not ents:
@@ -160,7 +230,7 @@ def power_wanted(s: dict, works: dict) -> str | None:
     pump = _d(_d(works).get("pump"))
     if pump.get("stage") != "done" or pump.get("shut"):
         return None
-    if river_found(s):
+    if river_found(s, PLANNER_CONFIG):
         return "the pump stack is worked by hand and a river runs near the fort"
     return "the pump stack is worked by hand"
 
@@ -346,7 +416,15 @@ def _waterworks_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -
         # again, so it is skipped and the next kind is looked at
         if r and isinstance(r.get("retired"), int) and r["retired"] >= WATERWORKS_RETIRE_MAX:
             return False
-        return not r or not isinstance(r.get("tick"), int) or now - r["tick"] >= cfg["waterworks_retry_ticks"]
+        wait = cfg["waterworks_retry_ticks"]
+        if isinstance(r, dict) and r.get("later"):
+            # (0.105.38 review) a search cut short by its time budget: soon again
+            wait = cfg.get("waterworks_later_retry_ticks", 3 * 1200)
+        elif id_.startswith("magma:"):
+            # (0.105.38 review) a refused magma workshop: once a season, not
+            # every cycle (the deep magma stays deep)
+            wait = max(wait, cfg.get("waterworks_magma_retry_ticks", 84 * 1200))
+        return not r or not isinstance(r.get("tick"), int) or now - r["tick"] >= wait
 
     def started(id_: str) -> bool:
         return id_ in works and works[id_].get("stage") != "retired"
@@ -373,8 +451,12 @@ def _waterworks_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -
     if shop and rules_["magma_workshops"] and (mg or choice) and eng > -150:
         id_ = f"magma:{shop}"
         if not choice:
-            notes.append("magma was found, but only in a cavern or by an older survey: no magma workshop "
-                         "(the next survey says where)")
+            if near_magma_too_deep(s):
+                notes.append(f"magma was found, but deeper than a stair reaches ({MAGMA_STAIR_MAX} levels under "
+                             "the fort): no magma workshop (the next survey says where)")
+            else:
+                notes.append("magma was found, but only in a cavern or by an older survey: no magma workshop "
+                             "(the next survey says where)")
         elif not started(id_) and retry_ok(id_):
             from planner_building import magma_access
             acc = magma_access(_d(s.get("water")), s.get("map"))
@@ -384,8 +466,10 @@ def _waterworks_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -
                 notes.append("no magma workshop: the magma lies beneath a cavern (reaching it would open the cavern)")
             else:
                 act = {"type": "water_work", "kind": "magma", "shop": shop, **far_args(cfg)}
-                if opens:
-                    act["open_caverns"] = True       # the cavern switch allows it (Always, or the AI's call)
+                if opens or player_rules(s)["open_caverns"] == "always":
+                    # the cavern switch allows it (Always, or the AI's call:
+                    # no other way to magma); the bridge walks the planned dig
+                    act["open_caverns"] = True
                 where = "the magma" if choice == "near" else f"the magma {choice}"
                 proposals.append(Proposal("waterworks_magma", act,
                                           f"dig a {shop} over {where}: a pit fed through a floodgate "
@@ -410,7 +494,7 @@ def _waterworks_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -
     why = power_wanted(s, works)
     if (why and eng >= cfg["pump_engineering"] and not started("power") and retry_ok("power")
             and _design_mode(s) != "scripts"):
-        source = "wheel" if river_found(s) else "windmill"
+        source = "wheel" if river_found(s, cfg) else "windmill"
         proposals.append(Proposal("waterworks_power", {"type": "water_work", "kind": "power", "source": source,
                                                        **far_args(cfg)},
                                   f"{why}: power it with a "

@@ -344,6 +344,14 @@ end
 -- at a time.
 CISTERN_FAR_REACH = nil
 CISTERN_SEGMENT = 40
+-- (0.105.38 review) A tile of the cistern tunnel's next stretch, checked
+-- before it is designated: solid rock, or a tile dug open meanwhile that
+-- holds no liquid and is no cavern's or aquifer's (an open tile passed
+-- before, whatever it held).
+function tunnel_stretch_ok(t)
+    return t ~= nil and (solid_rock(t) or (t.shape ~= 'WALL' and not t.liquid and not t.feature and not t.aquifer))
+end
+
 function cistern_far_len(maxlen)
     local okw, w = pcall(function() return reqscript('ai-water').last() end)
     if not okw or type(w) ~= 'table' or type(w.waters) ~= 'table' then return nil end
@@ -353,7 +361,8 @@ function cistern_far_len(maxlen)
     end
     local m = type(w.map) == 'table' and math.tointeger(tonumber(w.map.w)) or 192
     local cap = math.tointeger(tonumber(CISTERN_FAR_REACH))
-    if not cap or cap <= 0 then cap = m end
+    if cap == 0 then return nil end                   -- (0.105.38 review) 0: far sources off
+    if not cap or cap < 0 then cap = m end
     local best
     for _, b in ipairs(w.waters) do
         if type(b) == 'table' and b.flow == 'stagnant' and (tonumber(b.salt_share) or 0) == 0 and type(b.nearest) == 'table' then
@@ -1362,7 +1371,7 @@ function cistern_step(dry_run, prefs, tunnel)
             for i = tdone + 1, nxt do
                 local q = p.tunnel_path[i]
                 local t = tile_info(q.x, q.y, zi)
-                if not (t and t.shape ~= 'WALL' or solid_rock(t)) then
+                if not tunnel_stretch_ok(t) then
                     return wait(('the tunnel\'s next stretch is no longer solid rock at x%d y%d (water, an aquifer '
                                  .. 'or a cavern): not dug further'):format(q.x, q.y))
                 end

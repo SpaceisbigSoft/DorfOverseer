@@ -3,8 +3,9 @@ for the water works (lua/ai-waterworks.lua; the brain's planner_water.py and
 digest.py): a river beyond the old 72-tile box found with its reach, the
 slices within their time on a 288x288x194 map, a survey resumed across
 cycles and reloads and dropped on unload, magma by kind (a pipe, a cavern's
-pool, the sea), far rivers for a moat or a water wheel (the long channel
-staged and checked end to end), far still water for the muddied farm level,
+pool, the sea), far rivers for a water wheel (never a moat: the near river
+only), far still water for the muddied farm level (the long tunnel staged
+and checked end to end, retired half-dug safely), a far pump stack,
 the pipe before the sea for a magma workshop, near sources still first, and
 the digest's WATER line. pip install lupa.
 
@@ -68,8 +69,9 @@ function env.FILL(bx, by, bz, fields, gid)
   own[bkey(bx, by, bz)] = b
 end
 env.df = {tiletype = {OpenSpace = 0, attrs = {[0] = {material = 0, shape = 0}, [1] = {material = 1, shape = 1},
-                                               [2] = {material = 2, shape = 2}, [3] = {material = 3, shape = 2}}},
-          tiletype_material = {[0] = 'AIR', [1] = 'STONE', [2] = 'RIVER', [3] = 'BROOK'},
+                                               [2] = {material = 2, shape = 2}, [3] = {material = 3, shape = 2},
+                                               [4] = {material = 4, shape = 1}}},
+          tiletype_material = {[0] = 'AIR', [1] = 'STONE', [2] = 'RIVER', [3] = 'BROOK', [4] = 'FROZEN_LIQUID'},
           tiletype_shape = {[0] = 'EMPTY', [1] = 'WALL', [2] = 'FLOOR'}}
 env.SAVED = {}
 env.CITIZENS = {{p = {40, 40, SURF - 2}}}
@@ -154,7 +156,7 @@ def _():
     river_far(env)
     for z in (148, 149):
         for y in range(0, 288):
-            env.SET(120, y, z, F(water_table=True))
+            env.SET(130, y, z, F(water_table=True))     # (past the near box's blocks: x 0-127)
     r = env.survey()
     b = [b for b in waters(r) if b.flow == "flowing"][0]
     assert b.reach is None and b.aquifer and b.reach_through == 161, (b.reach, b.aquifer, b.reach_through)
@@ -243,6 +245,101 @@ def _():
     assert {b.kind for b in ws} >= {"river", "pool", "magma"}
 
 
+@test("survey (review 2): the near box counted by its blocks, as before 0.105.38 (a tile past the 72-tile box in its block counts)")
+def _():
+    env = world()
+    env.SET(120, 40, 149, F(flow_size=7, outside=True), 2)        # x 120: past x2 = 112, in block 7 (x 112-127)
+    env.SET(130, 40, 149, F(flow_size=7, outside=True), 2)        # block 8: not the near box's
+    env.SET(121, 40, 140, F(water_table=True))
+    r = env.survey()
+    river = [b for b in r.bodies.values() if b.kind == "river"]
+    assert len(river) == 1 and river[0].tiles == 1 and river[0].nearest.x == 120, [dict(b) for b in r.bodies.values()]
+    assert r.aquifer.tiles == 1 and r.box.x2 == 112
+
+
+@test("survey (review 4): the near box's result saved before the whole map is done, the old whole-map list kept meanwhile")
+def _():
+    env = world()
+    env.SET(50, 40, 149, F(flow_size=7, outside=True), 2)         # a near river
+    river_far(env)
+    first, _ = run_slices(env, 0.15)
+    assert first.done and not first.waters_pending
+    n_before = len(waters(first))
+    calls, near_seen = 0, None
+    while True:
+        r, _ = env.TIMED(9, 0.01)
+        calls += 1
+        saved = env.SAVED["ai-overseer/water"]
+        if r.near_done and near_seen is None:
+            near_seen = calls
+            assert saved.tick == 9 and saved.waters_pending is True
+            assert [b for b in saved.bodies.values() if b.kind == "river"]          # the near result
+            assert len(waters(saved)) == n_before                                   # the old list kept
+        if r.done:
+            break
+    assert near_seen is not None and near_seen < calls, (near_seen, calls)
+    saved = env.SAVED["ai-overseer/water"]
+    assert saved.tick == 9 and not saved.waters_pending and saved.done
+
+
+@test("survey (review 3): magma read by the feature's type (getGlobalInitFeature); unknown: a cavern's pool, the scan not cut")
+def _():
+    def magma_world(kinds):
+        env = world(W=96, H=96, Z=200, SURF=150)
+        env.layer_names = LUA.eval("function() return {} end")      # the layer names fail
+        env.df.feature_type = F(magma_core_from_layer="MC", subterranean_from_layer="SUB",
+                                underworld_from_layer="UW")
+        env.dfhack.maps.getGlobalInitFeature = LUA.eval("""function(kinds) return function(gid)
+            local k = kinds[gid]
+            if not k then return nil end
+            return {getType = function() return k end} end end""")(kinds)
+        env.FILL(1, 1, 10, F(flow_size=7, liquid_type=True, feature_global=True), 2)
+        env.FILL(1, 1, 30, F(flow_size=7, liquid_type=True, feature_global=True), 1)
+        return env
+    r = magma_world(LUA.table_from({1: "SUB", 2: "MC"})).survey()
+    mags = sorted(b.magma for b in waters(r) if b.kind == "magma")
+    assert mags == ["cavern", "sea"] and r.magma_sea_top == 10 and r.map_box.z1 == 8, (mags, r.magma_sea_top)
+    r = magma_world(LUA.table_from({})).survey()                    # neither type nor name known
+    mags = sorted(b.magma for b in waters(r) if b.kind == "magma")
+    assert mags == ["cavern", "cavern"] and r.magma_sea_top is None and r.map_box.z1 == 0, mags
+
+
+@test("survey (review 6): the reach estimate refuses a dug tile with an aquifer or other water beside it (not only on the way)")
+def _():
+    env = world()
+    river_far(env)
+    for x in range(130, 135):
+        env.SET(x, 41, 149, F(water_table=True))                  # beside the tunnel at y 40, not on it
+    b = [b for b in waters(env.survey()) if b.flow == "flowing"][0]
+    assert b.reach is None and b.aquifer and b.reach_through == 161, (b.reach, b.aquifer)
+    env = world()
+    river_far(env)
+    env.SET(130, 39, 149, F(flow_size=3))                         # an underground pool's tile beside it
+    b = [b for b in waters(env.survey()) if b.flow == "flowing"][0]
+    assert b.reach is None and "beside the way" in b.blocked, (b.reach, b.blocked)
+
+
+@test("survey (review 13): a river frozen over (FROZEN_LIQUID under the sky) since a survey saw it: still a river for a wheel")
+def _():
+    env = world()
+    river_far(env)
+    r = env.scan_step(1, 1e9)
+    assert r.done and r.river_seen and not r.frozen_river
+    for y in range(0, 288):                                       # winter: the river is ice
+        for x in range(200, 204):
+            env.SET(x, y, 149, F(flow_size=0, outside=True), 4)
+    r = env.scan_step(2, 1e9)
+    assert r.done and r.frozen_river and r.river_seen and not [b for b in waters(r) if b.flow == "flowing"]
+    assert [b for b in waters(r) if b.kind == "ice"]
+    from planner_water import river_found
+    assert river_found({"water": dict(r.items())})
+    env = world()                                                 # ice never seen as a river: no river
+    for y in range(0, 288):
+        env.SET(200, y, 149, F(flow_size=0, outside=True), 4)
+    r = env.survey()
+    assert not r.frozen_river and not r.river_seen
+
+
 # ---------------------------------------------------------------------------
 # The works
 # ---------------------------------------------------------------------------
@@ -275,41 +372,40 @@ def cells(lst):
     return sorted((c.x, c.y, c.z, c.text) for c in lst.values())
 
 
-@test("moat: a far river chosen when none is near: a 96-tile channel, staged, the dry run walked again before each segment")
+# the waterworks' walk groups (review 1, 10): an inside floor is the
+# citizens' group 1, unless the test puts a tile in another (W.group)
+GROUPS = TW.LUA.eval("""function(env)
+  local W = env.W
+  W.group = {}
+  env.walk_group = function(x, y, z)
+    local g = W.group[W.key(x, y, z)]
+    if g then return g end
+    local t = W.get(x, y, z)
+    if (t.shape == 'FLOOR' or t.shape == 'STAIR_UPDOWN' or t.shape == 'STAIR_DOWN' or t.shape == 'STAIR_UP')
+        and not t.outside and not t.liquid then return 1 end
+    return 0
+  end
+  env.citizen_groups = function() return {[1] = true} end
+  W.undesignated = {}
+  env.undesignate = function(cs) for _, c in ipairs(cs) do table.insert(W.undesignated, c) end return #cs end
+  env.LOGS = {}
+  env.log_line = function(m) table.insert(env.LOGS, m) end
+end""")
+
+
+@test("moat (review 8): a far river never feeds a moat (the near river only, as before); nor does the brain ask for one")
 def _():
     env, W = far_moat_world()
     r = TW.step(env, "moat")
-    assert r.ok and r.stage == "planned", dict(r)
-    wk = W.saved["ai-overseer/waterworks"].works.moat
-    p = wk.plan
-    assert p.far and p.far.kind == "channel" and p.far.d > 90 and p.plug.x == 149
-    n = len(list(p.dig.values()))
-    assert len(list(p.stages.values())) == (n + 39) // 40 >= 3
-    r = TW.step(env, "moat")
-    assert r.stage == "digging" and r.segment == 1
-    assert len(list(W.designated.values())) == 40                     # the first segment only
-    r = TW.step(env, "moat")
-    assert r.waiting and "segment 1 of 3" in r.error, r.error
-    seg1 = [p.dig[i] for i in range(1, 41)]
-    W.dig_all(L(*seg1))
-    r = TW.step(env, "moat")
-    assert r.waiting and "segment 2 of 3 designated" in r.error, r.error
-    assert len(list(W.designated.values())) == 80
-    W.dig_all(L(*[p.dig[i] for i in range(41, 81)]))
-    W.set(120, 55, 99, T(shape="FLOOR"))                              # a room dug beside the channel meanwhile
-    r = TW.step(env, "moat")
-    assert r.stage == "held" and "dry run before segment 3" in r.error and "x120 y55" in r.error, r.error
-    assert len(list(W.designated.values())) == 80
-
-
-@test("moat: a far river behind an aquifer or a cavern under the channel is refused, saying where")
-def _():
-    for what, word in (("aquifer", "an aquifer under the channel at x100 y54"), ("feature", "a cavern under the channel")):
-        env, W = far_moat_world()
-        W.set(100, 54, 99, T(**{what: True}))
-        r = TW.step(env, "moat")
-        assert r.rejected and word in r.error, r.error
-        assert not list(W.designated.values())
+    assert r.rejected and r.error == "no river or brook near the fort", dict(r)
+    assert not list(W.designated.values())
+    from planner_water import moat_wanted, near_river_found, river_found
+    from planner import PLANNER_CONFIG
+    s = TW.state(water={"bodies": [], "waters": [{"kind": "river", "flow": "flowing", "tiles": 40, "d": 150}]})
+    assert river_found(s, PLANNER_CONFIG) and not near_river_found(s) and moat_wanted(s, PLANNER_CONFIG) is None
+    props, _ = TW.run(s)
+    assert not [p for p in props if p.action.get("kind") == "moat"], [p.action for p in props]
+    assert moat_wanted(TW.state(), PLANNER_CONFIG)                     # the near river, as before
 
 
 @test("moat: the near river still chosen when a far one is found too (the same plan as without the whole-map survey)")
@@ -323,14 +419,94 @@ def _():
     assert cells(before.dig) == cells(after.dig) and after.far is None and after.stages is None
 
 
-@test("moat: a far river past the reach cap (the brain's water_far_reach) or the job cap is refused")
+def irr_far_world():
+    env, W = TW.irrigation_world()
+    W.tiles["70,60,94"] = None
+    W.set(150, 60, 94, T(shape="FLOOR", liquid=True, depth=7))
+    W.survey = T(bodies=L(), map=T(w=192), waters=L(T(kind="pool", flow="stagnant", underground=True, tiles=40,
+                                                       d=92, salt_share=0, nearest=T(x=150, y=60, z=94))))
+    GROUPS(env)
+    return env, W
+
+
+@test("irrigation far: the long tunnel staged, the dry run walked again before each segment, the next segment's rock rechecked")
 def _():
-    env, W = far_moat_world()
-    r = TW.step(env, "moat", far_reach=50)
-    assert r.rejected and "(50 at most)" in r.error, r.error
-    env, W = far_moat_world()
-    r = TW.step(env, "moat", job_max=60)
-    assert r.rejected and "(60 at most)" in r.error, r.error
+    env, W = irr_far_world()
+    r = TW.step(env, "irrigation")
+    assert r.ok and r.stage == "planned", dict(r)
+    p = W.saved["ai-overseer/waterworks"].works.irrigation.plan
+    n = len(list(p.dig.values()))
+    assert p.far and len(list(p.stages.values())) == (n + 39) // 40 >= 3
+    r = TW.step(env, "irrigation")
+    assert r.stage == "digging" and r.segment == 1 and len(list(W.designated.values())) == 40
+    r = TW.step(env, "irrigation")
+    assert r.waiting and "segment 1 of 3" in r.error, r.error
+    W.dig_all(L(*[p.dig[i] for i in range(1, 41)]))
+    # (review 11) an aquifer seeps beside the next segment's tunnel since: held, not designated
+    nxt = p.dig[60]
+    W.set(nxt.x, nxt.y + 1, nxt.z, T(aquifer=True))
+    r = TW.step(env, "irrigation")
+    assert r.stage == "held" and "before segment 2 of 3" in r.error and "aquifer beside" in r.error, r.error
+    assert len(list(W.designated.values())) == 40
+    # the same with the next segment's own tile turned to a cavern's, and a room dug beside it (the dry run)
+    for fields, word in ((dict(feature=True), "a cavern at"), (dict(shape="FLOOR"), "dry run before segment 2")):
+        env, W = irr_far_world()
+        TW.step(env, "irrigation")
+        TW.step(env, "irrigation")
+        p = W.saved["ai-overseer/waterworks"].works.irrigation.plan
+        W.dig_all(L(*[p.dig[i] for i in range(1, 41)]))
+        c = p.dig[55]
+        W.set(c.x, c.y + (1 if "shape" in fields else 0), c.z, T(**fields))
+        r = TW.step(env, "irrigation")
+        assert r.stage == "held" and word in r.error, (word, r.error)
+    # all well: the next segment designated
+    env, W = irr_far_world()
+    TW.step(env, "irrigation")
+    TW.step(env, "irrigation")
+    p = W.saved["ai-overseer/waterworks"].works.irrigation.plan
+    W.dig_all(L(*[p.dig[i] for i in range(1, 41)]))
+    r = TW.step(env, "irrigation")
+    assert r.waiting and "segment 2 of 3 designated" in r.error and len(list(W.designated.values())) == 80, r.error
+
+
+@test("irrigation far (review 11): retired half-dug: the designations not dug called off, the tunnel recorded and logged")
+def _():
+    env, W = irr_far_world()
+    TW.step(env, "irrigation")
+    TW.step(env, "irrigation")
+    p = W.saved["ai-overseer/waterworks"].works.irrigation.plan
+    W.dig_all(L(*[p.dig[i] for i in range(1, 31)]))                   # 30 of segment 1's 40 dug
+    r = TW.step(env, "irrigation", retire=True, why="held too long")
+    wk = W.saved["ai-overseer/waterworks"].works.irrigation
+    assert wk.stage == "retired" and wk.half_dug.dug == 30 and wk.half_dug.called_off == 10, dict(wk.half_dug)
+    assert sorted((c.x, c.y, c.z) for c in W.undesignated.values()) == sorted(
+        (p.dig[i].x, p.dig[i].y, p.dig[i].z) for i in range(31, 41))
+    last = p.dig[30]
+    assert (wk.half_dug.last.x, wk.half_dug.last.y) == (last.x, last.y)
+    assert env.LOGS[1].startswith("irrigation retired half-dug: 30 of"), env.LOGS[1]
+
+
+@test("far caps: water_far_reach (50: too near; 0: far sources off) and water_job_max (60: too small; 0: no far work)")
+def _():
+    for kw, word in ((dict(far_reach=50), None), (dict(far_reach=0), None), (dict(job_max=60), "(60 at most)"),
+                     (dict(job_max=0), None)):
+        env, W = irr_far_world()
+        r = TW.step(env, "irrigation", **kw)
+        assert r.rejected, (kw, dict(r))
+        if word:
+            assert word in r.error, r.error
+    env, W = irr_far_world()
+    assert TW.step(env, "irrigation", far_reach=-1).ok          # below 0: the map's width (the default)
+    from planner_water import far_args, far_on
+    from planner import PLANNER_CONFIG
+    assert far_args(PLANNER_CONFIG) == {} and far_on(PLANNER_CONFIG)
+    assert far_args(dict(PLANNER_CONFIG, water_far_reach=0)) == {"far_reach": 0}
+    assert far_args(dict(PLANNER_CONFIG, water_job_max=0)) == {"job_max": 0}
+    assert not far_on(dict(PLANNER_CONFIG, water_far_reach=0)) and not far_on(dict(PLANNER_CONFIG, water_job_max=0))
+    # the bridge's defaults are the brain's
+    src = (ROOT / "lua" / "ai-waterworks.lua").read_text(encoding="utf-8")
+    assert "FAR_REACH = nil" in src and f"FAR_JOB_MAX = {PLANNER_CONFIG['water_job_max']}" in src
+    assert f"DIG_SEGMENT = {PLANNER_CONFIG['water_dig_segment']}" in src and PLANNER_CONFIG["water_far_reach"] == -1
 
 
 def far_power_world():
@@ -365,6 +541,27 @@ def _():
     assert [(b.x, b.y, b.z) for b in TE.tolist(near.builds)] == [(b.x, b.y, b.z) for b in TE.tolist(again.builds)]
 
 
+@test("power (review 5): the far wheel's search within its time (else a clean 'try later', no windmill) and its centres capped")
+def _():
+    env, W = far_power_world()
+    env.WHEEL_FAR_SECONDS = -1                        # out of time at once
+    r = TE.step(env, "power")
+    assert r.rejected and r.later and "ran out of time" in r.error and "tried again later" in r.error, dict(r)
+    ref = W.saved["ai-overseer/waterworks"].refused.power
+    assert ref.later is True
+    env, W = far_power_world()
+    env.WHEEL_FAR_CENTRES = 0                         # no centre tried: a plain refusal
+    r = TE.step(env, "power", dry_run=True)
+    assert r.rejected and not r.later, dict(r)
+    # the brain: a search cut short is tried again in days, not weeks
+    s = TW.state(waterworks={"works": {}, "refused": {"moat": {"tick": 10 * 403200 - 4 * 1200, "why": "x", "later": True}}})
+    props, _ = TW.run(s)
+    assert [p for p in props if p.action.get("kind") == "moat"]
+    s["waterworks"]["refused"]["moat"].pop("later")
+    props, _ = TW.run(s)
+    assert not [p for p in props if p.action.get("kind") == "moat"]
+
+
 @test("irrigation: still water 90 tiles off reached by a long tunnel from a room under the fort, staged")
 def _():
     env, W = TW.irrigation_world()
@@ -388,22 +585,25 @@ def _():
 
 def magma_far_world(pipe_cavern=None):
     """The fort at z 90 (a floor round its middle); no near magma; a pipe at
-    x150 with its top at z 80, and the magma sea's top at z 40."""
+    x150 with its top at z 80, and the magma sea's top at z 40. pipe_cavern:
+    a cavern's wall across the pipe's tunnel to the fort (x 100, z 90)."""
     env = TW.LUA.execute(TW.FAKE, TW.SRC)
     W = env.W
+    GROUPS(env)
     for x in range(50, 71):
         for y in range(50, 71):
             W.set(x, y, 90, T(shape="FLOOR"))
     W.citizens = L(T(x=60, y=60, z=90), T(x=61, y=60, z=92))
     W.set(150, 60, 80, T(shape="FLOOR", liquid=True, magma=True, depth=7, material="STONE", feature=True))
     W.set(60, 120, 40, T(shape="FLOOR", liquid=True, magma=True, depth=7, material="STONE", feature=True))
+    if pipe_cavern:
+        for y in range(0, 192):
+            W.set(100, y, 90, T(feature=True))
     pipe = T(kind="magma", magma="pipe", tiles=40, d=110, reach=100, top=T(x=150, y=60, z=80),
              nearest=T(x=150, y=60, z=80))
-    if pipe_cavern:
-        pipe.opens_cavern, pipe.reach, pipe.reach_through = pipe_cavern, None, 100
     sea = T(kind="magma", magma="sea", tiles=900, d=60, reach=110, top=T(x=60, y=120, z=40),
             nearest=T(x=60, y=120, z=40))
-    W.survey = T(bodies=L(), map=T(w=192), waters=L(sea, pipe))
+    W.survey = T(bodies=L(), map=T(w=192), waters=L(sea, pipe), middle=T(x=60, y=60, z_low=90))
     return env, W
 
 
@@ -414,18 +614,36 @@ def _():
     assert p is not None, dict(r)
     assert p.source.magma == "pipe" and p.gate.z == 80 and p.room.z == 81, dict(p.source)
     assert p.access and p.access > 50 and p.stages                     # the tunnel to the fort, dug in segments
+    assert p.source.opens_cavern is None
     tun = [c for c in p.dig.values() if c.z == 90 and c.text == "d"]
     assert tun and min(c.x for c in tun) <= 72
-    # a pipe whose way opens a cavern: only with the cavern switch's leave; else the sea
-    env, W = magma_far_world(pipe_cavern="Cavern1")
+    # (review 9) a cavern on the planned dig (not the survey's estimate): only with the cavern switch's leave; else the sea
+    env, W = magma_far_world(pipe_cavern=True)
     r, p = plan_of(env, "magma", shop="MagmaForge")
     assert p is not None and p.source.magma == "sea", dict(r)
-    env, W = magma_far_world(pipe_cavern="Cavern1")
+    env, W = magma_far_world(pipe_cavern=True)
     W.survey.waters = L(W.survey.waters[2])
     r = TW.step(env, "magma", shop="MagmaForge")
-    assert r.rejected and "opens Cavern1" in r.error and "cavern switch" in r.error, r.error
+    assert r.rejected and "open a cavern at x100" in r.error and "cavern switch" in r.error, r.error
     r, p = plan_of(env, "magma", shop="MagmaForge", open_caverns=True)
-    assert p is not None and p.source.opens_cavern == "Cavern1"
+    assert p is not None and p.source.opens_cavern == "a cavern", dict(r)
+    assert [c for c in p.dig.values() if c.x == 100 and c.z == 90]        # the cavern's wall dug through
+    # the survey's estimate alone (it said the pipe's way opens Cavern1) no longer refuses it: the dig is walked
+    env, W = magma_far_world()
+    pipe = W.survey.waters[2]
+    pipe.opens_cavern, pipe.reach, pipe.reach_through = "Cavern1", None, 100
+    r, p = plan_of(env, "magma", shop="MagmaForge")
+    assert p is not None and p.source.magma == "pipe" and p.source.opens_cavern is None, dict(r)
+    # a body the survey found blocked is left out; magma deeper than a stair reaches too
+    env, W = magma_far_world()
+    W.survey.waters[2].blocked = "other water on the way"
+    r, p = plan_of(env, "magma", shop="MagmaForge")
+    assert p is not None and p.source.magma == "sea"
+    env, W = magma_far_world()
+    W.survey.waters = L(T(kind="magma", magma="sea", tiles=900, d=60, reach=110, top=T(x=60, y=120, z=20),
+                          nearest=T(x=60, y=120, z=20)))
+    r = TW.step(env, "magma", shop="MagmaForge")
+    assert r.rejected and "too deep for a stair" in r.error, r.error
     # the near box's magma (as before) first
     env, W = TW.magma_world()
     _, before = plan_of(env, "magma", shop="MagmaForge")
@@ -433,6 +651,73 @@ def _():
     W.survey.waters = magma_far_world()[1].survey.waters
     _, after = plan_of(env, "magma", shop="MagmaForge")
     assert cells(before.dig) == cells(after.dig) and after.source is None
+
+
+@test("magma (review 1): the tunnel to the fort stops only at a seen fort floor the dwarves walk on; water beside it refuses it")
+def _():
+    # an open floor on the way that is no fort's (not the citizens' walk group): refused, not met
+    env, W = magma_far_world()
+    W.survey.waters = L(W.survey.waters[2])
+    for y in range(0, 192):
+        W.set(110, y, 90, T(shape="FLOOR"))
+        W.group[W.key(110, y, 90)] = 7
+    r = TW.step(env, "magma", shop="MagmaForge")
+    assert r.rejected and "other than solid rock at x110" in r.error, r.error
+    # a hidden floor in the citizens' group: the same
+    env, W = magma_far_world()
+    W.survey.waters = L(W.survey.waters[2])
+    for y in range(0, 192):
+        W.set(110, y, 90, T(shape="FLOOR", hidden=True))
+    r = TW.step(env, "magma", shop="MagmaForge")
+    assert r.rejected and "x110" in r.error, r.error
+    # a cavern's open floor on the way: refused (the cavern switch), not taken for the fort
+    env, W = magma_far_world()
+    W.survey.waters = L(W.survey.waters[2])
+    for y in range(0, 192):
+        W.set(110, y, 90, T(shape="FLOOR", feature=True))
+    r = TW.step(env, "magma", shop="MagmaForge")
+    assert r.rejected and "open a cavern at x110" in r.error, r.error
+    # (review 6) an aquifer beside the tunnel (not on it)
+    env, W = magma_far_world()
+    W.survey.waters = L(W.survey.waters[2])
+    for x in range(71, 150):
+        for y in (57, 59, 61):
+            W.set(x, y, 90, T(aquifer=True))
+    r = TW.step(env, "magma", shop="MagmaForge")
+    assert r.rejected and "an aquifer beside the dug tile" in r.error, r.error
+
+
+@test("brain (review 8/9): magma too deep for a stair left out; Never/Always/AI decides on a cavern's way; a refusal waits a season")
+def _():
+    from planner_water import magma_choice
+    from planner import PLANNER_CONFIG
+    pipe = {"kind": "magma", "magma": "pipe", "d": 150, "reach": 160, "top": {"z": 80}}
+    deep_sea = {"kind": "magma", "magma": "sea", "d": 80, "reach": 90, "top": {"z": 20}}
+    sea = {"kind": "magma", "magma": "sea", "d": 80, "reach": 90, "top": {"z": 40}}
+    cav_pipe = {"kind": "magma", "magma": "pipe", "d": 100, "opens_cavern": "Cavern1", "reach_through": 90, "top": {"z": 70}}
+
+    def s(ws, mode="never", magma=None):
+        return {"water": {"waters": ws, "magma": magma or {}, "middle": {"z_low": 90}},
+                "settings": {"open_caverns": mode}}
+    assert magma_choice(s([deep_sea]), PLANNER_CONFIG) == ("", False)          # 90 - 21 = 69 levels > 60
+    assert magma_choice(s([deep_sea, pipe]), PLANNER_CONFIG) == ("pipe", False)
+    assert magma_choice(s([sea], magma={"top_nearest": {"x": 1, "z": 10}}), PLANNER_CONFIG) == ("sea", False)
+    assert magma_choice(s([dict(pipe, blocked="magma on the way")]), PLANNER_CONFIG) == ("", False)
+    # AI decides: a cavern's way only when no other magma can be reached
+    assert magma_choice(s([cav_pipe, sea], "ai"), PLANNER_CONFIG) == ("sea", False)
+    assert magma_choice(s([cav_pipe], "ai"), PLANNER_CONFIG) == ("pipe", True)
+    assert magma_choice(s([cav_pipe], "never"), PLANNER_CONFIG) == ("", False)
+    assert magma_choice(s([cav_pipe, sea], "always"), PLANNER_CONFIG) == ("pipe", True)
+    assert magma_choice(s([pipe], "never"), dict(PLANNER_CONFIG, water_far_reach=0)) == ("", False)
+    # a refused magma workshop waits a season (not the 4 weeks of the other works)
+    st = TW.state(settings={"traits": {}}, buildings={"workshops": {"MetalsmithsForge": 1}, "furnaces": {}, "other": {}},
+                  water={"bodies": [], "waters": [pipe], "middle": {"z_low": 90}}, map={"layers": []},
+                  waterworks={"works": {}, "refused": {"magma:MagmaForge": {"tick": 10 * 403200 - 40 * 1200, "why": "x"}}})
+    props, _ = TW.run(st)
+    assert not [p for p in props if p.action.get("kind") == "magma"], [p.action for p in props]
+    st["waterworks"]["refused"]["magma:MagmaForge"]["tick"] = 10 * 403200 - 90 * 1200
+    props, _ = TW.run(st)
+    assert [p for p in props if p.action.get("kind") == "magma"], [p.action for p in props]
 
 
 @test("pump: the near pool first; another underground pool under the fort tried when it won't do")
@@ -527,6 +812,64 @@ def _():
     assert env.cistern_far_len(70) is None
     env.SURVEY = lua.table_from({"bodies": lua.table_from([])})     # an older survey: nothing changes
     assert env.cistern_far_len(70) is None
+
+
+@test("cistern (review 7): the tunnel's next stretch takes solid rock or a dry dug tile only, never water, a cavern or an aquifer")
+def _():
+    import re
+    lua = LuaRuntime(unpack_returned_tuples=True)
+    src = (ROOT / "lua" / "ai-builder-cistern.lua").read_text(encoding="utf-8")
+    wells = (ROOT / "lua" / "ai-builder-wells.lua").read_text(encoding="utf-8")
+    solid = re.search(r"^function solid_rock\(t\).*?^end", wells, re.S | re.M).group(0)
+    env = lua.eval("""function(src, solid)
+      local env = setmetatable({}, {__index = _G})
+      env.reqscript = function(n) return {last = function() return nil end} end
+      env.site_get = function() return {} end
+      env.site_put = function() end
+      env.is_tree = function(t) return false end
+      assert(load(src, 'ai-builder-cistern', 't', env))()
+      assert(load(solid, 'solid_rock', 't', env))()
+      return env end""")(src, solid)
+    t = lambda **kw: lua.table_from(dict({"material": "STONE"}, **kw))
+    ok = env.tunnel_stretch_ok
+    assert ok(t(shape="WALL")) and ok(t(shape="FLOOR"))
+    for bad in (t(shape="FLOOR", liquid=True), t(shape="EMPTY", liquid=True, depth=7), t(shape="FLOOR", feature=True),
+                t(shape="FLOOR", aquifer=True), t(shape="WALL", aquifer=True), t(shape="WALL", feature=True),
+                t(shape="WALL", liquid=True), None):
+        assert not ok(bad), dict(bad) if bad else bad
+    assert "tunnel_stretch_ok(t)" in src and "t.shape ~= 'WALL' or solid_rock(t)" not in src
+
+
+@test("pump far (review 10): another pool's stack only with its reservoir where the dwarves walk; staged and capped")
+def _():
+    def far_pump_world():
+        env, W = TW.pump_world()
+        GROUPS(env)
+        W.tiles["60,60,86"] = None
+        W.set(150, 60, 86, T(shape="FLOOR", liquid=True, depth=7))
+        for x in range(140, 165):                                  # an outpost's floor over it
+            for y in range(45, 76):
+                W.set(x, y, 90, T(shape="FLOOR"))
+        W.survey = T(bodies=L(), map=T(w=192), waters=L(T(kind="pool", flow="stagnant", underground=True, tiles=1,
+                                                           d=90, salt_share=0, nearest=T(x=150, y=60, z=86))))
+        return env, W
+    env, W = far_pump_world()
+    r, p = plan_of(env, "pump")
+    assert p is not None and p.far and p.far.kind == "pool", dict(r)
+    assert 140 <= p.reservoir.x <= 164
+    env, W = far_pump_world()
+    for k in list(W.tiles.keys()):
+        x, y, z = map(int, k.split(","))
+        if z == 90 and x >= 140:
+            W.group[k] = 5                                         # walled off from the fort
+    r = TW.step(env, "pump", dry_run=True)
+    assert r.rejected and "not where the dwarves can walk" in r.error, r.error
+    env, W = far_pump_world()
+    r = TW.step(env, "pump", dry_run=True, job_max=10)
+    assert r.rejected and "(10 at most)" in r.error, r.error
+    env, W = far_pump_world()
+    r = TW.step(env, "pump", dry_run=True, job_max=0)
+    assert r.rejected, dict(r)
 
 
 if __name__ == "__main__":

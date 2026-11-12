@@ -149,7 +149,7 @@ WELL_SHORE_NEAR = 8
 SHORE_FAR_REACH = nil
 function shore_far_cap(w)
     local r = math.tointeger(tonumber(SHORE_FAR_REACH))
-    if r and r > 0 then return r end
+    if r and r >= 0 then return r end                 -- (0.105.38 review) 0: far banks off
     local m = type(w) == 'table' and w.map or nil
     return type(m) == 'table' and math.tointeger(tonumber(m.w)) or 192
 end

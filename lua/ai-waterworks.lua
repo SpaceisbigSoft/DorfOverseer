@@ -181,6 +181,33 @@ function dig_now(x, y, z)
 end
 
 function citizens() return reqscript('ai-builder').citizen_positions() end
+-- (0.105.38 review) the walk group of a tile (0: none), and the citizens' ({[group] = true})
+function walk_group(x, y, z)
+    local ok, g = pcall(function() return reqscript('ai-builder').walk_group(x, y, z) end)
+    return ok and g or 0
+end
+function citizen_groups()
+    local ok, g = pcall(function() return reqscript('ai-builder').citizen_groups() end)
+    return ok and type(g) == 'table' and g or {}
+end
+-- (0.105.38 review) dig designations taken off tiles (a retired work's
+-- tunnel left undug): how many
+function undesignate(cells)
+    local n = 0
+    for _, c in ipairs(cells) do
+        local ok = pcall(function()
+            local des = dfhack.maps.getTileFlags(c.x, c.y, c.z)
+            if des and des.dig ~= df.tile_dig_designation.No then
+                des.dig = df.tile_dig_designation.No
+                n = n + 1
+            end
+        end)
+        if not ok then break end
+    end
+    return n
+end
+-- (0.105.38 review) a line in DFHack's console (a retired work's half-dug tunnel)
+function log_line(msg) pcall(function() print('[ai-waterworks] ' .. msg) end) end
 function water_survey() return reqscript('ai-water').last() end
 function mud(x, y, z) return reqscript('ai-builder').mud_at(x, y, z) end
 function now()
@@ -392,12 +419,14 @@ end
 -- An L-shaped run of tiles from a (included) to b (excluded) on one level,
 -- each passing ok(x, y); the x-first or the y-first way, whichever passes
 -- (only: true or false, that way alone).
-local function l_path(a, b, ok, only)
+-- (0.105.38 review) maxlen: a way longer is given up as soon as it is
+local function l_path(a, b, ok, only, maxlen)
     for _, xfirst in ipairs(only == nil and {true, false} or {only}) do
         local path, x, y, good = {}, a.x, a.y, true
         local function walk(tx, ty)
             while (x ~= tx or y ~= ty) and good do
                 table.insert(path, {x = x, y = y})
+                if maxlen and #path > maxlen then good = false break end
                 if not ok(x, y) then good = false end
                 if x ~= tx then x = x + (tx > x and 1 or -1) else y = y + (ty > y and 1 or -1) end
             end
@@ -410,6 +439,23 @@ end
 
 local N4 = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}}
 local N8 = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, 1}, {1, -1}, {-1, 1}, {-1, -1}}
+-- (0.105.38 review) the 8 tiles round a tile and the one over it
+local N8UP = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {1, 1, 0}, {1, -1, 0}, {-1, 1, 0}, {-1, -1, 0}, {0, 0, 1}}
+
+-- (0.105.38 review) A far dig's tile: an aquifer or liquid among the 8 tiles
+-- round it or over it (it would seep or flood once dug): why, or nil.
+-- `own(x, y, z)`: a tile of the work's own source (allowed beside it).
+local function wet_beside(x, y, z, own)
+    for _, d in ipairs(N8UP) do
+        local nx, ny, nz = x + d[1], y + d[2], z + d[3]
+        local t = T(nx, ny, nz)
+        if t and (t.aquifer or t.liquid) and not (own and own(nx, ny, nz)) then
+            return ('%s %s the dug tile at x%d y%d, elevation %d'):format(t.aquifer and 'an aquifer' or (t.magma and 'magma' or 'water'),
+                                                                         d[3] == 1 and 'over' or 'beside', x, y, ez(z))
+        end
+    end
+    return nil
+end
 
 ---------------------------------------------------------------------------
 -- The dry run: where the water (or magma) would go
@@ -458,6 +504,36 @@ function bypass(p)
                                        .. 'the liquid would go round the floodgate'):format(c.x, c.y), x = c.x, y = c.y, z = c.z}
                     end
                 end
+            end
+        end
+    end
+    return nil
+end
+
+-- (0.105.38 review) A far plan's dig checked on the map itself (the
+-- survey's estimate walked another way): no dug tile in an aquifer or with
+-- one (or liquid) among the 8 tiles round it or over it (the plug, which
+-- touches the source, excepted), none in a cavern unless `allow_cavern`
+-- (the cavern switch). `feature_ok(z)`: a level whose deep feature is the
+-- work's own source (the magma sea's layer). nil, or why (and `opens`: true
+-- when it is a cavern the dig would open).
+function far_route_check(p, allow_cavern, feature_ok)
+    local exempt = {}
+    if p.plug then exempt[key(p.plug.x, p.plug.y, p.plug.z)] = true end
+    local seen = {}
+    for _, list in ipairs({p.dig or {}, p.dig2 or {}}) do
+        for _, c in ipairs(list) do
+            local k = key(c.x, c.y, c.z)
+            if not seen[k] and not exempt[k] then
+                seen[k] = true
+                local t = T(c.x, c.y, c.z)
+                if t and t.feature and not allow_cavern and not (feature_ok and feature_ok(c.z)) then
+                    return ('the dig would open a cavern at x%d y%d, elevation %d (the cavern switch does not allow it)')
+                        :format(c.x, c.y, ez(c.z)), true
+                end
+                if t and t.aquifer then return ('the dig crosses an aquifer at x%d y%d, elevation %d'):format(c.x, c.y, ez(c.z)) end
+                local wb = wet_beside(c.x, c.y, c.z)
+                if wb then return wb end
             end
         end
     end
@@ -554,14 +630,20 @@ end
 FAR = {}                -- this call's settings: {reach, job_max, segment}
 
 -- the reach a far source may lie at most: the brain's, or the map's width
+-- (none or below 0); (0.105.38 review) 0: far sources off
 function far_cap(w)
     local r = math.tointeger(tonumber(FAR.reach)) or FAR_REACH
-    if r and r > 0 then return r end
+    if r and r >= 0 then return r end
     local m = type(w) == 'table' and w.map or nil
     return type(m) == 'table' and math.tointeger(tonumber(m.w)) or 192
 end
 
-function far_job_max() return math.tointeger(tonumber(FAR.job_max)) or FAR_JOB_MAX end
+-- (0.105.38 review) 0: no far work at all (not the default's 600)
+function far_job_max()
+    local n = math.tointeger(tonumber(FAR.job_max))
+    if n and n >= 0 then return n end
+    return FAR_JOB_MAX
+end
 function dig_segment() return math.max(5, math.tointeger(tonumber(FAR.segment)) or DIG_SEGMENT) end
 
 -- A body's cost: its reach estimate (a dig through safe rock), else the
@@ -577,6 +659,7 @@ end
 function far_sources(w, want, skip, extra, tries)
     local out = {}
     local cap = far_cap(w)
+    if cap <= 0 or far_job_max() <= 0 then return out end     -- (0.105.38 review) far sources off
     for _, b in ipairs(type(w) == 'table' and type(w.waters) == 'table' and w.waters or {}) do
         local n = type(b) == 'table' and b.nearest or nil
         if type(n) == 'table' and n.x and n.y and n.z and want(b) and (tonumber(b.d) or math.huge) <= 2 * cap
@@ -595,6 +678,7 @@ end
 -- job cap. nil, or why not.
 function job_too_big(p)
     local n = #(p.dig or {}) + #(p.dig2 or {}) + #(p.builds or {})
+    if far_job_max() <= 0 then return 'far water works are off (the brain\'s water_job_max is 0)' end
     if n > far_job_max() then
         return ('the work would dig and build %d tiles (%d at most)'):format(n, far_job_max())
     end
@@ -608,6 +692,34 @@ function stage_plan(p)
     if #(p.dig or {}) > seg then
         p.stages = {}
         for i = 1, #p.dig, seg do table.insert(p.stages, {i, math.min(#p.dig, i + seg - 1)}) end
+    end
+    return nil
+end
+
+-- (0.105.38 review) A staged dig's next segment, checked before it is
+-- designated: each tile not dug yet still a wall of natural rock with no
+-- liquid, no aquifer, no cavern (unless the plan opens one: its
+-- source.opens_cavern) and nothing wet beside or over it; a tile dug
+-- meanwhile only if dry and no cavern's. nil, or why.
+function next_segment_bad(p, cells)
+    local cav_ok = type(p.source) == 'table' and p.source.opens_cavern ~= nil
+    local exempt = p.plug and key(p.plug.x, p.plug.y, p.plug.z) or nil
+    for _, c in ipairs(cells or {}) do
+        local t = T(c.x, c.y, c.z)
+        local where = ('x%d y%d, elevation %d'):format(c.x, c.y, ez(c.z))
+        if not t then return 'an unknown tile at ' .. where end
+        if t.liquid then return 'liquid at ' .. where end
+        if t.aquifer then return 'an aquifer at ' .. where end
+        if t.feature and not cav_ok then return 'a cavern at ' .. where end
+        if t.shape == 'WALL' then
+            if NATURAL[t.material] ~= true then return 'no natural rock at ' .. where end
+        elseif not OPEN[t.shape] or t.outside then
+            return 'no longer solid rock at ' .. where
+        end
+        if key(c.x, c.y, c.z) ~= exempt then
+            local wb = wet_beside(c.x, c.y, c.z)
+            if wb then return wb end
+        end
     end
     return nil
 end
@@ -669,21 +781,10 @@ end
 -- W3: a trench across the approach to a surface gate, fed from the river
 -- through a floodgate, crossed by a drawbridge (a plain bridge: no lever).
 -- (0.105.38) one river's moat: the river's nearest tile, its highest level,
--- the feed's length at most; far: the channel's ground checked for an
--- aquifer or a cavern under it (said by name), the dig staged
-local function moat_for(river, river_z2, feed_max, opts, es, far)
+-- the feed's length at most. (0.105.38 review) Only the near river (as
+-- before 0.105.38): a far river never feeds a moat.
+local function moat_for(river, river_z2, feed_max, opts, es)
     local why
-    local bad                                   -- (0.105.38) why the far channel's ground won't do
-    local function feed_ground(x, y, z)
-        if ground(x, y, z) then return true end
-        if far and not bad then
-            local b = T(x, y, z - 1)
-            if b and b.aquifer then bad = ('an aquifer under the channel at x%d y%d'):format(x, y)
-            elseif b and b.feature then bad = ('a cavern under the channel at x%d y%d'):format(x, y)
-            elseif b and b.liquid and b.magma then bad = ('magma under the channel at x%d y%d'):format(x, y) end
-        end
-        return false
-    end
     for _, e in ipairs(es) do
         -- the side the outside lies on
         local dir
@@ -717,7 +818,7 @@ local function moat_for(river, river_z2, feed_max, opts, es, far)
             -- touch the plug diagonally and the water go round the gate
             local feed, cornered
             for _, xfirst in ipairs({true, false}) do
-                local f = l_path(start, river, function(x, y) return feed_ground(x, y, z) end, xfirst)
+                local f = l_path(start, river, function(x, y) return ground(x, y, z) end, xfirst)
                 while f and #f > 0 do
                     local l = f[#f]
                     local nb = T(l.x, l.y, z)
@@ -731,7 +832,6 @@ local function moat_for(river, river_z2, feed_max, opts, es, far)
             end
             if not feed then
                 why = why or (cornered and 'the feed channel would turn its corner at the floodgate (the water would go round it)'
-                              or (bad and ('no safe ground for a channel from the river to the trench: ' .. bad))
                               or 'no diggable ground for a channel from the river to the trench')
                 goto next
             end
@@ -777,11 +877,6 @@ local function moat_for(river, river_z2, feed_max, opts, es, far)
             table.insert(p.builds, {x = bx, y = by, z = z, text = ('%s(%dx%d)'):format(bdir, bw, bh), kind = 'Bridge'})
             local by = bypass(p)             -- (0.105.33) the water never round the floodgate
             if by then why = why or by.why goto next end
-            if far then
-                p.far = {d = #feed, kind = 'channel'}
-                local big = stage_plan(p)
-                if big then why = why or big goto next end
-            end
             return p
         end
         ::next::
@@ -795,30 +890,20 @@ function plan_moat(opts)
     if not w then return nil, 'no water survey yet' end
     local river, river_z2
     for _, b in ipairs(w.bodies or {}) do if b.kind == 'river' then river, river_z2 = b.nearest, b.z2 end end
-    -- (0.105.38) the far rivers and brooks, the cheapest first
-    local far = far_sources(w, function(b) return b.flow == 'flowing' end, river)
-    if not river and #far == 0 then return nil, 'no river or brook near the fort' end
+    -- (0.105.38 review) the near river only, as before: a far river's long
+    -- channel is no moat (the brain's moat_wanted asks for a near one too)
+    if not river then return nil, 'no river or brook near the fort' end
     local es = entrances()
     if #es == 0 then return nil, 'no surface entrance found (scan the entrances first)' end
-    local why
-    if river then
-        local p, w1 = moat_for(river, river_z2, MOAT_FEED_MAX, opts, es, false)
-        if p then return p end
-        why = w1
-    end
-    for _, b in ipairs(far) do
-        local p, w2 = moat_for(b.nearest, b.z2, far_cap(w), opts, es, true)
-        if p then return p end
-        why = why or (('the %s %d tiles off: '):format(b.kind or 'river', tonumber(b.d) or 0) .. tostring(w2))
-    end
-    return nil, why
+    return moat_for(river, river_z2, MOAT_FEED_MAX, opts, es)
 end
 
 -- W4: screw pumps lifting still water from a level below to a 3x3
 -- reservoir under the fort's lowest level (a well goes over it later).
 -- Worked by a dwarf (the pump operator labour).
-local function pump_at(src, fb, w)
+local function pump_at(src, fb, w, far)
     local why_b
+    local groups = far and citizen_groups() or nil     -- (0.105.38 review) a far stack: its top where the dwarves walk
     local zt = fb.z_low - 1                         -- the reservoir, under the lowest fort level
     local zs = src.z
     local lift = zt - zs
@@ -849,6 +934,10 @@ local function pump_at(src, fb, w)
         local ctop = T(C.x, C.y, zt + 1)
         if not (top and top.shape == 'FLOOR' and not top.outside and not top.building) then ok = false end
         if not (ctop and ctop.shape == 'FLOOR' and not ctop.outside and not ctop.building) then ok = false end
+        if ok and far and not (groups[walk_group(rx, ry, zt + 1)] == true and groups[walk_group(C.x, C.y, zt + 1)] == true) then
+            ok = false
+            why_b = why_b or ('the far reservoir\'s site at x%d y%d is not where the dwarves can walk'):format(rx, ry)
+        end
         if ok then
             local p = {kind = 'pump', dig = {}, builds = {}, tiles = {}, wet = {}, down = {},
                        gate = {x = G.x, y = G.y, z = zs}, plug = {x = P.x, y = P.y, z = zs, text = 'd'},
@@ -905,6 +994,12 @@ local function pump_at(src, fb, w)
             -- the pump's water wheel: only beside a river (said, not built yet)
             for _, b in ipairs(w.bodies or {}) do if b.kind == 'river' then p.wheel = 'possible on the river' end end
             local by = bypass(p)         -- (0.105.33) the water never round the floodgate
+            if not by and far then
+                -- (0.105.38 review) a far stack: its dig checked on the map
+                -- (no aquifer or other water beside it), the job cap, staged
+                local bad = far_route_check(p, false) or stage_plan(p)
+                if bad then by = {why = bad} end
+            end
             if not by then return p end
             why_b = why_b or by.why
         end
@@ -935,7 +1030,7 @@ function plan_pump(opts)
         why = w1
     end
     for _, b in ipairs(far) do
-        local p, w2 = pump_at(b.nearest, fb, w)
+        local p, w2 = pump_at(b.nearest, fb, w, true)
         if p then p.far = {d = tonumber(b.d) or 0, kind = 'pool'} return p end
         why = why or w2
     end
@@ -1013,7 +1108,9 @@ function plan_irrigation()
                             local by = bypass(p)     -- (0.105.33) the water never round the floodgate
                             if not by and wt.far then
                                 p.far = {d = #path, kind = 'tunnel'}
-                                local big = stage_plan(p)
+                                -- (0.105.38 review) the long tunnel checked on the map: no
+                                -- aquifer or other water beside or over a dug tile
+                                local big = far_route_check(p, false) or stage_plan(p)
                                 if big then why = why or big goto skip end
                             end
                             if not by then return p end
@@ -1033,10 +1130,16 @@ end
 -- magma with a (magma-safe) floodgate; the service stair to the tunnel's
 -- level covered by a locked hatch. Never through a cavern.
 -- (0.105.38) A tunnel on the fort's lowest level from (x, y) toward the
--- fort's middle, through solid rock until it meets an open floor inside the
--- fort: its tiles (the first one excluded), or nil, why.
-local function fort_tunnel(x, y, fb)
+-- fort's middle, through solid rock until it meets the fort: its tiles (the
+-- first one excluded), or nil, why. (0.105.38 review) The fort met only at
+-- an open floor that is no cavern's, seen, and in a citizen's walk group
+-- (any other open tile refuses it); a cavern's tile refuses it unless
+-- `allow_cavern` (the cavern switch; then a cavern's wall is dug and its
+-- open floor crossed); a tile to dig with an aquifer or liquid beside or
+-- over it refuses it.
+local function fort_tunnel(x, y, fb, allow_cavern)
     local z = fb.z_low
+    local groups = citizen_groups()
     local why
     for _, xfirst in ipairs({true, false}) do
         local out, cx, cy, ok, met = {}, x, y, true, false
@@ -1044,21 +1147,41 @@ local function fort_tunnel(x, y, fb)
             while ok and not met and (cx ~= tx or cy ~= ty) do
                 if cx ~= tx and (xfirst or cy == ty) then cx = cx + (tx > cx and 1 or -1) else cy = cy + (ty > cy and 1 or -1) end
                 local t = T(cx, cy, z)
-                if t and OPEN[t.shape] and t.shape ~= 'EMPTY' and not t.outside and not t.liquid then met = true
+                local open = t and OPEN[t.shape] and t.shape ~= 'EMPTY' and not t.outside and not t.liquid
+                if open and not t.feature and not t.hidden and groups[walk_group(cx, cy, z)] == true then met = true
+                elseif t and t.feature then
+                    if not allow_cavern then
+                        ok = false
+                        why = why or ('the tunnel to the fort would open a cavern at x%d y%d (the cavern switch does not allow it)')
+                            :format(cx, cy)
+                    elseif rock(t, true) or (t.shape == 'WALL' and not t.liquid and not t.aquifer and not t.outside) then
+                        local wb = wet_beside(cx, cy, z)
+                        if wb then ok = false; why = why or ('the tunnel to the fort: ' .. wb)
+                        else table.insert(out, {x = cx, y = cy, z = z}) end
+                    elseif not open then
+                        ok = false
+                        why = why or ('the tunnel to the fort would cross a cavern\'s water or open space at x%d y%d'):format(cx, cy)
+                    end
                 elseif not rock(t, true) then
                     ok = false
                     why = why or ('the tunnel to the fort would cross something other than solid rock at x%d y%d'):format(cx, cy)
-                else table.insert(out, {x = cx, y = cy, z = z}) end
+                else
+                    local wb = wet_beside(cx, cy, z)
+                    if wb then
+                        ok = false
+                        why = why or ('the tunnel to the fort: ' .. wb)
+                    else table.insert(out, {x = cx, y = cy, z = z}) end
+                end
             end
         end
         if xfirst then walk(fb.x, y); walk(fb.x, fb.y) else walk(x, fb.y); walk(fb.x, fb.y) end
         if ok and met then return out end
-        why = why or 'the tunnel to the fort met no fort floor'
+        why = why or 'the tunnel to the fort met no fort floor the dwarves walk on'
     end
     return nil, why
 end
 
-local function magma_at(m, shop, fb)
+local function magma_at(m, shop, fb, allow_cavern)
     local why_b
     local zm, zw = m.z, m.z + 1
     if fb.z_low - zw > MAGMA_STAIR_MAX then return nil, 'the magma is too deep for a stair' end
@@ -1106,7 +1229,7 @@ local function magma_at(m, shop, fb)
                 end
                 -- (0.105.38) a stair far from the fort: a tunnel joins its top to the fort
                 if math.max(math.abs(S1.x - fb.x), math.abs(S1.y - fb.y)) > MAGMA_NEAR then
-                    local tun, twhy = fort_tunnel(S1.x, S1.y, fb)
+                    local tun, twhy = fort_tunnel(S1.x, S1.y, fb, allow_cavern)
                     if not tun then return nil, twhy end
                     for _, c in ipairs(tun) do table.insert(p.dig, {x = c.x, y = c.y, z = c.z, text = 'd'}) end
                     p.access = #tun
@@ -1154,10 +1277,16 @@ MAGMA_RANK = {pipe = 0, volcano = 0, pool = 0, surface = 1, cavern = 2, sea = 3}
 -- before 0.105.38), then the whole map's magma bodies by kind and cost (a
 -- pipe before the sea); one whose dig opens a cavern only when the cavern
 -- switch allows it (opts.open_caverns: the brain's Rules choice, Never /
--- Always / AI decides), never by this rule alone.
+-- Always / AI decides), never by this rule alone. (0.105.38 review) The
+-- survey's estimate (a shaft from the fort's middle) only sorts them: a
+-- body it found blocked (other liquid, a deep feature, off the map) is left
+-- out, one deeper than MAGMA_STAIR_MAX too; the planned dig itself is
+-- walked for a cavern, an aquifer or other liquid beside it
+-- (far_route_check), and the plan's `source.opens_cavern` says what it found.
 function plan_magma(shop, opts)
     shop = MAGMA_SHOPS[shop] and shop or 'MagmaForge'
     opts = type(opts) == 'table' and opts or {}
+    local allow = opts.open_caverns == true
     local fb = fort_box()
     if not fb then return nil, 'no citizens' end
     local w = water_survey()
@@ -1166,27 +1295,41 @@ function plan_magma(shop, opts)
     if m then table.insert(cands, {m = m}) end
     for _, b in ipairs(far_sources(w, function(b) return b.kind == 'magma' end, nil, function(b)
             return 10000 * (MAGMA_RANK[b.magma] or 2) end, 8)) do
-        if b.opens_cavern and opts.open_caverns ~= true then
+        local t = b.top or b.nearest
+        if b.blocked then
+            why = why or ('the %s magma: %s'):format(tostring(b.magma), tostring(b.blocked))
+        elseif fb.z_low - (t.z + 1) > MAGMA_STAIR_MAX then
+            held = held or ('the %s magma is too deep for a stair (%d levels, %d at most)')
+                :format(tostring(b.magma), fb.z_low - (t.z + 1), MAGMA_STAIR_MAX)
+        elseif b.magma == 'cavern' and not allow then
+            -- a pool in a cavern: reaching it opens the cavern, whatever the way
             held = held or ('the %s magma %d tiles off: reaching it opens %s (the cavern switch does not allow it)')
-                :format(tostring(b.magma), tonumber(b.d) or 0, tostring(b.opens_cavern))
-        elseif b.aquifer and not b.reach then
-            why = why or ('the %s magma: the way down crosses an aquifer'):format(tostring(b.magma))
-        else
-            local t = b.top or b.nearest
-            if not (m and t.x == m.x and t.y == m.y and t.z == m.z) then
-                table.insert(cands, {m = {x = t.x, y = t.y, z = t.z}, b = b})
-            end
+                :format(tostring(b.magma), tonumber(b.d) or 0, tostring(b.opens_cavern or b.cavern or 'a cavern'))
+        elseif not (m and t.x == m.x and t.y == m.y and t.z == m.z) then
+            table.insert(cands, {m = {x = t.x, y = t.y, z = t.z}, b = b})
         end
     end
     if #cands == 0 then
-        return nil, held or why or 'no magma found near the fort (or the survey is older than 0.105.0)'
+        return nil, why or held or 'no magma found near the fort (or the survey is older than 0.105.0)'
     end
     for _, c in ipairs(cands) do
-        local p, w1 = magma_at(c.m, shop, fb)
+        local p, w1 = magma_at(c.m, shop, fb, c.b and allow)
         if p and c.b then
-            p.source = {magma = c.b.magma, d = c.b.d, opens_cavern = c.b.opens_cavern}
-            local big = stage_plan(p)
-            if big then p, w1 = nil, big end
+            local deep = c.b.magma == 'sea' or c.b.magma == 'underworld'
+            local zw = c.m.z + 1
+            local bad = far_route_check(p, allow, deep and function(z) return z <= zw end or nil)
+            if not bad then
+                -- a cavern on the planned dig (allowed by the switch), or the body's own
+                local crossed
+                for _, d in ipairs(p.dig) do
+                    local t = T(d.x, d.y, d.z)
+                    if t and t.feature and not (deep and d.z <= zw) then crossed = true break end
+                end
+                p.source = {magma = c.b.magma, d = c.b.d,
+                            opens_cavern = (crossed or c.b.magma == 'cavern') and (c.b.opens_cavern or c.b.cavern or 'a cavern') or nil}
+                bad = stage_plan(p)
+            end
+            if bad then p, w1 = nil, bad end
         end
         if p then return p end
         why = why or (c.b and (('the %s magma: '):format(tostring(c.b.magma)) .. tostring(w1)) or w1)
@@ -1326,6 +1469,8 @@ POWER_HIGH = 5          -- this high: off
 WHEEL_DRY_DAYS = 14     -- (unused since 0.105.37 fix: a still wheel is paused, see WHEEL_RETIRE_DAYS)
 WHEEL_RETIRE_DAYS = 84  -- (0.105.37 fix) a still wheel over unfrozen water this long (a season): held, retired
 WIND_DAYS = 14          -- the windmill still this long: held
+WHEEL_FAR_CENTRES = 12  -- (0.105.38 review) a far river's wheel: its centres nearest the shaft tried at most
+WHEEL_FAR_SECONDS = 0.25 -- (0.105.38 review) the far wheel's search this long at most (then: tried again later)
 POWER_SHORT_DAYS = 14   -- less power than the machine needs this long: held
 POWER_PULL_DAYS = 2     -- a pull to switch the power on asked again no sooner
 
@@ -1578,6 +1723,7 @@ local function power_wheel(pp, C, zt, ztop, pumps, w, foot)
     local far = far_sources(w, function(b) return b.flow == 'flowing' end)
     if not river and #far == 0 then return nil, 'no river near the fort for a water wheel' end
     local best, why
+    local deadline, late          -- (0.105.38 review) the far search's time budget
     for _, e in ipairs(N4) do
         for _, d in ipairs(N4) do
             if d[1] * e[1] + d[2] * e[2] == 0 then
@@ -1611,7 +1757,7 @@ local function power_wheel(pp, C, zt, ztop, pumps, w, foot)
                                 for _, s in ipairs({1, -1}) do
                                     local G0 = {x = c.x + v[1] * s, y = c.y + v[2] * s}
                                     if walk(G0.x, G0.y) and not (G0.x == D.x and G0.y == D.y) then
-                                        local path = l_path(D, G0, walk)
+                                        local path = l_path(D, G0, walk, nil, runmax)   -- (review: given up past runmax)
                                         if path and #path <= runmax then
                                             table.insert(path, G0)
                                             -- the gears: D, the corner, the bank
@@ -1666,20 +1812,36 @@ local function power_wheel(pp, C, zt, ztop, pumps, w, foot)
                     end end
                     -- (0.105.38) no river within reach of the shaft's top: the far
                     -- ones the survey found, the cheapest first (a long run of axles)
-                    if not best then
+                    -- (0.105.38 review) the WHEEL_FAR_CENTRES wheel tiles nearest the
+                    -- shaft's top tried at most, within WHEEL_FAR_SECONDS in all
+                    if not best and not late then
+                        local cs = {}
                         for _, fr in ipairs(far) do
                             local fn = fr.nearest
                             if fn.z == ztop - 1 then
                                 for dx = -6, 6 do for dy = -6, 6 do
-                                    try_c({x = fn.x + dx, y = fn.y + dy}, far_cap(w), true)
+                                    local c = {x = fn.x + dx, y = fn.y + dy}
+                                    if wheel_tile(c.x, c.y, ztop) then
+                                        c.d = math.abs(c.x - D.x) + math.abs(c.y - D.y)
+                                        table.insert(cs, c)
+                                    end
                                 end end
                             end
+                        end
+                        table.sort(cs, function(a, b) return a.d < b.d end)
+                        deadline = deadline or (os.clock() + WHEEL_FAR_SECONDS)
+                        for i = 1, math.min(#cs, WHEEL_FAR_CENTRES) do
+                            if os.clock() > deadline then late = true break end
+                            try_c(cs[i], far_cap(w), true)
                         end
                     end
                 end
             end
             ::nexte::
         end
+    end
+    if not best and late then
+        return nil, 'the search for a far river\'s water wheel ran out of time: tried again later', true
     end
     if not best then
         return nil, why or ('no flowing river water (4/7 deep) under open space within %d tiles of the shaft\'s top, '
@@ -1818,10 +1980,12 @@ function plan_power(pw, src, old)
     if not src and old and old.source == 'windmill' then kinds = {'windmill', 'wheel'} end
     local why
     for _, k in ipairs(kinds) do
-        local p, w2
-        if k == 'wheel' then p, w2 = power_wheel(pp, C, zt, ztop, pumps, water_survey(), foot)
+        local p, w2, later
+        if k == 'wheel' then p, w2, later = power_wheel(pp, C, zt, ztop, pumps, water_survey(), foot)
         else p, w2 = power_windmill(pp, C, zt, ztop, pumps, foot) end
         if p then return done(p) end
+        -- (0.105.38 review) out of time: no windmill instead, tried again later
+        if later then return done(nil, w2, true) end
         why = why and (why .. '; ' .. w2) or w2
     end
     return done(nil, why)
@@ -1910,18 +2074,18 @@ function power_step(opts)
             return {ok = false, rejected = true, retired = n_ret, error = why0}
         end
         local pw = st.works.pump
-        local plan, why
+        local plan, why, later
         if type(pw) ~= 'table' or pw.stage ~= 'done' then
             why = 'the pump stack is not done yet (its floodgate built and its reservoir filled once): no power for it'
         elseif pw.shut then
             why = 'the pump stack\'s floodgate is shut: no power for it now'
         else
             -- (0.105.37 fix) planned again after a retire: its own old shaft and machines reused
-            plan, why = plan_power(pw, opts.source, wk and wk.plan)
+            plan, why, later = plan_power(pw, opts.source, wk and wk.plan)
         end
         if not plan then
-            if not dry then st.refused[id] = {tick = now(), why = why}; save_state(st) end
-            return {ok = false, rejected = true, error = why}
+            if not dry then st.refused[id] = {tick = now(), why = why, later = later or nil}; save_state(st) end
+            return {ok = false, rejected = true, error = why, later = later or nil}
         end
         if dry then return {ok = true, dry_run = true, stage = 'planned', plan = plan} end
         st.refused[id] = nil
@@ -2273,6 +2437,26 @@ function step(kind, opts)
         local was_open = shut_now(g)
         pumps_manual(false)
         if opts.retire then
+            -- (0.105.38 review) a long dig retired half-done: what is designated
+            -- and not dug yet is called off (the tunnel goes no nearer its
+            -- source), and the half-dug tunnel is recorded and logged
+            local p = wk.plan
+            if type(p) == 'table' and p.stages and (wk.stage == 'digging' or (wk.stage == 'held' and wk.seg)) then
+                local upto = p.stages[math.min(#p.stages, math.tointeger(wk.seg) or 1)][2]
+                local designated, open = {}, nil
+                for k = 1, upto do table.insert(designated, p.dig[k]) end
+                local left = undug(designated)
+                local n_off = #left > 0 and undesignate(left) or 0
+                for k = upto, 1, -1 do
+                    local c = p.dig[k]
+                    if dug(T(c.x, c.y, c.z), c.text) then open = {x = c.x, y = c.y, z = c.z} break end
+                end
+                wk.half_dug = {dug = #designated - #left, of = #p.dig, segment = math.tointeger(wk.seg) or 1,
+                               segments = #p.stages, called_off = n_off, last = open}
+                log_line(('%s retired half-dug: %d of %d tiles dug (segment %d of %d), %d designation(s) called off%s')
+                    :format(id, wk.half_dug.dug, #p.dig, wk.half_dug.segment, #p.stages, n_off,
+                            open and (', its end at x%d y%d elevation %d'):format(open.x, open.y, ez(open.z)) or ''))
+            end
             wk.stage = 'retired'; wk.why = opts.why or 'retired'
             wk.shut, wk.shut_open = nil, nil
             -- (0.105.35) retired by the AI (a held work): not begun again for a
@@ -2441,6 +2625,11 @@ function step(kind, opts)
             return hold(('dry run before segment %d of %d: %s at x%d y%d, elevation %d'):format(
                 i + 1, #p.stages, chk.why, chk.at.x, chk.at.y, chk.at.e))
         end
+        -- (0.105.38 review) the next segment's own tiles still solid rock (no
+        -- aquifer, no cavern unless the plan was let open one, nothing wet
+        -- beside or over them)
+        local bad = next_segment_bad(p, seg_cells(p, i + 1))
+        if bad then return hold(('before segment %d of %d: %s'):format(i + 1, #p.stages, bad)) end
         if dry then return {ok = true, dry_run = true, stage = 'digging', segment = i + 1} end
         local ok, z = designate_all(seg_cells(p, i + 1), 'dig')
         if not ok then return {ok = false, error = ('the game would not designate the dig (elevation %d)'):format(ez(z))} end
