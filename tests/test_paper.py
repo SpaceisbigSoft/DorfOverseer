@@ -209,6 +209,14 @@ def _():
     assert recipe(run(s)[0]) == [("paper", "bind_codex", 1)]
     s = fort(have=4, want=10, shops=WORKS, paper={"quires_written": 3, "bindings": 1, "quires_blank": 6})
     assert not run(s)[0]                      # blank ones still on their way: no codex yet
+    # (fix6) vanilla BIND_BOOK takes any quire: never bound (nor bindings carved) while a blank one lies free
+    s = fort(have=10, want=10, shops=WORKS, paper={"quires_written": 3, "bindings": 1, "quires_blank": 2})
+    assert not run(s)[0], recipe(run(s)[0])
+    s = fort(have=10, want=10, shops=WORKS, paper={"quires_written": 3, "quires_blank": 1})
+    assert not run(s)[0], recipe(run(s)[0])
+    s = fort(have=10, want=10, shops=WORKS, paper={"quires_written": 3, "bindings": 1})
+    s["supplies"]["blank_quires"] = 1         # the supplies' count of blank quires counts too
+    assert not run(s)[0], recipe(run(s)[0])
 
 
 @test("scholars: a library the player shut to visitors is said; the AI's own shut is not")
@@ -257,7 +265,13 @@ def _():
     for kind in ("slurry", "press", "papyrus", "scroll", "codex"):
         assert f"paper = '{kind}'" in ORDERS, kind
     assert "if r.paper and r.job == job then reaction = paper_reaction(r.paper) or '' end" in ORDERS
-    assert "paper = function() return safe(function() return reqscript('ai-paper').report() end) end," in BRIDGE
+    assert "local v = safe(function() return reqscript('ai-paper').report() end)" in BRIDGE
+    # (fix6) not cached while a paper order is open; a paper step's work order clears the cached copy
+    assert "return v, (oko and open) or nil" in BRIDGE
+    assert "stale = paper_step and {'paper'} or nil" in ORDERS
+    for r in PP.PAPER_RECIPES:
+        e = re.search(rf"\n    {r} = {{(.*?)}},?\n", ORDERS).group(1)
+        assert "paper = '" in e or "ITEM_TOOL_SCROLL_ROLLERS" in e or "ITEM_TOOL_BOOK_BINDING" in e, r
     assert "SECTION_CACHE_DAYS.paper = 1" in BRIDGE
     assert "'ai-paper'" in BRIDGE
     assert "ScrewPress = 'wp'" in (LUA / "ai-layouts.lua").read_text(encoding="utf-8")
@@ -436,6 +450,31 @@ def _():
                              "rollers", "bindings")}
     assert got == {"quires_blank": 2, "quires_written": 1, "scrolls_blank": 1, "scrolls_written": 2,
                    "codices": 2, "rollers": 1, "bindings": 2}, got
+
+
+@test("ai-paper (lua): orders_open (fix6): a paper reaction's or a roller/binding order open; others not")
+def _():
+    if LuaRuntime is None:
+        return
+    lua, env, g = game()
+    lua.execute("""
+        local env, G = ...
+        G.rx('PRESS_PLANT_PAPER', {'GLOB'}, {'SHEET'}, {'SCREW_PRESS'}, 'PRESS_PAPER_MAT')
+        G.orders = {}
+        env.df.global.world.manager_orders = {all = G.orders}
+        env.df.job_type = {[1] = 'CustomReaction', [2] = 'MakeTool', CustomReaction = 1, MakeTool = 2}
+        local subs = {[1] = 'ITEM_TOOL_SCROLL', [2] = 'ITEM_TOOL_QUIRE', [3] = 'ITEM_TOOL_BOOK_BINDING'}
+        env.dfhack.items.getSubtypeDef = function(t, sub) return subs[sub] and {id = subs[sub]} end
+    """, env, g)
+    assert env.orders_open() is False
+    lua.execute("local env, G = ...; G.orders[1] = {reaction_name = 'BREW_DRINK', item_subtype = -1, job_type = 1}"
+                "; G.orders[2] = {reaction_name = '', item_subtype = 1, job_type = 2}", env, g)
+    assert env.orders_open() is False           # brewing, and a tool that isn't a paper step's
+    lua.execute("local env, G = ...; G.orders[3] = {reaction_name = 'PRESS_PLANT_PAPER', item_subtype = -1, "
+                "job_type = 1}", env, g)
+    assert env.orders_open() is True
+    lua.execute("local env, G = ...; G.orders[3] = {reaction_name = '', item_subtype = 3, job_type = 2}", env, g)
+    assert env.orders_open() is True            # a book binding carved
 
 
 @test("ai-paper (lua): the reaction codes cached a world (none is cached too)")

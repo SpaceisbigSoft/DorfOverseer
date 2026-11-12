@@ -33,7 +33,7 @@ from __future__ import annotations
 import math
 
 from digest import _d, _l
-from planner_core import PLANNER_CONFIG, abs_tick, ask_player, player_rules, _traits
+from planner_core import PLANNER_CONFIG, abs_tick, player_rules, _traits
 
 __all__ = ["peace_need", "peace_verdict", "attacked_civs", "note_attacks", "peace_fields", "civ_peace",
            "_peace_notes", "PEACE_TOPICS"]
@@ -168,8 +168,8 @@ def peace_fields(s: dict, cfg: dict = PLANNER_CONFIG, memory=None) -> dict:
 
 def _peace_notes(s: dict, cfg: dict, notes: list, memory=None) -> None:
     """For each civilisation at war that has besieged the fort, or that has
-    offered peace: what the AI answers when their diplomat comes. A peace
-    proposal on the meeting screen the AI can't press: a Needs you."""
+    offered peace: what the AI answers when their diplomat comes (a proposal
+    on the meeting screen too; the AI presses it, planner_world.py)."""
     w = _d(s.get("world"))
     if not w:
         return
@@ -191,7 +191,7 @@ def _peace_notes(s: dict, cfg: dict, notes: list, memory=None) -> None:
             notes.append(f"at war with {name}, who have besieged the fort {n} time(s): DF lets only their diplomat "
                          f"propose peace (the fort can't offer it), so the defences stay as they are; to a proposal "
                          f"the AI would answer {ans} ({why})")
-    # the meeting screen holds a peace proposal the AI can't press itself
+    # the meeting screen holds a peace proposal
     if not m.get("open") or m.get("requests") or m.get("land_holder"):
         return
     concluded = list(_l(m.get("concluded")))
@@ -203,13 +203,9 @@ def _peace_notes(s: dict, cfg: dict, notes: list, memory=None) -> None:
             pending.append(t)
     if not any(t in PEACE_TOPICS for t in pending):
         return
-    known = set(str(b) for b in _l(m.get("buttons")))
+    # (fix6) the AI answers the topics one at a time (_meeting_answer_rule,
+    # planner_world.py); a screen whose Yes and No it hasn't been shown is
+    # planner_locations._meeting_notes' Needs you: here only what it answers
     ans, why = civ_peace(s, m.get("civ_id"), memory, cfg)
-    if len(pending) > 1 or not {"Yes", "No"} <= known:
-        reason = (f"{len(pending)} topics are open and the screen may show any of them"
-                  if len(pending) > 1 else "it hasn't been shown where the screen's Yes and No buttons are")
-        ask_player(notes, f"{m.get('civ') or 'a diplomat'} propose peace on DF's meeting screen and the AI's "
-                          f"answer is {ans.upper()} ({why}), but it can't press it: {reason}. Press "
-                          f"{'Yes' if ans == 'yes' else 'No'} if you agree; meanwhile, unattended, the AI leaves "
-                          "the screen after a few minutes (the meeting ends without an agreement and the war "
-                          "goes on as before)")
+    notes.append(f"{m.get('civ') or 'a diplomat'} propose peace on DF's meeting screen: the AI answers "
+                 f"{ans.upper()} ({why})")
