@@ -15,6 +15,7 @@ proved by reverting the switch in the new source and finding the old one.
 
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -30,17 +31,23 @@ except ImportError:
     sys.exit(0)
 
 LUA_DIR = ROOT / "lua"
-BASE_REF = "merge39"
+BASE_REF = "b1fa58f"   # (delivery) the merge39 commit E3 started from, pinned
+
+
+VERSION_RE = re.compile(r"'0\.105\.\d+'")
 
 
 def new(name: str) -> str:
-    return (LUA_DIR / name).read_text(encoding="utf-8")
+    # (delivery) the version marks are bumped each round: compared without them
+    return VERSION_RE.sub("'V'", (LUA_DIR / name).read_text(encoding="utf-8"))
 
 
 def old(name: str) -> str | None:
     try:
         return subprocess.run(["git", "show", f"{BASE_REF}:lua/{name}"], cwd=ROOT, capture_output=True,
-                              check=True, text=True, encoding="utf-8").stdout
+                              check=True, text=True, encoding="utf-8").stdout and VERSION_RE.sub("'V'", subprocess.run(
+            ["git", "show", f"{BASE_REF}:lua/{name}"], cwd=ROOT, capture_output=True,
+            check=True, text=True, encoding="utf-8").stdout)
     except Exception:  # noqa: BLE001
         return None
 

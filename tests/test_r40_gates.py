@@ -25,7 +25,7 @@ except ImportError:
     print("SKIPPED: these tests need the lupa package (pip install lupa)")
     sys.exit(0)
 
-BASE = "merge39"      # the round's base: ai-gates.lua still one file
+BASE = "b1fa58f"      # the round's base: ai-gates.lua still one file
 
 
 def base_src() -> str | None:

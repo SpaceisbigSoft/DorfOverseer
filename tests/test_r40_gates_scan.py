@@ -37,7 +37,7 @@ except ImportError:
     print("SKIPPED: these tests need the lupa package (pip install lupa)")
     sys.exit(0)
 
-BASE = "merge39"
+BASE = "b1fa58f"   # (delivery) merge39 as E5 started from it, pinned
 
 
 def base_src() -> str | None:

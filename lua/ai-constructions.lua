@@ -33,7 +33,7 @@
 -- kept for SURVEY_CACHE_TICKS (a game day) so the census and the report share it.
 --@ module = true
 
-PART_VERSIONS = {['ai-constructions'] = '0.105.38'}   -- bumped with BRIDGE_VERSION
+PART_VERSIONS = {['ai-constructions'] = '0.105.39'}   -- bumped with BRIDGE_VERSION
 
 SURVEY_SECONDS = 0.25          -- time cap on the walk (a fort of 50,000 built tiles)
 SURVEY_CACHE_TICKS = 1200      -- a game day
