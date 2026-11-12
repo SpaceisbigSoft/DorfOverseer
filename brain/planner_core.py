@@ -114,7 +114,8 @@ LIMIT_EXEMPT = EMERGENCY | {"break_fights", "calm_burrow", "join_levels", "censu
                             "gather", "stuck_order", "alerts",
                             "kitchen",   # (0.100) a kitchen setting, once per drink shortage: no slot of its own
                             "mood",      # (0.105.24) a strange mood's materials (a life on it; a handful of actions at most)
-                            "insane"}    # (0.105.40b) doors between the insane and deadly ground (one action)
+                            "insane",    # (0.105.40b) doors between the insane and deadly ground (one action)
+                            "hunting_stop"}   # (fix3) the AI's hunters called in when danger comes: no slot to wait for
 
 
 @dataclass

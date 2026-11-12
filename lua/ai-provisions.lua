@@ -46,6 +46,7 @@ FOOD_STANDING = {'auto_butcher', 'auto_tan', 'auto_kitchen', 'auto_fishery'}
 -- and reads (the kills' fate: forbidden unless hunted)
 FOOD_STANDING_READ = {'auto_butcher', 'auto_tan', 'auto_kitchen', 'auto_fishery', 'auto_slaughter',
                       'forbid_other_nohunt', 'forbid_other_dead_items'}
+HUNT_SKIP_LABORS = {'MINE', 'CUTWOOD'}   -- (fix3) one-tool labours: never made hunters
 MEAL_KINDS = {ITEM_FOOD_BISCUITS = 'biscuits', ITEM_FOOD_STEW = 'stew', ITEM_FOOD_ROAST = 'roast'}
 
 FRUIT_RADIUS = 45            -- trees this far (across) from the fort's centre
@@ -109,8 +110,21 @@ end
 
 -- --- the hunting -----------------------------------------------------------------------
 
--- A wild animal on the surface: 'game' (no danger), 'danger' (a danger), or nil.
-function wild_kind(u)
+-- (fix3) the builder's hostile_wild, looked up once a report (reqscript
+-- checks the file on every call)
+local function wild_test()
+    local okb, B = pcall(builder)
+    local f = okb and B and B.hostile_wild
+    return function(u)
+        if not f then return false end
+        local ok, v = pcall(f, u)
+        return ok and v == true
+    end
+end
+
+-- A wild animal on the surface: 'game' (no danger), 'danger' (a danger, or
+-- a large predator or agitated one: `hostile`, ai-builder hostile_wild), or nil.
+function wild_kind(u, hostile)
     local ok, kind = pcall(function()
         local Un = dfhack.units
         if Un.isDead(u) or not Un.isActive(u) then return nil end
@@ -120,6 +134,9 @@ function wild_kind(u)
         if okt and tame then return nil end
         if not tile_outside(u.pos.x, u.pos.y, u.pos.z) then return nil end      -- not in a cavern
         if Un.isDanger(u) or (Un.isGreatDanger and Un.isGreatDanger(u)) then return 'danger' end
+        -- (fix3) a large predator (a bear, a wolf) or an agitated one: DF's
+        -- isDanger says no until it attacks, and the hunters went out to it
+        if (hostile or wild_test())(u) then return 'danger' end
         return 'game'
     end)
     return ok and kind or nil
@@ -132,8 +149,9 @@ end
 
 local function hunting_report()
     local out = {game = 0, danger = 0, hunters = 0, ai_hunters = 0}
+    local hostile = wild_test()
     for _, u in ipairs(units()) do
-        local k = wild_kind(u)
+        local k = wild_kind(u, hostile)
         if k then out[k] = out[k] + 1 end
     end
     local HUNT = enum(df.unit_labor, 'HUNT')
@@ -168,7 +186,9 @@ function hunters(o, dry_run, txt)
     if n < 1 or n > 5 then return {ok = false, rejected = true, error = 'hunters needs count 1-5 (or stop)'} end
     local before = {}
     for _, u in ipairs(citizens()) do if has_labor(u, HUNT) then before[u.id] = true end end
-    local r = labor().assign('HUNT', n, dry_run, txt)
+    -- (fix3) never a miner or a woodcutter: their pick or axe is the one tool
+    -- of their labour, and a hunter's crossbow would take its place
+    local r = labor().assign('HUNT', n, dry_run, txt, nil, HUNT_SKIP_LABORS)
     if dry_run or type(r) ~= 'table' or not r.ok then return r end
     local d = U.site_get(HUNTERS_KEY, {})
     local ids = type(d.ids) == 'table' and d.ids or {}
@@ -269,11 +289,41 @@ local function sapient(race)
     return SAPIENT[race]
 end
 
+-- (fix3) bodies and parts read at most a report (as ai-captives' CORPSE_MAX):
+-- a fort's thousands of bones and shells were walked every report
+CORPSE_READ_MAX = 3000
+
+-- (fix3) A raw hide a tanner can take: a corpse piece of a material that
+-- tans (TAN_MAT) that is a hide, not a limb, skull, bone, shell or tuft of
+-- hair (a skin-covered limb decodes as skin too, but no tanner takes it).
+-- Where this DF names a hide flag in corpse_flags (needs an in-game look:
+-- 'leather' / 'skin' / 'hide' tried), that flag decides.
+local NOT_HIDE = {'unbutchered', 'bone', 'skull', 'shell', 'hair_wool', 'yarn'}
+local HIDE_FLAGS = {'leather', 'skin', 'hide'}
+function real_hide(it)
+    local mi = dfhack.matinfo.decode(it)
+    if not (mi and mi.material and has_product(mi.material, 'TAN_MAT')) then return false end
+    local okc, cf = pcall(function() return it.corpse_flags end)
+    if not okc or cf == nil then return false end
+    for _, name in ipairs(HIDE_FLAGS) do
+        local ok, v = pcall(function() return cf[name] end)
+        if ok and v ~= nil then return v == true end
+    end
+    for _, name in ipairs(NOT_HIDE) do
+        local ok, v = pcall(function() return cf[name] end)
+        if ok and v == true then return false end
+    end
+    return true
+end
+
 local function butchery_report()
     local out = {standing = {}, corpses = 0, corpses_forbidden = 0, hides = 0, butchers = 0, tanners = 0,
                  ai_set = U.site_get(STANDING_KEY, {})}
     for _, name in ipairs(FOOD_STANDING_READ) do out.standing[name] = read_standing(name) end
+    local read = 0
     for _, it in ipairs(items_of('CORPSE')) do
+        read = read + 1
+        if read > CORPSE_READ_MAX then out.capped = true break end
         pcall(function()
             local f = it.flags
             if f.removed or f.garbage_collect or f.rotten or f.trader or f.in_job then return end
@@ -284,11 +334,12 @@ local function butchery_report()
         end)
     end
     for _, it in ipairs(items_of('CORPSEPIECE')) do
+        read = read + 1
+        if read > CORPSE_READ_MAX then out.capped = true break end
         pcall(function()
             local f = it.flags
             if f.removed or f.garbage_collect or f.rotten or f.forbid or f.trader or f.in_job or f.dump then return end
-            local mi = dfhack.matinfo.decode(it)
-            if mi and mi.material and has_product(mi.material, 'TAN_MAT') then out.hides = out.hides + 1 end
+            if real_hide(it) then out.hides = out.hides + 1 end
         end)
     end
     local B, T = enum(df.unit_labor, 'BUTCHER'), enum(df.unit_labor, 'TANNER')

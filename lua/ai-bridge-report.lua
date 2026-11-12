@@ -2939,10 +2939,12 @@ function get_deep()
                         local shape = tt and df.tiletype_shape[df.tiletype.attrs[tt].shape] or '?'
                         local b = dfhack.buildings.findAtTile(xyz2pos(x, y, z))
                         local bt = b and df.building_type[b:getType()] or nil
-                        local closed
+                        local closed, locked
                         if b then pcall(function() closed = b.door_flags.closed end) end
+                        -- (fix3) locked (forbidden): the way down shut to the dwarves
+                        if b then pcall(function() locked = b.door_flags.forbidden or nil end) end
                         local des = dfhack.maps.getTileFlags(x, y, z)
-                        table.insert(col, {z = z, shape = shape, building = bt, closed = closed,
+                        table.insert(col, {z = z, shape = shape, building = bt, closed = closed, locked = locked,
                                            cavern = des and (des.feature_global or des.feature_local) or nil})
                     end)
                 end

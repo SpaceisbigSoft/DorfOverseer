@@ -310,6 +310,20 @@ def _():
     assert g["by_id"][3].status.labors[g["lab"].FISH]
 
 
+@test("(fix3) assign's skip_labors: a dwarf holding one of them is never picked; nil changes nothing")
+def _():
+    g = game(SEVEN, [], DETAILS)
+    lua = g["lua"]
+    skip = lua.table_from(["MINE", "CUTWOOD"])
+    r = g["env"].assign("gathering", 5, False, None, None, skip)
+    got = set(r.assigned.values())
+    assert r.ok and "dwarf 1" not in got and "dwarf 5" in got, dict(r)     # 1 holds MINE: left out
+    assert not g["by_id"][1].status.labors[g["lab"].HERBALIST]
+    g = game(SEVEN, [], DETAILS)
+    r = g["env"].assign("gathering", 5, False)
+    assert "dwarf 1" in set(r.assigned.values()), dict(r)                 # without it: miners last, not never
+
+
 @test("woodcutting never past the free axes; a detail set to everybody or nobody is left alone")
 def _():
     g = game(SEVEN, [AXE], DETAILS)
