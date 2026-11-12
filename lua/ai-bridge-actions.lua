@@ -118,9 +118,18 @@ end
 local function parse_style(st)
     if st == nil then return nil end
     if type(st) ~= 'table' then return nil, 'style must be an object' end
+    -- (D0 G4) the hall shapes are the layouts' own list (ai-layouts.HALLS), as the customs are
+    local okh, halls = pcall(function() return reqscript('ai-layouts').HALLS end)
+    if not (okh and type(halls) == 'table') then
+        halls = {plain = true, rounded = true, pillared = true,
+                 octagonal = true, round = true, cruciform = true, nave = true}
+    end
     local hall = st.hall or 'plain'
-    if hall ~= 'plain' and hall ~= 'rounded' and hall ~= 'pillared' then
-        return nil, 'style.hall must be plain, rounded or pillared'
+    if type(hall) ~= 'string' or not halls[hall] then
+        local names = {}
+        for k in pairs(halls) do table.insert(names, k) end
+        table.sort(names)
+        return nil, 'style.hall must be one of: ' .. table.concat(names, ', ')
     end
     local smooth, statues = int_in(st.smooth or 0, 0, 3), int_in(st.statues or 0, 0, 4)
     if not smooth or not statues then
@@ -141,6 +150,35 @@ local function parse_style(st)
         rhythm = int_in(st.rhythm, 3, 6)
         if not rhythm then return nil, 'style.rhythm must be 3-6' end
     end
+    -- (D0 G4, the Design track; d0-spec 1.4) optional, each sent only when not its default
+    local scale, aspect, arms, motif, grand
+    if st.scale ~= nil then
+        scale = int_in(st.scale, 80, 150)
+        if not scale then return nil, 'style.scale must be 80-150 (per cent)' end
+    end
+    if st.aspect ~= nil then
+        if st.aspect ~= 'square' and st.aspect ~= 'long' and st.aspect ~= 'wide' then
+            return nil, 'style.aspect must be square, long or wide'
+        end
+        aspect = st.aspect
+    end
+    if st.arms ~= nil then
+        if st.arms ~= 'corridor' and st.arms ~= 'cross' and st.arms ~= 'ring' then
+            return nil, 'style.arms must be corridor, cross or ring'
+        end
+        arms = st.arms
+    end
+    if st.motif ~= nil then
+        local forms = {rows = true, ring = true, cross = true, spiral = true, star = true, wave = true}
+        if type(st.motif) ~= 'string' or not forms[st.motif] then
+            return nil, 'style.motif must be one of: cross, ring, rows, spiral, star, wave (a form, not a symbol)'
+        end
+        motif = st.motif
+    end
+    if st.grand ~= nil then
+        if type(st.grand) ~= 'boolean' then return nil, 'style.grand must be true or false' end
+        grand = st.grand
+    end
     local customs        -- (0.105.29) fort customs the layouts read; unknown names dropped
     for _, c in ipairs(type(st.customs) == 'table' and st.customs or {}) do
         -- (0.105.33) the layouts' own list (ai-layouts.LAYOUT_CUSTOMS), so a new custom isn't dropped here
@@ -151,7 +189,8 @@ local function parse_style(st)
         end
     end
     return {hall = hall, smooth = smooth, statues = statues, entry_door = st.entry_door == true,
-            spacing = spacing, orient = orient, rhythm = rhythm, customs = customs}
+            spacing = spacing, orient = orient, rhythm = rhythm, customs = customs,
+            scale = scale, aspect = aspect, arms = arms, motif = motif, grand = grand}
 end
 
 -- The overseer's master plan for a new level: a hint where to put it (the
