@@ -842,6 +842,26 @@ function validate_landmark(bp, site, cap)
             if trees > LANDMARK_MAX_TREES then
                 reason(out, 'TREES', 1, nil, nil, ('%d trees to fell (%d at most)'):format(trees, LANDMARK_MAX_TREES))
             end
+            -- (E2) the build order, and the scaffold stairs' tiles in the air
+            if #out == 0 and B.build_stages then
+                local stg, why = B.build_stages(bp, plan.q)
+                if not stg then
+                    for _, r in ipairs(why or {}) do
+                        reason(out, r.code or 'ORDER', r.level, r.x, r.y, (tostring(r.words or 'no safe build order')
+                            :gsub('^L%d+ x%d+ y%d+: ', ''):gsub('^L%d+: ', '')))
+                    end
+                else
+                    plan.stages = stg
+                    for _, st in ipairs(stg.list) do
+                        if st.kind == 'scaffold' and st.dz > 0 then
+                            for _, c in ipairs(st.cells) do
+                                local code, words = surface_tile_reason(a.x + c.x, a.y + c.y, site.z + st.dz, true)
+                                if code then reason(out, code, st.level, c.gx, c.gy, 'the scaffold stair: ' .. words) end
+                            end
+                        end
+                    end
+                end
+            end
             if #out == 0 then
                 local okw, why = paths_kept(placed_walls, plan.levels[1].z)
                 if not okw then reason(out, 'PATH', 1, nil, nil, why) end
@@ -858,11 +878,13 @@ function validate_landmark(bp, site, cap)
     plan.cost = c
     local limit = math.min(math.tointeger(cap) or B.BP_LIMITS.cost_max, B.BP_LIMITS.cost_max)
     if c.jobs > limit then reason(out, 'COST', nil, nil, nil, ('%d jobs, over the cap of %d'):format(c.jobs, limit)) end
-    if c.built > 0 then
+    -- (E2) the scaffolding's tiles stand at the same time as the shape's
+    local built = c.built + (plan.stages and plan.stages.scaffold and plan.stages.scaffold.tiles or 0)
+    if built > 0 then
         local stock = landmark_stock()
-        if c.built > LANDMARK_STOCK_SHARE * stock then
+        if built > LANDMARK_STOCK_SHARE * stock then
             reason(out, 'STOCK', nil, nil, nil, ('%d built tiles, over %d%% of the %d boulders and blocks on hand')
-                :format(c.built, math.floor(LANDMARK_STOCK_SHARE * 100), stock))
+                :format(built, math.floor(LANDMARK_STOCK_SHARE * 100), stock))
         end
     end
     -- the slots and the times
@@ -1069,6 +1091,24 @@ function start_landmark(bp, site, meta, now, dry_run, plan)
         for _, t in ipairs(trees) do fell_tree(t.x, t.y, t.z) end
         rec.surface, rec.stage, rec.level = lvls, 'clearing', 1
         rec.trees = trees
+        -- (E2) the build order: one step at a time, scaffolding included
+        local stg = plan.stages
+        if not stg and B.build_stages then stg = B.build_stages(bp, plan.q) end
+        if stg then
+            rec.steps, rec.step = {}, 0
+            rec.scaffold = {columns = stg.scaffold.columns, tiles = stg.scaffold.tiles}
+            for _, st in ipairs(stg.list) do
+                local z = site.z + st.dz
+                local cells, cut = {}, nil
+                for _, c in ipairs(st.cells) do table.insert(cells, {x = a.x + c.x, y = a.y + c.y, text = c.text}) end
+                if st.cut then
+                    cut = {}
+                    for _, c in ipairs(st.cut) do table.insert(cut, {x = a.x + c.x, y = a.y + c.y, z = site.z + c.dz}) end
+                end
+                table.insert(rec.steps, {kind = st.kind, level = st.level, z = z, cells = cells, cut = cut})
+            end
+            for _, l in ipairs(lvls) do l.walls, l.floor = {}, {} end    -- (the steps hold them)
+        end
     end
     lm.next = id + 1
     table.insert(lm.list, rec)
@@ -1129,6 +1169,69 @@ local function trees_standing(rec)
     local n = 0
     for _, t in ipairs(rec.trees or {}) do if is_tree(tile_info(t.x, t.y, t.z)) then n = n + 1 end end
     return n
+end
+
+-- (E2) Scaffolding: taking a tile down (a construction marked for removal)
+-- and who stands where. Tests swap both.
+function remove_construction(x, y, z, dry_run)
+    if dry_run then return true end
+    local ok, r = pcall(function() return dfhack.constructions.designateRemove(xyz2pos(x, y, z)) end)
+    return ok and r and true or false
+end
+
+-- How many living units stand on these tiles ({x, y, z} each).
+function units_on(tiles)
+    local want = {}
+    for _, t in ipairs(tiles) do want[(t.z * 4096 + t.y) * 4096 + t.x] = true end
+    local ok, n = pcall(function()
+        local c = 0
+        for _, u in ipairs(df.global.world.units.active) do
+            if not dfhack.units.isDead(u) then
+                local x, y, z = dfhack.units.getPosition(u)
+                if x and want[(z * 4096 + y) * 4096 + x] then c = c + 1 end
+            end
+        end
+        return c
+    end)
+    return ok and n or 0
+end
+
+local STAIR_SHAPES = {STAIR_UP = true, STAIR_DOWN = true, STAIR_UPDOWN = true}
+
+-- What a step still waits for: its tiles to be built (planned buildings
+-- left), or (a removal) its scaffold stairs to come down.
+local function step_left(st)
+    if not st then return 0 end
+    if st.kind == 'remove' then
+        local n = 0
+        for _, c in ipairs(st.cells) do
+            local t = tile_info(c.x, c.y, st.z)
+            if t and STAIR_SHAPES[t.shape] then n = n + 1 end
+        end
+        return n
+    end
+    return waiting(st.cells, st.z)
+end
+
+-- The scaffolding's state for the report: {columns, tiles, up, next, ready}.
+-- up: its tiles placed and not yet taken down; next: the next step's kind;
+-- ready: the current step is done (the next can be placed).
+local function scaffold_state(rec)
+    if type(rec.steps) ~= 'table' then return nil end
+    local sc = type(rec.scaffold) == 'table' and rec.scaffold or {}
+    local up = 0
+    local k = math.tointeger(rec.step) or 0
+    for i = 1, math.min(k, #rec.steps) do
+        local st = rec.steps[i]
+        if st.kind == 'scaffold' then up = up + #st.cells elseif st.kind == 'remove' then up = up - #st.cells end
+    end
+    local cur = rec.steps[k]
+    if cur and cur.kind == 'remove' then up = up + step_left(cur) end
+    local nxt = rec.steps[k + 1]
+    local ok, left = pcall(step_left, cur)
+    return {columns = sc.columns or 0, tiles = sc.tiles or 0, up = math.max(up, 0),
+            next = nxt and nxt.kind or (k >= #rec.steps and k > 0 and 'furnish' or nil),
+            ready = (rec.stage ~= 'clearing' and ok and left == 0) or nil}
 end
 
 -- The status of a rock landmark from its levels: 'built' once every level is done.
@@ -1193,6 +1296,75 @@ function landmark_step(id, dry_run)
             for key, v in pairs(extra or {}) do rec[key] = v end
             save_landmarks(d)
         end
+    end
+    -- the furniture, stockpiles and zone, once the shape stands
+    local function start_furnish()
+        local placed = 0
+        for _, l in ipairs(rec.surface) do
+            local nb, why = place(l.furnish, l.z, 'the landmark\'s furniture')
+            if not nb then return out({ok = false, error = why}) end
+            local np, why2 = place(l.place, l.z, 'the landmark\'s stockpiles', 'place')
+            if not np then return out({ok = false, error = why2}) end
+            placed = placed + nb + np
+        end
+        advance('furnish')
+        return out({stage = 'furnish', placed = placed})
+    end
+    -- (E2) a landmark planned in steps (ai-blueprints.build_stages): each
+    -- step placed once the last one's tiles stand; scaffolding taken down
+    -- only while no one stands where it would strand them
+    if type(rec.steps) == 'table' and rec.stage ~= 'furnish' then
+        local nsteps = #rec.steps
+        local function next_step(i)
+            local st = rec.steps[i]
+            if not st then return start_furnish() end
+            local n = 0
+            if st.kind == 'remove' then
+                local tiles = {}
+                for _, c in ipairs(st.cells) do table.insert(tiles, {x = c.x, y = c.y, z = st.z}) end
+                for _, c in ipairs(st.cut or {}) do table.insert(tiles, c) end
+                local who = units_on(tiles)
+                if who > 0 then
+                    return out({ok = false, rejected = true, waiting = true, stage = 'remove', step = i, steps = nsteps,
+                                error = ('%s: %d dwarf(s) on or above the scaffolding; it comes down when they leave')
+                                    :format(rec.name or 'the landmark', who)})
+                end
+                for _, c in ipairs(st.cells) do
+                    if remove_construction(c.x, c.y, st.z, dry_run) then n = n + 1 end
+                end
+            else
+                local placed, why = place(st.cells, st.z, st.kind == 'scaffold' and 'the scaffold stair'
+                                                        or 'the landmark\'s next tiles')
+                if not placed then return out({ok = false, error = why}) end
+                n = placed
+            end
+            advance(st.kind, {step = i, level = st.level})
+            return out({stage = st.kind, step = i, steps = nsteps, level = st.level, placed = n,
+                        scaffold = st.kind ~= 'build' or nil})
+        end
+        if rec.stage == 'clearing' then
+            local n = trees_standing(rec)
+            if n > 0 then
+                if not dry_run then for _, t in ipairs(rec.trees) do fell_tree(t.x, t.y, t.z) end end
+                return out({ok = false, rejected = true, waiting = true, stage = 'clearing', trees = n,
+                            error = ('the dwarves are still felling %d tree(s)'):format(n)})
+            end
+            return next_step(1)
+        end
+        local i = math.tointeger(rec.step) or 0
+        local st = rec.steps[i]
+        if not st then return next_step(i + 1) end
+        local n = step_left(st)
+        if n > 0 then
+            if st.kind == 'remove' then
+                if not dry_run then
+                    for _, c in ipairs(st.cells) do remove_construction(c.x, c.y, st.z, false) end
+                end
+                return wait('remove', n, 'scaffold tile(s) to take down')
+            end
+            return wait(st.kind, n, st.kind == 'scaffold' and 'scaffold stair tile(s)' or 'tile(s)')
+        end
+        return next_step(i + 1)
     end
     if rec.stage == 'clearing' then
         local n = trees_standing(rec)
@@ -1275,9 +1447,18 @@ function landmarks_report()
             local st = rock_status(l, data)
             if st ~= 'building' then status, stage = st, 'done' end
         end
-        table.insert(out, {id = l.landmark_id, name = l.name, purpose = l.purpose, status = status, stage = stage,
-                           levels = l.levels, project_ids = l.project_ids, started = l.started, by = l.by,
-                           ground = l.ground})
+        local e = {id = l.landmark_id, name = l.name, purpose = l.purpose, status = status, stage = stage,
+                   levels = l.levels, project_ids = l.project_ids, started = l.started, by = l.by,
+                   ground = l.ground}
+        -- (E2) a landmark built in steps: where it is, and its scaffolding
+        if type(l.steps) == 'table' then
+            e.step, e.steps = math.tointeger(l.step) or 0, #l.steps
+            if status == 'building' then
+                local ok, sc = pcall(scaffold_state, l)
+                if ok then e.scaffold = sc end
+            end
+        end
+        table.insert(out, e)
     end
     return {list = out}
 end

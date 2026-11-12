@@ -452,6 +452,22 @@ def _report_entry(s: dict, e: dict) -> dict | None:
     return None
 
 
+def step_words(rep: dict) -> str:
+    """(E2) What a surface landmark's next step is, in words: the scaffolding
+    going up or (its part built) coming down, else the next stage."""
+    sc = rep.get("scaffold")
+    stage = game_text(rep.get("stage"), 20)
+    if isinstance(sc, dict):
+        up = sc.get("up") if isinstance(sc.get("up"), int) else 0
+        if sc.get("ready") and sc.get("next") == "remove":
+            return f"take down the scaffolding ({up} tile(s) up, its part built)"
+        if rep.get("stage") == "remove":
+            return f"the scaffolding coming down ({up} tile(s) left)"
+        if sc.get("ready") and sc.get("next") == "scaffold":
+            return "put up a scaffold stair to reach the next tiles"
+    return f"the next step ({stage})"
+
+
 def run_landmarks(s: dict, traits: dict, cfg: dict, proposals: list, notes: list, memory, mode: str,
                   now: int) -> None:
     lang = None
@@ -494,7 +510,7 @@ def run_landmarks(s: dict, traits: dict, cfg: dict, proposals: list, notes: list
             return
         if rep is not None and e.get("env", [0, 0, 0, "rock"])[3] == "surface" and rep.get("stage") not in (None, "done"):
             proposals.append(Proposal("landmark_step", {"type": "landmark_step", "landmark_id": e["landmark_id"]},
-                                      f"design: {game_text(e.get('name'), 40)}: the next step ({game_text(rep.get('stage'), 20)})", 6))
+                                      f"design: {game_text(e.get('name'), 40)}: {step_words(rep)}", 6))
         return
     if st == "fallback":
         # a library level: proposed until its answer comes (note_design)
