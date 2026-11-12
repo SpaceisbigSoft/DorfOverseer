@@ -2275,12 +2275,17 @@ end
 -- floodgate shut at once (shut) or the work retired.
 function act_water_work(a)
     local kinds = reqscript('ai-waterworks').KINDS
-    if not kinds[a.kind] then return reject('water_work: kind is moat, pump, irrigation or magma') end
+    if not kinds[a.kind] then return reject('water_work: kind is moat, pump, irrigation, magma or power') end
     if a.shop ~= nil and not reqscript('ai-waterworks').MAGMA_SHOPS[a.shop] then
         return reject('water_work: shop is MagmaForge, MagmaSmelter or MagmaGlassFurnace')
     end
+    -- (0.105.37 E3) the power's source: a water wheel or a windmill (nil: a wheel if it can)
+    if a.source ~= nil and a.source ~= 'wheel' and a.source ~= 'windmill' then
+        return reject('water_work: source is wheel or windmill')
+    end
     return reqscript('ai-waterworks').step(a.kind, {dry_run = a.dry_run == true, shut = a.shut == true,
         retire = a.retire == true, shop = a.shop, plain = a.plain == true, reopen = a.reopen == true,
+        source = a.source,
         why = type(a.why) == 'string' and a.why:sub(1, 120) or nil})
 end
 
