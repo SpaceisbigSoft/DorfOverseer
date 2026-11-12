@@ -16,6 +16,7 @@ from planner_locations import *  # noqa: F401,F403  (13c: split out by theme)
 from planner_health import *  # noqa: F401,F403  (13c: split out by theme)
 from planner_visitors import *  # noqa: F401,F403  (13c: split out by theme)
 from planner_moods import *  # noqa: F401,F403  (13c: split out by theme)
+from planner_insane import insane_risk  # (0.105.40b) the near-breaking first in the stress care
 
 __all__ = ["_people_rules", "_comfort_rules", "stress_causes", "THOUGHT_WORDS", "_doctor_patient_rule", "_hospital_burrow_rule", "_calm_burrow_rule", "MOOD_WORKSHOPS", "PETITION_KINDS", "petition_orders_wanted", "_petition_rules", "_citizenship_notes", "_residency_rule", "residency_stance", "_location_access_rule", "note_heists", "heist_lockout", "heist_lockout_days", "visitor_shut", "location_stale", "note_locations", "mayor_meetings", "HEISTS_KEEP", "_jail_size_rule", "_convict_rule", "_break_fights_rule", "_sync_offices_rule", "patient_waits", "_health_rules", "TANTRUM_KEEP", "note_tantrums", "_noble_rooms_rule", "outsider_orders", "NEED_ADVICE", "JEWEL_RECIPES", "_recreation_rule", "_stress_care", "_needs_notes", "_location_supply_rules", "POST_LABORS", "STAFF_POSTS", "STAFF_MAX", "_traction_rule", "_wish_words", "_wish_met", "wish_key", "petition_lean", "_location_petition_rules", "_meeting_notes", "_grandeur_rule", "_location_value_rule", "_staff_rule", "_quick_location_rule", "_needs_rules", "_mood_rules", "mood_item_text", "_mood_materials", "_dead_notes", "AI_OFFICES", "_society_notes", "_booze_variety_rule", "drink_known_short_s", "_mood_make", "_mood_slaughter", "MOOD_CONSUMERS", "MOOD_TRADE_KEYS", "mood_trade_wants", "ghost_work_blocked"]
 
@@ -301,15 +302,31 @@ def _stress_care(s: dict, cfg: dict, worst: list, proposals: list | None, memory
     welfare = _traits(s).get("welfare", 0) or 0
     labels = ("miserable", "very_unhappy") if welfare >= 50 else ("miserable",)
     crisis = [x for x in worst if x.get("stress") in labels and x.get("id") is not None]
+    # (0.105.40b) the near-breaking (long-term stress high: planner_insane)
+    # first, at a higher priority; one the needs list left out comes from the
+    # insane section's own row (no squad release for them: their longing to
+    # fight isn't read there). Without that section: as before.
+    risk = insane_risk(s, cfg)
+    risk_ids = {r["id"] for r in risk}
+    if risk:
+        have = {x.get("id") for x in crisis}
+        by_id = {x.get("id"): x for x in worst if x.get("id") is not None}
+        extra = [by_id.get(r["id"]) or dict(r, from_risk=True) for r in risk if r["id"] not in have]
+        crisis = ([x for x in crisis if x["id"] in risk_ids] + extra
+                  + [x for x in crisis if x["id"] not in risk_ids])
     if not crisis:
         return
     quiet = not _d(s.get("others_on_map")).get("threats_that_can_reach_dwarves")
     now = abs_tick(s)
     for x in crisis:
+        near = x["id"] in risk_ids
         # (0.103.9) not one who longs to fight or train: the squad is what meets that
         p = Proposal("stress_care", {"type": "squad_release", "unit_id": x["id"]},
-                     f"{x.get('name')} is {str(x.get('stress')).replace('_', ' ')}: out of the "
-                     "squad (soldiering weighs on the stress-prone)", 3)
+                     f"{x.get('name')} is {str(x.get('stress')).replace('_', ' ')}"
+                     + (" with long-term stress near breaking (insanity comes next)" if near else "")
+                     + ": out of the squad (soldiering weighs on the stress-prone)", 2 if near else 3)
+        if x.get("from_risk"):
+            continue
         # (0.103.12) nor one the game kept in (the bridge refuses a dwarf who
         # longs to train): Ber's release was asked for every cycle and the
         # free bedroom below never came
@@ -323,9 +340,11 @@ def _stress_care(s: dict, cfg: dict, worst: list, proposals: list | None, memory
     free = int(_d(_d(s.get("noble_rooms")).get("free")).get("bedroom") or 0)
     for x in crisis:
         if x.get("bedroom") is False and free > 0:
+            near = x["id"] in risk_ids
             proposals.append(Proposal("stress_care", {"type": "give_room", "unit_id": x["id"], "kind": "bedroom"},
-                                      f"{x.get('name')} is {str(x.get('stress')).replace('_', ' ')} and has no "
-                                      "room of their own: give them a free bedroom", 3))
+                                      f"{x.get('name')} is {str(x.get('stress')).replace('_', ' ')}"
+                                      + (" with long-term stress near breaking (insanity comes next)" if near else "")
+                                      + " and has no room of their own: give them a free bedroom", 2 if near else 3))
             return
 
 

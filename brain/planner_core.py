@@ -82,7 +82,8 @@ STEER_PROTECTED = EMERGENCY | {"shelter", "alerts", "squad_recall", "water", "we
                                # caverns sealed against a great beast; citizens shut outside
                                "flasks_order", "cavern_openings", "seal_cavern", "stranded",
                                # (0.105.32) an open gate the game holds shut; a way dug in
-                               "gate_stuck", "way_in"}
+                               "gate_stuck", "way_in",
+                               "insane"}   # (0.105.40b) doors between the insane and deadly ground
 STEER_MAX_DAYS = 84
 
 
@@ -110,7 +111,8 @@ ORDER_HOLD_EXEMPT = {"mood"}
 LIMIT_EXEMPT = EMERGENCY | {"break_fights", "calm_burrow", "join_levels", "census", "train", "shelter", "entrances", "labor",
                             "gather", "stuck_order", "alerts",
                             "kitchen",   # (0.100) a kitchen setting, once per drink shortage: no slot of its own
-                            "mood"}      # (0.105.24) a strange mood's materials (a life on it; a handful of actions at most)
+                            "mood",      # (0.105.24) a strange mood's materials (a life on it; a handful of actions at most)
+                            "insane"}    # (0.105.40b) doors between the insane and deadly ground (one action)
 
 
 @dataclass
