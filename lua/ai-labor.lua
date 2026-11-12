@@ -545,8 +545,10 @@ end
 
 -- Put up to `count` more dwarves on a job. Mining never past what the digging
 -- and the picks want; woodcutting never past the axes. count 0 only puts the
--- details' member lists in order.
-function assign(job, count, dry_run, txt, min_skill)
+-- details' member lists in order. skip_labors (optional, a list of labour
+-- names): a dwarf holding any of them is not picked (fix3: no miner or
+-- woodcutter made a hunter); nil leaves the choice as it always was.
+function assign(job, count, dry_run, txt, min_skill, skip_labors)
     local J = job_spec(job)
     if not J then return {ok = false, rejected = true, error = 'unknown job: ' .. tostring(job)} end
     local labor = enum(df.unit_labor, J.labor)
@@ -591,6 +593,21 @@ function assign(job, count, dry_run, txt, min_skill)
     if min_skill then
         local keep = {}
         for _, c in ipairs(cands) do if (c.skill or 0) >= min_skill then table.insert(keep, c) end end
+        cands = keep
+    end
+    if type(skip_labors) == 'table' and #skip_labors > 0 then
+        local skip = {}
+        for _, name in ipairs(skip_labors) do
+            local l = enum(df.unit_labor, name)
+            if l then table.insert(skip, l) end
+        end
+        local keep = {}
+        for _, c in ipairs(cands) do
+            local u = df.unit.find(c.id)
+            local held = false
+            for _, l in ipairs(skip) do if u and has_labor(u, l) then held = true end end
+            if not held then table.insert(keep, c) end
+        end
         cands = keep
     end
     local picked = pick_workers(cands, n)

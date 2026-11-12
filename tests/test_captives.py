@@ -374,6 +374,23 @@ def _():
     assert [(t["id"], t["dist"], t["way"]) for t in r["towers"]] == [(9, 3, "southwest"), (8, 10, "northeast")], r
 
 
+@test("(fix3) necro: a visiting or resident necromancer is no raiser of a siege; an uninvited hostile one is")
+def _():
+    if LuaRuntime is None:
+        return
+    lua, env, w = world()
+    w.interactions[5] = T(lua, {"effects": [{"getType": lua.eval("function() return 'ANIMATE' end")}]})
+    w.unit(T(lua, {"id": 6, "name": "Guest", "visitor": True, "curse": {"own_interaction": [5]}}))
+    w.unit(T(lua, {"id": 7, "name": "Scholar", "curse": {"own_interaction": [5]}}))          # resident, no hostility
+    r = py(env.necro())
+    assert (r["raisers"] or []) == [] and r["surface_corpses"] == 0, r
+    w.unit(T(lua, {"id": 8, "name": "Lurker", "flags2": {"visitor_uninvited": True},
+                   "curse": {"own_interaction": [5]}}))
+    w.unit(T(lua, {"id": 9, "name": "Raider", "danger": True, "curse": {"own_interaction": [5]}}))
+    r = py(env.necro())
+    assert [x["id"] for x in r["raisers"]] == [8, 9], r
+
+
 # --- 4. the bridge ---------------------------------------------------------------------
 
 @test("bridge: the captives and necro sections (safe), make_pit and pit_prisoners (dry runs ok, ids checked), the module listed")
@@ -554,6 +571,13 @@ def _():
     assert {"type": "prune_remains"} in acts and any(p.rule == "necro_corpses" for p in props), acts
     assert any("too many to fight" in n and "raiser" in n for n in notes), notes
     assert m.captives_seen["siege"]["peak"] == 10
+    assert "map-wide" in next(p.reason for p in props if p.rule == "necro_corpses")
+    # (fix3) kills waiting for the butchers: the map-wide rot is not proposed (said)
+    s2 = dict(s, provisions={"butchery": {"corpses": 3}})
+    props2, notes2 = [], []
+    PC._necro_rule(s2, PLANNER_CONFIG, props2, notes2, Memory())
+    assert not any(p.rule == "necro_corpses" for p in props2), [p.rule for p in props2]
+    assert any("wait for the butchers" in n for n in notes2), notes2
     s["settings"] = dict(s["settings"], attack_policy="all")
     props = [Proposal("squad_attack", {"type": "squad_orders", "squad_id": 1, "kill": [1000]}, "go", 0)]
     notes = []

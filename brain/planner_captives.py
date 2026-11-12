@@ -33,8 +33,11 @@ raiser on the map: each soldier who falls rises against the fort), no squad
 goes at them (the squads' kill orders on them dropped, squads already out
 called back), the alarm goes up (everyone inside; the gate rules shut the
 gates on any threat in reach), unless the Rules tab says attack everything.
-While the dead or a raiser are about, bodies and parts lying outside rot
-away (prune_remains: DFHack's deteriorate, no dwarf goes out). A
+While the dead or a raiser are about and bodies and parts lie outside,
+the bodies and unusable parts rot away map-wide (prune_remains: DFHack's
+deteriorate, no dwarf goes out), never while kills wait for the butchers
+(provisions); a raiser is an invader or an uninvited hostile, never a
+visitor or resident (lua/ai-captives.lua raiser_hostile). A
 necromancer tower near the fort is said once a year and with every siege.
 """
 
@@ -250,6 +253,16 @@ def _necro_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None) -
                      f"soldier(s){raised}: the squads can take them")
     n = _int(nec.get("surface_corpses"))
     if n >= _c(cfg, "necro_corpses_min") and not any(p.action.get("type") == "prune_remains" for p in proposals):
-        proposals.append(Proposal("necro_corpses", {"type": "prune_remains"},
-                                  f"{n} bodies and parts lie outside with the dead about: rot them away before "
-                                  "they are raised (no dwarf goes out; entombed and unburied citizens kept)", 2))
+        # (fix3) DFHack's deteriorate takes the bodies map-wide, not only
+        # those outside: never while kills wait for the butchers (provisions)
+        b = _d(_d(s.get("provisions")).get("butchery"))
+        kills = _int(b.get("corpses")) if not b.get("error") else 0
+        if kills > 0:
+            notes.append(f"{n} bodies and parts lie outside with the dead about, but rotting them away goes "
+                         f"map-wide and {kills} kill(s) wait for the butchers: left for now")
+        else:
+            proposals.append(Proposal("necro_corpses", {"type": "prune_remains"},
+                                      f"{n} bodies and parts lie outside with the dead about: rot the bodies "
+                                      "and unusable parts away map-wide, outside and in, before they are raised "
+                                      "(DFHack deteriorate; no dwarf goes out; entombed and unburied citizens "
+                                      "kept)", 2))

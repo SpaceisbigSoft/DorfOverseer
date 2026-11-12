@@ -159,7 +159,7 @@ env.tile = function(x, y, z)
     if not t then return nil end
     return {shape = t.shape, material = t.material, smooth = t.smooth == true, walk = t.walk == true,
             outside = t.outside == true, hidden = false, liquid = t.liquid == true, occupied = t.occupied == true,
-            designated = t.designated == true}
+            designated = t.designated == true, aquifer = t.aquifer == true}
 end
 function W.unit(t)
     t.pos = t.pos or {x = 0, y = 0, z = 100}
@@ -239,6 +239,21 @@ if LuaRuntime is not None:
         w.set(sp["x"], sp["y"], T(lua, {"shape": "FLOOR", "material": "STONE", "walk": True, "occupied": True}))
         sp2 = py(env.report())["entrances"][0]["engine_spot"]
         assert sp2 != sp
+
+    @test("(fix3) survey: a soil wall is never to smooth or carve; an aquifer's wall is never to carve or dig")
+    def _():
+        lua, env, w = world()
+        for x in (13, 14):
+            w.set(x, 9, T(lua, {"shape": "WALL", "material": "SOIL", "walk": False}))
+        w.set(15, 9, T(lua, {"shape": "WALL", "material": "STONE", "walk": False, "aquifer": True}))
+        e = py(env.report())["entrances"][0]
+        assert e["smooth"] == 11, e
+        lua, env, w = world()
+        w.thick()
+        w.set(13, 9, T(lua, {"shape": "WALL", "material": "STONE", "walk": False, "aquifer": True}))   # inner
+        w.set(14, 8, T(lua, {"shape": "WALL", "material": "STONE", "walk": False, "aquifer": True}))   # outer
+        e = py(env.report())["entrances"][0]
+        assert e["dig"] == 12, e
 
     @test("report: siege engines, the AI's by name or record, built and planned; ammo and labour counts; "
           "no gates scan: no entrances")
@@ -375,6 +390,21 @@ if LuaRuntime is not None:
         w.unit(T(lua, {"id": 24, "wild": True, "danger": True, "pos": {"x": 25, "y": 25, "z": 100}}))
         r = py(env.field_watch(None))
         assert not r["caravan"] and not r["wild"] and r["merchants"] == 0, r
+
+    @test("(fix3) field_watch: a creature neither outside nor near a caravan pays none of the unit checks")
+    def _():
+        lua, env, w = world()
+        for i in range(30):
+            w.unit(T(lua, {"id": 100 + i, "wild": True, "pos": {"x": 25, "y": 25, "z": 100}}))   # under a roof
+        calls = lua.execute("""local env = ...
+            local n = {0}
+            for _, name in ipairs({'isCitizen', 'isDiplomat', 'isVisitor', 'isTame'}) do
+                local f = env.dfhack.units[name]
+                env.dfhack.units[name] = function(u) n[1] = n[1] + 1; return f(u) end
+            end
+            return n""", env)
+        py(env.field_watch(None))
+        assert calls[1] == 0, calls[1]
 
 
 # --- 4. ai-military: the post is the AI's order, a hostile wild animal a target ------------
@@ -595,6 +625,15 @@ def _():
 INV = [{"id": 50, "name": "goblin", "invader": True, "can_reach_dwarves": False, "layer": "surface"}]
 
 
+@test("(fix3) a besieger on the map, none in reach yet: no fortifications carved, no siege works built")
+def _():
+    t = {"fortification": 60}
+    props, _ = run(fort(siege(), traits=t, squads=[squad(1, ranged=True)], threats=INV))
+    assert not {"fortify_post", "siege_shop", "siege_engine"} & set(rules(props)), rules(props)
+    props, _ = run(fort(siege(), traits=t, squads=[squad(1, ranged=True)]))
+    assert {"fortify_post", "siege_shop", "siege_engine"} <= set(rules(props)), rules(props)
+
+
 @test("posts: in a siege the free crossbow squads go behind the fortifications, out of the gate guard; "
       "not while hiding, not with a fire breather among the besiegers, not at 'never'")
 def _():
@@ -672,6 +711,8 @@ def _():
                                              settings={"attack_policy": "never"}))[0])
     assert "wild_hunt" not in rules(run(fort(fw=field(wild=[BEAR]), squads=[squad(2)],
                                              settings={"wildlife_hunts": False}))[0])
+    # (fix3) near a dwarf outside but unable to walk to them (another walk group): no hunt
+    assert "wild_hunt" not in rules(run(fort(fw=field(wild=[dict(BEAR, reach=False)]), squads=[squad(2)]))[0])
 
 
 @test("evil weather: no squad walks out to the caravan or the wildlife (said)")

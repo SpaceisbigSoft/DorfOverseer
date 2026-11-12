@@ -254,9 +254,13 @@ def _meal_variety_rule(s, pv, cfg, citizens, proposals, notes, memory) -> None:
 def cavern_target(s: dict, cfg: dict) -> dict | None:
     """The cavern to farm and where the fort meets it ({name, at}), or None:
     a known cavern open to the fort's ground, no great beast in the caverns,
-    no hostile creature or threat in that cavern."""
-    from planner_threats import cavern_great, deep_read
+    no hostile creature or threat in that cavern, its way down not sealed
+    (fix3: a locked door or hatch on its column, or the seal's record)."""
+    from planner_threats import cavern_great, deep_read, ALL_CAVERNS
     if not deep_read(s) or cavern_great(s):
+        return None
+    sealed = _d(_d(s.get("threats")).get("sealed"))
+    if ALL_CAVERNS in sealed:
         return None
     o = _d(s.get("others_on_map"))
     busy = {str(w.get("layer")) for w in _l(o.get("wild_hostile")) if isinstance(w, dict)}
@@ -264,7 +268,12 @@ def cavern_target(s: dict, cfg: dict) -> dict | None:
     for c in _l(_d(s.get("deep")).get("caverns")):
         if not isinstance(c, dict) or not (c.get("discovered") and c.get("open")):
             continue
-        if str(c.get("name")) in busy:
+        if str(c.get("name")) in busy or str(c.get("name")) in sealed:
+            continue
+        # (fix3) a locked door or hatch on the way down: the farmers couldn't
+        # pass (a door reads closed whenever nobody walks through: only the lock counts)
+        if any(isinstance(col, dict) and col.get("building") in ("Door", "Hatch") and col.get("locked")
+               for col in _l(c.get("column"))):
             continue
         at = None
         for j in _l(c.get("junctions")):

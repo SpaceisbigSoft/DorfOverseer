@@ -18,15 +18,16 @@ DF's walk groups), each with fire_breather, great, flier, size.
 
 The rules (_siege_rules), each behind its Rules switch:
   * siege_engines (Fortification or Engineering at `siege_slider` or more,
-    `siege_min_citizens` citizens, no enemy in reach): a siege workshop
-    (placed 5x5 near the gate: ai-layouts' workshop rooms are 3x3 shops'),
+    `siege_min_citizens` citizens, no enemy in reach, no besieger on the
+    map): a siege workshop (placed 5x5 near the gate: ai-layouts' workshop rooms are 3x3 shops'),
     then a ballista at each gated surface entrance
     with a spot (`siege_engines_max` at most, one more at Extreme), its
     parts ordered while one waits for them, ballista arrows (and their
     arrowheads, in a metal there are bars of) to `siege_ammo_per_engine` a
     built engine, and the siege operating labour to a dwarf an engine;
   * fortifications carved beside the gated surface entrances (smoothed
-    first) when nothing is in reach, for the archers (archer_posts: a fort
+    first) when nothing is in reach and no besieger is on the map, for
+    the archers (archer_posts: a fort
     with a crossbow squad or Fortification at `archer_post_slider`) or for
     the ballistae to shoot through (siege_engines, engines wanted);
   * archer_posts: in a siege (invaders on
@@ -41,8 +42,8 @@ The rules (_siege_rules), each behind its Rules switch:
     Rules tab says attack everything), never while evil weather is about
     (planner_weather: the squads would walk out into it), never at "never";
   * wildlife_hunts: a hostile wild animal (a large predator, or one DF
-    agitated) within `wild_near_tiles` of a dwarf outside, or one that can
-    walk to the dwarves within `wild_reach_tiles`: a free squad goes at it,
+    agitated) that can walk to the dwarves, within `wild_near_tiles` of a
+    dwarf outside or `wild_reach_tiles` of any: a free squad goes at it,
     under the same rules as the caravan guard; a big one
     (`wild_big_size`) only for a squad of power `wild_big_power`;
   * the squads sent are not called back by "no more threats" while what
@@ -130,6 +131,13 @@ def engines_wanted(lean: int, cfg: dict) -> int:
     return _c(cfg, "siege_engines_max") + (1 if lean >= 150 else 0)
 
 
+def _besieged(s: dict) -> bool:
+    """(fix3) Invaders on the map, outside the gates for now: no building at
+    the walls then (the masons and engineers would be out among them)."""
+    from planner_gates import gate_invaders
+    return bool(gate_invaders(s))
+
+
 def _entrances(sg: dict) -> list:
     return [e for e in _l(sg.get("entrances")) if isinstance(e, dict) and isinstance(e.get("id"), int)
             and not e.get("error") and e.get("sealed") and e.get("kind") != "cavern"]
@@ -160,7 +168,7 @@ def _engine_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> No
     citizens = int(_d(s.get("dwarves")).get("total") or 0)
     if want <= 0 or citizens < _c(cfg, "siege_min_citizens"):
         return
-    if reachable_threats(s, _traits(s), cfg):
+    if reachable_threats(s, _traits(s), cfg) or _besieged(s):
         return                          # building waits for quiet; the squads have the fight
     b = _d(s.get("buildings"))
     has_shop = _has_shop(b, "Siege") or int(sg.get("shops") or 0) > 0
@@ -239,7 +247,7 @@ def _fortify_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> N
     for_posts = _on(s, "archer_posts") and (bool(ranged) or fort >= _c(cfg, "archer_post_slider"))
     for_engines = (_on(s, "siege_engines") and engines_wanted(siege_lean(s), cfg) > 0
                    and int(_d(s.get("dwarves")).get("total") or 0) >= _c(cfg, "siege_min_citizens"))
-    if not (for_posts or for_engines) or reachable_threats(s, _traits(s), cfg):
+    if not (for_posts or for_engines) or reachable_threats(s, _traits(s), cfg) or _besieged(s):
         return
     need = _c(cfg, "archer_post_fortifications")
     for e in ents:
@@ -392,8 +400,9 @@ def _wild_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> list
     f = field_of(s)
     near, reach_lim = _c(cfg, "wild_near_tiles"), _c(cfg, "wild_reach_tiles")
     rows = [r for r in _l(f.get("wild")) if isinstance(r, dict) and isinstance(r.get("id"), int)
+            and r.get("reach") is True      # (fix3) on both: one that can't walk to them is no hunt
             and ((_num(r.get("distance_outside")) and r["distance_outside"] <= near)
-                 or (r.get("reach") is True and _num(r.get("distance")) and r["distance"] <= reach_lim))]
+                 or (_num(r.get("distance")) and r["distance"] <= reach_lim))]
     if not rows:
         return []
     policy = player_rules(s)["attack_policy"]

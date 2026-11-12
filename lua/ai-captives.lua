@@ -434,6 +434,21 @@ function is_raiser(u)
     return ok and yes or false
 end
 
+-- (fix3) A raiser that makes a siege: an invader, or an uninvited hostile;
+-- never a visitor, a resident or a citizen (a necromancer come to the
+-- tavern or the library looked like a siege, and the bodies were rotted
+-- away map-wide each day). flags2.visitor_uninvited and isResident are
+-- pcall'd (needs an in-game look).
+function raiser_hostile(u)
+    if is(dfhack.units.isInvader, u) then return true end
+    if is(dfhack.units.isCitizen, u) or is(dfhack.units.isVisitor, u) or is(dfhack.units.isResident, u) then
+        return false
+    end
+    local oku, uninvited = pcall(function() return u.flags2.visitor_uninvited end)
+    if oku and uninvited == true then return true end
+    return is(dfhack.units.isDanger, u)
+end
+
 local function surface_corpses()
     local n, read = 0, 0
     pcall(function()
@@ -495,7 +510,7 @@ function necro(txt)
             if is(dfhack.units.isUndead, u) then
                 out.undead = out.undead + 1
                 if is(dfhack.units.isInvader, u) then out.undead_invaders = out.undead_invaders + 1 end
-            elseif is_raiser(u) and #out.raisers < 5 then
+            elseif #out.raisers < 5 and is_raiser(u) and raiser_hostile(u) then
                 table.insert(out.raisers, {id = u.id, name = name_of(u, txt), invader = is(dfhack.units.isInvader, u) or nil,
                                            outside = outside_at(u.pos.x, u.pos.y, u.pos.z) or nil})
             end

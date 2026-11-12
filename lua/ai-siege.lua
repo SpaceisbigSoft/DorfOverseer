@@ -43,7 +43,8 @@ CARAVAN_NEAR = 25          -- hostiles this near a merchant are listed (the brai
 WILD_NEAR = 40             -- hostile wild animals this near a dwarf are listed
 ROWS_MAX = 12
 ENGINE_KEYS = {ballista = 'ib', catapult = 'ic'}     -- quickfort's siege engine keys (centred, 3x3)
-NATURAL = {STONE = true, MINERAL = true, SOIL = true, LAVA_STONE = true, FEATURE = true}
+-- (fix3) no SOIL: soil can't be smoothed nor fortifications carved in it
+NATURAL = {STONE = true, MINERAL = true, LAVA_STONE = true, FEATURE = true}
 ENGINES_KEY = 'ai-overseer/siege-engines'            -- the AI's engines' building ids (site data)
 
 local ORTHO = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}}
@@ -70,7 +71,7 @@ local function gkey(x, y, z) return (z * 4096 + y) * 4096 + x end      -- ai-gat
 ---------------------------------------------------------------------------
 
 -- {shape, material, smooth, walk, outside, hidden, liquid, occupied,
--- designated} or nil off the map.
+-- designated, aquifer} or nil off the map.
 function tile(x, y, z)
     local tt = dfhack.maps.getTileType(x, y, z)
     if not tt then return nil end
@@ -89,6 +90,7 @@ function tile(x, y, z)
         designated = des.dig ~= df.tile_dig_designation.No,
     }
     pcall(function() if des.smooth ~= 0 then out.designated = true end end)
+    pcall(function() out.aquifer = des.water_table == true end)
     return out
 end
 
@@ -134,9 +136,11 @@ function survey(e, inside, T, engines)
         local t = T(x, y, z)
         return t and inside[gkey(x, y, z)] ~= true and t.walk and not t.liquid or false
     end
+    -- (fix3) never an aquifer's wall: a fortification carved in it, or the
+    -- inner tile of a thick one dug out, lets the water in
     local function natural_wall(x, y)
         local t = T(x, y, z)
-        return t and t.shape == 'WALL' and NATURAL[t.material] == true and not t.hidden or false
+        return t and t.shape == 'WALL' and NATURAL[t.material] == true and not t.hidden and not t.aquifer or false
     end
     local opening = {}
     for _, k in ipairs(e.inside_list or {}) do opening[k] = true end
@@ -630,17 +634,21 @@ function field_watch(txt)
     out.merchants = #merchants
     local hostile_wild, fire_of = wild_test(), fire_test()
     for _, u in ipairs(units) do
-        if is(dfhack.units.isActive, u) and not is(dfhack.units.isDead, u) and not is(dfhack.units.isCitizen, u)
-                and not is(dfhack.units.isMerchant, u) and not is(dfhack.units.isDiplomat, u)
-                and not is(dfhack.units.isVisitor, u) and not is(dfhack.units.isTame, u)
-                and not (u.flags1.caged or u.flags1.chained) then
-            local pos = {x = u.pos.x, y = u.pos.y, z = u.pos.z}
+        -- (fix3) the cheap tests first: only what is near a caravan or out
+        -- under the sky is looked at further (the caverns' thousands never
+        -- pay the eight unit checks below)
+        local pos, outside, dm
+        if not (u.flags1.caged or u.flags1.chained) then
+            pos = {x = u.pos.x, y = u.pos.y, z = u.pos.z}
             local okd, des = pcall(dfhack.maps.getTileFlags, xyz2pos(pos.x, pos.y, pos.z))
-            local outside = okd and des and des.outside == true or false
-            local dm = #merchants > 0 and nearest(pos, merchants) or nil
-            -- only what is near a caravan or out under the sky is looked at further
-            -- (the caverns' thousands are never read here)
-            if (dm and dm <= CARAVAN_NEAR) or outside then
+            outside = okd and des and des.outside == true or false
+            dm = #merchants > 0 and nearest(pos, merchants) or nil
+        end
+        if pos and ((dm and dm <= CARAVAN_NEAR) or outside)
+                and is(dfhack.units.isActive, u) and not is(dfhack.units.isDead, u) and not is(dfhack.units.isCitizen, u)
+                and not is(dfhack.units.isMerchant, u) and not is(dfhack.units.isDiplomat, u)
+                and not is(dfhack.units.isVisitor, u) and not is(dfhack.units.isTame, u) then
+            do
                 local danger = is(dfhack.units.isDanger, u)
                 local wild = not danger and hostile_wild(u)
                 if danger or wild then

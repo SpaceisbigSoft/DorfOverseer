@@ -162,8 +162,8 @@ local L = {}
 function L.detail_for(job)
     return W.detail, W.detail and W.mode or nil
 end
-function L.assign(job, n, dry, txt)
-    table.insert(W.labor_calls, {job = job, n = n, dry = dry == true})
+function L.assign(job, n, dry, txt, min_skill, skip)
+    table.insert(W.labor_calls, {job = job, n = n, dry = dry == true, skip = skip})
     if dry then return {ok = true, dry_run = true} end
     local added = 0
     for _, u in ipairs(W.cits) do
@@ -235,6 +235,15 @@ def _():
     assert (h["game"], h["danger"], h["hunters"], h["ai_hunters"]) == (2, 1, 2, 1), h
 
 
+@test("(fix3) report hunting: a large predator not (yet) a danger to DF counts as danger, not game")
+def _():
+    lua, env, w = world()
+    w.unit(T(lua, {"id": 50, "animal": True}))                                   # game
+    w.unit(T(lua, {"id": 56, "animal": True, "hostile_wild": True}))             # a bear, not agitated
+    h = py(env.report())["hunting"]
+    assert (h["game"], h["danger"]) == (1, 1), h
+
+
 @test("report butchery: unbutchered bodies of beasts (forbidden apart; a sapient's never), raw hides that tan, "
       "the standing orders as 0/1, butchers and tanners")
 def _():
@@ -247,15 +256,33 @@ def _():
     w.item(T(lua, {"kind": "CORPSE", "race": 1, "corpse_flags": {"unbutchered": False}}))     # done
     w.item(T(lua, {"kind": "CORPSE", "race": 1, "corpse_flags": {"unbutchered": True}, "flags": {"rotten": True}}))
     tan = {"reaction_product": {"id": ["TAN_MAT"]}}
-    w.item(T(lua, {"kind": "CORPSEPIECE", "mat": tan}))
-    w.item(T(lua, {"kind": "CORPSEPIECE", "mat": tan, "flags": {"rotten": True}}))
-    w.item(T(lua, {"kind": "CORPSEPIECE", "mat": {"reaction_product": {"id": []}}}))          # a bone
+    w.item(T(lua, {"kind": "CORPSEPIECE", "mat": tan, "corpse_flags": {}}))
+    w.item(T(lua, {"kind": "CORPSEPIECE", "mat": tan, "corpse_flags": {}, "flags": {"rotten": True}}))
+    w.item(T(lua, {"kind": "CORPSEPIECE", "mat": {"reaction_product": {"id": []}}, "corpse_flags": {"bone": True}}))
+    # (fix3) a severed skin-covered limb and a skull decode as skin: no tanner takes them
+    w.item(T(lua, {"kind": "CORPSEPIECE", "mat": tan, "corpse_flags": {"unbutchered": True}}))
+    w.item(T(lua, {"kind": "CORPSEPIECE", "mat": tan, "corpse_flags": {"skull": True}}))
     w.standing["auto_butcher"] = 0
     w.standing["auto_tan"] = 1
     w.unit(T(lua, {"id": 1, "citizen": True, "labors": {2: True}}))
     b = py(env.report())["butchery"]
     assert (b["corpses"], b["corpses_forbidden"], b["hides"], b["butchers"], b["tanners"]) == (1, 1, 1, 1, 0), b
     assert b["standing"]["auto_butcher"] == 0 and b["standing"]["auto_tan"] == 1, b
+
+
+@test("(fix3) report butchery: a hide flag where the game names one decides; the walk capped at CORPSE_READ_MAX")
+def _():
+    lua, env, w = world()
+    tan = {"reaction_product": {"id": ["TAN_MAT"]}}
+    w.item(T(lua, {"kind": "CORPSEPIECE", "mat": tan, "corpse_flags": {"leather": True}}))
+    w.item(T(lua, {"kind": "CORPSEPIECE", "mat": tan, "corpse_flags": {"leather": False}}))
+    assert py(env.report())["butchery"]["hides"] == 1
+    lua2, env2, w2 = world()
+    env2.CORPSE_READ_MAX = 3
+    for _ in range(6):
+        w2.item(T(lua2, {"kind": "CORPSEPIECE", "mat": tan, "corpse_flags": {}}))
+    b = py(env2.report())["butchery"]
+    assert b["hides"] == 3 and b["capped"] is True, b
 
 
 @test("report meals: servings by kind (biscuits, stew, roast), rotten left out")
@@ -303,7 +330,7 @@ def _():
     assert r["ok"] and not py(w.site).get("ai-overseer/hunters"), r
     r = py(env.hunters(T(lua, {"count": 2}), False))
     assert r["ok"] and r["ai_hunters"] == 2 and r["added_ids"] == [1, 2], r
-    assert py(w.labor_calls)[-1] == {"job": "HUNT", "n": 2, "dry": False}
+    assert py(w.labor_calls)[-1] == {"job": "HUNT", "n": 2, "dry": False, "skip": ["MINE", "CUTWOOD"]}
     assert not py(env.hunters(T(lua, {"count": 9}), False))["ok"]
 
 
@@ -615,6 +642,8 @@ def _():
     props, _ = run(s)
     assert by(props, "hunting_stop") and not by(props, "hunting")
     assert PP.hunting_danger(fort(section()), Memory(), CFG) == ""
+    # (fix3) the recall is never held by the per-cycle action limit
+    assert "hunting_stop" in planner_core.LIMIT_EXEMPT
 
 
 @test("butchery: bodies, hides or raw fish waiting with DF's standing order off: turned on; never one the AI "
@@ -743,6 +772,25 @@ def _():
     s = cavern_fort()
     s["deep"] = {"error": "x"}
     assert not by(run(s, m)[0], "cavern_farm")
+
+
+@test("(fix3) cavern farms: not through a locked door or hatch on the way down, nor a cavern the seal holds; "
+      "a door merely closed is no bar")
+def _():
+    m = Memory()
+    m.farm_failure = "no soil"
+    s = cavern_fort()
+    s["deep"]["caverns"][0]["column"] = [{"z": 81, "shape": "STAIR_UPDOWN", "building": "Hatch", "closed": True,
+                                          "locked": True}]
+    assert not by(run(s, m)[0], "cavern_farm")
+    s["deep"]["caverns"][0]["column"][0]["locked"] = None
+    assert by(run(s, m)[0], "cavern_farm")
+    s = cavern_fort()
+    s["threats"] = {**s.get("threats", {}), "sealed": {"all caverns": {"tick": 1}}}
+    assert not by(run(s, m)[0], "cavern_farm")
+    s = cavern_fort()
+    s["threats"] = {**s.get("threats", {}), "sealed": {"Cavern1": {"tick": 1}}}
+    assert PP.cavern_target(s, CFG) is None
 
 
 @test("no provisions section (an older bridge, a failed one): nothing proposed or said; plan() runs with it")
