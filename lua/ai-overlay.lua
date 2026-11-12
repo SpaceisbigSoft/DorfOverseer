@@ -40,7 +40,7 @@ end
 AIStatusOverlay = defclass(AIStatusOverlay, overlay.OverlayWidget)
 AIStatusOverlay.ATTRS{
     desc = 'Shows what the AI Overseer is doing; halt it or answer its questions.',
-    default_pos = {x = 2, y = -3},   -- (11 Nov) the bottom-left corner, anchored there when the window is resized (negative y counts from the bottom)
+    default_pos = {x = 1, y = -4},   -- (11 Nov) the bottom-left corner, anchored there when the window is resized (negative y counts from the bottom)
     default_enabled = true,
     viewscreens = 'dwarfmode/Default',
     frame = {w = WIDTH, h = 17},
