@@ -149,6 +149,14 @@ CAMERA_PACE_NAMES = {normal = 'normal (20-40 s a place)', slow = 'slow (longer a
 -- (0.105.0) what the AI answers when a civilisation asks the fort for tribute
 TRIBUTE_CHOICES = {'small', 'pay', 'refuse'}
 TRIBUTE_NAMES = {small = 'pay small, refuse large', pay = 'always pay', refuse = 'always refuse'}
+-- (0.105.41, item 8) what the AI answers when a civilisation's diplomat
+-- proposes peace (DF gives the fort no way to offer it): the AI decides
+-- (the default: yes from a civ that has besieged the fort twice or more and
+-- that the fort hasn't attacked; Militarism and Caution move the bar),
+-- always accept, always refuse
+PEACE_CHOICES = {'ai', 'accept', 'refuse'}
+PEACE_NAMES = {ai = 'AI decides', accept = 'always accept', refuse = 'always refuse'}
+PEACE_HELP = 'AI: after 2+ sieges, not if we raided them'
 CLEAR_ALERTS_NAMES = {quiet = 'old ones; dangers kept a week', all = 'all once a day old', none = 'none (yours)'}
 ATTACK_POLICY_NAMES = {ordinary = 'ordinary enemies, not great beasts', all = 'everything that can reach us',
                        never = 'never (alert and gate only)'}
@@ -223,6 +231,7 @@ WORLD_CLEANUP_NAMES = {off = 'off', safe = 'safe: spatter, dead, lost junk',
 RULE_CHOICES = {disposal = DISPOSAL_CHOICES, open_caverns = OPEN_CAVERNS_CHOICES,
                 design = DESIGN_MODES, landmark_pace = LANDMARK_PACES,    -- (D0)
                 missions = MISSION_CHOICES,                               -- (0.105.39)
+                peace = PEACE_CHOICES,                                    -- (0.105.41, item 8)
                 world_cleanup = WORLD_CLEANUP_CHOICES}                    -- (0.105.40)
 GEAR_WEAPONS = {'axe', 'spear', 'mace'}
 GEAR_WEAPON_NAMES = {axe = 'battle axes', spear = 'spears', mace = 'maces'}
@@ -324,6 +333,7 @@ function defaults()
         moon_cells = true,         -- (0.105.0) werebeast citizens locked in a cell round the full moon
         seal_caverns = true,       -- (0.105.0) the way down locked while a beast the squads can't take is in a cavern
         tribute = 'small',         -- (0.105.0) tribute a civilisation asks (TRIBUTE_CHOICES)
+        peace = 'ai',              -- (0.105.41, item 8) a peace proposal answered (PEACE_CHOICES)
         make_contact = true,       -- (0.105.0, 13b) a messenger appointed and sent to sites not in contact
         -- (0.105.24, 13b) the messenger actually sent, by the AI driving DF's World
         -- screen (lua/ai-mission-send.lua): off by default until its last steps
@@ -458,6 +468,7 @@ function sanitize(s)
     out.fort_goal = one_of(s.fort_goal, FORT_GOALS, d.fort_goal)
     out.clear_alerts = one_of(s.clear_alerts, CLEAR_ALERTS, d.clear_alerts)
     out.tribute = one_of(s.tribute, TRIBUTE_CHOICES, d.tribute)      -- (0.105.0)
+    out.peace = one_of(s.peace, PEACE_CHOICES, d.peace)              -- (0.105.41, item 8)
     out.camera = one_of(s.camera, CAMERA_MODES, d.camera)
     out.camera_pace = one_of(s.camera_pace, CAMERA_PACES, d.camera_pace)
     for _, k in ipairs({'fill_squads', 'train_squads', 'appoint_nobles', 'gate_lever', 'make_gear', 'engrave_slabs',
@@ -568,6 +579,7 @@ function for_ai(s)
         moon_cells = s.moon_cells,
         seal_caverns = s.seal_caverns,
         tribute = s.tribute,                       -- (0.105.0)
+        peace = s.peace,                           -- (0.105.41, item 8) ai | accept | refuse
         make_contact = s.make_contact,             -- (0.105.0)
         send_messenger = s.send_messenger,         -- (0.105.24)
         missions = s.missions,                     -- (0.105.39) off | rescue | explore | all

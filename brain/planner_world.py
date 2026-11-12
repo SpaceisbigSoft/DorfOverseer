@@ -6,8 +6,8 @@ the caravans' trade agreements (what they'd pay more for), and the meeting
 screen when it is open. From it:
 
   * a meeting with a diplomat or the liaison is answered with the AI's
-    defaults (agree to trade, to the elves' tree quota, to peace; tribute by
-    the Rules choice; the requests' wishes ticked), through buttons the
+    defaults (agree to trade, to the elves' tree quota; peace and tribute by
+    the Rules choices (0.105.41: peace in brain/planner_peace.py); the requests' wishes ticked), through buttons the
     player showed the AI once; until then it stays a Needs-you;
   * a caravan from a civilisation at war is not traded with (the goods stay
     home, the broker isn't called);
@@ -80,6 +80,8 @@ def note_world(s: dict, memory) -> None:
     if not isinstance(getattr(memory, "world_seen", None), dict):
         memory.world_seen = {}
     note_grudges(s, memory)
+    from planner_peace import note_attacks          # (0.105.41, item 8) the civs the fort attacked
+    note_attacks(s, memory)
     memory.world_seen["export"] = export_wishes(s, memory)
     if _contact_site(s, memory) is not None:
         memory.world_seen["contact_said"] = abs_tick(s)
@@ -112,13 +114,21 @@ def _meeting_answer_rule(s: dict, cfg: dict, proposals: list, notes: list, memor
         return                     # the meetings' Needs-you (planner_society _meeting_notes) says how
     topic = m.get("topic") or "the meeting"
     action = {"type": "answer_meeting", "tribute": rules["tribute"]}
+    # (0.105.41, item 8) a peace proposal answered by the Rules' `peace` (lua/ai-diplomacy.lua weighs it)
+    # (sent only when a peace proposal is among the meeting's topics)
+    from planner_peace import PEACE_TOPICS, civ_peace, peace_fields
+    peace = ""
+    if any(t in PEACE_TOPICS for t in [topic] + list(_l(m.get("topics")))):
+        action.update(peace_fields(s, cfg, memory))
+        ans, why = civ_peace(s, m.get("civ_id"), memory, cfg)
+        peace = f"peace: {ans}, {why}; "
     if m.get("requests"):
         wishes = meeting_wishes(s, cfg)
         if wishes:
             action["wishes"] = wishes
     proposals.append(Proposal("meeting", action,
                               f"DF's meeting screen is open ({m.get('civ') or 'a diplomat'}, {topic}): answer it "
-                              f"(trade and peace agreed, the tree quota kept, tribute: {rules['tribute']})", 0))
+                              f"({peace}trade agreed, the tree quota kept, tribute: {rules['tribute']})", 0))
 
 
 def meeting_wishes(s: dict, cfg: dict) -> list[str]:
@@ -185,8 +195,7 @@ def _world_notes(s: dict, notes: list, memory=None) -> None:
         if c.get("tribute"):
             notes.append(f"tribute: {c.get('name')} {c['tribute']} tribute"
                          + (f" ({c['tribute_season']})" if c.get("tribute_season") else ""))
-        if c.get("peace_offered"):
-            notes.append(f"{c.get('name')} have offered peace: the AI agrees when their diplomat meets the fort")
+        # (0.105.41, item 8) a peace offered: said by planner_peace._peace_notes (with the AI's answer)
     if int(w.get("visitors_from_hostile") or 0) > 0:
         notes.append(f"{w['visitors_from_hostile']} visitor(s) from a civilisation at war are on the map: left "
                      "alone unless they turn hostile (only a threat gets a kill order)")
@@ -240,7 +249,11 @@ def _export_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None) 
     idle = (dw.get("idle_adults") or 0) / max(1, dw.get("adults") or 1)
     if idle < cfg["idle_share"]:
         return
+    from planner_bans import banned_items      # (0.105.41, item 8) never made for export while the nobles ban it
+    banned = banned_items(s)
     for pct, item in best:
+        if item in banned:
+            continue
         recipe = EXPORT_RECIPES[item]
         if queued(s, {recipe}):
             continue

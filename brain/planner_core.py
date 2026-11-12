@@ -482,6 +482,8 @@ def player_rules(s: dict) -> dict:
             "calm_burrow": st.get("calm_burrow") is not False,
             # (0.105.0) tribute a civilisation asks: pay a small one, refuse a large one (or pay / refuse)
             "tribute": st.get("tribute") if st.get("tribute") in ("small", "pay", "refuse") else "small",
+            # (0.105.41, item 8) a peace proposal: the AI decides (sieges, sliders) / accept / refuse
+            "peace": st.get("peace") if st.get("peace") in ("ai", "accept", "refuse") else "ai",
             # (0.105.0, 13b) a messenger appointed and sent to make contact with sites not in contact
             "make_contact": st.get("make_contact") is not False,
             # (0.105.24, 13b) the AI drives DF's World screen to send the messenger: on only when the player says so

@@ -2659,7 +2659,35 @@ function act_answer_meeting(a)
             if type(w) ~= 'string' or not w:match('^%a+$') then return reject('answer_meeting: a wish is a category name') end
         end
     end
-    return reqscript('ai-diplomacy').answer_meeting({tribute = a.tribute, wishes = a.wishes, dry_run = a.dry_run == true}, txt)
+    -- (0.105.41, item 8) a peace proposal: peace ai | accept | refuse; attacked: civ ids;
+    -- the numbers from PLANNER_CONFIG
+    if a.peace ~= nil and a.peace ~= 'ai' and a.peace ~= 'accept' and a.peace ~= 'refuse' then
+        return reject('answer_meeting: peace is ai, accept or refuse')
+    end
+    local attacked
+    if a.attacked ~= nil then
+        if type(a.attacked) ~= 'table' then return reject('answer_meeting: attacked is a list of civ ids') end
+        attacked = {}
+        for i = 1, 51 do
+            local v = a.attacked[i]
+            if v == nil then break end
+            if i > 50 then return reject('answer_meeting: attacked is at most 50 civ ids') end
+            local n = int_in(v, 0, 100000000)
+            if not n then return reject('answer_meeting: attacked is a list of civ ids') end
+            table.insert(attacked, n)
+        end
+    end
+    local nums = {}
+    for _, k in ipairs({'peace_min', 'peace_step', 'peace_forgive'}) do
+        if a[k] ~= nil then
+            nums[k] = int_in(a[k], 0, 400)
+            if not nums[k] then return reject('answer_meeting: ' .. k .. ' is 0-400') end
+        end
+    end
+    return reqscript('ai-diplomacy').answer_meeting({tribute = a.tribute, wishes = a.wishes, dry_run = a.dry_run == true,
+                                                     peace = a.peace, attacked = attacked, peace_min = nums.peace_min,
+                                                     peace_step = nums.peace_step,
+                                                     peace_forgive = nums.peace_forgive}, txt)
 end
 
 -- (0.105.24, 13b) The messenger sent on "Make contact" to a site, by driving
@@ -2764,6 +2792,7 @@ function act_send_mission(a)
         local danger = send_mission_danger()
         if danger then return reject('send_mission: no squad goes out while ' .. danger) end
     end
+    local owner = nil                 -- (0.105.41, item 8) whom an offensive mission attacks
     if SEND_OFFENSIVE[goal] then
         local okh, h, hwhy = pcall(function() return reqscript('ai-missions').site_hostile(site) end)
         if not okh or type(h) ~= 'table' then
@@ -2774,9 +2803,20 @@ function act_send_mission(a)
             return reject('send_mission: ' .. goal .. ' only against a site whose owner is hostile or at war with ' ..
                           'the fort\'s civilisation (site ' .. site .. ': ' .. tostring(h.relation):sub(1, 30) .. ')')
         end
+        owner = {h.civ, h.owner}
     end
-    return reqscript('ai-mission-send').start({goal = goal, site_id = site, squad_ids = squads, hf_id = hf,
-                                               artifact_id = art, dry_run = a.dry_run == true})
+    local r = reqscript('ai-mission-send').start({goal = goal, site_id = site, squad_ids = squads, hf_id = hf,
+                                                  artifact_id = art, dry_run = a.dry_run == true})
+    -- (0.105.41, item 8) the fort attacked them: remembered in the save, so a
+    -- peace offer from them is weighed with it (lua/ai-diplomacy.lua)
+    if owner and not a.dry_run and type(r) == 'table' and r.ok ~= false then
+        pcall(function()
+            local D = reqscript('ai-diplomacy')
+            if owner[1] then D.note_attacked(owner[1]) end
+            if owner[2] and owner[2] ~= owner[1] then D.note_attacked(owner[2]) end
+        end)
+    end
+    return r
 end
 
 function act_close_trade(a)

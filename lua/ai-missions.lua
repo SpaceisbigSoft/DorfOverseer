@@ -546,7 +546,8 @@ function site_hostile(site_id)
     local rel = relations(R, civ)
     local r = (c and rel[c]) or (cur and rel[cur]) or nil
     return {hostile = hostile(r) and not ours, at_war = type(r) == 'string' and r:find('War') ~= nil and not ours,
-            relation = r or 'unknown', owner = who and int(who) or nil, ours = ours or nil}
+            relation = r or 'unknown', owner = who and int(who) or nil, ours = ours or nil,
+            civ = (c and c >= 0) and int(c) or nil}      -- (0.105.41, item 8) the owner's civilisation
 end
 
 local function link_type(R, enum, label, l)

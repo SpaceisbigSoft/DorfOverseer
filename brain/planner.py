@@ -47,6 +47,8 @@ from planner_homes import *  # noqa: E402,F401,F403  (0.104.168: homes and house
 from planner_threats import _threat_rules, unseen_intrusion, alarm_held  # noqa: E402  (0.105.0 round 3; 0.105.36)
 from planner_world import (_contact_rule, _export_rule, _hostile_trade_filter, _meeting_answer_rule,  # noqa: E402
                            _messenger_rule, _world_notes, note_world)  # (0.105.0: the world outside, 12b and 13b)
+from planner_peace import _peace_notes  # noqa: E402  (0.105.41, item 8: war and peace)
+from planner_bans import _export_bans_notes  # noqa: E402  (0.105.41, item 8: the nobles' export bans)
 from planner_missions import _mission_rule, note_missions  # noqa: E402  (0.105.39) missions on the world map
 from planner_cleanup import _world_cleanup_rule, note_cleanup  # noqa: E402  (0.105.40) world cleanup for the game's speed
 from planner_captives import _captives_rule, _necro_rule, note_captives  # noqa: E402  (item6) prisoners' outcomes, necromancer sieges
@@ -689,6 +691,7 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
     # 6e-1. Trade: goods to the depot for a caravan, crafts to sell; hauling
     if can_use("buildings", "orders"):
         _guard(_trade_rules, s, cfg, citizens, proposals, notes, traits, memory)
+        _guard(_export_bans_notes, s, notes)                 # (0.105.41, item 8) the nobles' export bans
         _guard(_gems_rule, s, cfg, proposals, traits, memory, notes)
         _guard(_cloth_rule, s, cfg, citizens, proposals)
         _guard(_noble_rooms_rule, s, cfg, proposals, memory)
@@ -730,6 +733,7 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
         if can_use("world"):
             _guard(_meeting_answer_rule, s, cfg, proposals, notes, memory)
             _guard(_world_notes, s, notes, memory)
+            _guard(_peace_notes, s, cfg, notes, memory)               # (0.105.41, item 8) war and peace
             _guard(_export_rule, s, cfg, proposals, notes, memory)
         if can_use("offices"):
             _guard(_messenger_rule, s, cfg, proposals, notes)

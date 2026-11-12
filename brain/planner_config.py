@@ -933,4 +933,9 @@ PLANNER_CONFIG = {
     "necro_corpses_min": 3,                   # bodies outside with the dead about: rotted away
     "necro_corpses_cooldown_ticks": 1200,
     "necro_tower_near": 40,                   # world tiles: a necromancer tower this close is said
+    # (0.105.41, item 8) war and peace (brain/planner_peace.py, lua/ai-diplomacy.lua peace_verdict)
+    "peace_min_sieges": 2,                # the Rules' "AI decides": peace from a civ that besieged the fort this often...
+    "peace_slider_step": 50,              # ...one more siege wanted a step of Militarism, one fewer a step of Caution
+    "peace_forgive": 100,                 # a civ the fort attacked: peace only when Caution beats Militarism by this
+    "peace_attacked_keep": 40,            # civs the fort attacked, kept in memory (the newest)
 }
