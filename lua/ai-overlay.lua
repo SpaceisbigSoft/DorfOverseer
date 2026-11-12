@@ -3,7 +3,7 @@
 -- project, and the co-pilot's questions with Yes/No buttons. Halt/Resume
 -- works like Ctrl-Shift-H.
 --
--- It's on by default. Move it with `gui/overlay` (DFHack's overlay editor);
+-- It's on by default, in the bottom-left corner. Move it with `gui/overlay` (DFHack's overlay editor);
 -- hide it with `overlay disable ai-overlay.status`.
 --@ module = true
 
@@ -40,7 +40,7 @@ end
 AIStatusOverlay = defclass(AIStatusOverlay, overlay.OverlayWidget)
 AIStatusOverlay.ATTRS{
     desc = 'Shows what the AI Overseer is doing; halt it or answer its questions.',
-    default_pos = {x = -2, y = 12},
+    default_pos = {x = 2, y = -3},   -- (11 Nov) the bottom-left corner, anchored there when the window is resized (negative y counts from the bottom)
     default_enabled = true,
     viewscreens = 'dwarfmode/Default',
     frame = {w = WIDTH, h = 17},
