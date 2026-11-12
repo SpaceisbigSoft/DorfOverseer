@@ -239,6 +239,7 @@ def _labor_waiting_rule(lb: dict, citizens: int, cfg: dict, proposals: list, thi
         # writing materials (parchment in C 51 times, likewise)
         least = 1 if ((thirsty and lab == "BREWER") or (haunted and lab in DEAD_LABORS) or holders == 0) \
             else cfg["labor_waiting_jobs"]
+        # (hauling: brain/planner_hauling.py, through the AI's own hauling detail)
         if (lab in OWN_LABOR_RULES or lab.startswith("HAUL") or jobs < least
                 or (w.get("idle") or 0) > 0 or w.get("mode") in LABOR_MODES_FIXED
                 or holders >= max(2, citizens // 4)):

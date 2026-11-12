@@ -350,6 +350,9 @@ ACTIONS = {
         end
         return reqscript('ai-insane').guard({units = ids}, a.dry_run == true)
     end,
+    -- (0.105.40 M5) hauling balanced: haulers added, key specialists relieved (lua/ai-hauling.lua)
+    add_haulers = act_add_haulers,
+    relieve_haulers = act_relieve_haulers,
     -- (D0) the Design track: a landmark's sites, its drawing built, its next stage (ai-bridge-design.lua)
     blueprint_sites = act_blueprint_sites,
     build_blueprint = act_build_blueprint,
@@ -406,6 +409,7 @@ for _, name in ipairs({
     -- (0.105.40) world cleanup: each dry run counts and returns before it removes anything
     'cleanup_items', 'cleanup_units', 'cleanup_spatter', 'cleanup_dead_units',
     'insane_guard',   -- (0.105.40b) its dry run counts the doors and changes nothing
+    'add_haulers', 'relieve_haulers',   -- (0.105.40 M5) each dry run names the dwarves and changes nothing
 }) do DRY_OK[name] = true end
 
 -- These only change what's displayed, so they still work while halted, dry
@@ -464,7 +468,7 @@ end
 -- `--@ module = true`, but this one and the parts, which are no modules);
 -- `modules` loads each. tests/test_fix26_bridge.py keeps it in step with lua/.
 BRIDGE_MODULES = {
-    'ai-blueprints', 'ai-builder', 'ai-camera', 'ai-census', 'ai-cleanup', 'ai-constructions', 'ai-diplomacy', 'ai-disposal', 'ai-gates', 'ai-health', 'ai-homes',
+    'ai-blueprints', 'ai-builder', 'ai-camera', 'ai-census', 'ai-cleanup', 'ai-constructions', 'ai-diplomacy', 'ai-disposal', 'ai-gates', 'ai-hauling', 'ai-health', 'ai-homes',
     'ai-industry', 'ai-insane', 'ai-joins', 'ai-labor', 'ai-layouts', 'ai-military', 'ai-military-gear',
     'ai-mission-send', 'ai-missions', 'ai-moods', 'ai-nobles', 'ai-overlay', 'ai-overseer-settings',
     'ai-ping', 'ai-reports', 'ai-society', 'ai-society-burrows', 'ai-status', 'ai-threats', 'ai-title',
@@ -804,6 +808,9 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
     -- where, the deadly ground near them, the AI's doors locked for them; the
     -- citizens whose stress heads that way (lua/ai-insane.lua; in the pulse)
     insane = function() return safe(function() return reqscript('ai-insane').report() end) end,
+    -- (0.105.40 M5) hauling: the haul jobs waiting and how long, the haulers,
+    -- the key specialists who haul, the details carrying it (lua/ai-hauling.lua)
+    hauling = function() return safe(function() return reqscript('ai-hauling').report(txt) end) end,
     -- (0.105.30) what the fort has built: finished constructions by shape and
     -- material, above or below ground, roofed surface tiles, the waiting ones
     -- and the AI's own (lua/ai-constructions.lua; one pass, every 3 days)

@@ -517,6 +517,8 @@ SHORT_WORDS = {
     "cleanup_spatter": "clean blood and spatter off the map",
     "cleanup_dead_units": "take long-dead creatures off the game's active list",
     "insane_guard": "lock the AI's own doors between an insane dwarf and deep water, magma or a drop while they are near",  # (0.105.40b)
+    "add_haulers": "put idle dwarves on hauling",  # (0.105.40 M5)
+    "relieve_haulers": "take key workers off hauling (or give it back)",
     "census": "count what fills the map",  # (0.104.113)
     "seal_well_stairs": "close the cavern wells' stair columns",  # (0.104.151)
     "join_levels": "join areas on one level that meet only through the stairs",  # (0.104.108)

@@ -3246,3 +3246,18 @@ function act_cleanup_dead_units(a)
     if off then return off end
     return reqscript('ai-cleanup').cleanup_dead_units(o, a.dry_run == true)
 end
+
+-- (0.105.40 M5) hauling balanced (lua/ai-hauling.lua): idle civilians who
+-- don't haul put on the AI's own hauling detail; key specialists taken off
+-- hauling (back = true: given it back). Never the player's details.
+function act_add_haulers(a)
+    local n = int_in(a.count, 1, 10)
+    if not n then return reject('add_haulers needs count 1-10') end
+    return reqscript('ai-hauling').add_haulers(n, a.dry_run == true, txt)
+end
+
+function act_relieve_haulers(a)
+    local n = int_in(a.count, 1, 5)
+    if not n then return reject('relieve_haulers needs count 1-5') end
+    return reqscript('ai-hauling').relieve_haulers(n, a.back == true, a.dry_run == true, txt)
+end

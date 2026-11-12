@@ -810,4 +810,22 @@ PLANNER_CONFIG = {
     "weather_lift_hours": 6,              # gone this long (50 ticks an hour) before the alarm comes down
     "weather_alarm_max_days": 4,          # held at most this long in one spell (the fort can't stay in for ever)
     "weather_blood_rain_alarm": False,    # plain blood rain (no syndrome) only stains: work goes on
+    # (0.105.40 M5) hauling balanced (brain/planner_hauling.py): haulers wanted =
+    # the larger of hauling_min_share of the civilians (hauling_min_haulers at
+    # least) and one per hauling_jobs_per_hauler jobs waiting, at most
+    # hauling_max_share; a stall: this many waiting, the oldest this many days,
+    # at most hauling_idle_max haulers idle
+    "hauling_min_haulers": 3,
+    "hauling_min_share": 0.15,
+    "hauling_jobs_per_hauler": 8,
+    "hauling_max_share": 0.6,
+    "hauling_backlog_min": 20,
+    "hauling_wait_days": 1,
+    "hauling_idle_max": 0,
+    "hauling_add_max": 5,                 # idle civilians made haulers a call
+    "hauling_relieve_max": 2,             # key workers taken off (or given back) hauling a call
+    "hauling_relieve_margin": 2,          # ...only while this many haulers more than wanted remain
+    "hauling_add_cooldown_ticks": 1200,
+    "hauling_relieve_cooldown_ticks": 7 * 1200,
+    "hauling_back_cooldown_ticks": 3 * 1200,
 }
