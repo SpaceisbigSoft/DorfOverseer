@@ -398,6 +398,18 @@ function RulesPage:init()
     })
     table.insert(views, widgets.Label{frame = {t = 5 + hrow, l = 58}, text = {
         {text = 'patients stay by the beds, drink and food; off: all let out', pen = COLOR_GREY}}})
+    -- (0.105.41, 13e) traffic zones on the AI's own levels: the right-hand
+    -- column's free rows under the hospital burrow's help line
+    table.insert(views, widgets.ToggleHotkeyLabel{
+        view_id = 'traffic',
+        frame = {t = 7 + hrow, l = 56, w = 62},
+        label = 'Traffic zones on the AI\'s own levels:',
+        label_width = 46,
+        initial_option = p.settings.traffic ~= false,
+        on_change = function(v) p:set_field('traffic', v) end,
+    })
+    table.insert(views, widgets.Label{frame = {t = 8 + hrow, l = 58}, text = {
+        {text = 'high on its corridors and stairs, low on rooms and fields', pen = COLOR_GREY}}})
     -- (0.104.169) the calm-down burrows' switch, beside the Jail level (the
     -- jail is the other answer to a tantrum), with its help line
     local jrow = 8
@@ -842,6 +854,7 @@ function RulesPage:refresh()
     self.subviews.heist_lockout:setOption(s.heist_lockout ~= false, false)         -- (0.105.24)
     self.subviews.shut_to_visitors:setOption(s.shut_to_visitors ~= false, false)   -- (0.105.24)
     self.subviews.construct:setOption(s.construct ~= false, false)                 -- (0.105.30)
+    self.subviews.traffic:setOption(s.traffic ~= false, false)                     -- (0.105.41)
     for _, k in ipairs({'moat', 'magma_workshops', 'irrigation'}) do               -- (0.105.0)
         self.subviews[k]:setOption(s[k] ~= false, false)
     end

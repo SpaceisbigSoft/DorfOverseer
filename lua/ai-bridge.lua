@@ -361,6 +361,15 @@ ACTIONS = {
     blueprint_sites = act_blueprint_sites,
     build_blueprint = act_build_blueprint,
     landmark_step = act_landmark_step,
+    -- (0.105.41) traffic zones on the AI's own finished levels, a slice a call (lua/ai-traffic.lua)
+    paint_traffic = function(a)
+        if a.key ~= nil and (type(a.key) ~= 'string' or #a.key > 40) then return reject('paint_traffic: key is a level key') end
+        for _, k in ipairs({'max', 'budget_ms'}) do
+            if a[k] ~= nil and not math.tointeger(a[k]) then return reject('paint_traffic: ' .. k .. ' is a whole number') end
+        end
+        return reqscript('ai-traffic').paint({key = a.key, max = a.max, budget_ms = a.budget_ms, audit = a.audit == true},
+                                             a.dry_run == true)
+    end,
 }
 
 -- (13c) The actions whose dry run changes nothing in the fort, all the way
@@ -416,6 +425,7 @@ for _, name in ipairs({
     'add_haulers', 'relieve_haulers',   -- (0.105.40 M5) each dry run names the dwarves and changes nothing
     -- (0.105.40b, M6) the food store: each dry run finds the spot (quickfort's dry run) and changes nothing
     'food_pile', 'food_barrels',
+    'paint_traffic',   -- (0.105.41) its dry run counts the tiles and paints none
 }) do DRY_OK[name] = true end
 
 -- These only change what's displayed, so they still work while halted, dry
@@ -483,7 +493,7 @@ BRIDGE_MODULES = {
     'ai-industry', 'ai-insane', 'ai-joins', 'ai-labor', 'ai-layouts', 'ai-military', 'ai-military-gear',
     'ai-mission-send', 'ai-missions', 'ai-moods', 'ai-nobles', 'ai-overlay', 'ai-overseer-settings',
     'ai-ping', 'ai-reports', 'ai-society', 'ai-society-burrows', 'ai-status', 'ai-threats', 'ai-title',
-    'ai-trade', 'ai-util', 'ai-water', 'ai-waterworks', 'gui/ai-overseer',
+    'ai-trade', 'ai-traffic', 'ai-util', 'ai-water', 'ai-waterworks', 'gui/ai-overseer',
 }
 -- the split-off modules that carry a version mark of their own
 MARKED_MODULES = {'ai-military-gear', 'ai-society-burrows', 'ai-constructions'}
@@ -854,6 +864,10 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
     -- where, the deadly ground near them, the AI's doors locked for them; the
     -- citizens whose stress heads that way (lua/ai-insane.lua; in the pulse)
     insane = function() return safe(function() return reqscript('ai-insane').report() end) end,
+    -- (0.105.41) traffic zones: the AI's finished levels waiting for their
+    -- traffic, the one in progress, the next recheck (lua/ai-traffic.lua; the
+    -- project records only, no tile read)
+    traffic = function() return safe(function() return reqscript('ai-traffic').report() end) end,
     -- (fix41) evil weather on its own (it was in threats, read once a day): in the pulse too
     weather = function() return safe(function() return reqscript('ai-threats').weather_section() end) end,
     -- (0.105.40 M5) hauling: the haul jobs waiting and how long, the haulers,
