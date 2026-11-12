@@ -157,6 +157,8 @@ SECTION_DEFAULTS = {
     "insane": {},            # (0.105.40b) the insane, the deadly ground near them, the AI's doors locked, the near-breaking (lua/ai-insane.lua)
     "hauling": {},           # (0.105.40 M5) haul jobs waiting, haulers, key workers hauling (lua/ai-hauling.lua)
     "food_store": {},        # (0.105.40b, M6) food piles, their barrels and fullness, food out of piles, rotten (lua/ai-food-store.lua)
+    "siege": {},             # (item5) entrances' fortifications and posts, siege engines, parts, arrows, operators (lua/ai-siege.lua)
+    "field_watch": {},       # (item5) hostiles near a caravan, hostile wild animals near the dwarves outside (lua/ai-siege.lua)
 }
 # (0.105.36) not REQUIRED (the plan goes on without them), but a missing one is
 # listed in _errors as a failed one is: the default (civ_alert False) is not

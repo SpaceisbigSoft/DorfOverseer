@@ -482,6 +482,10 @@ SHORT_WORDS = {
     "feeder_pile": "put a feeder stockpile beside a workshop",
     "food_pile": "put a food stockpile with barrels near the kitchen and still",   # (0.105.40b, M6)
     "food_barrels": "let the AI's food stockpile take barrels",
+    "fortify_post": "carve fortifications beside an entrance (archers shoot through them)",   # (item5)
+    "archer_post": "post the crossbow squads behind the entrance's fortifications",
+    "place_siege_engine": "place a ballista behind the entrance's fortifications",
+    "place_siege_shop": "place a siege workshop near the gate (ballista parts and arrows)",
     "squad_barracks": "give a squad its barracks",
     "open_trade": "open the trade screen at the depot",
     "close_trade": "close the trade screen",

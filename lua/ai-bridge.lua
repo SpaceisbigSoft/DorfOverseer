@@ -357,6 +357,40 @@ ACTIONS = {
     -- (0.105.40b, M6) the food store: a food pile near the kitchen and still, its barrels (lua/ai-food-store.lua)
     food_pile = act_food_pile,
     food_barrels = act_food_barrels,
+    -- (item5) siege works and the field guard (lua/ai-siege.lua): fortifications carved
+    -- beside an entrance, the crossbows posted behind them, a ballista placed there
+    fortify_post = function(a)
+        local id = math.tointeger(tonumber(a.entrance_id))
+        if not id then return reject('fortify_post needs entrance_id') end
+        local n = a.max ~= nil and int_in(a.max, 1, 8) or 4
+        if not n then return reject('fortify_post: max is 1-8') end
+        return reqscript('ai-siege').fortify_post(id, n, a.dry_run == true)
+    end,
+    archer_post = function(a)
+        local id = math.tointeger(tonumber(a.entrance_id))
+        if not id or type(a.squads) ~= 'table' then return reject('archer_post needs entrance_id and squads') end
+        local ids = {}
+        for _, v in ipairs(a.squads) do
+            local n = math.tointeger(tonumber(v))
+            if not n then return reject('archer_post: squads is a list of squad ids') end
+            table.insert(ids, n)
+        end
+        if #ids == 0 or #ids > 6 then return reject('archer_post: 1-6 squads') end
+        return reqscript('ai-siege').archer_post(id, ids, a.dry_run == true)
+    end,
+    place_siege_engine = function(a)
+        local id = math.tointeger(tonumber(a.entrance_id))
+        if not id then return reject('place_siege_engine needs entrance_id') end
+        if a.kind ~= nil and a.kind ~= 'ballista' and a.kind ~= 'catapult' then
+            return reject('place_siege_engine: kind is ballista or catapult')
+        end
+        return reqscript('ai-siege').place_engine(id, a.kind or 'ballista', a.dry_run == true)
+    end,
+    place_siege_shop = function(a)
+        local id = math.tointeger(tonumber(a.entrance_id))
+        if not id then return reject('place_siege_shop needs entrance_id') end
+        return reqscript('ai-siege').place_shop(id, a.dry_run == true)
+    end,
     -- (D0) the Design track: a landmark's sites, its drawing built, its next stage (ai-bridge-design.lua)
     blueprint_sites = act_blueprint_sites,
     build_blueprint = act_build_blueprint,
@@ -416,6 +450,8 @@ for _, name in ipairs({
     'add_haulers', 'relieve_haulers',   -- (0.105.40 M5) each dry run names the dwarves and changes nothing
     -- (0.105.40b, M6) the food store: each dry run finds the spot (quickfort's dry run) and changes nothing
     'food_pile', 'food_barrels',
+    -- (item5) each dry run surveys (and quickfort's dry run) and changes nothing
+    'fortify_post', 'archer_post', 'place_siege_engine', 'place_siege_shop',
 }) do DRY_OK[name] = true end
 
 -- These only change what's displayed, so they still work while halted, dry
@@ -482,7 +518,7 @@ BRIDGE_MODULES = {
     'ai-blueprints', 'ai-builder', 'ai-camera', 'ai-census', 'ai-cleanup', 'ai-constructions', 'ai-diplomacy', 'ai-disposal', 'ai-food-store', 'ai-gates', 'ai-hauling', 'ai-health', 'ai-homes',
     'ai-industry', 'ai-insane', 'ai-joins', 'ai-labor', 'ai-layouts', 'ai-military', 'ai-military-gear',
     'ai-mission-send', 'ai-missions', 'ai-moods', 'ai-nobles', 'ai-overlay', 'ai-overseer-settings',
-    'ai-ping', 'ai-reports', 'ai-society', 'ai-society-burrows', 'ai-status', 'ai-threats', 'ai-title',
+    'ai-ping', 'ai-reports', 'ai-siege', 'ai-society', 'ai-society-burrows', 'ai-status', 'ai-threats', 'ai-title',
     'ai-trade', 'ai-util', 'ai-water', 'ai-waterworks', 'gui/ai-overseer',
 }
 -- the split-off modules that carry a version mark of their own
@@ -863,6 +899,12 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
     -- fullness, the AI's own), the kitchens and stills, the food lying out of
     -- piles and barrels and the rotten (lua/ai-food-store.lua; cached a day)
     food_store = function() return safe(function() return reqscript('ai-food-store').report() end) end,
+    -- (item5) siege works: each entrance's fortifications and posts, the siege engines,
+    -- their parts and arrows, the operators (lua/ai-siege.lua; cached a day)
+    siege = function() return safe(function() return reqscript('ai-siege').report() end) end,
+    -- (item5) hostiles near a caravan's merchants, hostile wild animals near the
+    -- dwarves outside (lua/ai-siege.lua; in the pulse)
+    field_watch = function() return safe(function() return reqscript('ai-siege').field_watch(txt) end) end,
     -- (0.105.30) what the fort has built: finished constructions by shape and
     -- material, above or below ground, roofed surface tiles, the waiting ones
     -- and the AI's own (lua/ai-constructions.lua; one pass, every 3 days)
@@ -883,6 +925,7 @@ PULSE_SECTIONS = {
     'moods', 'military', 'settings', 'events_waiting', 'hazards', 'ledger',
     'insane',   -- (0.105.40b) a melancholy dwarf walks to the water: read each cycle
     'weather',  -- (fix41) an evil cloud crosses from the map's edge in hours: read each cycle
+    'field_watch',   -- (item5) a caravan attacked, a bear by the woodcutters: read each cycle
 }
 TIERS = {pulse = true, daily = true, survey = true}
 -- report sections rebuilt only every so many game days (the lag pass, Oct 23:
@@ -900,6 +943,7 @@ SECTION_CACHE_DAYS = {logistics = 3, industry = 7,   -- industry: 300-450 ms liv
     disposal = 1}   -- (0.105.27) every item in play walked once for the marks
 SECTION_CACHE_DAYS.constructions = 3   -- (0.105.30) every built tile walked once
 SECTION_CACHE_DAYS.food_store = 1      -- (0.105.40b, M6) every food item walked once
+SECTION_CACHE_DAYS.siege = 1           -- (item5) small boxes round the entrances, the engines
 SECTION_REBUILDS = 2       -- expired cached sections rebuilt in one report (a missing one always is)
 -- (0.100) the cached sections each action changes (cleared when it succeeds)
 CACHE_INVALIDATES = {
@@ -941,6 +985,11 @@ CACHE_INVALIDATES.cleanup_units = {'disposal'}
 CACHE_INVALIDATES.cleanup_dead_units = {'disposal', 'dead'}
 CACHE_INVALIDATES.food_pile = {'food_store', 'logistics'}   -- (0.105.40b, M6) the new pile read again
 CACHE_INVALIDATES.food_barrels = {'food_store'}
+-- (item5) the siege section read again after its own actions
+CACHE_INVALIDATES.fortify_post = {'siege'}
+CACHE_INVALIDATES.archer_post = {'siege'}
+CACHE_INVALIDATES.place_siege_engine = {'siege'}
+CACHE_INVALIDATES.place_siege_shop = {'siege'}
 -- (fix41) a kitchen's or still's feeder pile is a food pile, and a storage
 -- level's furnish step lays its food piles: the food store read again
 CACHE_INVALIDATES.feeder_pile = {'logistics', 'food_store'}

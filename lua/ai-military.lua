@@ -122,6 +122,16 @@ local function guard_burrow_id()
     return nil
 end
 
+-- (item5) the archer post behind an entrance's fortifications (lua/ai-siege.lua):
+-- a defend order on it is the AI's too, held like the gate guard's
+ARCHER_POST_NAME = 'AI archer post'
+local function archer_post_id()
+    for _, b in ipairs(df.global.plotinfo.burrows.list) do
+        if b.name == ARCHER_POST_NAME then return b.id end
+    end
+    return nil
+end
+
 -- (0.105.0) The shelter: when the AI hides from a great danger the squads
 -- hold the civilian alert's burrow with the civilians (shelter(), at the end
 -- of this file). The burrows are read, never made (DFHack's civ-alert script
@@ -193,8 +203,11 @@ end
 local function is_guard_order(o)
     local okd, mine = pcall(function()
         if not df.squad_order_defend_burrowsst:is_instance(o) then return false end
+        if #o.burrows ~= 1 then return false end
         local gid = guard_burrow_id()
-        return gid ~= nil and #o.burrows == 1 and o.burrows[0] == gid
+        if gid ~= nil and o.burrows[0] == gid then return true end
+        local pid = archer_post_id()           -- (item5) the archer post
+        return pid ~= nil and o.burrows[0] == pid
     end)
     return okd and mine == true
 end
@@ -1445,7 +1458,12 @@ function kill_target_ok(u)
     if okc and changed then return true end
     if is(U.isMerchant) or is(U.isDiplomat) or is(U.isTame) then return false end
     if is(U.isCitizen) then return false end
-    return is(U.isDanger) or is(U.isInvader)
+    if is(U.isDanger) or is(U.isInvader) then return true end
+    -- (item5) a wild animal that attacks (a large predator, or one DF has
+    -- agitated: ai-builder hostile_wild): the wildlife and caravan guard rules
+    -- send a squad at one near the dwarves or a caravan (lua/ai-siege.lua)
+    local okw, wild = pcall(function() return reqscript('ai-builder').hostile_wild(u) end)
+    return okw and wild == true
 end
 
 -- Kill orders against the given units (only ones actually on the map), or
