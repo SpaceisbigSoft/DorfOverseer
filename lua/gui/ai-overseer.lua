@@ -741,6 +741,21 @@ function MilitaryPage:init()
         initial_option = p.settings.keep_enemy_gear == true,
         on_change = function(v) p:set_field('keep_enemy_gear', v) end,
     })
+    -- (item5) siege works and the field guard: under the disposal rows (t+9..t+12, from
+    -- l=54, clear of the military list's l=2..52 and of gear_weapon's row t+13)
+    for _, f in ipairs({{'siege_engines', 'Ballistae at the gates:', 9},
+                        {'archer_posts', 'Archers behind fortifications:', 10},
+                        {'caravan_guard', 'Guard a caravan attacked:', 11},
+                        {'wildlife_hunts', 'Hunt beasts near workers:', 12}}) do
+        table.insert(views, widgets.ToggleHotkeyLabel{
+            view_id = f[1],
+            frame = {t = t + f[3], l = 54, w = 52},
+            label = f[2],
+            label_width = 32,
+            initial_option = p.settings[f[1]] ~= false,
+            on_change = function(v) p:set_field(f[1], v) end,
+        })
+    end
     -- (0.105.0) the squads hide with the civilians (the row under the list's seven; merge: was t+11, on appoint_nobles)
     table.insert(views, widgets.ToggleHotkeyLabel{
         view_id = 'squads_shelter',
@@ -887,6 +902,9 @@ function MilitaryPage:refresh()
         self.subviews[k]:setOption(s[k], false)
     end
     self.subviews.squads_shelter:setOption(s.squads_shelter ~= false, false)       -- (0.105.0)
+    for _, k in ipairs({'siege_engines', 'archer_posts', 'caravan_guard', 'wildlife_hunts'}) do   -- (item5)
+        self.subviews[k]:setOption(s[k] ~= false, false)
+    end
     self.subviews.gear_weapon:setOption(s.gear_weapon, false)
     self.subviews.prisoners:setOption(s.prisoners or 'keep', false)                -- (0.105.0)
     self.subviews.moon_cells:setOption(s.moon_cells ~= false, false)

@@ -215,6 +215,12 @@ ORDER_RECIPES = {
     wooden_crossbow = {job = 'MakeWeapon', item_subtype = 'ITEM_WEAPON_CROSSBOW', material_category = {'wood'}},
     wooden_bolts = {job = 'MakeAmmo', item_subtype = 'ITEM_AMMO_BOLTS', material_category = {'wood'}},
     metal_bolts = {job = 'MakeAmmo', item_subtype = 'ITEM_AMMO_BOLTS', kind = 'metal'},
+    -- (item5) siege engines (lua/ai-siege.lua): parts and arrows at the siege workshop,
+    -- the ballista's arrowheads at the forge
+    ballista_parts = {job = 'ConstructBallistaParts', material_category = {'wood'}},
+    catapult_parts = {job = 'ConstructCatapultParts', material_category = {'wood'}},
+    ballista_arrowheads = {job = 'MakeBallistaArrowHead', kind = 'metal'},
+    ballista_arrows = {job = 'AssembleSiegeAmmo', item_subtype = 'ITEM_SIEGEAMMO_BALLISTA', material_category = {'wood'}},
     metal_spear = {job = 'MakeWeapon', item_subtype = 'ITEM_WEAPON_SPEAR', kind = 'metal'},
     metal_mace = {job = 'MakeWeapon', item_subtype = 'ITEM_WEAPON_MACE', kind = 'metal'},
     metal_mail_shirt = {job = 'MakeArmor', item_subtype = 'ITEM_ARMOR_MAIL_SHIRT', kind = 'metal'},

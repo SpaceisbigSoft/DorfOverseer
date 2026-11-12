@@ -489,6 +489,10 @@ SHORT_WORDS = {
     "food_standing": "let the butchers, tanners and fishery work by themselves (DF's standing orders)",
     "fruit_zone": "mark the fruit trees near the fort for picking",
     "cavern_farm": "lay out farm plots on a cavern's soil",
+    "fortify_post": "carve fortifications beside an entrance (archers shoot through them)",   # (item5)
+    "archer_post": "post the crossbow squads behind the entrance's fortifications",
+    "place_siege_engine": "place a ballista behind the entrance's fortifications",
+    "place_siege_shop": "place a siege workshop near the gate (ballista parts and arrows)",
     "squad_barracks": "give a squad its barracks",
     "open_trade": "open the trade screen at the depot",
     "close_trade": "close the trade screen",

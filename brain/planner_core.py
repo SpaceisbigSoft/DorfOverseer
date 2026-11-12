@@ -59,7 +59,8 @@ EMERGENCY = {"threat_alert", "gate", "gates", "squad_attack", "flood", "gate_gua
              # dead of thirst outside it; and a way dug in for the cut off. A
              # life on each: no action limit, no refusal back-off or loop hold
              # (each rule paces its own tries: planner_gates)
-             "gate_stuck", "way_in"}
+             "gate_stuck", "way_in",
+             "archer_post", "caravan_guard"}   # (item5) crossbows to the posts in a siege; a caravan attacked
 # (0.104.89) rules the strategist may never hold: survival, safety and the
 # answers to danger (it may still raise them)
 STEER_PROTECTED = EMERGENCY | {"shelter", "alerts", "squad_recall", "water", "well", "drink",

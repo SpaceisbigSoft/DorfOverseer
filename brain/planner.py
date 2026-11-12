@@ -51,6 +51,7 @@ from planner_missions import _mission_rule, note_missions  # noqa: E402  (0.105.
 from planner_cleanup import _world_cleanup_rule, note_cleanup  # noqa: E402  (0.105.40) world cleanup for the game's speed
 from planner_weather import _weather_rules, _weather_squad_filter  # noqa: E402  (0.105.40b) evil weather
 from planner_firebreath import _fire_breather_rule  # noqa: E402  (0.105.40b) no melee squad at a fire breather
+from planner_siege import _siege_rules  # noqa: E402  (item5) siege engines, archer posts, caravan guard, wildlife hunts
 from planner_insane import _insane_rule  # noqa: E402  (0.105.40b) the insane: deadly ground near them, the AI's doors
 from planner_hauling import _hauling_labor_rule, note_hauling  # noqa: E402  (0.105.40 M5) hauling balanced
 from planner_traffic import _traffic_rule  # noqa: E402  (0.105.41) traffic zones on the AI's own levels
@@ -592,6 +593,9 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
         _guard(_shelter_squads_rule, s, memory, cfg, proposals, notes)
         # (0.105.40b) a fire breather: no melee squad at it, crossbows from inside only
         _guard(_fire_breather_rule, s, memory, cfg, proposals, notes)
+        # (item5) ballistae, the archers' fortifications and posts, the caravan guarded,
+        # dangerous wild animals near the dwarves hunted (planner_siege)
+        _guard(_siege_rules, s, memory, cfg, proposals, notes)
         if can_use("entrances"):
             _guard(_gate_cut_rule, s, memory, cfg, proposals, notes)
 
