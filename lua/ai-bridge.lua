@@ -479,7 +479,7 @@ ACTIONS = {
     -- (item10) cavern trees felled when safe (stop: the AI's marks lifted); the grove kept (lua/ai-forestry.lua)
     cavern_logging = function(a)
         return reqscript('ai-forestry').cavern_logging(a.limit, a.dry_run == true, a.stop == true,
-                                                      a.inside_only == true)
+                                                      a.inside_only == true, a.unsafe_only == true)
     end,
     keep_grove = function(a) return reqscript('ai-forestry').keep_grove(a.dry_run == true, a.guard == true) end,
     -- (item10) a skill cap on the AI's second workshop of a kind (release: lifted) (lua/ai-benches.lua)

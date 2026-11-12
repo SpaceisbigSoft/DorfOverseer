@@ -39,12 +39,13 @@ local U = reqscript('ai-util')
 BENCH_KEY = 'ai-overseer/benches'
 NO_MAX = 3000                      -- DF's max_level when the profile sets none
 -- the kinds where quality matters, and the skill and labour each trains
--- (df.job_skill / df.unit_labor tokens; the craftsdwarf's trains stonecraft)
+-- (df.job_skill / df.unit_labor tokens, df-structures: the labours are STONE_CRAFT
+-- and CUT_GEM, the skills STONECRAFT and CUTGEM; the craftsdwarf's trains stonecraft)
 BENCH_KINDS = {
     Carpenters = {skill = 'CARPENTRY', labor = 'CARPENTER'},
     Masons = {skill = 'MASONRY', labor = 'MASON'},
-    Craftsdwarfs = {skill = 'STONECRAFT', labor = 'STONECRAFTER'},
-    Jewelers = {skill = 'CUTGEM', labor = 'CUTGEM'},
+    Craftsdwarfs = {skill = 'STONECRAFT', labor = 'STONE_CRAFT'},
+    Jewelers = {skill = 'CUTGEM', labor = 'CUT_GEM'},
     Clothiers = {skill = 'CLOTHESMAKING', labor = 'CLOTHESMAKER'},
     Leatherworks = {skill = 'LEATHERWORK', labor = 'LEATHER'},
     Bowyers = {skill = 'BOWYER', labor = 'BOWYER'},
