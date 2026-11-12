@@ -47,6 +47,7 @@ WORKSHOPS = {
     Loom = 'wo', Clothiers = 'wk', Farmers = 'ww', Fishery = 'wh',
     Mechanics = 'wt', Jewelers = 'wj', Ashery = 'wy', Millstone = 'wM',
     Quern = 'wq', Bowyers = 'wb', SoapMaker = 'wS',
+    ScrewPress = 'wp',          -- (item9) paper pressed from slurry (Quickfort's key: needs an in-game look)
     -- furnaces and the forge (metal: brain/planner.py's industry rule)
     WoodFurnace = 'ew', Smelter = 'es', MetalsmithsForge = 'wf', Kiln = 'ek',
     GlassFurnace = 'eg',        -- (0.104.95) glass from bags of sand, with fuel

@@ -37,7 +37,8 @@ FURNITURE = ("Statue", "Table", "Chair", "Bed", "Coffin", "Cabinet", "Chest", "B
 # ai-layouts.WORKSHOPS and STOCKPILES (the test checks them against the Lua)
 WORKSHOPS = ("Carpenters", "Masons", "Craftsdwarfs", "Still", "Kitchen", "Butchers", "Tanners", "Leatherworks",
              "Loom", "Clothiers", "Farmers", "Fishery", "Mechanics", "Jewelers", "Ashery", "Millstone", "Quern",
-             "Bowyers", "SoapMaker", "WoodFurnace", "Smelter", "MetalsmithsForge", "Kiln", "GlassFurnace")
+             "Bowyers", "SoapMaker", "WoodFurnace", "Smelter", "MetalsmithsForge", "Kiln", "GlassFurnace",
+             "ScrewPress")      # (item9) paper from slurry
 PILES = ("food", "stone", "wood", "furniture", "bars_blocks", "finished_goods", "cloth", "leather", "gems",
          "ammo", "weapons", "armor")
 ITEM_KIND = {**{k: "furniture" for k in FURNITURE}, **{k: "workshop" for k in WORKSHOPS},

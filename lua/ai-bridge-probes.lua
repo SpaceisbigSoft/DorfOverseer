@@ -441,6 +441,7 @@ function cmd_assumptions()
     pcall(function() env.UTILS = require('utils') end)
     env.REACTION = function(code) return reaction_exists(code) or nil end
     env.COKE = function(stone) return coke_reaction(stone) end
+    env.PAPER = function(kind) return paper_reaction(kind) end   -- (item9) lua/ai-paper.lua
     pcall(function() env.QUICKFORT = reqscript('quickfort') end)
     pcall(function() env.DETAIL = df.global.plotinfo.labor_info.work_details[0] end)
     pcall(function() env.UNIT = dfhack.units.getCitizens()[1] or dfhack.units.getCitizens()[0] end)
@@ -460,6 +461,10 @@ function cmd_assumptions()
         end
         if type(r) == 'table' and r.reaction_find then
             table.insert(list, 'COKE("' .. r.reaction_find .. '") (recipe ' .. name .. ')')
+        end
+        -- (item9) optional: a game without plant paper still runs (the planner reads the paper section)
+        if type(r) == 'table' and r.paper then
+            table.insert(list, '~PAPER("' .. r.paper .. '") (recipe ' .. name .. ')')
         end
     end
     for _, cat in ipairs(STOCK_CATEGORIES) do table.insert(list, 'df.items_other_id.' .. cat[2]) end

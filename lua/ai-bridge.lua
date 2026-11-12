@@ -580,7 +580,7 @@ BRIDGE_MODULES = {
     'ai-health', 'ai-homes',
     'ai-industry', 'ai-insane', 'ai-joins', 'ai-labor', 'ai-layouts', 'ai-military', 'ai-military-gear',
     'ai-mission-send', 'ai-missions', 'ai-moods', 'ai-noble-demands', 'ai-nobles', 'ai-overlay',
-    'ai-overseer-settings', 'ai-pile-links', 'ai-ping', 'ai-provisions', 'ai-reports', 'ai-siege',
+    'ai-overseer-settings', 'ai-paper', 'ai-pile-links', 'ai-ping', 'ai-provisions', 'ai-reports', 'ai-siege',
     'ai-society', 'ai-society-burrows', 'ai-status', 'ai-threats', 'ai-title', 'ai-trade', 'ai-traffic',
     'ai-util', 'ai-water', 'ai-waterworks', 'gui/ai-overseer',
     'ai-hazards',   -- (0.105.41, item 7)
@@ -987,6 +987,8 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
     -- (item5) hostiles near a caravan's merchants, hostile wild animals near the
     -- dwarves outside (lua/ai-siege.lua; in the pulse)
     field_watch = function() return safe(function() return reqscript('ai-siege').field_watch(txt) end) end,
+    -- (item9) paper from plants, scrolls and codices for the library (lua/ai-paper.lua)
+    paper = function() return safe(function() return reqscript('ai-paper').report() end) end,
     -- (0.105.30) what the fort has built: finished constructions by shape and
     -- material, above or below ground, roofed surface tiles, the waiting ones
     -- and the AI's own (lua/ai-constructions.lua; one pass, every 3 days)
@@ -1029,6 +1031,7 @@ SECTION_CACHE_DAYS.food_store = 1      -- (0.105.40b, M6) every food item walked
 SECTION_CACHE_DAYS.noble_demands = 1   -- (0.105.41) the engravings walked once
 SECTION_CACHE_DAYS.pile_links = 1      -- (0.105.41, item 2) every tool and the AI's piles walked once
 SECTION_CACHE_DAYS.siege = 1           -- (item5) small boxes round the entrances, the engines
+SECTION_CACHE_DAYS.paper = 1           -- (item9) the plants and tools walked once
 SECTION_REBUILDS = 2       -- expired cached sections rebuilt in one report (a missing one always is)
 -- (0.100) the cached sections each action changes (cleared when it succeeds)
 CACHE_INVALIDATES = {

@@ -161,6 +161,7 @@ SECTION_DEFAULTS = {
     "insane": {},            # (0.105.40b) the insane, the deadly ground near them, the AI's doors locked, the near-breaking (lua/ai-insane.lua)
     "hauling": {},           # (0.105.40 M5) haul jobs waiting, haulers, key workers hauling (lua/ai-hauling.lua)
     "traffic": {},           # (0.105.41) traffic zones on the AI's finished levels: waiting, in progress, rechecks (lua/ai-traffic.lua)
+    "paper": {},             # (item9) paper, scrolls, codices: reactions, inputs, quires (lua/ai-paper.lua)
     "food_store": {},        # (0.105.40b, M6) food piles, their barrels and fullness, food out of piles, rotten (lua/ai-food-store.lua)
     "pile_links": {},        # (0.105.41, item 2) wheelbarrows, the AI's stone piles, its feeders' links (lua/ai-pile-links.lua)
     "provisions": {},        # (0.105.41, item 4) game and hunters, butchery and tanning, fruit trees, meals by kind, cavern farms (lua/ai-provisions.lua)
