@@ -154,6 +154,8 @@ SECTION_DEFAULTS = {
     "perf": {},              # (0.105.40) the report's own cost: sections' ms, cached, total_ms, fps (lua/ai-bridge.lua perf_section)
     "cleanup": {},           # (0.105.40) world cleanup: unreachable items and creatures, spatter, dead units (lua/ai-cleanup.lua)
     "weather": {},           # (fix41) evil weather, read each pulse too (lua/ai-threats.lua weather_section)
+    "captives": {},          # (item6) caged prisoners one by one, the AI's pit (lua/ai-captives.lua)
+    "necro": {},             # (item6) a necromancer siege: the dead, raisers, bodies outside, towers near (lua/ai-captives.lua)
     "insane": {},            # (0.105.40b) the insane, the deadly ground near them, the AI's doors locked, the near-breaking (lua/ai-insane.lua)
     "hauling": {},           # (0.105.40 M5) haul jobs waiting, haulers, key workers hauling (lua/ai-hauling.lua)
     "food_store": {},        # (0.105.40b, M6) food piles, their barrels and fullness, food out of piles, rotten (lua/ai-food-store.lua)

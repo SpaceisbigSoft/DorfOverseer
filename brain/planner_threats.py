@@ -210,6 +210,8 @@ def _prisoners(s, cfg, t, rules, proposals, notes):
                                   f"{n} prisoner(s) in cages and no cage room inside the fort: an animal stockpile "
                                   "for the full cages, inside", 5))
     choice = rules["prisoners"]
+    if isinstance(_d(s.get("captives")).get("list"), list):
+        return          # (item6) the captives rule says each one's outcome (planner_captives)
     if choice == "keep":
         notes.append(f"{n} prisoner(s) kept in their cages (Rules tab: prisoners)")
     else:
