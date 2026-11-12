@@ -795,4 +795,15 @@ PLANNER_CONFIG = {
     "cleanup_dead_dry_cooldown_ticks": 1200,
     "cleanup_items_dry_cooldown_ticks": 1200,
     "cleanup_units_dry_cooldown_ticks": 1200,
+    # (0.105.40 M7) alloys at the smelter (brain/planner_alloys.py)
+    "alloy_iron_route_bars": 10,          # iron, pig iron and steel bars that make a fort an iron fort (no bronze for gear)
+    "alloy_bronze_want": 40,              # bronze and bismuth bronze bars made while there are fewer than this
+    "alloy_copper_keep": 2,               # copper bars never alloyed for gear (a job being made now)
+    "alloy_batch": 5,                     # reactions an order
+    "alloy_fuel_min": 3,                  # charcoal or coke the gear alloy needs (none at a magma smelter)
+    "alloy_tin_copper_bars": 10,          # copper bars that make the tin ore worth smelting and mining (no iron)
+    "alloy_value_fuel_min": 30,           # charcoal or coke before a value alloy is made (none at a magma smelter)
+    "alloy_value_keep": 20,               # bars of each metal kept back before it's alloyed for value
+    "alloy_value_want": 30,               # a value alloy's bars made while there are fewer than this
+    "alloy_value_gain": 1.25,             # the alloy's bars worth this many times its parts, at least
 }

@@ -14,6 +14,9 @@ PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-military-gear'] = '0.105.
 -- many squads have a uniform (without one, armour made isn't handed out);
 -- spare metal gear; and weapon-grade metal bars by kind.
 GEAR_METALS = {'STEEL', 'IRON', 'BRONZE', 'BISMUTH_BRONZE', 'COPPER'}   -- best first
+-- (0.105.40 M7) the alloys and their parts, whose values the gear report gives
+ALLOY_METALS = {'COPPER', 'TIN', 'BISMUTH', 'ZINC', 'SILVER', 'GOLD', 'BRONZE', 'BISMUTH_BRONZE', 'BRASS',
+                'ELECTRUM', 'BILLON', 'BLACK_BRONZE', 'ROSE_GOLD', 'STERLING_SILVER'}
 local GEAR_LISTS = {weapons = 'WEAPON', body = 'ARMOR', helms = 'HELM', pants = 'PANTS',
                     gloves = 'GLOVES', boots = 'SHOES', shields = 'SHIELD'}
 
@@ -763,6 +766,20 @@ gear_report_body = function()        -- (the local declared above gear_report)
             if m == 'PIG_IRON' then out.pig_iron = (out.pig_iron or 0) + it:getStackSize() end
         end
     end
+    -- (0.105.40 M7) each metal's value in this game's raws, the bars held and
+    -- the alloys (the brain alloys precious metals only where the alloy is worth more)
+    pcall(function()
+        local want = {}
+        for m in pairs(out.all_bars or {}) do want[m] = true end
+        for _, m in ipairs(ALLOY_METALS) do want[m] = true end
+        for m in pairs(want) do
+            local mi = dfhack.matinfo.find('INORGANIC:' .. m)
+            if mi and mi.material then
+                out.bar_values = out.bar_values or {}
+                out.bar_values[m] = mi.material.material_value
+            end
+        end
+    end)
     for _, b in ipairs(df.global.world.buildings.all) do
         if b:getType() == df.building_type.Workshop and (b.type == df.workshop_type.MetalsmithsForge
                 or b.type == df.workshop_type.MagmaForge) then

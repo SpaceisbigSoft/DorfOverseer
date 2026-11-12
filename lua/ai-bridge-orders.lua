@@ -96,6 +96,18 @@ ORDER_RECIPES = {
     coke_bituminous = {job = 'CustomReaction', reaction_find = 'COAL_BITUMINOUS'},
     coke_lignite = {job = 'CustomReaction', reaction_find = 'LIGNITE'},
     steel = {job = 'CustomReaction', reaction = 'STEEL_MAKING'},
+    -- (0.105.40 M7) alloys at the smelter from bars (vanilla reaction_smelter.txt,
+    -- the "(use bars)" reactions; each takes a fuel unless at a magma smelter).
+    -- `alloy`: when the code isn't in this game's raws, the smelter reaction
+    -- whose reagents are all bars and whose product is a bar of that metal.
+    alloy_bronze = {job = 'CustomReaction', reaction = 'BRONZE_MAKING', alloy = 'BRONZE'},
+    alloy_bismuth_bronze = {job = 'CustomReaction', reaction = 'BISMUTH_BRONZE_MAKING', alloy = 'BISMUTH_BRONZE'},
+    alloy_brass = {job = 'CustomReaction', reaction = 'BRASS_MAKING', alloy = 'BRASS'},
+    alloy_electrum = {job = 'CustomReaction', reaction = 'ELECTRUM_MAKING', alloy = 'ELECTRUM'},
+    alloy_billon = {job = 'CustomReaction', reaction = 'BILLON_MAKING', alloy = 'BILLON'},
+    alloy_black_bronze = {job = 'CustomReaction', reaction = 'BLACK_BRONZE_MAKING', alloy = 'BLACK_BRONZE'},
+    alloy_rose_gold = {job = 'CustomReaction', reaction = 'ROSE_GOLD_MAKING', alloy = 'ROSE_GOLD'},
+    alloy_sterling_silver = {job = 'CustomReaction', reaction = 'STERLING_SILVER_MAKING', alloy = 'STERLING_SILVER'},
     -- (0.105.27) the items marked for melting melted at a smelter (DF 50
     -- makes no melt job by itself: the DF wiki's Melt page); ai-disposal's mark_melt adds it
     melt_metal = {job = 'MeltMetalObject'},
@@ -297,7 +309,8 @@ local function recipe_of(order)
     for name, r in pairs(ORDER_RECIPES) do
         -- (a recipe whose reaction is looked up in the raws, like coke: 0.54
         -- couldn't recognise its own coke orders and placed one every 2 days)
-        local reaction = r.reaction or (r.reaction_find and coke_reaction(r.reaction_find)) or ''
+        local reaction = (r.alloy and alloy_reaction(r)) or r.reaction
+            or (r.reaction_find and coke_reaction(r.reaction_find)) or ''
         if r.job == job
                 and reaction == order.reaction_name
                 and (not r.meal_ingredients or r.meal_ingredients == order.mat_type)
@@ -450,8 +463,55 @@ function reaction_exists(code)
     return ok and found
 end
 
+-- (0.105.40 M7) An alloy recipe's reaction code: its own when the game has it,
+-- else a smelter reaction whose reagents are all bars and which makes a bar of
+-- the recipe's metal (a mod that renamed it). Nil when there is neither.
+ALLOY_CACHE = ALLOY_CACHE or {}
+function alloy_reaction(r)
+    local key = tostring(r.reaction) .. '/' .. tostring(r.alloy)
+    if ALLOY_CACHE[key] ~= nil then return ALLOY_CACHE[key] or nil end
+    local code = nil
+    if r.reaction and reaction_exists(r.reaction) then
+        code = r.reaction
+    else
+        local ok, found = pcall(function()
+            for _, rx in ipairs(df.global.world.raws.reactions.reactions) do
+                local bars_only = #rx.reagents > 0
+                for _, rg in ipairs(rx.reagents) do
+                    local okb, it = pcall(function() return rg.item_type end)
+                    if not okb or it ~= df.item_type.BAR then bars_only = false end
+                end
+                if bars_only then
+                    for _, pr in ipairs(rx.products) do
+                        local okp, id = pcall(function()
+                            if pr.item_type ~= df.item_type.BAR then return nil end
+                            local mi = dfhack.matinfo.decode(pr.mat_type, pr.mat_index)
+                            return mi and mi.inorganic and mi.inorganic.id
+                        end)
+                        if okp and id == r.alloy then return rx.code end
+                    end
+                end
+            end
+        end)
+        code = ok and found or nil
+    end
+    ALLOY_CACHE[key] = code or false
+    return code
+end
+
 function act_work_order(a)
     local recipe = ORDER_RECIPES[a.recipe]
+    if recipe and recipe.alloy then
+        local code = alloy_reaction(recipe)
+        if not code then
+            return reject(('the game has no reaction making %s bars from bars (recipe %s)'):format(
+                recipe.alloy, a.recipe))
+        end
+        local copy = {}
+        for k, v in pairs(recipe) do if k ~= 'alloy' then copy[k] = v end end
+        copy.reaction = code
+        recipe = copy
+    end
     if recipe and recipe.reaction_find then
         local code = coke_reaction(recipe.reaction_find)
         if not code then

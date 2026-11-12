@@ -692,6 +692,8 @@ JOB_SHOPS = {"MakeCrafts": "Craftsdwarfs", "MakeAmulet": "Craftsdwarfs", "MakeBr
 
 # The AI's own recipes made by a reaction, by where they're made.
 RECIPE_SHOPS = {"pig_iron": "Smelter", "steel": "Smelter", "coke_bituminous": "Smelter",
+                **{f"alloy_{m}": "Smelter" for m in ("bronze", "bismuth_bronze", "brass", "electrum", "billon",
+                                                     "black_bronze", "rose_gold", "sterling_silver")},   # (0.105.40 M7)
                 "coke_lignite": "Smelter", "smelt_ore": "Smelter", "brew_drink": "Still",
                 "brew_drink_from_fruit": "Still", "make_mead": "Still", "make_charcoal": "WoodFurnace",
                 "weave_plant_cloth": "Loom", "weave_yarn_cloth": "Loom", "weave_silk_cloth": "Loom",
@@ -1385,7 +1387,7 @@ AGENDA_THEMES = {
     "arms": "arm and armour the soldiers", "uniform": "dress the squads", "barracks_assign": "house the squads",
     "squad_fill": "fill the squads", "grandeur": "dress the halls", "quick_temple": "a place to pray", "quick_tavern": "a tavern", "stress_care": "care for dwarves near breaking", "squad_trim": "send extra soldiers back to work", "unload_depot": "empty the depot after the caravans", "needs_finery": "jewellery to wear", "good_cooks": "the best cooks to the kitchen", "squad_make": "raise a new squad", "uniform_adopt": "dress the squads", "staff": "staff the hospital, library and tavern", "tavern": "stock the tavern", "kiln": "plaster and paper", "anvil": "an anvil for a new forge", "petitions": "answer petitions", "residency": "answer petitions to stay", "train": "train the soldiers",
     "build": "build the fort's next level", "furniture": "furnish the new levels",
-    "steel": "make steel", "smelt": "smelt the ore", "ore": "mine ore", "fuel": "make fuel",
+    "steel": "make steel", "alloy": "alloy bronze and finer metals", "smelt": "smelt the ore", "ore": "mine ore", "fuel": "make fuel",
     "trade": "trade with the caravans", "trade_deal": "trade with the caravans", "crafts": "make goods to sell",
     "gems": "cut gems", "encrust": "set gems into crafts", "drink": "keep the drink flowing",
     "needs_meal": "cook good meals", "needs_craft": "let dwarves craft",

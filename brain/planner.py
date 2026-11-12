@@ -49,6 +49,7 @@ from planner_world import (_contact_rule, _export_rule, _hostile_trade_filter, _
                            _messenger_rule, _world_notes, note_world)  # (0.105.0: the world outside, 12b and 13b)
 from planner_missions import _mission_rule, note_missions  # noqa: E402  (0.105.39) missions on the world map
 from planner_cleanup import _world_cleanup_rule, note_cleanup  # noqa: E402  (0.105.40) world cleanup for the game's speed
+from planner_alloys import _alloy_rule  # noqa: E402  (0.105.40 M7) bronze for a fort without iron, value alloys
 from planner_construct import (_hall_rule, _construction_blocks_rule,  # noqa: E402  (0.105.30) construction
                                note_construct, note_construct_cycle)
 from planner_army import (_army_gear_rule, _quiver_rule, _bolts_rule, _flask_rule,  # noqa: E402  (0.105.0, round 2)
@@ -663,6 +664,8 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
     # 6f. Metal: furnaces once ore is known, the vein mined, charcoal
     if can_use("buildings", "projects", "industry"):
         _guard(_industry_rules, s, memory, cfg, citizens, proposals, notes)
+    if can_use("buildings", "military", "industry"):
+        _guard(_alloy_rule, s, memory, cfg, proposals, notes)     # (0.105.40 M7) alloys at the smelter
 
     # 6g. The watchdog: work orders that don't move, a population that doesn't
     if memory is not None:
