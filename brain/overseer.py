@@ -539,7 +539,10 @@ def short(a: dict) -> str:
         return "shut the cistern's floodgate" if a.get("shut") else "the cistern: next step"
     if t == "water_work":        # (0.105.0)
         what = {"moat": "the moat", "pump": "the pump stack", "irrigation": "the muddied farm level",
-                "magma": f"the {a.get('shop') or 'magma workshop'}"}.get(a.get("kind"), "a water work")
+                "magma": f"the {a.get('shop') or 'magma workshop'}",
+                "power": "the pump stack's power"}.get(a.get("kind"), "a water work")   # (0.105.37 E3)
+        if a.get("kind") == "power" and a.get("shut"):
+            return "switch off the pump stack's power"
         if a.get("shut"):
             return f"shut {what}'s floodgate"
         if a.get("retire"):      # (0.105.35)

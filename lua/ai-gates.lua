@@ -2975,7 +2975,8 @@ end
 -- probe found every part of this in DF 53.16; dry_run checks without acting.
 ---------------------------------------------------------------------------
 
-LINK_TARGETS = {Bridge = true, Door = true, Hatch = true, Floodgate = true, GrateFloor = true, BarsFloor = true}
+LINK_TARGETS = {Bridge = true, Door = true, Hatch = true, Floodgate = true, GrateFloor = true, BarsFloor = true,
+                GearAssembly = true}      -- (0.105.37 E3) the pump stack's power switch (ai-waterworks.lua)
 
 -- Mechanisms no one is using: {item, ...} (tests replace this).
 -- (0.94.1) Why a mechanism can't be used for a link (nil when it can).
