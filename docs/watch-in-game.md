@@ -11,6 +11,15 @@ Where to look:
 The forts are A War-hold, B Monastery, C Merchant city, D Hermit hold, E Deep mine and F Garden fort. "All" means every fort.
 
 
+## 0.105.39 (12 Nov): missions (13b)
+
+- **All**: the Army tab's new rows, **Missions to send out** (*rescue and recover* by default) and **Send them by the World screen (trial)** (off), under the caverns' switch and clear of the help text; an old save reading those defaults.
+- **All, state.json**: `missions.targets` (best first: goal, site, distance, why, the citizen or artifact); only goals the `missions` switch allows proposed; raids and the rest only at *all* and only against hostile or at-war civilisations.
+- **With `send_missions` off (the default)**: a note naming the target and the squads, and Needs you saying what to send; the reserve kept home (at least 3, more at low Militarism); nothing while a threat is near, during a siege, or while another mission is out.
+- **Record the buttons first, once**: send one mission by hand (rescue, recover an artifact or explore, as the fort has one) while `python brain\probe_missions.py --watch` runs (`--watch 300` for 5 minutes): open the World screen, pick the site, the goal, the squads and confirm. Then show the AI each button with the mouse on it and `python brain\probe_missions.py --here <Name>` (the goal's button on the New mission screen; the names `missions.send.goals` lists). `missions.send.goals.<goal>.button` should then be true.
+- **With `send_missions` on**: `send_mission` in the journal with its goal, site and squads; `missions.send` and `dfhack-config\ai-overseer\mission-send.json`; the run stopping at the first unrecorded step with what it saw, the World screen shut after, and that goal not tried again for a year.
+- **A mission back**: the journal line and chronicle entry from the game's report and spoils (quoted, cut short); memory `missions_sent`, `missions_back`, `rescued`, `artifacts_recovered`.
+
 ## 0.105.33 (11 Nov): the audit's fixes and the slider changes
 
 - **All**: `python brain\selftest.py`; the first report of each fort for `{"error"}` sections; the window's new **Army** tab (military, junk, prisoners) and the Rules tab fitting.
