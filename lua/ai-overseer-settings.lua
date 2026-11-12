@@ -348,6 +348,9 @@ function defaults()
         disposal = 'destroy',
         disposal_player_items = false,
         keep_enemy_gear = false,
+        -- (item10) cavern trees felled while wood is short and the caverns' ways in
+        -- are watched (brain/planner_forestry.py); off: the woodcutters stay out of them
+        cavern_logging = true,
         -- (0.105.40, 13e) world cleanup for the game's speed (WORLD_CLEANUP_CHOICES)
         world_cleanup = 'safe',
         -- (0.105.0) water works: a moat from the river (only where one is found), magma workshops, a muddied farm level
@@ -453,6 +456,7 @@ function sanitize(s)
                         'construct',                -- (0.105.30) building above ground (hall, wings, floors)
                         'moat', 'magma_workshops', 'irrigation',   -- (0.105.0) the water works' switches
                         'disposal_player_items', 'keep_enemy_gear',   -- (0.105.27) disposal
+                        'cavern_logging',           -- (item10) cavern trees felled when safe
                         'squads_shelter',           -- (0.105.0) the squads hide in the shelter too
                         'mine_adamantine'}) do      -- (0.105.40b) reserved: still refused (not built yet)
         if s[k] ~= nil then out[k] = s[k] == true end
@@ -553,6 +557,7 @@ function for_ai(s)
         disposal = s.disposal,                     -- (0.105.27)
         disposal_player_items = s.disposal_player_items,
         keep_enemy_gear = s.keep_enemy_gear,
+        cavern_logging = s.cavern_logging,         -- (item10)
         world_cleanup = s.world_cleanup,           -- (0.105.40) off | safe | full
         moat = s.moat, magma_workshops = s.magma_workshops, irrigation = s.irrigation,   -- (0.105.0)
         open_caverns = s.open_caverns,             -- (0.105.4 review)

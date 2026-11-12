@@ -521,6 +521,9 @@ SHORT_WORDS = {
     "cleanup_dead_units": "take long-dead creatures off the game's active list",
     "insane_guard": "lock the AI's own doors between an insane dwarf and deep water, magma or a drop while they are near",  # (0.105.40b)
     "add_haulers": "put idle dwarves on hauling",  # (0.105.40 M5)
+    "cavern_logging": "mark cavern trees for the woodcutters (or call them back)",  # (item10)
+    "keep_grove": "keep a grove of young trees from the axes",  # (item10)
+    "bench_caps": "make a second workshop a training bench (or lift its skill cap)",  # (item10)
     "relieve_haulers": "take key workers (or the AI's extra haulers) off hauling, or give it back",
     "census": "count what fills the map",  # (0.104.113)
     "seal_well_stairs": "close the cavern wells' stair columns",  # (0.104.151)

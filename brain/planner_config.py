@@ -866,4 +866,15 @@ PLANNER_CONFIG = {
     "alloy_value_keep": 20,               # bars of each metal kept back before it's alloyed for value
     "alloy_value_want": 30,               # a value alloy's bars made while there are fewer than this
     "alloy_value_gain": 1.25,             # the alloy's bars worth this many times its parts, at least
+    # (item10) cavern logging and the grove (brain/planner_forestry.py)
+    "cavern_logging_surface_min": 20,     # cavern trees felled while fewer surface trees than this stand (the grove's not counted)
+    "cavern_logging_batch": 10,           # trees the AI keeps marked in the caverns at a time
+    "cavern_logging_cooldown_ticks": 2 * 1200,
+    "grove_min_saplings": 6,              # saplings on the surface before a grove is kept
+    "grove_release_wood": 5,              # fewer logs than this: the grove's trees are left to the woodcutters
+    "grove_cooldown_ticks": 7 * 1200,
+    # (item10) training benches (brain/planner_benches.py)
+    "bench_training_max_level": 5,        # the training bench's max skill (df skill rating: 5 Proficient)
+    "bench_learners_min": 2,              # workers below it before a bench is capped
+    "bench_caps_cooldown_ticks": 1200,
 }

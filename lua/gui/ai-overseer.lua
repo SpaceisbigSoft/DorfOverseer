@@ -738,6 +738,16 @@ function MilitaryPage:init()
         initial_option = p.settings.squads_shelter ~= false,
         on_change = function(v) p:set_field('squads_shelter', v) end,
     })
+    -- (item10) cavern trees felled when wood is short and the caverns are watched
+    -- (the free row t+17, under the caverns' seal switch and over the missions)
+    table.insert(views, widgets.ToggleHotkeyLabel{
+        view_id = 'cavern_logging',
+        frame = {t = t + 17, l = 2, w = 50},
+        label = 'Fell cavern trees when it is safe:',
+        label_width = 36,
+        initial_option = p.settings.cavern_logging ~= false,
+        on_change = function(v) p:set_field('cavern_logging', v) end,
+    })
     table.insert(views, widgets.CycleHotkeyLabel{
         view_id = 'gear_weapon',
         frame = {t = t + 13, l = 2, w = 60},
@@ -868,6 +878,7 @@ function MilitaryPage:refresh()
     self.subviews.disposal:setOption(s.disposal or 'destroy', false)                      -- (0.105.27)
     self.subviews.disposal_player_items:setOption(s.disposal_player_items == true, false)
     self.subviews.keep_enemy_gear:setOption(s.keep_enemy_gear == true, false)
+    self.subviews.cavern_logging:setOption(s.cavern_logging ~= false, false)        -- (item10)
     self.subviews.missions:setOption(S.MISSION_NAMES[s.missions] and s.missions or 'rescue', false)   -- (0.105.39)
     self.subviews.send_missions:setOption(s.send_missions == true, false)
 end

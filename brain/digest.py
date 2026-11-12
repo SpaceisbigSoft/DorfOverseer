@@ -157,6 +157,9 @@ SECTION_DEFAULTS = {
     "insane": {},            # (0.105.40b) the insane, the deadly ground near them, the AI's doors locked, the near-breaking (lua/ai-insane.lua)
     "hauling": {},           # (0.105.40 M5) haul jobs waiting, haulers, key workers hauling (lua/ai-hauling.lua)
     "food_store": {},        # (0.105.40b, M6) food piles, their barrels and fullness, food out of piles, rotten (lua/ai-food-store.lua)
+    "forestry": {},          # (item10) trees by where they stand, cavern layers and dangers, the grove (lua/ai-forestry.lua)
+    "benches": {},           # (item10) the AI's workshops of a kind, their skill caps, the labour's skills (lua/ai-benches.lua)
+    "leather_gear": {},      # (item10) empty leather uniform entries, free leather gear (lua/ai-leather-gear.lua)
 }
 # (0.105.36) not REQUIRED (the plan goes on without them), but a missing one is
 # listed in _errors as a failed one is: the default (civ_alert False) is not

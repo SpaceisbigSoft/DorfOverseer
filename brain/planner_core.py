@@ -514,6 +514,8 @@ def player_rules(s: dict) -> dict:
             # (0.105.40, 13e) world cleanup for the game's speed (brain/planner_cleanup.py):
             # off / safe (the default: spatter, old dead units, items lost a year) / full (and
             # unreachable hostile or wild creatures)
+            # (item10) cavern trees felled when the caverns are watched and wood is short: off only when the settings say so
+            "cavern_logging": st.get("cavern_logging") is not False,
             "world_cleanup": st.get("world_cleanup") if st.get("world_cleanup") in ("off", "safe", "full") else "safe",
             "clear_alerts": st.get("clear_alerts") if st.get("clear_alerts") in ("all", "quiet", "none") else "quiet"}
 

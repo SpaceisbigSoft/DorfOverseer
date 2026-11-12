@@ -361,6 +361,19 @@ ACTIONS = {
     blueprint_sites = act_blueprint_sites,
     build_blueprint = act_build_blueprint,
     landmark_step = act_landmark_step,
+    -- (item10) cavern trees felled when safe (stop: the AI's marks lifted); the grove kept (lua/ai-forestry.lua)
+    cavern_logging = function(a)
+        return reqscript('ai-forestry').cavern_logging(a.limit, a.dry_run == true, a.stop == true,
+                                                      a.inside_only == true)
+    end,
+    keep_grove = function(a) return reqscript('ai-forestry').keep_grove(a.dry_run == true, a.guard == true) end,
+    -- (item10) a skill cap on the AI's second workshop of a kind (release: lifted) (lua/ai-benches.lua)
+    bench_caps = function(a)
+        if type(a.kind) ~= 'string' then return reject('bench_caps needs kind (Carpenters, Masons, ...)') end
+        local B = reqscript('ai-benches')
+        if a.release == true then return B.release_bench(a.kind, a.dry_run == true) end
+        return B.cap_bench(a.kind, a.level, a.dry_run == true)
+    end,
 }
 
 -- (13c) The actions whose dry run changes nothing in the fort, all the way
@@ -416,6 +429,7 @@ for _, name in ipairs({
     'add_haulers', 'relieve_haulers',   -- (0.105.40 M5) each dry run names the dwarves and changes nothing
     -- (0.105.40b, M6) the food store: each dry run finds the spot (quickfort's dry run) and changes nothing
     'food_pile', 'food_barrels',
+    'cavern_logging', 'keep_grove', 'bench_caps',   -- (item10) each dry run counts and changes nothing
 }) do DRY_OK[name] = true end
 
 -- These only change what's displayed, so they still work while halted, dry
@@ -480,6 +494,7 @@ end
 -- `modules` loads each. tests/test_fix26_bridge.py keeps it in step with lua/.
 BRIDGE_MODULES = {
     'ai-blueprints', 'ai-builder', 'ai-camera', 'ai-census', 'ai-cleanup', 'ai-constructions', 'ai-diplomacy', 'ai-disposal', 'ai-food-store', 'ai-gates', 'ai-hauling', 'ai-health', 'ai-homes',
+    'ai-benches', 'ai-forestry', 'ai-leather-gear',   -- (item10)
     'ai-industry', 'ai-insane', 'ai-joins', 'ai-labor', 'ai-layouts', 'ai-military', 'ai-military-gear',
     'ai-mission-send', 'ai-missions', 'ai-moods', 'ai-nobles', 'ai-overlay', 'ai-overseer-settings',
     'ai-ping', 'ai-reports', 'ai-society', 'ai-society-burrows', 'ai-status', 'ai-threats', 'ai-title',
@@ -863,6 +878,13 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
     -- fullness, the AI's own), the kitchens and stills, the food lying out of
     -- piles and barrels and the rotten (lua/ai-food-store.lua; cached a day)
     food_store = function() return safe(function() return reqscript('ai-food-store').report() end) end,
+    -- (item10) the trees by where they stand, cavern layers and their dangers, the grove (lua/ai-forestry.lua;
+    -- its tree census rebuilt once a game day, the dangers read each report)
+    forestry = function() return safe(function() return reqscript('ai-forestry').report() end) end,
+    -- (item10) the AI's workshops of a kind, their skill caps, the labour's skills (lua/ai-benches.lua)
+    benches = function() return safe(function() return reqscript('ai-benches').report() end) end,
+    -- (item10) the soldiers' empty leather uniform entries and the free leather gear (lua/ai-leather-gear.lua)
+    leather_gear = function() return safe(function() return reqscript('ai-leather-gear').report() end) end,
     -- (0.105.30) what the fort has built: finished constructions by shape and
     -- material, above or below ground, roofed surface tiles, the waiting ones
     -- and the AI's own (lua/ai-constructions.lua; one pass, every 3 days)
