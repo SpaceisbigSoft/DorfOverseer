@@ -17,6 +17,12 @@ falls short, one step a cycle, the highest noble first:
   * no statue free: stone statues ordered (3), unless queued or the stone
     is short.
 
+A room with a statue placed and not yet built (`statues_pending`) or tiles
+being smoothed or engraved (`polish_pending`) waits for them: the report's
+free statues still count the placed one until a dwarf takes the job. The
+rule holds while a threat can reach the dwarves or a siege is on (as the
+traffic rule does).
+
 At most `noble_room_statues_max` statues go into one room; past that (and
 nothing left to engrave) a note says the room wants finer furniture.
 `nobles_view()` is the view: each noble, required vs actual, the plan.
@@ -26,6 +32,7 @@ from __future__ import annotations
 
 from digest import _d, _l
 from planner_core import (AGENDA_THEMES, Proposal, _traits, noble_room_kinds, queued, stone_short)
+from planner_traffic import _danger_near
 
 __all__ = ["noble_room_plan", "nobles_view", "_noble_value_rule", "TITLE_ORDER", "noble_rank"]
 
@@ -62,6 +69,10 @@ def noble_room_plan(s: dict, cfg: dict, memory=None) -> list:
     ordered = False
     out = []
     nobles = sorted((n for n in _l(nd.get("nobles")) if isinstance(n, dict)), key=noble_rank)
+    # a statue placed and not built yet is still counted free by the report
+    # (until a dwarf takes the job): not offered to another room
+    statues -= sum(int(r.get("statues_pending") or 0) for n in nobles for r in _l(n.get("rooms"))
+                   if isinstance(r, dict))
     for n in nobles:
         positions = [str(p) for p in _l(n.get("positions"))]
         for r in _l(n.get("rooms")):
@@ -85,18 +96,26 @@ def noble_room_plan(s: dict, cfg: dict, memory=None) -> list:
                 out.append(e)
                 continue
             e["status"] = "under"
+            st_wait = int(r.get("statues_pending") or 0)
+            pol_wait = int(r.get("polish_pending") or 0)
             if not given:
                 e["plan"] = "left as it is (Deference)"
-            elif statues > 0 and int(r.get("statues") or 0) < st_max:
+            elif statues > 0 and not st_wait and int(r.get("statues") or 0) < st_max:
                 statues -= 1
                 e["plan"] = "a statue put in"
                 e["action"] = {"type": "place_in_zone", "zone_id": r["zone_id"], "what": "statue"}
+            elif pol_wait:
+                e["plan"] = f"being smoothed or engraved ({pol_wait} tiles to do)"
             elif r.get("ai_built") and int(r.get("engrave_left") or 0) > 0 and not int(r.get("smooth_left") or 0):
                 e["plan"] = f"engraved ({r['engrave_left']} tiles)"
                 e["action"] = {"type": "polish_room", "zone_id": r["zone_id"]}
             elif r.get("ai_built") and int(r.get("smooth_left") or 0) > 0:
                 e["plan"] = f"smoothed ({r['smooth_left']} tiles), then engraved"
                 e["action"] = {"type": "polish_room", "zone_id": r["zone_id"]}
+            elif st_wait:
+                # placed and not built yet: the free statue the report still
+                # counts is the one it waits for (another would point at it too)
+                e["plan"] = f"a statue being put in ({st_wait} to build)"
             elif int(r.get("statues") or 0) < st_max:
                 if ordered or queued(s, {"stone_statue"}):
                     e["plan"] = "a statue, once one is made"
@@ -118,6 +137,8 @@ def _noble_value_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=N
     for the highest noble's widest gap (noble_room_plan)."""
     if "noble_demands" in _d(s.get("_errors")):
         return
+    if _danger_near(s):
+        return                       # a threat that can reach the dwarves, or a siege: the safety rules first
     plan = noble_room_plan(s, cfg, memory)
     under = [e for e in plan if e["status"] == "under" and e["action"]]
     if under:

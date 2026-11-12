@@ -77,7 +77,10 @@ def _barrows(p: dict, s: dict, cfg: dict, citizens: int, proposals: list) -> Non
     have = _int(b.get("ai_wanted"))
     if have >= cap:
         return
-    for r in sorted((r for r in _l(p.get("stone_piles")) if isinstance(r, dict) and isinstance(r.get("id"), int)),
+    # the AI's own feeder piles (beside a workshop) take no wheelbarrows: a
+    # barrow there would bring a load to a pile that feeds one workshop
+    for r in sorted((r for r in _l(p.get("stone_piles")) if isinstance(r, dict) and isinstance(r.get("id"), int)
+                     and not r.get("feeder")),
                     key=lambda r: (-_int(r.get("tiles")), r["id"])):
         cur = _int(r.get("barrows"))
         want = min(barrows_want(_int(r.get("tiles")), cfg), cur + cap - have)

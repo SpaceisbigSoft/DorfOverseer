@@ -96,14 +96,18 @@ def position(lua, code, entity="SiteGovernment", land_holder=0, law=False, **req
     return lt(lua, {"position": p, "entity": {"id": 5, "type": entity}})
 
 
-def zone(lua, env, zid, kind, x1, y1, x2, y2, z=10, items=(), statues=0):
+def zone(lua, env, zid, kind, x1, y1, x2, y2, z=10, items=(), statues=0, unbuilt=0):
     bs = [{"t": "Statue", "items": [{"item": {"v": 100}}]} for _ in range(statues)]
+    bs += [{"t": "Statue", "items": [], "unbuilt": True} for _ in range(unbuilt)]
     bs.append({"t": "Table", "items": [{"item": {"v": v}} for v in items]})
     blds = []
     for b in bs:
         bt = lt(lua, {"contained_items": b["items"]})
         kind_ = b["t"]
         lua.execute("local b, k = ...; b.getType = function() return k end", bt, kind_)
+        if b.get("unbuilt"):
+            lua.execute("local b = ...; b.getBuildStage = function() return 0 end; "
+                        "b.getMaxBuildStage = function() return 1 end", bt)
         blds.append(bt)
     zt = lt(lua, {"id": zid, "type": kind, "x1": x1, "y1": y1, "x2": x2, "y2": y2, "z": z})
     zt.contained_buildings = lua.table_from(blds)
@@ -147,9 +151,21 @@ def _():
                      {"x": 5, "y": 1, "z": 9, "shape": "WALL", "material": "MINERAL", "smoothing": True},
                      {"x": 6, "y": 1, "z": 9, "shape": "FLOOR", "material": "STONE", "ring": True},
                      {"x": 7, "y": 1, "z": 9, "shape": "WALL", "material": "STONE", "ring": True}])
-    sm, en = env.polish_split(tiles, lt(lua, {"3,1,9": {"q": 0}}))
+    sm, en, pend = env.polish_split(tiles, lt(lua, {"3,1,9": {"q": 0}}))
     assert sorted(sm[i].x for i in range(1, len(sm) + 1)) == [1, 7]
     assert [en[i].x for i in range(1, len(en) + 1)] == [2]
+    assert pend == 1                      # the wall being smoothed: polish still under way
+
+
+@test("polish: tiles designated or under a smoothing/engraving job count as pending; soil and a corridor's floor not")
+def _():
+    lua, env = game()
+    tiles = lt(lua, [{"x": 1, "y": 1, "z": 9, "shape": "FLOOR", "material": "STONE", "smoothing": True},
+                     {"x": 2, "y": 1, "z": 9, "shape": "WALL", "material": "STONE", "smoothed": True, "polish_job": True},
+                     {"x": 3, "y": 1, "z": 9, "shape": "FLOOR", "material": "SOIL", "smoothing": True},
+                     {"x": 4, "y": 1, "z": 9, "shape": "FLOOR", "material": "STONE", "ring": True, "smoothing": True}])
+    sm, en, pend = env.polish_split(tiles, lt(lua, {}))
+    assert len(sm) == 0 and len(en) == 0 and pend == 2, pend
 
 
 @test("inside_areas: a zone is the AI's when its middle is in one of its levels on that z")
@@ -218,6 +234,22 @@ def _():
     assert rk["bedroom"].smooth_left is None          # the player's room: never polished
     assert rk["office"].zone_id is None
     assert rooms_of(ns[3])["office"].value == 10 and ns[3].title is None
+
+
+@test("survey: a statue placed and not built is counted as the room's and as pending; a smoothing job as polish pending")
+def _():
+    lua, env = game()
+    fort(lua, env)
+    z = zone(lua, env, 104, "Bedroom", 40, 10, 41, 11, items=(10,), statues=1, unbuilt=1)
+    unit(lua, env, 6, [position(lua, "BARON", land_holder=1, required_bedroom=5000)], [z])
+    env.polish_jobs = lua.eval("function() return {['12,12,10'] = true} end")
+    r = env.survey()
+    ns = {r.nobles[i].unit_id: r.nobles[i] for i in range(1, len(r.nobles) + 1)}
+    b = rooms_of(ns[6])["bedroom"]
+    assert b.statues == 2 and b.statues_pending == 1, (b.statues, b.statues_pending)
+    assert rooms_of(ns[2])["bedroom"].statues_pending is None      # built statues: none pending
+    o = rooms_of(ns[1])["office"]
+    assert o.polish_pending == 1 and o.engrave_left == 6, (o.polish_pending, o.engrave_left)
 
 
 @test("survey: no nobles -> an empty list, not the capital")
@@ -298,6 +330,54 @@ def _():
     assert by(p, 1, "office")["action"] == {"type": "polish_room", "zone_id": 11} and "engraved" in by(p, 1, "office")["plan"]
     assert by(p, 2, "bedroom")["action"] is None and by(p, 2, "bedroom")["plan"].startswith("wants finer")
     assert by(p, 3, "office")["action"] is None and "once one is made" in by(p, 3, "office")["plan"]
+
+
+@test("plan: a statue placed and not built yet: no second statue (nor for another room), no order; polish still goes on")
+def _():
+    s = state()
+    s["supplies"] = {"statues": 1}          # the report still counts the placed statue free
+    s["noble_demands"]["nobles"][1]["rooms"][0]["statues_pending"] = 1
+    p = noble_room_plan(s, PLANNER_CONFIG)
+    b = by(p, 2, "bedroom")
+    assert b["action"] is None and "being put in" in b["plan"], b
+    o = by(p, 3, "office")                  # the free count is that same statue: not given to the manager
+    assert o["action"] is None or o["action"]["type"] != "place_in_zone", o
+    s["noble_demands"]["nobles"][0]["rooms"][0]["statues_pending"] = 1
+    assert by(noble_room_plan(s, PLANNER_CONFIG), 1, "office")["action"] == {"type": "polish_room", "zone_id": 11}
+    # day after day while it stands unbuilt: the rule never places another
+    for _ in range(3):
+        props = []
+        _noble_value_rule(s, PLANNER_CONFIG, props, [])
+        assert not any(x.action.get("type") == "place_in_zone" for x in props), props
+
+
+@test("plan: smoothing or engraving under way: the room waits, no statues ordered, no second designation")
+def _():
+    s = state()
+    s["supplies"] = {"statues": 0}
+    s["noble_demands"]["nobles"] = s["noble_demands"]["nobles"][:1]       # the baron alone
+    r = s["noble_demands"]["nobles"][0]["rooms"][0]
+    r.update(smooth_left=0, engrave_left=0, polish_pending=12)
+    o = by(noble_room_plan(s, PLANNER_CONFIG), 1, "office")
+    assert o["action"] is None and "being smoothed or engraved (12" in o["plan"], o
+    r.update(polish_pending=0)
+    o = by(noble_room_plan(s, PLANNER_CONFIG), 1, "office")
+    assert o["action"] and o["action"]["type"] == "work_order", o
+
+
+@test("rule: held while a threat can reach the dwarves or a siege is on")
+def _():
+    for extra in ({"others_on_map": {"threats_that_can_reach_dwarves": 2}},
+                  {"world": {"sieges": [{"active": True}]}}):
+        s = state()
+        s.update(extra)
+        props = []
+        _noble_value_rule(s, PLANNER_CONFIG, props, [])
+        assert not props, (extra, props)
+    s = state(others_on_map={"threats_that_can_reach_dwarves": 0})
+    props = []
+    _noble_value_rule(s, PLANNER_CONFIG, props, [])
+    assert len(props) == 1
 
 
 @test("plan: Deference at its lowest leaves the rooms alone (but the manager's office)")

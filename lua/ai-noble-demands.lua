@@ -89,14 +89,20 @@ end
 -- What polishing a room still wants: tiles = {{x, y, z, shape, material,
 -- smoothed, smoothing, hidden, designated, building, warm}} (ai-builder
 -- tile_info plus x, y, z; ring: round the zone, where only walls count),
--- engraved = {'x,y,z' = {q, floor}} -> smooth, engrave (lists of tiles).
--- Natural rock floors and walls only; a tile with a job on it, hidden, warm
--- or under a building is left.
+-- engraved = {'x,y,z' = {q, floor}} -> smooth, engrave (lists of tiles),
+-- pending (a count). Natural rock floors and walls only; a tile with a job
+-- on it, hidden, warm or under a building is left. pending: the tiles
+-- already designated to be smoothed or engraved, or with that job on them
+-- (t.smoothing, t.polish_job): until they are done the room is not read as
+-- having nothing left to polish.
 function polish_split(tiles, engraved)
-    local smooth, engrave = {}, {}
+    local smooth, engrave, pending = {}, {}, 0
     for _, t in ipairs(tiles or {}) do
-        if (t.shape == 'WALL' or (t.shape == 'FLOOR' and not t.ring)) and SMOOTHABLE[t.material] and not t.hidden
-                and not t.smoothing and not t.designated and not t.warm
+        local fits = (t.shape == 'WALL' or (t.shape == 'FLOOR' and not t.ring)) and SMOOTHABLE[t.material]
+                and not t.hidden
+        if fits and (t.smoothing or t.polish_job) then
+            pending = pending + 1
+        elseif fits and not t.designated and not t.warm
                 and not (t.shape == 'FLOOR' and t.building) then
             if not t.smoothed then
                 table.insert(smooth, t)
@@ -105,7 +111,7 @@ function polish_split(tiles, engraved)
             end
         end
     end
-    return smooth, engrave
+    return smooth, engrave, pending
 end
 
 -- Is the box (x1..x2, y1..y2, z) inside one of the AI's own levels?
@@ -190,12 +196,21 @@ function zone_tiles(z)
     return out
 end
 
--- The room's worth (furniture items and engravings) and its statues.
+-- The room's worth (furniture items and engravings), its statues (built or
+-- not), and those of them not built yet (a construction site whose statue a
+-- dwarf has still to bring: the report's free statues count that one until
+-- the job is taken, so the brain waits for it rather than placing another).
 function zone_worth(z, engraved)
-    local value, statues = 0, 0
+    local value, statues, pending = 0, 0, 0
     pcall(function()
         for _, b in ipairs(z.contained_buildings) do
-            pcall(function() if b:getType() == df.building_type.Statue then statues = statues + 1 end end)
+            pcall(function()
+                if b:getType() == df.building_type.Statue then
+                    statues = statues + 1
+                    local okb, unbuilt = pcall(function() return b:getBuildStage() < b:getMaxBuildStage() end)
+                    if okb and unbuilt then pending = pending + 1 end
+                end
+            end)
             pcall(function()
                 for _, ci in ipairs(b.contained_items) do
                     value = value + math.max(0, dfhack.items.getValue(ci.item) or 0)
@@ -208,15 +223,34 @@ function zone_worth(z, engraved)
         -- inside: every engraving; round it: the walls' (not a corridor's floor)
         if e and not (t.ring and e.floor) then value = value + engraving_value(e.q) end
     end
-    return math.floor(value), statues
+    return math.floor(value), statues, pending
 end
 
--- What polishing the room still wants: counts.
-function zone_polish(z, engraved)
+-- The smoothing and engraving jobs: {'x,y,z' = true} (ai-builder's job
+-- tiles, one walk of the job list a tick, shared; swapped by the tests).
+local POLISH_JOBS = {SmoothWall = true, SmoothFloor = true, DetailWall = true, DetailFloor = true}
+function polish_jobs()
+    local out = {}
+    pcall(function()
+        for k, j in pairs(reqscript('ai-builder').job_tiles()) do
+            local ok, name = pcall(function() return df.job_type[j.job_type] end)
+            if ok and POLISH_JOBS[name] then out[k] = true end
+        end
+    end)
+    return out
+end
+
+-- What polishing the room still wants: smooth, engrave (tiles), pending (a count).
+function zone_polish(z, engraved, jobs)
+    jobs = jobs or polish_jobs()
     local tiles = {}
     for _, t in ipairs(zone_tiles(z)) do
         local ti = read_tile(t.x, t.y, z.z)
-        if ti then ti.ring = t.ring; table.insert(tiles, ti) end
+        if ti then
+            ti.ring = t.ring
+            if jobs[t.x .. ',' .. t.y .. ',' .. z.z] then ti.polish_job = true end
+            table.insert(tiles, ti)
+        end
     end
     return polish_split(tiles, engraved)
 end
@@ -260,7 +294,8 @@ end
 
 -- {nobles = [{unit_id, name, title, positions = {codes}, monarch, land_holder,
 --   mandates (count), storage = {boxes...}, rooms = [{kind, need, zone_id, value, statues,
---   ai_built, smooth_left, engrave_left}]}], monarch, capital, land_holders}
+--   statues_pending, ai_built, smooth_left, engrave_left, polish_pending}]}], monarch, capital,
+--   land_holders}
 -- A room kind the noble has none of is listed with no zone_id.
 function survey(txt)
     local out = {nobles = {}, land_holders = {}}
@@ -313,24 +348,29 @@ function survey(txt)
     end
     local engraved = engravings_on(levels)
     local areas = (#rooms > 0) and ai_areas() or {}
-    local read = 0
+    local read, jobs = 0, nil
     for _, r in ipairs(rooms) do
         local e = {kind = r.kind, need = r.need}
         local best
         for _, z in ipairs(r.zones) do
             if read < ROOMS_MAX then
                 read = read + 1
-                local v, st = zone_worth(z, engraved)
-                if not best or v > best.value then best = {z = z, value = v, statues = st} end
+                local v, st, sp = zone_worth(z, engraved)
+                if not best or v > best.value then best = {z = z, value = v, statues = st, pending = sp} end
             end
         end
         if best then
             local z = best.z
             e.zone_id, e.value, e.statues = z.id, best.value, best.statues
+            e.statues_pending = (best.pending or 0) > 0 and best.pending or nil
             e.ai_built = inside_areas({x1 = z.x1, y1 = z.y1, x2 = z.x2, y2 = z.y2, z = z.z}, areas) or nil
             if e.value < e.need and e.ai_built then
-                local oks, sm, en = pcall(zone_polish, z, engraved)
-                if oks then e.smooth_left, e.engrave_left = #sm, #en end
+                jobs = jobs or polish_jobs()
+                local oks, sm, en, pend = pcall(zone_polish, z, engraved, jobs)
+                if oks then
+                    e.smooth_left, e.engrave_left = #sm, #en
+                    e.polish_pending = (pend or 0) > 0 and pend or nil
+                end
             end
         end
         table.insert(r.n.rooms, e)
