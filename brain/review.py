@@ -21,9 +21,11 @@ from strategist import check_answer, detect, instructions, review_message, shown
 import chronicle
 import season as season_mod
 from tokens import TokenBank, ai_plan, budget_settings, event_review_allowed, routine_due, routine_interval_ticks
+import planner_design
 
 CHARS_PER_TOKEN = 2.5            # measured on fort digests with the current tokenizer
 EXPECTED_ANSWER_TOKENS = 400     # the bank is charged what's actually used
+DESIGN_ANSWER_TOKENS = {"language": 700, "blueprint": 2500}   # (D0) design-track §8
 PENDING_KIND_DAYS = 3            # an event still counts for an event review this long
 MAX_PENDING_EVENTS = 40
 
@@ -124,10 +126,14 @@ def maybe_review(state: dict, memory: Memory, bank: TokenBank, backend, bridge_i
     # (retry_at on its kinds); a kind that came since is tried at once
     kinds_due = any(not 0 <= k.get("retry_at", 0) - now <= TICKS_PER_DAY
                     for k in memory.pending_kinds if isinstance(k, dict))
+    # (D0) the design ask: only when config.json's design_ai is on (never in D0)
+    design_ask = planner_design.due(memory, now) if planner_design.ai_allowed() else None
     if kinds and kinds_due and event_review_allowed(bank, now, plan):
         reason, important = "event: " + ", ".join(kinds), True
     elif routine_due(bank, now, plan) or season_due:
         reason, important = ("season" if season_due else "routine"), False
+    elif design_ask:
+        reason, important = "design", False
     else:
         return out
 
@@ -140,7 +146,10 @@ def maybe_review(state: dict, memory: Memory, bank: TokenBank, backend, bridge_i
     # a cancel there left them out (the way-in rule read it as dug)
     build["digging_ids"] = [p.get("id") for p in s["projects"].get("open") or []
                             if isinstance(p, dict) and p.get("phase") == "dig"
-                            and p.get("kind") not in ("way_in", "dig_way_in")]
+                            and p.get("kind") not in ("way_in", "dig_way_in")
+                            # (D0) nor one level of a landmark: its levels go together
+                            and p.get("kind") != "landmark" and not _d(p.get("params")).get("landmark_id")
+                            and p.get("id") not in _landmark_project_ids(s)]
     history = memory.culture or new_history()
     traits = _d(s["settings"].get("traits"))
     profile = profile_from(traits, history)
@@ -158,7 +167,29 @@ def maybe_review(state: dict, memory: Memory, bank: TokenBank, backend, bridge_i
                          for c in calibrate.describe(memory, PLANNER_CONFIG)] + calibrate.evidence(memory)[:2],
                # the fort's memory: trends, notable places, the latest of its story
                "memory": memstore.brief(memory)}
-    instr = instructions(sorted(recipes), sorted(tools), build, season_menu=season_due)
+    dctx, design_est, design_brief = None, 0, None
+    if design_ask:
+        dctx = planner_design.design_ctx(state, memory, kinds=build.get("level_kinds"))
+        dctx["ask"] = design_ask
+        design_brief = planner_design.design_brief(dctx)
+        from strategist import DESIGN_INSTRUCTIONS
+        from tokens import design_ok
+        design_est = (int((len(DESIGN_INSTRUCTIONS[design_ask]) + len(design_brief)) / CHARS_PER_TOKEN)
+                      + DESIGN_ANSWER_TOKENS[design_ask])
+        e = dctx.get("landmark") or {}
+        drawings = 2 if design_ask == "blueprint" and not int(e.get("tries") or 0) else 1
+        ok_d, why_d = design_ok(bank, now, int(design_est * token_ratio(memory)), settings, drawings=drawings,
+                                today=today)
+        if not ok_d:
+            # no call for design (rules stand in after the grace): tried again tomorrow
+            _design_wait(memory, design_ask, now)
+            out.say.append(f"AI design ({design_ask}) skipped: {why_d}")
+            if reason == "design":
+                out.journal = {"kind": "review_skipped", "reason": reason, "why": why_d,
+                               "estimate": design_est}
+                return out
+            design_ask, dctx, design_est, design_brief = None, None, 0, None
+    instr = instructions(sorted(recipes), sorted(tools), build, season_menu=season_due, design=design_ask)
     from planner import player_rules
     lockout = None
     try:      # (0.105.26) the visitor lockout after a heist or a visitor's killing (memory, not the report)
@@ -173,17 +204,31 @@ def maybe_review(state: dict, memory: Memory, bank: TokenBank, backend, bridge_i
     msg = review_message(state, reason, planner_notes, memory.recent_actions, memory.adjust,
                          memory.pending_events, culture, news=plan["news"],
                          proposals=proposals, steer=getattr(memory, "steer", None),
-                         wants=getattr(memory, "strategist_wants", None), rules=player_rules(s), lockout=lockout)
+                         wants=getattr(memory, "strategist_wants", None), rules=player_rules(s), lockout=lockout,
+                         design=design_brief)
     think = plan["thinking_events"] if important else plan["thinking_routine"]
     effort = {"model": plan["model_events"] if important else plan["model_routine"],
               "thinking": think, "answer_tokens": plan["answer_tokens"]}
     raw_estimate = (int((len(instr) + len(msg)) / CHARS_PER_TOKEN)
                     + min(EXPECTED_ANSWER_TOKENS, plan["answer_tokens"]) + think)
+    ask_kw = {}
+    if design_ask:
+        # (D0) the answer's room for the design (the events model: design-track §8)
+        raw_estimate += DESIGN_ANSWER_TOKENS[design_ask]
+        ask_kw = {"answer_tokens": plan["answer_tokens"] + DESIGN_ANSWER_TOKENS[design_ask]}
+        if reason == "design":
+            effort["model"] = plan["model_events"]
     # (0.104.89) corrected by what the calls really cost (14.0's audit: about
     # twice the old estimate)
     estimate = int(raw_estimate * token_ratio(memory))
     ok, why = bank.can_spend(estimate, settings, is_event=important, today=today)
     if not ok:
+        if design_ask:
+            _design_wait(memory, design_ask, now)
+        if reason == "design":
+            out.say.append(f"AI review ({reason}) skipped: {why}")
+            out.journal = {"kind": "review_skipped", "reason": reason, "why": why, "estimate": estimate}
+            return out
         # Try again tomorrow (game time) rather than every cycle.
         if not important:
             bank.last_routine_tick = now - routine_interval_ticks(plan) + TICKS_PER_DAY
@@ -200,11 +245,17 @@ def maybe_review(state: dict, memory: Memory, bank: TokenBank, backend, bridge_i
     # Mark it as done before asking, so a failure doesn't cause a retry storm.
     if important:
         bank.event_reviews.append(now)
-    else:
+    elif reason != "design":          # (D0) a design call keeps the routine schedule as it was
         bank.last_routine_tick = now
     try:
-        reply = backend.ask(instr, msg, important=important, effort=effort)
+        reply = backend.ask(instr, msg, important=important, effort=effort, **ask_kw)
     except Exception as e:  # noqa: BLE001 - any connection problem: log it, carry on with the planner
+        if design_ask:
+            _design_failed(memory, design_ask, now, f"the call failed ({type(e).__name__})")
+        if reason == "design":
+            out.say.append(f"AI review ({reason}) failed: {type(e).__name__}: {str(e)[:200]}")
+            out.journal = {"kind": "review_failed", "reason": reason, "error": f"{type(e).__name__}: {e}"[:500]}
+            return out
         if not important:
             bank.last_routine_tick = now - routine_interval_ticks(plan) + TICKS_PER_DAY
         if season_due:
@@ -217,7 +268,13 @@ def maybe_review(state: dict, memory: Memory, bank: TokenBank, backend, bridge_i
     bank.spend(used, now, reason, today=today)
     learn_token_ratio(memory, used, raw_estimate)
     answer = check_answer(reply.text, recipes, tools, my_orders, build,
-                          shown=shown_rules(proposals, memory.recent_actions))
+                          shown=shown_rules(proposals, memory.recent_actions),
+                          **({"design_ctx": dctx} if dctx else {}))
+    design_said = []
+    if design_ask:
+        # (D0) counted to the design share: the whole call, or its design part
+        bank.add_design(used if reason == "design" else int(used * design_est / max(1, raw_estimate)), now)
+        design_said = _apply_design(memory, answer, design_ask, now)
     # (0.104.89) its raises and holds of the planner's rules, and what it wants to see
     steer_lines = apply_steer(memory, answer.steer, now)
     memory.strategist_wants = list(answer.want)
@@ -266,8 +323,9 @@ def maybe_review(state: dict, memory: Memory, bank: TokenBank, backend, bridge_i
         season_said = season_mod.apply(answer.season, state, memory, memory.adjust)
         line = answer.season.get("line")
         chronicle.add(memory, state, "season", line or "; ".join(season_said))
-    memory.pending_events = []
-    memory.pending_kinds = []
+    if reason != "design":            # (D0) the events wait for the next real review
+        memory.pending_events = []
+        memory.pending_kinds = []
 
     out.say.append(f"AI review ({reason}, {reply.model}, thinking {plan['effort_word'].lower()}): {used:,} tokens, "
                    f"{int(bank.balance):,} left. {answer.note}")
@@ -279,6 +337,8 @@ def maybe_review(state: dict, memory: Memory, bank: TokenBank, backend, bridge_i
         out.say.append(f"  AI adjusted the planner: {answer.adjust}")
     for line in steer_lines:
         out.say.append(f"  AI steers: {line}")
+    for line in design_said:
+        out.say.append(f"  AI design: {line}")
     for r in answer.rejected:
         out.say.append(f"  AI suggestion thrown out: {r}")
     out.journal = {"kind": "review", "reason": reason, "model": reply.model, "tokens": used,
@@ -288,4 +348,55 @@ def maybe_review(state: dict, memory: Memory, bank: TokenBank, backend, bridge_i
                    "steer": answer.steer, "want": answer.want,
                    "season": answer.season if season_due else None,
                    "rejected": answer.rejected, "bank_left": int(bank.balance)}
+    if design_ask:
+        out.journal["design"] = {"ask": design_ask, "language": answer.design is not None,
+                                 "blueprint": answer.blueprint is not None,
+                                 "reasons": [planner_design.reason_text(x) for x in answer.blueprint_reasons]}
     return out
+
+
+def _landmark_project_ids(s: dict) -> set:
+    """(D0) The project ids of the report's landmarks (every level of one)."""
+    out = set()
+    for e in _d(s.get("landmarks")).get("list") or []:
+        if isinstance(e, dict):
+            out |= {i for i in (e.get("project_ids") or []) if isinstance(i, int)}
+    return out
+
+
+def _design_wait(memory, ask: str, now: int) -> None:
+    """(D0) No call this time (budget): asked again a day later, no try counted."""
+    rec = planner_design.record_of(memory)
+    if ask == "language" and rec is not None and isinstance(rec.get("ask"), dict):
+        rec["ask"]["last"] = now
+    elif ask == "blueprint":
+        e = planner_design.active_landmark(memory)
+        if e is not None:
+            e["asked_last"] = now
+
+
+def _design_failed(memory, ask: str, now: int, why: str) -> None:
+    if ask == "language":
+        planner_design.note_ai_language(memory, None, [why], now)
+    else:
+        planner_design.note_ai_blueprint(memory, None, [{"words": why}], now)
+
+
+def _apply_design(memory, answer, ask: str, now: int) -> list[str]:
+    """(D0) a.design stored by the AI (design.store); a.blueprint kept in
+    atlas.landmarks.drawn for the planner (never sent from here)."""
+    said = []
+    if ask == "language":
+        why = [r[len("design: "):] for r in answer.rejected if r.startswith("design: ")]
+        planner_design.note_ai_language(memory, answer.design, why, now)
+        if answer.design:
+            said.append("the fort's language written by the AI"
+                        + (f" ({len(why)} field(s) dropped)" if why else ""))
+    elif ask == "blueprint":
+        planner_design.note_ai_blueprint(memory, answer.blueprint, answer.blueprint_reasons, now)
+        if answer.blueprint:
+            said.append(f"a drawing for site {answer.blueprint['site']}: {answer.blueprint['name']}")
+        else:
+            said.append("the drawing was refused: "
+                        + "; ".join(planner_design.reason_text(x) for x in answer.blueprint_reasons[:3]))
+    return said

@@ -97,8 +97,11 @@ class ApiBackend:
         self.model_events = cfg.get("strategist_model_events", "claude-sonnet-5-5")
         self.model_top = cfg.get("strategist_model_top", "claude-opus-5-5")
 
-    def ask(self, instructions: str, message: str, important: bool = False, effort: dict | None = None) -> Reply:
+    def ask(self, instructions: str, message: str, important: bool = False, effort: dict | None = None,
+            answer_tokens: int | None = None) -> Reply:
         model, thinking, answer = pick(self, important, effort)
+        if answer_tokens:                 # (D0) the answer size per call (a blueprint: 2,500)
+            answer = int(answer_tokens)
         body, max_tokens = thinking_params(model, thinking, answer)
         extra = {"extra_body": body} if body else {}
         resp = self.client.messages.create(
@@ -222,7 +225,9 @@ class SubscriptionBackend:
         self.model_events = cfg.get("strategist_model_events", "sonnet")
         self.model_top = cfg.get("strategist_model_top", "opus")
 
-    def ask(self, instructions: str, message: str, important: bool = False, effort: dict | None = None) -> Reply:
+    def ask(self, instructions: str, message: str, important: bool = False, effort: dict | None = None,
+            answer_tokens: int | None = None) -> Reply:
+        # (D0) answer_tokens: the SDK has no answer cap (see _ask); taken for the same interface
         # (0.104.81) cut off before the keeper's 10-minute heartbeat check
         return asyncio.run(asyncio.wait_for(self._ask(instructions, message, important, effort), ASK_TIMEOUT_S))
 
