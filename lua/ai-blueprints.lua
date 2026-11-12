@@ -19,7 +19,15 @@
 -- The alphabet, rock:  _ outside (left alone)  # rock kept  . dug floor
 --   , dug floor smoothed and engraved  @ the join (dug floor; exactly one,
 --   in row 0 of level 1)  < > X up, down, up/down stair  ^ a ramp up to the
---   level above  + a door  a-z a legend item standing on dug floor.
+--   level above  + a door  a-z a legend item standing on dug floor
+--   (E1) * open to the level below: dug, then cut as a channel once the
+--   level below is dug, so a hall spans 2+ levels  O a fortification (a
+--   rail): dug, the openings cut from it, then built ('CF').
+-- (E1) The openings' rules: the tile below a '*' is dug in the drawing (or
+--   another '*' over one); every tile beside a '*' is '*', '#', 'O' or '_'
+--   (railed, so no one falls); every '*' is reached from an 'O' beside it
+--   (the dwarves stand there to cut it); nothing on a level is left hanging
+--   over a hole with nothing holding it (the cave-in check).
 -- Surface:  _ outside (open air above level 1)  . ground left walkable (on
 --   level 1) or the walkable top of a wall below (above it)  @ the join
 --   W wall  F floor  R ramp  U D I up, down, up/down stair  O fortification
@@ -33,7 +41,7 @@ local layouts = reqscript('ai-layouts')
 
 BP_LIMITS = {w = 31, h = 31, levels = 5, dug = 700, built = 400, items = 40, statues = 16, doors = 8,
              stairs = 4, legend = 12, cost_max = 2500}
-ALPHABET = {rock = '_#.,@<>X^+', surface = '_.@WFRUDIO+'}
+ALPHABET = {rock = '_#.,@<>X^+*O', surface = '_.@WFRUDIO+'}
 MAX_REASONS = 24          -- check_format's list stops here (the bridge sends 8)
 
 -- The legend's furniture: the Quickfort build keys ai-layouts uses for them,
@@ -65,10 +73,18 @@ ENGRAVE = {none = true, halls = true, all = true}
 CONSTRUCT = {W = 'Cw', F = 'Cf', R = 'Cr', U = 'Cu', D = 'Cd', I = 'Cx', O = 'CF'}
 -- Dig keys in rock: stairs and ramps (every other dug tile is 'd').
 DIG_KEY = {['<'] = 'u', ['>'] = 'j', X = 'i', ['^'] = 'r'}
+-- (E1) An opening ('*') is cut with this dig key once the level below is dug;
+-- a rail ('O') in the rock is built with this key once its openings are cut.
+OPEN_KEY = 'h'
+RAIL_KEY = 'CF'
+-- What may stand beside an opening: another opening, rock, a rail, or the
+-- rock outside the drawing.
+RAIL_OK = {['*'] = true, ['#'] = true, O = true, _ = true}
 
-local ROCK_DUG = {['.'] = true, [','] = true, ['@'] = true, ['<'] = true, ['>'] = true, X = true,
-                  ['^'] = true, ['+'] = true}
-local ROCK_WALK = ROCK_DUG
+local ROCK_WALK = {['.'] = true, [','] = true, ['@'] = true, ['<'] = true, ['>'] = true, X = true,
+                   ['^'] = true, ['+'] = true}
+local ROCK_DUG = {['*'] = true, O = true}
+for k in pairs(ROCK_WALK) do ROCK_DUG[k] = true end
 local SURF_WALK = {['.'] = true, ['@'] = true, F = true, R = true, U = true, D = true, I = true, ['+'] = true}
 local SURF_BUILT = {W = true, F = true, R = true, U = true, D = true, I = true, O = true}
 local SURF_UNDER = {W = true, F = true, R = true, U = true, D = true, I = true}   -- what an upper tile may stand on
@@ -157,7 +173,7 @@ local N8 = {{-1, -1}, {0, -1}, {1, -1}, {-1, 0}, {1, 0}, {-1, 1}, {0, 1}, {1, 1}
 -- and workshops; piles are free), statues, doors, stair columns, and jobs =
 -- dug + 4 x built + 10 x items.
 function cost(bp)
-    local out = {dug = 0, built = 0, items = 0, statues = 0, doors = 0, stairs = 0, jobs = 0}
+    local out = {dug = 0, built = 0, items = 0, statues = 0, doors = 0, stairs = 0, open = 0, jobs = 0}
     if type(bp) ~= 'table' or type(bp.levels) ~= 'table' then return out end
     local surface = bp.ground == 'surface'
     local legend = legend_of(bp)
@@ -178,6 +194,8 @@ function cost(bp)
                         end
                     elseif ROCK_DUG[ch] or is_letter(ch) then
                         out.dug = out.dug + 1
+                        if ch == 'O' then out.built = out.built + 1 end
+                        if ch == '*' then out.open = out.open + 1 end
                     end
                     if ch == '+' then out.doors = out.doors + 1 end
                     if STAIR[ch] and (surface == (ch == 'U' or ch == 'D' or ch == 'I')) then
@@ -193,12 +211,55 @@ function cost(bp)
         end
     end
     for _ in pairs(columns) do out.stairs = out.stairs + 1 end
-    out.jobs = out.dug + 4 * out.built + 10 * out.items
+    out.jobs = out.dug + out.open + 4 * out.built + 10 * out.items
     return out
 end
 
+-- (E1) The order a level's openings are cut in: each '*' gets its distance
+-- (4 ways, through '*') from an 'O' beside it; the farthest are cut first, so
+-- a dwarf always stands on floor beside the tile he cuts, and the floor left
+-- stays joined to the rails. Returns {[y * 64 + x] = distance}, the largest
+-- distance (0 with no '*'); a '*' no 'O' leads to has none.
+local N4 = {{0, -1}, {-1, 0}, {1, 0}, {0, 1}}
+
+local function has_open(rows)
+    for _, row in ipairs(rows) do if row:find('*', 1, true) then return true end end
+    return false
+end
+
+local function open_distances(at, h, w)
+    local dist, queue, head, far = {}, {}, 1, 0
+    for y = 0, h - 1 do
+        for x = 0, w - 1 do
+            if at(x, y) == '*' then
+                for _, d in ipairs(N4) do
+                    if at(x + d[1], y + d[2]) == 'O' and not dist[y * 64 + x] then
+                        dist[y * 64 + x] = 1
+                        table.insert(queue, {x, y})
+                    end
+                end
+            end
+        end
+    end
+    while head <= #queue do
+        local x, y = queue[head][1], queue[head][2]
+        head = head + 1
+        local dd = dist[y * 64 + x]
+        if dd > far then far = dd end
+        for _, d in ipairs(N4) do
+            local nx, ny = x + d[1], y + d[2]
+            if at(nx, ny) == '*' and not dist[ny * 64 + nx] then
+                dist[ny * 64 + nx] = dd + 1
+                table.insert(queue, {nx, ny})
+            end
+        end
+    end
+    return dist, far
+end
+
 -- Every check of the format, in order: FORMAT SIZE SYMBOL (each stops the
--- check when it fails), then LEGEND JOIN STAIRS REACH SUPPORT LIMIT.
+-- check when it fails), then LEGEND JOIN STAIRS REACH OPEN RAIL SUPPORT LIMIT
+-- (OPEN and RAIL, E1: only a drawing with '*' meets them).
 -- Returns ok, reasons (a list of {code, level, x, y, words}, MAX_REASONS at
 -- most, in the order found).
 function check_format(bp)
@@ -488,15 +549,86 @@ function check_format(bp)
                 for y = 0, h - 1 do
                     for x = 0, w - 1 do
                         local ch = cell(g, i, x, y)
-                        local must = walkset[ch] or is_letter(ch)
+                        local rail = not surface and ch == 'O'      -- (E1) built from beside it
+                        local must = walkset[ch] or is_letter(ch) or rail
                         if must and not seen[key(i, x, y)] then
                             local near = false
-                            if is_letter(ch) and not walkable(ch) then
+                            if (is_letter(ch) and not walkable(ch)) or rail then
                                 for _, d in ipairs(N8) do
                                     if seen[key(i, x + d[1], y + d[2])] then near = true end
                                 end
                             end
                             if not near then why('REACH', i, x, y, "not reached from '@'") end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    -- (E1) OPEN: each '*' over dug floor (or another '*') of the drawing,
+    -- and reached from an 'O' beside it (the dwarves cut it from there)
+    local any_open = false
+    if not surface then
+        for i = 1, n do
+            if has_open(g[i]) then any_open = true end
+        end
+    end
+    if any_open then
+        for i = 1, n do
+            for y = 0, h - 1 do
+                for x = 0, w - 1 do
+                    if cell(g, i, x, y) == '*' then
+                        local below = i < n and cell(g, i + 1, x, y) or nil
+                        if not below then
+                            why('OPEN', i, x, y, "an opening ('*') on the lowest level: no level below it in the drawing")
+                        elseif not (below == '*' or ROCK_WALK[below] or is_letter(below)) then
+                            why('OPEN', i, x, y, ("an opening ('*') needs the level below dug here, not %s")
+                                :format(char_words(below)))
+                        end
+                    end
+                end
+            end
+            local dist = open_distances(function(x, y) return cell(g, i, x, y) end, h, w)
+            local told = {}
+            for y = 0, h - 1 do
+                for x = 0, w - 1 do
+                    if cell(g, i, x, y) == '*' and not dist[y * 64 + x] and not told[y * 64 + x] then
+                        why('OPEN', i, x, y, "no rail ('O') leads to this opening: the dwarves cut it standing on an "
+                                             .. "'O' beside it")
+                        local stack = {{x, y}}
+                        told[y * 64 + x] = true
+                        while #stack > 0 do
+                            local p = table.remove(stack)
+                            for _, d in ipairs(N4) do
+                                local nx, ny = p[1] + d[1], p[2] + d[2]
+                                if cell(g, i, nx, ny) == '*' and not told[ny * 64 + nx] then
+                                    told[ny * 64 + nx] = true
+                                    table.insert(stack, {nx, ny})
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    -- (E1) RAIL: every tile beside an opening is railed ('*', '#', 'O', '_')
+    if any_open then
+        for i = 1, n do
+            local told = {}
+            for y = 0, h - 1 do
+                for x = 0, w - 1 do
+                    if cell(g, i, x, y) == '*' then
+                        for _, d in ipairs(N8) do
+                            local nx, ny = x + d[1], y + d[2]
+                            local c = cell(g, i, nx, ny)
+                            if c and not RAIL_OK[c] and not told[ny * 64 + nx] then
+                                told[ny * 64 + nx] = true
+                                why('RAIL', i, nx, ny, ("%s beside an opening: a dwarf could fall; rail the edge "
+                                                        .. "with '#' or 'O'"):format(char_words(c)))
+                            end
                         end
                     end
                 end
@@ -521,6 +653,46 @@ function check_format(bp)
                         elseif ch == 'F' and below == 'W' then
                             why('SUPPORT', i, x, y, "the wall below already makes a floor here; use '.'")
                         end
+                    end
+                end
+            end
+        end
+    elseif any_open then
+        -- (E1) SUPPORT (rock, the cave-in check): on each level, every tile
+        -- but the openings is held: by the rock outside the drawing (a '_',
+        -- the drawing's edge), by rock below it ('#' or '_' on the next
+        -- level, or the map under the lowest), or through a held tile beside
+        -- it (4 ways). A tile left hanging over a hole would cave in.
+        for i = 1, n do
+            local held, queue, head = {}, {}, 1
+            for y = 0, h - 1 do
+                for x = 0, w - 1 do
+                    local ch = cell(g, i, x, y)
+                    if ch ~= '*' then
+                        local below = i < n and cell(g, i + 1, x, y) or '#'
+                        if ch == '_' or x == 0 or y == 0 or x == w - 1 or y == h - 1 or below == '#' or below == '_' then
+                            held[y * 64 + x] = true
+                            table.insert(queue, {x, y})
+                        end
+                    end
+                end
+            end
+            while head <= #queue do
+                local x, y = queue[head][1], queue[head][2]
+                head = head + 1
+                for _, d in ipairs(N4) do
+                    local nx, ny = x + d[1], y + d[2]
+                    local c = cell(g, i, nx, ny)
+                    if c and c ~= '*' and not held[ny * 64 + nx] then
+                        held[ny * 64 + nx] = true
+                        table.insert(queue, {nx, ny})
+                    end
+                end
+            end
+            for y = 0, h - 1 do
+                for x = 0, w - 1 do
+                    if cell(g, i, x, y) ~= '*' and not held[y * 64 + x] then
+                        why('SUPPORT', i, x, y, 'nothing holds this over the opening below: it would cave in')
                     end
                 end
             end
@@ -651,7 +823,12 @@ end
 --   place      stockpiles ('f(3x2)'), one rectangle per run of a pile type
 --   zone       the bp.zone over the level's floor (rectangles; contiguous
 --              ones make one zone in Quickfort), a tomb on each coffin
---   construct  surface: one 'Cw' 'Cf' 'Cr' 'Cu' 'Cd' 'Cx' 'CF' cell per tile
+--   construct  surface: one 'Cw' 'Cf' 'Cr' 'Cu' 'Cd' 'Cx' 'CF' cell per tile;
+--              rock (E1): a 'CF' cell per rail ('O'), built once the
+--              level's openings are cut
+--   open       rock (E1): one 'h' (channel) cell per opening ('*'), each with
+--              its wave (1 is cut first: the farthest from the rails); cut
+--              only once this level and the one below are dug
 --   tiles      the dug tiles (rock; empty on the surface)
 --   built      the constructed tiles (surface)
 --   solid      the tiles nothing walks through once built (surface W and O)
@@ -688,12 +865,17 @@ function to_layouts(bp, q)
     for i = 1, n do
         out.dz[i] = surface and (i - 1) or -(i - 1)
         local L = {kind = 'landmark', level = i, dig = {}, build = {}, place = {}, zone = {}, construct = {},
-                   tiles = {}, built = {}, solid = {}, footprint = {}, furniture = {}, halls = {},
+                   open = {}, tiles = {}, built = {}, solid = {}, footprint = {}, furniture = {}, halls = {},
                    smooth = {}, engrave = {}, summary = {}, orient = 0, engrave_all = false,
                    style = {}}
         local digkeys, pilekeys, zonekeys = {}, {}, {}
         local ztext = (i == zlevel) and zone_text(bp, zkind) or ''
         local function furn(t) L.furniture[t] = (L.furniture[t] or 0) + 1 end
+        local dist, far = {}, 0
+        if not surface and has_open(g[i]) then
+            dist, far = open_distances(function(c, r) return cell(g, i, c, r) end, h, w)
+        end
+        local cuts = {}
         for r = 0, h - 1 do
             digkeys[r], pilekeys[r], zonekeys[r] = {}, {}, {}
             local row = g[i][r + 1]
@@ -713,14 +895,23 @@ function to_layouts(bp, q)
                         if ch == 'W' or ch == 'O' then mark(L.solid, x, y) end
                     end
                 else
-                    floorish = ROCK_DUG[ch] or is_letter(ch)
-                    if floorish then
+                    local dug = ROCK_DUG[ch] or is_letter(ch)
+                    floorish = dug and ch ~= '*' and ch ~= 'O'
+                    if dug then
                         mark(L.tiles, x, y)
                         if DIG_KEY[ch] then
                             table.insert(L.dig, {x = x, y = y, text = DIG_KEY[ch]})
                         else
                             digkeys[r][c] = 'd'
                         end
+                    end
+                    if ch == 'O' then
+                        table.insert(L.construct, {x = x, y = y, text = RAIL_KEY})
+                        mark(L.built, x, y)
+                        mark(L.solid, x, y)
+                    elseif ch == '*' then
+                        local d = dist[r * 64 + c] or far
+                        table.insert(cuts, {x = x, y = y, text = OPEN_KEY, wave = far - d + 1})
                     end
                 end
                 if ch == '+' then
@@ -745,6 +936,12 @@ function to_layouts(bp, q)
             end
         end
         -- the floors first, then the stairs and ramps (each one cell)
+        table.sort(cuts, function(a, b)
+            if a.wave ~= b.wave then return a.wave < b.wave end
+            if a.y ~= b.y then return a.y < b.y end
+            return a.x < b.x
+        end)
+        L.open = cuts
         local floors = merge(digkeys, h, w, c0, r0)
         for _, cc in ipairs(L.dig) do table.insert(floors, cc) end
         L.dig = floors
@@ -770,7 +967,7 @@ function to_layouts(bp, q)
                         local touches, touches_engraved = false, false
                         for _, d in ipairs(N8) do
                             local nc = cell(g, i, c + d[1], r + d[2])
-                            if nc and (ROCK_DUG[nc] or is_letter(nc)) then touches = true end
+                            if nc and (ROCK_WALK[nc] or is_letter(nc)) then touches = true end
                             if nc == ',' then touches_engraved = true end
                         end
                         if touches then table.insert(walls, {x = x, y = y, e = touches_engraved}) end
@@ -791,10 +988,12 @@ function to_layouts(bp, q)
         L.bounds = bounds_of(surface and L.footprint or L.tiles)
         local b = L.bounds
         L.halls = {{x = b.x1, y = b.y1, w = b.x2 - b.x1 + 1, h = b.y2 - b.y1 + 1}}
-        local count = 0
+        local count, rails = 0, 0
         for _, col in pairs(surface and L.built or L.tiles) do for _ in pairs(col) do count = count + 1 end end
+        if not surface then rails = #L.construct end
         L.summary = {landmark = bp.name, purpose = bp.purpose, level = i, levels = n,
-                     dug = (not surface) and count or 0, built = surface and count or 0}
+                     dug = (not surface) and count or 0, built = surface and count or rails,
+                     opened = #cuts > 0 and #cuts or nil}
         out.levels[i] = L
     end
     return out

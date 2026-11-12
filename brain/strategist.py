@@ -150,7 +150,9 @@ up to 40>,"bp":{"v":1,"name":...,"purpose":<the kind>,"ground":"rock"|"surface",
 "levels":[{"grid":[<rows north to south>]}...],"legend":{<letter>:<item>},"zone":{"kind":...,"level":n},
 "finish":{...},"materials":{...}}}. Grid positions describe the drawing's own shape; never a map position.
 ROCK ALPHABET: _ outside, # rock kept, . dug floor, , dug floor smoothed and engraved, @ the join (exactly one,
-in row 0 of the first level), < > X up, down, up/down stair, ^ ramp up, + door, a-z a legend item on dug floor.
+in row 0 of the first level), < > X up, down, up/down stair, ^ ramp up, + door, a-z a legend item on dug floor,
+* open to the level below (a hall two or more levels high; the level below is dug there), O a fortification
+(a rail). Every tile beside a * is *, #, O or _ (railed); each * is reached from an O beside it.
 SURFACE ALPHABET: _ . @ W wall, F floor, R ramp, U D I built stairs, O fortification, + door.
 LEGEND (up to 12 letters): Statue, Table, Chair, Bed, Coffin, Cabinet, Chest, Bookcase, ArmorStand, WeaponRack,
 a workshop, or pile:<stockpile type>. Levels run down from the join for rock, up for the surface. A > sits over

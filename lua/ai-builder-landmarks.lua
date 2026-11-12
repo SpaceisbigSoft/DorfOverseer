@@ -34,6 +34,7 @@ LANDMARK_SITE_TRIES = 12         -- surface rectangles looked at for n sites
 WALK_SECONDS = 1.0               -- the walk test stops here
 WALK_NODES = 400000              -- and after this many tiles
 NEAR_REACH = 10                  -- tiles round a site looked at for its words (river, magma, cavern)
+OPEN_REDIG_MAX = 3               -- (E1) times a wave's lost channel tiles are designated again
 
 -- the quarter turn that puts row 0 toward a corridor arriving in direction d
 -- (q quarter turns clockwise: the drawing then reaches away from the stair)
@@ -730,6 +731,40 @@ function paths_kept(placed, z)
     return true
 end
 
+-- (E1) An opening's drop: for each '*' (a layout's 'open' cell), the level it
+-- lands on (the first below it with no opening there); when that is the
+-- drawing's lowest level, the tile under the landing floor must hold it: no
+-- water, magma, cavern, aquifer or open sky. Reasons go in `out`.
+function open_drop_reasons(bp, plan, a, out)
+    local n = #plan.levels
+    local open_at = {}
+    for k, lv in ipairs(plan.levels) do
+        open_at[k] = {}
+        for _, c in ipairs(lv.L.open or {}) do open_at[k][c.x .. ',' .. c.y] = true end
+    end
+    local told = {}
+    for k, lv in ipairs(plan.levels) do
+        for _, c in ipairs(lv.L.open or {}) do
+            local j = k + 1
+            while j <= n and open_at[j][c.x .. ',' .. c.y] do j = j + 1 end
+            local key = c.x .. ',' .. c.y
+            if j == n and not told[key] then
+                told[key] = true
+                local t = info(a.x + c.x, a.y + c.y, plan.levels[n].z - 1)
+                local code, words
+                if t and t.liquid then code, words = 'LIQUID', t.magma and 'magma' or 'water'
+                elseif t and t.feature then code, words = 'CAVERN', 'a cavern'
+                elseif t and t.aquifer then code, words = 'AQUIFER', 'an aquifer'
+                elseif t and t.outside then code, words = 'SURFACE', 'open sky' end
+                if code then
+                    local gx, gy = grid_xy(bp, plan.q, c.x, c.y)
+                    reason(out, code, k, gx, gy, words .. ' under the floor this opening drops to')
+                end
+            end
+        end
+    end
+end
+
 -- The placement of a drawing on a site: per level {k, z, L, cells, ...}.
 local function placement(bp, site)
     local B = blueprints()
@@ -804,6 +839,11 @@ function validate_landmark(bp, site, cap)
                 end
                 if #out >= LANDMARK_REASONS_MAX then break end
             end
+            -- (E1) where an opening drops to: the floor it lands on, on the
+            -- drawing's lowest level, stands on no water, magma, cavern,
+            -- aquifer or open sky (the tiles on the way down are dug tiles,
+            -- checked above with what is beside them)
+            if #out == 0 then open_drop_reasons(bp, plan, a, out) end
             if site.extend and #out == 0 then
                 local okx, why = check_extension(site.stair.x, site.stair.y, site.stair.z_bottom, site.z, true)
                 if not okx then reason(out, code_of(why), 1, nil, nil, 'the stair down to it: '
@@ -1067,6 +1107,9 @@ function start_landmark(bp, site, meta, now, dry_run, plan)
             return {ok = false, error = 'could not save the landmark\'s levels with the fort, so they were undone'}
         end
         rec.stage = 'dig'
+        -- (E1) the openings and rails, cut and built by landmark_step once dug
+        local open = open_plan(plan, a)
+        if #open > 0 then rec.open = open end
     else
         -- surface: the cells in map coordinates, by level, for the stages
         local lvls = {}
@@ -1234,6 +1277,130 @@ local function scaffold_state(rec)
             ready = (rec.stage ~= 'clearing' and ok and left == 0) or nil}
 end
 
+-- (E1) Openings in the rock: cut in waves, then railed.
+
+-- The openings and rails of a placed drawing, per level that has any, in map
+-- coordinates: {level, z, waves = {{cells 'h'}...} (the first cut first),
+-- wave = 0 (the last designated), rails = {cells 'CF'}, railed, tries}.
+function open_plan(plan, a)
+    local out = {}
+    for k, lv in ipairs(plan.levels) do
+        local waves, rails = {}, {}
+        for _, c in ipairs(lv.L.open or {}) do
+            local w = math.tointeger(c.wave) or 1
+            waves[w] = waves[w] or {}
+            table.insert(waves[w], {x = a.x + c.x, y = a.y + c.y, text = c.text})
+        end
+        for _, c in ipairs(lv.L.construct or {}) do
+            table.insert(rails, {x = a.x + c.x, y = a.y + c.y, text = c.text})
+        end
+        if #waves > 0 or #rails > 0 then
+            table.insert(out, {level = k, z = lv.z, waves = waves, wave = 0, rails = rails, railed = false, tries = 0})
+        end
+    end
+    return out
+end
+
+local function phase_of(data, pid)
+    for _, p in ipairs(data.list) do if p.id == pid then return p.phase end end
+end
+
+-- Is a channel cut? (the floor gone: open space, or a ramp's top)
+local function cut_done(t)
+    return t ~= nil and t.shape ~= 'WALL' and t.shape ~= 'FLOOR'
+end
+
+-- One level's openings: what they wait on, and what to do next.
+-- Returns state ('dig' | 'ready' | 'waiting' | 'done') and the action when
+-- ready ('wave' | 'redo' | 'rails'), with the cells to redo.
+local function open_state(rec, e, data)
+    if e.done then return 'done' end
+    local ids = rec.project_ids or {}
+    local function dug(pid)      -- (a level closed long ago is no longer listed: dug)
+        return pid ~= nil and phase_of(data, pid) ~= 'dig'
+    end
+    -- this level dug (the openings and rails are dug floor first), and the
+    -- level below, which the openings open onto
+    if not dug(ids[e.level]) then return 'dig' end
+    if #e.waves > 0 and not dug(ids[e.level + 1]) then return 'dig' end
+    if e.wave > 0 and e.wave <= #e.waves then
+        local jobs = job_tiles()
+        local left, lost = 0, {}
+        for _, c in ipairs(e.waves[e.wave]) do
+            local t = tile_info(c.x, c.y, e.z)
+            if not cut_done(t) then
+                left = left + 1
+                if t and not t.designated and not jobs[c.x .. ',' .. c.y .. ',' .. e.z] then table.insert(lost, c) end
+            end
+        end
+        if left > 0 then
+            if #lost == left and (math.tointeger(e.tries) or 0) < OPEN_REDIG_MAX then return 'ready', 'redo', lost end
+            if #lost < left then return 'waiting' end
+            -- given up on the lost ones: the rails go up, the rest stays floor
+        end
+    end
+    if e.wave < #e.waves then return 'ready', 'wave' end
+    if not e.railed then return 'ready', 'rails' end
+    if #e.rails > 0 and waiting(e.rails, e.z) > 0 then return 'waiting' end
+    return 'done'
+end
+
+-- The openings of a rock landmark together: 'open' (something to do now),
+-- 'opening' (cut or railed, waiting on the dwarves), 'dig' (waiting on the
+-- digging), or nil (none left).
+local function opening_stage(rec, data)
+    if type(rec.open) ~= 'table' then return nil end
+    local any_ready, any_wait, any_dig = false, false, false
+    for _, e in ipairs(rec.open) do
+        local st = open_state(rec, e, data)
+        if st == 'ready' then any_ready = true
+        elseif st == 'waiting' then any_wait = true
+        elseif st == 'dig' then any_dig = true end
+    end
+    if any_ready then return 'open' end
+    if any_wait then return 'opening' end
+    if any_dig then return 'dig' end
+    return nil
+end
+
+-- One step of the openings: on every level that is ready, the next wave cut
+-- (or its lost tiles again), or the rails built. Returns the step's answer
+-- fields, or nil and why.
+local function open_step(rec, data, dry_run)
+    local cut, railed, levels = 0, 0, {}
+    for _, e in ipairs(rec.open) do
+        local st, act, lost = open_state(rec, e, data)
+        if st == 'ready' then
+            if act == 'wave' or act == 'redo' then
+                local w = act == 'wave' and e.wave + 1 or e.wave
+                local cells = act == 'wave' and e.waves[w] or lost
+                local good, failed, res = qf_try('dig', cells, e.z, 0, 0, dry_run)
+                if not good then
+                    return nil, ('the game %s the openings of level %d'):format(failed == 'dry' and 'would not cut' or 'refused', e.level)
+                end
+                cut = cut + stat(res, 'dig_designated')
+                if not dry_run then
+                    if act == 'wave' then e.wave, e.tries = w, 0 else e.tries = (math.tointeger(e.tries) or 0) + 1 end
+                end
+                table.insert(levels, {level = e.level, wave = w, waves = #e.waves})
+            else
+                if #e.rails > 0 then
+                    local good, failed, res = qf_try('build', e.rails, e.z, 0, 0, dry_run)
+                    if not good then
+                        return nil, ('the game %s the rails of level %d'):format(failed == 'dry' and 'would not place' or 'refused', e.level)
+                    end
+                    railed = railed + stat(res, 'build_designated')
+                end
+                if not dry_run then e.railed = true end
+                table.insert(levels, {level = e.level, rails = #e.rails})
+            end
+        elseif st == 'done' and not dry_run then
+            e.done = true
+        end
+    end
+    return {cut = cut, railed = railed, levels = levels}
+end
+
 -- The status of a rock landmark from its levels: 'built' once every level is done.
 local function rock_status(rec, data)
     local left = 0
@@ -1245,6 +1412,7 @@ local function rock_status(rec, data)
             end
         end
     end
+    if left == 0 and opening_stage(rec, data) ~= nil then return 'building' end   -- (E1) openings left
     return left == 0 and 'built' or 'building'
 end
 
@@ -1268,7 +1436,19 @@ function landmark_step(id, dry_run)
                     error = ('the landmark is %s'):format(tostring(rec.status))})
     end
     if rec.ground ~= 'surface' then
-        local st = rock_status(rec, load_projects())
+        local data = load_projects()
+        -- (E1) the openings: the next wave cut, or the rails built
+        if opening_stage(rec, data) == 'open' and rock_status(rec, data) ~= 'dropped' then
+            local r, why = open_step(rec, data, dry_run)
+            if not r then return out({ok = false, stage = 'open', error = why}) end
+            if not dry_run then rec.stage = 'open' save_landmarks(d) end
+            return out({stage = 'open', cut = r.cut, railed = r.railed, levels = r.levels})
+        end
+        local st = rock_status(rec, data)
+        if st == 'building' and type(rec.open) == 'table' and opening_stage(rec, data) == 'opening' then
+            return out({ok = false, rejected = true, waiting = true, stage = 'opening',
+                        error = ('%s: the openings are being cut or railed'):format(rec.name or 'the landmark')})
+        end
         if st == 'building' then
             return out({ok = false, rejected = true, stage = 'levels',
                         error = 'a rock landmark is built through its levels\' projects'})
@@ -1446,6 +1626,11 @@ function landmarks_report()
             data = data or load_projects()
             local st = rock_status(l, data)
             if st ~= 'building' then status, stage = st, 'done' end
+            -- (E1) the openings: 'open' when a step can be taken now
+            if st == 'building' and type(l.open) == 'table' then
+                local ok, os_ = pcall(opening_stage, l, data)
+                if ok and os_ and os_ ~= 'dig' then stage = os_ end
+            end
         end
         local e = {id = l.landmark_id, name = l.name, purpose = l.purpose, status = status, stage = stage,
                    levels = l.levels, project_ids = l.project_ids, started = l.started, by = l.by,

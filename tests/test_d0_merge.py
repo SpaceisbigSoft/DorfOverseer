@@ -90,7 +90,7 @@ def bpm():
 def dug_symbol(s: str, ground: str) -> bool:
     if ground == "surface":
         return False
-    return s in ".,@<>X^+" or bool(re.match(r"^[a-z]$", s))
+    return s in ".,@<>X^+*O" or bool(re.match(r"^[a-z]$", s))       # (E1) openings and rails are dug first
 
 
 # --- 1. G6 on the real G5 ---------------------------------------------------------------
@@ -101,7 +101,7 @@ def _():
     M = bpm()
     for name in ("check_format", "cost", "rotate", "to_layouts", "BP_LIMITS", "ITEMS", "ALPHABET", "ZONES"):
         assert M[name] is not None, name
-    assert M.ALPHABET.rock == "_#.,@<>X^+" and M.BP_LIMITS.cost_max == 2500
+    assert M.ALPHABET.rock == "_#.,@<>X^+*O" and M.BP_LIMITS.cost_max == 2500      # (E1) '*' and 'O'
 
 
 @test("the turn: G5's rotate/to_layouts and G6's turn_xy/grid_cells agree, every library drawing, q 0-3")
@@ -228,7 +228,8 @@ def lua_check(bp):
 
 @plain("the six library landmarks pass G5's Lua and Python check_format, with the same cost")
 def _():
-    assert sorted(LIBRARY) == ["descent", "gate_hall", "god_hall", "great_hall", "necropolis", "ziggurat"]
+    assert sorted(LIBRARY) == ["chronicle_hall", "descent", "gate_hall", "god_hall", "great_hall", "necropolis",
+                               "ziggurat"]                                     # (E1) chronicle_hall
     for kind, bp in LIBRARY.items():
         ok, rs = blueprint.check_format(bp)
         lok, lrs = lua_check(bp)

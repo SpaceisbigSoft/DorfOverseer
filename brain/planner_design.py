@@ -508,7 +508,9 @@ def run_landmarks(s: dict, traits: dict, cfg: dict, proposals: list, notes: list
             e.update(status="built", done=now)
             notes.append(f"design: the landmark {game_text(e.get('name'), 40)} is built")
             return
-        if rep is not None and e.get("env", [0, 0, 0, "rock"])[3] == "surface" and rep.get("stage") not in (None, "done"):
+        # (E1) a rock landmark's openings: proposed when the report says a step can be taken
+        if rep is not None and ((e.get("env", [0, 0, 0, "rock"])[3] == "surface" and rep.get("stage") not in (None, "done"))
+                                or rep.get("stage") == "open"):
             proposals.append(Proposal("landmark_step", {"type": "landmark_step", "landmark_id": e["landmark_id"]},
                                       f"design: {game_text(e.get('name'), 40)}: {step_words(rep)}", 6))
         return

@@ -1,0 +1,19 @@
+{
+ "v": 1,
+ "ground": "rock",
+ "levels": [
+  {
+   "grid": [
+    "###@###",
+    "#.....#",
+    "#.OOO.#",
+    "#.O*O.#",
+    "#.OOO.#",
+    "#.....#",
+    "#######"
+   ]
+  }
+ ],
+ "_doc": "an opening on the only level: nothing below it",
+ "_expect": "OPEN"
+}
