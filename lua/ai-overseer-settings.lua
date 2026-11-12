@@ -358,6 +358,8 @@ function defaults()
         -- water and has armed soldiers for what comes out; 'always'; 'never'
         open_caverns = 'ai',
         squads_shelter = true,     -- (0.105.0) while the AI hides from a great danger, the squads wait in the shelter
+        -- (0.105.41, item 2) the AI's feeder piles linked to the AI's own workshops (lua/ai-pile-links.lua)
+        link_feeders = true,
         -- (0.105.40b) raw adamantine mined: kept for a sealed breach plan that
         -- isn't built yet. On or off, the dig guard (ai-util dig_forbidden)
         -- leaves adamantine, the spire and the underworld alone
@@ -454,6 +456,7 @@ function sanitize(s)
                         'moat', 'magma_workshops', 'irrigation',   -- (0.105.0) the water works' switches
                         'disposal_player_items', 'keep_enemy_gear',   -- (0.105.27) disposal
                         'squads_shelter',           -- (0.105.0) the squads hide in the shelter too
+                        'link_feeders',             -- (0.105.41, item 2) feeder piles linked to their workshops
                         'mine_adamantine'}) do      -- (0.105.40b) reserved: still refused (not built yet)
         if s[k] ~= nil then out[k] = s[k] == true end
     end
@@ -557,6 +560,7 @@ function for_ai(s)
         moat = s.moat, magma_workshops = s.magma_workshops, irrigation = s.irrigation,   -- (0.105.0)
         open_caverns = s.open_caverns,             -- (0.105.4 review)
         squads_shelter = s.squads_shelter,         -- (0.105.0)
+        link_feeders = s.link_feeders,             -- (0.105.41, item 2)
         mine_adamantine = s.mine_adamantine,       -- (0.105.40b) reserved: adamantine still left alone
         wipe_learned = s.wipe_learned,
         wipe_learned_all = s.wipe_learned_all,
