@@ -938,6 +938,10 @@ CACHE_INVALIDATES.cleanup_units = {'disposal'}
 CACHE_INVALIDATES.cleanup_dead_units = {'disposal', 'dead'}
 CACHE_INVALIDATES.food_pile = {'food_store', 'logistics'}   -- (0.105.40b, M6) the new pile read again
 CACHE_INVALIDATES.food_barrels = {'food_store'}
+-- (fix41) a kitchen's or still's feeder pile is a food pile, and a storage
+-- level's furnish step lays its food piles: the food store read again
+CACHE_INVALIDATES.feeder_pile = {'logistics', 'food_store'}
+CACHE_INVALIDATES.furnish_project = {'registry', 'locations', 'noble_rooms', 'food_store'}
 CACHE_INVALIDATES.renew_well_dig = {'registry'}   -- (0.105.31) as start_project
 CACHE_INVALIDATES.build_blueprint = {'registry'}   -- (D0) a landmark's levels are projects
 CACHE_INVALIDATES.landmark_step = {'registry'}

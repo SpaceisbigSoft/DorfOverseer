@@ -214,7 +214,7 @@ def _():
             return {code = code, reagents = reagent_types,
                     products = {{item_type = product_type, mat_type = 0, mat_index = mat}}}
         end
-    """ + _lua_fn(src, "reaction_exists") + "\nALLOY_CACHE = {}\n" + _lua_fn(src, "alloy_reaction"))
+    """ + _lua_fn(src, "reaction_exists") + "\nALLOY_CACHE = {}\n" + _lua_fn(src, "alloy_world") + _lua_fn(src, "alloy_reaction"))
     L.execute("""
         local R = df.global.world.raws.reactions.reactions
         R[1] = rx('BRONZE_MAKING', {{item_type = 1}, {item_type = 1}}, 1, 1)

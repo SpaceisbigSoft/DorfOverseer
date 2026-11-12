@@ -18,7 +18,12 @@ items: lying outside a pile (`loose`), in a pile out of any container
     food_store_reach tiles gets one (food_pile: free roofed floor on its
     level, about food_store_tiles_per_citizen tiles a citizen, its max
     barrels a barrel a tile); with no room near it, a storage level of food
-    piles (food_store_level). The near piles full with food lying about:
+    piles (food_store_level) -- (fix41) not while the AI has a roofed food
+    pile anywhere or a storage level is open, and at most one level for each
+    kitchen or still ever (memory.food_store_seen["levels"], booked by
+    note_food_level when the start was not refused). A kitchen or still with
+    a feeder_pile proposal this cycle is left to it (fix41). The near piles
+    full with food lying about:
     another one beside them (food_pile `more`), up to
     food_store_tiles_cap_factor times the size wanted.
   * food_barrels: an AI food pile near a kitchen or still that takes fewer
@@ -44,7 +49,7 @@ from digest import _d, _l
 from planner_core import Proposal, TICKS_PER_DAY, abs_tick
 
 __all__ = ["FOOD_SHOP_ORDER", "food_store", "food_tiles_want", "food_barrels_for", "food_containers_want",
-           "food_dist", "_food_store_rule", "note_food", "food_line"]
+           "food_dist", "_food_store_rule", "note_food", "note_food_level", "food_levels", "food_line"]
 
 FOOD_SHOP_ORDER = ("Kitchen", "Still")
 
@@ -111,6 +116,25 @@ def _where(r: dict) -> str:
     return f"x{r.get('x', r.get('x1'))} y{r.get('y', r.get('y1'))} elevation {r.get('elevation')}"
 
 
+def food_levels(memory) -> set:
+    """(fix41) The kitchens and stills (ids) a storage level was dug for."""
+    seen = _d(getattr(memory, "food_store_seen", None)) if memory is not None else {}
+    return {i for i in _l(seen.get("levels")) if isinstance(i, int)}
+
+
+def note_food_level(p, r: dict, memory) -> None:
+    """(fix41, record) A food storage level started (or its outcome unknown):
+    the kitchens and stills it was for never get another."""
+    if memory is None or getattr(p, "rule", None) != "food_store_level" or _d(r).get("ok") is False:
+        return
+    ids = [i for i in _l(p.action.get("for_shops")) if isinstance(i, int)]
+    if not ids:
+        return
+    seen = dict(_d(memory.food_store_seen))
+    seen["levels"] = sorted(food_levels(memory) | set(ids))[-50:]
+    memory.food_store_seen = seen
+
+
 def _food_store_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None) -> None:
     fs = food_store(s)
     if fs is None:
@@ -134,8 +158,10 @@ def _food_store_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=No
 
     good = [p for p in piles if _roofed(p) and _int(p.get("tiles")) > 0]
     placed = False
+    # (fix41) a kitchen or still the feeder rule gives a pile this cycle: left to it
+    feeding = {x.action.get("building_id") for x in proposals if x.action.get("type") == "feeder_pile"}
     # 1. a kitchen or still with no roofed food pile near it
-    bare = [r for r in shops if not near(r, good)]
+    bare = [r for r in shops if not near(r, good) and r["id"] not in feeding]
     if bare:
         roomy = [r for r in bare if r.get("room") is not False]
         if roomy:
@@ -155,12 +181,17 @@ def _food_store_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=No
         else:
             pr = _d(s.get("projects"))
             open_kinds = {p.get("kind") for p in _l(pr.get("open")) if isinstance(p, dict)}
-            if "storage" not in open_kinds and not any(x.action.get("kind") == "storage" for x in proposals):
+            # (fix41) not while the AI has a roofed food pile anywhere (a level
+            # dug before), a storage level is open, or one was dug for each of them
+            ai_roofed = any(p.get("ai") for p in good)
+            due = [r for r in bare if r["id"] not in food_levels(memory)]
+            if (due and not ai_roofed and "storage" not in open_kinds
+                    and not any(x.action.get("kind") == "storage" for x in proposals)):
                 proposals.append(Proposal(
                     "food_store_level", {"type": "start_project", "kind": "storage", "piles": ["food"],
-                                         "room_size": 7},
-                    f"no room for a food stockpile within {reach} tiles of the {bare[0].get('kind')} at "
-                    f"{_where(bare[0])}: dig a storage level for the food", 6))
+                                         "room_size": 7, "for_shops": [r["id"] for r in due]},
+                    f"no room for a food stockpile within {reach} tiles of the {due[0].get('kind')} at "
+                    f"{_where(due[0])}: dig a storage level for the food", 6))
                 placed = True
     # 2. the AI's own food piles near a kitchen or still taking barrels
     shop_boxes = [_box(r) for r in shops]
@@ -189,6 +220,11 @@ def _food_store_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=No
             fullest = max(near_all.values(), key=lambda p: (_int(p.get("used")) / max(1, _int(p.get("tiles"))), -p["id"]))
             shop = next((r for r in shops if r["id"] == fullest.get("shop_id")), None) or next(
                 r for r in shops if fullest in near(r, good))
+            if shop["id"] in feeding:
+                shop = None                                 # (fix41) its feeder pile comes first
+        else:
+            shop = None
+        if shop is not None:
             proposals.append(Proposal(
                 "food_store", {"type": "food_pile", "building_id": shop["id"], "tiles": want,
                                "barrels": food_barrels_for(want, cfg), "reach": reach, "more": True},
@@ -218,8 +254,8 @@ def note_food(s: dict, memory, cfg: dict) -> list[str]:
     if fs is None or memory is None:
         return []
     it = _d(fs.get("items"))
-    if not isinstance(it.get("rotten"), int):
-        return []
+    if not isinstance(it.get("rotten"), int) or it.get("partial"):
+        return []                   # (fix41) a walk cut short counts too few: not a low to rise from
     rotten, now = it["rotten"], abs_tick(s)
     seen = dict(_d(memory.food_store_seen))
     since, low = seen.get("since"), seen.get("low")

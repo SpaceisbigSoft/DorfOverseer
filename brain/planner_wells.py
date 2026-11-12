@@ -658,9 +658,11 @@ WELL_PARTS_SHOPS = {"stone_blocks": "Masons", "wooden_bucket": "Carpenters", "me
 CHAIN_SKIP = {"PIG_IRON"}
 
 
-def chain_metal(s: dict) -> str | None:
+def chain_metal(s: dict, cfg: dict | None = None) -> str | None:
     """The metal for one chain at a forge with fuel, or None: a non-gear
-    metal first, else the commonest gear metal."""
+    metal first, else the commonest gear metal. (fix41) Tin and bismuth are
+    gear metal while the fort alloys bronze for its gear (planner_alloys
+    gear_metals)."""
     g = _d(_d(s.get("military")).get("gear"))
     if not g.get("forges") or int(_d(s.get("supplies")).get("fuel") or 0) < 3:
         return None
@@ -668,8 +670,11 @@ def chain_metal(s: dict) -> str | None:
             if isinstance(v, (int, float)) and v >= 1 and k not in CHAIN_SKIP}
     if not bars:
         return None
-    from planner_core import GEAR_METALS
-    other = [k for k in bars if k not in GEAR_METALS]
+    from planner_alloys import gear_metals
+    if cfg is None:
+        from planner_config import PLANNER_CONFIG as cfg
+    keep = gear_metals(s, cfg)
+    other = [k for k in bars if k not in keep]
     pool = other or list(bars)
     return max(pool, key=lambda k: (bars[k], k))
 

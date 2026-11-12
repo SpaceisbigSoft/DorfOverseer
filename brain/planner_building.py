@@ -15,6 +15,7 @@ from planner_core import *  # noqa: F401,F403
 from planner_construct import _soil_floor_rule  # (0.105.30) block floors over a finished hall's soil
 from planner_growth import *  # noqa: F401,F403  (13c: split out by theme)
 from planner_wells import *  # noqa: F401,F403  (13c: split out by theme)
+from planner_alloys import gear_metals  # (fix41) tin and bismuth kept for bronze while there is no iron
 
 __all__ = ["STUCK_FALLBACKS", "stuck_fallback", "magma_access", "GROWTH", "GROWTH_EXTRA_SCORE", "GROWTH_MAX", "growth_want", "growth_candidates", "settled_times", "growth_wait", "GROWTH_SOLDIERS", "GROWTH_ZONES", "GROWTH_MAX_OF", "GROWTH_AT", "TRAIT_NAMES_SHORT", "FURNITURE_RECIPES", "METAL_FURNITURE", "spare_metal", "WOODEN_FURNITURE", "BASIC_WORKSHOPS", "BASIC_STOCKPILES", "memorial_due", "_well_rule", "_well_lid_rule", "cavern_danger", "_planned_note", "_planned_parts_rule", "planned_wants", "_water_zone_rule", "cavern_well_need", "cavern_points", "cavern_action", "cavern_well_safe", "WELL_PARTS_SHOPS", "chain_metal", "well_parts_plan", "_well_parts", "_room_repair_rule", "_water_traffic_rule", "_cleanup_rule", "STORE_GROW", "stone_tidiness", "jail_plan", "cistern_pop", "tavern_factor", "full_stores", "LEARNING_NEEDS", "_stairwell_rule", "WATER_WORDS", "water_summary", "_water_rules", "CISTERN_WORDS", "_cistern_parts", "_cistern_rule", "_deep_notes", "good_times", "ORDINALS", "garden_name", "_pop_cap_rule", "fort_strain", "hospital_shortfall", "dining_shortfall", "social_shortfall", "SOCIAL_KINDS", "_join_rule", "_dig_stall_rule", "_shrink_rule", "room_size", "_project_rules", "CHARACTER_KINDS", "is_character_level", "character_slot_reserved", "character_slot_filter", "temple_size", "more_temple", "has_grand_temple", "piety_slot", "LADDER_BASE", "LADDER_TRAITS", "_ladder_kind", "_ladder_word", "ladder_score", "tombs_short", "PLACEMENT_CUSTOMS", "apply_customs", "customs_pass"]
 
@@ -41,8 +42,9 @@ def spare_metal(s: dict, cfg: dict, amount: int) -> str | None:
     if not gear.get("forges") or int(_d(s.get("supplies")).get("fuel") or 0) < amount + 5:
         return None
     bars = {k: int(v) for k, v in _d(gear.get("all_bars")).items() if isinstance(v, (int, float))}
+    keep = gear_metals(s, cfg)      # (fix41) tin and bismuth too while the fort alloys bronze for gear
     ok = [(n, m) for m, n in bars.items()
-          if m not in GEAR_METALS and m not in ("PIG_IRON",) and n - 3 * amount >= cfg["metal_furniture_bars"]]
+          if m not in keep and m not in ("PIG_IRON",) and n - 3 * amount >= cfg["metal_furniture_bars"]]
     return max(ok)[1] if ok else None
 
 
@@ -249,7 +251,8 @@ def stuck_fallback(p, s: dict, memory, cfg: dict, now: int) -> dict | None:
                 if not gear_.get("forges") or int(_d(s.get("supplies")).get("fuel") or 0) < amount + 5:
                     continue                            # (a forge and fuel, as spare_metal asks)
                 bars = _d(_d(_d(s.get("military")).get("gear")).get("all_bars"))
-                m = max(((int(v), k) for k, v in bars.items() if isinstance(v, (int, float)) and k not in GEAR_METALS
+                keep = gear_metals(s, cfg)      # (fix41) tin and bismuth too while bronze is the gear
+                m = max(((int(v), k) for k, v in bars.items() if isinstance(v, (int, float)) and k not in keep
                          and k != "PIG_IRON" and int(v) >= 2 * amount + 5), default=None)
                 metal = m[1] if m else None
             else:

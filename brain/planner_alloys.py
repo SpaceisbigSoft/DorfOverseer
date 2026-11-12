@@ -30,7 +30,13 @@ gear-metal line, which tin isn't in), and the vein mined is tin's
 take the best metal with enough bars: steel, iron, bronze, bismuth bronze,
 copper (GEAR_METALS).
 
-Value (low priority, a forge and plenty of fuel or a magma smelter): an
+Short of fuel, the "bronze waits for fuel" note is said once a game day
+(memory.alloy_seen["fuel_note"]), not every cycle (fix41).
+
+Value (low priority, a forge and plenty of fuel or a magma smelter, and
+(fix41) only while the Rules switch import_smelting is on: value alloys are
+smelter work the AI takes on by itself, as the smelting orders it imports
+when metal runs low; make_gear is for the soldiers' gear, not this): an
 alloy whose bars are worth alloy_value_gain times its parts (the game's
 metal values, from the gear report's bar_values; the vanilla values below
 without them), from metals each over alloy_value_keep bars, while it has
@@ -41,10 +47,10 @@ fort still wants.
 from __future__ import annotations
 
 from digest import _d, _l
-from planner_core import Proposal, player_rules, queued
+from planner_core import GEAR_METALS, Proposal, TICKS_PER_DAY, abs_tick, player_rules, queued
 
 __all__ = ["ALLOYS", "ALLOY_RECIPES", "GEAR_ALLOYS", "VALUE_ALLOYS", "VANILLA_VALUES", "iron_route",
-           "tin_ore_first", "_alloy_rule"]
+           "tin_ore_first", "BRONZE_PARTS", "gear_metals", "_alloy_rule"]
 
 # metal -> (recipe, parts by metal, bars made)
 ALLOYS = {
@@ -65,6 +71,8 @@ VANILLA_VALUES = {"COPPER": 2, "TIN": 1, "BISMUTH": 1, "ZINC": 2, "SILVER": 10, 
                   "BRONZE": 5, "BISMUTH_BRONZE": 6, "BRASS": 7, "ELECTRUM": 20, "BILLON": 7,
                   "BLACK_BRONZE": 11, "ROSE_GOLD": 20, "STERLING_SILVER": 20}
 IRON_METALS = ("IRON", "PIG_IRON", "STEEL")
+# (fix41) the bronze's parts that are not copper: gear metal while the fort alloys bronze
+BRONZE_PARTS = ("TIN", "BISMUTH")
 
 
 def _bars(s: dict) -> dict:
@@ -90,6 +98,16 @@ def iron_route(s: dict, cfg: dict, bars: dict | None = None) -> bool:
     if have >= cfg["alloy_iron_route_bars"]:
         return True
     return bool(_ores_by_metal(s, "IRON")) or "IRON" in _d(_d(s.get("industry")).get("ores"))
+
+
+def gear_metals(s: dict, cfg: dict) -> set:
+    """(fix41) The metals the soldiers' gear wants kept (not spare for
+    furniture, crafts or chains): GEAR_METALS, and tin and bismuth while the
+    fort makes gear with no iron route (they become its bronze)."""
+    out = set(GEAR_METALS)
+    if player_rules(s)["make_gear"] and not iron_route(s, cfg):
+        out |= set(BRONZE_PARTS)
+    return out
 
 
 def tin_ore_first(s: dict, cfg: dict, ores: dict) -> str | None:
@@ -149,6 +167,13 @@ def _alloy_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> Non
             if n <= 0 or not gear_wants:
                 continue
             if not magma and fuel < cfg["alloy_fuel_min"]:
+                if memory is not None:          # (fix41) once a game day, not every cycle
+                    seen, now = dict(_d(getattr(memory, "alloy_seen", None))), abs_tick(s)
+                    last = seen.get("fuel_note")
+                    if isinstance(last, int) and 0 <= now - last < TICKS_PER_DAY:
+                        return
+                    seen["fuel_note"] = now
+                    memory.alloy_seen = seen
                 notes.append(f"copper and tin bars for {metal.lower().replace('_', ' ')} (no iron here), but only "
                              f"{fuel} charcoal or coke: the bronze waits for fuel (charcoal or coke is made as wood or coal allows)")
                 return
@@ -160,6 +185,8 @@ def _alloy_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> Non
                                         "soldiers' gear (better than copper)", 5, True))
             return
     # 2. value: precious metals piled up, alloyed where the alloy is worth more
+    if not player_rules(s)["import_smelting"]:
+        return                                    # (fix41) the Rules keep the smelter to its imported orders off
     if not _d(_d(s.get("military")).get("gear")).get("forges"):
         return
     if not magma and fuel < cfg["alloy_value_fuel_min"]:
