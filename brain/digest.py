@@ -147,6 +147,7 @@ SECTION_DEFAULTS = {
     "trade": {},             # {depot, caravans: [{civ, state}], goods, goods_value, at_depot} (lua/ai-trade.lua)          # {ores: {METAL: {tiles, ore}}} uncovered near the fort (lua/ai-industry.lua)             # {miners, picks, soldier_picks, dig, want, need, candidates} (lua/ai-labor.lua)
     "founding": {},          # {stairs: has the fort a staircase, near: the wagon or the dwarves}
     "constructions": {},     # (0.105.30) built walls, floors...: by shape, item, surface (lua/ai-constructions.lua)
+    "landmarks": {"list": []},   # (D0) the Design track's landmarks: id, name, purpose, status, stage, levels, project_ids
     "civ_alert": False,      # (0.105.33) a failed read ({error}) read as "the alarm is on"
 }
 # (0.105.36) not REQUIRED (the plan goes on without them), but a missing one is

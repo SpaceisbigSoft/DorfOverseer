@@ -105,6 +105,8 @@ class TokenBank:
     event_reviews: list = field(default_factory=list)   # abs ticks of recent event reviews
     total_used: int = 0
     log: list = field(default_factory=list)             # last few spends, for the panel
+    # (D0) what design calls spent this game year: {"year", "used"} (an old save: none yet)
+    design_spent: dict = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, d: dict | None) -> "TokenBank":
@@ -167,6 +169,20 @@ class TokenBank:
             need = "for an event review" if is_event else "above the emergency reserve"
             return False, f"not enough tokens saved {need} ({int(self.balance):,} available)"
         return True, ""
+
+    def design_used(self, now_tick: int) -> int:
+        """(D0) Tokens design calls spent in this game year."""
+        d = self.design_spent if isinstance(self.design_spent, dict) else {}
+        if d.get("year") != now_tick // TICKS_PER_YEAR:
+            return 0
+        try:
+            return int(d.get("used") or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    def add_design(self, used: int, now_tick: int) -> None:
+        """(D0) Counted as well as spent (spend() takes them from the balance)."""
+        self.design_spent = {"year": now_tick // TICKS_PER_YEAR, "used": self.design_used(now_tick) + max(0, int(used))}
 
     def spend(self, used: int, now_tick: int, why: str, today: date | None = None) -> None:
         today = today or date.today()
@@ -281,3 +297,23 @@ def event_review_allowed(bank: TokenBank, now_tick: int, how) -> bool:
     allowed = 1 if per_month < 1 else int(per_month)
     bank.event_reviews = [t for t in bank.event_reviews if 0 <= now_tick - t < window]
     return len(bank.event_reviews) < allowed
+
+
+# --- (D0) the Design track's share -----------------------------------------------------
+
+DESIGN_SHARE = 0.35        # design calls use at most this share of the bank's yearly plan
+
+
+def design_ok(bank: TokenBank, now: int, estimate: int, settings: dict, drawings: int = 1,
+              today: date | None = None) -> tuple[bool, str]:
+    """(D0) May a design call of `estimate` tokens be made? Spent from the bank
+    as a routine review (never the event reserve), within DESIGN_SHARE of the
+    year's plan and the PC-wide real-day cap. `drawings`: a landmark starts
+    only when the bank holds two drawings (its first call asks with 2)."""
+    plan = ai_plan(settings)
+    share = int(DESIGN_SHARE * plan["tokens_per_year"])
+    spent = bank.design_used(now)
+    if spent + estimate > share:
+        return False, f"the design share is used ({spent:,} of {share:,} this year)"
+    return bank.can_spend(int(estimate) * max(1, int(drawings)), budget_settings(settings), is_event=False,
+                          today=today)

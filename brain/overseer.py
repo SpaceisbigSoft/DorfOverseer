@@ -295,7 +295,8 @@ BIG_MOVES = {"start_project", "cancel_project", "cancel_work_order", "squad_fill
              "remove_workshops", "deep_depot",      # (0.105.23) a wagon road and a hall dug
              "cut_entrance",                     # (0.105.0) hatches across the fort's stairs: asked first
              "build_gatehouse",                  # (0.105.23) walls and a drawbridge on the surface
-             "place_hall", "build_wings"}        # (0.105.30) a hall above ground; wall arms at the gatehouse
+             "place_hall", "build_wings",        # (0.105.30) a hall above ground; wall arms at the gatehouse
+             "build_blueprint"}                  # (D0) a landmark: asked first in co-pilot
 DECLINE_DAYS = 7          # a "No" holds this many in-game days before it may ask again
 
 
@@ -318,7 +319,8 @@ def proposal_id(p) -> str:
 
 CAMERA_QUIET = {"census", "join_levels", "dismiss_alerts", "sand_zone", "report_status", "survey_water", "scan_entrances", "recreation", "hospital_burrow",
                 "calm_burrow",   # (0.104.169)
-                "cistern_step", "water_work", "restrict_water", "save_memory", "pair_chairs", "approve_orders"}
+                "cistern_step", "water_work", "restrict_water", "save_memory", "pair_chairs", "approve_orders",
+                "blueprint_sites"}   # (D0) looks for sites, changes no tile
 
 
 _CAMERA_LEVELS: list = []   # (0.104.91) the newest "dig a new ... level" lines, while the keeper runs
@@ -392,6 +394,9 @@ def camera_feed(memory) -> dict:
 
 # (13c) The actions said the same way every time, for short() below.
 SHORT_WORDS = {
+    "blueprint_sites": "look for sites for a landmark",       # (D0) the Design track
+    "build_blueprint": "start a landmark",
+    "landmark_step": "build the landmark (next step)",
     "survey_water": "survey the water near the fort",
     "staff_labors": "give the hospital's staff the labours of their posts",
     "retarget_hall": "give a hall being dug to another petition",
@@ -1534,6 +1539,13 @@ def push_culture(bridge: Bridge, state: dict, memory) -> None:
                "phase": phases.line(memory),
                "effects": temperament.effects(s),       # (0.94) the panel's "Now:" line per slider
                "leanings": leanings.panel(memory.culture)}   # (0.95) its "Leans:" line
+    try:      # (D0) the fort's design language, for the Culture page (only when it has one)
+        import design as _design
+        dl = _design.lines(memory.culture)
+        if dl:
+            payload["design"] = list(dl)[:6]
+    except Exception:  # noqa: BLE001  (only words for the panel)
+        pass
     # (0.97.1, B9) a short hash is kept, not the whole payload (it was stored
     # in the memory, and could push the save's memory past its budget)
     fingerprint = hashlib.sha1(json.dumps(payload, sort_keys=True).encode()).hexdigest()
@@ -1984,6 +1996,11 @@ def _run(args) -> int:
     mode = "AUTOPILOT" if args.autopilot else "DRY RUN (nothing will be changed)"
     say(f"Overseer starting in {mode}. Ctrl-C to quit; create a file named STOP to halt actions.")
     backend = make_backend() if args.ai else None
+    try:      # (D0) the design language's AI turn needs --ai (and config design_ai)
+        import planner_design
+        planner_design.set_ai(backend is not None)
+    except Exception:  # noqa: BLE001
+        pass
     if backend and not args.autopilot:
         say("Note: in a dry run the AI still reviews (and uses tokens); its actions are only shown.")
 
