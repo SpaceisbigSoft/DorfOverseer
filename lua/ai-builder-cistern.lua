@@ -1544,6 +1544,11 @@ function cistern_step(dry_run, prefs, tunnel)
             forbid_items_on(cistern_way(p), zi)
         end
         -- dig-now: the plug gone at once, the gate still shut; then the gate opened
+        -- (0.105.40b) the dig guard: a plug by raw adamantine, the spire or the underworld is never dug
+        local deep = dig_check_tiles({{x = p.plug.x, y = p.plug.y}}, zi, (not dry_run) and 'cistern_plug' or nil)
+        if deep then
+            return {ok = false, rejected = true, error = 'the plug is ' .. deep .. ': left alone: it guards the underworld'}
+        end
         if not d.plug_by_hand and gate and gate.closed then
             designate({{x = p.plug.x, y = p.plug.y, text = 'd'}}, zi, 'dig')
             local pos = ('%d,%d,%d'):format(p.plug.x, p.plug.y, zi)

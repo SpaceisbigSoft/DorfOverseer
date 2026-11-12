@@ -194,6 +194,8 @@ end
 
 local function safe(x, y, z)
     if warm(x, y, z) then return false end
+    -- (0.105.40b) never raw adamantine, the spire or the underworld, nor beside them
+    if U.dig_forbidden(x, y, z) then return false end
     for dz = -1, 1 do
         for dy = -1, 1 do
             for dx = -1, 1 do
@@ -473,6 +475,15 @@ function mine(metal, count, dry_run)
                  x = best.x, y = best.y, z = best.z, dry_run = dry_run or nil,
                  drift = drift and #drift.path or nil,
                  drift_from = drift and drift.path[1] or nil}
+    -- (0.105.40b) the dig guard once more over what is marked (the vein's own
+    -- stone too: a deep special one is never mined)
+    if U.is_deep_inorganic(best_mat) then
+        return {ok = false, rejected = true, error = ('the %s vein found is raw adamantine: left alone: it guards the underworld'):format(metal:lower())}
+    end
+    local why = U.dig_check_tiles(marked, nil, (not dry_run) and 'mine_ore' or nil)
+    if why then
+        return {ok = false, rejected = true, error = 'a tile of the vein is ' .. why .. ': left alone: it guards the underworld'}
+    end
     if dry_run then return out end
     for _, t in ipairs(marked) do
         local d = dfhack.maps.getTileFlags(t.x, t.y, t.z)
@@ -668,6 +679,11 @@ function quarry(count, dry_run)
     local inorg = inorganic(best_idx)
     local out = {ok = true, stone = inorg and inorg.id or nil, tiles = #marked, x = best.x, y = best.y, z = best.z,
                  dry_run = dry_run or nil}
+    -- (0.105.40b) the dig guard once more over what is marked
+    local why = U.dig_check_tiles(marked, nil, (not dry_run) and 'quarry' or nil)
+    if why then
+        return {ok = false, rejected = true, error = 'a tile of the quarry is ' .. why .. ': left alone: it guards the underworld'}
+    end
     if dry_run then return out end
     for _, t in ipairs(marked) do
         local d = dfhack.maps.getTileFlags(t.x, t.y, t.z)

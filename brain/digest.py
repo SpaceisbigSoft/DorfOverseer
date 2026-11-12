@@ -293,6 +293,16 @@ def food_line(s: dict) -> str:
         return ""
 
 
+def deep_hazard_line(s: dict) -> str:
+    """(0.105.40b) Raw adamantine seen and the dig guard's refusals in one
+    line (brain/planner_deep.py deep_hazard_line); "" without them."""
+    try:
+        from planner_deep import deep_hazard_line as _line
+        return _line(s)
+    except Exception:  # noqa: BLE001  (a digest line never stops the digest)
+        return ""
+
+
 def water_line(s: dict) -> str:
     """(0.105.38) The whole-map water survey in a line: the nearest flowing
     water (its distance and the dig's reach, or why none), how many bodies,
@@ -601,7 +611,8 @@ def digest(s: dict, news: int = 5) -> str:
     ]
 
     for extra in (threat_line(s), world_line(s), infection_line(s), built_line(s), gate_split_line(s), water_line(s),
-                  missions_line(s), perf_line(s), cleanup_line(s), hauling_line(s), food_line(s)):
+                  missions_line(s), perf_line(s), cleanup_line(s), hauling_line(s), food_line(s),
+                  deep_hazard_line(s)):
         if extra:
             lines.append(extra)
     m = _d(s.get("map"))

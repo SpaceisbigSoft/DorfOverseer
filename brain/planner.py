@@ -55,6 +55,7 @@ from planner_insane import _insane_rule  # noqa: E402  (0.105.40b) the insane: d
 from planner_hauling import _hauling_labor_rule  # noqa: E402  (0.105.40 M5) hauling balanced
 from planner_food import _food_store_rule, note_food  # noqa: E402  (0.105.40b, M6) the food store
 from planner_alloys import _alloy_rule  # noqa: E402  (0.105.40 M7) bronze for a fort without iron, value alloys
+from planner_deep import _deep_hazard_rule  # noqa: E402  (0.105.40b) adamantine and the underworld: never dug
 from planner_construct import (_hall_rule, _construction_blocks_rule,  # noqa: E402  (0.105.30) construction
                                note_construct, note_construct_cycle)
 from planner_army import (_army_gear_rule, _quiver_rule, _bolts_rule, _flask_rule,  # noqa: E402  (0.105.0, round 2)
@@ -683,6 +684,8 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
         _guard(_industry_rules, s, memory, cfg, citizens, proposals, notes)
     if can_use("buildings", "military", "industry"):
         _guard(_alloy_rule, s, memory, cfg, proposals, notes)     # (0.105.40 M7) alloys at the smelter
+    # 6f-1. (0.105.40b) adamantine and the underworld: never proposed, said why
+    _guard(_deep_hazard_rule, s, proposals, notes)
 
     # 6g. The watchdog: work orders that don't move, a population that doesn't
     if memory is not None:

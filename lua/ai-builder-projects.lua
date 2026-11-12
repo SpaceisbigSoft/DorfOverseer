@@ -284,7 +284,9 @@ function start_project(params, now, dry_run)
     if stat(dry, 'dig_designated') ~= expected or stat(dry, 'dig_invalid_tiles') > 0
             or stat(dry, 'out_of_bounds') > 0 or stat(dry, 'invalid_keys') > 0 then
         return {ok = false, error = ('dry run disagreed: %d of %d tiles designatable'):format(
-            stat(dry, 'dig_designated'), expected)}
+            stat(dry, 'dig_designated'), expected)
+            .. (type(dry) == 'table' and dry.dig_guard_why and ((' (%d refused: %s: left alone: it guards the underworld)'):format(
+                stat(dry, 'dig_guard_refused'), dry.dig_guard_why)) or '')}   -- (0.105.40b) the dig guard's
     end
 
     local stairs_cells = site.extend and stair_cells(stair, site.z) or {}

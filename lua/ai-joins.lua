@@ -420,7 +420,7 @@ local function designate(tiles, z)
     local n = 0
     for _, p in ipairs(tiles) do
         local d = dfhack.maps.getTileFlags(p.x, p.y, z)
-        if d and d.dig == df.tile_dig_designation.No then
+        if d and d.dig == df.tile_dig_designation.No and not U.dig_forbidden(p.x, p.y, z) then   -- (0.105.40b) dig guard
             d.dig = df.tile_dig_designation.Default
             local block = dfhack.maps.getTileBlock(p.x, p.y, z)
             if block then block.flags.designated = true end
@@ -461,6 +461,13 @@ local function join_levels_inner(dry_run)
         local T = game_reader(z)
         local r, why, stats = plan_join(T, seeds_by_z[z])
         dead = dead + (stats and stats.dead_ends or 0)
+        -- (0.105.40b) a corridor that would dig raw adamantine, the spire or
+        -- the underworld (or beside them) is not dug: noted, the next level looked at
+        local deep = r and U.dig_check_tiles(r.tiles, z, (not dry_run) and 'join' or nil)
+        if deep then
+            if #notes < 3 then table.insert(notes, ('z%d: the corridor would dig %s: left alone: it guards the underworld'):format(z, deep)) end
+            r = nil
+        end
         if r then
             local n = dry_run and #r.tiles or designate(r.tiles, z)
             return {ok = true, scanned = scanned, dead_ends = dead,
@@ -471,6 +478,11 @@ local function join_levels_inner(dry_run)
         -- (0.104.109) nothing to join here: a 1-wide corridor widened instead
         local w, wwhy, nruns = nil, nil, 0
         if not late() then w, wwhy, nruns = plan_widen(T, seeds_by_z[z]) end
+        local wdeep = w and U.dig_check_tiles(w.tiles, z, (not dry_run) and 'widen' or nil)   -- (0.105.40b)
+        if wdeep then
+            if #notes < 3 then table.insert(notes, ('z%d: the widening would dig %s: left alone: it guards the underworld'):format(z, wdeep)) end
+            w = nil
+        end
         if w and not late() then
             local n = dry_run and #w.tiles or designate(w.tiles, z)
             return {ok = true, scanned = scanned, dead_ends = dead, dry_run = dry_run or nil,

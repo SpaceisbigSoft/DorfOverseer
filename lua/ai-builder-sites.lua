@@ -43,6 +43,9 @@ function check_site(L, extra, ax, ay, z, reserved, skip, exempt)
             ok, why = false, 'not soil (crops need soil)'
         end
         if not ok then return false, ('%s at x%d y%d z%d'):format(why, ax + x, ay + y, ez(z)) end
+        -- (0.105.40b) the dig guard: never raw adamantine, the spire or the underworld, nor beside them
+        local deep = dig_forbidden(ax + x, ay + y, z)
+        if deep then return false, ('%s at x%d y%d z%d (left alone: it guards the underworld)'):format(deep, ax + x, ay + y, ez(z)) end
         return true
     end
     -- dug tiles first (most likely to fail), then their borders

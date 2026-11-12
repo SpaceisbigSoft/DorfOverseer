@@ -464,3 +464,392 @@ function forbidden_reason(it, ctx, kind, x, y, z)
     end
     return 'unknown', nil
 end
+
+-- --- the dig guard (0.105.40b) ----------------------------------------------------
+--
+-- Raw adamantine, the spire it stands in and the underworld under it end a
+-- fort when dug into: the spire's hollow and the underworld's open floor
+-- bring out what lives down there. No dig the AI marks may take such a tile,
+-- one beside it (the 8 around on its level) or the one over or under it.
+-- Every path that marks digging asks dig_forbidden first: quickfort's dig
+-- blueprints (lua/ai-builder.lua quickfort_apply, so every level, hall, well,
+-- cistern, way in, landmark, site check and gallery), the joins and widenings
+-- (ai-joins.lua), the ore veins, drifts and quarries (ai-industry.lua), and
+-- DFHack's dig-now (the cistern's and the water works' plugs).
+--
+-- dig_forbidden reads the tile itself, hidden or not (a guard, not a survey):
+--   * a mineral vein whose stone is flagged DEEP_SPECIAL in the raws (raw
+--     adamantine);
+--   * a tile of a deep special feature: designation.feature_local in a block
+--     whose local feature is a deep_special_tube or deep_surface_portal;
+--   * a tile of the underworld: designation.feature_global in a block whose
+--     global feature is underworld_from_layer;
+--   * map special stone (tiletype material FEATURE) of such a feature, and
+--     the underworld's own HFS tiles.
+-- Each block and tile is read once per game tick (the memo); the raws once.
+-- The Rules switch `mine_adamantine` is kept for a sealed breach plan that
+-- isn't built yet: on or off, these tiles are refused.
+
+DIG_KEYS = {d = true, h = true, u = true, j = true, i = true, r = true}   -- quickfort keys that dig
+DIG_GUARD = DIG_GUARD or {refused = 0, by = {}, last = {}}                -- refusals since the game loaded
+DIG_GUARD_LAST_MAX = 5
+
+local DEEP_INORG = {}        -- inorganic index -> DEEP_SPECIAL (the raws never change while the game runs)
+local GMEMO = nil            -- {tick, features, blocks, tiles}
+
+local function deep_inorganic(idx)
+    if idx == nil then return false end
+    local v = DEEP_INORG[idx]
+    if v ~= nil then return v end
+    local ok, inorg = pcall(function() return df.global.world.raws.inorganics.all[idx] end)
+    if not (ok and inorg) then ok, inorg = pcall(function() return df.global.world.raws.inorganics[idx] end) end
+    v = false
+    if ok and inorg then
+        local okf, f = pcall(function() return inorg.flags.DEEP_SPECIAL end)
+        v = okf and f == true
+    end
+    DEEP_INORG[idx] = v
+    return v
+end
+is_deep_inorganic = deep_inorganic
+
+-- the map's deep features by index: {tube = {[local idx] = true}, under = {[global idx] = true}}
+local function deep_features()
+    local out = {tube = {}, under = {}, global = {}}
+    pcall(function()
+        local F = df.global.world.features
+        for i, f in ipairs(F.map_features) do
+            local gid = F.feature_global_idx[i]
+            if gid ~= nil and gid >= 0 then out.global[gid] = true end
+            if df.feature_init_deep_special_tubest:is_instance(f) or df.feature_init_deep_surface_portalst:is_instance(f) then
+                out.tube[F.feature_local_idx[i]] = true
+            elseif df.feature_init_underworld_from_layerst:is_instance(f) then
+                out.under[gid] = true
+            end
+        end
+    end)
+    return out
+end
+
+local function memo()
+    local ok, t = pcall(abs_tick)
+    t = ok and t or false
+    if not GMEMO or GMEMO.tick ~= t then
+        GMEMO = {tick = t, blocks = {}, tiles = {}}
+    end
+    return GMEMO
+end
+
+-- The memo dropped (a test, or a caller that just changed the map).
+function dig_guard_reset() GMEMO = nil end
+
+-- What a block holds of the deep: {tube, under, deep = {[lx * 16 + ly] = true}}, or false
+local function block_info(m, x, y, z)
+    local key = (x // 16) .. ',' .. (y // 16) .. ',' .. z
+    local b = m.blocks[key]
+    if b ~= nil then return b end
+    b = false
+    local okb, block = pcall(function() return dfhack.maps.getTileBlock(x, y, z) end)
+    if okb and block then
+        b = {}
+        pcall(function()
+            local lf = block.local_feature
+            if lf ~= nil and lf >= 0 then
+                local exact
+                pcall(function()
+                    local f = dfhack.maps.getLocalInitFeature(block.region_pos, lf)
+                    if f then
+                        local t = f:getType()
+                        exact = (t == df.feature_type.deep_special_tube or t == df.feature_type.deep_surface_portal)
+                    end
+                end)
+                if exact == nil then
+                    m.features = m.features or deep_features()
+                    exact = m.features.tube[lf] == true
+                end
+                b.tube = exact
+            end
+        end)
+        pcall(function()
+            local gf = block.global_feature
+            if gf ~= nil and gf >= 0 then
+                local exact
+                pcall(function()
+                    local f = dfhack.maps.getGlobalInitFeature(gf)
+                    if f then exact = f:getType() == df.feature_type.underworld_from_layer end
+                end)
+                if exact == nil then        -- the map's features; a layer they don't list stays unknown (nil)
+                    m.features = m.features or deep_features()
+                    if m.features.under[gf] then exact = true
+                    elseif m.features.global[gf] then exact = false end
+                end
+                b.under = exact
+            end
+        end)
+        pcall(function()
+            for _, ev in ipairs(block.block_events) do
+                if df.block_square_event_mineralst:is_instance(ev) and deep_inorganic(ev.inorganic_mat) then
+                    b.deep = b.deep or {}
+                    for lx = 0, 15 do
+                        for ly = 0, 15 do
+                            if dfhack.maps.getTileAssignment(ev.tile_bitmask, lx, ly) then b.deep[lx * 16 + ly] = true end
+                        end
+                    end
+                end
+            end
+        end)
+    end
+    m.blocks[key] = b
+    return b
+end
+
+local function tile_material(x, y, z)
+    local ok, name = pcall(function()
+        local tt = dfhack.maps.getTileType(x, y, z)
+        local a = tt and df.tiletype.attrs[tt]
+        return a and df.tiletype_material[a.material]
+    end)
+    return ok and name or nil
+end
+
+-- Why this one tile is the deep's ('raw adamantine', 'the adamantine spire',
+-- 'the underworld'), or nil
+function deep_tile(x, y, z, m)
+    m = m or memo()
+    local k = x .. ',' .. y .. ',' .. z
+    local t = m.tiles[k]
+    if t ~= nil then return t or nil end
+    t = false
+    local b = block_info(m, x, y, z)
+    if b then
+        local okd, d = pcall(function() return dfhack.maps.getTileFlags(x, y, z) end)
+        if not (okd and d) then d = nil end
+        local fl = d and d.feature_local
+        local fg = d and d.feature_global
+        if b.deep and b.deep[(x & 15) * 16 + (y & 15)] then t = 'raw adamantine'
+        elseif b.tube and fl then t = 'the adamantine spire'
+        elseif b.under and fg then t = 'the underworld'
+        else
+            local mat = tile_material(x, y, z)
+            if mat == 'HFS' then t = 'the underworld'
+            elseif mat == 'FEATURE' and fl then t = 'the adamantine spire'          -- local special stone: the tube's
+            elseif mat == 'FEATURE' and fg and b.under ~= false then t = 'the underworld'
+            end
+        end
+    end
+    m.tiles[k] = t
+    return t or nil
+end
+
+-- Why digging (x, y, z) is refused, or nil: the tile itself is the deep's,
+-- or one of the 8 beside it on its level, or the one over or under it.
+function dig_forbidden(x, y, z)
+    x, y, z = math.tointeger(x), math.tointeger(y), math.tointeger(z)
+    if not (x and y and z) then return nil end
+    local m = memo()
+    local why = deep_tile(x, y, z, m)
+    if why then return why end
+    for dy = -1, 1 do
+        for dx = -1, 1 do
+            if dx ~= 0 or dy ~= 0 then
+                why = deep_tile(x + dx, y + dy, z, m)
+                if why then return 'next to ' .. why end
+            end
+        end
+    end
+    why = deep_tile(x, y, z - 1, m)
+    if why then return 'over ' .. why end
+    why = deep_tile(x, y, z + 1, m)
+    if why then return 'under ' .. why end
+    return nil
+end
+
+-- A refusal kept for the report (by: the path that asked).
+function dig_refused(by, x, y, z, why)
+    local g = DIG_GUARD
+    g.refused = (g.refused or 0) + 1
+    g.by = g.by or {}
+    g.by[by or '?'] = (g.by[by or '?'] or 0) + 1
+    g.last = g.last or {}
+    table.insert(g.last, {by = by, x = x, y = y, z = z, why = why})
+    while #g.last > DIG_GUARD_LAST_MAX do table.remove(g.last, 1) end
+end
+
+-- The first refused tile of a list of {x, y, z} (or {x, y} with `z`):
+-- why, the tile; nil when every tile may be dug. `by`: kept as a refusal.
+function dig_check_tiles(tiles, z, by)
+    for _, t in ipairs(tiles or {}) do
+        local tz = t.z or z
+        local why = dig_forbidden(t.x, t.y, tz)
+        if why then
+            if by then dig_refused(by, t.x, t.y, tz, why) end
+            return why, {x = t.x, y = t.y, z = tz}
+        end
+    end
+    return nil
+end
+
+-- Does a quickfort dig cell's text dig (d, h, u, j, i, r with a priority,
+-- options or extents)? Its key's first letter, its base text (no extents),
+-- and its extents' width and height.
+function dig_cell(text)
+    if type(text) ~= 'string' then return nil end
+    local key = text:match('^%s*(%a)')
+    if not key or not DIG_KEYS[key] then return nil end
+    local w, h = text:match('%((%-?%d+)%s*x%s*(%-?%d+)%)%s*$')
+    local base = text:gsub('%(%-?%d+%s*x%s*%-?%d+%)%s*$', '')
+    return key, base, math.tointeger(tonumber(w)) or 1, math.tointeger(tonumber(h)) or 1
+end
+
+local function span(a, n)
+    if n == 0 then n = 1 end
+    if n > 0 then return a, a + n - 1 end
+    return a + n + 1, a
+end
+
+-- Quickfort dig data ({[z] = {[y] = {[x] = text}}}, at pos ox, oy, oz) with
+-- the refused tiles taken out (a cell with extents split into its allowed
+-- tiles when part of it is refused). A channel (h) is refused over a
+-- refused tile too (it digs the tile under it). Returns the data (the same
+-- table when nothing is refused), how many tiles were refused and the first
+-- one's reason. `by`: refusals kept for the report (nil: a dry run, not kept).
+function dig_guard_data(data, ox, oy, oz, by)
+    local refused, first = 0, nil
+    local out, changed = {}, false
+    for z, grid in pairs(data) do
+        local og = {}
+        out[z] = og
+        for y, row in pairs(grid) do
+            for x, text in pairs(row) do
+                local key, base, w, h = dig_cell(text)
+                local function put(px, py, t)
+                    og[py] = og[py] or {}
+                    if og[py][px] == nil then og[py][px] = t end
+                end
+                if not key then
+                    put(x, y, text)
+                else
+                    local x1, x2 = span(x, w)
+                    local y1, y2 = span(y, h)
+                    local bad = {}
+                    local nbad = 0
+                    for ty = y1, y2 do
+                        for tx = x1, x2 do
+                            local mx, my, mz = ox + tx, oy + ty, oz + z
+                            local why = dig_forbidden(mx, my, mz)
+                            if not why and key == 'h' then
+                                why = dig_forbidden(mx, my, mz - 1)
+                                if why then why = 'a channel down to a tile ' .. why end
+                            end
+                            if why then
+                                bad[ty * 100000 + tx] = true
+                                nbad = nbad + 1
+                                refused = refused + 1
+                                first = first or why
+                                if by then dig_refused(by, mx, my, mz, why) end
+                            end
+                        end
+                    end
+                    if nbad == 0 then
+                        put(x, y, text)
+                    else
+                        changed = true
+                        for ty = y1, y2 do
+                            for tx = x1, x2 do
+                                if not bad[ty * 100000 + tx] then put(tx, ty, base) end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    if not changed then return data, 0, nil end
+    return out, refused, first
+end
+
+-- (0.105.40b) The report's `deep_hazard` (in the `deep` section): the raw
+-- adamantine the dwarves have uncovered (tiles, the highest level it is on,
+-- the nearest such tile to `near` {x, y, z}), whether the spire or the
+-- underworld has been seen, and the guard's refusals since the game loaded.
+-- Only uncovered tiles are counted: the AI doesn't look through rock (the
+-- guard does: it refuses hidden ones too). Kept a game day.
+DEEP_HAZARD_CACHE = nil
+function deep_hazard(near, mine_adamantine)
+    local ok, now = pcall(abs_tick)
+    local day = ok and (now // TICKS_PER_DAY) or nil
+    local c = DEEP_HAZARD_CACHE
+    local base
+    if c and day and c.day == day then
+        base = c.base
+    else
+        base = {adamantine_seen = false, tiles = 0, spire_seen = false, underworld_seen = false}
+        local F = deep_features()
+        local tubes = next(F.tube) ~= nil
+        local best_d
+        pcall(function()
+            for _, block in ipairs(df.global.world.map.map_blocks) do
+                local p = block.map_pos
+                local evs = nil
+                for _, ev in ipairs(block.block_events) do
+                    if df.block_square_event_mineralst:is_instance(ev) and deep_inorganic(ev.inorganic_mat) then
+                        evs = evs or {}
+                        table.insert(evs, ev)
+                    end
+                end
+                local tube = tubes and F.tube[block.local_feature] == true
+                if evs or tube then
+                    for lx = 0, 15 do
+                        for ly = 0, 15 do
+                            local d = block.designation[lx][ly]
+                            if not d.hidden then
+                                local hit = false
+                                if tube and d.feature_local then hit = true; base.spire_seen = true end
+                                if not hit and evs then
+                                    for _, ev in ipairs(evs) do
+                                        if dfhack.maps.getTileAssignment(ev.tile_bitmask, lx, ly) then hit = true; break end
+                                    end
+                                end
+                                if hit then
+                                    base.adamantine_seen = true
+                                    base.tiles = base.tiles + 1
+                                    local x, y, z = p.x + lx, p.y + ly, p.z
+                                    if not base.top_z or z > base.top_z then base.top_z = z end
+                                    if type(near) == 'table' and near.x and near.y and near.z then
+                                        local dd = math.abs(x - near.x) + math.abs(y - near.y) + 3 * math.abs(z - near.z)
+                                        if not best_d or dd < best_d then
+                                            best_d = dd
+                                            base.nearest = {x = x, y = y, z = z}
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+                if not base.underworld_seen and F.under[block.global_feature] then
+                    for lx = 0, 15, 5 do
+                        for ly = 0, 15, 5 do
+                            if not block.designation[lx][ly].hidden then base.underworld_seen = true end
+                        end
+                    end
+                end
+            end
+        end)
+        base.nearest_z = base.nearest and base.nearest.z or base.top_z
+        DEEP_HAZARD_CACHE = {day = day, base = base}
+    end
+    local out = {}
+    for k, v in pairs(base) do out[k] = v end
+    local g = DIG_GUARD
+    out.refused = g.refused or 0
+    if out.refused > 0 then
+        out.refused_by = g.by
+        out.refused_last = g.last[#g.last]
+    end
+    if mine_adamantine == true then
+        out.mine_adamantine = true
+        out.note = 'mine_adamantine is on, but the sealed breach plan is not built yet: adamantine is still left alone'
+    end
+    return out
+end
