@@ -1,0 +1,12 @@
+{
+ "v": 1,
+ "ground": "sky",
+ "levels": [
+  {
+   "grid": [
+    "@"
+   ]
+  }
+ ],
+ "_expect": "FORMAT"
+}

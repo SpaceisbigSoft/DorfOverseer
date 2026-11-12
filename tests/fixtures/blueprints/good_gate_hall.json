@@ -1,0 +1,25 @@
+{
+ "v": 1,
+ "ground": "rock",
+ "levels": [
+  {
+   "grid": [
+    "###@###",
+    "#x...y#",
+    "#.....#",
+    "#.....#",
+    "#.....#",
+    "#z...q#",
+    "#######"
+   ]
+  }
+ ],
+ "purpose": "gate_hall",
+ "legend": {
+  "x": "ArmorStand",
+  "y": "WeaponRack",
+  "z": "Chest",
+  "q": "Cabinet"
+ },
+ "_doc": "armour and arms by the door"
+}

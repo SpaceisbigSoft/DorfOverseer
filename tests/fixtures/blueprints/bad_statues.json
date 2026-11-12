@@ -1,0 +1,16 @@
+{
+ "v": 1,
+ "ground": "rock",
+ "levels": [
+  {
+   "grid": [
+    "#@aaaaaaaaaaaaaaaaa#",
+    "#..................#"
+   ]
+  }
+ ],
+ "legend": {
+  "a": "Statue"
+ },
+ "_expect": "LIMIT"
+}

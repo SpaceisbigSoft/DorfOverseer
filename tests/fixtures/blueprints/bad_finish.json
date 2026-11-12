@@ -1,0 +1,16 @@
+{
+ "v": 1,
+ "ground": "rock",
+ "levels": [
+  {
+   "grid": [
+    "#@#",
+    "#.#"
+   ]
+  }
+ ],
+ "finish": {
+  "smooth": 5
+ },
+ "_expect": "FORMAT"
+}

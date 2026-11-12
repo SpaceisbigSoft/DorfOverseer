@@ -1,0 +1,27 @@
+{
+ "v": 1,
+ "ground": "rock",
+ "levels": [
+  {
+   "grid": [
+    "#@abcdefghijklm#"
+   ]
+  }
+ ],
+ "legend": {
+  "a": "Table",
+  "b": "Table",
+  "c": "Table",
+  "d": "Table",
+  "e": "Table",
+  "f": "Table",
+  "g": "Table",
+  "h": "Table",
+  "i": "Table",
+  "j": "Table",
+  "k": "Table",
+  "l": "Table",
+  "m": "Table"
+ },
+ "_expect": "LEGEND"
+}

@@ -1,0 +1,26 @@
+{
+ "v": 1,
+ "ground": "rock",
+ "levels": [
+  {
+   "grid": [
+    "####@####",
+    "#.b.b.b.#",
+    "#.......#",
+    "#.......#",
+    "#...t...#",
+    "#...c...#",
+    "#########"
+   ]
+  }
+ ],
+ "zone": {
+  "kind": "library"
+ },
+ "legend": {
+  "b": "Bookcase",
+  "t": "Table",
+  "c": "Chair"
+ },
+ "_doc": "bookcases along the north wall"
+}
