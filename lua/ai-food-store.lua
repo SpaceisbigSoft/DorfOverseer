@@ -27,7 +27,10 @@
 -- The AI's own piles: the ones this module placed (and the kitchen's and
 -- still's feeder piles, place_feeder), and those its levels placed (a
 -- project's `place` cells). Every other pile is the player's and is never
--- changed; the AI places its own beside it instead.
+-- changed; the AI places its own beside it instead. (fix41) A pile is known
+-- by its top-left corner and, when it was found, its building id; a
+-- remembered corner or id with no stockpile there any more is forgotten at
+-- the next report (a pile the player later lays at the same corner is theirs).
 --@ module = true
 
 local U = reqscript('ai-util')
@@ -45,6 +48,7 @@ TILES_MAX = 64
 BARRELS_MAX = 100
 PILES_MAX = 40      -- piles listed in the report at most (nearest a kitchen or still first)
 ITEMS_MAX = 60000   -- food items looked at a report at most
+ITEMS_SECONDS = 0.3 -- (fix41) and for this long at most (the counts then say partial)
 REMEMBER_MAX = 200
 
 -- the builder (tile_info, qf_try, tile_taken, load_projects); swapped by the tests
@@ -63,18 +67,82 @@ function registry()
     local d = U.site_get(SITE_KEY, {})
     if type(d) ~= 'table' then d = {} end
     if type(d.piles) ~= 'table' then d.piles = {} end
+    if type(d.ids) ~= 'table' then d.ids = {} end     -- (fix41) the building ids, when found
     return d
 end
 
--- A pile the AI placed, by its top-left corner (a building id is not kept:
--- quickfort hands back none, and the corner is the project cells' key too).
-function remember(x, y, z)
+-- (fix41) the stockpile whose top-left corner is (x, y, z), any kind, or nil
+local function stockpile_at(x, y, z)
+    local ok, list = pcall(function() return df.global.world.buildings.other.STOCKPILE end)
+    if not ok or not list then return nil end
+    for _, sp in ipairs(list) do
+        if sp.z == z and sp.x1 == x and sp.y1 == y then return sp end
+    end
+    return nil
+end
+
+-- A pile the AI placed, by its top-left corner (the project cells' key too)
+-- and (fix41) its building id: the one given, else the stockpile found there.
+function remember(x, y, z, id)
     local d = registry()
     local k = key(x, y, z)
-    for _, v in ipairs(d.piles) do if v == k then return true end end
-    table.insert(d.piles, k)
+    if id == nil then
+        local sp = stockpile_at(x, y, z)
+        id = sp and sp.id or nil
+    end
+    id = math.tointeger(tonumber(id))
+    local have_k, have_id = false, id == nil
+    for _, v in ipairs(d.piles) do if v == k then have_k = true end end
+    for _, v in ipairs(d.ids) do if v == id then have_id = true end end
+    if have_k and have_id then return true end
+    if not have_k then table.insert(d.piles, k) end
+    if not have_id then table.insert(d.ids, id) end
     while #d.piles > REMEMBER_MAX do table.remove(d.piles, 1) end
+    while #d.ids > REMEMBER_MAX do table.remove(d.ids, 1) end
     return U.site_put(SITE_KEY, d)
+end
+
+-- (fix41) The remembered piles that no longer exist forgotten: a corner with
+-- no stockpile at it, an id no stockpile has. `all` is every stockpile
+-- (nil: the game's list). Saved only when something was dropped.
+function prune(all)
+    if all == nil then
+        local ok, list = pcall(function() return df.global.world.buildings.other.STOCKPILE end)
+        if not ok or not list then return 0 end
+        all = list
+    end
+    local corners, ids = {}, {}
+    for _, sp in ipairs(all) do
+        corners[key(sp.x1, sp.y1, sp.z)] = true
+        ids[sp.id] = true
+    end
+    local d = registry()
+    local piles, keep_ids, dropped = {}, {}, 0
+    for _, k in ipairs(d.piles) do
+        if corners[tostring(k)] then table.insert(piles, k) else dropped = dropped + 1 end
+    end
+    for _, id in ipairs(d.ids) do
+        if ids[id] then table.insert(keep_ids, id) else dropped = dropped + 1 end
+    end
+    if dropped > 0 then
+        d.piles, d.ids = piles, keep_ids
+        U.site_put(SITE_KEY, d)
+    end
+    return dropped
+end
+
+-- (fix41) The ids of the piles that are the AI's own (as remembered).
+function own_ids()
+    local out = {}
+    for _, id in ipairs(registry().ids) do out[id] = true end
+    return out
+end
+
+-- Is this stockpile the AI's own: its corner or its id remembered.
+function is_own(sp, corners, ids)
+    corners = corners or own_corners()
+    ids = ids or own_ids()
+    return corners[key(sp.x1, sp.y1, sp.z)] == true or ids[sp.id] == true
 end
 
 -- The corners ("x,y,z") of the piles that are the AI's own.
@@ -193,10 +261,34 @@ end
 
 -- --- where a new pile goes ------------------------------------------------------
 
--- Free, roofed floor: no building, zone, pile, dig, liquid; seen; not open to the sky.
-local function free_inside(B, x, y, z)
+-- (fix41) The boxes of the AI's open projects (dug or being furnished): a
+-- level's rooms are not free floor for a pile (as farm_plots' reserved).
+function reserved_areas(B)
+    local out = {}
+    local ok, data = pcall(function() return B.load_projects() end)
+    if not ok or type(data) ~= 'table' or type(data.list) ~= 'table' then return out end
+    for _, p in ipairs(data.list) do
+        if type(p) == 'table' and (p.phase == 'dig' or p.phase == 'furnish') and type(p.area) == 'table'
+                and type(p.area.z) == 'number' then
+            table.insert(out, p.area)
+        end
+    end
+    return out
+end
+
+local function in_areas(areas, x, y, z)
+    for _, a in ipairs(areas) do
+        if a.z == z and x >= a.x1 and x <= a.x2 and y >= a.y1 and y <= a.y2 then return true end
+    end
+    return false
+end
+
+-- Free, roofed floor: no building, zone, pile, dig, liquid, minecart track
+-- (fix41); seen; not open to the sky; not in an open project's box (fix41).
+local function free_inside(B, x, y, z, reserved)
     local t = B.tile_info(x, y, z)
-    if not t or t.hidden or t.liquid or t.building or t.designated or t.marked or t.outside then return false end
+    if not t or t.hidden or t.liquid or t.building or t.designated or t.marked or t.outside or t.track then return false end
+    if reserved and in_areas(reserved, x, y, z) then return false end
     if t.shape ~= 'FLOOR' then return false end
     local okp, pile = pcall(function()
         local des = dfhack.maps.getTileFlags(x, y, z)
@@ -210,6 +302,7 @@ end
 function inside_rect(box, w, h, reach)
     local B = builder()
     local z = box.z
+    local reserved = reserved_areas(B)
     for d = 2, reach do
         for ry = box.y1 - d - h + 1, box.y2 + d do
             for rx = box.x1 - d - w + 1, box.x2 + d do
@@ -219,7 +312,7 @@ function inside_rect(box, w, h, reach)
                     local ok = true
                     for yy = ry, ry + h - 1 do
                         for xx = rx, rx + w - 1 do
-                            if not free_inside(B, xx, yy, z) then ok = false break end
+                            if not free_inside(B, xx, yy, z, reserved) then ok = false break end
                         end
                         if not ok then break end
                     end
@@ -259,16 +352,22 @@ local function container_kind(it)
     return U.item_kind(c)
 end
 
-function item_counts()
+-- (fix41) loose: lying outside a pile on a tile not open to the sky (food on
+-- the surface, a wild plant or a kill's meat, is not the fort's store).
+-- The walk stops at ITEMS_MAX items or ITEMS_SECONDS: the counts then carry
+-- partial = true (capped too, for the item cap).
+function item_counts(seconds)
     local out = {loose = 0, exposed = 0, in_containers = 0, rotten = 0, total = 0}
     local seen = 0
     local other = df.global.world.items.other
+    local deadline = os.clock() + (seconds or ITEMS_SECONDS)
     for _, tname in ipairs(FOOD_TYPES) do
         local okl, list = pcall(function() return other[tname] end)
         if okl and list then
             for _, it in ipairs(list) do
                 seen = seen + 1
-                if seen > ITEMS_MAX then out.capped = true break end
+                if seen > ITEMS_MAX then out.capped, out.partial = true, true break end
+                if seen % 256 == 0 and os.clock() > deadline then out.partial = true break end
                 local f = it.flags
                 if not (f.removed or f.garbage_collect) then
                     out.total = out.total + 1
@@ -279,19 +378,20 @@ function item_counts()
                         local x, y, z = U.item_pos(it)
                         local des = x and dfhack.maps.getTileFlags(x, y, z)
                         if des and des.pile then out.exposed = out.exposed + 1
-                        elseif des then out.loose = out.loose + 1 end
+                        elseif des and not des.outside then out.loose = out.loose + 1 end
                     end
                 end
             end
         end
-        if out.capped then break end
+        if out.partial then break end
     end
     return out
 end
 
 function report()
     local off = offset()
-    local own = own_corners()
+    pcall(prune)                                  -- (fix41) the gone piles forgotten first
+    local own, own_id = own_corners(), own_ids()
     local piles, shops = food_piles(), food_shops()
     local rows = {}
     for _, sp in ipairs(piles) do
@@ -304,7 +404,7 @@ function report()
         table.insert(rows, {id = sp.id, x1 = sp.x1, y1 = sp.y1, x2 = sp.x2, y2 = sp.y2, z = sp.z,
                             elevation = sp.z + off, tiles = tiles, used = used, outside = outside,
                             barrels = max_barrels(sp), bins = max_bins(sp),
-                            ai = own[key(sp.x1, sp.y1, sp.z)] == true,
+                            ai = is_own(sp, own, own_id),
                             dist = bd, shop = best and best.kind or nil, shop_id = best and best.b.id or nil})
     end
     table.sort(rows, function(a, b)
@@ -386,8 +486,8 @@ function food_pile(o, dry_run)
     local out = {ok = true, kind = s.kind, x = r.x, y = r.y, elevation = r.z + offset(), w = r.w, h = r.h,
                  tiles = r.w * r.h, barrels = barrels, more = o.more and true or nil, dry_run = dry_run or nil}
     if dry_run then return out end
-    remember(r.x, r.y, r.z)
     local sp = pile_at(r.x, r.y, r.z)
+    remember(r.x, r.y, r.z, sp and sp.id or nil)
     if sp then
         out.pile_id = sp.id
         if not set_max_barrels(sp, barrels) then out.warning = 'the max barrels could not be set' end
@@ -403,7 +503,7 @@ function food_barrels(o, dry_run)
     if not sp or not takes_food(sp) then
         return {ok = false, rejected = true, stale = {'food_store'}, error = 'no food stockpile with that id'}
     end
-    if not own_corners()[key(sp.x1, sp.y1, sp.z)] then
+    if not is_own(sp) then
         return {ok = false, rejected = true, error = 'that food pile is the player\'s: the AI leaves it as it is'}
     end
     local tiles = pile_tiles(sp)

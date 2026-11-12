@@ -47,8 +47,11 @@ def _supply_rules(s: dict, citizens: int, cfg: dict, proposals: list, notes: lis
                - queued(s, BREW_RECIPES) * cfg["drinks_per_job"])
         crisis_brew = min(cfg["crisis_containers_max"], max(0, math.ceil(gap / cfg["drinks_per_job"])))
         want = max(want, crisis_brew)
+    # (fix41) the crisis words follow the brew jobs' want, before the food raises it
+    crisis_words = crisis_brew > 0 and crisis_brew >= want
     # (0.105.40b, M6) the food lying out of barrels wants some (0 without a food_store section)
-    food_want, food_more = food_containers_want(s, cfg), food_containers_want(s, cfg) > want
+    food_want = food_containers_want(s, cfg)
+    food_more = food_want > want
     want = max(want, food_want)
     pending = queued(s, CONTAINER_RECIPES)
     if free + pending < want:
@@ -71,7 +74,7 @@ def _supply_rules(s: dict, citizens: int, cfg: dict, proposals: list, notes: lis
                 "containers", {"type": "work_order", "recipe": recipe, "amount": amount},
                 f"only {free} empty barrels/pots (+{pending} queued) for {citizens} dwarves; "
                 f"brewing and cooking stop without them: make {what}"
-                + (f" (crisis: {crisis_brew} brew jobs wait for one)" if crisis_brew >= want else "")
+                + (f" (crisis: {crisis_brew} brew jobs wait for one)" if crisis_words else "")
                 + (" (food lies out of barrels, where it rots or vermin eat it)" if food_more else ""),
                 2, True))
 

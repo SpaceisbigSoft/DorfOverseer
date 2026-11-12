@@ -54,6 +54,7 @@ from planner_firebreath import _fire_breather_rule  # noqa: E402  (0.105.40b) no
 from planner_insane import _insane_rule  # noqa: E402  (0.105.40b) the insane: deadly ground near them, the AI's doors
 from planner_hauling import _hauling_labor_rule  # noqa: E402  (0.105.40 M5) hauling balanced
 from planner_food import _food_store_rule, note_food  # noqa: E402  (0.105.40b, M6) the food store
+from planner_food import note_food_level  # noqa: E402  (fix41) a food storage level booked per kitchen/still
 from planner_alloys import _alloy_rule  # noqa: E402  (0.105.40 M7) bronze for a fort without iron, value alloys
 from planner_deep import _deep_hazard_rule  # noqa: E402  (0.105.40b) adamantine and the underworld: never dug
 from planner_construct import (_hall_rule, _construction_blocks_rule,  # noqa: E402  (0.105.30) construction
@@ -1132,6 +1133,7 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
         note_reserve_swap(p, r, state, memory)             # (0.105.31 reserve fixes) a fibre swap that did nothing
         note_gate_stuck(p, r, state, memory, now)          # (0.105.32) the unstick step tried, a way dug in
         note_cleanup(p, r, state, memory, now)             # (0.105.40) a cleanup's trial done, what it removed
+        note_food_level(p, r, memory)                      # (fix41) one food storage level a kitchen or still
         try:
             note_design(p, r, state, memory, now)          # (D0) sites kept, a landmark's refusals and fallback
         except Exception:  # noqa: BLE001  (the design record never stops the cycle's record)

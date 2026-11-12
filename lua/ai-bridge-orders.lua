@@ -466,9 +466,21 @@ end
 -- (0.105.40 M7) An alloy recipe's reaction code: its own when the game has it,
 -- else a smelter reaction whose reagents are all bars and which makes a bar of
 -- the recipe's metal (a mod that renamed it). Nil when there is neither.
+-- (fix41) the cache is one world's raws: emptied when the world or map is
+-- unloaded, and keyed by the save's folder too (a world loaded without the
+-- unload seen, or a bridge reloaded, never reads another world's codes)
 ALLOY_CACHE = ALLOY_CACHE or {}
+function alloy_world()
+    local ok, dir = pcall(function() return df.global.world.cur_savegame.save_dir end)
+    return ok and dir ~= nil and tostring(dir) or ''
+end
+if dfhack and dfhack.onStateChange then
+    dfhack.onStateChange['ai-bridge-alloys'] = function(sc)
+        if sc == SC_WORLD_UNLOADED or sc == SC_MAP_UNLOADED then ALLOY_CACHE = {} end
+    end
+end
 function alloy_reaction(r)
-    local key = tostring(r.reaction) .. '/' .. tostring(r.alloy)
+    local key = alloy_world() .. '|' .. tostring(r.reaction) .. '/' .. tostring(r.alloy)
     if ALLOY_CACHE[key] ~= nil then return ALLOY_CACHE[key] or nil end
     local code = nil
     -- (lead) the named code only when its reagents are all bars: vanilla's

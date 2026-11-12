@@ -399,7 +399,8 @@ def _():
     sh = [dict(KITCHEN, room=False), dict(STILL, room=False)]
     props, _ = mine(fort(section(shops=sh), citizens=40))
     p = [x for x in props if x.rule == "food_store_level"]
-    assert p and p[0].action == {"type": "start_project", "kind": "storage", "piles": ["food"], "room_size": 7}
+    assert p and p[0].action == {"type": "start_project", "kind": "storage", "piles": ["food"], "room_size": 7,
+                                 "for_shops": [7, 8]}
     s = fort(section(shops=sh), citizens=40)
     s["projects"]["open"] = [{"kind": "storage", "id": 3}]
     props, _ = mine(s)
