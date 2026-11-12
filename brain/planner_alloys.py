@@ -103,10 +103,13 @@ def iron_route(s: dict, cfg: dict, bars: dict | None = None) -> bool:
 def gear_metals(s: dict, cfg: dict) -> set:
     """(fix41) The metals the soldiers' gear wants kept (not spare for
     furniture, crafts or chains): GEAR_METALS, and tin and bismuth while the
-    fort makes gear with no iron route (they become its bronze)."""
+    fort makes gear with no iron route (they become its bronze); (fix41
+    re-review) only while it has copper bars or copper ore dug: without
+    copper there is no bronze to keep them for."""
     out = set(GEAR_METALS)
     if player_rules(s)["make_gear"] and not iron_route(s, cfg):
-        out |= set(BRONZE_PARTS)
+        if _bars(s).get("COPPER", 0) > 0 or _ores_by_metal(s, "COPPER"):
+            out |= set(BRONZE_PARTS)
     return out
 
 

@@ -61,7 +61,7 @@ GUARDED = {melancholy = true, raving = true}   -- the kinds kept from deadly gro
 SCAN_XY = 12          -- deadly ground looked for this far round an insane dwarf...
 SCAN_DOWN = 2         -- ...on their level and this many below (liquids; drops on their own level)
 FILL_MARGIN = 4       -- the walks between the dwarf and the ground keep to a box this much round them
-FILL_MAX = 2000       -- ...and this many tiles at most (past it: not judged, nothing locked)
+-- (0.105.40b fix 3) a walk is capped at the box's own volume (it can't pass it: the box bounds it)
 DEEP = 4              -- water this deep drowns a dwarf (the hazards section's `wet`)
 DOOR_NEAR = 10        -- a door is locked while a guarded dwarf is this near (tiles, |dz| <= 1)...
 DOOR_HAZARD = 6       -- ...with deadly ground this near the door, nearer the door than the dwarf
@@ -248,6 +248,17 @@ function claimed_ids(gates)
     return ids
 end
 
+-- (0.105.40b fix 2) the doors the threats rules have taken over (a cell's
+-- locked doors, the seal's: ai-threats adopted_doors): a lock of the AI's on
+-- one is dropped unopened; one they only could need is freed as usual
+function adopted_ids()
+    local ids = {}
+    pcall(function()
+        for id in pairs(reqscript('ai-threats').adopted_doors() or {}) do ids[tonumber(id) or id] = true end
+    end)
+    return ids
+end
+
 -- the doors (never a hatch: (0.105.40b fix) one over stairs or a shaft is a
 -- way between levels, not a door in a wall)
 local function door_list()
@@ -333,10 +344,10 @@ local function walker(box, shut)
     return step, inside
 end
 
--- The tiles reached from (x, y, z): {key = true}, and whether FILL_MAX was
--- passed (not judged). `stop`: a set of keys whose reaching ends the walk
+-- The tiles reached from (x, y, z): {key = true}, and whether `cap` tiles
+-- were passed (not judged; the box's volume, so only a safety net). `stop`: a set of keys whose reaching ends the walk
 -- (returns true as the third value).
-local function walk(step, x, y, z, stop)
+local function walk(step, x, y, z, stop, cap)
     local seen, queue, head, n = {[tkey(x, y, z)] = true}, {{x, y, z}}, 1, 1
     if stop and stop[tkey(x, y, z)] then return seen, false, true end
     while queue[head] do
@@ -353,7 +364,7 @@ local function walk(step, x, y, z, stop)
             end
         end)
         if hit then return seen, false, true end
-        if n > FILL_MAX then return seen, true, false end
+        if n > cap then return seen, true, false end
     end
     return seen, false, false
 end
@@ -414,15 +425,17 @@ function doors_between(ctx, x, y, z, tiles)
     box.z1, box.z2 = box.z1 - 1, box.z2 + 1               -- a way round by a level above or below
     local step = walker(box, shut)
     -- the dwarf's side: reaching the ground (a door no lock helps) or too big: nothing locked
-    local mine, big, hit = walk(step, x, y, z, hzset)
+    local cap = (box.x2 - box.x1 + 1) * (box.y2 - box.y1 + 1) * (box.z2 - box.z1 + 1)
+    local mine, big, hit = walk(step, x, y, z, hzset, cap)
     if big or hit then return out end
     -- the ground's sides, each walked once
     local side_of, sides = {}, {}
     local function side(h)
         local k = tkey(h.x, h.y, h.z)
         if side_of[k] then return sides[side_of[k]] end
-        local set, big2, hit2 = walk(step, h.x, h.y, h.z, mine)
-        local sd = {set = set, bad = big2 or hit2}
+        -- (0.105.40b fix 3) judged by reaching the dwarf's side or a sane citizen only
+        local set, _, hit2 = walk(step, h.x, h.y, h.z, mine, cap)
+        local sd = {set = set, bad = hit2}
         if not sd.bad then
             for sk in pairs(ctx.sane) do
                 if set[sk] then sd.bad = true break end
@@ -502,7 +515,7 @@ local function find_building(id)
 end
 
 -- (0.105.40b fix) the doors held locked for the insane now: {id = true}
--- (ai-threats' cells and seal take them over: claimed_doors)
+-- (ai-threats' cells and seal take them over: adopted_doors)
 function held_ids()
     local out = {}
     for _, l in pairs(state().locks) do
@@ -514,7 +527,8 @@ end
 -- The held locks: freed when no guarded dwarf (`guarded`: {x, y, z}) is
 -- near, or held too long; forgotten when the door is gone or was unlocked by
 -- someone else; (0.105.40b fix) dropped, left locked, when another rule has
--- claimed the door since (`claimed`). Returns how many were freed, and
+-- taken the door over since (`claimed`: ai-threats adopted_doors, a cell's
+-- or the seal's; a door they only could need is freed as usual). Returns how many were freed, and
 -- whether the record changed.
 function release_locks(st, guarded, now, dry, claimed)
     local released, changed = 0, false
@@ -633,7 +647,7 @@ function report()
     -- (0.105.40b fix) the stale locks freed here too (held too long, nobody
     -- guarded near, claimed since): never left on while the guard can't run
     if next(st.locks) ~= nil then
-        local _, changed = release_locks(st, guarded_units(nil), now_tick(), false, claimed_ids())
+        local _, changed = release_locks(st, guarded_units(nil), now_tick(), false, adopted_ids())
         if changed then save(st) end
     end
     for _, e in ipairs(insane) do
@@ -684,7 +698,7 @@ function guard(o, dry)
     -- 1. the held locks: freed when the door is gone or was unlocked by
     -- someone else (forgotten), claimed by another rule since (dropped, left
     -- locked), no guarded dwarf is near, or held too long
-    local released = release_locks(st, guarded, now, dry, claimed_ids())
+    local released = release_locks(st, guarded, now, dry, adopted_ids())
     for key, t in pairs(st.rest) do
         if type(t) ~= 'number' or now - t >= REST_TICKS then st.rest[key] = nil end
     end

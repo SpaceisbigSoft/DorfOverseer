@@ -583,6 +583,9 @@ def _():
     w.recompute_all()
     h = py(env.report())["haulers"]
     assert {x["id"]: x["via"] for x in h["specialists"]} == {6: "yours", 7: "yours"} and h["relievable"] == 0, h
+    # (re-review) the report says why: the detail in the way
+    assert {x["id"]: x.get("blocked_by") for x in h["specialists"]} == {6: "Everyone plants", 7: "Everyone plants"}, h
+    assert h["blocked"] == 2 and h["blocked_by"] == "Everyone plants", h
     r = py(env.relieve_haulers(5, False, False))
     assert not r["ok"] and env.df.unit.find(6).flags4.only_do_assigned_jobs is False, r
     # an 'everybody' detail with no labour at all doesn't count
@@ -734,6 +737,18 @@ def _():
 @test("fix 13: add_haulers and relieve_haulers move no camera")
 def _():
     assert "add_haulers" in overseer.CAMERA_QUIET and "relieve_haulers" in overseer.CAMERA_QUIET
+
+
+@test("fix 2 (re-review): key workers blocked by another 'everybody' detail: a note says the AI leaves them "
+      "hauling and why (only while there are haulers to spare)")
+def _():
+    sp = [{"id": 6, "name": "Urist", "why": "doctor", "via": "yours", "blocked_by": "Everyone plants"}]
+    props, notes = mine(section(waiting=10, oldest=0, any_=30, relievable=0, specialists=sp))
+    assert props == [], props
+    assert len(notes) == 1 and "Urist (doctor)" in notes[0] and "leaves them hauling" in notes[0], notes
+    assert "'Everyone plants' work detail" in notes[0], notes
+    props, notes = mine(section(waiting=10, any_=7, relievable=0, specialists=sp))      # no spare: said nothing
+    assert notes == [], notes
 
 
 # --- scripts identity: without a hauling section, plan() is main's ---------------------------

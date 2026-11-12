@@ -679,10 +679,11 @@ def chain_metal(s: dict, cfg: dict | None = None) -> str | None:
     return max(pool, key=lambda k: (bars[k], k))
 
 
-def well_parts_plan(s: dict) -> tuple[list, list, list]:
+def well_parts_plan(s: dict, cfg: dict | None = None) -> tuple[list, list, list]:
     """What a well still needs, from the fort's real stocks: (orders to give
     [(recipe, why)], workshops to build first, parts the AI can't make).
-    A well takes a block, a bucket, a mechanism and a rope or chain."""
+    A well takes a block, a bucket, a mechanism and a rope or chain. (fix41
+    re-review) cfg: the plan's config, passed on to chain_metal."""
     st, su = _d(s.get("stocks")), _d(s.get("supplies"))
     shops = _d(_d(s.get("buildings")).get("workshops"))
     orders, need_shops, stuck = [], [], []
@@ -715,7 +716,7 @@ def well_parts_plan(s: dict) -> tuple[list, list, list]:
         # 2 forges and 47 copper bars, while its patients died of thirst
         ck, tk = _d(su.get("cloth_kinds")), _d(su.get("thread_kinds"))
         kinds = bool(ck or tk)
-        metal = chain_metal(s)
+        metal = chain_metal(s, cfg)
         if metal:
             # first: one bar at a forge never waits on cloth (B's rope order
             # stuck 89 days on 1 plant cloth it couldn't use)
@@ -751,7 +752,7 @@ def well_parts_plan(s: dict) -> tuple[list, list, list]:
 def _well_parts(s: dict, memory, cfg: dict, building: list, proposals: list, notes: list) -> None:
     """A well being made: order the parts it lacks, build the workshops that
     make them, and say what the AI can't make."""
-    orders, need_shops, stuck = well_parts_plan(s)
+    orders, need_shops, stuck = well_parts_plan(s, cfg)
     for recipe, why, extra in orders:
         proposals.append(Proposal("well_parts", {"type": "work_order", "recipe": recipe, "amount": 1, **extra},
                                   f"the new well needs {why}: make one", 3, True))

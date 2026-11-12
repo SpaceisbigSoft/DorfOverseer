@@ -179,6 +179,14 @@ def _hauling_labor_rule(s: dict, cfg: dict, citizens: int, proposals: list, note
     spare = have - want - cfg["hauling_relieve_margin"]
     if spare <= 0:
         return
+    # (0.105.40b fix 2) key workers the AI would relieve but for another
+    # "everybody" detail of yours (the specialist mark would take them off it too)
+    blocked = [x for x in _l(hs.get("specialists")) if isinstance(x, dict) and x.get("blocked_by")]
+    if blocked:
+        names = ", ".join(f"{x.get('name') or x.get('id')} ({x.get('why')})" for x in blocked[:3])
+        notes.append(f"{len(blocked)} key worker(s) haul though {have} others do ({want} wanted): {names}; the AI "
+                     f"leaves them hauling, as taking them off (the specialist mark) would also take them off your "
+                     f"'{blocked[0].get('blocked_by')}' work detail, which everybody does")
     if relievable <= 0:
         # (0.105.40b fix) the AI's own detail shrinks: spare haulers for a week
         old = _int(_d(h.get("ai_detail")).get("added_old"))

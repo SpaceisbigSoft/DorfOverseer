@@ -1228,12 +1228,29 @@ local function insane_held()
     return ok and type(ids) == 'table' and ids or {}
 end
 
+-- (0.105.40b fix 2) The doors the threats rules have taken over and will
+-- open themselves: the werebeast cells' locked doors (c.doors) and the
+-- cavern seal's (locked, or shut by their lever). ai-insane drops its lock
+-- on one of these without opening it; a door the rules only could need
+-- (claimed_doors) it frees as usual, or it would stay locked for good.
+function adopted_doors()
+    local d = load_state()
+    local out = {}
+    for _, c in pairs(d.cells) do
+        if type(c) == 'table' then
+            for _, id in ipairs(type(c.doors) == 'table' and c.doors or {}) do out[tonumber(id) or id] = true end
+        end
+    end
+    for id in pairs(seal_holds(d).ids) do out[id] = true end
+    return out
+end
+
 -- (0.105.40b fix) The doors and hatches the threats rules hold or could
 -- need: the werebeast cells' (those they locked, and every door of a cell's
 -- room), the cavern seal's (locked, or shut by their lever), the openings on
 -- record (the ways down to the caverns the seal locks), and the entrances'
--- the gate watcher holds shut now. ai-insane never locks one of these, and
--- never unlocks one it held that has become one of these.
+-- the gate watcher holds shut now. ai-insane never locks one of these (only
+-- 'don't lock'; what it drops unopened is adopted_doors).
 function claimed_doors()
     local d = load_state()
     local out = {}

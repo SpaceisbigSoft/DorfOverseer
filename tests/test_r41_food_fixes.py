@@ -120,10 +120,14 @@ NO_ROOM = [dict(KITCHEN, room=False), dict(STILL, room=False)]
 
 # --- 1 -----------------------------------------------------------------------------------
 
-@test("1: no storage level while the AI has a roofed food pile anywhere, or a storage level is open")
+@test("1: no storage level while a storage level is open; (re-review) a roofed AI pile out of the shops' reach "
+      "doesn't stop it, one within reach does")
 def _():
     far_ai = pile(1, 2, 50, z=110)                          # the AI's, roofed, far from both
     props, _ = mine(fort(section([far_ai], shops=NO_ROOM), citizens=40))
+    assert [x for x in props if x.rule == "food_store_level"], props
+    near_ai = pile(1, 20, 24)                               # the AI's, roofed, by both
+    props, _ = mine(fort(section([near_ai], shops=NO_ROOM), citizens=40))
     assert not [x for x in props if x.rule == "food_store_level"], props
     far_theirs = pile(1, 2, 50, z=110, ai=False)            # the player's far one doesn't stop it
     props, _ = mine(fort(section([far_theirs], shops=NO_ROOM), citizens=40))
@@ -148,7 +152,10 @@ def _():
     assert [x for x in mine(s, m)[0] if x.rule == "food_store_level"]
     record([(lvl[0], {"ok": True})], s, m)
     assert PF.food_levels(m) == {7, 8}
-    assert not [x for x in mine(s, m)[0] if x.rule == "food_store_level"]
+    props, notes = mine(s, m)
+    assert not [x for x in props if x.rule == "food_store_level"]
+    # (re-review) said instead: the level dug already, none other
+    assert any("dug a storage level for it already" in n for n in notes), notes
     # a new still with no room gets its own one
     s2 = fort(section(shops=NO_ROOM + [dict(STILL, id=9, x1=40, x2=42, room=False)]), citizens=40)
     lvl = [x for x in mine(s2, m)[0] if x.rule == "food_store_level"]
@@ -197,6 +204,24 @@ def _():
     assert k.id                                              # (the kitchen stands)
 
 
+@test("7 (re-review): the reserved boxes are every box an open project keeps (p.areas too, as project_areas gives)")
+def _():
+    lua, env, w = world()
+    B = lua.eval("""{load_projects = function() return {list = {
+        {phase = 'dig', area = {x1 = 0, y1 = 0, x2 = 1, y2 = 1, z = 100},
+         areas = {{x1 = 5, y1 = 5, x2 = 6, y2 = 6, z = 99}}},
+        {phase = 'done', areas = {{x1 = 9, y1 = 9, x2 = 9, y2 = 9, z = 98}}}}} end}""")
+    got = py(env.reserved_areas(B))
+    assert sorted(a["z"] for a in got) == [99, 100], got            # the fallback: area and areas
+    lua.execute("""local B = ...
+        B.project_areas = function(p) local o = {}
+            if p.area then table.insert(o, p.area) end
+            for _, a in ipairs(p.areas or {}) do table.insert(o, a) end
+            table.insert(o, {x1 = 50, y1 = 50, x2 = 50, y2 = 50, z = 120}); return o end""", B)
+    got = py(env.reserved_areas(B))
+    assert sorted(a["z"] for a in got) == [99, 100, 120], got        # the builder's own list
+
+
 # --- 4 -----------------------------------------------------------------------------------
 
 def metal_fort(bars, iron=False, make_gear=True):
@@ -210,9 +235,10 @@ def metal_fort(bars, iron=False, make_gear=True):
     return s
 
 
-@test("4: tin and bismuth are gear metal while there is no iron route (make_gear on); spare otherwise")
+@test("4: tin and bismuth are gear metal while there is no iron route (make_gear on) and (re-review) copper "
+      "bars or copper ore; spare otherwise")
 def _():
-    bars = {"TIN": 60, "BISMUTH": 50, "SILVER": 20}
+    bars = {"TIN": 60, "BISMUTH": 50, "SILVER": 20, "COPPER": 5}
     s = metal_fort(bars)
     assert {"TIN", "BISMUTH"} <= planner_alloys.gear_metals(s, CFG)
     assert planner_building.spare_metal(s, CFG, 2) == "SILVER"
@@ -224,22 +250,44 @@ def _():
     assert planner_wells.chain_metal(s) == "TIN"
     s = metal_fort(bars, make_gear=False)
     assert planner_building.spare_metal(s, CFG, 2) == "TIN"
-    # only tin: the chain still takes it (the commonest gear metal), furniture doesn't
-    s = metal_fort({"TIN": 60})
+    # only tin (and a little copper): the chain still takes it (the commonest gear metal), furniture doesn't
+    s = metal_fort({"TIN": 60, "COPPER": 1})
     assert planner_building.spare_metal(s, CFG, 2) is None
     assert planner_wells.chain_metal(s) == "TIN"
+    # (re-review) no copper bars and no copper ore: no bronze to keep tin for
+    s = metal_fort({"TIN": 60, "BISMUTH": 50, "SILVER": 20})
+    assert not ({"TIN", "BISMUTH"} & planner_alloys.gear_metals(s, CFG))
+    assert planner_building.spare_metal(s, CFG, 2) == "TIN"
+    # copper ore dug (no bars yet): kept again
+    s["industry"]["ore_stock_by"] = {"malachite": {"n": 4, "metals": ["COPPER"]}}
+    assert {"TIN", "BISMUTH"} <= planner_alloys.gear_metals(s, CFG)
+
+
+@test("4 (re-review): well_parts_plan passes the plan's cfg on to chain_metal")
+def _():
+    got = []
+    real = planner_wells.chain_metal
+    planner_wells.chain_metal = lambda s, cfg=None: got.append(cfg) or real(s, cfg)
+    try:
+        s = metal_fort({"SILVER": 20})
+        mycfg = dict(CFG)
+        planner_wells.well_parts_plan(s, mycfg)
+    finally:
+        planner_wells.chain_metal = real
+    assert got and got[0] is mycfg, got
 
 
 @test("4: the stuck rope's chain fallback keeps the tin for bronze too")
 def _():
-    s = metal_fort({"TIN": 60, "SILVER": 20})
+    s = metal_fort({"TIN": 60, "SILVER": 20, "COPPER": 1})
     s["buildings"].setdefault("workshops", {})["MetalsmithsForge"] = 1
     p = Proposal("x", {"type": "work_order", "recipe": "cloth_rope", "amount": 2}, "", 5, True)
     a = planner_building.stuck_fallback(p, s, Memory(), CFG, 0)
     assert a and a["recipe"] == "metal_chain" and a["material"] == "INORGANIC:SILVER", a
-    s = metal_fort({"TIN": 60})
+    s = metal_fort({"TIN": 60, "COPPER": 1})
     s["buildings"].setdefault("workshops", {})["MetalsmithsForge"] = 1
-    assert planner_building.stuck_fallback(p, s, Memory(), CFG, 0) is None
+    a = planner_building.stuck_fallback(p, s, Memory(), CFG, 0)
+    assert a is None or a["material"] != "INORGANIC:TIN", a
     s = metal_fort({"TIN": 60}, iron=True)
     s["buildings"].setdefault("workshops", {})["MetalsmithsForge"] = 1
     a = planner_building.stuck_fallback(p, s, Memory(), CFG, 0)

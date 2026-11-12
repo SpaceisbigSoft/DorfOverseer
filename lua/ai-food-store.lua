@@ -268,9 +268,17 @@ function reserved_areas(B)
     local ok, data = pcall(function() return B.load_projects() end)
     if not ok or type(data) ~= 'table' or type(data.list) ~= 'table' then return out end
     for _, p in ipairs(data.list) do
-        if type(p) == 'table' and (p.phase == 'dig' or p.phase == 'furnish') and type(p.area) == 'table'
-                and type(p.area.z) == 'number' then
-            table.insert(out, p.area)
+        if type(p) == 'table' and (p.phase == 'dig' or p.phase == 'furnish') then
+            -- (fix41 re-review) every box the project keeps (p.areas too: a way in's levels)
+            local oka, areas = pcall(function() return B.project_areas(p) end)
+            if not oka or type(areas) ~= 'table' then
+                areas = {}
+                if type(p.area) == 'table' then table.insert(areas, p.area) end
+                for _, a in ipairs(type(p.areas) == 'table' and p.areas or {}) do table.insert(areas, a) end
+            end
+            for _, a in ipairs(areas) do
+                if type(a) == 'table' and type(a.z) == 'number' then table.insert(out, a) end
+            end
         end
     end
     return out

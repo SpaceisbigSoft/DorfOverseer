@@ -49,7 +49,7 @@ DAY = 1200
 FAKE = r"""
 local src = ...
 local W = {units = {}, tiles = {}, doors = {}, hatches = {}, projects = {}, old_areas = {}, site = {},
-           citizens = {}, gates = {}, zones = {}, claimed = {}}
+           citizens = {}, gates = {}, zones = {}, claimed = {}, adopted = {}}
 local env = setmetatable({}, {__index = _G})
 local key = function(x, y, z) return x .. ',' .. y .. ',' .. z end
 local MOODS = {[0] = 'Fey', 'Secretive', 'Possessed', 'Macabre', 'Fell', 'Melancholy', 'Raving', 'Berserk',
@@ -118,7 +118,8 @@ env.reqscript = function(name)
     elseif name == 'ai-gates' then
         return {GATES = {entrances = {{equipment = W.gates}}}}
     elseif name == 'ai-threats' then
-        return {claimed_doors = function() return W.claimed end}
+        return W.threats or {claimed_doors = function() return W.claimed end,
+                             adopted_doors = function() return W.adopted end}
     end
     error('no module ' .. tostring(name))
 end
@@ -627,7 +628,7 @@ def _():
     u, d = fort(lua, w)
     assert guard(lua, env, [7])["locked"] == 1
     assert py(env.held_ids()) == {300: True}
-    w.claimed[300] = True                                 # a cell (or the seal) took it over
+    w.adopted[300] = True                                 # a cell (or the seal) took it over
     u.pos.x = 20                                          # the dwarf off: would be unlocked
     r = guard(lua, env, [7])
     assert r["released"] == 0 and r["held"] == 0 and d.door_flags.forbidden is True, r
@@ -734,6 +735,60 @@ def _():
     u.pos.x = 20
     r = guard(lua, env, [7])
     assert r["released"] == 1 and r["held"] == 0 and d.door_flags.forbidden is True, r
+
+
+@test("fix 2b (re-review): with the real ai-threats: a door the threats rules only could need (an opening on "
+      "record) is never locked, but one locked before it became so is freed as usual; one a cell took over "
+      "(its c.doors) is dropped and left locked")
+def _():
+    src = (ROOT / "tests" / "test_fix26_seal.py").read_text(encoding="utf-8")
+    game = re.search(r'THREATS_GAME = r"""(.*?)"""', src, re.S).group(1)
+
+    def rig():
+        lua, env, w = world()
+        u, d = fort(lua, w)
+        E = lua.execute(game, module_src("ai-threats.lua"))
+        E.G.tiles["55,50,100"] = d
+        E.G.mods["ai-insane"] = env
+        w.threats = E
+        return lua, env, w, u, d, E
+
+    # an opening on record at the door: not locked in the first place
+    lua, env, w, u, d, E = rig()
+    E.G.saved["ai-overseer/threats"] = T(lua, {"openings": {"a": {"x": 55, "y": 50, "z": 100, "kind": "way_down"}}})
+    assert py(E.claimed_doors()).get(300) is True and not py(E.adopted_doors())
+    assert guard(lua, env, [7])["locked"] == 0 and d.door_flags.forbidden is False
+    # locked first, on record as an opening since: freed when the dwarf moves off (never left locked)
+    lua, env, w, u, d, E = rig()
+    assert guard(lua, env, [7])["locked"] == 1 and d.door_flags.forbidden is True
+    E.G.saved["ai-overseer/threats"] = T(lua, {"openings": {"a": {"x": 55, "y": 50, "z": 100, "kind": "way_down"}}})
+    u.pos.x = 20
+    r = guard(lua, env, [7])
+    assert r["released"] == 1 and r["held"] == 0 and d.door_flags.forbidden is False, r
+    # ...and by the report alone too
+    lua, env, w, u, d, E = rig()
+    guard(lua, env, [7])
+    E.G.saved["ai-overseer/threats"] = T(lua, {"openings": {"a": {"x": 55, "y": 50, "z": 100, "kind": "way_down"}}})
+    u.pos.x = 20
+    assert py(env.report())["locks"] == 0 and d.door_flags.forbidden is False
+    # a cell took it over (c.doors): dropped, left locked for the cell to open
+    lua, env, w, u, d, E = rig()
+    guard(lua, env, [7])
+    E.G.saved["ai-overseer/threats"] = T(lua, {"cells": {"5": {"doors": [300], "locked": True}}})
+    assert py(E.adopted_doors()) == {300: True}
+    u.pos.x = 20
+    r = guard(lua, env, [7])
+    assert r["released"] == 0 and r["held"] == 0 and d.door_flags.forbidden is True, r
+
+
+@test("fix 3 (re-review): the ground's side is judged only by reaching the dwarf's side or a sane citizen; the "
+      "walks are capped at the box's volume (a big room on the far side still locks)")
+def _():
+    lua, env, w = world()
+    _, d = fort(lua, w)
+    src = (LUA_DIR / "ai-insane.lua").read_text(encoding="utf-8")
+    assert "FILL_MAX" not in src and "local sd = {set = set, bad = hit2}" in src
+    assert guard(lua, env, [7])["locked"] == 1
 
 
 # --- 6. identity: without the section, plan() is main's ------------------------------------

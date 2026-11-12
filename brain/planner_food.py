@@ -18,8 +18,9 @@ items: lying outside a pile (`loose`), in a pile out of any container
     food_store_reach tiles gets one (food_pile: free roofed floor on its
     level, about food_store_tiles_per_citizen tiles a citizen, its max
     barrels a barrel a tile); with no room near it, a storage level of food
-    piles (food_store_level) -- (fix41) not while the AI has a roofed food
-    pile anywhere or a storage level is open, and at most one level for each
+    piles (food_store_level) -- (fix41) not while a storage level is open
+    (fix41 re-review: judged shop by shop, a roofed pile out of the shop's
+    reach no longer stops it), and at most one level for each
     kitchen or still ever (memory.food_store_seen["levels"], booked by
     note_food_level when the start was not refused). A kitchen or still with
     a feeder_pile proposal this cycle is left to it (fix41). The near piles
@@ -181,11 +182,12 @@ def _food_store_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=No
         else:
             pr = _d(s.get("projects"))
             open_kinds = {p.get("kind") for p in _l(pr.get("open")) if isinstance(p, dict)}
-            # (fix41) not while the AI has a roofed food pile anywhere (a level
-            # dug before), a storage level is open, or one was dug for each of them
-            ai_roofed = any(p.get("ai") for p in good)
+            # (fix41) not while a storage level is open, or one was dug for
+            # each of them; (fix41 re-review) judged shop by shop: a roofed
+            # food pile of the AI's elsewhere (out of this shop's reach) no
+            # longer stops it (bare: none within reach of these shops)
             due = [r for r in bare if r["id"] not in food_levels(memory)]
-            if (due and not ai_roofed and "storage" not in open_kinds
+            if (due and "storage" not in open_kinds
                     and not any(x.action.get("kind") == "storage" for x in proposals)):
                 proposals.append(Proposal(
                     "food_store_level", {"type": "start_project", "kind": "storage", "piles": ["food"],
@@ -193,6 +195,11 @@ def _food_store_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=No
                     f"no room for a food stockpile within {reach} tiles of the {due[0].get('kind')} at "
                     f"{_where(due[0])}: dig a storage level for the food", 6))
                 placed = True
+            elif not due:
+                r = bare[0]
+                notes.append(f"the {r.get('kind')} at {_where(r)} has no food stockpile under a roof within "
+                             f"{reach} tiles and no room for one; the AI dug a storage level for it already, so it "
+                             "digs no other: the food is carried from the piles farther off meanwhile")
     # 2. the AI's own food piles near a kitchen or still taking barrels
     shop_boxes = [_box(r) for r in shops]
     for p in piles:

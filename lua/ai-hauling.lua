@@ -340,25 +340,32 @@ end
 
 -- (0.105.40b fix) Another "everybody" detail giving a dwarf some labour (any,
 -- not only hauling): the specialist mark would take him off that one too.
+-- Its name (the first), or nil.
 local function other_everybody(game)
     for _, d in ipairs(details() or {}) do
-        if d ~= game and mode_of(d) == 'EverybodyDoesThis' and any_labor(d) then return true end
+        if d ~= game and mode_of(d) == 'EverybodyDoesThis' and any_labor(d) then return tostring(d.name) end
     end
-    return false
+    return nil
 end
 
 -- How a key dwarf hauls: 'ai' (the AI's detail), 'everybody' (the game's
 -- Haulers detail at everybody is the only "everybody" detail giving him any
--- labour, and nothing else of yours gives him hauling), else 'yours'.
+-- labour, and nothing else of yours gives him hauling), else 'yours';
+-- (0.105.40b fix 2) and, when only another "everybody" detail stands in the
+-- way, that detail's name (blocked_by).
 local function hauls_via(u, game, mine)
     if mine and is_member(mine, u.id) then
         local rest = detail_labors(u, mine)
         if next(rest) == nil then return 'ai' end
         return 'yours'
     end
-    if game and mode_of(game) == 'EverybodyDoesThis' and not specialist(u) and not other_everybody(game) then
+    if game and mode_of(game) == 'EverybodyDoesThis' and not specialist(u) then
         local rest = detail_labors(u, game)
-        if next(rest) == nil then return 'everybody' end
+        if next(rest) == nil then
+            local other = other_everybody(game)
+            if other then return 'yours', other end
+            return 'everybody'
+        end
     end
     return 'yours'
 end
@@ -502,9 +509,13 @@ local function haulers(st, game, mine)
                     end
                 end
                 if why then
-                    local via = hauls_via(u, game, mine)
-                    if yours[k] then via = 'yours' end
-                    table.insert(keys, {id = u.id, why = why, via = via, unit = u})
+                    local via, blocked = hauls_via(u, game, mine)
+                    if yours[k] then via, blocked = 'yours', nil end
+                    table.insert(keys, {id = u.id, why = why, via = via, unit = u, blocked_by = blocked})
+                    if blocked then
+                        out.blocked = (out.blocked or 0) + 1
+                        out.blocked_by = out.blocked_by or blocked
+                    end
                     if via ~= 'yours' then out.relievable = out.relievable + 1 end
                 end
             elseif free and not why and not specialist(u) and not hurt(u) and not in_mood(u) then
@@ -532,7 +543,8 @@ function report(txt)
     h.specialists = {}
     for i = 1, math.min(12, #keys) do
         local c = keys[i]
-        table.insert(h.specialists, {id = c.id, name = name_of(c.unit, txt), why = c.why, via = c.via})
+        table.insert(h.specialists, {id = c.id, name = name_of(c.unit, txt), why = c.why, via = c.via,
+                                     blocked_by = c.blocked_by})
     end
     if game then
         out.detail = {name = tostring(game.name), mode = mode_of(game), members = #game.assigned_units}
