@@ -1,0 +1,57 @@
+{
+ "v": 1,
+ "ground": "surface",
+ "levels": [
+  {
+   "grid": [
+    "WW@WW",
+    "W...W",
+    "W.U.W",
+    "W...W",
+    "WWWWW"
+   ]
+  },
+  {
+   "grid": [
+    "WW_WW",
+    "WFFFW",
+    "WFIFW",
+    "WFFFW",
+    "WWWWW"
+   ]
+  },
+  {
+   "grid": [
+    "WW_WW",
+    "WFFFW",
+    "WFIFW",
+    "WFaFW",
+    "WWWWW"
+   ]
+  },
+  {
+   "grid": [
+    "WW_WW",
+    "WFFFW",
+    "WFIFW",
+    "WFFFW",
+    "WWWWW"
+   ]
+  },
+  {
+   "grid": [
+    "WW_WW",
+    "WFFFW",
+    "WFDFW",
+    "WFFFW",
+    "WWWWW"
+   ]
+  }
+ ],
+ "purpose": "tower",
+ "name": "The Watch",
+ "legend": {
+  "a": "Statue"
+ },
+ "_doc": "a five-level hollow tower round a stair"
+}

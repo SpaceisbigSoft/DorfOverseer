@@ -1,0 +1,17 @@
+{
+ "v": 1,
+ "ground": "rock",
+ "levels": [
+  {
+   "grid": [
+    "#@#",
+    "#.#"
+   ]
+  }
+ ],
+ "zone": {
+  "kind": "temple",
+  "level": 2
+ },
+ "_expect": "FORMAT"
+}

@@ -1,0 +1,23 @@
+{
+ "v": 1,
+ "ground": "rock",
+ "levels": [
+  {
+   "grid": [
+    "######@######",
+    "#...........#",
+    "#...........#",
+    "#..m.....c..#",
+    "#...........#",
+    "#.....pp....#",
+    "#############"
+   ]
+  }
+ ],
+ "legend": {
+  "m": "Masons",
+  "c": "Craftsdwarfs",
+  "p": "pile:stone"
+ },
+ "_doc": "two workshops and a stone pile"
+}

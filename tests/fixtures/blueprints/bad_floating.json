@@ -1,0 +1,19 @@
+{
+ "v": 1,
+ "ground": "surface",
+ "levels": [
+  {
+   "grid": [
+    "_@_",
+    "_U_"
+   ]
+  },
+  {
+   "grid": [
+    "F__",
+    "_D_"
+   ]
+  }
+ ],
+ "_expect": "SUPPORT"
+}
