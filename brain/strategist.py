@@ -498,6 +498,63 @@ def _reason_words(x) -> str:
     return str(x)
 
 
+# (0.105.37 fix) A drawing keeps only the format's own keys (blueprint.py
+# check_format), each level only its grid: nothing else reaches the save, the
+# build_blueprint action or the journal. Coordinates are refused outright (no
+# coordinates from a model); the whole drawing is capped in size; `for` (a
+# name) is game text, and one of the brief's names when the brief gives them.
+BLUEPRINT_KEYS = ("v", "ground", "levels", "legend", "zone", "finish", "materials", "purpose", "name", "for")
+BLUEPRINT_LEVEL_KEYS = ("grid",)
+BLUEPRINT_ZONE_KEYS = ("kind", "level")
+BLUEPRINT_FINISH_KEYS = ("smooth", "engrave")
+BLUEPRINT_COORD_KEYS = {"x", "y", "z", "anchor", "pos", "position", "at", "origin", "coords", "map_x", "map_y",
+                        "map_z", "elevation"}
+BLUEPRINT_MAX_CHARS = 12000          # 5 levels of 31 x 31 and a legend fit with room to spare
+
+
+def clean_blueprint(bp, ctx: dict | None = None) -> tuple[dict | None, list[dict]]:
+    """A model's drawing reduced to the format's keys, or None and reasons.
+    Never raises."""
+    def no(words):
+        return None, [{"code": "FORMAT", "words": words}]
+    if not isinstance(bp, dict):
+        return no("a blueprint is one object")
+    try:
+        size = len(json.dumps(bp, default=str))
+    except Exception:  # noqa: BLE001
+        return no("the drawing is not plain JSON")
+    if size > BLUEPRINT_MAX_CHARS:
+        return no(f"the drawing is {size} characters; at most {BLUEPRINT_MAX_CHARS}")
+    coords = sorted(k for k in bp if isinstance(k, str) and k.lower() in BLUEPRINT_COORD_KEYS)
+    levels = bp.get("levels")
+    if isinstance(levels, list):
+        for lv in levels:
+            if isinstance(lv, dict):
+                coords += sorted(k for k in lv if isinstance(k, str) and k.lower() in BLUEPRINT_COORD_KEYS)
+    if coords:
+        return no(f"no coordinates in a drawing ({', '.join(game_text(k, 12) for k in coords[:4])}): "
+                  "the bridge places it on the site it was given")
+    out = {k: bp[k] for k in BLUEPRINT_KEYS if k in bp}
+    if isinstance(levels, list):
+        out["levels"] = [{k: lv[k] for k in BLUEPRINT_LEVEL_KEYS if k in lv} if isinstance(lv, dict) else lv
+                         for lv in levels]
+    if isinstance(out.get("zone"), dict):
+        out["zone"] = {k: out["zone"][k] for k in BLUEPRINT_ZONE_KEYS if k in out["zone"]}
+    if isinstance(out.get("finish"), dict):
+        out["finish"] = {k: out["finish"][k] for k in BLUEPRINT_FINISH_KEYS if k in out["finish"]}
+    whom = out.get("for")
+    if whom is not None:
+        if not isinstance(whom, str):
+            return no("'for' must be a name")
+        names = (ctx or {}).get("names")
+        names = {str(n) for n in names} if isinstance(names, (set, frozenset, list, tuple)) else set()
+        clean = game_text(whom, 60)
+        if clean != whom.strip() or (names and whom not in names):
+            return no(f"'for' must be a name from the brief, not {clean!r}")
+        out["for"] = clean
+    return out, []
+
+
 def _check_design(obj: dict, ctx: dict, a: Answer) -> None:
     """(D0) The design fields. A refusal goes to a.rejected and leaves the
     other fields as they are."""
@@ -517,26 +574,36 @@ def _check_design(obj: dict, ctx: dict, a: Answer) -> None:
         a.rejected.append("design: asked for, not given")
     if ask == "blueprint" and "blueprint" in obj:
         b, reasons = obj.get("blueprint"), []
+        site_ids = [x for x in _l(ctx.get("site_ids")) if isinstance(x, str)]
+        bp = None
         if not isinstance(b, dict) or not isinstance(b.get("bp"), dict):
             reasons.append({"code": "FORMAT", "words": "blueprint needs {bp, site, name}"})
         else:
-            if b.get("site") not in set(ctx.get("site_ids") or []):
-                reasons.append({"code": "SITE", "words": f"unknown site {str(b.get('site'))[:8]!r}: "
-                                                        f"one of {', '.join(ctx.get('site_ids') or []) or 'none'}"})
+            # (0.105.37 fix) the site: one of the offered ids, a string (a dict
+            # or a list raised here, after the tokens were spent)
+            site = b.get("site")
+            if not isinstance(site, str) or site not in set(site_ids):
+                reasons.append({"code": "SITE", "words": f"unknown site {game_text(site, 10)!r}: "
+                                                        f"one of {', '.join(site_ids) or 'none'}"})
             if not isinstance(b.get("name"), str) or not BLUEPRINT_NAME.match(b["name"]):
                 reasons.append({"code": "NAME", "words": "name: letters, spaces and apostrophes, up to 40"})
-            try:
-                import blueprint as bp_mod
-                ok, why = bp_mod.check_format(b["bp"])
-            except ImportError:
-                ok, why = False, [{"code": "FORMAT", "words": "the blueprint module is missing"}]
-            if not ok:
-                reasons += [x if isinstance(x, dict) else {"words": str(x)} for x in _l(why)]
+            bp, why0 = clean_blueprint(b["bp"], ctx)
+            reasons += why0
+            if bp is not None:
+                try:
+                    import blueprint as bp_mod
+                    ok, why = bp_mod.check_format(bp)
+                except ImportError:
+                    ok, why = False, [{"code": "FORMAT", "words": "the blueprint module is missing"}]
+                except Exception as ex:  # noqa: BLE001  (never raises on a model's answer)
+                    ok, why = False, [{"code": "FORMAT", "words": f"the drawing could not be read ({type(ex).__name__})"}]
+                if not ok:
+                    reasons += [x if isinstance(x, dict) else {"words": str(x)} for x in _l(why)]
         if reasons:
             a.blueprint_reasons = reasons[:8]
             a.rejected += [f"blueprint: {_reason_words(x)}"[:200] for x in reasons[:8]]
         else:
-            a.blueprint = {"bp": b["bp"], "site": b["site"], "name": b["name"]}
+            a.blueprint = {"bp": bp, "site": b["site"], "name": b["name"]}
     elif ask == "blueprint":
         a.blueprint_reasons = [{"code": "FORMAT", "words": "a drawing was asked for, none given"}]
         a.rejected.append("blueprint: asked for, not given")

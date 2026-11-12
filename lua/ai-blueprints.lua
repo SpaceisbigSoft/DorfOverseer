@@ -1526,6 +1526,10 @@ function build_stages(bp, q)
                 R.sc[k] = nil
                 local after = R.reach()
                 cuts[s] = R.cut(before, after)
+                -- (0.105.37 fix) a removal that leaves a tile cut off (one the
+                -- remover or a builder could be standing on) is refused: this
+                -- order fails, and with none left the drawing is refused
+                if #cuts[s] > 0 then return false end
             else
                 local extra = {}
                 for _, j in ipairs(st.jobs) do

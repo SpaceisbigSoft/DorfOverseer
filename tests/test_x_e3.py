@@ -222,14 +222,14 @@ def build_power(env, W, **kw):
     W.dig_all(p.dig)
     assert "channelled" in step(env, "power").error
     W.dig_all(p.dig2)
-    assert "cut over the top pump" in step(env, "power").error
-    W.dig_all(p.dig3)
-    assert step(env, "power").stage == "building"
+    assert step(env, "power").stage == "building"          # (0.105.37 fix) the plug is cut once the foot's pump stands
     for _ in range(60):
         r = step(env, "power")
         if r.stage != "building":
             break
         W.build_all()
+        if works(W).power.dig3:
+            W.dig_all(p.dig3)
     assert r.stage == "linking", dict(r)
     assert step(env, "power").stage == "running"
     return p
@@ -242,23 +242,25 @@ def _():
     assert r.ok and r.dry_run and r.plan.source == "wheel", dict(r)
     assert works(W)["power"] is None                     # a dry run changes nothing
     p = r.plan
-    # the shaft: straight over the top pump's intake, from the level above it to the surface
+    # the shaft: straight over the top pump's output, from the level above it to under the ground
+    # (0.105.37 fix: sealed by a screw pump at its foot and one at its top)
     pp = works(W).pump.plan
     top = max((b for b in tolist(pp.builds) if b.kind == "ScrewPump"), key=lambda b: b.z)
-    assert p.shaft.x in (top.x, top.x + 1) and p.shaft.z1 == top.z + 1 and p.shaft.z2 == 100
+    assert p.shaft.x in (top.x, top.x + 1) and p.shaft.z1 == top.z + 1 and p.shaft.z2 == 99
     builds = tolist(p.builds)
     kinds = [b.kind for b in builds]
-    assert kinds[0] == "GearAssembly" and builds[0].z == top.z + 1                 # on the top pump
-    assert kinds.count("AxleVertical") == 100 - (top.z + 2)                          # one a level
+    assert kinds[0] == "ScrewPump" and builds[0].z == top.z + 1 and builds[0].seal == "foot"   # on the top pump
+    assert kinds.count("AxleVertical") == 99 - (top.z + 2)                           # one a level
+    assert kinds.count("ScrewPump") == 2 and builds[p.top - 1].z == 99                # the foot's and the top seal
     assert kinds.count("WaterWheel") == 1 and p.wheels == 1
     wheel = [b for b in builds if b.kind == "WaterWheel"][0]
     assert wheel.text == "Mw(1x3)" and wheel.cx == 70                                # over the river, N-S
     assert any(b.kind == "AxleHorizontal" for b in builds)
     sw = builds[p.switch - 1]
-    assert sw.kind == "GearAssembly" and sw.z == 100 and sw.x == p.shaft.x          # the switch bears nothing
+    assert sw.kind == "GearAssembly" and sw.z == 99 and sw.x == p.shaft.x           # the switch bears nothing
     assert not any(b.after == p.switch for b in builds)
-    # DF's numbers: 3 pumps x 10, 3 gears x 5, 9 vertical + 5 horizontal axles, the wheel's own 10
-    assert p.pumps == 3 and p.need == 30 + 15 + 9 + 5 + 10 and p.have == 100, (p.need, p.have)
+    # DF's numbers: 3 pumps and 2 seals x 10, 3 gears x 5, 8 vertical + 2 horizontal axles, the wheel's own 10
+    assert p.pumps == 3 and p.need == 50 + 15 + 8 + 2 + 10 and p.have == 100, (p.need, p.have)
     assert p.lever.name == "AI pump power" and p.hatch.lock
 
 
@@ -301,7 +303,7 @@ def _():
     sw = builds[p.switch - 1]
     assert sw.z == 99 and sw.x == p.shaft.x                       # the switch under the ground
     assert not any(c.z == 100 and c.x == p.shaft.x and c.y == p.shaft.y for c in tolist(p.dig2))   # roofed
-    assert p.need == 10 + 15 + 8 + 1 and p.have == 40, p.need
+    assert p.need == 20 + 10 + 8 + 1 and p.have == 40, p.need          # (0.105.37 fix) the foot's pump too
     p = build_power(env, W)
     assert W.windmill_at is not None and W.windmill_at[3] == 100
 
@@ -315,13 +317,11 @@ def _():
     W.dig_all(p.dig)
     step(env, "power")
     W.dig_all(p.dig2)
-    step(env, "power")
-    W.dig_all(p.dig3)
     assert step(env, "power").stage == "building"
     step(env, "power")
     builds = tolist(p.builds)
     placed = {(d.x, d.y, d.z, d.text) for d in tolist(W.designated) if d.mode == "build"}
-    assert (builds[0].x, builds[0].y, builds[0].z, "Mg") in placed            # the foot gear on the pump
+    assert (builds[0].x, builds[0].y, builds[0].z, builds[0].text) in placed  # the foot's pump on the top pump
     assert (builds[1].x, builds[1].y, builds[1].z, "Mv") not in placed        # not before the gear is built
     assert not any(b.kind == "WaterWheel" for b in builds if (b.x, b.y, b.z, b.text) in placed)
     assert not any(d.text == "H" and d.z == 100 for d in tolist(W.designated))
@@ -330,6 +330,8 @@ def _():
         if r.stage != "building":
             break
         W.build_all()
+        if works(W).power.dig3:
+            W.dig_all(p.dig3)
     assert r.stage == "linking" and W.locked is not None
     assert step(env, "power").stage == "running"
 
@@ -340,7 +342,7 @@ def _():
     p = build_power(env, W)
     wk = works(W).power
     res = p.test
-    gear = env.building(p.shaft.x, p.shaft.y, 100, "GearAssembly")
+    gear = env.building(p.shaft.x, p.shaft.y, 99, "GearAssembly")
     assert W.engaged[gear.id] is True
     W.power[gear.id] = T(cur=100, need=69)
     r = step(env, "power")
@@ -360,7 +362,7 @@ def _():
 def _():
     env, W = stack_world()
     p = build_power(env, W)
-    gear = env.building(p.shaft.x, p.shaft.y, 100, "GearAssembly")
+    gear = env.building(p.shaft.x, p.shaft.y, 99, "GearAssembly")
     c = tolist(p.pocket)[3]
     W.set(c.x, c.y, c.z, T(liquid=True, depth=2))
     r = step(env, "power")
@@ -369,7 +371,7 @@ def _():
     assert works(W).pump.shut == "water in the power shaft"
     env, W = stack_world()
     p = build_power(env, W)
-    gear = env.building(p.shaft.x, p.shaft.y, 100, "GearAssembly")
+    gear = env.building(p.shaft.x, p.shaft.y, 99, "GearAssembly")
     r = step(env, "power", shut=True, why="dwarves in deep water")
     assert r.ok and r.shut and W.engaged[gear.id] is False
     assert "waiting to be switched on again" in step(env, "power").error
@@ -379,7 +381,7 @@ def _():
     assert "switched on" in step(env, "power").error
 
 
-@test("power: a wheel that stops turning (the river dry or frozen) is held after 14 days, then retired")
+@test("power: a wheel that stops turning is paused (0.105.37 fix), held only after a season still over unfrozen water")
 def _():
     env, W = stack_world()
     p = build_power(env, W)
@@ -389,7 +391,10 @@ def _():
     assert step(env, "power").waiting
     W.tick = W.tick + 15 * 1200
     r = step(env, "power")
-    assert r.stage == "held" and "has not turned in 14 days" in r.error
+    assert r.waiting and "paused" in r.error, dict(r)
+    W.tick = W.tick + 85 * 1200
+    r = step(env, "power")
+    assert r.stage == "held" and "84 days of unfrozen river" in r.error, dict(r)
     r = step(env, "power", retire=True, why="held: the wheel is dry")
     assert r.ok and works(W).power.stage == "retired"
     assert W.saved[KEY].refused.power.retired == 1
@@ -546,7 +551,7 @@ def _():
         row = {"kind": "power", "stage": "running", "engaged": True, "source": "wheel", "wheels": 1,
                "need": 69, "have": 100, "power": 100, "power_need": 69}
         props, notes = run(state(design="guided", power=row))
-        steps = [p for p in props if p.rule == "waterworks_power"]
+        steps = [p for p in props if p.rule == "waterworks_power_run"]
         assert steps and steps[0].action == {"type": "water_work", "kind": "power"}
         assert any("a water wheel, 100 power for 69 needed" in n for n in notes), notes
         s = state(design="scripts", power=row)

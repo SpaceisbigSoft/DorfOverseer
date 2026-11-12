@@ -98,6 +98,13 @@ end
 -- (E4) the statues the AI put up in a dwarf's own bedroom (furnish_liked):
 -- building id -> true. Not a noble suite's statue: such a room stays a
 -- bedroom. Read at the start of each call that looks at rooms.
+-- (0.105.37 fix, documented) The room measure (the census, the scorecard's
+-- rooms) reads these ids from the save whatever the Design setting: a fort
+-- that ran Guided and is set back to Scripts measures its rooms exactly as it
+-- did at Guided (a bedroom the AI gave a liked statue stays a bedroom, never
+-- a suite). Only against main's code does it differ: main had no such ids and
+-- counted the statue. A save that never ran Guided has none, so Scripts there
+-- is main's byte for byte.
 LIKED_STATUES_KEY = 'ai-overseer/liked-statues'
 local liked_statues = {}
 local function load_liked_statues()

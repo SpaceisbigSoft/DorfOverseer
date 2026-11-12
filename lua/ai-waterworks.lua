@@ -987,6 +987,14 @@ local function designate_all(cells, mode)
     return true
 end
 
+-- (0.105.37 fix) the cells not dug yet (a power planned again over its own
+-- old shaft designates only what is left)
+local function undug(cells)
+    local out = {}
+    for _, c in ipairs(cells or {}) do if not dug(T(c.x, c.y, c.z), c.text) then table.insert(out, c) end end
+    return out
+end
+
 local function left_to_dig(cells)
     local n = 0
     for _, c in ipairs(cells or {}) do if not dug(T(c.x, c.y, c.z), c.text) then n = n + 1 end end
@@ -1020,32 +1028,48 @@ end
 ---------------------------------------------------------------------------
 -- The pump stack (W4) is worked by hand. Its power: a water wheel on the
 -- river (flowing water under it) or a windmill (the map's wind), joined to
--- the stack by a shaft of vertical axles straight down to a gear assembly
--- over the top pump's intake (DF: a gear over a channel above the topmost
--- pump powers the stack; the pumps pass power on to each other), and on
--- the surface by horizontal axles and gear assemblies. Begun only when the
--- stack is done (its floodgate, the water's stop, built and tested).
+-- the stack by a shaft of vertical axles straight down over the top pump's
+-- output tile (DF: a screw pump "accepts and transfers power using either
+-- tile of the pump, in all orthogonal directions, including above and
+-- below"; the pumps pass power on to each other), and on the surface by
+-- horizontal axles and gear assemblies. Begun only when the stack is done
+-- (its floodgate, the water's stop, built and tested).
 --
--- The shaft and its access stair are a pocket in solid rock: every tile
--- beside them on their levels is rock, so they join nothing of the fort;
--- the pocket opens only under the sky (the shaft's top gear, the stair's
--- hatch, locked once all is built) and onto the top pump's screw at its
--- foot. Pumped water rises at most to the pump's own level (the water
--- rules, design-notes W1), so none climbs into the shaft; any water seen in
--- it stops the power, shuts the stack's floodgate and holds the work. The
--- shaft's top and stair are kept 3 tiles from any water.
+-- (0.105.37 fix) The power never joins the fort to the outside or the sky.
+-- Gears and axles block nothing, and floors block power between levels (the
+-- wiki's Axle page), so every link between levels is an open tile; the seals
+-- are machines nothing passes: a screw pump's output tile ("blocks liquid
+-- flow and creature movement") and a standing windmill's centre ("does not
+-- permit passage"). The shaft and its access stair are a pocket in solid
+-- rock from zt + 2 to the ground's level less one: every tile beside them on
+-- their levels is rock. At its foot (zt + 1, the fort's level over the top
+-- pump) a screw pump's output fills the shaft's column over the top pump's
+-- output, so the shaft opens onto two outputs and nothing else; that pump's
+-- intake is a nook of the fort (dug and built from the fort's side), over
+-- solid rock with nothing to pump. The pocket's floor at zt + 2 stays a rock
+-- plug until that pump stands. Its top is roofed by the rock: the switch
+-- gear at ztop - 1 under the ground; the windmill's centre over its gear;
+-- for a wheel, a second screw pump under the ground (the top seal) whose
+-- output lies under the ground's gear D, the power's one opening to the sky.
+-- The stair's hatch is built last and locked. Pumped water rises at most to
+-- the pump's own level (the water rules, design-notes W1), so none climbs
+-- into the shaft; any water seen in it stops the power, shuts the stack's
+-- floodgate and holds the work. The shaft's top and stair are kept 2 tiles
+-- from any water (dry_near).
 --
 -- The power's stop: a gear assembly on a lever ("AI pump power") that bears
 -- nothing (a wheel or an axle resting on a disengaged gear falls), pulled
 -- at once on a flood, water in the shaft or the stack held, and pulled to
--- keep the reservoir between POWER_LOW and POWER_HIGH. Retired when its
--- wheel stops turning (the river dry, frozen or still), the wind is too
--- weak, or the power falls short.
+-- keep the reservoir between POWER_LOW and POWER_HIGH. A wheel that stops
+-- (its river frozen or low) is paused: the power off, the pumps worked by
+-- hand, on again when it turns; retired only when it stood still through
+-- WHEEL_RETIRE_DAYS of unfrozen river (a full thawed season). Held when the
+-- wind is too weak or the power falls short.
 --
 -- The power check, DF's numbers (the wiki's Power page): a screw pump needs
--- 10, a gear assembly 5, an axle 1 a tile; a water wheel gives 100 in
--- flowing water (10 of it turning itself), a windmill 40 (20, or 0, in poor
--- wind; the same all the map's life).
+-- 10 (the two seals too), a gear assembly 5, an axle 1 a tile; a water wheel
+-- gives 100 in flowing water (10 of it turning itself), a windmill 40 (20,
+-- or 0, in poor wind; the same all the map's life).
 POWER_PUMP = 10
 POWER_GEAR = 5
 POWER_AXLE = 1
@@ -1058,15 +1082,18 @@ AXLE_SEG = 10           -- a horizontal axle this long at most (several in a row
 WHEELS_MAX = 3          -- side by side over the river, each on the last's centre
 POWER_LOW = 3           -- the reservoir this low: the power on
 POWER_HIGH = 5          -- this high: off
-WHEEL_DRY_DAYS = 14     -- no wheel turning this long: held (the AI retires it)
+WHEEL_DRY_DAYS = 14     -- (unused since 0.105.37 fix: a still wheel is paused, see WHEEL_RETIRE_DAYS)
+WHEEL_RETIRE_DAYS = 84  -- (0.105.37 fix) a still wheel over unfrozen water this long (a season): held, retired
 WIND_DAYS = 14          -- the windmill still this long: held
 POWER_SHORT_DAYS = 14   -- less power than the machine needs this long: held
 POWER_PULL_DAYS = 2     -- a pull to switch the power on asked again no sooner
 
+local OWN = {}           -- (0.105.37 fix) the plan being made: the older plan's tiles (own_tiles)
+
 -- open space over flowing river water: a water wheel's tile; the water's depth, or nil
 local function wheel_tile(x, y, z)
     local t, b = T(x, y, z), T(x, y, z - 1)
-    if not (t and t.shape == 'EMPTY' and not t.liquid and not t.building) then return nil end
+    if not (t and t.shape == 'EMPTY' and not t.liquid and (not t.building or OWN[key(x, y, z)])) then return nil end
     if not (b and b.liquid and not b.magma and (b.material == 'RIVER' or b.material == 'BROOK')) then return nil end
     return b.depth or 0
 end
@@ -1082,69 +1109,167 @@ local function dry_near(x, y, z, r)
     return true
 end
 
--- the pump stack's top screw pump: its intake tile {x, y, z} (the plan's
--- `down` marks the intakes)
-local function top_intake(pp)
+-- the pump stack's top screw pump: its intake tile {x, y, z} and its
+-- output tile {x, y} (the plan's `down` marks the intakes)
+local function top_pump(pp)
     local best
     for _, b in ipairs(pp.builds or {}) do
         if b.kind == 'ScrewPump' and (not best or b.z > best.z) then best = b end
     end
-    if not best then return nil end
+    if not best or type(pp.down) ~= 'table' then return nil end
     local w, h = tostring(best.text or ''):match('%((%d+)x(%d+)%)')
     w, h = tonumber(w) or 1, tonumber(h) or 1
-    for _, t in ipairs({{x = best.x, y = best.y}, {x = best.x + w - 1, y = best.y + h - 1}}) do
-        if type(pp.down) == 'table' and pp.down[key(t.x, t.y, best.z)] then return {x = t.x, y = t.y, z = best.z} end
-    end
+    local a, b = {x = best.x, y = best.y}, {x = best.x + w - 1, y = best.y + h - 1}
+    if pp.down[key(a.x, a.y, best.z)] then return {x = a.x, y = a.y, z = best.z}, b end
+    if pp.down[key(b.x, b.y, best.z)] then return {x = b.x, y = b.y, z = best.z}, a end
     return nil
 end
 
--- The shaft over Q and its access stair S = Q + d, from zt + 1 to ztop - 1,
--- with `extra` tiles: all solid rock, and every tile beside them on their
--- level rock or their own (the pocket joins nothing). One exception: the
--- shaft's foot (over the top pump, a hole holding its gear, never walked)
--- may touch the stack's own service stair (`allow`: its hatch, locked);
--- the stair S may not. {S, list} or nil, why
-local function power_pocket(Q, zt, ztop, d, extra, allow)
-    local S = {x = Q.x + d[1], y = Q.y + d[2]}
+-- A screw pump with its intake on tile a and its output on b (orthogonal
+-- neighbours): its quickfort key ("pumps from" the intake's side) and its
+-- top-left corner.
+local function pump_text(a, b)
+    if b.x == a.x + 1 then return 'Msh(2x1)', a.x, a.y end
+    if b.x == a.x - 1 then return 'Msk(2x1)', b.x, b.y end
+    if b.y == a.y + 1 then return 'Msu(1x2)', a.x, a.y end
+    return 'Msm(1x2)', b.x, b.y
+end
+
+-- (0.105.37 fix) The power's own tiles from an older plan (planned again
+-- after a retire): dug, channelled or built by it. Seen as its own, never as
+-- "not solid rock": the planner reuses its old shaft and machines.
+local function own_tiles(old)
+    local own = {}
+    if type(old) ~= 'table' then return own end
+    for _, list in ipairs({old.dig or {}, old.dig2 or {}, old.dig3 or {}, old.pocket or {}}) do
+        for _, c in ipairs(list) do own[key(c.x, c.y, c.z)] = true end
+    end
+    for _, b in ipairs(old.builds or {}) do
+        local w, h = tostring(b.text or ''):match('%((%d+)x(%d+)%)')
+        w, h = tonumber(w) or 1, tonumber(h) or 1
+        for x = b.x, b.x + w - 1 do for y = b.y, b.y + h - 1 do own[key(x, y, b.z)] = true end end
+    end
+    if type(old.hatch) == 'table' then own[key(old.hatch.x, old.hatch.y, old.hatch.z)] = true end
+    return own
+end
+
+local function rock_or_own(x, y, z) return OWN[key(x, y, z)] or rock(T(x, y, z)) end
+local function ground_or_own(x, y, z)
+    if OWN[key(x, y, z)] or ground(x, y, z) then return true end
+    -- (open ground over the old plan's own dug tile: its shaft's roof)
+    local t = T(x, y, z)
+    return OWN[key(x, y, z - 1)] == true and t ~= nil and t.outside == true and not t.liquid
+        and (t.shape == 'FLOOR' or t.shape == 'SHRUB' or t.shape == 'SAPLING' or t.shape == 'PEBBLES')
+end
+
+-- The shaft and its access stair: the shaft C (over the top pump's output)
+-- and the stair S = C + d, from zt + 2 to ztop - 1, with `extra` tiles: all
+-- solid rock, and every tile beside them on their level rock or their own.
+-- The pocket joins nothing: not the fort, not the pump stack, not the river.
+-- Its floor at zt + 2 is the rock plug over the foot (cut only once the
+-- foot's pump stands). {S, list} or nil, why
+local function power_pocket(C, zt, ztop, d, extra)
+    local S = {x = C.x + d[1], y = C.y + d[2]}
     local list, set = {}, {}
     local function add(x, y, z) table.insert(list, {x = x, y = y, z = z}); set[key(x, y, z)] = true end
-    for z = zt + 1, ztop - 1 do add(Q.x, Q.y, z) end      -- (the shaft first: its reasons said first)
-    for z = zt + 1, ztop - 1 do add(S.x, S.y, z) end
+    for z = zt + 2, ztop - 1 do add(C.x, C.y, z) end      -- (the shaft first: its reasons said first)
+    for z = zt + 2, ztop - 1 do add(S.x, S.y, z) end
     for _, c in ipairs(extra or {}) do add(c.x, c.y, c.z) end
     for _, c in ipairs(list) do
-        if not rock(T(c.x, c.y, c.z)) then
+        if not rock_or_own(c.x, c.y, c.z) then
             return nil, ('the shaft\'s stair would cross something other than solid rock at x%d y%d, elevation %d')
                 :format(c.x, c.y, ez(c.z))
         end
     end
     for _, c in ipairs(list) do
-        local foot = c.z == zt + 1 and c.x == Q.x and c.y == Q.y
         for _, n in ipairs(N8) do
             local x, y = c.x + n[1], c.y + n[2]
-            local nk = key(x, y, c.z)
-            if not set[nk] and not (foot and allow and allow[nk]) and not rock(T(x, y, c.z)) then
+            if not set[key(x, y, c.z)] and not rock_or_own(x, y, c.z) then
                 return nil, ('the shaft would touch something other than solid rock at x%d y%d, elevation %d '
                              .. '(it must join nothing of the fort)'):format(x, y, ez(c.z))
             end
         end
     end
-    if not ground(S.x, S.y, ztop) then
+    if not ground_or_own(S.x, S.y, ztop) then
         return nil, ('no dry open ground for the shaft\'s stair at x%d y%d, elevation %d'):format(S.x, S.y, ez(ztop))
     end
     return {S = S, list = list}
 end
 
+local WALK_SHAPES = {FLOOR = true, STAIR_UP = true, STAIR_DOWN = true, STAIR_UPDOWN = true, RAMP = true}
+
+-- The foot: a screw pump on the level over the top pump (zt + 1), its
+-- output tile C over the top pump's output (both impassable: DF's screw
+-- pump output "blocks liquid flow and creature movement"), its intake I0
+-- beside it on dug floor over solid rock (nothing under it to pump). It
+-- takes the shaft's power down into the stack through the channel at C and
+-- seals the shaft from the fort's level and from the stack: nothing walks,
+-- flies or flows between them. Dug and built from the fort's side (a fort
+-- tile beside I0). {I0, text, x, y} or nil, why
+local function power_foot(pp, C, zt)
+    local z = zt + 1
+    if not rock_or_own(C.x, C.y, z) then
+        return nil, ('the foot of the shaft over the top pump is not solid rock at x%d y%d, elevation %d')
+            :format(C.x, C.y, ez(z))
+    end
+    local stack = {}
+    for _, c in ipairs(pp.dig or {}) do stack[key(c.x, c.y, c.z)] = true end
+    local why
+    for _, f in ipairs(N4) do
+        local I = {x = C.x + f[1], y = C.y + f[2]}
+        local ok = not stack[key(I.x, I.y, z)] and rock_or_own(I.x, I.y, z) and rock(T(I.x, I.y, z - 1))
+        if not ok then
+            why = why or 'no solid rock beside the shaft\'s foot for its pump (with rock under its intake)'
+        else
+            -- nothing beside the foot open to the sky or holding water; a fort
+            -- tile beside the intake to dig and build it from
+            local reach = false
+            for _, c in ipairs({C, I}) do
+                for _, n in ipairs(N8) do
+                    local x, y = c.x + n[1], c.y + n[2]
+                    local t = T(x, y, z)
+                    if t and (t.liquid or t.outside or t.feature or t.aquifer) then
+                        ok = false
+                        why = why or ('the shaft\'s foot would be beside water or open air at x%d y%d, elevation %d')
+                            :format(x, y, ez(z))
+                    end
+                    if c == I and not (x == C.x and y == C.y) and t and WALK_SHAPES[t.shape] and not t.outside
+                            and not t.liquid then
+                        reach = true
+                    end
+                end
+            end
+            if ok and not reach then
+                ok = false
+                why = why or 'no fort floor beside the shaft\'s foot to dig and build its pump from'
+            end
+            if ok then
+                local text, x, y = pump_text(I, C)
+                return {I = I, text = text, x = x, y = y}
+            end
+        end
+    end
+    return nil, why
+end
+
 -- the digs every power plan shares: the stair and the shaft dug from the
--- surface down, then the shaft's floors channelled (dig2), the last cut over
--- the top pump (dig3)
-local function power_digs(p, Q, S, zt, ztop, chan_top)
-    for z = zt + 1, ztop - 1 do
-        table.insert(p.dig, {x = S.x, y = S.y, z = z, text = z == zt + 1 and 'u' or 'i'})
-        table.insert(p.dig, {x = Q.x, y = Q.y, z = z, text = 'd'})
+-- surface down to zt + 2 (the plug: its floor kept), the foot dug from the
+-- fort's side (its pump's intake floor, the channel over the top pump's
+-- output); then the shaft's floors channelled down to zt + 3 (dig2); the
+-- plug cut (dig3) only once the foot's pump stands
+local function power_digs(p, C, S, zt, ztop, foot, chan_top)
+    for z = zt + 2, ztop - 1 do
+        table.insert(p.dig, {x = S.x, y = S.y, z = z, text = z == zt + 2 and 'u' or 'i'})
+        table.insert(p.dig, {x = C.x, y = C.y, z = z, text = 'd'})
     end
     table.insert(p.dig, {x = S.x, y = S.y, z = ztop, text = 'j'})
-    for z = zt + 2, chan_top do table.insert(p.dig2, {x = Q.x, y = Q.y, z = z, text = 'h'}) end
-    p.dig3 = {{x = Q.x, y = Q.y, z = zt + 1, text = 'h'}}
+    table.insert(p.dig, {x = foot.I.x, y = foot.I.y, z = zt + 1, text = 'd'})
+    table.insert(p.dig, {x = C.x, y = C.y, z = zt + 1, text = 'h'})
+    for z = zt + 3, chan_top do table.insert(p.dig2, {x = C.x, y = C.y, z = z, text = 'h'}) end
+    p.dig3 = {{x = C.x, y = C.y, z = zt + 2, text = 'h'}}
+    -- the foot's tiles (watched for water with the pocket)
+    table.insert(p.pocket, {x = C.x, y = C.y, z = zt + 1})
+    table.insert(p.pocket, {x = foot.I.x, y = foot.I.y, z = zt + 1})
 end
 
 local function power_need(pumps, gears, axles)
@@ -1170,111 +1295,158 @@ local function axle_run(a, b, z, out)
     return #tiles
 end
 
-local function power_lever(pp)
+local function power_lever(pp, old)
+    -- (planned again) the old lever where it stands
+    if type(old) == 'table' and type(old.lever) == 'table' and building(old.lever.x, old.lever.y, old.lever.z, 'Trap') then
+        return {x = old.lever.x, y = old.lever.y, z = old.lever.z, name = 'AI pump power'}
+    end
     if type(pp.lever) ~= 'table' then return nil end
     local lv = lever_spot(pp.lever.x, pp.lever.y, pp.lever.z, {[key(pp.lever.x, pp.lever.y, pp.lever.z)] = true})
     if lv then lv.name = 'AI pump power' end
     return lv
 end
 
+-- the foot's pump, the shaft's axles and its switch (a gear at ztop - 1,
+-- under the ground: the shaft stays roofed); the switch's index
+local function shaft_builds(p, add, C, zt, ztop, foot)
+    local prev = add({x = foot.x, y = foot.y, z = zt + 1, text = foot.text, kind = 'ScrewPump', seal = 'foot'})
+    p.foot = prev
+    local plug = true
+    for z = zt + 2, ztop - 2 do
+        prev = add({x = C.x, y = C.y, z = z, text = 'Mv', kind = 'AxleVertical', after = prev, plug = plug or nil})
+        plug = false
+    end
+    p.switch = add({x = C.x, y = C.y, z = ztop - 1, text = 'Mg', kind = 'GearAssembly', after = prev,
+                    plug = plug or nil})
+    return p.switch
+end
+
 -- A water wheel (or two or three side by side) over the river one level
--- under the shaft's ground, a gear on the bank beside its centre, axles and
--- gears along the ground to the shaft's top gear (the switch).
-local function power_wheel(pp, Q, zt, ztop, pumps, w)
+-- under the shaft's ground, a gear on the bank beside its centre, gears and
+-- axles along the ground to a gear D over the top seal: a screw pump under
+-- the ground (its output under D, its intake beside the switch) that takes
+-- the power down and is the shaft's roof where D's channel opens (nothing
+-- walks, flies or flows through a pump's output). The axles and gears on the
+-- ground stay outside; the shaft is roofed by rock everywhere else.
+local function power_wheel(pp, C, zt, ztop, pumps, w, foot)
     local river
     for _, b in ipairs(w and w.bodies or {}) do
         if b.kind == 'river' and (tonumber(b.tiles) or 0) > 0 then river = b end
     end
     if not river then return nil, 'no river near the fort for a water wheel' end
     local best, why
-    for _, d in ipairs(N4) do
-        local pk, pwhy = power_pocket(Q, zt, ztop, d, nil, pp.allow_)
-        if not pk then why = why or pwhy goto nextd end
-        do
-            local S = pk.S
-            if not (dry_near(S.x, S.y, ztop, 2) and dry_near(Q.x, Q.y, ztop, 2)) then
-                why = why or 'the shaft\'s top would be within 2 tiles of water'
-                goto nextd
-            end
-            local function walk(x, y) return ground(x, y, ztop) and not (x == S.x and y == S.y) end
-            for dx = -POWER_RUN_MAX, POWER_RUN_MAX do for dy = -POWER_RUN_MAX, POWER_RUN_MAX do
-                local c = {x = Q.x + dx, y = Q.y + dy}
-                if wheel_tile(c.x, c.y, ztop) then
-                    for _, u in ipairs({{1, 0}, {0, 1}}) do
-                        local v = {u[2], u[1]}
-                        for _, s in ipairs({1, -1}) do
-                            local G0 = {x = c.x + v[1] * s, y = c.y + v[2] * s}
-                            if walk(G0.x, G0.y) and not (G0.x == Q.x and G0.y == Q.y) then
-                                local path = l_path(Q, G0, walk)
-                                if path and #path <= POWER_RUN_MAX then
-                                    table.insert(path, G0)
-                                    -- the gears: the shaft's top, the corner, the bank
-                                    local gears = {1}
-                                    for i = 2, #path - 1 do
-                                        local a, b2, n = path[i - 1], path[i], path[i + 1]
-                                        if (b2.x - a.x) ~= (n.x - b2.x) or (b2.y - a.y) ~= (n.y - b2.y) then
-                                            table.insert(gears, i)
+    for _, e in ipairs(N4) do
+        for _, d in ipairs(N4) do
+            if d[1] * e[1] + d[2] * e[2] == 0 then
+                local I1 = {x = C.x + e[1], y = C.y + e[2]}
+                local U = {x = C.x + 2 * e[1], y = C.y + 2 * e[2]}
+                local pk, pwhy = power_pocket(C, zt, ztop, d, {{x = I1.x, y = I1.y, z = ztop - 1}, {x = U.x, y = U.y, z = ztop - 1}})
+                if not pk then why = why or pwhy goto nexte end
+                if not (rock(T(I1.x, I1.y, ztop - 2)) and rock(T(U.x, U.y, ztop - 2))) then
+                    why = why or 'no solid rock under the shaft\'s top seal'
+                    goto nexte
+                end
+                if not ground_or_own(U.x, U.y, ztop) then
+                    why = why or ('no dry open ground over the shaft\'s top seal at x%d y%d'):format(U.x, U.y)
+                    goto nexte
+                end
+                do
+                    local S = pk.S
+                    if not (dry_near(S.x, S.y, ztop, 2) and dry_near(U.x, U.y, ztop, 2) and dry_near(C.x, C.y, ztop, 2)) then
+                        why = why or 'the shaft\'s top would be within 2 tiles of water'
+                        goto nexte
+                    end
+                    local function walk(x, y)
+                        return ground_or_own(x, y, ztop) and not (x == S.x and y == S.y)
+                    end
+                    local D = U
+                    for dx = -POWER_RUN_MAX, POWER_RUN_MAX do for dy = -POWER_RUN_MAX, POWER_RUN_MAX do
+                        local c = {x = D.x + dx, y = D.y + dy}
+                        if wheel_tile(c.x, c.y, ztop) then
+                            for _, u in ipairs({{1, 0}, {0, 1}}) do
+                                local v = {u[2], u[1]}
+                                for _, s in ipairs({1, -1}) do
+                                    local G0 = {x = c.x + v[1] * s, y = c.y + v[2] * s}
+                                    if walk(G0.x, G0.y) and not (G0.x == D.x and G0.y == D.y) then
+                                        local path = l_path(D, G0, walk)
+                                        if path and #path <= POWER_RUN_MAX then
+                                            table.insert(path, G0)
+                                            -- the gears: D, the corner, the bank
+                                            local gears = {1}
+                                            for i = 2, #path - 1 do
+                                                local a, b2, n = path[i - 1], path[i], path[i + 1]
+                                                if (b2.x - a.x) ~= (n.x - b2.x) or (b2.y - a.y) ~= (n.y - b2.y) then
+                                                    table.insert(gears, i)
+                                                end
+                                            end
+                                            table.insert(gears, #path)
+                                            local axles = {}
+                                            local h = 0
+                                            for i = 2, #gears do h = h + axle_run(path[gears[i - 1]], path[gears[i]], ztop, axles) end
+                                            local vert = ztop - zt - 3
+                                            -- the stack's pumps and the two seals; the switch and the ground's gears
+                                            local need = power_need(pumps + 2, #gears + 1, vert + h)
+                                            local n = (need + POWER_WHEEL - POWER_WHEEL_OWN - 1) // (POWER_WHEEL - POWER_WHEEL_OWN)
+                                            n = math.max(1, n)
+                                            local ok = n <= WHEELS_MAX
+                                            local wheels = {}
+                                            for k = 0, (ok and n or 0) - 1 do
+                                                local ck = {x = c.x - v[1] * s * k, y = c.y - v[2] * s * k}
+                                                local deep = false
+                                                for j = -1, 1 do
+                                                    local dd = wheel_tile(ck.x + u[1] * j, ck.y + u[2] * j, ztop)
+                                                    if not dd then ok = false end
+                                                    if dd and dd >= 4 then deep = true end
+                                                end
+                                                if not deep then ok = false end
+                                                table.insert(wheels, ck)
+                                            end
+                                            if not ok and n > WHEELS_MAX then
+                                                why = why or ('the pumps need %d power, more than %d water wheels give (%d each)')
+                                                    :format(need, WHEELS_MAX, POWER_WHEEL - POWER_WHEEL_OWN)
+                                            end
+                                            local score = n * 1000 + #path
+                                            if ok and (not best or score < best.score) then
+                                                best = {score = score, S = S, pocket = pk.list, path = path, gears = gears,
+                                                        axles = axles, wheels = wheels, u = u, need = need + n * POWER_WHEEL_OWN,
+                                                        have = n * POWER_WHEEL, n = n, vert = vert, h = h, I1 = I1, U = U}
+                                            end
                                         end
-                                    end
-                                    table.insert(gears, #path)
-                                    local axles = {}
-                                    local h = 0
-                                    for i = 2, #gears do h = h + axle_run(path[gears[i - 1]], path[gears[i]], ztop, axles) end
-                                    local vert = ztop - zt - 2
-                                    local need = power_need(pumps, #gears + 1, vert + h)
-                                    local n = (need + POWER_WHEEL - POWER_WHEEL_OWN - 1) // (POWER_WHEEL - POWER_WHEEL_OWN)
-                                    n = math.max(1, n)
-                                    local ok = n <= WHEELS_MAX
-                                    local wheels = {}
-                                    for k = 0, (ok and n or 0) - 1 do
-                                        local ck = {x = c.x - v[1] * s * k, y = c.y - v[2] * s * k}
-                                        local deep = false
-                                        for j = -1, 1 do
-                                            local dd = wheel_tile(ck.x + u[1] * j, ck.y + u[2] * j, ztop)
-                                            if not dd then ok = false end
-                                            if dd and dd >= 4 then deep = true end
-                                        end
-                                        if not deep then ok = false end
-                                        table.insert(wheels, ck)
-                                    end
-                                    if not ok and n > WHEELS_MAX then
-                                        why = why or ('the pumps need %d power, more than %d water wheels give (%d each)')
-                                            :format(need, WHEELS_MAX, POWER_WHEEL - POWER_WHEEL_OWN)
-                                    end
-                                    local score = n * 1000 + #path
-                                    if ok and (not best or score < best.score) then
-                                        best = {score = score, S = S, pocket = pk.list, path = path, gears = gears,
-                                                axles = axles, wheels = wheels, u = u, need = need + n * POWER_WHEEL_OWN,
-                                                have = n * POWER_WHEEL, n = n, vert = vert, h = h}
                                     end
                                 end
                             end
                         end
-                    end
+                    end end
                 end
-            end end
+            end
+            ::nexte::
         end
-        ::nextd::
     end
     if not best then
         return nil, why or ('no flowing river water (4/7 deep) under open space within %d tiles of the shaft\'s top, '
                             .. 'with dry ground to join them'):format(POWER_RUN_MAX)
     end
-    local p = {kind = 'power', source = 'wheel', dig = {}, dig2 = {}, builds = {}, pocket = best.pocket,
-               shaft = {x = Q.x, y = Q.y, z1 = zt + 1, z2 = ztop}, need = best.need, have = best.have,
+    local p = {kind = 'power', v = 2, source = 'wheel', dig = {}, dig2 = {}, builds = {}, pocket = best.pocket,
+               shaft = {x = C.x, y = C.y, z1 = zt + 1, z2 = ztop - 1}, need = best.need, have = best.have,
                pumps = pumps, wheels = best.n, sources = {}, reservoir = pp.reservoir, test = pp.test}
-    power_digs(p, Q, best.S, zt, ztop, ztop)
+    power_digs(p, C, best.S, zt, ztop, foot, ztop - 1)
+    table.insert(p.dig, {x = best.I1.x, y = best.I1.y, z = ztop - 1, text = 'd'})
+    table.insert(p.dig, {x = best.U.x, y = best.U.y, z = ztop - 1, text = 'd'})
+    table.insert(p.dig2, {x = best.U.x, y = best.U.y, z = ztop, text = 'h'})       -- D: over the top seal
     local function add(b) table.insert(p.builds, b) return #p.builds end
-    local prev = add({x = Q.x, y = Q.y, z = zt + 1, text = 'Mg', kind = 'GearAssembly'})   -- on the top pump
-    for z = zt + 2, ztop - 1 do prev = add({x = Q.x, y = Q.y, z = z, text = 'Mv', kind = 'AxleVertical', after = prev}) end
-    p.switch = add({x = Q.x, y = Q.y, z = ztop, text = 'Mg', kind = 'GearAssembly', after = prev})
+    shaft_builds(p, add, C, zt, ztop, foot)
+    local st, sx, sy = pump_text(best.I1, best.U)
+    local seal = add({x = sx, y = sy, z = ztop - 1, text = st, kind = 'ScrewPump', seal = 'top'})
+    p.top = seal
+    local dgear = add({x = best.U.x, y = best.U.y, z = ztop, text = 'Mg', kind = 'GearAssembly', after = seal})
     for i = 2, #best.gears do
         local g = best.path[best.gears[i]]
         add({x = g.x, y = g.y, z = ztop, text = 'Mg', kind = 'GearAssembly'})
     end
     local bank = #p.builds
+    if #best.gears < 2 then bank = dgear end
     for _, a in ipairs(best.axles) do add(a) end
-    prev = bank
+    local prev = bank
     for _, ck in ipairs(best.wheels) do
         local ew = best.u[1] ~= 0
         prev = add({x = ew and ck.x - 1 or ck.x, y = ew and ck.y or ck.y - 1, z = ztop, cx = ck.x, cy = ck.y,
@@ -1282,29 +1454,28 @@ local function power_wheel(pp, Q, zt, ztop, pumps, w)
         table.insert(p.sources, prev)
     end
     p.hatch = {x = best.S.x, y = best.S.y, z = ztop, text = 'H', kind = 'Hatch', lock = true}
-    p.lever = power_lever(pp)
+    p.lever = power_lever(pp, pp.old_)
     if not p.lever then return nil, 'no free floor for the power\'s lever' end
     return p
 end
 
 -- A windmill on open ground beside the shaft: its centre over a gear under
 -- the ground, an axle to the shaft's top gear (the switch, under the ground:
--- the shaft stays roofed).
-local function power_windmill(pp, Q, zt, ztop, pumps)
-    if ztop < zt + 3 then return nil, 'too little rock over the top pump for a windmill\'s gears' end
+-- the shaft stays roofed; the windmill's centre is its roof over the gear,
+-- DF: "this does not permit passage as long as the windmill stands").
+local function power_windmill(pp, C, zt, ztop, pumps, foot)
     local why
     for _, d in ipairs(N4) do
         for _, e in ipairs(N4) do
             if d[1] * e[1] + d[2] * e[2] == 0 then
-                local E = {x = Q.x + e[1], y = Q.y + e[2]}
-                local M = {x = Q.x + 2 * e[1], y = Q.y + 2 * e[2]}
-                local pk, pwhy = power_pocket(Q, zt, ztop, d, {{x = E.x, y = E.y, z = ztop - 1}, {x = M.x, y = M.y, z = ztop - 1}},
-                                              pp.allow_)
+                local E = {x = C.x + e[1], y = C.y + e[2]}
+                local M = {x = C.x + 2 * e[1], y = C.y + 2 * e[2]}
+                local pk, pwhy = power_pocket(C, zt, ztop, d, {{x = E.x, y = E.y, z = ztop - 1}, {x = M.x, y = M.y, z = ztop - 1}})
                 local ok = pk ~= nil
                 if not ok then why = why or pwhy end
                 if ok then
                     for dx = -1, 1 do for dy = -1, 1 do
-                        if not ground(M.x + dx, M.y + dy, ztop) then ok = false end
+                        if not ground_or_own(M.x + dx, M.y + dy, ztop) then ok = false end
                     end end
                     if not ok then why = why or ('no 3x3 of open ground under the sky for the windmill at x%d y%d'):format(M.x, M.y) end
                 end
@@ -1314,26 +1485,25 @@ local function power_windmill(pp, Q, zt, ztop, pumps)
                 end
                 if ok then
                     local vert = ztop - zt - 3
-                    local need = power_need(pumps, 3, vert + 1)
+                    -- the stack's pumps and the foot's; the switch and the windmill's gear
+                    local need = power_need(pumps + 1, 2, vert + 1)
                     if need > POWER_WINDMILL then
                         return nil, ('the pumps need %d power, more than a windmill gives (%d at most)'):format(need, POWER_WINDMILL)
                     end
-                    local p = {kind = 'power', source = 'windmill', dig = {}, dig2 = {}, builds = {}, pocket = pk.list,
-                               shaft = {x = Q.x, y = Q.y, z1 = zt + 1, z2 = ztop - 1}, need = need, have = POWER_WINDMILL,
+                    local p = {kind = 'power', v = 2, source = 'windmill', dig = {}, dig2 = {}, builds = {}, pocket = pk.list,
+                               shaft = {x = C.x, y = C.y, z1 = zt + 1, z2 = ztop - 1}, need = need, have = POWER_WINDMILL,
                                pumps = pumps, sources = {}, reservoir = pp.reservoir, test = pp.test}
-                    power_digs(p, Q, pk.S, zt, ztop, ztop - 1)
+                    power_digs(p, C, pk.S, zt, ztop, foot, ztop - 1)
                     table.insert(p.dig, {x = E.x, y = E.y, z = ztop - 1, text = 'd'})
                     table.insert(p.dig, {x = M.x, y = M.y, z = ztop - 1, text = 'd'})
                     table.insert(p.dig2, {x = M.x, y = M.y, z = ztop, text = 'h'})     -- the windmill's centre
                     local function add(b) table.insert(p.builds, b) return #p.builds end
-                    local prev = add({x = Q.x, y = Q.y, z = zt + 1, text = 'Mg', kind = 'GearAssembly'})
-                    for z = zt + 2, ztop - 2 do prev = add({x = Q.x, y = Q.y, z = z, text = 'Mv', kind = 'AxleVertical', after = prev}) end
-                    p.switch = add({x = Q.x, y = Q.y, z = ztop - 1, text = 'Mg', kind = 'GearAssembly', after = prev})
+                    shaft_builds(p, add, C, zt, ztop, foot)
                     add({x = E.x, y = E.y, z = ztop - 1, text = e[1] ~= 0 and 'Mh(1x1)' or 'Mhs(1x1)', kind = 'AxleHorizontal'})
                     local wm = add({x = M.x, y = M.y, z = ztop - 1, text = 'Mg', kind = 'GearAssembly'})
                     table.insert(p.sources, add({x = M.x, y = M.y, z = ztop, text = 'windmill', kind = 'Windmill', after = wm}))
                     p.hatch = {x = pk.S.x, y = pk.S.y, z = ztop, text = 'H', kind = 'Hatch', lock = true}
-                    p.lever = power_lever(pp)
+                    p.lever = power_lever(pp, pp.old_)
                     if not p.lever then return nil, 'no free floor for the power\'s lever' end
                     return p
                 end
@@ -1344,40 +1514,53 @@ local function power_windmill(pp, Q, zt, ztop, pumps)
 end
 
 -- The power for a done pump stack (pw, its work). src: 'wheel', 'windmill'
--- or nil (a wheel if it can, else a windmill). The plan, or nil, why.
-function plan_power(pw, src)
+-- or nil (a wheel if it can, else a windmill). old: the power's earlier plan
+-- (planned again after a retire: its shaft and machines are its own, reused
+-- where they stand; its own source tried first). The plan, or nil, why.
+--
+-- (0.105.37 fix) The shaft never joins the fort to the outside or the sky:
+-- it runs over the top pump's output and is sealed at both ends by screw
+-- pumps' outputs (impassable to creatures and water) or the windmill's
+-- centre: the foot's pump on the fort's lowest level, the top seal under the
+-- wheel's gear on the ground. Every tile beside the pocket on its levels is
+-- rock; its floor at zt + 2 stays a rock plug until the foot's pump stands.
+-- Gears and axles block nothing, so nothing of the power opens a way.
+function plan_power(pw, src, old)
     local pp = type(pw) == 'table' and pw.plan
     if type(pp) ~= 'table' or pp.kind ~= 'pump' then return nil, 'no pump stack to power' end
-    local top = top_intake(pp)
+    local top, out = top_pump(pp)
     if not top then return nil, 'the pump stack\'s top screw pump is not in its plan' end
-    local Q, zt = {x = top.x, y = top.y}, top.z
+    local C, zt = {x = out.x, y = out.y}, top.z
     local pumps = 0
     for _, b in ipairs(pp.builds or {}) do if b.kind == 'ScrewPump' then pumps = pumps + 1 end end
-    -- the shaft: solid rock straight up from over the top pump's intake to the surface
+    old = (type(old) == 'table' and old.v == 2) and old or nil
+    OWN = own_tiles(old)
+    local function done(...) OWN = {} return ... end
+    -- the shaft: solid rock straight up from over the top pump's output to the surface
     local ztop
     for z = zt + 1, zt + POWER_SHAFT_MAX + 1 do
-        if not rock(T(Q.x, Q.y, z)) then
-            if ground(Q.x, Q.y, z) then ztop = z break end
-            return nil, ('the shaft over the top pump would cross something other than solid rock at x%d y%d, '
-                         .. 'elevation %d (a room, water, a cavern, the aquifer)'):format(Q.x, Q.y, ez(z))
+        if not rock_or_own(C.x, C.y, z) then
+            if ground_or_own(C.x, C.y, z) then ztop = z break end
+            return done(nil, ('the shaft over the top pump would cross something other than solid rock at x%d y%d, '
+                              .. 'elevation %d (a room, water, a cavern, the aquifer)'):format(C.x, C.y, ez(z)))
         end
     end
-    if not ztop then return nil, ('the surface is more than %d levels over the top pump'):format(POWER_SHAFT_MAX) end
-    if ztop < zt + 2 then return nil, 'no solid rock over the top pump for the shaft' end
-    -- the stack's own tiles on the level over its top pump (its service stair's top, under a locked hatch)
-    local allow = {}
-    for _, c in ipairs(pp.dig or {}) do if c.z == zt + 1 then allow[key(c.x, c.y, c.z)] = true end end
-    pp = setmetatable({allow_ = allow}, {__index = pp})
+    if not ztop then return done(nil, ('the surface is more than %d levels over the top pump'):format(POWER_SHAFT_MAX)) end
+    if ztop < zt + 3 then return done(nil, 'too little rock over the top pump for the shaft\'s seals and gears') end
+    local foot, fwhy = power_foot(pp, C, zt)
+    if not foot then return done(nil, fwhy) end
+    pp = setmetatable({old_ = old}, {__index = pp})
     local kinds = (src == 'wheel' or src == 'windmill') and {src} or {'wheel', 'windmill'}
+    if not src and old and old.source == 'windmill' then kinds = {'windmill', 'wheel'} end
     local why
     for _, k in ipairs(kinds) do
         local p, w2
-        if k == 'wheel' then p, w2 = power_wheel(pp, Q, zt, ztop, pumps, water_survey())
-        else p, w2 = power_windmill(pp, Q, zt, ztop, pumps) end
-        if p then return p end
+        if k == 'wheel' then p, w2 = power_wheel(pp, C, zt, ztop, pumps, water_survey(), foot)
+        else p, w2 = power_windmill(pp, C, zt, ztop, pumps, foot) end
+        if p then return done(p) end
         why = why and (why .. '; ' .. w2) or w2
     end
-    return nil, why
+    return done(nil, why)
 end
 
 -- One step of the pump stack's power. opts: {dry_run, shut, retire, reopen, why, source}
@@ -1469,7 +1652,8 @@ function power_step(opts)
         elseif pw.shut then
             why = 'the pump stack\'s floodgate is shut: no power for it now'
         else
-            plan, why = plan_power(pw, opts.source)
+            -- (0.105.37 fix) planned again after a retire: its own old shaft and machines reused
+            plan, why = plan_power(pw, opts.source, wk and wk.plan)
         end
         if not plan then
             if not dry then st.refused[id] = {tick = now(), why = why}; save_state(st) end
@@ -1482,6 +1666,12 @@ function power_step(opts)
     end
     local p = wk.plan
     if wk.stage == 'held' then return {ok = false, rejected = true, stage = 'held', error = wk.why} end
+    if type(p) ~= 'table' or p.v ~= 2 then
+        -- (0.105.37 fix) an older plan's shaft could open onto the fort: stopped and held (retired, planned afresh)
+        if dry then return {ok = true, dry_run = true, stage = 'held'} end
+        stop_power()
+        return hold('planned before the shaft was sealed at both ends: the power stopped, the AI plans it again')
+    end
 
     if wk.shut then
         local again = opts.reopen == true or (type(opts.why) == 'string' and opts.why:match('^reopen') ~= nil)
@@ -1507,36 +1697,26 @@ function power_step(opts)
 
     if wk.stage == 'planned' then
         if dry then return {ok = true, dry_run = true, stage = 'digging'} end
-        local ok, z = designate_all(p.dig, 'dig')
+        local ok, z = designate_all(undug(p.dig), 'dig')
         if not ok then return {ok = false, error = ('the game would not designate the shaft (elevation %d)'):format(ez(z))} end
         return advance('digging')
     end
     if wk.stage == 'digging' then
         local n = left_to_dig(p.dig)
         if n > 0 then return wait(('%d tile(s) of the shaft and its stair left to dig'):format(n)) end
-        if not wk.dig2 then
+        if not wk.dig2 and #undug(p.dig2) > 0 then
             if dry then return {ok = true, dry_run = true, stage = 'digging'} end
-            if not designate_all(p.dig2, 'dig') then return {ok = false, error = 'the game would not designate the shaft\'s channels'} end
+            if not designate_all(undug(p.dig2), 'dig') then return {ok = false, error = 'the game would not designate the shaft\'s channels'} end
             wk.dig2 = true
             save()
             return wait('the shaft\'s floors are being channelled')
         end
+        if not dry then wk.dig2 = true end
         n = left_to_dig(p.dig2)
         if n > 0 then return wait(('%d of the shaft\'s floors left to channel'):format(n)) end
-        if not wk.dig3 then
-            -- the last cut opens the shaft onto the top pump: only with little water under it
-            local c = p.dig3[1]
-            local d = depth_at({x = c.x, y = c.y, z = c.z - 1})
-            if d >= 4 then return wait(('the top pump\'s intake holds %d/7 water: the shaft\'s last cut waits'):format(d)) end
-            if dry then return {ok = true, dry_run = true, stage = 'digging'} end
-            if not designate_all(p.dig3, 'dig') then return {ok = false, error = 'the game would not designate the cut over the top pump'} end
-            wk.dig3 = true
-            save()
-            return wait('the cut over the top pump is being dug')
-        end
-        if left_to_dig(p.dig3) > 0 then return wait('the cut over the top pump is being dug') end
+        -- (0.105.37 fix) the plug over the foot (dig3) waits for the foot's pump: cut in the building stage
         if dry then return {ok = true, dry_run = true, stage = 'building'} end
-        if not designate_all({{x = p.lever.x, y = p.lever.y, z = p.lever.z, text = 'Tl'}}, 'build') then
+        if not building(p.lever.x, p.lever.y, p.lever.z, 'Trap') and not designate_all({{x = p.lever.x, y = p.lever.y, z = p.lever.z, text = 'Tl'}}, 'build') then
             return {ok = false, error = 'the game would not place the power\'s lever'}
         end
         wk.placed = {}
@@ -1546,6 +1726,15 @@ function power_step(opts)
         -- placed a wave at a time: a piece over open space only once what bears it is built
         local placed = type(wk.placed) == 'table' and wk.placed or {}
         local left, put = {}, 0
+        -- (0.105.37 fix) the rock plug over the foot cut once the foot's pump
+        -- stands (the shaft then opens onto its output, nothing else)
+        local foot = p.foot and p.builds[p.foot]
+        local fb = foot and bld(foot)
+        if not wk.dig3 and fb and fb.built and not dry then
+            if not designate_all(undug(p.dig3), 'dig') then return {ok = false, error = 'the game would not designate the plug over the shaft\'s foot'} end
+            wk.dig3 = true
+        end
+        local plug_cut = wk.dig3 and left_to_dig(p.dig3) == 0
         for i, b in ipairs(p.builds) do
             local have = bld(b)
             if not (have and have.built) then table.insert(left, b.kind) end
@@ -1554,6 +1743,7 @@ function power_step(opts)
             if not have and (not placed[pk] or again) then
                 local under = b.after and p.builds[b.after]
                 local bears = not under or (function() local u = bld(under) return u ~= nil and u.built end)()
+                if b.plug and not plug_cut then bears = false end
                 if bears and not dry then
                     local ok
                     if b.kind == 'Windmill' then ok = place_windmill(b.x, b.y, b.z)
@@ -1632,20 +1822,61 @@ function power_step(opts)
             if t ~= nil then known = true end
             if t then turning = true end
         end
-        if known and not turning then
-            if not dry and not wk.still_from then wk.still_from = now() end
-            local days = p.source == 'wheel' and WHEEL_DRY_DAYS or WIND_DAYS
-            if now() - (wk.still_from or now()) > days * DAY then
+        local function stack_manual(on)
+            if dry then return end
+            for _, b in ipairs(pw.plan and pw.plan.builds or {}) do
+                if b.kind == 'ScrewPump' then
+                    local bb = building(b.x, b.y, b.z, 'ScrewPump')
+                    if bb and bb.built then set_pump_manual(bb.id, on) end
+                end
+            end
+        end
+        if known and not turning and p.source == 'wheel' then
+            -- (0.105.37 fix) a still wheel (its river frozen or low) is paused, not
+            -- retired: the power off, the stack's pumps worked by hand meanwhile, on
+            -- again when it turns. Retired only after WHEEL_RETIRE_DAYS still over
+            -- unfrozen water (a full thawed season); frozen days don't count.
+            local frozen, low = false, false
+            for _, i in ipairs(p.sources or {}) do
+                local b = p.builds[i]
+                local t = T(b.cx or b.x, b.cy or b.y, b.z - 1)
+                if t and (t.material == 'FROZEN_LIQUID' or t.frozen) then frozen = true
+                elseif not (t and t.liquid) or (t.depth or 0) < 4 then low = true end
+            end
+            if not dry then
+                wk.still_from = wk.still_from or now()
+                local last = tonumber(wk.still_seen) or now()
+                if not frozen then wk.dry_thawed = (tonumber(wk.dry_thawed) or 0) + math.max(0, now() - last) end
+                wk.still_seen = now()
+            end
+            if (tonumber(wk.dry_thawed) or 0) > WHEEL_RETIRE_DAYS * DAY then
                 if dry then return {ok = true, dry_run = true, stage = 'held'} end
                 stop_power()
-                return hold(p.source == 'wheel'
-                    and ('the water wheel has not turned in %d days (the river dry, frozen or still under it): '
-                         .. 'the power stopped, the AI retires it'):format(days)
-                    or ('the windmill has not turned in %d days (no wind on this map): the power stopped, '
-                        .. 'the AI retires it'):format(days))
+                stack_manual(true)
+                return hold(('the water wheel has stood still through %d days of unfrozen river (the river dry or '
+                             .. 'still under it): the power stopped, the pumps worked by hand, the AI retires it')
+                            :format(WHEEL_RETIRE_DAYS))
+            end
+            local why = frozen and 'its river frozen' or low and 'its river too low' or 'the river still under it'
+            if not dry then
+                if stop_power() then wk.pull_at = nil end
+                stack_manual(true)
+                wk.paused = why
+                save()
+            end
+            return wait(('paused: the water wheel stands still (%s): the power off, the pumps worked by hand until it '
+                         .. 'turns again'):format(why))
+        elseif known and not turning then
+            if not dry and not wk.still_from then wk.still_from = now() end
+            if now() - (wk.still_from or now()) > WIND_DAYS * DAY then
+                if dry then return {ok = true, dry_run = true, stage = 'held'} end
+                stop_power()
+                return hold(('the windmill has not turned in %d days (no wind on this map): the power stopped, '
+                             .. 'the AI retires it'):format(WIND_DAYS))
             end
         elseif not dry then
-            wk.still_from = nil
+            wk.still_from, wk.still_seen, wk.dry_thawed = nil, nil, nil
+            if wk.paused then wk.paused, wk.resumed = nil, now() end    -- (turning again: the reservoir rule below)
         end
         -- the power check: the machine's power against what it needs
         local on = engaged(g)
@@ -1678,14 +1909,7 @@ function power_step(opts)
             did, on = 'switched on', true
         end
         -- (no dwarf needed at a powered pump)
-        if not dry then
-            for _, b in ipairs(pw.plan and pw.plan.builds or {}) do
-                if b.kind == 'ScrewPump' then
-                    local bb = building(b.x, b.y, b.z, 'ScrewPump')
-                    if bb and bb.built then set_pump_manual(bb.id, false) end
-                end
-            end
-        end
+        stack_manual(false)
         save()
         return wait(('running: the reservoir %d/7, the power %s%s%s'):format(d, on and 'on' or 'off',
             mp and (' (%d for %d needed)'):format(mp.cur, mp.need) or '', did and (': ' .. did) or ''))
@@ -2222,6 +2446,7 @@ function report()
             row.engaged = wk.stage == 'running' and wk.engaged ~= false or nil
             row.power, row.power_need = wk.power, wk.power_need
             row.still = wk.still_from and true or nil
+            row.paused = wk.stage == 'running' and wk.paused or nil      -- (0.105.37 fix) a still wheel: why
         end
         pcall(function()
             if wk.stage == 'linking' or wk.stage == 'building' then

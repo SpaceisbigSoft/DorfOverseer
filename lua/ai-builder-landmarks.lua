@@ -35,6 +35,9 @@ WALK_SECONDS = 1.0               -- the walk test stops here
 WALK_NODES = 400000              -- and after this many tiles
 NEAR_REACH = 10                  -- tiles round a site looked at for its words (river, magma, cavern)
 OPEN_REDIG_MAX = 3               -- (E1) times a wave's lost channel tiles are designated again
+OPEN_WAIT_DAYS = 14              -- (0.105.37 fix) a wave or its rails waiting this long: designated again,
+                                 -- OPEN_REDIG_MAX times; then a wave is given up (its rest stays floor) and
+                                 -- rails are reported 'stalled' (the brain frees the landmark's slot)
 
 -- the quarter turn that puts row 0 toward a corridor arriving in direction d
 -- (q quarter turns clockwise: the drawing then reaches away from the stair)
@@ -1222,7 +1225,8 @@ function remove_construction(x, y, z, dry_run)
     return ok and r and true or false
 end
 
--- How many living units stand on these tiles ({x, y, z} each).
+-- How many living units stand on these tiles ({x, y, z} each). (0.105.37
+-- fix) Fails closed: nil when the units can't be read (the caller waits).
 function units_on(tiles)
     local want = {}
     for _, t in ipairs(tiles) do want[(t.z * 4096 + t.y) * 4096 + t.x] = true end
@@ -1236,7 +1240,37 @@ function units_on(tiles)
         end
         return c
     end)
-    return ok and n or 0
+    if not ok or type(n) ~= 'number' then return nil end
+    return n
+end
+
+-- (0.105.37 fix) The tiles a removal must find empty: each tile taken down,
+-- the one over it (a dwarf on the stair's top), and the tiles it cuts off.
+local function removal_tiles(st)
+    local tiles = {}
+    for _, c in ipairs(st.cells) do
+        table.insert(tiles, {x = c.x, y = c.y, z = st.z})
+        table.insert(tiles, {x = c.x, y = c.y, z = st.z + 1})
+    end
+    for _, c in ipairs(st.cut or {}) do table.insert(tiles, c) end
+    return tiles
+end
+
+-- nil when the removal may go ahead, else the words and whether it is a
+-- wait (a removal that cuts tiles off is refused, not waited on: an old
+-- record's; the planner no longer makes them)
+local function removal_blocked(st, name)
+    if #(st.cut or {}) > 0 then
+        return ('%s: taking this scaffolding down would cut %d tile(s) off; it stays up'):format(name, #st.cut), false
+    end
+    local ok, who = pcall(units_on, removal_tiles(st))
+    if not ok or type(who) ~= 'number' then
+        return ('%s: who stands on the scaffolding can\'t be read; it comes down when it can'):format(name), true
+    end
+    if who > 0 then
+        return ('%s: %d dwarf(s) on or above the scaffolding; it comes down when they leave'):format(name, who), true
+    end
+    return nil
 end
 
 local STAIR_SHAPES = {STAIR_UP = true, STAIR_DOWN = true, STAIR_UPDOWN = true}
@@ -1315,6 +1349,7 @@ end
 -- ready ('wave' | 'redo' | 'rails'), with the cells to redo.
 local function open_state(rec, e, data)
     if e.done then return 'done' end
+    if e.stalled then return 'stalled' end
     local ids = rec.project_ids or {}
     local function dug(pid)      -- (a level closed long ago is no longer listed: dug)
         return pid ~= nil and phase_of(data, pid) ~= 'dig'
@@ -1333,16 +1368,58 @@ local function open_state(rec, e, data)
                 if t and not t.designated and not jobs[c.x .. ',' .. c.y .. ',' .. e.z] then table.insert(lost, c) end
             end
         end
-        if left > 0 then
+        if left > 0 and e.gave_up ~= e.wave then
             if #lost == left and (math.tointeger(e.tries) or 0) < OPEN_REDIG_MAX then return 'ready', 'redo', lost end
-            if #lost < left then return 'waiting' end
+            if #lost < left then return 'waiting', 'wave' end
             -- given up on the lost ones: the rails go up, the rest stays floor
         end
     end
     if e.wave < #e.waves then return 'ready', 'wave' end
     if not e.railed then return 'ready', 'rails' end
-    if #e.rails > 0 and waiting(e.rails, e.z) > 0 then return 'waiting' end
+    if #e.rails > 0 and waiting(e.rails, e.z) > 0 then return 'waiting', 'rails' end
     return 'done'
+end
+
+-- (0.105.37 fix) The openings' wait limit: a level waiting OPEN_WAIT_DAYS on
+-- the same wave or rails has them designated again (OPEN_REDIG_MAX times);
+-- then the wave is given up (the tiles not cut stay floor; the rails go up)
+-- or the rails are 'stalled' (reported: the brain frees the slot; the rails
+-- stay designated, never taken off). Changed: the record wants saving.
+local function open_watch(rec, data, dry_run)
+    local changed = false
+    local now = now_tick()
+    for _, e in ipairs(rec.open or {}) do
+        local st, what = open_state(rec, e, data)
+        local mark = st == 'waiting' and (what .. ':' .. tostring(e.wave)) or nil
+        if mark ~= e.wait_on then
+            if not dry_run then e.wait_on, e.wait_since = mark, mark and now or nil end
+            changed = true
+        elseif mark and now - (tonumber(e.wait_since) or now) > OPEN_WAIT_DAYS * 1200 then
+            local n = math.tointeger(e.wait_tries) or 0
+            if dry_run then
+            elseif n < OPEN_REDIG_MAX then
+                local cells, mode = {}, 'dig'
+                if what == 'wave' then
+                    for _, c in ipairs(e.waves[e.wave]) do
+                        if not cut_done(tile_info(c.x, c.y, e.z)) then table.insert(cells, c) end
+                    end
+                else
+                    cells, mode = e.rails, 'build'
+                end
+                if #cells > 0 then pcall(qf_try, mode, cells, e.z, 0, 0, false) end
+                e.wait_tries, e.wait_since = n + 1, now
+                changed = true
+            elseif what == 'wave' then
+                e.gave_up, e.wait_tries, e.wait_on, e.wait_since = e.wave, 0, nil, nil
+                changed = true
+            else
+                e.stalled = true
+                e.stall_why = ('the rails of level %d waited %d days'):format(e.level, OPEN_WAIT_DAYS * (OPEN_REDIG_MAX + 1))
+                changed = true
+            end
+        end
+    end
+    return changed
 end
 
 -- The openings of a rock landmark together: 'open' (something to do now),
@@ -1350,14 +1427,16 @@ end
 -- digging), or nil (none left).
 local function opening_stage(rec, data)
     if type(rec.open) ~= 'table' then return nil end
-    local any_ready, any_wait, any_dig = false, false, false
+    local any_ready, any_wait, any_dig, any_stall = false, false, false, false
     for _, e in ipairs(rec.open) do
         local st = open_state(rec, e, data)
         if st == 'ready' then any_ready = true
         elseif st == 'waiting' then any_wait = true
+        elseif st == 'stalled' then any_stall = true
         elseif st == 'dig' then any_dig = true end
     end
     if any_ready then return 'open' end
+    if any_stall then return 'stalled' end
     if any_wait then return 'opening' end
     if any_dig then return 'dig' end
     return nil
@@ -1437,6 +1516,11 @@ function landmark_step(id, dry_run)
     end
     if rec.ground ~= 'surface' then
         local data = load_projects()
+        -- (0.105.37 fix) the openings' wait limit looked at first
+        if type(rec.open) == 'table' and opening_stage(rec, data) == 'opening' and rock_status(rec, data) == 'building'
+                and open_watch(rec, data, dry_run) and not dry_run then
+            save_landmarks(d)
+        end
         -- (E1) the openings: the next wave cut, or the rails built
         if opening_stage(rec, data) == 'open' and rock_status(rec, data) ~= 'dropped' then
             local r, why = open_step(rec, data, dry_run)
@@ -1448,6 +1532,12 @@ function landmark_step(id, dry_run)
         if st == 'building' and type(rec.open) == 'table' and opening_stage(rec, data) == 'opening' then
             return out({ok = false, rejected = true, waiting = true, stage = 'opening',
                         error = ('%s: the openings are being cut or railed'):format(rec.name or 'the landmark')})
+        end
+        if st == 'building' and type(rec.open) == 'table' and opening_stage(rec, data) == 'stalled' then
+            local why
+            for _, e in ipairs(rec.open) do why = why or e.stall_why end
+            return out({ok = false, rejected = true, stage = 'stalled',
+                        error = ('%s: %s'):format(rec.name or 'the landmark', why or 'the openings stalled')})
         end
         if st == 'building' then
             return out({ok = false, rejected = true, stage = 'levels',
@@ -1500,14 +1590,10 @@ function landmark_step(id, dry_run)
             if not st then return start_furnish() end
             local n = 0
             if st.kind == 'remove' then
-                local tiles = {}
-                for _, c in ipairs(st.cells) do table.insert(tiles, {x = c.x, y = c.y, z = st.z}) end
-                for _, c in ipairs(st.cut or {}) do table.insert(tiles, c) end
-                local who = units_on(tiles)
-                if who > 0 then
-                    return out({ok = false, rejected = true, waiting = true, stage = 'remove', step = i, steps = nsteps,
-                                error = ('%s: %d dwarf(s) on or above the scaffolding; it comes down when they leave')
-                                    :format(rec.name or 'the landmark', who)})
+                local why, w8 = removal_blocked(st, rec.name or 'the landmark')
+                if why then
+                    return out({ok = false, rejected = true, waiting = w8 or nil, stage = 'remove', step = i, steps = nsteps,
+                                error = why})
                 end
                 for _, c in ipairs(st.cells) do
                     if remove_construction(c.x, c.y, st.z, dry_run) then n = n + 1 end
@@ -1537,6 +1623,12 @@ function landmark_step(id, dry_run)
         local n = step_left(st)
         if n > 0 then
             if st.kind == 'remove' then
+                -- (0.105.37 fix) asked again only while no one stands on or above it
+                local why, w8 = removal_blocked(st, rec.name or 'the landmark')
+                if why then
+                    return out({ok = false, rejected = true, waiting = w8 or nil, stage = 'remove', step = i, steps = nsteps,
+                                left = n, error = why})
+                end
                 if not dry_run then
                     for _, c in ipairs(st.cells) do remove_construction(c.x, c.y, st.z, false) end
                 end
@@ -1632,9 +1724,13 @@ function landmarks_report()
                 if ok and os_ and os_ ~= 'dig' then stage = os_ end
             end
         end
+        local why
+        if stage == 'stalled' then
+            for _, o in ipairs(l.open or {}) do why = why or o.stall_why end
+        end
         local e = {id = l.landmark_id, name = l.name, purpose = l.purpose, status = status, stage = stage,
                    levels = l.levels, project_ids = l.project_ids, started = l.started, by = l.by,
-                   ground = l.ground}
+                   ground = l.ground, why = why}
         -- (E2) a landmark built in steps: where it is, and its scaffolding
         if type(l.steps) == 'table' then
             e.step, e.steps = math.tointeger(l.step) or 0, #l.steps

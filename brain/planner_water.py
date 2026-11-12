@@ -18,7 +18,8 @@ the planner shuts it when the bridge reports a leak or dwarves in deep water.
 from __future__ import annotations
 
 from digest import _d, _l
-from planner_core import PLANNER_CONFIG, TICKS_PER_YEAR, Proposal, player_rules, young_fort, _traits
+from planner_core import (EMERGENCY, LIMIT_EXEMPT, LOOP_EXEMPT, NO_COOLDOWN, PLANNER_CONFIG, STEER_PROTECTED,
+                          TICKS_PER_YEAR, Proposal, player_rules, young_fort, _traits)
 
 # (0.105.35) the pump labour given at most once a fortnight (assign_labor adds
 # dwarves each time; the bridge holds the stack after its own stall wait)
@@ -130,7 +131,20 @@ def power_line(row: dict) -> str:
         bits.append(f"the machine at {row['power']}/{row['power_need']}")
     if row.get("stage") == "running":
         bits.append("on" if row.get("engaged") else "off")
+        if row.get("paused"):
+            bits.append(f"paused ({row['paused']}; the pumps worked by hand)")
     return ", ".join(bits)
+
+
+# (0.105.37 fix) The running power's check (the reservoir kept between 3/7 and
+# 5/7, the wheel watched): a monitor asked every cycle. Its answer is always
+# "waiting", so as an ordinary rule the refusal book and the 2-day cooldown
+# held it (the power switched off up to 2 days late, the reservoir over-filled
+# under power). Its own rule, outside the refusal book, the cooldown, the
+# action limit and the loop guard, as an emergency rule.
+POWER_RUN_RULE = "waterworks_power_run"
+for _s in (EMERGENCY, NO_COOLDOWN, LIMIT_EXEMPT, LOOP_EXEMPT, STEER_PROTECTED):
+    _s.add(POWER_RUN_RULE)
 
 
 # (0.105.36) the bridge's RETIRE_MAX (lua/ai-waterworks.lua): retired this often, never begun again
@@ -214,7 +228,8 @@ def _work_notes(id_: str, row: dict, s: dict, proposals: list, notes: list, floo
     if kind == "power" and stage == "running":
         # (0.105.37 E3) the power kept on and off by the reservoir's depth, its
         # source and shaft watched: asked each cycle, not busy (works elsewhere go on)
-        proposals.append(Proposal("waterworks_power", step, f"{words}: running: the reservoir and the power check", 6))
+        proposals.append(Proposal(POWER_RUN_RULE, step, f"{words}: running: the reservoir and the power check"
+                                  + (f" (paused: {row['paused']})" if row.get("paused") else ""), 6))
         return False
     if stage in ("done", "retired"):
         # (0.105.0 review) a done work with its floodgate open: the bridge's done

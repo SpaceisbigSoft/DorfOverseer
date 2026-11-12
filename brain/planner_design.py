@@ -51,6 +51,8 @@ DESIGN_GRACE_TICKS = 3 * TICKS_PER_DAY      # the AI's turn: rules stand in afte
 ASK_EVERY_TICKS = TICKS_PER_DAY             # a failed design call is tried again a day later
 ASK_TRIES = 3                               # and three times at most
 LANDMARK_TRIES = 3                          # refusals before the library piece
+LANDMARK_STEP_FAILS = 5                     # (0.105.37 fix) a landmark_step failing this often in a row: the slot freed
+MISSING_REPORT_TICKS = 14 * TICKS_PER_DAY   # (0.105.37 fix) a started landmark missing from the report this long: likewise
 LANDMARK_MIN_CITIZENS = 20
 LANDMARK_LIST_MAX = 12
 REASONS_MAX = 8
@@ -436,6 +438,35 @@ def _fallback(s, e, memory, traits, now, proposals, notes) -> None:
     _propose_level(e, proposals)
 
 
+def _free_slot(s, e, memory, traits, now, proposals, notes, why: str) -> None:
+    """(0.105.37 fix) A started landmark that can't go on (a level cancelled,
+    its openings stalled, its steps failing): taken off the active slot. The
+    AI's drawing goes one step down (the library piece); a library piece
+    tries its next site; with none left (or tried LANDMARK_TRIES times) it is
+    dropped with a note. What was built stays."""
+    name = game_text(e.get("name"), 40)
+    e["tries"] = int(e.get("tries") or 0) + 1
+    e["reasons"] = [{"code": "DROPPED", "words": why[:160]}]
+    e.update(landmark_id=None, step_fails=0)
+    e.pop("missing_since", None)
+    if e.get("site") is not None:
+        e.setdefault("tried", [])
+        if e["site"] not in e["tried"]:
+            e["tried"].append(e["site"])
+    if e.get("by") == "ai":
+        notes.append(f"design: the landmark {name} can't go on ({why}): the library piece instead")
+        _to_fallback(e)
+        return
+    if e["tries"] >= LANDMARK_TRIES:
+        e["status"] = "dropped"
+        notes.append(f"design: the landmark {name} is dropped ({why}; {e['tries']} tries)")
+        return
+    left = [x for x in _sites_for(memory, e, now) if x["id"] not in set(_l(e.get("tried")))]
+    e["status"] = "sites" if left else "due"
+    notes.append(f"design: the landmark {name} can't go on ({why}): "
+                 + ("its next site" if left else "new sites are looked for"))
+
+
 def _propose_level(e: dict, proposals: list) -> None:
     a = dict(e["level"])
     proposals.append(Proposal("landmark_level", a, f"design: {game_text(e.get('name'), 40)} as a library level "
@@ -507,6 +538,25 @@ def run_landmarks(s: dict, traits: dict, cfg: dict, proposals: list, notes: list
         if rep is not None and (rep.get("status") in ("built", "done") or rep.get("done")):
             e.update(status="built", done=now)
             notes.append(f"design: the landmark {game_text(e.get('name'), 40)} is built")
+            return
+        # (0.105.37 fix) a level cancelled (the bridge reports it dropped), its
+        # openings or rails stalled, or its steps failing again and again: the
+        # slot is freed (the next site, else the library piece, else dropped)
+        stuck = None
+        if rep is not None and rep.get("status") == "dropped":
+            stuck = "a level of it was cancelled"
+        elif rep is not None and rep.get("stage") == "stalled":
+            stuck = f"its openings or rails waited too long ({game_text(rep.get('why') or 'no progress', 60)})"
+        elif int(e.get("step_fails") or 0) >= LANDMARK_STEP_FAILS:
+            stuck = f"its next step failed {e['step_fails']} times in a row"
+        elif rep is None and e.get("landmark_id") is not None and isinstance(_d(s.get("landmarks")).get("list"), list):
+            since = e.setdefault("missing_since", now)
+            if isinstance(since, int) and now - since >= MISSING_REPORT_TICKS:
+                stuck = "the bridge no longer reports it"
+        if rep is not None:
+            e.pop("missing_since", None)
+        if stuck:
+            _free_slot(s, e, memory, traits, now, proposals, notes, stuck)
             return
         # (E1) a rock landmark's openings: proposed when the report says a step can be taken
         if rep is not None and ((e.get("env", [0, 0, 0, "rock"])[3] == "surface" and rep.get("stage") not in (None, "done"))
@@ -732,6 +782,15 @@ def note_design(p, r: dict, state: dict, memory, now: int) -> list[str]:
         if r.get("ok") is True and r.get("done"):
             e.update(status="built", done=now)
             out.append(f"design: the landmark {e.get('name')} is built")
+        elif r.get("ok") is True or r.get("waiting"):
+            e["step_fails"] = 0
+        elif r.get("ok") is False:
+            # (0.105.37 fix) counted: after LANDMARK_STEP_FAILS in a row the
+            # slot is freed (run_landmarks)
+            e["step_fails"] = int(e.get("step_fails") or 0) + 1
+            e["reasons"] = _reasons(r)
+            out.append(f"design: {e.get('name')}: its next step failed ({e['step_fails']} of {LANDMARK_STEP_FAILS}): "
+                       + "; ".join(reason_text(x) for x in e["reasons"][:2]))
         return out
     return out
 
