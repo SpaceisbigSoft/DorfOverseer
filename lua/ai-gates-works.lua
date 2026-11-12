@@ -5,7 +5,7 @@
 -- into its own environment, so every name here is reqscript('ai-gates').name
 -- and the helpers defined there (tile, building_at, key, ...) are in reach.
 
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-gates-works'] = '0.105.40'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-gates-works'] = '0.105.41'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local U, key, unkey, T, interior, moves, inside_or_courtyard, DOOR_GROUND, citizen_starts, place, entrance = U, key, unkey, T, interior, moves, inside_or_courtyard, DOOR_GROUND, citizen_starts, place, entrance   -- (13e) the hub's and earlier parts' locals
 
