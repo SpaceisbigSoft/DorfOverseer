@@ -1542,7 +1542,7 @@ function place_well(params, now, dry_run)
     local dry = quickfort_apply('dig', dig, spot.z, spot.x, spot.y, 'run', true)
     if stat(dry, 'dig_designated') ~= 1 then
         return {ok = false, error = ('the game would not channel the well spot at x%d y%d z%d'):format(
-            spot.x, spot.y, ez(spot.z))}
+            spot.x, spot.y, ez(spot.z)) .. dig_guard_note(dry)}   -- (0.105.40b fix) the guard's why
     end
     -- a cavern well's shaft: every rock level under the floor channelled too,
     -- each from the stair column beside it (0.104.13)
@@ -1551,7 +1551,8 @@ function place_well(params, now, dry_run)
         local zk = spot.z - k
         local d = quickfort_apply('dig', dig, zk, spot.x, spot.y, 'run', true)
         if stat(d, 'dig_designated') ~= 1 then
-            return {ok = false, error = ('the game would not channel the shaft at elevation %d'):format(ez(zk))}
+            return {ok = false, error = ('the game would not channel the shaft at elevation %d'):format(ez(zk))
+                    .. dig_guard_note(d)}   -- (0.105.40b fix) the guard's why
         end
         table.insert(shaft, zk)
     end

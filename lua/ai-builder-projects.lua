@@ -2064,6 +2064,7 @@ function way_in_plan_and_dig(params, now, dry_run)
         local okd, st = pcall(quickfort_apply, 'dig', {{x = 0, y = 0, text = c.key .. pri}}, c.z, c.x, c.y, 'run', true)
         if not okd or stat(st, 'dig_designated') ~= 1 then
             refused_last = ('the game would not dig x%d y%d z%d (%s)'):format(c.x, c.y, ez(c.z), c.key)
+                .. (okd and dig_guard_note(st) or '')   -- (0.105.40b fix) the guard's why
             banned[best.y * 4096 + best.x] = true
             best = nil
             break

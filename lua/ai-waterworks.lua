@@ -175,13 +175,19 @@ function cancel_pulls(lever_id)
     end)
 end
 
+-- (0.105.40b fix) why the dig guard refuses (x, y, z), or nil; `by`: the
+-- refusal counted (once per tile)
+function dig_guard_why(x, y, z, by)
+    local okg, why = pcall(function() return reqscript('ai-builder').dig_forbidden(x, y, z) end)
+    if not (okg and why) then return nil end
+    if by then pcall(function() reqscript('ai-util').dig_refused(by, x, y, z, why) end) end
+    return why
+end
+
 function dig_now(x, y, z)
     -- (0.105.40b) the dig guard: never raw adamantine, the spire or the underworld (nor beside them)
-    local okg, why = pcall(function() return reqscript('ai-builder').dig_forbidden(x, y, z) end)
-    if okg and why then
-        pcall(function() reqscript('ai-util').dig_refused('dig_now', x, y, z, why) end)
-        return false, why
-    end
+    local why = dig_guard_why(x, y, z, 'dig_now')
+    if why then return false, why end
     local pos = ('%d,%d,%d'):format(x, y, z)
     pcall(dfhack.run_command_silent, 'dig-now', pos, pos)
 end
@@ -2838,6 +2844,13 @@ function step(kind, opts)
             if not path.ok then
                 wk.path = path
                 return wait(('the plug waits: %s at x%d y%d, elevation %d'):format(path.why, path.at.x, path.at.y, path.at.e))
+            end
+            -- (0.105.40b fix) a plug the dig guard refuses: the work held with its
+            -- reason (not 'dig-now did not dig it' for ever), counted once
+            local gwhy = dig_guard_why(p.plug.x, p.plug.y, p.plug.z, (not dry) and 'waterworks_plug' or nil)
+            if gwhy then
+                return hold(('the plug at x%d y%d, elevation %d is %s: left alone: it guards the underworld'):format(
+                    p.plug.x, p.plug.y, ez(p.plug.z), gwhy))
             end
             if dry then return {ok = true, dry_run = true, stage = 'filling', plug = true} end
             if not g.closed then pull(wk.lever_id, true) return wait('the floodgate is shut before the plug is dug') end
