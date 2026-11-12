@@ -110,10 +110,22 @@ function trade_material(item)
     return ok and (mt == 0 or (mt >= 3 and mt <= 5))
 end
 
--- A good the AI may sell, loose (not in a bin): stone, metal, gems or glass.
+-- (0.105.41, item 8) the nobles' export bans (lua/ai-bans.lua): set for one
+-- walk of the goods by goods(); BANNED_KEPT counts the goods kept home for them
+BANNED = nil
+BANNED_KEPT = 0
+
+local function banned_now(item)
+    if BANNED == nil or not BANNED(item) then return false end
+    BANNED_KEPT = BANNED_KEPT + 1
+    return true
+end
+
+-- A good the AI may sell, loose (not in a bin): stone, metal, gems or glass,
+-- and nothing the nobles ban from export.
 local function sellable(item)
     return not unsellable(item) and trade_material(item)
-        and not (KEEP_TREASURES and treasure(item))
+        and not (KEEP_TREASURES and treasure(item)) and not banned_now(item)
 end
 
 -- A bin (or other container) holding only sellable goods, on the ground:
@@ -130,9 +142,21 @@ local function sellable_bin(c)
     return true, contents
 end
 
+-- the bans as a check, and the bans: ai-bans' (with DFHack's beside it), or
+-- DFHack's alone when ai-bans can't load
+local function ban_checker()
+    local ok, B = pcall(reqscript, 'ai-bans')
+    if ok and type(B) == 'table' and B.checker then
+        local okc, fn, bans = pcall(B.checker)
+        if okc and fn then return fn, bans, B end
+    end
+    return nil
+end
+
 -- What to take: {items (loose goods and whole bins), value, count of goods}.
 local function goods(dep, limit)
     local out, value, count, bins = {}, 0, 0, {}
+    BANNED, BANNED_KEPT = ban_checker(), 0
     for _, name in ipairs(GOODS) do
         local list = not (NO_TRINKETS and TRINKET_TYPES[name]) and df.global.world.items.other[name] or nil
         if list then
@@ -166,9 +190,16 @@ end
 function survey(txt)
     local dep = depot()
     local out = {depot = dep ~= nil, caravans = caravans(txt)}
+    -- (0.105.41, item 8) the nobles' export bans in force (lua/ai-bans.lua)
+    pcall(function()
+        local B = reqscript('ai-bans')
+        local bans = B.summary(B.read(txt))
+        if #bans > 0 then out.bans = bans end
+    end)
     if dep then
         local ok, list, value, count = pcall(goods, dep, 500)
         if ok then out.goods, out.goods_value, out.loads = count, value, #list end
+        if BANNED_KEPT > 0 then out.banned_kept = BANNED_KEPT end      -- (0.105.41, item 8)
         local at = 0
         for _, ci in ipairs(dep.contained_items) do
             if ci.use_mode == df.building_item_role_type.TEMP then at = at + 1 end
@@ -288,9 +319,11 @@ function bring(count, dry_run, txt, keep_treasures, keep_trinkets)
             if okm and r ~= false then marked = marked + 1 end
         end
         if marked == 0 then return {ok = false, error = 'the game took none of the goods to the depot'} end
-        return {ok = true, items = n, loads = marked, value = value, caravan = cs[1].civ}
+        return {ok = true, items = n, loads = marked, value = value, caravan = cs[1].civ,
+                banned_kept = BANNED_KEPT > 0 and BANNED_KEPT or nil}
     end
-    return {ok = true, dry_run = true, items = n, loads = #list, value = value, caravan = cs[1].civ}
+    return {ok = true, dry_run = true, items = n, loads = #list, value = value, caravan = cs[1].civ,
+            banned_kept = BANNED_KEPT > 0 and BANNED_KEPT or nil}
 end
 
 -- (0.103.9) The fort's goods left in the depot once the caravans have gone:
@@ -396,6 +429,8 @@ end
 -- Goods the nobles forbid trading (export bans, mandates), as DFHack's screen
 -- finds them; nothing banned if that code isn't there.
 local function ban_check()
+    local mine = ban_checker()           -- (0.105.41, item 8) ai-bans: ours, and DFHack's with it
+    if mine then return mine end
     local ok, common = pcall(reqscript, 'internal/caravan/common')
     if not ok then return function() return false end end
     local okr, risky = pcall(function() return common.get_risky_items(common.get_banned_items()) end)

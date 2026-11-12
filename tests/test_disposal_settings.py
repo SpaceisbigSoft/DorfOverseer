@@ -102,7 +102,8 @@ def _():
     frames = re.findall(r"frame = \{t = t \+ (\d+)(?: \+ i)?, l = (\d+)(?:, w = (\d+))?\}", mil)
     mine = [(int(t), int(l), int(w or 30)) for t, l, w in frames if int(l) >= 56]
     others = [(int(t), int(l), int(w or 50)) for t, l, w in frames if int(l) < 56]
-    assert sorted(t for t, _, _ in mine) == [5, 6, 7, 8], mine
+    # (0.105.41, item 8) and the Army tab's "Peace offered" row and its help line at t+10, t+11
+    assert sorted(t for t, _, _ in mine) == [5, 6, 7, 8, 10, 11], mine
     for t, l, w in others:
         if t in (5, 6, 7, 8):                   # the list's seven run t+5..t+11 at l=2, w=50
             assert l + w <= 56, (t, l, w)

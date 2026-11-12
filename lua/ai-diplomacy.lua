@@ -183,6 +183,114 @@ function decide(topic, policy, ctx)
     return a, (topic .. ': ' .. a)
 end
 
+-- ---------------------------------------------------------------------------
+-- (0.105.41, item 8) War and peace. DF 53 gives the fort no way to offer
+-- peace itself (no mission, no meeting topic of the fort's own: only a
+-- civilisation's diplomat brings a peace proposal, DF's RequestPeace topic).
+-- So the AI's part is the answer to that proposal, by the Rules choice
+-- `peace`: 'accept', 'refuse', or 'ai' (the default): yes from a civ that
+-- has besieged the fort PEACE_MIN_SIEGES times or more and that the fort
+-- hasn't attacked; the sliders move the bar (Militarism up: more sieges
+-- wanted before peace; Caution up: fewer), and a fort that attacked them
+-- takes peace only when Caution outweighs Militarism by PEACE_FORGIVE.
+-- The brain's PLANNER_CONFIG holds the same numbers and sends them along
+-- (peace_min, peace_step, peace_forgive); these are the defaults.
+PEACE_CHOICES = {ai = true, accept = true, refuse = true}
+PEACE_TOPICS = {RequestPeace = true}
+PEACE_MIN_SIEGES, PEACE_STEP, PEACE_FORGIVE, PEACE_MAX_NEED = 2, 50, 100, 6
+ATTACKED_KEY = 'ai-overseer/attacked-civs'     -- civs the fort's own missions attacked: {{id, year}}
+ATTACKED_KEEP = 40
+
+local function round(x) return math.floor(x + 0.5) end
+
+-- Pure: the sieges a civ must have made before the AI takes its peace.
+function peace_need(min, militarism, caution, step)
+    step = tonumber(step) or PEACE_STEP
+    if step <= 0 then step = PEACE_STEP end
+    local n = (tonumber(min) or PEACE_MIN_SIEGES) + round((tonumber(militarism) or 0) / step)
+        - round((tonumber(caution) or 0) / step)
+    return math.max(0, math.min(PEACE_MAX_NEED, n))
+end
+
+-- Pure: the answer to a peace proposal. policy: 'ai' | 'accept' | 'refuse';
+-- ctx: {sieges, attacked, militarism, caution, min, step, forgive}.
+-- Returns 'yes' | 'no', why.
+function peace_verdict(policy, ctx)
+    ctx = ctx or {}
+    if policy == 'accept' then return 'yes', 'the Rules: accept peace' end
+    if policy == 'refuse' then return 'no', 'the Rules: refuse peace' end
+    local mil, cau = tonumber(ctx.militarism) or 0, tonumber(ctx.caution) or 0
+    local sieges = tonumber(ctx.sieges) or 0
+    if ctx.attacked then
+        if cau - mil >= (tonumber(ctx.forgive) or PEACE_FORGIVE) then
+            return 'yes', 'the fort attacked them, but a cautious fort takes the peace'
+        end
+        return 'no', 'the fort attacked them: it keeps its war'
+    end
+    local need = peace_need(ctx.min, mil, cau, ctx.step)
+    if sieges >= need then
+        return 'yes', ('they have besieged the fort %d time(s) (%d or more wanted): peace'):format(sieges, need)
+    end
+    return 'no', ('they have besieged the fort %d time(s), fewer than the %d before the AI takes peace')
+        :format(sieges, need)
+end
+
+-- The civs the fort's own missions attacked: {[id] = year}.
+function attacked_civs()
+    local out = {}
+    for _, e in ipairs(U.site_get(ATTACKED_KEY, {})) do
+        local id = type(e) == 'table' and tonumber(e.id) or nil
+        if id then out[id] = tonumber(e.year) or -1 end
+    end
+    return out
+end
+
+-- Remember that the fort attacked civ `id` (a raid, pillage, tribute
+-- demanded or conquest sent out). The newest ATTACKED_KEEP kept.
+function note_attacked(id, year)
+    id = tonumber(id)
+    if not id or id < 0 then return false end
+    if year == nil then pcall(function() year = df.global.cur_year end) end
+    local list = {}
+    for _, e in ipairs(U.site_get(ATTACKED_KEY, {})) do
+        if type(e) == 'table' and tonumber(e.id) and tonumber(e.id) ~= id then table.insert(list, e) end
+    end
+    table.insert(list, {id = id, year = tonumber(year) or -1})
+    while #list > ATTACKED_KEEP do table.remove(list, 1) end
+    return U.site_put(ATTACKED_KEY, list)
+end
+
+-- How many times civ `id` has besieged the fort (plotinfo.invasions).
+function sieges_of(id)
+    local n = 0
+    pcall(function()
+        for _, v in ipairs(df.global.plotinfo.invasions.list) do
+            local ok, c = pcall(function() return v.civ_id end)
+            if ok and c == id then n = n + 1 end
+        end
+    end)
+    return n
+end
+
+-- The context for peace_verdict about civ `id`: its sieges, whether the fort
+-- attacked it (the save's record, or the brain's list a.attacked), the
+-- sliders (ai-overseer-settings' traits, Extreme doubling them), the numbers.
+function peace_context(id, a)
+    a = a or {}
+    local ctx = {sieges = sieges_of(id), min = a.peace_min, step = a.peace_step, forgive = a.peace_forgive}
+    ctx.attacked = id ~= nil and attacked_civs()[id] ~= nil
+    if type(a.attacked) == 'table' then
+        for _, x in ipairs(a.attacked) do if id ~= nil and tonumber(x) == id then ctx.attacked = true end end
+    end
+    pcall(function()
+        local S = reqscript('ai-overseer-settings')
+        local tr = S.load_settings().traits or {}
+        ctx.militarism = type(tr.militarism) == 'table' and S.effective(tr.militarism) or 0
+        ctx.caution = type(tr.caution) == 'table' and S.effective(tr.caution) or 0
+    end)
+    return ctx
+end
+
 -- Pure: the Requests screen's wishes ticked. tabs: {category name, ...} in
 -- the screen's order; prios: {[tab index] = {priority, ...}}; wishes: the
 -- category names wanted. Sets WISH_PRIORITY on every item of a wanted tab
@@ -310,6 +418,13 @@ function world_report(txt)
         table.insert(out.sieges, e)
     end
     table.sort(out.sieges, function(a, b) return a.n > b.n or (a.n == b.n and a.id < b.id) end)
+    -- (0.105.41, item 8) each civ's sieges, and whether the fort's own missions
+    -- attacked it: a peace offer is weighed with them
+    local att = attacked_civs()
+    for _, c in ipairs(out.civs) do
+        if per[c.id] then c.sieges = per[c.id].n end
+        if att[c.id] then c.attacked = true end
+    end
     -- the caravans: whose, hostile or not, tribute, and their trade agreement
     local cars = R.rd('plotinfo.caravans', function() return df.global.plotinfo.caravans end)
     for _, c in ipairs(each(cars)) do
@@ -575,6 +690,9 @@ end
 -- (0.105.0) Answer the meeting screen with the AI's defaults.
 --   a.tribute: 'small' | 'pay' | 'refuse' (default: the Rules tab's)
 --   a.wishes: entity_sell_category names to tick on the Requests screen
+--   a.peace: 'ai' | 'accept' | 'refuse' (default: the Rules tab's), with
+--     a.attacked (civ ids the brain saw the fort attack) and the numbers
+--     a.peace_min, a.peace_step, a.peace_forgive (0.105.41, item 8)
 --   a.dry_run: decide and report, press nothing
 -- Returns {ok, answer, why, topic, pressed, ...}; ok false with
 -- needs_button when the button to press hasn't been shown to the AI.
@@ -590,6 +708,11 @@ function answer_meeting(a, txt)
         pcall(function() policy = reqscript('ai-overseer-settings').load_settings().tribute end)
     end
     if policy ~= 'pay' and policy ~= 'refuse' then policy = 'small' end
+    local peace = a.peace
+    if peace == nil then
+        pcall(function() peace = reqscript('ai-overseer-settings').load_settings().peace end)
+    end
+    if not PEACE_CHOICES[peace] then peace = 'ai' end
     local out = {topic = st.topic, topics = st.topics, civ = st.civ, screen = st.screen, policy = policy,
                  dry_run = a.dry_run or nil}
     local btn = buttons()
@@ -648,6 +771,12 @@ function answer_meeting(a, txt)
     pcall(function() wealth = df.global.plotinfo.tasks.wealth.total end)
     local answer, why = decide(st.topic, policy, {amount = st.tribute_asked, wealth = wealth,
                                                   small_share = tonumber(a.small_share) or 0.05})
+    if PEACE_TOPICS[st.topic] then
+        -- (0.105.41, item 8) a peace proposal: the Rules choice, or the AI's weighing
+        local ctx = peace_context(st.civ_id, a)
+        answer, why = peace_verdict(peace, ctx)
+        out.peace = {policy = peace, sieges = ctx.sieges, attacked = ctx.attacked or nil}
+    end
     out.answer, out.why = answer, why
     if answer == 'requests' then answer = 'yes' end          -- the topic opens the Requests screen
     if answer == nil then out.ok, out.left_to_player = false, true; out.error = why; return out end

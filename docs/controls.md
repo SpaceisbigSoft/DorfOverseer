@@ -297,6 +297,15 @@ too. The AI makes and sends squads itself (see [military.md](military.md)).
     tribute and conquest. These can start a war.
   A reserve of soldiers always stays home (more with lower Militarism), one
   mission at a time, never with a threat near or during a siege.
+- **Peace offered** (`peace`, Army tab, 0.105.41): what the AI answers when a
+  civilisation's diplomat proposes peace (DF gives the fort no way to offer
+  it; only their diplomat can). *AI decides* (`ai`, the default): yes from a
+  civilisation that has besieged the fort twice or more and that the fort
+  hasn't attacked (its own raids, pillage, tribute demands or conquest);
+  Militarism asks one more siege per 50, Caution one fewer, and a civilisation
+  the fort attacked gets peace only when Caution beats Militarism by 100.
+  *always accept* (`accept`), *always refuse* (`refuse`). Until a diplomat
+  comes the AI's notes say what it would answer; the defences stay as they are.
 - **Send missions by the World screen** (`send_missions`, off,
   0.105.39): the AI drives DF's World screen to send the mission itself, as
   with the messenger, for each goal whose button you have shown it once. It

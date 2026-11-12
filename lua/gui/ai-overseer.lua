@@ -738,6 +738,24 @@ function MilitaryPage:init()
         initial_option = p.settings.squads_shelter ~= false,
         on_change = function(v) p:set_field('squads_shelter', v) end,
     })
+    -- (0.105.41, item 8) a peace proposal from a civilisation's diplomat: the
+    -- right-hand column's free rows under the junk switches (t+10, t+11; the
+    -- left column's rows end at 52 there)
+    table.insert(views, widgets.CycleHotkeyLabel{
+        view_id = 'peace',
+        frame = {t = t + 10, l = 56, w = 50},
+        label = 'Peace offered:',
+        label_width = 20,
+        options = (function()
+            local out = {}
+            for _, m in ipairs(S.PEACE_CHOICES) do table.insert(out, {label = S.PEACE_NAMES[m], value = m}) end
+            return out
+        end)(),
+        initial_option = S.PEACE_NAMES[p.settings.peace] and p.settings.peace or 'ai',
+        on_change = function(v) p:set_field('peace', v) end,
+    })
+    table.insert(views, widgets.Label{frame = {t = t + 11, l = 58}, text = {
+        {text = S.PEACE_HELP, pen = COLOR_GREY}}})
     table.insert(views, widgets.CycleHotkeyLabel{
         view_id = 'gear_weapon',
         frame = {t = t + 13, l = 2, w = 60},
@@ -870,6 +888,7 @@ function MilitaryPage:refresh()
     self.subviews.keep_enemy_gear:setOption(s.keep_enemy_gear == true, false)
     self.subviews.missions:setOption(S.MISSION_NAMES[s.missions] and s.missions or 'rescue', false)   -- (0.105.39)
     self.subviews.send_missions:setOption(s.send_missions == true, false)
+    self.subviews.peace:setOption(S.PEACE_NAMES[s.peace] and s.peace or 'ai', false)   -- (0.105.41, item 8)
 end
 
 ---------------------------------------------------------------------------

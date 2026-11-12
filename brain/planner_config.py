@@ -866,4 +866,9 @@ PLANNER_CONFIG = {
     "alloy_value_keep": 20,               # bars of each metal kept back before it's alloyed for value
     "alloy_value_want": 30,               # a value alloy's bars made while there are fewer than this
     "alloy_value_gain": 1.25,             # the alloy's bars worth this many times its parts, at least
+    # (0.105.41, item 8) war and peace (brain/planner_peace.py, lua/ai-diplomacy.lua peace_verdict)
+    "peace_min_sieges": 2,                # the Rules' "AI decides": peace from a civ that besieged the fort this often...
+    "peace_slider_step": 50,              # ...one more siege wanted a step of Militarism, one fewer a step of Caution
+    "peace_forgive": 100,                 # a civ the fort attacked: peace only when Caution beats Militarism by this
+    "peace_attacked_keep": 40,            # civs the fort attacked, kept in memory (the newest)
 }
