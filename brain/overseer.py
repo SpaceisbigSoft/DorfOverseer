@@ -544,6 +544,8 @@ SHORT_WORDS = {
     "bench_caps": "make a second workshop a training bench (or lift its skill cap)",  # (item10)
     "relieve_haulers": "take key workers (or the AI's extra haulers) off hauling, or give it back",
     "paint_traffic": "mark high traffic on the AI's corridors and stairs, low on its rooms and fields",  # (0.105.41)
+    "place_display": "build a pedestal or display case in one of the AI's temples, libraries, taverns or halls",  # (item 12)
+    "display_artifact": "put one of the fort's artifacts on display behind doors",
     "census": "count what fills the map",  # (0.104.113)
     "seal_well_stairs": "close the cavern wells' stair columns",  # (0.104.151)
     "join_levels": "join areas on one level that meet only through the stairs",  # (0.104.108)

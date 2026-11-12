@@ -430,6 +430,9 @@ ACTIONS = {
         if a.max ~= nil and not max then return reject('clear_miasma: max is 1-200') end
         return reqscript('ai-syndromes').clear_miasma({max = max}, a.dry_run == true)
     end,
+    -- (item 12) the artifacts shown: display furniture in the AI's rooms, an artifact put on it (lua/ai-artifacts.lua)
+    place_display = act_place_display,
+    display_artifact = act_display_artifact,
     -- (D0) the Design track: a landmark's sites, its drawing built, its next stage (ai-bridge-design.lua)
     blueprint_sites = act_blueprint_sites,
     build_blueprint = act_build_blueprint,
@@ -553,6 +556,7 @@ for _, name in ipairs({
     'cavern_logging', 'keep_grove', 'bench_caps',   -- (item10) each dry run counts and changes nothing
     -- (0.105.41, item 11) each dry run counts (and names) and changes nothing
     'clean_contaminants', 'quarantine_syndromes', 'clear_miasma',
+    'place_display', 'display_artifact',   -- (item 12) each dry run checks and returns before it builds or makes a job
 }) do DRY_OK[name] = true end
 
 -- These only change what's displayed, so they still work while halted, dry
@@ -616,16 +620,14 @@ end
 -- `--@ module = true`, but this one and the parts, which are no modules);
 -- `modules` loads each. tests/test_fix26_bridge.py keeps it in step with lua/.
 BRIDGE_MODULES = {
-    'ai-bans', 'ai-blueprints', 'ai-builder', 'ai-camera', 'ai-captives', 'ai-census', 'ai-cleanup',
-    'ai-constructions', 'ai-diplomacy', 'ai-disposal', 'ai-food-store', 'ai-gates', 'ai-hauling',
-    'ai-health', 'ai-homes',
-    'ai-benches', 'ai-forestry', 'ai-leather-gear',   -- (item10)
+    'ai-artifacts', 'ai-bans', 'ai-benches', 'ai-blueprints', 'ai-builder', 'ai-camera', 'ai-captives', 'ai-census',
+    'ai-cleanup', 'ai-constructions', 'ai-diplomacy', 'ai-disposal', 'ai-food-store', 'ai-forestry', 'ai-gates',
+    'ai-hauling', 'ai-hazards', 'ai-health', 'ai-homes', 'ai-leather-gear',
     'ai-industry', 'ai-insane', 'ai-joins', 'ai-labor', 'ai-layouts', 'ai-military', 'ai-military-gear',
     'ai-mission-send', 'ai-missions', 'ai-moods', 'ai-noble-demands', 'ai-nobles', 'ai-overlay',
     'ai-overseer-settings', 'ai-paper', 'ai-pile-links', 'ai-ping', 'ai-provisions', 'ai-reports', 'ai-siege',
     'ai-society', 'ai-society-burrows', 'ai-status', 'ai-syndromes', 'ai-threats', 'ai-title', 'ai-trade', 'ai-traffic',
     'ai-util', 'ai-water', 'ai-waterworks', 'gui/ai-overseer',
-    'ai-hazards',   -- (0.105.41, item 7)
 }
 -- the split-off modules that carry a version mark of their own
 MARKED_MODULES = {'ai-military-gear', 'ai-society-burrows', 'ai-constructions'}
@@ -1045,6 +1047,10 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
     -- (0.105.41, item 11) miasma: the flows indoors and near the living, what rots
     -- near the worst, the dump zones under the sky (lua/ai-syndromes.lua)
     miasma = function() return safe(function() return reqscript('ai-syndromes').miasma_report() end) end,
+    -- (item 12) the artifacts on the map (displayed, loose, claimed by other
+    -- civs), the display furniture, the AI's rooms that could hold one
+    -- (lua/ai-artifacts.lua; cached a day)
+    artifacts = function() return safe(function() return reqscript('ai-artifacts').report() end) end,
     -- (0.105.30) what the fort has built: finished constructions by shape and
     -- material, above or below ground, roofed surface tiles, the waiting ones
     -- and the AI's own (lua/ai-constructions.lua; one pass, every 3 days)
@@ -1088,6 +1094,7 @@ SECTION_CACHE_DAYS.noble_demands = 1   -- (0.105.41) the engravings walked once
 SECTION_CACHE_DAYS.pile_links = 1      -- (0.105.41, item 2) every tool and the AI's piles walked once
 SECTION_CACHE_DAYS.siege = 1           -- (item5) small boxes round the entrances, the engines
 SECTION_CACHE_DAYS.paper = 1           -- (item9) the plants and tools walked once
+SECTION_CACHE_DAYS.artifacts = 1       -- (item 12) the artifacts and display furniture walked once
 SECTION_REBUILDS = 2       -- expired cached sections rebuilt in one report (a missing one always is)
 -- (0.100) the cached sections each action changes (cleared when it succeeds)
 CACHE_INVALIDATES = {
@@ -1137,6 +1144,8 @@ CACHE_INVALIDATES.archer_post = {'siege'}
 CACHE_INVALIDATES.place_siege_engine = {'siege'}
 CACHE_INVALIDATES.place_siege_shop = {'siege'}
 CACHE_INVALIDATES.clear_miasma = {'disposal'}   -- (0.105.41, item 11) items marked for the dump
+CACHE_INVALIDATES.place_display = {'artifacts'}      -- (item 12)
+CACHE_INVALIDATES.display_artifact = {'artifacts'}
 -- (fix41) a kitchen's or still's feeder pile is a food pile, and a storage
 -- level's furnish step lays its food piles: the food store read again
 CACHE_INVALIDATES.feeder_pile = {'logistics', 'food_store', 'pile_links'}

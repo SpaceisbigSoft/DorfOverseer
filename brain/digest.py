@@ -172,6 +172,7 @@ SECTION_DEFAULTS = {
     "leather_gear": {},      # (item10) empty leather uniform entries, free leather gear (lua/ai-leather-gear.lua)
     "syndromes": {},         # (0.105.41, item 11) syndromes, their sources, carriers, floor spatter, quarantine (lua/ai-syndromes.lua)
     "miasma": {},            # (0.105.41, item 11) miasma indoors, what rots near it, dump zones outside (lua/ai-syndromes.lua)
+    "artifacts": {},         # (item 12) artifacts on the map, display furniture, the AI's rooms for it (lua/ai-artifacts.lua)
 }
 # (0.105.36) not REQUIRED (the plan goes on without them), but a missing one is
 # listed in _errors as a failed one is: the default (civ_alert False) is not
@@ -334,6 +335,16 @@ def pile_links_line(s: dict) -> str:
     line (brain/planner_piles.py pile_links_line); "" without the section."""
     try:
         from planner_piles import pile_links_line as _line
+        return _line(s)
+    except Exception:  # noqa: BLE001  (a digest line never stops the digest)
+        return ""
+
+
+def artifacts_line(s: dict) -> str:
+    """(item 12) The fort's artifacts in one line (brain/planner_artifacts.py
+    artifacts_line); "" without an artifacts section."""
+    try:
+        from planner_artifacts import artifacts_line as _line
         return _line(s)
     except Exception:  # noqa: BLE001  (a digest line never stops the digest)
         return ""
@@ -658,7 +669,7 @@ def digest(s: dict, news: int = 5) -> str:
 
     for extra in (threat_line(s), world_line(s), infection_line(s), built_line(s), gate_split_line(s), water_line(s),
                   missions_line(s), perf_line(s), cleanup_line(s), hauling_line(s), food_line(s), sickness_line(s),
-                  pile_links_line(s), deep_hazard_line(s), traffic_line(s)):
+                  pile_links_line(s), deep_hazard_line(s), traffic_line(s), artifacts_line(s)):
         if extra:
             lines.append(extra)
     m = _d(s.get("map"))

@@ -502,6 +502,8 @@ def player_rules(s: dict) -> dict:
             "construct": st.get("construct") is not False,
             # (0.105.41) traffic zones on the AI's finished levels (lua/ai-traffic.lua): off only when the settings say so
             "traffic": st.get("traffic") is not False,
+            # (item 12) the fort's artifacts put on display in the AI's rooms: off only when the settings say so
+            "display_artifacts": st.get("display_artifacts") is not False,
             # (0.105.0) water works: the moat (on by default only where the survey found a river:
             # the planner wants one only then), magma workshops, the muddied farm level
             "moat": st.get("moat") is not False,
@@ -1420,6 +1422,7 @@ AGENDA_THEMES = {
 }
 AGENDA_THEMES["vermin"] = "keep cats against the vermin"     # (0.104.168)
 AGENDA_THEMES["food_store"] = AGENDA_THEMES["food_barrels"] = AGENDA_THEMES["food_store_level"] = "keep the food from rotting"   # (0.105.40b)
+AGENDA_THEMES["artifact_display"] = AGENDA_THEMES["artifact_furniture"] = AGENDA_THEMES["artifact_pedestals"] = "show the fort's artifacts"   # (item 12)
 AGENDA_THEMES["traction_rest"] = "care for the injured"       # (0.105.24)
 
 AGENDA_THEMES["cups_home"] = "shoes and cups for the fort"      # (0.104.168)

@@ -65,6 +65,7 @@ from planner_syndromes import _miasma_rule, _syndrome_rule, note_syndromes  # no
 from planner_food import note_food_level  # noqa: E402  (fix41) a food storage level booked per kitchen/still
 from planner_nobles import _noble_value_rule, nobles_view, noble_room_plan  # noqa: E402,F401  (0.105.41) nobles' room values
 from planner_piles import _pile_links_rule  # noqa: E402  (0.105.41, item 2) wheelbarrows and feeder links
+from planner_artifacts import _artifact_rule  # noqa: E402  (item 12) the fort's artifacts shown behind doors
 from planner_alloys import _alloy_rule  # noqa: E402  (0.105.40 M7) bronze for a fort without iron, value alloys
 from planner_paper import _paper_rule  # noqa: E402  (item9) paper from plants, scrolls and codices for the library
 from planner_deep import _deep_hazard_rule  # noqa: E402  (0.105.40b) adamantine and the underworld: never dug
@@ -878,6 +879,9 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
     # and tanning, a fruit zone, meals of more than one kind, cavern soil farms
     if "provisions" not in errors:
         _guard(_provisions_rules, s, cfg, citizens, proposals, notes, memory)
+    # (item 12) the fort's artifacts on display in the AI's rooms behind doors
+    if "artifacts" not in errors:
+        _guard(_artifact_rule, s, cfg, proposals, notes, rules_)
     # (0.100.1, overnight run) any workshops level another rule starts (a well's
     # parts, the metal works, a bottleneck) brings the missing still, kitchen
     # and carpenter's with it

@@ -3382,3 +3382,20 @@ function act_cavern_farm(a)
     if not n then return reject('cavern_farm needs tiles 4-60') end
     return reqscript('ai-provisions').cavern_farm({at = {x = x, y = y, z = z}, tiles = n}, a.dry_run == true)
 end
+
+-- (item 12) The fort's artifacts shown: display furniture built in the AI's
+-- own rooms, an artifact of the AI's put on display (lua/ai-artifacts.lua)
+function act_place_display(a)
+    local id = whole_number(a.zone_id)
+    if not id then return reject('place_display needs zone_id (a location\'s or hall\'s zone)') end
+    if a.kind ~= nil and a.kind ~= 'pedestal' and a.kind ~= 'case' then
+        return reject('place_display: kind is pedestal or case')
+    end
+    return reqscript('ai-artifacts').place_display({zone_id = id, kind = a.kind or 'pedestal'}, a.dry_run == true)
+end
+
+function act_display_artifact(a)
+    local item, bld = whole_number(a.item_id), whole_number(a.building_id)
+    if not item or not bld then return reject('display_artifact needs item_id and building_id') end
+    return reqscript('ai-artifacts').display_artifact({item_id = item, building_id = bld}, a.dry_run == true)
+end
