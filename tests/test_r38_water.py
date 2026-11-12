@@ -300,14 +300,14 @@ def _():
     props, notes = [], []
     _water_rules({"water": dict(w, bodies=[]), "date": {"year": 0, "tick": 20}}, PLANNER_CONFIG, props, notes)
     assert props and props[0].action["type"] == "survey_water", props
-    # with a whole survey before (tick 5, a day ago): still due while the list is pending
+    # with a whole survey before (tick 5; the near save a day ago): still due while the list is pending
     w = {"ok": True, "tick": 5, "near_tick": 9, "waters_pending": True, "bodies": []}
     props, notes = [], []
-    _water_rules({"water": w, "date": {"year": 0, "tick": 1205}}, PLANNER_CONFIG, props, notes)
+    _water_rules({"water": w, "date": {"year": 0, "tick": 1300}}, PLANNER_CONFIG, props, notes)
     assert props and "cut off" in props[0].reason, [p.reason for p in props]
     w.pop("waters_pending")
     props, notes = [], []
-    _water_rules({"water": w, "date": {"year": 0, "tick": 1205}}, PLANNER_CONFIG, props, notes)
+    _water_rules({"water": w, "date": {"year": 0, "tick": 1300}}, PLANNER_CONFIG, props, notes)
     assert not props
     r, _ = run_slices(env, 0.15, tick=30)        # resumed: the whole survey done
     assert r.done and not env.SAVED["ai-overseer/water"].waters_pending and env.SAVED["ai-overseer/water"].tick == 30
@@ -1096,6 +1096,70 @@ def _():
     env, W = TW.irrigation_world()                                  # near water: no budget asked
     env.IRR_FAR_SECONDS = -1
     assert TW.step(env, "irrigation", dry_run=True).ok
+
+
+@test("third review 1: the far farm room's budget spent on one level, near water on the next level still found")
+def _():
+    env, W = TW.irrigation_world()
+    GROUPS(env)
+    W.tiles["70,60,94"] = None                                     # level 1 (room level 94): far water only
+    W.set(150, 60, 94, T(shape="FLOOR", liquid=True, depth=7))
+    for x in range(30, 90):                                        # level 2: a fort floor at 94, near water at 93
+        for y in range(40, 80):
+            W.set(x, y, 94, T(shape="FLOOR"))
+    W.citizens = L(T(x=60, y=60, z=95), T(x=60, y=61, z=94))
+    W.set(70, 60, 93, T(shape="FLOOR", liquid=True, depth=7))
+    W.survey = T(bodies=L(), map=T(w=192), waters=L(T(kind="pool", flow="stagnant", underground=True, tiles=40,
+                                                       d=92, salt_share=0, nearest=T(x=150, y=60, z=94))))
+    env.IRR_FAR_SECONDS = -1
+    r, p = plan_of(env, "irrigation")
+    assert p is not None and p.far is None and p.room.z == 93, dict(r)
+    W.tiles["70,60,93"] = None                                     # no near water anywhere: the later-refusal
+    r = TW.step(env, "irrigation", dry_run=True)
+    assert r.rejected and r.later and "ran out of time" in r.error, dict(r)
+
+
+@test("third review 2-5: a pending list re-asked a day after the near save at the soonest; the well's stamp; no river_blocks to the brain; old saves; soldiers' note")
+def _():
+    from planner_wells import _water_rules
+    from planner import PLANNER_CONFIG
+    w = {"ok": True, "tick": 5, "near_tick": 900, "waters_pending": True, "bodies": []}
+    props, notes = [], []
+    _water_rules({"water": w, "date": {"year": 0, "tick": 1500}}, PLANNER_CONFIG, props, notes)
+    assert not props                                               # 600 ticks after the near save
+    _water_rules({"water": w, "date": {"year": 0, "tick": 2200}}, PLANNER_CONFIG, props, notes)
+    assert props and "cut off" in props[0].reason
+    src = (ROOT / "lua" / "ai-builder-wells.lua").read_text(encoding="utf-8")
+    assert "tostring(wl.near_tick or wl.tick)" in src
+    # the report's copy: no river_blocks; the save keeps them
+    env = world()
+    river_far(env)
+    env.scan_step(1, 1e9)
+    assert env.SAVED["ai-overseer/water"].river_blocks is not None
+    rep = env.report_copy()
+    assert rep.river_blocks is None and rep.river_seen and rep.waters is not None
+    assert env.SAVED["ai-overseer/water"].river_blocks is not None
+    bsrc = (ROOT / "lua" / "ai-bridge.lua").read_text(encoding="utf-8")
+    assert "reqscript('ai-water').report_copy()" in bsrc
+    # a save from before river_blocks: any ice after a river seen is a frozen river, as then
+    env.SAVED["ai-overseer/water"].river_blocks = None
+    for y in range(0, 288):
+        for x in range(200, 204):
+            env.SET(x, y, 149, F(flow_size=0, outside=False), 1)
+        env.SET(20, y, 149, F(flow_size=0, outside=True), 4)
+    r = env.scan_step(2, 1e9)
+    assert r.frozen_river and r.river_seen
+    # AI decides, the only magma past a cavern, no soldiers: said so
+    cav = {"kind": "magma", "magma": "pipe", "d": 100, "opens_cavern": "Cavern1", "reach_through": 90, "top": {"z": 70}}
+    st = TW.state(settings={"traits": {}, "open_caverns": "ai"},
+                  buildings={"workshops": {"MetalsmithsForge": 1}, "furnaces": {}, "other": {}},
+                  water={"bodies": [], "waters": [cav], "middle": {"z_low": 90}}, map={"layers": []})
+    props, notes = TW.run(st)
+    assert not [p for p in props if p.action.get("kind") == "magma"]
+    assert any("past a cavern" in n and "armed soldiers ready (0 now)" in n for n in notes), notes
+    st["settings"]["open_caverns"] = "never"
+    props, notes = TW.run(st)
+    assert not any("past a cavern" in n for n in notes)
 
 
 if __name__ == "__main__":

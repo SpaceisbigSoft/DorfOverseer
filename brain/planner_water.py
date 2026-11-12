@@ -125,6 +125,33 @@ def near_magma_too_deep(s: dict) -> bool:
     return _too_deep(_fort_z_low(w), _d(_d(w.get("magma")).get("top_nearest")).get("z"))
 
 
+def magma_soldiers_wait(s: dict, cfg: dict) -> str | None:
+    """(third review) Why AI decides gives no magma workshop when the only
+    magma left lies past a cavern and the soldiers aren't ready (None: not
+    that). For the note only."""
+    if player_rules(s)["open_caverns"] != "ai" or not far_on(cfg):
+        return None
+    w = _d(s.get("water"))
+    z_low = _fort_z_low(w)
+    opens = False
+    for b in _l(w.get("waters")):
+        if not isinstance(b, dict) or b.get("kind") != "magma" or b.get("blocked"):
+            continue
+        if _too_deep(z_low, _d(b.get("top")).get("z", _d(b.get("nearest")).get("z"))):
+            continue
+        if not (b.get("opens_cavern") or b.get("magma") == "cavern"):
+            return None                       # another way is left: not the soldiers
+        opens = True
+    if not opens:
+        return None
+    from planner_wells import cavern_soldiers_ready
+    ok, soldiers, need = cavern_soldiers_ready(s, cfg)
+    if ok:
+        return None
+    return (f"no magma workshop: the only magma within reach lies past a cavern, and the AI opens one only with "
+            f"{need} armed soldiers ready ({soldiers} now)")
+
+
 def magma_choice(s: dict, cfg: dict) -> tuple[str, bool]:
     """(0.105.38) Which magma a workshop can be dug to, from the whole-map
     survey: ("near", False) the near box's highest magma (as before); ("pipe"
@@ -457,10 +484,13 @@ def _waterworks_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -
     # (0.105.38) the whole-map survey's magma bodies count too (a pipe found
     # far off; the magma sea): the cheapest, a pipe before the sea
     choice, opens = magma_choice(s, cfg) if shop else ("", False)
-    if shop and rules_["magma_workshops"] and (mg or choice) and eng > -150:
+    wait = magma_soldiers_wait(s, cfg) if shop and not choice else None
+    if shop and rules_["magma_workshops"] and (mg or choice or wait) and eng > -150:
         id_ = f"magma:{shop}"
         if not choice:
-            if near_magma_too_deep(s):
+            if wait:
+                notes.append(wait)
+            elif near_magma_too_deep(s):
                 notes.append(f"magma was found, but deeper than a stair reaches ({MAGMA_STAIR_MAX} levels under "
                              "the fort): no magma workshop (the next survey says where)")
             else:

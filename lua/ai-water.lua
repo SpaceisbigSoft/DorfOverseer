@@ -746,11 +746,16 @@ function finish_survey(job, prev)
     local on_river = false
     if ice and not river_now then
         for _, k in ipairs(before) do if (job.ice_blocks or {})[k] then on_river = true break end end
+        -- (third review) a save from before river_blocks (river_seen, no
+        -- blocks): any ice counts, as it did then
+        if not on_river and type(prev) == 'table' and prev.river_seen == true and type(prev.river_blocks) ~= 'table' then
+            on_river = true
+        end
     end
     if on_river then out.frozen_river = true end
     out.river_seen = river_now or out.frozen_river == true or nil
     if river_now then out.river_blocks = job.river_blocks
-    elseif on_river then out.river_blocks = before end
+    elseif on_river and type(prev.river_blocks) == 'table' then out.river_blocks = before end
     return out
 end
 
@@ -853,6 +858,17 @@ function scan_step(now_tick, seconds)
 end
 
 function scanning() return JOB ~= nil end
+
+-- (0.105.38 third review) The report's copy of the last scan ({none} when
+-- none): the save's fields but the river's blocks (kept in the save only)
+REPORT_SKIP = {river_blocks = true}
+function report_copy()
+    local w = {}
+    for k, v in pairs(last() or {none = true}) do
+        if not REPORT_SKIP[k] then w[k] = v end
+    end
+    return w
+end
 
 -- The last scan (or nil): what the fort report shows.
 function last()

@@ -1103,7 +1103,7 @@ function plan_irrigation()
     local fb = fort_box()
     if not fb then return nil, 'no citizens' end
     local why
-    local far_deadline
+    local far_deadline, far_out
     for zf = fb.z_high, math.max(fb.z_low, fb.z_high - 3), -1 do
         local z = zf - 1
         -- still water on the room's level near the fort (the nearest 12 tiles)
@@ -1116,7 +1116,7 @@ function plan_irrigation()
         while #waters > 12 do table.remove(waters) end
         -- (0.105.38) none near on this level: the survey's still water
         -- further off, the cheapest first, reached by a long tunnel (staged)
-        if #waters == 0 then
+        if #waters == 0 and not far_out then
             local w = water_survey()
             for _, b in ipairs(far_sources(w, function(b)
                     return b.flow == 'stagnant' and b.nearest.z == z and (tonumber(b.salt_share) or 0) == 0 end)) do
@@ -1129,15 +1129,16 @@ function plan_irrigation()
         end
         for _, wt in ipairs(waters) do
             for _, d in ipairs(N4) do
+                if wt.far and far_out then break end
                 for gap = 3, wt.far or IRR_REACH do
                     -- (0.105.38 review) a far source's long line within IRR_FAR_SECONDS in all
+                    -- (third review) out of time: no more far sources this call,
+                    -- the near water of the other levels still tried
                     if wt.far then
                         far_deadline = far_deadline or (os.clock() + IRR_FAR_SECONDS)
-                        if os.clock() > far_deadline then
-                            return nil, (why and (why .. '; ') or '')
-                                .. 'the search for a far farm room ran out of time: tried again later', true
-                        end
+                        if os.clock() > far_deadline then far_out = true end
                     end
+                    if wt.far and far_out then break end
                     local cx, cy = wt.x + d[1] * (gap + 2), wt.y + d[2] * (gap + 2)
                     local above = T(cx - 2, cy - 2, zf)
                     local ok = true
@@ -1191,6 +1192,9 @@ function plan_irrigation()
                 end
             end
         end
+    end
+    if far_out then
+        return nil, (why and (why .. '; ') or '') .. 'the search for a far farm room ran out of time: tried again later', true
     end
     return nil, why or 'no still, fresh water beside solid rock under a fort level within reach'
 end

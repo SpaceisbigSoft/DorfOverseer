@@ -1495,8 +1495,9 @@ function place_well(params, now, dry_run)
         local okr, rv = pcall(revive_cavern_well, data, pri, dry_run)
         if okr and rv then return rv end
         -- (0.105.4 review) a "no spot" kept since the last survey: not searched again
+        -- (third review: the near box's save counts as a survey, near_tick)
         local okw, wl = pcall(function() return reqscript('ai-water').last() end)
-        local stamp = ('%s/%s'):format(okw and type(wl) == 'table' and tostring(wl.tick) or '-', tostring(params.gallery))
+        local stamp = ('%s/%s'):format(okw and type(wl) == 'table' and tostring(wl.near_tick or wl.tick) or '-', tostring(params.gallery))
         local today = type(now) == 'table' and ((tonumber(now.year) or 0) * 403200 + (tonumber(now.tick) or 0)) // 1200 or nil
         local c = CAVERN_NO_SPOT
         if c and c.stamp == stamp and today and c.day and today >= c.day and today - c.day < CAVERN_NO_SPOT_DAYS then

@@ -607,7 +607,9 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
     -- the last water survey (lua/ai-water.lua), from the save: no scan here
     water = function()
         return safe(function()
-            local w = reqscript('ai-water').last() or {none = true}
+            -- (0.105.38 third review) a copy without the river's blocks (kept
+            -- in the save for a frozen river later, not sent to the brain)
+            local w = reqscript('ai-water').report_copy()
             -- a survey under way (in slices): the planner asks for the next slice
             if reqscript('ai-water').scanning() or WATER_PLAN then w.scanning = true end
             local okc, st = pcall(function() return reqscript('ai-builder').cistern_status() end)

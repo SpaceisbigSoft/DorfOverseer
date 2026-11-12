@@ -880,9 +880,12 @@ def _water_rules(s: dict, cfg: dict, proposals: list, notes: list) -> None:
     elif w.get("none") or not isinstance(tick, int) or not 0 <= now - tick < cfg["water_survey_ticks"]:
         proposals.append(Proposal("water", survey(),
                                   "survey the water near the fort (rivers, pools, caverns, aquifer, magma)", 7))
-    elif w.get("waters_pending") is True:
+    elif w.get("waters_pending") is True and (not isinstance(w.get("near_tick"), int)
+                                              or now - w["near_tick"] > cfg.get("water_pending_retry_ticks", 1200)):
         # (0.105.38 review) the near box saved but the whole-map pass cut off
-        # (a save, a quit, the map unloaded): begun again now, not a season on
+        # (a save, a quit, the map unloaded): begun again now, not a season on;
+        # (third review) a day after the near save at the soonest (a survey
+        # that fails to start is not asked for every cycle)
         proposals.append(Proposal("water", survey(),
                                   "the water survey of the whole map was cut off: begun again", 7))
     if not w.get("none"):
