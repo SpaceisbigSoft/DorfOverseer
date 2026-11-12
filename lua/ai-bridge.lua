@@ -961,7 +961,11 @@ end
 -- where nothing counts them); the game's FPS; the absolute tick.
 function perf_section(sections, cached, total_ms, tick)
     local ok, r = pcall(function()
-        local walks = type(REPORT_CTX) == 'table' and REPORT_CTX or {}
+        -- (merge) the counters live in ai-util's REPORT_CTX.walks (E3)
+        local okc, ctx = pcall(function() return reqscript('ai-util').REPORT_CTX end)
+        local w = okc and type(ctx) == 'table' and type(ctx.walks) == 'table' and ctx.walks or {}
+        local walks = {units_walks = w.units, items_walks = w.items}
+        if w.units == nil and type(REPORT_CTX) == 'table' then walks = REPORT_CTX end
         local fps_ok, fps = pcall(function() return df.global.enabler.calculated_fps end)
         return {
             sections = sections, cached = cached,
