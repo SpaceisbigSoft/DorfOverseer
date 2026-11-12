@@ -6,9 +6,9 @@ The main handoff (project doc "DF AI Overseer Handoff", `DF-AI\handoff.md`) stil
 
 ## 1. Where things stand (11 Nov)
 
-**Code version: 0.105.31**, delivered 8 Nov 15:10 to all six folders, hashes matched. Everything since 0.105.22 is still unseen in game except what the keeper logs show.
+**Code version: 0.105.36** (11 Nov), delivered to all six folders, hashes matched; DF and DFHack are now **53.17 / 53.17-r1** (Steam updated them 9 Nov; the copies B-F were brought to 53.17 on 11 Nov). Since 0.105.32: E's stuck-hatch fix, two code audits, the slider fixes, "nothing waits for the player" (0.105.35); the strategist's `RAISE_FORBIDDEN` now also covers trade, slaughter, levers and `stranded`, and holds of containers/soap/farms are refused. `culture.profile_from` is cached (0.105.33).
 
-**The forts.** All six run the **14.1 step 5 exit test**: a fresh start from the original embark on 8 Nov 10:55, scripts only, no `--ai`. Start them with `C:\Users\skulr\Documents\start-keepers.bat`. Leave them scripts-only, because the exit test is the agent's baseline.
+**The forts.** All six run the **14.1 step 5 exit test**, restarted fresh from the original embark on **11 Nov 21:08**, scripts only, no `--ai`. Start them with `C:\Users\skulr\Documents\start-keepers.bat`. Leave them scripts-only, because the exit test is the agent's baseline.
 
 | Fort | Preset | DF copy | DF-AI folder | Port |
 |---|---|---|---|---|
@@ -20,7 +20,7 @@ The main handoff (project doc "DF AI Overseer Handoff", `DF-AI\handoff.md`) stil
 | F | Garden fort | `D:\DF-F` | `DF-AI-F` | 5005 |
 
 - **The original embark:** a pristine copy is in each game folder as `first-save\region4`. The source is `DF-AI-B\backups\region4\2026-11-02 0014` (hash `e7fefd17`).
-- **The old run:** saves are in `D:\DF-x\old-saves\2026-11-08-<fort>`, logs in `DF-AI-x\logs\old-runs\2026-11-08\`.
+- **The old runs:** saves in `D:\DF-x\old-saves\2026-11-08-<fort>` and `...\2026-11-11-<letter>`, logs in `DF-AI-x\logs\old-runs\<date>\`.
 
 **GitHub is suspended** (since 7 Nov; the player is appealing). The repo lives on the PC as `Documents\DF-AI\_stage\dorfoverseer-repo.tgz`: the whole clone, `.git` included, with `main` many commits ahead of `origin`.
 - **A new chat:** stage that file into the cloud, unpack it to `/home/claude/dorfoverseer`, and work there.
@@ -173,7 +173,7 @@ Fix what that shows, in a parallel round.
 - **Calibration:** `REVIEW_TOKENS` 3,100 and `CHARS_PER_TOKEN` 2.5 are estimates from 19 Oct. The live run should calibrate them (`learn_token_ratio`).
 - **The subscription backend's thinking setting** (`max_thinking_tokens`) is unchanged since before the 5.5 models. Check what the SDK accepts now.
 - **The SDK's limits:** usage on the subscription shares the player's Claude chat limits. Find out how the SDK reports rate limits, and make the fallback quiet and correct.
-- **Code health:** `culture.profile_from` runs 2-6 times per `plan()` (30% of its time). The agent will call the planner more often, so cache it first.
+- **Code health:** `culture.profile_from` is cached (0.105.33, `plan()` about half the cost); Phase 13e (performance) has the rest.
 - **Co-pilot:** `place_keep` isn't in `BIG_MOVES` (the hall and wings are).
 
 ## 7. Files outside the repo
