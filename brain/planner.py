@@ -54,6 +54,7 @@ from planner_firebreath import _fire_breather_rule  # noqa: E402  (0.105.40b) no
 from planner_insane import _insane_rule  # noqa: E402  (0.105.40b) the insane: deadly ground near them, the AI's doors
 from planner_hauling import _hauling_labor_rule, note_hauling  # noqa: E402  (0.105.40 M5) hauling balanced
 from planner_food import _food_store_rule, note_food  # noqa: E402  (0.105.40b, M6) the food store
+from planner_provisions import _provisions_rules  # noqa: E402  (0.105.41, item 4) hunting, butchery, fruit, meals, cavern farms
 from planner_food import note_food_level  # noqa: E402  (fix41) a food storage level booked per kitchen/still
 from planner_alloys import _alloy_rule  # noqa: E402  (0.105.40 M7) bronze for a fort without iron, value alloys
 from planner_deep import _deep_hazard_rule  # noqa: E402  (0.105.40b) adamantine and the underworld: never dug
@@ -822,6 +823,10 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
     # (0.105.40b, M6) a roofed food pile with barrels near the kitchen and still
     if "food_store" not in errors:
         _guard(_food_store_rule, s, cfg, proposals, notes, memory)
+    # (0.105.41, item 4) provisions from the land: hunters while safe, butchery
+    # and tanning, a fruit zone, meals of more than one kind, cavern soil farms
+    if "provisions" not in errors:
+        _guard(_provisions_rules, s, cfg, citizens, proposals, notes, memory)
     # (0.100.1, overnight run) any workshops level another rule starts (a well's
     # parts, the metal works, a bottleneck) brings the missing still, kitchen
     # and carpenter's with it

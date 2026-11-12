@@ -3288,3 +3288,37 @@ function act_food_barrels(a)
     if not n then return reject('food_barrels: barrels is 0-100') end
     return reqscript('ai-food-store').food_barrels({pile_id = id, barrels = n}, a.dry_run == true)
 end
+
+-- (0.105.41, item 4) Provisions from the land (lua/ai-provisions.lua):
+-- hunters (count more, or the AI's own off the hunt: stop), DF's standing
+-- orders on butchering, tanning and cooking, a fruit-gathering zone over the
+-- fruit trees near the fort, farm plots on a cavern's soil near `at`.
+function act_hunters(a)
+    if a.stop == true then return reqscript('ai-provisions').hunters({stop = true}, a.dry_run == true, txt) end
+    local n = int_in(a.count, 1, 5)
+    if not n then return reject('hunters needs count 1-5 (or stop = true)') end
+    return reqscript('ai-provisions').hunters({count = n}, a.dry_run == true, txt)
+end
+
+function act_food_standing(a)
+    if type(a.orders) ~= 'table' then return reject('food_standing needs orders {name = 0|1}') end
+    return reqscript('ai-provisions').food_standing({orders = a.orders}, a.dry_run == true)
+end
+
+function act_fruit_zone(a)
+    local o = {}
+    if a.min_trees ~= nil then
+        o.min_trees = int_in(a.min_trees, 1, 50)
+        if not o.min_trees then return reject('fruit_zone: min_trees is 1-50') end
+    end
+    return reqscript('ai-provisions').fruit_zone(o, a.dry_run == true)
+end
+
+function act_cavern_farm(a)
+    local at = type(a.at) == 'table' and a.at or nil
+    local x, y, z = at and whole_number(at.x), at and whole_number(at.y), at and whole_number(at.z)
+    if not (x and y and z) then return reject('cavern_farm needs at {x, y, z} (a cavern tile)') end
+    local n = int_in(a.tiles, 4, 60)
+    if not n then return reject('cavern_farm needs tiles 4-60') end
+    return reqscript('ai-provisions').cavern_farm({at = {x = x, y = y, z = z}, tiles = n}, a.dry_run == true)
+end

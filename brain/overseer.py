@@ -482,6 +482,10 @@ SHORT_WORDS = {
     "feeder_pile": "put a feeder stockpile beside a workshop",
     "food_pile": "put a food stockpile with barrels near the kitchen and still",   # (0.105.40b, M6)
     "food_barrels": "let the AI's food stockpile take barrels",
+    "hunters": "send a hunter or two out after game (or call the AI's hunters in)",   # (0.105.41, item 4)
+    "food_standing": "let the butchers, tanners and fishery work by themselves (DF's standing orders)",
+    "fruit_zone": "mark the fruit trees near the fort for picking",
+    "cavern_farm": "lay out farm plots on a cavern's soil",
     "squad_barracks": "give a squad its barracks",
     "open_trade": "open the trade screen at the depot",
     "close_trade": "close the trade screen",

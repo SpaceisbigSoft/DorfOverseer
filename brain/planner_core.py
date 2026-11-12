@@ -515,7 +515,10 @@ def player_rules(s: dict) -> dict:
             # off / safe (the default: spatter, old dead units, items lost a year) / full (and
             # unreachable hostile or wild creatures)
             "world_cleanup": st.get("world_cleanup") if st.get("world_cleanup") in ("off", "safe", "full") else "safe",
-            "clear_alerts": st.get("clear_alerts") if st.get("clear_alerts") in ("all", "quiet", "none") else "quiet"}
+            "clear_alerts": st.get("clear_alerts") if st.get("clear_alerts") in ("all", "quiet", "none") else "quiet",
+            # (0.105.41, item 4) a hunter or two out while it is safe; farm plots on a known, quiet cavern's soil
+            "hunting": st.get("hunting") is not False,
+            "cavern_farms": st.get("cavern_farms") is not False}
 
 
 OPEN_CAVERNS_MODES = ("ai", "always", "never")

@@ -357,6 +357,11 @@ ACTIONS = {
     -- (0.105.40b, M6) the food store: a food pile near the kitchen and still, its barrels (lua/ai-food-store.lua)
     food_pile = act_food_pile,
     food_barrels = act_food_barrels,
+    -- (0.105.41, item 4) provisions from the land: hunters, butchering and tanning orders, fruit zone, cavern farms
+    hunters = act_hunters,
+    food_standing = act_food_standing,
+    fruit_zone = act_fruit_zone,
+    cavern_farm = act_cavern_farm,
     -- (D0) the Design track: a landmark's sites, its drawing built, its next stage (ai-bridge-design.lua)
     blueprint_sites = act_blueprint_sites,
     build_blueprint = act_build_blueprint,
@@ -416,6 +421,8 @@ for _, name in ipairs({
     'add_haulers', 'relieve_haulers',   -- (0.105.40 M5) each dry run names the dwarves and changes nothing
     -- (0.105.40b, M6) the food store: each dry run finds the spot (quickfort's dry run) and changes nothing
     'food_pile', 'food_barrels',
+    -- (0.105.41, item 4) provisions: each dry run names or finds (quickfort's dry run) and changes nothing
+    'hunters', 'food_standing', 'fruit_zone', 'cavern_farm',
 }) do DRY_OK[name] = true end
 
 -- These only change what's displayed, so they still work while halted, dry
@@ -481,7 +488,7 @@ end
 BRIDGE_MODULES = {
     'ai-blueprints', 'ai-builder', 'ai-camera', 'ai-census', 'ai-cleanup', 'ai-constructions', 'ai-diplomacy', 'ai-disposal', 'ai-food-store', 'ai-gates', 'ai-hauling', 'ai-health', 'ai-homes',
     'ai-industry', 'ai-insane', 'ai-joins', 'ai-labor', 'ai-layouts', 'ai-military', 'ai-military-gear',
-    'ai-mission-send', 'ai-missions', 'ai-moods', 'ai-nobles', 'ai-overlay', 'ai-overseer-settings',
+    'ai-mission-send', 'ai-missions', 'ai-moods', 'ai-nobles', 'ai-overlay', 'ai-overseer-settings', 'ai-provisions',
     'ai-ping', 'ai-reports', 'ai-society', 'ai-society-burrows', 'ai-status', 'ai-threats', 'ai-title',
     'ai-trade', 'ai-util', 'ai-water', 'ai-waterworks', 'gui/ai-overseer',
 }
@@ -863,6 +870,9 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
     -- fullness, the AI's own), the kitchens and stills, the food lying out of
     -- piles and barrels and the rotten (lua/ai-food-store.lua; cached a day)
     food_store = function() return safe(function() return reqscript('ai-food-store').report() end) end,
+    -- (0.105.41, item 4) provisions from the land: game and hunters, butchery and
+    -- tanning, fruit trees and their zones, meals by kind, cavern farms (lua/ai-provisions.lua)
+    provisions = function() return safe(function() return reqscript('ai-provisions').report() end) end,
     -- (0.105.30) what the fort has built: finished constructions by shape and
     -- material, above or below ground, roofed surface tiles, the waiting ones
     -- and the AI's own (lua/ai-constructions.lua; one pass, every 3 days)
