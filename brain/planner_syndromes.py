@@ -25,7 +25,8 @@ the quarantine is emptied.
 
 Miasma (the bridge's `miasma` section): the Miasma flows indoors and near
 where the dwarves live, the worst spots, and what rots there. The rule
-(_miasma_rule), past `miasma_min_tiles`:
+(_miasma_rule), past `miasma_min_tiles` where the dwarves live (the
+`living` count: indoors, in the fort's built-up areas, no cavern tile):
 
   * says where and what rots (the fort's own dead are the burial rules':
     the tombs and coffins, unforbid_dead; said, not touched here);
@@ -55,7 +56,7 @@ SYNDROME_CONFIG = {
     "syndrome_quarantine_days": 7,                   # a carrier kept in the hospital burrow this long after last seen carrying
     "syndrome_quarantine_max": 20,
     "syndrome_quarantine_cooldown_ticks": TICKS_PER_DAY // 2,
-    "miasma_min_tiles": 3,                           # miasma tiles indoors before the rule speaks
+    "miasma_min_tiles": 3,                           # miasma tiles where the dwarves live before the rule speaks
     "miasma_clear_max": 50,                          # rotting things marked for the dump a call
     "miasma_clear_cooldown_ticks": 2 * TICKS_PER_DAY,
     "miasma_dump_cooldown_ticks": 7 * TICKS_PER_DAY,
@@ -174,6 +175,10 @@ def _syndrome_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None
         what = ", ".join(carried[:3] or [k for k, _ in mats[:3]]) or "a syndrome's material"
         notes.append(f"{what} spreads sickness by touch: {carriers} citizen(s) carry it on their bodies, "
                      f"{tiles} floor tile(s) in the fort hold it")
+    soldiers = _int(sec.get("soldier_carriers"))
+    if soldiers:                                   # (fix5) the hospital burrow doesn't hold squad members
+        notes.append(f"{soldiers} of the carriers are in a squad: soldiers aren't kept in the hospital burrow, so "
+                     "they aren't kept apart (the clean still takes it off them)")
     if not rules.get("syndrome_care", True):
         if quarantined and proposals is not None:
             proposals.append(Proposal("syndrome_quarantine", {"type": "quarantine_syndromes", "release": True},
@@ -184,7 +189,8 @@ def _syndrome_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None
         return
     if proposals is None:
         return
-    if carriers or quarantined:
+    keepable = max(0, carriers - _int(sec.get("soldier_carriers")))     # (fix5) soldiers aren't held
+    if keepable or quarantined:
         if not rules.get("hospital_burrow", True):
             if carriers:
                 notes.append(f"{carriers} carrier(s) of a contact syndrome walk the fort: the hospital burrow is off "
@@ -193,9 +199,9 @@ def _syndrome_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None
             proposals.append(Proposal("syndrome_quarantine",
                                       {"type": "quarantine_syndromes", "days": cfg["syndrome_quarantine_days"],
                                        "max": cfg["syndrome_quarantine_max"]},
-                                      (f"{carriers} citizen(s) carry a contact syndrome on their bodies: kept in the "
+                                      (f"{keepable} citizen(s) carry a contact syndrome on their bodies: kept in the "
                                        f"hospital burrow {cfg['syndrome_quarantine_days']} days after last seen "
-                                       "carrying it" if carriers else
+                                       "carrying it" if keepable else
                                        f"{quarantined} kept apart: those clean again a while let out"), 3))
     if carriers or tiles >= cfg["syndrome_clean_min_tiles"]:
         a = {"type": "clean_contaminants"}
@@ -233,7 +239,7 @@ def _miasma_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None) 
     if m is None:
         return
     indoor, living = _int(m.get("indoor")), _int(m.get("living"))
-    if indoor < cfg["miasma_min_tiles"]:
+    if living < cfg["miasma_min_tiles"]:        # (fix5) where the dwarves live: the caverns' or far-off rot is no one's to haul
         return
     src = _d(m.get("sources"))
     spots = [x for x in _l(m.get("spots")) if isinstance(x, dict)]

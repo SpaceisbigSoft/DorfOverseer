@@ -23,10 +23,12 @@
 --                       of the AI's own display furniture (DF's "put item on
 --                       display" job: a hauler carries it there).
 --
--- Whose artifacts: the AI moves only the ones made (or brought home) since it
--- first looked (an artifact id at or past `first_id`, kept in the save the
--- first time the report runs). An artifact that was in the world before is
--- the player's: reported, never moved. Never one a dwarf carries or owns,
+-- Whose artifacts: the AI moves only the ones made since it first looked
+-- (an artifact id at or past `first_id`, kept in the save the first time the
+-- report runs). An artifact that was in the world before is the player's:
+-- reported, never moved. One brought home since (recovered from a mission,
+-- taken back from a thief) keeps its old id, below first_id, so it counts as
+-- the player's too and is never moved. Never one a dwarf carries or owns,
 -- one a job holds, a forbidden one, a book or scroll, or a squad's gear.
 -- Never sold, melted, dumped or destroyed: ai-trade, ai-disposal and
 -- ai-cleanup each refuse an artifact themselves (tests/test_artifacts.py
@@ -61,6 +63,41 @@ REMEMBER_MAX = 100
 -- swapped by the tests --------------------------------------------------------
 function builder() return reqscript('ai-builder') end
 function ai_boxes() return reqscript('ai-insane').ai_boxes() end
+function danger_spots() return U.danger_spots() end
+-- (fix5) the citizens' walk groups ({[g] = true}; nil when the game can't say)
+function citizen_groups()
+    local ok, g = pcall(function() return builder().citizen_groups() end)
+    if ok and type(g) == 'table' and next(g) then return g end
+    return nil
+end
+function walk_group(x, y, z)
+    local ok, g = pcall(function() return builder().walk_group(x, y, z) end)
+    return ok and tonumber(g) or nil
+end
+
+-- (fix5) why no hauler is sent for the artifact to the display (nil: go), as
+-- the disposal actions guard: near a danger, or out of the citizens' reach
+function haul_guard(it, b)
+    local x, y, z = U.item_pos(it)
+    local spots = (function() local ok, s = pcall(danger_spots); return ok and s or {} end)()
+    if x and U.near_danger(spots, x, y, z) then return 'near a danger' end
+    if U.near_danger(spots, b.centerx, b.centery, b.z) then return 'near a danger (the display)' end
+    local groups = citizen_groups()
+    if groups then
+        local g = x and walk_group(x, y, z)
+        if g and not groups[g] then return 'out of the citizens\' reach' end
+        -- the furniture's own tile may not be walkable: it or a tile beside it in reach
+        local seen, near = false, false
+        for dx = -1, 1 do
+            for dy = -1, 1 do
+                local gb = walk_group(b.centerx + dx, b.centery + dy, b.z)
+                if gb then seen = true; if groups[gb] then near = true end end
+            end
+        end
+        if seen and not near then return 'out of the citizens\' reach (the display)' end
+    end
+    return nil
+end
 
 local function int(v)
     local n = tonumber(v)
@@ -148,9 +185,9 @@ function record_of(it)
     return ok and a or nil
 end
 
--- the display furniture standing (buildings.other.DISPLAY_FURNITURE; else every building)
+-- the display furniture standing (buildings.other.DISPLAY_CASE, df-structures' name for the display furniture list; else every building)
 function display_buildings()
-    local ok, list = pcall(function() return df.global.world.buildings.other.DISPLAY_FURNITURE end)
+    local ok, list = pcall(function() return df.global.world.buildings.other.DISPLAY_CASE end)
     local out = {}
     if ok and list then
         for _, b in ipairs(list) do table.insert(out, b) end
@@ -508,6 +545,8 @@ function display_artifact(o, dry_run)
     if n + waiting >= cap then return reject(('that %s holds %d already'):format(kind, n + waiting)) end
     local st = state_of(it, U.item_kind(it), assigned_ids(), {})
     if st ~= 'loose' then return reject('that artifact is ' .. st .. ': left where it is') end
+    local guard = haul_guard(it, b)
+    if guard then return reject('that artifact lies ' .. guard .. ': no hauler sent') end
     local okj = pcall(function() return df.job_type.PutItemOnDisplay end)
     if not (okj and df.job_type.PutItemOnDisplay and dfhack.job.attachJobItem and dfhack.job.linkIntoWorld) then
         return reject('this DF version has no put-on-display job')

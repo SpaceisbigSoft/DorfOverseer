@@ -26,7 +26,10 @@
 --                             burrows reads QUARANTINE_KEY: a quarantined
 --                             citizen counts as a patient there, with its
 --                             drink, food, longest stay and every guard) for
---                             o.days after last seen carrying; release = all out
+--                             o.days after last seen carrying; release = all out.
+--                             (fix5) Never a squad member (the burrow doesn't
+--                             hold soldiers): left out and counted (soldiers);
+--                             one drafted since is let out
 --
 -- Miasma: the Miasma flows on the map (df.global.flows: the game's own list,
 -- cheap), those indoors and those within the fort's built-up areas, grouped
@@ -49,7 +52,12 @@
 --                             forbidden_reason 'unknown'). Another's body
 --                             forbidden by the game's dead-items order is
 --                             unforbidden as it is marked (as the disposal
---                             rules do).
+--                             rules do). (fix5) Only near the living areas'
+--                             miasma (none in the caverns); never one near
+--                             a danger, on a cavern tile, or where no
+--                             citizen's walk group reaches; and a whole
+--                             corpse the butcher would take is left while
+--                             the fort has a butcher's shop.
 --
 -- Field names from df-structures (53.x): syndrome.flags SYN_CONTACT,
 -- SYN_INHALED, SYN_INJECTED, SYN_INGESTED; syndrome.ce[i]:getType();
@@ -483,6 +491,13 @@ function quarantine_state()
     return d
 end
 
+-- (fix5) a squad member: the hospital burrow never holds one (ai-society-
+-- burrows leaves soldiers out), so the quarantine leaves them out too
+function in_squad(u)
+    local ok, sq = pcall(function() return u.military.squad_id end)
+    return ok and tonumber(sq) ~= nil and tonumber(sq) ~= -1
+end
+
 -- Is the unit (id) in quarantine now? Read once a game tick.
 function quarantined(id)
     local t = now_tick()
@@ -513,7 +528,11 @@ function quarantine(o, dry_run)
         for k, v in pairs(d.ids) do
             local id = tonumber(k)
             local untl = tonumber(type(v) == 'table' and v.till or v) or 0
-            if car[id] then
+            local okf, mu = pcall(df.unit.find, id)
+            if okf and mu and in_squad(mu) then        -- (fix5) drafted since: not held, so not counted
+                d.ids[k] = nil
+                table.insert(out.released, id)
+            elseif car[id] then
                 d.ids[k] = {till = t + days * 1200, since = type(v) == 'table' and v.since or t}
                 n = n + 1
             elseif untl <= t then
@@ -525,7 +544,11 @@ function quarantine(o, dry_run)
         end
         out.kept = n
         local ids = {}
-        for id in pairs(car) do ids[#ids + 1] = id end
+        local soldiers = 0
+        for id, c in pairs(car) do
+            if in_squad(c.u) then soldiers = soldiers + 1 else ids[#ids + 1] = id end
+        end
+        if soldiers > 0 then out.soldiers = soldiers end
         table.sort(ids)
         for _, id in ipairs(ids) do
             if not d.ids[tostring(id)] then
@@ -638,7 +661,7 @@ end
 -- --- the report ----------------------------------------------------------------
 
 function report()
-    local out = {afflicted = 0, list = {}, by_name = {}, deadly = 0, carriers = 0, carrier_ids = {},
+    local out = {afflicted = 0, list = {}, by_name = {}, deadly = 0, carriers = 0, carrier_ids = {}, soldier_carriers = 0,
                  sources = {}, unknown_sources = 0}
     local car = carriers()
     local unknown = false
@@ -676,6 +699,7 @@ function report()
     end
     for id, c in pairs(car) do
         out.carriers = out.carriers + 1
+        if in_squad(c.u) then out.soldier_carriers = out.soldier_carriers + 1 end
         if #out.carrier_ids < 100 then table.insert(out.carrier_ids, id) end
         local listed = false
         for _, r in ipairs(out.list) do if r.id == id then listed = true break end end
@@ -698,11 +722,13 @@ function report()
     end
     local q = quarantine_state()
     local qn, t = 0, now_tick()
-    for _, v in pairs(q.ids) do
+    for k, v in pairs(q.ids) do
         local untl = tonumber(type(v) == 'table' and v.till or v)
-        if untl and untl > t then qn = qn + 1 end
+        local okf, mu = pcall(df.unit.find, tonumber(k))
+        if untl and untl > t and not (okf and mu and in_squad(mu)) then qn = qn + 1 end   -- (fix5) a soldier isn't held
     end
     out.quarantined = qn
+    if out.soldier_carriers == 0 then out.soldier_carriers = nil end
     if not next(out.by_name) then out.by_name = nil end
     if not next(out.sources) then out.sources = nil end
     return out
@@ -716,6 +742,75 @@ local function tile_outside(x, y, z)
         return f and f.outside
     end)
     return ok and o == true
+end
+
+-- (fix5) a cavern tile (the same test as ai-disposal's and ai-threats')
+local function tile_cavern(x, y, z)
+    local ok, c = pcall(function()
+        local f = dfhack.maps.getTileFlags(x, y, z)
+        return f and (f.feature_global or f.feature_local) and true or false
+    end)
+    return ok and c == true
+end
+
+-- (fix5) the walk groups the citizens stand in ({[g] = true}), nil when the game can't say
+local function citizen_groups()
+    local set, any = {}, false
+    for _, u in ipairs(citizens()) do
+        local ok, g = pcall(function() return dfhack.maps.getWalkableGroup(u.pos) end)
+        if ok and type(g) == 'number' then
+            any = true
+            if g ~= 0 then set[g] = true end
+        end
+    end
+    return any and set or nil
+end
+
+local function tile_reached(groups, x, y, z)
+    if not groups then return true end                  -- the game can't say: as before
+    local ok, g = pcall(function() return dfhack.maps.getWalkableGroup(xyz2pos(x, y, z)) end)
+    if not ok or type(g) ~= 'number' then return true end
+    return groups[g] == true
+end
+
+-- (fix5) a butcher's shop stands in the fort
+local function has_butcher()
+    local found = false
+    pcall(function()
+        for _, b in ipairs(df.global.world.buildings.all) do
+            local ok, yes = pcall(function()
+                return b:getType() == df.building_type.Workshop and df.workshop_type[b.type] == 'Butchers'
+            end)
+            if ok and yes then found = true break end
+        end
+    end)
+    return found
+end
+
+-- (fix5) a body the butcher would take (as ai-provisions counts them): a
+-- whole corpse not yet butchered, not rotten, of no sapient race
+local SAPIENT = {}
+local function sapient(race)
+    if race == nil then return true end
+    if SAPIENT[race] == nil then
+        local ok, v = pcall(function()
+            local cr = df.creature_raw.find(race)
+            for _, c in ipairs(cr.caste) do
+                if c.flags.CAN_SPEAK or c.flags.CAN_LEARN then return true end
+            end
+            return false
+        end)
+        SAPIENT[race] = not ok or v == true
+    end
+    return SAPIENT[race]
+end
+
+function for_butcher(it, kind)
+    if kind ~= 'CORPSE' then return false end
+    local ok, yes = pcall(function()
+        return not it.flags.rotten and it.corpse_flags.unbutchered == true and not sapient(it.race)
+    end)
+    return ok and yes == true
 end
 
 -- the garbage dump zones: {x, y, z, outside}
@@ -744,7 +839,10 @@ local function in_dump(dumps, x, y, z)
     return false
 end
 
--- the miasma flows grouped by block: {key = {x, y, z, n, density, indoor, living}}
+-- the miasma flows grouped by block: {key = {x, y, z, n, density, indoor, living}}.
+-- (fix5) Only the living areas' spots (indoors, within the fort's built-up
+-- areas, no cavern tile): what rots in the caverns or far off is no one's
+-- to haul (tiles/indoor still count every flow, for the report).
 local function miasma_blocks(boxes)
     local spots, tiles, indoor, living = {}, 0, 0, 0
     local okm, kind = pcall(function() return df.flow_type.Miasma end)
@@ -761,8 +859,9 @@ local function miasma_blocks(boxes)
                 local bx = boxes[z]
                 local near = bx ~= nil and x >= bx.x1 and x <= bx.x2 and y >= bx.y1 and y <= bx.y2
                 if inside then indoor = indoor + 1 end
-                if inside and near then living = living + 1 end
-                if inside then
+                local spot = inside and near and not tile_cavern(x, y, z)
+                if spot then living = living + 1 end
+                if spot then
                     local key = (x // 16) .. ',' .. (y // 16) .. ',' .. z
                     local s = spots[key]
                     if not s then
@@ -771,7 +870,7 @@ local function miasma_blocks(boxes)
                     end
                     s.n = s.n + 1
                     s.density = math.max(s.density, d)
-                    if near then s.living = s.living + 1 end
+                    s.living = s.living + 1
                 end
             end
         end
@@ -827,7 +926,7 @@ local function rotting_near(spots, max_spots)
                                     pcall(function() rotten = it.flags.rotten == true end)
                                     if kind and (BODY_KINDS[kind] or (FOOD_KINDS[kind] and rotten)) then
                                         local x, y, z = U.item_pos(it)
-                                        if x and not tile_outside(x, y, z) then
+                                        if x and not tile_outside(x, y, z) and not tile_cavern(x, y, z) then
                                             table.insert(found, {it = it, kind = kind, x = x, y = y, z = z})
                                         end
                                     end
@@ -857,6 +956,12 @@ function keep_rotting(e, ctx, dumps)
     if f.in_building or f.construction then return 'in_building' end
     if not U.on_ground(it) then return 'held' end
     if in_dump(dumps, e.x, e.y, e.z) then return 'in_dump' end
+    -- (fix5) no hauler sent near a danger, into the caverns, or where none can walk
+    if U.near_danger(ctx.danger, e.x, e.y, e.z) then return 'danger' end
+    if tile_cavern(e.x, e.y, e.z) then return 'cavern' end
+    if not tile_reached(ctx.groups, e.x, e.y, e.z) then return 'unreachable' end
+    -- (fix5) a body waiting for the butcher, while there is one's shop
+    if ctx.butcher and for_butcher(it, e.kind) then return 'for_butcher' end
     if in_stockpile(e.x, e.y, e.z) then return 'in_pile' end
     if f.forbid then
         local why = U.forbidden_reason(it, ctx, e.kind, e.x, e.y, e.z)
@@ -876,6 +981,11 @@ end
 local function ctx_for(dumps)
     local ctx = U.forbid_context({in_dump = function(x, y, z) return in_dump(dumps, x, y, z) end,
                                   in_stockpile = in_stockpile})
+    local okd, spots = pcall(U.danger_spots)
+    ctx.danger = okd and spots or {}
+    local okg, groups = pcall(citizen_groups)
+    ctx.groups = okg and groups or nil
+    ctx.butcher = has_butcher()
     return ctx
 end
 

@@ -419,6 +419,16 @@ function RulesPage:init()
         initial_option = p.settings.syndrome_care ~= false,
         on_change = function(v) p:set_field('syndrome_care', v) end,
     })
+    -- (fix5, item 12) artifacts shown in the AI's own rooms: the right-hand
+    -- column's free row under the traffic switch's help line, above the calm burrow's
+    table.insert(views, widgets.ToggleHotkeyLabel{
+        view_id = 'display_artifacts',
+        frame = {t = 9 + hrow, l = 56, w = 62},
+        label = 'Show the AI\'s artifacts in its own rooms:',
+        label_width = 46,
+        initial_option = p.settings.display_artifacts ~= false,
+        on_change = function(v) p:set_field('display_artifacts', v) end,
+    })
     -- (0.104.169) the calm-down burrows' switch, beside the Jail level (the
     -- jail is the other answer to a tantrum), with its help line
     local jrow = 8
@@ -931,6 +941,7 @@ function RulesPage:refresh()
     self.subviews.shut_to_visitors:setOption(s.shut_to_visitors ~= false, false)   -- (0.105.24)
     self.subviews.construct:setOption(s.construct ~= false, false)                 -- (0.105.30)
     self.subviews.traffic:setOption(s.traffic ~= false, false)                     -- (0.105.41)
+    self.subviews.display_artifacts:setOption(s.display_artifacts ~= false, false) -- (fix5, item 12)
     for _, k in ipairs({'moat', 'magma_workshops', 'irrigation', 'magma_reclaim'}) do   -- (0.105.0; 0.105.41)
         self.subviews[k]:setOption(s[k] ~= false, false)
     end
