@@ -28,7 +28,8 @@ import test_scorecard as TS  # noqa: E402  (the existing fixture: make_fort, sta
 def main_scorecard():
     """brain/scorecard.py as it is on main (None outside a git checkout)."""
     try:
-        src = subprocess.run(["git", "show", "main:brain/scorecard.py"], cwd=str(ROOT), capture_output=True,
+        # (0.105.38) pinned to main before the Design round (8a13655): main itself now holds the Design block
+        src = subprocess.run(["git", "show", "8a13655:brain/scorecard.py"], cwd=str(ROOT), capture_output=True,
                              text=True, encoding="utf-8", check=True).stdout
     except (OSError, subprocess.CalledProcessError):
         return None
