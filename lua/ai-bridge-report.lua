@@ -110,7 +110,7 @@ function get_dwarves(include_units)
     for _, label in pairs(STRESS_LABELS) do summary.stress[label] = 0 end
 
     local units = {}
-    for _, u in ipairs(dfhack.units.getCitizens()) do
+    for _, u in ipairs(report_citizens()) do
         local is_child = dfhack.units.isChild(u) or dfhack.units.isBaby(u)
         local job = u.job.current_job
         local in_squad = u.military.squad_id >= 0
@@ -193,7 +193,7 @@ function get_needs(txt_fn)
     if okd then okmo, mothers = pcall(MIL.nursing_mothers) end
     if not okmo then okd = false end
     if okd then out.keen_draftable = 0 end      -- (none read: missing, and the brain uses keen_civilians)
-    for _, u in ipairs(dfhack.units.getCitizens()) do
+    for _, u in ipairs(report_citizens()) do
         local okn, needs = pcall(function() return u.status.current_soul.personality.needs end)
         if okn and needs then
             local worst = {}
@@ -322,7 +322,7 @@ function get_needs(txt_fn)
         -- jobs say little: Enxah, 51 of 60 at a job, 127 queued, 34 badly
         -- wanting friends), soldiers apart
         soc.doing, soc.soldiers = {}, 0
-        for _, u in ipairs(dfhack.units.getCitizens()) do
+        for _, u in ipairs(report_citizens()) do
             soc.citizens = soc.citizens + 1
             pcall(function()
                 if u.military.squad_id ~= -1 then soc.soldiers = soc.soldiers + 1 end
@@ -383,7 +383,7 @@ function get_needs(txt_fn)
                     end
                 end
             end
-            for _, u in ipairs(dfhack.units.getCitizens(true)) do
+            for _, u in ipairs(report_citizens(true)) do
                 local hf = df.historical_figure.find(u.hist_figure_id)
                 local okv, list = pcall(function() return hf.info.relationships.hf_visual end)
                 if okv and list then
@@ -469,6 +469,44 @@ end
 -- REPORT_MEMO for the length of a report; nil outside one (and set so at
 -- each run of the script), so an action or a test reads afresh.
 REPORT_MEMO = nil
+
+-- (0.105.40 E3) The per-report shared walks: REPORT_CTX for the length of a
+-- report (build_state), nil outside one. The table is ai-util's REPORT_CTX
+-- too (report_begin there), so the modules' sections (threats, military,
+-- health...) share the same walks as the bridge's own. Without ai-util (a
+-- test's stub bridge) each call walks afresh, as before.
+REPORT_CTX = nil
+
+function report_ctx_begin()
+    REPORT_CTX = {walks = {units = 0, items = 0, citizens = 0}}
+    local ok, U = pcall(reqscript, 'ai-util')
+    if ok and type(U) == 'table' and type(U.report_begin) == 'function' then
+        U.report_begin(REPORT_CTX)
+        REPORT_CTX.util = U
+    end
+    return REPORT_CTX
+end
+
+function report_ctx_end()
+    local c = REPORT_CTX
+    REPORT_CTX = nil
+    if c and c.util then pcall(c.util.report_end) end
+    return c
+end
+
+-- dfhack.units.getCitizens(...), once a report for each set of arguments
+function report_citizens(...)
+    local c = REPORT_CTX
+    if c and c.util then return c.util.citizens(...) end
+    return dfhack.units.getCitizens(...)
+end
+
+-- world.units.active: walked once a report (the same units, same order)
+function report_units()
+    local c = REPORT_CTX
+    if c and c.util then return c.util.units_active() end
+    return df.global.world.units.active
+end
 
 -- (13c) The loose boulders, walked once a report (the stocks, stone_types,
 -- stone_use and supplies sections each walked them): usable ones' count and
@@ -683,7 +721,7 @@ function get_petitions()
     pcall(function()
         if not dfhack.units.isResident then return end
         local res = {}
-        for _, u in ipairs(df.global.world.units.active) do
+        for _, u in ipairs(report_units()) do
             if #res < 200 and dfhack.units.isAlive(u) and dfhack.units.isResident(u)
                     and not dfhack.units.isCitizen(u) then table.insert(res, u.id) end
         end
@@ -1033,7 +1071,7 @@ end
 function citizen_anchor()
     local from
     pcall(function()
-        for _, u in ipairs(dfhack.units.getCitizens(true)) do
+        for _, u in ipairs(report_citizens(true)) do
             local x, y, z = dfhack.units.getPosition(u)
             if x then from = xyz2pos(x, y, z) break end
         end
@@ -1194,7 +1232,7 @@ function get_supplies()
     -- fibre crop and waited for caravans while patients went without sutures.
     out.shearable = 0
     pcall(function()
-        for _, u in ipairs(df.global.world.units.active) do
+        for _, u in ipairs(report_units()) do
             if dfhack.units.isTame(u) and dfhack.units.isAlive(u) and not dfhack.units.isCitizen(u) then
                 local okc, n = pcall(function()
                     return #df.creature_raw.find(u.race).caste[u.caste].shearable_tissue_layer
@@ -1338,7 +1376,7 @@ function get_supplies()
         -- soldiers (A: 27 of 37 in squads), and the lavish meals stuck at the
         -- kitchen for weeks; best_any keeps the old count
         local best, skilled, best_any, able = 0, 0, 0, {}
-        for _, u in ipairs(dfhack.units.getCitizens(true)) do
+        for _, u in ipairs(report_citizens(true)) do
             local r = dfhack.units.getNominalSkill(u, df.job_skill.COOK, true) or 0
             if r > best_any then best_any = r end
             local ok_c, can = pcall(function()
@@ -1642,7 +1680,7 @@ function get_dead()
         end
         return bodies[id]
     end
-    for _, u in ipairs(df.global.world.units.active) do
+    for _, u in ipairs(report_units()) do
         if dfhack.units.isGhost(u) and u.race == race and u.civ_id == civ then
             out.ghosts = out.ghosts + 1
             if #out.ghost_names < 5 then
@@ -1846,7 +1884,7 @@ function get_dead()
     -- the free tombs can be walked to
     pcall(function()
         local n, lab = 0, df.unit_labor.HAUL_BODY
-        for _, u in ipairs(dfhack.units.getCitizens(true)) do
+        for _, u in ipairs(report_citizens(true)) do
             if u.status.labors[lab] then n = n + 1 end
         end
         out.burial_labor = n
@@ -1951,7 +1989,7 @@ end
 function get_moods()
     local list = {}
     -- (exclude_residents = false, include_insane = true): a broken mind still counts
-    for _, u in ipairs(dfhack.units.getCitizens(false, true)) do
+    for _, u in ipairs(report_citizens(false, true)) do
         local mood = u.mood >= 0 and (df.mood_type[u.mood] or tostring(u.mood)) or nil
         -- "Baby" is how the game marks a baby being carried: not a mood
         if mood and mood ~= 'Baby' then
@@ -2014,7 +2052,7 @@ function get_society()
         end
         table.sort(out.vacant)
     end
-    for _, u in ipairs(dfhack.units.getCitizens(false, true)) do
+    for _, u in ipairs(report_citizens(false, true)) do
         local c = u.counters2
         local starving, parched = c.hunger_timer > 75000, c.thirst_timer > 50000
         if starving then out.starving = out.starving + 1 end
@@ -2229,7 +2267,7 @@ end
 
 local function citizen_positions()
     local list, groups = {}, {}
-    for _, u in ipairs(dfhack.units.getCitizens()) do
+    for _, u in ipairs(report_citizens()) do
         local p = {x = u.pos.x, y = u.pos.y, z = u.pos.z}
         table.insert(list, p)
         local g = dfhack.maps.getWalkableGroup(p)
@@ -2260,7 +2298,7 @@ function get_health()
     local out = {patients = {}, infected = 0, syndromes = 0, total = 0, resting = 0, resting_in_hospital = 0,
                  needs_counts = {}, waiting = 0, splint_wait = 0, stitch_wait = 0, waiting_ids = {}}
     pcall(function() out.hospital = hospital_survey() end)
-    for _, u in ipairs(dfhack.units.getCitizens()) do
+    for _, u in ipairs(report_citizens()) do
         local resting = false
         pcall(function()
             local j = u.job.current_job
@@ -2645,7 +2683,7 @@ function get_hazards()
         end
         out.miasma_spots = list
     end)
-    for _, u in ipairs(dfhack.units.getCitizens()) do
+    for _, u in ipairs(report_citizens()) do
         local name
         local function who()
             name = name or txt(dfhack.units.getReadableName(u))
@@ -2667,7 +2705,7 @@ function get_hazards()
     pcall(function()
         local seen = {}
         for _, b in ipairs(out.berserk) do seen[b.id] = true end
-        for _, u in ipairs(df.global.world.units.active) do
+        for _, u in ipairs(report_units()) do
             -- (0.104.140) one of the fort's own changed into a beast (a
             -- werebeast's night, its race not its own): it attacks everyone, and
             -- like a berserk dwarf only soldiers stop it
@@ -2737,6 +2775,48 @@ end
 ---------------------------------------------------------------------------
 
 JUNCTIONS = JUNCTIONS or {}      -- (0.104.103) cavern name -> {tick, found}: looked for once a week
+-- (0.105.40 E3) Which blocks lie in each cavern never changes while the map
+-- is loaded (a block's global_feature is set when the map is made), yet
+-- get_deep walked every block of the map (~25,000 on a 4x4 embark) each
+-- report to sort them. The caverns' block positions are kept (positions, not
+-- pointers: DF memory isn't kept between runs) under the layers' key and the
+-- map's block count, and the blocks fetched again by position, in the same
+-- order. Any block not found, or a key that differs: the full walk.
+local function deep_key(layers)
+    local ok, k = pcall(function() return tostring(layers.key) .. ':' .. #df.global.world.map.map_blocks end)
+    return ok and k or nil
+end
+
+function deep_blocks_keep(layers, pos)
+    local key = deep_key(layers)
+    if not key or not layers.key then DEEP_BLOCKS = nil return end
+    local by_idx = {}
+    for bl, list in pairs(pos) do by_idx[bl._idx] = list end
+    DEEP_BLOCKS = {key = key, pos = by_idx}
+end
+
+function deep_blocks_again(layers)
+    local d = DEEP_BLOCKS
+    if not d or not layers.key or d.key ~= deep_key(layers) then return nil end
+    local ok, out = pcall(function()
+        local out = {}
+        for _, bl in ipairs(layers.list) do
+            local list = d.pos[bl._idx]
+            if list then
+                local blocks = {}
+                for i, p in ipairs(list) do
+                    local b = dfhack.maps.getTileBlock(p[1], p[2], p[3])
+                    if not b or b.global_feature == nil or layers.by_gid[b.global_feature] ~= bl then error('moved') end
+                    blocks[i] = b
+                end
+                out[bl] = blocks
+            end
+        end
+        return out
+    end)
+    return ok and out or nil
+end
+
 function get_deep()
     local layers = get_layers()
     local cit_list, groups = citizen_positions()
@@ -2746,14 +2826,21 @@ function get_deep()
     local cave_blocks
     local function blocks_of(l)
         if not cave_blocks then
+            cave_blocks = deep_blocks_again(layers)
+        end
+        if not cave_blocks then
             cave_blocks = {}
+            local pos = {}
             for _, block in ipairs(df.global.world.map.map_blocks) do
                 local bl = layers.by_gid[block.global_feature]
                 if bl then
                     cave_blocks[bl] = cave_blocks[bl] or {}
                     table.insert(cave_blocks[bl], block)
+                    pos[bl] = pos[bl] or {}
+                    table.insert(pos[bl], {block.map_pos.x, block.map_pos.y, block.map_pos.z})
                 end
             end
+            deep_blocks_keep(layers, pos)
         end
         return cave_blocks[l] or {}
     end
@@ -2872,7 +2959,7 @@ function get_deep()
             if ok and v then return k[2] end
         end
     end
-    for _, u in ipairs(df.global.world.units.active) do
+    for _, u in ipairs(report_units()) do
         if dfhack.units.isActive(u) and not dfhack.units.isDead(u) then
             local citizen = dfhack.units.isCitizen(u, true)
             if citizen then
@@ -2925,7 +3012,7 @@ function get_others_on_map()
     end)
     local okb, builder = pcall(reqscript, 'ai-builder')       -- (0.104.153) once, not per creature
     HOSTILE_WILD = (okb and builder and builder.hostile_wild) or function() return false end
-    for _, u in ipairs(df.global.world.units.active) do
+    for _, u in ipairs(report_units()) do
         if dfhack.units.isActive(u) and not dfhack.units.isDead(u)
                 and not dfhack.units.isHidden(u)
                 and not dfhack.units.isCitizen(u, true) then
@@ -3023,7 +3110,7 @@ end
 function get_dwarf_levels()
     local zmin, zmax, by_layer, outside, n = nil, nil, {}, 0, 0
     local layers = get_layers()
-    for _, u in ipairs(dfhack.units.getCitizens()) do
+    for _, u in ipairs(report_citizens()) do
         local z = u.pos.z
         zmin = math.min(zmin or z, z)
         zmax = math.max(zmax or z, z)
@@ -3040,7 +3127,7 @@ end
 
 function get_nobles()
     local out = {}
-    for _, u in ipairs(dfhack.units.getCitizens()) do
+    for _, u in ipairs(report_citizens()) do
         local positions = dfhack.units.getNoblePositions(u)
         if positions then
             for _, p in ipairs(positions) do
@@ -3085,7 +3172,7 @@ end
 function get_order_desk()
     local out = {offices = {}, workshops = {}, manage_jobs = 0}
     local mgr
-    for _, u in ipairs(df.global.world.units.active) do
+    for _, u in ipairs(report_units()) do
         if dfhack.units.isCitizen(u) then
             for _, np in ipairs(dfhack.units.getNoblePositions(u) or {}) do
                 if np.position.code == 'MANAGER' then mgr = u end
@@ -3183,7 +3270,7 @@ function get_order_desk()
         -- (0.104.73) and the crafts (instrument and craft jobs sat unworked
         -- on every craftsdwarf's bench): holders, and those free (no job, not a soldier)
         out.labor_free = {}
-        local citizens = dfhack.units.getCitizens(true)     -- (13c) once, not once a labour
+        local citizens = report_citizens(true)     -- (13c) once, not once a labour
         for _, name in ipairs({'MASON', 'CARPENTER', 'STONECUTTER', 'WOOD_CRAFT', 'STONE_CRAFT', 'BONE_CARVE',
                                'METAL_CRAFT', 'GLASSMAKER', 'MECHANIC'}) do
             local lab, n, free = df.unit_labor[name], 0, 0
@@ -3317,7 +3404,7 @@ end
 -- record's size and siege flag (kept for a later look, not acted on).
 function invasion_details(ev, id)
     local n = 0
-    for _, u in ipairs(df.global.world.units.active) do
+    for _, u in ipairs(report_units()) do
         local ok, yes = pcall(function()
             return dfhack.units.isInvader(u) and dfhack.units.isActive(u) and not dfhack.units.isDead(u)
         end)

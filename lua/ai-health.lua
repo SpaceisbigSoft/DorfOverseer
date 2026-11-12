@@ -33,6 +33,17 @@
 
 local U = reqscript('ai-util')      -- (13c) helpers shared by the modules
 
+-- (0.105.40 E3) inside a report, the report's one walk of the units
+-- (ai-util REPORT_CTX: the same units, same order); outside one, afresh
+local function report_citizens(...)
+    if U.REPORT_CTX and U.citizens then return U.citizens(...) end
+    return dfhack.units.getCitizens(...)
+end
+local function report_units()
+    if U.REPORT_CTX and U.units_active then return U.units_active() end
+    return df.global.world.units.active
+end
+
 local INFECTION_BLEEDS = 300            -- df-structures: ">=300 causes bleeding"
 local RQ = {'rq_diagnosis', 'rq_immobilize', 'rq_dressing', 'rq_cleaning', 'rq_surgery', 'rq_suture',
             'rq_setting', 'rq_traction', 'rq_crutch'}
@@ -184,7 +195,7 @@ local function free_beds(zones, kind)
     kind = kind or 'Bed'
     local taken = {}
     pcall(function()
-        for _, u in ipairs(df.global.world.units.active) do
+        for _, u in ipairs(report_units()) do
             pcall(function() taken[key(u.pos.x, u.pos.y, u.pos.z)] = true end)
             pcall(function()
                 local j = u.job.current_job
@@ -316,7 +327,7 @@ function survey(txt)
     local tended = tend(d, t, false)
     if state_sig(d) ~= before then save_state(d) end      -- (0.105.33) only on a change
     local zones, staff = hospitals()
-    local citizens = dfhack.units.getCitizens(true)
+    local citizens = report_citizens(true)
     local out = {infected = 0, untreated = 0, bleeding = 0, in_hospital = 0, idle_untreated = 0, max_load = 0,
                  worst = {}}
     local worst = {}
@@ -377,7 +388,7 @@ function rest_infected(max, dry_run, txt, cap, keep_free)
                 .. 'free (%d kept for the doctors\' own patients)'):format(tended.sleeping, cap, #beds, keep_free)}
     end
     local cands = {}
-    for _, u in ipairs(dfhack.units.getCitizens(true)) do
+    for _, u in ipairs(report_citizens(true)) do
         local c = candidate(u, zones, staff, d)
         if c.infected then table.insert(cands, c) end
     end
@@ -521,7 +532,7 @@ end
 
 local function traction_cands(d)
     local out = {}
-    for _, u in ipairs(dfhack.units.getCitizens(true)) do
+    for _, u in ipairs(report_citizens(true)) do
         if needs_traction(u) then
             table.insert(out, {id = u.id, unit = u, traction = true, resting = rest_job(u) ~= nil,
                                on = lying_on(u), up = d.up[tostring(u.id)] ~= nil})

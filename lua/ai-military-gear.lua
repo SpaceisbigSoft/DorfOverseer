@@ -17,10 +17,30 @@ GEAR_METALS = {'STEEL', 'IRON', 'BRONZE', 'BISMUTH_BRONZE', 'COPPER'}   -- best 
 local GEAR_LISTS = {weapons = 'WEAPON', body = 'ARMOR', helms = 'HELM', pants = 'PANTS',
                     gloves = 'GLOVES', boots = 'SHOES', shields = 'SHIELD'}
 
-function metal_token(item)
+local function metal_token_of(item)
     local mi = dfhack.matinfo.decode(item)
     if not mi or not mi.inorganic or not mi.material.flags.IS_METAL then return nil end
     return mi.inorganic.id
+end
+
+-- (0.105.40 E3) inside gear_report (CLAIM_MEMO) an item's metal is decoded
+-- once: the report asked it of the same item up to a dozen times (the stray,
+-- spare, bar and gap counts, and each kind of empty entry)
+function metal_token(item)
+    local m = CLAIM_MEMO
+    if not m then return metal_token_of(item) end
+    local okid, id = pcall(function() return item.id end)
+    if not okid or id == nil then return metal_token_of(item) end
+    local mt = m.metal
+    if not mt then mt = {}; m.metal = mt end
+    local v = mt[id]
+    if v == nil then
+        v = metal_token_of(item)
+        if v == nil then mt[id] = false else mt[id] = v end
+        return v
+    end
+    if v == false then return nil end
+    return v
 end
 
 -- How an item is carried: the enum moved between DF versions
@@ -53,7 +73,17 @@ end
 -- items. world.squads.all is every squad of every entity in the world (a
 -- big world: thousands), walked several times a pulse. Falls back to it
 -- only when the fort's entity can't be read.
+local fort_squads_walk
 local function fort_squads()
+    -- (0.105.40 E3) inside gear_report, read once (a fresh list each caller)
+    local m = CLAIM_MEMO
+    if not m then return fort_squads_walk() end
+    if not m.fort_squads then m.fort_squads = fort_squads_walk() end
+    local out = {}
+    for i, sq in ipairs(m.fort_squads) do out[i] = sq end
+    return out
+end
+fort_squads_walk = function()
     local out = {}
     local okf, fort = pcall(U.fort_entity)
     if okf and fort then
@@ -77,6 +107,39 @@ local function memo(key, build)
     if not m then return build() end
     if m[key] == nil then m[key] = table.pack(build()) end
     return table.unpack(m[key], 1, m[key].n)
+end
+
+-- (0.105.40 E3) inside gear_report, one id set for each of DF's equipment
+-- lists (`field`, and `kind` for the by-kind ones), not one each time a
+-- count asks: the unassigned weapons were turned into a set 4 times a report.
+-- A list that can't be read throws, as id_set's caller did before.
+local function eq_ids(eq, field, kind)
+    local m = CLAIM_MEMO
+    local function build()
+        if kind ~= nil then return id_set(eq[field][kind]) end
+        return id_set(eq[field])
+    end
+    if not m then return build() end
+    local key = 'ids:' .. field .. ':' .. tostring(kind)
+    local v = m[key]
+    if v == nil then v = build(); m[key] = v end
+    return v
+end
+
+-- (0.105.40 E3) inside gear_report, items.other[name] read once into a list
+-- (the same items, same order): the weapons were walked 4-6 times a report
+local function gear_items(name)
+    local m = CLAIM_MEMO
+    local vec = df.global.world.items.other[name]
+    if not m or vec == nil then return vec end
+    local key = 'items:' .. tostring(name)
+    local v = m[key]
+    if v == nil then
+        v = {}
+        for _, it in ipairs(vec) do v[#v + 1] = it end
+        m[key] = v
+    end
+    return v
 end
 
 -- every item any squad place claims (its own list or a uniform entry's)
@@ -122,17 +185,17 @@ end
 function stray_report()
     local eq = equipment_lists()
     if not eq then return nil end
-    local claimed, work = claimed_items(), id_set(eq.work_weapons)
+    local claimed, work = claimed_items(), eq_ids(eq, 'work_weapons')
     local out = {orphan = {}, unlisted = {}, n = 0, unassigned = {}, work = work}
     for _, kind in ipairs(STRAY_KINDS) do
-        local asg, una = id_set(eq.items_assigned[kind]), id_set(eq.items_unassigned[kind])
+        local asg, una = eq_ids(eq, 'items_assigned', kind), eq_ids(eq, 'items_unassigned', kind)
         out.unassigned[kind] = una
         -- (0.104.59) new items wait on the "unmanifested" list before DF files
         -- them: listed, not stray (a new axe from the forge counted as lost)
-        local okm, unm = pcall(function() return id_set(eq.items_unmanifested[kind]) end)
+        local okm, unm = pcall(function() return eq_ids(eq, 'items_unmanifested', kind) end)
         unm = okm and unm or {}
         local o, u = 0, 0
-        for _, it in ipairs(df.global.world.items.other[kind]) do
+        for _, it in ipairs(gear_items(kind)) do
             if free_gear(it, work) and not claimed[it.id] and not unm[it.id] then
                 if asg[it.id] and not una[it.id] then o = o + 1
                 elseif not asg[it.id] and not una[it.id] then u = u + 1 end
@@ -472,12 +535,12 @@ function assign_weapons(dry_run, limit)
     local fort = U.fort_entity()
     if not fort then return {ok = false, rejected = true, error = 'no fort'} end
     limit = limit or 10
-    local claimed, work = claimed_items(), id_set(eq.work_weapons)
-    local una = id_set(eq.items_unassigned.WEAPON)
+    local claimed, work = claimed_items(), eq_ids(eq, 'work_weapons')
+    local una = eq_ids(eq, 'items_unassigned', 'WEAPON')
     -- free weapons DF could hand out: on its unassigned list, not forbidden,
     -- not on a job, nobody's tool or claim
     local pool = {}
-    for _, it in ipairs(df.global.world.items.other.WEAPON) do
+    for _, it in ipairs(gear_items('WEAPON')) do
         local f = it.flags
         if una[it.id] and not claimed[it.id] and free_gear(it, work) and not f.forbid and not f.in_job
                 and not f.dump and not f.melt then
@@ -670,7 +733,7 @@ gear_report_body = function()        -- (the local declared above gear_report)
         out.spare[key] = n
     end
     -- crossbows of any material lying free, and bolts anywhere but a trader's
-    for _, it in ipairs(other.WEAPON) do
+    for _, it in ipairs(gear_items('WEAPON')) do
         local f = it.flags
         local okc, id = pcall(function() return it.subtype.id end)
         if okc and id == 'ITEM_WEAPON_CROSSBOW' and not f.in_inventory and U.item_free(it, CROSSBOW_OK) then
@@ -840,8 +903,9 @@ function gaps_why(cat_name, list_name)
     local is_weapon = cat_name == 'weapon'
     local cat = df.uniform_category[cat_name]
     local entry, place = claim_map()
-    local ctx = {entry = entry, place = place, work = id_set(eq.work_weapons), una = id_set(eq.items_unassigned[list_name])}
-    local items = df.global.world.items.other[list_name]
+    local ctx = {entry = entry, place = place, work = eq_ids(eq, 'work_weapons'),
+                 una = eq_ids(eq, 'items_unassigned', list_name)}
+    local items = gear_items(list_name)
     -- (0.105.33 review) an entry's stage depends only on what it asks for and
     -- where its soldier can walk: worked out once per (entry kind, walk
     -- group), not entries x every item (16 empty entries x a post-siege
@@ -949,9 +1013,9 @@ local function free_quivers(claimed)
     -- (0.105.0 review) only quivers on DF's unassigned list (as for weapons),
     -- never one built in or an artifact
     local eq = equipment_lists()
-    local una = eq and id_set(eq.items_unassigned.QUIVER) or {}
+    local una = eq and eq_ids(eq, 'items_unassigned', 'QUIVER') or {}
     pcall(function()
-        for _, it in ipairs(df.global.world.items.other.QUIVER) do
+        for _, it in ipairs(gear_items('QUIVER')) do
             local f = it.flags
             if una[it.id] and not (claimed[it.id] or f.forbid or f.owned or f.trader or f.removed or f.garbage_collect
                     or f.dump or f.hostile or f.in_job or f.construction or f.in_inventory
@@ -1008,9 +1072,9 @@ function flask_report()
         end
     end
     local eq = equipment_lists()
-    local una = eq and id_set(eq.items_unassigned.FLASK) or {}
+    local una = eq and eq_ids(eq, 'items_unassigned', 'FLASK') or {}
     pcall(function()
-        for _, it in ipairs(df.global.world.items.other.FLASK) do
+        for _, it in ipairs(gear_items('FLASK')) do
             local f = it.flags
             if una[it.id] and not (f.forbid or f.owned or f.trader or f.removed or f.garbage_collect or f.dump
                     or f.hostile or f.in_job or f.construction or f.in_inventory or f.in_building or f.artifact) then
@@ -1437,9 +1501,9 @@ function kit_report()
                 if key == 'gloves' then
                     local sides, worn = {}, {}
                     local eq = equipment_lists()
-                    local una = eq and id_set(eq.items_unassigned.GLOVES) or {}
+                    local una = eq and eq_ids(eq, 'items_unassigned', 'GLOVES') or {}
                     pcall(function()
-                        for _, it in ipairs(df.global.world.items.other.GLOVES) do
+                        for _, it in ipairs(gear_items('GLOVES')) do
                             if metal_token(it) then
                                 local sd = glove_side(it)
                                 if una[it.id] and not it.flags.in_inventory then
@@ -1482,12 +1546,12 @@ function assign_kit(dry_run, limit)
     local fort = U.fort_entity()
     if not fort then return {ok = false, rejected = true, error = 'no fort'} end
     limit = limit or 10
-    local claimed, work = claimed_items(), id_set(eq.work_weapons)
+    local claimed, work = claimed_items(), eq_ids(eq, 'work_weapons')
     local done, out, by = 0, {}, {}
     for _, slot in ipairs(KIT_GIVE) do
         local cat_name, list_name, flag, need = slot[1], slot[2], slot[3], slot[4]
         local cat = df.uniform_category[cat_name]
-        local una = id_set(eq.items_unassigned[list_name])
+        local una = eq_ids(eq, 'items_unassigned', list_name)
         local pool = {}
         for _, it in ipairs(df.global.world.items.other[list_name] or {}) do
             local f = it.flags

@@ -12,6 +12,17 @@
 
 local U = reqscript('ai-util')      -- (13c) helpers shared by the modules
 
+-- (0.105.40 E3) inside a report, the report's one walk of the units
+-- (ai-util REPORT_CTX: the same units, same order); outside one, afresh
+local function report_citizens(...)
+    if U.REPORT_CTX and U.citizens then return U.citizens(...) end
+    return dfhack.units.getCitizens(...)
+end
+local function report_units()
+    if U.REPORT_CTX and U.units_active then return U.units_active() end
+    return df.global.world.units.active
+end
+
 -- A DF name in words (dfhack.TranslateName was renamed in DFHack 50.15).
 local function translate(name, english)
     local ok, s = pcall(function() return dfhack.translation.translateName(name, english) end)
@@ -783,7 +794,7 @@ function unloading(dep)
     end)
     local busy = 0
     pcall(function()
-        for _, u in ipairs(df.global.world.units.active) do
+        for _, u in ipairs(report_units()) do
             if u.flags1.merchant and not u.flags1.inactive and dfhack.units.isActive(u) and u.job.current_job then
                 busy = busy + 1
             end

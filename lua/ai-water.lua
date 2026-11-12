@@ -51,6 +51,17 @@
 
 local U = reqscript('ai-util')      -- (13c) helpers shared by the modules
 
+-- (0.105.40 E3) inside a report, the report's one walk of the units
+-- (ai-util REPORT_CTX: the same units, same order); outside one, afresh
+local function report_citizens(...)
+    if U.REPORT_CTX and U.citizens then return U.citizens(...) end
+    return dfhack.units.getCitizens(...)
+end
+local function report_units()
+    if U.REPORT_CTX and U.units_active then return U.units_active() end
+    return df.global.world.units.active
+end
+
 WATER_KEY = 'ai-overseer/water'
 RADIUS = 72
 SURFACE_ABOVE = 12
@@ -67,7 +78,7 @@ SEA_BELOW = 2            -- the scan goes this many levels under the magma sea's
 
 local function fort_middle()
     local xs, ys, zs, n = 0, 0, {}, 0
-    for _, u in ipairs(dfhack.units.getCitizens(true)) do
+    for _, u in ipairs(report_citizens(true)) do
         local x, y, z = dfhack.units.getPosition(u)
         if x then
             xs, ys, n = xs + x, ys + y, n + 1

@@ -15,6 +15,17 @@
 
 local U = reqscript('ai-util')      -- (13c) helpers shared by the modules
 
+-- (0.105.40 E3) inside a report, the report's one walk of the units
+-- (ai-util REPORT_CTX: the same units, same order); outside one, afresh
+local function report_citizens(...)
+    if U.REPORT_CTX and U.citizens then return U.citizens(...) end
+    return dfhack.units.getCitizens(...)
+end
+local function report_units()
+    if U.REPORT_CTX and U.units_active then return U.units_active() end
+    return df.global.world.units.active
+end
+
 local utils = require('utils')
 
 SHELTER_NAME = 'AI shelter'
@@ -71,7 +82,7 @@ local function fort_levels()
             hi = hi and math.max(hi, z) or z
         end
     end
-    for _, u in ipairs(dfhack.units.getCitizens(true)) do add(u.pos.z) end
+    for _, u in ipairs(report_citizens(true)) do add(u.pos.z) end
     if not lo then return nil, nil end
     pcall(function()
         for _, b in ipairs(df.global.world.buildings.other.STOCKPILE) do add(b.z) end
@@ -132,7 +143,7 @@ end
 -- (0.105.26) The walk groups of the building destroyers on the map (nil: none).
 function destroyer_groups()
     local groups, any = {}, false
-    for _, u in ipairs(df.global.world.units.active) do
+    for _, u in ipairs(report_units()) do
         local ok, yes = pcall(function()
             if not dfhack.units.isActive(u) or dfhack.units.isDead(u) or dfhack.units.isCitizen(u, true) then
                 return false
@@ -569,7 +580,7 @@ function fill_shelter(b)
     end
     if deep_out > 0 then info.deep_depot_tiles = deep_out end
     if ai_out > 0 then info.ai_hall_tiles = ai_out end
-    local okc, cits = pcall(function() return #dfhack.units.getCitizens(true) end)
+    local okc, cits = pcall(function() return #report_citizens(true) end)
     local need = math.max(SHELTER_MIN_TILES, SHELTER_TILES_PER_CITIZEN * (okc and cits or 0))
     -- the dark not-subterranean tiles: the fort itself, or left out (above)
     local inside = n + #held + #dark_surface + #sunlit
@@ -598,7 +609,7 @@ function fill_shelter(b)
     -- (0.105.33) L6: and with too little: a mug is not drink for forty. Under
     -- SHELTER_DRINK_PER_CITIZEN units a citizen and no well, the same.
     wells_inside()
-    local okc0, cits0 = pcall(function() return #dfhack.units.getCitizens(true) end)
+    local okc0, cits0 = pcall(function() return #report_citizens(true) end)
     cits0 = okc0 and cits0 or 0
     local want_drink = math.max(1, SHELTER_DRINK_PER_CITIZEN * cits0)
     local want_food = math.max(1, SHELTER_FOOD_PER_CITIZEN * cits0)
@@ -879,7 +890,7 @@ end
 
 function unpastured_grazers()
     local out = {}
-    for _, u in ipairs(df.global.world.units.active) do
+    for _, u in ipairs(report_units()) do
         if dfhack.units.isAlive(u) and dfhack.units.isTame(u) and dfhack.units.isOwnCiv(u)
                 and not u.flags1.caged and dfhack.units.isGrazer(u) and not visiting_animal(u)
                 and not dfhack.units.getGeneralRef(u, df.general_ref_type.BUILDING_CIVZONE_ASSIGNED) then
@@ -965,7 +976,7 @@ function nest_boxes(max, dry_run)
     local list = pens()
     if #list == 0 then return {ok = false, rejected = true, error = 'the fort has no pasture zone'} end
     local hens, loose, by_zone = 0, {}, {}
-    for _, u in ipairs(df.global.world.units.active) do
+    for _, u in ipairs(report_units()) do
         if egg_layer(u) then
             hens = hens + 1
             local ref = dfhack.units.getGeneralRef(u, df.general_ref_type.BUILDING_CIVZONE_ASSIGNED)
@@ -1046,7 +1057,7 @@ function animal_training_report()
     local out = {war_candidates = 0, war_trained = 0, in_training = 0, trainers = 0}
     local assigned = {}
     for _, a in ipairs(training_list()) do assigned[a.animal_id] = true; out.in_training = out.in_training + 1 end
-    for _, u in ipairs(df.global.world.units.active) do
+    for _, u in ipairs(report_units()) do
         local okp, prof = pcall(function() return df.profession[u.profession] end)
         if okp and prof == 'TRAINED_WAR' and dfhack.units.isAlive(u) and dfhack.units.isOwnCiv(u) then
             out.war_trained = out.war_trained + 1
@@ -1055,7 +1066,7 @@ function animal_training_report()
         end
     end
     local labor = df.unit_labor.ANIMALTRAIN
-    for _, u in ipairs(dfhack.units.getCitizens(true)) do
+    for _, u in ipairs(report_citizens(true)) do
         if labor and u.status.labors[labor] then out.trainers = out.trainers + 1 end
     end
     return out
@@ -1067,7 +1078,7 @@ function train_war(max, dry_run, txt)
     local assigned = {}
     for _, a in ipairs(list) do assigned[a.animal_id] = true end
     local cands = {}
-    for _, u in ipairs(df.global.world.units.active) do
+    for _, u in ipairs(report_units()) do
         if not assigned[u.id] and war_trainable(u) then table.insert(cands, u) end
     end
     if #cands == 0 then return {ok = false, rejected = true, error = 'no tame animal here can be trained for war'} end
@@ -1142,7 +1153,7 @@ end
 
 function war_dogs_free()
     local out = {}
-    for _, u in ipairs(df.global.world.units.active) do
+    for _, u in ipairs(report_units()) do
         local okp, prof = pcall(function() return df.profession[u.profession] end)
         if okp and prof == 'TRAINED_WAR' and dfhack.units.isAlive(u) and dfhack.units.isOwnCiv(u)
                 and not u.flags1.caged
@@ -1290,7 +1301,7 @@ function expel_one(txt, unit_id)
             return {ok = false, rejected = true, error = 'only a vampire is sent away by name'}
         end
     end
-    for _, u in ipairs(unit_id and {} or dfhack.units.getCitizens(true)) do
+    for _, u in ipairs(unit_id and {} or report_citizens(true)) do
         local okc, can = pcall(em.canLeave, u)
         if okc and can then
             local score = 0
@@ -1514,7 +1525,7 @@ function stress_census(units)
     local now = U.abs_tick()
     local since = now - STRESS_DAYS * 1200
     local by, citizens, read, no_divider = {}, 0, 0, 0
-    for _, u in ipairs(units or dfhack.units.getCitizens()) do
+    for _, u in ipairs(units or report_citizens()) do
         citizens = citizens + 1
         local ok, ems = pcall(function() return u.status.current_soul.personality.emotions end)
         if ok and ems then
@@ -1709,7 +1720,7 @@ end
 function cup_citizen_groups()
     local g = {}
     pcall(function()
-        for _, u in ipairs(dfhack.units.getCitizens(true)) do
+        for _, u in ipairs(report_citizens(true)) do
             local okg, w = pcall(dfhack.maps.getWalkableGroup, xyz2pos(dfhack.units.getPosition(u)))
             if okg and w and w ~= 0 then g[w] = true end
         end
@@ -1979,7 +1990,7 @@ function clothing_census(units)
     local out = {citizens = 0, worn = {new = 0, worn = 0, threadbare = 0, tattered = 0},
                  without = {shoes = 0, legs = 0, body = 0}, tattered_wearers = 0}
     local mode = worn_mode()
-    for _, u in ipairs(units or dfhack.units.getCitizens()) do
+    for _, u in ipairs(units or report_citizens()) do
         local okb, baby = pcall(dfhack.units.isBaby, u)
         if not (okb and baby) then
             out.citizens = out.citizens + 1
@@ -2068,7 +2079,7 @@ function give_trinkets(max, dry_run)
     local wanting = {}
     -- (residents too: the fort's poets and bards count in the needs report,
     -- and getCitizens(true) left them out: "nobody wants" while 16 did)
-    for _, u in ipairs(dfhack.units.getCitizens()) do
+    for _, u in ipairs(report_citizens()) do
         local nd = acquire_need(u)
         if nd and nd.focus_level <= ACQUIRE_DISTRACTED and dfhack.units.isAdult(u) and u.mood == -1 then
             table.insert(wanting, {u = u, nd = nd})
@@ -2195,7 +2206,7 @@ function staff_location(loc_id, occ_type, dry_run, txt)
     end
     if not post then return {ok = false, rejected = true, error = 'no vacant ' .. occ_type:lower() .. ' post there'} end
     local best, best_n
-    for _, u in ipairs(dfhack.units.getCitizens(true)) do
+    for _, u in ipairs(report_citizens(true)) do
         if can_staff(u) and u.hist_figure_id ~= -1 then
             local n = skill_of(u, want)
             if not best or n > best_n then best, best_n = u, n end
@@ -2428,7 +2439,7 @@ end
 -- (nicknamed by the AI), races = {CAT = n}}.
 function vermin_hunters(units)
     local out = {n = 0, loose = 0, caged = 0, marked = 0, kept = 0, mousers = 0, races = {}}
-    for _, u in ipairs(units or df.global.world.units.active) do
+    for _, u in ipairs(units or report_units()) do
         if fort_animal(u) and hunts_vermin(u) then
             out.n = out.n + 1
             local okr, r = pcall(function() return df.creature_raw.find(u.race).creature_id end)
@@ -2452,7 +2463,7 @@ end
 function keep_mousers(want, dry_run, txt, units)
     want = math.max(1, math.min(tonumber(want) or 6, 20))
     local kept, cands = 0, {}
-    for _, u in ipairs(units or df.global.world.units.active) do
+    for _, u in ipairs(units or report_units()) do
         if fort_animal(u) and hunts_vermin(u) then
             local okc, caged = pcall(function() return u.flags1.caged end)
             if kept_hunter(u) then

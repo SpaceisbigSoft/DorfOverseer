@@ -18,6 +18,17 @@
 
 local U = reqscript('ai-util')      -- (13c) helpers shared by the modules
 
+-- (0.105.40 E3) inside a report, the report's one walk of the units
+-- (ai-util REPORT_CTX: the same units, same order); outside one, afresh
+local function report_citizens(...)
+    if U.REPORT_CTX and U.citizens then return U.citizens(...) end
+    return dfhack.units.getCitizens(...)
+end
+local function report_units()
+    if U.REPORT_CTX and U.units_active then return U.units_active() end
+    return df.global.world.units.active
+end
+
 MAX_MINERS = 20           -- (0.104.134: was 10) more than this get in each other's way; Teacheroar had
                           -- 15 picks, 10 miners and 260 tiles waiting on many levels
 TILES_PER_MINER = 15      -- digging waiting per miner wanted (0.104.137: was 25; levels stalled for years at 10)
@@ -277,7 +288,7 @@ local function citizens(job, memo)
     local labor, sk = enum(df.unit_labor, J.labor), enum(df.job_skill, J.skill)
     local doing, cands, soldiers = {}, {}, 0
     memo = memo or {}
-    memo.units = memo.units or dfhack.units.getCitizens(true)
+    memo.units = memo.units or report_citizens(true)
     memo.noble = memo.noble or {}
     for _, u in ipairs(memo.units) do
         if grown(u) then
@@ -469,7 +480,7 @@ function waiting_work(limit)
         if l then by[l] = (by[l] or 0) + 1 end
     end)
     local holders, idle = {}, {}
-    for _, u in ipairs(dfhack.units.getCitizens(true)) do
+    for _, u in ipairs(report_citizens(true)) do
         if grown(u) and not in_squad(u) then
             for l in pairs(by) do
                 if u.status.labors[l] then
@@ -511,7 +522,7 @@ function skilled_off(limit)
                     local sk = enum(df.job_skill, skill_token_for(l))
                     local n = 0
                     if sk then
-                        for _, u in ipairs(dfhack.units.getCitizens(true)) do
+                        for _, u in ipairs(report_citizens(true)) do
                             if grown(u) and not in_squad(u) and not u.status.labors[l] and skill(u, sk) >= SKILLED then
                                 n = n + 1
                             end
@@ -547,7 +558,7 @@ function assign(job, count, dry_run, txt, min_skill)
             if repair(d) then table.insert(repaired, tostring(d.name)) end
         end
         if #repaired > 0 then
-            for _, u in ipairs(dfhack.units.getCitizens(true)) do recompute(u) end
+            for _, u in ipairs(report_citizens(true)) do recompute(u) end
         end
     end
     if (count or 0) <= 0 then
@@ -665,7 +676,7 @@ function narrow(job, keep, dry_run, txt)
     for i = #wd.assigned_units - 1, 0, -1 do wd.assigned_units:erase(i) end
     for _, c in ipairs(picked) do insert_sorted(wd, c.id) end
     set_mode(wd, 'OnlySelectedDoesThis')
-    for _, u in ipairs(dfhack.units.getCitizens(true)) do recompute(u) end
+    for _, u in ipairs(report_citizens(true)) do recompute(u) end
     local n = narrowed()
     n[job] = true
     U.site_put(NARROWED_KEY, n)
@@ -684,7 +695,7 @@ function widen(job, dry_run)
     end
     if dry_run then return {ok = true, dry_run = true, job = job} end
     if not set_mode(wd, 'EverybodyDoesThis') then return {ok = false, error = 'no "everybody" mode'} end
-    for _, u in ipairs(dfhack.units.getCitizens(true)) do recompute(u) end
+    for _, u in ipairs(report_citizens(true)) do recompute(u) end
     n[job] = nil
     U.site_put(NARROWED_KEY, n)
     return {ok = true, job = job, detail = tostring(wd.name)}
@@ -743,7 +754,7 @@ function trim(job, keep, dry_run, txt)
     if dry_run then return out end
     for i = #wd.assigned_units - 1, 0, -1 do wd.assigned_units:erase(i) end
     for _, c in ipairs(kept) do insert_sorted(wd, c.id) end
-    for _, u in ipairs(dfhack.units.getCitizens(true)) do recompute(u) end
+    for _, u in ipairs(report_citizens(true)) do recompute(u) end
     local doing = citizens(job)
     out.still = #doing          -- with the labour after (another detail may carry it too)
     return out

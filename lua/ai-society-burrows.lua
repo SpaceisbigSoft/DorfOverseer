@@ -8,6 +8,17 @@
 --@module = true
 
 local U = reqscript('ai-util')      -- (13c) helpers shared by the modules
+
+-- (0.105.40 E3) inside a report, the report's one walk of the units
+-- (ai-util REPORT_CTX: the same units, same order); outside one, afresh
+local function report_citizens(...)
+    if U.REPORT_CTX and U.citizens then return U.citizens(...) end
+    return dfhack.units.getCitizens(...)
+end
+local function report_units()
+    if U.REPORT_CTX and U.units_active then return U.units_active() end
+    return df.global.world.units.active
+end
 local S = reqscript('ai-society')   -- find_burrow, new_burrow
 PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-society-burrows'] = '0.105.38'   -- (0.105.26) bumped with BRIDGE_VERSION
 
@@ -330,7 +341,7 @@ function recreation_tick(max, days, dry_run, txt, friends, friend_days, release)
     end
     -- the most stressed eligible first
     local cands = {}
-    for _, u in ipairs(dfhack.units.getCitizens(true)) do
+    for _, u in ipairs(report_citizens(true)) do
         local was = tonumber(d.out[tostring(u.id)])
         if was and now - was >= days * 1200 then d.out[tostring(u.id)] = nil; was = nil end
         if not d.members[tostring(u.id)] and not was and rec_eligible(u) then
@@ -351,7 +362,7 @@ function recreation_tick(max, days, dry_run, txt, friends, friend_days, release)
     -- close friend, 11 of 14 idle dwarves in no meeting zone)
     if friends > 0 and fcount < friends then
         local fc = {}
-        for _, u in ipairs(dfhack.units.getCitizens(true)) do
+        for _, u in ipairs(report_citizens(true)) do
             local key = tostring(u.id)
             if not d.members[key] and not d.out[key] and rec_base(u) then
                 local f = badly_wants_friends(u)
@@ -921,7 +932,7 @@ function hospital_burrow_status(txt)
     local out = {burrow = b and b.id or nil, members = after, tiles = d.tiles, hospital_zones = #zones,
                  drink = d.drink, food = d.food, why = d.why, outside = 0, patients = 0,
                  released_now = #released > 0 and released or nil}
-    for _, u in ipairs(dfhack.units.getCitizens(true)) do
+    for _, u in ipairs(report_citizens(true)) do
         if is_patient(u) then
             out.patients = out.patients + 1
             if not d.members[tostring(u.id)] and hb_eligible(u, staff, b and b.id or -1, rec_id)
@@ -985,7 +996,7 @@ function hospital_burrow_tick(max, per, dry_run, txt, days, release)
     local rec_b = S.find_burrow(RECREATION_NAME)
     local rec_id = rec_b and rec_b.id or -2
     local cands = {}
-    for _, u in ipairs(dfhack.units.getCitizens(true)) do
+    for _, u in ipairs(report_citizens(true)) do
         local key = tostring(u.id)
         local was = tonumber(d.out[key])
         if was and now - was >= HOSP_OUT_DAYS * 1200 then d.out[key] = nil; was = nil end
@@ -1522,7 +1533,7 @@ function calm_burrow_status(txt)
                                     stress0 = m.cat0, stress = okc and cat or nil})
         end
     end
-    for _, u in ipairs(dfhack.units.getCitizens(true)) do
+    for _, u in ipairs(report_citizens(true)) do
         if in_tantrum(u) then
             out.tantrums = out.tantrums + 1
             if not d.members[tostring(u.id)] then
@@ -1584,7 +1595,7 @@ function calm_burrow_tick(max, days, dry_run, txt, release)
     local ids = calm_ai_ids(calm_by)
     local cands, people = {}, {}
     local hzones = hospital_zones()
-    for _, u in ipairs(dfhack.units.getCitizens(true)) do
+    for _, u in ipairs(report_citizens(true)) do
         local key = tostring(u.id)
         local was = tonumber(d.out[key])
         if was and now - was >= CALM_OUT_DAYS * 1200 then d.out[key] = nil; was = nil end

@@ -11,6 +11,17 @@
 --@module = true
 
 local U = reqscript('ai-util')      -- (13c) helpers shared by the modules
+
+-- (0.105.40 E3) inside a report, the report's one walk of the units
+-- (ai-util REPORT_CTX: the same units, same order); outside one, afresh
+local function report_citizens(...)
+    if U.REPORT_CTX and U.citizens then return U.citizens(...) end
+    return dfhack.units.getCitizens(...)
+end
+local function report_units()
+    if U.REPORT_CTX and U.units_active then return U.units_active() end
+    return df.global.world.units.active
+end
 -- (13c) the gear half: lua/ai-military-gear.lua (see the end of this file)
 -- (0.105.26) kept after the first lookup: reqscript finds the file again on
 -- every call (5-7 file checks on Windows), and the forwarders below call it
@@ -509,7 +520,7 @@ function report(txt)
     -- (0.104.159) soldiers with a baby (drafted before it came): {id, name, leader}
     pcall(function()
         local mothers = nursing_mothers()
-        for _, u in ipairs(dfhack.units.getCitizens(true)) do
+        for _, u in ipairs(report_citizens(true)) do
             if mothers[u.id] and u.military.squad_id ~= -1 then
                 out.soldier_mothers = out.soldier_mothers or {}
                 table.insert(out.soldier_mothers, {id = u.id, name = (txt or tostring)(dfhack.units.getReadableName(u)),
@@ -527,7 +538,7 @@ end
 function nursing_mothers()
     local out = {}
     pcall(function()
-        for _, u in ipairs(dfhack.units.getCitizens(true)) do
+        for _, u in ipairs(report_citizens(true)) do
             if dfhack.units.isBaby(u) then
                 local m = u.relationship_ids.Mother
                 if m and m ~= -1 then out[m] = true end
@@ -568,7 +579,7 @@ end
 local function candidates(strict)
     local out = {}
     local mothers = nursing_mothers()
-    for _, u in ipairs(dfhack.units.getCitizens(true)) do
+    for _, u in ipairs(report_citizens(true)) do
         if draftable(u, mothers, strict) then
             local combat, best = 0, 0
             local soul = u.status.current_soul
@@ -620,7 +631,7 @@ local function seat_holder(sq)
     local fort = U.fort_entity()
     for _, a in ipairs(fort and fort.positions.assignments or {}) do
         if a.id == sq.leader_assignment and a.histfig ~= -1 then
-            for _, u in ipairs(dfhack.units.getCitizens(true)) do
+            for _, u in ipairs(report_citizens(true)) do
                 if u.hist_figure_id == a.histfig then return seat_leader(u, sq) end
             end
         end
@@ -949,7 +960,7 @@ function make_squad(dry_run, txt)
     -- the leader: the office's holder, or the best fighter outside the squads
     local leader, appointed
     if best.histfig ~= -1 then
-        for _, u in ipairs(dfhack.units.getCitizens(true)) do
+        for _, u in ipairs(report_citizens(true)) do
             if u.hist_figure_id == best.histfig then leader = u end
         end
     else
@@ -1602,7 +1613,7 @@ local function test_spot()
     local cx, cy, cz
     if dep then cx, cy, cz = dep.centerx, dep.centery, dep.z
     else
-        for _, u in ipairs(dfhack.units.getCitizens(true)) do
+        for _, u in ipairs(report_citizens(true)) do
             local x, y, z = dfhack.units.getPosition(u)
             local okf, f = pcall(dfhack.maps.getTileFlags, x, y, z)
             if okf and f and f.outside then cx, cy, cz = x, y, z break end
@@ -1634,7 +1645,7 @@ end
 function spawn_test_threat(count, race, dry_run)
     count = math.max(1, math.min(10, count or 3))
     race = race or 'GOBLIN'
-    for _, u in ipairs(df.global.world.units.active) do
+    for _, u in ipairs(report_units()) do
         if dfhack.units.isActive(u) and not dfhack.units.isDead(u) and dfhack.units.isDanger(u)
                 and not dfhack.units.isHidden(u) then
             return {ok = false, rejected = true, error = 'there is already a threat on the map: no test now'}
@@ -1647,13 +1658,13 @@ function spawn_test_threat(count, race, dry_run)
     local okm, cu = pcall(reqscript, 'modtools/create-unit')
     if not okm then return {ok = false, error = 'DFHack has no modtools/create-unit: ' .. tostring(cu):sub(1, 120)} end
     local before = {}
-    for _, u in ipairs(df.global.world.units.active) do before[u.id] = true end
+    for _, u in ipairs(report_units()) do before[u.id] = true end
     local ok, err = pcall(cu.createUnit, race, nil, spot, {offset_x = 2, offset_y = 2, offset_z = 0}, 'Walkable',
                           nil, false, civ or -1, nil, nil, nil, nil, count, nil, nil, nil, nil,
                           {'marauder', 'active_invader', 'invader_origin'}, nil)
     if not ok then return {ok = false, error = 'create-unit failed: ' .. tostring(err):sub(1, 200)} end
     local made = {}
-    for _, u in ipairs(df.global.world.units.active) do
+    for _, u in ipairs(report_units()) do
         if not before[u.id] then table.insert(made, u.id) end
     end
     return {ok = true, spot = spot, race = race, count = #made, units = made, civ = civ}

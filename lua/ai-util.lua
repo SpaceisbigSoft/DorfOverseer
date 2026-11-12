@@ -23,6 +23,110 @@ function abs_tick(year, tick)
     return year * TICKS_PER_YEAR + tick
 end
 
+-- --- per-report shared walks (0.105.40, E3) ---------------------------------------
+--
+-- A full report walked the units dozens of times: each section (and each part
+-- of the threats, the military, the needs...) asked DFHack for the citizens
+-- or walked world.units.active itself. The game stands still for the length
+-- of one dfhack-run call, so one walk serves them all: the bridge's
+-- build_state sets REPORT_CTX here (report_begin) and clears it at the end
+-- (report_end). Outside a report (an action, a test) every call walks afresh,
+-- exactly as before. The lists hold the same units in the same order as the
+-- walk they replace; citizens() hands out a copy (a caller may sort it), the
+-- others are shared and read-only.
+REPORT_CTX = nil
+
+function report_begin(ctx)
+    REPORT_CTX = ctx or {}
+    REPORT_CTX.walks = REPORT_CTX.walks or {units = 0, items = 0, citizens = 0}
+    return REPORT_CTX
+end
+
+function report_end() REPORT_CTX = nil end
+
+-- `build()` once a report under `key` (outside one: every call). A build that
+-- throws is not kept.
+function report_memo(key, build)
+    local c = REPORT_CTX
+    if not c then return build() end
+    local m = c.memo
+    if not m then m = {}; c.memo = m end
+    local v = m[key]
+    if v == nil then
+        v = build()
+        if v == nil then m[key] = false else m[key] = v end
+        return v
+    end
+    if v == false then return nil end
+    return v
+end
+
+local function copy_list(l)
+    local out = {}
+    for i = 1, #l do out[i] = l[i] end
+    return out
+end
+
+-- dfhack.units.getCitizens(...), asked once a report for each set of arguments
+-- (a fresh copy to each caller).
+-- (Called with the caller's own arguments, as many as it gave.)
+function citizens(...)
+    local c = REPORT_CTX
+    if not c then return dfhack.units.getCitizens(...) end
+    c.citizens = c.citizens or {}
+    local key = select('#', ...) .. ':' .. tostring((...)) .. ':' .. tostring((select(2, ...)))
+    local l = c.citizens[key]
+    if not l then
+        l = dfhack.units.getCitizens(...)
+        c.citizens[key] = l
+        c.walks.citizens = c.walks.citizens + 1
+    end
+    return copy_list(l)
+end
+
+local function list_of(vec)
+    local out = {}
+    for _, v in ipairs(vec) do out[#out + 1] = v end
+    return out
+end
+
+-- world.units.active: the vector itself outside a report, a list of the same
+-- units (same order) walked once inside one.
+function units_active()
+    local c = REPORT_CTX
+    if not c then return df.global.world.units.active end
+    if not c.units_active then
+        c.units_active = list_of(df.global.world.units.active)
+        c.walks.units = c.walks.units + 1
+    end
+    return c.units_active
+end
+
+-- world.items.all, as units_active.
+function items_all()
+    local c = REPORT_CTX
+    if not c then return df.global.world.items.all end
+    if not c.items_all then
+        c.items_all = list_of(df.global.world.items.all)
+        c.walks.items = c.walks.items + 1
+    end
+    return c.items_all
+end
+
+-- A copy of a plain table (a decoded save record) all the way down: the same
+-- keys and values, the same metatables; a table met twice is copied once.
+function deep_copy(v, seen)
+    if type(v) ~= 'table' then return v end
+    seen = seen or {}
+    if seen[v] then return seen[v] end
+    local out = {}
+    seen[v] = out
+    for k, x in pairs(v) do out[deep_copy(k, seen)] = deep_copy(x, seen) end
+    local mt = getmetatable(v)
+    if mt ~= nil then setmetatable(out, mt) end
+    return out
+end
+
 -- The save's site data under `key`, or `default` when there is none, it
 -- can't be read, or (a table default) it isn't a table.
 function site_get(key, default)
@@ -93,7 +197,7 @@ DANGER_TILES = 20
 -- caged or chained captive.
 function danger_spots()
     local out = {}
-    local okl, active = pcall(function() return df.global.world.units.active end)
+    local okl, active = pcall(units_active)     -- (0.105.40) the report's one walk
     for _, u in ipairs(okl and active or {}) do
         local ok, bad = pcall(function()
             local Un = dfhack.units
