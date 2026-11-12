@@ -828,6 +828,12 @@ PLANNER_CONFIG = {
     "hauling_add_cooldown_ticks": 1200,
     "hauling_relieve_cooldown_ticks": 7 * 1200,
     "hauling_back_cooldown_ticks": 3 * 1200,
+    # (0.105.40b fix) the AI's own detail shrinks: while haulers > wanted +
+    # hauling_relieve_margin for hauling_shrink_days, up to hauling_shrink_max
+    # of the dwarves it added (a week or more on it) taken off a call
+    "hauling_shrink_days": 7,
+    "hauling_shrink_max": 2,
+    "hauling_shrink_cooldown_ticks": 3 * 1200,
     # (0.105.40b, M6) the food store (brain/planner_food.py): a roofed food pile
     # taking barrels within reach of each kitchen and still, sized to the fort
     "food_store_min_citizens": 7,

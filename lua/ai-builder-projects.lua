@@ -57,7 +57,9 @@ function save_projects(data)
             closed = closed + 1
             if closed > KEEP_CLOSED_PROJECTS then
                 for _, a in ipairs(project_areas(p)) do
-                    table.insert(data.old_areas, {x1 = a.x1, y1 = a.y1, x2 = a.x2, y2 = a.y2, z = a.z})
+                    -- (0.105.40b fix) a well's outline marked: ai-insane leaves its doors to the well's rules
+                    table.insert(data.old_areas, {x1 = a.x1, y1 = a.y1, x2 = a.x2, y2 = a.y2, z = a.z,
+                                                  well = p.kind == 'well' or nil})
                 end
                 if p.phase == 'done' then data.dropped_done = data.dropped_done + 1 end
                 table.remove(data.list, i)

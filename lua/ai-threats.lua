@@ -1120,6 +1120,43 @@ local function cell_room(pos, taken)
     return best, best and 'bedroom' or nil
 end
 
+-- (0.105.40b fix) The doors ai-insane holds locked for the insane: {id = true}.
+local function insane_held()
+    local ok, ids = pcall(function() return reqscript('ai-insane').held_ids() end)
+    return ok and type(ids) == 'table' and ids or {}
+end
+
+-- (0.105.40b fix) The doors and hatches the threats rules hold or could
+-- need: the werebeast cells' (those they locked, and every door of a cell's
+-- room), the cavern seal's (locked, or shut by their lever), the openings on
+-- record (the ways down to the caverns the seal locks), and the entrances'
+-- the gate watcher holds shut now. ai-insane never locks one of these, and
+-- never unlocks one it held that has become one of these.
+function claimed_doors()
+    local d = load_state()
+    local out = {}
+    for _, c in pairs(d.cells) do
+        if type(c) == 'table' then
+            for _, id in ipairs(type(c.doors) == 'table' and c.doors or {}) do out[tonumber(id) or id] = true end
+            pcall(function()
+                local z = c.zone and zone_by_id(c.zone)
+                if z then for id in pairs(zone_doors(z)) do out[id] = true end end
+            end)
+        end
+    end
+    for id in pairs(seal_holds(d).ids) do out[id] = true end
+    for _, o in pairs(d.openings) do
+        if type(o) == 'table' and o.x and o.y and o.z then
+            pcall(function()
+                local b = dfhack.buildings.findAtTile(xyz2pos(o.x, o.y, o.z))
+                if b then out[b.id] = true end
+            end)
+        end
+    end
+    for id in pairs(watcher_held()) do out[id] = true end
+    return out
+end
+
 -- Werebeasts in cells for the full moon: each id given gets a burrow on its
 -- room (a jail, else a free bedroom); once the dwarf is inside, the room's
 -- doors are locked. release: unlocked (only the doors the AI locked), the
@@ -1210,6 +1247,7 @@ function moon_cell(ids, release, dry_run, txt)
                     if in_zone(z, u.pos.x, u.pos.y, u.pos.z) and other_in_zone(z, u.id) then
                         table.insert(out.waiting, name_of(u, txt))       -- (0.105.0 review) someone else inside
                     elseif in_zone(z, u.pos.x, u.pos.y, u.pos.z) then
+                        local insane = insane_held()
                         for id, b in pairs(zone_doors(z)) do
                             local okf, f = pcall(function() return b.door_flags.forbidden end)
                             if okf and not f then
@@ -1217,6 +1255,10 @@ function moon_cell(ids, release, dry_run, txt)
                                     b.door_flags.forbidden = true
                                     table.insert(c.doors, id)
                                 end
+                            elseif okf and insane[id] and not dry_run then
+                                -- (0.105.40b fix) locked by ai-insane already: the cell's now
+                                -- (ai-insane drops it without opening it)
+                                table.insert(c.doors, id)
                             end
                         end
                         if not dry_run then c.locked = true end
@@ -1360,6 +1402,7 @@ function seal_cavern(layer, tiles, open, dry_run, z1, z2, openings)
     -- (0.105.26 seal fix) one the gate watcher already holds shut goes on
     -- the record too, so the watcher doesn't open it while the beast is about
     local watched = watcher_held()
+    local insane = insane_held()      -- (0.105.40b fix) ai-insane's locks: the seal's now
     for id, b in pairs(found) do
         local lever = own_lever(id)
         if lever then
@@ -1395,7 +1438,7 @@ function seal_cavern(layer, tiles, open, dry_run, z1, z2, openings)
                 n = n + 1
             elseif okf then
                 already = already + 1
-                if watched[id] and not have[id] then
+                if (watched[id] or insane[id]) and not have[id] then
                     if not dry_run then table.insert(rec.ids, id); have[id] = true end
                     adopted = adopted + 1
                 end
