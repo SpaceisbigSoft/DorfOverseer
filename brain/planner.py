@@ -56,6 +56,7 @@ from planner_hauling import _hauling_labor_rule, note_hauling  # noqa: E402  (0.
 from planner_food import _food_store_rule, note_food  # noqa: E402  (0.105.40b, M6) the food store
 from planner_food import note_food_level  # noqa: E402  (fix41) a food storage level booked per kitchen/still
 from planner_nobles import _noble_value_rule, nobles_view, noble_room_plan  # noqa: E402,F401  (0.105.41) nobles' room values
+from planner_piles import _pile_links_rule  # noqa: E402  (0.105.41, item 2) wheelbarrows and feeder links
 from planner_alloys import _alloy_rule  # noqa: E402  (0.105.40 M7) bronze for a fort without iron, value alloys
 from planner_deep import _deep_hazard_rule  # noqa: E402  (0.105.40b) adamantine and the underworld: never dug
 from planner_construct import (_hall_rule, _construction_blocks_rule,  # noqa: E402  (0.105.30) construction
@@ -824,6 +825,10 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
     # (0.105.40b, M6) a roofed food pile with barrels near the kitchen and still
     if "food_store" not in errors:
         _guard(_food_store_rule, s, cfg, proposals, notes, memory)
+    # (0.105.41, item 2) wheelbarrows for the AI's stone piles (after the hauling
+    # rule: not ordered twice), its feeders linked to its workshops
+    if "pile_links" not in errors:
+        _guard(_pile_links_rule, s, cfg, citizens, proposals, rules_)
     # (0.100.1, overnight run) any workshops level another rule starts (a well's
     # parts, the metal works, a bottleneck) brings the missing still, kitchen
     # and carpenter's with it

@@ -859,6 +859,20 @@ PLANNER_CONFIG = {
     "food_store_cooldown_ticks": 3 * 1200,
     "food_barrels_cooldown_ticks": 1200,
     "food_store_level_cooldown_ticks": 28 * 1200,
+    # (0.105.41, item 2) wheelbarrows for the AI's stone piles, feeders linked (brain/planner_piles.py)
+    "barrow_pile_min_tiles": 4,           # an AI stone pile this big at least takes wheelbarrows...
+    "barrow_tiles_per": 12,               # ...one per this many tiles...
+    "barrow_pile_max": 2,                 # ...at most this many (and its tiles - 1, as quickfort sets)
+    "barrow_ai_min": 2,                   # the AI's piles take this many wheelbarrows in all at least...
+    "barrow_citizens_per": 10,            # ...or one per this many citizens, if more
+    "barrow_order_max": 3,                # wheelbarrows ordered at once for the piles' unmet want
+    "barrow_order_wood_min": 10,          # wood in stock before they're ordered
+    "barrows_cooldown_ticks": 1200,
+    "barrow_order_cooldown_ticks": 7 * 1200,
+    "feeder_link_cooldown_ticks": 1200,
+    "feeder_links_only": True,            # a linked feeder fed from the AI's bigger pile of its kind takes from links only
+    "feeder_starve_days": 2,              # a linked feeder empty this many days while its workshop has work: unlinked
+    "feeder_idle_days": 4,                # a linked workshop with work and nobody at it this many days: unlinked
     # (0.105.40 M7) alloys at the smelter (brain/planner_alloys.py)
     "alloy_iron_route_bars": 10,          # iron, pig iron and steel bars that make a fort an iron fort (no bronze for gear)
     "alloy_bronze_want": 40,              # bronze and bismuth bronze bars made while there are fewer than this

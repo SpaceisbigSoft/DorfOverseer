@@ -505,6 +505,8 @@ def player_rules(s: dict) -> dict:
             "open_caverns": open_caverns_mode(st.get("open_caverns")),
             # (0.105.0) the squads wait in the shelter while the AI hides: off only when the settings say so
             "squads_shelter": st.get("squads_shelter") is not False,
+            # (0.105.41, item 2) the AI's feeder piles linked to the AI's own workshops: off only when the settings say so
+            "link_feeders": st.get("link_feeders") is not False,
             # (0.105.27) forbidden items: store < melt < dump < destroy (each does the ones before);
             # the player's own forbidden items (no game reason) only when the switch says so; the
             # enemy's gear kept from the smelters (the War-hold preset)
@@ -1499,7 +1501,8 @@ REFUSAL_KEYS = ("type", "kind", "recipe", "job", "entrance_id", "project_id", "n
                 "lever_id", "target_id", "tool", "unit_id",      # (0.103.12) unit_id: one dwarf's refusal isn't another's
                 "zone_id", "order_id", "location_id",            # (0.104.81) nor one zone's, order's or location's
                 "building_id",                                   # (0.104.138) nor one workshop's feeder another's
-                "accept")                                        # (0.105.9) declining isn't agreeing
+                "accept",                                        # (0.105.9) declining isn't agreeing
+                "pile_id")                                       # (0.105.41, item 2) nor one pile's barrows or link another's
 
 
 # (v35 fix) labour rules that add dwarves every cooldown while their need

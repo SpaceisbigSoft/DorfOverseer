@@ -737,6 +737,8 @@ function place_feeder(building_id, dry_run)
     if dry_run then return out end
     -- (0.105.40b, M6) the kitchen's and still's food pile is the AI's own (its barrels set)
     if f.flag == 'food' then pcall(function() reqscript('ai-food-store').remember(r.x, r.y, r.z) end) end
+    -- (0.105.41, item 2) every feeder booked as the AI's own, with its workshop (ai-pile-links)
+    pcall(function() reqscript('ai-pile-links').remember_feeder(r.x, r.y, r.z, b.id, kind, f.flag) end)
     return out
 end
 

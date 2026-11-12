@@ -3288,3 +3288,23 @@ function act_food_barrels(a)
     if not n then return reject('food_barrels: barrels is 0-100') end
     return reqscript('ai-food-store').food_barrels({pile_id = id, barrels = n}, a.dry_run == true)
 end
+
+-- (0.105.41, item 2) Wheelbarrows and feeder links (lua/ai-pile-links.lua):
+-- an AI stone pile's max wheelbarrows; an AI feeder pile linked to its
+-- workshop (links_only: fed from the AI's bigger pile of its kind, taking
+-- from links only), or unlinked. Never the player's piles or workshops.
+function act_pile_barrows(a)
+    local id = whole_number(a.pile_id)
+    if not id then return reject('pile_barrows needs pile_id') end
+    local n = int_in(a.barrows, 0, 10)
+    if not n then return reject('pile_barrows: barrows is 0-10') end
+    return reqscript('ai-pile-links').set_barrows({pile_id = id, barrows = n}, a.dry_run == true)
+end
+
+function act_feeder_link(a)
+    local id = whole_number(a.pile_id)
+    if not id then return reject('feeder_link needs pile_id (an AI feeder pile)') end
+    if a.unlink == true and a.links_only == true then return reject('feeder_link: unlink or links_only, not both') end
+    return reqscript('ai-pile-links').link_feeder({pile_id = id, unlink = a.unlink == true,
+                                                   links_only = a.links_only == true}, a.dry_run == true)
+end

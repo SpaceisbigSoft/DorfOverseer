@@ -363,6 +363,9 @@ ACTIONS = {
     -- (0.105.40b, M6) the food store: a food pile near the kitchen and still, its barrels (lua/ai-food-store.lua)
     food_pile = act_food_pile,
     food_barrels = act_food_barrels,
+    -- (0.105.41, item 2) wheelbarrows for the AI's stone piles, its feeders linked to their workshops (lua/ai-pile-links.lua)
+    pile_barrows = act_pile_barrows,
+    feeder_link = act_feeder_link,
     -- (D0) the Design track: a landmark's sites, its drawing built, its next stage (ai-bridge-design.lua)
     blueprint_sites = act_blueprint_sites,
     build_blueprint = act_build_blueprint,
@@ -423,6 +426,7 @@ for _, name in ipairs({
     'add_haulers', 'relieve_haulers',   -- (0.105.40 M5) each dry run names the dwarves and changes nothing
     -- (0.105.40b, M6) the food store: each dry run finds the spot (quickfort's dry run) and changes nothing
     'food_pile', 'food_barrels',
+    'pile_barrows', 'feeder_link',   -- (0.105.41, item 2) each dry run checks the pile and changes nothing
 }) do DRY_OK[name] = true end
 
 -- These only change what's displayed, so they still work while halted, dry
@@ -488,8 +492,9 @@ end
 BRIDGE_MODULES = {
     'ai-blueprints', 'ai-builder', 'ai-camera', 'ai-census', 'ai-cleanup', 'ai-constructions', 'ai-diplomacy', 'ai-disposal', 'ai-food-store', 'ai-gates', 'ai-hauling', 'ai-health', 'ai-homes',
     'ai-industry', 'ai-insane', 'ai-joins', 'ai-labor', 'ai-layouts', 'ai-military', 'ai-military-gear',
-    'ai-mission-send', 'ai-missions', 'ai-moods', 'ai-noble-demands', 'ai-nobles', 'ai-overlay', 'ai-overseer-settings',
-    'ai-ping', 'ai-reports', 'ai-society', 'ai-society-burrows', 'ai-status', 'ai-threats', 'ai-title',
+    'ai-mission-send', 'ai-missions', 'ai-moods', 'ai-noble-demands', 'ai-nobles', 'ai-overlay',
+    'ai-overseer-settings', 'ai-pile-links', 'ai-ping', 'ai-reports', 'ai-society', 'ai-society-burrows',
+    'ai-status', 'ai-threats', 'ai-title',
     'ai-trade', 'ai-util', 'ai-water', 'ai-waterworks', 'gui/ai-overseer',
 }
 -- the split-off modules that carry a version mark of their own
@@ -872,6 +877,9 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
     -- fullness, the AI's own), the kitchens and stills, the food lying out of
     -- piles and barrels and the rotten (lua/ai-food-store.lua; cached a day)
     food_store = function() return safe(function() return reqscript('ai-food-store').report() end) end,
+    -- (0.105.41, item 2) the wheelbarrows (owned, held by piles, wanted), the
+    -- AI's stone piles and its feeder piles' links (lua/ai-pile-links.lua; cached a day)
+    pile_links = function() return safe(function() return reqscript('ai-pile-links').report() end) end,
     -- (0.105.30) what the fort has built: finished constructions by shape and
     -- material, above or below ground, roofed surface tiles, the waiting ones
     -- and the AI's own (lua/ai-constructions.lua; one pass, every 3 days)
@@ -910,6 +918,7 @@ SECTION_CACHE_DAYS = {logistics = 3, industry = 7,   -- industry: 300-450 ms liv
 SECTION_CACHE_DAYS.constructions = 3   -- (0.105.30) every built tile walked once
 SECTION_CACHE_DAYS.food_store = 1      -- (0.105.40b, M6) every food item walked once
 SECTION_CACHE_DAYS.noble_demands = 1   -- (0.105.41) the engravings walked once
+SECTION_CACHE_DAYS.pile_links = 1      -- (0.105.41, item 2) every tool and the AI's piles walked once
 SECTION_REBUILDS = 2       -- expired cached sections rebuilt in one report (a missing one always is)
 -- (0.100) the cached sections each action changes (cleared when it succeeds)
 CACHE_INVALIDATES = {
@@ -951,9 +960,11 @@ CACHE_INVALIDATES.cleanup_units = {'disposal'}
 CACHE_INVALIDATES.cleanup_dead_units = {'disposal', 'dead'}
 CACHE_INVALIDATES.food_pile = {'food_store', 'logistics'}   -- (0.105.40b, M6) the new pile read again
 CACHE_INVALIDATES.food_barrels = {'food_store'}
+CACHE_INVALIDATES.pile_barrows = {'pile_links'}   -- (0.105.41, item 2)
+CACHE_INVALIDATES.feeder_link = {'pile_links'}
 -- (fix41) a kitchen's or still's feeder pile is a food pile, and a storage
 -- level's furnish step lays its food piles: the food store read again
-CACHE_INVALIDATES.feeder_pile = {'logistics', 'food_store'}
+CACHE_INVALIDATES.feeder_pile = {'logistics', 'food_store', 'pile_links'}
 CACHE_INVALIDATES.furnish_project = {'registry', 'locations', 'noble_rooms', 'food_store'}
 CACHE_INVALIDATES.polish_room = {'noble_demands'}   -- (0.105.41)
 for _, name in ipairs({'give_room', 'place_in_zone', 'furnish_project', 'house_dwarves'}) do

@@ -482,6 +482,8 @@ SHORT_WORDS = {
     "feeder_pile": "put a feeder stockpile beside a workshop",
     "food_pile": "put a food stockpile with barrels near the kitchen and still",   # (0.105.40b, M6)
     "food_barrels": "let the AI's food stockpile take barrels",
+    "pile_barrows": "let the AI's stone stockpile take wheelbarrows",   # (0.105.41, item 2)
+    "feeder_link": "link the AI's feeder stockpile to its workshop",
     "squad_barracks": "give a squad its barracks",
     "open_trade": "open the trade screen at the depot",
     "close_trade": "close the trade screen",
