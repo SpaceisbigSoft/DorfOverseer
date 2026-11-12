@@ -41,6 +41,7 @@ from planner import (NEEDS_YOU, PLANNER_CONFIG, TICKS_PER_YEAR, Memory, abs_tick
 from planner_society import note_heists  # noqa: E402  (0.105.24)
 from planner_moods import mood_journal  # noqa: E402  (0.105.30)
 from planner_missions import mission_journal  # noqa: E402  (0.105.39)
+from planner_cleanup import CLEANUP_ACTIONS, cleanup_journal, cleanup_words  # noqa: E402  (0.105.40)
 from planner_threats import note_intrusions  # noqa: E402  (0.105.30 live fixes)
 import atlas  # noqa: E402
 import backup  # noqa: E402
@@ -375,7 +376,9 @@ def proposal_id(p) -> str:
 CAMERA_QUIET = {"census", "join_levels", "dismiss_alerts", "sand_zone", "report_status", "survey_water", "scan_entrances", "recreation", "hospital_burrow",
                 "calm_burrow",   # (0.104.169)
                 "cistern_step", "water_work", "restrict_water", "save_memory", "pair_chairs", "approve_orders",
-                "blueprint_sites"}   # (D0) looks for sites, changes no tile
+                "blueprint_sites",   # (D0) looks for sites, changes no tile
+                # (0.105.40) world cleanup: nothing to look at
+                "cleanup_items", "cleanup_units", "cleanup_spatter", "cleanup_dead_units"}
 
 
 _CAMERA_LEVELS: list = []   # (0.104.91) the newest "dig a new ... level" lines, while the keeper runs
@@ -507,6 +510,11 @@ SHORT_WORDS = {
     "clear_webs": "clear the spider webs",  # (0.104.116)
     "remove_webs": "remove spider webs far from the fort",  # (0.105.3)
     "scrub_dead_units": "clear old dead creatures from the game's unit list",  # (0.104.158)
+    # (0.105.40, 13e) world cleanup (brain/planner_cleanup.py)
+    "cleanup_items": "delete items no dwarf has reached for a year",
+    "cleanup_units": "remove creatures no dwarf can reach (a season out of reach)",
+    "cleanup_spatter": "clean blood and spatter off the map",
+    "cleanup_dead_units": "take long-dead creatures off the game's active list",
     "census": "count what fills the map",  # (0.104.113)
     "seal_well_stairs": "close the cavern wells' stair columns",  # (0.104.151)
     "join_levels": "join areas on one level that meet only through the stairs",  # (0.104.108)
@@ -987,6 +995,8 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
             journal({"kind": "mood", "fort": key, "date": state["date"], **e})
         for e in mission_journal(memory):         # (0.105.39) missions out and back (planner_missions)
             journal({"kind": "mission", "fort": key, "date": state["date"], **e})
+        for e in cleanup_journal(memory):         # (0.105.40) what the world cleanup found and removed
+            journal({"kind": "cleanup", "fort": key, "date": state["date"], **e})
         note_tantrums(state, memory, events)     # (0.104.31) tantrums counted for the jail
         note_heists(state, memory, events)       # (0.105.24) heists and visitors' killings: visitors kept out a while
         note_intrusions(state, memory, events)   # (0.105.30) DF's invasion records: the alarm before a thief strikes
@@ -1147,6 +1157,10 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
                         except DFHackError as e:
                             say(f"  could not save the game first ({e}); not starting the new level")
                         continue
+                if acting and p.action["type"] in CLEANUP_ACTIONS and not p.action.get("dry_run"):
+                    # (0.105.40) a journal line before anything is deleted from the world
+                    journal({"kind": "cleanup", "fort": key, "date": state["date"], "rule": p.rule,
+                             "reason": p.reason, "action": p.action, "text": cleanup_words(p.action)})
                 if acting:
                     try:
                         r = bridge.act(p.action)

@@ -19,7 +19,7 @@ planner_moods, planner_visitors, planner_health and planner_locations from
 society; planner_farms, planner_labor, planner_trade and planner_orders from
 industry; planner_gates from military. Later parts: planner_care,
 planner_homes, planner_water, planner_threats, planner_world, planner_army,
-planner_missions.
+planner_missions, planner_cleanup.
 """
 
 from __future__ import annotations
@@ -48,6 +48,7 @@ from planner_threats import _threat_rules, unseen_intrusion, alarm_held  # noqa:
 from planner_world import (_contact_rule, _export_rule, _hostile_trade_filter, _meeting_answer_rule,  # noqa: E402
                            _messenger_rule, _world_notes, note_world)  # (0.105.0: the world outside, 12b and 13b)
 from planner_missions import _mission_rule, note_missions  # noqa: E402  (0.105.39) missions on the world map
+from planner_cleanup import _world_cleanup_rule, note_cleanup  # noqa: E402  (0.105.40) world cleanup for the game's speed
 from planner_construct import (_hall_rule, _construction_blocks_rule,  # noqa: E402  (0.105.30) construction
                                note_construct, note_construct_cycle)
 from planner_army import (_army_gear_rule, _quiver_rule, _bolts_rule, _flask_rule,  # noqa: E402  (0.105.0, round 2)
@@ -790,6 +791,10 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
     # (0.105.27) forbidden items stored, melted, dumped or destroyed (after the
     # clutter rules: worn clothes they rot this cycle aren't marked for the dump)
     _guard(_disposal_rules, s, cfg, proposals, notes, memory, rules_)
+    # (0.105.40, 13e) what no dwarf can clean up (unreachable items and
+    # creatures, spatter, old dead units), past its thresholds
+    if "cleanup" not in errors:
+        _guard(_world_cleanup_rule, s, cfg, proposals, notes, memory, rules_)
     # (0.100.1, overnight run) any workshops level another rule starts (a well's
     # parts, the metal works, a bottleneck) brings the missing still, kitchen
     # and carpenter's with it
@@ -1095,6 +1100,7 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
         note_construct(p, r, state, memory, now)           # (0.105.30) wings, seals, soil floors, the hall
         note_reserve_swap(p, r, state, memory)             # (0.105.31 reserve fixes) a fibre swap that did nothing
         note_gate_stuck(p, r, state, memory, now)          # (0.105.32) the unstick step tried, a way dug in
+        note_cleanup(p, r, state, memory, now)             # (0.105.40) a cleanup's trial done, what it removed
         try:
             note_design(p, r, state, memory, now)          # (D0) sites kept, a landmark's refusals and fallback
         except Exception:  # noqa: BLE001  (the design record never stops the cycle's record)

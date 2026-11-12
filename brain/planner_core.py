@@ -172,6 +172,7 @@ class Memory:
     tree_year: dict = field(default_factory=dict)        # (0.89) {year, base}: trees_removed when the game year began
     world_seen: dict = field(default_factory=dict)       # (0.105.0) grudges (civs that besieged us), export wishes, contact said
     missions_seen: dict = field(default_factory=dict)    # (0.105.39) missions followed out and back, counts, journal entries
+    cleanup_seen: dict = field(default_factory=dict)     # (0.105.40) world cleanup: the dry runs done per kind, the counts removed
     polished_upto: int | None = None                     # finished-level count when every level was found polished
     no_effect: dict = field(default_factory=dict)        # (0.105.24) action key -> {reason, n, tick}: done for the same reason again
     story_season: str = ""                                # the last season the AI-written chronicle told ("y<year> <season>")
@@ -504,6 +505,10 @@ def player_rules(s: dict) -> dict:
             "disposal": st.get("disposal") if st.get("disposal") in DISPOSAL_LEVELS else "destroy",
             "disposal_player_items": st.get("disposal_player_items") is True,
             "keep_enemy_gear": st.get("keep_enemy_gear") is True,
+            # (0.105.40, 13e) world cleanup for the game's speed (brain/planner_cleanup.py):
+            # off / safe (the default: spatter, old dead units, items lost a year) / full (and
+            # unreachable hostile or wild creatures)
+            "world_cleanup": st.get("world_cleanup") if st.get("world_cleanup") in ("off", "safe", "full") else "safe",
             "clear_alerts": st.get("clear_alerts") if st.get("clear_alerts") in ("all", "quiet", "none") else "quiet"}
 
 

@@ -767,4 +767,30 @@ PLANNER_CONFIG = {
     "mission_retry_ticks": 403200,      # a World-screen run for a goal that stopped: not tried again for a year
     "mission_sent_wait_ticks": 100800,  # a mission sent: not proposed again for a season while its controller shows
     "mission_cooldown_ticks": 7 * 1200,  # the mission rule's proposals a week apart
+    # (0.105.40, 13e) world cleanup (brain/planner_cleanup.py), only past these
+    # counts; while the game runs slowly each threshold is divided by
+    # cleanup_slow_factor, and the item one grows with the items on the map
+    "cleanup_slow_factor": 4,
+    "cleanup_spatter_min": 20000,         # spatter events outside the fort's areas: cleaned past this...
+    "cleanup_spatter_all_min": 100000,    # ...and inside too, only while slow, past this many in all
+    "cleanup_spatter_budget_ms": 150,     # ...a call's walk of the map's blocks at most
+    "cleanup_dead_min": 400,              # dead units long dead and unreferenced on the active list
+    "cleanup_dead_age_ticks": 403200,     # ...dead this long at least (a year)
+    "cleanup_items_min": 4000,            # items no citizen has reached for a year: deleted past this...
+    "cleanup_items_share": 0.08,          # ...or past this share of the items on the map, the larger
+    "cleanup_items_age_ticks": 403200,    # ...unreachable this long at least (a year)
+    "cleanup_items_batch": 500,           # ...oldest first, this many a call
+    "cleanup_units_min": 40,              # (Rules full) hostile or wild creatures unreachable a season
+    "cleanup_units_age_ticks": 100800,    # ...unreachable this long at least (a season)
+    "cleanup_units_batch": 50,            # ...this many a call
+    # the rules' pace (select() reads <rule>_cooldown_ticks): a trial dry run
+    # first per kind, then the real call; a batch a day while more is left
+    "cleanup_spatter_cooldown_ticks": 7 * 1200,
+    "cleanup_dead_cooldown_ticks": 28 * 1200,
+    "cleanup_items_cooldown_ticks": 1200,
+    "cleanup_units_cooldown_ticks": 7 * 1200,
+    "cleanup_spatter_dry_cooldown_ticks": 1200,
+    "cleanup_dead_dry_cooldown_ticks": 1200,
+    "cleanup_items_dry_cooldown_ticks": 1200,
+    "cleanup_units_dry_cooldown_ticks": 1200,
 }

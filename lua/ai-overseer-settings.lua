@@ -204,10 +204,21 @@ MISSION_GOALS = {off = {}, rescue = {'rescue', 'recover_artifact'},
                  explore = {'rescue', 'recover_artifact', 'explore'},
                  all = {'rescue', 'recover_artifact', 'explore', 'raid', 'pillage', 'tribute', 'conquer'}}
 MISSION_HELP = 'rescue: citizens, artifacts; explore: + ruins; all: + raids, pillage, tribute, conquest (war)'
+-- (0.105.40, 13e) world cleanup (lua/ai-cleanup.lua, brain/planner_cleanup.py):
+-- what no dwarf can clean up, taken off the map past the AI's thresholds.
+-- off: nothing; safe (the default): spatter, old dead-unit records and items
+-- no citizen has reached for a year; full: and hostile or wild creatures no
+-- citizen can reach for a season. Never artifacts, named, owned, stored or
+-- the player's things; never citizens, pets, visitors, prisoners or
+-- historical figures.
+WORLD_CLEANUP_CHOICES = {'off', 'safe', 'full'}
+WORLD_CLEANUP_NAMES = {off = 'off', safe = 'safe: spatter, dead, lost items',
+                       full = 'full: and unreachable foes'}
 -- (0.105.27) the cycles set_rules may set from outside the window (key -> choices)
 RULE_CHOICES = {disposal = DISPOSAL_CHOICES, open_caverns = OPEN_CAVERNS_CHOICES,
                 design = DESIGN_MODES, landmark_pace = LANDMARK_PACES,    -- (D0)
-                missions = MISSION_CHOICES}                               -- (0.105.39)
+                missions = MISSION_CHOICES,                               -- (0.105.39)
+                world_cleanup = WORLD_CLEANUP_CHOICES}                    -- (0.105.40)
 GEAR_WEAPONS = {'axe', 'spear', 'mace'}
 GEAR_WEAPON_NAMES = {axe = 'battle axes', spear = 'spears', mace = 'maces'}
 OPTIONAL_LEVELS = {
@@ -334,6 +345,8 @@ function defaults()
         disposal = 'destroy',
         disposal_player_items = false,
         keep_enemy_gear = false,
+        -- (0.105.40, 13e) world cleanup for the game's speed (WORLD_CLEANUP_CHOICES)
+        world_cleanup = 'safe',
         -- (0.105.0) water works: a moat from the river (only where one is found), magma workshops, a muddied farm level
         moat = true, magma_workshops = true, irrigation = true,
         -- (0.105.4 review) a cavern well may break into a cavern layer the dwarves
@@ -441,6 +454,7 @@ function sanitize(s)
     out.disposal = one_of(s.disposal, DISPOSAL_CHOICES, d.disposal)       -- (0.105.27)
     out.open_caverns = open_caverns_choice(s.open_caverns)               -- (v35 fix) three-state
     out.missions = one_of(s.missions, MISSION_CHOICES, d.missions)        -- (0.105.39)
+    out.world_cleanup = one_of(s.world_cleanup, WORLD_CLEANUP_CHOICES, d.world_cleanup)   -- (0.105.40)
     for _, k in ipairs({'wipe_learned', 'wipe_learned_all'}) do
         local n = math.tointeger(tonumber(s[k]))
         out[k] = (n and n >= 0) and n or 0
@@ -531,6 +545,7 @@ function for_ai(s)
         disposal = s.disposal,                     -- (0.105.27)
         disposal_player_items = s.disposal_player_items,
         keep_enemy_gear = s.keep_enemy_gear,
+        world_cleanup = s.world_cleanup,           -- (0.105.40) off | safe | full
         moat = s.moat, magma_workshops = s.magma_workshops, irrigation = s.irrigation,   -- (0.105.0)
         open_caverns = s.open_caverns,             -- (0.105.4 review)
         squads_shelter = s.squads_shelter,         -- (0.105.0)

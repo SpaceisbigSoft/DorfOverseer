@@ -566,6 +566,23 @@ function RulesPage:init()
         initial_option = S.open_caverns_choice(p.settings.open_caverns),
         on_change = function(v) p:set_field('open_caverns', v) end,
     })
+    -- (0.105.40, 13e) world cleanup for the game's speed: the right-hand column's
+    -- free row t (beside "Order barrels...", under the calm burrow's help line)
+    table.insert(views, widgets.CycleHotkeyLabel{
+        view_id = 'world_cleanup',
+        frame = {t = t, l = 62, w = 56},
+        label = 'World cleanup (speed):',
+        label_width = 23,
+        options = (function()
+            local out = {}
+            for _, m in ipairs(S.WORLD_CLEANUP_CHOICES) do
+                table.insert(out, {label = S.WORLD_CLEANUP_NAMES[m], value = m})
+            end
+            return out
+        end)(),
+        initial_option = S.WORLD_CLEANUP_NAMES[p.settings.world_cleanup] and p.settings.world_cleanup or 'safe',
+        on_change = function(v) p:set_field('world_cleanup', v) end,
+    })
     table.insert(views, widgets.ToggleHotkeyLabel{
         view_id = 'expel_vampires',
         frame = {t = t + 8, l = 0, w = 60},
@@ -829,6 +846,7 @@ function RulesPage:refresh()
         self.subviews[k]:setOption(s[k] ~= false, false)
     end
     self.subviews.open_caverns:setOption(S.open_caverns_choice(s.open_caverns), false)   -- (v35 fix) three-state
+    self.subviews.world_cleanup:setOption(S.WORLD_CLEANUP_NAMES[s.world_cleanup] and s.world_cleanup or 'safe', false)   -- (0.105.40)
     self.subviews.engrave_slabs:setOption(s.engrave_slabs, false)
     self.subviews.import_smelting:setOption(s.import_smelting, false)
     self.subviews.alert_shelter:setOption(s.alert_shelter, false)

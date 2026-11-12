@@ -321,7 +321,8 @@ def shown_rules(proposals: list | None, recent_decisions: list | None) -> set:
 
 # (0.105.39) Rules keys named only once the player changes them: the review
 # can't send a mission (nor raise the rule), and the line stays as it was
-QUIET_AT_DEFAULT = {"missions": "rescue", "send_missions": False}
+QUIET_AT_DEFAULT = {"missions": "rescue", "send_missions": False,
+                    "world_cleanup": "safe"}     # (0.105.40) the review has no cleanup to steer
 
 # (v35 fix) three-state Rules switches: "ai" (the AI decides), "always", "never"
 THREE_STATE = {"open_caverns": {"ai": "AI decides", "always": "always", "never": "never"}}

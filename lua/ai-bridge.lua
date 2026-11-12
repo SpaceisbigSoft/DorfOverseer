@@ -331,6 +331,11 @@ ACTIONS = {
     empty_dump = act_empty_dump,
     set_standing_orders = act_set_standing_orders,
     place_dump = act_place_dump,
+    -- (0.105.40, 13e) world cleanup: what no dwarf can clean up (lua/ai-cleanup.lua)
+    cleanup_items = act_cleanup_items,
+    cleanup_units = act_cleanup_units,
+    cleanup_spatter = act_cleanup_spatter,
+    cleanup_dead_units = act_cleanup_dead_units,
     -- (D0) the Design track: a landmark's sites, its drawing built, its next stage (ai-bridge-design.lua)
     blueprint_sites = act_blueprint_sites,
     build_blueprint = act_build_blueprint,
@@ -384,6 +389,8 @@ for _, name in ipairs({
     'unmark_project_dig',   -- (0.105.35) its dry run counts the marked tiles and changes nothing
     -- (D0) each checks the drawing (and quickfort's dry run) before it designates or places anything
     'build_blueprint', 'landmark_step',
+    -- (0.105.40) world cleanup: each dry run counts and returns before it removes anything
+    'cleanup_items', 'cleanup_units', 'cleanup_spatter', 'cleanup_dead_units',
 }) do DRY_OK[name] = true end
 
 -- These only change what's displayed, so they still work while halted, dry
@@ -442,7 +449,7 @@ end
 -- `--@ module = true`, but this one and the parts, which are no modules);
 -- `modules` loads each. tests/test_fix26_bridge.py keeps it in step with lua/.
 BRIDGE_MODULES = {
-    'ai-blueprints', 'ai-builder', 'ai-camera', 'ai-census', 'ai-constructions', 'ai-diplomacy', 'ai-disposal', 'ai-gates', 'ai-health', 'ai-homes',
+    'ai-blueprints', 'ai-builder', 'ai-camera', 'ai-census', 'ai-cleanup', 'ai-constructions', 'ai-diplomacy', 'ai-disposal', 'ai-gates', 'ai-health', 'ai-homes',
     'ai-industry', 'ai-joins', 'ai-labor', 'ai-layouts', 'ai-military', 'ai-military-gear',
     'ai-mission-send', 'ai-missions', 'ai-moods', 'ai-nobles', 'ai-overlay', 'ai-overseer-settings',
     'ai-ping', 'ai-reports', 'ai-society', 'ai-society-burrows', 'ai-status', 'ai-threats', 'ai-title',
@@ -755,6 +762,11 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
     -- seal and the siege (lua/ai-disposal.lua); cached a day, cleared by the
     -- disposal actions
     disposal = function() return safe(function() return reqscript('ai-disposal').report() end) end,
+    -- (0.105.40, 13e) world cleanup: items by state, the unreachable ones and
+    -- creatures and for how long, spatter, the dead units (lua/ai-cleanup.lua).
+    -- Not in SECTION_CACHE_DAYS: the module walks in slices of its own budget
+    -- (one full pass a game day at most) and sends its last pass between
+    cleanup = function() return safe(function() return reqscript('ai-cleanup').report() end) end,
     -- (0.105.30) what the fort has built: finished constructions by shape and
     -- material, above or below ground, roofed surface tiles, the waiting ones
     -- and the AI's own (lua/ai-constructions.lua; one pass, every 3 days)
