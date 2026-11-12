@@ -39,6 +39,7 @@ from __future__ import annotations
 import hashlib
 
 import customs
+import design
 from digest import _d, _l
 from quirks import has_rule
 from util import date_tick
@@ -324,10 +325,11 @@ def draw(state: dict, memory, site: dict, traits: dict, profile: dict) -> dict |
     seed = (memory.culture or {}).get("seed") or "fort"
     palette = profile.get("palette") or "any"
     era = len((memory.culture or {}).get("eras") or [])
+    naming = design.naming(memory.culture if isinstance(memory.culture, dict) else None)   # (D0) None at Scripts
     districts = []
     for i, k in enumerate(list(bands)):
         lo_k, hi_k = bands[k]
-        districts.append({"id": k, "kind": k, "name": district_name(k, palette, seed),
+        districts.append({"id": k, "kind": k, "name": district_name(k, palette, seed, naming),
                           "lo": lo_k, "hi": hi_k, "target": (lo_k + hi_k + 1) // 2,
                           "dirs": _dirs_for(pattern, axis, i, k), "era": era, "levels": [], "missed": 0,
                           "wings": [{"era": era, "dir": _dirs_for(pattern, axis, i, k)[0]}]})
@@ -352,12 +354,53 @@ def draw(state: dict, memory, site: dict, traits: dict, profile: dict) -> dict |
     return plan
 
 
-def district_name(kind: str, palette: str, seed: str) -> str:
-    """'the Dark Forges', 'the Pale Hearths': the fort's style and its seed."""
+# (D0) A design language's naming (design.TONES, design.PATTERNS): each tone
+# its adjectives and, for some districts, its own nouns (else NOUNS).
+TONE_ADJECTIVES = {"plain": ["Old", "Low", "Broad"], "solemn": ["Silent", "Hallowed", "Grey"],
+                   "martial": ["Iron", "Unbroken", "Shielded"], "merry": ["Bright", "Golden", "Singing"],
+                   "austere": ["Bare", "Stern", "Narrow"], "mythic": ["Ancient", "Starlit", "Endless"]}
+TONE_NOUNS = {
+    "solemn": {"homes": ["Quiet Cells", "Resting Halls"], "halls": ["Halls of Silence", "Vigil Halls"]},
+    "martial": {"homes": ["Barrack Deeps", "Shield Hearths"], "defence": ["Iron Gate", "Last Wall"],
+                "industry": ["War Forges", "Anvil Deeps"]},
+    "merry": {"homes": ["Warm Hearths", "Merry Halls"], "halls": ["Feast Halls", "Singing Halls"]},
+    "austere": {"homes": ["Cells", "Bare Halls"], "storage": ["Cellars", "Stores"]},
+    "mythic": {"halls": ["Halls of Legend", "Star Halls"], "farms": ["Deep Gardens", "Root Halls"],
+               "industry": ["Fire Deeps", "Workings"]},
+}
+
+
+def district_name(kind: str, palette: str, seed: str, naming: dict | None = None) -> str:
+    """'the Dark Forges', 'the Pale Hearths': the fort's style and its seed.
+    (D0) With a design language's naming: its tone's words and nouns, its own
+    words and its pattern ('the Ashen Forges', 'the Forges of Ral', 'the
+    Ashforges', "Ral's Forges"); with none, exactly as before."""
+    if isinstance(naming, dict) and naming:
+        return _named(kind, palette, seed, naming)
     nouns = NOUNS.get(kind) or [kind.title()]
     noun = nouns[_seed(seed, kind) % len(nouns)]
     adj = ADJECTIVES.get(palette, "")
     return f"the {adj} {noun}".replace("  ", " ") if adj else f"the {noun}"
+
+
+def _named(kind: str, palette: str, seed: str, naming: dict) -> str:
+    tone = naming.get("tone") if naming.get("tone") in TONE_ADJECTIVES else "plain"
+    words = [w for w in naming.get("words") or [] if isinstance(w, str) and w.replace("'", "").isalpha()]
+    nouns = (TONE_NOUNS.get(tone) or {}).get(kind) or NOUNS.get(kind) or [kind.title()]
+    h = _seed(seed, kind, "naming")
+    noun = nouns[h % len(nouns)]
+    word = words[(h // 7) % len(words)] if words else None
+    pattern = naming.get("pattern") or "adjective"
+    if pattern == "of" and word:
+        return f"the {noun} of {word}"
+    if pattern == "possessive" and word:
+        return f"{word}'s {noun}"
+    if pattern == "compound" and word:
+        last = noun.split()[-1]
+        return " ".join(["the"] + noun.split()[:-1] + [word + last.lower()])
+    adjs = TONE_ADJECTIVES[tone]
+    adj = word or (ADJECTIVES.get(palette) if tone == "plain" and palette in ADJECTIVES else adjs[(h // 3) % len(adjs)])
+    return f"the {adj} {noun}"
 
 
 def open_slot(memory, kind: str) -> dict | None:
@@ -609,6 +652,12 @@ def variety(memory, kind: str) -> dict:
     orient = h % 4
     if has_rule(memory.culture if isinstance(memory.culture, dict) else {}, "symmetric"):
         orient = 0 if orient in (0, 1) else 3     # as drawn, or turned a quarter: never a mirror image
+    # (D0) the design language's symmetry: mirror as Mirror-minded, radial always as drawn
+    sym = (design.current(memory.culture if isinstance(memory.culture, dict) else None) or {}).get("symmetry")
+    if sym == "mirror":
+        orient = 0 if orient in (0, 1) else 3
+    elif sym == "radial":
+        orient = 0
     return {"orient": orient, "rhythm": 3 + (h // 4) % 4}
 
 
