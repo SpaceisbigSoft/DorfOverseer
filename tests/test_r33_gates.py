@@ -26,7 +26,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
-from lua_modules_util import module_src  # noqa: E402
+from lua_modules_util import module_src, split_src  # noqa: E402
 from harness import test, finish  # noqa: E402
 
 try:
@@ -36,6 +36,7 @@ except ImportError:
     sys.exit(0)
 
 SRC = module_src("ai-gates.lua")
+TEXT = split_src("ai-gates.lua")   # (13e) the hub and its parts, as written
 
 
 def load():
@@ -341,7 +342,7 @@ def _():
 
 @test("r33 gates 11: place_gate_lever isn't refused by an unlinked lever that can't serve it")
 def _():
-    src = SRC
+    src = TEXT
     i = src.index("function place_gate_lever")
     body = src[i:i + 3000]
     assert "lever_waiting_for(e, GATES.inside, unlinked_ai_levers())" in body
@@ -374,7 +375,7 @@ M.GATES = {scanned = false, closed = {}, entrances = {
 
 @test("r33 gates 13: fortify and place_traps read the citizens through fort_starts")
 def _():
-    src = SRC
+    src = TEXT
     for fn in ("function fortify(", "function place_traps("):
         i = src.index(fn)
         body = src[i:src.index("\nend\n", i)]
@@ -407,14 +408,14 @@ M.porch_of = function() return {capped = true} end
     assert L.eval("N") == 0
     M.plan_cut(e, L.table())
     assert L.eval("N") == 1
-    assert "pcall(plan_cut, e, starts, true)" in SRC
+    assert "pcall(plan_cut, e, starts, true)" in TEXT
 
 
 @test("r33 gates 15: dead code gone; open_saved_gates pulls through pull() (a pending pull is kept)")
 def _():
     L, M = load()
-    assert "local function dangers()" not in SRC
-    assert "GATE_CLEAR_RADIUS" not in SRC
+    assert "local function dangers()" not in TEXT
+    assert "GATE_CLEAR_RADIUS" not in TEXT
     L.execute(WATCH, M)
     L.execute(r"""
 local M = ...

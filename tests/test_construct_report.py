@@ -359,9 +359,9 @@ def _():
     want = []
     if halls.exists():
         want += [(halls, "place_hall"), (halls, "halls_status"), (halls, "find_hall_site")]
-    gates = (LUA_DIR / "ai-gates.lua").read_text(encoding="utf-8")
+    gates = (LUA_DIR / "ai-gates-wings.lua").read_text(encoding="utf-8")   # (13e) the gates' wings part
     if "plan_wings" in gates:
-        want.append((LUA_DIR / "ai-gates.lua", "build_wings"))
+        want.append((LUA_DIR / "ai-gates-wings.lua", "build_wings"))
     rooms = (LUA_DIR / "ai-builder-rooms.lua").read_text(encoding="utf-8")
     if "soil_floor" in rooms:
         want.append((LUA_DIR / "ai-builder-rooms.lua", "floor_soil_rooms"))

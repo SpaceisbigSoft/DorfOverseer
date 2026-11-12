@@ -571,7 +571,8 @@ def _():
         "switch off the pump stack's power"
     act = (ROOT / "lua" / "ai-bridge-actions.lua").read_text(encoding="utf-8")
     assert "source is wheel or windmill" in act and "source = a.source" in act
-    gates = (ROOT / "lua" / "ai-gates.lua").read_text(encoding="utf-8")
+    from lua_modules_util import split_src   # (13e) the hub and its parts
+    gates = split_src("ai-gates.lua")
     assert "GearAssembly = true" in gates
 
 

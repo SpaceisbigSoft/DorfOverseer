@@ -458,16 +458,20 @@ BRIDGE_MODULES = {
 -- the split-off modules that carry a version mark of their own
 MARKED_MODULES = {'ai-military-gear', 'ai-society-burrows', 'ai-constructions'}
 
--- The builder's parts by name ('ai-builder-sites', ...): from the loaded
--- builder, else read from ai-builder.lua (a builder that fails to load).
-function builder_part_names()
+-- (13e) The modules split into a hub and parts beside it, each listing its
+-- parts in PARTS and marking them in PART_VERSIONS
+SPLIT_MODULES = {'ai-builder', 'ai-gates'}
+
+-- A split module's parts by name ('ai-builder-sites', ...): from the loaded
+-- hub, else read from its file (a hub that fails to load).
+function split_part_names(mod)
     local parts
-    local ok, B = pcall(reqscript, 'ai-builder')
-    if ok and type(B.PARTS) == 'table' then
+    local ok, B = pcall(reqscript, mod)
+    if ok and type(B) == 'table' and type(B.PARTS) == 'table' then
         parts = B.PARTS
     else
         pcall(function()
-            local f = io.open(bridge_part_path('ai-builder'), 'rb')
+            local f = io.open(bridge_part_path(mod), 'rb')
             local src = f:read('*a')
             f:close()
             local list = src:match('\nPARTS = (%b{})')
@@ -476,13 +480,16 @@ function builder_part_names()
         end)
     end
     local out = {}
-    for _, p in ipairs(parts or {}) do table.insert(out, 'ai-builder-' .. p) end
+    for _, p in ipairs(parts or {}) do table.insert(out, mod .. '-' .. p) end
     return out
 end
 
+-- The builder's parts by name ('ai-builder-sites', ...).
+function builder_part_names() return split_part_names('ai-builder') end
+
 -- (0.105.26) The parts whose version mark isn't BRIDGE_VERSION, as
 -- 'name (mark)': a file left behind at delivery, or (the builder's) still the
--- one loaded before it changed (touch ai-builder.lua). The bridge's own parts
+-- one loaded before it changed (touch ai-builder.lua, ai-gates.lua). The bridge's own parts
 -- run each command, so theirs is the file's.
 function stale_parts()
     local out = {}
@@ -491,12 +498,14 @@ function stale_parts()
         if v ~= BRIDGE_VERSION then table.insert(out, ('%s (%s)'):format(name, v and tostring(v) or 'no version mark')) end
     end
     for _, n in ipairs(BRIDGE_PARTS) do check(n, PART_VERSIONS) end
-    local okb, B = pcall(reqscript, 'ai-builder')
-    if okb then
-        check('ai-builder', B.PART_VERSIONS)
-        for _, n in ipairs(builder_part_names()) do check(n, B.PART_VERSIONS) end
-    else
-        table.insert(out, 'ai-builder (does not load: ' .. tostring(B):sub(1, 160) .. ')')
+    for _, mod in ipairs(SPLIT_MODULES) do
+        local okb, B = pcall(reqscript, mod)
+        if okb then
+            check(mod, B.PART_VERSIONS)
+            for _, n in ipairs(split_part_names(mod)) do check(n, B.PART_VERSIONS) end
+        else
+            table.insert(out, mod .. ' (does not load: ' .. tostring(B):sub(1, 160) .. ')')
+        end
     end
     for _, m in ipairs(MARKED_MODULES) do
         local ok, M = pcall(reqscript, m)
@@ -528,8 +537,11 @@ local function cmd_modules()
     end
     local parts = {}
     for _, n in ipairs(BRIDGE_PARTS) do table.insert(parts, n) end
-    for _, n in ipairs(builder_part_names()) do table.insert(parts, n) end
-    if #parts == #BRIDGE_PARTS then table.insert(failed, {name = 'ai-builder', error = 'its list of parts could not be read'}) end
+    for _, mod in ipairs(SPLIT_MODULES) do
+        local names = split_part_names(mod)
+        for _, n in ipairs(names) do table.insert(parts, n) end
+        if #names == 0 then table.insert(failed, {name = mod, error = 'its list of parts could not be read'}) end
+    end
     for _, n in ipairs(parts) do
         local path = bridge_part_path(n)
         if not path then
