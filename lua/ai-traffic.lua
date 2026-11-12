@@ -327,8 +327,12 @@ function paint(o, dry_run)
     end
     local u = find_unit(key)
     if not u then
+        -- (0.105.41 review) the saved cursor's level stopped being paintable:
+        -- nothing to do (the cursor dropped, the next call takes the next
+        -- level), not a refusal that would hold all painting back
+        local was_cursor = st.cursor and st.cursor.key == key
         drop_cursor()
-        return reject('no finished AI level ' .. key)
+        return reject('no finished AI level ' .. key, was_cursor and {nothing_to_do = true} or nil)
     end
     local tiles = unit_tiles(u)
     local cur = (st.cursor and st.cursor.key == key) and st.cursor

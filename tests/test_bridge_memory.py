@@ -1032,6 +1032,38 @@ def _():
     assert r["a"] == 3 and r["b"] == 3 and r["c"] == 0 and r["d"] == 2, dict(r)
 
 
+@test("restrict_water (0.105.41 review): a High/Low the AI painted itself (ai-traffic ai_value) is restricted too; the player's own High left")
+def _():
+    env = H.module()
+    r = LUA.execute(r"""
+    local env, df, dfhack = ...
+    df.tile_traffic = {Normal = 0, Low = 1, High = 2, Restricted = 3}
+    df.tiletype_material = {FROZEN_LIQUID = 7, STONE = 1}
+    df.tiletype = {attrs = {[1] = {material = 1}, [2] = {material = 7}}}
+    local tiles = {}
+    local function key(x, y, z) return x .. ',' .. y .. ',' .. z end
+    tiles[key(10, 10, 5)] = {flow_size = 7, liquid_type = false, tt = 1}   -- water, its top the AI's High
+    tiles[key(11, 10, 5)] = {flow_size = 0, liquid_type = false, tt = 2}   -- ice, its top the player's High
+    for x = 10, 11 do tiles[key(x, 10, 6)] = {flow_size = 0, traffic = 2, tt = 1} end
+    env.xyz2pos = function(x, y, z) return {x = x, y = y, z = z} end
+    dfhack.maps.getTileSize = function() return 20, 20, 10 end
+    dfhack.maps.getTileFlags = function(p) return tiles[key(p.x, p.y, p.z)] end
+    dfhack.maps.getTileType = function(p) local t = tiles[key(p.x, p.y, p.z)] return t and t.tt end
+    local real = env.reqscript
+    env.reqscript = function(name)
+        if name == 'ai-traffic' then
+            return {ai_value = function(x, y, z) if key(x, y, z) == key(10, 10, 6) then return 2 end end}
+        end
+        return real(name)
+    end
+    local r = env.act_restrict_water({levels = {5}, x = 10, y = 10, radius = 5})
+    env.reqscript = real
+    return {ok = r.ok, marked = r.marked, a = tiles[key(10, 10, 6)].traffic, b = tiles[key(11, 10, 6)].traffic}
+    """, env, H.df, H.dfhack)
+    assert r["ok"] and r["marked"] == 1, dict(r)
+    assert r["a"] == 3 and r["b"] == 2, dict(r)
+
+
 @test("memory (0.104.62): a long kind comes as the save keeps it (raw JSON, decoded in Python, not in Lua)")
 def _():
     reset()

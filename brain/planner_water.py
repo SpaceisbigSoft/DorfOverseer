@@ -20,6 +20,7 @@ from __future__ import annotations
 from digest import _d, _l
 from planner_core import (EMERGENCY, LIMIT_EXEMPT, LOOP_EXEMPT, NO_COOLDOWN, PLANNER_CONFIG, STEER_PROTECTED,
                           TICKS_PER_YEAR, Proposal, player_rules, young_fort, _traits)
+from planner_hazards import magma_shut_works
 
 # (0.105.35) the pump labour given at most once a fortnight (assign_labor adds
 # dwarves each time; the bridge holds the stack after its own stall wait)
@@ -317,7 +318,7 @@ def leak_watch_hold(row: dict) -> bool:
 
 
 def _work_notes(id_: str, row: dict, s: dict, proposals: list, notes: list, flooding: bool = False,
-                now: int | None = None) -> bool:
+                now: int | None = None, magma_near: dict | None = None) -> bool:
     """A work under way: its line, and its next step (True: one asked; a
     leak-watch hold asks for a re-check but isn't busy: works elsewhere go on).
     (0.105.33) A work its emergency stop shut waits: no step is asked (the
@@ -374,6 +375,12 @@ def _work_notes(id_: str, row: dict, s: dict, proposals: list, notes: list, floo
     if row.get("shut") and stage != "retired":
         notes.append(f"{words}: its floodgate was shut ({row['shut']})")
         if flooding:
+            return True
+        if kind == "magma" and id_ in (magma_near or {}):
+            # (0.105.41 review) shut for spilt magma that still lies near it:
+            # kept shut until the magma is gone (magma_reclaim), else the
+            # hazards' shut and this reopen took turns every few days
+            notes.append(f"{words}: kept shut while spilt magma lies {magma_near[id_]} tiles from it")
             return True
         act = dict(step, reopen=True, why="reopen: no dwarves in deep water now")
         proposals.append(Proposal(f"waterworks_{kind}", act,
@@ -437,8 +444,9 @@ def _waterworks_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -
                                              f"shut {WORK_WORDS.get(row.get('kind'))}'s floodgate"), 0))
     now = int(_d(s.get("date")).get("year") or 0) * TICKS_PER_YEAR + int(_d(s.get("date")).get("tick") or 0)
     busy = False
+    magma_near = magma_shut_works(s, cfg)     # (0.105.41 review) kept shut by spilt magma
     for id_, row in sorted(works.items()):
-        busy = _work_notes(id_, row, s, proposals, notes, flooding, now) or busy
+        busy = _work_notes(id_, row, s, proposals, notes, flooding, now, magma_near) or busy
     for id_, r in sorted(refused.items()):
         notes.append(f"{WORK_WORDS.get(id_.split(':')[0], id_)} not built: {r.get('why')}")
     if busy or not rules_["water_works"]:

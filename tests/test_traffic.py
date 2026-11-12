@@ -248,7 +248,8 @@ def _():
     assert py(env.report())["enabled"] is False
 
 
-@test("paint: a level gone from the records drops its cursor")
+@test("paint: a level gone from the records drops its cursor; nothing to do (no refusal back-off), "
+      "an asked-for unknown level still refused")
 def _():
     lua, env, w = world()
     put(lua, w, bedrooms(1))
@@ -256,6 +257,9 @@ def _():
     put(lua, w)
     r = py(env.paint(T(lua, {}), False))
     assert r["ok"] is False and "cursor" not in py(env.report()), r
+    assert r.get("nothing_to_do") is True, r
+    r2 = py(env.paint(T(lua, {"key": "p9"}), False))
+    assert r2["ok"] is False and not r2.get("nothing_to_do"), r2
 
 
 # --- 3. the recheck ------------------------------------------------------------------------
@@ -337,12 +341,55 @@ GUI = (LUA_DIR / "gui" / "ai-overseer.lua").read_text(encoding="utf-8")
 SRC = (LUA_DIR / "ai-traffic.lua").read_text(encoding="utf-8")
 
 
-@test("hooks: the fire guard restricts the AI's painted tiles too and lifts them back to what the AI painted; "
-      "start_project keeps the corridor (links)")
+# (0.105.41 review) ai-threats' fire_guard run in a fake fort: a fire at
+# (50, 50, 100), the tiles' traffic in TILES, ai-traffic's ai_value from AI
+FIRE_FAKE = r"""
+local src, TILES, AI = ...
+local env = setmetatable({}, {__index = _G})
+local site = {}
+env.xyz2pos = function(x, y, z) return {x = x, y = y, z = z} end
+env.df = {global = {cur_year = 200, cur_year_tick = 1000, world = {jobs = {list = {}}},
+                    flows = {{density = 50, type = 1, pos = {x = 50, y = 50, z = 100}}}},
+          flow_type = {[1] = 'Fire'},
+          tile_traffic = {Normal = 0, Low = 1, High = 2, Restricted = 3}}
+env.dfhack = {maps = {getTileFlags = function(x, y, z)
+                  local k = x .. ',' .. y .. ',' .. z
+                  if not TILES[k] then TILES[k] = {traffic = 0} end
+                  return TILES[k] end},
+              job = {removeJob = function() return true end},
+              persistent = {getSiteData = function(k, d) local v = site[k]; if v == nil then return d end return v end,
+                            saveSiteData = function(k, v) site[k] = v end}}
+env.reqscript = function(n)
+    if n == 'ai-traffic' then
+        return {ai_value = function(x, y, z, memo)
+            memo.calls = (memo.calls or 0) + 1
+            return AI[x .. ',' .. y .. ',' .. z] end}
+    end
+    error('reqscript ' .. tostring(n))
+end
+assert(load(src, 'ai-threats', 't', env))()
+return env
+"""
+
+
+@test("hooks: the fire guard (run in a fake fort) restricts the AI's painted tiles too and lifts them back to what "
+      "the AI painted; the player's own High kept; start_project keeps the corridor (links)")
 def _():
-    assert code_has(THREATS, "reqscript('ai-traffic').ai_value(x, y, z, memo)")
-    assert code_has(THREATS, "des.traffic = traffic_painted(x, y, z, memo) or df.tile_traffic.Normal")
-    assert code_has(THREATS, "and des.traffic == traffic_painted(x, y, z, memo)))")
+    lua = LuaRuntime(unpack_returned_tuples=True)
+    tiles = lua.table_from({"51,50,100": lua.table_from({"traffic": HIGH}),     # the AI's High
+                            "49,50,100": lua.table_from({"traffic": LOW}),      # the AI's Low
+                            "50,51,100": lua.table_from({"traffic": HIGH})})    # the player's High
+    ai = lua.table_from({"51,50,100": HIGH, "49,50,100": LOW, "50,51,100": LOW})   # the AI painted Low there once
+    env = lua.execute(FIRE_FAKE, module_src("ai-threats.lua"), tiles, ai)
+    r = py(env.fire_guard(1, 10, False, False))
+    assert r["ok"] and r["fires"] == 1 and r["restricted"] == 8, r
+    assert tiles["51,50,100"].traffic == RESTRICTED and tiles["49,50,100"].traffic == RESTRICTED
+    assert tiles["50,51,100"].traffic == HIGH, "the player's own value kept"
+    assert tiles["50,50,100"].traffic == RESTRICTED and tiles["51,51,100"].traffic == RESTRICTED
+    lift = py(env.fire_guard(1, 10, True, False))
+    assert lift["lifted"] == 8, lift
+    assert tiles["51,50,100"].traffic == HIGH and tiles["49,50,100"].traffic == LOW
+    assert tiles["50,50,100"].traffic == NORMAL and tiles["50,51,100"].traffic == HIGH
     assert code_has(PROJECTS, "links = extra_list(site.extra),")
     lua = LuaRuntime(unpack_returned_tuples=True)
     m = re.search(r"local function extra_list\(extra\).*?\nend\n", PROJECTS, re.S)

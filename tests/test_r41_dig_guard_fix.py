@@ -374,6 +374,14 @@ def _():
     assert "the dig guard refused 1: next to raw adamantine" in note and "guards the underworld" in note, note
     assert B.dig_guard_note(B.quickfort_apply("dig", cell("d"), 27, 50, 25, "run", True)) == ""
     assert B.dig_guard_note("boom") == "" and B.dig_guard_note(None) == ""
+    # (0.105.41 review) the cave-in check's refused channels in their own words
+    mk = lua.eval("function(r, why, c, cwhy) return {dig_guard_refused = {value = r}, dig_guard_why = why, "
+                  "dig_guard_cave_ins = c and {value = c} or nil, dig_guard_cave_why = cwhy} end")
+    cave = B.dig_guard_note(mk(2, "a floor beside it would hang over nothing (a cave-in)", 2,
+                               "a floor beside it would hang over nothing (a cave-in)"))
+    assert "underworld" not in cave and "2 channel(s) left out" in cave and "a cave-in would follow" in cave, cave
+    both = B.dig_guard_note(mk(3, "next to raw adamantine", 1, "a floor beside it would hang over nothing (a cave-in)"))
+    assert "the dig guard refused 2: next to raw adamantine" in both and "1 channel(s) left out" in both, both
     wells = (LUA_DIR / "ai-builder-wells.lua").read_text(encoding="utf-8")
     assert re.search(r"channel the well spot at x%d y%d z%d'\):format\(\s*spot\.x, spot\.y, ez\(spot\.z\)\) \.\. "
                      r"dig_guard_note\(dry\)", wells)

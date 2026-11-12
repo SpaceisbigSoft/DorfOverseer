@@ -4,7 +4,14 @@
 --   magma   magma where it shouldn't be: a magma tile that is no part of
 --           the map's own magma (a pipe's or the sea's: DF's feature flags),
 --           of the AI's own magma works (lua/ai-waterworks.lua, their tiles
---           and one round them) or under a magma workshop. Looked for in
+--           and one round them) or under a magma workshop; (0.105.41
+--           review) nor one that held magma at its block's first reading
+--           (the player's channel or pump stack), one outside both the AI's
+--           own area (its levels, by its magma works) and MAGMA_NEAR of the
+--           citizens, one with a building or zone outside the AI's levels,
+--           or one beside a floodgate that isn't the AI's. A spot in the
+--           AI's own area says so (`ai`: the civilian alarm only for these).
+--           Looked for in
 --           the map blocks round the citizens (and z-1), round the AI's
 --           magma works and where it was seen before; a block is read whole
 --           once a game day, otherwise only when DF marks its liquid as
@@ -46,6 +53,7 @@ DAY = 1200
 MAGMA_NEAR = 6            -- a citizen this close (same level, or one up or down) to a loose tile: "near"
 MAGMA_BLOCKS_MAX = 160    -- map blocks read at most in one report
 MAGMA_TILES_MAX = 600     -- loose tiles kept in the save at most
+MAGMA_BASE_MAX = 6000     -- (0.105.41 review) magma tiles there at a block's first reading kept at most
 MAGMA_CELLS_MAX = 8       -- loose spots (8x8 cells) reported at most
 MAGMA_WORK_NEAR = 20      -- an AI magma work this close to a loose spot is named
 SETTLED_MAX = 8           -- cooled spots reported at most
@@ -210,6 +218,48 @@ function magma_shops()
         end)
     end
     return out
+end
+
+-- (0.105.41 review) the AI's own levels: each AI project's box (ai-builder
+-- bounds_of, any phase) one tile wider: {x1, y1, x2, y2, z}
+function ai_levels()
+    local out = {}
+    pcall(function()
+        local B = reqscript('ai-builder')
+        for _, p in ipairs(B.load_projects().list or {}) do
+            local okb, b = pcall(B.bounds_of, p)
+            if okb and type(b) == 'table' and b.z then
+                table.insert(out, {x1 = b.x1 - 1, y1 = b.y1 - 1, x2 = b.x2 + 1, y2 = b.y2 + 1, z = b.z})
+            end
+        end
+    end)
+    return out
+end
+
+-- (0.105.41 review) the floodgates that aren't the AI's waterworks':
+-- {{x, y, z}}. (world.buildings.other.FLOODGATE: needs an in-game look)
+function player_floodgates()
+    local ai = {}
+    for _, wk in pairs(waterworks_state().works) do
+        if type(wk) == 'table' and wk.gate_id then ai[wk.gate_id] = true end
+    end
+    local out = {}
+    pcall(function()
+        for _, b in ipairs(df.global.world.buildings.other.FLOODGATE) do
+            if not ai[b.id] then table.insert(out, {x = b.centerx, y = b.centery, z = b.z}) end
+        end
+    end)
+    return out
+end
+
+-- (0.105.41 review) a building (a pump, a floodgate...) or a zone on the tile
+function marked_tile(x, y, z)
+    local ok, yes = pcall(function()
+        if dfhack.buildings.findAtTile(xyz2pos(x, y, z)) then return true end
+        local zs = dfhack.buildings.findCivzonesAt(xyz2pos(x, y, z))
+        return zs ~= nil and #zs > 0
+    end)
+    return ok and yes == true
 end
 
 -- how a material fares at magma's heat: 'burns', 'melts' or nil (safe).
@@ -378,6 +428,24 @@ function set_traffic(x, y, z, name)
     return pcall(function() dfhack.maps.getTileFlags(x, y, z).traffic = df.tile_traffic[name] end)
 end
 
+-- (0.105.41 review) the traffic the AI painted on a tile (ai-traffic's
+-- ai_value, as a name: 'High', 'Low'), or nil. The guards restrict a tile at
+-- Normal or at the AI's own painted value (never one the player set by hand)
+-- and give it back that painted value on lift, as the fire guard does.
+function painted(x, y, z, memo)
+    local ok, v = pcall(function() return reqscript('ai-traffic').ai_value(x, y, z, memo) end)
+    if not ok or v == nil then return nil end
+    return df.tile_traffic[v]
+end
+function guardable(x, y, z, memo)
+    local t = traffic(x, y, z)
+    if t == 'Normal' then return true end
+    return t ~= nil and t ~= 'Restricted' and t == painted(x, y, z, memo)
+end
+function unguard(x, y, z, memo)
+    return set_traffic(x, y, z, painted(x, y, z, memo) or 'Normal')
+end
+
 -- dig these tiles (ai-builder's quickfort_apply: the dig guard sees them)
 function dig_tiles(cells, z)
     local ok, stats = pcall(function()
@@ -459,6 +527,34 @@ function own_magma_tiles(works, shops)
         for x = s.x1, s.x2 do for y = s.y1, s.y2 do add(x, y, s.z - 1) end end
     end
     return out
+end
+
+-- (0.105.41 review) is (x, y, z) inside one of the boxes {x1, y1, x2, y2, z}?
+function in_boxes(x, y, z, boxes)
+    for _, b in ipairs(boxes or {}) do
+        if b.z == z and x >= b.x1 and x <= b.x2 and y >= b.y1 and y <= b.y2 then return true end
+    end
+    return false
+end
+
+-- (0.105.41 review) Does a magma tile count as spilt? Not when it was there
+-- at the first reading of its block (`base`: the player's channel, a pump
+-- stack, a pipe the feature flags missed); only inside the AI's own area
+-- (`ai`: its levels, or within MAGMA_NEAR of its magma works) or near the
+-- citizens (`near`); and never on a tile with a building or zone outside
+-- the AI's levels, or beside a floodgate that isn't the AI's (`gates`).
+-- Returns whether it counts, and whether it is in the AI's own area.
+function counts_as_spilt(p, k, base, levels, works_pts, near, gates, marked_fn)
+    if base[k] then return false end
+    local in_levels = in_boxes(p.x, p.y, p.z, levels)
+    local by_works = (nearest(p.x, p.y, p.z, works_pts, 0) or MAGMA_NEAR + 1) <= MAGMA_NEAR
+    local ai = in_levels or by_works
+    if not ai and not (near and near <= MAGMA_NEAR) then return false end
+    for _, g in ipairs(gates or {}) do
+        if g.z == p.z and math.abs(g.x - p.x) <= 1 and math.abs(g.y - p.y) <= 1 then return false end
+    end
+    if not in_levels and marked_fn(p.x, p.y, p.z) then return false end
+    return true, ai
 end
 
 local SOLID = {WALL = true, FORTIFICATION = true}
@@ -646,16 +742,52 @@ local function magma_part(st, t, cits, works, shops)
             for dx = -16, 16, 16 do for dy = -16, 16, 16 do want(c.x + dx, c.y + dy, c.z + dz, false) end end
         end
     end
+    -- (0.105.41 review) what counts as spilt: not there at the block's
+    -- first reading, in the AI's own area or near the citizens, never the
+    -- player's (a building or zone, beside the player's floodgate)
+    m.base = type(m.base) == 'table' and m.base or {}
+    m.base_blocks = type(m.base_blocks) == 'table' and m.base_blocks or {}
+    local nbase = 0
+    for _ in pairs(m.base) do nbase = nbase + 1 end
+    local levels = ai_levels()
+    local gates = player_floodgates()
+    local works_pts = {}
+    for _, w in ipairs(works) do
+        for _, wt in ipairs(w.tiles or {}) do table.insert(works_pts, wt) end
+    end
+    local marks = {}
+    local function marked(x, y, z)
+        local k = key(x, y, z)
+        if marks[k] == nil then marks[k] = marked_tile(x, y, z) == true end
+        return marks[k]
+    end
     local now_magma, loose, read, still = {}, {}, 0, 0
+    local is_loose = {}
     for _, b in pairs(blocks) do
         local list, moving = block_magma(b.bx, b.by, b.z, full or b.must)
         if list then
             if full or b.must or moving then
                 read = read + 1
+                local bk = key(b.bx, b.by, b.z)
+                local first = not m.base_blocks[bk]
+                m.base_blocks[bk] = true
                 for _, p in ipairs(list) do
                     local k = key(p.x, p.y, p.z)
                     now_magma[k] = p
-                    if not p.feature and not own[k] then table.insert(loose, p) end
+                    if not p.feature and not own[k] then
+                        if first and not m.tiles[k] and nbase < MAGMA_BASE_MAX then
+                            m.base[k] = true     -- there before the AI looked: not spilt
+                            nbase = nbase + 1
+                        else
+                            local near = nearest(p.x, p.y, p.z, cits, 1)
+                            local yes, ai = counts_as_spilt(p, k, m.base, levels, works_pts, near, gates, marked)
+                            if yes then
+                                p.ai = ai
+                                is_loose[k] = true
+                                table.insert(loose, p)
+                            end
+                        end
+                    end
                 end
             else
                 still = still + 1
@@ -691,6 +823,11 @@ local function magma_part(st, t, cits, works, shops)
     for k, c in pairs(cit_at) do
         if now_magma[k] then table.insert(burning, {id = c.id, name = c.name}) end
     end
+    -- (0.105.41 review) a recorded tile with magma that no longer counts
+    -- (the player's, an older save's record): forgotten
+    for k in pairs(m.tiles) do
+        if now_magma[k] and not is_loose[k] then m.tiles[k] = nil end
+    end
     -- spreading: new loose tiles since the last read (not at the very first
     -- read: magma that was there before the AI watched isn't news)
     if new > 0 and (m.seen or 0) > 0 then m.grew = t end
@@ -702,11 +839,13 @@ local function magma_part(st, t, cits, works, shops)
     for _ in pairs(m.tiles) do out.recorded = out.recorded + 1 end
     if m.grew then out.grew_ago = math.max(0, t - m.grew) end
     for _, c in ipairs(cells_of(loose, MAGMA_CELLS_MAX)) do
-        local near
+        local near, ai
         for _, p in ipairs(c.pts) do
             if p.near and (not near or p.near < near) then near = p.near end
+            ai = ai or p.ai
         end
-        local row = {x = c.x, y = c.y, z = c.z, n = c.n, near = near}
+        -- ai: in the AI's own levels or by its magma works (the civilian alarm only for these)
+        local row = {x = c.x, y = c.y, z = c.z, n = c.n, near = near, ai = ai or nil}
         local best
         for _, w in ipairs(works) do
             for _, wt in ipairs(w.tiles or {}) do
@@ -922,17 +1061,18 @@ local function live_tiles(m)
 end
 
 -- Traffic restricted round the loose magma near the dwarves (only tiles at
--- Normal, kept in the save) and the jobs beside it taken off (digging,
--- hauling, building: ai-threats fire_job_ok); lift: those tiles back to Normal.
+-- Normal or the AI's own painted value, kept in the save) and the jobs
+-- beside it taken off (digging, hauling, building: ai-threats fire_job_ok); lift: those tiles back to the
+-- AI's painted value or Normal.
 function magma_guard(radius, max_jobs, lift, dry_run)
     local d = load_state()
     local m = d.magma
     if lift then
-        local n = 0
+        local n, memo = 0, {}
         for _, k in ipairs(m.restricted) do
             local x, y, z = unkey(k)
             if x and traffic(x, y, z) == 'Restricted' then
-                if not dry_run then set_traffic(x, y, z, 'Normal') end
+                if not dry_run then unguard(x, y, z, memo) end
                 n = n + 1
             end
         end
@@ -947,12 +1087,12 @@ function magma_guard(radius, max_jobs, lift, dry_run)
     if #pts == 0 then return {ok = false, rejected = true, nothing_to_do = true, error = 'no loose magma near the dwarves'} end
     local have = {}
     for _, k in ipairs(m.restricted) do have[k] = true end
-    local marked = 0
+    local marked, memo = 0, {}
     for _, p in ipairs(pts) do
         for y = p.y - radius, p.y + radius do
             for x = p.x - radius, p.x + radius do
                 local k = key(x, y, p.z)
-                if x >= 0 and y >= 0 and not have[k] and #m.restricted < 3000 and traffic(x, y, p.z) == 'Normal' then
+                if x >= 0 and y >= 0 and not have[k] and #m.restricted < 3000 and guardable(x, y, p.z, memo) then
                     have[k] = true
                     marked = marked + 1
                     if not dry_run then
@@ -1008,13 +1148,13 @@ function magma_reclaim(cool_ticks, dig, dry_run)
         return {ok = false, rejected = true, nothing_to_do = true, error = 'no spilt magma has cooled'}
     end
     -- traffic back: every restricted tile further than 3 from live magma
-    local lifted, keep = 0, {}
+    local lifted, keep, memo = 0, {}, {}
     for _, k in ipairs(m.restricted) do
         local x, y, z = unkey(k)
         local d0 = x and nearest(x, y, z, live, 0)
         if x and (not d0 or d0 > 3 or #live == 0) then
             if traffic(x, y, z) == 'Restricted' then
-                if not dry_run then set_traffic(x, y, z, 'Normal') end
+                if not dry_run then unguard(x, y, z, memo) end
                 lifted = lifted + 1
             end
         else

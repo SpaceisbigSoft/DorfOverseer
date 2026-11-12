@@ -2399,7 +2399,8 @@ end
 -- The tile above every water or ice tile on the given levels, within
 -- `radius` of (cx, cy), gets the game's "restricted" traffic, so paths go
 -- round it (a bridge or a way across stays usable: restricted only costs).
--- Never a tile the player marked high or low.
+-- Never a tile the player marked high or low (the AI's own painted High/Low,
+-- ai-traffic ai_value, may be restricted).
 function act_restrict_water(a)
     local zs = type(a.levels) == 'table' and a.levels or {}
     local cx, cy = whole_number(a.x), whole_number(a.y)
@@ -2413,6 +2414,11 @@ function act_restrict_water(a)
     local sx, sy, sz = dfhack.maps.getTileSize()
     local marked, seen = 0, 0
     local frozen = df.tiletype_material.FROZEN_LIQUID
+    local memo = {}
+    local function ai_painted(x, y, z)
+        local ok, v = pcall(function() return reqscript('ai-traffic').ai_value(x, y, z, memo) end)
+        return ok and v or nil
+    end
     local x0, x1 = math.max(0, cx - r), math.min(sx - 1, cx + r)
     -- (0.105.33) one protected call a row, not one closure a tile (~87k a call)
     local function row(y, z)
@@ -2427,7 +2433,11 @@ function act_restrict_water(a)
             if wet then
                 seen = seen + 1
                 local up = dfhack.maps.getTileFlags(xyz2pos(x, y, z + 1))
-                if up and up.traffic == df.tile_traffic.Normal then
+                -- (0.105.41 review) Normal, or the High/Low the AI painted
+                -- itself (ai-traffic): never a value the player set by hand
+                if up and (up.traffic == df.tile_traffic.Normal
+                           or (up.traffic ~= df.tile_traffic.Restricted
+                               and up.traffic == ai_painted(x, y, z + 1))) then
                     if not a.dry_run then up.traffic = df.tile_traffic.Restricted end
                     marked = marked + 1
                 end

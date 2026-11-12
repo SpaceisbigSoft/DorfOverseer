@@ -43,7 +43,7 @@ from digest import _d, _l
 from planner_core import (AGENDA_THEMES, LIMIT_EXEMPT, PLANNER_CONFIG, Proposal, STEER_PROTECTED, TICKS_PER_DAY,
                           abs_tick)
 
-__all__ = ["HAZARD_CONFIG", "env_of", "magma_alarm", "_hazards_rule"]
+__all__ = ["HAZARD_CONFIG", "env_of", "magma_alarm", "magma_shut_works", "_hazards_rule"]
 
 TICKS_PER_HOUR = 50
 
@@ -105,16 +105,38 @@ def _part(e: dict, name: str) -> dict:
     return {} if p.get("error") else p
 
 
+def magma_shut_works(s: dict, cfg: dict) -> dict:
+    """(0.105.41 review) The AI's magma works spilt magma lies near now (a
+    cell naming the work within `magma_shut_near`): {work id: tiles away}.
+    Read by planner_water: such a work's floodgate stays shut (no reopen)
+    until the magma is gone, else the shut and the reopen took turns every
+    few days."""
+    m = _part(env_of(s), "magma")
+    if not m or not int(m.get("loose") or 0):
+        return {}
+    out = {}
+    for c in _l(m.get("cells")):
+        if not isinstance(c, dict):
+            continue
+        wid = c.get("work")
+        if wid and _int(c.get("work_d")) and c["work_d"] <= _c(cfg, "magma_shut_near"):
+            out[wid] = min(out.get(wid, c["work_d"]), c["work_d"])
+    return out
+
+
 def magma_alarm(s: dict, cfg: dict) -> str:
     """Why spilt magma keeps the civilian alarm up ("" if not): it spreads
     (a new tile within `magma_spread_hold_ticks`) within `magma_alarm_near`
-    of a dwarf. Read by planner_military.hazard_alert."""
+    of a dwarf. Read by planner_military.hazard_alert.
+    (0.105.41 review) Only a spot in the AI's own area (`ai`: its levels or
+    by its magma works): magma near the player's own works never holds the
+    civilians' alarm."""
     m = _part(env_of(s), "magma")
     ago = m.get("grew_ago")
     if not (_int(ago) and ago <= _c(cfg, "magma_spread_hold_ticks")):
         return ""
     near = [c for c in _l(m.get("cells")) if isinstance(c, dict) and _int(c.get("near"))
-            and c["near"] <= _c(cfg, "magma_alarm_near")]
+            and c["near"] <= _c(cfg, "magma_alarm_near") and c.get("ai")]
     if not near:
         return ""
     c = min(near, key=lambda c: c["near"])
@@ -225,7 +247,8 @@ def _cave_ins(s, cfg, e, memory, proposals, notes):
     rows = old[0][1]
     import statistics
     x, y, z = (int(statistics.median_low([r[k] for r in rows])) for k in ("x", "y", "z"))
-    proposals.append(Proposal("cave_in_dig_out", {"type": "dig_way_in", "x": x, "y": y, "z": z},
+    # (0.105.41 review) cave_in: the panel's own label (the bridge ignores it)
+    proposals.append(Proposal("cave_in_dig_out", {"type": "dig_way_in", "x": x, "y": y, "z": z, "cave_in": True},
                               f"{len(rows)} dwarf(s) cut off by a cave-in for {old[0][0] // TICKS_PER_HOUR} hour(s) "
                               f"({_names(rows)}): dig a way to them from x{x} y{y} z{z}", 1))
 

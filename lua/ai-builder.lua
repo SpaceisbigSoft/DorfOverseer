@@ -294,6 +294,7 @@ function quickfort_apply(mode, cells, z, ax, ay, command, dry_run)
     local qf = reqscript('quickfort')
     local data = layouts.to_data(cells, z)
     local refused, why
+    local cave_ins, cave_why      -- (0.105.41 review) the cave-in check's share
     if mode == 'dig' and (command or 'run') == 'run' then
         local okg, d2, n, w = pcall(function() return util_module().dig_guard_data(data, ax, ay, 0, (not dry_run) and 'quickfort' or nil) end)
         if okg and d2 then
@@ -311,6 +312,7 @@ function quickfort_apply(mode, cells, z, ax, ay, command, dry_run)
         end)
         if okc and d4 and (n4 or 0) > 0 then
             data, refused, why = d4, (refused or 0) + n4, why or w4
+            cave_ins, cave_why = n4, w4
         end
     end
     local stats = qf.apply_blueprint{mode = mode, command = command or 'run', dry_run = dry_run,
@@ -319,6 +321,10 @@ function quickfort_apply(mode, cells, z, ax, ay, command, dry_run)
         pcall(function()
             stats.dig_guard_refused = {value = refused}
             stats.dig_guard_why = why
+            if cave_ins then            -- (0.105.41 review) the cave-in check's share, in its own words
+                stats.dig_guard_cave_ins = {value = cave_ins}
+                stats.dig_guard_cave_why = cave_why
+            end
         end)
     end
     return stats
@@ -343,8 +349,19 @@ end
 function dig_guard_note(stats)
     local ok, s = pcall(function()
         if type(stats) == 'table' and stats.dig_guard_why then
-            return (' (the dig guard refused %d: %s: left alone: it guards the underworld)'):format(
-                stat(stats, 'dig_guard_refused'), stats.dig_guard_why)
+            -- (0.105.41 review) the cave-in check's refused channels in their own words
+            local caves = stat(stats, 'dig_guard_cave_ins')
+            local deep = stat(stats, 'dig_guard_refused') - caves
+            local out = ''
+            if deep > 0 then
+                out = (' (the dig guard refused %d: %s: left alone: it guards the underworld)'):format(
+                    deep, stats.dig_guard_why)
+            end
+            if caves > 0 then
+                out = out .. (' (%d channel(s) left out: %s: a cave-in would follow)'):format(
+                    caves, stats.dig_guard_cave_why or 'a floor beside it would hang over nothing')
+            end
+            return out
         end
         return ''
     end)

@@ -605,6 +605,8 @@ def short(a: dict) -> str:
         return f"free a gate the game holds shut (step {a.get('step') or 1} of 3)"
     if t == "dig_way_in" and a.get("second"):     # (0.105.33)
         return "dig a second way in from the surface"
+    if t == "dig_way_in" and a.get("cave_in"):    # (0.105.41 review) the cave-in dig-out's own words
+        return "dig a way to the dwarves a cave-in cut off"
     if t == "dig_way_in":            # (0.105.32)
         return "dig a stair in for the citizens cut off outside"
     if t == "work_order":

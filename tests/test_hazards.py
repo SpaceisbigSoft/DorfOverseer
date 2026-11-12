@@ -78,6 +78,9 @@ env.block_magma = function(bx, by, z)
     end
     return out, W.moving
 end
+env.ai_levels = function() return W.levels or {} end
+env.player_floodgates = function() return W.gates or {} end
+env.marked_tile = function(x, y, z) return (W.marked or {})[key(x, y, z)] == true end
 env.magma_works = function() return W.works end
 env.magma_shops = function() return W.shops end
 env.moat_tiles = function() return W.moat end
@@ -154,20 +157,28 @@ def report(env):
     return py(env.report())
 
 
+def first_look(env):
+    """(0.105.41 review) The first reading (no magma yet): magma there at a
+    block's first reading is never spilt, so the tests spill after it."""
+    report(env)
+
+
 # --- 1. spilt magma found ----------------------------------------------------------
 
-@test("magma: spilt magma near a dwarf is found, recorded, put in a spot with the nearest dwarf; not 'spreading' at the first read")
+@test("magma: spilt magma near a dwarf is found, recorded, put in a spot with the nearest dwarf; magma there at the first read is not spilt")
 def _():
     lua, env, w = world()
     if LuaRuntime is None:
         return
     cit(lua, w, 1, 50, 50, 100)
+    spill(lua, w, [(40, 40)])                   # there before the AI looked: the player's
+    m = report(env)["magma"]
+    assert m["loose"] == 0 and "grew_ago" not in m, m
     spill(lua, w, [(53, 50), (54, 50)])
     r = report(env)
     m = r["magma"]
     assert m["loose"] == 2 and len(m["cells"]) == 1, m
     assert m["cells"][0]["near"] == 3 and m["cells"][0]["n"] == 2, m
-    assert "grew_ago" not in m, m
     st = py(w.site["ai-overseer/hazards"])
     assert set(st["magma"]["tiles"]) == {"53,50,100", "54,50,100"}, st
     assert all(v["near"] for v in st["magma"]["tiles"].values()), st
@@ -177,6 +188,7 @@ def _():
 def _():
     lua, env, w = world()
     cit(lua, w, 1, 50, 50, 100)
+    first_look(env)
     spill(lua, w, [(53, 50)])
     report(env)
     w.t = w.t + 40
@@ -190,6 +202,7 @@ def _():
 def _():
     lua, env, w = world()
     cit(lua, w, 1, 50, 50, 100)
+    first_look(env)
     spill(lua, w, [(55, 50)], feature=True)
     spill(lua, w, [(45, 45)])
     w.works = T(lua, [{"id": "magma:MagmaForge", "shop": "MagmaForge", "stage": "done",
@@ -204,6 +217,7 @@ def _():
 def _():
     lua, env, w = world()
     cit(lua, w, 1, 50, 50, 100)
+    first_look(env)
     w.works = T(lua, [{"id": "magma:MagmaForge", "shop": "MagmaForge", "stage": "done",
                        "tiles": [{"x": 40, "y": 50, "z": 100}], "gate": {"x": 40, "y": 50, "z": 100}}])
     spill(lua, w, [(48, 50)])
@@ -224,6 +238,7 @@ def _():
 def _():
     lua, env, w = world()
     cit(lua, w, 1, 50, 50, 100)
+    first_look(env)
     spill(lua, w, [(53, 50)])
     report(env)
     w.traffic["53,51,100"] = "High"
@@ -256,6 +271,7 @@ def _():
 def _():
     lua, env, w = world()
     cit(lua, w, 1, 50, 50, 100)
+    first_look(env)
     spill(lua, w, [(53, 50), (54, 50), (55, 50)])
     report(env)
     env.magma_guard(1, 10, False, False)
@@ -284,6 +300,7 @@ def _():
     r = py(env.magma_reclaim(DAY, True, False))
     assert r["rejected"] and r["nothing_to_do"], r
     cit(lua, w, 1, 50, 50, 100)
+    first_look(env)
     spill(lua, w, [(53, 50)])
     report(env)
     w.magma = T(lua, {})
@@ -292,6 +309,81 @@ def _():
     report(env)
     r = py(env.magma_reclaim(3 * DAY, False, False))
     assert r["cooled"] == 1 and r["walls"] == 0 and not py(w.dug), r
+
+
+# --- 2b. (0.105.41 review) what counts as spilt; the AI's painted traffic --------------
+
+@test("magma (review): a player's magma channel built later counts only in the AI's levels or near the dwarves; never on a building or zone outside the AI's levels or beside the player's floodgate")
+def _():
+    lua, env, w = world()
+    cit(lua, w, 1, 50, 50, 100)
+    w.levels = T(lua, [{"x1": 30, "y1": 30, "x2": 40, "y2": 40, "z": 100}])
+    first_look(env)
+    # far from the dwarves (10 tiles), outside the AI's levels: the player's, not spilt
+    spill(lua, w, [(60, 40), (61, 40)])
+    # in the AI's levels, far from the dwarves: spilt, in its own area
+    spill(lua, w, [(32, 32)])
+    # near the dwarves but on a pump (a building) outside the AI's levels: not spilt
+    spill(lua, w, [(52, 52)])
+    w.marked = T(lua, {"52,52,100": True, "33,33,100": True})
+    # in the AI's levels on a building: still spilt
+    spill(lua, w, [(33, 33)])
+    # near the dwarves beside the player's floodgate: not spilt
+    spill(lua, w, [(55, 55)])
+    w.gates = T(lua, [{"x": 56, "y": 55, "z": 100}])
+    m = report(env)["magma"]
+    st = py(w.site["ai-overseer/hazards"])
+    assert set(st["magma"]["tiles"]) == {"32,32,100", "33,33,100"}, st["magma"]["tiles"]
+    assert m["loose"] == 2 and all(c.get("ai") for c in m["cells"]), m
+    # near the dwarves, nowhere else: spilt, but not the AI's own (no civilian alarm)
+    spill(lua, w, [(50, 53)])
+    w.t += 10
+    m = report(env)["magma"]
+    near = [c for c in m["cells"] if c["z"] == 100 and c["x"] == 50]
+    assert near and not near[0].get("ai"), m
+
+
+@test("magma (review): a recorded tile that no longer counts (an older save's record of the player's magma) is forgotten")
+def _():
+    lua, env, w = world()
+    cit(lua, w, 1, 50, 50, 100)
+    first_look(env)
+    spill(lua, w, [(53, 50)])
+    report(env)
+    assert "53,50,100" in py(w.site["ai-overseer/hazards"])["magma"]["tiles"]
+    w.marked = T(lua, {"53,50,100": True})            # the player built on it
+    w.t += 10
+    m = report(env)["magma"]
+    assert m["loose"] == 0 and "53,50,100" not in py(w.site["ai-overseer/hazards"])["magma"]["tiles"], m
+
+
+@test("magma_guard (review): a tile the AI painted High/Low is restricted and given its painted value back on lift and on reclaim; the player's own Low kept")
+def _():
+    lua, env, w = world()
+    cit(lua, w, 1, 50, 50, 100)
+    first_look(env)
+    spill(lua, w, [(53, 50)])
+    report(env)
+    w.painted = T(lua, {"53,51,100": "High", "52,49,100": "Low"})
+    env.painted = lambda x, y, z, memo=None: w.painted[f"{x},{y},{z}"]
+    w.traffic["53,51,100"] = "High"                   # the AI's painted High
+    w.traffic["52,49,100"] = "Low"                    # the AI's painted Low
+    w.traffic["54,51,100"] = "Low"                    # the player's Low (not painted by the AI)
+    r = py(env.magma_guard(1, 10, False, False))
+    t = py(w.traffic)
+    assert r["restricted"] == 8 and t["53,51,100"] == "Restricted" and t["52,49,100"] == "Restricted", (r, t)
+    assert t["54,51,100"] == "Low", t
+    lift = py(env.magma_guard(1, 10, True, False))
+    t = py(w.traffic)
+    assert lift["lifted"] == 8 and t["53,51,100"] == "High" and t["52,49,100"] == "Low" and t["53,49,100"] == "Normal", t
+    # the reclaim gives the painted value back too
+    env.magma_guard(1, 10, False, False)
+    w.magma = T(lua, {})
+    w.t += 4 * DAY
+    report(env)
+    env.magma_reclaim(3 * DAY, False, False)
+    t = py(w.traffic)
+    assert t["53,51,100"] == "High" and t["52,49,100"] == "Low" and t["54,51,100"] == "Low", t
 
 
 # --- 3. the cave-in check before a channel ------------------------------------------
@@ -503,13 +595,35 @@ def _():
     assert not props and any("spilt magma" in n for n in notes), (props, notes)
 
 
+@test("brain (review): the AI's magma works shut for spilt magma near it stay shut (no reopen) while it lies there; reopened once it is gone")
+def _():
+    from planner_water import _waterworks_rule
+    s = base_state()
+    s["waterworks"] = {"works": {"magma:MagmaForge": {"kind": "magma", "shop": "MagmaForge", "stage": "done",
+                                                      "gate": "shut", "shut": "spilt magma near it"}}}
+    s["hazards"] = {"wet": []}
+    near = with_env(s, magma={"loose": 3, "cells": [{"x": 1, "y": 2, "z": 3, "n": 3, "near": 30,
+                                                     "work": "magma:MagmaForge", "work_d": 5}]})
+    props, notes = [], []
+    _waterworks_rule(near, Memory(), dict(PLANNER_CONFIG), props, notes)
+    assert not any(p.action.get("reopen") for p in props), [p.action for p in props]
+    assert any("kept shut while spilt magma lies 5 tiles" in n for n in notes), notes
+    gone = with_env(s, magma={"loose": 0, "cells": []})
+    props, notes = [], []
+    _waterworks_rule(gone, Memory(), dict(PLANNER_CONFIG), props, notes)
+    assert any(p.action.get("reopen") for p in props), [p.action for p in props]
+
+
 @test("brain: the alarm while spilt magma spreads near the dwarves (hazard_alert), not once it stands still")
 def _():
-    s = with_env(base_state(), magma={"loose": 2, "grew_ago": 50, "cells": [{"x": 1, "y": 2, "z": 3, "n": 2, "near": 4}]})
+    s = with_env(base_state(), magma={"loose": 2, "grew_ago": 50, "cells": [{"x": 1, "y": 2, "z": 3, "n": 2, "near": 4, "ai": True}]})
     assert "spilt magma spreading 4 tiles" in hazard_alert(s, PLANNER_CONFIG)
-    still = with_env(base_state(), magma={"loose": 2, "grew_ago": 500, "cells": [{"x": 1, "y": 2, "z": 3, "n": 2, "near": 4}]})
+    # (0.105.41 review) outside the AI's own area (near the citizens only): no civilian alarm
+    theirs = with_env(base_state(), magma={"loose": 2, "grew_ago": 50, "cells": [{"x": 1, "y": 2, "z": 3, "n": 2, "near": 4}]})
+    assert hazard_alert(theirs, PLANNER_CONFIG) == ""
+    still = with_env(base_state(), magma={"loose": 2, "grew_ago": 500, "cells": [{"x": 1, "y": 2, "z": 3, "n": 2, "near": 4, "ai": True}]})
     assert hazard_alert(still, PLANNER_CONFIG) == ""
-    far = with_env(base_state(), magma={"loose": 2, "grew_ago": 0, "cells": [{"x": 1, "y": 2, "z": 3, "n": 2, "near": 20}]})
+    far = with_env(base_state(), magma={"loose": 2, "grew_ago": 0, "cells": [{"x": 1, "y": 2, "z": 3, "n": 2, "near": 20, "ai": True}]})
     assert hazard_alert(far, PLANNER_CONFIG) == ""
     s2 = copy.deepcopy(s)
     s2["civ_alert_ready"] = True
@@ -550,7 +664,10 @@ def _():
     s = with_env(base_state(), cave_ins={"list": [row2]})
     props, notes = rules(s)
     p = next(p for p in props if p.rule == "cave_in_dig_out")
-    assert p.action == {"type": "dig_way_in", "x": 52, "y": 50, "z": 100}, p
+    assert p.action == {"type": "dig_way_in", "x": 52, "y": 50, "z": 100, "cave_in": True}, p
+    import overseer                                   # (0.105.41 review) a label of its own
+    assert overseer.short(p.action) == "dig a way to the dwarves a cave-in cut off"
+    assert "cut off outside" in overseer.short({"type": "dig_way_in", "x": 1, "y": 2, "z": 3})
     s["projects"] = {"open": [{"id": 4, "kind": "way_in", "phase": "dig"}]}
     props, notes = rules(s)
     assert not props and any("being dug" in n for n in notes), notes
