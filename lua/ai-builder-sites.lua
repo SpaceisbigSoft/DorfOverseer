@@ -5,7 +5,7 @@
 -- into its own environment, so every name here is reqscript('ai-builder').name
 -- and the helpers defined there (info, quickfort_apply, ...) are in reach.
 
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-sites'] = '0.105.36'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-sites'] = '0.105.37'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local info, has, add, overlaps, ez = info, has, add, overlaps, ez
 
@@ -199,7 +199,7 @@ local DIRS = {{x = 0, y = 1}, {x = 0, y = -1}, {x = 1, y = 0}, {x = -1, y = 0}}
 
 -- Where a corridor travelling in direction d first meets the layout: the
 -- layout tile on its centre line nearest the side it comes from.
-local function entry_point(L, d)
+function entry_point(L, d)
     local best
     if d.x == 0 then
         for y = L.bounds.y1, L.bounds.y2 do
@@ -282,7 +282,7 @@ local function perp(d) return {x = -d.y, y = d.x} end
 -- The new corridor's tiles in map coordinates: {x, y, t = direction of
 -- travel, step}. Straight, or (side = +-1) jogging 2 tiles that way half way.
 -- Returns the tiles and the sideways shift of the corridor's end.
-local function corridor_path(stair, d, first, corridor, side)
+function corridor_path(stair, d, first, corridor, side)
     local tiles, sx, sy = {}, 0, 0
     local half = side ~= 0 and corridor // 2 or nil
     local p = perp(d)
@@ -302,7 +302,7 @@ local function corridor_path(stair, d, first, corridor, side)
     return tiles, sx, sy
 end
 
-local function offset_sites(L, stair, z, reserved, try, dirs, grammar)
+function offset_sites(L, stair, z, reserved, try, dirs, grammar)
     local group = walk_group(stair.x, stair.y, z)
     if group == 0 then return nil end
     local shortest, longest = corridor_range(L)
@@ -446,7 +446,7 @@ PLAN_SHARE = 0.4
 PLAN_EXTEND = 3
 
 -- The plan's elevation band as z: {lo, hi, target}, or nil.
-local function plan_band(plan)
+function plan_band(plan)
     if type(plan) ~= 'table' then return nil end
     local lo, hi = math.tointeger(plan.elev_lo), math.tointeger(plan.elev_hi)
     if not lo or not hi or lo > hi then return nil end
@@ -517,7 +517,7 @@ end
 -- through (nearest the dwarves first), then levels below its bottom. With a
 -- band: the band's levels first (nearest the target), the rest in that same
 -- order after; only_band leaves the rest out.
-local function stair_levels(stair, band, only_band, may_extend)
+function stair_levels(stair, band, only_band, may_extend)
     local through, below = {}, {}
     for z = stair.z_bottom, stair.z_top do table.insert(through, z) end
     table.sort(through, function(a, b)

@@ -417,11 +417,12 @@ end
 -- modules, and a test's swap (B.tile_info = ...) reaches every part.
 ---------------------------------------------------------------------------
 
-PARTS = {'sites', 'projects', 'farms', 'wells', 'cistern', 'surface', 'rooms', 'halls'}   -- (0.105.30) halls
+PARTS = {'sites', 'projects', 'farms', 'wells', 'cistern', 'surface', 'rooms', 'halls',   -- (0.105.30) halls
+         'landmarks'}   -- (D0) the Design track's landmarks
 -- (0.105.26) each part marks the version it came with (the bridge's
 -- `version` lists one that differs from BRIDGE_VERSION); started afresh at
 -- each load, so a part that failed to load shows as unmarked
-PART_VERSIONS = {['ai-builder'] = '0.105.36'}   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = {['ai-builder'] = '0.105.37'}   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local function part_path(name)
     local dir = debug.getinfo(1, 'S').source:match('^@(.*[/\\])')

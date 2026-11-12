@@ -1,0 +1,16 @@
+{
+ "v": 1,
+ "ground": "surface",
+ "levels": [
+  {
+   "grid": [
+    "..@..",
+    ".WFW.",
+    ".F+F.",
+    ".WWW."
+   ]
+  }
+ ],
+ "legend": {},
+ "_doc": "a walled yard on the ground"
+}

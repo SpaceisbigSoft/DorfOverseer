@@ -1,0 +1,14 @@
+{
+ "v": 1,
+ "ground": "rock",
+ "levels": [
+  {
+   "grid": [
+    "#@#",
+    "#a#"
+   ]
+  }
+ ],
+ "legend": {},
+ "_expect": "LEGEND"
+}

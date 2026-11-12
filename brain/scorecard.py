@@ -34,6 +34,7 @@ logs/scorecards/summary.md (from summary.json, kept between runs). Printed too.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import sys
@@ -44,6 +45,11 @@ from pathlib import Path
 import customs
 from digest import _d, _l
 from util import load_json
+
+try:                    # (D0) the design language (brain/design.py): its level signature
+    import design as _design
+except ImportError:     # pragma: no cover - before the Design track's merge
+    _design = None
 
 SEASONS = ("spring", "summer", "autumn", "winter")
 
@@ -282,6 +288,7 @@ def journal_counts(entries: list[dict], date: dict, timeline: list | None = None
     reports, deaths = Counter(), Counter()
     access = []         # (when, visitors allowed, location ids) from location_access
     soil_floored = 0    # (0.105.30) tiles floor_rooms placed
+    landmarks = []      # (D0) build_blueprint decisions (not dry runs)
     for e in entries:
         if e.get("kind") == "event" and before(e, date):
             ev = _d(e.get("event"))
@@ -305,6 +312,8 @@ def journal_counts(entries: list[dict], date: dict, timeline: list | None = None
         if first is None and isinstance(e.get("date"), dict):
             first = abs_ticks(e["date"])
         seen[t] += 1
+        if t == "build_blueprint" and not r.get("dry_run") and not a.get("dry_run"):
+            landmarks.append(landmark_entry(a, r))
         if not r.get("ok"):
             continue
         ok[t] += 1
@@ -338,7 +347,10 @@ def journal_counts(entries: list[dict], date: dict, timeline: list | None = None
             levels.append({"kind": r.get("kind") or a.get("kind"), "z": r.get("z"),
                            "tiles": r.get("tiles") or r.get("designated"),
                            "corridor": _num_or_none(cor), "rooms": _num_or_none(rooms),
-                           "customs": [c for c in _l(a.get("customs")) if isinstance(c, str)]})
+                           "customs": [c for c in _l(a.get("customs")) if isinstance(c, str)],
+                           # (D0) the level's style (its design signature) and when it began
+                           "style": _d(a.get("style")),
+                           "when": abs_ticks(e["date"]) if isinstance(e.get("date"), dict) else None})
         elif t == "floor_rooms" and not r.get("dry_run"):
             # (0.105.30) soil floors the keeper finished: tiles placed (any count field the bridge gives)
             n = next((r[k] for k in ("placed", "tiles", "floored", "n") if isinstance(r.get(k), int)
@@ -354,7 +366,8 @@ def journal_counts(entries: list[dict], date: dict, timeline: list | None = None
             "petitions_no": petitions_no, "levels": levels, "reports": reports, "deaths": deaths,
             "shut_days": shut_days(access, until), "soil_floored": soil_floored,
             "alarms_on": alarms_on, "gems_set": gems_set, "gems_cut": gems_cut, "treasures_kept": treasures_kept,
-            "caps": caps, "welcome": welcome_rows(caps, timeline or [], until, first)}
+            "caps": caps, "welcome": welcome_rows(caps, timeline or [], until, first),
+            "landmarks": landmarks, "until": until}
 
 
 DAYS_PER_YEAR = 336
@@ -625,6 +638,152 @@ def construction_measures(s: dict, j: dict) -> dict:
     return out
 
 
+# ---------------------------------------------------------------- (D0) the Design block
+
+# the style keys the Design track adds (lua/ai-layouts.lua style_of; each is sent
+# only when it isn't its default) and its four new halls
+DESIGN_STYLE_KEYS = ("scale", "aspect", "arms", "motif", "grand")
+DESIGN_HALLS = ("octagonal", "round", "cruciform", "nave")
+DISTINCT_PASS = 0.5       # judge_distinct: every pair of forts at least this far apart
+
+
+def level_signature(kind, style) -> str:
+    """A level's design signature: design.signature when brain/design.py is
+    there, else the same "<kind>:<hall>:<arms>:<scale//10>:<motif>:<orient>"
+    with each key's default."""
+    st = _d(style)
+    if _design is not None and hasattr(_design, "signature"):
+        try:
+            return str(_design.signature(kind, st))
+        except Exception:       # noqa: BLE001 - a bad style is scored, not fatal
+            pass
+    scale = st.get("scale") if isinstance(st.get("scale"), int) and not isinstance(st.get("scale"), bool) else 100
+    return (f"{kind}:{st.get('hall') or 'plain'}:{st.get('arms') or 'corridor'}:{scale // 10}:"
+            f"{st.get('motif') or 'rows'}:{st.get('orient') or 0}")
+
+
+def in_language(style) -> bool:
+    """A level built in a design language: its style carries a Design key."""
+    st = _d(style)
+    return any(st.get(k) not in (None, False) for k in DESIGN_STYLE_KEYS) or st.get("hall") in DESIGN_HALLS
+
+
+def grid_key(bp) -> str | None:
+    """A short fingerprint of a blueprint's grids (its levels' rows), so two
+    landmarks with the same drawing are seen; None without levels."""
+    levels = _l(_d(bp).get("levels"))
+    if not levels:
+        return None
+    rows = [_l(_d(lv).get("grid")) or _l(_d(lv).get("rows")) for lv in levels]
+    return hashlib.sha1(json.dumps(rows, sort_keys=True).encode("utf-8")).hexdigest()[:12]
+
+
+def landmark_entry(a: dict, r: dict) -> dict:
+    """One build_blueprint decision: what was asked, by whom, and how it went."""
+    return {"name": a.get("name"), "purpose": a.get("purpose"),
+            "by": a.get("by") if a.get("by") in ("ai", "library") else "library",
+            "ok": bool(r.get("ok")), "rejected": not r.get("ok"),
+            "landmark_id": r.get("landmark_id"), "grid": grid_key(a.get("bp")) if r.get("ok") else None,
+            "codes": [_d(x).get("code") for x in _l(r.get("reasons")) if _d(x).get("code")]}
+
+
+def design_measures(s: dict, j: dict) -> dict:
+    """(D0) The Design block's numbers for one fort (design-track 9): the
+    setting, the share of the last year's levels in the language, the hall
+    shapes and arm patterns used, landmarks started (library, AI) and built,
+    refusals a landmark, and the level signatures."""
+    levels = j.get("levels") or []
+    until = j.get("until")
+    year = [lv for lv in levels if until is None or lv.get("when") is None
+            or lv["when"] >= until - TICKS_PER_YEAR]
+    styled = [lv for lv in levels if lv.get("style")]
+    marks = j.get("landmarks") or []
+    started = [m for m in marks if m["ok"]]
+    tried = {str(m.get("name") or m.get("purpose") or "?") for m in marks}
+    refused = sum(1 for m in marks if m["rejected"])
+    lm = s.get("landmarks")
+    built = sum(1 for x in _l(_d(lm).get("list")) if _d(x).get("status") == "built") \
+        if isinstance(lm, dict) else None
+    grids = [m["grid"] for m in started if m.get("grid")]
+    return {
+        "setting": _d(s.get("settings")).get("design"),
+        "language_pct": pct(sum(1 for lv in year if in_language(lv.get("style"))), len(year)),
+        "hall_shapes": len({lv["style"].get("hall") or "plain" for lv in styled}) if styled else 0,
+        "arm_patterns": len({lv["style"].get("arms") or "corridor" for lv in styled}) if styled else 0,
+        "landmarks_library": sum(1 for m in started if m["by"] == "library"),
+        "landmarks_ai": sum(1 for m in started if m["by"] == "ai"),
+        "landmarks_built": built,
+        "refusals_per_landmark": per(refused, len(tried)) if marks else None,
+        "signatures": sorted({level_signature(lv.get("kind"), lv.get("style")) for lv in levels if lv.get("kind")}),
+        "grids": grids,
+        "styled": any(in_language(lv.get("style")) for lv in levels) or bool(marks),
+    }
+
+
+def _sig_sets(forts) -> list[tuple[str, set]]:
+    items = forts.items() if isinstance(forts, dict) else enumerate(forts)
+    return [(str(k), set(v)) for k, v in items if v]
+
+
+def jaccard_distance(a: set, b: set) -> float:
+    union = a | b
+    return 1.0 - len(a & b) / len(union) if union else 0.0
+
+
+def pair_distances(forts) -> list[tuple[str, str, float]]:
+    """Every pair of forts' signature sets (label -> signatures, or a list of
+    them) and their Jaccard distance; forts without a level are left out."""
+    sets = _sig_sets(forts)
+    return [(a, b, round(jaccard_distance(sa, sb), 3))
+            for i, (a, sa) in enumerate(sets) for b, sb in sets[i + 1:]]
+
+
+def distinct(forts) -> float | None:
+    """Layout distinctness: the mean pairwise Jaccard distance between the
+    forts' level-signature sets (0: the same set; 1: nothing shared). None
+    with fewer than two forts that have levels."""
+    pairs = pair_distances(forts)
+    return round(sum(d for _, _, d in pairs) / len(pairs), 3) if pairs else None
+
+
+def judge_distinct(forts, bar: float = DISTINCT_PASS) -> str:
+    """'pass' when every pair of forts is at least `bar` apart, 'fail' when
+    one isn't, 'no data' with fewer than two forts that have levels."""
+    pairs = pair_distances(forts)
+    if not pairs:
+        return "no data"
+    return "pass" if all(d >= bar for _, _, d in pairs) else "fail"
+
+
+def design_section(labels: list, dm: dict) -> tuple[list[str], dict]:
+    """The Design block's markdown and its summary (for summary.json)."""
+    sigs = {lb: dm[lb]["signatures"] for lb in labels}
+    dist, verdict = distinct(sigs), judge_distinct(sigs)
+    pairs = pair_distances(sigs)
+    md = ["", "## Design", "", "| Measure | " + " | ".join(labels) + " |", "|" + " --- |" * (len(labels) + 1)]
+    for what, k in (("Design setting", "setting"), ("levels in the language, % of the last year's", "language_pct"),
+                    ("hall shapes used", "hall_shapes"), ("arm patterns used", "arm_patterns"),
+                    ("landmarks started from the library", "landmarks_library"),
+                    ("landmarks started from the AI's drawings", "landmarks_ai"),
+                    ("landmarks built", "landmarks_built"), ("refusals a landmark", "refusals_per_landmark")):
+        md.append(f"| {what} | " + " | ".join(fmt(dm[lb].get(k)) for lb in labels) + " |")
+    md.append("| level signatures | " + " | ".join(str(len(dm[lb]["signatures"])) for lb in labels) + " |")
+    md.append("")
+    if dist is None:
+        md.append("Layout distinctness: no data (fewer than two forts with levels).")
+    else:
+        close = min(pairs, key=lambda x: x[2])
+        md.append(f"Layout distinctness: {dist:g} (mean pairwise distance; closest pair {close[0]}-{close[1]} "
+                  f"at {close[2]:g}): **{verdict}** (every pair {DISTINCT_PASS:g} or more apart).")
+    grids = [(lb, g) for lb in labels for g in dm[lb]["grids"]]
+    seen = Counter(g for _, g in grids)
+    dup = sorted({lb for lb, g in grids if seen[g] > 1})
+    md.append(("Landmark grids: every one unique." if not dup else
+               f"Landmark grids: {sum(n for n in seen.values() if n > 1)} share a drawing ({', '.join(dup)}).")
+              if grids else "Landmark grids: none built yet.")
+    return md, {"distinct": dist, "verdict": verdict, "grids_unique": not dup}
+
+
 # ---------------------------------------------------------------- the lines
 
 # (slider, what, measure, high presets, low presets)
@@ -829,13 +988,14 @@ def score_full(forts: list[Fort], at: str | None, now: bool) -> tuple[str, list[
     if not forts:
         return "No fort with season states found.\n" + ("\n" + "\n".join(notes) + "\n" if notes else ""), [], {}
     keys, title = pick_keys(forts, at, now)
-    data = {}
+    data, dm = {}, {}
     for f in forts:
         s = f.state_at(keys[f.label])
         if s is None:
             continue
         j = journal_counts(f.journal(), _d(s.get("date")), f.timeline())
         data[f.label] = (f, s, measures(s, j), health(s, j))
+        dm[f.label] = design_measures(s, j)      # (D0)
     labels = list(data)
     head = ["Slider", "Line"] + [f"{lb} {SHORT.get(data[lb][0].preset, data[lb][0].preset)}" for lb in labels] + \
         ["Should win", "Result"]
@@ -910,6 +1070,12 @@ def score_full(forts: list[Fort], at: str | None, now: bool) -> tuple[str, list[
                "runs": {lb: data[lb][0].run for lb in labels},
                "health": {lb: issues.get(lb, []) for lb in labels},
                "presets": {lb: data[lb][0].preset for lb in labels}}
+    # (D0) the Design block: only once a fort has a design (a setting past
+    # Scripts, a level in a language, a landmark), so older reports read the same
+    if any(dm[lb]["styled"] or dm[lb]["setting"] in ("guided", "architect") for lb in labels):
+        dmd, dsum = design_section(labels, dm)
+        md += dmd
+        summary["design"] = dsum
     return "\n".join(md) + "\n", rows, summary
 
 

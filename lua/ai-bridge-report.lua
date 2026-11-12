@@ -9,7 +9,7 @@
 -- in_fort, NOT_IN_FORT, OUT_DIR) are at hand. Not a command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-report is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-report'] = '0.105.36'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-report'] = '0.105.37'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local utils = require('utils')
 
@@ -276,6 +276,22 @@ function get_needs(txt_fn)
     end
     table.sort(out.stressed, function(a, b) return a.stress < b.stress end)
     while #out.stressed > 8 do table.remove(out.stressed) end
+    -- (D0) each god's spheres (up to 4 words), beside deity_ids: the Design
+    -- track's symbols. [verify] DF 53: hf.info.spheres, a list of sphere_type
+    -- (or a struct holding it as .spheres)
+    out.deity_spheres = {}
+    for nm, id in pairs(out.deity_ids) do
+        pcall(function()
+            local sp = df.historical_figure.find(id).info.spheres
+            local okl, inner = pcall(function() return sp.spheres end)
+            local list = (okl and inner) or sp
+            local words = {}
+            for _, s in ipairs(list) do
+                if #words < 4 then table.insert(words, (tostring(df.sphere_type[s] or s):lower():gsub('_', ' '))) end
+            end
+            if #words > 0 then out.deity_spheres[nm] = words end
+        end)
+    end
     -- (0.104.7, a probe for Be with friends) the game's activities under way by
     -- kind (socialising is an activity, not a job), how many citizens are in
     -- one, the idle ones and where they stand (a meeting hall, dining hall,

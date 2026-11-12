@@ -1,0 +1,13 @@
+{
+ "v": 2,
+ "ground": "rock",
+ "levels": [
+  {
+   "grid": [
+    "#@#",
+    "#.#"
+   ]
+  }
+ ],
+ "_expect": "FORMAT"
+}

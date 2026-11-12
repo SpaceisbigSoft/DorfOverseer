@@ -6,7 +6,8 @@ sliders and shaped by what happens to the fort. Pure logic, no tokens.
 A profile is a small dict of style choices that the planner hands to the
 builder with every new level (see docs/culture.md):
 
-  hall        'plain' | 'rounded' | 'pillared'   shape of big rooms
+  hall        'plain' | 'rounded' | 'pillared'   shape of big rooms (and, from a design
+              language: 'octagonal' | 'round' | 'cruciform' | 'nave')
   smooth      0-3   0 rough, 1 smooth floors, 2 floors and walls, 3 and engrave halls
   statues     0-4   statues per hall
   palette     'any' | 'dark' | 'light' | 'warm' | 'cool' | 'precious'   furniture stone,
@@ -29,7 +30,12 @@ import re
 
 from weights import areas, choose_all, why_text
 
-HALLS = ("plain", "rounded", "pillared")
+HALLS = ("plain", "rounded", "pillared", "octagonal", "round", "cruciform", "nave")   # (D0) + the Design track's 4
+HALL_TITLES = {"plain": "Plain", "rounded": "Rounded", "pillared": "Pillared", "octagonal": "Octagonal",
+               "round": "Round", "cruciform": "Cruciform", "nave": "Vaulted"}
+HALL_GUIDE = {"plain": "Square, practical rooms", "rounded": "Halls with rounded corners",
+              "pillared": "Grand pillared halls", "octagonal": "Eight-sided halls", "round": "Round halls",
+              "cruciform": "Cross-shaped halls", "nave": "Long vaulted halls with pillared aisles"}
 PALETTES = ("any", "dark", "light", "warm", "cool", "precious", "purpose", "wood")
 # "Stone by purpose": which tone each kind of furniture is made in.
 PURPOSE = {"Door": "dark", "Armorstand": "dark", "Weaponrack": "dark", "Table": "warm", "Chair": "warm",
@@ -156,6 +162,9 @@ def _profile_from(traits: dict, history: dict | None = None) -> dict:
     # was set: move a slider, and that choice is yours again.
     for k, ov in ai_choices(profile, h).items():
         profile[k] = ov.get("value")
+    # (D0) the fort's design language, last (none at Scripts: nothing changes)
+    import design
+    design.apply(profile, h, traits)
     return profile
 
 
@@ -199,11 +208,13 @@ GATE_STYLES = ("plain", "narrow", "fortified", "gatehouse", "grand", "drawbridge
 
 
 def era_title(p: dict) -> str:
-    shape = {"plain": "Plain", "rounded": "Rounded", "pillared": "Pillared"}[p["hall"]]
+    shape = HALL_TITLES.get(p["hall"]) or str(p["hall"]).title()
     finish = ["Rough", "Smoothed", "Polished", "Engraved"][p["smooth"]]
     tone = {"any": "", "dark": "Dark ", "light": "Pale ", "warm": "Warm ", "cool": "Cool ",
             "precious": "Gilded ", "purpose": "Crafted ", "wood": "Timbered "}.get(p["palette"], "")
-    return f"{tone}{finish} {shape} era".replace("  ", " ")
+    title = f"{tone}{finish} {shape} era".replace("  ", " ")
+    name = (p.get("design") or {}).get("name") if isinstance(p.get("design"), dict) else None
+    return f"{name}: {title}" if name else title      # (D0) the design language's own name first
 
 
 def update_eras(history: dict, profile: dict, year: int) -> str | None:
@@ -225,8 +236,7 @@ def style_guide(profile: dict, stone_name: str | None = None, history: dict | No
         return history["guide"][:STYLE_GUIDE_MAX]
     p = profile
     parts = []
-    parts.append({"plain": "Square, practical rooms", "rounded": "Halls with rounded corners",
-                  "pillared": "Grand pillared halls"}[p["hall"]])
+    parts.append(HALL_GUIDE.get(p["hall"]) or f"{p['hall']} halls".capitalize())
     parts.append(["left as rough rock", "with smoothed floors", "with smoothed floors and walls",
                   "smoothed and richly engraved"][p["smooth"]])
     s = "; ".join(parts)
@@ -264,8 +274,21 @@ def _tone(rgb) -> dict:
             "cool": sat > 0.2 and 150 <= deg <= 270}
 
 
-def stone_for(stones: list[dict], palette: str, kind: str, need: int = 20) -> dict | None:
-    """The stone for one kind of furniture: by purpose, or the fort's one stone."""
+def stone_for(stones: list[dict], palette: str, kind: str, need: int = 20,
+              by_kind: dict | None = None, signature: str | None = None) -> dict | None:
+    """The stone for one kind of furniture: the design language's tone for
+    this kind (by_kind), then its signature stone when `need` of it is on
+    hand, then by purpose, or the fort's one stone."""
+    tone = (by_kind or {}).get(kind) if isinstance(by_kind, dict) else None
+    if tone:
+        hit = pick_stone(stones, tone, need)
+        if hit:
+            return hit
+    if signature:
+        hit = next((s for s in stones or [] if isinstance(s, dict) and s.get("token") == signature
+                    and (s.get("count") or 0) >= need), None)
+        if hit:
+            return hit
     if palette == "purpose":
         return pick_stone(stones, PURPOSE.get(kind, "any"), need)
     return pick_stone(stones, palette, need)
@@ -329,14 +352,25 @@ def apply_style(history: dict, accepted: dict, traits: dict | None = None) -> No
     if not isinstance(history.get("overrides"), dict):     # the save turns an empty {} into []
         history["overrides"] = {}
     over = history["overrides"]
-    base = profile_from(traits or {}, dict(history, overrides={}))
+    # (D0) what the sliders give, before the design language (profile_from compares there)
+    base = profile_from(traits or {}, {k: v for k, v in dict(history, overrides={}).items() if k != "design"})
     reason = accepted.get("reason") or ""
     for k, v in accepted.items():
         if k not in ("guide", "reason"):
             over[k] = {"value": v, "base": base.get(k), "reason": reason}
 
 
-def layout_style(profile: dict) -> dict:
-    """What the builder needs for one new level."""
-    return {"hall": profile["hall"], "smooth": profile["smooth"], "statues": profile["statues"],
-            "entry_door": bool(profile["entry_doors"]), "spacing": int(profile.get("spacing", 0))}
+def layout_style(profile: dict, kind: str | None = None) -> dict:
+    """What the builder needs for one new level. (D0) With a design language
+    (profile["design"]) the new keys too (design.style_fields); a kind in its
+    emphasis gets a statue more and engraved halls, within one step."""
+    out = {"hall": profile["hall"], "smooth": profile["smooth"], "statues": profile["statues"],
+           "entry_door": bool(profile["entry_doors"]), "spacing": int(profile.get("spacing", 0))}
+    if isinstance(profile.get("design"), dict):
+        import design
+        extra = design.style_fields(profile, kind)
+        if extra.get("grand"):
+            out["statues"] = min(4, int(out["statues"] or 0) + 1)
+            out["smooth"] = min(3, int(out["smooth"] or 0) + 1)
+        out.update(extra)
+    return out

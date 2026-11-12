@@ -5,7 +5,7 @@
 -- into its own environment, so every name here is reqscript('ai-builder').name
 -- and the helpers defined there (info, quickfort_apply, ...) are in reach.
 
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-projects'] = '0.105.36'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-projects'] = '0.105.37'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local info, ez = info, ez
 
@@ -117,7 +117,7 @@ local function stair_cells(stair, z)
     return cells
 end
 
-local function undo_dig(dig_cells, stairs, z, anchor, stair)
+function undo_dig(dig_cells, stairs, z, anchor, stair)
     pcall(quickfort_apply, 'dig', dig_cells, z, anchor.x, anchor.y, 'undo')
     for _, c in ipairs(stairs or {}) do
         pcall(quickfort_apply, 'dig', {{x = 0, y = 0, text = c.text}}, c.z, stair.x, stair.y, 'undo')
@@ -528,15 +528,29 @@ end
 
 -- (0.104.142) The open-project cap: the base, plus a slot for each level
 -- furnishing FURNISH_LEND_DAYS or more (FURNISH_LEND_MAX at most).
+-- (D0, G6) A landmark takes one slot whatever its levels: each level past the
+-- first is a project of its own (kind 'landmark', one params.landmark_id), so
+-- it adds a slot back, and lends once; a surface landmark being built has no
+-- project at all, so it takes one (landmarks_open_surface, ai-builder-landmarks)
 function slot_cap(open)
-    local lent = 0
+    local lent, again, seen = 0, 0, {}
     for _, p in ipairs(open or {}) do
-        if p.phase == 'furnish' then
+        local lid = p.kind == 'landmark' and type(p.params) == 'table' and p.params.landmark_id or nil
+        local dup = lid ~= nil and seen[lid] == true
+        if lid ~= nil then seen[lid] = true end
+        if dup then
+            again = again + 1
+        elseif p.phase == 'furnish' then
             local since = tick_of(p.furnish_started)
             if since and (now_tick() - since) // 1200 >= FURNISH_LEND_DAYS then lent = lent + 1 end
         end
     end
-    return MAX_OPEN_PROJECTS + math.min(FURNISH_LEND_MAX, lent)
+    local surface = 0
+    if type(landmarks_open_surface) == 'function' then
+        local ok, n = pcall(landmarks_open_surface)
+        if ok and math.tointeger(n) then surface = n end
+    end
+    return MAX_OPEN_PROJECTS + math.min(FURNISH_LEND_MAX, lent) + again - surface
 end
 
 -- Smoothing progress: how many cells still have a smoothing job waiting.
@@ -674,7 +688,10 @@ function registry_report()
         table.insert(out, {id = p.id, kind = p.kind, phase = p.phase, z = p.z,
                            elevation = p.z and ez(p.z) or nil, bounds = bounds_of(p),
                            style = params.style, name = params.name, started = p.started,
-                           district = plan.district, in_district = p.in_district})
+                           district = plan.district, in_district = p.in_district,
+                           -- (D0, G6) a landmark's level: named after its landmark, and which
+                           landmark_id = p.kind == 'landmark' and params.landmark_id or nil,
+                           level = p.kind == 'landmark' and params.level or nil})
     end
     return out
 end
@@ -1051,7 +1068,9 @@ function furnish_project(id, buildingplan_on, stalled)
     end
     -- (0.89) a temple asked for by a petition: its new location dedicated
     local pr = type(p.params) == 'table' and p.params or {}
-    if p.kind == 'temple' and (pr.deity_hf or pr.religion) and results.zone and results.zone ~= 0 then
+    -- (D0, G6) and a landmark's level zoned as a temple (params.zone)
+    if (p.kind == 'temple' or (p.kind == 'landmark' and pr.zone == 'temple'))
+            and (pr.deity_hf or pr.religion) and results.zone and results.zone ~= 0 then
         local okd, ded = pcall(dedicate_temple, p, pr)
         results.dedicated = okd and ded or ('failed: ' .. tostring(ded))
     end

@@ -9,7 +9,7 @@
 -- in_fort, NOT_IN_FORT, OUT_DIR) are at hand. Not a command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-actions is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-actions'] = '0.105.36'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-actions'] = '0.105.37'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local json = require('json')
 local utils = require('utils')
@@ -118,9 +118,18 @@ end
 local function parse_style(st)
     if st == nil then return nil end
     if type(st) ~= 'table' then return nil, 'style must be an object' end
+    -- (D0 G4) the hall shapes are the layouts' own list (ai-layouts.HALLS), as the customs are
+    local okh, halls = pcall(function() return reqscript('ai-layouts').HALLS end)
+    if not (okh and type(halls) == 'table') then
+        halls = {plain = true, rounded = true, pillared = true,
+                 octagonal = true, round = true, cruciform = true, nave = true}
+    end
     local hall = st.hall or 'plain'
-    if hall ~= 'plain' and hall ~= 'rounded' and hall ~= 'pillared' then
-        return nil, 'style.hall must be plain, rounded or pillared'
+    if type(hall) ~= 'string' or not halls[hall] then
+        local names = {}
+        for k in pairs(halls) do table.insert(names, k) end
+        table.sort(names)
+        return nil, 'style.hall must be one of: ' .. table.concat(names, ', ')
     end
     local smooth, statues = int_in(st.smooth or 0, 0, 3), int_in(st.statues or 0, 0, 4)
     if not smooth or not statues then
@@ -141,6 +150,35 @@ local function parse_style(st)
         rhythm = int_in(st.rhythm, 3, 6)
         if not rhythm then return nil, 'style.rhythm must be 3-6' end
     end
+    -- (D0 G4, the Design track; d0-spec 1.4) optional, each sent only when not its default
+    local scale, aspect, arms, motif, grand
+    if st.scale ~= nil then
+        scale = int_in(st.scale, 80, 150)
+        if not scale then return nil, 'style.scale must be 80-150 (per cent)' end
+    end
+    if st.aspect ~= nil then
+        if st.aspect ~= 'square' and st.aspect ~= 'long' and st.aspect ~= 'wide' then
+            return nil, 'style.aspect must be square, long or wide'
+        end
+        aspect = st.aspect
+    end
+    if st.arms ~= nil then
+        if st.arms ~= 'corridor' and st.arms ~= 'cross' and st.arms ~= 'ring' then
+            return nil, 'style.arms must be corridor, cross or ring'
+        end
+        arms = st.arms
+    end
+    if st.motif ~= nil then
+        local forms = {rows = true, ring = true, cross = true, spiral = true, star = true, wave = true}
+        if type(st.motif) ~= 'string' or not forms[st.motif] then
+            return nil, 'style.motif must be one of: cross, ring, rows, spiral, star, wave (a form, not a symbol)'
+        end
+        motif = st.motif
+    end
+    if st.grand ~= nil then
+        if type(st.grand) ~= 'boolean' then return nil, 'style.grand must be true or false' end
+        grand = st.grand
+    end
     local customs        -- (0.105.29) fort customs the layouts read; unknown names dropped
     for _, c in ipairs(type(st.customs) == 'table' and st.customs or {}) do
         -- (0.105.33) the layouts' own list (ai-layouts.LAYOUT_CUSTOMS), so a new custom isn't dropped here
@@ -151,7 +189,8 @@ local function parse_style(st)
         end
     end
     return {hall = hall, smooth = smooth, statues = statues, entry_door = st.entry_door == true,
-            spacing = spacing, orient = orient, rhythm = rhythm, customs = customs}
+            spacing = spacing, orient = orient, rhythm = rhythm, customs = customs,
+            scale = scale, aspect = aspect, arms = arms, motif = motif, grand = grand}
 end
 
 -- The overseer's master plan for a new level: a hint where to put it (the
@@ -478,7 +517,8 @@ end
 -- game reads it.
 CULTURE_KEY = 'ai-overseer/culture'
 local CULTURE_ENUMS = {
-    hall = {plain = true, rounded = true, pillared = true},
+    hall = {plain = true, rounded = true, pillared = true,
+            octagonal = true, round = true, cruciform = true, nave = true},   -- (D0) the Design track's halls
     palette = {any = true, dark = true, light = true, warm = true, cool = true, precious = true,
                purpose = true, wood = true},
     temple = {none = true, shrine = true, grand = true},
@@ -625,6 +665,12 @@ function act_set_culture(a)
         local t = says(s, 160)
         if t and #plan < 8 then table.insert(plan, t) end
     end
+    -- (D0) the design language in words (brain/design.py lines), for the panel
+    local design = {}
+    for _, x in ipairs(type(c.design) == 'table' and c.design or {}) do
+        local t = says(x, 160)
+        if t and #design < 6 then table.insert(design, t) end
+    end
     -- (0.94) what each slider does now (brain/temperament.py), for the panel
     local effects = {}
     for k, v in pairs(type(c.effects) == 'table' and c.effects or {}) do
@@ -642,6 +688,7 @@ function act_set_culture(a)
     local data = {
         choices = choices, quirks = quirks, effects = effects, leanings = leanings,
         plan = plan, phase = says(c.phase, 120),
+        design = #design > 0 and design or nil,     -- (D0)
         guide = clean_text(c.guide, 400) or '',
         stone = clean_text(c.stone, 40),
         profile = profile, eras = eras,
@@ -2228,12 +2275,17 @@ end
 -- floodgate shut at once (shut) or the work retired.
 function act_water_work(a)
     local kinds = reqscript('ai-waterworks').KINDS
-    if not kinds[a.kind] then return reject('water_work: kind is moat, pump, irrigation or magma') end
+    if not kinds[a.kind] then return reject('water_work: kind is moat, pump, irrigation, magma or power') end
     if a.shop ~= nil and not reqscript('ai-waterworks').MAGMA_SHOPS[a.shop] then
         return reject('water_work: shop is MagmaForge, MagmaSmelter or MagmaGlassFurnace')
     end
+    -- (0.105.37 E3) the power's source: a water wheel or a windmill (nil: a wheel if it can)
+    if a.source ~= nil and a.source ~= 'wheel' and a.source ~= 'windmill' then
+        return reject('water_work: source is wheel or windmill')
+    end
     return reqscript('ai-waterworks').step(a.kind, {dry_run = a.dry_run == true, shut = a.shut == true,
         retire = a.retire == true, shop = a.shop, plain = a.plain == true, reopen = a.reopen == true,
+        source = a.source,
         why = type(a.why) == 'string' and a.why:sub(1, 120) or nil})
 end
 
@@ -2483,10 +2535,20 @@ end
 -- one with none gets the best free one), and up to `upgrade` of the most
 -- stressed moved to a free room much better for them (their likes counted)
 -- (lua/ai-homes.lua). {house = 0-30, upgrade = 0-20}
+-- (E4) place = true: rooms chosen by their place too (the citizens' taste)
 function act_house_dwarves(a)
     local h, u = int_in(a.house or 0, 0, 30), int_in(a.upgrade or 0, 0, 20)
     if not h or not u or h + u == 0 then return reject('house_dwarves needs house 0-30 and upgrade 0-20, not both 0') end
-    return reqscript('ai-homes').house(h, u, a.dry_run == true, txt)
+    return reqscript('ai-homes').house(h, u, a.dry_run == true, txt, nil, a.place == true or nil)
+end
+
+-- (E4) Up to n citizens' own bedrooms (rooms the AI dug) given a piece of
+-- the stock's furniture in a material, or showing a creature or item, they
+-- like (lua/ai-homes.lua furnish_liked). {n = 1-10}
+function act_furnish_liked(a)
+    local n = int_in(a.n or 0, 1, 10)
+    if not n then return reject('furnish_liked needs n 1-10') end
+    return reqscript('ai-homes').furnish_liked(n, a.dry_run == true, txt)
 end
 
 -- Workshops the fort has far too many of, taken down (lua/ai-builder.lua).

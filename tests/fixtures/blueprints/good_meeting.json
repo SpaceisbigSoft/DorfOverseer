@@ -1,0 +1,26 @@
+{
+ "v": 1,
+ "ground": "rock",
+ "levels": [
+  {
+   "grid": [
+    "####@####",
+    "#.......#",
+    "#.......#",
+    "#..ctc..#",
+    "#.......#",
+    "#.......#",
+    "#########"
+   ]
+  }
+ ],
+ "name": "The Long Table",
+ "zone": {
+  "kind": "meeting"
+ },
+ "legend": {
+  "t": "Table",
+  "c": "Chair"
+ },
+ "_doc": "a named meeting hall"
+}

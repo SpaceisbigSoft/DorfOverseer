@@ -17,6 +17,21 @@ From the report's `homes` section (lua/ai-homes.lua census, once a game day):
   wiki, Preference), a week apart;
 * citizens who slept rough lately (SleptGrass, SleptFloor...): a note saying
   whether they lack a room or sleep away from the one they have.
+
+(E4, the Design track's personal rooms) At Design Guided or Architect, with
+the report's `citizens_taste` section (lua/ai-homes.lua citizens_taste: each
+grown-up's personality, dreams and likes, summed):
+
+* the house_dwarves moves carry `place`: each room is chosen by its place
+  too (an artist by their craft's workshop, family near the families,
+  rulers and warriors near the great halls, nature lovers near the fields,
+  the quiet away from the busy halls, the gregarious near the tavern), and
+  no one is moved out of a room they like;
+* rooms the AI dug whose owner would like a piece the stock has (a statue
+  showing a creature they like, furniture of a material they like): the
+  furnish_liked action, a week apart, never while a strange mood gathers.
+
+At Scripts, or with no such section, nothing here changes.
 """
 
 from __future__ import annotations
@@ -25,12 +40,29 @@ from digest import _d, _l
 from planner_core import Proposal, player_rules, PLANNER_CONFIG  # noqa: F401
 from planner_building import room_size
 
-__all__ = ["_homes_rules", "homes_census"]
+__all__ = ["_homes_rules", "homes_census", "citizens_taste", "taste_on"]
 
 
 def homes_census(s: dict) -> dict:
     """(0.104.168) The report's homes section ({} from an older bridge)."""
     return _d(s.get("homes"))
+
+
+def citizens_taste(s: dict) -> dict:
+    """(E4) The report's citizens_taste section ({} from an older bridge or on error)."""
+    t = _d(s.get("citizens_taste"))
+    return {} if "error" in t or "citizens_taste" in _d(s.get("_errors")) else t
+
+
+def taste_on(s: dict) -> bool:
+    """(E4) The citizens' taste places and furnishes rooms: Design Guided or
+    Architect, and the taste was read."""
+    try:
+        from planner_design import mode_of
+        mode = mode_of(s)
+    except Exception:  # noqa: BLE001
+        mode = "scripts"
+    return mode in ("guided", "architect") and _int(citizens_taste(s).get("adults")) > 0
 
 
 def _int(v) -> int:
@@ -82,8 +114,12 @@ def _homes_rules(s: dict, cfg: dict, traits: dict, proposals: list, notes: list)
             kids = _int(h.get("children_roomless"))
             bits.append(f"{reach} household(s) with no bedroom" + (f" ({kids} children without one)" if kids else "")
                         + f" and {free} free")
-        proposals.append(Proposal("homes", {"type": "house_dwarves", "house": n},
-                                  "; ".join(bits) + ": one bedroom per household, the better one kept", 4))
+        act = {"type": "house_dwarves", "house": n}
+        why = "; ".join(bits) + ": one bedroom per household, the better one kept"
+        if taste_on(s):
+            act["place"] = True
+            why += ", each new room placed by its dwarf's taste"
+        proposals.append(Proposal("homes", act, why, 4))
     # more households without a bedroom than free ones: dig the difference
     short = wanted - free
     open_kinds = {_d(p).get("kind") for p in _l(_d(s.get("projects")).get("open"))}
@@ -103,7 +139,34 @@ def _homes_rules(s: dict, cfg: dict, traits: dict, proposals: list, notes: list)
     stressed = sum(_int(st.get(k)) for k in ("miserable", "very_unhappy", "unhappy"))
     if stressed >= cfg["homes_liked_min_stressed"] and free - give > 0:
         n = min(cfg["homes_liked_max"], free - give)
-        proposals.append(Proposal("homes_liked", {"type": "house_dwarves", "house": 0, "upgrade": n},
-                                  f"{stressed} citizens are unhappy or worse and {free} bedrooms are free: up to {n} "
-                                  "of the most stressed move to a free room much better for them (furniture of "
-                                  "a material or kind they like counts more)", 5))
+        act = {"type": "house_dwarves", "house": 0, "upgrade": n}
+        why = (f"{stressed} citizens are unhappy or worse and {free} bedrooms are free: up to {n} "
+               "of the most stressed move to a free room much better for them (furniture of "
+               "a material or kind they like counts more)")
+        if taste_on(s):
+            act["place"] = True
+            why += ", and in a place that suits them (never out of a room they like)"
+        proposals.append(Proposal("homes_liked", act, why, 5))
+    _furnish_rule(s, cfg, proposals)
+
+
+PLACE_WORDS = {"artist": "artists", "family": "family-minded", "imposing": "rulers and warriors",
+               "nature": "nature lovers", "quiet": "quiet ones", "social": "gregarious"}
+
+
+def _furnish_rule(s: dict, cfg: dict, proposals: list) -> None:
+    """(E4) A piece of the stock's furniture each citizen would like, in their own room."""
+    if not taste_on(s):
+        return
+    t = citizens_taste(s)
+    ready = _int(t.get("furnish_ready"))
+    if ready <= 0 or t.get("strange_mood"):
+        return
+    n = min(int(cfg.get("homes_furnish_max", 5)), ready)
+    place = _d(t.get("place"))
+    who = ", ".join(f"{_int(v)} {PLACE_WORDS.get(k, k)}" for k, v in sorted(place.items(), key=lambda kv: (-_int(kv[1]), kv[0]))
+                    if _int(v) > 0)[:120]
+    proposals.append(Proposal("homes_furnish", {"type": "furnish_liked", "n": n},
+                              f"{ready} citizen(s) own a room the AI dug that lacks a piece they would like and "
+                              f"the stock has one (a statue showing a creature they like, furniture of a material "
+                              f"they like): up to {n} put up" + (f" (the fort: {who})" if who else ""), 6))

@@ -1,0 +1,13 @@
+{
+ "v": 1,
+ "ground": "rock",
+ "levels": [
+  {
+   "grid": [
+    "#@#",
+    "#\u00e9"
+   ]
+  }
+ ],
+ "_expect": "SYMBOL"
+}

@@ -1,0 +1,34 @@
+{
+ "v": 1,
+ "ground": "rock",
+ "levels": [
+  {
+   "grid": [
+    "#####@#####",
+    "####...####",
+    "####.a.####",
+    "####...####",
+    "#.........#",
+    "#.a..,..a.#",
+    "#.........#",
+    "####...####",
+    "####.a.####",
+    "####...####",
+    "###########"
+   ]
+  }
+ ],
+ "name": "The Cross of Stone",
+ "purpose": "god_hall",
+ "legend": {
+  "a": "Statue"
+ },
+ "zone": {
+  "kind": "temple"
+ },
+ "finish": {
+  "smooth": 1,
+  "engrave": "all"
+ },
+ "_doc": "a cruciform hall, a statue at each arm's end"
+}

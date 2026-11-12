@@ -44,7 +44,7 @@
 local json = require('json')
 local utils = require('utils')
 
-BRIDGE_VERSION = '0.105.36'
+BRIDGE_VERSION = '0.105.37'
 PROTOCOL = 1 -- bump when the report's shape changes in a breaking way
 
 OUT_DIR = dfhack.getDFPath() .. '/dfhack-config/ai-overseer'   -- (a global: the parts write there too)
@@ -107,7 +107,8 @@ NOT_IN_FORT = {ok = false, error = 'no fortress is loaded (the game is at a menu
 -- they were one file. ACTIONS, SECTIONS, the commands and BRIDGE_VERSION
 -- stay here. Read from this file's own folder (DFHack loads a script by its
 -- path), else wherever DFHack finds them.
-BRIDGE_PARTS = {'ai-bridge-report', 'ai-bridge-orders', 'ai-bridge-actions', 'ai-bridge-probes'}
+-- (D0) ai-bridge-design: the Design track's landmarks
+BRIDGE_PARTS = {'ai-bridge-report', 'ai-bridge-orders', 'ai-bridge-actions', 'ai-bridge-probes', 'ai-bridge-design'}
 -- (0.105.26) Each part carries a marker, PART_VERSIONS['<part>'] = '<version>',
 -- the same string as BRIDGE_VERSION: one find-replace of the quoted version
 -- across lua/*.lua bumps them all. `version` lists a part whose marker differs
@@ -248,6 +249,7 @@ ACTIONS = {
     idle_crafting = act_idle_crafting,
     give_trinkets = act_give_trinkets,
     house_dwarves = act_house_dwarves,   -- (0.104.168)
+    furnish_liked = act_furnish_liked,   -- (E4) a piece a dwarf likes in their own room
     staff_location = act_staff_location,
     add_posts = act_add_posts,
     staff_labors = act_staff_labors,
@@ -329,6 +331,10 @@ ACTIONS = {
     empty_dump = act_empty_dump,
     set_standing_orders = act_set_standing_orders,
     place_dump = act_place_dump,
+    -- (D0) the Design track: a landmark's sites, its drawing built, its next stage (ai-bridge-design.lua)
+    blueprint_sites = act_blueprint_sites,
+    build_blueprint = act_build_blueprint,
+    landmark_step = act_landmark_step,
 }
 
 -- (13c) The actions whose dry run changes nothing in the fort, all the way
@@ -357,7 +363,7 @@ for _, name in ipairs({
     'assign_kit', 'assign_quivers', 'assign_weapons', 'bench_jobs', 'bootstrap_chair', 'break_fights',
     'build_crossing', 'build_gatehouse', 'calm_burrow', 'clear_orphan_jobs', 'clear_webs', 'close_meeting',
     'cut_entrance', 'dig_stairwell', 'fire_guard', 'fix_gear_gaps', 'free_slabs', 'free_stray_gear',
-    'gate_dogs', 'guard_gate', 'hospital_burrow', 'house_dwarves', 'join_levels', 'keep_mousers',
+    'gate_dogs', 'guard_gate', 'hospital_burrow', 'house_dwarves', 'furnish_liked', 'join_levels', 'keep_mousers',
     'kitchen_fat', 'ledger_set', 'location_access', 'mark_run', 'mood_free_items', 'moon_cell', 'nest_boxes',
     'order_instrument', 'order_slots', 'pair_chairs', 'place_gate_lever', 'prisoner_room', 'prune_remains',
     'quick_location', 'recreation', 'remove_crossing', 'remove_webs', 'repair_rooms', 'rest_infected',
@@ -376,6 +382,8 @@ for _, name in ipairs({
     -- (0.105.32) the way in: planned (and quickfort's dry run) before anything is designated
     'dig_way_in',
     'unmark_project_dig',   -- (0.105.35) its dry run counts the marked tiles and changes nothing
+    -- (D0) each checks the drawing (and quickfort's dry run) before it designates or places anything
+    'build_blueprint', 'landmark_step',
 }) do DRY_OK[name] = true end
 
 -- These only change what's displayed, so they still work while halted, dry
@@ -383,7 +391,9 @@ for _, name in ipairs({
 -- bookkeeping, not a change to the fort; (0.105.4) apply_preset sets the
 -- player's settings (keeper --preset), not the fort.)
 DISPLAY_ONLY = {report_status = true, set_culture = true, set_learned = true, save_memory = true,
-                ledger_set = true, mark_run = true, apply_preset = true}
+                ledger_set = true, mark_run = true, apply_preset = true,
+                -- (D0) changes no tile: the sites it finds are kept in the AI's own site data
+                blueprint_sites = true}
 
 ---------------------------------------------------------------------------
 -- Time control. Globals (not locals) so they survive between script runs.
@@ -420,6 +430,9 @@ function version_info()
         workshops = sorted_keys(reqscript('ai-layouts').WORKSHOPS),
         -- (0.105.26) parts whose version mark isn't BRIDGE_VERSION (nil: none)
         stale_parts = (function() local s = stale_parts(); return #s > 0 and s or nil end)(),
+        -- (D0) ai-blueprints' limits and legend items, for brain/blueprint.py's mirror check
+        blueprint_limits = (blueprint_mirror()),
+        blueprint_items = select(2, blueprint_mirror()),
     }
 end
 
@@ -427,7 +440,7 @@ end
 -- `--@ module = true`, but this one and the parts, which are no modules);
 -- `modules` loads each. tests/test_fix26_bridge.py keeps it in step with lua/.
 BRIDGE_MODULES = {
-    'ai-builder', 'ai-camera', 'ai-census', 'ai-constructions', 'ai-diplomacy', 'ai-disposal', 'ai-gates', 'ai-health', 'ai-homes',
+    'ai-blueprints', 'ai-builder', 'ai-camera', 'ai-census', 'ai-constructions', 'ai-diplomacy', 'ai-disposal', 'ai-gates', 'ai-health', 'ai-homes',
     'ai-industry', 'ai-joins', 'ai-labor', 'ai-layouts', 'ai-military', 'ai-military-gear',
     'ai-mission-send', 'ai-missions', 'ai-moods', 'ai-nobles', 'ai-overlay', 'ai-overseer-settings',
     'ai-ping', 'ai-reports', 'ai-society', 'ai-society-burrows', 'ai-status', 'ai-threats', 'ai-title',
@@ -684,6 +697,8 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
     projects = function() return safe(function() return reqscript('ai-builder').projects_report() end) end,
     -- every AI project on record, with where it is (small: ids and boxes)
     registry = function() return safe(function() return reqscript('ai-builder').registry_report() end) end,
+    -- (D0) the Design track's landmarks: name, purpose, status, stage, levels (ai-bridge-design.lua)
+    landmarks = function() return safe(get_landmarks) end,
     farms = function() return safe(function() return reqscript('ai-builder').farms_report() end) end,
     -- (0.101) water on the surface and the crossings over it (weekly: slow, changes slowly)
     crossings = function() return safe(function() return reqscript('ai-builder').crossings_report() end) end,
@@ -716,6 +731,8 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
     noble_rooms = function() return safe(function() return reqscript('ai-nobles').rooms_survey(txt) end) end,
     -- (0.104.168) the households: who has a bedroom, couples in one room or two, who slept rough (lua/ai-homes.lua)
     homes = function() return safe(function() return reqscript('ai-homes').census(nil, txt) end) end,
+    -- (E4) the citizens' personalities, dreams and likes, summed (lua/ai-homes.lua citizens_taste)
+    citizens_taste = function() return safe(function() return reqscript('ai-homes').citizens_taste(nil, txt) end) end,
     tools = function() return safe(get_tools) end,
     -- the player's settings from the control panel (gui/ai-overseer)
     settings = function()
@@ -765,6 +782,7 @@ SECTION_CACHE_DAYS = {logistics = 3, industry = 7,   -- industry: 300-450 ms liv
     room_gaps = 3, planned = 1, needs = 1, registry = 3, noble_rooms = 3, locations = 2, petitions = 2, diplomacy = 7, crossings = 7,
     missions = 1,   -- (0.104.95) every world site walked
     homes = 1,      -- (0.104.168) each citizen's thoughts and every bedroom zone read
+    citizens_taste = 3,   -- (E4) each citizen's soul and the free furniture read
     disposal = 1}   -- (0.105.27) every item in play walked once for the marks
 SECTION_CACHE_DAYS.constructions = 3   -- (0.105.30) every built tile walked once
 SECTION_REBUILDS = 2       -- expired cached sections rebuilt in one report (a missing one always is)
@@ -789,6 +807,7 @@ CACHE_INVALIDATES = {
     feeder_pile = {'logistics'},
     add_doctor_post = {'locations'},   -- (0.104.168)
     house_dwarves = {'homes', 'noble_rooms'},   -- (0.104.168)
+    furnish_liked = {'homes', 'citizens_taste'},   -- (E4)
 }
 CACHE_INVALIDATES.set_farm_crops = {'farms'}   -- (0.105.5) the plots' crops read again
 CACHE_INVALIDATES.accept_cups = {'needs'}       -- (0.104.168) the cups census shows what it changed
@@ -800,6 +819,8 @@ for _, name in ipairs({'unforbid_items', 'mark_melt', 'mark_dump', 'empty_dump',
 end
 CACHE_INVALIDATES.set_standing_orders = {'disposal', 'dead'}
 CACHE_INVALIDATES.renew_well_dig = {'registry'}   -- (0.105.31) as start_project
+CACHE_INVALIDATES.build_blueprint = {'registry'}   -- (D0) a landmark's levels are projects
+CACHE_INVALIDATES.landmark_step = {'registry'}
 -- (0.105.30) construction placed: the waiting count read again
 for _, name in ipairs({'place_hall', 'build_wings', 'floor_rooms', 'place_keep'}) do
     CACHE_INVALIDATES[name] = {'constructions'}

@@ -1,0 +1,41 @@
+{
+ "_doc": "War-hold: a gate hall behind a door, racks and stands between its pillars, a statue at the heart",
+ "kind": "gate_hall",
+ "v": 1,
+ "name": "The Shield Hall",
+ "purpose": "gate_hall",
+ "ground": "rock",
+ "levels": [
+  {
+   "grid": [
+    "#######@#######",
+    "##...##+##...##",
+    "#.............#",
+    "#.w.#.....#.w.#",
+    "#.............#",
+    "#.a.#..s..#.a.#",
+    "#.............#",
+    "#.w.#.....#.w.#",
+    "#.............#",
+    "#s...........s#",
+    "###############"
+   ]
+  }
+ ],
+ "legend": {
+  "a": "ArmorStand",
+  "w": "WeaponRack",
+  "s": "Statue"
+ },
+ "zone": {
+  "kind": "none",
+  "level": 1
+ },
+ "finish": {
+  "smooth": 1,
+  "engrave": "none"
+ },
+ "materials": {
+  "palette": "dark"
+ }
+}

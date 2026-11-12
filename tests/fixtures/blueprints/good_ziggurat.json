@@ -1,0 +1,61 @@
+{
+ "v": 1,
+ "ground": "surface",
+ "levels": [
+  {
+   "grid": [
+    ".....@.....",
+    ".WWWWUWWWW.",
+    ".WWWWWWWWW.",
+    ".WWWWWWWWW.",
+    ".WWWWWWWWW.",
+    ".WWWWWWWWW.",
+    ".WWWWWWWWW.",
+    ".WWWWWWWWW.",
+    ".WWWWWWWWW.",
+    ".WWWWWWWWW.",
+    "..........."
+   ]
+  },
+  {
+   "grid": [
+    "___________",
+    "_....I...._",
+    "_.WWWWWWW._",
+    "_.WWWWWWW._",
+    "_.WWWWWWW._",
+    "_.WWWWWWW._",
+    "_.WWWWWWW._",
+    "_.WWWWWWW._",
+    "_.WWWWWWW._",
+    "_........._",
+    "___________"
+   ]
+  },
+  {
+   "grid": [
+    "___________",
+    "_____D_____",
+    "__.......__",
+    "__.......__",
+    "__.......__",
+    "__...a...__",
+    "__.......__",
+    "__.......__",
+    "__.......__",
+    "___________",
+    "___________"
+   ]
+  }
+ ],
+ "name": "The Stepped Sun",
+ "purpose": "ziggurat",
+ "legend": {
+  "a": "Statue"
+ },
+ "zone": {
+  "kind": "temple",
+  "level": 3
+ },
+ "_doc": "three stepped tiers of walls, a stair up the north face"
+}

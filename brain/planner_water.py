@@ -1,6 +1,10 @@
 """(0.105.0) Water works and magma: the moat (W3), the pump stack (W4), the
 muddied farm level (W5) and magma workshops, built a step at a time by the
-bridge (lua/ai-waterworks.lua, the `water_work` action).
+bridge (lua/ai-waterworks.lua, the `water_work` action). (0.105.37 E3) W7:
+the done pump stack's power, a water wheel on the river or a windmill, joined
+to its top pump by axles and gears, switched on and off by a lever-worked
+gear to keep the reservoir filled (no dwarf at the pumps); begun at Guided
+and Architect only (at Scripts nothing new is proposed).
 
 Each work is planned by the bridge with a dry run first: the path its water
 (or magma) would take, walked tile by tile; a citizen, workshop, bed,
@@ -14,22 +18,35 @@ the planner shuts it when the bridge reports a leak or dwarves in deep water.
 from __future__ import annotations
 
 from digest import _d, _l
-from planner_core import PLANNER_CONFIG, TICKS_PER_YEAR, Proposal, player_rules, young_fort, _traits
+from planner_core import (EMERGENCY, LIMIT_EXEMPT, LOOP_EXEMPT, NO_COOLDOWN, PLANNER_CONFIG, STEER_PROTECTED,
+                          TICKS_PER_YEAR, Proposal, player_rules, young_fort, _traits)
 
 # (0.105.35) the pump labour given at most once a fortnight (assign_labor adds
 # dwarves each time; the bridge holds the stack after its own stall wait)
 PLANNER_CONFIG.setdefault("waterworks_pump_labor_cooldown_ticks", 14 * 1200)
 
 __all__ = ["_waterworks_rule", "LEAK_WATCH_HOLDS", "leak_watch_hold", "WORK_WORDS", "STAGE_WORDS", "moat_wanted", "magma_shop_wanted",
-           "irrigation_wanted", "pump_wanted", "river_found"]
+           "irrigation_wanted", "pump_wanted", "river_found", "power_wanted", "power_line"]
 
 WORK_WORDS = {"moat": "the moat", "pump": "the pump stack", "irrigation": "the muddied farm level",
-              "magma": "the magma workshop"}
+              "magma": "the magma workshop", "power": "the pump stack's power"}
 STAGE_WORDS = {"planned": "planned (its water's path checked)", "digging": "being dug",
                "building": "its floodgate, lever and buildings being built", "linking": "its lever being linked",
                "filling": "filling", "drying": "drying", "finishing": "being finished", "done": "done",
-               "held": "held", "retired": "retired"}
+               "held": "held", "retired": "retired",
+               "running": "running (the pumps powered)"}
 MAGMA_ORDER = ("MagmaForge", "MagmaSmelter", "MagmaGlassFurnace")
+
+
+def _design_mode(s: dict) -> str:
+    """(0.105.37 E3) The Design setting (planner_design.mode_of): new works
+    of W7 begin only at Guided and Architect."""
+    try:
+        from planner_design import mode_of
+        return mode_of(s)
+    except Exception:  # noqa: BLE001
+        m = _d(_d(s).get("settings")).get("design")
+        return m if m in ("scripts", "guided", "architect") else "scripts"
 
 
 def river_found(s: dict) -> bool:
@@ -87,6 +104,49 @@ def pump_wanted(s: dict, cfg: dict) -> str | None:
     return "the fort has no well, no cistern site, and still water only below it"
 
 
+def power_wanted(s: dict, works: dict) -> str | None:
+    """(0.105.37 E3) Why the pump stack wants power (None: it doesn't): the
+    stack done (built, its reservoir filled once by hand) and not shut; a
+    water wheel when a river runs near, else a windmill (the bridge finds out
+    whether the map's wind turns it)."""
+    pump = _d(_d(works).get("pump"))
+    if pump.get("stage") != "done" or pump.get("shut"):
+        return None
+    if river_found(s):
+        return "the pump stack is worked by hand and a river runs near the fort"
+    return "the pump stack is worked by hand"
+
+
+def power_line(row: dict) -> str:
+    """(0.105.37 E3) The power's numbers in words, for its note."""
+    row = _d(row)
+    src = {"wheel": "water wheel", "windmill": "windmill"}.get(row.get("source"), "")
+    bits = []
+    if src:
+        n = row.get("wheels")
+        bits.append(f"{n} {src}s" if isinstance(n, int) and n > 1 else f"a {src}")
+    if isinstance(row.get("need"), int) and isinstance(row.get("have"), int):
+        bits.append(f"{row['have']} power for {row['need']} needed")
+    if isinstance(row.get("power"), int) and isinstance(row.get("power_need"), int):
+        bits.append(f"the machine at {row['power']}/{row['power_need']}")
+    if row.get("stage") == "running":
+        bits.append("on" if row.get("engaged") else "off")
+        if row.get("paused"):
+            bits.append(f"paused ({row['paused']}; the pumps worked by hand)")
+    return ", ".join(bits)
+
+
+# (0.105.37 fix) The running power's check (the reservoir kept between 3/7 and
+# 5/7, the wheel watched): a monitor asked every cycle. Its answer is always
+# "waiting", so as an ordinary rule the refusal book and the 2-day cooldown
+# held it (the power switched off up to 2 days late, the reservoir over-filled
+# under power). Its own rule, outside the refusal book, the cooldown, the
+# action limit and the loop guard, as an emergency rule.
+POWER_RUN_RULE = "waterworks_power_run"
+for _s in (EMERGENCY, NO_COOLDOWN, LIMIT_EXEMPT, LOOP_EXEMPT, STEER_PROTECTED):
+    _s.add(POWER_RUN_RULE)
+
+
 # (0.105.36) the bridge's RETIRE_MAX (lua/ai-waterworks.lua): retired this often, never begun again
 WATERWORKS_RETIRE_MAX = 2
 
@@ -119,6 +179,8 @@ def _work_notes(id_: str, row: dict, s: dict, proposals: list, notes: list, floo
         line += f", {row['depth']}/7 deep"
     if row.get("gate"):
         line += f", floodgate {row['gate']}"
+    if kind == "power" and power_line(row):        # (0.105.37 E3)
+        line += f", {power_line(row)}"
     if row.get("why"):
         line += f" ({row['why']})"
     notes.append(line)
@@ -163,6 +225,12 @@ def _work_notes(id_: str, row: dict, s: dict, proposals: list, notes: list, floo
         proposals.append(Proposal(f"waterworks_{kind}", act,
                                   f"{words}: the flood is over: open its floodgate again", 5))
         return True
+    if kind == "power" and stage == "running":
+        # (0.105.37 E3) the power kept on and off by the reservoir's depth, its
+        # source and shaft watched: asked each cycle, not busy (works elsewhere go on)
+        proposals.append(Proposal(POWER_RUN_RULE, step, f"{words}: running: the reservoir and the power check"
+                                  + (f" (paused: {row['paused']})" if row.get("paused") else ""), 6))
+        return False
     if stage in ("done", "retired"):
         # (0.105.0 review) a done work with its floodgate open: the bridge's done
         # step looks for a leak (and shuts it); it answers "waiting", so the
@@ -204,12 +272,15 @@ def _waterworks_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -
     flooding = flooded >= cfg["flood_wet_dwarves"]
     if flooding:
         for id_, row in works.items():
-            if row.get("gate") == "open" and row.get("stage") != "retired":     # (0.105.0 review) done works too
+            if ((row.get("gate") == "open" or (row.get("kind") == "power" and row.get("engaged")))   # (0.105.37 E3) the power too
+                    and row.get("stage") != "retired" and not (row.get("kind") == "power" and row.get("shut"))):
                 act = {"type": "water_work", "kind": row.get("kind"), "shut": True, "why": "dwarves in deep water"}
                 if row.get("shop"):
                     act["shop"] = row["shop"]
                 proposals.append(Proposal("waterworks_shut", act,
-                                          f"{flooded} dwarves in deep water: shut {WORK_WORDS.get(row.get('kind'))}'s floodgate", 0))
+                                          f"{flooded} dwarves in deep water: "
+                                          + (f"switch off {WORK_WORDS['power']}" if row.get("kind") == "power" else
+                                             f"shut {WORK_WORDS.get(row.get('kind'))}'s floodgate"), 0))
     now = int(_d(s.get("date")).get("year") or 0) * TICKS_PER_YEAR + int(_d(s.get("date")).get("tick") or 0)
     busy = False
     for id_, row in sorted(works.items()):
@@ -276,3 +347,14 @@ def _waterworks_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -
         proposals.append(Proposal("waterworks_pump", {"type": "water_work", "kind": "pump"},
                                   f"{why}: a screw pump stack lifts it to a reservoir under the fort "
                                   "(a dwarf works the pumps)", 6))
+        return
+    # (5) (0.105.37 E3) W7: the pump stack's power, at Guided and Architect
+    why = power_wanted(s, works)
+    if (why and eng >= cfg["pump_engineering"] and not started("power") and retry_ok("power")
+            and _design_mode(s) != "scripts"):
+        source = "wheel" if river_found(s) else "windmill"
+        proposals.append(Proposal("waterworks_power", {"type": "water_work", "kind": "power", "source": source},
+                                  f"{why}: power it with a "
+                                  + ("water wheel on the river" if source == "wheel" else "windmill")
+                                  + ", joined to its top pump by axles and gears through solid rock, switched by a "
+                                  "lever (\"AI pump power\") to keep the reservoir filled (no dwarf at the pumps)", 6))

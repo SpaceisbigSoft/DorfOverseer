@@ -173,8 +173,29 @@ function open_caverns_choice(v)
     for _, o in ipairs(OPEN_CAVERNS_CHOICES) do if o == v then return v end end
     return 'ai'
 end
+-- (D0, the Design track) who designs how the fort looks (the AI & tokens tab):
+--   scripts:   the layout library and the customs, as before
+--   guided:    a design language for the fort (from rules, or the AI with --ai)
+--   architect: guided, plus landmarks now and then (library ones without --ai)
+-- A new fort starts at Guided (DESIGN_NEW, the decision of 11 Nov); a save
+-- whose settings carry no design (every fort started before) reads Scripts,
+-- as does an unknown value. Presets don't set it.
+DESIGN_MODES = {'scripts', 'guided', 'architect'}
+DESIGN_NAMES = {scripts = 'Scripts', guided = 'Guided', architect = 'Architect'}
+DESIGN_WORDS = {
+    scripts = 'the layout library builds as it always has; no design language',
+    guided = 'a design language for the fort: hall shapes, motifs, stone, names',
+    architect = 'Guided, plus a landmark now and then (library ones without --ai)',
+}
+DESIGN_TOKENS = 'Guided ~4k tokens an era; Architect ~5-15k a landmark; none without --ai'
+DESIGN_DEFAULT = 'scripts'    -- what a missing or unknown value reads as
+DESIGN_NEW = 'guided'         -- what a new fort starts with (defaults())
+-- (D0) how often an Architect fort starts a landmark (the Rules tab)
+LANDMARK_PACES = {'season', 'year', 'never'}
+LANDMARK_PACE_NAMES = {season = 'one a season', year = 'one a year', never = 'never'}
 -- (0.105.27) the cycles set_rules may set from outside the window (key -> choices)
-RULE_CHOICES = {disposal = DISPOSAL_CHOICES, open_caverns = OPEN_CAVERNS_CHOICES}
+RULE_CHOICES = {disposal = DISPOSAL_CHOICES, open_caverns = OPEN_CAVERNS_CHOICES,
+                design = DESIGN_MODES, landmark_pace = LANDMARK_PACES}    -- (D0)
 GEAR_WEAPONS = {'axe', 'spear', 'mace'}
 GEAR_WEAPON_NAMES = {axe = 'battle axes', spear = 'spears', mace = 'maces'}
 OPTIONAL_LEVELS = {
@@ -237,6 +258,8 @@ function defaults()
         mode = 'autopilot',
         save_before_projects = false,
         memorial_pace = 'season',
+        design = DESIGN_NEW,       -- (D0) who designs the look (DESIGN_MODES); an old save reads scripts
+        landmark_pace = 'season',  -- (D0) Architect's landmarks (LANDMARK_PACES)
         levels = (function()
             local out = {}
             for _, l in ipairs(OPTIONAL_LEVELS) do out[l.id] = true end
@@ -324,7 +347,7 @@ end
 -- Repair whatever was loaded (old versions, hand edits, missing traits).
 function sanitize(s)
     local d = defaults()
-    if type(s) ~= 'table' then return d end
+    if type(s) ~= 'table' then d.design = DESIGN_DEFAULT; return d end
     local out = d
     if type(s.traits) == 'table' then
         for id in pairs(TRAITS_BY_ID) do
@@ -363,6 +386,9 @@ function sanitize(s)
     out.mode = one_of(s.mode, MODES, d.mode)
     out.save_before_projects = s.save_before_projects == true
     out.memorial_pace = one_of(s.memorial_pace, MEMORIAL_PACES, d.memorial_pace)
+    -- (D0) a save without them (or a bad value): Scripts, one a season
+    out.design = one_of(s.design, DESIGN_MODES, DESIGN_DEFAULT)
+    out.landmark_pace = one_of(s.landmark_pace, LANDMARK_PACES, d.landmark_pace)
     if type(s.levels) == 'table' then
         for _, l in ipairs(OPTIONAL_LEVELS) do
             if s.levels[l.id] ~= nil then out.levels[l.id] = s.levels[l.id] == true end
@@ -402,6 +428,10 @@ function sanitize(s)
     return out
 end
 
+-- (D0) A fort with no settings saved is a new one: defaults(), so Guided.
+-- Saved settings without a design (every fort set up before the Design
+-- track) read Scripts through sanitize. Nothing is written here (a dry run
+-- writes nothing into the save).
 function load_settings()
     if not dfhack.isMapLoaded() then return defaults() end
     return sanitize(dfhack.persistent.getSiteData(SETTINGS_KEY, defaults()))
@@ -436,6 +466,8 @@ function for_ai(s)
         mode = s.mode,
         save_before_projects = s.save_before_projects,
         memorial_pace = s.memorial_pace,
+        design = s.design,                         -- (D0) scripts | guided | architect
+        landmark_pace = s.landmark_pace,           -- (D0) season | year | never
         levels = s.levels,
         order_supplies = s.order_supplies,
         mood_workshops = s.mood_workshops,

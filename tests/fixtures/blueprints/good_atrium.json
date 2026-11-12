@@ -1,0 +1,34 @@
+{
+ "v": 1,
+ "ground": "rock",
+ "levels": [
+  {
+   "grid": [
+    "###@###",
+    "#,,,,,#",
+    "#,OOO,#",
+    "#,O*O,#",
+    "#,OOO,#",
+    "#,,>,,#",
+    "#######"
+   ]
+  },
+  {
+   "grid": [
+    "#######",
+    "#.....#",
+    "#.....#",
+    "#..s..#",
+    "#.....#",
+    "#..<..#",
+    "#######"
+   ]
+  }
+ ],
+ "name": "The Little Atrium",
+ "purpose": "great_hall",
+ "legend": {
+  "s": "Statue"
+ },
+ "_doc": "two levels: a statue below, seen through a railed hole in the floor above"
+}

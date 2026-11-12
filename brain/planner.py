@@ -38,6 +38,8 @@ from planner_moods import mood_blocked  # noqa: E402  (0.105.26) a waiting mood'
 from planner_moods import reserve_room, note_reserve_swap, _mood_reserve_rule  # noqa: E402  (0.105.31) the mood reserves
 from planner_gates import note_gate_stuck, note_gate_stuck_cycle  # noqa: E402  (0.105.32) a gate the game holds shut
 from planner_building import *  # noqa: E402,F401,F403  (0.104.83: the planner in parts)
+import planner_design  # noqa: E402  (D0) the Design track's loop
+from planner_design import design_rule, note_design  # noqa: E402
 from planner_care import _doctor_post_rule, _infection_rule, _offices_refill_rule, _traction_rest_rule  # noqa: E402  (0.104.168)
 from planner_water import _waterworks_rule  # noqa: E402  (0.105.0) moat, pumps, irrigation, magma workshops
 from planner_homes import *  # noqa: E402,F401,F403  (0.104.168: homes and households)
@@ -57,9 +59,23 @@ SHOPS_RETRY_MAX = 3            # (v35 fix) and so at most this many times
 GATE_PULL_SEEN_DAYS = 3        # (0.105.36) a gate read shut this soon after the AI pulled its lever is the AI's
 
 
+def _set_adopted(s: dict, memory, traits: dict) -> None:
+    """(D0) The language's adopted customs into customs.active (G1's
+    customs.set_adopted); () at Scripts."""
+    import customs
+    if not hasattr(customs, "set_adopted"):
+        return
+    ids = ()
+    if memory is not None and planner_design.mode_of(s) != "scripts" and planner_design.design is not None:
+        ids = tuple(planner_design.design.adopted_customs(memory.culture or {}, traits) or ())
+    customs.set_adopted(ids)
+
+
 def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[Proposal], list[str]]:
     """Return (proposals, notes). Notes say what the planner wanted but couldn't do.
-    Reads memory; never changes it."""
+    Reads memory; never changes it, but for the Design track's own record
+    (planner_design: the design language and the landmarks, at Guided and
+    Architect only)."""
     s = normalize(state)
     errors = s["_errors"]
     # (0.100, review) without the date every cooldown reads tick 0, and
@@ -96,6 +112,10 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
             return None
 
     rules_ = player_rules(s)                        # the Rules tab, read once a plan
+    # (D0, Design track) the fort's design language kept, its landmarks moved
+    # on; then the customs it adopts. At Scripts: nothing adopted, nothing proposed
+    _guard(design_rule, s, traits, cfg, proposals, notes, memory)
+    _guard(_set_adopted, s, memory, traits)
     buffer = factor(traits, "stockpile")
     winter = winter_factor(s, memory)               # stock up before winter (and through it)
 
@@ -1071,6 +1091,10 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
         note_construct(p, r, state, memory, now)           # (0.105.30) wings, seals, soil floors, the hall
         note_reserve_swap(p, r, state, memory)             # (0.105.31 reserve fixes) a fibre swap that did nothing
         note_gate_stuck(p, r, state, memory, now)          # (0.105.32) the unstick step tried, a way dug in
+        try:
+            note_design(p, r, state, memory, now)          # (D0) sites kept, a landmark's refusals and fallback
+        except Exception:  # noqa: BLE001  (the design record never stops the cycle's record)
+            pass
         if p.action.get("type") == "squad_swap" and p.action.get("unit_id") is not None:
             # (0.104.78) sent home, or found already out: not asked for again a week
             memory.swapped[str(p.action["unit_id"])] = now
