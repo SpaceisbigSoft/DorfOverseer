@@ -2530,10 +2530,20 @@ end
 -- one with none gets the best free one), and up to `upgrade` of the most
 -- stressed moved to a free room much better for them (their likes counted)
 -- (lua/ai-homes.lua). {house = 0-30, upgrade = 0-20}
+-- (E4) place = true: rooms chosen by their place too (the citizens' taste)
 function act_house_dwarves(a)
     local h, u = int_in(a.house or 0, 0, 30), int_in(a.upgrade or 0, 0, 20)
     if not h or not u or h + u == 0 then return reject('house_dwarves needs house 0-30 and upgrade 0-20, not both 0') end
-    return reqscript('ai-homes').house(h, u, a.dry_run == true, txt)
+    return reqscript('ai-homes').house(h, u, a.dry_run == true, txt, nil, a.place == true or nil)
+end
+
+-- (E4) Up to n citizens' own bedrooms (rooms the AI dug) given a piece of
+-- the stock's furniture in a material, or showing a creature or item, they
+-- like (lua/ai-homes.lua furnish_liked). {n = 1-10}
+function act_furnish_liked(a)
+    local n = int_in(a.n or 0, 1, 10)
+    if not n then return reject('furnish_liked needs n 1-10') end
+    return reqscript('ai-homes').furnish_liked(n, a.dry_run == true, txt)
 end
 
 -- Workshops the fort has far too many of, taken down (lua/ai-builder.lua).

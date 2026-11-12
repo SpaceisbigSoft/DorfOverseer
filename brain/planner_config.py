@@ -594,6 +594,9 @@ PLANNER_CONFIG = {
     "homes_liked_min_stressed": 5,     # unhappy or worse citizens before a move is looked for
     "homes_liked_max": 10,             # moves at a time
     "homes_rough_note_at": 3,          # citizens who slept rough lately before a note says why
+    # (E4) the citizens' taste (Design Guided or Architect only): a piece they like in their own room
+    "homes_furnish_cooldown_ticks": 7 * 1200,
+    "homes_furnish_max": 5,            # rooms furnished at a time
     "uniform_cooldown_ticks": 1200,       # a squad's uniform: once a day
     "crafts_cooldown_ticks": 14 * 1200,
     "hauling_cooldown_ticks": 14 * 1200,
