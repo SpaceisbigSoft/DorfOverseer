@@ -49,6 +49,7 @@ from planner_world import (_contact_rule, _export_rule, _hostile_trade_filter, _
                            _messenger_rule, _world_notes, note_world)  # (0.105.0: the world outside, 12b and 13b)
 from planner_missions import _mission_rule, note_missions  # noqa: E402  (0.105.39) missions on the world map
 from planner_cleanup import _world_cleanup_rule, note_cleanup  # noqa: E402  (0.105.40) world cleanup for the game's speed
+from planner_captives import _captives_rule, _necro_rule, note_captives  # noqa: E402  (item6) prisoners' outcomes, necromancer sieges
 from planner_weather import _weather_rules, _weather_squad_filter  # noqa: E402  (0.105.40b) evil weather
 from planner_firebreath import _fire_breather_rule  # noqa: E402  (0.105.40b) no melee squad at a fire breather
 from planner_siege import _siege_rules  # noqa: E402  (item5) siege engines, archer posts, caravan guard, wildlife hunts
@@ -598,6 +599,12 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
         _guard(_siege_rules, s, memory, cfg, proposals, notes)
         if can_use("entrances"):
             _guard(_gate_cut_rule, s, memory, cfg, proposals, notes)
+        # (item6) a necromancer siege: no squad at overwhelming dead, the alarm, the bodies outside rotted
+        if "necro" not in errors:
+            _guard(_necro_rule, s, cfg, proposals, notes, memory)
+    # (item6) caged prisoners one by one (keep, or the AI's pit)
+    if "captives" not in errors:
+        _guard(_captives_rule, s, cfg, proposals, notes, memory)
 
     # 6. Idle hands ------------------------------------------------------------
     def _idle_rule():
@@ -1153,6 +1160,7 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
         note_reserve_swap(p, r, state, memory)             # (0.105.31 reserve fixes) a fibre swap that did nothing
         note_gate_stuck(p, r, state, memory, now)          # (0.105.32) the unstick step tried, a way dug in
         note_cleanup(p, r, state, memory, now)             # (0.105.40) a cleanup's trial done, what it removed
+        note_captives(p, r, memory, now)                   # (item6) the pit's trial done, the prisoners sent
         note_food_level(p, r, memory)                      # (fix41) one food storage level a kitchen or still
         try:
             note_design(p, r, state, memory, now)          # (D0) sites kept, a landmark's refusals and fallback

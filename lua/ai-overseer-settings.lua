@@ -152,10 +152,12 @@ TRIBUTE_NAMES = {small = 'pay small, refuse large', pay = 'always pay', refuse =
 CLEAR_ALERTS_NAMES = {quiet = 'old ones; dangers kept a week', all = 'all once a day old', none = 'none (yours)'}
 ATTACK_POLICY_NAMES = {ordinary = 'ordinary enemies, not great beasts', all = 'everything that can reach us',
                        never = 'never (alert and gate only)'}
--- (0.105.0) round 3: what becomes of invaders caught in cages (only keep can
--- be done safely through DFHack: the others are said, the prisoners kept)
+-- (0.105.0) round 3: what becomes of invaders caught in cages. (item6) kill:
+-- invaders and thieves to the AI's pit (brain/planner_captives.py); release
+-- can't be done safely through DFHack: said, and the prisoners kept
 PRISONER_CHOICES = {'keep', 'release', 'kill'}
-PRISONER_NAMES = {keep = 'keep them caged', release = 'release outside (asks you)', kill = 'put to death (asks you)'}
+PRISONER_NAMES = {keep = 'keep them caged', release = 'release (not possible: kept caged)',
+                  kill = 'put to death in the AI pit'}
 -- (0.105.27) forbidden items and junk: what the AI does with them. Each level
 -- does everything the ones before it do: store (unforbid what is useful),
 -- melt (and mark surplus metal for melting), dump (and junk to a garbage

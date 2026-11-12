@@ -509,6 +509,8 @@ SHORT_WORDS = {
     "nest_boxes": "pen the hens together and put nest boxes in their pasture",  # (0.104.80)
     "accept_cups": "let the finished goods piles take the loose cups",  # (0.104.168)
     "prisoner_room": "a cage room for the prisoners inside the fort",
+    "make_pit": "a pit zone for the prisoners over a deep drop already there",  # (item6)
+    "pit_prisoners": "send caged prisoners to the AI's pit",  # (item6)
     "traction_rest": "get a patient who needs traction out of an ordinary bed, so the game lays him on the traction bench",  # (0.105.24)
     "mood_free_items": "free the forbidden materials a strange mood is waiting for",  # (0.105.24)
     "add_doctor_post": "add a second doctor's post at a hospital",  # (0.104.168)

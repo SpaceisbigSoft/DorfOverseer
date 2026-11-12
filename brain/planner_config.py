@@ -922,4 +922,15 @@ PLANNER_CONFIG = {
     "cavern_farm_tiles": 24,              # tiles of plots a call on cavern soil...
     "cavern_farm_max_tiles": 60,          # ...and at most this many of the AI's there in all
     "cavern_farm_cooldown_ticks": 14 * 1200,
+    # (item6) prisoners' outcomes and necromancer sieges (brain/planner_captives.py)
+    "pit_min_drop": 7,                        # levels of open space under the AI's pit: a fall that kills
+    "pit_batch": 3,                           # prisoners sent to the pit a call
+    "prisoner_pit_cooldown_ticks": 7 * 1200,  # the pit zone looked for a week apart
+    "pit_prisoners_cooldown_ticks": 1200,
+    "undead_overwhelm_min": 6,                # this many walking dead in a siege before they can overwhelm...
+    "undead_per_soldier": 2.0,                # ...and more than this many to an armed soldier
+    "undead_per_soldier_raiser": 1.0,         # ...or this many with a raiser on the map (the fallen rise)
+    "necro_corpses_min": 3,                   # bodies outside with the dead about: rotted away
+    "necro_corpses_cooldown_ticks": 1200,
+    "necro_tower_near": 40,                   # world tiles: a necromancer tower this close is said
 }

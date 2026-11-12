@@ -418,6 +418,22 @@ ACTIONS = {
         return reqscript('ai-traffic').paint({key = a.key, max = a.max, budget_ms = a.budget_ms, audit = a.audit == true},
                                              a.dry_run == true)
     end,
+    -- (item6) prisoners' outcomes: the AI's pit over a drop already there, caged prisoners into it (lua/ai-captives.lua)
+    make_pit = function(a)
+        if a.min_drop ~= nil and type(a.min_drop) ~= 'number' then return reject('make_pit: min_drop is a number') end
+        return reqscript('ai-captives').make_pit({min_drop = a.min_drop}, a.dry_run == true)
+    end,
+    pit_prisoners = function(a)
+        if type(a.ids) ~= 'table' then return reject('pit_prisoners: ids is a list of unit ids') end
+        local ids = {}
+        for _, id in ipairs(a.ids) do
+            local n = type(id) == 'number' and math.tointeger(id) or nil
+            if not n then return reject('pit_prisoners: ids is a list of unit ids') end
+            table.insert(ids, n)
+        end
+        if #ids == 0 then return reject('pit_prisoners: no ids') end
+        return reqscript('ai-captives').pit_prisoners({ids = ids, max = a.max, min_drop = a.min_drop}, a.dry_run == true)
+    end,
 }
 
 -- (13c) The actions whose dry run changes nothing in the fort, all the way
@@ -480,6 +496,7 @@ for _, name in ipairs({
     'hunters', 'food_standing', 'fruit_zone', 'cavern_farm',
     -- (item5) each dry run surveys (and quickfort's dry run) and changes nothing
     'fortify_post', 'archer_post', 'place_siege_engine', 'place_siege_shop',
+    'make_pit', 'pit_prisoners',   -- (item6) each dry run finds and checks, and changes nothing
 }) do DRY_OK[name] = true end
 
 -- These only change what's displayed, so they still work while halted, dry
@@ -543,7 +560,7 @@ end
 -- `--@ module = true`, but this one and the parts, which are no modules);
 -- `modules` loads each. tests/test_fix26_bridge.py keeps it in step with lua/.
 BRIDGE_MODULES = {
-    'ai-blueprints', 'ai-builder', 'ai-camera', 'ai-census', 'ai-cleanup', 'ai-constructions', 'ai-diplomacy', 'ai-disposal', 'ai-food-store', 'ai-gates', 'ai-hauling', 'ai-health', 'ai-homes',
+    'ai-blueprints', 'ai-builder', 'ai-camera', 'ai-captives', 'ai-census', 'ai-cleanup', 'ai-constructions', 'ai-diplomacy', 'ai-disposal', 'ai-food-store', 'ai-gates', 'ai-hauling', 'ai-health', 'ai-homes',
     'ai-industry', 'ai-insane', 'ai-joins', 'ai-labor', 'ai-layouts', 'ai-military', 'ai-military-gear',
     'ai-mission-send', 'ai-missions', 'ai-moods', 'ai-noble-demands', 'ai-nobles', 'ai-overlay',
     'ai-overseer-settings', 'ai-pile-links', 'ai-ping', 'ai-provisions', 'ai-reports', 'ai-siege',
@@ -925,6 +942,9 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
     -- traffic, the one in progress, the next recheck (lua/ai-traffic.lua; the
     -- project records only, no tile read)
     traffic = function() return safe(function() return reqscript('ai-traffic').report() end) end,
+    -- (item6) caged prisoners one by one and the AI's pit; a necromancer siege's facts (lua/ai-captives.lua)
+    captives = function() return safe(function() return reqscript('ai-captives').report(txt) end) end,
+    necro = function() return safe(function() return reqscript('ai-captives').necro(txt) end) end,
     -- (fix41) evil weather on its own (it was in threats, read once a day): in the pulse too
     weather = function() return safe(function() return reqscript('ai-threats').weather_section() end) end,
     -- (0.105.40 M5) hauling: the haul jobs waiting and how long, the haulers,

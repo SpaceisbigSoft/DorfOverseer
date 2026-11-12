@@ -178,6 +178,7 @@ class Memory:
     world_seen: dict = field(default_factory=dict)       # (0.105.0) grudges (civs that besieged us), export wishes, contact said
     missions_seen: dict = field(default_factory=dict)    # (0.105.39) missions followed out and back, counts, journal entries
     cleanup_seen: dict = field(default_factory=dict)     # (0.105.40) world cleanup: the dry runs done per kind, the counts removed
+    captives_seen: dict = field(default_factory=dict)    # (item6) {pit_trial, pitted, siege {since, peak}, tower_year}
     food_store_seen: dict = field(default_factory=dict)  # (0.105.40b, M6) the rotten food followed: {since, low, rotten, rise, rise_tick}
     alloy_seen: dict = field(default_factory=dict)       # (fix41) {fuel_note}: when the bronze-waits-for-fuel note was last said
     polished_upto: int | None = None                     # finished-level count when every level was found polished
