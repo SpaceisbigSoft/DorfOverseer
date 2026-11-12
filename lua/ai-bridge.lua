@@ -107,7 +107,8 @@ NOT_IN_FORT = {ok = false, error = 'no fortress is loaded (the game is at a menu
 -- they were one file. ACTIONS, SECTIONS, the commands and BRIDGE_VERSION
 -- stay here. Read from this file's own folder (DFHack loads a script by its
 -- path), else wherever DFHack finds them.
-BRIDGE_PARTS = {'ai-bridge-report', 'ai-bridge-orders', 'ai-bridge-actions', 'ai-bridge-probes'}
+-- (D0) ai-bridge-design: the Design track's landmarks
+BRIDGE_PARTS = {'ai-bridge-report', 'ai-bridge-orders', 'ai-bridge-actions', 'ai-bridge-probes', 'ai-bridge-design'}
 -- (0.105.26) Each part carries a marker, PART_VERSIONS['<part>'] = '<version>',
 -- the same string as BRIDGE_VERSION: one find-replace of the quoted version
 -- across lua/*.lua bumps them all. `version` lists a part whose marker differs
@@ -329,6 +330,10 @@ ACTIONS = {
     empty_dump = act_empty_dump,
     set_standing_orders = act_set_standing_orders,
     place_dump = act_place_dump,
+    -- (D0) the Design track: a landmark's sites, its drawing built, its next stage (ai-bridge-design.lua)
+    blueprint_sites = act_blueprint_sites,
+    build_blueprint = act_build_blueprint,
+    landmark_step = act_landmark_step,
 }
 
 -- (13c) The actions whose dry run changes nothing in the fort, all the way
@@ -376,6 +381,8 @@ for _, name in ipairs({
     -- (0.105.32) the way in: planned (and quickfort's dry run) before anything is designated
     'dig_way_in',
     'unmark_project_dig',   -- (0.105.35) its dry run counts the marked tiles and changes nothing
+    -- (D0) each checks the drawing (and quickfort's dry run) before it designates or places anything
+    'build_blueprint', 'landmark_step',
 }) do DRY_OK[name] = true end
 
 -- These only change what's displayed, so they still work while halted, dry
@@ -383,7 +390,9 @@ for _, name in ipairs({
 -- bookkeeping, not a change to the fort; (0.105.4) apply_preset sets the
 -- player's settings (keeper --preset), not the fort.)
 DISPLAY_ONLY = {report_status = true, set_culture = true, set_learned = true, save_memory = true,
-                ledger_set = true, mark_run = true, apply_preset = true}
+                ledger_set = true, mark_run = true, apply_preset = true,
+                -- (D0) changes no tile: the sites it finds are kept in the AI's own site data
+                blueprint_sites = true}
 
 ---------------------------------------------------------------------------
 -- Time control. Globals (not locals) so they survive between script runs.
@@ -420,6 +429,9 @@ function version_info()
         workshops = sorted_keys(reqscript('ai-layouts').WORKSHOPS),
         -- (0.105.26) parts whose version mark isn't BRIDGE_VERSION (nil: none)
         stale_parts = (function() local s = stale_parts(); return #s > 0 and s or nil end)(),
+        -- (D0) ai-blueprints' limits and legend items, for brain/blueprint.py's mirror check
+        blueprint_limits = (blueprint_mirror()),
+        blueprint_items = select(2, blueprint_mirror()),
     }
 end
 
@@ -684,6 +696,8 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
     projects = function() return safe(function() return reqscript('ai-builder').projects_report() end) end,
     -- every AI project on record, with where it is (small: ids and boxes)
     registry = function() return safe(function() return reqscript('ai-builder').registry_report() end) end,
+    -- (D0) the Design track's landmarks: name, purpose, status, stage, levels (ai-bridge-design.lua)
+    landmarks = function() return safe(get_landmarks) end,
     farms = function() return safe(function() return reqscript('ai-builder').farms_report() end) end,
     -- (0.101) water on the surface and the crossings over it (weekly: slow, changes slowly)
     crossings = function() return safe(function() return reqscript('ai-builder').crossings_report() end) end,
@@ -800,6 +814,8 @@ for _, name in ipairs({'unforbid_items', 'mark_melt', 'mark_dump', 'empty_dump',
 end
 CACHE_INVALIDATES.set_standing_orders = {'disposal', 'dead'}
 CACHE_INVALIDATES.renew_well_dig = {'registry'}   -- (0.105.31) as start_project
+CACHE_INVALIDATES.build_blueprint = {'registry'}   -- (D0) a landmark's levels are projects
+CACHE_INVALIDATES.landmark_step = {'registry'}
 -- (0.105.30) construction placed: the waiting count read again
 for _, name in ipairs({'place_hall', 'build_wings', 'floor_rooms', 'place_keep'}) do
     CACHE_INVALIDATES[name] = {'constructions'}

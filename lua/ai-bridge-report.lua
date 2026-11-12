@@ -276,6 +276,22 @@ function get_needs(txt_fn)
     end
     table.sort(out.stressed, function(a, b) return a.stress < b.stress end)
     while #out.stressed > 8 do table.remove(out.stressed) end
+    -- (D0) each god's spheres (up to 4 words), beside deity_ids: the Design
+    -- track's symbols. [verify] DF 53: hf.info.spheres, a list of sphere_type
+    -- (or a struct holding it as .spheres)
+    out.deity_spheres = {}
+    for nm, id in pairs(out.deity_ids) do
+        pcall(function()
+            local sp = df.historical_figure.find(id).info.spheres
+            local okl, inner = pcall(function() return sp.spheres end)
+            local list = (okl and inner) or sp
+            local words = {}
+            for _, s in ipairs(list) do
+                if #words < 4 then table.insert(words, (tostring(df.sphere_type[s] or s):lower():gsub('_', ' '))) end
+            end
+            if #words > 0 then out.deity_spheres[nm] = words end
+        end)
+    end
     -- (0.104.7, a probe for Be with friends) the game's activities under way by
     -- kind (socialising is an activity, not a job), how many citizens are in
     -- one, the idle ones and where they stand (a meeting hall, dining hall,
