@@ -482,7 +482,8 @@ def _():
     assert g.calls == ["batch"], g.calls
 
 
-@test("review 4: dfhack-run that can't start raises NotStarted; one that starts and gives no answer NoAnswer")
+@test("review 4: dfhack-run that can't start (missing, command line too long) raises NotStarted; other OSErrors "
+      "a DFHackError; one that starts and gives no answer NoAnswer")
 def _():
     import subprocess
     import dfhack as dh
@@ -505,6 +506,26 @@ def _():
     finally:
         dh.subprocess.run = keep
     assert issubclass(dh.NotStarted, DFHackError) and issubclass(dh.NoAnswer, DFHackError)
+    # (last review) NotStarted only for the process not being made: E2BIG, Windows' 206, a missing program;
+    # any other OSError (later, talking to it) is a plain DFHackError
+    import errno as _errno
+    win = OSError(22, "The filename or extension is too long")
+    win.winerror = 206
+    for e, started in ((OSError(_errno.E2BIG, "Argument list too long"), False), (win, False),
+                       (FileNotFoundError(2, "no such file"), False), (OSError(_errno.EPIPE, "Broken pipe"), True),
+                       (PermissionError(13, "denied"), True)):
+        def boom(*a, _e=e, **k):
+            raise _e
+        dh.subprocess.run = boom
+        try:
+            d.run("ai-bridge", "status")
+            raise AssertionError("no error")
+        except dh.NotStarted:
+            assert not started, e
+        except DFHackError:
+            assert started, e
+        finally:
+            dh.subprocess.run = keep
 
 # --- 3. the cycle --------------------------------------------------------------------
 

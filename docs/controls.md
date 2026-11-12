@@ -193,9 +193,11 @@ hall, basic workshops and stockpiles are always built when missing.
     (mud and snow kept), long-dead creatures nobody refers to off the game's
     active list, and, of the items no citizen has reached for a year, only
     the low-value kinds, oldest first: remains, body parts, corpses of
-    nobody named (no historical figure, no citizen), vermin, anything
-    rotten, and cloth, thread and clothing worn to rags. Lost goods of any
-    other kind (stone, bars, weapons, furniture...) stay.
+    nobody named (no historical figure, not the fort's own), vermin,
+    rotten food, and rags: cloth, thread and clothing of plant cloth, silk,
+    leather or yarn, worn to tatters, under masterwork and undecorated.
+    Lost goods of any other kind (stone, bars, weapons, furniture...) stay.
+    A call that finds nothing to remove makes that kind wait a season.
   - *full*: and lost items of any kind, and hostile or wild creatures no
     citizen can reach for a season (never citizens, pets, tame animals,
     visitors, merchants, prisoners or historical figures).
@@ -204,7 +206,9 @@ hall, basic workshops and stockpiles are always built when missing.
     minecart or stockpile, containers with anything in them, your forbidden
     things, the fort's dead, anything a mood or a job needs, anything on a
     tile no dwarf has seen yet, and anything (item or creature) in a cavern
-    the AI's own seal has shut off: it is cut off by the seal, not lost.
+    the AI's own seal has shut off (that cavern layer and every one below
+    it): it is cut off by the seal, not lost. At *off* the game refuses
+    every cleanup call, and creatures only at *full*.
 
 ### Supplies, care and the fort's works
 

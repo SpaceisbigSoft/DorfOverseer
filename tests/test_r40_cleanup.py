@@ -141,6 +141,7 @@ env.dfhack = {
              getGeneralRef = function(it, t) return (it.refs or {})[t] end,
              getContainedItems = function(it) return it.contained or {} end,
              remove = function(it) it.flags.removed = true; table.insert(W.removed, it.id); return true end},
+    matinfo = {decode = function(it) if it.mat then return {material = {flags = {[it.mat] = true}}} end end},
     maps = {getWalkableGroup = function(p) return W.group(p.x, p.y, p.z) end,
             getTileFlags = function(x, y, z) return W.tflags[key(x, y, z)] or {} end,
             getTileBlock = function(x, y, z) return {global_feature = W.gid[key(x, y, z)] or 0} end},
@@ -329,7 +330,7 @@ def _():
     c = py(full_pass(env)["items"])
     assert c["unreachable_old"] == 1 and c["kept"].get("mood") == 1, c
     moody.job = lua.eval("{current_job = {job_items = { {item_type = -1} }}}")
-    r = env.cleanup_items(T(lua, {}), True)
+    r = env.cleanup_items(T(lua, {"level": "full"}), True)
     assert not r.ok and py(r)["kept"] == {"mood": 1} and len(list(w.removed.values())) == 0, py(r)   # (the bar untracked at once)
 
 
@@ -382,7 +383,7 @@ def _():
     full_pass(env)
     w.tiles["10,10,50"] = 1                   # reached
     items[1].flags.forbid = True              # the player's now
-    r = env.cleanup_items(T(lua, {}), False)
+    r = env.cleanup_items(T(lua, {"level": "full"}), False)
     assert not r.ok and r.removed == 0 and py(r)["kept"] == {"reachable": 1, "player": 1}, py(r)
 
 
@@ -603,7 +604,7 @@ def _():
     advance(lua, env, YEAR + DAY)
     full_pass(env)
     w.CLOCK, w.CLOCK_STEP = 0.0, 0.05
-    r = env.cleanup_items(T(lua, {"max": 500}), True)
+    r = env.cleanup_items(T(lua, {"max": 500, "level": "full"}), True)
     assert r.cut_short and r.candidates < 30, py(r)
 
 
@@ -640,6 +641,7 @@ def _():
         env.reject = function(m) return {ok = false, rejected = true, error = m} end
         env.int_in = function(v, lo, hi) local n = math.tointeger(tonumber(v)); if n == nil or n < lo or n > hi then return nil end return n end
         env.reqscript = function(n)
+            if n == 'ai-overseer-settings' then return {load_settings = function() return {world_cleanup = 'full'} end} end
             assert(n == 'ai-cleanup')
             local m = {}
             for _, k in ipairs({'cleanup_items', 'cleanup_units', 'cleanup_spatter', 'cleanup_dead_units'}) do
@@ -774,7 +776,7 @@ def _():
     big = PC.cleanup_thresholds(fort_state(), CFG, section(items__total=1_000_000))
     assert big["items"] == int(CFG["cleanup_items_share"] * 1_000_000) > th["items"]
     m = Memory()
-    m.cleanup_seen = {"dry": {k: 1 for k in ("spatter", "dead", "items", "units")}}
+    m.cleanup_seen = {"dry": {f"{k}@{lv}": 1 for k in ("spatter", "dead", "items", "units") for lv in ("safe", "full")}}
     just_under = section(items__unreachable_old=th["items"] - 1, spatter__outside=th["spatter"] - 1,
                          units__dead_removable=th["dead"] - 1)
     assert mine(fort_state(just_under), m)[0] == []
@@ -793,7 +795,7 @@ def _():
 @test("brain: spatter inside the fort only while slow and past the whole map's threshold, after the outside")
 def _():
     m = Memory()
-    m.cleanup_seen = {"dry": {"spatter": 1}}
+    m.cleanup_seen = {"dry": {"spatter@safe": 1}}
     c = section(spatter__events=10 ** 6, spatter__outside=0)
     assert mine(fort_state(c), m)[0] == []
     props, _ = mine(fort_state(c, slow=True), m)
@@ -826,7 +828,7 @@ def _():
 @test("brain: the Rules switch: off proposes nothing; safe no creatures (a note says what full would do); full all four")
 def _():
     m = Memory()
-    m.cleanup_seen = {"dry": {k: 1 for k in ("spatter", "dead", "items", "units")}}
+    m.cleanup_seen = {"dry": {f"{k}@{lv}": 1 for k in ("spatter", "dead", "items", "units") for lv in ("safe", "full")}}
     c = section(items__unreachable_old=10 ** 5, spatter__outside=10 ** 6, units__dead_removable=10 ** 4,
                 units__unreachable_old=500)
     assert mine(fort_state(c, world_cleanup="off"), m) == ([], [])
@@ -949,19 +951,25 @@ def _():
     lua, env, w = world()
     fort(lua, w)
     cheap = [("REMAINS", {"race": 9}), ("CORPSEPIECE", {"race": 9}), ("CORPSE", {"race": 9}), ("VERMIN", {}),
-             ("FISH_RAW", {"flags": {"rotten": True}}), ("CLOTH", {"wear": 3}), ("SHOES", {"wear": 3}),
-             ("THREAD", {"wear": 4})]
-    dear = [("BOULDER", {}), ("BAR", {}), ("WEAPON", {}), ("CLOTH", {"wear": 1}), ("ARMOR", {"wear": 2}),
-            ("CORPSE", {"race": 9, "hist_figure_id": 12}), ("AMMO", {})]
+             ("FISH_RAW", {"flags": {"rotten": True}}), ("CLOTH", {"wear": 3, "mat": "THREAD_PLANT"}),
+             ("SHOES", {"wear": 3, "mat": "LEATHER", "quality": 4}), ("THREAD", {"wear": 4, "mat": "SILK"}),
+             ("PANTS", {"wear": 3, "mat": "YARN"})]
+    dear = [("BOULDER", {}), ("BAR", {}), ("WEAPON", {}), ("CLOTH", {"wear": 1, "mat": "SILK"}),
+            ("ARMOR", {"wear": 2, "mat": "LEATHER"}), ("CORPSE", {"race": 9, "hist_figure_id": 12}), ("AMMO", {}),
+            ("CORPSE", {"race": 9, "hist_figure_id": 13, "flags": {"rotten": True}}),     # named and rotten: kept
+            ("ARMOR", {"wear": 3}),                                                         # worn, but metal
+            ("CLOTH", {"wear": 3, "mat": "SILK", "quality": 5}),                            # a masterwork
+            ("CLOTH", {"wear": 3, "mat": "SILK", "improvements": [{"x": 1}]})]              # decorated
     for i, (kind, extra) in enumerate(cheap + dear):
         w.mk(T(lua, {"id": 1000 + i, "kind": kind, "pos": cavern(lua, w, 10 + i, 10), **extra}))   # (race 9: no dwarf's)
     c = py(year_on(lua, env)["items"])
     assert c["unreachable_old"] == len(cheap) + len(dear) and c["unreachable_old_safe"] == len(cheap), c
+    assert c["tracked"] == len(cheap) + len(dear) and c["tracked_value"] == len(dear), c
     d = env.cleanup_items(T(lua, {}), True)
-    assert d.ok and d.level == "safe" and d.candidates == len(cheap) and py(d)["kept"] == {"value": len(dear)}, py(d)
+    assert d.ok and d.level == "safe" and d.candidates == len(cheap) and not py(d)["kept"], py(d)   # goods not read
     r = env.cleanup_items(T(lua, {"max": 500}), False)
     assert r.removed == len(cheap) and sorted(w.removed.values()) == list(range(1000, 1000 + len(cheap))), py(r)
-    assert env.state().n_items == len(dear)                      # still followed
+    assert env.state().n_items == 0 and env.state().n_value == len(dear)      # the goods still followed
     assert py(env.report()["items"])["unreachable_old_safe"] == 0
     r = env.cleanup_items(T(lua, {"level": "full", "max": 500}), False)
     assert r.removed == len(dear) and r.level == "full", py(r)
@@ -985,14 +993,16 @@ def _():
     assert c["unreachable_old"] == 0 and c["kept"].get("sealed") == 2, c
     assert not env.cleanup_items(T(lua, {"level": "full"}), False).ok and not list(w.removed.values())
     assert env.unit_keep(gob) == "sealed"
-    # one layer sealed (an older seal's record): only its tiles; a layer that can't be named counts as sealed
+    # one layer sealed (an older seal's record): it and every layer below; a layer that can't be named: sealed
     w.site["ai-overseer/threats"] = T(lua, {"sealed": {"Cavern1": {"ids": [1], "tick": 0}}})
     env.cavern_layer_names = lua.eval("function() return {[7] = 'Cavern1', [8] = 'Cavern2'} end")
+    assert env.in_sealed_cavern(env.sealed_layers(), 21, 20, 30) and env.in_sealed_cavern(env.sealed_layers(), 20, 20, 50)
+    w.site["ai-overseer/threats"] = T(lua, {"sealed": {"Cavern2": {"ids": [1], "tick": 0}}})
     advance(lua, env, DAY + 1)
     c = py(year_on(lua, env)["items"])                  # 78 followed from now: a year on, old enough
     assert c["kept"].get("sealed") == 1 and c["unreachable_old"] == 1, c
     r = env.cleanup_items(T(lua, {"level": "full"}), False)
-    assert r.removed == 1 and list(w.removed.values()) == [78], py(r)
+    assert r.removed == 1 and list(w.removed.values()) == [77], py(r)      # Cavern1, above the seal
     env.cavern_layer_names = lua.eval("function() return {} end")
     assert env.in_sealed_cavern(env.sealed_layers(), 21, 20, 30)
     # no seal: nothing kept for it
@@ -1103,7 +1113,7 @@ def _():
       "unreachable_old and level full")
 def _():
     m = Memory()
-    m.cleanup_seen = {"dry": {"items": 1}}
+    m.cleanup_seen = {"dry": {"items@safe": 1, "items@full": 1}}
     th = PC.cleanup_thresholds(fort_state(), CFG, section())["items"]
     c = section(items__unreachable_old=th * 3, items__unreachable_old_safe=th - 1)
     assert mine(fort_state(c), m)[0] == []
@@ -1113,6 +1123,95 @@ def _():
     props, _ = mine(fort_state(c), m)
     assert len(props) == 1 and props[0].action["level"] == "safe" and "low-value" in props[0].reason, props
 
+
+
+@test("last review 4: the goods are followed in a map of their own (capped apart): they never fill the junk's room")
+def _():
+    lua, env, w = world()
+    fort(lua, w)
+    env.VALUE_TRACK_MAX = 2
+    env.ITEM_TRACK_MAX = 3
+    lost_items(lua, w, 5, start=1000)                                      # boulders: goods
+    for i in range(3):
+        w.mk(T(lua, {"id": 3000 + i, "kind": "REMAINS", "race": 9, "pos": cavern(lua, w, 40 + i, 10)}))
+    c = py(year_on(lua, env)["items"])
+    assert env.state().n_value == 2 and env.state().n_items == 3 and c["unreachable_old_safe"] == 3, c
+    assert env.cleanup_items(T(lua, {}), False).removed == 3
+    env.reset()                                                            # both maps kept in the save
+    assert env.state().n_value == 2
+
+
+@test("last review 4: a real cleanup call that removed nothing backs that kind off (at that level) a season; a "
+      "trial doesn't, a spatter slice with more to walk doesn't")
+def _():
+    m = Memory()
+    m.cleanup_seen = {"dry": {"items@safe": 1, "spatter@safe": 1}}
+    s = fort_state(section(items__unreachable_old=10 ** 5, items__unreachable_old_safe=10 ** 5, spatter__outside=10 ** 6))
+    props, _ = mine(s, m)
+    it = [p for p in props if p.rule == "cleanup_items"][0]
+    sp = [p for p in props if p.rule == "cleanup_spatter"][0]
+    record([(it, {"ok": False, "rejected": True, "removed": 0}), (sp, {"ok": True, "removed": 0, "more": True})], s, m)
+    assert sorted(p.rule for p in mine(s, m)[0]) == ["cleanup_spatter"], mine(s, m)[0]
+    # full: its own key
+    props, _ = mine(fort_state(section(items__unreachable_old=10 ** 5), world_cleanup="full"), m)
+    assert "cleanup_items_dry" in [p.rule for p in props]
+    s2 = copy.deepcopy(s)
+    s2["date"]["tick"] = s2["date"].get("tick", 0) + PLANNER_CONFIG["cleanup_empty_backoff_ticks"] + 1
+    assert "cleanup_items" in [p.rule for p in mine(s2, m)[0]]
+    # a trial at safe says nothing for full
+    m2 = Memory()
+    sd = fort_state(section(items__unreachable_old=10 ** 5, items__unreachable_old_safe=10 ** 5))
+    d = mine(sd, m2)[0][0]
+    record([(d, {"ok": True, "dry_run": True, "would_remove": 5})], sd, m2)
+    assert "items@safe" in m2.cleanup_seen["dry"] and "items@full" not in m2.cleanup_seen["dry"]
+
+
+@test("last review 1-3: safe_kind: a named body stays even rotten; a body of the fort's civ stays; rotten food goes")
+def _():
+    lua, env, w = world()
+    fort(lua, w)
+    named = w.mk(T(lua, {"id": 1, "kind": "CORPSEPIECE", "race": 9, "hist_figure_id": 4, "flags": {"rotten": True}}))
+    w.unit(T(lua, {"id": 6001, "dead": True, "civ_id": 10, "race": 9}))
+    ours = w.mk(T(lua, {"id": 2, "kind": "CORPSE", "race": 9, "unit_id": 6001}))
+    food = w.mk(T(lua, {"id": 3, "kind": "MEAT", "flags": {"rotten": True}}))
+    assert env.safe_kind(named) is False and env.safe_kind(ours) is False and env.safe_kind(food) is True
+
+
+@test("last review 7: the bridge refuses every cleanup action at off (or settings unread), cleanup_units unless full")
+def _():
+    lua = LuaRuntime(unpack_returned_tuples=True)
+    f = lua.eval("""function(src, setting)
+        local seen = {}
+        local env = setmetatable({BRIDGE_VERSION = 'x', OUT_DIR = '/tmp'}, {__index = _G})
+        env.require = function(n) return {} end
+        env.reject = function(m) return {ok = false, rejected = true, error = m} end
+        env.int_in = function(v, lo, hi) local n = math.tointeger(tonumber(v)); if n == nil or n < lo or n > hi then return nil end return n end
+        env.reqscript = function(n)
+            if n == 'ai-overseer-settings' then
+                if setting == 'broken' then error('no settings') end
+                return {load_settings = function() return {world_cleanup = setting} end}
+            end
+            local m = {}
+            for _, k in ipairs({'cleanup_items', 'cleanup_units', 'cleanup_spatter', 'cleanup_dead_units'}) do
+                m[k] = function(o, dry) seen[#seen + 1] = k; return {ok = true} end
+            end
+            return m
+        end
+        assert(load(src, 'actions', 't', env))()
+        return env, seen
+    end""")
+    for setting in ("off", "broken"):
+        env, seen = f(ACTS, setting)
+        for a in ACTIONS:
+            r = getattr(env, "act_" + a)(T(lua, {"dry_run": True}))
+            assert r.rejected and "World cleanup" in r.error, (setting, a, py(r))
+        assert len(seen) == 0
+    env, seen = f(ACTS, "safe")
+    assert env.act_cleanup_units(T(lua, {})).rejected
+    for a in ("cleanup_items", "cleanup_spatter", "cleanup_dead_units"):
+        assert getattr(env, "act_" + a)(T(lua, {})).ok, a
+    env, seen = f(ACTS, "full")
+    assert env.act_cleanup_units(T(lua, {})).ok
 
 
 # --- scripts identity: without a cleanup section, plan() is main's --------------------------

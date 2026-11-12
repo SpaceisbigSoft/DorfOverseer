@@ -72,6 +72,7 @@ ACTION_BUDGET_MS = 250       -- an action's walk at most
 PASS_TICKS = 1200            -- a new pass starts a game day after the last one started at the soonest (a pass spans many reports)
 ITEM_TRACK_MAX = 30000       -- unreachable items followed at most (their first-seen tick)
 UNIT_TRACK_MAX = 2000
+VALUE_TRACK_MAX = 10000       -- (review) lost items of some worth followed apart (for 'full'), at most
 SPATTER_COUNT_MAX = 500000   -- spatter events counted at most (the count says capped past it)
 MAX_ITEMS = 500              -- items deleted a call at most
 MAX_UNITS = 100              -- creatures removed a call at most
@@ -86,6 +87,11 @@ REFUSE = {CORPSE = true, CORPSEPIECE = true, REMAINS = true}
 SAFE_KINDS = {REMAINS = true, CORPSEPIECE = true, CORPSE = true, VERMIN = true}
 WORN_KINDS = {THREAD = true, CLOTH = true, ARMOR = true, SHOES = true, HELM = true, GLOVES = true, PANTS = true}
 WORN_MIN = 3                 -- wear at which cloth, thread and clothing count as rags (3: tattered)
+WORN_QUALITY_MAX = 4         -- rags: below masterwork (5) only
+-- rags only of these materials (the material's flags): plant cloth, silk, leather, yarn
+RAG_MATS = {'THREAD_PLANT', 'SILK', 'LEATHER', 'YARN'}
+-- the item kinds that are a body (the rotten shortcut is for food and the like, not them)
+BODY_KINDS = {CORPSE = true, CORPSEPIECE = true, REMAINS = true}
 STATE_THREATS = 'ai-overseer/threats'   -- ai-threats' record (its `sealed` layers)
 ALL_CAVERNS = 'all caverns'  -- the seal's layer name for every cavern (brain/planner_threats.py)
 -- the builtin materials and states DFHack's clean keeps by default
@@ -166,14 +172,22 @@ function sealed_layers()
     for layer, rec in pairs(d.sealed) do
         if type(rec) == 'table' then
             out.any = true
-            if layer == ALL_CAVERNS then out.all = true else out.names[tostring(layer)] = true end
+            local n = tonumber(tostring(layer):match('^Cavern(%d+)$'))
+            if layer == ALL_CAVERNS or not n then
+                out.all = true             -- every cavern (or a layer this can't place: all, to be safe)
+            else
+                out.names[tostring(layer)] = true
+                out.top = math.min(out.top or n, n)    -- the shallowest layer sealed
+            end
         end
     end
     return out
 end
 
--- a cavern tile behind the AI's seal (a cavern layer it sealed; every cavern
--- under 'all caverns'; a cavern tile whose layer can't be named: sealed too)
+-- a cavern tile behind the AI's seal (a cavern layer it sealed or any layer
+-- below it: the way down to a deeper cavern goes through the sealed one;
+-- every cavern under 'all caverns'; a tile whose layer can't be named:
+-- sealed too)
 function in_sealed_cavern(sealed, x, y, z)
     if not sealed or not sealed.any or not x then return false end
     local ok, glob, loc = pcall(function()
@@ -188,13 +202,18 @@ function in_sealed_cavern(sealed, x, y, z)
     sealed.by_gid = sealed.by_gid or cavern_layer_names()
     local name = sealed.by_gid[gid]
     if name == nil then return true end
-    return sealed.names[name] == true
+    local n = tonumber(tostring(name):match('^Cavern(%d+)$'))
+    if not n or not sealed.top then return true end
+    return n >= sealed.top
 end
 
 -- --- what is followed (kept in the save's site data) -----------------------
 
--- ST: {fort, items = {[id] = first tick unreachable}, units = {...}, n_items,
--- n_units, pass (the walk under way), last (the last full pass, the report)}
+-- ST: {fort, items = {[id] = first tick unreachable} (the low-value kinds,
+-- safe_kind), value = {...} (the rest: for 'full'; apart so they never fill
+-- the junk's room, and a 'safe' walk never reads them), units = {...},
+-- n_items, n_value, n_units, pass (the walk under way), last (the last full
+-- pass, the report)}
 local function pack(map)
     local out = {}
     for id, t in pairs(map) do out[#out + 1] = id; out[#out + 1] = t end
@@ -217,7 +236,9 @@ function state()
         local d = U.site_get(SITE_KEY, {})
         local items, ni = unpack_list(d.items, ITEM_TRACK_MAX)
         local units, nu = unpack_list(d.units, UNIT_TRACK_MAX)
-        ST = {fort = f, items = items, units = units, n_items = ni, n_units = nu, pass = nil, last = nil,
+        local value, nv = unpack_list(d.value, VALUE_TRACK_MAX)
+        ST = {fort = f, items = items, units = units, value = value, n_items = ni, n_units = nu, n_value = nv,
+              pass = nil, last = nil,
               passes = 0, spatter_cursor = 0}
     end
     return ST
@@ -225,7 +246,8 @@ end
 
 function save_state()
     local st = state()
-    return U.site_put(SITE_KEY, {items = pack(st.items), units = pack(st.units), tick = now_tick()})
+    return U.site_put(SITE_KEY, {items = pack(st.items), value = pack(st.value), units = pack(st.units),
+                                 tick = now_tick()})
 end
 
 -- for the tests: forget everything (a new fort)
@@ -236,7 +258,8 @@ end
 local function track(st, kind, id, t)
     local map = st[kind]
     if map[id] then return map[id] end
-    local cnt, max = 'n_' .. kind, kind == 'items' and ITEM_TRACK_MAX or UNIT_TRACK_MAX
+    local cnt = 'n_' .. kind
+    local max = kind == 'items' and ITEM_TRACK_MAX or kind == 'value' and VALUE_TRACK_MAX or UNIT_TRACK_MAX
     if st[cnt] >= max then return nil end
     map[id] = t
     st[cnt] = st[cnt] + 1
@@ -248,6 +271,24 @@ local function untrack(st, kind, id)
         st[kind][id] = nil
         st['n_' .. kind] = st['n_' .. kind] - 1
     end
+end
+
+-- an item no longer followed, in either map
+local function untrack_item(st, id)
+    untrack(st, 'items', id)
+    untrack(st, 'value', id)
+end
+
+-- an item followed in the map its kind belongs in (cheap: the junk's), its
+-- first tick kept when it moves from the other
+local function track_item(st, id, t, cheap)
+    local here, there = cheap and 'items' or 'value', cheap and 'value' or 'items'
+    local was = st[there][id]
+    if was then
+        untrack(st, there, id)
+        t = was
+    end
+    return track(st, here, id, t)
 end
 
 -- --- reach -----------------------------------------------------------------
@@ -424,30 +465,48 @@ local function vehicle(it)
     return ok and type(v) == 'number' and v ~= -1
 end
 
+-- rag material: plant cloth, silk, leather or yarn (the material's flags)
+local function rag_material(it)
+    local ok, yes = pcall(function()
+        local mi = dfhack.matinfo.decode(it)
+        if not mi or not mi.material then return false end
+        for _, f in ipairs(RAG_MATS) do
+            if mi.material.flags[f] then return true end
+        end
+        return false
+    end)
+    return ok and yes == true
+end
+
 -- (0.105.40 review) the low-value kinds world_cleanup 'safe' may delete:
--- remains, body parts and corpses (of nobody named: no historical figure,
--- no citizen), vermin, anything rotten, and cloth, thread and clothing worn
--- to rags (wear WORN_MIN on). Read on an item item_keep let go.
+-- remains, body parts and corpses of nobody named (no historical figure, not
+-- the fort's civ: the fort's own dead item_keep keeps already), vermin,
+-- rotten food and the like (not a body: a named one rots too), and rags:
+-- cloth, thread or clothing of plant cloth, silk, leather or yarn, worn
+-- WORN_MIN on, under masterwork, with no decoration. Read on an item
+-- item_keep let go.
 function safe_kind(it, kind)
     local f = it.flags
-    if f.rotten then return true end
     kind = kind or U.item_kind(it)
-    if kind == nil then return false end
-    if SAFE_KINDS[kind] then
-        if kind == 'CORPSE' or kind == 'CORPSEPIECE' then
-            local okh, hf = pcall(function() return it.hist_figure_id end)
-            if okh and hf ~= nil and hf ~= -1 then return false end
-            local oku, uid = pcall(function() return it.unit_id end)
-            if oku and uid ~= nil and uid ~= -1 then
-                local okf, u = pcall(function() return df.unit.find(uid) end)
-                if okf and u and is(dfhack.units.isCitizen, u) then return false end
-            end
-        end
+    if kind ~= nil and BODY_KINDS[kind] then
+        local okh, hf = pcall(function() return it.hist_figure_id end)
+        if not okh or (hf ~= nil and hf ~= -1) then return false end
+        local _, civ = U.corpse_race_civ(it)
+        local _, fort_civ = U.fort_race_civ()
+        if civ ~= nil and fort_civ ~= nil and civ == fort_civ then return false end
         return true
     end
+    if f.rotten then return true end
+    if kind == nil then return false end
+    if SAFE_KINDS[kind] then return true end
     if WORN_KINDS[kind] then
-        local okw, wear = pcall(function() return it.wear end)
-        return okw and type(wear) == 'number' and wear >= WORN_MIN
+        local okw, wear, q = pcall(function() return it.wear, it.quality end)
+        if not (okw and type(wear) == 'number' and wear >= WORN_MIN) then return false end
+        if type(q) == 'number' and q > WORN_QUALITY_MAX then return false end
+        local oki, nimp = pcall(function() return #it.improvements end)
+        if oki and nimp > 0 then return false end
+        if not oki and it.improvements ~= nil then return false end
+        return rag_material(it)
     end
     return false
 end
@@ -631,44 +690,45 @@ local function pass_item(p, st, it, ctx, groups)
     -- is kept: no longer followed
     if f.in_building or f.construction then
         c.in_buildings = c.in_buildings + 1
-        untrack(st, 'items', it.id)
+        untrack_item(st, it.id)
         return
     end
     if not U.on_ground(it) then
         c.in_containers = c.in_containers + 1
-        untrack(st, 'items', it.id)
+        untrack_item(st, it.id)
         return
     end
     c.on_ground = c.on_ground + 1
     local x, y, z = U.item_pos(it)
-    if not x then untrack(st, 'items', it.id); return end
+    if not x then untrack_item(st, it.id); return end
     local kind = U.item_kind(it)
     -- (0.105.40 review) on a tile no one has seen: not lost, just unexplored;
     -- not followed, not counted toward the thresholds
     if tile_hidden(x, y, z) then
         c.hidden_tile = c.hidden_tile + 1
-        untrack(st, 'items', it.id)
+        untrack_item(st, it.id)
         return
     end
     local reach = tile_reachable(groups, x, y, z)
     if reach == nil then
         c.unknown_reach = c.unknown_reach + 1
-        if st.items[it.id] then p.seen_items[it.id] = true end     -- can't say: still followed
+        if st.items[it.id] or st.value[it.id] then p.seen_items[it.id] = true end     -- can't say: still followed
         return
     end
     if reach then
         if REFUSE[kind or ''] or f.rotten then c.refuse_loose = c.refuse_loose + 1 end
-        untrack(st, 'items', it.id)
+        untrack_item(st, it.id)
         return
     end
     c.unreachable = c.unreachable + 1
     local why = item_keep(it, ctx, x, y, z)
     if why then
         bump(c.kept, why)
-        untrack(st, 'items', it.id)
+        untrack_item(st, it.id)
         return
     end
-    local first = track(st, 'items', it.id, p.tick)
+    local cheap = safe_kind(it, kind)
+    local first = track_item(st, it.id, p.tick, cheap)
     p.seen_items[it.id] = true
     if not first then bump(c.kept, 'untracked'); return end
     local age = p.tick - first
@@ -676,7 +736,7 @@ local function pass_item(p, st, it, ctx, groups)
     if age >= YEAR then
         c.unreachable_old = c.unreachable_old + 1
         -- (0.105.40 review) what world_cleanup 'safe' may take of them
-        if safe_kind(it, kind) then c.unreachable_old_safe = c.unreachable_old_safe + 1 end
+        if cheap then c.unreachable_old_safe = c.unreachable_old_safe + 1 end
     end
     local days = age // 1200
     if days > c.oldest_days then c.oldest_days = days end
@@ -784,13 +844,14 @@ end
 -- the pass ends: what it didn't see and is gone is no longer followed (the
 -- reached and the kept were let go as the pass met them)
 local function finish_pass(st, p)
-    for _, kind in ipairs({'items', 'units'}) do
-        local seen = p['seen_' .. kind]
+    for _, kind in ipairs({'items', 'value', 'units'}) do
+        local seen = p[kind == 'units' and 'seen_units' or 'seen_items']
+        local what = kind == 'units' and 'units' or 'items'
         for id in pairs(st[kind]) do
-            if not seen[id] and gone(kind, id) then untrack(st, kind, id) end
+            if not seen[id] and gone(what, id) then untrack(st, kind, id) end
         end
     end
-    p.items.tracked, p.units.tracked = st.n_items, st.n_units
+    p.items.tracked, p.items.tracked_value, p.units.tracked = st.n_items + st.n_value, st.n_value, st.n_units
     local out = {tick = p.tick, items = p.items, units = p.units, spatter = p.spatter, fluids = p.fluids,
                  groups = p.groups, pass_ms = math.floor(p.t_ms + 0.5), calls = p.calls}
     st.last = out
@@ -959,14 +1020,22 @@ function cleanup_items(o, dry_run)
     local now = now_tick()
     local ctx = item_context()
     local res = {ok = true, removed = 0, kept = {}, dry_run = dry_run or nil, candidates = 0, failed = 0,
-                 by_type = {}, tracked = st.n_items, level = level}
+                 by_type = {}, tracked = st.n_items + st.n_value, level = level}
     local pick = {}
-    for _, e in ipairs(oldest_first(st.items)) do
+    -- (review) at 'safe' only the junk's map is walked (the goods' never read);
+    -- at 'full' both, oldest first
+    local followed = st.items
+    if level == 'full' then
+        followed = {}
+        for id, t in pairs(st.items) do followed[id] = t end
+        for id, t in pairs(st.value) do followed[id] = t end
+    end
+    for _, e in ipairs(oldest_first(followed)) do
         if now - e.t < min_age then break end
         if ms_since(t0) > ACTION_BUDGET_MS then res.cut_short = true; break end
         local it = df.item.find(e.id)
         if not it then
-            untrack(st, 'items', e.id)
+            untrack_item(st, e.id)
         else
             local x, y, z = U.item_pos(it)
             local why
@@ -976,16 +1045,19 @@ function cleanup_items(o, dry_run)
                 local okk, w = pcall(item_keep, it, ctx, x, y, z)
                 if okk then why = w else why = 'unknown' end
             end
-            -- (0.105.40 review) at 'safe' a kind of some worth stays (still
-            -- followed: 'full' may take it)
+            -- (0.105.40 review) at 'safe' one no longer cheap stays (moved to
+            -- the goods' map: 'full' may take it)
             local value = false
             if not why and level == 'safe' then
                 local oks, cheap = pcall(safe_kind, it)
-                if not (oks and cheap) then why, value = 'value', true end
+                if not (oks and cheap) then
+                    why, value = 'value', true
+                    track_item(st, e.id, e.t, false)
+                end
             end
             if why then
                 bump(res.kept, why)
-                if not value then untrack(st, 'items', e.id) end
+                if not value then untrack_item(st, e.id) end
             else
                 res.candidates = res.candidates + 1
                 if #pick < max then pick[#pick + 1] = {it = it, t = e.t} end
@@ -1011,7 +1083,7 @@ function cleanup_items(o, dry_run)
         if ok and r ~= false then
             res.removed = res.removed + 1
             bump(res.by_type, kind)
-            untrack(st, 'items', id)
+            untrack_item(st, id)
         else
             res.failed = res.failed + 1
         end

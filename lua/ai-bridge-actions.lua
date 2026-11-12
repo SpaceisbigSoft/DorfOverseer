@@ -3155,6 +3155,25 @@ end
 -- dry_run (counts, changes nothing).
 ---------------------------------------------------------------------------
 
+-- (0.105.40 review) the Rules' World cleanup: 'off', 'safe' or 'full' (nil:
+-- the settings can't be read). Every cleanup action is refused at off (or
+-- unread); cleanup_units, and cleanup_items at level full, need full.
+local function cleanup_setting()
+    local ok, s = pcall(function() return reqscript('ai-overseer-settings').load_settings() end)
+    if ok and type(s) == 'table' and (s.world_cleanup == 'off' or s.world_cleanup == 'safe'
+                                      or s.world_cleanup == 'full') then
+        return s.world_cleanup
+    end
+    return nil
+end
+
+local function cleanup_off(name, setting)
+    if setting == 'off' or setting == nil then
+        return reject(name .. ': the Rules\' World cleanup is ' .. tostring(setting or 'unreadable'))
+    end
+    return nil
+end
+
 local function cleanup_num(a, key, lo, hi, name)
     if a[key] == nil then return true, nil end
     local n = int_in(a[key], lo, hi)
@@ -3175,11 +3194,11 @@ function act_cleanup_items(a)
     if a.level ~= nil and a.level ~= 'safe' and a.level ~= 'full' then
         return reject('cleanup_items: level is safe or full')
     end
+    local setting = cleanup_setting()
+    local off = cleanup_off('cleanup_items', setting)
+    if off then return off end
     o.level = a.level or 'safe'
-    if o.level == 'full' then
-        local ok, s = pcall(function() return reqscript('ai-overseer-settings').load_settings() end)
-        if not (ok and type(s) == 'table' and s.world_cleanup == 'full') then o.level = 'safe' end
-    end
+    if o.level == 'full' and setting ~= 'full' then o.level = 'safe' end
     return reqscript('ai-cleanup').cleanup_items(o, a.dry_run == true)
 end
 
@@ -3195,6 +3214,11 @@ function act_cleanup_units(a)
         o.kinds = string_list(a.kinds, {hostile = true, wild = true}, 2)
         if not o.kinds then return reject('cleanup_units: kinds is a list of hostile, wild') end
     end
+    local setting = cleanup_setting()
+    if setting ~= 'full' then
+        return reject('cleanup_units: only while the Rules\' World cleanup is full (it is '
+                      .. tostring(setting or 'unreadable') .. ')')
+    end
     return reqscript('ai-cleanup').cleanup_units(o, a.dry_run == true)
 end
 
@@ -3205,6 +3229,8 @@ function act_cleanup_spatter(a)
     end
     local ok, b = cleanup_num(a, 'budget_ms', 10, 500, 'cleanup_spatter')
     if not ok then return reject(b) end
+    local off = cleanup_off('cleanup_spatter', cleanup_setting())
+    if off then return off end
     return reqscript('ai-cleanup').cleanup_spatter({scope = a.scope, budget_ms = b}, a.dry_run == true)
 end
 
@@ -3216,5 +3242,7 @@ function act_cleanup_dead_units(a)
         if not ok then return reject(v) end
         o[k[1]] = v
     end
+    local off = cleanup_off('cleanup_dead_units', cleanup_setting())
+    if off then return off end
     return reqscript('ai-cleanup').cleanup_dead_units(o, a.dry_run == true)
 end

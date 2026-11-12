@@ -783,6 +783,8 @@ PLANNER_CONFIG = {
     "cleanup_units_min": 40,              # (Rules full) hostile or wild creatures unreachable a season
     "cleanup_units_age_ticks": 100800,    # ...unreachable this long at least (a season)
     "cleanup_units_batch": 50,            # ...this many a call
+    # (0.105.40 review) a real call that removed nothing: that kind (at that level) waits this long
+    "cleanup_empty_backoff_ticks": 100800,
     # the rules' pace (select() reads <rule>_cooldown_ticks): a trial dry run
     # first per kind, then the real call; a batch a day while more is left
     "cleanup_spatter_cooldown_ticks": 7 * 1200,

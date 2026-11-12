@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import errno
 import subprocess
 import time
 from dataclasses import dataclass
@@ -113,6 +114,14 @@ class NotStarted(DFHackError):
     gone, a command line too long): nothing reached the game."""
 
 
+def not_started(e: OSError) -> bool:
+    """(0.105.40 review) An OSError of starting the process itself: the
+    program missing (FileNotFoundError), or the command line too long
+    (Windows' error 206, POSIX E2BIG)."""
+    return (isinstance(e, FileNotFoundError) or getattr(e, "winerror", None) == 206
+            or getattr(e, "errno", None) == errno.E2BIG)
+
+
 class NoAnswer(DFHackError):
     """(0.105.40 review) dfhack-run started but gave no answer in time: what
     it carried may have run."""
@@ -183,11 +192,15 @@ class DFHack:
             )
         except subprocess.TimeoutExpired as e:
             raise NoAnswer(f"DFHack did not answer within {limit}s") from e
-        except (OSError, ValueError) as e:
+        except OSError as e:
             # (0.100) Windows couldn't start it (the program gone mid-run, a
             # command line over 32K): one failed call, not a crashed cycle.
-            # (0.105.40 review) NotStarted: nothing reached the game
-            raise NotStarted(f"couldn't run dfhack-run: {e}") from e
+            # (0.105.40 review) NotStarted only when the process itself could
+            # not be made: nothing reached the game. Any other OSError (later,
+            # talking to it) may come after the game ran the command
+            if not_started(e):
+                raise NotStarted(f"couldn't run dfhack-run: {e}") from e
+            raise DFHackError(f"couldn't run dfhack-run: {e}") from e
 
         output = (proc.stdout or "") + (proc.stderr or "")
         # dfhack-run says "Could not connect" (exit 2) when nothing listens; on

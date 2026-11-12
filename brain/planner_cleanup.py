@@ -52,7 +52,7 @@ from digest import _d, _l
 from planner_core import Proposal, abs_tick, player_rules
 
 __all__ = ["CLEANUP_ACTIONS", "CLEANUP_LEVELS", "cleanup_report", "cleanup_thresholds", "_world_cleanup_rule",
-           "note_cleanup", "cleanup_journal", "cleanup_line", "cleanup_words"]
+           "note_cleanup", "cleanup_journal", "cleanup_line", "cleanup_words", "dry_key"]
 
 # the action type -> its kind (the rule is cleanup_<kind>, its trial cleanup_<kind>_dry)
 CLEANUP_ACTIONS = {"cleanup_spatter": "spatter", "cleanup_dead_units": "dead", "cleanup_items": "items",
@@ -102,6 +102,12 @@ def _seen(memory) -> dict:
     return memory.cleanup_seen
 
 
+def dry_key(kind: str, level: str) -> str:
+    """(0.105.40 review) The trial's and the back-off's memory key: the kind
+    at the Rules' level (a trial at 'safe' says nothing of what 'full' takes)."""
+    return f"{kind}@{level}"
+
+
 def _world_cleanup_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None,
                         rules: dict | None = None) -> None:
     """(0.105.40) What no dwarf can clean up, past its threshold (see the module)."""
@@ -112,15 +118,25 @@ def _world_cleanup_rule(s: dict, cfg: dict, proposals: list, notes: list, memory
     allowed = CLEANUP_LEVELS.get(rules.get("world_cleanup", "safe"), ())
     if not allowed:
         return
+    level = rules.get("world_cleanup", "safe")
     th = cleanup_thresholds(s, cfg, c)
-    dry = _d(_seen(memory).get("dry"))
+    seen = _seen(memory)
+    dry = _d(seen.get("dry"))
+    # (0.105.40 review) a real call that removed nothing: that kind waits a while
+    empty = _d(seen.get("empty"))
+    now = abs_tick(s)
+    backoff = cfg.get("cleanup_empty_backoff_ticks", 100800)
     slow = _slow(s)
     why_slow = " while the game runs slowly" if slow else ""
 
     def propose(kind: str, action: dict, reason: str, prio: int = 7) -> None:
         if kind not in allowed:
             return
-        if kind not in dry:
+        key = dry_key(kind, level)
+        t = empty.get(key)
+        if isinstance(t, int) and not isinstance(t, bool) and 0 <= now - t < backoff:
+            return
+        if key not in dry:
             proposals.append(Proposal(f"cleanup_{kind}_dry", {**action, "dry_run": True},
                                       "a trial first (counts, removes nothing): " + reason, prio))
         else:
@@ -203,12 +219,24 @@ def note_cleanup(p, r: dict, state: dict, memory, now: int | None = None) -> Non
     r = _d(r)
     now = abs_tick(state) if now is None else now
     seen = _seen(memory)
+    try:
+        level = player_rules(state).get("world_cleanup", "safe") if isinstance(state, dict) else "safe"
+    except Exception:  # noqa: BLE001  (bookkeeping never breaks a cycle)
+        level = "safe"
+    key = dry_key(kind, level)
     if p.action.get("dry_run"):
         if r.get("ok") is True:
-            seen.setdefault("dry", {})[kind] = now
-    elif r.get("ok") is True:
-        removed = seen.setdefault("removed", {})
-        removed[kind] = _int(removed.get(kind)) + _int(r.get("removed"))
+            seen.setdefault("dry", {})[key] = now
+    else:
+        if r.get("ok") is True:
+            removed = seen.setdefault("removed", {})
+            removed[kind] = _int(removed.get(kind)) + _int(r.get("removed"))
+        # (0.105.40 review) a real call that removed nothing (refused, or
+        # none went): the kind at this level backs off a while
+        if r.get("ok") is not None and _int(r.get("removed")) == 0 and not r.get("more"):
+            seen.setdefault("empty", {})[key] = now
+        elif _int(r.get("removed")) > 0:
+            _d(seen.get("empty")).pop(key, None)
     if r.get("ok") is not None:
         j = seen.setdefault("journal", [])
         j.append({"what": kind, "action": p.action, "ok": r.get("ok"), "text": cleanup_words(p.action, r)})
