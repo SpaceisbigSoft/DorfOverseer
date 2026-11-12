@@ -651,15 +651,7 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
     planned = function() return safe(function() return reqscript('ai-builder').planned_report() end) end,   -- (0.104.154)
     justice = function() return safe(get_justice) end,
     society = function() return safe(get_society) end,
-    entrances = function() return safe(function()
-        local r = reqscript('ai-gates').summary()
-        -- (fix41) the enemies at the fort's walls: the only ones crossbows shoot
-        -- a fire breather at (brain/planner_firebreath.py); nil without the map
-        if type(r) == 'table' then
-            pcall(function() r.intruders_at_walls = reqscript('ai-gates').intruders_at_walls() end)
-        end
-        return r
-    end) end,
+    entrances = function() return safe(function() return reqscript('ai-gates').summary() end) end,
     military = function() return safe(function() return reqscript('ai-military').report(txt) end) end,
     moods = function() return safe(get_moods) end,
     buildings = function() return safe(get_buildings) end,
@@ -667,7 +659,16 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
     -- (0.105.40b) the threats that breathe fire marked (lua/ai-threats.lua, by their raws)
     others_on_map = function() return safe(function()
         local o = get_others_on_map()
-        pcall(function() reqscript('ai-threats').mark_fire_breathers(o) end)
+        local okf, nf = pcall(function() return reqscript('ai-threats').mark_fire_breathers(o) end)
+        -- (fix41-ff) with a fire breather about: which of them stand at the
+        -- fort's walls (the crossbows' only targets; brain/planner_firebreath.py)
+        if okf and type(nf) == 'number' and nf > 0 then
+            pcall(function()
+                local ids = {}
+                for _, t in ipairs(o.threats) do if t.fire_breather then ids[#ids + 1] = t.id end end
+                o.intruders_at_walls = reqscript('ai-gates').intruders_at_walls(ids)
+            end)
+        end
         return o
     end) end,
     -- (0.105.40b) with `deep_hazard`: raw adamantine uncovered and the dig

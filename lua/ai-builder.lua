@@ -347,44 +347,73 @@ end
 -- the guard refuses taken back, only inside its open projects' areas (never
 -- a designation of the player's elsewhere); logged and kept for the report
 -- (deep_hazard.swept). Returns {removed, tiles} the first time, nil after.
+-- (fix41-ff) Note: a dig designation inside an open AI project's area is
+-- taken back whoever placed it - the player's own designation on a refused
+-- tile there is removed too (the guard's tiles are never dug by anyone's
+-- order the AI can see). Only while the AI acts (sweep_acting: not halted,
+-- not Advisor, the overseer's last word "acting", so not a dry run); the
+-- map counted as swept only once the walk has ended (all of it, or the
+-- SWEEP_TILES_MAX tiles: `capped`), so a walk that throws is tried again.
 SWEEP_TILES_MAX = 20000
+
+-- Is the AI acting now (the halt switch off, the Rules mode not Advisor,
+-- and the overseer's last status "acting": autopilot, not a dry run)?
+function sweep_acting()
+    local ok, yes = pcall(function()
+        local st = reqscript('ai-status')
+        if st.is_halted() then return false end
+        local okm, mode = pcall(function() return reqscript('ai-overseer-settings').load_settings().mode end)
+        if okm and mode == 'advisor' then return false end
+        return type(st.STATUS) == 'table' and st.STATUS.acting == 'acting'
+    end)
+    return ok and yes == true
+end
+
 function dig_guard_sweep(dry_run)
     local U = util_module()
     local key = U.dig_guard_map_key()
     local g = U.DIG_GUARD
     if g.swept_key == key then return nil end
+    if not dry_run and not sweep_acting() then return nil end   -- tried again once the AI acts
     local dm = U.deep_map()
     if not (dm and dm.ok) then return nil end       -- the map not read yet: tried again later
-    if not dry_run then g.swept_key = key end
     local out = {removed = 0, looked = 0, tiles = {}}
-    if not dm.floor and next(dm.levels) == nil then return out end
+    if not dm.floor and next(dm.levels) == nil then
+        if not dry_run then g.swept_key = key end
+        return out
+    end
     local No = df.tile_dig_designation.No
     local Channel = df.tile_dig_designation.Channel
     local data = load_projects()
-    for _, p in ipairs(data.list) do
-        if p.phase == 'dig' or p.phase == 'furnish' or p.phase == 'decorate' then
-            for _, a in ipairs(project_areas(p)) do
-                local x1, y1, x2, y2, z = math.tointeger(a.x1), math.tointeger(a.y1), math.tointeger(a.x2), math.tointeger(a.y2), math.tointeger(a.z)
-                if x1 and y1 and x2 and y2 and z then
-                    for y = y1, y2 do
-                        for x = x1, x2 do
-                            out.looked = out.looked + 1
-                            if out.looked > SWEEP_TILES_MAX then break end
-                            local d = dfhack.maps.getTileFlags(x, y, z)
-                            if d and d.dig ~= No then
-                                local why = U.dig_forbidden(x, y, z)
-                                if not why and Channel ~= nil and d.dig == Channel then
-                                    why = U.dig_forbidden(x, y, z - 1)
-                                    if why then why = 'a channel down to a tile ' .. why end
-                                end
-                                if why then
-                                    if not dry_run then
-                                        d.dig = No
-                                        U.dig_refused('sweep', x, y, z, why)
-                                    end
-                                    out.removed = out.removed + 1
-                                    if #out.tiles < 5 then table.insert(out.tiles, {x = x, y = y, z = z, why = why, project = p.id}) end
-                                end
+    local function tile(x, y, z, p)
+        local d = dfhack.maps.getTileFlags(x, y, z)
+        if not (d and d.dig ~= No) then return end
+        local why = U.dig_forbidden(x, y, z)
+        if not why and Channel ~= nil and d.dig == Channel then
+            why = U.dig_forbidden(x, y, z - 1)
+            if why then why = 'a channel down to a tile ' .. why end
+        end
+        if why then
+            if not dry_run then
+                d.dig = No
+                U.dig_refused('sweep', x, y, z, why)
+            end
+            out.removed = out.removed + 1
+            if #out.tiles < 5 then table.insert(out.tiles, {x = x, y = y, z = z, why = why, project = p.id}) end
+        end
+    end
+    local function walk()
+        for _, p in ipairs(data.list) do
+            if p.phase == 'dig' or p.phase == 'furnish' or p.phase == 'decorate' then
+                for _, a in ipairs(project_areas(p)) do
+                    local x1, y1, x2, y2, z = math.tointeger(a.x1), math.tointeger(a.y1), math.tointeger(a.x2),
+                        math.tointeger(a.y2), math.tointeger(a.z)
+                    if x1 and y1 and x2 and y2 and z then
+                        for y = y1, y2 do
+                            for x = x1, x2 do
+                                if out.looked >= SWEEP_TILES_MAX then out.capped = true return end
+                                out.looked = out.looked + 1
+                                tile(x, y, z, p)
                             end
                         end
                     end
@@ -392,11 +421,13 @@ function dig_guard_sweep(dry_run)
             end
         end
     end
+    walk()
+    if not dry_run then g.swept_key = key end       -- the walk ended (all of it, or capped)
     if out.removed > 0 and not dry_run then
-        g.swept = {removed = out.removed, last = out.tiles[1]}
+        g.swept = {removed = out.removed, last = out.tiles[1], capped = out.capped}
         local t = out.tiles[1]
         pcall(function()
-            print(('[ai-dig-guard] %d dig designation(s) of the AI taken back: %s at x%d y%d elevation %d'):format(
+            print(('[ai-dig-guard] %d dig designation(s) in the AI\'s open project areas taken back: %s at x%d y%d elevation %d'):format(
                 out.removed, t.why, t.x, t.y, ez(t.z)))
         end)
     end

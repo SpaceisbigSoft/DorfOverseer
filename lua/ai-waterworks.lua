@@ -184,6 +184,12 @@ function dig_guard_why(x, y, z, by)
     return why
 end
 
+-- the guard's "could not read the tile" (lua/ai-util.lua GUARD_ERR)
+function guard_err()
+    local ok, e = pcall(function() return reqscript('ai-util').GUARD_ERR end)
+    return ok and e or 'the dig guard could not read the tile'
+end
+
 function dig_now(x, y, z)
     -- (0.105.40b) the dig guard: never raw adamantine, the spire or the underworld (nor beside them)
     local why = dig_guard_why(x, y, z, 'dig_now')
@@ -2619,6 +2625,15 @@ function step(kind, opts)
         return advance('planned', {path = path})
     end
     local p = wk.plan
+    if wk.stage == 'held' and wk.plug_guard then
+        -- (fix41-ff) a plug the dig guard refused: read again each step (not
+        -- counted again); filling goes on once the guard lets it be dug
+        local gwhy = dig_guard_why(p.plug.x, p.plug.y, p.plug.z, nil)
+        if gwhy and gwhy ~= guard_err() then return {ok = false, rejected = true, stage = 'held', error = wk.why} end
+        if dry then return {ok = true, dry_run = true, stage = 'held', recheck = true} end
+        wk.plug_guard, wk.why = nil, nil
+        return advance('filling')
+    end
     if wk.stage == 'held' then
         -- (0.105.36) a leak-watch hold looked at again (the brain asks for a
         -- `recheck`, or a why starting "recheck"): the floodgate rebuilt if it
@@ -2848,8 +2863,16 @@ function step(kind, opts)
             -- (0.105.40b fix) a plug the dig guard refuses: the work held with its
             -- reason (not 'dig-now did not dig it' for ever), counted once
             local gwhy = dig_guard_why(p.plug.x, p.plug.y, p.plug.z, (not dry) and 'waterworks_plug' or nil)
+            if gwhy and gwhy == guard_err() then
+                -- (fix41-ff) the guard couldn't read the tile: no lasting hold on
+                -- a read error, the plug waits and is read again next step
+                return wait(('the plug at x%d y%d, elevation %d waits: %s (read again next time)'):format(
+                    p.plug.x, p.plug.y, ez(p.plug.z), gwhy))
+            end
             if gwhy then
-                return hold(('the plug at x%d y%d, elevation %d is %s: left alone: it guards the underworld'):format(
+                -- (fix41-ff) held, and looked at again each step (wk.plug_guard)
+                if not dry then wk.plug_guard = true end
+                return hold(('the plug at x%d y%d, elevation %d is left alone (%s): it guards the underworld'):format(
                     p.plug.x, p.plug.y, ez(p.plug.z), gwhy))
             end
             if dry then return {ok = true, dry_run = true, stage = 'filling', plug = true} end

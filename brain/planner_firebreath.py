@@ -17,9 +17,9 @@ the IMMOLATE caste flag; one answer per race and caste) with `fire_how`
     called back; a gate guard of melee squads isn't posted against it;
   * crossbow squads only, and only from inside: only at one that can reach
     the dwarves, while the AI's gates are shut, it is not inside the fort,
-    and it stands at the fort's walls (entrances.intruders_at_walls, the
-    gate scan's map: at a shut door, before a raised bridge, in the tunnel in
-    front of a gate). One that "can reach the dwarves" behind shut gates
+    and it stands at the fort's walls (others_on_map.intruders_at_walls, by
+    the gate scan's map, read only when a fire breather is about: at a shut
+    door, before a raised bridge, in the tunnel in front of a gate). One that "can reach the dwarves" behind shut gates
     away from the walls has a way in nobody mapped, and the marksdwarves
     would walk out to it along that leaky path: no squad then (nor without
     the gate scan's map). Else no squad at all;
@@ -71,7 +71,9 @@ def fire_ranged_ok(s: dict, memory, t: dict, weather_out: set | None = None) -> 
         return "the gates are open (they would go out to it)"
     if weather_out and t.get("id") in weather_out:
         return "it stands out in the evil weather (the squads wait inside with the rest)"
-    walls = ent.get("intruders_at_walls")
+    walls = _d(s.get("others_on_map")).get("intruders_at_walls")      # (fix41-ff) read with the fire breathers
+    if walls is None:
+        walls = ent.get("intruders_at_walls")
     if not isinstance(walls, list):
         return "no map of the fort's walls yet (the crossbows could walk out to it along a way the gates don't close)"
     if t.get("id") not in walls:

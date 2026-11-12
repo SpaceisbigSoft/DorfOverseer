@@ -53,21 +53,26 @@ function inside_fort(pos)
     return true
 end
 
--- (fix41) At the fort's walls: on the map of the inside but not inside (a
--- porch, the tunnel in front of a gate), or within AT_GATE_REACH tiles of it
--- (at a shut door, on the far side of a raised bridge). The crossbows shoot
--- at a fire breather only there (brain/planner_firebreath.py): one standing
--- away from the walls that "can reach the dwarves" behind shut gates has a
+-- (fix41) At the fort's walls: on the same level and within AT_GATE_REACH
+-- tiles of one of an entrance's own tiles (its inside line, the tiles just
+-- outside it, its porch): at a shut door, before a raised bridge, in the
+-- tunnel in front of a gate. (fix41-ff) Measured against the entrances, not
+-- every inside tile (an enemy outside a solid wall of the fort is not at a
+-- gate), and the same z only (a flier over the roof isn't either). The
+-- crossbows shoot at a fire breather only there (brain/planner_firebreath.py):
+-- one that "can reach the dwarves" behind shut gates away from them has a
 -- way in nobody mapped, and the marksdwarves would walk out along it.
 AT_GATE_REACH = 2
 function at_fort_walls(pos)
     if not GATES.scanned or not GATES.inside then return nil end
-    for dz = -1, 1 do
-        for dx = -AT_GATE_REACH, AT_GATE_REACH do
-            for dy = -AT_GATE_REACH, AT_GATE_REACH do
-                if GATES.inside[key(pos.x + dx, pos.y + dy, pos.z + dz)] then return true end
-            end
-        end
+    local function near(k)
+        local x, y, z = unkey(k)
+        return z == pos.z and math.abs(x - pos.x) <= AT_GATE_REACH and math.abs(y - pos.y) <= AT_GATE_REACH
+    end
+    for _, e in ipairs(GATES.entrances or {}) do
+        for _, k in ipairs(e.inside_list or {}) do if near(k) then return true end end
+        for k in pairs(e.outs or {}) do if near(k) then return true end end
+        for k in pairs(e.porch or {}) do if near(k) then return true end end
     end
     return false
 end
@@ -90,12 +95,21 @@ function intruders_inside()
 end
 
 -- (fix41) The ids of live, loose enemies at the fort's walls (not inside;
--- at most 50), or nil without a map of the inside. The great dangers and
--- the invaders only are looked at (the ones the fire-breath rule asks about).
-function intruders_at_walls()
+-- at most 50), or nil without a map of the inside. (fix41-ff) `ids`: only
+-- these units looked at (the fire breathers: the only ones asked about).
+function intruders_at_walls(ids)
     if not GATES.scanned or not GATES.inside then return nil end
     local out = {}
-    for _, u in ipairs(df.global.world.units.active) do
+    local units = {}
+    if type(ids) == 'table' then
+        for _, id in ipairs(ids) do
+            local u = df.unit.find(id)
+            if u then units[#units + 1] = u end
+        end
+    else
+        units = df.global.world.units.active
+    end
+    for _, u in ipairs(units) do
         local ok, yes = pcall(function()
             return dfhack.units.isAlive(u) and not u.flags1.caged and not u.flags1.chained
                 and not dfhack.units.isCitizen(u) and (dfhack.units.isDanger(u) or dfhack.units.isInvader(u))

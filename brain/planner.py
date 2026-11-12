@@ -214,8 +214,8 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
     if can_use("threats"):
         _guard(_threat_rules, s, memory, cfg, proposals, notes)
     # (0.105.40b) evil weather: the alarm while an evil cloud or rain is on the fort, lifted hours after
-    if can_use("threats") or isinstance(s.get("weather"), dict) and s["weather"]:   # (fix41) or the pulse's own weather
-        _guard(_weather_rules, s, memory, cfg, proposals, notes)
+    # (fix41-ff) always: an unread weather report still keeps the spell's alarm up
+    _guard(_weather_rules, s, memory, cfg, proposals, notes)
 
     # 1c. Health: who waits for care, and for how long
     if can_use("health"):
