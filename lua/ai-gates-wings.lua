@@ -7,7 +7,7 @@
 
 PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-gates-wings'] = '0.105.38'   -- (0.105.26) bumped with BRIDGE_VERSION
 
-local U, key, unkey, T, moves, treetop, inside_or_courtyard, seals, WALL_GROUND, open_ground, citizen_starts, place, entrance = U, key, unkey, T, moves, treetop, inside_or_courtyard, seals, WALL_GROUND, open_ground, citizen_starts, place, entrance   -- (13e) the hub's and earlier parts' locals
+local U, key, unkey, T, TK, moves_k, moves, treetop, inside_or_courtyard, seals, WALL_GROUND, open_ground, citizen_starts, place, entrance = U, key, unkey, T, TK, moves_k, moves, treetop, inside_or_courtyard, seals, WALL_GROUND, open_ground, citizen_starts, place, entrance   -- (13e) the hub's and earlier parts' locals
 
 ---------------------------------------------------------------------------
 -- (0.105.30, construction spec 3.2) The War-hold's wing walls: once a
@@ -535,7 +535,9 @@ local function sort_starts(starts, big)
 end
 
 function fort_starts(starts)
-    cache, edge_cache = {}, {}           -- (read fresh: it runs before a scan or a cut)
+    -- (read fresh: it runs before a scan or a cut; (13e) in a scan, the scan
+    -- has just read it fresh: SCAN_MEMO in ai-gates-scan)
+    if not SCAN_MEMO then cache, edge_cache = {}, {} end
     local big = {}
     -- (0.105.30 fixes) not from the AI's keep or hall, (0.105.31) or its deep depot hall,
     -- while anyone stands elsewhere
@@ -575,6 +577,17 @@ end
 function porch_of(e, starts)
     cache = cache or {}
     edge_cache = edge_cache or {}
+    -- (13e) in a scan, each entrance's porch is walked once (the result is
+    -- only read; the map can't change while the scan runs)
+    local memo = SCAN_MEMO and SCAN_MEMO.porch
+    local m = memo and memo[e]
+    if m and m.starts == starts then return m.out end
+    local out = porch_walk(e, starts)
+    if memo then memo[e] = {starts = starts, out = out} end
+    return out
+end
+
+function porch_walk(e, starts)
     local home = {}
     for _, p in ipairs(starts or {}) do home[key(p.x, p.y, p.z)] = true end
     local z0 = e.z
@@ -586,36 +599,41 @@ function porch_of(e, starts)
     end
     local out = {n = 0, stairs = {}, ramps = {}}
     local stair_seen, ramp_seen = {}, {}
-    while head <= #queue do
-        if #queue > CUT_MAX_PORCH then out.capped = true break end
-        local k = queue[head]
+    local tail = #queue
+    local outs = e.outs
+    local k, x, y         -- (13e) the tile walked from
+    local function visit(nk, nx, ny, nz)
+        if seen[nk] or outs[nk] then return end
+        local nt = TK(nk, nx, ny, nz)
+        if not nt or not nt.walk or nt.hidden or nt.special or treetop(nt) or not inside_or_courtyard(nt, nk) then
+            return
+        end
+        if nz < z0 then
+            -- a way down below the opening's level: a stair (hatch on the
+            -- stair it leaves from) or a ramp
+            if nx == x and ny == y then
+                if not stair_seen[k] then stair_seen[k] = true; table.insert(out.stairs, k) end
+            elseif not ramp_seen[nk] then
+                ramp_seen[nk] = true
+                table.insert(out.ramps, nk)
+            end
+            return
+        end
+        seen[nk] = true
+        tail = tail + 1
+        queue[tail] = nk
+    end
+    while head <= tail do
+        if tail > CUT_MAX_PORCH then out.capped = true break end
+        k = queue[head]
         head = head + 1
         if home[k] then out.home = true end
-        local x, y, z = unkey(k)
-        local t = T(x, y, z)
-        moves(x, y, z, t, function(nx, ny, nz)
-            local nk = key(nx, ny, nz)
-            if seen[nk] or e.outs[nk] then return end
-            local nt = T(nx, ny, nz)
-            if not nt or not nt.walk or nt.hidden or nt.special or treetop(nt) or not inside_or_courtyard(nt, nk) then
-                return
-            end
-            if nz < z0 then
-                -- a way down below the opening's level: a stair (hatch on the
-                -- stair it leaves from) or a ramp
-                if nx == x and ny == y then
-                    if not stair_seen[k] then stair_seen[k] = true; table.insert(out.stairs, k) end
-                elseif not ramp_seen[nk] then
-                    ramp_seen[nk] = true
-                    table.insert(out.ramps, nk)
-                end
-                return
-            end
-            seen[nk] = true
-            table.insert(queue, nk)
-        end)
+        local z
+        x, y, z = unkey(k)
+        local t = TK(k, x, y, z)
+        moves_k(k, x, y, z, t, visit)
     end
-    out.n = #queue
+    out.n = tail
     out.tiles = seen             -- (0.105.0 review) the porch's tiles (citizens there are outside)
     table.sort(out.stairs)
     table.sort(out.ramps)

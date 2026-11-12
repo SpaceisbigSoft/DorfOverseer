@@ -57,6 +57,97 @@ local function moves(x, y, z, t, fn)
     end
 end
 
+-- (0.105.40, 13e) The walks below (explore, seals, reaches_edge, the porch)
+-- take each tile's neighbours from moves_k: the same moves in the same order
+-- as moves(), with each neighbour's key handed over (worked out from the
+-- tile's own), and the tiles read through the same cache as T: one call a
+-- neighbour instead of three or four.
+local KZ, KY = 4096 * 4096, 4096
+
+-- T for a tile whose key is known (key(x, y, z) == k)
+local function TK(k, x, y, z)
+    local v = cache[k]
+    if v == nil then
+        v = tile(x, y, z) or false
+        cache[k] = v
+    end
+    return v or nil
+end
+
+-- Is the tile below (key bk) a ramp? From the cache when it was read, else
+-- tile_is_ramp (kept apart, by the cache it belongs to: cache itself holds
+-- only tile()'s answers), or tile() when a test has its own in place.
+local RAMPS, RAMPS_OF = nil, nil
+local function ramp_below(bk, x, y, z)
+    if tile ~= GAME_TILE then
+        local b = TK(bk, x, y, z)
+        return b and b.shape == 'RAMP'
+    end
+    if RAMPS_OF ~= cache then RAMPS, RAMPS_OF = {}, cache end
+    local r = RAMPS[bk]
+    if r == nil then
+        r = tile_is_ramp(x, y, z)
+        RAMPS[bk] = r
+    end
+    return r
+end
+
+local function moves_k(k, x, y, z, t, fn)
+    local c = cache
+    fn(k - KY - 1, x - 1, y - 1, z)
+    fn(k - 1, x - 1, y, z)
+    fn(k + KY - 1, x - 1, y + 1, z)
+    fn(k - KY, x, y - 1, z)
+    fn(k + KY, x, y + 1, z)
+    fn(k - KY + 1, x + 1, y - 1, z)
+    fn(k + 1, x + 1, y, z)
+    fn(k + KY + 1, x + 1, y + 1, z)
+    local shape = t.shape
+    if STAIR_UP[shape] then
+        local a = TK(k + KZ, x, y, z + 1)
+        if a and STAIR_DOWN[a.shape] then fn(k + KZ, x, y, z + 1) end
+    end
+    if STAIR_DOWN[shape] then
+        local b = TK(k - KZ, x, y, z - 1)
+        if b and STAIR_UP[b.shape] then fn(k - KZ, x, y, z - 1) end
+    end
+    if shape == 'RAMP' then
+        -- (each neighbour: up its ramp, then down to a ramp below, as moves() goes)
+        for dx = -1, 1 do
+            for dy = -1, 1 do
+                if dx ~= 0 or dy ~= 0 then
+                    local d = dy * KY + dx
+                    fn(k + KZ + d, x + dx, y + dy, z + 1)
+                    local bk = k - KZ + d
+                    local below, r = c[bk], nil
+                    if below == nil then r = ramp_below(bk, x + dx, y + dy, z - 1) else r = below and below.shape == 'RAMP' end
+                    if r then fn(bk, x + dx, y + dy, z - 1) end
+                end
+            end
+        end
+        return
+    end
+    -- the ramps below, written out (the walks' hottest lines)
+    local kb, zb = k - KZ, z - 1
+    local bk, b, r
+    bk = kb - KY - 1; b = c[bk]; if b == nil then r = ramp_below(bk, x - 1, y - 1, zb) else r = b and b.shape == 'RAMP' end
+    if r then fn(bk, x - 1, y - 1, zb) end
+    bk = kb - 1; b = c[bk]; if b == nil then r = ramp_below(bk, x - 1, y, zb) else r = b and b.shape == 'RAMP' end
+    if r then fn(bk, x - 1, y, zb) end
+    bk = kb + KY - 1; b = c[bk]; if b == nil then r = ramp_below(bk, x - 1, y + 1, zb) else r = b and b.shape == 'RAMP' end
+    if r then fn(bk, x - 1, y + 1, zb) end
+    bk = kb - KY; b = c[bk]; if b == nil then r = ramp_below(bk, x, y - 1, zb) else r = b and b.shape == 'RAMP' end
+    if r then fn(bk, x, y - 1, zb) end
+    bk = kb + KY; b = c[bk]; if b == nil then r = ramp_below(bk, x, y + 1, zb) else r = b and b.shape == 'RAMP' end
+    if r then fn(bk, x, y + 1, zb) end
+    bk = kb - KY + 1; b = c[bk]; if b == nil then r = ramp_below(bk, x + 1, y - 1, zb) else r = b and b.shape == 'RAMP' end
+    if r then fn(bk, x + 1, y - 1, zb) end
+    bk = kb + 1; b = c[bk]; if b == nil then r = ramp_below(bk, x + 1, y, zb) else r = b and b.shape == 'RAMP' end
+    if r then fn(bk, x + 1, y, zb) end
+    bk = kb + KY + 1; b = c[bk]; if b == nil then r = ramp_below(bk, x + 1, y + 1, zb) else r = b and b.shape == 'RAMP' end
+    if r then fn(bk, x + 1, y + 1, zb) end
+end
+
 -- An "outside" tile that can't reach the map's edge without going indoors
 -- is a courtyard, not the surface: part of the fort. Found by walking the
 -- open-air tiles from it (cached for everything walked).
@@ -67,22 +158,24 @@ local function reaches_edge(k)
     if known ~= nil then return known end
     local W, H = map_size()
     local seen, queue, head, result = {[k] = true}, {k}, 1, nil
-    while head <= #queue do
+    local tail = 1
+    local function visit(nk, nx, ny, nz)
+        if seen[nk] then return end
+        local nt = TK(nk, nx, ny, nz)
+        if nt and nt.walk and nt.outside and not nt.hidden then
+            seen[nk] = true
+            tail = tail + 1
+            queue[tail] = nk
+        end
+    end
+    while head <= tail do
         local ck = queue[head]
         head = head + 1
         local x, y, z = unkey(ck)
         if x <= 0 or y <= 0 or x >= W - 1 or y >= H - 1 then result = true break end
-        if #queue > COURTYARD_LIMIT then result = true break end   -- that big: the surface
-        local t = T(x, y, z)
-        moves(x, y, z, t, function(nx, ny, nz)
-            local nk = key(nx, ny, nz)
-            if seen[nk] then return end
-            local nt = T(nx, ny, nz)
-            if nt and nt.walk and nt.outside and not nt.hidden then
-                seen[nk] = true
-                table.insert(queue, nk)
-            end
-        end)
+        if tail > COURTYARD_LIMIT then result = true break end   -- that big: the surface
+        local t = TK(ck, x, y, z)
+        moves_k(ck, x, y, z, t, visit)
     end
     result = result or false
     for vk in pairs(seen) do edge_cache[vk] = result end
@@ -112,32 +205,38 @@ function explore(starts, blocked)
     blocked = blocked or {}
     local seen, queue, head, n = {}, {}, 1, 0
     local openings = {}
+    local tail = 0
     for _, p in ipairs(starts) do
         local k = key(p.x, p.y, p.z)
         if not seen[k] and inside_or_courtyard(T(p.x, p.y, p.z), k) and not blocked[k] then
             seen[k] = true
-            table.insert(queue, k)
+            tail = tail + 1
+            queue[tail] = k
         end
     end
-    while head <= #queue and n < MAX_TILES do
-        local k = queue[head]
+    local k             -- the tile walked from
+    local c = cache
+    local function visit(nk, nx, ny, nz)
+        if seen[nk] or blocked[nk] then return end
+        local nt = c[nk]
+        if nt == nil then nt = TK(nk, nx, ny, nz) end
+        -- (0.104.104) a treetop is neither the fort nor a way in
+        if not nt or not nt.walk or nt.hidden or nt.special or treetop(nt) then return end
+        if inside_or_courtyard(nt, nk) then
+            seen[nk] = true
+            tail = tail + 1
+            queue[tail] = nk
+        else
+            openings[#openings + 1] = {inside = k, out = nk, kind = nt.feature and 'cavern' or 'surface'}
+        end
+    end
+    while head <= tail and n < MAX_TILES do
+        k = queue[head]
         head = head + 1
         n = n + 1
         local x, y, z = unkey(k)
-        local t = T(x, y, z)
-        moves(x, y, z, t, function(nx, ny, nz)
-            local nk = key(nx, ny, nz)
-            if seen[nk] or blocked[nk] then return end
-            local nt = T(nx, ny, nz)
-            -- (0.104.104) a treetop is neither the fort nor a way in
-            if not nt or not nt.walk or nt.hidden or nt.special or treetop(nt) then return end
-            if inside_or_courtyard(nt, nk) then
-                seen[nk] = true
-                table.insert(queue, nk)
-            else
-                table.insert(openings, {inside = k, out = nk, kind = nt.feature and 'cavern' or 'surface'})
-            end
-        end)
+        local t = TK(k, x, y, z)
+        moves_k(k, x, y, z, t, visit)
     end
     return seen, n, openings
 end
@@ -210,24 +309,24 @@ local function seals(starts, g, blocked)
         end
     end
     local inside_count, reached = 0, false
-    while head <= #queue do
+    local tail = #queue
+    local function visit(nk, nx, ny, nz)
+        if seen[nk] or blocked[nk] then return end
+        local nt = TK(nk, nx, ny, nz)
+        if inside_or_courtyard(nt, nk) then
+            seen[nk] = true
+            inside_count = inside_count + 1
+            if home[nk] then reached = true end
+            tail = tail + 1
+            queue[tail] = nk
+        end
+    end
+    while head <= tail do
         local k = queue[head]
         head = head + 1
         local x, y, z = unkey(k)
-        local t = T(x, y, z)
-        if t then
-            moves(x, y, z, t, function(nx, ny, nz)
-                local nk = key(nx, ny, nz)
-                if seen[nk] or blocked[nk] then return end
-                local nt = T(nx, ny, nz)
-                if inside_or_courtyard(nt, nk) then
-                    seen[nk] = true
-                    inside_count = inside_count + 1
-                    if home[nk] then reached = true end
-                    table.insert(queue, nk)
-                end
-            end)
-        end
+        local t = TK(k, x, y, z)
+        if t then moves_k(k, x, y, z, t, visit) end
         -- reached where the dwarves are, or walked too far: not sealed
         if reached or inside_count > POCKET then return false end
     end
@@ -414,8 +513,17 @@ end
 -- now_tick, wait_since ({bridge id = tick}): since when a drawbridge waits
 -- for an unlinked lever (optional)
 function find_entrances(starts, buildings, now_tick, wait_since)
-    cache, edge_cache = {}, {}
+    -- (13e) within scan() the map was read fresh at its start (and can't
+    -- change while it runs): what fort_starts read is kept
+    if not SCAN_MEMO then cache, edge_cache = {}, {} end
     local inside, n, openings = explore(starts)
+    -- (13e) each building's tiles worked out once a call (only walked, never changed)
+    local bkeys = {}
+    local function building_keys_of(b)
+        local ks = bkeys[b]
+        if not ks then ks = building_keys(b); bkeys[b] = ks end
+        return ks
+    end
     local groups = cluster(openings)
     local entrances = {}
     local cut_checked = 0        -- (0.105.0 review)
@@ -430,12 +538,15 @@ function find_entrances(starts, buildings, now_tick, wait_since)
         local cands, pending = {}, {}
         e.bridges_unworked = {}
         local gatehouse_here, gatehouse_bridge = false, nil
-        for _, b in ipairs(buildings) do
-            if near(b, g) and is_gatehouse(b) then                             -- (0.105.23)
+        local near_g = {}           -- (13e) near(b, g) once for each building, by its place in the list
+        for i, b in ipairs(buildings) do
+            local nb = near(b, g)
+            near_g[i] = nb
+            if nb and is_gatehouse(b) then                             -- (0.105.23)
                 gatehouse_here = true
                 gatehouse_bridge = {x = b.x1, y = b.y1, z = b.z}               -- (0.105.30) for the wings
             end
-            if near(b, g) then
+            if nb then
                 if b.kind == 'pending' then
                     table.insert(pending, b)
                     -- (0.105.35) its id: free_gate_jobs unsuspends its building job
@@ -461,7 +572,7 @@ function find_entrances(starts, buildings, now_tick, wait_since)
         end
         local blocked = {}
         for _, b in ipairs(cands) do
-            for k in pairs(building_keys(b)) do blocked[k] = true end
+            for k in pairs(building_keys_of(b)) do blocked[k] = true end
         end
         if #cands > 0 and seals(starts, g, blocked) then
             -- keep only the ones it needs
@@ -470,7 +581,7 @@ function find_entrances(starts, buildings, now_tick, wait_since)
             for _, b in ipairs(cands) do
                 local without = {}
                 for id, c in pairs(keep) do
-                    if id ~= b.id then for k in pairs(building_keys(c)) do without[k] = true end end
+                    if id ~= b.id then for k in pairs(building_keys_of(c)) do without[k] = true end end
                 end
                 if next(without) and seals(starts, g, without) then keep[b.id] = nil end
             end
@@ -527,10 +638,10 @@ function find_entrances(starts, buildings, now_tick, wait_since)
             -- walls or doors planned there (the AI's own, or yours) would
             -- close it once built: it's being closed, leave it be
             for _, b in ipairs(cands) do
-                for k in pairs(building_keys(b)) do blocked[k] = true end
+                for k in pairs(building_keys_of(b)) do blocked[k] = true end
             end
             for _, b in ipairs(pending) do
-                for k in pairs(building_keys(b)) do blocked[k] = true end
+                for k in pairs(building_keys_of(b)) do blocked[k] = true end
             end
             if seals(starts, g, blocked) then e.closing = true end
         end
@@ -541,11 +652,11 @@ function find_entrances(starts, buildings, now_tick, wait_since)
             -- earlier set may have been refused) are left as they are; every
             -- other tile must be able to take one (plain floor, dry, free).
             local doors_here, walls_coming = {}, {}
-            for _, b in ipairs(buildings) do
-                if near(b, g) and (b.kind == 'door' or (b.kind == 'pending' and b.what == 'door')) then
-                    for k in pairs(building_keys(b)) do doors_here[k] = true end
-                elseif near(b, g) and b.kind == 'pending' and b.what == 'wall' then
-                    for k in pairs(building_keys(b)) do walls_coming[k] = true end
+            for i, b in ipairs(buildings) do
+                if near_g[i] and (b.kind == 'door' or (b.kind == 'pending' and b.what == 'door')) then
+                    for k in pairs(building_keys_of(b)) do doors_here[k] = true end
+                elseif near_g[i] and b.kind == 'pending' and b.what == 'wall' then
+                    for k in pairs(building_keys_of(b)) do walls_coming[k] = true end
                 end
             end
             local block, spots, all_ok, waiting = {}, {}, true, false
@@ -713,8 +824,27 @@ function carry_ids(old, new)
     return out
 end
 
+-- (0.105.40, 13e) SCAN_MEMO: set while scan() maps the fort (nil otherwise).
+-- The game stands still while a script runs, so the map read at the scan's
+-- start holds for all of it: fort_starts and find_entrances keep the tiles
+-- already read (each read them afresh), and porch_of keeps each entrance's
+-- porch (cut_equipment and the cut survey walked the same porch twice).
+-- Cleared before the hatches are opened and the summary is made.
+SCAN_MEMO = nil
+
 function scan(now_tick)
     cache, edge_cache = {}, {}
+    SCAN_MEMO = {porch = {}}
+    local ok, err = pcall(scan_map, now_tick)
+    SCAN_MEMO = nil
+    if not ok then error(err, 0) end
+    -- (0.105.23) a hatch its new lever link shut, with no watcher holding it: opened
+    if not GATES.armed then pcall(open_lever_hatches) end
+    return summary()
+end
+
+-- scan() without its end: maps the fort and sets GATES
+function scan_map(now_tick)
     pcall(gate_planned_since, true)       -- (0.105.36 fix) the records' start, kept once
     -- (0.105.0) citizens on a ledge or a treetop don't seed a fort of their own
     local fstarts = fort_starts(citizen_starts())
@@ -771,11 +901,8 @@ function scan(now_tick)
              peak = GATES.peak, clear_looks = carried(GATES.clear_looks),      -- (0.105.4 review)
              stuck_removed = GATES.stuck_removed, split_seen = GATES.split_seen,   -- (0.105.32)
              mine = GATES.mine}                    -- (0.105.36 fix) by building id: kept as it is
-    -- (0.105.23) a hatch its new lever link shut, with no watcher holding it: opened
-    if not GATES.armed then pcall(open_lever_hatches) end
-    return summary()
 end
 
 -- (13e) this file's locals the later parts use, as module names (each takes
 -- them back as locals of its own)
-_ENV.T, _ENV.interior, _ENV.moves, _ENV.treetop, _ENV.inside_or_courtyard, _ENV.seals, _ENV.ORTHO, _ENV.DOOR_GROUND, _ENV.WALL_GROUND, _ENV.open_ground, _ENV.citizen_starts, _ENV.gate_name = T, interior, moves, treetop, inside_or_courtyard, seals, ORTHO, DOOR_GROUND, WALL_GROUND, open_ground, citizen_starts, gate_name
+_ENV.T, _ENV.TK, _ENV.moves_k, _ENV.interior, _ENV.moves, _ENV.treetop, _ENV.inside_or_courtyard, _ENV.seals, _ENV.ORTHO, _ENV.DOOR_GROUND, _ENV.WALL_GROUND, _ENV.open_ground, _ENV.citizen_starts, _ENV.gate_name = T, TK, moves_k, interior, moves, treetop, inside_or_courtyard, seals, ORTHO, DOOR_GROUND, WALL_GROUND, open_ground, citizen_starts, gate_name

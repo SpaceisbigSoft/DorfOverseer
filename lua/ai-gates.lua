@@ -45,42 +45,78 @@ local function is_magma(des)
     return lt == true or lt == 1
 end
 
+-- (0.105.40, 13e) A tile type's fixed attributes, read once: {walk, shape,
+-- material} (names), as tile() and under_tree() read them from DF's tables
+-- (the same for every tile of that type, for as long as the game runs; kept
+-- per df.tiletype.attrs, so a test's own fake tables get their own)
+local TT_INFO, TT_INFO_OF, TT_INFO_DF = {}, nil, nil
+local function tt_info(tt)
+    local attrs_of = df.tiletype.attrs
+    if TT_INFO_OF ~= attrs_of or TT_INFO_DF ~= df then TT_INFO, TT_INFO_OF, TT_INFO_DF = {}, attrs_of, df end
+    local i = TT_INFO[tt]
+    if i == nil then
+        local attrs = attrs_of[tt]
+        local shape = attrs.shape
+        i = {walk = df.tiletype_shape.attrs[shape].walkable == true, shape = df.tiletype_shape[shape],
+             material = df.tiletype_material[attrs.material]}
+        TT_INFO[tt] = i
+    end
+    return i
+end
+
 -- A tree's trunk, branches or leaves within a few levels straight above?
 function under_tree(x, y, z)
     for dz = 1, 6 do
         local tt = dfhack.maps.getTileType(x, y, z + dz)
         if not tt then return false end
-        local attrs = df.tiletype.attrs[tt]
-        local m = df.tiletype_material[attrs.material]
+        local info = tt_info(tt)
+        local m = info.material
         if m == 'TREE' or m == 'ROOT' or m == 'PLANT' then return true end
-        local shape = df.tiletype_shape[attrs.shape]
+        local shape = info.shape
         if shape ~= 'EMPTY' and shape ~= 'NONE' then return false end      -- a roof or rock: not a tree's shade
     end
     return false
 end
 
+-- (13e) each flag read once (every read is a call into DFHack)
 function tile(x, y, z)
     local tt = dfhack.maps.getTileType(x, y, z)
     if not tt then return nil end
     local des, occ = dfhack.maps.getTileFlags(x, y, z)
     if not des then return nil end
-    local shape = df.tiletype.attrs[tt].shape
+    local info = tt_info(tt)
+    local flow, outside = des.flow_size, des.outside
     return {
-        walk = df.tiletype_shape.attrs[shape].walkable == true,
-        shape = df.tiletype_shape[shape],
-        outside = des.outside,
+        walk = info.walk,
+        shape = info.shape,
+        outside = outside,
         feature = des.feature_global,
         special = des.feature_local,
         hidden = des.hidden,
-        liquid = des.flow_size > 0,
-        depth = des.flow_size,                              -- 0-7
-        magma = des.flow_size > 0 and is_magma(des),
+        liquid = flow > 0,
+        depth = flow,                                       -- 0-7
+        magma = flow > 0 and is_magma(des),
         salt = des.water_salt, stagnant = des.water_stagnant, aquifer = des.water_table,
-        material = df.tiletype_material[df.tiletype.attrs[tt].material],   -- RIVER, POOL, CONSTRUCTION...
+        material = info.material,                           -- RIVER, POOL, CONSTRUCTION...
         occupied = occ ~= nil and occ.building ~= df.tile_building_occ.None,   -- something built or planned
-        canopy = not des.outside and not des.subterranean and under_tree(x, y, z),
+        canopy = not outside and not des.subterranean and under_tree(x, y, z),
     }
 end
+
+-- (0.105.40, 13e) Is tile(x, y, z) a ramp? The same answer as
+-- `local t = tile(x, y, z); t and t.shape == 'RAMP'` from the two reads it
+-- rests on, not tile()'s twenty-odd: the walks look at the eight tiles below
+-- every tile they cross for a ramp up, and most are never looked at again.
+-- GAME_TILE: the game's own tile(); with a test's in its place the walks read
+-- tile() itself.
+function tile_is_ramp(x, y, z)
+    local tt = dfhack.maps.getTileType(x, y, z)
+    if not tt then return false end
+    local des = dfhack.maps.getTileFlags(x, y, z)
+    if not des then return false end
+    return tt_info(tt).shape == 'RAMP'
+end
+GAME_TILE = tile
 
 -- The kind of building on a tile ('Well', 'ScrewPump', 'Floodgate'...) or
 -- nil (tests replace this).
@@ -194,12 +230,16 @@ function gate_buildings()
     AI_LEVERS_WAITING = unlinked_ai_levers()
     AI_LEVER_WAITING = #AI_LEVERS_WAITING > 0
     local out = {}
+    -- (13e) the types looked up once, and a building's build stage read only
+    -- for a gate or a construction (every other building in the fort was asked)
+    local DOOR, HATCH, BRIDGE, CONSTRUCTION = df.building_type.Door, df.building_type.Hatch,
+        df.building_type.Bridge, df.building_type.Construction
     for _, b in ipairs(df.global.world.buildings.all) do
         local t = b:getType()
-        local kind = (t == df.building_type.Door and 'door') or (t == df.building_type.Hatch and 'hatch')
-            or (t == df.building_type.Bridge and 'bridge') or nil
-        local built = b:getBuildStage() >= b:getMaxBuildStage()
-        if not built and (kind or (t == df.building_type.Construction
+        local kind = (t == DOOR and 'door') or (t == HATCH and 'hatch')
+            or (t == BRIDGE and 'bridge') or nil
+        local built = (kind or t == CONSTRUCTION) and b:getBuildStage() >= b:getMaxBuildStage()
+        if not built and (kind or (t == CONSTRUCTION
                 and (b.type == df.construction_type.Wall or b.type == df.construction_type.Fortification))) then
             -- planned or being built (the AI's own walls and doors, or the
             -- player's): it will close the opening once it's done

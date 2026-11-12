@@ -92,7 +92,9 @@ def _():
     allowed = {"U", "key", "unkey", "STAIR_UP", "STAIR_DOWN", "ref_ids", "T", "interior", "moves", "treetop",
                "inside_or_courtyard", "seals", "ORTHO", "DOOR_GROUND", "WALL_GROUND", "open_ground",
                "citizen_starts", "gate_name", "pull", "set_entrance", "place", "entrance", "DAY_TICKS", "wgroup",
-               "on_cavern_tile", "PARTS", "PART_VERSIONS", "PART_SOURCES"}
+               "on_cavern_tile", "PARTS", "PART_VERSIONS", "PART_SOURCES",
+               # (13e scan) the cheaper scan's helpers (tests/test_r40_gates_scan.py)
+               "TK", "moves_k", "tile_is_ramp", "GAME_TILE", "porch_walk", "scan_map"}
     assert extra <= allowed, sorted(extra - allowed)
     marks = env.PART_VERSIONS
     assert {k for k in marks} == {"ai-gates", *PARTS}, list(marks)
