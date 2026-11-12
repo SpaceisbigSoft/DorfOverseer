@@ -100,11 +100,11 @@ ORDER_RECIPES = {
     -- the "(use bars)" reactions; each takes a fuel unless at a magma smelter).
     -- `alloy`: when the code isn't in this game's raws, the smelter reaction
     -- whose reagents are all bars and whose product is a bar of that metal.
-    alloy_bronze = {job = 'CustomReaction', reaction = 'BRONZE_MAKING', alloy = 'BRONZE'},
+    alloy_bronze = {job = 'CustomReaction', reaction = 'BRONZE_MAKING2', alloy = 'BRONZE'},
     alloy_bismuth_bronze = {job = 'CustomReaction', reaction = 'BISMUTH_BRONZE_MAKING', alloy = 'BISMUTH_BRONZE'},
-    alloy_brass = {job = 'CustomReaction', reaction = 'BRASS_MAKING', alloy = 'BRASS'},
-    alloy_electrum = {job = 'CustomReaction', reaction = 'ELECTRUM_MAKING', alloy = 'ELECTRUM'},
-    alloy_billon = {job = 'CustomReaction', reaction = 'BILLON_MAKING', alloy = 'BILLON'},
+    alloy_brass = {job = 'CustomReaction', reaction = 'BRASS_MAKING2', alloy = 'BRASS'},
+    alloy_electrum = {job = 'CustomReaction', reaction = 'ELECTRUM_MAKING2', alloy = 'ELECTRUM'},
+    alloy_billon = {job = 'CustomReaction', reaction = 'BILLON_MAKING2', alloy = 'BILLON'},
     alloy_black_bronze = {job = 'CustomReaction', reaction = 'BLACK_BRONZE_MAKING', alloy = 'BLACK_BRONZE'},
     alloy_rose_gold = {job = 'CustomReaction', reaction = 'ROSE_GOLD_MAKING', alloy = 'ROSE_GOLD'},
     alloy_sterling_silver = {job = 'CustomReaction', reaction = 'STERLING_SILVER_MAKING', alloy = 'STERLING_SILVER'},
@@ -471,7 +471,24 @@ function alloy_reaction(r)
     local key = tostring(r.reaction) .. '/' .. tostring(r.alloy)
     if ALLOY_CACHE[key] ~= nil then return ALLOY_CACHE[key] or nil end
     local code = nil
+    -- (lead) the named code only when its reagents are all bars: vanilla's
+    -- BRONZE_MAKING, BRASS_MAKING, ELECTRUM_MAKING and BILLON_MAKING take ORE
+    -- (the bar versions end in 2); a mod may differ
+    local named_ok = false
     if r.reaction and reaction_exists(r.reaction) then
+        named_ok = pcall(function()
+            for _, rx in ipairs(df.global.world.raws.reactions.reactions) do
+                if rx.code == r.reaction then
+                    if #rx.reagents == 0 then error('no reagents') end
+                    for _, rg in ipairs(rx.reagents) do
+                        if rg.item_type ~= df.item_type.BAR then error('not bars') end
+                    end
+                    return
+                end
+            end
+        end)
+    end
+    if named_ok then
         code = r.reaction
     else
         local ok, found = pcall(function()

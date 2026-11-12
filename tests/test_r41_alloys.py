@@ -184,7 +184,8 @@ def _():
 def _():
     src = (ROOT / "lua" / "ai-bridge-orders.lua").read_text(encoding="utf-8")
     for metal, (recipe, parts, out) in pa.ALLOYS.items():
-        code = metal + "_MAKING"
+        # vanilla's bar versions of these four end in 2 (the plain ones take ore)
+        code = metal + ("_MAKING2" if metal in ("BRONZE", "BRASS", "ELECTRUM", "BILLON") else "_MAKING")
         assert re.search(rf"\n    {recipe} = {{job = 'CustomReaction', reaction = '{code}', alloy = '{metal}'}}", src), recipe
         assert planner_core.RECIPE_SHOPS[recipe] == "Smelter"
 
