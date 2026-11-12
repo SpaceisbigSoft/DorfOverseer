@@ -21,8 +21,10 @@ workshops project is under way (rule paper_shop).
 Once the library has the paper it wants: blank scrolls (a sheet and scroll
 rollers; up to `paper_scrolls_keep`, keeping `paper_scroll_sheets_spare`
 sheets for quires) and codices (a written quire bound with a book binding,
-up to `paper_codex_batch` an order); the rollers and bindings carved of wood
-at the carpenter's first.
+up to `paper_codex_batch` an order, and only while no blank quire lies
+free: vanilla's binding takes any quire, so it never eats the library's
+blank stock); the rollers and bindings carved of wood at the carpenter's
+first.
 
 The bridge's `paper` section (lua/ai-paper.lua) names each kind's reaction
 as the game has it (the vanilla codes are remembered, not read: a reaction
@@ -208,7 +210,11 @@ def _extras(s, cfg, paper, b, sheets, proposals, notes) -> None:
                                                     f"roll {n} blank scroll(s) for its scribes and scholars")
                 return
     written = int(paper.get("quires_written") or 0)
-    if codex and written > 0:
+    # (fix6) vanilla BIND_BOOK takes any quire (no "written" in its reagent):
+    # bound only while no blank quire lies free, so the binder can only take
+    # a written one and never the library's blank stock
+    blank_quires = max(int(paper.get("quires_blank") or 0), int(_d(s.get("supplies")).get("blank_quires") or 0))
+    if codex and written > 0 and blank_quires <= 0:
         bindings = int(paper.get("bindings") or 0)
         if bindings == 0:
             if _has_shop(b, "Carpenters") and wood >= cfg["paper_wood_min"]:

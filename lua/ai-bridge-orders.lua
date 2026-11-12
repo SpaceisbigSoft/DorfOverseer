@@ -649,8 +649,13 @@ function act_work_order(a)
     local data = ai_orders()
     data.ids[tostring(new_id)] = true
     local saved = save_ai_orders(data)
+    -- (fix6) a paper step ordered: the cached paper section (its inputs and
+    -- tools) is read again, not served a day old to order the step twice
+    local base = ORDER_RECIPES[a.recipe]
+    local paper_step = base and (base.paper or base.item_subtype == 'ITEM_TOOL_SCROLL_ROLLERS'
+        or base.item_subtype == 'ITEM_TOOL_BOOK_BINDING')
     return {ok = true, order_id = new_id, recipe = a.recipe, amount = amount,
-            material = spec.material,
+            material = spec.material, stale = paper_step and {'paper'} or nil,
             warning = (not saved) and 'order created but not recorded; the AI cannot cancel it later' or nil}
 end
 

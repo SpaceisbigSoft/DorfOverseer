@@ -1032,7 +1032,13 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
     -- dwarves outside (lua/ai-siege.lua; in the pulse)
     field_watch = function() return safe(function() return reqscript('ai-siege').field_watch(txt) end) end,
     -- (item9) paper from plants, scrolls and codices for the library (lua/ai-paper.lua)
-    paper = function() return safe(function() return reqscript('ai-paper').report() end) end,
+    -- (fix6) not cached while a paper step's order is open: the report after
+    -- it is done reads afresh what it used (a day-old copy ordered it again)
+    paper = function()
+        local v = safe(function() return reqscript('ai-paper').report() end)
+        local oko, open = pcall(function() return reqscript('ai-paper').orders_open() end)
+        return v, (oko and open) or nil
+    end,
     -- (item10) the trees by where they stand, cavern layers and their dangers, the grove (lua/ai-forestry.lua;
     -- its tree census rebuilt once a game day, the dangers read each report)
     forestry = function() return safe(function() return reqscript('ai-forestry').report() end) end,

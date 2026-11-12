@@ -26,6 +26,11 @@
 --                    workshops it is made at, how many of its main input are
 --                    free), the quires, scrolls and codices (blank and
 --                    written), the scroll rollers and book bindings free.
+--   orders_open()    (fix6) a work order of a paper step still in the
+--                    manager's list: the bridge keeps no cached copy of the
+--                    section meanwhile, so the report after the order is done
+--                    counts what it used (not a day-old copy that orders the
+--                    step again)
 --@ module = true
 
 KINDS = {
@@ -162,6 +167,31 @@ function reaction(kind)
         CACHE[key] = (ok and code) or false
     end
     return CACHE[key] or nil
+end
+
+-- (fix6) the tools a paper step's order makes (wooden_scroll_rollers, wooden_book_binding)
+PAPER_TOOLS = {ITEM_TOOL_SCROLL_ROLLERS = true, ITEM_TOOL_BOOK_BINDING = true}
+
+function orders_open()
+    local codes = {}
+    for _, kind in ipairs(KIND_ORDER) do
+        local c = reaction(kind)
+        if c then codes[c] = true end
+    end
+    local open = false
+    pcall(function()
+        for _, o in ipairs(df.global.world.manager_orders.all) do
+            local rn = o.reaction_name
+            if rn and rn ~= '' and codes[rn] then open = true; return end
+            if o.item_subtype and o.item_subtype >= 0 then
+                local okd, def = pcall(dfhack.items.getSubtypeDef, df.item_type.TOOL, o.item_subtype)
+                if okd and def and PAPER_TOOLS[def.id] and df.job_type[o.job_type] == 'MakeTool' then
+                    open = true; return
+                end
+            end
+        end
+    end)
+    return open
 end
 
 -- the workshops a reaction is made at, by the brain's names (Quern,

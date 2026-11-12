@@ -8,7 +8,7 @@
     whom an offensive mission attacks; the Rules choice in the settings and
     on the Army tab;
   * brain/planner_peace.py: the same weighing, the attacked list kept from
-    the fort's missions, the notes, a Needs you when the AI can't press;
+    the fort's missions, the notes (the Needs you is _meeting_notes');
   * lua/ai-bans.lua: the export bans read from DF's mandates and matched;
     lua/ai-trade.lua keeping banned goods off the depot;
   * brain/planner_bans.py: the bans said, export orders skipped.
@@ -37,6 +37,7 @@ except ImportError:
 
 import planner_peace as P  # noqa: E402
 import planner_bans as B  # noqa: E402
+from planner_core import NEEDS_YOU  # noqa: E402
 import planner_world as W  # noqa: E402
 from planner import Memory, PLANNER_CONFIG, plan  # noqa: E402
 
@@ -332,7 +333,8 @@ def _():
 
 
 @test("planner: the notes say what the AI answers each besieger and the civ that offered peace; "
-      "a proposal it can't press is a Needs you with its answer")
+      "a proposal on the screen is said with its answer, never a Needs you here (fix6: the AI answers the "
+      "topics one at a time; unknown buttons are _meeting_notes' Needs you)")
 def _():
     notes = []
     P._peace_notes(fort(WAR), PLANNER_CONFIG, notes, Memory())
@@ -344,19 +346,24 @@ def _():
     notes = []
     P._peace_notes(s, PLANNER_CONFIG, notes, Memory())
     assert any("Goblins" in n and "answer no" in n for n in notes), notes
-    # on the screen, two topics open: a Needs you
+    # on the screen, two topics open: said with the answer, no Needs you (the AI answers them in turn)
     m = {"open": True, "civ": "Goblins", "civ_id": 200, "topic": "TreeQuota", "topics": ["TreeQuota", "RequestPeace"],
          "buttons": ["No", "Yes"]}
     notes = []
     P._peace_notes(fort(dict(WAR, meeting=m)), PLANNER_CONFIG, notes, Memory())
-    needs = [n for n in notes if "propose peace" in n]
-    assert needs and "YES" in needs[0] and "2 topics" in needs[0], notes
+    said = [n for n in notes if "propose peace" in n]
+    assert said and "YES" in said[0], notes
+    assert not any(n.startswith(NEEDS_YOU) for n in notes), notes
     assert not any("at war with Goblins" in n for n in notes)            # the meeting says it
+    # the buttons not shown yet: still no Needs you here (_meeting_notes asks once)
+    notes = []
+    P._peace_notes(fort(dict(WAR, meeting=dict(m, buttons=[]))), PLANNER_CONFIG, notes, Memory())
+    assert not any(n.startswith(NEEDS_YOU) for n in notes), notes
     # one topic, the buttons known: the AI presses it itself, no Needs you
     notes = []
     P._peace_notes(fort(dict(WAR, meeting=dict(m, topics=["RequestPeace"], topic="RequestPeace"))),
                    PLANNER_CONFIG, notes, Memory())
-    assert not any("propose peace" in n for n in notes), notes
+    assert not any(n.startswith(NEEDS_YOU) for n in notes), notes
 
 
 # --- lua/ai-bans.lua and lua/ai-trade.lua ---------------------------------------------
