@@ -522,6 +522,8 @@ SHORT_WORDS = {
     "insane_guard": "lock the AI's own doors between an insane dwarf and deep water, magma or a drop while they are near",  # (0.105.40b)
     "add_haulers": "put idle dwarves on hauling",  # (0.105.40 M5)
     "relieve_haulers": "take key workers (or the AI's extra haulers) off hauling, or give it back",
+    "place_display": "build a pedestal or display case in one of the AI's temples, libraries, taverns or halls",  # (item 12)
+    "display_artifact": "put one of the fort's artifacts on display behind doors",
     "census": "count what fills the map",  # (0.104.113)
     "seal_well_stairs": "close the cavern wells' stair columns",  # (0.104.151)
     "join_levels": "join areas on one level that meet only through the stairs",  # (0.104.108)

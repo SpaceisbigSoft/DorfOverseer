@@ -836,6 +836,19 @@ PLANNER_CONFIG = {
     "hauling_shrink_cooldown_ticks": 3 * 1200,
     # (0.105.40b, M6) the food store (brain/planner_food.py): a roofed food pile
     # taking barrels within reach of each kitchen and still, sized to the fort
+    # (item 12) the fort's artifacts shown (brain/planner_artifacts.py): items a
+    # pedestal / display case holds (a guess until seen in game), only rooms
+    # shut in by doors, rooms open to visitors allowed (after the closed ones),
+    # pedestals ordered at a time, the stone a pedestal order waits for
+    "artifact_pedestal_holds": 1,
+    "artifact_case_holds": 3,
+    "artifact_display_need_doors": True,
+    "artifact_display_open_rooms": True,
+    "artifact_pedestals_max": 3,
+    "artifact_pedestal_stone_min": 10,
+    "artifact_display_cooldown_ticks": 1200,
+    "artifact_furniture_cooldown_ticks": 7 * 1200,
+    "artifact_pedestals_cooldown_ticks": 14 * 1200,
     "food_store_min_citizens": 7,
     "food_store_reach": 20,               # tiles from the kitchen or still (a z-level counts food_store_dz_cost)
     "food_store_dz_cost": 3,

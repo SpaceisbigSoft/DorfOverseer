@@ -55,6 +55,7 @@ from planner_insane import _insane_rule  # noqa: E402  (0.105.40b) the insane: d
 from planner_hauling import _hauling_labor_rule, note_hauling  # noqa: E402  (0.105.40 M5) hauling balanced
 from planner_food import _food_store_rule, note_food  # noqa: E402  (0.105.40b, M6) the food store
 from planner_food import note_food_level  # noqa: E402  (fix41) a food storage level booked per kitchen/still
+from planner_artifacts import _artifact_rule  # noqa: E402  (item 12) the fort's artifacts shown behind doors
 from planner_alloys import _alloy_rule  # noqa: E402  (0.105.40 M7) bronze for a fort without iron, value alloys
 from planner_deep import _deep_hazard_rule  # noqa: E402  (0.105.40b) adamantine and the underworld: never dug
 from planner_construct import (_hall_rule, _construction_blocks_rule,  # noqa: E402  (0.105.30) construction
@@ -822,6 +823,9 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
     # (0.105.40b, M6) a roofed food pile with barrels near the kitchen and still
     if "food_store" not in errors:
         _guard(_food_store_rule, s, cfg, proposals, notes, memory)
+    # (item 12) the fort's artifacts on display in the AI's rooms behind doors
+    if "artifacts" not in errors:
+        _guard(_artifact_rule, s, cfg, proposals, notes, rules_)
     # (0.100.1, overnight run) any workshops level another rule starts (a well's
     # parts, the metal works, a bottleneck) brings the missing still, kitchen
     # and carpenter's with it

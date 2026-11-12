@@ -342,6 +342,9 @@ function defaults()
         -- (0.105.30) construction: the surface hall, gate wings, soil floors and their
         -- blocks (brain/planner_construct.py); off: none of these is started
         construct = true,
+        -- (item 12) the fort's artifacts (made since the AI came) shown on pedestals
+        -- in the AI's own rooms behind doors (lua/ai-artifacts.lua); off: left in store
+        display_artifacts = true,
         -- (0.105.27) forbidden items and junk (DISPOSAL_CHOICES); items forbidden
         -- for no reason the game gives count as the player's and are left alone
         -- unless disposal_player_items; keep_enemy_gear: invaders' gear never melted
@@ -451,6 +454,7 @@ function sanitize(s)
                         'send_missions',            -- (0.105.39) ... and a mission
                         'heist_lockout', 'shut_to_visitors',   -- (0.105.24) locations shut to visitors a while
                         'construct',                -- (0.105.30) building above ground (hall, wings, floors)
+                        'display_artifacts',        -- (item 12) artifacts shown in the AI's rooms
                         'moat', 'magma_workshops', 'irrigation',   -- (0.105.0) the water works' switches
                         'disposal_player_items', 'keep_enemy_gear',   -- (0.105.27) disposal
                         'squads_shelter',           -- (0.105.0) the squads hide in the shelter too
@@ -550,6 +554,7 @@ function for_ai(s)
         heist_lockout = s.heist_lockout,           -- (0.105.24)
         shut_to_visitors = s.shut_to_visitors,     -- (0.105.24)
         construct = s.construct,                   -- (0.105.30)
+        display_artifacts = s.display_artifacts,   -- (item 12)
         disposal = s.disposal,                     -- (0.105.27)
         disposal_player_items = s.disposal_player_items,
         keep_enemy_gear = s.keep_enemy_gear,
