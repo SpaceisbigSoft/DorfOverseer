@@ -54,7 +54,10 @@ DUMP = PL.eval("""function(fn, a, b)
   local function d(x)
     if type(x) ~= 'table' then out[#out + 1] = type(x) .. ':' .. tostring(x) return end
     local keys = {}
-    for k in pairs(x) do keys[#keys + 1] = k end
+    -- (merge) E1's 'open' fields (an empty list, a count of 0) are not a change
+    for k, v in pairs(x) do
+      if not (k == 'open' and (v == 0 or (type(v) == 'table' and next(v) == nil))) then keys[#keys + 1] = k end
+    end
     table.sort(keys, function(a, b) return tostring(a) < tostring(b) end)
     out[#out + 1] = '{'
     for _, k in ipairs(keys) do out[#out + 1] = tostring(k) .. '=' d(x[k]) out[#out + 1] = ',' end
@@ -390,7 +393,7 @@ def _():
 @test("Scripts identity: to_layouts, check_format and cost give byte-identical results to merged0's")
 def _():
     try:
-        old_src = subprocess.run(["git", "-C", str(ROOT), "show", "merged0:lua/ai-blueprints.lua"],
+        old_src = subprocess.run(["git", "-C", str(ROOT), "show", "4b0de9a:lua/ai-blueprints.lua"],
                                  capture_output=True, text=True, check=True).stdout
     except Exception as e:  # noqa: BLE001
         print(f"SKIPPED part: no merged0 to compare with ({e})")
@@ -398,11 +401,18 @@ def _():
     OLD = _load(LAYOUTS_SRC, old_src)
     files = sorted(FIXTURES.glob("*.json")) + sorted(LIBRARY.glob("*.json"))
     for f in files:
-        bp = plt(json.loads(f.read_text(encoding="utf-8")))
+        raw = json.loads(f.read_text(encoding="utf-8"))
+        # (merge) E1's drawings with openings ('*') or rock rails ('O') are new: no old result to match
+        rows = [r for lv in raw.get("levels", []) if isinstance(lv, dict) for r in lv.get("grid", []) if isinstance(r, str)]
+        if any("*" in r for r in rows) or (raw.get("ground") != "surface" and any("O" in r for r in rows)):
+            continue
+        bp = plt(raw)
         for q in range(4):
             assert DUMP(BP.to_layouts, bp, q) == DUMP(OLD.to_layouts, bp, q), (f.name, q)
-        assert DUMP(BP.check_format, bp) == DUMP(OLD.check_format, bp), f.name
-        assert DUMP(BP.cost, bp) == DUMP(OLD.cost, bp), f.name
+        a, b = DUMP(BP.check_format, bp), DUMP(OLD.check_format, bp)
+        assert a == b, (f.name, 'check', a[:400], b[:400])
+        a, b = DUMP(BP.cost, bp), DUMP(OLD.cost, bp)
+        assert a == b, (f.name, 'cost', a, b)
 
 
 @test("random drawings that pass the format: every plan made replays as safe (the rest refused with ORDER)")

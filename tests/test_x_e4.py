@@ -39,7 +39,7 @@ SRC = module_src("ai-homes.lua")
 def merged0(path: str) -> str | None:
     """A file as it stands on merged0 (None when git or the branch is missing)."""
     try:
-        return subprocess.run(["git", "show", f"merged0:{path}"], cwd=ROOT, capture_output=True, text=True,
+        return subprocess.run(["git", "show", f"4b0de9a:{path}"], cwd=ROOT, capture_output=True, text=True,
                               check=True, encoding="utf-8").stdout
     except Exception:  # noqa: BLE001
         return None

@@ -460,7 +460,7 @@ def _():
 def merged0(path: str) -> str | None:
     import subprocess
     try:
-        return subprocess.run(["git", "-C", str(ROOT), "show", f"merged0:{path}"], capture_output=True, text=True,
+        return subprocess.run(["git", "-C", str(ROOT), "show", f"4b0de9a:{path}"], capture_output=True, text=True,
                               check=True).stdout
     except Exception:  # noqa: BLE001
         return None

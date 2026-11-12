@@ -72,7 +72,7 @@ def boot():
     """)
     # merged0's ai-blueprints.lua, for the byte-identity proof
     try:
-        old_src = subprocess.run(["git", "-C", str(ROOT), "show", "merged0:lua/ai-blueprints.lua"],
+        old_src = subprocess.run(["git", "-C", str(ROOT), "show", "4b0de9a:lua/ai-blueprints.lua"],
                                  capture_output=True, text=True, check=True).stdout
     except (OSError, subprocess.CalledProcessError):
         old_src = None
