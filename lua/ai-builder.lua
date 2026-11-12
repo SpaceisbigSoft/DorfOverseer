@@ -304,6 +304,14 @@ function quickfort_apply(mode, cells, z, ax, ay, command, dry_run)
             local okd, d3, n3, w3 = pcall(function() return util_module().dig_guard_drop_deep(data, ax, ay, 0, (not dry_run) and 'quickfort' or nil) end)
             if okd and d3 then data, refused, why = d3, n3, w3 end
         end
+        -- (0.105.41, item 7) a channel that would leave a floor hanging over
+        -- nothing (a cave-in) taken out (lua/ai-hazards.lua channel_check)
+        local okc, d4, n4, w4 = pcall(function()
+            return reqscript('ai-hazards').channel_check(data, ax, ay, 0, not dry_run)
+        end)
+        if okc and d4 and (n4 or 0) > 0 then
+            data, refused, why = d4, (refused or 0) + n4, why or w4
+        end
     end
     local stats = qf.apply_blueprint{mode = mode, command = command or 'run', dry_run = dry_run,
                                      data = data, pos = {x = ax, y = ay, z = 0}}

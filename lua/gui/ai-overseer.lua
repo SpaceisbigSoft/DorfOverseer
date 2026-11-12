@@ -552,6 +552,16 @@ function RulesPage:init()
             on_change = function(v) p:set_field(f[1], v) end,
         })
     end
+    -- (0.105.41, item 7) spilt magma that cooled: the walls it left dug out
+    -- (under the water works' switches; right of "Clear the alert icons", which ends at column 76)
+    table.insert(views, widgets.ToggleHotkeyLabel{
+        view_id = 'magma_reclaim',
+        frame = {t = t + 10, l = 78, w = 40},
+        label = 'Dig out spilt magma\'s walls:',
+        label_width = 30,
+        initial_option = p.settings.magma_reclaim ~= false,
+        on_change = function(v) p:set_field('magma_reclaim', v) end,
+    })
     -- (0.105.4 review) a cavern well may open a cavern nobody has found yet.
     -- (v35 fix) three-state: AI decides (the default: only when the fort is
     -- short of water and has armed soldiers for what comes out), Always, Never
@@ -842,7 +852,7 @@ function RulesPage:refresh()
     self.subviews.heist_lockout:setOption(s.heist_lockout ~= false, false)         -- (0.105.24)
     self.subviews.shut_to_visitors:setOption(s.shut_to_visitors ~= false, false)   -- (0.105.24)
     self.subviews.construct:setOption(s.construct ~= false, false)                 -- (0.105.30)
-    for _, k in ipairs({'moat', 'magma_workshops', 'irrigation'}) do               -- (0.105.0)
+    for _, k in ipairs({'moat', 'magma_workshops', 'irrigation', 'magma_reclaim'}) do   -- (0.105.0; 0.105.41)
         self.subviews[k]:setOption(s[k] ~= false, false)
     end
     self.subviews.open_caverns:setOption(S.open_caverns_choice(s.open_caverns), false)   -- (v35 fix) three-state
