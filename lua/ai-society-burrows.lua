@@ -711,7 +711,18 @@ function is_patient(u)
         end
         return false
     end)
-    return ok and yes or false
+    if ok and yes then return true end
+    return in_quarantine(u)
+end
+
+-- (0.105.41, item 11) a citizen the AI quarantined for carrying a contact
+-- syndrome (lua/ai-syndromes.lua quarantine) is kept in the hospital burrow
+-- as a patient is, with every guard of the burrow's own
+function in_quarantine(u)
+    local okm, Q = pcall(reqscript, 'ai-syndromes')
+    if not okm or type(Q) ~= 'table' or not Q.quarantined then return false end
+    local ok, yes = pcall(Q.quarantined, u.id)
+    return ok and yes == true
 end
 
 local function in_tantrum(u)

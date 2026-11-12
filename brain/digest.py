@@ -157,6 +157,8 @@ SECTION_DEFAULTS = {
     "insane": {},            # (0.105.40b) the insane, the deadly ground near them, the AI's doors locked, the near-breaking (lua/ai-insane.lua)
     "hauling": {},           # (0.105.40 M5) haul jobs waiting, haulers, key workers hauling (lua/ai-hauling.lua)
     "food_store": {},        # (0.105.40b, M6) food piles, their barrels and fullness, food out of piles, rotten (lua/ai-food-store.lua)
+    "syndromes": {},         # (0.105.41, item 11) syndromes, their sources, carriers, floor spatter, quarantine (lua/ai-syndromes.lua)
+    "miasma": {},            # (0.105.41, item 11) miasma indoors, what rots near it, dump zones outside (lua/ai-syndromes.lua)
 }
 # (0.105.36) not REQUIRED (the plan goes on without them), but a missing one is
 # listed in _errors as a failed one is: the default (civ_alert False) is not
@@ -269,6 +271,16 @@ def cleanup_line(s: dict) -> str:
     cleanup_line); "" without a cleanup section."""
     try:
         from planner_cleanup import cleanup_line as _line
+        return _line(s)
+    except Exception:  # noqa: BLE001  (a digest line never stops the digest)
+        return ""
+
+
+def sickness_line(s: dict) -> str:
+    """(0.105.41, item 11) Syndromes, carriers and miasma in one line
+    (brain/planner_syndromes.py syndrome_line); "" without them."""
+    try:
+        from planner_syndromes import syndrome_line as _line
         return _line(s)
     except Exception:  # noqa: BLE001  (a digest line never stops the digest)
         return ""
@@ -612,7 +624,7 @@ def digest(s: dict, news: int = 5) -> str:
     ]
 
     for extra in (threat_line(s), world_line(s), infection_line(s), built_line(s), gate_split_line(s), water_line(s),
-                  missions_line(s), perf_line(s), cleanup_line(s), hauling_line(s), food_line(s),
+                  missions_line(s), perf_line(s), cleanup_line(s), hauling_line(s), food_line(s), sickness_line(s),
                   deep_hazard_line(s)):
         if extra:
             lines.append(extra)

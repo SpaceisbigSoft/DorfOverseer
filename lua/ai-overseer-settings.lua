@@ -317,6 +317,7 @@ function defaults()
         camera_pace = 'normal',    -- (0.104.90) how long it stays at each place (CAMERA_PACES)
         answer_locations = true,   -- (0.89) agree to and build the temples and guildhalls petitions ask for
         hospital_burrow = true,    -- (0.104.168) keep the wounded in the "AI hospital" burrow (off: all let out)
+        syndrome_care = true,      -- (0.105.41, item 11) contact-syndrome carriers kept in the hospital burrow, the material cleaned off
         calm_burrow = true,        -- (0.104.169) a dwarf in a tantrum kept in a free bedroom till calm (off: all let out)
         prisoners = 'keep',        -- (0.105.0) caged invaders: keep | release | kill (PRISONER_CHOICES)
         moon_cells = true,         -- (0.105.0) werebeast citizens locked in a cell round the full moon
@@ -444,6 +445,7 @@ function sanitize(s)
                         'import_smelting', 'alert_shelter', 'pasture_animals', 'build_gate_doors',
                         'fortify_entrances', 'set_pop_cap', 'ai_chronicle', 'give_trinkets', 'water_works', 'expel_vampires', 'accept_visitors', 'answer_locations',
                         'hospital_burrow',          -- (0.104.168) the hospital burrow's switch
+                        'syndrome_care',            -- (0.105.41, item 11) syndrome carriers kept apart, cleaned
                         'calm_burrow',              -- (0.104.169) the calm-down burrows' switch
                         'moon_cells', 'seal_caverns',   -- (0.105.0) round 3's switches
                         'make_contact',             -- (0.105.0) the messenger and Make contact
@@ -538,6 +540,7 @@ function for_ai(s)
         camera_pace = s.camera_pace,
         answer_locations = s.answer_locations,
         hospital_burrow = s.hospital_burrow,       -- (0.104.168)
+        syndrome_care = s.syndrome_care,           -- (0.105.41, item 11)
         calm_burrow = s.calm_burrow,               -- (0.104.169)
         prisoners = s.prisoners,                   -- (0.105.0) round 3
         moon_cells = s.moon_cells,

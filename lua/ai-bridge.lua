@@ -357,6 +357,31 @@ ACTIONS = {
     -- (0.105.40b, M6) the food store: a food pile near the kitchen and still, its barrels (lua/ai-food-store.lua)
     food_pile = act_food_pile,
     food_barrels = act_food_barrels,
+    -- (0.105.41, item 11) syndromes and miasma (lua/ai-syndromes.lua): the syndrome-carrying
+    -- spatter cleaned off the citizens and the fort's floors, the carriers kept in the
+    -- hospital burrow, what rots near miasma marked for the dump under the sky
+    clean_contaminants = function(a)
+        for _, k in ipairs({'units', 'tiles'}) do
+            if a[k] ~= nil and type(a[k]) ~= 'boolean' then return reject('clean_contaminants: ' .. k .. ' is true or false') end
+        end
+        local ms = a.budget_ms ~= nil and int_in(a.budget_ms, 10, 500) or nil
+        if a.budget_ms ~= nil and not ms then return reject('clean_contaminants: budget_ms is 10-500') end
+        return reqscript('ai-syndromes').clean({units = a.units, tiles = a.tiles, budget_ms = ms}, a.dry_run == true)
+    end,
+    quarantine_syndromes = function(a)
+        if a.release ~= nil and type(a.release) ~= 'boolean' then return reject('quarantine_syndromes: release is true or false') end
+        local days = a.days ~= nil and int_in(a.days, 1, 56) or nil
+        local max = a.max ~= nil and int_in(a.max, 1, 60) or nil
+        if (a.days ~= nil and not days) or (a.max ~= nil and not max) then
+            return reject('quarantine_syndromes: days 1-56, max 1-60')
+        end
+        return reqscript('ai-syndromes').quarantine({days = days, max = max, release = a.release == true}, a.dry_run == true)
+    end,
+    clear_miasma = function(a)
+        local max = a.max ~= nil and int_in(a.max, 1, 200) or nil
+        if a.max ~= nil and not max then return reject('clear_miasma: max is 1-200') end
+        return reqscript('ai-syndromes').clear_miasma({max = max}, a.dry_run == true)
+    end,
     -- (D0) the Design track: a landmark's sites, its drawing built, its next stage (ai-bridge-design.lua)
     blueprint_sites = act_blueprint_sites,
     build_blueprint = act_build_blueprint,
@@ -416,6 +441,8 @@ for _, name in ipairs({
     'add_haulers', 'relieve_haulers',   -- (0.105.40 M5) each dry run names the dwarves and changes nothing
     -- (0.105.40b, M6) the food store: each dry run finds the spot (quickfort's dry run) and changes nothing
     'food_pile', 'food_barrels',
+    -- (0.105.41, item 11) each dry run counts (and names) and changes nothing
+    'clean_contaminants', 'quarantine_syndromes', 'clear_miasma',
 }) do DRY_OK[name] = true end
 
 -- These only change what's displayed, so they still work while halted, dry
@@ -482,7 +509,7 @@ BRIDGE_MODULES = {
     'ai-blueprints', 'ai-builder', 'ai-camera', 'ai-census', 'ai-cleanup', 'ai-constructions', 'ai-diplomacy', 'ai-disposal', 'ai-food-store', 'ai-gates', 'ai-hauling', 'ai-health', 'ai-homes',
     'ai-industry', 'ai-insane', 'ai-joins', 'ai-labor', 'ai-layouts', 'ai-military', 'ai-military-gear',
     'ai-mission-send', 'ai-missions', 'ai-moods', 'ai-nobles', 'ai-overlay', 'ai-overseer-settings',
-    'ai-ping', 'ai-reports', 'ai-society', 'ai-society-burrows', 'ai-status', 'ai-threats', 'ai-title',
+    'ai-ping', 'ai-reports', 'ai-society', 'ai-society-burrows', 'ai-status', 'ai-syndromes', 'ai-threats', 'ai-title',
     'ai-trade', 'ai-util', 'ai-water', 'ai-waterworks', 'gui/ai-overseer',
 }
 -- the split-off modules that carry a version mark of their own
@@ -863,6 +890,13 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
     -- fullness, the AI's own), the kitchens and stills, the food lying out of
     -- piles and barrels and the rotten (lua/ai-food-store.lua; cached a day)
     food_store = function() return safe(function() return reqscript('ai-food-store').report() end) end,
+    -- (0.105.41, item 11) the citizens' syndromes (names, routes, deadly effects, sources),
+    -- the carriers of a contact syndrome, the fort's floors walked in slices for
+    -- syndrome spatter, the quarantine (lua/ai-syndromes.lua)
+    syndromes = function() return safe(function() return reqscript('ai-syndromes').report() end) end,
+    -- (0.105.41, item 11) miasma: the flows indoors and near the living, what rots
+    -- near the worst, the dump zones under the sky (lua/ai-syndromes.lua)
+    miasma = function() return safe(function() return reqscript('ai-syndromes').miasma_report() end) end,
     -- (0.105.30) what the fort has built: finished constructions by shape and
     -- material, above or below ground, roofed surface tiles, the waiting ones
     -- and the AI's own (lua/ai-constructions.lua; one pass, every 3 days)
@@ -941,6 +975,7 @@ CACHE_INVALIDATES.cleanup_units = {'disposal'}
 CACHE_INVALIDATES.cleanup_dead_units = {'disposal', 'dead'}
 CACHE_INVALIDATES.food_pile = {'food_store', 'logistics'}   -- (0.105.40b, M6) the new pile read again
 CACHE_INVALIDATES.food_barrels = {'food_store'}
+CACHE_INVALIDATES.clear_miasma = {'disposal'}   -- (0.105.41, item 11) items marked for the dump
 -- (fix41) a kitchen's or still's feeder pile is a food pile, and a storage
 -- level's furnish step lays its food piles: the food store read again
 CACHE_INVALIDATES.feeder_pile = {'logistics', 'food_store'}

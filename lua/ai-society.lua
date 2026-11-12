@@ -2527,7 +2527,7 @@ local function burrows()
     return m
 end
 for _, name in ipairs({'fill_recreation', 'badly_wants_friends', 'recreation_status', 'recreation_tick', 'hospital_zones',
-                       'well_gives_water', 'is_patient', 'hospital_burrow_status', 'hospital_burrow_tick', 'calm_burrow_status',
+                       'well_gives_water', 'is_patient', 'in_quarantine', 'hospital_burrow_status', 'hospital_burrow_tick', 'calm_burrow_status',
                        'calm_burrow_tick'}) do
     _ENV[name] = function(...) return burrows()[name](...) end
 end
