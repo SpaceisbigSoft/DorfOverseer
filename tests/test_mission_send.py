@@ -65,7 +65,11 @@ function G.react_default(x, y)
   end
 end
 G.react = G.react_default
-local controllers = setmetatable({}, {__len = function() return G.ctl end})
+-- world.army_controllers.all: the controllers made so far (ids 901..), DF appends
+local controllers = setmetatable({}, {__len = function() return G.ctl end,
+  __index = function(_, i)
+    if type(i) == 'number' and i >= 0 and i < G.ctl then return G.env.df.army_controller.find(901 + i) end
+  end})
 env.df = {
   world_view_mode_type = MODES, army_controller_goal_type = GOALS, world_new_mission_type = NEWM,
   viewscreen_worldst = {},
@@ -103,7 +107,6 @@ env.dfhack = {
                 saveSiteData = function(k, v) G.persist[k] = v end},
   filesystem = {mkdir_recursive = function() end},
   translation = {translateName = function(n) return n.text end},
-  screen = {dismiss = function(scr) if scr == G.screen then G.screen = nil; G.dismissed = true end end},
   gui = {getCurFocus = function() return {focus()} end,
          getDFViewscreen = function() return {} end,
          getViewscreenByType = function() return G.screen end},
@@ -215,7 +218,7 @@ def _():
 def _():
     env, G = world("G.calibrate_all(); G.on = false")
     r = start(env)
-    assert not r.ok and r.rejected and "switch" in r.error, dict(r)
+    assert not r.ok and r.rejected and "is off" in r.error, dict(r)
     env, G = world("G.calibrate_all(); G.busy = 'a menu is open'")
     r = start(env)
     assert not r.ok and r.waiting and "a menu is open" in r.error, dict(r)
@@ -542,31 +545,43 @@ def _():
     last = env.status().last
     assert last.step == "goal" and last.reason == "unexpected" and "DIPLOMACY, not SITE_INVASION" in last.why, dict(last)
     assert G.screen is None
-    # selected_ac an index into the screen's army_controller list
-    env, G = calibrated("""G.ac_goal = 0
+    # selected_ac an index into the screen's army_controller list, naming the new one: 'index'
+    def by_index(ident):
+        env, G = calibrated(f"""G.ac_goal = 0
 G.react = function(x, y)
   G.react_default(x, y)
   if G.screen and G.screen.view_mode == G.MODES.MISSION_DETAILS then
-    G.screen.army_controller = setmetatable({[0] = {id = 77, goal = 0}}, {__len = function() return 1 end})
+    G.screen.army_controller = setmetatable({{[0] = {{id = {ident}, goal = 0}}}}, {{__len = function() return 1 end}})
     G.screen.selected_ac = 0
   end
 end""")
-    LUA.execute(rec, env)
-    go(env, "explore")
-    G.pump()
-    run = G.files["/df/dfhack-config/ai-overseer/mission-send.json"].runs[1]
-    assert run.step == "intent" and run.saw.ac_id == 77 and run.saw.ac_by == "index", dict(run.saw)
-    # an index naming nothing (and no controller of that id): stopped
+        LUA.execute(rec, env)
+        go(env, "explore")
+        G.pump()
+        return env, G, G.files["/df/dfhack-config/ai-overseer/mission-send.json"].runs[1]
+    env, G, run = by_index(901)
+    assert run.step == "intent" and run.saw.ac_id == 901 and run.saw.ac_by == "index", dict(run.saw)
+    # it names another controller: the new one in world.army_controllers taken, 'ambiguous' logged
+    env, G, run = by_index(77)
+    assert run.step == "intent" and run.saw.ac_id == 901 and run.saw.ac_by == "ambiguous", dict(run.saw)
+    # no new controller in the world's list and selected_ac naming nothing: stopped
     env, G = calibrated("""G.ac_goal = 0
 G.react = function(x, y)
   G.react_default(x, y)
-  if G.screen and G.screen.view_mode == G.MODES.MISSION_DETAILS then G.screen.selected_ac = 5 end
+  if G.screen and G.screen.view_mode == G.MODES.MISSION_DETAILS then G.ctl = 0; G.screen.selected_ac = 5 end
 end""")
     LUA.execute(rec, env)
     go(env, "explore")
     G.pump()
     last = env.status().last
-    assert last.step == "goal" and "names no army controller" in last.why, dict(last)
+    assert last.step == "goal" and "no new army controller" in last.why, dict(last)
+    # make_contact: a goal mismatch written down, not a failure
+    env, G = world("G.calibrate_all(); G.ac_goal = 0")
+    start(env)
+    G.pump()
+    last = env.status().last
+    assert last.step == "make_contact" and last.reason == "not_recorded", dict(last)
+    assert "SITE_INVASION, not DIPLOMACY" in last.goal_mismatch, dict(last)
 
 
 @test("(0.105.39) a goal not OKAY on New mission for the site stops at the site step with DF's reason")
@@ -734,21 +749,50 @@ def _():
     assert G.persist["ai-overseer/mission-send"].by_goal.make_contact.reason == "stale"
 
 
-@test("(0.105.39 review) the player takes the game back mid-run: another screen over the World screen or the "
-      "pause changed: stopped; the World screen dismissed without a key to the player's window")
+@test("(0.105.39 review) the player takes the game back mid-run: another screen over the World screen: stopped "
+      "(player_busy); right after the AI's own click it is 'unexpected'; the pause checked only before World is pressed")
 def _():
+    # the player's window comes up a few frames after the click on the site
+    later_overlay = """G.calibrate_all()
+G.react = function(x, y)
+  G.react_default(x, y)
+  if G.screen and G.screen.view_mode == G.MODES.NEW_MISSION then
+    G.screen.view_mode = G.MODES.NORMAL                      -- the screen still catching up
+    table.insert(G.queue, function() table.insert(G.queue, function()
+      G.screen.view_mode = G.MODES.NEW_MISSION; G.overlay = 'dwarfmode/Unitlist' end) end)
+  end
+end"""
+    env, G = world(later_overlay + "\nG.overlay_until = 20")
+    LUA.execute("""local env, G = ...
+      local pump = G.pump
+      local n = 0
+      -- the player shuts their window after a while
+      local q = G.queue
+      env.dfhack.timeout = function(k, u, fn) table.insert(G.queue, function()
+        n = n + 1; if n == 40 then G.overlay = nil end; fn() end) end""", env, G)
+    start(env)
+    G.pump()
+    last = env.status().last
+    assert last.reason == "player_busy" and "over the World screen" in last.why, dict(last)
+    assert lst(G.inputs).count("LEAVESCREEN") == 1 and G.screen is None and last.closed is True, lst(G.inputs)
+    assert env.RUN is None and last.left_open is None
+    # the player's window never goes: the World screen left open under it, no key pressed, left_open
+    env, G = world(later_overlay)
+    start(env)
+    G.pump(5000)
+    last = env.status().last
+    assert last.reason == "player_busy" and last.left_open is True and last.closed is False, dict(last)
+    assert "LEAVESCREEN" not in lst(G.inputs) and G.screen is not None and env.RUN is None
+    # on the tick right after the AI's own click: the click did it, 'unexpected'
     env, G = world("""G.calibrate_all()
 G.react = function(x, y)
   G.react_default(x, y)
   if G.screen and G.screen.view_mode == G.MODES.NEW_MISSION then G.overlay = 'dwarfmode/Unitlist' end
 end""")
     start(env)
-    G.pump()
-    last = env.status().last
-    assert last.reason == "player_busy" and "over the World screen" in last.why, dict(last)
-    assert "LEAVESCREEN" not in lst(G.inputs) and G.dismissed is True and G.screen is None and last.closed is True
-    assert env.RUN is None
-    # the pause changed by hand after the World screen opened
+    G.pump(5000)
+    assert env.status().last.reason == "unexpected", dict(env.status().last)
+    # the pause changed once the World screen is open: not checked (DF may pause it itself)
     env, G = world("""G.calibrate_all()
 G.env.df.global.pause_state = false
 G.react = function(x, y)
@@ -759,24 +803,19 @@ G.react = function(x, y)
 end""")
     start(env)
     G.pump()
-    last = env.status().last
-    assert last.reason == "player_busy" and "unpaused" in last.why and last.step == "site", dict(last)
-    assert G.screen is None and lst(G.inputs)[-1] == "LEAVESCREEN"
-    # DF's own pause as the World screen opens doesn't stop the run
-    env, G = world("""G.calibrate_all()
-G.env.df.global.pause_state = false
-G.react = function(x, y)
-  local was = G.screen
-  G.react_default(x, y)
-  if not was and G.screen then G.env.df.global.pause_state = true end
-end""")
+    assert env.status().last.reason == "not_recorded", dict(env.status().last)
+    # the pause changed by the player before World was pressed: stopped
+    env, G = world("G.calibrate_all(); G.env.df.global.pause_state = false")
     start(env)
+    LUA.execute("local env = ...; env.df.global.pause_state = true", env)
     G.pump()
-    assert env.status().last.reason == "not_recorded"
-    # the screen changed before the World screen opened
-    env, G = world("""G.calibrate_all()
-G.react = function(x, y) G.overlay = 'dwarfmode/Squads' end""")
+    last = env.status().last
+    assert last.reason == "player_busy" and "paused" in last.why and last.step == "open", dict(last)
+    assert len(lst(G.clicks)) == 0
+    # the screen changed before the World screen opened (not right after the click)
+    env, G = world("G.calibrate_all()")
     start(env)
+    LUA.execute("local env = ...; env.dfhack.gui.getCurFocus = function() return {'dwarfmode/Squads'} end", env)
     G.pump()
     last = env.status().last
     assert last.reason == "player_busy" and last.step == "open" and "LEAVESCREEN" not in lst(G.inputs), dict(last)
@@ -847,6 +886,37 @@ def _():
     r = M.act_send_mission(T({"site_id": 42, "goal": "explore", "squad_ids": sq}))
     assert r.error == 'send_mission: the Army tab\'s "Missions to send out" is rescue: explore is not allowed', r.error
     assert len(tbm.H.calls) == n + 1                            # only the messenger passed
+
+
+@test("(0.105.39 review 2) a stale run: 5 minutes of wall clock, its World screen shut when dropped (top only); "
+      "the module's last outcome only for its own save and site; a leftover controller's id recorded")
+def _():
+    assert LUA.eval("5 * 60 * 1000") == 300000
+    env, G = world("G.calibrate_all()")
+    assert env.STALE_MS == 300000
+    LUA.execute("local env = ...; env.G_ms = 0; env.dfhack.getTickCount = function() return env.G_ms end", env)
+    start(env)
+    G.pump(3)                                               # the World screen opens, then the frames are lost
+    G.queue = LUA.table()
+    assert G.screen is not None
+    LUA.execute("local env = ...; env.G_ms = 300001", env)
+    G.calibrate_all()
+    r = start(env, dry_run=True)
+    assert r.ok and G.screen is None and lst(G.inputs)[-1] == "LEAVESCREEN", (dict(r), lst(G.inputs))
+    # LAST tagged: another site loaded reads its own site data
+    env, G = world("G.calibrate_all()")
+    start(env)
+    G.pump()
+    assert env.status().last is not None
+    LUA.execute("local env = ...; env.df.global.plotinfo.site_id = 99", env)
+    G.persist["ai-overseer/mission-send"] = None
+    assert env.status().last is None
+    # the controller left behind: its id written in the outcome
+    env, G = world("G.calibrate_all(); G.keep_ac = true")
+    start(env)
+    G.pump()
+    last = env.status().last
+    assert last.controller_left is True and lst(last.left_ids) == [901], dict(last)
 
 
 if __name__ == "__main__":

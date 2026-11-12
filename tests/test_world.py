@@ -572,7 +572,7 @@ def _():
     off = mk(on=False)
     props, notes = plan(off, Memory())
     assert not by_rule(props, "contact")
-    assert any("Make contact (13b)" in n and "Send it by the World screen" in n for n in notes), notes
+    assert any("Make contact (13b)" in n and "Send the messenger by the World screen" in n for n in notes), notes
     # an older bridge (no `send` in the report): nothing sent
     assert not by_rule(plan(mk(send_={}), Memory())[0], "contact")
     # the World button never shown: the Needs-you says how, nothing sent

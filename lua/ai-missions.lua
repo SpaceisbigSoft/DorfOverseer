@@ -479,7 +479,7 @@ MAX_EVENTS = 4000          -- the newest history events looked at for abductions
 TRIBUTE_DIST = 20
 CONQUER_DIST = 10
 GOAL_ORDER = {'rescue', 'recover_artifact', 'explore', 'raid', 'pillage', 'tribute', 'conquer'}
-EXPLORE_NOT = {Cave = true, LairShrine = true, MonsterLair = true}   -- ruined, but no ruin to explore
+EXPLORE_NOT = {Cave = true, LairShrine = true}   -- ruined, but no ruin to explore
 GOAL_CAP = {rescue = 4, recover_artifact = 3, explore = 2, raid = 2, pillage = 1, tribute = 1, conquer = 1}
 -- the army_controller_goal_type the World screen's new_mission[] holds for each goal
 DF_GOAL = {rescue = 'RESCUE_HF', recover_artifact = 'RECOVER_ARTIFACT', explore = 'SITE_INVASION',
@@ -752,7 +752,8 @@ function targets(R, civ, group, fort_site, sc)
             -- an empty unowned site: nothing there a mission can explore)
             if okf and ruined then
                 local tn = enum_name(df.world_site_type, R.rd('world_site.type', function() return s.type end))
-                if not EXPLORE_NOT[tn or ''] then add('explore', id, {why = 'a ruin'}) end
+                -- (review 2) a type that can't be read: not explored (a cave or a lair can't be told apart)
+                if tn and not tonumber(tn) and not EXPLORE_NOT[tn] then add('explore', id, {why = 'a ruin'}) end
                 return
             end
             if not who or who == civ or who == group or cur == civ or cur == group then return end

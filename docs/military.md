@@ -217,7 +217,10 @@ own button: only Diplomacy's was ever seen pressed), when the player takes
 the game back (another window over the World screen, the game paused or
 unpaused), or at anything unexpected, logs exactly what it saw
 (`missions.send`, `dfhack-config\ai-overseer\mission-send.json`) and shuts
-the screen; a stopped goal is not tried again for a year. Off (the default),
+the screen; a stopped goal is not tried again for a year (a day when the player
+interrupted the run). With a window of the player's over the World screen
+the AI presses nothing: it waits for the World screen to come back on top,
+else leaves it open and Needs you says so. Off (the default),
 or with the button not yet shown, the AI names the target and the squads in a
 note and Needs you says what to send; the AI carries on with everything else
 meanwhile.

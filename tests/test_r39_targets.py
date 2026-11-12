@@ -460,5 +460,17 @@ B.site(23, 'Kin', 100, 52, 52)
     assert h is None and "no site 99" in why
 
 
+@test("(0.105.39 review 2) explore needs a readable site type (not a cave or a lair shrine); no MonsterLair name")
+def _():
+    env = world(r"""
+B.site(30, 'No Type', -1, 47, 50, {ruined = true})
+rawset(B.SITES[30], 'type', nil)                     -- unreadable: the fake raises
+B.site(31, 'Odd Type', -1, 48, 50, {ruined = true, type = 77})
+B.site(32, 'Old Hall', -1, 49, 50, {ruined = true, type = 3})
+""")
+    assert brief(env.report()) == [("explore", 32)], brief(env.report())
+    assert env.EXPLORE_NOT.MonsterLair is None
+
+
 if __name__ == "__main__":
     finish()

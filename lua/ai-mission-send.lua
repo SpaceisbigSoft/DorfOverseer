@@ -92,7 +92,10 @@ MISSIONS_DEFAULT = 'rescue'
 -- the switches as the Army tab names them (lua/gui/ai-overseer.lua)
 MISSIONS_LABEL = 'the Army tab\'s "Missions to send out"'
 SEND_MISSIONS_LABEL = 'the Army tab\'s "Send missions by the World screen"'
-STALE_MS = 2 * RUN_FRAMES * 50                     -- a run older than 2 x RUN_FRAMES (at 20 frames a second): stuck
+STALE_MS = 5 * 60 * 1000                     -- a run older than 5 minutes of wall clock (getTickCount): stuck
+CLOSE_WAIT_MS = 30 * 1000                    -- waiting for the World screen to come back on top, at most
+CLOSE_WAIT_POLLS = 300                       -- ... in polls, without a clock
+MESSENGER_LABEL = 'the Rules tab\'s "Send the messenger by the World screen"'
 MAX_SQUADS = 20
 
 RUN = RUN or nil                             -- the run under way (one at a time)
@@ -142,19 +145,83 @@ end
 -- ---------------------------------------------------------------------------
 -- what the screen shows now: the few fields the steps are checked against
 
--- (0.105.39 review) the army controller the screen's selected_ac names: an
--- index into scr.army_controller (df-structures: an int32 next to that
--- vector) when it is one, else an army controller's id. Returns the
--- controller and 'index' / 'id', or nil.
-function selected_controller(scr, sel)
-    if scr == nil or type(sel) ~= 'number' or sel < 0 then return nil end
-    local oki, c = pcall(function()
+-- (0.105.39 review 2) the army controllers: the ids at the end of
+-- world.army_controllers.all before the run (DF appends a new one), and the
+-- ones that weren't there then
+BEFORE_KEEP = 64
+
+function controller_ids_now()
+    local out = {n = 0, ids = {}}
+    pcall(function()
+        local all = df.global.world.army_controllers.all
+        out.n = #all
+        for i = math.max(0, out.n - BEFORE_KEEP), out.n - 1 do
+            local id = id_of(all[i])
+            if id then out.ids[id] = true end
+        end
+    end)
+    return out
+end
+
+-- the controllers in world.army_controllers.all that weren't there when the
+-- run began (newest last)
+function new_controllers(run)
+    local out = {}
+    local before = run and run.ac_before
+    if not before then return out end
+    pcall(function()
+        local all = df.global.world.army_controllers.all
+        for i = math.max(0, before.n - BEFORE_KEEP), #all - 1 do
+            local c = all[i]
+            local id = id_of(c)
+            if c ~= nil and id and not before.ids[id] then table.insert(out, c) end
+        end
+    end)
+    return out
+end
+
+-- the controller selected_ac names read both ways: an index into the
+-- screen's army_controller vector (df-structures: an int32 next to it), and
+-- an army controller's id
+local function selected_both(scr, sel)
+    if scr == nil or type(sel) ~= 'number' or sel < 0 then return nil, nil end
+    local oki, ci = pcall(function()
         local v = scr.army_controller
         if v ~= nil and sel < #v then return v[sel] end
     end)
-    if oki and c ~= nil then return c, 'index' end
-    local okf, c2 = pcall(function() return df.army_controller.find(sel) end)
-    if okf and c2 ~= nil then return c2, 'id' end
+    local okf, cf = pcall(function() return df.army_controller.find(sel) end)
+    return (oki and ci) or nil, (okf and cf) or nil
+end
+
+-- (0.105.39 review 2) The run's new army controller: the one that appeared
+-- in world.army_controllers.all since the run began, cross-checked with
+-- selected_ac (as an index and as an id). Returns the controller and how it
+-- was found: 'index' / 'id' (selected_ac agrees), 'new' (no selected_ac to
+-- check), 'ambiguous' (they disagree: the new one is taken, the
+-- disagreement logged); without a new one, selected_ac alone when both
+-- readings agree or only one exists, else nil and 'ambiguous'.
+function selected_controller(scr, sel, run)
+    local ci, cf = selected_both(scr, sel)
+    local fresh = new_controllers(run)
+    local nc = #fresh == 1 and fresh[1] or nil
+    if nc then
+        local nid = id_of(nc)
+        if ci and id_of(ci) == nid then return nc, 'index' end
+        if cf and id_of(cf) == nid then return nc, 'id' end
+        if not ci and not cf then return nc, 'new' end
+        return nc, 'ambiguous'
+    end
+    if #fresh > 1 then
+        -- more than one new: the one selected_ac names among them
+        for _, c in ipairs(fresh) do
+            if ci and id_of(ci) == id_of(c) then return c, 'index' end
+            if cf and id_of(cf) == id_of(c) then return c, 'id' end
+        end
+        return nil, 'ambiguous'
+    end
+    if ci and cf and id_of(ci) ~= id_of(cf) then return nil, 'ambiguous' end
+    if ci then return ci, 'index' end
+    if cf then return cf, 'id' end
     return nil
 end
 
@@ -209,10 +276,10 @@ function read_state(run)
     -- (0.105.39 review) the controller selected_ac names: df-structures has it
     -- an int32 beside the screen's army_controller vector (an index into it,
     -- most likely); an army controller's id is read too, so either works
-    local c, how = selected_controller(scr, st.selected_ac)
+    local c, how = selected_controller(scr, st.selected_ac, run)
+    st.ac_by = how
     if c then
         st.ac_id = id_of(c)
-        st.ac_by = how
         pcall(function() st.ac_goal = c.goal end)
         st.ac_goal_name = enum_name(df.army_controller_goal_type, st.ac_goal)
     end
@@ -290,7 +357,7 @@ function details(st)
     if oks then d.new_mission = nm end
     local id = st and st.selected_ac
     if id and df.army_controller then
-        local ac = selected_controller(scr, id)
+        local ac = selected_controller(scr, id, RUN)
         if ac then
             d.ac = fields_of(ac, 40)
             pcall(function() d.ac.goal_name = enum_name(df.army_controller_goal_type, ac.goal) end)
@@ -435,14 +502,18 @@ STEP_DEFS = {
          if st.mode ~= 'MISSION_DETAILS' then
              return 'bad', run.button .. ' led to world/' .. tostring(st.mode) .. ', not MISSION_DETAILS (recorded)'
          end
-         if not st.selected_ac then return 'bad', 'MISSION_DETAILS shows no new army controller (selected_ac)' end
          -- (0.105.39 review) the new controller is the run's goal, not another's
          if not st.ac_id then
-             return 'bad', 'selected_ac ' .. tostring(st.selected_ac) .. ' names no army controller (as an index or an id)'
+             return 'bad', 'no new army controller on MISSION_DETAILS (selected_ac ' .. tostring(st.selected_ac) ..
+                           (st.ac_by == 'ambiguous' and ', its readings disagree' or '') .. ')'
          end
          if st.ac_goal ~= run.df_goal then
-             return 'bad', 'the new army controller\'s goal is ' .. tostring(st.ac_goal_name or st.ac_goal) ..
-                           ', not ' .. tostring(run.df_goal_name)
+             local why = 'the new army controller\'s goal is ' .. tostring(st.ac_goal_name or st.ac_goal) ..
+                         ', not ' .. tostring(run.df_goal_name)
+             -- Make contact's step was recorded live: a mismatch is written
+             -- down for the record, not taken as a failure
+             if run.goal ~= 'make_contact' then return 'bad', why end
+             run.goal_mismatch = why
          end
          run.selected_ac = st.selected_ac
          run.ac_id = st.ac_id
@@ -518,6 +589,7 @@ local function save_log(run)
                             site_id = run.site_id, site = run.site, started = run.started, result = run.result,
                             step = run.stopped_at, why = run.why, reason = run.reason, saw = run.saw,
                             closed = run.closed, controllers = run.controllers, trail = run.trail,
+                            left_ids = run.left_ids, left_open = run.left_open, goal_mismatch = run.goal_mismatch,
                             probe = run.probe})
         while #runs > LOG_KEEP do table.remove(runs, 1) end
         pcall(function() dfhack.filesystem.mkdir_recursive(dfhack.getDFPath() .. '/dfhack-config/ai-overseer') end)
@@ -531,7 +603,8 @@ end
 local function small(o)
     return {goal = o.goal or 'make_contact', site_id = o.site_id, site = o.site, result = o.result, step = o.step,
             reason = o.reason, why = o.why, tick = o.tick, closed = o.closed, controller_left = o.controller_left,
-            hf_id = o.hf_id, artifact_id = o.artifact_id}
+            hf_id = o.hf_id, artifact_id = o.artifact_id, left_ids = o.left_ids, left_open = o.left_open,
+            goal_mismatch = o.goal_mismatch}
 end
 
 -- the per-goal outcomes of a saved record; an old save (no by_goal) has its
@@ -544,22 +617,35 @@ local function by_goal_of(d)
     return {[g] = small(d)}
 end
 
+-- which save and site this is: the module's copy of the last outcome is
+-- only good for the one it was written in
+function save_tag()
+    local dir, site
+    pcall(function() dir = df.global.world.cur_savegame.save_dir end)
+    pcall(function() site = df.global.plotinfo.site_id end)
+    return tostring(dir) .. '/' .. tostring(site)
+end
+
 local function save_outcome(run)
     local out = {goal = run.goal, site_id = run.site_id, site = run.site, result = run.result, step = run.stopped_at,
                  reason = run.reason, why = run.why, tick = now_tick(), closed = run.closed,
                  controller_left = run.controller_left, saw = run.saw, hf_id = run.hf_id,
-                 artifact_id = run.artifact_id}
-    local okp, old = pcall(function() return LAST or U.site_get(SEND_KEY, nil) end)
+                 artifact_id = run.artifact_id, left_ids = run.left_ids, left_open = run.left_open,
+                 goal_mismatch = run.goal_mismatch}
+    local okp, old = pcall(function() return last_outcome() end)
     local by = by_goal_of(okp and old or nil)
     by[run.goal or 'make_contact'] = small(out)
     out.by_goal = by
-    LAST = out
+    LAST, LAST_TAG = out, save_tag()
     local ok, put, err = pcall(U.site_put, SEND_KEY, out)
     if not ok or put == false then out.save_error = tostring(ok and err or put):sub(1, 120) end
     return out
 end
 
 function last_outcome()
+    -- (0.105.39 review 2) the module's copy only for the save and site it came
+    -- from: another fort loaded since reads its own site data
+    if LAST and LAST_TAG ~= save_tag() then LAST, LAST_TAG = nil, nil end
     if LAST then return LAST end
     local ok, d = pcall(function() return U.site_get(SEND_KEY, nil) end)
     return ok and type(d) == 'table' and d or nil
@@ -611,34 +697,37 @@ function world_on_top()
     return focus_string():match('^world') ~= nil
 end
 
--- (0.105.39 review) the World screen taken off the stack without a key
--- press, when another screen (the player's) is on top of it: DFHack's
--- dismiss, else DF's own breakdown flag; the player's screen is left be
-local function dismiss_world()
-    local scr = world_screen()
-    if not scr then return true end
-    local ok = pcall(function() dfhack.screen.dismiss(scr) end)
-    if not ok then
-        ok = pcall(function() scr.breakdown_level = df.interface_breakdown_types.STOPSCREEN end)
-    end
-    return ok
+local function ms_now()
+    local ok, t = pcall(function() return dfhack.getTickCount() end)
+    if ok and type(t) == 'number' then return t end
+    return nil
 end
 
 -- close the World screen (LEAVESCREEN, as Esc), checked a few frames later;
--- only ever that screen: if it isn't open, nothing is pressed, and (0.105.39
--- review) a key is pressed only while it is the top screen, so a window the
--- player opened over it is never closed
-function close_world(run, tries, done)
+-- only ever that screen: if it isn't open, nothing is pressed. (0.105.39
+-- review) A key is pressed only while the World screen is the top screen:
+-- with the player's window over it, it waits (CLOSE_WAIT_MS) for the World
+-- screen to come back on top; if it never does it is left open under the
+-- player's window (run.left_open) and Needs you says so. The native screen
+-- is never dismissed by hand.
+function close_world(run, tries, done, waited)
     tries = tries or 0
     if not world_screen() then return done(true) end
     if tries >= CLOSE_TRIES then return done(false) end
     if world_on_top() then
         pcall(function() require('gui').simulateInput(dfhack.gui.getDFViewscreen(true), 'LEAVESCREEN') end)
-    else
-        if run then run.dismissed = dismiss_world() end
+        if not world_screen() then return done(true) end
+        return later(POLL_FRAMES, function() close_world(run, tries + 1, done) end)
     end
-    if not world_screen() then return done(true) end
-    later(POLL_FRAMES, function() close_world(run, tries + 1, done) end)
+    waited = waited or {polls = 0, since = ms_now()}
+    waited.polls = waited.polls + 1
+    local t = ms_now()
+    local over = (t and waited.since) and (t - waited.since > CLOSE_WAIT_MS) or waited.polls > CLOSE_WAIT_POLLS
+    if over then
+        if run then run.left_open = true end
+        return done(false)
+    end
+    later(POLL_FRAMES, function() close_world(run, tries, done, waited) end)
 end
 
 -- Stop the run: what it saw written down, the World screen shut, the
@@ -657,6 +746,14 @@ finish = function(run, closed)
         -- planned mission, or one nobody leads): written down for the player
         if run.controllers_before and after.controllers and after.controllers > run.controllers_before then
             run.controller_left = true
+        end
+        -- (0.105.39 review) which ones: their ids, so the brain doesn't take a
+        -- leftover for a mission out
+        local ids = new_controllers(run)
+        if #ids > 0 then
+            run.controller_left = true
+            run.left_ids = {}
+            for i = 1, math.min(#ids, 4) do run.left_ids[i] = id_of(ids[i]) end
         end
     end)
     pcall(save_log, run)
@@ -714,10 +811,14 @@ function player_took_over(run, st)
     elseif run.focus0 and f ~= run.focus0 then
         return 'the screen changed (' .. f:sub(1, 40) .. ', not ' .. run.focus0:sub(1, 40) .. ')'
     end
-    local p = pause_state()
-    local opening = st.world and not run.world_seen      -- DF's own reaction to the World button
-    if not opening and run.pause0 ~= nil and p ~= nil and p ~= run.pause0 then
-        return 'the game was ' .. (p and 'paused' or 'unpaused') .. ' during the run'
+    -- (0.105.39 review 2) the pause only before the World button is pressed:
+    -- once the World screen is up, DF may pause it itself; the top-screen
+    -- check above catches the player's own windows
+    if not st.world and not run.world_seen and not run.pressed_world then
+        local p = pause_state()
+        if run.pause0 ~= nil and p ~= nil and p ~= run.pause0 then
+            return 'the game was ' .. (p and 'paused' or 'unpaused') .. ' during the run'
+        end
     end
     return nil
 end
@@ -737,6 +838,8 @@ local function tick(run)
     local busy = player_took_over(run, st)
     if busy then
         run.why = busy
+        -- the tick right after the AI's own click: the click did it (unexpected)
+        if run.acted and run.waited == 0 then return stop(run, 'stopped', 'unexpected') end
         return stop(run, 'stopped', 'player_busy')
     end
     if run.acted then
@@ -752,7 +855,6 @@ local function tick(run)
         end
         trail(run, 'ok', st)
         if st.world then run.world_seen = true end
-        if step.name == 'open' then run.pause0 = pause_state() end   -- DF's own pause as the screen opens
         run.step, run.acted, run.waited = run.step + 1, false, 0
         step = run.steps[run.step]
         if not step then return stop(run, 'sent') end
@@ -769,6 +871,7 @@ local function tick(run)
         return stop(run, 'stopped', 'unexpected')
     end
     trail(run, 'act', st)
+    if step.name == 'open' then run.pressed_world = true end
     local ok, reason, err = step.act(run)
     if not ok then
         run.why = err or reason
@@ -832,7 +935,7 @@ function goal_allowed(goal, s, levels)
     if goal == 'make_contact' then
         if s.make_contact == false then return false, 'the Rules switch "Make contact" is off' end
         if s.send_messenger ~= true then
-            return false, 'the Rules switch "Send the messenger by the World screen" is off'
+            return false, MESSENGER_LABEL .. ' is off'
         end
         return true
     end
@@ -867,14 +970,8 @@ local function sorted_buttons()
     return o
 end
 
-local function ms_now()
-    local ok, t = pcall(function() return dfhack.getTickCount() end)
-    if ok and type(t) == 'number' then return t end
-    return nil
-end
-
--- a run older than 2 x RUN_FRAMES: by its own frame count, or by the clock
--- (dfhack.getTickCount, ms, at 20 frames a second) when its frames stopped
+-- a run older than 2 x RUN_FRAMES by its own frame count, or older than
+-- STALE_MS (5 minutes) by the wall clock (dfhack.getTickCount)
 function run_stale(run)
     if (run.frames or 0) > 2 * RUN_FRAMES then return true end
     local t = ms_now()
@@ -932,6 +1029,8 @@ function start(a)
             old.result, old.reason, old.stopped_at = 'error', 'stale', old.step_name
             save_outcome(old)
         end)
+        -- its World screen shut (only while on top: the player's windows stay)
+        pcall(close_world, nil, 0, function() end)
     end
     if RUN then
         return {ok = false, waiting = true, error = 'a mission is being sent already (step ' .. tostring(RUN.step_name) .. ')'}
@@ -984,6 +1083,7 @@ function start(a)
     run.step_name = run.steps[1].name
     local st0 = read_state(run)
     run.controllers_before = st0.controllers
+    run.ac_before = controller_ids_now()
     run.focus0, run.pause0, run.started_ms = st0.focus, pause_state(), ms_now()
     RUN = run
     later(1, function() tick(run) end)

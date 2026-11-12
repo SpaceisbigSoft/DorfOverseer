@@ -2688,7 +2688,7 @@ function send_mission_rules(goal)
     if not okm or not ok or type(s) ~= 'table' then return false, 'the Rules could not be read' end
     if goal == 'make_contact' then
         if s.make_contact == false then return false, 'the Rules switch "Make contact" is off' end
-        if s.send_messenger ~= true then return false, 'the Rules switch "Send the messenger by the World screen" is off' end
+        if s.send_messenger ~= true then return false, 'the Rules tab\'s "Send the messenger by the World screen" is off' end
         return true
     end
     local okg, levels = pcall(function() return S.MISSION_GOALS end)

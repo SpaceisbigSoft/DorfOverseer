@@ -462,6 +462,67 @@ def _():
     assert ch and "the mission to raid \"Evil 'Keep' x\" came back" in ch[0]["t"], ch
 
 
+@test("(0.105.39 review 2) a run the player interrupted (player_busy, timeout, stale) is tried again after a day, "
+      "with a short note and no Needs you; not_recorded / unexpected keep the year")
+def _():
+    from planner_world import _contact_rule
+    now = abs_tick(BASE)
+    for reason in ("player_busy", "timeout", "stale"):
+        last = {"goal": "rescue", "result": "stopped", "step": "site", "reason": reason, "tick": now - 100,
+                "why": "another screen"}
+        send = button("rescue")
+        send["last_by_goal"] = {"rescue": last}
+        p, notes = rule(fort([target("rescue", 3)], send=send, send_missions=True))
+        assert not p and any("interrupted by the player; tried again tomorrow" in n for n in notes), notes
+        assert not needs(notes), needs(notes)
+        last["tick"] = now - 1201                                     # a day and more ago
+        p, _ = rule(fort([target("rescue", 3)], send=send, send_missions=True))
+        assert p and p[0].action["goal"] == "rescue", reason
+    for reason in ("not_recorded", "unexpected"):
+        last = {"goal": "rescue", "result": "stopped", "step": "goal", "reason": reason, "tick": now - 5 * 1200}
+        send = button("rescue")
+        send["last_by_goal"] = {"rescue": last}
+        p, notes = rule(fort([target("rescue", 3)], send=send, send_missions=True))
+        assert not p and any("tried again in a year" in n for n in notes) and needs(notes), notes
+    # the messenger: the same
+    def contact(last, controllers=()):
+        send = dict(button(), buttons=["World", "Diplomacy"], last_by_goal={"make_contact": last})
+        s = digest.normalize(fort(send=send, send_messenger=True))
+        s["offices"] = {"offices": {"MESSENGER": {"held": ["Mafol"]}}}
+        s["missions"]["sites"] = {"nearest": [{"id": 77, "name": "Near", "dist": 3, "relation": "NoContact"}]}
+        s["missions"]["controllers"] = list(controllers)
+        props, notes = [], []
+        _contact_rule(s, CFG, props, notes, Memory())
+        return props, notes
+    last = {"goal": "make_contact", "result": "stopped", "step": "site", "reason": "player_busy", "tick": now - 100}
+    props, notes = contact(last)
+    assert not props and any("interrupted by the player" in n for n in notes) and not needs(notes), notes
+    last["tick"] = now - 2 * 1200
+    props, notes = contact(last)
+    assert props and props[0].action["goal"] == "make_contact", notes
+    # (9) a Diplomacy controller the stopped run left behind doesn't count as the messenger out
+    last = {"goal": "make_contact", "result": "stopped", "step": "make_contact", "reason": "not_recorded",
+            "tick": now - 2 * 1200 * 400, "left_ids": [901], "controller_left": True}
+    props, notes = contact(last, [{"id": 901, "goal": "DIPLOMACY", "squads": [], "away": 0}])
+    assert props and props[0].action["goal"] == "make_contact", notes
+    props, notes = contact(last, [{"id": 902, "goal": "DIPLOMACY", "squads": [], "away": 0}])
+    assert not props and any("Make contact): one mission at a time" in n for n in notes), notes
+
+
+@test("(0.105.39 review 2) the World screen left open under the player's window: one Needs you while it is open")
+def _():
+    send = button("rescue")
+    send["last_by_goal"] = {"rescue": {"goal": "rescue", "result": "stopped", "reason": "player_busy", "left_open": True,
+                                       "tick": abs_tick(BASE) - 10}}
+    s = fort(send=send, send_missions=True)
+    s["missions"]["screen"] = {"view_mode": "NORMAL", "allowed": {}}
+    p, notes = rule(s)
+    nd = needs(notes)
+    assert len(nd) == 1 and "left open under your window" in nd[0], nd
+    s["missions"]["screen"] = None
+    assert not needs(rule(s)[1])
+
+
 # --- the digest -------------------------------------------------------------------------
 
 @test("the digest's MISSIONS line: targets and missions out, no coordinates; none without either")

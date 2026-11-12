@@ -167,16 +167,47 @@ def last_of_goal(send: dict, goal: str) -> dict:
     return {}
 
 
+# (0.105.39 review 2) a run the player interrupted (took the game back, or it
+# ran out of time / went stale): tried again after a day, not a year, and no
+# "nobody recorded" Needs you
+INTERRUPTED = ("player_busy", "timeout", "stale")
+
+
+def interrupted(last: dict) -> bool:
+    return _d(last).get("reason") in INTERRUPTED
+
+
+def retry_ticks(last: dict, year_ticks: int) -> int:
+    """How long a stopped run blocks its goal: a day when the player
+    interrupted it, else `year_ticks` (a step nobody recorded, a surprise)."""
+    return TICKS_PER_DAY if interrupted(last) else year_ticks
+
+
 def _stopped(s: dict, goal: str, cfg: dict) -> dict | None:
     """The sender's last run for this goal when it stopped (or failed) within
-    `mission_retry_ticks`: not tried again until then."""
+    `mission_retry_ticks` (a day when the player interrupted it): not tried
+    again until then."""
     last = last_of_goal(_d(_m(s).get("send")), goal)
     if last.get("result") not in ("stopped", "error"):
         return None
     t = _int(last.get("tick"))
-    if t is None or not 0 <= abs_tick(s) - t < cfg["mission_retry_ticks"]:
+    if t is None or not 0 <= abs_tick(s) - t < retry_ticks(last, cfg["mission_retry_ticks"]):
         return None
     return last
+
+
+def left_open_needs_you(s: dict, notes: list) -> None:
+    """(0.105.39 review 2) A run that couldn't shut the World screen because
+    the player's window was over it (left_open) while the World screen is
+    still open: one Needs you."""
+    ms = _m(s)
+    send = _d(ms.get("send"))
+    outs = list(_d(send.get("last_by_goal")).values()) or [_d(send.get("last"))]
+    if not ms.get("screen") or not any(_d(o).get("left_open") for o in outs):
+        return
+    ask_player(notes, "missions (13b): the AI's World screen was left open under your window (the AI never "
+                      "presses a key into a window of yours): close it (Esc) when you're done; the AI sends no "
+                      "mission and no messenger while it is open")
 
 
 def mission_target(s: dict, cfg: dict = PLANNER_CONFIG) -> tuple[dict | None, list]:
@@ -242,8 +273,8 @@ def _stopped_needs_you(s: dict, goal: str, cfg: dict, notes: list) -> None:
     (the same words each cycle, so listed once) saying where it stopped and
     what the AI does meanwhile, a controller left behind included."""
     last = _stopped(s, goal, cfg)
-    if not last:
-        return
+    if not last or interrupted(last):
+        return                       # interrupted by the player: a short note, tried again tomorrow
     site = game_text(last.get("site") or f"site {last.get('site_id')}", 40)
     ask_player(notes, f"missions (13b): the AI's try to {MISSION_WORDS.get(goal, goal)} at \"{site}\" stopped at the "
                       f"World screen's \"{game_text(last.get('step'), 20)}\" step: "
@@ -273,6 +304,7 @@ def _mission_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None)
     free. Sent by the World screen when `send_missions` is on and the goal's
     buttons were shown, else named for the player."""
     ms = _m(s)
+    left_open_needs_you(s, notes)
     if not isinstance(ms.get("targets"), list) or not ms["targets"]:
         return                       # nothing to go for (or an older bridge): silent
     rules = player_rules(s)
@@ -297,8 +329,13 @@ def _mission_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None)
         _stopped_needs_you(s, stopped[0], cfg, notes)
     if target is None:
         if stopped:
-            notes.append(f"a mission to {MISSION_WORDS.get(stopped[0], stopped[0])} waits: the last try stopped at a "
-                         "World-screen step nobody has recorded; tried again in a year")
+            g = stopped[0]
+            if interrupted(_stopped(s, g, cfg)):
+                notes.append(f"a mission to {MISSION_WORDS.get(g, g)} waits: the last try was interrupted by the "
+                             "player; tried again tomorrow")
+            else:
+                notes.append(f"a mission to {MISSION_WORDS.get(g, g)} waits: the last try stopped at a "
+                             "World-screen step nobody has recorded; tried again in a year")
         return
     what = _target_words(target)
     unread = _unread_danger(s)

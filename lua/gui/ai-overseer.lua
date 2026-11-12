@@ -439,8 +439,8 @@ function RulesPage:init()
     table.insert(views, widgets.ToggleHotkeyLabel{
         view_id = 'send_messenger',
         frame = {t = 9 + jrow, l = 62, w = 56},
-        label = 'Send it by the World screen (trial):',
-        label_width = 38,
+        label = 'Send the messenger by the World screen:',
+        label_width = 41,
         initial_option = p.settings.send_messenger == true,
         on_change = function(v) p:set_field('send_messenger', v) end,
     })
