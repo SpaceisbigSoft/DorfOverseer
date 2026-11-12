@@ -533,6 +533,7 @@ SHORT_WORDS = {
     "cleanup_spatter": "clean blood and spatter off the map",
     "cleanup_dead_units": "take long-dead creatures off the game's active list",
     "insane_guard": "lock the AI's own doors between an insane dwarf and deep water, magma or a drop while they are near",  # (0.105.40b)
+    "magma_reclaim": "open the paths again where spilt magma cooled, and dig out what it left",  # (0.105.41, item 7)
     "add_haulers": "put idle dwarves on hauling",  # (0.105.40 M5)
     "relieve_haulers": "take key workers (or the AI's extra haulers) off hauling, or give it back",
     "paint_traffic": "mark high traffic on the AI's corridors and stairs, low on its rooms and fields",  # (0.105.41)
@@ -709,6 +710,8 @@ def short(a: dict) -> str:
     # (0.105.0) round 3: threats answered
     if t == "fire_guard":
         return "the fire is out: paths round it back to normal" if a.get("lift") else "keep the dwarves away from the fire"
+    if t == "magma_guard":    # (0.105.41, item 7)
+        return "paths round the spilt magma back to normal" if a.get("lift") else "keep the dwarves away from the spilt magma"
     if t == "moon_cell":
         return "let the werebeasts out of their cells" if a.get("release") else "lock the werebeasts in for the full moon"
     if t == "seal_cavern":

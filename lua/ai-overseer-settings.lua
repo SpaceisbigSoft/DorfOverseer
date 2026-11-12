@@ -357,6 +357,10 @@ function defaults()
         traffic = true,
         -- (0.105.0) water works: a moat from the river (only where one is found), magma workshops, a muddied farm level
         moat = true, magma_workshops = true, irrigation = true,
+        -- (0.105.41, item 7) spilt magma that cooled: the walls it left where the
+        -- dwarves walk (obsidian) dug out (lua/ai-hazards.lua magma_reclaim; never
+        -- one beside liquid); off: the paths are only opened again
+        magma_reclaim = true,
         -- (0.105.4 review) a cavern well may break into a cavern layer the dwarves
         -- haven't found yet (the first breach brings forgotten beasts). (v35 fix)
         -- 'ai' (the default): the AI decides, only when the fort is short of
@@ -468,6 +472,7 @@ function sanitize(s)
                         'heist_lockout', 'shut_to_visitors',   -- (0.105.24) locations shut to visitors a while
                         'construct',                -- (0.105.30) building above ground (hall, wings, floors)
                         'moat', 'magma_workshops', 'irrigation',   -- (0.105.0) the water works' switches
+                        'magma_reclaim',            -- (0.105.41, item 7) cooled magma's walls dug out
                         'disposal_player_items', 'keep_enemy_gear',   -- (0.105.27) disposal
                         'squads_shelter',           -- (0.105.0) the squads hide in the shelter too
                         'link_feeders',             -- (0.105.41, item 2) feeder piles linked to their workshops
@@ -576,6 +581,7 @@ function for_ai(s)
         world_cleanup = s.world_cleanup,           -- (0.105.40) off | safe | full
         traffic = s.traffic,                       -- (0.105.41) traffic zones on the AI's levels
         moat = s.moat, magma_workshops = s.magma_workshops, irrigation = s.irrigation,   -- (0.105.0)
+        magma_reclaim = s.magma_reclaim,           -- (0.105.41, item 7)
         open_caverns = s.open_caverns,             -- (0.105.4 review)
         squads_shelter = s.squads_shelter,         -- (0.105.0)
         link_feeders = s.link_feeders,             -- (0.105.41, item 2)

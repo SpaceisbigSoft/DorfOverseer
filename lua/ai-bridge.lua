@@ -434,6 +434,20 @@ ACTIONS = {
         if #ids == 0 then return reject('pit_prisoners: no ids') end
         return reqscript('ai-captives').pit_prisoners({ids = ids, max = a.max, min_drop = a.min_drop}, a.dry_run == true)
     end,
+    -- (0.105.41, item 7) spilt magma: paths round it restricted, then reclaimed once cooled (lua/ai-hazards.lua)
+    magma_guard = function(a)
+        local r = int_in(a.radius or 3, 1, 10)
+        local jobs = int_in(a.max_jobs or 40, 0, 200)
+        if not r or not jobs then return reject('magma_guard: radius 1-10, max_jobs 0-200') end
+        if a.lift ~= nil and type(a.lift) ~= 'boolean' then return reject('magma_guard: lift is true or false') end
+        return reqscript('ai-hazards').magma_guard(r, jobs, a.lift == true, a.dry_run == true)
+    end,
+    magma_reclaim = function(a)
+        local cool = int_in(a.cool_ticks or 3600, 0, 403200)
+        if not cool then return reject('magma_reclaim: cool_ticks 0-403200') end
+        if a.dig ~= nil and type(a.dig) ~= 'boolean' then return reject('magma_reclaim: dig is true or false') end
+        return reqscript('ai-hazards').magma_reclaim(cool, a.dig == true, a.dry_run == true)
+    end,
 }
 
 -- (13c) The actions whose dry run changes nothing in the fort, all the way
@@ -497,6 +511,7 @@ for _, name in ipairs({
     -- (item5) each dry run surveys (and quickfort's dry run) and changes nothing
     'fortify_post', 'archer_post', 'place_siege_engine', 'place_siege_shop',
     'make_pit', 'pit_prisoners',   -- (item6) each dry run finds and checks, and changes nothing
+    'magma_guard', 'magma_reclaim',   -- (0.105.41, item 7) each dry run counts and changes nothing
 }) do DRY_OK[name] = true end
 
 -- These only change what's displayed, so they still work while halted, dry
@@ -566,6 +581,7 @@ BRIDGE_MODULES = {
     'ai-overseer-settings', 'ai-pile-links', 'ai-ping', 'ai-provisions', 'ai-reports', 'ai-siege',
     'ai-society', 'ai-society-burrows', 'ai-status', 'ai-threats', 'ai-title', 'ai-trade', 'ai-traffic',
     'ai-util', 'ai-water', 'ai-waterworks', 'gui/ai-overseer',
+    'ai-hazards',   -- (0.105.41, item 7)
 }
 -- the split-off modules that carry a version mark of their own
 MARKED_MODULES = {'ai-military-gear', 'ai-society-burrows', 'ai-constructions'}
@@ -947,6 +963,9 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
     necro = function() return safe(function() return reqscript('ai-captives').necro(txt) end) end,
     -- (fix41) evil weather on its own (it was in threats, read once a day): in the pulse too
     weather = function() return safe(function() return reqscript('ai-threats').weather_section() end) end,
+    -- (0.105.41, item 7) spilt magma, cave-ins, frost and heat (lua/ai-hazards.lua; in the pulse too:
+    -- the magma read each time, the rest every few hours)
+    env_hazards = function() return safe(function() return reqscript('ai-hazards').report() end) end,
     -- (0.105.40 M5) hauling: the haul jobs waiting and how long, the haulers,
     -- the key specialists who haul, the details carrying it (lua/ai-hauling.lua)
     hauling = function() return safe(function() return reqscript('ai-hauling').report(txt) end) end,
@@ -987,6 +1006,7 @@ PULSE_SECTIONS = {
     'insane',   -- (0.105.40b) a melancholy dwarf walks to the water: read each cycle
     'weather',  -- (fix41) an evil cloud crosses from the map's edge in hours: read each cycle
     'field_watch',   -- (item5) a caravan attacked, a bear by the woodcutters: read each cycle
+    'env_hazards',   -- (0.105.41, item 7) spilt magma spreads in minutes: read each cycle
 }
 TIERS = {pulse = true, daily = true, survey = true}
 -- report sections rebuilt only every so many game days (the lag pass, Oct 23:

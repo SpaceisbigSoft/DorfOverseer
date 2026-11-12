@@ -503,7 +503,8 @@ def hazard_alert(s: dict, cfg: dict) -> str:
     b0 = next((b for b in _l(h.get("berserk")) if isinstance(b, dict)), None)    # (0.105.33) a dict row only
     if b0 is not None:
         return f"{b0.get('name') or 'a dwarf'} " + ("has changed into a beast" if b0.get("changed") else "has gone berserk")
-    return ""
+    from planner_hazards import magma_alarm     # (0.105.41, item 7) spilt magma spreading near the dwarves
+    return magma_alarm(s, cfg)
 
 
 def _hazard_rules(s: dict, memory, cfg: dict, proposals: list, notes: list, rules_: dict) -> None:
