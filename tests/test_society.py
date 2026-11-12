@@ -768,7 +768,7 @@ CUP_WORLD = """
   -- the finished goods piles: A (x300, 2 free tiles) refuses goblets; B (x200, 5 free) takes them
   -- but no wood or bone; D beside the depot and O outdoors (nearer, more room) refuse wood too
   local function pile(id, free, goblets, wood)
-    return {id = id, x1 = id, y1 = 0, x2 = id, y2 = free - 1, z = 1, use_links_only = 0,
+    return {id = id, x1 = id, y1 = 0, x2 = id, y2 = free - 1, z = 1, stockpile_flag = {use_links_only = false},
             settings = {flags = {finished_goods = true},
                         finished_goods = {type = {[7] = goblets}, mats = {[5] = true}, other_mats = {[0] = wood},
                                           quality_core = {[0] = true}}},

@@ -761,14 +761,14 @@ function MilitaryPage:init()
         on_change = function(v) p:set_field('keep_enemy_gear', v) end,
     })
     -- (item5) siege works and the field guard: under the disposal rows (t+9..t+12, from
-    -- l=54, clear of the military list's l=2..52 and of gear_weapon's row t+13)
+    -- l=56, clear of the military list's l=2..52 and of gear_weapon's row t+13)
     for _, f in ipairs({{'siege_engines', 'Ballistae at the gates:', 9},
                         {'archer_posts', 'Archers behind fortifications:', 10},
                         {'caravan_guard', 'Guard a caravan attacked:', 11},
                         {'wildlife_hunts', 'Hunt beasts near workers:', 12}}) do
         table.insert(views, widgets.ToggleHotkeyLabel{
             view_id = f[1],
-            frame = {t = t + f[3], l = 54, w = 52},
+            frame = {t = t + f[3], l = 56, w = 50},
             label = f[2],
             label_width = 32,
             initial_option = p.settings[f[1]] ~= false,
@@ -785,11 +785,11 @@ function MilitaryPage:init()
         on_change = function(v) p:set_field('squads_shelter', v) end,
     })
     -- (0.105.41, item 8) a peace proposal from a civilisation's diplomat: the
-    -- right-hand column's free rows under the junk switches (t+10, t+11; the
-    -- left column's rows end at 52 there)
+    -- right-hand column's free rows t+15, t+16 (merge 0.105.41: t+9..t+12 hold the
+    -- siege switches; gear_weapon and prisoners reach column 74 at t+13, t+14)
     table.insert(views, widgets.CycleHotkeyLabel{
         view_id = 'peace',
-        frame = {t = t + 10, l = 56, w = 50},
+        frame = {t = t + 15, l = 58, w = 50},
         label = 'Peace offered:',
         label_width = 20,
         options = (function()
@@ -800,15 +800,15 @@ function MilitaryPage:init()
         initial_option = S.PEACE_NAMES[p.settings.peace] and p.settings.peace or 'ai',
         on_change = function(v) p:set_field('peace', v) end,
     })
-    table.insert(views, widgets.Label{frame = {t = t + 11, l = 58}, text = {
+    table.insert(views, widgets.Label{frame = {t = t + 16, l = 60}, text = {
         {text = S.PEACE_HELP, pen = COLOR_GREY}}})
     -- (item10) cavern trees felled when wood is short and the caverns are watched
-    -- (the free row t+17, under the caverns' seal switch and over the missions)
+    -- (merge 0.105.41: right-hand column, row t+17, beside the provisions' switches)
     table.insert(views, widgets.ToggleHotkeyLabel{
         view_id = 'cavern_logging',
-        frame = {t = t + 17, l = 2, w = 50},
-        label = 'Fell cavern trees when it is safe:',
-        label_width = 36,
+        frame = {t = t + 17, l = 58, w = 48},
+        label = 'Fell cavern trees when safe:',
+        label_width = 32,
         initial_option = p.settings.cavern_logging ~= false,
         on_change = function(v) p:set_field('cavern_logging', v) end,
     })

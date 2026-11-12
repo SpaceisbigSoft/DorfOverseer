@@ -1657,7 +1657,7 @@ function cup_piles()
                 end
                 pcall(function() p.outdoor = dfhack.maps.getTileFlags(p.x, p.y, p.z).outside == true end)
                 pcall(function() p.takes_goblets = sp.settings.finished_goods.type[gob] and true or false end)
-                pcall(function() p.links_only = (sp.use_links_only == true or (tonumber(sp.use_links_only) or 0) ~= 0) end)
+                pcall(function() p.links_only = sp.stockpile_flag.use_links_only == true end)   -- (0.105.41) 53.x: the flag lives in stockpile_flag
                 pcall(function()
                     for y = sp.y1, sp.y2 do
                         for x = sp.x1, sp.x2 do

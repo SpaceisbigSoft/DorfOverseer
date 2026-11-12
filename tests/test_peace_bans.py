@@ -271,7 +271,7 @@ def _():
     assert S.sanitize(TP.t({"peace": "yes"})).peace == "ai"
     assert [S.RULE_CHOICES.peace[i] for i in range(1, 4)] == ["ai", "accept", "refuse"]
     assert "view_id = 'peace'" in GUI and "self.subviews.peace:setOption(" in GUI
-    assert "frame = {t = t + 10, l = 56, w = 50}" in GUI
+    assert "frame = {t = t + 15, l = 58, w = 50}" in GUI
     from planner_core import player_rules
     assert player_rules({"settings": {}})["peace"] == "ai"
     assert player_rules({"settings": {"peace": "refuse"}})["peace"] == "refuse"

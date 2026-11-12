@@ -12,7 +12,7 @@
 --            slurry at a quern or millstone       (MAKE_SLURRY_FROM_PLANT?)
 --   press    the slurry pressed into a sheet of paper at a screw press
 --                                                  (PRESS_PLANT_PAPER?)
---   papyrus  papyrus sedge made straight into a papyrus sheet (PAPYRUS?)
+--   papyrus  papyrus sedge made straight into a sheet at the farmer's (MAKE_SHEET_FROM_PLANT)
 --   scroll   a sheet and scroll rollers rolled into a blank scroll
 --                                                  (MAKE_SCROLL?)
 --   codex    a quire and a book binding bound into a codex  (BIND_BOOK?)
@@ -31,7 +31,7 @@
 KINDS = {
     slurry = {codes = {'MAKE_SLURRY_FROM_PLANT', 'MAKE_PAPER_SLURRY'}, words = {'SLURRY', 'PULP'}, counts = true},
     press = {codes = {'PRESS_PLANT_PAPER', 'PRESS_PAPER'}, words = {'PAPER'}, counts = true},
-    papyrus = {codes = {'MAKE_PAPYRUS', 'PRESS_PAPYRUS', 'MAKE_PAPYRUS_SHEET'}, words = {'PAPYRUS'}, counts = true},
+    papyrus = {codes = {'MAKE_SHEET_FROM_PLANT', 'MAKE_PAPYRUS', 'PRESS_PAPYRUS'}, words = {'SHEET', 'PAPYRUS'}, counts = true},   -- (merge: vanilla 53.17's code checked in reaction_other.txt)
     scroll = {codes = {'MAKE_SCROLL'}, words = {'SCROLL'}},
     codex = {codes = {'BIND_BOOK', 'MAKE_CODEX', 'BIND_CODEX'}, words = {'BOOK', 'CODEX'}},
 }
@@ -261,7 +261,7 @@ end
 
 function report()
     local out = {reactions = {}, quires_blank = 0, quires_written = 0, scrolls_blank = 0, scrolls_written = 0,
-                 codices = 0, rollers = 0, bindings = 0, sheets = 0}
+                 codices = 0, rollers = 0, bindings = 0, sheets = 0, thread = 0}
     for _, kind in ipairs(KIND_ORDER) do
         local rx = find_reaction(kind)
         local e = {code = false}
@@ -291,6 +291,12 @@ function report()
     pcall(function()
         for _, it in ipairs(df.global.world.items.other.BOOK) do
             out.codices = out.codices + 1
+        end
+    end)
+    -- (merge) BIND_BOOK takes a quire, a binding and thread (vanilla 53.17): free thread counted
+    pcall(function()
+        for _, it in ipairs(df.global.world.items.other.THREAD) do
+            if free(it) then out.thread = out.thread + 1 end
         end
     end)
     pcall(function()

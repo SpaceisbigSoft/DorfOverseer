@@ -215,6 +215,8 @@ def _extras(s, cfg, paper, b, sheets, proposals, notes) -> None:
                 n = min(written, int(cfg["paper_codex_batch"]))
                 _order(proposals, "wooden_book_binding", n,
                        f"{written} written quire(s) lie loose: carve {n} book binding(s) to bind them into codices")
+        elif "thread" in paper and int(paper.get("thread") or 0) == 0:
+            pass   # (merge) binding takes thread (vanilla BIND_BOOK): none free, wait for the spinners
         else:
             shops = _shops(codex, "codex")
             if _at(b, shops):
