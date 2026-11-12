@@ -617,6 +617,8 @@ function deep_hazard_section()
         end
     end)
     local okm, mine = pcall(function() return reqscript('ai-overseer-settings').load_settings().mine_adamantine end)
+    -- (0.105.40b fix) once per loaded map: the AI's own digs on refused tiles taken back
+    pcall(function() reqscript('ai-builder').dig_guard_sweep() end)
     return reqscript('ai-util').deep_hazard(near, okm and mine == true)
 end
 

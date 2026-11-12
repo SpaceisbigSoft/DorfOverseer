@@ -949,7 +949,8 @@ function validate_landmark(bp, site, cap)
                 if not okq or stat(dry, 'dig_designated') ~= want or stat(dry, 'dig_invalid_tiles') > 0
                         or stat(dry, 'out_of_bounds') > 0 or stat(dry, 'invalid_keys') > 0 then
                     reason(out, 'QUICKFORT', k, nil, nil, ('the game would dig %d of its %d tiles'):format(
-                        okq and stat(dry, 'dig_designated') or 0, want))
+                        okq and stat(dry, 'dig_designated') or 0, want)
+                        .. (okq and dig_guard_note(dry) or ''))   -- (0.105.40b fix) the guard's why
                 end
             elseif k == 1 then
                 local cells = landmark_surface_cells(lv, 'walls', true, a)

@@ -296,7 +296,14 @@ function quickfort_apply(mode, cells, z, ax, ay, command, dry_run)
     local refused, why
     if mode == 'dig' and (command or 'run') == 'run' then
         local okg, d2, n, w = pcall(function() return util_module().dig_guard_data(data, ax, ay, 0, (not dry_run) and 'quickfort' or nil) end)
-        if okg and d2 then data, refused, why = d2, n, w end
+        if okg and d2 then
+            data, refused, why = d2, n, w
+        else
+            -- (0.105.40b fix) the guard itself threw: the levels at or below the
+            -- deep floor (or beside a deep level) dropped, the rest let by; recorded
+            local okd, d3, n3, w3 = pcall(function() return util_module().dig_guard_drop_deep(data, ax, ay, 0, (not dry_run) and 'quickfort' or nil) end)
+            if okd and d3 then data, refused, why = d3, n3, w3 end
+        end
     end
     local stats = qf.apply_blueprint{mode = mode, command = command or 'run', dry_run = dry_run,
                                      data = data, pos = {x = ax, y = ay, z = 0}}
@@ -321,6 +328,79 @@ function dig_check_tiles(tiles, z, by)
     local ok, why, at = pcall(function() return util_module().dig_check_tiles(tiles, z, by) end)
     if ok then return why, at end
     return nil
+end
+
+-- (0.105.40b fix) the dig guard's part of a failure text: what it refused and
+-- why (quickfort_apply's stats), or ''
+function dig_guard_note(stats)
+    local ok, s = pcall(function()
+        if type(stats) == 'table' and stats.dig_guard_why then
+            return (' (the dig guard refused %d: %s: left alone: it guards the underworld)'):format(
+                stat(stats, 'dig_guard_refused'), stats.dig_guard_why)
+        end
+        return ''
+    end)
+    return ok and s or ''
+end
+
+-- (0.105.40b fix) once per loaded map: the AI's own dig designations on tiles
+-- the guard refuses taken back, only inside its open projects' areas (never
+-- a designation of the player's elsewhere); logged and kept for the report
+-- (deep_hazard.swept). Returns {removed, tiles} the first time, nil after.
+SWEEP_TILES_MAX = 20000
+function dig_guard_sweep(dry_run)
+    local U = util_module()
+    local key = U.dig_guard_map_key()
+    local g = U.DIG_GUARD
+    if g.swept_key == key then return nil end
+    local dm = U.deep_map()
+    if not (dm and dm.ok) then return nil end       -- the map not read yet: tried again later
+    if not dry_run then g.swept_key = key end
+    local out = {removed = 0, looked = 0, tiles = {}}
+    if not dm.floor and next(dm.levels) == nil then return out end
+    local No = df.tile_dig_designation.No
+    local Channel = df.tile_dig_designation.Channel
+    local data = load_projects()
+    for _, p in ipairs(data.list) do
+        if p.phase == 'dig' or p.phase == 'furnish' or p.phase == 'decorate' then
+            for _, a in ipairs(project_areas(p)) do
+                local x1, y1, x2, y2, z = math.tointeger(a.x1), math.tointeger(a.y1), math.tointeger(a.x2), math.tointeger(a.y2), math.tointeger(a.z)
+                if x1 and y1 and x2 and y2 and z then
+                    for y = y1, y2 do
+                        for x = x1, x2 do
+                            out.looked = out.looked + 1
+                            if out.looked > SWEEP_TILES_MAX then break end
+                            local d = dfhack.maps.getTileFlags(x, y, z)
+                            if d and d.dig ~= No then
+                                local why = U.dig_forbidden(x, y, z)
+                                if not why and Channel ~= nil and d.dig == Channel then
+                                    why = U.dig_forbidden(x, y, z - 1)
+                                    if why then why = 'a channel down to a tile ' .. why end
+                                end
+                                if why then
+                                    if not dry_run then
+                                        d.dig = No
+                                        U.dig_refused('sweep', x, y, z, why)
+                                    end
+                                    out.removed = out.removed + 1
+                                    if #out.tiles < 5 then table.insert(out.tiles, {x = x, y = y, z = z, why = why, project = p.id}) end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    if out.removed > 0 and not dry_run then
+        g.swept = {removed = out.removed, last = out.tiles[1]}
+        local t = out.tiles[1]
+        pcall(function()
+            print(('[ai-dig-guard] %d dig designation(s) of the AI taken back: %s at x%d y%d elevation %d'):format(
+                out.removed, t.why, t.x, t.y, ez(t.z)))
+        end)
+    end
+    return out
 end
 
 function stat(stats, name)

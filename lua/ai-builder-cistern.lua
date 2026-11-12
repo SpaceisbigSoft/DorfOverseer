@@ -1545,10 +1545,16 @@ function cistern_step(dry_run, prefs, tunnel)
         end
         -- dig-now: the plug gone at once, the gate still shut; then the gate opened
         -- (0.105.40b) the dig guard: a plug by raw adamantine, the spire or the underworld is never dug
+        -- (0.105.40b fix) held with the guard's reason (kept: d.guard_held), the
+        -- refusal counted once for the tile however often this step runs
         local deep = dig_check_tiles({{x = p.plug.x, y = p.plug.y}}, zi, (not dry_run) and 'cistern_plug' or nil)
         if deep then
-            return {ok = false, rejected = true, error = 'the plug is ' .. deep .. ': left alone: it guards the underworld'}
+            local why = ('the plug at x%d y%d, elevation %d is %s: left alone: it guards the underworld'):format(
+                p.plug.x, p.plug.y, ez(zi), deep)
+            if not dry_run and d.guard_held ~= why then d.guard_held = why; save_cistern(d) end
+            return {ok = false, rejected = true, held = true, stage = d.stage, error = why}
         end
+        if not dry_run and d.guard_held then d.guard_held = nil; save_cistern(d) end
         if not d.plug_by_hand and gate and gate.closed then
             designate({{x = p.plug.x, y = p.plug.y, text = 'd'}}, zi, 'dig')
             local pos = ('%d,%d,%d'):format(p.plug.x, p.plug.y, zi)
