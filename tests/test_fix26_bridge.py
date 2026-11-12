@@ -28,8 +28,10 @@ sys.path.insert(0, str(ROOT / "brain"))
 
 LUA_DIR = ROOT / "lua"
 HUB = (LUA_DIR / "ai-bridge.lua").read_text(encoding="utf-8")
-BRIDGE_PARTS = ["ai-bridge-report", "ai-bridge-orders", "ai-bridge-actions", "ai-bridge-probes"]
-BUILDER_PARTS = ["ai-builder-" + p for p in ("sites", "projects", "farms", "wells", "cistern", "surface", "rooms", "halls")]
+BRIDGE_PARTS = ["ai-bridge-report", "ai-bridge-orders", "ai-bridge-actions", "ai-bridge-probes",
+                "ai-bridge-design"]   # (D0)
+BUILDER_PARTS = ["ai-builder-" + p for p in ("sites", "projects", "farms", "wells", "cistern", "surface", "rooms", "halls",
+                                              "landmarks")]   # (D0)
 VERSION = re.search(r"^BRIDGE_VERSION = '([^']+)'", HUB, re.M).group(1)
 
 # the stub DFHack of tests/test_hygiene_bridge.py, read from it (not copied)
@@ -99,7 +101,7 @@ def _():
     assert dict(H.compiled) == {"ai-bridge-orders": 1}, dict(H.compiled)
     H.rerun(M)
     assert dict(H.compiled) == {"ai-bridge-orders": 1}, dict(H.compiled)
-    assert len(lua_list(LUA.eval("function(M) local o = {} for k in pairs(M.PART_CHUNKS) do o[#o+1] = k end return o end")(M))) == 4
+    assert len(lua_list(LUA.eval("function(M) local o = {} for k in pairs(M.PART_CHUNKS) do o[#o+1] = k end return o end")(M))) == len(BRIDGE_PARTS)
 
 
 @test("hub: without file times (an old DFHack) the parts are compiled each time, as before")
