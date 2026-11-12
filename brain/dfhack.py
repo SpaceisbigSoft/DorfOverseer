@@ -108,6 +108,16 @@ class GameNotRunning(DFHackError):
     """Dwarf Fortress (with DFHack) isn't running, so nothing answered."""
 
 
+class NotStarted(DFHackError):
+    """(0.105.40 review) dfhack-run could not be started at all (the program
+    gone, a command line too long): nothing reached the game."""
+
+
+class NoAnswer(DFHackError):
+    """(0.105.40 review) dfhack-run started but gave no answer in time: what
+    it carried may have run."""
+
+
 def configured_port(path: Path = CONFIG_PATH) -> int | None:
     """(0.105.1) The DFHack port this DF-AI folder talks to: config.json's
     "dfhack_port" (two games side by side: each DF-AI copy names its own
@@ -172,11 +182,12 @@ class DFHack:
                 env=port_env(self.port),        # (0.105.1) this folder's game, when two run
             )
         except subprocess.TimeoutExpired as e:
-            raise DFHackError(f"DFHack did not answer within {limit}s") from e
-        except OSError as e:
+            raise NoAnswer(f"DFHack did not answer within {limit}s") from e
+        except (OSError, ValueError) as e:
             # (0.100) Windows couldn't start it (the program gone mid-run, a
-            # command line over 32K): one failed call, not a crashed cycle
-            raise DFHackError(f"couldn't run dfhack-run: {e}") from e
+            # command line over 32K): one failed call, not a crashed cycle.
+            # (0.105.40 review) NotStarted: nothing reached the game
+            raise NotStarted(f"couldn't run dfhack-run: {e}") from e
 
         output = (proc.stdout or "") + (proc.stderr or "")
         # dfhack-run says "Could not connect" (exit 2) when nothing listens; on

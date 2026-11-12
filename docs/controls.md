@@ -191,13 +191,20 @@ hall, basic workshops and stockpiles are always built when missing.
   - *off*: nothing.
   - *safe* (the default): spatter (blood, vomit) outside the fort's areas
     (mud and snow kept), long-dead creatures nobody refers to off the game's
-    active list, and items no citizen has reached for a year, oldest first.
-    Never artifacts, named or written items, owned or stored items, items in
-    a building, bin or stockpile, your forbidden things, the fort's dead, or
-    anything a mood or a job needs.
-  - *full*: and hostile or wild creatures no citizen can reach for a season
-    (never citizens, pets, tame animals, visitors, merchants, prisoners or
-    historical figures).
+    active list, and, of the items no citizen has reached for a year, only
+    the low-value kinds, oldest first: remains, body parts, corpses of
+    nobody named (no historical figure, no citizen), vermin, anything
+    rotten, and cloth, thread and clothing worn to rags. Lost goods of any
+    other kind (stone, bars, weapons, furniture...) stay.
+  - *full*: and lost items of any kind, and hostile or wild creatures no
+    citizen can reach for a season (never citizens, pets, tame animals,
+    visitors, merchants, prisoners or historical figures).
+  - At every level, never: artifacts (or what may hold one), named or
+    written items, owned or stored items, items in a building, bin, cage,
+    minecart or stockpile, containers with anything in them, your forbidden
+    things, the fort's dead, anything a mood or a job needs, anything on a
+    tile no dwarf has seen yet, and anything (item or creature) in a cavern
+    the AI's own seal has shut off: it is cut off by the seal, not lost.
 
 ### Supplies, care and the fort's works
 

@@ -3162,13 +3162,23 @@ local function cleanup_num(a, key, lo, hi, name)
     return true, n
 end
 
--- unreachable items, unreachable for a year (min_age), oldest first: max a call
+-- unreachable items, unreachable for a year (min_age), oldest first: max a
+-- call. level: 'safe' (the default: only the low-value kinds) or 'full' (any
+-- kind; only while the Rules' World cleanup is at full: else read as safe)
 function act_cleanup_items(a)
     local o = {}
     for _, k in ipairs({{'max', 1, 500}, {'min_age', 100800, 40320000}, {'min_count', 0, 10000000}}) do
         local ok, v = cleanup_num(a, k[1], k[2], k[3], 'cleanup_items')
         if not ok then return reject(v) end
         o[k[1]] = v
+    end
+    if a.level ~= nil and a.level ~= 'safe' and a.level ~= 'full' then
+        return reject('cleanup_items: level is safe or full')
+    end
+    o.level = a.level or 'safe'
+    if o.level == 'full' then
+        local ok, s = pcall(function() return reqscript('ai-overseer-settings').load_settings() end)
+        if not (ok and type(s) == 'table' and s.world_cleanup == 'full') then o.level = 'safe' end
     end
     return reqscript('ai-cleanup').cleanup_items(o, a.dry_run == true)
 end

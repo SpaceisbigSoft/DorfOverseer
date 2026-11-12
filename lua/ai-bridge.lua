@@ -777,7 +777,8 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
     -- (0.105.40, 13e) world cleanup: items by state, the unreachable ones and
     -- creatures and for how long, spatter, the dead units (lua/ai-cleanup.lua).
     -- Not in SECTION_CACHE_DAYS: the module walks in slices of its own budget
-    -- (one full pass a game day at most) and sends its last pass between
+    -- (a pass spans many reports; a new one starts a game day after the last
+    -- started at the soonest) and sends its last finished pass between
     cleanup = function() return safe(function() return reqscript('ai-cleanup').report() end) end,
     -- (0.105.30) what the fort has built: finished constructions by shape and
     -- material, above or below ground, roofed surface tiles, the waiting ones
@@ -846,6 +847,12 @@ for _, name in ipairs({'unforbid_items', 'mark_melt', 'mark_dump', 'empty_dump',
     CACHE_INVALIDATES[name] = {'disposal'}
 end
 CACHE_INVALIDATES.set_standing_orders = {'disposal', 'dead'}
+-- (0.105.40 review) world cleanup: items deleted (the disposal marks and dump
+-- counts, industry's boulders and stocks), creatures vaporized (disposal's
+-- invaders), dead units off the active list; the spatter is in no cached section
+CACHE_INVALIDATES.cleanup_items = {'disposal', 'industry'}
+CACHE_INVALIDATES.cleanup_units = {'disposal'}
+CACHE_INVALIDATES.cleanup_dead_units = {'disposal', 'dead'}
 CACHE_INVALIDATES.renew_well_dig = {'registry'}   -- (0.105.31) as start_project
 CACHE_INVALIDATES.build_blueprint = {'registry'}   -- (D0) a landmark's levels are projects
 CACHE_INVALIDATES.landmark_step = {'registry'}

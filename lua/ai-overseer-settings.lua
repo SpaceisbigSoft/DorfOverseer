@@ -206,14 +206,17 @@ MISSION_GOALS = {off = {}, rescue = {'rescue', 'recover_artifact'},
 MISSION_HELP = 'rescue: citizens, artifacts; explore: + ruins; all: + raids, pillage, tribute, conquest (war)'
 -- (0.105.40, 13e) world cleanup (lua/ai-cleanup.lua, brain/planner_cleanup.py):
 -- what no dwarf can clean up, taken off the map past the AI's thresholds.
--- off: nothing; safe (the default): spatter, old dead-unit records and items
--- no citizen has reached for a year; full: and hostile or wild creatures no
--- citizen can reach for a season. Never artifacts, named, owned, stored or
--- the player's things; never citizens, pets, visitors, prisoners or
--- historical figures.
+-- off: nothing; safe (the default): spatter, old dead-unit records, and of
+-- the items no citizen has reached for a year only the low-value kinds
+-- (remains, body parts, unnamed corpses, vermin, rotten things, cloth and
+-- clothing worn to rags); full: lost items of any kind too, and hostile or
+-- wild creatures no citizen can reach for a season. Never artifacts, named,
+-- owned, stored or the player's things, nothing on an unexplored tile or
+-- behind the AI's own cavern seal; never citizens, pets, visitors,
+-- prisoners or historical figures.
 WORLD_CLEANUP_CHOICES = {'off', 'safe', 'full'}
-WORLD_CLEANUP_NAMES = {off = 'off', safe = 'safe: spatter, dead, lost items',
-                       full = 'full: and unreachable foes'}
+WORLD_CLEANUP_NAMES = {off = 'off', safe = 'safe: spatter, dead, lost junk',
+                       full = 'full: + lost goods, foes'}
 -- (0.105.27) the cycles set_rules may set from outside the window (key -> choices)
 RULE_CHOICES = {disposal = DISPOSAL_CHOICES, open_caverns = OPEN_CAVERNS_CHOICES,
                 design = DESIGN_MODES, landmark_pace = LANDMARK_PACES,    -- (D0)

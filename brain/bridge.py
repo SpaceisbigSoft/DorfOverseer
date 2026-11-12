@@ -9,10 +9,11 @@ from __future__ import annotations
 import json
 import logging
 import logging.handlers
+import subprocess
 import time
 from pathlib import Path
 
-from dfhack import PROJECT_ROOT, DFHack, DFHackError, GameNotRunning, logs_dir  # noqa: F401
+from dfhack import PROJECT_ROOT, DFHack, DFHackError, GameNotRunning, NotStarted, logs_dir  # noqa: F401
 
 # Must match PROTOCOL in lua/ai-bridge.lua.
 EXPECTED_PROTOCOL = 1
@@ -36,8 +37,12 @@ def _setup_logger() -> logging.Logger:
 
 REPORT_TIMEOUT_S = 30.0      # (0.100.1) the full report's own time limit
 # (0.105.40, 13e) every bridge call's time, summed for this process (across
-# reconnects): brain/perf.py turns it into the AI's ms per game day
+# reconnects): brain/perf.py turns it into the AI's ms per game day. The
+# reports, the actions and the batches count; (0.105.40 review) the `status`
+# polls don't (every 2 s while the game runs or waits paused: the watch on
+# the game, not the AI's work)
 CALL_MS = {"ms": 0.0, "calls": 0}
+CALL_MS_SKIP = frozenset({"status"})
 
 
 def note_call_ms(ms: float) -> None:
@@ -46,9 +51,28 @@ def note_call_ms(ms: float) -> None:
 
 # (0.105.40, Phase 13e) `batch`: several actions in one dfhack-run call (each
 # call costs ~35 ms before it does anything). The caps match lua/ai-bridge.lua
-# (BATCH_MAX_ACTIONS); the size stays under Windows' 32,767-character command line.
+# (BATCH_MAX_ACTIONS); the size stays under Windows' 32,767-character command
+# line: the JSON itself at most BATCH_MAX_CHARS, and (0.105.40 review) the
+# argument as Windows quotes it (subprocess.list2cmdline: every '"' in the
+# JSON escaped, so the text grows) at most BATCH_MAX_CMDLINE
 BATCH_MAX_ACTIONS = 20
 BATCH_MAX_CHARS = 24000
+BATCH_MAX_CMDLINE = 30000
+
+
+def batch_text(payloads: list) -> str:
+    """The batch command's argument: the actions' JSON as a list."""
+    return "[" + ",".join(payloads) + "]"
+
+
+def cmdline_len(text: str) -> int:
+    """How long the argument is on a Windows command line (quoted, escaped)."""
+    return len(subprocess.list2cmdline([text]))
+
+
+def batch_fits(payloads: list) -> bool:
+    text = batch_text(payloads)
+    return len(text) <= BATCH_MAX_CHARS and cmdline_len(text) <= BATCH_MAX_CMDLINE
 # Never sent in a batch (as BATCH_NEVER in lua/ai-bridge.lua): they drive a
 # screen over later frames or run long; they go alone, as before
 BATCH_NEVER = frozenset({
@@ -82,7 +106,8 @@ class Bridge:
             self.log.error("%s -> %s", " ".join(args), e)
             raise
         ms = (time.perf_counter() - start) * 1000
-        note_call_ms(ms)
+        if not (args and args[0] in CALL_MS_SKIP):
+            note_call_ms(ms)
         # The overseer checks status every 2 s; logging each one would fill the
         # log with noise. Everything else (reports, actions, events) is logged.
         level = logging.DEBUG if args and args[0] == "status" and reply.get("ok") else logging.INFO
@@ -327,20 +352,20 @@ class Bridge:
         """The held actions (and the host, last) cut into calls under the caps;
         an action too long for any batch alone goes by act."""
         items = [(a, cb, False) for a, cb in held] + ([(host, None, True)] if host is not None else [])
-        chunks, cur, size = [], [], 2
+        chunks, cur, texts = [], [], []
         for item in items:
-            n = len(json.dumps(item[0], separators=(",", ":"))) + 1
-            if n + 2 > BATCH_MAX_CHARS:
+            payload = json.dumps(item[0], separators=(",", ":"))
+            if not batch_fits([payload]):
                 if cur:
                     chunks.append(cur)
                 chunks.append([item])          # alone: by act
-                cur, size = [], 2
+                cur, texts = [], []
                 continue
-            if cur and (len(cur) >= BATCH_MAX_ACTIONS or size + n > BATCH_MAX_CHARS):
+            if cur and (len(cur) >= BATCH_MAX_ACTIONS or not batch_fits(texts + [payload])):
                 chunks.append(cur)
-                cur, size = [], 2
+                cur, texts = [], []
             cur.append(item)
-            size += n
+            texts.append(payload)
         if cur:
             chunks.append(cur)
         return chunks
@@ -392,12 +417,20 @@ class Bridge:
         no answer while it held only bookkeeping), or the DFHackError when
         no answer came and a real action was in it."""
         payloads = [json.dumps(a, separators=(",", ":")) for a in actions]
-        text = "[" + ",".join(payloads) + "]"
+        text = batch_text(payloads)
         start = time.perf_counter()
         limit = self.df.timeout_s + 2.0 * (len(actions) - 1)
         try:
             reply = self.df.run_json("ai-bridge", "batch", text, timeout=limit)
+        except (NotStarted, GameNotRunning) as e:
+            # (0.105.40 review) dfhack-run never started (a command line too
+            # long, the program gone) or nothing listened: nothing ran, so
+            # each is sent again alone
+            self.log.error("batch of %d %s -> %s; sent one by one", len(actions), text, e)
+            return None
         except DFHackError as e:
+            # started, and no answer (a timeout, a failed run): with a real
+            # action in it, it may have run
             self.log.error("batch of %d %s -> %s", len(actions), text, e)
             return e if has_host else None
         except ValueError as e:

@@ -47,7 +47,8 @@ YEAR, SEASON, DAY = 403200, 100800, 1200
 FAKE = r"""
 local src = ...
 local W = {items = {}, units = {}, all_units = {}, blocks = {}, buildings = {}, site = {}, tiles = {},
-           at_tile = {}, incidents = {}, citizens = {}, removed = {}, jobs = {}, refs = {}, assigned = {}}
+           at_tile = {}, incidents = {}, citizens = {}, removed = {}, jobs = {}, refs = {}, assigned = {},
+           tflags = {}, gid = {}}
 local env = setmetatable({}, {__index = _G})
 local function kind_of(self) return self.kind end
 function W.mk(t)
@@ -118,7 +119,7 @@ env.df = {
     incident = {find = function(id) return W.incidents[id] end},
     creature_raw = {find = function(r) return {creature_id = 'RACE' .. r} end},
     item_type = setmetatable({}, {__index = function(_, k) return k end}),
-    general_ref_type = {IS_ARTIFACT = 'IS_ARTIFACT'},
+    general_ref_type = {IS_ARTIFACT = 'IS_ARTIFACT', CONTAINS_UNIT = 'CONTAINS_UNIT', CONTAINS_ITEM = 'CONTAINS_ITEM'},
     improvement_type = {WRITING = 'WRITING', PAGES = 'PAGES'},
     building_type = {Stockpile = 'Stockpile'},
     block_square_event_type = {material_spatter = 1},
@@ -131,15 +132,18 @@ env.dfhack = {
              isDomesticated = flag('domestic'), isVisitor = flag('visitor'), isMerchant = flag('merchant'),
              isDiplomat = flag('diplomat'), isForest = flag('forest'), isPrisoner = flag('prisoner'),
              isDanger = flag('danger'), isInvader = flag('invader'), isWildlife = flag('wildlife'),
+             isOwnRace = function(u) return u.race == 1 end,
              getCitizens = function() return W.citizens end,
              getPosition = function(u) return u.pos.x, u.pos.y, u.pos.z end},
     items = {getPosition = function(it) return it.pos.x, it.pos.y, it.pos.z end,
              getOwner = function(it) return it.owner end,
              getHolderUnit = function(it) return it.holder end,
              getGeneralRef = function(it, t) return (it.refs or {})[t] end,
+             getContainedItems = function(it) return it.contained or {} end,
              remove = function(it) it.flags.removed = true; table.insert(W.removed, it.id); return true end},
     maps = {getWalkableGroup = function(p) return W.group(p.x, p.y, p.z) end,
-            getTileFlags = function() return {} end},
+            getTileFlags = function(x, y, z) return W.tflags[key(x, y, z)] or {} end,
+            getTileBlock = function(x, y, z) return {global_feature = W.gid[key(x, y, z)] or 0} end},
     buildings = {findAtTile = function(p) return W.at_tile[key(p.x, p.y, p.z)] end},
     persistent = {getSiteData = function(k, d) local v = W.site[k]; if v == nil then return d end return v end,
                   saveSiteData = function(k, v) W.site[k] = v end},
@@ -341,7 +345,7 @@ def _():
     assert c["unreachable_old"] == 0 and c["kept"].get("job") == 1, c
 
 
-@test("cleanup_items: only after a year unreachable, oldest first, max a call; a dry run counts and removes nothing")
+@test("cleanup_items: only after a year unreachable, oldest first, max a call; a dry run counts and removes nothing (boulders: level full)")
 def _():
     lua, env, w = world()
     fort(lua, w)
@@ -350,21 +354,21 @@ def _():
     advance(lua, env, SEASON)
     lost_items(lua, w, 2, start=2000)       # found a season later: younger
     full_pass(env)
-    r = env.cleanup_items(T(lua, {"max": 2}), False)
+    r = env.cleanup_items(T(lua, {"max": 2, "level": "full"}), False)
     assert not r.ok and r.rejected and r.removed == 0, py(r)       # none a year yet
     advance(lua, env, YEAR - SEASON + DAY)
     full_pass(env)
-    d = env.cleanup_items(T(lua, {"max": 2}), True)
+    d = env.cleanup_items(T(lua, {"max": 2, "level": "full"}), True)
     assert d.ok and d.dry_run and d.would_remove == 2 and d.candidates == 3 and len(list(w.removed.values())) == 0, py(d)
-    r = env.cleanup_items(T(lua, {"max": 2}), False)
+    r = env.cleanup_items(T(lua, {"max": 2, "level": "full"}), False)
     assert r.ok and r.removed == 2 and r.more and r.left == 1, py(r)
     assert sorted(w.removed.values()) == [1000, 1001], py(w.removed)
-    r = env.cleanup_items(T(lua, {"max": 2}), False)
+    r = env.cleanup_items(T(lua, {"max": 2, "level": "full"}), False)
     assert r.ok and r.removed == 1 and not r.more and list(w.removed.values())[-1] == 1002, py(r)
     # the report follows at once (the last pass's counts)
     assert py(env.report()["items"])["unreachable_old"] == 0
     # min_age: never under a season
-    r = env.cleanup_items(T(lua, {"min_age": 10}), True)
+    r = env.cleanup_items(T(lua, {"min_age": 10, "level": "full"}), True)
     assert r.ok and r.candidates == 2, py(r)         # the younger two: a season and more by now
 
 
@@ -481,8 +485,9 @@ def _():
 
 # --- 3. dead units and spatter ----------------------------------------------------------
 
-@test("cleanup_dead_units: only the long dead nobody refers to leave the active list (never the fort's own, a ghost, "
-      "a squad's or a burrow's, nor one whose death can't be read); units.all keeps every one")
+@test("cleanup_dead_units: only the long dead nobody refers to leave the active list (never the fort's own or its "
+      "race, a named merchant or diplomat, a ghost, a squad's or a burrow's, nor one whose death can't be read); "
+      "units.all keeps every one")
 def _():
     lua, env, w = world()
     fort(lua, w)
@@ -498,18 +503,19 @@ def _():
     mk(id=8006, civ_id=33, race=4, military={"squad_id": 2})
     mk(id=8007, civ_id=33, race=4, burrows=[3])
     mk(id=8008, civ_id=33, race=4, death=-1)                  # when: unknown
-    other_dwarf = mk(id=8009, civ_id=44, race=1)              # a foreign dwarf, long dead
+    mk(id=8009, civ_id=44, race=1)                            # a foreign dwarf: the fort's race, kept (fix/dead-units)
+    mk(id=8010, civ_id=33, race=4, hist_figure_id=9, merchant=True)   # a named merchant: kept
     n_all = len(list(w.all_units.values()))
     c = py(full_pass(env)["units"])
-    assert c["dead_active"] == 9 and c["dead_removable"] == 2 and c["dead_all"] == 9 and c["all"] == n_all, c
+    assert c["dead_active"] == 10 and c["dead_removable"] == 1 and c["dead_all"] == 10 and c["all"] == n_all, c
     d = env.cleanup_dead_units(T(lua, {}), True)
-    assert d.ok and d.would_remove == 2 and len(list(w.units.values())) == n_all, py(d)
+    assert d.ok and d.would_remove == 1 and len(list(w.units.values())) == n_all, py(d)
     kept = py(d)["kept"]
-    assert kept == {"recent": 1, "own": 2, "ghost": 1, "referenced": 2, "when": 1}, kept
+    assert kept == {"recent": 1, "own": 3, "ghost": 1, "referenced": 2, "when": 1, "visitor": 1}, kept
     r = env.cleanup_dead_units(T(lua, {}), False)
-    assert r.ok and r.removed == 2, py(r)
+    assert r.ok and r.removed == 1, py(r)
     ids = {u.id for u in w.units.values()}
-    assert 8001 not in ids and 8009 not in ids and len(ids) == n_all - 2, ids
+    assert 8001 not in ids and 8009 in ids and 8010 in ids and len(ids) == n_all - 1, ids
     assert len(list(w.all_units.values())) == n_all       # the units themselves stay (nothing dangles)
     r = env.cleanup_dead_units(T(lua, {}), False)
     assert not r.ok and r.rejected, py(r)
@@ -778,7 +784,8 @@ def _():
     props, _ = mine(fort_state(at), m)
     assert sorted(p.action["type"] for p in props) == ["cleanup_dead_units", "cleanup_items", "cleanup_spatter"]
     it = [p for p in props if p.action["type"] == "cleanup_items"][0]
-    assert it.action == {"type": "cleanup_items", "max": CFG["cleanup_items_batch"], "min_age": 403200}, it.action
+    assert it.action == {"type": "cleanup_items", "max": CFG["cleanup_items_batch"], "min_age": 403200,
+                         "level": "safe"}, it.action
     sp = [p for p in props if p.action["type"] == "cleanup_spatter"][0]
     assert sp.action["scope"] == "outside"
 
@@ -861,6 +868,251 @@ def _():
     assert not [x for x in digest.digest(fort_state()).splitlines() if x.startswith("CLEANUP")]
     assert "cleanup" not in digest.normalize(fort_state())["_errors"]
     assert "cleanup" in digest.normalize(fort_state({"error": "x"}))["_errors"]
+
+
+# --- 4b. (0.105.40 review) the verifier's findings ------------------------------------------
+
+def year_on(lua, env):
+    full_pass(env)
+    advance(lua, env, YEAR + DAY)
+    return full_pass(env)
+
+
+@test("review 1: an item on a tile no one has seen is not followed (not counted toward the thresholds), nor deleted "
+      "at any level; a creature there stays")
+def _():
+    lua, env, w = world()
+    fort(lua, w)
+    p = cavern(lua, w, 20, 20)
+    w.tflags["20,20,50"] = T(lua, {"hidden": True})
+    w.mk(T(lua, {"id": 77, "kind": "REMAINS", "race": 9, "pos": p}))
+    w.mk(T(lua, {"id": 900, "kind": "REMAINS", "race": 9, "pos": cavern(lua, w, 10, 10)}))   # a seen one, for contrast
+    w.unit(T(lua, {"id": 7001, "danger": True, "pos": p}))
+    c = py(year_on(lua, env)["items"])
+    assert c["hidden_tile"] == 1 and c["unreachable"] == 1 and c["unreachable_old"] == 1 and c["tracked"] == 1, c
+    r = env.cleanup_items(T(lua, {"level": "full"}), True)
+    assert r.ok and r.would_remove == 1, py(r)
+    # reached by the follow list some other way (an old save's list): item_keep says hidden at the time
+    env.state()["items"][77] = 0
+    r = env.cleanup_items(T(lua, {"level": "full"}), True)
+    assert r.would_remove == 1 and py(r)["kept"].get("hidden") == 1, py(r)
+    assert env.unit_keep(w.units[2]) == "hidden"
+    advance(lua, env, SEASON)
+    u = py(full_pass(env)["units"])
+    assert u["unreachable_old"] == 0, u
+    assert not env.cleanup_units(T(lua, {}), False).ok
+
+
+ITEM_FLAG_KEEPS = [
+    ("hidden", {"flags": {"hidden": True}}),
+    ("worldgen", {"flags": {"from_worldgen": True}}),
+    ("artifact", {"flags2": {"might_contain_artifact": True}}),
+    ("location", {"flags2": {"location_reserved": True}}),
+    ("riding", {"flags2": {"has_rider": True}}),
+    ("container", {"refs": {"CONTAINS_UNIT": True}}),
+    ("container", {"refs": {"CONTAINS_ITEM": True}}),
+    ("container", {"contained": [{"id": 5}]}),
+    ("vehicle", {"vehicle": 3}),
+]
+
+
+@test("review 1-2: kept at every level: flags hidden, from_worldgen, might_contain_artifact, location_reserved, "
+      "has_rider; a minecart; a cage or trap holding a creature; anything holding an item; no flags2 at all is no error")
+def _():
+    for why, extra in ITEM_FLAG_KEEPS:
+        lua, env, w = world()
+        fort(lua, w)
+        it = {"id": 77, "kind": "REMAINS", "race": 9, "pos": cavern(lua, w, 20, 20),
+              "flags": dict(extra.get("flags", {}))}
+        for k in ("flags2", "refs", "contained"):
+            if k in extra:
+                it[k] = extra[k]
+        item = w.mk(T(lua, it))
+        if "vehicle" in extra:
+            item.getVehicleID = lua.eval(f"function() return {extra['vehicle']} end")
+        c = py(year_on(lua, env)["items"])
+        assert c["unreachable_old"] == 0 and (c["kept"] or {}).get(why) == 1, (why, c)
+        r = env.cleanup_items(T(lua, {"level": "full"}), False)
+        assert not r.ok and r.removed == 0 and not list(w.removed.values()), (why, py(r))
+    # no flags2, no getVehicleID, a vehicle id of -1: the item may go
+    lua, env, w = world()
+    fort(lua, w)
+    item = w.mk(T(lua, {"id": 77, "kind": "REMAINS", "race": 9, "pos": cavern(lua, w, 20, 20)}))
+    item.getVehicleID = lua.eval("function() return -1 end")
+    year_on(lua, env)
+    assert env.cleanup_items(T(lua, {}), False).removed == 1
+
+
+@test("review 3: at 'safe' only the low-value kinds go (remains, body parts, unnamed corpses, vermin, rotten, rags); "
+      "goods and a named corpse stay, still followed for 'full'; the report counts unreachable_old_safe")
+def _():
+    lua, env, w = world()
+    fort(lua, w)
+    cheap = [("REMAINS", {"race": 9}), ("CORPSEPIECE", {"race": 9}), ("CORPSE", {"race": 9}), ("VERMIN", {}),
+             ("FISH_RAW", {"flags": {"rotten": True}}), ("CLOTH", {"wear": 3}), ("SHOES", {"wear": 3}),
+             ("THREAD", {"wear": 4})]
+    dear = [("BOULDER", {}), ("BAR", {}), ("WEAPON", {}), ("CLOTH", {"wear": 1}), ("ARMOR", {"wear": 2}),
+            ("CORPSE", {"race": 9, "hist_figure_id": 12}), ("AMMO", {})]
+    for i, (kind, extra) in enumerate(cheap + dear):
+        w.mk(T(lua, {"id": 1000 + i, "kind": kind, "pos": cavern(lua, w, 10 + i, 10), **extra}))   # (race 9: no dwarf's)
+    c = py(year_on(lua, env)["items"])
+    assert c["unreachable_old"] == len(cheap) + len(dear) and c["unreachable_old_safe"] == len(cheap), c
+    d = env.cleanup_items(T(lua, {}), True)
+    assert d.ok and d.level == "safe" and d.candidates == len(cheap) and py(d)["kept"] == {"value": len(dear)}, py(d)
+    r = env.cleanup_items(T(lua, {"max": 500}), False)
+    assert r.removed == len(cheap) and sorted(w.removed.values()) == list(range(1000, 1000 + len(cheap))), py(r)
+    assert env.state().n_items == len(dear)                      # still followed
+    assert py(env.report()["items"])["unreachable_old_safe"] == 0
+    r = env.cleanup_items(T(lua, {"level": "full", "max": 500}), False)
+    assert r.removed == len(dear) and r.level == "full", py(r)
+
+
+@test("review 3: anything in a cavern the AI's seal shut off stays at every level (all caverns, or the layer sealed; "
+      "another layer's not); a creature there too")
+def _():
+    lua, env, w = world()
+    fort(lua, w)
+    a, b = cavern(lua, w, 20, 20), cavern(lua, w, 21, 20, z=30)
+    for p, gid in ((a, 7), (b, 8)):
+        k = f"{p['x']},{p['y']},{p['z']}"
+        w.tflags[k] = T(lua, {"feature_global": True})
+        w.gid[k] = gid
+    w.mk(T(lua, {"id": 77, "kind": "REMAINS", "race": 9, "pos": a}))
+    w.mk(T(lua, {"id": 78, "kind": "REMAINS", "race": 9, "pos": b}))
+    gob = w.unit(T(lua, {"id": 7001, "danger": True, "pos": a}))
+    w.site["ai-overseer/threats"] = T(lua, {"sealed": {"all caverns": {"ids": [1], "tick": 0}}})
+    c = py(year_on(lua, env)["items"])
+    assert c["unreachable_old"] == 0 and c["kept"].get("sealed") == 2, c
+    assert not env.cleanup_items(T(lua, {"level": "full"}), False).ok and not list(w.removed.values())
+    assert env.unit_keep(gob) == "sealed"
+    # one layer sealed (an older seal's record): only its tiles; a layer that can't be named counts as sealed
+    w.site["ai-overseer/threats"] = T(lua, {"sealed": {"Cavern1": {"ids": [1], "tick": 0}}})
+    env.cavern_layer_names = lua.eval("function() return {[7] = 'Cavern1', [8] = 'Cavern2'} end")
+    advance(lua, env, DAY + 1)
+    c = py(year_on(lua, env)["items"])                  # 78 followed from now: a year on, old enough
+    assert c["kept"].get("sealed") == 1 and c["unreachable_old"] == 1, c
+    r = env.cleanup_items(T(lua, {"level": "full"}), False)
+    assert r.removed == 1 and list(w.removed.values()) == [78], py(r)
+    env.cavern_layer_names = lua.eval("function() return {} end")
+    assert env.in_sealed_cavern(env.sealed_layers(), 21, 20, 30)
+    # no seal: nothing kept for it
+    w.site["ai-overseer/threats"] = T(lua, {"sealed": {}})
+    assert not env.in_sealed_cavern(env.sealed_layers(), 20, 20, 50)
+
+
+@test("review 5: a walk resumes after the id it stopped at, not an index (items removed in front between reports); "
+      "resume_at's fast path and binary search")
+def _():
+    lua, env, w = world()
+    fort(lua, w)
+    for i in range(1, 1501):
+        w.mk(T(lua, {"id": i, "kind": "BOULDER"}))
+    lost_items(lua, w, 10, start=2000)
+    w.CLOCK, w.CLOCK_STEP = 0.0, 0.015
+    r = env.report()
+    p = env.state()["pass"]
+    assert r.walking and p.phase == "items" and 0 < p.i < 1500, (p.phase, p.i)
+    lua.execute("local t = ...; for _ = 1, 600 do table.remove(t, 1) end", w["items"])
+    for _ in range(100):
+        if not env.report().walking:
+            break
+    w.CLOCK = None
+    c = py(env.report()["items"])
+    assert c["unreachable"] == 10 and c["tracked"] == 10, c
+    L = lua.eval("{ {id = 1}, {id = 3}, {id = 5}, {id = 7} }")
+    assert env.resume_at(L, 4, 2, 3) == 2                     # the one before i is still the last walked
+    lua.execute("table.remove(..., 1)", L)                    # id 1 gone: 3 now at index 0
+    assert env.resume_at(L, 3, 2, 3) == 1
+    assert env.resume_at(L, 3, 2, 4) == 1 and env.resume_at(L, 3, 2, 9) == 3 and env.resume_at(L, 3, 0, None) == 0
+
+
+@test("review 5: a pass that doesn't see a followed item keeps following it unless it is gone")
+def _():
+    lua, env, w = world()
+    fort(lua, w)
+    items = lost_items(lua, w, 3)
+    full_pass(env)
+    g = env.df["global"].world["items"]["other"]
+    g.IN_PLAY = lua.table()                                    # the walk sees none of them
+    items[0].flags.removed = True
+    advance(lua, env, DAY + 1)
+    c = py(full_pass(env)["items"])
+    assert c["tracked"] == 2, c
+    g.IN_PLAY = w["items"]
+    advance(lua, env, YEAR)
+    assert py(full_pass(env)["items"])["unreachable_old"] == 2
+
+
+@test("review 6: a spatter event is freed only when it came off the block's list")
+def _():
+    lua, env, w = world()
+    fort(lua, w)
+    b = w.block(T(lua, {"x": 0, "y": 0, "z": 100}))
+    ev = SP.spatter(lua)
+    b.block_events = lua.eval("""function(ev) local raw = {ev}
+        return setmetatable({}, {__index = raw, __len = function() return #raw end,
+                                 __newindex = function() error('read-only') end}) end""")(ev)
+    r = env.cleanup_spatter(T(lua, {}), False)
+    assert ev.deleted is False and r.removed == 0 and r.failed == 1, py(r)
+    ok = w.block(T(lua, {"x": 0, "y": 0, "z": 90}))
+    ev2 = SP.spatter(lua)
+    ok.block_events = lua.table_from([ev2])
+    r = env.cleanup_spatter(T(lua, {}), False)
+    assert ev2.deleted is True and r.removed == 1, py(r)
+
+
+@test("review 9: the cleanup actions clear the cached sections whose counts they change")
+def _():
+    inv = BRIDGE[BRIDGE.index("CACHE_INVALIDATES = {"):BRIDGE.index("SECTION_CACHE = SECTION_CACHE or {}")]
+    assert code_has(inv, "CACHE_INVALIDATES.cleanup_items = {'disposal', 'industry'}")
+    assert code_has(inv, "CACHE_INVALIDATES.cleanup_units = {'disposal'}")
+    assert code_has(inv, "CACHE_INVALIDATES.cleanup_dead_units = {'disposal', 'dead'}")
+    cleanup_src = (LUA_DIR / "ai-cleanup.lua").read_text(encoding="utf-8")
+    assert "one full pass at most a game day" not in cleanup_src and "a pass spans many reports" in cleanup_src
+    assert "a pass spans many reports" in BRIDGE
+
+
+@test("review 3: the bridge's cleanup_items: level safe or full (else refused), safe by default; full only while "
+      "the Rules say full")
+def _():
+    lua = LuaRuntime(unpack_returned_tuples=True)
+    f = lua.eval("""function(src, setting)
+        local seen = {}
+        local env = setmetatable({BRIDGE_VERSION = 'x', OUT_DIR = '/tmp'}, {__index = _G})
+        env.require = function(n) return {} end
+        env.reject = function(m) return {ok = false, rejected = true, error = m} end
+        env.int_in = function(v, lo, hi) local n = math.tointeger(tonumber(v)); if n == nil or n < lo or n > hi then return nil end return n end
+        env.reqscript = function(n)
+            if n == 'ai-overseer-settings' then return {load_settings = function() return {world_cleanup = setting} end} end
+            return {cleanup_items = function(o, dry) seen[#seen + 1] = o.level; return {ok = true} end}
+        end
+        assert(load(src, 'actions', 't', env))()
+        return env, seen
+    end""")
+    env, seen = f(ACTS, "safe")
+    assert env.act_cleanup_items(T(lua, {"level": "nuke"})).rejected
+    env.act_cleanup_items(T(lua, {}))
+    env.act_cleanup_items(T(lua, {"level": "full"}))
+    assert [seen[i] for i in (1, 2)] == ["safe", "safe"]
+    env, seen = f(ACTS, "full")
+    env.act_cleanup_items(T(lua, {"level": "full"}))
+    assert seen[1] == "full"
+
+
+@test("review 3: the brain: at safe the items' count is unreachable_old_safe and the call says level safe; at full "
+      "unreachable_old and level full")
+def _():
+    m = Memory()
+    m.cleanup_seen = {"dry": {"items": 1}}
+    th = PC.cleanup_thresholds(fort_state(), CFG, section())["items"]
+    c = section(items__unreachable_old=th * 3, items__unreachable_old_safe=th - 1)
+    assert mine(fort_state(c), m)[0] == []
+    props, _ = mine(fort_state(c, world_cleanup="full"), m)
+    assert len(props) == 1 and props[0].action["level"] == "full", props
+    c = section(items__unreachable_old=th * 3, items__unreachable_old_safe=th)
+    props, _ = mine(fort_state(c), m)
+    assert len(props) == 1 and props[0].action["level"] == "safe" and "low-value" in props[0].reason, props
+
 
 
 # --- scripts identity: without a cleanup section, plan() is main's --------------------------

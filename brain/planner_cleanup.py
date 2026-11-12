@@ -8,7 +8,9 @@ the spatter on the map (inside the fort's built-up areas and outside), the
 dead units on the game's active list (and how many are long dead and
 unreferenced), the hostile and wild creatures no citizen can reach and for
 how long, and the blocks with flowing liquid. The bridge walks them in
-slices of its own budget, one full pass a game day at most.
+slices of its own budget: a pass spans many reports (a slice each), and a
+new one starts a game day after the last started at the soonest; till it
+ends, the last finished pass is what the report holds.
 
 Dwarves first: loose refuse, forbidden clutter, the dump and the dead are
 the existing rules' (planner_industry _disposal_rules and _clutter_rules:
@@ -22,7 +24,10 @@ scrub_dead_units). This rule takes only what no dwarf can:
     off the game's active list (as DFHack's fix/dead-units);
   * cleanup_items: items no citizen has reached for a year, oldest first, in
     batches (never artifacts, named, owned, stored or the player's things,
-    nothing a mood or a job needs: the bridge's own checks);
+    nothing a mood or a job needs, nothing on an unexplored tile or behind
+    the AI's own cavern seal: the bridge's own checks); at 'safe' only the
+    low-value kinds (remains, body parts, unnamed corpses, vermin, rotten
+    things, rags: the report's unreachable_old_safe), at 'full' any kind;
   * cleanup_units (Rules `world_cleanup` at 'full' only): hostile or wild
     creatures that are no historical figure, unreachable a season.
 
@@ -33,7 +38,8 @@ with the items on the map. The first time per kind the call is a dry run
 and before every real deletion the overseer writes a journal line.
 
 The Rules switch `world_cleanup`: off (nothing), safe (the default:
-spatter, dead units, items), full (and creatures). Without a `cleanup`
+spatter, dead units, lost refuse and rags), full (and lost goods of any
+kind, and creatures). Without a `cleanup`
 section in the report (an older bridge), or before its first full pass,
 nothing here proposes or says anything.
 """
@@ -141,14 +147,20 @@ def _world_cleanup_rule(s: dict, cfg: dict, proposals: list, notes: list, memory
                 f"{dead} of the {_int(un.get('dead_active'))} dead on the game's active list died over a year ago "
                 f"and nothing refers to them{why_slow} (past {th['dead']}): taken off the list (the fort's own "
                 "dead, ghosts and anyone in a squad or burrow are kept)")
-    # items no citizen has reached for a year
+    # items no citizen has reached for a year; at 'safe' only the low-value
+    # kinds count (the bridge deletes no other at safe)
+    full = rules.get("world_cleanup") == "full"
     old = _int(it.get("unreachable_old"))
+    if not full and "unreachable_old_safe" in it:
+        old = _int(it.get("unreachable_old_safe"))
     if old >= th["items"]:
         batch = min(cfg["cleanup_items_batch"], 500)
-        propose("items", {"type": "cleanup_items", "max": batch, "min_age": cfg["cleanup_items_age_ticks"]},
-                f"{old} of the {_int(it.get('total'))} items on the map lie where no citizen has reached for a "
+        what = "items" if full else "low-value items (remains, unnamed corpses, rotten things, rags)"
+        propose("items", {"type": "cleanup_items", "max": batch, "min_age": cfg["cleanup_items_age_ticks"],
+                          "level": "full" if full else "safe"},
+                f"{old} {what} of the {_int(it.get('total'))} on the map lie where no citizen has reached for a "
                 f"year{why_slow} (past {th['items']}): the oldest {batch} deleted (never artifacts, named, owned, "
-                "stored, the player's or what a mood or job needs)")
+                "stored, the player's, what a mood or job needs, or anything behind the AI's cavern seal)")
     # creatures no citizen can reach (full only)
     ucount = _int(un.get("unreachable_old"))
     if ucount >= th["units"]:

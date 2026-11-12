@@ -25,7 +25,7 @@ sys.path.insert(0, str(ROOT / "brain"))
 import overseer  # noqa: E402
 import bridge as bridge_mod  # noqa: E402
 from bridge import Bridge, BridgeError  # noqa: E402
-from dfhack import DFHackError  # noqa: E402
+from dfhack import DFHackError, NotStarted  # noqa: E402
 
 LUA_DIR = ROOT / "lua"
 HUB = (LUA_DIR / "ai-bridge.lua").read_text(encoding="utf-8")
@@ -115,6 +115,8 @@ class FakeGame:
             acts = json.loads(rest[0])
             if self.fail_batch == "timeout":
                 raise DFHackError("DFHack did not answer within 10s")
+            if self.fail_batch == "nostart":
+                raise NotStarted("couldn't run dfhack-run: [WinError 206] The filename or extension is too long")
             res = [self._act(a) for a in acts]
             return {"ok": True, "results": res, "times": [1] * len(res), "ms": len(res)}
         return {"ok": True}
@@ -445,6 +447,64 @@ def _():
     assert len(acts) == 2 and '"type":"report_status"' in acts[0] and '"type":"save_memory"' in acts[1], lines
     assert all(re.search(r"-> \{.*\} \(\d+ ms\)$", ln) for ln in acts), acts
 
+
+
+@test("review 4: dfhack-run never started (a command line too long): nothing ran, so each goes again alone, "
+      "a real action too; the host's answer kept")
+def _():
+    b, g = game(fail_batch="nostart")
+    got = []
+    b.defer({"type": "report_status", "status": {}}, lambda r, e: got.append(r and r["ok"]))
+    r = b.act({"type": "work_order", "recipe": "brew_drink"})
+    assert g.calls == ["batch", "act", "act"] and r["ok"] and got == [True], g.calls
+    assert [a["type"] for a in g.ran] == ["report_status", "work_order"]
+
+
+@test("review 4: the batch's size is measured as Windows quotes it (list2cmdline, quotes escaped) against "
+      "BATCH_MAX_CMDLINE, beside the raw cap")
+def _():
+    import subprocess
+    q = '"' * 4000              # JSON: 8,000 characters each; quoted for the command line: 16,000 each
+    acts = [{"type": "set_learned", "learned": {"t": q}}, {"type": "set_culture", "culture": {"t": q}}]
+    text = bridge_mod.batch_text([json.dumps(a, separators=(",", ":")) for a in acts])
+    assert len(text) <= bridge_mod.BATCH_MAX_CHARS < len(subprocess.list2cmdline([text])), len(text)
+    assert bridge_mod.cmdline_len(text) > bridge_mod.BATCH_MAX_CMDLINE == 30000
+    b, g = game()
+    for a in acts:
+        b.defer(a, None)
+    b.flush()
+    assert g.calls == ["act", "act"], g.calls                  # too long together: each alone
+    g.calls.clear()
+    small = '"' * 2000
+    for a in acts:
+        b.defer({**a, list(a)[1]: {"t": small}}, None)
+    b.flush()
+    assert g.calls == ["batch"], g.calls
+
+
+@test("review 4: dfhack-run that can't start raises NotStarted; one that starts and gives no answer NoAnswer")
+def _():
+    import subprocess
+    import dfhack as dh
+    d = dh.DFHack(dfhack_run=Path("/nonexistent/dfhack-run"), timeout_s=1.0)
+    try:
+        d.run("ai-bridge", "status")
+        raise AssertionError("no error")
+    except dh.NotStarted:
+        pass
+    keep = dh.subprocess.run
+
+    def slow(*a, **k):
+        raise subprocess.TimeoutExpired(a[0], 1.0)
+    dh.subprocess.run = slow
+    try:
+        d.run("ai-bridge", "status")
+        raise AssertionError("no error")
+    except dh.NoAnswer:
+        pass
+    finally:
+        dh.subprocess.run = keep
+    assert issubclass(dh.NotStarted, DFHackError) and issubclass(dh.NoAnswer, DFHackError)
 
 # --- 3. the cycle --------------------------------------------------------------------
 

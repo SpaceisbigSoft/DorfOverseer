@@ -189,7 +189,7 @@ def _():
         perf.PERF_MAX_BYTES = keep
 
 
-@test("the bridge sums every call's ms; note_perf turns it into the soak row's ai_ms_day")
+@test("the bridge sums every call's ms (not the status polls); note_perf turns it into the soak row's ai_ms_day")
 def _():
     import bridge
     before = dict(bridge.CALL_MS)
@@ -205,6 +205,13 @@ def _():
     b._call("version")
     b.act({"type": "x"})
     assert bridge.CALL_MS["calls"] == n + 2
+    # (0.105.40 review) the status polls are the watch on the game, not the AI's work: not counted
+    ms = bridge.CALL_MS["ms"]
+    b._call("status")
+    b._call("status")
+    assert bridge.CALL_MS["calls"] == n + 2 and bridge.CALL_MS["ms"] == ms
+    b._call("events")
+    assert bridge.CALL_MS["calls"] == n + 3
     overseer.PERF_METER = perf.Meter(write=False)
     overseer.PERF_LAST.clear()
     s = dict(base_state(), perf=PERF)
