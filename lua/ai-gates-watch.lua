@@ -53,6 +53,25 @@ function inside_fort(pos)
     return true
 end
 
+-- (fix41) At the fort's walls: on the map of the inside but not inside (a
+-- porch, the tunnel in front of a gate), or within AT_GATE_REACH tiles of it
+-- (at a shut door, on the far side of a raised bridge). The crossbows shoot
+-- at a fire breather only there (brain/planner_firebreath.py): one standing
+-- away from the walls that "can reach the dwarves" behind shut gates has a
+-- way in nobody mapped, and the marksdwarves would walk out along it.
+AT_GATE_REACH = 2
+function at_fort_walls(pos)
+    if not GATES.scanned or not GATES.inside then return nil end
+    for dz = -1, 1 do
+        for dx = -AT_GATE_REACH, AT_GATE_REACH do
+            for dy = -AT_GATE_REACH, AT_GATE_REACH do
+                if GATES.inside[key(pos.x + dx, pos.y + dy, pos.z + dz)] then return true end
+            end
+        end
+    end
+    return false
+end
+
 -- The ids of live, loose enemies standing inside the fort (at most 50), or
 -- nil without a map of the inside
 function intruders_inside()
@@ -63,6 +82,24 @@ function intruders_inside()
             return dfhack.units.isAlive(u) and not u.flags1.caged and not u.flags1.chained
                 and not dfhack.units.isCitizen(u) and (dfhack.units.isDanger(u) or dfhack.units.isInvader(u))
                 and inside_fort(u.pos) == true
+        end)
+        if ok and yes then table.insert(out, u.id) end
+        if #out >= 50 then break end
+    end
+    return out
+end
+
+-- (fix41) The ids of live, loose enemies at the fort's walls (not inside;
+-- at most 50), or nil without a map of the inside. The great dangers and
+-- the invaders only are looked at (the ones the fire-breath rule asks about).
+function intruders_at_walls()
+    if not GATES.scanned or not GATES.inside then return nil end
+    local out = {}
+    for _, u in ipairs(df.global.world.units.active) do
+        local ok, yes = pcall(function()
+            return dfhack.units.isAlive(u) and not u.flags1.caged and not u.flags1.chained
+                and not dfhack.units.isCitizen(u) and (dfhack.units.isDanger(u) or dfhack.units.isInvader(u))
+                and inside_fort(u.pos) ~= true and at_fort_walls(u.pos) == true
         end)
         if ok and yes then table.insert(out, u.id) end
         if #out >= 50 then break end

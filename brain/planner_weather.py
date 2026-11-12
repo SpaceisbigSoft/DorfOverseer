@@ -6,7 +6,9 @@ of a syndrome material, rain of blood. Before this the AI sounded the alarm
 only for a trailing cloud already near a dwarf out on the surface
 (planner_threats.threat_alert), by which time the woodcutter was in it.
 
-The bridge's `threats.weather` (lua/ai-threats.lua weather_report) says:
+The bridge's `weather` section (lua/ai-threats.lua weather_section, in the
+pulse too, so a cloud is read between the daily reports; an older bridge's
+`threats.weather`, read once a day, otherwise) says:
 evil clouds on the map's surface (a flow with a guide, or any cloud whose
 material carries a syndrome; `evil_cloud` tiles, `syndrome`, `effects`), DF's
 own list of evil weather (`region`: a creeping cloud this close to the map's
@@ -24,12 +26,20 @@ The rule (_weather_rules):
   * plain blood rain only stains: said, work goes on (Rules config
     `weather_blood_rain_alarm` to sound it);
   * lifted `weather_lift_hours` game hours after the weather has gone, by the
-    AI only when the AI raised it for the weather and nothing else holds it;
+    AI only when the weather rule itself raised it, no threat or great danger
+    was seen since the spell began (an alarm another rule raised during the
+    spell is that rule's), none is held off at the gates, and nothing else
+    holds it;
+  * an alarm that couldn't be read this cycle (civ_alert in _errors): the
+    spell is kept current and nothing lowers the alarm, but nothing is
+    raised on a guess and the player's-lowering bookkeeping waits;
   * held `weather_alarm_max_days` at most in one spell (said, then let be);
   * the player lowering it during the spell is obeyed: not sounded again
     until a new spell;
   * squads are not sent out at enemies standing in it (_weather_squad_filter),
-    unless enemies are inside the fort (then the squads do what they must).
+    unless enemies are inside the fort (then the squads do what they must);
+    a fire breather standing in it isn't shot at either (planner_firebreath:
+    the crossbows stay in the shelter with the rest).
 The gates are never touched here. Without a `threats.weather` section (an
 older bridge, a fixture) nothing here proposes, notes or remembers anything.
 """
@@ -39,7 +49,8 @@ from __future__ import annotations
 from digest import _d, _l
 from planner_core import PLANNER_CONFIG, Proposal, TICKS_PER_DAY, abs_tick, reachable_threats, _traits
 
-__all__ = ["weather_of", "weather_danger", "weather_held", "_weather_rules", "_weather_squad_filter", "weather_line"]
+__all__ = ["weather_of", "weather_danger", "weather_held", "_weather_rules", "_weather_squad_filter", "weather_line",
+           "weather_outside"]
 
 TICKS_PER_HOUR = 50
 
@@ -53,8 +64,12 @@ def _num(v) -> bool:
 
 
 def weather_of(s: dict) -> dict:
-    """The bridge's threats.weather ({} when absent or failed)."""
-    w = _d(_d(s.get("threats")).get("weather"))
+    """The bridge's weather section (read each pulse), else an older
+    bridge's threats.weather (read once a day); {} when absent or failed."""
+    w = s.get("weather")
+    if not (isinstance(w, dict) and w) and "weather" not in _d(s.get("_errors")):
+        w = _d(_d(s.get("threats")).get("weather"))
+    w = _d(w)
     return {} if w.get("error") else w
 
 
@@ -121,6 +136,10 @@ def _weather_rules(s: dict, memory, cfg: dict, proposals: list, notes: list) -> 
     wa = _spell(memory)
     lift = _c(cfg, "weather_lift_hours")
     alert_on = bool(s.get("civ_alert"))
+    # an unread alarm is not "off": the spell is kept current and nothing
+    # lowers the alarm meanwhile, but nothing is raised on a guess and the
+    # on/off bookkeeping (whose alarm it is, the player's lowering) waits
+    unread = "civ_alert" in _d(s.get("_errors"))
     if not why and w.get("rain") == "blood":
         notes.append(f"blood rain{' of ' + str(w.get('rain_material'))[:60] if w.get('rain_material') else ''} "
                      "falls on the fort: it only stains (no syndrome), so surface work goes on")
@@ -131,13 +150,13 @@ def _weather_rules(s: dict, memory, cfg: dict, proposals: list, notes: list) -> 
     elif isinstance(wa.get("seen"), int):
         gone = now - wa["seen"]
         if gone < 0 or gone >= lift * TICKS_PER_HOUR:
+            if unread:
+                # the alarm unread: the spell kept, so a good read next cycle lifts it
+                notes.append(f"the evil weather ({wa.get('why') or 'cloud or rain'}) has gone, but the alarm "
+                             "couldn't be read this cycle: it is lowered after the next good read")
+                return
             memory.weather_alarm = {}
-            from planner_threats import alarm_held, unseen_intrusion
-            ours = wa.get("was_off") and wa.get("on_seen") and not wa.get("cleared")
-            if (ours and alert_on and getattr(memory, "ai_alert_raised", False)
-                    and not alarm_held(s, memory, cfg) and not unseen_intrusion(s, memory, cfg)
-                    and not any(p.action == {"type": "civ_alert", "on": False} for p in proposals)
-                    and not any(p.action == {"type": "civ_alert", "on": True} for p in proposals)):
+            if _weather_owns_alarm(s, memory, cfg, wa, alert_on, proposals):
                 proposals.append(Proposal("threat_alert", {"type": "civ_alert", "on": False},
                                           f"the evil weather ({wa.get('why') or 'cloud or rain'}) has been gone "
                                           f"{max(0, gone) // TICKS_PER_HOUR} game hour(s): the alarm comes down and "
@@ -155,7 +174,9 @@ def _weather_rules(s: dict, memory, cfg: dict, proposals: list, notes: list) -> 
         wa["capped"] = True
         memory.weather_alarm = wa
         return
-    if alert_on:
+    if unread:
+        pass
+    elif alert_on:
         wa["on_seen"] = True
     elif wa.get("on_seen") and not wa.get("cleared"):
         wa["cleared"] = True
@@ -169,6 +190,10 @@ def _weather_rules(s: dict, memory, cfg: dict, proposals: list, notes: list) -> 
     held = [p for p in proposals if p.action == {"type": "civ_alert", "on": False}]
     if held:
         proposals[:] = [p for p in proposals if p not in held]
+    if unread:
+        notes.append(f"{why}: the alarm couldn't be read this cycle; nothing lowers it, nothing is raised on a "
+                     "guess (next cycle reads it)")
+        return
     if alert_on:
         notes.append(f"the alarm stays up for {why}: the citizens stay in the shelter, no work outside")
     elif weather_danger(s, cfg):
@@ -177,9 +202,54 @@ def _weather_rules(s: dict, memory, cfg: dict, proposals: list, notes: list) -> 
                 proposals.append(Proposal("threat_alert", {"type": "civ_alert", "on": True},
                                           f"{why}: sound the alarm (everyone inside, the gathering, wood cutting "
                                           "and hauling outside stop until it has gone)", 0))
+                wa["asked"] = now          # the weather's own alarm (another rule's raising isn't)
+                memory.weather_alarm = wa
             else:
                 from planner_military import no_shelter
                 no_shelter(s, memory, f"evil weather: {why}", proposals, notes)
+
+
+def _weather_owns_alarm(s: dict, memory, cfg: dict, wa: dict, alert_on: bool, proposals: list) -> bool:
+    """May the weather rule lower the alarm now its spell is over? Only the
+    alarm it raised itself (it proposed it, the alarm was off before and
+    came on), with no threat or great danger seen since the spell began
+    (another rule's alarm then: that rule lowers it), none held off at the
+    gates or a great danger about, nothing else holding it, and no other
+    alarm change proposed this cycle."""
+    from planner_core import great_present, held_off_threats
+    from planner_threats import alarm_held, unseen_intrusion
+    if not (wa.get("asked") and wa.get("was_off") and wa.get("on_seen") and not wa.get("cleared")):
+        return False
+    if not (alert_on and getattr(memory, "ai_alert_raised", False)):
+        return False
+    since = wa.get("since")
+    if not isinstance(since, int):
+        return False
+    for k in ("last_threat_tick", "last_great_tick"):
+        t = getattr(memory, k, 0) or 0
+        if isinstance(t, int) and t and t >= since:
+            return False
+    if held_off_threats(s) or great_present(s):
+        return False
+    try:
+        if reachable_threats(s, _traits(s), cfg):
+            return False
+    except Exception:  # noqa: BLE001  (an odd report: not lowered on a guess)
+        return False
+    if alarm_held(s, memory, cfg) or unseen_intrusion(s, memory, cfg):
+        return False
+    return not any(p.action.get("type") == "civ_alert" for p in proposals)
+
+
+def weather_outside(s: dict, cfg: dict) -> set:
+    """The ids of the enemies standing out in the evil weather while it is
+    dangerous (set() when none or no weather data). planner_firebreath keeps
+    its crossbows off the fire breathers among them, so the squads stay in the
+    shelter as the weather filter would leave them."""
+    w = weather_of(s)
+    if not w or not weather_danger(s, cfg):
+        return set()
+    return {i for i in _l(w.get("enemies_outside")) if isinstance(i, int) and not isinstance(i, bool)}
 
 
 def _weather_squad_filter(s: dict, memory, cfg: dict, proposals: list, notes: list) -> list:

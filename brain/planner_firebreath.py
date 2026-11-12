@@ -4,7 +4,8 @@ spits or hurls fire.
 A dragon's breath (or a fire imp's fireball, a generated beast's fire jet)
 sets a whole squad alight in its armour before the soldiers land a blow; the
 fort's squads were sent at one like at any other enemy. The bridge marks
-such a threat `fire_breather` (lua/ai-bridge-report.lua fire_breath_of: its
+such a threat `fire_breather` (lua/ai-threats.lua fire_breath_of, called from
+the others_on_map section in lua/ai-bridge.lua: its
 caste's natural abilities with a DRAGONFIRE / FIREJET / FIREBALL flow, or
 the IMMOLATE caste flag; one answer per race and caste) with `fire_how`
 ('breath', 'jet', 'fireball', 'burns').
@@ -14,9 +15,17 @@ the IMMOLATE caste flag; one answer per race and caste) with `fire_how`
     rule takes it off any other squad order proposed this cycle (a lone
     intruder's, a thief's, a second wave's); a melee squad already on it is
     called back; a gate guard of melee squads isn't posted against it;
-  * crossbow squads only, and only from inside: while the AI's gates are
-    shut and it is not inside the fort (the soldiers can't walk out to it,
-    they shoot from within); else no squad at all;
+  * crossbow squads only, and only from inside: only at one that can reach
+    the dwarves, while the AI's gates are shut, it is not inside the fort,
+    and it stands at the fort's walls (entrances.intruders_at_walls, the
+    gate scan's map: at a shut door, before a raised bridge, in the tunnel in
+    front of a gate). One that "can reach the dwarves" behind shut gates
+    away from the walls has a way in nobody mapped, and the marksdwarves
+    would walk out to it along that leaky path: no squad then (nor without
+    the gate scan's map). Else no squad at all;
+  * nor while it stands out in evil weather (planner_weather): the crossbows
+    stay in the shelter with the others, as the weather filter would leave
+    them (one note says so);
   * the dwarves hide: the alarm and the shut gates are the existing
     machinery (it can reach the dwarves: reachable_threats); it is never a
     "lone intruder" or one of "a few ordinary enemies" (planner_gates), so
@@ -47,16 +56,27 @@ def fire_breathers(s: dict) -> dict:
             if isinstance(t, dict) and t.get("fire_breather") is True and t.get("id") is not None}
 
 
-def fire_ranged_ok(s: dict, memory, t: dict) -> str:
+def fire_ranged_ok(s: dict, memory, t: dict, weather_out: set | None = None) -> str:
     """Why crossbows may NOT shoot at this fire breather now ("" if they
     may): only from inside the fort, with the AI's gates shut (the soldiers
-    can't walk out to it) and the creature not inside."""
+    can't walk out to it), the creature not inside but at the fort's walls
+    (never out along a path the gates don't close), and not standing in
+    evil weather (`weather_out`: planner_weather.weather_outside)."""
     from planner_gates import ai_gates_shut
-    inside = {x for x in _l(_d(s.get("entrances")).get("intruders_inside")) if isinstance(x, int)}
+    ent = _d(s.get("entrances"))
+    inside = {x for x in _l(ent.get("intruders_inside")) if isinstance(x, int)}
     if t.get("id") in inside:
         return "it is inside the fort"
     if not ai_gates_shut(s, memory):
         return "the gates are open (they would go out to it)"
+    if weather_out and t.get("id") in weather_out:
+        return "it stands out in the evil weather (the squads wait inside with the rest)"
+    walls = ent.get("intruders_at_walls")
+    if not isinstance(walls, list):
+        return "no map of the fort's walls yet (the crossbows could walk out to it along a way the gates don't close)"
+    if t.get("id") not in walls:
+        return ("it isn't at the fort's walls (it reaches the dwarves some way the gates don't close: the "
+                "crossbows would walk out to it)")
     return ""
 
 
@@ -82,7 +102,12 @@ def _fire_breather_rule(s: dict, memory, cfg: dict, proposals: list, notes: list
         return
     from planner_military import called_off_ids
     off = called_off_ids(s, memory)
-    why_not = {i: fire_ranged_ok(s, memory, t) for i, t in fb.items()}
+    try:
+        from planner_weather import weather_outside
+        wx = weather_outside(s, cfg)
+    except Exception:  # noqa: BLE001  (no weather word: as before)
+        wx = set()
+    why_not = {i: fire_ranged_ok(s, memory, t, wx) for i, t in fb.items()}
     may_shoot = {i for i in fb if policy != "never" and not why_not[i] and i not in off}
 
     def allowed(q, i):
@@ -120,9 +145,11 @@ def _fire_breather_rule(s: dict, memory, cfg: dict, proposals: list, notes: list
         kill = {x for x in _l(q.get("kill_ids")) if isinstance(x, int)}
         bad = [i for i in kill if i in fb and not allowed(q, i)]
         if q.get("ai_orders") and bad and q["id"] not in ordered:
+            why = (f"the crossbows don't shoot at it now: {why_not[bad[0]]}" if is_ranged(q) and why_not.get(bad[0])
+                   else "no melee squad goes at a fire breather")
             kept.append(Proposal("squad_recall", {"type": "squad_orders", "squad_id": q["id"], "clear": True},
                                  f"{_who(fb[bad[0]])} is no foe for {q.get('name') or 'the squad'}: it comes back "
-                                 "(no melee squad goes at a fire breather)", 0))
+                                 f"({why})", 0))
             ordered.add(q["id"])
     # crossbows from inside, at the ones they may shoot that no crossbow squad is on
     on = set()

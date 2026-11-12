@@ -643,7 +643,15 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
     planned = function() return safe(function() return reqscript('ai-builder').planned_report() end) end,   -- (0.104.154)
     justice = function() return safe(get_justice) end,
     society = function() return safe(get_society) end,
-    entrances = function() return safe(function() return reqscript('ai-gates').summary() end) end,
+    entrances = function() return safe(function()
+        local r = reqscript('ai-gates').summary()
+        -- (fix41) the enemies at the fort's walls: the only ones crossbows shoot
+        -- a fire breather at (brain/planner_firebreath.py); nil without the map
+        if type(r) == 'table' then
+            pcall(function() r.intruders_at_walls = reqscript('ai-gates').intruders_at_walls() end)
+        end
+        return r
+    end) end,
     military = function() return safe(function() return reqscript('ai-military').report(txt) end) end,
     moods = function() return safe(get_moods) end,
     buildings = function() return safe(get_buildings) end,
@@ -837,6 +845,8 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
     -- where, the deadly ground near them, the AI's doors locked for them; the
     -- citizens whose stress heads that way (lua/ai-insane.lua; in the pulse)
     insane = function() return safe(function() return reqscript('ai-insane').report() end) end,
+    -- (fix41) evil weather on its own (it was in threats, read once a day): in the pulse too
+    weather = function() return safe(function() return reqscript('ai-threats').weather_section() end) end,
     -- (0.105.40 M5) hauling: the haul jobs waiting and how long, the haulers,
     -- the key specialists who haul, the details carrying it (lua/ai-hauling.lua)
     hauling = function() return safe(function() return reqscript('ai-hauling').report(txt) end) end,
@@ -863,6 +873,7 @@ PULSE_SECTIONS = {
     'others_on_map', 'civ_alert', 'civ_alert_ready', 'civ_alert_shelter', 'orders', 'projects', 'entrances',
     'moods', 'military', 'settings', 'events_waiting', 'hazards', 'ledger',
     'insane',   -- (0.105.40b) a melancholy dwarf walks to the water: read each cycle
+    'weather',  -- (fix41) an evil cloud crosses from the map's edge in hours: read each cycle
 }
 TIERS = {pulse = true, daily = true, survey = true}
 -- report sections rebuilt only every so many game days (the lag pass, Oct 23:
@@ -1068,6 +1079,12 @@ local function cmd_status()
         remaining = math.max(0, run_until - abs_tick())
     end
     ensure_watching()
+    -- (fix41) evil weather coming (a cloud near the map's edge, DF's
+    -- announcement, evil rain): an event, so a cycle reads it now
+    pcall(function()
+        local ev = reqscript('ai-threats').weather_watch(abs_tick(), fort_key())
+        if ev then push_event(ev) end
+    end)
     local st = reqscript('ai-status')
     st.mark_seen()
     return {

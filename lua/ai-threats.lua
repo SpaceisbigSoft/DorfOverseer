@@ -446,9 +446,21 @@ end
 -- region tile, and DF's `announced` flag), the plain rain over the map
 -- (current_weather) and, while any of it is about, the hostile units
 -- standing out under the sky (the squads aren't sent out to them).
--- Bounded: a few names, at most WEATHER_MAX_FLOWS flows read.
+-- Bounded: a few names, at most WEATHER_MAX_FLOWS flows read, the
+-- citizens' distances measured from at most WEATHER_MAX_NEAR_TILES cloud tiles.
+-- (fix41) its own report section (weather_section), in the pulse too: a
+-- cloud can cross from the map's edge in hours, the daily report was late.
 WEATHER_MAX_FLOWS = 20000
-WEATHER_EDGE_NEAR = 48        -- a region cloud this close to the map's edge counts as near the fort
+-- a region cloud this close to the map's edge counts as near the fort (the
+-- brain's planner_config weather_edge_near, 150: about a day's drift, so the
+-- pulse and the event below see it while there is time to call everyone in)
+WEATHER_EDGE_NEAR = 150
+-- region clouds reported up to this far (the brain applies its own
+-- weather_edge_near, which may be set wider than the default above)
+WEATHER_EDGE_REPORT = 400
+WEATHER_EVENT_NEAR = 120      -- a cloud this close (or DF's announcement) is an event: a cycle now
+WEATHER_WATCH_TICKS = 50      -- the event watch reads DF's weather list at most once a game hour
+WEATHER_MAX_NEAR_TILES = 300
 WEATHER_MAX_IDS = 40
 local WEATHER_FLOWS = {MaterialDust = true, MaterialGas = true, MaterialVapor = true, ItemCloud = true}
 local BLOOD_IDS = {BLOOD = true, ICHOR = true, GOO = true, PUS = true}
@@ -487,14 +499,17 @@ end
 -- {kind = 'cloud'|'rain', gx, gy (clouds: global map tiles), rx, ry (rain:
 -- its world tile, or region tile), announced, left, mx, my, mat = facts};
 -- map = {rx, ry (the map's corner in region tiles, 48 map tiles each), w, h
--- (map tiles)}. Returns {clouds, rains, cloud_edge (tiles from the map's
--- edge, 0 on it), approaching, rain_here, announced, left, cloud_mat, rain_mat}
+-- (map tiles), ww, wh (the world's size in world tiles)}. Returns {clouds,
+-- rains, cloud_edge (tiles from the map's edge, 0 on it: the nearest cloud
+-- drifting this way within edge_near, else the nearest one), approaching,
+-- rain_here, announced, left, cloud_mat, rain_mat}
 function weather_rows_summary(rows, map, edge_near)
     local out = {clouds = 0, rains = 0}
     edge_near = edge_near or WEATHER_EDGE_NEAR
     local ox, oy = map.rx * 48, map.ry * 48
     local wx, wy = map.rx // 16, map.ry // 16
     local tiles_x, tiles_y = math.max(1, map.w // 48), math.max(1, map.h // 48)
+    local best_appr
     for _, r in ipairs(rows) do
         if r.kind == 'cloud' and r.gx and r.gx > -30000 then
             local lx, ly = r.gx - ox, r.gy - oy
@@ -502,19 +517,30 @@ function weather_rows_summary(rows, map, edge_near)
             local dy = math.max(0, -ly, ly - (map.h - 1))
             local d = math.max(dx, dy)
             out.clouds = out.clouds + 1
-            if d <= edge_near and (not out.cloud_edge or d < out.cloud_edge) then
-                out.cloud_edge = d
-                out.cloud_mat = r.mat
+            if d <= edge_near then
                 local cx, cy = map.w // 2, map.h // 2
-                out.approaching = d == 0 or ((r.mx or 0) ~= 0 and (r.mx > 0) == (lx < cx))
-                    or ((r.my or 0) ~= 0 and (r.my > 0) == (ly < cy)) or nil
+                local appr = d == 0 or ((r.mx or 0) ~= 0 and (r.mx > 0) == (lx < cx))
+                    or ((r.my or 0) ~= 0 and (r.my > 0) == (ly < cy)) or false
+                -- (fix41) a nearer cloud drifting away doesn't hide one coming
+                local better = not out.cloud_edge or (appr and not best_appr)
+                    or (appr == best_appr and d < out.cloud_edge)
+                if better then
+                    out.cloud_edge, out.cloud_mat, best_appr = d, r.mat, appr
+                    out.approaching = appr or nil
+                end
                 if r.announced then out.announced = true end
                 if r.left and (not out.left or r.left > out.left) then out.left = r.left end
             end
         elseif r.kind == 'rain' and r.rx then
-            -- (probe) DF calls it the world tile; read as a region tile too
+            -- (probe) DF calls it the world tile. (fix41) Read as a region
+            -- tile only when it can't be a world tile (past the world's
+            -- width or height): a small world tile's number can be a region
+            -- tile's number too, and rain on the wrong tile would be taken
+            -- for the fort's
             local here = (r.rx == wx and r.ry == wy)
-                or (r.rx >= map.rx and r.rx < map.rx + tiles_x and r.ry >= map.ry and r.ry < map.ry + tiles_y)
+            if not here and map.ww and map.wh and (r.rx >= map.ww or r.ry >= map.wh) then
+                here = r.rx >= map.rx and r.rx < map.rx + tiles_x and r.ry >= map.ry and r.ry < map.ry + tiles_y
+            end
             if here then
                 out.rains = out.rains + 1
                 out.rain_here = true
@@ -525,6 +551,21 @@ function weather_rows_summary(rows, map, edge_near)
         end
     end
     return out
+end
+
+-- the fort's map against the world: its corner in region tiles, its size,
+-- the world's size in world tiles (nil when unreadable)
+local function weather_map()
+    local okm, map = pcall(function()
+        local m = df.global.world.map
+        return {rx = m.region_x, ry = m.region_y, w = m.x_count, h = m.y_count}
+    end)
+    if not (okm and map) then return nil end
+    pcall(function()
+        local wd = df.global.world.world_data
+        map.ww, map.wh = wd.world_width, wd.world_height
+    end)
+    return map
 end
 
 local function weather_rows()
@@ -551,6 +592,24 @@ function weather_report(cit)
     SYN_MEMO = {}                 -- one report's lookups (another save has other materials)
     local out = {evil_cloud = 0}
     local flows_read = 0
+    -- (fix41) the citizens' positions read once (all, and those outside),
+    -- and measured from at most WEATHER_MAX_NEAR_TILES cloud tiles
+    local all_p, out_p = {}, {}
+    for _, p in ipairs(cit or {}) do
+        local q = {p.x, p.y, p.z}
+        all_p[#all_p + 1] = q
+        if p.outside then out_p[#out_p + 1] = q end
+    end
+    local function nearest(pos, list, best)
+        local x, y, z = pos.x, pos.y, pos.z
+        for i = 1, #list do
+            local q = list[i]
+            local d = math.max(math.abs(q[1] - x), math.abs(q[2] - y)) + 3 * math.abs(q[3] - z)
+            if not best or d < best then best = d end
+        end
+        return best
+    end
+    local measured = 0
     pcall(function()
         for _, f in ipairs(df.global.flows) do
             flows_read = flows_read + 1
@@ -560,10 +619,13 @@ function weather_report(cit)
                 local facts = material_facts(f.mat_type, f.mat_index)
                 if (okg and gid and gid ~= -1) or facts.syndrome then
                     out.evil_cloud = out.evil_cloud + 1
-                    local dd = dist_to(f.pos, cit)
-                    local od = dist_to(f.pos, cit, true)
-                    if dd and (not out.cloud_near or dd < out.cloud_near) then out.cloud_near = dd end
-                    if od and (not out.cloud_outside_near or od < out.cloud_outside_near) then out.cloud_outside_near = od end
+                    if measured < WEATHER_MAX_NEAR_TILES then
+                        measured = measured + 1
+                        out.cloud_near = nearest(f.pos, all_p, out.cloud_near)
+                        out.cloud_outside_near = nearest(f.pos, out_p, out.cloud_outside_near)
+                    else
+                        out.near_capped = true
+                    end
                     if not out.material or (facts.syndrome and not out.syndrome) then
                         out.material, out.syndrome, out.effects = facts.name, facts.syndrome, facts.effects
                     end
@@ -571,19 +633,17 @@ function weather_report(cit)
             end
         end
     end)
-    local okm, map = pcall(function()
-        local m = df.global.world.map
-        return {rx = m.region_x, ry = m.region_y, w = m.x_count, h = m.y_count}
-    end)
+    local map = weather_map()
     local region = {clouds = 0, rains = 0}
-    if okm and map then
-        local oks, r = pcall(weather_rows_summary, weather_rows(), map)
+    if map then
+        local oks, r = pcall(weather_rows_summary, weather_rows(), map, WEATHER_EDGE_REPORT)
         if oks and r then region = r end
     end
     out.region = {clouds = region.clouds, rains = region.rains, cloud_edge = region.cloud_edge,
                   approaching = region.approaching, announced = region.announced, left = region.left,
                   cloud_material = region.cloud_mat and region.cloud_mat.name or nil,
-                  cloud_syndrome = region.cloud_mat and region.cloud_mat.syndrome or nil}
+                  cloud_syndrome = region.cloud_mat and region.cloud_mat.syndrome or nil,
+                  edge_near = WEATHER_EDGE_NEAR}
     if region.rain_here then
         local m = region.rain_mat or {}
         out.rain = m.blood and not m.syndrome and 'blood' or 'evil'
@@ -616,6 +676,48 @@ function weather_report(cit)
         end)
     end
     return out
+end
+
+-- (fix41) The report's own `weather` section (lua/ai-bridge.lua SECTIONS
+-- and PULSE_SECTIONS): weather_report with the citizens read here
+function weather_section()
+    local cit = citizens()
+    return weather_report(cit)
+end
+
+-- (fix41) The event watch (lua/ai-bridge.lua cmd_status, polled every few
+-- seconds by the overseer): at most once a game hour DF's weather list is
+-- read (no flows, no units: at most 50 rows), and an event is returned when
+-- an evil cloud comes within WEATHER_EVENT_NEAR tiles of the map's edge
+-- drifting this way (or is over the map), DF announces evil weather near
+-- the fort, or evil rain falls on it - once each time it begins, so the
+-- overseer runs a cycle (the pulse's weather section) now, not tomorrow.
+-- now: the absolute tick; site: the save's key (another save starts afresh).
+WEATHER_WATCH = WEATHER_WATCH or {}
+function weather_watch(now, site)
+    local w = WEATHER_WATCH
+    if w.site ~= site or not w.tick or now < w.tick then
+        WEATHER_WATCH = {site = site}
+        w = WEATHER_WATCH
+    elseif now - w.tick < WEATHER_WATCH_TICKS then
+        return nil
+    end
+    w.tick = now
+    local map = weather_map()
+    if not map then return nil end
+    local ok, r = pcall(weather_rows_summary, weather_rows(), map, WEATHER_EVENT_NEAR)
+    if not ok or not r then return nil end
+    local near = r.cloud_edge ~= nil and r.approaching == true
+    local rain = r.rain_here == true
+    local announced = r.announced == true
+    local ev
+    if (near and not w.near) or (rain and not w.rain) or (announced and not w.announced) then
+        ev = {kind = 'weather', cloud_edge = near and r.cloud_edge or nil, rain = rain or nil,
+              announced = announced or nil,
+              material = (near and r.cloud_mat and r.cloud_mat.name) or (rain and r.rain_mat and r.rain_mat.name) or nil}
+    end
+    w.near, w.rain, w.announced = near, rain, announced
+    return ev
 end
 
 local function changed(u)
@@ -881,7 +983,7 @@ function survey(txt)
     part('prisoners', prisoners_report, txt)
     part('thieves', thieves_report, d, t, cit, groups, txt)
     part('undead', undead_report, cit, groups, txt)
-    part('weather', weather_report, cit)                  -- (0.105.40b) evil weather
+    -- (fix41) the evil weather is its own section (weather_section), read in the pulse too
     part('were', were_report, d, t, txt)
     part('surface', surface_report, cit, txt)
     part('rescue', rescue_report)
@@ -1444,7 +1546,14 @@ end
 FIRE_BREATH_CACHE = FIRE_BREATH_CACHE or {}
 local FIRE_FLOW_HOW = {DRAGONFIRE = 'breath', FIREJET = 'jet', FIREBALL = 'fireball'}
 
+-- (fix41) the cache belongs to one world: another save loaded in the same
+-- DFHack session has other races under the same numbers (generated beasts)
 function fire_breath_of(race, caste)
+    local okw, world = pcall(function() return df.global.world.cur_savegame.save_dir end)
+    world = tostring(okw and world or '?')
+    if FIRE_BREATH_WORLD ~= world then
+        FIRE_BREATH_CACHE, FIRE_BREATH_WORLD = {}, world
+    end
     local key = tostring(race) .. ':' .. tostring(caste)
     local v = FIRE_BREATH_CACHE[key]
     if v ~= nil then return v end

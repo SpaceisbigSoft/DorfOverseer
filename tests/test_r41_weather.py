@@ -73,7 +73,7 @@ def _():
     near = dict(CALM, region={"clouds": 1, "rains": 0, "cloud_edge": 30, "approaching": True})
     p = alarms(plan(fort(near), Memory())[0], True)
     assert p and "30 tiles from the map's edge, drifting this way" in p[0].reason, p
-    out = dict(CALM, region={"clouds": 1, "rains": 0, "cloud_edge": 60, "approaching": True})   # past weather_edge_near
+    out = dict(CALM, region={"clouds": 1, "rains": 0, "cloud_edge": 160, "approaching": True})  # past weather_edge_near
     assert not alarms(plan(fort(out), Memory())[0])
 
 
@@ -236,7 +236,7 @@ if LuaRuntime:
 
     @test("lua: DF's evil weather records against the map (clouds over, approaching, away; rain here or not)")
     def _():
-        mp = T({"rx": 160, "ry": 320, "w": 144, "h": 144})       # world tile (10, 20); map at 7680, 15360
+        mp = T({"rx": 160, "ry": 320, "w": 144, "h": 144, "ww": 65, "wh": 65})   # world tile (10, 20); map at 7680, 15360
         S = ENV.weather_rows_summary
         r = S(T([{"kind": "cloud", "gx": 7700, "gy": 15400, "announced": True, "left": 900,
                   "mat": {"name": "fog", "syndrome": "thrall"}}]), mp)
@@ -355,10 +355,21 @@ return e
         r = E.weather_report(T(CIT))
         assert r.evil_cloud == 0 and not r.near_fort and r.enemies_outside is None and r.region.clouds == 0
 
-    @test("lua: the threats survey carries the weather part")
+    @test("lua (fix41): the weather is its own report section, in the pulse too, not in the daily survey")
     def _():
         src = (ROOT / "lua" / "ai-threats.lua").read_text(encoding="utf-8")
-        assert "part('weather', weather_report, cit)" in src
+        assert "part('weather'" not in src
+        br = (ROOT / "lua" / "ai-bridge.lua").read_text(encoding="utf-8")
+        assert "weather = function() return safe(function() return reqscript('ai-threats').weather_section() end) end" in br
+        pulse = br[br.index("PULSE_SECTIONS = {"):br.index("}", br.index("PULSE_SECTIONS = {"))]
+        assert "'weather'" in pulse, pulse
+        E = game("""function(G)
+            table.insert(G.rw, {type = 'FallingMaterial', mat_type = 4, mat_index = 4, flags = {},
+                                region_x = 10, region_y = 20, remaining_duration = 300})
+            G.citizens = {{id = 1, pos = {x = 10, y = 10, z = 100}}}
+            end""")
+        r = E.weather_section()
+        assert r.rain == "evil" and r.near_fort and r.region.edge_near == 150, r
 
 
 if __name__ == "__main__":

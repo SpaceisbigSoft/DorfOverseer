@@ -580,8 +580,8 @@ def _():
         lua_n, base_n, outs_n = run_threats("new", inside, 2)
         for a, b in zip(outs_o, outs_n):        # (two engines: compared as plain Python)
             pb = to_py(b)
-            # (0.105.40b) the evil weather part is new since merge39 (tests/test_r41_weather.py)
-            assert "error" not in pb.pop("weather", {}), pb
+            # (fix41) the evil weather is its own section now (weather_section), not in the survey
+            assert "weather" not in pb, pb
             assert to_py(a) == pb, (inside, first_diff(to_py(a), pb))
         if inside:
             assert base_n.C.active == 2, base_n.C.active                # one walk a report, not five
@@ -592,6 +592,24 @@ def _():
     assert o["prisoners"]["caged"] == 1 and o["thieves"]["now"] == 2 and o["undead"]["undead"] == 1, o
     assert o["surface"]["list"] and o["rescue"]["holders"] == 1 and o["thieves"]["evil_civ"] is True, o
     assert o["fire"]["fires"] == 1 and o["were"]["list"] and o["cavern_citizens"]["n"] == 0, o
+
+
+@test("(fix41) the weather section: the same in two engines, outside a report and inside one (the shared walks)")
+def _():
+    outs = []
+    for inside in (False, True):
+        lua, make = fresh()
+        base = make()
+        req = load_set(lua, base, threats_srcs("new"))
+        T, U = req("ai-threats"), req("ai-util")
+        if inside:
+            U.report_begin()
+        outs.append(to_py(T.weather_section()))
+        if inside:
+            U.report_end()
+    a, b = outs
+    assert "error" not in a and "evil_cloud" in a and "region" in a, a
+    assert a == b, first_diff(a, b)
 
 
 def military_srcs(version: str) -> dict:

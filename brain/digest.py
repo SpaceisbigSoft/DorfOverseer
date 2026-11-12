@@ -153,6 +153,7 @@ SECTION_DEFAULTS = {
     "civ_alert": False,      # (0.105.33) a failed read ({error}) read as "the alarm is on"
     "perf": {},              # (0.105.40) the report's own cost: sections' ms, cached, total_ms, fps (lua/ai-bridge.lua perf_section)
     "cleanup": {},           # (0.105.40) world cleanup: unreachable items and creatures, spatter, dead units (lua/ai-cleanup.lua)
+    "weather": {},           # (fix41) evil weather, read each pulse too (lua/ai-threats.lua weather_section)
     "insane": {},            # (0.105.40b) the insane, the deadly ground near them, the AI's doors locked, the near-breaking (lua/ai-insane.lua)
     "hauling": {},           # (0.105.40 M5) haul jobs waiting, haulers, key workers hauling (lua/ai-hauling.lua)
     "food_store": {},        # (0.105.40b, M6) food piles, their barrels and fullness, food out of piles, rotten (lua/ai-food-store.lua)
@@ -429,7 +430,7 @@ def threat_line(s: dict) -> str:
     """(0.105.26) The threats the bridge tracks (lua/ai-threats.lua), only
     what is there now: "" when the fort is calm."""
     t = _d(s.get("threats"))
-    if not t:
+    if not t and not _d(s.get("weather")):                  # (fix41) the weather is its own section now
         return ""
     parts = []
     fire = _d(t.get("fire"))

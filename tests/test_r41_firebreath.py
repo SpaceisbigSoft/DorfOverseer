@@ -44,7 +44,7 @@ def kills(props):
 
 
 def fort(*, breather=True, great=True, ranged=False, gates_shut=False, inside=False, goblin=False,
-         policy=None, squad_on=None) -> dict:
+         policy=None, squad_on=None, at_walls=True) -> dict:
     """A dragon (or a fire imp, great=False) that can reach the dwarves, two
     armed melee squads (one crossbow squad with ranged=True)."""
     s = copy.deepcopy(BASE)
@@ -73,6 +73,8 @@ def fort(*, breather=True, great=True, ranged=False, gates_shut=False, inside=Fa
         ent["entrances"] = [{"id": 1, "kind": "surface", "x": 31, "y": 140, "z": 173, "width": 1, "sealed": True,
                              "closed": True, "equipment": [{"id": 500, "kind": "door"}], "door_spots": 0}]
     ent["intruders_inside"] = [5000] if inside else []
+    if at_walls is not None:                              # (fix41) the gate scan's "at the fort's walls"
+        ent["intruders_at_walls"] = [5000] if at_walls and not inside else []
     if policy:
         s["settings"]["attack_policy"] = policy
     return s

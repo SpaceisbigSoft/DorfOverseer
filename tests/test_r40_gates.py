@@ -94,7 +94,9 @@ def _():
                "citizen_starts", "gate_name", "pull", "set_entrance", "place", "entrance", "DAY_TICKS", "wgroup",
                "on_cavern_tile", "PARTS", "PART_VERSIONS", "PART_SOURCES",
                # (13e scan) the cheaper scan's helpers (tests/test_r40_gates_scan.py)
-               "TK", "moves_k", "tile_is_ramp", "GAME_TILE", "porch_walk", "scan_map"}
+               "TK", "moves_k", "tile_is_ramp", "GAME_TILE", "porch_walk", "scan_map",
+               # (fix41) the enemies at the fort's walls (tests/test_r41_weather_fix.py)
+               "AT_GATE_REACH", "at_fort_walls", "intruders_at_walls"}
     assert extra <= allowed, sorted(extra - allowed)
     marks = env.PART_VERSIONS
     assert {k for k in marks} == {"ai-gates", *PARTS}, list(marks)
