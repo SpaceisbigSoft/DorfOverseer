@@ -589,6 +589,10 @@ PLANNER_CONFIG = {
     "infected_rest_cap": 3, "infected_rest_keep_free": 2,   # (review) sleepers at once; beds left for DF's patients
     "doctor_post_per_diagnoser": 3, "doctor_post_cooldown_ticks": 3 * 1200,
     "noble_rooms_cooldown_ticks": 1200,
+    # (0.105.41) a noble's room under its office's value: a step a day (a statue,
+    # smoothing, engraving, statues ordered); at most this many statues a room;
+    # statues ordered only with this many usable boulders
+    "noble_value_cooldown_ticks": 1200, "noble_room_statues_max": 6, "noble_statue_stone_min": 10,
     # (0.104.168) homes: one bedroom per household, the stressed to rooms they like
     "homes_cooldown_ticks": 1200,
     "homes_dig_cooldown_ticks": 7 * 1200,

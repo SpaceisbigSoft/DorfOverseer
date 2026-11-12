@@ -305,6 +305,12 @@ ACTIONS = {
     repair_rooms = function(a) return reqscript('ai-builder').repair_rooms(a.dry_run == true) end,
     bootstrap_chair = act_bootstrap_chair,
     sync_offices = function(a) return reqscript('ai-nobles').sync_offices(a.dry_run == true) end,
+    -- (0.105.41) a noble's room under its office's value: smoothed, then engraved (lua/ai-noble-demands.lua)
+    polish_room = function(a)
+        local id = math.tointeger(tonumber(a.zone_id))
+        if not id then return {ok = false, rejected = true, error = 'polish_room needs zone_id'} end
+        return reqscript('ai-noble-demands').polish_room(id, a.dry_run == true)
+    end,
     tool = act_tool,
     civ_alert = act_civ_alert,
     start_project = act_start_project,
@@ -398,6 +404,7 @@ for _, name in ipairs({
     'traction_rest', 'train_war', 'trim_instrument_orders', 'trim_labor', 'unforbid_dead',
     'unsuspend_orders', 'well_shaft',
     'refresh_shelter',   -- (0.105.26)
+    'polish_room',       -- (0.105.41) a noble's room smoothed or engraved
     -- (0.105.27) disposal: each dry run returns before it changes anything
     'unforbid_items', 'mark_melt', 'mark_dump', 'empty_dump', 'set_standing_orders', 'place_dump',
     -- (0.105.30) construction: each plans and returns before it places anything
@@ -481,7 +488,7 @@ end
 BRIDGE_MODULES = {
     'ai-blueprints', 'ai-builder', 'ai-camera', 'ai-census', 'ai-cleanup', 'ai-constructions', 'ai-diplomacy', 'ai-disposal', 'ai-food-store', 'ai-gates', 'ai-hauling', 'ai-health', 'ai-homes',
     'ai-industry', 'ai-insane', 'ai-joins', 'ai-labor', 'ai-layouts', 'ai-military', 'ai-military-gear',
-    'ai-mission-send', 'ai-missions', 'ai-moods', 'ai-nobles', 'ai-overlay', 'ai-overseer-settings',
+    'ai-mission-send', 'ai-missions', 'ai-moods', 'ai-noble-demands', 'ai-nobles', 'ai-overlay', 'ai-overseer-settings',
     'ai-ping', 'ai-reports', 'ai-society', 'ai-society-burrows', 'ai-status', 'ai-threats', 'ai-title',
     'ai-trade', 'ai-util', 'ai-water', 'ai-waterworks', 'gui/ai-overseer',
 }
@@ -822,6 +829,8 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
     offices = function() return safe(function() return reqscript('ai-nobles').survey(txt) end) end,
     -- the rooms the nobles' offices ask for and don't have (lua/ai-nobles.lua)
     noble_rooms = function() return safe(function() return reqscript('ai-nobles').rooms_survey(txt) end) end,
+    -- (0.105.41) each noble's title and the value each room must reach against its own (lua/ai-noble-demands.lua)
+    noble_demands = function() return safe(function() return reqscript('ai-noble-demands').survey(txt) end) end,
     -- (0.104.168) the households: who has a bedroom, couples in one room or two, who slept rough (lua/ai-homes.lua)
     homes = function() return safe(function() return reqscript('ai-homes').census(nil, txt) end) end,
     -- (E4) the citizens' personalities, dreams and likes, summed (lua/ai-homes.lua citizens_taste)
@@ -900,6 +909,7 @@ SECTION_CACHE_DAYS = {logistics = 3, industry = 7,   -- industry: 300-450 ms liv
     disposal = 1}   -- (0.105.27) every item in play walked once for the marks
 SECTION_CACHE_DAYS.constructions = 3   -- (0.105.30) every built tile walked once
 SECTION_CACHE_DAYS.food_store = 1      -- (0.105.40b, M6) every food item walked once
+SECTION_CACHE_DAYS.noble_demands = 1   -- (0.105.41) the engravings walked once
 SECTION_REBUILDS = 2       -- expired cached sections rebuilt in one report (a missing one always is)
 -- (0.100) the cached sections each action changes (cleared when it succeeds)
 CACHE_INVALIDATES = {
@@ -945,6 +955,10 @@ CACHE_INVALIDATES.food_barrels = {'food_store'}
 -- level's furnish step lays its food piles: the food store read again
 CACHE_INVALIDATES.feeder_pile = {'logistics', 'food_store'}
 CACHE_INVALIDATES.furnish_project = {'registry', 'locations', 'noble_rooms', 'food_store'}
+CACHE_INVALIDATES.polish_room = {'noble_demands'}   -- (0.105.41)
+for _, name in ipairs({'give_room', 'place_in_zone', 'furnish_project', 'house_dwarves'}) do
+    table.insert(CACHE_INVALIDATES[name], 'noble_demands')     -- (0.105.41) a noble's room changed
+end
 CACHE_INVALIDATES.renew_well_dig = {'registry'}   -- (0.105.31) as start_project
 CACHE_INVALIDATES.build_blueprint = {'registry'}   -- (D0) a landmark's levels are projects
 CACHE_INVALIDATES.landmark_step = {'registry'}

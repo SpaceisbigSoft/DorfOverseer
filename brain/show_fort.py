@@ -145,6 +145,10 @@ def report(s: dict) -> str:
             what = " ".join(p for p in (x.get("material"), x["item"].lower()) if p)
             lines.append(f"  Mandate ({x['kind']}): {x['remaining']} of {x['total']} {what},"
                          f" {x['days_left']} days left" + (f", from {x['by']}" if x.get("by") else ""))
+    if as_dict(s.get("noble_demands")).get("nobles"):
+        # (0.105.41) each noble's rooms: the value their office asks against the room's own, and the plan
+        from planner import PLANNER_CONFIG, nobles_view
+        lines += ["", "NOBLES' ROOMS"] + nobles_view(s, PLANNER_CONFIG)
 
     pr = as_dict(s.get("projects"))
     if pr and "error" not in pr:

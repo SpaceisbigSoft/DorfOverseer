@@ -55,6 +55,7 @@ from planner_insane import _insane_rule  # noqa: E402  (0.105.40b) the insane: d
 from planner_hauling import _hauling_labor_rule, note_hauling  # noqa: E402  (0.105.40 M5) hauling balanced
 from planner_food import _food_store_rule, note_food  # noqa: E402  (0.105.40b, M6) the food store
 from planner_food import note_food_level  # noqa: E402  (fix41) a food storage level booked per kitchen/still
+from planner_nobles import _noble_value_rule, nobles_view, noble_room_plan  # noqa: E402,F401  (0.105.41) nobles' room values
 from planner_alloys import _alloy_rule  # noqa: E402  (0.105.40 M7) bronze for a fort without iron, value alloys
 from planner_deep import _deep_hazard_rule  # noqa: E402  (0.105.40b) adamantine and the underworld: never dug
 from planner_construct import (_hall_rule, _construction_blocks_rule,  # noqa: E402  (0.105.30) construction
@@ -673,6 +674,7 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
         _guard(_gems_rule, s, cfg, proposals, traits, memory, notes)
         _guard(_cloth_rule, s, cfg, citizens, proposals)
         _guard(_noble_rooms_rule, s, cfg, proposals, memory)
+        _guard(_noble_value_rule, s, cfg, proposals, notes, memory)   # (0.105.41)
         _guard(_hauling_rule, s, cfg, citizens, proposals)
         _guard(_spare_mechanisms_rule, s, cfg, traits, proposals)
 

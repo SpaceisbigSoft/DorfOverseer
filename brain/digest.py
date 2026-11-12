@@ -145,6 +145,7 @@ SECTION_DEFAULTS = {
     "industry": {},
     "homes": {},             # (0.104.168) households: bedrooms, couples in one room or two, rough sleepers (lua/ai-homes.lua)
     "citizens_taste": {},    # (E4) the grown-ups' leanings, dreams, values and likes, summed (lua/ai-homes.lua citizens_taste)
+    "noble_demands": {},     # (0.105.41) {nobles: [{unit_id, name, title, positions, rooms: [{kind, need, zone_id, value...}]}], monarch, capital, land_holders} (lua/ai-noble-demands.lua)
     "noble_rooms": {},       # {nobles: [{unit_id, name, office, needs}], free: {office, bedroom...}} (lua/ai-nobles.lua)
     "trade": {},             # {depot, caravans: [{civ, state}], goods, goods_value, at_depot} (lua/ai-trade.lua)          # {ores: {METAL: {tiles, ore}}} uncovered near the fort (lua/ai-industry.lua)             # {miners, picks, soldier_picks, dig, want, need, candidates} (lua/ai-labor.lua)
     "founding": {},          # {stairs: has the fort a staircase, near: the wagon or the dwarves}
@@ -648,6 +649,18 @@ def digest(s: dict, news: int = 5) -> str:
     nobles = _l(s.get("nobles"))
     if nobles:
         lines.append("NOBLES " + " ".join(sorted({str(x.get("position")) for x in nobles if isinstance(x, dict)})))
+    nd = _d(s.get("noble_demands"))
+    if nd.get("capital") or _l(nd.get("land_holders")):
+        # (0.105.41) the capital and the land holders
+        lines.append("TITLES " + "; ".join(
+            ([f"capital (monarch {nd.get('monarch')})"] if nd.get("capital") else [])
+            + [f"{h.get('title')} {h.get('name')}" for h in _l(nd.get("land_holders")) if isinstance(h, dict)]))
+    short = [f"{n.get('name')} {r.get('kind')} {r.get('value')}/{r.get('need')}"
+             for n in _l(nd.get("nobles")) if isinstance(n, dict)
+             for r in _l(n.get("rooms")) if isinstance(r, dict) and r.get("zone_id") is not None
+             and int(r.get("value") or 0) < int(r.get("need") or 0)]
+    if short:
+        lines.append("NOBLE ROOMS UNDER VALUE " + "; ".join(short[:4]))
     pr = _d(s.get("projects"))
     lines.append("BUILDING " + (project_text(pr) or "no projects in progress")
                  + f" ({pr.get('finished', 0)} finished)")

@@ -539,6 +539,7 @@ SHORT_WORDS = {
     "setup_shelter": "set up the AI shelter burrow",
     "refresh_shelter": "make the AI shelter again (a gate was lost)",    # (0.105.26)
     "sync_offices": "put the appointed nobles on the game's duty lists",
+    "polish_room": "smooth or engrave a noble's room up to their office's value",   # (0.105.41)
     "bootstrap_chair": "make one chair straight at a workshop (for the manager's office)",
     "approve_orders": "approve the AI's waiting work orders (no manager's office yet)",
     "unsuspend_orders": "resume the AI's suspended work-order jobs",
