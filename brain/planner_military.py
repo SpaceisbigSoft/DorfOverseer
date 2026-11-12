@@ -680,14 +680,17 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
     # Squads at threats: kill orders the AI gives, and clears again.
     able = [q for q in squads if can_fight(q, cfg)]
     policy = rules_["attack_policy"]
-    great = [i for i in reach if threats[i].get("great_danger")]
+    # (0.105.40b) a fire breather is no melee squad's target, great or not
+    # (planner_firebreath: crossbows from inside only, and the note why)
+    fire = {i for i in reach if threats[i].get("fire_breather") is True and policy != "all"}
+    great = [i for i in reach if threats[i].get("great_danger") and i not in fire]
     # (0.104.118, phase 11) a great danger is fought when the squads are
     # strong enough for it (judged), else the dwarves hide behind shut gates
     fight, verdict = fight_or_hide(s, memory, cfg, [threats[i] for i in great], able) if great else (False, "")
     # (0.105.26) a great danger whose fight was called off: never a target
     # again while it's on the map (unless the player's rule is attack everything)
     off = called_off_ids(s, memory)
-    targets = [i for i in reach if policy == "all" or (policy == "ordinary" and i not in off
+    targets = [i for i in reach if policy == "all" or (policy == "ordinary" and i not in off and i not in fire
                                                        and (not threats[i].get("great_danger") or fight))]
     recalled = set()
     if off and policy != "all":
@@ -701,7 +704,7 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
                 proposals.append(Proposal("squad_recall", {"type": "squad_orders", "squad_id": q["id"], "clear": True},
                                           f"the fight with the great danger was called off: "
                                           f"{q.get('name') or 'the squad'} comes back", 0))
-    held_back = [i for i in reach if i not in targets]
+    held_back = [i for i in reach if i not in targets and i not in fire]
     if great and fight and policy == "ordinary":
         # (0.104.139) recorded even when the squads were already out at others
         _note_fight(s, memory, [threats[i] for i in great])

@@ -1415,7 +1415,7 @@ def lone_intruders(s: dict, cfg: dict, traits: dict | None = None, memory=None) 
     for i in reach:
         t = rows.get(i)
         if (not isinstance(t, dict) or i not in inside or t.get("great_danger") or t.get("flier")
-                or t.get("destroyer")):
+                or t.get("destroyer") or t.get("fire_breather")):       # (0.105.40b) never a lone intruder
             return []
     if any(t.get("id") not in reach for t in held_off_threats(s)) or great_present(s):
         return []                       # a siege still outside: the gates hold it off, as before
@@ -1434,7 +1434,8 @@ def few_ordinary(s: dict, cfg: dict, traits: dict | None = None) -> list:
         return []
     for i in reach:
         t = rows.get(i)
-        if not isinstance(t, dict) or t.get("great_danger") or t.get("flier") or t.get("destroyer"):
+        if (not isinstance(t, dict) or t.get("great_danger") or t.get("flier") or t.get("destroyer")
+                or t.get("fire_breather")):         # (0.105.40b) a fire breather is never "ordinary"
             return []
     if any(t.get("id") not in reach for t in held_off_threats(s)) or great_present(s):
         return []
@@ -1492,7 +1493,8 @@ def hunted_outside(s: dict, cfg: dict, traits: dict | None = None, memory=None) 
         return []
     for i in reach:
         t = rows.get(i)
-        if not isinstance(t, dict) or t.get("great_danger") or t.get("flier") or t.get("destroyer"):
+        if (not isinstance(t, dict) or t.get("great_danger") or t.get("flier") or t.get("destroyer")
+                or t.get("fire_breather")):         # (0.105.40b) a fire breather is never "ordinary"
             return []
     if any(t.get("id") not in reach for t in held_off_threats(s)) or great_present(s):
         return []
@@ -1560,7 +1562,7 @@ def _lockdown_cap_why(s: dict, cfg: dict, ids: list, quiet_ticks: int, rec: dict
         return ""
     rows = {t.get("id"): t for t in _l(_d(s.get("others_on_map")).get("threats")) if isinstance(t, dict)}
     if (len(ids) > cfg.get("lockdown_cap_threats", 2) or great_present(s)
-            or any(i not in rows or rows[i].get("great_danger") for i in ids)):
+            or any(i not in rows or rows[i].get("great_danger") or rows[i].get("fire_breather") for i in ids)):
         return ""
     out = int(_d(s.get("entrances")).get("citizens_outside") or 0)
     if s.get("fps_low"):

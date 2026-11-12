@@ -1250,3 +1250,73 @@ function seal_cavern(layer, tiles, open, dry_run, z1, z2, openings)
     return {ok = true, locked = n, adopted = adopted > 0 and adopted or nil, layer = layer, dry_run = dry_run or nil,
             pull_failed = pull_failed > 0 and pull_failed or nil}
 end
+
+-- (0.105.40b) A creature that breathes, spits or hurls fire (a dragon, a fire
+-- imp, a generated beast with a fire breath), or burns to the touch: no melee
+-- squad goes at it (the fire takes a squad in its armour before it lands a
+-- blow; brain/planner_firebreath.py). Read from its caste's raws: each natural
+-- ability (caste.body_info.interactions, CAN_DO_INTERACTION) whose CDI:FLOW is
+-- DRAGONFIRE, FIREJET or FIREBALL (interaction.material_breath), or whose
+-- interaction's material target emits one of those (a generated beast's);
+-- the caste flag IMMOLATE. One answer per race and caste, kept for the
+-- session (raws don't change while a world is loaded).
+-- Returns 'breath' / 'jet' / 'fireball' / 'burns', or false.
+FIRE_BREATH_CACHE = FIRE_BREATH_CACHE or {}
+local FIRE_FLOW_HOW = {DRAGONFIRE = 'breath', FIREJET = 'jet', FIREBALL = 'fireball'}
+
+function fire_breath_of(race, caste)
+    local key = tostring(race) .. ':' .. tostring(caste)
+    local v = FIRE_BREATH_CACHE[key]
+    if v ~= nil then return v end
+    v = false
+    local fire = {}
+    pcall(function()
+        for name, how in pairs(FIRE_FLOW_HOW) do
+            local e = df.breath_attack_type[name]
+            if e ~= nil then fire[e] = how end
+        end
+    end)
+    local okc, c = pcall(function() return df.creature_raw.find(race).caste[caste] end)
+    if okc and c then
+        pcall(function()
+            for _, a in ipairs(c.body_info.interactions) do
+                local info = a.interaction
+                local how = fire[info.material_breath]
+                if not how then
+                    pcall(function()
+                        local it = df.interaction.find(info.type_id)
+                        for _, t in ipairs(it and it.targets or {}) do
+                            local okb, b = pcall(function() return t.breath_attack_type end)
+                            if okb and b ~= nil and fire[b] then how = fire[b]; break end
+                        end
+                    end)
+                end
+                if how then v = how; return end
+            end
+        end)
+        if not v then
+            local oki, imm = pcall(function() return c.flags.IMMOLATE end)
+            if oki and imm then v = 'burns' end
+        end
+    end
+    FIRE_BREATH_CACHE[key] = v
+    return v
+end
+
+-- (0.105.40b) The others_on_map report's threats marked: fire_breather = true
+-- and fire_how for each one that breathes fire (nothing added to the others,
+-- so a report without one is as before). Returns how many were marked.
+function mark_fire_breathers(o)
+    local n = 0
+    for _, t in ipairs(type(o) == 'table' and type(o.threats) == 'table' and o.threats or {}) do
+        local u = type(t) == 'table' and t.id ~= nil and df.unit.find(t.id) or nil
+        if u then
+            local okf, how = pcall(fire_breath_of, u.race, u.caste)
+            if okf and how then
+                t.fire_breather, t.fire_how = true, how
+                n = n + 1
+            end
+        end
+    end
+    return n
+end

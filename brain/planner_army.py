@@ -234,15 +234,17 @@ def hiding(s: dict, memory, cfg: dict) -> tuple[bool, list]:
         return False, []
     squads = [q for q in _l(_d(s.get("military")).get("squads")) if isinstance(q, dict)]
     able = [q for q in squads if can_fight(q, cfg)]
-    great = [i for i in reach if threats[i].get("great_danger")]
     policy = rules_["attack_policy"]
     if policy == "all":
         return False, reach
+    # (0.105.40b) a fire breather is hidden from like an unfought great danger
+    fire = {i for i in reach if threats[i].get("fire_breather") is True}
+    great = [i for i in reach if threats[i].get("great_danger") and i not in fire]
     if policy == "never":
-        return bool(great), []
+        return bool(great) or bool(fire), []
     fight = fight_or_hide(s, memory, cfg, [threats[i] for i in great], able)[0] if great else False
-    targets = [i for i in reach if not threats[i].get("great_danger") or fight]
-    return bool(great) and not fight and not targets, targets
+    targets = [i for i in reach if i not in fire and (not threats[i].get("great_danger") or fight)]
+    return ((bool(great) and not fight) or bool(fire)) and not targets, targets
 
 
 def danger_close(s: dict, cfg: dict) -> bool:
