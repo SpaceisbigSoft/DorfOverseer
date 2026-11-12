@@ -39,6 +39,29 @@ def _lua_string(s: str) -> str:
 # (13c) a module split in two: the half the first loads on call, by name
 COMPANIONS = {"ai-military.lua": ["ai-military-gear"], "ai-society.lua": ["ai-society-burrows"]}
 
+# (13e) a module split into a hub and parts (lua/ai-gates.lua): the hub loads
+# its parts (PARTS) from the files beside it; loaded from text in a test, it
+# takes their texts from PART_SOURCES, which the prelude sets
+SPLIT = ("ai-gates.lua",)
+
+
+def split_parts(name: str) -> list[str]:
+    """The parts' module names ('ai-gates-scan', ...) of a split hub, from its PARTS line."""
+    import re
+    hub = (LUA_DIR / name).read_text(encoding="utf-8")
+    listed = re.search(r"^PARTS = (\{[^}]*\})", hub, re.M)
+    stem = name[:-4]
+    return [f"{stem}-{p}" for p in re.findall(r"'([\w-]+)'", listed.group(1))] if listed else []
+
+
+def split_src(name: str) -> str:
+    """lua/<name> and, for a split hub, its parts' texts after it (for tests
+    that read the source itself, not run it)."""
+    out = (LUA_DIR / name).read_text(encoding="utf-8")
+    for p in split_parts(name) if name in SPLIT else []:
+        out += "\n" + (LUA_DIR / (p + ".lua")).read_text(encoding="utf-8")
+    return out
+
 
 def prelude(name: str = "") -> str:
     """The one line put before a module's first line. `name` (the module's
@@ -49,7 +72,13 @@ def prelude(name: str = "") -> str:
         srcs[c] = (LUA_DIR / (c + ".lua")).read_text(encoding="utf-8")
     table = ", ".join(f"[{_lua_string(k)}] = {_lua_string(v)}" for k, v in srcs.items())
     me = _lua_string(name[:-4]) if name.endswith(".lua") else "nil"
+    parts = ""
+    if name in SPLIT:
+        parts = "PART_SOURCES = {" + ", ".join(
+            f"[{_lua_string(p)}] = {_lua_string((LUA_DIR / (p + '.lua')).read_text(encoding='utf-8'))}"
+            for p in split_parts(name)) + "}; "
     return (
+        parts +
         "do local real_req, loaded, srcs, me = reqscript, {}, {" + table + "}, " + me + "; "
         "reqscript = function(n, ...) "
         "if n == me then return _ENV end "

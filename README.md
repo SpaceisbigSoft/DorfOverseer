@@ -138,7 +138,7 @@ See [docs/military.md](docs/military.md).
 
 | Folder | What's in it |
 | --- | --- |
-| `lua/` | The scripts that run inside the game; DFHack loads them from here (`script-paths.txt`). `ai-bridge.lua` and `ai-builder.lua` are hubs that load their `ai-bridge-*` and `ai-builder-*` parts; `gui/ai-overseer.lua` is the window |
+| `lua/` | The scripts that run inside the game; DFHack loads them from here (`script-paths.txt`). `ai-bridge.lua`, `ai-builder.lua` and `ai-gates.lua` are hubs that load their `ai-bridge-*`, `ai-builder-*` and `ai-gates-*` parts; `gui/ai-overseer.lua` is the window |
 | `brain/` | The Python side: `overseer.py` (the loop), `keeper.py` (unattended runs), `planner.py` and the `planner_*.py` rule modules (`PLANNER_CONFIG` in `planner_config.py`), the strategist; one-off scripts in `brain/tools/` |
 | `tests/` | Tests that run without the game (`python tests\run_all.py`) |
 | `docs/` | Setup, controls, and design notes per area |

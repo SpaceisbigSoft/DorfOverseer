@@ -32,6 +32,9 @@ BRIDGE_PARTS = ["ai-bridge-report", "ai-bridge-orders", "ai-bridge-actions", "ai
                 "ai-bridge-design"]   # (D0)
 BUILDER_PARTS = ["ai-builder-" + p for p in ("sites", "projects", "farms", "wells", "cistern", "surface", "rooms", "halls",
                                               "landmarks")]   # (D0)
+# (13e) the gates' hub and parts, as the hub lists them
+GATES_PARTS = ["ai-gates-" + p for p in re.findall(r"'([\w-]+)'", re.search(
+    r"^PARTS = \{([^}]*)\}", (LUA_DIR / "ai-gates.lua").read_text(encoding="utf-8"), re.M).group(1))]
 VERSION = re.search(r"^BRIDGE_VERSION = '([^']+)'", HUB, re.M).group(1)
 
 # the stub DFHack of tests/test_hygiene_bridge.py, read from it (not copied)
@@ -115,7 +118,7 @@ def _():
 
 # --- 2. version marks and `modules` ------------------------------------------
 
-MARKED = BRIDGE_PARTS + ["ai-builder"] + BUILDER_PARTS + ["ai-military-gear", "ai-society-burrows", "ai-constructions"]
+MARKED = BRIDGE_PARTS + ["ai-builder"] + BUILDER_PARTS + ["ai-gates"] + GATES_PARTS + ["ai-military-gear", "ai-society-burrows", "ai-constructions"]
 
 
 @test("marks: every part carries one version mark, the same string as BRIDGE_VERSION")
@@ -144,6 +147,8 @@ def _():
     good = {"PARTS": LUA.table_from(["sites", "rooms"]),
             "PART_VERSIONS": t({"ai-builder": VERSION, "ai-builder-sites": VERSION, "ai-builder-rooms": VERSION})}
     H.scripts["ai-builder"] = t(good)
+    H.scripts["ai-gates"] = t({"PARTS": [p[len("ai-gates-"):] for p in GATES_PARTS],     # (13e)
+                               "PART_VERSIONS": {n: VERSION for n in ["ai-gates"] + GATES_PARTS}})
     H.scripts["ai-military-gear"] = t({"PART_VERSIONS": {"ai-military-gear": VERSION}})
     H.scripts["ai-society-burrows"] = t({"PART_VERSIONS": {"ai-society-burrows": VERSION}})
     H.scripts["ai-constructions"] = t({"PART_VERSIONS": {"ai-constructions": VERSION}})   # (0.105.30)
@@ -181,9 +186,11 @@ def _():
         H.scripts[m] = t({"PART_VERSIONS": {m: VERSION}})
     H.scripts["ai-builder"] = t({"PARTS": [p[len("ai-builder-"):] for p in BUILDER_PARTS],
                                  "PART_VERSIONS": {n: VERSION for n in ["ai-builder"] + BUILDER_PARTS}})
+    H.scripts["ai-gates"] = t({"PARTS": [p[len("ai-gates-"):] for p in GATES_PARTS],     # (13e)
+                               "PART_VERSIONS": {n: VERSION for n in ["ai-gates"] + GATES_PARTS}})
     r = H.rerun(M, "modules")
     assert r.ok and r.failed is None and r.stale_parts is None, dict(r)
-    assert r.parts == len(BRIDGE_PARTS) + len(BUILDER_PARTS) and r.modules == len(lua_list(M.BRIDGE_MODULES)), dict(r)
+    assert r.parts == len(BRIDGE_PARTS) + len(BUILDER_PARTS) + len(GATES_PARTS) and r.modules == len(lua_list(M.BRIDGE_MODULES)), dict(r)
     H.scripts["ai-society"] = None                    # the harness's reqscript errors for it
     H.scripts["ai-builder"].PARTS = LUA.table_from(["sites", "nosuch"])
     r = H.rerun(M, "modules")

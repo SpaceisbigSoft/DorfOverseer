@@ -489,7 +489,8 @@ def _():
     assert r.ok and r.dry_run and job.flags.suspend, dict(r)
     r = E.free_gate_jobs(1, False)
     assert r.ok and r.unsuspended == 1 and not job.flags.suspend, dict(r)
-    src = (ROOT / "lua" / "ai-gates.lua").read_text(encoding="utf-8")
+    from lua_modules_util import split_src   # (13e) the hub and its parts
+    src = split_src("ai-gates.lua")
     assert "if ok then pcall(note_gate_planned, pos) end" in src
 
 
