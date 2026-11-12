@@ -439,6 +439,185 @@ local function undead_report(cit, groups, txt)
     return out
 end
 
+-- (0.105.40b) evil weather: the clouds on the map's surface (a flow with a
+-- guide, or any cloud whose material carries a syndrome), DF's own list of
+-- evil weather (world.world_data.region_weather: creeping clouds with their
+-- in-game coordinates, falling material - blood or syndrome rain - with its
+-- region tile, and DF's `announced` flag), the plain rain over the map
+-- (current_weather) and, while any of it is about, the hostile units
+-- standing out under the sky (the squads aren't sent out to them).
+-- Bounded: a few names, at most WEATHER_MAX_FLOWS flows read.
+WEATHER_MAX_FLOWS = 20000
+WEATHER_EDGE_NEAR = 48        -- a region cloud this close to the map's edge counts as near the fort
+WEATHER_MAX_IDS = 40
+local WEATHER_FLOWS = {MaterialDust = true, MaterialGas = true, MaterialVapor = true, ItemCloud = true}
+local BLOOD_IDS = {BLOOD = true, ICHOR = true, GOO = true, PUS = true}
+
+-- a material's first syndrome, its effects (CE types, up to 6), whether it is blood
+local SYN_MEMO = {}
+local function material_facts(mt, mi)
+    local key = tostring(mt) .. ':' .. tostring(mi)
+    if SYN_MEMO[key] ~= nil then return SYN_MEMO[key] end
+    local out = {}
+    pcall(function()
+        local info = dfhack.matinfo.decode(mt, mi)
+        if not info then return end
+        pcall(function() out.name = tostring(info:toString()):sub(1, 60) end)
+        local m = info.material
+        local id = m and tostring(m.id or '') or ''
+        out.blood = BLOOD_IDS[id] or (out.name and out.name:lower():find('blood', 1, true)) and true or nil
+        pcall(function()
+            for _, syn in ipairs(m.syndrome.syndrome) do
+                out.syndrome = out.syndrome or tostring(syn.syn_name or ''):sub(1, 60)
+                out.effects = out.effects or {}
+                for _, e in ipairs(syn.ce) do
+                    if #out.effects >= 6 then break end
+                    local okt, ty = pcall(function() return df.creature_interaction_effect_type[e:getType()] end)
+                    if okt and ty then table.insert(out.effects, tostring(ty)) end
+                end
+                if out.syndrome == '' then out.syndrome = 'unnamed syndrome' end
+            end
+        end)
+    end)
+    SYN_MEMO[key] = out
+    return out
+end
+
+-- (pure) DF's evil weather records against the fort's map: rows are
+-- {kind = 'cloud'|'rain', gx, gy (clouds: global map tiles), rx, ry (rain:
+-- its world tile, or region tile), announced, left, mx, my, mat = facts};
+-- map = {rx, ry (the map's corner in region tiles, 48 map tiles each), w, h
+-- (map tiles)}. Returns {clouds, rains, cloud_edge (tiles from the map's
+-- edge, 0 on it), approaching, rain_here, announced, left, cloud_mat, rain_mat}
+function weather_rows_summary(rows, map, edge_near)
+    local out = {clouds = 0, rains = 0}
+    edge_near = edge_near or WEATHER_EDGE_NEAR
+    local ox, oy = map.rx * 48, map.ry * 48
+    local wx, wy = map.rx // 16, map.ry // 16
+    local tiles_x, tiles_y = math.max(1, map.w // 48), math.max(1, map.h // 48)
+    for _, r in ipairs(rows) do
+        if r.kind == 'cloud' and r.gx and r.gx > -30000 then
+            local lx, ly = r.gx - ox, r.gy - oy
+            local dx = math.max(0, -lx, lx - (map.w - 1))
+            local dy = math.max(0, -ly, ly - (map.h - 1))
+            local d = math.max(dx, dy)
+            out.clouds = out.clouds + 1
+            if d <= edge_near and (not out.cloud_edge or d < out.cloud_edge) then
+                out.cloud_edge = d
+                out.cloud_mat = r.mat
+                local cx, cy = map.w // 2, map.h // 2
+                out.approaching = d == 0 or ((r.mx or 0) ~= 0 and (r.mx > 0) == (lx < cx))
+                    or ((r.my or 0) ~= 0 and (r.my > 0) == (ly < cy)) or nil
+                if r.announced then out.announced = true end
+                if r.left and (not out.left or r.left > out.left) then out.left = r.left end
+            end
+        elseif r.kind == 'rain' and r.rx then
+            -- (probe) DF calls it the world tile; read as a region tile too
+            local here = (r.rx == wx and r.ry == wy)
+                or (r.rx >= map.rx and r.rx < map.rx + tiles_x and r.ry >= map.ry and r.ry < map.ry + tiles_y)
+            if here then
+                out.rains = out.rains + 1
+                out.rain_here = true
+                if not out.rain_mat or (r.mat and r.mat.syndrome and not out.rain_mat.syndrome) then out.rain_mat = r.mat end
+                if r.announced then out.announced = true end
+                if r.left and (not out.left or r.left > out.left) then out.left = r.left end
+            end
+        end
+    end
+    return out
+end
+
+local function weather_rows()
+    local rows = {}
+    pcall(function()
+        for _, w in ipairs(df.global.world.world_data.region_weather) do
+            if #rows >= 50 then break end
+            local t = df.region_weather_type[w.type]
+            local row = {announced = w.flags.announced and true or nil, left = w.remaining_duration,
+                         mat = material_facts(w.mat_type, w.mat_index)}
+            if t == 'FallingMaterial' then
+                row.kind, row.rx, row.ry = 'rain', w.region_x, w.region_y
+            elseif t == 'CreepingGas' or t == 'CreepingVapor' or t == 'CreepingDust' then
+                row.kind, row.gx, row.gy = 'cloud', w.world_in_game_x, w.world_in_game_y
+                row.mx, row.my = w.cloud_x_movement, w.cloud_y_movement
+            end
+            if row.kind then table.insert(rows, row) end
+        end
+    end)
+    return rows
+end
+
+function weather_report(cit)
+    SYN_MEMO = {}                 -- one report's lookups (another save has other materials)
+    local out = {evil_cloud = 0}
+    local flows_read = 0
+    pcall(function()
+        for _, f in ipairs(df.global.flows) do
+            flows_read = flows_read + 1
+            if flows_read > WEATHER_MAX_FLOWS then out.flows_capped = true break end
+            if f.density > 0 and WEATHER_FLOWS[df.flow_type[f.type]] and outside_at(f.pos.x, f.pos.y, f.pos.z) then
+                local okg, gid = pcall(function() return f.guide_id end)
+                local facts = material_facts(f.mat_type, f.mat_index)
+                if (okg and gid and gid ~= -1) or facts.syndrome then
+                    out.evil_cloud = out.evil_cloud + 1
+                    local dd = dist_to(f.pos, cit)
+                    local od = dist_to(f.pos, cit, true)
+                    if dd and (not out.cloud_near or dd < out.cloud_near) then out.cloud_near = dd end
+                    if od and (not out.cloud_outside_near or od < out.cloud_outside_near) then out.cloud_outside_near = od end
+                    if not out.material or (facts.syndrome and not out.syndrome) then
+                        out.material, out.syndrome, out.effects = facts.name, facts.syndrome, facts.effects
+                    end
+                end
+            end
+        end
+    end)
+    local okm, map = pcall(function()
+        local m = df.global.world.map
+        return {rx = m.region_x, ry = m.region_y, w = m.x_count, h = m.y_count}
+    end)
+    local region = {clouds = 0, rains = 0}
+    if okm and map then
+        local oks, r = pcall(weather_rows_summary, weather_rows(), map)
+        if oks and r then region = r end
+    end
+    out.region = {clouds = region.clouds, rains = region.rains, cloud_edge = region.cloud_edge,
+                  approaching = region.approaching, announced = region.announced, left = region.left,
+                  cloud_material = region.cloud_mat and region.cloud_mat.name or nil,
+                  cloud_syndrome = region.cloud_mat and region.cloud_mat.syndrome or nil}
+    if region.rain_here then
+        local m = region.rain_mat or {}
+        out.rain = m.blood and not m.syndrome and 'blood' or 'evil'
+        out.rain_material, out.rain_syndrome = m.name, m.syndrome
+        out.rain_effects = m.effects
+        if not out.syndrome then out.syndrome, out.effects = m.syndrome, m.effects end
+    end
+    if not out.syndrome and region.cloud_mat then out.syndrome = region.cloud_mat.syndrome end
+    pcall(function()
+        for i = 0, 4 do
+            for j = 0, 4 do
+                if df.global.current_weather[i][j] == df.weather_type.Rain then out.raining = true end
+            end
+        end
+    end)
+    out.near_fort = out.evil_cloud > 0 or (region.cloud_edge ~= nil) or region.rain_here or false
+    -- the hostile units out under the sky, while any of it is about
+    if out.near_fort then
+        out.enemies_outside = {}
+        pcall(function()
+            for _, u in ipairs(report_units()) do
+                if #out.enemies_outside >= WEATHER_MAX_IDS then break end
+                if loose(u) and not is(dfhack.units.isCitizen, u)
+                        and (is(dfhack.units.isInvader, u) or is(dfhack.units.isUndead, u)
+                             or is(dfhack.units.isGreatDanger, u) or is(dfhack.units.isDanger, u))
+                        and outside_at(u.pos.x, u.pos.y, u.pos.z) then
+                    table.insert(out.enemies_outside, u.id)
+                end
+            end
+        end)
+    end
+    return out
+end
+
 local function changed(u)
     local ok, yes = pcall(function()
         return u.enemy.normal_race ~= -1 and u.enemy.normal_race ~= u.race
@@ -702,6 +881,7 @@ function survey(txt)
     part('prisoners', prisoners_report, txt)
     part('thieves', thieves_report, d, t, cit, groups, txt)
     part('undead', undead_report, cit, groups, txt)
+    part('weather', weather_report, cit)                  -- (0.105.40b) evil weather
     part('were', were_report, d, t, txt)
     part('surface', surface_report, cit, txt)
     part('rescue', rescue_report)

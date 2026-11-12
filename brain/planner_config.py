@@ -795,4 +795,11 @@ PLANNER_CONFIG = {
     "cleanup_dead_dry_cooldown_ticks": 1200,
     "cleanup_items_dry_cooldown_ticks": 1200,
     "cleanup_units_dry_cooldown_ticks": 1200,
+    # (0.105.40b) evil weather (brain/planner_weather.py): the alarm while an
+    # evil cloud is on the map's surface or this close to its edge, or evil
+    # rain falls on the fort; lifted once it has been gone this many game hours
+    "weather_edge_near": 48,              # DF's evil cloud this many tiles from the map's edge (~5 game hours' drift)
+    "weather_lift_hours": 6,              # gone this long (50 ticks an hour) before the alarm comes down
+    "weather_alarm_max_days": 4,          # held at most this long in one spell (the fort can't stay in for ever)
+    "weather_blood_rain_alarm": False,    # plain blood rain (no syndrome) only stains: work goes on
 }

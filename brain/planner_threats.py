@@ -349,6 +349,10 @@ def alarm_held(s: dict, memory, cfg: dict) -> str:
         if not (isinstance(since, int) and not isinstance(since, bool)
                 and (now - since) // TICKS_PER_DAY >= _c(cfg, "threat_alarm_max_days")):
             return why
+    from planner_weather import weather_held        # (0.105.40b) evil weather's spell
+    why = weather_held(s, memory, cfg)
+    if why:
+        return why
     t = _d(s.get("threats"))
     down = _l(_d(t.get("cavern_citizens")).get("list"))
     if down and cavern_great(s):

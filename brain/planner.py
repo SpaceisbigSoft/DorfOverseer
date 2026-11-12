@@ -49,6 +49,7 @@ from planner_world import (_contact_rule, _export_rule, _hostile_trade_filter, _
                            _messenger_rule, _world_notes, note_world)  # (0.105.0: the world outside, 12b and 13b)
 from planner_missions import _mission_rule, note_missions  # noqa: E402  (0.105.39) missions on the world map
 from planner_cleanup import _world_cleanup_rule, note_cleanup  # noqa: E402  (0.105.40) world cleanup for the game's speed
+from planner_weather import _weather_rules, _weather_squad_filter  # noqa: E402  (0.105.40b) evil weather
 from planner_construct import (_hall_rule, _construction_blocks_rule,  # noqa: E402  (0.105.30) construction
                                note_construct, note_construct_cycle)
 from planner_army import (_army_gear_rule, _quiver_rule, _bolts_rule, _flask_rule,  # noqa: E402  (0.105.0, round 2)
@@ -205,6 +206,9 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
     # (0.105.0) round 3: fire guarded, prisoners, thieves, the undead, werebeasts, cavern beasts, the wounded
     if can_use("threats"):
         _guard(_threat_rules, s, memory, cfg, proposals, notes)
+    # (0.105.40b) evil weather: the alarm while an evil cloud or rain is on the fort, lifted hours after
+    if can_use("threats"):
+        _guard(_weather_rules, s, memory, cfg, proposals, notes)
 
     # 1c. Health: who waits for care, and for how long
     if can_use("health"):
@@ -865,6 +869,11 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
             from planner_world import TRADE_ACTIONS
             kept = [p for p in proposals if p.action.get("type") not in TRADE_ACTIONS]
         proposals = kept
+    # (0.105.40b) no squad sent out into evil weather at enemies outside (unless enemies are inside)
+    if "threats" not in errors:
+        kept = _guard(_weather_squad_filter, s, memory, cfg, proposals, notes)
+        if kept is not None:
+            proposals = kept
     # (0.104.137) crisis mode: expansion waits, recovery goes first
     why = _d(getattr(memory, "crisis", None)).get("why") if memory is not None else None
     if why:

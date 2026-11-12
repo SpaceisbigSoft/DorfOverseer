@@ -131,6 +131,7 @@ class Memory:
     ai_alert_raised: bool = False
     threat_alarm: dict = field(default_factory=dict)   # (0.105.0 review) {since, why}: the threats round's alarm, capped
     cavern_alarm: dict = field(default_factory=dict)   # (v35 fix) {since}: the alarm held for citizens in the caverns, capped
+    weather_alarm: dict = field(default_factory=dict)  # (0.105.40b) {since, seen, on_seen, cleared, why}: evil weather's alarm
     quiet_cycles: int = 0
     last_threat_tick: int = 0          # (0.104.100) a threat could reach the dwarves
     last_great_tick: int = 0           # (0.104.100) a great danger on the surface or in reach

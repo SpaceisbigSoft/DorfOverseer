@@ -383,6 +383,15 @@ def _signed(v) -> str:
     return f"{int(v):+d}" if _num(v) else "?"
 
 
+def _weather_line(s: dict) -> str:
+    """(0.105.40b) brain/planner_weather.py's word on evil weather ("" if none or unreadable)."""
+    try:
+        from planner_weather import weather_line
+        return weather_line(s)
+    except Exception:  # noqa: BLE001
+        return ""
+
+
 def threat_line(s: dict) -> str:
     """(0.105.26) The threats the bridge tracks (lua/ai-threats.lua), only
     what is there now: "" when the fort is calm."""
@@ -401,6 +410,9 @@ def threat_line(s: dict) -> str:
                                                           if _num(u.get("cloud_near")) else ""))
     if u.get("reanimating") and _n(u.get("surface_corpses")):
         parts.append(f"bodies_outside_that_may_rise:{_n(u['surface_corpses'])}")
+    wl = _weather_line(s)                                    # (0.105.40b) evil weather
+    if wl:
+        parts.append(wl)
     th = _d(t.get("thieves"))
     if _n(th.get("now")):
         parts.append(f"thieves_on_map:{_n(th['now'])}")

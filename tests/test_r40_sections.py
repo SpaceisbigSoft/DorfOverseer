@@ -579,7 +579,10 @@ def _():
     for inside in (False, True):
         lua_n, base_n, outs_n = run_threats("new", inside, 2)
         for a, b in zip(outs_o, outs_n):        # (two engines: compared as plain Python)
-            assert to_py(a) == to_py(b), (inside, first_diff(to_py(a), to_py(b)))
+            pb = to_py(b)
+            # (0.105.40b) the evil weather part is new since merge39 (tests/test_r41_weather.py)
+            assert "error" not in pb.pop("weather", {}), pb
+            assert to_py(a) == pb, (inside, first_diff(to_py(a), pb))
         if inside:
             assert base_n.C.active == 2, base_n.C.active                # one walk a report, not five
             assert base_n.C.citizens == 2, base_n.C.citizens
