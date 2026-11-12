@@ -6,6 +6,10 @@ Read only: nothing in the game is changed.
     python brain\\probe_missions.py --here World      (0.105.24) the mouse is on DF's World
                                                   button: the AI remembers where
     python brain\\probe_missions.py --here Diplomacy  the same for Diplomacy on a site's New mission
+    python brain\\probe_missions.py --here Rescue     (0.105.39) the same for each goal's button on
+                                                  New mission: Rescue, Recover, Explore, Raid,
+                                                  Pillage, Tribute, Conquer (the same button may
+                                                  carry several: show it under each name)
 
 While it watches, send one mission by hand in DF: open the World screen,
 go to Missions, start a new mission, pick an abandoned site (a ruin) and
@@ -51,7 +55,8 @@ def changes(old: dict, new: dict) -> dict:
 def main(argv: list[str]) -> int:
     b = Bridge()
     if "--here" in argv:
-        # (0.105.24) show the AI a button of the World screen once (lua/ai-mission-send.lua)
+        # (0.105.24) show the AI a button of the World screen once (lua/ai-mission-send.lua);
+        # (0.105.39) names: World, Diplomacy, Rescue, Recover, Explore, Raid, Pillage, Tribute, Conquer
         i = argv.index("--here")
         name = argv[i + 1] if i + 1 < len(argv) else "World"
         print(json.dumps(b._call("mission_here", name), indent=1, ensure_ascii=False))
