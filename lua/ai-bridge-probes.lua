@@ -74,6 +74,8 @@ end
 -- (0.105.24, 13b) ai-bridge mission_here World|Diplomacy: the mouse is on
 -- that button (the toolbar's World button; Diplomacy on New mission),
 -- remember where (lua/ai-mission-send.lua)
+-- (0.105.39) also each goal's button on New mission: Rescue, Recover,
+-- Explore, Raid, Pillage, Tribute, Conquer (ai-mission-send BUTTON_ANCHORS)
 function cmd_mission_here(args)
     if not in_fort() then return NOT_IN_FORT end
     return reqscript('ai-mission-send').calibrate((args or {})[1] or 'World')

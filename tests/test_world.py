@@ -621,7 +621,8 @@ def _():
     M = tbm.H.module()
     tbm.LUA.execute("""local M, H = ...
       H.calls = {}
-      H.scripts = {['ai-mission-send'] = {start = function(a) table.insert(H.calls, a); return {ok = true, sending = true} end}}
+      H.scripts = {['ai-mission-send'] = {start = function(a) table.insert(H.calls, a); return {ok = true, sending = true} end},
+                   ['ai-overseer-settings'] = {load_settings = function() return {send_messenger = true} end}}   -- (0.105.39) the bridge reads the Rules
     """, M, tbm.H)
     assert tbm.LUA.eval("function(M) return M.ACTIONS.send_mission == M.act_send_mission end")(M)
     r = M.act_send_mission(tbm.t({"site_id": 42, "goal": "make_contact"}))

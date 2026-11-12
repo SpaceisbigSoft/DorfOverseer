@@ -2667,11 +2667,74 @@ end
 -- the Rules switch send_messenger on; the steps run over the next frames and
 -- stop (the screen shut) at the first one that differs from what was
 -- recorded; the outcome shows in the `missions` report's `send`.
+-- (0.105.39) Every goal: rescue, recover_artifact, explore, raid, pillage,
+-- tribute, conquer with squad_ids (and hf_id / artifact_id for the target).
+-- The Rules double-checked here: make_contact + send_messenger for Make
+-- contact; the `missions` choice allowing the goal + send_missions for the rest.
+SEND_GOALS = {make_contact = true, rescue = true, recover_artifact = true, explore = true, raid = true,
+              pillage = true, tribute = true, conquer = true}
+SEND_MISSIONS_ALLOW = {
+    off = {},
+    rescue = {rescue = true, recover_artifact = true},
+    explore = {rescue = true, recover_artifact = true, explore = true},
+    all = {rescue = true, recover_artifact = true, explore = true, raid = true, pillage = true,
+           tribute = true, conquer = true},
+}
+
+function send_mission_rules(goal)
+    local ok, s = pcall(function() return reqscript('ai-overseer-settings').load_settings() end)
+    if not ok or type(s) ~= 'table' then return false, 'the Rules could not be read' end
+    if goal == 'make_contact' then
+        if s.make_contact == false then return false, 'the Rules switch "Make contact" is off' end
+        if s.send_messenger ~= true then return false, 'the Rules switch "Send the messenger by the World screen" is off' end
+        return true
+    end
+    local m = s.missions
+    if m == nil then m = 'rescue' end
+    local allow = SEND_MISSIONS_ALLOW[m]
+    if not allow then return false, 'the Rules choice "Missions" is not known' end
+    if not allow[goal] then return false, 'the Rules choice "Missions" is ' .. m .. ': ' .. goal .. ' is not allowed' end
+    if s.send_missions ~= true then return false, 'the Rules switch "Send missions by the World screen" is off' end
+    return true
+end
+
 function act_send_mission(a)
-    if a.goal ~= nil and a.goal ~= 'make_contact' then return reject('send_mission: goal is make_contact') end
+    local goal = a.goal
+    if goal == nil then goal = 'make_contact' end
+    if type(goal) ~= 'string' or not SEND_GOALS[goal] then
+        return reject('send_mission: goal is one of make_contact, rescue, recover_artifact, explore, raid, pillage, tribute, conquer')
+    end
     local site = int_in(a.site_id, 0, 1000000)
     if not site then return reject('send_mission needs site_id: a site\'s id') end
-    return reqscript('ai-mission-send').start({goal = 'make_contact', site_id = site, dry_run = a.dry_run == true})
+    local squads
+    if a.squad_ids ~= nil then
+        if type(a.squad_ids) ~= 'table' then return reject('send_mission: squad_ids is a list of squad ids') end
+        squads = {}
+        for i = 1, 21 do
+            local v = a.squad_ids[i]
+            if v == nil then break end
+            if i > 20 then return reject('send_mission: at most 20 squads') end
+            local n = int_in(v, 0, 100000000)
+            if not n then return reject('send_mission: squad_ids is a list of squad ids') end
+            table.insert(squads, n)
+        end
+    end
+    if goal ~= 'make_contact' and (not squads or #squads == 0) then
+        return reject('send_mission: ' .. goal .. ' needs squad_ids')
+    end
+    local hf, art
+    if a.hf_id ~= nil then
+        hf = int_in(a.hf_id, 0, 100000000)
+        if not hf then return reject('send_mission: hf_id is a historical figure\'s id') end
+    end
+    if a.artifact_id ~= nil then
+        art = int_in(a.artifact_id, 0, 100000000)
+        if not art then return reject('send_mission: artifact_id is an artifact\'s id') end
+    end
+    local on, why = send_mission_rules(goal)
+    if not on then return reject('send_mission: ' .. why) end
+    return reqscript('ai-mission-send').start({goal = goal, site_id = site, squad_ids = squads, hf_id = hf,
+                                               artifact_id = art, dry_run = a.dry_run == true})
 end
 
 function act_close_trade(a)
