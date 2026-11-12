@@ -78,6 +78,16 @@ ORDER_RECIPES = {
     make_milk_of_lime = {job = 'CustomReaction', reaction = 'MAKE_MILK_OF_LIME'},
     make_parchment = {job = 'CustomReaction', reaction = 'MAKE_PARCHMENT'},
     make_quire = {job = 'CustomReaction', reaction = 'MAKE_QUIRE'},
+    -- (item9) paper from plants, scrolls and codices: the reaction looked up
+    -- in the game's raws by kind (lua/ai-paper.lua reaction; the vanilla codes
+    -- are remembered, not read, so a reaction of the right shape stands in)
+    make_slurry = {job = 'CustomReaction', paper = 'slurry'},
+    press_paper = {job = 'CustomReaction', paper = 'press'},
+    make_papyrus = {job = 'CustomReaction', paper = 'papyrus'},
+    make_scroll = {job = 'CustomReaction', paper = 'scroll'},
+    bind_codex = {job = 'CustomReaction', paper = 'codex'},
+    wooden_scroll_rollers = {job = 'MakeTool', item_subtype = 'ITEM_TOOL_SCROLL_ROLLERS', material_category = {'wood'}},
+    wooden_book_binding = {job = 'MakeTool', item_subtype = 'ITEM_TOOL_BOOK_BINDING', material_category = {'wood'}},
     cloth_rope = {job = 'MakeChain', material_category = {'cloth'}},      -- a rope (a well needs one)
     yarn_rope = {job = 'MakeChain', material_category = {'yarn'}},        -- (0.105.18) a rope of yarn cloth
     silk_rope = {job = 'MakeChain', material_category = {'silk'}},        -- (0.105.18) a rope of silk cloth
@@ -311,6 +321,7 @@ local function recipe_of(order)
         -- couldn't recognise its own coke orders and placed one every 2 days)
         local reaction = (r.alloy and alloy_reaction(r)) or r.reaction
             or (r.reaction_find and coke_reaction(r.reaction_find)) or ''
+        if r.paper and r.job == job then reaction = paper_reaction(r.paper) or '' end   -- (item9)
         if r.job == job
                 and reaction == order.reaction_name
                 and (not r.meal_ingredients or r.meal_ingredients == order.mat_type)
@@ -452,6 +463,12 @@ function coke_reaction(stone)
     return code
 end
 
+-- (item9) A paper recipe's reaction code (lua/ai-paper.lua), or nil.
+function paper_reaction(kind)
+    local ok, code = pcall(function() return reqscript('ai-paper').reaction(kind) end)
+    return ok and code or nil
+end
+
 -- Is there a reaction with this code in the game's raws?
 function reaction_exists(code)
     local ok, found = pcall(function()
@@ -548,6 +565,16 @@ function act_work_order(a)
         end
         local copy = {}
         for k, v in pairs(recipe) do if k ~= 'reaction_find' then copy[k] = v end end
+        copy.reaction = code
+        recipe = copy
+    end
+    if recipe and recipe.paper then         -- (item9) paper, scrolls, codices
+        local code = paper_reaction(recipe.paper)
+        if not code then
+            return reject(('the game has no %s reaction (recipe %s)'):format(recipe.paper, a.recipe))
+        end
+        local copy = {}
+        for k, v in pairs(recipe) do if k ~= 'paper' then copy[k] = v end end
         copy.reaction = code
         recipe = copy
     end

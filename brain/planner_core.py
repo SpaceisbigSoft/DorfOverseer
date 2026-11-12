@@ -25,7 +25,8 @@ MANDATE_RECIPES = {
 BUILDABLE_SHOPS = {"Carpenters", "Masons", "Craftsdwarfs", "Still", "Kitchen", "Butchers", "Tanners",
                    "Leatherworks", "Loom", "Clothiers", "Farmers", "Fishery", "Mechanics", "Jewelers",
                    "Ashery", "Millstone", "Quern", "Bowyers", "WoodFurnace", "Smelter", "MetalsmithsForge",
-                   "Kiln", "SoapMaker", "GlassFurnace"}
+                   "Kiln", "SoapMaker", "GlassFurnace",
+                   "ScrewPress"}                   # (item9) paper from slurry (Quickfort 'wp')
 # a forge also counts as the magma one, a glass furnace as the magma one
 SHOP_ALIASES = {"MetalsmithsForge": ("MetalsmithsForge", "MagmaForge"),
                 # (bridges before 0.75.1 reported the soap maker's by its raws code: 116 were built overnight)

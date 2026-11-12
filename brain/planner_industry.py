@@ -712,7 +712,7 @@ def _kiln_rules(s: dict, cfg: dict, proposals: list, notes: list) -> None:
             step = ("make_quicklime", min(caco3, short, 3), "quicklime (for parchment) from limestone")
         elif not caco3:
             notes.append("no limestone, marble, chalk or dolomite boulders for quicklime: the library's paper "
-                         "would have to come from plants at a quern and screw press (not made by the AI yet)")
+                         "comes from plants instead (a quern and a screw press: planner_paper)")
         elif not bags:
             notes.append("quicklime for the library's paper waits for an empty bag")
     if step:
@@ -1756,7 +1756,7 @@ def spare_mechanisms(traits: dict) -> int:
 
 
 # workshops the fort can have far too many of (0.75.0 built 116 soap maker's): name -> most kept
-EXCESS_SHOPS = {"SoapMaker": 2}
+EXCESS_SHOPS = {"SoapMaker": 2, "ScrewPress": 2}   # (item9) the AI builds screw presses for paper
 
 
 def _excess_shops_rule(s: dict, cfg: dict, proposals: list) -> None:

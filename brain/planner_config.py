@@ -866,4 +866,14 @@ PLANNER_CONFIG = {
     "alloy_value_keep": 20,               # bars of each metal kept back before it's alloyed for value
     "alloy_value_want": 30,               # a value alloy's bars made while there are fewer than this
     "alloy_value_gain": 1.25,             # the alloy's bars worth this many times its parts, at least
+    # (item9) paper from plants, scrolls and codices for the library (brain/planner_paper.py)
+    "paper_batch": 5,                     # reactions an order
+    "paper_plants_keep": 10,              # papyrus sedge or slurry plants never milled (food, drink, seeds' plants)
+    "paper_food_per_dwarf_min": 10,       # plants go to paper only with this much food a dwarf (and drink on target)
+    "paper_scrolls_keep": 4,              # blank scrolls kept once the library has its paper
+    "paper_scroll_sheets_spare": 2,       # sheets kept back for quires before any is rolled into a scroll
+    "paper_codex_batch": 2,               # written quires bound into codices an order
+    "paper_wood_min": 10,                 # logs before scroll rollers or book bindings are carved
+    "paper_cooldown_ticks": 1200,
+    "paper_shop_cooldown_ticks": 14 * 1200,
 }

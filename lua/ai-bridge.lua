@@ -481,7 +481,7 @@ end
 BRIDGE_MODULES = {
     'ai-blueprints', 'ai-builder', 'ai-camera', 'ai-census', 'ai-cleanup', 'ai-constructions', 'ai-diplomacy', 'ai-disposal', 'ai-food-store', 'ai-gates', 'ai-hauling', 'ai-health', 'ai-homes',
     'ai-industry', 'ai-insane', 'ai-joins', 'ai-labor', 'ai-layouts', 'ai-military', 'ai-military-gear',
-    'ai-mission-send', 'ai-missions', 'ai-moods', 'ai-nobles', 'ai-overlay', 'ai-overseer-settings',
+    'ai-mission-send', 'ai-missions', 'ai-moods', 'ai-nobles', 'ai-overlay', 'ai-overseer-settings', 'ai-paper',
     'ai-ping', 'ai-reports', 'ai-society', 'ai-society-burrows', 'ai-status', 'ai-threats', 'ai-title',
     'ai-trade', 'ai-util', 'ai-water', 'ai-waterworks', 'gui/ai-overseer',
 }
@@ -863,6 +863,8 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
     -- fullness, the AI's own), the kitchens and stills, the food lying out of
     -- piles and barrels and the rotten (lua/ai-food-store.lua; cached a day)
     food_store = function() return safe(function() return reqscript('ai-food-store').report() end) end,
+    -- (item9) paper from plants, scrolls and codices for the library (lua/ai-paper.lua)
+    paper = function() return safe(function() return reqscript('ai-paper').report() end) end,
     -- (0.105.30) what the fort has built: finished constructions by shape and
     -- material, above or below ground, roofed surface tiles, the waiting ones
     -- and the AI's own (lua/ai-constructions.lua; one pass, every 3 days)
@@ -900,6 +902,7 @@ SECTION_CACHE_DAYS = {logistics = 3, industry = 7,   -- industry: 300-450 ms liv
     disposal = 1}   -- (0.105.27) every item in play walked once for the marks
 SECTION_CACHE_DAYS.constructions = 3   -- (0.105.30) every built tile walked once
 SECTION_CACHE_DAYS.food_store = 1      -- (0.105.40b, M6) every food item walked once
+SECTION_CACHE_DAYS.paper = 1           -- (item9) the plants and tools walked once
 SECTION_REBUILDS = 2       -- expired cached sections rebuilt in one report (a missing one always is)
 -- (0.100) the cached sections each action changes (cleared when it succeeds)
 CACHE_INVALIDATES = {

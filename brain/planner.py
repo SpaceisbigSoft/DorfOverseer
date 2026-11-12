@@ -56,6 +56,7 @@ from planner_hauling import _hauling_labor_rule, note_hauling  # noqa: E402  (0.
 from planner_food import _food_store_rule, note_food  # noqa: E402  (0.105.40b, M6) the food store
 from planner_food import note_food_level  # noqa: E402  (fix41) a food storage level booked per kitchen/still
 from planner_alloys import _alloy_rule  # noqa: E402  (0.105.40 M7) bronze for a fort without iron, value alloys
+from planner_paper import _paper_rule  # noqa: E402  (item9) paper from plants, scrolls and codices for the library
 from planner_deep import _deep_hazard_rule  # noqa: E402  (0.105.40b) adamantine and the underworld: never dug
 from planner_construct import (_hall_rule, _construction_blocks_rule,  # noqa: E402  (0.105.30) construction
                                note_construct, note_construct_cycle)
@@ -724,6 +725,8 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
         _guard(_booze_variety_rule, s, memory, cfg, proposals, notes)   # (0.105.24) SameBooze
         _guard(_people_rules, s, cfg, proposals, notes)
         _guard(_kiln_rules, s, cfg, proposals, notes)
+        if "paper" not in errors:
+            _guard(_paper_rule, s, cfg, proposals, notes, memory)     # (item9) after the kiln: one paper step a cycle
         _guard(_glass_rule, s, cfg, proposals, notes)
         _guard(_petition_rules, s, cfg, proposals, notes)
         _guard(_residency_rule, s, memory, cfg, proposals, notes)         # (0.105.9)
