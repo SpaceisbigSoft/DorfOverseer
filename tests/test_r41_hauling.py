@@ -87,7 +87,7 @@ local UL = both(LAB)
 local SK = both({MINING = 0, MASONRY = 5, DIAGNOSE = 6})
 SK.attrs = {[0] = {labor = 0}, [5] = {labor = 21}, [6] = {labor = 20}}
 local MODE = both({Default = 0, EverybodyDoesThis = 1, NobodyDoesThis = 2, OnlySelectedDoesThis = 3})
-local ICON = both({NONE = -1, MINERS = 0, HAULERS = 8, CUSTOM_1 = 10})
+local ICON = both({NONE = -1, MINERS = 0, HAULERS = 8, CUSTOM_1 = 10, CUSTOM_8 = 17})
 W.LAB, W.MODE, W.ICON = LAB, MODE, ICON
 
 -- details: {name, mode, icon, labors = {tokens}, members = {ids}, game = bool}
@@ -187,7 +187,9 @@ env.dfhack = {
     items = {getGeneralRef = function(it, t) return it.refs[t] end},
     persistent = {getSiteData = function(k, d) local v = W.site[k]; if v == nil then return d end return v end,
                   saveSiteData = function(k, v) W.site[k] = v end},
+    onStateChange = {},
 }
+env.SC_MAP_UNLOADED = 5
 assert(load(src, 'ai-hauling', 't', env))()
 return env, W
 """
@@ -224,7 +226,7 @@ HAULS = ["HAUL_STONE", "HAUL_WOOD", "HAUL_BODY", "HAUL_FOOD", "HAUL_REFUSE", "HA
          "HAUL_ANIMALS", "HAUL_TRADE", "HAUL_WATER"]
 
 
-def fort(lua, w, mode="OnlySelectedDoesThis", members=(1, 2)):
+def fort(lua, w, mode="Default", members=(1, 2)):
     """The game's Haulers detail (mode, members), the Miners, a player's own
     'Stone crew' detail carrying stone hauling; ten dwarves:
     1, 2: haulers (busy); 3, 4, 5: idle, no hauling (5 a skilled mason);
@@ -279,16 +281,16 @@ def _():
 
 
 @test("lua pure: haulers picked least-skilled first (ties to the lower id); key workers relieved in order "
-      "(a mood, the chief medical dwarf, doctors, offices, posts, the legendary)")
+      "(the chief medical dwarf, doctors, offices, posts, the legendary)")
 def _():
     lua, env, w = world()
     got = py(env.pick_haulers(T(lua, [{"id": 9, "best": 5}, {"id": 4, "best": 0}, {"id": 2, "best": 0},
                                       {"id": 7, "best": 2}]), 3))
     assert [c["id"] for c in got] == [2, 4, 7], got
     got = py(env.order_specialists(T(lua, [{"id": 1, "why": "legendary"}, {"id": 2, "why": "manager"},
-                                           {"id": 3, "why": "doctor"}, {"id": 4, "why": "mood"},
-                                           {"id": 5, "why": "tavern keeper"}])))
-    assert [c["id"] for c in got] == [4, 3, 2, 5, 1], got
+                                           {"id": 3, "why": "doctor"}, {"id": 5, "why": "tavern keeper"},
+                                           {"id": 6, "why": "chief medical dwarf"}])))
+    assert [c["id"] for c in got] == [6, 3, 2, 5, 1], got
 
 
 # --- 2. the report ---------------------------------------------------------------------------
@@ -333,9 +335,9 @@ def _():
     assert h["player_specialists"] == 1, h
     sp = {x["id"]: x for x in h["specialists"]}
     assert set(sp) == {6, 7} and sp[6]["why"] == "doctor" and sp[7]["why"] == "manager", sp
-    assert sp[6]["via"] == "yours" and sp[7]["via"] == "yours", sp     # the Haulers detail is only-selected: yours
+    assert sp[6]["via"] == "yours" and sp[7]["via"] == "yours", sp     # the Haulers detail isn't everybody: yours
     assert h["relievable"] == 0, h
-    assert r["detail"] == {"name": "Haulers", "mode": "OnlySelectedDoesThis", "members": 4}, r["detail"]
+    assert r["detail"] == {"name": "Haulers", "mode": "Default", "members": 4}, r["detail"]
     assert r["other_details"] == 1 and "ai_detail" not in r, r
 
 
@@ -487,11 +489,13 @@ def section(waiting=0, oldest=0, any_=10, idle_any=0, civilians=40, candidates=0
     return h
 
 
-def mine(h) -> tuple[list, list]:
+def mine(h, memory=None, tick=None) -> tuple[list, list]:
     s = copy.deepcopy(BASE)
     s["hauling"] = h
+    if tick is not None:
+        s["date"]["tick"] = tick
     props, notes = [], []
-    PH._hauling_labor_rule(s, CFG, 40, props, notes)
+    PH._hauling_labor_rule(s, CFG, 40, props, notes, memory)
     return props, notes
 
 
@@ -500,10 +504,10 @@ def mine(h) -> tuple[list, list]:
 def _():
     assert PH.haulers_wanted(40, 0, CFG) == 6 and PH.haulers_wanted(40, 160, CFG) == 20
     assert PH.haulers_wanted(40, 10000, CFG) == 24            # at most 60%
-    props, _ = mine(section(waiting=160, oldest=2, any_=8, candidates=12, mode="OnlySelectedDoesThis"))
+    props, _ = mine(section(waiting=160, oldest=2, any_=8, candidates=12, mode="Default"))
     assert [p.rule for p in props] == ["hauling_add"], props
     assert props[0].action == {"type": "add_haulers", "count": CFG["hauling_add_max"]}
-    props, _ = mine(section(waiting=160, oldest=2, any_=18, candidates=12, mode="OnlySelectedDoesThis"))
+    props, _ = mine(section(waiting=160, oldest=2, any_=18, candidates=12, mode="Default"))
     assert props[0].action["count"] == 2, props                # 20 wanted, 18 have
     props, _ = mine(section(waiting=160, oldest=2, any_=8, candidates=1))
     assert props[0].action["count"] == 1                      # only one to add
@@ -557,7 +561,7 @@ def _():
 def _():
     s = copy.deepcopy(BASE)
     s["hauling"] = section(waiting=300, oldest=3, any_=2, candidates=4, civilians=max(1, s["dwarves"]["total"]),
-                           mode="OnlySelectedDoesThis")
+                           mode="Default")
     props, _ = plan(s, Memory())
     assert any(p.rule == "hauling_add" and p.action["type"] == "add_haulers" for p in props), \
         [p.rule for p in props]
@@ -566,6 +570,170 @@ def _():
     line = PH.hauling_line(s)
     assert line.startswith("HAULING waiting 300") and "stone 300" in line, line
     assert digest.hauling_line(s) == line
+
+
+# --- (0.105.40b fix) the verifier's findings ------------------------------------------------
+
+@test("fix 7: a key worker given labour by another 'everybody' detail too is yours: never relieved by the "
+      "specialist mark (it would strip that detail as well)")
+def _():
+    lua, env, w = world()
+    fort(lua, w, mode="EverybodyDoesThis")
+    w.detail(T(lua, {"name": "Everyone plants", "mode": "EverybodyDoesThis", "icon": "CUSTOM_1", "labors": ["PLANT"]}))
+    w.recompute_all()
+    h = py(env.report())["haulers"]
+    assert {x["id"]: x["via"] for x in h["specialists"]} == {6: "yours", 7: "yours"} and h["relievable"] == 0, h
+    r = py(env.relieve_haulers(5, False, False))
+    assert not r["ok"] and env.df.unit.find(6).flags4.only_do_assigned_jobs is False, r
+    # an 'everybody' detail with no labour at all doesn't count
+    lua, env, w = world()
+    fort(lua, w, mode="EverybodyDoesThis")
+    w.detail(T(lua, {"name": "Empty", "mode": "EverybodyDoesThis", "icon": "CUSTOM_1", "labors": []}))
+    assert py(env.report())["haulers"]["relievable"] == 2
+
+
+@test("fix 8: the AI's detail is never made while a labor screen is open (later, once it is closed)")
+def _():
+    lua, env, w = world()
+    fort(lua, w)
+    lua.execute("""local env = ...
+        env.dfhack.gui = {matchFocusString = function(s) return OPEN == true and s == 'dwarfmode/Info/LABOR' end}""", env)
+    lua.globals().OPEN = True
+    r = py(env.add_haulers(2, False))
+    assert not r["ok"] and r["waiting"] is True and "labor screen" in r["error"], r
+    assert n(lua, w.details) == 3
+    st = w.site["ai-overseer/hauling"]
+    assert st is None or not st.gone
+    lua.globals().OPEN = False
+    r = py(env.add_haulers(2, False))
+    assert r["ok"] and r["made"], r
+    assert n(lua, w.details) == 4
+
+
+@test("fix 9: the AI's detail has its own icon (CUSTOM_8, never Haulers); find_details never takes it (or an "
+      "older one with the Haulers icon) for the game's; an older one gets its own icon")
+def _():
+    lua, env, w = world()
+    game, _ = fort(lua, w)
+    assert py(env.add_haulers(1, False))["ok"]
+    mine = w.details[3]
+    assert mine.icon == 17 and game.icon == 8
+    # an older build's AI detail with the Haulers icon (and the game's mark), listed first
+    lua, env, w = world()
+    old = w.detail(T(lua, {"name": "AI haulers", "icon": "HAULERS", "labors": HAULS, "members": [4], "game": True}))
+    game, _ = fort(lua, w)
+    w.site["ai-overseer/hauling"] = T(lua, {"made": True})
+    r = py(env.report())
+    assert r["detail"]["name"] == "Haulers" and r["ai_detail"]["name"] == "AI haulers", r
+    st = T(lua, {})
+    g, m = env.find_details(st)[0], env.find_details(st)[1]
+    assert g.name == "Haulers" and m is None
+    assert py(env.add_haulers(1, False))["ok"]
+    assert old.icon == 17
+
+
+@test("fix 10: a dwarf in a strange mood is neither relieved nor made a hauler")
+def _():
+    lua, env, w = world()
+    fort(lua, w, mode="EverybodyDoesThis")
+    u = w.unit(T(lua, {"id": 11, "mood": 0, "busy": True}))          # Fey, on the everybody Haulers
+    h = py(env.report())["haulers"]
+    assert 11 not in [x["id"] for x in h["specialists"]], h
+    assert env.key_reason(u) is None
+    r = py(env.relieve_haulers(5, False, False))
+    assert u.flags4.only_do_assigned_jobs is False, r
+    # the idle one in a mood with no hauling: not a candidate
+    lua, env, w = world()
+    fort(lua, w, mode="NobodyDoesThis")
+    w.unit(T(lua, {"id": 12, "mood": 1}))
+    h = py(env.report())["haulers"]
+    assert h["candidates"] == 3, h
+
+
+@test("fix 11 (lua): the dwarves the AI added remembered; shrink takes off its detail only those on it a week "
+      "or more, the most skilled first; one you took off is forgotten; a Haulers detail at only selected: none added")
+def _():
+    lua, env, w = world()
+    fort(lua, w)
+    assert py(env.add_haulers(3, False))["ok"]                # 4, 3, 5
+    mine = w.details[3]
+    r = py(env.report())
+    assert r["ai_detail"]["added"] == 3 and r["ai_detail"]["added_old"] == 0, r
+    r = py(env.relieve_haulers(2, False, False, None, True))
+    assert not r["ok"] and members(mine) == [3, 4, 5], r
+    env.df["global"].cur_year_tick = 7 * DAY
+    assert py(env.report())["ai_detail"]["added_old"] == 3
+    r = py(env.relieve_haulers(2, False, True, None, True))           # dry run
+    assert r["ok"] and r["dry_run"] and members(mine) == [3, 4, 5], r
+    r = py(env.relieve_haulers(2, False, False, None, True))
+    assert r["ok"] and r["shrunk"] == ["Urist 5", "Urist 3"], r       # the mason (8), the miner (2)
+    assert members(mine) == [4] and labors(env, env.df.unit.find(5)) == []
+    # you take 4 off yourself: forgotten, never counted
+    lua.eval("function(v) v:erase(0) end")(mine.assigned_units)
+    assert py(env.report())["ai_detail"]["added"] == 0
+    # the game's Haulers at only selected: you pick the haulers
+    lua, env, w = world()
+    fort(lua, w, mode="OnlySelectedDoesThis")
+    r = py(env.add_haulers(2, False))
+    assert not r["ok"] and r["rejected"] and r["yours"] and "only selected" in r["error"], r
+    assert n(lua, w.details) == 3
+    acts = (LUA_DIR / "ai-bridge-actions.lua").read_text(encoding="utf-8")
+    assert "relieve_haulers(n, a.back == true, a.dry_run == true, txt, a.shrink == true)" in acts
+
+
+@test("fix 11 (brain): haulers to spare for a week (note_hauling's since): the AI's added taken off, a few a call; "
+      "not before the week, not while relieving key workers; at only selected: said, nothing added")
+def _():
+    from planner_core import Memory as M
+    m = M()
+    h = section(waiting=10, oldest=0, any_=30, relievable=0, ai_detail={"name": "AI haulers", "mode":
+                "OnlySelectedDoesThis", "members": 5, "added": 5, "added_old": 4})
+    s = copy.deepcopy(BASE)
+    s["hauling"] = h
+    PH.note_hauling(s, m, CFG)
+    since = m.hauling_surplus["since"]
+    assert since == s["date"]["year"] * 403200 + s["date"]["tick"]
+    PH.note_hauling(s, m, CFG)
+    assert m.hauling_surplus["since"] == since                      # kept
+    props, _ = mine(h, m)
+    assert props == [], props                                        # not a week yet
+    later = s["date"]["tick"] + 7 * DAY
+    props, _ = mine(h, m, later)
+    assert [p.rule for p in props] == ["hauling_shrink"], props
+    assert props[0].action == {"type": "relieve_haulers", "count": 2, "shrink": True}
+    assert "hauling_shrink_cooldown_ticks" in CFG
+    # key workers to relieve first: the relieve, not the shrink
+    props, _ = mine(dict(h, haulers=dict(h["haulers"], relievable=1)), m, later)
+    assert [p.rule for p in props] == ["hauling_relieve"], props
+    # no surplus: memory cleared
+    s2 = copy.deepcopy(BASE)
+    s2["hauling"] = section(waiting=10, any_=7)
+    PH.note_hauling(s2, m, CFG)
+    assert m.hauling_surplus == {}
+    # only selected and short: a note, no hauler added
+    props, notes = mine(section(waiting=160, oldest=2, any_=8, candidates=5, mode="OnlySelectedDoesThis"))
+    assert props == [] and notes and "only selected" in notes[0] and "the AI adds no hauler" in notes[0], notes
+    # note_cycle runs it
+    from planner import note_cycle
+    m2 = M()
+    note_cycle(s, m2)
+    assert m2.hauling_surplus.get("since") == since
+
+
+@test("fix 12: the waiting items' first-seen ticks cleared when the map unloads")
+def _():
+    lua, env, w = world()
+    fort(lua, w)
+    w.job(T(lua, {"item": {"id": 501, "kind": "BOULDER"}}))
+    env.report()
+    assert env.SEEN is not None
+    env.dfhack.onStateChange["ai-hauling"](5)
+    assert env.SEEN is None
+
+
+@test("fix 13: add_haulers and relieve_haulers move no camera")
+def _():
+    assert "add_haulers" in overseer.CAMERA_QUIET and "relieve_haulers" in overseer.CAMERA_QUIET
 
 
 # --- scripts identity: without a hauling section, plan() is main's ---------------------------

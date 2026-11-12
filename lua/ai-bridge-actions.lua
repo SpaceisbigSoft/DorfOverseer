@@ -3259,7 +3259,9 @@ end
 function act_relieve_haulers(a)
     local n = int_in(a.count, 1, 5)
     if not n then return reject('relieve_haulers needs count 1-5') end
-    return reqscript('ai-hauling').relieve_haulers(n, a.back == true, a.dry_run == true, txt)
+    -- (0.105.40b fix) shrink: the AI's own detail's extra haulers taken off it
+    if a.back == true and a.shrink == true then return reject('relieve_haulers: back or shrink, not both') end
+    return reqscript('ai-hauling').relieve_haulers(n, a.back == true, a.dry_run == true, txt, a.shrink == true)
 end
 
 -- (0.105.40b, M6) The food store (lua/ai-food-store.lua): a food pile near a

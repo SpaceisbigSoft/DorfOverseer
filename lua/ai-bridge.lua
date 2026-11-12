@@ -348,7 +348,8 @@ ACTIONS = {
                 table.insert(ids, n)
             end
         end
-        return reqscript('ai-insane').guard({units = ids}, a.dry_run == true)
+        -- (0.105.40b fix) release_only: the held locks freed, none made (run_action sets it while halted)
+        return reqscript('ai-insane').guard({units = ids, release_only = a.release_only == true}, a.dry_run == true)
     end,
     -- (0.105.40 M5) hauling balanced: haulers added, key specialists relieved (lua/ai-hauling.lua)
     add_haulers = act_add_haulers,
@@ -425,6 +426,11 @@ DISPLAY_ONLY = {report_status = true, set_culture = true, set_learned = true, sa
                 ledger_set = true, mark_run = true, apply_preset = true,
                 -- (D0) changes no tile: the sites it finds are kept in the AI's own site data
                 blueprint_sites = true}
+
+-- (0.105.40b fix) Actions that, while halted, still run their undoing step
+-- alone (the field set true): the insane guard frees the doors it locked (a
+-- lock left on while the AI is halted could shut a dwarf in), and locks none.
+RELEASE_WHILE_HALTED = {insane_guard = 'release_only'}
 
 ---------------------------------------------------------------------------
 -- Time control. Globals (not locals) so they survive between script runs.
@@ -1198,8 +1204,11 @@ function run_action(action)
     -- DRY_OK changes nothing, so it's allowed while halted.
     local dry = action.dry_run == true and DRY_OK[action.type] == true
     if not DISPLAY_ONLY[action.type] and not dry and reqscript('ai-status').is_halted() then
-        return {ok = false, rejected = true, halted = true, action = action.type,
-                error = 'the AI is halted in the game (Ctrl-Shift-H to resume)'}
+        if not RELEASE_WHILE_HALTED[action.type] then
+            return {ok = false, rejected = true, halted = true, action = action.type,
+                    error = 'the AI is halted in the game (Ctrl-Shift-H to resume)'}
+        end
+        action[RELEASE_WHILE_HALTED[action.type]] = true    -- (0.105.40b fix) the undoing step only
     end
     local result = fn(action)
     result.action = action.type

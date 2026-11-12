@@ -49,7 +49,7 @@ DAY = 1200
 FAKE = r"""
 local src = ...
 local W = {units = {}, tiles = {}, doors = {}, hatches = {}, projects = {}, old_areas = {}, site = {},
-           citizens = {}, gates = {}, zones = {}}
+           citizens = {}, gates = {}, zones = {}, claimed = {}}
 local env = setmetatable({}, {__index = _G})
 local key = function(x, y, z) return x .. ',' .. y .. ',' .. z end
 local MOODS = {[0] = 'Fey', 'Secretive', 'Possessed', 'Macabre', 'Fell', 'Melancholy', 'Raving', 'Berserk',
@@ -117,6 +117,8 @@ env.reqscript = function(name)
                 project_areas = function(p) return p.areas end}
     elseif name == 'ai-gates' then
         return {GATES = {entrances = {{equipment = W.gates}}}}
+    elseif name == 'ai-threats' then
+        return {claimed_doors = function() return W.claimed end}
     end
     error('no module ' .. tostring(name))
 end
@@ -151,11 +153,16 @@ def py(v):
     return {k: py(v[k]) for k in keys}
 
 
-def fort(lua, w, kind="Melancholy", pos=(50, 50, 100)):
+def fort(lua, w, kind="Melancholy", pos=(50, 50, 100), wall=True):
     """An insane dwarf at `pos`, deep water at x 57-59 on their level, the AI's
-    level (a box round x 40-60) holding a door at (55, 50) between them."""
+    level (a box round x 40-60) holding a door at (55, 50) between them, in a
+    wall along x 55 (y 30-70) with no other way through."""
     u = w.unit(T(lua, {"id": 7, "name": "Urist", "mood": w.MOOD[kind], "own": True,
                        "pos": {"x": pos[0], "y": pos[1], "z": pos[2]}}))
+    if wall:
+        for y in range(30, 71):
+            if y != 50:
+                w.tile(55, y, 100, T(lua, {"shape": "WALL"}))
     for x in (57, 58, 59):
         for y in (49, 50, 51):
             w.tile(x, y, 100, T(lua, {"flow_size": 7}))
@@ -322,14 +329,18 @@ def _():
     assert guard(lua, env, [7])["locked"] == 0
 
 
-@test("guard: a hatch counts as a door; a raving dwarf is guarded; a catatonic, a berserk or one not asked for is not")
+@test("guard: a hatch is never locked (a way between levels); a raving dwarf is guarded; a catatonic, a berserk "
+      "or one not asked for is not")
 def _():
+    lua, env, w = world()
+    _, d = fort(lua, w, kind="Raving")
+    assert guard(lua, env, [7])["locked"] == 1 and d.door_flags.forbidden is True
     lua, env, w = world()
     _, d = fort(lua, w, kind="Raving")
     d.hatch = True
     w.doors[1] = None
     w.hatches[1] = d
-    assert guard(lua, env, [7])["locked"] == 1 and d.door_flags.forbidden is True
+    assert guard(lua, env, [7])["locked"] == 0 and d.door_flags.forbidden is False
     for kind in ("Traumatized", "Berserk"):
         lua, env, w = world()
         _, d = fort(lua, w, kind=kind)
@@ -357,8 +368,12 @@ def _():
 def _():
     lua, env, w = world()
     fort(lua, w)
-    spots = [(x, y) for x in (55, 56) for y in range(46, 55) if (x, y) != (55, 50)]
+    for x in (57, 58, 59):
+        for y in range(41, 60):
+            w.tile(x, y, 100, T(lua, {"flow_size": 7}))
+    spots = [(55, y) for y in range(41, 60) if y != 50]       # a wall of doors, all between
     for i, (x, y) in enumerate(spots):
+        w.tile(x, y, 100, T(lua, {"shape": "FLOOR"}))
         w.door(T(lua, {"id": 400 + i, "x": x, "y": y, "z": 100}))
     assert py(env.report())["list"][0]["doors"] == len(spots) + 1
     r = guard(lua, env, [7])
@@ -556,6 +571,169 @@ def _():
     from planner import select
     allowed, _ = select(props, s, Memory())
     assert any(p.rule == "insane" for p in allowed)
+
+
+# --- (0.105.40b fix) the verifier's findings --------------------------------------------------
+
+@test("fix 1: only a door that truly separates: none in an open room, none with another way round, none with a "
+      "sane citizen on the deadly side; a locked door elsewhere in the wall closes the other way")
+def _():
+    lua, env, w = world()
+    _, d = fort(lua, w, wall=False)                       # an open room: the water is reached round the door
+    assert guard(lua, env, [7])["locked"] == 0 and py(env.report())["list"][0]["doors"] == 0
+    lua, env, w = world()
+    _, d = fort(lua, w)
+    w.tile(55, 53, 100, T(lua, {"shape": "FLOOR"}))       # a gap in the wall
+    assert guard(lua, env, [7])["locked"] == 0 and d.door_flags.forbidden is False
+    # the gap holds a door the player locked: the AI's door now separates
+    w.door(T(lua, {"id": 301, "x": 55, "y": 53, "z": 100, "door_flags": {"forbidden": True,
+                                                                         "operated_by_mechanisms": False}}))
+    assert guard(lua, env, [7])["locked"] == 1 and d.door_flags.forbidden is True
+    # a sane citizen on the water's side: never shut in there
+    lua, env, w = world()
+    _, d = fort(lua, w)
+    w.unit(T(lua, {"id": 20, "citizen": True, "own": True, "pos": {"x": 56, "y": 53, "z": 100}}))
+    assert guard(lua, env, [7])["locked"] == 0 and d.door_flags.forbidden is False
+    assert py(env.report())["list"][0]["doors"] == 0
+    # ...on the dwarf's side: no matter
+    w.citizens[1].pos.x = 45
+    assert guard(lua, env, [7])["locked"] == 1
+    # the way round goes down a stair and up again: no lock either
+    lua, env, w = world()
+    _, d = fort(lua, w)
+    w.tile(53, 52, 100, T(lua, {"shape": "STAIR_DOWN"}))
+    w.tile(53, 52, 99, T(lua, {"shape": "STAIR_UPDOWN"}))
+    for x in range(54, 57):
+        w.tile(x, 52, 99, T(lua, {"shape": "FLOOR"}))
+    w.tile(57, 52, 99, T(lua, {"shape": "STAIR_UP"}))
+    w.tile(57, 52, 100, T(lua, {"shape": "STAIR_DOWN"}))
+    for x in range(52, 59):                                # the rest of level 99 is rock
+        for y in range(44, 57):
+            if y != 52:
+                w.tile(x, y, 99, T(lua, {"shape": "WALL"}))
+    w.tile(52, 52, 99, T(lua, {"shape": "WALL"}))
+    w.tile(58, 52, 99, T(lua, {"shape": "WALL"}))
+    assert guard(lua, env, [7])["locked"] == 0, "a way round by the stairs"
+
+
+@test("fix 2: never a door the threats rules hold or could need; a held lock claimed since is dropped and left locked")
+def _():
+    lua, env, w = world()
+    _, d = fort(lua, w)
+    w.claimed[300] = True
+    assert guard(lua, env, [7])["locked"] == 0 and d.door_flags.forbidden is False
+    assert py(env.report())["list"][0]["doors"] == 0
+    lua, env, w = world()
+    u, d = fort(lua, w)
+    assert guard(lua, env, [7])["locked"] == 1
+    assert py(env.held_ids()) == {300: True}
+    w.claimed[300] = True                                 # a cell (or the seal) took it over
+    u.pos.x = 20                                          # the dwarf off: would be unlocked
+    r = guard(lua, env, [7])
+    assert r["released"] == 0 and r["held"] == 0 and d.door_flags.forbidden is True, r
+    assert py(env.held_ids()) in ({}, None)
+
+
+@test("fix 2: the cavern seal adopts a door ai-insane holds locked (on its record, opened with the seal); "
+      "claimed_doors lists the cells', the seal's and the openings' doors")
+def _():
+    src = (ROOT / "tests" / "test_fix26_seal.py").read_text(encoding="utf-8")
+    game = re.search(r'THREATS_GAME = r"""(.*?)"""', src, re.S).group(1)
+    lua = LuaRuntime(unpack_returned_tuples=True)
+    E = lua.execute(game, module_src("ai-threats.lua"))
+    door = E.G.tiles["10,10,10"]
+    door.door_flags.forbidden = True
+    E.G.mods["ai-insane"] = lua.eval("{held_ids = function() return {[30] = true} end}")
+    r = py(E.seal_cavern("Cavern1", T(lua, [{"x": 10, "y": 10, "z": 10}]), False, False))
+    assert r["ok"] and r["adopted"] == 1, r
+    rec = E.G.saved["ai-overseer/threats"].sealed["Cavern1"]
+    assert list(rec.ids.values()) == [30]
+    assert py(E.claimed_doors()).get(30) is True
+    r = py(E.seal_cavern("Cavern1", None, True, False))
+    assert r["ok"] and r["unlocked"] == 1 and door.door_flags.forbidden is False, r
+    # a door the AI doesn't hold, locked already: not adopted (the player's)
+    lua = LuaRuntime(unpack_returned_tuples=True)
+    E = lua.execute(game, module_src("ai-threats.lua"))
+    E.G.tiles["10,10,10"].door_flags.forbidden = True
+    r = py(E.seal_cavern("Cavern1", T(lua, [{"x": 10, "y": 10, "z": 10}]), False, False))
+    assert not r["ok"], r
+    # the cells' doors and the openings' doors are claimed
+    E.G.saved["ai-overseer/threats"] = T(lua, {"cells": {"5": {"doors": [31]}},
+                                               "openings": {"a": {"x": 12, "y": 12, "z": 12, "kind": "way_down"}}})
+    got = py(E.claimed_doors())
+    assert got.get(31) is True and got.get(32) is True, got
+    tsrc = (LUA_DIR / "ai-threats.lua").read_text(encoding="utf-8")
+    assert "elseif okf and insane[id] and not dry_run then" in tsrc and "table.insert(c.doors, id)" in tsrc
+
+
+@test("fix 3: the report frees a lock held too long or with nobody near (the guard may not run); while halted "
+      "the guard only frees (release_only), and the bridge lets it through halted")
+def _():
+    lua, env, w = world()
+    u, d = fort(lua, w)
+    guard(lua, env, [7])
+    advance(env, 2400)
+    r = py(env.report())
+    assert r["locks"] == 0 and d.door_flags.forbidden is False, r
+    lua, env, w = world()
+    u, d = fort(lua, w)
+    guard(lua, env, [7])
+    assert py(env.report())["locks"] == 1 and d.door_flags.forbidden is True     # near: kept
+    u.pos.x = 20
+    assert py(env.report())["locks"] == 0 and d.door_flags.forbidden is False
+    # release_only: none locked, the held freed
+    lua, env, w = world()
+    u, d = fort(lua, w)
+    r = py(env.guard(T(lua, {"units": [7], "release_only": True}), False))
+    assert r["locked"] == 0 and r["release_only"] is True and d.door_flags.forbidden is False, r
+    guard(lua, env, [7])
+    u.pos.x = 20
+    r = py(env.guard(T(lua, {"units": [7], "release_only": True}), False))
+    assert r["released"] == 1 and d.door_flags.forbidden is False, r
+    # the bridge: halted, insane_guard runs with release_only; any other action refused
+    hyg = (ROOT / "tests" / "test_hygiene_bridge.py").read_text(encoding="utf-8")
+    harness = re.search(r'HARNESS = r"""(.*?)"""', hyg, re.S).group(1)
+    L = LuaRuntime(unpack_returned_tuples=True)
+    H = L.execute(harness, (LUA_DIR / "ai-bridge.lua").read_text(encoding="utf-8"), str(LUA_DIR))
+    H.scripts = L.table()
+    M = H.module()
+    L.execute("""local H = ...
+        H.GOT = nil
+        H.scripts['ai-insane'] = {guard = function(o, dry) H.GOT = o; return {ok = true} end}""", H)
+    H.halted = True
+    r = M.run_action(L.table_from({"type": "insane_guard", "units": L.table_from([7])}))
+    assert r.ok is True and H.GOT.release_only is True, dict(r)
+    r = M.run_action(L.table_from({"type": "add_haulers", "count": 1}))
+    assert r.ok is False and r.halted is True
+    H.halted = False
+    H.GOT = None
+    M.run_action(L.table_from({"type": "insane_guard", "units": L.table_from([7])}))
+    assert H.GOT.release_only is False
+
+
+@test("fix 4: a dropped well's outline (marked by the builder) is not the AI's for the guard; the builder marks it")
+def _():
+    lua, env, w = world()
+    _, d = fort(lua, w)
+    w.projects[1] = None
+    w.old_areas[1] = T(lua, {"x1": 40, "y1": 40, "x2": 60, "y2": 60, "z": 100, "well": True})
+    assert guard(lua, env, [7])["locked"] == 0 and d.door_flags.forbidden is False
+    bsrc = (LUA_DIR / "ai-builder-projects.lua").read_text(encoding="utf-8")
+    assert "well = p.kind == 'well' or nil" in bsrc
+
+
+@test("fix 5: each lock records the door's state just before (unlocked); a record saying it was locked before "
+      "is dropped without opening the door")
+def _():
+    lua, env, w = world()
+    u, d = fort(lua, w)
+    guard(lua, env, [7])
+    rec = w.site["ai-overseer/insane-locks"].locks["300"]
+    assert rec.before is False
+    rec.before = True
+    u.pos.x = 20
+    r = guard(lua, env, [7])
+    assert r["released"] == 1 and r["held"] == 0 and d.door_flags.forbidden is True, r
 
 
 # --- 6. identity: without the section, plan() is main's ------------------------------------

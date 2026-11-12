@@ -17,15 +17,23 @@
 --
 -- What the AI may change, and nothing else:
 --   * its own work detail, "AI haulers" (only selected, the ten hauling
---     labours), made the first time it adds a hauler and remembered in the
+--     labours, its own icon AI_ICON: never the game's Haulers icon), made the
+--     first time it adds a hauler (never while a labor screen is open: the
+--     game's screen holds its own list of the details) and remembered in the
 --     save (site data HAULING_KEY). One you remove, or set to everybody or
---     nobody, is yours from then on: never made again, never changed.
+--     nobody, is yours from then on: never made again, never changed. The
+--     dwarves it added are remembered (st.added) and taken off it again, a
+--     few at a time and only those on it a week or more, while the fort has
+--     had haulers to spare for a week (the brain's hauling_shrink).
 --   * a key specialist hauling only through the game's Haulers detail at
---     "everybody": made a specialist (only assigned work details), the AI
---     remembering it did; given back when no longer key or when the hauling
---     needs every hand. One you set back yourself is left as you set it.
+--     "everybody", and given no labour by any other "everybody" detail
+--     (the specialist mark takes him off every one of them): made a
+--     specialist (only assigned work details), the AI remembering it did;
+--     given back when no longer key or when the hauling needs every hand.
+--     One you set back yourself is left as you set it.
 -- The game's Haulers detail and every other detail are never changed; a
--- Haulers detail set to "nobody" means nobody hauls (your choice): the AI
+-- Haulers detail set to "nobody" means nobody hauls (your choice), and one
+-- set to "only selected" means you pick the haulers (your choice): the AI
 -- adds no hauler then. Soldiers, children, the player's specialists and
 -- dwarves in a mood are never made haulers.
 --@module = true
@@ -43,10 +51,14 @@ HAUL_SET = {}
 for _, l in ipairs(HAUL_LABORS) do HAUL_SET[l] = true end
 
 AI_DETAIL_NAME = 'AI haulers'
-HAULING_KEY = 'ai-overseer/hauling'   -- {made, gone, relieved = {[id] = tick}, yours = {[id] = true}}
+AI_ICON = 'CUSTOM_8'                   -- the AI's detail's icon (the game's Haulers detail has HAULERS)
+LABOR_SCREEN = 'dwarfmode/Info/LABOR'  -- no detail made while a labor screen is open
+HAULING_KEY = 'ai-overseer/hauling'   -- {made, gone, relieved = {[id] = tick}, yours = {[id] = true}, added = {[id] = tick}}
+SHRINK_AGE = 7 * 1200                  -- a dwarf the AI added is taken off its detail only after a week on it
 LEGENDARY = 15                         -- df.skill_rating Legendary
 ADD_MAX, RELIEVE_MAX = 10, 5           -- a call's caps
-SEEN = SEEN                            -- waiting item -> the tick first seen (kept across reloads)
+SEEN = SEEN                            -- waiting item -> the tick first seen (kept across script reloads,
+                                       -- cleared when the map unloads: another fort's item ids)
 
 -- The posts and offices whose holders are kept off hauling while others can
 KEY_POSTS = {DOCTOR = 'doctor', DIAGNOSTICIAN = 'diagnostician', SURGEON = 'surgeon', BONE_DOCTOR = 'bone doctor',
@@ -54,8 +66,11 @@ KEY_POSTS = {DOCTOR = 'doctor', DIAGNOSTICIAN = 'diagnostician', SURGEON = 'surg
 KEY_OFFICES = {CHIEF_MEDICAL_DWARF = 'chief medical dwarf', MANAGER = 'manager', BOOKKEEPER = 'bookkeeper',
                BROKER = 'broker'}
 STRANGE_MOODS = {Fey = true, Secretive = true, Possessed = true, Macabre = true, Fell = true}
--- the order they are relieved in (the most needed at their own work first)
-KEY_ORDER = {mood = 1, ['chief medical dwarf'] = 2, doctor = 3, diagnostician = 3, surgeon = 3, ['bone doctor'] = 3,
+-- the order they are relieved in (the most needed at their own work first).
+-- (0.105.40b fix) A dwarf in a strange mood is not relieved: the mood keeps
+-- him at it already, and the specialist mark would outlast it; he is only
+-- never made a hauler.
+KEY_ORDER = {['chief medical dwarf'] = 2, doctor = 3, diagnostician = 3, surgeon = 3, ['bone doctor'] = 3,
              manager = 4, bookkeeper = 4, broker = 4, ['tavern keeper'] = 5, scribe = 5, legendary = 6}
 
 -- Pure: the hauling labour an item kind goes by (as DFHack's labormanager
@@ -164,12 +179,14 @@ end
 function state() return U.site_get(HAULING_KEY, {}) end
 local function save(st) U.site_put(HAULING_KEY, st) end
 
--- The game's Haulers detail (its icon, not the AI's), the AI's own (by name,
--- only while the AI made it and it is still "only selected"), and the other
--- details carrying hauling (yours: never changed).
+-- The game's Haulers detail (its icon, never one named as the AI's or with
+-- the AI's icon), the AI's own (by name, only while the AI made it and it is
+-- still "only selected"), and the other details carrying hauling (yours:
+-- never changed).
 function find_details(st)
     local game, mine, others = nil, nil, {}
     local icon = enum(df.work_detail_icon_type, 'HAULERS')
+    local ai_icon = enum(df.work_detail_icon_type, AI_ICON)
     local list = details() or {}
     -- the game's own: the Haulers icon and the game's "default" mark, else the icon alone
     for pass = 1, 2 do
@@ -179,7 +196,7 @@ function find_details(st)
                 return ok and v == true
             end)()
             if not game and icon ~= nil and d.icon == icon and own
-                    and not (st.made and not st.gone and tostring(d.name) == AI_DETAIL_NAME) then
+                    and tostring(d.name) ~= AI_DETAIL_NAME and not (ai_icon ~= nil and d.icon == ai_icon) then
                 game = d
             end
         end
@@ -248,8 +265,8 @@ local function in_mood(u)
 end
 
 -- Why a dwarf is kept at his own work (nil: he isn't a key specialist).
+-- (0.105.40b fix) a strange mood is no reason: see KEY_ORDER.
 function key_reason(u)
-    if in_mood(u) then return 'mood' end
     local why
     pcall(function()
         for _, o in ipairs(u.occupations) do
@@ -312,15 +329,34 @@ local function sync_hauling(u)
     end
 end
 
+-- Any labour at all on a detail (its allowed_labors).
+local function any_labor(d)
+    local ok, yes = pcall(function()
+        for _, v in pairs(d.allowed_labors) do if v == true then return true end end
+        return false
+    end)
+    return ok and yes == true
+end
+
+-- (0.105.40b fix) Another "everybody" detail giving a dwarf some labour (any,
+-- not only hauling): the specialist mark would take him off that one too.
+local function other_everybody(game)
+    for _, d in ipairs(details() or {}) do
+        if d ~= game and mode_of(d) == 'EverybodyDoesThis' and any_labor(d) then return true end
+    end
+    return false
+end
+
 -- How a key dwarf hauls: 'ai' (the AI's detail), 'everybody' (the game's
--- Haulers detail at everybody, and nothing else of yours), else 'yours'.
+-- Haulers detail at everybody is the only "everybody" detail giving him any
+-- labour, and nothing else of yours gives him hauling), else 'yours'.
 local function hauls_via(u, game, mine)
     if mine and is_member(mine, u.id) then
         local rest = detail_labors(u, mine)
         if next(rest) == nil then return 'ai' end
         return 'yours'
     end
-    if game and mode_of(game) == 'EverybodyDoesThis' and not specialist(u) then
+    if game and mode_of(game) == 'EverybodyDoesThis' and not specialist(u) and not other_everybody(game) then
         local rest = detail_labors(u, game)
         if next(rest) == nil then return 'everybody' end
     end
@@ -328,10 +364,19 @@ local function hauls_via(u, game, mine)
 end
 
 -- The relieved ones the player set back (no longer specialists): theirs now.
-local function settle(st)
+-- (0.105.40b fix) The ones the AI added no longer on its detail (you took
+-- them off, or the detail is gone): forgotten.
+local function settle(st, mine)
     local changed = false
     st.relieved = st.relieved or {}
     st.yours = st.yours or {}
+    st.added = type(st.added) == 'table' and st.added or {}
+    for k in pairs(st.added) do
+        if not (mine and is_member(mine, tonumber(k))) then
+            st.added[k] = nil
+            changed = true
+        end
+    end
     for k in pairs(st.relieved) do
         local u = df.unit.find(tonumber(k))
         if not u or dfhack.units.isDead(u) then
@@ -462,7 +507,7 @@ local function haulers(st, game, mine)
                     table.insert(keys, {id = u.id, why = why, via = via, unit = u})
                     if via ~= 'yours' then out.relievable = out.relievable + 1 end
                 end
-            elseif free and not why and not specialist(u) and not hurt(u) then
+            elseif free and not why and not specialist(u) and not hurt(u) and not in_mood(u) then
                 out.candidates = out.candidates + 1
                 table.insert(cands, {id = u.id, best = best_skill(u), unit = u})
             end
@@ -478,10 +523,10 @@ end
 -- The report's `hauling` section.
 function report(txt)
     local st = state()
-    settle(st)                                    -- (read only here: saved by the actions)
     local okt, now = pcall(U.abs_tick)
     local out = {backlog = backlog(okt and now or nil)}
     local game, mine, others = find_details(st)
+    settle(st, mine)                              -- (read only here: saved by the actions)
     local h, _, keys = haulers(st, game, mine)
     out.haulers = h
     h.specialists = {}
@@ -494,6 +539,13 @@ function report(txt)
     end
     if mine then
         out.ai_detail = {name = tostring(mine.name), mode = mode_of(mine), members = #mine.assigned_units}
+        -- (0.105.40b fix) the dwarves the AI added on it, and those a week or more
+        local added, old = 0, 0
+        for _, t in pairs(st.added) do
+            added = added + 1
+            if okt and type(t) == 'number' and now - t >= SHRINK_AGE then old = old + 1 end
+        end
+        out.ai_detail.added, out.ai_detail.added_old = added, old
     end
     out.ai_detail_gone = st.gone or nil
     out.other_details = #others
@@ -516,9 +568,22 @@ local function ensure_detail(st, dry_run)
             st.gone = true
             return nil, ('the AI haulers work detail was set to %s: yours now, the AI leaves it'):format(tostring(m))
         end
+        -- (0.105.40b fix) an older build gave it the Haulers icon: its own now
+        if not dry_run then
+            pcall(function()
+                local ai_icon = df.work_detail_icon_type[AI_ICON]
+                if ai_icon ~= nil and mine.icon ~= ai_icon then mine.icon = ai_icon end
+            end)
+        end
         return mine
     end
     if st.gone then return nil, 'the AI haulers work detail was taken over by you: the AI leaves hauling to you' end
+    -- (0.105.40b fix) never while a labor screen is open (the game's screen
+    -- keeps its own list of the details): made on a later call
+    local okf, open = pcall(function() return dfhack.gui.matchFocusString(LABOR_SCREEN) end)
+    if okf and open then
+        return nil, 'a labor screen is open in the game: the AI makes its haulers detail once it is closed', true
+    end
     if dry_run then return 'new' end
     local list = details()
     local OS = enum(df.work_detail_mode, 'OnlySelectedDoesThis')
@@ -527,7 +592,7 @@ local function ensure_detail(st, dry_run)
         local d = df.work_detail:new()
         d.name = AI_DETAIL_NAME
         d.flags.mode = OS
-        pcall(function() d.icon = df.work_detail_icon_type.HAULERS end)
+        pcall(function() d.icon = df.work_detail_icon_type[AI_ICON] end)
         for _, l in ipairs(HAUL_LABORS) do
             local id = enum(df.unit_labor, l)
             if id ~= nil then d.allowed_labors[id] = true end
@@ -544,12 +609,19 @@ end
 -- detail), those the fort misses least first.
 function add_haulers(count, dry_run, txt)
     local st = state()
-    local changed = settle(st)
     local game, mine = find_details(st)
+    local changed = settle(st, mine)
     if game and mode_of(game) == 'NobodyDoesThis' then
         if changed then save(st) end
         return {ok = false, rejected = true,
                 error = ('the %s work detail is set to nobody (your choice): the AI adds no hauler'):format(tostring(game.name))}
+    end
+    -- (0.105.40b fix) "only selected": you pick the haulers (a new fort's is
+    -- "everybody"), so the AI adds none through its own detail either
+    if game and mode_of(game) == 'OnlySelectedDoesThis' then
+        if changed then save(st) end
+        return {ok = false, rejected = true, yours = true,
+                error = ('the %s work detail is set to only selected (your choice): the AI adds no hauler'):format(tostring(game.name))}
     end
     local _, cands = haulers(st, game, mine)
     local picked = pick_haulers(cands, math.max(0, math.min(ADD_MAX, count or 0)))
@@ -559,17 +631,19 @@ function add_haulers(count, dry_run, txt)
                 .. 'specialists, the key workers and those in a mood are never made haulers)'}
     end
     local fresh = mine == nil
-    local wd, why = ensure_detail(st, dry_run)
+    local wd, why, later = ensure_detail(st, dry_run)
     if not wd then
-        save(st)
-        return {ok = false, rejected = true, error = why}
+        if not dry_run then save(st) end
+        return {ok = false, rejected = true, waiting = later or nil, error = why}
     end
+    local okt, now = pcall(U.abs_tick)
     local names = {}
     for _, c in ipairs(picked) do
         table.insert(names, name_of(c.unit, txt))
         if not dry_run then
             insert_sorted(wd, c.id)
             sync_hauling(c.unit)
+            st.added[tostring(c.id)] = okt and now or 0
         end
     end
     if not dry_run then save(st) end
@@ -580,13 +654,44 @@ end
 -- Up to `count` key specialists taken off hauling (only what the AI may
 -- change: its own detail, or "everybody" through a specialist mark it
 -- remembers); back = true gives hauling back to the ones it relieved (those
--- no longer key first).
-function relieve_haulers(count, back, dry_run, txt)
+-- no longer key first); (0.105.40b fix) shrink = true takes off the AI's own
+-- detail up to `count` of the dwarves it added there a week or more ago (the
+-- most skilled first: the fort misses them most), never one you added.
+function relieve_haulers(count, back, dry_run, txt, shrink)
     local st = state()
-    settle(st)
     local game, mine = find_details(st)
+    settle(st, mine)
     count = math.max(0, math.min(RELIEVE_MAX, count or 0))
     local names = {}
+    if shrink then
+        local okt, now = pcall(U.abs_tick)
+        local list = {}
+        for k, t in pairs(st.added) do
+            local u = df.unit.find(tonumber(k))
+            if u and mine and okt and type(t) == 'number' and now - t >= SHRINK_AGE then
+                table.insert(list, {id = u.id, unit = u, best = best_skill(u)})
+            end
+        end
+        table.sort(list, function(a, b)
+            if a.best ~= b.best then return a.best > b.best end
+            return a.id < b.id
+        end)
+        for i = 1, math.min(count, #list) do
+            local c = list[i]
+            table.insert(names, name_of(c.unit, txt))
+            if not dry_run then
+                remove_member(mine, c.id)
+                sync_hauling(c.unit)
+                st.added[tostring(c.id)] = nil
+            end
+        end
+        if not dry_run then save(st) end
+        if #names == 0 then
+            return {ok = false, rejected = true, nothing_to_do = true,
+                    error = 'nobody the AI put on its haulers detail a week or more ago is on it'}
+        end
+        return {ok = true, dry_run = dry_run or nil, shrunk = names}
+    end
     if back then
         local list = {}
         for k in pairs(st.relieved) do
@@ -621,6 +726,7 @@ function relieve_haulers(count, back, dry_run, txt)
             if not dry_run then
                 if c.via == 'ai' then
                     remove_member(mine, c.id)
+                    st.added[tostring(c.id)] = nil
                 else
                     set_specialist(c.unit, true)
                     st.relieved[tostring(c.id)] = okt and now or 0
@@ -635,4 +741,13 @@ function relieve_haulers(count, back, dry_run, txt)
                 .. '(your own details and specialists are left as they are)'}
     end
     return {ok = true, dry_run = dry_run or nil, relieved = names}
+end
+
+-- (0.105.40b fix) The waiting items' first-seen ticks belong to the fort
+-- loaded: cleared when the map unloads (as ai-gates clears GATES), so the
+-- next fort's item ids never inherit an old age.
+if dfhack and dfhack.onStateChange then
+    dfhack.onStateChange['ai-hauling'] = function(sc)
+        if sc == SC_MAP_UNLOADED then SEEN = nil end
+    end
 end

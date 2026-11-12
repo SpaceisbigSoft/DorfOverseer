@@ -15,10 +15,13 @@ follow orders or work, and every kind ends in death:
 DF lets nobody feed or water the insane (its doctors water only patients in
 bed). What the AI can do (lua/ai-insane.lua, the `insane` report section
 and the `insane_guard` action): say who, what kind, where and what deadly
-ground (deep water, magma, a drop) lies near; lock its own doors and hatches
-between a melancholy or raving dwarf and that ground while they are near
-(a locked door stops everyone but a building destroyer), freeing each as
-soon as they move off; and, before it comes to that, put the citizens whose
+ground (deep water, magma, a drop) lies near; lock its own doors (never a
+hatch, a gate's, a lever's, a werebeast cell's or the cavern seal's) that
+truly stand between a melancholy or raving dwarf and that ground (no other
+way round, no sane citizen on the far side) while they are near (a locked
+door stops everyone but a building destroyer), freeing each as soon as they
+move off (the report frees the stale ones itself, so a lock never outlasts
+a halted AI); and, before it comes to that, put the citizens whose
 long-term stress is near breaking first in the stress care
 (planner_society._stress_care). Their room and things go back to the fort
 when they die (DF, and the rules for the dead).
@@ -101,8 +104,9 @@ def _doors_words(r: dict) -> str:
         return (f"; {hz}: the AI locks {n} of its own door{'s' if n != 1 else ''} between them and it while "
                 "they are near, and opens them again as they move off (two days at most at a time, so nobody "
                 "stays shut in)")
-    return (f"; {hz}, and no door of the AI's own stands between to lock (it locks only doors it built, never "
-            "a gate, a lever's or one already locked)")
+    return (f"; {hz}, and no door of the AI's own stands between to lock (it locks only doors it built that "
+            "alone shut the way, never a hatch, a gate, a lever's, a cell's, the cavern seal's or one already "
+            "locked)")
 
 
 def _insane_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None) -> None:

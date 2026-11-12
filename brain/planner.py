@@ -52,7 +52,7 @@ from planner_cleanup import _world_cleanup_rule, note_cleanup  # noqa: E402  (0.
 from planner_weather import _weather_rules, _weather_squad_filter  # noqa: E402  (0.105.40b) evil weather
 from planner_firebreath import _fire_breather_rule  # noqa: E402  (0.105.40b) no melee squad at a fire breather
 from planner_insane import _insane_rule  # noqa: E402  (0.105.40b) the insane: deadly ground near them, the AI's doors
-from planner_hauling import _hauling_labor_rule  # noqa: E402  (0.105.40 M5) hauling balanced
+from planner_hauling import _hauling_labor_rule, note_hauling  # noqa: E402  (0.105.40 M5) hauling balanced
 from planner_food import _food_store_rule, note_food  # noqa: E402  (0.105.40b, M6) the food store
 from planner_alloys import _alloy_rule  # noqa: E402  (0.105.40 M7) bronze for a fort without iron, value alloys
 from planner_deep import _deep_hazard_rule  # noqa: E402  (0.105.40b) adamantine and the underworld: never dug
@@ -627,7 +627,7 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
         _guard(_free_time_rule, s, citizens, cfg, proposals, notes)
     # (0.105.40 M5) enough haulers for the haul jobs waiting; key workers off hauling
     if "hauling" not in errors:
-        _guard(_hauling_labor_rule, s, cfg, citizens, proposals, notes)
+        _guard(_hauling_labor_rule, s, cfg, citizens, proposals, notes, memory)
 
     # 6b. A fresh embark: the first staircase, everything else grows from it ----
     fd = _d(s.get("founding"))
@@ -1480,6 +1480,8 @@ def note_cycle(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> list[
         notes += _step(note_missions, s, memory) or []          # (0.105.39) missions followed out and back
     if "food_store" not in errors:
         notes += _step(note_food, s, memory, cfg) or []         # (0.105.40b, M6) the rotten food followed
+    if "hauling" not in errors:
+        _step(note_hauling, s, memory, cfg)                     # (0.105.40b fix) haulers to spare since when
     if "others_on_map" not in errors:
         notes += _step(note_lockdown, s, memory, cfg) or []     # (0.105.3) B's sealed hatch: lone intruders, the cap
     if "locations" not in errors:

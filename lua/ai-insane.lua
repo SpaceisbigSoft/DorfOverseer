@@ -16,15 +16,30 @@
 --                and the hazards section see to it (not this module).
 --   Catatonic    (mood Traumatized, DF's CATATONIC) stares into space until
 --                they starve. Nothing to be done.
--- A locked door (or hatch) is passed by no creature but a building
--- destroyer, sane or not: the one lever the AI has. It locks only its own
--- doors (inside the levels it dug: the builder's project areas, the wells'
--- excepted, whose hatches their own rules run), never a gate piece (the
--- entrances' watcher's), one on a lever, one already locked (the player's or
--- another rule's), and frees each lock as soon as no guarded dwarf is near,
--- or after LOCK_MAX_TICKS (then rests it REST_TICKS: anyone shut in on the
--- far side gets out), never locks again for a week a door someone else
--- opened, and never holds more than MAX_LOCKS.
+-- A locked door is passed by no creature but a building destroyer, sane or
+-- not: the one lever the AI has. It locks only its own doors (inside the
+-- levels it dug: the builder's project areas, the wells' excepted, a dropped
+-- well's outline too, whose doors their own rules run), never a hatch (one
+-- over stairs or a shaft is a way between levels the walk below can't
+-- judge), never a gate piece (the entrances' watcher's), one the threats
+-- rules hold or could need (a werebeast cell's, the cavern seal's, one on a
+-- way down to the caverns on record, one the gate watcher holds: ai-threats
+-- claimed_doors), one on a lever, one already locked (the player's or another
+-- rule's), and only a door that truly stands between: a walk from the dwarf
+-- (through no door it would lock, nor a locked one, in a box round them, the
+-- door and the ground) never reaches the deadly ground, and a walk from that
+-- ground never reaches the dwarf, the door touching both; never one with a
+-- sane citizen on the deadly side (it would shut them in). It frees each lock
+-- as soon as no guarded dwarf is near, or after LOCK_MAX_TICKS (then rests it
+-- REST_TICKS: anyone shut in on the far side gets out), never locks again for
+-- a week a door someone else opened, and never holds more than MAX_LOCKS. A
+-- lock another rule has claimed since (a cell or the seal took the door over)
+-- is dropped from the record and left locked. The report frees the stale
+-- locks itself (held too long, or nobody guarded near), so they never
+-- outlast the guard (the AI halted, the brain stopped). Each lock records the
+-- door's state just before (`before`: unlocked, as the guard locks no other);
+-- a door the player locks again after the AI's lock can't be told apart from
+-- the AI's, and is opened with it: accepted (the player can lock it again).
 --
 --   report()         the `insane` section: {list = [{id, name, kind, mood,
 --                    x, y, z, place, hazards = {water, magma, drop} (the
@@ -45,6 +60,8 @@ KINDS = {Melancholy = 'melancholy', Raving = 'raving', Berserk = 'berserk', Trau
 GUARDED = {melancholy = true, raving = true}   -- the kinds kept from deadly ground
 SCAN_XY = 12          -- deadly ground looked for this far round an insane dwarf...
 SCAN_DOWN = 2         -- ...on their level and this many below (liquids; drops on their own level)
+FILL_MARGIN = 4       -- the walks between the dwarf and the ground keep to a box this much round them
+FILL_MAX = 2000       -- ...and this many tiles at most (past it: not judged, nothing locked)
 DEEP = 4              -- water this deep drowns a dwarf (the hazards section's `wet`)
 DOOR_NEAR = 10        -- a door is locked while a guarded dwarf is this near (tiles, |dz| <= 1)...
 DOOR_HAZARD = 6       -- ...with deadly ground this near the door, nearer the door than the dwarf
@@ -176,7 +193,9 @@ end
 -- --- the AI's own doors ----------------------------------------------------
 
 -- the boxes of the levels the AI dug (open and closed projects, the dropped
--- ones' outlines), the wells' left out
+-- ones' outlines), the wells' left out ((0.105.40b fix) a dropped well's
+-- outline too: marked `well` by the builder since; an older save's can't be
+-- told apart)
 function ai_boxes()
     local boxes = {}
     pcall(function()
@@ -188,7 +207,9 @@ function ai_boxes()
                 for _, a in ipairs(okA and areas or {}) do table.insert(boxes, a) end
             end
         end
-        for _, a in ipairs(data.old_areas or {}) do table.insert(boxes, a) end
+        for _, a in ipairs(data.old_areas or {}) do
+            if type(a) == 'table' and not a.well then table.insert(boxes, a) end
+        end
     end)
     return boxes
 end
@@ -216,19 +237,29 @@ function gate_ids()
     return ids
 end
 
+-- (0.105.40b fix) the doors and hatches the threats rules hold or could need
+-- (ai-threats claimed_doors), and the gate pieces
+function claimed_ids(gates)
+    local ids = {}
+    for id in pairs(gates or gate_ids()) do ids[id] = true end
+    pcall(function()
+        for id in pairs(reqscript('ai-threats').claimed_doors() or {}) do ids[tonumber(id) or id] = true end
+    end)
+    return ids
+end
+
+-- the doors (never a hatch: (0.105.40b fix) one over stairs or a shaft is a
+-- way between levels, not a door in a wall)
 local function door_list()
     local out = {}
     local ok = pcall(function()
-        for _, k in ipairs({'DOOR', 'HATCH'}) do
-            for _, b in ipairs(df.global.world.buildings.other[k]) do table.insert(out, b) end
-        end
+        for _, b in ipairs(df.global.world.buildings.other.DOOR) do table.insert(out, b) end
     end)
     if ok then return out end
     out = {}
     pcall(function()
         for _, b in ipairs(df.global.world.buildings.all) do
-            local t = df.building_type[b:getType()]
-            if t == 'Door' or t == 'Hatch' then table.insert(out, b) end
+            if df.building_type[b:getType()] == 'Door' then table.insert(out, b) end
         end
     end)
     return out
@@ -253,22 +284,163 @@ local function bpos(b)
     return nil
 end
 
+-- --- the walk: does a door stand between? ------------------------------------
+
+local function tkey(x, y, z) return x .. ',' .. y .. ',' .. z end
+
+local BLOCKS = {WALL = true, FORTIFICATION = true}
+local UP = {STAIR_UP = true, STAIR_UPDOWN = true}
+local DOWN = {STAIR_DOWN = true, STAIR_UPDOWN = true}
+
+-- A walker over the tiles in `box`, with the tiles in `shut` closed: a
+-- cache of what each tile is. step(x, y, z, f) calls f on each tile one step
+-- on (on the level, up or down stairs, onto a ramp's top and down it, a fall
+-- through open space).
+local function walker(box, shut)
+    local cache = {}
+    local function info(x, y, z)
+        local k = tkey(x, y, z)
+        local c = cache[k]
+        if c == nil then
+            local shape = shape_at(x, y, z)
+            local okf, des = pcall(dfhack.maps.getTileFlags, x, y, z)
+            local seen = okf and des and not des.hidden
+            c = {shape = shape, open = shape ~= nil and not BLOCKS[shape] and seen and true or false}
+            cache[k] = c
+        end
+        return c
+    end
+    local function inside(x, y, z)
+        return x >= box.x1 and x <= box.x2 and y >= box.y1 and y <= box.y2 and z >= box.z1 and z <= box.z2
+    end
+    local function ok(x, y, z)
+        return inside(x, y, z) and not shut[tkey(x, y, z)] and info(x, y, z).open
+    end
+    local function step(x, y, z, f)
+        local here = info(x, y, z).shape
+        for dx = -1, 1 do
+            for dy = -1, 1 do
+                if (dx ~= 0 or dy ~= 0) and ok(x + dx, y + dy, z) then f(x + dx, y + dy, z) end
+                if here == 'RAMP' and ok(x + dx, y + dy, z + 1) then f(x + dx, y + dy, z + 1) end
+            end
+        end
+        if UP[here] and ok(x, y, z + 1) and DOWN[info(x, y, z + 1).shape] then f(x, y, z + 1) end
+        if (DOWN[here] and ok(x, y, z - 1) and UP[info(x, y, z - 1).shape])
+                or ((here == 'RAMP_TOP' or here == 'EMPTY') and ok(x, y, z - 1)) then
+            f(x, y, z - 1)
+        end
+    end
+    return step, inside
+end
+
+-- The tiles reached from (x, y, z): {key = true}, and whether FILL_MAX was
+-- passed (not judged). `stop`: a set of keys whose reaching ends the walk
+-- (returns true as the third value).
+local function walk(step, x, y, z, stop)
+    local seen, queue, head, n = {[tkey(x, y, z)] = true}, {{x, y, z}}, 1, 1
+    if stop and stop[tkey(x, y, z)] then return seen, false, true end
+    while queue[head] do
+        local p = queue[head]
+        head = head + 1
+        local hit = false
+        step(p[1], p[2], p[3], function(a, b, c)
+            local k = tkey(a, b, c)
+            if not seen[k] and not hit then
+                seen[k] = true
+                n = n + 1
+                if stop and stop[k] then hit = true end
+                table.insert(queue, {a, b, c})
+            end
+        end)
+        if hit then return seen, false, true end
+        if n > FILL_MAX then return seen, true, false end
+    end
+    return seen, false, false
+end
+
+-- a tile of `set` one step from the door at (x, y, z), on its level
+local function touches(set, x, y, z)
+    for dx = -1, 1 do
+        for dy = -1, 1 do
+            if (dx ~= 0 or dy ~= 0) and set[tkey(x + dx, y + dy, z)] then return true end
+        end
+    end
+    return false
+end
+
 -- The AI's doors between a dwarf at (x, y, z) and the deadly ground
--- `tiles`: {b, x, y, z, hazard}. ctx: {boxes, gates} (read once a call).
+-- `tiles`: {b, x, y, z, hazard}. ctx: {boxes, gates, claimed, doors, shut,
+-- sane} (read once a call). (0.105.40b fix) A door near both (the old
+-- distance test) is only a candidate: with every candidate and every locked
+-- door shut, the walk from the dwarf must not reach the deadly ground, the
+-- walk from that ground must not reach the dwarf's side nor find a sane
+-- citizen, and the door must touch both sides.
 function doors_between(ctx, x, y, z, tiles)
     local out = {}
     if #tiles == 0 then return out end
+    local cands = {}
     for _, b in ipairs(ctx.doors) do
         local bx, by, bz = bpos(b)
         if bx and math.abs(bz - z) <= 1 and dist(x, y, z, bx, by, bz) <= DOOR_NEAR
-                and not ctx.gates[b.id] and not flag(b, 'operated_by_mechanisms') and built(b)
-                and in_boxes(ctx.boxes, bx, by, bz) then
+                and not ctx.gates[b.id] and not ctx.claimed[b.id] and not flag(b, 'operated_by_mechanisms')
+                and built(b) and in_boxes(ctx.boxes, bx, by, bz) then
             local dd = dist(x, y, z, bx, by, bz)
+            local hz = {}
             for _, h in ipairs(tiles) do
                 local dh = dist(bx, by, bz, h.x, h.y, h.z)
-                -- the door nearer the ground than the dwarf is: in the way
-                if dh <= DOOR_HAZARD and h.d > dh and h.d >= dd then
-                    table.insert(out, {b = b, x = bx, y = by, z = bz, hazard = h.kind})
+                -- the door nearer the ground than the dwarf is: perhaps in the way
+                if dh <= DOOR_HAZARD and h.d > dh and h.d >= dd then table.insert(hz, h) end
+            end
+            if #hz > 0 then table.insert(cands, {b = b, x = bx, y = by, z = bz, hz = hz}) end
+        end
+    end
+    if #cands == 0 then return out end
+    -- the box the walks keep to, and the tiles shut in them
+    local box = {x1 = x, x2 = x, y1 = y, y2 = y, z1 = z, z2 = z}
+    local function grow(px, py, pz)
+        box.x1, box.x2 = math.min(box.x1, px), math.max(box.x2, px)
+        box.y1, box.y2 = math.min(box.y1, py), math.max(box.y2, py)
+        box.z1, box.z2 = math.min(box.z1, pz), math.max(box.z2, pz)
+    end
+    local shut, hzset = {}, {}
+    for k in pairs(ctx.shut) do shut[k] = true end
+    for _, c in ipairs(cands) do
+        grow(c.x, c.y, c.z)
+        shut[tkey(c.x, c.y, c.z)] = true
+        for _, h in ipairs(c.hz) do grow(h.x, h.y, h.z); hzset[tkey(h.x, h.y, h.z)] = true end
+    end
+    box.x1, box.x2 = box.x1 - FILL_MARGIN, box.x2 + FILL_MARGIN
+    box.y1, box.y2 = box.y1 - FILL_MARGIN, box.y2 + FILL_MARGIN
+    box.z1, box.z2 = box.z1 - 1, box.z2 + 1               -- a way round by a level above or below
+    local step = walker(box, shut)
+    -- the dwarf's side: reaching the ground (a door no lock helps) or too big: nothing locked
+    local mine, big, hit = walk(step, x, y, z, hzset)
+    if big or hit then return out end
+    -- the ground's sides, each walked once
+    local side_of, sides = {}, {}
+    local function side(h)
+        local k = tkey(h.x, h.y, h.z)
+        if side_of[k] then return sides[side_of[k]] end
+        local set, big2, hit2 = walk(step, h.x, h.y, h.z, mine)
+        local sd = {set = set, bad = big2 or hit2}
+        if not sd.bad then
+            for sk in pairs(ctx.sane) do
+                if set[sk] then sd.bad = true break end
+            end
+        end
+        table.insert(sides, sd)
+        for sk in pairs(set) do
+            if hzset[sk] and not side_of[sk] then side_of[sk] = #sides end
+        end
+        side_of[k] = #sides
+        return sd
+    end
+    for _, c in ipairs(cands) do
+        if touches(mine, c.x, c.y, c.z) then
+            for _, h in ipairs(c.hz) do
+                local sd = side(h)
+                if not sd.bad and touches(sd.set, c.x, c.y, c.z) then
+                    table.insert(out, {b = c.b, x = c.x, y = c.y, z = c.z, hazard = h.kind})
                     break
                 end
             end
@@ -277,8 +449,32 @@ function doors_between(ctx, x, y, z, tiles)
     return out
 end
 
+-- the sane citizens' tiles (the insane are left out of DFHack's citizens)
+local function sane_tiles()
+    local out = {}
+    local okc, cits = pcall(U.citizens)
+    for _, u in ipairs(okc and cits or {}) do
+        local kind = kind_of(u)
+        if not kind then
+            local x, y, z = pos_of(u)
+            if x then out[tkey(x, y, z)] = true end
+        end
+    end
+    return out
+end
+
 local function context()
-    return {boxes = ai_boxes(), gates = gate_ids(), doors = door_list()}
+    local gates = gate_ids()
+    local doors = door_list()
+    local shut = {}
+    for _, b in ipairs(doors) do
+        if flag(b, 'forbidden') then
+            local bx, by, bz = bpos(b)
+            if bx then shut[tkey(bx, by, bz)] = true end
+        end
+    end
+    return {boxes = ai_boxes(), gates = gates, claimed = claimed_ids(gates), doors = doors, shut = shut,
+            sane = sane_tiles()}
 end
 
 -- --- the record ------------------------------------------------------------
@@ -303,6 +499,73 @@ end
 local function find_building(id)
     local ok, b = pcall(df.building.find, id)
     return ok and b or nil
+end
+
+-- (0.105.40b fix) the doors held locked for the insane now: {id = true}
+-- (ai-threats' cells and seal take them over: claimed_doors)
+function held_ids()
+    local out = {}
+    for _, l in pairs(state().locks) do
+        if type(l) == 'table' and l.id ~= nil then out[l.id] = true end
+    end
+    return out
+end
+
+-- The held locks: freed when no guarded dwarf (`guarded`: {x, y, z}) is
+-- near, or held too long; forgotten when the door is gone or was unlocked by
+-- someone else; (0.105.40b fix) dropped, left locked, when another rule has
+-- claimed the door since (`claimed`). Returns how many were freed, and
+-- whether the record changed.
+function release_locks(st, guarded, now, dry, claimed)
+    local released, changed = 0, false
+    for key, l in pairs(st.locks) do
+        local b = type(l) == 'table' and find_building(l.id) or nil
+        local free, forget = false, false
+        if not b or not flag(b, 'forbidden') then
+            forget = true
+        elseif claimed and claimed[l.id] then
+            forget = true          -- a cell's or the seal's now: theirs to open
+        else
+            local near = false
+            for _, g in ipairs(guarded) do
+                if math.abs(g.z - l.z) <= 1 and dist(g.x, g.y, g.z, l.x, l.y, l.z) <= RELEASE_NEAR then near = true end
+            end
+            if not near then free = true
+            elseif now - (l.since or now) >= LOCK_MAX_TICKS then
+                free = true
+                if not dry then st.rest[key] = now end
+            end
+        end
+        if forget and b and not dry and not (claimed and claimed[l.id]) then
+            -- unlocked by someone else (the player): not locked again for LEFT_TICKS
+            st.rest[key] = now + LEFT_TICKS - REST_TICKS
+        end
+        if free or forget then
+            -- unlocked only when it was unlocked before the AI's lock (always,
+            -- as the guard locks no locked door; a `before` from an odd record kept)
+            if free and not dry and l.before ~= true then
+                pcall(function() b.door_flags.forbidden = false end)
+            end
+            if free then released = released + 1 end
+            if not dry then
+                st.locks[key] = nil
+                changed = true
+            end
+        end
+    end
+    return released, changed
+end
+
+-- the melancholy and raving dwarves with their places: {u, x, y, z}
+local function guarded_units(want)
+    local out = {}
+    for _, e in ipairs(insane_units()) do
+        if GUARDED[e.kind] and (want == nil or want[e.u.id]) then
+            local x, y, z = pos_of(e.u)
+            if x then table.insert(out, {u = e.u, x = x, y = y, z = z}) end
+        end
+    end
+    return out
 end
 
 -- --- the citizens heading for a breakdown ----------------------------------
@@ -367,6 +630,12 @@ function report()
     local rows = {}
     local insane = insane_units()
     local ctx
+    -- (0.105.40b fix) the stale locks freed here too (held too long, nobody
+    -- guarded near, claimed since): never left on while the guard can't run
+    if next(st.locks) ~= nil then
+        local _, changed = release_locks(st, guarded_units(nil), now_tick(), false, claimed_ids())
+        if changed then save(st) end
+    end
     for _, e in ipairs(insane) do
         local u = e.u
         local row = {id = u.id, name = name_of(u), kind = e.kind, mood = e.mood}
@@ -410,47 +679,18 @@ function guard(o, dry)
         want = {}
         for _, id in ipairs(o.units) do want[id] = true end
     end
-    local guarded = {}
-    for _, e in ipairs(insane_units()) do
-        if GUARDED[e.kind] and (want == nil or want[e.u.id]) then
-            local x, y, z = pos_of(e.u)
-            if x then table.insert(guarded, {u = e.u, x = x, y = y, z = z}) end
-        end
-    end
-    local released, locked, doors = 0, 0, {}
+    local guarded = guarded_units(want)
+    local locked, doors = 0, {}
     -- 1. the held locks: freed when the door is gone or was unlocked by
-    -- someone else (forgotten), no guarded dwarf is near, or held too long
-    for key, l in pairs(st.locks) do
-        local b = find_building(l.id)
-        local free, forget = false, false
-        if not b or not flag(b, 'forbidden') then
-            forget = true
-        else
-            local near = false
-            for _, g in ipairs(guarded) do
-                if math.abs(g.z - l.z) <= 1 and dist(g.x, g.y, g.z, l.x, l.y, l.z) <= RELEASE_NEAR then near = true end
-            end
-            if not near then free = true
-            elseif now - (l.since or now) >= LOCK_MAX_TICKS then
-                free = true
-                st.rest[key] = now
-            end
-        end
-        if forget and b and not dry then
-            -- unlocked by someone else (the player): not locked again for LEFT_TICKS
-            st.rest[key] = now + LEFT_TICKS - REST_TICKS
-        end
-        if free or forget then
-            if free and not dry then pcall(function() b.door_flags.forbidden = false end) end
-            if free then released = released + 1 end
-            if not dry then st.locks[key] = nil end
-        end
-    end
+    -- someone else (forgotten), claimed by another rule since (dropped, left
+    -- locked), no guarded dwarf is near, or held too long
+    local released = release_locks(st, guarded, now, dry, claimed_ids())
     for key, t in pairs(st.rest) do
         if type(t) ~= 'number' or now - t >= REST_TICKS then st.rest[key] = nil end
     end
     -- 2. the doors between each guarded dwarf and the deadly ground near them
-    if #guarded > 0 then
+    -- ((0.105.40b fix) none while halted: o.release_only)
+    if #guarded > 0 and not o.release_only then
         local ctx = context()
         local held = count(st.locks)
         for _, g in ipairs(guarded) do
@@ -460,9 +700,10 @@ function guard(o, dry)
                 if not st.locks[key] and not st.rest[key] and not flag(d.b, 'forbidden')
                         and held + locked < MAX_LOCKS then
                     if not dry then
+                        local before = flag(d.b, 'forbidden')      -- (0.105.40b fix) as it was just before
                         pcall(function() d.b.door_flags.forbidden = true end)
                         st.locks[key] = {id = d.b.id, unit = g.u.id, since = now, x = d.x, y = d.y, z = d.z,
-                                         hazard = d.hazard}
+                                         hazard = d.hazard, before = before}
                     end
                     locked = locked + 1
                     table.insert(doors, {id = d.b.id, unit = g.u.id, hazard = d.hazard})
@@ -472,5 +713,5 @@ function guard(o, dry)
     end
     if not dry then save(st) end
     return {ok = true, locked = locked, released = released, held = count(st.locks), doors = doors,
-            guarded = #guarded, dry_run = dry or nil}
+            guarded = #guarded, dry_run = dry or nil, release_only = o.release_only or nil}
 end
