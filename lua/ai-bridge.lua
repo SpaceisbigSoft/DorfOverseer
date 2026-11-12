@@ -608,7 +608,12 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
     moods = function() return safe(get_moods) end,
     buildings = function() return safe(get_buildings) end,
     jobs = function() return safe(get_jobs) end,
-    others_on_map = function() return safe(get_others_on_map) end,
+    -- (0.105.40b) the threats that breathe fire marked (lua/ai-threats.lua, by their raws)
+    others_on_map = function() return safe(function()
+        local o = get_others_on_map()
+        pcall(function() reqscript('ai-threats').mark_fire_breathers(o) end)
+        return o
+    end) end,
     deep = function() return safe(get_deep) end,
     -- (0.104.95, 13b) the fort's world-map missions, read only (lua/ai-missions.lua)
     -- (0.105.24) with `send`: the World-screen sender's run under way and its last outcome

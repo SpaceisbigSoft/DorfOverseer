@@ -50,6 +50,7 @@ from planner_world import (_contact_rule, _export_rule, _hostile_trade_filter, _
 from planner_missions import _mission_rule, note_missions  # noqa: E402  (0.105.39) missions on the world map
 from planner_cleanup import _world_cleanup_rule, note_cleanup  # noqa: E402  (0.105.40) world cleanup for the game's speed
 from planner_weather import _weather_rules, _weather_squad_filter  # noqa: E402  (0.105.40b) evil weather
+from planner_firebreath import _fire_breather_rule  # noqa: E402  (0.105.40b) no melee squad at a fire breather
 from planner_construct import (_hall_rule, _construction_blocks_rule,  # noqa: E402  (0.105.30) construction
                                note_construct, note_construct_cycle)
 from planner_army import (_army_gear_rule, _quiver_rule, _bolts_rule, _flask_rule,  # noqa: E402  (0.105.0, round 2)
@@ -575,6 +576,8 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
         _guard(_bolts_rule, s, memory, cfg, proposals, notes)
         _guard(_flask_rule, s, memory, cfg, proposals, notes)     # (0.105.26)
         _guard(_shelter_squads_rule, s, memory, cfg, proposals, notes)
+        # (0.105.40b) a fire breather: no melee squad at it, crossbows from inside only
+        _guard(_fire_breather_rule, s, memory, cfg, proposals, notes)
         if can_use("entrances"):
             _guard(_gate_cut_rule, s, memory, cfg, proposals, notes)
 
