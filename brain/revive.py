@@ -105,11 +105,11 @@ def load_candidates() -> tuple[list[str], str | None]:
     if not d.get("df_path") or not d.get("save_dir"):
         return [], d.get("world")
     root = save_root(d["df_path"], d["save_dir"]) or Path(d["df_path"]) / "save"   # (0.99.13)
-    from backup import folder_mtime
+    from backup import save_mtime
     # (0.105.0 review) a backup restored earlier ("AI restore <date>") is a candidate too
     cands = [root / d["save_dir"]] + sorted(root.glob("autosave*")) + sorted(root.glob(RESTORE_PREFIX + "*"))
     cands = [c for c in cands if c.is_dir()]
-    cands.sort(key=folder_mtime, reverse=True)
+    cands.sort(key=save_mtime, reverse=True)
     return [c.name for c in cands], d.get("world")
 
 

@@ -72,6 +72,17 @@ def folder_mtime(p: Path) -> float:
     return newest
 
 
+def save_mtime(p: Path) -> float:
+    """(0.105.42) When a save was written: its world.sav's time (DF writes it
+    once a save; the folder's other files, DFHack's own among them, change at
+    other times and once put an older autosave first). The newest file in the
+    folder when it has no world.sav."""
+    try:
+        return (p / "world.sav").stat().st_mtime
+    except OSError:
+        return folder_mtime(p)
+
+
 def newest_folder(save_root: Path, save_dir: str) -> Path | None:
     """The loaded save's folder or one of DF's autosaves, whichever was
     written last (DF saves a season's autosave under "autosave N", not under
@@ -80,7 +91,7 @@ def newest_folder(save_root: Path, save_dir: str) -> Path | None:
     cands = [c for c in cands if c.is_dir()]
     if not cands:
         return None
-    return max(cands, key=folder_mtime)
+    return max(cands, key=save_mtime)
 
 
 def fort_mark_path(copy: Path) -> Path:
@@ -193,7 +204,7 @@ def _ours(save_root: Path, save_dir: str, since: float | None) -> Path | None:
         cands += [c for c in sorted(save_root.glob("autosave*"))
                   if c.is_dir() and c.name != save_dir and folder_mtime(c) >= since]
     cands = [c for c in cands if c.is_dir()]
-    return max(cands, key=folder_mtime) if cands else None
+    return max(cands, key=save_mtime) if cands else None
 
 
 def maybe(save_root, save_dir: str | None, now: float | None = None,
