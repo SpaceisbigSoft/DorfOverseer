@@ -31,7 +31,8 @@ nothing left to engrave) a note says the room wants finer furniture.
 from __future__ import annotations
 
 from digest import _d, _l
-from planner_core import (AGENDA_THEMES, Proposal, _traits, noble_room_kinds, queued, stone_short)
+from planner_core import (AGENDA_THEMES, Proposal, _traits, abs_tick, noble_room_kinds, queued, stone_short,
+                          zone_full_days)
 from planner_traffic import _danger_near
 
 __all__ = ["noble_room_plan", "nobles_view", "_noble_value_rule", "TITLE_ORDER", "noble_rank"]
@@ -98,9 +99,13 @@ def noble_room_plan(s: dict, cfg: dict, memory=None) -> list:
             e["status"] = "under"
             st_wait = int(r.get("statues_pending") or 0)
             pol_wait = int(r.get("polish_pending") or 0)
+            # (item7) a room booked full ("no free floor in zone N"): no statue
+            # put in nor ordered for it; the polish below comes instead
+            full = (memory is not None and isinstance(_d(s.get("date")).get("tick"), int)
+                    and zone_full_days(memory, r["zone_id"], abs_tick(s)) is not None)
             if not given:
                 e["plan"] = "left as it is (Deference)"
-            elif statues > 0 and not st_wait and int(r.get("statues") or 0) < st_max:
+            elif statues > 0 and not st_wait and int(r.get("statues") or 0) < st_max and not full:
                 statues -= 1
                 e["plan"] = "a statue put in"
                 e["action"] = {"type": "place_in_zone", "zone_id": r["zone_id"], "what": "statue"}
@@ -116,6 +121,8 @@ def noble_room_plan(s: dict, cfg: dict, memory=None) -> list:
                 # placed and not built yet: the free statue the report still
                 # counts is the one it waits for (another would point at it too)
                 e["plan"] = f"a statue being put in ({st_wait} to build)"
+            elif full:
+                e["plan"] = "wants finer furniture (no free floor for another statue)"
             elif int(r.get("statues") or 0) < st_max:
                 if ordered or queued(s, {"stone_statue"}):
                     e["plan"] = "a statue, once one is made"

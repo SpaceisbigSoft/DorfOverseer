@@ -150,6 +150,9 @@ def _():
     planner_military.fight_or_hide = lambda *a, **k: (True, "the squads are strong")
     try:
         s = cave_fort()
+        # (item7) a hatch on the way down: something to lock (with none, the
+        # AI closes the way first: test_item7)
+        s["deep"]["caverns"][0]["column"][0]["building"] = "Hatch"
         props, notes = plan(s, Memory())
     finally:
         planner_military.fight_or_hide = real

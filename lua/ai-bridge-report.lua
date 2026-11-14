@@ -515,7 +515,7 @@ end
 function boulder_census()
     local memo = REPORT_MEMO
     if memo and memo.boulders then return memo.boulders end
-    local c = {count = 0, free = 0, free_items = 0, stone = {}, by_mat = {}}
+    local c = {count = 0, free = 0, free_items = 0, stone = {}, by_mat = {}, stone_job = {}, stone_forbid = {}}
     for _, item in ipairs(df.global.world.items.other.BOULDER) do
         if usable(item) then
             local n = item:getStackSize()
@@ -525,7 +525,14 @@ function boulder_census()
                 if item.mat_type == 0 then c.stone[item.mat_index] = (c.stone[item.mat_index] or 0) + n end
                 local key = item:getMaterial() .. ':' .. item:getMaterialIndex()
                 c.by_mat[key] = (c.by_mat[key] or 0) + 1
+            elseif item.mat_type == 0 then
+                -- (item7) taken by a job (a mason's, a hauler's): the quarry's stone in use
+                c.stone_job[item.mat_index] = (c.stone_job[item.mat_index] or 0) + item:getStackSize()
             end
+        elseif item.flags.forbid and item.mat_type == 0 and not (item.flags.garbage_collect
+                or item.flags.removed or item.flags.construction or item.flags.in_building) then
+            -- (item7) forbidden stone: a quarry adds nothing the masons may take
+            c.stone_forbid[item.mat_index] = (c.stone_forbid[item.mat_index] or 0) + item:getStackSize()
         end
     end
     if memo then memo.boulders = c end
@@ -599,8 +606,20 @@ FUEL_STONES = {COAL_BITUMINOUS = 'coke_bituminous', LIGNITE = 'coke_lignite'}
 -- region2 ran out of usable stone in y52 and every stone order stood still.
 function get_stone_use()
     local economic = df.global.plotinfo.economic_stone
-    local counts = boulder_census().stone
-    local out = {usable = 0, economic = {}, fuel_free = {}}
+    local census = boulder_census()
+    local counts = census.stone
+    local out = {usable = 0, economic = {}, fuel_free = {}, in_job = 0, forbidden = 0}
+    -- (item7) ordinary stone held by a job or forbidden, and the newest
+    -- quarry's tiles (still to dig, mark dropped, dug): the quarry rule waits
+    -- for one to be dug and counted before the next, and stops when the
+    -- stone it brings never reaches the masons
+    for idx, n in pairs(census.stone_job or {}) do
+        if not stone_is_economic(economic, idx) then out.in_job = out.in_job + n end
+    end
+    for idx, n in pairs(census.stone_forbid or {}) do
+        if not stone_is_economic(economic, idx) then out.forbidden = out.forbidden + n end
+    end
+    pcall(function() out.quarry = reqscript('ai-industry').quarry_status() end)
     for idx, n in pairs(counts) do
         local inorg = df.global.world.raws.inorganics.all[idx] or df.global.world.raws.inorganics[idx]
         if inorg then

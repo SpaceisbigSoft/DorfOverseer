@@ -372,7 +372,14 @@ def _meeting_notes(s: dict, notes: list) -> None:
             for a in acts[:3]))
 
 
-def _grandeur_rule(s: dict, cfg: dict, proposals: list, notes: list) -> None:
+def _zone_full(s: dict, memory, zone_id) -> int | None:
+    """(item7) Days the zone stays booked full (no free floor), or None."""
+    if memory is None or not isinstance(_d(s.get("date")).get("tick"), int):
+        return None
+    return zone_full_days(memory, zone_id, abs_tick(s))
+
+
+def _grandeur_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None) -> None:
     """(0.102.6) A grand fort (Grandeur 50+) dresses its halls: the least
     valuable temple, tavern, library or guildhall below 2000 x (1 + Grandeur
     /100) gets a statue at a time (one made of stone when none is free).
@@ -392,7 +399,15 @@ def _grandeur_rule(s: dict, cfg: dict, proposals: list, notes: list) -> None:
              and int(e.get("value") or 0) < want]
     if not halls:
         return
-    e = min(halls, key=lambda e: int(e.get("value") or 0))
+    # (item7) a hall whose zone has no free floor waits (another is dressed meanwhile)
+    roomy = [e for e in halls if _zone_full(s, memory, _l(e["zones"])[0]) is None]
+    if not roomy:
+        e = min(halls, key=lambda e: int(e.get("value") or 0))
+        notes.append(f"a grand fort (Grandeur {int(g):+d}): the halls under {want} have no free floor for "
+                     f"another statue (zone {_l(e['zones'])[0]} looked at again in "
+                     f"{_zone_full(s, memory, _l(e['zones'])[0])} day(s)); engraving adds the most now")
+        return
+    e = min(roomy, key=lambda e: int(e.get("value") or 0))
     what = str(e.get("type")).lower().replace("inn_", "").replace("_", " ")
     if int(_d(s.get("supplies")).get("statues") or 0) > 0:
         proposals.append(Proposal("grandeur", {"type": "place_in_zone", "zone_id": _l(e["zones"])[0], "what": "statue"},
@@ -404,7 +419,7 @@ def _grandeur_rule(s: dict, cfg: dict, proposals: list, notes: list) -> None:
                                   f"the {want} it should be: make statues for it", 6, True))
 
 
-def _location_value_rule(s: dict, cfg: dict, proposals: list, notes: list) -> None:
+def _location_value_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None) -> None:
     """(0.90) A hall built for a petition counts only once its zone is worth
     its tier (2000 a temple or guildhall, 10000 the grand tier). Once its
     project is finished (engraving adds the most), a statue at a time goes
@@ -424,6 +439,11 @@ def _location_value_rule(s: dict, cfg: dict, proposals: list, notes: list) -> No
         need = cfg["location_value_tier2"] if tier >= 2 else cfg["location_value_tier1"]
         value = int(e.get("value") or 0)
         if int(e.get("tier") or 0) >= tier or value >= need:
+            continue
+        full = _zone_full(s, memory, _l(e["zones"])[0])
+        if full is not None:
+            notes.append(f"{_wish_words(w)} is worth {value} of the {need} it needs, and its zone has no free "
+                         f"floor for another statue (looked at again in {full} day(s))")
             continue
         if int(sup.get("statues") or 0) > 0:
             proposals.append(Proposal("location_value", {"type": "place_in_zone", "zone_id": _l(e["zones"])[0],

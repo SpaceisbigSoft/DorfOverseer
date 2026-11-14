@@ -150,6 +150,9 @@ def _():
                  "dangers": [{"id": 50, "name": "Ozkak", "kind": "forgotten beast", "layer": "Cavern1"}],
                  "cursed": []}
     s["military"]["squads"] = []
+    # (item7) nothing on the way down to lock: no seal the bridge can only refuse
+    assert not acts(plan(s, Memory())[0], "seal_cavern")
+    s["deep"]["caverns"][0]["column"] = [{"z": 8}, {"z": 9, "building": "Door"}]
     p = acts(plan(s, Memory())[0], "seal_cavern")
     # (0.105.26) one seal for every cavern opening on record ("all caverns")
     assert p and p[0].action["layer"] == "all caverns" and {"x": 5, "y": 6, "z": 8} not in p[0].action["tiles"], p

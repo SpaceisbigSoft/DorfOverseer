@@ -770,8 +770,8 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
         _guard(_traction_rule, s, cfg, proposals, notes)
         _guard(_alerts_rule, s, memory, cfg, proposals, rules_)
         _guard(_location_petition_rules, s, cfg, proposals, notes, rules_, memory)
-        _guard(_location_value_rule, s, cfg, proposals, notes)
-        _guard(_grandeur_rule, s, cfg, proposals, notes)
+        _guard(_location_value_rule, s, cfg, proposals, notes, memory)
+        _guard(_grandeur_rule, s, cfg, proposals, notes, memory)
         _guard(_meeting_notes, s, notes)
         # (0.105.0, 12b/13b) the world outside: meetings answered, war and peace,
         # goods for export, the messenger and Make contact (brain/planner_world.py)
@@ -839,7 +839,8 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
             share = (idle_line(s, cfg, "polish_idle_share") / factor(traits, "industriousness")
                      / (2 if memory is not None and has_rule(memory.culture, "engrave_history") else 1))
             if idle >= share and not (memory is not None and memory.polished_upto is not None
-                                                         and memory.polished_upto == finished_n):
+                                                         and memory.polished_upto == finished_n) \
+                    and not polish_paused(memory, abs_tick(s), cfg):
                 proposals.append(Proposal("polish", {"type": "polish"},
                                           f"{round(100 * idle)}% of the dwarves are idle: smooth or engrave a "
                                           "finished level (nicer rooms, more wealth)", 7))
@@ -1176,6 +1177,12 @@ def select(proposals: list[Proposal], state: dict, memory: Memory,
             held.append(f"{p.rule}: the AI's {p.action.get('recipe')} order hasn't moved in {stalled} days; "
                         "no more until it does")
             continue
+        if p.action.get("type") == "place_in_zone" and p.rule not in EMERGENCY:
+            zf = zone_full_days(memory, p.action.get("zone_id"), now)
+            if zf is not None:
+                held.append(f"{p.rule}: zone {p.action.get('zone_id')} has no free floor for a "
+                            f"{p.action.get('what') or 'piece'}; looked at again in {zf} day(s)")
+                continue
         wait = _refused_wait(memory, p, now, state.get("bridge_version"))
         if wait is not None:
             n = _d(memory.refusals.get(refusal_key(p))).get("n")
@@ -1231,6 +1238,8 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
         note_food_level(p, r, memory)                      # (fix41) one food storage level a kitchen or still
         if p.action.get("type") == "weather_burrow":
             note_keep_in(memory, now, p.action, ok)        # (item4) evil weather: kept in by the burrow
+        note_quarry_dug(p, r, state, memory, now)          # (item7) the quarry marked, the stone then
+        note_zone_full(memory, p, r, now)                  # (item7) a zone with no free floor for furniture
         try:
             note_design(p, r, state, memory, now)          # (D0) sites kept, a landmark's refusals and fallback
         except Exception:  # noqa: BLE001  (the design record never stops the cycle's record)
@@ -1293,6 +1302,13 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
             masterplan.note_stairwell(memory, str(p.action.get("district")), r["x"], r["y"])
         if p.action.get("type") == "polish" and "every finished level is polished" in str(r.get("error") or ""):
             memory.polished_upto = levels_done(state)   # again once a level is finished
+            # (item7) ...and polish_recheck_days on, doubled each time in a row
+            # (D, 13 Nov: refused 20 times, a store or farm level finishing
+            # each time: only halls and rooms are polished)
+            ps_ = _d(getattr(memory, "polish_seen", None))
+            memory.polish_seen = {"n": int(ps_.get("n") or 0) + 1, "tick": now}
+        elif p.action.get("type") == "polish" and r.get("ok") is True and int(r.get("designated") or 0) > 0:
+            memory.polish_seen = {}
         if ok is False:
             if p.rule == "build":
                 # No safe site, the dry run disagreed, or the game refused it
@@ -1548,6 +1564,20 @@ def note_gate_lever(s: dict, memory: Memory) -> None:
         memory.gate_closed_by_ai = closed
 
 
+def polish_paused(memory, now: int, cfg: dict = PLANNER_CONFIG) -> bool:
+    """(item7) "every finished level is polished" twice or more in a row (the
+    levels finished meanwhile were stores, farms or stairs, which are never
+    polished): no polish for polish_recheck_days, doubled for each further
+    such answer (at most polish_recheck_max_days), even when another level
+    is finished meanwhile. The first answer waits only for a new level."""
+    ps = _d(getattr(memory, "polish_seen", None)) if memory is not None else {}
+    n, t = ps.get("n"), ps.get("tick")
+    if not isinstance(n, int) or n < 2 or not isinstance(t, int):
+        return False
+    days = min(cfg["polish_recheck_max_days"], cfg["polish_recheck_days"] * 2 ** (n - 2))
+    return 0 <= now - t < days * TICKS_PER_DAY
+
+
 def note_cycle(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> list[str]:
     """Bookkeeping from a fresh report, BEFORE planning. Returns notes.
     (0.105.33) Each step runs on its own: one failing on an odd report value
@@ -1579,6 +1609,8 @@ def note_cycle(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> list[
         _step(note_world, s, memory)                            # (0.105.0) grudges, export wishes
     if "missions" not in errors:
         notes += _step(note_missions, s, memory) or []          # (0.105.39) missions followed out and back
+    if "stone_use" not in errors:
+        notes += _step(note_quarry, s, memory, cfg) or []       # (item7) the last quarry dug and counted
     if "food_store" not in errors:
         notes += _step(note_food, s, memory, cfg) or []         # (0.105.40b, M6) the rotten food followed
     if "hauling" not in errors:

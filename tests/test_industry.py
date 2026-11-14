@@ -329,5 +329,53 @@ def _():
     assert r3.ok and (r3.x, r3.y) == first, (dict(r3), first)  # forgotten: the nearest again
 
 
+@test("(item7) the quarry keeps its tiles; quarry_status says how many are still to dig, dug, or dropped")
+def _():
+    L = LuaRuntime(unpack_returned_tuples=True)
+    env, dig = L.execute(FAKE, SRC, L.table_from(MAP))
+    L.execute(QUARRY_SETUP, env, 3, False)
+    L.execute("""local env = ...
+      local store = {}
+      env.dfhack.persistent = {getSiteData = function(k, d) return store[k] or d end,
+                               saveSiteData = function(k, v) store[k] = v end}
+      env.df.global.cur_year, env.df.global.cur_year_tick = 80, 1000
+      env.DUG = {}
+      local get = env.dfhack.maps.getTileType
+      env.dfhack.maps.getTileType = function(x, y, z)
+          if env.DUG[x .. ',' .. y] then return 2 end
+          return get(x, y, z)
+      end
+    """, env)
+    assert env.quarry_status() is None
+    r = env.quarry(6, False)
+    assert r.ok and r.tiles >= 2, dict(r)
+    st = env.quarry_status()
+    assert st.pending == r.tiles and st.dug == 0 and st.dropped == 0 and st.tiles == r.tiles, dict(st)
+    assert (st.x, st.y, st.z) == (r.x, r.y, r.z), dict(st)
+    marked = [(x, y) for y in range(16) for x in range(16) if dig(x, y) == 1]
+    assert len(marked) == r.tiles, marked
+    x0, y0 = marked[0]
+    L.execute("local env, x, y = ...; env.DUG[x .. ',' .. y] = true; env.dfhack.maps.getTileFlags(x, y, 10).dig = 0",
+              env, x0, y0)
+    x1, y1 = marked[1]
+    L.execute("local env, x, y = ...; env.dfhack.maps.getTileFlags(x, y, 10).dig = 0", env, x1, y1)
+    st = env.quarry_status()
+    assert st.dug == 1 and st.dropped == 1 and st.pending == r.tiles - 2, dict(st)
+
+
+@test("(item7) quarry_tiles_state (pure): walls still marked, walls unmarked, and dug tiles counted apart")
+def _():
+    L = LuaRuntime(unpack_returned_tuples=True)
+    env, _ = L.execute(FAKE, SRC, L.table_from(MAP))
+    entry = L.eval("{z = 3, tiles = {{1, 1}, {2, 1}, {3, 1}, {4, 1}}}")
+    look = L.eval("""function(x, y, z)
+        if x == 1 then return true, true elseif x == 2 then return true, false else return false, false end
+    end""")
+    st = env.quarry_tiles_state(entry, look)
+    assert (st.pending, st.dropped, st.dug) == (1, 1, 2), dict(st)
+    st = env.quarry_tiles_state(L.eval("{z = 3}"), look)
+    assert (st.pending, st.dropped, st.dug) == (0, 0, 0), dict(st)
+
+
 if __name__ == "__main__":
     finish()
