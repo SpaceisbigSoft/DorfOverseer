@@ -384,6 +384,7 @@ function defaults()
         -- water and has armed soldiers for what comes out; 'always'; 'never'
         open_caverns = 'ai',
         squads_shelter = true,     -- (0.105.0) while the AI hides from a great danger, the squads wait in the shelter
+                                   -- (0.105.45) ...now between the threat and the shelter (a choke, else the barracks)
         -- (0.105.41, item 2) the AI's feeder piles linked to the AI's own workshops (lua/ai-pile-links.lua)
         link_feeders = true,
         -- (item5) siege works and the field guard (lua/ai-siege.lua, brain/planner_siege.py):

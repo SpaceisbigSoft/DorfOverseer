@@ -740,7 +740,17 @@ def short(a: dict) -> str:
     if t == "fix_gear_gaps":
         return "mend the uniforms so the soldiers get weapons" + (" and shields" if a.get("shields") else "")
     if t == "shelter_squads":
+        st = a.get("station") if isinstance(a.get("station"), dict) else None   # (0.105.45)
+        if st:
+            return (f"station {len(a.get('squads') or [])} squad(s) at x{st.get('x')} y{st.get('y')} z{st.get('z')}, "
+                    "between the threat and the civilians' shelter")
         return f"send {len(a.get('squads') or [])} squad(s) to wait in the shelter"
+    if t == "shelter_pick":        # (0.105.45)
+        if a.get("clear"):
+            return "draw the civilians' shelter over the whole fort again"
+        return f"draw the civilians' shelter over level(s) {', '.join(str(z) for z in a.get('levels') or [])}, away from the threat"
+    if t == "squad_station":       # (0.105.45)
+        return f"station squad {a.get('squad_id')} at x{a.get('x')} y{a.get('y')} z{a.get('z')}"
     if t == "set_farm_crops":      # (0.105.5) Hammerstirred: the plots lay fallow under autofarm
         return ("set each farm plot's crops" + (" (brewable first)" if a.get("drink") else "")
                 + (" (a second brewable crop: drinks of more kinds)" if a.get("variety") else ""))

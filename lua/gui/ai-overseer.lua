@@ -789,7 +789,7 @@ function MilitaryPage:init()
     table.insert(views, widgets.ToggleHotkeyLabel{
         view_id = 'squads_shelter',
         frame = {t = t + 12, l = 2, w = 50},
-        label = 'When hiding, squads wait in the shelter:',
+        label = 'When hiding, squads guard the way in:',   -- (0.105.45) between the threat and the shelter
         label_width = 42,
         initial_option = p.settings.squads_shelter ~= false,
         on_change = function(v) p:set_field('squads_shelter', v) end,

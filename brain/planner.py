@@ -59,6 +59,7 @@ from planner_siege import _siege_rules  # noqa: E402  (item5) siege engines, arc
 from planner_hazards import _hazards_rule, magma_alarm  # noqa: E402  (0.105.41, item 7) spilt magma, cave-ins, frost, heat
 from planner_insane import _insane_rule  # noqa: E402  (0.105.40b) the insane: deadly ground near them, the AI's doors
 from planner_killers import _killer_rule  # noqa: E402  (item3) a killer among the fort's own: cells, a squad
+from planner_shelter import _shelter_pick_rule  # noqa: E402  (0.105.45) the shelter away from the threat
 from planner_hauling import _hauling_labor_rule, note_hauling  # noqa: E402  (0.105.40 M5) hauling balanced
 from planner_traffic import _traffic_rule  # noqa: E402  (0.105.41) traffic zones on the AI's own levels
 from planner_food import _food_store_rule, note_food  # noqa: E402  (0.105.40b, M6) the food store
@@ -604,6 +605,11 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
                                       "no civilian-alert burrow: make an \"AI shelter\" burrow over the inside "
                                       "of the fort and use it for the alarm", 0 if threat else 4))
     _guard(_shelter_rule)
+    # (0.105.45) the civilians' shelter away from the threat's way in, moved at
+    # once from a great danger inside that comes close (planner_shelter); before
+    # the squads' rule, which stations them between the threat and it
+    if "shelter_plan" not in errors:
+        _guard(_shelter_pick_rule, s, cfg, proposals, notes, memory)
 
     if can_use("society"):
         _guard(_pasture_rule, s, memory, traits, cfg, proposals, notes)

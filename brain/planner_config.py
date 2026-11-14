@@ -999,4 +999,12 @@ PLANNER_CONFIG = {
     "bench_training_max_level": 5,        # the training bench's max skill (df skill rating: 5 Proficient)
     "bench_learners_min": 2,              # workers below it before a bench is capped
     "bench_caps_cooldown_ticks": 1200,
+    # (0.105.45) the shelter away from the threat, the squads between (brain/planner_shelter.py)
+    "shelter_pick_margin": 5,             # the threat's walk to a shelter this many steps longer than the civilians' (90%) at least
+    "shelter_pick_max_levels": 3,         # levels one shelter spans at most (for room and drink)
+    "shelter_pick_hysteresis": 10,        # a pick in use kept unless the new one is this much farther from the threat
+    "shelter_pick_cooldown_ticks": 300,   # the shelter redrawn at most this often (shelter_flee: at once)
+    "shelter_flee_tiles": 20,             # a great danger inside the fort this close (walk) to the shelter: moved at once
+    "shelter_choke_min_tiles": 10,        # the squads' choke this many steps from the shelter at least
+    "shelter_choke_max_width": 4,         # ...and no wider than this (walkable neighbours on its level)
 }
