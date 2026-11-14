@@ -162,7 +162,20 @@ def _party_power(t: dict, squads) -> float:
     squad_weights(t) (a fire breather: only crossbows count; a flier: melee
     0.6, ranged 1.25 by the squads' melee_power / ranged_power) is switched in
     here at the merge."""
-    return sum(squad_power(q) for q in squads)
+    squads = list(squads)
+    try:
+        from planner_matchup import squad_weights
+        wm, wr, _ = squad_weights(t)
+    except Exception:
+        return sum(squad_power(q) for q in squads)
+    out = 0.0
+    for q in squads:
+        m, r = q.get("melee_power"), q.get("ranged_power")
+        if isinstance(m, (int, float)) and isinstance(r, (int, float)):
+            out += wm * float(m) + wr * float(r)       # (0.105.45, merge) the matchup's weights
+        else:
+            out += squad_power(q)                      # an older bridge: the total
+    return out
 
 
 def is_ranged(q: dict) -> bool:

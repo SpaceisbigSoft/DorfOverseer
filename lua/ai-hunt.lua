@@ -461,6 +461,9 @@ function report(txt, opts)
                 seen_ticks = math.max(0, t - (tonumber(d.seen[key]) or t)),
             }
             if g ~= 0 then row.can_reach_dwarves = cgroups[g] == true end
+            -- (0.105.45, merge) the same facts as the threats rows (breath, venom,
+            -- armour, speed...), so the hunt is judged like a defence (planner_matchup)
+            pcall(function() reqscript('ai-threat-facts').add_facts(row, u) end)
             if M and M.kill_target_ok then
                 local okk, k = pcall(M.kill_target_ok, u)
                 row.kill_ok = okk and k == true
@@ -540,6 +543,7 @@ function report(txt, opts)
                         return txt and txt(n) or n
                     end)(),
                     soldiers = #sol, power = pw.power or 0, armed = pw.armed or 0, armored = pw.armored or 0,
+                    melee_power = pw.melee_power, ranged_power = pw.ranged_power,   -- (0.105.45, merge) H7's split
                     ranged = #sol > 0 and shooters * 2 >= #sol,
                     at_home = next(kill_order_of(sq)) == nil and out_n * 2 < math.max(#sol, 1),
                     hunting = h and h.target_id or nil,

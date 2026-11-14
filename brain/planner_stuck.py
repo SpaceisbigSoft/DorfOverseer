@@ -288,6 +288,13 @@ def _stuck_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> Non
         else:
             del fams[f]
     projects, orders = _projects(s), _orders(s)
+    # (0.105.45, merge) a siege, a crisis or enemies in reach stop the work for
+    # good reasons (miners drafted, dwarves in the shelter): the clock of the
+    # building kinds stands still meanwhile, so a dig paused through a long
+    # siege isn't cancelled as stuck
+    oth = _d(s.get("others_on_map"))
+    paused = bool(_d(getattr(memory, "crisis", None)).get("why")) or \
+        int(oth.get("threats_that_can_reach_dwarves") or 0) > 0 or bool(_d(s.get("military")).get("siege"))
     acted = 0
     said: list = []
     past: dict = {}
@@ -307,6 +314,8 @@ def _stuck_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> Non
         elif it.get("sig") != sig:
             # it moved: the steps begin again (a retire's backoff too)
             it = {"state": r["state"], "sig": sig, "moved": now, "step": 0}
+        if paused and r["kind"] in ("project", "cistern", "waterwork"):
+            it["moved"] = now                       # (0.105.45, merge) the clock stands still
         items[key] = it
         since = _int(r.get("since"), now)
         moved = max(_int(it.get("moved"), now), _int(r.get("moved"), 0))

@@ -1216,6 +1216,7 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
 
 -- The pulse: a small report for the frequent check between full ones.
 PULSE_SECTIONS = {
+    'hunt',   -- (0.105.45, merge) a hunt going badly is called back within hours, not a day
     'bridge_version', 'paused', 'fort', 'date', 'wealth', 'dwarves', 'stocks',
     'others_on_map', 'civ_alert', 'civ_alert_ready', 'civ_alert_shelter', 'orders', 'projects', 'entrances',
     'moods', 'military', 'settings', 'events_waiting', 'hazards', 'ledger',
