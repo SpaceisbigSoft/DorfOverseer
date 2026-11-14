@@ -11,6 +11,15 @@ Where to look:
 The forts are A War-hold, B Monastery, C Merchant city, D Hermit hold, E Deep mine and F Garden fort. "All" means every fort.
 
 
+## 0.105.45 (14 Nov): hunting, the Lua side (H1, lua/ai-hunt.lua)
+
+- **All, state.json**: `hunt` with `targets`, `squads`, `hunts`, `history`; no `error`. Each target's `route` (`ok`, `length`, `blocked_by`): a forgotten beast in a cavern the AI sealed reads `seal`; a goblin at the gate with the gates open reads `none`; one outside with an AI gate shut reads `gate`. `layer` is layer_at's name (`upper_levels`, `Cavern1`...); `region` is `surface` / `cavern` / `inside`.
+- **Never in `targets`**: merchants, diplomats, pets and tame animals, citizens and residents, caged beasts, or an unhurt visitor. A beaten visitor DF shows interrupting the dwarves appears with `wounded_visitor: true`.
+- **`squads`**: `power` / `armed` / `armored` as in `military.squads[].power`; `ranged` true only for a crossbow squad whose soldiers carry bolts; `at_home` false while a kill order stands or most soldiers are outside or in a cavern; `sheltering` as the military section says.
+- **A `hunt_send` in the journal**: the squads' kill order in the squad screen (title "AI overseer"), `ai-overseer/hunts` in the save's site data, `hunt.hunts` with `soldiers_now` / `wounded` changing as they fight. A squad on the player's own orders, or with fewer than 2 armed, is refused.
+- **The target killed / gone**: the next full report moves the hunt to `hunt.history` with `won` (and `soldiers_lost`) or `gone`; a kill order another rule cleared shows `dropped`. A `hunt_recall` clears the AI's orders (the soldiers walk back to their barracks) and adds `recalled` with its reason.
+- **Cost**: the `hunt` section's ms in `perf` (one pass over the units; it is not in the pulse).
+
 ## item1 (14 Nov): the thirst trap (B, 13 Nov: 66 dead of thirst beside 845 drinks)
 
 - **All, state.json**: `threats.interrupters` (`cancels`, `by_who`, `reasons.drink` / `reasons.eat`, and `list` with each unit DF shows keeping the dwarves from drink, food or sleep: `who`, `near`, `visitor`, `merchant`, `kill_ok`). Normally empty or small; no `error`.

@@ -174,6 +174,7 @@ SECTION_DEFAULTS = {
     "syndromes": {},         # (0.105.41, item 11) syndromes, their sources, carriers, floor spatter, quarantine (lua/ai-syndromes.lua)
     "miasma": {},            # (0.105.41, item 11) miasma indoors, what rots near it, dump zones outside (lua/ai-syndromes.lua)
     "artifacts": {},         # (item 12) artifacts on the map, display furniture, the AI's rooms for it (lua/ai-artifacts.lua)
+    "hunt": {"targets": [], "squads": [], "hunts": []},   # (0.105.45) hunting: targets and the way to them, squads, the AI's hunts, history (lua/ai-hunt.lua)
 }
 # (0.105.36) not REQUIRED (the plan goes on without them), but a missing one is
 # listed in _errors as a failed one is: the default (civ_alert False) is not
