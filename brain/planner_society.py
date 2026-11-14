@@ -296,6 +296,12 @@ def _recreation_rule(s: dict, cfg: dict, worst: list, proposals: list | None, me
     # set for forts of 50 (Teacheroar: 221 dwarves, 85 badly wanting friends)
     friends = (min(10, max(cfg["recreation_friends"], lonely // 5))
                if lonely > 0 and int(bwf.get("badly") or 0) >= cfg["recreation_friends_share"] * citizens else 0)
+    # (0.105.47, I7b) a small fort (the burrow now from recreation_min_citizens 5,
+    # was 30): a quarter of the fort off work at most, an eighth for friends,
+    # one at least (8 in the burrow of a fort of 8 would stop the fort)
+    small = citizens < 30
+    if small:
+        friends = min(friends, max(1, citizens // 8)) if friends else 0
     # (0.104.139) while the fort's own are killing each other, no crowd of the
     # unhappiest packed together (Teacheroar: 20 in the burrow, the fights
     # spread through the halls): the base few, and no extra for friends
@@ -306,6 +312,8 @@ def _recreation_rule(s: dict, cfg: dict, worst: list, proposals: list | None, me
         friends = 0
     if low or members or friends:
         cap = cfg["recreation_max"] if fighting else min(30, max(cfg["recreation_max"], citizens // 20))
+        if small:
+            cap = max(1, min(cap, citizens // 4))
         action = {"type": "recreation", "max": cap,
                   "days": cfg["recreation_days"]}
         if friends:
@@ -330,13 +338,25 @@ def _stress_care(s: dict, cfg: dict, worst: list, proposals: list | None, memory
         return
     welfare = _traits(s).get("welfare", 0) or 0
     labels = ("miserable", "very_unhappy") if welfare >= 50 else ("miserable",)
-    crisis = [x for x in worst if x.get("stress") in labels and x.get("id") is not None]
+    # (0.105.47, I7b) never a child (a Dwarven Baby was asked a bedroom four
+    # times: "already has one"); and the long-term stress read for every
+    # listed dwarf, not only those the insane section names: the very
+    # unhappy whose stress has built for years count as in crisis too
+    lt_min = int(cfg.get("insane_risk_longterm", 50000))
+    worst = [x for x in worst if not x.get("child")]
+
+    def _lt(x) -> int:
+        v = x.get("longterm")
+        return int(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else 0
+    crisis = [x for x in worst if x.get("id") is not None
+              and (x.get("stress") in labels or (x.get("stress") == "very_unhappy" and _lt(x) >= lt_min))]
+    crisis.sort(key=lambda x: (x.get("stress") != "miserable", -_lt(x)))
     # (0.105.40b) the near-breaking (long-term stress high: planner_insane)
     # first, at a higher priority; one the needs list left out comes from the
     # insane section's own row (no squad release for them: their longing to
     # fight isn't read there). Without that section: as before.
-    risk = insane_risk(s, cfg)
-    risk_ids = {r["id"] for r in risk}
+    risk = [r for r in insane_risk(s, cfg) if not r.get("child")]
+    risk_ids = {r["id"] for r in risk} | {x["id"] for x in crisis if _lt(x) >= lt_min}
     if risk:
         have = {x.get("id") for x in crisis}
         by_id = {x.get("id"): x for x in worst if x.get("id") is not None}
@@ -384,6 +404,64 @@ def _stress_care(s: dict, cfg: dict, worst: list, proposals: list | None, memory
                                       + (" with long-term stress near breaking (insanity comes next)" if near else "")
                                       + " and has no room of their own: give them a free bedroom", 2 if near else 3))
             return
+    # (0.105.47, I7b) bedroom and squad aren't the trouble: the dwarf's top
+    # unmet need, with the actions that exist (B's last stress care was in
+    # summer 260: every stressed dwarf had a bedroom and no squad)
+    for x in crisis if cfg.get("stress_need_care", True) else []:
+        if x.get("from_risk"):
+            continue
+        p = _need_care(s, cfg, x, x["id"] in risk_ids, proposals)
+        if p is not None and (memory is None or _refused_wait(memory, p, now) is None):
+            proposals.append(p)
+            return
+
+
+# (0.105.47, I7b) needs stress care answers with an action of its own, worst first
+CARE_SOCIAL = ("PrayOrMeditate", "BeWithFriends", "Socialize", "BeWithFamily", "MakeMerry", "Excitement",
+               "HearEloquence", "AdmireArt", "LearnSomething", "BeCreative", "Wander")
+
+
+def _need_care(s: dict, cfg: dict, x: dict, near: bool, proposals: list):
+    """The proposal that answers this stressed dwarf's worst unmet need it can
+    (their list is worst first), or None. A good meal: lavish meals at the
+    kitchen; something to own or finery: trinkets given; crafting: idle
+    crafting. Fight and MartialTraining are the squads' (planner_military):
+    passed over.
+    Prayer, friends and company go to the recreation rule's stay, which takes
+    this dwarf among the most stressed: passed over here too."""
+    nd = _d(s.get("needs"))
+    b = _d(s.get("buildings"))
+    who = (f"{x.get('name')} is {str(x.get('stress')).replace('_', ' ')}"
+           + (f" (long-term stress {int(x['longterm'])})" if isinstance(x.get("longterm"), int) else "")
+           + (" and near breaking" if near else ""))
+    pri = 3 if near else 4
+    kinds = {_d(p.action).get("type") for p in proposals}
+    recipes = {_d(p.action).get("recipe") for p in proposals}
+    for need in _l(x.get("unmet")):
+        if need == "EatGoodMeal":
+            if lavish_due(s, cfg):
+                return None                  # the needs_meal rule orders them for the fort this cycle
+            if _has_shop(b, "Kitchen") and not queued(s, {"prepare_lavish_meal"}) and "prepare_lavish_meal" not in recipes:
+                return Proposal("stress_care", {"type": "work_order", "recipe": "prepare_lavish_meal", "amount": 5},
+                                f"{who}, missing a good meal most: cook lavish meals", pri, True)
+        elif need in ("AcquireObject", "BeExtravagant"):
+            if isinstance(nd.get("trinkets"), int) and nd["trinkets"] > 0 and "give_trinkets" not in kinds \
+                    and player_rules(s).get("give_trinkets", True):
+                return Proposal("stress_care", {"type": "give_trinkets", "max": 3},
+                                f"{who}, missing something of their own most: give out trinkets", pri)
+        elif need == "CraftObject":
+            ic = _d(nd.get("idle_crafting"))
+            if _has_shop(b, "Craftsdwarfs") and nd.get("idle_crafting") is not None and not ic.get("workshops") \
+                    and "idle_crafting" not in kinds:
+                return Proposal("stress_care", {"type": "idle_crafting"},
+                                f"{who}, missing making something most: let idle dwarves craft at the "
+                                "Craftsdwarf's workshops", pri)
+        elif need in CARE_SOCIAL:
+            # prayer, friends, company: the recreation rule's stay (it runs
+            # after this, from recreation_min_citizens, the most stressed
+            # first, and this dwarf is among them): the next need
+            continue
+    return None
 
 
 def _needs_notes(s: dict, cfg: dict, notes: list, proposals: list | None = None, memory=None) -> None:
@@ -715,6 +793,28 @@ def _people_rules(s: dict, cfg: dict, proposals: list, notes: list) -> None:
                      + (f"; {h.get('infected')} walk about with infected wounds" if h.get("infected") else ""))
 
 
+def lavish_due(s: dict, cfg: dict) -> bool:
+    """(0.105.47) Whether the needs_meal rule orders lavish meals now: dwarves
+    distracted for want of a good meal, a kitchen, good meals (worth over 20)
+    under good_meals_pd a dwarf, none queued, and the store of meals of any
+    kind under meals_hard_max_pd a dwarf, or (0.105.47, I7b) past it while a
+    meals_cap_skip_share of the fort badly wants a good one: the ceiling
+    counts plain meals (B 158, D 100, E 113 a dwarf, inherited from a bigger
+    fort; D ordered no good meal for ten years, 6 of 6 badly wanting)."""
+    nd = _d(s.get("needs"))
+    sup = _d(s.get("supplies"))
+    if not nd or "error" in nd or "good_meals" not in sup:
+        return False
+    pop = max(1, int(_d(s.get("dwarves")).get("total") or 1))
+    meals_pd = (_d(s.get("stocks")).get("prepared_meals") or 0) / pop
+    good_pd = (sup.get("good_meals") or 0) / pop
+    egm_badly = int(_d(_d(nd.get("needs")).get("EatGoodMeal")).get("badly") or 0)
+    cap_off = good_pd < cfg["good_meals_pd"] and egm_badly >= cfg.get("meals_cap_skip_share", 0.25) * pop
+    return bool(unmet(s, "EatGoodMeal") >= cfg["needs_build_at"] and _has_shop(_d(s.get("buildings")), "Kitchen")
+                and good_pd < cfg["good_meals_pd"] and (meals_pd < cfg["meals_hard_max_pd"] or cap_off)
+                and not queued(s, {"prepare_lavish_meal"}))
+
+
 def _needs_rules(s: dict, cfg: dict, proposals: list, rules_: dict | None = None, young: bool = False) -> None:
     """Needs met without a new room: crafting (DFHack's idle-crafting at every
     Craftsdwarf's workshop, more of them when many want to craft), things to
@@ -840,8 +940,10 @@ def _needs_rules(s: dict, cfg: dict, proposals: list, rules_: dict | None = None
         # distracted for want of a good one), so lavish meals while the good
         # ones are few, whatever the stock of plain ones (to a hard ceiling)
         good_pd = (sup.get("good_meals") or 0) / pop
-        if (unmet(s, "EatGoodMeal") >= at and _has_shop(b, "Kitchen") and good_pd < cfg["good_meals_pd"]
-                and meals_pd < cfg["meals_hard_max_pd"] and not queued(s, {"prepare_lavish_meal"})):
+        # (0.105.47, I7b) the conditions in lavish_due (the plain-meal ceiling
+        # lifted while good meals are short and many badly want one); not
+        # beside stress care's own lavish order of this cycle
+        if lavish_due(s, cfg) and not any(_d(p.action).get("recipe") == "prepare_lavish_meal" for p in proposals):
             # (0.103.8) as many as there are dwarves wanting one, up to 20: 5
             # every 3 days fed a few of Enxah's 14 (the good ones came and
             # went 60 -> 0) while 8 broke down

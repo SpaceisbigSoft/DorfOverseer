@@ -5236,8 +5236,12 @@ def _():
     assert not by_rule(plan(calm, Memory())[0], "recreation")
     calm.setdefault("society", {})["recreation"] = {"members": 3}       # members to let out
     assert by_rule(plan(calm, Memory())[0], "recreation")
+    # (0.105.47, I7b) from 5 citizens (was 30), a quarter of a small fort at most
     small = copy.deepcopy(s); small["dwarves"]["total"] = 12
-    assert not by_rule(plan(small, Memory())[0], "recreation")
+    r = by_rule(plan(small, Memory())[0], "recreation")
+    assert r and r[0].action["max"] == 3, r
+    tiny = copy.deepcopy(s); tiny["dwarves"]["total"] = 4
+    assert not by_rule(plan(tiny, Memory())[0], "recreation")
 
 
 @test("dairy (0.104.79): milk the tame animals, make cheese of the milk, while cheese is short")

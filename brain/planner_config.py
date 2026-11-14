@@ -419,7 +419,7 @@ PLANNER_CONFIG = {
     "recreation_friends": 4,                     # (0.104.80) and places for those badly wanting friends...
     "recreation_friend_days": 7,                 # ...a week each...
     "recreation_friends_share": 0.2,             # ...while this share of the citizens badly want friends
-    "recreation_min_citizens": 30,
+    "recreation_min_citizens": 5,                # (0.105.47, I7b) was 30: B (28), D (8) and E (23) never had the burrow, the unhappiest forts
     "recreation_cooldown_ticks": 7 * 1200,           # (0.104.80) a week: members stay up to 28 days; the burrow is refilled weekly
     "hospital_burrow_max": 30,                   # (0.104.167) at most this many patients kept in the hospital burrow...
     "hospital_burrow_per": 10,                   # ...this many new a call
@@ -1113,4 +1113,20 @@ PLANNER_CONFIG = {
     "training_squad_fill_max": 3,         # volunteers added a cycle at most
     "training_squad_cooldown_ticks": 1200,   # a day between its steps
     "never_draft_days": 672,              # stress care's "never draft" kept two years at most...
+    # (0.105.47, I7b) the unburied dead and welfare in small forts (brain/planner_welfare.py, lua/ai-welfare.lua)
+    "burial_fallback_days": 84,           # the dead outnumber the free tombs this long (a season) with no tomb level come: coffins anywhere
+    "burial_fallback_refused_days": 7,    # ...or this long after a tomb level's search failed
+    "burial_fallback_unburied": 10,       # ...or at once when this many more dead than free tombs wait and no tomb level is under way
+    "burial_corner_max": 10,              # coffins placed on the AI's other levels in one go
+    "burial_corner_cooldown_ticks": 7 * 1200,
+    "burial_coffins_cooldown_ticks": 3 * 1200,
+    "slabs_ahead_max": 5,                 # memorial slab orders for the dead nobody can reach, a go
+    "slabs_ahead_cooldown_ticks": 3 * 1200,
+    "slabs_ahead_blanks_cooldown_ticks": 3 * 1200,
+    "slabs_ahead_place_cooldown_ticks": 2 * 1200,
+    "stress_need_care": True,             # stress care answers the dwarf's top unmet need when bedroom and squad aren't it
+    "meals_cap_skip_share": 0.25,         # lavish meals past meals_hard_max_pd while this share of the fort badly wants a good meal
+    "cook_train_max_citizens": 40,        # a fort this small or smaller keeps one cook at the kitchens to learn...
+    "cook_train_below": 5,                # ...while the best free cook is under this skill (5: proficient)
+    "cook_train_cooldown_ticks": 7 * 1200,
 }

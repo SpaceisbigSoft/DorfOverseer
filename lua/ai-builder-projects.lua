@@ -1124,6 +1124,11 @@ function furnish_project(id, buildingplan_on, stalled)
     if p.kind == 'well' and results.build ~= 1 then
         return well_refused(data, p, results, qf_build)
     end
+    -- (0.105.47, I7b) a tomb level's tombs take the fort's dead from the start
+    -- (automatic burial was found off on free tombs twice in B)
+    if p.kind == 'tombs' then
+        pcall(function() results.burial = reqscript('ai-welfare').open_tombs(project_areas(p)).opened end)
+    end
     p.phase = 'furnish'
     p.furnish_started = {year = now_tick() // 403200, tick = now_tick() % 403200}
     local saved = save_projects(data)
@@ -1168,7 +1173,12 @@ function finish_project(id, decor_only, stalled)
     p.phase = #cells_of(p, 'engrave') > 0 and 'decorate' or 'done'
     if p.phase == 'decorate' then p.decorate_started = {year = now_tick() // 403200, tick = now_tick() % 403200} end
     save_projects(data)
-    return {ok = true, project_id = id, phase = p.phase}
+    -- (0.105.47, I7b) and again once its coffins stand: every tomb takes the fort's dead
+    local burial
+    if p.kind == 'tombs' then
+        pcall(function() burial = reqscript('ai-welfare').open_tombs(project_areas(p)).opened end)
+    end
+    return {ok = true, project_id = id, phase = p.phase, burial = burial}
 end
 
 -- Smoothing finished -> engrave the halls (Quickfort only engraves smooth

@@ -675,6 +675,23 @@ ACTIONS = {
         if a.medical ~= nil and type(a.medical) ~= 'boolean' then return reject('tantrum_step_down: medical is true or false') end
         return reqscript('ai-tantrums').step_down(id, a.medical == true, a.dry_run == true, txt)
     end,
+    -- (0.105.47, I7b) the dead and a cook (lua/ai-welfare.lua): coffins with a
+    -- tomb each on the AI's finished levels when no tomb level comes; memorial
+    -- slab orders for the dead nobody can reach; one cook kept at the kitchens
+    coffins_anywhere = function(a)
+        local n = int_in(a.max or 5, 1, 10)
+        if not n then return reject('coffins_anywhere: max is 1-10') end
+        return reqscript('ai-welfare').place_corner_coffins(n, a.dry_run == true)
+    end,
+    engrave_memorials = function(a)
+        local n = int_in(a.max or 5, 1, 10)
+        if not n then return reject('engrave_memorials: max is 1-10') end
+        return reqscript('ai-welfare').engrave_memorials(n, a.dry_run == true)
+    end,
+    train_cook = function(a)
+        if a.release ~= nil and type(a.release) ~= 'boolean' then return reject('train_cook: release is true or false') end
+        return reqscript('ai-welfare').train_cook(a.dry_run == true, a.release == true)
+    end,
 }
 
 -- (13c) The actions whose dry run changes nothing in the fort, all the way
@@ -756,6 +773,7 @@ for _, name in ipairs({
     'open_meeting',    -- (0.105.47) its dry run finds the diplomacy light and clicks nothing
     'hospital_guard', 'tantrum_step_down',   -- (0.105.47) each dry run checks and changes nothing
     'training_squad',   -- (0.105.47) its dry run names the leader or counts the places and changes nothing
+    'coffins_anywhere', 'engrave_memorials', 'train_cook',   -- (0.105.47) each dry run finds and names, and changes nothing
 }) do DRY_OK[name] = true end
 
 -- These only change what's displayed, so they still work while halted, dry
@@ -839,6 +857,7 @@ BRIDGE_MODULES = {
     'ai-screen-buttons', 'ai-meeting-open',   -- (0.105.47) buttons kept for every save; the meeting opened
     'ai-tantrums',   -- (0.105.47) the tantrum ledger, posts, hospital guards
     'ai-training-squad',   -- (0.105.47) the training squad
+    'ai-welfare',   -- (0.105.47, I7b) the unreachable dead, coffins anywhere, a cook trained
 }
 -- the split-off modules that carry a version mark of their own
 MARKED_MODULES = {'ai-military-gear', 'ai-society-burrows', 'ai-constructions'}
@@ -1320,6 +1339,9 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
     -- year), each thrower's posts, labours and unmet needs, the hospitals, the
     -- squads (calm or not) and the AI's hospital guards (lua/ai-tantrums.lua; in the pulse)
     tantrums = function() return safe(function() return reqscript('ai-tantrums').report(txt) end) end,
+    -- (0.105.47, I7b) the coffins on the AI's other levels (placed, built, free),
+    -- free coffins in store, the trainee cook (lua/ai-welfare.lua)
+    welfare = function() return safe(function() return reqscript('ai-welfare').report() end) end,
     -- (0.105.30) what the fort has built: finished constructions by shape and
     -- material, above or below ground, roofed surface tiles, the waiting ones
     -- and the AI's own (lua/ai-constructions.lua; one pass, every 3 days)
@@ -1404,6 +1426,10 @@ for _, name in ipairs({'unforbid_items', 'mark_melt', 'mark_dump', 'empty_dump',
     CACHE_INVALIDATES[name] = {'disposal'}
 end
 CACHE_INVALIDATES.set_standing_orders = {'disposal', 'dead'}
+-- (0.105.47) the dead and the coffins read again after the burial actions
+CACHE_INVALIDATES.coffins_anywhere = {'dead', 'welfare'}
+CACHE_INVALIDATES.engrave_memorials = {'dead'}
+CACHE_INVALIDATES.train_cook = {'welfare'}
 -- (0.105.40 review) world cleanup: items deleted (the disposal marks and dump
 -- counts, industry's boulders and stocks), creatures vaporized (disposal's
 -- invaders), dead units off the active list; the spatter is in no cached section

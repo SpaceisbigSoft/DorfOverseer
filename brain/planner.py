@@ -72,6 +72,7 @@ from planner_killzone import _killzone_rule  # noqa: E402  (0.105.45) kill zones
 from planner_lure import _lure_rule  # noqa: E402  (0.105.45) a sealed cavern beast lured into a pocket, cut off
 from planner_recovery import _migrants_rule, note_recovery, recovery_apply  # noqa: E402  (0.105.46, I4) collapse recovery
 from planner_meetings import meeting_open_due, meeting_open_said  # noqa: E402,F401  (0.105.47) meetings opened unattended
+from planner_welfare import _welfare_rules  # noqa: E402  (0.105.47, I7b) coffins anywhere, slabs ahead, a cook trained
 from planner_hauling import _hauling_labor_rule, note_hauling  # noqa: E402  (0.105.40 M5) hauling balanced
 from planner_traffic import _traffic_rule  # noqa: E402  (0.105.41) traffic zones on the AI's own levels
 from planner_food import _food_store_rule, note_food  # noqa: E402  (0.105.40b, M6) the food store
@@ -615,6 +616,10 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
         _guard(_miasma_rule, s, cfg, proposals, notes, memory)
     if can_use("dead"):
         _guard(_dead_notes, s, notes, proposals, rules_, memory)
+    # (0.105.47, I7b) coffins anywhere when no tomb level comes, memorial slabs
+    # ahead for the dead nobody can reach (each needs the dead section: checked
+    # inside), a cook trained (planner_welfare)
+    _guard(_welfare_rules, s, cfg, proposals, notes, memory, rules_)
 
     # 6c-2. Set-ups the AI does itself: the alert shelter, pastures ----------
     def _shelter_rule():

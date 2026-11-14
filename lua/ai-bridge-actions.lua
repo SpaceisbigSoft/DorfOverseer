@@ -54,6 +54,10 @@ function act_allow_burial(a)
     for _, p in ipairs(okp and data and data.list or {}) do
         if p.kind == 'tombs' and type(p.area) == 'table' then table.insert(areas, p.area) end
     end
+    -- (0.105.47) and the coffins the AI put on its other levels (lua/ai-welfare.lua)
+    pcall(function()
+        for _, ar in ipairs(reqscript('ai-welfare').corner_areas()) do table.insert(areas, ar) end
+    end)
     if #areas == 0 then return reject('no tomb level of the AI\'s') end
     local n = 0
     for _, z in ipairs(df.global.world.buildings.all) do

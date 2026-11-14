@@ -164,6 +164,7 @@ SECTION_DEFAULTS = {
     "stuck": {},             # (0.105.45) the AI's things stuck "in progress", since when, their progress (lua/ai-stuck.lua)
     "thirst": {},            # (0.105.46, I2) the thirsty with why they don't drink; deaths of thirst with the last reason (lua/ai-thirst.lua)
     "tantrums": {},          # (0.105.47) the tantrum ledger, each thrower's posts and needs, hospitals, squads, guards (lua/ai-tantrums.lua)
+    "welfare": {},           # (0.105.47, I7b) coffins on the AI's other levels, free coffins, the trainee cook (lua/ai-welfare.lua)
     "insane": {},            # (0.105.40b) the insane, the deadly ground near them, the AI's doors locked, the near-breaking (lua/ai-insane.lua)
     "hauling": {},           # (0.105.40 M5) haul jobs waiting, haulers, key workers hauling (lua/ai-hauling.lua)
     "traffic": {},           # (0.105.41) traffic zones on the AI's finished levels: waiting, in progress, rechecks (lua/ai-traffic.lua)

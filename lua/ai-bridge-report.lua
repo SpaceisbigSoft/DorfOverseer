@@ -299,6 +299,17 @@ function get_needs(txt_fn)
                                             -- (0.105.47) the need is theirs at all (met in a squad,
                                             -- or not): stress care keeps them training, never releases
                                             fight_need = fight_focus ~= nil or nil})
+                local row = {id = u.id, name = t(dfhack.units.getReadableName(u)),
+                             stress = STRESS_LABELS[cat], unmet = w, bedroom = bedroom,
+                             squad = squad or nil, leader = (squad and leader) or nil,
+                             wants_fight = fight or nil}
+                -- (0.105.47, I7b) a child (no bedroom of their own is theirs to
+                -- get: a baby was asked one four times), the long-term stress
+                -- (DF's stress category follows it; it drains slowly), born
+                pcall(function() if not dfhack.units.isAdult(u) then row.child = true end end)
+                pcall(function() row.longterm = u.status.current_soul.personality.longterm_stress end)
+                pcall(function() row.born = u.birth_year; row.hf = u.hist_figure_id end)
+                table.insert(out.stressed, row)
             end
             -- (0.105.47) the content or better (category 4+): the AI's "never
             -- draft" memory forgets one whose mood rose that far
@@ -307,6 +318,13 @@ function get_needs(txt_fn)
     end
     table.sort(out.stressed, function(a, b) return a.stress < b.stress end)
     while #out.stressed > 8 do table.remove(out.stressed) end
+    -- (0.105.47, I7b) the year each of the listed came to the fort (lua/ai-welfare.lua)
+    pcall(function()
+        local hfs = {}
+        for _, r in ipairs(out.stressed) do if r.hf and r.hf >= 0 then table.insert(hfs, r.hf) end end
+        local years = reqscript('ai-welfare').arrivals(hfs)
+        for _, r in ipairs(out.stressed) do if r.hf and years[r.hf] then r.arrived = years[r.hf] end end
+    end)
     -- (D0) each god's spheres (up to 4 words), beside deity_ids: the Design
     -- track's symbols. [verify] DF 53: hf.info.spheres, a list of sphere_type
     -- (or a struct holding it as .spheres)
@@ -1697,6 +1715,10 @@ function in_ai_tombs(x, y, z)
                 if p.kind == 'tombs' and type(p.area) == 'table' then table.insert(AI_TOMBS, p.area) end
             end
         end)
+        -- (0.105.47) and the coffins the AI put on its other levels (lua/ai-welfare.lua)
+        pcall(function()
+            for _, a in ipairs(reqscript('ai-welfare').corner_areas()) do table.insert(AI_TOMBS, a) end
+        end)
     end
     for _, a in ipairs(AI_TOMBS) do
         if z == a.z and x >= a.x1 and x <= a.x2 and y >= a.y1 and y <= a.y2 then return true end
@@ -2018,6 +2040,18 @@ function get_dead()
         end
     end
     out._from = nil
+    -- (0.105.47, I7b) the fort's dead whose bodies can't be reached (out of the
+    -- dwarves' walk, or gone: drowned, in ice, in the caverns) and how many of
+    -- them have no memorial slab nor an order for one (lua/ai-welfare.lua)
+    pcall(function()
+        local sc = reqscript('ai-welfare').dead_scan()
+        out.unreachable_dead = sc.total
+        out.unreachable_bodies = sc.unreachable
+        out.gone_bodies = sc.gone
+        out.unreachable_no_slab = sc.without_slab
+        out.memorials_wanted = sc.wanting
+        out.memorial_orders = sc.ordered
+    end)
     return out
 end
 
