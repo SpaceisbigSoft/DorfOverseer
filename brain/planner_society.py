@@ -17,6 +17,7 @@ from planner_health import *  # noqa: F401,F403  (13c: split out by theme)
 from planner_visitors import *  # noqa: F401,F403  (13c: split out by theme)
 from planner_moods import *  # noqa: F401,F403  (13c: split out by theme)
 from planner_insane import insane_risk  # (0.105.40b) the near-breaking first in the stress care
+from planner_training import longs_to_train, stress_train  # (0.105.47) no squad ping-pong
 
 __all__ = ["_people_rules", "_comfort_rules", "stress_causes", "THOUGHT_WORDS", "_doctor_patient_rule", "_hospital_burrow_rule", "_calm_burrow_rule", "MOOD_WORKSHOPS", "PETITION_KINDS", "petition_orders_wanted", "_petition_rules", "_citizenship_notes", "_residency_rule", "residency_stance", "_location_access_rule", "note_heists", "heist_lockout", "heist_lockout_days", "visitor_shut", "location_stale", "note_locations", "mayor_meetings", "HEISTS_KEEP", "_jail_size_rule", "_convict_rule", "_prisoner_water_rule", "_break_fights_rule", "_sync_offices_rule", "patient_waits", "_health_rules", "TANTRUM_KEEP", "note_tantrums", "_noble_rooms_rule", "outsider_orders", "NEED_ADVICE", "JEWEL_RECIPES", "_recreation_rule", "_stress_care", "_needs_notes", "_location_supply_rules", "POST_LABORS", "STAFF_POSTS", "STAFF_MAX", "_traction_rule", "_wish_words", "_wish_met", "wish_key", "petition_lean", "_location_petition_rules", "_meeting_notes", "_grandeur_rule", "_location_value_rule", "_staff_rule", "_quick_location_rule", "_needs_rules", "_mood_rules", "mood_item_text", "_mood_materials", "_dead_notes", "AI_OFFICES", "_society_notes", "_booze_variety_rule", "drink_known_short_s", "_mood_make", "_mood_slaughter", "MOOD_CONSUMERS", "MOOD_TRADE_KEYS", "mood_trade_wants", "ghost_work_blocked"]
 
@@ -360,10 +361,19 @@ def _stress_care(s: dict, cfg: dict, worst: list, proposals: list | None, memory
         # free bedroom below never came
         if memory is not None and _refused_wait(memory, p, now) is not None:
             continue
+        # (0.105.47, R2) one theory per dwarf: one whose need to fight or train
+        # is theirs (met in the squad now, so the report no longer said they
+        # longed for it: E's Logem in 5 times and out 4) stays; one breaking
+        # down out of a squad whose top unmet need is that goes into the
+        # training squad; the rest, once released, are never drafted again
+        # (planner_training: memory.never_draft)
         if (x.get("squad") and not x.get("leader") and quiet and player_rules(s)["fill_squads"]
-                and not x.get("wants_fight")             # (0.104.38) the bridge says so (any of their needs)
-                and not set(_l(x.get("unmet"))) & {"MartialTraining", "Fight"}):
+                and not longs_to_train(x)):
             proposals.append(p)
+            return
+        into = stress_train(s, cfg, x, memory)
+        if into is not None:
+            proposals.append(into)
             return
     free = int(_d(_d(s.get("noble_rooms")).get("free")).get("bedroom") or 0)
     for x in crisis:

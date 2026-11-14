@@ -566,6 +566,9 @@ function report(txt)
     pcall(prune_shelter_marks)          -- (0.105.0 review) the shelter orders gone: unmarked
     local fort = U.fort_entity()
     local ai_names = ai_uniform_names(txt)      -- (13c) read once, not once a squad
+    -- (0.105.47) the training squad's (lua/ai-training-squad.lua): never the fort's soldiers
+    local okt, TS = pcall(reqscript, 'ai-training-squad')
+    local tmarks = okt and TS.marks() or {}
     if fort then
         for _, sid in ipairs(fort.squads) do
             local sq = df.squad.find(sid)
@@ -615,6 +618,7 @@ function report(txt)
                     ammo = (function() local oka, a = pcall(squad_ammo, sq) return oka and a or nil end)(),
                     uniform = #sq.positions > 0 and uniform_set(sq.positions[0]) or false,
                     ai_uniform = ai_names[tostring(sid)],
+                    training = tmarks[tostring(sid)] and true or nil,   -- (0.105.47)
                     power = (function() local okp, p = pcall(squad_power, sq) return okp and p or nil end)(),
                 })
                 out.soldiers = out.soldiers + members
@@ -847,9 +851,11 @@ function trim(count, dry_run, txt)
     local fort = U.fort_entity()
     if not fort then return {ok = false, error = 'no fort government (entity) found'} end
     local list = {}
+    local okt, TS = pcall(reqscript, 'ai-training-squad')     -- (0.105.47) never the training squad's
+    local tmarks = okt and TS.marks() or {}
     for _, sid in ipairs(fort.squads) do
         local sq = df.squad.find(sid)
-        if sq and #sq.orders == 0 then
+        if sq and #sq.orders == 0 and not tmarks[tostring(sid)] then
             for i, pos in ipairs(sq.positions) do
                 if i > 0 and pos.occupant ~= -1 then
                     local hf = df.historical_figure.find(pos.occupant)
@@ -1047,14 +1053,20 @@ function drop_post(fort, a)
     pcall(function() a:delete() end)
 end
 
-function make_squad(dry_run, txt)
+-- (0.105.47) `opts.training`: the training squad (lua/ai-training-squad.lua):
+-- only a vacant captain's office (the militia commander stays for the
+-- fort's own guard), its leader a volunteer who badly wants to fight or
+-- train, and no uniform copied (it trains as it is, never sent to fight)
+function make_squad(dry_run, txt, opts)
+    local training = type(opts) == 'table' and opts.training == true
     local fort = U.fort_entity()
     if not fort then return {ok = false, error = 'no fort government (entity) found'} end
     local best, best_rank, best_idx, best_pos
     for idx, a in ipairs(fort.positions.assignments) do
-        if a.squad_id == -1 then
+        if a.squad_id == -1 and not (training and a.histfig ~= -1) then
             for _, p in ipairs(fort.positions.own) do
                 local rank = LEAD_OFFICES[p.code]
+                if training and rank == 1 then rank = nil end
                 if p.id == a.position_id and rank and p.squad_size > 0 and (not best_rank or rank < best_rank) then
                     best, best_rank, best_idx, best_pos = a, rank, idx, p
                 end
@@ -1089,6 +1101,13 @@ function make_squad(dry_run, txt)
         end
     else
         local okc, cands = pcall(candidates)
+        if okc and training then           -- (0.105.47) a volunteer leads it
+            local keen = {}
+            for _, c in ipairs(cands) do
+                if c.fight_focus ~= nil and c.fight_focus <= KEEN_FOCUS then table.insert(keen, c) end
+            end
+            cands = keen
+        end
         local pick = okc and pick_soldiers(cands, 1)[1]
         leader = pick and pick.unit
         appointed = true
@@ -1113,7 +1132,7 @@ function make_squad(dry_run, txt)
         return fail({ok = false, error = 'DFHack could not make a squad for the ' .. office})
     end
     local seated = seat_leader(leader, sq)
-    local from = squad_with_uniform(fort, sq.id)
+    local from = not training and squad_with_uniform(fort, sq.id) or nil
     local oku, uniform = true, false
     if from then oku, uniform = pcall(copy_uniform, from, sq) end
     uniform = oku and uniform or false

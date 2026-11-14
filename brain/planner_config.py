@@ -1077,4 +1077,13 @@ PLANNER_CONFIG = {
     "recovery_migrants_cooldown_ticks": 112 * 1200,   # one call a season at most
     "recovery_migrants_max_calls": 3,     # calls that brought nobody before it stops (a Needs you)
     "recovery_stall_days": 336,           # under the survival floor with no newcomer this long: called too
+    # (0.105.47, R2) the training squad and the end of the squad ping-pong (brain/planner_training.py)
+    "training_squad_welfare": 50,         # Welfare this high or more allows a training-only squad (the Monastery: 80)
+    "training_squad_max": 10,             # its size: at most this many (a DF squad holds 10)...
+    "training_squad_adults_per": 5,       # ...and at most one per this many adults (a fifth)
+    "training_squad_min": 2,              # no training squad where the cap comes out under this
+    "training_squad_keen_min": 2,         # made once this many civilians badly want to fight or train
+    "training_squad_fill_max": 3,         # volunteers added a cycle at most
+    "training_squad_cooldown_ticks": 1200,   # a day between its steps
+    "never_draft_days": 672,              # stress care's "never draft" kept two years at most...
 }

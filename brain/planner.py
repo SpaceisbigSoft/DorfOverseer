@@ -59,6 +59,8 @@ from planner_siege import _siege_rules  # noqa: E402  (item5) siege engines, arc
 from planner_hazards import _hazards_rule, magma_alarm  # noqa: E402  (0.105.41, item 7) spilt magma, cave-ins, frost, heat
 from planner_insane import _insane_rule  # noqa: E402  (0.105.40b) the insane: deadly ground near them, the AI's doors
 from planner_killers import _killer_rule  # noqa: E402  (item3) a killer among the fort's own: cells, a squad
+from planner_training import (_training_squad_rule, guard_training_orders, note_never_draft,  # noqa: E402
+                               note_training, prepare_training)  # (0.105.47) the training squad, never draft
 from order_check import order_gate, note_order_loop, approve_on_place, hold_lifted  # noqa: E402  (0.105.46, I3) the order loop
 from planner_hunt import _hunt_rule, note_hunt_cycle  # noqa: E402  (0.105.45) hunting threats the squads can beat
 from planner_shelter import _shelter_pick_rule  # noqa: E402  (0.105.45) the shelter away from the threat
@@ -148,6 +150,8 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
             return None
 
     rules_ = player_rules(s)                        # the Rules tab, read once a plan
+    # (0.105.47) the training squad out of the fort's squads and soldiers before any rule
+    _guard(prepare_training, s, cfg)
     # (D0, Design track) the fort's design language kept, its landmarks moved
     # on; then the customs it adopts. At Scripts: nothing adopted, nothing proposed
     _guard(design_rule, s, traits, cfg, proposals, notes, memory)
@@ -645,6 +649,7 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
     # close the gate ---------------------------------------------------------
     if can_use("military", "others_on_map"):
         _guard(_military_rules, s, memory, cfg, traits, citizens, proposals, notes)
+        _guard(_training_squad_rule, s, memory, cfg, proposals, notes)    # (0.105.47)
         _guard(_gate_guard_rule, s, memory, cfg, proposals)
         _guard(_gate_dogs_rule, s, memory, cfg, proposals)
         # (0.105.0, round 2) an army that can fight (brain/planner_army.py)
@@ -1017,6 +1022,10 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
         kept = _guard(_weather_squad_filter, s, memory, cfg, proposals, notes)
         if kept is not None:
             proposals = kept
+    # (0.105.47) no proposal sends the training squad to fight (unless the fort needs it)
+    kept = _guard(guard_training_orders, s, proposals, notes)
+    if kept is not None:
+        proposals = kept
     # (0.104.137) crisis mode: expansion waits, recovery goes first
     why = _d(getattr(memory, "crisis", None)).get("why") if memory is not None else None
     if why:
@@ -1288,6 +1297,7 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
         note_order_loop(p, r, state, memory, now, cfg)     # (0.105.46, I3) a stuck cancel's missing thing; approvals
         note_syndromes(p, r, memory, now)                  # (0.105.41, item 11) the contaminant clean's trial done
         note_food_level(p, r, memory)                      # (fix41) one food storage level a kitchen or still
+        note_training(p, r, memory, now)                   # (0.105.47) stress care's release: never drafted again
         note_stuck(p, r, memory, now)                      # (0.105.45) the stuck sweep's step done
         if p.action.get("type") == "weather_burrow":
             note_keep_in(memory, now, p.action, ok)        # (item4) evil weather: kept in by the burrow
@@ -1680,6 +1690,7 @@ def note_cycle(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> list[
         _step(note_gate_lever, s, memory)                       # (0.105.33) the AI gate read from its lever
     if "hunt" not in errors:
         notes += _step(note_hunt_cycle, s, memory, cfg) or []   # (0.105.45) hunts' outcomes learned once each
+    _step(note_never_draft, s, memory, cfg)                     # (0.105.47) "never draft" forgotten in time
     # (0.104.89) the strategist's raised and held rules run out
     if isinstance(getattr(memory, "steer", None), dict):
         for k in [k for k, v in memory.steer.items() if not (isinstance(v, dict) and isinstance(v.get("until"), int)

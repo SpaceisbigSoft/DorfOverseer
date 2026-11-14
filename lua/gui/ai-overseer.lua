@@ -852,6 +852,16 @@ function MilitaryPage:init()
         initial_option = p.settings.killzones ~= false,
         on_change = function(v) p:set_field('killzones', v) end,
     })
+    -- (0.105.47) the training squad: the right-hand column's free row t+13
+    -- (gear_weapon ends at column 62 there)
+    table.insert(views, widgets.ToggleHotkeyLabel{
+        view_id = 'training_squad',
+        frame = {t = t + 13, l = 64, w = 44},
+        label = 'Training squad (Welfare):',
+        label_width = 27,
+        initial_option = p.settings.training_squad ~= false,
+        on_change = function(v) p:set_field('training_squad', v) end,
+    })
     table.insert(views, widgets.CycleHotkeyLabel{
         view_id = 'gear_weapon',
         frame = {t = t + 13, l = 2, w = 60},
@@ -1011,6 +1021,7 @@ function MilitaryPage:refresh()
         self.subviews[k]:setOption(s[k] ~= false, false)
     end
     self.subviews.killzones:setOption(s.killzones ~= false, false)                  -- (0.105.45)
+    self.subviews.training_squad:setOption(s.training_squad ~= false, false)        -- (0.105.47)
     self.subviews.gear_weapon:setOption(s.gear_weapon, false)
     self.subviews.prisoners:setOption(s.prisoners or 'keep', false)                -- (0.105.0)
     self.subviews.moon_cells:setOption(s.moon_cells ~= false, false)

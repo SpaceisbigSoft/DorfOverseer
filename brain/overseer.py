@@ -562,6 +562,7 @@ SHORT_WORDS = {
     "hunt_send": "hunt: send squads after a beast or an enemy",   # (0.105.45)
     "hunt_recall": "hunt back: call the hunting squads home",    # (0.105.45)
     "call_migrants": "call a migrant wave (DFHack's force Migrants) to a fallen fort DF sends none to",  # (0.105.46, I4)
+    "training_squad": "a squad that only trains, for the civilians who badly want to fight (made, filled with volunteers, or let go)",  # (0.105.47)
     "census": "count what fills the map",  # (0.104.113)
     "seal_well_stairs": "close the cavern wells' stair columns",  # (0.104.151)
     "join_levels": "join areas on one level that meet only through the stairs",  # (0.104.108)

@@ -197,7 +197,7 @@ DISTRACTED, BADLY = -1000, -10000
 
 function get_needs(txt_fn)
     local t = txt_fn or txt
-    local out = {needs = {}, deities = {}, deity_ids = {}, stressed = {}, worship = {}}
+    local out = {needs = {}, deities = {}, deity_ids = {}, stressed = {}, worship = {}, content_ids = {}}
     local deity_names = {}
     -- (0.105.23) a deity's name, looked up once a report
     local function deity_name(id)
@@ -295,8 +295,14 @@ function get_needs(txt_fn)
                 table.insert(out.stressed, {id = u.id, name = t(dfhack.units.getReadableName(u)),
                                             stress = STRESS_LABELS[cat], unmet = w, bedroom = bedroom,
                                             squad = squad or nil, leader = (squad and leader) or nil,
-                                            wants_fight = fight or nil})
+                                            wants_fight = fight or nil,
+                                            -- (0.105.47) the need is theirs at all (met in a squad,
+                                            -- or not): stress care keeps them training, never releases
+                                            fight_need = fight_focus ~= nil or nil})
             end
+            -- (0.105.47) the content or better (category 4+): the AI's "never
+            -- draft" memory forgets one whose mood rose that far
+            if cat >= 4 and #out.content_ids < 300 then table.insert(out.content_ids, u.id) end
         end
     end
     table.sort(out.stressed, function(a, b) return a.stress < b.stress end)
