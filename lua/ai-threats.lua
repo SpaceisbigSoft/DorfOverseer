@@ -974,6 +974,270 @@ function cavern_citizens(txt)
     return out
 end
 
+-- --- who keeps the dwarves from drink and food ------------------------------------
+--
+-- (item1, 14 Nov) B, 13 Nov 17:05-17:45 (y259 Obsidian - y260 Slate): 66 of
+-- 77 citizens died of thirst with 845 drinks in store. DF's gamelog: from the
+-- squad's fight with a crossbow thief on, "X cancels Drink: Interrupted by a
+-- human spearman." ~4900 times (Eat and Sleep too) for two game months. The
+-- spearman (Om Konlihiñer, a visitor told of an artifact by a citizen,
+-- beaten in that fight, "I must withdraw!") stayed inside the fort near the
+-- stores; DF made every dwarf who saw him on the way to a drink drop it, but
+-- he was no invader and not isDanger, so the AI counted no threat, lowered
+-- the alarm, opened the gates and sent nobody. The report's job
+-- cancellations name who interrupts; this reads them, finds that unit (its
+-- race and profession, nearest the cancelling dwarves) and says so: the
+-- planner sends a squad at it and kill_target_ok (ai-military) takes it as
+-- a target. The other reasons for a cancelled Drink or Eat are counted too,
+-- so a parched fort says why.
+
+INTERRUPT_WINDOW = 2 * DAY   -- job cancellations this recent are read
+INTERRUPT_MAX_REPORTS = 4000 -- newest reports walked at most
+INTERRUPT_NEAR = 20          -- a cancelling dwarf this close (tiles; levels count 3) to the unit
+INTERRUPT_MIN = 6            -- this many Drink/Eat/Sleep cancellations by it in the window...
+INTERRUPT_MIN_DWARVES = 2    -- ...by this many dwarves, with it near...
+INTERRUPT_MIN_NEAR = 3       -- ...at least this many of them: the unit blocks the dwarves
+local NEEDS_JOBS = {Drink = 'drink', Eat = 'eat', Sleep = 'sleep'}
+
+-- "Name, Profession cancels Drink: Interrupted by a human spearman." -> name, job, reason
+function parse_cancel(text)
+    if type(text) ~= 'string' then return nil end
+    local who, job, why = text:match('^(.-) cancels ([^:]+): (.-)%.?%s*$')
+    if not who or who == '' then return nil end
+    return who, job, why
+end
+
+-- "Interrupted by a human spearman" -> "human spearman" (nil for other reasons)
+function interrupter_of(why)
+    if type(why) ~= 'string' then return nil end
+    local who = why:match('^Interrupted by (.+)$')
+    if not who then return nil end
+    who = who:lower():gsub('^an? ', ''):gsub('^the ', ''):gsub('%s+$', '')
+    if who == '' or who == 'combat' then return nil end
+    return who
+end
+
+-- the phrases DF may call a unit by in "Interrupted by a ...": its profession,
+-- its race and profession, its race (an animal), each lower case
+function unit_phrases(race, prof)
+    local out = {}
+    race = type(race) == 'string' and race:lower() or nil
+    prof = type(prof) == 'string' and prof:lower() or nil
+    if prof and prof ~= '' then table.insert(out, prof) end
+    if race and race ~= '' and prof and prof ~= '' then table.insert(out, race .. ' ' .. prof) end
+    if race and race ~= '' then table.insert(out, race) end
+    return out
+end
+
+-- rows {text, tick, x, y, z, n}: the cancellations within the window, by who
+-- interrupted ({n, drink, eat, sleep, other, dwarves, spots}) and the reasons
+-- for cancelled Drink and Eat jobs ({Drink = {reason = n}})
+function tally_cancels(rows, now, window)
+    local out = {by_who = {}, reasons = {Drink = {}, Eat = {}}, n = 0}
+    for _, r in ipairs(rows or {}) do
+        if type(r) == 'table' and (not now or not r.tick or now - r.tick <= window) then
+            local name, job, why = parse_cancel(r.text)
+            if name then
+                local k = tonumber(r.n) or 1
+                out.n = out.n + k
+                if out.reasons[job] then
+                    local short = tostring(why):sub(1, 60)
+                    out.reasons[job][short] = (out.reasons[job][short] or 0) + k
+                end
+                local who = interrupter_of(why)
+                if who then
+                    local w = out.by_who[who]
+                    if not w then
+                        w = {n = 0, drink = 0, eat = 0, sleep = 0, other = 0, dwarves = 0, names = {}, spots = {}}
+                        out.by_who[who] = w
+                    end
+                    w.n = w.n + k
+                    local kind = NEEDS_JOBS[job] or 'other'
+                    w[kind] = w[kind] + k
+                    if not w.names[name] then w.names[name] = true; w.dwarves = w.dwarves + 1 end
+                    if r.x and r.y and r.z and #w.spots < 200 then
+                        table.insert(w.spots, {x = r.x, y = r.y, z = r.z, n = k, needs = NEEDS_JOBS[job] ~= nil})
+                    end
+                end
+            end
+        end
+    end
+    return out
+end
+
+-- the units that keep the dwarves from their needs: cands {id, phrases, x, y, z};
+-- a phrase's units are ranked by the cancellations near them (several human
+-- spearmen visit: only the one by the dwarves counts; with no places in the
+-- reports, the one with most citizens `cit` {x, y, z} about it). Returns {id = row}
+function blocking_units(tally, cands, cfg, cit)
+    cfg = cfg or {}
+    local near_r = cfg.near or INTERRUPT_NEAR
+    local min_n, min_d = cfg.min or INTERRUPT_MIN, cfg.min_dwarves or INTERRUPT_MIN_DWARVES
+    local min_near = cfg.min_near or INTERRUPT_MIN_NEAR
+    local out = {}
+    for who, w in pairs(tally and tally.by_who or {}) do
+        local needs = (w.drink or 0) + (w.eat or 0) + (w.sleep or 0)
+        if needs >= min_n and (w.dwarves or 0) >= min_d then
+            local matched = {}
+            for _, c in ipairs(cands or {}) do
+                for _, p in ipairs(c.phrases or {}) do
+                    if p == who then table.insert(matched, c) break end
+                end
+            end
+            local function close(a, b)
+                return math.max(math.abs(a.x - b.x), math.abs(a.y - b.y)) + 3 * math.abs(a.z - b.z) <= near_r
+            end
+            local placed = 0
+            for _, sp in ipairs(w.spots or {}) do if sp.needs then placed = placed + 1 end end
+            local best, best_n = nil, -1
+            for _, c in ipairs(matched) do
+                local near = 0
+                if placed > 0 then
+                    for _, sp in ipairs(w.spots) do
+                        if sp.needs and close(sp, c) then near = near + (sp.n or 1) end
+                    end
+                else
+                    -- no places in the reports: the citizens about it now
+                    for _, p in ipairs(cit or {}) do if close(p, c) then near = near + 1 end end
+                end
+                if placed > 0 and near >= min_near then
+                    out[c.id] = {id = c.id, who = who, near = near, cancels = needs, drink = w.drink, eat = w.eat,
+                                 sleep = w.sleep, dwarves = w.dwarves}
+                elseif placed == 0 and near > best_n then
+                    best, best_n = c, near
+                end
+            end
+            -- no places: one alone by that name, else the one with the most dwarves about it
+            if best and (#matched == 1 or best_n >= min_near) then
+                out[best.id] = {id = best.id, who = who, near = best_n, cancels = needs, drink = w.drink,
+                                eat = w.eat, sleep = w.sleep, dwarves = w.dwarves}
+            end
+        end
+    end
+    return out
+end
+
+-- the game's job cancellations of the last window (world.status.reports, newest first)
+local function read_cancels(now, window)
+    local rows = {}
+    pcall(function()
+        local reps = df.global.world.status.reports
+        local seen, tail = 0, nil
+        for i = #reps - 1, 0, -1 do
+            seen = seen + 1
+            if seen > INTERRUPT_MAX_REPORTS then break end
+            local r = reps[i]
+            local okt, t = pcall(function() return U.abs_tick(r.year, r.time) end)
+            if okt and t and now - t > window then break end
+            local text = tostring(r.text)
+            -- a long line goes on in the next report(s) (flags.continuation): read backwards, put together
+            local cont = false
+            pcall(function() cont = r.flags.continuation and true or false end)
+            if cont then
+                tail = tail and (text .. ' ' .. tail) or text
+                text = nil
+            elseif tail then
+                text, tail = text .. ' ' .. tail, nil
+            end
+            if text and text:find(' cancels ', 1, true) then
+                local row = {text = text, tick = okt and t or nil, n = 1}
+                pcall(function() row.n = 1 + math.max(0, math.tointeger(r.repeat_count) or 0) end)
+                pcall(function()
+                    if r.pos.x >= 0 then row.x, row.y, row.z = r.pos.x, r.pos.y, r.pos.z end
+                end)
+                table.insert(rows, row)
+            end
+        end
+    end)
+    return rows
+end
+
+local function race_name(u)
+    local ok, n = pcall(function() return df.global.world.raws.creatures.all[u.race].name[0] end)
+    return ok and n or nil
+end
+
+local function prof_name(u)
+    local ok, n = pcall(dfhack.units.getProfessionName, u)
+    return ok and n or nil
+end
+
+INTERRUPT_MEMO = nil         -- {tick, blocking = {id = row}, tally}
+
+-- the blocking units now ({id = row}) and the tally, read once a game tick
+function interrupt_read()
+    local now = now_tick()
+    local m = INTERRUPT_MEMO
+    if m and m.tick == now then return m end
+    local tally = tally_cancels(read_cancels(now, INTERRUPT_WINDOW), now, INTERRUPT_WINDOW)
+    local cands, cit = {}, {}
+    if next(tally.by_who) then
+        for _, u in ipairs(report_citizens(true)) do
+            table.insert(cit, {x = u.pos.x, y = u.pos.y, z = u.pos.z})
+        end
+        for _, u in ipairs(report_units()) do
+            if dfhack.units.isActive(u) and not dfhack.units.isDead(u) and not is(dfhack.units.isCitizen, u) then
+                table.insert(cands, {id = u.id, x = u.pos.x, y = u.pos.y, z = u.pos.z,
+                                     phrases = unit_phrases(race_name(u), prof_name(u))})
+            end
+        end
+    end
+    m = {tick = now, tally = tally, blocking = blocking_units(tally, cands, nil, cit)}
+    INTERRUPT_MEMO = m
+    return m
+end
+
+-- (item1) a unit DF's own reports show keeping the dwarves from drink, food or sleep
+function interrupting(u)
+    local ok, m = pcall(interrupt_read)
+    return ok and m and u and m.blocking[u.id] ~= nil or false
+end
+
+-- the report's part: who blocks the dwarves (each unit with what DF says of
+-- it), the top interrupters, and why Drink and Eat jobs were cancelled
+function interrupters_report(cit, groups, txt)
+    local m = interrupt_read()
+    local out = {window_days = INTERRUPT_WINDOW // DAY, cancels = m.tally.n, list = {}, by_who = {}, reasons = {}}
+    for who, w in pairs(m.tally.by_who) do
+        table.insert(out.by_who, {who = who, n = w.n, drink = w.drink, eat = w.eat, sleep = w.sleep,
+                                  dwarves = w.dwarves})
+    end
+    table.sort(out.by_who, function(a, b) return a.n > b.n end)
+    while #out.by_who > 5 do table.remove(out.by_who) end
+    for job, rs in pairs(m.tally.reasons) do
+        local l = {}
+        for why, n in pairs(rs) do table.insert(l, {why = why, n = n}) end
+        table.sort(l, function(a, b) return a.n > b.n end)
+        while #l > 3 do table.remove(l) end
+        if #l > 0 then out.reasons[job:lower()] = l end
+    end
+    local mil
+    pcall(function() mil = reqscript('ai-military') end)
+    for id, row in pairs(m.blocking) do
+        local u = df.unit.find(id)
+        if u and not dfhack.units.isDead(u) and #out.list < 10 then
+            local pos = {x = u.pos.x, y = u.pos.y, z = u.pos.z}
+            local r = {id = id, name = name_of(u, txt), who = row.who, cancels = row.cancels, drink = row.drink,
+                       eat = row.eat, sleep = row.sleep, dwarves = row.dwarves, near = row.near, pos = pos,
+                       inside = not outside_at(pos.x, pos.y, pos.z), can_reach_dwarves = reaches(pos, groups),
+                       distance = dist_to(pos, cit),
+                       caged = (u.flags1.caged or u.flags1.chained) or nil,
+                       visitor = is(dfhack.units.isVisitor, u) or nil,
+                       merchant = is(dfhack.units.isMerchant, u) or nil,
+                       diplomat = is(dfhack.units.isDiplomat, u) or nil,
+                       invader = is(dfhack.units.isInvader, u) or nil,
+                       danger = is(dfhack.units.isDanger, u) or nil}
+            if mil and mil.kill_target_ok then
+                local okk, yes = pcall(mil.kill_target_ok, u)
+                r.kill_ok = okk and yes or false
+            end
+            table.insert(out.list, r)
+        end
+    end
+    table.sort(out.list, function(a, b) return (a.cancels or 0) > (b.cancels or 0) end)
+    return out
+end
+
 function survey(txt)
     local d = load_state()
     local t = now_tick()
@@ -993,6 +1257,7 @@ function survey(txt)
     part('rescue', rescue_report)
     part('openings', openings_report, d, t, txt)          -- (0.105.26)
     part('cavern_citizens', cavern_citizens, txt)         -- (0.105.26)
+    part('interrupters', interrupters_report, cit, groups, txt)   -- (item1) who keeps them from drink
     out.sealed = {}
     for layer, s in pairs(d.sealed) do
         if type(s) == 'table' then

@@ -11,6 +11,12 @@ Where to look:
 The forts are A War-hold, B Monastery, C Merchant city, D Hermit hold, E Deep mine and F Garden fort. "All" means every fort.
 
 
+## item1 (14 Nov): the thirst trap (B, 13 Nov: 66 dead of thirst beside 845 drinks)
+
+- **All, state.json**: `threats.interrupters` (`cancels`, `by_who`, `reasons.drink` / `reasons.eat`, and `list` with each unit DF shows keeping the dwarves from drink, food or sleep: `who`, `near`, `visitor`, `merchant`, `kill_ok`). Normally empty or small; no `error`.
+- **A visitor or other non-citizen that DF says interrupts the dwarves** ("cancels Drink: Interrupted by a ..." in the gamelog, again and again): a `squad_attack` journal line naming it ("keeps the dwarves from their drink and food"), `squad_orders` accepted by the bridge (not "none of those units is a threat"), the squad not recalled for "no more threats" while it lives, and the Drink cancellations stopping. Never a merchant or diplomat (a note instead).
+- **Parched dwarves**: a note "N parched, M starving; in the last 2 days Drink jobs dropped: ..." naming DF's reasons.
+
 ## 0.105.39 (12 Nov): missions (13b)
 
 - **All**: the Army tab's new rows, **Missions to send out** (*rescue and recover* by default) and **Send missions by the World screen** (off), under the caverns' switch and clear of the help text; an old save reading those defaults.

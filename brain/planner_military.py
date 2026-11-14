@@ -769,6 +769,10 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
         thieves_in = {x.get("id") for x in _l(_d(_d(s.get("threats")).get("thieves")).get("list"))
                       if isinstance(x, dict) and x.get("id") is not None
                       and (x.get("inside") or x.get("can_reach_dwarves") is True)}
+        # (item1, 14 Nov) one DF shows keeping the dwarves from drink and food
+        # (planner_threats _interrupters) isn't a threat to the game either
+        thieves_in |= {x.get("id") for x in _l(_d(_d(s.get("threats")).get("interrupters")).get("list"))
+                       if isinstance(x, dict) and x.get("id") is not None and not x.get("caged")}
         for q in squads:
             if q.get("guarding") and invaders_near:
                 continue                     # (0.104.83) holding the gate while invaders are about

@@ -1459,6 +1459,12 @@ function kill_target_ok(u)
     if is(U.isMerchant) or is(U.isDiplomat) or is(U.isTame) then return false end
     if is(U.isCitizen) then return false end
     if is(U.isDanger) or is(U.isInvader) then return true end
+    -- (item1, 14 Nov) a unit DF's own job cancellations show keeping the
+    -- dwarves from drink, food or sleep ("cancels Drink: Interrupted by a
+    -- human spearman"): B lost 66 to thirst beside 845 drinks while a beaten
+    -- visitor neither isDanger nor an invader stood by the stores
+    local oki, blocking = pcall(function() return reqscript('ai-threats').interrupting(u) end)
+    if oki and blocking == true then return true end
     -- (item5) a wild animal that attacks (a large predator, or one DF has
     -- agitated: ai-builder hostile_wild): the wildlife and caravan guard rules
     -- send a squad at one near the dwarves or a caravan (lua/ai-siege.lua)

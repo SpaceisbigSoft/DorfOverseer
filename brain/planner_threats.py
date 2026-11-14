@@ -279,6 +279,75 @@ def _thieves(s, cfg, t, memory, proposals, notes):
         return
 
 
+def _interrupters(s, cfg, t, memory, proposals, notes):
+    """(item1, 14 Nov) B lost 66 citizens to thirst in 13 Nov's 17:05-17:45
+    with 845 drinks in store: a visitor beaten in a fight with a squad (a
+    human spearman told of an artifact) stayed by the stores, and DF made
+    every dwarf who saw him drop the drink or meal on the way ("cancels
+    Drink: Interrupted by a human spearman", ~4900 times in two months). He
+    was no invader and not isDanger: the AI saw no threat. The bridge reads
+    those cancellations (lua/ai-threats.lua interrupters_report) and names
+    the unit; a squad is sent at it (kill_target_ok takes it). A merchant or
+    diplomat is never attacked: said instead. With dwarves parched or
+    starving, why their Drink and Eat jobs were cancelled is said too."""
+    it = _d(t.get("interrupters"))
+    if not it or it.get("error"):
+        return
+    so = _d(s.get("society"))
+    parched, starving = int(so.get("parched") or 0), int(so.get("starving") or 0)
+    rows = [x for x in _l(it.get("list")) if isinstance(x, dict) and x.get("id") is not None]
+    loose = [x for x in rows if not x.get("caged")]
+    for x in rows:
+        if x.get("caged"):
+            notes.append(f"{x.get('name')} keeps the dwarves from their drink and food ({x.get('cancels')} jobs "
+                         "dropped) though caged or chained: move the cage out of their sight")
+    talks = [x for x in loose if x.get("merchant") or x.get("diplomat")]
+    for x in talks:
+        notes.append(f"{x.get('name')} ({'a merchant' if x.get('merchant') else 'a diplomat'}) keeps the dwarves "
+                     f"from their drink and food ({x.get('cancels')} jobs dropped, {x.get('dwarves')} dwarves): not "
+                     "attacked (a merchant or diplomat); look at it in the game")
+    hit = [x for x in loose if x not in talks and x.get("kill_ok") is not False]
+    if hit:
+        names = ", ".join(f"{x.get('name')} ({x.get('drink') or 0} drinks, {x.get('eat') or 0} meals dropped "
+                          f"by {x.get('dwarves') or 0} dwarves)" for x in hit[:3])
+        ids = [x["id"] for x in hit][:10]
+        squads = [q for q in _l(_d(s.get("military")).get("squads")) if isinstance(q, dict)]
+        on_it = [q for q in squads if q.get("ai_orders") and set(_l(q.get("kill_ids"))) & set(ids)]
+        able = _able_squads(s, cfg)
+        busy = [q for q in squads if can_fight(q, cfg) and q.get("ai_orders") and not q.get("guarding")
+                and isinstance(q.get("kill_ids"), list)]
+        why = "keeps the dwarves from their drink and food (DF drops the job when they see it)"
+        if on_it:
+            notes.append(f"{names} {why}: {on_it[0].get('name') or 'a squad'} is after them")
+        elif able:
+            proposals.append(Proposal("squad_attack", {"type": "squad_orders", "squad_id": able[0]["id"], "kill": ids},
+                                      f"{names} {why}: send {able[0].get('name') or 'the squad'}", 0, guard=True))
+        elif busy:
+            q = busy[0]
+            kill = list(dict.fromkeys(ids + [k for k in q["kill_ids"] if isinstance(k, int)]))[:50]
+            proposals.append(Proposal("squad_attack", {"type": "squad_orders", "squad_id": q["id"], "kill": kill},
+                                      f"{names} {why} and no squad free: {q.get('name') or 'the squad'} takes "
+                                      "them on too", 0, guard=True))
+        elif _weak_free(s) is not None:
+            q = _weak_free(s)
+            proposals.append(Proposal("squad_attack", {"type": "squad_orders", "squad_id": q["id"], "kill": ids},
+                                      f"{names} {why} and no squad with {cfg.get('min_squad_to_fight', 3)}+ armed "
+                                      f"free: send {q.get('name') or 'the squad'} "
+                                      f"({_d(q.get('power')).get('armed')} armed)", 0, guard=True))
+        else:
+            ask_player(notes, f"{names} {why}, and the fort has no squad to send: draft one, or deal with it "
+                              "in the game")
+    if parched or starving:
+        bits = []
+        for job in ("drink", "eat"):
+            rs = [r for r in _l(_d(it.get("reasons")).get(job)) if isinstance(r, dict) and r.get("why")]
+            if rs:
+                bits.append(f"{job.title()} jobs dropped: " + "; ".join(f"{r['why']} x{r.get('n')}" for r in rs[:3]))
+        if bits:
+            notes.append(f"{parched} parched, {starving} starving; in the last {it.get('window_days') or 2} days "
+                         + " | ".join(bits))
+
+
 def _undead(s, cfg, t, proposals, notes):
     u = _d(t.get("undead"))
     if int(u.get("undead") or 0):
@@ -647,6 +716,7 @@ def _threat_rules(s: dict, memory, cfg: dict, proposals: list, notes: list) -> N
     for name, fn, args in (("fire", _fire, (s, cfg, t, proposals, notes)),
                            ("prisoners", _prisoners, (s, cfg, t, rules, proposals, notes)),
                            ("thieves", _thieves, (s, cfg, t, memory, proposals, notes)),
+                           ("interrupters", _interrupters, (s, cfg, t, memory, proposals, notes)),
                            ("undead", _undead, (s, cfg, t, proposals, notes)),
                            ("were", _were, (s, cfg, t, rules, proposals, notes)),
                            ("caverns", _cavern_beasts, (s, cfg, memory, t, rules, proposals, notes)),
