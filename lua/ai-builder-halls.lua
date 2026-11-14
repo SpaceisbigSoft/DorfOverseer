@@ -22,7 +22,7 @@
 -- stock), {floor = true} block floors over soil, {statue = true} a statue.
 -- Nothing is decided here from the traits.
 
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-halls'] = '0.105.45'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-halls'] = '0.105.46'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local info, ez = info, ez
 
