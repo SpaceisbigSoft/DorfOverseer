@@ -44,6 +44,7 @@ from planner_missions import mission_journal  # noqa: E402  (0.105.39)
 from planner_cleanup import CLEANUP_ACTIONS, cleanup_journal, cleanup_words  # noqa: E402  (0.105.40)
 from planner_threats import note_intrusions  # noqa: E402  (0.105.30 live fixes)
 import planner_stuck  # noqa: E402  (0.105.45) the stuck sweep's soak summary
+import seen as seen_ledger  # noqa: E402  (0.105.46, I1) each full report's sections tallied
 import atlas  # noqa: E402
 import backup  # noqa: E402
 import health_check  # noqa: E402
@@ -1009,6 +1010,9 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
             + (f" ({memory._texts.get('save_unread_why')})" if memory._texts.get("save_unread_why") else "") + ".")
     to_save = False
     try:
+        # (0.105.46, I1) each section of a full report, ok or {"error"}, tallied for
+        # the seen ledger (brain/seen.py): before normalize swaps errors for defaults
+        seen_ledger.note_report(state, memstore.fort_dir(key))
         normalize(state)      # (13c) once, in place: the steps below read the sections as they are
         # (0.105.33 fix, runs) the report's date failed (normalize made it year
         # 0, tick 0): no learning, no note_cycle (it would wipe every cooldown,

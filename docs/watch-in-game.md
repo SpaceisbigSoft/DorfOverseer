@@ -10,6 +10,17 @@ Where to look:
 
 The forts are A War-hold, B Monastery, C Merchant city, D Hermit hold, E Deep mine and F Garden fort. "All" means every fort.
 
+The quick way through this file: `python brain\seen.py` (from any DF-AI folder) writes each folder's `logs\seen-ledger.md` and a summary across them (`DF-AI\logs\seen-ledger-all.md`): every section, action and Rules switch since 0.105.32 as seen, refused (why), not yet met or in error, and this file's lines ticked where the reports and journals show them. Lines about how things look stay "needs eyes".
+
+
+## 0.105.46 (I1): the "seen in game" ledger
+
+- **All, after the keeper's first daily check**: `logs\seen-ledger.md` exists and `logs\health-check.txt` has a `seen:` part ("seen since 0.105.32: N seen, M refused or failed, K not yet met, E section errors"); a report section that returns `{"error"}` is flagged there ("report section 'x' returns an error: ...").
+- **All, after an hour of the overseer**: `logs\forts\<fort>\seen-sections.json` holds every section of the full report with `ok` counts rising, `first_ok_bridge` the running bridge's version; a section that failed has `error`, `first_error` and its `error_text`. Pulses are not counted.
+- **The ledger against the game**: pick two actions it calls "seen" and one "refused" and find them in the journal; a Rules switch's "value now" matches the Rules tab. Is anything marked seen that the journal doesn't show? (It should never claim more than the evidence.)
+- **The versions**: every 0.105.32-0.105.45 section and action is listed under its own version; one under the wrong version or missing means its comment tag in `lua/ai-bridge.lua` misleads (fix the tag, or `NAME_VERSIONS` in brain/seen.py).
+- **Run once by hand on the PC**: `python brain\seen.py` in `DF-AI` writes all six pages and the summary in a few seconds (the journals are read whole).
+
 
 ## 0.105.45 (14 Nov): H7, a threat judged against the squads (Phase 11 (a), the judging half)
 

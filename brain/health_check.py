@@ -23,6 +23,9 @@ It flags:
 - (0.105.45) things stuck "in progress": the AI's own things past their
   timeout without progress (the stuck sweep's count in the soak rows), a
   flag when some stay past it over the last STUCK_ROWS rows;
+- (0.105.46) what of the new versions the game has shown: the seen ledger
+  (brain/seen.py, logs/seen-ledger.md) in counts, and a flag for a report
+  section returning an error;
 - housekeeping: old test saves and backups of forts no longer played (old
   backup copies of those are thinned to the newest; game saves are only
   listed, deleting them is yours).
@@ -374,6 +377,16 @@ def stuck_flags(rows: list[dict]) -> tuple[list[str], list[str]]:
     return flags, [line]
 
 
+def seen_part(hours: float, now: datetime) -> tuple[list[str], list[str]]:
+    """(0.105.46, I1) The seen ledger (brain/seen.py) for this folder, written
+    to logs/seen-ledger.md: what of 0.105.32 on the game has shown, in
+    counts; flagged: a report section returning an error (in the last
+    report, or one of the new ones within the window)."""
+    import seen
+    L = seen.ledger(ROOT, log_dir=LOG_DIR, code_root=ROOT, now=now)
+    return seen.health_part(L, hours, now)
+
+
 # ---------------------------------------------------------------------------
 # the self-test, run as its own process
 # ---------------------------------------------------------------------------
@@ -507,6 +520,7 @@ def check(hours: float = 24.0, selftest: bool = True, now: datetime | None = Non
     part("the keeper", lambda: log_flags(soak_report.log_lines(since, LOG_DIR / "unattended.log")))
     part("speed", lambda: fps_flags(soak_report.soak_rows(since, LOG_DIR / "soak.jsonl")))
     part("stuck", lambda: stuck_flags(soak_report.soak_rows(since, LOG_DIR / "soak.jsonl")))   # (0.105.45)
+    part("seen", lambda: seen_part(hours, now))   # (0.105.46, I1) logs/seen-ledger.md written too
 
     def house():
         from dfhack import save_roots
