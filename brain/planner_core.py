@@ -186,6 +186,7 @@ class Memory:
     food_store_seen: dict = field(default_factory=dict)  # (0.105.40b, M6) the rotten food followed: {since, low, rotten, rise, rise_tick}
     alloy_seen: dict = field(default_factory=dict)       # (fix41) {fuel_note}: when the bronze-waits-for-fuel note was last said
     syndromes_seen: dict = field(default_factory=dict)   # (0.105.41, item 11) {dry, cleaned, last}: the contaminant clean's trial and counts
+    hunt_seen: dict = field(default_factory=dict)        # (0.105.45) {off {target id: {tick, why}}, learned [keys]}: planner_hunt
     polished_upto: int | None = None                     # finished-level count when every level was found polished
     polish_seen: dict = field(default_factory=dict)      # (item7) {n, tick}: "every level polished" refusals in a row, the last one
     quarry_seen: dict = field(default_factory=dict)      # (item7) the last quarry: {tick, tiles, before, settled, strikes, until, why}
@@ -540,7 +541,10 @@ def player_rules(s: dict) -> dict:
             "clear_alerts": st.get("clear_alerts") if st.get("clear_alerts") in ("all", "quiet", "none") else "quiet",
             # (0.105.41, item 4) a hunter or two out while it is safe; farm plots on a known, quiet cavern's soil
             "hunting": st.get("hunting") is not False,
-            "cavern_farms": st.get("cavern_farms") is not False}
+            "cavern_farms": st.get("cavern_farms") is not False,
+            # (0.105.45) hunting threats the squads can beat: off / small (thieves, ambushes,
+            # wounded visitors) / ai (the default: great dangers too) (brain/planner_hunt.py)
+            "hunt": st.get("hunt") if st.get("hunt") in ("off", "small", "ai") else "ai"}
 
 
 OPEN_CAVERNS_MODES = ("ai", "always", "never")

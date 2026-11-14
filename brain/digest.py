@@ -173,6 +173,7 @@ SECTION_DEFAULTS = {
     "leather_gear": {},      # (item10) empty leather uniform entries, free leather gear (lua/ai-leather-gear.lua)
     "syndromes": {},         # (0.105.41, item 11) syndromes, their sources, carriers, floor spatter, quarantine (lua/ai-syndromes.lua)
     "miasma": {},            # (0.105.41, item 11) miasma indoors, what rots near it, dump zones outside (lua/ai-syndromes.lua)
+    "hunt": {"targets": [], "squads": [], "hunts": []},   # (0.105.45) threats the squads may hunt, the squads, hunts under way (lua/ai-hunt.lua)
     "artifacts": {},         # (item 12) artifacts on the map, display furniture, the AI's rooms for it (lua/ai-artifacts.lua)
 }
 # (0.105.36) not REQUIRED (the plan goes on without them), but a missing one is

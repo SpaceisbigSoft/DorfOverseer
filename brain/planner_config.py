@@ -999,4 +999,17 @@ PLANNER_CONFIG = {
     "bench_training_max_level": 5,        # the training bench's max skill (df skill rating: 5 Proficient)
     "bench_learners_min": 2,              # workers below it before a bench is capped
     "bench_caps_cooldown_ticks": 1200,
+    # (0.105.45) hunting: squads sent after a threat they clearly beat (brain/planner_hunt.py)
+    "hunt_ratio": 3.0,                    # the party's strength at least this times the target's (1.5 x fight_ratio: optional)
+    "hunt_slider_weight": 0.5,            # Caution over Militarism by 200 raises the bar by 2^this (and the other way)
+    "hunt_ratio_min": 2.4,                # ...never below this (nor below fight_ratio)...
+    "hunt_ratio_max": 6.0,                # ...nor above this
+    "hunt_reserve_min": 3,                # soldiers left home at least ("a guard in every fort")...
+    "hunt_reserve_share": 0.34,           # ...and at least this share of all soldiers (one whole squad stays with 2+)
+    "hunt_max_days": 3,                   # a hunt longer than this is called back
+    "hunt_rest_days": 5,                  # a timed-out target rests this long before another hunt
+    "hunt_great_militarism_min": -100,    # great dangers hunted only with Militarism above this...
+    "hunt_great_caution_max": 150,        # ...and Caution below this
+    "hunt_learned_keep": 60,              # history outcomes remembered as learned (each counted once)
+    "hunt_cooldown_ticks": 300,           # a new hunt at most every quarter day
 }

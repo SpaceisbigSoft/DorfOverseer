@@ -898,6 +898,21 @@ function MilitaryPage:init()
     })
     table.insert(views, widgets.Label{frame = {t = t + 20, l = 4}, text = {
         {text = S.MISSION_HELP, pen = COLOR_GREY}}})
+    -- (0.105.45) hunting threats the squads can beat: the right-hand column's
+    -- free row t+19 (send_missions ends at column 62 there)
+    table.insert(views, widgets.CycleHotkeyLabel{
+        view_id = 'hunt',
+        frame = {t = t + 19, l = 64, w = 50},
+        label = 'Hunt threats:',
+        label_width = 14,
+        options = (function()
+            local out = {}
+            for _, m in ipairs(S.HUNT_CHOICES) do table.insert(out, {label = S.HUNT_NAMES[m], value = m}) end
+            return out
+        end)(),
+        initial_option = S.HUNT_NAMES[p.settings.hunt] and p.settings.hunt or 'ai',
+        on_change = function(v) p:set_field('hunt', v) end,
+    })
     table.insert(views, widgets.Label{frame = {t = t + 21, l = 4}, text = {
         {text = 'a reserve stays home, one at a time, never with a threat near; off: you are told what to send',
          pen = COLOR_GREY}}})
@@ -975,6 +990,7 @@ function MilitaryPage:refresh()
         self.subviews[k]:setOption(s[k] ~= false, false)
     end
     self.subviews.cavern_logging:setOption(s.cavern_logging ~= false, false)        -- (item10)
+    self.subviews.hunt:setOption(S.HUNT_NAMES[s.hunt] and s.hunt or 'ai', false)   -- (0.105.45)
     self.subviews.missions:setOption(S.MISSION_NAMES[s.missions] and s.missions or 'rescue', false)   -- (0.105.39)
     self.subviews.send_missions:setOption(s.send_missions == true, false)
     self.subviews.peace:setOption(S.PEACE_NAMES[s.peace] and s.peace or 'ai', false)   -- (0.105.41, item 8)
