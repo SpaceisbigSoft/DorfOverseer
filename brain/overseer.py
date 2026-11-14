@@ -38,6 +38,7 @@ from dfhack import PROJECT_ROOT, DFHackError, GameNotRunning  # noqa: E402
 from util import folder_lock, load_json  # noqa: E402
 from planner import (NEEDS_YOU, PLANNER_CONFIG, TICKS_PER_YEAR, Memory, abs_tick,  # noqa: E402
                      effective_config, note_cycle, note_tantrums, plan, record, select)
+from planner_tantrums import note_tantrum_book  # noqa: E402  (0.105.47)
 from planner_society import note_heists  # noqa: E402  (0.105.24)
 from planner_moods import mood_journal  # noqa: E402  (0.105.30)
 from planner_missions import mission_journal  # noqa: E402  (0.105.39)
@@ -565,6 +566,8 @@ SHORT_WORDS = {
     "hunt_recall": "hunt back: call the hunting squads home",    # (0.105.45)
     "call_migrants": "call a migrant wave (DFHack's force Migrants) to a fallen fort DF sends none to",  # (0.105.46, I4)
     "open_meeting": "open the meeting waiting behind DF's diplomacy light",  # (0.105.47)
+    "hospital_guard": "station a calm squad in the hospital while a tantrum is loose (or take it off)",  # (0.105.47)
+    "tantrum_step_down": "take a tantrum-thrower off every post and the hospital work",  # (0.105.47)
     "census": "count what fills the map",  # (0.104.113)
     "seal_well_stairs": "close the cavern wells' stair columns",  # (0.104.151)
     "join_levels": "join areas on one level that meet only through the stairs",  # (0.104.108)
@@ -1077,6 +1080,7 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
         for e in recovery_journal(memory):        # (0.105.46, I4) recovery entered, left, migrants called
             journal({"kind": "recovery", "fort": key, "date": state["date"], **e})
         note_tantrums(state, memory, events)     # (0.104.31) tantrums counted for the jail
+        note_tantrum_book(state, memory, events)   # (0.105.47) tantrum/berserk/possession reports; a tantrum loose
         note_heists(state, memory, events)       # (0.105.24) heists and visitors' killings: visitors kept out a while
         note_intrusions(state, memory, events)   # (0.105.30) DF's invasion records: the alarm before a thief strikes
         crisis.note_deaths(state, memory, events)   # (0.104.137) deaths counted for crisis mode

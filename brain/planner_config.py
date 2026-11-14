@@ -1086,4 +1086,22 @@ PLANNER_CONFIG = {
     # (0.105.47) meetings (brain/planner_meetings.py, lua/ai-meeting-open.lua)
     "meeting_open_every_s": 60,           # a meeting waiting behind DF's diplomacy light clicked at most this often (real s)
     "meeting_reopen_after_s": 1800,       # ...and after leaving one it couldn't answer, not again for this long (real s)
+    # (0.105.47, R2 item 3) tantrums one dwarf at a time (brain/planner_tantrums.py, lua/ai-tantrums.lua)
+    "staff_tantrum_cooldown_ticks": 100,  # a post taken from a tantrum-thrower (one a cycle, soon the next)
+    "break_fights_report_ticks": 600,     # a tantrum, berserk or possession report this recent: fix/loyaltycascade
+    "hospital_guard_on": True,            # a calm squad stationed at each hospital while a tantrum is loose
+    "hospital_guard_hold_ticks": 1200,    # ...kept a day after the last tantrum seen loose...
+    "hospital_guard_max_days": 7,         # ...and never longer than this at a stretch (they eat, drink and train)
+    "hospital_guard_cooldown_ticks": 50,
+    "chronic_tantrums": 3,                # tantrums in a year that make a chronic case (handled one dwarf at a time)
+    "chronic_posts_cooldown_ticks": 300,
+    "chronic_care_cooldown_ticks": 1200,  # one of their unmet needs met a day, in turn
+    "chronic_convict_on": True,           # the last resort: that dwarf's own solved cases convicted, behind the checks...
+    "chronic_convict_tantrums": 5,        # ...only after this many in a year...
+    "chronic_convict_after_days": 28,     # ...this long after they became a chronic case (their needs tried first)
+    "chronic_convict_cooldown_ticks": 8400,
+    "crisis_kill_days": 14,               # a citizen killed by a citizen this recently: crisis mode
+    "crisis_repeat_dwarves": 2,           # ...or this many dwarves...
+    "crisis_repeat_tantrums": 2,          # ...each with this many tantrums in 28 days
+    "crisis_tantrum_quiet_days": 14,      # a crisis is not over while a tantrum was seen this recently
 }

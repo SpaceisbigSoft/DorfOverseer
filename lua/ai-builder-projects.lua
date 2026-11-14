@@ -282,6 +282,12 @@ function start_project(params, now, dry_run)
                                         .. 'out of reach (no citizen can walk to it)'}
         end
     end
+    -- (0.105.47, R2 item 3) a hospital off the stairs (ai-builder-sites stair_gap_ok):
+    -- its own stair's and the main stair's (the most used, the first listed)
+    if kind == 'hospital' then
+        L.stair_gap = HOSPITAL_STAIR_GAP
+        L.main_stair = stairs[1]
+    end
     local plan = type(params.plan) == 'table' and params.plan or nil
     -- (0.105.23, 14.1 step 4c) max_elev: no level above it (the Deep mine keeps under the surface)
     local ceil = math.tointeger(params.max_elev)

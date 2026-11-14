@@ -10141,7 +10141,8 @@ def _():
     allowed, held = select(plan(copy.deepcopy(s), m)[0], s, m)
     assert any(p.rule == "calm_burrow" for p in allowed), held
     import crisis
-    assert "calm_burrow" in crisis.RECOVERY_RULES and "calm_burrow" in planner.LIMIT_EXEMPT
+    # (0.105.47) no longer a recovery rule (it never held a tantrum: 54 of 60 outside in E)
+    assert "calm_burrow" not in crisis.RECOVERY_RULES and "calm_burrow" in planner.LIMIT_EXEMPT
     assert planner.PLANNER_CONFIG["calm_burrow_cooldown_ticks"] == 300
     assert planner.AGENDA_THEMES["calm_burrow"] == "keep a tantrum away from the others"
 

@@ -1359,7 +1359,8 @@ def _():
     assert W.get(70, 58, 66).dig_text == "h1" and W.get(71, 58, 66).dig_text == "i1"
 
 
-@test("dig first (0.104.128): an urgent level's tiles designated at priority 2; an open level raised to it once")
+@test("dig first (0.104.128): an urgent level's tiles designated at priority 2; an open level raised to it once",
+      beside=True)   # (0.105.47) a hospital is placed beside a stair, never centred on it
 def _():
     r = start(kind="hospital", beds=8, urgent=True)
     assert r.ok, r.error

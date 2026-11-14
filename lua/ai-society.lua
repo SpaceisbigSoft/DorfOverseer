@@ -2233,8 +2233,25 @@ end
 STAFF_HURT_RQ = {'rq_diagnosis', 'rq_immobilize', 'rq_dressing', 'rq_cleaning', 'rq_surgery', 'rq_suture',
                  'rq_setting', 'rq_traction', 'rq_crutch'}
 
-local function can_staff(u)
+-- (0.105.47, R2 item 3) the tantrum ledger (lua/ai-tantrums.lua), or nil
+local function tantrums()
+    local ok, T = pcall(reqscript, 'ai-tantrums')
+    return ok and type(T) == 'table' and T or nil
+end
+
+local function can_staff(u, T, ledger)
     if not dfhack.units.isAdult(u) or u.military.squad_id ~= -1 then return false end
+    -- (0.105.47, R2 item 3, I7c) never a dwarf very unhappy or worse, in a
+    -- tantrum, with one in the last 28 days or 3+ this year: E made miserable
+    -- chronic tantrum dwarves doctor, surgeon, bone doctor and tavern keeper
+    -- (twice with skill 0), and they beat patients to death in their beds.
+    -- The stress read here too, so a ledger that fails to load still bars it
+    local okc, cat = pcall(dfhack.units.getStressCategory, u)
+    if okc and type(cat) == 'number' and cat <= 1 then return false end
+    if T then
+        local okr, why = pcall(T.staff_refusal, u, ledger)
+        if okr and why then return false end
+    end
     local okm, mood = pcall(function() return u.mood end)
     if okm and mood ~= nil and mood ~= -1 then return false end
     local okn, list = pcall(dfhack.units.getNoblePositions, u)
@@ -2291,13 +2308,20 @@ function staff_location(loc_id, occ_type, dry_run, txt)
     end
     if not post then return {ok = false, rejected = true, error = 'no vacant ' .. occ_type:lower() .. ' post there'} end
     local best, best_n
+    local T = tantrums()                                        -- (0.105.47)
+    local ledger = T and select(2, pcall(T.load)) or nil
+    if type(ledger) ~= 'table' then ledger = nil end
     for _, u in ipairs(report_citizens(true)) do
-        if can_staff(u) and u.hist_figure_id ~= -1 then
+        if can_staff(u, T, ledger) and u.hist_figure_id ~= -1 then
             local n = skill_of(u, want)
             if not best or n > best_n then best, best_n = u, n end
         end
     end
-    if not best then return {ok = false, rejected = true, error = 'nobody free to take the post'} end
+    if not best then
+        return {ok = false, rejected = true,
+                error = 'nobody free to take the post (no child, soldier, office holder, post holder, patient, '
+                        .. 'or dwarf very unhappy or with a tantrum lately)'}
+    end
     local name = (txt or tostring)(dfhack.units.getReadableName(best))
     local job = occ_type:lower():gsub('_', ' ')
     if dry_run then return {ok = true, dry_run = true, post = job, unit_id = best.id, name = name, skill = best_n} end

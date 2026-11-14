@@ -445,6 +445,13 @@ end
 function act_convict(a)
     local max = math.tointeger(a.max) or 3
     if max < 1 or max > CONVICT_PER_CALL_MAX then return reject('max must be 1-' .. CONVICT_PER_CALL_MAX) end
+    -- (0.105.47, R2 item 3) unit_id: only that culprit's cases (a chronic
+    -- tantrum dwarf, the last resort: brain/planner_tantrums.py)
+    local only
+    if a.unit_id ~= nil then
+        only = whole_number(a.unit_id)
+        if not only then return reject('convict: unit_id is a unit id') end
+    end
     local site = df.global.plotinfo.site_id
     local list = df.global.world.crimes.all
     local busy = convict_busy(list)
@@ -452,12 +459,15 @@ function act_convict(a)
     for i = 0, #list - 1 do
         if #picked >= max then break end
         local c = list[i]
-        if convictable(c, site) and not busy[c.criminal] then
+        if convictable(c, site) and not busy[c.criminal] and (only == nil or c.criminal == only) then
             table.insert(picked, c)
             busy[c.criminal] = true
         end
     end
-    if #picked == 0 then return {ok = false, rejected = true, error = 'no solved case waits for a trial'} end
+    if #picked == 0 then
+        return {ok = false, rejected = true, error = only and 'no solved case of that culprit waits for a trial'
+                                                        or 'no solved case waits for a trial'}
+    end
     local out = {ok = true, convicted = {}}
     for _, cr in ipairs(picked) do
         local who = '?'

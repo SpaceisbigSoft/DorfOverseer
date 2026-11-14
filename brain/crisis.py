@@ -22,7 +22,15 @@ RECOVERY_RULES = {
 RECOVERY_RULES |= {"infected_rest", "soap_rush", "doctor_post", "appoint"}
 # (0.104.169) the barrels and pots the crisis's brewing waits for
 RECOVERY_RULES |= {"containers"}
-RECOVERY_RULES |= {"calm_burrow"}     # (0.104.169) a tantrum kept away from the others
+# (0.104.169) calm_burrow was here. (0.105.47, R2 item 3) Dropped from the
+# recovery rules: it never held a tantrum anywhere (members seen outside 54 of
+# 60 times in E, 9 of 9 in B, 2 of 2 in F; 344 of 349 over five forts by
+# 0.105.24). The rule itself stays, measured, for a fort where it might hold
+# (it retires itself at 90% outside after 40 looks); it gets no crisis push.
+# The crisis's tantrum levers now: posts taken from tantrum-throwers, the
+# loyalty fix on every tantrum, a guard at the hospital, the chronic cases
+# one by one (brain/planner_tantrums.py), all recovery rules:
+RECOVERY_RULES |= {"staff_tantrum", "chronic_posts", "chronic_care", "hospital_guard"}
 RECOVERY_RULES |= {"booze_variety"}   # (0.105.24) the worst stress in B and E: the same old booze
 # levels that are themselves recovery when started (a build of these kinds is never held)
 RECOVERY_KINDS = {"hospital", "tombs", "dining", "tavern", "temple", "jail", "bedrooms", "workshops",
@@ -54,8 +62,10 @@ def note_deaths(state: dict, memory, events: list) -> int:
             # (0.104.141) "None" too: DF's level for the strangling of patients
             # (Teacheroar 19:24, a Hammer Lord suffocated a patient: no fight
             # level, so nothing counted and the fights were never broken up)
+            # (0.105.47) the bridge marks a tantrum's, a berserker's or a possessed killer's kill
             if e.get("killer_kind") == "citizen" and e.get("conflict") in (None, "None", "Brawl", "Nonlethal", "Lethal",
-                                                                          "NoQuarter"):
+                                                                          "NoQuarter", "Tantrum", "Berserk",
+                                                                          "Possessed"):
                 memory.fight_deaths.append(now)
     memory.deaths_seen = [t for t in memory.deaths_seen if isinstance(t, int) and 0 <= now - t < 84 * TICKS_PER_DAY][-500:]
     memory.fight_deaths = [t for t in memory.fight_deaths if isinstance(t, int) and 0 <= now - t < 28 * TICKS_PER_DAY][-500:]
@@ -83,7 +93,51 @@ def crisis_reasons(s: dict, memory, cfg: dict, held: bool) -> list:
     tan = tantrums_recent(s, memory)
     if tan >= cfg["crisis_tantrums" + k]:
         out.append(f"{tan} tantrums in 4 weeks")
+    # (0.105.47, R2 item 3, I7c) small forts: E (23-45 dwarves) never reached
+    # 10 tantrums in 28 days (its 44 came from 4-5 dwarves, one or two at a
+    # time), and its y257 cascade began with crisis mode off. Now any citizen
+    # killed by a citizen, or 2+ dwarves each with 2+ tantrums in 28 days,
+    # starts it; held, it lasts while a tantrum was seen in the last 14 days
+    now = abs_tick(s)
+    kills = sum(1 for t in (getattr(memory, "fight_deaths", None) or [])
+                if isinstance(t, int) and 0 <= now - t < cfg["crisis_kill_days"] * TICKS_PER_DAY)
+    if kills:
+        out.append(f"{kills} citizen(s) killed by citizens in {cfg['crisis_kill_days']} days")
+    reps = repeat_tantrum_dwarves(s, memory, cfg["crisis_repeat_tantrums"])
+    if len(reps) >= cfg["crisis_repeat_dwarves"]:
+        out.append(f"{len(reps)} dwarves threw {cfg['crisis_repeat_tantrums']}+ tantrums each in 4 weeks "
+                   f"({', '.join(reps[:3])})")
+    elif held and out == [] and tantrum_seen(s, memory, cfg["crisis_tantrum_quiet_days"]):
+        out.append(f"a tantrum in the last {cfg['crisis_tantrum_quiet_days']} days")
     return out
+
+
+def repeat_tantrum_dwarves(s: dict, memory, n: int, days: int = 28) -> list:
+    """(0.105.47) Dwarves with n+ tantrums in `days`: from the bridge's ledger
+    (the tantrums section, each dwarf by id) or, without it, the game's
+    announcements by name (memory.tantrums, a dwarf a day); the larger list."""
+    ledger = [str(r.get("name") or r.get("id")) for r in (_d(s.get("tantrums")).get("dwarves") or [])
+              if isinstance(r, dict) and days == 28 and int(r.get("n28") or 0) >= n]
+    now = abs_tick(s)
+    by: dict = {}
+    for t in (getattr(memory, "tantrums", None) or []):
+        if isinstance(t, list) and len(t) == 2 and isinstance(t[0], int) and 0 <= now - t[0] < days * TICKS_PER_DAY:
+            by[str(t[1])] = by.get(str(t[1]), 0) + 1
+    named = sorted(w for w, k in by.items() if k >= n)
+    return ledger if len(ledger) >= len(named) else named
+
+
+def tantrum_seen(s: dict, memory, days: int) -> bool:
+    """(0.105.47) A tantrum loose now or begun in the last `days` (the ledger or the announcements)."""
+    sec = _d(s.get("tantrums"))
+    if int(sec.get("loose") or 0) > 0:
+        return True
+    now = abs_tick(s)
+    for r in sec.get("dwarves") or []:
+        last = r.get("last") if isinstance(r, dict) else None
+        if isinstance(last, int) and 0 <= now - last < days * TICKS_PER_DAY:
+            return True
+    return tantrums_recent(s, memory, days) > 0
 
 
 def update(s: dict, memory, cfg: dict, notes: list) -> list:

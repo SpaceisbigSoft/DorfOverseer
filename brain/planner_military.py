@@ -773,6 +773,8 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
     # (0.100.1, review) a dwarf gone berserk isn't a threat that "can reach",
     # but the squad sent at them stays on them until they're stopped
     berserk_now = bool(_l(_d(s.get("hazards")).get("berserk")))
+    from planner_tantrums import guard_ids          # (0.105.47) the hospital guards
+    hospital_guards = guard_ids(s)
     if not any_reach and not berserk_now:
         invaders_near = bool(gate_invaders(s))
         # (0.105.33) a thief inside the game doesn't count as a threat: the
@@ -792,6 +794,8 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
                 continue                     # (0.105.33) after a thief still inside
             if q.get("sheltering") and s.get("civ_alert"):
                 continue                     # (0.105.0) in the shelter until the alarm is over (planner_army)
+            if q.get("id") in hospital_guards:
+                continue                     # (0.105.47) on guard at a hospital: planner_tantrums takes it off
             if q.get("ai_orders"):
                 proposals.append(Proposal("squad_recall", {"type": "squad_orders", "squad_id": q["id"], "clear": True},
                                           f"no more threats: call {q.get('name') or 'the squad'} back", 1))

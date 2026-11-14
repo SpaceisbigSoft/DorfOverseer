@@ -59,6 +59,7 @@ from planner_siege import _siege_rules  # noqa: E402  (item5) siege engines, arc
 from planner_hazards import _hazards_rule, magma_alarm  # noqa: E402  (0.105.41, item 7) spilt magma, cave-ins, frost, heat
 from planner_insane import _insane_rule  # noqa: E402  (0.105.40b) the insane: deadly ground near them, the AI's doors
 from planner_killers import _killer_rule  # noqa: E402  (item3) a killer among the fort's own: cells, a squad
+from planner_tantrums import _tantrum_rules, note_tantrum_book  # noqa: E402,F401  (0.105.47) tantrums one dwarf at a time
 from order_check import order_gate, note_order_loop, approve_on_place, hold_lifted  # noqa: E402  (0.105.46, I3) the order loop
 from planner_mood_help import mood_shelter_rule, note_mood_help  # noqa: E402  (0.105.47, J1) the moods' failures
 from planner_hunt import _hunt_rule, note_hunt_cycle  # noqa: E402  (0.105.45) hunting threats the squads can beat
@@ -841,6 +842,9 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
         _guard(_convict_rule, s, memory, cfg, proposals, notes)
         _guard(_prisoner_water_rule, s, cfg, proposals, notes)       # (item5) no water for the jail
         _guard(_break_fights_rule, s, memory, cfg, proposals)
+        # (0.105.47, R2 item 3) the loyalty fix on every tantrum report, posts taken
+        # from tantrum-throwers, a guard at the hospitals, the chronic cases (planner_tantrums)
+        _guard(_tantrum_rules, s, memory, cfg, proposals, notes)
         _guard(_orphan_jobs_rule, s, proposals)
         _guard(_room_repair_rule, s, proposals)
         _guard(_bench_coffins_rule, s, memory, proposals)
