@@ -601,6 +601,26 @@ function buttons()
     return U.site_get(BUTTONS_KEY, {})
 end
 
+-- (0.105.47 review) A guessed button is pressed only where the screen reads
+-- "Trade" at the guessed tile, never where it reads Seize or Offer (a seize
+-- turns the caravan's civilisation hostile for good). Forbidden word, or text
+-- that can't be read (TrueType): the guess retired at once, so the Needs you
+-- comes back; readable without the word: a miss. Returns true to press, or
+-- false and why.
+function guess_word_ok(name, b, x, y)
+    if not (b and b.default) then return true end
+    local ok, v, w = pcall(function() return reqscript('ai-screen-buttons').check_word(x, y, 'Trade') end)
+    if not ok then v = 'unreadable' end
+    if v == 'ok' then return true end
+    local why = v == 'forbidden' and ('the guessed ' .. name .. ' button reads "' .. tostring(w) .. '" there: not pressed')
+        or v == 'missing' and ('the guessed ' .. name .. ' button doesn\'t read "Trade" there: not pressed')
+        or ('the screen\'s text by the guessed ' .. name .. ' button can\'t be read: not pressed blind')
+    pcall(function()
+        reqscript('ai-screen-buttons').miss(BUTTONS_KEY, name, why, v ~= 'missing')
+    end)
+    return false, why, v
+end
+
 -- (0.105.47) a guess's check: kept for every save when it worked, counted
 -- (retired after two, or at once with `now`) when it didn't
 local function guess_result(name, b, worked, why, now)
@@ -717,6 +737,15 @@ function press(name, txt)
     local x, y = button_at(b)
     if b.default and not (x >= 0 and y >= 0 and x < gps.dimx and y < gps.dimy) then
         return {ok = false, rejected = true, error = 'the guessed Trade button is off this screen (show it: probe_trade.py --here)'}
+    end
+    -- (0.105.47 review) a guess pressed only where the screen reads "Trade";
+    -- refused: nothing pressed, the ticks taken off and the screen closed
+    -- (this caravan not tried again this visit)
+    local word_ok, why, verdict = guess_word_ok(name, b, x, y)
+    if not word_ok then
+        clear(trade)
+        local c = close_screen()
+        return {ok = false, rejected = true, guess_refused = verdict, error = why, closed = c.closed}
     end
     -- DFHack's confirm tool asks "Are you sure you want to trade the selected
     -- goods?" on a click there (seen in game, 0.56.0): turned off for this one
@@ -934,6 +963,17 @@ function open_screen(dry_run, txt)
     local x, y = button_at(b)
     OPEN_CLICKED_AT, OPENED_FOR = os.time(), nil
     dfhack.timeout(3, 'frames', function()
+        -- (0.105.47 review) a guess clicked only where the sheet reads "Trade"
+        local word_ok, why, verdict = guess_word_ok('Depot', b, x, y)
+        if not word_ok then
+            pcall(function()
+                vs.open = false
+                vs.active_sheet = df.view_sheet_type.NONE
+                vs.active_id = -1
+            end)
+            LAST_OPEN = {clicked = false, guessed = true, guess_refused = verdict, error = why}
+            return
+        end
         local okc, err = pcall(click, x, y)
         LAST_OPEN = {clicked = okc, error = not okc and tostring(err) or nil, opened = trade.open,
                      guessed = b.default or nil}

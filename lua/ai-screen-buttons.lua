@@ -131,3 +131,70 @@ end
 function on_screen(x, y, dimx, dimy)
     return type(x) == 'number' and type(y) == 'number' and x >= 0 and y >= 0 and x < dimx and y < dimy
 end
+
+-- (0.105.47 review) A guessed button is pressed only where the screen reads
+-- its word: the trade screen's Seize and Offer sit by its Trade button, and a
+-- seize turns the caravan's civilisation hostile for good. The rows round the
+-- guessed tile (y-1..y+1, WORD_SPAN tiles each side) are read with
+-- dfhack.screen.readTile; a tile with no character (TrueType text reads as
+-- nothing) makes the text unreadable, and then nothing is pressed. A word
+-- counts when the guessed tile is on it or within WORD_PAD of its ends (the
+-- label inside its button); a forbidden word there wins over the right one.
+WORD_SPAN = 12
+WORD_PAD = 3
+FORBIDDEN_WORDS = {'Seize', 'Offer'}
+
+-- The text round (x, y): {rows = {...}, col = the guessed tile's place in a
+-- row (1-based)}, or nil when unreadable.
+function text_near(x, y, span)
+    span = span or WORD_SPAN
+    local gps = df.global.gps
+    local x0 = math.max(0, x - span)
+    local rows = {}
+    for yy = math.max(0, y - 1), math.min(gps.dimy - 1, y + 1) do
+        local chars = {}
+        for xx = x0, math.min(gps.dimx - 1, x + span) do
+            local ok, t = pcall(function() return dfhack.screen.readTile(xx, yy) end)
+            local ch = ok and t and tonumber(t.ch) or nil
+            if ch == nil then return nil end
+            table.insert(chars, (ch >= 32 and ch < 127) and string.char(ch) or ' ')
+        end
+        table.insert(rows, table.concat(chars))
+    end
+    return {rows = rows, col = x - x0 + 1}
+end
+
+local function covers(row, word, col)
+    local from = 1
+    while true do
+        local a, b = row:find(word, from, true)
+        if not a then return false end
+        if col >= a - WORD_PAD and col <= b + WORD_PAD then return true end
+        from = b + 1
+    end
+end
+
+-- Pure: 'ok' (the word at the guessed tile, no forbidden one there),
+-- 'forbidden' (Seize or Offer there; the word returned too), 'missing'
+-- (readable, the word not there), 'unreadable' (nil, or nothing but blanks).
+function judge(text, word)
+    if type(text) ~= 'table' or type(text.rows) ~= 'table' or #text.rows == 0 then return 'unreadable' end
+    if not table.concat(text.rows, '\n'):find('%S') then return 'unreadable' end
+    local col = tonumber(text.col) or 1
+    for _, w in ipairs(FORBIDDEN_WORDS) do
+        for _, row in ipairs(text.rows) do
+            if covers(row, w, col) then return 'forbidden', w end
+        end
+    end
+    for _, row in ipairs(text.rows) do
+        if covers(row, word, col) then return 'ok' end
+    end
+    return 'missing'
+end
+
+-- The check before a guessed press: verdict, the forbidden word, the text read.
+function check_word(x, y, word)
+    local text = text_near(x, y)
+    local v, w = judge(text, word)
+    return v, w, text
+end

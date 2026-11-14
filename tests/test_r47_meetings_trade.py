@@ -155,9 +155,27 @@ return e2
     return lua, env, B, mf, ff, clicks
 
 
+PAINT = r"""
+local env, x, y, word = ...
+env.TEXT = env.TEXT or {}
+env.TEXT[y] = env.TEXT[y] or {}
+for i = 1, #word do env.TEXT[y][x + i - 1] = word:byte(i) end
+env.dfhack.screen = {readTile = function(tx, ty)
+  local row = env.TEXT[ty]
+  return {ch = row and row[tx] or 32}
+end}
+"""
+
+
+def paint(lua, env, x, y, word):
+    """Draw a word on the fake screen (every other tile a blank, readable)."""
+    lua.execute(PAINT, env, x, y, word)
+
+
 @test("trade (the 8-13 Nov cause): a new save with no button shown still presses Trade, by the guess; known after")
 def _():
     lua, env, B, mf, ff, clicks = trade_env()
+    paint(lua, env, 56, 58, "Trade")                   # the screen reads Trade at the guess (58, 58)
     lua.execute("local env = ...; env.OPEN_CLICKED_AT = os.time(); env.OPENED_FOR = nil", env)
     assert env.buttons().Trade.default is True
     r = env.deal(lua.table_from([lua.table_from({"key": "BAR:STEEL", "count": 2})]), 1.2, False, None)
@@ -181,6 +199,7 @@ def _():
           end
           return {simulateInput = function() end}      -- nothing happens on the click
         end""", env)
+    paint(lua, env, 56, 58, "Trade")
     env.deal(lua.table_from([lua.table_from({"key": "BAR:STEEL", "count": 2})]), 1.2, False, None)
     p = env.press("Trade", None)
     assert p.ok and p.guessed and not p.traded, dict(p)
@@ -204,6 +223,53 @@ def _():
     f = B.read_file()
     assert f.retired["ai-overseer/trade-buttons"].Trade, dict(p)
     assert env.buttons().Trade is None                    # not pressed again: the Needs you comes back
+
+
+@test("review: the word check: Trade at the tile -> ok; Seize or Offer there -> forbidden; blank or unread -> unreadable")
+def _():
+    lua, env, G = store()
+    T = lambda rows, col: lua.table_from({"rows": lua.table_from(rows), "col": col})   # noqa: E731
+    assert env.judge(T(["   [ Trade ]   "], 7), "Trade") == "ok"
+    assert env.judge(T(["  Seize   Trade  "], 4), "Trade") == ("forbidden", "Seize")
+    assert env.judge(T(["Trade  Offer    "], 9), "Trade") == ("forbidden", "Offer")
+    assert env.judge(T(["Seize        Trade   "], 16), "Trade") == "ok"          # Seize far off the tile
+    assert env.judge(T(["   nothing here   "], 5), "Trade") == "missing"
+    assert env.judge(T(["          "], 5), "Trade") == "unreadable"
+    assert env.judge(None, "Trade") == "unreadable"
+
+
+@test("review: a guessed Trade press where the screen reads Seize: refused, nothing pressed, the guess retired, the screen closed")
+def _():
+    lua, env, B, mf, ff, clicks = trade_env()
+    paint(lua, env, 55, 58, "Seize")
+    env.deal(lua.table_from([lua.table_from({"key": "BAR:STEEL", "count": 2})]), 1.2, False, None)
+    p = env.press("Trade", None)
+    assert p.ok is False and p.rejected and p.guess_refused == "forbidden" and "Seize" in p.error, dict(p)
+    assert all(lst(clicks[i])[2] != "_MOUSE_L" for i in range(1, len(clicks) + 1)), [lst(clicks[i]) for i in range(1, len(clicks) + 1)]
+    assert B.read_file().retired["ai-overseer/trade-buttons"].Trade
+    assert env.buttons().Trade is None
+    tr = env.df["global"].game.main_interface.trade
+    assert not tr.open and not any(tr.goodflag[0][i].selected for i in range(len(tr.goodflag[0])))
+
+
+@test("review: a guessed Trade press where the text can't be read: no press, the guess retired, the Needs you back")
+def _():
+    lua, env, B, mf, ff, clicks = trade_env()          # this fake's readTile answers nothing (TrueType)
+    env.deal(lua.table_from([lua.table_from({"key": "BAR:STEEL", "count": 2})]), 1.2, False, None)
+    p = env.press("Trade", None)
+    assert p.ok is False and p.guess_refused == "unreadable" and "can't be read" in p.error, dict(p)
+    assert all(lst(clicks[i])[2] != "_MOUSE_L" for i in range(1, len(clicks) + 1))
+    assert env.buttons().Trade is None and B.read_file().retired["ai-overseer/trade-buttons"].Trade
+    # a button the player showed is pressed as before, text or no text
+    lua.execute("""local env = ...
+        env.dfhack.persistent.saveSiteData('ai-overseer/trade-buttons',
+            {Trade = {anchor = 'centre-bottom', dx = 0, dy = 5}})
+        local t = env.df.global.game.main_interface.trade
+        t.open = true
+        t.mer = {entity = 99, import_value = 5}           -- the next caravan""", env)
+    env.deal(lua.table_from([lua.table_from({"key": "BAR:STEEL", "count": 2})]), 1.2, False, None)
+    p = env.press("Trade", None)
+    assert p.pressed == "Trade" and p.guessed is None, dict(p)
 
 
 @test("trade: the survey can open the screen by the guess (can_open, where from); a guess off the screen isn't used")
@@ -238,10 +304,7 @@ def _():
     assert r.ok is False and "here-depot" in r.error, dict(r)
 
 
-@test("trade: a guessed depot click that opens no trade screen is judged later, the sheet closed, the miss counted")
-def _():
-    lua, env, B, *_ = trade_env()
-    lua.execute(r"""local env = ...
+DEPOT_SETUP = r"""local env = ...
         local t = env.df.global.game.main_interface.trade
         t.open = false
         local mer = {entity = 7, import_value = 1000, trade_state = 2}
@@ -269,7 +332,14 @@ def _():
             if key == '_MOUSE_L' then env.df.global.game.main_interface.assign_trade.open = true end
             if key == 'LEAVESCREEN' then env.df.global.game.main_interface.assign_trade.open = false end
           end}
-        end""", env)
+        end"""
+
+
+@test("trade: a guessed depot click that opens no trade screen is judged later, the sheet closed, the miss counted")
+def _():
+    lua, env, B, *_ = trade_env()
+    lua.execute(DEPOT_SETUP, env)
+    paint(lua, env, 42, 15, "Trade")                  # the sheet reads Trade at the guess
     r = env.open_screen(False, None)
     assert r.ok and r.clicking and r.guessed and lst(r.at) == [44, 15], dict(r)     # 120 - 76
     lua.execute("local env = ...; env.TIMERS[1]()", env)           # the click, 3 frames on
@@ -277,6 +347,19 @@ def _():
     mi = env.df["global"].game.main_interface
     assert mi.assign_trade.open is False and mi.view_sheets.open is False
     assert B.read_file().misses["ai-overseer/trade-buttons"].Depot == 1
+    # (review) the sheet reads Offer at the guess, or nothing readable: never clicked, the guess retired
+    for word, verdict in (("Offer", "forbidden"), (None, "unreadable")):
+        lua2, env2, B2, *_ = trade_env()
+        lua2.execute(DEPOT_SETUP, env2)
+        if word:
+            paint(lua2, env2, 43, 15, word)
+        r = env2.open_screen(False, None)
+        assert r.ok and r.clicking, dict(r)            # the sheet opened; the click waits for the layout
+        lua2.execute("local env = ...; env.TIMERS[1]()", env2)
+        assert env2.LAST_OPEN.clicked is False and env2.LAST_OPEN.guess_refused == verdict, dict(env2.LAST_OPEN)
+        assert env2.df["global"].game.main_interface.assign_trade.open is False       # nothing clicked
+        assert env2.df["global"].game.main_interface.view_sheets.open is False
+        assert B2.read_file().retired["ai-overseer/trade-buttons"].Depot and env2.buttons().Depot is None
 
 
 # --- the meeting light (lua/ai-meeting-open.lua) ------------------------------------------
