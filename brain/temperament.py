@@ -70,7 +70,12 @@ def effects(state: dict, cfg: dict | None = None) -> dict:
     w = v("welfare")
     out["welfare"] = (f"{'lavish' if w >= 50 else 'easy' if w <= -50 else 'fine'} meals; hospital "
                       f"{_x(factor(t, 'welfare'))}, tavern {_x(tavern_factor(t))}" + ("; no tailor" if w < -50 else ""))
-    out["stockpile"] = f"food, drink, wood and block reserves {_x(factor(t, 'stockpile'))}"
+    # (0.105.47) the reserves, the storage piles' size and the storage levels kept
+    from planner_reserves import stock_factor, storage_room_size, reserve_storage_want
+    sz = storage_room_size(t)
+    keep = reserve_storage_want(t, int((state.get("dwarves") or {}).get("total") or 0), cfg)
+    out["stockpile"] = (f"food, drink, wood, block, bar and cloth reserves {_x(stock_factor(t))}; "
+                        f"storage piles {sz}x{sz}" + (f"; {keep} storage levels kept" if keep else ""))
     out["agriculture"] = ("no farms (hunt and gather)" if v("agriculture") <= -100
                           else f"farm size {_x(factor(t, 'agriculture'))}")
     h = v("husbandry")
@@ -131,7 +136,11 @@ def effects(state: dict, cfg: dict | None = None) -> dict:
     out["engineering"] = ((f"a cistern from {cp} dwarves" if cp else "no cistern")
                           + (f"; {sm} mechanisms kept spare" if sm else "")
                           + f"; style: {style_leanings('engineering') or 'none'}")
-    out["verticality"] = f"style only for now: {style_leanings('verticality') or 'none'} (acts when the plan is drawn)"
+    # (0.105.47) a deep fort takes its stair past the first cavern (planner_descent)
+    import masterplan
+    out["verticality"] = (("the stair goes past the first cavern; the deep levels under it as the fort grows; "
+                           if masterplan.crosses_caverns(t) else "")
+                          + f"style: {style_leanings('verticality') or 'none'} (the plan's bands when it is drawn)")
     jp = jail_plan(t, cfg, 100)
     out["justice"] = ((f"a jail from {jp['min_dwarves']} dwarves, {jp['cells']} cells per 100"
                        + ("; a prison as it grows" if v("justice") >= cfg["prison_justice_at"] else "")) if jp

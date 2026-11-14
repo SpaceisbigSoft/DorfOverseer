@@ -180,6 +180,7 @@ SECTION_DEFAULTS = {
     "miasma": {},            # (0.105.41, item 11) miasma indoors, what rots near it, dump zones outside (lua/ai-syndromes.lua)
     "hunt": {"targets": [], "squads": [], "hunts": []},   # (0.105.45) threats the squads may hunt, the squads, hunts under way (lua/ai-hunt.lua)
     "artifacts": {},         # (item 12) artifacts on the map, display furniture, the AI's rooms for it (lua/ai-artifacts.lua)
+    "descent": {},           # (0.105.47) the deep plan's stair past the first cavern: none, ready, working, built, blocked (lua/ai-descent.lua)
     "migration": {},         # (0.105.46, I4) whether a migrant wave can be called: force script, waves queued, DFHack's hermit (lua/ai-recovery.lua)
     "hunt": {"targets": [], "squads": [], "hunts": []},   # (0.105.45) hunting: targets and the way to them, squads, the AI's hunts, history (lua/ai-hunt.lua)
 }

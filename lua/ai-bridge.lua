@@ -628,6 +628,17 @@ ACTIONS = {
     call_migrants = function(a)
         return reqscript('ai-recovery').call_migrants(a.dry_run == true)
     end,
+    -- (0.105.47) the deep plan's stair taken past the first cavern, a step at a
+    -- time: a walled shaft through the cavern (lua/ai-descent.lua, brain/planner_descent.py)
+    cross_cavern = function(a)
+        local x, y, e = math.tointeger(tonumber(a.x)), math.tointeger(tonumber(a.y)), math.tointeger(tonumber(a.elev))
+        if not x or not y or not e then return reject('cross_cavern needs x, y and elev') end
+        if type(a.layer) ~= 'string' or not a.layer:match('^Cavern%d$') then
+            return reject('cross_cavern: layer is Cavern1, Cavern2 or Cavern3')
+        end
+        return reqscript('ai-descent').cross_cavern({x = x, y = y, elev = e, layer = a.layer}, a.dry_run == true,
+                                                    get_layers())
+    end,
 }
 
 -- (13c) The actions whose dry run changes nothing in the fort, all the way
@@ -705,6 +716,7 @@ for _, name in ipairs({
     'build_killzone', 'reset_cage_traps',   -- (0.105.45) each dry run plans (or counts) and places nothing
     'thirst_unforbid',   -- (0.105.46, I2) its dry run counts the drinks and lets none go
     'call_migrants',   -- (0.105.46, I4) its dry run names the script and queues nothing
+    'cross_cavern',    -- (0.105.47) its dry run plans the step (quickfort's dry run) and marks nothing
 }) do DRY_OK[name] = true end
 
 -- These only change what's displayed, so they still work while halted, dry
@@ -784,6 +796,7 @@ BRIDGE_MODULES = {
     'ai-thirst',   -- (0.105.46, I2) the thirst watch
     'ai-recovery',   -- (0.105.46, I4)
     'ai-slices', 'ai-cavern-scan',   -- (0.105.46, I6) walks spread over several reports; the caverns' seen samples
+    'ai-descent',   -- (0.105.47) the deep plan's stair past the first cavern
 }
 -- the split-off modules that carry a version mark of their own
 MARKED_MODULES = {'ai-military-gear', 'ai-society-burrows', 'ai-constructions'}
@@ -1268,6 +1281,10 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
         if fresh and not (type(r) == 'table' and r.error) then CONSTRUCTIONS_FRESH = nil end
         return r
     end,
+    -- (0.105.47) the deep plan's crossing of the first cavern: none, ready,
+    -- working, built or blocked (why), its depth, a danger in the layer
+    -- (lua/ai-descent.lua; nine tiles a level of one column)
+    descent = function() return safe(function() return reqscript('ai-descent').report(get_layers()) end) end,
 }
 
 -- The pulse: a small report for the frequent check between full ones.
