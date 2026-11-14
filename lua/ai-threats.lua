@@ -1161,6 +1161,13 @@ local function read_cancels(now, window)
     return rows
 end
 
+-- (0.105.46, I2) the cancellations of the last `window` ticks, newest first
+-- ({text, tick, n, x, y, z}): lua/ai-thirst.lua reads each dwarf's last
+-- cancelled Drink job from them
+function cancel_rows(window)
+    return read_cancels(now_tick(), window or INTERRUPT_WINDOW)
+end
+
 local function race_name(u)
     local ok, n = pcall(function() return df.global.world.raws.creatures.all[u.race].name[0] end)
     return ok and n or nil

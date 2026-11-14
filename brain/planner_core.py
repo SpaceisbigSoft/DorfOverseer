@@ -195,6 +195,7 @@ class Memory:
     place_full: dict = field(default_factory=dict)       # (item7) "rule:zone" -> {n, until}: a zone with no free floor for a statue
     no_effect: dict = field(default_factory=dict)        # (0.105.24) action key -> {reason, n, tick}: done for the same reason again
     stuck_seen: dict = field(default_factory=dict)       # (0.105.45) the stuck sweep: {items {key: {state, sig, moved, step, at}}, families {fam: [ticks]}, past {kind: n}, tick}
+    thirst_book: dict = field(default_factory=dict)      # (0.105.46, I2) the thirst watch: {acted {"action:unit": tick}, told {unit: tick}}
     story_season: str = ""                                # the last season the AI-written chronicle told ("y<year> <season>")
     gate_closed_by_ai: bool = False                      # the AI pulled the gate lever to close it
     # (0.105.33) the "AI gate" lever's state when the gate is open (lever id

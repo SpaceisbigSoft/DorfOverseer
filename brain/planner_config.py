@@ -1053,4 +1053,12 @@ PLANNER_CONFIG = {
     "lure_open_cooldown_ticks": 300,
     "lure_shut_cooldown_ticks": 25,       # shutting is safety: soon again if it didn't take
     "lure_archer_cooldown_ticks": 1200,
+    # (0.105.46, I2) the thirst watch (brain/planner_thirst.py, lua/ai-thirst.lua)
+    "thirst_act_timer": 35000,            # a dwarf this thirsty gets a remedy (DF: thirsty 25000, dehydrated 50000)
+    "thirst_note_timer": 25000,           # ...and a note from here (only with a reason the AI can name)
+    "thirst_retry_ticks": 600,            # the same remedy for the same dwarf again after half a day at the soonest
+    "thirst_notes_max": 8,                # dwarves noted one by one a cycle (the rest in one line)
+    "thirst_actions_max": 6,              # remedies a cycle
+    "thirst_unforbid_max": 10,            # drinks let go for one dwarf
+    "thirst_cooldown_ticks": 0,           # (it paces each dwarf itself)
 }

@@ -371,6 +371,16 @@ ACTIONS = {
         -- release_only: the thirsty and hungry let out, nobody locked in (run_action sets it while halted)
         return reqscript('ai-killers').cell({units = ids, release_only = a.release_only == true}, a.dry_run == true)
     end,
+    -- (0.105.46, I2) the drink forbidden in a parched dwarf's walk group let
+    -- go, the nearest first (lua/ai-thirst.lua; never with the gates shut
+    -- against enemies, never near a danger)
+    thirst_unforbid = function(a)
+        local id = type(a.unit_id) == 'number' and math.tointeger(a.unit_id) or nil
+        if not id then return reject('thirst_unforbid needs unit_id') end
+        local max = a.max ~= nil and math.tointeger(a.max) or nil
+        if a.max ~= nil and (not max or max < 1 or max > 50) then return reject('thirst_unforbid: max is 1-50') end
+        return reqscript('ai-thirst').unforbid_drink(id, a.dry_run == true, max)
+    end,
     -- (0.105.45) a great beast sealed in a cavern lured into a pocket behind
     -- one of the AI's cavern doors and caught or shut in (lua/ai-lure.lua)
     build_lure = function(a)
@@ -688,6 +698,7 @@ for _, name in ipairs({
     'place_display', 'display_artifact',   -- (item 12) each dry run checks and returns before it builds or makes a job
     'hunt_send', 'hunt_recall',   -- (0.105.45) each dry run checks the target and squads, and gives no order
     'build_killzone', 'reset_cage_traps',   -- (0.105.45) each dry run plans (or counts) and places nothing
+    'thirst_unforbid',   -- (0.105.46, I2) its dry run counts the drinks and lets none go
 }) do DRY_OK[name] = true end
 
 -- These only change what's displayed, so they still work while halted, dry
@@ -764,6 +775,7 @@ BRIDGE_MODULES = {
     'ai-util', 'ai-water', 'ai-waterworks', 'gui/ai-overseer',
     'ai-threat-facts',          -- (0.105.45) a threat's facts for the matchup (called from the report)
     'ai-lure',   -- (0.105.45)
+    'ai-thirst',   -- (0.105.46, I2) the thirst watch
 }
 -- the split-off modules that carry a version mark of their own
 MARKED_MODULES = {'ai-military-gear', 'ai-society-burrows', 'ai-constructions'}
@@ -1224,6 +1236,11 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
     -- each, the chokes between, the barracks, the AI's pick now (lua/ai-shelter-plan.lua;
     -- in the pulse: only a units scan with no danger on the map)
     shelter_plan = function() return safe(function() return reqscript('ai-shelter-plan').report(txt) end) end,
+    -- (0.105.46, I2) the thirst watch: each thirsty citizen with why they don't
+    -- drink (no path, drink forbidden, a burrow or the alert, jailed, insane,
+    -- stranded, the last cancelled Drink job), and the deaths of thirst with
+    -- the last reason known (lua/ai-thirst.lua; in the pulse)
+    thirst = function() return safe(function() return reqscript('ai-thirst').report() end) end,
     -- (0.105.30) what the fort has built: finished constructions by shape and
     -- material, above or below ground, roofed surface tiles, the waiting ones
     -- and the AI's own (lua/ai-constructions.lua; one pass, every 3 days)
@@ -1249,6 +1266,7 @@ PULSE_SECTIONS = {
     'env_hazards',   -- (0.105.41, item 7) spilt magma spreads in minutes: read each cycle
     'shelter_plan',  -- (0.105.45) a titan inside walks to the shelter in minutes: read each cycle
     'lures',         -- (0.105.45) a lure is opened and shut on what the beast does: read each cycle
+    'thirst',        -- (0.105.46, I2) thirst kills in days: read each cycle
 }
 TIERS = {pulse = true, daily = true, survey = true}
 -- report sections rebuilt only every so many game days (the lag pass, Oct 23:

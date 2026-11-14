@@ -62,6 +62,7 @@ from planner_killers import _killer_rule  # noqa: E402  (item3) a killer among t
 from planner_hunt import _hunt_rule, note_hunt_cycle  # noqa: E402  (0.105.45) hunting threats the squads can beat
 from planner_shelter import _shelter_pick_rule  # noqa: E402  (0.105.45) the shelter away from the threat
 from planner_stuck import _stuck_rule, note_stuck  # noqa: E402  (0.105.45) the sweep for things stuck "in progress"
+from planner_thirst import _thirst_rule, thirst_journal  # noqa: E402,F401  (0.105.46, I2) the thirst watch
 from planner_killzone import _killzone_rule  # noqa: E402  (0.105.45) kill zones at the gates and cavern openings
 from planner_lure import _lure_rule  # noqa: E402  (0.105.45) a sealed cavern beast lured into a pocket, cut off
 from planner_hauling import _hauling_labor_rule, note_hauling  # noqa: E402  (0.105.40 M5) hauling balanced
@@ -983,6 +984,11 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
         kept = _guard(_pasture_hold, s, memory, proposals, notes)
         if kept is not None:            # (0.105.4 review) [] is an answer (all held), not a failure
             proposals = kept
+    # (0.105.46, I2) the thirst watch: each thirsty dwarf's reason and remedy;
+    # after the other rules, so a remedy another rule proposes this cycle (the
+    # gates, the prisoners' water, the interrupter's squad) isn't doubled
+    if "thirst" not in errors:
+        _guard(_thirst_rule, s, cfg, proposals, notes, memory)
     # (0.105.45) the sweep for things stuck "in progress": after every other
     # rule, so a thing another rule acts on this cycle is left to it
     if "stuck" not in errors:
