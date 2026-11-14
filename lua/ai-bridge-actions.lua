@@ -1170,7 +1170,52 @@ function act_set_population_cap(a)
     if not cap then return reject('set_population_cap needs cap 7-1000') end
     local strict = int_in(a.strict or (cap + 20), cap, 1100)
     if not strict then return reject('strict must be at least the cap') end
-    return reqscript('ai-society').set_popcap(cap, strict)
+    -- (item5) DF's baby caps, raised (never lowered) for a fort under its floor
+    local babies, pct
+    if a.baby_cap ~= nil then
+        babies = int_in(a.baby_cap, 1, 1000)
+        if not babies then return reject('baby_cap must be 1-1000') end
+    end
+    if a.baby_pct ~= nil then
+        pct = int_in(a.baby_pct, 1, 1000)
+        if not pct then return reject('baby_pct must be 1-1000') end
+    end
+    return reqscript('ai-society').set_popcap(cap, strict, babies, pct)
+end
+
+-- (item5) Prisoners let go when the fort has no water for them: a citizen in
+-- the jail drinks only what is carried from a well or a water zone, never
+-- booze (Hammerstirred, the Hermit hold with no well: 9 office holders died
+-- of thirst in their chains, one after another, y263-269). The sentence is
+-- cut short to its last day; DF itself unchains them when it runs out.
+-- ids: the prisoners (unit ids) to let go; none: every one serving time.
+function act_release_prisoners(a)
+    local want
+    if a.ids ~= nil then
+        if type(a.ids) ~= 'table' then return reject('ids must be a list of unit ids') end
+        want = {}
+        for _, v in ipairs(a.ids) do
+            local id = whole_number(v)
+            if not id then return reject('ids must be whole numbers') end
+            want[id] = true
+        end
+    end
+    local released, names = 0, {}
+    local okp, err = pcall(function()
+        for _, pu in ipairs(df.global.plotinfo.punishments) do
+            if (pu.prison_counter or 0) > 1 then
+                local u = punished_unit(pu)
+                if u and (not want or want[u.id]) and dfhack.units.isCitizen(u) and not dfhack.units.isDead(u) then
+                    pu.prison_counter = 1
+                    released = released + 1
+                    if #names < 5 then table.insert(names, txt(dfhack.units.getReadableName(u))) end
+                end
+            end
+        end
+    end)
+    if not okp then return {ok = false, error = 'the punishments could not be read: ' .. tostring(err):sub(1, 120)} end
+    if released == 0 then return reject('no citizen is serving time in the jail') end
+    return {ok = true, released = released, names = names}
 end
 
 -- (0.100, security pass) at most one dwarf sent away a game week, whoever

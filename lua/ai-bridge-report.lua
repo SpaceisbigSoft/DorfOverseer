@@ -2073,7 +2073,10 @@ function get_society()
         out.pastures, out.pastures_error = 0, tostring(pr):sub(1, 160)
     end
     local okp, cap = pcall(soc.get_popcap)
-    if okp and cap then out.pop_cap, out.strict_pop_cap = cap.cap, cap.strict end
+    if okp and cap then
+        out.pop_cap, out.strict_pop_cap = cap.cap, cap.strict
+        out.baby_cap, out.baby_pct = cap.baby_cap, cap.baby_pct      -- (item5)
+    end
     -- (0.104.78) the recreation burrow's members
     -- (0.105.33 fix) txt for the released names; a failure reported (the
     -- brain then lets everyone out), not a missing section
@@ -2504,6 +2507,14 @@ function convictable(cr, site_id)
     return ok and yes or false
 end
 
+-- (item5) A punishment's convict as a unit: the field is a unit in the
+-- df-structures this was written against, an id in some others.
+function punished_unit(pu)
+    local c = pu.criminal
+    if type(c) == 'number' then return c >= 0 and df.unit.find(c) or nil end
+    return c
+end
+
 -- (0.104.52) Justice: the jail zones with their restraints (in use or free),
 -- and the punishments waiting (beatings, hammer strikes, time in jail).
 -- Enxah: 2 chains for 73 dwarves, a tantrum a minute, and a sheriff who
@@ -2537,6 +2548,23 @@ function get_justice()
             out.restraints = out.restraints + e.chains + e.cages
             out.restraints_used = out.restraints_used + e.used
             table.insert(out.jails, e)
+        end
+    end)
+    -- (item5) the citizens serving time, and how thirsty: a prisoner gets
+    -- water only from a well or a water zone (Hammerstirred, no well: 9 office
+    -- holders, jailed for a mandate nobody met, died of thirst in their chains)
+    pcall(function()
+        out.prisoners = {}
+        for _, pu in ipairs(df.global.plotinfo.punishments) do
+            if (pu.prison_counter or 0) > 0 and #out.prisoners < 20 then
+                local u = punished_unit(pu)
+                if u and not dfhack.units.isDead(u) then
+                    local th = 0
+                    pcall(function() th = u.counters2.thirst_timer end)
+                    table.insert(out.prisoners, {id = u.id, name = txt(dfhack.units.getReadableName(u)),
+                                                 thirst = th, days = pu.prison_counter})
+                end
+            end
         end
     end)
     pcall(function()

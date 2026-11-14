@@ -180,6 +180,7 @@ ACTIONS = {
     refresh_shelter = act_refresh_shelter,       -- (0.105.26)
     set_population_cap = act_set_population_cap,
     expel_dwarf = act_expel_dwarf,
+    release_prisoners = act_release_prisoners,   -- (item5) no water for the jail
     pasture = act_pasture,
     nest_boxes = act_nest_boxes,             -- (0.104.80)
     train_war = act_train_war,               -- (0.104.81)

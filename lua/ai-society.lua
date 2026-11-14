@@ -1267,15 +1267,32 @@ function get_popcap()
     local t = popcap_holder()
     if not t then return nil end
     local ok, strict = pcall(function() return t.strict_population_cap end)
-    return {cap = t.population_cap, strict = ok and strict or nil}
+    -- (item5) DF's baby caps (no conception past either), where this DF has them
+    local okb, babies = pcall(function() return t.baby_cap_absolute end)
+    local okp, pct = pcall(function() return t.baby_cap_percent end)
+    return {cap = t.population_cap, strict = ok and strict or nil,
+            baby_cap = okb and type(babies) == 'number' and babies or nil,
+            baby_pct = okp and type(pct) == 'number' and pct or nil}
 end
 
-function set_popcap(cap, strict)
+function set_popcap(cap, strict, babies, pct)
     local t = popcap_holder()
     if not t then return {ok = false, error = 'this DF version keeps the population cap somewhere the AI can\'t find'} end
     t.population_cap = cap
     pcall(function() t.strict_population_cap = strict end)
-    return {ok = true, cap = cap, strict = strict}
+    local out = {ok = true, cap = cap, strict = strict}
+    -- (item5) the baby caps only ever raised
+    if babies then
+        pcall(function()
+            if t.baby_cap_absolute < babies then t.baby_cap_absolute = babies; out.baby_cap = babies end
+        end)
+    end
+    if pct then
+        pcall(function()
+            if t.baby_cap_percent < pct then t.baby_cap_percent = pct; out.baby_pct = pct end
+        end)
+    end
+    return out
 end
 
 -- Extreme low Growth: the fort slowly shrinks. One dwarf leaves, the way

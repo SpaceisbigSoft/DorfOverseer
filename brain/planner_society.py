@@ -18,7 +18,7 @@ from planner_visitors import *  # noqa: F401,F403  (13c: split out by theme)
 from planner_moods import *  # noqa: F401,F403  (13c: split out by theme)
 from planner_insane import insane_risk  # (0.105.40b) the near-breaking first in the stress care
 
-__all__ = ["_people_rules", "_comfort_rules", "stress_causes", "THOUGHT_WORDS", "_doctor_patient_rule", "_hospital_burrow_rule", "_calm_burrow_rule", "MOOD_WORKSHOPS", "PETITION_KINDS", "petition_orders_wanted", "_petition_rules", "_citizenship_notes", "_residency_rule", "residency_stance", "_location_access_rule", "note_heists", "heist_lockout", "heist_lockout_days", "visitor_shut", "location_stale", "note_locations", "mayor_meetings", "HEISTS_KEEP", "_jail_size_rule", "_convict_rule", "_break_fights_rule", "_sync_offices_rule", "patient_waits", "_health_rules", "TANTRUM_KEEP", "note_tantrums", "_noble_rooms_rule", "outsider_orders", "NEED_ADVICE", "JEWEL_RECIPES", "_recreation_rule", "_stress_care", "_needs_notes", "_location_supply_rules", "POST_LABORS", "STAFF_POSTS", "STAFF_MAX", "_traction_rule", "_wish_words", "_wish_met", "wish_key", "petition_lean", "_location_petition_rules", "_meeting_notes", "_grandeur_rule", "_location_value_rule", "_staff_rule", "_quick_location_rule", "_needs_rules", "_mood_rules", "mood_item_text", "_mood_materials", "_dead_notes", "AI_OFFICES", "_society_notes", "_booze_variety_rule", "drink_known_short_s", "_mood_make", "_mood_slaughter", "MOOD_CONSUMERS", "MOOD_TRADE_KEYS", "mood_trade_wants", "ghost_work_blocked"]
+__all__ = ["_people_rules", "_comfort_rules", "stress_causes", "THOUGHT_WORDS", "_doctor_patient_rule", "_hospital_burrow_rule", "_calm_burrow_rule", "MOOD_WORKSHOPS", "PETITION_KINDS", "petition_orders_wanted", "_petition_rules", "_citizenship_notes", "_residency_rule", "residency_stance", "_location_access_rule", "note_heists", "heist_lockout", "heist_lockout_days", "visitor_shut", "location_stale", "note_locations", "mayor_meetings", "HEISTS_KEEP", "_jail_size_rule", "_convict_rule", "_prisoner_water_rule", "_break_fights_rule", "_sync_offices_rule", "patient_waits", "_health_rules", "TANTRUM_KEEP", "note_tantrums", "_noble_rooms_rule", "outsider_orders", "NEED_ADVICE", "JEWEL_RECIPES", "_recreation_rule", "_stress_care", "_needs_notes", "_location_supply_rules", "POST_LABORS", "STAFF_POSTS", "STAFF_MAX", "_traction_rule", "_wish_words", "_wish_met", "wish_key", "petition_lean", "_location_petition_rules", "_meeting_notes", "_grandeur_rule", "_location_value_rule", "_staff_rule", "_quick_location_rule", "_needs_rules", "_mood_rules", "mood_item_text", "_mood_materials", "_dead_notes", "AI_OFFICES", "_society_notes", "_booze_variety_rule", "drink_known_short_s", "_mood_make", "_mood_slaughter", "MOOD_CONSUMERS", "MOOD_TRADE_KEYS", "mood_trade_wants", "ghost_work_blocked"]
 
 
 # (0.105.35) nothing waits for the player: the rules that took over what the
@@ -99,6 +99,34 @@ def _convict_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> N
     proposals.append(Proposal("convict", {"type": "convict", "max": k},
                               f"{n} solved case(s) wait for a trial nobody gives (DF sentences only convicted ones): "
                               f"convict {k}, the oldest first ({free} free jail place(s), {queued_} punishment(s) waiting)", 4))
+
+
+def _prisoner_water_rule(s: dict, cfg: dict, proposals: list, notes: list) -> None:
+    """(item5) A prisoner drinks only water carried from a well or a water
+    zone, never booze. Hammerstirred (the Hermit hold, no well, its water zone
+    frozen or gone): the queen's mandates went unmet, DF chained one office
+    holder after another for it, and 9 of them died of thirst in the jail,
+    y263-269, beside 22 drinks a dwarf. With no usable well every citizen
+    serving time is let go (the sentence cut to its last day: DF unchains
+    them); with a well, those already thirsty all the same (the well out of
+    reach, or its bucket gone)."""
+    from planner_wells import usable_wells
+    pr = [p for p in _l(_d(s.get("justice")).get("prisoners")) if isinstance(p, dict) and isinstance(p.get("id"), int)]
+    if not pr:
+        return
+    if not usable_wells(s):
+        ids, why = None, f"{len(pr)} citizen(s) in the jail and no well to bring them water (they get no booze)"
+    else:
+        dry = [p for p in pr if int(p.get("thirst") or 0) >= cfg["prisoner_thirst_release"]]
+        if not dry:
+            return
+        ids, why = [p["id"] for p in dry], f"{len(dry)} citizen(s) in the jail are going thirsty (the well's water isn't reaching them)"
+    names = ", ".join(str(p.get("name")) for p in pr[:3] if p.get("name"))
+    action = {"type": "release_prisoners"}
+    if ids is not None:
+        action["ids"] = ids
+    proposals.append(Proposal("prisoners_water", action,
+                              f"{why}: let them go before they die of thirst" + (f" ({names})" if names else ""), 1))
 
 
 def _break_fights_rule(s: dict, memory, cfg: dict, proposals: list) -> None:

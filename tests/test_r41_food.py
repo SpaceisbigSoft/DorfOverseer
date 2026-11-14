@@ -496,6 +496,8 @@ brain = Path(sys.argv[1]); sys.path.insert(0, str(brain))
 fixtures = Path(sys.argv[2])
 from digest import normalize, digest
 from planner import Memory, plan, record, select, note_cycle, TICKS_PER_DAY
+from planner import PLANNER_CONFIG as _PC
+_PC.update({"survival_floor": 0, "mandate_shields": False, "mandates_low_deference": False})  # (item5) its floor and mandate changes off: main's behaviour compared
 out = {}
 for path in [fixtures / "test_fort.json"] + sorted((fixtures / "real").glob("*.json")):
     base = json.loads(path.read_text(encoding="utf-8"))

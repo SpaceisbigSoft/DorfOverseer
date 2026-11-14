@@ -159,8 +159,32 @@ def _pop_cap_rule(s: dict, memory, cfg: dict, citizens: int, proposals: list, no
         why = " and ".join(held_why) + ": no newcomers for now"
     cap = max(7, cap)
     strict = max(strict, cap)
-    if so["pop_cap"] != cap or (isinstance(so.get("strict_pop_cap"), int) and so["strict_pop_cap"] != strict):
-        proposals.append(Proposal("pop_cap", {"type": "set_population_cap", "cap": cap, "strict": strict},
+    # (item5) the floor: a fort under it takes migrants and has children
+    # whatever the sliders say (the fort stays small and closed, not extinct);
+    # Extreme-low Growth shrinks the fort on purpose and is left alone
+    floor = int(cfg.get("survival_floor") or 0)
+    babies = {}
+    if floor and citizens < floor and mode != "shrink":
+        if cap < floor or strict < floor + 10:
+            why = (f"{why}; but the fort is down to {citizens} dwarves, under its floor of {floor}: "
+                   f"migrants and births let in up to it")
+        cap = max(cap, floor)
+        strict = max(strict, floor + 10)
+        for k, ck in (("baby_cap", "floor_baby_cap"), ("baby_pct", "floor_baby_pct")):
+            have, want = so.get(k), int(cfg.get(ck) or 0)
+            if isinstance(have, int) and not isinstance(have, bool) and want and have < want:
+                babies[k] = want
+        h = _d(s.get("homes"))
+        if isinstance(h.get("couples"), int):
+            notes.append(f"the fort is under its floor of {floor} dwarves ({citizens}; {h.get('couples')} married "
+                         f"couple(s), {h.get('children') or 0} child(ren)): DF's cap stays open to migrants and "
+                         "births whatever the sliders; under 20 dwarves DF sends no strange moods")
+        if babies:
+            why += ("; DF's baby cap raised (" + ", ".join(f"{k.replace('_', ' ')} {so.get(k)} -> {v}"
+                                                          for k, v in babies.items()) + ")")
+    if (so["pop_cap"] != cap or (isinstance(so.get("strict_pop_cap"), int) and so["strict_pop_cap"] != strict)
+            or babies):
+        proposals.append(Proposal("pop_cap", {"type": "set_population_cap", "cap": cap, "strict": strict, **babies},
                                   f"{why}: population cap {so['pop_cap']} (strict {so.get('strict_pop_cap')}) "
                                   f"-> {cap} (strict {strict})", 4))
 
