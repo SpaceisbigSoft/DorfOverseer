@@ -268,11 +268,9 @@ local function enemy_near(x, y, z)
 end
 
 -- DF asked to redo its walk map, where the field exists. true if set.
+-- (0.105.47, J16) ai-util's repath: one way to do it for every module
 function reindex_paths()
-    return pcall(function()
-        if df.global.world.reindex_pathfinding == nil then error('no such field') end
-        df.global.world.reindex_pathfinding = true
-    end) == true
+    return U.repath('unstick') == true
 end
 
 -- The AI's own piece: worked by an "AI gate..." lever, or a hatch of a cut
@@ -396,12 +394,12 @@ function unstick_gate(id, step, dry_run, cavern_ok)
             end
         end
         if not dry_run then
-            pcall(function() b.door_flags.forbidden = false end)
+            U.lock_door(b, false, 'unstick')
             if shut and lever then
                 out.pulled = pull_instant(lever)
                 if not out.pulled then table.insert(did, 'the lever pull was refused') end
             elseif shut then
-                pcall(function() b.door_flags.closed = false end)
+                U.shut_door(b, false, 'unstick')
             end
         end
         finish_step()
@@ -706,6 +704,7 @@ function check()
 end
 
 function summary()
+    pcall(brain_seen)           -- (0.105.47, J16) the brain is here: the watcher's heartbeat
     pcall(gates_restore)
     -- (0.105.23) a link made while no watch ran (a reload): taken up, and a
     -- hatch it shut opened, at the next report at the latest

@@ -191,6 +191,9 @@ function pull_instant(lever_id)
         for _, j in ipairs(jobs) do dfhack.job.removeJob(j) end
     end)
     local ok, out, rv = pcall(dfhack.run_command_silent, 'lever', 'pull', '--id', tostring(lever_id), '--instant')
+    -- (0.105.47, J16) an instant pull sets the gate from Lua, not by DF's
+    -- own pull (E, 0.105.32: the walk map stayed split after one): redone
+    if ok and rv == CR_OK then pcall(repath) end
     return ok and rv == CR_OK
 end
 
@@ -241,15 +244,34 @@ function sealed_entrance(e, h)
     return false
 end
 
+-- (0.105.47, live 14 Nov 17:23) A door or hatch locked or unlocked by a
+-- bare door_flags.forbidden write: DF doesn't redo its walk groups for it
+-- (the hatches read open, the messenger's walk group 6712 still apart from
+-- the outside's 1), so DF is asked to redo its walk map
+-- (world.reindex_pathfinding, ai-gates-stuck reindex_paths) after each one.
+-- (0.105.47, J16) one helper for the whole AI: ai-util's repath (once a
+-- tick); GATES.repaths counts the gates' own. lock_gate: a gate piece locked
+-- or unlocked through ai-util's lock_door (which repaths), counted the same.
+function repath()
+    local ok, done = pcall(function() return reindex_paths() end)
+    if ok and done then GATES.repaths = (GATES.repaths or 0) + 1 end
+    return ok and done or false
+end
+
+function lock_gate(b, locked)
+    local changed, ok = U.lock_door(b, locked, 'gate')
+    if changed then GATES.repaths = (GATES.repaths or 0) + 1 end
+    return changed, ok
+end
+
 -- (0.105.23) A door or hatch on a lever, set by its lever: true if it was
 -- pulled. Without a lever of this entrance's own to pull, it's only locked
 -- (as before 0.105.23). `pulled` keeps one pull per lever per call.
 local function set_lever_door(g, b, close, pulled)
     if not g.drive_lever then
-        if b.door_flags.forbidden ~= close then b.door_flags.forbidden = close; return true end
-        return false
+        return (lock_gate(b, close))
     end
-    if not close and b.door_flags.forbidden then b.door_flags.forbidden = false end   -- (a lock left from before the link)
+    if not close then lock_gate(b, false) end   -- (a lock left from before the link)
     local shut = door_shut(b)
     if shut == nil or shut == close or pulled[g.drive_lever] then return false end
     pulled[g.drive_lever] = true
@@ -399,10 +421,7 @@ local function set_entrance(e, close, was_opening)
             elseif g.lever_driven then
                 if set_lever_door(g, b, close, pulled) then done = done + 1 end
             else
-                if b.door_flags.forbidden ~= close then
-                    b.door_flags.forbidden = close
-                    done = done + 1
-                end
+                if lock_gate(b, close) then done = done + 1 end
             end
         end
     end
@@ -626,6 +645,68 @@ function should_close(nearest, outside)
     return nearest <= IMMINENT or (nearest <= WIDE and outside == 0)
 end
 
+---------------------------------------------------------------------------
+-- (0.105.47, J16) A lockdown that outlives its cause. Live 14 Nov 17:33
+-- (War-hold): the keepers stopped 13 Nov, yet the watcher's timer went on in
+-- DF holding a lockdown (its peak unknown after a restore, so may_reopen
+-- never passed); the player pulled the three AI gate levers open and within
+-- seconds its "lost close" re-pulls shut them again. A messenger and a squad
+-- could never leave. So:
+--   * the peak alone no longer keeps an entrance shut for ever: with no
+--     invader, no great danger and nothing within WIDE, it opens after
+--     LIFT_CHECKS clear looks (a day; half a day, REOPEN_CHECKS, with the
+--     brain away);
+--   * the brain away (no report for UNATTENDED_TICKS: GATES.brain_tick, set by
+--     each `entrances` report): the watcher shuts only for a danger within
+--     IMMINENT and opens what it holds once none is within 2 * IMMINENT for
+--     UNATTENDED_CLEAR looks (the cavern seal still keeps what it holds);
+--   * a gate it holds found open again (the player's pull, a lost job) with
+--     no danger within WIDE is left open and the entrance unbooked: never
+--     pulled back shut against the player.
+---------------------------------------------------------------------------
+LIFT_CHECKS = 2 * REOPEN_CHECKS
+UNATTENDED_TICKS = 2400           -- two game days without a report: the brain is away
+UNATTENDED_CLEAR = 2
+
+local function now_abs()
+    local ok, t = pcall(U.abs_tick)
+    return ok and t or nil
+end
+
+-- The brain away? (no `entrances` report for UNATTENDED_TICKS)
+function brain_away(now)
+    now = now or now_abs()
+    local t = GATES.brain_tick
+    if type(now) ~= 'number' or type(t) ~= 'number' then return false end
+    return now - t > UNATTENDED_TICKS
+end
+
+-- Called by each `entrances` report (ai-gates-stuck summary)
+function brain_seen()
+    GATES.brain_tick = now_abs() or GATES.brain_tick
+end
+
+-- (0.105.47, J16) Pure: may a held entrance open on this look? (looks: clear
+-- looks so far, this one counted.) 'reopen' (the old rule), 'lift' (only the
+-- peak held it), 'away' (the brain away, nothing within 2 * IMMINENT), or nil.
+function lift_reason(nearest, invaders, great, peak, looks, away)
+    if away then
+        if nearest > 2 * IMMINENT and looks >= UNATTENDED_CLEAR then return 'away' end
+        return nil
+    end
+    if may_reopen(nearest, invaders, great, peak) then
+        return looks >= REOPEN_CHECKS and 'reopen' or nil
+    end
+    if invaders == 0 and (great or 0) == 0 and nearest > WIDE and looks >= LIFT_CHECKS then return 'lift' end
+    return nil
+end
+
+-- Does this look count as clear for a held entrance?
+local function clear_look(nearest, invaders, great, away)
+    if away then return nearest > 2 * IMMINENT end
+    return invaders == 0 and (great or 0) == 0 and nearest > WIDE
+end
+
 -- One look by the watcher: close what needs closing.
 function check()
     if not GATES.armed or not GATES.entrances then return end
@@ -641,6 +722,13 @@ function check()
     GATES.clear_looks = GATES.clear_looks or {}
     GATES.opening = GATES.opening or {}
     local lure = lure_holds()                 -- (0.105.45)
+    local away = brain_away()                 -- (0.105.47, J16) the brain away: real dangers only
+    GATES.away = away or nil
+    -- (0.105.47, J16) with the brain away, an entrance shuts only for a danger within IMMINENT
+    local function close_for(nearest)
+        if away then return nearest <= IMMINENT end
+        return should_close(nearest, outside)
+    end
     for _, e in ipairs(GATES.entrances) do
         if next(lure) then
             for id in pairs(entrance_gate_ids(e)) do
@@ -659,7 +747,7 @@ function check()
             -- (0.105.47) held open for a mission's travellers: only an enemy
             -- within IMMINENT shuts it again while it opens
             local okh0, held0 = pcall(function() return reqscript('ai-mission-way').mission_held(e.id) end)
-            local close_now = should_close(nearest, outside)
+            local close_now = close_for(nearest)
             if okh0 and held0 == true then close_now = nearest <= IMMINENT end
             if close_now then
                 GATES.opening[e.id] = nil
@@ -672,19 +760,25 @@ function check()
         elseif GATES.closed[e.id] and #e.equipment > 0 then
             local nearest = math.huge
             for _, p in ipairs(ds) do nearest = math.min(nearest, distance_to(e, p)) end
-            if may_reopen(nearest, invaders, great, GATES.peak) then
+            -- (0.105.47, J16) lift_reason: the old reopen, or the peak's cap, or the brain away
+            if clear_look(nearest, invaders, great, away) then
                 GATES.clear_looks[e.id] = (GATES.clear_looks[e.id] or 0) + 1
+                local why = lift_reason(nearest, invaders, great, GATES.peak, GATES.clear_looks[e.id], away)
                 -- (0.105.26 seal fix) not while the cavern seal holds any of
                 -- its gates (a hidden forgotten beast is out of sight, not
                 -- gone): kept shut, and opened at the first look after the seal
-                if GATES.clear_looks[e.id] >= REOPEN_CHECKS and sealed_entrance(e) then
+                if why and sealed_entrance(e) then
                     GATES.seal_kept = (GATES.seal_kept or 0) + 1
-                elseif GATES.clear_looks[e.id] >= REOPEN_CHECKS then
+                elseif why then
                     GATES.clear_looks[e.id] = nil
                     set_entrance(e, false)
                     GATES.reopened = (GATES.reopened or 0) + 1
-                    pcall(dfhack.gui.showAnnouncement, ('AI Overseer: %s opened again (no danger in sight, %d citizens outside)')
-                        :format(gate_name(e), outside), COLOR_GREEN, true)
+                    if why ~= 'reopen' then
+                        GATES.lifted = GATES.lifted or {}
+                        GATES.lifted[why] = (GATES.lifted[why] or 0) + 1
+                    end
+                    pcall(dfhack.gui.showAnnouncement, ('AI Overseer: %s opened again (no danger in sight, %d citizens outside%s)')
+                        :format(gate_name(e), outside, why == 'away' and '; the overseer is away' or ''), COLOR_GREEN, true)
                     goto continue
                 end
             else
@@ -695,6 +789,12 @@ function check()
         for _, g in ipairs(e.equipment) do table.insert(watched, g) end
         for _, g in ipairs(e.outer or {}) do table.insert(watched, g) end
         local repulled, drift_open = {}, false
+        -- (0.105.47, J16) found open with no danger within WIDE (the player
+        -- pulled its lever, a job was lost): left open, never pulled back shut
+        local near_e = math.huge
+        for _, p in ipairs(ds) do near_e = math.min(near_e, distance_to(e, p)) end
+        local let_open = near_e > WIDE or (away and near_e > IMMINENT)
+        local held_by_seal = nil
         for _, g in ipairs(watched) do
             local b = df.building.find(g.id)
             GATES.gone_ids = GATES.gone_ids or {}
@@ -722,7 +822,11 @@ function check()
                 end)
                 local now = df.global.cur_year_tick or 0
                 local last = GATES.repulled[g.id]
-                if ok and still and #b.jobs == 0 and (not last or now < last or now - last > 10 * CHECK_TICKS) then
+                held_by_seal = held_by_seal or seal_holds()
+                if ok and still and let_open and not seal_has(held_by_seal, g) then
+                    drift_open = true
+                    GATES.let_open = (GATES.let_open or 0) + 1
+                elseif ok and still and #b.jobs == 0 and (not last or now < last or now - last > 10 * CHECK_TICKS) then
                     GATES.repulled[g.id] = now
                     pcall(pull, g.lever_id)
                 end
@@ -733,7 +837,10 @@ function check()
                 -- went astray): its lever pulled again, at once. Still open
                 -- after: the watcher's view corrected (not closed), so its
                 -- next look decides again
-                if not repulled[g.drive_lever] then
+                held_by_seal = held_by_seal or seal_holds()
+                if let_open and not seal_has(held_by_seal, g) then
+                    GATES.let_open = (GATES.let_open or 0) + 1
+                elseif not repulled[g.drive_lever] then
                     repulled[g.drive_lever] = true
                     local okp, done = pcall(pull_instant, g.drive_lever)
                     GATES.hatch_repulled = (GATES.hatch_repulled or 0) + 1
@@ -742,7 +849,14 @@ function check()
                 if door_shut(b) == false then drift_open = true end
             end
         end
-        if drift_open then GATES.closed[e.id] = nil end
+        if drift_open then
+            GATES.closed[e.id] = nil
+            -- (0.105.47, J16) opened by someone else: its pieces aren't the AI's shut ones now
+            if type(GATES.mine) == 'table' then
+                for id in pairs(entrance_gate_ids(e)) do GATES.mine[id] = nil end
+            end
+            GATES.clear_looks[e.id] = nil
+        end
         if not GATES.closed[e.id] and #e.equipment > 0 then
             local nearest = math.huge
             for _, p in ipairs(ds) do nearest = math.min(nearest, distance_to(e, p)) end
@@ -753,7 +867,7 @@ function check()
             local okh, held = pcall(function() return reqscript('ai-mission-way').mission_held(e.id) end)
             if okh and held == true and nearest > IMMINENT then
                 GATES.mission_held_skips = (GATES.mission_held_skips or 0) + 1
-            elseif should_close(nearest, outside) then
+            elseif close_for(nearest) then
                 set_entrance(e, true)
                 -- (0.105.36 fix) said only when the AI shut something (gates the
                 -- player shut already stay theirs: not booked, not said)
@@ -819,10 +933,48 @@ function arm(from_save)
             GATES.peak = type(from_save.peak) == 'number' and from_save.peak or nil
         end
         GATES.armed = true
+        GATES.brain_tick = GATES.brain_tick or now_abs()     -- (0.105.47, J16) counted from the arming
+        -- (0.105.47, J16) a lockdown restored from the save, re-validated now:
+        -- an entrance with no invader, no great danger and nothing within WIDE
+        -- in sight is opened at once (its cause is gone; a restore's peak is unknown)
+        if type(from_save) == 'table' and next(GATES.closed) ~= nil then
+            pcall(lift_restored)
+        end
         GATES.timer = dfhack.timeout(CHECK_TICKS, 'ticks', tick)
         watched_check()
     end
     return {ok = true, armed = true}
+end
+
+-- (0.105.47, J16) The restored lockdown's entrances whose danger is gone
+-- (no invader or great danger in sight, nothing within WIDE): opened now.
+-- The cavern seal's and the lure's stay. Returns how many.
+function lift_restored()
+    local okv, vis = pcall(visible_dangers)
+    if not okv then return 0 end
+    local invaders, great = 0, 0
+    for _, d in ipairs(vis) do
+        if d.invader then invaders = invaders + 1 end
+        if d.great then great = great + 1 end
+    end
+    if invaders > 0 or great > 0 then return 0 end
+    local lure, n = lure_holds(), 0
+    for _, e in ipairs(GATES.entrances or {}) do
+        if GATES.closed[e.id] and not sealed_entrance(e) then
+            local lured = false
+            for id in pairs(entrance_gate_ids(e)) do if lure[id] then lured = true end end
+            local nearest = math.huge
+            for _, d in ipairs(vis) do nearest = math.min(nearest, distance_to(e, d.pos)) end
+            if not lured and nearest > WIDE then
+                set_entrance(e, false)
+                GATES.lifted_now = GATES.lifted_now or {}
+                GATES.lifted_now[e.id] = true       -- (gates_restore doesn't book it again)
+                n = n + 1
+            end
+        end
+    end
+    if n > 0 then GATES.restored_lifted = (GATES.restored_lifted or 0) + n end
+    return n
 end
 
 -- (0.100, review) gates left closed when the rest opened (someone stood on
@@ -1045,3 +1197,4 @@ end
 -- (13e) this file's locals the later parts use, as module names (each takes
 -- them back as locals of its own)
 _ENV.pull, _ENV.set_entrance, _ENV.place, _ENV.entrance = pull, set_entrance, place, entrance
+_ENV.lever_pull_pending = lever_pull_pending   -- (0.105.47, J16) for ai-way-out

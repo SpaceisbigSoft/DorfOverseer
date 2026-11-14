@@ -1623,7 +1623,7 @@ function moon_cell(ids, release, dry_run, txt)
             for _, bid in ipairs(c.doors or {}) do
                 local okd, err = pcall(function()
                     local b = df.building.find(bid)
-                    if b then b.door_flags.forbidden = false end
+                    if b and not select(2, U.lock_door(b, false, 'cell')) then error('the lock could not be written') end -- (0.105.47) ai-util: the walk map redone
                 end)
                 if not okd then failed('door ' .. tostring(bid), err) end
             end
@@ -1689,7 +1689,7 @@ function moon_cell(ids, release, dry_run, txt)
                             local okf, f = pcall(function() return b.door_flags.forbidden end)
                             if okf and not f then
                                 if not dry_run then
-                                    b.door_flags.forbidden = true
+                                    U.lock_door(b, true, 'cell') -- (0.105.47) ai-util: the walk map redone
                                     table.insert(c.doors, id)
                                 end
                             elseif okf and insane[id] and not dry_run then
@@ -1775,7 +1775,7 @@ function seal_cavern(layer, tiles, open, dry_run, z1, z2, openings)
                 if b and watched[b.id] then
                     kept = kept + 1
                 elseif b then
-                    if not dry_run then b.door_flags.forbidden = false end
+                    if not dry_run then U.lock_door(b, false, 'seal') end -- (0.105.47) ai-util: the walk map redone
                     n = n + 1
                 end
             end)
@@ -1884,7 +1884,7 @@ function seal_cavern(layer, tiles, open, dry_run, z1, z2, openings)
             local okf, f = pcall(function() return b.door_flags.forbidden end)
             if okf and not f then
                 if not dry_run then
-                    b.door_flags.forbidden = true
+                    U.lock_door(b, true, 'seal') -- (0.105.47) ai-util: the walk map redone
                     if not have[id] then table.insert(rec.ids, id); have[id] = true end
                 end
                 n = n + 1

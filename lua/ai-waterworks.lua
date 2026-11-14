@@ -329,7 +329,7 @@ end
 
 -- a hatch locked (DFHack forbids it, as the gates do): nothing walks through
 function lock_hatch(id)
-    pcall(function() df.building.find(id).door_flags.forbidden = true end)
+    pcall(function() reqscript('ai-util').lock_door(df.building.find(id), true, 'water') end) -- (0.105.47) ai-util: the walk map redone
 end
 
 -- (0.105.0 review) Pure: is a material magma-safe, from its heat numbers

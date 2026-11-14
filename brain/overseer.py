@@ -634,6 +634,8 @@ SHORT_WORDS.update({
 # (0.105.47) a mission's travellers let out (lua/ai-mission-way.lua)
 SHORT_WORDS.update({
     "mission_way": "open one of the AI's gates so a mission can leave the map",
+    "way_out_open": "open one of the AI's gates: the fort was sealed in",
+    "way_out_leave": "leave the fort open as the AI stops",
 })
 
 
@@ -2311,6 +2313,16 @@ def main() -> int:
             lock.close()
 
 
+def _leave_open(bridge) -> None:
+    """(0.105.47, J16) The AI stopping: the fort left open if no enemy is in
+    reach (brain/planner_way_out.py leave_open). Never raises."""
+    try:
+        import planner_way_out
+        planner_way_out.leave_open(bridge if bridge is not None else Bridge(), say, check=False)
+    except Exception as e:  # noqa: BLE001 - stopping never fails on this
+        say(f"Leaving the fort open failed: {type(e).__name__}: {str(e)[:120]}")
+
+
 def _run(args) -> int:
     """The main loop (main() above parses the command line and takes the lock)."""
     mode = "AUTOPILOT" if args.autopilot else "DRY RUN (nothing will be changed)"
@@ -2353,6 +2365,8 @@ def _run(args) -> int:
     season_end = False           # (0.104.138) the last date seen was a season's last days (DF autosaves then)
     save_said = False            # (0.104.138) "DF is saving" said for this silence
     quiet_wait = 10              # (0.104.138) the wait after an unanswered call while DF saves (10 -> 60 s)
+    stop_left = False            # (0.105.47, J16) the fort left open for this STOP file
+    leave_ok = False             # (0.105.47, J16) the last poll's fort may be left open as the AI stops
     while True:
         heartbeat()
         try:
@@ -2391,6 +2405,17 @@ def _run(args) -> int:
             if st.get("in_fort") and os.environ.get("DFAI_PIN") and not PIN_SEEN.get("checked"):
                 check_pin(bridge)
             held_pin = pin_hold()
+            # (0.105.47, J16) the fort this overseer may leave open as it stops:
+            # its own (the pin), in the fort, not halted by the player
+            leave_ok = bool(st.get("in_fort")) and not controls["halted"] and not held_pin
+            # the STOP file: the AI stops acting, so the fort is left open (no
+            # enemy in reach), once for each STOP file
+            if STOP_FILE.exists():
+                if not stop_left and args.autopilot and leave_ok:
+                    stop_left = True
+                    _leave_open(bridge)
+            else:
+                stop_left = False
             if (args.unattended and args.autopilot and st.get("in_fort") and not quieted
                     and not controls["halted"] and not held_pin):
                 quieted = True
@@ -2583,6 +2608,8 @@ def _run(args) -> int:
             time.sleep(10)
             continue
         except KeyboardInterrupt:
+            if args.autopilot and leave_ok:
+                _leave_open(bridge)      # (0.105.47, J16) a fort left alone is never sealed
             say("Overseer stopped.")
             return 0
         except Exception as e:  # noqa: BLE001 - a bug or odd report: log it, keep the overseer alive
@@ -2594,12 +2621,16 @@ def _run(args) -> int:
                 f.write(f"--- {datetime.now().isoformat(timespec='seconds')}\n{traceback.format_exc()}\n")
             if args.once or problems_in_a_row >= 5:
                 say("Stopping after repeated problems." if not args.once else "Stopping.")
+                if args.autopilot and not args.once and leave_ok:
+                    _leave_open(bridge)      # (0.105.47, J16) the run ends: the fort left open
                 return 1
             time.sleep(10)
             continue
         try:
             time.sleep(POLL_SECONDS)
         except KeyboardInterrupt:
+            if args.autopilot and leave_ok:
+                _leave_open(bridge)      # (0.105.47, J16) a fort left alone is never sealed
             say("Overseer stopped.")
             return 0
 

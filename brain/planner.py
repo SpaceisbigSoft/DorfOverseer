@@ -60,6 +60,7 @@ from planner_siege import _siege_rules  # noqa: E402  (item5) siege engines, arc
 from planner_hazards import _hazards_rule, magma_alarm  # noqa: E402  (0.105.41, item 7) spilt magma, cave-ins, frost, heat
 from planner_insane import _insane_rule  # noqa: E402  (0.105.40b) the insane: deadly ground near them, the AI's doors
 from planner_killers import _killer_rule  # noqa: E402  (item3) a killer among the fort's own: cells, a squad
+from planner_way_out import _way_out_rule, note_way_out, note_way_out_cycle  # noqa: E402  (0.105.47, J16) a fort never left sealed in
 from planner_tantrums import _tantrum_rules, note_tantrum_book  # noqa: E402,F401  (0.105.47) tantrums one dwarf at a time
 from planner_training import (_training_squad_rule, guard_training_orders, note_never_draft,  # noqa: E402
                                note_training, prepare_training)  # (0.105.47) the training squad, never draft
@@ -626,6 +627,10 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
     # evidence and its confidence, a cell or a squad (planner_killers)
     if "killers" not in errors:
         _guard(_killer_rule, s, cfg, proposals, notes, memory)
+    # (0.105.47, J16) the fort sealed in: the AI's gate opened once the cause
+    # is gone, checked, then a way dug out (planner_way_out)
+    if "way_out" not in errors:
+        _guard(_way_out_rule, s, cfg, proposals, notes, memory)
     # (0.105.41, item 11) syndromes beyond infection (carriers kept apart, the
     # syndrome spatter cleaned) and miasma indoors (what rots marked for the dump)
     if "syndromes" not in errors:
@@ -1358,6 +1363,7 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
         note_construct(p, r, state, memory, now)           # (0.105.30) wings, seals, soil floors, the hall
         note_reserve_swap(p, r, state, memory)             # (0.105.31 reserve fixes) a fibre swap that did nothing
         note_gate_stuck(p, r, state, memory, now)          # (0.105.32) the unstick step tried, a way dug in
+        note_way_out(p, r, state, memory, now)             # (0.105.47, J16) the way-out guard's try counted
         note_cleanup(p, r, state, memory, now)             # (0.105.40) a cleanup's trial done, what it removed
         note_captives(p, r, memory, now)                   # (item6) the pit's trial done, the prisoners sent
         note_order_loop(p, r, state, memory, now, cfg)     # (0.105.46, I3) a stuck cancel's missing thing; approvals
@@ -1753,6 +1759,8 @@ def note_cycle(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> list[
         _step(note_locations, s, memory, cfg)                   # (0.105.26) moved out of plan()
     if "entrances" not in errors:
         _step(note_gate_stuck_cycle, s, memory)                 # (0.105.32) a gate piece no longer split: forgotten
+    if "way_out" not in errors:
+        notes += _step(note_way_out_cycle, s, memory) or []     # (0.105.47, J16) sealed since, the cause last seen
     _step(note_construct_cycle, s, memory, cfg)                 # (0.105.30) the hall's wait for blocks
     if "military" not in errors:
         _step(note_gate_lever, s, memory)                       # (0.105.33) the AI gate read from its lever

@@ -127,6 +127,8 @@ def _gate_stuck_rule(s: dict, memory, cfg: dict, proposals: list, notes: list, o
     # step 3 (taken down)
     from planner_threats import cavern_great, deep_read
     cave_safe = not siege and deep_read(s) and not cavern_great(s)
+    from planner_way_out import sealed as _fort_sealed       # (0.105.47, J16) the one way-out check
+    fort_sealed = _fort_sealed(s) is True
     acting = False
     for pid in list(dict.fromkeys(list(rows_by) + list(pieces))):
         pc, e = pieces.get(pid, ({}, {}))
@@ -192,6 +194,23 @@ def _gate_stuck_rule(s: dict, memory, cfg: dict, proposals: list, notes: list, o
                              + (f"{reach} enemy(ies) can reach the dwarves" if reach else "the gate watcher is armed")
                              + f": step {step} ({GATE_STUCK_TRIED[step]}) waits until that is over")
                 step = None
+        elif fort_sealed and not cavern:
+            # (0.105.47, J16) the whole fort sealed in (planner_way_out.sealed: the
+            # citizens' walk group reaches no edge of the map) at a piece that reads
+            # open: each step in turn, as for the stranded, not once a day
+            if not last_step or since is None:
+                step = 1
+            elif rec.get("ok") is False and since >= step_ticks and last_step < 3:
+                step = last_step
+            elif last_step < 3 and since >= step_ticks and rec.get("split_after") is not False:
+                step = last_step + 1
+            if step in (2, 3) and siege:
+                notes.append(f"the fort is sealed in at {name}, but "
+                             + (f"{reach} enemy(ies) can reach the dwarves" if reach else "the gate watcher is armed")
+                             + f": step {step} ({GATE_STUCK_TRIED[step]}) waits until that is over")
+                step = None
+            why = (f"the fort is sealed in at {name}: it reads open, but the game's walk map holds the way "
+                   "through it shut")
         else:
             prev = rec.get("prevent") if isinstance(rec.get("prevent"), int) else None
             days = int(cfg.get("gate_stuck_prevent_days", 1))

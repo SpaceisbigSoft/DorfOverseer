@@ -168,6 +168,7 @@ SECTION_DEFAULTS = {
     "welfare": {},           # (0.105.47, I7b) coffins on the AI's other levels, free coffins, the trainee cook (lua/ai-welfare.lua)
     "well_safety": {},       # (0.105.47) cavern wells made safe: each shaft, who is in its column or under it, its door, the watcher's log, the one-at-a-time book (lua/ai-well-safety.lua)
     "near_gates": {},        # (0.105.47, I7d) the near-gates burrow: on, members, citizens outside far from the gates (lua/ai-near-gates.lua)
+    "way_out": {},           # (0.105.47, J16) the citizens' way off the map: open, inside_group, edge_groups, shut_by, cause (lua/ai-way-out.lua)
     "garden_court": {},      # (0.105.47) the Garden fort's garden court above ground: its stage and counts (lua/ai-builder-court.lua)
     "insane": {},            # (0.105.40b) the insane, the deadly ground near them, the AI's doors locked, the near-breaking (lua/ai-insane.lua)
     "hauling": {},           # (0.105.40 M5) haul jobs waiting, haulers, key workers hauling (lua/ai-hauling.lua)
