@@ -203,6 +203,10 @@ def _reset(beside):
     B.CAVERN_NO_SPOT = None          # (0.105.4 review) the cavern search's kept "no spot"
     B.TRY_BESIDE = beside
     B.SHAFT_WATCH = LUA.eval("{on = false}")     # (group 2) the shaft gates' holds: none from another test
+    # (0.105.47) these tests follow a cavern shaft dug from the top down (the
+    # switch's other side, and every shaft dug before 0.105.47); the bottom-up
+    # order is tests/test_r47_wellsafe.py's
+    B.WELL_DIG_UP = False
 
 
 def test(name, beside=False):

@@ -163,6 +163,7 @@ SECTION_DEFAULTS = {
     "shelter_plan": {},      # (0.105.45) the shelter away from the threat: ways in, levels, walks, chokes (lua/ai-shelter-plan.lua)
     "stuck": {},             # (0.105.45) the AI's things stuck "in progress", since when, their progress (lua/ai-stuck.lua)
     "thirst": {},            # (0.105.46, I2) the thirsty with why they don't drink; deaths of thirst with the last reason (lua/ai-thirst.lua)
+    "well_safety": {},       # (0.105.47) cavern wells made safe: each shaft, who is in its column or under it, its door, the watcher's log, the one-at-a-time book (lua/ai-well-safety.lua)
     "insane": {},            # (0.105.40b) the insane, the deadly ground near them, the AI's doors locked, the near-breaking (lua/ai-insane.lua)
     "hauling": {},           # (0.105.40 M5) haul jobs waiting, haulers, key workers hauling (lua/ai-hauling.lua)
     "traffic": {},           # (0.105.41) traffic zones on the AI's finished levels: waiting, in progress, rechecks (lua/ai-traffic.lua)

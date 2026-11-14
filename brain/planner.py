@@ -66,6 +66,7 @@ from planner_stuck import _stuck_rule, note_stuck  # noqa: E402  (0.105.45) the 
 from planner_thirst import _thirst_rule, thirst_journal  # noqa: E402,F401  (0.105.46, I2) the thirst watch
 from planner_killzone import _killzone_rule  # noqa: E402  (0.105.45) kill zones at the gates and cavern openings
 from planner_lure import _lure_rule  # noqa: E402  (0.105.45) a sealed cavern beast lured into a pocket, cut off
+from planner_wellsafe import _well_safety_rule  # noqa: E402  (0.105.47) cavern wells made safe, the stranded under one let out
 from planner_recovery import _migrants_rule, note_recovery, recovery_apply  # noqa: E402  (0.105.46, I4) collapse recovery
 from planner_hauling import _hauling_labor_rule, note_hauling  # noqa: E402  (0.105.40 M5) hauling balanced
 from planner_traffic import _traffic_rule  # noqa: E402  (0.105.41) traffic zones on the AI's own levels
@@ -242,6 +243,10 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
     # cavern door and caught or shut in (planner_lure; the bridge's `lures`)
     if "lures" not in errors:
         _guard(_lure_rule, s, cfg, proposals, notes, memory)
+    # (0.105.47) cavern wells made safe: the watcher, the column, the door, the
+    # next level; a dwarf stranded under a well let out before any alarm (planner_wellsafe)
+    if "well_safety" not in errors:
+        _guard(_well_safety_rule, s, cfg, proposals, notes, memory)
     # (0.105.40b) evil weather: the alarm while an evil cloud or rain is on the fort, lifted hours after
     # (fix41-ff) always: an unread weather report still keeps the spell's alarm up
     _guard(_weather_rules, s, memory, cfg, proposals, notes)

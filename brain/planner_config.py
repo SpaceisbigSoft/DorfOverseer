@@ -1077,4 +1077,11 @@ PLANNER_CONFIG = {
     "recovery_migrants_cooldown_ticks": 112 * 1200,   # one call a season at most
     "recovery_migrants_max_calls": 3,     # calls that brought nobody before it stops (a Needs you)
     "recovery_stall_days": 336,           # under the survival floor with no newcomer this long: called too
+    # (0.105.47) cavern wells made safe (brain/planner_wellsafe.py, lua/ai-well-safety.lua)
+    "cavern_well_cooldown_days": 84,      # no new cavern well this long after one was given up (a season)
+    "cavern_well_site_tries": 2,          # a shaft site given up this often is kept free
+    "well_safety_cooldown_ticks": 300,    # the watcher, the column's traffic, the door, the next level: a few times a day
+    "well_rescue_after_ticks": 200,       # stranded under a well this long (DF's no path): a way up
+    "well_rescue_near": 15,               # a stranded dwarf this near a well's shaft (across) is under it
+    "well_rescue_cooldown_ticks": 300,    # tried again this often (it waits while a danger is near)
 }

@@ -674,6 +674,14 @@ def cavern_action(s: dict, cfg: dict, urgent: bool) -> dict:
     pts = cavern_points(s)
     if pts and action["gallery"] > 0:
         action["toward"] = pts
+    # (0.105.47) the bridge holds to the same cooldown and site cap (ai-well-safety
+    # place_gate; its own defaults are 84 and 2: sent only when set otherwise)
+    cd = int(cfg.get("cavern_well_cooldown_days", PLANNER_CONFIG.get("cavern_well_cooldown_days", 84)))
+    tries = int(cfg.get("cavern_well_site_tries", PLANNER_CONFIG.get("cavern_well_site_tries", 2)))
+    if cd != 84:
+        action["cooldown_days"] = cd
+    if tries != 2:
+        action["site_tries"] = tries
     return action
 
 
@@ -828,6 +836,12 @@ def cavern_well_safe(s: dict, cfg: dict, urgent: bool = False):
     great = [x for x in _l(d.get("dangers")) if isinstance(x, dict) and not x.get("caged")]
     if great:
         return f"{great[0].get('name') or 'a great danger'} is on the map"
+    # (0.105.47) one cavern well at a time, and none for a season after one
+    # was given up (E: 13 in 6 hours; brain/planner_wellsafe.py)
+    from planner_wellsafe import cavern_well_wait
+    wait = cavern_well_wait(s, cfg)
+    if wait:
+        return wait
     return True
 
 

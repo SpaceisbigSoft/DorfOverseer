@@ -847,6 +847,10 @@ def _stranded_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None
         else:
             notes.append(f"{head}: the AI digs them a stair in " + (way_status.get("when") or "when it can"))
     if cave:
+        # (0.105.47) under a cavern well: its own rescue lets them up (planner_wellsafe)
+        from planner_wellsafe import well_rescue_covers
+        cave = [r for r in cave if not well_rescue_covers(s, r, cfg)]
+    if cave:
         # (0.105.35) no gate to open: no way in is dug from a cavern (the
         # bridge refuses it: a hole from the cavern into the fort)
         ask_player(notes, f"{len(cave)} citizen(s) down in the caverns can't get back up for {days(cave)} "

@@ -874,6 +874,13 @@ function gather_openings(d, t)
             end
         end
     end)
+    -- (0.105.47) each cavern well's door at its gallery's fort end (a hatch over
+    -- its stair top in a hall): a way into the caverns the seal locks
+    pcall(function()
+        for _, w in ipairs(reqscript('ai-well-safety').fort_doors() or {}) do
+            note_opening(d, w.x, w.y, w.z, 'gate', 'cavern well ' .. tostring(w.project_id) .. ' door', t)
+        end
+    end)
 end
 
 -- What stands on one opening now: {building = 'Door'|'Hatch'|other, id,
@@ -1808,9 +1815,22 @@ function seal_cavern(layer, tiles, open, dry_run, z1, z2, openings)
             given[okey(x, y, z)] = true
         end
     end
+    local well_kept = 0
     if openings then
         for _, o in pairs(d.openings) do
-            if type(o) == 'table' and o.x and o.kind ~= 'well' then table.insert(list, {x = o.x, y = o.y, z = o.z}) end
+            if type(o) == 'table' and o.x and o.kind ~= 'well' then
+                -- (0.105.47) a cavern well's door with a dwarf beyond it (its
+                -- gallery, stairs, shaft, the cavern under it): not locked on them
+                local okb, who = false, nil
+                if type(o.source) == 'string' and o.source:find('^cavern well') then
+                    okb, who = pcall(function() return reqscript('ai-well-safety').door_blocked(o) end)
+                end
+                if okb and who then
+                    well_kept = well_kept + 1
+                else
+                    table.insert(list, {x = o.x, y = o.y, z = o.z})
+                end
+            end
         end
     end
     local found, at = {}, {}
@@ -1903,7 +1923,8 @@ function seal_cavern(layer, tiles, open, dry_run, z1, z2, openings)
         announce(('%d way(s) into the caverns locked against a great beast (%s)'):format(n, tostring(layer)))
     end
     return {ok = true, locked = n, adopted = adopted > 0 and adopted or nil, layer = layer, dry_run = dry_run or nil,
-            pull_failed = pull_failed > 0 and pull_failed or nil}
+            pull_failed = pull_failed > 0 and pull_failed or nil,
+            well_kept = well_kept > 0 and well_kept or nil}   -- (0.105.47) a well's door left: a dwarf beyond it
 end
 
 -- (0.105.40b) A creature that breathes, spits or hurls fire (a dragon, a fire

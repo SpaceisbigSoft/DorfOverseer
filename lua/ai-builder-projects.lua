@@ -463,8 +463,16 @@ function dig_progress(p)
         not_wall = function(t) return t.shape ~= 'WALL' and t.shape ~= 'FLOOR' end
     end
     local anchor = anchor_of(p)
+    local up_top = type(p.up) == 'table' and type(well_up_waits) == 'function'    -- (0.105.47)
+    local top_waits = 0
     for x, col in pairs(layouts.tiles_from_dig(cells_of(p, 'dig'))) do
-        for y in pairs(col) do check(anchor.x + x, anchor.y + y, p.z, not_wall) end
+        for y in pairs(col) do
+            if up_top and well_up_waits(p, anchor.x + x, anchor.y + y, p.z) then
+                total, top_waits = total + 1, top_waits + 1     -- (0.105.47) the top waits for the shaft under it
+            else
+                check(anchor.x + x, anchor.y + y, p.z, not_wall)
+            end
+        end
     end
     for _, c in ipairs(p.stairs or {}) do
         local want = c.text == 'u' and 'STAIR_UP' or 'STAIR_UPDOWN'
@@ -502,8 +510,12 @@ function dig_progress(p)
     -- stands and its hatch cover and mechanisms are in store: counted, never
     -- designated again here, and the shaft isn't open while they wait
     local held = type(p.held) == 'table' and p.held or nil
-    local held_n = 0
+    local held_n = top_waits
+    -- (0.105.47) a cavern shaft dug from the bottom up (ai-well-safety): the
+    -- levels over the one being dug, and the top, wait undesignated too
+    local up = type(p.up) == 'table' and type(well_up_waits) == 'function'
     local function is_held(x, y, z)
+        if up and well_up_waits(p, x, y, z) then return true end
         return held ~= nil and z == held.z and ((x == anchor.x and y == anchor.y)
             or (held.stair and x == held.stair.x and y == held.stair.y))
     end
@@ -527,6 +539,7 @@ function dig_progress(p)
     end
     local out = {total = total, dug = dug, stuck = stuck, marked = marked, digging = digging,
                  waiting = #waiting > 0 and waiting or nil}
+    if top_waits > 0 then shaft_open = false end      -- (0.105.47)
     if p.shaft then out.shaft_open, out.redesignated = shaft_open, redug > 0 and redug or nil end
     if held_n > 0 then out.held = held_n end          -- (0.105.4 review)
     -- (0.105.31) a well's channel not dug: why
@@ -1044,6 +1057,7 @@ function well_refused(data, p, results, qf_build)
     p.phase = 'cancelled'
     p.refused = true
     p.cancelled_year = df.global.cur_year
+    p.cancelled_tick = now_tick()   -- (0.105.47) a cavern well's cooldown counts from here (ai-well-safety)
     save_projects(data)
     return {ok = false, project_id = p.id, placed = results, diagnosis = diag, refusals = p.well_refusals,
             error = ('the game would not place the well over the hole at %s (%d tries; %s)'):format(
@@ -1451,6 +1465,7 @@ function cancel_project(id, unreached)
         for _, g in ipairs(type(p.gallery) == 'table' and p.gallery or {}) do undo_one(g.x, g.y, p.z, 'd') end
     end
     p.phase = 'cancelled'
+    p.cancelled_tick = now_tick()   -- (0.105.47) a cavern well's cooldown counts from here (ai-well-safety)
     if unreached then
         p.unreached = true
         p.cancelled_year = df.global.cur_year

@@ -1024,6 +1024,12 @@ function well_shaft_step(want_closed, dry_run, dry)
             local g = shaft_gate_state(p)
             local r = {project_id = p.id, was = g.state, cancelled = p.phase == 'cancelled' or nil}
             local sg = p.shaft_gate
+            -- (0.105.47) who keeps the gate as it is (a pull due: opened or shut)
+            local gate_below = nil
+            if (g.state == 'pulling' or g.state == 'open' or g.state == 'closed')
+                    and (g.state == 'pulling' or (g.state == 'closed') ~= (want_closed == true)) then
+                gate_below = well_safety_call('gate_block', p.id, want_closed == true, hit ~= nil)
+            end
             -- rv 3: work below needs the stairs: a locked lid is unlocked
             if g.state ~= 'open' and g.state ~= 'closed' and g.state ~= 'none_possible' and not dry_run then
                 local top = st[1]
@@ -1049,8 +1055,12 @@ function well_shaft_step(want_closed, dry_run, dry)
                 -- only once a hatch cover and 2 mechanisms (its link) are in store,
                 -- so the hatch goes in straight after, before anything comes up
                 local mech, covers = free_mechanism_count(), shaft_hatch_covers()
+                local busy = well_safety_call('column_block', p.id)     -- (0.105.47)
                 if mech < 2 or covers < 1 then
                     r.stage, r.mechanisms, r.hatch_covers = 'waiting_parts', mech, covers
+                elseif busy then
+                    -- (0.105.47) never opened into the cavern with a dwarf in the shaft's column
+                    r.stage, r.below = 'waiting_below', busy
                 elseif dry_run then
                     r.stage = 'break_through'
                 else
@@ -1146,6 +1156,11 @@ function well_shaft_step(want_closed, dry_run, dry)
                     local okr, nm = pcall(dfhack.units.getReadableName, hit.u)
                     r.danger = okr and nm or ('unit ' .. tostring(hit.u and hit.u.id))
                 end
+            elseif gate_below then
+                -- (0.105.47) not opened under a dwarf standing on the shut hatch (it
+                -- drops into the cavern lake), nor shut for no danger with a dwarf
+                -- below it: kept as it is, tried again next time
+                r.stage, r.below = 'waiting_below', gate_below
             elseif g.state == 'pulling' then
                 -- rv 9: a dwarf on the way to pull it: called off (a late pull would
                 -- toggle the gate the wrong way), and the gate set at once
@@ -1201,7 +1216,8 @@ function well_shaft_step(want_closed, dry_run, dry)
     local acted = watch_started or dry_changed
     for _, r in ipairs(wells) do
         if not r.error and r.stage and r.stage ~= r.was and r.stage ~= 'waiting_mechanisms'
-                and r.stage ~= 'waiting_parts' and r.stage ~= 'breaking_through' and r.stage ~= 'held_shut' then
+                and r.stage ~= 'waiting_parts' and r.stage ~= 'breaking_through' and r.stage ~= 'held_shut'
+                and r.stage ~= 'waiting_below' then      -- (0.105.47)
             acted = true
         end
     end
@@ -1210,6 +1226,9 @@ function well_shaft_step(want_closed, dry_run, dry)
     if acted then return {ok = true, wells = wells, dry = dry_now, dry_changed = dry_changed or nil} end
     local why = wells[1].error
     for _, r in ipairs(wells) do
+        if not why and r.stage == 'waiting_below' then      -- (0.105.47)
+            why = 'waiting: ' .. tostring(r.below) .. ' is in the shaft or below its gate'
+        end
         if not why and r.stage == 'held_shut' then
             why = 'kept shut: ' .. (r.danger and (tostring(r.danger) .. ' is near') or
                                     ('the danger has been away too short a while, ' .. tostring(r.wait) .. ' ticks to go'))
@@ -1563,6 +1582,12 @@ end
 -- locked. {ok, planned, locked, waiting}.
 function seal_well_stairs(dry_run)
     local planned, locked, waiting = 0, 0, 0
+    local below            -- (0.105.47) who is below a lid left unlocked
+    local asked = {}
+    local function lid_below(r)
+        if asked[r.project_id] == nil then asked[r.project_id] = well_safety_call('lid_block', r.project_id) or false end
+        return asked[r.project_id] or nil
+    end
     for _, r in ipairs(well_lids(false)) do
         if r.gate ~= 'none_possible' then
             -- the gate seals the cavern: the lid stays unlocked (the way down to it)
@@ -1577,6 +1602,12 @@ function seal_well_stairs(dry_run)
                 local okq, s = pcall(quickfort_apply, 'build', {{x = 0, y = 0, text = 'H'}}, r.z, r.x, r.y)
                 if okq and stat(s, 'build_designated') == 1 then planned = planned + 1 else waiting = waiting + 1 end
             end
+        elseif r.state == 'open' and lid_below(r) then
+            -- (0.105.47) a dwarf below the lid (the stair column, the shaft, the
+            -- cavern under it): not locked on them; tried again next time
+            -- (A's Nomal: the lid locked with no look below, ~1580)
+            waiting = waiting + 1
+            below = below or lid_below(r)
         elseif r.state == 'open' then
             if not dry_run then
                 local b = df.building.find(r.hatch_id)
@@ -1588,9 +1619,11 @@ function seal_well_stairs(dry_run)
         end
     end
     if planned + locked == 0 then
-        return {ok = false, rejected = true, error = 'no cavern well stair to close', waiting = waiting}
+        return {ok = false, rejected = true, waiting = waiting, below = below,
+                error = below and ('not locked: ' .. tostring(below) .. ' is below the stair lid (tried again later)')
+                    or 'no cavern well stair to close'}
     end
-    return {ok = true, planned = planned, locked = locked, waiting = waiting, dry_run = dry_run or nil}
+    return {ok = true, planned = planned, locked = locked, waiting = waiting, below = below, dry_run = dry_run or nil}
 end
 
 -- (0.105.24) A cavern well given up over a dug shaft (the game wouldn't place
@@ -1666,6 +1699,64 @@ function undo_well_cells(p)
     end
 end
 
+-- --- (0.105.47) cavern wells made safe (lua/ai-well-safety.lua) ------------------
+--
+-- I7d (14 Nov): the AI's cavern wells killed 11 dwarves in the run (falls
+-- down a fresh shaft, drownings in the lake under it, the stranded later
+-- killed by a beast). The checks live in ai-well-safety; these are the
+-- shaft's own steps and the hook to them.
+WELL_DIG_UP = true      -- a new cavern shaft dug from the bottom up (false: from the top, as before)
+
+-- f(...) of ai-well-safety, its first result; nil when it fails or is missing
+-- (a guard that can't be read lets the old behaviour stand, said in its report)
+function well_safety_call(name, ...)
+    local args = table.pack(...)
+    local ok, r = pcall(function()
+        local WS = reqscript('ai-well-safety')
+        return WS[name](table.unpack(args, 1, args.n))
+    end)
+    if ok then return r end
+    return nil
+end
+
+-- (0.105.47) Does tile (x, y, z) of a bottom-up shaft wait undesignated (a
+-- level over the one being dug, or the top channel)? p.up = {zs = {z...}}:
+-- the levels still to designate, lowest first.
+function well_up_waits(p, x, y, z)
+    local up = type(p) == 'table' and p.up or nil
+    if type(up) ~= 'table' or type(up.zs) ~= 'table' then return false end
+    local a = anchor_of(p)
+    if not a or x ~= a.x or y ~= a.y then return false end
+    for _, zz in ipairs(up.zs) do if zz == z then return true end end
+    return false
+end
+
+-- (0.105.47) The next level of a bottom-up shaft designated: the lowest one
+-- left, once the level under it is open (dug) and the break into the cavern
+-- was let go (p.held gone), and nobody stands in the shaft's column
+-- (`busy`: who, or nil). Returns the stage ('designated', 'held', 'below',
+-- 'busy', 'next' (dry run), 'refused', 'done') and the level. The caller saves.
+function well_up_advance(p, dry_run, busy)
+    local up = type(p) == 'table' and p.up or nil
+    if type(up) ~= 'table' or type(up.zs) ~= 'table' then return nil end
+    if #up.zs == 0 then return 'done' end
+    if type(p.held) == 'table' then return 'held' end
+    local a = anchor_of(p)
+    local z = up.zs[1]
+    if not OPEN_SHAPE(tile_info(a.x, a.y, z - 1)) then return 'below', z end
+    if busy then return 'busy', z end
+    if dry_run then return 'next', z end
+    local pri = type(p.params) == 'table' and p.params.pri or ''
+    local ok, st = pcall(quickfort_apply, 'dig', {{x = 0, y = 0, text = 'h' .. (pri or '')}}, z, a.x, a.y)
+    if not ok or stat(st, 'dig_designated') ~= 1 then
+        up.refused = (tonumber(up.refused) or 0) + 1
+        return 'refused', z
+    end
+    table.remove(up.zs, 1)
+    up.refused = nil
+    return 'designated', z
+end
+
 -- Start a well: channel the spot now; the well itself is placed when the
 -- hole is dug (furnish), like any other project.
 function place_well(params, now, dry_run)
@@ -1689,11 +1780,21 @@ function place_well(params, now, dry_run)
     for _, a in ipairs(well_spots_unreached(data)) do table.insert(reserved, a) end
     local spot, why, cut      -- (13c) cut: a search ran out of time
     if params.cavern then
+        -- (0.105.47) one cavern well at a time, none for a while after one was
+        -- given up, and a site given up WELL_SITE_TRIES times kept free
+        -- (ai-well-safety place_gate; E placed 13 in 6 hours, 11 dead)
+        local gate = well_safety_call('place_gate', data, params, now, 'active')
+        if type(gate) == 'table' and gate.reject then return gate.reject end
         -- (0.105.24) a cavern well given up because the game wouldn't place
         -- the well over its dug shaft (C, F) is taken up again first, with a
         -- floor dug beside the shaft's top: no second shaft into the cavern
         local okr, rv = pcall(revive_cavern_well, data, pri, dry_run)
         if okr and rv then return rv end
+        gate = well_safety_call('place_gate', data, params, now)
+        if type(gate) == 'table' and gate.reject then return gate.reject end
+        for _, a in ipairs(type(gate) == 'table' and type(gate.reserved) == 'table' and gate.reserved or {}) do
+            table.insert(reserved, a)
+        end
         -- (0.105.4 review) a "no spot" kept since the last survey: not searched again
         -- (third review: the near box's save counts as a survey, near_tick)
         local okw, wl = pcall(function() return reqscript('ai-water').last() end)
@@ -1788,6 +1889,23 @@ function place_well(params, now, dry_run)
     -- beside it are held undug until the lever stands and a hatch cover and 2
     -- mechanisms are in store (well_shaft_step lets them go)
     local held = spot.cavern and #shaft > 0 and {z = shaft[#shaft], stair = spot.side and {x = spot.side.x, y = spot.side.y}} or nil
+    -- (0.105.47) the shaft dug from the bottom up (ai-well-safety): the last
+    -- level into the cavern is opened first, from the stair step beside it
+    -- (the levels over it still rock), then each level over an open one, the
+    -- top channel in the fort's floor last. Dug from the top down, every
+    -- channel turned the rock under it into a ramp, so the shaft's column was
+    -- a walk of ramps down to the cavern's ceiling, and the dwarf standing on
+    -- the last one fell in when it was channelled away (B, E: COLLISION in
+    -- the shaft's very column; six drowned in the lake under fresh shafts).
+    -- Now no tile of the column is ever a floor or a ramp to stand on.
+    local up = nil
+    if held and WELL_DIG_UP ~= false then
+        up = {zs = {}}
+        for i = #shaft, 1, -1 do
+            if shaft[i] ~= held.z then table.insert(up.zs, shaft[i]) end
+        end
+        table.insert(up.zs, spot.z)
+    end
     local stairs = {}
     if spot.cavern then
         if not spot.side then return {ok = false, error = 'no room beside the shaft for the stairs it is dug from'} end
@@ -1803,18 +1921,21 @@ function place_well(params, now, dry_run)
                    shore = spot.shore, stagnant = spot.stagnant, cavern = spot.cavern, shaft = #shaft,
                    stairs = #stairs > 0 and #stairs or nil, urgent = params.urgent == true or nil,
                    gallery = #gallery > 0 and #gallery or nil, from = spot.from, from_gate = spot.from_gate,
-                   held = held and 2 or nil, landing = landing and {x = landing.x, y = landing.y} or nil}   -- (0.105.24)
+                   held = held and 2 or nil, landing = landing and {x = landing.x, y = landing.y} or nil,   -- (0.105.24)
+                   dug_up = up and true or nil}   -- (0.105.47)
     if dry_run then
         where.ok, where.dry_run = true, true
         return where
     end
-    local real = quickfort_apply('dig', dig, spot.z, spot.x, spot.y)
-    if stat(real, 'dig_designated') ~= 1 then
-        pcall(quickfort_apply, 'dig', dig, spot.z, spot.x, spot.y, 'undo')
-        return {ok = false, error = 'the game refused to channel the well spot'}
-    end
-    for _, zk in ipairs(shaft) do
-        if not (held and zk == held.z) then pcall(quickfort_apply, 'dig', dig, zk, spot.x, spot.y) end
+    if not up then
+        local real = quickfort_apply('dig', dig, spot.z, spot.x, spot.y)
+        if stat(real, 'dig_designated') ~= 1 then
+            pcall(quickfort_apply, 'dig', dig, spot.z, spot.x, spot.y, 'undo')
+            return {ok = false, error = 'the game refused to channel the well spot'}
+        end
+        for _, zk in ipairs(shaft) do
+            if not (held and zk == held.z) then pcall(quickfort_apply, 'dig', dig, zk, spot.x, spot.y) end
+        end
     end
     for _, g in ipairs(gallery) do
         pcall(quickfort_apply, 'dig', {{x = 0, y = 0, text = 'd' .. pri}}, spot.z, g.x, g.y)
@@ -1832,6 +1953,7 @@ function place_well(params, now, dry_run)
         shaft_stairs = #stairs > 0 and stairs or nil, urgent = params.urgent == true or nil,
         gallery = #gallery > 0 and gallery or nil,      -- (0.105.3)
         held = held,                                    -- (0.105.4 review)
+        up = up,                                        -- (0.105.47) dug from the bottom up
         landing = landing,                              -- (0.105.24) the floor dug beside the shaft's top
         summary = {well = 1, drop = spot.drop, cavern = spot.cavern}, furniture = {Well = 1},
         cells = {dig = dig, build = {{x = 0, y = 0, text = 'l'}}, place = {}, zone = {},
@@ -1910,6 +2032,10 @@ function well_dig_check(p, jobs)
     end
     jobs = jobs or job_tiles()
     local job = jobs[x .. ',' .. y .. ',' .. z]
+    if not job and not t.designated and well_up_waits(p, x, y, z) then
+        -- (0.105.47) dug from the bottom up: the top channel comes last
+        return out('held', 'the shaft is dug from the bottom up: its top waits for the levels under it')
+    end
     if not job and not t.designated then
         return out('no_designation', 'its channel designation is gone and no job is on it')
     end
@@ -1979,6 +2105,9 @@ function renew_well_dig(id, pri, dry_run)
     end
     if p.phase ~= 'dig' then return {ok = false, rejected = true, error = 'project is not being dug'} end
     local a = anchor_of(p)
+    if well_up_waits(p, a.x, a.y, p.z) then      -- (0.105.47)
+        return {ok = false, rejected = true, error = 'the shaft is dug from the bottom up: its top waits for the levels under it'}
+    end
     local t = tile_info(a.x, a.y, p.z)
     if not (t and t.shape == 'FLOOR') then
         return {ok = false, rejected = true, error = 'nothing left to channel'}
