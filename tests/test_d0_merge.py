@@ -614,7 +614,8 @@ def _():
     assert PD.ai_allowed() is False
     s, m, seen = fort("guided", {"grandeur": 40, "militarism": 20}), Memory(), []
     mine, notes = game_cycle(s, m, seen)
-    assert not mine and not seen, "Guided starts no landmark"
+    # (0.105.47, D1) Guided asks for sites for its library landmark (never the AI's drawing)
+    assert all(a["type"] == "blueprint_sites" for a, _ in seen), [a["type"] for a, _ in seen]
     rec = m.culture["design"]
     assert rec["by"] == "rules" and rec["lang"] and any("written by rules" in n for n in notes), notes
     ps, _ = plan(copy.deepcopy(s), m)
@@ -751,7 +752,7 @@ def _():
         assert a["design"] == "scripts" and a["landmark_pace"] == "season", old
         mode, m = brain_mode(a)
         assert mode == "scripts" and "design" not in (m.culture or {}), old
-        # the window's save, set_rules of another switch, the keeper's --preset: still Scripts
+        # the window's save, set_rules of another switch: still Scripts; (0.105.47, D1) the keeper's --preset: Guided
         S = TP.H.settings()
         S.save_settings(S.load_settings())
         assert TP.saved().design == "scripts"
@@ -759,8 +760,8 @@ def _():
         assert r.ok and TP.saved().design == "scripts", py(r)
         for name in TP.PRESETS:
             r = TP.act({"type": "apply_preset", "name": name})
-            assert r.ok and TP.saved().design == "scripts" and r.settings.design == "scripts", (name, py(r))
-        assert for_ai()["design"] == "scripts"
+            assert r.ok and TP.saved().design == "guided" and r.settings.design == "guided", (name, py(r))
+        assert for_ai()["design"] == "guided"
 
 
 @plain("the keeper's --preset on a fort with nothing saved writes Guided down; a dry run writes nothing")

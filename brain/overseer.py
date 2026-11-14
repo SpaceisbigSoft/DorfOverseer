@@ -2016,7 +2016,7 @@ def fort_run(key: str) -> str | None:
     return max(runs) if runs else None
 
 
-def note_preset(key: str, name: str) -> None:
+def note_preset(key: str, name: str, design: str | None = None) -> None:
     done = load_json(PRESET_FILE, {})
     now = datetime.now().isoformat(timespec="seconds")
     # (0.105.26) the run stamp is set once, when the site has no entry at all
@@ -2025,7 +2025,9 @@ def note_preset(key: str, name: str) -> None:
     same = [r for k, r in done.items() if _site(k) == _site(key) and isinstance(r, dict)]
     runs = [r["run"] for r in same if isinstance(r.get("run"), str)]
     run = max(runs) if runs else (None if same else now)
-    done[key] = {"name": name, "at": now, **({"run": run} if run else {})}
+    # (0.105.47, D1) the Design switch the keeper made for this site (design_due) is kept
+    design = design or next((r["design"] for r in same if isinstance(r.get("design"), str)), None)
+    done[key] = {"name": name, "at": now, **({"run": run} if run else {}), **({"design": design} if design else {})}
     try:
         from dfhack import write_atomic
         PRESET_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -2092,6 +2094,46 @@ def rules_request(bridge: Bridge, autopilot: bool) -> None:
         say(f"Rules: applied, but {RULES_REQUEST} couldn't be moved aside ({e}).")
 
 
+def design_due(key: str, settings: dict) -> bool:
+    """(0.105.47, D1) Whether the keeper's --preset should take this fort to
+    Guided now: its settings read Scripts (every fort founded before the
+    Design track does) and the keeper never switched this site before
+    (logs/keeper-preset.json's "design"). Once switched, the window's later
+    choice stays, Scripts included; a site cleared for a fresh start is
+    switched again (the bridge's apply_preset does it then)."""
+    if _d(settings).get("design") != "scripts":
+        return False
+    recs = [r for k, r in load_json(PRESET_FILE, {}).items() if _site(k) == _site(key) and isinstance(r, dict)]
+    return not any(isinstance(r.get("design"), str) for r in recs)
+
+
+def design_switch(bridge: Bridge, state: dict, key: str, name: str, autopilot: bool) -> None:
+    """(0.105.47, D1) A fort the preset was applied to before the Design track
+    (the six test forts) is switched to Guided once, through set_rules (the
+    Rules' `design` choice). Only its new levels change: what stands is never
+    rebuilt (planner_design, planner_guided). A dry run changes nothing."""
+    st = _d(state.get("settings"))
+    if not design_due(key, st):
+        return
+    try:
+        r = bridge.act({"type": "set_rules", "rules": {"design": "guided"}, "dry_run": not autopilot})
+    except (BridgeError, DFHackError) as e:
+        say(f"Design: couldn't switch this fort to Guided ({e}); tried again at the next start.")
+        return
+    if not autopilot:
+        say("Design: this fort would go from Scripts to Guided (dry run: nothing changed).")
+        return
+    if not r.get("ok"):
+        say(f"Design: not switched to Guided: {r.get('error')}")
+        return
+    note_preset(key, name, "guided")
+    say("Design: this fort goes from Scripts to Guided (the keeper's --preset): its new levels follow a design "
+        "language; what stands is left as it is.")
+    journal({"kind": "design_switch", "fort": key, "from": "scripts", "to": "guided", "preset": name})
+    if isinstance(state.get("settings"), dict):
+        state["settings"]["design"] = "guided"        # this cycle plans with it
+
+
 def apply_preset(bridge: Bridge, state: dict, key: str, autopilot: bool) -> None:
     """(0.105.4) --preset NAME: before this fort's first cycle, the preset
     applied to its settings (the bridge's apply_preset, as the window's Load
@@ -2105,6 +2147,7 @@ def apply_preset(bridge: Bridge, state: dict, key: str, autopilot: bool) -> None
         PRESET_DONE.add(key)
         note_preset(key, name)
         say(f"Preset: {name} already applied to this fort (left as it is: later changes in the window stay).")
+        design_switch(bridge, state, key, name, autopilot)
         return
     try:
         r = bridge.act({"type": "apply_preset", "name": name, "dry_run": not autopilot})
@@ -2128,7 +2171,9 @@ def apply_preset(bridge: Bridge, state: dict, key: str, autopilot: bool) -> None
         return
     say(f"Preset: {name} applied ({why}; was {r.get('previous') or 'none'}). Traits {shown or 'balanced'}"
         + (f"; rules {rule_words}" if rule_words else "") + ".")
-    note_preset(key, name)
+    # (0.105.47, D1) the bridge's apply_preset took a Scripts fort to Guided: marked
+    # for the site, so a later choice in the window stays (design_due)
+    note_preset(key, name, _d(r.get("settings")).get("design") if rules.get("design") else None)
     journal({"kind": "preset", "fort": key, "preset": name, "why": why, "previous": r.get("previous"),
              "traits": traits, "rules": rules})
     if isinstance(r.get("settings"), dict):

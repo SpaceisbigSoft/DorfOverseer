@@ -357,7 +357,9 @@ def _():
     rec = m.culture["design"]
     assert rec["mode"] == "guided" and rec["by"] == "rules" and isinstance(rec["lang"], dict) and rec["lang"]
     assert rec.get("rules_key") and any("written by rules" in n for n in notes), notes
-    assert not design_props(ps), "guided builds no landmark"
+    # (0.105.47, D1) Guided starts the language's library landmark (sites asked first), never the AI's drawing
+    assert all(p.action.get("type") == "blueprint_sites" for p in design_props(ps)), \
+        [p.action.get("type") for p in design_props(ps)]
     # the next cycle keeps it (no rewrite while the sliders are as they were)
     written = rec["written"]
     s["date"]["tick"] += TICKS_PER_DAY

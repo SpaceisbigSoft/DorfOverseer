@@ -7,7 +7,9 @@ Each cycle `design_rule` (called by planner.plan):
      once, or the AI's turn when `ai_allowed()` and the overseer runs with
      --ai, with the rule language standing in after DESIGN_GRACE_TICKS;
      revised on a new era;
-  3. at Architect, starts a landmark when the pace and the fort allow it:
+  3. at Architect, starts a landmark when the pace and the fort allow it
+     ((0.105.47, D1) at Guided too: the language's own wishes, library
+     pieces only, never the AI's drawing):
      `blueprint_sites` first (the bridge's candidate sites: ids and words,
      never a coordinate), then `build_blueprint` on one of those ids, with a
      library drawing (offline) or the AI's (D2);
@@ -60,6 +62,7 @@ SITES_KEEP_TICKS = 7 * TICKS_PER_DAY        # the bridge keeps its sites this lo
 SITES_N = 4
 PACE_TICKS = {"season": TICKS_PER_YEAR // 4, "year": TICKS_PER_YEAR, "never": None}
 ACTIVE = ("due", "sites", "drawing", "fallback", "building")
+LANDMARK_MODES = ("guided", "architect")     # (0.105.47, D1) Guided starts landmarks too (library pieces)
 NAME_RE = re.compile(r"^[A-Za-z' ]{1,40}$")    # the bridge's memorial rule (act_start_project)
 SURFACE_KINDS = ("ziggurat", "tower")
 
@@ -109,6 +112,32 @@ def ai_allowed() -> bool:
 
 def ai_turn() -> bool:
     return ai_allowed() and AI_ON
+
+
+def ai_draws(mode: str) -> bool:
+    """(0.105.47, D1) The AI draws landmarks at Architect only; Guided's are
+    the library's (no tokens)."""
+    return mode == "architect" and ai_turn()
+
+
+def cavern_edge_ok(s: dict) -> bool:
+    """(0.105.47, D1) A landmark site near a cavern only by the Rules tab's
+    cavern switch: Always; or AI decides with every cavern layer already found
+    (none would be opened first by the dwarves at work there); never at Never."""
+    try:
+        from planner_core import player_rules
+        mode = player_rules(s)["open_caverns"]
+    except Exception:  # noqa: BLE001
+        return False
+    if mode == "always":
+        return True
+    if mode != "ai":
+        return False
+    try:
+        from planner_wells import unfound_cavern
+        return not unfound_cavern(s)
+    except Exception:  # noqa: BLE001
+        return False
 
 
 def library() -> dict:
@@ -307,12 +336,16 @@ def open_slots(s: dict) -> int:
     return (pr.get("max_open") or 2) - len(groups)
 
 
-def _wish(lang: dict | None, memory, traits: dict) -> dict | None:
+def _wish(lang: dict | None, memory, traits: dict, guided: bool = False) -> dict | None:
     """The next landmark to build: the language's wishes first, then a
-    library piece of a kind not built yet."""
+    library piece of a kind not built yet. (0.105.47, D1) guided: the
+    language's wishes only (its preset's landmark first), each tried once,
+    and only a kind the library can build (a drawing, or a library level)."""
     lm = landmarks_of(memory)
     done = {(_d(e).get("kind"), _d(e).get("for")) for e in _l(lm and lm.get("list"))
             if _d(e).get("status") in ("built",) + ACTIVE}
+    if guided:
+        done |= {(_d(e).get("kind"), _d(e).get("for")) for e in _l(lm and lm.get("list"))}
     tried = {_d(e).get("kind") for e in _l(lm and lm.get("list"))}
     flat = no_surface(traits)
     for w in _l(_d(lang).get("landmarks")):
@@ -320,8 +353,12 @@ def _wish(lang: dict | None, memory, traits: dict) -> dict | None:
             continue
         if flat and LANDMARK_ENV[w["kind"]][3] == "surface":
             continue
+        if guided and library().get(w["kind"]) is None and w["kind"] not in FALLBACK:
+            continue
         if (w["kind"], w.get("for")) not in done:
             return {"kind": w["kind"], "for": w.get("for"), "words": w.get("words")}
+    if guided:
+        return None
     for kind, bp in sorted(library().items()):
         if kind in tried or kind not in LANDMARK_ENV:
             continue
@@ -509,7 +546,7 @@ def run_landmarks(s: dict, traits: dict, cfg: dict, proposals: list, notes: list
             lang = None
     e = active_landmark(memory)
     if e is None:
-        if mode != "architect":
+        if mode not in LANDMARK_MODES:
             return
         pace = PACE_TICKS.get(_d(s.get("settings")).get("landmark_pace"), PACE_TICKS["season"])
         if pace is None:
@@ -523,10 +560,10 @@ def run_landmarks(s: dict, traits: dict, cfg: dict, proposals: list, notes: list
         why = landmark_times(s, memory, traits, cfg)
         if why:
             return
-        wish = _wish(lang, memory, traits)
+        wish = _wish(lang, memory, traits, guided=mode == "guided")
         if wish is None:
             return
-        by = "ai" if ai_turn() else "library"
+        by = "ai" if ai_draws(mode) else "library"
         if by == "library" and library().get(wish["kind"]) is None:
             e = _new_landmark(memory, wish, now, "library")
             _fallback(s, e, memory, traits, now, proposals, notes)
@@ -569,7 +606,7 @@ def run_landmarks(s: dict, traits: dict, cfg: dict, proposals: list, notes: list
         if isinstance(e.get("level"), dict) and open_slots(s) > 0 and not landmark_times(s, memory, traits, cfg):
             _propose_level(e, proposals)
         return
-    if mode != "architect":
+    if mode not in LANDMARK_MODES:
         return            # switched down: nothing new starts (what is built stays)
     if st == "due":
         if _sites_for(memory, e, now):
@@ -589,7 +626,7 @@ def run_landmarks(s: dict, traits: dict, cfg: dict, proposals: list, notes: list
     if open_slots(s) <= 0 or landmark_times(s, memory, traits, cfg):
         return                        # waits (holds nothing else)
     if e.get("by") == "ai":
-        if not ai_turn():
+        if not ai_draws(mode):        # (0.105.47) at Guided the AI's drawing goes one step down
             _fallback(s, e, memory, traits, now, proposals, notes)
             return
         lm = landmarks_of(memory)
@@ -654,6 +691,11 @@ def design_rule(s: dict, traits: dict, cfg: dict, proposals: list, notes: list, 
     rec["mode"] = mode
     now = abs_tick(s)
     keep_language(s, traits, memory, mode, now, notes)
+    try:                  # (0.105.47, D1) the districts not built yet named in the language
+        import planner_guided
+        notes.extend(planner_guided.name_districts(s, memory, traits))
+    except Exception as e:  # noqa: BLE001
+        notes.append(f"design: the districts' names were left as they are ({type(e).__name__})")
     run_landmarks(s, traits, cfg, proposals, notes, memory, mode, now)
 
 
@@ -723,6 +765,12 @@ def note_design(p, r: dict, state: dict, memory, now: int) -> list[str]:
     if t == "blueprint_sites":
         if r.get("ok") is True:
             sites = [x for x in _l(r.get("sites")) if isinstance(x, dict) and isinstance(x.get("id"), str)][:SITES_N]
+            # (0.105.47, D1) a site near a cavern only by the cavern switch (cavern_edge_ok)
+            near_cavern = [x for x in sites if "cavern" in _l(x.get("near"))]
+            if near_cavern and not cavern_edge_ok(state):
+                sites = [x for x in sites if x not in near_cavern]
+                out.append(f"design: {len(near_cavern)} site(s) near a cavern left out for {e.get('name')} "
+                           "(the Rules tab's cavern switch)")
             lm = landmarks_of(memory, create=True)
             lm["sites"] = {"for": e["id"], "asked": now, "env": list(e.get("env") or []),
                            "list": [{k: x.get(k) for k in ("id", "ground", "w", "h", "levels", "elevation", "district",

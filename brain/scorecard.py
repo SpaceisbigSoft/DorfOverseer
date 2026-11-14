@@ -296,6 +296,7 @@ def journal_counts(entries: list[dict], date: dict, timeline: list | None = None
     access = []         # (when, visitors allowed, location ids) from location_access
     soil_floored = 0    # (0.105.30) tiles floor_rooms placed
     landmarks = []      # (D0) build_blueprint decisions (not dry runs)
+    stones = Counter()  # (0.105.47, D1) the stone named in furniture orders (the language's materials)
     died, high = [], None   # (0.105.46) (unit id, cause, tick) in the order told; the latest decision tick
     for e in entries:
         if e.get("kind") == "event" and before(e, date):
@@ -351,6 +352,10 @@ def journal_counts(entries: list[dict], date: dict, timeline: list | None = None
             # lowering the game refused (on still true) for a raise too
             alarms_on += (a.get("on") is True and r.get("on") is not False and not r.get("already_on")
                           and not r.get("dry_run") and not a.get("dry_run"))
+            alarms_on += bool(r.get("on") if isinstance(r.get("on"), bool) else a.get("on"))
+        elif (t == "work_order" and isinstance(a.get("material"), str) and str(a.get("recipe") or "").startswith("stone_")
+              and not r.get("dry_run")):
+            stones[a["material"]] += 1
         elif t == "work_order" and a.get("recipe") in ("encrust_goods", "cut_gems") and not r.get("dry_run"):
             n = r.get("amount") if isinstance(r.get("amount"), int) else a.get("amount")
             n = n if isinstance(n, int) and not isinstance(n, bool) else 0
@@ -412,7 +417,7 @@ def journal_counts(entries: list[dict], date: dict, timeline: list | None = None
             "shut_days": shut_days(access, until), "soil_floored": soil_floored,
             "alarms_on": alarms_on, "gate_works": gate_works, "gems_set": gems_set, "gems_cut": gems_cut, "treasures_kept": treasures_kept,
             "caps": caps, "welcome": welcome_rows(caps, timeline or [], until, first),
-            "landmarks": landmarks, "until": until}
+            "landmarks": landmarks, "until": until, "stones": stones}
 
 
 DAYS_PER_YEAR = 336
@@ -865,6 +870,12 @@ def design_measures(s: dict, j: dict) -> dict:
         "refusals_per_landmark": per(refused, len(tried)) if marks else None,
         "signatures": sorted({level_signature(lv.get("kind"), lv.get("style")) for lv in levels if lv.get("kind")}),
         "grids": grids,
+        # (0.105.47, D1) what tells the forts apart at a glance: the hall shape most
+        # used, the stones the furniture was ordered in, the landmark kinds begun
+        "main_hall": (Counter(lv["style"].get("hall") or "plain" for lv in styled).most_common(1)[0][0]
+                      if styled else None),
+        "stones_used": len(j.get("stones") or {}),
+        "landmark_kinds": sorted({str(m.get("purpose")) for m in started if m.get("purpose")}),
         "styled": any(in_language(lv.get("style")) for lv in levels) or bool(marks),
     }
 
@@ -917,7 +928,16 @@ def design_section(labels: list, dm: dict) -> tuple[list[str], dict]:
                     ("landmarks built", "landmarks_built"), ("refusals a landmark", "refusals_per_landmark")):
         md.append(f"| {what} | " + " | ".join(fmt(dm[lb].get(k)) for lb in labels) + " |")
     md.append("| level signatures | " + " | ".join(str(len(dm[lb]["signatures"])) for lb in labels) + " |")
+    # (0.105.47, D1) the hall shape, the furniture stones and the landmark kinds, fort by fort
+    md.append("| main hall shape | " + " | ".join(fmt(dm[lb].get("main_hall")) for lb in labels) + " |")
+    md.append("| furniture stones ordered | " + " | ".join(fmt(dm[lb].get("stones_used")) for lb in labels) + " |")
+    md.append("| landmark kinds begun | " + " | ".join(", ".join(dm[lb].get("landmark_kinds") or []) or "none"
+                                                      for lb in labels) + " |")
     md.append("")
+    halls = [dm[lb].get("main_hall") for lb in labels if dm[lb].get("main_hall")]
+    if len(halls) >= 2:
+        own = sum(1 for h in halls if halls.count(h) == 1)
+        md.append(f"Hall shapes: {len(set(halls))} main shapes among {len(halls)} forts ({own} a shape of its own).")
     if dist is None:
         md.append("Layout distinctness: no data (fewer than two forts with levels).")
     else:

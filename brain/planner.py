@@ -41,6 +41,7 @@ from planner_gates import note_gate_stuck, note_gate_stuck_cycle  # noqa: E402  
 from planner_building import *  # noqa: E402,F401,F403  (0.104.83: the planner in parts)
 import planner_design  # noqa: E402  (D0) the Design track's loop
 from planner_design import design_rule, note_design  # noqa: E402
+from planner_guided import guided_pass  # noqa: E402  (0.105.47, D1) Guided live
 from planner_care import _doctor_post_rule, _infection_rule, _offices_refill_rule, _traction_rest_rule  # noqa: E402  (0.104.168)
 from planner_water import _waterworks_rule  # noqa: E402  (0.105.0) moat, pumps, irrigation, magma workshops
 from planner_homes import *  # noqa: E402,F401,F403  (0.104.168: homes and households)
@@ -1054,6 +1055,7 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
         _guard(deep_pass, proposals, s, memory, cfg, citizens)
     _guard(_reserve_storage_rule, s, memory, cfg, traits, proposals, notes)
     _guard(reserves_pass, proposals, memory, traits, cfg)
+    _guard(guided_pass, proposals, s, memory, traits, cfg)   # (0.105.47, D1) every new level in the language
     # (0.105.23, 14.1 step 4c) Surface -80 or lower: nothing above ground, no level at or above the surface
     kept = _guard(_deep_surface_filter, s, traits, memory, proposals, notes)
     if kept is not None:
