@@ -42,6 +42,7 @@ from planner_society import note_heists  # noqa: E402  (0.105.24)
 from planner_moods import mood_journal  # noqa: E402  (0.105.30)
 from planner_missions import mission_journal  # noqa: E402  (0.105.39)
 from planner_cleanup import CLEANUP_ACTIONS, cleanup_journal, cleanup_words  # noqa: E402  (0.105.40)
+from planner_thirst import thirst_journal  # noqa: E402  (0.105.46, I2) deaths of thirst for the journal
 from planner_threats import note_intrusions  # noqa: E402  (0.105.30 live fixes)
 import planner_stuck  # noqa: E402  (0.105.45) the stuck sweep's soak summary
 import seen as seen_ledger  # noqa: E402  (0.105.46, I1) each full report's sections tallied
@@ -540,6 +541,7 @@ SHORT_WORDS = {
     "insane_guard": "lock the AI's own doors between an insane dwarf and deep water, magma or a drop while they are near",  # (0.105.40b)
     "killer_cell": "lock a killer or a vampire among the fort's own in a cell (let out to eat and drink)",  # (item3)
     "stuck_reset": "take an AI lever's waiting pull job off (and ask the pull afresh)",  # (0.105.45)
+    "thirst_unforbid": "let go the forbidden drink a parched dwarf can reach",  # (0.105.46, I2)
     # (0.105.45) a great beast sealed in a cavern lured in and cut off (brain/planner_lure.py)
     "build_lure": "lay out a lure pocket behind a cavern door (cage traps, or drawbridges on levers)",
     "lure_open": "open the cavern door into the lure pocket (nobody below or near)",
@@ -1065,6 +1067,8 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
             journal({"kind": "mission", "fort": key, "date": state["date"], **e})
         for e in cleanup_journal(memory):         # (0.105.40) what the world cleanup found and removed
             journal({"kind": "cleanup", "fort": key, "date": state["date"], **e})
+        for e in thirst_journal(state, memory):   # (0.105.46, I2) each death of thirst, with its last reason
+            journal({"kind": "thirst_death", "fort": key, "date": state["date"], **e})
         note_tantrums(state, memory, events)     # (0.104.31) tantrums counted for the jail
         note_heists(state, memory, events)       # (0.105.24) heists and visitors' killings: visitors kept out a while
         note_intrusions(state, memory, events)   # (0.105.30) DF's invasion records: the alarm before a thief strikes
