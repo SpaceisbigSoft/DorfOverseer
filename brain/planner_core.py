@@ -296,6 +296,7 @@ class Memory:
     called_off: dict = field(default_factory=dict)       # (0.105.26) great danger id -> tick its fight was called off
     recovery: dict = field(default_factory=dict)         # (0.105.46, I4) collapse recovery: {since, why, floor, peak, weeks, last_rise, calls, journal} (planner_recovery)
     lure: dict = field(default_factory=dict)             # (0.105.45) opening "x,y,z" -> {tries, opened, next_try, caught, phase}: the lure pockets (planner_lure)
+    holdfast: dict = field(default_factory=dict)         # (0.105.47, R2 item 7) {kill, guards, named, walls}: planner_holdfast
     order_loop: dict = field(default_factory=dict)       # (0.105.46, I3) {misses: {"recipe|MATERIAL": {tick, missing, what, snap}}, approved, approved_ids} (order_check)
     dig_seen: dict = field(default_factory=dict)         # (0.104.110) project id -> {"dug", "tick" (last progress), "freed"}
     join_wait_days: int = 2                              # (0.104.108) days to the next look (longer once all were seen)

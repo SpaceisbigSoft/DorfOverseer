@@ -1077,4 +1077,9 @@ PLANNER_CONFIG = {
     "recovery_migrants_cooldown_ticks": 112 * 1200,   # one call a season at most
     "recovery_migrants_max_calls": 3,     # calls that brought nobody before it stops (a Needs you)
     "recovery_stall_days": 336,           # under the survival floor with no newcomer this long: called too
+    # (0.105.47, R2 item 7) holding fast: titans and thieves (brain/planner_holdfast.py)
+    "one_enemy_gate_tiles": 20,           # one ordinary enemy this close to a gate: the gates stay shut for it
+    "kill_hold_ticks": 1200,              # a squad's kill order held a game day at least (no recall flapping)
+    "destroyer_wall_min_tiles": 15,       # a building destroyer this close to a door-only gate: nothing built there now
+    "post_rest_min_ticks": 300,           # a squad out to eat comes back once fed, after this at least
 }

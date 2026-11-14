@@ -10276,10 +10276,17 @@ def _():
     s = b_thief(inside=False, policy="always")
     s["entrances"]["citizens_outside"] = 10
     s["military"]["squads"][1].update(ai_orders=1, kill_ids=[7527])
+    # (0.105.47, R2 item 7) the squad on him must beat him (the matchup): a
+    # squad of power 3 (B's recruits) keeps the gates shut instead
+    s["military"]["squads"][1]["power"]["power"] = 60
     m = Memory(ai_alert_raised=True)
     note_cycle(s, m)
     g = by_rule(plan(s, m)[0], "gates")
     assert g and g[0].action == {"type": "open_gates"} and "10 citizen(s) shut out" in g[0].reason, g
+    weak = copy.deepcopy(s)
+    weak["military"]["squads"][1]["power"]["power"] = 3
+    pw, nw = plan(weak, m)
+    assert not by_rule(pw, "gates") and any("too weak" in n for n in nw), (by_rule(pw, "gates"), nw)
     s2 = copy.deepcopy(s)
     s2["entrances"]["armed"] = False
     s2["entrances"]["entrances"][0]["closed"] = False

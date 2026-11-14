@@ -295,8 +295,20 @@ def _shelter_squads_rule(s: dict, memory, cfg: dict, proposals: list, notes: lis
     # (0.105.26) ...but not mid-siege: the timer counts only while no great
     # danger or besieger is close (it let the squads out under the titan)
     close = danger_close(s, cfg)
+    # (0.105.47, R2 item 7) C (titan inside, 20 recalls in 2 hours, the
+    # shelter emptied): while the danger lasts a squad out to eat is back as
+    # soon as it is fed, and the squads go out one at a time (planner_holdfast)
+    from planner_holdfast import rest_done, rest_turn
+    turns = bool(close or hide)
+    if turns:
+        back = rest_done(rest, squads, now, cfg)
+        if back:
+            notes.append(f"{len(back)} squad(s) fed and watered: back to the post now, not after "
+                         f"{cfg['shelter_rest_days']} days")
     long_in = [] if close else [q for q in inside
                                 if now - since.get(str(q["id"]), now) >= cfg["shelter_max_days"] * TICKS_PER_DAY]
+    if turns:
+        long_in = [q for q in long_in if not rest_turn(rest, now, q["id"])][:1]
     for q in long_in:
         proposals.append(Proposal("squad_recall", {"type": "squad_orders", "squad_id": q["id"], "clear": True},
                                   f"{q.get('name') or 'the squad'} has held the shelter {cfg['shelter_max_days']} "
@@ -307,6 +319,10 @@ def _shelter_squads_rule(s: dict, memory, cfg: dict, proposals: list, notes: lis
     # the hospital burrow lets its thirsty out (0.105.22), and rests
     for q in inside:
         if q in long_in or not int(q.get("parched") or 0):
+            continue
+        if turns and rest_turn(rest, now, q["id"]):
+            notes.append(f"{q['parched']} soldier(s) of {q.get('name') or 'the squad'} are thirsty or hungry: it "
+                         "goes out to eat when the squad out now is back (one at a time while the danger lasts)")
             continue
         proposals.append(Proposal("squad_recall", {"type": "squad_orders", "squad_id": q["id"], "clear": True},
                                   f"{q['parched']} soldier(s) of {q.get('name') or 'the squad'} in the shelter are "
@@ -335,6 +351,10 @@ def _shelter_squads_rule(s: dict, memory, cfg: dict, proposals: list, notes: lis
                      and not (q.get("orders") or 0) > int(q.get("ai_orders") or 0)]
             if spot:
                 at = {"x": spot["x"], "y": spot["y"], "z": spot["z"]}
+                if spot.get("drink") is False:
+                    # (0.105.47) said: the station order has them carry water and food
+                    notes.append(f"the squads' post at x{at['x']} y{at['y']} z{at['z']} has no drink on its level: "
+                                 "they carry water and food there, and go out to eat one squad at a time")
                 out = [q for q in ready if _d(q.get("stationed")) != at]
                 if out:
                     proposals.append(Proposal("shelter_squads", {"type": "shelter_squads",
