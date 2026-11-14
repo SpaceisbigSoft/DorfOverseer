@@ -251,6 +251,9 @@ ORDER_RECIPES = {
     wooden_shield = {job = 'MakeShield', item_subtype = 'ITEM_SHIELD_SHIELD', material_category = {'wood'}},
     wooden_buckler = {job = 'MakeShield', item_subtype = 'ITEM_SHIELD_BUCKLER', material_category = {'wood'}},
 }
+-- (0.105.45) giant axe blades at the forge for the kill zones' weapon traps (lua/ai-killzone.lua;
+-- vanilla's trap component token: needs an in-game look that DF takes the order)
+ORDER_RECIPES.metal_trap_blades = {job = 'MakeTrapComponent', item_subtype = 'ITEM_TRAPCOMP_GIANTAXEBLADE', kind = 'metal'}
 
 -- Which plugins are on, from DFHack's own `enable` listing (the same way the
 -- DFHack control panel reads it). Works for plugins without a Lua module too.

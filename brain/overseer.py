@@ -495,6 +495,8 @@ SHORT_WORDS = {
     "archer_post": "post the crossbow squads behind the entrance's fortifications",
     "place_siege_engine": "place a ballista behind the entrance's fortifications",
     "place_siege_shop": "place a siege workshop near the gate (ballista parts and arrows)",
+    "build_killzone": "set traps in the narrow way in behind a gate or cavern opening, and a drawbridge",   # (0.105.45)
+    "reset_cage_traps": "see that the kill zone's full cage traps can be emptied and loaded again",
     "squad_barracks": "give a squad its barracks",
     "open_trade": "open the trade screen at the depot",
     "close_trade": "close the trade screen",

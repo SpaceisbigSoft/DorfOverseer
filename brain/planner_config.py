@@ -1035,4 +1035,13 @@ PLANNER_CONFIG = {
     "stuck_sweep_actions_max": 2,             # the sweep's actions a cycle
     "stuck_sweep_notes_max": 6,               # its notes a cycle
     "stuck_sweep_cooldown_ticks": 0,          # (it paces each thing itself)
+    # (0.105.45) kill zones at the gates and cavern openings (brain/planner_killzone.py, lua/ai-killzone.lua)
+    "killzone_min_citizens": 8,           # a fort this big before it builds kill zones (a crisis or a fight: none)
+    "killzone_slider": 0,                 # Fortification or Caution at least this: entrances enemies used, the beasts' caverns
+    "killzone_all_slider": 80,            # ...this: every gate and cavern opening the AI holds
+    "killzone_closed_outsiders": -50,     # Outsiders this low (a closed fort, the Hermit hold): every entrance, first
+    "killzone_used_min": 1,               # enemies seen at an entrance (the atlas' per-gate records) before it is "used"
+    "killzone_traps": 4,                  # traps a zone (the stretch allows 3-6)
+    "killzone_traps_high": 6,             # ...at Fortification or Caution killzone_all_slider and up
+    "killzone_cooldown_ticks": 1200,      # one step (a zone, or the next step of its drawbridge) a game day
 }

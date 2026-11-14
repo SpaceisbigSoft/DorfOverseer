@@ -822,6 +822,16 @@ function MilitaryPage:init()
         initial_option = p.settings.cavern_logging ~= false,
         on_change = function(v) p:set_field('cavern_logging', v) end,
     })
+    -- (0.105.45) kill zones at the gates and cavern openings: the right-hand column's
+    -- free row t+18 (the missions row ends at column 74)
+    table.insert(views, widgets.ToggleHotkeyLabel{
+        view_id = 'killzones',
+        frame = {t = t + 18, l = 76, w = 40},
+        label = 'Kill zones at the gates:',
+        label_width = 28,
+        initial_option = p.settings.killzones ~= false,
+        on_change = function(v) p:set_field('killzones', v) end,
+    })
     table.insert(views, widgets.CycleHotkeyLabel{
         view_id = 'gear_weapon',
         frame = {t = t + 13, l = 2, w = 60},
@@ -979,6 +989,7 @@ function MilitaryPage:refresh()
     for _, k in ipairs({'siege_engines', 'archer_posts', 'caravan_guard', 'wildlife_hunts'}) do   -- (item5)
         self.subviews[k]:setOption(s[k] ~= false, false)
     end
+    self.subviews.killzones:setOption(s.killzones ~= false, false)                  -- (0.105.45)
     self.subviews.gear_weapon:setOption(s.gear_weapon, false)
     self.subviews.prisoners:setOption(s.prisoners or 'keep', false)                -- (0.105.0)
     self.subviews.moon_cells:setOption(s.moon_cells ~= false, false)

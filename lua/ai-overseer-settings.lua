@@ -400,6 +400,9 @@ function defaults()
         -- posted behind fortifications in a siege, a squad out to a caravan under attack,
         -- dangerous wild animals near the dwarves outside hunted
         siege_engines = true, archer_posts = true, caravan_guard = true, wildlife_hunts = true,
+        -- (0.105.45) kill zones at the gates and cavern openings (lua/ai-killzone.lua,
+        -- brain/planner_killzone.py): traps in the narrow way in, a drawbridge over a drop
+        killzones = true,
         -- (0.105.40b) raw adamantine mined: kept for a sealed breach plan that
         -- isn't built yet. On or off, the dig guard (ai-util dig_forbidden)
         -- leaves adamantine, the spire and the underworld alone
@@ -508,6 +511,7 @@ function sanitize(s)
                         'link_feeders',             -- (0.105.41, item 2) feeder piles linked to their workshops
                         'hunting', 'cavern_farms',  -- (0.105.41, item 4) provisions
                         'siege_engines', 'archer_posts', 'caravan_guard', 'wildlife_hunts',   -- (item5)
+                        'killzones',                -- (0.105.45) kill zones at the gates and cavern openings
                         'mine_adamantine',          -- (0.105.40b) reserved: still refused (not built yet)
                         'traffic'}) do              -- (0.105.41) traffic zones on the AI's levels
         if s[k] ~= nil then out[k] = s[k] == true end
@@ -623,6 +627,7 @@ function for_ai(s)
         link_feeders = s.link_feeders,             -- (0.105.41, item 2)
         siege_engines = s.siege_engines, archer_posts = s.archer_posts,       -- (item5)
         caravan_guard = s.caravan_guard, wildlife_hunts = s.wildlife_hunts,
+        killzones = s.killzones,                   -- (0.105.45)
         mine_adamantine = s.mine_adamantine,       -- (0.105.40b) reserved: adamantine still left alone
         hunting = s.hunting, cavern_farms = s.cavern_farms,   -- (0.105.41, item 4)
         wipe_learned = s.wipe_learned,

@@ -39,6 +39,15 @@ The forts are A War-hold, B Monastery, C Merchant city, D Hermit hold, E Deep mi
 - **Journal, `stuck_sweep`**: `stuck_reset` (reissue, then drop) on an AI lever whose pull job nobody took (the cavern well's shaft lever, the cistern's, the gate lever); `squad_orders clear` for a kill order on targets dead, gone or caged while other threats keep the squads out; `cancel_work_order` with `stuck` for an AI order that sat 56 days; `free_dig_jobs` / `prioritize_dig` then `cancel_project` for a level dug part way and stalled for months; `finish_project stalled` for one furnishing for ever; `cistern_step retire` / `water_work retire` for a step that never moved. Never beside the same thing's own rule in a cycle (dig_jobs, gate_stuck, way_in, gate_jobs, squad_recall, stuck_order, the cistern's own retire).
 - **stuck_reset in game**: the PullLever job gone from the lever (the building's job list), a fresh one posted on reissue (`lever pull --id`), none on drop; the pull then asked again by its own rule if still wanted.
 - **health_check.txt**: a `stuck:` part, "stuck: N thing(s) past their timeout (kinds)", flagged only when some stay past it over 12 soak rows; the soak rows carry `stuck` {past, kinds}.
+## 0.105.45 (14 Nov): kill zones at the gates and cavern openings (Phase 11 b)
+
+- **All, state.json**: `killzones.entrances` (per entrance: `state` possible / none with `why` / building / standing / gatehouse, `corridor` length, `drawbridge` possible and `channel`, `fortifications`), `killzones.threats` with `trapavoid` for each enemy, `free_mechanisms`, `trap_weapons`, `mechanics`. No `error`. Is a `possible` stretch really a 1-wide way every enemy must walk (look at it on the map)?
+- **A fort where enemies came through an entrance (the atlas' threats there), A War-hold, D Hermit hold**: a `build_killzone` journal line; cage traps (`Tc`) in the narrow way in, never on the first tile behind the gate; a drawbridge named "AI killzone bridge" and an "AI gate lever" where the dwarves are; the gate rule (or the zone's own rule) links the lever to it.
+- **The founding stair's only way in**: no channel dug there (the bridge stands flat, lowered); citizens walk in and out over it the whole time.
+- **A second way in, rock below**: a channel dug under the bridge's tile, then its ramp removed (`z`), then the bridge placed over the pit, one step a day; never over water, an aquifer, a cavern or a fort level below.
+- **TRAPAVOID**: a titan or forgotten beast at a gate shows `trapavoid` true or false in `killzones.threats`; when true the note says the traps never touch it and the zone gets only the drawbridge. Does a cage trap catch a goblin (and the full cage get hauled to an animal stockpile by DF itself, the trap loaded again)?
+- **Weapon traps (Fortification 80+)**: a `metal_trap_blades` order at the forge is accepted by DF (MakeTrapComponent, ITEM_TRAPCOMP_GIANTAXEBLADE) and the `Tw` traps get their blades.
+- **Army tab**: the switch **Kill zones at the gates** (on), in the right-hand column beside the missions row.
 
 ## item1 (14 Nov): the thirst trap (B, 13 Nov: 66 dead of thirst beside 845 drinks)
 
