@@ -534,6 +534,7 @@ SHORT_WORDS = {
     "cleanup_spatter": "clean blood and spatter off the map",
     "cleanup_dead_units": "take long-dead creatures off the game's active list",
     "insane_guard": "lock the AI's own doors between an insane dwarf and deep water, magma or a drop while they are near",  # (0.105.40b)
+    "killer_cell": "lock a killer or a vampire among the fort's own in a cell (let out to eat and drink)",  # (item3)
     "magma_reclaim": "open the paths again where spilt magma cooled, and dig out what it left",  # (0.105.41, item 7)
     "clean_contaminants": "clean a syndrome's spreading material off the dwarves and floors",   # (0.105.41, item 11)
     "quarantine_syndromes": "keep the carriers of a contact syndrome in the hospital",

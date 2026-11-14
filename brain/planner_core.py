@@ -85,7 +85,8 @@ STEER_PROTECTED = EMERGENCY | {"shelter", "alerts", "squad_recall", "water", "we
                                "flasks_order", "cavern_openings", "seal_cavern", "stranded",
                                # (0.105.32) an open gate the game holds shut; a way dug in
                                "gate_stuck", "way_in",
-                               "insane"}   # (0.105.40b) doors between the insane and deadly ground
+                               "insane",   # (0.105.40b) doors between the insane and deadly ground
+                               "killer"}   # (item3) a killer among the fort's own locked away
 STEER_MAX_DAYS = 84
 
 

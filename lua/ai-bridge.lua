@@ -357,6 +357,18 @@ ACTIONS = {
         -- (0.105.40b fix) release_only: the held locks freed, none made (run_action sets it while halted)
         return reqscript('ai-insane').guard({units = ids, release_only = a.release_only == true}, a.dry_run == true)
     end,
+    -- (item3) a killer among the fort's own locked away in a cell (lua/ai-killers.lua)
+    killer_cell = function(a)
+        if type(a.units) ~= 'table' then return reject('killer_cell: units is a list of unit ids') end
+        local ids = {}
+        for _, id in ipairs(a.units) do
+            local n = type(id) == 'number' and math.tointeger(id) or nil
+            if not n then return reject('killer_cell: units is a list of unit ids') end
+            table.insert(ids, n)
+        end
+        -- release_only: the thirsty and hungry let out, nobody locked in (run_action sets it while halted)
+        return reqscript('ai-killers').cell({units = ids, release_only = a.release_only == true}, a.dry_run == true)
+    end,
     -- (0.105.40 M5) hauling balanced: haulers added, key specialists relieved (lua/ai-hauling.lua)
     add_haulers = act_add_haulers,
     relieve_haulers = act_relieve_haulers,
@@ -542,6 +554,7 @@ for _, name in ipairs({
     -- (0.105.40) world cleanup: each dry run counts and returns before it removes anything
     'cleanup_items', 'cleanup_units', 'cleanup_spatter', 'cleanup_dead_units',
     'insane_guard',   -- (0.105.40b) its dry run counts the doors and changes nothing
+    'killer_cell',    -- (item3) its dry run finds the rooms and changes nothing
     'add_haulers', 'relieve_haulers',   -- (0.105.40 M5) each dry run names the dwarves and changes nothing
     -- (0.105.40b, M6) the food store: each dry run finds the spot (quickfort's dry run) and changes nothing
     'food_pile', 'food_barrels',
@@ -571,7 +584,8 @@ DISPLAY_ONLY = {report_status = true, set_culture = true, set_learned = true, sa
 -- (0.105.40b fix) Actions that, while halted, still run their undoing step
 -- alone (the field set true): the insane guard frees the doors it locked (a
 -- lock left on while the AI is halted could shut a dwarf in), and locks none.
-RELEASE_WHILE_HALTED = {insane_guard = 'release_only'}
+-- (item3) the killer cells let the thirsty and hungry out, and lock nobody in.
+RELEASE_WHILE_HALTED = {insane_guard = 'release_only', killer_cell = 'release_only'}
 
 ---------------------------------------------------------------------------
 -- Time control. Globals (not locals) so they survive between script runs.
@@ -623,7 +637,7 @@ BRIDGE_MODULES = {
     'ai-artifacts', 'ai-bans', 'ai-benches', 'ai-blueprints', 'ai-builder', 'ai-camera', 'ai-captives', 'ai-census',
     'ai-cleanup', 'ai-constructions', 'ai-diplomacy', 'ai-disposal', 'ai-food-store', 'ai-forestry', 'ai-gates',
     'ai-hauling', 'ai-hazards', 'ai-health', 'ai-homes', 'ai-leather-gear',
-    'ai-industry', 'ai-insane', 'ai-joins', 'ai-labor', 'ai-layouts', 'ai-military', 'ai-military-gear',
+    'ai-industry', 'ai-insane', 'ai-joins', 'ai-killers', 'ai-labor', 'ai-layouts', 'ai-military', 'ai-military-gear',
     'ai-mission-send', 'ai-missions', 'ai-moods', 'ai-noble-demands', 'ai-nobles', 'ai-overlay',
     'ai-overseer-settings', 'ai-paper', 'ai-pile-links', 'ai-ping', 'ai-provisions', 'ai-reports', 'ai-siege',
     'ai-society', 'ai-society-burrows', 'ai-status', 'ai-syndromes', 'ai-threats', 'ai-title', 'ai-trade', 'ai-traffic',
@@ -1000,6 +1014,10 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
     -- where, the deadly ground near them, the AI's doors locked for them; the
     -- citizens whose stress heads that way (lua/ai-insane.lua; in the pulse)
     insane = function() return safe(function() return reqscript('ai-insane').report() end) end,
+    -- (item3) a killer among the fort's own: cursed citizens and residents
+    -- (vampires, werebeasts), the living who killed the fort's people (DF's
+    -- incidents and crimes), with a confidence each; the AI's cells (lua/ai-killers.lua)
+    killers = function() return safe(function() return reqscript('ai-killers').report() end) end,
     -- (0.105.41) traffic zones: the AI's finished levels waiting for their
     -- traffic, the one in progress, the next recheck (lua/ai-traffic.lua; the
     -- project records only, no tile read)

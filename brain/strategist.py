@@ -178,6 +178,7 @@ NOT_STEERABLE = {"strategist"}     # (0.105.26) its own actions: nothing to rais
 # on its own per-entrance cooldown
 RAISE_FORBIDDEN = {"slaughter", "cleanup", "gate_lever", "gate", "squad_attack", "convict", "expel", "cursed",
                    "trade", "trade_deal", "call_trader", "open_trade", "close_trade", "stranded",
+                   "killer",      # (item3) a cell or a squad for one of the fort's own: the evidence decides
                    "mission"}     # (0.105.39) missions (raids among them) only as the Rules and the reserve say
 # (0.105.33, B5) never held, beside the planner's STEER_PROTECTED: the barrels
 # and pots the brewing waits for, soap for infected wounds, the farms
