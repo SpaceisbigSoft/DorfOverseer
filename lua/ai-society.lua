@@ -377,6 +377,18 @@ local function drink_and_wells()
     return out, units, wells, food
 end
 
+-- (0.105.45) for lua/ai-shelter-plan.lua: the drink, wells and food (as
+-- drink_and_wells), and the fort's levels (as fort_levels)
+function shelter_supplies() return drink_and_wells() end
+function shelter_level_range() return fort_levels() end
+
+-- (0.105.45) the levels the AI picked for the shelter, away from the threat's
+-- way in (ai-shelter-plan pick_levels: a set of z), or nil for the whole fort
+local function picked_levels()
+    local ok, only = pcall(function() return reqscript('ai-shelter-plan').pick_levels() end)
+    return ok and only or nil
+end
+
 SHELTER_OPEN_KEY = 'ai-overseer/shelter_open'       -- (0.105.26) the entrances open when it was made
 SHELTER_DRINK_BACK = 30                             -- drink tiles taken back at most
 SHELTER_DRINK_PER_CITIZEN = 2                       -- (0.105.33) drink units a citizen, short of a well
@@ -444,10 +456,20 @@ end
 --     tiles come back from the margins and from the not-subterranean ones
 --     (dark first, sunlit only when there is nothing else; never the
 --     AI's hall or keep), farthest from the open entrances first.
-function fill_shelter(b)
+-- (0.105.45) only: a set of z levels (the AI's pick away from the threat):
+-- the shelter is drawn over those levels alone; nil: the whole fort.
+function fill_shelter(b, only)
     local info = {excluded = 0, margin = SHELTER_MARGIN, margin_levels = SHELTER_MARGIN_Z}
     local lo, hi = fort_levels()
     if not lo then return 0, info end
+    if only then
+        info.levels = {}
+        for z in pairs(only) do
+            lo, hi = math.min(lo, z), math.max(hi, z)
+            table.insert(info.levels, z)
+        end
+        table.sort(info.levels)
+    end
     local okl, open, scanned = pcall(open_entrances)
     if not okl then open, scanned, info.entrances_error = {}, false, tostring(open):sub(1, 120) end
     info.entrances_scanned = scanned
@@ -532,7 +554,7 @@ function fill_shelter(b)
     end
     for _, block in ipairs(df.global.world.map.map_blocks) do
         local z = block.map_pos.z
-        if z >= lo and z <= hi then
+        if z >= lo and z <= hi and (not only or only[z]) then
             local bx, by = block.map_pos.x or 0, block.map_pos.y or 0
             blocks[bx .. ',' .. by .. ',' .. z] = block
             local near_list = #open > 0 and entrances_for_block(open, bx, by, z) or nil
@@ -776,6 +798,7 @@ function shelter_result(r, info)
     r.deep_depot_tiles = info.deep_depot_tiles
     r.surface_out, r.surface_back, r.surface_note = info.surface_out, info.surface_back, info.surface_note   -- (0.105.30)
     r.surface_mode, r.ai_hall_tiles, r.short = info.surface_mode, info.ai_hall_tiles, info.short
+    r.levels = info.levels                                   -- (0.105.45) the AI's pick, when there is one
     return r
 end
 
@@ -814,7 +837,7 @@ function setup_shelter()
     end
     local b = find_burrow(SHELTER_NAME) or new_burrow(SHELTER_NAME)
     dfhack.burrows.clearTiles(b)
-    local n, info = fill_shelter(b)
+    local n, info = fill_shelter(b, picked_levels())        -- (0.105.45)
     if n == 0 then
         return {ok = false, error = 'found no inside tiles to shelter in'}
     end
@@ -837,7 +860,7 @@ function refresh_shelter()
     local before = 0
     pcall(function() before = dfhack.burrows.listBlocks and #dfhack.burrows.listBlocks(b) or 0 end)
     dfhack.burrows.clearTiles(b)
-    local n, info = fill_shelter(b)
+    local n, info = fill_shelter(b, picked_levels())        -- (0.105.45) the pick away from the threat
     shelter_drawn(n)
     return shelter_result({refreshed = true, tiles = n, blocks_before = before}, info)
 end

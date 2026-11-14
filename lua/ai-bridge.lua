@@ -540,6 +540,30 @@ ACTIONS = {
         end
         return reqscript('ai-hunt').recall(o, a.dry_run == true)
     end,
+    -- (0.105.45) the shelter away from the threat's way in: the AI shelter drawn
+    -- over the levels the brain picked (clear: the whole fort again), and a
+    -- squad stationed between the threat and it (lua/ai-shelter-plan.lua, ai-military station)
+    shelter_pick = function(a)
+        local levels
+        if a.clear ~= true then
+            if type(a.levels) ~= 'table' then return reject('shelter_pick needs levels (a list of z) or clear') end
+            levels = {}
+            for _, z in ipairs(a.levels) do
+                local n = int_in(z, 0, 1000)
+                if not n then return reject('shelter_pick: levels are z levels') end
+                table.insert(levels, n)
+            end
+        end
+        return reqscript('ai-shelter-plan').pick(levels, {clear = a.clear == true, why = a.why,
+                                                          way_in = type(a.way_in) == 'table' and a.way_in or nil},
+                                                 a.dry_run == true)
+    end,
+    squad_station = function(a)
+        local id = whole_number(a.squad_id)
+        local x, y, z = int_in(a.x, 0, 1000), int_in(a.y, 0, 1000), int_in(a.z, 0, 1000)
+        if not id or not x or not y or not z then return reject('squad_station needs squad_id, x, y, z') end
+        return reqscript('ai-military').station(id, x, y, z, a.dry_run == true)
+    end,
 }
 
 -- (13c) The actions whose dry run changes nothing in the fort, all the way
@@ -595,6 +619,7 @@ for _, name in ipairs({
     'cleanup_items', 'cleanup_units', 'cleanup_spatter', 'cleanup_dead_units',
     'insane_guard',   -- (0.105.40b) its dry run counts the doors and changes nothing
     'killer_cell',    -- (item3) its dry run finds the rooms and changes nothing
+    'shelter_pick', 'squad_station',   -- (0.105.45) each dry run checks and changes nothing
     'add_haulers', 'relieve_haulers',   -- (0.105.40 M5) each dry run names the dwarves and changes nothing
     -- (0.105.40b, M6) the food store: each dry run finds the spot (quickfort's dry run) and changes nothing
     'food_pile', 'food_barrels',
@@ -681,7 +706,7 @@ BRIDGE_MODULES = {
     'ai-industry', 'ai-insane', 'ai-joins', 'ai-killers', 'ai-labor', 'ai-layouts', 'ai-military', 'ai-military-gear',
     'ai-mission-send', 'ai-missions', 'ai-moods', 'ai-noble-demands', 'ai-nobles', 'ai-overlay',
     'ai-overseer-settings', 'ai-paper', 'ai-pile-links', 'ai-ping', 'ai-provisions', 'ai-reports', 'ai-siege',
-    'ai-society', 'ai-society-burrows', 'ai-status', 'ai-syndromes', 'ai-threats', 'ai-title', 'ai-trade', 'ai-traffic',
+    'ai-shelter-plan', 'ai-society', 'ai-society-burrows', 'ai-status', 'ai-syndromes', 'ai-threats', 'ai-title', 'ai-trade', 'ai-traffic',
     'ai-util', 'ai-water', 'ai-waterworks', 'gui/ai-overseer',
     'ai-threat-facts',          -- (0.105.45) a threat's facts for the matchup (called from the report)
 }
@@ -1126,6 +1151,11 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
             return reqscript('ai-hunt').report(txt, {layers = okl and layers or nil})
         end)
     end,
+    -- (0.105.45) the shelter away from the threat: the dangers' ways in, the
+    -- fort's levels as shelters with the threat's and the civilians' walk to
+    -- each, the chokes between, the barracks, the AI's pick now (lua/ai-shelter-plan.lua;
+    -- in the pulse: only a units scan with no danger on the map)
+    shelter_plan = function() return safe(function() return reqscript('ai-shelter-plan').report(txt) end) end,
     -- (0.105.30) what the fort has built: finished constructions by shape and
     -- material, above or below ground, roofed surface tiles, the waiting ones
     -- and the AI's own (lua/ai-constructions.lua; one pass, every 3 days)
@@ -1148,6 +1178,7 @@ PULSE_SECTIONS = {
     'weather',  -- (fix41) an evil cloud crosses from the map's edge in hours: read each cycle
     'field_watch',   -- (item5) a caravan attacked, a bear by the woodcutters: read each cycle
     'env_hazards',   -- (0.105.41, item 7) spilt magma spreads in minutes: read each cycle
+    'shelter_plan',  -- (0.105.45) a titan inside walks to the shelter in minutes: read each cycle
 }
 TIERS = {pulse = true, daily = true, survey = true}
 -- report sections rebuilt only every so many game days (the lag pass, Oct 23:

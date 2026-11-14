@@ -44,7 +44,8 @@ TICKS_PER_YEAR = 403200
 NO_COOLDOWN = {"threat_alert", "strategist", "squad_attack", "squad_recall", "train", "gates", "water", "flood",
                "trade_deal", "close_trade",       # time stands still while the trade screen is open
                "shelter_squads",                  # (0.105.0 review) an emergency, as in EMERGENCY
-               "gate_stuck", "way_in"}            # (0.105.32) they pace themselves (planner_gates)
+               "gate_stuck", "way_in",            # (0.105.32) they pace themselves (planner_gates)
+               "shelter_flee"}                    # (0.105.45) a great danger inside, close to the shelter
 # (0.105.26) a rule whose cooldown key isn't "<rule>_cooldown_ticks" (select()):
 # the prisoners rule waited the 2-day default instead of its 7 days
 COOLDOWN_KEYS = {"prisoners": "prisoner_room_cooldown_ticks"}
@@ -61,7 +62,8 @@ EMERGENCY = {"threat_alert", "gate", "gates", "squad_attack", "flood", "gate_gua
              # life on each: no action limit, no refusal back-off or loop hold
              # (each rule paces its own tries: planner_gates)
              "gate_stuck", "way_in",
-             "archer_post", "caravan_guard"}   # (item5) crossbows to the posts in a siege; a caravan attacked
+             "archer_post", "caravan_guard",   # (item5) crossbows to the posts in a siege; a caravan attacked
+             "shelter_pick", "shelter_flee"}   # (0.105.45) the shelter away from the threat
 # (0.104.89) rules the strategist may never hold: survival, safety and the
 # answers to danger (it may still raise them)
 STEER_PROTECTED = EMERGENCY | {"shelter", "alerts", "squad_recall", "water", "well", "drink",

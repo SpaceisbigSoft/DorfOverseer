@@ -1012,4 +1012,12 @@ PLANNER_CONFIG = {
     "hunt_great_caution_max": 150,        # ...and Caution below this
     "hunt_learned_keep": 60,              # history outcomes remembered as learned (each counted once)
     "hunt_cooldown_ticks": 300,           # a new hunt at most every quarter day
+    # (0.105.45) the shelter away from the threat, the squads between (brain/planner_shelter.py)
+    "shelter_pick_margin": 5,             # the threat's walk to a shelter this many steps longer than the civilians' (90%) at least
+    "shelter_pick_max_levels": 3,         # levels one shelter spans at most (for room and drink)
+    "shelter_pick_hysteresis": 10,        # a pick in use kept unless the new one is this much farther from the threat
+    "shelter_pick_cooldown_ticks": 300,   # the shelter redrawn at most this often (shelter_flee: at once)
+    "shelter_flee_tiles": 20,             # a great danger inside the fort this close (walk) to the shelter: moved at once
+    "shelter_choke_min_tiles": 10,        # the squads' choke this many steps from the shelter at least
+    "shelter_choke_max_width": 4,         # ...and no wider than this (walkable neighbours on its level)
 }

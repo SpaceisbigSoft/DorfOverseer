@@ -31,12 +31,13 @@ from __future__ import annotations
 from digest import _d, _l
 from planner_core import (AGENDA_THEMES, GEAR_WEAPONS, Proposal, all_clear, can_fight, is_ranged, player_rules, queued,
                           reachable_threats, _has_shop)
+from planner_shelter import plan_ready, squad_station_spot   # (0.105.45) the squads between the threat and the shelter
 
 __all__ = ["_army_gear_rule", "_quiver_rule", "_bolts_rule", "_shelter_squads_rule", "_gate_cut_rule",
            "hiding", "danger_close", "_flask_rule", "WEAPON_RECIPES"]
 
 AGENDA_THEMES.update({"gear_fix": "arm the soldiers", "quivers": "quivers for the crossbows",
-                      "bolts": "bolts for the crossbows", "shelter_squads": "the squads hide with the civilians",
+                      "bolts": "bolts for the crossbows", "shelter_squads": "the squads stand between the threat and the civilians",
                       "gate_cut": "close the wide openings"})
 
 # the weapon an entry names, and how the fort makes it
@@ -321,6 +322,33 @@ def _shelter_squads_rule(s: dict, memory, cfg: dict, proposals: list, notes: lis
             return
         if s.get("civ_alert_ready") is not True and not s.get("civ_alert"):
             return                       # no shelter burrow yet (the alarm rule sets one up)
+        # (0.105.45) F (27 Galena y257): a hill titan killed 42 in the shelter where
+        # the civilians and two squads waited together. With the shelter plan
+        # (planner_shelter) the squads stand between: at a choke on the threat's
+        # walk to the shelter, else the barracks; never in the civilians' shelter
+        if plan_ready(s):
+            spot = squad_station_spot(s, cfg, proposals)
+            ready = [q for q in squads if (q.get("members") or 0) > 0
+                     and str(q["id"]) not in rest and not int(q.get("parched") or 0)
+                     and not (q.get("orders") or 0) > int(q.get("ai_orders") or 0)]
+            if spot:
+                at = {"x": spot["x"], "y": spot["y"], "z": spot["z"]}
+                out = [q for q in ready if _d(q.get("stationed")) != at]
+                if out:
+                    proposals.append(Proposal("shelter_squads", {"type": "shelter_squads",
+                                                                 "squads": [q["id"] for q in out], "station": at},
+                                              f"the dwarves hide from a great danger: {len(out)} squad(s) stand "
+                                              f"between it and the civilians' shelter, at x{at['x']} y{at['y']} "
+                                              f"z{at['z']} ({spot['why']})", 0))
+                return
+            notes.append("the dwarves hide from a great danger: no choke between it and the shelter and no "
+                         "barracks away from it, so the squads keep their routine (never in the civilians' shelter)")
+            for q in [q for q in inside if not q.get("stationed") and q not in long_in
+                      and not int(q.get("parched") or 0)]:
+                proposals.append(Proposal("squad_recall", {"type": "squad_orders", "squad_id": q["id"], "clear": True},
+                                          f"{q.get('name') or 'the squad'} leaves the civilians' shelter: a beast "
+                                          "that reaches it finds the civilians and the squad together", 1))
+            return
         out = [q for q in squads if (q.get("members") or 0) > 0 and not q.get("sheltering")
                and str(q["id"]) not in rest and not int(q.get("parched") or 0)      # (0.105.24)
                and not (q.get("orders") or 0) > int(q.get("ai_orders") or 0)]

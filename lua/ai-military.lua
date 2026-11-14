@@ -576,6 +576,7 @@ function report(txt)
                 end
                 local ai_orders, guarding = 0, false
                 local kill_ids, sheltering = nil, nil
+                local stationed = nil                -- (0.105.45) {x, y, z} of the AI's station order
                 for _, o in ipairs(sq.orders) do
                     if is_ai_order(o, sid) then
                         ai_orders = ai_orders + 1
@@ -592,6 +593,10 @@ function report(txt)
                         if is_guard_order(o) then guarding = true end
                         -- (0.105.0) in the shelter with the civilians (the AI hides)
                         if is_shelter_order(o, sid) then sheltering = true end
+                        -- (0.105.45) or standing between the threat and the shelter: a
+                        -- hiding order too (the brain's rules treat it as the shelter's)
+                        local okst, st = pcall(station_of, o, sid)
+                        if okst and st then sheltering = true; stationed = st end
                     end
                 end
                 local ok, idx = pcall(function() return sq.cur_routine_idx end)
@@ -605,6 +610,7 @@ function report(txt)
                     routine = ok and routines[idx + 1] or nil,
                     orders = #sq.orders, ai_orders = ai_orders, guarding = guarding or nil, kill_ids = kill_ids,
                     sheltering = sheltering,         -- (0.105.0)
+                    stationed = stationed,           -- (0.105.45)
                     -- (0.105.0) a crossbow squad's bolts: entries, wanted, assigned
                     ammo = (function() local oka, a = pcall(squad_ammo, sq) return oka and a or nil end)(),
                     uniform = #sq.positions > 0 and uniform_set(sq.positions[0]) or false,
@@ -2067,6 +2073,81 @@ function shelter(squad_id, dry_run)
     marks[tostring(squad_id)] = order_tick(o)
     save_shelter_marks(marks)
     return {ok = true, burrows = #ids, replaced = removed, supplies = supplies}
+end
+
+-- (0.105.45) The squads between the threat and the civilians. F (27 Galena
+-- y257): a hill titan killed 42 in the shelter, where the civilians and two
+-- squads waited together. While the AI hides from a great danger the squads
+-- now stand at a choke point on the threat's way to the shelter (a corridor
+-- or stair just inside the gate it faces; brain/planner_shelter.py chooses
+-- it from the shelter_plan section), or at the barracks: a station (move)
+-- order, titled and marked as the AI's like the shelter's (the recall clears
+-- it, `sheltering` stays true in the report so every hiding rule holds).
+STATION_KEY = 'ai-overseer/station'
+
+function station_marks() return U.site_get(STATION_KEY, {}) end
+
+-- the AI's station order on this squad: {x, y, z}, or nil
+function station_of(o, squad_id)
+    if not df.squad_order_movest:is_instance(o) then return nil end
+    local okt, title = pcall(function() return o.title end)
+    if not okt or title ~= AI_ORDER_TITLE then return nil end
+    local mark = station_marks()[tostring(squad_id)]
+    if type(mark) ~= 'table' then return nil end
+    local okp, x, y, z = pcall(function() return o.pos.x, o.pos.y, o.pos.z end)
+    if not okp then return nil end
+    return {x = x, y = y, z = z}
+end
+
+function station(squad_id, x, y, z, dry_run)
+    local sq = fort_squad(squad_id)
+    if not sq then return {ok = false, rejected = true, error = 'no such squad in this fort'} end
+    local okw, walk = pcall(function()
+        local tt = dfhack.maps.getTileType(x, y, z)
+        local shape = df.tiletype_shape[df.tiletype.attrs[tt].shape]
+        return shape ~= 'WALL' and shape ~= 'EMPTY' and shape ~= 'NONE' and dfhack.maps.getWalkableGroup({x = x, y = y, z = z}) ~= 0
+    end)
+    if not (okw and walk) then return {ok = false, rejected = true, error = ('x%d y%d z%d is no place to stand'):format(x, y, z)} end
+    for _, o in ipairs(sq.orders) do
+        if not is_ai_order(o, squad_id) then return {ok = false, rejected = true, error = 'the squad is on your orders'} end
+        local st = station_of(o, squad_id)
+        if st and st.x == x and st.y == y and st.z == z then
+            return {ok = false, rejected = true, error = 'the squad stands there already'}
+        end
+    end
+    local okm, m = pcall(members_state, sq)
+    if okm and m and (m.parched or 0) > 0 then
+        return {ok = false, rejected = true, parched = m.parched,
+                error = ('%d of its soldiers are thirsty or hungry: they eat and drink first'):format(m.parched)}
+    end
+    if dry_run then return {ok = true, dry_run = true, x = x, y = y, z = z} end
+    -- the order made first (a field this DF lacks: refused, nothing changed)
+    local okn, o = pcall(function()
+        local n = df.squad_order_movest:new()
+        n.pos.x, n.pos.y, n.pos.z = x, y, z
+        n.title = AI_ORDER_TITLE
+        return n
+    end)
+    if not okn or not o then
+        return {ok = false, error = 'could not make a station order: ' .. tostring(o):sub(1, 120)}
+    end
+    pcall(function() o.point_id = -1 end)
+    local removed = drop_orders(sq, function() return true end)
+    pcall(function()
+        if sq.carry_water == 0 then sq.carry_water = 1 end
+        if sq.carry_food == 0 then sq.carry_food = 2 end
+    end)
+    pcall(function() o.year = df.global.cur_year; o.year_tick = df.global.cur_year_tick end)
+    sq.orders:insert('#', o)
+    local marks = station_marks()
+    marks[tostring(squad_id)] = {x = x, y = y, z = z}
+    U.site_put(STATION_KEY, marks)
+    -- off the shelter's marks (it no longer holds the shelter)
+    pcall(function()
+        local sm = shelter_marks()
+        if sm[tostring(squad_id)] ~= nil then sm[tostring(squad_id)] = nil; save_shelter_marks(sm) end
+    end)
+    return {ok = true, x = x, y = y, z = z, replaced = removed}
 end
 
 -- --- the gear (lua/ai-military-gear.lua) ------------------------------------------

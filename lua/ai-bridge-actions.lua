@@ -1296,11 +1296,25 @@ function act_shelter_squads(a)
         return reject('shelter_squads needs squads: a list of 1-20 squad ids')
     end
     local M, out, n = reqscript('ai-military'), {}, 0
+    -- (0.105.45) station: {x, y, z}: the squads stand there (between the
+    -- threat and the civilians' shelter), not in the shelter
+    local st = type(a.station) == 'table' and a.station or nil
+    local sx, sy, sz
+    if st then
+        sx, sy, sz = int_in(st.x, 0, 1000), int_in(st.y, 0, 1000), int_in(st.z, 0, 1000)
+        if not sx or not sy or not sz then return reject('shelter_squads: station needs x, y, z') end
+    end
     for _, v in ipairs(a.squads) do
         local id = whole_number(v)
         if not id then return reject('shelter_squads: squads must be squad ids') end
-        local r = M.shelter(id, a.dry_run == true)
-        out[tostring(id)] = r.ok and 'in the shelter' or r.error
+        local r
+        if st then
+            r = M.station(id, sx, sy, sz, a.dry_run == true)
+            out[tostring(id)] = r.ok and ('at x%d y%d z%d'):format(sx, sy, sz) or r.error
+        else
+            r = M.shelter(id, a.dry_run == true)
+            out[tostring(id)] = r.ok and 'in the shelter' or r.error
+        end
         if r.ok then n = n + 1 end
     end
     if n == 0 then return {ok = false, rejected = true, error = 'no squad could be sent', squads = out} end
