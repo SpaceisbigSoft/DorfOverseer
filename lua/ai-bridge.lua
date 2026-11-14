@@ -631,6 +631,11 @@ ACTIONS = {
     -- (0.105.47, J1) a gathering strange mood's workshop and materials put in the AI
     -- shelter while the alarm is up (lua/ai-mood-help.lua; I7a: 5 moods cancelled "Forbidden area")
     mood_shelter = function(a) return reqscript('ai-mood-help').act_mood_shelter(a) end,
+    -- (0.105.47) a meeting that waits behind DF's diplomacy light opened by
+    -- clicking it (lua/ai-meeting-open.lua); sent by the overseer only unattended
+    open_meeting = function(a)
+        return reqscript('ai-meeting-open').open(a.dry_run == true)
+    end,
 }
 
 -- (13c) The actions whose dry run changes nothing in the fort, all the way
@@ -709,6 +714,7 @@ for _, name in ipairs({
     'thirst_unforbid',   -- (0.105.46, I2) its dry run counts the drinks and lets none go
     'call_migrants',   -- (0.105.46, I4) its dry run names the script and queues nothing
     'mood_shelter',    -- (0.105.47, J1) its dry run counts the tiles and adds none
+    'open_meeting',    -- (0.105.47) its dry run finds the diplomacy light and clicks nothing
 }) do DRY_OK[name] = true end
 
 -- These only change what's displayed, so they still work while halted, dry
@@ -789,6 +795,7 @@ BRIDGE_MODULES = {
     'ai-recovery',   -- (0.105.46, I4)
     'ai-slices', 'ai-cavern-scan',   -- (0.105.46, I6) walks spread over several reports; the caverns' seen samples
     'ai-mood-help',   -- (0.105.47, J1) job cancels, webs, the moods' tiles in the shelter
+    'ai-screen-buttons', 'ai-meeting-open',   -- (0.105.47) buttons kept for every save; the meeting opened
 }
 -- the split-off modules that carry a version mark of their own
 MARKED_MODULES = {'ai-military-gear', 'ai-society-burrows', 'ai-constructions'}
@@ -1562,6 +1569,11 @@ local function cmd_status()
         saving = saving_now() or nil,
         -- (0.105.0) DF's meeting screen is open (the overseer answers it)
         meeting = meeting_focus() ~= nil or nil,
+        -- (0.105.47) meetings queued behind DF's diplomacy light (the overseer opens them unattended)
+        meeting_waiting = (function()
+            local ok, n = pcall(function() return #df.global.plotinfo.dipscript_popups end)
+            return ok and n > 0 and n or nil
+        end)(),
     }
 end
 
@@ -1706,6 +1718,7 @@ for _, name in ipairs({'send_mission', 'trade_deal', 'open_trade', 'close_trade'
                        'cistern_step'}) do
     BATCH_NEVER[name] = true
 end
+BATCH_NEVER.open_meeting = true   -- (0.105.47) drives a screen
 
 function cmd_batch(args)
     if not in_fort() then return NOT_IN_FORT end

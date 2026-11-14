@@ -6,6 +6,7 @@ button is.
     python brain\\probe_meeting.py --watch       watch for 3 minutes (--watch 300 for 5)
     python brain\\probe_meeting.py --here Yes    the mouse is on the meeting's Yes button: remember it
                                                 (likewise No, and Done on the requests screen)
+    python brain\\probe_meeting.py --here Light  (0.105.47) the mouse on DF's purple diplomacy light (a meeting waiting)
 
 The AI answers a meeting (agree to trade, peace and the elves' tree quota;
 tribute by the Rules tab; the requests' wishes ticked) only through buttons
@@ -27,7 +28,7 @@ sys.path.insert(0, str(ROOT / "brain"))
 from bridge import Bridge  # noqa: E402
 
 OUT = ROOT / "logs" / "probe-meeting.json"
-BUTTONS = ("Yes", "No", "Done")
+BUTTONS = ("Yes", "No", "Done", "Light")   # (0.105.47) Light: the diplomacy light, on the plain map
 
 
 def save(r) -> None:

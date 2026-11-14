@@ -222,9 +222,14 @@ def _():
     st = env.meeting_state()
     assert st.open and st.civ == "ELF land" and st.topic == "TreeQuota" and lst(st.topics) == ["PleasantPlace", "TreeQuota"]
     r = env.answer_meeting(LUA.table_from({}))
-    assert not r.ok and r.needs_button == "Yes" and r.answer == "yes" and len(G.clicks) == 0, dict(r)
+    # (0.105.47) no button shown and no word on the screen: DF's confirm key is tried
+    # (never a click); here it changes nothing, so the answer failed and the overseer leaves soon
+    assert not r.ok and r.via == "key" and r.answer == "yes" and len(G.clicks) == 0, dict(r)
+    assert "SELECT" in lst(G.inputs), lst(G.inputs)
     probe = G.files[env.PROBE_FILE]
-    assert probe and len(probe.samples) == 1 and probe.samples[1].state.topic == "TreeQuota"
+    # (0.105.47) the screen before, and what the key did after
+    assert probe and len(probe.samples) == 2 and probe.samples[1].state.topic == "TreeQuota"
+    assert probe.samples[2].via == "key" and probe.samples[2].ok is False
 
 
 @test("the meeting answered through the button shown once: Yes to the tree quota; the screen left when the meeting is done")
@@ -280,7 +285,8 @@ def _():
     T = lambda *a: LUA.table_from(list(a))   # noqa: E731
     assert lst(WENV.pending_topics(T("PleasantPlace", "TreeQuota"), T("PleasantPlace"))) == ["TreeQuota"]
     assert WENV.press_guard(T("TreeQuota"), "small") is None
-    assert "2 topics" in WENV.press_guard(T("TreeQuota", "OpenTrade"), "small")
+    assert "2 topics" in WENV.press_guard(T("TreeQuota", "RequestPeace"), "small")
+    assert WENV.press_guard(T("TreeQuota", "OpenTrade"), "small") is None     # (0.105.47) yes to either
     assert "left to you" in WENV.press_guard(T(), "small")
     for t in ("DemandSurrender", "DeclareWar", "InduceWar"):
         assert t in WENV.press_guard(T(t), "pay")
@@ -288,6 +294,11 @@ def _():
     assert WENV.press_guard(T("TributeAgreement"), "pay") is None
     two = MEETING + "df.global.game.main_interface.diplomacy.dipev.agreement_topic = G.vec({})"
     env, G = world(two)
+    r = env.answer_meeting(LUA.table_from({"dry_run": True}))
+    assert r.ok and r.answer == "yes", dict(r)          # (0.105.47) two always-yes topics: yes
+    war = MEETING + "df.global.game.main_interface.diplomacy.dipev.agreement_topic = G.vec({}); " \
+                    "df.global.game.main_interface.diplomacy.dipev.topic_list = G.vec({7, 1})"
+    env, G = world(war)
     r = env.answer_meeting(LUA.table_from({"dry_run": True}))
     assert not r.ok and r.left_to_player and "2 topics" in r.error, dict(r)
     import overseer
@@ -317,7 +328,8 @@ d.environment.dipev.sell_requests = {priority = prio}
 G.focus = 'dwarfmode/Diplomacy/Requests'
 """)
     r = env.answer_meeting(LUA.table_from({"wishes": LUA.table_from(["MetalBars", "Leather"])}))
-    assert not r.ok and r.needs_button == "Done" and r.wishes_ticked == 4, dict(r)
+    # (0.105.47) Done not shown: DF's confirm key tried (here it changes nothing)
+    assert not r.ok and r.via == "key" and r.wishes_ticked == 4, dict(r)
     dip = getattr(env.df, "global").game.main_interface.diplomacy
     pr = dip.environment.dipev.sell_requests.priority
     assert [pr[0][0], pr[0][1], pr[4][0], pr[5][0], pr[5][1]] == [2, 2, 0, 4, 2]

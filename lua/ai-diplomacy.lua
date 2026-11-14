@@ -44,7 +44,7 @@ end
 PROBE_FILE = dfhack.getDFPath() .. '/dfhack-config/ai-overseer/meeting-probe.json'
 PROBE_KEEP = 12                       -- the last samples kept in the probe file
 BUTTONS_KEY = 'ai-overseer/meeting-buttons'
-BUTTON_NAMES = {Yes = true, No = true, Done = true}
+BUTTON_NAMES = {Yes = true, No = true, Done = true, Light = true}   -- (0.105.47) Light: the diplomacy light
 MAX_CIVS, MAX_WANTED, MAX_UNKNOWN = 24, 12, 16
 HOSTILE = {TotalWar = true, Skirmishing = true}
 
@@ -142,6 +142,13 @@ end
 -- (tribute_known); before, only 'pay' ever got past here, so decide()'s
 -- refuse and small answers never ran and the meeting waited for a person.
 NEVER_PRESSED = {DemandSurrender = true, DeclareWar = true, InduceWar = true}
+-- (0.105.47) Topics the AI says yes to whichever of them the screen shows
+-- (no Rules choice or weighing between yes and no): with only these open,
+-- yes is right on any of them. A liaison's meeting brings two or more
+-- (trade, the export and import requests), so the "one topic only" guard
+-- left every one of them to a player who wasn't there.
+ALWAYS_YES = {DiscussCurrent = true, PleasantPlace = true, WorldStatus = true, TreeQuota = true,
+              OpenTrade = true, ImproveTrade = true, ExportAgreement = true, ImportAgreement = true}
 function press_guard(pending, policy, tribute_known)
     for _, t in ipairs(pending or {}) do
         if NEVER_PRESSED[t] then return t .. ' is on the table: left to you' end
@@ -152,6 +159,11 @@ function press_guard(pending, policy, tribute_known)
         end
     end
     local n = #(pending or {})
+    if n > 1 then
+        local all_yes = true
+        for _, t in ipairs(pending) do if not ALWAYS_YES[t] then all_yes = false end end
+        if all_yes then return nil end
+    end
     if n ~= 1 then
         return n == 0 and 'which topic is asked is not known: left to you'
             or (('%d topics are open and the screen may show any of them: left to you'):format(n))
@@ -640,7 +652,10 @@ end
 -- ---------------------------------------------------------------------------
 -- The answer buttons, shown to the AI once (as the trade screen's)
 
+-- (0.105.47) the save's, else this PC's (shown in any save here: lua/ai-screen-buttons.lua)
 function buttons()
+    local ok, d = pcall(function() return reqscript('ai-screen-buttons').get(BUTTONS_KEY) end)
+    if ok and type(d) == 'table' then return d end
     return U.site_get(BUTTONS_KEY, {})
 end
 
@@ -651,12 +666,15 @@ function calibrate(name)
     local gps = df.global.gps
     local x, y = gps.mouse_x, gps.mouse_y
     if x < 0 or y < 0 then return {ok = false, error = 'the game doesn\'t know where the mouse is: put it on the button in DF'} end
-    if not meeting_state(nil) then
+    if name ~= 'Light' and not meeting_state(nil) then
         return {ok = false, error = 'open a meeting first (a diplomat or the liaison), then put the mouse on its ' .. name .. ' button'}
     end
-    local d = buttons()
+    local d = U.site_get(BUTTONS_KEY, {})   -- (0.105.47) the save's own, not the merged ones
     d[name] = {dx = x - gps.dimx // 2, dy = y - gps.dimy // 2, x = x, y = y, w = gps.dimx, h = gps.dimy}
+    -- (0.105.47) the diplomacy light sits by the screen's left and top edges
+    if name == 'Light' then d[name].anchor = 'left-top' end
     dfhack.persistent.saveSiteData(BUTTONS_KEY, d)
+    pcall(function() reqscript('ai-screen-buttons').share(BUTTONS_KEY, name, d[name]) end)
     save_probe({calibrated = name, at = {x = x, y = y}, sample = probe(dfhack.df2utf)})
     return {ok = true, button = name, x = x, y = y, screen = {gps.dimx, gps.dimy}}
 end
@@ -664,6 +682,7 @@ end
 local function click(b)
     local gps = df.global.gps
     local x, y = gps.dimx // 2 + b.dx, gps.dimy // 2 + b.dy
+    if b.anchor == 'left-top' then x, y = b.x, b.y end
     local ox, oy = gps.mouse_x, gps.mouse_y
     gps.mouse_x, gps.mouse_y = x, y
     pcall(function()
@@ -684,6 +703,42 @@ local function fingerprint()
     pcall(function() table.insert(parts, tostring(ui().environment.dipev.cur_step)) end)
     pcall(function() table.insert(parts, tostring(#ui().text.word)) end)
     return table.concat(parts, '|')
+end
+
+-- (0.105.47) A button pressed without the player having shown it: by its
+-- word on the screen (one place only, when the text can be read), else by
+-- DF's confirm key for an agreeing answer (Yes, Done; never No: leaving
+-- the screen is the AI's no). Returns how ('button', 'word', 'key') and the
+-- place clicked, or nil.
+KEY_FOR = {Yes = 'SELECT', Done = 'SELECT'}
+function press_named(name, btn)
+    local b = btn and btn[name]
+    if b then click(b); return 'button', b end
+    local ok, hits = pcall(function() return reqscript('ai-meeting-open').find_word(name) end)
+    if ok and type(hits) == 'table' and #hits == 1 then
+        local gps = df.global.gps
+        local x, y = hits[1][1] + #name // 2, hits[1][2]
+        local w = {dx = x - gps.dimx // 2, dy = y - gps.dimy // 2, x = x, y = y, w = gps.dimx, h = gps.dimy}
+        click(w)
+        return 'word', w
+    end
+    local key = KEY_FOR[name]
+    if key then
+        pcall(function() require('gui').simulateInput(dfhack.gui.getDFViewscreen(true), key) end)
+        return 'key', nil
+    end
+    return nil
+end
+
+-- (0.105.47) a place found by its word that worked: kept for every save
+local function keep_found(name, how, place)
+    if how ~= 'word' or not place then return end
+    pcall(function()
+        local d = U.site_get(BUTTONS_KEY, {})
+        d[name] = place
+        dfhack.persistent.saveSiteData(BUTTONS_KEY, d)
+        reqscript('ai-screen-buttons').share(BUTTONS_KEY, name, place)
+    end)
 end
 
 -- ---------------------------------------------------------------------------
@@ -745,24 +800,46 @@ function answer_meeting(a, txt)
         out.wishes_ticked = ok and n or nil
         if not ok then out.error = 'the requests could not be read: ' .. tostring(n):sub(1, 120) end
         if a.dry_run then out.ok = ok; return out end
-        if not btn.Done then
+        local before = fingerprint()
+        local how, place = press_named('Done', btn)
+        if not how then
             out.ok, out.needs_button = false, 'Done'
             out.error = 'the AI doesn\'t know where the Done button is yet: python brain\\probe_meeting.py --here Done'
             return out
         end
-        local before = fingerprint()
-        click(btn.Done)
-        out.pressed = 'Done'
+        out.pressed, out.via = 'Done', how
         out.ok = fingerprint() ~= before
-        if not out.ok then out.error = 'Done was pressed and nothing changed: the button may have moved (show it again)' end
+        if out.ok then keep_found('Done', how, place) end
+        if not out.ok then out.error = 'Done was pressed (' .. how .. ') and nothing changed: the button may have moved (show it again)' end
+        save_probe({answered = 'requests', pressed = 'Done', via = how, ok = out.ok, after = probe(txt)})
         return out
     end
     if st.land_holder then
         return {ok = false, rejected = true, left_to_player = true, topic = st.topic,
                 error = 'a barony\'s holder is the player\'s to choose: left to you'}
     end
+    -- (0.105.47) nothing left to agree (every topic concluded, or none
+    -- brought): the screen's text is stepped on with DF's confirm key, never
+    -- a click (the meeting then ends as DF ends it)
+    local pending = pending_topics(st.topics, st.concluded)
+    if #pending == 0 and st.topics ~= nil then
+        out.answer, out.why = 'continue', 'no topic is left open: the text stepped on'
+        if a.dry_run then out.ok = true; return out end
+        local before = fingerprint()
+        pcall(function() require('gui').simulateInput(dfhack.gui.getDFViewscreen(true), 'SELECT') end)
+        out.pressed, out.via = 'continue', 'key'
+        out.ok = fingerprint() ~= before
+        if not out.ok then out.error = 'the confirm key changed nothing on the meeting screen' end
+        local st2 = meeting_state(nil)
+        if st2 and st2.done then
+            pcall(function() require('gui').simulateInput(dfhack.gui.getDFViewscreen(true), 'LEAVESCREEN') end)
+            out.closed = meeting_state(nil) == nil
+        end
+        save_probe({answered = 'continue', via = 'key', ok = out.ok, after = probe(txt)})
+        return out
+    end
     -- (0.105.0 review) pressed only when the topic is certain and safe
-    local guard = press_guard(pending_topics(st.topics, st.concluded), policy,
+    local guard = press_guard(pending, policy,
                               tonumber(st.tribute_asked) ~= nil and tonumber(st.tribute_asked) >= 0)
     if guard then
         return {ok = false, rejected = true, left_to_player = true, topic = st.topic, topics = st.topics, error = guard}
@@ -782,23 +859,25 @@ function answer_meeting(a, txt)
     if answer == nil then out.ok, out.left_to_player = false, true; out.error = why; return out end
     if a.dry_run then out.ok = true; return out end
     local name = answer == 'yes' and 'Yes' or 'No'
-    if not btn[name] then
+    local before = fingerprint()
+    -- (0.105.47) shown, else found by its word, else (Yes) DF's confirm key
+    local how, place = press_named(name, btn)
+    if not how then
         out.ok, out.needs_button = false, name
         out.error = 'the AI doesn\'t know where the ' .. name .. ' button is yet: python brain\\probe_meeting.py --here ' .. name
         return out
     end
-    local before = fingerprint()
-    click(btn[name])
-    out.pressed = name
+    out.pressed, out.via = name, how
     local after = fingerprint()
     out.ok = after ~= before
-    if not out.ok then out.error = name .. ' was pressed and nothing changed: the button may have moved (show it again)' end
+    if out.ok then keep_found(name, how, place) end
+    if not out.ok then out.error = name .. ' was pressed (' .. how .. ') and nothing changed: the button may have moved (show it again)' end
     -- the meeting over (DF set success or failure): the screen left, as Esc would
     local st2 = meeting_state(nil)
     if st2 and st2.done then
         pcall(function() require('gui').simulateInput(dfhack.gui.getDFViewscreen(true), 'LEAVESCREEN') end)
         out.closed = meeting_state(nil) == nil
     end
-    save_probe({answered = out.answer, pressed = out.pressed, ok = out.ok, after = probe(txt)})
+    save_probe({answered = out.answer, pressed = out.pressed, via = out.via, ok = out.ok, after = probe(txt)})
     return out
 end

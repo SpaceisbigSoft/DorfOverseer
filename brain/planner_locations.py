@@ -365,7 +365,10 @@ def _meeting_notes(s: dict, notes: list) -> None:
         # opened, each popup gone on its own in 5-28 real minutes. DFHack has
         # no safe way to show or drop one (taking it off DF's list could
         # leave the noble's meeting half done), so it stays a note.
-        notes.append(f"a meeting waits to be shown in DF ({who}); the game runs on meanwhile")
+        # (0.105.47) it never showed by itself (8-13 Nov: the diplomats left unhappy):
+        # unattended, the overseer clicks DF's diplomacy light to open it (planner_meetings)
+        notes.append(f"a meeting waits to be shown in DF ({who}), behind its diplomacy light: unattended, the AI "
+                     "opens it and answers it; with you at the game, the light is yours to click")
     elif acts:
         notes.append("meetings under way: " + "; ".join(
             f"{a.get('actor')} with {a.get('noble')}" + (f" (tree quota {a['tree_quota']})" if a.get("tree_quota") else "")

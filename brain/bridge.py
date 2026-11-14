@@ -79,7 +79,8 @@ BATCH_NEVER = frozenset({
     "send_mission", "trade_deal", "open_trade", "close_trade", "call_trader",
     "answer_meeting", "close_meeting", "save_game", "unpause", "quiet_announcements",
     "found_fort", "survey_water", "scan_entrances", "place_well", "restrict_water",
-    "cistern_step"})
+    "cistern_step",
+    "open_meeting"})   # (0.105.47)
 
 
 class BridgeError(DFHackError):

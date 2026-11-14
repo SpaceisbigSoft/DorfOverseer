@@ -1083,4 +1083,7 @@ PLANNER_CONFIG = {
     "mood_webs_collect": 5,               # webs collected (CollectWebs jobs) an order
     "mood_shelter_cooldown_ticks": 100,   # a gathering mood's tiles put in the shelter again after this
     "mood_claim_cap_days": 6,             # no workshop claimed this long: one more built past the AI's cap
+    # (0.105.47) meetings (brain/planner_meetings.py, lua/ai-meeting-open.lua)
+    "meeting_open_every_s": 60,           # a meeting waiting behind DF's diplomacy light clicked at most this often (real s)
+    "meeting_reopen_after_s": 1800,       # ...and after leaving one it couldn't answer, not again for this long (real s)
 }
