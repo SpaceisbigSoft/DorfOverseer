@@ -529,6 +529,17 @@ ACTIONS = {
         if a.release == true then return B.release_bench(a.kind, a.dry_run == true) end
         return B.cap_bench(a.kind, a.level, a.dry_run == true)
     end,
+    -- (0.105.47, I7d) surface work kept near the gates while a great danger is about (lua/ai-near-gates.lua)
+    near_gates = function(a)
+        if type(a.on) ~= 'boolean' then return reject('near_gates needs on (true or false)') end
+        local r = a.radius ~= nil and whole_number(a.radius) or nil
+        if a.radius ~= nil and not r then return reject('near_gates: radius is a whole number of tiles') end
+        return reqscript('ai-near-gates').set(a.on, r, a.dry_run == true, txt)
+    end,
+    -- (0.105.47, I7d) the AI's water zones on surface water taken down before the ice (lua/ai-ice.lua)
+    retire_water_zones = function(a)
+        return reqscript('ai-ice').retire(a.outside_only ~= false, a.dry_run == true)
+    end,
     -- (0.105.45) hunting: squads sent at a beast or an enemy, and called back (lua/ai-hunt.lua)
     hunt_send = function(a)
         local tid = whole_number(a.target_id)
@@ -705,6 +716,7 @@ for _, name in ipairs({
     'build_killzone', 'reset_cage_traps',   -- (0.105.45) each dry run plans (or counts) and places nothing
     'thirst_unforbid',   -- (0.105.46, I2) its dry run counts the drinks and lets none go
     'call_migrants',   -- (0.105.46, I4) its dry run names the script and queues nothing
+    'near_gates', 'retire_water_zones',   -- (0.105.47, I7d) each dry run counts and changes nothing
 }) do DRY_OK[name] = true end
 
 -- These only change what's displayed, so they still work while halted, dry
@@ -784,6 +796,7 @@ BRIDGE_MODULES = {
     'ai-thirst',   -- (0.105.46, I2) the thirst watch
     'ai-recovery',   -- (0.105.46, I4)
     'ai-slices', 'ai-cavern-scan',   -- (0.105.46, I6) walks spread over several reports; the caverns' seen samples
+    'ai-near-gates', 'ai-ice',   -- (0.105.47, I7d) surface work near the gates; water zones off before the ice
 }
 -- the split-off modules that carry a version mark of their own
 MARKED_MODULES = {'ai-military-gear', 'ai-society-burrows', 'ai-constructions'}
@@ -1257,6 +1270,9 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
     -- stranded, the last cancelled Drink job), and the deaths of thirst with
     -- the last reason known (lua/ai-thirst.lua; in the pulse)
     thirst = function() return safe(function() return reqscript('ai-thirst').report() end) end,
+    -- (0.105.47, I7d) the near-gates burrow: on, members, the citizens outside
+    -- far from every surface way in (lua/ai-near-gates.lua; in the pulse)
+    near_gates = function() return safe(function() return reqscript('ai-near-gates').status(txt) end) end,
     -- (0.105.30) what the fort has built: finished constructions by shape and
     -- material, above or below ground, roofed surface tiles, the waiting ones
     -- and the AI's own (lua/ai-constructions.lua; one pass, every 3 days)
@@ -1283,6 +1299,7 @@ PULSE_SECTIONS = {
     'shelter_plan',  -- (0.105.45) a titan inside walks to the shelter in minutes: read each cycle
     'lures',         -- (0.105.45) a lure is opened and shut on what the beast does: read each cycle
     'thirst',        -- (0.105.46, I2) thirst kills in days: read each cycle
+    'near_gates',    -- (0.105.47, I7d) a titan reaches the far-out workers in 500 ticks: read each cycle
 }
 TIERS = {pulse = true, daily = true, survey = true}
 -- report sections rebuilt only every so many game days (the lag pass, Oct 23:

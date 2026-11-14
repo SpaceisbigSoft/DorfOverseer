@@ -610,11 +610,36 @@ local function fire_test()
     end
 end
 
+-- (0.105.47, I7d 2e) A wild animal at grips with a citizen: C's giant
+-- coyote and E's giant chipmunks killed four fisherdwarves and planters with
+-- no alarm and no squad. They are neither large predators nor "agitated", so
+-- hostile_wild (and so the field watch and the hunt) never saw them. DF keeps
+-- the unit a creature last went for in unit.opponent.unit_id: a wild animal
+-- (not the fort's, not tame) whose last target is a citizen is listed as a
+-- hostile wild one (`attacking`). Not when that citizen is out hunting it (a
+-- deer turning on the hunter is the hunter's affair). `cits`: {[id] = unit}.
+function wild_attacking(u, cits)
+    if type(cits) ~= 'table' then return false end
+    if not is(dfhack.units.isAnimal, u) or is(dfhack.units.isFortControlled, u) then return false end
+    local okt, tid = pcall(function() return u.opponent.unit_id end)
+    if not okt or type(tid) ~= 'number' or tid < 0 then return false end
+    local c = cits[tid]
+    if not c then return false end
+    local okh, hunting = pcall(function()
+        local j = c.job.current_job
+        return j ~= nil and j.job_type == df.job_type.Hunt
+    end)
+    if okh and hunting then return false end
+    return true
+end
+
 function field_watch(txt)
     local out = {merchants = 0, caravan = {}, wild = {}, wild_total = 0}
     local cit_all, cit_out, groups = {}, {}, {}
+    local cit_ids = {}           -- (0.105.47) for wild_attacking
     for _, u in ipairs(report_citizens(true)) do
         if not is(dfhack.units.isDead, u) then
+            cit_ids[u.id] = u
             local p = {x = u.pos.x, y = u.pos.y, z = u.pos.z}
             table.insert(cit_all, p)
             local okd, des = pcall(dfhack.maps.getTileFlags, xyz2pos(p.x, p.y, p.z))
@@ -651,8 +676,12 @@ function field_watch(txt)
             do
                 local danger = is(dfhack.units.isDanger, u)
                 local wild = not danger and hostile_wild(u)
+                -- (0.105.47) or one that went for a citizen (a giant coyote)
+                local attacking = not danger and not wild and outside and wild_attacking(u, cit_ids)
+                if attacking then wild = true end
                 if danger or wild then
                     local row = {id = u.id, name = name_of(u, txt), wild = wild or nil, outside = outside,
+                                 attacking = attacking or nil,
                                  invader = is(dfhack.units.isInvader, u) or nil,
                                  great = is(dfhack.units.isGreatDanger, u) or nil}
                     local how = fire_of(u)

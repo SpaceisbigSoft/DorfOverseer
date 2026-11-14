@@ -442,7 +442,14 @@ def _hunt_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None) ->
         if tid in hunted:
             continue
         if t.get("can_reach_dwarves") is True:
-            said.append(f"{head}: it can reach the dwarves: the military rules' fight, not a hunt")
+            # (0.105.47, I7d 2e) a wild animal that can walk to the dwarves is
+            # the field watch's (planner_siege wildlife_hunts, which also takes
+            # one at grips with a dwarf): never ordered from both rules
+            if t.get("why") == "hostile_wild":
+                said.append(f"{head}: a wild animal that can reach the dwarves: the wildlife guard's "
+                            "(field watch), not a hunt")
+            else:
+                said.append(f"{head}: it can reach the dwarves: the military rules' fight, not a hunt")
             continue
         if t.get("kill_ok") is False:
             said.append(f"{head}: not one the squads may be sent to kill (the bridge's kill_ok)"

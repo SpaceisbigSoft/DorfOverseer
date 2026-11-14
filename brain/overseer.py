@@ -562,6 +562,8 @@ SHORT_WORDS = {
     "hunt_send": "hunt: send squads after a beast or an enemy",   # (0.105.45)
     "hunt_recall": "hunt back: call the hunting squads home",    # (0.105.45)
     "call_migrants": "call a migrant wave (DFHack's force Migrants) to a fallen fort DF sends none to",  # (0.105.46, I4)
+    "near_gates": "keep the civilians' work outside near the gates (or let it go anywhere again)",  # (0.105.47, I7d)
+    "retire_water_zones": "take down the AI's water zones on surface water before the ice",  # (0.105.47, I7d)
     "census": "count what fills the map",  # (0.104.113)
     "seal_well_stairs": "close the cavern wells' stair columns",  # (0.104.151)
     "join_levels": "join areas on one level that meet only through the stairs",  # (0.104.108)

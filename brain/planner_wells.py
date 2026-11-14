@@ -152,7 +152,7 @@ def _well_rule(s: dict, memory, traits: dict, cfg: dict, proposals: list, notes:
                          f"({memory.extra_well_failure[:100]}): tried again next season")
             return
         action = {"type": "place_well", "extra": True}
-        if memory is not None and memory.climate_freezes and _d(s.get("date")).get("season") == "winter":
+        if _ice_now(s, memory, cfg):
             action["inside_only"] = True
         proposals.append(Proposal("well", action,
                                   f"{cit} dwarves share {wells} well(s) (one for every {per} wanted): "
@@ -251,7 +251,10 @@ def _well_rule(s: dict, memory, traits: dict, cfg: dict, proposals: list, notes:
         action["shore_reach"] = int(cfg["well_shore_reach"])
     if "far_reach" in _far_args(cfg):   # (0.105.38) a far bank: up to this (-1: the map's width; 0: none)
         action["far_reach"] = _far_args(cfg)["far_reach"]
-    if memory.climate_freezes and _d(s.get("date")).get("season") == "winter":
+    if _ice_now(s, memory, cfg):
+        # (0.105.47) from the last half-month of autumn, or a surface near
+        # freezing in any month (planner_ice.ice_season; was winter with ice
+        # seen before: E's two drowned at the shore-well spot on winter's first day)
         # a well right over surface water is dismantled into its parts when
         # the water freezes (the DF wiki; region2's shore well went in winter
         # y51): in winter only inside the fort. From spring a shore well is
@@ -585,6 +588,16 @@ def cavern_danger(s: dict, wells: list | None = None, radius: int = SHAFT_DANGER
     return ""
 
 
+def _ice_now(s: dict, memory, cfg: dict | None = None) -> bool:
+    """(0.105.47) Surface water counts as freezing now (brain/planner_ice.py),
+    or (as before) it is winter at a fort where ice was seen."""
+    from planner_ice import ice_season
+    if ice_season(s, memory, cfg)[0]:
+        return True
+    return bool(memory is not None and getattr(memory, "climate_freezes", False)
+                and _d(s.get("date")).get("season") == "winter")
+
+
 def _water_zone_rule(s: dict, proposals: list, notes: list, cfg: dict | None = None) -> None:
     """(0.104.2) No well, and the injured or the parched wait for water
     (Enxah, winter y56: 10 patients, 16 parched, 17 GiveWater jobs going
@@ -630,6 +643,11 @@ def _water_zone_rule(s: dict, proposals: list, notes: list, cfg: dict | None = N
               and (b.get("salt_share") or 0) < 50
               and not (danger and b.get("kind") == "cavern")
               and (b["nearest"].get("d") or 999) <= far]
+    # (0.105.47, I7d 2f) no water zone on surface water from the last
+    # half-month of autumn (planner_ice retires the ones there): underground
+    # or cavern water only
+    if _ice_now(s, None, cfg):
+        bodies = [b for b in bodies if b.get("underground") or b.get("kind") == "cavern"]
     # (0.105.7 review) the nearest first (the survey's distance, levels
     # counted double), fresh before stagnant; not surface-always-first
     bodies.sort(key=lambda b: ((b.get("stagnant_share") or 0) >= 50, b["nearest"].get("d") or 999))
