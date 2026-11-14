@@ -162,7 +162,9 @@ local function reaches_edge(k)
     local function visit(nk, nx, ny, nz)
         if seen[nk] then return end
         local nt = TK(nk, nx, ny, nz)
-        if nt and nt.walk and nt.outside and not nt.hidden then
+        -- (0.105.47) under a tree's crown is open air too (DF: not outside):
+        -- a way in ringed by a grove was a "courtyard" cut off from the edge
+        if nt and nt.walk and (nt.outside or nt.canopy) and not nt.hidden then
             seen[nk] = true
             tail = tail + 1
             queue[tail] = nk
@@ -392,14 +394,37 @@ function lid_hatch(e)
 end
 
 -- The surface proper (not a courtyard, not the fort, nothing hidden).
+-- (0.105.47) Ground under a tree's crown (canopy: DF counts it not outside)
+-- is the surface too: A's founding stair read "no wall can go at x109 y148
+-- (floor)" all its first life (31 scans, 8-13 Nov), so no gatehouse and no
+-- wings; nothing is wrong with building a wall under a crown.
 local function open_ground(x, y, z)
     local t = T(x, y, z)
-    if not (t and t.walk and t.outside and not t.hidden and not t.liquid and not t.occupied
+    if not (t and t.walk and (t.outside or t.canopy) and not t.hidden and not t.liquid and not t.occupied
             and not t.feature and not t.special) then
         return nil
     end
     if inside_or_courtyard(t, key(x, y, z)) then return nil end
     return t
+end
+
+-- (0.105.47) Why a tile is no open ground, in words (the gatehouse's
+-- refusal named only the shape: "(floor)").
+function ground_why(x, y, z)
+    local t = T(x, y, z)
+    if not t then return 'off the map' end
+    local shape = tostring(t.shape):lower()
+    if not t.walk then return shape end
+    if t.hidden then return shape .. ', unseen' end
+    if t.liquid then return shape .. ', water' end
+    if t.feature or t.special then return shape .. ', a cavern or a deep feature' end
+    if t.occupied then
+        local okb, kind = pcall(building_at, x, y, z)
+        return shape .. ', ' .. ((okb and kind) and ('a ' .. tostring(kind) .. ' stands there') or 'something built there')
+    end
+    if not (t.outside or t.canopy) then return shape .. ', under a roof' end
+    if inside_or_courtyard(t, key(x, y, z)) then return shape .. ', a courtyard of the fort' end
+    return shape
 end
 
 -- The layout for one way out from the hatch and one length, or nil and why.
@@ -428,7 +453,7 @@ local function gatehouse_layout(h, d, len)
         if t and t.shape == 'WALL' then
             plan.natural = plan.natural + 1           -- rock already there: nothing to build
         elseif not (t and WALL_GROUND[t.shape] and t.shape ~= 'EMPTY' and open_ground(x, y, h.z)) then
-            return nil, ('no wall can go at x%d y%d (%s)'):format(x, y, t and tostring(t.shape):lower() or 'off the map')
+            return nil, ('no wall can go at x%d y%d (%s)'):format(x, y, ground_why(x, y, h.z))
         else
             table.insert(plan.walls, key(x, y, h.z))
         end
@@ -467,15 +492,21 @@ function plan_gatehouse(e, h)
         table.insert(dirs, {d = d, edge = edge, i = i})
     end
     table.sort(dirs, function(a, b) return a.edge < b.edge or (a.edge == b.edge and a.i < b.i) end)
-    local why
+    local whys, seen = {}, {}
+    local names = {['1,0'] = 'east', ['-1,0'] = 'west', ['0,1'] = 'south', ['0,-1'] = 'north'}
     for _, len in ipairs(GATEHOUSE_LENGTHS) do
         for _, dd in ipairs(dirs) do
             local plan, w = gatehouse_layout(h, dd.d, len)
             if plan then return plan end
-            why = why or w
+            -- (0.105.47) every way out's own reason (only the first was told)
+            local nm = names[dd.d[1] .. ',' .. dd.d[2]] or '?'
+            if w and not seen[nm] then
+                seen[nm] = true
+                table.insert(whys, nm .. ': ' .. tostring(w))
+            end
         end
     end
-    return nil, 'no room for a gatehouse round the hatch: ' .. tostring(why)
+    return nil, 'no room for a gatehouse round the hatch: ' .. table.concat(whys, '; ')
 end
 
 -- (0.105.30, deep depot) The underground trade depot's wagon road: its dug

@@ -848,6 +848,40 @@ def state_run(path: Path) -> str | None:
     return m.group(1) if m else None
 
 
+def _season_order(stem: str):
+    y, _, sn = stem.partition("-")
+    try:
+        return int(y), report.SEASONS.index(sn)
+    except ValueError:
+        return None
+
+
+def later_seasons(d: Path, name: str, run: str | None) -> list:
+    """(0.105.47) The kept season states of this run later than `name`
+    ("257-summer.json"): there are some only when the game went back."""
+    me = _season_order(Path(name).stem)
+    if me is None:
+        return []
+    out = []
+    for p in d.glob("*.json"):
+        o = _season_order(p.stem)
+        if o is not None and o > me and (run is None or state_run(p) == run):
+            out.append(p)
+    return out
+
+
+def set_aside(d: Path, files: list) -> None:
+    """(0.105.47) Season states of a dropped line moved to states/dropped/
+    (kept for a look, out of the scorecard's way; an older copy replaced)."""
+    to = d / "dropped"
+    to.mkdir(parents=True, exist_ok=True)
+    for p in files:
+        try:
+            p.replace(to / p.name)
+        except OSError:
+            pass
+
+
 def keep_state(state: dict, key: str) -> None:
     """One full report per in-game season in logs/forts/<fort>/states/: real
     game states for the tests (the fake forts in the tests hold only what we
@@ -861,7 +895,17 @@ def keep_state(state: dict, key: str) -> None:
         # names: one from an older run (another "_run", or none) is replaced
         run = fort_run(key)
         if path.exists() and (run is None or state_run(path) == run):
-            return
+            # (0.105.47) the same run gone back to an earlier save (the
+            # keeper's restore, a reload): kept seasons later than this one
+            # belong to the line that was dropped. A (8-13 Nov) was restored
+            # to its start at 258 spring and replayed to 258 spring, building
+            # its gatehouse and wings (18 walls); every season file stayed the
+            # dropped line's, and the scorecard read its 0 walls. Those later
+            # files are set aside (states/dropped/) and this one replaced.
+            later = later_seasons(d, name, run)
+            if not later:
+                return
+            set_aside(d, later)
         d.mkdir(parents=True, exist_ok=True)
         body = {"_run": run} if run else {}         # first, so a reader finds it in the first bytes
         body.update((k, v) for k, v in state.items() if k not in ("_errors", "_run"))

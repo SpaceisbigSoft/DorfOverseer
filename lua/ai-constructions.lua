@@ -18,6 +18,7 @@
 --    ai = {keep, halls, gate_pieces, wings, cavern_walls, cistern, room_walls, soil_floors},
 --    soil_floors = {{project_id, kind, elevation, tiles, floored}...}, soil_floors_left,
 --    soil_floors_placed,        -- tiles on the projects' soil_floors records (ai.soil_floors: built ones)
+--    cavern_openings,           -- (0.105.47) the scanned ways in onto a cavern (nil: none scanned)
 --    block_pct, line, ms, where}
 -- Surface means not designation.subterranean (set by the map, not by a roof).
 -- The `ai` counts come from the AI's own records: the keep's and the halls'
@@ -207,8 +208,13 @@ function ai_regions()
     ok, e = pcall(function()
         local G = reqscript('ai-gates')
         local list = type(G.GATES) == 'table' and G.GATES.entrances or nil
+        -- (0.105.47) the cavern openings on the fort's own walk, counted: the
+        -- scorecard's "cavern openings walled" reads 0 in a fort that had
+        -- none to wall (D, the Hermit hold, never met a cavern) as no data
+        if type(list) == 'table' then R.cavern_openings = 0 end
         each(list, function(en)
             if type(en) ~= 'table' then return end
+            if en.kind == 'cavern' then R.cavern_openings = R.cavern_openings + 1 end
             each(en.wings, function(v) claim('wings', unkey(v)) end)
             each(en.wing_pieces, function(v) claim('wings', unkey(v)) end)
             local cavern = en.kind == 'cavern'
@@ -310,6 +316,7 @@ function survey(fresh)
     local R = ai_regions()
     out.ai_errors = R.errors
     out.soil_floors_placed = R.soil_recorded   -- placed by floor_rooms (ai.soil_floors: of those, built)
+    out.cavern_openings = R.cavern_openings    -- (0.105.47) nil: the ways in not mapped this session
     if list == nil then
         out.missing = true          -- [verify] neither field: the structure moved
     else

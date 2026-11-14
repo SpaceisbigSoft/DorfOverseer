@@ -333,6 +333,8 @@ def journal_counts(entries: list[dict], date: dict, timeline: list | None = None
         if not r.get("ok"):
             continue
         ok[t] += 1
+        if t == "fortify_entrance" and a.get("style") == "sealed" and not r.get("dry_run"):
+            ok["fortify_entrance:sealed"] += 1          # (0.105.47) a cavern opening walled
         if t == "bring_goods":
             trade_value += r.get("value") or 0
             treasures_kept += bool(a.get("keep_treasures"))
@@ -758,6 +760,16 @@ def construction_measures(s: dict, j: dict) -> dict:
     if out["soil_floors"] is None:
         # the survey keeps no soil-floor registry: the tiles floor_rooms placed (journal)
         out["soil_floors"] = floored if isinstance(floored, int) else None
+    # (0.105.47) nothing there to do is no data, not a 0 the rule earned: a
+    # fort with no cavern opening on its own walk has none to wall (8-13 Nov:
+    # no fort had one; the Hermit hold never met a cavern), and one whose
+    # finished halls hold no bare soil has no soil floor to finish (the soil
+    # lay 4 levels deep there, the halls in the rock under it)
+    if out["cavern_walls"] == 0 and c.get("cavern_openings") == 0:
+        out["cavern_walls"] = None
+    if (out["soil_floors"] == 0 and isinstance(c.get("soil_floors"), (list, dict)) and not c["soil_floors"]
+            and not c.get("soil_floors_placed") and not floored):
+        out["soil_floors"] = None
     return out
 
 
@@ -1012,7 +1024,7 @@ FLAT_ACTIONS = {
     "built_up": ("place_keep", "place_hall", "build_wings", "build_gatehouse"),
     "roofed_up": ("place_keep", "place_hall"),
     "gate_walls": ("build_wings", "build_gatehouse", "fortify_entrance"),
-    "cavern_walls": ("seal_cavern",),
+    "cavern_walls": ("fortify_entrance:sealed",),   # (0.105.47) seal_cavern locks doors, never walls
     "soil_floors": ("floor_rooms",),
 }
 FLAT_WORDS = {
