@@ -241,15 +241,25 @@ function sealed_entrance(e, h)
     return false
 end
 
+-- (0.105.47, live 14 Nov 17:23) A door or hatch locked or unlocked by a
+-- bare door_flags.forbidden write: DF doesn't redo its walk groups for it
+-- (the hatches read open, the messenger's walk group 6712 still apart from
+-- the outside's 1), so DF is asked to redo its walk map
+-- (world.reindex_pathfinding, ai-gates-stuck reindex_paths) after each one.
+function repath()
+    local ok, done = pcall(function() return reindex_paths() end)
+    if ok and done then GATES.repaths = (GATES.repaths or 0) + 1 end
+end
+
 -- (0.105.23) A door or hatch on a lever, set by its lever: true if it was
 -- pulled. Without a lever of this entrance's own to pull, it's only locked
 -- (as before 0.105.23). `pulled` keeps one pull per lever per call.
 local function set_lever_door(g, b, close, pulled)
     if not g.drive_lever then
-        if b.door_flags.forbidden ~= close then b.door_flags.forbidden = close; return true end
+        if b.door_flags.forbidden ~= close then b.door_flags.forbidden = close; repath(); return true end
         return false
     end
-    if not close and b.door_flags.forbidden then b.door_flags.forbidden = false end   -- (a lock left from before the link)
+    if not close and b.door_flags.forbidden then b.door_flags.forbidden = false; repath() end   -- (a lock left from before the link)
     local shut = door_shut(b)
     if shut == nil or shut == close or pulled[g.drive_lever] then return false end
     pulled[g.drive_lever] = true
@@ -401,6 +411,7 @@ local function set_entrance(e, close, was_opening)
             else
                 if b.door_flags.forbidden ~= close then
                     b.door_flags.forbidden = close
+                    repath()
                     done = done + 1
                 end
             end

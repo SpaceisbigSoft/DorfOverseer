@@ -574,11 +574,12 @@ M.citizens_outside = function() return 0 end
 M.distance_to = function(e, p) return M.DIST end
 M.ai_piece = function() return true end
 M.lure_holds = function() return {} end
+M.reindex_paths = function() M.REINDEX = (M.REINDEX or 0) + 1; return true end
 """
 
 
 @test("the gate watcher: an entrance held for a mission isn't shut on the 'danger coming, nobody outside' look; "
-      "an enemy within IMMINENT still shuts it; one not held is shut as before")
+      "an enemy within IMMINENT still shuts it; one not held is shut as before; a bare lock write repaths")
 def _():
     lua = LuaRuntime(unpack_returned_tuples=True)
     M = lua.execute(r"""
@@ -595,6 +596,8 @@ def _():
                                   "entrances": lua.table_from({1: e})})
         M.check()
         assert (M.GATES.closed[1] is True) == shut, (dist, held, M.GATES.closed[1])
+        # (17:23) a bare lock write asks DF to redo its walk map (walk groups follow)
+        assert (M.GATES.repaths or 0) == (1 if shut else 0), (dist, held, M.GATES.repaths)
         if held and not shut:
             assert M.GATES.mission_held_skips == 1
     lua.execute("df = nil; dfhack = nil")
@@ -738,6 +741,11 @@ def _():
     props, notes = [], []
     assert pm.way_out_gate(s, cfg, 9, "a mission to raid X", "raid 73", props, notes) is False
     assert props == [] and any("the gates are shut for a threat" in n and "waits" in n for n in notes), notes
+    # (17:23) opened already (its hold on), the walk map not yet showing the way: waits, no second opening
+    held = dict(WAY, shut=[dict(WAY["shut"][0], held=True)])
+    props, notes = [], []
+    assert pm.way_out_gate(_state(missions={"way_out": held}), cfg, 9, "m", "k", props, notes) is False
+    assert props == [] and "being opened" in notes[0], notes
     s = _state(missions={"way_out": dict(WAY, shut=[])})
     props, notes = [], []
     assert pm.way_out_gate(s, cfg, 9, "m", "k", props, notes) is False and props == []

@@ -105,7 +105,11 @@ function open_saved_gates(saved)
                 end
             else
                 local ok = pcall(function()
-                    if b.door_flags.forbidden then b.door_flags.forbidden = false opened = opened + 1 end
+                    if b.door_flags.forbidden then
+                        b.door_flags.forbidden = false
+                        opened = opened + 1
+                        pcall(repath)       -- (0.105.47) DF's walk groups follow the unlock
+                    end
                 end)
                 if not ok then waiting = waiting + 1 end
                 -- (0.105.23) a hatch on a lever: its lever opens it (at once)

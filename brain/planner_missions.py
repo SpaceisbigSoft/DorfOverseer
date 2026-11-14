@@ -364,6 +364,14 @@ def _way_open(s: dict, cfg: dict, blocked: int, what: str, key: str, proposals: 
         return
     if any(p.action.get("type") == "mission_way" for p in proposals):
         return
+    # (0.105.47, 17:23) opened already (the gate's hold is on): a bridge waits
+    # for its lever's pull and DF's walk map is redone; the send goes only
+    # once a report shows the travellers' walk group joined the outside
+    opening = [e for e in shut if e.get("held")]
+    if opening:
+        notes.append(f"{what}: the AI's gate at x{opening[0].get('x')} y{opening[0].get('y')} is being opened for "
+                     "the travellers; the mission goes once the walk map shows them a way out")
+        return
     e = shut[0]
     proposals.append(Proposal("mission_way", {"type": "mission_way", "id": e["id"], "mission": key[:40]},
                               f"{what}: {blocked} traveller(s) can't walk off the map, the AI's own "
