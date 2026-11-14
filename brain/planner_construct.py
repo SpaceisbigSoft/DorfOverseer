@@ -396,6 +396,11 @@ def _soil_candidates(s: dict, memory, cfg: dict) -> list:
     if rep is None:
         rep = _d(s.get("constructions")).get("soil_floors")
     known: dict = {}
+    # (0.105.47) the bridge's report lists only the projects that have soil
+    # (ai-builder-rooms soil_floor_report): with a report, one not in it has
+    # none. B, C and F asked floor_rooms 16 times for halls dug in rock
+    # ("no soil floor left bare in that project", 8-13 Nov)
+    reported = isinstance(rep, (list, dict))
     if isinstance(rep, dict):
         rep = [{"project_id": k, "tiles": v} for k, v in rep.items()]
     for r in _l(rep):
@@ -409,6 +414,8 @@ def _soil_candidates(s: dict, memory, cfg: dict) -> list:
         if pid in done or int(tries.get(pid) or 0) >= cfg["soil_floor_tries"]:
             continue
         r = known.get(pid)
+        if r is None and reported:
+            continue                           # not in the report: no soil there
         tiles = r.get("tiles") if r else None
         if r is not None and isinstance(tiles, int) and tiles <= 0:
             continue                           # no soil there: nothing to floor

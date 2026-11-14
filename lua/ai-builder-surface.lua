@@ -598,13 +598,35 @@ end
 
 -- What a ring tile is: 'ground' (a wall can go up), 'tree', 'wall' (rock or a
 -- wall already: closed), 'planned' (a wall waiting to be built) or nil (no use).
+-- (0.105.47) Ground under a tree's crown: DF marks it not outside (no sky
+-- straight above), so keep_tile read it as "the fort's own rock or rooms
+-- (under a roof)": F's field hall was refused 72 times on that (8-13 Nov),
+-- and the keep's ring and court lost every tile in a grove. Ground that is
+-- not subterranean, with only open air and then a tree's trunk, branches or
+-- leaves within CANOPY_LEVELS above it, is the open surface; a built roof
+-- (or rock) above is not. A tree's own trunk stays a tree (is_tree).
+CANOPY_LEVELS = 6
+CANOPY_MATERIALS = {TREE = true, ROOT = true, PLANT = true}
+function canopy_ground(x, y, z, t)
+    t = t or tile_info(x, y, z)
+    if not t or t.outside or t.subterranean ~= false then return false end
+    for dz = 1, CANOPY_LEVELS do
+        local a = tile_info(x, y, z + dz)
+        if not a then return false end
+        if CANOPY_MATERIALS[a.material] then return true end
+        if a.shape ~= 'EMPTY' and a.shape ~= 'NONE' then return false end
+    end
+    return false
+end
+
 function keep_tile(x, y, z)
     local t = tile_info(x, y, z)
     if not t or t.liquid or t.feature then return nil end
     if is_tree(t) then return 'tree' end
     if t.shape == 'WALL' then return 'wall' end
     if t.building then return 'planned' end
-    if t.hidden or not t.outside or t.designated or tile_taken(x, y, z) then return nil end
+    if t.hidden or t.designated or tile_taken(x, y, z) then return nil end
+    if not t.outside and not canopy_ground(x, y, z, t) then return nil end      -- (0.105.47) a grove is open ground
     if GROUND[t.shape] then return 'ground' end
     return nil
 end
@@ -630,7 +652,7 @@ function keep_tile_why(x, y, z)
     if t.liquid then return 'water' end
     if t.feature then return 'a cavern' end
     if t.hidden then return 'unseen ground' end
-    if not t.outside then return 'the fort\'s own rock or rooms (under a roof)' end
+    if not t.outside and not canopy_ground(x, y, z, t) then return 'the fort\'s own rock or rooms (under a roof)' end
     if t.designated then return 'a tile designated for digging' end
     if tile_taken(x, y, z) then return 'a stockpile, zone or building' end
     return ('a %s tile'):format(tostring(t.shape):lower())
@@ -719,6 +741,7 @@ end
 KEEP_COURT_REACH = 30
 KEEP_COURT_LEVELS = 4
 KEEP_COURT_RADII = {4, 5}
+KEEP_COURT_SMALL = {3}       -- (0.105.47) a 5x5 court, only where no 7x7 or 9x9 fits: B and F's hillsides
 KEEP_COURT_SECONDS = 1.5
 KEEP_COURT_CANDIDATES = 400  -- centres checked in full, best first
 KEEP_COURT_FARMS = 6         -- fields looked round (the first ones DF lists)
@@ -742,6 +765,23 @@ end
 function find_keep_court(anchors)
     local groups = citizen_groups()
     local any_group = next(groups) == nil
+    -- (0.105.47) the open ground the way in leads out to is the dwarves'
+    -- too: with the gate shut (the hatch locked, every citizen inside) the
+    -- surface is another walk group, and no tile out there was "reachable"
+    if not any_group then
+        local g2 = {}
+        for g in pairs(groups) do g2[g] = true end
+        for _, a in ipairs(anchors) do
+            local g = walk_group(a.x, a.y, a.z)
+            if g ~= 0 then g2[g] = true end
+        end
+        groups = g2
+    end
+    -- (0.105.47) why the centres and courts failed, counted: B and F were
+    -- refused 31 and 63 times with the bare "no open, flat ground" whatever
+    -- had ruled each court out
+    local tally = {}
+    local function fail(why) tally[why] = (tally[why] or 0) + 1 end
     local farms = surface_farm_spots()
     local okm, mouth = pcall(deep_depot_mouth)       -- (0.105.30)
     mouth = okm and mouth or nil
@@ -781,7 +821,13 @@ function find_keep_court(anchors)
                 if os.clock() > deadline then cut = true break end
                 for x = ar.x - ar.reach, ar.x + ar.reach do
                     local k = (z * 4096 + y) * 4096 + x
-                    if not seen[k] and kt(x, y, z) == 'ground' and open_above(x, y, z) and reach(x, y, z) then
+                    local g = not seen[k] and kt(x, y, z) == 'ground'
+                    if g and not open_above(x, y, z) then
+                        fail('ground with no open sky above'); g = false
+                    elseif g and not reach(x, y, z) then
+                        fail('ground the dwarves can\'t walk to'); g = false
+                    end
+                    if g then
                         seen[k] = true
                         local score = math.huge
                         for _, a in ipairs(anchors) do
@@ -808,65 +854,102 @@ function find_keep_court(anchors)
     end)
     local last = 'no open, flat ground the dwarves can reach within ' .. KEEP_COURT_REACH .. ' tiles of the way in'
     local best, best_score
-    for i, c in ipairs(cands) do
-        if i > KEEP_COURT_CANDIDATES or os.clock() > deadline + KEEP_COURT_SECONDS then break end
-        if best_score and c.score >= best_score then break end
-        for _, r in ipairs(KEEP_COURT_RADII) do
-            local fits = true
-            -- the inside: open flat ground, the sky open above, the way in not in it
-            for y = c.y - r + 1, c.y + r - 1 do
-                for x = c.x - r + 1, c.x + r - 1 do
-                    if kt(x, y, c.z) ~= 'ground' or not open_above(x, y, c.z) then fits = false break end
+    for _, radii in ipairs({KEEP_COURT_RADII, KEEP_COURT_SMALL}) do
+        if best then break end
+        for i, c in ipairs(cands) do
+            if i > KEEP_COURT_CANDIDATES or os.clock() > deadline + KEEP_COURT_SECONDS then break end
+            if best_score and c.score >= best_score then break end
+            for _, r in ipairs(radii) do
+                local fits = true
+                -- the inside: open flat ground, the sky open above, the way in not in it
+                for y = c.y - r + 1, c.y + r - 1 do
+                    for x = c.x - r + 1, c.x + r - 1 do
+                        local v = kt(x, y, c.z)
+                        if v ~= 'ground' then
+                            fits = false
+                            fail('inside: ' .. (v == 'tree' and 'a tree' or v == 'wall' and 'rock or a wall'
+                                or v == 'planned' and 'something being built' or keep_tile_why(x, y, c.z)))
+                            break
+                        elseif not open_above(x, y, c.z) then
+                            fits = false
+                            fail('inside: no open sky above')
+                            break
+                        end
+                    end
+                    if not fits then break end
                 end
-                if not fits then break end
-            end
-            if fits then
-                for _, a in ipairs(anchors) do
-                    local clear = r + KEEP_COURT_CLEAR
-                    if math.abs(a.z - c.z) <= 1 and math.abs(a.x - c.x) <= clear and math.abs(a.y - c.y) <= clear then
-                        fits = false
+                if fits then
+                    for _, a in ipairs(anchors) do
+                        local clear = r + KEEP_COURT_CLEAR
+                        if math.abs(a.z - c.z) <= 1 and math.abs(a.x - c.x) <= clear and math.abs(a.y - c.y) <= clear then
+                            fits = false
+                        end
+                    end
+                    if not fits then fail('too near the way in') end
+                end
+                local trees, ground = {}, 0
+                if fits then
+                    for _, p in ipairs(ring_tiles(c.x, c.y, r)) do
+                        local k = kt(p.x, p.y, c.z)
+                        if not k or k == 'planned' then
+                            fits = false
+                            fail('its walls: ' .. (k and 'something being built' or keep_tile_why(p.x, p.y, c.z)))
+                            break
+                        end
+                        if k == 'tree' then table.insert(trees, {x = p.x, y = p.y, z = c.z}) end
+                        if k == 'ground' then ground = ground + 1 end
                     end
                 end
-            end
-            local trees, ground = {}, 0
-            if fits then
-                for _, p in ipairs(ring_tiles(c.x, c.y, r)) do
-                    local k = kt(p.x, p.y, c.z)
-                    if not k or k == 'planned' then fits = false break end
-                    if k == 'tree' then table.insert(trees, {x = p.x, y = p.y, z = c.z}) end
-                    if k == 'ground' then ground = ground + 1 end
+                if fits and (#trees > SURFACE_MAX_TREES or ground == 0) then
+                    fits = false
+                    fail(ground == 0 and 'its walls: all rock' or 'too many trees to fell')
                 end
-            end
-            if fits and (#trees > SURFACE_MAX_TREES or ground == 0) then fits = false end
-            if fits and depot_inside(c.x - r, c.y - r, c.x + r, c.y + r, c.z) then
-                fits, last = false, 'the open ground near the fort holds the trade depot'
-            end
-            if fits and mouth then
-                -- (0.105.30) no wall in front of the underground depot's road (the wagons turn in there)
-                for _, m in ipairs(mouth) do
-                    if math.abs(m.z - c.z) <= 1 and math.abs(m.x - c.x) <= r + 1 and math.abs(m.y - c.y) <= r + 1 then
-                        fits, last = false, 'the open ground near the fort is the underground depot\'s wagon road'
-                        break
+                if fits and depot_inside(c.x - r, c.y - r, c.x + r, c.y + r, c.z) then
+                    fits, last = false, 'the open ground near the fort holds the trade depot'
+                end
+                if fits and mouth then
+                    -- (0.105.30) no wall in front of the underground depot's road (the wagons turn in there)
+                    for _, m in ipairs(mouth) do
+                        if math.abs(m.z - c.z) <= 1 and math.abs(m.x - c.x) <= r + 1 and math.abs(m.y - c.y) <= r + 1 then
+                            fits, last = false, 'the open ground near the fort is the underground depot\'s wagon road'
+                            break
+                        end
                     end
                 end
-            end
-            local door = fits and keep_door(c.x, c.y, c.z, r)
-            if door then
-                local d = {x = door.x - c.x, y = door.y - c.y}
-                local ox, oy = door.x + (d.x > 0 and 1 or d.x < 0 and -1 or 0), door.y + (d.y > 0 and 1 or d.y < 0 and -1 or 0)
-                if not reach(ox, oy, c.z) then door = nil end
-            end
-            if fits and door then
-                local score = c.score + SURFACE_TREE_COST * #trees
-                if not best_score or score < best_score then
-                    best, best_score = {x = c.x, y = c.y, z = c.z, r = r, door = door, trees = trees, court = true}, score
+                local door = fits and keep_door(c.x, c.y, c.z, r)
+                if door then
+                    local d = {x = door.x - c.x, y = door.y - c.y}
+                    local ox, oy = door.x + (d.x > 0 and 1 or d.x < 0 and -1 or 0), door.y + (d.y > 0 and 1 or d.y < 0 and -1 or 0)
+                    if not reach(ox, oy, c.z) then door = nil end
                 end
-                break
+                if fits and not door then fail('no side with open ground for a door') end
+                if fits and door then
+                    local score = c.score + SURFACE_TREE_COST * #trees
+                    if not best_score or score < best_score then
+                        best, best_score = {x = c.x, y = c.y, z = c.z, r = r, door = door, trees = trees, court = true}, score
+                    end
+                    break
+                end
             end
         end
     end
     if best then return best end
-    return nil, last
+    return nil, last .. court_tally(tally, #cands)
+end
+
+-- (0.105.47) The court search's failures in words, the commonest first:
+-- " (N open tiles looked at; inside: a ramp_top tile 40, too near the way in 12)".
+function court_tally(tally, n)
+    local list = {}
+    for why, k in pairs(tally or {}) do table.insert(list, {why = why, n = k}) end
+    if #list == 0 and not n then return '' end
+    table.sort(list, function(a, b) if a.n ~= b.n then return a.n > b.n end return a.why < b.why end)
+    local parts = {}
+    for i, e in ipairs(list) do
+        if i > 4 then break end
+        table.insert(parts, ('%s %d'):format(e.why, e.n))
+    end
+    return (' (%d open tile(s) looked at%s)'):format(n or 0, #parts > 0 and ('; ' .. table.concat(parts, ', ')) or '')
 end
 
 -- A site for the keep around the surface entrance: {x, y, z, r, door, trees}.
@@ -887,7 +970,9 @@ function find_keep_ring(anchors)
     local under = depot_underground()
     if under then return nil, under end
     local last, first_bad
+    local bads = {}       -- (0.105.47) each way in's first bad tile (only the first was named)
     for _, a in ipairs(anchors) do
+        first_bad = nil
         for _, r in ipairs(KEEP_RADII) do
             local fits, trees, ground = true, {}, 0
             for _, p in ipairs(ring_tiles(a.x, a.y, r)) do
@@ -918,9 +1003,10 @@ function find_keep_ring(anchors)
                 return {x = a.x, y = a.y, z = a.z, r = r, door = door, trees = trees}
             end
         end
+        if first_bad and #bads < 3 then table.insert(bads, first_bad) end
     end
     return nil, last or ('no ring of open ground around the way in (%s)'):format(
-        first_bad or 'water, slopes, buildings or zones in the way')
+        #bads > 0 and table.concat(bads, '; ') or 'water, slopes, buildings or zones in the way')
 end
 
 -- How far it's got: {stage, x, y, z, r, walls_left, roof_left, trees_left}.
