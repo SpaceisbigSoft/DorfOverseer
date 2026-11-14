@@ -129,16 +129,21 @@ def _squad_free(q: dict, away: dict) -> str | None:
     return None
 
 
-def sendable_squads(s: dict, cfg: dict = PLANNER_CONFIG) -> tuple[list, int, int]:
+def sendable_squads(s: dict, cfg: dict = PLANNER_CONFIG, ignore_pets: bool = False) -> tuple[list, int, int]:
     """(squads, soldiers sent, reserve): whole squads that may go, the
     strongest first, while the soldiers left home stay at the reserve or
-    more. Empty when fewer than `mission_min_soldiers` would go."""
+    more. Empty when fewer than `mission_min_soldiers` would go.
+    (0.105.47, J17) A squad whose soldier's pet is held where the AI can't
+    let it out (a cage, a chain, the player's zone) stays home (live 17:38:
+    the squad waited at the map edge for its pets) unless ignore_pets."""
+    from planner_raids import stuck_pets
     mil = _d(s.get("military"))
     squads = [q for q in _l(mil.get("squads")) if isinstance(q, dict) and q.get("id") is not None]
     away = _away_squads(s)
     reserve = mission_reserve(s, cfg)
     home = _soldiers(s) - sum(_int(_d(a).get("away")) or 0 for a in away.values())
-    free = [q for q in squads if _squad_free(q, away) is None]
+    free = [q for q in squads if _squad_free(q, away) is None
+            and (ignore_pets or not stuck_pets(s, [q["id"]]))]
     free.sort(key=lambda q: (-float(_d(q.get("power")).get("power") or 0), -(_int(q.get("members")) or 0),
                              q.get("id")))
     out, sent = [], 0
@@ -259,8 +264,12 @@ def _who_words(c: dict) -> str:
     for w in _l(c.get("waiting"))[:2]:
         w = _d(w)
         doing = w.get("job") or w.get("path_goal") or "nothing"
+        pet = ""
+        if isinstance(w.get("pet"), dict):          # (0.105.47, J17) the soldier waits for its pet
+            from planner_raids import pet_words
+            pet = f", waiting for {pet_words(w['pet'])}"
         parts.append(f"unit {w.get('unit_id')} {'on the map' if w.get('on_map') is not False else 'off the map'}, "
-                     f"{game_text(str(doing), 24)}")
+                     f"{game_text(str(doing), 24)}{pet}")
     return "; ".join(parts)
 
 
@@ -463,33 +472,52 @@ def left_open_needs_you(s: dict, notes: list) -> None:
                       "mission and no messenger while it is open")
 
 
-def mission_target(s: dict, cfg: dict = PLANNER_CONFIG, memory=None) -> tuple[dict | None, list]:
+def mission_target(s: dict, cfg: dict = PLANNER_CONFIG, memory=None, squads=None) -> tuple[dict | None, list]:
     """(the best target the switch allows, the goals skipped for a stopped
-    run). Goal order first (offensive goals only against a hostile or at-war
-    civ), then the nearest; a target DF's screen said no to is passed over,
-    (0.105.47) and so is a site DF said is INACCESSIBLE (unreachable_sites)."""
+    run). Goal order first, then the nearest; a target DF's screen said no
+    to is passed over, (0.105.47) and so is a site DF said is INACCESSIBLE
+    (unreachable_sites). (0.105.47, J17) The offensive goals only when
+    nothing else is to be done, and then as the raid policy picks
+    (planner_raids: aggressive / reactive / timid by the sliders, the
+    matchup against `squads`, the cooldown); the target carries `policy`
+    and `why`."""
     allowed = allowed_goals(s)
     order = {g: i for i, g in enumerate(MISSION_GOALS)}
-    stopped, cands = [], []
+    stopped, cands, offensive = [], [], []
     gone = unreachable_sites(s, memory, cfg)
-    for t in _l(_m(s).get("targets")):
-        if not isinstance(t, dict) or t.get("goal") not in allowed or _int(t.get("site_id")) is None:
-            continue
+
+    def usable(t) -> bool:
         if t["site_id"] in gone or t.get("inaccessible"):
-            continue
-        if t["goal"] in OFFENSIVE_GOALS and not (t.get("hostile") is True or t.get("at_war") is True):
-            continue
+            return False
         if t.get("ready") not in (None, "OKAY"):
-            continue
+            return False
         if _stopped(s, t["goal"], cfg):
             if t["goal"] not in stopped:
                 stopped.append(t["goal"])
+            return False
+        return True
+    for t in _l(_m(s).get("targets")):
+        if not isinstance(t, dict) or t.get("goal") not in allowed or _int(t.get("site_id")) is None:
             continue
-        cands.append(t)
-    if not cands:
+        if not usable(t):
+            continue
+        (offensive if t["goal"] in OFFENSIVE_GOALS else cands).append(t)
+    if cands:
+        best = min(cands, key=lambda t: (order[t["goal"]], _int(t.get("dist")) if _int(t.get("dist")) is not None
+                                         else 10 ** 6, t["site_id"]))
+        return best, stopped
+    if "raid" not in allowed:
         return None, stopped
-    best = min(cands, key=lambda t: (order[t["goal"]], _int(t.get("dist")) if _int(t.get("dist")) is not None
-                                     else 10 ** 6, t["site_id"]))
+    from planner_raids import raid_candidates, raid_choice
+    if squads is None:
+        # the squads that may go; none only for their pets: those (the rule swaps the soldier out)
+        squads = sendable_squads(s, cfg)[0] or sendable_squads(s, cfg, ignore_pets=True)[0]
+    best, _ = raid_choice(s, cfg, memory, squads, offensive)
+    if best is not None and not usable(best):
+        # the policy's own rows (raid_sites) pass the same filters
+        rest = [t for t in raid_candidates(s, cfg, memory, squads, offensive)[0]
+                if t["goal"] in allowed and usable(t)]
+        best = rest[0] if rest else None
     return best, stopped
 
 
@@ -556,6 +584,79 @@ def _fort_missions_out(s: dict) -> list:
     return out
 
 
+# --- (0.105.47, J17) the raid policy's words; the raid party's pets --------------------
+
+def _raid_notes(s: dict, cfg: dict, notes: list, memory=None) -> None:
+    """No mission to go: why no raid (the policy's own words, two at most)."""
+    from planner_raids import raid_choice
+    _, words = raid_choice(s, cfg, memory)
+    for w in words[:2]:
+        notes.append(f"raids: {w}")
+
+
+def _pets_release(s: dict, squads: list, what: str, proposals: list, notes: list) -> bool:
+    """True when the soldiers' pets held in the AI's own zones are let out
+    first (the send waits a cycle)."""
+    from planner_raids import releasable_pets, pet_words
+    pets = releasable_pets(s, [q["id"] for q in squads])
+    if not pets:
+        return False
+    if not any(p.action.get("type") == "mission_pets" for p in proposals):
+        proposals.append(Proposal("mission_pets", {"type": "mission_pets", "op": "release",
+                                                   "pet_ids": [p["pet_id"] for p in pets[:12]]},
+                                  f"a mission to {what}: {len(pets)} soldier(s)' pet(s) held at home would hold them "
+                                  f"at the map edge (unit {pets[0].get('unit_id')}: {pet_words(pets[0])}): let them "
+                                  "out of the AI's zone for the trip, put back once home", 6))
+    return True
+
+
+def _pet_swap(s: dict, cfg: dict, rules: dict, what: str, proposals: list, notes: list) -> bool:
+    """No squad can go only because a soldier's pet is held where the AI
+    can't let it out (a cage, a chain, the player's zone): that soldier
+    swapped out (squad_swap, never for another soldier whose pet is held).
+    True when proposed or said."""
+    from planner_raids import stuck_pets, pet_words
+    if not sendable_squads(s, cfg, ignore_pets=True)[0]:
+        return False
+    mil = _d(s.get("military"))
+    ids = [q["id"] for q in _l(mil.get("squads")) if isinstance(q, dict) and q.get("id") is not None]
+    stuck = [p for p in stuck_pets(s, ids) if _int(p.get("unit_id")) is not None]
+    if not stuck:
+        return False
+    p = stuck[0]
+    if not rules.get("fill_squads", True) or any(x.action.get("type") == "squad_swap" for x in proposals):
+        notes.append(f"a mission could {what}, but soldier {p.get('unit_id')}'s pet is held where the AI can't let "
+                     f"it out ({pet_words(p)}): the squad stays home")
+        return True
+    owners = sorted({x["unit_id"] for x in _l(_d(_d(s.get("missions")).get("pets")).get("held"))
+                     if isinstance(x, dict) and _int(x.get("unit_id")) is not None})
+    proposals.append(Proposal("mission_pets", {"type": "squad_swap", "unit_id": p["unit_id"], "avoid": owners[:40]},
+                              f"a mission could {what}, but soldier {p['unit_id']}'s pet is held where the AI can't "
+                              f"let it out ({pet_words(p)}) and would hold the squad at the map edge: swap the soldier "
+                              "out for one without such a pet", 6))
+    return True
+
+
+def _pets_restore_rule(s: dict, cfg: dict, proposals: list, notes: list) -> None:
+    """The pets let out for a mission put back in their zone once they and
+    their owners are home, no mission of the fort is out and no send is
+    under way."""
+    from planner_raids import restore_due
+    due = restore_due(s, cfg)
+    if not due or _fort_missions_out(s):
+        return
+    send = _d(_m(s).get("send"))
+    if _d(send.get("running")):
+        return
+    for o in list(_d(send.get("last_by_goal")).values()):
+        t = _int(_d(o).get("tick"))
+        if _d(o).get("result") == "sent" and t is not None and 0 <= abs_tick(s) - t < cfg["mission_sent_wait_ticks"]:
+            return
+    proposals.append(Proposal("mission_pets", {"type": "mission_pets", "op": "restore"},
+                              f"{len(due)} pet(s) let out for a mission are home again: put them back in their "
+                              "pasture", 3))
+
+
 def _mission_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None) -> None:
     """(0.105.39) The best mission the Rules allow, once nothing else is out,
     no threat or siege is near and enough soldiers beyond the reserve are
@@ -564,7 +665,9 @@ def _mission_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None)
     ms = _m(s)
     left_open_needs_you(s, notes)
     _mission_way_rule(s, cfg, proposals, notes, memory)     # (0.105.47) a set-up mission shut in
-    if not isinstance(ms.get("targets"), list) or not ms["targets"]:
+    _pets_restore_rule(s, cfg, proposals, notes)             # (0.105.47, J17) pets let out, put back
+    # (0.105.47, J17) the raid policy's own sites count as something to go for
+    if (not isinstance(ms.get("targets"), list) or not ms["targets"]) and not _l(_d(ms.get("raid_sites")).get("rows")):
         return                       # nothing to go for (or an older bridge): silent
     rules = player_rules(s)
     if not allowed_goals(s):
@@ -588,6 +691,8 @@ def _mission_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None)
     target, stopped = mission_target(s, cfg, memory)
     if stopped:
         _stopped_needs_you(s, stopped[0], cfg, notes)
+    if target is None and "raid" in allowed_goals(s):
+        _raid_notes(s, cfg, notes, memory)
     if target is None:
         if stopped:
             g = stopped[0]
@@ -612,6 +717,8 @@ def _mission_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None)
         return
     squads, sent, reserve = sendable_squads(s, cfg)
     if not squads:
+        if _pet_swap(s, cfg, rules, what, proposals, notes):
+            return
         notes.append(f"a mission could {what}, but too few soldiers are free beyond the {reserve} who stay home "
                      f"(at least {cfg['mission_min_soldiers']} in whole squads, home, armed, without orders)")
         return
@@ -631,16 +738,23 @@ def _mission_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None)
         if not way_out_gate(s, cfg, blocked, f"a mission to {what}", f"{goal} {target['site_id']}",
                             proposals, notes, memory):
             return
+        # (0.105.47, J17) a soldier's pet held in the AI's own zone: let out first
+        if _pets_release(s, squads, what, proposals, notes):
+            return
         action = {"type": "send_mission", "goal": goal, "site_id": target["site_id"],
                   "squad_ids": [q["id"] for q in squads]}
         for k in ("hf_id", "artifact_id"):
             if _int(target.get(k)) is not None:
                 action[k] = target[k]
+        if goal in OFFENSIVE_GOALS and target.get("policy"):
+            action["policy"] = target["policy"]      # (0.105.47, J17) why the bridge may let it go
         proposals.append(Proposal("mission", action,
                                   f"send {names} ({sent} soldiers; {reserve} stay home) to {what}, by the World "
-                                  "screen", 7))
+                                  "screen" + (f": {target['why']}" if target.get("why") else ""), 7))
         return
     button = _GOAL_BUTTON.get(goal, goal.title())
+    if target.get("why"):
+        what = f"{what} ({target['why']})"
     notes.append(f"a mission could {what}: {names} ({sent} soldiers, {reserve} stay home) are free to go; "
                  + (f"the AI doesn't send it ({SEND_SWITCH} is off)" if not rules["send_missions"]
                     else f"the AI hasn't been shown this mission's World-screen button ({button}) yet"))
@@ -711,6 +825,8 @@ def note_missions(s: dict, memory) -> list[str]:
     ms = _m(s)
     seen = _seen(memory)
     note_unreachable(s, memory)          # (0.105.47) DF's INACCESSIBLE remembered per site
+    from planner_raids import note_raids
+    note_raids(s, memory)                # (0.105.47, J17) sites first seen, traders, the last attack
     dep_notes = note_departures(s, memory)   # (0.105.47) set out yet? (before `out` is updated below)
     # (0.105.47) a way opened for a set-up mission (the gate hold "ac <id>"): once per mission
     tried = seen.get("way_opened")

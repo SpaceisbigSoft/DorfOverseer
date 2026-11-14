@@ -171,6 +171,7 @@ The military block, on the Army tab beside Rules (0.105.33; all of it is in [con
 | Seal a cavern a beast is in | on |
 | Missions to send out (`missions`, 0.105.39) | rescue and recover (or: none, rescue, recover, explore, all, raids too) |
 | Send missions by the World screen (`send_missions`, 0.105.39) | off |
+| Raids (`raid_policy`, 0.105.47) | AI decides by the sliders (or: aggressive, strike back only, never) |
 
 ## Missions (13b)
 

@@ -328,6 +328,19 @@ too. The AI makes and sends squads itself (see [military.md](military.md)).
   stops at the first step nobody has recorded yet, logs what it saw and shuts
   the screen. Off, the AI names the target and the squads and Needs you says
   what to send.
+- **Raids** (`raid_policy`, Army tab, 0.105.47): whom a raid may go for,
+  inside "Missions to send out: all". *AI decides* (`ai`, the default): by
+  the sliders: Militarism 100 or more is aggressive, Militarism -50 or less
+  strikes back only with a sure win, everyone else reacts. *aggressive*: any
+  civilisation's reachable site but the fort's friends (its own civ, an
+  ally, a peace pending, tribute agreed, a caravan here or one that traded,
+  and at least two civs at peace kept); the weakest site the squads clearly
+  beat first. *strike back only* (`reactive`): a civ that attacked the fort
+  in the last 3 years (a siege, thieves, an ambush), at its nearest site,
+  and a hostile camp or fort (or bandits) within 8 world tiles, or a new
+  one within 16. *never* (`off`): no raid, pillage, tribute or conquest.
+  One attack a season at most, a reserve always home. Every preset sends
+  missions with raids at `all` and leaves this on *AI decides*.
 
 ### Forbidden items and junk (beside Military, 0.105.27)
 

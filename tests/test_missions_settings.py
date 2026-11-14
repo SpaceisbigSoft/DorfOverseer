@@ -119,20 +119,36 @@ def _():
     assert r.ok and TP.saved().missions == "off"
 
 
-@test("presets: (0.105.47) the messenger sent by all but the Hermit hold; raids by the War-hold only")
+@test("presets: (0.105.47) the messenger sent by all but the Hermit hold; (J17) every preset sends missions, raids "
+      "included, the raid policy the AI's by the sliders")
 def _():
     S = TP.H.settings()
     keys = lua_list(S.PRESET_RULE_KEYS)
-    assert "missions" in keys and "send_missions" in keys and "send_messenger" in keys
+    for k in ("missions", "send_missions", "send_messenger", "raid_policy"):
+        assert k in keys, k
     for name in TP.PRESETS:
         s = S.defaults()
-        s.missions = "rescue"
+        s.missions, s.raid_policy, s.send_messenger = "rescue", "off", True
         p = S.load_preset(name, s)
-        if name == "War-hold":
-            assert p.missions == "all" and p.send_missions is True and p.send_messenger is True, name
-        else:
-            assert p.missions == "rescue" and p.send_missions is not True, name      # left as it was
-            assert (p.send_messenger is True) == (name != "Hermit hold"), name
+        assert p.missions == "all" and p.send_missions is True and p.raid_policy == "ai", name
+        assert (p.send_messenger is True) == (name != "Hermit hold"), name
+
+
+@test("raid_policy (J17): ai / aggressive / reactive / off, default ai, sanitized, for_ai, set_rules, in RULE_CHOICES")
+def _():
+    S = TP.H.settings()
+    assert lua_list(S.RAID_POLICY_CHOICES) == ["ai", "aggressive", "reactive", "off"]
+    assert lua_list(S.RULE_CHOICES.raid_policy) == ["ai", "aggressive", "reactive", "off"]
+    for m in lua_list(S.RAID_POLICY_CHOICES):
+        assert S.RAID_POLICY_NAMES[m] and len(S.RAID_POLICY_NAMES[m]) <= 24, m
+    assert S.defaults().raid_policy == "ai" and S.for_ai(S.defaults()).raid_policy == "ai"
+    for m in ("aggressive", "reactive", "off"):
+        assert S.sanitize(TP.t({"raid_policy": m})).raid_policy == m
+    assert S.sanitize(TP.t({"raid_policy": "war"})).raid_policy == "ai"
+    r = TP.act({"type": "set_rules", "rules": {"raid_policy": "reactive"}})
+    assert r.ok and TP.saved().raid_policy == "reactive", dict(r)
+    assert not TP.act({"type": "set_rules", "rules": {"raid_policy": "always"}}).ok
+
 
 
 # --- the window ---------------------------------------------------------------------------
@@ -169,6 +185,20 @@ def _():
     m = re.search(r"view_id = 'send_missions',\s*frame = \{t = [^,]+, l = (\d+), w = (\d+)\},\s*label = '([^']*)',"
                   r"\s*label_width = (\d+)", src)
     assert m and len(m.group(3)) <= int(m.group(4)) and int(m.group(1)) + int(m.group(2)) <= 118
+
+
+@test("window (J17): the Raids cycle on the Army tab's free row t+14, l=76, set and refreshed")
+def _():
+    S = TP.H.settings()
+    # the window: the cycle on the Army tab's free row t+14, l=76, refreshed
+    src = army()
+    m = re.search(r"view_id = 'raid_policy',\s*frame = \{t = t \+ (\d+), l = (\d+), w = (\d+)\},\s*label = '([^']*)',"
+                  r"\s*label_width = (\d+)", src)
+    assert m, "raid_policy frame"
+    t, l, w, label, lw = int(m.group(1)), int(m.group(2)), int(m.group(3)), m.group(4), int(m.group(5))
+    longest = max(len(S.RAID_POLICY_NAMES[x]) for x in lua_list(S.RAID_POLICY_CHOICES))
+    assert t == 14 and l >= 76 and l + w <= 118 and len(label) <= lw and lw + longest + 4 <= w
+    assert code_has(src, "p:set_field('raid_policy', v)") and code_has(army_refresh(), "self.subviews.raid_policy:setOption(")
 
 
 @test("window: the Army tab's left-column rows don't collide and stay inside the 28 shown")

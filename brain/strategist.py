@@ -325,7 +325,8 @@ def shown_rules(proposals: list | None, recent_decisions: list | None) -> set:
 QUIET_AT_DEFAULT = {"missions": "rescue", "send_missions": False,
                     "world_cleanup": "safe",     # (0.105.40) the review has no cleanup to steer
                     "peace": "ai",               # (0.105.41, item 8) nor a peace proposal to answer
-                    "hunt": "ai"}                # (0.105.45) hunting: said only once the player changes it
+                    "hunt": "ai",                # (0.105.45) hunting: said only once the player changes it
+                    "raid_policy": "ai"}         # (0.105.47, J17) the raid policy: likewise
 
 # (v35 fix) three-state Rules switches: "ai" (the AI decides), "always", "never"
 THREE_STATE = {"open_caverns": {"ai": "AI decides", "always": "always", "never": "never"}}

@@ -637,6 +637,10 @@ SHORT_WORDS.update({
     "way_out_open": "open one of the AI's gates: the fort was sealed in",
     "way_out_leave": "leave the fort open as the AI stops",
 })
+# (0.105.47, J17) a raid party's pets (lua/ai-raids.lua)
+SHORT_WORDS.update({
+    "mission_pets": "let soldiers' pets out of a pasture for a mission, or put them back",
+})
 
 
 def short(a: dict) -> str:

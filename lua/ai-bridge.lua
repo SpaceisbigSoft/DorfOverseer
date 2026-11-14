@@ -788,6 +788,25 @@ ACTIONS = {
     way_out_leave = function(a)
         return reqscript('ai-way-out').leave(a.dry_run == true)
     end,
+    -- (0.105.47, J17) a raid party's pets: let out of the AI's own zone for the
+    -- trip (op release, pet_ids), put back once home (op restore) (lua/ai-raids.lua)
+    mission_pets = function(a)
+        local R = reqscript('ai-raids')
+        if a.op == 'restore' then return R.restore_pets(a.dry_run == true) end
+        if a.op ~= 'release' then return reject('mission_pets: op is release or restore') end
+        if type(a.pet_ids) ~= 'table' then return reject('mission_pets release needs pet_ids') end
+        local ids = {}
+        for i = 1, 13 do
+            local v = a.pet_ids[i]
+            if v == nil then break end
+            if i > 12 then return reject('mission_pets: at most 12 pets') end
+            local n = int_in(v, 0, 100000000)
+            if not n then return reject('mission_pets: pet_ids is a list of unit ids') end
+            table.insert(ids, n)
+        end
+        if #ids == 0 then return reject('mission_pets release needs pet_ids') end
+        return R.release_pets(ids, a.dry_run == true)
+    end,
 }
 
 -- (13c) The actions whose dry run changes nothing in the fort, all the way
@@ -877,6 +896,7 @@ for _, name in ipairs({
     'herd_breeders', 'tame_wild', 'train_hunt', 'herd_targets',
     'place_garden_court',   -- (0.105.47) its dry run finds the site (quickfort's dry run) and places nothing
     'mission_way',   -- (0.105.47) its dry run is open_entrance's (checks the distance) and holds nothing
+    'mission_pets',  -- (0.105.47, J17) its dry run names the pets and moves none
     'way_out_open', 'way_out_leave',   -- (0.105.47, J16) each dry run says what it would pull or unlock and changes nothing
 }) do DRY_OK[name] = true end
 
@@ -968,6 +988,7 @@ BRIDGE_MODULES = {
     'ai-near-gates', 'ai-ice',   -- (0.105.47, I7d) surface work near the gates; water zones off before the ice
     'ai-descent',   -- (0.105.47) the deep plan's stair past the first cavern
     'ai-herd',   -- (0.105.47) the herd by Husbandry
+    'ai-raids',   -- (0.105.47, J17) the raid policy's sites; the raid party's pets let out and put back
 }
 -- the split-off modules that carry a version mark of their own
 MARKED_MODULES = {'ai-military-gear', 'ai-society-burrows', 'ai-constructions'}

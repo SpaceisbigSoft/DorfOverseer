@@ -2857,6 +2857,20 @@ function send_mission_danger()
     return nil
 end
 
+-- (0.105.47, J17) the Rules' raid_policy (ai | aggressive | reactive | off;
+-- unreadable: ai) and which reasons it allows against a civ that isn't
+-- hostile: 'aggressive' (any civ but the fort's friends), 'retaliation' (a
+-- civ that attacked the fort), 'threat' (a hostile or ownerless camp close by)
+function send_raid_policy()
+    local ok, s = pcall(function() return reqscript('ai-overseer-settings').load_settings() end)
+    local v = ok and type(s) == 'table' and s.raid_policy or nil
+    if v == 'off' or v == 'aggressive' or v == 'reactive' then return v end
+    return 'ai'
+end
+SEND_POLICY_OK = {['ai aggressive'] = true, ['ai retaliation'] = true, ['ai threat'] = true,
+                  ['aggressive aggressive'] = true, ['aggressive retaliation'] = true, ['aggressive threat'] = true,
+                  ['reactive retaliation'] = true, ['reactive threat'] = true}
+
 function act_send_mission(a)
     local goal = a.goal
     if goal == nil then goal = 'make_contact' end
@@ -2903,9 +2917,20 @@ function act_send_mission(a)
             return reject('send_mission: ' .. goal .. ' refused: who owns site ' .. site .. ' could not be read' ..
                           (okh and hwhy and (' (' .. tostring(hwhy):sub(1, 60) .. ')') or ''))
         end
-        if h.hostile ~= true and h.at_war ~= true then
+        if h.ours then
+            return reject('send_mission: ' .. goal .. ' refused: site ' .. site .. ' is the fort\'s own civilisation\'s')
+        end
+        -- (0.105.47, J17) the raid policy (brain/planner_raids.py): a raid on a
+        -- civ that isn't hostile only for the reason the brain gives (policy)
+        -- and only when the Rules' raid_policy allows it; 'off': no attack at all
+        local rp = send_raid_policy()
+        if rp == 'off' then
+            return reject('send_mission: ' .. goal .. ' refused: the Army tab\'s "Raids" is off')
+        end
+        if h.hostile ~= true and h.at_war ~= true and not SEND_POLICY_OK[rp .. ' ' .. tostring(a.policy)] then
             return reject('send_mission: ' .. goal .. ' only against a site whose owner is hostile or at war with ' ..
-                          'the fort\'s civilisation (site ' .. site .. ': ' .. tostring(h.relation):sub(1, 30) .. ')')
+                          'the fort\'s civilisation (site ' .. site .. ': ' .. tostring(h.relation):sub(1, 30) .. ')' ..
+                          (a.policy and (', not for "' .. tostring(a.policy):sub(1, 20) .. '" with Raids ' .. rp) or ''))
         end
         owner = {h.civ, h.owner}
     end

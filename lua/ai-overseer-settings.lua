@@ -235,12 +235,22 @@ WORLD_CLEANUP_NAMES = {off = 'off', safe = 'safe: spatter, dead, lost junk',
 -- A reserve always stays home, and a hunt going badly is called back
 HUNT_CHOICES = {'off', 'small', 'ai'}
 HUNT_NAMES = {off = 'off', small = 'thieves, ambushes', ai = 'AI decides (beasts too)'}
+-- (0.105.47, J17) raids (brain/planner_raids.py), inside `missions` = all:
+-- ai (the default: by the sliders: high Militarism aggressive, else
+-- reactive, very low Militarism only sure wins); aggressive (any civ's site
+-- but the fort's friends: its own civ, traders, allies, a peace pending);
+-- reactive (only a civ that attacked the fort, or a hostile camp setting up
+-- close by); off (no raid, pillage, tribute demand or conquest at all)
+RAID_POLICY_CHOICES = {'ai', 'aggressive', 'reactive', 'off'}
+RAID_POLICY_NAMES = {ai = 'AI decides (sliders)', aggressive = 'aggressive', reactive = 'strike back only',
+                     off = 'never'}
 -- (0.105.27) the cycles set_rules may set from outside the window (key -> choices)
 RULE_CHOICES = {disposal = DISPOSAL_CHOICES, open_caverns = OPEN_CAVERNS_CHOICES,
                 design = DESIGN_MODES, landmark_pace = LANDMARK_PACES,    -- (D0)
                 missions = MISSION_CHOICES,                               -- (0.105.39)
                 peace = PEACE_CHOICES,                                    -- (0.105.41, item 8)
                 hunt = HUNT_CHOICES,                                      -- (0.105.45)
+                raid_policy = RAID_POLICY_CHOICES,                        -- (0.105.47, J17)
                 world_cleanup = WORLD_CLEANUP_CHOICES}                    -- (0.105.40)
 GEAR_WEAPONS = {'axe', 'spear', 'mace'}
 GEAR_WEAPON_NAMES = {axe = 'battle axes', spear = 'spears', mace = 'maces'}
@@ -381,6 +391,7 @@ function defaults()
         -- (0.105.40, 13e) world cleanup for the game's speed (WORLD_CLEANUP_CHOICES)
         world_cleanup = 'safe',
         hunt = 'ai',               -- (0.105.45) hunting (HUNT_CHOICES)
+        raid_policy = 'ai',        -- (0.105.47, J17) raids by the sliders (RAID_POLICY_CHOICES)
         -- (0.105.41, 13e) traffic zones on the AI's own finished levels: high on its
         -- stairs and corridors, low on its rooms and fields (lua/ai-traffic.lua)
         traffic = true,
@@ -539,6 +550,7 @@ function sanitize(s)
     out.missions = one_of(s.missions, MISSION_CHOICES, d.missions)        -- (0.105.39)
     out.world_cleanup = one_of(s.world_cleanup, WORLD_CLEANUP_CHOICES, d.world_cleanup)   -- (0.105.40)
     out.hunt = one_of(s.hunt, HUNT_CHOICES, d.hunt)                       -- (0.105.45)
+    out.raid_policy = one_of(s.raid_policy, RAID_POLICY_CHOICES, d.raid_policy)   -- (0.105.47, J17)
     for _, k in ipairs({'wipe_learned', 'wipe_learned_all'}) do
         local n = math.tointeger(tonumber(s[k]))
         out[k] = (n and n >= 0) and n or 0
@@ -635,6 +647,7 @@ function for_ai(s)
         cavern_logging = s.cavern_logging,         -- (item10)
         world_cleanup = s.world_cleanup,           -- (0.105.40) off | safe | full
         hunt = s.hunt,                             -- (0.105.45) off | small | ai
+        raid_policy = s.raid_policy,               -- (0.105.47, J17) ai | aggressive | reactive | off
         traffic = s.traffic,                       -- (0.105.41) traffic zones on the AI's levels
         moat = s.moat, magma_workshops = s.magma_workshops, irrigation = s.irrigation,   -- (0.105.0)
         magma_reclaim = s.magma_reclaim,           -- (0.105.41, item 7)
@@ -696,22 +709,33 @@ PRESET_RULE_KEYS = {'attack_policy', 'fill_squads', 'train_squads', 'gate_lever'
                     'shut_to_visitors'}     -- (0.105.24)
 table.insert(PRESET_RULE_KEYS, 'keep_enemy_gear')   -- (0.105.27) invaders' gear kept (War-hold)
 -- (0.105.47) missions by the World screen, recorded live 14 Nov: every preset
--- but the closed Hermit hold sends its messenger (Make contact); only the War-hold
--- raids (Militarism its character; the peaceful forts start no wars)
+-- but the closed Hermit hold sends its messenger (Make contact).
+-- (0.105.47, J17, the player 17:47) every preset sends missions, raids
+-- included ('all'), and the raid policy is the AI's by the sliders: the
+-- War-hold's Militarism makes it aggressive (any civ but its friends), the
+-- others react (an attacker, a hostile camp setting up close by), the
+-- Monastery only with a sure win
 table.insert(PRESET_RULE_KEYS, 'send_messenger')
 table.insert(PRESET_RULE_KEYS, 'send_missions')
 table.insert(PRESET_RULE_KEYS, 'missions')
+table.insert(PRESET_RULE_KEYS, 'raid_policy')
 BUILTIN_PRESET_RULES = {
     ['War-hold'] = {attack_policy = 'all', fill_squads = true, train_squads = true, gate_lever = true,
                     fortify_entrances = true, levels = {garden = false},
                     keep_enemy_gear = true,      -- (0.105.27) invaders' gear kept, not melted
-                    send_messenger = true, send_missions = true, missions = 'all'},   -- (0.105.47) raids too
-    ['Monastery'] = {send_messenger = true, attack_policy = 'never', levels = {barracks = false, archery = false, jail = false}},
+                    send_messenger = true, send_missions = true, missions = 'all', raid_policy = 'ai'},
+    ['Monastery'] = {send_messenger = true, attack_policy = 'never', levels = {barracks = false, archery = false, jail = false},
+                     send_missions = true, missions = 'all', raid_policy = 'ai'},
     -- (0.105.24) visitors are the Merchant city's point: never shut out for the mayor's sake
-    ['Merchant city'] = {send_messenger = true, accept_visitors = true, answer_locations = true, shut_to_visitors = false},
-    ['Hermit hold'] = {accept_visitors = false, answer_locations = false, fortify_entrances = true},
-    ['Deep mine'] = {send_messenger = true, water_works = true, levels = {garden = false}},
-    ['Garden fort'] = {send_messenger = true, pasture_animals = true, levels = {archery = false}},
+    ['Merchant city'] = {send_messenger = true, send_missions = true, missions = 'all', raid_policy = 'ai',
+                         accept_visitors = true, answer_locations = true, shut_to_visitors = false},
+    -- the closed hold: missions and raids as the others, but never the messenger
+    ['Hermit hold'] = {accept_visitors = false, answer_locations = false, fortify_entrances = true,
+                       send_messenger = false, send_missions = true, missions = 'all', raid_policy = 'ai'},
+    ['Deep mine'] = {send_messenger = true, water_works = true, levels = {garden = false},
+                     send_missions = true, missions = 'all', raid_policy = 'ai'},
+    ['Garden fort'] = {send_messenger = true, pasture_animals = true, levels = {archery = false},
+                       send_missions = true, missions = 'all', raid_policy = 'ai'},
 }
 
 -- (applied: an optional table that gets the rules actually set, for apply_preset's answer)

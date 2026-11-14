@@ -304,6 +304,20 @@ local function waiting_people(R, c, group)
             end
         end
     end
+    -- (0.105.47, J17) a traveller's pet held in a zone, a cage or a chain:
+    -- the soldier waits for it (live 17:38: a sheep in an AI pasture, a
+    -- peafowl), so the watcher names it
+    if #out > 0 and type(reqscript) == 'function' then
+        local set = {}
+        for _, e in ipairs(out) do set[e.unit_id] = true end
+        local okp, held = pcall(function() return reqscript('ai-raids').held_pets(set) end)
+        if okp and type(held) == 'table' then
+            for _, e in ipairs(out) do
+                local p = held[e.unit_id] and held[e.unit_id][1]
+                if p then e.pet = {pet = p.pet, held = p.held, ai = p.ai} end
+            end
+        end
+    end
     return out
 end
 
@@ -1095,6 +1109,15 @@ function report()
         end)
         if not okw then R.note('way_out'); way_out = nil end
     end
+    -- (0.105.47, J17) the raid policy's sites (any owner, not only the
+    -- hostile) and the soldiers' pets held at home (lua/ai-raids.lua)
+    local raid_sites, pets
+    if type(reqscript) == 'function' then
+        local okr, rs = pcall(function() return reqscript('ai-raids').raid_sites() end)
+        if okr and type(rs) == 'table' then raid_sites = rs else R.note('raid_sites') end
+        local okq, pr = pcall(function() return reqscript('ai-raids').pets_report(squads) end)
+        if okq and type(pr) == 'table' then pets = pr else R.note('pets') end
+    end
     local oks2, so = pcall(status_of, R, civ, group, fort_site, sent_ids())
     if not oks2 then R.note('status_of'); so = nil end
     return {
@@ -1102,6 +1125,8 @@ function report()
         targets_partial = partial or nil,
         targets_inaccessible = (DROPPED_INACCESSIBLE or 0) > 0 and DROPPED_INACCESSIBLE or nil,   -- (0.105.47)
         way_out = way_out,                                                                        -- (0.105.47)
+        raid_sites = raid_sites,                                                                  -- (0.105.47, J17)
+        pets = pets,                                                                              -- (0.105.47, J17)
         status_of = so,
         controllers = out_ctl,
         squads = out_sq,

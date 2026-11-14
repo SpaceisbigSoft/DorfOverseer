@@ -629,7 +629,7 @@ def _():
     m = _Mem()
     pm.note_missions(s, m)
     assert m.missions_seen["unreachable"] == {"1600": 120 * 403200 + 4000}
-    s2 = _state(missions={"targets": targets}, settings={"traits": {}})
+    s2 = _state(missions={"targets": targets}, settings={"traits": {}, "raid_policy": "aggressive"})   # (J17)
     s2["settings"]["missions"] = "all"
     import planner_core
     orig = planner_core.player_rules
@@ -637,7 +637,7 @@ def _():
         pm.player_rules = lambda st: {**orig(st), "missions": "all"}
         t, stopped = pm.mission_target(s2, pm.PLANNER_CONFIG, m)
         assert t["site_id"] == 73 and stopped == [], (t, stopped)
-        s3 = _state(missions={"send": send, "targets": targets})
+        s3 = _state(missions={"send": send, "targets": targets}, settings={"traits": {}, "raid_policy": "aggressive"})
         t, stopped = pm.mission_target(s3, pm.PLANNER_CONFIG)
         assert t["site_id"] == 73 and stopped == [], (t, stopped)       # the run's own outcome, without memory
         notes = []

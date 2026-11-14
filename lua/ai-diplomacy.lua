@@ -417,7 +417,13 @@ function world_report(txt)
             local e = per[cid] or {id = cid, n = 0}
             e.n = e.n + 1
             local y = R.rd('invasion.created_year', function() return v.created_year end)
-            if y and (e.last_year == nil or y > e.last_year) then e.last_year = y end
+            if y and (e.last_year == nil or y > e.last_year) then
+                e.last_year = y
+                -- (0.105.47, J17) the newest an army (a siege) or a few (thieves, an ambush)
+                e.last_siege = nil
+                pcall(function() e.last_siege = v.flags.siege and true or false end)
+            end
+            pcall(function() if v.flags.siege then e.sieges_army = (e.sieges_army or 0) + 1 end end)
             pcall(function() if v.flags.active then e.active = true end end)
             per[cid] = e
         end

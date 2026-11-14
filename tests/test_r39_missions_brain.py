@@ -195,12 +195,23 @@ def _():
     send = button(*PM.MISSION_GOALS)
     for level in ("rescue", "explore"):
         assert not rule(fort([target("raid", 5, hostile=True)], send=send, send_missions=True, missions=level))[0]
-    assert not rule(fort([target("raid", 5), target("pillage", 6), target("tribute", 7)], send=send,
-                         send_missions=True, missions="all"))[0]
-    p, _ = rule(fort([target("raid", 5), target("pillage", 6, at_war=True)], send=send, send_missions=True, missions="all"))
-    assert p and p[0].action["goal"] == "pillage"
+    # (0.105.47, J17) the aggressive policy (the switch) keeps the old rule on the targets list:
+    # its hostile sites only (the raid policy's own rows, raid_sites, are tests/test_r47_raids.py's)
+    agg = {"raid_policy": "aggressive"}
+    # reactive (the sliders at 0): never a civ that hasn't attacked nor sits close and hostile
+    assert not rule(fort([target("raid", 5, dist=20), target("pillage", 6, dist=20), target("tribute", 7, dist=20)],
+                         send=send, send_missions=True, missions="all"))[0]
+    # aggressive: a civ that isn't hostile too, unless it is a friend (here an ally)
+    p, _ = rule(fort([target("raid", 5), target("pillage", 6, at_war=True, civ_id=8)], send=send, send_missions=True,
+                     missions="all", **agg))
+    assert p and p[0].action["goal"] == "raid" and p[0].action["policy"] == "aggressive"
+    f = fort([target("raid", 5), target("pillage", 6, at_war=True, civ_id=8)], send=send, send_missions=True,
+             missions="all", **agg)
+    f["world"] = {"civs": [{"id": 7, "name": "The Goblins", "relation": "Peace", "allies": True}]}
+    p, _ = rule(f)
+    assert p and p[0].action["goal"] == "pillage" and p[0].action["policy"] == "aggressive"
     p, _ = rule(fort([target("tribute", 8, hostile=True), target("raid", 5, hostile=True)], send=send,
-                     send_missions=True, missions="all"))
+                     send_missions=True, missions="all", **agg))
     assert p[0].action["goal"] == "tribute"                       # goal order: tribute before raid
     p, _ = rule(fort([target("rescue", 3, ready="too far"), target("rescue", 4, dist=30)], send=send, send_missions=True))
     assert p[0].action["site_id"] == 4

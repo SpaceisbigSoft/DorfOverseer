@@ -1230,3 +1230,23 @@ PLANNER_CONFIG.update({
     "way_out_dig_tries": 2,               # digs asked for before Needs you
     "way_out_dig_retry_days": 4,
 })
+# (0.105.47, J17) the raid policy by the fort's character (brain/planner_raids.py)
+PLANNER_CONFIG.update({
+    "raid_aggressive_militarism": 100,    # Militarism at or past this (the War-hold's 150): aggressive
+    "raid_timid_militarism": -50,         # at or below this (the Monastery's -60): only a sure win, a threat close by
+    "raid_retaliate_years": 3,            # a civ that attacked the fort within this many years may be raided back
+    "raid_near_tiles": 8,                 # a hostile (or ownerless) camp or fort this near: removed before it grows
+    "raid_new_tiles": 16,                 # ...one that appeared since the AI began watching, this near
+    "raid_timid_tiles": 4,                # the timid fort's threat distance
+    "raid_ratio": 2.0,                    # the squads at least this many times the site's strength: a clear win
+    "raid_ratio_timid": 3.0,              # ...for the timid fort
+    "raid_ratio_caution": 0.5,            # ...plus this at Caution 100 (scaled; never less)
+    "raid_site_base": 4.0,                # a site's strength: base + per resident (capped) x its type's weight
+    "raid_resident_power": 0.5,
+    "raid_resident_cap": 200,
+    "raid_unknown_pop": 60,               # residents assumed when the report can't say
+    "raid_cooldown_days": 84,             # a season between two offensive missions
+    "raid_friends_min": 2,                # civs kept as friends by the aggressive fort (traders, contact) at least
+    "raid_greed_rich": 60,                # Greed at or past this: the aggressive fort prefers the richest clear win
+    "raid_pet_restore_days": 2,           # pets let out for a mission put back this long after, once all are home
+})
