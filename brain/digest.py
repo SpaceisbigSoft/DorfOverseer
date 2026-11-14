@@ -179,6 +179,7 @@ SECTION_DEFAULTS = {
     "miasma": {},            # (0.105.41, item 11) miasma indoors, what rots near it, dump zones outside (lua/ai-syndromes.lua)
     "hunt": {"targets": [], "squads": [], "hunts": []},   # (0.105.45) threats the squads may hunt, the squads, hunts under way (lua/ai-hunt.lua)
     "artifacts": {},         # (item 12) artifacts on the map, display furniture, the AI's rooms for it (lua/ai-artifacts.lua)
+    "migration": {},         # (0.105.46, I4) whether a migrant wave can be called: force script, waves queued, DFHack's hermit (lua/ai-recovery.lua)
     "hunt": {"targets": [], "squads": [], "hunts": []},   # (0.105.45) hunting: targets and the way to them, squads, the AI's hunts, history (lua/ai-hunt.lua)
 }
 # (0.105.36) not REQUIRED (the plan goes on without them), but a missing one is
@@ -292,6 +293,16 @@ def cleanup_line(s: dict) -> str:
     cleanup_line); "" without a cleanup section."""
     try:
         from planner_cleanup import cleanup_line as _line
+        return _line(s)
+    except Exception:  # noqa: BLE001  (a digest line never stops the digest)
+        return ""
+
+
+def recovery_line(s: dict) -> str:
+    """(0.105.46, I4) The fort in collapse recovery (brain/planner_recovery.py
+    recovery_line; note_cycle leaves s["_recovery"]); "" when it isn't."""
+    try:
+        from planner_recovery import recovery_line as _line
         return _line(s)
     except Exception:  # noqa: BLE001  (a digest line never stops the digest)
         return ""
@@ -676,7 +687,8 @@ def digest(s: dict, news: int = 5) -> str:
 
     for extra in (threat_line(s), world_line(s), infection_line(s), built_line(s), gate_split_line(s), water_line(s),
                   missions_line(s), perf_line(s), cleanup_line(s), hauling_line(s), food_line(s), sickness_line(s),
-                  pile_links_line(s), deep_hazard_line(s), traffic_line(s), artifacts_line(s)):
+                  pile_links_line(s), deep_hazard_line(s), traffic_line(s), artifacts_line(s),
+                  recovery_line(s)):          # (0.105.46, I4)
         if extra:
             lines.append(extra)
     m = _d(s.get("map"))

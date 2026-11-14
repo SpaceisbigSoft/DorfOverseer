@@ -369,6 +369,16 @@ function RulesPage:init()
             initial_option = p.settings.set_pop_cap,
             on_change = function(v) p:set_field('set_pop_cap', v) end,
         },
+        -- (0.105.46, I4) beside the cap: a fallen fort DF sends no migrants to gets a
+        -- wave called (DFHack's force Migrants; brain/planner_recovery.py)
+        widgets.ToggleHotkeyLabel{
+            view_id = 'call_migrants',
+            frame = {t = 3, l = 62, w = 50},
+            label = 'Call migrants to a fallen fort:',
+            label_width = 33,
+            initial_option = p.settings.call_migrants ~= false,
+            on_change = function(v) p:set_field('call_migrants', v) end,
+        },
         widgets.Label{frame = {t = 4, l = 0}, text = {{text = 'Levels the AI may build when needed:'}}},
     }
     for i, l in ipairs(S.OPTIONAL_LEVELS) do
@@ -953,6 +963,7 @@ function RulesPage:refresh()
     self.subviews.landmark_pace:setOption(s.landmark_pace or 'season', false)     -- (D0)
     self.subviews.fort_goal:setOption(s.fort_goal, false)
     self.subviews.set_pop_cap:setOption(s.set_pop_cap, false)
+    self.subviews.call_migrants:setOption(s.call_migrants ~= false, false)          -- (0.105.46, I4)
     for _, l in ipairs(S.OPTIONAL_LEVELS) do
         self.subviews['level_' .. l.id]:setOption(s.levels[l.id] ~= false, false)
     end

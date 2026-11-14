@@ -1053,4 +1053,16 @@ PLANNER_CONFIG = {
     "lure_open_cooldown_ticks": 300,
     "lure_shut_cooldown_ticks": 25,       # shutting is safety: soon again if it didn't take
     "lure_archer_cooldown_ticks": 1200,
+    # (0.105.46, I4) collapse recovery (brain/planner_recovery.py): survival mode for a fallen fort
+    "recovery_floor_min": 12,             # the floor: at least this many citizens...
+    "recovery_floor_peak_share": 0.25,    # ...or this share of the most the fort ever had
+    "recovery_drop_share": 1 / 3,         # or a fall of this share within a game year...
+    "recovery_drop_min": 15,              # ...from a year's high of at least this many
+    "recovery_leave_days": 84,            # back at the floor or over this long (a season): recovery ends
+    "recovery_min_days": 84,              # and it lasts at least this long
+    "recovery_cap_room": 10,              # DF's cap opened to at least this many over the citizens
+    "recovery_migrants_wait_days": 168,   # no newcomer this long while recovering: a migrant wave is called
+    "recovery_migrants_cooldown_ticks": 112 * 1200,   # one call a season at most
+    "recovery_migrants_max_calls": 3,     # calls that brought nobody before it stops (a Needs you)
+    "recovery_stall_days": 336,           # under the survival floor with no newcomer this long: called too
 }
