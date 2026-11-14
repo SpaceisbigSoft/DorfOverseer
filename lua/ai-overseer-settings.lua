@@ -406,6 +406,9 @@ function defaults()
         -- (0.105.45) kill zones at the gates and cavern openings (lua/ai-killzone.lua,
         -- brain/planner_killzone.py): traps in the narrow way in, a drawbridge over a drop
         killzones = true,
+        -- (0.105.47) a training-only squad for the civilians who badly want to fight,
+        -- at high Welfare even at low Militarism (lua/ai-training-squad.lua, brain/planner_training.py)
+        training_squad = true,
         -- (0.105.46, I4) a fallen fort DF sends no migrants to: the AI calls a wave
         -- (DFHack's force Migrants; lua/ai-recovery.lua, brain/planner_recovery.py)
         call_migrants = true,
@@ -519,6 +522,7 @@ function sanitize(s)
                         'hunting', 'cavern_farms',  -- (0.105.41, item 4) provisions
                         'siege_engines', 'archer_posts', 'caravan_guard', 'wildlife_hunts',   -- (item5)
                         'killzones',                -- (0.105.45) kill zones at the gates and cavern openings
+                        'training_squad',           -- (0.105.47) a training-only squad for the keen
                         'call_migrants',            -- (0.105.46, I4) a migrant wave called to a fallen fort
                         'mine_adamantine',          -- (0.105.40b) reserved: still refused (not built yet)
                         'traffic'}) do              -- (0.105.41) traffic zones on the AI's levels
@@ -637,6 +641,7 @@ function for_ai(s)
         siege_engines = s.siege_engines, archer_posts = s.archer_posts,       -- (item5)
         caravan_guard = s.caravan_guard, wildlife_hunts = s.wildlife_hunts,
         killzones = s.killzones,                   -- (0.105.45)
+        training_squad = s.training_squad,         -- (0.105.47)
         call_migrants = s.call_migrants,           -- (0.105.46, I4)
         mine_adamantine = s.mine_adamantine,       -- (0.105.40b) reserved: adamantine still left alone
         hunting = s.hunting, cavern_farms = s.cavern_farms,   -- (0.105.41, item 4)

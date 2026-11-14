@@ -381,6 +381,27 @@ ACTIONS = {
         if a.max ~= nil and (not max or max < 1 or max > 50) then return reject('thirst_unforbid: max is 1-50') end
         return reqscript('ai-thirst').unforbid_drink(id, a.dry_run == true, max)
     end,
+    -- (0.105.47, R2) the training squad: made, filled with volunteers, or
+    -- forgotten (lua/ai-training-squad.lua; never counted as soldiers)
+    training_squad = function(a)
+        local TS = reqscript('ai-training-squad')
+        local dry = a.dry_run == true
+        if a.mode == 'make' then return TS.make(dry, txt) end
+        local sid = type(a.squad_id) == 'number' and math.tointeger(a.squad_id) or nil
+        if not sid then return reject('training_squad needs squad_id (or mode make)') end
+        if a.mode == 'forget' then return TS.forget(sid, dry) end
+        if a.mode ~= 'fill' then return reject('training_squad: mode is make, fill or forget') end
+        local n = type(a.count) == 'number' and math.tointeger(a.count) or 1
+        if not n or n < 1 or n > 10 then return reject('training_squad: count is 1-10') end
+        local uid = a.unit_id ~= nil and (type(a.unit_id) == 'number' and math.tointeger(a.unit_id) or false) or nil
+        if uid == false then return reject('training_squad: unit_id is a unit id') end
+        local avoid = {}
+        for _, v in ipairs(type(a.avoid) == 'table' and a.avoid or {}) do
+            local u = type(v) == 'number' and math.tointeger(v) or nil
+            if u then avoid[u] = true end
+        end
+        return TS.fill(sid, n, dry, txt, avoid, uid)
+    end,
     -- (0.105.45) a great beast sealed in a cavern lured into a pocket behind
     -- one of the AI's cavern doors and caught or shut in (lua/ai-lure.lua)
     build_lure = function(a)
@@ -734,6 +755,7 @@ for _, name in ipairs({
     'mood_shelter',    -- (0.105.47, J1) its dry run counts the tiles and adds none
     'open_meeting',    -- (0.105.47) its dry run finds the diplomacy light and clicks nothing
     'hospital_guard', 'tantrum_step_down',   -- (0.105.47) each dry run checks and changes nothing
+    'training_squad',   -- (0.105.47) its dry run names the leader or counts the places and changes nothing
 }) do DRY_OK[name] = true end
 
 -- These only change what's displayed, so they still work while halted, dry
@@ -816,6 +838,7 @@ BRIDGE_MODULES = {
     'ai-mood-help',   -- (0.105.47, J1) job cancels, webs, the moods' tiles in the shelter
     'ai-screen-buttons', 'ai-meeting-open',   -- (0.105.47) buttons kept for every save; the meeting opened
     'ai-tantrums',   -- (0.105.47) the tantrum ledger, posts, hospital guards
+    'ai-training-squad',   -- (0.105.47) the training squad
 }
 -- the split-off modules that carry a version mark of their own
 MARKED_MODULES = {'ai-military-gear', 'ai-society-burrows', 'ai-constructions'}

@@ -568,6 +568,7 @@ SHORT_WORDS = {
     "open_meeting": "open the meeting waiting behind DF's diplomacy light",  # (0.105.47)
     "hospital_guard": "station a calm squad in the hospital while a tantrum is loose (or take it off)",  # (0.105.47)
     "tantrum_step_down": "take a tantrum-thrower off every post and the hospital work",  # (0.105.47)
+    "training_squad": "a squad that only trains, for the civilians who badly want to fight (made, filled with volunteers, or let go)",  # (0.105.47)
     "census": "count what fills the map",  # (0.104.113)
     "seal_well_stairs": "close the cavern wells' stair columns",  # (0.104.151)
     "join_levels": "join areas on one level that meet only through the stairs",  # (0.104.108)

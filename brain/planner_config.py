@@ -1104,4 +1104,13 @@ PLANNER_CONFIG = {
     "crisis_repeat_dwarves": 2,           # ...or this many dwarves...
     "crisis_repeat_tantrums": 2,          # ...each with this many tantrums in 28 days
     "crisis_tantrum_quiet_days": 14,      # a crisis is not over while a tantrum was seen this recently
+    # (0.105.47, R2) the training squad and the end of the squad ping-pong (brain/planner_training.py)
+    "training_squad_welfare": 50,         # Welfare this high or more allows a training-only squad (the Monastery: 80)
+    "training_squad_max": 10,             # its size: at most this many (a DF squad holds 10)...
+    "training_squad_adults_per": 5,       # ...and at most one per this many adults (a fifth)
+    "training_squad_min": 2,              # no training squad where the cap comes out under this
+    "training_squad_keen_min": 2,         # made once this many civilians badly want to fight or train
+    "training_squad_fill_max": 3,         # volunteers added a cycle at most
+    "training_squad_cooldown_ticks": 1200,   # a day between its steps
+    "never_draft_days": 672,              # stress care's "never draft" kept two years at most...
 }

@@ -278,6 +278,7 @@ class Memory:
     swapped: dict = field(default_factory=dict)  # (0.104.78) unit id -> when the swap sent them home
     drafted: dict = field(default_factory=dict)  # (0.104.138) unit id -> when a fill or swap drafted them
     released: dict = field(default_factory=dict)  # (0.104.164) unit id -> when stress care or a baby sent them home
+    never_draft: dict = field(default_factory=dict)  # (0.105.47) unit id -> {at, stress}: stress care sent them home for good (planner_training)
     train_mode: dict = field(default_factory=dict)  # (0.104.168) the rotation's {all: bool, tick: when it changed}
     keen_lift: dict = field(default_factory=dict)   # (0.104.168) {n, tick}: soldiers wanted raised for the keen in a crisis
     unstick_seen: dict = field(default_factory=dict)   # (0.104.138) the spare gear at the last untangling, times
@@ -560,7 +561,9 @@ def player_rules(s: dict) -> dict:
             "hunt": st.get("hunt") if st.get("hunt") in ("off", "small", "ai") else "ai",
             # (0.105.46, I4) a fallen fort DF sends no migrants to: the AI calls a wave
             # (DFHack's force Migrants; brain/planner_recovery.py): off only when the settings say so
-            "call_migrants": st.get("call_migrants") is not False}
+            "call_migrants": st.get("call_migrants") is not False,
+            # (0.105.47) a training-only squad for the keen at high Welfare (brain/planner_training.py)
+            "training_squad": st.get("training_squad") is not False}
 
 
 OPEN_CAVERNS_MODES = ("ai", "always", "never")
@@ -1198,7 +1201,12 @@ def recently_home(s: dict, memory) -> list:
             sent[k] = v
     rows = sorted(((t, k) for k, t in sent.items()
                    if isinstance(t, int) and 0 <= now - t < 168 * TICKS_PER_DAY), reverse=True)[:100]
-    return [int(k) for _, k in rows if str(k).isdigit()]
+    out = [int(k) for _, k in rows if str(k).isdigit()]
+    # (0.105.47) and those stress care sent home for good ("never draft"),
+    # first: kept until a long time passes or their mood rises (planner_training)
+    from planner_training import never_draft_ids
+    never = never_draft_ids(s, memory)
+    return (never + [i for i in out if i not in set(never)])[:100]
 
 
 def _soldier_swap(s: dict, cfg: dict, proposals: list | None, memory=None) -> None:

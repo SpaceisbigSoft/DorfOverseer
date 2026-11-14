@@ -1106,7 +1106,7 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
     elif have < want:
         open_ = [(q, min(9, (q.get("size") or 0) - 1) - max(0, (q.get("members") or 0) - (1 if q.get("leader") else 0)))
                  for q in squads]
-        open_ = [(q, n) for q, n in open_ if n > 0]
+        open_ = [(q, n) for q, n in open_ if n > 0 and not q.get("training_squad")]   # (0.105.47) volunteers only
         if open_:
             q, n = open_[0]
             count = min(n, want - have, cfg["max_fill_per_cycle"])
