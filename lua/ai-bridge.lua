@@ -628,6 +628,23 @@ ACTIONS = {
     call_migrants = function(a)
         return reqscript('ai-recovery').call_migrants(a.dry_run == true)
     end,
+    -- (0.105.47, I7b) the dead and a cook (lua/ai-welfare.lua): coffins with a
+    -- tomb each on the AI's finished levels when no tomb level comes; memorial
+    -- slab orders for the dead nobody can reach; one cook kept at the kitchens
+    coffins_anywhere = function(a)
+        local n = int_in(a.max or 5, 1, 10)
+        if not n then return reject('coffins_anywhere: max is 1-10') end
+        return reqscript('ai-welfare').place_corner_coffins(n, a.dry_run == true)
+    end,
+    engrave_memorials = function(a)
+        local n = int_in(a.max or 5, 1, 10)
+        if not n then return reject('engrave_memorials: max is 1-10') end
+        return reqscript('ai-welfare').engrave_memorials(n, a.dry_run == true)
+    end,
+    train_cook = function(a)
+        if a.release ~= nil and type(a.release) ~= 'boolean' then return reject('train_cook: release is true or false') end
+        return reqscript('ai-welfare').train_cook(a.dry_run == true, a.release == true)
+    end,
 }
 
 -- (13c) The actions whose dry run changes nothing in the fort, all the way
@@ -705,6 +722,7 @@ for _, name in ipairs({
     'build_killzone', 'reset_cage_traps',   -- (0.105.45) each dry run plans (or counts) and places nothing
     'thirst_unforbid',   -- (0.105.46, I2) its dry run counts the drinks and lets none go
     'call_migrants',   -- (0.105.46, I4) its dry run names the script and queues nothing
+    'coffins_anywhere', 'engrave_memorials', 'train_cook',   -- (0.105.47) each dry run finds and names, and changes nothing
 }) do DRY_OK[name] = true end
 
 -- These only change what's displayed, so they still work while halted, dry
@@ -784,6 +802,7 @@ BRIDGE_MODULES = {
     'ai-thirst',   -- (0.105.46, I2) the thirst watch
     'ai-recovery',   -- (0.105.46, I4)
     'ai-slices', 'ai-cavern-scan',   -- (0.105.46, I6) walks spread over several reports; the caverns' seen samples
+    'ai-welfare',   -- (0.105.47, I7b) the unreachable dead, coffins anywhere, a cook trained
 }
 -- the split-off modules that carry a version mark of their own
 MARKED_MODULES = {'ai-military-gear', 'ai-society-burrows', 'ai-constructions'}
@@ -1257,6 +1276,9 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
     -- stranded, the last cancelled Drink job), and the deaths of thirst with
     -- the last reason known (lua/ai-thirst.lua; in the pulse)
     thirst = function() return safe(function() return reqscript('ai-thirst').report() end) end,
+    -- (0.105.47, I7b) the coffins on the AI's other levels (placed, built, free),
+    -- free coffins in store, the trainee cook (lua/ai-welfare.lua)
+    welfare = function() return safe(function() return reqscript('ai-welfare').report() end) end,
     -- (0.105.30) what the fort has built: finished constructions by shape and
     -- material, above or below ground, roofed surface tiles, the waiting ones
     -- and the AI's own (lua/ai-constructions.lua; one pass, every 3 days)
@@ -1339,6 +1361,10 @@ for _, name in ipairs({'unforbid_items', 'mark_melt', 'mark_dump', 'empty_dump',
     CACHE_INVALIDATES[name] = {'disposal'}
 end
 CACHE_INVALIDATES.set_standing_orders = {'disposal', 'dead'}
+-- (0.105.47) the dead and the coffins read again after the burial actions
+CACHE_INVALIDATES.coffins_anywhere = {'dead', 'welfare'}
+CACHE_INVALIDATES.engrave_memorials = {'dead'}
+CACHE_INVALIDATES.train_cook = {'welfare'}
 -- (0.105.40 review) world cleanup: items deleted (the disposal marks and dump
 -- counts, industry's boulders and stocks), creatures vaporized (disposal's
 -- invaders), dead units off the active list; the spatter is in no cached section

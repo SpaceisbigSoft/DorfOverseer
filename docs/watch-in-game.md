@@ -13,6 +13,16 @@ The forts are A War-hold, B Monastery, C Merchant city, D Hermit hold, E Deep mi
 The quick way through this file: `python brain\seen.py` (from any DF-AI folder) writes each folder's `logs\seen-ledger.md` and a summary across them (`DF-AI\logs\seen-ledger-all.md`): every section, action and Rules switch since 0.105.32 as seen, refused (why), not yet met or in error, and this file's lines ticked where the reports and journals show them. Lines about how things look stay "needs eyes".
 
 
+## 0.105.47 (R2, I7b): the unburied dead, the dead out of reach, welfare in small forts (brain/planner_welfare.py, lua/ai-welfare.lua)
+
+- **All, state.json**: a `welfare` section (`corner` placed/built/free/waiting, `coffin_items`, `cook` once one is trained), no `error`; `dead` carries `unreachable_dead`, `unreachable_bodies`, `gone_bodies`, `unreachable_no_slab`, `memorials_wanted`, `memorial_orders`; `needs.stressed` rows carry `longterm`, `born`, `arrived` (and `child` for a child). Check `arrived` against the dwarf's arrival (Legends or the unit sheet): it is read from the history's "settled" change of state (`history_event_change_hf_statest` hfid/site/year: [verify]); none read means the event isn't made for migrants.
+- **B (or any fort whose tomb search fails)**: after a `tombs_ghosts` refusal a week, or 84 days of more dead than free tombs, `coffins_anywhere` by `burial_corner`: coffins planned on a finished tomb, storage or workshop level, each in a 1x1 tomb zone with automatic burial of citizens on (the zone's sheet), never in a bedroom, dining hall or temple, never two side by side, never on a stockpile; `burial_coffins` orders their coffins; the dead carried in. Look that a coffin never blocks a corridor.
+- **The dead out of reach** (drowned, in ice, in a cavern): `engrave_memorials` by `slabs_ahead` puts an EngraveSlab work order naming the dead on the orders screen; the mason engraves a memorial for that dwarf (not "a slab"); `slabs_ahead_place` puts it up in a tomb or hall; no ghost rises for them afterwards. Check the order is accepted by DF 53 (hist_figure_id on a manager order, as autoslab does).
+- **A tomb level dug**: its tombs take citizens from the start (the furnish and finish answers carry `burial`: the zones opened).
+- **D, E, B (under 30)**: a `recreation` action at 5+ citizens, `max` a quarter of the fort (D: 2); `needs_meal` lavish meals with 100+ plain meals a dwarf while good meals are short; `train_cook` keeps one cook at the kitchens (the kitchen's Workers tab names them, min skill 0); their Cooking skill rises over a season; a player-named kitchen untouched.
+- **Stress care**: no `give_room` for a child or baby; a miserable dwarf with a bedroom and no squad gets the answer to their top unmet need (`stress_care` with a lavish meal order, trinkets or idle crafting; prayer and friends by the recreation stay), a very unhappy one with long-term stress 50,000+ at any Welfare.
+
+
 ## 0.105.46 (I1): the "seen in game" ledger
 
 - **All, after the keeper's first daily check**: `logs\seen-ledger.md` exists and `logs\health-check.txt` has a `seen:` part ("seen since 0.105.32: N seen, M refused or failed, K not yet met, E section errors"); a report section that returns `{"error"}` is flagged there ("report section 'x' returns an error: ...").

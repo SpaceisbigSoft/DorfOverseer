@@ -295,6 +295,7 @@ class Memory:
     fights: list = field(default_factory=list)           # (0.104.118) the last fights: {tick, keys, lost, of}
     called_off: dict = field(default_factory=dict)       # (0.105.26) great danger id -> tick its fight was called off
     recovery: dict = field(default_factory=dict)         # (0.105.46, I4) collapse recovery: {since, why, floor, peak, weeks, last_rise, calls, journal} (planner_recovery)
+    welfare: dict = field(default_factory=dict)          # (0.105.47, I7b) {short_since: tick the dead first outnumbered the free tombs} (planner_welfare)
     lure: dict = field(default_factory=dict)             # (0.105.45) opening "x,y,z" -> {tries, opened, next_try, caught, phase}: the lure pockets (planner_lure)
     order_loop: dict = field(default_factory=dict)       # (0.105.46, I3) {misses: {"recipe|MATERIAL": {tick, missing, what, snap}}, approved, approved_ids} (order_check)
     dig_seen: dict = field(default_factory=dict)         # (0.104.110) project id -> {"dug", "tick" (last progress), "freed"}

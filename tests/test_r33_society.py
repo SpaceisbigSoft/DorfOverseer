@@ -251,7 +251,7 @@ def _fort(members=6, total=60):
 @test("B4 recreation (brain): members are let out when a threat is near, the fort shrank, or the needs section failed")
 def _():
     for label, mut in (("threat", lambda s: s["others_on_map"].update(threats_that_can_reach_dwarves=1)),
-                       ("shrunk", lambda s: s["dwarves"].update(total=25))):
+                       ("shrunk", lambda s: s["dwarves"].update(total=4))):   # (0.105.47) under recreation_min_citizens 5 (was 30)
         s = _fort()
         mut(s)
         p = []
