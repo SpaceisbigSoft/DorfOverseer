@@ -57,6 +57,7 @@ from planner_firebreath import _fire_breather_rule  # noqa: E402  (0.105.40b) no
 from planner_siege import _siege_rules  # noqa: E402  (item5) siege engines, archer posts, caravan guard, wildlife hunts
 from planner_hazards import _hazards_rule, magma_alarm  # noqa: E402  (0.105.41, item 7) spilt magma, cave-ins, frost, heat
 from planner_insane import _insane_rule  # noqa: E402  (0.105.40b) the insane: deadly ground near them, the AI's doors
+from planner_killers import _killer_rule  # noqa: E402  (item3) a killer among the fort's own: cells, a squad
 from planner_hauling import _hauling_labor_rule, note_hauling  # noqa: E402  (0.105.40 M5) hauling balanced
 from planner_traffic import _traffic_rule  # noqa: E402  (0.105.41) traffic zones on the AI's own levels
 from planner_food import _food_store_rule, note_food  # noqa: E402  (0.105.40b, M6) the food store
@@ -560,6 +561,10 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
     # AI's own doors locked between; the near-breaking (planner_insane)
     if "insane" not in errors:
         _guard(_insane_rule, s, cfg, proposals, notes, memory)
+    # (item3) a vampire, a werebeast or a murderer among the fort's own: the
+    # evidence and its confidence, a cell or a squad (planner_killers)
+    if "killers" not in errors:
+        _guard(_killer_rule, s, cfg, proposals, notes, memory)
     # (0.105.41, item 11) syndromes beyond infection (carriers kept apart, the
     # syndrome spatter cleaned) and miasma indoors (what rots marked for the dump)
     if "syndromes" not in errors:

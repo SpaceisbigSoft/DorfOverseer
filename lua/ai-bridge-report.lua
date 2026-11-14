@@ -3348,6 +3348,7 @@ end
 -- ghost, a beast, an animal, an outsider), and `again` when this unit's death
 -- was already told (a ghost laid to rest dies a second time).
 DEATHS_TOLD = DEATHS_TOLD or {}
+OLD_DEATH_TICKS = 1200   -- (item3) a death older than a day when told was told before
 function death_details(ev, id)
     local u = df.unit.find(id)
     if not u then return end
@@ -3356,6 +3357,19 @@ function death_details(ev, id)
     pcall(function() if dfhack.units.isGhost(u) then ev.ghost = true end end)
     local inc = df.incident.find(u.counters.death_id)
     if not inc then return end
+    -- (item3) a death that happened more than a day before it is told is
+    -- `again` too: a ghost laid to rest dies a second time, and DEATHS_TOLD
+    -- is lost when DF restarts. F (13 Nov): after the 08:00-10:57 restarts,
+    -- 28 of the titan's 42 victims (y257) were told as fresh "bleed" deaths,
+    -- one at a time over 11 hours, each the second its ghost was put to rest
+    -- (read as a killer among the citizens; and counted as new deaths)
+    pcall(function()
+        local y, t = inc.event_year, inc.event_time
+        if type(y) == 'number' and type(t) == 'number' and y >= 0 and t >= 0
+                and abs_tick() - (y * 403200 + t) > OLD_DEATH_TICKS then
+            ev.again, ev.old_death = true, true
+        end
+    end)
     ev.cause = df.death_type[inc.death_cause] or tostring(inc.death_cause)
     -- (0.104.139) how far the fight had gone (Brawl, Lethal, NoQuarter), and
     -- whether the dead was a patient: what each killing was

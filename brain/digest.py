@@ -158,6 +158,7 @@ SECTION_DEFAULTS = {
     "captives": {},          # (item6) caged prisoners one by one, the AI's pit (lua/ai-captives.lua)
     "necro": {},             # (item6) a necromancer siege: the dead, raisers, bodies outside, towers near (lua/ai-captives.lua)
     "env_hazards": {},       # (0.105.41, item 7) spilt magma, cave-ins, frost, heat (lua/ai-hazards.lua; in the pulse too)
+    "killers": {},           # (item3) cursed citizens and residents, the living who killed the fort's own, the AI's cells (lua/ai-killers.lua)
     "insane": {},            # (0.105.40b) the insane, the deadly ground near them, the AI's doors locked, the near-breaking (lua/ai-insane.lua)
     "hauling": {},           # (0.105.40 M5) haul jobs waiting, haulers, key workers hauling (lua/ai-hauling.lua)
     "traffic": {},           # (0.105.41) traffic zones on the AI's finished levels: waiting, in progress, rechecks (lua/ai-traffic.lua)
