@@ -181,7 +181,10 @@ def _():
     assert line and "a copy" in line, line
     left = sorted(c.name for c in d.iterdir() if c.is_dir())
     assert len(backup.copies_of("W", "7", "autosave 1")) == 2, left   # W's two kept
-    assert len(backup.copies_of("Other", "7", "autosave 1")) == 3, left
+    # (0.105.46, I6) Other's kept by age (backup.choose_keep), the new copy among them
+    others = backup.copies_of("Other", "7", "autosave 1")
+    assert others and backup.copy_time(others[0]) and len(others) >= 2, left
+    assert sorted(others) == sorted(backup.choose_keep(others, time.time())), left
 
 
 # ---------------------------------------------------------------- revive Med (second DF)

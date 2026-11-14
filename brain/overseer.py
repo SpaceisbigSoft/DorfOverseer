@@ -1175,6 +1175,11 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
             + (f" [{why_not}: not acting]" if autopilot and why_not else ""))
         todo = [n[len(NEEDS_YOU):] for n in notes if n.startswith(NEEDS_YOU)]
         notes = [n for n in notes if not n.startswith(NEEDS_YOU)]
+        try:
+            import old_saves                     # (0.105.46, I6) old test saves, told once (the AI never deletes them)
+            todo += old_saves.needs_you()
+        except Exception:  # noqa: BLE001
+            pass
         # (0.104.0) how long each Needs you and failing-rule line has stood (the run check)
         health_check.track_standing(key, todo, notes, abs_tick(state))
         show_changed(key, [f"  NEEDS YOU: {n}" for n in todo] + [f"  note: {n}" for n in notes]

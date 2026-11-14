@@ -337,7 +337,7 @@ def _():
     assert [a for a in g.acts if a.get("type") == "quiet_announcements"], g.acts
 
 
-@test("backups: the newest of the save and DF's autosaves, once a day, three kept; never mid-save")
+@test("backups: the newest of the save and DF's autosaves, once a day, kept by age (0.105.46: a day's for a week); never mid-save")
 def _():
     import os
     root = TMP / "save"
@@ -356,7 +356,8 @@ def _():
     assert backup.maybe(root, "region1", now=now + 60) is None              # not again the same day
     for i in range(1, 5):
         assert backup.maybe(root, "region1", now=now + i * 86400 + 1)
-    assert len(list((backup.BACKUP_DIR / "region1").iterdir())) == backup.KEEP
+    # (0.105.46, I6) kept by age: five copies a day apart are all inside the week
+    assert len(list((backup.BACKUP_DIR / "region1").iterdir())) == 5
     (root / "autosave 2" / "world.sav").write_text("fresh")                   # being written now
     assert backup.maybe(root, "region1", now=time.time(), force=True) is None
 
@@ -398,7 +399,7 @@ def _():
         assert backup.maybe(root, "region9", now=now + i * 86400, force=True)
     names = sorted(p.name for p in (backup.BACKUP_DIR / "region9").iterdir())
     assert "my notes" in names, names                                   # not one of ours: left alone
-    assert len([n for n in names if backup.COPY_NAME.match(n)]) == backup.KEEP, names
+    assert len([n for n in names if backup.COPY_NAME.match(n)]) == 5, names    # (0.105.46) a day's for a week
     assert not any(n.endswith(".partial") and n != stale.name for n in names), names
 
 @test("backups (0.104.81): a long copy beats the overseer's heartbeat now and then, and a failing beat never breaks it")

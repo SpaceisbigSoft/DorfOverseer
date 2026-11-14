@@ -4,7 +4,11 @@ DF keeps three autosaves and writes over the oldest; a save that goes bad
 (a crash while saving, or a record the AI wrote that the game dislikes) can
 take the fort with it. Once a real day while unattended, the overseer copies
 the fort's newest save folder into backups/<save folder>/<date time>/ beside
-DF-AI's logs, and keeps the newest KEEP copies. No tokens.
+DF-AI's logs. (0.105.46, I6) Kept by age, per fort (whichever save folder
+each copy came from): the newest of each day for a week, the newest of each
+week for five weeks, the newest always; and the fort's copies together under
+MAX_MB (the oldest go first). Only the copies this module made are ever
+removed: the game's own saves are never touched. No tokens.
 
     line = backup.maybe(save_root, save_dir)     # once a cycle; None or a line to print
 """
@@ -24,7 +28,10 @@ from util import load_json
 BACKUP_DIR = PROJECT_ROOT / "backups"
 STATE = BACKUP_DIR / "last.json"
 EVERY_S = 24 * 3600          # a copy a real day
-KEEP = 3                     # copies kept per save
+KEEP = 3                     # (before 0.105.46) copies kept per save; now by age (KEEP_DAILY_DAYS...)
+KEEP_DAILY_DAYS = 7          # (0.105.46, I6) the newest copy of each day this many days back
+KEEP_WEEKLY_WEEKS = 5        # ... and of each week this many weeks back
+MAX_MB = 500                 # ... and a fort's copies together under this (the oldest go first; never the newest)
 QUIET_S = 120                # a folder written to in the last 2 minutes may be mid-save: wait
 
 
@@ -291,20 +298,122 @@ def maybe(save_root, save_dir: str | None, now: float | None = None,
     if fort is not None:
         _write_fort_mark(dest, fort, save_dir)
     # only the finished copies this module made (dated names) are cleared out;
-    # (0.105.33) KEEP per fort: DF's "autosave N" folders are shared by every
+    # (0.105.33) per fort: DF's "autosave N" folders are shared by every
     # world, so another world's copies never push this fort's out
-    copies = sorted((p for p in dest_root.iterdir() if p.is_dir() and COPY_NAME.match(p.name)),
-                    key=lambda p: p.name)
-    groups: dict = {}
-    for c in copies:
-        m = copy_fort(c)
-        groups.setdefault((m.get("world"), m.get("site")) if m else None, []).append(c)
-    for group in groups.values():
-        for old in group[:-KEEP]:
-            shutil.rmtree(old, ignore_errors=True)
-            try:
-                fort_mark_path(old).unlink(missing_ok=True)
-            except OSError:
-                pass
+    # (0.105.46, I6) by age, over every folder the fort's copies are in
+    kept = prune(dest_root, fort, save_dir, now)
     _mark(now, str(dest), str(src))
-    return f"a copy of the save ({src.name}) is in {dest}; the newest {KEEP} are kept"
+    return (f"a copy of the save ({src.name}) is in {dest}; {kept} kept (a day's for a week, "
+            f"a week's for {KEEP_WEEKLY_WEEKS} weeks, under {MAX_MB} MB)")
+
+
+# ---------------------------------------------------------------------------
+# (0.105.46, I6) retention by age
+# ---------------------------------------------------------------------------
+
+def copy_time(c: Path) -> float | None:
+    """When a copy was made, from its folder name ("2026-11-14 0310"), or None."""
+    try:
+        return datetime.strptime(c.name, "%Y-%m-%d %H%M").timestamp()
+    except (ValueError, OSError):
+        return None
+
+
+def tree_size(p: Path) -> int:
+    total = 0
+    for f in p.rglob("*"):
+        try:
+            if f.is_file():
+                total += f.stat().st_size
+        except OSError:
+            pass
+    return total
+
+
+def choose_keep(copies: list, now: float, sizes: dict | None = None,
+                max_bytes: int | None = None) -> list:
+    """Which of one fort's copies stay (pure: nothing is removed here): the
+    newest always; the newest of each calendar day for KEEP_DAILY_DAYS days;
+    the newest of each week (7-day spans back from now) for
+    KEEP_WEEKLY_WEEKS weeks; then, with `sizes` and `max_bytes`, the oldest
+    kept go until the rest fit (the newest stays whatever its size). A copy
+    whose name has no date is kept (not ours to judge). Newest first."""
+    dated = [(copy_time(c), c) for c in copies]
+    keep = [c for t, c in dated if t is None]
+    dated = sorted(((t, c) for t, c in dated if t is not None), key=lambda tc: (tc[0], tc[1].name), reverse=True)
+    if not dated:
+        return keep
+    chosen = [dated[0][1]]
+    days, weeks = set(), set()
+    for t, c in dated:
+        age = max(0.0, now - t)
+        day = datetime.fromtimestamp(t).strftime("%Y-%m-%d")
+        week = int(age // (7 * 86400))
+        if age < KEEP_DAILY_DAYS * 86400 and day not in days:
+            days.add(day)
+            weeks.add(week)
+            if c not in chosen:
+                chosen.append(c)
+        elif age < KEEP_WEEKLY_WEEKS * 7 * 86400 and week not in weeks:
+            weeks.add(week)
+            if c not in chosen:
+                chosen.append(c)
+    if sizes is not None and max_bytes is not None:
+        order = sorted(chosen, key=lambda c: copy_time(c) or 0.0, reverse=True)
+        total = sum(sizes.get(c, 0) for c in order)
+        while total > max_bytes and len(order) > 1:
+            gone = order.pop()                      # the oldest kept
+            total -= sizes.get(gone, 0)
+        chosen = order
+    return keep + sorted(chosen, key=lambda c: copy_time(c) or 0.0, reverse=True)
+
+
+def _ours_to_remove(c: Path) -> bool:
+    """A finished copy this module made: a dated folder two levels inside
+    backups/ (backups/<save folder>/<date time>), never anything else."""
+    try:
+        return (c.is_dir() and COPY_NAME.match(c.name) is not None
+                and c.resolve().parent.parent == BACKUP_DIR.resolve())
+    except OSError:
+        return False
+
+
+def _remove_copy(c: Path) -> bool:
+    if not _ours_to_remove(c):
+        return False
+    shutil.rmtree(c, ignore_errors=True)
+    try:
+        fort_mark_path(c).unlink(missing_ok=True)
+    except OSError:
+        pass
+    return True
+
+
+def prune(dest_root: Path, fort: dict | None, save_dir: str | None, now: float) -> int:
+    """(0.105.46, I6) The fort's copies thinned by age (choose_keep): with
+    `fort`, every copy of that world and site in any folder; without, each
+    fort's copies in dest_root as marked (as before). Other forts' copies in
+    the folder are left alone (the run check thins forts no longer played).
+    Returns how many of the fort's copies are kept."""
+    groups: list = []
+    if fort is not None:
+        groups.append(copies_of(fort.get("world"), fort.get("site_id"), save_dir))
+    else:
+        try:
+            copies = [p for p in dest_root.iterdir() if p.is_dir() and COPY_NAME.match(p.name)]
+        except OSError:
+            copies = []
+        by: dict = {}
+        for c in copies:
+            m = copy_fort(c)
+            by.setdefault((m.get("world"), m.get("site")) if m else None, []).append(c)
+        groups = list(by.values())
+    kept = 0
+    for group in groups:
+        sizes = {c: tree_size(c) for c in group}
+        stay = set(choose_keep(group, now, sizes, MAX_MB * 1_000_000))
+        for c in group:
+            if c not in stay:
+                _remove_copy(c)
+        kept = max(kept, len(stay))
+    return kept

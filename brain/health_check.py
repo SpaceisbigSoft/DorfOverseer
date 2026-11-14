@@ -459,8 +459,16 @@ def housekeeping(save_roots: list[Path], current: str | None, backup_dir: Path,
             continue
     if old_tests:
         sizes = [(d, age, _size(d)) for d, age in old_tests]
-        flags.append(f"old test saves ({len(sizes)}, {_mb(sum(s for _, _, s in sizes))}) you could delete: "
-                     + "; ".join(f"{d} ({age:.0f} days, {_mb(s)})" for d, age, s in sizes[:6]))
+        text = (f"old test saves ({len(sizes)}, {_mb(sum(s for _, _, s in sizes))}) you could delete: "
+                + "; ".join(f"{d} ({age:.0f} days, {_mb(s)})" for d, age, s in sizes[:6]))
+        # (0.105.46, I6) told to the player once, as a Needs you line (brain/old_saves.py):
+        # flagged here only while one on the list hasn't been told yet
+        try:
+            import old_saves
+            new = old_saves.note(sizes, now)
+        except Exception:  # noqa: BLE001
+            new = True
+        (flags if new else plain).append(text if new else text + " (told on the Needs you list)")
     thinned = 0
     if backup_dir.is_dir():
         for d in backup_dir.iterdir():
