@@ -503,6 +503,43 @@ ACTIONS = {
         if a.release == true then return B.release_bench(a.kind, a.dry_run == true) end
         return B.cap_bench(a.kind, a.level, a.dry_run == true)
     end,
+    -- (0.105.45) hunting: squads sent at a beast or an enemy, and called back (lua/ai-hunt.lua)
+    hunt_send = function(a)
+        local tid = whole_number(a.target_id)
+        if not tid then return reject('hunt_send needs target_id') end
+        if type(a.squad_ids) ~= 'table' or #a.squad_ids == 0 or #a.squad_ids > 10 then
+            return reject('hunt_send needs squad_ids: a list of 1-10 squad ids')
+        end
+        local ids = {}
+        for _, v in ipairs(a.squad_ids) do
+            local n = whole_number(v)
+            if not n then return reject('hunt_send: squad_ids is a list of squad ids') end
+            table.insert(ids, n)
+        end
+        return reqscript('ai-hunt').send({squad_ids = ids, target_id = tid}, a.dry_run == true)
+    end,
+    hunt_recall = function(a)
+        local o = {reason = type(a.reason) == 'string' and a.reason or nil}
+        if a.squad_ids ~= nil then
+            if type(a.squad_ids) ~= 'table' or #a.squad_ids > 10 then
+                return reject('hunt_recall: squad_ids is a list of 1-10 squad ids')
+            end
+            o.squad_ids = {}
+            for _, v in ipairs(a.squad_ids) do
+                local n = whole_number(v)
+                if not n then return reject('hunt_recall: squad_ids is a list of squad ids') end
+                table.insert(o.squad_ids, n)
+            end
+        end
+        if a.target_id ~= nil then
+            o.target_id = whole_number(a.target_id)
+            if not o.target_id then return reject('hunt_recall: target_id is a unit id') end
+        end
+        if not (o.squad_ids and #o.squad_ids > 0) and not o.target_id then
+            return reject('hunt_recall needs squad_ids or target_id')
+        end
+        return reqscript('ai-hunt').recall(o, a.dry_run == true)
+    end,
 }
 
 -- (13c) The actions whose dry run changes nothing in the fort, all the way
@@ -573,6 +610,7 @@ for _, name in ipairs({
     -- (0.105.41, item 11) each dry run counts (and names) and changes nothing
     'clean_contaminants', 'quarantine_syndromes', 'clear_miasma',
     'place_display', 'display_artifact',   -- (item 12) each dry run checks and returns before it builds or makes a job
+    'hunt_send', 'hunt_recall',   -- (0.105.45) each dry run checks the target and squads, and gives no order
 }) do DRY_OK[name] = true end
 
 -- These only change what's displayed, so they still work while halted, dry
@@ -639,7 +677,7 @@ end
 BRIDGE_MODULES = {
     'ai-artifacts', 'ai-bans', 'ai-benches', 'ai-blueprints', 'ai-builder', 'ai-camera', 'ai-captives', 'ai-census',
     'ai-cleanup', 'ai-constructions', 'ai-diplomacy', 'ai-disposal', 'ai-food-store', 'ai-forestry', 'ai-gates',
-    'ai-hauling', 'ai-hazards', 'ai-health', 'ai-homes', 'ai-leather-gear',
+    'ai-hauling', 'ai-hazards', 'ai-health', 'ai-homes', 'ai-hunt', 'ai-leather-gear',
     'ai-industry', 'ai-insane', 'ai-joins', 'ai-killers', 'ai-labor', 'ai-layouts', 'ai-military', 'ai-military-gear',
     'ai-mission-send', 'ai-missions', 'ai-moods', 'ai-noble-demands', 'ai-nobles', 'ai-overlay',
     'ai-overseer-settings', 'ai-paper', 'ai-pile-links', 'ai-ping', 'ai-provisions', 'ai-reports', 'ai-siege',
@@ -1079,6 +1117,15 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
     -- civs), the display furniture, the AI's rooms that could hold one
     -- (lua/ai-artifacts.lua; cached a day)
     artifacts = function() return safe(function() return reqscript('ai-artifacts').report() end) end,
+    -- (0.105.45) hunting: the loose hostiles and beasts a squad could go after
+    -- (the way there, workers near), the squads' strength, the AI's hunts and
+    -- their history (lua/ai-hunt.lua)
+    hunt = function()
+        return safe(function()
+            local okl, layers = pcall(get_layers)
+            return reqscript('ai-hunt').report(txt, {layers = okl and layers or nil})
+        end)
+    end,
     -- (0.105.30) what the fort has built: finished constructions by shape and
     -- material, above or below ground, roofed surface tiles, the waiting ones
     -- and the AI's own (lua/ai-constructions.lua; one pass, every 3 days)

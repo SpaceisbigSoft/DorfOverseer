@@ -219,6 +219,10 @@ local function is_ai_order(o, squad_id)
     return is_guard_order(o)
 end
 
+-- (0.105.45) is_ai_order for other modules (lua/ai-hunt.lua: a squad on the
+-- player's own orders is not sent hunting)
+function ai_order(o, squad_id) return is_ai_order(o, squad_id) end
+
 -- (0.105.24) Clearing an order the whole way. B (4 Nov): 7 squads recalled
 -- from the shelter ("cleared": 1 each) and 28 soldiers still died of thirst
 -- on one tile (x109 y153 z165) 20 minutes later. The recall took the order
