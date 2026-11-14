@@ -269,6 +269,7 @@ def before(entry: dict, date: dict) -> bool:
 # ---------------------------------------------------------------- measures
 
 TICKS_PER_YEAR, TICKS_PER_DAY = 403200, 1200
+REWIND_TICKS = 50          # (0.105.46) the game date this far back between decisions: a reload
 
 
 def abs_ticks(d: dict) -> int:
@@ -289,6 +290,7 @@ def journal_counts(entries: list[dict], date: dict, timeline: list | None = None
     access = []         # (when, visitors allowed, location ids) from location_access
     soil_floored = 0    # (0.105.30) tiles floor_rooms placed
     landmarks = []      # (D0) build_blueprint decisions (not dry runs)
+    died, high = [], None   # (0.105.46) (unit id, cause, tick) in the order told; the latest decision tick
     for e in entries:
         if e.get("kind") == "event" and before(e, date):
             ev = _d(e.get("event"))
@@ -300,9 +302,23 @@ def journal_counts(entries: list[dict], date: dict, timeline: list | None = None
                     topic = "artifact_named"
                 reports[topic] += 1
             elif (ev.get("kind") == "death" and ev.get("own_civ") and not ev.get("animal")
-                  and not ev.get("again")):
-                deaths[str(ev.get("cause") or "unknown")] += 1
+                  and not ev.get("again") and not ev.get("ghost")):
+                # (0.105.46) a ghost laid to rest is no new death
+                when = abs_ticks(ev) if "year" in ev else (abs_ticks(e["date"]) if isinstance(e.get("date"), dict)
+                                                           else None)
+                died.append((ev.get("unit_id"), str(ev.get("cause") or "unknown"), when))
             continue
+        if e.get("kind") == "decision" and isinstance(e.get("date"), dict):
+            # (0.105.46) the game's date going back between decisions (in the
+            # order written) is a reload: the deaths told after the date it
+            # went back to never happened (C, 13 Nov: three deaths undone by
+            # the keeper's reload, two of those dwarves died again later)
+            now_t = abs_ticks(e["date"])
+            if high is not None and now_t < high - REWIND_TICKS:
+                died = [d for d in died if d[2] is None or d[2] <= now_t]
+                high = now_t
+            else:
+                high = now_t if high is None else max(high, now_t)
         if e.get("kind") != "decision" or not before(e, date):
             continue
         a, r = _d(e.get("action")), _d(e.get("result"))
@@ -356,7 +372,9 @@ def journal_counts(entries: list[dict], date: dict, timeline: list | None = None
                            "ground": r.get("ground_z") if _whole(r.get("ground_z")) else None})
         elif t == "floor_rooms" and not r.get("dry_run"):
             # (0.105.30) soil floors the keeper finished: tiles placed (any count field the bridge gives)
-            n = next((r[k] for k in ("placed", "tiles", "floored", "n") if isinstance(r.get(k), int)
+            # (0.105.46) the bridge's `floors` is the tiles placed; its `tiles` is the bare soil
+            # counted before (placed or not), so it comes last
+            n = next((r[k] for k in ("placed", "floors", "floored", "n", "tiles") if isinstance(r.get(k), int)
                       and not isinstance(r.get(k), bool)), None)
             soil_floored += n if n is not None else len(_l(r.get("cells")))
         elif t == "location_access" and not r.get("dry_run") and isinstance(e.get("date"), dict):
@@ -364,8 +382,19 @@ def journal_counts(entries: list[dict], date: dict, timeline: list | None = None
             vis = r.get("visitors") if isinstance(r.get("visitors"), bool) else a.get("visitors")
             if isinstance(vis, bool):
                 access.append((abs_ticks(e["date"]), vis, ids))
+    # (0.105.46) each dwarf dies once: the last death told of a unit id
+    # (one told before a reload and again after, a ghost's second death)
+    last = {}
+    for i, (uid, cause, _when) in enumerate(died):
+        last[uid if uid is not None else ("?", i)] = cause
+    deaths = Counter(last.values())
     until = abs_ticks(date)
-    return {"ok": ok, "seen": seen, "trade_value": trade_value, "petitions_yes": petitions_yes,
+    # (0.105.46) the most citizens this run had up to the date (the daily
+    # timeline's rows; rows before the run's first decision are another run's)
+    lo = (first // TICKS_PER_DAY) if first is not None else None
+    peak = max((pop for day, pop in (timeline or []) if day <= until // TICKS_PER_DAY
+                and (lo is None or day >= lo)), default=None)
+    return {"ok": ok, "peak_pop": peak, "seen": seen, "trade_value": trade_value, "petitions_yes": petitions_yes,
             "petitions_no": petitions_no, "levels": levels, "reports": reports, "deaths": deaths,
             "shut_days": shut_days(access, until), "soil_floored": soil_floored,
             "alarms_on": alarms_on, "gems_set": gems_set, "gems_cut": gems_cut, "treasures_kept": treasures_kept,
@@ -466,6 +495,40 @@ def level_surface(lv: dict, s: dict) -> int | None:
     return main
 
 
+NOT_TRAPS = ("Lever", "TrackStop", "PressurePlate")     # (0.105.46) Trap buildings that catch nothing
+STRESS_TOP = 15            # lua/ai-society.lua's STRESS_TOP: the stress causes the report lists
+
+
+def ai_lever_name(name) -> bool:
+    """(0.105.46) A lever of the AI's own: "AI gate lever", "AI lure lever",
+    "AI moat", "AI pump"... (lua/ai-stuck.lua ai_lever_name); "AI gate"
+    alone is the player's lever named for the AI to work."""
+    n = str(name or "").lower()
+    return n.startswith("ai ") and n != "ai gate"
+
+
+def lever_counts(b: dict, ents: list, have_ents: bool) -> tuple:
+    """(0.105.46) (every built lever, the AI's own). A lever is a Trap
+    building (df.trap_type Lever): the report's `other` never had "Lever",
+    so the line read 0 beside lever-driven gates. The bridge's trap_kinds
+    and ai_levers; for a report without them, the levers the scanned ways in
+    are linked to (fewer than all: a lower bound); None without either."""
+    if "trap_kinds" in b:
+        n = _d(b.get("trap_kinds")).get("Lever", 0)
+        ai = b.get("ai_levers")
+        return (n if _num_or_none(n) is not None else 0), (ai if _whole(ai) else None)
+    if not have_ents:
+        return None, None
+    seen = {}
+    for e in ents:
+        for q in _l(e.get("equipment")):
+            for lv in _l(_d(q).get("levers")):
+                lv = _d(lv)
+                if lv.get("id") is not None:
+                    seen[lv["id"]] = lv.get("name")
+    return len(seen), sum(1 for n in seen.values() if ai_lever_name(n))
+
+
 def measures(s: dict, j: dict) -> dict:
     """Every number the lines use, from one season state and the journal up to it."""
     dw = _d(s.get("dwarves"))
@@ -488,11 +551,17 @@ def measures(s: dict, j: dict) -> dict:
     kinds = Counter(lv.get("kind") for lv in levels)
     ok = j["ok"]
     traps = sum(v for k, v in other.items() if "Trap" in k and k != "TractionBench")
+    ents = [_d(e) for e in _l(_d(s.get("entrances")).get("entrances"))]
+    levers, ai_levers = lever_counts(b, ents, s.get("entrances") is not None)
+    if "trap_kinds" in b:
+        # (0.105.46) a lever, a track stop and a pressure plate are Trap
+        # buildings too: the traps line counts the ones that catch or hurt
+        traps = sum(v for k, v in _d(b.get("trap_kinds")).items()
+                    if k not in NOT_TRAPS and _num_or_none(v) is not None)
     meals = _d(s.get("supplies")).get("meal_servings")
     good_meals = _d(s.get("supplies")).get("good_meals")
     loc_list = [_d(x) for x in _l(_d(s.get("locations")).get("list"))]
     needs = _d(s.get("needs"))
-    ents = [_d(e) for e in _l(_d(s.get("entrances")).get("entrances"))]
     # (0.105.26) today's signatures, 14.1 step 4
     gatehouses = max(ok.get("build_gatehouse", 0), sum(1 for e in ents if e.get("gatehouse") == "standing"))
     lever_gates = sum(1 for e in ents for q in _l(e.get("equipment")) if _d(q).get("lever_driven")) \
@@ -515,8 +584,15 @@ def measures(s: dict, j: dict) -> dict:
     have_flags = [x for x in open_locs if isinstance(x.get("flags"), list)]
     sc = needs.get("stress_causes")
     if isinstance(sc, dict) and sc.get("citizens"):
-        same = next((_d(c) for c in _l(sc.get("causes")) if _d(c).get("thought") == "SameBooze"), {})
-        same_booze = pct(same.get("citizens") or 0, sc.get("citizens"))
+        same = next((_d(c) for c in _l(sc.get("causes")) if _d(c).get("thought") == "SameBooze"), None)
+        if _num_or_none(sc.get("same_booze")) is not None:
+            same_booze = pct(sc["same_booze"], sc["citizens"])       # (0.105.46) the bridge's own count
+        elif same is not None:
+            same_booze = pct(same.get("citizens") or 0, sc.get("citizens"))
+        elif len(_l(sc.get("causes"))) < STRESS_TOP:
+            same_booze = 0.0        # the list holds every stress the citizens had: none of it was this
+        else:
+            same_booze = None       # (0.105.46) past the top STRESS_TOP: not measured, not 0
     else:
         same_booze = None
     # (0.105.33, Industry) idle: adults with no job, no social activity (prayer,
@@ -544,7 +620,8 @@ def measures(s: dict, j: dict) -> dict:
         "traps": traps,
         "bridges": other.get("Bridge", 0) + other.get("Floodgate", 0) + other.get("Hatch", 0),
         "gate_works": sum(ok.get(t, 0) for t in GATE_WORKS),
-        "levers": other.get("Lever", 0),
+        "levers": levers,                                 # (0.105.46) every built lever
+        "ai_levers": ai_levers,                           # (0.105.46) the AI's own ("AI ..." levers)
         "mechanisms": stocks.get("mechanisms"),
         "alerts": j.get("alarms_on", 0),                  # (0.105.33) raises only
         "stairwells_dug": ok.get("dig_stairwell", 0),     # (0.105.33) Caution's escape route
@@ -571,7 +648,9 @@ def measures(s: dict, j: dict) -> dict:
         "statues": other.get("Statue", 0),
         "halls": zones.get("MeetingHall", 0),
         "gardens": kinds.get("garden", 0),
-        "legendary_pct": pct(dw.get("legendary"), adults),
+        # (0.105.46) legendary at a craft skill only (the bridge's legendary_craft);
+        # `legendary` counted any skill (miners, fighters): no data without it
+        "legendary_pct": pct(dw.get("legendary_craft"), adults) if "legendary_craft" in dw else None,
         "craft_shops": _d(b.get("workshops")).get("Craftsdwarfs", 0),
         "ore": _d(s.get("industry")).get("ore_stock"),
         "ore_runs": ok.get("mine_ore", 0),
@@ -606,7 +685,12 @@ def measures(s: dict, j: dict) -> dict:
         "shut_days": j.get("shut_days"),
         "drink_kinds": _d(s.get("supplies")).get("drink_kinds"),
         "same_booze_pct": same_booze,
+        # (0.105.46) the most citizens this run had (the timeline), never under today's
+        "peak": max(x for x in (j.get("peak_pop"), total) if isinstance(x, int)) or None,
     }
+    for k in PER_PEAK:
+        v = out.get(k)
+        out[k + "_pk"] = round(100.0 * v / out["peak"], 1) if _num_or_none(v) is not None and out["peak"] else None
     # (0.105.29) levels that a preset's customs placed or shaped (journal action "customs")
     for owner, k in CUSTOM_KEYS.items():
         out["custom_" + k] = sum(1 for lv in levels if CUSTOM_IDS[owner] & set(lv.get("customs") or []))
@@ -835,6 +919,7 @@ LINES = [
     ("Fortification", "gate works done", "gate_works", {W, H}, set()),
     ("Fortification", "gatehouses built", "gatehouses", {W, H}, set()),
     ("Engineering", "levers", "levers", {W, D}, set()),
+    ("Engineering", "the AI's levers", "ai_levers", {W, D}, set()),           # (0.105.46)
     ("Engineering", "lever-driven gates", "lever_gates", {W, D}, set()),
     ("Engineering", "mechanisms in store", "mechanisms", {W, D}, set()),
     ("Caution", "alarms raised", "alerts", {W, H}, {D}),
@@ -903,6 +988,85 @@ LINES = [
     ("Craftsmanship", "constructions of blocks, %", "block_pct", {ME, M}, set()),
     ("Grandeur", "soil floors finished", "soil_floors", {G, M}, {W}),
 ]
+
+
+# (0.105.46) Count lines that grow with the fort's size: when the forts'
+# sizes differ a lot (one collapsed: B went 100 -> 1 -> 28), each gets a
+# "per 100 dwarves (at the peak)" line beside it, judged the same way. The
+# peak, not today's count: the statues and halls were built for the fort at
+# its biggest.
+PER_PEAK = ("barracks", "traps", "jails", "temples", "guildhalls", "petitions_yes", "petitions_no",
+            "statues", "halls", "craft_shops", "offices", "stockpiles")
+PEAK_LINES = [(sl, what + " per 100 dwarves (peak)", k + "_pk", hi, lo)
+              for sl, what, k, hi, lo in LINES if k in PER_PEAK]
+SIZE_RATIO = 2.0           # the biggest fort's peak this many times the smallest's: the per-peak lines
+COLLAPSE_SHARE = 0.5       # a fort down to under this share of its peak has collapsed
+COLLAPSE_MIN = 10          # ... when its peak was at least this many
+
+# (0.105.46) A line flat at 0 in every fort: did no fort do the thing, or
+# does the measure miss it? The AI's actions that make it (ok in the journal)
+# beside the line, so the report says which.
+FLAT_ACTIONS = {
+    "levers": ("link_lever", "build_gate_doors", "build_gatehouse"),
+    "ai_levers": ("link_lever", "build_gate_doors", "build_gatehouse"),
+    "built_up": ("place_keep", "place_hall", "build_wings", "build_gatehouse"),
+    "roofed_up": ("place_keep", "place_hall"),
+    "gate_walls": ("build_wings", "build_gatehouse", "fortify_entrance"),
+    "cavern_walls": ("seal_cavern",),
+    "soil_floors": ("floor_rooms",),
+}
+FLAT_WORDS = {
+    "custom_G": "the Garden fort's customs move a dining hall or a food-shop level to the farms only when "
+                "the farms lie 3+ levels under the surface (masterplan FIELD_TOP); farms in the topsoil "
+                "keep them where they were",
+    "grand_temples": "DF's grand tier (a temple complex) wants a temple worth 10000: see the best temple's value",
+    "same_booze_pct": "measured (the stress census: every citizen's thoughts of the last days, the bridge's "
+                      "same_booze count): no citizen was upset by the same booze, the drink-variety rule at work",
+}
+
+
+def collapsed(m: dict) -> bool:
+    """(0.105.46) Down to under COLLAPSE_SHARE of its peak."""
+    pk, pop = m.get("peak"), m.get("pop")
+    return isinstance(pk, int) and pk >= COLLAPSE_MIN and isinstance(pop, int) and pop < COLLAPSE_SHARE * pk
+
+
+def sizes_differ(ms: list[dict]) -> bool:
+    """(0.105.46) Do the forts' count lines compare forts of very different
+    sizes (peaks SIZE_RATIO apart), or has one collapsed?"""
+    peaks = [m.get("peak") for m in ms if isinstance(m.get("peak"), int) and m["peak"] > 0]
+    if any(collapsed(m) for m in ms):
+        return True
+    return len(peaks) >= 2 and max(peaks) >= SIZE_RATIO * min(peaks)
+
+
+def flat_notes(rows: list[dict], data: dict, labels: list) -> list[str]:
+    """(0.105.46) The lines flat at 0 in every fort, each with why: the AI's
+    own actions for it (done, by fort) say whether it never did the thing or
+    the measure misses what it did."""
+    out, rest = [], []
+    for r in rows:
+        vals = [v for v in r["values"].values() if v is not None]
+        if r["result"] != "flat" or not vals or any(v != 0 for v in vals):
+            continue
+        k = r.get("key", "").lstrip("-")
+        acts = FLAT_ACTIONS.get(k)
+        if not acts and k not in FLAT_WORDS:
+            rest.append(r["line"])
+            continue
+        if acts:
+            done = {lb: sum(data[lb][4]["ok"].get(t, 0) for t in acts) for lb in labels}
+            by = ", ".join(f"{lb} {n}" for lb, n in done.items())
+            if any(done.values()):
+                why = f"the AI did it ({' / '.join(acts)} done: {by}) but nothing was counted: the measure misses it"
+            else:
+                why = f"no fort's AI did it ({' / '.join(acts)} done: {by})"
+        else:
+            why = FLAT_WORDS[k]
+        out.append(f"- {r['slider']}, {r['line']}: {why}.")
+    if rest:
+        out.append("- also at 0 everywhere: " + "; ".join(rest) + ".")
+    return out
 
 
 def judge(values: dict[str, float | None], high: set, low: set) -> str:
@@ -1048,26 +1212,31 @@ def score_full(forts: list[Fort], at: str | None, now: bool) -> tuple[str, list[
         if s is None:
             continue
         j = journal_counts(f.journal(), _d(s.get("date")), f.timeline())
-        data[f.label] = (f, s, measures(s, j), health(s, j))
+        data[f.label] = (f, s, measures(s, j), health(s, j), j)
         dm[f.label] = design_measures(s, j)      # (D0)
     labels = list(data)
-    head = ["Slider", "Line"] + [f"{lb} {SHORT.get(data[lb][0].preset, data[lb][0].preset)}" for lb in labels] + \
+    # (0.105.46) a collapsed fort is marked in the head; forts of very
+    # different sizes get the per-peak count lines too
+    fell = {lb for lb in labels if collapsed(data[lb][2])}
+    head = ["Slider", "Line"] + [f"{lb} {SHORT.get(data[lb][0].preset, data[lb][0].preset)}"
+                                 + (" (collapsed)" if lb in fell else "") for lb in labels] + \
         ["Should win", "Result"]
+    lines = LINES + (PEAK_LINES if sizes_differ([data[lb][2] for lb in labels]) else [])
     rows, out = [], []
-    for slider, what, key, high, low in LINES:
+    for slider, what, key, high, low in lines:
         neg = key.startswith("-")
         k = key.lstrip("-")
         by_preset = {}
         raw = {}
         for lb in labels:
-            f, _, m, _ = data[lb]
+            f, _, m, _, _ = data[lb]
             v = m.get(k)
             raw[lb] = v
             by_preset[f.preset] = (-v if neg and v is not None else v)
         res = judge(by_preset, high, low)
         should = ", ".join(SHORT.get(p, p) for p in sorted(high)) + \
             ((" / low: " + ", ".join(SHORT.get(p, p) for p in sorted(low))) if low else "")
-        rows.append({"slider": slider, "line": what, "values": raw, "result": res})
+        rows.append({"slider": slider, "line": what, "values": raw, "result": res, "key": key})
         out.append([slider, what] + [fmt(raw[lb]) for lb in labels] + [should, res])
     md = [f"# Slider scorecard: {title}", ""]
     if notes:
@@ -1075,13 +1244,19 @@ def score_full(forts: list[Fort], at: str | None, now: bool) -> tuple[str, list[
     md.append("| Fort | Preset | Season | Population | Levels |")
     md.append("| --- | --- | --- | --- | --- |")
     for lb in labels:
-        f, s, m, _ = data[lb]
+        f, s, m, _, _ = data[lb]
         dt = _d(s.get("date"))
         md.append(f"| {lb} | {f.preset} | {dt.get('season', '?')} {dt.get('year', '?')} | {m['pop']} | {m['levels']} |")
+    for lb in sorted(fell):
+        md.append(f"\nFort {lb} collapsed: {data[lb][2]['pop']} citizens now, {data[lb][2]['peak']} at the most. "
+                  "Its count lines carry what the bigger fort built: read the per-100-dwarves lines.")
     md += ["", "| " + " | ".join(head) + " |", "|" + " --- |" * len(head)]
     md += ["| " + " | ".join(r) + " |" for r in out]
     tally = Counter(r["result"] for r in rows)
     md += ["", "**" + ", ".join(f"{n} {k}" for k, n in tally.most_common()) + "** of " + str(len(rows)) + " lines.", ""]
+    flats = flat_notes(rows, data, labels)
+    if flats:
+        md += ["Lines flat at 0 in every fort:", ""] + flats + [""]
     by_slider = {}
     for r in rows:
         by_slider.setdefault(r["slider"], []).append(r["result"])

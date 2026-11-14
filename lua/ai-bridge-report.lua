@@ -95,9 +95,22 @@ local function top_skills(unit, n)
     return out
 end
 
+-- (0.105.46) The craft skills, for "legendary at a craft": the skills a
+-- strange mood can take (the dwarf makes an artifact at them: brain's
+-- MOOD_WORKSHOPS and ai-homes' CRAFT_SHOP) and the other makers of quality
+-- goods (furniture forging, engraving, pottery, glazing, wax, siege
+-- engines). Not mining, woodcutting, farming, cooking, brewing, fighting,
+-- talking, nursing or hauling: they make nothing an artisan would sign.
+CRAFT_SKILLS = {}
+for _, k in ipairs({'WOODCRAFT', 'STONECRAFT', 'BONECARVE', 'CARPENTRY', 'MASONRY', 'CUTGEM', 'ENCRUSTGEM',
+                    'FORGE_WEAPON', 'FORGE_ARMOR', 'FORGE_FURNITURE', 'METALCRAFT', 'CLOTHESMAKING', 'WEAVING',
+                    'LEATHERWORK', 'TANNER', 'GLASSMAKER', 'BOWYER', 'MECHANICS', 'SIEGECRAFT', 'DETAILSTONE',
+                    'POTTERY', 'GLAZING', 'WAX_WORKING'}) do CRAFT_SKILLS[k] = true end
+
 function get_dwarves(include_units)
     local summary = {
         total = 0, adults = 0, children = 0, legendary = 0,
+        legendary_craft = 0,      -- (0.105.46) adults legendary at a craft skill (CRAFT_SKILLS)
         idle_adults = 0, in_squads = 0, needs_medical_care = 0,
         -- (0.105.33) idle_adults split: in a social activity (praying, the
         -- tavern, a performance, reading: DF's u.social_activities, not a
@@ -142,6 +155,18 @@ function get_dwarves(include_units)
                 if sk.rating >= 15 then summary.legendary = summary.legendary + 1 break end
             end
         end)
+        -- (0.105.46) legendary at a craft (CRAFT_SKILLS): the scorecard's
+        -- Craftsmanship line (any skill counted miners, fighters, talkers)
+        if not is_child then
+            pcall(function()
+                for _, sk in ipairs(u.status.current_soul.skills) do
+                    if sk.rating >= 15 and CRAFT_SKILLS[df.job_skill[sk.id] or ''] then
+                        summary.legendary_craft = summary.legendary_craft + 1
+                        break
+                    end
+                end
+            end)
+        end
         if needs_care then summary.needs_medical_care = summary.needs_medical_care + 1 end
         inc(summary.stress, stress)
         inc(summary.professions, profession)
@@ -2126,6 +2151,7 @@ function get_buildings()
         workshops = {}, furnaces = {}, zones = {}, other = {},
         stockpiles = 0, refuse_piles = 0, under_construction = 0, workshop_jobs_queued = 0,
         being_built = {},     -- building type -> count, not finished yet (a depot waiting for its stone)
+        trap_kinds = {}, ai_levers = 0,   -- (0.105.46) Trap buildings by df.trap_type; the AI's levers
     }
     for _, b in ipairs(df.global.world.buildings.all) do
         local t = b:getType()
@@ -2159,6 +2185,20 @@ function get_buildings()
                 out.workshop_jobs_queued = out.workshop_jobs_queued + #b.jobs
             else
                 inc(out.other, df.building_type[t] or tostring(t))
+                -- (0.105.46) a lever is a Trap building (trap_type Lever), so
+                -- `other` had no "Lever" and the scorecard read 0 levers:
+                -- traps by kind, and the AI's own levers (named "AI ...",
+                -- not the player's "AI gate" for the AI to work)
+                if t == df.building_type.Trap then
+                    pcall(function()
+                        local kind = df.trap_type[b.trap_type] or tostring(b.trap_type)
+                        inc(out.trap_kinds, kind)
+                        if kind == 'Lever' then
+                            local n = tostring(b.name or ''):lower()
+                            if n:find('^ai ') and n ~= 'ai gate' then out.ai_levers = out.ai_levers + 1 end
+                        end
+                    end)
+                end
             end
         end
     end

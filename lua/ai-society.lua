@@ -1643,8 +1643,12 @@ function stress_census(units)
     table.sort(eased, function(a, b) return a.stress < b.stress end)
     while #worse > STRESS_TOP do table.remove(worse) end
     while #eased > EASED_TOP do table.remove(eased) end
+    -- (0.105.46) the citizens upset by the same old booze, kept whether or
+    -- not it is among the top STRESS_TOP (the scorecard read 0 when it fell off)
+    local sb = by.SameBooze
     return {causes = worse, eased = eased, citizens = citizens, read = read, days = STRESS_DAYS,
-            no_divider = no_divider > 0 and no_divider or nil}
+            no_divider = no_divider > 0 and no_divider or nil,
+            same_booze = (sb and sb.stress > 0) and sb.citizens or 0}
 end
 
 -- (0.104.157) The citizens' clothes: worn items by wear (DF's 0 new .. 3
