@@ -378,8 +378,22 @@ def _deep_notes(s: dict, notes: list) -> None:
                          + ("" if seal or _d(s.get("settings")).get("seal_caverns") is not False
                             else " (sealing the caverns is off on the Rules tab)"))
         else:
-            notes.append(f"{c['name']} is open to the fort's ground (z{c.get('z_bottom')}-{c.get('z_top')}){where_}: the AI "
-                         "walls the openings it finds; cavern creatures can walk in until then")
+            # (item7) said as the fort's own entrance map has it: B (13 Nov)
+            # read "the AI walls the openings it finds" every cycle while the
+            # map found no way down at all (the cavern joined the fort's walk
+            # only through the cavern wells' lidded shafts)
+            from planner_threats import cavern_way_state
+            way, ents = cavern_way_state(s)
+            if way == "none":
+                notes.append(f"{c['name']} joins the fort's walk (z{c.get('z_bottom')}-{c.get('z_top')}){where_}, but "
+                             "today's entrance map finds no way down from inside the fort (only the cavern wells' "
+                             "lidded shafts, or across the surface behind the gates)")
+            elif way == "closed":
+                notes.append(f"{c['name']} is open to the fort's ground (z{c.get('z_bottom')}-{c.get('z_top')}){where_}: "
+                             f"its {len(ents)} opening(s) are shut or being shut")
+            else:
+                notes.append(f"{c['name']} is open to the fort's ground (z{c.get('z_bottom')}-{c.get('z_top')}){where_}: "
+                             "the AI walls or doors the openings it finds; cavern creatures can walk in until then")
     for x in dangers:
         if x.get("layer") in [c.get("name") for c in open_]:
             continue

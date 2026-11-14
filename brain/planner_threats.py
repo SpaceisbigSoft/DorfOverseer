@@ -522,6 +522,12 @@ def _cavern_beasts(s, cfg, memory, t, rules, proposals, notes):
                     from planner_military import no_shelter
                     no_shelter(s, memory, f"{who} is about and {n} citizen(s) are in the caverns ({where})",
                                proposals, notes)
+            elif not lockable and not _seal_has_lock(caverns) and (tiles or any(c.get("open") for c in caverns)):
+                # (item7) nothing on the way down to lock: B, E and A (13 Nov)
+                # were refused "no door or hatch on the way down to lock" over
+                # and over. The AI closes the way itself first (a door, or the
+                # opening walled when nobody needs it), or says why it needn't
+                _cavern_close_way(s, who, caverns, proposals, notes)
             elif tiles or lockable:
                 act = {"type": "seal_cavern", "layer": ALL_CAVERNS, "openings": True}
                 if tiles:
@@ -602,6 +608,102 @@ def _cavern_beasts(s, cfg, memory, t, rules, proposals, notes):
 
 
 STAIRISH = ("STAIR", "RAMP")
+
+
+def _seal_has_lock(caverns: list) -> bool:
+    """(item7) Is there anything seal_cavern could lock on the tiles it is
+    given: a door or hatch in an open cavern's column, or junctions (the
+    deep report doesn't say what stands on them: the bridge looks)."""
+    for c in caverns:
+        if not c.get("open"):
+            continue
+        if _l(c.get("junctions")):
+            return True
+        if any(isinstance(col, dict) and col.get("building") in ("Door", "Hatch") for col in _l(c.get("column"))):
+            return True
+    return False
+
+
+CAVERN_SCAN_MAX_TILES = 250000          # lua/ai-gates.lua MAX_TILES: a map that stopped there is cut short
+
+
+def cavern_way_state(s: dict) -> tuple[str, list]:
+    """(item7) What the fort's own entrance map (the gates' walk from the
+    citizens, through doors) says of the ways down to the caverns:
+    ("stale", []) no map from today; ("none", []) the fort's ground reaches
+    no cavern tile (a cavern 'open' to its walk is joined only through the
+    cavern wells' lidded shafts or across the surface, behind the gates);
+    ("closed", entrances) every cavern opening shut or being shut; ("open",
+    entrances) the cavern openings nothing closes yet; ("unknown", []) the
+    map stopped at its tile limit."""
+    ent = _d(s.get("entrances"))
+    st = ent.get("scanned_tick")
+    if not isinstance(ent.get("entrances"), list) or not isinstance(st, int):
+        return "stale", []
+    if not 0 <= abs_tick(s) - st < TICKS_PER_DAY:
+        return "stale", []
+    if isinstance(ent.get("inside_tiles"), int) and ent["inside_tiles"] >= CAVERN_SCAN_MAX_TILES:
+        return "unknown", []            # the map stopped at its limit: it can't say there is none
+    cav = [e for e in ent["entrances"] if isinstance(e, dict) and e.get("kind") == "cavern"]
+    if not cav:
+        return "none", []
+    open_ = [e for e in cav if not e.get("sealed") and not e.get("closing")]
+    return ("open", open_) if open_ else ("closed", cav)
+
+
+def _cavern_close_way(s, who, caverns, proposals, notes) -> None:
+    """(item7) A great beast below and nothing on the way down to lock:
+    the cavern openings the fort's walk finds get a door (lockable by a
+    later seal) or, where no door can go, are walled for good (the bridge's
+    sealed gate: refused while a citizen is beyond it, a cavern well or the
+    cistern draws on that cavern, or the walls would cut the fort apart:
+    nobody is shut out of drink or stranded); an older map is mapped anew
+    first; with no way down from inside the fort, nothing is locked."""
+    off = _d(s.get("map")).get("elevation_offset")
+    off = off if isinstance(off, int) else 0
+    state, ents = cavern_way_state(s)
+    if state == "stale":
+        if not any(p.action.get("type") == "scan_entrances" for p in proposals):
+            proposals.append(Proposal("cavern_scan", {"type": "scan_entrances"},
+                                      f"{who} is about and nothing on the way down to the caverns can be locked: "
+                                      "map the entrances again to find the openings and close them", 1))
+        return
+    if state == "unknown":
+        ask_player(notes, f"{who} is about and the fort is open to the caverns, but the entrance map stopped at "
+                          "its limit before finding a way down; meanwhile the AI maps them again each day and puts a door "
+                          "on any opening it finds")
+        return
+    if state == "none":
+        names = ", ".join(str(c.get("name")) for c in caverns if c.get("open")) or "the caverns"
+        notes.append(f"{who} is about: the fort's own ground has no way down to {names} (today's entrance map "
+                     "finds none: the cavern joins the fort's walk only through the cavern wells' shafts, shut by "
+                     "their lids, or across the surface, behind the fort's gates): nothing to lock")
+        return
+    if state == "closed":
+        notes.append(f"{who} is about: the {len(ents)} cavern opening(s) are shut or being shut; the seal locks "
+                     "their doors once built")
+        return
+    rules_ = player_rules(s)
+    for e in ents:
+        if e.get("id") is None:
+            continue
+        where = f"x{e.get('x')} y{e.get('y')} elevation {(e.get('z') or 0) + off}"
+        if any(p.action.get("entrance_id") == e["id"] for p in proposals):
+            return                       # the doors or a gate are asked for already this cycle
+        if e.get("door_spots") and rules_.get("build_gate_doors", True):
+            proposals.append(Proposal("cavern_openings", {"type": "build_gate_doors", "entrance_id": e["id"]},
+                                      f"{who} is about and the cavern opening at {where} has nothing to lock: "
+                                      f"{e['door_spots']} door(s) on it, for the seal to lock", 1))
+        elif rules_.get("fortify_entrances", True):
+            proposals.append(Proposal("cavern_openings", {"type": "fortify_entrance", "entrance_id": e["id"],
+                                                          "style": "sealed"},
+                                      f"{who} is about and the cavern opening at {where} ({e.get('width')} wide) "
+                                      "takes no door: wall it up (not while a citizen is beyond it or the fort "
+                                      "draws water from that cavern)", 1))
+        else:
+            notes.append(f"{who} is about and the cavern opening at {where} has nothing to lock; building doors "
+                         "and gates is off on the Rules tab")
+        return
 
 
 def seal_tiles(c: dict) -> list:

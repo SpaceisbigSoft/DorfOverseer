@@ -19,7 +19,7 @@ from planner_trade import *  # noqa: F401,F403  (13c: split out by theme)
 from planner_labor import *  # noqa: F401,F403  (13c: split out by theme)
 from planner_farms import *  # noqa: F401,F403  (13c: split out by theme)
 
-__all__ = ["CONTAINER_RECIPES", "GEAR_ORDER_METALS", "_supply_rules", "_slow_game_rules", "_clutter_rules", "_disposal_rules", "DISPOSAL_RULES", "disposal_report", "disposal_places_dump", "_kiln_rules", "_soap_rule", "_pasture_rule", "LABOR_MODES_FIXED", "INDUSTRY_SHOPS", "_industry_rules", "_steel_rule", "_bottleneck_rule", "drink_short", "_crop_rules", "_farm_crops_rule", "farm_plots_live", "crops_owned", "drink_known_short", "_kitchen_rule", "_fishery_rule", "_bench_coffins_rule", "STONE_CRAFTS", "order_shop", "_order_slots_rule", "_orphan_jobs_rule", "_unsuspend_rule", "_approve_rule", "_stuck_orders_rule", "COAL_STONES", "_coal_rule", "_picks_order", "_stone_rule", "stone_crisis", "PRECIOUS_ORES", "_cloth_rule", "_trade_rules", "_gems_rule", "GEMS_GENEROUS_GREED", "trade_wants", "_spare_mechanisms_rule", "_hauling_rule", "_surface_basics", "trees_this_year", "_keep_rule", "DEEP_SURFACE_KINDS", "_deep_surface_filter", "_deep_depot_choice", "_deep_depot_watch", "_free_time_rule", "_labor_rules", "OWN_LABOR_RULES", "FEEDER_ORDER", "_feeder_rule", "woodcutters", "gatherers", "trade_margin_for", "keeps_treasures", "spare_mechanisms", "_dairy_rule", "_eggs_rule", "EXCESS_SHOPS", "_excess_shops_rule", "drink_below_target", "drink_crisis", "drink_target_per_dwarf", "crisis_brew_room", "brew_jobs_open", "_labor_waiting_rule", "farm_target", "thirsty_farm_extra", "_farm_rule", "_smelting_rule", "_shoes_recipe", "_glass_rule", "PRECIOUS_METALS", "precious_metal"]
+__all__ = ["quarry_size", "note_quarry", "quarry_wait", "note_quarry_dug", "CONTAINER_RECIPES", "GEAR_ORDER_METALS", "_supply_rules", "_slow_game_rules", "_clutter_rules", "_disposal_rules", "DISPOSAL_RULES", "disposal_report", "disposal_places_dump", "_kiln_rules", "_soap_rule", "_pasture_rule", "LABOR_MODES_FIXED", "INDUSTRY_SHOPS", "_industry_rules", "_steel_rule", "_bottleneck_rule", "drink_short", "_crop_rules", "_farm_crops_rule", "farm_plots_live", "crops_owned", "drink_known_short", "_kitchen_rule", "_fishery_rule", "_bench_coffins_rule", "STONE_CRAFTS", "order_shop", "_order_slots_rule", "_orphan_jobs_rule", "_unsuspend_rule", "_approve_rule", "_stuck_orders_rule", "COAL_STONES", "_coal_rule", "_picks_order", "_stone_rule", "stone_crisis", "PRECIOUS_ORES", "_cloth_rule", "_trade_rules", "_gems_rule", "GEMS_GENEROUS_GREED", "trade_wants", "_spare_mechanisms_rule", "_hauling_rule", "_surface_basics", "trees_this_year", "_keep_rule", "DEEP_SURFACE_KINDS", "_deep_surface_filter", "_deep_depot_choice", "_deep_depot_watch", "_free_time_rule", "_labor_rules", "OWN_LABOR_RULES", "FEEDER_ORDER", "_feeder_rule", "woodcutters", "gatherers", "trade_margin_for", "keeps_treasures", "spare_mechanisms", "_dairy_rule", "_eggs_rule", "EXCESS_SHOPS", "_excess_shops_rule", "drink_below_target", "drink_crisis", "drink_target_per_dwarf", "crisis_brew_room", "brew_jobs_open", "_labor_waiting_rule", "farm_target", "thirsty_farm_extra", "_farm_rule", "_smelting_rule", "_shoes_recipe", "_glass_rule", "PRECIOUS_METALS", "precious_metal"]
 
 CONTAINER_RECIPES = {"wooden_barrel", "stone_large_pot"}
 # ore worth mining for gear, most wanted first (iron makes steel; tin with copper makes bronze)
@@ -1145,6 +1145,128 @@ def stone_crisis(s: dict, cfg: dict) -> str:
     return "; ".join(out)
 
 
+def quarry_size(s: dict, cfg: dict) -> int:
+    """(item7) Tiles a quarry asks for: what lifts the masons' stone to twice
+    stone_low (at least quarry_min_tiles), never more than the Mining slider's
+    quarry size (10-30)."""
+    plan_n = mining_plan(_traits(s) if isinstance(s.get("settings"), dict) else {}, cfg)["quarry"]
+    usable = int(_d(s.get("stone_use")).get("usable") or 0)
+    return max(1, min(plan_n, max(cfg["quarry_min_tiles"], 2 * cfg["stone_low"] - usable)))
+
+
+def _quarry_stock(su: dict) -> int:
+    """Ordinary stone the masons have or are using: free boulders and those a
+    job holds (a mason's, a hauler's; 0 from a bridge that doesn't say)."""
+    return int(su.get("usable") or 0) + int(su.get("in_job") or 0)
+
+
+def _quarry_status(su: dict, q: dict) -> dict | None:
+    """The bridge's word on the last quarry's tiles, when it is the one the
+    memory holds (same spot), else None."""
+    st = _d(su.get("quarry"))
+    if not st or not isinstance(st.get("pending"), int):
+        return None
+    if q.get("x") is not None and (st.get("x"), st.get("y"), st.get("z")) != (q.get("x"), q.get("y"), q.get("z")):
+        return None
+    return st
+
+
+def note_quarry(s: dict, memory, cfg: dict = PLANNER_CONFIG) -> list:
+    """(item7) Bookkeeping, before planning: the last quarry, once dug (the
+    bridge's word on its tiles, or quarry_settle_days on), is counted: did
+    the stone the masons have (free or in a job) rise? Not twice in a row
+    (quarry_norise_strikes): a pause of quarry_backoff_days, doubled each
+    time, at most quarry_backoff_max_days. Returns notes."""
+    q = getattr(memory, "quarry_seen", None)
+    if not isinstance(q, dict) or not isinstance(q.get("tick"), int) or q.get("settled"):
+        return []
+    su = _d(s.get("stone_use"))
+    if not isinstance(su.get("usable"), int):
+        return []
+    now = abs_tick(s)
+    st = _quarry_status(su, q)
+    stalled = False
+    if st is not None:
+        if int(st.get("pending") or 0) > 0:
+            # (the marks may stand undug for good: a tile no miner reaches)
+            if not now - q["tick"] >= cfg["quarry_stall_days"] * TICKS_PER_DAY:
+                return []
+            stalled = True
+        dug = int(st.get("dug") or 0)
+    else:
+        if not 0 <= now - q["tick"] < 400 * TICKS_PER_DAY or now - q["tick"] >= cfg["quarry_settle_days"] * TICKS_PER_DAY:
+            dug = None
+        else:
+            return []
+    gain = _quarry_stock(su) - int(q.get("before") or 0)
+    forbid_up = int(su.get("forbidden") or 0) - int(q.get("forbidden_before") or 0)
+    q["settled"], q["gain"] = True, gain
+    if stalled and gain <= 0:
+        why = f"its tiles stood undug {cfg['quarry_stall_days']} days"
+    elif dug == 0:
+        why = "its tiles were never dug (the marks were dropped)"
+    elif gain <= 0 and forbid_up > 0:
+        why = f"its stone lies forbidden ({su.get('forbidden')} boulders of ordinary stone forbidden)"
+    elif gain <= 0:
+        why = "the stone the masons may use didn't rise (taken as soon as dug, or never reached)"
+    else:
+        q["strikes"], q["why"] = 0, ""
+        return []
+    q["strikes"] = int(q.get("strikes") or 0) + 1
+    q["why"] = why
+    if q["strikes"] >= cfg["quarry_norise_strikes"]:
+        pauses = int(q.get("pauses") or 0) + 1
+        days = min(cfg["quarry_backoff_max_days"], cfg["quarry_backoff_days"] * 2 ** (pauses - 1))
+        q["pauses"], q["until"], q["strikes"] = pauses, now + days * TICKS_PER_DAY, 0
+        return [f"quarry: {cfg['quarry_norise_strikes']} quarries in a row brought no stone the masons may use "
+                f"({why}): no quarry for {days} days"]
+    return []
+
+
+def quarry_wait(s: dict, memory, cfg: dict = PLANNER_CONFIG) -> str:
+    """(item7) Why no quarry now ("" when one may come): the last one still to
+    dig, not yet counted, a pause after quarries that brought nothing, or
+    ordinary stone lying forbidden (a quarry adds nothing the masons may
+    take)."""
+    su = _d(s.get("stone_use"))
+    now = abs_tick(s)
+    forb = int(su.get("forbidden") or 0)
+    if forb >= cfg["stone_low"]:
+        return (f"{forb} boulders of ordinary stone lie forbidden: no quarry while they do "
+                "(unforbid them and the masons have stone)")
+    q = getattr(memory, "quarry_seen", None) if memory is not None else None
+    if not isinstance(q, dict) or not isinstance(q.get("tick"), int):
+        return ""
+    if not 0 <= now - q["tick"] < 400 * TICKS_PER_DAY:
+        return ""                       # a stale memory (another save, a year gone): forgotten
+    until = q.get("until")
+    if isinstance(until, int) and 0 <= until - now < 400 * TICKS_PER_DAY:
+        days = max(1, -(-(until - now) // TICKS_PER_DAY))
+        return f"the last quarries brought no stone the masons may use ({q.get('why') or 'no rise'}): next try in {days} day(s)"
+    if q.get("settled"):
+        return ""
+    st = _quarry_status(su, q)
+    if st is not None and int(st.get("pending") or 0) > 0:
+        return (f"{st['pending']} of the last quarry's {st.get('tiles') or q.get('tiles')} tiles still to dig "
+                f"(x{q.get('x')} y{q.get('y')} z{q.get('z')}): no new quarry till they're dug and counted")
+    if st is None and 0 <= now - q["tick"] < cfg["quarry_settle_days"] * TICKS_PER_DAY:
+        return f"the last quarry ({q.get('tiles')} tiles) is given {cfg['quarry_settle_days']} days to be dug and counted"
+    return ""
+
+
+def note_quarry_dug(p, r: dict, state: dict, memory, now: int) -> None:
+    """(item7) A quarry marked: what it is and the stone the masons had then."""
+    if p.action.get("type") != "quarry" or r.get("ok") is not True or p.action.get("dry_run"):
+        return
+    su = _d(state.get("stone_use"))
+    prev = getattr(memory, "quarry_seen", None)
+    prev = prev if isinstance(prev, dict) else {}
+    memory.quarry_seen = {"tick": now, "tiles": int(r.get("tiles") or 0), "x": r.get("x"), "y": r.get("y"),
+                          "z": r.get("z"), "stone": r.get("stone"), "before": _quarry_stock(su),
+                          "forbidden_before": int(su.get("forbidden") or 0), "settled": False,
+                          "strikes": int(prev.get("strikes") or 0), "pauses": int(prev.get("pauses") or 0)}
+
+
 def _stone_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> None:
     """No stone the masons may use: DF keeps "economic" stone (ores, flux
     and the like) from ordinary jobs, and region2's boulders were all
@@ -1210,8 +1332,14 @@ def _stone_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> Non
     last_q = (memory.last_fired.get("quarry") if memory is not None else None)
     dry = (int(su.get("usable") or 0) == 0
            and (last_q is None or not 0 <= abs_tick(s) - last_q < cfg["quarry_dry_days"] * TICKS_PER_DAY))
-    if dig_now < cfg["quarry_when_dig_below"] or dry:
-        n = mining_plan(_traits(s) if isinstance(s.get("settings"), dict) else {}, cfg)["quarry"]
+    # (item7) one quarry at a time: the last one dug and its boulders counted
+    # first, and a pause when quarries bring no stone the masons may use (B,
+    # 13 Nov: seven quarries of 4-7 tiles in three minutes, the stone at 8-9)
+    wait = quarry_wait(s, memory, cfg)
+    if wait:
+        notes.append(f"quarry: {wait}")
+    elif dig_now < cfg["quarry_when_dig_below"] or dry:
+        n = quarry_size(s, cfg)
         proposals.append(Proposal("quarry", {"type": "quarry", "count": n},
                                   f"only {su.get('usable')} boulders of stone the masons may use: dig a small "
                                   "quarry in ordinary stone near the fort", 4))

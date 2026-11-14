@@ -161,6 +161,14 @@ def _():
     props, notes = [], []
     pt._cavern_beasts(s, CFG, Memory(), s["threats"], pt.threat_rules_of(s), props, notes)
     assert not [p for p in props if p.rule == "cavern_scan"], props
+    # (item7) a fresh, whole map with no cavern opening: the fort's own ground
+    # has no way down, said (no Needs you, no seal the bridge must refuse)
+    assert not you(notes) and any("no way down" in n for n in notes), notes
+    assert not [p for p in props if p.rule == "seal_cavern"], props
+    # a map cut short at its limit can't say so: put to the player as before
+    s["entrances"]["inside_tiles"] = 250000
+    props, notes = [], []
+    pt._cavern_beasts(s, CFG, Memory(), s["threats"], pt.threat_rules_of(s), props, notes)
     assert len(you(notes)) == 1 and "meanwhile" in you(notes)[0], notes
 
 

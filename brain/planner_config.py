@@ -313,6 +313,14 @@ PLANNER_CONFIG = {
     "quarry_when_dig_below": 20,       # a quarry only while little other digging waits...
     "quarry_dry_days": 10,             # (0.104.4) ...or, with no usable stone at all, every this many days
     "quarry_cooldown_ticks": 2 * 1200, # ...and at most every 2 days (0.99.4: was a week; region2's 30-tile quarries were dug out in days)
+    "quarry_settle_days": 3,           # (item7) without the bridge's word on its tiles, a quarry is counted this many days on
+    "quarry_stall_days": 28,           # (item7) a quarry whose tiles stand undug this long is counted as it is
+    "quarry_norise_strikes": 2,        # (item7) quarries in a row that brought no stone the masons may use: then a pause...
+    "quarry_backoff_days": 7,          # ...of this many days (doubled each further pause, at most quarry_backoff_max_days)
+    "quarry_backoff_max_days": 28,
+    "polish_recheck_days": 14,         # (item7) "every finished level is polished": no polish this long (doubled in a row)
+    "polish_recheck_max_days": 112,
+    "quarry_min_tiles": 8,             # (item7) a quarry's size: what lifts the stone to twice stone_low, at least this
     "picks_per_dwarves": 30,           # (0.99.4) a pick for every this many dwarves while stone is short (3 at least)...
     "picks_max": 20,                   # (0.104.117) was 10: a fort of 300 dug with 9 miners, two levels stalled for years
     "picks_per_backlog": 40,           # (0.104.4) a pick more for every this many tiles waiting to be dug

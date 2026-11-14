@@ -559,14 +559,54 @@ function quarry_tried()
     return out
 end
 
-local function remember_quarry(spot, tried)
+-- (item7) the tiles marked are kept with the newest few entries
+-- (QUARRY_TILES_KEPT), so the report can say how many are still to dig:
+-- B (13 Nov) marked seven quarries in three minutes, none waited for.
+QUARRY_TILES_KEPT = 3
+
+local function remember_quarry(spot, tried, marked)
     local now = now_tick()
     if not now then return end
     local list = {}
     for _, e in ipairs(tried) do table.insert(list, e) end
-    table.insert(list, {x = spot.x, y = spot.y, z = spot.z, tick = now})
+    local tiles = {}
+    for _, t in ipairs(marked or {}) do table.insert(tiles, {t.x, t.y}) end
+    table.insert(list, {x = spot.x, y = spot.y, z = spot.z, tick = now, tiles = tiles})
     while #list > 12 do table.remove(list, 1) end
+    for i = 1, #list - QUARRY_TILES_KEPT do list[i].tiles = nil end
     U.site_put(QUARRY_KEY, list)
+end
+
+-- Pure: the state of a quarry's tiles. `look(x, y, z)` returns two booleans
+-- (still a wall, still marked for digging). {pending = marked walls left,
+-- dropped = walls whose mark is gone (cancelled: never dug), dug = the rest}.
+function quarry_tiles_state(entry, look)
+    local out = {pending = 0, dropped = 0, dug = 0}
+    for _, t in ipairs(type(entry) == 'table' and type(entry.tiles) == 'table' and entry.tiles or {}) do
+        local x, y = t[1] or t.x, t[2] or t.y
+        if x and y then
+            local wall, marked = look(x, y, entry.z)
+            if wall and marked then out.pending = out.pending + 1
+            elseif wall then out.dropped = out.dropped + 1
+            else out.dug = out.dug + 1 end
+        end
+    end
+    return out
+end
+
+-- (item7) The newest quarry, for the report: {tick, tiles, pending, dropped,
+-- dug, stone}, or nil when none was marked in QUARRY_FORGET_DAYS.
+function quarry_status()
+    local list = quarry_tried()
+    local e = list[#list]
+    if not e or type(e.tiles) ~= 'table' then return nil end
+    local st = quarry_tiles_state(e, function(x, y, z)
+        local d = dfhack.maps.getTileFlags(x, y, z)
+        if not d then return false, false end
+        return is_wall(x, y, z), d.dig ~= df.tile_dig_designation.No
+    end)
+    st.tick, st.tiles, st.x, st.y, st.z = e.tick, #e.tiles, e.x, e.y, e.z
+    return st
 end
 
 local function tried_near(x, y, z, tried)
@@ -691,7 +731,7 @@ function quarry(count, dry_run)
         local block = dfhack.maps.getTileBlock(t.x, t.y, t.z)
         if block then block.flags.designated = true end
     end
-    remember_quarry(best, tried)
+    remember_quarry(best, tried, marked)
     out.tried = #tried > 0 and #tried or nil
     return out
 end
