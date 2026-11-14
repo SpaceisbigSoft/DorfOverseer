@@ -1285,15 +1285,18 @@ function pasture_report()
         need = need + t
         smallest = smallest and math.min(smallest, t) or t
     end
-    local n, tiles, spare = 0, 0, 0
+    local n, tiles, spare, dogs = 0, 0, 0, 0
     for _, p in ipairs(list) do
+        -- (0.105.47) the gate dogs' pen is a guard post, no pasture (the
+        -- scorecard counted it: the War-hold's 9 pastures)
+        if tostring(p.zone.name or '') == GATE_DOGS_NAME then dogs = dogs + 1 end
         if tostring(p.zone.name or '') == AI_PASTURE_NAME then
             n = n + 1
             tiles = tiles + p.area
             spare = spare + math.max(0, p.spare)
         end
     end
-    return {grazers = #waiting, count = #list,
+    return {grazers = #waiting, count = #list - dogs,
             needs = {need = need, smallest = smallest or 0, spare = #list > 0 and math.max(0, list[1].spare) or 0},
             ai = {count = n, tiles = tiles, spare = spare}}
 end

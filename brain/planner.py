@@ -59,6 +59,7 @@ from planner_siege import _siege_rules  # noqa: E402  (item5) siege engines, arc
 from planner_hazards import _hazards_rule, magma_alarm  # noqa: E402  (0.105.41, item 7) spilt magma, cave-ins, frost, heat
 from planner_insane import _insane_rule  # noqa: E402  (0.105.40b) the insane: deadly ground near them, the AI's doors
 from planner_killers import _killer_rule  # noqa: E402  (item3) a killer among the fort's own: cells, a squad
+from planner_husbandry import _husbandry_rules  # noqa: E402  (0.105.47) the herd by Husbandry: breeders, taming, wool, milk
 from order_check import order_gate, note_order_loop, approve_on_place, hold_lifted  # noqa: E402  (0.105.46, I3) the order loop
 from planner_hunt import _hunt_rule, note_hunt_cycle  # noqa: E402  (0.105.45) hunting threats the squads can beat
 from planner_shelter import _shelter_pick_rule  # noqa: E402  (0.105.45) the shelter away from the threat
@@ -624,6 +625,9 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
 
     if can_use("society"):
         _guard(_pasture_rule, s, memory, traits, cfg, proposals, notes)
+    # (0.105.47) the herd by Husbandry (after the waiting grazers' pasture rule)
+    if "herd" not in errors:
+        _guard(_husbandry_rules, s, memory, traits, cfg, citizens, proposals, notes)
 
     # 6d. Society: offices, hunger and thirst, pastures, farms; the metal
     # industry through DFHack's own smelting orders --------------------------
@@ -788,7 +792,7 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
         _guard(_needs_rules, s, cfg, proposals, rules_, young_fort(s, cfg))
         _guard(_dairy_rule, s, cfg, citizens, proposals)
         _guard(_eggs_rule, s, cfg, proposals)
-        _guard(_war_animal_rule, s, cfg, proposals)
+        _guard(_war_animal_rule, s, cfg, proposals, traits)   # (0.105.47) by Militarism
         _guard(_stairwell_rule, s, memory, cfg, traits, proposals)
         _guard(_staff_rule, s, cfg, proposals)
         _guard(_traction_rule, s, cfg, proposals, notes)

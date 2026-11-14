@@ -628,6 +628,32 @@ ACTIONS = {
     call_migrants = function(a)
         return reqscript('ai-recovery').call_migrants(a.dry_run == true)
     end,
+    -- (0.105.47) the herd by Husbandry (lua/ai-herd.lua, brain/planner_husbandry.py):
+    -- breeders kept from the butcher, caged wild animals tamed, hunting
+    -- training, DFHack's autobutcher targets
+    herd_breeders = function(a)
+        local f = int_in(a.females, 0, 12)
+        if not f then return reject('herd_breeders needs females 0-12') end
+        return reqscript('ai-herd').keep_breeders(f, a.dry_run == true, txt)
+    end,
+    tame_wild = function(a)
+        local n = int_in(a.max, 1, 10)
+        if not n then return reject('tame_wild needs max 1-10') end
+        return reqscript('ai-herd').tame(n, a.dry_run == true, txt)
+    end,
+    train_hunt = function(a)
+        local n = int_in(a.max, 1, 6)
+        if not n then return reject('train_hunt needs max 1-6') end
+        return reqscript('ai-herd').train_hunt(n, a.dry_run == true, txt)
+    end,
+    herd_targets = function(a)
+        local t = {}
+        for _, k in ipairs({'fk', 'mk', 'fa', 'ma'}) do
+            t[k] = int_in(a[k], 0, 50)
+            if not t[k] then return reject('herd_targets needs fk, mk, fa, ma 0-50') end
+        end
+        return reqscript('ai-herd').set_targets(t, a.dry_run == true)
+    end,
 }
 
 -- (13c) The actions whose dry run changes nothing in the fort, all the way
@@ -705,6 +731,8 @@ for _, name in ipairs({
     'build_killzone', 'reset_cage_traps',   -- (0.105.45) each dry run plans (or counts) and places nothing
     'thirst_unforbid',   -- (0.105.46, I2) its dry run counts the drinks and lets none go
     'call_migrants',   -- (0.105.46, I4) its dry run names the script and queues nothing
+    -- (0.105.47) the herd: each dry run counts (and names) and changes nothing
+    'herd_breeders', 'tame_wild', 'train_hunt', 'herd_targets',
 }) do DRY_OK[name] = true end
 
 -- These only change what's displayed, so they still work while halted, dry
@@ -784,6 +812,7 @@ BRIDGE_MODULES = {
     'ai-thirst',   -- (0.105.46, I2) the thirst watch
     'ai-recovery',   -- (0.105.46, I4)
     'ai-slices', 'ai-cavern-scan',   -- (0.105.46, I6) walks spread over several reports; the caverns' seen samples
+    'ai-herd',   -- (0.105.47) the herd by Husbandry
 }
 -- the split-off modules that carry a version mark of their own
 MARKED_MODULES = {'ai-military-gear', 'ai-society-burrows', 'ai-constructions'}
@@ -1257,6 +1286,10 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
     -- stranded, the last cancelled Drink job), and the deaths of thirst with
     -- the last reason known (lua/ai-thirst.lua; in the pulse)
     thirst = function() return safe(function() return reqscript('ai-thirst').report() end) end,
+    -- (0.105.47) the herd by kind (adults by sex, young, breeders, protected,
+    -- marked, caged), grass the AI's grazers need, wool grown and milk ready
+    -- now, caged wild animals to tame, trainers, autobutcher targets (lua/ai-herd.lua)
+    herd = function() return safe(function() return reqscript('ai-herd').report() end) end,
     -- (0.105.30) what the fort has built: finished constructions by shape and
     -- material, above or below ground, roofed surface tiles, the waiting ones
     -- and the AI's own (lua/ai-constructions.lua; one pass, every 3 days)

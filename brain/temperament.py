@@ -14,6 +14,7 @@ from planner import (PLANNER_CONFIG, cistern_pop, factor, gatherers, growth_mode
                      mining_plan, noble_room_kinds, outsider_orders, petition_lean, room_size, soldier_share, spare_mechanisms,
                      stone_tidiness, tavern_factor, trade_margin_for, woodcutters, _traits, player_rules)
 from weights import data as choices_data
+from planner_husbandry import breeders_wanted  # noqa: E402  (0.105.47)
 
 AREA_WORDS = {"halls": "hall shape", "finish": "finish", "statues": "statues", "materials": "stone",
               "defence": "gate design", "traps": "traps", "level_doors": "level doors",
@@ -77,6 +78,15 @@ def effects(state: dict, cfg: dict | None = None) -> dict:
     out["husbandry"] = (f"pastures {_x(max(1.0, factor(t, 'husbandry')))}; "
                         + ("nestboxes on" if h >= 0 else "no nestboxes")
                         + ("; big herds culled" if h <= 0 else "; herds kept"))
+    # (0.105.47) the herd's signature (brain/planner_husbandry.py)
+    hc = PLANNER_CONFIG
+    if h >= hc["husbandry_high"]:
+        out["husbandry"] += (f"; breeding pairs kept (a male and {breeders_wanted(t, hc)} females a kind), "
+                             "caged wild animals tamed, pastures ahead of the herd")
+    elif h <= hc["husbandry_low"]:
+        out["husbandry"] += "; a small herd: the surplus to the butcher"
+    if h > hc["husbandry_low"]:
+        out["husbandry"] += "; wool and milk taken as they grow"
     out["size"] = f"bedrooms {room_size(t)}x{room_size(t)}"
     sp = max(-100, min(100, v("spacing")))
     out["spacing"] = (f"corridors {0 if sp <= 0 else int(10 * sp / 100)}-{int(25 + (sp if sp < 0 else 0) * 0.17)} tiles"
