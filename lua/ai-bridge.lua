@@ -645,6 +645,7 @@ BRIDGE_MODULES = {
     'ai-overseer-settings', 'ai-paper', 'ai-pile-links', 'ai-ping', 'ai-provisions', 'ai-reports', 'ai-siege',
     'ai-society', 'ai-society-burrows', 'ai-status', 'ai-syndromes', 'ai-threats', 'ai-title', 'ai-trade', 'ai-traffic',
     'ai-util', 'ai-water', 'ai-waterworks', 'gui/ai-overseer',
+    'ai-threat-facts',          -- (0.105.45) a threat's facts for the matchup (called from the report)
 }
 -- the split-off modules that carry a version mark of their own
 MARKED_MODULES = {'ai-military-gear', 'ai-society-burrows', 'ai-constructions'}

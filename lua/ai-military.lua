@@ -384,11 +384,27 @@ function gate_levers()
     return out
 end
 
--- (0.104.118) A squad's fighting strength, for fight or hide: each soldier
--- counts 1 + (best weapon skill)/3, half again in body armour, half when
--- wounded. {power, armored, skill (average)}.
+-- (0.104.118) A squad's fighting strength, for fight or hide.
+-- (0.105.45, Phase 11 (a)) Each soldier's facts and the formula (the brain
+-- weighs melee against ranged by the threat: brain/planner_matchup.py):
+--   base   = 1 + (best skill, at most 20) / 3      (melee or ranged skill)
+--   armour = 1 + 0.5 x coverage, coverage the share of body 0.4, helm 0.15,
+--            legs 0.15, feet 0.05, hands 0.05, shield 0.2 worn (real armour:
+--            armour level above 0; a full set 1.5, the old "armoured" x1.5)
+--   well   = x0.5 wounded (DF's hospital flag), x0.85 tired (exhaustion 2000+)
+--   melee  = base x armour x well x the weapon's class (adamantine 1.4,
+--            steel 1.25, iron 1.1, bronze 1.05, other metal 0.95, copper 0.85,
+--            bone 0.7, stone 0.6, wood 0.55; not known 1.0), x0.4 unarmed
+--   ranged = a soldier with a ranged weapon: base (ranged skill) x armour x
+--            well, x0.15 with no ammunition in the quiver; and 0.3 of his
+--            melee base to melee (he bashes with it)
+-- power = melee_power + ranged_power (the total the old callers read).
+-- {power, melee_power, ranged_power, armored, armed, skill (average best),
+--  ranged (soldiers shooting with ammo), coverage (average), weapons
+--  {class = n}, wounded, tired}.
 local FIGHT_SKILLS = {'AXE', 'SWORD', 'MACE', 'HAMMER', 'SPEAR', 'PIKE', 'WHIP', 'DAGGER', 'CROSSBOW', 'BOW',
                       'BLOWGUN', 'WRESTLING'}
+RANGED_SKILLS = {CROSSBOW = true, BOW = true, BLOWGUN = true}
 -- the "worn" inventory mode's number (its enum moved between DFHack versions)
 WORN_MODE = (function()
     for _, get in ipairs({function() return df.inv_item_role_type.Worn end,
@@ -398,61 +414,146 @@ WORN_MODE = (function()
     end
     return 2
 end)()
+ARMOR_SLOTS = {HELM = 'helm', ARMOR = 'body', PANTS = 'legs', SHOES = 'feet', GLOVES = 'hands', SHIELD = 'shield'}
+COVER_WEIGHT = {body = 0.4, helm = 0.15, legs = 0.15, feet = 0.05, hands = 0.05, shield = 0.2}
+WEAPON_CLASS_MULT = {adamantine = 1.4, steel = 1.25, iron = 1.1, bronze = 1.05, metal = 0.95, copper = 0.85,
+                     bone = 0.7, stone = 0.6, wood = 0.55, unknown = 1.0}
+TIRED_EXHAUSTION = 2000
+
+-- (0.105.45) a weapon's class from its material: mode ('inorganic',
+-- 'creature', 'plant'), the material's id (STEEL, BONE, WOOD) and whether
+-- it's a metal
+function weapon_class(mode, id, metal)
+    id = tostring(id or ''):upper()
+    if mode == 'inorganic' then
+        if id == 'ADAMANTINE' then return 'adamantine' end
+        if id == 'STEEL' then return 'steel' end
+        if id == 'IRON' or id == 'PIG_IRON' or id == 'WROUGHT_IRON' then return 'iron' end
+        if id:find('BRONZE') then return 'bronze' end
+        if id == 'COPPER' then return 'copper' end
+        return metal and 'metal' or 'stone'
+    end
+    if mode == 'creature' then return (id:find('WOOD') and 'wood') or 'bone' end
+    if mode == 'plant' then return 'wood' end
+    return 'unknown'
+end
+
+-- (0.105.45) the share of the body covered: slots = {body = true, ...}
+function coverage(slots)
+    local c = 0
+    for k, w in pairs(COVER_WEIGHT) do if slots and slots[k] then c = c + w end end
+    return math.floor(math.min(1, c) * 100 + 0.5) / 100
+end
+
+-- (0.105.45) one soldier's (melee, ranged) power from his facts: {skill
+-- (best melee), rskill (best ranged), has_weapon, ranged (holds a ranged
+-- weapon), ammo (count), slots, wclass, wounded, tired}
+function soldier_power(f)
+    local arm = 1 + 0.5 * coverage(f.slots)
+    local well = (f.wounded and 0.5 or 1) * (f.tired and 0.85 or 1)
+    local mbase = 1 + math.min(f.skill or 0, 20) / 3
+    if f.ranged then
+        local r = (1 + math.min(f.rskill or 0, 20) / 3) * arm * well * (((f.ammo or 0) > 0) and 1 or 0.15)
+        return 0.3 * mbase * arm * well, r
+    end
+    local wm = f.has_weapon and (WEAPON_CLASS_MULT[f.wclass or 'unknown'] or 1) or 0.4
+    return mbase * arm * well * wm, 0
+end
+
+local function soldier_facts(u, pos)
+    local f = {skill = 0, rskill = 0, slots = {}, ammo = 0}
+    for _, k in ipairs(FIGHT_SKILLS) do
+        local ok, v = pcall(dfhack.units.getNominalSkill, u, df.job_skill[k], true)
+        if ok and v then
+            if RANGED_SKILLS[k] then f.rskill = math.max(f.rskill, v) else f.skill = math.max(f.skill, v) end
+        end
+    end
+    -- (0.105.2) armed: a weapon in hand or one given on a weapon entry
+    -- (an entry's weapon may still lie elsewhere: armed means "has
+    -- one coming", which the gear fix makes true)
+    -- (B's squads went at a thief with none: four sent, the thief lived)
+    pcall(function()
+        for _, inv in ipairs(u.inventory) do
+            local it = inv.item
+            local ty = it:getType()
+            if ty == df.item_type.WEAPON then
+                local def = weapon_def(it)
+                local id = def and def.id or ''
+                if id ~= 'ITEM_WEAPON_PICK' and not id:find('_TRAINING', 1, true) then
+                    f.has_weapon = true
+                    if weapon_is_ranged(def) then f.ranged = true end
+                    pcall(function()
+                        local mi = dfhack.matinfo.decode(it)
+                        local mode = mi.inorganic and 'inorganic' or mi.creature and 'creature' or mi.plant and 'plant'
+                        local cls = weapon_class(mode, mi.inorganic and mi.inorganic.id or mi.material.id,
+                                                 mi.material.flags.IS_METAL)
+                        if not f.wclass or (WEAPON_CLASS_MULT[cls] or 1) > (WEAPON_CLASS_MULT[f.wclass] or 1) then
+                            f.wclass = cls
+                        end
+                    end)
+                end
+            elseif ty == df.item_type.QUIVER then
+                pcall(function()
+                    for _, a in ipairs(dfhack.items.getContainedItems(it)) do
+                        if a:getType() == df.item_type.AMMO then f.ammo = f.ammo + (a.stack_size or 1) end
+                    end
+                end)
+            else
+                local slot = ARMOR_SLOTS[df.item_type[ty] or '']
+                if slot == 'shield' then
+                    f.slots.shield = true
+                elseif slot and inv.mode == WORN_MODE then
+                    -- (0.104.139) real armour only: shirts, coats and cloaks are
+                    -- ARMOR items too, so every clothed dwarf counted as armoured
+                    local okl, lvl = pcall(function() return it.subtype.armorlevel end)
+                    if okl and (lvl or 0) > 0 then f.slots[slot] = true end
+                end
+            end
+        end
+    end)
+    if not f.has_weapon then
+        pcall(function()
+            for _, spec in ipairs(pos.equipment.uniform[df.uniform_category.weapon]) do
+                if #spec.assigned > 0 then f.has_weapon = true end
+            end
+        end)
+    end
+    -- (0.104.139) DF's own hospital flag: the wound list holds old scars too
+    local okw, wounded = pcall(function() return u.health ~= nil and u.health.flags.needs_healthcare end)
+    f.wounded = (okw and wounded) and true or false
+    local okt, ex = pcall(function() return u.counters2.exhaustion end)
+    f.tired = (okt and type(ex) == 'number' and ex >= TIRED_EXHAUSTION) and true or false
+    return f
+end
+
+local function r1(x) return math.floor(x * 10 + 0.5) / 10 end
 
 function squad_power(sq)
-    local power, armored, skill_sum, n, armed = 0, 0, 0, 0, 0
+    local melee, ranged, armored, skill_sum, n, armed = 0, 0, 0, 0, 0, 0
+    local shooters, cover, weapons, wounded, tired = 0, 0, {}, 0, 0
     for _, pos in ipairs(sq.positions) do
         local hf = pos.occupant ~= -1 and df.historical_figure.find(pos.occupant)
         local u = hf and hf.unit_id ~= -1 and df.unit.find(hf.unit_id)
         if u and not dfhack.units.isDead(u) then
-            local best = 0
-            for _, k in ipairs(FIGHT_SKILLS) do
-                local ok, v = pcall(dfhack.units.getNominalSkill, u, df.job_skill[k], true)
-                if ok and v and v > best then best = v end
-            end
-            local arm = false
-            -- (0.105.2) armed: a weapon in hand or one given on a weapon entry
-            -- (an entry's weapon may still lie elsewhere: armed means "has
-            -- one coming", which the gear fix makes true)
-            -- (B's squads went at a thief with none: four sent, the thief lived)
-            local has_weapon = false
-            pcall(function()
-                for _, inv in ipairs(u.inventory) do
-                    if inv.item:getType() == df.item_type.WEAPON then
-                        local def = weapon_def(inv.item)
-                        local id = def and def.id or ''
-                        if id ~= 'ITEM_WEAPON_PICK' and not id:find('_TRAINING', 1, true) then has_weapon = true end
-                    end
-                end
-            end)
-            if not has_weapon then
-                pcall(function()
-                    for _, spec in ipairs(pos.equipment.uniform[df.uniform_category.weapon]) do
-                        if #spec.assigned > 0 then has_weapon = true end
-                    end
-                end)
-            end
-            pcall(function()
-                for _, inv in ipairs(u.inventory) do
-                    -- (0.104.139) real armour only: shirts, coats and cloaks are
-                    -- ARMOR items too, so every clothed dwarf counted as armoured
-                    if inv.mode == WORN_MODE and inv.item:getType() == df.item_type.ARMOR then
-                        local okl, lvl = pcall(function() return inv.item.subtype.armorlevel end)
-                        if okl and (lvl or 0) > 0 then arm = true end
-                    end
-                end
-            end)
-            -- (0.104.139) DF's own hospital flag: the wound list holds old scars too
-            local okw, wounded = pcall(function() return u.health ~= nil and u.health.flags.needs_healthcare end)
-            local p = (1 + math.min(best, 20) / 3) * (arm and 1.5 or 1) * ((okw and wounded) and 0.5 or 1)
-                      * (has_weapon and 1 or 0.4)
-            power, n, skill_sum = power + p, n + 1, skill_sum + best
-            if arm then armored = armored + 1 end
-            if has_weapon then armed = armed + 1 end
+            local f = soldier_facts(u, pos)
+            local m, r = soldier_power(f)
+            melee, ranged, n = melee + m, ranged + r, n + 1
+            skill_sum = skill_sum + math.max(f.skill, f.rskill)
+            if f.slots.body then armored = armored + 1 end
+            if f.has_weapon then armed = armed + 1 end
+            if f.ranged and f.ammo > 0 then shooters = shooters + 1 end
+            if f.wclass then weapons[f.wclass] = (weapons[f.wclass] or 0) + 1 end
+            if f.wounded then wounded = wounded + 1 end
+            if f.tired then tired = tired + 1 end
+            cover = cover + coverage(f.slots)
         end
     end
-    return {power = math.floor(power * 10 + 0.5) / 10, armored = armored, armed = armed,
-            skill = n > 0 and math.floor(skill_sum / n * 10 + 0.5) / 10 or 0}
+    return {power = r1(melee + ranged), melee_power = r1(melee), ranged_power = r1(ranged),
+            armored = armored, armed = armed,
+            skill = n > 0 and r1(skill_sum / n) or 0,
+            ranged = shooters, coverage = n > 0 and math.floor(cover / n * 100 + 0.5) / 100 or 0,
+            weapons = next(weapons) and weapons or nil,
+            wounded = wounded > 0 and wounded or nil, tired = tired > 0 and tired or nil}
 end
 
 function report(txt)

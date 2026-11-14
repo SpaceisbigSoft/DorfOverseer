@@ -11,6 +11,13 @@ Where to look:
 The forts are A War-hold, B Monastery, C Merchant city, D Hermit hold, E Deep mine and F Garden fort. "All" means every fort.
 
 
+## 0.105.45 (14 Nov): H7, a threat judged against the squads (Phase 11 (a), the judging half)
+
+- **All, state.json**: each `others_on_map.threats` row has `facts: 1` and, as its raws give, `attacks` (`count`, `best`, `syndrome`, `deadly`), `syndrome_attack`, `breath` (e.g. `["fire"]`, `["dust","deadly"]`, `["web"]`), `webs`, `no_pain`, `no_exert`, `no_stun`, `trap_avoid`, `immune_fire`, `regenerates`, `armor`/`armor_kind`, `undead_raiser`, `speed` (1.0 = a dwarf; check a dwarf-sized goblin reads near 1, not 0.1 or 10: `move` is DFHack's raw number), `wounds`, `blood_lost`. No `error` in the section; the report's time for `others_on_map` no worse than before.
+- **A forgotten beast or titan on the map**: compare its `breath` and `attacks` with its description in the game (the unit's sheet: "it breathes fire", "beware its deadly dust", "its bite is poisonous"); a generated beast's dust or gas should read `deadly` when DF's description says it kills or rots.
+- **All, state.json**: each squad's `power` has `melee_power`, `ranged_power`, `ranged` (shooters with bolts), `coverage` (0-1), `weapons` (by class: steel, iron, bronze...), `wounded`, `tired`; `power` the two summed. A crossbow squad with no bolts in the quivers shows a small `ranged_power`.
+- **A great danger in reach**: the note "the squads go (squads X against Y; ...)" or "hide behind the gates (...)" now names the reasons (its breath, venom, armour, "only ranged squads count against its fire", "the squads are mostly melee"). A fire- or deadly-dust-breathing titan against melee squads: hide; an ordinary forgotten beast without breath against squads of ~150: fight. Watch how a fight it called goes (the `fights` in memory) and tune `planner_matchup.py`'s weights from that.
+
 ## item1 (14 Nov): the thirst trap (B, 13 Nov: 66 dead of thirst beside 845 drinks)
 
 - **All, state.json**: `threats.interrupters` (`cancels`, `by_who`, `reasons.drink` / `reasons.eat`, and `list` with each unit DF shows keeping the dwarves from drink, food or sleep: `who`, `near`, `visitor`, `merchant`, `kill_ok`). Normally empty or small; no `error`.

@@ -13,6 +13,7 @@ from quirks import has_rule
 from digest import _d, _l, normalize
 from planner_core import *  # noqa: F401,F403
 from planner_gates import *  # noqa: F401,F403  (13c: split out by theme)
+from planner_matchup import facts_mult, judge, matchup  # noqa: F401  (0.105.45) a threat against the squads
 
 __all__ = ["called_off_ids", "FIGHT_FACTOR_MAX", "lone_intruders", "hunted_outside", "few_ordinary", "few_alert_over", "ai_gates_shut", "lockdown_released", "lone_alert_over", "note_lockdown", "_lone_squad", "quick_clear", "PASTURE_ACTIONS", "_pasture_hold", "gate_invaders", "main_gate", "_gate_guard_rule", "_gate_dogs_rule", "GEAR_HELD", "_shelter_possible", "no_shelter", "SHELTER_RETRY_DAYS", "SHELTER_RETRY_THREAT_DAYS", "_shelter_due", "_no_shelter_note", "weak_squad", "soldier_share", "_gate_rules", "_free_gate_levers", "_lever_far_enough", "_link_wanted", "_lever_rule", "_trap_rule", "_gatehouse_rule", "_lever_hatches_ok", "_near_spot", "soldiers_wanted", "civilian_cap", "crossing_value", "_crossing_rule", "ALERT_DANGERS", "alert_ages", "_alerts_rule", "_war_animal_rule", "hazard_alert", "_hazard_rules", "_military_rules", "watched_gate_levers", "_training_rotation", "_ranged_squad_rule", "WEAPON_IDS", "_uniform_weapon_rule", "_anvil_rule", "idle_hands"]
 
@@ -129,6 +130,10 @@ GREAT_FLIER = 1.5
 def threat_power(t: dict) -> float:
     size = t.get("size") if isinstance(t.get("size"), (int, float)) and t.get("size") > 0 else 60000 * 25
     mult = max([GREAT_KIND.get(k, 1.0) for k in _l(t.get("kinds"))] or [1.0])
+    if t.get("facts"):
+        # (0.105.45, Phase 11 (a)) the bridge read what it brings (breath by
+        # kind, venom, no pain, armour, speed, flight...): planner_matchup
+        return (GREAT_BASE + 2 * math.sqrt(size / 60000)) * mult * facts_mult(t)[0]
     if t.get("abilities"):
         mult *= GREAT_ABILITY
     if t.get("flier"):
@@ -181,12 +186,14 @@ def fight_or_hide(s: dict, memory, cfg: dict, great: list, able: list) -> tuple[
         return False, f"the fight with {len(off)} of them was called off: no squad goes at them again while they're here"
     if not army:
         return False, "the squads' strength isn't known (older bridge)" if able else "no squad to send"
-    need = 0.0
-    for t in great:
-        f = float(_d(getattr(memory, "fight_factor", None)).get(fight_key(t)) or 1.0)
-        need += threat_power(t) * f
-    ratio = army / max(1.0, need)
-    words = f"squads {army:.0f} against {need:.0f}"
+    # (0.105.45) the matchup: melee and ranged power weighed by what the
+    # dangers bring (a fire breather: only ranged counts); with rows from an
+    # older bridge, total power against threat_power as before
+    ff_ = _d(getattr(memory, "fight_factor", None))
+    j = judge(great, able, lambda t: float(ff_.get(fight_key(t)) or 1.0))
+    need, ratio = j["need"], j["ratio"]
+    army = j["army"]
+    words = f"squads {army:.0f} against {need:.0f}" + ("; " + "; ".join(j["reasons"]) if j["reasons"] else "")
     # (0.104.139) no flip-flop: a fight begun goes on unless the squads fall
     # well short (three quarters of the bar); hiding ends only clearly above it
     f = getattr(memory, "fight", None)

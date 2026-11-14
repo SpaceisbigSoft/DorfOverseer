@@ -3061,6 +3061,8 @@ function get_others_on_map()
     end)
     local okb, builder = pcall(reqscript, 'ai-builder')       -- (0.104.153) once, not per creature
     HOSTILE_WILD = (okb and builder and builder.hostile_wild) or function() return false end
+    local okt, TF = pcall(reqscript, 'ai-threat-facts')     -- (0.105.45) a threat's attacks, breath, armour...
+    if not okt then TF = nil end
     for _, u in ipairs(report_units()) do
         if dfhack.units.isActive(u) and not dfhack.units.isDead(u)
                 and not dfhack.units.isHidden(u)
@@ -3123,6 +3125,7 @@ function get_others_on_map()
                     depot_distance = depot and (math.abs(pos.x - depot.x) + math.abs(pos.y - depot.y)
                                                 + 3 * math.abs(pos.z - depot.z)) or nil,
                 })
+                if TF then pcall(TF.add_facts, out.threats[#out.threats], u) end   -- (0.105.45) for the matchup
             elseif (function()                          -- (0.104.153) hostile wild animals in the caverns
                         local okh, h = pcall(function() return HOSTILE_WILD(u) end)
                         if not (okh and h) or contained then return false end
