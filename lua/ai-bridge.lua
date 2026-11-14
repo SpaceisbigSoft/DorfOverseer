@@ -628,6 +628,24 @@ ACTIONS = {
     call_migrants = function(a)
         return reqscript('ai-recovery').call_migrants(a.dry_run == true)
     end,
+    -- (0.105.47, R2 item 3) tantrums: a calm squad stationed at a hospital zone
+    -- while a tantrum is loose, or taken off again (release); a tantrum-thrower
+    -- off every post they hold, the hospital labours too (lua/ai-tantrums.lua)
+    hospital_guard = function(a)
+        local id = whole_number(a.squad_id)
+        if not id then return reject('hospital_guard needs squad_id') end
+        if a.release ~= nil and type(a.release) ~= 'boolean' then return reject('hospital_guard: release is true or false') end
+        if a.release == true then return reqscript('ai-tantrums').unguard(id, a.dry_run == true) end
+        local zone = whole_number(a.zone_id)
+        if not zone then return reject('hospital_guard needs zone_id (or release)') end
+        return reqscript('ai-tantrums').guard(id, zone, a.dry_run == true)
+    end,
+    tantrum_step_down = function(a)
+        local id = whole_number(a.unit_id)
+        if not id then return reject('tantrum_step_down needs unit_id') end
+        if a.medical ~= nil and type(a.medical) ~= 'boolean' then return reject('tantrum_step_down: medical is true or false') end
+        return reqscript('ai-tantrums').step_down(id, a.medical == true, a.dry_run == true, txt)
+    end,
 }
 
 -- (13c) The actions whose dry run changes nothing in the fort, all the way
@@ -705,6 +723,7 @@ for _, name in ipairs({
     'build_killzone', 'reset_cage_traps',   -- (0.105.45) each dry run plans (or counts) and places nothing
     'thirst_unforbid',   -- (0.105.46, I2) its dry run counts the drinks and lets none go
     'call_migrants',   -- (0.105.46, I4) its dry run names the script and queues nothing
+    'hospital_guard', 'tantrum_step_down',   -- (0.105.47) each dry run checks and changes nothing
 }) do DRY_OK[name] = true end
 
 -- These only change what's displayed, so they still work while halted, dry
@@ -784,6 +803,7 @@ BRIDGE_MODULES = {
     'ai-thirst',   -- (0.105.46, I2) the thirst watch
     'ai-recovery',   -- (0.105.46, I4)
     'ai-slices', 'ai-cavern-scan',   -- (0.105.46, I6) walks spread over several reports; the caverns' seen samples
+    'ai-tantrums',   -- (0.105.47) the tantrum ledger, posts, hospital guards
 }
 -- the split-off modules that carry a version mark of their own
 MARKED_MODULES = {'ai-military-gear', 'ai-society-burrows', 'ai-constructions'}
@@ -1257,6 +1277,10 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
     -- stranded, the last cancelled Drink job), and the deaths of thirst with
     -- the last reason known (lua/ai-thirst.lua; in the pulse)
     thirst = function() return safe(function() return reqscript('ai-thirst').report() end) end,
+    -- (0.105.47, R2 item 3) tantrums one dwarf at a time: the ledger (28 days, a
+    -- year), each thrower's posts, labours and unmet needs, the hospitals, the
+    -- squads (calm or not) and the AI's hospital guards (lua/ai-tantrums.lua; in the pulse)
+    tantrums = function() return safe(function() return reqscript('ai-tantrums').report(txt) end) end,
     -- (0.105.30) what the fort has built: finished constructions by shape and
     -- material, above or below ground, roofed surface tiles, the waiting ones
     -- and the AI's own (lua/ai-constructions.lua; one pass, every 3 days)
@@ -1283,6 +1307,7 @@ PULSE_SECTIONS = {
     'shelter_plan',  -- (0.105.45) a titan inside walks to the shelter in minutes: read each cycle
     'lures',         -- (0.105.45) a lure is opened and shut on what the beast does: read each cycle
     'thirst',        -- (0.105.46, I2) thirst kills in days: read each cycle
+    'tantrums',      -- (0.105.47) a tantrum is loose for hours: read each cycle
 }
 TIERS = {pulse = true, daily = true, survey = true}
 -- report sections rebuilt only every so many game days (the lag pass, Oct 23:

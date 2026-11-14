@@ -295,6 +295,7 @@ class Memory:
     fights: list = field(default_factory=list)           # (0.104.118) the last fights: {tick, keys, lost, of}
     called_off: dict = field(default_factory=dict)       # (0.105.26) great danger id -> tick its fight was called off
     recovery: dict = field(default_factory=dict)         # (0.105.46, I4) collapse recovery: {since, why, floor, peak, weeks, last_rise, calls, journal} (planner_recovery)
+    tantrum_book: dict = field(default_factory=dict)     # (0.105.47) {breaks: [ticks of tantrum/berserk/possession reports], loose_last: tick} (planner_tantrums)
     lure: dict = field(default_factory=dict)             # (0.105.45) opening "x,y,z" -> {tries, opened, next_try, caught, phase}: the lure pockets (planner_lure)
     order_loop: dict = field(default_factory=dict)       # (0.105.46, I3) {misses: {"recipe|MATERIAL": {tick, missing, what, snap}}, approved, approved_ids} (order_check)
     dig_seen: dict = field(default_factory=dict)         # (0.104.110) project id -> {"dug", "tick" (last progress), "freed"}
@@ -1754,6 +1755,7 @@ def note_refusal(memory: Memory, p: Proposal, r: dict, now: int, bridge: str | N
 LOOP_LIMITS = {"start_project": 12, "place_surface": 12, "place_well": 12, "make_pasture": 20,
                "deep_depot": 12,                                # (0.105.23) the underground depot's road
                "dismiss_alerts": 400, "answer_petition": 400}   # (0.105.9) residency batches by the hundred
+LOOP_LIMITS["break_fights"] = 400   # (0.105.47) now on every tantrum report too (harmless when nothing is wrong)
 LOOP_LIMIT_DEFAULT = 80
 LOOP_EXEMPT = {"entrances", "needs_trinkets", "trinket_orders", "excess_shops", "cistern", "call_trader", "open_trade",
                "trade_deal", "close_trade", "trade", "train", "water", "project"}

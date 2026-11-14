@@ -3545,6 +3545,24 @@ function death_details(ev, id)
         -- the goblin dancer who wounded her died)
         pcall(function() if dfhack.units.isVisitor(k) then ev.killer_visitor = true end end)
         pcall(function() if dfhack.units.isDead(k) then ev.killer_dead = true end end)
+        -- (0.105.47, R2 item 3) what the killer was in: DF's conflict level
+        -- read "None" on every death of the run (I7c), so a tantrum (in one, or
+        -- one begun in the last 2 days by the ledger), berserk or possessed
+        -- killer is marked (kill_kind; and as the conflict when DF gives none),
+        -- and where the killer stood, so tantrum beatings and berserkers part
+        pcall(function()
+            local kind = reqscript('ai-tantrums').kill_kind(k, abs_tick())
+            if kind then
+                ev.kill_kind = kind
+                if ev.conflict == nil or ev.conflict == 'None' then
+                    ev.conflict_df = ev.conflict
+                    ev.conflict = kind:sub(1, 1):upper() .. kind:sub(2)
+                end
+            end
+        end)
+        pcall(function()
+            if k.pos.x >= 0 then ev.killer_x, ev.killer_y, ev.killer_z = k.pos.x, k.pos.y, k.pos.z end
+        end)
     end
 end
 

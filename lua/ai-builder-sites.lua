@@ -341,6 +341,43 @@ function corridor_path(stair, d, first, corridor, side)
     return tiles, sx, sy
 end
 
+-- (0.105.47, R2 item 3) A hospital stands off the stairs. E (I7c): hospital
+-- 1's door was two tiles from the central stair column, which every brawl
+-- crossed; 8 of 11 beaten to death died in or at a hospital. A level marked
+-- with L.stair_gap (ai-builder-projects: a hospital) is never centred on a
+-- stair nor dug below one, and its nearest tile keeps that many tiles (on
+-- the level, x/y) from the stair it is reached by and from the main stair
+-- (L.main_stair, the most used).
+HOSPITAL_STAIR_GAP = 6
+
+-- the fewest tiles (x/y, the larger of the two) from the level at anchor
+-- (ax, ay) to the stair column at (sx, sy); nil for a level with no tiles
+function stair_gap(L, ax, ay, sx, sy)
+    local best
+    for x, col in pairs(L.tiles or {}) do
+        for y in pairs(col) do
+            local d = math.max(math.abs(ax + x - sx), math.abs(ay + y - sy))
+            if not best or d < best then best = d end
+        end
+    end
+    return best
+end
+
+-- true, or false and why: the level at (ax, ay) keeps L.stair_gap from each stair
+function stair_gap_ok(L, ax, ay, stairs_)
+    local want = math.tointeger(L.stair_gap)
+    if not want or want <= 0 then return true end
+    for _, st in ipairs(stairs_ or {}) do
+        if type(st) == 'table' and st.x and st.y then
+            local g = stair_gap(L, ax, ay, st.x, st.y)
+            if g and g < want then
+                return false, ('a hospital keeps %d tiles from the stairs (%d from x%d y%d)'):format(want, g, st.x, st.y)
+            end
+        end
+    end
+    return true
+end
+
 function offset_sites(L, stair, z, reserved, try, dirs, grammar)
     local group = walk_group(stair.x, stair.y, z)
     if group == 0 then return nil end
@@ -430,6 +467,9 @@ function offset_sites(L, stair, z, reserved, try, dirs, grammar)
                 end
                 if ok then
                     ok, why, area = check_site(L, extra, ax, ay, z, reserved, nil, exempt)
+                end
+                if ok and L.stair_gap then          -- (0.105.47) a hospital off the stairs
+                    ok, why = stair_gap_ok(L, ax, ay, {stair, L.main_stair})
                 end
                 local function dug(x, y) return (x == 0 and y == 0) or has(L.tiles, x, y) or has(extra, x, y) end
                 -- a door needs rock on both sides across the corridor
@@ -655,6 +695,8 @@ function choose_site(L, stairs, reserved, plan, ceil_z)
                     if tried[key] then goto continue end
                     tried[key] = band_pass or nil
                     local ok, why, area = check_site(L, {}, stair.x, stair.y, z, reserved, {x = 0, y = 0})
+                    -- (0.105.47) a hospital is never centred on a stair (nor dug below one)
+                    if ok and L.stair_gap then ok, why = false, 'a hospital is not centred on the stairs' end
                     if lv.extend then
                         if ok then
                             ok, why = check_extension(stair.x, stair.y, stair.z_bottom, z)

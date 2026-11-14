@@ -177,15 +177,26 @@ def _hospital_burrow_rule(s: dict, cfg: dict, proposals: list, memory=None) -> N
     fighting = any(isinstance(t, int) and 0 <= now_ - t < cfg["break_fights_days"] * TICKS_PER_DAY
                    for t in _l(getattr(memory, "fight_deaths", None)))
     crisis = bool(_d(getattr(memory, "crisis", None)).get("why"))
+    # (0.105.47, R2 item 3, I7c) E's y257 fight: the burrow herded patients into
+    # the hospital (3, 13, then 19 kept in) "while the fort's own kill each
+    # other", and gathered the defenceless where the killing was (8 of 11 died
+    # in a hospital zone). While the fort's own fight or a tantrum is loose,
+    # hurried only once a squad stands guard there (planner_tantrums)
+    from planner_tantrums import guard_ids, loose_tantrums
+    unsafe = fighting or loose_tantrums(s) > 0
+    guarded = bool(guard_ids(s))
+    raised = (fighting or crisis) and (guarded or not unsafe)
     proposals.append(Proposal("hospital_burrow", {"type": "hospital_burrow", "max": cfg["hospital_burrow_max"],
                                                   "per": cfg["hospital_burrow_per"],
                                                   "days": cfg["hospital_burrow_days"]},
                               (f"{outside} patient(s) walking outside the hospital" if outside else "no patient outside")
                               + (f", {members} kept in" if members else "")
                               + (" while the fort's own kill each other" if fighting else "")
+                              + (", a squad on guard there" if unsafe and guarded
+                                 else ", no guard there yet: not hurried" if unsafe and (fighting or crisis) else "")
                               + ": the wounded kept in the hospital (with drink and food they can reach), "
                                 "the healed let out",
-                              2 if (fighting or crisis) else 4))
+                              2 if raised else 4))
 
 
 def _calm_burrow_rule(s: dict, cfg: dict, proposals: list, notes: list | None = None, memory=None) -> None:
