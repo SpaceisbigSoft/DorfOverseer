@@ -1,0 +1,133 @@
+-- (0.105.47) Where the screen buttons the AI clicks are, kept for every save
+-- on this PC, not only the save the player showed them in.
+--
+-- Why: DF has no key for the depot's Trade button, the trade screen's Trade
+-- button or the meeting screen's answers, so the AI clicks them where the
+-- player showed it once (probe_trade.py --here-depot / --here,
+-- probe_meeting.py --here). Those places were kept in the save's site data
+-- only, so every new fort started without them: the 8-13 Nov run (six new
+-- forts of 11 Nov) never opened the trade screen (`trade.trader.can_open`
+-- false, "can't open the trade screen" Needs you 14-35 times a fort) though
+-- the October forts had traded end to end.
+--
+-- Now a button is looked up in this order: the save's site data (shown in
+-- this save), this PC's file dfhack-config/ai-overseer/screen-buttons.json
+-- (shown in any save of this DF folder, or a guess that worked here), then
+-- the AI's own guess (DEFAULTS, `default = true`). A guess that fails its
+-- check RETIRE_AFTER times (or once, badly) is retired in the file and the
+-- old Needs you comes back; a guess that works is written to the file as a
+-- known place. The window's grid is the same in all six DF folders
+-- (prefs/init.txt: INTERFACE_SCALING_TO_DESIRED_GRID 170 x 64), and every
+-- place is kept from the edge it sits by, so a resized window still finds it.
+--@ module = true
+
+local U = reqscript('ai-util')
+
+FILE = dfhack.getDFPath() .. '/dfhack-config/ai-overseer/screen-buttons.json'
+RETIRE_AFTER = 2           -- a guess that failed this many times is no longer tried
+
+-- (0.105.47) The AI's own guesses, from its October clicks on this PC that
+-- worked (logs/runs 23-24 Oct: open_trade at x94/x73/x60 y15 on windows
+-- 170/149/136 tiles wide, the trade screen's Trade pressed at x72 y64 and
+-- x66 y60 on the last two, the merchants answering): the depot sheet's
+-- Trade button 76 tiles from the right edge on row 15 (inside the button
+-- column DFHack's own move-goods overlay covers, 70-96 from the right, just
+-- below its Move goods button, rows 11-13); the trade screen's Trade button
+-- 2 left of the centre, 2 rows above the bottom. Nothing is known of the
+-- meeting screen's buttons yet: none is guessed.
+DEFAULTS = {
+    ['ai-overseer/trade-buttons'] = {
+        Depot = {anchor = 'right-top', rx = 76, ty = 15, default = true},
+        Trade = {anchor = 'centre-bottom', dx = -2, dy = 2, default = true},
+    },
+}
+
+local function copy(t)
+    local o = {}
+    for k, v in pairs(t or {}) do o[k] = type(v) == 'table' and copy(v) or v end
+    return o
+end
+
+-- The file: {buttons = {[key] = {[name] = place}}, misses = {[key] = {[name] = n}},
+-- retired = {[key] = {[name] = why}}}
+function read_file()
+    local ok, d = pcall(function() return require('json').decode_file(FILE) end)
+    if not ok or type(d) ~= 'table' then d = {} end
+    d.buttons = type(d.buttons) == 'table' and d.buttons or {}
+    d.misses = type(d.misses) == 'table' and d.misses or {}
+    d.retired = type(d.retired) == 'table' and d.retired or {}
+    return d
+end
+
+function write_file(d)
+    return pcall(function()
+        pcall(function() dfhack.filesystem.mkdir_recursive(dfhack.getDFPath() .. '/dfhack-config/ai-overseer') end)
+        require('json').encode_file(d, FILE)
+    end)
+end
+
+-- Pure: the buttons of a group, merged: the save's over the PC's over the
+-- guesses not retired. Each place says where it came from (`from`).
+function merge(site, pc, defaults, retired)
+    local out = {}
+    for name, b in pairs(defaults or {}) do
+        if not (retired and retired[name]) then
+            out[name] = copy(b); out[name].from = 'guess'; out[name].default = true
+        end
+    end
+    for name, b in pairs(pc or {}) do
+        if type(b) == 'table' then out[name] = copy(b); out[name].from = 'pc'; out[name].default = nil end
+    end
+    for name, b in pairs(site or {}) do
+        if type(b) == 'table' then out[name] = copy(b); out[name].from = 'save'; out[name].default = nil end
+    end
+    return out
+end
+
+function get(key)
+    local f = read_file()
+    return merge(U.site_get(key, {}), f.buttons[key], DEFAULTS[key], f.retired[key])
+end
+
+-- A place the player showed (or a guess that worked): kept for every save here.
+function share(key, name, place)
+    local f = read_file()
+    f.buttons[key] = type(f.buttons[key]) == 'table' and f.buttons[key] or {}
+    local p = copy(place)
+    p.default, p.from = nil, nil
+    f.buttons[key][name] = p
+    if type(f.misses[key]) == 'table' then f.misses[key][name] = nil end
+    write_file(f)
+    return p
+end
+
+-- A guess that failed its check: counted; retired after RETIRE_AFTER (at
+-- once with `now`). Returns whether it is retired now.
+function miss(key, name, why, now)
+    local f = read_file()
+    f.misses[key] = type(f.misses[key]) == 'table' and f.misses[key] or {}
+    local n = (tonumber(f.misses[key][name]) or 0) + 1
+    f.misses[key][name] = n
+    local gone = now == true or n >= RETIRE_AFTER
+    if gone then
+        f.retired[key] = type(f.retired[key]) == 'table' and f.retired[key] or {}
+        f.retired[key][name] = tostring(why or 'failed'):sub(1, 160)
+    end
+    write_file(f)
+    return gone
+end
+
+-- Where a place is on the screen now (anchors as ai-trade and ai-diplomacy
+-- keep them): right-top {rx, ty}, centre-bottom {dx, dy}, left-top {x, y},
+-- else centre {dx, dy}.
+function at(b, dimx, dimy)
+    if b.anchor == 'right-top' then return dimx - b.rx, b.ty end
+    if b.anchor == 'centre-bottom' then return dimx // 2 + b.dx, dimy - b.dy end
+    if b.anchor == 'left-top' then return b.x, b.y end
+    return dimx // 2 + (b.dx or 0), dimy // 2 + (b.dy or 0)
+end
+
+-- Pure: a place on the screen at all.
+function on_screen(x, y, dimx, dimy)
+    return type(x) == 'number' and type(y) == 'number' and x >= 0 and y >= 0 and x < dimx and y < dimy
+end

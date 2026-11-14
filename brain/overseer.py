@@ -44,6 +44,7 @@ from planner_missions import mission_journal  # noqa: E402  (0.105.39)
 from planner_cleanup import CLEANUP_ACTIONS, cleanup_journal, cleanup_words  # noqa: E402  (0.105.40)
 from planner_thirst import thirst_journal  # noqa: E402  (0.105.46, I2) deaths of thirst for the journal
 from planner_recovery import recovery_journal  # noqa: E402  (0.105.46, I4) collapse recovery
+from planner_meetings import meeting_open_due, meeting_open_said, meeting_reopen_wait  # noqa: E402  (0.105.47) meetings opened unattended
 from planner_threats import note_intrusions  # noqa: E402  (0.105.30 live fixes)
 import planner_stuck  # noqa: E402  (0.105.45) the stuck sweep's soak summary
 import seen as seen_ledger  # noqa: E402  (0.105.46, I1) each full report's sections tallied
@@ -562,6 +563,7 @@ SHORT_WORDS = {
     "hunt_send": "hunt: send squads after a beast or an enemy",   # (0.105.45)
     "hunt_recall": "hunt back: call the hunting squads home",    # (0.105.45)
     "call_migrants": "call a migrant wave (DFHack's force Migrants) to a fallen fort DF sends none to",  # (0.105.46, I4)
+    "open_meeting": "open the meeting waiting behind DF's diplomacy light",  # (0.105.47)
     "census": "count what fills the map",  # (0.104.113)
     "seal_well_stairs": "close the cavern wells' stair columns",  # (0.104.151)
     "join_levels": "join areas on one level that meet only through the stairs",  # (0.104.108)
@@ -2223,6 +2225,8 @@ def _run(args) -> int:
     answer_tried = float("-inf")  # (0.105.0) the last try at answering the meeting screen
     answer_dead = None           # (0.105.0 review) held_since of a meeting where a press changed nothing: no more presses
     answer_cant = None           # (0.105.24) held_since of a meeting the AI can't answer (no button, a dead press)
+    open_meeting_tried = float("-inf")   # (0.105.47) the last click on DF's diplomacy light
+    open_meeting_said = None     # (0.105.47) the last line said about it (not said again)
     stall_said = float("-inf")
     stall_wait = STALL_AFTER_S   # the wait before the next try at the same stall (doubles, up to 10 min)
     quieted = False              # (unattended) announcements told not to pause or pop up, this fort
@@ -2281,6 +2285,20 @@ def _run(args) -> int:
             # (paused or not): unattended, it is left after MEETING_CLOSE_S
             if date_now != held_date or not st.get("in_fort"):
                 held_date, held_since = date_now, nowt
+            # (0.105.47) a meeting waiting behind DF's diplomacy light is opened
+            # (the light clicked) under the same rules as the answers below: it
+            # never opened by itself, and the diplomats left unhappy
+            if meeting_open_due(st, args.autopilot, meeting_unattended(args), controls["halted"], held_pin,
+                                STOP_FILE.exists(), nowt - open_meeting_tried):
+                open_meeting_tried = nowt
+                try:
+                    r = bridge.act({"type": "open_meeting"})
+                    line = meeting_open_said(r)
+                    if line and line != open_meeting_said:
+                        say(line)
+                    open_meeting_said = line
+                except (BridgeError, DFHackError):
+                    pass
             # (0.105.0, 12b) before that, answered with the AI's defaults (the
             # tribute by the Rules tab), when the AI knows the screen's buttons
             # (0.105.0 review) only when the run is unattended (--unattended, or the
@@ -2309,6 +2327,10 @@ def _run(args) -> int:
                 meeting_tried = nowt
                 try:
                     r = bridge.act({"type": "close_meeting"})
+                    # (0.105.47) a meeting it couldn't answer: the light not clicked again for a while
+                    # (each opening holds the game until the leave)
+                    if r.get("screen") and answer_cant == held_since:
+                        open_meeting_tried = nowt + meeting_reopen_wait()
                     if r.get("screen"):
                         say(f"Unattended: DF's meeting screen held the game for {int(nowt - held_since)} s with "
                             "nobody to answer: " + ("left it (the meeting ends without an agreement)."

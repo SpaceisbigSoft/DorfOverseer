@@ -112,8 +112,8 @@ def _trade_rules(s: dict, cfg: dict, citizens: int, proposals: list, notes: list
         ask_player(notes, f"a caravan from {cs[0].get('civ')} is at the trade depot "
                           f"and {'the broker' if not trader.get('anyone') else 'a trader'} is there "
                           f"({tr.get('at_depot') or 0} of the fort's goods there), but the AI can't open the "
-                          "trade screen: DFHack has no way to, and it hasn't been shown where the depot's Trade "
-                          "button is. Meanwhile the AI keeps the goods at the depot and takes them back out when "
+                          "trade screen: DFHack has no way to, it hasn't been shown where the depot's Trade "
+                          "button is, and its own guess of the place (0.105.47) missed. Meanwhile the AI keeps the goods at the depot and takes them back out when "
                           "the caravan leaves. Once the screen is open (by you), the AI ticks a deal and presses "
                           "Trade; to let it open the screen itself, show it the button once: "
                           "python brain\\probe_trade.py --here-depot")

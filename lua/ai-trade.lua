@@ -249,6 +249,8 @@ function survey(txt)
             out.trader = {requested = dep.trade_flags.trader_requested, anyone = dep.trade_flags.anyone_can_trade,
                           job = j ~= nil, coming = w ~= nil, at_depot = at_depot(w, dep),
                           can_open = buttons().Depot ~= nil}
+            -- (0.105.47) where the depot's Trade button is known from: save, pc or guess
+            pcall(function() out.trader.button = buttons().Depot.from end)
             -- whether the AI itself opened the depot to anyone (only then does it close it again)
             out.trader.anyone_by_ai = U.site_get(CALL_KEY, {}).anyone_by_ai == true
             -- a caravan at the depot the AI hasn't traded with yet this visit
@@ -590,8 +592,23 @@ end
 
 -- --- pressing the screen's buttons --------------------------------------------------
 
+-- (0.105.47) the save's, else this PC's (shown in any save here), else the
+-- AI's own guess (lua/ai-screen-buttons.lua): the 11 Nov forts had none
+-- shown, so no trade screen was ever opened in the 8-13 Nov run
 function buttons()
+    local ok, d = pcall(function() return reqscript('ai-screen-buttons').get(BUTTONS_KEY) end)
+    if ok and type(d) == 'table' then return d end
     return U.site_get(BUTTONS_KEY, {})
+end
+
+-- (0.105.47) a guess's check: kept for every save when it worked, counted
+-- (retired after two, or at once with `now`) when it didn't
+local function guess_result(name, b, worked, why, now)
+    if not (b and b.default) then return end
+    pcall(function()
+        local B = reqscript('ai-screen-buttons')
+        if worked then B.share(BUTTONS_KEY, name, b) else B.miss(BUTTONS_KEY, name, why, now) end
+    end)
 end
 
 -- Remember where a button is: the mouse is on it now (the player put it
@@ -611,11 +628,13 @@ function calibrate(name)
             return {ok = false, error = 'open the trade depot\'s sheet first (click the depot), then put the mouse on its Trade button'}
         end
     end
-    local d = buttons()
+    local d = U.site_get(BUTTONS_KEY, {})   -- (0.105.47) the save's own, not the merged guesses
     d[name] = {dx = x - gps.dimx // 2, dy = gps.dimy - y, rx = gps.dimx - x, ty = y,
                anchor = name == 'Depot' and 'right-top' or 'centre-bottom',
                x = x, y = y, w = gps.dimx, h = gps.dimy}
     dfhack.persistent.saveSiteData(BUTTONS_KEY, d)
+    -- (0.105.47) and for every save on this PC
+    pcall(function() reqscript('ai-screen-buttons').share(BUTTONS_KEY, name, d[name]) end)
     return {ok = true, button = name, x = x, y = y, screen = {gps.dimx, gps.dimy}}
 end
 
@@ -696,6 +715,9 @@ function press(name, txt)
     end
     local gps = df.global.gps
     local x, y = button_at(b)
+    if b.default and not (x >= 0 and y >= 0 and x < gps.dimx and y < gps.dimy) then
+        return {ok = false, rejected = true, error = 'the guessed Trade button is off this screen (show it: probe_trade.py --here)'}
+    end
     -- DFHack's confirm tool asks "Are you sure you want to trade the selected
     -- goods?" on a click there (seen in game, 0.56.0): turned off for this one
     -- click only (in memory, its settings file untouched), then back on
@@ -738,6 +760,20 @@ function press(name, txt)
     pcall(function() focus = table.concat(dfhack.gui.getFocusStrings(dfhack.gui.getCurViewscreen(true)), ' ') end)
     local after = {ticked(MERCHANT), ticked(FORT), #trade.good[MERCHANT], #trade.good[FORT]}
     local traded = after[3] < before[3] or after[4] < before[4]
+    -- (0.105.47) a guessed button checked: only the Trade button makes the
+    -- merchants answer (their talk line; in October they answered "Trade"
+    -- with both lists unchanged). Goods gone with no answer is some other
+    -- button (a seize or a gift): the guess retired at once. No answer and
+    -- nothing moved: a miss (retired after two).
+    if b.default then
+        if talk ~= 'NONE' then
+            guess_result(name, b, true)
+        elseif traded then
+            guess_result(name, b, false, 'goods moved with no answer from the merchants: not the Trade button', true)
+        else
+            guess_result(name, b, false, 'pressed and the merchants said nothing')
+        end
+    end
     -- done: close the screen (the game goes on; nothing is ticked, so
     -- DFHack's "leave the screen?" question wouldn't come up anyway)
     local closed
@@ -751,6 +787,7 @@ function press(name, txt)
     -- (a click that got no answer at all, e.g. a dialog in the way, isn't a refusal)
     if traded or (talk ~= 'NONE' and talk ~= 'Greet' and talk ~= 'HarshGreet') then mark_done(trade.mer) end
     return {ok = true, pressed = name, at = {x, y}, answer = talk, traded = traded, screen_now = focus,
+            guessed = b.default or nil,
             counter = counter, closed = closed,
             counter_offer = trade.counter_offer or nil,
             before = before, after = after}
@@ -807,6 +844,7 @@ end
 -- building, as DFHack's own tests open a unit's sheet), then its Trade
 -- button (where the player showed it once: calibrate 'Depot'). Only from
 -- the plain map or a sheet, so a menu the player has open isn't disturbed.
+GUESS_CHECK_FRAMES = 30     -- (0.105.47) a guessed Depot button judged this many frames after its click
 UNLOAD_QUIET_TICKS = 300     -- the merchants' goods in the depot unchanged this long: unloaded
 UNLOAD_RETRY_TICKS = 600     -- after closing a screen opened too early, wait this long
 LOAD_WATCH = LOAD_WATCH or {}
@@ -868,6 +906,12 @@ function open_screen(dry_run, txt)
     local still, why = unloading(dep)
     if still then return {ok = true, waiting = true, error = why} end
     local b = buttons().Depot
+    if b and b.default then
+        -- (0.105.47) a guess only where it lands on this screen
+        local gps = df.global.gps
+        local gx, gy = button_at(b)
+        if not (gx >= 0 and gy >= 0 and gx < gps.dimx and gy < gps.dimy) then b = nil end
+    end
     if not b then
         return {ok = false, rejected = true,
                 error = 'the AI doesn\'t know where the depot\'s Trade button is yet (probe_trade.py --here-depot)'}
@@ -891,15 +935,37 @@ function open_screen(dry_run, txt)
     OPEN_CLICKED_AT, OPENED_FOR = os.time(), nil
     dfhack.timeout(3, 'frames', function()
         local okc, err = pcall(click, x, y)
-        LAST_OPEN = {clicked = okc, error = not okc and tostring(err) or nil, opened = trade.open}
+        LAST_OPEN = {clicked = okc, error = not okc and tostring(err) or nil, opened = trade.open,
+                     guessed = b.default or nil}
         if trade.open then
             OPENED_FOR = caravan_key(trade.mer)
             vs.open = false
             vs.active_sheet = df.view_sheet_type.NONE
             vs.active_id = -1
+            guess_result('Depot', b, true)
+        elseif b.default then
+            -- (0.105.47) a guess: the screen may come up a slow frame later
+            -- (opened_by_ai's 0.100 note), so it is judged GUESS_CHECK_FRAMES on.
+            -- Missed: whatever it opened instead is left (the depot's goods
+            -- screen), the sheet closed, the guess counted.
+            dfhack.timeout(GUESS_CHECK_FRAMES, 'frames', function()
+                if trade.open then guess_result('Depot', b, true); return end
+                pcall(function()
+                    if df.global.game.main_interface.assign_trade.open then
+                        require('gui').simulateInput(dfhack.gui.getDFViewscreen(true), 'LEAVESCREEN')
+                    end
+                end)
+                pcall(function()
+                    vs.open = false
+                    vs.active_sheet = df.view_sheet_type.NONE
+                    vs.active_id = -1
+                end)
+                guess_result('Depot', b, false, 'clicked and the trade screen did not open')
+                if LAST_OPEN then LAST_OPEN.guess_missed = true end
+            end)
         end
     end)
-    return {ok = true, clicking = true, at = {x, y}}
+    return {ok = true, clicking = true, at = {x, y}, guessed = b.default or nil}
 end
 
 -- --- someone to the depot ---------------------------------------------------------

@@ -1077,4 +1077,7 @@ PLANNER_CONFIG = {
     "recovery_migrants_cooldown_ticks": 112 * 1200,   # one call a season at most
     "recovery_migrants_max_calls": 3,     # calls that brought nobody before it stops (a Needs you)
     "recovery_stall_days": 336,           # under the survival floor with no newcomer this long: called too
+    # (0.105.47) meetings (brain/planner_meetings.py, lua/ai-meeting-open.lua)
+    "meeting_open_every_s": 60,           # a meeting waiting behind DF's diplomacy light clicked at most this often (real s)
+    "meeting_reopen_after_s": 1800,       # ...and after leaving one it couldn't answer, not again for this long (real s)
 }

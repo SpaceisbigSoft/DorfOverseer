@@ -67,6 +67,7 @@ from planner_thirst import _thirst_rule, thirst_journal  # noqa: E402,F401  (0.1
 from planner_killzone import _killzone_rule  # noqa: E402  (0.105.45) kill zones at the gates and cavern openings
 from planner_lure import _lure_rule  # noqa: E402  (0.105.45) a sealed cavern beast lured into a pocket, cut off
 from planner_recovery import _migrants_rule, note_recovery, recovery_apply  # noqa: E402  (0.105.46, I4) collapse recovery
+from planner_meetings import meeting_open_due, meeting_open_said  # noqa: E402,F401  (0.105.47) meetings opened unattended
 from planner_hauling import _hauling_labor_rule, note_hauling  # noqa: E402  (0.105.40 M5) hauling balanced
 from planner_traffic import _traffic_rule  # noqa: E402  (0.105.41) traffic zones on the AI's own levels
 from planner_food import _food_store_rule, note_food  # noqa: E402  (0.105.40b, M6) the food store
