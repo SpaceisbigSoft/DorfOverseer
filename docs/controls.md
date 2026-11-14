@@ -183,6 +183,19 @@ hall, basic workshops and stockpiles are always built when missing.
   the soil of finished halls, and the stone blocks for them. Off: none of
   these is started or carried on; what is built stays. The keep (Surface
   50+) is not under this switch.
+- **Hunt threats** (`hunt`, Military page, 0.105.45): squads sent out after a
+  threat that can't reach the dwarves yet, when they clearly beat it
+  (brain/planner_hunt.py): a reserve of at least 3 soldiers (a third of all,
+  and one whole squad) stays home, the hunt is called back when a third of
+  its soldiers are lost, half are wounded or it lasts over 3 days, and a
+  fire breather or flier is hunted only with crossbows. Never in a siege, a
+  crisis or with the alarm up.
+  - *off*: no hunts (hunters out are called home).
+  - *small*: thieves, ambushes near workers, the wounded visitor the
+    dwarves drop their jobs for.
+  - *ai* (the default): forgotten beasts, titans and megabeasts too, one at
+    a time, unless Militarism is -100 or lower or Caution 150 or higher;
+    Caution raises the bar the party must clear, Militarism lowers it.
 - **World cleanup (speed)** (`world_cleanup`, 0.105.40): what slows the
   game over the years and no dwarf can clean up, taken off the map only past
   the AI's thresholds (lower while the game runs slowly), with a trial run

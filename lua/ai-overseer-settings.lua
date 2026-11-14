@@ -227,11 +227,18 @@ MISSION_HELP = 'rescue: citizens, artifacts; explore: + ruins; all: + raids, pil
 WORLD_CLEANUP_CHOICES = {'off', 'safe', 'full'}
 WORLD_CLEANUP_NAMES = {off = 'off', safe = 'safe: spatter, dead, lost junk',
                        full = 'full: + lost goods, foes'}
+-- (0.105.45) hunting threats the squads can beat (brain/planner_hunt.py): off;
+-- small (thieves, ambushes near workers, wounded visitors); ai (the default:
+-- forgotten beasts, titans and megabeasts too, by Militarism and Caution).
+-- A reserve always stays home, and a hunt going badly is called back
+HUNT_CHOICES = {'off', 'small', 'ai'}
+HUNT_NAMES = {off = 'off', small = 'thieves, ambushes', ai = 'AI decides (beasts too)'}
 -- (0.105.27) the cycles set_rules may set from outside the window (key -> choices)
 RULE_CHOICES = {disposal = DISPOSAL_CHOICES, open_caverns = OPEN_CAVERNS_CHOICES,
                 design = DESIGN_MODES, landmark_pace = LANDMARK_PACES,    -- (D0)
                 missions = MISSION_CHOICES,                               -- (0.105.39)
                 peace = PEACE_CHOICES,                                    -- (0.105.41, item 8)
+                hunt = HUNT_CHOICES,                                      -- (0.105.45)
                 world_cleanup = WORLD_CLEANUP_CHOICES}                    -- (0.105.40)
 GEAR_WEAPONS = {'axe', 'spear', 'mace'}
 GEAR_WEAPON_NAMES = {axe = 'battle axes', spear = 'spears', mace = 'maces'}
@@ -369,6 +376,7 @@ function defaults()
         cavern_logging = true,
         -- (0.105.40, 13e) world cleanup for the game's speed (WORLD_CLEANUP_CHOICES)
         world_cleanup = 'safe',
+        hunt = 'ai',               -- (0.105.45) hunting (HUNT_CHOICES)
         -- (0.105.41, 13e) traffic zones on the AI's own finished levels: high on its
         -- stairs and corridors, low on its rooms and fields (lua/ai-traffic.lua)
         traffic = true,
@@ -509,6 +517,7 @@ function sanitize(s)
     out.open_caverns = open_caverns_choice(s.open_caverns)               -- (v35 fix) three-state
     out.missions = one_of(s.missions, MISSION_CHOICES, d.missions)        -- (0.105.39)
     out.world_cleanup = one_of(s.world_cleanup, WORLD_CLEANUP_CHOICES, d.world_cleanup)   -- (0.105.40)
+    out.hunt = one_of(s.hunt, HUNT_CHOICES, d.hunt)                       -- (0.105.45)
     for _, k in ipairs({'wipe_learned', 'wipe_learned_all'}) do
         local n = math.tointeger(tonumber(s[k]))
         out[k] = (n and n >= 0) and n or 0
@@ -604,6 +613,7 @@ function for_ai(s)
         keep_enemy_gear = s.keep_enemy_gear,
         cavern_logging = s.cavern_logging,         -- (item10)
         world_cleanup = s.world_cleanup,           -- (0.105.40) off | safe | full
+        hunt = s.hunt,                             -- (0.105.45) off | small | ai
         traffic = s.traffic,                       -- (0.105.41) traffic zones on the AI's levels
         moat = s.moat, magma_workshops = s.magma_workshops, irrigation = s.irrigation,   -- (0.105.0)
         magma_reclaim = s.magma_reclaim,           -- (0.105.41, item 7)

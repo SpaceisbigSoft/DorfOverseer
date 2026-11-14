@@ -25,6 +25,13 @@ The forts are A War-hold, B Monastery, C Merchant city, D Hermit hold, E Deep mi
 - **A `hunt_send` in the journal**: the squads' kill order in the squad screen (title "AI overseer"), `ai-overseer/hunts` in the save's site data, `hunt.hunts` with `soldiers_now` / `wounded` changing as they fight. A squad on the player's own orders, or with fewer than 2 armed, is refused.
 - **The target killed / gone**: the next full report moves the hunt to `hunt.history` with `won` (and `soldiers_lost`) or `gone`; a kill order another rule cleared shows `dropped`. A `hunt_recall` clears the AI's orders (the soldiers walk back to their barracks) and adds `recalled` with its reason.
 - **Cost**: the `hunt` section's ms in `perf` (one pass over the units; it is not in the pulse).
+## 0.105.45 (14 Nov): hunting (H2, brain/planner_hunt.py; the bridge's `hunt` section is H1's)
+
+- **All, Rules tab (Military page)**: "Hunt threats:" at the right of "Send missions by the World screen", cycling off / thieves, ambushes / AI decides (beasts too); default AI decides; the setting kept after reopening the window.
+- **A thief, an ambush near workers, or the wounded visitor that interrupts the dwarves** (not yet in reach of the dwarves): a `hunt_send` journal line ("hunt ...: send <squads> (N soldiers, strength X against Y: Rx, 3x needed); M soldier(s) stay home"); at least 3 soldiers (a third of all) and, with 2+ squads, one whole squad stay home; the squad walks out and the target dies; then a "hunt learned: a won hunt ..." note and `fight_factor` for that kind lower in the memory.
+- **A forgotten beast in an unsealed cavern, a titan on the surface** (A War-hold first): hunted only with a party clearly stronger, one at a time; a fire breather or a flier only with a squad of crossbows (else the note "it breathes fire and no free squad of crossbows can go"). A beast behind the AI's cavern seal: the note "behind the AI's cavern seal; left to the lure and cut-off rules".
+- **A hunt going badly**: a `hunt_recall` line ("a third of the soldiers lost", "half wounded", "over 3 days") and the squad home; that target then noted "called off; not hunted again while it is here", and the kind's `fight_factor` 1.5x.
+- **Never**: a `hunt_send` during a siege, with the alarm up, in a crisis, or while a great danger's fight is on; a siege arriving calls the hunters home ("the hunters come home").
 
 ## item1 (14 Nov): the thirst trap (B, 13 Nov: 66 dead of thirst beside 845 drinks)
 
