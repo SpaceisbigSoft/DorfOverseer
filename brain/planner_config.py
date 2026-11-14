@@ -999,4 +999,19 @@ PLANNER_CONFIG = {
     "bench_training_max_level": 5,        # the training bench's max skill (df skill rating: 5 Proficient)
     "bench_learners_min": 2,              # workers below it before a bench is capped
     "bench_caps_cooldown_ticks": 1200,
+    # (0.105.45) the sweep for things stuck "in progress" (brain/planner_stuck.py, lua/ai-stuck.lua):
+    # game days without progress before the sweep acts, per kind (the things' own rules act sooner)
+    "stuck_sweep_project_days": 84,           # a level's dig or furnishing (the level rules act at 14-56 days)
+    "stuck_sweep_cistern_days": 84,           # a cistern step
+    "stuck_sweep_waterwork_days": 84,         # a moat, pump, irrigation, magma or power step
+    "stuck_sweep_lever_days": 2,              # a pull job on an AI lever nobody does
+    "stuck_sweep_squad_days": 1,              # an AI kill order whose targets are all dead, gone or caged
+    "stuck_sweep_order_days": 56,             # an AI work order (the orders rule cancels at 28)
+    "stuck_sweep_gate_days": 42,              # gate pieces the AI planned (the gate rules act at 7-14)
+    "stuck_sweep_nudge_wait_days": 14,        # after the nudge, this long (at most half the timeout) before the retire
+    "stuck_sweep_backoff_days": 112,          # after a retire: the thing left this long
+    "stuck_sweep_family_max": 3,              # retires of one kind of thing a game year; past it, only said
+    "stuck_sweep_actions_max": 2,             # the sweep's actions a cycle
+    "stuck_sweep_notes_max": 6,               # its notes a cycle
+    "stuck_sweep_cooldown_ticks": 0,          # (it paces each thing itself)
 }
