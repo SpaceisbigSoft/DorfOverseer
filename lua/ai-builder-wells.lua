@@ -1955,7 +1955,8 @@ function place_well(params, now, dry_run)
         held = held,                                    -- (0.105.4 review)
         up = up,                                        -- (0.105.47) dug from the bottom up
         landing = landing,                              -- (0.105.24) the floor dug beside the shaft's top
-        summary = {well = 1, drop = spot.drop, cavern = spot.cavern}, furniture = {Well = 1},
+        -- (0.105.47) shore: the brain gives up a shore well still being dug before the ice (planner_ice)
+        summary = {well = 1, drop = spot.drop, cavern = spot.cavern, shore = spot.shore}, furniture = {Well = 1},
         cells = {dig = dig, build = {{x = 0, y = 0, text = 'l'}}, place = {}, zone = {},
                  smooth = {}, engrave = {}},
         started = now, designated = 1,

@@ -41,8 +41,9 @@ The rules (_siege_rules), each behind its Rules switch:
     it is enough); never a fire breather, never a great danger (unless the
     Rules tab says attack everything), never while evil weather is about
     (planner_weather: the squads would walk out into it), never at "never";
-  * wildlife_hunts: a hostile wild animal (a large predator, or one DF
-    agitated) that can walk to the dwarves, within `wild_near_tiles` of a
+  * wildlife_hunts: a hostile wild animal (a large predator, one DF
+    agitated, or (0.105.47) one at grips with a citizen: `attacking`) that
+    can walk to the dwarves, within `wild_near_tiles` of a
     dwarf outside or `wild_reach_tiles` of any: a free squad goes at it,
     under the same rules as the caravan guard; a big one
     (`wild_big_size`) only for a squad of power `wild_big_power`;
@@ -425,10 +426,14 @@ def _wild_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> list
         notes.append(f"{names} near the dwarves outside and no squad free to hunt "
                      + ("so big a beast" if big else "it"))
         return [r["id"] for r in ok]
+    # (0.105.47, I7d 2e) one already at grips with a dwarf (the bridge's
+    # `attacking`: C's giant coyote, E's giant chipmunks) goes first
+    hit = [r for r in new if r.get("attacking")]
+    what = "attacking a dwarf" if hit else "a dangerous wild animal"
     proposals.append(Proposal("wild_hunt", {"type": "squad_orders", "squad_id": q["id"],
-                                            "kill": [r["id"] for r in new][:10]},
-                              f"{names} (a dangerous wild animal) near the dwarves at work outside: send "
-                              f"{q.get('name') or 'the squad'} to kill it", 2))
+                                            "kill": [r["id"] for r in hit + [r for r in new if r not in hit]][:10]},
+                              f"{names} ({what}) near the dwarves at work outside: send "
+                              f"{q.get('name') or 'the squad'} to kill it", 1 if hit else 2))
     return [r["id"] for r in ok]
 
 

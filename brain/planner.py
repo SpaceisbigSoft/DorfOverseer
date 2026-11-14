@@ -68,6 +68,8 @@ from planner_hunt import _hunt_rule, note_hunt_cycle  # noqa: E402  (0.105.45) h
 from planner_shelter import _shelter_pick_rule  # noqa: E402  (0.105.45) the shelter away from the threat
 from planner_stuck import _stuck_rule, note_stuck  # noqa: E402  (0.105.45) the sweep for things stuck "in progress"
 from planner_thirst import _thirst_rule, thirst_journal  # noqa: E402,F401  (0.105.46, I2) the thirst watch
+from planner_near_gates import _near_gates_rule  # noqa: E402  (0.105.47, I7d) surface work near the gates under a titan
+from planner_ice import _ice_rule  # noqa: E402  (0.105.47, I7d) surface water zones, shore wells, traffic before the ice
 from planner_killzone import _killzone_rule  # noqa: E402  (0.105.45) kill zones at the gates and cavern openings
 from planner_lure import _lure_rule  # noqa: E402  (0.105.45) a sealed cavern beast lured into a pocket, cut off
 from planner_wellsafe import _well_safety_rule  # noqa: E402  (0.105.47) cavern wells made safe, the stranded under one let out
@@ -1022,6 +1024,13 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
     # gates, the prisoners' water, the interrupter's squad) isn't doubled
     if "thirst" not in errors:
         _guard(_thirst_rule, s, cfg, proposals, notes, memory)
+    # (0.105.47, I7d) surface work near the gates while a great danger the squads
+    # can't beat is about (planner_near_gates); the surface water left alone
+    # before it freezes (planner_ice: after planner_wells, whose monthly
+    # water_traffic it replaces in ice season)
+    if "near_gates" not in errors:
+        _guard(_near_gates_rule, s, memory, cfg, proposals, notes)
+    _guard(_ice_rule, s, memory, cfg, proposals, notes)
     # (0.105.45) the sweep for things stuck "in progress": after every other
     # rule, so a thing another rule acts on this cycle is left to it
     if "stuck" not in errors:

@@ -166,6 +166,7 @@ SECTION_DEFAULTS = {
     "tantrums": {},          # (0.105.47) the tantrum ledger, each thrower's posts and needs, hospitals, squads, guards (lua/ai-tantrums.lua)
     "welfare": {},           # (0.105.47, I7b) coffins on the AI's other levels, free coffins, the trainee cook (lua/ai-welfare.lua)
     "well_safety": {},       # (0.105.47) cavern wells made safe: each shaft, who is in its column or under it, its door, the watcher's log, the one-at-a-time book (lua/ai-well-safety.lua)
+    "near_gates": {},        # (0.105.47, I7d) the near-gates burrow: on, members, citizens outside far from the gates (lua/ai-near-gates.lua)
     "insane": {},            # (0.105.40b) the insane, the deadly ground near them, the AI's doors locked, the near-breaking (lua/ai-insane.lua)
     "hauling": {},           # (0.105.40 M5) haul jobs waiting, haulers, key workers hauling (lua/ai-hauling.lua)
     "traffic": {},           # (0.105.41) traffic zones on the AI's finished levels: waiting, in progress, rechecks (lua/ai-traffic.lua)

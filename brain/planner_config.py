@@ -1141,4 +1141,18 @@ PLANNER_CONFIG = {
     "kill_hold_ticks": 1200,              # a squad's kill order held a game day at least (no recall flapping)
     "destroyer_wall_min_tiles": 15,       # a building destroyer this close to a door-only gate: nothing built there now
     "post_rest_min_ticks": 300,           # a squad out to eat comes back once fed, after this at least
+    # (0.105.47, I7d) surface work kept near the gates while a great danger the
+    # squads can't beat is about (brain/planner_near_gates.py, lua/ai-near-gates.lua)
+    "near_gates": True,                   # the rule on (False: never)
+    "near_gates_radius": 25,              # outside tiles this near a surface way in stay in the work burrow
+    "near_gates_hold_days": 3,            # kept this long after the last such danger left the map
+    "near_gates_cooldown_ticks": 300,     # the burrow taken up or let go at most this often
+    "near_gates_refresh_cooldown_ticks": 1200,   # newcomers taken into it once a day at most
+    # (0.105.47, I7d 2f) ice: surface water zones, shore wells and traffic before the freeze (brain/planner_ice.py)
+    "ice_late_autumn_tick": 285600,       # the year's tick from which surface water counts as freezing (15 Timber)
+    "ice_temp_margin": 15,                # surface this near freezing (Urist degrees over 10000): ice season any month
+    "ice_warm_margin": 40,                # ...this far over it in late autumn and no ice ever seen: a warm biome, no guard
+    "ice_traffic_cooldown_ticks": 7 * 1200,
+    "ice_zones_cooldown_ticks": 1200,
+    "ice_shore_well_cooldown_ticks": 1200,
 }

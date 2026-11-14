@@ -575,6 +575,8 @@ SHORT_WORDS = {
     "coffins_anywhere": "coffins with a tomb each on the AI's other levels, when no tomb level comes",  # (0.105.47, I7b)
     "engrave_memorials": "memorial slabs for the dead nobody can reach, before their ghosts rise",  # (0.105.47, I7b)
     "train_cook": "keep one cook at the kitchens so they learn",  # (0.105.47, I7b)
+    "near_gates": "keep the civilians' work outside near the gates (or let it go anywhere again)",  # (0.105.47, I7d)
+    "retire_water_zones": "take down the AI's water zones on surface water before the ice",  # (0.105.47, I7d)
     "census": "count what fills the map",  # (0.104.113)
     "seal_well_stairs": "close the cavern wells' stair columns",  # (0.104.151)
     "join_levels": "join areas on one level that meet only through the stairs",  # (0.104.108)
