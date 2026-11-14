@@ -386,7 +386,8 @@ def _():
     def others(ps):
         # a new farm level (farm_plots with dig) has a style too: its style is a new level's, the rest the same
         return sorted(json.dumps({k: v for k, v in p.action.items() if k != "style"}, sort_keys=True) for p in ps
-                      if p.action.get("type") != "start_project" and not p.rule.startswith("landmark"))
+                      if p.action.get("type") not in ("start_project", "place_garden_court")   # (0.105.47 merge) the court is new building: named by the language
+                      and not p.rule.startswith("landmark"))
     assert others(a) == others(b), (set(others(a)) ^ set(others(b)))
     for p in b:
         assert p.action.get("project_id") != 55 or p.action.get("type") in ("finish_project", "furnish_project"), \

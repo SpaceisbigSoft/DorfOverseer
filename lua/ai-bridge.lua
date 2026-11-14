@@ -677,7 +677,7 @@ ACTIONS = {
     end,
     -- (0.105.47, J1) a gathering strange mood's workshop and materials put in the AI
     -- shelter while the alarm is up (lua/ai-mood-help.lua; I7a: 5 moods cancelled "Forbidden area")
-    mood_shelter = function(a) return reqscript('ai-mood-help').act_mood_shelter(a) end,
+    mood_shelter = function(a) return reqscript('ai-mood-help').act_mood_shelter({dry_run = a.dry_run == true}) end,
     -- (0.105.47) a meeting that waits behind DF's diplomacy light opened by
     -- clicking it (lua/ai-meeting-open.lua); sent by the overseer only unattended
     open_meeting = function(a)

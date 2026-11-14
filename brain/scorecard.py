@@ -354,7 +354,6 @@ def journal_counts(entries: list[dict], date: dict, timeline: list | None = None
             # lowering the game refused (on still true) for a raise too
             alarms_on += (a.get("on") is True and r.get("on") is not False and not r.get("already_on")
                           and not r.get("dry_run") and not a.get("dry_run"))
-            alarms_on += bool(r.get("on") if isinstance(r.get("on"), bool) else a.get("on"))
         elif (t == "work_order" and isinstance(a.get("material"), str) and str(a.get("recipe") or "").startswith("stone_")
               and not r.get("dry_run")):
             stones[a["material"]] += 1

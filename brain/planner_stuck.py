@@ -295,6 +295,11 @@ def _stuck_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> Non
     oth = _d(s.get("others_on_map"))
     paused = bool(_d(getattr(memory, "crisis", None)).get("why")) or \
         int(oth.get("threats_that_can_reach_dwarves") or 0) > 0 or bool(_d(s.get("military")).get("siege"))
+    wells_waiting = {}
+    for w in _l(_d(s.get("well_safety")).get("wells")):
+        w = _d(w)
+        if w.get("held") or w.get("column"):
+            wells_waiting[_int(w.get("project_id"), -1)] = w
     acted = 0
     said: list = []
     past: dict = {}
@@ -316,6 +321,12 @@ def _stuck_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> Non
             it = {"state": r["state"], "sig": sig, "moved": now, "step": 0}
         if paused and r["kind"] in ("project", "cistern", "waterwork"):
             it["moved"] = now                       # (0.105.45, merge) the clock stands still
+        # (0.105.47 merge) a cavern well dug from the bottom up waits on purpose
+        # while a dwarf stands in its column or a level is held (J6): waiting, not stuck
+        if r["kind"] == "project" and r.get("what") == "well":
+            wrow = wells_waiting.get(_int(r.get("id"), -1))
+            if wrow:
+                it["moved"] = now
         items[key] = it
         since = _int(r.get("since"), now)
         moved = max(_int(it.get("moved"), now), _int(r.get("moved"), 0))

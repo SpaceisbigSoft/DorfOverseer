@@ -375,7 +375,7 @@ def _():
     soc = (ROOT / "lua" / "ai-society.lua").read_text(encoding="utf-8")
     assert soc.count("reqscript('ai-mood-help').add_mood_spots(b, false)") == 2
     br = (ROOT / "lua" / "ai-bridge.lua").read_text(encoding="utf-8")
-    assert "mood_shelter = function(a) return reqscript('ai-mood-help').act_mood_shelter(a) end" in br
+    assert "mood_shelter = function(a) return reqscript('ai-mood-help').act_mood_shelter({dry_run = a.dry_run == true}) end" in br
     assert "'mood_shelter'," in br and "'mood_help'," in br and "'ai-mood-help'," in br
 
 

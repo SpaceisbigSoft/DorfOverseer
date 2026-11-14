@@ -63,9 +63,13 @@ def note_deaths(state: dict, memory, events: list) -> int:
             # (Teacheroar 19:24, a Hammer Lord suffocated a patient: no fight
             # level, so nothing counted and the fights were never broken up)
             # (0.105.47) the bridge marks a tantrum's, a berserker's or a possessed killer's kill
-            if e.get("killer_kind") == "citizen" and e.get("conflict") in (None, "None", "Brawl", "Nonlethal", "Lethal",
+            if (e.get("killer_kind") == "citizen" and e.get("conflict") in (None, "None", "Brawl", "Nonlethal", "Lethal",
                                                                           "NoQuarter", "Tantrum", "Berserk",
-                                                                          "Possessed"):
+                                                                          "Possessed")
+                    and e.get("mood") != "Berserk"):
+                # (0.105.47 merge) a berserker struck down by the fort is
+                # defence, not a spiral (I7c: 16 such deaths, every one
+                # after a failed mood, the fights broken up at once): not counted
                 memory.fight_deaths.append(now)
     memory.deaths_seen = [t for t in memory.deaths_seen if isinstance(t, int) and 0 <= now - t < 84 * TICKS_PER_DAY][-500:]
     memory.fight_deaths = [t for t in memory.fight_deaths if isinstance(t, int) and 0 <= now - t < 28 * TICKS_PER_DAY][-500:]
