@@ -623,6 +623,11 @@ ACTIONS = {
         if not id then return reject('reset_cage_traps needs entrance_id') end
         return reqscript('ai-killzone').reset_cage_traps(id, a.dry_run == true)
     end,
+    -- (0.105.46, I4) a migrant wave called to a fallen fort DF sends none to
+    -- (DFHack's force Migrants; lua/ai-recovery.lua, brain/planner_recovery.py)
+    call_migrants = function(a)
+        return reqscript('ai-recovery').call_migrants(a.dry_run == true)
+    end,
 }
 
 -- (13c) The actions whose dry run changes nothing in the fort, all the way
@@ -699,6 +704,7 @@ for _, name in ipairs({
     'hunt_send', 'hunt_recall',   -- (0.105.45) each dry run checks the target and squads, and gives no order
     'build_killzone', 'reset_cage_traps',   -- (0.105.45) each dry run plans (or counts) and places nothing
     'thirst_unforbid',   -- (0.105.46, I2) its dry run counts the drinks and lets none go
+    'call_migrants',   -- (0.105.46, I4) its dry run names the script and queues nothing
 }) do DRY_OK[name] = true end
 
 -- These only change what's displayed, so they still work while halted, dry
@@ -776,6 +782,7 @@ BRIDGE_MODULES = {
     'ai-threat-facts',          -- (0.105.45) a threat's facts for the matchup (called from the report)
     'ai-lure',   -- (0.105.45)
     'ai-thirst',   -- (0.105.46, I2) the thirst watch
+    'ai-recovery',   -- (0.105.46, I4)
 }
 -- the split-off modules that carry a version mark of their own
 MARKED_MODULES = {'ai-military-gear', 'ai-society-burrows', 'ai-constructions'}
@@ -1196,6 +1203,9 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
     -- full cages), its drawbridge, the fortifications; the enemies and whether DF's traps work
     -- on them (TRAPAVOID); mechanisms, trap weapons (lua/ai-killzone.lua; cached a day)
     killzones = function() return safe(function() return reqscript('ai-killzone').report(txt) end) end,
+    -- (0.105.46, I4) whether a migrant wave can be called to a fallen fort: the force
+    -- script, waves queued, DFHack's own hermit tool (lua/ai-recovery.lua)
+    migration = function() return safe(function() return reqscript('ai-recovery').report() end) end,
     -- (item9) paper from plants, scrolls and codices for the library (lua/ai-paper.lua)
     -- (fix6) not cached while a paper step's order is open: the report after
     -- it is done reads afresh what it used (a day-old copy ordered it again)

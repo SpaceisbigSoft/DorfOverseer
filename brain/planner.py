@@ -66,6 +66,7 @@ from planner_stuck import _stuck_rule, note_stuck  # noqa: E402  (0.105.45) the 
 from planner_thirst import _thirst_rule, thirst_journal  # noqa: E402,F401  (0.105.46, I2) the thirst watch
 from planner_killzone import _killzone_rule  # noqa: E402  (0.105.45) kill zones at the gates and cavern openings
 from planner_lure import _lure_rule  # noqa: E402  (0.105.45) a sealed cavern beast lured into a pocket, cut off
+from planner_recovery import _migrants_rule, note_recovery, recovery_apply  # noqa: E402  (0.105.46, I4) collapse recovery
 from planner_hauling import _hauling_labor_rule, note_hauling  # noqa: E402  (0.105.40 M5) hauling balanced
 from planner_traffic import _traffic_rule  # noqa: E402  (0.105.41) traffic zones on the AI's own levels
 from planner_food import _food_store_rule, note_food  # noqa: E402  (0.105.40b, M6) the food store
@@ -636,6 +637,7 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
         _guard(_pop_cap_rule, s, memory, cfg, citizens, proposals, notes)
         _guard(_join_rule, s, memory, cfg, proposals)
         _guard(_shrink_rule, s, memory, cfg, citizens, proposals)
+        _guard(_migrants_rule, s, memory, cfg, proposals, notes)   # (0.105.46, I4) no migrants to a fallen fort
     if can_use("military", "buildings", "orders"):
         _guard(_smelting_rule, s, memory, cfg, rules_, proposals, notes)
 
@@ -1019,6 +1021,11 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
     why = _d(getattr(memory, "crisis", None)).get("why") if memory is not None else None
     if why:
         kept = _guard(crisis.apply, proposals, why, notes)
+        if kept is not None:
+            proposals = kept
+    # (0.105.46, I4) collapse recovery: survival first, the rest waits (planner_recovery)
+    if memory is not None:
+        kept = _guard(recovery_apply, proposals, memory, notes)
         if kept is not None:
             proposals = kept
     proposals.sort(key=lambda p: p.priority)
@@ -1651,6 +1658,7 @@ def note_cycle(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> list[
             memory.patient_since = waits
     if "dwarves" not in errors:
         _step(crisis.update, s, memory, cfg, notes)             # (0.104.137) crisis mode
+        _step(note_recovery, s, memory, cfg, notes)             # (0.105.46, I4) collapse recovery
     if "world" not in errors:
         _step(note_world, s, memory)                            # (0.105.0) grudges, export wishes
     if "missions" not in errors:

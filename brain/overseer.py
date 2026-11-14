@@ -43,6 +43,7 @@ from planner_moods import mood_journal  # noqa: E402  (0.105.30)
 from planner_missions import mission_journal  # noqa: E402  (0.105.39)
 from planner_cleanup import CLEANUP_ACTIONS, cleanup_journal, cleanup_words  # noqa: E402  (0.105.40)
 from planner_thirst import thirst_journal  # noqa: E402  (0.105.46, I2) deaths of thirst for the journal
+from planner_recovery import recovery_journal  # noqa: E402  (0.105.46, I4) collapse recovery
 from planner_threats import note_intrusions  # noqa: E402  (0.105.30 live fixes)
 import planner_stuck  # noqa: E402  (0.105.45) the stuck sweep's soak summary
 import seen as seen_ledger  # noqa: E402  (0.105.46, I1) each full report's sections tallied
@@ -560,6 +561,7 @@ SHORT_WORDS = {
     "display_artifact": "put one of the fort's artifacts on display behind doors",
     "hunt_send": "hunt: send squads after a beast or an enemy",   # (0.105.45)
     "hunt_recall": "hunt back: call the hunting squads home",    # (0.105.45)
+    "call_migrants": "call a migrant wave (DFHack's force Migrants) to a fallen fort DF sends none to",  # (0.105.46, I4)
     "census": "count what fills the map",  # (0.104.113)
     "seal_well_stairs": "close the cavern wells' stair columns",  # (0.104.151)
     "join_levels": "join areas on one level that meet only through the stairs",  # (0.104.108)
@@ -1069,6 +1071,8 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
             journal({"kind": "cleanup", "fort": key, "date": state["date"], **e})
         for e in thirst_journal(state, memory):   # (0.105.46, I2) each death of thirst, with its last reason
             journal({"kind": "thirst_death", "fort": key, "date": state["date"], **e})
+        for e in recovery_journal(memory):        # (0.105.46, I4) recovery entered, left, migrants called
+            journal({"kind": "recovery", "fort": key, "date": state["date"], **e})
         note_tantrums(state, memory, events)     # (0.104.31) tantrums counted for the jail
         note_heists(state, memory, events)       # (0.105.24) heists and visitors' killings: visitors kept out a while
         note_intrusions(state, memory, events)   # (0.105.30) DF's invasion records: the alarm before a thief strikes

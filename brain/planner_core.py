@@ -294,6 +294,7 @@ class Memory:
     shelter_supply: dict = field(default_factory=dict)   # (0.105.36, D5) the AI shelter's last fill: {tick, drink_short, no_water, no_food, ...}
     fights: list = field(default_factory=list)           # (0.104.118) the last fights: {tick, keys, lost, of}
     called_off: dict = field(default_factory=dict)       # (0.105.26) great danger id -> tick its fight was called off
+    recovery: dict = field(default_factory=dict)         # (0.105.46, I4) collapse recovery: {since, why, floor, peak, weeks, last_rise, calls, journal} (planner_recovery)
     lure: dict = field(default_factory=dict)             # (0.105.45) opening "x,y,z" -> {tries, opened, next_try, caught, phase}: the lure pockets (planner_lure)
     order_loop: dict = field(default_factory=dict)       # (0.105.46, I3) {misses: {"recipe|MATERIAL": {tick, missing, what, snap}}, approved, approved_ids} (order_check)
     dig_seen: dict = field(default_factory=dict)         # (0.104.110) project id -> {"dug", "tick" (last progress), "freed"}
@@ -554,7 +555,10 @@ def player_rules(s: dict) -> dict:
             "cavern_farms": st.get("cavern_farms") is not False,
             # (0.105.45) hunting threats the squads can beat: off / small (thieves, ambushes,
             # wounded visitors) / ai (the default: great dangers too) (brain/planner_hunt.py)
-            "hunt": st.get("hunt") if st.get("hunt") in ("off", "small", "ai") else "ai"}
+            "hunt": st.get("hunt") if st.get("hunt") in ("off", "small", "ai") else "ai",
+            # (0.105.46, I4) a fallen fort DF sends no migrants to: the AI calls a wave
+            # (DFHack's force Migrants; brain/planner_recovery.py): off only when the settings say so
+            "call_migrants": st.get("call_migrants") is not False}
 
 
 OPEN_CAVERNS_MODES = ("ai", "always", "never")

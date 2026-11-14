@@ -182,6 +182,13 @@ def _pop_cap_rule(s: dict, memory, cfg: dict, citizens: int, proposals: list, no
         if babies:
             why += ("; DF's baby cap raised (" + ", ".join(f"{k.replace('_', ' ')} {so.get(k)} -> {v}"
                                                           for k, v in babies.items()) + ")")
+    # (0.105.46, I4) a fallen fort's cap opened to migrants past the strain and
+    # slow-game holds (brain/planner_recovery.py open_cap)
+    try:
+        from planner_recovery import open_cap
+        cap, strict, why = open_cap(s, memory, cfg, citizens, cap, strict, why, babies)
+    except Exception as e:  # noqa: BLE001
+        notes.append(f"the recovery's population cap failed ({type(e).__name__}): the cap as the sliders say")
     if (so["pop_cap"] != cap or (isinstance(so.get("strict_pop_cap"), int) and so["strict_pop_cap"] != strict)
             or babies):
         proposals.append(Proposal("pop_cap", {"type": "set_population_cap", "cap": cap, "strict": strict, **babies},
