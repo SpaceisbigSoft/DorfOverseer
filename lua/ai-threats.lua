@@ -816,7 +816,7 @@ end
 -- (state.openings, by "x,y,z"): the gates scan's cavern entrances (their
 -- doors and hatches, or the opening itself while it has none: the brain has
 -- doors put on it), each cavern well's shaft hatch (the well's own lever
--- works it: the shaft watcher shuts it while a great beast is in the caverns),
+-- works it: the shaft watcher shuts it while a danger that could come up it is near),
 -- and every door or hatch the seal found on the way down. The seal locks
 -- them all while a forgotten beast or other great danger is about.
 OPENINGS_MAX = 60

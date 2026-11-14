@@ -202,6 +202,7 @@ def _reset(beside):
     W.reset()
     B.CAVERN_NO_SPOT = None          # (0.105.4 review) the cavern search's kept "no spot"
     B.TRY_BESIDE = beside
+    B.SHAFT_WATCH = LUA.eval("{on = false}")     # (group 2) the shaft gates' holds: none from another test
 
 
 def test(name, beside=False):
@@ -1405,7 +1406,8 @@ GAME_FAKE = """
   df.job_type = {PullLever = 1, LinkBuildingToTrigger = 2}
   df.building = {find = function(id) for _, b in pairs(SB) do if b.id == id then return b end end end}
   MECHS = {}
-  df.global = {world = {items = {other = {TRAPPARTS = MECHS}}}}
+  df.global = {world = {items = {other = {TRAPPARTS = MECHS}}}, cur_year = 148, cur_year_tick = 0}
+  function LATER(t) df.global.cur_year_tick = df.global.cur_year_tick + (t or 1300) end
   dfhack.buildings = {findAtTile = function(p) return SB[p.x .. ',' .. p.y .. ',' .. p.z] end,
                       deconstruct = function(b) table.insert(DECON, b.id) end}
   dfhack.job = {removeJob = function(j) table.insert(REMOVED, j) end}
@@ -1541,6 +1543,15 @@ def _():
         assert B.well_lids(False)[1].gate == "open" and not B.well_shaft_step(False, False).ok
         s = B.well_shaft_step(True, False)
         assert s.ok and s.wells[1].stage == "closed" and pulls[2].instant == "--instant" and h.door_flags.closed is True
+        # (group 2) shut: kept shut a game day at least, then opened
+        s = B.well_shaft_step(False, False)
+        assert not s.ok and s.wells[1].stage == "held_shut" and "kept shut" in s.error, (s.error, dict(s.wells[1]))
+        assert B.well_lids(False)[1].shut_hold == 1200 and B.well_lids(False)[1].watch_rule == 2
+        later = LUA.eval("LATER")
+        later(600)
+        assert B.well_lids(False)[1].shut_hold == 600
+        later(600)
+        assert B.well_lids(False)[1].shut_hold == 0
         assert B.well_shaft_step(False, False).wells[1].stage == "opened"
         # a danger while a dwarf is on the way to pull it open: the pull called off
         lv.jobs[1] = LUA.table_from({"job_type": 1})
@@ -1549,27 +1560,82 @@ def _():
         assert s.ok and s.wells[1].stage == "closed" and len(LUA.eval("REMOVED")) == 1, dict(s.wells[1])
         # (0.104.164) a pull to open that no dwarf makes: called off, the gate opened at once
         lv.jobs[1] = LUA.table_from({"job_type": 1})
+        assert B.well_shaft_step(False, False).wells[1].stage == "held_shut"     # (group 2) not yet
+        later()
         s = B.well_shaft_step(False, False)
         assert s.ok and s.wells[1].stage == "opened" and len(LUA.eval("REMOVED")) == 2 and h.door_flags.closed is False, dict(s.wells[1])
         assert B.well_shaft_step(True, False).wells[1].stage == "closed"
         # (0.104.153) the watcher: started once the gate is linked; it shuts an open gate at once
         lv.jobs[1] = None
+        later()
         assert B.well_shaft_step(False, False).wells[1].stage == "opened" and h.door_flags.closed is False
         assert B.SHAFT_WATCH.on and B.well_lids(False)[1].watching is True
         tick = lambda: LUA.eval("function() local f = TIMERS[#TIMERS]; TIMERS[#TIMERS] = nil; f() end")()
         units = LUA.eval("UNITS")
-        units[1] = LUA.table_from({"id": 9, "animal": True, "pos": LUA.table_from({"x": 100, "y": 58, "z": 50}),
+        # (group 2) race 1 has no hands (can't climb), race 2 has
+        LUA.execute("""df.creature_raw = {find = function(r)
+            local parts = r == 2 and {{flags = {GRASP = true}}} or {{flags = {}}}
+            return {caste = {[0] = {body_info = {body_parts = parts}}}} end}
+          dfhack.units.isTame = function(u) return u.tame == true end""")
+        units[1] = LUA.table_from({"id": 9, "animal": True, "race": 1, "caste": 0,
+                                   "pos": LUA.table_from({"x": 100, "y": 58, "z": 50}),
                                    "flags1": LUA.table_from({}), "flags4": LUA.table_from({"agitated_wilderness_creature": True})})
-        tick()                                                    # 30 tiles off, not flying: left alone
-        assert h.door_flags.closed is False
+        tick()                                                    # 30 tiles off, can't fly or climb: left alone
+        assert h.door_flags.closed is False and B.well_lids(False)[1].watch_near is None
         units[1].pos.x = 85                                       # 15 tiles: shut at once, no dwarf
         n = len(LUA.eval("PULLS"))
         tick()
         assert h.door_flags.closed is True and LUA.eval("PULLS")[n + 1].instant == "--instant"
         assert B.well_lids(False)[1].watch_last.unit == 9
-        assert B.well_lids(False)[1].watch_near.id == 9                # (0.104.165) the watcher's test, said
+        wn = B.well_lids(False)[1].watch_near                      # (0.104.165) the watcher's test, said
+        assert wn.id == 9 and wn.d == 15 and wn.mobile is False and wn.reach == 35, dict(wn)
         tick()                                                    # shut: nothing more (only the brain opens it)
         assert len(LUA.eval("PULLS")) == n + 1
+        # (group 2) the hysteresis: 30 tiles off is still near a shut gate (20 + 15), and opening is refused
+        units[1].pos.x = 100
+        later(1300)                                               # a day on, still about
+        tick()
+        s = B.well_shaft_step(False, False)
+        assert not s.ok and s.wells[1].stage == "held_shut" and s.wells[1].danger and "is near" in s.error, s.error
+        units[1].pos.x = 120                                      # 50 off: gone, but only just
+        tick()
+        assert B.well_lids(False)[1].watch_near is None and B.well_lids(False)[1].shut_hold == 600
+        later(300)
+        assert B.well_shaft_step(False, False).wells[1].stage == "held_shut"
+        later(300)
+        assert B.well_lids(False)[1].shut_hold == 0
+        assert B.well_shaft_step(False, False).wells[1].stage == "opened" and h.door_flags.closed is False
+        # a climber 30 off: shut
+        units[1].race = 2
+        units[1].pos.x = 100
+        n = len(LUA.eval("PULLS"))
+        tick()
+        assert h.door_flags.closed is True and len(LUA.eval("PULLS")) == n + 1
+        assert B.well_lids(False)[1].watch_near.climber is True
+        # tame, caged, or far down in another layer: nothing
+        later(5000)
+        units[1].tame = True
+        assert B.well_lids(False)[1].watch_near is None
+        assert B.well_shaft_step(False, False).wells[1].stage == "opened"
+        units[1].tame = False
+        units[1].pos.z = 2                                        # 61 levels down (the underworld): not this shaft's
+        tick()
+        assert h.door_flags.closed is False
+        # the brain says the fort is short of water: a far walker no longer keeps it shut, no hold
+        units[1].race, units[1].pos.z, units[1].great, units[1].danger = 1, 55, True, True
+        LUA.execute("dfhack.units.isGreatDanger = function(u) return u.great == true end")
+        tick()
+        assert h.door_flags.closed is True                        # a great walker 30 off: shut (normally)
+        assert B.well_lids(False)[1].watch_near.great is True
+        s = B.well_shaft_step(False, False, True)
+        assert s.ok and s.dry and s.wells[1].stage == "opened", (s.error, dict(s.wells[1]))
+        assert B.well_lids(False)[1].watch_dry is True
+        tick()
+        assert h.door_flags.closed is False                       # dry: a walker only within 20
+        s = B.well_shaft_step(False, False, False)                 # water again: back to the usual watch
+        assert s.ok and s.dry is None and s.dry_changed
+        tick()
+        assert h.door_flags.closed is True
     finally:
         LUA.eval("function(B) B.SHAFT_WATCH.on = false; B.SHAFT_WATCH.timer = nil end")(B)
         LUA.execute(GAME_CLEAN)

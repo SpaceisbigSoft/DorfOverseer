@@ -962,16 +962,64 @@ local function shaft_kept(p)
     return shaft_left_open(p)
 end
 
+SHAFT_WATCH = SHAFT_WATCH or {on = false}
+
+local function abs_now()
+    local ok, t = pcall(function() return df.global.cur_year * 403200 + df.global.cur_year_tick end)
+    return ok and t or 0
+end
+
+local function gate_mem(pid)
+    SHAFT_WATCH.gates = SHAFT_WATCH.gates or {}
+    local g = SHAFT_WATCH.gates[pid]
+    if not g then g = {}; SHAFT_WATCH.gates[pid] = g end
+    return g
+end
+
 -- One step for each cavern well's shaft gate toward `want_closed` (a given-up
 -- shaft's always toward shut). {ok, wells = [{project_id, was, stage?, error?}]}
-function well_shaft_step(want_closed, dry_run)
+-- (group 2) Shutting shuts the gates the watcher's test (shaft_judge) finds
+-- a danger for (every gate when it finds none: the brain's own reason);
+-- opening opens only a gate with no danger near and its hold (shaft_hold)
+-- run out: "held_shut" otherwise, with the danger and the ticks left.
+-- `dry` (true/false; nil: unchanged): the brain says the fort is short of
+-- water (a far walker doesn't keep the shaft shut, no hold).
+function well_shaft_step(want_closed, dry_run, dry)
     local data = load_projects()
     local wells, changed = {}, false
     local all_closed = want_closed
+    local dry_changed = false
+    if dry ~= nil and (SHAFT_WATCH.dry == true) ~= (dry == true) then
+        dry_changed = true
+        if not dry_run then SHAFT_WATCH.dry = (dry == true) or nil end
+    end
+    -- the linked gates' dangers now, by the watcher's own test
+    local judged, hits = {}, {}
+    for _, p in ipairs(data.list) do
+        local sg = p.shaft_gate
+        if p.kind == 'well' and shaft_kept(p) and type(sg) == 'table' and sg.lever and not sg.impossible then
+            local a = anchor_of(p)
+            local h = hatch_at(a.x, a.y, shaft_bottom(p))
+            if h and h.built then
+                table.insert(judged, {x = a.x, y = a.y, z = p.z, hz = shaft_bottom(p), id = p.id,
+                                      shut = h.closed and true or false})
+            end
+        end
+    end
+    if #judged > 0 then
+        local okt, t = pcall(shaft_threats, judged)
+        if okt and type(t) == 'table' then
+            for i, hit in pairs(t) do hits[judged[i].id] = hit end
+        end
+    end
+    local any_hit = next(hits) ~= nil
+    local now = abs_now()
     for _, p in ipairs(data.list) do
         local st = p.shaft_stairs
         if shaft_kept(p) then
-            local want_closed = all_closed or p.phase == 'cancelled'
+            local hit = hits[p.id]
+            local want_closed = (all_closed and (hit ~= nil or not any_hit)) or p.phase == 'cancelled'
+            local leave = all_closed and not want_closed      -- another gate's danger: this one left as it is
             local a, hz = anchor_of(p), shaft_bottom(p)
             local g = shaft_gate_state(p)
             local r = {project_id = p.id, was = g.state, cancelled = p.phase == 'cancelled' or nil}
@@ -1087,6 +1135,17 @@ function well_shaft_step(want_closed, dry_run)
                         end
                     end
                 end
+            elseif leave and (g.state == 'pulling' or g.state == 'closed' or g.state == 'open') then
+                r.stage = g.state
+            elseif not want_closed and (g.state == 'pulling' or g.state == 'closed')
+                    and (hit or shaft_hold(p.id, sg, now) > 0) then
+                -- (group 2) a danger near, or not away long enough: kept shut
+                r.stage = 'held_shut'
+                r.wait = shaft_hold(p.id, sg, now)
+                if hit then
+                    local okr, nm = pcall(dfhack.units.getReadableName, hit.u)
+                    r.danger = okr and nm or ('unit ' .. tostring(hit.u and hit.u.id))
+                end
             elseif g.state == 'pulling' then
                 -- rv 9: a dwarf on the way to pull it: called off (a late pull would
                 -- toggle the gate the wrong way), and the gate set at once
@@ -1096,6 +1155,10 @@ function well_shaft_step(want_closed, dry_run)
                     if g.hatch.closed ~= (want_closed == true) then
                         local ok, out = pull(g.lever.id, true)
                         if not ok then r.error = 'lever pull failed: ' .. tostring(out):sub(1, 120) end
+                    end
+                    if want_closed and not r.error then
+                        gate_mem(p.id).shut_at, gate_mem(p.id).seen = now, hit and now or gate_mem(p.id).seen
+                        if sg then sg.shut_at, changed = now, true end
                     end
                 end
                 if not r.error then r.stage = want_closed and 'closed' or 'opened' end
@@ -1114,6 +1177,10 @@ function well_shaft_step(want_closed, dry_run)
                         local ok, out = pull(g.lever.id, true)
                         if ok then r.stage = want_closed and 'closed' or 'opened'
                         else r.error = 'lever pull failed: ' .. tostring(out):sub(1, 120) end
+                        if ok and want_closed then
+                            gate_mem(p.id).shut_at, gate_mem(p.id).seen = now, hit and now or gate_mem(p.id).seen
+                            sg.shut_at, changed = now, true
+                        end
                     end
                 else
                     r.stage = g.state
@@ -1131,15 +1198,25 @@ function well_shaft_step(want_closed, dry_run)
         local linked = r.was == 'open' or r.was == 'closed' or r.was == 'pulling'
         if linked and not dry_run and shaft_watch_start() then watch_started = true end
     end
-    local acted = watch_started
+    local acted = watch_started or dry_changed
     for _, r in ipairs(wells) do
         if not r.error and r.stage and r.stage ~= r.was and r.stage ~= 'waiting_mechanisms'
-                and r.stage ~= 'waiting_parts' and r.stage ~= 'breaking_through' then acted = true end
+                and r.stage ~= 'waiting_parts' and r.stage ~= 'breaking_through' and r.stage ~= 'held_shut' then
+            acted = true
+        end
     end
-    if dry_run then return {ok = true, dry_run = true, wells = wells} end
-    if acted then return {ok = true, wells = wells} end
+    local dry_now = SHAFT_WATCH.dry == true or nil
+    if dry_run then return {ok = true, dry_run = true, wells = wells, dry = dry_now} end
+    if acted then return {ok = true, wells = wells, dry = dry_now, dry_changed = dry_changed or nil} end
+    local why = wells[1].error
+    for _, r in ipairs(wells) do
+        if not why and r.stage == 'held_shut' then
+            why = 'kept shut: ' .. (r.danger and (tostring(r.danger) .. ' is near') or
+                                    ('the danger has been away too short a while, ' .. tostring(r.wait) .. ' ticks to go'))
+        end
+    end
     return {ok = false, rejected = true, wells = wells,
-            error = wells[1].error or ('nothing to do: ' .. tostring(wells[1].stage or wells[1].was))}
+            error = why or ('nothing to do: ' .. tostring(wells[1].stage or wells[1].was))}
 end
 
 -- (0.104.153) A wild animal that attacks: a large predator, or one DF has
@@ -1161,16 +1238,86 @@ end
 
 -- (0.104.153) The shaft watcher: every SHAFT_WATCH_TICKS inside the game
 -- (the brain reads the fort once a game day: a flier crosses 60 tiles
--- sooner), an open shaft gate is shut at once when an enemy comes near
--- below it: a danger (isDanger) or a flying hostile animal within
--- SHAFT_NEAR tiles, any hostile one within SHAFT_CLOSE tiles, or anything
--- hostile in the shaft itself. It only shuts; the brain opens it again once
--- the cavern is clear. Lives while the game runs; `well_lids` says whether
--- it is on, and the `well_shaft` action starts it.
+-- sooner), an open shaft gate is shut at once when a real danger comes near
+-- below it. It only shuts; the brain opens it again (well_shaft) once
+-- shaft_hold says the danger has been away long enough. Lives while the
+-- game runs; `well_lids` says whether it is on, and the `well_shaft`
+-- action starts it.
+--
+-- (group 2, 14 Nov) E and F: the shafts shut for Lizard Devil, Brine
+-- Specter, Steam Monster (demons down in the underworld, z 0-2, 140 levels
+-- under the shaft: the old "a great danger anywhere below, however far"),
+-- and opened again whenever a citizen stepped into a cavern (that rule's
+-- exception), well_shaft 49 and 32 times, 186 dead of thirst over the
+-- forts. Now (shaft_judge, the brain reads the same verdict in well_lids):
+--   * only a danger (isDanger: forgotten beasts, invaders, ...) or a hostile
+--     wild animal (agitated, a large predator); never tame, caged, chained,
+--     peaceful wildlife (vermin are no units);
+--   * only in the shaft itself (its column, 2 tiles round) or in the very
+--     cavern the shaft opens into (its map feature; another cavern layer, the
+--     magma sea or the underworld is walled off by rock);
+--   * by how it could come up: a flier or a climber (grasping parts) within
+--     SHAFT_NEAR (a great one within SHAFT_FAR), one that only walks or
+--     swims within SHAFT_CLOSE (a great one within SHAFT_NEAR, but only
+--     SHAFT_CLOSE while the brain says the fort is short of water: `dry`);
+--   * a shut gate counts it SHAFT_MARGIN tiles further (no flapping at the
+--     edge), stays shut SHAFT_MIN_SHUT ticks at least and opens only once no
+--     danger was seen for SHAFT_CLEAR ticks (not while short of water).
 SHAFT_WATCH_TICKS = 100
-SHAFT_NEAR = 60
-SHAFT_CLOSE = 20
+SHAFT_CLOSE = 20        -- a walker or swimmer this near below (tiles, levels counted too)
+SHAFT_NEAR = 60         -- a flier or climber (or a great walker) this near
+SHAFT_FAR = 80          -- a great flier or climber (a forgotten beast) this near
+SHAFT_MARGIN = 15       -- a shut gate: counted this much further (hysteresis)
+SHAFT_DRY_MARGIN = 5    -- ...a walker's, while the fort is short of water
+SHAFT_LEVELS = 15       -- the cavern unknown (no map feature): only this many levels below
+SHAFT_MIN_SHUT = 1200   -- ticks (a game day) a shut gate stays shut at least
+SHAFT_CLEAR = 600       -- ticks no danger may be seen before it opens again
 SHAFT_WATCH = SHAFT_WATCH or {on = false}
+
+-- Pure: may this creature come up this shaft? c = {x, y, z, great, flier,
+-- climber (nil: unknown, taken as yes), layer_match (true: the shaft's own
+-- cavern, false: another, nil: unknown)}, w = {x, y, z (the well), hz (the
+-- shaft's bottom)}, opts = {shut, dry}. The verdict {d, in_shaft, mobile,
+-- great, reach} or nil.
+function shaft_judge(c, w, opts)
+    opts = opts or {}
+    local dx = math.max(math.abs(c.x - w.x), math.abs(c.y - w.y))
+    if c.z >= w.hz then
+        if c.z < w.z and dx <= 2 then
+            return {d = dx, in_shaft = true, mobile = true, great = c.great or nil, reach = 2}
+        end
+        return nil                       -- above the cavern, not in the shaft: the fort's own watch
+    end
+    if c.layer_match == false then return nil end
+    local dz = w.hz - c.z
+    if c.layer_match == nil and dz > SHAFT_LEVELS then return nil end
+    local d = math.max(dx, dz)
+    local mobile = (c.flier == true) or (c.climber ~= false)
+    local reach
+    if mobile then
+        reach = c.great and SHAFT_FAR or SHAFT_NEAR
+    else
+        reach = (c.great and not opts.dry) and SHAFT_NEAR or SHAFT_CLOSE
+    end
+    if opts.shut then
+        -- short of water a walker's margin is smaller (the brain's SHAFT_DRY_REACH: 20 + 5)
+        reach = reach + ((opts.dry and not mobile) and SHAFT_DRY_MARGIN or SHAFT_MARGIN)
+    end
+    if d > reach then return nil end
+    return {d = d, mobile = mobile, great = c.great or nil, reach = reach}
+end
+
+-- Ticks before a shut gate may be opened again (0: now).
+function shaft_hold(pid, sg, now)
+    if SHAFT_WATCH.dry then return 0 end
+    now = now or abs_now()
+    local g = (SHAFT_WATCH.gates or {})[pid] or {}
+    local shut_at = g.shut_at or (type(sg) == 'table' and sg.shut_at) or nil
+    if not shut_at or now < shut_at then return 0 end
+    local seen = g.seen or shut_at
+    if now < seen then seen = shut_at end
+    return math.max(0, SHAFT_MIN_SHUT - (now - shut_at), SHAFT_CLEAR - (now - seen))
+end
 
 -- (0.105.33 L5) DFHack cancels every non-'frames' timer when the world
 -- unloads, so a saved timer id can be dead: ask DFHack, not the id.
@@ -1187,51 +1334,82 @@ if dfhack and dfhack.onStateChange then
     end
 end
 
--- (0.105.26) a citizen down in a cavern (on a cavern tile): a far great
--- beast doesn't shut the shaft on them (the brain tells the player)
-local function citizen_in_caverns()
+-- (group 2) climbing takes a grasping part (DF: no hands, no climbing).
+-- nil when the raws can't be read (then taken as a climber).
+local function unit_climbs(u)
     local ok, yes = pcall(function()
-        for _, c in ipairs(dfhack.units.getCitizens(true)) do
-            local des = dfhack.maps.getTileFlags(c.pos.x, c.pos.y, c.pos.z)
-            if des and (des.feature_global or des.feature_local) then return true end
+        for _, bp in ipairs(df.creature_raw.find(u.race).caste[u.caste].body_info.body_parts) do
+            if bp.flags.GRASP then return true end
         end
         return false
     end)
-    return ok and yes or false
+    if ok then return yes end
+    return nil
 end
 
--- (0.105.26) F lost 54 and C 12 to forgotten beasts come up through
--- caverns the AI opened: a forgotten beast or other great danger anywhere
--- below the shaft (in the caverns), however far, shuts it too, and keeps
--- it shut (the brain opens it again once none is about: the well draws no
--- water through a shut hatch). Not while a citizen is down in a cavern.
-local function shaft_threat_near(wells)
-    local below_ok                 -- nil: not asked yet
+-- the map feature (a cavern layer) a tile's block belongs to; nil: none or unknown
+local function feature_at(x, y, z)
+    local ok, f = pcall(function()
+        local b = dfhack.maps.getTileBlock(x, y, z)
+        return b and b.global_feature
+    end)
+    if ok and type(f) == 'number' and f >= 0 then return f end
+    return nil
+end
+
+-- The worst danger for each well: {[i] = {u, v}} (v: shaft_judge's verdict),
+-- the nearest one, one in the shaft first. wells: {x, y, z, hz, shut}.
+function shaft_threats(wells)
+    local out = {}
+    for _, w in ipairs(wells) do
+        if w.cave == nil then w.cave = feature_at(w.x, w.y, w.hz - 1) or feature_at(w.x, w.y, w.hz) or false end
+    end
+    local dry = SHAFT_WATCH.dry == true
     for _, u in ipairs(df.global.world.units.active) do
-        local ok, hit = pcall(function()
-            if not dfhack.units.isActive(u) or dfhack.units.isDead(u) or dfhack.units.isCitizen(u, true) then return false end
-            if u.flags1.caged or u.flags1.chained then return false end
+        pcall(function()
+            if not dfhack.units.isActive(u) or dfhack.units.isDead(u) or dfhack.units.isCitizen(u, true) then return end
+            if u.flags1.caged or u.flags1.chained then return end
+            local okf, fort = pcall(dfhack.units.isFortControlled, u)
+            if okf and fort then return end
+            local okt, tame = pcall(dfhack.units.isTame, u)
+            if okt and tame then return end
             local danger = dfhack.units.isDanger(u)
-            local wild = not danger and hostile_wild(u)
-            if not (danger or wild) then return false end
-            local fly = unit_flies(u)
+            if not (danger or hostile_wild(u)) then return end
             local okg, great = pcall(dfhack.units.isGreatDanger, u)
-            great = okg and great or false
-            for _, w in ipairs(wells) do
-                local d = math.max(math.abs(u.pos.x - w.x), math.abs(u.pos.y - w.y))
-                if u.pos.z < w.hz then
-                    if d <= SHAFT_CLOSE or (d <= SHAFT_NEAR and (danger or fly)) then return w end
-                    if great then
-                        if below_ok == nil then below_ok = not citizen_in_caverns() end
-                        if below_ok then return w end
+            local c = {x = u.pos.x, y = u.pos.y, z = u.pos.z, great = (okg and great) or nil,
+                       flier = unit_flies(u)}
+            local uf, asked
+            for i, w in ipairs(wells) do
+                if c.z < w.hz then
+                    if not asked and c.flier ~= true then c.climber, asked = unit_climbs(u), true end
+                    if w.cave then
+                        if uf == nil then uf = feature_at(c.x, c.y, c.z) or false end
+                        c.layer_match = (uf == w.cave)
+                    else
+                        c.layer_match = nil
                     end
-                elseif u.pos.z < w.z and d <= 2 then
-                    return w                        -- in the shaft or on its stairs
+                end
+                local v = shaft_judge(c, w, {shut = w.shut, dry = dry})
+                if v then
+                    v.flier = c.flier or nil
+                    v.climber = (c.climber == true) or nil
+                    local old = out[i]
+                    if not old or (v.in_shaft and not old.v.in_shaft)
+                            or (not old.v.in_shaft and v.d < old.v.d) then
+                        out[i] = {u = u, v = v}
+                    end
                 end
             end
-            return false
         end)
-        if ok and hit then return hit, u end
+    end
+    return out
+end
+
+-- (kept for callers of the old name) the first well with a danger, and the unit
+function shaft_threat_near(wells)
+    local hits = shaft_threats(wells)
+    for i, w in ipairs(wells) do
+        if hits[i] then return w, hits[i].u, hits[i].v end
     end
 end
 
@@ -1240,28 +1418,38 @@ local function shaft_watch_tick()
     if not SHAFT_WATCH.on then return end
     local ok, err = pcall(function()
         local wells = {}
-        for _, p in ipairs(load_projects().list) do
+        local data = load_projects()
+        for _, p in ipairs(data.list) do
             -- a linked gate (its ids saved): only its hatch and lever read, not every
             -- building's links (this runs 12 times a game day)
             local sg = p.shaft_gate
             if p.kind == 'well' and sg and sg.lever_id and sg.hatch_id and not sg.impossible then
                 local a = anchor_of(p)
                 local h = hatch_at(a.x, a.y, shaft_bottom(p))
-                if h and h.built and h.id == sg.hatch_id and not h.closed then
-                    local pending = job_of(sg.lever_id, df.job_type.PullLever)
-                    table.insert(wells, {x = a.x, y = a.y, z = p.z, hz = shaft_bottom(p), id = p.id,
-                                         lever_id = sg.lever_id, pending = pending})
+                if h and h.built and h.id == sg.hatch_id then
+                    table.insert(wells, {x = a.x, y = a.y, z = p.z, hz = shaft_bottom(p), id = p.id, p = p,
+                                         lever_id = sg.lever_id, shut = h.closed and true or false})
                 end
             end
         end
         if #wells == 0 then return end
-        local w, u = shaft_threat_near(wells)
-        if w then
-            if w.pending then pcall(dfhack.job.removeJob, w.pending) end
-            pull(w.lever_id, true)
-            SHAFT_WATCH.last = {project_id = w.id, tick = df.global.cur_year_tick, year = df.global.cur_year,
-                                unit = u and u.id or nil}
+        local now, saved = abs_now(), false
+        for i, hit in pairs(shaft_threats(wells)) do
+            local w = wells[i]
+            local g = gate_mem(w.id)
+            g.seen = now
+            if not w.shut then
+                local pending = job_of(w.lever_id, df.job_type.PullLever)
+                if pending then pcall(dfhack.job.removeJob, pending) end
+                pull(w.lever_id, true)
+                g.shut_at = now
+                w.p.shaft_gate.shut_at = now
+                saved = true
+                SHAFT_WATCH.last = {project_id = w.id, tick = df.global.cur_year_tick, year = df.global.cur_year,
+                                    unit = hit.u and hit.u.id or nil}
+            end
         end
+        if saved and save_projects then pcall(save_projects, data) end
     end)
     SHAFT_WATCH.error = (not ok) and tostring(err):sub(1, 160) or nil
     SHAFT_WATCH.timer = dfhack.timeout(SHAFT_WATCH_TICKS, 'ticks', shaft_watch_tick)
@@ -1337,17 +1525,29 @@ function well_lids(probe, data)
                     -- (0.104.165) what the watcher would shut it for now, by its own test: the
                     -- report's wild list holds only animals in a "Cavern" layer, and the brain
                     -- reopened the gate under a predator the watcher saw (Teacheroar, unit
-                    -- 6300), the watcher shutting it again at once
+                    -- 6300), the watcher shutting it again at once. (group 2) The same
+                    -- verdict the watcher and well_shaft act on (shaft_judge), and the hold
+                    -- left before a shut gate may open (shaft_hold): the brain decides by them.
                     local an = anchor_of(p)
-                    local okn, hit, u = pcall(shaft_threat_near, {{x = an.x, y = an.y, z = p.z, hz = shaft_bottom(p)}})
-                    if okn and hit and u then
+                    local shut = g.state ~= 'open'
+                    r.watch_rule = 2
+                    local okn, hits = pcall(shaft_threats, {{x = an.x, y = an.y, z = p.z, hz = shaft_bottom(p), shut = shut}})
+                    local hit = okn and type(hits) == 'table' and hits[1] or nil
+                    if hit and hit.u then
+                        local u, v = hit.u, hit.v
                         local okr, nm = pcall(dfhack.units.getReadableName, u)
                         if okr and dfhack.df2utf then local okc, c = pcall(dfhack.df2utf, nm); if okc and c then nm = c end end
                         r.watch_near = {id = u.id, name = okr and nm or nil,
-                                        pos = {x = u.pos.x, y = u.pos.y, z = u.pos.z}}
-                        local okgd, gd = pcall(dfhack.units.isGreatDanger, u)          -- (0.105.26)
-                        if okgd and gd then r.watch_near.great = true end
+                                        pos = {x = u.pos.x, y = u.pos.y, z = u.pos.z},
+                                        d = v.d, reach = v.reach, great = v.great, flier = v.flier,
+                                        climber = v.climber, mobile = v.mobile and true or false,
+                                        in_shaft = v.in_shaft}
                     end
+                    if shut then
+                        local okh, hold = pcall(shaft_hold, p.id, p.shaft_gate)
+                        r.shut_hold = okh and hold or 0
+                    end
+                    if SHAFT_WATCH.dry then r.watch_dry = true end
                 end
             else
                 r.gate_error = tostring(g):sub(1, 120)

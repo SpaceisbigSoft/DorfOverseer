@@ -635,6 +635,11 @@ def _cavern_beasts(s, cfg, memory, t, rules, proposals, notes):
                              "locked while it is about: the AI doesn't send them down after it")
         shafts = [x for x in _l(_d(s.get("projects")).get("well_lids")) if isinstance(x, dict)
                   and x.get("gate") in ("open", "closed", "pulling")]
+        # (group 2) a bridge that judges the shaft itself shuts it only for a
+        # danger that could come up it (not for every beast in the caverns): said
+        # only for a shaft shut now
+        if shafts and any((x.get("watch_rule") or 0) >= 2 for x in shafts):
+            shafts = [x for x in shafts if x.get("gate") in ("closed", "pulling")]
         if shafts:
             notes.append(f"the cavern well's shaft is shut while {who} is about: the well draws no water until "
                          "it's gone (then it's opened again)")
