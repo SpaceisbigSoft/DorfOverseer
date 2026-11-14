@@ -409,28 +409,61 @@ assert(load(src, 'ai-builder-wells', 't', e))()
 return e
 """
 
-    @test("lua wells: the shaft watcher shuts the shaft for a forgotten beast anywhere below, not with a dwarf down there")
+    @test("lua wells (group 2): a forgotten beast shuts the shaft only near it in its own cavern, not anywhere below")
     def _():
         E = LUA.execute(WELLS_GAME, (ROOT / "lua" / "ai-builder-wells.lua").read_text(encoding="utf-8"))
         T = E.T
         T.units[1] = LUA.table_from({"id": 9, "danger": True, "great": True, "flags1": LUA.table_from({}),
                                      "pos": LUA.table_from({"x": 150, "y": 150, "z": 30})})    # 140 tiles off
-        T.citizens[1] = LUA.table_from({"id": 1, "pos": LUA.table_from({"x": 5, "y": 5, "z": 30})})   # in the cavern
         E.shaft_watch_start()
         T.timers[len(T.timers)]()
-        assert len(T.pulls) == 0 and T.hatch.door_flags.closed is False      # a dwarf down there: left open
-        T.citizens[1].pos.z = 50
+        assert len(T.pulls) == 0 and T.hatch.door_flags.closed is False      # (was: shut, E and F went thirsty)
+        T.units[1].pos.x, T.units[1].pos.y = 80, 80                         # 70 off, may climb: within 80
         T.timers[len(T.timers)]()
         assert list(T.pulls.values()) == [8] and T.hatch.door_flags.closed is True
-        # an ordinary danger that far: left alone (as before)
         E.SHAFT_WATCH.on = False
+        # a demon in the underworld under it (38 levels down, no cavern known): never
         E2 = LUA.execute(WELLS_GAME, (ROOT / "lua" / "ai-builder-wells.lua").read_text(encoding="utf-8"))
-        E2.T.units[1] = LUA.table_from({"id": 9, "danger": True, "flags1": LUA.table_from({}),
-                                        "pos": LUA.table_from({"x": 150, "y": 150, "z": 30})})
+        E2.T.units[1] = LUA.table_from({"id": 9, "danger": True, "great": True, "flags1": LUA.table_from({}),
+                                        "pos": LUA.table_from({"x": 12, "y": 10, "z": 2})})
         E2.shaft_watch_start()
         E2.T.timers[len(E2.T.timers)]()
         assert len(E2.T.pulls) == 0
+        # a caged one, right under it: never
+        E2.T.units[1].pos.z = 35
+        E2.T.units[1].flags1.caged = True
+        E2.T.timers[len(E2.T.timers)]()
+        assert len(E2.T.pulls) == 0
         E2.SHAFT_WATCH.on = False
+
+    @test("lua wells (group 2): shaft_judge, the verdict the watcher, well_shaft and the brain share")
+    def _():
+        E = LUA.execute(WELLS_GAME, (ROOT / "lua" / "ai-builder-wells.lua").read_text(encoding="utf-8"))
+        t = lambda **k: LUA.table_from(k)
+        w = t(x=100, y=100, z=150, hz=140)
+        J = lambda c, **o: E.shaft_judge(t(**c), w, t(**o))
+        base = dict(x=130, y=100, z=135, layer_match=True)                  # 30 tiles off, in the shaft's cavern
+        assert J(dict(base, flier=True)).reach == 60                        # a flier: within 60
+        assert J(dict(base, climber=False)) is None                         # a walker: 20 only
+        assert J(dict(base, climber=False, x=115)).d == 15
+        assert J(dict(base)).mobile is True                                 # unknown: taken as a climber
+        assert J(dict(base, climber=False, great=True)).reach == 60          # a great walker: 60...
+        assert J(dict(base, climber=False, great=True), dry=True) is None   # ...but 20 while short of water
+        assert J(dict(base, x=170, great=True)).reach == 80                 # a great climber: 80
+        assert J(dict(base, flier=True, layer_match=False)) is None         # another cavern: walled off by rock
+        assert J(dict(base, flier=True, layer_match=None, z=100)) is None   # unknown cavern, 40 levels down
+        assert J(dict(base, climber=False), shut=True).reach == 35   # shut: 15 further (no flapping)
+        assert J(dict(base, climber=False), shut=True, dry=True) is None   # short of water: 5 only
+        assert J(dict(x=101, y=100, z=145, climber=False)).in_shaft          # in the shaft: always
+        assert J(dict(x=110, y=100, z=145, flier=True)) is None              # above the cavern, not in it
+        # the hold: shut a day at least, the danger away half a day
+        E.SHAFT_WATCH.gates = LUA.table_from({})
+        E.SHAFT_WATCH.gates[3] = t(shut_at=1000, seen=1500)
+        assert E.shaft_hold(3, None, 1100) == 1100 and E.shaft_hold(3, None, 2050) == 150
+        assert E.shaft_hold(3, None, 2100) == 100 and E.shaft_hold(3, None, 2200) == 0 and E.shaft_hold(4, t(shut_at=1000), 1600) == 600
+        assert E.shaft_hold(5, None, 1600) == 0                             # never shut by the AI: no hold
+        E.SHAFT_WATCH.dry = True
+        assert E.shaft_hold(3, None, 1100) == 0                             # short of water: no hold
 
     @test("bridge: seal_cavern takes openings (no tiles needed then) and passes it on")
     def _():

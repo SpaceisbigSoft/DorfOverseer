@@ -750,7 +750,10 @@ def short(a: dict) -> str:
     if t == "convict":           # (0.104.131)
         return f"convict {a.get('max')} solved case(s)"
     if t == "well_shaft":        # (0.104.152)
-        return "shut the cavern well's shaft" if a.get("close") else "the cavern well's shaft gate: its next step"
+        words = "shut the cavern well's shaft" if a.get("close") else "the cavern well's shaft gate: its next step"
+        if a.get("dry") is not None:      # (group 2) the fort short of water, or not
+            words += " (short of water: a far walker doesn't keep it shut)" if a.get("dry") else " (water again)"
+        return words
     if t == "prioritize_dig":    # (0.104.128)
         return f"dig level {a.get('project_id')} before the rest"
     if t == "mark_run":          # (0.105.0)

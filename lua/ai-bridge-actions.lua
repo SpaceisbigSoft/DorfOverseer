@@ -506,7 +506,10 @@ end
 -- (0.104.152) the cavern wells' shaft hatch: placed, linked to its lever, opened;
 -- shut (at once) while a danger is in the caverns
 function act_well_shaft(a)
-    return reqscript('ai-builder').well_shaft_step(a.close == true, a.dry_run == true)
+    -- (group 2) dry: the brain says the fort is short of water (nil: unchanged)
+    local dry = nil
+    if a.dry ~= nil then dry = a.dry == true end
+    return reqscript('ai-builder').well_shaft_step(a.close == true, a.dry_run == true, dry)
 end
 
 function act_finish_project(a)

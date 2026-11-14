@@ -20,7 +20,7 @@ def _far_args(cfg: dict) -> dict:
         out["far_reach"] = 0
     return out
 
-__all__ = ["_well_rule", "_well_lid_rule", "SHAFT_LINK_LOST_MAX", "SHAFT_DANGER_TILES", "SHAFT_DANGER_OPEN", "cavern_danger", "_water_zone_rule", "cavern_points", "cavern_action", "cavern_well_need", "unfound_cavern", "cavern_well_safe", "WELL_PARTS_SHOPS", "CHAIN_SKIP", "chain_metal", "well_parts_plan", "_well_parts", "_water_traffic_rule", "cistern_pop", "WATER_WORDS", "magma_access", "water_summary", "_water_rules", "CISTERN_WORDS", "_cistern_parts", "_cistern_rule", "WELLS_CONFIG", "shut_wells", "usable_wells", "ai_opens_cavern", "cavern_soldiers_ready", "cavern_open_words", "CISTERN_RETRY_SEALS", "CISTERN_RELINK_ROUNDS", "CISTERN_SHUT_RULE"]
+__all__ = ["_well_rule", "_well_lid_rule", "SHAFT_LINK_LOST_MAX", "SHAFT_DANGER_TILES", "SHAFT_DANGER_OPEN", "SHAFT_DRY_REACH", "shaft_judged", "shaft_danger_words", "shaft_far_walker", "shaft_water_short", "cavern_danger", "_water_zone_rule", "cavern_points", "cavern_action", "cavern_well_need", "unfound_cavern", "cavern_well_safe", "WELL_PARTS_SHOPS", "CHAIN_SKIP", "chain_metal", "well_parts_plan", "_well_parts", "_water_traffic_rule", "cistern_pop", "WATER_WORDS", "magma_access", "water_summary", "_water_rules", "CISTERN_WORDS", "_cistern_parts", "_cistern_rule", "WELLS_CONFIG", "shut_wells", "usable_wells", "ai_opens_cavern", "cavern_soldiers_ready", "cavern_open_words", "CISTERN_RETRY_SEALS", "CISTERN_RELINK_ROUNDS", "CISTERN_SHUT_RULE"]
 
 # (0.105.33 B4) the wells' own settings (merged into PLANNER_CONFIG, as planner_threats does)
 WELLS_CONFIG = {
@@ -62,15 +62,22 @@ def _well_rule(s: dict, memory, traits: dict, cfg: dict, proposals: list, notes:
     pr = _d(s.get("projects"))
     lids = [x for x in _l(pr.get("well_lids")) if isinstance(x, dict) and x.get("gate")]
     shaft_danger = ""
+    judged = shaft_judged(lids)
     if lids:
-        shaft_danger = cavern_danger(s, lids, SHAFT_DANGER_OPEN)
+        # (group 2) by the bridge's own verdict when it gives one (a shut gate
+        # whose hold runs is shut for a while only too); the report's threat
+        # list only for an older bridge
+        shaft_danger = "" if judged else cavern_danger(s, lids, SHAFT_DANGER_OPEN)
         if not shaft_danger:
             near = next((_d(x.get("watch_near")) for x in lids if _d(x.get("watch_near"))), None)
             if near:
                 shaft_danger = str(near.get("name") or "a wild beast")
+        if not shaft_danger and judged and any((x.get("shut_hold") or 0) > 0 for x in lids
+                                               if x.get("gate") == "closed"):
+            shaft_danger = "a danger lately"
     if shaft_danger:
         wells = int(_d(_d(s.get("buildings")).get("other")).get("Well", 0) or 0)
-        if shut_wells(s, ("closed",)):
+        if shut_wells(s, ("closed",)) and not judged:
             notes.append(f"the cavern well's shaft is shut while {shaft_danger} is near: still counted as a well")
     else:
         wells = usable_wells(s, ("closed",))
@@ -281,14 +288,22 @@ def _well_lid_rule(s: dict, proposals: list, notes: list) -> None:
                      + ", ".join(where(x) for x in blocked[:2]) + "): left alone")
     # the shaft gate
     gates = [x for x in lids if x.get("gate")]
+    judged = shaft_judged(gates)
     shut = [x for x in gates if x.get("gate") == "closed"]
-    danger = cavern_danger(s, gates, SHAFT_DANGER_OPEN if shut else SHAFT_DANGER_TILES)
-    if not danger:
-        # (0.104.165) the in-game watcher's own test: it would shut the gate for this
-        # one now, so it isn't opened (Teacheroar: opened, shut again for unit 6300)
-        near = next((_d(x.get("watch_near")) for x in gates if _d(x.get("watch_near"))), None)
-        if near:
-            danger = str(near.get("name") or "a wild beast")
+    if judged:
+        # (group 2) the bridge's own verdict (shaft_judge in ai-builder-wells.lua),
+        # the one its watcher shuts by and well_shaft opens by: the brain no
+        # longer second-guesses it with the report's threat list
+        near = [x for x in gates if _d(x.get("watch_near"))]
+        danger = shaft_danger_words(_d(near[0].get("watch_near"))) if near else ""
+    else:
+        danger = cavern_danger(s, gates, SHAFT_DANGER_OPEN if shut else SHAFT_DANGER_TILES)
+        if not danger:
+            # (0.104.165) the in-game watcher's own test: it would shut the gate for this
+            # one now, so it isn't opened (Teacheroar: opened, shut again for unit 6300)
+            near = next((_d(x.get("watch_near")) for x in gates if _d(x.get("watch_near"))), None)
+            if near:
+                danger = str(near.get("name") or "a wild beast")
     # (review) never while a danger is near: no dwarf is sent down beside the opening
     # (0.104.156) one pool of mechanisms for every gate: a link takes 2 of them,
     # and only ones the lever can reach (Teacheroar, 1 Nov: well 218's link took
@@ -325,34 +340,26 @@ def _well_lid_rule(s: dict, proposals: list, notes: list) -> None:
                 ok_gates.append(x)
                 pool -= 2
     build = [] if danger else ok_gates
-    # (0.104.164) a pull a dwarf never made ("pulling" for good) is turned too: the bridge sets the gate at once
-    # (0.105.33 L5) a given-up well's shaft (no well over it) is kept shut, never opened
-    turn = [x for x in gates if (x.get("gate") in ("open", "pulling") and (danger or x.get("cancelled")))
-            or (x.get("gate") in ("closed", "pulling") and not danger and not x.get("cancelled"))]
-    if danger and turn:
-        proposals.append(Proposal("well_shaft", {"type": "well_shaft", "close": True},
-                                  f"{danger} near the cavern well: shut its shaft (its hatch, at once)", 2))
-    elif turn or build or any(x.get("watching") is False for x in gates):
-        if build and any(x.get("gate") in ("none", "stray", "no_lever") for x in build):
-            why = ("the cavern well's shaft stands open to the cavern: a lever near the well first, then a hatch "
-                   "at the shaft's bottom on it (opened so the bucket passes, shut while a danger is near)")
-        elif build:
-            steps = []
-            if any(x.get("gate") == "unlinked" for x in build):
-                steps.append("the cavern well's shaft hatch and lever are built: link them")
-            if any(x.get("gate") == "no_hatch" and x.get("held") for x in build):
-                steps.append("the cavern well's lever stands, a hatch cover and 2 mechanisms are in store: dig the "
-                             "shaft's last level into the cavern, then the hatch on it at once")
-            if any(x.get("gate") == "no_hatch" and not x.get("held") for x in build):
-                steps.append("the cavern well's lever stands and 2 mechanisms are free: the hatch at the shaft's bottom")
-            why = "; ".join(steps)
-        elif not turn:
-            why = "the cavern well's shaft watcher isn't running (the game was loaded): start it"
-        elif all(x.get("cancelled") for x in turn):
-            why = "a given-up cavern well's shaft stands open to the cavern: shut its hatch"
-        else:
-            why = "no danger near the cavern well now: open its shaft again"
-        proposals.append(Proposal("well_shaft", {"type": "well_shaft", "close": bool(danger)}, why, 3))
+    if judged:
+        _shaft_turn(s, gates, build, proposals, notes)
+    else:
+        # (0.104.164) a pull a dwarf never made ("pulling" for good) is turned too: the bridge sets the gate at once
+        # (0.105.33 L5) a given-up well's shaft (no well over it) is kept shut, never opened
+        turn = [x for x in gates if (x.get("gate") in ("open", "pulling") and (danger or x.get("cancelled")))
+                or (x.get("gate") in ("closed", "pulling") and not danger and not x.get("cancelled"))]
+        if danger and turn:
+            proposals.append(Proposal("well_shaft", {"type": "well_shaft", "close": True},
+                                      f"{danger} near the cavern well: shut its shaft (its hatch, at once)", 2))
+        elif turn or build or any(x.get("watching") is False for x in gates):
+            why = _shaft_build_words(build)
+            if not why:
+                if not turn:
+                    why = "the cavern well's shaft watcher isn't running (the game was loaded): start it"
+                elif all(x.get("cancelled") for x in turn):
+                    why = "a given-up cavern well's shaft stands open to the cavern: shut its hatch"
+                else:
+                    why = "no danger near the cavern well now: open its shaft again"
+            proposals.append(Proposal("well_shaft", {"type": "well_shaft", "close": bool(danger)}, why, 3))
     mech = free_stock(s, "mechanisms")
     far_at = _d(s.get("stocks")).get("mechanisms_unwalkable_at")
     if far_at:                                                    # (0.104.156)
@@ -375,6 +382,153 @@ SHAFT_DANGER_TILES = 60          # (0.104.152) a danger this close to a cavern w
 
 
 SHAFT_DANGER_OPEN = 80           # ...and opened again only once it's this far (no flapping)
+
+
+SHAFT_DRY_REACH = 25             # (group 2) the bridge's SHAFT_CLOSE + SHAFT_DRY_MARGIN: a walker this near a shut
+                                 # shaft keeps it shut even while the fort is short of water
+
+
+def _shaft_build_words(build: list) -> str:
+    """The well_shaft step's words for the gates still being built ("" when none)."""
+    if build and any(x.get("gate") in ("none", "stray", "no_lever") for x in build):
+        return ("the cavern well's shaft stands open to the cavern: a lever near the well first, then a hatch "
+                "at the shaft's bottom on it (opened so the bucket passes, shut while a danger is near)")
+    steps = []
+    if any(x.get("gate") == "unlinked" for x in build):
+        steps.append("the cavern well's shaft hatch and lever are built: link them")
+    if any(x.get("gate") == "no_hatch" and x.get("held") for x in build):
+        steps.append("the cavern well's lever stands, a hatch cover and 2 mechanisms are in store: dig the "
+                     "shaft's last level into the cavern, then the hatch on it at once")
+    if any(x.get("gate") == "no_hatch" and not x.get("held") for x in build):
+        steps.append("the cavern well's lever stands and 2 mechanisms are free: the hatch at the shaft's bottom")
+    return "; ".join(steps)
+
+
+def shaft_judged(gates: list) -> bool:
+    """(group 2) The bridge judges the shaft's dangers itself (watch_rule 2 on a
+    linked gate): the brain goes by its verdict, watch_near, and its hold."""
+    return any(isinstance(x, dict) and (x.get("watch_rule") or 0) >= 2 for x in gates)
+
+
+def shaft_danger_words(near: dict) -> str:
+    """'<name> (flies, 34 tiles from the shaft)' for a watch_near verdict."""
+    name = str(near.get("name") or "a wild beast")
+    if near.get("in_shaft"):
+        return f"{name} (in the shaft)"
+    how = ("flies" if near.get("flier") else "climbs" if near.get("climber") else
+           "may climb" if near.get("mobile") else "walks or swims")
+    d = near.get("d")
+    return f"{name} ({how}, {d} tiles from the shaft)" if isinstance(d, int) else f"{name} ({how})"
+
+
+def shaft_far_walker(near: dict) -> bool:
+    """(group 2) A danger that can't fly or climb, not in the shaft and
+    further than a walker's reach: kept out by the drop under the opening.
+    While the fort is short of water it doesn't keep the shaft shut."""
+    d = near.get("d")
+    return (not near.get("in_shaft") and near.get("mobile") is False and not near.get("flier")
+            and isinstance(d, int) and d > SHAFT_DRY_REACH)
+
+
+def shaft_water_short(s: dict, gates: list, cfg: dict | None = None) -> str:
+    """(group 2) Why the fort would be short of water with its cavern wells'
+    shafts shut ("" when it isn't): no well but the cavern wells, no water
+    source zone, and someone needs water (injured, parched) or the drink is
+    under the urgent line. Whether a shaft is open now doesn't count (an
+    open one would read as water, and the `dry` mode would flap with it)."""
+    cfg = PLANNER_CONFIG if cfg is None else cfg
+    cavern = [x for x in gates if not x.get("cancelled")]     # a gate being linked: its hatch shut too
+    wells = int(_d(_d(s.get("buildings")).get("other")).get("Well", 0) or 0)
+    if wells > len(cavern):
+        return ""
+    if _d(_d(s.get("buildings")).get("zones")).get("WaterSource"):
+        return ""
+    patients = int(_d(s.get("dwarves")).get("needs_medical_care") or 0)
+    parched = int(_d(s.get("society")).get("parched") or 0)
+    citizens = max(1, int(_d(s.get("dwarves")).get("total") or 1))
+    drink = _d(s.get("stocks")).get("drink")
+    low = isinstance(drink, (int, float)) and drink < citizens * cfg.get("urgent_drink_per_dwarf", 2)
+    why = [w for w in (f"{patients} injured need water" if patients else "",
+                       f"{parched} parched" if parched else "",
+                       f"drink {int(drink)} for {citizens} dwarves" if low else "") if w]
+    return ", ".join(why)
+
+
+def _shaft_turn(s: dict, gates: list, build: list, proposals: list, notes: list) -> None:
+    """(group 2) The shaft gates by the bridge's verdict: shut where it finds a
+    danger (its watcher has most likely done it already), opened where it
+    finds none and the gate's hold (shut a day at least, the danger away
+    half a day) has run out. Short of water with every cavern well shut: a
+    danger that can't fly or climb, far off, doesn't keep it shut (the
+    bridge's `dry`); one that can keeps it shut, said in a note (the water
+    zone rule gives open water meanwhile)."""
+    where = lambda x: f"x{x.get('x')} y{x.get('y')} elevation {x.get('elevation')}"
+    live = [x for x in gates if not x.get("cancelled")]
+    shut_now = [x for x in live if x.get("gate") in ("closed", "pulling")]
+    short = shaft_water_short(s, gates)
+    dry_on = any(x.get("watch_dry") for x in gates)
+    to_shut = [x for x in gates if x.get("gate") in ("open", "pulling")
+               and (_d(x.get("watch_near")) or x.get("cancelled"))]
+    if to_shut:
+        near = next((_d(x.get("watch_near")) for x in to_shut if _d(x.get("watch_near"))), None)
+        why = (f"{shaft_danger_words(near)} near the cavern well: shut its shaft (its hatch, at once)" if near
+               else "a given-up cavern well's shaft stands open to the cavern: shut its hatch")
+        act = {"type": "well_shaft", "close": True}
+        if dry_on and not short:
+            act["dry"] = False
+        proposals.append(Proposal("well_shaft", act, why, 2))
+        return
+    opens, far, held = [], [], []
+    for x in shut_now:
+        near = _d(x.get("watch_near"))
+        hold = x.get("shut_hold") or 0
+        if near and short and shaft_far_walker(near):
+            far.append(x)
+        elif near:
+            held.append(x)
+        elif hold > 0 and not short:
+            notes.append(f"the cavern well's shaft at {where(x)} stays shut a while yet ({hold} ticks): "
+                         "opened once the danger has been away long enough (no flapping)")
+        else:
+            opens.append(x)
+    for x in held:
+        near = _d(x.get("watch_near"))
+        words = shaft_danger_words(near)
+        if short:
+            # (group 2) said, not asked (the standing rule: what the AI can do, it
+            # does): the water zone rule marks open water outside the caverns
+            # meanwhile, the well rule places another well when it can
+            notes.append(f"the cavern well's shaft at {where(x)} is shut against {words} and the fort is short "
+                         f"of water ({short}): kept shut, since it could come up the shaft; while no well draws, open "
+                         "water outside the caverns is made a water source, and the shaft opens once it has been "
+                         "away a while")
+        else:
+            notes.append(f"the cavern well's shaft is shut while {words} is near: still counted as a well, "
+                         "opened again once it has been away a while")
+    act = {"type": "well_shaft", "close": False}
+    want_dry = bool(short) and bool(far or (opens and any((x.get("shut_hold") or 0) > 0 for x in opens)))
+    if want_dry != dry_on and (want_dry or not short):
+        act["dry"] = want_dry
+    words = _shaft_build_words(build)
+    if far:
+        near = _d(far[0].get("watch_near"))
+        why = (f"the fort is short of water ({short}) and every cavern well is shut, but "
+               f"{shaft_danger_words(near)} can't fly or climb up to the opening: open the shaft")
+    elif opens:
+        why = "no danger near the cavern well now: open its shaft again"
+        if short and any((x.get("shut_hold") or 0) > 0 for x in opens):
+            why = f"the fort is short of water ({short}): open the cavern well's shaft again at once"
+    elif words:
+        why = words
+    elif "dry" in act:
+        why = "the fort has water again: the cavern well's shaft watched as usual"
+    elif any(x.get("watching") is False for x in gates):
+        why = "the cavern well's shaft watcher isn't running (the game was loaded): start it"
+    else:
+        return
+    if words and why != words:
+        why += "; " + words
+    proposals.append(Proposal("well_shaft", act, why, 2 if (far or short) else 3))
 
 
 def cavern_danger(s: dict, wells: list | None = None, radius: int = SHAFT_DANGER_TILES) -> str:
