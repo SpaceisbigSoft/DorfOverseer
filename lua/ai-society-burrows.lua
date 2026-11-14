@@ -20,7 +20,7 @@ local function report_units()
     return df.global.world.units.active
 end
 local S = reqscript('ai-society')   -- find_burrow, new_burrow
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-society-burrows'] = '0.105.44'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-society-burrows'] = '0.105.45'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 -- --- (0.104.78) the recreation burrow ----------------------------------------
 --

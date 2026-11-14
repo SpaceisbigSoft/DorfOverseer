@@ -14,7 +14,7 @@
 -- a refusal's positions are on the drawing's own grid.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-design is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-design'] = '0.105.44'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-design'] = '0.105.45'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 -- design.LANDMARK_KINDS (brain/design.py)
 LANDMARK_KINDS = {'descent', 'god_hall', 'ziggurat', 'chronicle_hall', 'great_hall', 'tower', 'necropolis',

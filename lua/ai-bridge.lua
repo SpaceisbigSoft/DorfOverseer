@@ -44,7 +44,7 @@
 local json = require('json')
 local utils = require('utils')
 
-BRIDGE_VERSION = '0.105.44'
+BRIDGE_VERSION = '0.105.45'
 PROTOCOL = 1 -- bump when the report's shape changes in a breaking way
 
 OUT_DIR = dfhack.getDFPath() .. '/dfhack-config/ai-overseer'   -- (a global: the parts write there too)
@@ -703,7 +703,8 @@ DISPLAY_ONLY = {report_status = true, set_culture = true, set_learned = true, sa
 -- alone (the field set true): the insane guard frees the doors it locked (a
 -- lock left on while the AI is halted could shut a dwarf in), and locks none.
 -- (item3) the killer cells let the thirsty and hungry out, and lock nobody in.
-RELEASE_WHILE_HALTED = {insane_guard = 'release_only', killer_cell = 'release_only'}
+RELEASE_WHILE_HALTED = {insane_guard = 'release_only', killer_cell = 'release_only',
+                        lure_shut = 'while_halted'}   -- (0.105.45, merge) shutting a lure pocket is always safe
 
 ---------------------------------------------------------------------------
 -- Time control. Globals (not locals) so they survive between script runs.

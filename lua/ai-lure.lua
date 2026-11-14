@@ -671,7 +671,9 @@ function build_lure(key, beast_id, dry_run)
         local count = 0
         for _ in pairs(d.lures) do count = count + 1 end
         if count >= RECORDS_MAX then return {ok = false, rejected = true, error = 'too many lure pockets on record'} end
-        local immune = u and trap_immune(u) or false
+        -- (0.105.45, merge) a beast that breaks buildings would break the cage
+        -- pocket's locked inner door before a trap catches it: drawbridges then
+        local immune = u and (trap_immune(u) or destroyer(u)) or false
         local plan, why = plan_pocket({x = x, y = y, z = z}, game_tile, plan_opts(nil, immune))
         if not plan then return {ok = false, rejected = true, error = why} end
         local need = mechanisms_needed(plan)
