@@ -277,11 +277,37 @@ function dangers(txt)
             local great, inv = dfhack.units.isGreatDanger(u) == true, dfhack.units.isInvader(u) == true
             if not (great or inv) then return nil end
             return {id = u.id, x = u.pos.x, y = u.pos.y, z = u.pos.z, great = great or nil, invader = inv or nil,
+                    destroyer = destroyer_of(u) or nil,           -- (0.105.47)
                     name = (txt or tostring)(dfhack.units.getReadableName(u))}
         end)
         if ok and row and row.x >= 0 then table.insert(out, row) end
     end
     return out
+end
+
+local function straight(a, b) return math.max(math.abs(a.x - b.x), math.abs(a.y - b.y)) + 3 * math.abs(a.z - b.z) end
+
+-- (0.105.47, R2 item 7) A building destroyer (it breaks doors and hatches),
+-- from its caste's raws; nil unread.
+function destroyer_of(u)
+    local ok, v = pcall(function()
+        return (df.creature_raw.find(u.race).caste[u.caste].misc.buildingdestroyer or 0) > 0
+    end)
+    if ok then return v end
+    return nil
+end
+
+-- (0.105.47) An entrance held only by doors or hatches (no drawbridge in it
+-- or in front of it): a building destroyer breaks it.
+function door_only(e)
+    if type(e.equipment) ~= 'table' or #e.equipment == 0 then return false end
+    for _, g in ipairs(e.equipment) do
+        if g.kind ~= 'door' and g.kind ~= 'hatch' then return false end
+    end
+    for _, g in ipairs(type(e.outer) == 'table' and e.outer or {}) do
+        if g.kind == 'bridge' then return false end
+    end
+    return true
 end
 
 local function entrances()
@@ -290,12 +316,48 @@ local function entrances()
     local out = {}
     for _, e in ipairs(G.entrances) do
         local okp = pcall(function() return e.x + e.y + e.z end)
-        if okp then table.insert(out, {id = e.id, kind = e.kind, x = e.x, y = e.y, z = e.z, sealed = e.sealed or nil}) end
+        if okp then
+            local okd, d = pcall(door_only, e)
+            table.insert(out, {id = e.id, kind = e.kind, x = e.x, y = e.y, z = e.z, sealed = e.sealed or nil,
+                               door_only = (okd and d) or nil})
+        end
     end
     return out
 end
 
-local function straight(a, b) return math.max(math.abs(a.x - b.x), math.abs(a.y - b.y)) + 3 * math.abs(a.z - b.z) end
+-- Each danger's ways in (pure): the entrance nearest it (straight); and
+-- (0.105.47, R2 item 7) for a building destroyer every entrance held only
+-- by doors or hatches too, shut or not (C's titans came in by a stair under
+-- a bare hatch while the nearest gate, a raised bridge, held). Sets t.way_in
+-- (the nearest) and t.door_ways; returns the ways (8 at most).
+function ways_in(list, ents)
+    local ways, way_by = {}, {}
+    local function add(e)
+        if not way_by[e.id] and #ways < 8 then way_by[e.id] = true; table.insert(ways, e) end
+    end
+    for _, t in ipairs(list) do
+        local best, bd
+        for _, e in ipairs(ents) do
+            local d = straight(t, e)
+            if not bd or d < bd then best, bd = e, d end
+        end
+        t.way_in = best and best.id or nil
+        if best then add(best) end
+    end
+    for _, t in ipairs(list) do
+        if t.destroyer then
+            for _, e in ipairs(ents) do
+                if e.door_only and e.kind ~= 'cavern' then
+                    t.door_ways = t.door_ways or {}
+                    table.insert(t.door_ways, e.id)
+                    add(e)
+                end
+            end
+        end
+    end
+    return ways, way_by
+end
+
 
 -- The walkable tiles from z lo to hi: inside ones (not outside, not a cavern
 -- or other feature), and outside or cavern ones only near the given points
@@ -442,17 +504,9 @@ function report(txt)
     local lo, hi = S.shelter_level_range()
     if not lo then out.error = 'no citizens to measure from'; return out end
     local ents = entrances()
-    -- each danger's way in: the nearest entrance (straight), cap 8 ways
-    local ways, way_by = {}, {}
-    for _, t in ipairs(list) do
-        local best, bd
-        for _, e in ipairs(ents) do
-            local d = straight(t, e)
-            if not bd or d < bd then best, bd = e, d end
-        end
-        t.way_in = best and best.id or nil
-        if best and not way_by[best.id] and #ways < 8 then way_by[best.id] = true; table.insert(ways, best) end
-    end
+    -- each danger's way in: the nearest entrance (straight), and a building
+    -- destroyer's every door-only one (0.105.47), cap 8 ways
+    local ways = ways_in(list, ents)
     local points = {}
     for _, e in ipairs(ways) do table.insert(points, e) end
     for _, t in ipairs(list) do table.insert(points, t) end

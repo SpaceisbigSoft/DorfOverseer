@@ -91,6 +91,8 @@ from planner_construct import (_hall_rule, _construction_blocks_rule,  # noqa: E
 from planner_forestry import _cavern_logging_rule, _grove_rule  # noqa: E402  (item10) cavern logging, the grove
 from planner_benches import _bench_caps_rule  # noqa: E402  (item10) training benches
 from planner_leather import _leather_gear_rule  # noqa: E402  (item10) leather armour while metal is short
+from planner_holdfast import (_destroyer_gate_rule, _intruder_guard_rule,  # noqa: E402  (0.105.47, R2 item 7) titans and thieves
+                              _kill_hold_filter, _squad_matchup_filter, note_holdfast, note_holdfast_cycle)
 from planner_army import (_army_gear_rule, _quiver_rule, _bolts_rule, _flask_rule,  # noqa: E402  (0.105.0, round 2)
                           _shelter_squads_rule, _gate_cut_rule)
 
@@ -687,6 +689,10 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
         # (item6) a necromancer siege: no squad at overwhelming dead, the alarm, the bodies outside rotted
         if "necro" not in errors:
             _guard(_necro_rule, s, cfg, proposals, notes, memory)
+        # (0.105.47, R2 item 7) a gate a building destroyer breaks; a squad on the stair for an unseen intruder
+        if "entrances" not in errors:
+            _guard(_destroyer_gate_rule, s, cfg, proposals, notes, memory)
+        _guard(_intruder_guard_rule, s, cfg, proposals, notes, memory)
         # (0.105.45) hunting: a party sent after a threat it clearly beats, a reserve home, the retreat
         if "hunt" not in errors:
             _guard(_hunt_rule, s, cfg, proposals, notes, memory)
@@ -1036,6 +1042,14 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
             from planner_world import TRADE_ACTIONS
             kept = [p for p in proposals if p.action.get("type") not in TRADE_ACTIONS]
         proposals = kept
+    # (0.105.47, R2 item 7) never recruits alone at an enemy (the matchup), and no recall flapping
+    if "military" not in errors and "others_on_map" not in errors:
+        kept = _guard(_squad_matchup_filter, s, memory, cfg, proposals, notes)
+        if kept is not None:
+            proposals = kept
+        kept = _guard(_kill_hold_filter, s, memory, cfg, proposals, notes)
+        if kept is not None:
+            proposals = kept
     # (0.105.40b) no squad sent out into evil weather at enemies outside (unless enemies are inside)
     if "threats" not in errors or isinstance(s.get("weather"), dict) and s["weather"]:
         kept = _guard(_weather_squad_filter, s, memory, cfg, proposals, notes)
@@ -1319,6 +1333,7 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
         note_food_level(p, r, memory)                      # (fix41) one food storage level a kitchen or still
         note_training(p, r, memory, now)                   # (0.105.47) stress care's release: never drafted again
         note_stuck(p, r, memory, now)                      # (0.105.45) the stuck sweep's step done
+        note_holdfast(p, r, state, memory, now)            # (0.105.47, R2 item 7) a guard posted, a destroyer's gate tried
         if p.action.get("type") == "weather_burrow":
             note_keep_in(memory, now, p.action, ok)        # (item4) evil weather: kept in by the burrow
         note_quarry_dug(p, r, state, memory, now)          # (item7) the quarry marked, the stone then
@@ -1711,6 +1726,7 @@ def note_cycle(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> list[
     if "hunt" not in errors:
         notes += _step(note_hunt_cycle, s, memory, cfg) or []   # (0.105.45) hunts' outcomes learned once each
     _step(note_never_draft, s, memory, cfg)                     # (0.105.47) "never draft" forgotten in time
+    _step(note_holdfast_cycle, s, memory, cfg)                  # (0.105.47, R2 item 7) kill orders' age, guards
     # (0.104.89) the strategist's raised and held rules run out
     if isinstance(getattr(memory, "steer", None), dict):
         for k in [k for k, v in memory.steer.items() if not (isinstance(v, dict) and isinstance(v.get("until"), int)

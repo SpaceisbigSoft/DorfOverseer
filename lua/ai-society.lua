@@ -190,8 +190,25 @@ local function live_gates()
     return out
 end
 
+-- (0.105.47, R2 item 7) held only by doors or hatches (no drawbridge in it
+-- or in front of it): a building destroyer breaks it
+function door_only(e)
+    if type(e.equipment) ~= 'table' or #e.equipment == 0 then return false end
+    for _, g in ipairs(e.equipment) do
+        if g.kind ~= 'door' and g.kind ~= 'hatch' then return false end
+    end
+    for _, g in ipairs(type(e.outer) == 'table' and e.outer or {}) do
+        if g.kind == 'bridge' then return false end
+    end
+    return true
+end
+
 local function entrance_shut(e, live, dgroups)
     if not e.sealed or type(e.equipment) ~= 'table' or #e.equipment == 0 then return false end
+    -- (0.105.47) a building destroyer on the map: a door or hatch alone holds
+    -- nothing, wherever it walks now (C's titans came in by a stair under a
+    -- bare hatch while both gates read shut, its walk group cut off by them)
+    if dgroups and door_only(e) then return false end
     for _, g in ipairs(e.equipment) do
         local ok, shut = pcall(function()
             local b = df.building.find(g.id)

@@ -113,6 +113,8 @@ def _():
     assert not by_rule(props, "squad_attack"), by_rule(props, "squad_attack")
     assert any("armed soldiers to send" in n for n in notes), notes
     s["military"]["squads"][1]["power"]["armed"] = 6
+    # (0.105.47, R2 item 7) and strong enough for him (the matchup): power 3 alone is too weak
+    s["military"]["squads"][1]["power"]["power"] = 60
     a = by_rule(plan(s, Memory())[0], "squad_attack")
     assert a and all(p.action["squad_id"] == s["military"]["squads"][1]["id"] for p in a), a
 

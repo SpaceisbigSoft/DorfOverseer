@@ -47,6 +47,7 @@ from planner_thirst import thirst_journal  # noqa: E402  (0.105.46, I2) deaths o
 from planner_recovery import recovery_journal  # noqa: E402  (0.105.46, I4) collapse recovery
 from planner_meetings import meeting_open_due, meeting_open_said, meeting_reopen_wait  # noqa: E402  (0.105.47) meetings opened unattended
 from planner_threats import note_intrusions  # noqa: E402  (0.105.30 live fixes)
+from planner_holdfast import note_thief_targets  # noqa: E402  (0.105.47, R2 item 7)
 import planner_stuck  # noqa: E402  (0.105.45) the stuck sweep's soak summary
 import seen as seen_ledger  # noqa: E402  (0.105.46, I1) each full report's sections tallied
 import atlas  # noqa: E402
@@ -1089,6 +1090,7 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
         note_tantrum_book(state, memory, events)   # (0.105.47) tantrum/berserk/possession reports; a tantrum loose
         note_heists(state, memory, events)       # (0.105.24) heists and visitors' killings: visitors kept out a while
         note_intrusions(state, memory, events)   # (0.105.30) DF's invasion records: the alarm before a thief strikes
+        note_thief_targets(state, memory, events)   # (0.105.47) the artifact a thief names: guarded while it hides
         crisis.note_deaths(state, memory, events)   # (0.104.137) deaths counted for crisis mode
         note_events(state, memory, bank if backend else None, events)
         for line in learned_now:

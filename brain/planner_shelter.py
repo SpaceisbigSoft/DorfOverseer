@@ -264,7 +264,13 @@ def squad_station_spot(s: dict, cfg: dict, proposals: list | None = None) -> dic
     cands = [c for c in cands if _int(c.get("d_threat")) is not None]
     min_to = int(cfg.get("shelter_choke_min_tiles", 10))
     max_w = int(cfg.get("shelter_choke_max_width", 4))
+    # (0.105.47, R2 item 7) the post on a level with drink (a well, or drink
+    # lying there) where the threat's path has one: C's squads left the
+    # shelter every few hours to eat and drink while the titan was inside
+    wet = {_int(c.get("z")) for c in _l(plan.get("candidates")) + _l(plan.get("other_levels"))
+           if isinstance(c, dict) and ((_int(c.get("drink")) or 0) > 0 or (_int(c.get("wells")) or 0) > 0)}
     for c in sorted(cands, key=lambda c: c["d_threat"]):
+        ok = []
         for ch in _l(c.get("chokes")):
             if not isinstance(ch, dict) or any(_int(ch.get(k)) is None for k in ("x", "y", "z")):
                 continue
@@ -272,18 +278,23 @@ def squad_station_spot(s: dict, cfg: dict, proposals: list | None = None) -> dic
                 continue
             if ch["z"] in on:
                 continue
+            ok.append(ch)
+        if ok:
+            ch = next((x for x in ok if x["z"] in wet), ok[0])
             w = _d(c.get("way_in"))
-            return {"x": ch["x"], "y": ch["y"], "z": ch["z"], "kind": "choke",
+            return {"x": ch["x"], "y": ch["y"], "z": ch["z"], "kind": "choke", "drink": ch["z"] in wet,
                     "why": (f"a choke {ch.get('from_src')} steps in from the {w.get('kind') or 'entrance'} at "
                             f"x{w.get('x')} y{w.get('y')} z{w.get('z')}, {ch.get('to_shelter')} from the shelter"
-                            if w else f"a choke {ch.get('to_shelter')} steps from the shelter")}
+                            if w else f"a choke {ch.get('to_shelter')} steps from the shelter")
+                    + ("; drink on its level" if ch["z"] in wet else "")}
         break                    # only the path the threat takes first
     squads = {q.get("id") for q in _l(_d(s.get("military")).get("squads")) if isinstance(q, dict)}
     bars = [b for b in _l(plan.get("barracks")) if isinstance(b, dict) and b.get("walkable")
             and all(_int(b.get(k)) is not None for k in ("x", "y", "z")) and b["z"] not in on]
-    bars.sort(key=lambda b: -len(set(_l(b.get("squads"))) & squads))
+    bars.sort(key=lambda b: (-len(set(_l(b.get("squads"))) & squads), b["z"] not in wet))
     if bars:
         b = bars[0]
-        return {"x": b["x"], "y": b["y"], "z": b["z"], "kind": "barracks",
-                "why": "no choke between the threat and the shelter: the barracks"}
+        return {"x": b["x"], "y": b["y"], "z": b["z"], "kind": "barracks", "drink": b["z"] in wet,
+                "why": "no choke between the threat and the shelter: the barracks"
+                + ("; drink on its level" if b["z"] in wet else "")}
     return None

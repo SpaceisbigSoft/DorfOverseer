@@ -1136,4 +1136,9 @@ PLANNER_CONFIG = {
     "well_rescue_after_ticks": 200,       # stranded under a well this long (DF's no path): a way up
     "well_rescue_near": 15,               # a stranded dwarf this near a well's shaft (across) is under it
     "well_rescue_cooldown_ticks": 300,    # tried again this often (it waits while a danger is near)
+    # (0.105.47, R2 item 7) holding fast: titans and thieves (brain/planner_holdfast.py)
+    "one_enemy_gate_tiles": 20,           # one ordinary enemy this close to a gate: the gates stay shut for it
+    "kill_hold_ticks": 1200,              # a squad's kill order held a game day at least (no recall flapping)
+    "destroyer_wall_min_tiles": 15,       # a building destroyer this close to a door-only gate: nothing built there now
+    "post_rest_min_ticks": 300,           # a squad out to eat comes back once fed, after this at least
 }

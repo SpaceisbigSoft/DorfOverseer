@@ -691,6 +691,15 @@ def _stranded_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None
     great = cavern_great(s)
     deep_ok = deep_read(s)              # (0.105.33) the caverns unread: no beast seen is no beast gone
     close_d = int(cfg.get("gate_close_tiles", 12))
+    # (0.105.47, R2 item 7) one ordinary enemy held off at the gates: kept
+    # shut while it is within `one_enemy_gate_tiles`, the citizens let in by
+    # another gate far from it (planner_holdfast)
+    from planner_holdfast import one_enemy_hold, other_gate as far_gate
+    # (open_entrance keeps the watcher armed, which shuts it again at the
+    # gates' close distance: each gate is judged at that; the hold's own
+    # distance is for open_gates, which disarms it, and for the other gate)
+    hold = one_enemy_hold(s, cfg, memory) if (any_reach or reach_n > 0) else None
+    alt_done: set = set()
 
     def cavern_side(r):
         return bool(r.get("in_cavern")) or _d(r.get("entrance")).get("kind") == "cavern"
@@ -724,6 +733,13 @@ def _stranded_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None
                 by_ent.setdefault(e["id"], (e, []))[1].append(r)
             else:
                 loose.append(r)
+        opening_ids = set()
+        for eid, (e, rs) in by_ent.items():
+            gd0 = [r.get("gate_danger") if isinstance(r.get("gate_danger"), (int, float)) else r.get("danger_near")
+                   for r in rs]
+            gd0 = [d for d in gd0 if isinstance(d, (int, float))]
+            if not gd0 or min(gd0) > close_d:
+                opening_ids.add(eid)
         for eid, (e, rs) in by_ent.items():
             # (0.105.36, X1) the enemy's distance from this gate (from the
             # citizen when the gate's isn't read)
@@ -733,6 +749,16 @@ def _stranded_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None
             near = min(gd) if gd else None
             at = f"x{e.get('x')} y{e.get('y')} elevation {(e.get('z') or 0) + off}"
             if near is not None and near <= close_d:
+                alt = far_gate(s, hold, eid) if hold else None
+                if alt is not None and alt["id"] not in opening_ids and alt["id"] not in alt_done:
+                    alt_done.add(alt["id"])
+                    # (0.105.47) let in by another gate, far from the enemy
+                    proposals.append(Proposal("stranded", {"type": "open_entrance", "id": alt["id"]},
+                                              f"{len(rs)} citizen(s) shut outside for {days(rs)} at the gate at {at} "
+                                              f"({', '.join(where(r) for r in rs[:3])}), an enemy {near} tiles from "
+                                              f"it: open the gate at x{alt.get('x')} y{alt.get('y')} instead, far "
+                                              "from it (the watcher stays armed)", 0))
+                    continue
                 notes.append(f"{len(rs)} citizen(s) shut outside for {days(rs)} at the gate at {at} "
                              f"({', '.join(where(r) for r in rs[:3])}), an enemy {near} tiles from it: the AI keeps "
                              "it shut and opens it for them once the enemy is farther off")
@@ -894,6 +920,14 @@ def _gate_rules(s: dict, memory, cfg: dict, rules_: dict, any_reach: bool,
     # shut out) is opened: the watcher stands down until a new enemy comes
     lone = lone_intruders(s, cfg, traits, memory) if any_reach else []
     hunted = [] if lone or not any_reach else hunted_outside(s, cfg, traits, memory)    # (0.105.8)
+    if hunted:
+        # (0.105.47, R2 item 7) E's doctor died 7 ticks after "only 1 ordinary
+        # enemy outside: open the gates": that one is judged (planner_holdfast)
+        from planner_holdfast import one_enemy_hold
+        hold = one_enemy_hold(s, cfg, memory, traits)
+        if hold:
+            notes.append(hold["why"])
+            hunted = []
     released = lockdown_released(memory)
     if any_reach and closable and not ent.get("armed") and rules_["gate_lever"] and (lone or released or hunted):
         notes.append(f"{len(lone)} enemy/enemies inside the fort and none outside: the gates stay open "

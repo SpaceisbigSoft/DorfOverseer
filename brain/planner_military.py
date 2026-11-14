@@ -673,7 +673,8 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
     gates = [g for g in gates if g.get("id") not in watched]
     # (0.105.3) not for a lone intruder inside, nor after the lockdown was lifted
     lone = lone_intruders(s, cfg, traits, memory) if any_reach else []
-    open_up = bool(lone) or lockdown_released(memory) or bool(any_reach and hunted_outside(s, cfg, traits, memory))
+    open_up = bool(lone) or lockdown_released(memory) or bool(any_reach and hunted_outside(s, cfg, traits, memory)
+                                                              and not _one_enemy_hold(s, cfg, memory, traits))
     if rules_["gate_lever"] and gates:
         # (0.105.36) never pulled while the report says the gate is already
         # shut (the player's, or the AI's own not yet read back)
@@ -1501,6 +1502,13 @@ def idle_hands(s: dict, memory, cfg: dict) -> bool:
 # to kill him were shut in, 10 citizens and 4 visitors shut out with him, and
 # the game fell to 3 FPS. A gate keeps out a siege; one or two ordinary
 # enemies are the squads' to deal with, and the citizens outside need a way in.
+
+
+def _one_enemy_hold(s: dict, cfg: dict, memory, traits) -> bool:
+    """(0.105.47, R2 item 7) the AI gate lever stays shut as the watcher's
+    gates do for one ordinary enemy near a gate or too strong (planner_holdfast)."""
+    from planner_holdfast import one_enemy_hold
+    return bool(one_enemy_hold(s, cfg, memory, traits))
 
 
 def _lone_squad(s: dict, memory, cfg: dict, squads: list, lone: list, rows: dict,
