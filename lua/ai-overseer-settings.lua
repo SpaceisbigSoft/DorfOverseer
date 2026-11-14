@@ -347,7 +347,9 @@ function defaults()
         make_contact = true,       -- (0.105.0, 13b) a messenger appointed and sent to sites not in contact
         -- (0.105.24, 13b) the messenger actually sent, by the AI driving DF's World
         -- screen (lua/ai-mission-send.lua): off by default until its last steps
-        -- are recorded; off, the AI only names the site for the player to send
+        -- are recorded; off, the AI only names the site for the player to send.
+        -- (0.105.47) every step recorded 14 Nov: on, the AI sends it end to end;
+        -- still off by default until a live run has been watched
         send_messenger = false,
         -- (0.105.39, 13b) missions sent out (MISSION_CHOICES): rescue a citizen and
         -- recover an artifact by default; raids and the rest (war) only at 'all'

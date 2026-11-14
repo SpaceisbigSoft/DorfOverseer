@@ -271,7 +271,9 @@ def _messenger_rule(s: dict, cfg: dict, proposals: list, notes: list) -> None:
     talker who isn't a soldier, staff, a patient or another office's holder
     (lua/ai-nobles.lua). Not in a young fort."""
     rules = player_rules(s)
-    if not rules["make_contact"] or not rules["appoint_nobles"] or young_fort(s, cfg):
+    # (0.105.47) with the messenger sent by the World screen (send_messenger),
+    # a young fort appoints one too: Make contact waits for nobody else
+    if not rules["make_contact"] or not rules["appoint_nobles"] or (young_fort(s, cfg) and not rules["send_messenger"]):
         return
     o = _d(_d(_d(s.get("offices")).get("offices")).get("MESSENGER"))
     if not o or _l(o.get("held")) or int(o.get("vacant") or 0) <= 0 or o.get("appointable") is False:
@@ -303,9 +305,14 @@ def _contact_site(s: dict, memory) -> dict | None:
     o = _d(_d(_d(s.get("offices")).get("offices")).get("MESSENGER"))
     if not _l(o.get("held")):
         return None
-    # not in contact: DF's NoContact, or no diplomacy state at all (never met)
+    # not in contact: DF's NoContact, or no diplomacy state at all (never met);
+    # (0.105.47) never a site DF said is INACCESSIBLE (remembered) or on
+    # another landmass (the report's `inaccessible`)
+    from planner_missions import unreachable_sites
+    gone = unreachable_sites(s, memory)
     sites = [x for x in _l(_d(ms.get("sites")).get("nearest"))
-             if isinstance(x, dict) and x.get("relation") in ("NoContact", "unknown")]
+             if isinstance(x, dict) and x.get("relation") in ("NoContact", "unknown")
+             and not x.get("inaccessible") and x.get("id") not in gone]
     if not sites:
         return None
     if reachable_threats(s, _traits(s), PLANNER_CONFIG) or any(_d(e).get("active") for e in _l(_world(s).get("sieges"))):
@@ -342,6 +349,12 @@ def _contact_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None)
     out = _messenger_out(ms)      # (0.105.39 review 2) a leftover of a stopped run isn't the messenger out
     if out:
         c = out[0]
+        from planner_missions import departure_words
+        dw = departure_words(s, c, cfg)          # (0.105.47) set up, not yet left
+        if dw:
+            notes.append(f"the messenger's mission to {c.get('site') or 'a site'} (Make contact) is {dw}: "
+                         "one mission at a time")
+            return
         notes.append(f"the messenger is {'on the way home from' if c.get('returning') else 'away to'} "
                      f"{c.get('site') or 'a site'} (Make contact): one mission at a time")
         return
@@ -366,7 +379,14 @@ def _contact_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None)
     last_tick = last.get("tick") if isinstance(last.get("tick"), int) else None
     recent = last_tick is not None and 0 <= now - last_tick < SEND_RETRY_TICKS
     blocked = last_tick is not None and 0 <= now - last_tick < retry_ticks(last, SEND_RETRY_TICKS)
-    if rules["send_messenger"] and last.get("result") in ("stopped", "error") and interrupted(last):
+    if last.get("reason") == "inaccessible":
+        pass                # (0.105.47) that site is dropped (unreachable_sites); the next one is tried
+    elif rules["send_messenger"] and last.get("result") in ("stopped", "error") and last.get("reason") == "no_messenger":
+        # (0.105.47) DF listed no messenger: the messenger rule appoints one; tried again tomorrow
+        if blocked:
+            notes.append("the messenger's last send found no messenger on DF's list; tried again tomorrow")
+            return
+    elif rules["send_messenger"] and last.get("result") in ("stopped", "error") and interrupted(last):
         # (0.105.39 review 2) the player took the game back: tried again after a day
         if blocked:
             notes.append("the messenger's last send was interrupted by the player; tried again tomorrow")
@@ -399,16 +419,20 @@ def _contact_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None)
             return
         if last.get("result") == "sent" and recent and now - last_tick < TICKS_PER_YEAR // 4:
             return          # sent this season: its controller shows in `missions` soon
+        # (0.105.47, live 17:09) the messenger must be able to walk off the map
+        from planner_missions import way_out_gate
+        if not way_out_gate(s, cfg, 1 if _d(ms.get("way_out")).get("messenger_blocked") else 0,
+                            f"Make contact with {name}", f"make_contact {site.get('id')}", proposals, notes, memory):
+            return
         proposals.append(Proposal("contact", {"type": "send_mission", "goal": "make_contact", "site_id": site.get("id")},
                                   f"send the messenger ({_l(o.get('held'))[0]}) to make contact with {name} "
                                   f"({site.get('dist')} tiles away, not in contact), by the World screen", 7))
         return
-    # (0.105.35) kept: DFHack can't make a mission, and the World screen's last
-    # steps are unrecorded (the switch stays off by default for that reason)
+    # (0.105.35) kept: DFHack can't make a mission. (0.105.47) The World
+    # screen's steps were all recorded on 14 Nov; the switch stays off by
+    # default until a live run has been watched
     ask_player(notes, f"Make contact (13b): the messenger ({_l(o.get('held'))[0]}) could go to "
-                      f"{name} ({site.get('dist')} tiles away), a site not in contact, but DFHack can't make the "
-                      "mission and the World screen's last steps (Make contact, the messenger, the confirm) were "
-                      "never recorded, so the AI doesn't press them (the Rules tab's \"Send the messenger by "
-                      "the World screen\" tries the recorded ones): the messenger stays home and the site is named again "
-                      "next season; sending it by hand while python brain\\probe_missions.py --watch runs "
-                      "records the steps")
+                      f"{name} ({site.get('dist')} tiles away), a site not in contact. DFHack can't make the "
+                      "mission itself; the AI sends it by DF's World screen (every step recorded) once the Rules "
+                      "tab's \"Send the messenger by the World screen\" is on: until then the messenger stays home "
+                      "and the site is named again next season")

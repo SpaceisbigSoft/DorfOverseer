@@ -40,7 +40,9 @@ from planner_threats import alarm_held
 
 __all__ = ["MISSION_GOALS", "OFFENSIVE_GOALS", "MISSION_LEVELS", "allowed_goals", "mission_reserve",
            "sendable_squads", "mission_target", "_mission_rule", "note_missions", "mission_journal",
-           "mission_line", "MISSION_WORDS", "last_of_goal", "MISSIONS_SWITCH", "SEND_SWITCH"]
+           "mission_line", "MISSION_WORDS", "last_of_goal", "MISSIONS_SWITCH", "SEND_SWITCH",
+           "unreachable_sites", "note_unreachable", "SOFT_STOPS", "departure_words", "note_departures",
+           "gate_danger", "way_out_gate", "_mission_way_rule"]
 
 # the goals in the order the AI prefers them (the contract's order)
 MISSION_GOALS = ("rescue", "recover_artifact", "explore", "tribute", "raid", "pillage", "conquer")
@@ -177,18 +179,254 @@ def interrupted(last: dict) -> bool:
     return _d(last).get("reason") in INTERRUPTED
 
 
+# (0.105.47) a run that stopped for a reason the AI handles itself, not a
+# step nobody recorded: DF said the site is INACCESSIBLE (the site is
+# dropped: unreachable_sites) or listed no messenger (the messenger rule
+# appoints one): the goal isn't blocked and nothing waits for the player
+SOFT_STOPS = ("inaccessible", "no_messenger")
+
+
 def retry_ticks(last: dict, year_ticks: int) -> int:
     """How long a stopped run blocks its goal: a day when the player
-    interrupted it, else `year_ticks` (a step nobody recorded, a surprise)."""
-    return TICKS_PER_DAY if interrupted(last) else year_ticks
+    interrupted it (or (0.105.47) DF listed no messenger), else `year_ticks`
+    (a step nobody recorded, a surprise)."""
+    return TICKS_PER_DAY if interrupted(last) or _d(last).get("reason") == "no_messenger" else year_ticks
+
+
+def note_unreachable(s: dict, memory, cfg: dict = PLANNER_CONFIG) -> None:
+    """(0.105.47) Each goal's last run that DF stopped at the site with
+    INACCESSIBLE (lua/ai-mission-send.lua, reason 'inaccessible'): the site
+    remembered as unreachable (memory.missions_seen["unreachable"], site id
+    -> tick), forgotten after `mission_unreachable_ticks`."""
+    if memory is None:
+        return
+    seen = _seen(memory)
+    un = seen.get("unreachable")
+    if not isinstance(un, dict):
+        un = seen["unreachable"] = {}
+    send = _d(_m(s).get("send"))
+    outs = list(_d(send.get("last_by_goal")).values()) or [_d(send.get("last"))]
+    for o in outs:
+        o = _d(o)
+        sid, t = _int(o.get("site_id")), _int(o.get("tick"))
+        if o.get("reason") == "inaccessible" and sid is not None:
+            un[str(sid)] = t if t is not None else abs_tick(s)
+    now = abs_tick(s)
+    keep = cfg.get("mission_unreachable_ticks", 3 * 403200)
+    for k in [k for k, v in un.items() if not isinstance(v, int) or not 0 <= now - v < keep]:
+        del un[k]
+
+
+def unreachable_sites(s: dict, memory=None, cfg: dict = PLANNER_CONFIG) -> set:
+    """(0.105.47) The sites a mission can't go to: remembered from DF's
+    INACCESSIBLE (memory) and the sender's runs that just said so."""
+    out = set()
+    seen = getattr(memory, "missions_seen", None) if memory is not None else None
+    if isinstance(seen, dict) and isinstance(seen.get("unreachable"), dict):
+        now = abs_tick(s)
+        keep = cfg.get("mission_unreachable_ticks", 3 * 403200)
+        for k, v in seen["unreachable"].items():
+            if isinstance(v, int) and 0 <= now - v < keep and str(k).lstrip("-").isdigit():
+                out.add(int(k))
+    send = _d(_m(s).get("send"))
+    for o in list(_d(send.get("last_by_goal")).values()) or [_d(send.get("last"))]:
+        o = _d(o)
+        if o.get("reason") == "inaccessible" and _int(o.get("site_id")) is not None:
+            out.add(o["site_id"])
+    return out
+
+
+# --- (0.105.47) setting out: DF's business, watched ----------------------------------
+# Live 14 Nov 17:07: a Make contact and a raid set up by hand had no army 15
+# game-minutes later (the messenger on the map milling about, path goal
+# MarauderMill). A run ends at "mission set up"; the missions report says
+# per controller whether an army points at it (`departed`), when it was set
+# up (`since`) and, until it leaves, who it waits on (`waiting`: path goal,
+# job). The planner notes a mission that hasn't left after
+# `mission_depart_wait_days`, and never sends a second one for it meanwhile
+# (the controller counts as out: _fort_missions_out, _messenger_out).
+
+def _age_days(s: dict, c: dict):
+    since = _d(c.get("since"))
+    if not isinstance(since.get("year"), int) or not isinstance(since.get("tick"), int):
+        return None
+    from planner_core import TICKS_PER_YEAR
+    return max(0, (abs_tick(s) - (since["year"] * TICKS_PER_YEAR + since["tick"])) // TICKS_PER_DAY)
+
+
+def _who_words(c: dict) -> str:
+    parts = []
+    for w in _l(c.get("waiting"))[:2]:
+        w = _d(w)
+        doing = w.get("job") or w.get("path_goal") or "nothing"
+        parts.append(f"unit {w.get('unit_id')} {'on the map' if w.get('on_map') is not False else 'off the map'}, "
+                     f"{game_text(str(doing), 24)}")
+    return "; ".join(parts)
+
+
+def departure_words(s: dict, c: dict, cfg: dict = PLANNER_CONFIG) -> str:
+    """Words for a controller's setting out: "" once it left (or when the
+    report can't say), else how long it has waited and, past the wait, who
+    it waits on."""
+    c = _d(c)
+    if c.get("departed") is not False:
+        return ""
+    days = _age_days(s, c)
+    wait = cfg.get("mission_depart_wait_days", 14)
+    if days is None or days < wait:
+        return f"set up{f' {days} day(s) ago' if days is not None else ''}, not yet set out (DF sends it)"
+    who = _who_words(c)
+    return f"set up {days} days ago and still hasn't set out" + (f" ({who})" if who else "")
+
+
+def note_departures(s: dict, memory, cfg: dict = PLANNER_CONFIG) -> list:
+    """The fort's missions the AI set up (the sender's `sent_ac`) and the
+    ones followed: a note when an army first points at one (it set out),
+    and once when one hasn't left after `mission_depart_wait_days`."""
+    if memory is None:
+        return []
+    seen = _seen(memory)
+    dep = seen.get("departed")
+    if not isinstance(dep, dict):
+        dep = seen["departed"] = {}
+    late = seen.get("late_said")
+    if not isinstance(late, list):
+        late = seen["late_said"] = []
+    ms = _m(s)
+    send = _d(ms.get("send"))
+    ours = {str(k) for k in _d(seen.get("out"))}
+    for o in list(_d(send.get("last_by_goal")).values()) or [_d(send.get("last"))]:
+        if _int(_d(o).get("sent_ac")) is not None:
+            ours.add(str(o["sent_ac"]))
+    notes = []
+    for c in _l(ms.get("controllers")):
+        if not isinstance(c, dict) or _int(c.get("id")) is None or str(c["id"]) not in ours:
+            continue
+        cid = str(c["id"])
+        what = (f"{game_text(str(c.get('goal') or 'mission'), 20).lower()}"
+                + (f" to {game_text(c.get('site'), 40)}" if c.get("site") else ""))
+        if c.get("departed") is True and cid not in dep:
+            dep[cid] = abs_tick(s)
+            notes.append(f"the mission ({what}) set out: an army left for it")
+        elif c.get("departed") is False and cid not in late:
+            days = _age_days(s, c)
+            if days is not None and days >= cfg.get("mission_depart_wait_days", 14):
+                late.append(cid)
+                notes.append(f"the mission ({what}) {departure_words(s, c, cfg)}; the AI sends no second one meanwhile")
+    for k in list(dep)[:-2 * TRACK_MAX]:
+        del dep[k]
+    del late[:-2 * TRACK_MAX]
+    return notes
+
+
+# --- (0.105.47, live 17:09) the way off the map -------------------------------------
+# Neither mission set out: every way off the map was shut by the AI's own
+# gates from the last run. Before a send, the travellers (the messenger,
+# every member of the squads going) must be able to walk out (the report's
+# `way_out`, lua/ai-mission-way.lua); if the AI's own gates hold the way
+# shut and nothing threatens, one is opened (mission_way: open_entrance,
+# then a day's hold against the watcher's pre-emptive shut) and the send
+# waits a cycle; with danger about, the mission waits. A mission set up
+# whose travellers still can't walk out after `mission_way_stuck_hours`
+# gets the same opening, once.
+
+def gate_danger(s: dict, cfg: dict, memory=None) -> str:
+    """Why the gates stay shut ("" when nothing threatens): a threat that
+    can reach the dwarves, a siege, the civilian alert, the alarm's hold."""
+    if reachable_threats(s, _traits(s), cfg):
+        return "a threat that can reach the dwarves"
+    if int(_d(s.get("others_on_map")).get("threats_that_can_reach_dwarves") or 0) > 0:
+        return "a threat that can reach the dwarves"
+    if any(_d(e).get("active") for e in _l(_d(s.get("world")).get("sieges"))):
+        return "a siege"
+    if s.get("civ_alert") is True:
+        return "the civilian alert"
+    held = alarm_held(s, memory, cfg)
+    if held:
+        return f"the alarm ({held})"
+    if _unread_danger(s):
+        return f"danger unknown ({_unread_danger(s)} unread)"
+    return ""
+
+
+def _way_open(s: dict, cfg: dict, blocked: int, what: str, key: str, proposals: list, notes: list,
+              memory=None) -> None:
+    """The opening (or why not) for `blocked` travellers who can't walk out."""
+    wo = _d(_m(s).get("way_out"))
+    shut = [e for e in _l(wo.get("shut")) if isinstance(e, dict) and _int(e.get("id")) is not None]
+    if not shut:
+        notes.append(f"{what}: {blocked} traveller(s) can't walk off the map and none of the AI's gates holds "
+                     "the way (a wall, a collapse or the player's own gate): the mission waits")
+        return
+    danger = gate_danger(s, cfg, memory)
+    if danger:
+        notes.append(f"the gates are shut for {danger}: the mission ({what}) waits")
+        return
+    if any(p.action.get("type") == "mission_way" for p in proposals):
+        return
+    e = shut[0]
+    proposals.append(Proposal("mission_way", {"type": "mission_way", "id": e["id"], "mission": key[:40]},
+                              f"{what}: {blocked} traveller(s) can't walk off the map, the AI's own "
+                              f"{e.get('kind') or 'gate'} at x{e.get('x')} y{e.get('y')} holds the way shut and "
+                              "nothing threatens: open it (held open a day; an enemy at the gate still shuts it)", 6))
+
+
+def way_out_gate(s: dict, cfg: dict, blocked, what: str, key: str, proposals: list, notes: list,
+                 memory=None) -> bool:
+    """True when the send may go: the travellers can walk out (or the report
+    can't say: the watcher looks again once it is set up). Else False, with
+    the opening proposed or why it waits."""
+    wo = _d(_m(s).get("way_out"))
+    if not wo.get("known") or not blocked:
+        return True
+    _way_open(s, cfg, int(blocked), what, key, proposals, notes, memory)
+    return False
+
+
+def _mission_way_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None) -> None:
+    """A mission set up (an AI one or one followed) that hasn't set out and
+    whose waiting travellers can't walk out for `mission_way_stuck_hours`:
+    the same opening, once per mission; after that a note."""
+    if memory is None:
+        return
+    # read only (plan() never writes memory): note_missions books the
+    # openings from the gate holds the report shows ("ac <id>")
+    seen = getattr(memory, "missions_seen", None)
+    tried = _l(_d(seen).get("way_opened")) if isinstance(seen, dict) else []
+    ms = _m(s)
+    hours = cfg.get("mission_way_stuck_hours", 6)
+    for c in _l(ms.get("controllers")):
+        c = _d(c)
+        if c.get("departed") is not False or not (_int(c.get("way_blocked")) or 0) > 0:
+            continue
+        days = _age_days(s, c)
+        since = _d(c.get("since"))
+        if days is None or not isinstance(since.get("tick"), int):
+            continue
+        from planner_core import TICKS_PER_YEAR
+        age = abs_tick(s) - (since["year"] * TICKS_PER_YEAR + since["tick"])
+        if age < hours * TICKS_PER_DAY // 24:
+            continue
+        what = (f"the mission ({game_text(str(c.get('goal') or 'mission'), 20).lower()}"
+                + (f" to {game_text(c.get('site'), 40)}" if c.get("site") else "") + ")")
+        cid = str(c.get("id"))
+        if cid in tried:
+            notes.append(f"{what} is set up but its travellers still can't walk off the map after the AI opened "
+                         "a gate for them once: the AI leaves it (DF may send them another way)")
+            continue
+        _way_open(s, cfg, int(c["way_blocked"]), f"{what}, set up {age // (TICKS_PER_DAY // 24)} hour(s) ago,",
+                  f"ac {cid}", proposals, notes, memory)
 
 
 def _stopped(s: dict, goal: str, cfg: dict) -> dict | None:
     """The sender's last run for this goal when it stopped (or failed) within
     `mission_retry_ticks` (a day when the player interrupted it): not tried
-    again until then."""
+    again until then. (0.105.47) A site DF said is INACCESSIBLE blocks only
+    that site (unreachable_sites), not the goal."""
     last = last_of_goal(_d(_m(s).get("send")), goal)
     if last.get("result") not in ("stopped", "error"):
+        return None
+    if last.get("reason") == "inaccessible":
         return None
     t = _int(last.get("tick"))
     if t is None or not 0 <= abs_tick(s) - t < retry_ticks(last, cfg["mission_retry_ticks"]):
@@ -210,15 +448,19 @@ def left_open_needs_you(s: dict, notes: list) -> None:
                       "mission and no messenger while it is open")
 
 
-def mission_target(s: dict, cfg: dict = PLANNER_CONFIG) -> tuple[dict | None, list]:
+def mission_target(s: dict, cfg: dict = PLANNER_CONFIG, memory=None) -> tuple[dict | None, list]:
     """(the best target the switch allows, the goals skipped for a stopped
     run). Goal order first (offensive goals only against a hostile or at-war
-    civ), then the nearest; a target DF's screen said no to is passed over."""
+    civ), then the nearest; a target DF's screen said no to is passed over,
+    (0.105.47) and so is a site DF said is INACCESSIBLE (unreachable_sites)."""
     allowed = allowed_goals(s)
     order = {g: i for i, g in enumerate(MISSION_GOALS)}
     stopped, cands = [], []
+    gone = unreachable_sites(s, memory, cfg)
     for t in _l(_m(s).get("targets")):
         if not isinstance(t, dict) or t.get("goal") not in allowed or _int(t.get("site_id")) is None:
+            continue
+        if t["site_id"] in gone or t.get("inaccessible"):
             continue
         if t["goal"] in OFFENSIVE_GOALS and not (t.get("hostile") is True or t.get("at_war") is True):
             continue
@@ -254,8 +496,9 @@ def _target_words(t: dict) -> str:
 
 
 # the goal buttons on DF's New mission panel (lua/ai-mission-send.lua GOALS)
-_GOAL_BUTTON = {"rescue": "Rescue", "recover_artifact": "Recover", "explore": "Explore", "raid": "Raid",
-                "pillage": "Pillage", "tribute": "Tribute", "conquer": "Conquer", "make_contact": "Diplomacy"}
+# ((0.105.47) the site invasions share one button, Attack, found by its word)
+_GOAL_BUTTON = {"rescue": "Rescue", "recover_artifact": "Recover", "explore": "Attack", "raid": "Attack",
+                "pillage": "Attack", "tribute": "Attack", "conquer": "Attack", "make_contact": "Diplomacy"}
 _DANGER_SECTIONS = ("others_on_map", "world", "civ_alert")
 
 
@@ -273,7 +516,7 @@ def _stopped_needs_you(s: dict, goal: str, cfg: dict, notes: list) -> None:
     (the same words each cycle, so listed once) saying where it stopped and
     what the AI does meanwhile, a controller left behind included."""
     last = _stopped(s, goal, cfg)
-    if not last or interrupted(last):
+    if not last or interrupted(last) or last.get("reason") in SOFT_STOPS:
         return                       # interrupted by the player: a short note, tried again tomorrow
     site = game_text(last.get("site") or f"site {last.get('site_id')}", 40)
     ask_player(notes, f"missions (13b): the AI's try to {MISSION_WORDS.get(goal, goal)} at \"{site}\" stopped at the "
@@ -305,6 +548,7 @@ def _mission_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None)
     buttons were shown, else named for the player."""
     ms = _m(s)
     left_open_needs_you(s, notes)
+    _mission_way_rule(s, cfg, proposals, notes, memory)     # (0.105.47) a set-up mission shut in
     if not isinstance(ms.get("targets"), list) or not ms["targets"]:
         return                       # nothing to go for (or an older bridge): silent
     rules = player_rules(s)
@@ -313,9 +557,11 @@ def _mission_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None)
     out = _fort_missions_out(s)
     if out:
         c = out[0]
+        dw = departure_words(s, c, cfg)          # (0.105.47) set up but not yet left
         notes.append(f"a mission is out ({game_text(c.get('goal') or 'a squad', 20).lower()}"
                      + (f" to {game_text(c.get('site'), 40)}" if c.get("site") else "")
-                     + (", on the way home" if c.get("returning") else "") + "): one mission at a time")
+                     + (", on the way home" if c.get("returning") else "")
+                     + (f", {dw}" if dw else "") + "): one mission at a time")
         return
     send = _d(ms.get("send"))
     if _d(send.get("running")):
@@ -324,7 +570,7 @@ def _mission_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None)
         return
     if any(p.action.get("type") == "send_mission" for p in proposals):
         return                       # the messenger goes first this cycle
-    target, stopped = mission_target(s, cfg)
+    target, stopped = mission_target(s, cfg, memory)
     if stopped:
         _stopped_needs_you(s, stopped[0], cfg, notes)
     if target is None:
@@ -364,6 +610,12 @@ def _mission_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None)
         if (last.get("result") == "sent" and lt is not None
                 and 0 <= abs_tick(s) - lt < cfg["mission_sent_wait_ticks"]):
             return                   # sent lately: its controller shows in `missions` soon
+        # (0.105.47) every member of the squads going must be able to walk out
+        wo_sq = _d(_d(ms.get("way_out")).get("squads"))
+        blocked = sum(_int(wo_sq.get(str(q["id"]))) or 0 for q in squads)
+        if not way_out_gate(s, cfg, blocked, f"a mission to {what}", f"{goal} {target['site_id']}",
+                            proposals, notes, memory):
+            return
         action = {"type": "send_mission", "goal": goal, "site_id": target["site_id"],
                   "squad_ids": [q["id"] for q in squads]}
         for k in ("hf_id", "artifact_id"):
@@ -443,6 +695,17 @@ def note_missions(s: dict, memory) -> list[str]:
     import chronicle
     ms = _m(s)
     seen = _seen(memory)
+    note_unreachable(s, memory)          # (0.105.47) DF's INACCESSIBLE remembered per site
+    dep_notes = note_departures(s, memory)   # (0.105.47) set out yet? (before `out` is updated below)
+    # (0.105.47) a way opened for a set-up mission (the gate hold "ac <id>"): once per mission
+    tried = seen.get("way_opened")
+    if not isinstance(tried, list):
+        tried = seen["way_opened"] = []
+    for h in _l(_d(ms.get("way_out")).get("holds")):
+        k = str(_d(h).get("key") or "")
+        if k.startswith("ac ") and k[3:] not in tried:
+            tried.append(k[3:])
+    del tried[:-2 * TRACK_MAX]
     track = seen.setdefault("out", {})
     for k in ("missions_sent", "missions_back", "rescued", "artifacts_recovered"):
         if not isinstance(seen.get(k), int):
@@ -542,7 +805,7 @@ def note_missions(s: dict, memory) -> list[str]:
         notes.append(line)
     del pending[:-JOURNAL_MAX]
     del done[:-2 * TRACK_MAX]
-    return notes
+    return dep_notes + notes
 
 
 def mission_journal(memory) -> list[dict]:

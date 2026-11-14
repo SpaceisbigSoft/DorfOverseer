@@ -171,10 +171,26 @@ return env, G
 LUA = None
 
 
-def world(setup: str = ""):
+# (0.105.47) The steps recorded before 14 Nov: these tests drive the run's
+# machinery on them (a step never recorded stops the run); the full runs
+# recorded on 14 Nov are tests/test_r47_mission_send.py's.
+OLD_RECORDED = """
+local env = ...
+env.RECORDED.make_contact = {'open', 'site', 'goal'}
+for _, g in ipairs({'raid', 'pillage', 'tribute', 'conquer', 'explore'}) do env.RECORDED[g] = {'open', 'site'} end
+for _, g in ipairs({'explore', 'raid', 'pillage', 'tribute', 'conquer'}) do
+  env.GOALS[g].words = nil
+  env.GOALS[g].button = ({explore = 'Explore', raid = 'Raid', pillage = 'Pillage', tribute = 'Tribute', conquer = 'Conquer'})[g]
+end
+"""
+
+
+def world(setup: str = "", old: bool = True):
     global LUA
     LUA = LuaRuntime(unpack_returned_tuples=True)
     env, G = LUA.execute(FAKE, SRC, setup)
+    if old:
+        LUA.execute(OLD_RECORDED, env)
     return env, G
 
 

@@ -232,7 +232,9 @@ local scr = B.S{_world = true, view_mode = 2, focus_site = -1, new_mission = B.S
 rawset(B.env.df.global.gview.view, 'child', B.S{_world = false, child = scr})
 """)
     s = env.report().screen
-    assert s.view_mode == "MISSIONS_LIST" and s.focus_site is None and dict(s.allowed.items()) == {"SITE_INVASION": "OKAY"}
+    # (0.105.47) new_mission is read only on New mission / Mission details
+    # (recorded: garbage on world/NORMAL); the stack walk still finds the screen
+    assert s.view_mode == "MISSIONS_LIST" and s.focus_site is None and dict(s.allowed.items()) == {}
 
 
 @test("probe_screen (0.104.97): the World screen's fields one level deep, its mode and allowed goals; none when shut")

@@ -656,7 +656,12 @@ function check()
             local nearest = math.huge
             for _, p in ipairs(ds) do nearest = math.min(nearest, distance_to(e, p)) end
             GATES.clear_looks[e.id] = nil
-            if should_close(nearest, outside) then
+            -- (0.105.47) held open for a mission's travellers: only an enemy
+            -- within IMMINENT shuts it again while it opens
+            local okh0, held0 = pcall(function() return reqscript('ai-mission-way').mission_held(e.id) end)
+            local close_now = should_close(nearest, outside)
+            if okh0 and held0 == true then close_now = nearest <= IMMINENT end
+            if close_now then
                 GATES.opening[e.id] = nil
                 set_entrance(e, true, true)        -- (0.105.36 fix) its queued opening pull taken away
                 pcall(dfhack.gui.showAnnouncement, ('AI Overseer: %s closed again while opening (danger %s tiles away)')
@@ -741,7 +746,14 @@ function check()
         if not GATES.closed[e.id] and #e.equipment > 0 then
             local nearest = math.huge
             for _, p in ipairs(ds) do nearest = math.min(nearest, distance_to(e, p)) end
-            if should_close(nearest, outside) then
+            -- (0.105.47) a way opened for a mission's travellers (the
+            -- messenger, a squad walking off the map) isn't shut on the
+            -- "danger coming, nobody outside" look while its hold lasts
+            -- (lua/ai-mission-way.lua); an enemy within IMMINENT still shuts it
+            local okh, held = pcall(function() return reqscript('ai-mission-way').mission_held(e.id) end)
+            if okh and held == true and nearest > IMMINENT then
+                GATES.mission_held_skips = (GATES.mission_held_skips or 0) + 1
+            elseif should_close(nearest, outside) then
                 set_entrance(e, true)
                 -- (0.105.36 fix) said only when the AI shut something (gates the
                 -- player shut already stay theirs: not booked, not said)

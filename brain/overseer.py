@@ -631,6 +631,10 @@ SHORT_WORDS.update({
     "train_hunt": "put tame animals to hunting training",
     "herd_targets": "set how many of each kind autobutcher keeps",
 })
+# (0.105.47) a mission's travellers let out (lua/ai-mission-way.lua)
+SHORT_WORDS.update({
+    "mission_way": "open one of the AI's gates so a mission can leave the map",
+})
 
 
 def short(a: dict) -> str:

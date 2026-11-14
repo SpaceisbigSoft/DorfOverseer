@@ -133,7 +133,7 @@ local function fort_squads(R, group)
     for _, sid in ipairs(each(ids)) do
         local sq = R.rd('squad.find', function() return df.squad.find(sid) end)
         if sq then
-            local s = {id = int(sid), members = 0, away = 0, away_units = {}}
+            local s = {id = int(sid), members = 0, away = 0, away_units = {}, units = {}}
             local alias = R.rd('squad.alias', function() return sq.alias end)
             s.name = short(alias) or R.rd('squad.name', function() return name_of(sq.name) end)
             local ctl = R.rd('squad.assigned_army_controller_id', function() return sq.assigned_army_controller_id end)
@@ -144,6 +144,7 @@ local function fort_squads(R, group)
                 if occ and occ ~= -1 then
                     s.members = s.members + 1
                     local away, uid = member_away(R, occ)
+                    if not away and uid and uid >= 0 then table.insert(s.units, uid) end   -- (0.105.47) home: the way-out check
                     if away then
                         s.away = s.away + 1
                         if uid and uid >= 0 then table.insert(s.away_units, uid) end
@@ -216,6 +217,15 @@ local function controllers(R, civ, group, squad_ctl)
             e.returning = returning(R, c, goal)
             local sq = R.rd('army_controller.assigned_squads', function() return c.assigned_squads end)
             for _, s in ipairs(each(sq)) do table.insert(e.squads, int(s)) end
+            -- (0.105.47) when it was set up (start_year / start_season_cont)
+            -- and its messengers, for the departure watch
+            local oky, y, yt = pcall(function() return c.year, c.year_tick end)
+            if oky and type(y) == 'number' and type(yt) == 'number' then e.since = {year = int(y), tick = int(yt)} end
+            local oke, epp = pcall(function() return c.assigned_epp_epp_id end)
+            if oke and epp ~= nil then
+                e.epp = {}
+                for _, x in ipairs(each(epp)) do table.insert(e.epp, int(x)) end
+            end
             table.insert(out, e)
         end
     end
@@ -225,11 +235,13 @@ end
 -- members of the armies the fort's controllers lead: {controller id = n}
 -- and their units (hf -> unit) for away_units
 local function army_members(R, ctl_ids)
-    local counts, units = {}, {}
+    local counts, units, armies = {}, {}, {}
     local all = R.rd('world.armies.all', function() return df.global.world.armies.all end)
+    if all == nil then armies = nil end
     for _, a in ipairs(each(all)) do
         local cid = R.rd('army.controller_id', function() return a.controller_id end)
         if cid and ctl_ids[cid] then
+            armies[cid] = true           -- (0.105.47) the controller has an army: the mission set out
             local m = R.rd('army.members', function() return a.members end)
             for _, n in ipairs(each(m)) do
                 counts[cid] = (counts[cid] or 0) + 1
@@ -243,7 +255,56 @@ local function army_members(R, ctl_ids)
             end
         end
     end
-    return counts, units
+    return counts, units, armies
+end
+
+-- (0.105.47) Who a mission waits on before it sets out, and what they are
+-- doing (live 14 Nov 17:07: the messenger of a set-up Make contact on the
+-- map, no job, path goal MarauderMill, 15 game-minutes on; no army yet).
+-- Up to 3 {unit_id, path_goal, job}: the controller's squads' members and
+-- its messengers (assigned_epp_epp_id, the fort group's position
+-- assignments).
+WAIT_PEOPLE = 3
+
+local function unit_doing(R, uid)
+    local u = uid and uid >= 0 and R.rd('unit.find', function() return df.unit.find(uid) end)
+    if not u then return nil end
+    local e = {unit_id = int(uid)}
+    pcall(function() e.path_goal = df.unit_path_goal[u.path.goal] end)
+    pcall(function()
+        local j = u.job.current_job
+        if j then e.job = df.job_type[j.job_type] end
+    end)
+    pcall(function() e.on_map = not u.flags1.inactive end)
+    return e
+end
+
+local function waiting_people(R, c, group)
+    local out = {}
+    local function add_hf(hfid)
+        if #out >= WAIT_PEOPLE or not hfid or hfid < 0 then return end
+        local hf = R.rd('historical_figure.find', function() return df.historical_figure.find(hfid) end)
+        local uid = hf and R.rd('historical_figure.unit_id', function() return hf.unit_id end)
+        local e = unit_doing(R, uid)
+        if e then table.insert(out, e) end
+    end
+    for _, sid in ipairs(c.squads or {}) do
+        local sq = R.rd('squad.find', function() return df.squad.find(sid) end)
+        for _, p in ipairs(each(sq and R.rd('squad.positions', function() return sq.positions end))) do
+            add_hf(R.rd('squad_position.occupant', function() return p.occupant end))
+        end
+    end
+    if c.epp and #c.epp > 0 then
+        local ent = group and R.rd('historical_entity.find', function() return df.historical_entity.find(group) end)
+        local asg = ent and R.rd('entity.positions.assignments', function() return ent.positions.assignments end)
+        for _, a in ipairs(each(asg)) do
+            local okid, id = pcall(function() return a.id end)
+            for _, want in ipairs(c.epp) do
+                if okid and id == want then add_hf(R.rd('entity_position_assignment.histfig', function() return a.histfig end)) end
+            end
+        end
+    end
+    return out
 end
 
 -- ---------------------------------------------------------------------------
@@ -393,6 +454,13 @@ local function sites(R, civ, group, fort_site)
         end
     end
     table.sort(cands, function(a, b) return a.dist < b.dist or (a.dist == b.dist and a.id < b.id) end)
+    -- (0.105.47) the fort's landmass: a site on another is marked
+    -- inaccessible (DF's verdict for an island), so Make contact skips it
+    local fort_land
+    for _, s in ipairs(list) do
+        local okid, id = pcall(function() return s.id end)
+        if okid and id == fort_site then fort_land = site_landmass(s) break end
+    end
     for i = 1, math.min(MAX_SITES, #cands) do
         local e = cands[i]
         local s = e.site
@@ -400,6 +468,7 @@ local function sites(R, civ, group, fort_site)
             id = e.id, owner_civ = e.owner_civ, relation = e.relation, dist = int(e.dist),
             name = R.rd('world_site.name', function() return name_of(s.name) end),
             type = enum_name(df.world_site_type, R.rd('world_site.type', function() return s.type end)),
+            inaccessible = other_landmass(fort_land, site_landmass(s)) and 'another landmass' or nil,
         })
     end
     return out
@@ -424,6 +493,8 @@ local function world_screen()
     return okw and found or nil
 end
 
+ALLOWED_MODES = {NEW_MISSION = true, MISSION_DETAILS = true}
+
 local function screen(R)
     local scr = world_screen()
     if not scr then return nil end
@@ -437,6 +508,10 @@ local function screen(R)
         out.focus_site = okid and int(id) or nil
     end
     local nm = R.rd('viewscreen_worldst.new_mission', function() return scr.new_mission end)
+    -- (0.105.47) new_mission holds DF's verdicts only once a site's New
+    -- mission was opened (recorded 14 Nov: garbage numbers on world/NORMAL,
+    -- the right words on NEW_MISSION and MISSION_DETAILS): read only there
+    if not ALLOWED_MODES[out.view_mode or ''] then nm = nil end
     if nm ~= nil then
         local E = df.army_controller_goal_type
         local first = math.max(0, tonumber(E and E._first_item) or 0)
@@ -471,6 +546,36 @@ end
 -- screen's focus site is the target's site. Everything is read through R.rd;
 -- the walk stops after TARGET_BUDGET seconds (dfhack.getTickCount, os.clock
 -- without it) and says partial.
+
+-- (0.105.47) Can the fort's people get there at all? Recorded 14 Nov: a
+-- goblin site on an island read INACCESSIBLE for Attack, Request workers
+-- and Diplomacy on New mission. A site on another landmass than the fort
+-- (world_data.region_map[x][y].landmass_id, the world tiles of site.pos)
+-- is taken for the same and never named as a target; a landmass that
+-- can't be read says nothing (the World screen's own verdict stops a run
+-- there, and the planner remembers the site).
+function landmass_at(x, y)
+    if type(x) ~= 'number' or type(y) ~= 'number' then return nil end
+    local ok, id = pcall(function()
+        local col = df.global.world.world_data.region_map[x]
+        local okd, e = pcall(function() return col:_displace(y) end)
+        if not okd or e == nil then e = col[y] end
+        return e.landmass_id
+    end)
+    if ok and type(id) == 'number' and id >= 0 then return math.tointeger(id) or id end
+    return nil
+end
+
+function site_landmass(s)
+    local ok, x, y = pcall(function() return s.pos.x, s.pos.y end)
+    if not ok then return nil end
+    return landmass_at(x, y)
+end
+
+-- Pure: true when both landmasses are known and differ
+function other_landmass(a, b)
+    return a ~= nil and b ~= nil and a ~= b
+end
 
 MAX_TARGETS = 12
 TARGET_NAME = 40
@@ -557,6 +662,7 @@ end
 
 function targets(R, civ, group, fort_site, sc)
     R = R or new_reader()
+    DROPPED_INACCESSIBLE = 0      -- (0.105.47) targets on another landmass, this walk
     local t0 = clock()
     local partial = false
     local function over()
@@ -606,10 +712,16 @@ function targets(R, civ, group, fort_site, sc)
         return (c and c >= 0 and c) or (cur and cur >= 0 and cur) or nil, cur, r
     end
     -- one target at a site; nil when the site is ours or unknown
+    local fort_land = fs and site_landmass(fs)
     local function add(goal, site_id, fields, rank)
         if not site_id or site_id < 0 or site_id == fort_site then return false end
         local s = site_of(site_id)
         if not s then return false end
+        -- (0.105.47) another landmass: DF's "Inaccessible" (an island)
+        if other_landmass(fort_land, site_landmass(s)) then
+            DROPPED_INACCESSIBLE = (DROPPED_INACCESSIBLE or 0) + 1
+            return false
+        end
         local who, _, r = owner_of(s)
         local e = {goal = goal, site_id = int(site_id),
                    site = short(R.rd('world_site.name', function() return name_of(s.name) end), TARGET_NAME),
@@ -902,7 +1014,7 @@ function report()
     local ctl = controllers(R, civ, group, squad_ctl_set(squads))
     local ids = {}
     for _, c in ipairs(ctl) do ids[c.id] = true end
-    local counts = army_members(R, ids)
+    local counts, _, armies = army_members(R, ids)
     -- a controller's squads: its own list, and squads that point at it
     for _, c in ipairs(ctl) do
         local have = {}
@@ -917,6 +1029,25 @@ function report()
             if have[s.id] then c.away = c.away + s.away end
         end
         c.army_members = counts[c.id]
+        -- (0.105.47) set out: an army in world.armies.all points at it
+        -- (nil when the armies can't be read); not yet: who it waits on
+        if armies then c.departed = armies[c.id] == true end
+        if c.departed == false then
+            local okw, w = pcall(waiting_people, R, c, group)
+            if okw and #w > 0 then
+                c.waiting = w
+                -- (0.105.47) every traveller off the map (and no army read yet): gone, set out
+                local all_off = true
+                for _, x in ipairs(w) do if x.on_map ~= false then all_off = false end end
+                if all_off then c.departed, c.departed_by = true, 'off the map' end
+                -- (0.105.47, live 17:09) can they walk off the map at all?
+                local ids = {}
+                for _, x in ipairs(w) do table.insert(ids, x.unit_id) end
+                local okb, wr = pcall(function() return reqscript('ai-mission-way').way(ids) end)   -- (no reqscript: the tests)
+                if okb and type(wr) == 'table' and wr.known then c.way_blocked = #wr.blocked end
+            end
+        end
+        c.epp = c.epp and #c.epp or nil
     end
     -- the site names of the missions' targets
     for _, c in ipairs(ctl) do
@@ -955,11 +1086,22 @@ function report()
     -- (0.105.39) where a mission could go, best first
     local okt, tl, partial = pcall(targets, R, civ, group, fort_site, sc)
     if not okt then R.note('targets'); tl, partial = {}, nil end
+    -- (0.105.47) the travellers' way off the map (lua/ai-mission-way.lua)
+    local okw, way_out = false, nil
+    if type(reqscript) == 'function' then
+        okw, way_out = pcall(function()
+            local mid = reqscript('ai-mission-send').messenger_home()
+            return reqscript('ai-mission-way').report(squads, mid)
+        end)
+        if not okw then R.note('way_out'); way_out = nil end
+    end
     local oks2, so = pcall(status_of, R, civ, group, fort_site, sent_ids())
     if not oks2 then R.note('status_of'); so = nil end
     return {
         targets = tl,
         targets_partial = partial or nil,
+        targets_inaccessible = (DROPPED_INACCESSIBLE or 0) > 0 and DROPPED_INACCESSIBLE or nil,   -- (0.105.47)
+        way_out = way_out,                                                                        -- (0.105.47)
         status_of = so,
         controllers = out_ctl,
         squads = out_sq,

@@ -768,6 +768,15 @@ ACTIONS = {
         end
         return reqscript('ai-herd').set_targets(t, a.dry_run == true)
     end,
+    -- (0.105.47) one way off the map opened for a mission's travellers (the
+    -- AI's own shut gate, by ai-gates open_entrance and its refusals), held
+    -- open a day against the watcher's pre-emptive shut (lua/ai-mission-way.lua)
+    mission_way = function(a)
+        local id = int_in(a.id, 0, 100000000)
+        if not id then return reject('mission_way needs the entrance id') end
+        local key = type(a.mission) == 'string' and a.mission:sub(1, 40) or 'mission'
+        return reqscript('ai-mission-way').open_way(id, key, a.dry_run == true)
+    end,
 }
 
 -- (13c) The actions whose dry run changes nothing in the fort, all the way
@@ -856,6 +865,7 @@ for _, name in ipairs({
     -- (0.105.47) the herd: each dry run counts (and names) and changes nothing
     'herd_breeders', 'tame_wild', 'train_hunt', 'herd_targets',
     'place_garden_court',   -- (0.105.47) its dry run finds the site (quickfort's dry run) and places nothing
+    'mission_way',   -- (0.105.47) its dry run is open_entrance's (checks the distance) and holds nothing
 }) do DRY_OK[name] = true end
 
 -- These only change what's displayed, so they still work while halted, dry
@@ -938,6 +948,7 @@ BRIDGE_MODULES = {
     'ai-mood-help',   -- (0.105.47, J1) job cancels, webs, the moods' tiles in the shelter
     'ai-screen-buttons', 'ai-meeting-open',   -- (0.105.47) buttons kept for every save; the meeting opened
     'ai-tantrums',   -- (0.105.47) the tantrum ledger, posts, hospital guards
+    'ai-mission-way',   -- (0.105.47) a mission's travellers' way off the map, the gate hold
     'ai-training-squad',   -- (0.105.47) the training squad
     'ai-welfare',   -- (0.105.47, I7b) the unreachable dead, coffins anywhere, a cook trained
     'ai-well-safety',   -- (0.105.47) cavern wells made safe

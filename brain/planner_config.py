@@ -1210,3 +1210,12 @@ PLANNER_CONFIG.update({
     "hunt_animals_max": 4,                # hunting animals (trained or in training) x the Militarism factor
     "train_hunt_cooldown_ticks": 3 * 1200,
 })
+# (0.105.47) missions by the World screen: a site DF said is INACCESSIBLE
+# (an island) is not named again for this long (brain/planner_missions.py)
+PLANNER_CONFIG.update({
+    "mission_unreachable_ticks": 3 * 403200,
+    # a mission set up but not yet set out (no army for its controller): noted after this many days
+    "mission_depart_wait_days": 14,
+    # a mission set up whose travellers can't walk off the map this long: one of the AI's gates opened, once
+    "mission_way_stuck_hours": 6,
+})
