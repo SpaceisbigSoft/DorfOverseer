@@ -605,8 +605,8 @@ def _traits(s: dict) -> dict:
 
 
 def reachable_threats(s: dict, traits: dict, cfg: dict) -> list:
-    """Ids of threats that can reach the dwarves (plus, at Caution +100, nearby
-    ones whose reach is unknown). Threats counted but not listed get stand-in ids."""
+    """Ids of threats that can reach the dwarves (plus, at Caution +50 and up
+    (0.105.47; +100 before), nearby ones whose reach is unknown). Threats counted but not listed get stand-in ids."""
     o = s["others_on_map"]
     threats = o.get("threats") or []
     ids = [t.get("id") for t in threats if t.get("can_reach_dwarves") is True]
@@ -628,10 +628,13 @@ def reachable_threats(s: dict, traits: dict, cfg: dict) -> list:
                 and t.get("can_reach_dwarves") is not False                       # (review) not behind a wall
                 and isinstance(t.get("depot_distance"), (int, float)) and t["depot_distance"] <= cfg["depot_guard_tiles"]]
     ids += [f"unlisted{i}" for i in range(unlisted)]
-    if traits.get("caution", 0) >= 100:
+    # (0.105.47) from Caution `cautious_alert_caution` (was +100 only), fewer levels lower down (alarm_caution)
+    from alarm_caution import cautious_levels
+    levels = cautious_levels(traits, cfg)
+    if levels is not None:
         for t in threats:
             lv = t.get("levels_from_nearest_dwarf")
-            if (t.get("can_reach_dwarves") is None and lv is not None and lv <= cfg["cautious_alert_levels"]
+            if (t.get("can_reach_dwarves") is None and lv is not None and lv <= levels
                     and t.get("id") not in ids):
                 ids.append(t.get("id"))
     return ids

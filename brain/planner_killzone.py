@@ -19,7 +19,9 @@ The rule (_killzone_rule; Rules switch `killzones`, on by default):
   * which entrances: ones enemies used (`killzone_used_min` threats in the
     atlas' record, or deaths there), cavern openings onto a cavern with a
     great danger in it, the surface gate a siege is coming toward; every
-    entrance at Fortification or Caution `killzone_all_slider`+, and in a
+    entrance at Fortification `killzone_all_slider`+ (0.105.47: Fortification
+    alone; below `trap_surface_fortification` a way needs
+    `killzone_used_min_low` threats or a death), and in a
     closed fort (Outsiders `killzone_closed_outsiders` or lower: the Hermit
     hold), whose zones come first. With Fortification and Caution both under
     `killzone_slider` a great beast's cavern is sealed (planner_threats), not
@@ -47,6 +49,7 @@ notes anything.
 from __future__ import annotations
 
 from digest import _d, _l
+import planner_traplean  # noqa: F401,E402  (0.105.47) its config keys (trap_surface_fortification)
 from planner_core import (PLANNER_CONFIG, RECIPE_SHOPS, Proposal, _best_metal, _has_shop, _traits, player_rules,
                           queued, reachable_threats)
 
@@ -117,7 +120,14 @@ def zone_reasons(s: dict, memory, cfg: dict, rows: list) -> list:
     traits = _traits(s)
     lean = max(int(traits.get("fortification", 0) or 0), int(traits.get("caution", 0) or 0))
     closed = _closed(traits, cfg)
-    every = lean >= _c(cfg, "killzone_all_slider") or closed
+    # (0.105.47) every entrance by Fortification alone (the traps line is its);
+    # a low one wants a way used more often, or a death by it, before a zone
+    fort = int(traits.get("fortification", 0) or 0)
+    if not _c(cfg, "traps_by_fortification"):
+        fort = lean                     # (switched off: as before 0.105.47)
+    every = fort >= _c(cfg, "killzone_all_slider") or closed
+    used_min = (_c(cfg, "killzone_used_min_low") if fort < _c(cfg, "trap_surface_fortification")
+                and _c(cfg, "traps_by_fortification") else _c(cfg, "killzone_used_min"))
     threats = [t for t in _l(_d(s.get("others_on_map")).get("threats")) if isinstance(t, dict)]
     great_layers = {t.get("layer") for t in threats if t.get("great_danger") and t.get("layer")}
     sg = _siege_gate(s, rows)
@@ -135,7 +145,7 @@ def zone_reasons(s: dict, memory, cfg: dict, rows: list) -> list:
                 why.append(f"a great beast is in {layer.lower()}")
                 danger += 80
         seen, deaths = int(rec.get("threats") or 0), int(rec.get("deaths") or 0)
-        if seen >= _c(cfg, "killzone_used_min") or deaths:
+        if seen >= used_min or deaths:
             why.append(f"enemies came this way {seen} time(s)" + (f", {deaths} died by it" if deaths else ""))
             danger += 10 * min(seen, 5) + 20 * min(deaths, 5)
         if not why and not every:
@@ -232,8 +242,13 @@ def _killzone_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> 
         return
     danger, e, why = wanted[0]
     traits = _traits(s)
-    lean = max(int(traits.get("fortification", 0) or 0), int(traits.get("caution", 0) or 0))
-    n = _c(cfg, "killzone_traps_high") if lean >= _c(cfg, "killzone_all_slider") else _c(cfg, "killzone_traps")
+    # (0.105.47) the traps a zone by Fortification: more when high, fewer when low
+    fort = int(traits.get("fortification", 0) or 0)
+    if not _c(cfg, "traps_by_fortification"):
+        fort = max(fort, int(traits.get("caution", 0) or 0), _c(cfg, "trap_surface_fortification"))
+    n = (_c(cfg, "killzone_traps_high") if fort >= _c(cfg, "killzone_all_slider")
+         else _c(cfg, "killzone_traps_low") if fort < _c(cfg, "trap_surface_fortification")
+         else _c(cfg, "killzone_traps"))
     n = max(0, min(n, int(e.get("trap_tiles") or n)))
     kind, n, kind_note = zone_kind(s, kz, e, cfg, n)
     br = _d(e.get("drawbridge"))

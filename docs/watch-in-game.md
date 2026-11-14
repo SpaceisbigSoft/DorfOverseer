@@ -45,6 +45,13 @@ The quick way through this file: `python brain\seen.py` (from any DF-AI folder) 
 - **D, E, B (under 30)**: a `recreation` action at 5+ citizens, `max` a quarter of the fort (D: 2); `needs_meal` lavish meals with 100+ plain meals a dwarf while good meals are short; `train_cook` keeps one cook at the kitchens (the kitchen's Workers tab names them, min skill 0); their Cooking skill rises over a season; a player-named kitchen untouched.
 - **Stress care**: no `give_room` for a child or baby; a miserable dwarf with a bedroom and no squad gets the answer to their top unmet need (`stress_care` with a lavish meal order, trinkets or idle crafting; prayer and friends by the recreation stay), a very unhappy one with long-term stress 50,000+ at any Welfare.
 
+## 0.105.47 (R2): traps by Fortification, alarms by Caution
+
+- **A War-hold, D Hermit hold**: traps behind every gate, cavern ones too (`place_traps` reasons end "(Fortification +120: traps behind every gate)"), 7 a gate in A, 6 in D; kill zones (`build_killzone`) at every entrance, 6 traps each. The scorecard's traps and gate works lines should now put A and D on top.
+- **E Deep mine, B, C, F (Fortification 0)**: traps only behind the surface gate(s) and gates enemies came through (reason "enemies came this way N time(s)"), 3 a gate; E's cavern doors that nobody came through stay without traps (the doors themselves stay). A gate with traps already is left as it is.
+- **Gate works line**: now counts `build_killzone` and `build_wings`, no longer `arm_gates` / `guard_gate` (answers to an enemy, not works); dry runs left out.
+- **Alarms**: A and D sound for fire within 11 tiles, a gas cloud within 26, the walking dead within 39, may raise again for the same cause a day after lowering, 7 governed raises a game month; E (Caution -40): fire within 6, a cloud within 16, 2.7 days' cooldown, 2 a month, and no alarm for "DF reports an intruder" (a lone unseen one: said in the notes; the alarm comes once seen). Enemies in reach still sound it at once everywhere. In A and D a threat DF can't tell the reach of, within 6 levels of a dwarf, counts as in reach (was Caution 100 only).
+- **Alarms line**: counts raises only (a `civ_alert` on that answered `already_on`, or a lowering the game kept up, no longer counts). Expect A/D above E.
 
 ## 0.105.46 (I1): the "seen in game" ledger
 

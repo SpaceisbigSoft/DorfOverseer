@@ -1347,6 +1347,12 @@ def _trap_rule(s: dict, memory, cfg: dict, es: list, now: int, traits: dict, pro
         why, when = memory.gate_failures.get("traps:" + spot), memory.gate_failure_ticks.get("traps:" + spot)
         if why and isinstance(when, int) and 0 <= now - when < cfg["gate_retry_ticks"]:
             continue
+        # (0.105.47) Fortification picks the gates: every one when high, the
+        # surface and used ones in between, the used ones only when low
+        from planner_traplean import trap_gate_why
+        lean_why = trap_gate_why(e, traits, memory, cfg)
+        if not lean_why:
+            continue
         n = defence.trap_count(traits)
         from quirks import has_rule
         if has_rule(memory.culture, "more_traps"):
@@ -1357,7 +1363,8 @@ def _trap_rule(s: dict, memory, cfg: dict, es: list, now: int, traits: dict, pro
         n = min(8, n)                              # (0.105.10) the bridge places 1-8 a call (A asked 9: refused)
         where = f"the {e.get('kind')} entrance at elevation {(e.get('z') or 0) + off} (x{e.get('x')} y{e.get('y')})"
         proposals.append(Proposal("traps", {"type": "place_traps", "entrance_id": e["id"], "kind": kind, "count": n},
-                                  f"{where} has a gate but no traps: {n} {kind} trap(s) just inside it", 6))
+                                  f"{where} has a gate but no traps: {n} {kind} trap(s) just inside it"
+                                  + (f" ({lean_why})" if cfg.get("traps_by_fortification", True) else ""), 6))
         free = _d(s.get("entrances")).get("free_mechanisms")
         if isinstance(free, int) and free < n:
             proposals.append(Proposal("mechanisms", {"type": "work_order", "recipe": "mechanisms",

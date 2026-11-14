@@ -26,6 +26,11 @@ The governor runs once after every alarm rule (plan()), on the proposals:
     player: what is held back is said in the notes, and the danger's own
     answers (the fire guard, the cavern seal, the gates, the squads) go on.
 
+(0.105.47) Caution sets the cooldown, the cap and which causes count (an
+unseen lone intruder sounds nothing below `alarm_intruder_caution`), and how
+near fire and clouds sound it: brain/alarm_caution.py. At Caution 0 the
+numbers above are as they were.
+
 Evil weather keeps the civilians in without the alarm (planner_weather: the
 `weather_burrow` action); fire sounds it only this close (`fire_alarm_near`)
 and is held while within `hazard_near` (planner_military.hazard_alert).
@@ -116,19 +121,27 @@ def govern_alarm(s: dict, memory, cfg: dict, proposals: list, notes: list) -> No
     ons = [p for p in proposals if p.action == ON]
     if not ons or alert_on:
         return
+    # (0.105.47) Caution sets the cooldown, the month's cap and which causes count (brain/alarm_caution.py)
+    from alarm_caution import alarm_settings
+    st = s.get("settings") if isinstance(s.get("settings"), dict) else {}
+    lean = alarm_settings(st.get("traits") if isinstance(st.get("traits"), dict) else {}, cfg)
     keep, dropped = [], []
     for p in ons:
         cause, key = alarm_cause(p.reason)
         if cause not in GOVERNED:
             keep.append(p)
             continue
+        if cause == "intruder" and not lean["intruder"] and str(p.reason).startswith("DF reports an intruder"):
+            dropped.append((p, f"a bold fort (Caution {lean['caution']:+d}) waits until a lone intruder is seen "
+                               "(the alarm sounds then, as for every enemy in reach)"))
+            continue
         last = (g.get("off") or {}).get(key) if isinstance(g.get("off"), dict) else None
-        cool = _c(cfg, "alarm_cause_cooldown_ticks")
+        cool = lean["cooldown_ticks"]
         if _int(last) and 0 <= now - last < cool:
             dropped.append((p, f"it was lowered {(now - last) // 50} game hour(s) ago for the same cause; "
                                f"not raised again for it within {cool // 50}"))
             continue
-        cap = _c(cfg, "alarm_month_cap")
+        cap = lean["month_cap"]
         n = _month_count(g, now)
         if n >= cap:
             dropped.append((p, f"raised {n} time(s) this game month already for fire, clouds, cavern beasts, "
