@@ -622,6 +622,13 @@ SHORT_WORDS = {
     "unmark_project_dig": "make a level's marker-only dig tiles real",   # (0.105.35)
     "trim_instrument_orders": "cancel extra instrument orders",
 }
+# (0.105.47) the herd by Husbandry (lua/ai-herd.lua, brain/planner_husbandry.py)
+SHORT_WORDS.update({
+    "herd_breeders": "keep a breeding male and females of each kind from the butcher",
+    "tame_wild": "have the animal trainers tame caged wild animals",
+    "train_hunt": "put tame animals to hunting training",
+    "herd_targets": "set how many of each kind autobutcher keeps",
+})
 
 
 def short(a: dict) -> str:

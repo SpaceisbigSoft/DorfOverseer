@@ -474,28 +474,36 @@ def _alerts_rule(s: dict, memory, cfg: dict, proposals: list, rules_: dict) -> N
                               f"{'...' if len(due) > 5 else ''}): the AI has read them; clear them", 8))
 
 
-def _war_animal_rule(s: dict, cfg: dict, proposals: list) -> None:
+def _war_animal_rule(s: dict, cfg: dict, proposals: list, traits: dict | None = None) -> None:
     """(0.104.81) War animals: the tame dogs and the like trained for war
     (DF's trainers do it once an animal has a training assignment), up to
     `war_animals_max`; a dwarf given the animal-training labour first when
-    nobody has it."""
+    nobody has it. (0.105.47) By Militarism, given the traits: none below
+    0 (a peaceful fort keeps its animals for the herd: Husbandry's), past
+    0 war_animals_max x the Militarism factor, up to war_animals_cap."""
     if young_fort(s, cfg):
         return
+    want = cfg["war_animals_max"]
+    if traits is not None:
+        mil = traits.get("militarism", 0)
+        if mil < 0:
+            return
+        want = min(cfg.get("war_animals_cap", 24), round(want * factor(traits, "militarism")))
     an = _d(_d(s.get("society")).get("animals"))
     if an.get("error") or not an:
         return
     have = int(an.get("war_trained") or 0) + int(an.get("in_training") or 0)
     cands = int(an.get("war_candidates") or 0)
-    if cands <= 0 or have >= cfg["war_animals_max"]:
+    if cands <= 0 or have >= want:
         return
     if int(an.get("trainers") or 0) == 0:
         proposals.append(Proposal("animal_trainer", {"type": "assign_labor", "job": "ANIMALTRAIN", "count": 1},
                                   f"{cands} tame animals could be trained for war and nobody may train animals: "
                                   "give one dwarf the labour", 6))
         return
-    n = min(3, cfg["war_animals_max"] - have, cands)
+    n = min(3, want - have, cands)
     proposals.append(Proposal("war_animals", {"type": "train_war", "max": n},
-                              f"{have} war animals (trained or in training) of {cfg['war_animals_max']} wanted, "
+                              f"{have} war animals (trained or in training) of {want} wanted, "
                               f"{cands} could be trained: put {n} to war training (they fight beside the dwarves)", 6))
 
 

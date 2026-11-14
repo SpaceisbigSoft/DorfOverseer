@@ -1171,3 +1171,31 @@ PLANNER_CONFIG = {
     "reserve_vault_max": 8,               # at most this many storage levels for it
     "reserve_vault_min_citizens": 15,
 }
+# (0.105.47) the herd by Husbandry (brain/planner_husbandry.py, lua/ai-herd.lua).
+# The herd cap is the tools rule's: max(herd_min, citizens x herd_per_dwarf) x
+# the Husbandry factor (and autobutcher on everywhere while the game runs slowly).
+PLANNER_CONFIG.update({
+    "husbandry_high": 30,                 # Husbandry from here: breeders kept, wild ones tamed, pastures ahead of the herd
+    "husbandry_low": -30,                 # ...to here: a small herd, the surplus to the butcher (autobutcher on)
+    "herd_breed_females": 2,              # females kept a kind (x the Husbandry factor, up to 8), with one male
+    "herd_breeders_cooldown_ticks": 7 * 1200,
+    "herd_low_min": 8,                    # low Husbandry: autobutcher on past this many tame animals
+    "herd_cull_cooldown_ticks": 7 * 1200,
+    # autobutcher's targets (kids f, kids m, adults f, adults m) a kind keeps, by Husbandry
+    "herd_targets_low": (0, 0, 2, 1),
+    "herd_targets_mid": (1, 1, 3, 1),
+    "herd_targets_high": (3, 2, 6, 2),
+    "herd_targets_cooldown_ticks": 7 * 1200,
+    "tame_wild_max": 2,                   # caged wild animals put to taming a call
+    "tame_wild_cooldown_ticks": 3 * 1200,
+    "herd_pasture_margin": 1.25,          # high Husbandry: the AI's grass kept at the grazers' need x this x the factor
+    "herd_pasture_min_deficit": 20,       # ...when short by at least this many tiles
+    "herd_pastures_max": 12,              # the AI's own pastures at most
+    "shearing_cooldown_ticks": 14 * 1200, # wool shorn a fortnight apart (only the animals with wool grown)
+    "milking_cooldown_ticks": 3 * 1200,   # milked every few days (only the ones with milk now)
+    "herd_produce_batch": 10,             # shear or milk jobs an order at most
+    "war_animals_cap": 24,                # war animals at most, at any Militarism
+    "hunt_animals_militarism": 50,        # hunting training from this Militarism
+    "hunt_animals_max": 4,                # hunting animals (trained or in training) x the Militarism factor
+    "train_hunt_cooldown_ticks": 3 * 1200,
+})

@@ -1955,6 +1955,7 @@ function act_slaughter_one(a)
             if u.flags2.slaughter then marked = marked + 1 return false end
             if dfhack.units.isPet(u) or dfhack.units.isWar(u) or dfhack.units.isHunter(u) then return false end
             if (u.name.nickname or '') == 'Mouser' then return false end      -- (0.104.168) a cat the AI keeps
+            if (u.name.nickname or '') == 'Breeder' then return false end     -- (0.105.47) a breeder (lua/ai-herd.lua)
             if not dfhack.units.isAdult(u) or u.flags1.caged then return false end
             return true
         end)

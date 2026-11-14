@@ -669,6 +669,9 @@ def measures(s: dict, j: dict) -> dict:
         "plots": farms.get("plots"),
         "animals": others.get("tame_animals"),
         "pastures": _d(s.get("society")).get("pastures"),
+        # (0.105.47) the herd's signature (lua/ai-herd.lua): kinds with a breeding pair, wild animals tamed
+        "breeding_pairs": _d(s.get("herd")).get("breeding_pairs"),
+        "tamed": _d(s.get("herd")).get("tamed"),
         "idle_pct": pct(idle_n, civilians),
         "polish_runs": ok.get("polish", 0),               # (0.105.33) Industry: levels smoothed or engraved
         "suites": kinds.get("suites", 0),
@@ -974,6 +977,8 @@ LINES = [
     ("Agriculture", "farm plots", "plots", {G}, {D}),
     ("Husbandry", "tame animals", "animals", {G}, set()),
     ("Husbandry", "pastures", "pastures", {G}, set()),
+    ("Husbandry", "kinds with a breeding pair", "breeding_pairs", {G}, set()),   # (0.105.47)
+    ("Husbandry", "wild animals tamed", "tamed", {G}, set()),                    # (0.105.47)
     ("Industriousness", "idle, % of adults not in squads (lowest wins)", "-idle_pct", {D}, {M}),
     ("Industriousness", "levels smoothed or engraved", "polish_runs", {D}, {M}),     # (0.105.33)
     ("Deference", "suite levels", "suites", {W, ME}, {H}),

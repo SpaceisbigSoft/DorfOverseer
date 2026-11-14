@@ -727,6 +727,32 @@ ACTIONS = {
         return reqscript('ai-descent').cross_cavern({x = x, y = y, elev = e, layer = a.layer}, a.dry_run == true,
                                                     get_layers())
     end,
+    -- (0.105.47) the herd by Husbandry (lua/ai-herd.lua, brain/planner_husbandry.py):
+    -- breeders kept from the butcher, caged wild animals tamed, hunting
+    -- training, DFHack's autobutcher targets
+    herd_breeders = function(a)
+        local f = int_in(a.females, 0, 12)
+        if not f then return reject('herd_breeders needs females 0-12') end
+        return reqscript('ai-herd').keep_breeders(f, a.dry_run == true, txt)
+    end,
+    tame_wild = function(a)
+        local n = int_in(a.max, 1, 10)
+        if not n then return reject('tame_wild needs max 1-10') end
+        return reqscript('ai-herd').tame(n, a.dry_run == true, txt)
+    end,
+    train_hunt = function(a)
+        local n = int_in(a.max, 1, 6)
+        if not n then return reject('train_hunt needs max 1-6') end
+        return reqscript('ai-herd').train_hunt(n, a.dry_run == true, txt)
+    end,
+    herd_targets = function(a)
+        local t = {}
+        for _, k in ipairs({'fk', 'mk', 'fa', 'ma'}) do
+            t[k] = int_in(a[k], 0, 50)
+            if not t[k] then return reject('herd_targets needs fk, mk, fa, ma 0-50') end
+        end
+        return reqscript('ai-herd').set_targets(t, a.dry_run == true)
+    end,
 }
 
 -- (13c) The actions whose dry run changes nothing in the fort, all the way
@@ -812,6 +838,8 @@ for _, name in ipairs({
     'well_safety', 'well_rescue',   -- (0.105.47) each dry run plans and checks, and changes nothing
     'near_gates', 'retire_water_zones',   -- (0.105.47, I7d) each dry run counts and changes nothing
     'cross_cavern',    -- (0.105.47) its dry run plans the step (quickfort's dry run) and marks nothing
+    -- (0.105.47) the herd: each dry run counts (and names) and changes nothing
+    'herd_breeders', 'tame_wild', 'train_hunt', 'herd_targets',
 }) do DRY_OK[name] = true end
 
 -- These only change what's displayed, so they still work while halted, dry
@@ -899,6 +927,7 @@ BRIDGE_MODULES = {
     'ai-well-safety',   -- (0.105.47) cavern wells made safe
     'ai-near-gates', 'ai-ice',   -- (0.105.47, I7d) surface work near the gates; water zones off before the ice
     'ai-descent',   -- (0.105.47) the deep plan's stair past the first cavern
+    'ai-herd',   -- (0.105.47) the herd by Husbandry
 }
 -- the split-off modules that carry a version mark of their own
 MARKED_MODULES = {'ai-military-gear', 'ai-society-burrows', 'ai-constructions'}
@@ -1391,6 +1420,10 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
     -- (0.105.47, I7d) the near-gates burrow: on, members, the citizens outside
     -- far from every surface way in (lua/ai-near-gates.lua; in the pulse)
     near_gates = function() return safe(function() return reqscript('ai-near-gates').status(txt) end) end,
+    -- (0.105.47) the herd by kind (adults by sex, young, breeders, protected,
+    -- marked, caged), grass the AI's grazers need, wool grown and milk ready
+    -- now, caged wild animals to tame, trainers, autobutcher targets (lua/ai-herd.lua)
+    herd = function() return safe(function() return reqscript('ai-herd').report() end) end,
     -- (0.105.30) what the fort has built: finished constructions by shape and
     -- material, above or below ground, roofed surface tiles, the waiting ones
     -- and the AI's own (lua/ai-constructions.lua; one pass, every 3 days)

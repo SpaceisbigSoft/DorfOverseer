@@ -296,7 +296,10 @@ def _dairy_rule(s: dict, cfg: dict, citizens: int, proposals: list) -> None:
                                             "amount": min(cfg["dairy_batch"], milk)},
                                   f"{milk} milk and {cheese} cheese for {citizens} dwarves: make cheese "
                                   "(it lifts the meals and keeps)", 6, True))
-    elif milkable > 0 and milk == 0 and not queued(s, {"milk_creature"}):
+    elif (milkable > 0 and milk == 0 and not queued(s, {"milk_creature"})
+          # (0.105.47) with the herd section, only while one has milk now
+          # (planner_husbandry's milking rule then; a job with none ready fails)
+          and not isinstance(_d(s.get("herd")).get("milk_now"), int)):
         proposals.append(Proposal("dairy", {"type": "work_order", "recipe": "milk_creature",
                                             "amount": min(cfg["dairy_batch"], milkable)},
                                   f"{milkable} tame animals give milk and the fort has no cheese: milk them "
