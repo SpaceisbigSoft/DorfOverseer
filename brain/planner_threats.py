@@ -426,7 +426,9 @@ def alarm_held(s: dict, memory, cfg: dict) -> str:
         return why
     t = _d(s.get("threats"))
     down = _l(_d(t.get("cavern_citizens")).get("list"))
-    if down and cavern_great(s):
+    great = cavern_great(s)
+    caverns = [c for c in _l(_d(s.get("deep")).get("caverns")) if isinstance(c, dict)]
+    if down and great and cavern_at_risk(down, great, caverns):       # (item4) only those it could come at
         since = _d(getattr(memory, "cavern_alarm", None)).get("since")
         if not (isinstance(since, int) and not isinstance(since, bool)
                 and (now - since) // TICKS_PER_DAY >= _c(cfg, "cavern_alarm_max_days")):
@@ -444,6 +446,28 @@ def cavern_great(s: dict) -> list:
             continue
         if str(x.get("layer") or "").startswith("Cavern") or x.get("kind") == "forgotten beast":
             out.append(x)
+    return out
+
+
+def cavern_at_risk(down: list, great: list, caverns: list) -> list:
+    """(item4) The citizens down in the caverns a loose great beast could
+    come at. Left out only one known to be in another cavern layer (by the
+    layers' levels) than every such beast, none of which can walk to the
+    dwarves; anyone whose place can't be told (no layer, no levels, a level
+    in no known layer) counts."""
+    rng = {}
+    for c in caverns:
+        if isinstance(c, dict) and _num(c.get("z_top")) and _num(c.get("z_bottom")):
+            rng[c.get("name")] = (min(c["z_top"], c["z_bottom"]), max(c["z_top"], c["z_bottom"]))
+    out = []
+    for x in down:
+        z = _d(x).get("z")
+        here = next((n for n, r in rng.items() if _num(z) and r[0] <= z <= r[1]), None)
+        for b in great:
+            b = _d(b)
+            if b.get("can_reach_dwarves") is True or here is None or b.get("layer") not in rng or b.get("layer") == here:
+                out.append(x)
+                break
     return out
 
 
@@ -576,8 +600,16 @@ def _cavern_beasts(s, cfg, memory, t, rules, proposals, notes):
                 # (0.105.35) the AI calls them up itself: the alarm sends the
                 # civilians into the shelter (inside the fort), and holds while
                 # they are down there; the ways are locked once they're out
-                proposals[:] = [p for p in proposals if p.action != {"type": "civ_alert", "on": False}]
-                if s.get("civ_alert"):
+                risk = cavern_at_risk(down, great, caverns)
+                if risk:
+                    proposals[:] = [p for p in proposals if p.action != {"type": "civ_alert", "on": False}]
+                if not risk and not s.get("civ_alert"):
+                    # (item4) F (13 Nov): 110 alarms for beasts in Cavern1 while a fisherdwarf was
+                    # in another layer, each lifted a minute later: none for a beast that can't come at them
+                    notes.append(f"{who} is about and {n} citizen(s) are in the caverns ({where}), none where "
+                                 "it is: no alarm (the whole fort would stop); the ways down are locked once "
+                                 "they're out")
+                elif s.get("civ_alert"):
                     notes.append(f"{who} is about and {n} citizen(s) are still in the caverns ({where}): the alarm "
                                  "calls them up; the ways down are locked once they're out")
                 elif s.get("civ_alert_ready") is True:
@@ -748,6 +780,12 @@ def _threat_rules(s: dict, memory, cfg: dict, proposals: list, notes: list) -> N
             return
     else:
         memory.threat_alarm = {}
+    if why.startswith("an evil cloud"):
+        from planner_weather import keep_in_active
+        if keep_in_active(memory):
+            # (item4) the weather rule keeps the civilians in by the burrow: no alarm for the cloud
+            notes.append(f"{why}: the civilians are kept inside by the weather rule (no alarm)")
+            return
     if why:
         proposals[:] = [p for p in proposals if p.action != {"type": "civ_alert", "on": False}]
         if not s.get("civ_alert") and not any(p.action == {"type": "civ_alert", "on": True} for p in proposals):

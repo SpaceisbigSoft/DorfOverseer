@@ -779,6 +779,34 @@ function shelter_result(r, info)
     return r
 end
 
+-- (item4) when the shelter was last drawn: an alarm sounded again within
+-- SHELTER_REDRAW_TICKS uses it as it is (the alarm flapped 150 times a run
+-- in C and F, the shelter drawn afresh each time); a gate lost while the
+-- alarm is on still redraws it (refresh_shelter, the planner's shelter_stale)
+SHELTER_DRAWN_KEY = 'ai-overseer/shelter-drawn'
+SHELTER_REDRAW_TICKS = 1200
+
+local function shelter_drawn(n)
+    if n and n > 0 then pcall(function() U.site_put(SHELTER_DRAWN_KEY, {tick = U.abs_tick()}) end) end
+end
+
+-- The shelter drawn again before an alarm unless drawn within the last
+-- SHELTER_REDRAW_TICKS (and still covering tiles); force: always.
+function refresh_shelter_due(force)
+    if not force then
+        local last = U.site_get(SHELTER_DRAWN_KEY, {})
+        local t = type(last) == 'table' and tonumber(last.tick) or nil
+        local okn, now = pcall(U.abs_tick)
+        if not okn then now = nil end
+        local b = find_burrow(SHELTER_NAME)
+        local okb, blocks = pcall(function() return #dfhack.burrows.listBlocks(b) end)
+        if t and now and b and okb and blocks > 0 and now >= t and now - t < SHELTER_REDRAW_TICKS then
+            return {refreshed = false, drawn_ticks_ago = now - t}
+        end
+    end
+    return refresh_shelter()
+end
+
 -- Make (or refresh) the "AI shelter" burrow and make it the civilian alert's.
 function setup_shelter()
     if alert_has_burrow() then
@@ -791,6 +819,7 @@ function setup_shelter()
         return {ok = false, error = 'found no inside tiles to shelter in'}
     end
     require('utils').insert_sorted(civ_alert().burrows, b.id)
+    shelter_drawn(n)
     return shelter_result({ok = true, burrow_id = b.id, tiles = n}, info)
 end
 
@@ -809,6 +838,7 @@ function refresh_shelter()
     pcall(function() before = dfhack.burrows.listBlocks and #dfhack.burrows.listBlocks(b) or 0 end)
     dfhack.burrows.clearTiles(b)
     local n, info = fill_shelter(b)
+    shelter_drawn(n)
     return shelter_result({refreshed = true, tiles = n, blocks_before = before}, info)
 end
 
@@ -2528,6 +2558,6 @@ local function burrows()
 end
 for _, name in ipairs({'fill_recreation', 'badly_wants_friends', 'recreation_status', 'recreation_tick', 'hospital_zones',
                        'well_gives_water', 'is_patient', 'in_quarantine', 'hospital_burrow_status', 'hospital_burrow_tick', 'calm_burrow_status',
-                       'calm_burrow_tick'}) do
+                       'calm_burrow_tick', 'weather_keep_in', 'weather_keep_in_status'}) do
     _ENV[name] = function(...) return burrows()[name](...) end
 end

@@ -616,6 +616,9 @@ def short(a: dict) -> str:
         return f"{a.get('name')} {'on' if a.get('enabled') else 'off'}"
     if t == "civ_alert":
         return f"civilian alert {'on' if a.get('on') else 'off'}"
+    if t == "weather_burrow":        # (item4) evil weather: kept in without the alarm
+        return ("keep the civilians inside, out of the evil weather (no alarm)" if a.get("on")
+                else "let the civilians kept in for the weather back outside")
     if t == "squad_fill":
         return f"add {a.get('count')} soldiers to a squad"
     if t == "squad_orders":

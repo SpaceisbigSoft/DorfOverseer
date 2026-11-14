@@ -1705,3 +1705,97 @@ function calm_burrow_tick(max, days, dry_run, txt, release)
     end
     return {ok = true, added = added, released = released, members = count, note = why, dry_run = dry_run or nil}
 end
+
+-- --- (item4) evil weather: the civilians kept inside without the alarm ---------
+--
+-- The alarm locked the whole fort down for a cloud drifting over the surface
+-- (and stopped everything that waits on it); each spell sounded it again. Now
+-- the civilians are put into the AI shelter's burrow (the inside of the fort,
+-- drawn for the alarm) as members: outdoor work (wood cutting, gathering,
+-- hauling outside) stops, the work inside goes on, the alarm stays for
+-- enemies. Not a soldier (they may have to fight), not one in another burrow
+-- (the hospital, a calm-down room, the recreation burrow, a player's). The
+-- members are kept in the save; `on = false` lets out exactly those.
+WEATHER_KEEP_KEY = 'ai-overseer/weather-keep-in'
+
+local function wk_state()
+    local d = U.site_get(WEATHER_KEEP_KEY, {members = {}})
+    if type(d) ~= 'table' or type(d.members) ~= 'table' then d = {members = {}} end
+    return d
+end
+
+local function wk_soldier(u)
+    local ok, sq = pcall(function() return u.military.squad_id end)
+    return ok and type(sq) == 'number' and sq >= 0
+end
+
+-- in burrow `bid` now; in another burrow
+local function wk_burrows(u, bid)
+    local mine, other = false, false
+    local ok = pcall(function()
+        for _, id in ipairs(u.burrows or {}) do
+            if id == bid then mine = true else other = true end
+        end
+    end)
+    if not ok then return false, true end
+    return mine, other
+end
+
+function weather_keep_in(on, dry_run, txt)
+    local d = wk_state()
+    local b = S.find_burrow(S.SHELTER_NAME)
+    if not on then
+        local n = 0
+        for id in pairs(d.members) do
+            local u = df.unit.find(tonumber(id) or -1)
+            if u and b and not dry_run then pcall(dfhack.burrows.setAssignedUnit, b, u, false) end
+            n = n + 1
+        end
+        if not dry_run then U.site_put(WEATHER_KEEP_KEY, {members = {}}) end
+        return {ok = true, on = false, released = n, dry_run = dry_run or nil}
+    end
+    if not b then
+        return {ok = false, rejected = true, error = 'no AI shelter burrow yet (the alarm rule sets one up)'}
+    end
+    local okb, blocks = pcall(function() return #dfhack.burrows.listBlocks(b) end)
+    if okb and blocks == 0 then
+        return {ok = false, rejected = true, error = 'the AI shelter burrow covers no tiles'}
+    end
+    local added, skipped, gone = 0, 0, 0
+    local live = {}
+    for _, u in ipairs(report_citizens(true)) do
+        local id = tostring(u.id)
+        live[id] = true
+        if not d.members[id] then
+            local mine, other = wk_burrows(u, b.id)
+            if mine or other or wk_soldier(u) then
+                skipped = skipped + 1        -- the player's own member, another burrow's, a soldier
+            elseif dry_run then
+                added = added + 1
+            elseif pcall(dfhack.burrows.setAssignedUnit, b, u, true) then
+                d.members[id] = true
+                added = added + 1
+            end
+        end
+    end
+    for id in pairs(d.members) do
+        if not live[id] then
+            -- dead, gone, no longer a citizen: let out and forgotten
+            local u = df.unit.find(tonumber(id) or -1)
+            if u and not dry_run then pcall(dfhack.burrows.setAssignedUnit, b, u, false) end
+            d.members[id] = nil
+            gone = gone + 1
+        end
+    end
+    local n = 0
+    for _ in pairs(d.members) do n = n + 1 end
+    if not dry_run then U.site_put(WEATHER_KEEP_KEY, d) end
+    return {ok = true, on = true, added = added, members = n, skipped = skipped, gone = gone,
+            dry_run = dry_run or nil}
+end
+
+function weather_keep_in_status()
+    local n = 0
+    for _ in pairs(wk_state().members) do n = n + 1 end
+    return {members = n}
+end

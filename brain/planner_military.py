@@ -492,11 +492,16 @@ def _war_animal_rule(s: dict, cfg: dict, proposals: list) -> None:
                               f"{cands} could be trained: put {n} to war training (they fight beside the dwarves)", 6))
 
 
-def hazard_alert(s: dict, cfg: dict) -> str:
+def hazard_alert(s: dict, cfg: dict, raising: bool = False) -> str:
     """Why the civilian alert should stay up for a hazard ("" if none): fire
-    or a cloud close to the dwarves, a citizen gone berserk."""
+    or a cloud close to the dwarves, a citizen gone berserk. (item4) Fire
+    sounds it only within `fire_alarm_near` (raising), and holds it while
+    within `hazard_near`: C's fire 9-14 tiles off, flickering in and out of
+    20, sounded it 122 times in one run (the fire guard keeps the dwarves
+    off the tiles round it meanwhile)."""
     h = _d(s.get("hazards"))
-    if h.get("fire_near") is not None and h["fire_near"] <= cfg["hazard_near"]:
+    near = cfg.get("fire_alarm_near", 8) if raising else cfg["hazard_near"]
+    if h.get("fire_near") is not None and h["fire_near"] <= min(near, cfg["hazard_near"]):
         return f"fire {h['fire_near']} tiles from the dwarves"
     if h.get("cloud_near") is not None and h["cloud_near"] <= cfg["hazard_near"]:
         return f"a cloud (gas or vapour) {h['cloud_near']} tiles from the dwarves"
@@ -514,7 +519,7 @@ def _hazard_rules(s: dict, memory, cfg: dict, proposals: list, notes: list, rule
     (flooding: the cistern's floodgate shut); vampires sent away (Rules tab);
     caught invaders noted."""
     h = _d(s.get("hazards"))
-    why = hazard_alert(s, cfg)
+    why = hazard_alert(s, cfg, raising=True)
     if why and not s.get("civ_alert"):
         if s.get("civ_alert_ready") is True:
             proposals.append(Proposal("threat_alert", {"type": "civ_alert", "on": True},
