@@ -695,16 +695,23 @@ PRESET_RULE_KEYS = {'attack_policy', 'fill_squads', 'train_squads', 'gate_lever'
                     'water_works', 'fort_goal',
                     'shut_to_visitors'}     -- (0.105.24)
 table.insert(PRESET_RULE_KEYS, 'keep_enemy_gear')   -- (0.105.27) invaders' gear kept (War-hold)
+-- (0.105.47) missions by the World screen, recorded live 14 Nov: every preset
+-- but the closed Hermit hold sends its messenger (Make contact); only the War-hold
+-- raids (Militarism its character; the peaceful forts start no wars)
+table.insert(PRESET_RULE_KEYS, 'send_messenger')
+table.insert(PRESET_RULE_KEYS, 'send_missions')
+table.insert(PRESET_RULE_KEYS, 'missions')
 BUILTIN_PRESET_RULES = {
     ['War-hold'] = {attack_policy = 'all', fill_squads = true, train_squads = true, gate_lever = true,
                     fortify_entrances = true, levels = {garden = false},
-                    keep_enemy_gear = true},     -- (0.105.27) invaders' gear kept, not melted
-    ['Monastery'] = {attack_policy = 'never', levels = {barracks = false, archery = false, jail = false}},
+                    keep_enemy_gear = true,      -- (0.105.27) invaders' gear kept, not melted
+                    send_messenger = true, send_missions = true, missions = 'all'},   -- (0.105.47) raids too
+    ['Monastery'] = {send_messenger = true, attack_policy = 'never', levels = {barracks = false, archery = false, jail = false}},
     -- (0.105.24) visitors are the Merchant city's point: never shut out for the mayor's sake
-    ['Merchant city'] = {accept_visitors = true, answer_locations = true, shut_to_visitors = false},
+    ['Merchant city'] = {send_messenger = true, accept_visitors = true, answer_locations = true, shut_to_visitors = false},
     ['Hermit hold'] = {accept_visitors = false, answer_locations = false, fortify_entrances = true},
-    ['Deep mine'] = {water_works = true, levels = {garden = false}},
-    ['Garden fort'] = {pasture_animals = true, levels = {archery = false}},
+    ['Deep mine'] = {send_messenger = true, water_works = true, levels = {garden = false}},
+    ['Garden fort'] = {send_messenger = true, pasture_animals = true, levels = {archery = false}},
 }
 
 -- (applied: an optional table that gets the rules actually set, for apply_preset's answer)

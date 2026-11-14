@@ -119,15 +119,20 @@ def _():
     assert r.ok and TP.saved().missions == "off"
 
 
-@test("presets don't set them")
+@test("presets: (0.105.47) the messenger sent by all but the Hermit hold; raids by the War-hold only")
 def _():
     S = TP.H.settings()
     keys = lua_list(S.PRESET_RULE_KEYS)
-    assert "missions" not in keys and "send_missions" not in keys
+    assert "missions" in keys and "send_missions" in keys and "send_messenger" in keys
     for name in TP.PRESETS:
         s = S.defaults()
-        s.missions = "all"
-        assert S.load_preset(name, s).missions == "all", name
+        s.missions = "rescue"
+        p = S.load_preset(name, s)
+        if name == "War-hold":
+            assert p.missions == "all" and p.send_missions is True and p.send_messenger is True, name
+        else:
+            assert p.missions == "rescue" and p.send_missions is not True, name      # left as it was
+            assert (p.send_messenger is True) == (name != "Hermit hold"), name
 
 
 # --- the window ---------------------------------------------------------------------------
