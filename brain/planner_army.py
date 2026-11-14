@@ -93,6 +93,8 @@ def _army_gear_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) ->
             continue
         n = min(n, cfg["max_gear_order"])
         if recipe == "wooden_crossbow":
+            if int(g.get("crossbows_total") or 0) >= n:
+                break               # (0.105.46, I3) the fort has them: handed out, not made again
             if _has_shop(s["buildings"], "Bowyers") and int(_d(s.get("stocks")).get("wood") or 0) >= n:
                 proposals.append(Proposal("gear_fix_order", {"type": "work_order", "recipe": recipe, "amount": n},
                                           f"{n} crossbow place(s) and no crossbow to give: make {n} at the bowyer's",

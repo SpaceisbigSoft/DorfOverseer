@@ -1053,4 +1053,8 @@ PLANNER_CONFIG = {
     "lure_open_cooldown_ticks": 300,
     "lure_shut_cooldown_ticks": 25,       # shutting is safety: soon again if it didn't take
     "lure_archer_cooldown_ticks": 1200,
+    # (0.105.46, I3) the order loop (brain/order_check.py)
+    "order_check": True,                  # inputs, fuel, a free workshop and a worker checked before any order
+    "order_miss_days": 56,                # a stuck cancel's recipe (and metal) not ordered again until what it lacked changes, or this long
+    "approve_on_place_days": 112,         # the AI approved its own orders this recently: its new ones are approved as placed
 }

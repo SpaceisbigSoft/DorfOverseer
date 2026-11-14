@@ -120,8 +120,8 @@ def _approve_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> N
     """(0.101.2) The AI's own orders the manager hasn't approved in
     `approve_after_days` (no working office yet: an office needs a chair, a
     chair needs an approved order) are approved by the AI itself."""
-    if memory is None:
-        return
+    if memory is None or "orders" in _d(s.get("_errors")):
+        return              # (0.105.46, I3) only from a fresh order list that shows unapproved orders
     now = abs_tick(s)
     waiting = []
     for o in _l(s.get("orders")):
@@ -141,6 +141,14 @@ def _approve_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> N
                                       f"none of the fort's {len(mine)} AI work orders has started: the manager hands "
                                       "orders out only from an office with a chair, and the chair waits on an order. "
                                       "Make one chair straight at a workshop", 1))
+    if waiting:
+        # (0.105.46, I3) the very orders it approved within approve_after_days
+        # show unapproved again: approving them again is a loop, not a fix
+        from order_check import approve_repeat
+        if approve_repeat(memory, [o.get("id") for o in waiting], cfg, now):
+            notes.append(f"{len(waiting)} of the AI's work orders it approved lately show unapproved again: "
+                         "not approved again in a loop (the game takes the approval back)")
+            return
     if waiting:
         # (0.104.71) say why as it is: Enxah's manager has an office with a chair
         # and is busy hauling, so "no working office" was wrong

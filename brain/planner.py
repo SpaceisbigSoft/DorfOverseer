@@ -59,6 +59,7 @@ from planner_siege import _siege_rules  # noqa: E402  (item5) siege engines, arc
 from planner_hazards import _hazards_rule, magma_alarm  # noqa: E402  (0.105.41, item 7) spilt magma, cave-ins, frost, heat
 from planner_insane import _insane_rule  # noqa: E402  (0.105.40b) the insane: deadly ground near them, the AI's doors
 from planner_killers import _killer_rule  # noqa: E402  (item3) a killer among the fort's own: cells, a squad
+from order_check import order_gate, note_order_loop, approve_on_place, hold_lifted  # noqa: E402  (0.105.46, I3) the order loop
 from planner_hunt import _hunt_rule, note_hunt_cycle  # noqa: E402  (0.105.45) hunting threats the squads can beat
 from planner_shelter import _shelter_pick_rule  # noqa: E402  (0.105.45) the shelter away from the threat
 from planner_stuck import _stuck_rule, note_stuck  # noqa: E402  (0.105.45) the sweep for things stuck "in progress"
@@ -1095,6 +1096,10 @@ def select(proposals: list[Proposal], state: dict, memory: Memory,
         # an earlier stuck order of the same recipe (it stalled for want of a
         # still or barrels, which those rules check): brewing stopped 28 days
         hold_days = stuck_hold_days(sc, cfg)
+        # (0.105.46, I3) what was missing at the stuck cancel has come (bars
+        # arrived): the recipe's hold gives way (brain/order_check.py)
+        if p.action.get("type") == "work_order" and isinstance(sc.get("tick"), int) and hold_lifted(p, state, memory, cfg):
+            sc = {}
         if (p.action.get("type") == "work_order" and p.rule not in STUCK_HOLD_EXEMPT
                 and isinstance(sc.get("tick"), int)
                 and 0 <= now - sc["tick"] < hold_days * TICKS_PER_DAY):
@@ -1111,6 +1116,12 @@ def select(proposals: list[Proposal], state: dict, memory: Memory,
             held.append(f"{p.rule}: an order for {p.action.get('recipe')} got stuck and was cancelled "
                         f"{(now - sc['tick']) // TICKS_PER_DAY} day(s) ago; tried again after "
                         f"{hold_days} days")
+            continue
+        # (0.105.46, I3) inputs, fuel, a free workshop and a worker before any
+        # order; none again after a stuck cancel until what it lacked changes
+        og = order_gate(p, state, memory, cfg, now, allowed)
+        if og:
+            held.append(og)
             continue
         b = _d(state.get("buildings"))
         shop = recipe_shop(p.action.get("recipe")) if p.action.get("type") == "work_order" else None
@@ -1231,6 +1242,9 @@ def select(proposals: list[Proposal], state: dict, memory: Memory,
                                        for a in allowed):
             held.append(f"{p.rule}: one new {kind} level a cycle; this one waits its turn")
             continue
+        if p.action.get("type") == "work_order" and approve_on_place(memory, cfg, now):
+            # (0.105.46, I3) the manager doesn't get to the AI's orders: approved as placed
+            p.action = dict(p.action, approve=True)
         allowed.append(p)
         fired_this_cycle.add(cooldown_key(p))
         if p.is_order:
@@ -1258,6 +1272,7 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
         note_gate_stuck(p, r, state, memory, now)          # (0.105.32) the unstick step tried, a way dug in
         note_cleanup(p, r, state, memory, now)             # (0.105.40) a cleanup's trial done, what it removed
         note_captives(p, r, memory, now)                   # (item6) the pit's trial done, the prisoners sent
+        note_order_loop(p, r, state, memory, now, cfg)     # (0.105.46, I3) a stuck cancel's missing thing; approvals
         note_syndromes(p, r, memory, now)                  # (0.105.41, item 11) the contaminant clean's trial done
         note_food_level(p, r, memory)                      # (fix41) one food storage level a kitchen or still
         note_stuck(p, r, memory, now)                      # (0.105.45) the stuck sweep's step done
