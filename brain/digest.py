@@ -166,6 +166,7 @@ SECTION_DEFAULTS = {
     "food_store": {},        # (0.105.40b, M6) food piles, their barrels and fullness, food out of piles, rotten (lua/ai-food-store.lua)
     "pile_links": {},        # (0.105.41, item 2) wheelbarrows, the AI's stone piles, its feeders' links (lua/ai-pile-links.lua)
     "provisions": {},        # (0.105.41, item 4) game and hunters, butchery and tanning, fruit trees, meals by kind, cavern farms (lua/ai-provisions.lua)
+    "killzones": {},         # (0.105.45) kill zones at the gates and cavern openings: traps, drawbridge, TRAPAVOID (lua/ai-killzone.lua)
     "siege": {},             # (item5) entrances' fortifications and posts, siege engines, parts, arrows, operators (lua/ai-siege.lua)
     "field_watch": {},       # (item5) hostiles near a caravan, hostile wild animals near the dwarves outside (lua/ai-siege.lua)
     "forestry": {},          # (item10) trees by where they stand, cavern layers and dangers, the grove (lua/ai-forestry.lua)

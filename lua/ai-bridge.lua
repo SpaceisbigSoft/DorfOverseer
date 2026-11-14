@@ -503,6 +503,30 @@ ACTIONS = {
         if a.release == true then return B.release_bench(a.kind, a.dry_run == true) end
         return B.cap_bench(a.kind, a.level, a.dry_run == true)
     end,
+    -- (0.105.45) kill zones at the gates and cavern openings (lua/ai-killzone.lua): traps in
+    -- the 1-wide stretch inside, a drawbridge (over a channel where allowed); full cage traps
+    build_killzone = function(a)
+        local id = math.tointeger(tonumber(a.entrance_id))
+        if not id then return reject('build_killzone needs entrance_id') end
+        local n = 4
+        if a.traps ~= nil then
+            n = int_in(a.traps, 0, 6)
+            if not n then return reject('build_killzone: traps is 0-6') end
+        end
+        local kind = a.kind or 'cage'
+        if kind ~= 'cage' and kind ~= 'weapon' and kind ~= 'stonefall' and kind ~= 'mixed' then
+            return reject('build_killzone: kind is cage, weapon, stonefall or mixed')
+        end
+        if a.drawbridge ~= nil and type(a.drawbridge) ~= 'boolean' then
+            return reject('build_killzone: drawbridge is true or false')
+        end
+        return reqscript('ai-killzone').build_killzone(id, n, kind, a.drawbridge == true, a.dry_run == true)
+    end,
+    reset_cage_traps = function(a)
+        local id = math.tointeger(tonumber(a.entrance_id))
+        if not id then return reject('reset_cage_traps needs entrance_id') end
+        return reqscript('ai-killzone').reset_cage_traps(id, a.dry_run == true)
+    end,
 }
 
 -- (13c) The actions whose dry run changes nothing in the fort, all the way
@@ -573,6 +597,7 @@ for _, name in ipairs({
     -- (0.105.41, item 11) each dry run counts (and names) and changes nothing
     'clean_contaminants', 'quarantine_syndromes', 'clear_miasma',
     'place_display', 'display_artifact',   -- (item 12) each dry run checks and returns before it builds or makes a job
+    'build_killzone', 'reset_cage_traps',   -- (0.105.45) each dry run plans (or counts) and places nothing
 }) do DRY_OK[name] = true end
 
 -- These only change what's displayed, so they still work while halted, dry
@@ -640,7 +665,7 @@ BRIDGE_MODULES = {
     'ai-artifacts', 'ai-bans', 'ai-benches', 'ai-blueprints', 'ai-builder', 'ai-camera', 'ai-captives', 'ai-census',
     'ai-cleanup', 'ai-constructions', 'ai-diplomacy', 'ai-disposal', 'ai-food-store', 'ai-forestry', 'ai-gates',
     'ai-hauling', 'ai-hazards', 'ai-health', 'ai-homes', 'ai-leather-gear',
-    'ai-industry', 'ai-insane', 'ai-joins', 'ai-killers', 'ai-labor', 'ai-layouts', 'ai-military', 'ai-military-gear',
+    'ai-industry', 'ai-insane', 'ai-joins', 'ai-killers', 'ai-killzone', 'ai-labor', 'ai-layouts', 'ai-military', 'ai-military-gear',
     'ai-mission-send', 'ai-missions', 'ai-moods', 'ai-noble-demands', 'ai-nobles', 'ai-overlay',
     'ai-overseer-settings', 'ai-paper', 'ai-pile-links', 'ai-ping', 'ai-provisions', 'ai-reports', 'ai-siege',
     'ai-society', 'ai-society-burrows', 'ai-status', 'ai-syndromes', 'ai-threats', 'ai-title', 'ai-trade', 'ai-traffic',
@@ -1052,6 +1077,10 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
     -- (item5) hostiles near a caravan's merchants, hostile wild animals near the
     -- dwarves outside (lua/ai-siege.lua; in the pulse)
     field_watch = function() return safe(function() return reqscript('ai-siege').field_watch(txt) end) end,
+    -- (0.105.45) kill zones: per entrance the 1-wide stretch inside, the AI's traps there (built,
+    -- full cages), its drawbridge, the fortifications; the enemies and whether DF's traps work
+    -- on them (TRAPAVOID); mechanisms, trap weapons (lua/ai-killzone.lua; cached a day)
+    killzones = function() return safe(function() return reqscript('ai-killzone').report(txt) end) end,
     -- (item9) paper from plants, scrolls and codices for the library (lua/ai-paper.lua)
     -- (fix6) not cached while a paper step's order is open: the report after
     -- it is done reads afresh what it used (a day-old copy ordered it again)
@@ -1122,6 +1151,7 @@ SECTION_CACHE_DAYS.pile_links = 1      -- (0.105.41, item 2) every tool and the 
 SECTION_CACHE_DAYS.siege = 1           -- (item5) small boxes round the entrances, the engines
 SECTION_CACHE_DAYS.paper = 1           -- (item9) the plants and tools walked once
 SECTION_CACHE_DAYS.artifacts = 1       -- (item 12) the artifacts and display furniture walked once
+SECTION_CACHE_DAYS.killzones = 1       -- (0.105.45) a walk in from each entrance, the units once
 SECTION_REBUILDS = 2       -- expired cached sections rebuilt in one report (a missing one always is)
 -- (0.100) the cached sections each action changes (cleared when it succeeds)
 CACHE_INVALIDATES = {
@@ -1170,6 +1200,7 @@ CACHE_INVALIDATES.fortify_post = {'siege'}
 CACHE_INVALIDATES.archer_post = {'siege'}
 CACHE_INVALIDATES.place_siege_engine = {'siege'}
 CACHE_INVALIDATES.place_siege_shop = {'siege'}
+CACHE_INVALIDATES.build_killzone = {'killzones', 'siege'}   -- (0.105.45) the zone read again after each step
 CACHE_INVALIDATES.clear_miasma = {'disposal'}   -- (0.105.41, item 11) items marked for the dump
 CACHE_INVALIDATES.place_display = {'artifacts'}      -- (item 12)
 CACHE_INVALIDATES.display_artifact = {'artifacts'}

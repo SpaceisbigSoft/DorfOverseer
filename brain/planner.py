@@ -59,6 +59,7 @@ from planner_siege import _siege_rules  # noqa: E402  (item5) siege engines, arc
 from planner_hazards import _hazards_rule, magma_alarm  # noqa: E402  (0.105.41, item 7) spilt magma, cave-ins, frost, heat
 from planner_insane import _insane_rule  # noqa: E402  (0.105.40b) the insane: deadly ground near them, the AI's doors
 from planner_killers import _killer_rule  # noqa: E402  (item3) a killer among the fort's own: cells, a squad
+from planner_killzone import _killzone_rule  # noqa: E402  (0.105.45) kill zones at the gates and cavern openings
 from planner_hauling import _hauling_labor_rule, note_hauling  # noqa: E402  (0.105.40 M5) hauling balanced
 from planner_traffic import _traffic_rule  # noqa: E402  (0.105.41) traffic zones on the AI's own levels
 from planner_food import _food_store_rule, note_food  # noqa: E402  (0.105.40b, M6) the food store
@@ -640,6 +641,9 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
         # (item5) ballistae, the archers' fortifications and posts, the caravan guarded,
         # dangerous wild animals near the dwarves hunted (planner_siege)
         _guard(_siege_rules, s, memory, cfg, proposals, notes)
+        # (0.105.45) kill zones: traps in the narrow way in, a drawbridge over a drop (planner_killzone)
+        if "killzones" not in errors:
+            _guard(_killzone_rule, s, memory, cfg, proposals, notes)
         if can_use("entrances"):
             _guard(_gate_cut_rule, s, memory, cfg, proposals, notes)
         # (item6) a necromancer siege: no squad at overwhelming dead, the alarm, the bodies outside rotted

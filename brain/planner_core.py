@@ -523,6 +523,8 @@ def player_rules(s: dict) -> dict:
             "squads_shelter": st.get("squads_shelter") is not False,
             # (0.105.41, item 2) the AI's feeder piles linked to the AI's own workshops: off only when the settings say so
             "link_feeders": st.get("link_feeders") is not False,
+            # (0.105.45) kill zones at the gates and cavern openings (brain/planner_killzone.py): off only when the settings say so
+            "killzones": st.get("killzones") is not False,
             # (0.105.27) forbidden items: store < melt < dump < destroy (each does the ones before);
             # the player's own forbidden items (no game reason) only when the switch says so; the
             # enemy's gear kept from the smelters (the War-hold preset)

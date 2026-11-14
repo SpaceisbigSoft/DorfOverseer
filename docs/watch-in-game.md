@@ -11,6 +11,16 @@ Where to look:
 The forts are A War-hold, B Monastery, C Merchant city, D Hermit hold, E Deep mine and F Garden fort. "All" means every fort.
 
 
+## 0.105.45 (14 Nov): kill zones at the gates and cavern openings (Phase 11 b)
+
+- **All, state.json**: `killzones.entrances` (per entrance: `state` possible / none with `why` / building / standing / gatehouse, `corridor` length, `drawbridge` possible and `channel`, `fortifications`), `killzones.threats` with `trapavoid` for each enemy, `free_mechanisms`, `trap_weapons`, `mechanics`. No `error`. Is a `possible` stretch really a 1-wide way every enemy must walk (look at it on the map)?
+- **A fort where enemies came through an entrance (the atlas' threats there), A War-hold, D Hermit hold**: a `build_killzone` journal line; cage traps (`Tc`) in the narrow way in, never on the first tile behind the gate; a drawbridge named "AI killzone bridge" and an "AI gate lever" where the dwarves are; the gate rule (or the zone's own rule) links the lever to it.
+- **The founding stair's only way in**: no channel dug there (the bridge stands flat, lowered); citizens walk in and out over it the whole time.
+- **A second way in, rock below**: a channel dug under the bridge's tile, then its ramp removed (`z`), then the bridge placed over the pit, one step a day; never over water, an aquifer, a cavern or a fort level below.
+- **TRAPAVOID**: a titan or forgotten beast at a gate shows `trapavoid` true or false in `killzones.threats`; when true the note says the traps never touch it and the zone gets only the drawbridge. Does a cage trap catch a goblin (and the full cage get hauled to an animal stockpile by DF itself, the trap loaded again)?
+- **Weapon traps (Fortification 80+)**: a `metal_trap_blades` order at the forge is accepted by DF (MakeTrapComponent, ITEM_TRAPCOMP_GIANTAXEBLADE) and the `Tw` traps get their blades.
+- **Army tab**: the switch **Kill zones at the gates** (on), in the right-hand column beside the missions row.
+
 ## item1 (14 Nov): the thirst trap (B, 13 Nov: 66 dead of thirst beside 845 drinks)
 
 - **All, state.json**: `threats.interrupters` (`cancels`, `by_who`, `reasons.drink` / `reasons.eat`, and `list` with each unit DF shows keeping the dwarves from drink, food or sleep: `who`, `near`, `visitor`, `merchant`, `kill_ok`). Normally empty or small; no `error`.
