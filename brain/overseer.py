@@ -546,6 +546,8 @@ SHORT_WORDS = {
     "killer_cell": "lock a killer or a vampire among the fort's own in a cell (let out to eat and drink)",  # (item3)
     "stuck_reset": "take an AI lever's waiting pull job off (and ask the pull afresh)",  # (0.105.45)
     "thirst_unforbid": "let go the forbidden drink a parched dwarf can reach",  # (0.105.46, I2)
+    "well_safety": "keep the cavern wells safe: the watcher, the shaft's column, the gallery's door, the next level",  # (0.105.47)
+    "well_rescue": "let a dwarf stranded in the cavern under a well back up (its door, or a stair dug out)",  # (0.105.47)
     # (0.105.45) a great beast sealed in a cavern lured in and cut off (brain/planner_lure.py)
     "build_lure": "lay out a lure pocket behind a cavern door (cage traps, or drawbridges on levers)",
     "lure_open": "open the cavern door into the lure pocket (nobody below or near)",

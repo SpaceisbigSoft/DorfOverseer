@@ -692,6 +692,19 @@ ACTIONS = {
         if a.release ~= nil and type(a.release) ~= 'boolean' then return reject('train_cook: release is true or false') end
         return reqscript('ai-welfare').train_cook(a.dry_run == true, a.release == true)
     end,
+    -- (0.105.47) cavern wells made safe (lua/ai-well-safety.lua): the watcher,
+    -- the shaft's column restricted, the door at the gallery's fort end, the
+    -- next level of a shaft dug from the bottom up; a dwarf stranded under a well let out
+    well_safety = function(a)
+        return reqscript('ai-well-safety').step(a.dry_run == true)
+    end,
+    well_rescue = function(a)
+        local x, y, z = math.tointeger(tonumber(a.x)), math.tointeger(tonumber(a.y)), math.tointeger(tonumber(a.z))
+        if not x or not y or not z then return reject('well_rescue needs x, y, z (where the stranded stand)') end
+        local pid = a.project_id ~= nil and math.tointeger(tonumber(a.project_id)) or nil
+        if a.project_id ~= nil and not pid then return reject('well_rescue: project_id is a number') end
+        return reqscript('ai-well-safety').rescue(x, y, z, pid, a.dry_run == true)
+    end,
 }
 
 -- (13c) The actions whose dry run changes nothing in the fort, all the way
@@ -774,6 +787,7 @@ for _, name in ipairs({
     'hospital_guard', 'tantrum_step_down',   -- (0.105.47) each dry run checks and changes nothing
     'training_squad',   -- (0.105.47) its dry run names the leader or counts the places and changes nothing
     'coffins_anywhere', 'engrave_memorials', 'train_cook',   -- (0.105.47) each dry run finds and names, and changes nothing
+    'well_safety', 'well_rescue',   -- (0.105.47) each dry run plans and checks, and changes nothing
 }) do DRY_OK[name] = true end
 
 -- These only change what's displayed, so they still work while halted, dry
@@ -858,6 +872,7 @@ BRIDGE_MODULES = {
     'ai-tantrums',   -- (0.105.47) the tantrum ledger, posts, hospital guards
     'ai-training-squad',   -- (0.105.47) the training squad
     'ai-welfare',   -- (0.105.47, I7b) the unreachable dead, coffins anywhere, a cook trained
+    'ai-well-safety',   -- (0.105.47) cavern wells made safe
 }
 -- the split-off modules that carry a version mark of their own
 MARKED_MODULES = {'ai-military-gear', 'ai-society-burrows', 'ai-constructions'}
@@ -1342,6 +1357,11 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
     -- (0.105.47, I7b) the coffins on the AI's other levels (placed, built, free),
     -- free coffins in store, the trainee cook (lua/ai-welfare.lua)
     welfare = function() return safe(function() return reqscript('ai-welfare').report() end) end,
+    -- (0.105.47) the cavern wells' safety: each shaft dug from the bottom up,
+    -- who is in its column or the cavern under it, its door, the watcher's log
+    -- (beside an open shaft, turned up under a well), the one-at-a-time book
+    -- (lua/ai-well-safety.lua; in the pulse: the stranded wait on it)
+    well_safety = function() return safe(function() return reqscript('ai-well-safety').report() end) end,
     -- (0.105.30) what the fort has built: finished constructions by shape and
     -- material, above or below ground, roofed surface tiles, the waiting ones
     -- and the AI's own (lua/ai-constructions.lua; one pass, every 3 days)
@@ -1370,6 +1390,7 @@ PULSE_SECTIONS = {
     'thirst',        -- (0.105.46, I2) thirst kills in days: read each cycle
     'mood_help',     -- (0.105.47, J1) an alarm sounded while a mood gathers: read each cycle
     'tantrums',      -- (0.105.47) a tantrum is loose for hours: read each cycle
+    'well_safety',   -- (0.105.47) a dwarf under a well, a shaft's next level: read each cycle
 }
 TIERS = {pulse = true, daily = true, survey = true}
 -- report sections rebuilt only every so many game days (the lag pass, Oct 23:
