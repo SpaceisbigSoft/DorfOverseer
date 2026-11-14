@@ -18,7 +18,7 @@
 -- cells are ai-blueprints' (check_format, cost, to_layouts); nothing here
 -- reads a blueprint's text but its grids, for the positions in the words.
 
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-landmarks'] = '0.105.41'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-landmarks'] = '0.105.43'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local info, has, add, ez = info, has, add, ez
 

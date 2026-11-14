@@ -5,7 +5,7 @@
 -- into its own environment, so every name here is reqscript('ai-builder').name
 -- and the helpers defined there (info, quickfort_apply, ...) are in reach.
 
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-sites'] = '0.105.41'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-sites'] = '0.105.43'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local info, has, add, overlaps, ez = info, has, add, overlaps, ez
 
@@ -88,7 +88,43 @@ function check_site(L, extra, ax, ay, z, reserved, skip, exempt)
         return true
     end)
     if not ok then return false, why end
+    -- (0.105.42) no corner-only touch: dwarves, water and creatures pass
+    -- between two tiles that meet only at a corner, and no door can close that
+    -- gap. An open tile diagonal to a dug one, with rock on both tiles between
+    -- them and no dug tile beside it, is refused (the player saw such a gap in
+    -- a room's wall). The exempt joins stay open only when they meet a dug
+    -- tile edge to edge.
+    ok, why = corner_gap(dug, function(x, y)
+        if skip and x == skip.x and y == skip.y then return false end
+        local t = info(ax + x, ay + y, z)
+        return not natural_wall(t)
+    end, each_dug)
+    if not ok then return false, why and ('%s at x%d y%d z%d'):format(why.text, ax + why.x, ay + why.y, ez(z)) end
     return true, nil, area
+end
+
+-- (0.105.42) The first open tile that meets the dug ones only at a corner.
+-- dug(x, y): ours; open(x, y): open in the game now (not ours); each_dug(fn):
+-- fn(x, y) over our tiles, stopping at the first false. Returns true, or
+-- false and {x, y, text}.
+function corner_gap(dug, open, each_dug)
+    local found
+    local function edge_touch(nx, ny)
+        return dug(nx + 1, ny) or dug(nx - 1, ny) or dug(nx, ny + 1) or dug(nx, ny - 1)
+    end
+    each_dug(function(x, y)
+        for _, d in ipairs({{1, 1}, {1, -1}, {-1, 1}, {-1, -1}}) do
+            local nx, ny = x + d[1], y + d[2]
+            if not dug(nx, ny) and open(nx, ny) and not edge_touch(nx, ny)
+                    and not open(x + d[1], y) and not open(x, y + d[2]) then
+                found = {x = nx, y = ny, text = 'open space meeting the dig only at a corner (a gap no wall or door closes)'}
+                return false
+            end
+        end
+        return true
+    end)
+    if found then return false, found end
+    return true
 end
 
 -- Can the staircase at (sx, sy) be extended from its bottom (zb) down to z?

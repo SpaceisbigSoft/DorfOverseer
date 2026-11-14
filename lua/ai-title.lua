@@ -103,6 +103,18 @@ local function find_in(list, folder)
     end
 end
 
+-- (0.105.42) How many saves on the title screen carry this folder name: DF
+-- lists the user folder's saves beside a portable copy's own, so "autosave 2"
+-- or "region4" can be two different forts (on 13 Nov C and D loaded A's).
+local function count_in(list, folder)
+    local n = 0
+    for i = 0, #list - 1 do
+        local ok, f = pcall(function() return list[i].filename_noext end)
+        if ok and f == folder then n = n + 1 end
+    end
+    return n
+end
+
 -- A left click on the title screen's top button (DFHack's ci/test.lua).
 function click_top(scr)
     local sw, sh = dfhack.screen.getWindowSize()
@@ -178,6 +190,9 @@ function load(folder)
     end
     local i = find_in(t.savegame_header, folder)
     if not i then return {ok = false, error = 'no save called ' .. tostring(folder) .. ' on the title screen'} end
+    if count_in(t.savegame_header, folder) > 1 then
+        return {ok = false, error = 'two saves called ' .. tostring(folder) .. ' on the title screen (another game\'s too): not loaded'}
+    end
     local world = t.savegame_header[i].world_name
     local wi
     for j = 0, #t.savegame_header_world - 1 do
@@ -239,6 +254,10 @@ function load_match(world, folders)
     local seen = {}
     for _, f in ipairs(folders) do
         local i = find_in(t.savegame_header, f)
+        if i and count_in(t.savegame_header, f) > 1 then
+            table.insert(seen, f .. ': two saves of that name (another game\'s too), skipped')
+            i = nil
+        end
         if i then
             local w = t.savegame_header[i].world_name
             table.insert(seen, f .. ': ' .. tostring(w))

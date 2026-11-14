@@ -108,7 +108,7 @@ def load_candidates() -> tuple[list[str], str | None]:
     from backup import save_mtime
     # (0.105.0 review) a backup restored earlier ("AI restore <date>") is a candidate too
     cands = [root / d["save_dir"]] + sorted(root.glob("autosave*")) + sorted(root.glob(RESTORE_PREFIX + "*"))
-    cands = [c for c in cands if c.is_dir()]
+    cands = [c for i, c in enumerate(cands) if c.is_dir() and c not in cands[:i]]
     cands.sort(key=save_mtime, reverse=True)
     return [c.name for c in cands], d.get("world")
 
@@ -175,7 +175,7 @@ def save_written_within(seconds: float, clock=time.time) -> bool:
 # way next time); "a list was open ... backed out", "not at the title screen"
 # and "a world is already loaded" pass, and aren't counted
 _NO_WORLD_SAVE = "no save of the world"
-_ONE_FOLDER = ("no save called", "is not listed")
+_ONE_FOLDER = ("no save called", "is not listed", "two saves called")
 
 
 def refused_folders(out: str, folders: list[str], folder: str, matched: bool) -> list[str]:
@@ -193,18 +193,43 @@ def refused_folders(out: str, folders: list[str], folder: str, matched: bool) ->
     return []
 
 
-def df_running(run=None) -> bool:
+def df_running(run=None, exe: str | None = None) -> bool:
     """(0.105.33) A Dwarf Fortress process exists (Windows' tasklist; False
-    elsewhere or when it can't tell)."""
+    elsewhere or when it can't tell).
+
+    (0.105.42) With exe (this keeper's own game, config's df_launch): only that
+    game's process counts. Six copies share the name "Dwarf Fortress.exe": on
+    13 Nov 22:30 the keepers B-F each saw A's game running, took it for their
+    own still starting, and waited 2 minutes before launching theirs."""
     if os.name != "nt" and run is None:
         return False
     run = run or subprocess.run
+    if exe:
+        try:
+            r = run(["powershell", "-NoProfile", "-Command",
+                     "Get-Process -Name 'Dwarf Fortress' -ErrorAction SilentlyContinue | "
+                     "ForEach-Object { $_.Path }"],
+                    capture_output=True, text=True, timeout=30)
+            out = getattr(r, "stdout", "") or ""
+            want = os.path.normcase(os.path.normpath(exe))
+            paths = [os.path.normcase(os.path.normpath(ln.strip())) for ln in out.splitlines() if ln.strip()]
+            if paths or getattr(r, "returncode", 1) == 0:
+                return want in paths
+        except (OSError, subprocess.SubprocessError):
+            pass
     try:
         lst = run(["tasklist", "/FI", f"IMAGENAME eq {DF_EXE}", "/FO", "CSV", "/NH"],
                   capture_output=True, text=True, timeout=30).stdout or ""
     except (OSError, subprocess.SubprocessError):
         return False
     return any(DF_EXE.lower() in ln.lower() for ln in lst.splitlines())
+
+
+def own_exe() -> str | None:
+    """(0.105.42) This keeper's game's .exe (config's df_launch when it names
+    one; None for a steam:// link)."""
+    cmd = launch_command()
+    return cmd if cmd and cmd.lower().endswith(".exe") else None
 
 
 def launch_command() -> str | None:
@@ -262,7 +287,7 @@ class Reviver:
         self.loading: tuple[str, float] | None = None
         self.restore = restore_from_backup
         self.restored: list[str] = []
-        self.df_running = df_running     # (0.105.33) before a cold-start launch
+        self.df_running = lambda: df_running(exe=own_exe())   # (0.105.33; 0.105.42 its own game only)
 
     def _dfhack(self) -> DFHack:
         if self.df is None:

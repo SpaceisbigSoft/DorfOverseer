@@ -72,6 +72,15 @@ def save_roots(df_path: str | Path | None) -> list[Path]:
     cfg = read_config()
     if cfg.get("df_save_dir"):
         roots.append(Path(cfg["df_save_dir"]))
+    # (0.105.42) a portable copy (prefs/portable.txt) saves only in its own
+    # folder: the user folder there holds another game's saves under the same
+    # names ("autosave 2", "region4"), and on 13 Nov C's and D's keepers picked
+    # A's newer one from it and loaded A's fort into their games
+    if df_path and (Path(df_path) / "prefs" / "portable.txt").is_file():
+        own = Path(df_path) / "save"
+        if own.is_dir() and own not in roots:
+            roots.append(own)
+        return [r for r in roots if r.is_dir()]
     appdata = os.environ.get("APPDATA")
     if appdata:
         roots.append(Path(appdata) / "Bay 12 Games" / "Dwarf Fortress" / "save")
