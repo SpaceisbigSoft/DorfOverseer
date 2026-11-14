@@ -305,6 +305,14 @@ function start_project(params, now, dry_run)
     local stairs_cells = site.extend and stair_cells(stair, site.z) or {}
     local build, furniture = entry_door(L, site, params.style)
     local decor = decoration_cells(L, site, build)
+    -- (group 6) the open ground over the level's middle (the scorecard's surface for it)
+    local gx, gy = a.x, a.y
+    if type(site.area) == 'table' and site.area.x1 and site.area.x2 and site.area.y1 and site.area.y2 then
+        gx, gy = (site.area.x1 + site.area.x2) // 2, (site.area.y1 + site.area.y2) // 2
+    end
+    local okg, gz = pcall(ground_above, gx, gy, site.z)
+    if not okg then gz = nil end
+    local ground = gz and {ground_z = gz, ground_elevation = ez(gz), cover = gz - site.z - 1} or {}
     local where = {stair = {x = stair.x, y = stair.y, z_top = stair.z_top, z_bottom = stair.z_bottom,
                             elevation_top = ez(stair.z_top), elevation_bottom = ez(stair.z_bottom)},
                    anchor = a, corridor = site.corridor, new_corridor = site.new_corridor}
@@ -313,7 +321,8 @@ function start_project(params, now, dry_run)
                 extends_stairs = site.extend, in_district = site.in_district,
                 stair = where.stair, anchor = a, corridor = site.corridor, new_corridor = site.new_corridor,
                 area = site.area, tiles = expected, summary = L.summary, furniture = furniture,
-                decoration = {smooth = #decor.smooth, engrave = #decor.engrave}}
+                decoration = {smooth = #decor.smooth, engrave = #decor.engrave},
+                ground_z = ground.ground_z, ground_elevation = ground.ground_elevation, cover = ground.cover}
     end
 
     -- The level first, then the stairs; if anything goes wrong part-way,
@@ -363,6 +372,7 @@ function start_project(params, now, dry_run)
             stair = {x = stair.x, y = stair.y},
             anchor = a, corridor = site.corridor, new_corridor = site.new_corridor,   -- (0.105.33) Spacing
             tiles = expected, designated = result, summary = L.summary,
+            ground_z = ground.ground_z, ground_elevation = ground.ground_elevation, cover = ground.cover,  -- (group 6)
             warning = (result ~= expected) and ('only %d of %d tiles designated'):format(result, expected) or nil}
 end
 

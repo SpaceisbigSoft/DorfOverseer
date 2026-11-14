@@ -598,6 +598,24 @@ function stair_levels(stair, band, only_band, may_extend)
     return out
 end
 
+-- (group 6) The open ground over a level: the first tile above (x, y, z)
+-- under the sky (DF's `outside`), up to GROUND_SCAN levels; nil when none
+-- is found. Fort E (a mountain site) had its way in on a plateau 9 levels
+-- under the hilltop its stair came down from: the scorecard took the way
+-- in's ground for every level and counted 49 levels "at or above the
+-- surface" that lay under the mountain. Each new level now says how much
+-- rock is over it (`ground_z`, `ground_elevation`, `cover`).
+GROUND_SCAN = 80
+function ground_above(x, y, z)
+    local _, _, zmax = map_size()
+    local top = math.min((zmax or (z + GROUND_SCAN + 1)) - 1, z + GROUND_SCAN)
+    for zz = z + 1, top do
+        local t = info(x, y, zz)
+        if t and t.outside then return zz end
+    end
+    return nil
+end
+
 function choose_site(L, stairs, reserved, plan, ceil_z)
     CACHE = {}
     local started = os.clock()

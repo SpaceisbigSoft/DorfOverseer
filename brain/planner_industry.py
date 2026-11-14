@@ -19,7 +19,7 @@ from planner_trade import *  # noqa: F401,F403  (13c: split out by theme)
 from planner_labor import *  # noqa: F401,F403  (13c: split out by theme)
 from planner_farms import *  # noqa: F401,F403  (13c: split out by theme)
 
-__all__ = ["CONTAINER_RECIPES", "GEAR_ORDER_METALS", "_supply_rules", "_slow_game_rules", "_clutter_rules", "_disposal_rules", "DISPOSAL_RULES", "disposal_report", "disposal_places_dump", "_kiln_rules", "_soap_rule", "_pasture_rule", "LABOR_MODES_FIXED", "INDUSTRY_SHOPS", "_industry_rules", "_steel_rule", "_bottleneck_rule", "drink_short", "_crop_rules", "_farm_crops_rule", "farm_plots_live", "crops_owned", "drink_known_short", "_kitchen_rule", "_fishery_rule", "_bench_coffins_rule", "STONE_CRAFTS", "order_shop", "_order_slots_rule", "_orphan_jobs_rule", "_unsuspend_rule", "_approve_rule", "_stuck_orders_rule", "COAL_STONES", "_coal_rule", "_picks_order", "_stone_rule", "stone_crisis", "PRECIOUS_ORES", "_cloth_rule", "_trade_rules", "_gems_rule", "GEMS_GENEROUS_GREED", "trade_wants", "_spare_mechanisms_rule", "_hauling_rule", "_surface_basics", "trees_this_year", "_keep_rule", "DEEP_SURFACE_KINDS", "_deep_surface_filter", "_deep_depot_choice", "_deep_depot_watch", "_free_time_rule", "_labor_rules", "OWN_LABOR_RULES", "FEEDER_ORDER", "_feeder_rule", "woodcutters", "gatherers", "trade_margin_for", "keeps_treasures", "spare_mechanisms", "_dairy_rule", "_eggs_rule", "EXCESS_SHOPS", "_excess_shops_rule", "drink_below_target", "drink_crisis", "drink_target_per_dwarf", "crisis_brew_room", "brew_jobs_open", "_labor_waiting_rule", "farm_target", "thirsty_farm_extra", "_farm_rule", "_smelting_rule", "_shoes_recipe", "_glass_rule", "PRECIOUS_METALS", "precious_metal"]
+__all__ = ["CONTAINER_RECIPES", "GEAR_ORDER_METALS", "_supply_rules", "_slow_game_rules", "_clutter_rules", "_disposal_rules", "DISPOSAL_RULES", "disposal_report", "disposal_places_dump", "_kiln_rules", "_soap_rule", "_pasture_rule", "LABOR_MODES_FIXED", "INDUSTRY_SHOPS", "_industry_rules", "_steel_rule", "_bottleneck_rule", "drink_short", "_crop_rules", "_farm_crops_rule", "farm_plots_live", "crops_owned", "drink_known_short", "_kitchen_rule", "_fishery_rule", "_bench_coffins_rule", "STONE_CRAFTS", "order_shop", "_order_slots_rule", "_orphan_jobs_rule", "_unsuspend_rule", "_approve_rule", "_stuck_orders_rule", "COAL_STONES", "_coal_rule", "_picks_order", "_stone_rule", "stone_crisis", "PRECIOUS_ORES", "_cloth_rule", "_trade_rules", "_gems_rule", "GEMS_GENEROUS_GREED", "trade_wants", "_spare_mechanisms_rule", "_hauling_rule", "_surface_basics", "trees_this_year", "_keep_rule", "DEEP_SURFACE_KINDS", "_deep_surface_filter", "_deep_plan_hint", "_deep_depot_choice", "_deep_depot_watch", "_free_time_rule", "_labor_rules", "OWN_LABOR_RULES", "FEEDER_ORDER", "_feeder_rule", "woodcutters", "gatherers", "trade_margin_for", "keeps_treasures", "spare_mechanisms", "_dairy_rule", "_eggs_rule", "EXCESS_SHOPS", "_excess_shops_rule", "drink_below_target", "drink_crisis", "drink_target_per_dwarf", "crisis_brew_room", "brew_jobs_open", "_labor_waiting_rule", "farm_target", "thirsty_farm_extra", "_farm_rule", "_smelting_rule", "_shoes_recipe", "_glass_rule", "PRECIOUS_METALS", "precious_metal"]
 
 CONTAINER_RECIPES = {"wooden_barrel", "stone_large_pot"}
 # ore worth mining for gear, most wanted first (iron makes steel; tin with copper makes bronze)
@@ -1606,6 +1606,9 @@ def _deep_surface_filter(s: dict, traits: dict, memory, proposals: list, notes: 
             p.action = a
         elif t == "start_project" and ceil is not None:
             p.action = dict(a, max_elev=ceil)
+            plan = _deep_plan_hint(p.action, memory, traits, s)
+            if plan:
+                p.action["plan"] = plan
         elif t == "place_surface" and a.get("kind") == "depot":
             p = _deep_depot_choice(s, p, notes)
             if p is None:
@@ -1616,6 +1619,39 @@ def _deep_surface_filter(s: dict, traits: dict, memory, proposals: list, notes: 
                      + ", ".join(sorted(set(dropped))) + " left out); the trade depot goes underground down a "
                      "wagon road, only the refuse pile and the pastures stay outside")
     return out
+
+
+def _deep_plan_hint(action: dict, memory, traits: dict, s: dict) -> dict | None:
+    """(group 6) The Deep mine's levels go to their district of the deep plan,
+    every rule's level and not only the build ladder's. Fort E (y264-267): 53
+    of its 83 levels came from other rules (bottleneck, paper_shop,
+    needs_shops, industry, kiln...) with no hint, and the builder's ordinary
+    search put each on the level nearest the dwarves (the homes, elevation
+    32-35) instead of the industry band at the bottom of the plan (22-25).
+    Urgent levels (a mood's workshop, tombs for ghosts, the tavern) keep the
+    nearest level: speed first. None when the level has its own hint, the
+    fort has no plan, or the plan has no district for the kind. The builder
+    tries the district first and falls back to its ordinary search."""
+    kind = action.get("kind")
+    if (memory is None or not isinstance(kind, str) or kind == "farms" or action.get("urgent")
+            or isinstance(action.get("plan"), dict) or not masterplan.has_plan(memory)):
+        return None
+    try:
+        profile = profile_from(traits, (memory.culture if isinstance(memory.culture, dict) else None)
+                               or new_history())
+    except Exception:  # noqa: BLE001  (the door rule only)
+        profile = {}
+    citizens = int(_d(s.get("dwarves")).get("total") or 0)
+    where = masterplan.hint(memory, kind, slot=action.get("set_piece"), traits=traits, profile=profile,
+                            action=action, citizens=citizens)
+    if not where:
+        return None
+    where["doors"] = ("fortified" if (traits.get("fortification", 0) or 0) >= 70
+                      else "doored" if profile.get("entry_doors") else "open")
+    cs = sorted(set(_l(action.get("customs"))) | set(_l(where.get("customs"))))
+    if cs:
+        action["customs"] = cs
+    return where
 
 
 def _deep_depot_choice(s: dict, p, notes: list):

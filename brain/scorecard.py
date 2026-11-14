@@ -350,7 +350,10 @@ def journal_counts(entries: list[dict], date: dict, timeline: list | None = None
                            "customs": [c for c in _l(a.get("customs")) if isinstance(c, str)],
                            # (D0) the level's style (its design signature) and when it began
                            "style": _d(a.get("style")),
-                           "when": abs_ticks(e["date"]) if isinstance(e.get("date"), dict) else None})
+                           "when": abs_ticks(e["date"]) if isinstance(e.get("date"), dict) else None,
+                           # (group 6) where it lies and the open ground over it (the bridge's ground_z)
+                           "x": _d(r.get("anchor")).get("x"), "y": _d(r.get("anchor")).get("y"),
+                           "ground": r.get("ground_z") if _whole(r.get("ground_z")) else None})
         elif t == "floor_rooms" and not r.get("dry_run"):
             # (0.105.30) soil floors the keeper finished: tiles placed (any count field the bridge gives)
             n = next((r[k] for k in ("placed", "tiles", "floored", "n") if isinstance(r.get(k), int)
@@ -429,6 +432,40 @@ def per(a, b):
     return round(a / b, 1) if a is not None and b else None
 
 
+def _whole(v) -> bool:
+    return isinstance(v, int) and not isinstance(v, bool)
+
+
+def level_surface(lv: dict, s: dict) -> int | None:
+    """(group 6) The surface z over one level, for the Verticality and Surface
+    lines: the bridge's own reading (`ground`: the first tile under the sky
+    above the level's middle) when the level has it; else the surface way in
+    nearest the level (its z; the open ground beside the main way in, the
+    crossings' z, for that one); else the main way in's ground, as before.
+    Fort E (Deep mine, a mountain site): its main way in lay on a plateau at
+    z161, its stair came down from the hilltop at z170, and every level
+    between (under the mountain) was counted "at or above the surface"."""
+    if _whole(lv.get("ground")):
+        return lv["ground"]
+    cr = _d(s.get("crossings"))
+    main = cr.get("z") if _whole(cr.get("z")) else None
+    x, y = lv.get("x"), lv.get("y")
+    if _whole(x) and _whole(y):
+        ce = _d(cr.get("entrance"))
+        best, best_d = None, None
+        for e in _l(_d(s.get("entrances")).get("entrances")):
+            e = _d(e)
+            if e.get("kind") != "surface" or not all(_whole(e.get(k)) for k in ("x", "y", "z")):
+                continue
+            d = abs(e["x"] - x) + abs(e["y"] - y)
+            if best_d is None or d < best_d:
+                z = main if main is not None and (e["x"], e["y"]) == (ce.get("x"), ce.get("y")) else e["z"]
+                best, best_d = z, d
+        if best is not None:
+            return best
+    return main
+
+
 def measures(s: dict, j: dict) -> dict:
     """Every number the lines use, from one season state and the journal up to it."""
     dw = _d(s.get("dwarves"))
@@ -442,9 +479,11 @@ def measures(s: dict, j: dict) -> dict:
     farms = _d(s.get("farms"))
     stocks = _d(s.get("stocks"))
     others = _d(s.get("others_on_map"))
-    surface_z = _d(s.get("crossings")).get("z")
     levels = j["levels"]
     lz = [lv["z"] for lv in levels if isinstance(lv.get("z"), int)]
+    # (group 6) each level's own surface (the ground over it), not the way in's
+    grounds = [(lv["z"], level_surface(lv, s)) for lv in levels if isinstance(lv.get("z"), int)]
+    grounds = [(z, g) for z, g in grounds if g is not None]
     tiles = [lv["tiles"] for lv in levels if isinstance(lv.get("tiles"), (int, float)) and lv["tiles"] > 0]
     kinds = Counter(lv.get("kind") for lv in levels)
     ok = j["ok"]
@@ -537,8 +576,8 @@ def measures(s: dict, j: dict) -> dict:
         "ore": _d(s.get("industry")).get("ore_stock"),
         "ore_runs": ok.get("mine_ore", 0),
         "z_span": (max(lz) - min(lz) + 1) if lz else None,
-        "depth": (surface_z - min(lz)) if lz and isinstance(surface_z, int) else None,
-        "levels_up": sum(1 for z in lz if isinstance(surface_z, int) and z >= surface_z) if lz else None,
+        "depth": max(g - z for z, g in grounds) if grounds else None,
+        "levels_up": sum(1 for z, g in grounds if z >= g) if grounds else None,
         "surface_plots": farms.get("plots_surface"),
         "farm_tiles": farms.get("tiles"),
         "plots": farms.get("plots"),

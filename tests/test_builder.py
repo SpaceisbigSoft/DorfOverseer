@@ -4125,5 +4125,23 @@ def _():
     assert r.ok and (r.levels > 1 or r.y >= 66), dict(r)
     _deep_reset()
 
+
+@test("ground over a level (group 6): the first tile under the sky above it; each new level says how much rock is over it")
+def _():
+    # nothing under the sky above: none found
+    assert B.ground_above(60, 60, 65) is None
+    # a mountain over the fort: open sky from z90 (the fort's floors 66-80 are not outside)
+    for x in range(30, 91):
+        for y in range(30, 91):
+            W.set(x, y, 90, LUA.table_from({"shape": "FLOOR", "outside": True}))
+    assert B.ground_above(60, 60, 65) == 90
+    assert B.ground_above(60, 60, 89) == 90
+    assert B.ground_above(60, 60, 90) is None              # (above the tile asked: none)
+    r = B.start_project(params(kind="bedrooms", rooms=8, room_size=3), LUA.table(), True)
+    assert r.ok and r.dry_run and r.z == 65, dict(r)
+    assert r.ground_z == 90 and r.cover == 24 and r.ground_elevation - r.elevation == 25, dict(r)
+    r = start(kind="bedrooms", rooms=8, room_size=3)
+    assert r.ok and r.ground_z == 90 and r.cover == 24, dict(r)
+
 if __name__ == "__main__":
     finish()
