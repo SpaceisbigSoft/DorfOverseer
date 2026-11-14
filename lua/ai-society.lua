@@ -751,6 +751,13 @@ function fill_shelter(b, only)
     if food_units == 0 then
         info.no_food = 'the shelter holds no food'
     end
+    -- (0.105.47, J1) a gathering strange mood's workshop and the items it
+    -- still needs go in too: I7a, five moods cancelled "Forbidden area" when
+    -- the AI's alarm kept the dwarf from them (lua/ai-mood-help.lua)
+    pcall(function()
+        local r = reqscript('ai-mood-help').add_mood_spots(b, false)
+        if r and (r.added or 0) > 0 then n = n + r.added; info.mood_tiles = r.added end
+    end)
     return n, info
 end
 
@@ -799,6 +806,7 @@ function shelter_result(r, info)
     r.surface_out, r.surface_back, r.surface_note = info.surface_out, info.surface_back, info.surface_note   -- (0.105.30)
     r.surface_mode, r.ai_hall_tiles, r.short = info.surface_mode, info.ai_hall_tiles, info.short
     r.levels = info.levels                                   -- (0.105.45) the AI's pick, when there is one
+    r.mood_tiles = info.mood_tiles                           -- (0.105.47, J1) a strange mood's tiles added
     return r
 end
 
@@ -824,7 +832,10 @@ function refresh_shelter_due(force)
         local b = find_burrow(SHELTER_NAME)
         local okb, blocks = pcall(function() return #dfhack.burrows.listBlocks(b) end)
         if t and now and b and okb and blocks > 0 and now >= t and now - t < SHELTER_REDRAW_TICKS then
-            return {refreshed = false, drawn_ticks_ago = now - t}
+            -- (0.105.47, J1) not drawn again, but a mood that began since gets its tiles
+            local okm, mr = pcall(function() return reqscript('ai-mood-help').add_mood_spots(b, false) end)
+            return {refreshed = false, drawn_ticks_ago = now - t,
+                    mood_tiles = okm and mr and (mr.added or 0) > 0 and mr.added or nil}
         end
     end
     return refresh_shelter()

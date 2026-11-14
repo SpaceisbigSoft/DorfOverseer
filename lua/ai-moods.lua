@@ -188,8 +188,64 @@ local function material_ok(ji, it)
     return mi < 0 or it:getMaterialIndex() == mi
 end
 
+-- (0.105.47) Cloth and thread by the kind of fibre: an item's material
+-- flags (SILK, YARN, THREAD_PLANT), 'silk' / 'yarn' / 'plant', or nil when
+-- the material says none of them (or can't be read). One test for the
+-- moods and the bridge's cloth and thread counts (supplies cloth_kinds,
+-- thread_kinds), so the reserves see what a mood can use.
+function cloth_kind(it)
+    local ok, k = pcall(function()
+        local mi = dfhack.matinfo.decode(it)
+        local f = mi and mi.material and mi.material.flags
+        if not f then return nil end
+        return f.SILK and 'silk' or f.YARN and 'yarn' or f.THREAD_PLANT and 'plant' or nil
+    end)
+    return ok and k or nil
+end
+
+-- (0.105.47) the material flags could be read at all (an item from a test
+-- or an odd material: then DFHack's own test is asked, as before)
+local function mat_flags_read(it)
+    local ok, f = pcall(function()
+        local mi = dfhack.matinfo.decode(it)
+        return mi and mi.material and mi.material.flags
+    end)
+    return ok and f ~= nil
+end
+
+local CLOTH_TYPES = {CLOTH = true, THREAD = true}
+local KIND_FLAGS = {'silk', 'yarn', 'plant'}
+
+-- (0.105.47) a cloth or thread request matched by the fibre the request
+-- names (job_item flags2 silk / yarn / plant; none named: any cloth): I7a,
+-- 11-14 Nov, more than 2,000 mood records of a cloth request read `avail {}`
+-- (nothing counted, not even forbidden) in every fort, B holding 96-133
+-- plant cloth: DFHack's isSuitableItem/isSuitableMaterial rejected what DF
+-- itself fetched (F's Cerol took the fort's silk), so every cloth line said
+-- "can't supply". 36 of the run's 54 failed moods waited on cloth.
+-- nil: not a cloth or thread request (the caller asks DFHack).
+function cloth_suits(ji, it)
+    local tname = df.item_type[ji.item_type]
+    if not CLOTH_TYPES[tname] then return nil end
+    if it:getType() ~= ji.item_type then return false end
+    if not mat_flags_read(it) then return nil end
+    -- a web lying where the spider spun it is no collected thread
+    local okw, web = pcall(function() return it.flags.spider_web end)
+    if okw and web == true then return false end
+    local want = {}
+    for _, k in ipairs(KIND_FLAGS) do
+        local okf, on = pcall(function() return ji.flags2[k] end)
+        if okf and on == true then want[k] = true end
+    end
+    local kind = cloth_kind(it)
+    if next(want) == nil then return true end      -- any cloth (any fibre)
+    return kind ~= nil and want[kind] == true
+end
+
 local function suits(ji, it)
     local ok, yes = pcall(function()
+        local c = cloth_suits(ji, it)
+        if c ~= nil then return c and material_ok(ji, it) end
         return dfhack.job.isSuitableItem(ji, it:getType(), it:getSubtype())
             and dfhack.job.isSuitableMaterial(ji, it:getMaterial(), it:getMaterialIndex(), it:getType())
             and material_ok(ji, it)
@@ -247,15 +303,62 @@ local function holder_of(it)
     return ok and u or nil
 end
 
+-- (0.105.47) where an item lies, in a word or two: in a container (its
+-- kind), in a building (its kind), on a stockpile, carried, or on the ground
+-- (I7a: four moods waited 40 days on bone or leather counted "free, in walk"
+-- and never fetched; the logs couldn't say where it lay)
+function item_place(it)
+    local where = 'ground'
+    pcall(function()
+        local c = dfhack.items.getContainer and dfhack.items.getContainer(it)
+        if c then
+            where = 'in a ' .. tostring(df.item_type[c:getType()] or 'container'):lower()
+            return
+        end
+        if it.flags.in_building then
+            local b = dfhack.items.getHolderBuilding and dfhack.items.getHolderBuilding(it)
+            where = 'in a building' .. (b and (' (' .. tostring(df.building_type[b:getType()]) .. ')') or '')
+            return
+        end
+        if it.flags.in_inventory then where = 'carried' return end
+        local x, y, z = dfhack.items.getPosition(it)
+        local b = x and dfhack.buildings.findAtTile and dfhack.buildings.findAtTile(xyz2pos(x, y, z))
+        if b and df.building_type[b:getType()] == 'Stockpile' then where = 'on a stockpile' end
+    end)
+    return where
+end
+
+SPOTS_MAX = 3
+
+local function spot_of(it, st, r)
+    local ok, sp = pcall(function()
+        local x, y, z = dfhack.items.getPosition(it)
+        if not x then return nil end
+        local okd, d = pcall(dfhack.items.getReadableDescription, it)
+        return {x = x, y = y, z = z, standing = st, reach = r == true, at = item_place(it),
+                what = okd and type(d) == 'string' and d:sub(1, 60) or nil}
+    end)
+    return ok and sp or nil
+end
+
 -- {free, reach, forbidden, forbidden_reach, dump, job, other, capped,
 -- enough}: the walk stops once enough lies free within reach (`enough`:
 -- the other counts are then partial); a stone or a log is found at once.
 -- (0.105.30) `held`: what the dwarf itself carries that suits (counted only
 -- there; it is on its way to the workshop)
-function request_avail(ji, entry, unit)
+-- (0.105.47) `taken`: items an earlier request of the same mood has counted
+-- for itself (item id -> true), passed by; the items this request counts
+-- toward what it lacks (free or forbidden within reach, up to the quantity)
+-- are added to it, so one rough gem doesn't meet four requests (F's Asen,
+-- y264: four rough-gem requests all "on hand" from one gem). `spots`: where
+-- the first few free or forbidden items lie (I7a 7).
+function request_avail(ji, entry, unit, taken)
     local a = {free = 0, reach = 0, forbidden = 0, forbidden_reach = 0, dump = 0, job = 0, other = 0, held = 0}
     local from = unit and unit.pos or nil
     local want = math.max(1, tonumber(entry.quantity) or 1)
+    local skip = unit and own_items(unit) or {}
+    for id in pairs(taken or {}) do skip[id] = true end
+    local spots = {}
     local capped = each_suitable(ji, entry, from, function(it, st, r)
         local n = 1
         pcall(function() n = it:getStackSize() end)
@@ -263,13 +366,22 @@ function request_avail(ji, entry, unit)
         if h and h.id == unit.id then
             a.held = a.held + n
         else
+            local claim = false
+            if st == 'free' and r and a.reach + a.held < want then claim = true end
+            if (st == 'forbidden' or st == 'dump') and r and a.reach + a.forbidden_reach < want then claim = true end
             a[st] = a[st] + n
             if st == 'free' and r then a.reach = a.reach + n end
             if (st == 'forbidden' or st == 'dump') and r then a.forbidden_reach = a.forbidden_reach + n end
+            if claim and taken then taken[it.id] = true end
+            if (st == 'free' or st == 'forbidden' or st == 'dump') and #spots < SPOTS_MAX then
+                local sp = spot_of(it, st, r)
+                if sp then table.insert(spots, sp) end
+            end
         end
         if a.reach + a.held >= want then a.enough = true return false end
-    end, unit and own_items(unit) or nil)
+    end, skip)
     if capped then a.capped = true end
+    if #spots > 0 then a.spots = spots end
     return a
 end
 
@@ -313,30 +425,45 @@ local function grew(old, sizes, age)
     return false
 end
 
-local function cached_avail(ji, entry, unit)
+-- (0.105.47) `taken` as request_avail's; `fresh`: an earlier request of the
+-- mood was counted again, so this one is too (what it may claim changed).
+-- Returns the count and whether it was counted afresh.
+local function cached_avail(ji, entry, unit, taken, fresh)
     local key = tostring(unit and unit.id) .. ':' .. tostring(entry.index) .. ':' .. tostring(entry.quantity)
     local now = now_tick()
     local c = AVAIL_CACHE[key]
     local sizes = list_sizes(entry)
-    if c and now - c.at >= 0 and now - c.at < AVAIL_TICKS
-            and (c.avail.enough or not grew(c.sizes, sizes, now - c.at)) then return c.avail end
-    local a = request_avail(ji, entry, unit)
+    if not fresh and c and now - c.at >= 0 and now - c.at < AVAIL_TICKS
+            and (c.avail.enough or not grew(c.sizes, sizes, now - c.at)) then
+        for id in pairs(c.claimed or {}) do taken[id] = true end
+        return c.avail, false
+    end
+    local before = {}
+    for id in pairs(taken) do before[id] = true end
+    local a = request_avail(ji, entry, unit, taken)
+    local claimed = {}
+    for id in pairs(taken) do if not before[id] then claimed[id] = true end end
     local n = 0
     for _ in pairs(AVAIL_CACHE) do n = n + 1 end
     if n >= 200 then AVAIL_CACHE = {} end           -- moods long over
-    AVAIL_CACHE[key] = {at = now, avail = a, sizes = sizes}
-    return a
+    AVAIL_CACHE[key] = {at = now, avail = a, sizes = sizes, claimed = claimed}
+    return a, true
 end
 
 -- (0.105.24) the mood's requests, each with what the fort holds for it
+-- (0.105.47) each item counted for one request only, in the mood's order
 function mood_report(job, unit, txt)
     local missing = requests_missing(job, txt)
     local reqs = job_requests(job)
+    local taken, fresh = {}, false
     for _, e in ipairs(missing) do
         local ji = reqs[e.index]
         if ji then
-            local ok, a = pcall(cached_avail, ji, e, unit)
-            if ok then e.avail = a end
+            local ok, a, again = pcall(cached_avail, ji, e, unit, taken, fresh)
+            if ok then
+                e.avail = a
+                if again then fresh = true end
+            end
         end
     end
     return missing
@@ -346,6 +473,38 @@ local function mood_job(u)
     if not u or u.mood == nil or u.mood < 0 then return nil end
     local ok, job = pcall(function() return u.job.current_job end)
     return ok and job or nil
+end
+
+-- (0.105.47) the tiles a gathering mood needs: its workshop's and where the
+-- items it still lacks lie (free or forbidden, a few a request), as
+-- {x, y, z} (lua/ai-mood-help.lua puts them in the shelter burrow while the
+-- alarm is up: I7a, five moods cancelled "Forbidden area" by the AI's alarm)
+function mood_tiles(unit)
+    local out = {}
+    local job = mood_job(unit)
+    if not job then return out end
+    pcall(function()
+        local b = dfhack.job.getHolder(job)
+        if b then
+            for x = b.x1, b.x2 do
+                for y = b.y1, b.y2 do table.insert(out, {x = x, y = y, z = b.z}) end
+            end
+        end
+    end)
+    local reqs = job_requests(job)
+    local okm, missing = pcall(requests_missing, job)
+    if not okm then return out end
+    local taken = {}
+    for _, e in ipairs(missing) do
+        local ji = reqs[e.index]
+        if ji then
+            local ok, a = pcall(request_avail, ji, e, unit, taken)
+            if ok and a.spots then
+                for _, sp in ipairs(a.spots) do table.insert(out, {x = sp.x, y = sp.y, z = sp.z}) end
+            end
+        end
+    end
+    return out
 end
 
 -- (0.105.24) For a dwarf in a strange mood: items the mood can use that lie

@@ -110,11 +110,12 @@ def _():
     s["supplies"]["hides"] = 4
     assert reserve_props(s)[0][0].action == {"type": "work_order", "recipe": "tan_hide", "amount": 4}
     s["stocks"]["leather"] = 5
-    s["stocks"]["cut_gems"], s["stocks"]["rough_gems"] = 0, 3
-    s["trade"] = dict(s.get("trade") or {}, rough_gem={"n": 3, "token": "INORGANIC:AGATE"})
+    # (0.105.47, J1) the rough-gem reserve is 4 (was 2)
+    s["stocks"]["cut_gems"], s["stocks"]["rough_gems"] = 0, 5
+    s["trade"] = dict(s.get("trade") or {}, rough_gem={"n": 5, "token": "INORGANIC:AGATE"})
     a = reserve_props(s)[0][0].action
-    assert a == {"type": "work_order", "recipe": "cut_gems", "amount": 1, "material": "INORGANIC:AGATE"}, a   # rough 3 - 2 kept
-    s["stocks"]["rough_gems"] = 2                                 # only its own reserve: not cut
+    assert a == {"type": "work_order", "recipe": "cut_gems", "amount": 1, "material": "INORGANIC:AGATE"}, a   # rough 5 - 4 kept
+    s["stocks"]["rough_gems"] = 4                                 # only its own reserve: not cut
     assert not reserve_props(s)[0]
     s["stocks"]["blocks"] = 1
     assert reserve_props(s)[0][0].action == {"type": "work_order", "recipe": "stone_blocks", "amount": 6}

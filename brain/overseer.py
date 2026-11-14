@@ -533,6 +533,7 @@ SHORT_WORDS = {
     "pull_gate": "pull the AI gate lever",
     "clear_webs": "clear the spider webs",  # (0.104.116)
     "remove_webs": "remove spider webs far from the fort",  # (0.105.3)
+    "mood_shelter": "let a strange mood's workshop and materials into the shelter",  # (0.105.47, J1)
     "scrub_dead_units": "clear old dead creatures from the game's unit list",  # (0.104.158)
     # (0.105.40, 13e) world cleanup (brain/planner_cleanup.py)
     "cleanup_items": "delete items no dwarf has reached for a year",

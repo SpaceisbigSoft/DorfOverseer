@@ -317,7 +317,7 @@ PLANNER_CONFIG = {
     "reserve_animal_cloth": 2,         # silk or yarn cloth (woven from silk or yarn thread at hand)
     "reserve_leather": 2,              # leather (a hide tanned)
     "reserve_bones": 5,                # bones (bone crafts stop at it)
-    "reserve_rough_gems": 2,           # rough gems (gem cutting stops at it)
+    "reserve_rough_gems": 4,           # rough gems (gem cutting stops at it); (0.105.47, J1) 2 -> 4: I7a, F cut to 2, then four rough-gem requests failed
     "reserve_cut_gems": 2,             # cut gems (cut from rough over its reserve; encrusting stops at it)
     "reserve_bars": 3,                 # metal bars (metal crafts and jewellery stop at it)
     "reserve_blocks": 5,               # stone blocks (made at the mason's)
@@ -1077,4 +1077,10 @@ PLANNER_CONFIG = {
     "recovery_migrants_cooldown_ticks": 112 * 1200,   # one call a season at most
     "recovery_migrants_max_calls": 3,     # calls that brought nobody before it stops (a Needs you)
     "recovery_stall_days": 336,           # under the survival floor with no newcomer this long: called too
+    # (0.105.47, J1) the strange moods' failures (brain/planner_mood_help.py, lua/ai-mood-help.lua; I7a)
+    "mood_dead_cancels": 2,               # an order whose jobs DF cancelled this often lately is a failed route
+    "mood_webs_keep": 50,                 # webs a weaver can reach kept from remove_webs while silk is wanted
+    "mood_webs_collect": 5,               # webs collected (CollectWebs jobs) an order
+    "mood_shelter_cooldown_ticks": 100,   # a gathering mood's tiles put in the shelter again after this
+    "mood_claim_cap_days": 6,             # no workshop claimed this long: one more built past the AI's cap
 }

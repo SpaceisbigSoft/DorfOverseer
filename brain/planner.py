@@ -60,6 +60,7 @@ from planner_hazards import _hazards_rule, magma_alarm  # noqa: E402  (0.105.41,
 from planner_insane import _insane_rule  # noqa: E402  (0.105.40b) the insane: deadly ground near them, the AI's doors
 from planner_killers import _killer_rule  # noqa: E402  (item3) a killer among the fort's own: cells, a squad
 from order_check import order_gate, note_order_loop, approve_on_place, hold_lifted  # noqa: E402  (0.105.46, I3) the order loop
+from planner_mood_help import mood_shelter_rule, note_mood_help  # noqa: E402  (0.105.47, J1) the moods' failures
 from planner_hunt import _hunt_rule, note_hunt_cycle  # noqa: E402  (0.105.45) hunting threats the squads can beat
 from planner_shelter import _shelter_pick_rule  # noqa: E402  (0.105.45) the shelter away from the threat
 from planner_stuck import _stuck_rule, note_stuck  # noqa: E402  (0.105.45) the sweep for things stuck "in progress"
@@ -589,6 +590,9 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
             notes += [f"{p.reason} (building it is switched off in the Rules tab)" for p in found]
     if can_use("stocks", "supplies", "buildings"):
         _guard(_mood_reserve_rule, s, memory, cfg, proposals, notes)     # (0.105.31) the mood reserves
+    # (0.105.47, J1) a gathering mood's workshop and materials inside the shelter while the alarm is up
+    if "mood_help" not in errors:
+        _guard(mood_shelter_rule, s, memory, cfg, proposals, notes)
     # (0.105.40b) the insane: who, where, the deadly ground near them, the
     # AI's own doors locked between; the near-breaking (planner_insane)
     if "insane" not in errors:
@@ -1286,6 +1290,7 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
         note_cleanup(p, r, state, memory, now)             # (0.105.40) a cleanup's trial done, what it removed
         note_captives(p, r, memory, now)                   # (item6) the pit's trial done, the prisoners sent
         note_order_loop(p, r, state, memory, now, cfg)     # (0.105.46, I3) a stuck cancel's missing thing; approvals
+        note_mood_help(p, r, state, memory, now)           # (0.105.47, J1) free-items "nothing", a shop past the cap
         note_syndromes(p, r, memory, now)                  # (0.105.41, item 11) the contaminant clean's trial done
         note_food_level(p, r, memory)                      # (fix41) one food storage level a kitchen or still
         note_stuck(p, r, memory, now)                      # (0.105.45) the stuck sweep's step done

@@ -13,6 +13,20 @@ The forts are A War-hold, B Monastery, C Merchant city, D Hermit hold, E Deep mi
 The quick way through this file: `python brain\seen.py` (from any DF-AI folder) writes each folder's `logs\seen-ledger.md` and a summary across them (`DF-AI\logs\seen-ledger-all.md`): every section, action and Rules switch since 0.105.32 as seen, refused (why), not yet met or in error, and this file's lines ticked where the reports and journals show them. Lines about how things look stay "needs eyes".
 
 
+## 0.105.47 (J1): why the moods failed (I7a; brain/planner_mood_help.py, lua/ai-mood-help.lua)
+
+- **All, a cloth mood**: its journal `mood` line's cloth request reads a count (`avail` with `free`/`reach`), never `{}` while the fort holds that kind of cloth (`supplies.cloth_kinds`); a plant-cloth request counts the plant cloth, not the silk.
+- **A silk mood (or the silk reserve short)**: a `collect_webs` work order at a Loom (DF's "Collect webs" job) is placed and taken by a weaver; silk thread then appears in `supplies.thread_kinds.silk` and a `weave_silk_cloth` follows. Does DF take the order (the recipe is `{job = 'CollectWebs'}` with no material)? Meanwhile no `remove_webs` / `clear_webs` runs; the notes say "the spider webs stay".
+- **The alarm during a mood**: with the alarm up and a mood gathering, the shelter result has `mood_tiles`, or a `mood_shelter` action runs (ok, `added` N); the mood's workshop and the items it fetches show as burrow tiles; no "cancels Strange mood: Forbidden area" in the gamelog.
+- **Dead orders**: `state.json` `mood_help.cancels` lists DF's job cancels by job and reason; a mood whose weave/shear/spin/sand orders DF keeps cancelling says so in its note ("DF cancels the weave yarn cloth jobs: ...") and the next route is ordered instead of waiting.
+- **Wool**: `supplies.shearable_ready` (animals with wool grown now) beside `shearable`; with it 0 no shear order is placed for a mood. Check a sheared sheep reads not ready, a shaggy one ready (the bp_modifiers length test needs eyes).
+- **Thread**: `supplies.thread_short` per kind (thread under a whole spun thread's 15000); compare with what the weavers refuse.
+- **Rough gems**: one gem in reach shows on hand for the first rough-gem request only; the gem cutting waits while a mood lacks one; cutting stops at 4 rough gems.
+- **A stalled bone or leather mood**: its stall note (and journal line after the stall) carries DF's flags of the request and where the counted items lie (x y z, in a bin / on a stockpile / ground, in walk or not).
+- **Lows**: a glass mood with no sand zone makes the zone first (`sand_zone` from the `mood` rule); a mood with no workshop claimed after 6 days and the kind at the cap gets one more built (once); `mood_free_items` is not proposed again after "nothing forbidden" until the counts change.
+- **Notes**: mood notes say "bought if a caravan trade happens", never "the AI buys it from the next caravan".
+
+
 ## 0.105.46 (I1): the "seen in game" ledger
 
 - **All, after the keeper's first daily check**: `logs\seen-ledger.md` exists and `logs\health-check.txt` has a `seen:` part ("seen since 0.105.32: N seen, M refused or failed, K not yet met, E section errors"); a report section that returns `{"error"}` is flagged there ("report section 'x' returns an error: ...").

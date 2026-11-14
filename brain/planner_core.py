@@ -163,6 +163,7 @@ class Memory:
     mood_progress: dict = field(default_factory=dict)    # (0.105.30) unit id -> {have, since}: a mood's items fetched, and since when
     mood_slaughter: dict = field(default_factory=dict)   # (0.105.30) unit id -> tick an animal went to the butcher for that mood (one a mood)
     mood_logged: dict = field(default_factory=dict)      # (0.105.30) unit id -> game day its requests were last journalled
+    mood_help: dict = field(default_factory=dict)        # (0.105.47, J1) {free_none: {uid: sig}, cap_built: {uid: tick}}: planner_mood_help
     order_watch: dict = field(default_factory=dict)      # order id (str) -> {left, since, what, by_ai}
     pop_watch: dict = field(default_factory=dict)        # {pop, since}: the population and since when
     quick_locations: dict = field(default_factory=dict)  # (0.102.5) kind -> tick the dining hall was made one
@@ -757,6 +758,7 @@ RECIPE_SHOPS = {"pig_iron": "Smelter", "steel": "Smelter", "coke_bituminous": "S
                 "metal_amulet": "MetalsmithsForge", "metal_bracelet": "MetalsmithsForge",   # (0.104.137)
                 "metal_ring": "MetalsmithsForge", "metal_earring": "MetalsmithsForge",
                 "tan_hide": "Tanners", "raw_green_glass": "GlassFurnace"}   # (0.105.24) a strange mood's leather and glass
+RECIPE_SHOPS["collect_webs"] = "Loom"        # (0.105.47, J1) webs collected for silk thread
 
 
 # (0.100.1, overnight run) the workshop a recipe is made at, where it's sure:
@@ -1042,9 +1044,14 @@ def suites_short(s: dict) -> int:
 
 def wool_route(s: dict) -> bool:
     """(0.104.28) Thread can come from shorn animals: tame ones that can be
-    shorn and a farmer's workshop to shear and spin at."""
-    return (int(_d(s.get("supplies")).get("shearable") or 0) > 0
-            and _has_shop(_d(s.get("buildings")), "Farmers"))
+    shorn and a farmer's workshop to shear and spin at.
+    (0.105.47, J1) with wool grown now (the bridge's `shearable_ready`, when
+    it reports it): I7a, "Shear animal: No creature" 250 times in F while the
+    shearable count said yes."""
+    su = _d(s.get("supplies"))
+    ready = su.get("shearable_ready")
+    n = ready if isinstance(ready, int) and not isinstance(ready, bool) else su.get("shearable")
+    return int(n or 0) > 0 and _has_shop(_d(s.get("buildings")), "Farmers")
 
 
 # (0.105.24) what a strange mood asks for, in kinds the AI can act on

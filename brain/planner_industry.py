@@ -327,6 +327,14 @@ def _clutter_rules(s: dict, cfg: dict, proposals: list, notes: list, memory=None
     # week apart, a batch a day while the last call left more. Webs are silk
     # for cloth, but thousands far off cost more FPS than their thread is worth
     far = ic.get("webs_removable")
+    # (0.105.47, J1) not while a strange mood or the silk reserve wants silk (the
+    # webs are its only source here: I7a, 20 moods died on silk while remove_webs
+    # took 20,000-36,000 webs a fort); the far ones go once plenty lie in reach
+    from planner_mood_help import webs_hold
+    hold = webs_hold(s, cfg) if (isinstance(far, int) or heavy) else ""
+    if hold and (isinstance(far, int) and far >= (cfg["remove_webs_slow_min"] if slow else cfg["remove_webs_min"])):
+        notes.append(hold)
+        far = None
     if isinstance(far, int):
         more = bool(_d(cen.get("webs_left")).get("more"))
         if (far >= (cfg["remove_webs_slow_min"] if slow else cfg["remove_webs_min"])
@@ -337,7 +345,7 @@ def _clutter_rules(s: dict, cfg: dict, proposals: list, notes: list, memory=None
                                       f"{far} spider webs lie far from the fort ({ic.get('webs')} in all, "
                                       f"{items} items on the map): remove up to {cfg['remove_webs_max']}"
                                       + (f"; the {near} near the fort stay for the weavers" if near else ""), 7))
-    elif heavy and slow:
+    elif heavy and slow and not hold:
         # (0.104.116) a census from an older bridge: every web, a season apart
         webs = ic.get("webs")
         if isinstance(webs, int) and webs >= cfg["webs_clear_min"] and due("webs", 84):

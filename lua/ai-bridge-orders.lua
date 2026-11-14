@@ -254,6 +254,9 @@ ORDER_RECIPES = {
 -- (0.105.45) giant axe blades at the forge for the kill zones' weapon traps (lua/ai-killzone.lua;
 -- vanilla's trap component token: needs an in-game look that DF takes the order)
 ORDER_RECIPES.metal_trap_blades = {job = 'MakeTrapComponent', item_subtype = 'ITEM_TRAPCOMP_GIANTAXEBLADE', kind = 'metal'}
+-- (0.105.47, J1) webs collected for silk thread at a Loom (DF's CollectWebs job; a
+-- strange mood's silk or the silk reserve: I7a, 20 moods died waiting on silk, no route)
+ORDER_RECIPES.collect_webs = {job = 'CollectWebs'}
 
 -- Which plugins are on, from DFHack's own `enable` listing (the same way the
 -- DFHack control panel reads it). Works for plugins without a Lua module too.

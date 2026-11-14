@@ -628,6 +628,9 @@ ACTIONS = {
     call_migrants = function(a)
         return reqscript('ai-recovery').call_migrants(a.dry_run == true)
     end,
+    -- (0.105.47, J1) a gathering strange mood's workshop and materials put in the AI
+    -- shelter while the alarm is up (lua/ai-mood-help.lua; I7a: 5 moods cancelled "Forbidden area")
+    mood_shelter = function(a) return reqscript('ai-mood-help').act_mood_shelter(a) end,
 }
 
 -- (13c) The actions whose dry run changes nothing in the fort, all the way
@@ -705,6 +708,7 @@ for _, name in ipairs({
     'build_killzone', 'reset_cage_traps',   -- (0.105.45) each dry run plans (or counts) and places nothing
     'thirst_unforbid',   -- (0.105.46, I2) its dry run counts the drinks and lets none go
     'call_migrants',   -- (0.105.46, I4) its dry run names the script and queues nothing
+    'mood_shelter',    -- (0.105.47, J1) its dry run counts the tiles and adds none
 }) do DRY_OK[name] = true end
 
 -- These only change what's displayed, so they still work while halted, dry
@@ -784,6 +788,7 @@ BRIDGE_MODULES = {
     'ai-thirst',   -- (0.105.46, I2) the thirst watch
     'ai-recovery',   -- (0.105.46, I4)
     'ai-slices', 'ai-cavern-scan',   -- (0.105.46, I6) walks spread over several reports; the caverns' seen samples
+    'ai-mood-help',   -- (0.105.47, J1) job cancels, webs, the moods' tiles in the shelter
 }
 -- the split-off modules that carry a version mark of their own
 MARKED_MODULES = {'ai-military-gear', 'ai-society-burrows', 'ai-constructions'}
@@ -1257,6 +1262,10 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
     -- stranded, the last cancelled Drink job), and the deaths of thirst with
     -- the last reason known (lua/ai-thirst.lua; in the pulse)
     thirst = function() return safe(function() return reqscript('ai-thirst').report() end) end,
+    -- (0.105.47, J1) what the strange moods need from the rest of the fort: DF's job
+    -- cancels by job (a dead order is a failed route), the webs a weaver can reach
+    -- (silk), the moods' tiles outside the shelter (lua/ai-mood-help.lua; in the pulse)
+    mood_help = function() return safe(function() return reqscript('ai-mood-help').report() end) end,
     -- (0.105.30) what the fort has built: finished constructions by shape and
     -- material, above or below ground, roofed surface tiles, the waiting ones
     -- and the AI's own (lua/ai-constructions.lua; one pass, every 3 days)
@@ -1283,6 +1292,7 @@ PULSE_SECTIONS = {
     'shelter_plan',  -- (0.105.45) a titan inside walks to the shelter in minutes: read each cycle
     'lures',         -- (0.105.45) a lure is opened and shut on what the beast does: read each cycle
     'thirst',        -- (0.105.46, I2) thirst kills in days: read each cycle
+    'mood_help',     -- (0.105.47, J1) an alarm sounded while a mood gathers: read each cycle
 }
 TIERS = {pulse = true, daily = true, survey = true}
 -- report sections rebuilt only every so many game days (the lag pass, Oct 23:

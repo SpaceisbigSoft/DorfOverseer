@@ -1161,6 +1161,7 @@ local function mat_flags(item)
 end
 
 GOOD_MEAL_VALUE = 20
+THREAD_WHOLE = 15000            -- (0.105.47, J1) a whole spun thread's dimension
 
 -- Supplies that stall a fort without anyone noticing: empty containers
 -- (brewing and cooking stop without them) and what a hospital and wells use.
@@ -1281,7 +1282,27 @@ function get_supplies()
                 local okc, n = pcall(function()
                     return #df.creature_raw.find(u.race).caste[u.caste].shearable_tissue_layer
                 end)
-                if okc and n and n > 0 then out.shearable = out.shearable + 1 end
+                if okc and n and n > 0 then
+                    out.shearable = out.shearable + 1
+                    -- (0.105.47, J1) and with wool grown long enough to shear now: a
+                    -- shearable layer whose length modifier has reached the raws'
+                    -- length (I7a: "Shear animal: No creature" 250 times in F while
+                    -- the count above said yes). Unread: not counted as ready.
+                    local okr, ready = pcall(function()
+                        local c = df.creature_raw.find(u.race).caste[u.caste]
+                        for _, l in ipairs(c.shearable_tissue_layer) do
+                            for _, idx in ipairs(l.bp_modifiers_idx) do
+                                if u.appearance.bp_modifiers[idx] >= l.length then return true end
+                            end
+                        end
+                        return false
+                    end)
+                    if okr then
+                        out.shearable_ready = (out.shearable_ready or 0) + (ready and 1 or 0)
+                    else
+                        out.shearable_unread = (out.shearable_unread or 0) + 1
+                    end
+                end
                 -- (0.104.79) and those that can be milked (cows, goats, llamas...)
                 local okm, m = pcall(function()
                     local c = df.creature_raw.find(u.race).caste[u.caste]
@@ -1590,20 +1611,35 @@ function get_supplies()
     -- re-ordered six times from it; F's silk/yarn looked met by it)
     out.hospital = {thread = 0, cloth = 0}
     local in_hospital = hospital_store_test()
+    -- (0.105.47, J1) the kind by ai-moods' own test (cloth_kind), as the moods count it
+    local okmk, MK = pcall(reqscript, 'ai-moods')
+    local function kind_of(it)
+        if okmk and MK and MK.cloth_kind then return MK.cloth_kind(it) end
+        local f = mat_flags(it)
+        return f and (f.SILK and 'silk' or f.YARN and 'yarn' or f.THREAD_PLANT and 'plant') or nil
+    end
     each('CLOTH', function(it)
         if in_hospital(it) then out.hospital.cloth = out.hospital.cloth + it:getStackSize() return end
-        local f = mat_flags(it)
-        local k = f and (f.SILK and 'silk' or f.YARN and 'yarn' or f.THREAD_PLANT and 'plant') or nil
+        local k = kind_of(it)
         if k then out.cloth_kinds[k] = out.cloth_kinds[k] + it:getStackSize() end
     end)
     -- (0.104.140) thread by kind, as cloth: a stuck plant-cloth weave can turn
     -- to silk or yarn thread at hand (webs collected, wool spun)
     out.thread_kinds = {plant = 0, silk = 0, yarn = 0}
+    -- (0.105.47, J1) thread shorter than a whole spun thread (dimension under
+    -- THREAD_WHOLE, a suture's leftover) counted apart too (needs an in-game
+    -- look: F's 6 yarn thread "unused collected" DF wouldn't weave)
+    out.thread_short = {plant = 0, silk = 0, yarn = 0}
     each('THREAD', function(it)
         if in_hospital(it) then out.hospital.thread = out.hospital.thread + it:getStackSize() return end
-        local f = mat_flags(it)
-        local k = f and (f.SILK and 'silk' or f.YARN and 'yarn' or f.THREAD_PLANT and 'plant') or nil
-        if k then out.thread_kinds[k] = out.thread_kinds[k] + it:getStackSize() end
+        local k = kind_of(it)
+        if k then
+            out.thread_kinds[k] = out.thread_kinds[k] + it:getStackSize()
+            local okd, d = pcall(function() return it:getTotalDimension() end)
+            if okd and type(d) == 'number' and d > 0 and d < THREAD_WHOLE then
+                out.thread_short[k] = out.thread_short[k] + it:getStackSize()
+            end
+        end
     end)
     if next(out.errors) == nil then out.errors = nil end
     return out

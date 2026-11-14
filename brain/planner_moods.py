@@ -14,6 +14,8 @@ from digest import _d, _l
 from planner_core import *  # noqa: F401,F403
 import planner_farms
 from planner_insane import INSANE_MOODS, insane_ids, insane_present  # (0.105.40b)
+from planner_mood_help import (dead_order, usable_thread, silk_route, webs_reach, free_items_skip,  # (0.105.47, J1)
+                               TRADE_IF, request_detail)
 
 __all__ = ["MOOD_WORKSHOPS", "_mood_rules", "mood_item_text", "MOOD_CONSUMERS", "MOOD_TRADE_KEYS", "_mood_make", "_mood_slaughter", "_mood_materials", "mood_counts_text", "mood_journal", "mood_trade_wants", "MOOD_BLOCKS", "mood_blocked", "MOOD_RESERVES", "mood_reserve_counts", "reserve_room", "RESERVE_BATCH", "note_reserve_swap", "_mood_reserve_rule", "reserve_trade_wants", "reserve_words"]
 
@@ -121,6 +123,16 @@ def _mood_rules(s: dict, memory, cfg: dict, proposals: list, notes: list) -> Non
                     "built; without one they go insane", 0))
             elif need and coming:
                 notes.append(f"{what} ({need}); a workshops level with a {need} is already being built")
+            elif (need in BUILDABLE_SHOPS and days >= cfg.get("mood_claim_cap_days", 6)
+                  and str(m.get("unit_id")) not in _d(_d(getattr(memory, "mood_help", None)).get("cap_built"))):
+                # (0.105.47, J1) the cap is for the AI's own building, not a life: one
+                # more past it, once a mood (I7a: F's macabre Onol claimed no
+                # Craftsdwarf's for 41 days and went mad, the AI building none)
+                proposals.append(Proposal(
+                    "mood", {"type": "start_project", "kind": "workshops", "shops": [need], "urgent": True,
+                             "mood_unit": m.get("unit_id")},
+                    f"{what}: the fort's {shop_count(b, need)} {need} (the AI's cap) are taken or out of the "
+                    f"dwarf's walk, so one more is built past the cap; without one they go insane", 0))
             else:
                 notes.append(f"{what}{' (' + need + ')' if need else ''}: DF lets the dwarf choose it, and the "
                              "AI has no more to build for it" + (f" ({shop_count(b, need)} stand, the AI's cap)"
@@ -231,8 +243,16 @@ def _mood_make(s: dict, x: dict, kind: str, memory, cfg: dict, mood: dict | None
     acts: list = []
     stuck = int(_d(mood).get("stalled") or 0) >= cfg.get("mood_stall_days", 7)
     unwoven = ""
+    dead: list[str] = []          # (0.105.47) the routes DF keeps cancelling, in words
 
     def order(recipe, amount, why, material=None):
+        # (0.105.47, J1) an order whose jobs DF keeps cancelling for something
+        # missing is a failed route, queued or not (I7a: F's weave, shear and
+        # spin orders waited on until the dwarf went mad): the next is tried
+        d = dead_order(s, recipe, cfg)
+        if d:
+            dead.append(d)
+            return False
         if queued(s, {recipe}):
             return True                    # already on order: wait for it
         a = {"type": "work_order", "recipe": recipe, "amount": max(1, int(amount))}
@@ -241,17 +261,38 @@ def _mood_make(s: dict, x: dict, kind: str, memory, cfg: dict, mood: dict | None
         acts.append((a, why))
         return True
 
+    def dead_words():
+        return ("; " + "; ".join(dict.fromkeys(dead))) if dead else ""
+
+    def yarn_route():
+        # shorn, then spun: dead when the shearing fails, or the spinning with no shearing left to wait on
+        if not wool_route(s):
+            return False
+        if dead_order(s, "shear_creature", cfg):
+            dead.append(dead_order(s, "shear_creature", cfg))
+            return False
+        if dead_order(s, "spin_thread", cfg) and not queued(s, {"shear_creature"}):
+            dead.append(dead_order(s, "spin_thread", cfg))
+            return False
+        return True
+
     if kind == "cloth":
-        thread = _d(su.get("thread_kinds"))
+        # (0.105.47, J1) the thread DF will weave (a kind whose weaving is
+        # cancelled for want of thread counts none); every kind's route is
+        # tried in turn, silk too: webs collected at the Loom
+        thread = usable_thread(s, cfg)
         kinds = [k for k in ("silk", "yarn", "plant") if k in flags] or \
             sorted(("plant", "yarn", "silk"), key=lambda k: -int(thread.get(k) or 0))
         if not _has_shop(b, "Loom"):
             return acts, "no loom to weave it at"
         for k in kinds:
+            if int(_d(su.get("thread_kinds")).get(k) or 0) > 0 and not thread.get(k):
+                dead.append(dead_order(s, f"weave_{k}_cloth", cfg) or f"the {k} thread isn't woven")
+        for k in kinds:
             # an older bridge (no thread by kind): plant thread where plants give
             # it or no wool comes in (0.104.36: a plant-cloth order where the
             # thread is all wool only cancels at the loom)
-            old_plant = (not thread and k == "plant" and int(st.get("thread") or 0) > 0
+            old_plant = (not _d(su.get("thread_kinds")) and k == "plant" and int(st.get("thread") or 0) > 0
                          and (thread_plants_here(s) or not wool_route(s)))
             if int(thread.get(k) or 0) > 0 or old_plant:
                 # (0.105.33) the weaving already on order while the mood has
@@ -259,49 +300,63 @@ def _mood_make(s: dict, x: dict, kind: str, memory, cfg: dict, mood: dict | None
                 # thread, the hospital's, "woven" 6 times and never; shearing
                 # never tried): make the thread too
                 waited = stuck and queued(s, {f"weave_{k}_cloth"})
-                order(f"weave_{k}_cloth", q, f"weave {k} cloth")
+                if not order(f"weave_{k}_cloth", q, f"weave {k} cloth"):
+                    continue                       # DF won't weave it: that kind's thread is made below
                 if not waited:
                     return acts, None
                 kinds, unwoven = [k], f" (the {int(thread.get(k) or 0)} {k} thread counted is never woven)"
                 break
+        for k in kinds:
+            if k == "plant" and thread_plants_here(s) and _has_shop(b, "Farmers"):
+                if order("process_plants", 3, "process plants for thread (then weave it)"):
+                    return acts, None
+            if k == "yarn" and yarn_route():
+                if (order("shear_creature", 1, "shear an animal for wool (then spin and weave it)")
+                        and order("spin_thread", 1, "spin the wool into yarn")):
+                    return acts, None
+            if k == "silk" and silk_route(s, cfg):
+                if order("collect_webs", cfg.get("mood_webs_collect", 5),
+                         f"collect spider webs for silk thread ({webs_reach(s)} within a weaver's reach; then "
+                         "weave it)"):
+                    return acts, None
         k = kinds[0]
-        if k == "plant" and thread_plants_here(s) and _has_shop(b, "Farmers"):
-            order("process_plants", 3, "process plants for thread (then weave it)")
-            return acts, None
-        if k == "yarn" and wool_route(s):
-            order("shear_creature", 1, "shear an animal for wool (then spin and weave it)")
-            order("spin_thread", 1, "spin the wool into yarn")
-            return acts, None
-        return acts, (f"no {k} thread to weave" + (" (silk comes from webs or caravans)" if k == "silk" else
-                                                  " (no sheep, llama or alpaca to shear)" if k == "yarn" else "")
-                      + unwoven)
+        return acts, (f"no {k} thread to weave" + (" (silk comes from spider webs: none a weaver can reach, "
+                                                   "or a caravan's)" if k == "silk" else
+                                                  " (no sheep, llama or alpaca with wool grown to shear)"
+                                                  if k == "yarn" else "")
+                      + unwoven + dead_words())
     if kind == "other" and str(x.get("item") or "").upper() == "THREAD":
         # (0.105.33) thread itself (mood_kind says "other"): by the request's
         # kind, the routes the cloth branch takes (B4: a plant-thread request
         # was told "no recipe makes it" with fibre plants and a farmer's)
         kinds = [k for k in ("plant", "yarn", "silk") if k in flags] or \
-            (["plant"] if thread_plants_here(s) else []) + (["yarn"] if wool_route(s) else []) or ["plant"]
+            (["plant"] if thread_plants_here(s) else []) + (["yarn"] if wool_route(s) else []) \
+            + (["silk"] if silk_route(s, cfg) else []) or ["plant"]
         for k in kinds:
             if k == "plant" and thread_plants_here(s) and _has_shop(b, "Farmers"):
-                order("process_plants", 3, "process plants for thread")
-                return acts, None
-            if k == "yarn" and wool_route(s):
-                order("shear_creature", 1, "shear an animal for wool (then spin it)")
-                order("spin_thread", 1, "spin the wool into yarn")
-                return acts, None
+                if order("process_plants", 3, "process plants for thread"):
+                    return acts, None
+            if k == "yarn" and yarn_route():
+                if (order("shear_creature", 1, "shear an animal for wool (then spin it)")
+                        and order("spin_thread", 1, "spin the wool into yarn")):
+                    return acts, None
+            if k == "silk" and silk_route(s, cfg):
+                if order("collect_webs", cfg.get("mood_webs_collect", 5), "collect spider webs for silk thread"):
+                    return acts, None
         k = kinds[0]
         return acts, {"plant": "no fibre plant to process for thread" + ("" if _has_shop(b, "Farmers")
                                                                         else " and no farmer's workshop"),
-                      "yarn": "no sheep, llama or alpaca to shear (or no farmer's workshop)",
-                      "silk": "no silk thread (silk comes from webs or caravans)"}.get(k, "no thread")
+                      "yarn": "no sheep, llama or alpaca with wool grown to shear (or no farmer's workshop)",
+                      "silk": "no silk thread (silk comes from spider webs: none a weaver can reach, or a "
+                              "caravan's)"}.get(k, "no thread") + dead_words()
     if kind == "leather":
         if int(su.get("hides") or 0) > 0 and _has_shop(b, "Tanners"):
-            order("tan_hide", q, "tan a hide")
-            return acts, None
+            if order("tan_hide", q, "tan a hide"):
+                return acts, None
         why = "no hide to tan" + ("" if _has_shop(b, "Tanners") else " and no tanner's")
         if _mood_slaughter(s, memory, cfg, acts, "its hide tanned for leather", mood=mood):
             return acts, None
-        return acts, why + "; " + _slaughter_why(s, memory, cfg, mood)
+        return acts, why + "; " + _slaughter_why(s, memory, cfg, mood) + dead_words()
     if kind in ("bone", "shell"):
         if kind == "shell":
             return acts, "no shell (shells come from turtles and shellfish: fishing, or a caravan's)"
@@ -324,31 +379,42 @@ def _mood_make(s: dict, x: dict, kind: str, memory, cfg: dict, mood: dict | None
         if not by_ore:
             return acts, f"no {metal.lower() + ' ' if metal else ''}ore to smelt"
         ore = max(sorted(by_ore), key=lambda k: int(by_ore[k].get("n") or 0))
-        order("smelt_ore", q, f"smelt {ore.lower()} ore", f"INORGANIC:{ore}")
-        return acts, None
+        if order("smelt_ore", q, f"smelt {ore.lower()} ore", f"INORGANIC:{ore}"):
+            return acts, None
+        return acts, f"no {metal.lower() + ' ' if metal else ''}bar can be smelted" + dead_words()
     if kind == "glass_rough":
         furnaces = _d(b.get("furnaces"))
         if not (_has_shop(b, "GlassFurnace") or furnaces.get("MagmaGlassFurnace")):
             return acts, "no glass furnace"
         if int(su.get("sand_bags") or 0) > 0 and (int(su.get("fuel") or 0) > 0 or furnaces.get("MagmaGlassFurnace")):
-            order("raw_green_glass", q, "make raw green glass")
-            return acts, None
+            if order("raw_green_glass", q, "make raw green glass"):
+                return acts, None
         if int(su.get("empty_bags") or 0) > 0:
-            order("collect_sand", 2, "fill bags with sand for raw glass")
-            return acts, None
-        return acts, "no bag of sand (or no fuel) for raw glass"
+            # (0.105.47, J1) a sand zone first (I7a: F's Obok, "Collect sand: Need
+            # valid, active sand collection zone" 31 times, the dwarf went mad)
+            if "sand_zones" in su and int(su.get("sand_zones") or 0) <= 0:
+                if _l(su.get("sand_layers")):
+                    acts.append(({"type": "sand_zone"}, "a sand collection zone first (bags are filled there "
+                                                        "for raw glass)"))
+                    return acts, None
+                return acts, "no sand on this map to collect for raw glass (no sand zone can be made)"
+            if order("collect_sand", 2, "fill bags with sand for raw glass"):
+                return acts, None
+        return acts, "no bag of sand (or no fuel) for raw glass" + dead_words()
     if kind == "cut_gem":
         rg = _d(_d(s.get("trade")).get("rough_gem"))
         if (_has_shop(b, "Jewelers") and int(rg.get("n") or 0) > 0
                 and str(rg.get("token", "")).startswith("INORGANIC:")):
-            order("cut_gems", q, "cut a gem", rg["token"])
-            return acts, None
-        return acts, "no rough gem to cut"
+            if order("cut_gems", q, "cut a gem", rg["token"]):
+                return acts, None
+        return acts, "no rough gem to cut" + dead_words()
     if kind == "block" and not x.get("material") and not flags & {"metal", "glass", "wood"}:
         order("stone_blocks", q, "make stone blocks")
         return acts, None
     if kind == "rough":
-        return acts, "no rough gem (they come from mining gem veins, or a caravan's)"
+        # (0.105.47, J1) the gem cutting waits meanwhile (mood_blocked; each gem counted for one request only)
+        return acts, ("no rough gem the dwarf can reach (they come from mining gem veins, or a caravan's); "
+                      "the AI's gem cutting waits meanwhile")
     if kind == "log":
         return acts, "no log (trees felled, or a caravan's wood)"
     if kind == "stone":
@@ -552,7 +618,7 @@ def _mood_materials(s: dict, name: str, mood: str, missing: list, days: int,
         asks.append(f"{name}'s {mood.lower()} mood waits for {'; '.join(far)}: the fort has it, but "
                     "where the dwarf can't walk, and the AI can't carry it there (DF hauls only along a path "
                     "the dwarf can walk too)"
-                    + ("; meanwhile it is on the caravans' list, bought when one comes" if keyed else "")
+                    + (f"; meanwhile it is on the caravans' list, bought {TRADE_IF}" if keyed else "")
                     + ", or the dwarf goes insane")
     words = [w for w, _, _ in lacking]
     lack_at = None                        # (0.105.35) the index of the lacking note in notes
@@ -561,14 +627,14 @@ def _mood_materials(s: dict, name: str, mood: str, missing: list, days: int,
         lack_at = len(notes)
         notes.append(f"{name}'s {mood.lower()} mood (day {days}) needs what the fort can't supply: "
                      + "; ".join(f"{w}: {why}" for w, why, _ in lacking)
-                     + ". On the caravans' list: the AI buys it from the next caravan")
+                     + f". On the caravans' list: bought {TRADE_IF}")
     elif lacking and days >= cfg["mood_lacking_days"]:
         # (an older bridge, no count) what is forbidden or dumped is freed, the rest asked of the caravans
         if unit_id is not None and not freeing:
             freeing = True
         lack_at = len(notes)
         notes.append(f"{name}'s {mood.lower()} mood still lacks, after {days} days: {', '.join(words)}. "
-                     "The AI frees what lies forbidden or dumped, and buys the rest from the next caravan")
+                     f"The AI frees what lies forbidden or dumped; the rest is on the caravans' list, bought {TRADE_IF}")
     elif lacking:
         # (0.103.8) the dwarf may still be fetching it: Enxah's fisherdwarf
         # claimed the mason's on day 3, "lacked" rock that day and the next
@@ -576,7 +642,9 @@ def _mood_materials(s: dict, name: str, mood: str, missing: list, days: int,
         notes.append(f"{name}'s {mood.lower()} mood: still gathering after {days} days, waiting on "
                      f"{', '.join(words)}")
     if stalled is not None and stalled >= cfg.get("mood_stall_days", 7) and missing:
-        counts = "; ".join(mood_counts_text(x) for x in missing)
+        # (0.105.47, J1) with DF's flags of each request and where the counted items lie (I7a 7)
+        counts = "; ".join(mood_counts_text(x) + (f" [{request_detail(x)}]" if request_detail(x) else "")
+                           for x in missing)
         line = (f"no progress for {stalled} days; what the fort holds for each request: {counts}")
         if asks:
             asks[-1] += f" ({line})"
@@ -591,7 +659,8 @@ def _mood_materials(s: dict, name: str, mood: str, missing: list, days: int,
             notes.append(f"{name}'s {mood.lower()} mood has fetched nothing for {stalled} days although the fort "
                          f"seems to hold it ({counts}): the AI makes more of what it fetches first and frees "
                          "what lies forbidden in the dwarf's walk")
-    if freeing and unit_id is not None:
+    # (0.105.47, J1) not asked again after "nothing forbidden" while the counts stay as they were
+    if freeing and unit_id is not None and not free_items_skip(memory, unit_id, missing):
         proposals.append(Proposal("mood", {"type": "mood_free_items", "unit_id": unit_id, "max": 10},
                                   f"{name}'s {mood.lower()} mood can use items that lie forbidden or marked for "
                                   "the dump: free them", 1))
@@ -642,6 +711,9 @@ def mood_journal(s: dict, memory) -> list[dict]:
         uid = str(m.get("unit_id"))
         if logged.get(uid) == today:
             continue
+        prog0 = _d(_d(getattr(memory, "mood_progress", None)).get(uid))
+        stalled_long = (isinstance(prog0.get("since"), int)
+                        and (abs_tick(s) - prog0["since"]) // TICKS_PER_DAY >= PLANNER_CONFIG.get("mood_stall_days", 7))
         reqs = []
         for x in _l(m.get("missing")):
             if not isinstance(x, dict):
@@ -652,6 +724,12 @@ def mood_journal(s: dict, memory) -> list[dict]:
                 r["avail"] = {k: int(av[k]) for k in MOOD_JOURNAL_KEYS if isinstance(av.get(k), int) and av[k]}
                 if av.get("capped"):
                     r["avail"]["capped"] = True
+            if stalled_long:
+                # (0.105.47, J1) after the stall: DF's flags and where the counted items lie (I7a 7)
+                r["flags"] = [str(f) for f in _l(x.get("flags"))][:12]
+                spots = [sp for sp in _l(_d(av).get("spots")) if isinstance(sp, dict)]
+                if spots:
+                    r["spots"] = spots[:3]
             reqs.append(r)
         seen = _d(getattr(memory, "moods_seen", None)).get(uid)
         prog = _d(_d(getattr(memory, "mood_progress", None)).get(uid))
@@ -879,13 +957,22 @@ def _mood_reserve_rule(s: dict, memory, cfg: dict, proposals: list, notes: list)
                          "caravans' list")
     n, have, want = gap("animal_cloth")
     if n:
-        thread = _d(su.get("thread_kinds"))
+        thread = usable_thread(s, cfg)           # (0.105.47, J1) thread DF will weave
+        woven = False
         for k in ("silk", "yarn"):
-            if int(thread.get(k) or 0) > 0 and _has_shop(b, "Loom"):
+            if int(thread.get(k) or 0) > 0 and _has_shop(b, "Loom") and not dead_order(s, f"weave_{k}_cloth", cfg):
+                woven = True
                 if order(f"weave_{k}_cloth", min(n, int(thread.get(k) or 0)),
                          f"{have} silk or yarn cloth, a reserve of {want} {FOR}: weave {k} cloth"):
                     return
                 break
+        # (0.105.47, J1) no thread to weave: silk from the webs a weaver can reach
+        # (I7a: silk cloth 0 in A all run; 20 moods died on silk, no route)
+        if not woven and silk_route(s, cfg) and not queued(s, {"weave_silk_cloth"}):
+            if order("collect_webs", min(int(cfg.get("mood_webs_collect", 5)), n + 1),
+                     f"{have} silk or yarn cloth, a reserve of {want} {FOR}: collect spider webs for silk "
+                     f"thread ({webs_reach(s)} within a weaver's reach), then weave it"):
+                return
     n, have, want = gap("leather")
     if n and int(su.get("hides") or 0) > 0 and _has_shop(b, "Tanners"):
         if order("tan_hide", min(n, int(su.get("hides") or 0)), f"{have} leather, a reserve of {want} {FOR}: "

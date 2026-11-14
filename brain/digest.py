@@ -181,6 +181,7 @@ SECTION_DEFAULTS = {
     "hunt": {"targets": [], "squads": [], "hunts": []},   # (0.105.45) threats the squads may hunt, the squads, hunts under way (lua/ai-hunt.lua)
     "artifacts": {},         # (item 12) artifacts on the map, display furniture, the AI's rooms for it (lua/ai-artifacts.lua)
     "migration": {},         # (0.105.46, I4) whether a migrant wave can be called: force script, waves queued, DFHack's hermit (lua/ai-recovery.lua)
+    "mood_help": {},         # (0.105.47, J1) job cancels by job and reason, webs in a weaver's reach, moods' tiles outside the shelter (lua/ai-mood-help.lua)
     "hunt": {"targets": [], "squads": [], "hunts": []},   # (0.105.45) hunting: targets and the way to them, squads, the AI's hunts, history (lua/ai-hunt.lua)
 }
 # (0.105.36) not REQUIRED (the plan goes on without them), but a missing one is
