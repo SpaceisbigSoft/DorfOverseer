@@ -87,7 +87,8 @@ function act_civ_alert(a)
             return reject('no civilian alert burrow is set up yet; the player must choose one in the civ-alert settings first')
         end
         -- (0.105.8) the AI's shelter over the fort as it is now, first
-        local okr, rr = pcall(function() return reqscript('ai-society').refresh_shelter() end)
+        -- (item4) not drawn again when drawn within the last day (a.refresh: always)
+        local okr, rr = pcall(function() return reqscript('ai-society').refresh_shelter_due(a.refresh == true) end)
         civ.sound_alarm()
         return {ok = true, on = df.global.plotinfo.alerts.civ_alert_idx ~= 0,
                 shelter = okr and rr or nil, shelter_error = (not okr) and tostring(rr):sub(1, 120) or nil}
@@ -1147,6 +1148,14 @@ function act_free_gate_jobs(a)
     local id = tonumber(a.entrance_id)
     if not id then return reject('free_gate_jobs needs the entrance_id') end
     return reqscript('ai-gates').free_gate_jobs(id, a.dry_run == true, a.ai_plan == true)   -- (0.105.36)
+end
+
+-- (item4) Evil weather: the civilians kept inside the AI shelter's burrow
+-- without the alarm (lua/ai-society-burrows.lua weather_keep_in); on = false
+-- lets out those it put there.
+function act_weather_burrow(a)
+    if type(a.on) ~= 'boolean' then return reject('weather_burrow: on must be true or false') end
+    return reqscript('ai-society').weather_keep_in(a.on, a.dry_run == true, txt)
 end
 
 -- Set-ups the AI does itself (lua/ai-society.lua).

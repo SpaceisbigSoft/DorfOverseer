@@ -52,7 +52,8 @@ from planner_bans import _export_bans_notes  # noqa: E402  (0.105.41, item 8: th
 from planner_missions import _mission_rule, note_missions  # noqa: E402  (0.105.39) missions on the world map
 from planner_cleanup import _world_cleanup_rule, note_cleanup  # noqa: E402  (0.105.40) world cleanup for the game's speed
 from planner_captives import _captives_rule, _necro_rule, note_captives  # noqa: E402  (item6) prisoners' outcomes, necromancer sieges
-from planner_weather import _weather_rules, _weather_squad_filter  # noqa: E402  (0.105.40b) evil weather
+from planner_weather import _weather_rules, _weather_squad_filter, note_keep_in  # noqa: E402  (0.105.40b) evil weather
+from planner_alarm import govern_alarm, note_alarm_change  # noqa: E402  (item4) the alarm kept from flapping
 from planner_firebreath import _fire_breather_rule  # noqa: E402  (0.105.40b) no melee squad at a fire breather
 from planner_siege import _siege_rules  # noqa: E402  (item5) siege engines, archer posts, caravan guard, wildlife hunts
 from planner_hazards import _hazards_rule, magma_alarm  # noqa: E402  (0.105.41, item 7) spilt magma, cave-ins, frost, heat
@@ -234,6 +235,9 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
     # (0.105.41, item 7) spilt magma guarded and reclaimed, cave-ins, frost, heat
     if can_use("env_hazards"):
         _guard(_hazards_rule, s, memory, cfg, proposals, notes)
+    # (item4) the alarm's minimum time on, the cooldown for the same cause, the month's cap
+    # (enemies that can reach the dwarves always sound it)
+    _guard(govern_alarm, s, memory, cfg, proposals, notes)
 
     # 1c. Health: who waits for care, and for how long
     if can_use("health"):
@@ -997,6 +1001,13 @@ def select(proposals: list[Proposal], state: dict, memory: Memory,
             if why_:
                 held.append(f"strategist: the alarm stays up ({why_[:100]})")
                 continue
+            # (item4) and its minimum time on
+            kept_, gnotes_ = [p], []
+            _gs = normalize(state)
+            govern_alarm(_gs, memory, cfg, kept_, gnotes_)
+            if not kept_:
+                held.append(f"strategist: {(gnotes_ or ['the alarm stays up a while yet'])[0][:120]}")
+                continue
         if st_ and st_["mode"] == "hold":
             held.append(f"{p.rule}: held by the strategist ({str(st_.get('why') or 'no reason')[:80]})")
             continue
@@ -1196,6 +1207,8 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
         note_captives(p, r, memory, now)                   # (item6) the pit's trial done, the prisoners sent
         note_syndromes(p, r, memory, now)                  # (0.105.41, item 11) the contaminant clean's trial done
         note_food_level(p, r, memory)                      # (fix41) one food storage level a kitchen or still
+        if p.action.get("type") == "weather_burrow":
+            note_keep_in(memory, now, p.action, ok)        # (item4) evil weather: kept in by the burrow
         try:
             note_design(p, r, state, memory, now)          # (D0) sites kept, a landmark's refusals and fallback
         except Exception:  # noqa: BLE001  (the design record never stops the cycle's record)
@@ -1436,6 +1449,8 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
             else:
                 memory.ai_alert_raised = bool(a["on"])
                 memory.quiet_cycles = 0
+                if r.get("on") is None or bool(r.get("on")) == bool(a["on"]):
+                    note_alarm_change(memory, now, bool(a["on"]), p.reason)      # (item4)
         if a["type"] == "tool" and a.get("enabled") is False:
             # (0.89) the AI switched it off itself (the elves' quota): not the
             # player's choice, so it may come back on later

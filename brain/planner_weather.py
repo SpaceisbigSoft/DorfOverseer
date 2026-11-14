@@ -40,6 +40,17 @@ The rule (_weather_rules):
     unless enemies are inside the fort (then the squads do what they must);
     a fire breather standing in it isn't shot at either (planner_firebreath:
     the crossbows stay in the shelter with the rest).
+(item4) The alarm locked the whole fort down for a cloud drifting over the
+surface (B, D, E, F: 10-19 times a run, each lifted and sounded again): the
+civilians are now kept in without it. The `weather_burrow` action puts every
+civilian (not a soldier, not one already in another burrow) into the AI
+shelter's burrow, so outdoor work (wood cutting, gathering, hauling outside)
+stops and work inside goes on; nothing else that waits on the alarm stops
+(the alarm stays for enemies). Sent again every `weather_keep_in_ticks`
+while the spell lasts (newcomers kept in too), let out with the alarm's
+old timing (`weather_lift_hours` after, or at the cap). A bridge that
+refuses it (no shelter burrow yet, an older bridge): the alarm as before,
+for a day, then the burrow is tried again.
 The gates are never touched here. Without a `threats.weather` section (an
 older bridge, a fixture) nothing here proposes, notes or remembers anything.
 """
@@ -50,7 +61,7 @@ from digest import _d, _l
 from planner_core import PLANNER_CONFIG, Proposal, TICKS_PER_DAY, abs_tick, reachable_threats, _traits
 
 __all__ = ["weather_of", "weather_danger", "weather_held", "_weather_rules", "_weather_squad_filter", "weather_line",
-           "weather_outside"]
+           "weather_outside", "keep_in_active", "note_keep_in"]
 
 TICKS_PER_HOUR = 50
 
@@ -103,6 +114,46 @@ def weather_danger(s: dict, cfg: dict) -> str:
     return ""
 
 
+KEEP_IN = {"type": "weather_burrow", "on": True}
+LET_OUT = {"type": "weather_burrow", "on": False}
+
+
+def _keep_in_mode(wa: dict, now, cfg: dict) -> bool:
+    """(item4) The civilians kept in by the burrow, not the alarm: on in the
+    config, and not refused within the last day."""
+    if not cfg.get("weather_keep_in", True):
+        return False
+    failed = wa.get("keep_in_failed")
+    return not (isinstance(failed, int) and isinstance(now, int) and 0 <= now - failed < TICKS_PER_DAY)
+
+
+def keep_in_active(memory) -> bool:
+    """(item4) The weather rule keeps the civilians in by the burrow now."""
+    return _kept(_spell(memory))
+
+
+def _kept(wa: dict) -> bool:
+    k = wa.get("kept_in")
+    return isinstance(k, int) and not isinstance(k, bool)
+
+
+def note_keep_in(memory, now, action: dict, ok) -> None:
+    """record(): the burrow refused (no shelter burrow, an older bridge): the
+    alarm as before for a day. Let out: forgotten."""
+    if memory is None or action.get("type") != "weather_burrow":
+        return
+    wa = _spell(memory)
+    if action.get("on") and ok is False:
+        wa.pop("kept_in", None)
+        wa["keep_in_failed"] = now if isinstance(now, int) else 0
+    elif not action.get("on"):
+        if ok is False:
+            wa["kept_in"] = now if isinstance(now, int) else 0      # still in: let out again next cycle
+        else:
+            wa.pop("kept_in", None)
+    memory.weather_alarm = wa
+
+
 def _spell(memory) -> dict:
     wa = getattr(memory, "weather_alarm", None) if memory is not None else None
     return dict(wa) if isinstance(wa, dict) else {}
@@ -116,6 +167,8 @@ def weather_held(s: dict, memory, cfg: dict) -> str:
     seen, since, now = wa.get("seen"), wa.get("since"), abs_tick(s)
     if not (isinstance(seen, int) and isinstance(now, int)) or wa.get("cleared") or wa.get("capped"):
         return ""
+    if _kept(wa) and not wa.get("asked"):
+        return ""           # (item4) kept in by the burrow: the alarm, if up, is another rule's
     if not 0 <= now - seen < _c(cfg, "weather_lift_hours") * TICKS_PER_HOUR and seen != now:
         return ""
     if isinstance(since, int) and (now - since) // TICKS_PER_DAY >= _c(cfg, "weather_alarm_max_days"):
@@ -155,11 +208,20 @@ def _weather_rules(s: dict, memory, cfg: dict, proposals: list, notes: list) -> 
                      "falls on the fort: it only stains (no syndrome), so surface work goes on")
     if why:
         if not isinstance(wa.get("since"), int) or wa["since"] > now:
-            wa = {"since": now}
+            wa = {"since": now, **{k: wa[k] for k in ("kept_in", "keep_in_failed") if k in wa}}
         wa["seen"], wa["why"] = now, why[:160]
     elif isinstance(wa.get("seen"), int):
         gone = now - wa["seen"]
         if gone < 0 or gone >= lift * TICKS_PER_HOUR:
+            if _kept(wa):
+                proposals.append(Proposal("threat_alert", dict(LET_OUT),
+                                          f"the evil weather ({wa.get('why') or 'cloud or rain'}) has been gone "
+                                          f"{max(0, gone) // TICKS_PER_HOUR} game hour(s): the civilians kept in "
+                                          "go back to work outside", 0))
+                wa.pop("kept_in", None)
+                if not wa.get("asked"):
+                    memory.weather_alarm = {}
+                    return
             if unread:
                 # the alarm unread: the spell kept, so a good read next cycle lifts it
                 notes.append(f"the evil weather ({wa.get('why') or 'cloud or rain'}) has gone, but the alarm "
@@ -174,16 +236,41 @@ def _weather_rules(s: dict, memory, cfg: dict, proposals: list, notes: list) -> 
             return
         why = f"{wa.get('why') or 'evil weather'}, gone {gone // TICKS_PER_HOUR} game hour(s) ago (held {lift} after)"
     else:
+        if _kept(wa):
+            # (item4) a letting-out that didn't go through: tried again
+            proposals.append(Proposal("threat_alert", dict(LET_OUT),
+                                      "no evil weather about: the civilians kept in go back to work outside", 0))
         memory.weather_alarm = {}
         return
     days = (now - wa["since"]) // TICKS_PER_DAY
     if days >= _c(cfg, "weather_alarm_max_days"):
+        if _kept(wa):
+            proposals.append(Proposal("threat_alert", dict(LET_OUT),
+                                      f"{why}: the civilians have been kept in {days} days for it; let out (the "
+                                      "fort can't stay indoors for ever); the weather is still watched", 0))
+            wa.pop("kept_in", None)
         if not wa.get("capped"):
             notes.append(f"{why}: the alarm has been held {days} days for it; the AI no longer holds it (the fort "
                          "can't stay indoors for ever); the weather is still watched")
         wa["capped"] = True
         memory.weather_alarm = wa
         return
+    keep_in = _keep_in_mode(wa, now, cfg)
+    if keep_in and not wa.get("asked") and weather_danger(s, cfg):
+        # (item4) the civilians kept in by the burrow: no alarm, nothing else held
+        last = wa.get("kept_in")
+        if not (isinstance(last, int) and 0 <= now - last < _c(cfg, "weather_keep_in_ticks")):
+            proposals.append(Proposal("threat_alert", dict(KEEP_IN),
+                                      f"{why}: the civilians kept inside (the AI shelter's burrow, no alarm): wood "
+                                      "cutting, gathering and hauling outside stop, work inside goes on", 0))
+            wa["kept_in"] = now
+        else:
+            notes.append(f"the civilians stay inside for {why} (no alarm: the work inside goes on)")
+        memory.weather_alarm = wa
+        return
+    if keep_in and not wa.get("asked"):
+        memory.weather_alarm = wa
+        return          # gone, within the hours it is held after: the burrow keeps them in meanwhile
     if unread:
         pass
     elif alert_on:

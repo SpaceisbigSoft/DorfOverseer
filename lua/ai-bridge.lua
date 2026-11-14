@@ -313,6 +313,7 @@ ACTIONS = {
     end,
     tool = act_tool,
     civ_alert = act_civ_alert,
+    weather_burrow = act_weather_burrow,     -- (item4) evil weather: kept in without the alarm
     start_project = act_start_project,
     farm_plots = act_farm_plots,
     place_well = act_place_well,
@@ -526,6 +527,7 @@ for _, name in ipairs({
     'traction_rest', 'train_war', 'trim_instrument_orders', 'trim_labor', 'unforbid_dead',
     'unsuspend_orders', 'well_shaft',
     'refresh_shelter',   -- (0.105.26)
+    'weather_burrow',    -- (item4) its dry run counts who would be kept in
     'polish_room',       -- (0.105.41) a noble's room smoothed or engraved
     -- (0.105.27) disposal: each dry run returns before it changes anything
     'unforbid_items', 'mark_melt', 'mark_dump', 'empty_dump', 'set_standing_orders', 'place_dump',

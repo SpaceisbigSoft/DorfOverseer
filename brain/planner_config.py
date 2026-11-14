@@ -813,6 +813,8 @@ PLANNER_CONFIG = {
     "weather_edge_near": 150,             # DF's evil cloud this many tiles from the map's edge (about a day's drift; fix41)
     "weather_lift_hours": 6,              # gone this long (50 ticks an hour) before the alarm comes down
     "weather_alarm_max_days": 4,          # held at most this long in one spell (the fort can't stay in for ever)
+    "weather_keep_in": True,              # (item4) the civilians kept in by the shelter's burrow, not the alarm
+    "weather_keep_in_ticks": 100,         # ...sent again this often while it lasts (newcomers kept in too)
     "weather_blood_rain_alarm": False,    # plain blood rain (no syndrome) only stains: work goes on
     # (0.105.40 M5) hauling balanced (brain/planner_hauling.py): haulers wanted =
     # the larger of hauling_min_share of the civilians (hauling_min_haulers at

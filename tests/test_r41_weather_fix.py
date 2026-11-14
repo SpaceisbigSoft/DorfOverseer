@@ -42,6 +42,10 @@ except ImportError:
     LuaRuntime = None
 
 BASE = json.loads((ROOT / "tests" / "fixtures" / "test_fort.json").read_text(encoding="utf-8"))
+# (item4) these tests cover the alarm for evil weather, now the fallback when the
+# shelter's burrow is refused (no shelter yet, an older bridge); the burrow itself
+# (weather_burrow, the default) is tests/test_item4_alarm.py's
+PLANNER_CONFIG["weather_keep_in"] = False
 HOUR = 50
 LIFT = PLANNER_CONFIG["weather_lift_hours"]
 
