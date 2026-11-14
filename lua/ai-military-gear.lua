@@ -8,7 +8,7 @@
 
 local U = reqscript('ai-util')      -- (13c) helpers shared by the modules
 local M = reqscript('ai-military')  -- the squads: fort_squad, ai_uniforms, routine_names...
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-military-gear'] = '0.105.43'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-military-gear'] = '0.105.44'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 -- Gear: how many soldiers carry a weapon, wear body armour and a helm; how
 -- many squads have a uniform (without one, armour made isn't handed out);
