@@ -1681,7 +1681,7 @@ end
 -- (the gate scan's) and the surface spots 15-40 tiles from it in the outside
 -- walk group, best first (over the fort's inside, then nearer the entrance).
 -- Returns {entrance = {x, y, z}, group, spots = {{x, y, z}}} or nil, why.
-function way_in_second_spots(fort, GM, deadline_all)
+function way_in_second_spots(fort, GM, deadline_all, near)
     local GT = GM and GM.GATES
     if not (type(GT) == 'table' and GT.scanned and type(GT.entrances) == 'table') then
         return nil, 'the entrances are not mapped yet (scan them first)'
@@ -1765,6 +1765,8 @@ function way_in_second_spots(fort, GM, deadline_all)
                     if way_in_sky(t) and not (fort.set and fort.set[wkey(x, y, z)])
                             and walk_group(x, y, z) == group and not building_at(x, y, z) then
                         local di = dist[ck(x, y)] or 999
+                        -- (0.105.47) with near (the fields): nearest them first, the fort's inside after
+                        if near then di = math.max(math.abs(x - near.x), math.abs(y - near.y)) * 1000 + di end
                         table.insert(spots, {x = x, y = y, z = z, rank = di * 1000 + de})
                         break
                     end
@@ -1843,7 +1845,10 @@ function way_in_plan_and_dig(params, now, dry_run)
         local fwhy0
         fort0, fwhy0 = way_in_fort()
         if not fort0 then return refuse(fwhy0) end
-        local pick, pwhy = way_in_second_spots(fort0, GM, deadline_all)
+        -- (0.105.47) near: the Garden fort's fields (the stair up to them), when the brain sends them
+        local near = type(params.near) == 'table' and math.tointeger(params.near.x) and math.tointeger(params.near.y)
+            and {x = math.tointeger(params.near.x), y = math.tointeger(params.near.y)} or nil
+        local pick, pwhy = way_in_second_spots(fort0, GM, deadline_all, near)
         if not pick then return refuse(pwhy) end
         target, second_e = pick.group, pick.entrance
         sx, sy, sz = pick.spots[1].x, pick.spots[1].y, pick.spots[1].z

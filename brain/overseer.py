@@ -359,7 +359,8 @@ BIG_MOVES = {"start_project", "cancel_project", "cancel_work_order", "squad_fill
              "cut_entrance",                     # (0.105.0) hatches across the fort's stairs: asked first
              "build_gatehouse",                  # (0.105.23) walls and a drawbridge on the surface
              "place_hall", "build_wings",        # (0.105.30) a hall above ground; wall arms at the gatehouse
-             "build_blueprint"}                  # (D0) a landmark: asked first in co-pilot
+             "build_blueprint",                  # (D0) a landmark: asked first in co-pilot
+             "place_garden_court"}               # (0.105.47) walls above ground by the fields
 DECLINE_DAYS = 7          # a "No" holds this many in-game days before it may ask again
 
 
@@ -550,6 +551,7 @@ SHORT_WORDS = {
     "well_safety": "keep the cavern wells safe: the watcher, the shaft's column, the gallery's door, the next level",  # (0.105.47)
     "well_rescue": "let a dwarf stranded in the cavern under a well back up (its door, or a stair dug out)",  # (0.105.47)
     "cross_cavern": "take the main stair down through the first cavern in a walled shaft",  # (0.105.47)
+    "place_garden_court": "build the garden court by the fields (next step)",  # (0.105.47)
     # (0.105.45) a great beast sealed in a cavern lured in and cut off (brain/planner_lure.py)
     "build_lure": "lay out a lure pocket behind a cavern door (cage traps, or drawbridges on levers)",
     "lure_open": "open the cavern door into the lure pocket (nobody below or near)",

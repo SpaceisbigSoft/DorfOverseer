@@ -72,6 +72,8 @@ from planner_stuck import _stuck_rule, note_stuck  # noqa: E402  (0.105.45) the 
 from planner_thirst import _thirst_rule, thirst_journal  # noqa: E402,F401  (0.105.46, I2) the thirst watch
 from planner_near_gates import _near_gates_rule  # noqa: E402  (0.105.47, I7d) surface work near the gates under a titan
 from planner_ice import _ice_rule  # noqa: E402  (0.105.47, I7d) surface water zones, shore wells, traffic before the ice
+import fields  # noqa: E402  (0.105.47) the Garden fort's surface fields (masterplan's field customs)
+from planner_garden import _garden_court_rule, garden_pace  # noqa: E402,F401  (0.105.47) the garden court
 from planner_killzone import _killzone_rule  # noqa: E402  (0.105.45) kill zones at the gates and cavern openings
 from planner_lure import _lure_rule  # noqa: E402  (0.105.45) a sealed cavern beast lured into a pocket, cut off
 from planner_wellsafe import _well_safety_rule  # noqa: E402  (0.105.47) cavern wells made safe, the stranded under one let out
@@ -171,6 +173,8 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
     _guard(design_rule, s, traits, cfg, proposals, notes, memory)
     _guard(_set_adopted, s, memory, traits)
     buffer = stock_factor(traits, cfg)              # (0.105.47) 2^(Stockpile/50): was 2^(Stockpile/100)
+    _guard(fields.note, s, cfg.get("garden_fort", True))   # (0.105.47) the surface fields for the field customs
+    buffer = factor(traits, "stockpile")
     winter = winter_factor(s, memory)               # stock up before winter (and through it)
 
     # 1. Threat alert ------------------------------------------------------
@@ -791,6 +795,9 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
         _guard(_keep_rule, s, cfg, citizens, traits, proposals, notes, memory)
         # 6e-0b. (0.105.30) the surface hall (one building above ground at a time)
         _guard(_hall_rule, s, cfg, citizens, traits, proposals, notes, memory, rules_)
+        # 6e-0b2. (0.105.47) the Garden fort's garden court by the fields
+        if "garden_court" not in errors:
+            _guard(_garden_court_rule, s, cfg, citizens, traits, proposals, notes, memory, rules_)
     # 6e-0c. (0.105.30) blocks for what is to be built (after the idle hands: not ordered twice)
     if can_use("stocks", "orders", "buildings"):
         _guard(_construction_blocks_rule, s, cfg, citizens, traits, proposals, notes, memory, rules_)

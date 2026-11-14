@@ -1170,6 +1170,17 @@ PLANNER_CONFIG = {
     "reserve_vault_citizens": 20,         # ...one more for this many citizens / (stock factor - 1)
     "reserve_vault_max": 8,               # at most this many storage levels for it
     "reserve_vault_min_citizens": 15,
+    # (0.105.47) the Garden fort's gardens (brain/planner_garden.py, lua/ai-builder-court.lua)
+    "garden_fort": True,                  # all of it: the field customs under surface fields, the court, gardens in soil, sooner
+    "garden_court_agriculture": 100,      # the garden court above ground: Agriculture this high...
+    "garden_court_grandeur": 30,          # ...Grandeur this high...
+    "garden_court_surface": 50,           # ...and Surface this high (the Garden fort: 120, 40, 80)
+    "garden_court_wish_surface": -50,     # a design wish for one (nature lovers): any fort above this Surface
+    "garden_court_min_citizens": 20,
+    "garden_court_material": 50,          # blocks, stone or logs free for its walls (and paths)
+    "garden_court_paths_grandeur": 30,    # block paths with Grandeur this high
+    "garden_court_cooldown_ticks": 1200,  # a step a day at most
+    "garden_agri_pace_div": 150,          # statue gardens sooner by Agriculture: x2 ** (Agriculture / this) (120: x1.7)
 }
 # (0.105.47) the herd by Husbandry (brain/planner_husbandry.py, lua/ai-herd.lua).
 # The herd cap is the tools rule's: max(herd_min, citizens x herd_per_dwarf) x

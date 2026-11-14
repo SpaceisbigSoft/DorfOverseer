@@ -50,7 +50,7 @@ KEEP_OPEN = ("clearing", "walls", "stair", "roof")
 # 9x7 footprint, 7x5 interior: under ai-gates LEDGE_MAX (120), so a dwarf eating
 # there never seeds a second "fort" for the gates (the spec asserts 63)
 HALL_MAX_INTERIOR = 63
-SOIL_FLOOR_KINDS = ("dining", "tavern", "temple", "library", "memorial")
+SOIL_FLOOR_KINDS = ("dining", "tavern", "temple", "library", "memorial", "garden")   # (0.105.47) garden: the Garden fort digs them in the soil
 # planned tiles per hall stage when the bridge doesn't say (28 walls, 35
 # interior floor, 35 roof + the stair)
 _STAGE_PLANNED_KEYS = {"walls": ("walls_planned",), "floor": ("floor_planned",),
@@ -410,6 +410,8 @@ def _soil_candidates(s: dict, memory, cfg: dict) -> list:
     for p in _l(_d(s.get("projects")).get("decorating")):
         if not (isinstance(p, dict) and p.get("kind") in SOIL_FLOOR_KINDS and p.get("id") is not None):
             continue
+        if p.get("kind") == "garden" and not cfg.get("garden_fort", True):
+            continue                           # (0.105.47) gardens with the Garden fort's switch
         pid = str(p["id"])
         if pid in done or int(tries.get(pid) or 0) >= cfg["soil_floor_tries"]:
             continue

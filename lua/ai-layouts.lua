@@ -1180,6 +1180,65 @@ function garden(p)
     return finish(L)
 end
 
+-- (0.105.47) garden_court{r, statues, paths}: the Garden fort's walled court
+-- above ground (built by ai-builder-court on the open ground by the fields,
+-- not dug: no stair, no dig cells). Centred on (0, 0); the ring of walls at
+-- radius r (4-6), its inside the (2r-1) square. DF 53 has no job to plant a
+-- tree or a shrub, so the court's green is what DF allows: four beds (farm
+-- plots of above-ground crops, 'p(WxH)') in the quarters, the trees already
+-- standing inside left as they are, and the soil and grass between. A cross
+-- of paths (block floors, 'Cf', with paths = true) from each side's middle
+-- to the heart; statues round the heart (up to `statues`, the ones lying
+-- free); seats (chairs: DF has no bench) against the walls where the walks
+-- meet them. DF has no fountain either: the heart is left open (a well
+-- wants water under it). Returns {kind, r, inside = {x1, y1, x2, y2},
+-- ring, paths, beds = {{x, y, w, h}}, statues, seats, heart, summary}.
+GARDEN_COURT_RADII = {min = 4, max = 6}
+function garden_court(p)
+    p = type(p) == 'table' and p or {}
+    local r = clamp(p.r, GARDEN_COURT_RADII.min, GARDEN_COURT_RADII.max)
+    local q = r - 1                       -- the inside reaches -q .. q
+    local L = {kind = 'garden_court', r = r, inside = {x1 = -q, y1 = -q, x2 = q, y2 = q},
+               ring = {}, paths = {}, beds = {}, statues = {}, seats = {}, heart = {x = 0, y = 0}}
+    for x = -r, r do
+        table.insert(L.ring, {x = x, y = -r})
+        table.insert(L.ring, {x = x, y = r})
+    end
+    for y = -r + 1, r - 1 do
+        table.insert(L.ring, {x = -r, y = y})
+        table.insert(L.ring, {x = r, y = y})
+    end
+    if p.paths == true then
+        for i = -q, q do
+            table.insert(L.paths, {x = i, y = 0})
+            if i ~= 0 then table.insert(L.paths, {x = 0, y = i}) end
+        end
+    end
+    -- the beds: each quarter from 2 out to the wall (a walk of one tile
+    -- between the bed and the path)
+    local n = q - 1
+    if n >= 2 then
+        for _, s in ipairs({{-1, -1}, {1, -1}, {-1, 1}, {1, 1}}) do
+            local x1 = s[1] < 0 and -q or 2
+            local y1 = s[2] < 0 and -q or 2
+            table.insert(L.beds, {x = x1, y = y1, w = n, h = n})
+        end
+    end
+    -- statues round the heart (the corners of the crossing), as many as free
+    local want = clamp(p.statues, 0, 4)
+    for i, c in ipairs({{-1, -1}, {1, 1}, {1, -1}, {-1, 1}}) do
+        if i <= want then table.insert(L.statues, {x = c[1], y = c[2]}) end
+    end
+    -- seats where the walks between path and bed meet the walls
+    for _, c in ipairs({{-1, -q}, {1, -q}, {-1, q}, {1, q}}) do table.insert(L.seats, {x = c[1], y = c[2]}) end
+    if q >= 4 then
+        for _, c in ipairs({{-q, -1}, {-q, 1}, {q, -1}, {q, 1}}) do table.insert(L.seats, {x = c[1], y = c[2]}) end
+    end
+    L.summary = {garden_court = true, r = r, beds = #L.beds, bed_tiles = #L.beds * n * n, statues = #L.statues,
+                 seats = #L.seats, paths = #L.paths}
+    return L
+end
+
 -- The rows along a hall's long walls: (D0 G4) in a new shape, one row in
 -- from them, so the shape's cut has room.
 local function wall_rows(H)

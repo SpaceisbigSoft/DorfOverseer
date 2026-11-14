@@ -31,7 +31,7 @@ HUB = (LUA_DIR / "ai-bridge.lua").read_text(encoding="utf-8")
 BRIDGE_PARTS = ["ai-bridge-report", "ai-bridge-orders", "ai-bridge-actions", "ai-bridge-probes",
                 "ai-bridge-design"]   # (D0)
 BUILDER_PARTS = ["ai-builder-" + p for p in ("sites", "projects", "farms", "wells", "cistern", "surface", "rooms", "halls",
-                                              "landmarks")]   # (D0)
+                                              "landmarks", "court")]   # (D0); (0.105.47) the garden court
 # (13e) the gates' hub and parts, as the hub lists them
 GATES_PARTS = ["ai-gates-" + p for p in re.findall(r"'([\w-]+)'", re.search(
     r"^PARTS = \{([^}]*)\}", (LUA_DIR / "ai-gates.lua").read_text(encoding="utf-8"), re.M).group(1))]

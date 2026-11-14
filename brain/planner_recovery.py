@@ -88,6 +88,7 @@ HOLD_TYPES = {
     "place_siege_engine", "place_siege_shop", "build_gatehouse", "fortify_entrance", "cut_entrance",
     "display_artifact", "place_display",
     "keep_grove",
+    "place_garden_court",                               # (0.105.47) the garden court above ground
 }
 
 try:

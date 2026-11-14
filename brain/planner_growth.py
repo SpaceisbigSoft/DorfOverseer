@@ -40,7 +40,7 @@ def tavern_factor(traits: dict) -> float:
 LEARNING_NEEDS = ("LearnSomething", "ThinkAbstractly")
 
 
-def good_times(s: dict, memory, traits: dict, cfg: dict) -> bool:
+def good_times(s: dict, memory, traits: dict, cfg: dict, pace: float = 1.0) -> bool:
     """Prosperous and quiet enough for a set piece, in a fort that cares how
     it looks (Grandeur or Craftsmanship above 0): an established fort of
     `garden_min_citizens`+, well fed and watered, nothing threatening, hands
@@ -67,7 +67,8 @@ def good_times(s: dict, memory, traits: dict, cfg: dict) -> bool:
     if _idle_share(s) < idle_need:
         return False
     last = memory.last_garden_tick
-    every = cfg["garden_every_years"] / factor(traits, "grandeur")
+    # (0.105.47) pace: the statue garden's own (planner_garden.garden_pace, by Agriculture)
+    every = cfg["garden_every_years"] / factor(traits, "grandeur") / max(1.0, float(pace or 1.0))
     return last is None or abs_tick(s) - last >= every * TICKS_PER_YEAR
 
 
@@ -333,7 +334,8 @@ LADDER_TRAITS = {"jail": [("justice", 50)], "suites": [("deference", 50)],
                  "tavern": [("welfare", 100), ("outsiders", 100)], "library": [("welfare", 100), ("craftsmanship", 100)],
                  "barracks": [("militarism", 40)], "archery": [("militarism", 50)],
                  "memorial": [("grandeur", 100), ("piety", 100)], "temple": [("piety", 33)],
-                 "garden": [("grandeur", 50)], "great hall": [("grandeur", 40)],
+                 "garden": [("grandeur", 50), ("agriculture", 100)],   # (0.105.47) the Garden fort's gardens
+                 "great hall": [("grandeur", 40)],
                  "hospital": [("welfare", 50)]}
 
 
@@ -358,6 +360,8 @@ def ladder_score(action: dict, s: dict, traits: dict, cfg: dict, memory=None) ->
         from leanings import totals
         lean = totals(memory.culture)
     for slider, div in LADDER_TRAITS.get(kind, []):
+        if slider == "agriculture" and not cfg.get("garden_fort", True):
+            continue                          # (0.105.47) the Garden fort's term, with its switch
         score += ((traits.get(slider, 0) or 0) + 0.5 * (lean.get(slider, 0) or 0)) / div
     # (0.103.2) quirks that put a hall first
     if memory is not None:

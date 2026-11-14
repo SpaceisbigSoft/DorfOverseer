@@ -40,6 +40,7 @@ import hashlib
 
 import customs
 import design
+import fields
 from digest import _d, _l
 from quirks import has_rule
 from util import date_tick
@@ -521,6 +522,36 @@ def _field_band(memory, farms: dict) -> tuple[int, int, int] | None:
     return lo, hi, max(lo, min(hi, tg))
 
 
+def _surface_field_band(memory, traits: dict | None) -> tuple[int, int, int, str | None] | None:
+    """(0.105.47) field_hall / field_kitchens for fields under the sky (the
+    Garden fort's 12 surface plots got no hall or kitchen beside them): the
+    fields.SURFACE_DEPTH levels just under the fields' elevation (fields.py,
+    from the report's farm plots), inside the plan's range and under any
+    ceiling, as (lo, hi, target, toward): the target the level just under
+    them, toward the way from the spine to them (None: unknown or round the
+    spine). None with no surface fields."""
+    f = fields.current()
+    if not f:
+        return None
+    p = _peek(memory)
+    spine = p.get("spine") if isinstance(p.get("spine"), dict) else None
+    e = f.get("elevation") if isinstance(f.get("elevation"), int) else surface_elevation(memory, spine)
+    if e is None:
+        return None
+    hi, lo = e - 1, e - fields.SURFACE_DEPTH
+    rng = p.get("range") if isinstance(p.get("range"), list) and len(p["range"]) == 2 else [None, None]
+    if isinstance(rng[1], int):
+        hi = min(hi, rng[1])
+    if isinstance(rng[0], int):
+        lo = max(lo, rng[0])
+    ceil = ceiling(memory, traits)
+    if ceil is not None:
+        hi = min(hi, ceil)
+    if lo > hi:
+        return None
+    return lo, hi, hi, fields.toward(spine, f)
+
+
 def hint(memory, kind: str, slot: str | None = None, traits: dict | None = None,
          profile: dict | None = None, *, action: dict | None = None,
          citizens: int | None = None) -> dict | None:
@@ -538,6 +569,7 @@ def hint(memory, kind: str, slot: str | None = None, traits: dict | None = None,
         return None                    # farm levels follow the soil (the builder's own search)
     applied: list[str] = []
     field = None                       # field_hall / field_kitchens: the farms band, clamped
+    field_dir = None                   # (0.105.47) toward the surface fields from the spine
     act = set(customs.active(traits)) if traits is not None else set()
     # (0.105.29) customs that send the level to another district
     if not slot:
@@ -553,13 +585,31 @@ def hint(memory, kind: str, slot: str | None = None, traits: dict | None = None,
             alt, cid = _district_of_kind(memory, "farms"), "field_kitchens"
         if alt is not None and (alt is d or alt.get("kind") == d.get("kind")):
             alt = None                 # (customs fixes) the default district already: nothing changed
-        if alt and cid in ("field_hall", "field_kitchens"):
+        # (0.105.47) a fort that lives above ground (Surface fields.SURFACE_FIRST+)
+        # puts them under its surface fields first, the deep farms after
+        up = (cid in ("field_hall", "field_kitchens")
+              and ((traits or {}).get("surface", 0) or 0) >= fields.SURFACE_FIRST
+              and _surface_field_band(memory, traits) is not None)
+        if alt and cid in ("field_hall", "field_kitchens") and not up:
             field = _field_band(memory, alt)
             if field is None:
                 alt = None             # no farms level 3 under the surface: the normal district
+        if field is None and cid in ("field_hall", "field_kitchens"):
+            # (0.105.47) the fields under the sky: the level just under them
+            # (the farms district's name when the plan has one, else the default's)
+            sf = _surface_field_band(memory, traits)
+            if sf is not None:
+                field, field_dir = sf[:3], sf[3]
+                alt = alt or _district_of_kind(memory, "farms") or d
         if alt:
             d = alt
             applied.append(cid)
+    # (0.105.47) the Garden fort's garden levels in the soil (the farms
+    # district's band, under any ceiling), so the soil floor rule finishes them
+    if not slot and kind == "garden" and "field_hall" in act and fields.enabled():
+        fd = _district_of_kind(memory, "farms")
+        if fd and isinstance(fd.get("lo"), int) and isinstance(fd.get("hi"), int):
+            d = fd
     spine = p.get("spine") or {}
     out = {"elev_lo": int(d["lo"]), "elev_hi": int(d["hi"]), "elev_target": int(d.get("target", d["lo"])),
            "district": _plain(d.get("name") or d["kind"])}
@@ -582,6 +632,8 @@ def hint(memory, kind: str, slot: str | None = None, traits: dict | None = None,
     st = d.get("stair")
     if isinstance(st, dict) and isinstance(st.get("x"), int) and isinstance(st.get("y"), int):
         out["spine"] = {"x": st["x"], "y": st["y"]}      # (0.104.82) the district's own stairwell
+    if field_dir in DIRS:
+        out["dirs"] = list(dict.fromkeys([field_dir] + out.get("dirs", [])))[:4]   # (0.105.47) under the fields
     # (0.105.29) customs that put the level in the gate band, just under the way in
     aim = field[2] if field else None
     gate = None
