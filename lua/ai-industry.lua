@@ -102,75 +102,185 @@ end
 
 -- The report's "industry" section: uncovered ore near the fort, by metal:
 -- {ores = {IRON = {tiles = n, ore = 'HEMATITE'}, ...}}.
+-- (0.105.46, I6) 563 ms a rebuild (12-13 Nov): each ore event's 256 tiles
+-- asked for its mask, then hidden and wall, and the boulders walked twice.
+-- Now: each event's own tiles listed once per map (EVENT_TILES: the mask
+-- never changes), the area's blocks walked in slices over several reports
+-- (lua/ai-slices.lua: the last whole pass is sent meanwhile, and the
+-- section's copy isn't kept, so the next report goes on), and the boulders
+-- walked once (ore and flux together, once a report).
+SLICE_MS = 60            -- (0.105.46) a report's slice of the vein walk
+SLICE_ITEMS = nil        -- (0.105.46) and its count of blocks (nil: time only; the tests set it)
+
+-- tiles (the walk's count of uncovered ore walls) of one event, added to `ores`
+local function count_event(block, ev, metals, tiles, ores)
+    local p = block.map_pos
+    local des = block.designation
+    local n = 0
+    for i = 1, #tiles do
+        local t = tiles[i]
+        local x, y = t // 16, t % 16
+        if not des[x][y].hidden and is_wall(p.x + x, p.y + y, p.z) then n = n + 1 end
+    end
+    if n > 0 then
+        local inorg = inorganic(ev.inorganic_mat)
+        for _, m in ipairs(metals) do
+            local o = ores[m] or {tiles = 0}
+            o.tiles = o.tiles + n
+            o.ore = o.ore or (inorg and inorg.id)
+            ores[m] = o
+        end
+    end
+end
+
+-- (0.105.46) an ore event's own tiles ({lx * 16 + ly, ...}), listed once per
+-- map by the block's place and the event's index and material
+EVENT_TILES = EVENT_TILES or {}
+EVENT_TILES_KEY = EVENT_TILES_KEY or nil
+local function map_key()
+    local ok, k = pcall(U.dig_guard_map_key)
+    return ok and k or 'map'
+end
+local function event_tiles(block, i, ev)
+    local p = block.map_pos
+    local k = p.x .. ',' .. p.y .. ',' .. p.z .. ':' .. i .. ':' .. tostring(ev.inorganic_mat)
+    local t = EVENT_TILES[k]
+    if t then return t end
+    t = {}
+    local mask = ev.tile_bitmask
+    for x = 0, 15 do
+        for y = 0, 15 do
+            if dfhack.maps.getTileAssignment(mask, x, y) then t[#t + 1] = x * 16 + y end
+        end
+    end
+    EVENT_TILES[k] = t
+    return t
+end
+
+-- one block of the area (by block coordinates): its ore events counted into `ores`
+local function vein_block(ores, b)
+    local block = dfhack.maps.getBlock(b[1], b[2], b[3])
+    if not block then return end
+    local i = 0
+    for _, ev in ipairs(block.block_events) do
+        i = i + 1
+        if df.block_square_event_mineralst:is_instance(ev) then
+            local metals = metals_of(ev.inorganic_mat)
+            if #metals > 0 then count_event(block, ev, metals, event_tiles(block, i, ev), ores) end
+        end
+    end
+end
+
+-- the area's blocks, by block coordinates (the order each_vein walks them)
+function area_blocks(a)
+    local out = {}
+    for z = a.z1, a.z2 do
+        for by = a.y1 // 16, a.y2 // 16 do
+            for bx = a.x1 // 16, a.x2 // 16 do out[#out + 1] = {bx, by, z} end
+        end
+    end
+    return out
+end
+
+local function slices_module()
+    local ok, S = pcall(reqscript, 'ai-slices')
+    return ok and type(S) == 'table' and S.run and S or nil
+end
+
+-- the whole walk at once (no slicer, or no getBlock: a test's map, an old DFHack)
+local function veins_whole(a)
+    local ores = {}
+    each_vein(a, function(block, ev, metals)
+        local tiles = {}
+        for x = 0, 15 do
+            for y = 0, 15 do
+                if dfhack.maps.getTileAssignment(ev.tile_bitmask, x, y) then tiles[#tiles + 1] = x * 16 + y end
+            end
+        end
+        count_event(block, ev, metals, tiles, ores)
+    end)
+    return ores
+end
+
+-- ore and flux stone dug and lying about, one walk of the boulders (once a
+-- report: U.report_memo). stock: ore boulders; by_ore: {MAGNETITE = {n = 40,
+-- metals = {'IRON'}}}; flux: limestone, dolomite, marble, chalk, calcite...
+-- (reaction class FLUX: steel takes it)
+local FLUX_KIND = {}
+local function is_flux(idx)
+    local v = FLUX_KIND[idx]
+    if v ~= nil then return v end
+    v = false
+    local inorg = inorganic(idx)
+    pcall(function()
+        for _, rc in ipairs(inorg.material.reaction_class) do
+            local s = type(rc) == 'string' and rc or rc.value
+            if s == 'FLUX' then v = true end
+        end
+    end)
+    FLUX_KIND[idx] = v
+    return v
+end
+
+function boulder_stocks()
+    local function build()
+        local stock, by_ore, flux = 0, {}, 0
+        pcall(function()
+            for _, item in ipairs(df.global.world.items.other.BOULDER) do
+                local f = item.flags
+                if item:getMaterial() == 0 and not (f.forbid or f.garbage_collect or f.removed or f.trader
+                                                    or f.in_job) then
+                    local idx = item:getMaterialIndex()
+                    local metals = metals_of(idx)
+                    if #metals > 0 then
+                        stock = stock + 1
+                        local inorg = inorganic(idx)
+                        local id = inorg and inorg.id or '?'
+                        local o = by_ore[id] or {n = 0, metals = metals}
+                        o.n = o.n + 1
+                        by_ore[id] = o
+                    end
+                    if is_flux(idx) then flux = flux + 1 end
+                end
+            end
+        end)
+        return {stock = stock, by_ore = by_ore, flux = flux}
+    end
+    if U.report_memo then return U.report_memo('industry_boulders', build) end
+    return build()
+end
+
+-- (0.105.46) returns the section and, while a sliced pass is under way, true
+-- (the bridge keeps no copy of it: the next report goes on with the walk)
 function survey()
     local a = area()
     if not a then return {ores = {}, ore_stock = 0} end
-    local ores = {}
-    each_vein(a, function(block, ev, metals)
-        local p = block.map_pos
-        local n = 0
-        for x = 0, 15 do
-            for y = 0, 15 do
-                if dfhack.maps.getTileAssignment(ev.tile_bitmask, x, y)
-                        and not block.designation[x][y].hidden and is_wall(p.x + x, p.y + y, p.z) then
-                    n = n + 1
-                end
-            end
+    if EVENT_TILES_KEY ~= map_key() then
+        EVENT_TILES, EVENT_TILES_KEY = {}, map_key()
+    end
+    local S = slices_module()
+    local ores, nocache, sliced
+    if S and dfhack.maps and dfhack.maps.getBlock ~= nil then
+        local okt, now = pcall(U.abs_tick)
+        local r, st, done, total = S.run('industry_veins', {
+            key = EVENT_TILES_KEY, now = okt and now or nil, ttl = 0, whole_first = true,
+            items = function() return area_blocks(a) end,
+            init = function() return {} end,
+            visit = vein_block,
+            max_ms = SLICE_MS, max_items = SLICE_ITEMS,
+        })
+        ores = r or {}
+        if st == 'partial' then
+            nocache = true
+            sliced = {done = done, total = total}
         end
-        if n > 0 then
-            local inorg = inorganic(ev.inorganic_mat)
-            for _, m in ipairs(metals) do
-                local o = ores[m] or {tiles = 0}
-                o.tiles = o.tiles + n
-                o.ore = o.ore or (inorg and inorg.id)
-                ores[m] = o
-            end
-        end
-    end)
-    -- ore already dug and lying about (the smelter's next work), by ore:
-    -- {MAGNETITE = {n = 40, metals = {'IRON'}}}
-    local stock, by_ore = 0, {}
-    pcall(function()
-        for _, item in ipairs(df.global.world.items.other.BOULDER) do
-            local f = item.flags
-            if item:getMaterial() == 0 and not (f.forbid or f.garbage_collect or f.removed or f.trader
-                                                or f.in_job) then
-                local metals = metals_of(item:getMaterialIndex())
-                if #metals > 0 then
-                    stock = stock + 1
-                    local inorg = inorganic(item:getMaterialIndex())
-                    local id = inorg and inorg.id or '?'
-                    local o = by_ore[id] or {n = 0, metals = metals}
-                    o.n = o.n + 1
-                    by_ore[id] = o
-                end
-            end
-        end
-    end)
-    -- flux stone dug and lying about (limestone, dolomite, marble, chalk,
-    -- calcite...: steel takes it), by its reaction class FLUX
-    local flux, flux_kind = 0, {}
-    pcall(function()
-        for _, item in ipairs(df.global.world.items.other.BOULDER) do
-            local f = item.flags
-            if item:getMaterial() == 0 and not (f.forbid or f.garbage_collect or f.removed or f.trader
-                                                or f.in_job) then
-                local idx = item:getMaterialIndex()
-                if flux_kind[idx] == nil then
-                    flux_kind[idx] = false
-                    local inorg = inorganic(idx)
-                    pcall(function()
-                        for _, rc in ipairs(inorg.material.reaction_class) do
-                            local v = type(rc) == 'string' and rc or rc.value
-                            if v == 'FLUX' then flux_kind[idx] = true end
-                        end
-                    end)
-                end
-                if flux_kind[idx] then flux = flux + 1 end
-            end
-        end
-    end)
-    return {ores = ores, ore_stock = stock, ore_stock_by = by_ore, flux_stock = flux}
+    else
+        ores = veins_whole(a)
+    end
+    local b = boulder_stocks()
+    local out = {ores = ores, ore_stock = b.stock, ore_stock_by = b.by_ore, flux_stock = b.flux, sliced = sliced}
+    if nocache then return out, true end
+    return out
 end
 
 local function vein_at(x, y, z)

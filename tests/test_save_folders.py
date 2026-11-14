@@ -135,11 +135,11 @@ def _():
     for name in ("2026-09-01 0100", "2026-09-02 0100", "2026-09-03 0100"):     # KEEP finished copies already
         (dest / name).mkdir()
     line = backup.maybe(GAME / "save", "region2", now=time.time(), force=True)
-    assert line and "newest 3 are kept" in line, line
+    assert line and "1 kept" in line, line          # (0.105.46, I6) by age: September's are past 5 weeks
     names = copies()
     assert old_part.name not in names and new_part.name in names, names
     finished = [n for n in names if backup.COPY_NAME.match(n)]
-    assert len(finished) == backup.KEEP and "2026-09-01 0100" not in finished, finished   # the oldest went
+    assert len(finished) == 1 and not any(n.startswith("2026-09") for n in finished), finished   # the old ones went
 
 
 @test("backup: the copy is renamed whole from its .partial name (never seen under its dated name half-done)")

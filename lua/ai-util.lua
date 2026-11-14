@@ -670,6 +670,7 @@ local function build_deep_map(key)
     local dm = {key = key, ok = false, levels = {}}
     local K = new_kinds()
     local caverns, magma_top, tube_top = {}, nil, nil
+    local hz = {}
     local ok = pcall(function()
         for _, block in ipairs(df.global.world.map.map_blocks) do
             local z = block.map_pos.z
@@ -691,13 +692,25 @@ local function build_deep_map(key)
                 elseif g == 'err' or (g == nil and block.global_feature ~= nil and block.global_feature >= 0) then
                     deep = true                 -- a layer of unknown kind
                 end
-                if block_deep_veins(block) then deep = true end
+                local veins = block_deep_veins(block)
+                if veins then deep = true end
+                -- (0.105.46, I6) the blocks deep_hazard reads: a deep vein, the
+                -- spire's tube, the underworld (under: nothing else in it)
+                if veins or t == true or g == 'under' then
+                    local p = block.map_pos
+                    hz[#hz + 1] = {p.x, p.y, z, under = (g == 'under' and not veins and t ~= true) or nil}
+                end
             end)
-            if not okb then deep = true end
+            if not okb then
+                deep = true
+                local okp, p = pcall(function() return block.map_pos end)
+                if okp and p then hz[#hz + 1] = {p.x, p.y, z} end       -- (I6) read again by the hazard walk
+            end
             if deep then dm.levels[z] = true end
         end
     end)
     if not ok then return dm end
+    dm.hz = hz
     local lowest
     for _, c in pairs(caverns) do
         if not lowest or c.lo < lowest.lo then lowest = c end
@@ -759,6 +772,7 @@ function dig_guard_unload()
     GMEMO = nil
     DEEP_MAP = nil
     DEEP_HAZARD_CACHE = nil
+    UNDER_SEEN = {}          -- (0.105.46)
     DIG_GUARD = {refused = 0, by = {}, last = {}, tiles = {}}
 end
 if dfhack and dfhack.onStateChange then   -- (in the game a userdata-wrapped event, not a table)
@@ -1083,6 +1097,72 @@ end
 -- local feature, a deep level, at or below the deep floor) when the deep
 -- map is known; the spire by the block's own region and index (block_tube).
 DEEP_HAZARD_CACHE = nil
+-- (0.105.46, I6) the underworld once seen on this map (by the deep map's
+-- key): its blocks aren't read again (a seen tile is never hidden again)
+UNDER_SEEN = UNDER_SEEN or {}
+
+-- One block of the hazard walk, counted into base; st.best_d: the nearest so far
+local function hazard_block(block, base, K, near, st)
+    local p = block.map_pos
+    local evs = nil
+    for _, ev in ipairs(block.block_events) do
+        if df.block_square_event_mineralst:is_instance(ev) and deep_inorganic(ev.inorganic_mat) then
+            evs = evs or {}
+            table.insert(evs, ev)
+        end
+    end
+    local tube = block_tube(block, K) == true
+    if evs or tube then
+        local des = block.designation
+        for lx = 0, 15 do
+            local row = des[lx]
+            for ly = 0, 15 do
+                local d = row[ly]
+                if not d.hidden then
+                    local hit = false
+                    if tube and d.feature_local then hit = true; base.spire_seen = true end
+                    if not hit and evs then
+                        for _, ev in ipairs(evs) do
+                            if dfhack.maps.getTileAssignment(ev.tile_bitmask, lx, ly) then hit = true; break end
+                        end
+                    end
+                    if hit then
+                        base.adamantine_seen = true
+                        base.tiles = base.tiles + 1
+                        local x, y, z = p.x + lx, p.y + ly, p.z
+                        if not base.top_z or z > base.top_z then base.top_z = z end
+                        if type(near) == 'table' and near.x and near.y and near.z then
+                            local dd = math.abs(x - near.x) + math.abs(y - near.y) + 3 * math.abs(z - near.z)
+                            if not st.best_d or dd < st.best_d then
+                                st.best_d = dd
+                                base.nearest = {x = x, y = y, z = z}
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    if not base.underworld_seen and block_global(block, K) == 'under' then
+        for lx = 0, 15, 5 do
+            for ly = 0, 15, 5 do
+                if not block.designation[lx][ly].hidden then base.underworld_seen = true end
+            end
+        end
+    end
+end
+
+local function new_base()
+    return {adamantine_seen = false, tiles = 0, spire_seen = false, underworld_seen = false}
+end
+
+local function hazard_slices()
+    local ok, S = pcall(function() return reqscript('ai-slices') end)
+    return ok and type(S) == 'table' and S.run and S or nil
+end
+HAZARD_SLICE_MS = 30     -- (0.105.46) a report's slice of the hazard walk
+HAZARD_SLICE_ITEMS = nil -- (0.105.46) and its count of blocks (nil: time only; the tests set it)
+
 function deep_hazard(near, mine_adamantine)
     local ok, now = pcall(abs_tick)
     local day = ok and (now // TICKS_PER_DAY) or nil
@@ -1091,69 +1171,69 @@ function deep_hazard(near, mine_adamantine)
     if c and day and c.day == day then
         base = c.base
     else
-        base = {adamantine_seen = false, tiles = 0, spire_seen = false, underworld_seen = false}
         local okd, dm = pcall(deep_map)
         dm = okd and dm or nil
         local limit = dm and dm.ok and dm.floor and dm or nil
         local K = (dm and dm.kinds) or new_kinds()
-        local best_d
-        local walked = 0
-        pcall(function()
-            for _, block in ipairs(df.global.world.map.map_blocks) do
-                local p = block.map_pos
-                local lf = block.local_feature
-                if not limit or (lf ~= nil and lf >= 0) or p.z <= limit.floor or limit.levels[p.z] then
-                    walked = walked + 1
-                    local evs = nil
-                    for _, ev in ipairs(block.block_events) do
-                        if df.block_square_event_mineralst:is_instance(ev) and deep_inorganic(ev.inorganic_mat) then
-                            evs = evs or {}
-                            table.insert(evs, ev)
-                        end
-                    end
-                    local tube = block_tube(block, K) == true
-                    if evs or tube then
-                        for lx = 0, 15 do
-                            for ly = 0, 15 do
-                                local d = block.designation[lx][ly]
-                                if not d.hidden then
-                                    local hit = false
-                                    if tube and d.feature_local then hit = true; base.spire_seen = true end
-                                    if not hit and evs then
-                                        for _, ev in ipairs(evs) do
-                                            if dfhack.maps.getTileAssignment(ev.tile_bitmask, lx, ly) then hit = true; break end
-                                        end
-                                    end
-                                    if hit then
-                                        base.adamantine_seen = true
-                                        base.tiles = base.tiles + 1
-                                        local x, y, z = p.x + lx, p.y + ly, p.z
-                                        if not base.top_z or z > base.top_z then base.top_z = z end
-                                        if type(near) == 'table' and near.x and near.y and near.z then
-                                            local dd = math.abs(x - near.x) + math.abs(y - near.y) + 3 * math.abs(z - near.z)
-                                            if not best_d or dd < best_d then
-                                                best_d = dd
-                                                base.nearest = {x = x, y = y, z = z}
-                                            end
-                                        end
-                                    end
-                                end
-                            end
-                        end
-                    end
-                    if not base.underworld_seen and block_global(block, K) == 'under' then
-                        for lx = 0, 15, 5 do
-                            for ly = 0, 15, 5 do
-                                if not block.designation[lx][ly].hidden then base.underworld_seen = true end
-                            end
-                        end
+        if limit and type(dm.hz) == 'table' then
+            -- (0.105.46, I6) only the blocks that can hold any of it (listed by
+            -- the deep map's walk, once per map), sliced over reports when
+            -- lua/ai-slices.lua is there; the underworld's not again once seen
+            local key = dm.key
+            local function visit(acc, b)
+                if b.under and (acc.base.underworld_seen or UNDER_SEEN[key]) then return end
+                local block = dfhack.maps.getTileBlock(b[1], b[2], b[3])
+                if not block then return end
+                acc.walked = acc.walked + 1
+                hazard_block(block, acc.base, K, near, acc)
+            end
+            local function init()
+                local b = new_base()
+                if UNDER_SEEN[key] then b.underworld_seen = true end
+                return {base = b, walked = 0}
+            end
+            local function finish(acc)
+                local b = acc.base
+                if b.underworld_seen then UNDER_SEEN[key] = true end
+                b.nearest_z = b.nearest and b.nearest.z or b.top_z
+                b.deep_floor = dm.floor
+                return {base = b, walked = acc.walked}
+            end
+            local S = hazard_slices()
+            local r, st
+            if S then
+                r, st = S.run('deep_hazard', {key = key, now = ok and now or nil, ttl = TICKS_PER_DAY,
+                                              whole_first = true, items = function() return dm.hz end,
+                                              init = init, visit = visit, finish = finish,
+                                              max_ms = HAZARD_SLICE_MS, max_items = HAZARD_SLICE_ITEMS})
+            end
+            if not r then
+                local acc = init()
+                for _, b in ipairs(dm.hz) do pcall(visit, acc, b) end
+                r, st = finish(acc), 'done'
+            end
+            base = r.base
+            -- a pass under way: the last whole one is sent, and the next report goes on
+            DEEP_HAZARD_CACHE = {day = st ~= 'partial' and day or nil, base = base, walked = r.walked,
+                                 status = st}
+        else
+            base = new_base()
+            local st = {}
+            local walked = 0
+            pcall(function()
+                for _, block in ipairs(df.global.world.map.map_blocks) do
+                    local p = block.map_pos
+                    local lf = block.local_feature
+                    if not limit or (lf ~= nil and lf >= 0) or p.z <= limit.floor or limit.levels[p.z] then
+                        walked = walked + 1
+                        hazard_block(block, base, K, near, st)
                     end
                 end
-            end
-        end)
-        base.nearest_z = base.nearest and base.nearest.z or base.top_z
-        base.deep_floor = dm and dm.ok and dm.floor or nil
-        DEEP_HAZARD_CACHE = {day = day, base = base, walked = walked}
+            end)
+            base.nearest_z = base.nearest and base.nearest.z or base.top_z
+            base.deep_floor = dm and dm.ok and dm.floor or nil
+            DEEP_HAZARD_CACHE = {day = day, base = base, walked = walked}
+        end
     end
     local out = {}
     for k, v in pairs(base) do out[k] = v end
@@ -1169,5 +1249,45 @@ function deep_hazard(near, mine_adamantine)
         out.mine_adamantine = true
         out.note = 'mine_adamantine is on, but the sealed breach plan is not built yet: adamantine is still left alone'
     end
+    return out
+end
+
+-- --- (0.105.46, I6) the flows, walked once a report ------------------------------------
+--
+-- df.global.flows (fire, smoke, mist, miasma, clouds...) was walked whole by
+-- the threats' fire and cloud reads and the miasma report, each reading every
+-- flow's type, density and place. Now one walk a report groups them by type
+-- (REPORT_CTX, as citizens()); each reader takes only the types it wants, in
+-- the game's order. Outside a report: a walk each call, as before.
+function flows_by_type()
+    return report_memo('flows_by_type', function()
+        local by = {}
+        local i = 0
+        for _, f in ipairs(df.global.flows) do
+            i = i + 1
+            local t = f.type
+            if t ~= nil then
+                local l = by[t]
+                if not l then l = {}; by[t] = l end
+                l[#l + 1] = {i, f}
+            end
+        end
+        return by
+    end)
+end
+
+-- The flows whose type `want(type)` says yes to (asked once per type present), in the game's order
+function flows_where(want)
+    local by = flows_by_type() or {}
+    local picked = {}
+    for t, l in pairs(by) do
+        local ok, yes = pcall(want, t)
+        if ok and yes then
+            for _, e in ipairs(l) do picked[#picked + 1] = e end
+        end
+    end
+    table.sort(picked, function(a, b) return a[1] < b[1] end)
+    local out = {}
+    for k, e in ipairs(picked) do out[k] = e[2] end
     return out
 end

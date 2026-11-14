@@ -2864,10 +2864,50 @@ function deep_blocks_again(layers)
     return ok and out or nil
 end
 
+-- (0.105.46, I6) the caverns' block positions by layer (the kept ones, else
+-- one walk of the map's blocks, kept as deep_blocks_keep does)
+function deep_positions(layers)
+    local d = DEEP_BLOCKS
+    if d and layers.key and d.key == deep_key(layers) then
+        local out = {}
+        for _, bl in ipairs(layers.list) do out[bl] = d.pos[bl._idx] end
+        return out
+    end
+    local pos = {}
+    for _, block in ipairs(df.global.world.map.map_blocks) do
+        local bl = layers.by_gid[block.global_feature]
+        if bl then
+            pos[bl] = pos[bl] or {}
+            table.insert(pos[bl], {block.map_pos.x, block.map_pos.y, block.map_pos.z})
+        end
+    end
+    deep_blocks_keep(layers, pos)
+    return pos
+end
+
+-- (0.105.46, I6) the found caverns' seen samples and "open" by
+-- lua/ai-cavern-scan.lua (kept per map, sliced); nil without it (the old walk)
+local function deep_scan(layers, cit_list, groups)
+    local okm, CS = pcall(reqscript, 'ai-cavern-scan')
+    if not (okm and type(CS) == 'table' and CS.scan) then return nil end
+    local ok, r = pcall(function()
+        local pos = deep_positions(layers)
+        local rows = {}
+        for _, l in ipairs(layers.list) do
+            if tostring(l.name):find('Cavern') and l.discovered then
+                rows[#rows + 1] = {name = l.name, blocks = pos[l] or {}}
+            end
+        end
+        return CS.scan(rows, groups, cit_list, tostring(deep_key(layers) or '?'), abs_tick())
+    end)
+    return ok and r or nil
+end
+
 function get_deep()
     local layers = get_layers()
     local cit_list, groups = citizen_positions()
     local out = {caverns = {}, dangers = {}, cursed = {}}
+    local scanned = deep_scan(layers, cit_list, groups)
     -- (13c) the map's blocks sorted by cavern in one pass (each cavern walked
     -- every block of the map before)
     local cave_blocks
@@ -2895,7 +2935,10 @@ function get_deep()
         if tostring(l.name):find('Cavern') then
             local row = {name = l.name, discovered = l.discovered, z_top = l.z_top, z_bottom = l.z_bottom,
                          seen = 0, open = false}
-            if l.discovered then
+            if l.discovered and scanned and scanned[l.name] then
+                local sc = scanned[l.name]          -- (0.105.46, I6)
+                row.seen, row.open, row.open_at = sc.seen, sc.open, sc.open_at
+            elseif l.discovered then
                 -- (0.104.101) every block of the cavern is looked at; only the
                 -- walkability checks of seen tiles are capped. The old cap
                 -- counted hidden tiles too and stopped after ~170 blocks of a

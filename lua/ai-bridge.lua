@@ -764,6 +764,7 @@ BRIDGE_MODULES = {
     'ai-util', 'ai-water', 'ai-waterworks', 'gui/ai-overseer',
     'ai-threat-facts',          -- (0.105.45) a threat's facts for the matchup (called from the report)
     'ai-lure',   -- (0.105.45)
+    'ai-slices', 'ai-cavern-scan',   -- (0.105.46, I6) walks spread over several reports; the caverns' seen samples
 }
 -- the split-off modules that carry a version mark of their own
 MARKED_MODULES = {'ai-military-gear', 'ai-society-burrows', 'ai-constructions'}
@@ -1097,7 +1098,12 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
     -- caravans, the depot and goods for it (lua/ai-trade.lua)
     trade = function() return safe(function() return reqscript('ai-trade').survey(txt) end) end,
     -- uncovered ore near the fort, by metal (lua/ai-industry.lua)
-    industry = function() return safe(function() return reqscript('ai-industry').survey() end) end,
+    -- (0.105.46, I6) while its sliced vein walk is under way the copy isn't kept (true)
+    industry = function()
+        local ok, v, nocache = pcall(function() return reqscript('ai-industry').survey() end)
+        if not ok then return {error = tostring(v)} end
+        return v, nocache
+    end,
     -- the fort's offices: holders, vacancies (lua/ai-nobles.lua)
     offices = function() return safe(function() return reqscript('ai-nobles').survey(txt) end) end,
     -- the rooms the nobles' offices ask for and don't have (lua/ai-nobles.lua)
@@ -1453,7 +1459,20 @@ function perf_section(sections, cached, total_ms, tick)
         local walks = {units_walks = w.units, items_walks = w.items}
         if w.units == nil and type(REPORT_CTX) == 'table' then walks = REPORT_CTX end
         local fps_ok, fps = pcall(function() return df.global.enabler.calculated_fps end)
+        -- (0.105.46, I6) the sliced walks: passes finished, and the one under way
+        local slices
+        pcall(function()
+            local S = reqscript('ai-slices')
+            for _, n in ipairs({'industry_veins', 'deep_hazard', 'cavern_scan'}) do
+                local st = S.status(n)
+                if st then
+                    slices = slices or {}
+                    slices[n] = {passes = st.passes, under_way = st.under_way}
+                end
+            end
+        end)
         return {
+            slices = slices,
             sections = sections, cached = cached,
             total_ms = math.floor(total_ms * 10 + 0.5) / 10,
             units_walks = tonumber(walks.units_walks) or 0,

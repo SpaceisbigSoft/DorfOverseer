@@ -373,12 +373,18 @@ end
 PASS, LAST = PASS, LAST
 
 local function fort_boxes()
-    local ok, C = pcall(reqscript, 'ai-cleanup')
-    if ok and C and C.fort_boxes then
-        local okb, b = pcall(C.fort_boxes)
-        if okb and b then return b end
+    -- (0.105.46, I6) every building walked once a report for the boxes (U.report_memo),
+    -- not once for each of the syndromes', miasma's and cleanup's reads
+    local function build()
+        local ok, C = pcall(reqscript, 'ai-cleanup')
+        if ok and C and C.fort_boxes then
+            local okb, b = pcall(C.fort_boxes)
+            if okb and b then return b end
+        end
+        return {}
     end
-    return {}
+    if U.report_memo then return U.report_memo('fort_boxes', build) end
+    return build()
 end
 
 -- The map blocks in the fort's built-up areas: {{x, y, z}} (block coordinates)
@@ -849,6 +855,11 @@ local function miasma_blocks(boxes)
     if not okm then return spots, 0, 0, 0 end
     pcall(function()
         local flows = df.global.flows
+        -- (0.105.46, I6) only the miasma flows (U.flows_where: the flows walked once a report)
+        if U.flows_where then
+            local okw, l = pcall(U.flows_where, function(t) return t == kind end)
+            if okw and l then flows = l end
+        end
         local n = math.min(vlen(flows), MIASMA_FLOWS_MAX)
         for i = 0, n - 1 do
             local f = vget(flows, i)

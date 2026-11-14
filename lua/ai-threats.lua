@@ -207,10 +207,19 @@ local function loose(u)
         and not u.flags1.caged and not u.flags1.chained and not is(dfhack.units.isHidden, u)
 end
 
+-- (0.105.46, I6) only the flows of the types wanted (U.flows_where: one walk a report)
+local function flows_typed(set)
+    if U.flows_where then
+        local ok, l = pcall(U.flows_where, function(t) return set[df.flow_type[t]] end)
+        if ok and l then return l end
+    end
+    return df.global.flows
+end
+
 local function fire_points()
     local pts = {}
     pcall(function()
-        for _, f in ipairs(df.global.flows) do
+        for _, f in ipairs(flows_typed(FIRE_FLOWS)) do
             if f.density > 0 and FIRE_FLOWS[df.flow_type[f.type]] then
                 table.insert(pts, {x = f.pos.x, y = f.pos.y, z = f.pos.z})
             end
@@ -396,7 +405,7 @@ local function undead_report(cit, groups, txt)
         end
     end
     pcall(function()
-        for _, f in ipairs(df.global.flows) do
+        for _, f in ipairs(flows_typed(CLOUD_FLOWS)) do
             if f.density > 0 and CLOUD_FLOWS[df.flow_type[f.type]] then
                 -- (probe) an evil cloud drifts with a guide (flow_guide, trailing);
                 -- a dust or gas from a beast or a reaction has none
@@ -1252,9 +1261,15 @@ function survey(txt)
     local t = now_tick()
     local cit, groups = citizens()
     local out = {}
+    -- (0.105.46, I6) each part's time (os.clock ms, those over 5) in _ms: the run
+    -- check had threats at 165 ms median with no word of which part
+    local ms = {}
     local function part(name, fn, ...)
+        local t0 = os.clock()
         local ok, v = pcall(fn, ...)
         out[name] = ok and v or {error = tostring(v):sub(1, 160)}
+        local dt = math.floor((os.clock() - t0) * 1000 + 0.5)
+        if dt >= 5 then ms[name] = dt end
     end
     part('fire', fire_report, d, cit)
     part('prisoners', prisoners_report, txt)
@@ -1274,6 +1289,7 @@ function survey(txt)
         end
     end
     save_state(d)
+    if next(ms) then out._ms = ms end
     return out
 end
 

@@ -209,8 +209,9 @@ def _():
     assert U.dig_forbidden(30, 30, 49) == "under raw adamantine"
     h = U.deep_hazard(None, False)
     assert h.tiles == 1 and h.deep_floor == 12, dict(h)
-    # walked: the cavern's three levels (at/below the floor) and the adamantine's; not z 30
-    assert U.DEEP_HAZARD_CACHE.walked == 4, U.DEEP_HAZARD_CACHE.walked
+    # walked: (0.105.46, I6) only the adamantine's block (the deep map's list of blocks
+    # that can hold any of it); not the cavern's three levels, not z 30 (was 4: the cavern too)
+    assert U.DEEP_HAZARD_CACHE.walked == 1, U.DEEP_HAZARD_CACHE.walked
     # with no floor known the walk is the whole map, as before
     reset()
     adamantine(30, 30, 50)
