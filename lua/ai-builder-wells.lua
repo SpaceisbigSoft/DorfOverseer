@@ -1034,7 +1034,7 @@ function well_shaft_step(want_closed, dry_run, dry)
             if g.state ~= 'open' and g.state ~= 'closed' and g.state ~= 'none_possible' and not dry_run then
                 local top = st[1]
                 local lid = hatch_at(top.x, top.y, top.z)
-                if lid and lid.forbidden then lid.b.door_flags.forbidden = false; r.unlocked_lid = true end
+                if lid and lid.forbidden then util_module().lock_door(lid.b, false, 'well'); r.unlocked_lid = true end   -- (0.105.47) the walk map redone
             end
             if g.state == 'none' or g.state == 'stray' or g.state == 'no_lever' then
                 -- rv 2, 8: the lever first (a stray hatch kept: linked when the lever stands)
@@ -1611,7 +1611,7 @@ function seal_well_stairs(dry_run)
         elseif r.state == 'open' then
             if not dry_run then
                 local b = df.building.find(r.hatch_id)
-                if b then b.door_flags.forbidden = true end
+                if b then util_module().lock_door(b, true, 'well') end   -- (0.105.47) the walk map redone
             end
             locked = locked + 1
         elseif r.state == 'planned' then

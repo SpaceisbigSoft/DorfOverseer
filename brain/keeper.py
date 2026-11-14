@@ -281,6 +281,26 @@ def _watch(proc, t, started) -> tuple[int | None, str]:
         time.sleep(5)
 
 
+LEAVE_BRIDGE = None        # tests replace this: a factory for the bridge
+
+
+def leave_fort_open() -> None:
+    """(0.105.47, J16) The keeper stopping (Ctrl-C; the overseer it ran was
+    killed without a word): the fort left open through the bridge if no
+    enemy is in reach (brain/planner_way_out.py leave_open), logged. Never
+    raises (the game may be closed)."""
+    try:
+        import planner_way_out
+        if LEAVE_BRIDGE is not None:
+            bridge = LEAVE_BRIDGE()
+        else:
+            from bridge import Bridge
+            bridge = Bridge()
+        planner_way_out.leave_open(bridge, log)
+    except BaseException as e:  # noqa: BLE001 - a second Ctrl-C, no game: the keeper still stops
+        log(f"Leaving the fort open: not done ({type(e).__name__}: {str(e)[:100]}).")
+
+
 def quick_edit_off() -> None:
     """Windows: a click in the console window (QuickEdit) freezes its output,
     which would freeze the overseer behind it. Turned off for this window."""
@@ -374,6 +394,7 @@ def main(argv=None, popen=subprocess.Popen, sleep=None, max_runs: int | None = N
             else:
                 sleep(wait)                   # (tests)
     except KeyboardInterrupt:
+        leave_fort_open()             # (0.105.47, J16) a fort left alone is never sealed
         for line in summary_lines():
             log("Summary: " + line)
         write_soak_report()

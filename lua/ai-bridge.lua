@@ -777,6 +777,17 @@ ACTIONS = {
         local key = type(a.mission) == 'string' and a.mission:sub(1, 40) or 'mission'
         return reqscript('ai-mission-way').open_way(id, key, a.dry_run == true)
     end,
+    -- (0.105.47, J16) the way out: one surface entrance opened by the AI's own
+    -- levers and locks (the player's gates never), and the fort left open when
+    -- the AI stops with no enemy in reach (lua/ai-way-out.lua)
+    way_out_open = function(a)
+        local id = int_in(a.id, 0, 100000000)
+        if not id then return reject('way_out_open needs the entrance id') end
+        return reqscript('ai-way-out').open_way(id, {dry_run = a.dry_run == true, instant = a.instant == true})
+    end,
+    way_out_leave = function(a)
+        return reqscript('ai-way-out').leave(a.dry_run == true)
+    end,
 }
 
 -- (13c) The actions whose dry run changes nothing in the fort, all the way
@@ -866,6 +877,7 @@ for _, name in ipairs({
     'herd_breeders', 'tame_wild', 'train_hunt', 'herd_targets',
     'place_garden_court',   -- (0.105.47) its dry run finds the site (quickfort's dry run) and places nothing
     'mission_way',   -- (0.105.47) its dry run is open_entrance's (checks the distance) and holds nothing
+    'way_out_open', 'way_out_leave',   -- (0.105.47, J16) each dry run says what it would pull or unlock and changes nothing
 }) do DRY_OK[name] = true end
 
 -- These only change what's displayed, so they still work while halted, dry
@@ -949,6 +961,7 @@ BRIDGE_MODULES = {
     'ai-screen-buttons', 'ai-meeting-open',   -- (0.105.47) buttons kept for every save; the meeting opened
     'ai-tantrums',   -- (0.105.47) the tantrum ledger, posts, hospital guards
     'ai-mission-way',   -- (0.105.47) a mission's travellers' way off the map, the gate hold
+    'ai-way-out',   -- (0.105.47, J16) the citizens' way off the map, the fort left open
     'ai-training-squad',   -- (0.105.47) the training squad
     'ai-welfare',   -- (0.105.47, I7b) the unreachable dead, coffins anywhere, a cook trained
     'ai-well-safety',   -- (0.105.47) cavern wells made safe
@@ -1469,6 +1482,10 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
     -- working, built or blocked (why), its depth, a danger in the layer
     -- (lua/ai-descent.lua; nine tiles a level of one column)
     descent = function() return safe(function() return reqscript('ai-descent').report(get_layers()) end) end,
+    -- (0.105.47, J16) can the citizens walk off the map: their walk group
+    -- against the map's edge groups, the surface gates shut on the way, the
+    -- dangers in sight (lua/ai-way-out.lua; in the pulse too)
+    way_out = function() return safe(function() return reqscript('ai-way-out').report() end) end,
 }
 
 -- The pulse: a small report for the frequent check between full ones.
@@ -1488,6 +1505,7 @@ PULSE_SECTIONS = {
     'tantrums',      -- (0.105.47) a tantrum is loose for hours: read each cycle
     'well_safety',   -- (0.105.47) a dwarf under a well, a shaft's next level: read each cycle
     'near_gates',    -- (0.105.47, I7d) a titan reaches the far-out workers in 500 ticks: read each cycle
+    'way_out',       -- (0.105.47, J16) a fort sealed in: read each cycle (the edge groups cached)
 }
 TIERS = {pulse = true, daily = true, survey = true}
 -- report sections rebuilt only every so many game days (the lag pass, Oct 23:

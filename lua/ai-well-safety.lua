@@ -191,7 +191,11 @@ end
 
 function unlock(bd)
     if UNLOCK_FN then return UNLOCK_FN(bd) end
-    return pcall(function() bd.b.door_flags.forbidden = false end)
+    -- (0.105.47) through ai-util's lock_door: DF's walk map redone after it
+    local okm, U = pcall(reqscript, 'ai-util')
+    if not (okm and type(U) == 'table') then return false end
+    local _, ok = U.lock_door(bd and bd.b, false, 'well')
+    return ok
 end
 
 local function log(kind, text, extra)

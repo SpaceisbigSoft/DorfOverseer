@@ -105,11 +105,8 @@ function open_saved_gates(saved)
                 end
             else
                 local ok = pcall(function()
-                    if b.door_flags.forbidden then
-                        b.door_flags.forbidden = false
-                        opened = opened + 1
-                        pcall(repath)       -- (0.105.47) DF's walk groups follow the unlock
-                    end
+                    -- (0.105.47) DF's walk groups follow the unlock (ai-util lock_door)
+                    if lock_gate(b, false) then opened = opened + 1 end
                 end)
                 if not ok then waiting = waiting + 1 end
                 -- (0.105.23) a hatch on a lever: its lever opens it (at once)
@@ -164,7 +161,10 @@ function gates_restore()
     end
     GATES.closed = GATES.closed or {}
     GATES.opening = GATES.opening or {}
-    for id in pairs(closed) do GATES.closed[id] = true end
+    -- (0.105.47, J16) not an entrance the re-validation just opened (its danger gone)
+    local lifted = GATES.lifted_now or {}
+    GATES.lifted_now = nil
+    for id in pairs(closed) do if not lifted[id] then GATES.closed[id] = true end end
     -- (0.105.36, D2) still the AI's, and opened (not pulled back shut as a lost close)
     for id in pairs(opening) do if GATES.closed[id] then GATES.opening[id] = true end end
     if not GATES.armed and next(GATES.closed) ~= nil then

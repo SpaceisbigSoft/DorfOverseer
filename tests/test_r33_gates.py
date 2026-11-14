@@ -254,7 +254,7 @@ M.df = {building = {find = function(id) return B[id] end}, job_type = {PullLever
 M.dfhack = {units = {getCitizens = function() return {} end, isDead = function() return false end},
             timeout = function() return nil end, timeout_active = function() return false end,
             gui = {showAnnouncement = function() end}}
-M.visible_dangers = function() return {} end
+M.visible_dangers = function() return DANGERS or {} end
 M.seal_holds = function() return {ids = {}, levers = {}} end
 M.note_split_after_open = function() end
 M.pull_instant = function(lid) table.insert(PULLS, lid); B[7].door_flags.closed = not B[7].door_flags.closed; return true end
@@ -266,7 +266,10 @@ M.GATES_SAVE = {}
 """
 
 
-def restore(L, M, saved):
+def restore(L, M, saved, danger=True):
+    # (0.105.47, J16) a restored lockdown is kept only while a danger is still
+    # in sight near it (lift_restored): one at the entrance unless danger=False
+    L.execute("DANGERS = " + ("{{pos = {x = 12, y = 8, z = 0}}}" if danger else "nil"))
     L.execute(RESTORE, M)
     L.execute("local M, s = ...; M.dfhack.persistent = {getSiteData = function() return s end, "
               "saveSiteData = function() end}", M, L.eval(saved))

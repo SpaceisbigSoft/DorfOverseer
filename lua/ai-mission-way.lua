@@ -76,7 +76,11 @@ function out_groups_of(G, group_at, per)
     return any and out or {}
 end
 
+-- (0.105.47, J16) the map's edge groups (lua/ai-way-out.lua: the one
+-- way-out check, cached per map), else the entrances' outside tiles as before
 function out_groups()
+    local ok, g = pcall(function() return reqscript('ai-way-out').edge_groups() end)
+    if ok and type(g) == 'table' and next(g) ~= nil then return g end
     return out_groups_of(gates(), wgroup)
 end
 

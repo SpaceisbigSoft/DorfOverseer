@@ -826,7 +826,7 @@ function lure_open(key, dry_run)
             return {ok = false, error = 'the pocket\'s mouth would not lower'}
         end
     end
-    local okf = pcall(function() seal.door_flags.forbidden = false end)
+    local _, okf = U.lock_door(seal, false, 'lure')       -- (0.105.47) through ai-util: the walk map redone
     if not okf then return {ok = false, error = 'the door would not unlock'} end
     rec.open, rec.opened_tick = true, now_tick()
     save_state(d)
@@ -867,13 +867,13 @@ function lure_shut(key, dry_run)
         end
     end
     if seal and not locked then
-        if not pcall(function() seal.door_flags.forbidden = true end) then table.insert(failed, 'seal') end
+        if not select(2, U.lock_door(seal, true, 'lure')) then table.insert(failed, 'seal') end
     end
     if row.inner and row.inner.built and not row.inner.shut then
         local b = building_at(rec.inner)
         if rec.inner.kind == 'bridge' then
             if not pull_to(G, rec.levers and rec.levers.inner, b, true) then table.insert(failed, 'inner') end
-        elseif not (b and pcall(function() b.door_flags.forbidden = true end)) then
+        elseif not (b and select(2, U.lock_door(b, true, 'lure'))) then
             table.insert(failed, 'inner')
         end
     end

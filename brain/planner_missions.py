@@ -352,6 +352,13 @@ def gate_danger(s: dict, cfg: dict, memory=None) -> str:
 def _way_open(s: dict, cfg: dict, blocked: int, what: str, key: str, proposals: list, notes: list,
               memory=None) -> None:
     """The opening (or why not) for `blocked` travellers who can't walk out."""
+    # (0.105.47, J16) the whole fort sealed in: the way-out guard opens it
+    # (planner_way_out, the one check), not a second opening here
+    from planner_way_out import sealed
+    if sealed(s) is True:
+        notes.append(f"{what}: {blocked} traveller(s) can't walk off the map; the whole fort is sealed in, "
+                     "and the way-out guard opens it: the mission goes once the walk map shows the way")
+        return
     wo = _d(_m(s).get("way_out"))
     shut = [e for e in _l(wo.get("shut")) if isinstance(e, dict) and _int(e.get("id")) is not None]
     if not shut:

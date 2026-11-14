@@ -1219,3 +1219,14 @@ PLANNER_CONFIG.update({
     # a mission set up whose travellers can't walk off the map this long: one of the AI's gates opened, once
     "mission_way_stuck_hours": 6,
 })
+# (0.105.47, J16) the way out: a fort sealed in by the AI's own gates is
+# opened once the cause is gone (brain/planner_way_out.py)
+PLANNER_CONFIG.update({
+    "way_out_cause_gone_ticks": 600,      # the cause gone this long (half a day, the watcher's reopen): opened
+    "way_out_danger_tiles": 60,           # a danger in sight this near a surface gate keeps it shut (the watcher's WIDE)
+    "way_out_soft_days": 2,               # the alert, the alarm's hold, danger unread keep it shut this long at most
+    "way_out_tries": 2,                   # openings tried before a way is dug out
+    "way_out_retry_ticks": 150,           # between two openings (the walk map redone, a bridge's pull walked)
+    "way_out_dig_tries": 2,               # digs asked for before Needs you
+    "way_out_dig_retry_days": 4,
+})

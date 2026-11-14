@@ -381,7 +381,7 @@ local function set_doors(c, locked)
     for _, bid in ipairs(c.doors or {}) do
         local ok, err = pcall(function()
             local b = df.building.find(bid)
-            if b then b.door_flags.forbidden = locked end
+            if b and not select(2, U.lock_door(b, locked, 'killers')) then error('the lock could not be written') end -- (0.105.47) ai-util: the walk map redone
         end)
         if not ok then errs = (errs or '') .. tostring(err):sub(1, 60) end
     end
@@ -487,7 +487,7 @@ function cell(o, dry)
                         for id, b in pairs(zone_doors(z)) do
                             local okf, f = pcall(function() return b.door_flags.forbidden end)
                             if okf and not f and not dry then
-                                b.door_flags.forbidden = true
+                                U.lock_door(b, true, 'killers') -- (0.105.47) ai-util: the walk map redone
                                 table.insert(c.doors, id)
                             end
                         end

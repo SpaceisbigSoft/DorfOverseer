@@ -567,7 +567,7 @@ function release_locks(st, guarded, now, dry, claimed)
             -- unlocked only when it was unlocked before the AI's lock (always,
             -- as the guard locks no locked door; a `before` from an odd record kept)
             if free and not dry and l.before ~= true then
-                pcall(function() b.door_flags.forbidden = false end)
+                U.lock_door(b, false, 'insane') -- (0.105.47) ai-util: the walk map redone
             end
             if free then released = released + 1 end
             if not dry then
@@ -724,7 +724,7 @@ function guard(o, dry)
                         and held + locked < MAX_LOCKS then
                     if not dry then
                         local before = flag(d.b, 'forbidden')      -- (0.105.40b fix) as it was just before
-                        pcall(function() d.b.door_flags.forbidden = true end)
+                        U.lock_door(d.b, true, 'insane') -- (0.105.47) ai-util: the walk map redone
                         st.locks[key] = {id = d.b.id, unit = g.u.id, since = now, x = d.x, y = d.y, z = d.z,
                                          hazard = d.hazard, before = before}
                     end

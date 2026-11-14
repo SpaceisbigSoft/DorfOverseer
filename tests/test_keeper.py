@@ -307,7 +307,8 @@ def _():
     assert not g.acts                                   # (halted: not even the announcements)
     g = PausedGame()
     run_loop(g, ["--autopilot"])
-    assert not g.acts
+    # (0.105.47, J16) Ctrl-C leaves the fort open (way_out_leave), and nothing else
+    assert [a.get("type") for a in g.acts] == ["way_out_leave"], g.acts
 
 
 @test("keeper: a second keeper for the same folder refuses to start")
