@@ -121,11 +121,17 @@ def _():
     # the keeper's apply_preset on a new fort: the new fort's Guided is saved
     r = TP.act({"type": "apply_preset", "name": "Deep mine"})
     assert r.ok and TP.saved().design == "guided" and r.settings.design == "guided", dict(r)
-    # ... and on an old fort (settings saved without design): Scripts stays
+    # ... and on an old fort (settings saved without design): (0.105.47, D1)
+    # the keeper's --preset takes it from Scripts to Guided
     TP.reset()
     TP.H.persist["ai-overseer/settings"] = TP.t({"version": 2, "mode": "autopilot"})
     r = TP.act({"type": "apply_preset", "name": "Monastery"})
-    assert r.ok and TP.saved().design == "scripts", dict(r)
+    assert r.ok and TP.saved().design == "guided" and r.rules.design == "guided", dict(r)
+    # ... an Architect fort stays Architect
+    TP.reset()
+    TP.H.persist["ai-overseer/settings"] = TP.t({"version": 2, "mode": "autopilot", "design": "architect"})
+    r = TP.act({"type": "apply_preset", "name": "Monastery"})
+    assert r.ok and TP.saved().design == "architect" and r.rules.design is None, dict(r)
 
 
 @test("set_rules takes the two choices from outside the window, refusing a bad one")
@@ -226,7 +232,7 @@ def _():
 @test("docs/controls.md names the two settings")
 def _():
     doc = (ROOT / "docs" / "controls.md").read_text(encoding="utf-8")
-    for k in ("`design`", "`landmark_pace`", "Guided", "Architect", "Landmarks (Architect)"):
+    for k in ("`design`", "`landmark_pace`", "Guided", "Architect", "Landmarks (Guided+)"):
         assert k in doc, k
 
 

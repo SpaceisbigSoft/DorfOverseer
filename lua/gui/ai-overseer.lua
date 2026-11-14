@@ -345,11 +345,11 @@ function RulesPage:init()
             initial_option = p.settings.memorial_pace,
             on_change = function(v) p:set_field('memorial_pace', v) end,
         },
-        -- (D0) beside the memorials: how often an Architect fort starts a landmark
+        -- (D0) beside the memorials: how often a fort starts a landmark ((0.105.47, D1) Guided and Architect)
         widgets.CycleHotkeyLabel{
             view_id = 'landmark_pace',
             frame = {t = 2, l = 72, w = 46},
-            label = 'Landmarks (Architect):',
+            label = 'Landmarks (Guided+):',
             label_width = 24,
             options = (function()
                 local out = {}

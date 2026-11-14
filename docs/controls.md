@@ -50,13 +50,14 @@ looks, apart from what the AI may do:
 | Design | What it does |
 | --- | --- |
 | Scripts | the layout library builds as it always has |
-| Guided | a design language for the fort: hall shapes, motifs, stone, names (from rules; with `--ai`, written by the strategist) |
+| Guided | a design language for the fort: hall shapes, motifs, stone, names (from rules; with `--ai`, written by the strategist); every new level follows it, and one library landmark a season (`landmark_pace`) |
 | Architect | Guided, plus a landmark now and then (library landmarks without `--ai`) |
 
 Guided costs about 4k tokens an era, Architect about 5-15k a landmark, and
 neither costs any without `--ai`. A new fort starts at Guided; a fort whose
-settings were saved before the Design track reads Scripts. Switching down
-removes nothing already built.
+settings were saved before the Design track reads Scripts; the keeper's
+`--preset` takes such a fort to Guided once (0.105.47), and only its new
+levels change. Switching up or down rebuilds and removes nothing already built.
 
 In Co-pilot, answer in the panel: **Yes** and it acts within seconds (even
 while paused); **No** and it won't ask about that again for 7 in-game days.
@@ -116,8 +117,10 @@ reads as `ai`, its default then).
 - **Memorial halls for slain beasts:** one for every beast, at most one per
   season (the default), at most one per year, or never. A memorial that has
   to wait is shown as a note.
-- **Landmarks (Architect)** (`landmark_pace`): one a season (the default), one
-  a year, or never. Only an Architect fort starts landmarks.
+- **Landmarks (Guided+)** (`landmark_pace`): one a season (the default), one
+  a year, or never. A Guided or Architect fort starts landmarks (0.105.47);
+  a Scripts fort never does. Guided builds only its language's own library
+  landmarks (the preset's first), Architect any, with `--ai` its own drawings.
 - **DF pop cap from Growth/Maintain** (on): the AI sets DF's population cap,
   which decides how many migrants come, to the Growth target, or to the held
   size under Maintain. It lasts for the session; the AI sets it again after a

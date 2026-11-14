@@ -189,12 +189,14 @@ end
 --   architect: guided, plus landmarks now and then (library ones without --ai)
 -- A new fort starts at Guided (DESIGN_NEW, the decision of 11 Nov); a save
 -- whose settings carry no design (every fort started before) reads Scripts,
--- as does an unknown value. Presets don't set it.
+-- as does an unknown value. Presets don't set it, but (0.105.47, D1) the
+-- keeper's --preset (apply_preset by 'keeper') takes a Scripts fort to Guided:
+-- the six test forts were founded before the setting and read Scripts.
 DESIGN_MODES = {'scripts', 'guided', 'architect'}
 DESIGN_NAMES = {scripts = 'Scripts', guided = 'Guided', architect = 'Architect'}
 DESIGN_WORDS = {
     scripts = 'the layout library builds as it always has; no design language',
-    guided = 'a design language for the fort: hall shapes, motifs, stone, names',
+    guided = 'a design language for the fort: hall shapes, motifs, stone, names; a library landmark now and then',
     architect = 'Guided, plus a landmark now and then (library ones without --ai)',
 }
 DESIGN_TOKENS = 'Guided ~4k tokens an era; Architect ~5-15k a landmark; none without --ai'
@@ -303,7 +305,7 @@ function defaults()
         save_before_projects = false,
         memorial_pace = 'season',
         design = DESIGN_NEW,       -- (D0) who designs the look (DESIGN_MODES); an old save reads scripts
-        landmark_pace = 'season',  -- (D0) Architect's landmarks (LANDMARK_PACES)
+        landmark_pace = 'season',  -- (D0) landmarks at Guided and Architect (LANDMARK_PACES; 0.105.47: Guided too)
         levels = (function()
             local out = {}
             for _, l in ipairs(OPTIONAL_LEVELS) do out[l.id] = true end
@@ -810,6 +812,13 @@ function apply_preset(name, s, by, dry_run)
     local applied = {}
     local merged, err = load_preset(name, s or load_settings(), applied)
     if not merged then return nil, err end
+    -- (0.105.47, D1) the keeper's --preset: a fort at Scripts (every fort
+    -- founded before the Design track reads Scripts) goes to Guided, so its
+    -- new levels follow a design language; Architect stays Architect
+    if by == 'keeper' and merged.design == 'scripts' then
+        merged.design = 'guided'
+        applied.design = 'guided'
+    end
     if not dry_run then
         save_settings(merged)
         dfhack.persistent.saveSiteData(PRESET_NAME_KEY, {name = name, by = by or 'window'})
