@@ -20,6 +20,9 @@ It flags:
 - the keeper's own trouble: restarts, Python errors, revive problems;
 - the game slowing down (FPS from the soak rows) and the report sections
   that cost the most;
+- (0.105.45) things stuck "in progress": the AI's own things past their
+  timeout without progress (the stuck sweep's count in the soak rows), a
+  flag when some stay past it over the last STUCK_ROWS rows;
 - housekeeping: old test saves and backups of forts no longer played (old
   backup copies of those are thinned to the newest; game saves are only
   listed, deleting them is yours).
@@ -65,6 +68,7 @@ FPS_LOW = 40                  # the run's late FPS median under this: flagged
 FPS_DROP = 0.3                # or fallen this share from the run's early median
 SECTION_SLOW_MS = 150         # a report section whose median build time is over this
 OLD_SAVE_DAYS = 14            # test saves and other forts' backups untouched this long
+STUCK_ROWS = 12               # (0.105.45) things past their timeout in each of the last rows (2 real hours): flagged
 TEST_SAVE = re.compile(r"^(AI Run|AI Test)\b|test", re.I)
 
 FAIL_NOTE = re.compile(r"^(rule \w+ failed|skipped rules that need report section)")
@@ -347,6 +351,29 @@ def ai_cost_lines(rows: list[dict]) -> tuple[list[str], list[str]]:
     return [], plain
 
 
+def stuck_flags(rows: list[dict]) -> tuple[list[str], list[str]]:
+    """(0.105.45) The stuck sweep's count (brain/planner_stuck.py soak_summary):
+    the AI's own things past their timeout without progress, from the latest
+    soak row of the fort played now; flagged when some were past it in each of
+    the last STUCK_ROWS rows (the sweep nudges and retires them: one that
+    stays is past what its remedies reach)."""
+    have = [r for r in rows if isinstance(r.get("stuck"), dict)]
+    if not have:
+        return [], ["stuck: no count yet (an older overseer, or no full report in the window)"]
+    fort = have[-1].get("fort")
+    have = [r for r in have if r.get("fort") == fort]
+    last = have[-1]["stuck"]
+    n = last.get("past") if isinstance(last.get("past"), int) else 0
+    kinds = {k: v for k, v in (last.get("kinds") or {}).items() if isinstance(v, int) and v}
+    line = (f"stuck: {n} thing(s) past their timeout"
+            + (" (" + ", ".join(f"{k} {v}" for k, v in sorted(kinds.items())) + ")" if kinds else ""))
+    flags = []
+    tail = have[-STUCK_ROWS:]
+    if n > 0 and len(tail) >= STUCK_ROWS and all(int((r["stuck"].get("past") or 0)) > 0 for r in tail):
+        flags.append(f"{line}, in each of the last {STUCK_ROWS} soak rows (see the `stuck` notes and section)")
+    return flags, [line]
+
+
 # ---------------------------------------------------------------------------
 # the self-test, run as its own process
 # ---------------------------------------------------------------------------
@@ -479,6 +506,7 @@ def check(hours: float = 24.0, selftest: bool = True, now: datetime | None = Non
                                      "Needs you and failure lines showing"]))
     part("the keeper", lambda: log_flags(soak_report.log_lines(since, LOG_DIR / "unattended.log")))
     part("speed", lambda: fps_flags(soak_report.soak_rows(since, LOG_DIR / "soak.jsonl")))
+    part("stuck", lambda: stuck_flags(soak_report.soak_rows(since, LOG_DIR / "soak.jsonl")))   # (0.105.45)
 
     def house():
         from dfhack import save_roots

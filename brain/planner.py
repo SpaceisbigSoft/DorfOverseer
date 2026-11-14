@@ -61,6 +61,7 @@ from planner_insane import _insane_rule  # noqa: E402  (0.105.40b) the insane: d
 from planner_killers import _killer_rule  # noqa: E402  (item3) a killer among the fort's own: cells, a squad
 from planner_hunt import _hunt_rule, note_hunt_cycle  # noqa: E402  (0.105.45) hunting threats the squads can beat
 from planner_shelter import _shelter_pick_rule  # noqa: E402  (0.105.45) the shelter away from the threat
+from planner_stuck import _stuck_rule, note_stuck  # noqa: E402  (0.105.45) the sweep for things stuck "in progress"
 from planner_hauling import _hauling_labor_rule, note_hauling  # noqa: E402  (0.105.40 M5) hauling balanced
 from planner_traffic import _traffic_rule  # noqa: E402  (0.105.41) traffic zones on the AI's own levels
 from planner_food import _food_store_rule, note_food  # noqa: E402  (0.105.40b, M6) the food store
@@ -973,6 +974,10 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
         kept = _guard(_pasture_hold, s, memory, proposals, notes)
         if kept is not None:            # (0.105.4 review) [] is an answer (all held), not a failure
             proposals = kept
+    # (0.105.45) the sweep for things stuck "in progress": after every other
+    # rule, so a thing another rule acts on this cycle is left to it
+    if "stuck" not in errors:
+        _guard(_stuck_rule, s, memory, cfg, proposals, notes)
     # (0.105.29 customs fixes) the fort's customs on every new level the rules
     # proposed without them (one pass, after every rule; before the Hermit
     # hold's hidden_hold filter below, which stamps its own)
@@ -1246,6 +1251,7 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
         note_captives(p, r, memory, now)                   # (item6) the pit's trial done, the prisoners sent
         note_syndromes(p, r, memory, now)                  # (0.105.41, item 11) the contaminant clean's trial done
         note_food_level(p, r, memory)                      # (fix41) one food storage level a kitchen or still
+        note_stuck(p, r, memory, now)                      # (0.105.45) the stuck sweep's step done
         if p.action.get("type") == "weather_burrow":
             note_keep_in(memory, now, p.action, ok)        # (item4) evil weather: kept in by the burrow
         note_quarry_dug(p, r, state, memory, now)          # (item7) the quarry marked, the stone then

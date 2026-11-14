@@ -43,6 +43,7 @@ from planner_moods import mood_journal  # noqa: E402  (0.105.30)
 from planner_missions import mission_journal  # noqa: E402  (0.105.39)
 from planner_cleanup import CLEANUP_ACTIONS, cleanup_journal, cleanup_words  # noqa: E402  (0.105.40)
 from planner_threats import note_intrusions  # noqa: E402  (0.105.30 live fixes)
+import planner_stuck  # noqa: E402  (0.105.45) the stuck sweep's soak summary
 import atlas  # noqa: E402
 import backup  # noqa: E402
 import health_check  # noqa: E402
@@ -535,6 +536,7 @@ SHORT_WORDS = {
     "cleanup_dead_units": "take long-dead creatures off the game's active list",
     "insane_guard": "lock the AI's own doors between an insane dwarf and deep water, magma or a drop while they are near",  # (0.105.40b)
     "killer_cell": "lock a killer or a vampire among the fort's own in a cell (let out to eat and drink)",  # (item3)
+    "stuck_reset": "take an AI lever's waiting pull job off (and ask the pull afresh)",  # (0.105.45)
     "magma_reclaim": "open the paths again where spilt magma cooled, and dig out what it left",  # (0.105.41, item 7)
     "clean_contaminants": "clean a syndrome's spreading material off the dwarves and floors",   # (0.105.41, item 11)
     "quarantine_syndromes": "keep the carriers of a contact syndrome in the hospital",
@@ -1408,6 +1410,7 @@ def remember_world(state: dict, memory, events: list[dict], key: str, cfg: dict,
                            "threats": _d(state.get("others_on_map")).get("threats_that_can_reach_dwarves"),
                            "projects_open": len(pj.get("open") or []), "projects_finished": pj.get("finished"),
                            "agenda": (memory.agenda or [])[:3],
+                           "stuck": planner_stuck.soak_summary(memory),   # (0.105.45) things past their timeout
                            # the needs most dwarves are distracted by (name: count)
                            "needs": dict(sorted(((k, int(_d(v).get("distracted") or 0))
                                                  for k, v in _d(_d(state.get("needs")).get("needs")).items()),

@@ -564,6 +564,15 @@ ACTIONS = {
         if not id or not x or not y or not z then return reject('squad_station needs squad_id, x, y, z') end
         return reqscript('ai-military').station(id, x, y, z, a.dry_run == true)
     end,
+    -- (0.105.45) the sweep for things stuck "in progress": an AI lever's pull
+    -- job nobody does, taken off and asked afresh, or dropped (lua/ai-stuck.lua)
+    stuck_reset = function(a)
+        if a.kind ~= 'lever' then return reject('stuck_reset: kind is lever') end
+        if a.mode ~= nil and a.mode ~= 'reissue' and a.mode ~= 'drop' then
+            return reject('stuck_reset: mode is reissue or drop')
+        end
+        return reqscript('ai-stuck').reset({kind = a.kind, id = a.id, mode = a.mode}, a.dry_run == true)
+    end,
 }
 
 -- (13c) The actions whose dry run changes nothing in the fort, all the way
@@ -620,6 +629,7 @@ for _, name in ipairs({
     'insane_guard',   -- (0.105.40b) its dry run counts the doors and changes nothing
     'killer_cell',    -- (item3) its dry run finds the rooms and changes nothing
     'shelter_pick', 'squad_station',   -- (0.105.45) each dry run checks and changes nothing
+    'stuck_reset',    -- (0.105.45) its dry run counts the lever's pull jobs and changes nothing
     'add_haulers', 'relieve_haulers',   -- (0.105.40 M5) each dry run names the dwarves and changes nothing
     -- (0.105.40b, M6) the food store: each dry run finds the spot (quickfort's dry run) and changes nothing
     'food_pile', 'food_barrels',
@@ -707,6 +717,7 @@ BRIDGE_MODULES = {
     'ai-mission-send', 'ai-missions', 'ai-moods', 'ai-noble-demands', 'ai-nobles', 'ai-overlay',
     'ai-overseer-settings', 'ai-paper', 'ai-pile-links', 'ai-ping', 'ai-provisions', 'ai-reports', 'ai-siege',
     'ai-shelter-plan', 'ai-society', 'ai-society-burrows', 'ai-status', 'ai-syndromes', 'ai-threats', 'ai-title', 'ai-trade', 'ai-traffic',
+    'ai-stuck',   -- (0.105.45)
     'ai-util', 'ai-water', 'ai-waterworks', 'gui/ai-overseer',
     'ai-threat-facts',          -- (0.105.45) a threat's facts for the matchup (called from the report)
 }
@@ -1085,6 +1096,11 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
     -- (vampires, werebeasts), the living who killed the fort's people (DF's
     -- incidents and crimes), with a confidence each; the AI's cells (lua/ai-killers.lua)
     killers = function() return safe(function() return reqscript('ai-killers').report() end) end,
+    -- (0.105.45) the AI's own things stuck "in progress": projects, the cistern,
+    -- waterworks, its levers' pull jobs, kill orders on targets gone, its work
+    -- orders, gates planned; each with the tick it entered its state and its
+    -- progress (lua/ai-stuck.lua; the daily report)
+    stuck = function() return safe(function() return reqscript('ai-stuck').report() end) end,
     -- (0.105.41) traffic zones: the AI's finished levels waiting for their
     -- traffic, the one in progress, the next recheck (lua/ai-traffic.lua; the
     -- project records only, no tile read)
