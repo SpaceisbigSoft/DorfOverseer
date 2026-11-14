@@ -103,8 +103,8 @@ def _():
     mine = [(int(t), int(l), int(w or 30)) for t, l, w in frames if int(l) >= 56]
     others = [(int(t), int(l), int(w or 50)) for t, l, w in frames if int(l) < 56]
     # (0.105.41) the siege switches at t+9..t+12 (frames by f[3]); "Peace offered" and its
-    # help line at t+15, t+16; cavern logging at t+17
-    assert sorted(t for t, _, _ in mine) == [5, 6, 7, 8, 15, 16, 17], mine
+    # help line at t+15, t+16; cavern logging at t+17; (0.105.45) the lure switch at t+3
+    assert sorted(t for t, _, _ in mine) == [3, 5, 6, 7, 8, 15, 16, 17], mine
     for t, l, w in others:
         if t in (5, 6, 7, 8):                   # the list's seven run t+5..t+11 at l=2, w=50
             assert l + w <= 56, (t, l, w)

@@ -289,6 +289,7 @@ class Memory:
     shelter_supply: dict = field(default_factory=dict)   # (0.105.36, D5) the AI shelter's last fill: {tick, drink_short, no_water, no_food, ...}
     fights: list = field(default_factory=list)           # (0.104.118) the last fights: {tick, keys, lost, of}
     called_off: dict = field(default_factory=dict)       # (0.105.26) great danger id -> tick its fight was called off
+    lure: dict = field(default_factory=dict)             # (0.105.45) opening "x,y,z" -> {tries, opened, next_try, caught, phase}: the lure pockets (planner_lure)
     dig_seen: dict = field(default_factory=dict)         # (0.104.110) project id -> {"dug", "tick" (last progress), "freed"}
     join_wait_days: int = 2                              # (0.104.108) days to the next look (longer once all were seen)
     culture: dict = field(default_factory=dict)          # culture history (see culture.py)
@@ -523,6 +524,8 @@ def player_rules(s: dict) -> dict:
             "squads_shelter": st.get("squads_shelter") is not False,
             # (0.105.41, item 2) the AI's feeder piles linked to the AI's own workshops: off only when the settings say so
             "link_feeders": st.get("link_feeders") is not False,
+            # (0.105.45) a great beast sealed in a cavern lured into a pocket and cut off: off only when the settings say so
+            "lure_beasts": st.get("lure_beasts") is not False,
             # (0.105.27) forbidden items: store < melt < dump < destroy (each does the ones before);
             # the player's own forbidden items (no game reason) only when the switch says so; the
             # enemy's gear kept from the smelters (the War-hold preset)

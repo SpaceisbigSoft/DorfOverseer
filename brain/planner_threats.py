@@ -441,8 +441,11 @@ def cavern_great(s: dict) -> list:
     caverns (in a cavern layer; a forgotten beast anywhere: it comes from
     there and tunnels)."""
     out = []
+    held = set(_l(_d(s.get("lures")).get("held_beasts")))      # (0.105.45) shut in a lure pocket: cut off
     for x in _l(_d(s.get("deep")).get("dangers")):
         if not isinstance(x, dict) or x.get("caged") or x.get("kind") not in GREAT_KINDS:
+            continue
+        if x.get("id") in held:
             continue
         if str(x.get("layer") or "").startswith("Cavern") or x.get("kind") == "forgotten beast":
             out.append(x)
@@ -554,7 +557,10 @@ def _cavern_beasts(s, cfg, memory, t, rules, proposals, notes):
                         tiles.append({"x": p["x"], "y": p["y"], "z": p["z"]})
         lockable = [o for o in ops if o.get("kind") != "well" and o.get("building") in ("Door", "Hatch")]
         # (a door reads closed whenever nobody passes: only the lock, or the seal's own lever pull, counts)
-        unlocked = [o for o in lockable if o.get("built") is not False and not o.get("locked") and not o.get("sealed")]
+        # (0.105.45) a door a lure holds open (lua/ai-lure.lua, its phase "open") is open on purpose:
+        # the lure locks it again itself (planner_lure)
+        unlocked = [o for o in lockable if o.get("built") is not False and not o.get("locked") and not o.get("sealed")
+                    and not o.get("lure_open")]
         down = _l(_d(t.get("cavern_citizens")).get("list"))
         # (v35 fix) the alarm is held for them `cavern_alarm_max_days` at most:
         # then let down and the ways locked (whoever can't climb out is the

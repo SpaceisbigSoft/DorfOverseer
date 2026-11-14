@@ -999,4 +999,13 @@ PLANNER_CONFIG = {
     "bench_training_max_level": 5,        # the training bench's max skill (df skill rating: 5 Proficient)
     "bench_learners_min": 2,              # workers below it before a bench is capped
     "bench_caps_cooldown_ticks": 1200,
+    # (0.105.45) a great beast sealed in a cavern lured into a pocket and cut off (brain/planner_lure.py)
+    "lure_after_days": 7,                 # a great danger sealed in the caverns this long: the lure is built
+    "lure_open_days": 3,                  # open this long with nothing caught: shut again...
+    "lure_retry_days": 4,                 # ...and opened again after this, doubled each try...
+    "lure_retry_max_days": 56,            # ...up to this
+    "lure_build_cooldown_ticks": 600,     # the pocket's next step (pieces, levers, links) twice a day at most
+    "lure_open_cooldown_ticks": 300,
+    "lure_shut_cooldown_ticks": 25,       # shutting is safety: soon again if it didn't take
+    "lure_archer_cooldown_ticks": 1200,
 }

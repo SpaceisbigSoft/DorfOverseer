@@ -930,6 +930,13 @@ local function watcher_held()
     return out
 end
 
+-- (0.105.45) The seal doors a lure holds open now (lua/ai-lure.lua): {id = true}.
+-- The seal leaves these unlocked while the lure is open (it locks them again).
+local function lure_open_ids()
+    local ok, ids = pcall(function() return reqscript('ai-lure').held_open() end)
+    return ok and type(ids) == 'table' and ids or {}
+end
+
 -- {list = [{x, y, z, kind, source, building?, id?, built?, locked?, closed?,
 -- sealed? (the seal locked it, or shut it by its lever, and (0.105.26 seal
 -- fix) it is locked, or shut, now: one opened again since reads unsealed,
@@ -938,12 +945,14 @@ function openings_report(d, t, txt)
     gather_openings(d, t)
     local held = seal_holds(d)   -- the doors and hatches the seal locked or shut by their lever
     local list = {}
+    local lure = lure_open_ids()   -- (0.105.45)
     for _, o in pairs(d.openings) do
         if type(o) == 'table' and o.x and o.y and o.z then
             local row = opening_state(o)
             if row.id and ((held.locked[row.id] and row.locked) or (held.pulled[row.id] and row.closed)) then
                 row.sealed = true
             end
+            if row.id and lure[row.id] then row.lure_open = true end     -- (0.105.45) open on purpose
             row.x, row.y, row.z, row.kind, row.source = o.x, o.y, o.z, o.kind, o.source
             table.insert(list, row)
         end
@@ -1801,6 +1810,8 @@ function seal_cavern(layer, tiles, open, dry_run, z1, z2, openings)
     -- the record too, so the watcher doesn't open it while the beast is about
     local watched = watcher_held()
     local insane = insane_held()      -- (0.105.40b fix) ai-insane's locks: the seal's now
+    local lure = lure_open_ids()      -- (0.105.45) a lure's open door is left to the lure
+    for id in pairs(lure) do found[id] = nil end
     for id, b in pairs(found) do
         local lever = own_lever(id)
         if lever then
