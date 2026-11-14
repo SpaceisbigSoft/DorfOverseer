@@ -361,8 +361,28 @@ end
 -- how many suspended, how many a dwarf is on. Enxah's bucket order sat 28
 -- days at a time, cancelled as stuck 30 times, with the reason never seen;
 -- a suspended job is one the order never gets back to by itself.
+-- (0.105.46, I3) how many grown citizens outside the squads hold a labour
+-- (df.unit_labor number): an order's job waiting for a worker nobody can be
+-- is stuck for want of the labour, not of materials. Counted once a labour a
+-- report (`memo`), nil when the citizens can't be read.
+local function labour_holders(lab, memo)
+    if memo[lab] ~= nil then return memo[lab] or nil end
+    local ok, n = pcall(function()
+        local c = 0
+        for _, u in ipairs(dfhack.units.getCitizens(true) or {}) do
+            local grown = true
+            pcall(function() grown = dfhack.units.isAdult(u) end)
+            if grown and u.military.squad_id == -1 and u.status.labors[lab] then c = c + 1 end
+        end
+        return c
+    end)
+    memo[lab] = ok and n or false
+    return ok and n or nil
+end
+
 function order_jobs(ids)
     local by = {}
+    local memo = {}            -- (0.105.46, I3) labour -> holders, once a call
     local link = df.global.world.jobs.list.next
     while link do
         local j = link.item
@@ -396,7 +416,14 @@ function order_jobs(ids)
                             end)
                         end
                         local okl, lab = pcall(dfhack.job.getSpecificLabor, j)
-                        if okl and lab and lab ~= -1 then e.labor = df.unit_labor[lab] end
+                        if okl and lab and lab ~= -1 then
+                            e.labor = df.unit_labor[lab]
+                            -- (0.105.46, I3) and whether anyone may take it: DF says
+                            -- nothing more of a job that waits (its items are looked
+                            -- for only when a worker takes it)
+                            e.holders = labour_holders(lab, memo)
+                            if e.holders == 0 then e.why = 'no citizen has the labour ' .. tostring(e.labor) end
+                        end
                         local okk, sk = pcall(dfhack.job.getSkill, j)
                         if okk and sk and sk ~= -1 then e.skill = df.job_skill[sk] end
                     end)
@@ -441,6 +468,14 @@ function get_orders()
             if o.max_workshops ~= 0 then e.max_workshops = o.max_workshops end
             if #o.item_conditions > 0 then e.item_conditions = #o.item_conditions end
             if #o.order_conditions > 0 then e.order_conditions = #o.order_conditions end
+        end)
+        -- (0.105.46, I3) the order's material (INORGANIC:IRON...): two helm
+        -- orders in two metals are two orders, one may lack its bars
+        pcall(function()
+            if o.mat_type ~= -1 then
+                local mi = dfhack.matinfo.decode(o.mat_type, o.mat_index)
+                if mi then e.material = mi:getToken() end
+            end
         end)
     end
     return out
@@ -656,13 +691,20 @@ function act_work_order(a)
     local data = ai_orders()
     data.ids[tostring(new_id)] = true
     local saved = save_ai_orders(data)
+    -- (0.105.46, I3) approved as it is placed, when the brain says the manager
+    -- doesn't get to the AI's orders (it approved them itself before: 674
+    -- approve_orders in a day's run, 30 a game year, each after a 3-day wait)
+    local approved = nil
+    if a.approve == true then
+        approved = pcall(function() all[#all - 1].status.validated = true end) or nil
+    end
     -- (fix6) a paper step ordered: the cached paper section (its inputs and
     -- tools) is read again, not served a day old to order the step twice
     local base = ORDER_RECIPES[a.recipe]
     local paper_step = base and (base.paper or base.item_subtype == 'ITEM_TOOL_SCROLL_ROLLERS'
         or base.item_subtype == 'ITEM_TOOL_BOOK_BINDING')
     return {ok = true, order_id = new_id, recipe = a.recipe, amount = amount,
-            material = spec.material, stale = paper_step and {'paper'} or nil,
+            material = spec.material, stale = paper_step and {'paper'} or nil, approved = approved,
             warning = (not saved) and 'order created but not recorded; the AI cannot cancel it later' or nil}
 end
 

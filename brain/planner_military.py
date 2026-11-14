@@ -1368,7 +1368,13 @@ def _ranged_squad_rule(s: dict, g: dict, squads: list, templates: list, cfg: dic
     members = sum(int(q.get("members") or 0) for q in ranged)
     wood = int(_d(s.get("stocks")).get("wood") or 0)
     shop = _has_shop(s["buildings"], "Bowyers")
-    short = members - int(g.get("ranged_armed") or 0) - int(g.get("spare_crossbows") or 0) - queued(s, {"wooden_crossbow"})
+    have = int(g.get("ranged_armed") or 0) + int(g.get("spare_crossbows") or 0)
+    # (0.105.46, I3) every crossbow the fort has, in bins and put away off duty
+    # too (370 crossbow orders in a day: a squad off duty read as unarmed and
+    # the crossbows in bins as none)
+    if isinstance(g.get("crossbows_total"), int) and not isinstance(g.get("crossbows_total"), bool):
+        have = max(have, g["crossbows_total"])
+    short = members - have - queued(s, {"wooden_crossbow"})
     if short > 0:
         if shop and wood >= short:
             proposals.append(Proposal("arms", {"type": "work_order", "recipe": "wooden_crossbow", "amount": min(short, 5)},

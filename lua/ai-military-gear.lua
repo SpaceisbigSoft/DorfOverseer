@@ -631,7 +631,7 @@ gear_report_body = function()        -- (the local declared above gear_report)
     -- their weapons (and sometimes armour) away, which isn't a shortage
     local out = {soldiers = 0, on_duty = 0, armed = 0, armored = 0, helmed = 0, squads_with_uniform = 0,
                  legged = 0, gloved = 0, booted = 0, shielded = 0, ranged_armed = 0,
-                 spare_crossbows = 0, bolts = 0,
+                 spare_crossbows = 0, bolts = 0, crossbows_total = 0,   -- (0.105.46, I3) crossbows_total
                  squads = 0, spare = {}, bars = {}, forges = 0}
     local routines = M.routine_names()
     local fort = U.fort_entity()
@@ -741,6 +741,20 @@ gear_report_body = function()        -- (the local declared above gear_report)
         local okc, id = pcall(function() return it.subtype.id end)
         if okc and id == 'ITEM_WEAPON_CROSSBOW' and not f.in_inventory and U.item_free(it, CROSSBOW_OK) then
             out.spare_crossbows = out.spare_crossbows + 1
+        end
+        -- (0.105.46, I3) every crossbow the fort has: in a bin, in a soldier's
+        -- hands or put away off duty (370 crossbow orders in a day's run: the
+        -- spare count skips bins and owned ones, and ranged_armed counts the
+        -- squads on duty only, so a squad off duty read as unarmed)
+        if okc and id == 'ITEM_WEAPON_CROSSBOW' then
+            pcall(function()
+                if f.trader or f.hostile or f.removed or f.garbage_collect or f.forbid or f.dump then return end
+                if f.in_inventory then
+                    local u = dfhack.items.getHolderUnit(it)
+                    if u and not dfhack.units.isCitizen(u) then return end
+                end
+                out.crossbows_total = (out.crossbows_total or 0) + 1
+            end)
         end
     end
     pcall(function()

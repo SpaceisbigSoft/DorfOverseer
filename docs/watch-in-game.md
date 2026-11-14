@@ -11,6 +11,14 @@ Where to look:
 The forts are A War-hold, B Monastery, C Merchant city, D Hermit hold, E Deep mine and F Garden fort. "All" means every fort.
 
 
+## 0.105.46 (I3): the order loop (brain/order_check.py)
+
+- **All, journal and keeper log**: the "held" lines "no <recipe> order: N iron bars, M of them claimed by the AI's open orders", "no free Masons workshop", "no charcoal or coke", "no citizen has the X labour": an order held for what it lacks, not placed and cancelled as stuck. The run check's churn flags (metal_helm, stone_blocks, the metal kit, weave_plant_cloth, wooden_bed...) should fall under 5 each.
+- **A stuck cancel** (`cancel_work_order` by `stuck_order`): the save's memory `order_loop.misses["<recipe>|INORGANIC:<METAL>"]` with `missing` and `snap`; the same recipe and metal held ("cancelled as stuck N day(s) ago (...): ordered again once that changes") until bars, a workshop or a worker come, or 56 days pass; a helm in another metal is not held.
+- **state.json, `orders`**: each order's `material` (INORGANIC:IRON...) and, for a waiting job of the AI's, `jobs.labor`, `jobs.holders` and `jobs.why` ("no citizen has the labour ...") when nobody may take it.
+- **approve_orders**: after the AI's first `approve_orders` in a fort, its new orders' journal result shows `approved: true` and DF's work order screen shows them approved at once; `approve_orders` itself then rare (the run check's loop flag on it gone).
+- **Crossbows**: `military.gear.crossbows_total` counts every crossbow (bins, the squad's put away off duty); with a crossbow squad off duty no `wooden_crossbow` order while `crossbows_total` covers its members (was 370 orders in a day).
+
 ## 0.105.45 (14 Nov): H7, a threat judged against the squads (Phase 11 (a), the judging half)
 
 - **All, state.json**: each `others_on_map.threats` row has `facts: 1` and, as its raws give, `attacks` (`count`, `best`, `syndrome`, `deadly`), `syndrome_attack`, `breath` (e.g. `["fire"]`, `["dust","deadly"]`, `["web"]`), `webs`, `no_pain`, `no_exert`, `no_stun`, `trap_avoid`, `immune_fire`, `regenerates`, `armor`/`armor_kind`, `undead_raiser`, `speed` (1.0 = a dwarf; check a dwarf-sized goblin reads near 1, not 0.1 or 10: `move` is DFHack's raw number), `wounds`, `blood_lost`. No `error` in the section; the report's time for `others_on_map` no worse than before.
