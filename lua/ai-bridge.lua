@@ -716,6 +716,17 @@ ACTIONS = {
         if a.project_id ~= nil and not pid then return reject('well_rescue: project_id is a number') end
         return reqscript('ai-well-safety').rescue(x, y, z, pid, a.dry_run == true)
     end,
+    -- (0.105.47) the deep plan's stair taken past the first cavern, a step at a
+    -- time: a walled shaft through the cavern (lua/ai-descent.lua, brain/planner_descent.py)
+    cross_cavern = function(a)
+        local x, y, e = math.tointeger(tonumber(a.x)), math.tointeger(tonumber(a.y)), math.tointeger(tonumber(a.elev))
+        if not x or not y or not e then return reject('cross_cavern needs x, y and elev') end
+        if type(a.layer) ~= 'string' or not a.layer:match('^Cavern%d$') then
+            return reject('cross_cavern: layer is Cavern1, Cavern2 or Cavern3')
+        end
+        return reqscript('ai-descent').cross_cavern({x = x, y = y, elev = e, layer = a.layer}, a.dry_run == true,
+                                                    get_layers())
+    end,
 }
 
 -- (13c) The actions whose dry run changes nothing in the fort, all the way
@@ -800,6 +811,7 @@ for _, name in ipairs({
     'coffins_anywhere', 'engrave_memorials', 'train_cook',   -- (0.105.47) each dry run finds and names, and changes nothing
     'well_safety', 'well_rescue',   -- (0.105.47) each dry run plans and checks, and changes nothing
     'near_gates', 'retire_water_zones',   -- (0.105.47, I7d) each dry run counts and changes nothing
+    'cross_cavern',    -- (0.105.47) its dry run plans the step (quickfort's dry run) and marks nothing
 }) do DRY_OK[name] = true end
 
 -- These only change what's displayed, so they still work while halted, dry
@@ -886,6 +898,7 @@ BRIDGE_MODULES = {
     'ai-welfare',   -- (0.105.47, I7b) the unreachable dead, coffins anywhere, a cook trained
     'ai-well-safety',   -- (0.105.47) cavern wells made safe
     'ai-near-gates', 'ai-ice',   -- (0.105.47, I7d) surface work near the gates; water zones off before the ice
+    'ai-descent',   -- (0.105.47) the deep plan's stair past the first cavern
 }
 -- the split-off modules that carry a version mark of their own
 MARKED_MODULES = {'ai-military-gear', 'ai-society-burrows', 'ai-constructions'}
@@ -1389,6 +1402,10 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
         if fresh and not (type(r) == 'table' and r.error) then CONSTRUCTIONS_FRESH = nil end
         return r
     end,
+    -- (0.105.47) the deep plan's crossing of the first cavern: none, ready,
+    -- working, built or blocked (why), its depth, a danger in the layer
+    -- (lua/ai-descent.lua; nine tiles a level of one column)
+    descent = function() return safe(function() return reqscript('ai-descent').report(get_layers()) end) end,
 }
 
 -- The pulse: a small report for the frequent check between full ones.

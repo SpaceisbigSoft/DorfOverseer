@@ -79,6 +79,8 @@ from planner_welfare import _welfare_rules  # noqa: E402  (0.105.47, I7b) coffin
 from planner_hauling import _hauling_labor_rule, note_hauling  # noqa: E402  (0.105.40 M5) hauling balanced
 from planner_traffic import _traffic_rule  # noqa: E402  (0.105.41) traffic zones on the AI's own levels
 from planner_food import _food_store_rule, note_food  # noqa: E402  (0.105.40b, M6) the food store
+from planner_descent import _descent_rule, deep_pass  # noqa: E402  (0.105.47) the stair past the first cavern, the deep levels
+from planner_reserves import stock_factor, reserve_cfg, _reserve_storage_rule, reserves_pass  # noqa: E402  (0.105.47) Stockpile
 from planner_provisions import _provisions_rules  # noqa: E402  (0.105.41, item 4) hunting, butchery, fruit, meals, cavern farms
 from planner_syndromes import _miasma_rule, _syndrome_rule, note_syndromes  # noqa: E402  (0.105.41, item 11) syndromes, miasma
 from planner_food import note_food_level  # noqa: E402  (fix41) a food storage level booked per kitchen/still
@@ -132,6 +134,7 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
         return [], [f"the report has no {' or '.join(missing)} this cycle ({errors[missing[0]]}): "
                     "nothing planned; next cycle tries again"]
     traits = _traits(s)
+    cfg = reserve_cfg(cfg, traits)          # (0.105.47) the reserves kept follow the Stockpile slider
     dw = s["dwarves"]
     citizens = max(1, dw.get("total", 0))
     adults = max(1, dw.get("adults", 0))
@@ -165,7 +168,7 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
     # on; then the customs it adopts. At Scripts: nothing adopted, nothing proposed
     _guard(design_rule, s, traits, cfg, proposals, notes, memory)
     _guard(_set_adopted, s, memory, traits)
-    buffer = factor(traits, "stockpile")
+    buffer = stock_factor(traits, cfg)              # (0.105.47) 2^(Stockpile/50): was 2^(Stockpile/100)
     winter = winter_factor(s, memory)               # stock up before winter (and through it)
 
     # 1. Threat alert ------------------------------------------------------
@@ -1039,6 +1042,14 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
     # proposed without them (one pass, after every rule; before the Hermit
     # hold's hidden_hold filter below, which stamps its own)
     _guard(customs_pass, proposals, memory, traits, citizens)
+    # (0.105.47) Verticality: the stair past the first cavern, and the deep
+    # districts' new levels under it once it stands (planner_descent); the
+    # Stockpile slider's storage levels and their size (planner_reserves)
+    if "descent" not in errors:
+        _guard(_descent_rule, s, memory, cfg, proposals, notes)
+        _guard(deep_pass, proposals, s, memory, cfg, citizens)
+    _guard(_reserve_storage_rule, s, memory, cfg, traits, proposals, notes)
+    _guard(reserves_pass, proposals, memory, traits, cfg)
     # (0.105.23, 14.1 step 4c) Surface -80 or lower: nothing above ground, no level at or above the surface
     kept = _guard(_deep_surface_filter, s, traits, memory, proposals, notes)
     if kept is not None:

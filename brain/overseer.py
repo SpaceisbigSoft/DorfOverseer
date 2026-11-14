@@ -549,6 +549,7 @@ SHORT_WORDS = {
     "thirst_unforbid": "let go the forbidden drink a parched dwarf can reach",  # (0.105.46, I2)
     "well_safety": "keep the cavern wells safe: the watcher, the shaft's column, the gallery's door, the next level",  # (0.105.47)
     "well_rescue": "let a dwarf stranded in the cavern under a well back up (its door, or a stair dug out)",  # (0.105.47)
+    "cross_cavern": "take the main stair down through the first cavern in a walled shaft",  # (0.105.47)
     # (0.105.45) a great beast sealed in a cavern lured in and cut off (brain/planner_lure.py)
     "build_lure": "lay out a lure pocket behind a cavern door (cage traps, or drawbridges on levers)",
     "lure_open": "open the cavern door into the lure pocket (nobody below or near)",

@@ -1155,4 +1155,19 @@ PLANNER_CONFIG = {
     "ice_traffic_cooldown_ticks": 7 * 1200,
     "ice_zones_cooldown_ticks": 1200,
     "ice_shore_well_cooldown_ticks": 1200,
+    # (0.105.47) Verticality: the stair past the first cavern (brain/planner_descent.py, lua/ai-descent.lua)
+    "deep_descent": True,                 # off: no crossing, no level under it (tests compare the old plan)
+    "descent_min_citizens": 20,           # the fort this big before its stair goes past the first cavern...
+    "descent_min_levels": 8,              # ...and this many levels in its plan's districts
+    "descent_storage_citizens": 40,       # the storage district's new levels go under it from this many citizens
+    "descent_homes_verticality": 150,     # and the homes' too at this Verticality...
+    "descent_homes_citizens": 60,         # ...from this many citizens
+    "descent_band_levels": 6,             # the band of levels under the crossing
+    "deep_descent_cooldown_ticks": 600,   # a step a half day at most (each waits for the last to be dug or built)
+    # (0.105.47) Stockpile: the storage district (brain/planner_reserves.py)
+    "stockpile_signature": True,          # off: 2^(Stockpile/100) on the targets alone, as before
+    "reserve_storage_min": 30,            # from this Stockpile a fort digs storage levels for its reserves...
+    "reserve_vault_citizens": 20,         # ...one more for this many citizens / (stock factor - 1)
+    "reserve_vault_max": 8,               # at most this many storage levels for it
+    "reserve_vault_min_citizens": 15,
 }

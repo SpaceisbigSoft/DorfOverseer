@@ -559,6 +559,13 @@ def measures(s: dict, j: dict) -> dict:
         traps = sum(v for k, v in _d(b.get("trap_kinds")).items()
                     if k not in NOT_TRAPS and _num_or_none(v) is not None)
     meals = _d(s.get("supplies")).get("meal_servings")
+    # (0.105.47) the most citizens this run had: the Stockpile lines' "a dwarf"
+    peak_n = max(x for x in (j.get("peak_pop"), total) if isinstance(x, int)) or None
+    # (0.105.47) the storage the fort keeps: every stockpile kind's tiles but stone
+    # (lua logistics.storage; the Deep mine's ore piles and Industriousness's stone storage are stone)
+    store = _d(_d(s.get("logistics")).get("storage"))
+    store_tiles = (sum(int(_d(v).get("tiles") or 0) for k, v in store.items() if k != "stone" and isinstance(v, dict))
+                   if store and "error" not in store else None)
     good_meals = _d(s.get("supplies")).get("good_meals")
     loc_list = [_d(x) for x in _l(_d(s.get("locations")).get("list"))]
     needs = _d(s.get("needs"))
@@ -673,6 +680,9 @@ def measures(s: dict, j: dict) -> dict:
         if beds else None,
         "stockpiles": b.get("stockpiles"),
         "stores_pd": per((stocks.get("drink") or 0) + (meals or 0), total),
+        # (0.105.47) a dwarf at the peak (see LINES, Stockpile)
+        "store_tiles_pd": per(store_tiles, peak_n),
+        "stores_peak_pd": per((stocks.get("drink") or 0) + (meals or 0), peak_n),
         "levels": len(levels),
         "kinds": dict(kinds),
         "gatehouses": gatehouses,
@@ -971,8 +981,15 @@ LINES = [
     # (0.105.33) "tiles a level" measured the mix of level kinds
     ("Spacing", "new corridor tiles a level (fewest wins)", "-corridor_mean", {W, D}, set()),
     ("Spacing", "tiles a bedroom (smallest wins)", "-bedroom_tiles", {W, D}, set()),
-    ("Stockpile", "stockpiles", "stockpiles", {H, ME}, set()),
-    ("Stockpile", "drink and meals a dwarf", "stores_pd", {H, ME}, set()),
+    # (0.105.47) "stockpiles" counted pile buildings: a 1-tile feeder by a still and
+    # a 9x9 vault alike, and the Deep mine's ore pile by every workshop (its
+    # custom) and Industriousness's stone storage made E the fort with most (81).
+    # Now the storage the fort keeps, stone aside, a dwarf at the peak.
+    # "drink and meals a dwarf" divided by today's citizens: a fort that lost
+    # most of its dwarves led it (B: 4,427 servings for 28 dwarves, 158 each,
+    # the stores of a fort of 100). Now a dwarf at the peak.
+    ("Stockpile", "storage tiles a dwarf at the peak, stone aside", "store_tiles_pd", {H, ME}, set()),
+    ("Stockpile", "drink and meals a dwarf at the peak", "stores_peak_pd", {H, ME}, set()),
     # (0.105.29) the customs: levels each preset's two customs placed or shaped (Hermit also on levels_up)
     ("Piety", "cloister temples and cells", "custom_M", {M}, set()),
     ("Trade", "wide ways, tavern by the gate", "custom_ME", {ME}, set()),
@@ -996,7 +1013,7 @@ LINES = [
 # peak, not today's count: the statues and halls were built for the fort at
 # its biggest.
 PER_PEAK = ("barracks", "traps", "jails", "temples", "guildhalls", "petitions_yes", "petitions_no",
-            "statues", "halls", "craft_shops", "offices", "stockpiles")
+            "statues", "halls", "craft_shops", "offices")     # (0.105.47) stockpiles: its line is per peak itself
 PEAK_LINES = [(sl, what + " per 100 dwarves (peak)", k + "_pk", hi, lo)
               for sl, what, k, hi, lo in LINES if k in PER_PEAK]
 SIZE_RATIO = 2.0           # the biggest fort's peak this many times the smallest's: the per-peak lines

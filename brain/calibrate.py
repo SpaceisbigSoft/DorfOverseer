@@ -114,7 +114,8 @@ def _observe(key: str, state: dict, memory, cfg: dict) -> dict | None:
     if key in ("drink_per_dwarf", "meals_per_dwarf"):
         stock = st.get("drink" if key == "drink_per_dwarf" else "prepared_meals") or 0
         urgent = cfg["urgent_drink_per_dwarf" if key == "drink_per_dwarf" else "urgent_meals_per_dwarf"]
-        target = pop * cfg[key] * 2 ** (_d(_d(s.get("settings")).get("traits")).get("stockpile", 0) / 100)
+        from planner_reserves import stock_factor     # (0.105.47) the planner's own curve
+        target = pop * cfg[key] * stock_factor(_d(_d(s.get("settings")).get("traits")))
         # meals: thin only when the fort is short of food altogether (dwarves eat
         # raw food too; few meals with plenty of food is the cooks' problem)
         thin = stock < urgent * pop if key == "drink_per_dwarf" else food_thin

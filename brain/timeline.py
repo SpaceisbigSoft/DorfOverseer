@@ -107,7 +107,8 @@ def row_for(state: dict, events: list[dict] | None = None, cfg: dict | None = No
         row["threats"] = _d(s.get("others_on_map")).get("threats_that_can_reach_dwarves", 0) or 0
     # stock against the target it is kept to (1.0 = exactly the target)
     if cfg and m.get("pop") and "stocks" not in s["_errors"]:
-        stock_factor = 2 ** (_d(_d(s.get("settings")).get("traits")).get("stockpile", 0) / 100)
+        from planner_reserves import stock_factor as _sf      # (0.105.47) the planner's own curve
+        stock_factor = _sf(_d(_d(s.get("settings")).get("traits")))
         for k, key in (("drink_ratio", "drink_per_dwarf"), ("meals_ratio", "meals_per_dwarf")):
             want = cfg.get(key)
             have = m.get("drink_pd" if k == "drink_ratio" else "meals_pd")

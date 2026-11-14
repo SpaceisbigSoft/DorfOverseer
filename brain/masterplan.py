@@ -882,3 +882,67 @@ def note_stairwell(memory, district: str, x: int, y: int) -> None:
     for d in _l(_peek(memory).get("districts")):
         if isinstance(d, dict) and d.get("id") == district:
             d["stair"] = {"x": int(x), "y": int(y)}
+
+
+# --- (0.105.47) the descent past the first cavern ------------------------------------
+# The 14 Nov scorecard: the Deep mine (E) was the shallowest fort (deepest
+# level 8 under the surface, B 29). _range keeps every district
+# CAVERN_MARGIN levels over the first cavern and the builder's stair never
+# enters a cavern tile, so a deep plan stopped at Cavern1. At Verticality
+# CROSS_VERTICALITY or more the spine is taken through the cavern in a
+# walled shaft (lua/ai-descent.lua, brain/planner_descent.py), and once it
+# stands the deep districts' new levels go under it (deep_band).
+CROSS_VERTICALITY = 100    # the Deep mine is 120
+DEEP_BAND = 6              # levels of the band under the crossing
+DEEP_CLEAR = 2             # rock levels between the cavern's layer and the band (lua/ai-descent.lua BELOW_ROCK)
+
+
+def crosses_caverns(traits: dict | None) -> bool:
+    """(0.105.47) A fort deep enough in mind to take its stair past the first cavern."""
+    return isinstance(traits, dict) and (traits.get("verticality", 0) or 0) >= CROSS_VERTICALITY
+
+
+def cavern_to_cross(memory) -> dict | None:
+    """(0.105.47) The first cavern under the spine's top, from the atlas
+    survey: {name, top, bottom, next_top} in elevations (next_top: the top of
+    the next deep layer under it, None when none is known). None without a
+    plan, a survey or a cavern under the spine."""
+    p = _peek(memory)
+    spine = p.get("spine") if isinstance(p.get("spine"), dict) else None
+    sv = _d(_d(getattr(memory, "atlas", None)).get("survey"))
+    off = sv.get("elevation_offset")
+    if not isinstance(off, int):
+        off = _d(sv.get("site")).get("elevation_offset")
+    if not spine or not isinstance(spine.get("top"), int) or not isinstance(off, int):
+        return None
+    layers = []
+    for ly in _l(sv.get("layers")):
+        if (isinstance(ly, dict) and isinstance(ly.get("z_top"), int) and isinstance(ly.get("z_bottom"), int)
+                and ly["z_top"] + off < spine["top"]):
+            layers.append((ly["z_top"] + off, ly["z_bottom"] + off, str(ly.get("name", ""))))
+    layers.sort(reverse=True)
+    for i, (top, bottom, name) in enumerate(layers):
+        if name.startswith("Cavern"):
+            nxt = next((t for t, _b, _n in layers[i + 1:] if t < bottom), None)
+            return {"name": name, "top": top, "bottom": bottom, "next_top": nxt}
+        return None                     # the first deep layer under the spine is no cavern
+    return None
+
+
+def deep_band(memory, kind: str, bottom: int, next_top: int | None = None, height: int = DEEP_BAND) -> dict | None:
+    """(0.105.47) Where a level of this kind goes under the crossing: the
+    band from `bottom` (the crossing's lowest step, DEEP_CLEAR under the
+    cavern's layer) `height` levels down, kept CAVERN_MARGIN over the next
+    deep layer; the level used least so far, the highest first (the band
+    fills from the stair down). {elev_lo, elev_hi, elev_target, extend,
+    deep}, or None when there is no room."""
+    hi = int(bottom)
+    lo = hi - max(1, int(height)) + 1
+    if isinstance(next_top, int):
+        lo = max(lo, next_top + CAVERN_MARGIN)
+    if lo > hi:
+        return None
+    d = _district(memory, kind)
+    used = [lv.get("elevation") for lv in _l((d or {}).get("levels")) if isinstance(lv, dict)]
+    target = min(range(lo, hi + 1), key=lambda e: (used.count(e), hi - e))
+    return {"elev_lo": lo, "elev_hi": hi, "elev_target": target, "extend": DEEP_EXTEND, "deep": True}
