@@ -64,6 +64,8 @@ from planner_hunt import _hunt_rule, note_hunt_cycle  # noqa: E402  (0.105.45) h
 from planner_shelter import _shelter_pick_rule  # noqa: E402  (0.105.45) the shelter away from the threat
 from planner_stuck import _stuck_rule, note_stuck  # noqa: E402  (0.105.45) the sweep for things stuck "in progress"
 from planner_thirst import _thirst_rule, thirst_journal  # noqa: E402,F401  (0.105.46, I2) the thirst watch
+import fields  # noqa: E402  (0.105.47) the Garden fort's surface fields (masterplan's field customs)
+from planner_garden import _garden_court_rule, garden_pace  # noqa: E402,F401  (0.105.47) the garden court
 from planner_killzone import _killzone_rule  # noqa: E402  (0.105.45) kill zones at the gates and cavern openings
 from planner_lure import _lure_rule  # noqa: E402  (0.105.45) a sealed cavern beast lured into a pocket, cut off
 from planner_recovery import _migrants_rule, note_recovery, recovery_apply  # noqa: E402  (0.105.46, I4) collapse recovery
@@ -152,6 +154,7 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
     # on; then the customs it adopts. At Scripts: nothing adopted, nothing proposed
     _guard(design_rule, s, traits, cfg, proposals, notes, memory)
     _guard(_set_adopted, s, memory, traits)
+    _guard(fields.note, s, cfg.get("garden_fort", True))   # (0.105.47) the surface fields for the field customs
     buffer = factor(traits, "stockpile")
     winter = winter_factor(s, memory)               # stock up before winter (and through it)
 
@@ -754,6 +757,9 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
         _guard(_keep_rule, s, cfg, citizens, traits, proposals, notes, memory)
         # 6e-0b. (0.105.30) the surface hall (one building above ground at a time)
         _guard(_hall_rule, s, cfg, citizens, traits, proposals, notes, memory, rules_)
+        # 6e-0b2. (0.105.47) the Garden fort's garden court by the fields
+        if "garden_court" not in errors:
+            _guard(_garden_court_rule, s, cfg, citizens, traits, proposals, notes, memory, rules_)
     # 6e-0c. (0.105.30) blocks for what is to be built (after the idle hands: not ordered twice)
     if can_use("stocks", "orders", "buildings"):
         _guard(_construction_blocks_rule, s, cfg, citizens, traits, proposals, notes, memory, rules_)

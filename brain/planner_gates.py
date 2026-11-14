@@ -590,9 +590,18 @@ def _second_way_rule(s: dict, memory, cfg: dict, traits: dict, proposals: list, 
     off = _d(s.get("map")).get("elevation_offset")
     off = off if isinstance(off, int) else 0
     why = ("citizens were stranded outside once; " if hermit else "")
-    proposals.append(Proposal("second_way", {"type": "dig_way_in", "second": True},
+    act = {"type": "dig_way_in", "second": True}
+    # (0.105.47) the Garden fort's field customs: the second way comes up by
+    # its fields above ground (a stair from the field hall and kitchens to them)
+    import fields
+    f = fields.current() if customs.has(traits, "field_hall") else None
+    toward = ""
+    if f and isinstance(f.get("x"), int) and isinstance(f.get("y"), int):
+        act["near"] = {"x": f["x"], "y": f["y"]}
+        toward = f", as near the fields above ground (x{f['x']} y{f['y']}) as it may"
+    proposals.append(Proposal("second_way", act,
                               f"{why}one way to the surface (x{e.get('x')} y{e.get('y')} elevation "
-                              f"{(e.get('z') or 0) + off}): dig a second, 15-40 tiles off",
+                              f"{(e.get('z') or 0) + off}): dig a second, 15-40 tiles off{toward}",
                               5 if sw.get("stranded_ever") else 9))   # (0.105.36, X1) not behind routine work then
 
 

@@ -15,6 +15,7 @@ from planner_core import *  # noqa: F401,F403
 from planner_construct import _soil_floor_rule  # (0.105.30) block floors over a finished hall's soil
 from planner_growth import *  # noqa: F401,F403  (13c: split out by theme)
 from planner_wells import *  # noqa: F401,F403  (13c: split out by theme)
+from planner_garden import garden_pace  # (0.105.47) the statue gardens sooner by Agriculture
 from planner_alloys import gear_metals  # (fix41) tin and bismuth kept for bronze while there is no iron
 
 __all__ = ["STUCK_FALLBACKS", "stuck_fallback", "magma_access", "GROWTH", "GROWTH_EXTRA_SCORE", "GROWTH_MAX", "growth_want", "growth_candidates", "settled_times", "growth_wait", "GROWTH_SOLDIERS", "GROWTH_ZONES", "GROWTH_MAX_OF", "GROWTH_AT", "TRAIT_NAMES_SHORT", "FURNITURE_RECIPES", "METAL_FURNITURE", "spare_metal", "WOODEN_FURNITURE", "BASIC_WORKSHOPS", "BASIC_STOCKPILES", "memorial_due", "_well_rule", "_well_lid_rule", "cavern_danger", "_planned_note", "_planned_parts_rule", "planned_wants", "_water_zone_rule", "cavern_well_need", "cavern_points", "cavern_action", "cavern_well_safe", "WELL_PARTS_SHOPS", "chain_metal", "well_parts_plan", "_well_parts", "_room_repair_rule", "_water_traffic_rule", "_cleanup_rule", "STORE_GROW", "stone_tidiness", "jail_plan", "cistern_pop", "tavern_factor", "full_stores", "LEARNING_NEEDS", "_stairwell_rule", "WATER_WORDS", "water_summary", "_water_rules", "CISTERN_WORDS", "_cistern_parts", "_cistern_rule", "_deep_notes", "good_times", "ORDINALS", "garden_name", "_pop_cap_rule", "fort_strain", "hospital_shortfall", "dining_shortfall", "social_shortfall", "SOCIAL_KINDS", "_join_rule", "_dig_stall_rule", "_shrink_rule", "room_size", "_project_rules", "CHARACTER_KINDS", "is_character_level", "character_slot_reserved", "character_slot_filter", "temple_size", "more_temple", "has_grand_temple", "piety_slot", "LADDER_BASE", "LADDER_TRAITS", "_ladder_kind", "_ladder_word", "ladder_score", "tombs_short", "PLACEMENT_CUSTOMS", "apply_customs", "customs_pass"]
@@ -1376,7 +1377,8 @@ def _project_rules(s, traits, cfg, proposals, notes, can_use, memory) -> None:
                           f"a devout fort (Piety {int(traits.get('piety', 0)):+d}) with no grand temple: "
                           "raise a grand temple to all gods"))
         if (allow.get("garden", True) and goal != "maintain" and "garden" not in kinds_open
-              and memory is not None and good_times(s, memory, traits, cfg)):
+              and memory is not None
+              and good_times(s, memory, traits, cfg, pace=garden_pace(traits, cfg))):   # (0.105.47) sooner by Agriculture
             name = garden_name(s, memory)
             action = {"type": "start_project", "kind": "garden", "name": name}
             reason = (f"good times (fed, safe, {round(100 * _idle_share(s))}% idle): dig a statue garden, "

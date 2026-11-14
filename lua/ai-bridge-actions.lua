@@ -1350,7 +1350,15 @@ end
 function act_dig_way_in(a)
     -- (0.105.33) second = true: a second way to the surface by design (no stranded spot)
     if a.second == true then
-        return reqscript('ai-builder').dig_way_in({second = true}, get_date(), a.dry_run == true)
+        -- (0.105.47) near {x, y}: the second way's top as near there as it may go (the Garden fort's fields)
+        local near
+        if a.near ~= nil then
+            local nx = type(a.near) == 'table' and int_in(a.near.x, 0, 1000) or nil
+            local ny = type(a.near) == 'table' and int_in(a.near.y, 0, 1000) or nil
+            if not nx or not ny then return reject('dig_way_in: near is {x, y} on the map') end
+            near = {x = nx, y = ny}
+        end
+        return reqscript('ai-builder').dig_way_in({second = true, near = near}, get_date(), a.dry_run == true)
     end
     local x, y, z = int_in(a.x, 0, 1000), int_in(a.y, 0, 1000), int_in(a.z, 0, 1000)
     if not x or not y or not z then return reject('dig_way_in needs x, y, z (where the stranded stand)') end

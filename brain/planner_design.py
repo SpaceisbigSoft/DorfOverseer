@@ -312,7 +312,7 @@ def _wish(lang: dict | None, memory, traits: dict) -> dict | None:
     library piece of a kind not built yet."""
     lm = landmarks_of(memory)
     done = {(_d(e).get("kind"), _d(e).get("for")) for e in _l(lm and lm.get("list"))
-            if _d(e).get("status") in ("built",) + ACTIVE}
+            if _d(e).get("status") in ("built", "court") + ACTIVE}      # (0.105.47) court: the garden court's
     tried = {_d(e).get("kind") for e in _l(lm and lm.get("list"))}
     flat = no_surface(traits)
     for w in _l(_d(lang).get("landmarks")):
@@ -396,6 +396,12 @@ def _fallback(s, e, memory, traits, now, proposals, notes) -> None:
     library level (FALLBACK), else dropped."""
     if library().get(e["kind"]) is not None:
         _to_fallback(e)
+        return
+    if e["kind"] == "garden_court" and not no_surface(traits):
+        # (0.105.47) no library drawing of one: the garden court above ground
+        # by the fields (planner_garden, lua/ai-builder-court.lua) builds it
+        e.update(status="court", fallback=True, by="library")
+        notes.append(f"design: the landmark {game_text(e.get('name'), 40)} goes to the garden court by the fields")
         return
     tmpl = FALLBACK.get(e["kind"])
     if tmpl is None:

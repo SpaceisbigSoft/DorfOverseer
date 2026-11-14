@@ -360,7 +360,8 @@ end
 -- Material: buildingplan's filter is left as it is [verify: no per-building
 -- item filter is relied on]; the brain waits until free blocks cover the
 -- tiles, so blocks are what lies nearest.
-SOIL_FLOOR_KINDS = {dining = true, tavern = true, temple = true, library = true, memorial = true}
+SOIL_FLOOR_KINDS = {dining = true, tavern = true, temple = true, library = true, memorial = true,
+                    garden = true}   -- (0.105.47) the Garden fort's statue gardens dug in the soil
 SOIL_FLOOR_MAX = 60
 SOIL_FLOOR_PHASES = {decorate = true, done = true}       -- finished (finish_project has run)
 
@@ -428,7 +429,7 @@ function floor_soil_rooms(project_id, dry_run)
     for _, q in ipairs(data.list or {}) do if q.id == project_id then p = q end end
     if not p then return {ok = false, rejected = true, error = 'no such project'} end
     if not SOIL_FLOOR_KINDS[p.kind] then
-        return {ok = false, rejected = true, error = 'soil floors are finished in halls only (dining, tavern, temple, library, memorial)'}
+        return {ok = false, rejected = true, error = 'soil floors are finished in halls only (dining, tavern, temple, library, memorial, garden)'}
     end
     if not SOIL_FLOOR_PHASES[p.phase] then
         return {ok = false, rejected = true, error = 'that project is not finished yet'}

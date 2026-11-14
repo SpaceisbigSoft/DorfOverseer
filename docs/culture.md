@@ -120,10 +120,13 @@ counts them, one line per preset.
 | War-hold | `armoury` | Militarism 100+ | barracks get an alcove past the racks with a weapon and an armour pile |
 | Deep mine | `deep_hall` | Mining 100+ and Verticality 60+ | the dining level in the industry district's band (the deepest) |
 | Deep mine | `ore_piles` | Mining 100+ and Verticality 60+ | workshop levels get one 5x5 stone (and ore) stockpile room |
-| Garden fort | `field_hall` | Agriculture 80+ | the dining level at the farms' elevation |
-| Garden fort | `field_kitchens` | Agriculture 80+ | a workshop level of food shops only at the farms' elevation |
+| Garden fort | `field_hall` | Agriculture 80+ | the dining level at the farms' elevation (3+ under the surface), or (0.105.47) just under the fields above ground (first, at Surface 50+) |
+| Garden fort | `field_kitchens` | Agriculture 80+ | a workshop level of food shops only, placed as `field_hall` |
 
 A mixed fort may meet both dining customs: `deep_hall` wins over `field_hall`.
+(0.105.47) With `field_hall` the fort's statue gardens go in the soil band (the
+farms district) too, and the garden court above ground (brain/planner_garden.py)
+comes with Agriculture 100+, Grandeur 30+ and Surface 50+.
 Earned quirks keep the last word on a level's ways (Narrow ways, Great shaft).
 
 ## Construction (sliders, 0.105.30)

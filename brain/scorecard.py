@@ -1009,16 +1009,16 @@ COLLAPSE_MIN = 10          # ... when its peak was at least this many
 FLAT_ACTIONS = {
     "levers": ("link_lever", "build_gate_doors", "build_gatehouse"),
     "ai_levers": ("link_lever", "build_gate_doors", "build_gatehouse"),
-    "built_up": ("place_keep", "place_hall", "build_wings", "build_gatehouse"),
+    "built_up": ("place_keep", "place_hall", "build_wings", "build_gatehouse", "place_garden_court"),
     "roofed_up": ("place_keep", "place_hall"),
     "gate_walls": ("build_wings", "build_gatehouse", "fortify_entrance"),
     "cavern_walls": ("seal_cavern",),
     "soil_floors": ("floor_rooms",),
 }
 FLAT_WORDS = {
-    "custom_G": "the Garden fort's customs move a dining hall or a food-shop level to the farms only when "
-                "the farms lie 3+ levels under the surface (masterplan FIELD_TOP); farms in the topsoil "
-                "keep them where they were",
+    "custom_G": "the Garden fort's customs move a dining hall or a food-shop level to the farms 3+ levels "
+                "under the surface (masterplan FIELD_TOP), or (0.105.47) to the level just under its fields "
+                "above ground (fields.py); a fort with neither keeps them where they were",
     "grand_temples": "DF's grand tier (a temple complex) wants a temple worth 10000: see the best temple's value",
     "same_booze_pct": "measured (the stress census: every citizen's thoughts of the last days, the bridge's "
                       "same_booze count): no citizen was upset by the same booze, the drink-variety rule at work",

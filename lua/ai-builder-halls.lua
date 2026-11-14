@@ -226,6 +226,9 @@ function find_hall_site(kind)
     for _, h in ipairs(halls_data().list) do
         table.insert(avoid, {x1 = h.x1, y1 = h.y1, x2 = h.x2, y2 = h.y2, z = h.z})
     end
+    -- (0.105.47) the garden court (ai-builder-court) kept clear too
+    local okc, crs = pcall(function() return court_rects() end)
+    for _, r in ipairs(okc and type(crs) == 'table' and crs or {}) do table.insert(avoid, r) end
     local channels = planned_channels()
     local mw, mh = map_size()
     -- (0.105.33) the underground depot road's mouth, where the wagons turn

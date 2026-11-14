@@ -374,6 +374,21 @@ ACTIONS = {
     -- (0.105.46, I2) the drink forbidden in a parched dwarf's walk group let
     -- go, the nearest first (lua/ai-thirst.lua; never with the gates shut
     -- against enemies, never near a danger)
+    -- (0.105.47) one stage of the Garden fort's garden court above ground
+    -- (lua/ai-builder-court.lua): {name, paths, statues, dry_run}
+    place_garden_court = function(a)
+        if a.name ~= nil and (type(a.name) ~= 'string' or not a.name:match("^[A-Za-z' ]+$") or #a.name > 40) then
+            return reject('place_garden_court: name is a plain name (letters, spaces, apostrophes; up to 40)')
+        end
+        if a.paths ~= nil and type(a.paths) ~= 'boolean' then return reject('place_garden_court: paths is true or false') end
+        local n = 0
+        if a.statues ~= nil then
+            n = type(a.statues) == 'number' and math.tointeger(a.statues) or nil
+            if not n or n < 0 or n > 4 then return reject('place_garden_court: statues is 0-4') end
+        end
+        return reqscript('ai-builder').place_garden_court(a.dry_run == true,
+            {name = a.name, paths = a.paths == true, statues = n})
+    end,
     thirst_unforbid = function(a)
         local id = type(a.unit_id) == 'number' and math.tointeger(a.unit_id) or nil
         if not id then return reject('thirst_unforbid needs unit_id') end
@@ -705,6 +720,7 @@ for _, name in ipairs({
     'build_killzone', 'reset_cage_traps',   -- (0.105.45) each dry run plans (or counts) and places nothing
     'thirst_unforbid',   -- (0.105.46, I2) its dry run counts the drinks and lets none go
     'call_migrants',   -- (0.105.46, I4) its dry run names the script and queues nothing
+    'place_garden_court',   -- (0.105.47) its dry run finds the site (quickfort's dry run) and places nothing
 }) do DRY_OK[name] = true end
 
 -- These only change what's displayed, so they still work while halted, dry
@@ -1257,6 +1273,9 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
     -- stranded, the last cancelled Drink job), and the deaths of thirst with
     -- the last reason known (lua/ai-thirst.lua; in the pulse)
     thirst = function() return safe(function() return reqscript('ai-thirst').report() end) end,
+    -- (0.105.47) the Garden fort's garden court above ground: its stage, the
+    -- walls, beds, statues and seats built or waiting (lua/ai-builder-court.lua; nil: none)
+    garden_court = function() return safe(function() return reqscript('ai-builder').garden_court_status() end) end,
     -- (0.105.30) what the fort has built: finished constructions by shape and
     -- material, above or below ground, roofed surface tiles, the waiting ones
     -- and the AI's own (lua/ai-constructions.lua; one pass, every 3 days)
@@ -1373,6 +1392,7 @@ CACHE_INVALIDATES.landmark_step = {'registry'}
 for _, name in ipairs({'place_hall', 'build_wings', 'floor_rooms', 'place_keep'}) do
     CACHE_INVALIDATES[name] = {'constructions'}
 end
+CACHE_INVALIDATES.place_garden_court = {'constructions'}   -- (0.105.47)
 SECTION_CACHE = SECTION_CACHE or {}
 -- (0.104.8) a new bridge starts with an empty cache: DFHack keeps a script's
 -- globals across runs, so a section cached by older code (0.104.7's

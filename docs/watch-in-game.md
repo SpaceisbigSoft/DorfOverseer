@@ -13,6 +13,14 @@ The forts are A War-hold, B Monastery, C Merchant city, D Hermit hold, E Deep mi
 The quick way through this file: `python brain\seen.py` (from any DF-AI folder) writes each folder's `logs\seen-ledger.md` and a summary across them (`DF-AI\logs\seen-ledger-all.md`): every section, action and Rules switch since 0.105.32 as seen, refused (why), not yet met or in error, and this file's lines ticked where the reports and journals show them. Lines about how things look stay "needs eyes".
 
 
+## 0.105.47 (J14): the Garden fort's gardens ("garden fort should have gardens")
+
+- **F, journal**: a `start_project` dining level and a food-shop level (Still, Kitchen...) with `"customs": ["field_hall"]` / `["field_kitchens"]` and `plan.elev_hi` one under the surface fields' elevation (state.json `farms.plot_list`, the entries with `underground: false`); the scorecard's "halls and kitchens by the fields" above 0. In the game: the hall a level under the fields, off the main stair toward them. Does the shelter burrow still take the hall in (it keeps 12 tiles and 2 levels round an open way in; a hall right under the way in is left out of it)?
+- **F, journal**: the second way to the surface (`dig_way_in` with `second: true`) carries `near` {x, y} = the fields' centre; its stair comes up by the fields (15-40 tiles from the main way in, as before).
+- **F, state.json `garden_court`**: once the keep and the surface hall are not building and 50 blocks/stone/logs are free: `place_garden_court` in the journal, stage by stage (clearing, walls, beds, furnish, done). In the game: a 9x9 (or 7x7) walled court with one door by the fields; four farm plots (beds) on its soil, the trees that stood inside left standing, a cross of block paths (Grandeur 30+), up to four statues round the heart (free ones only) and chairs by the walls; a meeting area "The <name> Garden Court" over it. Do dwarves sow the beds (above-ground crops, the farmers' job) and meet there? Is the meeting zone's name taken (else it is placed unnamed)?
+- **The design track (Architect)**: a `garden_court` landmark wish (nature lovers) is no longer dropped: "goes to the garden court by the fields" in the notes, and the court is built (also in a fort without the Garden sliders, Surface above -50).
+- **F, underground gardens**: statue garden levels (`kind: garden`) land in the soil band (the farms district) and `floor_rooms` follows on each finished one (the scorecard's "soil floors finished" above 0, "garden levels" up); gardens come about 1.7x as often at Agriculture 120.
+
 ## 0.105.46 (I1): the "seen in game" ledger
 
 - **All, after the keeper's first daily check**: `logs\seen-ledger.md` exists and `logs\health-check.txt` has a `seen:` part ("seen since 0.105.32: N seen, M refused or failed, K not yet met, E section errors"); a report section that returns `{"error"}` is flagged there ("report section 'x' returns an error: ...").
