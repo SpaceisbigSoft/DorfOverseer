@@ -395,6 +395,9 @@ function defaults()
                                    -- (0.105.45) ...now between the threat and the shelter (a choke, else the barracks)
         -- (0.105.41, item 2) the AI's feeder piles linked to the AI's own workshops (lua/ai-pile-links.lua)
         link_feeders = true,
+        -- (0.105.45) a great beast sealed in a cavern lured into a pocket behind a cavern
+        -- door and caught in cage traps or shut in (lua/ai-lure.lua, brain/planner_lure.py)
+        lure_beasts = true,
         -- (item5) siege works and the field guard (lua/ai-siege.lua, brain/planner_siege.py):
         -- ballistae at the gates (only with Fortification or Engineering high), crossbows
         -- posted behind fortifications in a siege, a squad out to a caravan under attack,
@@ -509,6 +512,7 @@ function sanitize(s)
                         'cavern_logging',           -- (item10) cavern trees felled when safe
                         'squads_shelter',           -- (0.105.0) the squads hide in the shelter too
                         'link_feeders',             -- (0.105.41, item 2) feeder piles linked to their workshops
+                        'lure_beasts',              -- (0.105.45) a sealed beast lured into a pocket
                         'hunting', 'cavern_farms',  -- (0.105.41, item 4) provisions
                         'siege_engines', 'archer_posts', 'caravan_guard', 'wildlife_hunts',   -- (item5)
                         'killzones',                -- (0.105.45) kill zones at the gates and cavern openings
@@ -625,6 +629,7 @@ function for_ai(s)
         open_caverns = s.open_caverns,             -- (0.105.4 review)
         squads_shelter = s.squads_shelter,         -- (0.105.0)
         link_feeders = s.link_feeders,             -- (0.105.41, item 2)
+        lure_beasts = s.lure_beasts,               -- (0.105.45)
         siege_engines = s.siege_engines, archer_posts = s.archer_posts,       -- (item5)
         caravan_guard = s.caravan_guard, wildlife_hunts = s.wildlife_hunts,
         killzones = s.killzones,                   -- (0.105.45)

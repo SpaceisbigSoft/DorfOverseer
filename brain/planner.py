@@ -63,6 +63,7 @@ from planner_hunt import _hunt_rule, note_hunt_cycle  # noqa: E402  (0.105.45) h
 from planner_shelter import _shelter_pick_rule  # noqa: E402  (0.105.45) the shelter away from the threat
 from planner_stuck import _stuck_rule, note_stuck  # noqa: E402  (0.105.45) the sweep for things stuck "in progress"
 from planner_killzone import _killzone_rule  # noqa: E402  (0.105.45) kill zones at the gates and cavern openings
+from planner_lure import _lure_rule  # noqa: E402  (0.105.45) a sealed cavern beast lured into a pocket, cut off
 from planner_hauling import _hauling_labor_rule, note_hauling  # noqa: E402  (0.105.40 M5) hauling balanced
 from planner_traffic import _traffic_rule  # noqa: E402  (0.105.41) traffic zones on the AI's own levels
 from planner_food import _food_store_rule, note_food  # noqa: E402  (0.105.40b, M6) the food store
@@ -234,6 +235,10 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
     # (0.105.0) round 3: fire guarded, prisoners, thieves, the undead, werebeasts, cavern beasts, the wounded
     if can_use("threats"):
         _guard(_threat_rules, s, memory, cfg, proposals, notes)
+    # (0.105.45) a great beast sealed in the caverns lured into a pocket behind a
+    # cavern door and caught or shut in (planner_lure; the bridge's `lures`)
+    if "lures" not in errors:
+        _guard(_lure_rule, s, cfg, proposals, notes, memory)
     # (0.105.40b) evil weather: the alarm while an evil cloud or rain is on the fort, lifted hours after
     # (fix41-ff) always: an unread weather report still keeps the spell's alarm up
     _guard(_weather_rules, s, memory, cfg, proposals, notes)

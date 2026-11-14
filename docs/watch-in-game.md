@@ -48,6 +48,14 @@ The forts are A War-hold, B Monastery, C Merchant city, D Hermit hold, E Deep mi
 - **TRAPAVOID**: a titan or forgotten beast at a gate shows `trapavoid` true or false in `killzones.threats`; when true the note says the traps never touch it and the zone gets only the drawbridge. Does a cage trap catch a goblin (and the full cage get hauled to an animal stockpile by DF itself, the trap loaded again)?
 - **Weapon traps (Fortification 80+)**: a `metal_trap_blades` order at the forge is accepted by DF (MakeTrapComponent, ITEM_TRAPCOMP_GIANTAXEBLADE) and the `Tw` traps get their blades.
 - **Army tab**: the switch **Kill zones at the gates** (on), in the right-hand column beside the missions row.
+## 0.105.45 (H4): a sealed cavern beast lured in and cut off
+
+- **All, state.json**: `lures` (each pulse): `beasts` (each great danger with `immune` read from its caste's TRAPAVOID: **check it reads true/false, not missing**, for a forgotten beast and for a titan or megabeast if one comes), `candidates` (the AI's cavern doors with `fits` or the `why` not), `lures` (per pocket: `phase`, `traps_built`, `traps_loaded`, `traps_full`, `inner`/`mouth` `built`/`shut`/`linked`, `seal.locked`, `citizens_near`), `cavern_citizens`, `mechanisms`. No `error`.
+- **A forgotten beast sealed 7+ days** (`threats.sealed["all caverns"].days`): `build_lure` in the journal; the pieces planned behind the cavern door: cage traps on the 1-wide way (3-6 tiles) and a door named "AI lure gate" where it ends (or two drawbridges and two levers named "AI lure lever" for a trap-immune beast, the links made once built). Nothing on a room, a workshop's floor or the depot's road.
+- **Cage traps**: whether DF loads an empty cage into each (`traps_loaded`) or needs none (the AI opens on `built` alone): say which.
+- **Ready**: `lure_shut` locks the inner door (raises the bridges) first; then `lure_open` only with nobody in the caverns and nobody in or beside the pocket (a refusal says why); the cavern door unlocked, `threats.openings.list[].lure_open` true, and **no `seal_cavern` re-lock of it** while open; the gate watcher not closing that entrance.
+- **Open**: the beast walks in? caught in a cage (`phase` caught, then `lure_shut` and `done.how` "caught"; the cage stays where it is: watch that nothing pits or frees it), or for a trap-immune one the mouth raised behind it (`shut_in`, `held_beasts`, the caverns' seal opened again by planner_threats). Nothing within 3 days: `lure_shut` with "try N", opened again after 4, 8, 16... days.
+- **Risks to watch**: a building destroyer bashing the locked inner door (a cage-trap pocket has a door there); the gates scan taking the lure's door or bridges as the cavern entrance's gates (renamed "AI gate N"?); the alarm/military rules reacting to a beast shut in the pocket; DF's pathing ignoring the open door (the beast never comes).
 
 ## item1 (14 Nov): the thirst trap (B, 13 Nov: 66 dead of thirst beside 845 drinks)
 

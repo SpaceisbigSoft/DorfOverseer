@@ -812,6 +812,16 @@ function MilitaryPage:init()
     })
     table.insert(views, widgets.Label{frame = {t = t + 16, l = 60}, text = {
         {text = S.PEACE_HELP, pen = COLOR_GREY}}})
+    -- (0.105.45) a great beast sealed in a cavern lured into a pocket: the right-hand
+    -- column's free row t+3 (beside the Military heading, clear of the disposal rows)
+    table.insert(views, widgets.ToggleHotkeyLabel{
+        view_id = 'lure_beasts',
+        frame = {t = t + 3, l = 56, w = 50},
+        label = 'Lure a sealed beast into a trap:',
+        label_width = 34,
+        initial_option = p.settings.lure_beasts ~= false,
+        on_change = function(v) p:set_field('lure_beasts', v) end,
+    })
     -- (item10) cavern trees felled when wood is short and the caverns are watched
     -- (merge 0.105.41: right-hand column, row t+17, beside the provisions' switches)
     table.insert(views, widgets.ToggleHotkeyLabel{
@@ -1002,6 +1012,7 @@ function MilitaryPage:refresh()
     end
     self.subviews.cavern_logging:setOption(s.cavern_logging ~= false, false)        -- (item10)
     self.subviews.hunt:setOption(S.HUNT_NAMES[s.hunt] and s.hunt or 'ai', false)   -- (0.105.45)
+    self.subviews.lure_beasts:setOption(s.lure_beasts ~= false, false)              -- (0.105.45)
     self.subviews.missions:setOption(S.MISSION_NAMES[s.missions] and s.missions or 'rescue', false)   -- (0.105.39)
     self.subviews.send_missions:setOption(s.send_missions == true, false)
     self.subviews.peace:setOption(S.PEACE_NAMES[s.peace] and s.peace or 'ai', false)   -- (0.105.41, item 8)

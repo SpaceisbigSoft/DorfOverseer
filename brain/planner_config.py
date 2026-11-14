@@ -1044,4 +1044,13 @@ PLANNER_CONFIG = {
     "killzone_traps": 4,                  # traps a zone (the stretch allows 3-6)
     "killzone_traps_high": 6,             # ...at Fortification or Caution killzone_all_slider and up
     "killzone_cooldown_ticks": 1200,      # one step (a zone, or the next step of its drawbridge) a game day
+    # (0.105.45) a great beast sealed in a cavern lured into a pocket and cut off (brain/planner_lure.py)
+    "lure_after_days": 7,                 # a great danger sealed in the caverns this long: the lure is built
+    "lure_open_days": 3,                  # open this long with nothing caught: shut again...
+    "lure_retry_days": 4,                 # ...and opened again after this, doubled each try...
+    "lure_retry_max_days": 56,            # ...up to this
+    "lure_build_cooldown_ticks": 600,     # the pocket's next step (pieces, levers, links) twice a day at most
+    "lure_open_cooldown_ticks": 300,
+    "lure_shut_cooldown_ticks": 25,       # shutting is safety: soon again if it didn't take
+    "lure_archer_cooldown_ticks": 1200,
 }

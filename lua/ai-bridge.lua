@@ -371,6 +371,22 @@ ACTIONS = {
         -- release_only: the thirsty and hungry let out, nobody locked in (run_action sets it while halted)
         return reqscript('ai-killers').cell({units = ids, release_only = a.release_only == true}, a.dry_run == true)
     end,
+    -- (0.105.45) a great beast sealed in a cavern lured into a pocket behind
+    -- one of the AI's cavern doors and caught or shut in (lua/ai-lure.lua)
+    build_lure = function(a)
+        if type(a.opening) ~= 'string' then return reject('build_lure needs opening ("x,y,z")') end
+        local beast = a.beast ~= nil and math.tointeger(a.beast) or nil
+        if a.beast ~= nil and not beast then return reject('build_lure: beast is a unit id') end
+        return reqscript('ai-lure').build_lure(a.opening, beast, a.dry_run == true)
+    end,
+    lure_open = function(a)
+        if type(a.opening) ~= 'string' then return reject('lure_open needs opening ("x,y,z")') end
+        return reqscript('ai-lure').lure_open(a.opening, a.dry_run == true)
+    end,
+    lure_shut = function(a)
+        if type(a.opening) ~= 'string' then return reject('lure_shut needs opening ("x,y,z")') end
+        return reqscript('ai-lure').lure_shut(a.opening, a.dry_run == true)
+    end,
     -- (0.105.40 M5) hauling balanced: haulers added, key specialists relieved (lua/ai-hauling.lua)
     add_haulers = act_add_haulers,
     relieve_haulers = act_relieve_haulers,
@@ -654,6 +670,7 @@ for _, name in ipairs({
     'killer_cell',    -- (item3) its dry run finds the rooms and changes nothing
     'shelter_pick', 'squad_station',   -- (0.105.45) each dry run checks and changes nothing
     'stuck_reset',    -- (0.105.45) its dry run counts the lever's pull jobs and changes nothing
+    'build_lure', 'lure_open', 'lure_shut',   -- (0.105.45) each dry run plans or checks and changes nothing
     'add_haulers', 'relieve_haulers',   -- (0.105.40 M5) each dry run names the dwarves and changes nothing
     -- (0.105.40b, M6) the food store: each dry run finds the spot (quickfort's dry run) and changes nothing
     'food_pile', 'food_barrels',
@@ -745,6 +762,7 @@ BRIDGE_MODULES = {
     'ai-stuck',   -- (0.105.45)
     'ai-util', 'ai-water', 'ai-waterworks', 'gui/ai-overseer',
     'ai-threat-facts',          -- (0.105.45) a threat's facts for the matchup (called from the report)
+    'ai-lure',   -- (0.105.45)
 }
 -- the split-off modules that carry a version mark of their own
 MARKED_MODULES = {'ai-military-gear', 'ai-society-burrows', 'ai-constructions'}
@@ -1126,6 +1144,10 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
     -- orders, gates planned; each with the tick it entered its state and its
     -- progress (lua/ai-stuck.lua; the daily report)
     stuck = function() return safe(function() return reqscript('ai-stuck').report() end) end,
+    -- (0.105.45) the lure pockets behind the AI's cavern doors: each one's
+    -- pieces, its beast and its phase; the openings a pocket fits behind
+    -- (planned once a game day); the great dangers and whether traps catch them (lua/ai-lure.lua)
+    lures = function() return safe(function() return reqscript('ai-lure').report() end) end,
     -- (0.105.41) traffic zones: the AI's finished levels waiting for their
     -- traffic, the one in progress, the next recheck (lua/ai-traffic.lua; the
     -- project records only, no tile read)
@@ -1225,6 +1247,7 @@ PULSE_SECTIONS = {
     'field_watch',   -- (item5) a caravan attacked, a bear by the woodcutters: read each cycle
     'env_hazards',   -- (0.105.41, item 7) spilt magma spreads in minutes: read each cycle
     'shelter_plan',  -- (0.105.45) a titan inside walks to the shelter in minutes: read each cycle
+    'lures',         -- (0.105.45) a lure is opened and shut on what the beast does: read each cycle
 }
 TIERS = {pulse = true, daily = true, survey = true}
 -- report sections rebuilt only every so many game days (the lag pass, Oct 23:

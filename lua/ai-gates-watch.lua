@@ -215,6 +215,14 @@ function seal_holds()
     return {ids = {}, levers = {}}
 end
 
+-- (0.105.45) The pieces of the lure pockets (lua/ai-lure.lua: the cavern door
+-- it opens, the pocket's gates): {building id = true}. An entrance with one
+-- of these is the lure's: the watcher neither shuts nor opens it. Tests replace this.
+function lure_holds()
+    local ok, r = pcall(function() return reqscript('ai-lure').held_ids() end)
+    return ok and type(r) == 'table' and r or {}
+end
+
 -- Is this gate held by the seal (h: seal_holds())?
 function seal_has(h, g)
     if not h or not g then return false end
@@ -632,7 +640,13 @@ function check()
     local outside = citizens_outside()
     GATES.clear_looks = GATES.clear_looks or {}
     GATES.opening = GATES.opening or {}
+    local lure = lure_holds()                 -- (0.105.45)
     for _, e in ipairs(GATES.entrances) do
+        if next(lure) then
+            for id in pairs(entrance_gate_ids(e)) do
+                if lure[id] then goto continue end
+            end
+        end
         if not GATES.closed[e.id] then GATES.opening[e.id] = nil end
         if GATES.opening[e.id] and #e.equipment > 0 then
             -- (0.105.33) being opened (a dwarf on the way to the lever): its
