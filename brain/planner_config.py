@@ -62,6 +62,22 @@ PLANNER_CONFIG = {
     "growth_points": {"low": 25, "average": 100, "high": 250},
     "shrink_days": 28,
     "min_citizens": 7,             # never sent away below this
+    # (item5) the fort's floor: under this many citizens DF's population cap
+    # opens to migrants whatever the sliders (Growth, the strain and slow-game
+    # holds; not Extreme-low Growth, which shrinks the fort on purpose), and
+    # the baby caps are raised to at least floor_baby_cap / floor_baby_pct.
+    # 20 is also the population DF wants before strange moods come.
+    # (Hammerstirred, the Hermit hold: 15 dwarves for 13 years, then 8.)
+    "survival_floor": 20,
+    "floor_baby_cap": 10, "floor_baby_pct": 100,
+    # (item5) a prisoner this thirsty (DF's thirst counter; the report's
+    # "parched" is 50000) is let go even where there is a well
+    "prisoner_thirst_release": 40000,
+    "prisoners_water_cooldown_ticks": 1200,
+    # (item5) a Make mandate for shields or bucklers met in wood (off: noted, as before)
+    "mandate_shields": True,
+    # (item5) Make mandates met at Deference under -50 while someone holds the guard's office (off: ignored, as before)
+    "mandates_low_deference": True,
     "uncapped": 1000,              # the population cap used for "no cap"
     # (0.104.106, the 38-year soak) newcomers wait while the fort can't carry
     # the dwarves it has: Teacheroar grew 98 -> 438 under "no cap", drink fell

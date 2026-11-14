@@ -246,6 +246,10 @@ ORDER_RECIPES = {
     metal_gauntlets = {job = 'MakeGloves', item_subtype = 'ITEM_GLOVES_GAUNTLETS', kind = 'metal'},
     metal_high_boots = {job = 'MakeShoes', item_subtype = 'ITEM_SHOES_BOOTS', kind = 'metal'},
     metal_shield = {job = 'MakeShield', item_subtype = 'ITEM_SHIELD_SHIELD', kind = 'metal'},
+    -- (item5) a noble's mandate for shields or bucklers (Hammerstirred's queen asked
+    -- for bucklers year after year; unmet, her office holders were jailed): wood, at the carpenter's
+    wooden_shield = {job = 'MakeShield', item_subtype = 'ITEM_SHIELD_SHIELD', material_category = {'wood'}},
+    wooden_buckler = {job = 'MakeShield', item_subtype = 'ITEM_SHIELD_BUCKLER', material_category = {'wood'}},
 }
 
 -- Which plugins are on, from DFHack's own `enable` listing (the same way the

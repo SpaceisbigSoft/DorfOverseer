@@ -421,12 +421,28 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
 
     # 4. Noble mandates -------------------------------------------------------
     def _mandate_rule():
-        if can_use("mandates", "orders", "settings") and traits.get("deference", 0) >= -50:
+        # (item5) a fort that holds nobles low (Deference under -50) still
+        # meets a Make mandate while someone holds the guard's office: an unmet
+        # one is a crime DF pins on one of the fort's own dwarves and jails them
+        # (Hammerstirred, the Hermit hold at Deference -60: 14 "production order
+        # violations" for the queen's bucklers, y263-269, office holders chained
+        # one after another; 9 died of thirst in the jail). With nobody to
+        # punish, the low Deference still leaves them unmet.
+        if can_use("mandates", "orders", "settings"):
+            if traits.get("deference", 0) < -50:
+                due = any(isinstance(m, dict) and m.get("kind") == "Make" and (m.get("remaining") or 0) > 0
+                          for m in _l(s.get("mandates")))
+                if not (cfg.get("mandates_low_deference", True) and due and justice_held(s)):
+                    return
+                notes.append("Deference is low, but the noble's mandates are made anyway: unmet, DF jails one "
+                             "of the fort's own dwarves for it")
             for m in s["mandates"]:
                 if m.get("kind") != "Make" or (m.get("remaining") or 0) <= 0:
                     continue
                 item = m.get("item")
                 recipe = MANDATE_RECIPES.get(item)
+                if item == "SHIELD" and cfg.get("mandate_shields", True):
+                    recipe = "wooden_buckler" if m.get("subtype") == "ITEM_SHIELD_BUCKLER" else "wooden_shield"
                 metal = None
                 if item == "SHOES":
                     recipe = _shoes_recipe(m, st, notes)
@@ -794,6 +810,7 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
         _guard(_water_traffic_rule, s, proposals)
         _guard(_jail_size_rule, s, memory, cfg, proposals, notes)
         _guard(_convict_rule, s, memory, cfg, proposals, notes)
+        _guard(_prisoner_water_rule, s, cfg, proposals, notes)       # (item5) no water for the jail
         _guard(_break_fights_rule, s, memory, cfg, proposals)
         _guard(_orphan_jobs_rule, s, proposals)
         _guard(_room_repair_rule, s, proposals)

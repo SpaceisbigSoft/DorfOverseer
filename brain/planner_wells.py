@@ -20,7 +20,7 @@ def _far_args(cfg: dict) -> dict:
         out["far_reach"] = 0
     return out
 
-__all__ = ["_well_rule", "_well_lid_rule", "SHAFT_LINK_LOST_MAX", "SHAFT_DANGER_TILES", "SHAFT_DANGER_OPEN", "SHAFT_DRY_REACH", "shaft_judged", "shaft_danger_words", "shaft_far_walker", "shaft_water_short", "cavern_danger", "_water_zone_rule", "cavern_points", "cavern_action", "cavern_well_need", "unfound_cavern", "cavern_well_safe", "WELL_PARTS_SHOPS", "CHAIN_SKIP", "chain_metal", "well_parts_plan", "_well_parts", "_water_traffic_rule", "cistern_pop", "WATER_WORDS", "magma_access", "water_summary", "_water_rules", "CISTERN_WORDS", "_cistern_parts", "_cistern_rule", "WELLS_CONFIG", "shut_wells", "usable_wells", "ai_opens_cavern", "cavern_soldiers_ready", "cavern_open_words", "CISTERN_RETRY_SEALS", "CISTERN_RELINK_ROUNDS", "CISTERN_SHUT_RULE"]
+__all__ = ["_well_rule", "_well_lid_rule", "SHAFT_LINK_LOST_MAX", "SHAFT_DANGER_TILES", "SHAFT_DANGER_OPEN", "SHAFT_DRY_REACH", "shaft_judged", "shaft_danger_words", "shaft_far_walker", "shaft_water_short", "cavern_danger", "_water_zone_rule", "cavern_points", "cavern_action", "cavern_well_need", "unfound_cavern", "cavern_well_safe", "WELL_PARTS_SHOPS", "CHAIN_SKIP", "chain_metal", "well_parts_plan", "_well_parts", "_water_traffic_rule", "cistern_pop", "WATER_WORDS", "magma_access", "water_summary", "_water_rules", "CISTERN_WORDS", "_cistern_parts", "_cistern_rule", "WELLS_CONFIG", "shut_wells", "usable_wells", "ai_opens_cavern", "cavern_soldiers_ready", "cavern_open_words", "CISTERN_RETRY_SEALS", "CISTERN_RELINK_ROUNDS", "CISTERN_SHUT_RULE", "jailed"]
 
 # (0.105.33 B4) the wells' own settings (merged into PLANNER_CONFIG, as planner_threats does)
 WELLS_CONFIG = {
@@ -50,6 +50,17 @@ def usable_wells(s: dict, states: tuple = ("closed", "pulling")) -> int:
     cavern wells whose shaft gate is shut."""
     wells = int(_d(_d(s.get("buildings")).get("other")).get("Well", 0) or 0)
     return max(0, wells - shut_wells(s, states))
+
+
+def jailed(s: dict) -> int:
+    """(item5) Citizens serving time in the jail: they drink only water
+    carried from a well or a water zone (the bridge's justice.prisoners, else
+    its count of punishments with time in jail)."""
+    j = _d(s.get("justice"))
+    pr = j.get("prisoners")
+    if isinstance(pr, list):
+        return sum(1 for p in pr if isinstance(p, dict))
+    return int(_d(j.get("punish")).get("prison") or 0)
 
 
 def _well_rule(s: dict, memory, traits: dict, cfg: dict, proposals: list, notes: list) -> None:
@@ -149,6 +160,10 @@ def _well_rule(s: dict, memory, traits: dict, cfg: dict, proposals: list, notes:
         return
     patients = _d(s.get("dwarves")).get("needs_medical_care", 0)
     parched = int(_d(s.get("society")).get("parched") or 0)
+    # (item5) prisoners drink only what is carried from a well: a fort with
+    # none and someone in chains is as urgent as one with the injured
+    # (Hammerstirred: 9 dead of thirst in the jail, the well never built)
+    prisoners = jailed(s)
     # (0.104.13) the one-tile shaft could never be dug past its first levels
     # (a miner channels from beside the tile, on its level): Enxah's was given
     # up after six years with 2 of 24 tiles. The shaft is now dug from a stair
@@ -169,10 +184,11 @@ def _well_rule(s: dict, memory, traits: dict, cfg: dict, proposals: list, notes:
             memory.well_failure = ""
     # (0.104.13) the injured or the parched waiting: the well takes one of the
     # urgent slots (as soap, tombs and the hospital do) and is dug first
-    urgent = bool(patients or parched)
+    urgent = bool(patients or parched or prisoners)
     limit = (pr.get("max_open") or 2) + (2 if urgent else 0)
     who = " and ".join(x for x in (f"{patients} injured" if patients else "",
-                                    f"{parched} parched" if parched else "") if x)
+                                    f"{parched} parched" if parched else "",
+                                    f"{prisoners} jailed" if prisoners else "") if x)
     def say_failure(cavern_coming: bool) -> None:
         if not memory.well_failure:
             return
@@ -205,7 +221,7 @@ def _well_rule(s: dict, memory, traits: dict, cfg: dict, proposals: list, notes:
     # no ordinary spot: the AI decides whether a well into a cavern is worth it
     if memory.well_failure and not cavern_failure and len(open_) < limit:
         need = cavern_well_need(s, cfg, patients) or (f"{parched} parched dwarves need water" if parched else "")
-        safe = cavern_well_safe(s, cfg)
+        safe = cavern_well_safe(s, cfg, urgent)
         if safe is True and shaft_danger:
             safe = f"{shaft_danger} is near the cavern well"
         if need and safe is True:
@@ -669,6 +685,8 @@ def cavern_well_need(s: dict, cfg: dict, patients: int) -> str:
     drink = (_d(s.get("stocks")).get("drink") or 0) / pop
     if patients:
         return f"{patients} injured dwarf(s) need water"
+    if jailed(s):
+        return f"{jailed(s)} dwarf(s) in the jail need water (prisoners get no booze)"
     if drink < cfg["cavern_well_drink_pd"]:
         return f"drink is down to {drink:.1f} a dwarf"
     hospital = _d(_d(s.get("buildings")).get("zones")).get("Hospital") or _d(s.get("locations")).get("HOSPITAL")
@@ -724,13 +742,15 @@ def ai_opens_cavern(s: dict, cfg: dict) -> tuple[bool, str]:
     pop = max(1, int(_d(s.get("dwarves")).get("total") or 1))
     patients = int(_d(s.get("dwarves")).get("needs_medical_care") or 0)
     parched = int(_d(s.get("society")).get("parched") or 0)
+    prisoners = jailed(s)                 # (item5) they drink only from a well
     raw_drink = _d(s.get("stocks")).get("drink")
     known = (isinstance(raw_drink, (int, float)) and not isinstance(raw_drink, bool)
              and "stocks" not in _d(s.get("_errors")))
     drink = (raw_drink if known else 0) / pop
-    if patients or parched:
+    if patients or parched or prisoners:
         short = " and ".join(x for x in (f"{patients} injured" if patients else "",
-                                          f"{parched} parched" if parched else "") if x)
+                                          f"{parched} parched" if parched else "",
+                                          f"{prisoners} jailed" if prisoners else "") if x)
     elif not known:
         return False, "the fort's drink is not known (no stocks report): not counted as short"
     elif drink < cfg["cavern_well_drink_pd"] and caution < 100:
@@ -756,6 +776,12 @@ def cavern_soldiers_ready(s: dict, cfg: dict) -> tuple[bool, int, int]:
     need += 2 if caution >= 50 else 0
     need -= 1 if militarism >= 50 else 0
     need = max(1, need)
+    # (item5) a small fort can't field the squad a big one keeps: a soldier for
+    # every 5 dwarves at most (Hammerstirred, 15 dwarves and Caution +60, was
+    # asked for 5 and had 3, while its dwarves died of thirst)
+    pop = int(_d(s.get("dwarves")).get("total") or 0)
+    if pop > 0:
+        need = max(1, min(need, pop // 5))
     # (v35 fix) armed soldiers only (the squads' `power.armed`; a bridge
     # without the count: their members, as can_fight reads it)
     def armed_of(q):
@@ -775,9 +801,13 @@ def cavern_open_words(s: dict, cfg: dict) -> str:
             "danger is near)") if ok else ""
 
 
-def cavern_well_safe(s: dict, cfg: dict):
-    """True, or why a shaft into the caverns shouldn't be dug now."""
-    if young_fort(s, cfg) or int(_d(s.get("dwarves")).get("total") or 0) < cfg["cavern_well_min_pop"]:
+def cavern_well_safe(s: dict, cfg: dict, urgent: bool = False):
+    """True, or why a shaft into the caverns shouldn't be dug now.
+    (item5) urgent: the fort has no well and the injured, the parched or the
+    jailed wait for water: then a small or young fort digs one too (the
+    Hermit hold, 15 dwarves and no other water, was told "too young or small"
+    while 10 of them died of thirst)."""
+    if not urgent and (young_fort(s, cfg) or int(_d(s.get("dwarves")).get("total") or 0) < cfg["cavern_well_min_pop"]):
         return "the fort is too young or small"
     # (0.105.4 review) a cavern nobody has found: the Rules switch on allows it;
     # (0.105.35) off (the default), the AI decides by the fort's state and sliders
