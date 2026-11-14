@@ -507,10 +507,13 @@ def hazard_alert(s: dict, cfg: dict, raising: bool = False) -> str:
     20, sounded it 122 times in one run (the fire guard keeps the dwarves
     off the tiles round it meanwhile)."""
     h = _d(s.get("hazards"))
-    near = cfg.get("fire_alarm_near", 8) if raising else cfg["hazard_near"]
-    if h.get("fire_near") is not None and h["fire_near"] <= min(near, cfg["hazard_near"]):
+    # (0.105.47) Caution sets how near (brain/alarm_caution.py): at 0 the config's own
+    from alarm_caution import alarm_settings
+    lean = alarm_settings(_d(_d(s.get("settings")).get("traits")), cfg)
+    near = lean["fire_near"] if raising else lean["fire_hold"]
+    if h.get("fire_near") is not None and h["fire_near"] <= near:
         return f"fire {h['fire_near']} tiles from the dwarves"
-    if h.get("cloud_near") is not None and h["cloud_near"] <= cfg["hazard_near"]:
+    if h.get("cloud_near") is not None and h["cloud_near"] <= (lean["cloud_near"] if raising else lean["cloud_hold"]):
         return f"a cloud (gas or vapour) {h['cloud_near']} tiles from the dwarves"
     b0 = next((b for b in _l(h.get("berserk")) if isinstance(b, dict)), None)    # (0.105.33) a dict row only
     if b0 is not None:

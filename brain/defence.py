@@ -269,11 +269,17 @@ def lesson_lines(memory, limit: int = 4) -> list[str]:
 
 def trap_count(traits: dict) -> int:
     """Traps behind each gate: 2 to 8, more with Fortification, Engineering
-    and Caution."""
+    and Caution. (0.105.47) Fortification weighs most (the traps line is
+    Fortification's): the War-hold 7 a gate, the Hermit hold 6, a fort at 0
+    3, a low one 2."""
     def v(k):
         try:
             return float((traits or {}).get(k, 0) or 0)
         except (TypeError, ValueError):
             return 0.0
-    n = 3 + (0.5 * v("fortification") + 0.3 * v("engineering") + 0.2 * v("caution")) / 25
+    from planner_config import PLANNER_CONFIG
+    if PLANNER_CONFIG.get("traps_by_fortification", True):
+        n = 3 + (0.8 * v("fortification") + 0.1 * v("engineering") + 0.1 * v("caution")) / 25
+    else:
+        n = 3 + (0.5 * v("fortification") + 0.3 * v("engineering") + 0.2 * v("caution")) / 25
     return int(max(2, min(8, round(n))))

@@ -13,6 +13,14 @@ The forts are A War-hold, B Monastery, C Merchant city, D Hermit hold, E Deep mi
 The quick way through this file: `python brain\seen.py` (from any DF-AI folder) writes each folder's `logs\seen-ledger.md` and a summary across them (`DF-AI\logs\seen-ledger-all.md`): every section, action and Rules switch since 0.105.32 as seen, refused (why), not yet met or in error, and this file's lines ticked where the reports and journals show them. Lines about how things look stay "needs eyes".
 
 
+## 0.105.47 (R2): traps by Fortification, alarms by Caution
+
+- **A War-hold, D Hermit hold**: traps behind every gate, cavern ones too (`place_traps` reasons end "(Fortification +120: traps behind every gate)"), 7 a gate in A, 6 in D; kill zones (`build_killzone`) at every entrance, 6 traps each. The scorecard's traps and gate works lines should now put A and D on top.
+- **E Deep mine, B, C, F (Fortification 0)**: traps only behind the surface gate(s) and gates enemies came through (reason "enemies came this way N time(s)"), 3 a gate; E's cavern doors that nobody came through stay without traps (the doors themselves stay). A gate with traps already is left as it is.
+- **Gate works line**: now counts `build_killzone` and `build_wings`, no longer `arm_gates` / `guard_gate` (answers to an enemy, not works); dry runs left out.
+- **Alarms**: A and D sound for fire within 11 tiles, a gas cloud within 26, the walking dead within 39, may raise again for the same cause a day after lowering, 7 governed raises a game month; E (Caution -40): fire within 6, a cloud within 16, 2.7 days' cooldown, 2 a month, and no alarm for "DF reports an intruder" (a lone unseen one: said in the notes; the alarm comes once seen). Enemies in reach still sound it at once everywhere. In A and D a threat DF can't tell the reach of, within 6 levels of a dwarf, counts as in reach (was Caution 100 only).
+- **Alarms line**: counts raises only (a `civ_alert` on that answered `already_on`, or a lowering the game kept up, no longer counts). Expect A/D above E.
+
 ## 0.105.46 (I1): the "seen in game" ledger
 
 - **All, after the keeper's first daily check**: `logs\seen-ledger.md` exists and `logs\health-check.txt` has a `seen:` part ("seen since 0.105.32: N seen, M refused or failed, K not yet met, E section errors"); a report section that returns `{"error"}` is flagged there ("report section 'x' returns an error: ...").

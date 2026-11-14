@@ -96,7 +96,10 @@ whatever the Militarism slider says. From then on the AI:
   door) in the fort's trap style, the engine's Traps area: none, cage
   (Caution), stone-fall (Fortification, Mining) or weapon traps (Hostility,
   Engineering); 2 to 8 per gate by Fortification, Engineering and Caution,
-  with mechanisms ordered if there are too few. Not during a threat, and not
+  with mechanisms ordered if there are too few. (0.105.47) Fortification
+  weighs most and picks the gates: every gate from 50 (or a closed fort),
+  the surface gates and the ones enemies came through from -30, below that
+  only the ones enemies came through (brain/planner_traplean.py). Not during a threat, and not
   at a gatehouse (it has its cage traps). A new gate style, **drawbridge**
   (Engineering, Caution), walls the opening down to a raising drawbridge and
   places a lever "AI gate lever" where the dwarves are; once both are built

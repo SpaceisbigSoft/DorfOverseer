@@ -58,9 +58,14 @@ SHORT = {"War-hold": "War", "Monastery": "Mon", "Merchant city": "Mer", "Hermit 
          "Deep mine": "Deep", "Garden fort": "Gar"}
 
 # The actions that are a fort's gate works
+# (0.105.47) works built only: a kill zone and the gatehouse's wing walls are
+# gate works; arming the gate watcher and the squads holding the gate are
+# answers to an enemy (every fort's, whatever its Fortification: they ran the
+# line backwards, C 29 to the War-hold's 24), not works; a dry run builds nothing
 GATE_WORKS = ("build_gate_doors", "fortify_entrance", "cut_entrance", "link_lever", "place_traps",
-              "guard_gate", "gate_dogs", "arm_gates",
-              "build_gatehouse")                 # (0.105.23) the War-hold's gatehouse
+              "gate_dogs",
+              "build_gatehouse",                 # (0.105.23) the War-hold's gatehouse
+              "build_killzone", "build_wings")   # (0.105.47)
 
 # (0.105.29) the customs' measure keys, by owner preset: custom_M = Monastery levels built by its customs
 CUSTOM_KEYS = {"War-hold": "W", "Monastery": "M", "Merchant city": "ME", "Hermit hold": "H",
@@ -281,6 +286,7 @@ def journal_counts(entries: list[dict], date: dict, timeline: list | None = None
     `timeline`: the fort's daily (day, population) rows, for welcome_pct."""
     ok, seen = Counter(), Counter()
     alarms_on = 0       # (0.105.33) civ_alert raises (a lowering is not an alarm)
+    gate_works = 0      # (0.105.47) GATE_WORKS done, dry runs left out
     gems_set = gems_cut = treasures_kept = 0     # (0.105.33) Greed: encrust_goods, cut_gems amounts
     caps = []           # (0.105.33) (when, cap, held) from set_population_cap
     first = None        # the first dated decision of this run (older timeline rows are left out)
@@ -333,11 +339,18 @@ def journal_counts(entries: list[dict], date: dict, timeline: list | None = None
         if not r.get("ok"):
             continue
         ok[t] += 1
+        if t in GATE_WORKS and not r.get("dry_run") and not a.get("dry_run"):
+            gate_works += 1                                         # (0.105.47) real works only
         if t == "bring_goods":
             trade_value += r.get("value") or 0
             treasures_kept += bool(a.get("keep_treasures"))
         elif t == "civ_alert":
-            alarms_on += bool(r.get("on") if isinstance(r.get("on"), bool) else a.get("on"))
+            # (0.105.47) a raise only: the AI asked it up, the game didn't say
+            # it stayed down, and it wasn't up already (already_on: the
+            # player's or a repeat, no new alarm). The old count took a
+            # lowering the game refused (on still true) for a raise too
+            alarms_on += (a.get("on") is True and r.get("on") is not False and not r.get("already_on")
+                          and not r.get("dry_run") and not a.get("dry_run"))
         elif t == "work_order" and a.get("recipe") in ("encrust_goods", "cut_gems") and not r.get("dry_run"):
             n = r.get("amount") if isinstance(r.get("amount"), int) else a.get("amount")
             n = n if isinstance(n, int) and not isinstance(n, bool) else 0
@@ -397,7 +410,7 @@ def journal_counts(entries: list[dict], date: dict, timeline: list | None = None
     return {"ok": ok, "peak_pop": peak, "seen": seen, "trade_value": trade_value, "petitions_yes": petitions_yes,
             "petitions_no": petitions_no, "levels": levels, "reports": reports, "deaths": deaths,
             "shut_days": shut_days(access, until), "soil_floored": soil_floored,
-            "alarms_on": alarms_on, "gems_set": gems_set, "gems_cut": gems_cut, "treasures_kept": treasures_kept,
+            "alarms_on": alarms_on, "gate_works": gate_works, "gems_set": gems_set, "gems_cut": gems_cut, "treasures_kept": treasures_kept,
             "caps": caps, "welcome": welcome_rows(caps, timeline or [], until, first),
             "landmarks": landmarks, "until": until}
 
@@ -619,7 +632,7 @@ def measures(s: dict, j: dict) -> dict:
         "barracks": zones.get("Barracks", 0) + zones.get("ArcheryRange", 0) + kinds.get("barracks", 0),
         "traps": traps,
         "bridges": other.get("Bridge", 0) + other.get("Floodgate", 0) + other.get("Hatch", 0),
-        "gate_works": sum(ok.get(t, 0) for t in GATE_WORKS),
+        "gate_works": j.get("gate_works", sum(ok.get(t, 0) for t in GATE_WORKS)),   # (0.105.47) no dry runs
         "levers": levers,                                 # (0.105.46) every built lever
         "ai_levers": ai_levers,                           # (0.105.46) the AI's own ("AI ..." levers)
         "mechanisms": stocks.get("mechanisms"),

@@ -134,7 +134,9 @@ def _num(v) -> bool:
 def threat_alert(s: dict, cfg: dict) -> str:
     """Why the alarm should be up for this round's threats ("" if none): the
     walking dead near the dwarves, an evil cloud near those out on the
-    surface, a great danger on the surface near those out there."""
+    surface, a great danger on the surface near those out there.
+    (0.105.47) farther with Caution above 0, never nearer (brain/alarm_caution.py)."""
+    from alarm_caution import near_for
     t = _d(s.get("threats"))
     u = _d(t.get("undead"))
     for x in _l(u.get("list")):
@@ -146,14 +148,14 @@ def threat_alert(s: dict, cfg: dict) -> str:
             continue
         if x.get("outside") and not x.get("invader") and not x.get("great"):
             continue
-        if not _num(x.get("distance")) or x["distance"] <= _c(cfg, "undead_near"):
+        if not _num(x.get("distance")) or x["distance"] <= near_for(s, cfg, "undead_near", 30):
             return f"the walking dead ({x.get('name') or 'undead'}) near the dwarves"
-    if _num(u.get("cloud_outside_near")) and u["cloud_outside_near"] <= _c(cfg, "evil_cloud_near"):
+    if _num(u.get("cloud_outside_near")) and u["cloud_outside_near"] <= near_for(s, cfg, "evil_cloud_near", 40):
         return (f"an evil cloud{' of ' + str(u['cloud_material']) if u.get('cloud_material') else ''} "
                 f"{u['cloud_outside_near']} tiles from dwarves on the surface")
     for x in _l(_d(t.get("surface")).get("list")):
         if (isinstance(x, dict) and x.get("great") and _num(x.get("distance_outside"))
-                and x["distance_outside"] <= _c(cfg, "surface_danger_near")):
+                and x["distance_outside"] <= near_for(s, cfg, "surface_danger_near", 40)):
             return f"{x.get('name') or 'a great beast'} on the surface near dwarves out there"
     return ""
 
@@ -266,6 +268,11 @@ def _thieves(s, cfg, t, memory, proposals, notes):
                 isinstance(b, dict) and b.get("kind") in ("door", "bridge", "hatch") for b in _l(e.get("equipment"))):
             continue
         if _near_spot(e, traps):
+            continue
+        # (0.105.47) thieves come over the surface: its gates, and the others
+        # only where Fortification puts traps (planner_traplean)
+        from planner_traplean import trap_gate_why
+        if e.get("kind") == "cavern" and not trap_gate_why(e, _traits(s), memory, cfg):
             continue
         spot = f"{e.get('x')},{e.get('y')},{e.get('z')}"
         when = memory.gate_failure_ticks.get("traps:" + spot)
