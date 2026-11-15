@@ -362,6 +362,26 @@ function act_start_project(a)
             return reject('workshops needs shops (1-12 of: ' ..
                 table.concat(sorted_keys(layouts.WORKSHOPS), ', ') .. ')')
         end
+        -- (0.105.54) a new level's free rooms (spare, the shops they are planned
+        -- for: spare_for) and whether a standing level may take the shops (join)
+        if a.spare ~= nil then
+            p.spare = int_in(a.spare, 0, 8)
+            if not p.spare then return reject('spare must be 0-8') end
+        end
+        if a.spare_for ~= nil then
+            if type(a.spare_for) == 'table' and next(a.spare_for) == nil then
+                p.spare_for = {}
+            else
+                p.spare_for = string_list(a.spare_for, layouts.WORKSHOPS, 8)
+                if not p.spare_for then return reject('spare_for must list up to 8 workshops') end
+            end
+        end
+        if a.join ~= nil then
+            if a.join ~= false and a.join ~= true and a.join ~= 'band' then
+                return reject('join must be true, false or "band"')
+            end
+            p.join = a.join
+        end
     else
         return reject(('unknown level kind: %s (known: %s)'):format(
             tostring(a.kind), table.concat(layouts.KINDS, ', ')))

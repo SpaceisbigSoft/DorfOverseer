@@ -876,7 +876,7 @@ def _():
         assert a in overseer.SHORT_WORDS and a in overseer.CAMERA_QUIET, a
     src = (ROOT / "brain" / "overseer.py").read_text(encoding="utf-8")
     i = src.index('if acting and p.action["type"] in CLEANUP_ACTIONS and not p.action.get("dry_run"):')
-    assert src.index("r = bridge.act(p.action)", i) - i < 600       # the journal line comes first
+    assert src.index("r = bridge.act(shop_level_action(p.action, state))", i) - i < 600       # the journal line comes first
     assert '"kind": "cleanup"' in src[i:i + 400]
 
 

@@ -84,6 +84,7 @@ end
 local function new_layout(kind, p)
     return {kind = kind, dig = {}, build = {}, place = {}, zone = {},
             tiles = {}, furniture = {}, summary = {}, halls = {},
+            rooms_at = {},     -- (0.105.54) a workshops level's rooms by their centre tile (workshops())
             style = style_of(p or {}), engrave_all = false}
 end
 
@@ -174,7 +175,7 @@ end
 
 local function realize(L)
     if not L.virtual then return end
-    for _, phase in ipairs({'build', 'place', 'zone'}) do
+    for _, phase in ipairs({'build', 'place', 'zone', 'rooms_at'}) do
         for _, c in ipairs(L[phase]) do
             if c.x >= VX // 2 then
                 local i = (c.x + VX // 2) // VX
@@ -694,7 +695,7 @@ function orient_layout(L, o)
     o = clamp(o or 0, 0, 3)
     L.orient = o
     if o == 0 then return L end
-    for _, phase in ipairs({'dig', 'build', 'place', 'zone', 'smooth', 'engrave'}) do
+    for _, phase in ipairs({'dig', 'build', 'place', 'zone', 'smooth', 'engrave', 'rooms_at'}) do
         local cells = {}
         for _, c in ipairs(L[phase] or {}) do table.insert(cells, turn_cell(o, c)) end
         L[phase] = cells
@@ -1052,24 +1053,42 @@ function storage(p)
 end
 
 -- workshops{shops = {'Still', 'Kitchen', ...}} (5x5 rooms, workshop centred)
+-- (0.105.54, layout A part 2) spare = n: n rooms more, dug but left empty
+-- (after the shops and the ore pile), each a free slot a later workshop is
+-- put in (ai-builder-projects join_workshop_level); spare_for names the
+-- shops they are planned for (in order; a slot without a name is free for
+-- any). L.rooms_at lists every room by its centre tile: text 'shop:<name>',
+-- 'pile' or 'free' / 'free:<name>', turned with the level. 12 rooms at most.
+WORKSHOP_ROOMS_MAX = 12
 function workshops(p)
     local shops = {}
     for _, name in ipairs(type(p.shops) == 'table' and p.shops or {}) do
-        if WORKSHOPS[name] and #shops < 12 then table.insert(shops, name) end
+        if WORKSHOPS[name] and #shops < WORKSHOP_ROOMS_MAX then table.insert(shops, name) end
     end
     if #shops == 0 then return nil, 'no valid workshop types' end
     local L = new_layout('workshops', p)
     -- (0.105.29, custom ore_piles) one room more, a 5x5 stone (and ore) pile, under 12 shops
-    local ore = L.style.customs.ore_piles and #shops < 12
-    local slots = rooms_for(L, #shops + (ore and 1 or 0), 5, L.style.hall ~= 'plain')
+    local ore = L.style.customs.ore_piles and #shops < WORKSHOP_ROOMS_MAX
+    local spare = clamp(p.spare or 0, 0, WORKSHOP_ROOMS_MAX - #shops - (ore and 1 or 0))
+    local planned = {}
+    for _, name in ipairs(type(p.spare_for) == 'table' and p.spare_for or {}) do
+        if WORKSHOPS[name] and #planned < spare then table.insert(planned, name) end
+    end
+    local slots = rooms_for(L, #shops + (ore and 1 or 0) + spare, 5, L.style.hall ~= 'plain')
     for i, s in ipairs(slots) do
+        local cx, cy = s.x + 2, s.y + 2
         if shops[i] then
-            add(L, 'build', s.x + 2, s.y + 2, WORKSHOPS[shops[i]], shops[i])
-        else
+            add(L, 'build', cx, cy, WORKSHOPS[shops[i]], shops[i])
+            add(L, 'rooms_at', cx, cy, 'shop:' .. shops[i])
+        elseif ore and i == #shops + 1 then
             add(L, 'place', s.x, s.y, ('%s(5x5)'):format(STOCKPILES.stone))
+            add(L, 'rooms_at', cx, cy, 'pile')
+        else
+            local k = i - #shops - (ore and 1 or 0)
+            add(L, 'rooms_at', cx, cy, planned[k] and ('free:' .. planned[k]) or 'free')
         end
     end
-    L.summary = {workshops = shops, ore_pile = ore or nil}
+    L.summary = {workshops = shops, ore_pile = ore or nil, free_rooms = spare > 0 and spare or nil}
     return finish(L)
 end
 

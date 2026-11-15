@@ -741,6 +741,8 @@ def note_result(memory, action: dict, result: dict, state: dict) -> str | None:
         return None
     if not isinstance(action.get("plan"), dict):
         return None                    # built without a hint (a mood's workshop, the strategist): not a miss
+    if result.get("joined") is not None:
+        return None                    # (0.105.54) shops put into a standing workshops level: no new level
     # (0.105.29) the district the hint named (a custom may send a level elsewhere: cells, deep_hall)
     named = action["plan"].get("district")
     d = next((x for x in _l(_peek(memory).get("districts")) if isinstance(x, dict) and named
