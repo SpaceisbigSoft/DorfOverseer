@@ -1641,7 +1641,7 @@ def _():
     before = lua.eval("(function() local n = 0; for _ in pairs(_G) do n = n + 1 end; return n end)()")
     mod = lua.eval("function(src) local env = setmetatable({}, {__index=_G}); "
                    "assert(load(src, 'ai-floorplace', 't', env))(); return env end")(SRC)
-    assert sorted(mod.keys()) == ["SURVEY_MAX", "place", "survey"], sorted(mod.keys())
+    assert sorted(mod.keys()) == ["SURVEY_MAX", "fits_empty", "place", "survey"], sorted(mod.keys())
     # run it once, every path's worth, and look again
     run = lua.eval("""function(M)
       local env = {probe = function() return true end, blocked = function() return false end,
@@ -1658,7 +1658,7 @@ def _():
     assert run(mod) >= 2
     after = lua.eval("(function() local n = 0; for _ in pairs(_G) do n = n + 1 end; return n end)()")
     assert after == before, "a global leaked into _G"
-    assert sorted(mod.keys()) == ["SURVEY_MAX", "place", "survey"], "a global leaked into the module"
+    assert sorted(mod.keys()) == ["SURVEY_MAX", "fits_empty", "place", "survey"], "a global leaked into the module"
     assert "--@ module = true" in SRC
     code = "\n".join(line.split("--")[0] for line in SRC.splitlines())
     for word in ("dfhack", "reqscript", "df.", "require", "os.", "io."):

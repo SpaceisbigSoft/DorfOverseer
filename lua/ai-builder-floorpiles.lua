@@ -9,8 +9,9 @@
 -- 2 tiles from their shops; what was missing: almost no feeder pile is
 -- linked to its shop (0 to 3 a fort), and kitchens, stills and
 -- craftsdwarves often have no pile of their own. On a hallway-first floor
--- a workshops request is one block along the hall: the pile room(s), then
--- the shop rooms.
+-- each shop of a workshops request goes along the hall beside its own pile
+-- room(s) (ai-builder-floors on_floor makes the clusters and drops a pile
+-- room that would not fit one side of a run with its shop).
 --
 --   floor_pile_units(params, hint, has_flag) -> list
 --       which pile rooms a workshops request gets (floor_site,

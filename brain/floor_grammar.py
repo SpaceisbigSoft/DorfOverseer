@@ -189,4 +189,32 @@ def grammar(traits: dict, style: dict | None, cfg: dict | None = None, *, patter
     out["piles_new"] = _clamp(c("floor_piles_new") + (1 if stock >= c("floor_piles_stock") else 0),
                               *RANGES["piles_new"])
     out["full_retry_days"] = _clamp(c("floor_full_retry_days"), *RANGES["full_retry_days"])
+    _shop_room(out)
     return {k: out[k] for k in KEYS}
+
+
+SHOP_COLS, PILE_COLS = 5, 5      # a workshop's room and the smallest pile room, in columns along the hall
+
+
+def shop_room(g: dict) -> int:
+    """The columns one side of a full-length run holds for rooms: run_max less the lead, what is kept
+    ahead and a neck's column (lua/ai-builder-floors.lua shop_room)."""
+    return g["run_max"] - g["lead"] - g["ahead"] - (1 if g.get("neck") else 0)
+
+
+def _shop_room(out: dict) -> None:
+    """(V3) One side of the shortest run this grammar gives holds a workshop and one pile room: the lead
+    gives way first, then what is kept ahead, then the gap; pile_w no wider than what is left beside the
+    shop. The same clamp as lua/ai-floorplan.lua grammar, so the hint passes it unchanged."""
+    while shop_room(out) < SHOP_COLS + out["gap"] + PILE_COLS:
+        if out["lead"] > 0:
+            out["lead"] -= 1
+        elif out["ahead"] > 0:
+            out["ahead"] -= 1
+        elif out["gap"] > 1:
+            out["gap"] -= 1
+        else:
+            break
+    wide = shop_room(out) - SHOP_COLS - out["gap"]
+    if out["pile_w"] > wide:
+        out["pile_w"] = max(RANGES["pile_w"][0], wide)

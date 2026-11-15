@@ -329,8 +329,9 @@ local function reach(C, S, run)
 end
 
 -- ---------------------------------------------------------------- one item on one run
--- An item is the units placed in one go: one unit, or a `together` request's
--- whole row.
+-- An item is the units placed in one go, side by side in one row: one unit,
+-- one of a request's `clusters` (a workshop and its pile rooms), or a
+-- `together` request's whole row when it names no clusters.
 
 local function differs(C, s)
     local q = C.req
@@ -426,8 +427,10 @@ end
 local function take(C, S, run, side, pos, ue, item)
     for j, unit in ipairs(item.units) do
         local s = add_slot(S, run, {side = side, u = pos[j], w = unit.w, d = unit.d, kind = C.req.kind,
-                                    group = C.req.group, unit = unit, index = item.index[j]})
+                                    group = C.req.group, unit = unit, index = item.index[j],
+                                    item = item, item_u = pos[1]})
         table.insert(C.puts, s)
+        if C.clusters then C.prev = s end   -- (a cluster request's next item goes on from here first)
     end
     local need = ue + C.G.ahead
     if need > run_end(run) then set_len(S, run, need - run.u0 + 1) end
@@ -453,6 +456,15 @@ end
 
 local function try_run_now(C, S, run, item)
     local G, q = C.G, C.req
+    -- right after the request's own previous item: its row goes on where it can
+    local prev = C.prev
+    if prev and prev.runid == run.id and not prev.axial then
+        local from = prev.e + 1 + G.gap
+        local base = first_col(C, run, prev.side)
+        local pos, ue = scan(C, S, run, prev.side, from > base and from or base, item)
+        if pos then take(C, S, run, prev.side, pos, ue, item); return true end
+        if C.late then return false end
+    end
     -- right after the run's last slot of the request's group
     if q.group ~= nil then
         local last
@@ -680,6 +692,11 @@ local function ordered_runs(C, S, mine)
             if r.id == last then table.remove(list, i); table.insert(list, 1, r); break end
         end
     end
+    if C.prev then                    -- the run of the request's own previous item before any
+        for i, r in ipairs(list) do
+            if r.id == C.prev.runid then table.remove(list, i); table.insert(list, 1, r); break end
+        end
+    end
     return list
 end
 
@@ -748,6 +765,7 @@ end
 local function plan(C)
     local S = shadow(C.floor, C.G.run_max, C.dmax)
     C.puts = {}
+    C.prev = nil
     C.necked = false
     C.record_full = false
     local units = C.units
@@ -755,16 +773,22 @@ local function plan(C)
             and try_axial(C, S, units[1]) then
         return S
     end
-    if C.req.together then
-        local item = {units = units, index = {}, wmin = 0}
-        local sig = 'T'
-        for i, u in ipairs(units) do
-            item.index[i] = i
-            item.wmin = item.wmin + u.w + (i > 1 and C.G.gap or 0)
-            sig = sig .. u.w .. 'x' .. u.d
+    if C.clusters then
+        -- (V3) each cluster (a workshop and its pile rooms) is one row of its own; the clusters
+        -- follow each other along the hall, onto the other side or another run when one is full
+        for _, list in ipairs(C.clusters) do
+            local item = {units = {}, index = {}, wmin = 0}
+            local sig = 'T'
+            for j, i in ipairs(list) do
+                local u = units[i]
+                item.units[j] = u
+                item.index[j] = i
+                item.wmin = item.wmin + u.w + (j > 1 and C.G.gap or 0)
+                sig = sig .. u.w .. 'x' .. u.d
+            end
+            item.sig = sig
+            if not place_item(C, S, item) then return nil end
         end
-        item.sig = sig
-        if not place_item(C, S, item) then return nil end
     else
         for i, u in ipairs(units) do
             local item = {units = {u}, index = {i}, wmin = u.w, sig = u.w .. 'x' .. u.d}
@@ -944,31 +968,40 @@ local function verify(C, S)
         C.no_axial = true
         return false
     end
-    if C.req.together then                      -- the row is refused as one
-        local item = {sig = C.together_sig}
-        C.refused[refused_key(run, first.side, first.u, item)] = true
-        return false
+    -- the pending puts by the item they belong to: a row of several units (a cluster, a
+    -- together row) is refused as one, at its first column; a single unit over its first half
+    local items, order = {}, {}
+    for _, s in ipairs(pending) do
+        local it = s.item
+        if not items[it] then items[it] = {}; table.insert(order, it) end
+        table.insert(items[it], s)
     end
-    if #pending == 1 then
-        local item = {sig = first.w .. 'x' .. first.d}
-        for u = first.u, first.u + math.max(1, first.w // 2) - 1 do
-            C.refused[refused_key(run, first.side, u, item)] = true
+    local function refuse(it)
+        local s = items[it][1]
+        local r = S.byid[s.runid]
+        if #it.units > 1 then
+            C.refused[refused_key(r, s.side, s.item_u, it)] = true
+        else
+            for u = s.u, s.u + math.max(1, s.w // 2) - 1 do
+                C.refused[refused_key(r, s.side, u, it)] = true
+            end
         end
+    end
+    if #order == 1 then
+        refuse(order[1])
         return false
     end
     local bad = 0
-    for _, s in ipairs(pending) do
-        local ok1 = ask(C, put_tiles(s.T, s.unit), known, 'room')
+    for _, it in ipairs(order) do
+        local tiles = {}
+        for _, s in ipairs(items[it]) do put_tiles(s.T, s.unit, tiles) end
+        local ok1 = ask(C, tiles, known, 'room')
         if ok1 == nil then return false end
         if ok1 then
-            C.good[s.rkey] = true
+            for _, s in ipairs(items[it]) do C.good[s.rkey] = true end
         else
             bad = bad + 1
-            local r = S.byid[s.runid]
-            local item = {sig = s.w .. 'x' .. s.d}
-            for u = s.u, s.u + math.max(1, s.w // 2) - 1 do
-                C.refused[refused_key(r, s.side, u, item)] = true
-            end
+            refuse(it)
         end
     end
     -- each alone is fine: the caller checks the whole level once more anyway
@@ -1043,6 +1076,12 @@ local function no_hall_words(free)
     return 'no hall: ' .. table.concat(parts, ', ')
 end
 
+-- req: {kind, tag, group, zone, units = { {w, d, open, role, flag} ...},
+-- together, clusters, axial, min_u}. A `together` request's units stand side
+-- by side in rows: its `clusters` (lists of unit indices, each unit in
+-- exactly one; a workshop and its pile rooms) are each one row, following
+-- each other along the hall, across it or onto another run; with no
+-- clusters the whole request is one row.
 -- Where the request goes on the floor: a placement (nothing is saved until
 -- ai-floorplan.commit), or nil and why: 'no hall ...' (no hall can start on
 -- this level), 'no room' (the floor is full), 'refused: ...' (the map said
@@ -1089,10 +1128,30 @@ function place(floor, req, G, env)
                refused = {}, limit = {}, good = {}, probes = 0, refusals = 0, late = false,
                new_hub = no_hall,
                new_floor = floor.hub == nil and nruns == 0 and nslots == 0}
+    -- the items: a together request's clusters (each unit in exactly one), or its whole row as one
     if req.together then
-        local sig = 'T'
-        for _, u in ipairs(units) do sig = sig .. u.w .. 'x' .. u.d end
-        C.together_sig = sig
+        local list = {}
+        if type(req.clusters) == 'table' and #req.clusters > 0 then
+            local seen = {}
+            for k, cl in ipairs(req.clusters) do
+                if type(cl) ~= 'table' or #cl == 0 then return nil, 'bad request: cluster ' .. k end
+                local one = {}
+                for _, i in ipairs(cl) do
+                    i = math.tointeger(i)
+                    if not i or not units[i] or seen[i] then return nil, 'bad request: cluster ' .. k end
+                    seen[i] = true
+                    table.insert(one, i)
+                end
+                table.insert(list, one)
+            end
+            for i = 1, #units do
+                if not seen[i] then return nil, 'bad request: unit ' .. i .. ' in no cluster' end
+            end
+        else
+            list[1] = {}
+            for i = 1, #units do list[1][i] = i end
+        end
+        C.clusters = list
     end
     if C.new_hub then
         for y = -1, 1 do
@@ -1124,4 +1183,23 @@ function place(floor, req, G, env)
         if C.fatal then return nil, C.fatal end
     end
     return nil, 'out of time'
+end
+
+-- (V3) Could the request go onto ONE empty run of this grammar? `place` on a
+-- floor with nothing on it, all rock round the stair, one arm and no turns:
+-- true when it fits. A 'no room' for a request that could is a full floor;
+-- for one that could not, the request is only too big for a run (the floor
+-- is not marked full for it). Pure: no env of the caller's is asked.
+function fits_empty(req, G)
+    if type(req) ~= 'table' or type(G) ~= 'table' then return false end
+    local G1 = {}
+    for k, v in pairs(G) do G1[k] = v end
+    G1.arms_max, G1.grow, G1.tries = 1, {}, 1000
+    local env = {bounds = nil, seed = 0}
+    function env.open() return 'rock' end
+    function env.blocked() return false end
+    function env.probe() return true end
+    function env.late() return false end
+    local P = place({id = 0, runs = {}, slots = {}}, req, G1, env)
+    return type(P) == 'table'
 end

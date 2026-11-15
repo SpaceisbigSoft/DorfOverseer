@@ -52,6 +52,7 @@ local WORDS = {
     turns = {left = true, right = true, alternate = true, both = true, default = 'alternate'},
 }
 local BOOLS = {'balance', 'axial', 'neck'}
+local SHOP_COLS, PILE_COLS = 5, 5   -- a workshop's room and the smallest pile room, in columns along the hall
 local PASSED = {'elevs', 'tag', 'group', 'zone', 'spine'}
 
 -- ---------------------------------------------------------------- helpers
@@ -484,7 +485,9 @@ end
 
 -- The floor grammar from the brain's hint: every key optional, unknown keys
 -- dropped, a wrong type gives the default, numbers are rounded and clamped.
--- Takes nil and any junk.
+-- (V3) A short run keeps room for a workshop and one pile room on a side:
+-- lead, ahead and gap give way, pile_w is capped (brain/floor_grammar.py
+-- does the same). Takes nil and any junk.
 function grammar(hint)
     if type(hint) ~= 'table' then hint = {} end
     local G = {}
@@ -510,6 +513,18 @@ function grammar(hint)
     for _, key in ipairs(BOOLS) do
         G[key] = (hint[key] == true)
     end
+    -- (V3) one side of a full run holds a workshop (5 columns) and one pile room (pile_w, 5 at
+    -- least) with the gap between: the lead gives way first, then what is kept ahead, then the gap;
+    -- the pile room is no wider than what is left beside the shop
+    local function room() return G.run_max - G.lead - G.ahead - (G.neck and 1 or 0) end
+    while room() < SHOP_COLS + G.gap + PILE_COLS do
+        if G.lead > 0 then G.lead = G.lead - 1
+        elseif G.ahead > 0 then G.ahead = G.ahead - 1
+        elseif G.gap > 1 then G.gap = G.gap - 1
+        else break end
+    end
+    local wide = room() - SHOP_COLS - G.gap
+    if G.pile_w > wide then G.pile_w = math.max(NUMBERS.pile_w[1], wide) end
     G.dirs = word_list(hint.dirs, IS_COMPASS, COMPASS)
     G.grow = word_list(hint.grow, {turn = true, arm = true}, {'arm', 'turn'})
     for _, key in ipairs(PASSED) do
