@@ -24,6 +24,11 @@ behind one of the AI's own cavern doors (lua/ai-lure.lua) and cuts it off:
     for the crossbows (an archer post where a fortification looks into the
     pocket, when the siege report has one near) or stays there for good.
 
+(0.105.54) Whether the squads can settle it is the beast's kill plan
+(planner_threats.beast_tactic): a fight the fort is ready for (melee about
+even, or crossbows behind a cavern opening's fortifications) is the hunt's,
+and no lure is built; otherwise the lure holds it.
+
 The seal stays the seal: the lure opens only its own door, in its own
 phase `open`, and the bridge marks that door `lure_open` (planner_threats
 counts it as meant, ai-threats' seal leaves it). Rules switch `lure_beasts`.
@@ -270,10 +275,26 @@ def _lure_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None) ->
     if days < after:
         notes.append(f"{who} is sealed in the caverns ({days} day(s)): a lure pocket is built after {after}")
         return
-    win, words = _squads_win(s, memory, cfg, beast)
-    if win:
-        notes.append(f"{who}: the squads can take it ({words}): no lure")
+    # (0.105.54) the beast's kill plan (planner_threats.beast_tactic): a fight the
+    # fort is ready for (melee, or crossbows behind a cavern opening's
+    # fortifications) is the hunt's (the seal opened for it); else the lure
+    # holds it: cage traps when traps take it, drawbridges when they don't
+    try:
+        from planner_threats import beast_tactic
+        bt = beast_tactic(s, memory, cfg, beast)
+    except Exception:  # noqa: BLE001  (as before: the squads' word alone)
+        bt = None
+    if bt is not None and bt.get("ready") and bt.get("tactic") in ("melee", "ranged"):
+        notes.append(f"{who}: the squads can take it ({bt.get('why')}): no lure; the seal opens for the fight once "
+                     "they're posted")
         return
+    if bt is not None:
+        words = bt.get("why") or ""
+    else:
+        win, words = _squads_win(s, memory, cfg, beast)
+        if win:
+            notes.append(f"{who}: the squads can take it ({words}): no lure")
+            return
     cands = [c for c in _l(L.get("candidates")) if isinstance(c, dict) and c.get("fits") and c.get("key")]
     done = {r["key"] for r in rows if r["phase"] == "done" or r.get("beast_gone")}
     cands.sort(key=lambda c: (0 if c["key"] in done else 1, c["key"]))
