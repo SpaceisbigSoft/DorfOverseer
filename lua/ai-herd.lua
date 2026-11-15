@@ -22,10 +22,11 @@
 --                            the autobutcher targets the AI set
 --   keep_breeders(f)         per kind of grazer or egg layer with a pair:
 --                            one adult male and up to f adult females kept
---                            from the butcher by the nickname BREEDER_NICK
---                            (DFHack's autobutcher spares the nicknamed;
---                            the bridge's slaughter_one does too); f = 0
---                            lets every breeder go (the nickname cleared)
+--                            from the butcher on the AI's kept list
+--                            (KEPT_KEY; (0.105.51) once a nickname, which
+--                            crashed DF 53.17: upkeep() unmarks them for
+--                            autobutcher, slaughter_one skips them); f = 0
+--                            lets every breeder go
 --   tame(max)                caged wild animals given a training assignment
 --                            (any trainer, no war or hunting flag): DF's
 --                            animal trainers tame them at the cage
@@ -39,7 +40,7 @@
 local U = reqscript('ai-util')
 
 SITE_KEY = 'ai-overseer/herd'
-BREEDER_NICK = 'Breeder'
+BREEDER_NICK = 'Breeder'          -- (0.105.51) the old nickname: only cleared now (clear_ai_nicknames)
 AI_PASTURE_NAME = 'AI pasture'
 MAX_KINDS = 16
 MAX_TAMEABLE = 12
@@ -233,6 +234,154 @@ local function state()
     return type(d) == 'table' and d or {}
 end
 
+-- --- (0.105.51) the animals the AI keeps from the butcher, by id -------------
+--
+-- Fort C, 15 Nov: DF 53.17 crashed five times overnight in its render path,
+-- each crash log naming a named female tame animal, three of them stray cats
+-- the AI had nicknamed 'Mouser'. DFHack's setNickname gives an unnamed animal
+-- a whole new name record (has_name, language 0, no first name, no words)
+-- to hold the nickname: the likely crash. So the AI renames no animal now.
+-- Its mousers (ai-society keep_mousers) and breeders (keep_breeders) are kept
+-- in a list of unit ids in the save's site data instead. autobutcher has no
+-- per-unit protection but a name (plugins/autobutcher.cpp isProtectedUnit),
+-- so upkeep() takes the butcher's mark off a kept animal each report (not
+-- while the AI is halted), the bridge's slaughter_one skips them, and once a
+-- fort the nicknames the AI gave ('Mouser', 'Breeder', exactly) are cleared,
+-- their animals put on the list.
+KEPT_KEY = 'ai-overseer/kept-animals'
+KEPT_KINDS = {'mousers', 'breeders'}
+AI_NICKS = {Mouser = 'mousers', Breeder = 'breeders'}
+
+local function kept_state()
+    local d = U.site_get(KEPT_KEY, {})
+    if type(d) ~= 'table' then d = {} end
+    for _, k in ipairs(KEPT_KINDS) do
+        if type(d[k]) ~= 'table' then d[k] = {} end
+    end
+    return d
+end
+
+-- The ids kept as `kind` ('mousers' or 'breeders'): a set {[id] = true}.
+function kept_ids(kind)
+    local out = {}
+    for _, id in ipairs(kept_state()[kind] or {}) do
+        local n = tonumber(id)
+        if n then out[n] = true end
+    end
+    return out
+end
+
+-- Every id the AI keeps, of either kind: a set.
+function kept_all()
+    local out = {}
+    local d = kept_state()
+    for _, k in ipairs(KEPT_KINDS) do
+        for _, id in ipairs(d[k]) do
+            local n = tonumber(id)
+            if n then out[n] = true end
+        end
+    end
+    return out
+end
+
+-- Saves the set `ids` as the `kind` kept.
+function kept_save(kind, ids)
+    local d = kept_state()
+    local list = {}
+    for id, on in pairs(ids or {}) do
+        if on then table.insert(list, id) end
+    end
+    table.sort(list)
+    d[kind] = list
+    return U.site_put(KEPT_KEY, d)
+end
+
+-- One time a fort: the nicknames the AI gave ('Mouser', 'Breeder') cleared;
+-- each such animal still alive and the fort's goes on the kept list instead.
+-- Done once every one is cleared (a nickname the game would not clear is
+-- tried again next time).
+function clear_ai_nicknames(units)
+    local d = kept_state()
+    if d.nicks_cleared then return {ok = true, unchanged = true} end
+    local sets = {}
+    for _, k in ipairs(KEPT_KINDS) do sets[k] = kept_ids(k) end
+    local cleared, failed = 0, 0
+    local list = units
+    if not list then
+        local ok, all = pcall(function() return df.global.world.units.all end)
+        list = ok and all or report_units()
+    end
+    for _, u in ipairs(list) do
+        local kind = AI_NICKS[nickname(u)]
+        if kind and yes(dfhack.units.isAnimal, u) then
+            pcall(dfhack.units.setNickname, u, '')
+            if nickname(u) == '' then
+                cleared = cleared + 1
+                if fort_animal(u) then sets[kind][u.id] = true end
+            else
+                failed = failed + 1
+            end
+        end
+    end
+    d = kept_state()
+    for _, k in ipairs(KEPT_KINDS) do
+        local l = {}
+        for id in pairs(sets[k]) do table.insert(l, id) end
+        table.sort(l)
+        d[k] = l
+    end
+    if failed == 0 then d.nicks_cleared = true end
+    U.site_put(KEPT_KEY, d)
+    return {ok = failed == 0, cleared = cleared, failed = failed > 0 and failed or nil}
+end
+
+-- The kept animals guarded: those gone (dead, off the list of units, no
+-- longer the fort's) dropped from the list, the butcher's mark taken off the
+-- rest. Returns {kept, unmarked, dropped}.
+function guard_kept(dry_run, units)
+    local here = {}
+    for _, u in ipairs(units or report_units()) do here[u.id] = u end
+    local out = {kept = 0, unmarked = 0, dropped = 0}
+    for _, kind in ipairs(KEPT_KINDS) do
+        local ids, changed = kept_ids(kind), false
+        for id in pairs(ids) do
+            local u = here[id]
+            if not u and not units then
+                local ok, f = pcall(df.unit.find, id)
+                u = ok and f or nil
+            end
+            if not u or not fort_animal(u) then
+                if not dry_run then ids[id] = nil; changed = true end
+                out.dropped = out.dropped + 1
+            else
+                out.kept = out.kept + 1
+                if yes(function() return u.flags2.slaughter end) then
+                    if not dry_run then pcall(function() u.flags2.slaughter = false end) end
+                    out.unmarked = out.unmarked + 1
+                end
+            end
+        end
+        if changed then kept_save(kind, ids) end
+    end
+    return out
+end
+
+-- Each report (lua/ai-bridge.lua's herd section): the AI's old nicknames
+-- cleared once (an undoing step: also while halted), the kept guarded (not
+-- while halted: the game is the player's then).
+function upkeep()
+    local out = {}
+    local okc, c = pcall(clear_ai_nicknames)
+    out.nicknames = okc and c or {ok = false, error = tostring(c)}
+    local halted = false
+    pcall(function() halted = reqscript('ai-status').is_halted() == true end)
+    if not halted then
+        local okg, g = pcall(guard_kept, false)
+        out.guard = okg and g or {ok = false, error = tostring(g)}
+    end
+    return out
+end
+
 local function trainers()
     local n = 0
     pcall(function()
@@ -251,6 +400,7 @@ function report()
                  grazers = 0, grazing_need = 0, pairs = 0, breeding_pairs = 0, tameable = 0, hunt_candidates = 0}
     local assigned, n_assigned, ok_list = assigned_ids()
     out.in_training = ok_list and n_assigned or nil
+    local bset = kept_ids('breeders')          -- (0.105.51) the AI's breeders: a list, no nickname
     local tame_races = {}
     for _, u in ipairs(report_units()) do
         if fort_animal(u) then
@@ -276,13 +426,14 @@ function report()
             if tr == 'TRAINED_WAR' then out.war = out.war + 1 elseif tr == 'TRAINED_HUNTER' then out.hunters = out.hunters + 1 end
             if marked then k.marked = k.marked + 1; out.marked = out.marked + 1 end
             if not adult then k.kids = k.kids + 1; out.kids = out.kids + 1 end
-            if nick == BREEDER_NICK then
+            local breeder = bset[u.id] == true
+            if breeder then
                 out.breeders = out.breeders + 1
                 if female then k.breeders_f = k.breeders_f + 1 elseif male then k.breeders_m = k.breeders_m + 1 end
             elseif nick ~= '' or yes(function() return u.name.has_name end) then
                 out.named = out.named + 1
             end
-            if pet or tr or nick ~= '' then k.protected = k.protected + 1 end
+            if pet or tr or nick ~= '' or breeder then k.protected = k.protected + 1 end
             if adult and not in_cage then
                 if female then k.f = k.f + 1 elseif male then k.m = k.m + 1 end
             end
@@ -304,7 +455,7 @@ function report()
             end
             -- hunting training: a tame adult of a hunting kind, nobody's pet,
             -- untrained, no breeder, no assignment yet
-            if adult and not in_cage and not pet and not tr and nick ~= BREEDER_NICK and not assigned[u.id]
+            if adult and not in_cage and not pet and not tr and not breeder and not assigned[u.id]
                     and flag(c, 'TRAINABLE_HUNTING') and yes(dfhack.units.isOwnCiv, u) then
                 out.hunt_candidates = out.hunt_candidates + 1
             end
@@ -341,18 +492,23 @@ function report()
 end
 
 -- Breeders: per kind worth breeding with an adult pair, the male and up to
--- `females` females kept (BREEDER_NICK). Those already kept stay first; then
--- the youngest adults (they breed longest). Nobody's pet, no war or hunting
--- animal, nothing caged, no name of the player's. A breeder past the want
--- (or every one, females = 0) is let go.
+-- `females` females kept (on the kept list, KEPT_KEY; (0.105.51) no longer a
+-- nickname). Those already kept stay first; then the youngest adults (they
+-- breed longest). Nobody's pet, no war or hunting animal, nothing caged, no
+-- name of the player's. A breeder past the want (or every one, females = 0)
+-- is let go.
 function keep_breeders(females, dry_run, txt)
     females = math.max(0, math.min(tonumber(females) or 2, 12))
+    if not dry_run then pcall(clear_ai_nicknames) end
+    local bset = kept_ids('breeders')
+    local before = 0
+    for _ in pairs(bset) do before = before + 1 end
     local by = {}
     for _, u in ipairs(report_units()) do
         if fort_animal(u) and yes(dfhack.units.isAdult, u) then
             local nick = nickname(u)
             local c = caste_of(u)
-            if nick == BREEDER_NICK or (nick == '' and not caged(u) and not is_pet(u) and not trained(u)
+            if bset[u.id] or (nick == '' and not caged(u) and not is_pet(u) and not trained(u)
                     and not yes(function() return u.name.has_name end) and breeding_kind(u, c)) then
                 local r = race_name(u)
                 by[r] = by[r] or {f = {}, m = {}}
@@ -364,21 +520,21 @@ function keep_breeders(females, dry_run, txt)
     local kept, released, unmarked, named = 0, 0, 0, {}
     local function order(list)
         table.sort(list, function(a, b)
-            local ak, bk = nickname(a) == BREEDER_NICK, nickname(b) == BREEDER_NICK
+            local ak, bk = bset[a.id] == true, bset[b.id] == true
             if ak ~= bk then return ak end
             if born(a) ~= born(b) then return born(a) > born(b) end
             return a.id < b.id
         end)
     end
+    local keep_set = {}
     local function keep(u)
-        if nickname(u) == BREEDER_NICK then kept = kept + 1; return true end
+        keep_set[u.id] = true
+        if bset[u.id] then kept = kept + 1; return true end
         if not dry_run then
             if yes(function() return u.flags2.slaughter end) then
                 pcall(function() u.flags2.slaughter = false end)
                 unmarked = unmarked + 1
             end
-            pcall(dfhack.units.setNickname, u, BREEDER_NICK)
-            if nickname(u) ~= BREEDER_NICK then return false end
         end
         kept = kept + 1
         local okn, n = pcall(function() return (txt or tostring)(dfhack.units.getReadableName(u)) end)
@@ -386,8 +542,7 @@ function keep_breeders(females, dry_run, txt)
         return true
     end
     local function let_go(u)
-        if nickname(u) ~= BREEDER_NICK then return end
-        if not dry_run then pcall(dfhack.units.setNickname, u, '') end
+        if not bset[u.id] then return end
         released = released + 1
     end
     local races = {}
@@ -409,6 +564,14 @@ function keep_breeders(females, dry_run, txt)
     end
     if females > 0 and kinds == 0 and released == 0 then
         return {ok = false, rejected = true, error = 'no kind of grazer or egg layer here has an adult male and female'}
+    end
+    if not dry_run then
+        -- the list is the kept now (a kept one no longer here, adult or the fort's, drops off too)
+        local n = 0
+        for _ in pairs(keep_set) do n = n + 1 end
+        local same = n == before
+        if same then for id in pairs(bset) do if not keep_set[id] then same = false; break end end end
+        if not same then kept_save('breeders', keep_set) end
     end
     return {ok = true, kinds = kinds, kept = kept, named = #named > 0 and named or nil, released = released,
             unmarked = unmarked, dry_run = dry_run or nil}
@@ -457,9 +620,10 @@ function train_hunt(max, dry_run, txt)
     local assigned = {}
     for _, a in ipairs(list) do assigned[a.animal_id] = true end
     local cands = {}
+    local bset = kept_ids('breeders')
     for _, u in ipairs(report_units()) do
         if fort_animal(u) and not assigned[u.id] and yes(dfhack.units.isAdult, u) and not caged(u)
-                and not is_pet(u) and not trained(u) and nickname(u) ~= BREEDER_NICK
+                and not is_pet(u) and not trained(u) and not bset[u.id]
                 and yes(dfhack.units.isOwnCiv, u) and flag(caste_of(u), 'TRAINABLE_HUNTING') then
             table.insert(cands, u)
         end

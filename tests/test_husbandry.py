@@ -201,19 +201,25 @@ def _():
     need_lua()
     lua, env, w = world()
     farm(lua, w)
+
+    def kept():
+        return sorted(int(i) for i in py(env.kept_ids("breeders")).keys())
+
     dry = py(env.keep_breeders(2, True))
     assert dry["ok"] and dry["kept"] == 6 and dry["kinds"] == 2
-    assert all(py(u.name.nickname) == "" for u in w.units.values())
+    assert kept() == []
     r = py(env.keep_breeders(2, False))
-    nick = {int(u.id): u.name.nickname for u in w.units.values()}
     assert r["kept"] == 6 and r["unmarked"] == 1, r
-    assert nick[3] == "Breeder" and nick[4] == "Breeder" and nick[12] == "Breeder"   # the youngest cow first
-    assert nick[5] == "" and nick[20] == "" and nick[22] == ""                        # calf, pet, dogs left
+    assert kept() == [1, 3, 4, 10, 11, 12], kept()                      # the youngest cow (3) first
+    assert 5 not in kept() and 20 not in kept() and 22 not in kept()   # calf, pet, dogs left
+    # (0.105.51) no animal renamed: the kept list only
+    assert all(py(u.name.nickname) == "" for u in w.units.values())
     assert w.units[12].flags2.slaughter is False
     again = py(env.keep_breeders(2, False))
     assert again["kept"] == 6 and not again.get("named")
+    assert py(env.report())["breeders"] == 6
     out = py(env.keep_breeders(0, False))
-    assert out["released"] == 6 and all(u.name.nickname == "" for u in w.units.values())
+    assert out["released"] == 6 and kept() == []
 
 
 @test("tame: a training assignment (any trainer, no war or hunting flag) for the caged bear only; counted in the save")
@@ -258,7 +264,8 @@ def _():
 @test("bridge: the herd section (safe), the four actions with dry runs, the module listed; labels, defaults, config")
 def _():
     src = (LUA_DIR / "ai-bridge.lua").read_text(encoding="utf-8")
-    assert "herd = function() return safe(function() return reqscript('ai-herd').report() end) end," in src
+    k0 = src.index("    herd = function() return safe(function()")
+    assert "pcall(h.upkeep)" in src[k0:k0 + 200] and "return h.report()" in src[k0:k0 + 200]
     actions = src[src.index("ACTIONS = {"):src.index("DRY_OK = {}")]
     dry = src[src.index("DRY_OK = {}"):src.index("}) do DRY_OK[name] = true end")]
     for name in ("herd_breeders", "tame_wild", "train_hunt", "herd_targets"):
@@ -272,7 +279,7 @@ def _():
     # the butcher's one-at-a-time pick spares the breeders; the gate dogs' pen is no pasture
     acts = (LUA_DIR / "ai-bridge-actions.lua").read_text(encoding="utf-8")
     i = acts.index("function act_slaughter_one(a)")
-    assert "'Breeder'" in acts[i:i + 1200]
+    assert "kept[u.id]" in acts[i:i + 1400] and "kept_all()" in acts[i:i + 1400]
     soc = (LUA_DIR / "ai-society.lua").read_text(encoding="utf-8")
     j = soc.index("function pasture_report()")
     assert "GATE_DOGS_NAME" in soc[j:j + 1400] and "count = #list - dogs" in soc[j:j + 1400]

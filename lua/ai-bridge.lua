@@ -1508,7 +1508,13 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
     -- (0.105.47) the herd by kind (adults by sex, young, breeders, protected,
     -- marked, caged), grass the AI's grazers need, wool grown and milk ready
     -- now, caged wild animals to tame, trainers, autobutcher targets (lua/ai-herd.lua)
-    herd = function() return safe(function() return reqscript('ai-herd').report() end) end,
+    -- (0.105.51) first its upkeep: the AI's old 'Mouser'/'Breeder' nicknames
+    -- cleared once, autobutcher's mark taken off the animals the AI keeps
+    herd = function() return safe(function()
+        local h = reqscript('ai-herd')
+        pcall(h.upkeep)
+        return h.report()
+    end) end,
     -- (0.105.47) the Garden fort's garden court above ground: its stage, the
     -- walls, beds, statues and seats built or waiting (lua/ai-builder-court.lua; nil: none)
     garden_court = function() return safe(function() return reqscript('ai-builder').garden_court_status() end) end,

@@ -250,7 +250,7 @@ def _food_store_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=No
             proposals.append(Proposal("vermin", {"type": "keep_mousers", "count": k},
                                       f"food has been rotting or eaten lately ({_int(seen.get('rise'))} more rotten): "
                                       f"{kept} of the {loose_cats} loose cat(s) are safe from the butcher; keep {k} "
-                                      "(nicknamed Mouser, which autobutcher spares) to hunt the vermin", 5))
+                                      "(on the AI's kept list: autobutcher's mark taken off) to hunt the vermin", 5))
 
 
 def note_food(s: dict, memory, cfg: dict) -> list[str]:

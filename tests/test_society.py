@@ -896,7 +896,7 @@ def _():
     assert not assigned[2], dict(assigned)
 
 
-@test("vermin hunters (0.104.168): the cats counted (loose, caged, kept); a few kept from the butcher by a nickname")
+@test("vermin hunters (0.104.168): the cats counted (loose, caged, kept); a few kept from the butcher on the AI's list, never renamed (0.105.51)")
 def _():
     env, units, assigned, ntiles, g = fresh()
     snippet = """
@@ -921,6 +921,15 @@ def _():
       U.isAdult = function(u) return u.adult end
       U.setNickname = function(u, n) u.name.nickname = n end
       U.getReadableName = function(u) return 'cat ' .. u.id end
+      KEPT = {}
+      SAVES = 0
+      env.reqscript = function(name)
+          if name ~= 'ai-herd' then error('no module ' .. name) end
+          return {kept_ids = function(kind) local o = {}; for k, v in pairs(KEPT) do o[k] = v end; return o end,
+                  kept_save = function(kind, ids) assert(kind == 'mousers'); KEPT = {}
+                      for k, v in pairs(ids) do KEPT[k] = v end; SAVES = SAVES + 1; return true end,
+                  clear_ai_nicknames = function() return {ok = true} end}
+      end
     """
     env["load"](snippet, "t", "t", env)(env)
     v = env.vermin_hunters(env.ANIMALS)
@@ -928,8 +937,11 @@ def _():
     r = env.keep_mousers(3, True, None, env.ANIMALS)
     assert r.ok and r.dry_run and list(r.named.values()) == ["cat 12", "cat 15"], dict(r)   # adults first; not caged
     assert env.ANIMALS[2].name.nickname == "" and env.ANIMALS[2].flags2.slaughter
+    assert env.SAVES == 0
     r = env.keep_mousers(3, False, None, env.ANIMALS)
-    assert r.ok and r.unmarked == 1 and env.ANIMALS[2].name.nickname == "Mouser", dict(r)
+    assert r.ok and r.unmarked == 1, dict(r)
+    assert sorted(env.KEPT.keys()) == [12, 15], dict(env.KEPT)                # on the AI's list
+    assert all(a.name.nickname == "" for a in env.ANIMALS.values())        # (0.105.51) nobody renamed
     assert not env.ANIMALS[2].flags2.slaughter                              # off the butcher's list
     v = env.vermin_hunters(env.ANIMALS)
     assert v.kept == 3 and v.mousers == 2 and v.marked == 0, dict(v)

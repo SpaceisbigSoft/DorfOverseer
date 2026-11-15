@@ -1720,8 +1720,9 @@ function act_accept_cups(a)
     return reqscript('ai-society').accept_cups(a.dry_run == true)
 end
 
--- (0.104.168) A few cats (vermin hunters) kept from the butcher: nicknamed,
--- which DFHack's autobutcher respects (lua/ai-society.lua keep_mousers).
+-- (0.104.168) A few cats (vermin hunters) kept from the butcher
+-- (lua/ai-society.lua keep_mousers): (0.105.51) on the AI's kept list, no
+-- longer nicknamed (named animals crashed DF 53.17).
 function act_keep_mousers(a)
     local n = int_in(a.count or 6, 1, 20)
     if not n then return reject('keep_mousers: count 1-20') end
@@ -1984,11 +1985,15 @@ end
 
 function act_slaughter_one(a)
     local cands, marked = {}, 0
+    -- (0.105.51) the cats and breeders the AI keeps: a list of ids now, no nickname (lua/ai-herd.lua)
+    local okk, kept = pcall(function() return reqscript('ai-herd').kept_all() end)
+    kept = okk and type(kept) == 'table' and kept or {}
     for _, u in ipairs(df.global.world.units.active) do
         local ok, fit = pcall(function()
             if not dfhack.units.isAnimal(u) or not dfhack.units.isFortControlled(u) or dfhack.units.isDead(u) then return false end
             if u.flags2.slaughter then marked = marked + 1 return false end
             if dfhack.units.isPet(u) or dfhack.units.isWar(u) or dfhack.units.isHunter(u) then return false end
+            if kept[u.id] then return false end                                -- (0.105.51) kept by the AI
             if (u.name.nickname or '') == 'Mouser' then return false end      -- (0.104.168) a cat the AI keeps
             if (u.name.nickname or '') == 'Breeder' then return false end     -- (0.105.47) a breeder (lua/ai-herd.lua)
             if not dfhack.units.isAdult(u) or u.flags1.caged then return false end
