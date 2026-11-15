@@ -476,6 +476,34 @@ def _():
     assert how == "word" and place.x == 31 and place.y == 33 and lst(G.clicks[1]) == [31, 33], (how, lst(G.clicks[1]))
 
 
+@test("answers (0.105.50): no Yes/No button in DF 53.17: the agreeing or refusing reply line clicked by its opening words; two lines of one answer on screen: none")
+def _():
+    import test_world as TW
+    env, G = TW.world(TW.MEETING)
+    TW.LUA.execute(r"""local env = ...
+        env.reqscript = function(n)
+          if n == 'ai-meeting-open' then return {find_word = function(w)
+            if w == 'I can scarcely believe' then return {{20, 40}} end
+            if w == 'Flattering, but' then return {{20, 42}} end
+            return {} end} end
+          error('reqscript ' .. n)
+        end""", env)
+    how, place = env.press_named("Yes", None)
+    assert how == "line" and place.y == 40 and lst(G.clicks[1])[0] == 20 + len("I can scarcely believe") // 2, (how, lst(G.clicks[1]))
+    how, place = env.press_named("No", None)
+    assert how == "line" and place.y == 42, how
+    TW.LUA.execute(r"""local env = ...
+        env.reqscript = function(n)
+          if n == 'ai-meeting-open' then return {find_word = function(w)
+            if w == 'I can scarcely believe' or w == 'We can grant this request' then return {{20, 40}} end
+            return {} end} end
+          error('reqscript ' .. n)
+        end""", env)
+    n_before = len(G.clicks)
+    how, place = env.press_named("Yes", None)
+    assert how == "key" and len(G.clicks) == n_before, how      # not certain: no line clicked (Yes falls to the key)
+
+
 @test("answers: every topic concluded: the text stepped on with the confirm key, never a click")
 def _():
     import test_world as TW

@@ -727,16 +727,41 @@ end
 -- the screen is the AI's no). Returns how ('button', 'word', 'key') and the
 -- place clicked, or nil.
 KEY_FOR = {Yes = 'SELECT', Done = 'SELECT', Okay = 'SELECT'}   -- (0.105.49) Okay: the text screens
+-- (0.105.50) DF 53.17's meeting has no Yes or No button: each topic is
+-- answered by clicking one of the fort's reply lines (DF's own text, read
+-- from the game's strings, R3 15 Nov). The opening words of every agreeing
+-- and refusing line, by topic: imports, exports, the tree quota, an object
+-- asked for, peace; tribute's two refusals.
+REPLY_LINES = {
+    Yes = {'I can scarcely believe', 'We can grant this request', 'We can abide by this',
+           'We will gladly do as you ask', 'I hear the call'},
+    No = {'Flattering, but', 'We cannot stop production', 'Our needs exceed your',
+          'Sadly, we do not possess', 'We will drown out the call', 'Give up this childish',
+          'Your claim is worthless'},
+}
+local function click_found(hits, len)
+    local gps = df.global.gps
+    local x, y = hits[1][1] + len // 2, hits[1][2]
+    local w = {dx = x - gps.dimx // 2, dy = y - gps.dimy // 2, x = x, y = y, w = gps.dimx, h = gps.dimy}
+    click(w)
+    return w
+end
 function press_named(name, btn)
     local b = btn and btn[name]
     if b then click(b); return 'button', b end
     local ok, hits = pcall(function() return reqscript('ai-meeting-open').find_word(name) end)
     if ok and type(hits) == 'table' and #hits == 1 then
-        local gps = df.global.gps
-        local x, y = hits[1][1] + #name // 2, hits[1][2]
-        local w = {dx = x - gps.dimx // 2, dy = y - gps.dimy // 2, x = x, y = y, w = gps.dimx, h = gps.dimy}
-        click(w)
-        return 'word', w
+        return 'word', click_found(hits, #name)
+    end
+    -- (0.105.50) a reply line: exactly one of the answer's lines on the screen
+    -- (never two: then it isn't certain which topic it answers)
+    local found = {}
+    for _, line in ipairs(REPLY_LINES[name] or {}) do
+        local okl, h = pcall(function() return reqscript('ai-meeting-open').find_word(line) end)
+        if okl and type(h) == 'table' and #h == 1 then table.insert(found, {line, h}) end
+    end
+    if #found == 1 then
+        return 'line', click_found(found[1][2], #found[1][1])
     end
     local key = KEY_FOR[name]
     if key then
