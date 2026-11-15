@@ -124,7 +124,10 @@ def _squad_free(q: dict, away: dict) -> str | None:
     if q.get("parched"):
         return "thirsty"
     armed = _d(q.get("power")).get("armed")
-    if _int(armed) is None or armed < members:
+    # (0.105.48, K9) a member gone from the map (the missions report's `gone`:
+    # left, sent away, no unit, and no mission) can't be armed: not counted
+    gone = min(max(0, _int(a.get("gone")) or 0), members - 1)
+    if _int(armed) is None or armed < members - gone:
         return "not all armed"
     return None
 
@@ -574,13 +577,15 @@ def _stopped_needs_you(s: dict, goal: str, cfg: dict, notes: list) -> None:
 
 def _fort_missions_out(s: dict) -> list:
     """The fort's missions out but the messenger's (DIPLOMACY): a controller
-    with the fort's squads, or a squad away or under a controller."""
+    with the fort's squads, or a squad under a controller. (0.105.48, K9) A
+    squad with no controller is never a mission out, whatever its `away`
+    says (the audit: 'away: 1' with nobody out blocked every mission)."""
     ms = _m(s)
     away = _away_squads(s)
     out = [c for c in _l(ms.get("controllers")) if isinstance(c, dict) and c.get("goal") != "DIPLOMACY"
            and (any(x in away for x in _l(c.get("squads"))) or (_int(c.get("away")) or 0) > 0)]
     if not out:
-        out = [q for q in away.values() if (_int(q.get("away")) or 0) > 0 or _int(q.get("controller")) is not None]
+        out = [q for q in away.values() if _int(q.get("controller")) is not None]
     return out
 
 
@@ -732,6 +737,16 @@ def _mission_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None)
         if (last.get("result") == "sent" and lt is not None
                 and 0 <= abs_tick(s) - lt < cfg["mission_sent_wait_ticks"]):
             return                   # sent lately: its controller shows in `missions` soon
+        # (0.105.48, K9) the World button shown (this save or any on this PC):
+        # without it the bridge refuses every send (needs_button), so nothing is
+        # proposed and no pet is let out for a send that can't start
+        if "World" not in set(str(b) for b in _l(send.get("buttons"))):
+            notes.append(f"a mission could {what}: {names} ({sent} soldiers, {reserve} stay home) are free to go, "
+                         "but the AI hasn't been shown DF's World button yet")
+            ask_player(notes, f"missions (13b): to {what}, the AI needs DF's World button shown once (the mouse "
+                              "on it and python brain\\probe_missions.py --here World); meanwhile "
+                              f"{names} stay home and the AI names the target in its notes")
+            return
         # (0.105.47) every member of the squads going must be able to walk out
         wo_sq = _d(_d(ms.get("way_out")).get("squads"))
         blocked = sum(_int(wo_sq.get(str(q["id"]))) or 0 for q in squads)

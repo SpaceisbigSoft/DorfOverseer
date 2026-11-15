@@ -662,7 +662,7 @@ def _():
     M = tbm.H.module()
     tbm.LUA.execute("""local M, H = ...
       H.calls = {}
-      H.rules = {missions = 'all', send_missions = true, send_messenger = true}
+      H.rules = {missions = 'all', send_missions = true, send_messenger = true, raid_policy = 'ai'}   -- (0.105.48) raids off by default
       H.scripts = {['ai-mission-send'] = {start = function(a) table.insert(H.calls, a); return {ok = true, sending = true} end},
                    ['ai-overseer-settings'] = {load_settings = function() return H.rules end,
                                                MISSION_GOALS = {off = {}, rescue = {'rescue', 'recover_artifact'},
@@ -860,7 +860,7 @@ def _():
     M = tbm.H.module()
     tbm.LUA.execute("""local M, H = ...
       H.calls = {}
-      H.rules = {missions = 'all', send_missions = true, send_messenger = true}
+      H.rules = {missions = 'all', send_missions = true, send_messenger = true, raid_policy = 'ai'}   -- (0.105.48) raids off by default
       H.goals = {off = {}, rescue = {'rescue', 'recover_artifact'}, explore = {'rescue', 'recover_artifact', 'explore'},
                  all = {'rescue', 'recover_artifact', 'explore', 'raid', 'pillage', 'tribute', 'conquer'}}
       H.settings = {load_settings = function() return H.rules end, MISSION_GOALS = H.goals}

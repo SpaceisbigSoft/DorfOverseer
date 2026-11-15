@@ -152,9 +152,15 @@ def _():
     assert env.decide("DeclareWar", "small")[0] == "no"
     assert env.decide("BecomeLandHolder", "small")[0] is None           # the player's
     ctx = lambda a: LUA.table_from({"amount": a, "wealth": 10000})       # noqa: E731
+    # (0.105.48, K9) the "amount" read is DF's topic index, not a sum: 'small' refuses until the sum is seen
+    assert env.decide("TributeAgreement", "small", ctx(400))[0] == "no"
+    assert env.decide("TributeAgreement", "small", ctx(2000))[0] == "no"
+    assert env.decide("TributeAgreement", "small", LUA.table_from({}))[0] == "no"
+    env.TRIBUTE_SUM_KNOWN = True                                           # once it is seen in game: weighed
     assert env.decide("TributeAgreement", "small", ctx(400))[0] == "yes"     # 4% of the wealth: small
     assert env.decide("TributeAgreement", "small", ctx(2000))[0] == "no"     # 20%: large
     assert env.decide("TributeAgreement", "small", LUA.table_from({}))[0] is None   # amount unknown: left
+    env.TRIBUTE_SUM_KNOWN = False
     assert env.decide("TributeAgreement", "pay", ctx(9000))[0] == "yes"
     assert env.decide("TributeAgreement", "refuse", ctx(1))[0] == "no"
     assert env.price_pct(128) == 100 and env.price_pct(192) == 150
@@ -290,7 +296,10 @@ def _():
     assert "left to you" in WENV.press_guard(T(), "small")
     for t in ("DemandSurrender", "DeclareWar", "InduceWar"):
         assert t in WENV.press_guard(T(t), "pay")
+    assert WENV.press_guard(T("TributeAgreement"), "small") is None     # (0.105.48, K9) 'small' answers No: pressed
+    WENV.TRIBUTE_SUM_KNOWN = True
     assert "tribute" in WENV.press_guard(T("TributeAgreement"), "small")
+    WENV.TRIBUTE_SUM_KNOWN = False
     assert WENV.press_guard(T("TributeAgreement"), "pay") is None
     two = MEETING + "df.global.game.main_interface.diplomacy.dipev.agreement_topic = G.vec({})"
     env, G = world(two)
@@ -454,6 +463,7 @@ def _():
     m = {"open": True, "civ": "Elves", "topic": "TreeQuota", "buttons": ["No", "Yes"]}
     s = fort({"meeting": m})
     s["settings"]["tribute"] = "refuse"
+    s["unattended"] = True                    # (0.105.48, K9) answered only with nobody at the game
     p = by_rule(plan(s, Memory())[0], "meeting")
     assert p and p[0].action == {"type": "answer_meeting", "tribute": "refuse"} and p[0].priority == 0, p
     s2 = fort({"meeting": dict(m, buttons=[])})
@@ -462,9 +472,11 @@ def _():
     assert not by_rule(props, "meeting")
     assert any("probe_meeting.py --here Yes" in n for n in notes), notes
     req = fort({"meeting": dict(m, requests=True, buttons=["Done"])})
+    req["unattended"] = True
     p = by_rule(plan(req, Memory())[0], "meeting")
     assert p and isinstance(p[0].action.get("wishes", []), list), p
     baron = fort({"meeting": dict(m, land_holder=True)})
+    baron["unattended"] = True
     props, notes = plan(baron, Memory())
     assert not by_rule(props, "meeting") and any("barony" in n for n in notes)
 

@@ -471,7 +471,30 @@ end
 -- ---------------------------------------------------------------------------
 -- the buttons, shown to the AI once (as the trade and meeting screens')
 
+-- (0.105.48, K9) the save's, else this PC's (shown in any save here:
+-- lua/ai-screen-buttons.lua, as the trade and meeting buttons since 0.105.47),
+-- so a new fort finds the World button the player showed in another
+-- A place shown in this save before 0.105.48 (kept in the save only) is
+-- copied to the PC's file once a session, so the next new fort has it too.
+SHARED_FROM_SAVE = SHARED_FROM_SAVE or {}
 function buttons()
+    pcall(function()
+        local site, new = U.site_get(BUTTONS_KEY, {}), {}
+        for name, place in pairs(site) do
+            if type(place) == 'table' and not SHARED_FROM_SAVE[name] then
+                SHARED_FROM_SAVE[name] = true
+                new[name] = place
+            end
+        end
+        if next(new) == nil then return end
+        local B = reqscript('ai-screen-buttons')
+        local pc = B.read_file().buttons[BUTTONS_KEY] or {}
+        for name, place in pairs(new) do
+            if pc[name] == nil then B.share(BUTTONS_KEY, name, place) end
+        end
+    end)
+    local ok, d = pcall(function() return reqscript('ai-screen-buttons').get(BUTTONS_KEY) end)
+    if ok and type(d) == 'table' then return d end
     return U.site_get(BUTTONS_KEY, {})
 end
 
@@ -495,10 +518,12 @@ function calibrate(name)
             return {ok = false, error = 'open the World screen, click a site so New mission shows, then put the mouse on ' .. name}
         end
     end
-    local d = buttons()
+    local d = U.site_get(BUTTONS_KEY, {})   -- (0.105.48) the save's own, not the merged ones
     d[name] = {anchor = anchor, dx = x - gps.dimx // 2, dy = y - gps.dimy // 2, lx = x, by = gps.dimy - y,
                x = x, y = y, w = gps.dimx, h = gps.dimy}
     dfhack.persistent.saveSiteData(BUTTONS_KEY, d)
+    -- (0.105.48, K9) and for every save on this PC
+    pcall(function() reqscript('ai-screen-buttons').share(BUTTONS_KEY, name, d[name]) end)
     return {ok = true, button = name, x = x, y = y, screen = {gps.dimx, gps.dimy}}
 end
 
@@ -1679,6 +1704,36 @@ function start(a)
     RUN = run
     later(1, function() tick(run) end)
     return {ok = true, sending = true, goal = goal, site_id = site_id, site = name, steps = steps, stops_at = stops_at}
+end
+
+-- (0.105.48, K9) The overseer's backstop (unattended only, brain/overseer.py
+-- WORLD_CLOSE_S): DF's World screen holds the game (the date stands still,
+-- no daily cycle comes, no new start() to close it), so after a few minutes
+-- with nobody at the game it is left (LEAVESCREEN while it is on top, as
+-- close_world). A run under way and not stale is never cut short; a stale
+-- one is dropped as start() drops it. Returns at once; the presses run over
+-- the next frames (LEAVE says how it ended; the pulse's world_open shows it).
+LEAVE = LEAVE or nil
+function leave_world(dry_run)
+    if not world_screen() then return {ok = false, rejected = true, screen = false, error = 'the World screen is not open'} end
+    if RUN and not run_stale(RUN) then
+        return {ok = false, waiting = true, screen = true,
+                error = 'a mission is being sent (step ' .. tostring(RUN.step_name) .. '): the World screen is its'}
+    end
+    if dry_run then return {ok = true, dry_run = true, screen = true, on_top = world_on_top()} end
+    if RUN then
+        local old = RUN
+        RUN = nil
+        pcall(function()
+            old.why = 'dropped: the World screen was left by the overseer (nobody at the game)'
+            old.result, old.reason, old.stopped_at = 'error', 'stale', old.step_name
+            save_outcome(old)
+        end)
+    end
+    LEAVE = {started = ms_now()}
+    local leave = LEAVE
+    close_world(nil, 0, function(closed) leave.closed = closed end)
+    return {ok = true, screen = true, closing = true, on_top = world_on_top()}
 end
 
 -- The run under way and the last one's outcome, for the report.

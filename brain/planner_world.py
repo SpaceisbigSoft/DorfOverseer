@@ -35,7 +35,7 @@ from planner_core import (PLANNER_CONFIG, Proposal, TICKS_PER_DAY, TICKS_PER_YEA
 
 __all__ = ["_meeting_answer_rule", "_world_notes", "_hostile_trade_filter", "_export_rule", "_messenger_rule",
            "_contact_rule", "grudge_facts", "note_grudges", "note_world", "export_wishes", "EXPORT_RECIPES",
-           "TRADE_ACTIONS", "meeting_wishes", "WISH_CATEGORIES"]
+           "TRADE_ACTIONS", "meeting_wishes", "WISH_CATEGORIES", "note_contact_sent"]
 
 HOSTILE = ("TotalWar", "Skirmishing")
 # the bridge's trade actions: none while only a hostile civ's caravan is here
@@ -83,8 +83,43 @@ def note_world(s: dict, memory) -> None:
     from planner_peace import note_attacks          # (0.105.41, item 8) the civs the fort attacked
     note_attacks(s, memory)
     memory.world_seen["export"] = export_wishes(s, memory)
-    if _contact_site(s, memory) is not None:
+    # (0.105.48, K9) stamped here only when the rule merely names the site (the
+    # AI doesn't send it: the switch off, or the World button never shown);
+    # a send is stamped in note_contact_sent once the bridge took it (the
+    # audit: a gate opened first, or "not now", lost the send for a season)
+    if _contact_site(s, memory) is not None and not _contact_sends(s):
         memory.world_seen["contact_said"] = abs_tick(s)
+
+
+def _contact_sends(s: dict) -> bool:
+    """(0.105.48) Make contact goes by the World screen: the switch on, the
+    sender reporting, its World button known."""
+    send = _send_status(s)
+    if not (player_rules(s)["send_messenger"] and send and "World" in set(str(b) for b in _l(send.get("buttons")))):
+        return False
+    # a run that stopped at a step lately: the rule only says so (once a season), no send
+    from planner_missions import last_of_goal, interrupted
+    last = last_of_goal(send, "make_contact")
+    t = last.get("tick") if isinstance(last.get("tick"), int) else None
+    if (t is not None and 0 <= abs_tick(s) - t < SEND_RETRY_TICKS and last.get("result") in ("stopped", "error")
+            and last.get("reason") not in ("inaccessible", "no_messenger") and not interrupted(last)):
+        return False
+    return True
+
+
+def note_contact_sent(p, r: dict, state: dict, memory) -> None:
+    """(0.105.48, K9) planner.record: a Make contact send the bridge took (or
+    whose answer was lost) stamps contact_said, so the site isn't named again
+    for a season; a refusal or "not now" (ok false) stamps nothing and the
+    next cycle tries again."""
+    a = getattr(p, "action", None) or {}
+    if a.get("type") != "send_mission" or a.get("goal", "make_contact") != "make_contact":
+        return
+    if a.get("dry_run") or (r or {}).get("ok") is False or memory is None:
+        return
+    if not isinstance(getattr(memory, "world_seen", None), dict):
+        memory.world_seen = {}
+    memory.world_seen["contact_said"] = abs_tick(state)
 
 
 # --- meetings ---------------------------------------------------------------------
@@ -104,6 +139,12 @@ def _meeting_answer_rule(s: dict, cfg: dict, proposals: list, notes: list, memor
         ask_player(notes, "a meeting asks who should hold a barony: the AI can't pick on DF's barony screen (no "
                           "way to choose there is known to it), so it doesn't answer; unattended, it leaves the "
                           "screen after a few minutes (the meeting ends without a holder) so the game goes on")
+        return
+    # (0.105.48, K9) only in an unattended run (the overseer's state["unattended"]:
+    # --unattended or the keeper), as the main loop's own answer: a player at
+    # the game has the screen open and answers it
+    if s.get("unattended") is not True:
+        notes.append("DF's meeting screen is open: left to you (the AI answers it only when nobody is at the game)")
         return
     rules = player_rules(s)
     known = set(str(b) for b in _l(m.get("buttons")))

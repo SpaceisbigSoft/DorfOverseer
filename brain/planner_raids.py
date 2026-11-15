@@ -6,7 +6,7 @@ for the option of raiding, but be less hostile and more reactionary, or if
 some other hostile towns are setting up nearby be able to deal with that."
 
 The policy is the AI's choice inside the Rules' `missions` = 'all'; the Army
-tab's `raid_policy` (ai, the default / aggressive / reactive / off) can force
+tab's `raid_policy` (ai / aggressive / reactive / off, (0.105.48) the default) can force
 it. With 'ai' the sliders decide (the presets just fall out of them):
 
   * aggressive (Militarism >= raid_aggressive_militarism, the War-hold): any
@@ -48,7 +48,7 @@ from __future__ import annotations
 from digest import _d, _l, game_text
 from planner_core import PLANNER_CONFIG, TICKS_PER_DAY, abs_tick, player_rules, _traits
 
-__all__ = ["raid_stance", "raid_friends", "raid_attackers", "site_strength", "squads_power", "raid_candidates",
+__all__ = ["raid_stance", "raid_friends", "raid_attackers", "contact_civs", "LIVED_IN", "site_strength", "squads_power", "raid_candidates",
            "raid_choice", "last_offensive_tick", "note_raids", "pets_of_squads", "stuck_pets", "releasable_pets",
            "pet_words", "restore_due", "RAID_POLICIES", "RAIDS_SWITCH", "SITE_WEIGHT"]
 
@@ -64,6 +64,11 @@ SITE_WORDS = {"Camp": "camp", "DarkFortress": "dark fortress", "Fortress": "fort
               "Town": "town", "ForestRetreat": "forest retreat", "Hamlet": "hamlet", "LairShrine": "lair",
               "Cave": "cave", "Tower": "tower"}
 SIGHTS_MAX = 300          # sites remembered (first seen) at most
+# (0.105.48, K9) the site types people live in: the only ones raided (the
+# audit: 1210 of this world's 1429 sites are monuments of unknown civs, and
+# the aggressive rule sent the War-hold to a tomb). A Monument, a lair, a
+# cave or an important location is never a raid's target.
+LIVED_IN = ("Town", "Hamlet", "Fortress", "DarkFortress", "MountainHalls", "ForestRetreat", "Camp", "Tower")
 
 
 def _num(v):
@@ -93,7 +98,7 @@ def _seen(memory) -> dict:
 
 def raid_stance(s: dict, cfg: dict = PLANNER_CONFIG) -> tuple[str, str]:
     """(aggressive | reactive | timid | off, why in words)."""
-    rp = player_rules(s).get("raid_policy", "ai")
+    rp = player_rules(s).get("raid_policy", "off")
     if rp == "off":
         return "off", f"{RAIDS_SWITCH} is off"
     if rp == "aggressive":
@@ -181,9 +186,11 @@ def _attack_words(a: dict) -> str:
 
 def site_strength(row: dict, cfg: dict = PLANNER_CONFIG) -> float:
     """A site's strength in squad-power units: base + per resident (capped),
-    weighted by its type. Unknown residents: raid_unknown_pop."""
+    weighted by its type. Unknown residents: raid_unknown_pop. (0.105.48, K9)
+    0 residents at a lived-in type is unknown too (DF's resident_count is
+    first_calc_total_pop: maybe 0 for a site never loaded)."""
     pop = _int(row.get("pop"))
-    if pop is None:
+    if pop is None or (pop <= 0 and str(row.get("type") or "") in LIVED_IN):
         pop = int(cfg.get("raid_unknown_pop", 60))
     pop = min(max(0, pop), int(cfg.get("raid_resident_cap", 200)))
     w = SITE_WEIGHT.get(str(row.get("type") or ""), 1.0)
@@ -236,6 +243,61 @@ def _rows(s: dict, extra=None) -> tuple[list, bool]:
     return out, known
 
 
+def _raidable(r: dict) -> bool:
+    """(0.105.48, K9) A site people live in and not known to be empty."""
+    if str(r.get("type") or "") not in LIVED_IN:
+        return False
+    pop = _int(r.get("pop"))
+    return pop is None or pop > 0          # None: unknown (the bridge reads 0 as unknown); 0: an older bridge
+
+
+def contact_civs(s: dict, memory=None) -> dict:
+    """(0.105.48, K9) civ id -> the site the fort is making contact with: the
+    site Make contact names now, the messenger's mission out, its last send
+    within a year. Never raided (the audit: the War-hold was proposed to raid
+    Peacemine, the site its messenger had just been sent to)."""
+    from planner_core import TICKS_PER_YEAR
+    ms = _d(s.get("missions"))
+    civ_of: dict = {}
+    for x in _l(_d(ms.get("sites")).get("nearest")):
+        x = _d(x)
+        if _int(x.get("id")) is not None and _int(x.get("owner_civ")) is not None:
+            civ_of.setdefault(x["id"], set()).add(x["owner_civ"])
+    for r in _l(_d(ms.get("raid_sites")).get("rows")):
+        r = _d(r)
+        if _int(r.get("site_id")) is not None:
+            for k in ("civ_id", "owner_id"):
+                if _int(r.get(k)) is not None:
+                    civ_of.setdefault(r["site_id"], set()).add(r[k])
+    sites: list = []
+    try:
+        from planner_world import _contact_site, _messenger_out
+        c = _contact_site(s, memory)
+        if c is not None:
+            sites.append(c.get("id"))
+        sites += [_d(c).get("site_id") for c in _messenger_out(ms)]
+    except Exception:  # noqa: BLE001  (a missing part never opens a raid; the rest still counts)
+        pass
+    from planner_missions import last_of_goal
+    last = last_of_goal(_d(ms.get("send")), "make_contact")
+    t = _int(last.get("tick"))
+    if t is not None and 0 <= abs_tick(s) - t < TICKS_PER_YEAR:
+        sites.append(last.get("site_id"))
+    out: dict = {}
+    for sid in sites:
+        for cid in civ_of.get(_int(sid), ()):
+            out.setdefault(cid, sid)
+    return out
+
+
+def _civ_relation(s: dict, cid, row: dict | None = None):
+    """DF's relation with a civ: the world report's civs, else the row's."""
+    for c in _l(_world(s).get("civs")):
+        if isinstance(c, dict) and _int(c.get("id")) == cid and c.get("relation"):
+            return c.get("relation")
+    return _d(row).get("relation")
+
+
 def raid_candidates(s: dict, cfg: dict = PLANNER_CONFIG, memory=None, squads=None, extra=None) -> tuple[list, list, str]:
     """(candidates best first, words on what was passed over, the stance).
     A candidate: the row with goal, policy, why, need, ratio."""
@@ -259,6 +321,18 @@ def raid_candidates(s: dict, cfg: dict = PLANNER_CONFIG, memory=None, squads=Non
         # an older bridge (no raid_sites): nothing known of the site, the old rule
         return (not known) or ratio >= need_ratio, need, ratio
     attackers = raid_attackers(s, memory, cfg) if stance != "aggressive" else {}
+    # (0.105.48, K9) only sites people live in; never the civ the messenger is making contact with
+    empty = [r for r in rows if not _raidable(r)]
+    rows = [r for r in rows if _raidable(r)]
+    if empty:
+        passed.append(f"{len(empty)} site(s) nobody lives in (monuments, lairs, empty) never raided")
+    contact = contact_civs(s, memory)
+    if contact:
+        kept = [r for r in rows if _int(r.get("civ_id")) in contact or _int(r.get("owner_id")) in contact]
+        rows = [r for r in rows if r not in kept]
+        if kept:
+            passed.append("the civ the fort is making contact with is never raided ("
+                          + ", ".join(f"civ {k}" for k in list(contact)[:3]) + ")")
     if stance == "aggressive":
         friends = raid_friends(s, memory, cfg)
         greedy = _trait(s, "greed") >= cfg.get("raid_greed_rich", 60)
@@ -283,14 +357,25 @@ def raid_candidates(s: dict, cfg: dict = PLANNER_CONFIG, memory=None, squads=Non
             passed.append("friends never raided: " + ", ".join(
                 f"civ {k} ({v})" for k, v in list(friends.items())[:4]))
     else:
-        protected = {k: v for k, v in raid_friends(s, None, {**cfg, "raid_friends_min": 0}).items()
-                     if v in ("an ally", "a peace pending", "tribute agreed")}
+        # (0.105.48, K9) every friend the aggressive fort keeps is kept here too: an
+        # ally, a peace pending, tribute, its caravan here, a civ in the traders' book
+        # (the audit: a reactive fort retaliated against a trade partner at peace)
+        protected = raid_friends(s, memory, {**cfg, "raid_friends_min": 0})
         near = int(cfg.get("raid_timid_tiles" if stance == "timid" else "raid_near_tiles", 8))
         new_tiles = int(cfg.get("raid_new_tiles", 16))
         # (a) retaliation: each attacker's nearest site the squads clearly beat
         for cid, a in sorted(attackers.items(), key=lambda kv: -kv[1]["year"]):
             if cid in protected:
                 passed.append(f"civ {cid} attacked the fort ({_attack_words(a)}) but {protected[cid]}: left alone")
+                continue
+            if cid in contact:
+                continue
+            # (0.105.48, K9) only while still at war (TotalWar or Skirmishing): a
+            # civ the fort has made peace with since is left alone
+            rel = _civ_relation(s, cid, next((r for r in rows if _int(r.get("civ_id")) == cid), None))
+            if rel not in HOSTILE:
+                passed.append(f"civ {cid} attacked the fort ({_attack_words(a)}) but is at "
+                              f"{game_text(rel or 'an unknown standing', 20)} now: left alone")
                 continue
             theirs = sorted([r for r in rows if _int(r.get("civ_id")) == cid and r["goal"] == "raid"],
                             key=lambda r: (_int(r.get("dist")) or 10 ** 6, r["site_id"]))

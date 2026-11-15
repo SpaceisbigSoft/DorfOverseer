@@ -119,8 +119,8 @@ def _():
     assert r.ok and TP.saved().missions == "off"
 
 
-@test("presets: (0.105.47) the messenger sent by all but the Hermit hold; (J17) every preset sends missions, raids "
-      "included, the raid policy the AI's by the sliders")
+@test("presets: (0.105.48, K9) every preset sets missions 'all' but none turns on the messenger, the missions or "
+      "the raids: send_messenger, send_missions and raid_policy stay as the player has them")
 def _():
     S = TP.H.settings()
     keys = lua_list(S.PRESET_RULE_KEYS)
@@ -128,23 +128,32 @@ def _():
         assert k in keys, k
     for name in TP.PRESETS:
         s = S.defaults()
-        s.missions, s.raid_policy, s.send_messenger = "rescue", "off", True
+        s.missions, s.raid_policy, s.send_messenger = "rescue", "off", False
         p = S.load_preset(name, s)
-        assert p.missions == "all" and p.send_missions is True and p.raid_policy == "ai", name
-        assert (p.send_messenger is True) == (name != "Hermit hold"), name
+        assert p.missions == "all" and p.send_missions is False and p.raid_policy == "off", name
+        assert p.send_messenger is False, name
+        # and a player's own choice is kept
+        s2 = S.defaults()
+        s2.raid_policy, s2.send_missions, s2.send_messenger = "reactive", True, True
+        p2 = S.load_preset(name, s2)
+        assert p2.raid_policy == "reactive" and p2.send_missions is True and p2.send_messenger is True, name
+    for name in TP.PRESETS:
+        r = S.BUILTIN_PRESET_RULES[name]
+        assert r.send_messenger is None and r.send_missions is None and r.raid_policy is None, name
 
 
-@test("raid_policy (J17): ai / aggressive / reactive / off, default ai, sanitized, for_ai, set_rules, in RULE_CHOICES")
+@test("raid_policy (J17): ai / aggressive / reactive / off, (0.105.48) default off, sanitized, for_ai, set_rules, in RULE_CHOICES")
 def _():
     S = TP.H.settings()
     assert lua_list(S.RAID_POLICY_CHOICES) == ["ai", "aggressive", "reactive", "off"]
     assert lua_list(S.RULE_CHOICES.raid_policy) == ["ai", "aggressive", "reactive", "off"]
     for m in lua_list(S.RAID_POLICY_CHOICES):
         assert S.RAID_POLICY_NAMES[m] and len(S.RAID_POLICY_NAMES[m]) <= 24, m
-    assert S.defaults().raid_policy == "ai" and S.for_ai(S.defaults()).raid_policy == "ai"
-    for m in ("aggressive", "reactive", "off"):
+    assert S.defaults().raid_policy == "off" and S.for_ai(S.defaults()).raid_policy == "off"
+    assert S.defaults().send_missions is False and S.defaults().send_messenger is False
+    for m in ("ai", "aggressive", "reactive", "off"):
         assert S.sanitize(TP.t({"raid_policy": m})).raid_policy == m
-    assert S.sanitize(TP.t({"raid_policy": "war"})).raid_policy == "ai"
+    assert S.sanitize(TP.t({"raid_policy": "war"})).raid_policy == "off"
     r = TP.act({"type": "set_rules", "rules": {"raid_policy": "reactive"}})
     assert r.ok and TP.saved().raid_policy == "reactive", dict(r)
     assert not TP.act({"type": "set_rules", "rules": {"raid_policy": "always"}}).ok

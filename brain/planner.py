@@ -46,6 +46,7 @@ from planner_care import _doctor_post_rule, _infection_rule, _offices_refill_rul
 from planner_water import _waterworks_rule  # noqa: E402  (0.105.0) moat, pumps, irrigation, magma workshops
 from planner_homes import *  # noqa: E402,F401,F403  (0.104.168: homes and households)
 from planner_threats import _threat_rules, unseen_intrusion, alarm_held  # noqa: E402  (0.105.0 round 3; 0.105.36)
+from planner_world import note_contact_sent  # noqa: E402  (0.105.48, K9)
 from planner_world import (_contact_rule, _export_rule, _hostile_trade_filter, _meeting_answer_rule,  # noqa: E402
                            _messenger_rule, _world_notes, note_world)  # (0.105.0: the world outside, 12b and 13b)
 from planner_peace import _peace_notes  # noqa: E402  (0.105.41, item 8: war and peace)
@@ -1373,6 +1374,7 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
         note_training(p, r, memory, now)                   # (0.105.47) stress care's release: never drafted again
         note_stuck(p, r, memory, now)                      # (0.105.45) the stuck sweep's step done
         note_holdfast(p, r, state, memory, now)            # (0.105.47, R2 item 7) a guard posted, a destroyer's gate tried
+        note_contact_sent(p, r, state, memory)             # (0.105.48, K9) Make contact sent: named again next season
         if p.action.get("type") == "weather_burrow":
             note_keep_in(memory, now, p.action, ok)        # (item4) evil weather: kept in by the burrow
         note_quarry_dug(p, r, state, memory, now)          # (item7) the quarry marked, the stone then

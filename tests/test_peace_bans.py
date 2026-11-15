@@ -321,6 +321,7 @@ def _():
          "buttons": ["No", "Yes"]}
     s = fort(dict(WAR, meeting=m))
     s["settings"]["peace"] = "refuse"
+    s["unattended"] = True          # (0.105.48, K9) the planner answers only with nobody at the game
     mem = Memory()
     mem.world_seen = {"attacked": {"500": 1}}
     p = [x for x in plan(s, mem)[0] if x.rule == "meeting"]

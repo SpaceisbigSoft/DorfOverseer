@@ -874,7 +874,7 @@ function MilitaryPage:init()
             for _, m in ipairs(S.RAID_POLICY_CHOICES) do table.insert(out, {label = S.RAID_POLICY_NAMES[m], value = m}) end
             return out
         end)(),
-        initial_option = S.RAID_POLICY_NAMES[p.settings.raid_policy] and p.settings.raid_policy or 'ai',
+        initial_option = S.RAID_POLICY_NAMES[p.settings.raid_policy] and p.settings.raid_policy or 'off',
         on_change = function(v) p:set_field('raid_policy', v) end,
     })
     table.insert(views, widgets.CycleHotkeyLabel{
@@ -1052,7 +1052,7 @@ function MilitaryPage:refresh()
     self.subviews.lure_beasts:setOption(s.lure_beasts ~= false, false)              -- (0.105.45)
     self.subviews.missions:setOption(S.MISSION_NAMES[s.missions] and s.missions or 'rescue', false)   -- (0.105.39)
     self.subviews.send_missions:setOption(s.send_missions == true, false)
-    self.subviews.raid_policy:setOption(S.RAID_POLICY_NAMES[s.raid_policy] and s.raid_policy or 'ai', false)   -- (0.105.47, J17)
+    self.subviews.raid_policy:setOption(S.RAID_POLICY_NAMES[s.raid_policy] and s.raid_policy or 'off', false)   -- (0.105.47, J17)
     self.subviews.peace:setOption(S.PEACE_NAMES[s.peace] and s.peace or 'ai', false)   -- (0.105.41, item 8)
 end
 

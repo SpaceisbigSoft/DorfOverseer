@@ -391,7 +391,9 @@ function defaults()
         -- (0.105.40, 13e) world cleanup for the game's speed (WORLD_CLEANUP_CHOICES)
         world_cleanup = 'safe',
         hunt = 'ai',               -- (0.105.45) hunting (HUNT_CHOICES)
-        raid_policy = 'ai',        -- (0.105.47, J17) raids by the sliders (RAID_POLICY_CHOICES)
+        -- (0.105.47, J17) raids by the sliders (RAID_POLICY_CHOICES); (0.105.48, K9)
+        -- 'off' by default until the audit's mission and raid fixes are watched live
+        raid_policy = 'off',
         -- (0.105.41, 13e) traffic zones on the AI's own finished levels: high on its
         -- stairs and corridors, low on its rooms and fields (lua/ai-traffic.lua)
         traffic = true,
@@ -708,13 +710,12 @@ PRESET_RULE_KEYS = {'attack_policy', 'fill_squads', 'train_squads', 'gate_lever'
                     'water_works', 'fort_goal',
                     'shut_to_visitors'}     -- (0.105.24)
 table.insert(PRESET_RULE_KEYS, 'keep_enemy_gear')   -- (0.105.27) invaders' gear kept (War-hold)
--- (0.105.47) missions by the World screen, recorded live 14 Nov: every preset
--- but the closed Hermit hold sends its messenger (Make contact).
--- (0.105.47, J17, the player 17:47) every preset sends missions, raids
--- included ('all'), and the raid policy is the AI's by the sliders: the
--- War-hold's Militarism makes it aggressive (any civ but its friends), the
--- others react (an attacker, a hostile camp setting up close by), the
--- Monastery only with a sure win
+-- (0.105.47) missions by the World screen, recorded live 14 Nov.
+-- (0.105.47, J17) the missions level ('all') and the raid policy are kept with
+-- a preset. (0.105.48, K9, the audit's "switch off until fixed") no built-in
+-- preset turns the messenger, the missions or the raids on: send_messenger,
+-- send_missions and raid_policy stay as the Rules tab has them (off by
+-- default); a preset the player saved still carries the player's own choice
 table.insert(PRESET_RULE_KEYS, 'send_messenger')
 table.insert(PRESET_RULE_KEYS, 'send_missions')
 table.insert(PRESET_RULE_KEYS, 'missions')
@@ -723,19 +724,19 @@ BUILTIN_PRESET_RULES = {
     ['War-hold'] = {attack_policy = 'all', fill_squads = true, train_squads = true, gate_lever = true,
                     fortify_entrances = true, levels = {garden = false},
                     keep_enemy_gear = true,      -- (0.105.27) invaders' gear kept, not melted
-                    send_messenger = true, send_missions = true, missions = 'all', raid_policy = 'ai'},
-    ['Monastery'] = {send_messenger = true, attack_policy = 'never', levels = {barracks = false, archery = false, jail = false},
-                     send_missions = true, missions = 'all', raid_policy = 'ai'},
+                    missions = 'all'},
+    ['Monastery'] = {attack_policy = 'never', levels = {barracks = false, archery = false, jail = false},
+                     missions = 'all'},
     -- (0.105.24) visitors are the Merchant city's point: never shut out for the mayor's sake
-    ['Merchant city'] = {send_messenger = true, send_missions = true, missions = 'all', raid_policy = 'ai',
+    ['Merchant city'] = {missions = 'all',
                          accept_visitors = true, answer_locations = true, shut_to_visitors = false},
-    -- the closed hold: missions and raids as the others, but never the messenger
+    -- the closed hold
     ['Hermit hold'] = {accept_visitors = false, answer_locations = false, fortify_entrances = true,
-                       send_messenger = false, send_missions = true, missions = 'all', raid_policy = 'ai'},
-    ['Deep mine'] = {send_messenger = true, water_works = true, levels = {garden = false},
-                     send_missions = true, missions = 'all', raid_policy = 'ai'},
-    ['Garden fort'] = {send_messenger = true, pasture_animals = true, levels = {archery = false},
-                       send_missions = true, missions = 'all', raid_policy = 'ai'},
+                       missions = 'all'},
+    ['Deep mine'] = {water_works = true, levels = {garden = false},
+                     missions = 'all'},
+    ['Garden fort'] = {pasture_animals = true, levels = {archery = false},
+                       missions = 'all'},
 }
 
 -- (applied: an optional table that gets the rules actually set, for apply_preset's answer)

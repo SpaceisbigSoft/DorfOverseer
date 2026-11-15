@@ -225,12 +225,16 @@ def _():
     T = lambda *a: TW.LUA.table_from(list(a))   # noqa: E731
     assert env.press_guard(T("TributeAgreement"), "pay") is None
     assert env.press_guard(T("TributeAgreement"), "refuse") is None
+    # (0.105.48, K9) 'small' answers No until the sum is seen (the amount read is a topic index): pressed
+    assert env.press_guard(T("TributeAgreement"), "small") is None
+    env.TRIBUTE_SUM_KNOWN = True
     assert "not known" in env.press_guard(T("TributeAgreement"), "small")
     assert env.press_guard(T("TributeAgreement"), "small", True) is None
+    env.TRIBUTE_SUM_KNOWN = False
     assert "DeclareWar" in env.press_guard(T("DeclareWar"), "refuse")
 
 
-@test("L7 diplomacy answer_meeting: 'refuse' presses No; 'small' a small one Yes (dry run)")
+@test("L7 diplomacy answer_meeting: 'refuse' presses No; 'small' a small one Yes once the sum is known, else No (dry run)")
 def _():
     tribute = TW.MEETING + "df.global.game.main_interface.diplomacy.dipev.topic_list = G.vec({9}); " \
                            "df.global.game.main_interface.diplomacy.dipev.agreement_topic = G.vec({}); " \
@@ -240,6 +244,11 @@ def _():
     r = env.answer_meeting(TW.LUA.table_from({"dry_run": True}))
     assert r.ok and r.answer == "no", dict(r)
     env, G = TW.world(tribute % 100)
+    G.tribute = "small"
+    r = env.answer_meeting(TW.LUA.table_from({"dry_run": True}))
+    assert r.ok and r.answer == "no", dict(r)               # (0.105.48, K9) the sum not known: refused
+    env, G = TW.world(tribute % 100)
+    env.TRIBUTE_SUM_KNOWN = True
     G.tribute = "small"
     r = env.answer_meeting(TW.LUA.table_from({"dry_run": True}))
     assert r.ok and r.answer == "yes", dict(r)
