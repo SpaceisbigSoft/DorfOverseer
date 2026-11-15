@@ -310,7 +310,9 @@ function commit(store, floor, placement, pid, tick)
     if #runs_now + added > RUNS_MAX then return nil, 'floor record full' end
     for _, p in ipairs(puts) do
         if type(p) ~= 'table' or not known[p.run] then return nil, 'bad placement: a slot on no run' end
-        if not (is_num(p.u) and is_num(p.w) and is_num(p.d)) or (p.side ~= 1 and p.side ~= -1) then
+        -- (an axial put closes the run's end: ai-floorplace gives it side 0)
+        if not (is_num(p.u) and is_num(p.w) and is_num(p.d))
+            or (p.side ~= 1 and p.side ~= -1 and not (p.axial == true and p.side == 0)) then
             return nil, 'bad placement: a slot with no place'
         end
     end
