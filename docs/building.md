@@ -186,7 +186,7 @@ y=  5   #######f.b#f.b################
 | suites | a row of rooms (bedroom and office pairs) | near the stair |
 | jail | a row of cells | at the far end |
 | storage | a row of stockpile rooms, 3-wide openings | near the stair, for the hauling |
-| workshops | a row: pile room(s), then the 5x5 shop rooms, kept together, 3-wide openings | by industry group; see below |
+| workshops | rows of 5x5 shop rooms, each shop with its own pile room(s) right beside it; 3-wide openings | by industry group; see below |
 | dining, tavern, temple, library, garden | one block, opening 3 wide (1 wide with a door when the fort doors its levels) | a grand one may close the hall's end |
 | memorial, hospital, barracks, archery, tombs | one block, 1-wide entry | a hospital is never within 6 tiles of the stair |
 
@@ -209,7 +209,17 @@ modules, unchanged:
 
 ### Workshops with their pile rooms
 
-A workshops request becomes one block along the hall:
+A workshops request becomes a row along the hall, each shop beside its own
+pile rooms. A shop and its piles are the unit that stays together; the whole
+level need not: when one side of the run is full, the next shop (with its
+piles) goes on across the hall, then onto the next run or arm of the floor.
+
+- **Pile rooms that fit.** A shop keeps only the pile rooms that fit beside it
+  on one side of a full-length run (the run less its lead, the columns kept
+  ahead and a doored neck). The grammar always leaves room on a side for a
+  shop and one pile room: on a short run the lead gives way first, then the
+  columns kept ahead, then the gap, and the pile room is no wider than what is
+  left. So the Hermit hold's mason gets his stone pile, not a second one.
 
 - **A pile room for each material its shops use**, right beside the shops,
   unless that industry's stretch of hall already has one: stone for the
@@ -306,7 +316,10 @@ above, a cavern, open sky, warm stone, the map's edge, adamantine's
 neighbours and any tile no longer untouched rock all refuse the place. A
 refused slot is tried further along; a hall that cannot go on turns; a floor
 with nowhere left is marked full for that district and the next floor in the
-list is tried. Nothing is designated until the whole request has a place.
+list is tried. A level that would not fit even an empty run of the floor's
+grammar answers `no room (too big for a run)` and marks nothing: the floor is
+not full, the level is only too big for it. Nothing is designated until the
+whole request has a place.
 
 Inside one `start_project`, in this order:
 

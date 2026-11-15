@@ -356,6 +356,15 @@ local function floor_modules()
     return M
 end
 
+-- (V3) The columns one side of a full-length run holds for rooms: the run less its lead,
+-- what is kept ahead and a neck's column (the stagger is the other side's only). A workshop
+-- and its pile rooms must fit in it.
+local function shop_room(G)
+    local n = (tonumber(G.run_max) or 30) - (tonumber(G.lead) or 0) - (tonumber(G.ahead) or 0)
+    if G.neck then n = n - 1 end
+    return n
+end
+
 -- The level on one floor: site, L2; or nil, why, mark ('*', the tag, or nil), free.
 -- c.looked / c.tried count what it cost.
 local function on_floor(c, stair, z, extend, floor, is_new)
@@ -372,6 +381,48 @@ local function on_floor(c, stair, z, extend, floor, is_new)
 
     -- the request: a workshops level's pile rooms first, then the level's own units
     local units, req_units, pile_meta, extra_units = {}, {}, {}, {}
+    -- (V3) a workshops level is placed as clusters, each shop beside its own pile rooms: the
+    -- columns each shop's cluster has taken so far, and the pile rooms that go with it
+    local shop_of, cl_cols, cl_piles = {}, {}, {}
+    local room = shop_room(G)
+    if c.kind == 'workshops' then
+        for i, u in ipairs(c.units) do
+            local name = type(u.tag) == 'string' and u.tag:match('^shop:(.+)$') or nil
+            if name and not shop_of[name] then shop_of[name] = i end
+            cl_cols[i], cl_piles[i] = u.w, {}
+        end
+    end
+    -- the cluster a pile room joins: its shop's (the level's first shop when its shop is not
+    -- there), and only while the cluster still fits one run; nil: the room is left out
+    local function join_cluster(shop, w)
+        local i = shop and shop_of[shop] or nil
+        if not i then
+            for j, u in ipairs(c.units) do
+                if type(u.tag) == 'string' and u.tag:match('^shop:') then i = j break end
+            end
+        end
+        i = i or 1
+        if not cl_cols[i] or cl_cols[i] + G.gap + w > room then return nil end
+        cl_cols[i] = cl_cols[i] + G.gap + w
+        return i
+    end
+    -- the level's own pile room (the ore_piles custom): beside the first shop it can feed
+    local own_pile_at = {}
+    if c.kind == 'workshops' then
+        for i, u in ipairs(c.units) do
+            if u.tag == 'pile' then
+                local to
+                for name, j in pairs(shop_of) do
+                    local f = type(FEEDERS) == 'table' and FEEDERS[name] or nil
+                    if type(f) == 'table' and f.flag == 'stone' and (not to or j < to) then to = j end
+                end
+                if to and cl_cols[to] + G.gap + u.w <= room then
+                    cl_cols[to] = cl_cols[to] + G.gap + u.w
+                    own_pile_at[i] = to
+                end
+            end
+        end
+    end
     if c.kind == 'workshops' and type(floor_pile_units) == 'function' then
         local phint = {}
         for k, v in pairs(hint) do phint[k] = v end
@@ -403,7 +454,9 @@ local function on_floor(c, stair, z, extend, floor, is_new)
                     end
                     c.pile_cache[key] = unit
                 end
-                if unit then
+                local at = unit and join_cluster(pu.shop, unit.w) or nil
+                if unit and at then
+                    table.insert(cl_piles[at], #units + 1)
                     table.insert(units, unit)
                     table.insert(extra_units, unit)
                     table.insert(req_units, req_unit(unit, 'pile', pu.flag))
@@ -412,12 +465,30 @@ local function on_floor(c, stair, z, extend, floor, is_new)
             end
         end
     end
+    local npiles = #units
     for i, u in ipairs(c.units) do
         table.insert(units, u)
         table.insert(req_units, c.req_units[i])
     end
+    local clusters
+    if c.kind == 'workshops' then
+        -- each of the level's units in order, its pile rooms (and the custom's own) before it
+        clusters = {}
+        for i in ipairs(c.units) do
+            if not own_pile_at[i] then
+                local cl = {}
+                for _, k in ipairs(cl_piles[i] or {}) do table.insert(cl, k) end
+                for j, to in pairs(own_pile_at) do
+                    if to == i then table.insert(cl, npiles + j) end
+                end
+                table.sort(cl)
+                table.insert(cl, npiles + i)
+                table.insert(clusters, cl)
+            end
+        end
+    end
     local req = {kind = c.kind, tag = hint.tag, group = hint.group, zone = hint.zone, units = req_units,
-                 together = c.kind == 'workshops', axial = c.axial, min_u = nil}
+                 together = c.kind == 'workshops', clusters = clusters, axial = c.axial, min_u = nil}
     if c.kind == 'hospital' then
         req.min_u, req.zone = HOSPITAL_STAIR_GAP + 1, 'far'
     end
@@ -433,7 +504,15 @@ local function on_floor(c, stair, z, extend, floor, is_new)
             c.tried = c.tried - 1          -- (it cost only its survey)
             return nil, why, '*', free
         end
-        if why:sub(1, 7) == 'no room' then return nil, why, hint.tag, free end
+        if why:sub(1, 7) == 'no room' then
+            -- (V3) full only when the request could have gone onto an empty run of this grammar;
+            -- a request too big for any run leaves the floor unmarked
+            if type(M.place.fits_empty) == 'function' then
+                local okf, fits = pcall(M.place.fits_empty, req, G)
+                if okf and fits == false then return nil, why .. ' (too big for a run)' end
+            end
+            return nil, why, hint.tag, free
+        end
         return nil, why
     end
     local puts = type(placement.puts) == 'table' and placement.puts or {}
