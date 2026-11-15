@@ -55,6 +55,22 @@ PLANNER_CONFIG = {
     "shelter_rest_days": 2,            # ...then this long off it to eat and drink
     "shelter_hold_tiles": 20,          # (0.105.26) ...but not while a great danger or siege is this close to the dwarves
     "fight_ratio": 2.0,            # (0.104.118) squads at least this many times a great danger's strength: they go
+    # (0.105.54, the player: "fight when roughly even") planner_matchup.fight_bar: the sortie bar is
+    # about even odds for invaders and beasts; fight_ratio (a clear win) only where the reasons hold:
+    # a fire breather (crossbows only) or a great danger whose abilities the AI can't read
+    "fight_even_ratio": 1.0,
+    "fight_weak_factor": 0.8,          # an enemy (group) all wounded or falling back: the bar times this
+    "fight_wounded_blood": 0.25,       # ...wounded: this share of its blood lost...
+    "fight_wounded_wounds": 6,         # ...or this many wounds
+    "fight_retreat_tiles": 5,          # ...falling back: this many tiles farther from the dwarves than last cycle
+    "fight_split_tiles": 15,           # threats this far (x/y, a level 3) from every other: a group apart (stragglers)
+    "siege_wait_max_days": 4,          # a siege (invaders or a great danger in reach) this long: an all-out attack
+    "siege_unhappy_rise": 0.15,        # ...or the unhappy share up this much since it began...
+    "siege_unhappy_min": 0.3,          # ...and at least this share
+    "all_out_min_ratio": 0.25,         # an all-out attack only at this ratio or better (not at an enemy inside)
+    "fight_lost_share": 0.33,          # squads out that lost this share (a third) of their soldiers fall back...
+    "fight_wounded_share": 0.5,        # ...or with this share of them wounded
+    "fight_regroup_ticks": 600,        # ...and regroup this long before they are sent again (save all-out)
     "cautious_alert_levels": 10,   # Caution +100: react to unknown-reach threats this close
     # Building (docs/building.md)
     "spare_beds_share": 0.1,       # beds wanted beyond one per citizen

@@ -217,7 +217,7 @@ def _():
 @test("lost fight: a squad out on a titan the verdict now holds back comes back (the shelter rule off too); "
       "a hunting party is the hunt's")
 def _():
-    out = sq(10, 70, ai_orders=1, orders=1, kill_ids=[6001])
+    out = sq(10, 30, ai_orders=1, orders=1, kill_ids=[6001])     # (0.105.54) 70 was short of 2x, not of even odds
     s = fort([titan(distance_to_nearest_dwarf=20)], [out], alert=True)
     s["settings"]["squads_shelter"] = False
     props, _ = plan(s, Memory(ai_alert_raised=True))

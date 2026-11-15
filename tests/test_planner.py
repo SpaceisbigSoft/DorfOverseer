@@ -2906,10 +2906,10 @@ def _():
         s["military"]["soldiers"] = 20
         return s
     # titan: (8 + 2*sqrt(41.7)) * 1.2 = 25.1; two squads
-    p, notes = plan(titan(40), Memory())                      # 80 >= 2 x 25: go
+    p, notes = plan(titan(40), Memory())                      # 80 >= 25: go
     assert by_rule(p, "squad_attack"), notes
     assert any("the squads go" in n for n in notes), notes
-    p, notes = plan(titan(10), Memory())                      # 20 < 50: hide
+    p, notes = plan(titan(10), Memory())                      # 20 < 25 (0.105.54: about even odds): hide
     assert not by_rule(p, "squad_attack")
     assert any("hide behind the gates" in n for n in notes), notes
     # learning: a fight that cost a third of the soldiers makes titans count 1.5x
@@ -2923,7 +2923,10 @@ def _():
     after["military"]["soldiers"] = 13
     plan(after, m)
     assert m.fight_factor == {"Titan": 1.5} and not m.fight and m.fights[-1]["lost"] == 7, (m.fight_factor, m.fights)
-    p, notes = plan(titan(35), m)                             # now 70 < 2 x 37.7: hide
+    # (0.105.54) about even odds: 30 >= 25 goes fresh; after the lesson 30 < 37.7: hide
+    p, notes = plan(titan(15), Memory())
+    assert by_rule(p, "squad_attack"), notes
+    p, notes = plan(titan(15), m)
     assert not by_rule(p, "squad_attack")
 
 
@@ -10353,9 +10356,11 @@ def _():
     note_cycle(s, m)
     p, notes = plan(s, m)
     assert by_rule(p, "gates")[0].action == {"type": "arm_gates"}
-    # (0.105.48, K1) the one armed squad (power 3) against 7 is no fight: no sortie, said
-    assert not by_rule(p, "squad_attack"), by_rule(p, "squad_attack")
-    assert any("no sortie" in n for n in notes), notes
+    # (0.105.48, K1) the one armed squad (power 3) against 7 is no fight: no sortie at the ones outside;
+    # (0.105.54) the 3 inside among the civilians are fought whatever the odds (an all-out attack)
+    att = by_rule(p, "squad_attack")
+    assert len(att) == 1 and sorted(att[0].action["kill"]) == [900, 901, 7527], [a.action for a in att]
+    assert "whatever the odds" in att[0].reason, att[0].reason
     strong = copy.deepcopy(s)
     strong["military"]["squads"][1]["power"]["power"] = 400
     p, _ = plan(strong, Memory())

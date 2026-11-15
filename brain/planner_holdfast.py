@@ -9,7 +9,7 @@ The violent deaths of 12-14 Nov (forensics I7d, sections 2a and 2c):
    1400 ticks. Now that one enemy is judged by the threat judge
    (planner_matchup) against the squads on it, and the gates stay shut while
    it is within `one_enemy_gate_tiles` of a gate or the squads on it don't
-   clear `fight_ratio`; citizens shut out are let in by another gate, far
+   clear the bar (about even odds since 0.105.54: planner_matchup.fight_bar); citizens shut out are let in by another gate, far
    from it, where there is one (`other_gate`).
 2. Never recruits alone (`_squad_matchup_filter`, after every rule): a kill
    order on ordinary enemies goes only with squads whose power clears the
@@ -49,7 +49,7 @@ from __future__ import annotations
 import re
 
 from digest import _d, _l
-from planner_core import (AGENDA_THEMES, LIMIT_EXEMPT, MULTI_PER_CYCLE, NO_COOLDOWN, Proposal, TICKS_PER_DAY,
+from planner_core import (AGENDA_THEMES, LIMIT_EXEMPT, MULTI_PER_CYCLE, NO_COOLDOWN, PLANNER_CONFIG, Proposal, TICKS_PER_DAY,
                           abs_tick, can_fight, player_rules)
 
 __all__ = ["note_holdfast_cycle", "note_holdfast", "one_enemy_hold", "other_gate", "door_only", "building_destroyers", "note_thief_targets",
@@ -206,14 +206,15 @@ def one_enemy_hold(s: dict, cfg: dict, memory=None, traits=None) -> dict | None:
     want = {t["id"] for t in rows}
     on = [q for q in _squads(s) if q.get("ai_orders") and _kill_set(q) & want]
     ratio = _ratio(rows, on, memory)
-    bar = float(cfg.get("fight_ratio", 2.0))
+    from planner_matchup import strike_bar
+    bar, bar_why = strike_bar(rows, cfg, retreating_ids(memory, cfg))     # (0.105.54) about even odds
     names = ", ".join(sorted({str(t.get("name") or "an enemy") for t in rows}))[:80]
     if near is not None and near <= tiles:
         why = (f"{names} is {int(near)} tiles from a gate (under {tiles}): the gates stay shut while it is that "
                "close (opened, it walks in on the citizens coming home)")
     elif ratio < bar:
-        why = (f"the squads on {names} are too weak for it ({ratio:.1f}x, {bar:g}x needed): the gates stay shut "
-               "rather than send them out to it")
+        why = (f"the squads on {names} are too weak for it ({ratio:.1f}x, {bar:g}x needed: {bar_why}): the gates "
+               "stay shut rather than send them out to it")
     else:
         return None
     return {"ids": sorted(want), "rows": rows, "near": near, "ratio": ratio, "tiles": tiles, "why": why}
@@ -242,17 +243,51 @@ def other_gate(s: dict, hold: dict, not_id=None) -> dict | None:
 
 # --- 2. never recruits alone -------------------------------------------------------------
 
+def _free(s: dict, squads: dict, busy: set, cfg: dict, memory=None, militia: bool = False) -> list:
+    """The squads free to send: not on another order (or waiting in the
+    shelter), not on the player's own orders, able to fight (with `militia`:
+    any squad with an armed soldier: an all-out attack), not regrouping after
+    a fight that turned bad (planner_matchup.losses_turned) unless all-out."""
+    regroup = set() if militia else regrouping(s, memory, cfg)
+    out = []
+    for q in squads.values():
+        if q["id"] in busy or (q.get("ai_orders") and not q.get("sheltering")) or _players(q) or _power(q) <= 0:
+            continue
+        if str(q["id"]) in regroup:
+            continue
+        armed = _d(q.get("power")).get("armed")
+        if can_fight(q, cfg) or (militia and int(q.get("members") or 0) > 0
+                                 and (not isinstance(armed, int) or armed > 0)):
+            out.append(q)
+    return out
+
+
+def regrouping(s: dict, memory, cfg: dict) -> set:
+    """(0.105.54) Squads that fell back from a fight that turned bad less than
+    `fight_regroup_ticks` ago (note_kill_orders): they are not sent again
+    before (save an all-out attack); then the odds decide again."""
+    if memory is None:
+        return set()
+    fb = _d(_hf(memory).get("fell_back"))
+    span = int(cfg.get("fight_regroup_ticks", TICKS_PER_DAY // 2))
+    now = abs_tick(s)
+    return {k for k, t in fb.items() if isinstance(t, int) and 0 <= now - t < span}
+
+
 def _squad_matchup_filter(s: dict, memory, cfg: dict, proposals: list, notes: list) -> list:
     """Kill orders on ordinary enemies only with squads strong enough: per
     group of orders on the same enemies, the squads already on them and the
-    ones sent this cycle against the targets (planner_matchup). Short of
-    `fight_ratio`: the strongest free squads go instead, as few as clear it;
-    if none do, all free ones go together at an enemy inside the fort, and
-    none at one outside (the gates hold it off)."""
+    ones sent this cycle against the targets (planner_matchup). Short of the
+    bar (planner_matchup.strike_bar: about even odds since 0.105.54): the
+    strongest free squads go instead, as few as clear it; if none do, all
+    free ones go together at an enemy inside the fort; at one outside, every
+    squad (militia too) once the wait is over (planner_matchup.all_out),
+    else none (the gates hold it off)."""
+    from planner_matchup import all_out, strike_bar
     squads = {q["id"]: q for q in _squads(s)}
     if not squads:
         return proposals
-    bar = float(cfg.get("fight_ratio", 2.0))
+    proposals = _losses_pass(s, memory, cfg, squads, proposals, notes)
     groups: dict = {}
     for p in proposals:
         a = p.action if isinstance(p.action, dict) else {}
@@ -269,6 +304,7 @@ def _squad_matchup_filter(s: dict, memory, cfg: dict, proposals: list, notes: li
         busy.update(_l(a.get("squad_ids")))
         busy.update(_l(a.get("squads")))
     inside = _inside_ids(s)
+    retreat = retreating_ids(memory, cfg)
     drop, add = set(), []
     for key, ps in groups.items():
         rows = _target_rows(s, key)
@@ -281,53 +317,114 @@ def _squad_matchup_filter(s: dict, memory, cfg: dict, proposals: list, notes: li
         sent_ids = {q["id"] for q in sent}
         on = [q for q in squads.values() if q["id"] not in sent_ids and q.get("ai_orders")
               and _kill_set(q) & key]
+        bar, bar_why = strike_bar(rows, cfg, retreat)
         if many:
             # (0.105.48, K1) an ambush or a siege is judged too (60 goblins got
             # six squads at 0.7x): the smallest party that clears the bar, the
-            # rest kept home; short of it, no sortie (the gates and the alarm
-            # hold them), only at the ones inside if the squads clear those
-            _many_matchup(s, memory, cfg, rows, key, ps, sent, on, squads, busy, inside, bar, drop, add, notes)
+            # rest kept home; short of it, an opening (a group apart), the
+            # ones inside, or all-out once the wait is over (0.105.54)
+            _many_matchup(s, memory, cfg, rows, key, ps, sent, on, squads, busy, inside, bar, drop, add, notes,
+                          bar_why=bar_why, retreat=retreat)
             continue
-        if _ratio(rows, on + sent, memory) >= bar:
-            continue
-        free = [q for q in squads.values() if q["id"] not in busy and (not q.get("ai_orders") or q.get("sheltering"))
-                and not _players(q) and can_fight(q, cfg) and _power(q) > 0]
-        pool = sorted({q["id"]: q for q in sent + free}.values(),
-                      key=lambda q: (-_ratio(rows, [q], memory), -_power(q), q["id"]))
-        party = []
-        for q in pool:
-            party.append(q)
-            if _ratio(rows, on + party, memory) >= bar:
-                break
-        r_all = _ratio(rows, on + party, memory)
         names = ", ".join(sorted({str(t.get("name") or "an enemy") for t in rows}))[:80]
-        alone = ", ".join(str(q.get("name") or q["id"]) for q in sent)
-        if r_all < bar and not (set(key) & inside):
-            drop.update(id(p) for p in ps)
-            notes.append(f"{alone} not sent at {names}: the squads free are too weak for them "
-                         f"({r_all:.1f}x, {bar:g}x needed); the gates and the alarm hold them off meanwhile")
-            _fall_back_lost(s, memory, cfg, rows, key, on + sent, bar, names, add, busy)
+        r0 = _ratio(rows, on + sent, memory)
+        if r0 >= bar and len(_fit(rows, sent)) == len(sent):
+            notes.append(f"{names}: {', '.join(str(q.get('name') or q['id']) for q in sent)} goes ({r0:.1f}x; "
+                         f"{bar_why})")
             continue
-        if {q["id"] for q in party} == sent_ids:
+        free = _free(s, squads, busy, cfg, memory)
+        regroup = regrouping(s, memory, cfg)
+        party, r_all = _party(rows, on, [q for q in sent if str(q["id"]) not in regroup] + free, bar, memory)
+        alone = ", ".join(str(q.get("name") or q["id"]) for q in sent)
+        how = None
+        if r_all < bar and not (set(key) & inside):
+            ao = all_out(s, memory, cfg)
+            if ao:
+                every = _fit(rows, sent + [q for q in _free(s, squads, busy, cfg, memory, militia=True)
+                                           if q["id"] not in sent_ids])
+                r_every = _ratio(rows, on + every, memory)
+                if r_every >= float(cfg.get("all_out_min_ratio", 0.25)):
+                    party, r_all = every, r_every
+                    how = f"all-out, every squad: {ao}"
+            if how is None:
+                drop.update(id(p) for p in ps)
+                notes.append(f"{alone} not sent at {names}: the squads free are too weak for them "
+                             f"({r_all:.1f}x, {bar:g}x needed: {bar_why}); the gates and the alarm hold them off "
+                             "meanwhile")
+                _fall_back_lost(s, memory, cfg, rows, key, on + sent, bar, names, add, busy)
+                continue
+        if how is None and {q["id"] for q in party} == sent_ids:
             continue                     # the strongest there are: the orders as the rules gave them
         drop.update(id(p) for p in ps)
         pr = min(p.priority for p in ps)
         first = ps[0]
         for q in party:
-            how = ("the strongest free squads together" if r_all >= bar else
-                   "every free squad together, still short of the bar (the enemy is inside the fort)")
+            why = how or ("the strongest free squads together" if r_all >= bar else
+                          "every free squad together, still short of the bar (the enemy is inside the fort)")
             add.append(Proposal(first.rule, dict(first.action, squad_id=q["id"]),
-                                f"{names}: send {q.get('name') or q['id']} ({how}: {r_all:.1f}x, {bar:g}x needed; "
-                                f"{alone} alone was too weak)", pr, getattr(first, "guard", False)))
+                                f"{names}: send {q.get('name') or q['id']} ({why}: {r_all:.1f}x, {bar:g}x needed, "
+                                f"{bar_why}; {alone} alone was too weak)", pr, getattr(first, "guard", False)))
             busy.add(q["id"])
     if not drop:
         return proposals
     return [p for p in proposals if id(p) not in drop] + add
 
 
+def _losses_pass(s: dict, memory, cfg: dict, squads: dict, proposals: list, notes: list) -> list:
+    """(0.105.54) The losses guard for a fight going on: an AI squad out on
+    ordinary enemies (a great danger is fight_or_hide's, a hunt the hunt
+    rule's) that has lost a third of the soldiers it went with, or has half
+    of them wounded, falls back (planner_army.fall_back) and regroups; the
+    other orders for it this cycle are dropped."""
+    if memory is None:
+        return proposals
+    from planner_matchup import losses_turned
+    start = kill_start(memory)
+    try:
+        from planner_hunt import hunt_rows
+        hr = hunt_rows(s)
+        hunting = {h.get("squad_id") for h in (hr[2] if hr else [])}
+        hunting |= {q.get("id") for q in (hr[1] if hr else []) if isinstance(q, dict) and q.get("hunting") is not None}
+    except Exception:  # noqa: BLE001
+        hunting = set()
+    back, whys = [], []
+    for q in squads.values():
+        kill = _kill_set(q)
+        if (not q.get("ai_orders") or not kill or q.get("sheltering") or _players(q) or q["id"] in hunting
+                or str(q["id"]) not in start):
+            continue
+        rows = _target_rows(s, kill)
+        if not rows or any(t.get("great_danger") for t in rows):
+            continue
+        turned = losses_turned([q], start, cfg)
+        if turned:
+            back.append(q["id"])
+            whys.append(f"{q.get('name') or q['id']}: {turned}")
+    if not back:
+        return proposals
+    from planner_army import fall_back
+    keep = [p for p in proposals if not (isinstance(p.action, dict) and p.action.get("squad_id") in back)]
+    notes.append("the fight turned bad: " + "; ".join(whys)[:200] + ": they fall back and regroup, and go again "
+                 "when the odds return")
+    return keep + fall_back(s, cfg, back, "the fight turned bad (" + "; ".join(whys)[:120] + ")", keep)
+
+
+def _fit(rows: list, qs: list) -> list:
+    """(0.105.54) The squads fit to go at these threats: against fliers (and
+    a fire breather) crossbows only (planner_matchup.fight_bar ranged_only):
+    a squad with ranged power or a crossbow uniform."""
+    from planner_matchup import fight_bar
+    from planner_core import is_ranged
+    if not fight_bar(rows, PLANNER_CONFIG)["ranged_only"]:
+        return qs
+    return [q for q in qs if is_ranged(q) or (_num(_d(q.get("power")).get("ranged_power")) or 0) > 0]
+
+
 def _party(rows: list, on: list, pool: list, bar: float, memory) -> tuple[list, float]:
     """The strongest squads of the pool, as few as clear the bar with the
-    ones already on them: (party, its ratio with `on`)."""
+    ones already on them: (party, its ratio with `on`). Crossbows only
+    against fliers (_fit)."""
+    pool = _fit(rows, pool)
     pool = sorted({q["id"]: q for q in pool}.values(), key=lambda q: (-_ratio(rows, [q], memory), -_power(q), q["id"]))
     party: list = []
     for q in pool:
@@ -337,12 +434,45 @@ def _party(rows: list, on: list, pool: list, bar: float, memory) -> tuple[list, 
     return party, _ratio(rows, on + party, memory)
 
 
-def _many_matchup(s, memory, cfg, rows, key, ps, sent, on, squads, busy, inside, bar, drop, add, notes) -> None:
+def _opening(rows: list, on: list, pool: list, cfg: dict, retreat: set, memory):
+    """(0.105.54) A strike below even odds against the whole: a group apart
+    from the main body (stragglers, a rearguard, one wandering invader) the
+    squads beat at its own bar (lower when it is wounded or falling back).
+    The squads already on such a group keep it. (party to add, the group's
+    ids, ratio, how) or None; the group most enemies first."""
+    from planner_matchup import groups_apart, strike_bar
+    best = None
+    for g in groups_apart(rows, cfg):
+        ids = {t.get("id") for t in g}
+        bar_g, why_g = strike_bar(g, cfg, retreat)
+        on_g = [q for q in on if _kill_set(q) & ids]
+        what = (f"{g[0].get('name') or 'an enemy'} alone, apart from the main body" if len(g) == 1 else
+                f"a group of {len(g)} apart from the main body")
+        if on_g and _ratio(g, on_g, memory) >= bar_g:
+            cand = ([], ids, _ratio(g, on_g, memory), f"{what}: the squads out on it have it ({why_g})", 1)
+        else:
+            party, r = _party(g, on_g, pool, bar_g, memory)
+            if r < bar_g:
+                continue
+            cand = (party, ids, r, f"{what}: a strike at it ({why_g})", 0)
+        if best is None or (cand[4], len(cand[1])) > (best[4], len(best[1])):
+            best = cand
+    return best[:4] if best else None
+
+
+def _many_matchup(s, memory, cfg, rows, key, ps, sent, on, squads, busy, inside, bar, drop, add, notes,
+                  bar_why: str = "", retreat=None) -> None:
     """(0.105.48, K1) Kill orders on more than `lone_intruder_max` ordinary
     enemies (an ambush, a siege): the smallest party of the strongest squads
-    that clears `fight_ratio` goes (the others stay home: a reserve); short
-    of it, none goes at the ones outside (the gates and the alarm hold them
-    off) and the free squads go at the ones inside only if they clear those."""
+    that clears the bar goes (the others stay home: a reserve). (0.105.54)
+    Short of it: the ones inside among the civilians are fought whatever the
+    odds (the smallest party that clears them, else every squad); once the
+    wait is over (planner_matchup.all_out) every squad, militia too, goes at
+    them all; else a strike at an opening (_opening); else no sortie (the
+    gates and the alarm hold them off)."""
+    from planner_matchup import all_out
+    retreat = retreat if retreat is not None else retreating_ids(memory, cfg)
+    bar_why = bar_why or f"{bar:g}x"
     names = f"{len(rows)} enemies (" + ", ".join(sorted({str(t.get("name") or "an enemy") for t in rows}))[:60] + ")"
     sent_ids = {q["id"] for q in sent}
     # (0.105.48 merge) the matchup judged this fight: select()'s free-squad
@@ -353,59 +483,106 @@ def _many_matchup(s, memory, cfg, rows, key, ps, sent, on, squads, busy, inside,
         pass
     if on and _ratio(rows, on, memory) >= bar:
         drop.update(id(p) for p in ps)
-        notes.append(f"{names}: the squads already out clear them ({_ratio(rows, on, memory):.1f}x, {bar:g}x "
-                     "needed); the others stay home")
+        notes.append(f"{names}: the squads already out clear them ({_ratio(rows, on, memory):.1f}x; {bar_why}); "
+                     "the others stay home")
         return
-    free = [q for q in squads.values() if q["id"] not in busy and (not q.get("ai_orders") or q.get("sheltering"))
-            and not _players(q) and can_fight(q, cfg) and _power(q) > 0]
-    pool = sent + [q for q in free if q["id"] not in sent_ids]
+    free = _free(s, squads, busy, cfg, memory)
+    regroup = regrouping(s, memory, cfg)          # (0.105.54) back from a fight that turned bad: not yet
+    pool = [q for q in sent if str(q["id"]) not in regroup] + [q for q in free if q["id"] not in sent_ids]
     party, r = _party(rows, on, pool, bar, memory)
     target_ids = None
+    how = f"{len(party)} of the strongest squads clear them, the others stay home"
     if r < bar:
+        how = None
         in_rows = [t for t in rows if t.get("id") in inside]
-        bar_in = min(bar, float(cfg.get("fight_ratio_inside", 1.0)))
         if in_rows:
+            bar_in = min(bar, float(cfg.get("fight_ratio_inside", 1.0)))
             party, r_in = _party(in_rows, [], pool, bar_in, memory)
+            target_ids = [t["id"] for t in in_rows]
             if r_in >= bar_in:
-                target_ids = [t["id"] for t in in_rows]
-                r = r_in
-        if target_ids is None:
+                how = f"the {len(in_rows)} inside only (the squads are too weak for all of them)"
+            else:
+                every = pool + [q for q in _free(s, squads, busy, cfg, memory, militia=True)
+                                if q["id"] not in {x["id"] for x in pool}]
+                every = _fit(in_rows, every)
+                party, r_in = every, _ratio(in_rows, every, memory)
+                how = (f"the {len(in_rows)} inside the fort among the civilians: every squad, whatever the odds")
+            r = r_in
+        else:
+            ao = all_out(s, memory, cfg)
+            if ao:
+                every = pool + [q for q in _free(s, squads, busy, cfg, memory, militia=True)
+                                if q["id"] not in {x["id"] for x in pool}]
+                every = _fit(rows, every)
+                r_every = _ratio(rows, on + every, memory)
+                lo = float(cfg.get("all_out_min_ratio", 0.25))
+                if every and r_every >= lo:
+                    party, r, how = every, r_every, f"all-out, every squad and the militia: {ao}"
+                else:
+                    notes.append(f"{names}: the wait is over ({ao}), but every squad together is only "
+                                 f"{r_every:.1f}x ({lo:g}x at least for an all-out attack)")
+            if how is None:
+                opp = _opening(rows, on, pool, cfg, retreat, memory)
+                if opp:
+                    party, ids, r, how = opp
+                    target_ids = sorted(ids, key=str)
+                    if not party:
+                        drop.update(id(p) for p in ps)
+                        notes.append(f"{names}: {how} ({r:.1f}x); the others stay home")
+                        return
+        if how is None:
             drop.update(id(p) for p in ps)
             notes.append(f"{names}: the squads are too weak for them ({r:.1f}x with every free squad, {bar:g}x "
-                         "needed): no sortie; the gates and the alarm hold them off and the squads stay in")
+                         f"needed: {bar_why}) and no group apart to strike at: no sortie; the gates and the alarm "
+                         "hold them off and the squads stay in")
             _fall_back_lost(s, memory, cfg, rows, key, on + sent, bar, names, add, busy)
             return
     if target_ids is None and {q["id"] for q in party} == sent_ids:
+        notes.append(f"{names}: the squads sent go ({how}: {r:.1f}x; {bar_why})")
         return                           # the orders as the rules gave them
     drop.update(id(p) for p in ps)
+    if not party:
+        notes.append(f"{names}: no crossbow squad free to send ({bar_why}); the gates and the alarm hold them off")
+        return
     pr = min(p.priority for p in ps)
     first = ps[0]
-    how = (f"the {len(target_ids)} inside only (the squads are too weak for all of them)" if target_ids
-           else f"{len(party)} of the strongest squads clear them, the others stay home")
     for q in party:
         act = dict(first.action, squad_id=q["id"])
         if target_ids:
             act["kill"] = list(target_ids)[:50]
-        add.append(Proposal(first.rule, act, f"{names}: send {q.get('name') or q['id']} ({how}: {r:.1f}x, "
-                                             f"{bar:g}x needed)", pr, getattr(first, "guard", False)))
+        add.append(Proposal(first.rule, act, f"{names}: send {q.get('name') or q['id']} ({how}: {r:.1f}x; "
+                                             f"{bar_why})", pr, getattr(first, "guard", False)))
         busy.add(q["id"])
 
 
 def _fall_back_lost(s, memory, cfg, rows, key, cands, bar, names, add, busy) -> None:
-    """(0.105.48, K16) A fight the matchup now finds lost (more enemies came,
-    squads fell): the squads already out on these enemies (an AI kill order
-    on one of them) come back to the station or the shelter
-    (planner_army.fall_back), whatever the attack policy, when they are
-    short of three quarters of `fight_ratio` together (a fight begun goes on
-    above that, as _kill_hold_filter holds it)."""
+    """(0.105.48, K16) A fight now lost (more enemies came, squads fell): the
+    squads already out on these enemies (an AI kill order on one of them)
+    come back to the station or the shelter (planner_army.fall_back),
+    whatever the attack policy, when they are short of three quarters of
+    the bar against the group they fight (0.105.54: the threats near their
+    targets, planner_matchup.clusters), or the fight turned bad (a third of
+    their soldiers lost, half wounded: planner_matchup.losses_turned). They
+    regroup (`fight_regroup_ticks`), then the odds decide again."""
+    from planner_matchup import clusters, losses_turned, strike_bar
     out = {q["id"]: q for q in cands if q.get("ai_orders") and not q.get("sheltering") and not _players(q)
            and _kill_set(q) & set(key) and q["id"] not in _fell_back(add)}
-    if not out or _ratio(rows, list(out.values()), memory) >= bar * 0.75:
+    if not out:
+        return
+    kill = set()
+    for q in out.values():
+        kill |= _kill_set(q)
+    facing = [t for g in clusters(rows, float(cfg.get("fight_split_tiles", 15)))
+              if any(t.get("id") in kill for t in g) for t in g] or rows
+    fbar, _ = strike_bar(facing, cfg, retreating_ids(memory, cfg))
+    r = _ratio(facing, list(out.values()), memory)
+    turned = losses_turned(list(out.values()), kill_start(memory), cfg)
+    if not turned and r >= fbar * 0.75:
         return
     from planner_army import fall_back
-    r = _ratio(rows, list(out.values()), memory)
-    add.extend(fall_back(s, cfg, sorted(out), f"{names}: the squads out on them can't win now ({r:.1f}x, "
-                                              f"{bar:g}x needed)"))
+    why = (f"the fight turned bad ({turned})" if turned else f"they can't win now ({r:.1f}x, {fbar:g}x needed)")
+    add.extend(fall_back(s, cfg, sorted(out), f"{names}: the squads out on them fall back: {why}; they go again "
+                                              "when the odds return"))
     busy.update(out)
 
 
@@ -422,7 +599,7 @@ def _fell_back(add: list) -> set:
 
 # --- 3. no recall flapping ---------------------------------------------------------------
 
-def note_kill_orders(s: dict, memory) -> dict:
+def note_kill_orders(s: dict, memory, cfg: dict | None = None) -> dict:
     """Each squad's kill order and since when (first seen in the report, or a
     new one: no target of the old one in it). Bookkeeping (note_cycle)."""
     rec = _sub(holdfast(memory), "kill")
@@ -437,11 +614,24 @@ def note_kill_orders(s: dict, memory) -> dict:
         r = _d(rec.get(k))
         old = {x for x in _l(r.get("ids")) if _int(x) is not None}
         if not r or not (old & ids) or not isinstance(r.get("since"), int):
-            rec[k] = {"ids": sorted(ids), "since": now}
+            # (0.105.54) the soldiers it went with: the losses guard (planner_matchup.losses_turned)
+            rec[k] = {"ids": sorted(ids), "since": now, "members": int(q.get("members") or 0)}
         else:
             r["ids"] = sorted(ids)
+            if not isinstance(r.get("members"), int):
+                r["members"] = int(q.get("members") or 0)      # (a record from before 0.105.54)
+    # (0.105.54) a squad whose kill order ended after the fight turned bad (a
+    # third of its soldiers lost, half wounded) regroups (regrouping)
+    from planner_matchup import losses_turned
+    fb = _sub(holdfast(memory), "fell_back")
+    by = {str(q["id"]): q for q in _squads(s)}
     for k in [k for k in rec if k not in seen]:
+        q, n0 = by.get(k), _d(rec[k]).get("members")
+        if q and isinstance(n0, int) and losses_turned([q], {k: n0}, cfg or PLANNER_CONFIG):
+            fb[k] = now
         del rec[k]
+    for k in [k for k, t in fb.items() if not isinstance(t, int) or not 0 <= now - t < 2 * TICKS_PER_DAY]:
+        del fb[k]
     return rec
 
 
@@ -450,7 +640,9 @@ def _kill_hold_filter(s: dict, memory, cfg: dict, proposals: list, notes: list) 
     calm recall (squad_recall, priority 1 or more) of a squad whose kill
     order is younger is held while one of its targets is still loose on the
     map and the matchup doesn't turn to hide (a great danger: fight_or_hide;
-    others: three quarters of `fight_ratio`, as a fight begun goes on)."""
+    others: three quarters of the bar, planner_matchup.strike_bar, as a
+    fight begun goes on, unless a third of its soldiers are lost or half
+    wounded)."""
     if memory is None or "others_on_map" in _d(s.get("_errors")):
         return proposals
     rec = _d(_hf(memory).get("kill"))
@@ -487,7 +679,12 @@ def _kill_hold_filter(s: dict, memory, cfg: dict, proposals: list, notes: list) 
             able = [x for x in on if can_fight(x, cfg)] or on
             go = fight_or_hide(s, memory, cfg, great, able)[0]
         else:
-            go = _ratio(rows, on, memory) >= float(cfg.get("fight_ratio", 2.0)) * 0.75
+            # (0.105.54) about even odds (planner_matchup.strike_bar), a fight
+            # begun going on above three quarters of it, unless it turned bad
+            from planner_matchup import losses_turned, strike_bar
+            bar = strike_bar(rows, cfg, retreating_ids(memory, cfg))[0]
+            go = (_ratio(rows, on, memory) >= bar * 0.75
+                  and not losses_turned(on, kill_start(memory), cfg))
         if not go:
             out.append(p)                                 # the matchup says hide: back it comes
             continue
@@ -750,7 +947,8 @@ def note_holdfast_cycle(s: dict, memory, cfg: dict) -> None:
         return
     if "military" in _d(s.get("_errors")):
         return
-    note_kill_orders(s, memory)
+    note_kill_orders(s, memory, cfg)
+    note_siege(s, memory)
     h = holdfast(memory)
     guards = h.get("guards")
     if isinstance(guards, dict) and guards:
@@ -762,6 +960,70 @@ def note_holdfast_cycle(s: dict, memory, cfg: dict) -> None:
             # a day to take the post; then off it means the guard is over
             if not q or (_d(q.get("stationed")) != at and abs_tick(s) - int(g.get("tick") or 0) > TICKS_PER_DAY // 2):
                 del guards[k]
+
+
+def _siege_rows(s: dict) -> list:
+    """The threat rows that make a siege: invaders (not a thief) or great
+    dangers that can reach the dwarves or are inside."""
+    inside = _inside_ids(s)
+    return [t for t in _threats(s).values()
+            if (t.get("great_danger") or (t.get("invader") and not t.get("thief")))
+            and (t.get("can_reach_dwarves") is True or t.get("id") in inside)]
+
+
+def note_siege(s: dict, memory) -> None:
+    """(0.105.54) Bookkeeping: memory.holdfast.siege {since, last, unhappy}
+    (since when invaders or a great danger have been in reach without a
+    half-day break, and the unhappy share then: planner_matchup.all_out),
+    and dist {tick, prev, cur} (each threat's distance to the nearest dwarf
+    this cycle and the one before: falling back, planner_matchup.weakened)."""
+    if "others_on_map" in _d(s.get("_errors")) or not isinstance(s.get("others_on_map"), dict):
+        return
+    h = holdfast(memory)
+    now = abs_tick(s)
+    rows = _siege_rows(s)
+    sg = _d(h.get("siege"))
+    if rows:
+        if not isinstance(sg.get("since"), int) or not isinstance(sg.get("last"), int) \
+                or now - sg["last"] > TICKS_PER_DAY // 2 or now < sg["since"]:
+            try:
+                from planner_society import unhappy_share
+                share = round(unhappy_share(s), 3)
+            except Exception:  # noqa: BLE001
+                share = None
+            sg = {"since": now, "unhappy": share}
+        sg["last"] = now
+        h["siege"] = sg
+    elif sg and (not isinstance(sg.get("last"), int) or now - sg["last"] > TICKS_PER_DAY // 2 or now < sg["last"]):
+        h.pop("siege", None)
+    ds = _d(h.get("dist"))
+    cur = {str(t["id"]): int(t["distance_to_nearest_dwarf"]) for t in _threats(s).values()
+           if _num(t.get("distance_to_nearest_dwarf")) is not None}
+    if ds.get("tick") != now:
+        h["dist"] = {"tick": now, "prev": _d(ds.get("cur")), "cur": cur}
+
+
+def retreating_ids(memory, cfg: dict) -> set:
+    """(0.105.54) Threats `fight_retreat_tiles` farther from the dwarves than
+    the cycle before (note_siege's record): falling back."""
+    ds = _d(_hf(memory).get("dist"))
+    prev, cur = _d(ds.get("prev")), _d(ds.get("cur"))
+    step = int(cfg.get("fight_retreat_tiles", 5))
+    out = set()
+    for k, d in cur.items():
+        p = prev.get(k)
+        if isinstance(p, int) and isinstance(d, int) and d - p >= step:
+            try:
+                out.add(int(k))
+            except ValueError:
+                pass
+    return out
+
+
+def kill_start(memory) -> dict:
+    """(0.105.54) {squad id (str): members when its kill order began}."""
+    return {k: _d(v).get("members") for k, v in _d(_hf(memory).get("kill")).items()
+            if isinstance(_d(v).get("members"), int)}
 
 
 def note_holdfast(p, r: dict, state: dict, memory, now: int) -> None:

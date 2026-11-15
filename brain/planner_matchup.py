@@ -24,7 +24,8 @@ from __future__ import annotations
 
 from digest import _d, _l
 
-__all__ = ["BREATH_WEIGHT", "facts_mult", "squad_weights", "squad_split", "judge", "matchup"]
+__all__ = ["BREATH_WEIGHT", "facts_mult", "squad_weights", "squad_split", "judge", "matchup", "fight_bar", "strike_bar",
+           "weakened", "clusters", "groups_apart", "all_out", "siege_days", "losses_turned", "fire_breather"]
 
 # (0.105.45) a breath's weight against squads that close in (the highest of
 # its kinds counts): fire and dragonfire burn a squad in its armour, deadly
@@ -202,6 +203,202 @@ def judge(threats, squads: list, factor=None) -> dict:
 def matchup(t, squads: list, factor=None) -> tuple[float, list]:
     """(ratio, reasons): the squads' strength against the threat (a row or a
     list of rows), weighing melee and ranged power by what it brings. The
-    squads go at fight_ratio (PLANNER_CONFIG) or better."""
+    squads go at fight_bar's bar (about even odds since 0.105.54) or better."""
     j = judge(t, squads, factor)
     return j["ratio"], j["reasons"]
+
+
+# --- (0.105.54) when to fight -------------------------------------------------------------
+# The player (15 Nov): "fight back": the squads went out only on a clear win
+# (fight_ratio 2x), else everyone hid. Now the sortie bar is about even odds
+# (`fight_even_ratio`); a clear win only where the audit's reasons hold (a
+# fire breather: crossbows only; a great danger whose abilities the AI can't
+# read). An enemy all wounded or falling back lowers the bar; a group apart
+# from the main body (stragglers, a rearguard, one wandering invader) is a
+# strike of its own; a siege that lasts (`siege_wait_max_days`), a shelter
+# short of drink or food, thirst deaths or the unhappy share rising end the
+# wait (an all-out attack); the losses guard (a third lost, half wounded)
+# still calls the squads back. Every decision says why.
+
+def _rows(threat) -> list:
+    return [t for t in (threat if isinstance(threat, list) else [threat]) if isinstance(t, dict)]
+
+
+def fire_breather(t: dict) -> bool:
+    return t.get("fire_breather") is True or bool(set(_breath(t)) & {"fire", "dragonfire"})
+
+
+def unknown_powers(t: dict) -> bool:
+    """A great danger with abilities the AI can't read: none read at all (an
+    older bridge), or ones the bridge couldn't name."""
+    if not (t.get("great_danger") and t.get("abilities")):
+        return False
+    br = _breath(t)
+    return not t.get("facts") or "other" in br or (not br and not t.get("undead_raiser"))
+
+
+def fight_bar(threat, cfg: dict) -> dict:
+    """The bar the squads' matchup ratio must reach to go at these threats
+    (a row or a list): {bar, why, ranged_only}. About even odds
+    (`fight_even_ratio`) for invaders and beasts; a clear win (`fight_ratio`)
+    against a fire breather (and crossbows only) or a great danger whose
+    abilities aren't known; a flier: crossbows only. For the other builders'
+    rules to call too."""
+    rows = _rows(threat)
+    even = float(cfg.get("fight_even_ratio", 1.0))
+    clear = float(cfg.get("fight_ratio", 2.0))
+    if any(fire_breather(t) for t in rows):
+        return {"bar": clear, "ranged_only": True,
+                "why": f"it breathes fire: never melee, crossbows only and at a clear win ({clear:g}x)"}
+    if any(unknown_powers(t) for t in rows):
+        return {"bar": clear, "ranged_only": False,
+                "why": f"its abilities can't be read: a clear win ({clear:g}x) wanted"}
+    if any(t.get("flier") for t in rows) and all(t.get("flier") for t in rows):
+        return {"bar": even, "ranged_only": True, "why": f"about even odds ({even:g}x); it flies: crossbows"}
+    return {"bar": even, "ranged_only": False, "why": f"about even odds ({even:g}x)"}
+
+
+def weakened(t: dict, cfg: dict, retreating=()) -> str:
+    """Why this threat is weakened ("" if it isn't): wounded (blood lost,
+    many wounds: the bridge's threat facts) or falling back (farther from the
+    dwarves than last cycle: planner_holdfast's distance record)."""
+    lost = _num(t.get("blood_lost"))
+    if lost is not None and lost >= float(cfg.get("fight_wounded_blood", 0.25)):
+        return f"wounded ({round(lost * 100)}% of its blood lost)"
+    w = _num(t.get("wounds"))
+    if w is not None and w >= int(cfg.get("fight_wounded_wounds", 6)):
+        return f"wounded ({int(w)} wounds)"
+    if t.get("id") in set(retreating or ()):
+        return "falling back"
+    return ""
+
+
+def strike_bar(threat, cfg: dict, retreating=()) -> tuple[float, str]:
+    """fight_bar, lowered by `fight_weak_factor` when every one of them is
+    wounded or falling back (never for a fire breather): (bar, why)."""
+    rows = _rows(threat)
+    fb = fight_bar(rows, cfg)
+    bar, why = fb["bar"], fb["why"]
+    weak = [weakened(t, cfg, retreating) for t in rows]
+    if rows and all(weak) and not any(fire_breather(t) for t in rows):
+        f = float(cfg.get("fight_weak_factor", 0.8))
+        bar *= f
+        why = f"{why}; {'they are' if len(rows) > 1 else 'it is'} {weak[0]}: the bar x{f:g}"
+    return bar, why
+
+
+def _pos(t: dict):
+    p = _d(t.get("pos"))
+    if all(isinstance(p.get(k), (int, float)) and not isinstance(p.get(k), bool) for k in ("x", "y", "z")):
+        return p
+    return None
+
+
+def _gap(a: dict, b: dict) -> float:
+    return max(abs(a["x"] - b["x"]), abs(a["y"] - b["y"])) + 3 * abs(a["z"] - b["z"])
+
+
+def clusters(rows: list, link: float) -> list:
+    """The threats grouped by distance (single link: one within `link` tiles
+    of another is in its group), largest first. Rows without a position
+    join the largest group (where they are is unknown)."""
+    rows = _rows(rows)
+    placed = [t for t in rows if _pos(t)]
+    groups: list = []
+    for t in placed:
+        p = _pos(t)
+        near = [g for g in groups if any(_gap(p, _pos(o)) <= link for o in g)]
+        merged = [t]
+        for g in near:
+            merged.extend(g)
+            groups.remove(g)
+        groups.append(merged)
+    groups.sort(key=lambda g: (-len(g), min(str(x.get("id")) for x in g)))
+    rest = [t for t in rows if not _pos(t)]
+    if rest:
+        if groups:
+            groups[0].extend(rest)
+        else:
+            groups.append(rest)
+    return groups
+
+
+def groups_apart(rows: list, cfg: dict) -> list:
+    """The groups apart from the main body (the largest group): stragglers,
+    a rearguard, one wandering invader. [] when they are all together."""
+    gs = clusters(rows, float(cfg.get("fight_split_tiles", 15)))
+    return gs[1:] if len(gs) > 1 else []
+
+
+def _siege(memory) -> dict:
+    h = getattr(memory, "holdfast", None) if memory is not None else None
+    return _d(_d(h).get("siege"))
+
+
+def siege_days(s: dict, memory) -> float:
+    """How long the siege (invaders or a great danger in reach, without a
+    break: planner_holdfast's record) has lasted, in game days; 0 if none."""
+    from planner_core import TICKS_PER_DAY, abs_tick
+    since = _siege(memory).get("since")
+    if not isinstance(since, int):
+        return 0.0
+    return max(0, abs_tick(s) - since) / TICKS_PER_DAY
+
+
+def all_out(s: dict, memory, cfg: dict) -> str:
+    """Why the wait is over ("" while it isn't): the siege has lasted
+    `siege_wait_max_days`; the shelter is short of drink or food (its last
+    fill, with the alarm up); citizens died of thirst during it; the unhappy
+    share rose `siege_unhappy_rise` since it began, to `siege_unhappy_min` at
+    least. Then every able squad goes, militia and crossbows too."""
+    rec = _siege(memory)
+    since = rec.get("since")
+    if not isinstance(since, int):
+        return ""
+    days = siege_days(s, memory)
+    wait = float(cfg.get("siege_wait_max_days", 4))
+    if days >= wait:
+        return f"the siege has lasted {days:.1f} days ({wait:g} at most before the squads go out)"
+    sup = _d(getattr(memory, "shelter_supply", None)) if memory is not None else {}
+    if s.get("civ_alert") is True:
+        short = [str(sup[k]) for k in ("no_water", "drink_short", "no_food") if sup.get(k)]
+        if sup.get("dry") and not short:
+            short = ["no drink in the shelter"]
+        if short:
+            return f"the shelter runs short ({'; '.join(short)[:80]})"
+    dead = [d for d in _l(_d(s.get("thirst")).get("deaths"))
+            if isinstance(d, dict) and isinstance(d.get("tick"), int) and d["tick"] >= since]
+    if dead:
+        return f"{len(dead)} citizen(s) died of thirst during the siege"
+    try:
+        from planner_society import unhappy_share
+        now = unhappy_share(s)
+    except Exception:  # noqa: BLE001
+        return ""
+    start = rec.get("unhappy")
+    if (isinstance(start, (int, float)) and now >= float(cfg.get("siege_unhappy_min", 0.3))
+            and now - start >= float(cfg.get("siege_unhappy_rise", 0.15))):
+        return f"the unhappy share rose from {round(start * 100)}% to {round(now * 100)}% during the siege"
+    return ""
+
+
+def losses_turned(squads: list, start: dict, cfg: dict) -> str:
+    """A fight turned bad for these squads ("" if not): a third of the
+    soldiers they went with lost, or half of those left wounded (the bridge's
+    power.wounded). `start`: {squad id (str): members when the order began}."""
+    went = now = wounded = 0
+    for q in squads:
+        if not isinstance(q, dict):
+            continue
+        n0 = start.get(str(q.get("id")))
+        n = int(q.get("members") or 0)
+        if isinstance(n0, int) and not isinstance(n0, bool):
+            went += max(n0, n)
+            now += n
+        wounded += int(_num(_d(q.get("power")).get("wounded")) or 0)
+    if went and (went - now) >= went * float(cfg.get("fight_lost_share", 0.33)) and went - now > 0:
+        return f"{went - now} of the {went} soldiers who went are lost"
+    alive = sum(int(q.get("members") or 0) for q in squads if isinstance(q, dict))
+    if alive and wounded >= alive * float(cfg.get("fight_wounded_share", 0.5)):
+        return f"{wounded} of the {alive} soldiers out are wounded"
+    return ""
