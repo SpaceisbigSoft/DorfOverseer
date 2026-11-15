@@ -120,7 +120,7 @@ def _():
     rv.restore = lambda log: restored.append(1) or "AI restore 2026-10-31 1200"
 
     def loads():
-        return [c[2] for c in df.calls if c[0] == "ai-title"]
+        return [c[2] for c in df.calls if c[0] == "ai-title" and c[1] != "status"]
 
     def cycle_crash():
         for _ in range(4):                     # at the title: a load starts

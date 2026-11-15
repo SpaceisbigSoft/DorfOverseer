@@ -188,13 +188,13 @@ def _():
     assert rv.load_fails == {"autosave 2": 2}, rv.load_fails
     t[0] += 3600
     crash()
-    loads = [c[2] for c in df.calls if c[0] == "ai-title"]
+    loads = [c[2] for c in df.calls if c[0] == "ai-title" and c[1] != "status"]
     assert loads[-1] == "autosave 1", loads             # the bad save is passed over
     stamps["autosave 2"] = 9000.0                       # three weeks on: autosave 2 is a new save
     t[0] += 3600
     for _ in range(4):
         rv.tick(); t[0] += 60
-    loads = [c[2] for c in df.calls if c[0] == "ai-title"]
+    loads = [c[2] for c in df.calls if c[0] == "ai-title" and c[1] != "status"]
     assert loads[-1] == "autosave 2", loads
     assert any("written again" in x for x in logs), logs
 

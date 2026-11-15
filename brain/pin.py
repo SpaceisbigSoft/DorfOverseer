@@ -72,6 +72,15 @@ def take(started: float, at_title: bool = False, log=None) -> dict | None:
     site = site_of(d.get("fort"))
     if not d.get("world") or not site or not d.get("save_dir"):
         return None
+    why = foreign_game(d.get("df_path"))
+    if why:
+        # (0.105.48, K17) six forts share world, site and folder names: a
+        # last-fort.json copied with the folder (or written while this
+        # folder's port reached another game) names another game's folder
+        if log and EXTRAS_SAID.get("foreign") != why:
+            log(f"Keeper: not pinned: {why}.")
+        EXTRAS_SAID["foreign"] = why
+        return None
     p = {"world": d["world"], "site": site, "save_dir": d["save_dir"], "df_path": d.get("df_path"),
          "started": started, "pinned_at": time.time()}
     if isinstance(d.get("run"), str) and d["run"]:
@@ -86,6 +95,21 @@ def take(started: float, at_title: bool = False, log=None) -> dict | None:
         log(f"Keeper: pinned to the world '{p['world']}', site {p['site']} (save folder '{p['save_dir']}'): "
             "only this fort is loaded, copied and run until the keeper stops.")
     return p
+
+
+EXTRAS_SAID: dict = {}
+
+
+def foreign_game(df_path) -> str | None:
+    """(0.105.48, K17) Why the game folder `df_path` (DF's getDFPath, as the
+    overseer writes it to last-fort.json) is not this DF-AI folder's own game
+    (config's df_launch), or None when it is, or when either is unknown."""
+    from util import own_df_folder, same_path
+    own = own_df_folder()
+    if not own or not isinstance(df_path, str) or not df_path.strip() or same_path(own, df_path):
+        return None
+    return (f"the fort's game is {df_path}, not this folder's own game {own} (config.json's df_launch); "
+            "check dfhack_port in config.json")
 
 
 def run_id() -> str | None:
@@ -111,10 +135,20 @@ def matches(world, site) -> bool:
     return str(world or "") == str(p["world"]) and str(site if site is not None else "") == str(p["site"])
 
 
-def refusal(world, site) -> str | None:
+def refusal(world, site, df_path=None) -> str | None:
     """The overseer under the keeper: a line saying why it won't act on this
-    fort, or None when it may (DFAI_PIN unset: the player's own run)."""
-    if not os.environ.get("DFAI_PIN") or matches(world, site):
+    fort, or None when it may (DFAI_PIN unset: the player's own run).
+
+    (0.105.48, K17) With `df_path` (the live game's folder), also when that
+    game is not this folder's own (config's df_launch): the six forts share
+    world and site, so a config.json without its own dfhack_port drove
+    another keeper's game."""
+    if not os.environ.get("DFAI_PIN"):
+        return None
+    why = foreign_game(df_path)
+    if why:
+        return f"Not this folder's game: {why}. Not acting on it."
+    if matches(world, site):
         return None
     p = current() or {}
     return (f"Pinned: the keeper runs the world '{p.get('world')}', site {p.get('site')}; the game has "

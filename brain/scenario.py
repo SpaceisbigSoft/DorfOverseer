@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import shutil
 import sys
 import time
@@ -202,8 +203,11 @@ def cmd_prepare(args) -> int:
 # --- run -----------------------------------------------------------------------------
 
 def looks_like_test(save_dir: str) -> bool:
+    """(0.105.48, K17) "test" as a word of its own ("region3-test", "my test
+    fort"), or a name starting "AI Run": a real fort called "Contested" or
+    "Greatest" was played for real without --yes."""
     s = save_dir.lower()
-    return "test" in s or s.startswith("ai run")
+    return re.search(r"(^|[^a-z])test([^a-z]|$)", s) is not None or s.startswith(("ai run", "ai_run"))
 
 
 def cmd_run(args) -> int:
@@ -223,7 +227,7 @@ def cmd_run(args) -> int:
     save_dir = str(fort.get("save_dir") or "?")
     if not looks_like_test(save_dir) and not args.yes:
         say(f'The loaded save is "{save_dir}". Scenario runs play the fort for real, so they only run on '
-            'saves whose folder name contains "test" or starts with "AI Run" (see the prepare command). '
+            'saves whose folder name has the word "test" or starts with "AI Run" (see the prepare command). '
             "Add --yes to run anyway.")
         return 1
     backend = None
