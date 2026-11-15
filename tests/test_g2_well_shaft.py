@@ -119,7 +119,8 @@ def _():
 @test("group 2: a given-up shaft open is shut; one in the shaft itself always keeps it shut")
 def _():
     p, _ = run(state(gate(gate="open", cancelled=True)))
-    assert [x.action for x in p] == [{"type": "well_shaft", "close": True}] and "given-up" in p[0].reason
+    # (K48-K4b) close false: the bridge shuts a given-up shaft on any call; close true shut every working well too
+    assert [x.action for x in p] == [{"type": "well_shaft", "close": False}] and "given-up" in p[0].reason
     near = {"id": 3, "name": "Troll", "d": 1, "in_shaft": True, "mobile": True}
     p, notes = run(state(gate(watch_near=near), wells=1, patients=4))
     assert not p and any("Troll (in the shaft)" in n for n in notes), notes

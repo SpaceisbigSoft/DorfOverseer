@@ -172,8 +172,10 @@ function classify(f)
     if f.drinking and n(f.timer) < DEHYDRATED then return 'drinking' end
     local c = type(f.cancel) == 'table' and f.cancel or {}
     if c.by then return 'interrupted' end
-    if f.alert and not f.alert_drink then return 'alert' end
-    if n(f.burrows) > 0 and not f.burrow_drink and n(f.timer) < DEHYDRATED then return 'burrow' end
+    -- (K48-K4b) not when the burrow look ran out of budget before it knew (the
+    -- reason was "burrow" for a burrow never looked at)
+    if f.alert and not f.alert_drink and not f.alert_unread then return 'alert' end
+    if n(f.burrows) > 0 and not f.burrow_drink and not f.burrow_unread and n(f.timer) < DEHYDRATED then return 'burrow' end
     local here = n(f.drink_group) + n(f.wells_group) + n(f.water_group)
     if here == 0 then
         if n(f.forbidden_group) > 0 then return 'forbidden' end
@@ -207,6 +209,7 @@ local function drink_map()
         local ok, row = pcall(function()
             local fl = it.flags
             if fl.garbage_collect or fl.rotten then return nil end
+            if fl.trader then return nil end        -- (K48-K4b, A4 22) a caravan's goods at the depot are not the fort's
             -- what a unit carries is no store (in_inventory alone: a barrel's content too)
             if fl.in_inventory then
                 local okh, h = pcall(dfhack.items.getHolderUnit, it)
@@ -215,6 +218,7 @@ local function drink_map()
             local forbid = fl.forbid and true or false
             local c = dfhack.items.getContainer and dfhack.items.getContainer(it)
             if c then
+                if c.flags.trader then return nil end
                 if c.flags.forbid then forbid = true end
                 local okh, h = pcall(dfhack.items.getHolderUnit, c)
                 if okh and h ~= nil then return nil end
@@ -541,6 +545,7 @@ function report()
                 for _, w in ipairs(wl.list) do if g and w.groups[g] then table.insert(spots, w) end end
                 for _, w in ipairs(wz.list) do if g and w.groups[g] then table.insert(spots, w) end end
                 local mine, bdrink, ai_only = {}, false, true
+                local unread = false        -- (K48-K4b, A4 22) the look's budget ran out: not known
                 local soldier = false
                 pcall(function() soldier = u.military.squad_id ~= -1 end)
                 local in_alert = {}
@@ -552,23 +557,28 @@ function report()
                         if not ai then ai_only = false end
                         local holds = b and burrow_holds(b, spots, budget)
                         if holds then bdrink = true end
+                        if b and holds == nil then unread = true end
                         table.insert(mine, {id = bid, name = nm, ai = ai or nil, drink = holds})
                     end
                 end)
                 if #mine > 0 then
                     row.burrows = mine
                     f.burrows, f.burrow_drink = #mine, bdrink
+                    if unread and not bdrink then f.burrow_unread = true end
                     row.burrow_ai = ai_only or nil
                 end
                 if alert.on and not soldier then
-                    local adrink, any = false, false
+                    local adrink, any, aunread = false, false, false
                     for bid in pairs(alert.burrows) do
                         any = true
                         local b = burrow_by_id(bid)
-                        if b and burrow_holds(b, spots, budget) then adrink = true break end
+                        local holds = b and burrow_holds(b, spots, budget)
+                        if holds then adrink = true break end
+                        if b and holds == nil then aunread = true end
                     end
                     if any then
                         f.alert, f.alert_drink = true, adrink
+                        if aunread and not adrink then f.alert_unread = true end
                         row.alert = {drink = adrink}
                     end
                 end
@@ -632,7 +642,9 @@ function unforbid_drink(uid, dry_run, max)
         local ok, row = pcall(function()
             local fl = it.flags
             if fl.garbage_collect or fl.rotten then return nil end
+            if fl.trader then return nil end        -- (K48-K4b, A4 22) a caravan's goods at the depot are not the fort's
             local c = dfhack.items.getContainer and dfhack.items.getContainer(it)
+            if c and c.flags.trader then return nil end
             local cf = c and c.flags.forbid
             if not fl.forbid and not cf then return nil end
             if fl.in_inventory then

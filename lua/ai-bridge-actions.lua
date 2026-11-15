@@ -424,6 +424,7 @@ function act_place_well(a)
     end
     local gallery = whole_number(a.gallery)
     local reach = whole_number(a.shore_reach)
+    local cooldown, tries = whole_number(a.cooldown_days), whole_number(a.site_tries)
     -- (0.105.38) a far bank: up to the brain's water_far_reach, else the map's width
     far_reach_of(a)
     local map_w = math.max(100, map_width())
@@ -433,7 +434,10 @@ function act_place_well(a)
                                                open_caverns = a.open_caverns == true,
                                                gallery = gallery and math.max(0, math.min(gallery, 80)) or nil,
                                                toward = toward,
-                                               shore_reach = reach and math.max(0, math.min(reach, map_w)) or nil},
+                                               shore_reach = reach and math.max(0, math.min(reach, map_w)) or nil,
+                                               -- (K48-K4b, A4 18) the brain's cooldown and site cap (ai-well-safety place_gate)
+                                               cooldown_days = cooldown and math.max(0, math.min(cooldown, 3360)) or nil,
+                                               site_tries = tries and math.max(1, math.min(tries, 20)) or nil},
                                               get_date(), a.dry_run == true)
 end
 

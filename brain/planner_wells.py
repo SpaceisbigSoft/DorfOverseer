@@ -378,8 +378,9 @@ def _well_lid_rule(s: dict, proposals: list, notes: list) -> None:
         return
     where = lambda x: f"x{x.get('x')} y{x.get('y')} elevation {x.get('elevation')}"
     # the stair lid, where the gate can't be built
+    # (K48-K4b, A4 12) an open lid over a shaft still being dug is left unlocked (the miners' way)
     todo = [x for x in lids if x.get("gate") == "none_possible" and x.get("state") in ("none", "open")
-            and not x.get("gate_hatch_standing")]
+            and not x.get("gate_hatch_standing") and not (x.get("state") == "open" and x.get("digging"))]
     if todo:
         proposals.append(Proposal("well_lid", {"type": "seal_well_stairs"},
                                   f"the game won't build a hatch at the bottom of {len(todo)} cavern well shaft(s): "
@@ -460,6 +461,11 @@ def _well_lid_rule(s: dict, proposals: list, notes: list) -> None:
                 pool -= 2
     build = [] if danger else ok_gates
     if judged:
+        # (K48-K4b, A4 11) the bridge tests each well's own shaft before it sends
+        # a dwarf down beside the opening (the break, the hatch, the link): a
+        # danger at another well's shaft no longer holds this one's gate back
+        # for ever; one at its own still does
+        build = [x for x in ok_gates if not _d(x.get("watch_near"))]
         _shaft_turn(s, gates, build, proposals, notes)
     else:
         # (0.104.164) a pull a dwarf never made ("pulling" for good) is turned too: the bridge sets the gate at once
@@ -557,12 +563,14 @@ def shaft_water_short(s: dict, gates: list, cfg: dict | None = None) -> str:
     open one would read as water, and the `dry` mode would flap with it)."""
     cfg = PLANNER_CONFIG if cfg is None else cfg
     cavern = [x for x in gates if not x.get("cancelled")]     # a gate being linked: its hatch shut too
+    # (K48-K4b, A4 20) a cavern well still being dug has no Well building yet
+    built = [x for x in cavern if not (x.get("held") or x.get("breaking") or x.get("digging"))]
     wells = int(_d(_d(s.get("buildings")).get("other")).get("Well", 0) or 0)
     # (K48-K4) only wells and zones that give water now: a dry or frozen
     # ordinary well, or a zone DF calls empty, is no water
     cols = {(_d(x.get("shaft_hatch")).get("x"), _d(x.get("shaft_hatch")).get("y")) for x in cavern}
     bad = sum(1 for w in _frost_wells(s) if w.get("water") in ("dry", "ice") and (w.get("x"), w.get("y")) not in cols)
-    if wells - bad > len(cavern):
+    if wells - bad > len(built):
         return ""
     if water_zones_usable(s):
         return ""
@@ -596,7 +604,10 @@ def _shaft_turn(s: dict, gates: list, build: list, proposals: list, notes: list)
         near = next((_d(x.get("watch_near")) for x in to_shut if _d(x.get("watch_near"))), None)
         why = (f"{shaft_danger_words(near)} near the cavern well: shut its shaft (its hatch, at once)" if near
                else "a given-up cavern well's shaft stands open to the cavern: shut its hatch")
-        act = {"type": "well_shaft", "close": True}
+        # (K48-K4b, A4 14) a given-up shaft alone: close false (the bridge shuts a
+        # cancelled one on any call); close true with no danger shut every
+        # working well too, each for a day
+        act = {"type": "well_shaft", "close": bool(near)}
         if dry_on and not short:
             act["dry"] = False
         proposals.append(Proposal("well_shaft", act, why, 2))
@@ -707,8 +718,9 @@ def _water_zone_rule(s: dict, proposals: list, notes: list, cfg: dict | None = N
     (Enxah, winter y56: 10 patients, 16 parched, 17 GiveWater jobs going
     nowhere while the well's mechanism was held as a stuck order): a Water
     Source zone over open water the dwarves can walk to, where buckets are
-    filled at once. Water near the fort first, fresh before stagnant, cavern
-    water last (the dwarves walk into the cavern for it). (0.105.33 B4) A
+    filled at once. Water outside the caverns first, then near before far,
+    fresh before stagnant; cavern water last (the dwarves walk into the
+    cavern for it; War-hold: six drowned in the lake). (0.105.33 B4) A
     cavern well whose shaft gate is shut is no well; `cfg` the plan's own
     (PLANNER_CONFIG when not given)."""
     cfg = PLANNER_CONFIG if cfg is None else cfg
@@ -764,7 +776,10 @@ def _water_zone_rule(s: dict, proposals: list, notes: list, cfg: dict | None = N
         bodies = [b for b in bodies if b.get("underground") or b.get("kind") == "cavern"]
     # (0.105.7 review) the nearest first (the survey's distance, levels
     # counted double), fresh before stagnant; not surface-always-first
-    bodies.sort(key=lambda b: ((b.get("stagnant_share") or 0) >= 50, b["nearest"].get("d") or 999))
+    # (K48-K4b, A4 15) cavern water after any other (the docstring's order; it
+    # was sorted by distance alone and the cavern lake came first)
+    bodies.sort(key=lambda b: (b.get("kind") == "cavern", (b.get("stagnant_share") or 0) >= 50,
+                               b["nearest"].get("d") or 999))
     points = [{k: b["nearest"].get(k) for k in ("x", "y", "z")} for b in bodies[:6]
               if all(isinstance(b["nearest"].get(k), int) for k in ("x", "y", "z"))]
     who = " and ".join(x for x in (f"{patients} injured" if patients else "",

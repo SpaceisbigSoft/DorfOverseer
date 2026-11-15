@@ -471,11 +471,13 @@ return e
         T.timers[len(T.timers)]()
         assert len(T.pulls) == 2 and T.hatch.door_flags.closed is False, "opened by the watcher itself"
         assert data.list[1].shaft_gate.auto_shut is None
-        # dead now: the same; and a gate the brain shut for its own reason (no auto_shut) stays shut
+        # dead now: the same; and a gate the brain shut for its own reason (K48-K4b: brain_shut) stays shut
         T.hatch.door_flags.closed = True
+        data.list[1].shaft_gate.brain_shut = True
         E.df["global"].cur_year_tick = 5000
         T.timers[len(T.timers)]()
         assert len(T.pulls) == 2 and T.hatch.door_flags.closed is True
+        data.list[1].shaft_gate.brain_shut = None
         # a given-up shaft never
         data.list[1].shaft_gate.auto_shut = True
         data.list[1].phase = "cancelled"
