@@ -621,6 +621,7 @@ SHORT_WORDS = {
     "remove_crossing": "take down one of the AI's bridges",
     "free_dig_jobs": "free the workers held by a stalled level's dig jobs",
     "renew_well_dig": "renew a well's channel job nobody takes",   # (0.105.31)
+    "redig_projects": "designate a level's lost shaft, stair or gallery tiles again",   # (0.105.48)
     "unmark_project_dig": "make a level's marker-only dig tiles real",   # (0.105.35)
     "trim_instrument_orders": "cancel extra instrument orders",
 }

@@ -322,6 +322,9 @@ ACTIONS = {
     free_dig_jobs = act_free_dig_jobs,
     prioritize_dig = act_prioritize_dig,
     renew_well_dig = act_renew_well_dig,      -- (0.105.31)
+    -- (0.105.48, K7c) the open projects' lost shaft, stair and gallery tiles
+    -- designated again (was done inside the projects report, halted or not)
+    redig_projects = function(a) return reqscript('ai-builder').redig_projects(a.dry_run == true) end,
     unmark_project_dig = act_unmark_project_dig,   -- (0.105.35) a level's marker-only dig tiles made real
     seal_well_stairs = act_seal_well_stairs,
     well_shaft = act_well_shaft,
@@ -824,7 +827,7 @@ for _, name in ipairs({
     'quiet_announcements', 'found_fort', 'assign_labor', 'gather_plants', 'trim_gathering', 'appoint',
     'place_surface', 'place_keep', 'deep_depot', 'make_squad', 'mine_ore', 'clear_gate', 'bring_goods',
     'unload_depot', 'kitchen_skill', 'place_slabs', 'give_room', 'set_uniform', 'adopt_uniform',
-    'petition_orders', 'set_uniform_weapon', 'allow_stone', 'prioritize_dig', 'renew_well_dig', 'convict', 'quarry', 'polish',
+    'petition_orders', 'set_uniform_weapon', 'allow_stone', 'prioritize_dig', 'renew_well_dig', 'redig_projects', 'convict', 'quarry', 'polish',
     'trade_deal', 'call_trader', 'open_trade', 'close_trade', 'squad_barracks', 'feeder_pile',
     'idle_crafting', 'give_trinkets', 'staff_location', 'vacate_post', 'add_posts', 'staff_labors',
     'dismiss_alerts', 'place_in_zone', 'answer_petition', 'retarget_hall', 'remove_workshops',
@@ -1551,6 +1554,19 @@ SECTION_CACHE_DAYS.paper = 1           -- (item9) the plants and tools walked on
 SECTION_CACHE_DAYS.artifacts = 1       -- (item 12) the artifacts and display furniture walked once
 SECTION_CACHE_DAYS.killzones = 1       -- (0.105.45) a walk in from each entrance, the units once
 SECTION_REBUILDS = 2       -- expired cached sections rebuilt in one report (a missing one always is)
+-- (0.105.48, K7c) the most game days a cached copy is ever sent: past it the
+-- section is rebuilt whatever the rotation (A1: two rebuilds a report against
+-- ~14 due a day left every cached section 11-12 days old). Set by how fast
+-- each changes and how fast the rules that read it must answer; a section
+-- not listed is only rotated. The age of each copy sent is in perf.cache_age.
+SECTION_MAX_DAYS = {
+    needs = 2, homes = 2, disposal = 2, food_store = 2, planned = 2,   -- the people and the food: within a day or two
+    siege = 2, killzones = 2,                                         -- the defences
+    missions = 3, noble_demands = 3, pile_links = 3, paper = 3, artifacts = 3, petitions = 3,
+    locations = 4,
+    logistics = 6, room_gaps = 6, registry = 6, noble_rooms = 6, constructions = 6, citizens_taste = 7,
+    industry = 12, diplomacy = 12, crossings = 12,
+}
 -- (0.100) the cached sections each action changes (cleared when it succeeds)
 CACHE_INVALIDATES = {
     place_in_zone = {'justice'}, convict = {'justice'},
@@ -1622,6 +1638,7 @@ for _, name in ipairs({'place_hall', 'build_wings', 'floor_rooms', 'place_keep'}
     CACHE_INVALIDATES[name] = {'constructions'}
 end
 CACHE_INVALIDATES.place_garden_court = {'constructions'}   -- (0.105.47)
+CACHE_INVALIDATES.redig_projects = {'registry'}
 SECTION_CACHE = SECTION_CACHE or {}
 -- (0.104.8) a new bridge starts with an empty cache: DFHack keeps a script's
 -- globals across runs, so a section cached by older code (0.104.7's
@@ -1679,15 +1696,25 @@ build_state_body = function(include_units, tier)
     local rebuild = {}
     do
         local due = {}
+        -- (0.105.48, K7c) one past its SECTION_MAX_DAYS always is, outside the count
+        local max_days = type(SECTION_MAX_DAYS) == 'table' and SECTION_MAX_DAYS or {}
         for _, name in ipairs(names) do
             local days, c = SECTION_CACHE_DAYS[name], SECTION_CACHE[name]
             if days and c and c.site == site and now >= c.tick and now - c.tick >= days * 1200 then
-                table.insert(due, {name = name, age = now - c.tick})
+                local cap = tonumber(max_days[name])
+                if cap and now - c.tick >= math.max(cap, days) * 1200 then
+                    rebuild[name] = true
+                else
+                    table.insert(due, {name = name, age = now - c.tick})
+                end
             end
         end
         table.sort(due, function(a, b) return a.age > b.age end)
         for i = 1, math.min(SECTION_REBUILDS, #due) do rebuild[due[i].name] = true end
     end
+    -- (0.105.48, K7c) each cached copy's age (game days, 0.1) and whether it
+    -- is past its SECTION_CACHE_DAYS (waiting for the rotation)
+    local cache_age, cache_due = {}, {}
     -- (0.105.40, 13e) every section's time (os.clock, ms) and the ones sent
     -- from the cache, for the perf section built last
     local perf_ms, perf_cached = {}, {}
@@ -1700,6 +1727,8 @@ build_state_body = function(include_units, tier)
         if days and fresh and (now - c.tick < days * 1200 or not rebuild[name]) then
             state[name] = c.value
             perf_cached[name] = true
+            cache_age[name] = math.floor((now - c.tick) / 120 + 0.5) / 10
+            if now - c.tick >= days * 1200 then cache_due[name] = true end
         else
             -- a section may return a second value, true: don't keep this copy
             -- (logistics with a part that failed)
@@ -1715,6 +1744,9 @@ build_state_body = function(include_units, tier)
         perf_ms[name] = math.floor(dt * 10 + 0.5) / 10
     end
     state.perf = perf_section(perf_ms, perf_cached, (clock() - t0) * 1000, now)
+    if type(state.perf) == 'table' and not state.perf.error then
+        state.perf.cache_age, state.perf.cache_due = cache_age, cache_due   -- (0.105.48, K7c)
+    end
     REPORT_MEMO = nil
     state.tier = tier
     state._timing = timing
