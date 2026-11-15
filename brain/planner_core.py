@@ -8,7 +8,7 @@ from quirks import has_rule
 from digest import _d, _l, normalize
 from planner_config import PLANNER_CONFIG, DISPOSAL_ACTION_MAX  # noqa: F401  (13c: the tuning numbers, split out)
 
-__all__ = ["wildlife_threat", "wildlife_threats", "thief_ids", "GREAT_LIKE_KINDS", "great_present", "all_clear", "STEER_PROTECTED", "STEER_MAX_DAYS", "steer_of", "PLANNER_CONFIG", "BREW_RECIPES", "MEAL_RECIPES", "MANDATE_RECIPES", "BUILDABLE_SHOPS", "SHOP_ALIASES", "SURVIVAL_SHOPS", "TICKS_PER_DAY", "TICKS_PER_YEAR", "NO_COOLDOWN", "COOLDOWN_KEYS", "MULTI_PER_CYCLE", "EMERGENCY", "STUCK_HOLD_EXEMPT", "ORDER_HOLD_EXEMPT", "LIMIT_EXEMPT", "Proposal", "Memory", "abs_tick", "stamp_tick", "game_day", "factor", "ADJUST_BOUNDS", "_number", "effective_config", "queued", "unstored_cups", "free_stock", "watch_since", "_clamp", "MEMORIAL_SPAN", "OPTIONAL_LEVELS", "GEAR_WEAPONS", "GEAR_METALS", "NEEDS_YOU", "ask_player", "DISPOSAL_LEVELS", "DISPOSAL_ACTION_MAX", "player_rules", "OPEN_CAVERNS_MODES", "open_caverns_mode", "MAINTAIN_SKIPS", "level_refused", "_traits", "reachable_threats", "held_off_threats", "_holding_off", "ONE_A_CYCLE", "growth_mode", "growth_target", "JOB_SHOPS", "RECIPE_SHOPS", "WOOD_ELSEWHERE", "recipe_shop", "brewable_counts", "brew_recipe", "_watchdog_notes", "jobs_reported", "order_job_state", "masons_jammed", "stuck_hold_days", "_stuck_before", "stone_short", "_office_held", "tantrums_recent", "justice_held", "_restraint_order", "manager_needs_office", "suites_short", "wool_route", "thread_plants_here", "MINING_NEED_ONLY", "mining_plan", "noble_room_kinds", "SOCIAL_NEEDS", "care_waiting", "unmet", "_soldier_swap", "recently_home", "LOCATION_UNITS", "_location", "_location_short", "_real_locations", "can_fight", "is_ranged", "STALE_PROJECT_DAYS", "_workshops_busy", "shop_count", "shops_max", "_has_shop", "RAW_FOOD", "ALL_FOOD", "_idle_share", "idle_line", "IDLE_OLD_LINES", "levels_done", "_lever_state", "update_idle", "AGENDA_THEMES", "agenda", "food_per_dwarf", "WINTER_STOCK", "winter_factor", "young_fort", "established", "has_farms", "_best_metal", "REFUSAL_FIRST_DAYS", "REFUSAL_MAX_DAYS", "REFUSAL_IDLE_DAYS", "REFUSAL_KEYS", "is_release", "LABOR_CAPS", "labor_given", "note_labor_given", "REFUSAL_ID_TYPES", "PER_ID_COOLDOWN", "refusal_key", "cooldown_key", "_refused_wait", "note_refusal", "zone_full_days", "note_zone_full", "ZONE_FULL_FIRST_DAYS", "ZONE_FULL_MAX_DAYS", "TIMEOUT_TRIES", "timeout_streak", "brief_timeout", "LOOP_LIMITS", "LOOP_LIMIT_DEFAULT", "LOOP_EXEMPT", "_loop_count", "NO_EFFECT_RULES", "NO_EFFECT_WHY", "note_no_effect", "no_effect_wait", "_stalled_days", "_entrance_spot", "_record_any_outcome", "_weapon_gaps", "spare_sig", "MOOD_BODY_FLAGS", "mood_kind", "mood_on_hand", "mood_waits", "_stuck_again_rule"]
+__all__ = ["great_present", "all_clear", "STEER_PROTECTED", "STEER_MAX_DAYS", "steer_of", "PLANNER_CONFIG", "BREW_RECIPES", "MEAL_RECIPES", "MANDATE_RECIPES", "BUILDABLE_SHOPS", "SHOP_ALIASES", "SURVIVAL_SHOPS", "TICKS_PER_DAY", "TICKS_PER_YEAR", "NO_COOLDOWN", "COOLDOWN_KEYS", "MULTI_PER_CYCLE", "EMERGENCY", "STUCK_HOLD_EXEMPT", "ORDER_HOLD_EXEMPT", "LIMIT_EXEMPT", "emergency", "limit_exempt", "steer_protected", "Proposal", "Memory", "abs_tick", "stamp_tick", "game_day", "factor", "ADJUST_BOUNDS", "_number", "effective_config", "queued", "unstored_cups", "free_stock", "watch_since", "_clamp", "MEMORIAL_SPAN", "OPTIONAL_LEVELS", "GEAR_WEAPONS", "GEAR_METALS", "NEEDS_YOU", "ask_player", "DISPOSAL_LEVELS", "DISPOSAL_ACTION_MAX", "player_rules", "OPEN_CAVERNS_MODES", "open_caverns_mode", "MAINTAIN_SKIPS", "level_refused", "_traits", "reachable_threats", "held_off_threats", "_holding_off", "ONE_A_CYCLE", "growth_mode", "growth_target", "JOB_SHOPS", "RECIPE_SHOPS", "WOOD_ELSEWHERE", "recipe_shop", "brewable_counts", "brew_recipe", "_watchdog_notes", "jobs_reported", "order_job_state", "masons_jammed", "stuck_hold_days", "_stuck_before", "stone_short", "_office_held", "tantrums_recent", "justice_held", "_restraint_order", "manager_needs_office", "suites_short", "wool_route", "thread_plants_here", "MINING_NEED_ONLY", "mining_plan", "noble_room_kinds", "SOCIAL_NEEDS", "care_waiting", "unmet", "_soldier_swap", "recently_home", "LOCATION_UNITS", "_location", "_location_short", "_real_locations", "can_fight", "is_ranged", "STALE_PROJECT_DAYS", "_workshops_busy", "shop_count", "shops_max", "_has_shop", "RAW_FOOD", "ALL_FOOD", "_idle_share", "idle_line", "IDLE_OLD_LINES", "levels_done", "_lever_state", "update_idle", "AGENDA_THEMES", "agenda", "food_per_dwarf", "WINTER_STOCK", "winter_factor", "young_fort", "established", "has_farms", "_best_metal", "REFUSAL_FIRST_DAYS", "REFUSAL_MAX_DAYS", "REFUSAL_IDLE_DAYS", "REFUSAL_KEYS", "LABOR_CAPS", "labor_given", "note_labor_given", "REFUSAL_ID_TYPES", "PER_ID_COOLDOWN", "refusal_key", "cooldown_key", "_refused_wait", "note_refusal", "zone_full_days", "note_zone_full", "ZONE_FULL_FIRST_DAYS", "ZONE_FULL_MAX_DAYS", "TIMEOUT_TRIES", "timeout_streak", "brief_timeout", "LOOP_LIMITS", "LOOP_LIMIT_DEFAULT", "LOOP_EXEMPT", "_loop_count", "NO_EFFECT_RULES", "NO_EFFECT_WHY", "note_no_effect", "no_effect_wait", "_stalled_days", "_entrance_spot", "_record_any_outcome", "_weapon_gaps", "spare_sig", "MOOD_BODY_FLAGS", "mood_kind", "mood_on_hand", "mood_waits", "_stuck_again_rule", "wildlife_threat", "wildlife_threats", "thief_ids", "GREAT_LIKE_KINDS", "is_release"]
 
 BREW_RECIPES = {"brew_drink", "brew_drink_from_fruit", "make_mead"}
 MEAL_RECIPES = {"prepare_easy_meal", "prepare_fine_meal", "prepare_lavish_meal"}
@@ -97,7 +97,7 @@ def steer_of(memory, rule: str, now: int) -> dict | None:
     {"mode": "raise" | "hold", "until": tick, "why": text}."""
     s = _d(_d(getattr(memory, "steer", None)).get(rule))
     if s.get("mode") in ("raise", "hold") and isinstance(s.get("until"), int) and now < s["until"]:
-        if s["mode"] == "hold" and rule in STEER_PROTECTED:
+        if s["mode"] == "hold" and steer_protected(rule):      # (0.105.48, K6) EMERGENCY too
             return None
         return s
     return None
@@ -126,6 +126,36 @@ LIMIT_EXEMPT = EMERGENCY | {"break_fights", "calm_burrow", "join_levels", "censu
                             "squad_recall"}
 
 
+# (0.105.48, K6) the guards added after these sets were made: never held by
+# the strategist (a hold lasts up to 84 days). The hold checks and the action
+# limit also read EMERGENCY itself (limit_exempt, steer_protected): LIMIT_EXEMPT
+# and STEER_PROTECTED are copies made here at import, so a rule a later module
+# put in EMERGENCY (way_out, way_out_dig, well_rescue) missed them
+STEER_PROTECTED.update({"intruder_guard", "destroyer_gate", "hospital_guard", "staff_tantrum", "chronic_posts",
+                        "near_gates", "near_gates_refresh", "hunting_stop", "fire_guard", "magma_guard",
+                        "magma_shut", "lure_shut", "mood_shelter", "well_rescue", "well_safety"})
+
+
+def emergency(*rules: str) -> None:
+    """(0.105.48, K6) A response to danger: no action limit, no refusal
+    back-off or loop hold, never held by the strategist. New modules call this
+    rather than adding to each set by hand."""
+    for r in rules:
+        EMERGENCY.add(r)
+        LIMIT_EXEMPT.add(r)
+        STEER_PROTECTED.add(r)
+
+
+def limit_exempt(rule: str) -> bool:
+    """(0.105.48, K6) Outside the per-cycle action limit: LIMIT_EXEMPT or any EMERGENCY rule."""
+    return rule in LIMIT_EXEMPT or rule in EMERGENCY
+
+
+def steer_protected(rule: str) -> bool:
+    """(0.105.48, K6) Never held by the strategist: STEER_PROTECTED or any EMERGENCY rule."""
+    return rule in STEER_PROTECTED or rule in EMERGENCY
+
+
 @dataclass
 class Proposal:
     rule: str
@@ -142,6 +172,10 @@ class Memory:
     last_fired: dict = field(default_factory=dict)       # rule -> absolute tick
     orders_by_day: dict = field(default_factory=dict)    # absolute game day (str) -> count
     ai_alert_raised: bool = False
+    # (0.105.48, K6) the cycle's own steps that failed (select, record's hooks, the
+    # pre-plan steps): {step: {"n": cycles in a row, "tick", "why"}}; shown as
+    # "rule <step> failed" notes (the health check's standing lines) until it runs again
+    guard_fails: dict = field(default_factory=dict)
     threat_alarm: dict = field(default_factory=dict)   # (0.105.0 review) {since, why}: the threats round's alarm, capped
     cavern_alarm: dict = field(default_factory=dict)   # (v35 fix) {since}: the alarm held for citizens in the caverns, capped
     weather_alarm: dict = field(default_factory=dict)  # (0.105.40b) {since, seen, on_seen, cleared, why}: evil weather's alarm
@@ -1641,6 +1675,11 @@ REFUSAL_KEYS = ("type", "kind", "recipe", "job", "entrance_id", "project_id", "n
                 "building_id",                                   # (0.104.138) nor one workshop's feeder another's
                 "accept",                                        # (0.105.9) declining isn't agreeing
                 "pile_id",                                       # (0.105.41, item 2) nor one pile's barrows or link another's
+                # (0.105.48, K6) nor one target's refusal another target's: a site, a
+                # mission's goal, an item, a landmark, a stone, a metal, a district, a
+                # library, an entrance or lever by "id", a group of units (lists sorted)
+                "id", "ids", "units", "site_id", "goal", "item_id", "landmark_id", "stone", "metal",
+                "district", "library",
                 # (0.105.48, K3) a release isn't the confine of the same rule:
                 # calm_burrow / calm_burrow release were one key, so the confine's
                 # loop hold and refusals held the letting-out for weeks
@@ -1696,10 +1735,21 @@ REFUSAL_ID_TYPES = ("open_entrance",)
 PER_ID_COOLDOWN = {"stranded"}
 
 
+def _key_value(v):
+    """(0.105.48, K6) A refusal key's value: a list of ids in a stable order."""
+    if isinstance(v, (list, tuple)):
+        try:
+            return sorted(v)
+        except TypeError:
+            return [str(x) for x in v]
+    return v
+
+
 def refusal_key(p: Proposal) -> str:
     a = _d(p.action)
-    keys = REFUSAL_KEYS + (("id",) if a.get("type") in REFUSAL_ID_TYPES else ())
-    return p.rule + ":" + json.dumps({k: a.get(k) for k in keys if k in a}, sort_keys=True)
+    # (0.105.48, K6) "id" is in REFUSAL_KEYS for every action now (was only REFUSAL_ID_TYPES')
+    return p.rule + ":" + json.dumps({k: _key_value(a.get(k)) for k in REFUSAL_KEYS if k in a},
+                                     sort_keys=True, default=str)
 
 
 def cooldown_key(p: Proposal) -> str:

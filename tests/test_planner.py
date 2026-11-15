@@ -10473,6 +10473,11 @@ def _():
     assert not [x for x in p if x.action.get("type") in ("pasture", "make_pasture", "nest_boxes")], p
     assert any("pasture assignment(s) wait" in n for n in notes), notes
     s["entrances"]["entrances"][0]["closed"] = False                 # gates open again
+    # (0.105.48, K6) ...but no work outside while the enemy can reach the dwarves
+    p, notes = plan(s, Memory())
+    assert not by_rule(p, "pasture") and any("no work outside" in n for n in notes), notes
+    s["civ_alert"] = False
+    s["others_on_map"]["threats"], s["others_on_map"]["threats_that_can_reach_dwarves"] = [], 0
     assert by_rule(plan(s, Memory())[0], "pasture")
     s["entrances"]["armed"] = False
     assert by_rule(plan(s, Memory(gate_closed_by_ai=True))[0], "pasture") == []   # the AI's lever pulled

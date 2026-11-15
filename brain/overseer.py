@@ -38,6 +38,8 @@ from dfhack import PROJECT_ROOT, DFHackError, GameNotRunning  # noqa: E402
 from util import folder_lock, load_json  # noqa: E402
 from planner import (NEEDS_YOU, PLANNER_CONFIG, TICKS_PER_YEAR, Memory, abs_tick,  # noqa: E402
                      effective_config, note_cycle, note_tantrums, plan, record, select)
+from planner_guards import guard_fail, guard_lines, guard_ok  # noqa: E402  (0.105.48, K6) the cycle's guards
+from planner_core import limit_exempt  # noqa: E402  (0.105.48, K6)
 from planner_tantrums import note_tantrum_book  # noqa: E402  (0.105.47)
 from planner_society import note_heists  # noqa: E402  (0.105.24)
 from planner_moods import mood_journal  # noqa: E402  (0.105.30)
@@ -1071,6 +1073,83 @@ def show_changed(key: str, lines: list[str]) -> None:
     PRINTED[key] = shapes
 
 
+def _log_error() -> None:
+    """The traceback of the exception being handled, into logs/overseer-errors.log (never raises)."""
+    try:
+        LOG_DIR.mkdir(exist_ok=True)
+        memstore.cap_file(LOG_DIR / "overseer-errors.log", ERRORS_MAX_BYTES)
+        with (LOG_DIR / "overseer-errors.log").open("a", encoding="utf-8") as f:
+            f.write(f"--- {datetime.now().isoformat(timespec='seconds')}\n{traceback.format_exc()}\n")
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def cycle_step(memory, state: dict, name: str, fn, *args, default=None, **kw):
+    """(0.105.48, K6) One step of the cycle on its own (A9: observe, the event
+    notes, calibrate, outcomes, culture, the strategist's review, select, the
+    record after acting raised out of one_cycle, nothing was planned, and a
+    cycle that failed every time ran for ever planning nothing). A failure is
+    said, its traceback logged, counted in memory.guard_fails (a "rule
+    cycle_<step> failed" note each cycle, the health check's standing lines)
+    and the cycle goes on with `default`."""
+    try:
+        out = fn(*args, **kw)
+    except Exception as e:  # noqa: BLE001
+        try:
+            now = abs_tick(state)
+        except Exception:  # noqa: BLE001
+            now = None
+        guard_fail(memory, "cycle_" + name, e, now)
+        say(f"Step {name} failed ({type(e).__name__}: {str(e)[:160]}); the cycle goes on without it "
+            "(details in logs/overseer-errors.log)")
+        _log_error()
+        return default
+    guard_ok(memory, "cycle_" + name)
+    return out
+
+
+def _calibrate_step(state: dict, memory, key: str, cfg: dict) -> None:
+    """The self-tuning's changes, said and journalled (one_cycle's step)."""
+    for ch in calibrate.update(state, memory, cfg, memory.adjust):
+        say(f"Self-tuned: {ch['name']} {ch['old']} -> {ch['new']} ({ch['why']})")
+        journal({"kind": "calibration", "fort": key, "date": state["date"], **ch})
+        if ch["up"]:
+            kind = {"drink_per_dwarf": "drink_target", "meals_per_dwarf": "meal_target",
+                    "farm_tiles_per_dwarf": "farm_target", "pasture_margin": "pasture_margin"}[ch["key"]]
+            ent = outcomes.open_entry(state, memory, kind, f"{ch['name']} {ch['old']} -> {ch['new']}",
+                                      "self-tuning", expect="down" if kind == "pasture_margin" else "up")
+            if ent is not None:     # (0.102.7, B6) so a bad verdict can take it back
+                ent.update(tune_key=ch["key"], tune_old=ch["old"], tune_new=ch["new"])
+
+
+def _outcomes_step(state: dict, memory, key: str) -> None:
+    """The verdicts on earlier changes, said and journalled (one_cycle's step)."""
+    for e in outcomes.judge(state, memory):
+        say(f"Outcome: {outcomes.KINDS[e['kind']][3]} ({e['by']}): "
+            f"{outcomes.VERDICT_TEXT[e['verdict']]}, {e['why']}")
+        journal({"kind": "outcome", "fort": key, "date": state["date"], "of": e.get("kind"),
+                 **{k: e.get(k) for k in ("what", "by", "metric", "expect", "before", "verdict", "why")}})
+        back = calibrate.heed(e, memory, state)
+        if back:
+            say(f"Self-tuned: {back['name']} {back['old']} -> {back['new']} ({back['why']})")
+            journal({"kind": "calibration", "fort": key, "date": state["date"], **back})
+
+
+FAILED_CYCLES_KEY = "_overseer"     # (0.105.48, K6) the standing lines' key for whole cycles that failed
+
+
+def note_failed_cycles(n: int, e: BaseException | None) -> None:
+    """(0.105.48, K6) Whole cycles failing in a row, as a standing "rule cycle
+    failed" line (logs/standing.json: the health check flags it once it stands
+    long); n=0 clears it. Never raises."""
+    try:
+        notes = ([f"rule cycle failed ({type(e).__name__}: {str(e)[:120]}): nothing planned "
+                  f"({n} cycle(s) in a row)"] if n and e is not None else [])
+        health_check.track_standing(FAILED_CYCLES_KEY, [], notes, None)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | None = None,
               mode_override: str | None = None, tier: str = "daily") -> None:
     if controls is None:
@@ -1181,60 +1260,52 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
         # (0.97.1) your memory on the PC knows the fort by its line (world and
         # site: its autosaves and copies are one fort); a dry run doesn't write it
         line = learning.line_key(key, (state.get("fort") or {}).get("world"))
-        learned_now = learning.observe(state, memory, line, write_pc=autopilot)   # before note_cycle: it reads the tools
-        expire_adjustments(memory, state)
-        notes = note_cycle(state, memory)
+        # (0.105.48, K6) each step before the plan on its own (cycle_step): one
+        # raising no longer stops the cycle before anything is planned
+        learned_now = cycle_step(memory, state, "observe", lambda: learning.observe(state, memory, line, write_pc=autopilot),
+                                 default=[])   # before note_cycle: it reads the tools
+        cycle_step(memory, state, "expire_adjustments", lambda: expire_adjustments(memory, state))
+        notes = list(cycle_step(memory, state, "note_cycle", lambda: note_cycle(state, memory)) or [])
         # (0.105.36, D7) a date-failed report returned above, so the date is good from here
-        for e in mood_journal(state, memory):     # (0.105.30) each mood's requests, once a day
-            journal({"kind": "mood", "fort": key, "date": state["date"], **e})
-        for e in mission_journal(memory):         # (0.105.39) missions out and back (planner_missions)
-            journal({"kind": "mission", "fort": key, "date": state["date"], **e})
-        for e in cleanup_journal(memory):         # (0.105.40) what the world cleanup found and removed
-            journal({"kind": "cleanup", "fort": key, "date": state["date"], **e})
-        for e in thirst_journal(state, memory):   # (0.105.46, I2) each death of thirst, with its last reason
-            journal({"kind": "thirst_death", "fort": key, "date": state["date"], **e})
-        for e in recovery_journal(memory):        # (0.105.46, I4) recovery entered, left, migrants called
-            journal({"kind": "recovery", "fort": key, "date": state["date"], **e})
-        note_tantrums(state, memory, events)     # (0.104.31) tantrums counted for the jail
-        note_tantrum_book(state, memory, events)   # (0.105.47) tantrum/berserk/possession reports; a tantrum loose
-        note_heists(state, memory, events)       # (0.105.24) heists and visitors' killings: visitors kept out a while
-        note_intrusions(state, memory, events)   # (0.105.30) DF's invasion records: the alarm before a thief strikes
-        note_thief_targets(state, memory, events)   # (0.105.47) the artifact a thief names: guarded while it hides
-        crisis.note_deaths(state, memory, events)   # (0.104.137) deaths counted for crisis mode
-        note_events(state, memory, bank if backend else None, events)
-        for line in learned_now:
+
+        def _journals():
+            for e in mood_journal(state, memory):     # (0.105.30) each mood's requests, once a day
+                journal({"kind": "mood", "fort": key, "date": state["date"], **e})
+            for e in mission_journal(memory):         # (0.105.39) missions out and back (planner_missions)
+                journal({"kind": "mission", "fort": key, "date": state["date"], **e})
+            for e in cleanup_journal(memory):         # (0.105.40) what the world cleanup found and removed
+                journal({"kind": "cleanup", "fort": key, "date": state["date"], **e})
+            for e in thirst_journal(state, memory):   # (0.105.46, I2) each death of thirst, with its last reason
+                journal({"kind": "thirst_death", "fort": key, "date": state["date"], **e})
+            for e in recovery_journal(memory):        # (0.105.46, I4) recovery entered, left, migrants called
+                journal({"kind": "recovery", "fort": key, "date": state["date"], **e})
+        cycle_step(memory, state, "journals", _journals)
+        cycle_step(memory, state, "note_tantrums", lambda: note_tantrums(state, memory, events))   # (0.104.31) tantrums counted for the jail
+        cycle_step(memory, state, "note_tantrum_book", lambda: note_tantrum_book(state, memory, events))   # (0.105.47) tantrum/berserk/possession reports
+        cycle_step(memory, state, "note_heists", lambda: note_heists(state, memory, events))       # (0.105.24) heists and visitors' killings
+        cycle_step(memory, state, "note_intrusions", lambda: note_intrusions(state, memory, events))   # (0.105.30) DF's invasion records
+        cycle_step(memory, state, "note_thief_targets", lambda: note_thief_targets(state, memory, events))   # (0.105.47) a thief's artifact
+        cycle_step(memory, state, "note_deaths", lambda: crisis.note_deaths(state, memory, events))   # (0.104.137) deaths for crisis mode
+        cycle_step(memory, state, "note_events", lambda: note_events(state, memory, bank if backend else None, events))
+        for line in learned_now or []:
             say(f"Learned: {line}")
             journal({"kind": "learned", "fort": key, "date": state["date"], "text": line})
-        cfg = effective_config(memory.adjust, calibration=calibrate.values(memory))
-        remember_world(state, memory, events, key, cfg, learned_now, bridge)
-        for ch in calibrate.update(state, memory, cfg, memory.adjust):
-            say(f"Self-tuned: {ch['name']} {ch['old']} -> {ch['new']} ({ch['why']})")
-            journal({"kind": "calibration", "fort": key, "date": state["date"], **ch})
-            if ch["up"]:
-                kind = {"drink_per_dwarf": "drink_target", "meals_per_dwarf": "meal_target",
-                        "farm_tiles_per_dwarf": "farm_target", "pasture_margin": "pasture_margin"}[ch["key"]]
-                ent = outcomes.open_entry(state, memory, kind, f"{ch['name']} {ch['old']} -> {ch['new']}",
-                                          "self-tuning", expect="down" if kind == "pasture_margin" else "up")
-                if ent is not None:     # (0.102.7, B6) so a bad verdict can take it back
-                    ent.update(tune_key=ch["key"], tune_old=ch["old"], tune_new=ch["new"])
-        cfg = effective_config(memory.adjust, calibration=calibrate.values(memory))
-        for e in outcomes.judge(state, memory):
-            say(f"Outcome: {outcomes.KINDS[e['kind']][3]} ({e['by']}): "
-                f"{outcomes.VERDICT_TEXT[e['verdict']]}, {e['why']}")
-            journal({"kind": "outcome", "fort": key, "date": state["date"], "of": e.get("kind"),
-                     **{k: e.get(k) for k in ("what", "by", "metric", "expect", "before", "verdict", "why")}})
-            back = calibrate.heed(e, memory, state)
-            if back:
-                say(f"Self-tuned: {back['name']} {back['old']} -> {back['new']} ({back['why']})")
-                journal({"kind": "calibration", "fort": key, "date": state["date"], **back})
+
+        def _cfg():
+            return effective_config(memory.adjust, calibration=calibrate.values(memory))
+        cfg = cycle_step(memory, state, "config", _cfg, default=None) or PLANNER_CONFIG
+        cycle_step(memory, state, "remember_world", lambda: remember_world(state, memory, events, key, cfg, learned_now, bridge))
+        cycle_step(memory, state, "calibrate", _calibrate_step, state, memory, key, cfg)
+        cfg = cycle_step(memory, state, "config", _cfg, default=None) or cfg
+        cycle_step(memory, state, "outcomes", _outcomes_step, state, memory, key)
         style_before = _style_choices(memory)
-        culture_update(state, memory, events, key)
+        cycle_step(memory, state, "culture", lambda: culture_update(state, memory, events, key))
         style_after = _style_choices(memory)
         if style_before and style_after != style_before:
             changed = [a for a in style_after if style_after.get(a) != style_before.get(a)]
-            outcomes.open_entry(state, memory, "style", "new style: " + ", ".join(
+            cycle_step(memory, state, "style", outcomes.open_entry, state, memory, "style", "new style: " + ", ".join(
                 f"{a} {style_after[a]}" for a in changed), "weights engine")
-        proposals, plan_notes = plan(state, memory, cfg)
+        proposals, plan_notes = cycle_step(memory, state, "plan", lambda: plan(state, memory, cfg)) or ([], [])
         try:
             from planner import agenda as _agenda
             if proposals or plan_notes:
@@ -1257,19 +1328,22 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
             except Exception as e:  # noqa: BLE001  (a season's choice never stops the fort)
                 say(f"Season: no scripted choice ({type(e).__name__}: {e})")
         if backend is not None:
-            outcome = maybe_review(state, memory, bank, backend, bridge.version or {}, notes, proposals=proposals)
-            for line in outcome.say:
-                say(line)
-            if outcome.journal:
-                journal({"fort": key, "date": state["date"], **outcome.journal})
-            ai_props = outcome.proposals
-            try:     # (0.105.23) the strategist's levels keep under the surface in the Deep mine too
-                from planner import _deep_surface_filter, _traits as _plan_traits
-                ai_props = _deep_surface_filter(state, _plan_traits(state), memory, list(ai_props), notes)
-            except Exception:  # noqa: BLE001  (never stops the cycle; the bridge's own checks still hold)
-                pass
-            proposals = ai_props + proposals
-            _note_adjust(state, memory, outcome.journal, cfg)
+            def _review():
+                outcome = maybe_review(state, memory, bank, backend, bridge.version or {}, notes, proposals=proposals)
+                for line in outcome.say:
+                    say(line)
+                if outcome.journal:
+                    journal({"fort": key, "date": state["date"], **outcome.journal})
+                ai_props = outcome.proposals
+                try:     # (0.105.23) the strategist's levels keep under the surface in the Deep mine too
+                    from planner import _deep_surface_filter, _traits as _plan_traits
+                    ai_props = _deep_surface_filter(state, _plan_traits(state), memory, list(ai_props), notes)
+                except Exception:  # noqa: BLE001  (never stops the cycle; the bridge's own checks still hold)
+                    pass
+                _note_adjust(state, memory, outcome.journal, cfg)
+                return list(ai_props)
+            # (0.105.48, K6) the strategist's review on its own: failing, the plan goes on without it
+            proposals = (cycle_step(memory, state, "strategist", _review, default=None) or []) + proposals
             try:
                 story = maybe_tell(state, memory, bank, backend)
                 for line in story.say:
@@ -1281,9 +1355,14 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
                 say(f"AI chronicle failed: {type(e).__name__}: {e}")
 
         # what you've turned down waits (or is left to you)
-        proposals, learned_notes = learning.apply(proposals, memory, abs_tick(state))
+        proposals, learned_notes = cycle_step(memory, state, "learning_apply",
+                                              lambda: learning.apply(proposals, memory, abs_tick(state))) or (proposals, [])
         notes += [n for n in learned_notes if n not in notes]
-        allowed, held = select(proposals, state, memory, cfg)
+        # (0.105.48, K6) select() guards each proposal itself; failing whole, the
+        # responses to danger still go (the limits' exempt rules), the rest wait
+        allowed, held = cycle_step(memory, state, "select", lambda: select(proposals, state, memory, cfg)) or (
+            [p for p in proposals if limit_exempt(p.rule)],
+            [f"{p.rule}: the limits' check failed this cycle; it waits" for p in proposals if not limit_exempt(p.rule)])
         stopped = STOP_FILE.exists()
         halted = controls.get("halted") is True
         decisions = _d(controls.get("decisions"))
@@ -1304,6 +1383,9 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
             todo += old_saves.needs_you()
         except Exception:  # noqa: BLE001
             pass
+        # (0.105.48, K6) the cycle's own failing steps (select, record's hooks, the
+        # steps before the plan): a "rule <step> failed" note each cycle until it runs
+        notes += [n for n in guard_lines(memory) if n not in notes]
         # (0.104.0) how long each Needs you and failing-rule line has stood (the run check)
         health_check.track_standing(key, todo, notes, abs_tick(state))
         show_changed(key, [f"  NEEDS YOU: {n}" for n in todo] + [f"  note: {n}" for n in notes]
@@ -1422,17 +1504,25 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
         finally:
             if results:
                 LAST_FULL.clear()                 # the fort changed: the next cycle reads the full report
-                record(results, state, memory, cfg)
-                learning.note_actions(results, state, memory)
-                outcomes.record_actions(results, state, memory)
-                for line in atlas.note_actions(results, state, memory):
-                    say(f"Atlas: {line}")              # what was built, or what the AI found and chose
-                    chronicle.add(memory, state, "gate", line)
-                for p, r in results:
-                    line = masterplan.note_result(memory, p.action, r, state)
-                    if line:
-                        say(f"Plan: {line}")
-                        chronicle.add(memory, state, "plan", line)
+                # (0.105.48, K6) each on its own: record() first (the cooldowns, the
+                # alarm's and gate's ownership), then the rest whatever it did
+                cycle_step(memory, state, "record", lambda: record(results, state, memory, cfg))
+                cycle_step(memory, state, "learning_actions", lambda: learning.note_actions(results, state, memory))
+                cycle_step(memory, state, "outcomes_actions", lambda: outcomes.record_actions(results, state, memory))
+
+                def _atlas():
+                    for line in atlas.note_actions(results, state, memory):
+                        say(f"Atlas: {line}")              # what was built, or what the AI found and chose
+                        chronicle.add(memory, state, "gate", line)
+                cycle_step(memory, state, "atlas", _atlas)
+
+                def _masterplan():
+                    for p, r in results:
+                        line = masterplan.note_result(memory, p.action, r, state)
+                        if line:
+                            say(f"Plan: {line}")
+                            chronicle.add(memory, state, "plan", line)
+                cycle_step(memory, state, "masterplan", _masterplan)
         memory.notes = notes + [NEEDS_YOU + t for t in todo]
         if acting:
             write_ledger(bridge, state, memory, defer=True)    # (0.105.40) with the cycle's last call
@@ -2392,6 +2482,8 @@ def _run(args) -> int:
     was_halted = False
     seen_decisions: dict = {}
     problems_in_a_row = 0
+    failed_cycles = 0            # (0.105.48, K6) cycles in a row that raised: reset only by a good cycle
+    in_cycle = False
     paused_since = None          # (unattended) when the game was first seen paused
     unpauses = 0
     fps_samples: list = []       # (time, fps) while the game runs, the last 10 minutes
@@ -2636,8 +2728,14 @@ def _run(args) -> int:
                     if daily:
                         last_full_tick = now
                     # between days, the small pulse report (the rest from today's full one)
+                    in_cycle = True
                     one_cycle(bridge, args.autopilot, backend, controls,
                               tier="daily" if daily or trade_now else "pulse")
+                    in_cycle = False
+                    if failed_cycles:
+                        say(f"The cycle runs again after {failed_cycles} failed cycle(s) in a row.")
+                        failed_cycles = 0
+                        note_failed_cycles(0, None)
             if msg and msg != waiting_msg:
                 say(msg)
             waiting_msg = msg
@@ -2678,6 +2776,13 @@ def _run(args) -> int:
             return 0
         except Exception as e:  # noqa: BLE001 - a bug or odd report: log it, keep the overseer alive
             problems_in_a_row += 1
+            if in_cycle:
+                # (0.105.48, K6) counted apart (an idle poll doesn't reset it) and
+                # shown to the health check as a standing "rule cycle failed" line
+                in_cycle = False
+                failed_cycles += 1
+                note_failed_cycles(failed_cycles, e)
+                say(f"The cycle failed {failed_cycles} time(s) in a row: nothing was planned.")
             say(f"Unexpected problem: {type(e).__name__}: {e} (details in logs/overseer-errors.log)")
             LOG_DIR.mkdir(exist_ok=True)
             memstore.cap_file(LOG_DIR / "overseer-errors.log", ERRORS_MAX_BYTES)

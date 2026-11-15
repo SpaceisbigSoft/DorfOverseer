@@ -28,6 +28,7 @@ NOTE_MAX_CHARS = 300
 # What the strategist may change in the planner, with hard bounds.
 from planner import ADJUST_BOUNDS as ADJUSTABLE   # (0.100) one list, kept by the planner
 from planner import AGENDA_THEMES, STEER_MAX_DAYS, STEER_PROTECTED   # (0.104.89) the rules it can steer
+from planner_core import steer_protected   # (0.105.48, K6) EMERGENCY rules too
 
 MAX_STEER = 4                      # (0.104.89) raises and holds a review
 MAX_WANT = 3                       # report sections asked for in full, next review
@@ -630,7 +631,7 @@ def _check_steer(act, shown: set | None = None) -> tuple[dict | None, str]:
         if rule in RAISE_FORBIDDEN:
             return None, f"raise: {rule} is paced by its wait and can't be raised"
         return {"type": "raise", "rule": rule, "why": why}, ""
-    if rule in STEER_PROTECTED or rule in HOLD_PROTECTED:
+    if steer_protected(rule) or rule in HOLD_PROTECTED:
         return None, f"hold: {rule} keeps the fort safe and can't be held"
     days = _int_in(act.get("days"), 1, STEER_MAX_DAYS)
     if days is None:
