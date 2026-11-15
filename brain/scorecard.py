@@ -373,7 +373,7 @@ def journal_counts(entries: list[dict], date: dict, timeline: list | None = None
                 petitions_yes += 1
             else:
                 petitions_no += 1
-        elif t == "start_project":
+        elif t == "start_project" and r.get("joined") is None:     # (0.105.54) a join is no new level
             # (0.105.33) Spacing: the new corridor dug for the level (the bridge's
             # `new_corridor`; `corridor`, which also counts walked fort tiles, before it)
             cor = r.get("new_corridor") if _num_or_none(r.get("new_corridor")) is not None else r.get("corridor")

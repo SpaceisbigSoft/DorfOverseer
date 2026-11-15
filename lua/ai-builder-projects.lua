@@ -41,7 +41,7 @@ function save_projects(data)
     -- (0.104.19) a dropped level's outline is kept (`old_areas`): the quarry
     -- and vein mining stay out of every level the AI ever dug, not only the
     -- last 20 (Enxah: the quarry ate the walls of the older bedroom levels)
-    local closed = 0
+    local closed, kept_free = 0, 0
     data.old_areas = type(data.old_areas) == 'table' and data.old_areas or {}
     -- (0.105.33, industry 2) finished projects dropped from the list, so the
     -- report's done_total never stops at KEEP_CLOSED_PROJECTS; an older save
@@ -53,7 +53,13 @@ function save_projects(data)
         -- (0.104.152, review) a cavern well is never dropped: its shaft gate and
         -- stair lid are run from its project for as long as the well stands
         local cavern_well = p.kind == 'well' and (type(p.shaft_stairs) == 'table' or p.shaft_gate ~= nil)
-        if p.phase ~= 'dig' and p.phase ~= 'furnish' and p.phase ~= 'decorate' and not cavern_well then
+        -- (0.105.54) a finished workshops level with free rooms stays (WORKSHOP_KEEP_FREE at most):
+        -- the next workshops go into it (join_workshop_level)
+        local free_level = p.kind == 'workshops' and p.phase == 'done' and p.parent == nil
+            and (math.tointeger(p.free_left) or 0) > 0 and kept_free < (WORKSHOP_KEEP_FREE or 0)
+        if free_level then kept_free = kept_free + 1 end
+        if p.phase ~= 'dig' and p.phase ~= 'furnish' and p.phase ~= 'decorate' and not cavern_well
+                and not free_level then
             closed = closed + 1
             if closed > KEEP_CLOSED_PROJECTS then
                 for _, a in ipairs(project_areas(p)) do
@@ -222,6 +228,14 @@ function decoration_cells(L, site, build)
             end
         end
     end
+    -- (0.105.54) nor a free room's middle: a workshop is put there later
+    for _, c in ipairs(type(L.rooms_at) == 'table' and L.rooms_at or {}) do
+        if tostring(c.text):sub(1, 4) == 'free' then
+            for dx = -1, 1 do
+                for dy = -1, 1 do covered[(c.x + dx) .. ',' .. (c.y + dy)] = true end
+            end
+        end
+    end
     local function ours(x, y)
         return (L.tiles[x] and L.tiles[x][y]) or (site.extra[x] and site.extra[x][y])
     end
@@ -239,11 +253,430 @@ function decoration_cells(L, site, build)
     return out
 end
 
+---------------------------------------------------------------------------
+-- (0.105.54, layout option A part 2) Workshops grouped onto shared levels.
+-- Nearly every new workshop began a workshops level of its own (B: 20 of 25
+-- levels held one shop, ~250 dug tiles each, ~18 tiles apart). Every
+-- start_project of kind 'workshops' (every rule's "place a workshop": the
+-- industry, the bottleneck's second shops, paper, moods, needs, ...) now
+-- goes into an AI workshops level that stands first:
+--   1. a free room (a slot a level was planned with, empty) of a level of
+--      the shop's industry (WORKSHOP_GROUPS); a room planned for that very
+--      shop first; a stone user beside the level's ore pile;
+--   2. else that level extended: its layout made again with more rooms, the
+--      new rooms (and any corridor they need) dug as a small project of its
+--      own linked to the level (`parent`), when the new tiles keep the old
+--      ones exactly (a ring's loop that would have to grow: no);
+--   3. then the same in a level of another industry;
+-- only then a new level, planned for several shops at once (at least
+-- WORKSHOP_LEVEL_ROOMS rooms, the brain's spare_for naming what comes next).
+-- join = false keeps a level where the rule put it; 'band': only a level in
+-- the plan's elevation band (a placement custom: field kitchens).
+---------------------------------------------------------------------------
+
+WORKSHOP_LEVEL_ROOMS = 4     -- a new workshops level is planned with at least this many rooms
+WORKSHOP_EXTEND_SPARE = 2    -- an extension digs at most this many empty rooms beyond the shops
+WORKSHOP_KEEP_FREE = 6       -- finished levels with free rooms kept on the list (not dropped) at most
+
+WORKSHOP_GROUPS = {
+    MetalsmithsForge = 'smithing', Smelter = 'smithing', WoodFurnace = 'smithing',
+    Kiln = 'smithing', GlassFurnace = 'smithing',
+    Craftsdwarfs = 'crafts', Jewelers = 'crafts', Masons = 'crafts', Mechanics = 'crafts',
+    Carpenters = 'crafts', Bowyers = 'crafts',
+    Kitchen = 'food', Still = 'food', Butchers = 'food', Tanners = 'food', Farmers = 'food',
+    Fishery = 'food', Millstone = 'food', Quern = 'food', ScrewPress = 'food',   -- (slurry milled, then pressed)
+    Loom = 'cloth', Clothiers = 'cloth', Leatherworks = 'cloth',
+    Ashery = 'soap', SoapMaker = 'soap',
+}
+-- each industry's shops in the order a fort usually wants them (a new level's spare rooms)
+WORKSHOP_GROUP_ORDER = {
+    smithing = {'Smelter', 'MetalsmithsForge', 'WoodFurnace', 'Kiln', 'GlassFurnace'},
+    crafts = {'Craftsdwarfs', 'Masons', 'Mechanics', 'Jewelers', 'Carpenters', 'Bowyers'},
+    food = {'Kitchen', 'Still', 'Butchers', 'Tanners', 'Farmers', 'Fishery', 'Quern', 'Millstone', 'ScrewPress'},
+    cloth = {'Loom', 'Clothiers', 'Leatherworks'},
+    soap = {'Ashery', 'SoapMaker'},
+}
+-- shops whose input lies in the ore pile room (stone, ore): a free room nearest it
+WORKSHOP_PILE_USERS = {Masons = true, Craftsdwarfs = true, Mechanics = true, Smelter = true, Jewelers = true}
+
+local JOIN_PHASES = {dig = true, furnish = true, decorate = true, done = true}
+
+-- A new level's planned rooms beyond its shops: the brain's spare/spare_for,
+-- else (no word from it) the shops' industry-mates up to WORKSHOP_LEVEL_ROOMS.
+function workshop_spares(params)
+    local shops = type(params.shops) == 'table' and params.shops or {}
+    local spare = math.tointeger(params.spare)
+    local names = type(params.spare_for) == 'table' and params.spare_for or nil
+    if spare == nil then
+        spare = math.max(0, WORKSHOP_LEVEL_ROOMS - #shops)
+        if names == nil then
+            names = {}
+            local have = {}
+            for _, s in ipairs(shops) do have[s] = true end
+            for _, s in ipairs(WORKSHOP_GROUP_ORDER[WORKSHOP_GROUPS[shops[1] or ''] or ''] or {}) do
+                if #names < spare and not have[s] then table.insert(names, s) end
+            end
+        end
+    end
+    spare = math.max(spare, names and #names or 0)
+    return math.max(0, math.min(spare, layouts.WORKSHOP_ROOMS_MAX - #shops)), names
+end
+
+-- The level's layout made again from its own params (extra: more empty
+-- rooms), or nil.
+local function level_layout(p, extra)
+    local pr = p.params
+    local ok, L = pcall(layouts.make, 'workshops', {shops = pr.shops, style = pr.style,
+                                                    spare = (math.tointeger(pr.spare) or 0) + (extra or 0),
+                                                    spare_for = pr.spare_for})
+    return ok and L or nil
+end
+
+-- Every tile the level has (its own cells, what its extensions added, the stair), anchor-relative.
+local function level_known(p)
+    local t = layouts.tiles_from_dig(cells_of(p, 'dig'))
+    for _, c in ipairs(type(p.ext_tiles) == 'table' and p.ext_tiles or {}) do
+        if type(c) == 'table' and math.tointeger(c.x) and math.tointeger(c.y) then add(t, c.x, c.y) end
+    end
+    add(t, 0, 0)
+    return t
+end
+
+-- The made-again layout is the level as it was dug: each of its workshops
+-- where the level's own cells put it, each of its tiles one of the level's.
+-- (A level dug by an older layout, or turned another way: false.)
+local function layout_matches(L, p, known)
+    local built = {}
+    for _, c in ipairs(cells_of(p, 'build')) do built[c.x .. ',' .. c.y] = c.text end
+    for _, c in ipairs(L.build) do
+        if built[c.x .. ',' .. c.y] ~= c.text then return false end
+    end
+    for x, col in pairs(L.tiles) do
+        for y in pairs(col) do if not has(known, x, y) then return false end end
+    end
+    return true
+end
+
+local function level_group(p)
+    local s = type(p.params) == 'table' and type(p.params.shops) == 'table' and p.params.shops[1] or nil
+    return s and WORKSHOP_GROUPS[s] or nil
+end
+
+-- The level's free rooms: {x, y, planned} (centre tile, anchor-relative), and its pile room's centre.
+local function free_rooms(p, L)
+    local taken = type(p.taken) == 'table' and p.taken or {}
+    local out, pile = {}, nil
+    for _, c in ipairs(L.rooms_at or {}) do
+        local tag = tostring(c.text)
+        if tag == 'pile' then pile = {x = c.x, y = c.y} end
+        if tag:sub(1, 4) == 'free' and taken[c.x .. ',' .. c.y] == nil then
+            table.insert(out, {x = c.x, y = c.y, planned = tag:match('^free:(.+)$')})
+        end
+    end
+    return out, pile
+end
+
+-- A free room still empty in the game: its middle 3x3 dug (or being dug,
+-- while the level digs) with nothing built on it.
+local function room_empty(p, r)
+    local a = anchor_of(p)
+    for dx = -1, 1 do
+        for dy = -1, 1 do
+            local t = tile_info(a.x + r.x + dx, a.y + r.y + dy, p.z)
+            if not t or t.building then return false end
+            if p.phase ~= 'dig' and t.shape == 'WALL' then return false end
+        end
+    end
+    return true
+end
+
+-- Which free room each shop goes to: the room planned for it, else beside
+-- the pile room (a stone user), else the first. nil when they don't all fit.
+local function pick_rooms(p, shops, rooms, pile)
+    local left = {}
+    for _, r in ipairs(rooms) do if room_empty(p, r) then table.insert(left, r) end end
+    if #left < #shops then return nil end
+    local out = {}
+    for i, name in ipairs(shops) do
+        local best, bi
+        for j, r in ipairs(left) do
+            local score = (r.planned == name) and 0 or 1000
+            if pile and WORKSHOP_PILE_USERS[name] then
+                score = score + math.abs(r.x - pile.x) + math.abs(r.y - pile.y)
+            else
+                score = score + j               -- the rooms in order
+            end
+            if not best or score < best then best, bi = score, j end
+        end
+        out[i] = left[bi]
+        table.remove(left, bi)
+    end
+    return out
+end
+
+local function shop_cells(shops, rooms)
+    local build, furniture = {}, {}
+    for i, name in ipairs(shops) do
+        table.insert(build, {x = rooms[i].x, y = rooms[i].y, text = layouts.WORKSHOPS[name]})
+        furniture[name] = (furniture[name] or 0) + 1
+    end
+    return build, furniture
+end
+
+local function box_of(cells, a, z, pad)
+    local x1, y1, x2, y2
+    for _, c in ipairs(cells) do
+        x1, x2 = math.min(x1 or c.x, c.x), math.max(x2 or c.x, c.x)
+        y1, y2 = math.min(y1 or c.y, c.y), math.max(y2 or c.y, c.y)
+    end
+    return {x1 = a.x + x1 - pad, y1 = a.y + y1 - pad, x2 = a.x + x2 + pad, y2 = a.y + y2 + pad, z = z}
+end
+
+local function mark_taken(p, shops, rooms)
+    p.taken = type(p.taken) == 'table' and p.taken or {}
+    for i, name in ipairs(shops) do p.taken[rooms[i].x .. ',' .. rooms[i].y] = name end
+    p.free_left = math.max(0, (math.tointeger(p.free_left) or 0) - #shops)
+end
+
+-- An annex: the level's own small project for what is added to it (the
+-- ordinary lifecycle: dug, furnished, done).
+local function annex_project(data, parent, shops, dig, build, furniture, area, now, how, designated, urgent)
+    local a = anchor_of(parent)
+    local sm = {workshops = shops, joins = parent.id, how = how}
+    return {
+        id = data.next_id, kind = 'workshops', phase = 'dig', parent = parent.id,
+        urgent = urgent or nil,
+        params = {shops = shops, style = {}, joins = parent.id},
+        stair = parent.stair, anchor = {x = a.x, y = a.y}, z = parent.z, area = area,
+        corridor = 0, new_corridor = 0, stairs = {}, summary = sm, furniture = furniture, links = {},
+        cells = {dig = dig, build = build, place = {}, zone = {}, smooth = {}, engrave = {}},
+        started = now, designated = designated, plan = parent.plan, in_district = parent.in_district,
+    }
+end
+
+local function joined_result(p, parent, how, tiles, dry_run)
+    return {ok = true, dry_run = dry_run or nil, project_id = p and p.id or nil, kind = 'workshops',
+            joined = parent.id, how = how, z = parent.z, elevation = ez(parent.z),
+            in_district = parent.in_district, anchor = anchor_of(parent),
+            corridor = 0, new_corridor = 0, extends_stairs = false,
+            tiles = tiles, designated = tiles,
+            summary = {workshops = p and p.summary.workshops or nil, joins = parent.id, how = how}}
+end
+
+-- 1. into free rooms of `parent`
+local function join_free(data, parent, L, params, now, dry_run)
+    local shops = params.shops
+    local rooms, pile = free_rooms(parent, L)
+    if parent.phase == 'dig' then
+        -- (its furnishing places them: only rooms of its own dig, not an extension's still to come)
+        local own = layouts.tiles_from_dig(cells_of(parent, 'dig'))
+        local kept = {}
+        for _, r in ipairs(rooms) do if has(own, r.x, r.y) then table.insert(kept, r) end end
+        rooms = kept
+    end
+    local picked = pick_rooms(parent, shops, rooms, pile)
+    if not picked then return nil end
+    if dry_run then return joined_result(nil, parent, 'free_room', 0, true) end
+    local build, furniture = shop_cells(shops, picked)
+    if parent.phase == 'dig' then
+        -- still being dug: the level's own furnishing places them
+        parent.cells.build = parent.cells.build or {}
+        for _, c in ipairs(build) do table.insert(parent.cells.build, c) end
+        parent.furniture = type(parent.furniture) == 'table' and parent.furniture or {}
+        for k, v in pairs(furniture) do parent.furniture[k] = (parent.furniture[k] or 0) + v end
+        parent.summary = type(parent.summary) == 'table' and parent.summary or {}
+        local list = {}
+        for _, s in ipairs(type(parent.summary.workshops) == 'table' and parent.summary.workshops or {}) do
+            table.insert(list, s)
+        end
+        for _, s in ipairs(shops) do table.insert(list, s) end
+        parent.summary.workshops = list
+        mark_taken(parent, shops, picked)
+        if not save_projects(data) then return {ok = false, error = 'could not save the project with the fort'} end
+        local r = joined_result(parent, parent, 'free_room', 0)
+        r.summary.workshops = shops
+        return r
+    end
+    -- dug already: an annex whose 'dig' is the rooms' middles (dug: it is furnished next)
+    local dig = {}
+    for _, r in ipairs(picked) do table.insert(dig, {x = r.x - 1, y = r.y - 1, text = 'd(3x3)'}) end
+    local p = annex_project(data, parent, shops, dig, build, furniture, box_of(build, anchor_of(parent), parent.z, 3),
+                            now, 'free_room', 0, params.urgent == true)
+    mark_taken(parent, shops, picked)
+    data.next_id = data.next_id + 1
+    table.insert(data.list, p)
+    if not save_projects(data) then return {ok = false, error = 'could not save the project with the fort'} end
+    return joined_result(p, parent, 'free_room', 0)
+end
+
+-- 2. `parent` extended by the shops' rooms (and up to WORKSHOP_EXTEND_SPARE empty ones)
+local function join_extend(data, parent, L0, known, params, now, dry_run, open)
+    local shops = params.shops
+    local a = anchor_of(parent)
+    local spare_want = math.min(WORKSHOP_EXTEND_SPARE, math.max(0, math.tointeger(params.spare) or 0))
+    local why
+    for _, extra in ipairs(spare_want > 0 and {#shops + spare_want, #shops} or {#shops}) do
+        local L = level_layout(parent, extra)
+        if not L then return nil, 'the level\'s layout could not be made again' end
+        -- the old level unchanged: its tiles, workshops and rooms where they were
+        local same = layout_matches(L0, {cells = {build = L.build}}, L.tiles)
+        local old_rooms = {}
+        for _, c in ipairs(L.rooms_at or {}) do old_rooms[c.x .. ',' .. c.y] = c.text end
+        for _, c in ipairs(L0.rooms_at or {}) do
+            if old_rooms[c.x .. ',' .. c.y] ~= c.text then same = false end
+        end
+        if not same then
+            why = 'growing it moves its rooms'
+        else
+            local delta, cells, n = {}, {}, 0
+            for x, col in pairs(L.tiles) do
+                for y in pairs(col) do
+                    if not has(known, x, y) then
+                        add(delta, x, y); n = n + 1
+                        table.insert(cells, {x = x, y = y, text = 'd'})
+                    end
+                end
+            end
+            -- the new rooms (those L0 hasn't), in order
+            local new_rooms = {}
+            for _, c in ipairs(L.rooms_at or {}) do
+                local found = false
+                for _, o in ipairs(L0.rooms_at or {}) do if o.x == c.x and o.y == c.y then found = true end end
+                if not found then table.insert(new_rooms, {x = c.x, y = c.y}) end
+            end
+            if n == 0 or #new_rooms < #shops then
+                why = 'no new room'
+            else
+                local pseudo = {tiles = delta, bounds = nil}
+                local b = box_of(cells, {x = 0, y = 0}, parent.z, 0)
+                pseudo.bounds = {x1 = b.x1, y1 = b.y1, x2 = b.x2, y2 = b.y2}
+                -- kept clear of every other open project (not the level's own, nor its annexes)
+                local others = {}
+                for _, o in ipairs(open) do
+                    if o ~= parent and o.parent ~= parent.id and type(o.area) == 'table' then
+                        table.insert(others, o.area)
+                    end
+                end
+                local ok, why2, area = check_site(pseudo, {}, a.x, a.y, parent.z, others, nil,
+                    function(x, y) return has(known, x - a.x, y - a.y) end)
+                if not ok then
+                    why = why2
+                else
+                    local dig = params.urgent == true and prioritized(cells, URGENT_DIG_PRIORITY) or cells
+                    local dry = quickfort_apply('dig', dig, parent.z, a.x, a.y, 'run', true)
+                    if stat(dry, 'dig_designated') ~= n or stat(dry, 'dig_invalid_tiles') > 0
+                            or stat(dry, 'out_of_bounds') > 0 or stat(dry, 'invalid_keys') > 0 then
+                        why = ('dry run disagreed: %d of %d tiles designatable'):format(stat(dry, 'dig_designated'), n)
+                    elseif dry_run then
+                        return joined_result(nil, parent, 'extension', n, true)
+                    else
+                        local real = quickfort_apply('dig', dig, parent.z, a.x, a.y)
+                        local got = stat(real, 'dig_designated')
+                        local picked = {}
+                        for i = 1, #shops do picked[i] = new_rooms[i] end
+                        local build, furniture = shop_cells(shops, picked)
+                        -- its area: round its workshops (what its furnishing counts); the
+                        -- whole new dig is kept as a second box (project_areas)
+                        local p = annex_project(data, parent, shops, dig, build, furniture,
+                                                box_of(build, a, parent.z, 3), now, 'extension', got,
+                                                params.urgent == true)
+                        p.areas = {area}
+                        -- the level now has `extra` rooms more; the shops take the first of them
+                        parent.params.spare = (math.tointeger(parent.params.spare) or 0) + extra
+                        parent.ext_tiles = type(parent.ext_tiles) == 'table' and parent.ext_tiles or {}
+                        for _, c in ipairs(cells) do table.insert(parent.ext_tiles, {x = c.x, y = c.y}) end
+                        parent.free_left = (math.tointeger(parent.free_left) or 0) + extra
+                        mark_taken(parent, shops, picked)
+                        data.next_id = data.next_id + 1
+                        table.insert(data.list, p)
+                        if not save_projects(data) then
+                            undo_dig(dig, {}, parent.z, a, parent.stair)
+                            return {ok = false, error = 'could not save the project with the fort, so it was undone'}
+                        end
+                        local r = joined_result(p, parent, 'extension', n)
+                        r.designated = got
+                        r.area = area
+                        return r
+                    end
+                end
+            end
+        end
+    end
+    return nil, why
+end
+
+-- Returns the start_project result when the shops went into a standing
+-- level, or nil and why none took them (a new level is dug then).
+function join_workshop_level(params, data, now, dry_run, open, ceil_z)
+    if params.join == false then return nil, 'the rule keeps its own level' end
+    local shops = type(params.shops) == 'table' and params.shops or {}
+    if #shops == 0 then return nil end
+    local band = params.join == 'band' and plan_band(params.plan) or nil
+    if params.join == 'band' and not band then return nil, 'no band to join in' end
+    local group = WORKSHOP_GROUPS[shops[1]]
+    -- only a level the dwarves can walk to (its stair in one of their walk groups; unknown: any)
+    local okg, groups = pcall(citizen_groups)
+    if not okg or type(groups) ~= 'table' then groups = {} end
+    local any_group = next(groups) == nil
+    local cands = {}
+    for _, p in ipairs(data.list) do
+        if p.kind == 'workshops' and p.parent == nil and JOIN_PHASES[p.phase] and not p.unreached
+                and type(p.params) == 'table' and type(p.params.shops) == 'table' and #p.params.shops > 0
+                and type(p.cells) == 'table' and type(anchor_of(p)) == 'table' and math.tointeger(p.z)
+                and (not ceil_z or p.z <= ceil_z)
+                and (not band or (p.z >= band.lo and p.z <= band.hi))
+                and (any_group or (type(p.stair) == 'table' and math.tointeger(p.stair.x)
+                     and groups[walk_group(p.stair.x, p.stair.y, p.z)] == true)) then
+            table.insert(cands, p)
+        end
+    end
+    -- the newest first (nearest where the fort grows now)
+    table.sort(cands, function(x, y) return (x.id or 0) > (y.id or 0) end)
+    local whys = {}
+    local made = {}
+    local function layout_of(p)
+        if made[p.id] == nil then
+            local L0 = level_layout(p, 0)
+            local known = level_known(p)
+            if L0 and layout_matches(L0, p, known) then
+                made[p.id] = {L = L0, known = known}
+            else
+                made[p.id] = false
+            end
+        end
+        return made[p.id] or nil
+    end
+    for _, same in ipairs({true, false}) do
+        for _, step in ipairs({'free', 'extend'}) do
+            for _, p in ipairs(cands) do
+                if (level_group(p) == group) == same then
+                    local m = layout_of(p)
+                    if m then
+                        local r, why
+                        if step == 'free' then
+                            r = join_free(data, p, m.L, params, now, dry_run)
+                        else
+                            r, why = join_extend(data, p, m.L, m.known, params, now, dry_run, open)
+                        end
+                        if r then return r end
+                        if why and #whys < 3 then table.insert(whys, ('level %d: %s'):format(p.id, why)) end
+                    end
+                end
+            end
+        end
+    end
+    return nil, #whys > 0 and table.concat(whys, '; ') or nil
+end
+
 -- params: kind + layout params (rooms, room_size, tables, piles, shops).
 -- dry_run: find the site and check it with Quickfort, but change nothing.
 function start_project(params, now, dry_run)
     OFFSET = elevation_offset()
     local kind = params.kind
+    -- (0.105.54) a workshops level is planned for several shops (workshop_spares)
+    if kind == 'workshops' then
+        params.spare, params.spare_for = workshop_spares(params)
+    end
     local L, err = layouts.make(kind, params)
     if not L then return {ok = false, rejected = true, error = err} end
     local data = load_projects()
@@ -256,6 +689,15 @@ function start_project(params, now, dry_run)
     if #open >= slot_cap(open) + (params.urgent == true and URGENT_EXTRA or (kind == 'farms' and 1 or 0)) then
         return {ok = false, rejected = true,
                 error = ('already %d unfinished building projects'):format(#open)}
+    end
+    -- (0.105.54) a workshop goes into a standing workshops level first (join_workshop_level)
+    local join_why
+    if kind == 'workshops' then
+        local ceil0 = math.tointeger(params.max_elev)
+        local okj, jr, jwhy = pcall(join_workshop_level, params, data, now, dry_run, open,
+                                    ceil0 and (ceil0 - OFFSET) or nil)
+        if okj and jr then return jr end
+        if okj then join_why = jwhy else join_why = 'failed: ' .. tostring(jr) end
     end
     local stairs, why = find_stairs(STAIRS_TO_TRY)
     if not stairs then return {ok = false, error = why} end
@@ -325,7 +767,7 @@ function start_project(params, now, dry_run)
                             elevation_top = ez(stair.z_top), elevation_bottom = ez(stair.z_bottom)},
                    anchor = a, corridor = site.corridor, new_corridor = site.new_corridor}
     if dry_run then
-        return {ok = true, dry_run = true, kind = kind, z = site.z, elevation = ez(site.z),
+        return {ok = true, dry_run = true, kind = kind, z = site.z, elevation = ez(site.z), not_joined = join_why,
                 extends_stairs = site.extend, in_district = site.in_district,
                 stair = where.stair, anchor = a, corridor = site.corridor, new_corridor = site.new_corridor,
                 area = site.area, tiles = expected, summary = L.summary, furniture = furniture,
@@ -358,6 +800,7 @@ function start_project(params, now, dry_run)
                   piles = params.piles, shops = params.shops, size = params.size,
                   plots = params.plots, plot_w = params.plot_w,
                   name = params.name, style = params.style,
+                  spare = params.spare, spare_for = params.spare_for,   -- (0.105.54) its free rooms
                   deity_hf = params.deity_hf, religion = params.religion, profession = params.profession},
         stair = {x = stair.x, y = stair.y}, anchor = {x = a.x, y = a.y},
         z = site.z, area = site.area, corridor = site.corridor, new_corridor = site.new_corridor,
@@ -368,6 +811,7 @@ function start_project(params, now, dry_run)
                  smooth = decor.smooth, engrave = decor.engrave},
         started = now, designated = result,
         plan = plan, in_district = site.in_district,   -- the overseer's hint, and whether it was met
+        free_left = (kind == 'workshops' and (params.spare or 0) > 0) and params.spare or nil,   -- (0.105.54)
     }
     data.next_id = data.next_id + 1
     table.insert(data.list, p)
@@ -382,6 +826,7 @@ function start_project(params, now, dry_run)
             anchor = a, corridor = site.corridor, new_corridor = site.new_corridor,   -- (0.105.33) Spacing
             tiles = expected, designated = result, summary = L.summary,
             ground_z = ground.ground_z, ground_elevation = ground.ground_elevation, cover = ground.cover,  -- (group 6)
+            not_joined = join_why,     -- (0.105.54) why no standing workshops level took the shops
             warning = (result ~= expected) and ('only %d of %d tiles designated'):format(result, expected) or nil}
 end
 
@@ -807,6 +1252,7 @@ function registry_report()
                            district = plan.district, in_district = p.in_district,
                            -- (D0, G6) a landmark's level: named after its landmark, and which
                            landmark_id = p.kind == 'landmark' and params.landmark_id or nil,
+                           joins = p.parent,    -- (0.105.54) an annex: shops added to that workshops level
                            level = p.kind == 'landmark' and params.level or nil})
     end
     return out

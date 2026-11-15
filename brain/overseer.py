@@ -47,6 +47,7 @@ from planner_missions import mission_journal  # noqa: E402  (0.105.39)
 from planner_cleanup import CLEANUP_ACTIONS, cleanup_journal, cleanup_words  # noqa: E402  (0.105.40)
 from planner_thirst import thirst_journal  # noqa: E402  (0.105.46, I2) deaths of thirst for the journal
 from planner_recovery import recovery_journal  # noqa: E402  (0.105.46, I4) collapse recovery
+from planner_shopslots import shop_level_action  # noqa: E402  (0.105.54) workshops onto shared levels
 from planner_meetings import meeting_open_due, meeting_open_said, meeting_reopen_wait  # noqa: E402  (0.105.47) meetings opened unattended
 from planner_threats import note_intrusions  # noqa: E402  (0.105.30 live fixes)
 from planner_holdfast import note_thief_targets  # noqa: E402  (0.105.47, R2 item 7)
@@ -1455,7 +1456,8 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
                              "reason": p.reason, "action": p.action, "text": cleanup_words(p.action)})
                 if acting:
                     try:
-                        r = bridge.act(p.action)
+                        # (0.105.54) a workshops level: a standing level first, a new one planned for several
+                        r = bridge.act(shop_level_action(p.action, state))
                     except BridgeError as e:
                         r = {"ok": False, "error": str(e)}
                     except DFHackError as e:
@@ -1470,6 +1472,10 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
                     if r.get("ok") is True and r.get("clearing"):
                         outcome_txt = (f"started: {r.get('trees')} tree(s) at x{r.get('x')} y{r.get('y')} "
                                        "marked for felling first; placed once they're down")
+                    elif r.get("ok") is True and p.action["type"] == "start_project" and r.get("joined") is not None:
+                        # (0.105.54) the shops went into a standing workshops level
+                        outcome_txt = (f"done: into workshops level #{r.get('joined')} "
+                                       + ("(a free room)" if r.get("how") == "free_room" else "(the level extended)"))
                     elif r.get("ok") is True and p.action["type"] == "open_trade" and r.get("clicking"):
                         outcome_txt = f"clicked the depot's Trade button at {r.get('at')} (the screen is checked next cycle)"
                     elif r.get("ok") is True and p.action["type"] == "send_mission" and r.get("sending"):   # (0.105.24)
