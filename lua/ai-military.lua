@@ -777,6 +777,27 @@ local function seat_holder(sq)
     return false
 end
 
+-- (0.105.54) Labours the fort needs to live: the last adult outside the
+-- squads who does one is never drafted. {n = {labour = holders}, of = {unit
+-- id = {labours}}}.
+KEEP_LABORS = {'PLANT', 'BREWER'}
+function last_hands()
+    local out = {n = {}, of = {}}
+    for _, u in ipairs(report_citizens(true)) do
+        if dfhack.units.isAdult(u) and u.military.squad_id == -1 then
+            for _, tok in ipairs(KEEP_LABORS) do
+                local l = df.unit_labor[tok]
+                if l and u.status.labors[l] then
+                    out.n[tok] = (out.n[tok] or 0) + 1
+                    out.of[u.id] = out.of[u.id] or {}
+                    table.insert(out.of[u.id], tok)
+                end
+            end
+        end
+    end
+    return out
+end
+
 -- Fill up to `count` open positions of a squad (never the captain's seat).
 -- (0.104.138) `avoid`: unit ids not to draft (those the AI sent home lately)
 -- (0.104.168) `strict`: the fort in crisis (never the very unhappy);
@@ -834,20 +855,33 @@ function fill(squad_id, count, txt, avoid, strict, keen_only)
     end
     local added = {}
     local tried, k = 0, 1
+    local okh, hands = pcall(last_hands)          -- (0.105.54) never the last farmer or brewer
+    if not okh then hands = nil end
+    local kept = 0
     for _, c in ipairs(pick_soldiers(cands, count, avoid)) do
         tried = tried + 1
         local place = places[k]
-        if place and dfhack.military.addToSquad(c.id, squad_id, place) then
+        local mine = hands and hands.of[c.id]
+        local last = false
+        for _, tok in ipairs(mine or {}) do
+            if (hands.n[tok] or 0) <= 1 then last = true end
+        end
+        if last then
+            kept = kept + 1
+        elseif place and dfhack.military.addToSquad(c.id, squad_id, place) then
             table.insert(added, {unit_id = c.id, name = txt(dfhack.units.getReadableName(c.unit))})
             k = k + 1
+            for _, tok in ipairs(mine or {}) do hands.n[tok] = (hands.n[tok] or 0) - 1 end
         end
     end
     if #added == 0 then
         return seated and {ok = true, added = {}, leader_seated = true, leader_appointed = appointed_leader}
-            or {ok = false, error = ('no suitable dwarves could be added (%d candidate(s), %d tried, %d open place(s)%s)'):format(
-                #cands, tried, open, sq.positions[0] and sq.positions[0].occupant == -1 and ', the leader\'s seat empty' or '')}
+            or {ok = false, error = ('no suitable dwarves could be added (%d candidate(s), %d tried, %d open place(s)%s%s)'):format(
+                #cands, tried, open, sq.positions[0] and sq.positions[0].occupant == -1 and ', the leader\'s seat empty' or '',
+                kept > 0 and (', %d kept as the last farmer or brewer'):format(kept) or '')}
     end
-    return {ok = true, added = added, leader_seated = seated or nil, leader_appointed = appointed_leader}
+    return {ok = true, added = added, leader_seated = seated or nil, leader_appointed = appointed_leader,
+            kept_last_hands = kept > 0 and kept or nil}
 end
 
 -- (0.102) An army bigger than the fort wants (Militarism lowered, or the

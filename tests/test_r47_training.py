@@ -236,6 +236,7 @@ def _():
 def _():
     s = fort(squads=[guard(), tsquad(members=8)])
     s["military"]["gear"] = {"soldiers": 11, "on_duty": 11, "squads": 2, "squads_with_uniform": 1}
+    s["others_on_map"]["threats"] = []        # (0.105.54) no cavern beasts: no defence floor above the guard
     p, _ = plan(s, Memory())
     assert not acts(p, "squad_trim"), acts(p, "squad_trim")
     # the 3 guards are the fort's soldiers: the guard minimum (3) is met, nothing to fill
