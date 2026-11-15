@@ -672,14 +672,9 @@ end
 
 -- The units the burrow holds now (unit id -> true), or nil when unreadable.
 local function burrow_unit_ids(b)
+    -- (0.105.48) DFHack 53.17 has no dfhack.burrows.listUnits: the burrow's own list
     local ids = {}
-    local ok = pcall(function()
-        for _, u in ipairs(dfhack.burrows.listUnits(b)) do ids[u.id] = true end
-    end)
-    if not ok then
-        ids = {}
-        ok = pcall(function() for _, id in ipairs(b.units) do ids[id] = true end end)
-    end
+    local ok = pcall(function() for _, id in ipairs(b.units) do ids[id] = true end end)
     return ok and ids or nil
 end
 

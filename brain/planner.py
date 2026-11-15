@@ -175,7 +175,6 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
     _guard(_set_adopted, s, memory, traits)
     buffer = stock_factor(traits, cfg)              # (0.105.47) 2^(Stockpile/50): was 2^(Stockpile/100)
     _guard(fields.note, s, cfg.get("garden_fort", True))   # (0.105.47) the surface fields for the field customs
-    buffer = factor(traits, "stockpile")
     winter = winter_factor(s, memory)               # stock up before winter (and through it)
 
     # 1. Threat alert ------------------------------------------------------

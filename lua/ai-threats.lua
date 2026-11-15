@@ -299,7 +299,11 @@ local function prisoners_report(txt)
         end
     end)
     pcall(function()
-        for _, z in ipairs(df.global.world.buildings.other.ZONE_PIT_POND) do
+        -- (0.105.48) the vector is ZONE_POND in DF 53.17 (was ZONE_PIT_POND, none such)
+        local other = df.global.world.buildings.other
+        local ok, v = pcall(function() return other.ZONE_POND end)
+        if not ok or not v then v = other.ZONE_PIT_POND end
+        for _, z in ipairs(v) do
             out.pit_zones = out.pit_zones + 1
         end
     end)

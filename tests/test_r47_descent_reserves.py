@@ -35,7 +35,7 @@ except ImportError:
     LuaRuntime = None
 
 LUA_DIR = ROOT / "lua"
-CFG = PLANNER_CONFIG
+CFG = dict(PLANNER_CONFIG, deep_descent=True)   # (0.105.48) the crossing is off by default: on for its tests
 
 # A stub map: rock everywhere; a stair at (50, 50) from z 100 down to 90; the
 # layer Cavern1 from z 80 down to 74, open (air, a floor at its bottom) over

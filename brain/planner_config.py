@@ -1156,7 +1156,7 @@ PLANNER_CONFIG = {
     "ice_zones_cooldown_ticks": 1200,
     "ice_shore_well_cooldown_ticks": 1200,
     # (0.105.47) Verticality: the stair past the first cavern (brain/planner_descent.py, lua/ai-descent.lua)
-    "deep_descent": True,                 # off: no crossing, no level under it (tests compare the old plan)
+    "deep_descent": False,                # (0.105.48) off: no crossing, no level under it; on here or by the Rules switch
     "descent_min_citizens": 20,           # the fort this big before its stair goes past the first cavern...
     "descent_min_levels": 8,              # ...and this many levels in its plan's districts
     "descent_storage_citizens": 40,       # the storage district's new levels go under it from this many citizens

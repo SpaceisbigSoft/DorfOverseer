@@ -292,17 +292,14 @@ function get_needs(txt_fn)
                 -- (0.104.38) one who longs to fight or train (the military
                 -- module keeps them in the squad: 412 releases asked and refused)
                 local fight = fight_focus ~= nil and fight_focus <= DISTRACTED
-                table.insert(out.stressed, {id = u.id, name = t(dfhack.units.getReadableName(u)),
-                                            stress = STRESS_LABELS[cat], unmet = w, bedroom = bedroom,
-                                            squad = squad or nil, leader = (squad and leader) or nil,
-                                            wants_fight = fight or nil,
-                                            -- (0.105.47) the need is theirs at all (met in a squad,
-                                            -- or not): stress care keeps them training, never releases
-                                            fight_need = fight_focus ~= nil or nil})
+                -- (0.105.48) one row a dwarf: a merge left a second insert here
                 local row = {id = u.id, name = t(dfhack.units.getReadableName(u)),
                              stress = STRESS_LABELS[cat], unmet = w, bedroom = bedroom,
                              squad = squad or nil, leader = (squad and leader) or nil,
-                             wants_fight = fight or nil}
+                             wants_fight = fight or nil,
+                             -- (0.105.47) the need is theirs at all (met in a squad,
+                             -- or not): stress care keeps them training, never releases
+                             fight_need = fight_focus ~= nil or nil}
                 -- (0.105.47, I7b) a child (no bedroom of their own is theirs to
                 -- get: a baby was asked one four times), the long-term stress
                 -- (DF's stress category follows it; it drains slowly), born

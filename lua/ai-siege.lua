@@ -249,9 +249,9 @@ end
 function engines()
     local out = {}
     local mine = ai_engine_ids()
-    local list
-    local okl = pcall(function() list = df.global.world.buildings.other.SIEGEENGINE end)
-    if not okl or not list then list = df.global.world.buildings.all end
+    -- (0.105.48) buildings.other has no SIEGEENGINE vector in DF 53.17: the
+    -- whole list, filtered by type below
+    local list = df.global.world.buildings.all
     for _, b in ipairs(list) do
         local okt, is_engine = pcall(function() return b:getType() == df.building_type.SiegeEngine end)
         if okt and is_engine then

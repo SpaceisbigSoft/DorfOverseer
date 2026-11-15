@@ -786,7 +786,15 @@ def _people_rules(s: dict, cfg: dict, proposals: list, notes: list) -> None:
                      + (f", rotting near it: {what}" if what else "")
                      + (" by a refuse pile" if c.get("refuse_pile") is not None else ""))
     h = _d(s.get("health"))
-    names = {str(k): int(v) for k, v in _d(h.get("syndrome_names")).items() if isinstance(v, int)}
+    # ((0.105.48, A7) being drunk is no syndrome to report; and with the
+    # syndromes section read, its own note says who has what: not twice)
+    names = {str(k): int(v) for k, v in _d(h.get("syndrome_names")).items()
+             if isinstance(v, int) and "inebriat" not in str(k).lower()}
+    syn = _d(s.get("syndromes"))
+    if not syn.get("error") and isinstance(syn.get("list"), list):
+        names = {}
+        if h.get("infected"):
+            notes.append(f"{h.get('infected')} citizens walk about with infected wounds")
     if names:
         top = sorted(names.items(), key=lambda kv: (-kv[1], kv[0]))[:4]
         notes.append(f"{h.get('syndromes')} citizens have a syndrome: " + ", ".join(f"{k} ({n})" for k, n in top)

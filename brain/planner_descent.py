@@ -57,6 +57,17 @@ def deep_kinds(traits: dict, citizens: int, cfg: dict) -> set[str]:
     return out
 
 
+def descent_on(s: dict, cfg: dict) -> bool:
+    """(0.105.48) The crossing is off by default (planner_config `deep_descent`
+    False, the Rules switch `deep_descent` false): on when either is turned on."""
+    if cfg.get("deep_descent", False) is True:
+        return True
+    # (read from the settings here, not player_rules: the strategist's Rules
+    # tab summary stays as it was)
+    st = s.get("settings") if isinstance(s, dict) else None
+    return isinstance(st, dict) and st.get("deep_descent") is True
+
+
 def _plan_levels(memory) -> int:
     p = masterplan._peek(memory)
     return sum(len(_l(d.get("levels"))) for d in _l(p.get("districts")) if isinstance(d, dict))
@@ -66,7 +77,7 @@ def _descent_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> N
     """The next step of the crossing, when the fort is deep-minded and grown."""
     d = descent(s)
     traits = _traits(s)
-    if d is None or memory is None or not masterplan.crosses_caverns(traits) or not cfg.get("deep_descent", True):
+    if d is None or memory is None or not masterplan.crosses_caverns(traits) or not descent_on(s, cfg):
         return
     state = d.get("state")
     if state == "blocked":
@@ -109,7 +120,7 @@ def deep_pass(proposals: list, s: dict, memory, cfg: dict, citizens: int) -> Non
     d = descent(s)
     traits = _traits(s)
     if (d is None or d.get("state") != "built" or memory is None or not masterplan.crosses_caverns(traits)
-            or not cfg.get("deep_descent", True)):
+            or not descent_on(s, cfg)):
         return
     bottom = d.get("elevation_bottom")
     if not isinstance(bottom, int) or isinstance(bottom, bool):

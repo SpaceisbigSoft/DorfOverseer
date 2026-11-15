@@ -380,6 +380,26 @@ function census(units, txt)
         end
     end
     c.rooms_unreachable = #roomless - c.rooms_reachable
+    -- (0.105.48, A7) the levels of free bedrooms no roomless household's
+    -- walk group reaches (up to 5): the brain names them (cut off from the fort)
+    if #roomless > 0 and any_group then
+        local mine, known = {}, true
+        for _, p in ipairs(roomless) do
+            local ok, g = pcall(dfhack.maps.getWalkableGroup, p.u.pos)
+            if ok and g then mine[g] = true else known = false end
+        end
+        if known then
+            local zs, seen = {}, {}
+            for _, pos in ipairs(free_beds) do
+                local ok, g = pcall(dfhack.maps.getWalkableGroup, pos)
+                if ok and g and not mine[g] and not seen[pos.z] and #zs < 5 then
+                    seen[pos.z] = true
+                    table.insert(zs, pos.z)
+                end
+            end
+            if #zs > 0 then table.sort(zs); c.free_cut_z = zs end
+        end
+    end
     return c
 end
 

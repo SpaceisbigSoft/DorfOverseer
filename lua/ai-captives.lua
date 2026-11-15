@@ -27,7 +27,8 @@
 -- the unit's and the cage's links by hand, and an invader let out walks
 -- straight back to fight: "release" is never done here (the brain says so).
 -- Fields this module isn't sure of are read inside pcall (needs an in-game
--- look: civzone_type Pit/Pond as ZONE_PIT_POND, unit.curse.own_interaction,
+-- look: the Pit/Pond zones as buildings.other.ZONE_POND (df-structures
+-- 53.17; 0.105.48: was ZONE_PIT_POND, no such vector), unit.curse.own_interaction,
 -- interaction effects' ANIMATE type, world_site_type Tower).
 --@module = true
 
@@ -190,7 +191,11 @@ end
 local function pit_zones()
     local list = {}
     pcall(function()
-        for _, z in ipairs(df.global.world.buildings.other.ZONE_PIT_POND) do table.insert(list, z) end
+        -- (0.105.48) the vector is ZONE_POND in DF 53.17 (ZONE_PIT_POND kept as a fallback)
+        local other = df.global.world.buildings.other
+        local ok, v = pcall(function() return other.ZONE_POND end)
+        if not ok or not v then v = other.ZONE_PIT_POND end
+        for _, z in ipairs(v) do table.insert(list, z) end
     end)
     return list
 end
