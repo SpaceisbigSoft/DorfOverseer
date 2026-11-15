@@ -36,6 +36,8 @@ CFG = PLANNER_CONFIG
 def target(goal="rescue", site_id=101, dist=5, **kw) -> dict:
     t = {"goal": goal, "site_id": site_id, "site": f"Site{site_id}", "dist": dist, "civ_id": 7, "civ": "The Goblins",
          "why": "held there", "hostile": False, "at_war": False}
+    if goal in ("raid", "pillage", "tribute", "conquer"):
+        t["type"] = "Town"          # (0.105.48, K9) only sites people live in are attacked
     if goal == "rescue":
         t.update(hf_id=900 + site_id, hf="Urist McHeld")
     if goal == "recover_artifact":
@@ -47,6 +49,7 @@ def target(goal="rescue", site_id=101, dist=5, **kw) -> dict:
 def fort(targets=None, militarism=0, send=None, **rules) -> dict:
     s = copy.deepcopy(BASE)
     s["settings"]["traits"] = {"militarism": militarism}
+    s["settings"]["raid_policy"] = "ai"      # (0.105.48, K9) 'off' by default now: these tests had 'ai'
     s["settings"].update(rules)
     for q in s["military"]["squads"]:
         q["power"] = {"power": 10.0, "armed": q["members"], "armored": 0}

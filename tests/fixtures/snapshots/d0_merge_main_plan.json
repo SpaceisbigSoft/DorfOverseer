@@ -392,7 +392,7 @@
  ],
  "enxah-0.104.52-y73-winter.json:Hermit hold": [
   {
-   "notes": "sha256:5be4acac9a384b7d19be1473",
+   "notes": "sha256:d8737d8cf05b896b10570ad3",
    "props": "sha256:23460d402e066c4697f63cf6",
    "rules": [
     "build",
@@ -423,7 +423,7 @@
    ]
   },
   {
-   "notes": "sha256:bbc792a778d1f3156b729033",
+   "notes": "sha256:4ca9b968ae40358552cd1614",
    "props": "sha256:9ffa423bf4353b7d3c487bf2",
    "rules": [
     "build",
@@ -453,7 +453,7 @@
    ]
   },
   {
-   "notes": "sha256:bbc792a778d1f3156b729033",
+   "notes": "sha256:4ca9b968ae40358552cd1614",
    "props": "sha256:23460d402e066c4697f63cf6",
    "rules": [
     "build",
@@ -486,7 +486,7 @@
  ],
  "enxah-0.104.52-y73-winter.json:Merchant city": [
   {
-   "notes": "sha256:36235bef882a31a511bc55d7",
+   "notes": "sha256:a67e39d50a50b92f215c9892",
    "props": "sha256:8529256e3b756d8e9eb207db",
    "rules": [
     "build",
@@ -520,7 +520,7 @@
    ]
   },
   {
-   "notes": "sha256:c8364cfaf1e0104c68033af9",
+   "notes": "sha256:d9fde94238e8465a3f6ab139",
    "props": "sha256:7818d1f0530d96fa103605e3",
    "rules": [
     "build",
@@ -553,7 +553,7 @@
    ]
   },
   {
-   "notes": "sha256:c8364cfaf1e0104c68033af9",
+   "notes": "sha256:d9fde94238e8465a3f6ab139",
    "props": "sha256:8529256e3b756d8e9eb207db",
    "rules": [
     "build",
@@ -1003,8 +1003,9 @@
  "region2-0.42-y51-winter.json:Hermit hold": [
   {
    "notes": "sha256:6304c4ec3036dc5e3a0851c2",
-   "props": "sha256:1eb4dfdfa273643926e96857",
+   "props": "sha256:c286a8ef4de00bee219f0fdd",
    "rules": [
+    "drink",
     "food",
     "appoint",
     "squad_fill",
@@ -1013,6 +1014,7 @@
     "bags",
     "smelting",
     "entrances",
+    "idle",
     "gather_trim",
     "refuse",
     "ore",
@@ -1026,8 +1028,9 @@
   },
   {
    "notes": "sha256:6304c4ec3036dc5e3a0851c2",
-   "props": "sha256:3223f9cdf258a0b9f05e0879",
+   "props": "sha256:df3b88451ce72c517f155b2e",
    "rules": [
+    "drink",
     "food",
     "appoint",
     "squad_fill",
@@ -1036,6 +1039,7 @@
     "bags",
     "smelting",
     "entrances",
+    "idle",
     "gather_trim",
     "refuse",
     "ore",
@@ -1048,8 +1052,9 @@
   },
   {
    "notes": "sha256:6304c4ec3036dc5e3a0851c2",
-   "props": "sha256:1eb4dfdfa273643926e96857",
+   "props": "sha256:c286a8ef4de00bee219f0fdd",
    "rules": [
+    "drink",
     "food",
     "appoint",
     "squad_fill",
@@ -1058,6 +1063,7 @@
     "bags",
     "smelting",
     "entrances",
+    "idle",
     "gather_trim",
     "refuse",
     "ore",
@@ -1073,7 +1079,7 @@
  "region2-0.42-y51-winter.json:Merchant city": [
   {
    "notes": "sha256:6bd279ffdf284f3360a05dfa",
-   "props": "sha256:40e2ff7f9f701c0066301aa9",
+   "props": "sha256:134a1a21f060721ff54c6053",
    "rules": [
     "food",
     "appoint",
@@ -1082,6 +1088,7 @@
     "bins",
     "smelting",
     "entrances",
+    "idle",
     "gather_trim",
     "refuse",
     "ore",
@@ -1095,7 +1102,7 @@
   },
   {
    "notes": "sha256:6bd279ffdf284f3360a05dfa",
-   "props": "sha256:812401f5b0febb8973cb037e",
+   "props": "sha256:4e8ecd17ad1d802675f4f26b",
    "rules": [
     "food",
     "appoint",
@@ -1104,6 +1111,7 @@
     "bins",
     "smelting",
     "entrances",
+    "idle",
     "gather_trim",
     "refuse",
     "ore",
@@ -1116,7 +1124,7 @@
   },
   {
    "notes": "sha256:6bd279ffdf284f3360a05dfa",
-   "props": "sha256:40e2ff7f9f701c0066301aa9",
+   "props": "sha256:134a1a21f060721ff54c6053",
    "rules": [
     "food",
     "appoint",
@@ -1125,6 +1133,7 @@
     "bins",
     "smelting",
     "entrances",
+    "idle",
     "gather_trim",
     "refuse",
     "ore",
@@ -1433,15 +1442,17 @@
  "region2-0.48-y52-spring.json:Hermit hold": [
   {
    "notes": "sha256:4f8353b498ec20dc54f6cd08",
-   "props": "sha256:07aafd729c8f23fb5433fba5",
+   "props": "sha256:6861e90f6564fb95d53f6132",
    "rules": [
     "build",
+    "food",
     "appoint",
     "furniture",
     "furniture",
     "pop_cap",
     "bags",
     "smelting",
+    "idle",
     "cloth",
     "bottleneck",
     "reserve_storage",
@@ -1452,15 +1463,17 @@
   },
   {
    "notes": "sha256:4f8353b498ec20dc54f6cd08",
-   "props": "sha256:02be09dc99043dbef9efdafa",
+   "props": "sha256:6ab38b4bc8a549d0b6a919d9",
    "rules": [
     "build",
+    "food",
     "appoint",
     "furniture",
     "furniture",
     "pop_cap",
     "bags",
     "smelting",
+    "idle",
     "cloth",
     "bottleneck",
     "reserve_storage",
@@ -1470,15 +1483,17 @@
   },
   {
    "notes": "sha256:4f8353b498ec20dc54f6cd08",
-   "props": "sha256:07aafd729c8f23fb5433fba5",
+   "props": "sha256:6861e90f6564fb95d53f6132",
    "rules": [
     "build",
+    "food",
     "appoint",
     "furniture",
     "furniture",
     "pop_cap",
     "bags",
     "smelting",
+    "idle",
     "cloth",
     "bottleneck",
     "reserve_storage",
@@ -1491,15 +1506,17 @@
  "region2-0.48-y52-spring.json:Merchant city": [
   {
    "notes": "sha256:4f8353b498ec20dc54f6cd08",
-   "props": "sha256:815d02b3c1d78c2fdc258a50",
+   "props": "sha256:68fbd058b0e3b2ae8be2c7a9",
    "rules": [
     "build",
+    "food",
     "appoint",
     "furniture",
     "furniture",
     "pop_cap",
     "bags",
     "smelting",
+    "idle",
     "cloth",
     "bottleneck",
     "reserve_storage",
@@ -1510,15 +1527,17 @@
   },
   {
    "notes": "sha256:4f8353b498ec20dc54f6cd08",
-   "props": "sha256:fc81d9429e773c027e3cb1b8",
+   "props": "sha256:95e69f47a1279eb61e857ced",
    "rules": [
     "build",
+    "food",
     "appoint",
     "furniture",
     "furniture",
     "pop_cap",
     "bags",
     "smelting",
+    "idle",
     "cloth",
     "bottleneck",
     "reserve_storage",
@@ -1528,15 +1547,17 @@
   },
   {
    "notes": "sha256:4f8353b498ec20dc54f6cd08",
-   "props": "sha256:815d02b3c1d78c2fdc258a50",
+   "props": "sha256:68fbd058b0e3b2ae8be2c7a9",
    "rules": [
     "build",
+    "food",
     "appoint",
     "furniture",
     "furniture",
     "pop_cap",
     "bags",
     "smelting",
+    "idle",
     "cloth",
     "bottleneck",
     "reserve_storage",
@@ -1809,13 +1830,15 @@
  "region2-0.50-y52-summer.json:Hermit hold": [
   {
    "notes": "sha256:70e14defccb62b8f7bdeee54",
-   "props": "sha256:8a67a6e9b6460a9385cbfa61",
+   "props": "sha256:475c7a90a377358b674e3c3b",
    "rules": [
+    "drink",
     "food",
     "appoint",
     "bags",
     "pop_cap",
     "smelt",
+    "idle",
     "cloth",
     "bottleneck",
     "build",
@@ -1827,13 +1850,15 @@
   },
   {
    "notes": "sha256:70e14defccb62b8f7bdeee54",
-   "props": "sha256:0f5fe8dbd533843d42307eb9",
+   "props": "sha256:e96680a760ba102ca5348278",
    "rules": [
+    "drink",
     "food",
     "appoint",
     "bags",
     "pop_cap",
     "smelt",
+    "idle",
     "cloth",
     "bottleneck",
     "build",
@@ -1844,13 +1869,15 @@
   },
   {
    "notes": "sha256:70e14defccb62b8f7bdeee54",
-   "props": "sha256:8a67a6e9b6460a9385cbfa61",
+   "props": "sha256:475c7a90a377358b674e3c3b",
    "rules": [
+    "drink",
     "food",
     "appoint",
     "bags",
     "pop_cap",
     "smelt",
+    "idle",
     "cloth",
     "bottleneck",
     "build",
@@ -1864,12 +1891,14 @@
  "region2-0.50-y52-summer.json:Merchant city": [
   {
    "notes": "sha256:70e14defccb62b8f7bdeee54",
-   "props": "sha256:8ab2800989086257e37c5dcb",
+   "props": "sha256:39c8653ef39513b64df3570a",
    "rules": [
+    "food",
     "appoint",
     "bags",
     "pop_cap",
     "smelt",
+    "idle",
     "cloth",
     "bottleneck",
     "build",
@@ -1881,12 +1910,14 @@
   },
   {
    "notes": "sha256:70e14defccb62b8f7bdeee54",
-   "props": "sha256:f44c20b111ff049d0451ecad",
+   "props": "sha256:e31c2001acb80aed1dfad34f",
    "rules": [
+    "food",
     "appoint",
     "bags",
     "pop_cap",
     "smelt",
+    "idle",
     "cloth",
     "bottleneck",
     "build",
@@ -1897,12 +1928,14 @@
   },
   {
    "notes": "sha256:70e14defccb62b8f7bdeee54",
-   "props": "sha256:8ab2800989086257e37c5dcb",
+   "props": "sha256:39c8653ef39513b64df3570a",
    "rules": [
+    "food",
     "appoint",
     "bags",
     "pop_cap",
     "smelt",
+    "idle",
     "cloth",
     "bottleneck",
     "build",
@@ -2808,8 +2841,10 @@
  "test_fort.json:Hermit hold": [
   {
    "notes": "sha256:4f53cda18c2baa0c0354bb5f",
-   "props": "sha256:f4ad297945f256664cba72b8",
+   "props": "sha256:002d2c10358721882b77284c",
    "rules": [
+    "drink",
+    "food",
     "tools",
     "traps",
     "reserve_storage",
@@ -2818,17 +2853,23 @@
   },
   {
    "notes": "sha256:4f53cda18c2baa0c0354bb5f",
-   "props": "sha256:6bb1db5c34ce9ee26013027c",
+   "props": "sha256:ec9634f1115a1494b2a90a4d",
    "rules": [
+    "drink",
+    "food",
     "tools",
+    "traps",
     "reserve_storage"
    ]
   },
   {
    "notes": "sha256:4f53cda18c2baa0c0354bb5f",
-   "props": "sha256:ab6c6409877a369f9202a46c",
+   "props": "sha256:002d2c10358721882b77284c",
    "rules": [
+    "drink",
+    "food",
     "tools",
+    "traps",
     "reserve_storage",
     "join_levels"
    ]
@@ -2837,8 +2878,9 @@
  "test_fort.json:Merchant city": [
   {
    "notes": "sha256:4df1404b9100aec8a1da9695",
-   "props": "sha256:c3205c4c64ba6c57f73f8532",
+   "props": "sha256:e9d6600809446c200efe4a63",
    "rules": [
+    "drink",
     "mandate",
     "tools",
     "build",
@@ -2850,8 +2892,9 @@
   },
   {
    "notes": "sha256:4df1404b9100aec8a1da9695",
-   "props": "sha256:66d9a483f08c28b519594345",
+   "props": "sha256:ef3a231547ec02c728e65e3b",
    "rules": [
+    "drink",
     "mandate",
     "tools",
     "build",
@@ -2862,8 +2905,9 @@
   },
   {
    "notes": "sha256:4df1404b9100aec8a1da9695",
-   "props": "sha256:c3205c4c64ba6c57f73f8532",
+   "props": "sha256:e9d6600809446c200efe4a63",
    "rules": [
+    "drink",
     "mandate",
     "tools",
     "build",

@@ -57,7 +57,7 @@ _EXPANSION_RULES = {
     "export", "paper", "paper_shop", "alloy", "leather_gear", "industry", "bottleneck", "kiln", "idle",
     "war_animals", "quarry", "ore", "reserve_storage", "cavern_logging", "cavern_farm",
     # the fort's reach: new ways, crossings, the deep
-    "join_levels", "crossing", "deep_descent", "prisoner_pit",
+    "crossing", "deep_descent", "prisoner_pit",   # (0.105.48 merge) join_levels: survival (cut-off levels, the thirst watch)
     # petitions agreed to, rooms furnished to taste
     "petition_answer", "petition_build", "homes_furnish",
     # the herd's extras
@@ -112,7 +112,7 @@ _SURVIVAL_RULES = {
     "recreation", "calm_burrow", "free_time", "tavern", "tavern_chest", "tavern_urgent", "temple_chest",
     "quick_temple", "quick_tavern", "break_fights", "convict", "chronic_care", "chronic_convict", "chronic_posts",
     "jail_urgent", "jail_size", "jail_more", "prisoners_water", "pit_prisoners", "mothers", "mood",
-    "mood_reserve", "mood_shelter", "instrument_orders",
+    "mood_reserve", "mood_shelter", "instrument_orders", "join_levels",
     # the fort's offices and people
     "appoint", "messenger", "pop_cap", "recovery_migrants", "census", "labor", "labor_trim", "petitions",
     "petition_retarget", "residency", "location_access",

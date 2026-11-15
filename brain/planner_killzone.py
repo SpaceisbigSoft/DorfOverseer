@@ -187,11 +187,14 @@ def _crisis(memory) -> bool:
 
 def _link_rule(s: dict, kz: dict, proposals: list) -> bool:
     """A zone's drawbridge built with no lever linked, and a free AI lever: linked."""
-    from planner_gates import _free_gate_levers
+    from planner_gates import _free_gate_levers, _lever_far_enough
     for e in _rows(kz):
         br = _d(e.get("drawbridge"))
         if br.get("built") and isinstance(br.get("id"), int) and br.get("linked") is False:
-            lever = next((lv for lv in _free_gate_levers(s) if isinstance(lv.get("id"), int)), None)
+            # (0.105.48 merge, A5 #18) a lever its puller reaches away from the
+            # zone: 20+ tiles or 4+ levels from the bridge, as for the gates'
+            lever = next((lv for lv in _free_gate_levers(s) if isinstance(lv.get("id"), int)
+                          and _lever_far_enough(lv, br)), None)
             if lever is None:
                 return False
             proposals.append(Proposal("killzone", {"type": "link_lever", "lever_id": lever["id"],

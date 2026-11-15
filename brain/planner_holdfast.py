@@ -345,6 +345,12 @@ def _many_matchup(s, memory, cfg, rows, key, ps, sent, on, squads, busy, inside,
     off) and the free squads go at the ones inside only if they clear those."""
     names = f"{len(rows)} enemies (" + ", ".join(sorted({str(t.get("name") or "an enemy") for t in rows}))[:60] + ")"
     sent_ids = {q["id"] for q in sent}
+    # (0.105.48 merge) the matchup judged this fight: select()'s free-squad
+    # pick must not send out a squad it kept home (a reserve, or all of them)
+    try:
+        memory.matchup_judged = abs_tick(s)
+    except Exception:  # noqa: BLE001
+        pass
     if on and _ratio(rows, on, memory) >= bar:
         drop.update(id(p) for p in ps)
         notes.append(f"{names}: the squads already out clear them ({_ratio(rows, on, memory):.1f}x, {bar:g}x "

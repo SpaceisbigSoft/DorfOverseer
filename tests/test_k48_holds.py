@@ -128,7 +128,8 @@ def _():
                         ("crisis.RECOVERY_RULES", crisis.RECOVERY_RULES)):
         bad = sorted(r for r in group if H.RULE_CLASS.get(r) == H.EXPANSION)
         assert not bad, (name, bad)
-    # LIMIT_EXEMPT holds join_levels (a slot of its own); it may still wait in recovery
+    # LIMIT_EXEMPT holds join_levels (a slot of its own); (0.105.48 merge) and it is survival:
+    # cut-off levels joined, the thirst watch's fix, never held in a crisis or recovery
     assert "join_levels" in LIMIT_EXEMPT
 
 
@@ -176,7 +177,7 @@ def _():
 
 @test("recovery: the expansion rules the old list let through now wait (A7 5)")
 def _():
-    held = [P("join_levels", type="join_levels"), P("noble_value", type="place_in_zone"),
+    held = [P("noble_value", type="place_in_zone"),
             P("petition_answer", type="answer_petition"), P("petition_build", type="start_project", kind="guildhall"),
             P("homes_furnish", type="furnish_liked"), P("landmark", type="build_blueprint"),
             P("landmark_level", type="start_project", kind="dining", landmark=True),
@@ -199,12 +200,12 @@ def _():
 
 # ---- crisis ---------------------------------------------------------------------------------
 
-@test("crisis: the same expansion waits (keep, grove, noble value, join levels, petitions); squad_make goes (A7 6, 8)")
+@test("crisis: the same expansion waits (keep, grove, noble value, petitions); squad_make and join_levels go (A7 6, 8)")
 def _():
     held = [P("keep", type="place_keep"), P("grove", type="keep_grove"), P("noble_value", type="place_in_zone"),
-            P("join_levels", type="join_levels"), P("petition_answer", type="answer_petition"),
+            P("petition_answer", type="answer_petition"),
             P("hunt", type="hunt_send"), P("mission", type="send_mission"), P("hall", type="place_hall")]
-    kept = [P("squad_make", type="make_squad"), P("burial", type="allow_burial"),
+    kept = [P("join_levels", type="join_levels"), P("squad_make", type="make_squad"), P("burial", type="allow_burial"),
             P("hospital", type="work_order"), P("cursed", type="expel_dwarf")]
     notes: list = []
     out = crisis.apply(held + kept, ["45% unhappy"], notes)

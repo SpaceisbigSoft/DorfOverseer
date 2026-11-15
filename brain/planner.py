@@ -1222,7 +1222,7 @@ def squad_claim(p: Proposal, claimed: dict) -> str | None:
             "this one waits for the next cycle")
 
 
-def free_squad_for(p: Proposal, claimed: dict, state: dict, cfg: dict, proposed: set):
+def free_squad_for(p: Proposal, claimed: dict, state: dict, cfg: dict, proposed: set, memory=None):
     """(0.105.48, K16) The rules each take the first able squad, so a second
     kill order at a squad another order took this cycle waited (or was
     folded into that order) while other squads sat free. A kill order on one
@@ -1232,6 +1232,10 @@ def free_squad_for(p: Proposal, claimed: dict, state: dict, cfg: dict, proposed:
     matchup kept home is free). None: none is."""
     a = p.action if isinstance(p.action, dict) else {}
     if not _is_kill(a) or a.get("squad_id") not in claimed:
+        return None
+    # (0.105.48 merge) the matchup sized a fight this cycle: the squads it kept
+    # home stay home (the second order folds into the first instead)
+    if memory is not None and getattr(memory, "matchup_judged", None) == abs_tick(state):
         return None
     for q in _l(_d(state.get("military")).get("squads")):
         if not isinstance(q, dict) or q.get("id") is None or q["id"] in claimed or q["id"] in proposed:
@@ -1469,7 +1473,7 @@ def select(proposals: list[Proposal], state: dict, memory: Memory,
                             else f"{p.rule}: waiting on the game (its last answer was to wait); asks again in "
                                  f"{wait} day(s)")      # (0.97: it said "refused 0 time(s)")
                 continue
-            alt = free_squad_for(p, squads_claimed, state, cfg, proposed_sq)
+            alt = free_squad_for(p, squads_claimed, state, cfg, proposed_sq, memory)
             if alt is not None:
                 taken_ = p.action["squad_id"]
                 p.action = dict(p.action, squad_id=alt["id"])

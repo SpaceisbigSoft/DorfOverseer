@@ -25,8 +25,8 @@
   {
    "cycle": "sha256:ae5998383c68df91fd7ec5c4",
    "digest": "sha256:8ffc392844e132f94e9786f5",
-   "notes": "sha256:d08f7bba995a83dc8cdef7d3",
-   "props": "sha256:7bf57b621dd43b38279c2ba1",
+   "notes": "sha256:a76be1d185e69e105d3b5eb9",
+   "props": "sha256:c2c078cf4656a8fee02dca8f",
    "rules": [
     "build",
     "hospital",
@@ -43,13 +43,13 @@
     "well",
     "needs_meal",
     "temple_chest",
+    "instrument_orders",
     "train",
     "train",
     "unstick_uniforms",
     "build",
     "squad_trim",
     "pair_chairs",
-    "library_chest",
     "alerts",
     "join_levels",
     "second_way"
@@ -58,8 +58,8 @@
   {
    "cycle": "sha256:4f53cda18c2baa0c0354bb5f",
    "digest": "sha256:8ffc392844e132f94e9786f5",
-   "notes": "sha256:c6c95cce1a0ff93cee8dc8fb",
-   "props": "sha256:614f7f995861c6493ec1ab83",
+   "notes": "sha256:a32458a5af5caa5bca3bd5b6",
+   "props": "sha256:ec5518d55b53dc1b843f065c",
    "rules": [
     "build",
     "hospital",
@@ -75,13 +75,13 @@
     "mandate",
     "needs_meal",
     "temple_chest",
+    "instrument_orders",
     "train",
     "train",
     "unstick_uniforms",
     "build",
     "squad_trim",
     "pair_chairs",
-    "library_chest",
     "alerts",
     "second_way"
    ]
