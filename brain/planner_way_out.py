@@ -249,18 +249,19 @@ def leave_open(bridge, say=print, check: bool = True) -> dict | None:
     """(0.105.47, J16) The AI stopping (Ctrl-C, the STOP file, the end of a
     run): the fort left open if no enemy is in reach (lua/ai-way-out.lua
     leave), and said. Never raises. check: first read the game's status
-    (the keeper, which knows nothing of the fort): not in a fort, halted by
-    the player, or another fort than the keeper's pin: left as it is (the
-    overseer checks these itself, check=False)."""
+    (the keeper, which knows nothing of the fort): not in a fort, or another
+    fort than the keeper's pin: left as it is (the overseer checks these
+    itself, check=False). (0.105.48, K3) Halted by the player: sent all the
+    same (it passes the halt), and the game's leave also lowers the AI's own
+    alarm (no enemy in sight) and lets out its burrows (`stood_down`)."""
     try:
         if check:
             st = bridge.status()
             st = st if isinstance(st, dict) else {}
             if not st.get("in_fort"):
                 return None
-            if st.get("halted"):
-                say("The fort's gates stay as they are: the AI is halted in the game.")
-                return None
+            # (0.105.48, K3) halted: the leave still goes (it passes the halt:
+            # it only opens the AI's gates, lowers its alarm, lets out its burrows)
             try:
                 import pin
                 f = _d(_d(bridge.state(include_units=False, tier="pulse")).get("fort"))
@@ -273,6 +274,15 @@ def leave_open(bridge, say=print, check: bool = True) -> dict | None:
         say(f"Leaving the fort open failed: {type(e).__name__}: {str(e)[:120]}")
         return None
     r = r if isinstance(r, dict) else {}
+    sd = _d(r.get("stood_down"))
+    if sd.get("alarm") == "lowered":
+        say("The AI's own civilian alert lowered as it stops.")
+    elif sd.get("alarm") == "kept":
+        say("The AI's own civilian alert stays up: an enemy is in sight (the game lowers it once none is, "
+            "or after three days with the overseer away).")
+    if _d(sd.get("burrows")):
+        say("The AI's burrows let their dwarves out: " + ", ".join(
+            f"{k} {v}" for k, v in sorted(_d(sd.get("burrows")).items())) + ".")
     if r.get("ok"):
         say(f"Leaving the fort open: {int(r.get('opened') or 0)} gate piece(s) of the AI's opened, the gate "
             "watcher stood down.")

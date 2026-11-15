@@ -2410,8 +2410,9 @@ def _run(args) -> int:
                 check_pin(bridge)
             held_pin = pin_hold()
             # (0.105.47, J16) the fort this overseer may leave open as it stops:
-            # its own (the pin), in the fort, not halted by the player
-            leave_ok = bool(st.get("in_fort")) and not controls["halted"] and not held_pin
+            # its own (the pin), in the fort. (0.105.48, K3) halted too: the
+            # leave passes the halt (it only opens, lowers and lets out)
+            leave_ok = bool(st.get("in_fort")) and not held_pin
             # the STOP file: the AI stops acting, so the fort is left open (no
             # enemy in reach), once for each STOP file
             if STOP_FILE.exists():

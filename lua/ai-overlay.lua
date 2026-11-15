@@ -151,7 +151,7 @@ function AIStatusOverlay:refresh()
 
     local head
     if halted then
-        head = {{text = 'HALTED', pen = COLOR_LIGHTRED}, ' - nothing will be changed'}
+        head = {{text = 'HALTED', pen = COLOR_LIGHTRED}, ' - it only undoes its own locks'}
     elseif not st.LAST_SEEN or os.time() - st.LAST_SEEN > STALE_SECONDS then
         head = {{text = 'not running', pen = COLOR_GREY}, ' - start brain\\overseer.py'}
     elseif not s then
@@ -202,6 +202,10 @@ function AIStatusOverlay:onInput(keys)
 end
 
 function AIStatusOverlay:overlay_onupdate()
+    -- (0.105.48, K3) the away watcher's timer, started here too: the panel
+    -- runs with no overseer at all (a reload, the keeper stopped)
+    local st = status_module()
+    if st and st.away_watch_start then pcall(st.away_watch_start) end
     self:refresh()
 end
 

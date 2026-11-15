@@ -369,7 +369,13 @@ local function cook_skill(u)
     return ok and tonumber(r) or 0
 end
 
--- free to cook: an adult, sane, in no squad, no noble's office
+-- free to cook: an adult, sane, in no squad, no noble's office.
+-- (0.105.48, K3) and able to reach the kitchen now: not in a strange mood,
+-- not waiting for a treatment (DF's rq_ flags: a cook bedridden for a
+-- season kept the kitchen shut), not kept in any burrow (the AI's hospital,
+-- recreation or calm-down burrow, a player's: the kitchen may be outside it)
+local COOK_RQ = {'rq_diagnosis', 'rq_immobilize', 'rq_dressing', 'rq_cleaning', 'rq_surgery', 'rq_suture',
+                 'rq_setting', 'rq_traction', 'rq_crutch'}
 local function can_cook(u)
     local ok, yes = pcall(function()
         return dfhack.units.isAlive(u) and dfhack.units.isAdult(u) and dfhack.units.isSane(u)
@@ -377,7 +383,18 @@ local function can_cook(u)
     end)
     if not (ok and yes) then return false end
     local okn, noble = pcall(function() return #dfhack.units.getNoblePositions(u) > 0 end)
-    return not (okn and noble)
+    if okn and noble then return false end
+    local okm, mood = pcall(function() return u.mood end)
+    if okm and type(mood) == 'number' and mood >= 0 then return false end      -- df.mood_type.None is -1
+    local okh, patient = pcall(function()
+        if not (u.health and u.health.flags.needs_healthcare) then return false end
+        for _, f in ipairs(COOK_RQ) do if u.health.flags[f] then return true end end
+        return false
+    end)
+    if okh and patient then return false end
+    local okb, inb = pcall(function() return #u.burrows > 0 end)
+    if okb and inb then return false end
+    return true
 end
 
 local function workers_of(b)
@@ -423,24 +440,49 @@ function train_cook(dry_run, release)
         pick = best
     end
     if not pick then return {ok = false, rejected = true, error = 'nobody free to learn to cook'} end
-    local set, players = 0, 0
-    for _, b in ipairs(ks) do
+    -- (0.105.48, K3) ONE kitchen kept for the trainee (it was every kitchen
+    -- with no named workers: a fort cooked nothing while its one cook was
+    -- bedridden, moody or kept in a burrow). The one kept before if still
+    -- ours, else the first with no named workers; any other the AI had
+    -- (a save from before) opened to every cook again.
+    -- ours: one the AI keeps whose workers are still none or its trainee alone
+    local function ours(b)
         local w = workers_of(b)
-        local ours = mine[tostring(b.id)] or #w == 0
-        if not ours then
+        return mine[tostring(b.id)] and (#w == 0 or (#w == 1 and w[1] == d.cook.unit)) or false
+    end
+    local players, keep = 0, nil
+    for _, b in ipairs(ks) do
+        if not keep and ours(b) then keep = b end
+    end
+    for _, b in ipairs(ks) do
+        if not ours(b) and #workers_of(b) > 0 then
             players = players + 1        -- workers the player named: never touched
-        else
+        elseif not keep and #workers_of(b) == 0 then
+            keep = b
+        end
+    end
+    if not keep then
+        return {ok = false, rejected = true, error = 'every kitchen has workers named by the player'}
+    end
+    local opened = 0
+    local kept = {}
+    for _, b in ipairs(ks) do
+        local k = tostring(b.id)
+        if b == keep then
             if not dry_run then
                 pcall(set_workers, b, {pick.id})
                 pcall(function() b.profile.min_level = 0 end)
-                mine[tostring(b.id)] = true
             end
-            set = set + 1
+            kept[k] = true
+        elseif ours(b) then
+            if #workers_of(b) > 0 then
+                if not dry_run then pcall(set_workers, b, {}) end
+                opened = opened + 1
+            end
         end
     end
-    if set == 0 then
-        return {ok = false, rejected = true, error = 'every kitchen has workers named by the player'}
-    end
+    if not dry_run then mine = kept end
+    local set = 1
     -- the cooking labour on, for the work details that hold it back
     local labour = false
     if not dry_run then
@@ -451,6 +493,7 @@ function train_cook(dry_run, release)
         save(d)
     end
     return {ok = true, cook = name_of(pick), unit_id = pick.id, skill = cook_skill(pick), kitchens = set,
+            kitchen_id = keep.id, open_kitchens = #ks - 1 - players, reopened = opened > 0 and opened or nil,
             labour = labour or nil,
             players_kitchens = players > 0 and players or nil, dry_run = dry_run or nil}
 end

@@ -1799,3 +1799,48 @@ function weather_keep_in_status()
     for _ in pairs(wk_state().members) do n = n + 1 end
     return {members = n}
 end
+
+-- --- (0.105.48, K3) the AI's burrows emptied: the AI halted or away ----------
+--
+-- The recreation, hospital, calm-down and weather keep-in burrows let their
+-- members out only when the brain calls (or at a report): a brain stopped or
+-- halted left dwarves in them (a calm room with a few drinks, the shelter
+-- under evil weather) for good. ai-status's away watcher calls this (through
+-- reqscript('ai-society').stand_down) while the AI is halted or no status
+-- call came for AWAY_TICKS. Only the AI's own members, as each burrow's save
+-- lists them (the player's members, the player's burrows: untouched); each
+-- burrow's release only when it holds any (a cheap look otherwise).
+-- Returns {recreation = n, hospital = n, calm = n, weather = n} (those let
+-- out; 0s left out), never raises.
+function release_ai_burrows(dry_run)
+    local out = {}
+    local function count(t)
+        local n = 0
+        for _ in pairs(type(t) == 'table' and t or {}) do n = n + 1 end
+        return n
+    end
+    local function released(r)
+        if type(r) ~= 'table' then return 0 end
+        if type(r.released) == 'table' then return #r.released end
+        return tonumber(r.released) or 0
+    end
+    local steps = {
+        {'recreation', function() return count(rec_state().members) end,
+         function() return recreation_tick(nil, nil, dry_run, nil, nil, nil, true) end},
+        {'hospital', function() return count(hb_state().members) end,
+         function() return hospital_burrow_tick(nil, nil, dry_run, nil, nil, true) end},
+        {'calm', function() return count(calm_state().members) end,
+         function() return calm_burrow_tick(nil, nil, dry_run, nil, true) end},
+        {'weather', function() return count(wk_state().members) end,
+         function() return weather_keep_in(false, dry_run) end},
+    }
+    for _, s in ipairs(steps) do
+        local okn, n = pcall(s[2])
+        if okn and n > 0 then
+            local ok, r = pcall(s[3])
+            if ok and released(r) > 0 then out[s[1]] = released(r)
+            elseif not ok then out[s[1] .. '_error'] = tostring(r):sub(1, 120) end
+        end
+    end
+    return out
+end

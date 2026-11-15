@@ -501,7 +501,7 @@ end
 -- the watcher's WIDE of a surface entrance), every surface entrance opened
 -- at once and the watcher disarmed. With one in reach, left as it is (the
 -- watcher keeps watching, and lifts its lockdown itself once the danger is gone).
-function leave(dry_run)
+local function leave_gates(dry_run)
     local G = gates()
     if not G or not G.GATES then return {ok = false, rejected = true, error = 'no gates module'} end
     pcall(G.gates_restore)
@@ -541,5 +541,18 @@ function leave(dry_run)
         pcall(dfhack.gui.showAnnouncement, ('AI Overseer stopped: %d gate piece(s) opened, the fort left open')
             :format(out.opened), COLOR_GREEN, false)
     end
+    return out
+end
+
+-- (0.105.48, K3) The AI stopping lets go of its alarm and burrows too: its
+-- own alarm lowered when no invader nor great danger is in sight, every
+-- member of its own burrows let out (lua/ai-society.lua stand_down; the
+-- player's alarm and burrows untouched), whatever the gates' answer. The
+-- gates' answer as before, with `stood_down` (what was let go) added.
+function leave(dry_run)
+    local out = leave_gates(dry_run)
+    local ok, r = pcall(function() return reqscript('ai-society').stand_down({stopping = true, dry_run = dry_run}) end)
+    if type(out) ~= 'table' then out = {ok = false, error = 'no answer from the gates'} end
+    if ok and type(r) == 'table' and (r.alarm or r.burrows) then out.stood_down = r end
     return out
 end

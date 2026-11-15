@@ -611,9 +611,22 @@ local function watch_alive()
     return (ok and active) and true or false
 end
 
+-- (0.105.48, K3) the AI halted in the game: false when it can't be read
+local function ai_halted()
+    local ok, yes = pcall(function() return reqscript('ai-status').is_halted() end)
+    return ok and yes == true
+end
+
 local function tick()
     STATE.timer = nil
     if not STATE.on then return end
+    -- (0.105.48, K3) halted: no level dug, no door locked; looked at again later
+    if ai_halted() then
+        STATE.halted = true
+        STATE.timer = dfhack.timeout(WATCH_TICKS, 'ticks', tick)
+        return
+    end
+    STATE.halted = nil
     local ok, err = pcall(function()
         local B = builder()
         local data = B.load_projects()
