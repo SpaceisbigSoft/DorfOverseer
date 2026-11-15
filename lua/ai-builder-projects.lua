@@ -2051,7 +2051,6 @@ function cancel_project(id, unreached)
     if p.phase ~= 'dig' then
         return {ok = false, rejected = true, error = 'only projects still being dug can be cancelled'}
     end
-    undo_dig(cells_of(p, 'dig'), p.stairs, p.z, anchor_of(p), p.stair)
     -- (0.105.33, L4) and what dig_progress keeps designated: a well's shaft,
     -- the stairs it is dug from and its gallery, a way in's column and tunnel
     local pri = type(p.params) == 'table' and p.params.pri or ''
@@ -2082,6 +2081,32 @@ function cancel_project(id, unreached)
     save_projects(data)
     -- (layout B) a floor level's slots and hall are taken out of its floor (ai-builder-floorstore.lua)
     if p.floor and type(floor_release) == 'function' then pcall(floor_release, p) end
+    -- (F1, verify V1) the level's dig undone after its floor's record let it go: the hub, hall
+    -- and stair tiles another live level of the floor still hangs on (only a floor's first
+    -- level designates them) are left designated, only the rest undone (ai-builder-floorstore)
+    local dig_undo, stairs_undo = cells_of(p, 'dig'), p.stairs
+    if p.floor and type(floor_cancel_keep) == 'function' and type(floor_cells_without) == 'function' then
+        local okk, keep, keep_stairs, more, more_stairs = pcall(floor_cancel_keep, p, data)
+        if okk and type(keep) == 'table' then
+            local okw, rest = pcall(floor_cells_without, dig_undo, keep)
+            if okw and type(rest) == 'table' then dig_undo = rest end
+            if keep_stairs then stairs_undo = nil end
+        end
+        -- what an earlier cancel on this floor left designated and no live level needs now
+        if okk and type(more) == 'table' and #more > 0 then
+            local all = {}
+            for _, c in ipairs(dig_undo) do table.insert(all, c) end
+            for _, c in ipairs(more) do table.insert(all, c) end
+            dig_undo = all
+        end
+        if okk and type(more_stairs) == 'table' and #more_stairs > 0 then
+            local all = {}
+            for _, c in ipairs(type(stairs_undo) == 'table' and stairs_undo or {}) do table.insert(all, c) end
+            for _, c in ipairs(more_stairs) do table.insert(all, c) end
+            stairs_undo = all
+        end
+    end
+    undo_dig(dig_undo, stairs_undo, p.z, anchor_of(p), p.stair)
     return {ok = true, project_id = id}
 end
 

@@ -215,6 +215,190 @@ function floor_release(p)
     return ok and n or 0
 end
 
+-- (F1, verify V1) What a cancelled floor level must leave designated: the
+-- hub, hall and stair tiles another level of the same floor still hangs on.
+-- Only the first level of a floor designates the hub, a hall's columns and a
+-- stair extension; the levels after it rely on them. Called by cancel_project
+-- AFTER floor_release, so the record's runs are already rolled back to what
+-- the floor's live slots need: kept are the tiles of p's own dig that lie on
+-- a run still holding a live slot (or a live turning), up to its length now,
+-- so the record and the map agree. The stair cells are kept while the floor
+-- holds any live run.
+-- What is kept is noted in the floor's record (`held`: stair-relative {x, y};
+-- `held_stairs`: {z, text}), so the floor's next cancel undoes what no live
+-- level needs any more, and its last cancel undoes all of it.
+-- Returns keep ({[x] = {[y] = true}}, stair-relative, or nil), keep_stairs,
+-- undo_cells (the earlier held tiles no longer needed: dig cells to undo),
+-- undo_stairs (the earlier held stair cells, when nothing on the floor lives).
+-- When the record cannot be read, a live level of the same floor among the
+-- saved projects keeps all of p's hall tiles (p.links), the hub and its stair
+-- cells. Never raises (nil on an error: everything undone as before).
+FLOOR_HELD_MAX = 600     -- held tiles a floor (more stay designated, unrecorded)
+
+local function keep_run_tiles(set, r)
+    local ox, oy = math.tointeger(r.ox), math.tointeger(r.oy)
+    local dx, dy = math.tointeger(r.dx), math.tointeger(r.dy)
+    local len = math.tointeger(r.len) or 0
+    if not (ox and oy and dx and dy) then return end
+    local px, py = -dy, dx
+    local n = (math.tointeger(r.node) == 5) and 2 or 1
+    for u = -n, n do
+        for v = -n, n do add(set, ox + u * dx + v * px, oy + u * dy + v * py) end
+    end
+    for u = n + 1, n + len do
+        for v = -1, 1 do add(set, ox + u * dx + v * px, oy + u * dy + v * py) end
+    end
+end
+
+-- The tiles of dig cells ('key' or 'key(WxH)'), as a list of {x, y}.
+local function cell_tile_list(cells)
+    local out = {}
+    for _, c in ipairs(type(cells) == 'table' and cells or {}) do
+        local x, y = math.tointeger(type(c) == 'table' and c.x), math.tointeger(type(c) == 'table' and c.y)
+        if x and y then
+            local _, w, h = tostring(c.text):match('^(.-)%((%d+)x(%d+)%)$')
+            w, h = math.tointeger(tonumber(w)) or 1, math.tointeger(tonumber(h)) or 1
+            for dx = 0, w - 1 do
+                for dy = 0, h - 1 do table.insert(out, {x = x + dx, y = y + dy}) end
+            end
+        end
+    end
+    return out
+end
+
+function floor_cancel_keep(p, data)
+    local ok, keep, keep_stairs, undo_cells, undo_stairs = pcall(function()
+        if type(p) ~= 'table' or type(p.floor) ~= 'table' then return nil end
+        local st = type(p.stair) == 'table' and p.stair or anchor_of(p)
+        local z = math.tointeger(p.z)
+        if type(st) ~= 'table' or not z then return nil end
+        local sx, sy = math.tointeger(st.x), math.tointeger(st.y)
+        if not (sx and sy) then return nil end
+        local FP = floorplan()
+        local store, writable
+        if FP then store, writable = load_floors() end
+        local rec = (writable and type(store) == 'table' and type(store.floors) == 'table')
+            and FP.find_floor(store, z, sx, sy) or nil
+        if type(rec) == 'table' then
+            local runs = type(rec.runs) == 'table' and rec.runs or {}
+            local live = {}
+            for _, s in ipairs(type(rec.slots) == 'table' and rec.slots or {}) do
+                if type(s) == 'table' and not s.dead and s.run ~= nil then live[s.run] = true end
+            end
+            -- children come after their parents: last first, a live child makes its parent live
+            for i = #runs, 1, -1 do
+                local r = runs[i]
+                if type(r) == 'table' and live[r.id] and r.parent ~= nil and r.parent ~= 0 then
+                    live[r.parent] = true
+                end
+            end
+            local set, any = {}, false
+            for _, r in ipairs(runs) do
+                if type(r) == 'table' and live[r.id] then
+                    keep_run_tiles(set, r)
+                    any = true
+                end
+            end
+            -- the tiles held for the floor before, and this level's: kept or undone now
+            local held, seen, undo = {}, {}, {}
+            local function hold(t)
+                local x, y = math.tointeger(type(t) == 'table' and t.x), math.tointeger(type(t) == 'table' and t.y)
+                if not (x and y) or has(seen, x, y) then return end
+                add(seen, x, y)
+                if any and has(set, x, y) then
+                    if #held < FLOOR_HELD_MAX then table.insert(held, {x = x, y = y}) end
+                    return true
+                end
+                return false
+            end
+            for _, t in ipairs(type(rec.held) == 'table' and rec.held or {}) do
+                if hold(t) == false then table.insert(undo, {x = t.x, y = t.y, text = 'd'}) end
+            end
+            for _, t in ipairs(cell_tile_list(cells_of(p, 'dig'))) do hold(t) end
+            local hs, ustairs = {}, nil
+            if any then
+                local sseen = {}
+                for _, lst in ipairs({type(rec.held_stairs) == 'table' and rec.held_stairs or {},
+                                      type(p.stairs) == 'table' and p.stairs or {}}) do
+                    for _, c in ipairs(lst) do
+                        local cz = type(c) == 'table' and math.tointeger(c.z) or nil
+                        if cz and type(c.text) == 'string' and not sseen[cz] then
+                            sseen[cz] = true
+                            table.insert(hs, {z = cz, text = c.text})
+                        end
+                    end
+                end
+            else
+                ustairs = type(rec.held_stairs) == 'table' and rec.held_stairs or nil
+            end
+            rec.held = #held > 0 and held or nil
+            rec.held_stairs = #hs > 0 and hs or nil
+            save_floors(store)
+            if not any then return nil, false, undo, ustairs end
+            return set, true, undo, nil
+        end
+        -- no record to go by: another live level of this floor among the saved projects
+        local others = false
+        for _, q in ipairs(type(data) == 'table' and type(data.list) == 'table' and data.list or {}) do
+            if type(q) == 'table' and q ~= p and q.id ~= p.id and q.phase ~= 'cancelled'
+                    and type(q.floor) == 'table' and q.floor.id ~= nil and q.floor.id == p.floor.id
+                    and math.tointeger(q.z) == z then
+                local qs = type(q.stair) == 'table' and q.stair or anchor_of(q)
+                if type(qs) == 'table' and math.tointeger(qs.x) == sx and math.tointeger(qs.y) == sy then
+                    others = true
+                    break
+                end
+            end
+        end
+        if not others then return nil end
+        local set = {}
+        for _, t in ipairs(type(p.links) == 'table' and p.links or {}) do
+            if type(t) == 'table' and math.tointeger(t.x) and math.tointeger(t.y) then add(set, t.x, t.y) end
+        end
+        for u = -1, 1 do
+            for v = -1, 1 do add(set, u, v) end      -- the hub
+        end
+        return set, true
+    end)
+    if not ok then return nil end
+    return keep, keep_stairs, undo_cells, undo_stairs
+end
+
+-- (F1) dig cells ('key' or 'key(WxH)', anchor-relative) less the tiles in
+-- `keep`: a cell with no kept tile is passed on as it is, one with some is
+-- split into its other tiles, one cell each.
+function floor_cells_without(cells, keep)
+    local out = {}
+    for _, c in ipairs(type(cells) == 'table' and cells or {}) do
+        local x, y = math.tointeger(c.x), math.tointeger(c.y)
+        local key, w, h = tostring(c.text):match('^(.-)%((%d+)x(%d+)%)$')
+        w, h = math.tointeger(tonumber(w)) or 1, math.tointeger(tonumber(h)) or 1
+        if not key then key = tostring(c.text) end
+        if not (x and y) or type(keep) ~= 'table' then
+            table.insert(out, c)
+        else
+            local hit = false
+            for dx = 0, w - 1 do
+                for dy = 0, h - 1 do
+                    if has(keep, x + dx, y + dy) then hit = true end
+                end
+            end
+            if not hit then
+                table.insert(out, c)
+            else
+                for dx = 0, w - 1 do
+                    for dy = 0, h - 1 do
+                        if not has(keep, x + dx, y + dy) then
+                            table.insert(out, {x = x + dx, y = y + dy, text = key})
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return out
+end
+
 ---------------------------------------------------------------------------
 -- The report's `floors` section
 ---------------------------------------------------------------------------
