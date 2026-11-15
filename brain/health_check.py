@@ -260,6 +260,7 @@ LOG_LIMITS = {  # (label in soak_report.EVENTS, flagged from this many)
     "problems talking to the game": 10,
     "unexpected problems (see logs/overseer-errors.log)": 1,
     "time stood still (popups)": 6,
+    "keeper trouble (stopped, or the overseer can't run)": 1,      # (0.105.48, K8)
 }
 
 
@@ -275,6 +276,38 @@ def log_flags(lines: list[str]) -> tuple[list[str], list[str]]:
              for label, at in LOG_LIMITS.items() if counts[label] >= at]
     plain = [f"keeper log: {len(lines)} lines; " + (", ".join(f"{k} {v}" for k, v in counts.items()) or "nothing unusual")]
     return flags, plain
+
+
+KEEPER_QUIET_H = 2.0          # (0.105.48, K8) no heartbeat this long, the keeper never said it stopped
+
+
+def keeper_end_flags(status_path: Path | None = None, heartbeat: Path | None = None,
+                     now: float | None = None) -> tuple[list[str], list[str]]:
+    """(0.105.48, K8) How the keeper ended, from logs/unattended-status.txt
+    (the keeper writes it at start, at each restart and when it stops) and
+    the overseer's heartbeat: a keeper that stopped on an error, or one that
+    is gone without a word (its window closed, the PC restarted), is
+    flagged. Run from the keeper itself it only sees an earlier keeper's end."""
+    status_path = status_path or LOG_DIR / "unattended-status.txt"
+    heartbeat = heartbeat or LOG_DIR / "heartbeat"
+    now = time.time() if now is None else now
+    try:
+        text = status_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return [], ["keeper status: none written (no keeper run here yet)"]
+    last = next((ln for ln in reversed(text.splitlines()) if ln.startswith("last:")), "").strip()
+    if "stopped unexpectedly" in last:
+        return [f"the keeper stopped on an error: {last[:240]}"], []
+    if "Keeper stopped" in last:
+        return [], [f"keeper status: {last[:200]}"]
+    try:
+        age = now - heartbeat.stat().st_mtime
+    except OSError:
+        age = None
+    if age is not None and age >= KEEPER_QUIET_H * 3600:
+        return [f"no overseer heartbeat for {age / 3600:.1f} h and the keeper never said it stopped "
+                f"(its window closed, the PC restarted, or the overseer can't stay up?): {last[:160]}"], []
+    return [], [f"keeper status: {last[:200]}"]
 
 
 def _median(vals):
@@ -439,10 +472,26 @@ def _mb(n: int) -> str:
     return f"{n / 1e6:.0f} MB"
 
 
+def _played(gk: tuple, copies: list, current: str | None, fort: dict | None) -> bool:
+    """(0.105.48, K8) A group of copies (by mark, or an unmarked folder) is
+    the fort being played: left to backup.prune's retention."""
+    if gk[0] == "folder":
+        return gk[1] == current
+    _, world, site, run = gk
+    if fort and fort.get("world") and fort.get("site") not in (None, ""):
+        if world != str(fort["world"]) or site != str(fort["site"]):
+            return False
+        return not fort.get("run") or run == str(fort["run"])
+    return any(c.parent.name == current for c in copies)     # (nothing known of the fort: by folder, as before)
+
+
 def housekeeping(save_roots: list[Path], current: str | None, backup_dir: Path,
-                 now: float | None = None, thin: bool = True) -> tuple[list[str], list[str]]:
+                 now: float | None = None, thin: bool = True,
+                 current_fort: dict | None = None) -> tuple[list[str], list[str]]:
     """Old test saves listed (yours to delete); the AI's own backups of saves
-    not copied for OLD_SAVE_DAYS thinned to their newest copy."""
+    not copied for OLD_SAVE_DAYS thinned to their newest copy.
+    (0.105.48, K8) current_fort: {"world", "site", "run"} of the fort played
+    (the keeper's pin, or logs/last-fort.json); its copies are never thinned here."""
     import backup
     now = time.time() if now is None else now
     flags, plain = [], []
@@ -471,21 +520,36 @@ def housekeeping(save_roots: list[Path], current: str | None, backup_dir: Path,
         (flags if new else plain).append(text if new else text + " (told on the Needs you list)")
     thinned = 0
     if backup_dir.is_dir():
+        # (0.105.48, K8) by fort, as marked (world, site and run), not by folder
+        # name: the fort played has copies under every name it was loaded from
+        # ("region4", "autosave 2", "AI restore ..."), and those the retention
+        # kept (backup.choose_keep) were removed here as "forts no longer
+        # played". Age from the copy's dated name (a copytree gives the folder
+        # the source save's time), and removed with its mark.
+        groups: dict = {}
         for d in backup_dir.iterdir():
-            if not d.is_dir() or d.name == current:
-                continue
-            copies = sorted((p for p in d.iterdir() if p.is_dir() and backup.COPY_NAME.match(p.name)),
-                            key=lambda p: p.name)
-            if len(copies) < 2:
+            if not d.is_dir():
                 continue
             try:
-                newest = copies[-1].stat().st_mtime
+                copies = [p for p in d.iterdir() if p.is_dir() and backup.COPY_NAME.match(p.name)]
             except OSError:
+                continue
+            for c in copies:
+                m = backup.copy_fort(c)
+                gk = (("mark", str(m.get("world")), str(m.get("site")), str(m.get("run") or ""))
+                      if m else ("folder", d.name))
+                groups.setdefault(gk, []).append(c)
+        for gk, copies in groups.items():
+            if _played(gk, copies, current, current_fort):
+                continue
+            copies = sorted(copies, key=lambda p: (backup.copy_time(p) or 0.0, p.name))
+            newest = backup.copy_time(copies[-1])
+            if len(copies) < 2 or newest is None:
                 continue
             if now - newest >= OLD_SAVE_DAYS * 86400 and thin:
                 for old in copies[:-1]:
-                    shutil.rmtree(old, ignore_errors=True)
-                    thinned += 1
+                    if backup._remove_copy(old, backup_dir):
+                        thinned += 1
         plain.append(f"backups: {_mb(_size(backup_dir))}" + (f"; {thinned} old copies of forts no longer "
                                                                "played thinned (the newest kept)" if thinned else ""))
     return flags, plain
@@ -497,6 +561,22 @@ def housekeeping(save_roots: list[Path], current: str | None, backup_dir: Path,
 
 def _last_fort() -> dict:
     return load_json(LOG_DIR / "last-fort.json", {})
+
+
+def _current_fort(lf: dict) -> dict | None:
+    """(0.105.48, K8) The fort played: the keeper's pin (its run as pin.run_id
+    gives it), else last-fort.json's world, site and run; None if unknown."""
+    try:
+        import pin
+        p = pin.current()
+        if p:
+            return {"world": p.get("world"), "site": p.get("site"), "run": pin.run_id()}
+    except Exception:  # noqa: BLE001
+        pass
+    site = str(lf.get("fort") or "").rpartition("#")[2]
+    if lf.get("world") and site:
+        return {"world": lf.get("world"), "site": site, "run": lf.get("run")}
+    return None
 
 
 def check(hours: float = 24.0, selftest: bool = True, now: datetime | None = None,
@@ -526,6 +606,7 @@ def check(hours: float = 24.0, selftest: bool = True, now: datetime | None = Non
                                     [f"{sum(len(v) for v in _load_standing(STANDING).values() if isinstance(v, dict))} "
                                      "Needs you and failure lines showing"]))
     part("the keeper", lambda: log_flags(soak_report.log_lines(since, LOG_DIR / "unattended.log")))
+    part("how the keeper ended", lambda: keeper_end_flags())          # (0.105.48, K8)
     part("speed", lambda: fps_flags(soak_report.soak_rows(since, LOG_DIR / "soak.jsonl")))
     part("stuck", lambda: stuck_flags(soak_report.soak_rows(since, LOG_DIR / "soak.jsonl")))   # (0.105.45)
     part("seen", lambda: seen_part(hours, now))   # (0.105.46, I1) logs/seen-ledger.md written too
@@ -534,7 +615,8 @@ def check(hours: float = 24.0, selftest: bool = True, now: datetime | None = Non
         from dfhack import save_roots
         import backup
         lf = _last_fort()
-        return housekeeping(save_roots(lf.get("df_path")), lf.get("save_dir"), backup.BACKUP_DIR)
+        return housekeeping(save_roots(lf.get("df_path")), lf.get("save_dir"), backup.BACKUP_DIR,
+                            current_fort=_current_fort(lf))
     part("housekeeping", house)
     page.insert(1, f"{len(flags)} flag(s)" + (": " + "; ".join(f[:80] for f in flags[:4]) if flags else ""))
     try:

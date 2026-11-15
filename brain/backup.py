@@ -107,11 +107,19 @@ def fort_mark_path(copy: Path) -> Path:
     return copy.with_name(copy.name + ".fort.json")
 
 
-def _write_fort_mark(copy: Path, fort: dict, save_dir: str) -> None:
+def _write_fort_mark(copy: Path, fort: dict, save_dir: str, src_mtime: float | None = None) -> None:
+    """(0.105.48, K8) with the run id (fort's "fort_run", brain/fort_run.py)
+    and when the copied save was written (its world.sav's time): an old run's
+    copies are told apart, and restores go by the save's own time, not the
+    copy's (a copy of the embark made today is not the newest save)."""
+    mark = {"world": fort.get("world"), "site": str(fort.get("site_id") if fort.get("site_id") is not None else ""),
+            "save_dir": save_dir}
+    if isinstance(fort.get("fort_run"), str) and fort["fort_run"]:
+        mark["run"] = fort["fort_run"]
+    if src_mtime is not None:
+        mark["save_mtime"] = src_mtime
     try:
-        fort_mark_path(copy).write_text(json.dumps({
-            "world": fort.get("world"), "site": str(fort.get("site_id") if fort.get("site_id") is not None else ""),
-            "save_dir": save_dir}, ensure_ascii=False), encoding="utf-8")
+        fort_mark_path(copy).write_text(json.dumps(mark, ensure_ascii=False), encoding="utf-8")
     except OSError:
         pass
 
@@ -126,18 +134,33 @@ def copy_fort(copy: Path) -> dict | None:
 SHARED_PREFIXES = ("autosave", "ai restore")     # save folders any world may write
 
 
-def copies_of(world, site, save_dir: str | None) -> list[Path]:
+def copy_order(c: Path) -> tuple:
+    """(0.105.48, K8) A copy's place among a fort's copies, newest first by
+    the time its save was written (the mark's save_mtime; the copy's own
+    time for a copy marked before 0.105.48)."""
+    m = copy_fort(c) or {}
+    t = m.get("save_mtime")
+    if not isinstance(t, (int, float)) or isinstance(t, bool):
+        t = copy_time(c) or 0.0
+    return (t, c.name)
+
+
+def copies_of(world, site, save_dir: str | None, run: str | None = None) -> list[Path]:
     """(0.105.33) Every finished copy in backups/ of the fort (world, site),
     newest first, whichever save folder it was copied from (a revive loading
     "autosave 2", or a restore, changes the folder the copies go to). A copy
     with no mark counts only under backups/<save_dir>, and never when that is
-    one of DF's shared autosave folders (another world's may be there)."""
+    one of DF's shared autosave folders (another world's may be there).
+
+    (0.105.48, K8) With `run` (this fort's run id), only copies marked with
+    that run: an old run of the same embark has the same world and site, and
+    its copies were restored as this fort's. Newest by the save's own time."""
     out = []
     try:
         dirs = [d for d in BACKUP_DIR.iterdir() if d.is_dir()]
     except OSError:
         return []
-    legacy_ok = bool(save_dir) and not str(save_dir).lower().startswith(SHARED_PREFIXES)
+    legacy_ok = bool(save_dir) and not str(save_dir).lower().startswith(SHARED_PREFIXES) and not run
     for d in dirs:
         try:
             copies = [c for c in d.iterdir() if c.is_dir() and COPY_NAME.match(c.name)]
@@ -146,11 +169,12 @@ def copies_of(world, site, save_dir: str | None) -> list[Path]:
         for c in copies:
             m = copy_fort(c)
             if m is not None:
-                if str(m.get("world")) == str(world) and str(m.get("site")) == str(site):
+                if (str(m.get("world")) == str(world) and str(m.get("site")) == str(site)
+                        and (not run or m.get("run") == run)):
                     out.append(c)
             elif legacy_ok and d.name == save_dir:
                 out.append(c)
-    return sorted(out, key=lambda c: c.name, reverse=True)
+    return sorted(out, key=copy_order, reverse=True)
 
 
 def _last() -> dict:
@@ -180,12 +204,42 @@ def _rename(src: Path, dest: Path) -> None:
             time.sleep(0.5 * (attempt + 1))
 
 
-def _mark(now: float, copy: str, src: str) -> None:
+def _mark(now: float, copy: str, src: str, **last) -> None:
+    """(0.105.48, K8) The last good copy's run and save time ("run",
+    "src_mtime") carry over a retry's mark unless given anew."""
+    keep = {k: v for k, v in _last().items() if k in ("run", "src_mtime")}
+    keep.update({k: v for k, v in last.items() if v is not None})
     try:
         BACKUP_DIR.mkdir(exist_ok=True)
-        STATE.write_text(json.dumps({"at": now, "copy": copy, "from": src}), encoding="utf-8")
+        STATE.write_text(json.dumps({"at": now, "copy": copy, "from": src, **keep}), encoding="utf-8")
     except OSError:
         pass
+
+
+RUNS_NAME = "runs.json"     # (0.105.48, K8) in backups/: run id -> when it was first seen loaded
+RUNS_KEPT = 30
+
+
+def run_since(run: str, now: float) -> float:
+    """(0.105.48, K8) When this run was first seen loaded, kept on disk: an
+    "autosave N" written since then is this run's. SESSION (per process) was
+    reset by every overseer restart, which then took the embark folder as the
+    fort's only sure save and copied it, dated today."""
+    runs = BACKUP_DIR / RUNS_NAME
+    d = load_json(runs, {})
+    d = d if isinstance(d, dict) else {}
+    t = d.get(run)
+    if isinstance(t, (int, float)) and not isinstance(t, bool) and t <= now:
+        return float(t)
+    d[run] = now
+    d = dict(sorted(d.items(), key=lambda kv: kv[1] if isinstance(kv[1], (int, float)) else 0)[-RUNS_KEPT:])
+    try:
+        BACKUP_DIR.mkdir(exist_ok=True)
+        from dfhack import write_atomic
+        write_atomic(runs, json.dumps(d))
+    except OSError:
+        pass
+    return now
 
 
 # (0.105.0) DF autosaves in a season's last days: no copy then (a copy
@@ -227,13 +281,22 @@ def maybe(save_root, save_dir: str | None, now: float | None = None,
         return None
     now = time.time() if now is None else now
     since = None
+    run = fort.get("fort_run") if isinstance(fort, dict) and isinstance(fort.get("fort_run"), str) \
+        and fort.get("fort_run") else None
     if fort is not None:
         fk = f"{fort.get('world')}#{fort.get('site_id')}"
         since = SESSION.setdefault(fk, now)
+        if run is not None:
+            since = run_since(run, now)                # (0.105.48, K8) the run's, kept over restarts
         try:
             import pin
             if not pin.matches(fort.get("world"), fort.get("site_id")):
                 return None                            # another world's fort: never copied for the pinned one
+            # (0.105.48, K8) under the keeper, an autosave written since it pinned
+            # this fort is this fort's too (the keeper loads only its world)
+            at = (pin.current() or {}).get("pinned_at")
+            if isinstance(at, (int, float)) and not isinstance(at, bool) and since is not None:
+                since = min(since, float(at))
         except ImportError:
             pass
     if not force and not due(now):
@@ -252,6 +315,15 @@ def maybe(save_root, save_dir: str | None, now: float | None = None,
         return None
     if now - folder_mtime(src) < QUIET_S:
         return None                                    # being written: next cycle
+    src_mtime = save_mtime(src)
+    last = _last()
+    if (run is not None and last.get("run") == run and isinstance(last.get("src_mtime"), (int, float))
+            and src_mtime <= last["src_mtime"]):
+        # (0.105.48, K8) nothing newer than the last copy (a copy of an older
+        # save, the embark among them, dated today would be restored first)
+        _mark(now - EVERY_S + RETRY_S, "", "")
+        return (f"no copy of the save: its newest ({src.name}) is no newer than the last copy's; "
+                "trying again in an hour")
     if fort is not None:
         # (0.105.0) DF writing any save folder (its autosave goes to the oldest
         # "autosave N", not the newest): it is saving, wait
@@ -296,13 +368,13 @@ def maybe(save_root, save_dir: str | None, now: float | None = None,
         _mark(now - EVERY_S + RETRY_S, "", "")          # tried: again in an hour, not every cycle
         return f"couldn't copy the save to {dest} ({e}); trying again in an hour"
     if fort is not None:
-        _write_fort_mark(dest, fort, save_dir)
+        _write_fort_mark(dest, fort, save_dir, src_mtime)
     # only the finished copies this module made (dated names) are cleared out;
     # (0.105.33) per fort: DF's "autosave N" folders are shared by every
     # world, so another world's copies never push this fort's out
     # (0.105.46, I6) by age, over every folder the fort's copies are in
     kept = prune(dest_root, fort, save_dir, now)
-    _mark(now, str(dest), str(src))
+    _mark(now, str(dest), str(src), run=run, src_mtime=src_mtime if run is not None else None)
     return (f"a copy of the save ({src.name}) is in {dest}; {kept} kept (a day's for a week, "
             f"a week's for {KEEP_WEEKLY_WEEKS} weeks, under {MAX_MB} MB)")
 
@@ -368,18 +440,19 @@ def choose_keep(copies: list, now: float, sizes: dict | None = None,
     return keep + sorted(chosen, key=lambda c: copy_time(c) or 0.0, reverse=True)
 
 
-def _ours_to_remove(c: Path) -> bool:
+def _ours_to_remove(c: Path, root: Path | None = None) -> bool:
     """A finished copy this module made: a dated folder two levels inside
-    backups/ (backups/<save folder>/<date time>), never anything else."""
+    backups/ (backups/<save folder>/<date time>), never anything else.
+    (`root`: the backups folder, BACKUP_DIR unless given: the run check's.)"""
     try:
         return (c.is_dir() and COPY_NAME.match(c.name) is not None
-                and c.resolve().parent.parent == BACKUP_DIR.resolve())
+                and c.resolve().parent.parent == (root or BACKUP_DIR).resolve())
     except OSError:
         return False
 
 
-def _remove_copy(c: Path) -> bool:
-    if not _ours_to_remove(c):
+def _remove_copy(c: Path, root: Path | None = None) -> bool:
+    if not _ours_to_remove(c, root):
         return False
     shutil.rmtree(c, ignore_errors=True)
     try:
@@ -397,7 +470,8 @@ def prune(dest_root: Path, fort: dict | None, save_dir: str | None, now: float) 
     Returns how many of the fort's copies are kept."""
     groups: list = []
     if fort is not None:
-        groups.append(copies_of(fort.get("world"), fort.get("site_id"), save_dir))
+        groups.append(copies_of(fort.get("world"), fort.get("site_id"), save_dir,
+                                run=fort.get("fort_run") or None))
     else:
         try:
             copies = [p for p in dest_root.iterdir() if p.is_dir() and COPY_NAME.match(p.name)]

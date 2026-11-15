@@ -194,7 +194,10 @@ def _():
     rv.probe = lambda: "unknown"
     saved_os, saved_run, saved_sw = revive.os.name, revive.subprocess.run, revive.save_written_within
     class R: stdout, stderr = "SUCCESS", ""
-    revive.subprocess.run = lambda args, **kw: (kills.append(args), R())[1] if args[0] == "taskkill" else R()
+    class NS: stdout, stderr = "  TCP    127.0.0.1:%d  0.0.0.0:0  LISTENING  4242\n" % (revive.configured_port() or 5000), ""
+    # (0.105.48, K8) the hung game found by its port's listener (never by name)
+    revive.subprocess.run = lambda args, **kw: ((kills.append(args), R())[1] if args[0] == "taskkill"
+                                                else NS() if args[0] == "netstat" else R())
     saving = [True]
     revive.save_written_within = lambda s, clock=None: saving[0]
     try:
@@ -207,7 +210,7 @@ def _():
         assert kills == [] and any("still writing its save" in x for x in logs), logs   # the save goes on
         saving[0] = False
         rv.tick(); t[0] += 60
-        assert len(kills) == 1 and kills[0][:3] == ["taskkill", "/F", "/IM"], kills
+        assert len(kills) == 1 and kills[0] == ["taskkill", "/F", "/PID", "4242"], kills
         for _ in range(30):
             rv.tick(); t[0] += 60
         assert len(kills) == 1, kills            # not again within the hour
@@ -234,7 +237,9 @@ def _():
 
     def one(cmd, **kw):
         return R("") if cmd[0] == "netstat" else R('"Dwarf Fortress.exe","111"\n')
-    assert revive.kill_command(5000, run=one) == ["taskkill", "/F", "/IM", "Dwarf Fortress.exe"]
+    # (0.105.48, K8) never by name, even with one game: whose it is can't be told
+    k = revive.kill_command(5000, run=one, exe=r"D:\DF-B\Dwarf Fortress.exe")
+    assert "taskkill" not in k and "left alone" in k[-1], k
 
 
 @test("two games (0.105.1): config's dfhack_port reaches dfhack-run's environment")

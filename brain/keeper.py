@@ -37,6 +37,7 @@ HEARTBEAT = LOG_DIR / "heartbeat"
 STALE_S = 600                 # no heartbeat for this long: the overseer is stuck
 BACKOFF = [30, 60, 120, 300, 600]
 GOOD_RUN_S = 1800             # running this long resets the back-off
+SHORT_RUNS_LOUD = 5           # (0.105.48, K8) this many short runs in a row: said loudly
 LOG_OLD_KEPT = 5                # old copies kept
 LOG_MAX = 5_000_000           # the log is rotated past this (one old copy kept)
 
@@ -376,18 +377,31 @@ def main(argv=None, popen=subprocess.Popen, sleep=None, max_runs: int | None = N
         except Exception as e:  # noqa: BLE001
             log(f"Revive couldn't start ({e}); running without it.")
     restarts, streak, runs = 0, 0, 0
+    write_status(started, restarts, "running")      # (0.105.48, K8) health_check reads how it ended
     try:
         while max_runs is None or runs < max_runs:
             runs += 1
             t0 = time.time()
-            code, why = run_once(args.ai, popen, preset)
+            try:
+                code, why = run_once(args.ai, popen, preset)
+            except Exception as e:  # noqa: BLE001  (0.105.48, K8) e.g. OSError from popen: logged, retried
+                code, why = None, f"the overseer couldn't be run ({type(e).__name__}: {str(e)[:200]})"
+                log_exception(e)
             log(why)
             if time.time() - t0 >= GOOD_RUN_S:
                 streak = 0
             wait = BACKOFF[min(streak, len(BACKOFF) - 1)]
             streak += 1
             restarts += 1
-            write_status(started, restarts, f"{why}; restarting in {wait} s")
+            if streak >= SHORT_RUNS_LOUD and streak % SHORT_RUNS_LOUD == 0:
+                # (0.105.48, K8) the overseer dies at start every time (a bad
+                # delivery?): the game runs on with no AI; said loudly
+                log(f"Keeper: the overseer has stopped {streak} times in a row, each within "
+                    f"{GOOD_RUN_S // 60} minutes (last: {why}): the game is running with no AI. "
+                    "Look at logs/overseer-errors.log and this log.")
+            write_status(started, restarts, f"{why}; restarting in {wait} s"
+                         + (f" ({streak} short runs in a row: the game runs with no AI)"
+                            if streak >= SHORT_RUNS_LOUD else ""))
             log(f"Restarting the overseer in {wait} s (restart {restarts}).")
             if sleep is None:
                 sleep_doing_chores(wait)
@@ -399,11 +413,44 @@ def main(argv=None, popen=subprocess.Popen, sleep=None, max_runs: int | None = N
             log("Summary: " + line)
         write_soak_report()
         log("Keeper stopped (Ctrl-C).")
+        write_status(started, restarts, "Keeper stopped (Ctrl-C)")
         return 0
+    except BaseException as e:  # noqa: BLE001  (0.105.48, K8) never silently: logged, status written
+        if isinstance(e, SystemExit) and e.code in (0, None):
+            raise
+        log_exception(e)
+        log(f"Keeper stopped unexpectedly ({type(e).__name__}: {str(e)[:200]}); exit status 2. "
+            "Nothing restarts the overseer until the keeper is started again.")
+        write_status(started, restarts, f"Keeper stopped unexpectedly ({type(e).__name__}: {str(e)[:200]})")
+        leave_fort_open()
+        return 2
     finally:
         lock.close()
+    write_status(started, restarts, f"Keeper stopped (after {runs} runs)")
     return 0
 
 
+def log_exception(e: BaseException) -> None:
+    """(0.105.48, K8) The traceback into the log (the console window may be
+    closed or scrolled away), "Traceback" first so the run check counts it."""
+    import traceback
+    try:
+        text = "".join(traceback.format_exception(type(e), e, e.__traceback__))
+    except Exception:  # noqa: BLE001
+        text = f"Traceback: {type(e).__name__}: {e}"
+    for line in text.rstrip().splitlines()[-30:]:
+        log("  " + line)
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        status = main()
+    except BaseException as e:  # noqa: BLE001  (0.105.48, K8) e.g. before the loop: still logged
+        if isinstance(e, SystemExit):
+            raise
+        log_exception(e)
+        log(f"Keeper stopped unexpectedly ({type(e).__name__}: {str(e)[:200]}); exit status 2.")
+        status = 2
+    if status:
+        log(f"Keeper exit status {status}.")
+    sys.exit(status)

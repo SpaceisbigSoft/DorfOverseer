@@ -358,7 +358,13 @@ def load(key: str, bridge=None, prefer_logs: bool = False) -> tuple[Memory, Toke
             unread = True
             why = f"the answer was a {type(data).__name__}, not a table"
     log_file = _read_json(fort_dir(key) / "memory.json")
-    log_texts = log_file.get("kinds") if log_file.get("fort") == key and isinstance(log_file.get("kinds"), dict) else {}
+    # (0.105.48, K8) the logs copy by its site, as the save's: after a revive or
+    # a restore the folder (alias) is the same but the key's save folder isn't
+    # ("autosave 2#1430" for "region4#1430"), and one failed read of the save
+    # gave a blank memory. Another run's copy is told apart by its run id
+    # (brain/fort_run.py settle).
+    log_texts = (log_file.get("kinds") if same_site(log_file.get("fort"), key)
+                 and isinstance(log_file.get("kinds"), dict) else {})
     log_texts = {k: v for k, v in log_texts.items() if k in KINDS and isinstance(v, str)}
 
     frozen: set = set()

@@ -53,13 +53,17 @@ DF_EXE = "Dwarf Fortress.exe"
 
 
 def write_last_fort(df_path: str | None, save_dir: str | None, fort: str | None,
-                    world: str | None = None) -> None:
-    """The overseer, each cycle: where the fort's save lives (only when it changed)."""
+                    world: str | None = None, run: str | None = None) -> None:
+    """The overseer, each cycle: where the fort's save lives (only when it changed).
+    (0.105.48, K8) With `run`, this fort's run id (brain/fort_run.py): the
+    keeper's pin takes it, and the restore takes only that run's copies."""
     if not df_path or not save_dir:
         return
     data = {"df_path": df_path, "save_dir": save_dir, "fort": fort}
     if world:
         data["world"] = world
+    if run:
+        data["run"] = run
     try:
         if LAST_FORT.exists() and json.loads(LAST_FORT.read_text(encoding="utf-8")) == data:
             # (0.105.0) touched, not rewritten: the keeper's pin (brain/pin.py)
@@ -129,7 +133,9 @@ def restore_from_backup(log=None) -> str | None:
     # (0.105.33) every backups/ folder's copies of the pinned world and site:
     # the copies go to backups/<the save folder loaded>, which a revive (an
     # "autosave N") or a restore changes; never another world's autosave copy
-    copies = backup.copies_of(p.get("world"), p.get("site"), p.get("save_dir"))
+    # (0.105.48, K8) with the pin's run id, only this run's copies (an old run
+    # of the same embark has the same world and site), newest save first
+    copies = backup.copies_of(p.get("world"), p.get("site"), p.get("save_dir"), run=pin.run_id())
     root = save_root(p["df_path"], p["save_dir"]) or Path(p["df_path"]) / "save"
     for c in copies:
         name = f"{RESTORE_PREFIX} {c.name}"
@@ -248,11 +254,50 @@ def _listening_pid(port: int, netstat_out: str) -> int | None:
     return None
 
 
-def kill_command(port: int | None = None, run=None) -> list[str]:
+def _pids_of_exe(exe: str, run) -> list[int]:
+    """(0.105.48, K8) The process ids of the Dwarf Fortress whose .exe is `exe`
+    (PowerShell's Get-Process, as df_running): [] when none, or when it can't tell."""
+    try:
+        r = run(["powershell", "-NoProfile", "-Command",
+                 "Get-Process -Name 'Dwarf Fortress' -ErrorAction SilentlyContinue | "
+                 "ForEach-Object { [string]$_.Id + '|' + $_.Path }"],
+                capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return []
+    want = os.path.normcase(os.path.normpath(exe))
+    out = []
+    for ln in (getattr(r, "stdout", "") or "").splitlines():
+        pid, _, path = ln.strip().partition("|")
+        if pid.strip().isdigit() and path.strip() and os.path.normcase(os.path.normpath(path.strip())) == want:
+            out.append(int(pid))
+    return out
+
+
+def game_exe() -> str | None:
+    """(0.105.48, K8) This keeper's own game's .exe: config's df_launch when it
+    names one, else Dwarf Fortress.exe in the pinned (or last) fort's DF
+    folder (a Steam game started by a steam:// link). None when unknown."""
+    exe = own_exe()
+    if exe:
+        return exe
+    try:
+        import pin
+        p = pin.current() or {}
+        df_path = p.get("df_path") or json.loads(LAST_FORT.read_text(encoding="utf-8")).get("df_path")
+    except (OSError, ValueError, AttributeError):
+        df_path = None
+    return str(Path(df_path) / DF_EXE) if isinstance(df_path, str) and df_path else None
+
+
+def kill_command(port: int | None = None, run=None, exe: str | None = None) -> list[str]:
     """(0.105.1) How to close this keeper's hung game: by the process id that
     listens on its DFHack port (a hung game still holds the port), so a second
-    game on another port is never touched. Only when no process listens there
-    and a single Dwarf Fortress runs, by name as before."""
+    game on another port is never touched.
+
+    (0.105.48, K8) Never by image name (six games share "Dwarf Fortress.exe":
+    a netstat that failed killed all six, some mid-save): with no listener
+    found, by the process whose .exe is this keeper's own game (`exe`, default
+    game_exe()); when neither tells, nothing is closed."""
     port = port or configured_port() or 5000
     run = run or subprocess.run
     try:
@@ -260,13 +305,33 @@ def kill_command(port: int | None = None, run=None) -> list[str]:
         pid = _listening_pid(port, out)
         if pid:
             return ["taskkill", "/F", "/PID", str(pid)]
-        lst = run(["tasklist", "/FI", f"IMAGENAME eq {DF_EXE}", "/FO", "CSV", "/NH"],
-                  capture_output=True, text=True, timeout=30).stdout or ""
-        if sum(1 for ln in lst.splitlines() if DF_EXE.lower() in ln.lower()) > 1:
-            return ["cmd", "/c", "echo", f"two games run and none listens on port {port}: left alone"]
     except (OSError, subprocess.SubprocessError):
         pass
-    return ["taskkill", "/F", "/IM", DF_EXE]
+    exe = exe or game_exe()
+    pids = _pids_of_exe(exe, run) if exe else []
+    if len(pids) == 1:
+        return ["taskkill", "/F", "/PID", str(pids[0])]
+    why = (f"{len(pids)} games run from {exe}" if len(pids) > 1
+           else f"no game of this folder found by its port {port} or its .exe ({exe or 'not known'})")
+    return ["cmd", "/c", "echo", f"{why}: left alone (never closed by name)"]
+
+
+def save_stamp(folder: str) -> float | None:
+    """(0.105.48, K8) When the save `folder` was last written (its world.sav's
+    time, backup.save_mtime), in the pinned (or last) fort's save root; None
+    when it isn't there. DF reuses "autosave N" every season: a count of
+    failed loads holds only for the save as it was when it failed."""
+    try:
+        import pin
+        p = pin.current() or json.loads(LAST_FORT.read_text(encoding="utf-8"))
+        root = save_root(p["df_path"], p["save_dir"]) or Path(p["df_path"]) / "save"
+        d = root / folder
+        if not d.is_dir():
+            return None
+        from backup import save_mtime
+        return save_mtime(d)
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return None
 
 
 class Reviver:
@@ -284,6 +349,10 @@ class Reviver:
         self.candidates = load_candidates
         # (0.105.0) failed loads per save folder; the load under way: (folder, since)
         self.load_fails: dict[str, int] = {}
+        # (0.105.48, K8) ... each for the save as it was when it failed (its
+        # world.sav's time): a folder DF has written again since is tried again
+        self.fail_stamp: dict[str, float | None] = {}
+        self.save_stamp = save_stamp
         self.loading: tuple[str, float] | None = None
         self.restore = restore_from_backup
         self.restored: list[str] = []
@@ -332,8 +401,30 @@ class Reviver:
         self.loading = None
         self._count_fail(folder, why)
 
+    def _fails(self, folder: str) -> int:
+        """(0.105.48, K8) The failed loads of the save now in `folder`: none
+        when DF wrote that folder again since they failed ("autosave 2" is a
+        new save each season; the count kept it out for the keeper's whole
+        run, and each bad night dropped one more name)."""
+        if folder not in self.load_fails:
+            return 0
+        try:
+            now_stamp = self.save_stamp(folder)
+        except Exception:  # noqa: BLE001  (can't tell: the count stands)
+            return self.load_fails[folder]
+        if now_stamp != self.fail_stamp.get(folder):
+            self.load_fails.pop(folder, None)
+            self.fail_stamp.pop(folder, None)
+            self.log(f"Revive: '{folder}' was written again since it failed to load: it is tried again.")
+            return 0
+        return self.load_fails[folder]
+
     def _count_fail(self, folder: str, why: str) -> None:
-        n = self.load_fails[folder] = self.load_fails.get(folder, 0) + 1
+        n = self.load_fails[folder] = self._fails(folder) + 1
+        try:
+            self.fail_stamp[folder] = self.save_stamp(folder)
+        except Exception:  # noqa: BLE001
+            self.fail_stamp[folder] = None
         self.log(f"Revive: loading '{folder}' failed ({why}); {n} failed load(s) of it"
                  + (": it isn't tried again, the next older save is." if n >= LOAD_FAILS_MAX else "."))
 
@@ -358,6 +449,7 @@ class Reviver:
                 return
             self.loading = None
             self.load_fails.pop(folder, None)
+            self.fail_stamp.pop(folder, None)
         elif state == "down":
             self._load_failed("Dwarf Fortress closed")
         elif now - since >= LOAD_TIMEOUT_S:
@@ -407,7 +499,7 @@ class Reviver:
                 if self.loading is not None:
                     return                    # (0.105.0) the last load still has time to come up
                 folders, world = self.candidates()
-                folders = [f for f in folders if self.load_fails.get(f, 0) < LOAD_FAILS_MAX]
+                folders = [f for f in folders if self._fails(f) < LOAD_FAILS_MAX]
                 if not folders:
                     # (0.105.0) every save failed: the newest copy in backups/
                     restored = self.restore(self.log) if self.restore else None
@@ -466,7 +558,13 @@ class Reviver:
                     and os.name == "nt"):
                 self.last_kill = now
                 try:
-                    r = subprocess.run(kill_command(), capture_output=True, text=True, timeout=30)
+                    cmd = kill_command()
+                    if cmd[0] != "taskkill":
+                        # (0.105.48, K8) its process couldn't be told from the other games'
+                        self.log(f"Revive: Dwarf Fortress hasn't answered for {int(now - self.unknown_since)} s "
+                                 f"(hung?), but {cmd[-1]}.")
+                        return
+                    r = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
                     self.log(f"Revive: Dwarf Fortress hasn't answered for {int(now - self.unknown_since)} s "
                              f"(hung): closed it ({(r.stdout or r.stderr).strip()[:120]}); it's started again "
                              "once it's gone.")

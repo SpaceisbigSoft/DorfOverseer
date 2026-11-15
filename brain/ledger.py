@@ -26,6 +26,7 @@ FIELDS: dict = {
     "tools_seen_on": [], "tools_player_disabled": [], "stuck_cancelled": {}, "wishes_agreed": {},
     "last_expel_tick": None, "last_memorial_tick": None, "last_garden_tick": None, "gardens_built": [],
     "quick_locations": {},
+    "fort_run": "",        # (0.105.48, K8) the run id: a fresh embark has none (brain/fort_run.py)
 }
 DICT_MAX = 40           # newest entries kept of the dicts keyed by time
 LIST_MAX = 60
