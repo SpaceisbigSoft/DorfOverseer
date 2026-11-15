@@ -190,7 +190,7 @@
  "enxah-0.104.52-y73-winter.json:Deep mine": [
   {
    "notes": "sha256:5f8c7b456ea058dee6f17598",
-   "props": "sha256:5542a775ea8aacffdf535edc",
+   "props": "sha256:c2003a08ff3904242e2d2297",
    "rules": [
     "build",
     "hospital",
@@ -223,7 +223,7 @@
   },
   {
    "notes": "sha256:353e5270aaf493f0cb1f45ec",
-   "props": "sha256:ae5046806bdb4f465da22850",
+   "props": "sha256:280921fe783cc9148d6361d9",
    "rules": [
     "build",
     "hospital",
@@ -255,7 +255,7 @@
   },
   {
    "notes": "sha256:353e5270aaf493f0cb1f45ec",
-   "props": "sha256:5542a775ea8aacffdf535edc",
+   "props": "sha256:c2003a08ff3904242e2d2297",
    "rules": [
     "build",
     "hospital",
@@ -290,7 +290,7 @@
  "enxah-0.104.52-y73-winter.json:Garden fort": [
   {
    "notes": "sha256:1d54210acc6c22f89675941f",
-   "props": "sha256:a35168c2b3c201b4fcd86789",
+   "props": "sha256:5cb607c8e9da3e70ce4b51ce",
    "rules": [
     "build",
     "hospital",
@@ -326,7 +326,7 @@
   },
   {
    "notes": "sha256:6cd672ca69e0da191931269e",
-   "props": "sha256:e0b3600837073f9e463bb617",
+   "props": "sha256:a32f10a727d8febaa7c9b97d",
    "rules": [
     "build",
     "hospital",
@@ -361,7 +361,7 @@
   },
   {
    "notes": "sha256:6cd672ca69e0da191931269e",
-   "props": "sha256:a35168c2b3c201b4fcd86789",
+   "props": "sha256:5cb607c8e9da3e70ce4b51ce",
    "rules": [
     "build",
     "hospital",
@@ -399,7 +399,7 @@
  "enxah-0.104.52-y73-winter.json:Hermit hold": [
   {
    "notes": "sha256:d8737d8cf05b896b10570ad3",
-   "props": "sha256:38d96eae8df2708e9022a615",
+   "props": "sha256:945b8b94d1b54287bbf0a9fd",
    "rules": [
     "build",
     "hospital",
@@ -431,7 +431,7 @@
   },
   {
    "notes": "sha256:4ca9b968ae40358552cd1614",
-   "props": "sha256:9e61e3fb3cf0fb8556217479",
+   "props": "sha256:298c8247cf7984f7072d2c02",
    "rules": [
     "build",
     "hospital",
@@ -462,7 +462,7 @@
   },
   {
    "notes": "sha256:4ca9b968ae40358552cd1614",
-   "props": "sha256:38d96eae8df2708e9022a615",
+   "props": "sha256:945b8b94d1b54287bbf0a9fd",
    "rules": [
     "build",
     "hospital",
@@ -496,7 +496,7 @@
  "enxah-0.104.52-y73-winter.json:Merchant city": [
   {
    "notes": "sha256:a67e39d50a50b92f215c9892",
-   "props": "sha256:ff61e2696f42a301b088b286",
+   "props": "sha256:47110acfdb038f9fe5c761f8",
    "rules": [
     "build",
     "hospital",
@@ -531,7 +531,7 @@
   },
   {
    "notes": "sha256:d9fde94238e8465a3f6ab139",
-   "props": "sha256:34c9020751694781b935d7f8",
+   "props": "sha256:ef89dcff18ae99c107534957",
    "rules": [
     "build",
     "hospital",
@@ -565,7 +565,7 @@
   },
   {
    "notes": "sha256:d9fde94238e8465a3f6ab139",
-   "props": "sha256:ff61e2696f42a301b088b286",
+   "props": "sha256:47110acfdb038f9fe5c761f8",
    "rules": [
     "build",
     "hospital",
@@ -602,7 +602,7 @@
  "enxah-0.104.52-y73-winter.json:Monastery": [
   {
    "notes": "sha256:b3659376a5096c0fc1f0c179",
-   "props": "sha256:107ecdc09aa7073f1354a274",
+   "props": "sha256:7935b94dc0e16d4200ab4ffc",
    "rules": [
     "build",
     "hospital",
@@ -634,7 +634,7 @@
   },
   {
    "notes": "sha256:8009b418ced407d9afbc6d62",
-   "props": "sha256:598d341ea24539b12a13061d",
+   "props": "sha256:8a41b70599f6486f40e003a6",
    "rules": [
     "build",
     "hospital",
@@ -665,7 +665,7 @@
   },
   {
    "notes": "sha256:8009b418ced407d9afbc6d62",
-   "props": "sha256:107ecdc09aa7073f1354a274",
+   "props": "sha256:7935b94dc0e16d4200ab4ffc",
    "rules": [
     "build",
     "hospital",
@@ -699,7 +699,7 @@
  "enxah-0.104.52-y73-winter.json:War-hold": [
   {
    "notes": "sha256:5f8c7b456ea058dee6f17598",
-   "props": "sha256:d5110f45c53c2374d5aeae81",
+   "props": "sha256:d743adeb0cc3eca1667efe67",
    "rules": [
     "build",
     "hospital",
@@ -731,7 +731,7 @@
   },
   {
    "notes": "sha256:353e5270aaf493f0cb1f45ec",
-   "props": "sha256:9f301e7fbf57748eae486ced",
+   "props": "sha256:a667ac4269a8403f6fca29da",
    "rules": [
     "build",
     "hospital",
@@ -762,7 +762,7 @@
   },
   {
    "notes": "sha256:353e5270aaf493f0cb1f45ec",
-   "props": "sha256:d5110f45c53c2374d5aeae81",
+   "props": "sha256:d743adeb0cc3eca1667efe67",
    "rules": [
     "build",
     "hospital",
@@ -796,7 +796,7 @@
  "enxah-0.104.52-y73-winter.json:own": [
   {
    "notes": "sha256:5f8c7b456ea058dee6f17598",
-   "props": "sha256:f076f21ecc59445f1200c38d",
+   "props": "sha256:9fd4bf0b85c8c20cd33b0fbc",
    "rules": [
     "build",
     "hospital",
@@ -829,7 +829,7 @@
   },
   {
    "notes": "sha256:353e5270aaf493f0cb1f45ec",
-   "props": "sha256:a32b2d607524ee6b92fc62f8",
+   "props": "sha256:b2a7f238047e427e0b24d43a",
    "rules": [
     "build",
     "hospital",
@@ -861,7 +861,7 @@
   },
   {
    "notes": "sha256:353e5270aaf493f0cb1f45ec",
-   "props": "sha256:f076f21ecc59445f1200c38d",
+   "props": "sha256:9fd4bf0b85c8c20cd33b0fbc",
    "rules": [
     "build",
     "hospital",
