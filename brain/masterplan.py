@@ -733,10 +733,26 @@ def _plain(s: str) -> str:
     return "".join(c for c in s if c.isalnum() or c in " '-")[:40].strip() or "district"
 
 
+def _floors_note(memory, action: dict, result: dict) -> str | None:
+    """(layout option B) masterplan_floors.note_result, guarded: None on any error."""
+    try:
+        import masterplan_floors
+        return masterplan_floors.note_result(memory, action, result)
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def note_result(memory, action: dict, result: dict, state: dict) -> str | None:
     """After a start_project: which district got the level, or a miss. A
     district that keeps missing grows by GROW_BY levels when the site allows.
-    Returns a line for the chronicle when a level opened a district or it grew."""
+    Returns a line for the chronicle when a level opened a district or it grew
+    (layout option B: else the line of the level's floor, noted first)."""
+    floor_line = _floors_note(memory, action, result)
+    line = _note_district(memory, action, result, state)
+    return floor_line if line is None else line
+
+
+def _note_district(memory, action: dict, result: dict, state: dict) -> str | None:
     if not isinstance(result, dict) or result.get("ok") is not True or action.get("type") != "start_project":
         return None
     if not isinstance(action.get("plan"), dict):
@@ -862,16 +878,30 @@ def needs_redraw(memory) -> bool:
 
 def ensure(state: dict, memory, site: dict | None, traits: dict, profile: dict) -> list[str]:
     """Draw the plan once, when the survey knows the stairs (and again only
-    when the formula changed before anything was built in it). Returns lines."""
+    when the formula changed before anything was built in it). Returns lines.
+    (layout option B) And the plan's floor table (masterplan_floors.ensure):
+    a plan drawn before option B gets it here, a new plan right after it is drawn."""
+    floor_lines = _floors_ensure(memory, traits, profile)
     redraw = needs_redraw(memory)
     if (has_plan(memory) and not redraw) or not site:
-        return []
+        return floor_lines
     # (draw() changes the memory only once it has a plan: a None leaves the old one as it was)
     plan = draw(state, memory, site, traits, profile)
     if not plan:
-        return []
+        return floor_lines
+    # (the new plan's own table: a line about the plan it replaced is dropped)
+    floor_lines = _floors_ensure(memory, traits, profile)
     return [f"the master plan was {'redrawn' if redraw else 'drawn'}: {plan['pattern']} around the main stair "
-            f"at x{plan['spine']['x']} y{plan['spine']['y']}, facing {plan['axis']}, {plan['vertical']}"]
+            f"at x{plan['spine']['x']} y{plan['spine']['y']}, facing {plan['axis']}, {plan['vertical']}"] + floor_lines
+
+
+def _floors_ensure(memory, traits: dict, profile: dict | None) -> list[str]:
+    """(layout option B) masterplan_floors.ensure, guarded: [] on any error."""
+    try:
+        import masterplan_floors
+        return list(masterplan_floors.ensure(memory, traits, profile))
+    except Exception:  # noqa: BLE001
+        return []
 
 
 def camera_districts(memory) -> list[dict]:
@@ -904,6 +934,11 @@ def lines(memory, limit: int = 9) -> list[str]:
         out.append(f"{d['name']} ({WORDS.get(d['kind'], d['kind'])}): {span}, "
                    f"{'/'.join(d.get('dirs') or []) or 'by the stair'}"
                    + (f", {n_in} level{'s' if n_in != 1 else ''}" if n_in else ""))
+    try:                               # (layout option B) the floors, inside the same limit
+        import masterplan_floors
+        out.extend(masterplan_floors.lines(memory))
+    except Exception:  # noqa: BLE001
+        pass
     return out[:limit]
 
 
