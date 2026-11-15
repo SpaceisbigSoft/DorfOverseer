@@ -280,6 +280,121 @@ function parse_plan(pl)
     return out
 end
 
+-- (layout B) The overseer's hint for the hallway-first floors (the `floor`
+-- key of start_project, beside `plan`, which stays the classic search's
+-- hint). Returns hint, error: nil when none was given (the builder makes its
+-- own plain hint), false for "place this one the classic way", else a cleaned
+-- table: unknown keys dropped, a known key of a wrong type or range refused
+-- with its name. The ranges are ai-floorplan's grammar (G).
+local FLOOR_INTS = {     -- key = {lo, hi}
+    gap = {1, 4}, kind_gap = {0, 6}, lead = {0, 8}, ahead = {0, 3}, run_max = {12, 80}, run_min = {4, 30},
+    arms_max = {1, 4}, stagger = {0, 6}, tries = {4, 60}, full_retry_days = {1, 336},
+    pile_w = {3, 11}, piles_new = {0, 3},
+}
+local FLOOR_WORDS = {    -- key = {the words, in the order the error names them}
+    zone = {'near', 'mid', 'far', 'any'},
+    sides = {'both', 'one', 'alternate'},
+    turns = {'left', 'right', 'alternate', 'both'},
+}
+local FLOOR_LISTS = {    -- key = {the words, the most of them}: a list of distinct words
+    dirs = {{'north', 'south', 'east', 'west'}, 4},
+    grow = {{'arm', 'turn'}, 2},
+}
+local FLOOR_BOOLS = {'balance', 'axial', 'neck'}
+local FLOOR_NAMES = {'tag', 'group'}
+
+local function floor_has(words, v)
+    if type(v) ~= 'string' then return false end
+    for _, w in ipairs(words) do if w == v then return true end end
+    return false
+end
+
+function parse_floor(v)
+    if v == nil then return nil end
+    if v == false then return false end
+    if type(v) ~= 'table' then return nil, 'floor must be an object or false' end
+    local out = {}
+    if v.elevs ~= nil then
+        if type(v.elevs) ~= 'table' then return nil, 'floor.elevs must be a list of 1-6 whole numbers, -400 to 400' end
+        local list, n = {}, 0
+        for _ in pairs(v.elevs) do n = n + 1 end
+        for _, e in ipairs(v.elevs) do
+            -- (a number only: int_in alone would take the string '12')
+            local z = type(e) == 'number' and int_in(e, -400, 400) or nil
+            if not z then return nil, 'floor.elevs must be a list of 1-6 whole numbers, -400 to 400' end
+            table.insert(list, z)
+        end
+        if #list < 1 or #list > 6 or n ~= #list then
+            return nil, 'floor.elevs must be a list of 1-6 whole numbers, -400 to 400'
+        end
+        out.elevs = list
+    end
+    for _, k in ipairs(FLOOR_NAMES) do
+        if v[k] ~= nil then
+            if type(v[k]) ~= 'string' or not v[k]:match('^[a-z_]+$') or #v[k] > 24 then
+                return nil, ('floor.%s must be 1-24 of the letters a-z and _'):format(k)
+            end
+            out[k] = v[k]
+        end
+    end
+    if v.spine ~= nil then
+        local sp = type(v.spine) == 'table' and v.spine or {}
+        local x = type(sp.x) == 'number' and int_in(sp.x, 0, 999) or nil
+        local y = type(sp.y) == 'number' and int_in(sp.y, 0, 999) or nil
+        if not x or not y then return nil, 'floor.spine must be x and y, 0-999' end
+        out.spine = {x = x, y = y}
+    end
+    for _, k in ipairs(sorted_keys(FLOOR_LISTS)) do
+        if v[k] ~= nil then
+            local words, most = FLOOR_LISTS[k][1], FLOOR_LISTS[k][2]
+            local msg = ('floor.%s must be a list of 1-%d distinct names from %s'):format(k, most, table.concat(words, ', '))
+            if type(v[k]) ~= 'table' then return nil, msg end
+            local list, seen, n = {}, {}, 0
+            for _ in pairs(v[k]) do n = n + 1 end
+            for _, w in ipairs(v[k]) do
+                if not floor_has(words, w) or seen[w] then return nil, msg end
+                seen[w] = true
+                table.insert(list, w)
+            end
+            if #list < 1 or #list > most or n ~= #list then return nil, msg end
+            out[k] = list
+        end
+    end
+    for _, k in ipairs(sorted_keys(FLOOR_WORDS)) do
+        if v[k] ~= nil then
+            if not floor_has(FLOOR_WORDS[k], v[k]) then
+                return nil, ('floor.%s must be one of: %s'):format(k, table.concat(FLOOR_WORDS[k], ', '))
+            end
+            out[k] = v[k]
+        end
+    end
+    for _, k in ipairs(sorted_keys(FLOOR_INTS)) do
+        if v[k] ~= nil then
+            local lo, hi = FLOOR_INTS[k][1], FLOOR_INTS[k][2]
+            local n = type(v[k]) == 'number' and int_in(v[k], lo, hi) or nil
+            if not n then return nil, ('floor.%s must be a whole number, %d-%d'):format(k, lo, hi) end
+            out[k] = n
+        end
+    end
+    if v.bay ~= nil then        -- 0: no rhythm; else every 3-6 slots
+        local n = type(v.bay) == 'number' and int_in(v.bay, 0, 6) or nil
+        if not n or n == 1 or n == 2 then return nil, 'floor.bay must be 0 or 3-6' end
+        out.bay = n
+    end
+    if v.node ~= nil then
+        local n = type(v.node) == 'number' and int_in(v.node, 3, 5) or nil
+        if not n or n == 4 then return nil, 'floor.node must be 3 or 5' end
+        out.node = n
+    end
+    for _, k in ipairs(FLOOR_BOOLS) do
+        if v[k] ~= nil then
+            if type(v[k]) ~= 'boolean' then return nil, ('floor.%s must be true or false'):format(k) end
+            out[k] = v[k]
+        end
+    end
+    return out
+end
+
 function act_start_project(a)
     local layouts = reqscript('ai-layouts')
     local p = {kind = a.kind}
@@ -392,6 +507,9 @@ function act_start_project(a)
     local plan, perr = parse_plan(a.plan)
     if perr then return reject(perr) end
     p.plan = plan
+    local floor, ferr = parse_floor(a.floor)        -- (layout B) the floor hint; false: the classic placement
+    if ferr then return reject(ferr) end
+    p.floor = floor
     p.urgent = a.urgent == true or nil       -- a well's or a mood's workshop: one slot more
     -- (0.105.23, 14.1 step 4c) the Deep mine: no level above this elevation (one under the surface)
     if a.max_elev ~= nil then

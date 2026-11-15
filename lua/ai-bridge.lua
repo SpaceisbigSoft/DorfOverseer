@@ -1538,6 +1538,9 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
     -- against the map's edge groups, the surface gates shut on the way, the
     -- dangers in sight (lua/ai-way-out.lua; in the pulse too)
     way_out = function() return safe(function() return reqscript('ai-way-out').report() end) end,
+    -- (layout B) the hallway-first floors: the saved floor plans, their halls and rooms,
+    -- the fallbacks (lua/ai-builder-floors.lua; reads the saved record only, no map tile)
+    floors = function() return safe(function() return reqscript('ai-builder').floors_report() end) end,
 }
 
 -- The pulse: a small report for the frequent check between full ones.
