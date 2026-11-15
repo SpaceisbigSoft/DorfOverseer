@@ -75,6 +75,7 @@
   "list": {
    "1": {
     "can_reach_dwarves": true,
+    "crowd": 2,
     "distance": 15,
     "id": 21,
     "inside": true,
@@ -89,6 +90,7 @@
    },
    "2": {
     "can_reach_dwarves": true,
+    "crowd": 1,
     "distance": 21,
     "goal": "SeekKidnapVictim",
     "id": 27,

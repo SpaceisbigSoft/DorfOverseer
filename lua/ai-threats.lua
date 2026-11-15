@@ -116,6 +116,62 @@ function thief_kind(prof, goal)
     return THIEF_PROFS[prof or ''] or THIEF_GOALS[goal or '']
 end
 
+-- (0.105.51) A unit's thief kind ('thief', 'snatcher' or nil), by its
+-- profession and path goal (thief_kind); for the others_on_map threat rows,
+-- which the pulse carries (the threats section is in the full report only)
+function unit_thief_kind(u)
+    local prof, goal
+    pcall(function() prof = df.profession[u.profession] end)
+    pcall(function() goal = df.unit_path_goal[u.path.goal] end)
+    return thief_kind(prof, goal)
+end
+
+-- Count the points {x, y, z} within r tiles of p on its level.
+function count_near(p, points, r)
+    local n = 0
+    for _, q in ipairs(points) do
+        if q.z == p.z and math.abs(q.x - p.x) <= r and math.abs(q.y - p.y) <= r then n = n + 1 end
+    end
+    return n
+end
+
+CROWD_RADIUS = 5
+-- (0.105.51) The crowd round a thief: the people (no animal, no danger,
+-- not the thief) within CROWD_RADIUS tiles on its level, and the type of
+-- the location (tavern, temple, library, guildhall) whose zone it stands
+-- in. E (15 Nov): a thief come as a guest was attacked in the tavern three
+-- times and the fight spread to ~26 bards, dancers and poets.
+-- Returns crowd (a number), location type (a string or nil).
+function crowd_of(u, units)
+    local pts = {}
+    for _, o in ipairs(units or {}) do
+        local ok, yes = pcall(function()
+            return o.id ~= u.id and dfhack.units.isActive(o) and not dfhack.units.isDead(o)
+                and not dfhack.units.isAnimal(o) and not dfhack.units.isDanger(o)
+                and o.pos.z == u.pos.z
+        end)
+        if ok and yes then table.insert(pts, {x = o.pos.x, y = o.pos.y, z = o.pos.z}) end
+    end
+    local n = count_near({x = u.pos.x, y = u.pos.y, z = u.pos.z}, pts, CROWD_RADIUS)
+    local loc
+    pcall(function()
+        local site = dfhack.world.getCurrentSite()
+        local zs = dfhack.buildings.findCivzonesAt(xyz2pos(u.pos.x, u.pos.y, u.pos.z)) or {}
+        for _, zn in ipairs(zs) do
+            local lid = zn.location_id
+            if site and lid and lid ~= -1 then
+                for _, b in ipairs(site.buildings) do
+                    if b.id == lid then
+                        loc = df.abstract_building_type[b:getType()]
+                        return
+                    end
+                end
+            end
+        end
+    end)
+    return n, loc
+end
+
 -- The tiles round the fire points: "x,y,z" keys within r on each level, at most max.
 function fire_tiles(points, r, max)
     local seen, out = {}, {}
@@ -356,6 +412,8 @@ local function thieves_report(d, t, cit, groups, txt)
                              can_reach_dwarves = reaches(pos, groups), inside = not outside_at(pos.x, pos.y, pos.z),
                              distance = dist_to(pos, cit), pos = pos,
                              invader = is(dfhack.units.isInvader, u) or nil}
+                -- (0.105.51) the crowd round them: no squad sent into a tavern full of guests
+                pcall(function() row.crowd, row.location = crowd_of(u, report_units()) end)
                 if mil and mil.kill_target_ok then
                     local okk, yes = pcall(mil.kill_target_ok, u)
                     row.kill_ok = okk and yes or false

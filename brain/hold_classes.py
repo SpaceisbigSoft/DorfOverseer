@@ -72,7 +72,7 @@ _EXPANSION_RULES = {
 _DEFENCE_RULES = {
     "threat_alert", "alerts", "gate", "gates", "gate_guard", "gate_doors", "gate_lever", "gate_parts", "gate_jobs",
     "gate_stuck", "gate_dogs", "entrances", "cavern_openings", "cavern_scan", "seal_cavern", "destroyer_gate",
-    "intruder_guard", "traps", "cages", "near_gates", "near_gates_refresh", "fire_guard", "moon_cell",
+    "intruder_guard", "thief_watch", "traps", "cages", "near_gates", "near_gates_refresh", "fire_guard", "moon_cell",
     "squad_make", "squad_fill", "squad_trim", "squad_attack", "squad_recall", "soldier_swap", "train",
     "uniform", "uniform_adopt", "unstick_uniforms", "assign_kit", "assign_weapons", "barracks_assign", "kit",
     "arms", "arms_forge", "anvil", "bolts", "quivers", "quivers_order", "gear_fix", "gear_fix_order", "stray_gear",

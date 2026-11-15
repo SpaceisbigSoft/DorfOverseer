@@ -229,9 +229,9 @@ def _():
 def _():
     m = Memory()
     t = 200000
-    m.intrusion = {"tick": A(t - 10), "civ": -1, "invaders": 1}
+    m.intrusion = {"tick": A(t - 10), "civ": 412, "invaders": 3}     # (0.105.51) a lone sneaker sounds none
     on = alarms(plan(fort(tick=t), m)[0], True)
-    assert on and on[0].reason.startswith("DF reports an intruder"), on
+    assert on and on[0].reason.startswith("DF reports 3 intruders"), on
     m.alarm_gov = {"off": {"intruder": A(t - 100)}}
     props, notes = plan(fort(tick=t), m)
     assert not alarms(props, True) and any(n.startswith("no alarm for DF reports") for n in notes), notes

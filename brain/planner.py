@@ -47,7 +47,7 @@ from planner_guided import guided_pass  # noqa: E402  (0.105.47, D1) Guided live
 from planner_care import _doctor_post_rule, _infection_rule, _offices_refill_rule, _traction_rest_rule  # noqa: E402  (0.104.168)
 from planner_water import _waterworks_rule  # noqa: E402  (0.105.0) moat, pumps, irrigation, magma workshops
 from planner_homes import *  # noqa: E402,F401,F403  (0.104.168: homes and households)
-from planner_threats import _threat_rules, unseen_intrusion, alarm_held  # noqa: E402  (0.105.0 round 3; 0.105.36)
+from planner_threats import _threat_rules, unseen_intrusion, alarm_held, lone_sneaker  # noqa: E402  (0.105.0 round 3; 0.105.36)
 from planner_world import note_contact_sent  # noqa: E402  (0.105.48, K9)
 from planner_world import (_contact_rule, _export_rule, _hostile_trade_filter, _meeting_answer_rule,  # noqa: E402
                            _messenger_rule, _world_notes, note_world)  # (0.105.0: the world outside, 12b and 13b)
@@ -306,6 +306,16 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
                     notes.append(_no_shelter_note(s, memory, f"{len(snatch['ids'])} snatcher(s) among the dwarves"))
             elif snatch.get("keep"):
                 notes.append(snatch["keep"])
+            elif not ids and not alert_on and intrusion and lone_sneaker(intrusion):
+                # (0.105.51) R3 (15 Nov): every record was one hero of no civ
+                # (an artifact seeker); B 4, C 5, F 1 alarms kept the fort from
+                # work for one sneaker. The guard (intruder_guard) waits at the
+                # stair and the artifact; the alarm sounds once enemies are seen
+                # in reach as ever
+                notes.append(f"DF reports a lone intruder on the map "
+                             f"({max(0, (abs_tick(s) - intrusion['tick']) // 50)} game hour(s) ago), nobody seen "
+                             "yet: one sneaker of no civilisation (an artifact seeker or a thief), so no alarm; a "
+                             "squad guards the main stair and the artifact it named until it is seen")
             elif not ids and not alert_on and intrusion:
                 # (0.105.30 live fixes) E (8 Nov): DF's invasion record of a hidden
                 # thief came 2,000 ticks before she was spotted among the dwarves
@@ -321,7 +331,8 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
                                  "alarm can sound")
                 else:
                     notes.append(_no_shelter_note(s, memory, f"DF reports {what} on the map, nobody seen yet"))
-            elif not ids and alert_on and memory.ai_alert_raised and not hazard_alert(s, cfg) and intrusion:
+            elif (not ids and alert_on and memory.ai_alert_raised and not hazard_alert(s, cfg) and intrusion
+                  and not lone_sneaker(intrusion)):
                 notes.append("the alarm stays up: DF reported an intruder "
                              f"{max(0, (abs_tick(s) - intrusion['tick']) // 50)} game hour(s) ago and nobody has been "
                              f"seen yet (held {cfg.get('intrusion_alert_days', 2)} days at most)")
@@ -1780,6 +1791,12 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
             mine = [i for i in (memory.locations_closed or []) if isinstance(i, int)]
             memory.locations_closed = (sorted(set(mine) | set(ids)) if a.get("visitors") is False
                                        else [i for i in mine if i not in ids])
+            if a.get("visitors") is False and set(ids) & set(memory.locations_yours or []):
+                # (0.105.51) shut again after a theft (planner_visitors): the AI's
+                # again until you open it once more
+                memory.locations_yours = [i for i in memory.locations_yours if i not in ids]
+                memory.locations_yours_at = {k: t for k, t in _d(memory.locations_yours_at).items()
+                                             if k not in {str(i) for i in ids}}
             # (0.105.26) when the AI acted (a report older than this reads stale), and the
             # mayor's rest (or the reopen's mark) the action carried: kept only now it went through
             memory.locations_acted = dict(memory.locations_acted or {}, **{str(i): now for i in ids})

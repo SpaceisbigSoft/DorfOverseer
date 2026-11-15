@@ -29,10 +29,10 @@ from __future__ import annotations
 
 from digest import _d, _l
 from planner_core import (AGENDA_THEMES, LIMIT_EXEMPT, PLANNER_CONFIG, Proposal, STEER_PROTECTED, TICKS_PER_DAY, abs_tick, ask_player,
-                          can_fight, player_rules, reachable_threats, _traits)
+                          can_fight, crowded_thief, player_rules, reachable_threats, thief_rows, _traits)
 
 __all__ = ["_threat_rules", "threat_alert", "alarm_held", "threat_rules_of", "moon_due", "PRISONER_CHOICES", "THREAT_CONFIG",
-           "note_intrusions", "unseen_intrusion"]
+           "note_intrusions", "unseen_intrusion", "lone_sneaker", "watch_spots", "thief_watchers"]
 
 PRISONER_CHOICES = ("keep", "release", "kill")
 
@@ -44,6 +44,7 @@ THREAT_CONFIG = {
     "fire_guard_jobs": 40,                   # jobs beside the fire taken off at most each time
     "prisoner_room_cooldown_ticks": 7 * 1200,
     "thief_traps": 3,                        # cage traps at a gate once thieves or snatchers were seen
+    "thief_crowd_min": 3,                    # (0.105.51) people within a few tiles of a thief: no squad sent in
     "undead_near": 30,                       # the walking dead this close to a dwarf: the alarm
     "evil_cloud_near": 40,                   # an evil cloud this close to a dwarf out on the surface
     "surface_danger_near": 40,               # a great danger this close to a dwarf out there
@@ -113,6 +114,19 @@ def unseen_intrusion(s: dict, memory, cfg: dict):
     if not isinstance(now, int) or days <= 0 or not 0 <= now - rec["tick"] < days * TICKS_PER_DAY:
         return None
     return rec
+
+
+def lone_sneaker(rec) -> bool:
+    """(0.105.51) Is DF's invasion record a lone sneaker: one invader (or
+    none counted) of no civilisation (civ_id -1)? Those are artifact seekers
+    and lone thieves: the R3 run (15 Nov) had 17 such records in six forts
+    and no other kind; each raised the full alarm (B 4, C 5, F 1) for one
+    hero the intruder guard (planner_holdfast) meets at the stair and the
+    artifact. A siege's record names its civilisation."""
+    if not isinstance(rec, dict):
+        return False
+    civ, n = rec.get("civ"), rec.get("invaders")
+    return civ in (None, -1) and (n is None or (isinstance(n, int) and n <= 1))
 
 
 def threat_rules_of(s: dict) -> dict:
@@ -223,12 +237,83 @@ def _prisoners(s, cfg, t, rules, proposals, notes):
                      "they stay caged in the cage room meanwhile")
 
 
+def watch_spots(s: dict, memory) -> list:
+    """(0.105.51) Where a squad waits for a thief in a crowd: the artifact the
+    last thief named, then the main stair (planner_holdfast's guard spots):
+    [(what, {x, y, z})]."""
+    from planner_holdfast import _stair_spot, named_artifact
+    out = []
+    art = named_artifact(s, memory) if memory is not None else None
+    if art:
+        out.append((f"artifact {str(art.get('name'))[:40]} the thief named",
+                    {"x": art["x"], "y": art["y"], "z": art["z"]}))
+    st = _stair_spot(s, memory)
+    if st:
+        out.append(("main stair", st))
+    return out
+
+
+def thief_watchers(s: dict, memory) -> list:
+    """(0.105.51) The squads the thieves rule posted to wait for a thief in a
+    crowd: on the AI's orders, stationed on a watch spot, not the player's
+    and not the intruder guard's (planner_holdfast keeps those)."""
+    from planner_holdfast import _hf
+    spots = [at for _, at in watch_spots(s, memory)]
+    guards = {str(k) for k in _d(_hf(memory).get("guards"))} if memory is not None else set()
+    return [q for q in _l(_d(s.get("military")).get("squads")) if isinstance(q, dict) and q.get("ai_orders")
+            and q.get("stationed") and str(q.get("id")) not in guards and not q.get("kill_ids")
+            and {c: _d(q.get("stationed")).get(c) for c in ("x", "y", "z")} in spots]
+
+
+def _crowded_thieves(s, cfg, memory, crowded, on_it, proposals, notes) -> None:
+    """(0.105.51) A thief among a crowd (crowded_thief): no squad sent into
+    it. E (15 Nov): a thief come as a guest was attacked in the tavern three
+    times and each fight drew in the bards, dancers and poets (~26 visitors).
+    One squad waits at the artifact the thief named (else the main stair);
+    the squads go once the thief leaves the crowd. A squad already after
+    the thief is left on them."""
+    names = ", ".join(f"{x.get('name')} ({x.get('kind')}, {x.get('crowd')} people round them"
+                      + (f" in the {str(x.get('location')).lower().replace('inn_', '')}" if x.get("location") else "")
+                      + ")" for x in crowded[:3])
+    if on_it:
+        notes.append(f"{names}: {on_it[0].get('name') or 'a squad'} is already after them")
+        return
+    watch = thief_watchers(s, memory)
+    if watch:
+        notes.append(f"{names}: no squad sent into the crowd; {watch[0].get('name') or 'a squad'} waits for them "
+                     "and the squads go once they leave it")
+        return
+    spots = watch_spots(s, memory)
+    from planner_holdfast import _players
+    busy = {p.action.get("squad_id") for p in proposals if isinstance(p.action, dict)}
+    free = [q for q in _able_squads(s, cfg) if q.get("id") not in busy and not _players(q)]
+    if not spots or not free:
+        notes.append(f"{names}: no squad sent into the crowd; the squads go once they leave it"
+                     + ("" if free else " (no free squad to post meanwhile)"))
+        return
+    what, at = spots[0]
+    q = free[0]
+    proposals.append(Proposal("thief_watch", {"type": "squad_station", "squad_id": q["id"], **at, "what": what},
+                              f"{names}: no squad sent into the crowd (a fight there draws in the guests); "
+                              f"{q.get('name') or 'a squad'} waits on the {what} at x{at['x']} y{at['y']} "
+                              f"z{at['z']} until they leave it", 0))
+
+
 def _thieves(s, cfg, t, memory, proposals, notes):
     th = _d(t.get("thieves"))
-    rows = [x for x in _l(th.get("list")) if isinstance(x, dict) and x.get("id") is not None]
+    # (0.105.51) the pulse's others_on_map thieves merged in (thief_rows)
+    rows = [x for x in thief_rows(s, t) if isinstance(x, dict) and x.get("id") is not None]
     inside = [x for x in rows if x.get("inside") or x.get("can_reach_dwarves") is True]
+    crowded = [x for x in inside if crowded_thief(x, cfg)]
+    if crowded:
+        hit_c = {x["id"] for x in crowded}
+        on_c = [q for q in _l(_d(s.get("military")).get("squads")) if isinstance(q, dict) and q.get("ai_orders")
+                and set(_l(q.get("kill_ids"))) & hit_c]
+        _crowded_thieves(s, cfg, memory, crowded, on_c, proposals, notes)
+        inside = [x for x in inside if x not in crowded]
     if inside:
-        able = _able_squads(s, cfg)
+        # (0.105.51) a squad waiting for a thief in a crowd goes first, once one is out of it
+        able = thief_watchers(s, memory) + _able_squads(s, cfg)
         names = ", ".join(f"{x.get('name')} ({x.get('kind')})" for x in inside[:3])
         hit = [x["id"] for x in inside if x.get("kill_ok") is not False]
         # (0.105.3) B (2 Nov): all four squads went at one thief, one after
