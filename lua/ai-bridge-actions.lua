@@ -544,7 +544,8 @@ end
 function act_finish_project(a)
     local id = project_id(a)
     if not id then return reject('project_id must be a whole number') end
-    return reqscript('ai-builder').finish_project(id, a.decor_only == true, a.stalled == true)
+    return reqscript('ai-builder').finish_project(id, a.decor_only == true, a.stalled == true,
+                                                 a.give_up == true)   -- (0.105.51)
 end
 
 -- The fort's culture, written by the overseer so the panel's Culture page can

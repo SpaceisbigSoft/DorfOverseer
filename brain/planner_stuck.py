@@ -178,7 +178,7 @@ def _owner_steps(proposals: list, r: dict) -> bool:
     return False
 
 
-def _remedies(r: dict, proj: dict | None, order: dict | None, days: int):
+def _remedies(r: dict, proj: dict | None, order: dict | None, days: int, cfg: dict | None = None):
     """(nudge, retire, words): the actions (None where there is none) and what the thing is."""
     k, id_, st = r["kind"], r.get("id"), r.get("state")
     if k == "project":
@@ -203,7 +203,15 @@ def _remedies(r: dict, proj: dict | None, order: dict | None, days: int):
             fur = _d(proj.get("furnish"))
             what = (f"the {r.get('what')} level (project {id_}: {fur.get('done')} of {fur.get('placed')} "
                     "pieces built)")
-            return None, {"type": "finish_project", "project_id": id_, "stalled": True}, what
+            retire = {"type": "finish_project", "project_id": id_, "stalled": True}
+            # (0.105.51) only workshops wait (their piece never made): the
+            # bridge refuses a plain finish ("1 buildings still waiting");
+            # give_up takes them off (as the building rule does, at its age)
+            fw = {k for k, v in _d(fur.get("waiting")).items() if _int(v, 0) > 0}
+            if (fw and fw <= {"Workshop", "Furnace"}
+                    and _int(fur.get("days"), 0) >= int((cfg or {}).get("shop_piece_wait_days", 168))):
+                retire["give_up"] = True
+            return None, retire, what
         return None, None, what
     if k == "cistern":
         return ({"type": "cistern_step"},
@@ -341,7 +349,7 @@ def _stuck_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> Non
         if why_not:
             continue
         past[r["kind"]] = past.get(r["kind"], 0) + 1
-        nudge, retire, what = _remedies(r, proj, order, still)
+        nudge, retire, what = _remedies(r, proj, order, still, cfg)
         head = f"stuck: {what} hasn't moved in {still} days"
         owner = _taken(proposals, r) or _gate_rules_lately(memory, r, now, cfg)
         if owner:

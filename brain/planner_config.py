@@ -42,6 +42,8 @@ PLANNER_CONFIG = {
     "glass_sand_bags": 3,          # bags of sand kept filled
     "precious_crafts_bars": 10,    # bars of a precious metal kept back before crafts are made of it
     "min_boulders_for_blocks": 100,
+    "idle_crafts_per_dwarf": 4,        # (0.105.51) blocks at the cap: idle hands make rock crafts while fewer goods a dwarf than this
+    "idle_furniture_stock": 20,        # (0.105.51) ...else stone doors, cabinets, tables, chairs up to this many free of each
     "blocks_cap": 500,                 # (0.104.110) idle hands never make blocks past this many
     "alert_quiet_cycles": 3,       # quiet cycles before the AI lowers its own alert
     # (0.104.100) ...and game days since a threat last could reach the dwarves, and
@@ -264,6 +266,7 @@ PLANNER_CONFIG = {
     "shop_backlog": 15,                # the AI's jobs waiting per workshop of a kind before another is built...
     "shops_max_each": 3,               # ...up to this many of a kind
     "bottleneck_cooldown_ticks": 14 * 1200,
+    "drink_containers_low": 5,         # (0.105.51) fewer empty barrels/pots than this while drink is short: a second Carpenters' is urgent
     # (0.104.157) shoes for the barefoot and cups to drink from (the stress census)
     "barefoot_share": 0.05,            # this share of the citizens barefoot (or 3): shoes made
     "shoes_batch": 30,                 # pairs an order at most
@@ -684,6 +687,7 @@ PLANNER_CONFIG = {
     "furnish_stalled_days": 30,        # (0.104.141) a level furnished but for buildings never finished this long: its slot freed
     "convict_on": False,               # (0.104.147) the AI convicts solved cases (off: the guard's beatings killed patients)
     "jail_convicts_wait": 10,          # (0.104.141) solved cases waiting: the jail grows by them (to twice the restraints wanted)
+    "shop_piece_wait_days": 168,       # (0.105.51) a workshops level waiting only for workshops' pieces (a millstone...) this long is given up
     "statue_wait_days": 56,            # (0.104.12) a level waiting only for statues (no stone) this long is finished
     "statue_wait_days_any": 112,         # (0.104.33) a level finished without its statues after this long, stone or not
     "stuck_project_days": 21,          # (0.100.1) a level whose digging stopped is given up after this

@@ -200,6 +200,10 @@ ORDER_RECIPES = {
     stone_coffin = {job = 'ConstructCoffin', kind = 'stone'},
     stone_statue = {job = 'ConstructStatue', kind = 'stone'},
     stone_slab = {job = 'ConstructSlab', kind = 'stone'},
+    -- (0.105.51) the piece a Quern or a Millstone workshop is built from, at
+    -- the mason's (df.job_type ConstructQuern / ConstructMillstone, rock)
+    stone_quern = {job = 'ConstructQuern', kind = 'stone'},
+    stone_millstone = {job = 'ConstructMillstone', kind = 'stone'},
     stone_armor_stand = {job = 'ConstructArmorStand', kind = 'stone'},
     stone_weapon_rack = {job = 'ConstructWeaponRack', kind = 'stone'},
     -- furniture in metal, at the forge (silver, gold and other metals the
