@@ -333,6 +333,8 @@ function commit(store, floor, placement, pid, tick)
         if run then
             before = is_num(r.len_before) and r.len_before or (run.len or 0)
             if is_num(r.len) and r.len > (run.len or 0) then run.len = r.len end
+            -- (B16) a released run (its project cancelled) that a new placement uses is open again
+            if run.closed == 'released' and r.closed ~= 'released' then run.closed = r.closed end
         else
             run = {}
             for _, k in ipairs(RUN_KEYS) do run[k] = r[k] end
