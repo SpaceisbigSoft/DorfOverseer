@@ -616,7 +616,7 @@ PARTS = {'sites', 'projects', 'farms', 'wells', 'cistern', 'surface', 'rooms', '
          'court',       -- (0.105.47) the Garden fort's garden court above ground
          'floorstore',      -- (layout B) the floors' saved record and report
          'floorpiles',      -- (layout B) a floor workshop's piles, given and linked
-         'floors'}          -- (layout B) hallway-first floors: the site on a floor
+         'floors'}      -- (layout B) hallway-first floors: the site on a floor
 -- (0.105.26) each part marks the version it came with (the bridge's
 -- `version` lists one that differs from BRIDGE_VERSION); started afresh at
 -- each load, so a part that failed to load shows as unmarked

@@ -1,0 +1,162 @@
+{
+ "floors": {
+  "149": {
+   "arms": {
+    "east": 10,
+    "south": 32
+   },
+   "fixture_free": {
+    "east": 59,
+    "north": 59,
+    "south": 59,
+    "west": 59
+   },
+   "rooms": 6
+  },
+  "150": {
+   "arms": {
+    "east": 8
+   },
+   "fixture_free": {
+    "east": 59,
+    "north": 59,
+    "south": 59,
+    "west": 59
+   },
+   "rooms": 2
+  },
+  "151": {
+   "arms": {
+    "east": 14
+   },
+   "fixture_free": {
+    "east": 59,
+    "north": 59,
+    "south": 59,
+    "west": 59
+   },
+   "rooms": 2
+  },
+  "152": {
+   "arms": {
+    "east": 14
+   },
+   "fixture_free": {
+    "east": 59,
+    "north": 0,
+    "south": 0,
+    "west": 0
+   },
+   "rooms": 1
+  },
+  "158": "no hall",
+  "159": "no hall",
+  "160": "no hall",
+  "162": {
+   "arms": {
+    "east": 33,
+    "south": 10
+   },
+   "fixture_free": {
+    "east": 59,
+    "north": 59,
+    "south": 11,
+    "west": 11
+   },
+   "rooms": 14
+  },
+  "163": "not tried"
+ },
+ "levels": [
+  {
+   "floor": [
+    1,
+    "east"
+   ],
+   "kind": "bedrooms",
+   "not_on_floor": null,
+   "z": 149
+  },
+  {
+   "floor": [
+    2,
+    "east"
+   ],
+   "kind": "storage",
+   "not_on_floor": null,
+   "z": 150
+  },
+  {
+   "floor": [
+    3,
+    "east"
+   ],
+   "kind": "workshops",
+   "not_on_floor": null,
+   "z": 151
+  },
+  {
+   "floor": [
+    4,
+    "east"
+   ],
+   "kind": "dining",
+   "not_on_floor": null,
+   "z": 152
+  },
+  {
+   "floor": [
+    5,
+    "east"
+   ],
+   "kind": "bedrooms",
+   "not_on_floor": null,
+   "z": 162
+  },
+  {
+   "floor": [
+    5,
+    "south"
+   ],
+   "kind": "jail",
+   "not_on_floor": null,
+   "z": 162
+  },
+  {
+   "floor": [
+    5,
+    "east"
+   ],
+   "kind": "temple",
+   "not_on_floor": null,
+   "z": 162
+  },
+  {
+   "floor": [
+    5,
+    "east"
+   ],
+   "kind": "bedrooms",
+   "not_on_floor": null,
+   "z": 162
+  },
+  {
+   "floor": [
+    1,
+    "south"
+   ],
+   "kind": "library",
+   "not_on_floor": null,
+   "z": 149
+  },
+  {
+   "floor": [
+    1,
+    "south"
+   ],
+   "kind": "storage",
+   "not_on_floor": null,
+   "z": 149
+  }
+ ]
+}
