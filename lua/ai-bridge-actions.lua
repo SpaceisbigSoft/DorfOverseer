@@ -52,7 +52,15 @@ function act_allow_burial(a)
     local okp, data = pcall(function() return reqscript('ai-builder').load_projects() end)
     local areas = {}
     for _, p in ipairs(okp and data and data.list or {}) do
-        if p.kind == 'tombs' and type(p.area) == 'table' then table.insert(areas, p.area) end
+        if p.kind == 'tombs' and type(p.area) == 'table' then
+            -- (F4, S2) a floor tomb level: its own rooms only (ar.own), never a neighbour's in its box
+            local oko, own = pcall(function() return reqscript('ai-builder').own_areas(p) end)
+            if oko and type(own) == 'table' then
+                for _, ar in ipairs(own) do table.insert(areas, ar) end
+            else
+                table.insert(areas, p.area)
+            end
+        end
     end
     -- (0.105.47) and the coffins the AI put on its other levels (lua/ai-welfare.lua)
     pcall(function()
@@ -64,7 +72,8 @@ function act_allow_burial(a)
         if z:getType() == df.building_type.Civzone and z.type == df.civzone_type.Tomb then
             local mine = false
             for _, ar in ipairs(areas) do
-                if z.z == ar.z and z.x1 >= ar.x1 and z.x2 <= ar.x2 and z.y1 >= ar.y1 and z.y2 <= ar.y2 then mine = true end
+                if z.z == ar.z and z.x1 >= ar.x1 and z.x2 <= ar.x2 and z.y1 >= ar.y1 and z.y2 <= ar.y2
+                        and (type(ar.own) ~= 'function' or ar.own(z)) then mine = true end
             end
             local okf, off = pcall(function() return z.zone_settings.tomb.flags.no_citizens end)
             local oko, owner = pcall(function() return z.assigned_unit_id end)

@@ -32,6 +32,13 @@ FLOOR_TAGS = {bedrooms = 'homes', suites = 'homes', dining = 'homes', tavern = '
               jail = 'defence', barracks = 'defence', archery = 'defence',
               storage = 'storage', workshops = 'industry'}
 FLOOR_WHY_MAX = 300          -- the reasons a level did not go onto a floor, in characters
+-- (F4, S4) a floor that answered "refused: ..." for a request is not searched again for the same
+-- request (kind, tag, units, floor and its record's size) for this many days: the reason is given
+-- again and the next floor (or the classic search) is tried, as before. In memory only, never saved;
+-- forgotten when the clock goes back or the projects record is another fort's (next_id below the top seen).
+FLOOR_REFUSED_DAYS = 3
+FLOOR_REFUSED_MAX = 200      -- notes kept at most (all dropped past it)
+FLOOR_REFUSED = FLOOR_REFUSED or {notes = {}, n = 0, top = 0}
 
 local has, add = has, add
 
@@ -627,6 +634,18 @@ local function floor_search(params, stairs, reserved, data, ceil_z)
     local retry = (tonumber(G.full_retry_days) or 28) * 1200
     local now = now_tick()
     local seen = {}
+    -- (F4, S4) the notes of floors that refused lately
+    local R = type(FLOOR_REFUSED) == 'table' and FLOOR_REFUSED or {}
+    FLOOR_REFUSED = R
+    if type(R.notes) ~= 'table' then R.notes, R.n, R.top = {}, 0, 0 end
+    local next_id = math.tointeger(type(c.data) == 'table' and c.data.next_id) or 0
+    if next_id < (R.top or 0) or (R.n or 0) > FLOOR_REFUSED_MAX then R.notes, R.n, R.top = {}, 0, 0 end
+    R.top = math.max(R.top or 0, next_id)
+    local function refused_key(floor, stair, z)
+        return table.concat({tostring(kind), tostring(hint.tag), #units, stair.x, stair.y, z,
+                             tostring(floor.id), #(type(floor.slots) == 'table' and floor.slots or {}),
+                             #(type(floor.runs) == 'table' and floor.runs or {})}, '|')
+    end
     for _, stair in ipairs(floor_stairs(stairs, hint, plan)) do
         for _, lv in ipairs(floor_levels(stair, hint, c.band, ceil_z)) do
             if os.clock() > c.deadline then late = true break end
@@ -649,8 +668,17 @@ local function floor_search(params, stairs, reserved, data, ceil_z)
                         break
                     end
                 end
+                local rkey = refused_key(floor, stair, z)
+                local note = R.notes[rkey]
+                if type(note) == 'table' and not (now > note.tick and now - note.tick < FLOOR_REFUSED_DAYS * 1200) then
+                    R.notes[rkey], note = nil, nil
+                end
                 if skip then
                     table.insert(notes, label .. ': ' .. skip)
+                elseif note then
+                    -- (F4, S4) refused lately: its answer again, counted as a floor tried (as the search was)
+                    c.looked, c.tried = c.looked + 1, c.tried + 1
+                    table.insert(notes, label .. ': ' .. note.why)
                 else
                     local tried0 = c.tried
                     local ok, site, L2, mark, free = pcall(on_floor, c, stair, z, lv.extend, floor, is_new)
@@ -664,6 +692,9 @@ local function floor_search(params, stairs, reserved, data, ceil_z)
                         table.insert(notes, label .. ': ' .. tostring(L2))
                         if mark then
                             table.insert(c.marks, {z = z, sx = stair.x, sy = stair.y, tag = mark, free = free})
+                        elseif tostring(L2):sub(1, 8) == 'refused:' then
+                            if R.notes[rkey] == nil then R.n = (R.n or 0) + 1 end
+                            R.notes[rkey] = {tick = now, why = tostring(L2)}
                         end
                     end
                 end

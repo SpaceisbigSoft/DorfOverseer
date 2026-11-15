@@ -266,7 +266,10 @@ function corner_spots(n)
     local levels = {}
     for _, p in ipairs(okp and data and data.list or {}) do
         if type(p) == 'table' and p.phase == 'done' and not CORNER_NEVER[p.kind or ''] then
-            for _, a in ipairs(B.project_areas and B.project_areas(p) or {p.area}) do
+            -- (F4, S2) a floor level: its own rooms only (B.own_areas), never the main hall or a
+            -- neighbour's room inside its box
+            local areas = B.own_areas and B.own_areas(p) or (B.project_areas and B.project_areas(p)) or {p.area}
+            for _, a in ipairs(areas) do
                 if type(a) == 'table' and a.x1 then
                     table.insert(levels, {area = a, kind = p.kind, rank = CORNER_KINDS[p.kind or ''] or 6})
                 end
@@ -282,7 +285,10 @@ function corner_spots(n)
     for _, lv in ipairs(levels) do
         if #picked >= n then break end
         local a = lv.area
-        local area = {x1 = a.x1, y1 = a.y1, x2 = a.x2, y2 = a.y2, z = a.z, has = function() return true end}
+        local own = a.own
+        local area = {x1 = a.x1, y1 = a.y1, x2 = a.x2, y2 = a.y2, z = a.z,
+                      has = own and function(x, y) return own({x1 = x, y1 = y, x2 = x, y2 = y}) end
+                          or function() return true end}
         local okz, spots = pcall(B.zone_spots, area)
         for _, sp in ipairs(okz and spots or {}) do
             if #picked >= n then break end
@@ -352,7 +358,9 @@ function open_tombs(areas, dry_run)
             pcall(function()
                 local mine = false
                 for _, ar in ipairs(areas) do
-                    if z.z == ar.z and z.x1 >= ar.x1 and z.x2 <= ar.x2 and z.y1 >= ar.y1 and z.y2 <= ar.y2 then mine = true end
+                    -- (F4, S2) ar.own: a floor level's own rooms (ai-builder own_areas)
+                    if z.z == ar.z and z.x1 >= ar.x1 and z.x2 <= ar.x2 and z.y1 >= ar.y1 and z.y2 <= ar.y2
+                            and (type(ar.own) ~= 'function' or ar.own(z)) then mine = true end
                 end
                 local owner = -1
                 pcall(function() owner = z.assigned_unit_id end)

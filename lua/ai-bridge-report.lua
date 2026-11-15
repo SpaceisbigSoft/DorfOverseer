@@ -1753,8 +1753,15 @@ function in_ai_tombs(x, y, z)
     if not AI_TOMBS then
         AI_TOMBS = {}
         pcall(function()
-            for _, p in ipairs(reqscript('ai-builder').load_projects().list) do
-                if p.kind == 'tombs' and type(p.area) == 'table' then table.insert(AI_TOMBS, p.area) end
+            local B = reqscript('ai-builder')
+            for _, p in ipairs(B.load_projects().list) do
+                if p.kind == 'tombs' and type(p.area) == 'table' then
+                    -- (F4, S2) a floor tomb level: its own rooms only (a.own)
+                    local oko, own = pcall(function() return B.own_areas(p) end)
+                    for _, a in ipairs(oko and type(own) == 'table' and own or {p.area}) do
+                        table.insert(AI_TOMBS, a)
+                    end
+                end
             end
         end)
         -- (0.105.47) and the coffins the AI put on its other levels (lua/ai-welfare.lua)
@@ -1763,7 +1770,8 @@ function in_ai_tombs(x, y, z)
         end)
     end
     for _, a in ipairs(AI_TOMBS) do
-        if z == a.z and x >= a.x1 and x <= a.x2 and y >= a.y1 and y <= a.y2 then return true end
+        if z == a.z and x >= a.x1 and x <= a.x2 and y >= a.y1 and y <= a.y2
+                and (type(a.own) ~= 'function' or a.own({x1 = x, y1 = y, x2 = x, y2 = y})) then return true end
     end
     return false
 end
