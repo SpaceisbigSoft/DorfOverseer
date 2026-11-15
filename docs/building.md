@@ -17,6 +17,11 @@ and does the work in phases with DFHack's Quickfort.
 
 ## Where a new level goes
 
+**This is the classic placement.** Since hallway-first floors (the next
+section) it is used when the Rules tab's cycle "New levels" (`floor_layout`)
+says classic, for the kinds of level that never go on a floor, and as the
+fallback when no floor can take a level. Nothing in it has changed.
+
 1. **Find the staircases:** the stair columns with the most stair tiles on the
    levels where your dwarves live. The 5 most used are tried, most used first.
 2. **For each staircase, try levels it already passes through**, nearest your
@@ -70,6 +75,264 @@ refused where it would touch a room past its door.
 This reads the real map, including hidden tiles, so the AI won't dig into an
 aquifer or a cavern you haven't discovered yet. Quickfort itself does not check
 for these.
+
+## Hallway-first floors (layout option B)
+
+From this version a new level is no longer a block of its own somewhere near
+a stair. On each **floor** (one z-level of the fort) a **3-wide main hall**
+runs out from the central stair; the new level is cut into its rooms (or its
+one hall) and each goes into the next free place along that main hall,
+opening onto it. The level that needs more hall digs it. This is the default,
+for new and running forts alike. The Rules tab's cycle "New levels" (settings
+key `floor_layout`, `hallway` or `classic`; see [controls.md](controls.md))
+switches it off: at `classic` every level is placed as "Where a new level
+goes" describes, exactly as in 0.105.54.
+
+The AI still sends only *what* to build, one `start_project` as before, never
+coordinates. The planner adds a hint (`floor`): which floors to try, the
+district, and the numbers the sliders give (the table below). The bridge
+finds the place, checks every tile and digs.
+
+The words:
+
+| Word | Meaning |
+| --- | --- |
+| level | one project, as before (bedrooms, workshops, a dining hall...) |
+| floor | one z-level of the fort with its main hall |
+| run | one straight stretch of main hall |
+| slot | one room's (or one block's) place on one side of a run |
+| unit | one room, or one hall block, cut out of a level's layout |
+
+### The hall
+
+- **From the stair.** The central stair is the master plan's main stair (or
+  the district's own stairwell when it has one), else the most used stair;
+  three stairs at most are tried. Round the stair tile is a 3x3 hub: dug with
+  the first project on that floor when it is rock, or found already open. A
+  second stairwell has floors and halls of its own.
+- **Direction.** Before anything is placed the floor is measured: from the
+  hub, how many hall columns each way are untouched rock (or the fort's own
+  open floor) and clear of every standing level. A hall is begun only in a
+  direction with at least 10 free columns. Among those, the district's newest
+  wing comes first, then the district's own directions from the master plan,
+  then the others, the longest free run first.
+- **3 wide, always.** A fortified fort (Fortification 70+) starts each hall at
+  the stair with a neck 1 wide and 1 long, with a door, as its corridors have
+  today.
+- **It is lengthened** when a slot needs more hall: the project that owns the
+  slot digs the missing columns (and one more, so the last room is not at a
+  dead end; none for an urgent level or a tight fort), up to the longest
+  straight run the sliders allow.
+- **It turns** when the run is at that length, or the next columns cannot be
+  dug: a new run leaves the old one's end at a right angle. Grid forts
+  alternate left and right, ring forts always turn the same way and so spiral
+  round the stair, branching forts fork both ways. A grand fort digs a 5x5
+  square at the turn, statues on its corners.
+- **More arms.** A second, third or fourth hall leaves the stair's hub in the
+  next direction: 1 hall for a deep fort, 2 for a balanced one, up to 4 for a
+  wide one.
+- **It ends** at its last room, or at a grand hall that closes it (a great
+  hall or grand temple on the hall's axis, when Grandeur allows).
+- **Old corridors.** A hall tile that is already the fort's own open floor
+  (dry, walkable from the stair, no room, building or zone on it) is kept as
+  it is and counts as hall. So the hall takes over an old storage or workshops
+  level's 3-wide corridor as its first stretch and goes on from its end. A
+  2-wide old corridor with rooms on it is never widened: that direction is
+  simply not used.
+
+There is no separate project for the hall and no action that digs one. The
+hall's tiles belong to the level that needed them; they are listed first and
+carry a higher dig priority than the rooms (3 against 4; 1 against 2 for an
+urgent level), so the miners open the hall first.
+
+### Slots
+
+A slot is as wide and as deep as the unit put in it. Between the hall and the
+room is one row of rock, the wall row, which holds only the room's door or
+opening. Rooms sit on both sides of the hall, facing each other, with at
+least one tile of rock between two rooms on the same side. A room never
+touches anything open but its own hall.
+
+A worked example. The stair `S` is at x = 0, y = 0 and one hall runs east.
+First `bedrooms` with 4 rooms of 3x3: two north and two south, their doors on
+the wall rows, the hall dug to column 11. Then `workshops` with a Masons'
+shop: its stone pile room and the shop, kept together on the north side, each
+with a 3-wide opening; the hall is lengthened to column 24. The second
+project digs only the 39 new hall tiles and its two rooms; nothing of the
+first is touched.
+
+```
+      x=321012345678901234567890123456
+y= -7   ################sssss#.....###
+y= -6   ################sssss#.WWW.###
+y= -5   #######f.b#f.b##sssss#.WWW.###      # rock      . dug floor     S the central stair
+y= -4   #######h..#h..##sssss#.WWW.###      D door      + opening (3 wide)
+y= -3   #######...#...##sssss#.....###      b bed  f cabinet  h chest
+y= -2   ########D###D####+++###+++####      s the Masons' stone pile     W the Masons' shop
+y= -1   ##..........................##
+y=  0   ##.S........................##   <- the 3-wide main hall, columns x = 2 .. 24
+y=  1   ##..........................##
+y=  2   ########D###D#################
+y=  3   #######...#...################
+y=  4   #######h..#h..################
+y=  5   #######f.b#f.b################
+```
+
+### How each kind of level sits on a floor
+
+| Kind | On a floor as | Notes |
+| --- | --- | --- |
+| bedrooms | a row of rooms, one slot each, both sides | doors on the hall's wall row; a dormitory is one block |
+| suites | a row of rooms (bedroom and office pairs) | near the stair |
+| jail | a row of cells | at the far end |
+| storage | a row of stockpile rooms, 3-wide openings | near the stair, for the hauling |
+| workshops | a row: pile room(s), then the 5x5 shop rooms, kept together, 3-wide openings | by industry group; see below |
+| dining, tavern, temple, library, garden | one block, opening 3 wide (1 wide with a door when the fort doors its levels) | a grand one may close the hall's end |
+| memorial, hospital, barracks, archery, tombs | one block, 1-wide entry | a hospital is never within 6 tiles of the stair |
+
+A block hangs off the main hall at a right angle and is entered where the
+kind's own layout has its entry. It is today's layout with the hub cut off,
+so every hall shape, motif, cloister and armoury alcove works unchanged.
+
+**These kinds stay classic**, placed by "Where a new level goes" or their own
+modules, unchanged:
+
+- farms (they follow the soil);
+- landmark levels and multi-storey openings (a floor treats their boxes as
+  taken);
+- wells, the cistern, galleries, ways in, stairwells, the cavern crossing and
+  the deep depot;
+- the surface works: the keep, surface hall, gate wings, gatehouse, garden
+  court and pastures;
+- levels sent to the fields (the customs `field_hall` and `field_kitchens`)
+  and any level a rule keeps in its own place.
+
+### Workshops with their pile rooms
+
+A workshops request becomes one block along the hall:
+
+- **A pile room for each material its shops use**, right beside the shops,
+  unless that industry's stretch of hall already has one: stone for the
+  mason, crafts and smelter, wood for the carpenter, bowyer and wood furnace,
+  bars for the forge, food for the kitchen and still, and cloth, thread and
+  leather.
+- **Then an output pile**, if the budget allows (1 pile room a request, 2
+  with high Reserves): furniture after the mason and carpenter, bars after
+  the smelter, goods after the craftsdwarf and clothier, food after the
+  kitchen and still.
+- **By industry group.** Shops of one group (smithing, crafts, food, cloth,
+  soap) go next to that group's last slot on the floor, so each grows as its
+  own stretch of hall.
+- **Linked at once.** When the project finishes, each pile is booked as its
+  shop's feeder. For the shops that take one material (mason, carpenter, wood
+  furnace, leatherworks, loom, clothier) the pile is linked to the shop, if
+  the Rules switch `link_feeders` allows. The planner still unlinks a shop
+  whose linked pile stands empty while work waits.
+- The pile is within 4 tiles of its shop, so the old "place a feeder pile"
+  rule sees it and asks for no second one.
+- **A free room in a standing workshops level is still used first** (nothing
+  is dug); only growth goes to the floor.
+
+### Which floor a level goes to
+
+The master plan gives every kind a district, a role and a place along the
+hall. A district keeps its band of elevations; its levels are dealt to its
+roles, nearest the band's target first, and a full floor passes its role to
+the next level in the band.
+
+| Kind | District | Role (floor) | Along the hall |
+| --- | --- | --- | --- |
+| dining, suites | homes | common | near the stair |
+| tavern | homes | common | middle |
+| hospital | homes | common | far end |
+| bedrooms (and dormitories) | homes | sleeping | anywhere, from the stair outward |
+| temple | halls | worship | far end (the axis, when grand) |
+| library, garden | halls | worship | middle |
+| memorial | halls | worship | far end |
+| tombs | halls | crypt | far end |
+| storage | storage | stores | near the stair |
+| workshops: crafts, cloth, soap | industry | crafts | middle, by group |
+| workshops: smithing | industry | forges | middle |
+| workshops: food | industry | kitchens | middle |
+| barracks | defence (halls when the plan has no defence district) | guard | near the stair |
+| archery, jail | defence (halls when none) | guard | far end |
+
+A level whose place a custom or the Deep mine already fixed (cells, the deep
+hall, the market gate, the gate barracks, the band under the cavern crossing)
+gets its floors from that band and stair. Before the fort has a master plan,
+the bridge puts the level on a floor near the dwarves.
+
+### Which slider does what on a floor
+
+| Slider | On a floor |
+| --- | --- |
+| Spacing | the rock between two rooms (1 tile; 2 at +50, 3 at +100); the extra rock between two different kinds of room (none at -50 or lower, then 1, 3, 5); the bare hall between the stair and the first room (0, 2, 4, 6). At +150 rooms go on one side only. A tight fort's rooms start at the stair and touch wall to wall; a spread-out fort's stand in separate blocks along a long hall |
+| Room size | the rooms themselves, as before (bedrooms 2x2, 3x3 or 4x4; storage rooms 5 or 7); the workshops' pile rooms (5 wide, 7 at +50); the straight run, 15% longer for each step up (+50, +100), shorter for each step down |
+| Depth | deep (40+): one role a floor, 1 hall, runs of 20 columns (14 at 100+): a tall, narrow fort. Balanced: 2 halls, runs of 30. Wide (-40 or lower): every district on the heart's floors, each on its own arm, up to 4 halls, runs of 44 (60 at -100): one great floor |
+| Grandeur | 40+: a grand hall may close a hall's end. 60+: a 5x5 square with statues where a hall turns |
+| Fortification | 50+: runs 0.6 as long, so the hall turns sooner. 70+: the doored neck at the stair |
+| Reserves | 50+: a second pile room with a workshops request |
+
+The layout pattern and the design language act too. The pattern (grid, rings,
+branching, stacked) picks how a full floor grows. The language's symmetry
+balances the arms and lines rooms up, its aspect stretches or shortens runs,
+and its pillar rhythm (3 to 6) becomes the room rhythm: after that many rooms
+on a side, one more column of rock. Each fort's own seed picks how far the
+two sides are staggered (0, 2 or 3 columns) and each room's mirror. Presets
+change sliders and Rules only, so they shift floors through the lines above;
+no preset turns hallways off.
+
+### Old levels
+
+Nothing of an old level is moved or dug again. On each placement the bridge
+gathers, from the saved project records, the boxes of every project on that
+z-level that is not the floor's own, and no slot or hall may meet them.
+Whatever else is open there (your own rooms, a mined vein) is caught by the
+tile check, which accepts only untouched rock.
+
+On the same z-level as an old level, the floor uses the same stair and hub.
+Its hall leaves the hub in a direction the old level does not fill, or takes
+over the old level's 3-wide corridor and goes on past its end; the first
+slots start past the old level's box. Where an old level leaves no direction
+free, that level has no hall: it is marked, stays classic, and the next floor
+in the list is tried. In the six running forts that is 3 to 5 levels each, so
+their new floors will mostly be fresh levels or the free sides of used ones.
+
+### The checks, and the fallback
+
+Every tile the hall or a room would dig, and its border, goes through the
+same check as in "Where a new level goes": water, magma, aquifer, damp stone
+above, a cavern, open sky, warm stone, the map's edge, adamantine's
+neighbours and any tile no longer untouched rock all refuse the place. A
+refused slot is tried further along; a hall that cannot go on turns; a floor
+with nowhere left is marked full for that district and the next floor in the
+list is tried. Nothing is designated until the whole request has a place.
+
+Inside one `start_project`, in this order:
+
+1. a free room in a standing workshops level (workshops only);
+2. the floors: a few of them at most, for at most 1.5 seconds;
+3. **the fallback**: the whole classic placement of "Where a new level goes",
+   with its own time.
+
+So a floor never stops a level that would have been built without one. The
+answer then says `not_on_floor` and why, the count of fallbacks goes up in
+the report's `floors` section, and the planner says so in its notes for 3
+days. A floor marked full for a district is offered again after 28 days (a
+vein mined out, a project cancelled). An error inside the floor code is a
+fallback too, never a refusal of the level.
+
+### After the place is found
+
+Furnishing, finishing, engraving and cancelling work as before (Phases,
+below). The level's style smooths its own rooms and its own stretch of hall;
+a grand level engraves that stretch. The hall is painted as high traffic.
+A cancelled level's slots stay taken: a half-dug room is never dug over.
+
+A floor project only digs. It builds no wall, floor or hatch, and its only
+doors are ordinary unlocked ones. Every tile it digs is reached from tiles
+nearer the stair: the hub, then the hall outward, then each room through its
+opening. So no dwarf is walled in.
 
 ## Phases
 
