@@ -30,8 +30,11 @@ The rules (_siege_rules), each behind its Rules switch:
     the archers (archer_posts: a fort
     with a crossbow squad or Fortification at `archer_post_slider`) or for
     the ballistae to shoot through (siege_engines, engines wanted);
+    (0.105.54: or once a siege or a great beast has been seen, before the
+    next: threat_seen);
   * archer_posts: in a siege (invaders on
-    the map, none in reach of the dwarves yet) the free crossbow squads are
+    the map, none in reach of the dwarves yet) or (0.105.54) with a great
+    beast held off outside the gates, the free crossbow squads with bolts are
     posted behind them (the gate guard takes the rest). Never while the AI
     hides (a great danger it doesn't fight: planner_army hiding), with a
     fire breather among the besiegers (fire passes fortifications), or at
@@ -60,7 +63,8 @@ from digest import _d, _l
 from planner_core import (PLANNER_CONFIG, RECIPE_SHOPS, TICKS_PER_DAY, Proposal, _best_metal, _has_shop, _traits,
                           abs_tick, can_fight, is_ranged, player_rules, queued, reachable_threats)
 
-__all__ = ["siege_of", "field_of", "_siege_rules", "siege_lean", "engines_wanted", "SIEGE_CONFIG"]
+__all__ = ["siege_of", "field_of", "_siege_rules", "siege_lean", "engines_wanted", "SIEGE_CONFIG", "threat_seen",
+           "beasts_outside"]
 
 SIEGE_CONFIG = {
     "siege_slider": 50,                 # Fortification or Engineering at least this for siege engines
@@ -144,6 +148,27 @@ def _besieged(s: dict) -> bool:
     the walls then (the masons and engineers would be out among them)."""
     from planner_gates import gate_invaders
     return bool(gate_invaders(s))
+
+
+def threat_seen(memory) -> bool:
+    """(0.105.54, "fight back") A siege on the fort's record (culture
+    history) or a great danger (beast, titan...) seen on the surface or in
+    reach (memory.last_great_tick): the archers' fortifications are carved
+    before the next one comes, crossbow squad or not."""
+    if memory is None:
+        return False
+    if int(_d(getattr(memory, "culture", None)).get("sieges") or 0) > 0:
+        return True
+    return bool(getattr(memory, "last_great_tick", 0))
+
+
+def beasts_outside(s: dict) -> list:
+    """(0.105.54) Great dangers (a forgotten beast, a titan...) out on the
+    surface that can't reach the dwarves now (held off by the gates): the
+    crossbows shoot at them from behind the fortifications as at besiegers."""
+    from planner_core import held_off_threats
+    return [t for t in held_off_threats(s) if t.get("great_danger") and not t.get("invader")
+            and t.get("layer") in (None, "surface", "upper_levels")]
 
 
 def _entrances(sg: dict) -> list:
@@ -252,7 +277,10 @@ def _fortify_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> N
         return
     fort = int(_traits(s).get("fortification", 0) or 0)
     ranged = [q for q in _squads(s) if is_ranged(q)]
-    for_posts = _on(s, "archer_posts") and (bool(ranged) or fort >= _c(cfg, "archer_post_slider"))
+    # (0.105.54) a siege or a great beast seen: before the next one, whatever
+    # the squads and the slider
+    for_posts = _on(s, "archer_posts") and (bool(ranged) or fort >= _c(cfg, "archer_post_slider")
+                                            or threat_seen(memory))
     for_engines = (_on(s, "siege_engines") and engines_wanted(siege_lean(s), cfg) > 0
                    and int(_d(s.get("dwarves")).get("total") or 0) >= _c(cfg, "siege_min_citizens"))
     if not (for_posts or for_engines) or reachable_threats(s, _traits(s), cfg) or _besieged(s):
@@ -271,10 +299,12 @@ def _fortify_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> N
                  "dig": "the inner half of a 2-thick wall dug out from inside (the outer half takes the "
                         "fortifications)"}[step]
         who = "archers" if for_posts else "the ballistae"
+        seen = (" (a siege or a great beast has come before: ready for the next)"
+                if for_posts and not ranged and fort < _c(cfg, "archer_post_slider") else "")
         proposals.append(Proposal("fortify_post", {"type": "fortify_post", "entrance_id": e["id"],
                                                    "max": _c(cfg, "archer_fortify_tiles")},
                                   f"the entrance at x{e.get('x')} y{e.get('y')} has {have} fortification(s) for "
-                                  f"{who} to shoot through: {words}", 6))
+                                  f"{who} to shoot through: {words}{seen}", 6))
         return
 
 
@@ -285,9 +315,13 @@ def _post_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> None
     if not ents:
         return
     ranged = [q for q in _squads(s) if is_ranged(q)]
-    # posting the crossbows in a siege
+    # posting the crossbows in a siege, (0.105.54) or with a great beast
+    # outside the shut gates: weakened from behind the fortifications while
+    # the civilians shelter
     from planner_gates import gate_invaders
     inv = gate_invaders(s)
+    beasts = beasts_outside(s)
+    inv = inv + [t for t in beasts if t not in inv]
     if not inv or not ranged:
         return
     policy = player_rules(s)["attack_policy"]
@@ -311,9 +345,19 @@ def _post_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> None
     free = [q for q in ranged if can_fight(q, cfg) and not q.get("ai_orders") and not (q.get("orders") or 0)]
     if not free:
         return
-    ids = [q["id"] for q in free][:6]
+    # (0.105.54) a squad without bolts shoots nothing: the ones with bolts go
+    # (the bolts rules set and make them for the others meanwhile)
+    shooting = [q for q in free if _shoots(q)]
+    if not shooting:
+        notes.append(f"{len(inv)} enemy/enemies outside the gates, but the crossbow squads have no bolts yet: "
+                     "none posted at the fortifications until bolts are handed out")
+        return
+    ids = [q["id"] for q in shooting][:6]
+    who = (f"{len(inv)} besieger(s)" if not beasts else
+           f"{', '.join(sorted({str(t.get('name') or 'a great beast') for t in beasts}))[:60]}"
+           + (f" and {len(inv) - len(beasts)} besieger(s)" if len(inv) > len(beasts) else ""))
     proposals.append(Proposal("archer_post", {"type": "archer_post", "entrance_id": e["id"], "squads": ids},
-                              f"{len(inv)} besieger(s) outside, none in reach yet: {len(ids)} crossbow squad(s) "
+                              f"{who} outside, none in reach yet: {len(ids)} crossbow squad(s) "
                               f"behind the fortifications at x{e.get('x')} y{e.get('y')}", 0))
     # the gate guard holds the gate with the others
     for p in list(proposals):
