@@ -57,7 +57,7 @@ from planner_missions import _mission_rule, note_missions  # noqa: E402  (0.105.
 from planner_cleanup import _world_cleanup_rule, note_cleanup  # noqa: E402  (0.105.40) world cleanup for the game's speed
 from planner_captives import _captives_rule, _necro_rule, note_captives  # noqa: E402  (item6) prisoners' outcomes, necromancer sieges
 from planner_weather import _weather_rules, _weather_squad_filter, note_keep_in  # noqa: E402  (0.105.40b) evil weather
-from planner_alarm import govern_alarm, note_alarm_change, reach_alarm_over, reach_raise_held  # noqa: E402  (item4) the alarm kept from flapping
+from planner_alarm import govern_alarm, note_alarm_change, reach_alarm_over, reach_raise_held, snatch_alarm  # noqa: E402  (item4) the alarm kept from flapping
 from planner_firebreath import _fire_breather_rule  # noqa: E402  (0.105.40b) no melee squad at a fire breather
 from planner_siege import _siege_rules  # noqa: E402  (item5) siege engines, archer posts, caravan guard, wildlife hunts
 from planner_hazards import _hazards_rule, magma_alarm  # noqa: E402  (0.105.41, item 7) spilt magma, cave-ins, frost, heat
@@ -216,6 +216,8 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
             # (0.105.48, K1) the "can reach" alarm's maximum time (planner_alarm)
             capped = "" if stand_down or not alert_on else reach_alarm_over(s, memory, cfg, ids)
             held = reach_raise_held(s, memory, cfg, fresh) if fresh and not alert_on else ""
+            # (0.105.48, K16) a snatcher (out of reach like a thief): the alarm, not the gates
+            snatch = snatch_alarm(s, memory, cfg) if not ids else {}
             if capped and not hazard_alert(s, cfg):
                 proposals.append(Proposal("threat_alert", {"type": "civ_alert", "on": False}, capped, 0))
             elif held:
@@ -241,6 +243,18 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
             elif ids and not fresh and not alert_on:
                 notes.append(f"{len(ids)} threat(s) can reach the dwarves; you cleared the alert for "
                              "them, so the AI is leaving it off")
+            elif snatch.get("cap") and memory.ai_alert_raised and not hazard_alert(s, cfg):
+                proposals.append(Proposal("threat_alert", {"type": "civ_alert", "on": False}, snatch["cap"], 0))
+            elif snatch.get("raise"):
+                if ready:
+                    proposals.append(Proposal("threat_alert", {"type": "civ_alert", "on": True}, snatch["raise"], 0))
+                elif _shelter_due(s, memory, True):
+                    notes.append(f"{len(snatch['ids'])} snatcher(s) among the dwarves: setting up a shelter so "
+                                 "the alarm can sound")
+                else:
+                    notes.append(_no_shelter_note(s, memory, f"{len(snatch['ids'])} snatcher(s) among the dwarves"))
+            elif snatch.get("keep"):
+                notes.append(snatch["keep"])
             elif not ids and not alert_on and intrusion:
                 # (0.105.30 live fixes) E (8 Nov): DF's invasion record of a hidden
                 # thief came 2,000 ticks before she was spotted among the dwarves
@@ -668,6 +682,7 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
     def _shelter_rule():
         threat = bool(reachable_threats(s, traits, cfg)) if "others_on_map" not in errors else False
         intrusion_ = "others_on_map" not in errors and bool(unseen_intrusion(s, memory, cfg))
+        intrusion_ = intrusion_ or bool(snatcher_ids(s))        # (0.105.48, K16) a snatcher sounds it too
         if _shelter_due(s, memory, threat or intrusion_):
             threat = threat or intrusion_
             proposals.append(Proposal("shelter", {"type": "setup_shelter"},
@@ -1207,6 +1222,29 @@ def squad_claim(p: Proposal, claimed: dict) -> str | None:
             "this one waits for the next cycle")
 
 
+def free_squad_for(p: Proposal, claimed: dict, state: dict, cfg: dict, proposed: set):
+    """(0.105.48, K16) The rules each take the first able squad, so a second
+    kill order at a squad another order took this cycle waited (or was
+    folded into that order) while other squads sat free. A kill order on one
+    squad already taken goes to the first squad that can fight and is free:
+    no order of the AI's (or only its shelter), not on the player's orders,
+    not taken this cycle, and named by no other proposal (a reserve the
+    matchup kept home is free). None: none is."""
+    a = p.action if isinstance(p.action, dict) else {}
+    if not _is_kill(a) or a.get("squad_id") not in claimed:
+        return None
+    for q in _l(_d(state.get("military")).get("squads")):
+        if not isinstance(q, dict) or q.get("id") is None or q["id"] in claimed or q["id"] in proposed:
+            continue
+        if q.get("ai_orders") and not q.get("sheltering"):
+            continue
+        if int(q.get("orders") or 0) > int(q.get("ai_orders") or 0):
+            continue
+        if can_fight(q, cfg):
+            return q
+    return None
+
+
 def select(proposals: list[Proposal], state: dict, memory: Memory,
            cfg: dict = PLANNER_CONFIG) -> tuple[list[Proposal], list[str]]:
     """Apply the limits. Returns (allowed, held back with reasons)."""
@@ -1215,6 +1253,7 @@ def select(proposals: list[Proposal], state: dict, memory: Memory,
     allowed, held = [], []
     fired_this_cycle: set[str] = set()
     squads_claimed: dict = {}            # (0.105.48 K1b) one order per squad per cycle
+    proposed_sq = {i for q_ in proposals for i in ordered_squads(getattr(q_, "action", None))}
     # (0.104.89) the strategist's word: a raised rule goes first and skips its
     # cooldown; a held one waits (never a survival or safety rule)
     failed_ = False
@@ -1430,6 +1469,12 @@ def select(proposals: list[Proposal], state: dict, memory: Memory,
                             else f"{p.rule}: waiting on the game (its last answer was to wait); asks again in "
                                  f"{wait} day(s)")      # (0.97: it said "refused 0 time(s)")
                 continue
+            alt = free_squad_for(p, squads_claimed, state, cfg, proposed_sq)
+            if alt is not None:
+                taken_ = p.action["squad_id"]
+                p.action = dict(p.action, squad_id=alt["id"])
+                p.reason = (f"{p.reason} ({alt.get('name') or 'squad ' + str(alt['id'])} goes: squad {taken_} "
+                            f"has another order this cycle)")
             why_sq = squad_claim(p, squads_claimed)
             if why_sq:
                 held.append(why_sq)

@@ -165,9 +165,9 @@ def _():
     n = env.FINDS
     env.add_facts(lua.table(), unit(1))
     assert env.FINDS == n, "the raws read once per race and caste"
-    # a missing race: only the body half, still marked
+    # a missing race: only the body half, and not marked (0.105.48, K16: unknown, judged the old way)
     x = env.add_facts(lua.table(), unit(99))
-    assert x["facts"] == 1 and x["breath"] is None
+    assert x["facts"] is None and x["facts_unread"] and x["breath"] is None and x["speed"] == 1
 
 
 @test("bridge: the report calls the facts module under pcall (a small diff), the module compiles")

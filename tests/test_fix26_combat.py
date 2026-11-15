@@ -68,7 +68,10 @@ def went_and_lost(goblin=False):
 def _():
     m, s = went_and_lost(goblin=True)
     p, notes = plan(s, m)
-    rc = {x.action["squad_id"] for x in by_rule(p, "squad_recall")}
+    # (0.105.48, K16) called back to the station or the shelter (planner_army.fall_back), or just recalled
+    rc = set()
+    for x in by_rule(p, "squad_recall"):
+        rc |= set(x.action.get("squads") or [x.action.get("squad_id")])
     assert rc == {q["id"] for q in s["military"]["squads"]}, (rc, [(x.rule, x.action) for x in p])
     assert not [x for x in by_rule(p, "squad_attack") if 900 in x.action.get("kill", [])]
     assert "900" in m.called_off, m.called_off

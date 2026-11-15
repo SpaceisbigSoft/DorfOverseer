@@ -33,7 +33,7 @@ from planner_core import (AGENDA_THEMES, GEAR_WEAPONS, Proposal, all_clear, can_
                           reachable_threats, _has_shop)
 from planner_shelter import plan_ready, squad_station_spot   # (0.105.45) the squads between the threat and the shelter
 
-__all__ = ["_army_gear_rule", "_quiver_rule", "_bolts_rule", "_shelter_squads_rule", "_gate_cut_rule",
+__all__ = ["fall_back", "_army_gear_rule", "_quiver_rule", "_bolts_rule", "_shelter_squads_rule", "_gate_cut_rule",
            "hiding", "danger_close", "_flask_rule", "WEAPON_RECIPES"]
 
 AGENDA_THEMES.update({"gear_fix": "arm the soldiers", "quivers": "quivers for the crossbows",
@@ -239,7 +239,12 @@ def hiding(s: dict, memory, cfg: dict) -> tuple[bool, list]:
     able = [q for q in squads if can_fight(q, cfg)]
     policy = rules_["attack_policy"]
     if policy == "all":
-        return False, reach
+        # (0.105.48, K16) a fight called off for its losses is off under `all`
+        # too (_military_rules): with nothing else to fight, the dwarves hide
+        from planner_military import called_off_ids
+        off = called_off_ids(s, memory)
+        targets = [i for i in reach if i not in off]
+        return any(i in off and threats[i].get("great_danger") for i in reach) and not targets, targets
     # (0.105.40b) a fire breather is hidden from like an unfought great danger
     fire = {i for i in reach if threats[i].get("fire_breather") is True}
     great = [i for i in reach if threats[i].get("great_danger") and i not in fire]
@@ -248,6 +253,28 @@ def hiding(s: dict, memory, cfg: dict) -> tuple[bool, list]:
     fight = fight_or_hide(s, memory, cfg, [threats[i] for i in great], able)[0] if great else False
     targets = [i for i in reach if i not in fire and (not threats[i].get("great_danger") or fight)]
     return ((bool(great) and not fight) or bool(fire)) and not targets, targets
+
+
+def fall_back(s: dict, cfg: dict, ids: list, why: str, proposals: list | None = None) -> list:
+    """(0.105.48, K16) Squads called back from a fight they can't win: to the
+    station between the danger and the civilians' shelter (the shelter plan)
+    when there is one, else into the shelter while the alarm is up (Rules:
+    squads_shelter; never the civilians' shelter when a plan is made), else
+    simply recalled. The Proposals (rule squad_recall, priority 0)."""
+    ids = [i for i in dict.fromkeys(ids) if i is not None]
+    if not ids:
+        return []
+    if plan_ready(s):
+        spot = squad_station_spot(s, cfg, proposals)
+        if spot:
+            at = {"x": spot["x"], "y": spot["y"], "z": spot["z"]}
+            return [Proposal("squad_recall", {"type": "shelter_squads", "squads": ids, "station": at},
+                             f"{why}: back to the post at x{at['x']} y{at['y']} z{at['z']} ({spot.get('why')})", 0)]
+    elif player_rules(s).get("squads_shelter", True) and s.get("civ_alert") is True:
+        return [Proposal("squad_recall", {"type": "shelter_squads", "squads": ids},
+                         f"{why}: back into the shelter", 0)]
+    return [Proposal("squad_recall", {"type": "squad_orders", "squad_id": i, "clear": True}, f"{why}: called back", 0)
+            for i in ids]
 
 
 def danger_close(s: dict, cfg: dict) -> bool:

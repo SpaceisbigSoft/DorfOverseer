@@ -306,6 +306,7 @@ def _squad_matchup_filter(s: dict, memory, cfg: dict, proposals: list, notes: li
             drop.update(id(p) for p in ps)
             notes.append(f"{alone} not sent at {names}: the squads free are too weak for them "
                          f"({r_all:.1f}x, {bar:g}x needed); the gates and the alarm hold them off meanwhile")
+            _fall_back_lost(s, memory, cfg, rows, key, on + sent, bar, names, add, busy)
             continue
         if {q["id"] for q in party} == sent_ids:
             continue                     # the strongest there are: the orders as the rules gave them
@@ -366,6 +367,7 @@ def _many_matchup(s, memory, cfg, rows, key, ps, sent, on, squads, busy, inside,
             drop.update(id(p) for p in ps)
             notes.append(f"{names}: the squads are too weak for them ({r:.1f}x with every free squad, {bar:g}x "
                          "needed): no sortie; the gates and the alarm hold them off and the squads stay in")
+            _fall_back_lost(s, memory, cfg, rows, key, on + sent, bar, names, add, busy)
             return
     if target_ids is None and {q["id"] for q in party} == sent_ids:
         return                           # the orders as the rules gave them
@@ -381,6 +383,35 @@ def _many_matchup(s, memory, cfg, rows, key, ps, sent, on, squads, busy, inside,
         add.append(Proposal(first.rule, act, f"{names}: send {q.get('name') or q['id']} ({how}: {r:.1f}x, "
                                              f"{bar:g}x needed)", pr, getattr(first, "guard", False)))
         busy.add(q["id"])
+
+
+def _fall_back_lost(s, memory, cfg, rows, key, cands, bar, names, add, busy) -> None:
+    """(0.105.48, K16) A fight the matchup now finds lost (more enemies came,
+    squads fell): the squads already out on these enemies (an AI kill order
+    on one of them) come back to the station or the shelter
+    (planner_army.fall_back), whatever the attack policy, when they are
+    short of three quarters of `fight_ratio` together (a fight begun goes on
+    above that, as _kill_hold_filter holds it)."""
+    out = {q["id"]: q for q in cands if q.get("ai_orders") and not q.get("sheltering") and not _players(q)
+           and _kill_set(q) & set(key) and q["id"] not in _fell_back(add)}
+    if not out or _ratio(rows, list(out.values()), memory) >= bar * 0.75:
+        return
+    from planner_army import fall_back
+    r = _ratio(rows, list(out.values()), memory)
+    add.extend(fall_back(s, cfg, sorted(out), f"{names}: the squads out on them can't win now ({r:.1f}x, "
+                                              f"{bar:g}x needed)"))
+    busy.update(out)
+
+
+def _fell_back(add: list) -> set:
+    """The squads already called back by _fall_back_lost this cycle."""
+    got = set()
+    for p in add:
+        a = p.action if isinstance(p.action, dict) else {}
+        if p.rule == "squad_recall":
+            got.add(a.get("squad_id"))
+            got.update(_l(a.get("squads")))
+    return got
 
 
 # --- 3. no recall flapping ---------------------------------------------------------------
