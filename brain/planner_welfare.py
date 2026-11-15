@@ -47,7 +47,7 @@ from __future__ import annotations
 
 from digest import _d, _l
 from planner_core import (TICKS_PER_DAY, Proposal, _has_shop, abs_tick, player_rules, queued, stone_short,
-                          AGENDA_THEMES)
+                          AGENDA_THEMES, COOLDOWN_KEYS)
 from planner_config import PLANNER_CONFIG
 
 __all__ = ["_welfare_rules", "tombable_dead", "burial_fallback_due", "cook_train_due"]
@@ -56,6 +56,10 @@ AGENDA_THEMES["burial_corner"] = AGENDA_THEMES["burial_coffins"] = "bury the dea
 AGENDA_THEMES["slabs_ahead"] = AGENDA_THEMES["slabs_ahead_blanks"] = AGENDA_THEMES["slabs_ahead_place"] = \
     "memorials for the dead nobody can reach"
 AGENDA_THEMES["train_cook"] = "train a cook"
+# (0.105.48 round 2, A9 #13) the rule is train_cook, its cooldown key
+# cook_train_cooldown_ticks (select() read train_cook_cooldown_ticks: none,
+# so the 2-day default instead of 7 days)
+COOLDOWN_KEYS["train_cook"] = "cook_train_cooldown_ticks"
 
 # the levels the bridge's tomb search refusals come under
 TOMB_RULES = ("tombs_ghosts", "build", "tombs")

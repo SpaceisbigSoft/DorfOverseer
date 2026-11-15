@@ -717,13 +717,19 @@ end
 function summary()
     pcall(brain_seen)           -- (0.105.47, J16) the brain is here: the watcher's heartbeat
     if not ONLOAD_INIT_DONE then ONLOAD_INIT_DONE = (pcall(install_onload_init)) end   -- (0.105.48, K2) once a session
-    pcall(gates_restore)
+    -- (0.105.48 round 2) halted, the report is a report: nothing restored or
+    -- armed from the save, no link taken up, no lever pulled, no watch started
+    -- (the watcher's own looks only release while halted)
+    local halted = ai_halted()
+    if not halted then pcall(gates_restore) end
     -- (0.105.23) a link made while no watch ran (a reload): taken up, and a
     -- hatch it shut opened, at the next report at the latest
     if GATES.scanned then
-        pcall(attach_links)
-        if not GATES.armed then pcall(open_lever_hatches) end
-        if link_jobs_pending() then pcall(link_watch_start) end
+        if not halted then
+            pcall(attach_links)
+            if not GATES.armed then pcall(open_lever_hatches) end
+            if link_jobs_pending() then pcall(link_watch_start) end
+        end
         pcall(gate_splits)        -- (0.105.32) each entrance's gates that read open but DF holds shut
     end
     local out = GATES_ORIG.summary()

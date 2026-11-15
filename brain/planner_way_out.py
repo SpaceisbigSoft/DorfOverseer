@@ -159,9 +159,16 @@ def _way_out_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None)
         e = ents[0]
         pcs = [p for p in _l(wo.get("shut_by")) if isinstance(p, dict) and p.get("entrance") == e and p.get("ai")]
         what = ", ".join(_piece_words(p) for p in pcs[:3]) or "its gate"
-        proposals.append(Proposal("way_out", {"type": "way_out_open", "id": e},
+        act = {"type": "way_out_open", "id": e}
+        # (0.105.48 round 2, A5 #11) the first try left a bridge to a dwarf's
+        # pull; a later one pulls at once (the queued pull taken away first):
+        # nobody may come to the lever (cut off, the civilians burrowed)
+        if tries >= 1:
+            act["instant"] = True
+        proposals.append(Proposal("way_out", act,
                                   f"{head} and nothing keeps it shut now: open the AI's own {what} "
-                                  f"(try {tries + 1} of {int(_cfg(cfg, 'way_out_tries'))}; the player's gates "
+                                  f"(try {tries + 1} of {int(_cfg(cfg, 'way_out_tries'))}"
+                                  f"{', its levers pulled at once' if tries >= 1 else ''}; the player's gates "
                                   "are left as they are)", -1))
         return
     # only the player's own gates shut the way (a fort the player keeps

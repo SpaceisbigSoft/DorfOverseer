@@ -77,16 +77,32 @@ end
 -- gate watcher alone had a brain-away rule). Every AWAY_LOOK_TICKS (a game
 -- timer, started by the panel's update and by each status call, so it runs
 -- after a reload with no overseer too): halted, or no status call for
--- AWAY_TICKS, the AI stands down (ai-society stand_down: its own alarm
+-- AWAY_TICKS (and AWAY_REAL_S real seconds: ai-util brain_away), the AI stands down (ai-society stand_down: its own alarm
 -- lowered, at once when halted, else once no enemy is in sight or after
 -- AWAY_ALARM_MAX_TICKS; every member of its own burrows let out). Only the
 -- AI's own: the player's alarm and burrows are never touched.
 ---------------------------------------------------------------------------
-AWAY_TICKS = 2400               -- two game days with no status call: the overseer is away (the gate watcher's)
+-- (0.105.48 round 2) One rule with the gate watcher's (ai-util brain_away):
+-- away only with no status call for AWAY_TICKS game ticks (five days) AND
+-- none for AWAY_REAL_S real seconds, so a slow live brain (one cycle taking
+-- minutes, a slow fort's 2400-tick reports) is never read as away.
+AWAY_TICKS = nil                -- ai-util's BRAIN_AWAY_TICKS (set below; nil: ai-util unread)
+AWAY_REAL_S = nil               -- ai-util's BRAIN_AWAY_REAL_S
 AWAY_LOOK_TICKS = 100
 
--- 'halted', 'away' or nil, and how long the overseer has been away (ticks)
-function away_state(now)
+local function util()
+    local ok, U = pcall(reqscript, 'ai-util')
+    if ok and type(U) == 'table' and type(U.brain_away) == 'function' then return U end
+    return nil
+end
+do
+    local U = util()
+    if U then AWAY_TICKS, AWAY_REAL_S = U.BRAIN_AWAY_TICKS, U.BRAIN_AWAY_REAL_S end
+end
+
+-- 'halted', 'away' or nil, and how long the overseer has been away (ticks).
+-- real: the real time now (os.time(); tests)
+function away_state(now, real)
     if is_halted() then return 'halted', 0 end
     now = now or game_tick()
     if type(now) ~= 'number' then return nil, 0 end
@@ -95,7 +111,13 @@ function away_state(now)
     if now < seen then                          -- an older save loaded: counted from now
         SEEN_TICK, AWAY.first, seen = nil, now, now
     end
-    if now - seen > AWAY_TICKS then return 'away', now - seen end
+    local U = util()
+    if not U then return nil, now - seen end    -- the rule unread: never away by time
+    if real == nil then
+        local okr, r = pcall(os.time)
+        real = okr and r or nil
+    end
+    if U.brain_away(now, seen, real, LAST_SEEN, AWAY_TICKS, AWAY_REAL_S) then return 'away', now - seen end
     return nil, now - seen
 end
 
