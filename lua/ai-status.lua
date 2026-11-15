@@ -14,16 +14,28 @@ MAX_PENDING = 3
 STATUS = STATUS                 -- last report from the overseer (nil until the first)
 DECISIONS = DECISIONS or {}     -- pending id -> 'yes' | 'no'
 LAST_SEEN = LAST_SEEN           -- os.time() the overseer last checked in (every ~2 s)
+SEEN_TICK = SEEN_TICK           -- (0.105.48, K3) the game tick of that check-in
+AWAY = AWAY or {}               -- (0.105.48, K3) the away watcher: {first, last, timer, result, why}
 
 -- A different fort: forget the last one's report and answers.
 dfhack.onStateChange['ai-status'] = function(sc)
     if sc == SC_MAP_UNLOADED then
         STATUS, DECISIONS, LAST_SEEN = nil, {}, nil
+        SEEN_TICK, AWAY = nil, {}
     end
+end
+
+local function game_tick()
+    local ok, t = pcall(function()
+        return df.global.cur_year * 403200 + df.global.cur_year_tick
+    end)
+    return ok and type(t) == 'number' and t or nil
 end
 
 function mark_seen()
     LAST_SEEN = os.time()
+    SEEN_TICK = game_tick() or SEEN_TICK
+    pcall(away_watch_start)
 end
 
 -- Plain printable text only, capped (it comes from outside the game).
@@ -53,7 +65,80 @@ function set_halted(on)
     local msg = on and 'AI Overseer HALTED: it will not change anything until you resume (Ctrl-Shift-H).'
         or 'AI Overseer resumed.'
     pcall(dfhack.gui.showAnnouncement, msg, on and COLOR_LIGHTRED or COLOR_LIGHTGREEN, true)
+    -- (0.105.48, K3) halting stands the AI down at once (even paused): its
+    -- own alarm lowered, its burrows let out; the gate watcher only opens now
+    if on then pcall(away_check, true) end
     return on == true
+end
+
+---------------------------------------------------------------------------
+-- (0.105.48, K3) The away watcher. The AI's alarm and burrows were let go
+-- only by the brain: halted, or with the overseer stopped, they stayed (the
+-- gate watcher alone had a brain-away rule). Every AWAY_LOOK_TICKS (a game
+-- timer, started by the panel's update and by each status call, so it runs
+-- after a reload with no overseer too): halted, or no status call for
+-- AWAY_TICKS, the AI stands down (ai-society stand_down: its own alarm
+-- lowered, at once when halted, else once no enemy is in sight or after
+-- AWAY_ALARM_MAX_TICKS; every member of its own burrows let out). Only the
+-- AI's own: the player's alarm and burrows are never touched.
+---------------------------------------------------------------------------
+AWAY_TICKS = 2400               -- two game days with no status call: the overseer is away (the gate watcher's)
+AWAY_LOOK_TICKS = 100
+
+-- 'halted', 'away' or nil, and how long the overseer has been away (ticks)
+function away_state(now)
+    if is_halted() then return 'halted', 0 end
+    now = now or game_tick()
+    if type(now) ~= 'number' then return nil, 0 end
+    AWAY.first = AWAY.first or now
+    local seen = SEEN_TICK or AWAY.first
+    if now < seen then                          -- an older save loaded: counted from now
+        SEEN_TICK, AWAY.first, seen = nil, now, now
+    end
+    if now - seen > AWAY_TICKS then return 'away', now - seen end
+    return nil, now - seen
+end
+
+-- One look (force: whatever the time since the last). Returns the stand-down's
+-- result when the AI stood down, else nil.
+function away_check(force)
+    if not dfhack.isMapLoaded() then return nil end
+    local now = game_tick()
+    if not force and AWAY.last and now and now >= AWAY.last and now - AWAY.last < AWAY_LOOK_TICKS then
+        return nil
+    end
+    AWAY.last = now
+    local why, ticks = away_state(now)
+    AWAY.why = why
+    local okm, S = pcall(reqscript, 'ai-society')
+    if not okm or type(S) ~= 'table' then return nil end
+    if not why then
+        pcall(S.ai_alarm_mine)                  -- the alarm found off: its booking forgotten
+        return nil
+    end
+    local ok, r = pcall(S.stand_down, {halted = why == 'halted', away_ticks = ticks})
+    AWAY.result = ok and r or {error = tostring(r):sub(1, 160)}
+    AWAY.tick = now
+    return AWAY.result
+end
+
+local function away_tick()
+    AWAY.timer = nil
+    pcall(away_check)
+    if dfhack.isMapLoaded() then
+        AWAY.timer = dfhack.timeout(AWAY_LOOK_TICKS, 'ticks', away_tick)
+    end
+end
+
+-- The watcher's timer started (once; DFHack drops 'ticks' timers at unload)
+function away_watch_start()
+    if not dfhack.isMapLoaded() or type(dfhack.timeout) ~= 'function' then return false end
+    if AWAY.timer and type(dfhack.timeout_active) == 'function' then
+        local ok, active = pcall(dfhack.timeout_active, AWAY.timer)
+        if ok and active then return false end
+    end
+    AWAY.timer = dfhack.timeout(AWAY_LOOK_TICKS, 'ticks', away_tick)
+    return true
 end
 
 -- The overseer's report. Returns the decisions it hasn't seen yet and

@@ -23,7 +23,17 @@ Press **Ctrl-Shift-H** (works on the main fort screen and while a DFHack
 window is open), or click [Halt], and the AI stops changing anything, at once:
 
 - the game side refuses every action that would change the fort, whatever
-  the overseer sends (only the on-screen panel keeps updating)
+  the overseer sends (only the on-screen panel keeps updating), except the
+  undoing steps: lowering its own alarm, letting dwarves out of its burrows,
+  the way out's leave
+- the AI stands down at once: its own civilian alert is lowered (never yours)
+  and the dwarves in its own burrows (recreation, hospital, calm-down, the
+  evil-weather keep-in) are let out; its timers stop acting (the shaft and
+  well watches, the screen drivers), and the gate watcher only opens what it
+  holds once no danger is near, never shuts
+- (the same stand-down happens when the overseer has not checked in for two
+  game days, except that its alarm is lowered only once no enemy is in sight,
+  or after three days)
 - the overseer keeps watching and planning, so you can see what it *would* do
 - it's saved with the fort, so a halted AI stays halted after a reload
 

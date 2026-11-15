@@ -964,6 +964,17 @@ function open_screen(dry_run, txt)
     OPEN_CLICKED_AT, OPENED_FOR = os.time(), nil
     dfhack.timeout(3, 'frames', function()
         -- (0.105.47 review) a guess clicked only where the sheet reads "Trade"
+        -- (0.105.48, K3) the AI halted since the sheet opened: no click, the sheet shut
+        local okh, halted = pcall(function() return reqscript('ai-status').is_halted() end)
+        if okh and halted == true then
+            pcall(function()
+                vs.open = false
+                vs.active_sheet = df.view_sheet_type.NONE
+                vs.active_id = -1
+            end)
+            LAST_OPEN = {clicked = false, halted = true, error = 'the AI was halted in the game'}
+            return
+        end
         local word_ok, why, verdict = guess_word_ok('Depot', b, x, y)
         if not word_ok then
             pcall(function()

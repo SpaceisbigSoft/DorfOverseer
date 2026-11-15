@@ -617,6 +617,10 @@ end
 LINK_WATCH = LINK_WATCH or {}
 local function link_watch_tick()
     LINK_WATCH.timer = nil
+    if ai_halted() then          -- (0.105.48, K3) halted: no link taken up, no lever pulled; looked at again later
+        LINK_WATCH.timer = dfhack.timeout(CHECK_TICKS, 'ticks', link_watch_tick)
+        return
+    end
     pcall(attach_links)
     if not GATES.armed then pcall(open_lever_hatches) end
     if link_jobs_pending() then
@@ -753,6 +757,16 @@ function brain_ping()
     return BRAIN_PING.t
 end
 
+-- (0.105.48, K3) The AI halted in the game (ai-status; false when it can't
+-- be read). While halted the watcher's looks only release: nothing is shut
+-- or pulled back shut, and what it holds opens by the brain-away rule
+-- (nothing within 2 * IMMINENT for UNATTENDED_CLEAR looks), so a halted fort
+-- ends open, never flung open into a fight. The link watch and its levers wait.
+function ai_halted()
+    local ok, yes = pcall(function() return reqscript('ai-status').is_halted() end)
+    return ok and yes == true
+end
+
 -- Called by each `entrances` report (ai-gates-stuck summary)
 function brain_seen()
     GATES.brain_tick = now_abs() or GATES.brain_tick
@@ -795,9 +809,13 @@ function check()
     GATES.opening = GATES.opening or {}
     local lure = lure_holds()                 -- (0.105.45)
     local away = brain_away()                 -- (0.105.47, J16) the brain away: real dangers only
+    local halted = ai_halted()                -- (0.105.48, K3) halted: release only
+    if halted then away = true end
     GATES.away = away or nil
+    GATES.halted = halted or nil
     -- (0.105.47, J16) with the brain away, an entrance shuts only for a danger within IMMINENT
     local function close_for(nearest)
+        if halted then return false end
         if away then return nearest <= IMMINENT end
         return should_close(nearest, outside)
     end
@@ -820,7 +838,7 @@ function check()
             -- within IMMINENT shuts it again while it opens
             local okh0, held0 = pcall(function() return reqscript('ai-mission-way').mission_held(e.id) end)
             local close_now = close_for(nearest)
-            if okh0 and held0 == true then close_now = nearest <= IMMINENT end
+            if okh0 and held0 == true then close_now = nearest <= IMMINENT and not halted end
             if close_now then
                 GATES.opening[e.id] = nil
                 set_entrance(e, true, true)        -- (0.105.36 fix) its queued opening pull taken away
@@ -865,7 +883,7 @@ function check()
         -- pulled its lever, a job was lost): left open, never pulled back shut
         local near_e = math.huge
         for _, p in ipairs(ds) do near_e = math.min(near_e, distance_to(e, p)) end
-        local let_open = near_e > WIDE or (away and near_e > IMMINENT)
+        local let_open = near_e > WIDE or (away and near_e > IMMINENT) or halted
         local held_by_seal = nil
         for _, g in ipairs(watched) do
             local b = df.building.find(g.id)

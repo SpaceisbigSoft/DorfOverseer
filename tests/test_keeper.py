@@ -304,7 +304,9 @@ def _():
     assert [a.get("type") for a in g.acts].count("quiet_announcements") == 1, g.acts
     g = PausedGame(halted=True)
     run_loop(g, ["--autopilot", "--unattended"])
-    assert not g.acts                                   # (halted: not even the announcements)
+    # (halted: not even the announcements; (0.105.48, K3) only the way out's leave at
+    # Ctrl-C, which passes the halt: it only opens, lowers the AI's alarm and lets out)
+    assert [a.get("type") for a in g.acts] == ["way_out_leave"], g.acts
     g = PausedGame()
     run_loop(g, ["--autopilot"])
     # (0.105.47, J16) Ctrl-C leaves the fort open (way_out_leave), and nothing else

@@ -1381,6 +1381,12 @@ end
 -- one look at the screen: the current step's check, then the next step
 local function tick(run)
     if RUN ~= run or run.stopping then return end
+    -- (0.105.48, K3) the AI halted mid-run: no further click, the screen shut
+    local okh, halted = pcall(function() return reqscript('ai-status').is_halted() end)
+    if okh and halted == true then
+        run.why = 'the AI was halted in the game'
+        return stop(run, 'stopped', 'halted')
+    end
     run.frames = run.frames + POLL_FRAMES
     if run.frames > RUN_FRAMES then
         run.why = 'the run took longer than ' .. RUN_FRAMES .. ' frames'

@@ -81,6 +81,10 @@ end
 -- The civilian alert sounded or cleared (DFHack's gui/civ-alert).
 function act_civ_alert(a)
     if type(a.on) ~= 'boolean' then return reject('on must be true or false') end
+    -- (0.105.48, K3) halted: only lowered (run_action's release_only)
+    if a.release_only and a.on then
+        return {ok = false, rejected = true, halted = true, error = 'the AI is halted in the game: the alarm only lowered'}
+    end
     local civ = reqscript('gui/civ-alert')
     if a.on then
         if df.global.plotinfo.alerts.civ_alert_idx ~= 0 then
@@ -94,10 +98,16 @@ function act_civ_alert(a)
         -- (item4) not drawn again when drawn within the last day (a.refresh: always)
         local okr, rr = pcall(function() return reqscript('ai-society').refresh_shelter_due(a.refresh == true) end)
         civ.sound_alarm()
+        -- (0.105.48, K3) the alarm the AI's: booked with the fort, so the game
+        -- itself lowers it when the AI is halted or away (ai-status's watcher)
+        if df.global.plotinfo.alerts.civ_alert_idx ~= 0 then
+            pcall(function() reqscript('ai-society').note_ai_alarm(true) end)
+        end
         return {ok = true, on = df.global.plotinfo.alerts.civ_alert_idx ~= 0,
                 shelter = okr and rr or nil, shelter_error = (not okr) and tostring(rr):sub(1, 120) or nil}
     else
         civ.clear_alarm()
+        pcall(function() reqscript('ai-society').note_ai_alarm(false) end)   -- (0.105.48, K3)
     end
     return {ok = true, on = df.global.plotinfo.alerts.civ_alert_idx ~= 0}
 end
@@ -1172,6 +1182,9 @@ end
 -- lets out those it put there.
 function act_weather_burrow(a)
     if type(a.on) ~= 'boolean' then return reject('weather_burrow: on must be true or false') end
+    if a.release_only and a.on then      -- (0.105.48, K3) halted: only let out
+        return {ok = false, rejected = true, halted = true, error = 'the AI is halted in the game: the keep-in only let out'}
+    end
     return reqscript('ai-society').weather_keep_in(a.on, a.dry_run == true, txt)
 end
 
@@ -1689,6 +1702,9 @@ function act_recreation(a)
     -- (0.104.80) places for those who badly want friends, a short stay each
     local f, fd = int_in(a.friends or 0, 0, 10), int_in(a.friend_days or 7, 3, 28)
     if not f or not fd then return reject('recreation: friends 0-10, friend_days 3-28') end
+    if a.release_only and a.release ~= true then      -- (0.105.48, K3) halted: only let out
+        return {ok = false, rejected = true, halted = true, error = 'the AI is halted in the game: the burrow only emptied'}
+    end
     return reqscript('ai-society').recreation_tick(n, days, a.dry_run == true, txt, f, fd, a.release == true)
 end
 
@@ -1717,6 +1733,9 @@ function act_hospital_burrow(a)
     if not n or not per or not days then return reject('hospital_burrow: max 1-60, per 1-30, days 3-112') end
     -- (review) release: everyone let out (the rule switched off, the hospital gone, the status unreadable)
     if a.release ~= nil and type(a.release) ~= 'boolean' then return reject('hospital_burrow: release is true or false') end
+    if a.release_only and a.release ~= true then      -- (0.105.48, K3) halted: only let out
+        return {ok = false, rejected = true, halted = true, error = 'the AI is halted in the game: the burrow only emptied'}
+    end
     return reqscript('ai-society').hospital_burrow_tick(n, per, a.dry_run == true, txt, days, a.release == true)
 end
 
@@ -1728,6 +1747,9 @@ function act_calm_burrow(a)
     local days = int_in(a.days or 3, 1, 7)          -- the longest stay
     if not n or not days then return reject('calm_burrow: max 1-6, days 1-7') end
     if a.release ~= nil and type(a.release) ~= 'boolean' then return reject('calm_burrow: release is true or false') end
+    if a.release_only and a.release ~= true then      -- (0.105.48, K3) halted: only let out
+        return {ok = false, rejected = true, halted = true, error = 'the AI is halted in the game: the burrows only emptied'}
+    end
     return reqscript('ai-society').calm_burrow_tick(n, days, a.dry_run == true, txt, a.release == true)
 end
 

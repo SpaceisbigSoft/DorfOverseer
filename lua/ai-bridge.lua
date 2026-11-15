@@ -918,7 +918,13 @@ DISPLAY_ONLY = {report_status = true, set_culture = true, set_learned = true, sa
 -- lock left on while the AI is halted could shut a dwarf in), and locks none.
 -- (item3) the killer cells let the thirsty and hungry out, and lock nobody in.
 RELEASE_WHILE_HALTED = {insane_guard = 'release_only', killer_cell = 'release_only',
-                        lure_shut = 'while_halted'}   -- (0.105.45, merge) shutting a lure pocket is always safe
+                        lure_shut = 'while_halted',   -- (0.105.45, merge) shutting a lure pocket is always safe
+                        -- (0.105.48, K3) the AI's alarm and burrows: only lowered and
+                        -- emptied (the handlers refuse the raising and the moving in);
+                        -- the way out's leave only opens, lowers and lets out
+                        civ_alert = 'release_only', weather_burrow = 'release_only',
+                        recreation = 'release_only', hospital_burrow = 'release_only',
+                        calm_burrow = 'release_only', way_out_leave = 'release_only'}
 
 ---------------------------------------------------------------------------
 -- Time control. Globals (not locals) so they survive between script runs.

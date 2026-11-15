@@ -573,8 +573,8 @@ class FakeBridge:
         return dict(self.reply)
 
 
-@test("clean exit: leave_open sends way_out_leave and says what it did; the keeper's Ctrl-C does it (not when "
-      "halted or out of a fort); an enemy in reach: said, the gates left; a dead bridge never raises")
+@test("clean exit: leave_open sends way_out_leave and says what it did; the keeper's Ctrl-C does it (halted too; not "
+      "out of a fort); an enemy in reach: said, the gates left; a dead bridge never raises")
 def _():
     import planner_way_out as pw
     import keeper
@@ -586,7 +586,8 @@ def _():
     said = []
     pw.leave_open(b, said.append)
     assert "stay as they are" in said[0]
-    for kw, n in (({}, 1), ({"halted": True}, 0), ({"in_fort": False}, 0)):
+    # (0.105.48, K3) halted: the leave goes too (it passes the halt: it only lets go)
+    for kw, n in (({}, 1), ({"halted": True}, 1), ({"in_fort": False}, 0)):
         fb = FakeBridge(**kw)
         keeper.LEAVE_BRIDGE = lambda fb=fb: fb
         try:

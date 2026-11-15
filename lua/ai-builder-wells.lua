@@ -1432,9 +1432,22 @@ function shaft_threat_near(wells)
     end
 end
 
+-- (0.105.48, K3) the AI halted in the game: false when it can't be read
+local function ai_halted()
+    local ok, yes = pcall(function() return reqscript('ai-status').is_halted() end)
+    return ok and yes == true
+end
+
 local function shaft_watch_tick()
     SHAFT_WATCH.timer = nil
     if not SHAFT_WATCH.on then return end
+    -- (0.105.48, K3) halted: no hatch shut; looked at again later
+    if ai_halted() then
+        SHAFT_WATCH.halted = true
+        SHAFT_WATCH.timer = dfhack.timeout(SHAFT_WATCH_TICKS, 'ticks', shaft_watch_tick)
+        return
+    end
+    SHAFT_WATCH.halted = nil
     local ok, err = pcall(function()
         local wells = {}
         local data = load_projects()

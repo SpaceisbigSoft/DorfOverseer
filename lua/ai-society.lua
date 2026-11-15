@@ -2692,6 +2692,104 @@ local function burrows()
 end
 for _, name in ipairs({'fill_recreation', 'badly_wants_friends', 'recreation_status', 'recreation_tick', 'hospital_zones',
                        'well_gives_water', 'is_patient', 'in_quarantine', 'hospital_burrow_status', 'hospital_burrow_tick', 'calm_burrow_status',
-                       'calm_burrow_tick', 'weather_keep_in', 'weather_keep_in_status'}) do
+                       'calm_burrow_tick', 'weather_keep_in', 'weather_keep_in_status',
+                       'release_ai_burrows'}) do   -- (0.105.48, K3)
     _ENV[name] = function(...) return burrows()[name](...) end
+end
+
+-- --- (0.105.48, K3) the AI's own alarm, and the AI standing down -------------
+--
+-- Nothing lowered the AI's alarm when the AI stopped: the brain alone knew it
+-- had raised it (memory.ai_alert_raised), and a fort left with it on kept its
+-- citizens in the shelter (0.105.8: 31 dead of thirst). The game now keeps
+-- the ownership too: act_civ_alert books it (note_ai_alarm), the alert found
+-- off forgets it (the player or anyone lowered it), and a stand-down lowers
+-- only an alarm the AI raised (never the player's).
+AI_ALARM_KEY = 'ai-overseer/ai-alarm'
+-- the brain away this long with an enemy still in sight: the AI's alarm
+-- lowered anyway (a shelter is not drink and food for ever; the player's
+-- own alarm is the player's to keep)
+AWAY_ALARM_MAX_TICKS = 3 * 1200
+
+-- The civilian alert on (true / false), or nil when unreadable.
+function alarm_on()
+    local ok, on = pcall(function() return df.global.plotinfo.alerts.civ_alert_idx ~= 0 end)
+    if ok then return on end
+    return nil
+end
+
+-- The AI raised the alarm (on) or lowered it (not on): booked with the fort.
+function note_ai_alarm(on)
+    local okt, t = pcall(U.abs_tick)
+    pcall(U.site_put, AI_ALARM_KEY, on and {mine = true, tick = okt and t or nil} or {mine = false})
+end
+
+-- Is the alarm on now the AI's? (the booking, the alert read on). The
+-- alert read off: the booking forgotten (whoever lowered it).
+function ai_alarm_mine()
+    local okd, d = pcall(U.site_get, AI_ALARM_KEY, {})
+    if not okd or type(d) ~= 'table' or d.mine ~= true then return false end
+    local on = alarm_on()
+    if on == false then
+        note_ai_alarm(false)
+        return false
+    end
+    return on == true
+end
+
+-- Visible invaders and great dangers on the map (the gate watcher's own
+-- look; nil when it can't be read).
+local function enemies_in_sight()
+    local ok, vis = pcall(function() return reqscript('ai-gates').visible_dangers() end)
+    if not ok or type(vis) ~= 'table' then return nil end
+    local n = 0
+    for _, d in ipairs(vis) do
+        if d.invader or d.great then n = n + 1 end
+    end
+    return n
+end
+
+-- The AI's alarm lowered: o.force (halted: always), else only with no
+-- invader nor great danger in sight, or once o.away_ticks (how long the
+-- brain is away) passes AWAY_ALARM_MAX_TICKS. Returns 'lowered', 'kept'
+-- (an enemy in sight), or nil (no alarm of the AI's).
+function lower_ai_alarm(o)
+    o = o or {}
+    if not ai_alarm_mine() then return nil end
+    if not o.force then
+        local n = enemies_in_sight()
+        local long = type(o.away_ticks) == 'number' and o.away_ticks >= AWAY_ALARM_MAX_TICKS
+        if (n == nil or n > 0) and not long then return 'kept' end
+    end
+    if o.dry_run then return 'lowered' end
+    local ok = pcall(function() reqscript('gui/civ-alert').clear_alarm() end)
+    if not ok then pcall(function() df.global.plotinfo.alerts.civ_alert_idx = 0 end) end
+    if alarm_on() == false then
+        note_ai_alarm(false)
+        pcall(dfhack.gui.showAnnouncement, 'AI Overseer: its civilian alert lowered (' ..
+              (o.why or 'the AI stood down') .. ')', COLOR_GREEN, false)
+        return 'lowered'
+    end
+    return 'kept'
+end
+
+-- (0.105.48, K3) The AI standing down: halted by the player (o.halted), its
+-- brain away (o.away_ticks) or stopping (o.stopping, the way out's leave).
+-- Its own alarm lowered (lower_ai_alarm: at once when halted) and every
+-- member of its own burrows let out (release_ai_burrows). Never raises.
+function stand_down(o)
+    o = o or {}
+    local why = o.halted and 'the AI is halted' or o.stopping and 'the AI stopped'
+        or 'the overseer is away'
+    local out = {}
+    local oka, a = pcall(lower_ai_alarm, {force = o.halted == true, away_ticks = o.away_ticks,
+                                          dry_run = o.dry_run, why = why})
+    if oka then out.alarm = a else out.alarm_error = tostring(a):sub(1, 120) end
+    local okb, b = pcall(release_ai_burrows, o.dry_run == true)
+    if okb and type(b) == 'table' then
+        if next(b) ~= nil then out.burrows = b end
+    elseif not okb then
+        out.burrows_error = tostring(b):sub(1, 120)
+    end
+    return out
 end
