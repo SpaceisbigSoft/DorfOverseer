@@ -764,6 +764,12 @@ PLANNER_CONFIG = {
     # (0.105.48, K1) threat triage (planner_core.reachable_threats): wildlife smaller than this
     # (a dwarf is ~60,000; a falcon 129, a wolf ~50,000) never sounds the alarm or shuts the gates
     "wildlife_alarm_size": 2000000,
+    # (0.105.51) ...but wildlife is small only alone or weak: `wild_pack_min` animals of
+    # `wild_pack_member_size` or more that can reach the dwarves (C, winter 251: 9 giant dingoes
+    # killed 10 of 14 with no alarm), one inside, two or more the free squads don't beat at
+    # fight_ratio, or a lone one at grips with a dwarf and no squad that beats it: the alarm
+    "wild_pack_min": 3,
+    "wild_pack_member_size": 10000,     # a dwarf ~60,000, a giant dingo ~30,000; a falcon 129, a kea ~400
     # (0.105.48, K1) the "can reach" alarm's maximum time (War-hold: up 30 days for a falcon): after
     # this long with no enemy near a dwarf or inside, it comes down, and is not raised again for the
     # same enemies until one comes near or a new one comes

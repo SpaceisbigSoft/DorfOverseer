@@ -8,7 +8,7 @@ from quirks import has_rule
 from digest import _d, _l, normalize
 from planner_config import PLANNER_CONFIG, DISPOSAL_ACTION_MAX  # noqa: F401  (13c: the tuning numbers, split out)
 
-__all__ = ["great_present", "all_clear", "STEER_PROTECTED", "STEER_MAX_DAYS", "steer_of", "PLANNER_CONFIG", "BREW_RECIPES", "MEAL_RECIPES", "MANDATE_RECIPES", "BUILDABLE_SHOPS", "SHOP_ALIASES", "SURVIVAL_SHOPS", "TICKS_PER_DAY", "TICKS_PER_YEAR", "NO_COOLDOWN", "COOLDOWN_KEYS", "MULTI_PER_CYCLE", "EMERGENCY", "STUCK_HOLD_EXEMPT", "ORDER_HOLD_EXEMPT", "LIMIT_EXEMPT", "emergency", "limit_exempt", "steer_protected", "Proposal", "Memory", "abs_tick", "stamp_tick", "game_day", "factor", "ADJUST_BOUNDS", "_number", "effective_config", "queued", "unstored_cups", "free_stock", "watch_since", "_clamp", "MEMORIAL_SPAN", "OPTIONAL_LEVELS", "GEAR_WEAPONS", "GEAR_METALS", "NEEDS_YOU", "ask_player", "DISPOSAL_LEVELS", "DISPOSAL_ACTION_MAX", "player_rules", "OPEN_CAVERNS_MODES", "open_caverns_mode", "MAINTAIN_SKIPS", "level_refused", "_traits", "reachable_threats", "held_off_threats", "_holding_off", "ONE_A_CYCLE", "growth_mode", "growth_target", "JOB_SHOPS", "RECIPE_SHOPS", "WOOD_ELSEWHERE", "recipe_shop", "brewable_counts", "brew_recipe", "_watchdog_notes", "jobs_reported", "order_job_state", "masons_jammed", "stuck_hold_days", "_stuck_before", "stone_short", "_office_held", "tantrums_recent", "justice_held", "_restraint_order", "manager_needs_office", "suites_short", "wool_route", "thread_plants_here", "MINING_NEED_ONLY", "mining_plan", "noble_room_kinds", "SOCIAL_NEEDS", "care_waiting", "unmet", "_soldier_swap", "recently_home", "LOCATION_UNITS", "_location", "_location_short", "_real_locations", "can_fight", "is_ranged", "STALE_PROJECT_DAYS", "_workshops_busy", "shop_count", "shops_max", "_has_shop", "RAW_FOOD", "ALL_FOOD", "_idle_share", "idle_line", "IDLE_OLD_LINES", "levels_done", "_lever_state", "update_idle", "AGENDA_THEMES", "agenda", "food_per_dwarf", "WINTER_STOCK", "winter_factor", "young_fort", "established", "has_farms", "_best_metal", "REFUSAL_FIRST_DAYS", "REFUSAL_MAX_DAYS", "REFUSAL_IDLE_DAYS", "REFUSAL_KEYS", "LABOR_CAPS", "labor_given", "note_labor_given", "REFUSAL_ID_TYPES", "PER_ID_COOLDOWN", "refusal_key", "cooldown_key", "_refused_wait", "note_refusal", "zone_full_days", "note_zone_full", "ZONE_FULL_FIRST_DAYS", "ZONE_FULL_MAX_DAYS", "TIMEOUT_TRIES", "timeout_streak", "brief_timeout", "LOOP_LIMITS", "LOOP_LIMIT_DEFAULT", "LOOP_EXEMPT", "_loop_count", "NO_EFFECT_RULES", "NO_EFFECT_WHY", "note_no_effect", "no_effect_wait", "_stalled_days", "_entrance_spot", "_record_any_outcome", "_weapon_gaps", "spare_sig", "MOOD_BODY_FLAGS", "mood_kind", "mood_on_hand", "mood_waits", "_stuck_again_rule", "wildlife_threat", "wildlife_threats", "thief_ids", "snatcher_ids", "GREAT_LIKE_KINDS", "is_release"]
+__all__ = ["great_present", "all_clear", "STEER_PROTECTED", "STEER_MAX_DAYS", "steer_of", "PLANNER_CONFIG", "BREW_RECIPES", "MEAL_RECIPES", "MANDATE_RECIPES", "BUILDABLE_SHOPS", "SHOP_ALIASES", "SURVIVAL_SHOPS", "TICKS_PER_DAY", "TICKS_PER_YEAR", "NO_COOLDOWN", "COOLDOWN_KEYS", "MULTI_PER_CYCLE", "EMERGENCY", "STUCK_HOLD_EXEMPT", "ORDER_HOLD_EXEMPT", "LIMIT_EXEMPT", "emergency", "limit_exempt", "steer_protected", "Proposal", "Memory", "abs_tick", "stamp_tick", "game_day", "factor", "ADJUST_BOUNDS", "_number", "effective_config", "queued", "unstored_cups", "free_stock", "watch_since", "_clamp", "MEMORIAL_SPAN", "OPTIONAL_LEVELS", "GEAR_WEAPONS", "GEAR_METALS", "NEEDS_YOU", "ask_player", "DISPOSAL_LEVELS", "DISPOSAL_ACTION_MAX", "player_rules", "OPEN_CAVERNS_MODES", "open_caverns_mode", "MAINTAIN_SKIPS", "level_refused", "_traits", "reachable_threats", "held_off_threats", "_holding_off", "ONE_A_CYCLE", "growth_mode", "growth_target", "JOB_SHOPS", "RECIPE_SHOPS", "WOOD_ELSEWHERE", "recipe_shop", "brewable_counts", "brew_recipe", "_watchdog_notes", "jobs_reported", "order_job_state", "masons_jammed", "stuck_hold_days", "_stuck_before", "stone_short", "_office_held", "tantrums_recent", "justice_held", "_restraint_order", "manager_needs_office", "suites_short", "wool_route", "thread_plants_here", "MINING_NEED_ONLY", "mining_plan", "noble_room_kinds", "SOCIAL_NEEDS", "care_waiting", "unmet", "_soldier_swap", "recently_home", "LOCATION_UNITS", "_location", "_location_short", "_real_locations", "can_fight", "is_ranged", "STALE_PROJECT_DAYS", "_workshops_busy", "shop_count", "shops_max", "_has_shop", "RAW_FOOD", "ALL_FOOD", "_idle_share", "idle_line", "IDLE_OLD_LINES", "levels_done", "_lever_state", "update_idle", "AGENDA_THEMES", "agenda", "food_per_dwarf", "WINTER_STOCK", "winter_factor", "young_fort", "established", "has_farms", "_best_metal", "REFUSAL_FIRST_DAYS", "REFUSAL_MAX_DAYS", "REFUSAL_IDLE_DAYS", "REFUSAL_KEYS", "LABOR_CAPS", "labor_given", "note_labor_given", "REFUSAL_ID_TYPES", "PER_ID_COOLDOWN", "refusal_key", "cooldown_key", "_refused_wait", "note_refusal", "zone_full_days", "note_zone_full", "ZONE_FULL_FIRST_DAYS", "ZONE_FULL_MAX_DAYS", "TIMEOUT_TRIES", "timeout_streak", "brief_timeout", "LOOP_LIMITS", "LOOP_LIMIT_DEFAULT", "LOOP_EXEMPT", "_loop_count", "NO_EFFECT_RULES", "NO_EFFECT_WHY", "note_no_effect", "no_effect_wait", "_stalled_days", "_entrance_spot", "_record_any_outcome", "_weapon_gaps", "spare_sig", "MOOD_BODY_FLAGS", "mood_kind", "mood_on_hand", "mood_waits", "_stuck_again_rule", "wildlife_threat", "wildlife_threats", "wild_rows", "wild_pack", "thief_ids", "snatcher_ids", "GREAT_LIKE_KINDS", "is_release"]
 
 BREW_RECIPES = {"brew_drink", "brew_drink_from_fruit", "make_mead"}
 MEAL_RECIPES = {"prepare_easy_meal", "prepare_fine_meal", "prepare_lavish_meal"}
@@ -685,6 +685,141 @@ def wildlife_threats(s: dict, cfg: dict | None = None) -> list:
     return [t for t in _l(_d(s.get("others_on_map")).get("threats")) if wildlife_threat(t, cfg)]
 
 
+# (0.105.51) A pack is no small wildlife. C (R3, winter 251): 9 giant dingoes
+# (large predators, never agitated: no DF "danger", so not in the threats
+# rows at all; only the hunt's targets and the field watch listed them) killed
+# 10 of the 14 dwarves with no alarm, no gates and no shelter, one untrained
+# soldier in the fort. The wild animals that can reach the dwarves (out of
+# the caverns: the cavern alarm is its own) are read from all three lists and
+# judged as a group: a danger to the whole fort (the alarm, and a sortie only
+# when the free squads beat them) when `wild_pack_min` or more of
+# `wild_pack_member_size` or more can reach the dwarves, one of them is inside
+# the fort, two or more are more than the free squads beat at `fight_ratio`,
+# or a lone one at grips with a dwarf (the field watch's `attacking`) is more
+# than they beat (no squad: the civilians in). A lone wolf or falcon that
+# attacks nobody stays the hunting squads' (no lockdown).
+def _is_cavern(layer) -> bool:
+    return str(layer or "").startswith("Cavern")
+
+
+def _num_(v) -> bool:
+    return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+
+def wild_rows(s: dict, cfg: dict | None = None) -> list:
+    """The wild animals that can reach the dwarves, out of the caverns, merged
+    by id from the threats rows (wildlife_threat), the hunt's targets (why
+    hostile_wild) and the field watch's wild rows (reach): threat-like rows
+    ({id, name, size, flier, attacking, inside, distance_to_nearest_dwarf...})."""
+    cfg = cfg or PLANNER_CONFIG
+    rows: dict = {}
+    order: list = []
+
+    def add(r: dict) -> None:
+        i = r.get("id")
+        if not isinstance(i, int) or isinstance(i, bool):
+            return
+        if i not in rows:
+            rows[i] = dict(r)
+            order.append(i)
+        else:
+            for k, v in r.items():
+                if rows[i].get(k) is None and v is not None:
+                    rows[i][k] = v
+            rows[i]["attacking"] = bool(rows[i].get("attacking") or r.get("attacking")) or None
+            rows[i]["inside"] = bool(rows[i].get("inside") or r.get("inside")) or None
+    ent = _d(s.get("entrances"))
+    inside_ids = {x for x in _l(ent.get("intruders_inside")) if isinstance(x, int)}
+    # the hunt's targets first (they carry the facts the matchup weighs)
+    for t in _l(_d(s.get("hunt")).get("targets")):
+        if not isinstance(t, dict) or t.get("why") != "hostile_wild" or t.get("can_reach_dwarves") is not True:
+            continue
+        if t.get("region") == "cavern" or _is_cavern(t.get("layer")):
+            continue
+        r = dict(t, animal=True, inside=(t.get("region") == "inside") or None)
+        if not wildlife_threat(r, cfg):
+            continue
+        if r.get("distance_to_nearest_dwarf") is None and int(t.get("near_workers") or 0) > 0:
+            r["distance_to_nearest_dwarf"] = 0     # by working dwarves (the hunt's count within its near)
+        add(r)
+    for t in _l(_d(s.get("others_on_map")).get("threats")):
+        if (isinstance(t, dict) and wildlife_threat(t, cfg) and t.get("can_reach_dwarves") is True
+                and not _is_cavern(t.get("layer"))):
+            add(t)
+    for w in _l(_d(s.get("field_watch")).get("wild")):
+        if not isinstance(w, dict) or w.get("reach") is not True:
+            continue
+        r = {"id": w.get("id"), "name": w.get("name"), "animal": True, "size": w.get("size"),
+             "flier": w.get("flier"), "fire_breather": w.get("fire_breather"), "invader": w.get("invader"),
+             "great_danger": w.get("great"), "attacking": w.get("attacking"), "can_reach_dwarves": True,
+             "layer": "upper_levels", "distance_to_nearest_dwarf": w.get("distance")}
+        if wildlife_threat(r, cfg):
+            add(r)
+    out = []
+    for i in order:
+        r = rows[i]
+        if i in inside_ids:
+            r["inside"] = True
+        out.append(r)
+    return out
+
+
+def _wild_free_squads(s: dict, cfg: dict, ids: set) -> list:
+    """The squads free for the wild animals: able to fight, not on the
+    player's orders, not out at something else."""
+    out = []
+    for q in _l(_d(s.get("military")).get("squads")):
+        if not isinstance(q, dict) or not can_fight(q, cfg):
+            continue
+        if int(q.get("orders") or 0) > int(q.get("ai_orders") or 0):
+            continue
+        kill = {x for x in _l(q.get("kill_ids")) if isinstance(x, int)}
+        if q.get("ai_orders") and kill and not kill & ids:
+            continue
+        out.append(q)
+    return out
+
+
+def wild_pack(s: dict, cfg: dict | None = None) -> dict:
+    """{ids, rows, danger (why, "" if none), fight (the free squads beat
+    them at fight_ratio), ratio}: the wild animals that can reach the
+    dwarves judged as a group (see above). `ids` are all of them when they
+    are a danger, else []."""
+    cfg = cfg or PLANNER_CONFIG
+    out = {"ids": [], "rows": [], "danger": "", "fight": False, "ratio": 0.0}
+    try:
+        rows = wild_rows(s, cfg)
+    except Exception:   # noqa: BLE001  a malformed section: no pack (as before)
+        return out
+    big = [r for r in rows if _num_(r.get("size")) and r["size"] >= cfg.get("wild_pack_member_size", 10000)]
+    out["rows"] = big
+    if not big:
+        return out
+    from planner_matchup import judge
+    squads = _wild_free_squads(s, cfg, {r["id"] for r in big})
+    ratio = judge(big, squads)["ratio"] if squads else 0.0
+    win = ratio >= float(cfg.get("fight_ratio", 2.0))
+    out["ratio"], out["fight"] = round(ratio, 2), win
+    name = str(big[0].get("name") or "a wild animal")
+    inside = [r for r in big if r.get("inside")]
+    hit = [r for r in big if r.get("attacking")]
+    if inside:
+        why = f"{inside[0].get('name') or 'a wild animal'} inside the fort"
+    elif len(big) >= int(cfg.get("wild_pack_min", 3)):
+        why = f"a pack of {len(big)} wild animals ({name}...) can reach the dwarves"
+    elif len(big) >= 2 and not win:
+        why = f"{len(big)} wild animals ({name}...) stronger than the free squads"
+    elif hit and not win:
+        why = f"{hit[0].get('name') or 'a wild animal'} attacking a dwarf and no squad that beats it"
+    else:
+        return out
+    out["danger"] = why + (f" (the free squads beat them: {ratio:.1f}x)" if win else
+                           f" (the free squads {ratio:.1f}x, {cfg.get('fight_ratio', 2.0)}x needed: no sortie, "
+                           "the civilians in)")
+    out["ids"] = [r["id"] for r in big]
+    return out
+
+
 def thief_ids(s: dict) -> set:
     """The ids of the thieves and snatchers the threats section lists."""
     th = _d(_d(s.get("threats")).get("thieves"))
@@ -724,7 +859,10 @@ def reachable_threats(s: dict, traits: dict, cfg: dict) -> list:
     threats = o.get("threats") or []
     listed = [t.get("id") for t in threats if t.get("can_reach_dwarves") is True]
     unlisted = max(0, (o.get("threats_that_can_reach_dwarves") or 0) - len(listed))
-    wild = {t.get("id") for t in threats if wildlife_threat(t, cfg)}
+    # (0.105.51) a pack (wild_pack) is no small wildlife: in, with the ones
+    # only the hunt and the field watch list (DF calls no large predator a danger)
+    pack = wild_pack(s, cfg)["ids"]
+    wild = {t.get("id") for t in threats if wildlife_threat(t, cfg)} - set(pack)
     threats = [t for t in threats if t.get("id") not in wild]
     ids = [i for i in listed if i not in wild]
     # (0.104.139) a flier in the air (its reach unknown) near the dwarves can
@@ -752,8 +890,9 @@ def reachable_threats(s: dict, traits: dict, cfg: dict) -> list:
             if (t.get("can_reach_dwarves") is None and lv is not None and lv <= levels
                     and t.get("id") not in ids):
                 ids.append(t.get("id"))
-    if not unlisted and _lone_thieves(s, cfg, ids, {t.get("id"): t for t in threats}):
+    if not unlisted and not pack and _lone_thieves(s, cfg, ids, {t.get("id"): t for t in threats}):
         return []
+    ids += [i for i in pack if i not in ids]
     ids += [f"unlisted{i}" for i in range(unlisted)]
     return ids
 

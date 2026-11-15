@@ -1609,7 +1609,19 @@ function kill_target_ok(u)
     -- agitated: ai-builder hostile_wild): the wildlife and caravan guard rules
     -- send a squad at one near the dwarves or a caravan (lua/ai-siege.lua)
     local okw, wild = pcall(function() return reqscript('ai-builder').hostile_wild(u) end)
-    return okw and wild == true
+    if okw and wild == true then return true end
+    -- (0.105.51) a wild animal at grips with a citizen (its last opponent):
+    -- C's giant coyote, E's giant chipmunk are neither large predators nor
+    -- agitated, and every wild_hunt order at them was refused ("none of those
+    -- units is a threat") while they killed the dwarves outside
+    local oka, att = pcall(function()
+        if not U.isAnimal(u) or is(U.isFortControlled) then return false end
+        local tid = u.opponent.unit_id
+        if type(tid) ~= 'number' or tid < 0 then return false end
+        local c = df.unit.find(tid)
+        return c ~= nil and U.isCitizen(c) == true
+    end)
+    return oka and att == true
 end
 
 -- Kill orders against the given units (only ones actually on the map), or

@@ -330,14 +330,23 @@ function dangers(txt, ents)
             if e.door_only and e.kind ~= 'cavern' then door_only_any = true end
         end
     end
+    -- (0.105.51) and a wild pack (ai-gates wild_pack_ids: C's 9 giant dingoes
+    -- left the plan at danger = false while they killed 10 of 14)
+    local pack = {}
+    pcall(function()
+        local p = reqscript('ai-gates').wild_pack_ids(list)
+        if type(p) == 'table' then pack = p end
+    end)
     for _, u in ipairs(list) do
         local ok, row = pcall(function()
             if not dfhack.units.isActive(u) or dfhack.units.isDead(u) or dfhack.units.isCitizen(u, true) then return nil end
             if u.flags1.caged or u.flags1.chained then return nil end
-            if not dfhack.units.isDanger(u) then return nil end
+            local wild = pack[u.id] == true
+            if not wild and not dfhack.units.isDanger(u) then return nil end
             local great, inv = dfhack.units.isGreatDanger(u) == true, dfhack.units.isInvader(u) == true
-            if not (great or inv) then return nil end
+            if not (great or inv or wild) then return nil end
             return {id = u.id, x = u.pos.x, y = u.pos.y, z = u.pos.z, great = great or nil, invader = inv or nil,
+                    wild = wild or nil,
                     destroyer = destroyer_of(u) or nil,           -- (0.105.47)
                     name = (txt or tostring)(dfhack.units.getReadableName(u))}
         end)

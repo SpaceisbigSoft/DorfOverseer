@@ -172,20 +172,23 @@ def armed_fort(beast):
 @test("reach cap: the alarm down at its cap and no enemy within 60 tiles of a gate: the gates the watcher shut "
       "open; an enemy near a gate, a new one, or no cap: they stay")
 def _():
-    far = armed_fort(titan(pos={"x": 200, "y": 10, "z": 170}))          # the gate is at x31 y140 z173
+    far = armed_fort(goblin(6001, distance_to_nearest_dwarf=150, pos={"x": 200, "y": 10, "z": 170}))          # the gate is at x31 y140 z173
     m = capped(far)
     props, _ = plan(far, m)
     opens = by(props, "gates", "open_gates")
     assert opens and "maximum time" in opens[0].reason, [(p.action, p.reason) for p in by(props, "gates")]
-    near = armed_fort(titan(pos={"x": 40, "y": 120, "z": 173}))
+    near = armed_fort(goblin(6001, distance_to_nearest_dwarf=150, pos={"x": 40, "y": 120, "z": 173}))
     assert not by(plan(near, capped(near))[0], "gates", "open_gates")
     assert not by(plan(far, Memory())[0], "gates", "open_gates")
     m = capped(far)
     m.atlas["lockdown"]["new"] = abs_tick(far)                          # a new enemy since
     assert not by(plan(far, m)[0], "gates", "open_gates")
     # opened, not armed: armed again (the watcher closes late)
-    s = fort([titan(pos={"x": 200, "y": 10, "z": 170})], [])
+    s = fort([goblin(6001, distance_to_nearest_dwarf=150, pos={"x": 200, "y": 10, "z": 170})], [])
     assert by(plan(s, capped(s))[0], "gates", "arm_gates")
+    # (0.105.51) never for a great danger (C, R3 08:39: a Hill Titan about, the gates opened)
+    big = armed_fort(titan(pos={"x": 200, "y": 10, "z": 170}))
+    assert not by(plan(big, capped(big))[0], "gates", "open_gates")
 
 
 # --- 3. a fight the matchup finds lost ------------------------------------------------------

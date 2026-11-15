@@ -657,10 +657,51 @@ function small_wildlife(u)
     return ok and yes == true
 end
 
+-- (0.105.51) A pack is no small wildlife: C (R3, winter 251) lost 10 of 14
+-- dwarves to 9 giant dingoes, large predators DF never calls a danger, and
+-- no gate shut. The wild animals (agitated, or hostile: ai-builder
+-- hostile_wild) of WILD_PACK_SIZE or more, free, seen, not the fort's and not
+-- in a cavern (the cavern alarm is its own): WILD_PACK_MIN or more on the map
+-- are all dangers here (the brain's wild_pack sounds the alarm for them).
+-- {[id] = true}. `list`: the units (all active ones by default).
+WILD_PACK_MIN = 3
+WILD_PACK_SIZE = 10000
+function wild_pack_ids(list)
+    list = list or df.global.world.units.active
+    local hw
+    pcall(function() hw = reqscript('ai-builder').hostile_wild end)
+    local members = {}
+    for _, u in ipairs(list) do
+        local ok, yes = pcall(function()
+            local U = dfhack.units
+            if not U.isAnimal(u) or u.flags1.caged or u.flags1.chained then return false end
+            if not U.isAlive(u) or U.isHidden(u) or U.isCitizen(u) or U.isFortControlled(u) then return false end
+            if U.isInvader(u) or U.isGreatDanger(u) or U.isNightCreature(u) or U.isUndead(u) then return false end
+            local okt, tame = pcall(U.isTame, u)
+            if okt and tame then return false end
+            local size = u.body.size_info.size_cur
+            if type(size) ~= 'number' or size < WILD_PACK_SIZE then return false end
+            if not U.isDanger(u) and not (type(hw) == 'function' and hw(u) == true) then return false end
+            local des = dfhack.maps.getTileFlags(u.pos.x, u.pos.y, u.pos.z)
+            if not des or des.hidden or des.feature_local or des.feature_global then return false end
+            return true
+        end)
+        if ok and yes then table.insert(members, u.id) end
+    end
+    local out = {}
+    if #members >= WILD_PACK_MIN then
+        for _, id in ipairs(members) do out[id] = true end
+    end
+    return out
+end
+
 function visible_dangers()
     local out = {}
+    local okp, pack = pcall(wild_pack_ids)
+    if not okp or type(pack) ~= 'table' then pack = {} end
     for _, u in ipairs(df.global.world.units.active) do
         local ok, yes = pcall(function()
+            if pack[u.id] then return true end
             return dfhack.units.isAlive(u) and not u.flags1.caged and not u.flags1.chained
                 and not dfhack.units.isCitizen(u) and not dfhack.units.isHidden(u)
                 and (dfhack.units.isDanger(u) or dfhack.units.isInvader(u))

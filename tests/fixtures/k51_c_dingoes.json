@@ -1,0 +1,417 @@
+{
+ "_source": "R3 DF-AI-C states/251-winter.json (Moonstone 1, 251): the 9 giant dingoes before they killed 10 of 14",
+ "hunt": {
+  "targets": [
+   {
+    "ambush": false,
+    "attacks": {
+     "best": "edged",
+     "count": 5
+    },
+    "can_reach_dwarves": true,
+    "facts": 1,
+    "fire_breather": false,
+    "flier": false,
+    "great_danger": false,
+    "id": 17845,
+    "kill_ok": true,
+    "kinds": [],
+    "layer": "upper_levels",
+    "name": "Giant Dingo",
+    "near_workers": 4,
+    "pos": {
+     "x": 108,
+     "y": 167,
+     "z": 171
+    },
+    "region": "surface",
+    "route": {
+     "blocked_by": "none",
+     "length": 24,
+     "ok": true
+    },
+    "seen_ticks": 6230,
+    "size": 28639,
+    "thief": false,
+    "why": "hostile_wild",
+    "wounded_visitor": false,
+    "wounds": 0
+   },
+   {
+    "ambush": false,
+    "attacks": {
+     "best": "edged",
+     "count": 5
+    },
+    "can_reach_dwarves": true,
+    "facts": 1,
+    "fire_breather": false,
+    "flier": false,
+    "great_danger": false,
+    "id": 17843,
+    "kill_ok": true,
+    "kinds": [],
+    "layer": "upper_levels",
+    "name": "Giant Dingo",
+    "near_workers": 3,
+    "pos": {
+     "x": 126,
+     "y": 180,
+     "z": 168
+    },
+    "region": "surface",
+    "route": {
+     "blocked_by": "none",
+     "length": 28,
+     "ok": true
+    },
+    "seen_ticks": 7559,
+    "size": 35254,
+    "thief": false,
+    "why": "hostile_wild",
+    "wounded_visitor": false,
+    "wounds": 0
+   },
+   {
+    "ambush": false,
+    "attacks": {
+     "best": "edged",
+     "count": 5
+    },
+    "can_reach_dwarves": true,
+    "facts": 1,
+    "fire_breather": false,
+    "flier": false,
+    "great_danger": false,
+    "id": 17848,
+    "kill_ok": true,
+    "kinds": [],
+    "layer": "upper_levels",
+    "name": "Giant Dingo",
+    "near_workers": 3,
+    "pos": {
+     "x": 108,
+     "y": 174,
+     "z": 170
+    },
+    "region": "surface",
+    "route": {
+     "blocked_by": "none",
+     "length": 28,
+     "ok": true
+    },
+    "seen_ticks": 6230,
+    "size": 39296,
+    "thief": false,
+    "why": "hostile_wild",
+    "wounded_visitor": false,
+    "wounds": 0
+   },
+   {
+    "ambush": false,
+    "attacks": {
+     "best": "edged",
+     "count": 5
+    },
+    "can_reach_dwarves": true,
+    "facts": 1,
+    "fire_breather": false,
+    "flier": false,
+    "great_danger": false,
+    "id": 17842,
+    "kill_ok": true,
+    "kinds": [],
+    "layer": "upper_levels",
+    "name": "Giant Dingo",
+    "near_workers": 0,
+    "pos": {
+     "x": 49,
+     "y": 197,
+     "z": 173
+    },
+    "region": "surface",
+    "route": {
+     "blocked_by": "none",
+     "length": 81,
+     "ok": true
+    },
+    "seen_ticks": 7559,
+    "size": 31360,
+    "thief": false,
+    "why": "hostile_wild",
+    "wounded_visitor": false,
+    "wounds": 0
+   },
+   {
+    "ambush": false,
+    "attacks": {
+     "best": "edged",
+     "count": 5
+    },
+    "can_reach_dwarves": true,
+    "facts": 1,
+    "fire_breather": false,
+    "flier": false,
+    "great_danger": false,
+    "id": 17844,
+    "kill_ok": true,
+    "kinds": [],
+    "layer": "upper_levels",
+    "name": "Giant Dingo",
+    "near_workers": 0,
+    "pos": {
+     "x": 129,
+     "y": 199,
+     "z": 166
+    },
+    "region": "surface",
+    "route": {
+     "blocked_by": "none",
+     "length": 50,
+     "ok": true
+    },
+    "seen_ticks": 7559,
+    "size": 33636,
+    "thief": false,
+    "why": "hostile_wild",
+    "wounded_visitor": false,
+    "wounds": 0
+   },
+   {
+    "ambush": false,
+    "attacks": {
+     "best": "edged",
+     "count": 5
+    },
+    "can_reach_dwarves": true,
+    "facts": 1,
+    "fire_breather": false,
+    "flier": false,
+    "great_danger": false,
+    "id": 17846,
+    "kill_ok": true,
+    "kinds": [],
+    "layer": "upper_levels",
+    "name": "Giant Dingo",
+    "near_workers": 0,
+    "pos": {
+     "x": 123,
+     "y": 194,
+     "z": 166
+    },
+    "region": "surface",
+    "route": {
+     "blocked_by": "none",
+     "length": 45,
+     "ok": true
+    },
+    "seen_ticks": 7559,
+    "size": 43644,
+    "thief": false,
+    "why": "hostile_wild",
+    "wounded_visitor": false,
+    "wounds": 0
+   },
+   {
+    "ambush": false,
+    "attacks": {
+     "best": "edged",
+     "count": 5
+    },
+    "can_reach_dwarves": true,
+    "facts": 1,
+    "fire_breather": false,
+    "flier": false,
+    "great_danger": false,
+    "id": 17847,
+    "kill_ok": true,
+    "kinds": [],
+    "layer": "upper_levels",
+    "name": "Giant Dingo",
+    "near_workers": 0,
+    "pos": {
+     "x": 124,
+     "y": 192,
+     "z": 164
+    },
+    "region": "surface",
+    "route": {
+     "blocked_by": "none",
+     "length": 49,
+     "ok": true
+    },
+    "seen_ticks": 6230,
+    "size": 39146,
+    "thief": false,
+    "why": "hostile_wild",
+    "wounded_visitor": false,
+    "wounds": 0
+   },
+   {
+    "ambush": false,
+    "attacks": {
+     "best": "edged",
+     "count": 5
+    },
+    "can_reach_dwarves": true,
+    "facts": 1,
+    "fire_breather": false,
+    "flier": false,
+    "great_danger": false,
+    "id": 17849,
+    "kill_ok": true,
+    "kinds": [],
+    "layer": "upper_levels",
+    "name": "Giant Dingo",
+    "near_workers": 0,
+    "pos": {
+     "x": 77,
+     "y": 197,
+     "z": 171
+    },
+    "region": "surface",
+    "route": {
+     "blocked_by": "none",
+     "length": 54,
+     "ok": true
+    },
+    "seen_ticks": 6230,
+    "size": 46174,
+    "thief": false,
+    "why": "hostile_wild",
+    "wounded_visitor": false,
+    "wounds": 0
+   },
+   {
+    "ambush": false,
+    "attacks": {
+     "best": "edged",
+     "count": 5
+    },
+    "can_reach_dwarves": true,
+    "facts": 1,
+    "fire_breather": false,
+    "flier": false,
+    "great_danger": false,
+    "id": 17850,
+    "kill_ok": true,
+    "kinds": [],
+    "layer": "upper_levels",
+    "name": "Giant Dingo",
+    "near_workers": 0,
+    "pos": {
+     "x": 121,
+     "y": 193,
+     "z": 165
+    },
+    "region": "surface",
+    "route": {
+     "blocked_by": "none",
+     "length": 47,
+     "ok": true
+    },
+    "seen_ticks": 7559,
+    "size": 28227,
+    "thief": false,
+    "why": "hostile_wild",
+    "wounded_visitor": false,
+    "wounds": 0
+   }
+  ]
+ },
+ "field_watch": {
+  "caravan": [],
+  "citizens_outside": 2,
+  "merchants": 0,
+  "wild": [
+   {
+    "distance": 26,
+    "distance_outside": 58,
+    "id": 17843,
+    "name": "Giant Dingo",
+    "outside": true,
+    "reach": true,
+    "size": 35254,
+    "wild": true
+   },
+   {
+    "distance": 18,
+    "distance_outside": 18,
+    "id": 17845,
+    "name": "Giant Dingo",
+    "outside": true,
+    "reach": true,
+    "size": 28639,
+    "wild": true
+   },
+   {
+    "distance": 38,
+    "distance_outside": 75,
+    "id": 17846,
+    "name": "Giant Dingo",
+    "outside": true,
+    "reach": true,
+    "size": 43644,
+    "wild": true
+   },
+   {
+    "distance": 37,
+    "distance_outside": 80,
+    "id": 17847,
+    "name": "Giant Dingo",
+    "outside": true,
+    "reach": true,
+    "size": 39146,
+    "wild": true
+   },
+   {
+    "distance": 22,
+    "distance_outside": 28,
+    "id": 17848,
+    "name": "Giant Dingo",
+    "outside": true,
+    "reach": true,
+    "size": 39296,
+    "wild": true
+   },
+   {
+    "distance": 32,
+    "distance_outside": 75,
+    "id": 17850,
+    "name": "Giant Dingo",
+    "outside": true,
+    "reach": true,
+    "size": 28227,
+    "wild": true
+   }
+  ],
+  "wild_total": 6
+ },
+ "squads": [
+  {
+   "ai_orders": 0,
+   "ai_uniform": "Melee, metal armor",
+   "id": 187,
+   "leader": true,
+   "members": 1,
+   "name": "",
+   "orders": 0,
+   "power": {
+    "armed": 1,
+    "armored": 1,
+    "coverage": 0.4,
+    "melee_power": 1.0,
+    "power": 1.0,
+    "ranged": 0,
+    "ranged_power": 0.0,
+    "skill": 0.0,
+    "weapons": {
+     "copper": 1
+    }
+   },
+   "routine": "Off duty",
+   "size": 10,
+   "uniform": true
+  }
+ ]
+}
