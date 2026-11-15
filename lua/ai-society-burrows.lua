@@ -1761,6 +1761,33 @@ function weather_keep_in(on, dry_run, txt)
     if okb and blocks == 0 then
         return {ok = false, rejected = true, error = 'the AI shelter burrow covers no tiles'}
     end
+    -- (0.105.48, K3) the shelter as it is now, with drink: drawn again at a
+    -- spell's first keep-in and when last drawn over SHELTER_REDRAW_TICKS ago
+    -- (the alarm's may be days old, narrowed to a few levels, short of drink)
+    local sh
+    if not dry_run then
+        local okr, r = pcall(S.shelter_for_keep_in, d.spell == nil)
+        if not okr then
+            return {ok = false, rejected = true, error = 'could not check the AI shelter: ' .. tostring(r):sub(1, 120)}
+        end
+        sh = r or {}
+        local why
+        if (tonumber(sh.tiles) or 0) == 0 then why = 'the AI shelter covers no tiles'
+        elseif sh.no_water then why = 'the AI shelter holds no drink and no well' end
+        if why then
+            -- nobody kept where they can't drink: those in let out
+            local out = 0
+            for id in pairs(d.members) do
+                local u = df.unit.find(tonumber(id) or -1)
+                if u then pcall(dfhack.burrows.setAssignedUnit, b, u, false) end
+                out = out + 1
+            end
+            U.site_put(WEATHER_KEEP_KEY, {members = {}})
+            return {ok = false, rejected = true, error = why .. ': nobody kept in it', released = out}
+        end
+        if d.spell == nil then pcall(function() d.spell = U.abs_tick() end) end
+        d.spell = d.spell or 0
+    end
     local added, skipped, gone = 0, 0, 0
     local live = {}
     for _, u in ipairs(report_citizens(true)) do
@@ -1791,7 +1818,8 @@ function weather_keep_in(on, dry_run, txt)
     for _ in pairs(d.members) do n = n + 1 end
     if not dry_run then U.site_put(WEATHER_KEEP_KEY, d) end
     return {ok = true, on = true, added = added, members = n, skipped = skipped, gone = gone,
-            dry_run = dry_run or nil}
+            dry_run = dry_run or nil, shelter_tiles = sh and sh.tiles, shelter_redrawn = sh and sh.redrawn,
+            drink_short = sh and sh.drink_short}
 end
 
 function weather_keep_in_status()

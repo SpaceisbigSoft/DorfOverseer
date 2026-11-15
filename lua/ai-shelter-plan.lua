@@ -265,10 +265,71 @@ local WALK_SHAPES = {FLOOR = WALK, STAIR_UP = WALK + UP, STAIR_DOWN = WALK + DOW
                      SAPLING = WALK, SHRUB = WALK, PEBBLES = WALK, BOULDER = WALK, TWIG = WALK,
                      BROOK_TOP = WALK}
 
--- The great dangers and invaders on the map, free and alive: {id, name, x, y, z, great, invader}
-function dangers(txt)
-    local out = {}
+-- (0.105.48, K1) the citizens' walk groups (DF's path data): a set, or nil unread
+local function citizen_groups()
+    local ok, set = pcall(function()
+        local out, any = {}, false
+        for _, u in ipairs(U.citizens and U.citizens(true) or dfhack.units.getCitizens(true)) do
+            local g = dfhack.maps.getWalkableGroup(u.pos)
+            if g and g ~= 0 then out[g] = true; any = true end
+        end
+        return any and out or nil
+    end)
+    return ok and set or nil
+end
+
+-- (0.105.48, K1) Where a danger stands, from DF's tile flags: 'hidden' (an
+-- unrevealed tile: a cavern or the underworld not yet dug into), 'surface'
+-- (under the sky), 'feature' (a cavern, the underworld), 'fort' (the rock
+-- the fort is dug in); nil unread.
+local function where_at(x, y, z)
+    local ok, w = pcall(function()
+        local d = dfhack.maps.getTileFlags(x, y, z)
+        if not d then return nil end
+        if d.hidden then return 'hidden' end
+        if d.outside then return 'surface' end
+        if d.feature_local or d.feature_global then return 'feature' end
+        return 'fort'
+    end)
+    return ok and w or nil
+end
+
+-- (0.105.48, K1) Can this danger come to the civilians? War-hold: the
+-- shelter shrank to one level of 90 tiles, 28 drinks and no food for 34
+-- for 3 forgotten beasts in unrevealed caverns and 5 demons at z3, none of
+-- which could come. Not: a unit DF hides (isHidden: an ambusher not seen,
+-- a beast in a cavern not yet opened), one on an unrevealed tile, one in a
+-- cavern or the underworld whose walk group no citizen shares (sealed off),
+-- unless it breaks buildings and some entrance is held only by doors or
+-- hatches. Always: one on the surface (the gates may open) or in the fort's
+-- own rock, and one DF's path data can't place. Returns true, or false and
+-- why ('hidden' or 'sealed').
+function can_come(u, row, groups, any_door_only)
+    local okh, hid = pcall(dfhack.units.isHidden, u)
+    if okh and hid then return false, 'hidden' end
+    local where = where_at(row.x, row.y, row.z)
+    if where == 'hidden' then return false, 'hidden' end
+    if where ~= 'feature' or not groups then return true end
+    local okg, g = pcall(dfhack.maps.getWalkableGroup, xyz2pos and xyz2pos(row.x, row.y, row.z) or u.pos)
+    if not okg or not g or g == 0 or groups[g] then return true end
+    if row.destroyer and any_door_only then return true end
+    return false, 'sealed'
+end
+
+-- The great dangers and invaders on the map, free and alive, that can come
+-- to the civilians: {id, name, x, y, z, great, invader}; and (0.105.48) the
+-- ones left out: {id, name, z, why} ('hidden', 'sealed')
+function dangers(txt, ents)
+    local out, away = {}, {}
     local list = (U.REPORT_CTX and U.units_active) and U.units_active() or df.global.world.units.active
+    local groups, door_only_any = nil, false
+    local function setup()
+        if groups ~= nil then return end
+        groups = citizen_groups() or false
+        for _, e in ipairs(ents or {}) do
+            if e.door_only and e.kind ~= 'cavern' then door_only_any = true end
+        end
+    end
     for _, u in ipairs(list) do
         local ok, row = pcall(function()
             if not dfhack.units.isActive(u) or dfhack.units.isDead(u) or dfhack.units.isCitizen(u, true) then return nil end
@@ -280,9 +341,17 @@ function dangers(txt)
                     destroyer = destroyer_of(u) or nil,           -- (0.105.47)
                     name = (txt or tostring)(dfhack.units.getReadableName(u))}
         end)
-        if ok and row and row.x >= 0 then table.insert(out, row) end
+        if ok and row and row.x >= 0 then
+            setup()
+            local okc, yes, why = pcall(can_come, u, row, groups or nil, door_only_any)
+            if not okc or yes then
+                table.insert(out, row)
+            elseif #away < 20 then
+                table.insert(away, {id = row.id, name = row.name, z = row.z, great = row.great, why = why})
+            end
+        end
     end
-    return out
+    return out, away
 end
 
 local function straight(a, b) return math.max(math.abs(a.x - b.x), math.abs(a.y - b.y)) + 3 * math.abs(a.z - b.z) end
@@ -359,46 +428,129 @@ function ways_in(list, ents)
 end
 
 
--- The walkable tiles from z lo to hi: inside ones (not outside, not a cavern
--- or other feature), and outside or cavern ones only near the given points
--- (to join a way in to the inside). Deep water (4+) and magma are no way.
-function build_grid(lo, hi, points)
-    local grid = {}
-    local near = SHELTER_PLAN_NEAR
-    local per_z = {}
-    for _, p in ipairs(points or {}) do
-        per_z[p.z] = per_z[p.z] or {}
-        table.insert(per_z[p.z], p)
+-- (0.105.48, A1) A tile's grid flags from its block: nil (no way: not
+-- walkable, hidden, deep water, magma), and whether it is inside (not under
+-- the sky, not a cavern or other feature). The designation is read as one
+-- number where DF gives it (`whole`: flow_size bits 0-2, hidden 9, outside
+-- 16, liquid_type 21, feature_local 28, feature_global 29; df-structures
+-- tile_designation), the tile type's shape kept by type: the walk was
+-- 8.2 s of a 10 s pulse on the War-hold, a dozen DF reads a tile.
+local TT_FLAG = {}
+local function tt_flag(tt)
+    local f = TT_FLAG[tt]
+    if f == nil then
+        local ok, v = pcall(function() return WALK_SHAPES[df.tiletype_shape[df.tiletype.attrs[tt].shape]] end)
+        f = (ok and v) or false
+        TT_FLAG[tt] = f
     end
-    local function close(x, y, z)
-        for zz = z - 1, z + 1 do
-            for _, p in ipairs(per_z[zz] or {}) do
-                if math.abs(p.x - x) <= near and math.abs(p.y - y) <= near then return true end
+    return f
+end
+
+local function tile_from(d, tcol, ly)
+    local w = d.whole
+    local hidden, flow, magma, outside, feature
+    if type(w) == 'number' then
+        hidden = (w // 512) % 2 == 1
+        if hidden then return nil end
+        flow = w % 8
+        magma = (w // 2097152) % 2 == 1
+        outside = (w // 65536) % 2 == 1
+        feature = (w // 268435456) % 4 ~= 0
+    else
+        if d.hidden then return nil end
+        flow = d.flow_size or 0
+        magma = d.liquid_type == true or d.liquid_type == 1
+        outside = d.outside == true
+        feature = d.feature_local == true or d.feature_global == true
+    end
+    local f = tt_flag(tcol[ly])
+    if not f then return nil end
+    if flow > 0 and (flow >= 4 or magma) then return nil end
+    return f, not outside and not feature
+end
+
+local function tile_at(block, lx, ly)
+    return tile_from(block.designation[lx][ly], block.tiletype[lx], ly)
+end
+
+-- the map's blocks on levels lo..hi, as {bx, by, z} (block coordinates; the
+-- block itself is fetched when walked: nothing of DF is kept between reports)
+local function block_list(lo, hi)
+    local out = {}
+    local okm = pcall(function()
+        local bx, by, bz = dfhack.maps.getSize()
+        for z = math.max(0, lo), math.min(hi, bz - 1) do
+            for x = 0, bx - 1 do
+                for y = 0, by - 1 do table.insert(out, {x, y, z}) end
             end
         end
-        return false
-    end
-    local counts = {}
-    for _, block in ipairs(df.global.world.map.map_blocks) do
+    end)
+    if okm and #out > 0 then return out end
+    out = {}
+    for i, block in ipairs(df.global.world.map.map_blocks) do
         local z = block.map_pos.z
-        if z >= lo and z <= hi then
-            local bx, by = block.map_pos.x, block.map_pos.y
-            for x = 0, 15 do
-                for y = 0, 15 do
-                    local d = block.designation[x][y]
-                    if not d.hidden then
-                        local shape = df.tiletype_shape[df.tiletype.attrs[block.tiletype[x][y]].shape]
-                        local f = WALK_SHAPES[shape]
-                        if f and d.flow_size > 0 and (d.flow_size >= 4 or d.liquid_type == true or d.liquid_type == 1) then
-                            f = nil
-                        end
-                        if f then
-                            local ins = not d.outside and not d.feature_local and not d.feature_global
-                            if ins then
-                                grid[K(bx + x, by + y, z)] = f + INSIDE
-                                counts[z] = (counts[z] or 0) + 1
-                            elseif close(bx + x, by + y, z) then
-                                grid[K(bx + x, by + y, z)] = f
+        if z >= lo and z <= hi then table.insert(out, {block.map_pos.x // 16, block.map_pos.y // 16, z, i = i}) end
+    end
+    return out
+end
+
+local function block_of(item)
+    if item.i then return df.global.world.map.map_blocks[item.i] end
+    return dfhack.maps.getBlock(item[1], item[2], item[3])
+end
+
+-- the block holding map tile x, y, z (or nil)
+local FAKE_BLOCKS = nil
+local function block_at(x, y, z)
+    if x < 0 or y < 0 or z < 0 then return nil end
+    local ok, b = pcall(function() return dfhack.maps.getTileBlock(x, y, z) end)
+    if ok then return b end
+    if not FAKE_BLOCKS then
+        FAKE_BLOCKS = {}
+        for _, block in ipairs(df.global.world.map.map_blocks) do
+            FAKE_BLOCKS[K(block.map_pos.x // 16, block.map_pos.y // 16, block.map_pos.z)] = block
+        end
+    end
+    return FAKE_BLOCKS[K(x // 16, y // 16, z)]
+end
+
+-- One block's walkable inside tiles into the grid (acc.grid, acc.counts)
+local function grid_visit(acc, item)
+    local block = block_of(item)
+    if not block then return end
+    local bx, by, z = block.map_pos.x, block.map_pos.y, block.map_pos.z
+    local grid, n = acc.grid, 0
+    local des, tts = block.designation, block.tiletype
+    for x = 0, 15 do
+        local dcol, tcol = des[x], tts[x]
+        for y = 0, 15 do
+            local f, ins = tile_from(dcol[y], tcol, y)
+            if f and ins then
+                grid[K(bx + x, by + y, z)] = f + INSIDE
+                n = n + 1
+            end
+        end
+    end
+    if n > 0 then acc.counts[z] = (acc.counts[z] or 0) + n end
+end
+
+-- The tiles within SHELTER_PLAN_NEAR of each point (outside, cavern ones
+-- too: to join a way in to the inside), added to grid.
+local function grid_near(grid, points)
+    local near = SHELTER_PLAN_NEAR
+    local done = {}
+    for _, p in ipairs(points or {}) do
+        for z = p.z - 1, p.z + 1 do
+            for x = p.x - near, p.x + near do
+                for y = p.y - near, p.y + near do
+                    local k = K(x, y, z)
+                    if x >= 0 and y >= 0 and z >= 0 and not done[k] then
+                        done[k] = true
+                        if not grid[k] then
+                            local block = block_at(x, y, z)
+                            if block then
+                                local okt, f, ins = pcall(tile_at, block, x % 16, y % 16)
+                                if okt and f then grid[k] = ins and f + INSIDE or f end
                             end
                         end
                     end
@@ -406,7 +558,17 @@ function build_grid(lo, hi, points)
             end
         end
     end
-    return grid, counts
+end
+
+-- The walkable tiles from z lo to hi: inside ones (not outside, not a cavern
+-- or other feature), and outside or cavern ones only near the given points
+-- (to join a way in to the inside). Deep water (4+) and magma are no way.
+-- (Whole, at once: report() walks the same in slices.)
+function build_grid(lo, hi, points)
+    local acc = {grid = {}, counts = {}}
+    for _, item in ipairs(block_list(lo, hi)) do grid_visit(acc, item) end
+    grid_near(acc.grid, points)
+    return acc.grid, acc.counts
 end
 
 -- the grid tile at p, else the nearest within r on its level (a unit on a
@@ -463,8 +625,6 @@ local function barracks(grid)
     return out
 end
 
-local MEMO = nil     -- {tick, sig, grid, cands, ..., keep_dist, keep_key}
-
 local function supplies_by_level()
     local by = {}
     local ok, S = pcall(reqscript, 'ai-society')
@@ -487,130 +647,218 @@ local function supplies_by_level()
     return by
 end
 
--- The report section `shelter_plan`.
-function report(txt)
+-- (0.105.48, A1) The walk in slices (lua/ai-slices.lua): the War-hold's
+-- pulse spent 8.2 s of its 10 s limit here, the game frozen, with one
+-- threat on the map. Two walks, each a time budget a report: the fort's
+-- inside tiles (block by block, kept SHELTER_GRID_TICKS) and the levels'
+-- walks (one candidate level an item). Until a walk is whole the last
+-- finished plan is sent (`stale` when it was made for other ways in or
+-- another pick), or none (`walking`).
+SHELTER_SLICE_MS_PULSE = 150      -- a pulse's budget...
+SHELTER_SLICE_MS_FIRST = 1000     -- ...a pulse's with no plan at all yet (a danger just come)
+SHELTER_SLICE_MS_FULL = 3000      -- ...a full report's (its limit is 30 s)
+SHELTER_GRID_TICKS = 1200         -- the inside tiles walked again at most this often
+
+local function run_slices(name, spec)
+    local ok, SL = pcall(reqscript, 'ai-slices')
+    if ok and type(SL) == 'table' and SL.run then return SL.run(name, spec) end
+    -- no slices module (a test's fake): whole, at once
+    local list = spec.items() or {}
+    local acc = spec.init()
+    for _, it in ipairs(list) do pcall(spec.visit, acc, it) end
+    return spec.finish(acc), 'done', #list, #list
+end
+
+local MEMO = nil     -- the last finished plan: {tick, sig, grid, cands, rest, keep, ...}
+local WALK_CTX = nil -- the levels' walk under way: what it walks over
+CALM_SINCE = nil     -- (0.105.48, K1) the tick since which no danger that can come is on the map
+
+-- the levels' walk: its items (one candidate each), over the inside tiles
+-- (base) and the tiles near the ways in and the dangers
+local function walk_items(base, info)
+    local grid = {}
+    for k, f in pairs(base.grid) do grid[k] = f end
+    grid_near(grid, info.points)
+    local counts = base.counts
+    -- the sources: the ways in (on the grid)
+    local sources, src_rows = {}, {}
+    for _, e in ipairs(info.ways) do
+        local k = grid_key_near(grid, e, 2)
+        if k then table.insert(sources, k); table.insert(src_rows, e) end
+    end
+    -- the civilians: citizens not in a squad
+    local civs, civ_out = {}, 0
+    for _, u in ipairs(U.citizens and U.citizens(true) or dfhack.units.getCitizens(true)) do
+        if #civs >= SHELTER_PLAN_CIVS then break end
+        pcall(function()
+            if u.military.squad_id ~= -1 then return end
+            local k = grid_key_near(grid, u.pos, 1)
+            if k then table.insert(civs, k) else civ_out = civ_out + 1 end
+        end)
+    end
+    -- the candidates: levels with enough inside tiles; the farthest
+    -- (straight) from the ways in walked, the pick's own levels always
+    local sup = supplies_by_level()
+    local all = {}
+    for z = info.lo, info.hi do
+        if (counts[z] or 0) >= SHELTER_PLAN_LEVEL_MIN then
+            local far = nil
+            for _, e in ipairs(info.ways) do
+                local d = 3 * math.abs(z - e.z)
+                if not far or d < far then far = d end
+            end
+            local sp = sup[z] or {}
+            table.insert(all, {z = z, key = z, tiles = counts[z], drink = sp.drink or 0, wells = sp.wells or 0,
+                               food = sp.food or 0, far = far or 0})
+        end
+    end
+    local cur = info.cur
+    local mine = {}
+    for _, z in ipairs(cur and cur.levels or {}) do mine[tonumber(z) or -1] = true end
+    table.sort(all, function(a, b)
+        local ma, mb = mine[a.z] and 1 or 0, mine[b.z] and 1 or 0
+        if ma ~= mb then return ma > mb end
+        local wa = (a.wells > 0 or a.drink > 0) and 1 or 0
+        local wb = (b.wells > 0 or b.drink > 0) and 1 or 0
+        if a.far ~= b.far then return a.far > b.far end
+        return wa > wb
+    end)
+    -- each level's inside tiles, in one pass over the grid
+    local by_z = {}
+    for k, f in pairs(grid) do
+        if f >= INSIDE then
+            local z = k // 1048576
+            by_z[z] = by_z[z] or {}
+            table.insert(by_z[z], k)
+        end
+    end
+    local walk = {}
+    for i, c in ipairs(all) do
+        if i > SHELTER_PLAN_MAX_BFS then break end
+        c.seeds = by_z[c.z] or {}
+        table.insert(walk, c)
+    end
+    -- the shelter now (the AI's pick) as one candidate of its own: the
+    -- dangers inside are measured against its walk (kept)
+    local keep_key = nil
+    if cur and #cur.levels > 0 then
+        keep_key = 'pick'
+        local seeds = {}
+        for z in pairs(mine) do
+            for _, k in ipairs(by_z[z] or {}) do table.insert(seeds, k) end
+        end
+        table.insert(walk, {key = 'pick', levels = cur.levels, pick = true, seeds = seeds})
+    end
+    local rest = {}
+    for i, c in ipairs(all) do
+        if i > SHELTER_PLAN_MAX_BFS then
+            table.insert(rest, {z = c.z, tiles = c.tiles, drink = c.drink, wells = c.wells, food = c.food})
+        end
+    end
+    local ctx = {grid = grid, sources = sources, src_rows = src_rows, civs = civs, civ_out = civ_out,
+                 keep_key = keep_key, rest = rest, info = info}
+    WALK_CTX = ctx
+    local items = {}
+    for _, c in ipairs(walk) do table.insert(items, {c = c, ctx = ctx}) end
+    return items
+end
+
+local function walk_visit(acc, it)
+    local ctx = it.ctx
+    local cands, kept = plan(ctx.grid, {it.c}, ctx.sources, ctx.civs, {}, {keep = ctx.keep_key})
+    table.insert(acc.cands, cands[1])
+    if kept then acc.keep = kept end
+end
+
+local function walk_finish(acc)
+    local ctx = WALK_CTX
+    if not ctx then return nil end
+    for _, c in ipairs(acc.cands) do
+        if c.src then
+            local e = ctx.src_rows[c.src]
+            c.way_in = e and {id = e.id, kind = e.kind, x = e.x, y = e.y, z = e.z} or nil
+        end
+        c.src, c.far = nil, nil
+    end
+    local bar = {}
+    pcall(function() bar = barracks(ctx.grid) end)
+    local info = ctx.info
+    return {tick = info.now, sig = info.sig, grid = ctx.grid, cands = acc.cands, rest = ctx.rest, keep = acc.keep,
+            civs = #ctx.civs, civ_out = ctx.civ_out, ways = info.ways, barracks = bar, levels = {info.lo, info.hi}}
+end
+
+-- The report section `shelter_plan`. tier: the report's ('pulse': the
+-- small budget).
+function report(txt, tier)
     local out = {current = nil}
     local cur = current_pick()
     if cur then out.current = {levels = cur.levels, why = cur.why, way_in = cur.way_in, tick = cur.tick} end
-    local okd, list = pcall(dangers, txt)
-    list = okd and list or {}
+    local okn, now = pcall(U.abs_tick)
+    now = okn and now or 0
+    local ents = entrances()
+    local okd, list, away = pcall(dangers, txt, ents)
+    if not okd then
+        -- unread is not "no danger" (0.105.48: no danger widens the shelter back)
+        out.error = 'dangers unread: ' .. tostring(list):sub(1, 160)
+        return out
+    end
+    if type(away) == 'table' and #away > 0 then out.left_out = away end
     if #list == 0 then
         out.danger = false
         MEMO = nil
+        if CALM_SINCE == nil or CALM_SINCE > now then CALM_SINCE = now end
+        out.calm_ticks = now - CALM_SINCE
         return out
     end
+    CALM_SINCE = nil
     out.danger = true
     local S = reqscript('ai-society')
     local lo, hi = S.shelter_level_range()
     if not lo then out.error = 'no citizens to measure from'; return out end
-    local ents = entrances()
     -- each danger's way in: the nearest entrance (straight), and a building
     -- destroyer's every door-only one (0.105.47), cap 8 ways
     local ways = ways_in(list, ents)
     local points = {}
     for _, e in ipairs(ways) do table.insert(points, e) end
     for _, t in ipairs(list) do table.insert(points, t) end
-    local zlo, zhi = lo, hi
-    for _, p in ipairs(points) do
-        if p.z >= lo - 20 and p.z <= hi + 20 then zlo, zhi = math.min(zlo, p.z), math.max(zhi, p.z) end
-    end
-    local now = U.abs_tick()
     local sig = {}
     for _, e in ipairs(ways) do table.insert(sig, tostring(e.id)) end
     table.sort(sig)
     local pick_sig = cur and table.concat(cur.levels, ',') or 'whole'
     local signature = table.concat(sig, ',') .. '|' .. pick_sig .. '|' .. lo .. '-' .. hi
+    local budget = SHELTER_SLICE_MS_FULL
+    if tier == 'pulse' then budget = MEMO and SHELTER_SLICE_MS_PULSE or SHELTER_SLICE_MS_FIRST end
+    local t0 = os.clock()
+    local base, gst, gdone, gtotal = run_slices('shelter_grid', {
+        key = lo .. '-' .. hi, now = now, ttl = SHELTER_GRID_TICKS,
+        items = function() return block_list(lo, hi) end,
+        init = function() return {grid = {}, counts = {}} end,
+        visit = grid_visit, finish = function(acc) return acc end, max_ms = budget})
     local m = MEMO
-    if not (m and m.sig == signature and now >= m.tick and now - m.tick < SHELTER_PLAN_TICKS) then
-        local grid, counts = build_grid(zlo, zhi, points)
-        -- the sources: the ways in (on the grid)
-        local sources, src_rows = {}, {}
-        for _, e in ipairs(ways) do
-            local k = grid_key_near(grid, e, 2)
-            if k then table.insert(sources, k); table.insert(src_rows, e) end
-        end
-        -- the civilians: citizens not in a squad
-        local civs, civ_out = {}, 0
-        for _, u in ipairs(U.citizens and U.citizens(true) or dfhack.units.getCitizens(true)) do
-            if #civs >= SHELTER_PLAN_CIVS then break end
-            pcall(function()
-                if u.military.squad_id ~= -1 then return end
-                local k = grid_key_near(grid, u.pos, 1)
-                if k then table.insert(civs, k) else civ_out = civ_out + 1 end
-            end)
-        end
-        -- the candidates: levels with enough inside tiles; the farthest
-        -- (straight) from the ways in walked, the pick's own levels always
-        local sup = supplies_by_level()
-        local all = {}
-        for z = lo, hi do
-            if (counts[z] or 0) >= SHELTER_PLAN_LEVEL_MIN then
-                local far = nil
-                for _, e in ipairs(ways) do
-                    local d = 3 * math.abs(z - e.z)
-                    if not far or d < far then far = d end
-                end
-                local s = sup[z] or {}
-                table.insert(all, {z = z, key = z, tiles = counts[z], drink = s.drink or 0, wells = s.wells or 0,
-                                   food = s.food or 0, far = far or 0})
-            end
-        end
-        local mine = {}
-        for _, z in ipairs(cur and cur.levels or {}) do mine[tonumber(z) or -1] = true end
-        table.sort(all, function(a, b)
-            local ma, mb = mine[a.z] and 1 or 0, mine[b.z] and 1 or 0
-            if ma ~= mb then return ma > mb end
-            local wa = (a.wells > 0 or a.drink > 0) and 1 or 0
-            local wb = (b.wells > 0 or b.drink > 0) and 1 or 0
-            if a.far ~= b.far then return a.far > b.far end
-            return wa > wb
-        end)
-        -- each level's inside tiles, in one pass over the grid
-        local by_z = {}
-        for k, f in pairs(grid) do
-            if f >= INSIDE then
-                local z = k // 1048576
-                by_z[z] = by_z[z] or {}
-                table.insert(by_z[z], k)
-            end
-        end
-        local walk = {}
-        for i, c in ipairs(all) do
-            if i > SHELTER_PLAN_MAX_BFS then break end
-            c.seeds = by_z[c.z] or {}
-            table.insert(walk, c)
-        end
-        -- the shelter now (the AI's pick) as one candidate of its own: the
-        -- dangers inside are measured against its walk (kept)
-        local keep_key = nil
-        if cur and #cur.levels > 0 then
-            keep_key = 'pick'
-            local seeds = {}
-            for z in pairs(mine) do
-                for _, k in ipairs(by_z[z] or {}) do table.insert(seeds, k) end
-            end
-            table.insert(walk, {key = 'pick', levels = cur.levels, pick = true, seeds = seeds})
-        end
-        local cands, kept = plan(grid, walk, sources, civs, {}, {keep = keep_key})
-        for _, c in ipairs(cands) do
-            if c.src then
-                local e = src_rows[c.src]
-                c.way_in = e and {id = e.id, kind = e.kind, x = e.x, y = e.y, z = e.z} or nil
-            end
-            c.src, c.far = nil, nil
-        end
-        local rest = {}
-        for i, c in ipairs(all) do
-            if i > SHELTER_PLAN_MAX_BFS then
-                table.insert(rest, {z = c.z, tiles = c.tiles, drink = c.drink, wells = c.wells, food = c.food})
-            end
-        end
-        local bar = {}
-        pcall(function() bar = barracks(grid) end)
-        m = {tick = now, sig = signature, grid = grid, cands = cands, rest = rest, keep = kept,
-             civs = #civs, civ_out = civ_out, ways = ways, barracks = bar, levels = {lo, hi}}
-        MEMO = m
+    local fresh = m and m.sig == signature and now >= m.tick and now - m.tick < SHELTER_PLAN_TICKS
+    if base and not fresh then
+        local info = {points = points, ways = ways, lo = lo, hi = hi, cur = cur, now = now, sig = signature}
+        local left = math.max(1, budget - (os.clock() - t0) * 1000)
+        local r, wst, wdone, wtotal = run_slices('shelter_walk', {
+            key = signature, now = now, ttl = 0,
+            items = function() return walk_items(base, info) end,
+            init = function() return {cands = {}} end,
+            visit = walk_visit, finish = walk_finish, max_ms = left})
+        if wst == 'done' and r then MEMO = r end
+        if wst == 'partial' then out.walk = {done = wdone, total = wtotal} end
     end
+    if gst == 'partial' then out.grid_walk = {done = gdone, total = gtotal} end
+    m = MEMO
+    if not m then
+        -- nothing walked whole yet: the dangers and their ways in, no levels
+        out.walking = true
+        out.dangers = list
+        out.ways_in = ways
+        out.levels = {lo, hi}
+        return out
+    end
+    local stale = m.sig ~= signature
+    out.stale = stale or nil
     -- the dangers inside the fort, and their walk to the shelter now
     local any_inside = false
     for _, t in ipairs(list) do
@@ -623,12 +871,12 @@ function report(txt)
         if k then
             t.inside = true
             any_inside = true
-            if m.keep then t.to_shelter = m.keep[k] end
+            if m.keep and not stale then t.to_shelter = m.keep[k] end
         end
     end
     out.dangers = list
     out.any_inside = any_inside or nil
-    out.ways_in = m.ways
+    out.ways_in = stale and ways or m.ways
     out.candidates = {}
     for _, c in ipairs(m.cands) do
         if c.pick then out.current_walk = c else table.insert(out.candidates, c) end
@@ -682,4 +930,15 @@ function pick(levels, opts, dry_run)
     end
     r.ok, r.levels = true, levels
     return r
+end
+
+-- (0.105.48) a new map: the last plan and the calm count start afresh
+if dfhack and dfhack.onStateChange then
+    pcall(function()
+        dfhack.onStateChange['ai-shelter-plan'] = function(sc)
+            if sc == SC_MAP_UNLOADED or sc == SC_WORLD_UNLOADED then
+                MEMO, WALK_CTX, CALM_SINCE, FAKE_BLOCKS = nil, nil, nil, nil
+            end
+        end
+    end)
 end

@@ -1018,6 +1018,10 @@ PLANNER_CONFIG = {
     "shelter_pick_hysteresis": 10,        # a pick in use kept unless the new one is this much farther from the threat
     "shelter_pick_cooldown_ticks": 300,   # the shelter redrawn at most this often (shelter_flee: at once)
     "shelter_flee_tiles": 20,             # a great danger inside the fort this close (walk) to the shelter: moved at once
+    # (0.105.48, K1) a shelter must hold the civilians: room, drink and food for the stay, or a bigger one
+    "shelter_pick_food_per_civ": 2,       # food units a civilian (as the bridge's SHELTER_FOOD_PER_CITIZEN)
+    "shelter_pick_wide_levels": 6,        # a shelter that can't hold them in shelter_pick_max_levels: up to this many
+    "shelter_widen_ticks": 600,           # no danger that can come this long: the whole fort again, alarm up or not
     "shelter_choke_min_tiles": 10,        # the squads' choke this many steps from the shelter at least
     "shelter_choke_max_width": 4,         # ...and no wider than this (walkable neighbours on its level)
     # (0.105.45) the sweep for things stuck "in progress" (brain/planner_stuck.py, lua/ai-stuck.lua):

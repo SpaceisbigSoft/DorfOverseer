@@ -834,8 +834,43 @@ end
 SHELTER_DRAWN_KEY = 'ai-overseer/shelter-drawn'
 SHELTER_REDRAW_TICKS = 1200
 
-local function shelter_drawn(n)
-    if n and n > 0 then pcall(function() U.site_put(SHELTER_DRAWN_KEY, {tick = U.abs_tick()}) end) end
+-- (0.105.48, K3) and what it held: its tiles, no drink at all, drink short
+local function shelter_drawn(n, info)
+    if n and n > 0 then
+        pcall(function()
+            local i = type(info) == 'table' and info or {}
+            U.site_put(SHELTER_DRAWN_KEY, {tick = U.abs_tick(), tiles = n, no_water = i.no_water and true or nil,
+                                           drink_short = i.drink_short and true or nil})
+        end)
+    end
+end
+
+-- (0.105.48, K3) The AI shelter's burrow as the evil-weather keep-in needs
+-- it: drawn again (over the fort as it is now, and the AI's pick) unless
+-- drawn within SHELTER_REDRAW_TICKS with what it held known (force: always,
+-- the first keep-in of a spell); the keep-in used the shelter as last drawn,
+-- maybe days before, with no look at its drink (A7: the shape of B's thirst
+-- deaths). {tiles, no_water, drink_short, redrawn}; nil: no AI shelter.
+function shelter_for_keep_in(force)
+    local b = find_burrow(SHELTER_NAME)
+    if not b then return nil end
+    if not force then
+        local last = U.site_get(SHELTER_DRAWN_KEY, {})
+        local t = type(last) == 'table' and tonumber(last.tick) or nil
+        local okn, now = pcall(U.abs_tick)
+        local okb, blocks = pcall(function() return #dfhack.burrows.listBlocks(b) end)
+        if t and okn and now and now >= t and now - t < SHELTER_REDRAW_TICKS and okb and blocks > 0
+                and tonumber(last.tiles) then
+            return {tiles = tonumber(last.tiles), no_water = last.no_water or nil,
+                    drink_short = last.drink_short or nil, redrawn = false}
+        end
+    end
+    dfhack.burrows.clearTiles(b)
+    local n, info = fill_shelter(b, picked_levels())
+    shelter_drawn(n, info)
+    info = type(info) == 'table' and info or {}
+    return {tiles = n or 0, no_water = info.no_water and true or nil, drink_short = info.drink_short and true or nil,
+            redrawn = true}
 end
 
 -- The shelter drawn again before an alarm unless drawn within the last
@@ -870,7 +905,7 @@ function setup_shelter()
         return {ok = false, error = 'found no inside tiles to shelter in'}
     end
     require('utils').insert_sorted(civ_alert().burrows, b.id)
-    shelter_drawn(n)
+    shelter_drawn(n, info)
     return shelter_result({ok = true, burrow_id = b.id, tiles = n}, info)
 end
 
@@ -889,7 +924,7 @@ function refresh_shelter()
     pcall(function() before = dfhack.burrows.listBlocks and #dfhack.burrows.listBlocks(b) or 0 end)
     dfhack.burrows.clearTiles(b)
     local n, info = fill_shelter(b, picked_levels())        -- (0.105.45) the pick away from the threat
-    shelter_drawn(n)
+    shelter_drawn(n, info)
     return shelter_result({refreshed = true, tiles = n, blocks_before = before}, info)
 end
 

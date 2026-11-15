@@ -398,7 +398,13 @@ if LuaRuntime:
         lua.execute("""local env = ...
             local b = {id = 9, name = 'AI shelter'}
             env.df.global.plotinfo.burrows.list[#env.df.global.plotinfo.burrows.list] = b
-            env.dfhack.burrows.listBlocks = function() return {1, 2} end""", env)
+            env.dfhack.burrows.listBlocks = function() return {1, 2} end
+            -- (0.105.48, K3) the shelter's check (drawn again, its drink): a well-stocked one here
+            env.KEEP_IN_CHECKS = {}
+            env.shelter_for_keep_in = function(force)
+                table.insert(env.KEEP_IN_CHECKS, force)
+                return env.KEEP_IN_SHELTER or {tiles = 30, redrawn = force}
+            end""", env)
         return lua, env, units, assigned
 
     @test("lua weather_keep_in: civilians into the shelter's burrow (never a soldier, nor one in another burrow); let out exactly those")

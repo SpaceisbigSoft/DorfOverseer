@@ -1459,7 +1459,8 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
     -- fort's levels as shelters with the threat's and the civilians' walk to
     -- each, the chokes between, the barracks, the AI's pick now (lua/ai-shelter-plan.lua;
     -- in the pulse: only a units scan with no danger on the map)
-    shelter_plan = function() return safe(function() return reqscript('ai-shelter-plan').report(txt) end) end,
+    -- (0.105.48, A1) walked in slices: the pulse gives it a small budget (ctx.tier)
+    shelter_plan = function(ctx) return safe(function() return reqscript('ai-shelter-plan').report(txt, ctx and ctx.tier) end) end,
     -- (0.105.46, I2) the thirst watch: each thirsty citizen with why they don't
     -- drink (no path, drink forbidden, a burrow or the alert, jailed, insane,
     -- stranded, the last cancelled Drink job), and the deaths of thirst with
@@ -1671,7 +1672,7 @@ build_state_body = function(include_units, tier)
     else
         names = sorted_keys(SECTIONS)
     end
-    local ctx = {}
+    local ctx = {tier = tier}       -- (0.105.48, A1) a section may budget its walk by the tier
     local clock = os.clock
     local t0 = clock()
     REPORT_MEMO = {}       -- (13c) lists more than one section reads, walked once
@@ -1772,7 +1773,7 @@ function perf_section(sections, cached, total_ms, tick)
         local slices
         pcall(function()
             local S = reqscript('ai-slices')
-            for _, n in ipairs({'industry_veins', 'deep_hazard', 'cavern_scan'}) do
+            for _, n in ipairs({'industry_veins', 'deep_hazard', 'cavern_scan', 'shelter_grid', 'shelter_walk'}) do
                 local st = S.status(n)
                 if st then
                     slices = slices or {}

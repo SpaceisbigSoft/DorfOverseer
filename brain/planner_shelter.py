@@ -20,6 +20,15 @@ the AI's pick in use. Here:
   * the check rule: a great danger inside the fort within
     `shelter_flee_tiles` (walk) of the shelter: the civilians moved to the
     next shelter at once (`shelter_flee`, an emergency), a note says so;
+  * (0.105.48, K1) a shelter must hold the civilians: room, drink and food
+    (`_needs`); none away from the threat that does, within
+    `shelter_pick_max_levels` or wider (`shelter_pick_wide_levels`): the
+    whole fort rather than one they starve in, and a pick in use that no
+    longer holds them is replaced or dropped. The bridge leaves out the
+    dangers that can't come (hidden, sealed in a cavern); once none is left
+    for `shelter_widen_ticks` the whole fort again, the alarm up or not. A
+    plan still being walked (the bridge walks it in slices) or made for
+    other ways in moves nothing;
   * `squad_station_spot`: where the squads stand while the dwarves hide (a
     choke on the threat's walk to the shelter, inside the gate it faces,
     off the shelter's levels; else the barracks), read by planner_army's
@@ -31,7 +40,7 @@ from __future__ import annotations
 from digest import _d, _l
 from planner_core import AGENDA_THEMES, Proposal
 
-__all__ = ["choose_shelter", "squad_station_spot", "_shelter_pick_rule", "shelter_levels_now", "plan_ready"]
+__all__ = ["choose_shelter", "shelter_supplies", "squad_station_spot", "_shelter_pick_rule", "shelter_levels_now", "plan_ready"]
 
 AGENDA_THEMES.update({"shelter_pick": "the shelter away from the threat",
                       "shelter_flee": "the civilians moved away from a beast inside"})
@@ -48,6 +57,8 @@ def plan_ready(s: dict) -> dict:
     p = _d(s.get("shelter_plan"))
     if not p or p.get("error") or p.get("danger") is not True:
         return {}
+    if p.get("walking"):
+        return {}               # (0.105.48, A1) nothing walked whole yet: no levels to go by
     return p
 
 
@@ -80,9 +91,47 @@ def _wet(c: dict) -> bool:
     return (_int(c.get("wells")) or 0) > 0 or (_int(c.get("drink")) or 0) > 0
 
 
+def _needs(civs: int, cfg: dict) -> dict:
+    """(0.105.48, K1) What a shelter must hold for `civs` civilians: room (2
+    tiles a civilian, 50 at least), drink (2 units a civilian, or a well) and
+    food (`shelter_pick_food_per_civ` a civilian)."""
+    return {"tiles": max(50, 2 * civs), "drink": max(1, 2 * civs),
+            "food": max(1, int(cfg.get("shelter_pick_food_per_civ", 2)) * civs)}
+
+
+def _shortfalls(tiles: int, drink: int, wells: int, food: int, need: dict) -> list:
+    """What a shelter lacks for the civilians: [] when it holds them."""
+    out = []
+    if tiles < need["tiles"]:
+        out.append(f"{tiles} tiles (needs {need['tiles']})")
+    if wells == 0 and drink < need["drink"]:
+        out.append(f"{drink} drink and no well (needs {need['drink']})")
+    if food < need["food"]:
+        out.append(f"{food} food (needs {need['food']})")
+    return out
+
+
+def shelter_supplies(plan: dict, levels) -> dict | None:
+    """(0.105.48, K1) The room, drink, wells and food on these levels, from the
+    plan's levels (candidates and other_levels); None when a level is unread."""
+    by = {}
+    for c in _l(plan.get("candidates")) + _l(plan.get("other_levels")):
+        if isinstance(c, dict) and _int(c.get("z")) is not None:
+            by.setdefault(c["z"], c)
+    tot = {"tiles": 0, "drink": 0, "wells": 0, "food": 0}
+    for z in levels:
+        c = by.get(z)
+        if c is None:
+            return None
+        for k in tot:
+            tot[k] += _int(c.get(k)) or 0
+    return tot
+
+
 def choose_shelter(plan: dict, cfg: dict, exclude=(), citizens: int | None = None) -> dict | None:
     """The shelter away from the threat: {levels, main, d_threat, civ_p90,
-    margin, safe, drink, tiles, way_in, why}, or None with no level to use.
+    margin, safe, drink, tiles, food, livable, short, way_in, why}, or None
+    with no level to use.
 
     A level is safe when the threat can't reach it (d_threat None) or its
     walk there is at least `shelter_pick_margin` longer than the civilians'
@@ -90,18 +139,21 @@ def choose_shelter(plan: dict, cfg: dict, exclude=(), citizens: int | None = Non
     ones, the one with drink (a well, or drink lying there) the threat
     reaches last; its neighbours (safe ones, two levels at most away) added,
     the farthest from the threat first, until it holds 2 tiles a civilian
-    (50 at least) and drink for them (2 units a civilian, or a well), up to
-    `shelter_pick_max_levels` levels. None safe: the one with the most room
-    between the threat and the civilians (safe False)."""
+    (50 at least), drink for them (2 units a civilian, or a well) and
+    (0.105.48, K1) food for them, up to `shelter_pick_max_levels` levels.
+    (0.105.48) A shelter that can't hold them so is looked for again wider
+    (`shelter_pick_wide_levels`, four levels away); `livable` False: none
+    holds them (the rule then keeps the whole fort). None safe: the one with
+    the most room between the threat and the civilians (safe False)."""
     margin_min = int(cfg.get("shelter_pick_margin", 5))
     max_levels = int(cfg.get("shelter_pick_max_levels", 3))
+    wide_levels = max(max_levels, min(6, int(cfg.get("shelter_pick_wide_levels", 6))))
     ex = set(exclude or ())
     cands = [c for c in _l(plan.get("candidates")) if _usable(c) and c["z"] not in ex]
     if not cands:
         return None
     civs = citizens if isinstance(citizens, int) else (_int(plan.get("civilians")) or 0)
-    need_tiles = max(50, 2 * civs)
-    need_drink = max(1, 2 * civs)
+    need = _needs(civs, cfg)
 
     def safe(c):
         return _margin(c) >= margin_min
@@ -110,36 +162,39 @@ def choose_shelter(plan: dict, cfg: dict, exclude=(), citizens: int | None = Non
         d = _int(c.get("d_threat"))
         return INF if d is None else d
 
-    def group(main):
+    def group(main, most, span):
         g = [main]
-        tiles = _int(main.get("tiles")) or 0
-        drink = _int(main.get("drink")) or 0
-        wells = _int(main.get("wells")) or 0
-        others = sorted((c for c in cands if c is not main and safe(c) and abs(c["z"] - main["z"]) <= 2),
+        tot = {k: _int(main.get(k)) or 0 for k in ("tiles", "drink", "wells", "food")}
+        others = sorted((c for c in cands if c is not main and safe(c) and abs(c["z"] - main["z"]) <= span),
                         key=lambda c: (abs(c["z"] - main["z"]), -far(c)))
         for c in others:
-            if len(g) >= max_levels or (tiles >= need_tiles and (wells > 0 or drink >= need_drink)):
+            if len(g) >= most or not _shortfalls(tot["tiles"], tot["drink"], tot["wells"], tot["food"], need):
                 break
             g.append(c)
-            tiles += _int(c.get("tiles")) or 0
-            drink += _int(c.get("drink")) or 0
-            wells += _int(c.get("wells")) or 0
-        return g, tiles, drink, wells
+            for k in tot:
+                tot[k] += _int(c.get(k)) or 0
+        return g, tot
 
     ranked = sorted(cands, key=lambda c: (safe(c), _wet(c), far(c), _int(c.get("tiles")) or 0), reverse=True)
     best = None
-    for main in ranked:
-        g, tiles, drink, wells = group(main)
-        has_drink = wells > 0 or drink > 0
-        row = {"levels": sorted(c["z"] for c in g), "main": main["z"], "d_threat": _int(main.get("d_threat")),
-               "civ_p90": _int(main.get("civ_p90")), "margin": None if _margin(main) >= INF else _margin(main),
-               "safe": safe(main), "drink": has_drink, "drink_short": has_drink and wells == 0 and drink < need_drink,
-               "tiles": tiles, "way_in": main.get("way_in"), "chokes": _l(main.get("chokes"))}
-        if row["safe"] and has_drink:
-            best = row
+    for most, span in ((max_levels, 2), (wide_levels, 4)):
+        for main in ranked:
+            g, tot = group(main, most, span)
+            has_drink = tot["wells"] > 0 or tot["drink"] > 0
+            short = _shortfalls(tot["tiles"], tot["drink"], tot["wells"], tot["food"], need)
+            row = {"levels": sorted(c["z"] for c in g), "main": main["z"], "d_threat": _int(main.get("d_threat")),
+                   "civ_p90": _int(main.get("civ_p90")), "margin": None if _margin(main) >= INF else _margin(main),
+                   "safe": safe(main), "drink": has_drink,
+                   "drink_short": has_drink and tot["wells"] == 0 and tot["drink"] < need["drink"],
+                   "tiles": tot["tiles"], "food": tot["food"], "livable": not short, "short": short,
+                   "way_in": main.get("way_in"), "chokes": _l(main.get("chokes"))}
+            if row["safe"] and row["livable"]:
+                best = row
+                break
+            if best is None or (row["livable"], row["safe"], row["drink"]) > (best["livable"], best["safe"], best["drink"]):
+                best = row
+        if best is not None and best["livable"] and best["safe"]:
             break
-        if best is None or (row["safe"], row["drink"]) > (best["safe"], best["drink"]):
-            best = row
     if best is None:
         return None
     w = _d(best.get("way_in"))
@@ -153,6 +208,7 @@ def choose_shelter(plan: dict, cfg: dict, exclude=(), citizens: int | None = Non
     best["why"] = (f"level{'s' if len(best['levels']) > 1 else ''} {', '.join(str(z) for z in best['levels'])}: "
                    f"the farthest from the threat ({reach})"
                    + ("" if best["drink"] else "; no drink there")
+                   + ("" if best["livable"] else f"; for {civs} civilians it holds only {', '.join(best['short'])}")
                    + ("" if best["safe"] else "; none the civilians surely reach first"))
     return best
 
@@ -182,10 +238,21 @@ def _shelter_pick_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=
         return
     cur = _levels(_d(raw.get("current")).get("levels"))
     if raw.get("danger") is not True:
+        # (0.105.48, K1) the whole fort again once no danger that can come is
+        # on the map: at once with the alarm down, else after
+        # `shelter_widen_ticks` (an alarm held up for something small kept
+        # the War-hold's 34 on one level for good)
+        calm = _int(raw.get("calm_ticks"))
+        widen = int(cfg.get("shelter_widen_ticks", 600))
         if cur and not s.get("civ_alert"):
             proposals.append(Proposal("shelter_pick", {"type": "shelter_pick", "clear": True},
                                       "no great danger or siege on the map and the alarm is down: the shelter "
                                       "covers the whole fort again", 4))
+        elif cur and calm is not None and calm >= widen:
+            proposals.append(Proposal("shelter_pick", {"type": "shelter_pick", "clear": True},
+                                      f"no great danger or siege that can come has been on the map for {calm} ticks: "
+                                      "the shelter covers the whole fort again (the alarm, if up, is for "
+                                      "something else)", 4))
         return
     if s.get("civ_alert_shelter") not in (None, "ai"):
         if s.get("civ_alert_shelter") == "player":
@@ -194,6 +261,12 @@ def _shelter_pick_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=
         return
     plan = raw
     civs = _citizens(s)
+    # (0.105.48, A1) the plan is walked in slices: none whole yet, or one made
+    # for other ways in or another pick: nothing is moved on it
+    if raw.get("walking") or raw.get("stale"):
+        notes.append("a great danger or siege on the map: the shelter plan is still being walked (the shelter "
+                     "stays as it is meanwhile)")
+        return
     flee = int(cfg.get("shelter_flee_tiles", 20))
     # (rule 3) a great danger inside the fort, close to the shelter by walk
     close = []
@@ -225,15 +298,32 @@ def _shelter_pick_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=
         notes.append("a great danger or siege on the map: no level of the fort to shelter in away from it "
                      "(the shelter stays as it is)")
         return
+    # (0.105.48, K1) the pick in use must still hold the civilians
+    need = _needs(civs if isinstance(civs, int) else (_int(plan.get("civilians")) or 0), cfg)
+    cur_sup = shelter_supplies(plan, cur) if cur else None
+    cur_short = (_shortfalls(cur_sup["tiles"], cur_sup["drink"], cur_sup["wells"], cur_sup["food"], need)
+                 if cur_sup else [])
+    if not choice["livable"]:
+        # no levels away from it hold them: the whole fort (a bigger shelter)
+        # rather than one they starve or go thirsty in
+        if cur:
+            proposals.append(Proposal("shelter_pick", {"type": "shelter_pick", "clear": True},
+                                      f"a great danger or siege on the map, but no levels away from it can hold the "
+                                      f"civilians ({choice['why']}): the shelter covers the whole fort again", 0))
+        else:
+            notes.append(f"a great danger or siege on the map: no levels away from it can hold the civilians "
+                         f"({choice['why']}), so the shelter stays the whole fort")
+        return
     if not choice["drink"]:
         notes.append(f"a great danger or siege on the map: the level farthest from it ({choice['why']}) holds no "
                      "drink nor well, so the shelter stays as it is (the drink rule brings drink back to it)")
         return
     if _same(choice["levels"], cur):
         return
-    # hysteresis: a pick in use is kept unless the new one is clearly farther or the old one unsafe
+    # hysteresis: a pick in use is kept unless the new one is clearly farther,
+    # the old one unsafe, or (0.105.48) the old one can't hold the civilians
     walk = _d(plan.get("current_walk"))
-    if cur and walk:
+    if cur and walk and not cur_short:
         old_d = _int(walk.get("d_threat"))
         old_margin = INF if old_d is None else old_d - (_int(walk.get("civ_p90")) or 0)
         new_d = choice["d_threat"]
@@ -242,7 +332,8 @@ def _shelter_pick_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=
                 old_d is None or (new_d is not None and new_d < old_d + gain)):
             return
     proposals.append(Proposal("shelter_pick", _pick_action(choice),
-                              f"a great danger or siege on the map: the civilians' shelter is drawn over {choice['why']}",
+                              f"a great danger or siege on the map: the civilians' shelter is drawn over {choice['why']}"
+                              + (f" (the shelter in use holds only {', '.join(cur_short)})" if cur_short else ""),
                               0))
 
 

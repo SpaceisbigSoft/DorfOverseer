@@ -397,9 +397,9 @@ def _():
 
 # --- 3. the brain ---------------------------------------------------------------------
 
-def cand(z, d, p90=5, drink=0, wells=0, tiles=200, reached=10, chokes=None, way=None):
+def cand(z, d, p90=5, drink=0, wells=0, tiles=200, reached=10, chokes=None, way=None, food=200):
     return {"z": z, "d_threat": d, "civ_p90": p90, "civ_med": p90 // 2, "civ_reached": reached, "civ_late": 0,
-            "drink": drink, "wells": wells, "tiles": tiles, "food": 0,
+            "drink": drink, "wells": wells, "tiles": tiles, "food": food,
             "chokes": chokes or [], "way_in": way or {"id": 1, "kind": "surface", "x": 10, "y": 20, "z": 170}}
 
 
@@ -602,7 +602,7 @@ def _():
 @test("brain: plan() carries the rule through the planner (the fixture fort with a titan at the gate)")
 def _():
     base = json.loads((ROOT / "tests" / "fixtures" / "test_fort.json").read_text(encoding="utf-8"))
-    base["shelter_plan"] = splan([cand(165, 30, drink=100), cand(160, 45, wells=1)])
+    base["shelter_plan"] = splan([cand(165, 30, drink=100, tiles=500, food=500), cand(160, 45, wells=1, tiles=500, food=500)])   # room and food for its 194 (0.105.48)
     base["civ_alert_shelter"] = "ai"
     s = normalize(base)
     props, notes = full_plan(s, Memory())
@@ -621,7 +621,7 @@ def _():
     assert re.search(r"^\s+shelter_pick = function\(a\)", hub, re.M) and re.search(r"^\s+squad_station = function\(a\)", hub, re.M)
     dry = hub[hub.index("DRY_OK = {}"):]
     assert "'shelter_pick', 'squad_station'" in dry[:dry.index("do DRY_OK") if "do DRY_OK" in dry else 20000]
-    assert "shelter_plan = function() return safe(function() return reqscript('ai-shelter-plan').report(txt)" in hub
+    assert "shelter_plan = function(ctx) return safe(function() return reqscript('ai-shelter-plan').report(txt, ctx and ctx.tier)" in hub
     pulse = hub[hub.index("PULSE_SECTIONS = {"):]
     assert "'shelter_plan'" in pulse[:pulse.index("}")]
     assert "'ai-shelter-plan'" in hub[hub.index("BRIDGE_MODULES = {"):]
