@@ -170,6 +170,7 @@ SECTION_DEFAULTS = {
     "near_gates": {},        # (0.105.47, I7d) the near-gates burrow: on, members, citizens outside far from the gates (lua/ai-near-gates.lua)
     "way_out": {},           # (0.105.47, J16) the citizens' way off the map: open, inside_group, edge_groups, shut_by, cause (lua/ai-way-out.lua)
     "garden_court": {},      # (0.105.47) the Garden fort's garden court above ground: its stage and counts (lua/ai-builder-court.lua)
+    "floors": {},            # (layout B) the hallway-first floors: mode, floors, halls, free runs, fallbacks (lua/ai-builder-floorstore.lua)
     "insane": {},            # (0.105.40b) the insane, the deadly ground near them, the AI's doors locked, the near-breaking (lua/ai-insane.lua)
     "hauling": {},           # (0.105.40 M5) haul jobs waiting, haulers, key workers hauling (lua/ai-hauling.lua)
     "traffic": {},           # (0.105.41) traffic zones on the AI's finished levels: waiting, in progress, rechecks (lua/ai-traffic.lua)
@@ -323,6 +324,16 @@ def traffic_line(s: dict) -> str:
     traffic_line); "" without a traffic section."""
     try:
         from planner_traffic import traffic_line as _line
+        return _line(s)
+    except Exception:  # noqa: BLE001  (a digest line never stops the digest)
+        return ""
+
+
+def floors_line(s: dict) -> str:
+    """(layout B) The hallway-first floors in one line
+    (brain/planner_floor_notes.py floors_line); "" when there is no floor."""
+    try:
+        from planner_floor_notes import floors_line as _line
         return _line(s)
     except Exception:  # noqa: BLE001  (a digest line never stops the digest)
         return ""
@@ -697,7 +708,7 @@ def digest(s: dict, news: int = 5) -> str:
 
     for extra in (threat_line(s), world_line(s), infection_line(s), built_line(s), gate_split_line(s), water_line(s),
                   missions_line(s), perf_line(s), cleanup_line(s), hauling_line(s), food_line(s), sickness_line(s),
-                  pile_links_line(s), deep_hazard_line(s), traffic_line(s), artifacts_line(s),
+                  pile_links_line(s), deep_hazard_line(s), traffic_line(s), floors_line(s), artifacts_line(s),
                   recovery_line(s)):          # (0.105.46, I4)
         if extra:
             lines.append(extra)
