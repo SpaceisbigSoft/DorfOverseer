@@ -13,6 +13,25 @@ The forts are A War-hold, B Monastery, C Merchant city, D Hermit hold, E Deep mi
 The quick way through this file: `python brain\seen.py` (from any DF-AI folder) writes each folder's `logs\seen-ledger.md` and a summary across them (`DF-AI\logs\seen-ledger-all.md`): every section, action and Rules switch since 0.105.32 as seen, refused (why), not yet met or in error, and this file's lines ticked where the reports and journals show them. Lines about how things look stay "needs eyes".
 
 
+## 0.105.48 (14 Nov): the full audit's fixes K1-K10 (R3, from the fresh embark)
+
+- **Squads stationed.** The journal's `squad_station` done (not refused), and the squad's soldiers standing on that tile in the game: the move order is built from DF's own fields now (it could never be made before).
+- **No alarm for small wildlife.** A falcon, a wolf or a lone thief brings no `civ_alert` and no gate lockdown; one `hunt_send` at most (a flier: a crossbow squad only).
+- **No sortie into a loss.** A siege the squads can't beat: the keeper log says "the squads are too weak for them ... no sortie"; squads already out come back by `squad_station` or `shelter_squads`.
+- **The reach alarm's cap.** Enemies in reach but never near a dwarf for 3 days: the AI's `civ_alert` comes down, and the gates open if no enemy is within 60 tiles of one.
+- **The shelter.** state.json `shelter_plan`: `left_out` lists hidden or sealed-off dangers; `calm_ticks` grows while the map is quiet; the shelter is never one level with no food (look at the burrow in DF when an alarm goes up).
+- **Halt and stop.** Halting (the window) or stopping a keeper: `civ_alert` off and `way_out_leave` in the journal; the fort open and the alarm down in the game.
+- **After a load.** A save loaded in a lockdown with nothing hostile near: the gates open at once; `dfhack-config\init\onMapLoad-ai-overseer.init` exists in each game folder.
+- **The way out.** A second `way_out_open` pulls the bridge's lever at once (no dwarf's pull waited for); never a lever or door of the player's.
+- **Cavern wells.** A beast far off (over 40 tiles) shuts no well shaft; a shut one reopens once the danger is gone; the hall well's top channel is dug before the level under it.
+- **Projects.** state.json `projects.dig.redig_due` when a shaft or stair tile is lost, then `redig_projects` done in the journal.
+- **The report cache.** state.json `perf.cache_age`: no section older than its maximum (12 days at most); the keeper log's PERF line names stale sections, if any.
+- **Gate back-off.** `unstick_gate` on a split nobody is shut out by: no more than once a day, then 3 and 7 days, at most 4 times.
+- **The cook trainee.** `train_cook` locks one kitchen only; the fort's other kitchens open to every cook.
+- **Keepers.** No keeper log says "foreign" (its game's folder read as another's); a keeper's restart reloads its own run's newest save, never an older one.
+- **The ballista.** A placed ballista faces out of the fort and stays so (in DF).
+- **Missions off.** No `send_mission` or messenger in any fort this run (the presets set none).
+
 ## 0.105.47 (J1): why the moods failed (I7a; brain/planner_mood_help.py, lua/ai-mood-help.lua)
 
 - **All, a cloth mood**: its journal `mood` line's cloth request reads a count (`avail` with `free`/`reach`), never `{}` while the fort holds that kind of cloth (`supplies.cloth_kinds`); a plant-cloth request counts the plant cloth, not the silk.
