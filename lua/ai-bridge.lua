@@ -1012,6 +1012,7 @@ BRIDGE_MODULES = {
     'ai-descent',   -- (0.105.47) the deep plan's stair past the first cavern
     'ai-herd',   -- (0.105.47) the herd by Husbandry
     'ai-raids',   -- (0.105.47, J17) the raid policy's sites; the raid party's pets let out and put back
+    'ai-floorunits',   -- (layout B) a level cut into room units for a floor
 }
 -- the split-off modules that carry a version mark of their own
 MARKED_MODULES = {'ai-military-gear', 'ai-society-burrows', 'ai-constructions'}
