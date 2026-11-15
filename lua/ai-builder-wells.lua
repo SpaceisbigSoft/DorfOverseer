@@ -1014,6 +1014,21 @@ function well_shaft_step(want_closed, dry_run, dry)
     end
     local any_hit = next(hits) ~= nil
     local now = abs_now()
+    -- (K48-K4b, A4 11) a danger near this well's own shaft, for the steps that
+    -- send a dwarf down beside the opening (the break into the cavern, the
+    -- hatch, its link): a call made for another well no longer breaks this
+    -- one into the cavern with a beast below it. Judged as for a shut gate
+    -- (the wider reach). nil: none (or it can't be read).
+    local function own_hit(p)
+        if hits[p.id] then return hits[p.id] end
+        local a = anchor_of(p)
+        local okt, t = pcall(shaft_threats, {{x = a.x, y = a.y, z = p.z, hz = shaft_bottom(p), id = p.id, shut = true}})
+        return okt and type(t) == 'table' and t[1] or nil
+    end
+    local function danger_name(hit)
+        local okr, nm = pcall(dfhack.units.getReadableName, hit.u)
+        return okr and nm or ('unit ' .. tostring(hit.u and hit.u.id))
+    end
     for _, p in ipairs(data.list) do
         local st = p.shaft_stairs
         if shaft_kept(p) then
@@ -1031,7 +1046,10 @@ function well_shaft_step(want_closed, dry_run, dry)
                 gate_below = well_safety_call('gate_block', p.id, want_closed == true, hit ~= nil)
             end
             -- rv 3: work below needs the stairs: a locked lid is unlocked
-            if g.state ~= 'open' and g.state ~= 'closed' and g.state ~= 'none_possible' and not dry_run then
+            -- (K48-K4b, A4 12) the lid of a shaft still being dug too, when the
+            -- gate can't be built (the miners dig the levels from those stairs)
+            if g.state ~= 'open' and g.state ~= 'closed'
+                    and (g.state ~= 'none_possible' or p.phase == 'dig') and not dry_run then
                 local top = st[1]
                 local lid = hatch_at(top.x, top.y, top.z)
                 if lid and lid.forbidden then util_module().lock_door(lid.b, false, 'well'); r.unlocked_lid = true end   -- (0.105.47) the walk map redone
@@ -1056,8 +1074,11 @@ function well_shaft_step(want_closed, dry_run, dry)
                 -- so the hatch goes in straight after, before anything comes up
                 local mech, covers = free_mechanism_count(), shaft_hatch_covers()
                 local busy = well_safety_call('column_block', p.id)     -- (0.105.47)
+                local near = own_hit(p)                                 -- (K48-K4b)
                 if mech < 2 or covers < 1 then
                     r.stage, r.mechanisms, r.hatch_covers = 'waiting_parts', mech, covers
+                elseif near then
+                    r.stage, r.danger = 'waiting_danger', danger_name(near)
                 elseif busy then
                     -- (0.105.47) never opened into the cavern with a dwarf in the shaft's column
                     r.stage, r.below = 'waiting_below', busy
@@ -1066,10 +1087,15 @@ function well_shaft_step(want_closed, dry_run, dry)
                 else
                     local hd = p.held
                     local pri = type(p.params) == 'table' and p.params.pri or ''
-                    local okh = pcall(quickfort_apply, 'dig', {{x = 0, y = 0, text = 'h' .. (pri or '')}}, hd.z, a.x, a.y)
-                    for _, c in ipairs(st) do
-                        if c.z == hd.z then
-                            pcall(quickfort_apply, 'dig', {{x = 0, y = 0, text = c.key .. (pri or '')}}, c.z, c.x, c.y)
+                    local okh, hs = pcall(quickfort_apply, 'dig', {{x = 0, y = 0, text = 'h' .. (pri or '')}}, hd.z, a.x, a.y)
+                    -- (K48-K4b, A4 11) the channel really designated (quickfort not
+                    -- throwing is not enough: the hold was let go over nothing dug)
+                    okh = okh and stat(hs, 'dig_designated') >= 1
+                    if okh then
+                        for _, c in ipairs(st) do
+                            if c.z == hd.z then
+                                pcall(quickfort_apply, 'dig', {{x = 0, y = 0, text = c.key .. (pri or '')}}, c.z, c.x, c.y)
+                            end
                         end
                     end
                     if okh then
@@ -1084,8 +1110,11 @@ function well_shaft_step(want_closed, dry_run, dry)
             elseif g.state == 'no_hatch' then
                 -- rv 6: only with the lever up and 2 mechanisms free for the link
                 local mech = free_mechanism_count()
+                local near = own_hit(p)                                 -- (K48-K4b)
                 if mech < 2 then
                     r.stage, r.mechanisms = 'waiting_mechanisms', mech
+                elseif near then
+                    r.stage, r.danger = 'waiting_danger', danger_name(near)
                 elseif dry_run then
                     r.stage = 'place_hatch'
                 else
@@ -1116,7 +1145,10 @@ function well_shaft_step(want_closed, dry_run, dry)
                 for _, m in ipairs(okf and type(cand) == 'table' and cand or {}) do table.insert(key, tostring(m.id)) end
                 key = table.concat(key, ',')
                 local lost = sg.link_lost or 0
-                if lost >= SHAFT_LINK_FAILS_MAX and key == (sg.link_mechs or '') then
+                local near = own_hit(p)                                 -- (K48-K4b)
+                if near then
+                    r.stage, r.danger = 'waiting_danger', danger_name(near)
+                elseif lost >= SHAFT_LINK_FAILS_MAX and key == (sg.link_mechs or '') then
                     r.error = ('the link job was lost %d times (DF cancels it; mechanisms %s): waits for others')
                         :format(lost, key ~= '' and key or 'none')
                     r.link_lost = lost
@@ -1175,7 +1207,10 @@ function well_shaft_step(want_closed, dry_run, dry)
                         gate_mem(p.id).shut_at, gate_mem(p.id).seen = now, hit and now or gate_mem(p.id).seen
                         if sg then sg.shut_at, changed = now, true end
                     end
-                    if sg and not r.error then sg.auto_shut, changed = (want_closed and hit ~= nil) or nil, true end   -- (K48-K4)
+                    if sg and not r.error then
+                        sg.auto_shut, changed = (want_closed and hit ~= nil) or nil, true   -- (K48-K4)
+                        sg.brain_shut = (want_closed and hit == nil and p.phase ~= 'cancelled') or nil   -- (K48-K4b)
+                    end
                 end
                 if not r.error then r.stage = want_closed and 'closed' or 'opened' end
             elseif g.state == 'open' or g.state == 'closed' then
@@ -1197,7 +1232,13 @@ function well_shaft_step(want_closed, dry_run, dry)
                             gate_mem(p.id).shut_at, gate_mem(p.id).seen = now, hit and now or gate_mem(p.id).seen
                             sg.shut_at, changed = now, true
                         end
-                        if ok then sg.auto_shut, changed = (want_closed and hit ~= nil) or nil, true end   -- (K48-K4)
+                        if ok then
+                            sg.auto_shut, changed = (want_closed and hit ~= nil) or nil, true   -- (K48-K4)
+                            -- (K48-K4b) shut by the brain for its own reason (no danger the
+                            -- watcher sees): the watcher never opens it; anything else shut
+                            -- with no mark (an older watcher's) it adopts
+                            sg.brain_shut = (want_closed and hit == nil and p.phase ~= 'cancelled') or nil
+                        end
                     end
                 else
                     r.stage = g.state
@@ -1219,7 +1260,7 @@ function well_shaft_step(want_closed, dry_run, dry)
     for _, r in ipairs(wells) do
         if not r.error and r.stage and r.stage ~= r.was and r.stage ~= 'waiting_mechanisms'
                 and r.stage ~= 'waiting_parts' and r.stage ~= 'breaking_through' and r.stage ~= 'held_shut'
-                and r.stage ~= 'waiting_below' then      -- (0.105.47)
+                and r.stage ~= 'waiting_below' and r.stage ~= 'waiting_danger' then      -- (0.105.47, K48-K4b)
             acted = true
         end
     end
@@ -1230,6 +1271,9 @@ function well_shaft_step(want_closed, dry_run, dry)
     for _, r in ipairs(wells) do
         if not why and r.stage == 'waiting_below' then      -- (0.105.47)
             why = 'waiting: ' .. tostring(r.below) .. ' is in the shaft or below its gate'
+        end
+        if not why and r.stage == 'waiting_danger' then      -- (K48-K4b)
+            why = 'waiting: ' .. tostring(r.danger) .. ' is near the shaft below (no dwarf sent down beside it)'
         end
         if not why and r.stage == 'held_shut' then
             why = 'kept shut: ' .. (r.danger and (tostring(r.danger) .. ' is near') or
@@ -1448,6 +1492,24 @@ local function ai_halted()
     return ok and yes == true
 end
 
+-- (K48-K4b, A4 17) The in-game timers (this watcher every 100 ticks, the
+-- well-safety one every 50) decoded the whole project record on every beat.
+-- A timer keeps its decoded copy in its own state table (emptied on map
+-- unload) and decodes again only once save_projects has written since
+-- (PROJECTS_GEN), or WATCH_RELOAD ticks have passed.
+WATCH_RELOAD = 1200
+function watch_projects(st)
+    local gen, now = PROJECTS_GEN or 0, abs_now()
+    if st.pdata and st.pgen == gen and now >= (st.ptick or 0) and now - (st.ptick or 0) < WATCH_RELOAD then
+        return st.pdata
+    end
+    st.pdata, st.pgen, st.ptick = load_projects(), gen, now
+    return st.pdata
+end
+function watch_projects_saved(st, data)
+    st.pdata, st.pgen = data, PROJECTS_GEN or 0
+end
+
 local function shaft_watch_tick()
     SHAFT_WATCH.timer = nil
     if not SHAFT_WATCH.on then return end
@@ -1460,7 +1522,7 @@ local function shaft_watch_tick()
     SHAFT_WATCH.halted = nil
     local ok, err = pcall(function()
         local wells = {}
-        local data = load_projects()
+        local data = watch_projects(SHAFT_WATCH)      -- (K48-K4b, A4 17) not decoded every beat
         for _, p in ipairs(data.list) do
             -- a linked gate (its ids saved): only its hatch and lever read, not every
             -- building's links (this runs 12 times a game day)
@@ -1500,6 +1562,12 @@ local function shaft_watch_tick()
         -- a citizen on its shut hatch.
         for i, w in ipairs(wells) do
             local sg = w.p.shaft_gate
+            -- (K48-K4b) a gate shut with no mark at all (0.105.47's watcher shut
+            -- without one, or a new gate built shut) and no danger near: adopted,
+            -- opened by the same rules. Never one the brain shut for its own reason.
+            if w.shut and not hits[i] and not sg.auto_shut and not sg.brain_shut and w.p.phase ~= 'cancelled' then
+                sg.auto_shut, saved = true, true
+            end
             if w.shut and not hits[i] and sg.auto_shut and w.p.phase ~= 'cancelled'
                     and shaft_hold(w.id, sg, now) == 0 and not job_of(w.lever_id, df.job_type.PullLever)
                     and not well_safety_call('gate_block', w.id, false, false) then
@@ -1511,7 +1579,10 @@ local function shaft_watch_tick()
                 end
             end
         end
-        if saved and save_projects then pcall(save_projects, data) end
+        if saved and save_projects then
+            pcall(save_projects, data)
+            watch_projects_saved(SHAFT_WATCH, data)
+        end
     end)
     SHAFT_WATCH.error = (not ok) and tostring(err):sub(1, 160) or nil
     SHAFT_WATCH.timer = dfhack.timeout(SHAFT_WATCH_TICKS, 'ticks', shaft_watch_tick)
@@ -1543,6 +1614,7 @@ function well_lids(probe, data)
             -- (0.105.4 review) the shaft's last level held undug till the gate's parts are in store
             if p.held then r.held = true; r.hatch_covers = shaft_hatch_covers() end
             if p.released and p.phase == 'dig' then r.breaking = true end
+            if p.phase == 'dig' then r.digging = true end       -- (K48-K4b) the miners use the stairs: no lid lock
             -- (K48-K4) the door at a gallery's fort end, locked (the cavern seal):
             -- the well beyond it is cut off from the fort, whatever its shaft gate
             local fd = type(p.fort_door) == 'table' and p.fort_door or nil
@@ -1655,6 +1727,10 @@ function seal_well_stairs(dry_run)
                 local okq, s = pcall(quickfort_apply, 'build', {{x = 0, y = 0, text = 'H'}}, r.z, r.x, r.y)
                 if okq and stat(s, 'build_designated') == 1 then planned = planned + 1 else waiting = waiting + 1 end
             end
+        elseif r.state == 'open' and r.digging then
+            -- (K48-K4b, A4 12) the shaft still dug from the bottom up: the miners
+            -- go down these stairs; the lid is locked once it is finished
+            waiting = waiting + 1
         elseif r.state == 'open' and lid_below(r) then
             -- (0.105.47) a dwarf below the lid (the stair column, the shaft, the
             -- cavern under it): not locked on them; tried again next time

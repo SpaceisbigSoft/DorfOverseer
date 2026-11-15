@@ -695,4 +695,193 @@ if LuaRuntime is not None:
         assert B.well_up_advance(p, True, None)[0] == "below"
 
 
+
+# ---- K48-K4b (round 2): the cavern-well leftovers of audit A4 ------------------------------
+
+def _gate_game():
+    """A done cavern well (pid 9) with a linked gate: lever at 72,60,70, hatch at the shaft's bottom 70,58,63."""
+    add_project(well_rec(9, phase="done", shaft_gate=LUA.table_from(
+        {"lever": LUA.table_from({"x": 72, "y": 60, "z": 70}), "lever_id": 800000 + 7260, "hatch_id": 700000 + 7058})))
+    for z in range(63, 71):
+        W.set(70, 58, z, LUA.table_from({"shape": "EMPTY"}))
+    LUA.execute("""LEV = MKS(72, 60, 70, 8, true, 3); HAT = MKS(70, 58, 63, 7, true)
+                   LINKS[HAT.id] = {LEV.id}""")
+
+
+if LuaRuntime is not None:
+    @test("K48-K4b bridge (A4 11): the break into the cavern waits for a danger at its own shaft, and the hold "
+          "is let go only when the channel was really designated")
+    def _():
+        LUA.execute(GAME_FAKE)
+        try:
+            add_project(well_rec(10, phase="dig", held=LUA.table_from({"z": 63, "stair": LUA.table_from({"x": 71, "y": 58})}),
+                                 shaft_gate=LUA.table_from({"lever": LUA.table_from({"x": 72, "y": 60, "z": 70})})))
+            LUA.execute("MKS(72, 60, 70, 8, true, 3); MECH(4); df.global.world.items.other.HATCH_COVER = {{}}")
+            B.count_items = LUA.eval("function(k) if k == 'HATCH_COVER' then return 1 end return #MECHS end")
+            # a beast in the cavern 3 levels under the shaft's bottom
+            LUA.execute("UNITS[1] = {id = 66, danger = true, flags1 = {}, pos = {x = 72, y = 60, z = 60}}")
+            r = B.well_shaft_step(False, False)       # (a call made for another well, say)
+            assert r.wells[1].stage == "waiting_danger" and not W.get(70, 58, 63).designated, r.wells[1].stage
+            assert not r.ok and "near the shaft" in r.error, r.error
+            _, p = project(10)
+            assert p.held is not None
+            LUA.execute("UNITS[1] = nil")
+            # quickfort designates nothing (the tile is no longer rock): the hold stays
+            W.set(70, 58, 63, LUA.table_from({"shape": "EMPTY"}))
+            r = B.well_shaft_step(False, False)
+            assert r.wells[1].stage != "break_started" and r.wells[1].error, (r.wells[1].stage, r.wells[1].error)
+            _, p = project(10)
+            assert p.held is not None and not p.released
+            W.set(70, 58, 63, LUA.table_from({"shape": "WALL", "material": "STONE"}))
+            r = B.well_shaft_step(False, False)
+            assert r.wells[1].stage == "break_started" and W.get(70, 58, 63).designated, (r.wells[1].stage, r.error)
+        finally:
+            LUA.execute(GAME_CLEAN)
+
+    @test("K48-K4b bridge (A4 12): the stair lid of a shaft still being dug is never locked (gate impossible), "
+          "and a locked one is unlocked for the miners")
+    def _():
+        LUA.execute(GAME_FAKE)
+        try:
+            add_project(well_rec(9, phase="dig", released=True, up=LUA.table_from({"zs": LUA.table_from([66, 67, 68, 69])}),
+                                 shaft_gate=LUA.table_from({"impossible": True})))
+            W.set(71, 58, 70, LUA.table_from({"shape": "STAIR_DOWN"}))
+            LUA.execute("LID = MKS(71, 58, 70, 7, true)")
+            rows = B.well_lids(False)
+            assert rows[1].digging is True and rows[1].state == "open"
+            r = B.seal_well_stairs(False)
+            assert not r.ok and LUA.eval("LID.door_flags.forbidden") is False, dict(r)
+            LUA.execute("LID.door_flags.forbidden = true")
+            r = B.well_shaft_step(False, False)
+            assert r.wells[1].unlocked_lid and LUA.eval("LID.door_flags.forbidden") is False, dict(r.wells[1])
+            # finished: locked as before
+            data, p = project(9)
+            p.phase, p.up = "done", None
+            B.save_projects(data)
+            r = B.seal_well_stairs(False)
+            assert r.ok and r.locked == 1 and LUA.eval("LID.door_flags.forbidden") is True, dict(r)
+        finally:
+            LUA.execute(GAME_CLEAN)
+
+    @test("K48-K4b bridge (A4 13): the dig guard's suspended jobs are kept in the project: let go after a reload")
+    def _():
+        add_project(well_rec(7, phase="dig"))
+        LUA.execute("""JOBS = {{id = 41, x = 70, y = 58, z = 66, suspended = false}}
+                       WS.JOBS_FN = function() return JOBS end
+                       WS.SUSPEND_FN = function(row, on) row.suspended = on; return true end""")
+        cits({"id": 2, "name": "Uzol", "x": 70, "y": 58, "z": 65})
+        r = WS.watch_once()
+        assert r.suspended == 1 and LUA.eval("JOBS[1].suspended") is True
+        _, p = project(7)
+        assert p.ws_suspended and p.ws_suspended["41"] is True
+        # the map unloaded and loaded again: the in-memory list is gone
+        LUA.execute("WS.STATE = {on = false, log = {}, seen = {}, under = {}, suspended = {}}")
+        cits()
+        r = WS.watch_once()
+        assert r.released == 1 and LUA.eval("JOBS[1].suspended") is False, r.released
+        _, p = project(7)
+        assert p.ws_suspended is None
+        # suspended again, then the job is gone (dug): its id dropped
+        cits({"id": 2, "name": "Uzol", "x": 70, "y": 58, "z": 65})
+        WS.watch_once()
+        LUA.execute("JOBS = {}")
+        WS.watch_once()
+        _, p = project(7)
+        assert p.ws_suspended is None
+
+    @test("K48-K4b bridge (A4 16): a rescue stair through the stair column's bottom step (now up/down) leaves "
+          "the shaft's stairs counted dug")
+    def _():
+        add_project(well_rec(12, phase="dig"))
+        for z in range(63, 71):
+            W.set(70, 58, z, LUA.table_from({"shape": "EMPTY"}))
+        for z in range(63, 71):
+            W.set(71, 58, z, LUA.table_from({"shape": "STAIR_DOWN" if z == 70 else "STAIR_UPDOWN"}))
+        d = B.projects_report().open[1].dig
+        assert d.stuck == 0 and d.shaft_open is True, (d.stuck, d.shaft_open)
+        assert B.projects_report().open[1].next == "furnish"
+
+    @test("K48-K4b bridge: the shaft watcher adopts a gate shut with no mark (0.105.47's watcher) and opens it with "
+          "no danger near; never one the brain shut for its own reason, nor with a danger near")
+    def _():
+        LUA.execute(GAME_FAKE)
+        try:
+            _gate_game()
+            assert LUA.eval("HAT.door_flags.closed") is True
+            B.shaft_watch_start()
+            LUA.execute("UNITS[1] = {id = 66, danger = true, flags1 = {}, pos = {x = 72, y = 60, z = 60}}")
+            LUA.execute("TIMERS[#TIMERS]()")
+            assert LUA.eval("#PULLS") == 0, "a danger near: kept shut"
+            LUA.execute("UNITS[1] = nil")
+            data, p = project(9)
+            p.shaft_gate.brain_shut = True
+            B.save_projects(data)
+            LUA.execute("TIMERS[#TIMERS]()")
+            assert LUA.eval("#PULLS") == 0, "the brain's own reason: kept shut"
+            data, p = project(9)
+            p.shaft_gate.brain_shut = None
+            B.save_projects(data)
+            LUA.execute("TIMERS[#TIMERS]()")
+            assert LUA.eval("#PULLS") == 1 and LUA.eval("HAT.door_flags.closed") is False
+            _, p = project(9)
+            assert p.shaft_gate.auto_shut is None
+            # the brain shuts it for no danger the watcher sees: marked so
+            r = B.well_shaft_step(True, False)
+            assert r.ok and r.wells[1].stage == "closed", (r.ok, r.error)
+            _, p = project(9)
+            assert p.shaft_gate.brain_shut is True and p.shaft_gate.auto_shut is None
+            # opened by the brain: the mark goes
+            LATER = LUA.eval("LATER")
+            LATER(1300)
+            r = B.well_shaft_step(False, False)
+            assert r.wells[1].stage == "opened", r.wells[1].stage
+            _, p = project(9)
+            assert p.shaft_gate.brain_shut is None
+            B.SHAFT_WATCH.on = False
+        finally:
+            LUA.execute(GAME_CLEAN)
+
+    @test("K48-K4b bridge (A4 17): the in-game timers keep their decoded projects until something saves them")
+    def _():
+        add_project(well_rec(7, phase="dig"))
+        st = LUA.table_from({})
+        real = B.load_projects
+        LUA.execute("LOADS = 0")
+        B.load_projects = LUA.eval("function(real) return function() LOADS = LOADS + 1; return real() end end")(real)
+        try:
+            loads = lambda: LUA.eval("LOADS")
+            B.watch_projects(st)
+            B.watch_projects(st)
+            assert loads() == 1, "the same copy, not decoded again"
+            data = B.load_projects()
+            B.save_projects(data)
+            b = B.watch_projects(st)
+            assert loads() == 3 and len(b.list) == 1, loads()
+            B.save_projects(b)
+            B.watch_projects_saved(st, b)          # the timer's own save: its copy is the saved one
+            B.watch_projects(st)
+            assert loads() == 3
+            LUA.execute("df.global.cur_year_tick = df.global.cur_year_tick + 1300")
+            B.watch_projects(st)
+            assert loads() == 4, "a day on: decoded again anyway"
+        finally:
+            B.load_projects = real
+        # a citizen's name read only when asked for
+        LUA.execute("""DFU_REAL = dfhack.units
+            NAMES_READ = 0
+            dfhack.units = setmetatable({getCitizens = function() return {{id = 5}} end,
+                getPosition = function() return 1, 2, 3 end,
+                getReadableName = function() NAMES_READ = NAMES_READ + 1; return 'Kib' end}, {__index = DFU_REAL})
+            WS.CITIZENS_FN = nil""")
+        try:
+            cs = WS.citizens()
+            assert len(cs) == 1 and LUA.eval("NAMES_READ") == 0
+            assert cs[1].name == "Kib" and cs[1].name == "Kib" and LUA.eval("NAMES_READ") == 1
+        finally:
+            LUA.execute("dfhack.units = DFU_REAL")
+else:
+    @test("the 6 K48-K4b Lua test(s): not run")
+    def _():
+        skip("needs the lupa package (pip install lupa)")
+
 finish(None if LuaRuntime is not None else "these tests need the lupa package (pip install lupa)")

@@ -4372,8 +4372,9 @@ def _():
         {"kind": "surface", "nearest": {"d": 20, "x": 3, "y": 3, "z": 6}, "stagnant_share": 0}]}
     s["others_on_map"]["threats"] = []                 # (0.105.7 review) cavern water only with no cavern danger
     w = by_rule(plan(s, Memory())[0], "water_zone")
-    # (0.105.7 review) the nearest first (fresh before stagnant), not surface first
-    assert w and [p["x"] for p in w[0].action["points"]] == [1, 3, 2] and w[0].priority == 1, w
+    # (0.105.7 review) the nearest first (fresh before stagnant), not surface first;
+    # (K48-K4b, A4 15) cavern water last (the docstring's order: six drowned in a cavern lake)
+    assert w and [p["x"] for p in w[0].action["points"]] == [3, 2, 1] and w[0].priority == 1, w
     s["buildings"]["zones"]["WaterSource"] = 1
     assert not by_rule(plan(s, Memory())[0], "water_zone")
     s["buildings"]["zones"].pop("WaterSource")
@@ -10770,7 +10771,7 @@ def _():
                              {"kind": "surface", "nearest": {"d": 60, "x": 3, "y": 3, "z": 40}, "stagnant_share": 0}]}
     s["others_on_map"]["threats"] = []
     w = by_rule(plan(s, Memory())[0], "water_zone")
-    assert w and [p["x"] for p in w[0].action["points"]] == [133, 3] and "drink is short" in w[0].reason, w
+    assert w and [p["x"] for p in w[0].action["points"]] == [3, 133] and "drink is short" in w[0].reason, w   # (K48-K4b) cavern last
     s["stocks"]["drink"] = 200
     assert not by_rule(plan(s, Memory())[0], "water_zone")
 

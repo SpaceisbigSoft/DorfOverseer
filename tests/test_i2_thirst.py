@@ -212,6 +212,32 @@ def _():
     assert c(water_group=1) == "unknown"
 
 
+@test("K48-K4b classify: a burrow or alarm burrow the look's budget never reached is not the reason")
+def _():
+    need_lua()
+    lua, env, w = world()
+    c = lambda **f: env.classify(T(lua, f))
+    here = dict(drink_group=5)
+    assert c(alert=True, alert_drink=False, alert_unread=True, **here) == "unknown"
+    assert c(burrows=1, burrow_drink=False, burrow_unread=True, timer=30000, **here) == "unknown"
+    assert c(burrows=1, burrow_drink=False, timer=30000, **here) == "burrow"
+
+
+@test("K48-K4b report: a caravan's drink at the depot (trader-owned, or in a trader's barrel) is no drink in reach")
+def _():
+    need_lua()
+    lua, env, w = world()
+    drink(lua, w, 12, 10, 100, flags={"trader": True}, stack_size=5)
+    barrel = T(lua, {"pos": {"x": 12, "y": 11, "z": 100}, "flags": {"trader": True}})
+    drink(lua, w, container=barrel, flags={"in_inventory": True}, stack_size=3)
+    dwarf(lua, w, 1, 40000)
+    r, by = rows(env)
+    assert r["drink_total"] == 0 and by[1]["drink_group"] == 0 and by[1]["reason"] == "no_drink", (r, by[1])
+    drink(lua, w, 12, 10, 100, stack_size=2)
+    r, by = rows(env)
+    assert r["drink_total"] == 2 and by[1]["drink_group"] == 2, r
+
+
 # --- 2. the report -------------------------------------------------------------------------
 
 @test("report: nobody thirsty, nothing read, no list; the quenched dwarf is left out")

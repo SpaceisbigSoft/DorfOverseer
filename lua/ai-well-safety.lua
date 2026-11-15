@@ -92,6 +92,17 @@ local function utf(s)
     return s
 end
 
+-- (K48-K4b, A4 17) a citizen's readable name, built only when it is read
+-- (a log line, a "who is below"), not for every citizen on every beat
+local LAZY_NAME = {__index = function(c, k)
+    if k ~= 'name' then return nil end
+    local u = rawget(c, 'u')
+    local okn, nm = pcall(dfhack.units.getReadableName, u)
+    local v = okn and utf(nm) or ('unit ' .. tostring(rawget(c, 'id')))
+    rawset(c, 'name', v)
+    return v
+end}
+
 -- The citizens: {{id, x, y, z, name}}.
 function citizens()
     if CITIZENS_FN then return CITIZENS_FN() end
@@ -100,8 +111,7 @@ function citizens()
         for _, u in ipairs(dfhack.units.getCitizens(true)) do
             local x, y, z = dfhack.units.getPosition(u)
             if x then
-                local okn, nm = pcall(dfhack.units.getReadableName, u)
-                table.insert(out, {id = u.id, x = x, y = y, z = z, name = okn and utf(nm) or ('unit ' .. u.id)})
+                table.insert(out, setmetatable({id = u.id, x = x, y = y, z = z, u = u}, LAZY_NAME))
             end
         end
     end)
@@ -690,9 +700,29 @@ function watch_once(data, cits)
         end
     end
     -- the dig guard: a dig job in a column is suspended while a citizen
-    -- stands in that column at or under its level; let go when clear
+    -- stands in that column at or under its level; let go when clear.
+    -- (K48-K4b, A4 13) the guard's own suspensions are kept in the project
+    -- too (ws_suspended, by job id): STATE is emptied when the map unloads,
+    -- and a job held at a save was never let go after the load.
     if next(cols) then
+        local seen_jobs = {}
+        local function mine(j, w)
+            if STATE.suspended[j.id] then return true end
+            return w ~= nil and type(w.p.ws_suspended) == 'table' and w.p.ws_suspended[tostring(j.id)] ~= nil
+        end
+        local function mark(w, j, on)
+            if on then
+                if type(w.p.ws_suspended) ~= 'table' then w.p.ws_suspended = {} end
+                w.p.ws_suspended[tostring(j.id)] = true
+                res.changed = true
+            elseif type(w.p.ws_suspended) == 'table' and w.p.ws_suspended[tostring(j.id)] ~= nil then
+                w.p.ws_suspended[tostring(j.id)] = nil
+                if next(w.p.ws_suspended) == nil then w.p.ws_suspended = nil end
+                res.changed = true
+            end
+        end
         for _, j in ipairs(column_jobs(cols)) do
+            seen_jobs[tostring(j.id)] = true
             local w = by_col[j.x .. ',' .. j.y]
             local busy
             if w then
@@ -703,15 +733,28 @@ function watch_once(data, cits)
             if busy and not j.suspended then
                 if set_suspended(j, true) then
                     STATE.suspended[j.id] = w.p.id
+                    mark(w, j, true)
                     res.suspended = res.suspended + 1
                     log('suspended', ('cavern well %d: the dig at z%d held while %s stands in the shaft\'s column (z%d)')
                         :format(w.p.id, j.z, tostring(busy.name), busy.z), {project_id = w.p.id, unit = busy.id})
                 end
-            elseif not busy and j.suspended and STATE.suspended[j.id] then
+            elseif not busy and j.suspended and mine(j, w) then
                 if set_suspended(j, false) then
                     STATE.suspended[j.id] = nil
+                    if w then mark(w, j, false) end
                     res.released = res.released + 1
                 end
+            elseif not j.suspended and w then
+                mark(w, j, false)          -- let go by someone else: no longer the guard's
+            end
+        end
+        -- ids of jobs that are gone (dug, cancelled) dropped from the record
+        for _, w in pairs(by_col) do
+            if type(w.p.ws_suspended) == 'table' then
+                for id in pairs(w.p.ws_suspended) do
+                    if not seen_jobs[id] then w.p.ws_suspended[id] = nil; res.changed = true end
+                end
+                if next(w.p.ws_suspended) == nil then w.p.ws_suspended = nil end
             end
         end
     end
@@ -744,9 +787,14 @@ local function tick()
     STATE.halted = nil
     local ok, err = pcall(function()
         local B = builder()
-        local data = B.load_projects()
+        -- (K48-K4b, A4 17) the decoded projects kept between beats (decoded
+        -- again once anything saved them)
+        local data = (type(B.watch_projects) == 'function') and B.watch_projects(STATE) or B.load_projects()
         local r = watch_once(data)
-        if r.changed then B.save_projects(data) end
+        if r.changed then
+            B.save_projects(data)
+            if type(B.watch_projects_saved) == 'function' then B.watch_projects_saved(STATE, data) end
+        end
         if r.wells == 0 then STATE.on = false end
     end)
     STATE.error = (not ok) and tostring(err):sub(1, 160) or nil

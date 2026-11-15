@@ -68,6 +68,8 @@ function save_projects(data)
     end
     while #data.old_areas > OLD_AREAS_MAX do table.remove(data.old_areas, 1) end
     -- (0.105.40 E3) the report's decoded copy is stale now
+    -- (K48-K4b) and the in-game timers' copies (watch_projects)
+    PROJECTS_GEN = (PROJECTS_GEN or 0) + 1
     pcall(function() local c = util_module().REPORT_CTX; if type(c) == 'table' then c.projects = nil end end)
     return site_put(PROJECTS_KEY, data)
 end
@@ -546,7 +548,11 @@ function dig_progress(p, redig, dry_run)
     end
     for _, c in ipairs(p.shaft_stairs or {}) do
         local want = STAIR_SHAPES[c.key]
-        keep_or_hold(c.x, c.y, c.z, function(t) return t.shape == want end, c.key)
+        -- (K48-K4b, A4 16) the bottom up-stair made an up/down stair by a rescue
+        -- stair dug down from it is still the stair (not stuck, not re-dug)
+        keep_or_hold(c.x, c.y, c.z, function(t)
+            return t.shape == want or (c.key == 'u' and t.shape == 'STAIR_UPDOWN')
+        end, c.key)
     end
     -- (0.105.3) Hammerstirred: a gallery out to the shaft, each tile dug to a floor
     for _, g in ipairs(type(p.gallery) == 'table' and p.gallery or {}) do
