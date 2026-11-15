@@ -198,12 +198,15 @@ def called_off_ids(s: dict, memory) -> set:
 def fight_or_hide(s: dict, memory, cfg: dict, great: list, able: list) -> tuple[bool, str]:
     """Squads' strength (the bridge's per-squad `power`) against the great
     dangers' (threat_power), times what the fort learned from its own fights
-    of that kind (memory.fight_factor). Fight at fight_ratio or better."""
+    of that kind (memory.fight_factor). (0.105.54, the player: "fight when
+    roughly even") Fight at planner_matchup.strike_bar or better: about even
+    odds (`fight_even_ratio`), a clear win (`fight_ratio`) only for abilities
+    the AI can't read, lower for a wounded beast; an all-out attack once the
+    wait is over (planner_matchup.all_out); a fight called off for its
+    losses goes again when the odds return. The verdict says why."""
+    from planner_matchup import all_out, losses_turned, strike_bar
+    from planner_holdfast import retreating_ids
     army = sum(float(_d(q.get("power")).get("power") or 0) for q in able)
-    off = called_off_ids(s, memory) & {t.get("id") for t in great}
-    if off:
-        # (0.105.26) A's titan was sent at three times: once called off, never again while it's here
-        return False, f"the fight with {len(off)} of them was called off: no squad goes at them again while they're here"
     if not army:
         return False, "the squads' strength isn't known (older bridge)" if able else "no squad to send"
     # (0.105.45) the matchup: melee and ranged power weighed by what the
@@ -213,7 +216,31 @@ def fight_or_hide(s: dict, memory, cfg: dict, great: list, able: list) -> tuple[
     j = judge(great, able, lambda t: float(ff_.get(fight_key(t)) or 1.0))
     need, ratio = j["need"], j["ratio"]
     army = j["army"]
-    words = f"squads {army:.0f} against {need:.0f}" + ("; " + "; ".join(j["reasons"]) if j["reasons"] else "")
+    full_bar, bar_why = strike_bar(great, cfg, retreating_ids(memory, cfg))
+    words = (f"squads {army:.0f} against {need:.0f} ({ratio:.1f}x; {bar_why})"
+             + ("; " + "; ".join(j["reasons"]) if j["reasons"] else ""))
+    off = called_off_ids(s, memory) & {t.get("id") for t in great}
+    if off:
+        # (0.105.26) A's titan was sent at three times: a fight called off for
+        # its losses is not begun again at the same odds. (0.105.54) It goes
+        # again when the odds return (the squads refilled, trained, the beast
+        # wounded: the learned factor makes the old odds short of the bar),
+        # or once the wait is over and that long has passed since
+        co = _d(getattr(memory, "called_off", None))
+        since = min((int(co[str(i)]) for i in off if isinstance(co.get(str(i)), int)), default=None)
+        wait_ok = (since is not None
+                   and abs_tick(s) - since >= float(cfg.get("siege_wait_max_days", 4)) * TICKS_PER_DAY)
+        ao = all_out(s, memory, cfg) if wait_ok else ""
+        if ratio >= full_bar or (ao and ratio >= float(cfg.get("all_out_min_ratio", 0.25))):
+            for i in off:
+                co.pop(str(i), None)
+            if memory is not None:
+                memory.called_off = co
+                memory.fight = {}          # a new fight: its losses counted from now
+            why = "the odds are back" if ratio >= full_bar else f"all-out: {ao}"
+            return True, words + f"; the fight called off before goes again ({why})"
+        return False, (f"the fight with {len(off)} of them was called off for its losses: the squads go again "
+                       f"when the odds return ({ratio:.1f}x, {full_bar:g}x needed)")
     # (0.104.139) no flip-flop: a fight begun goes on unless the squads fall
     # well short (three quarters of the bar); hiding ends only clearly above it
     f = getattr(memory, "fight", None)
@@ -226,8 +253,8 @@ def fight_or_hide(s: dict, memory, cfg: dict, great: list, able: list) -> tuple[
         now_ = int(_d(s.get("military")).get("soldiers") or 0)
         lost = max(0, int(f["soldiers"]) - now_)
         if lost * 3 >= int(f["soldiers"]):
-            # (0.105.26) the dangers fought are flagged (never sent at again
-            # while on the map), and the kind is learned strong enough that
+            # (0.105.26) the dangers fought are flagged (not sent at again
+            # at the same odds), and the kind is learned strong enough that
             # even the squads at full strength would hide: x1.5 needed about
             # four lost fights before A's titan was hidden from
             if memory is not None:
@@ -240,15 +267,33 @@ def fight_or_hide(s: dict, memory, cfg: dict, great: list, able: list) -> tuple[
                 ff = memory.fight_factor if isinstance(getattr(memory, "fight_factor", None), dict) else {}
                 full = army * max(int(f["soldiers"]), now_) / max(1, now_)
                 base = sum(threat_power(t) for t in great) or 1.0
-                hide_at = full / (cfg["fight_ratio"] * base) * 1.25
+                # (0.105.54) against the bar it is judged by now (even odds),
+                # so the same squads at full strength stay short of it
+                hide_at = full / (full_bar * base) * 1.25
                 for k in _l(f.get("keys")):
                     old = float(ff.get(k) or 1.0)
                     ff[k] = round(min(FIGHT_FACTOR_MAX, max(0.5, old * 1.5, hide_at)), 2)
                 memory.fight_factor = ff
                 f["learned"] = True
             return False, words + f"; {lost} of the {f['soldiers']} soldiers who went are lost: the squads come back"
-    bar = cfg["fight_ratio"] * (0.75 if on else 1.0)
-    return ratio >= bar, words
+    # (0.105.54) half the soldiers out on them wounded: back too (no lesson
+    # learned: the odds decide again as they heal)
+    ids = {t.get("id") for t in great}
+    out = [q for q in able if q.get("ai_orders") and {x for x in _l(q.get("kill_ids")) if isinstance(x, int)} & ids]
+    if on and out:
+        turned = losses_turned(out, {}, cfg)
+        if turned:
+            return False, words + f"; {turned}: the squads come back and go again when the odds return"
+    bar = full_bar * (0.75 if on else 1.0)
+    if ratio >= bar:
+        return True, words
+    ao = all_out(s, memory, cfg)
+    if ao and ratio >= float(cfg.get("all_out_min_ratio", 0.25)):
+        return True, words + f"; all-out: {ao}"
+    if ao:
+        return False, words + (f"; the wait is over ({ao}) but the squads are only {ratio:.1f}x "
+                               f"({cfg.get('all_out_min_ratio', 0.25):g}x at least for an all-out attack)")
+    return False, words
 
 
 def _players(q: dict) -> bool:

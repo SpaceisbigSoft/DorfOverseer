@@ -351,8 +351,13 @@ def _():
     m = Memory()
     m.called_off = {"901": 1}
     s = fort_with(a_beast(), squads(150, n=len(BASE["military"]["squads"])))
+    # (0.105.54) called off: not again at the same odds (the learned factor), again when the odds return
+    m.fight_factor = {"ForgottenBeast": 50.0}
     fight, words = fight_or_hide(s, m, CFG, [a_beast()], squads(150))
-    assert not fight and "called off" in words
+    assert not fight and "called off" in words, words
+    m.fight_factor = {}
+    fight, words = fight_or_hide(s, m, CFG, [a_beast()], squads(150))
+    assert fight and "goes again" in words and not m.called_off, words
     # a fight that lost a third of the soldiers comes back and learns, with the facts too
     m = Memory()
     m.fight = {"tick": PM.abs_tick(s), "keys": ["ForgottenBeast"], "soldiers": 30}

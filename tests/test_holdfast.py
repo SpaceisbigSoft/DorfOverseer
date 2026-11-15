@@ -186,7 +186,7 @@ def _():
     assert out == [] and any("keeps its kill order" in n for n in notes), notes
     assert m.holdfast == {}                                          # plan() writes no memory
     HF.note_holdfast_cycle(s, m, CFG)                                # note_cycle books it
-    assert m.holdfast["kill"]["11"] == {"ids": [6000], "since": NOW}
+    assert m.holdfast["kill"]["11"] == {"ids": [6000], "since": NOW, "members": q["members"]}   # (0.105.54) + members
     assert HF._kill_hold_filter(s, m, CFG, [_recall()], []) == []
     # a day on: the recall goes through
     m.holdfast["kill"]["11"]["since"] -= DAY + 1
@@ -206,7 +206,8 @@ def _():
     assert len(HF._kill_hold_filter(s, Memory(), CFG, [urgent], [])) == 1
     titan = goblin(great_danger=True, kinds=["Titan"], size=20_000_000, can_reach_dwarves=False,
                    layer="upper_levels")
-    s = fort([titan], [sq(11, 60, ai_orders=1, kill_ids=[6000])])     # ~53 needed, 2x: hide
+    # (0.105.54) ~53 needed, about even odds now (was 2x with 60): 30 hides
+    s = fort([titan], [sq(11, 30, ai_orders=1, kill_ids=[6000])])
     assert len(HF._kill_hold_filter(s, Memory(), CFG, [_recall()], [])) == 1          # fight_or_hide: hide
     s = fort([titan], [q])                                             # strong enough: held
     assert HF._kill_hold_filter(s, Memory(), CFG, [_recall()], []) == []

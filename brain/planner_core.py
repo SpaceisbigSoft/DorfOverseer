@@ -785,7 +785,7 @@ def _wild_free_squads(s: dict, cfg: dict, ids: set) -> list:
 
 def wild_pack(s: dict, cfg: dict | None = None) -> dict:
     """{ids, rows, danger (why, "" if none), fight (the free squads beat
-    them at fight_ratio), ratio}: the wild animals that can reach the
+    them at planner_matchup.fight_bar: about even odds), ratio}: the wild animals that can reach the
     dwarves judged as a group (see above). `ids` are all of them when they
     are a danger, else []."""
     cfg = cfg or PLANNER_CONFIG
@@ -798,10 +798,11 @@ def wild_pack(s: dict, cfg: dict | None = None) -> dict:
     out["rows"] = big
     if not big:
         return out
-    from planner_matchup import judge
+    from planner_matchup import judge, fight_bar
     squads = _wild_free_squads(s, cfg, {r["id"] for r in big})
     ratio = judge(big, squads)["ratio"] if squads else 0.0
-    win = ratio >= float(cfg.get("fight_ratio", 2.0))
+    bar = fight_bar(big, cfg)["bar"]          # (0.105.54) about even odds (the player: "fight back")
+    win = ratio >= bar
     out["ratio"], out["fight"] = round(ratio, 2), win
     name = str(big[0].get("name") or "a wild animal")
     inside = [r for r in big if r.get("inside")]
@@ -817,7 +818,7 @@ def wild_pack(s: dict, cfg: dict | None = None) -> dict:
     else:
         return out
     out["danger"] = why + (f" (the free squads beat them: {ratio:.1f}x)" if win else
-                           f" (the free squads {ratio:.1f}x, {cfg.get('fight_ratio', 2.0)}x needed: no sortie, "
+                           f" (the free squads {ratio:.1f}x, {bar:g}x needed: no sortie, "
                            "the civilians in)")
     out["ids"] = [r["id"] for r in big]
     return out

@@ -231,12 +231,12 @@ def _():
 @test("ten goblins and six strong squads: the smallest party of the strongest that clears fight_ratio goes, "
       "the rest stay home; a few inside of a siege too strong: the squads go at those only")
 def _():
-    gobs = [goblin(8000 + i) for i in range(10)]                    # need 100, x2 = 200
+    gobs = [goblin(8000 + i) for i in range(10)]                    # need 100 (0.105.54: about even odds)
     squads = [sq(10 + i, p) for i, p in enumerate((150, 120, 40, 30, 20, 10))]
     s = fort(gobs, squads)
     props, _ = plan(s, Memory())
     sent = sorted(p.action["squad_id"] for p in by(props, "squad_attack"))
-    assert sent == [10, 11], sent
+    assert sent == [10], sent                                       # (was [10, 11] at the 2x bar)
     big = fort([goblin(8000 + i) for i in range(40)], squads)       # need 400: short
     big["entrances"]["intruders_inside"] = [8000, 8001]
     props, _ = plan(big, Memory())

@@ -46,7 +46,8 @@ The rules (_siege_rules), each behind its Rules switch:
     can walk to the dwarves, within `wild_near_tiles` of a
     dwarf outside or `wild_reach_tiles` of any: a free squad goes at it,
     under the same rules as the caravan guard; a big one
-    (`wild_big_size`) only for a squad of power `wild_big_power`;
+    (`wild_big_size`) only for a squad that beats it alone at about even
+    odds (0.105.54, planner_matchup.fight_bar; `wild_big_power` without rows);
   * the squads sent are not called back by "no more threats" while what
     they were sent at is still listed (the animals are no threat to the
     game, so _military_rules would call them back every cycle).
@@ -347,7 +348,7 @@ def _shoots(q: dict) -> bool:
     return is_ranged(q)
 
 
-def _free_squad(s: dict, cfg: dict, proposals: list, big: bool = False, shooters: bool = False):
+def _free_squad(s: dict, cfg: dict, proposals: list, big: bool = False, shooters: bool = False, rows=None):
     ordered = {p.action.get("squad_id") for p in proposals if p.action.get("type") in ("squad_orders", "archer_post",
                                                                                       "guard_gate")}
     for p in proposals:
@@ -357,7 +358,13 @@ def _free_squad(s: dict, cfg: dict, proposals: list, big: bool = False, shooters
             and q["id"] not in ordered and not is_ranged(q)]
     free += [q for q in _squads(s) if can_fight(q, cfg) and not q.get("ai_orders") and not (q.get("orders") or 0)
              and q["id"] not in ordered and is_ranged(q)]       # crossbows after the melee squads
-    if big:
+    if big and rows:
+        # (0.105.54) a big one: the squad that beats it alone at about even
+        # odds (planner_matchup.fight_bar; was `wild_big_power`, set for 2x)
+        from planner_matchup import fight_bar, matchup
+        bar = fight_bar(rows, cfg)["bar"]
+        free = [q for q in free if _num(_d(q.get("power")).get("power")) and matchup(rows, [q])[0] >= bar]
+    elif big:
         free = [q for q in free if _num(_d(q.get("power")).get("power"))
                 and _d(q.get("power"))["power"] >= _c(cfg, "wild_big_power")]
     if shooters:
@@ -475,7 +482,7 @@ def _wild_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> list
     big = any(_num(r.get("size")) and r["size"] >= _c(cfg, "wild_big_size") for r in new)
     # (0.105.48, K1) never melee at a flier: crossbows with bolts, or nothing
     fliers = all(r.get("flier") for r in new)
-    q = _free_squad(s, cfg, proposals, big=big, shooters=fliers)
+    q = _free_squad(s, cfg, proposals, big=big, shooters=fliers, rows=new)
     if q is None:
         notes.append(f"{names} near the dwarves outside and no squad free to hunt "
                      + ("it (a flier: a crossbow squad with bolts only)" if fliers else
