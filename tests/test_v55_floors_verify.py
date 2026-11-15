@@ -102,10 +102,10 @@ def _():
 @test("V2b. a workshops level that fits nowhere leaves no lasting empty floor records behind: the record's "
       "empty, only-marked floors are dropped once their marks are older than full_retry_days")
 def _():
-    elevs = [ROCK_Z, ROCK_Z - 1, ROCK_Z - 2, ROCK_Z - 3]
-    r = F.start(kind="workshops", shops=["Masons", "Carpenters", "Craftsdwarfs", "Mechanics"],
-                floor={"elevs": elevs, "tag": "industry"})
-    assert r.ok and r.floor is None, F.plain(r)
+    # (0.105.55 merge) the set-up's 4-shop level now fits (F3 splits a workshops level per shop), and a
+    # level too big for any run no longer marks; the marks are made here as a classic fallback writes them
+    marks = [{"z": z, "sx": SX, "sy": SY, "tag": "industry"} for z in (ROCK_Z, ROCK_Z - 1, ROCK_Z - 2, ROCK_Z - 3)]
+    F.B.floor_fallback("workshops", "no room", ROCK_Z, F.tbl(marks))
     empty = [f for f in F.store()["floors"] if not f.get("runs") and not f.get("slots")]
     assert len(empty) >= 3, F.store()       # the set-up: marks made records of empty levels
     F.E.tick = 400 * 1200                   # long after every mark has expired
@@ -138,11 +138,15 @@ def _():
     assert r.ok and r.floor is not None, f"never fits a 14-column run: {r.not_on_floor!r}"
 
 
-@test("V3c. a workshops level too long for any run (4 shops and its pile on a 30-column run) does not mark "
+@test("V3c. a workshops level too long for any run (ten shops, one arm, no turn) does not mark "
       "the floor full for industry: a one-shop level right after still goes onto that (empty) floor")
 def _():
-    hint = {"elevs": [ROCK_Z], "tag": "industry"}
-    big = F.start(kind="workshops", shops=["Masons", "Carpenters", "Craftsdwarfs", "Mechanics"], floor=dict(hint))
+    # (0.105.55 merge) 4 shops now fit a 30-column run split per shop (F3); a level that truly fits no run:
+    # ten shops on one arm with no turns
+    hint = {"elevs": [ROCK_Z], "tag": "industry", "arms_max": 1, "grow": ["arm"], "dirs": ["east"]}
+    shops = ["Masons", "Carpenters", "Craftsdwarfs", "Mechanics", "Jewelers", "Bowyers", "Clothiers",
+             "Leatherworks", "Kitchen", "Still"]
+    big = F.start(kind="workshops", shops=shops, floor=dict(hint))
     assert big.ok and big.floor is None and "no room" in str(big.not_on_floor), F.plain(big)
     small = F.start(kind="workshops", shops=["Jewelers"], floor=dict(hint))
     assert small.ok and small.floor is not None, \
