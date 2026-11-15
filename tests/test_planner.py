@@ -5452,10 +5452,12 @@ def _():
     from planner_military import soldiers_wanted
     for mil in (-100, -60, 0):
         s = fort()
+        s["others_on_map"]["threats"] = []    # (0.105.54) no beasts on the map: no defence floor by threat
         s["settings"]["traits"]["militarism"] = mil
         s["dwarves"].update(total=15, adults=15, idle_adults=0)
         assert soldiers_wanted(s, 15, PLANNER_CONFIG) >= 3, (mil, soldiers_wanted(s, 15, PLANNER_CONFIG))
     s = fort()
+    s["others_on_map"]["threats"] = []
     s["settings"]["traits"]["militarism"] = -100
     s["dwarves"].update(total=14, adults=14, idle_adults=0)
     assert soldiers_wanted(s, 14, PLANNER_CONFIG) < 3          # a smaller fort: by its slider, as before
@@ -8502,6 +8504,7 @@ def _():
 def _():
     from planner import soldiers_wanted, _stress_care
     s = fort()
+    s["others_on_map"]["threats"] = []        # (0.105.54) the slider and the needs alone, no defence floor
     s["needs"] = {"needs": {"MartialTraining": {"distracted": 23}}}
     s["settings"]["traits"] = {"militarism": 20}                 # (0.105.10) a keener fort: more of the extra
     base = soldiers_wanted({**s, "needs": {"needs": {}}}, 28, PLANNER_CONFIG)

@@ -346,6 +346,7 @@ class Memory:
     welfare: dict = field(default_factory=dict)          # (0.105.47, I7b) {short_since: tick the dead first outnumbered the free tombs} (planner_welfare)
     lure: dict = field(default_factory=dict)             # (0.105.45) opening "x,y,z" -> {tries, opened, next_try, caught, phase}: the lure pockets (planner_lure)
     holdfast: dict = field(default_factory=dict)         # (0.105.47, R2 item 7) {kill, guards, named, walls}: planner_holdfast
+    defence_floor: dict = field(default_factory=dict)    # (0.105.54) {peak {power, tick, why}}: the biggest threat seen (planner_defence_floor)
     order_loop: dict = field(default_factory=dict)       # (0.105.46, I3) {misses: {"recipe|MATERIAL": {tick, missing, what, snap}}, approved, approved_ids} (order_check)
     dig_seen: dict = field(default_factory=dict)         # (0.104.110) project id -> {"dug", "tick" (last progress), "freed"}
     join_wait_days: int = 2                              # (0.104.108) days to the next look (longer once all were seen)

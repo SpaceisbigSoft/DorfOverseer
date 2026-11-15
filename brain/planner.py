@@ -2094,6 +2094,9 @@ def note_cycle(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> list[
         notes += _step(note_hunt_cycle, s, memory, cfg) or []   # (0.105.45) hunts' outcomes learned once each
     _step(note_never_draft, s, memory, cfg)                     # (0.105.47) "never draft" forgotten in time
     _step(note_holdfast_cycle, s, memory, cfg)                  # (0.105.47, R2 item 7) kill orders' age, guards
+    if "others_on_map" not in errors:
+        from planner_defence_floor import note_defence_floor
+        _step(note_defence_floor, s, memory, cfg)               # (0.105.54) the biggest threat seen: the defence floor
     # (0.104.89) the strategist's raised and held rules run out
     if isinstance(getattr(memory, "steer", None), dict):
         for k in [k for k, v in memory.steer.items() if not (isinstance(v, dict) and isinstance(v.get("until"), int)

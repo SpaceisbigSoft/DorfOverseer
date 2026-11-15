@@ -299,12 +299,19 @@ def civilian_cap(s: dict, cfg: dict) -> int | None:
     return max(0, adults - floor)
 
 
-def soldiers_wanted(s: dict, citizens: int, cfg: dict, idle: bool = False) -> int:
+def soldiers_wanted(s: dict, citizens: int, cfg: dict, idle: bool = False, memory=None,
+                    floor: dict | None = None) -> int:
     """From the Militarism trait; more when many dwarves long to fight or
     train (the Fight / MartialTraining needs: soldiering meets them), unless
     Militarism is at its lowest. (0.105.2) Below 0 the need-driven extra
-    shrinks with the slider (gone at -100); never past the civilian cap."""
+    shrinks with the slider (gone at -100); never past the civilian cap.
+    (0.105.54) Never below the defence floor by threat (planner_defence_floor:
+    enough to win an even fight against the biggest threat seen or here),
+    whatever the Militarism; the slider's number stays when larger."""
     want = _soldiers_wanted(s, citizens, cfg, idle)
+    from planner_defence_floor import defence_floor
+    f = floor if isinstance(floor, dict) else defence_floor(s, memory, cfg, citizens)
+    want = max(want, int(f.get("soldiers") or 0))
     # (0.105.8) a small guard in every fort of `guard_min_adults`+ adults,
     # whatever the Militarism or preset (the player, 2 Nov: B's Monastery at
     # -100 had 2 soldiers and nothing to wear while thieves came)
@@ -1177,7 +1184,22 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
                 break
 
     # Filling: soldiers wanted from the Militarism trait, into open places.
-    want, have = soldiers_wanted(s, citizens, cfg, many_idle), mil.get("soldiers") or 0
+    # (0.105.54) never fewer than the defence floor by threat: the threat on
+    # the map counts at once (the floor rises now and fades over seasons)
+    # (planner.note_cycle remembers it: plan() never writes memory)
+    from planner_defence_floor import defence_floor, floor_note
+    floor_ = defence_floor(s, memory, cfg, citizens)
+    want, have = soldiers_wanted(s, citizens, cfg, many_idle, memory, floor_), mil.get("soldiers") or 0
+    floor_tag = ""
+    if floor_.get("threat", 0) > 0:
+        by_slider = soldiers_wanted(s, citizens, cfg, many_idle, None, {"soldiers": 0})
+        # said while it binds (above the slider's number) or the soldiers fall short of it
+        if int(floor_.get("soldiers") or 0) > by_slider or have < int(floor_.get("soldiers") or 0):
+            line = floor_note(floor_, have, by_slider)
+            if line:
+                notes.append(line)
+        if int(floor_.get("soldiers") or 0) > by_slider:
+            floor_tag = " (defence floor)"
     from quirks import has_rule
     if memory is not None and has_rule(memory.culture, "more_soldiers"):
         want = min(citizens, round(want * 1.25))   # (Oathbound)
@@ -1235,7 +1257,7 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
             if home:
                 act["avoid"] = home
             proposals.append(Proposal("squad_fill", act,
-                                      f"{have} soldiers, the fort wants {want}"
+                                      f"{have} soldiers, the fort wants {want}{floor_tag}"
                                       + (f" ({want - base_want} more for the civilians who badly want to train, "
                                          "while the fort is in crisis)" if want > base_want else "")
                                       + f": add {count} to {q.get('name') or 'a squad'}", 3))
@@ -1258,8 +1280,8 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
                              + ": the AI trains the squads it has and makes another once DF allows one "
                              "(a militia commander appointed, a captain's post free)")
             proposals.append(Proposal("squad_make", {"type": "make_squad"},
-                                      (f"the fort wants {want} soldiers and has no squad" if not squads else
-                                       f"{have} soldiers, the fort wants {want}, and every squad is full")
+                                      (f"the fort wants {want} soldiers{floor_tag} and has no squad" if not squads else
+                                       f"{have} soldiers, the fort wants {want}{floor_tag}, and every squad is full")
                                       + ": make a squad and appoint its leader", 3))
     g = _d(mil.get("gear"))
     templates = [t for t in _l(mil.get("uniform_templates")) if isinstance(t, str)]
@@ -1304,7 +1326,9 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
                                           f"{q.get('name') or 'a squad the AI made'} wears a copy of the AI's "
                                           "uniform: the AI takes charge of it", 3))
                 break
-        _ranged_squad_rule(s, g, squads, templates, cfg, proposals, getattr(memory, "squads_made", None))
+        from planner_defence_floor import peaceful_ranged
+        _ranged_squad_rule(s, g, squads, templates, cfg, proposals, getattr(memory, "squads_made", None),
+                           peaceful_ranged(s, traits))
         _uniform_weapon_rule(s, g, squads, rules_, proposals)
     elif isinstance(g.get("squads"), int) and g["squads"] > (g.get("squads_with_uniform") or 0):
         n_bare = g["squads"] - (g.get("squads_with_uniform") or 0)
@@ -1437,15 +1461,29 @@ def _training_rotation(s: dict, memory, squads: list, train_to: str, off: str, c
 
 
 def _ranged_squad_rule(s: dict, g: dict, squads: list, templates: list, cfg: dict, proposals: list,
-                       squads_made: list | None = None) -> None:
+                       squads_made: list | None = None, peaceful: bool = False) -> None:
     """Crossbows: with two squads or more, one (the newest the AI dresses)
     becomes a crossbow squad, in the fort's crossbow uniform with bolts for
     combat and training; then crossbows and bolts for it, wooden at the
-    bowyer's (metal bolts at the forge when bars are plenty)."""
+    bowyer's (metal bolts at the forge when bars are plenty).
+    (0.105.54) `peaceful` (Militarism below 0, bolts can be made: see
+    planner_defence_floor.peaceful_ranged): every squad the AI made shoots
+    (its new squads are marksdwarves), so a peaceful fort fights from behind
+    its gates; the player's own squads keep their arms."""
     manned = [q for q in squads if (q.get("members") or 0) > 0 and q.get("id") is not None]
     if not any("crossbow" in t.lower() for t in templates):
         return
     ranged = [q for q in manned if is_ranged(q)]
+    if peaceful:
+        made_ = [q for q in manned if q.get("ai_uniform") and q["id"] in (squads_made or []) and not is_ranged(q)]
+        if made_:
+            q = min(made_, key=lambda q: q["id"])
+            kind = "metal" if "metal" in str(q.get("ai_uniform") or "").lower() else "leather"
+            proposals.append(Proposal("uniform", {"type": "set_uniform", "squad_id": q["id"], "kind": kind,
+                                                  "ranged": True},
+                                      f"a peaceful fort (Militarism below 0) fights from behind its gates: make "
+                                      f"{q.get('name') or 'a squad the AI made'} a crossbow squad", 4))
+            return
     # which squad shoots: the newest the AI made itself, never the fort's
     # first squad while there are others (Oct 23: the first squad, with the
     # militia commander and the Axe Lord, was given crossbows because it was
@@ -1468,7 +1506,7 @@ def _ranged_squad_rule(s: dict, g: dict, squads: list, templates: list, cfg: dic
                                   + f": make {best.get('name') or 'a newer squad'} a crossbow squad (they shoot from "
                                   "behind the gates)", 4))
         return
-    if len(ranged) > 1:
+    if len(ranged) > 1 and not peaceful:
         # one crossbow squad is enough: the others back to their melee uniform
         keep = best if best is not None and is_ranged(best) else max(ranged, key=lambda q: q["id"])
         q = min((q for q in ranged if q["id"] != keep["id"]), key=lambda q: q["id"])

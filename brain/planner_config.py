@@ -454,6 +454,18 @@ PLANNER_CONFIG = {
     "calm_burrow_retire_share": 0.9,             # ...outside this share: the lever retired (members let out)
     "guard_min_adults": 15,                      # (0.105.8) every fort this big keeps a guard...
     "guard_min_soldiers": 3,                     # ...of this many soldiers, whatever the Militarism
+    # (0.105.54) the defence floor by threat (brain/planner_defence_floor.py): soldiers enough to
+    # win a roughly even fight against the biggest threat seen or on the map, whatever the Militarism
+    "floor_fight_ratio": 1.0,                    # squad strength wanted per unit of the threat's (about even)
+    "floor_max_share": 0.33,                     # never more than this share of the adults for the floor
+    "floor_half_life_days": 168,                 # a threat gone halves every two seasons...
+    "floor_keep_share": 0.25,                    # ...down to this share of it (the fort is a known target)
+    "floor_siege_power": 40,                     # a siege on record with no strength kept: this (to x2 for many)
+    "floor_beast_power": 30,                     # a great danger seen, no strength kept: this (x what was learned)
+    "floor_learned_max": 4.0,                    # the learned factor (memory.fight_factor) counts up to this
+    "floor_soldier_power": 4.0,                  # a soldier's power when no squad's is known...
+    "floor_soldier_power_min": 1.5,              # ...and the average's bounds
+    "floor_soldier_power_max": 15.0,
     "assign_kit_wait_ticks": 3 * 1200,           # (0.105.8) armour handed out by the AI once DF left it 3 days
     "assign_kit_cooldown_ticks": 1200,           # ...a day apart
     "assign_weapons_wait_ticks": 7 * 1200,       # (0.104.60) ...once DF has left the places empty a week
