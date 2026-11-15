@@ -398,9 +398,22 @@ end
 -- is the surface too: A's founding stair read "no wall can go at x109 y148
 -- (floor)" all its first life (31 scans, 8-13 Nov), so no gatehouse and no
 -- wings; nothing is wrong with building a wall under a crown.
-local function open_ground(x, y, z)
+-- (0.105.51) wagons: a table to gather the embark wagon in, when a tile it
+-- stands on may count as ground (it is taken down before the gatehouse is
+-- built). R3, 15 Nov: the wagon beside the founding stair kept the gatehouse
+-- out of all six forts for eight years ("no wall can go at x109 y148 (floor,
+-- a Wagon stands there)"), and C's titans walked in by the bare hatch.
+local function open_ground(x, y, z, wagons)
     local t = T(x, y, z)
-    if not (t and t.walk and (t.outside or t.canopy) and not t.hidden and not t.liquid and not t.occupied
+    local occupied = t and t.occupied
+    if occupied and wagons then
+        local w = wagon_at(x, y, z)
+        if w then
+            occupied = false
+            wagons[tostring(w.id)] = w
+        end
+    end
+    if not (t and t.walk and (t.outside or t.canopy) and not t.hidden and not t.liquid and not occupied
             and not t.feature and not t.special) then
         return nil
     end
@@ -427,11 +440,26 @@ function ground_why(x, y, z)
     return shape
 end
 
+-- (0.105.51) The embark wagon standing at x, y, z (its building), or nil.
+-- Tests replace this.
+function wagon_at(x, y, z)
+    local ok, b = pcall(function()
+        local b = dfhack.buildings.findAtTile(xyz2pos(x, y, z))
+        if b and b:getType() == df.building_type.Wagon then return b end
+        return nil
+    end)
+    return ok and b or nil
+end
+
 -- The layout for one way out from the hatch and one length, or nil and why.
-local function gatehouse_layout(h, d, len)
+-- wagons_ok (0.105.51): the embark wagon's tiles count as ground; the plan's
+-- wagons {id = building} are the ones in the way.
+local function gatehouse_layout(h, d, len, wagons_ok)
     local px, py = math.abs(d[2]), math.abs(d[1])
     local function at(u, v) return h.x + d[1] * u + px * v, h.y + d[2] * u + py * v end
     local plan = {walls = {}, natural = 0, corridor = {}, len = len}
+    local wg = wagons_ok and {} or nil
+    local function ground(x, y, z) return open_ground(x, y, z, wg) end
     -- the walls: either side from behind the hatch to the bridge, and behind it
     local wall_uv = {{-1, 0}}
     for u = -1, len + 1 do table.insert(wall_uv, {u, -1}); table.insert(wall_uv, {u, 1}) end
@@ -452,7 +480,7 @@ local function gatehouse_layout(h, d, len)
         local t = T(x, y, h.z)
         if t and t.shape == 'WALL' then
             plan.natural = plan.natural + 1           -- rock already there: nothing to build
-        elseif not (t and WALL_GROUND[t.shape] and t.shape ~= 'EMPTY' and open_ground(x, y, h.z)) then
+        elseif not (t and WALL_GROUND[t.shape] and t.shape ~= 'EMPTY' and ground(x, y, h.z)) then
             return nil, ('no wall can go at x%d y%d (%s)'):format(x, y, ground_why(x, y, h.z))
         else
             table.insert(plan.walls, key(x, y, h.z))
@@ -460,7 +488,7 @@ local function gatehouse_layout(h, d, len)
     end
     for u = 1, len + 1 do
         local x, y = at(u, 0)
-        local t = open_ground(x, y, h.z)
+        local t = ground(x, y, h.z)
         if not (t and DOOR_GROUND[t.shape]) then
             return nil, ('the corridor is blocked at x%d y%d'):format(x, y)
         end
@@ -469,20 +497,23 @@ local function gatehouse_layout(h, d, len)
     -- the way on from the bridge: open ground, two tiles out
     for u = len + 2, len + 3 do
         local x, y = at(u, 0)
-        if not open_ground(x, y, h.z) then
+        if not ground(x, y, h.z) then
             return nil, ('no open ground in front of the bridge at x%d y%d'):format(x, y)
         end
     end
     local bx, by = at(len + 1, 0)
     plan.bridge = {x = bx, y = by, z = h.z, dir = BRIDGE_DIR[d[1] .. ',' .. d[2]]}
     plan.hatch = {x = h.x, y = h.y, z = h.z}
+    if wg and next(wg) then plan.wagons = wg end
     return plan
 end
 
 -- The gatehouse for this entrance's lid hatch h: the way out toward the
 -- nearest map edge first (where the roads come from), the longest corridor
 -- that fits. Returns the plan, or nil and why.
-function plan_gatehouse(e, h)
+-- wagons_ok (0.105.51): a plan that needs the embark wagon taken down first
+-- (plan.wagons) counts too.
+function plan_gatehouse(e, h, wagons_ok)
     h = h or lid_hatch(e)
     if not h then return nil, 'no hatch over a stair to build a gatehouse in front of' end
     local W, H = map_size()
@@ -496,7 +527,7 @@ function plan_gatehouse(e, h)
     local names = {['1,0'] = 'east', ['-1,0'] = 'west', ['0,1'] = 'south', ['0,-1'] = 'north'}
     for _, len in ipairs(GATEHOUSE_LENGTHS) do
         for _, dd in ipairs(dirs) do
-            local plan, w = gatehouse_layout(h, dd.d, len)
+            local plan, w = gatehouse_layout(h, dd.d, len, wagons_ok)
             if plan then return plan end
             -- (0.105.47) every way out's own reason (only the first was told)
             local nm = names[dd.d[1] .. ',' .. dd.d[2]] or '?'
@@ -641,7 +672,15 @@ function find_entrances(starts, buildings, now_tick, wait_since)
                 else
                     local okp, plan, why = pcall(plan_gatehouse, e, h)
                     if okp and plan then e.gatehouse = 'possible'
-                    else e.gatehouse, e.gatehouse_why = 'none', okp and why or tostring(plan) end
+                    else
+                        e.gatehouse, e.gatehouse_why = 'none', okp and why or tostring(plan)
+                        -- (0.105.51) only the embark wagon in the way: it goes first
+                        local okw, wplan = pcall(plan_gatehouse, e, h, true)
+                        if okw and wplan and wplan.wagons then
+                            e.gatehouse = 'wagon'
+                            e.gatehouse_why = 'the embark wagon stands where its walls go (it is taken down first)'
+                        end
+                    end
                 end
             end
         end

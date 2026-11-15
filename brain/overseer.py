@@ -858,6 +858,8 @@ def short(a: dict) -> str:
     if t == "place_traps":
         return f"put {a.get('count')} {a.get('kind')} traps behind a gate"
     if t == "build_gatehouse":     # (0.105.23, 14.1 step 4a)
+        if a.get("count") == 0:        # (0.105.51) every fort's plain one
+            return "build a gatehouse at the founding stair (a drawbridge at the end of a walled corridor)"
         return f"build a gatehouse at the founding stair (drawbridge, walls, {a.get('kind') or 'cage'} trap corridor)"
     if t == "location_access":
         return ("open" if a.get("visitors") else "close") + f" {len(a.get('ids') or [])} location(s) to visitors"

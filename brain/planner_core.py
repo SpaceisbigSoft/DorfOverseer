@@ -2151,7 +2151,10 @@ def _record_any_outcome(a: dict, r: dict, state: dict, memory, now: int, brief: 
             memory.gate_failures.pop("gatehouse:" + spot, None)
             memory.gate_failure_ticks.pop("gatehouse:" + spot, None)
         elif spot:
-            memory.gate_failures["gatehouse:" + spot] = str(r.get("error") or "no answer from the game")[:300]
+            err = str(r.get("error") or "no answer from the game")
+            if r.get("wagon") and not err.startswith("the embark wagon"):
+                err = "the embark wagon: " + err      # (0.105.51) asked again once the wagon is gone
+            memory.gate_failures["gatehouse:" + spot] = err[:300]
             memory.gate_failure_ticks["gatehouse:" + spot] = now
     elif t == "link_lever" and not a.get("dry_run"):
         key = f"lever:{a.get('lever_id')}>{a.get('target_id')}"
