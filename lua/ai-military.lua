@@ -216,6 +216,13 @@ local function is_ai_order(o, squad_id)
     local ok, title = pcall(function() return o.title end)
     if ok and title == AI_ORDER_TITLE then return true end
     if squad_id ~= nil and is_shelter_order(o, squad_id) then return true end   -- (0.105.0; review: marked only)
+    -- (0.105.48 K1b) a station (move) order has no title in DF 53.17
+    -- (squad_order_movest: pos and point_id only): the AI's is known by the
+    -- site mark and the same position (station_of, below; looked up on call)
+    if squad_id ~= nil then
+        local oks, st = pcall(station_of, o, squad_id)
+        if oks and st then return true end
+    end
     return is_guard_order(o)
 end
 
@@ -249,6 +256,9 @@ function order_sig(o)
         local list, kind
         if df.squad_order_defend_burrowsst:is_instance(o) then kind, list = 'defend', o.burrows
         elseif df.squad_order_kill_listst and df.squad_order_kill_listst:is_instance(o) then kind, list = 'kill', o.units
+        elseif df.squad_order_movest and df.squad_order_movest:is_instance(o) then
+            -- (0.105.48 K1b) a station order: its tile
+            return ('move:%d,%d,%d'):format(o.pos.x, o.pos.y, o.pos.z)
         else return nil end
         local ids = {}
         for _, id in ipairs(list) do table.insert(ids, id) end
@@ -1611,6 +1621,7 @@ function orders(squad_id, kill, clear)
     local function drop()
         local removed, member = drop_orders(sq, function(o) return is_ai_order(o, squad_id) end)
         if removed > 0 then pcall(prune_shelter_marks) end      -- (0.105.0 review)
+        if removed > 0 then pcall(prune_station_mark, sq, squad_id) end   -- (0.105.48 K1b)
         return removed, member
     end
     if clear then
@@ -2106,16 +2117,34 @@ STATION_KEY = 'ai-overseer/station'
 
 function station_marks() return U.site_get(STATION_KEY, {}) end
 
--- the AI's station order on this squad: {x, y, z}, or nil
+-- the AI's station order on this squad: {x, y, z}, or nil.
+-- (0.105.48 K1b, audit A6 #1) DF 53.17's squad_order_movest has only `pos`
+-- and `point_id` (df.squad.xml): no title. Reading or writing o.title threw,
+-- so no station order was ever made or recognised. The AI's is now known by
+-- the site mark (station_marks) naming this squad and the very same tile.
 function station_of(o, squad_id)
     if not df.squad_order_movest:is_instance(o) then return nil end
-    local okt, title = pcall(function() return o.title end)
-    if not okt or title ~= AI_ORDER_TITLE then return nil end
     local mark = station_marks()[tostring(squad_id)]
     if type(mark) ~= 'table' then return nil end
     local okp, x, y, z = pcall(function() return o.pos.x, o.pos.y, o.pos.z end)
     if not okp then return nil end
+    if x ~= mark.x or y ~= mark.y or z ~= mark.z then return nil end
     return {x = x, y = y, z = z}
+end
+
+-- (0.105.48 K1b) a station mark whose order is gone (recalled, replaced, or
+-- cancelled in DF) is taken off, so a later move order of the player's to
+-- the same tile is never read as the AI's
+function prune_station_mark(sq, squad_id)
+    local marks = station_marks()
+    local key = tostring(squad_id)
+    if marks[key] == nil then return end
+    for _, o in ipairs(sq.orders) do
+        local ok, st = pcall(station_of, o, squad_id)
+        if ok and st then return end
+    end
+    marks[key] = nil
+    U.site_put(STATION_KEY, marks)
 end
 
 function station(squad_id, x, y, z, dry_run)
@@ -2140,17 +2169,20 @@ function station(squad_id, x, y, z, dry_run)
                 error = ('%d of its soldiers are thirsty or hungry: they eat and drink first'):format(m.parched)}
     end
     if dry_run then return {ok = true, dry_run = true, x = x, y = y, z = z} end
-    -- the order made first (a field this DF lacks: refused, nothing changed)
-    local okn, o = pcall(function()
-        local n = df.squad_order_movest:new()
-        n.pos.x, n.pos.y, n.pos.z = x, y, z
-        n.title = AI_ORDER_TITLE
-        return n
+    -- the order made first (a field this DF lacks: refused, nothing changed).
+    -- (0.105.48 K1b) only DF 53.17's own fields: pos and point_id (-1: a
+    -- tile, not a patrol point); the AI's mark is the site data below
+    local made
+    local okn, err = pcall(function()
+        made = df.squad_order_movest:new()
+        made.pos.x, made.pos.y, made.pos.z = x, y, z
+        made.point_id = -1
     end)
+    local o = made
     if not okn or not o then
-        return {ok = false, error = 'could not make a station order: ' .. tostring(o):sub(1, 120)}
+        if o then pcall(function() o:delete() end) end
+        return {ok = false, error = 'could not make a station order: ' .. tostring(err):sub(1, 120)}
     end
-    pcall(function() o.point_id = -1 end)
     local removed = drop_orders(sq, function() return true end)
     pcall(function()
         if sq.carry_water == 0 then sq.carry_water = 1 end
