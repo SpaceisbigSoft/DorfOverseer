@@ -127,18 +127,38 @@ GREAT_ABILITY = 3.0     # (0.105.22: was 2) A, 4-5 Nov: a breathing titan scored
 GREAT_FLIER = 1.5
 
 
+# (0.105.48, K1) A creature smaller than a dwarf that is no great danger
+# had the same base 8 as a titan: War-hold's falcon (size 129) scored 12.1,
+# above one of the fort's best soldiers (a steel axe lord ~11.4 on
+# squad_power's scale). Below a dwarf's size an ordinary creature's strength
+# now goes with the square root of its body from a dwarf-sized enemy's
+# (BASE_DWARF = a goblin's 10, as before): a falcon about 0.7, a cat 3, a
+# kobold 6. A dwarf's size and up, and every great danger, as before.
+DWARF_SIZE = 60000
+BASE_DWARF = GREAT_BASE + 2.0
+SMALL_FLOOR = 0.3
+
+
+def _base_power(t: dict, size: float) -> float:
+    great = t.get("great_danger") or (set(_l(t.get("kinds"))) - {"Undead"})
+    if size < DWARF_SIZE and not great:
+        return max(SMALL_FLOOR, BASE_DWARF * math.sqrt(size / DWARF_SIZE))
+    return GREAT_BASE + 2 * math.sqrt(size / DWARF_SIZE)
+
+
 def threat_power(t: dict) -> float:
     size = t.get("size") if isinstance(t.get("size"), (int, float)) and t.get("size") > 0 else 60000 * 25
     mult = max([GREAT_KIND.get(k, 1.0) for k in _l(t.get("kinds"))] or [1.0])
+    base = _base_power(t, size)
     if t.get("facts"):
         # (0.105.45, Phase 11 (a)) the bridge read what it brings (breath by
         # kind, venom, no pain, armour, speed, flight...): planner_matchup
-        return (GREAT_BASE + 2 * math.sqrt(size / 60000)) * mult * facts_mult(t)[0]
+        return base * mult * facts_mult(t)[0]
     if t.get("abilities"):
         mult *= GREAT_ABILITY
     if t.get("flier"):
         mult *= GREAT_FLIER
-    return (GREAT_BASE + 2 * math.sqrt(size / 60000)) * mult
+    return base * mult
 
 
 def fight_key(t: dict) -> str:

@@ -8,7 +8,7 @@ from quirks import has_rule
 from digest import _d, _l, normalize
 from planner_config import PLANNER_CONFIG, DISPOSAL_ACTION_MAX  # noqa: F401  (13c: the tuning numbers, split out)
 
-__all__ = ["great_present", "all_clear", "STEER_PROTECTED", "STEER_MAX_DAYS", "steer_of", "PLANNER_CONFIG", "BREW_RECIPES", "MEAL_RECIPES", "MANDATE_RECIPES", "BUILDABLE_SHOPS", "SHOP_ALIASES", "SURVIVAL_SHOPS", "TICKS_PER_DAY", "TICKS_PER_YEAR", "NO_COOLDOWN", "COOLDOWN_KEYS", "MULTI_PER_CYCLE", "EMERGENCY", "STUCK_HOLD_EXEMPT", "ORDER_HOLD_EXEMPT", "LIMIT_EXEMPT", "Proposal", "Memory", "abs_tick", "stamp_tick", "game_day", "factor", "ADJUST_BOUNDS", "_number", "effective_config", "queued", "unstored_cups", "free_stock", "watch_since", "_clamp", "MEMORIAL_SPAN", "OPTIONAL_LEVELS", "GEAR_WEAPONS", "GEAR_METALS", "NEEDS_YOU", "ask_player", "DISPOSAL_LEVELS", "DISPOSAL_ACTION_MAX", "player_rules", "OPEN_CAVERNS_MODES", "open_caverns_mode", "MAINTAIN_SKIPS", "level_refused", "_traits", "reachable_threats", "held_off_threats", "_holding_off", "ONE_A_CYCLE", "growth_mode", "growth_target", "JOB_SHOPS", "RECIPE_SHOPS", "WOOD_ELSEWHERE", "recipe_shop", "brewable_counts", "brew_recipe", "_watchdog_notes", "jobs_reported", "order_job_state", "masons_jammed", "stuck_hold_days", "_stuck_before", "stone_short", "_office_held", "tantrums_recent", "justice_held", "_restraint_order", "manager_needs_office", "suites_short", "wool_route", "thread_plants_here", "MINING_NEED_ONLY", "mining_plan", "noble_room_kinds", "SOCIAL_NEEDS", "care_waiting", "unmet", "_soldier_swap", "recently_home", "LOCATION_UNITS", "_location", "_location_short", "_real_locations", "can_fight", "is_ranged", "STALE_PROJECT_DAYS", "_workshops_busy", "shop_count", "shops_max", "_has_shop", "RAW_FOOD", "ALL_FOOD", "_idle_share", "idle_line", "IDLE_OLD_LINES", "levels_done", "_lever_state", "update_idle", "AGENDA_THEMES", "agenda", "food_per_dwarf", "WINTER_STOCK", "winter_factor", "young_fort", "established", "has_farms", "_best_metal", "REFUSAL_FIRST_DAYS", "REFUSAL_MAX_DAYS", "REFUSAL_IDLE_DAYS", "REFUSAL_KEYS", "LABOR_CAPS", "labor_given", "note_labor_given", "REFUSAL_ID_TYPES", "PER_ID_COOLDOWN", "refusal_key", "cooldown_key", "_refused_wait", "note_refusal", "zone_full_days", "note_zone_full", "ZONE_FULL_FIRST_DAYS", "ZONE_FULL_MAX_DAYS", "TIMEOUT_TRIES", "timeout_streak", "brief_timeout", "LOOP_LIMITS", "LOOP_LIMIT_DEFAULT", "LOOP_EXEMPT", "_loop_count", "NO_EFFECT_RULES", "NO_EFFECT_WHY", "note_no_effect", "no_effect_wait", "_stalled_days", "_entrance_spot", "_record_any_outcome", "_weapon_gaps", "spare_sig", "MOOD_BODY_FLAGS", "mood_kind", "mood_on_hand", "mood_waits", "_stuck_again_rule"]
+__all__ = ["wildlife_threat", "wildlife_threats", "thief_ids", "GREAT_LIKE_KINDS", "great_present", "all_clear", "STEER_PROTECTED", "STEER_MAX_DAYS", "steer_of", "PLANNER_CONFIG", "BREW_RECIPES", "MEAL_RECIPES", "MANDATE_RECIPES", "BUILDABLE_SHOPS", "SHOP_ALIASES", "SURVIVAL_SHOPS", "TICKS_PER_DAY", "TICKS_PER_YEAR", "NO_COOLDOWN", "COOLDOWN_KEYS", "MULTI_PER_CYCLE", "EMERGENCY", "STUCK_HOLD_EXEMPT", "ORDER_HOLD_EXEMPT", "LIMIT_EXEMPT", "Proposal", "Memory", "abs_tick", "stamp_tick", "game_day", "factor", "ADJUST_BOUNDS", "_number", "effective_config", "queued", "unstored_cups", "free_stock", "watch_since", "_clamp", "MEMORIAL_SPAN", "OPTIONAL_LEVELS", "GEAR_WEAPONS", "GEAR_METALS", "NEEDS_YOU", "ask_player", "DISPOSAL_LEVELS", "DISPOSAL_ACTION_MAX", "player_rules", "OPEN_CAVERNS_MODES", "open_caverns_mode", "MAINTAIN_SKIPS", "level_refused", "_traits", "reachable_threats", "held_off_threats", "_holding_off", "ONE_A_CYCLE", "growth_mode", "growth_target", "JOB_SHOPS", "RECIPE_SHOPS", "WOOD_ELSEWHERE", "recipe_shop", "brewable_counts", "brew_recipe", "_watchdog_notes", "jobs_reported", "order_job_state", "masons_jammed", "stuck_hold_days", "_stuck_before", "stone_short", "_office_held", "tantrums_recent", "justice_held", "_restraint_order", "manager_needs_office", "suites_short", "wool_route", "thread_plants_here", "MINING_NEED_ONLY", "mining_plan", "noble_room_kinds", "SOCIAL_NEEDS", "care_waiting", "unmet", "_soldier_swap", "recently_home", "LOCATION_UNITS", "_location", "_location_short", "_real_locations", "can_fight", "is_ranged", "STALE_PROJECT_DAYS", "_workshops_busy", "shop_count", "shops_max", "_has_shop", "RAW_FOOD", "ALL_FOOD", "_idle_share", "idle_line", "IDLE_OLD_LINES", "levels_done", "_lever_state", "update_idle", "AGENDA_THEMES", "agenda", "food_per_dwarf", "WINTER_STOCK", "winter_factor", "young_fort", "established", "has_farms", "_best_metal", "REFUSAL_FIRST_DAYS", "REFUSAL_MAX_DAYS", "REFUSAL_IDLE_DAYS", "REFUSAL_KEYS", "LABOR_CAPS", "labor_given", "note_labor_given", "REFUSAL_ID_TYPES", "PER_ID_COOLDOWN", "refusal_key", "cooldown_key", "_refused_wait", "note_refusal", "zone_full_days", "note_zone_full", "ZONE_FULL_FIRST_DAYS", "ZONE_FULL_MAX_DAYS", "TIMEOUT_TRIES", "timeout_streak", "brief_timeout", "LOOP_LIMITS", "LOOP_LIMIT_DEFAULT", "LOOP_EXEMPT", "_loop_count", "NO_EFFECT_RULES", "NO_EFFECT_WHY", "note_no_effect", "no_effect_wait", "_stalled_days", "_entrance_spot", "_record_any_outcome", "_weapon_gaps", "spare_sig", "MOOD_BODY_FLAGS", "mood_kind", "mood_on_hand", "mood_waits", "_stuck_again_rule"]
 
 BREW_RECIPES = {"brew_drink", "brew_drink_from_fruit", "make_mead"}
 MEAL_RECIPES = {"prepare_easy_meal", "prepare_fine_meal", "prepare_lavish_meal"}
@@ -608,13 +608,71 @@ def _traits(s: dict) -> dict:
     return _d(t)
 
 
+# (0.105.48, K1) Threat triage. A falcon, a kobold thief, a wolf and 60
+# goblins all got the alarm, the gates and every able squad (audit A6). Two
+# kinds of "danger" in DF's sense are no reason for the fort-wide answer:
+#   * wildlife: an animal (DF's isAnimal; agitated or not) that is no
+#     invader, no great danger, no night creature or undead, breathes no fire,
+#     breaks no buildings, and is smaller than `wildlife_alarm_size`: a
+#     hunting squad (planner_siege's wildlife rule) at most;
+#   * a lone thief or snatcher (the threats section's thieves) when they are
+#     all that can reach the dwarves, `lone_intruder_max` at most, nothing held
+#     off at the gates: the thieves rule's one squad (planner_threats).
+# reachable_threats leaves both out, so no alarm, no gates and no squads of
+# the defence for them; the bigger answers stay as they were.
+GREAT_LIKE_KINDS = {"ForgottenBeast", "Titan", "Megabeast", "Demon", "SemiMegabeast", "NightCreature", "Undead"}
+
+
+def wildlife_threat(t: dict, cfg: dict | None = None) -> bool:
+    """(0.105.48, K1) Is this others_on_map.threats row wildlife (see above)?
+    Rows from an older bridge (no `animal`) never are."""
+    if not isinstance(t, dict) or t.get("animal") is not True:
+        return False
+    if t.get("invader") or t.get("great_danger") or t.get("fire_breather") or t.get("destroyer"):
+        return False
+    if set(_l(t.get("kinds"))) & GREAT_LIKE_KINDS:
+        return False
+    size = t.get("size")
+    lim = (cfg or PLANNER_CONFIG).get("wildlife_alarm_size", 2000000)
+    return isinstance(size, (int, float)) and not isinstance(size, bool) and 0 < size < lim
+
+
+def wildlife_threats(s: dict, cfg: dict | None = None) -> list:
+    """The others_on_map.threats rows that are wildlife."""
+    return [t for t in _l(_d(s.get("others_on_map")).get("threats")) if wildlife_threat(t, cfg)]
+
+
+def thief_ids(s: dict) -> set:
+    """The ids of the thieves and snatchers the threats section lists."""
+    th = _d(_d(s.get("threats")).get("thieves"))
+    return {x.get("id") for x in _l(th.get("list")) if isinstance(x, dict) and x.get("id") is not None}
+
+
+def _lone_thieves(s: dict, cfg: dict, ids: list, rows: dict) -> bool:
+    """Are these ids (all that can reach) only a few ordinary thieves, with
+    nothing else held off at the gates?"""
+    thieves = thief_ids(s)
+    if not ids or not thieves or len(ids) > cfg.get("lone_intruder_max", 2):
+        return False
+    for i in ids:
+        t = rows.get(i)
+        if (i not in thieves or not isinstance(t, dict) or t.get("great_danger") or t.get("flier")
+                or t.get("destroyer") or t.get("fire_breather")):
+            return False
+    return not any(t.get("id") not in ids and not wildlife_threat(t, cfg) for t in held_off_threats(s))
+
+
 def reachable_threats(s: dict, traits: dict, cfg: dict) -> list:
     """Ids of threats that can reach the dwarves (plus, at Caution +50 and up
-    (0.105.47; +100 before), nearby ones whose reach is unknown). Threats counted but not listed get stand-in ids."""
+    (0.105.47; +100 before), nearby ones whose reach is unknown). Threats counted but not listed get stand-in ids.
+    (0.105.48, K1) Wildlife and a lone thief are left out (the triage above)."""
     o = s["others_on_map"]
     threats = o.get("threats") or []
-    ids = [t.get("id") for t in threats if t.get("can_reach_dwarves") is True]
-    unlisted = max(0, (o.get("threats_that_can_reach_dwarves") or 0) - len(ids))
+    listed = [t.get("id") for t in threats if t.get("can_reach_dwarves") is True]
+    unlisted = max(0, (o.get("threats_that_can_reach_dwarves") or 0) - len(listed))
+    wild = {t.get("id") for t in threats if wildlife_threat(t, cfg)}
+    threats = [t for t in threats if t.get("id") not in wild]
+    ids = [i for i in listed if i not in wild]
     # (0.104.139) a flier in the air (its reach unknown) near the dwarves can
     # reach them whatever DF's walk groups say; and a building destroyer near
     # them isn't held by a shut door, when it is an invader or on the surface
@@ -631,7 +689,6 @@ def reachable_threats(s: dict, traits: dict, cfg: dict) -> list:
         ids += [t.get("id") for t in threats if t.get("id") not in ids and t.get("invader")
                 and t.get("can_reach_dwarves") is not False                       # (review) not behind a wall
                 and isinstance(t.get("depot_distance"), (int, float)) and t["depot_distance"] <= cfg["depot_guard_tiles"]]
-    ids += [f"unlisted{i}" for i in range(unlisted)]
     # (0.105.47) from Caution `cautious_alert_caution` (was +100 only), fewer levels lower down (alarm_caution)
     from alarm_caution import cautious_levels
     levels = cautious_levels(traits, cfg)
@@ -641,6 +698,9 @@ def reachable_threats(s: dict, traits: dict, cfg: dict) -> list:
             if (t.get("can_reach_dwarves") is None and lv is not None and lv <= levels
                     and t.get("id") not in ids):
                 ids.append(t.get("id"))
+    if not unlisted and _lone_thieves(s, cfg, ids, {t.get("id"): t for t in threats}):
+        return []
+    ids += [f"unlisted{i}" for i in range(unlisted)]
     return ids
 
 
@@ -688,7 +748,9 @@ def held_off_threats(s: dict) -> list:
     o = _d(s.get("others_on_map"))
     # (0.104.139) nor the undead an evil land raises on the surface (not
     # invaders, never leaving): they kept the gates shut for good
+    # (0.105.48, K1) nor wildlife (a falcon on the surface kept the fort shut)
     return [t for t in _l(o.get("threats")) if isinstance(t, dict) and t.get("can_reach_dwarves") is not True
+            and not wildlife_threat(t)
             and (t.get("invader") or (t.get("layer") == "upper_levels"
                                       and not ("Undead" in _l(t.get("kinds")) and not t.get("great_danger"))))]
 

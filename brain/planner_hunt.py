@@ -417,6 +417,10 @@ def _hunt_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None) ->
     for p in proposals:
         if isinstance(p.action, dict):
             busy.update(i for i in _l(p.action.get("squad_ids")) if _id(i) is not None)
+    # (0.105.48, K1) and a target another rule sent a squad at this cycle (the
+    # wildlife guard now takes a falcon or a wolf): one answer, not two
+    ordered = {i for p in proposals if isinstance(p.action, dict) and p.action.get("type") == "squad_orders"
+               for i in _l(p.action.get("kill")) if _id(i) is not None}
     min_armed = int(cfg.get("min_squad_to_fight", 3))
     home = [q for q in squads_l if q.get("at_home") is True and _id(q.get("hunting")) is None
             and not q.get("sheltering")]
@@ -440,6 +444,9 @@ def _hunt_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None) ->
         near = _int(t.get("near_workers"))
         cls = _kind_class(t, near)
         if tid in hunted:
+            continue
+        if tid in ordered:
+            said.append(f"{head}: a squad is sent at it this cycle by another rule; not hunted as well")
             continue
         if t.get("can_reach_dwarves") is True:
             # (0.105.47, I7d 2e) a wild animal that can walk to the dwarves is

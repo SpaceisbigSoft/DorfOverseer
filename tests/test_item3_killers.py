@@ -254,6 +254,26 @@ def _():
     assert not r["list"] and r["total"] == 0, r
 
 
+@test("report (0.105.48): DF's own enemy fields (were_race = normal_race = race) make nobody a werebeast; "
+      "a murderer with them is a killer (the cell can fire); a were-race of another kind is a werebeast")
+def _():
+    lua, env, w = world()
+    df_enemy = {"normal_race": 1, "were_race": 1}          # what DF sets on an ordinary dwarf
+    for i in range(1, 6):
+        unit(lua, w, id=i, citizen=True, enemy=dict(df_enemy))
+    unit(lua, w, id=6, name="Murd", citizen=True, enemy=dict(df_enemy))
+    for v in (20, 21):
+        victim(lua, w, v)
+        kill(lua, w, 6, v)
+    unit(lua, w, id=7, name="Moony", citizen=True, enemy={"normal_race": 1, "were_race": 5})
+    unit(lua, w, id=8, name="Changed", citizen=True, race=5, enemy={"normal_race": 1, "were_race": 5})
+    r = py(env.report())
+    rows = {x["id"]: x for x in r["list"]}
+    assert set(rows) == {6, 7, 8}, rows
+    assert (rows[6]["kind"], rows[6]["confidence"]) == ("killer", "strong"), rows[6]
+    assert rows[7]["kind"] == "werebeast" and rows[8]["kind"] == "werebeast", rows
+
+
 # --- 2. the cell ------------------------------------------------------------------------
 
 def cell_fort(lua, w, kind="dungeon"):

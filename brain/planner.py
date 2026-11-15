@@ -54,7 +54,7 @@ from planner_missions import _mission_rule, note_missions  # noqa: E402  (0.105.
 from planner_cleanup import _world_cleanup_rule, note_cleanup  # noqa: E402  (0.105.40) world cleanup for the game's speed
 from planner_captives import _captives_rule, _necro_rule, note_captives  # noqa: E402  (item6) prisoners' outcomes, necromancer sieges
 from planner_weather import _weather_rules, _weather_squad_filter, note_keep_in  # noqa: E402  (0.105.40b) evil weather
-from planner_alarm import govern_alarm, note_alarm_change  # noqa: E402  (item4) the alarm kept from flapping
+from planner_alarm import govern_alarm, note_alarm_change, reach_alarm_over, reach_raise_held  # noqa: E402  (item4) the alarm kept from flapping
 from planner_firebreath import _fire_breather_rule  # noqa: E402  (0.105.40b) no melee squad at a fire breather
 from planner_siege import _siege_rules  # noqa: E402  (item5) siege engines, archer posts, caravan guard, wildlife hunts
 from planner_hazards import _hazards_rule, magma_alarm  # noqa: E402  (0.105.41, item 7) spilt magma, cave-ins, frost, heat
@@ -200,7 +200,14 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
             few = few_ordinary(s, cfg, traits) if ids else []                # (0.105.8) B's 31 dead of thirst
             stand_down = (bool(lone and lone_alert_over(s, memory, cfg)) or lockdown_released(memory)
                           or bool(few and few_alert_over(s, memory, cfg)))
-            if stand_down:
+            # (0.105.48, K1) the "can reach" alarm's maximum time (planner_alarm)
+            capped = "" if stand_down or not alert_on else reach_alarm_over(s, memory, cfg, ids)
+            held = reach_raise_held(s, memory, cfg, fresh) if fresh and not alert_on else ""
+            if capped and not hazard_alert(s, cfg):
+                proposals.append(Proposal("threat_alert", {"type": "civ_alert", "on": False}, capped, 0))
+            elif held:
+                notes.append(held)
+            elif stand_down:
                 if alert_on and memory.ai_alert_raised and not hazard_alert(s, cfg):
                     proposals.append(Proposal("threat_alert", {"type": "civ_alert", "on": False},
                                               f"only {len(lone)} enemy/enemies left, inside the fort, and a squad on "
