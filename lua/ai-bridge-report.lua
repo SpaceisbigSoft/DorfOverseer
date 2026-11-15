@@ -3273,6 +3273,13 @@ function get_others_on_map()
                     kinds = #kinds > 0 and kinds or nil,
                     great_danger = dfhack.units.isGreatDanger(u),
                     invader = dfhack.units.isInvader(u),
+                    -- (0.105.48, K1) an animal (DF agitates wild ones: a falcon, a
+                    -- wolf) is wildlife to the brain's triage, not an enemy: no
+                    -- fort-wide alarm or gates for a small one, a hunting squad
+                    animal = (function() local oka, v = pcall(dfhack.units.isAnimal, u)
+                                  return (oka and v) and true or nil end)(),
+                    agitated = (function() local oka, v = pcall(dfhack.units.isAgitated, u)
+                                    return (oka and v) and true or nil end)(),
                     pos = pos,
                     -- (0.104.118) its body size (a dwarf is about 60,000), to weigh
                     -- it against the squads (fight or hide)

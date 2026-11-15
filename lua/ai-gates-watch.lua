@@ -640,6 +640,23 @@ end
 -- nothing visible was left, yet the hatch stayed shut (1 FPS). Only VISIBLE
 -- dangers count now (a hidden one isn't seen by anyone; the brain's report
 -- leaves them out too): {pos, invader}. Tests replace this.
+-- (0.105.48, K1) Small wildlife is no reason to shut a gate: an agitated
+-- animal (no invader, no great danger, no night creature or undead) under
+-- WILD_GATE_SIZE (the brain's wildlife_alarm_size) is left to the hunting
+-- squads (War-hold: a falcon kept the gates armed for 30 days).
+WILD_GATE_SIZE = 2000000
+function small_wildlife(u)
+    local ok, yes = pcall(function()
+        if not dfhack.units.isAnimal(u) or dfhack.units.isInvader(u) or dfhack.units.isGreatDanger(u)
+                or dfhack.units.isNightCreature(u) or dfhack.units.isUndead(u) then
+            return false
+        end
+        local size = u.body.size_info.size_cur
+        return type(size) == 'number' and size < WILD_GATE_SIZE
+    end)
+    return ok and yes == true
+end
+
 function visible_dangers()
     local out = {}
     for _, u in ipairs(df.global.world.units.active) do
@@ -647,6 +664,7 @@ function visible_dangers()
             return dfhack.units.isAlive(u) and not u.flags1.caged and not u.flags1.chained
                 and not dfhack.units.isCitizen(u) and not dfhack.units.isHidden(u)
                 and (dfhack.units.isDanger(u) or dfhack.units.isInvader(u))
+                and not small_wildlife(u)
         end)
         if ok and yes then
             local oki, inv = pcall(dfhack.units.isInvader, u)

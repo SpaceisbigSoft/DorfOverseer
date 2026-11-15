@@ -749,6 +749,17 @@ PLANNER_CONFIG = {
     # 51 visitors shut out). See planner_military lone_intruders / note_lockdown.
     "lone_intruder_max": 2,             # this many ordinary enemies already inside, or fewer: no shut gates for them
     "lone_intruder_alert_ticks": 600,   # ...and the alarm held for them at most half a day
+    # (0.105.48, K1) threat triage (planner_core.reachable_threats): wildlife smaller than this
+    # (a dwarf is ~60,000; a falcon 129, a wolf ~50,000) never sounds the alarm or shuts the gates
+    "wildlife_alarm_size": 2000000,
+    # (0.105.48, K1) the "can reach" alarm's maximum time (War-hold: up 30 days for a falcon): after
+    # this long with no enemy near a dwarf or inside, it comes down, and is not raised again for the
+    # same enemies until one comes near or a new one comes
+    "reach_alarm_max_days": 3,
+    "fight_ratio_inside": 1.0,          # (K1) an ambush too strong for the squads: they go at the ones inside at this
+
+    "reach_alarm_near_tiles": 25,       # ...near: this close to a dwarf (levels count 3)
+    "reach_alarm_near_tiles_fast": 60,  # ...for a great danger or a flier
     "lockdown_max_days": 2,             # the AI's shut gates and alarm with no new enemy this long...
     "lockdown_cap_threats": 2,          # ...this many ordinary enemies left or fewer, the game slow or
                                         # dwarves shut out: opened again

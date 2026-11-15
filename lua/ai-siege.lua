@@ -633,6 +633,15 @@ function wild_attacking(u, cits)
     return true
 end
 
+-- (0.105.48, K1) a wild animal DF calls a danger (agitated) that is no
+-- invader, great danger, night creature or undead: wildlife, not an enemy
+function wild_animal(u)
+    if not is(dfhack.units.isAnimal, u) or is(dfhack.units.isFortControlled, u) then return false end
+    if is(dfhack.units.isInvader, u) or is(dfhack.units.isGreatDanger, u) then return false end
+    if is(dfhack.units.isNightCreature, u) or is(dfhack.units.isUndead, u) then return false end
+    return true
+end
+
 function field_watch(txt)
     local out = {merchants = 0, caravan = {}, wild = {}, wild_total = 0}
     local cit_all, cit_out, groups = {}, {}, {}
@@ -675,6 +684,11 @@ function field_watch(txt)
                 and not is(dfhack.units.isVisitor, u) and not is(dfhack.units.isTame, u) then
             do
                 local danger = is(dfhack.units.isDanger, u)
+                -- (0.105.48, K1) DF's isDanger is true of an agitated wild
+                -- animal (War-hold's falcon), so it was never `wild` and the
+                -- wildlife rule never saw it: an animal that is no invader and
+                -- no great danger is wildlife here, whatever isDanger says
+                if danger and wild_animal(u) then danger = false end
                 local wild = not danger and hostile_wild(u)
                 -- (0.105.47) or one that went for a citizen (a giant coyote)
                 local attacking = not danger and not wild and outside and wild_attacking(u, cit_ids)

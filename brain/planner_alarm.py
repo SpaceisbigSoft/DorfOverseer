@@ -40,7 +40,8 @@ from __future__ import annotations
 
 from planner_core import PLANNER_CONFIG, TICKS_PER_DAY, abs_tick
 
-__all__ = ["ALARM_CONFIG", "alarm_cause", "govern_alarm", "note_alarm_change", "GOVERNED"]
+__all__ = ["ALARM_CONFIG", "alarm_cause", "govern_alarm", "note_alarm_change", "GOVERNED", "REACH_CAP_WHY",
+           "reach_near", "reach_alarm_over", "reach_raise_held"]
 
 ALARM_CONFIG = {
     "alarm_min_on_ticks": TICKS_PER_DAY // 2,       # an AI alarm stays up this long before the AI lowers it
@@ -158,6 +159,70 @@ def govern_alarm(s: dict, memory, cfg: dict, proposals: list, notes: list) -> No
                      "reach the dwarves still sound it")
 
 
+# --- (0.105.48, K1) the "can reach" alarm's maximum time -------------------------------
+# War-hold (audit A6, finding 3): a falcon in reach kept the alarm up 30 game
+# days; with 1-2 ordinary enemies the alarm comes down after half a day
+# (few_ordinary), with anything else only when nothing reaches. Now any AI
+# alarm with enemies in reach comes down after `reach_alarm_max_days` when
+# none of them is near a dwarf or inside the fort; it is not raised again for
+# the same enemies until one comes near or a new one comes.
+REACH_CAP_WHY = "the alarm has been up"
+
+
+def reach_near(s: dict, cfg: dict, ids) -> list:
+    """The names of these enemies that are near a dwarf
+    (`reach_alarm_near_tiles`; `reach_alarm_near_tiles_fast` for a great
+    danger or a flier) or inside the fort. A stand-in id (unlisted) is never near."""
+    want = set(ids)
+    inside = {x for x in (s.get("entrances") or {}).get("intruders_inside") or [] if _int(x)} \
+        if isinstance(s.get("entrances"), dict) else set()
+    o = s.get("others_on_map") if isinstance(s.get("others_on_map"), dict) else {}
+    out = []
+    for t in o.get("threats") or []:
+        if not isinstance(t, dict) or t.get("id") not in want:
+            continue
+        lim = _c(cfg, "reach_alarm_near_tiles_fast" if (t.get("great_danger") or t.get("flier"))
+                 else "reach_alarm_near_tiles")
+        d = t.get("distance_to_nearest_dwarf")
+        if t.get("id") in inside or (isinstance(d, (int, float)) and not isinstance(d, bool) and d <= lim):
+            out.append(str(t.get("name") or "an enemy"))
+    return out
+
+
+def reach_alarm_over(s: dict, memory, cfg: dict, ids) -> str:
+    """Why the AI's alarm comes down for its maximum time ("" if not): up
+    `reach_alarm_max_days` or more, enemies in reach, none near."""
+    if memory is None or not ids or s.get("civ_alert") is not True or not getattr(memory, "ai_alert_raised", False):
+        return ""
+    now, on = abs_tick(s), _gov(memory).get("on")
+    if not _int(now) or not isinstance(on, dict) or not _int(on.get("tick")):
+        return ""
+    days = (now - on["tick"]) // TICKS_PER_DAY
+    if days < _c(cfg, "reach_alarm_max_days") or reach_near(s, cfg, ids):
+        return ""
+    return (f"{REACH_CAP_WHY} {days} days and none of the {len(ids)} enemy/enemies that can reach the dwarves "
+            f"has come within {_c(cfg, 'reach_alarm_near_tiles')} tiles of one or into the fort: it comes down "
+            "(the gates still close when one comes near; it sounds again for one that comes near or a new one)")
+
+
+def reach_raise_held(s: dict, memory, cfg: dict, ids) -> str:
+    """Why the alarm isn't raised again for enemies in reach ("" if it may
+    be): the AI lowered it for its maximum time, no new enemy came since, and
+    none of them is near."""
+    if memory is None or not ids:
+        return ""
+    capped = _gov(memory).get("reach_capped")
+    if not _int(capped):
+        return ""
+    from planner_gates import _lockdown
+    new = _lockdown(memory).get("new")
+    if not _int(new) or new > capped or reach_near(s, cfg, ids):
+        return ""
+    return (f"{len(ids)} threat(s) can reach the dwarves, none near them and none new since the alarm came down "
+            f"for its maximum time: it stays down (it sounds for one within {_c(cfg, 'reach_alarm_near_tiles')} "
+            "tiles of a dwarf, inside the fort, or a new one)")
+
+
 def note_alarm_change(memory, now, on: bool, reason: str) -> None:
     """record(): the AI's alarm went up or came down (the game said so)."""
     if memory is None or not _int(now):
@@ -177,4 +242,8 @@ def note_alarm_change(memory, now, on: bool, reason: str) -> None:
         off = {k: v for k, v in off.items() if _int(v) and 0 <= now - v < 28 * TICKS_PER_DAY}
         g["off"] = dict(sorted(off.items(), key=lambda kv: kv[1])[-20:])
         g["on"] = {}
+        if str(reason or "").startswith(REACH_CAP_WHY):
+            g["reach_capped"] = now             # (0.105.48, K1) reach_raise_held
+    if on:
+        g.pop("reach_capped", None)
     memory.alarm_gov = g

@@ -10347,9 +10347,15 @@ def _():
     s["entrances"]["intruders_inside"] = [7527, 900, 901]        # some inside, too many for "lone"
     m = Memory()
     note_cycle(s, m)
-    p, _ = plan(s, m)
+    p, notes = plan(s, m)
     assert by_rule(p, "gates")[0].action == {"type": "arm_gates"}
-    assert len(by_rule(p, "squad_attack")) == 1                  # the one armed squad, all targets
+    # (0.105.48, K1) the one armed squad (power 3) against 7 is no fight: no sortie, said
+    assert not by_rule(p, "squad_attack"), by_rule(p, "squad_attack")
+    assert any("no sortie" in n for n in notes), notes
+    strong = copy.deepcopy(s)
+    strong["military"]["squads"][1]["power"]["power"] = 400
+    p, _ = plan(strong, Memory())
+    assert len(by_rule(p, "squad_attack")) == 1                  # strong enough: the one armed squad, all targets
     assert len(by_rule(p, "squad_attack")[0].action["kill"]) == 7
     # one inside, the rest of the siege held off outside the gate: the gates hold
     out = b_thief(more=[{"id": 950, "name": "goblin", "invader": True, "can_reach_dwarves": False}])

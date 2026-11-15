@@ -77,7 +77,9 @@ SIEGE_CONFIG = {
     "wild_near_tiles": 15,              # a hostile wild animal this near a dwarf outside is hunted
     "wild_reach_tiles": 25,             # ...or this near any dwarf it can walk to
     "wild_big_size": 2000000,           # a body this big (a dwarf is ~60,000) is hunted only by...
-    "wild_big_power": 12,               # ...a squad of this power (lua/ai-military squad_power)
+    # (0.105.48, K1) was 12, under every armed squad of both forts (filtered nothing): a 2,000,000
+    # body scores ~20 (planner_military.threat_power), and squads go at fight_ratio (2) times that
+    "wild_big_power": 40,               # ...a squad of this power (lua/ai-military squad_power)
     # cooldowns (select(): <rule>_cooldown_ticks)
     "siege_shop_cooldown_ticks": 7 * TICKS_PER_DAY,
     "siege_engine_cooldown_ticks": 7 * TICKS_PER_DAY,
@@ -331,7 +333,16 @@ def _targeted(s: dict, proposals: list) -> set:
     return out
 
 
-def _free_squad(s: dict, cfg: dict, proposals: list, big: bool = False):
+def _shoots(q: dict) -> bool:
+    """A crossbow squad with bolts (the bridge's power.ranged: shooters with
+    ammo); a bridge without the count: the crossbow uniform alone."""
+    n = _d(q.get("power")).get("ranged")
+    if isinstance(n, int) and not isinstance(n, bool):
+        return n > 0
+    return is_ranged(q)
+
+
+def _free_squad(s: dict, cfg: dict, proposals: list, big: bool = False, shooters: bool = False):
     ordered = {p.action.get("squad_id") for p in proposals if p.action.get("type") in ("squad_orders", "archer_post",
                                                                                       "guard_gate")}
     for p in proposals:
@@ -344,6 +355,8 @@ def _free_squad(s: dict, cfg: dict, proposals: list, big: bool = False):
     if big:
         free = [q for q in free if _num(_d(q.get("power")).get("power"))
                 and _d(q.get("power"))["power"] >= _c(cfg, "wild_big_power")]
+    if shooters:
+        free = [q for q in free if _shoots(q)]
     return free[0] if free else None
 
 
@@ -395,6 +408,24 @@ def _caravan_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> l
     return [r["id"] for r in ok]
 
 
+def _wild_threat_rows(s: dict, cfg: dict, have: set) -> list:
+    """(0.105.48, K1) The wildlife among others_on_map.threats (planner_core.
+    wildlife_threat: no alarm, no gates for them) that walks to the dwarves
+    within `wild_reach_tiles` of one: in the caverns or inside, where the field
+    watch (out under the sky) doesn't look. A flier only by the field watch
+    (near dwarves outside)."""
+    from planner_core import wildlife_threats
+    lim = _c(cfg, "wild_reach_tiles")
+    out = []
+    for t in wildlife_threats(s, cfg):
+        d = t.get("distance_to_nearest_dwarf")
+        if (isinstance(t.get("id"), int) and t["id"] not in have and t.get("can_reach_dwarves") is True
+                and not t.get("flier") and _num(d) and d <= lim):
+            out.append({"id": t["id"], "name": t.get("name"), "size": t.get("size"), "distance": d,
+                        "reach": True, "wild": True})
+    return out
+
+
 def _wild_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> list:
     if not _on(s, "wildlife_hunts"):
         return []
@@ -404,6 +435,13 @@ def _wild_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> list
             and r.get("reach") is True      # (fix3) on both: one that can't walk to them is no hunt
             and ((_num(r.get("distance_outside")) and r["distance_outside"] <= near)
                  or (_num(r.get("distance")) and r["distance"] <= reach_lim))]
+    # (0.105.48, K1) a flier out under the sky (War-hold's falcon) has no reach
+    # by DF's walk groups: near the dwarves outside, a crossbow squad goes
+    rows += [r for r in _l(f.get("wild")) if isinstance(r, dict) and isinstance(r.get("id"), int)
+             and r.get("flier") and r.get("reach") is not True and r not in rows
+             and _num(r.get("distance_outside")) and r["distance_outside"] <= near]
+    if isinstance(s.get("others_on_map"), dict):
+        rows += _wild_threat_rows(s, cfg, {r["id"] for r in rows})
     if not rows:
         return []
     policy = player_rules(s)["attack_policy"]
@@ -421,10 +459,13 @@ def _wild_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> list
     if not new:
         return [r["id"] for r in ok]
     big = any(_num(r.get("size")) and r["size"] >= _c(cfg, "wild_big_size") for r in new)
-    q = _free_squad(s, cfg, proposals, big=big)
+    # (0.105.48, K1) never melee at a flier: crossbows with bolts, or nothing
+    fliers = all(r.get("flier") for r in new)
+    q = _free_squad(s, cfg, proposals, big=big, shooters=fliers)
     if q is None:
         notes.append(f"{names} near the dwarves outside and no squad free to hunt "
-                     + ("so big a beast" if big else "it"))
+                     + ("it (a flier: a crossbow squad with bolts only)" if fliers else
+                        "so big a beast" if big else "it"))
         return [r["id"] for r in ok]
     # (0.105.47, I7d 2e) one already at grips with a dwarf (the bridge's
     # `attacking`: C's giant coyote, E's giant chipmunks) goes first

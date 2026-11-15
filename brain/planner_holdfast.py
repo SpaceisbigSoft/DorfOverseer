@@ -156,8 +156,9 @@ def _target_rows(s: dict, ids) -> list:
     th = _threats(s)
     extra = {}
     t = _d(s.get("threats"))
+    # (0.105.48, K1) and the field watch's wild animals (a wildlife squad judged too)
     for lst in (_d(t.get("thieves")).get("list"), _d(t.get("interrupters")).get("list"),
-                _d(s.get("hunt")).get("targets")):
+                _d(s.get("hunt")).get("targets"), _d(s.get("field_watch")).get("wild")):
         for x in _l(lst):
             if isinstance(x, dict) and _int(x.get("id")) is not None:
                 extra.setdefault(x["id"], x)
@@ -273,14 +274,20 @@ def _squad_matchup_filter(s: dict, memory, cfg: dict, proposals: list, notes: li
         rows = _target_rows(s, key)
         if not rows or any(t.get("great_danger") for t in rows):
             continue                     # a great danger: fight_or_hide's judgement, not this one
-        if len(rows) > int(cfg.get("lone_intruder_max", 2)):
-            continue                     # a siege: every able squad goes already (the military rules)
+        many = len(rows) > int(cfg.get("lone_intruder_max", 2))
         sent = [squads[p.action["squad_id"]] for p in ps]
         if any(_num(_d(q.get("power")).get("power")) is None for q in sent):
             continue                     # an older bridge: no power to judge by (as before)
         sent_ids = {q["id"] for q in sent}
         on = [q for q in squads.values() if q["id"] not in sent_ids and q.get("ai_orders")
               and _kill_set(q) & key]
+        if many:
+            # (0.105.48, K1) an ambush or a siege is judged too (60 goblins got
+            # six squads at 0.7x): the smallest party that clears the bar, the
+            # rest kept home; short of it, no sortie (the gates and the alarm
+            # hold them), only at the ones inside if the squads clear those
+            _many_matchup(s, memory, cfg, rows, key, ps, sent, on, squads, busy, inside, bar, drop, add, notes)
+            continue
         if _ratio(rows, on + sent, memory) >= bar:
             continue
         free = [q for q in squads.values() if q["id"] not in busy and (not q.get("ai_orders") or q.get("sheltering"))
@@ -315,6 +322,65 @@ def _squad_matchup_filter(s: dict, memory, cfg: dict, proposals: list, notes: li
     if not drop:
         return proposals
     return [p for p in proposals if id(p) not in drop] + add
+
+
+def _party(rows: list, on: list, pool: list, bar: float, memory) -> tuple[list, float]:
+    """The strongest squads of the pool, as few as clear the bar with the
+    ones already on them: (party, its ratio with `on`)."""
+    pool = sorted({q["id"]: q for q in pool}.values(), key=lambda q: (-_ratio(rows, [q], memory), -_power(q), q["id"]))
+    party: list = []
+    for q in pool:
+        party.append(q)
+        if _ratio(rows, on + party, memory) >= bar:
+            break
+    return party, _ratio(rows, on + party, memory)
+
+
+def _many_matchup(s, memory, cfg, rows, key, ps, sent, on, squads, busy, inside, bar, drop, add, notes) -> None:
+    """(0.105.48, K1) Kill orders on more than `lone_intruder_max` ordinary
+    enemies (an ambush, a siege): the smallest party of the strongest squads
+    that clears `fight_ratio` goes (the others stay home: a reserve); short
+    of it, none goes at the ones outside (the gates and the alarm hold them
+    off) and the free squads go at the ones inside only if they clear those."""
+    names = f"{len(rows)} enemies (" + ", ".join(sorted({str(t.get("name") or "an enemy") for t in rows}))[:60] + ")"
+    sent_ids = {q["id"] for q in sent}
+    if on and _ratio(rows, on, memory) >= bar:
+        drop.update(id(p) for p in ps)
+        notes.append(f"{names}: the squads already out clear them ({_ratio(rows, on, memory):.1f}x, {bar:g}x "
+                     "needed); the others stay home")
+        return
+    free = [q for q in squads.values() if q["id"] not in busy and (not q.get("ai_orders") or q.get("sheltering"))
+            and not _players(q) and can_fight(q, cfg) and _power(q) > 0]
+    pool = sent + [q for q in free if q["id"] not in sent_ids]
+    party, r = _party(rows, on, pool, bar, memory)
+    target_ids = None
+    if r < bar:
+        in_rows = [t for t in rows if t.get("id") in inside]
+        bar_in = min(bar, float(cfg.get("fight_ratio_inside", 1.0)))
+        if in_rows:
+            party, r_in = _party(in_rows, [], pool, bar_in, memory)
+            if r_in >= bar_in:
+                target_ids = [t["id"] for t in in_rows]
+                r = r_in
+        if target_ids is None:
+            drop.update(id(p) for p in ps)
+            notes.append(f"{names}: the squads are too weak for them ({r:.1f}x with every free squad, {bar:g}x "
+                         "needed): no sortie; the gates and the alarm hold them off and the squads stay in")
+            return
+    if target_ids is None and {q["id"] for q in party} == sent_ids:
+        return                           # the orders as the rules gave them
+    drop.update(id(p) for p in ps)
+    pr = min(p.priority for p in ps)
+    first = ps[0]
+    how = (f"the {len(target_ids)} inside only (the squads are too weak for all of them)" if target_ids
+           else f"{len(party)} of the strongest squads clear them, the others stay home")
+    for q in party:
+        act = dict(first.action, squad_id=q["id"])
+        if target_ids:
+            act["kill"] = list(target_ids)[:50]
+        add.append(Proposal(first.rule, act, f"{names}: send {q.get('name') or q['id']} ({how}: {r:.1f}x, "
+                                             f"{bar:g}x needed)", pr, getattr(first, "guard", False)))
+        busy.add(q["id"])
 
 
 # --- 3. no recall flapping ---------------------------------------------------------------

@@ -13,8 +13,9 @@
 --   * the curse: dfhack.units.isBloodsucker / isNightCreature, the unit's
 --     curse tags (unit.curse.add_tags1/2: BLOODSUCKER, NOT_LIVING, CRAZED,
 --     OPPOSED_TO_LIFE...) and the same tags on its active syndromes' effects;
---     a werebeast also by unit.enemy.were_race, and changed now when
---     unit.enemy.normal_race differs from its race;
+--     a werebeast also by unit.enemy.were_race when it differs from the
+--     unit's race and birth race (DF sets it to the own race on ordinary
+--     units), and changed now when unit.enemy.normal_race differs from its race;
 --   * the killings: world.incidents.all (newest first, SCAN_MAX at most,
 --     WINDOW_TICKS back) whose victim was one of the fort's own (its civ or
 --     group) and whose killer (incident.criminal) is a living citizen or
@@ -155,8 +156,15 @@ end
 function curse_kind(u, tags)
     tags = tags or curse_tags(u)
     if is(dfhack.units.isBloodsucker, u) or tags.BLOODSUCKER then return 'vampire' end
-    local okw, were = pcall(function() return u.enemy.were_race ~= -1 end)
-    if is(dfhack.units.isNightCreature, u) or tags.CRAZED or (okw and were) or changed(u) then
+    -- (0.105.48) DF sets enemy.were_race (transform_race) to the unit's own
+    -- race on ordinary units, so "~= -1" was true of every citizen (War-hold:
+    -- 87 "certain werebeasts", the murderer cell never reached). A were-race
+    -- counts only when it differs from both its race now and its birth race.
+    local okw, were = pcall(function()
+        local w = u.enemy.were_race
+        return w ~= nil and w ~= -1 and w ~= u.race and w ~= u.enemy.normal_race
+    end)
+    if is(dfhack.units.isNightCreature, u) or tags.CRAZED or (okw and were == true) or changed(u) then
         return 'werebeast'
     end
     if tags.NOT_LIVING or tags.OPPOSED_TO_LIFE then return 'cursed' end
