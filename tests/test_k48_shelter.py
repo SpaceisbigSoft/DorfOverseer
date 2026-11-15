@@ -26,7 +26,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
-from harness import test, finish  # noqa: E402
+from harness import test, finish, skip  # noqa: E402
 from lua_modules_util import module_src  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "brain"))
@@ -133,7 +133,7 @@ def lua_test(name):
     def wrap(fn):
         def run():
             if LuaRuntime is None:
-                return
+                skip("needs the lupa package (pip install lupa)")
             fn()
         return test(name)(run)
     return wrap

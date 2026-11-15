@@ -23,7 +23,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
-from harness import test, finish  # noqa: E402
+from harness import test, finish, skip  # noqa: E402
 sys.path.insert(0, str(ROOT / "brain"))
 
 from planner import Memory, PLANNER_CONFIG, plan, select  # noqa: E402
@@ -96,8 +96,7 @@ def station_env():
 @test("station: the move order is made with DF's own fields only (pos, point_id -1), no title, and is the AI's")
 def _():
     if LuaRuntime is None:
-        print("SKIPPED: needs lupa")
-        return
+        skip("needs the lupa package (pip install lupa)")
     lua, n, env, sq7 = station_env()
     r = env.station(7, 10, 20, 100, False)
     assert r.ok, dict(r)                       # before: 'could not make a station order: ... title'
@@ -120,8 +119,7 @@ def _():
 @test("station: a dry run makes nothing; the recall clears the order and its mark; a player's move order is theirs")
 def _():
     if LuaRuntime is None:
-        print("SKIPPED: needs lupa")
-        return
+        skip("needs the lupa package (pip install lupa)")
     lua, n, env, sq7 = station_env()
     d = env.station(7, 10, 20, 100, True)
     assert d.ok and d.dry_run and n(sq7.orders) == 0 and env.MADE == 0, dict(d)

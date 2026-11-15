@@ -29,7 +29,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "brain"))
 sys.path.insert(0, str(ROOT / "tests"))
-from harness import test, finish  # noqa: E402
+from harness import test, finish, skip  # noqa: E402
 from lua_modules_util import module_src  # noqa: E402
 
 try:
@@ -127,7 +127,7 @@ def danger(L, on=True):
       "entrance opened (the hatch unlocked too), nothing of the AI's left shut and forgotten")
 def _():
     if LuaRuntime is None:
-        return
+        skip("needs the lupa package (pip install lupa)")
     L, M = gates_world(dist=5)
     danger(L)
     M.check()
@@ -150,7 +150,7 @@ def _():
       "bridge is never raised later with no danger and no owner")
 def _():
     if LuaRuntime is None:
-        return
+        skip("needs the lupa package (pip install lupa)")
     L, M = gates_world(dist=5)
     L.execute("""M = ...; M.GATES.entrances[1].equipment = {{id = 8, kind = 'bridge', lever_id = 91}}
                  M.GATES.entrances[1].outer = {}""", M)
@@ -170,7 +170,7 @@ def _():
       "opening, so it is lowered once up (never left raised unowned)")
 def _():
     if LuaRuntime is None:
-        return
+        skip("needs the lupa package (pip install lupa)")
     L, M = gates_world(dist=100)
     L.execute("""M = ...; M.GATES.entrances[1].equipment = {{id = 8, kind = 'bridge', lever_id = 91}}
                  M.GATES.entrances[1].outer = {}; M.GATES.closed[1] = true; M.GATES.mine = {[8] = true}
@@ -183,7 +183,7 @@ def _():
       "gate was not shut by the AI'); the player's piece is left")
 def _():
     if LuaRuntime is None:
-        return
+        skip("needs the lupa package (pip install lupa)")
     L, M = gates_world(dist=100)
     L.execute("""M = ...; B[7].door_flags.forbidden = true; M.GATES.mine = {[7] = true}
                  B[8].gate_flags.raised = true""", M)
@@ -201,7 +201,7 @@ def _():
       "older than UNATTENDED_REAL_S: away after UNATTENDED_TICKS (five days, not two)")
 def _():
     if LuaRuntime is None:
-        return
+        skip("needs the lupa package (pip install lupa)")
     L, M = gates_world()
     assert int(M.UNATTENDED_TICKS) >= 6000
     now = 1 * 403200 + 5000
@@ -222,7 +222,7 @@ def _():
       "this entrance): never the player's named lever, nor one that works a floodgate too")
 def _():
     if LuaRuntime is None:
-        return
+        skip("needs the lupa package (pip install lupa)")
     L, M = gates_world()
     ents = L.eval("""{{id = 1, x = 0, y = 0, z = 0, equipment = {
         {id = 8, kind = 'bridge', levers = {{id = 91, x = 50, y = 50, z = 0, name = 'Moat', targets = {8}}}},
@@ -240,7 +240,7 @@ def _():
       "not no_path)")
 def _():
     if LuaRuntime is None:
-        return
+        skip("needs the lupa package (pip install lupa)")
     L, M = gates_world()
     L.execute("B[8].gate_flags.raised = true; dfhack.maps = {getWalkableGroup = function() return 5 end}")
     L.execute("M = ...; M.GATES.entrances[1].outs = {[1] = true}", M)
@@ -259,7 +259,7 @@ def _():
       "invader in sight it is held by the armed watcher; nothing saved: nothing done; once a load")
 def _():
     if LuaRuntime is None:
-        return
+        skip("needs the lupa package (pip install lupa)")
     for invader, opened in ((False, True), (True, False)):
         L, M = gates_world(dist=100)
         L.execute("""M = ...
@@ -292,7 +292,7 @@ def _():
       "them; pure helpers")
 def _():
     if LuaRuntime is None:
-        return
+        skip("needs the lupa package (pip install lupa)")
     for near, opened in ((False, True), (True, False)):
         L, M = gates_world()
         L.execute("""M = ...
@@ -315,7 +315,7 @@ def _():
       "and is written once into dfhack-config/init when missing")
 def _():
     if LuaRuntime is None:
-        return
+        skip("needs the lupa package (pip install lupa)")
     st = (LUA / "ai-gates-stuck.lua").read_text(encoding="utf-8")
     assert "sc == SC_MAP_LOADED" in st and "on_map_loaded" in st
     br = (LUA / "ai-bridge.lua").read_text(encoding="utf-8")
@@ -392,7 +392,7 @@ def way():
       "is not 'sealed by locks', nothing listed; every needed piece locked: sealed")
 def _():
     if LuaRuntime is None:
-        return
+        skip("needs the lupa package (pip install lupa)")
     L, env = way()
     r = env.report()
     assert r.open is True and not r.sealed_by_locks and r.shut_by is None, (r.sealed_by_locks, r.shut_by)
@@ -409,7 +409,7 @@ def _():
       "shuts it alone")
 def _():
     if LuaRuntime is None:
-        return
+        skip("needs the lupa package (pip install lupa)")
     L, env = way()
     L.execute("""B[7].door_flags.forbidden = true
       B[10] = {id = 10, name = '', door_flags = {closed = true, forbidden = false}, jobs = {}, x1 = 6, y1 = 1, z = 2}
@@ -426,7 +426,7 @@ def _():
       "door is left")
 def _():
     if LuaRuntime is None:
-        return
+        skip("needs the lupa package (pip install lupa)")
     L, env = way()
     L.execute("B[7].door_flags.forbidden = true; G.GATES.mine[7] = true; B[9].door_flags.forbidden = true")
     r = env.open_way(1)

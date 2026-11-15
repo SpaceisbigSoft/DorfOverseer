@@ -154,14 +154,17 @@ if LuaRuntime:
     def _():
         lua, env, assigned = soc()
         lua.execute("""local env = ...
-            local b = {id = 9, name = 'AI shelter'}
+            local b = {id = 9, name = 'AI shelter', units = {}}
+            B9 = b
+            -- (0.105.48 merge, K3 shelter group) the keep-in's shelter check: a well-stocked one here
+            env.shelter_for_keep_in = function(force) return {tiles = 30, redrawn = force} end
             env.df.global.plotinfo.burrows.list[#env.df.global.plotinfo.burrows.list] = b
             env.dfhack.burrows.listBlocks = function() return {1, 2} end""", env)
         r = env.stand_down(lua.eval("{}"))
         assert r.burrows is None, dict(r)
-        lua.execute("local env = ...; env.df.unit.find(2).burrows = {9}", env)   # the player's own member
+        lua.execute("local env = ...; env.df.unit.find(2).burrows = {9}; B9.units = {2}", env)   # the player's own member (0.105.48 merge: the burrow's own list, no listUnits)
         r = env.weather_keep_in(True, False)
-        assert r.added == 5 and not assigned[2]
+        assert r.added == 5 and not assigned[2], dict(r)
         assigned[2] = True
         rec = lua.eval("{members = {['7'] = 1}, out = {}}")
         env.dfhack.persistent.saveSiteData("ai-overseer/recreation", rec)

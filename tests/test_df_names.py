@@ -71,12 +71,7 @@ REPORTED = {
 }
 
 # (file, name): wrong in 53.17, fixed by another 0.105.48 group (remove at merge).
-EXPECTED_WRONG = {
-    ("ai-captives.lua", "df.global.world.buildings.other.ZONE_PIT_POND"): "K-group of builder 9: ZONE_POND",
-    ("ai-threats.lua", "df.global.world.buildings.other.ZONE_PIT_POND"): "K-group of builder 9: ZONE_POND",
-    ("ai-society-burrows.lua", "dfhack.burrows.listUnits"): "K-group of builder 9: b.units",
-    ("ai-siege.lua", "df.global.world.buildings.other.SIEGEENGINE"): "K-group of builder 9: buildings.all",
-}
+EXPECTED_WRONG: dict = {}   # (0.105.48 merge: builder 9 fixed the three)
 
 LONG_COMMENT = re.compile(r"--\[(=*)\[.*?\]\1\]", re.S)
 LONG_STRING = re.compile(r"\[(=*)\[.*?\]\1\]", re.S)

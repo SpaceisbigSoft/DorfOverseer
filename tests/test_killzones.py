@@ -15,7 +15,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
-from harness import test, finish, need_lua  # noqa: E402
+from harness import test, finish, need_lua, skip  # noqa: E402
 from lua_modules_util import module_src  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "brain"))
@@ -333,7 +333,7 @@ def _():
 @test("build (0.105.48, K2): a zone saved at the old 'ramp' stage goes on to the bridge, its ramp still there")
 def _():
     if LuaRuntime is None:
-        return
+        skip("needs the lupa package (pip install lupa)")
     lua, env, w = world()
     fort(lua, w)
     entrance(lua, w)

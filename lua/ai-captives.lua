@@ -191,11 +191,8 @@ end
 local function pit_zones()
     local list = {}
     pcall(function()
-        -- (0.105.48) the vector is ZONE_POND in DF 53.17 (ZONE_PIT_POND kept as a fallback)
-        local other = df.global.world.buildings.other
-        local ok, v = pcall(function() return other.ZONE_POND end)
-        if not ok or not v then v = other.ZONE_PIT_POND end
-        for _, z in ipairs(v) do table.insert(list, z) end
+        -- (0.105.48) the vector is ZONE_POND in DF 53.17 (there is no ZONE_PIT_POND)
+        for _, z in ipairs(df.global.world.buildings.other.ZONE_POND) do table.insert(list, z) end
     end)
     return list
 end

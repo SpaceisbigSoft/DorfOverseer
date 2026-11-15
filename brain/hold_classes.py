@@ -123,7 +123,7 @@ _SURVIVAL_RULES = {
     "unsuspend", "stuck_order", "stuck_sweep", "tools", "mechanisms", "bins", "picks", "fuel", "fuel_trim",
     "smelt", "smelting", "steel", "cloth", "crafts", "hauling", "hauling_add", "hauling_back", "hauling_relieve",
     "hauling_shrink", "barrows", "barrow_order", "feeder", "feeder_link", "bench_caps", "excess_shops",
-    "disposal_dump", "disposal_empty", "disposal_melt", "disposal_orders", "disposal_place_dump",
+    "disposal_dump", "disposal_empty", "disposal_melt", "disposal_melt_order", "redig", "disposal_orders", "disposal_place_dump",
     "disposal_unforbid", "dump", "refuse", "prune", "prune_keep_parts", "depot", "traffic_audit", "traffic_paint",
     "cavern_logging_stop",
     # trade (the wealth DF sends migrants by)
@@ -173,7 +173,7 @@ _SURVIVAL_ACTIONS = {
     "magma_guard", "magma_reclaim", "lure_shut", "thirst_unforbid", "clear_webs", "remove_webs", "clean_contaminants",
     "quarantine_syndromes", "clear_miasma", "insane_guard",
     # ways in and out for the stranded
-    "open_entrance", "dig_way_in", "way_out_open", "way_out_leave", "location_access",
+    "open_entrance", "dig_way_in", "way_out_open", "way_out_leave", "close_world", "redig_projects", "location_access",
     # food, drink, farms, the herd
     "farm_plots", "farm_thresholds", "set_farm_crops", "kitchen_brewables", "kitchen_fat", "kitchen_skill",
     "train_cook", "gather_plants", "trim_gathering", "hunters", "food_standing", "fruit_zone", "food_pile",

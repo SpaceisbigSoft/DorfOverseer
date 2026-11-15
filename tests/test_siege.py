@@ -712,7 +712,9 @@ def _():
     assert "wild_hunt" not in rules(run(fort(fw=field(wild=[far]), squads=[squad(2)]))[0])
     big = dict(BEAR, size=5000000)
     assert "wild_hunt" not in rules(run(fort(fw=field(wild=[big]), squads=[squad(2)]))[0])
-    strong = squad(3, power={"armed": 5, "power": 20})
+    # (0.105.48, K1) wild_big_power on the squads' scale (40, was 12): a squad of 20 is not enough
+    assert "wild_hunt" not in rules(run(fort(fw=field(wild=[big]), squads=[squad(3, power={"armed": 5, "power": 20})]))[0])
+    strong = squad(3, power={"armed": 5, "power": 60})
     assert "wild_hunt" in rules(run(fort(fw=field(wild=[big]), squads=[squad(2), strong]))[0])
     assert "wild_hunt" not in rules(run(fort(fw=field(wild=[dict(BEAR, fire_breather=True)]), squads=[squad(2)]))[0])
     assert "wild_hunt" not in rules(run(fort(fw=field(wild=[BEAR]), squads=[squad(2)], civ_alert=True))[0])

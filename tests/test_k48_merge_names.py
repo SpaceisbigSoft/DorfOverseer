@@ -22,7 +22,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
-from harness import test, finish  # noqa: E402
+from harness import test, finish, skip  # noqa: E402
 from lua_modules_util import module_src  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "brain"))
@@ -54,7 +54,7 @@ def code_lines(text: str) -> str:
 @test("needs.stressed: one row a miserable soldier, with fight_need and child together (A1)")
 def _():
     if LuaRuntime is None:
-        return
+        skip("needs the lupa package (pip install lupa)")
     hyg = (ROOT / "tests" / "test_hygiene_bridge.py").read_text(encoding="utf-8")
     harness = re.search(r'HARNESS = r"""(.*?)"""', hyg, re.S).group(1)
     L = LuaRuntime(unpack_returned_tuples=True)
@@ -134,7 +134,7 @@ return env, ok, err
 @test("siege: engines() walks the building list (no SIEGEENGINE vector) and finds the ballista")
 def _():
     if LuaRuntime is None:
-        return
+        skip("needs the lupa package (pip install lupa)")
     L = LuaRuntime(unpack_returned_tuples=True)
     env, ok, err = L.execute(SIEGE_STUB, module_src("ai-siege.lua"))
     assert ok, err
@@ -176,7 +176,7 @@ def _():
 @test("homes census: the free bedrooms' levels no roomless household reaches (free_cut_z)")
 def _():
     if LuaRuntime is None:
-        return
+        skip("needs the lupa package (pip install lupa)")
     src = (ROOT / "tests" / "test_homes.py").read_text(encoding="utf-8")
     fake = re.search(r'FAKE = r"""(.*?)"""', src, re.S).group(1)
     L = LuaRuntime(unpack_returned_tuples=True)
@@ -203,7 +203,7 @@ def _():
 @test("syndromes: inebriation (unconsciousness among its effects) is neither listed nor deadly; a real one is (A7)")
 def _():
     if LuaRuntime is None:
-        return
+        skip("needs the lupa package (pip install lupa)")
     src = (ROOT / "tests" / "test_syndromes.py").read_text(encoding="utf-8")
     fake = re.search(r'FAKE = r"""(.*?)"""', src, re.S).group(1)
     L = LuaRuntime(unpack_returned_tuples=True)
@@ -261,7 +261,7 @@ def _():
 @test("deep_descent: the settings module keeps, sanitizes and sends the switch (lupa)")
 def _():
     if LuaRuntime is None:
-        return
+        skip("needs the lupa package (pip install lupa)")
     st = lua_text("ai-overseer-settings.lua")
     L = LuaRuntime(unpack_returned_tuples=True)
     ok, err = L.eval("function(s) local f, e = load(s, 'ai-overseer-settings', 't', {}); return f ~= nil, e end")(st)
