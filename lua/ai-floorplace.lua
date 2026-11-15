@@ -212,10 +212,15 @@ local function shadow(floor, run_max, dmax)
         for i, r in ipairs(todo) do
             if r and ((r.parent or 0) == 0 or S.byid[r.parent]) then
                 local turning = (r.parent or 0) ~= 0
+                -- (B16) a run ai-floorplan.release closed ('released': its project was cancelled, nothing
+                -- live on it) is open again: its direction (and its place on the parent) is not lost for
+                -- good; its dead slots stay where they are, and new slots go past them
+                local closed = r.closed
+                if closed == 'released' then closed = nil end
                 add_run(S, {id = r.id, key = tostring(r.id), parent = r.parent or 0, ox = r.ox or 0, oy = r.oy or 0,
                             dx = r.dx or 1, dy = r.dy or 0, len = r.len or 0, len0 = r.len or 0, new = false,
                             tag = r.tag, node = (turning and r.node == 5) and 5 or 3,
-                            neck = r.neck and true or false, closed = r.closed, closed0 = r.closed,
+                            neck = r.neck and true or false, closed = closed, closed0 = closed,
                             walked = r.walked or 0})
                 todo[i] = false
                 left = left - 1

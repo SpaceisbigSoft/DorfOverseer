@@ -1,0 +1,141 @@
+{
+ "floors": {
+  "152": "not tried",
+  "153": {
+   "arms": {
+    "south": 10,
+    "west": 17
+   },
+   "fixture_free": {
+    "east": 59,
+    "north": 59,
+    "south": 59,
+    "west": 59
+   },
+   "rooms": 7
+  },
+  "154": "no hall",
+  "155": "no hall",
+  "157": "no hall",
+  "159": "not tried",
+  "164": {
+   "arms": {
+    "east": 14,
+    "south": 50
+   },
+   "fixture_free": {
+    "east": 59,
+    "north": 59,
+    "south": 59,
+    "west": 59
+   },
+   "rooms": 11
+  },
+  "165": "not tried",
+  "166": {
+   "arms": {
+    "east": 14,
+    "south": 13
+   },
+   "fixture_free": {
+    "east": 59,
+    "north": 59,
+    "south": 59,
+    "west": 59
+   },
+   "rooms": 7
+  }
+ },
+ "levels": [
+  {
+   "floor": [
+    1,
+    "south"
+   ],
+   "kind": "bedrooms",
+   "not_on_floor": null,
+   "z": 153
+  },
+  {
+   "floor": [
+    1,
+    "west"
+   ],
+   "kind": "storage",
+   "not_on_floor": null,
+   "z": 153
+  },
+  {
+   "floor": [
+    2,
+    "east"
+   ],
+   "kind": "workshops",
+   "not_on_floor": null,
+   "z": 164
+  },
+  {
+   "floor": [
+    2,
+    "south"
+   ],
+   "kind": "dining",
+   "not_on_floor": null,
+   "z": 164
+  },
+  {
+   "floor": [
+    2,
+    "south"
+   ],
+   "kind": "bedrooms",
+   "not_on_floor": null,
+   "z": 164
+  },
+  {
+   "floor": [
+    2,
+    "south"
+   ],
+   "kind": "jail",
+   "not_on_floor": null,
+   "z": 164
+  },
+  {
+   "floor": [
+    2,
+    "south"
+   ],
+   "kind": "temple",
+   "not_on_floor": null,
+   "z": 164
+  },
+  {
+   "floor": [
+    6,
+    "east"
+   ],
+   "kind": "bedrooms",
+   "not_on_floor": null,
+   "z": 166
+  },
+  {
+   "floor": [
+    6,
+    "south"
+   ],
+   "kind": "library",
+   "not_on_floor": null,
+   "z": 166
+  },
+  {
+   "floor": [
+    1,
+    "west"
+   ],
+   "kind": "storage",
+   "not_on_floor": null,
+   "z": 153
+  }
+ ]
+}

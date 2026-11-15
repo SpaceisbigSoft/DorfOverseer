@@ -1,0 +1,122 @@
+{
+ "floors": {
+  "151": "not tried",
+  "152": "no hall",
+  "153": "no hall",
+  "154": "no hall",
+  "155": "no hall",
+  "156": "no hall",
+  "157": {
+   "arms": {
+    "east": 65,
+    "south": 31
+   },
+   "fixture_free": {
+    "east": 13,
+    "north": 13,
+    "south": 13,
+    "west": 13
+   },
+   "rooms": 14
+  },
+  "163": {
+   "arms": {
+    "east": 10,
+    "south": 18
+   },
+   "fixture_free": {
+    "east": 59,
+    "north": 0,
+    "south": 59,
+    "west": 59
+   },
+   "rooms": 6
+  }
+ },
+ "levels": [
+  {
+   "floor": null,
+   "kind": "bedrooms",
+   "not_on_floor": "z151: refused: overlaps another AI project; z152: no hall: north 0, east 0, south 0, west 0; z153: no hall: north 0, east 0, south 0, west 0; z154: no hall: north 0, east 0, south 0, west 0; z155: no hall: north 0, east 0, south 0, west 0; z156: no hall: north 9, east 9, south 9, west 9",
+   "z": 168
+  },
+  {
+   "floor": [
+    6,
+    "east"
+   ],
+   "kind": "storage",
+   "not_on_floor": null,
+   "z": 157
+  },
+  {
+   "floor": [
+    6,
+    "east"
+   ],
+   "kind": "workshops",
+   "not_on_floor": null,
+   "z": 157
+  },
+  {
+   "floor": [
+    6,
+    "east"
+   ],
+   "kind": "dining",
+   "not_on_floor": null,
+   "z": 157
+  },
+  {
+   "floor": [
+    6,
+    "east"
+   ],
+   "kind": "bedrooms",
+   "not_on_floor": null,
+   "z": 157
+  },
+  {
+   "floor": [
+    6,
+    "south"
+   ],
+   "kind": "jail",
+   "not_on_floor": null,
+   "z": 157
+  },
+  {
+   "floor": [
+    6,
+    "south"
+   ],
+   "kind": "temple",
+   "not_on_floor": null,
+   "z": 157
+  },
+  {
+   "floor": [
+    7,
+    "east"
+   ],
+   "kind": "bedrooms",
+   "not_on_floor": null,
+   "z": 163
+  },
+  {
+   "floor": null,
+   "kind": "library",
+   "not_on_floor": "z151: refused: overlaps another AI project; floor 1: no hall can start here; floor 2: no hall can start here; floor 3: no hall can start here; floor 4: no hall can start here; floor 5: no hall can start here",
+   "z": 165
+  },
+  {
+   "floor": [
+    6,
+    "east"
+   ],
+   "kind": "storage",
+   "not_on_floor": null,
+   "z": 157
+  }
+ ]
+}

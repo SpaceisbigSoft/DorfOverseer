@@ -310,7 +310,9 @@ function commit(store, floor, placement, pid, tick)
     if #runs_now + added > RUNS_MAX then return nil, 'floor record full' end
     for _, p in ipairs(puts) do
         if type(p) ~= 'table' or not known[p.run] then return nil, 'bad placement: a slot on no run' end
-        if not (is_num(p.u) and is_num(p.w) and is_num(p.d)) or (p.side ~= 1 and p.side ~= -1) then
+        -- (an axial put closes the run's end: ai-floorplace gives it side 0)
+        if not (is_num(p.u) and is_num(p.w) and is_num(p.d))
+            or (p.side ~= 1 and p.side ~= -1 and not (p.axial == true and p.side == 0)) then
             return nil, 'bad placement: a slot with no place'
         end
     end
@@ -331,6 +333,8 @@ function commit(store, floor, placement, pid, tick)
         if run then
             before = is_num(r.len_before) and r.len_before or (run.len or 0)
             if is_num(r.len) and r.len > (run.len or 0) then run.len = r.len end
+            -- (B16) a released run (its project cancelled) that a new placement uses is open again
+            if run.closed == 'released' and r.closed ~= 'released' then run.closed = r.closed end
         else
             run = {}
             for _, k in ipairs(RUN_KEYS) do run[k] = r[k] end

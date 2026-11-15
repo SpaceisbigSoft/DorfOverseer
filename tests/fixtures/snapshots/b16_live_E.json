@@ -1,0 +1,200 @@
+{
+ "floors": {
+  "148": {
+   "arms": {
+    "south": 10
+   },
+   "fixture_free": {
+    "east": 59,
+    "north": 59,
+    "south": 59,
+    "west": 59
+   },
+   "rooms": 4
+  },
+  "149": {
+   "arms": {
+    "south": 8
+   },
+   "fixture_free": {
+    "east": 59,
+    "north": 59,
+    "south": 59,
+    "west": 59
+   },
+   "rooms": 2
+  },
+  "151": {
+   "arms": {
+    "east": 14
+   },
+   "fixture_free": {
+    "east": 59,
+    "north": 0,
+    "south": 0,
+    "west": 0
+   },
+   "rooms": 2
+  },
+  "152": {
+   "arms": {
+    "east": 14
+   },
+   "fixture_free": {
+    "east": 59,
+    "north": 59,
+    "south": 59,
+    "west": 59
+   },
+   "rooms": 1
+  },
+  "153": "not tried",
+  "154": {
+   "arms": {
+    "east": 10,
+    "south": 13
+   },
+   "fixture_free": {
+    "east": 59,
+    "north": 59,
+    "south": 59,
+    "west": 59
+   },
+   "rooms": 7
+  },
+  "155": "no hall",
+  "156": {
+   "arms": {
+    "east": 10,
+    "north": 21
+   },
+   "fixture_free": {
+    "east": 59,
+    "north": 59,
+    "south": 8,
+    "west": 0
+   },
+   "rooms": 7
+  },
+  "159": {
+   "arms": {
+    "south": 10
+   },
+   "fixture_free": {
+    "east": 5,
+    "north": 59,
+    "south": 59,
+    "west": 59
+   },
+   "rooms": 1
+  },
+  "161": "not tried",
+  "162": {
+   "arms": {
+    "south": 12
+   },
+   "fixture_free": {
+    "east": 0,
+    "north": 59,
+    "south": 59,
+    "west": 0
+   },
+   "rooms": 1
+  },
+  "163": "not tried",
+  "164": "not tried",
+  "165": "not tried"
+ },
+ "levels": [
+  {
+   "floor": [
+    1,
+    "south"
+   ],
+   "kind": "bedrooms",
+   "not_on_floor": null,
+   "z": 148
+  },
+  {
+   "floor": [
+    2,
+    "south"
+   ],
+   "kind": "storage",
+   "not_on_floor": null,
+   "z": 149
+  },
+  {
+   "floor": [
+    3,
+    "east"
+   ],
+   "kind": "workshops",
+   "not_on_floor": null,
+   "z": 151
+  },
+  {
+   "floor": [
+    4,
+    "east"
+   ],
+   "kind": "dining",
+   "not_on_floor": null,
+   "z": 152
+  },
+  {
+   "floor": [
+    5,
+    "east"
+   ],
+   "kind": "bedrooms",
+   "not_on_floor": null,
+   "z": 154
+  },
+  {
+   "floor": [
+    5,
+    "south"
+   ],
+   "kind": "jail",
+   "not_on_floor": null,
+   "z": 154
+  },
+  {
+   "floor": [
+    6,
+    "east"
+   ],
+   "kind": "temple",
+   "not_on_floor": null,
+   "z": 156
+  },
+  {
+   "floor": [
+    6,
+    "north"
+   ],
+   "kind": "bedrooms",
+   "not_on_floor": null,
+   "z": 156
+  },
+  {
+   "floor": [
+    8,
+    "south"
+   ],
+   "kind": "library",
+   "not_on_floor": null,
+   "z": 159
+  },
+  {
+   "floor": [
+    9,
+    "south"
+   ],
+   "kind": "storage",
+   "not_on_floor": null,
+   "z": 162
+  }
+ ]
+}
