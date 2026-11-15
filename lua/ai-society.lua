@@ -1004,11 +1004,21 @@ function visiting_animal(u)
     return false
 end
 
+-- (0.105.51) A pet: DF moves it with its owner, so the AI never pens it
+-- (fort C crashed on a soldier's pet doe rabbit the AI had pastured).
+function pet_animal(u)
+    local ok, p = pcall(dfhack.units.isPet, u)
+    if ok and p then return true end
+    local okr, id = pcall(function() return u.relationship_ids.PetOwner end)
+    return okr and type(id) == 'number' and id ~= -1
+end
+
 function unpastured_grazers()
     local out = {}
     for _, u in ipairs(report_units()) do
         if dfhack.units.isAlive(u) and dfhack.units.isTame(u) and dfhack.units.isOwnCiv(u)
                 and not u.flags1.caged and dfhack.units.isGrazer(u) and not visiting_animal(u)
+                and not pet_animal(u)
                 and not dfhack.units.getGeneralRef(u, df.general_ref_type.BUILDING_CIVZONE_ASSIGNED) then
             table.insert(out, u)
         end
@@ -1097,7 +1107,7 @@ function nest_boxes(max, dry_run)
             hens = hens + 1
             local ref = dfhack.units.getGeneralRef(u, df.general_ref_type.BUILDING_CIVZONE_ASSIGNED)
             if ref then by_zone[ref.building_id] = (by_zone[ref.building_id] or 0) + 1
-            else table.insert(loose, u) end
+            elseif not pet_animal(u) then table.insert(loose, u) end     -- (0.105.51) a pet goes with its owner
         end
     end
     if hens == 0 then return {ok = false, rejected = true, error = 'no hen lays eggs here'} end
@@ -2565,9 +2575,26 @@ end
 -- every kind down to 2/4/2/4 and spares only the named or nicknamed, pets,
 -- war and hunting animals, the pregnant and those up for adoption
 -- (plugins/autobutcher.cpp, isProtectedUnit): the cats went with the ducks.
--- The AI keeps a few by giving them a nickname (MOUSER_NICK), which
--- autobutcher respects and the player can see and change.
+-- The AI kept a few by giving them a nickname (MOUSER_NICK), which
+-- autobutcher respects. (0.105.51) No more: fort C's DF crashed five times
+-- in its render path on named animals, three of them the AI's 'Mouser'
+-- cats. The kept cats are a list of unit ids now (lua/ai-herd.lua KEPT_KEY:
+-- its upkeep() takes autobutcher's mark off them each report, slaughter_one
+-- skips them); the old nickname is only cleared (ai-herd clear_ai_nicknames).
 MOUSER_NICK = 'Mouser'
+
+local function herd()
+    local ok, m = pcall(reqscript, 'ai-herd')
+    return ok and m or nil
+end
+
+-- The ids of the cats the AI keeps (a set; empty when unreadable).
+local function kept_mouser_ids()
+    local h = herd()
+    if not (h and h.kept_ids) then return {} end
+    local ok, ids = pcall(h.kept_ids, 'mousers')
+    return ok and type(ids) == 'table' and ids or {}
+end
 
 local function hunts_vermin(u)
     local ok, yes = pcall(function()
@@ -2585,12 +2612,8 @@ local function fort_animal(u)
     return ok and yes == true
 end
 
-local function nickname(u)
-    local ok, n = pcall(function() return u.name.nickname end)
-    return ok and n or ''
-end
-
-local function kept_hunter(u)
+local function kept_hunter(u, kept_ids)
+    if kept_ids and kept_ids[u.id] then return true end
     local ok, yes = pcall(function()
         return dfhack.units.isPet(u) or u.name.has_name or (u.name.nickname or '') ~= ''
             or dfhack.units.isAvailableForAdoption(u)
@@ -2599,10 +2622,11 @@ local function kept_hunter(u)
 end
 
 -- The fort's vermin hunters: {n, loose, caged, marked (for slaughter),
--- kept (loose and safe from autobutcher: pets, named, up for adoption), mousers
--- (nicknamed by the AI), races = {CAT = n}}.
+-- kept (loose and safe from autobutcher: pets, named, up for adoption, the
+-- AI's), mousers (kept by the AI: its list), races = {CAT = n}}.
 function vermin_hunters(units)
     local out = {n = 0, loose = 0, caged = 0, marked = 0, kept = 0, mousers = 0, races = {}}
+    local mine = kept_mouser_ids()
     for _, u in ipairs(units or report_units()) do
         if fort_animal(u) and hunts_vermin(u) then
             out.n = out.n + 1
@@ -2614,23 +2638,30 @@ function vermin_hunters(units)
             if in_cage then out.caged = out.caged + 1 else out.loose = out.loose + 1 end
             local okm, marked = pcall(function() return u.flags2.slaughter end)
             if okm and marked then out.marked = out.marked + 1 end
-            if kept_hunter(u) and not in_cage then out.kept = out.kept + 1 end     -- loose and safe
-            if nickname(u) == MOUSER_NICK then out.mousers = out.mousers + 1 end
+            if kept_hunter(u, mine) and not in_cage then out.kept = out.kept + 1 end     -- loose and safe
+            if mine[u.id] then out.mousers = out.mousers + 1 end
         end
     end
     return out
 end
 
 -- Keep `want` vermin hunters safe from the butcher: those already safe
--- count; then loose ones, adults first, the marked unmarked, each given the
--- nickname MOUSER_NICK. Never a caged one (it hunts nothing).
+-- count; then loose ones, adults first, the marked unmarked, each put on
+-- the AI's kept list ((0.105.51) no nickname: lua/ai-herd.lua KEPT_KEY).
+-- Never a caged one (it hunts nothing).
 function keep_mousers(want, dry_run, txt, units)
     want = math.max(1, math.min(tonumber(want) or 6, 20))
+    local h = herd()
+    if not (h and h.kept_ids and h.kept_save) then
+        return {ok = false, error = 'the kept-animals list (ai-herd) is not loaded'}
+    end
+    if not dry_run then pcall(h.clear_ai_nicknames) end
+    local mine = kept_mouser_ids()
     local kept, cands = 0, {}
     for _, u in ipairs(units or report_units()) do
         if fort_animal(u) and hunts_vermin(u) then
             local okc, caged = pcall(function() return u.flags1.caged end)
-            if kept_hunter(u) then
+            if kept_hunter(u, mine) then
                 if not (okc and caged) then kept = kept + 1 end
             elseif not (okc and caged) then
                 local oka, adult = pcall(dfhack.units.isAdult, u)
@@ -2653,15 +2684,18 @@ function keep_mousers(want, dry_run, txt, units)
         if not dry_run then
             local okm, marked = pcall(function() return c.u.flags2.slaughter end)
             if okm and marked then c.u.flags2.slaughter = false; unmarked = unmarked + 1 end
-            pcall(dfhack.units.setNickname, c.u, MOUSER_NICK)
-            if nickname(c.u) ~= MOUSER_NICK then
-                return {ok = #named > 0, kept = kept, named = named, unmarked = unmarked,
-                        error = 'the game did not take the nickname'}
-            end
+            mine[c.u.id] = true
         end
         kept = kept + 1
         local okn, n = pcall(function() return (txt or tostring)(dfhack.units.getReadableName(c.u)) end)
         table.insert(named, okn and n or tostring(c.u.id))
+    end
+    if not dry_run then
+        local oks, err = h.kept_save('mousers', mine)
+        if not oks then
+            return {ok = false, kept = kept, named = named, unmarked = unmarked,
+                    error = 'the kept-animals list was not saved: ' .. tostring(err)}
+        end
     end
     return {ok = true, kept = kept, named = named, unmarked = unmarked, dry_run = dry_run or nil}
 end

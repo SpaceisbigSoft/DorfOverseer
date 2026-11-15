@@ -1300,7 +1300,8 @@ def _vermin_rule(s: dict, cfg: dict, proposals: list, notes: list) -> None:
     them; DFHack's autobutcher, which the AI turns on for big herds
     (0.104.158), culls cats with the rest and spares only the named, pets
     and those up for adoption. So a few cats are kept from the butcher by a
-    nickname, one per `citizens_per_mouser`; with none, it's said."""
+    list of ids (no nickname since 0.105.51: named animals crashed DF
+    53.17), one per `citizens_per_mouser`; with none, it's said."""
     c = _cause(s, "AnnoyedVermin")
     n = int(c.get("citizens") or 0)
     if n < cfg["vermin_note_min"]:
@@ -1322,7 +1323,7 @@ def _vermin_rule(s: dict, cfg: dict, proposals: list, notes: list) -> None:
         k = min(want, loose)
         proposals.append(Proposal("vermin", {"type": "keep_mousers", "count": k},
                                   text + f": {kept} of the {loose} loose cat(s) are safe from the butcher; keep {k} "
-                                  "(nicknamed Mouser, which autobutcher spares) to hunt them", 5))
+                                  "(on the AI's kept list: autobutcher's mark taken off) to hunt them", 5))
 
 
 __all__ += ["COMPLAINT_WORDS", "_complaint_notes", "_vermin_rule", "OFFICE_FIRST"]

@@ -17,8 +17,9 @@ What the slider does now (reads the bridge's `herd` section, lua/ai-herd.lua):
   high (>= husbandry_high, 30)
     * breeders: per kind of grazer or egg layer with an adult pair, one
       male and herd_breed_females x the factor females (up to 8) kept from
-      the butcher (the nickname "Breeder": autobutcher and slaughter_one
-      spare them);
+      the butcher (the AI's kept list, lua/ai-herd.lua: autobutcher's mark
+      taken off each report, slaughter_one skips them; no longer the
+      nickname "Breeder", 0.105.51: named animals crashed DF 53.17);
     * caged wild animals tamed by the animal trainers (a dwarf given the
       labour first), while the herd is under its cap;
     * the AI's pastures kept ahead of the grazers' need (x the factor),
