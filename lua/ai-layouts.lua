@@ -574,7 +574,7 @@ end
 --   smooth 1: floors; 2: floors and walls; 3: also engrave the halls' walls.
 -- Engraving needs smoothed stone, so the builder applies L.engrave only after
 -- the smoothing is done.
-local function decorate(L)
+function decorate(L)
     L.smooth, L.engrave = {}, {}
     local lvl = L.style.smooth
     local walls, hall_walls = {}, {}
@@ -623,7 +623,7 @@ local function decorate(L)
     end
 end
 
-local function set_bounds(L)
+function set_bounds(L)
     local x1, y1, x2, y2 = math.huge, math.huge, -math.huge, -math.huge
     for x, col in pairs(L.tiles) do
         for y in pairs(col) do
