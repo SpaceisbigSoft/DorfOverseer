@@ -283,8 +283,18 @@ def _location_petition_rules(s: dict, cfg: dict, proposals: list, notes: list, r
     if young_fort(s, cfg):
         notes.append(f"{len(pending)} petition(s) for a temple or guildhall wait: not while the fort is young")
         return
-    if len(unbuilt) >= cfg["location_petitions_open"]:
-        return
+    # (0.105.51, R3 fort B) a petition left unanswered lapses, and DF gives
+    # the guild's members IgnoredGuildhallPetition (B: 4 guildhall petitions
+    # ignored, 4-30 citizens upset a month). Two causes were the AI's: a
+    # petition asking again for a hall already agreed was "left to lapse", and
+    # while one agreed hall was unbuilt (location_petitions_open) every other
+    # petition waited unanswered until it lapsed. Now a petition whose hall
+    # stands at its tier, or is the one already promised, is agreed (the same
+    # hall answers both; DF settles each when its year is out); another hall
+    # waits for the slot until it has waited `location_petition_late_days`,
+    # then is agreed if the unbuilt halls are under
+    # `location_petitions_open_late`, else declined: an answer, never silence.
+    agreed_keys = {wish_key(a) for a in agreed}
     for w in pending:
         tier = int(w.get("tier") or 1)
         known = w.get("profession") if w.get("loc") == "GUILDHALL" else (w.get("deity_hf") is not None
@@ -309,18 +319,28 @@ def _location_petition_rules(s: dict, cfg: dict, proposals: list, notes: list, r
                                       f"a petition asks for {_wish_words(w)}: decline (a fort that doesn't care "
                                       "for grandeur agrees to temples and guildhalls, not their grand tier)", 6))
             return
-        # (0.102.2) the same wish again within a year of agreeing to it (War-hold
-        # agreed 120 in a game year, mostly the same halls): DF didn't count the
-        # hall the fort already had; agreeing again only makes another promise
-        done = _d(getattr(memory, "wishes_agreed", None)).get(wish_key(w))
-        if _wish_met(s, w) and isinstance(done, int) and abs_tick(s) - done < TICKS_PER_YEAR:
-            notes.append(f"a petition asks again for {_wish_words(w)}, agreed {(abs_tick(s) - done) // TICKS_PER_DAY} "
-                         "days ago and standing: left to lapse, not promised twice")
-            continue
-        if _wish_met(s, w):
-            reason = f"a petition asks for {_wish_words(w)}, and the fort has one: agree"
+        if met(w):
+            reason = f"a petition asks for {_wish_words(w)}, and the fort has one at its tier: agree"
+        elif wish_key(w) in agreed_keys:
+            reason = (f"a petition asks again for {_wish_words(w)}, already promised: agree (the hall promised "
+                      "answers both; left unanswered it lapses and upsets the guild)")
+        elif len(unbuilt) < cfg["location_petitions_open"]:
+            if _wish_met(s, w):
+                reason = f"a petition asks for {_wish_words(w)}, and the fort has one: agree"
+            else:
+                reason = f"a petition asks for {_wish_words(w)}: agree, and build it within the year"
+        elif int(w.get("days") or 0) < cfg["location_petition_late_days"]:
+            continue                                  # waits for the slot (an older one may still be answered)
+        elif len(unbuilt) < cfg["location_petitions_open_late"]:
+            reason = (f"a petition asks for {_wish_words(w)} and has waited {w.get('days')} days: agree, and build "
+                      f"it within the year ({len(unbuilt)} promised hall(s) still to build)")
         else:
-            reason = f"a petition asks for {_wish_words(w)}: agree, and build it within the year"
+            proposals.append(Proposal("petition_answer", {"type": "answer_petition", "id": w.get("id"),
+                                                          "accept": False, "wish": wish_key(w)},
+                                      f"a petition asks for {_wish_words(w)} and has waited {w.get('days')} days, "
+                                      f"with {len(unbuilt)} promised hall(s) still to build: decline (an answer; "
+                                      "left unanswered it lapses and upsets the guild)", 6))
+            return
         proposals.append(Proposal("petition_answer", {"type": "answer_petition", "id": w.get("id"), "accept": True,
                                                       "wish": wish_key(w)},
                                   reason, 6))

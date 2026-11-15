@@ -91,8 +91,13 @@ PLANNER_CONFIG = {
     "min_spare_beds": 5,
     "dwarves_per_table": 3,
     "dining_short_share": 0.5,
+    "dining_seat_share": 0.5,      # (0.105.51) a table in a public dining hall for every other dwarf (the bridge's table census)
+    "lack_tables_min": 5,          # (0.105.51) citizens upset at eating without a table (28 days) that make the halls short...
+    "lack_tables_seat_cap": 0.75,  # ...while their tables seat under this share of the fort
     "tavern_badly_per": 30, "temple_badly_per": 25,   # (0.104.137) a tavern / temple for every this many badly missing...
     "social_badly_share": 0.15, "social_halls_max": 6,   # ...once that many of the fort badly miss it; at most this many
+    "argument_crowd_share": 0.25,  # (0.105.51) citizens upset by arguments (28 days): the taverns are crowded...
+    "tavern_crowd_per": 40,        # ...while there is under one tavern of its own for every this many dwarves (+1)
     "min_dwarves_for_dining": 3,                # (0.100.1) was 7
     "min_dwarves_for_hospital": 20,
     "min_dwarves_for_small_hospital": 10,  # ...or this many with a chief medical dwarf (not a young fort)
@@ -541,6 +546,8 @@ PLANNER_CONFIG = {
     "wood_short_per_cutter": 100,      # ...one more per this many logs short
     "tree_quota_share": 0.8,           # felling stops at this share of the elves' yearly cap (0.89)
     "location_petitions_open": 1,      # agreed temple/guildhall petitions not yet built at once (0.89)
+    "location_petition_late_days": 56, # (0.105.51) a petition waiting this long for the slot above is answered (it lapses at ~80-90)...
+    "location_petitions_open_late": 2, # ...agreed while fewer promised halls than this are unbuilt, else declined
     "location_value_tier1": 2000,      # zone value of a temple or guildhall (DF wiki, Guildhall)
     "location_value_tier2": 10000,     # of a temple complex or grand guildhall
     "petition_answer_cooldown_ticks": 1200,
@@ -1129,6 +1136,7 @@ PLANNER_CONFIG = {
     "training_squad_min": 2,              # no training squad where the cap comes out under this
     "training_squad_keen_min": 2,         # made once this many civilians badly want to fight or train
     "training_squad_fill_max": 3,         # volunteers added a cycle at most
+    "training_hall_beds": 4,              # (0.105.51) the training hall dug when the fort has no barracks (the least a barracks level takes)
     "training_squad_cooldown_ticks": 1200,   # a day between its steps
     "never_draft_days": 672,              # stress care's "never draft" kept two years at most...
     # (0.105.47, I7b) the unburied dead and welfare in small forts (brain/planner_welfare.py, lua/ai-welfare.lua)

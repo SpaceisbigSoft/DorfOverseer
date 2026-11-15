@@ -4922,7 +4922,8 @@ def _():
     assert p and p[0].action == {"type": "answer_petition", "id": 174, "accept": True,
                                  "wish": "TEMPLE|None|None|55"}, p
     assert "a temple to Rimtar" in p[0].reason, p[0].reason
-    # (0.102.2) the same wish again within a year, the temple standing: left to lapse
+    # (0.102.2) the same wish again within a year, the temple standing: (0.105.51) agreed (the
+    # standing temple answers it; left to lapse, DF upset the guild/believers: R3 fort B)
     from planner import record, TICKS_PER_DAY
     m2 = Memory()
     record([(p[0], {"ok": True})], s, m2)
@@ -4931,7 +4932,9 @@ def _():
     s2["locations"] = {"list": [{"id": 4, "type": "TEMPLE", "deity_hf": 55, "tier": 1, "value": 2400}]}
     s2["petitions"]["pending"][0]["id"] = 190
     props, notes = plan(s2, m2)
-    assert not by_rule(props, "petition_answer") and any("not promised twice" in n for n in notes), notes
+    a2 = by_rule(props, "petition_answer")
+    assert a2 and a2[0].action["accept"] is True and "has one at its tier" in a2[0].reason, a2
+    assert not any("not promised twice" in n for n in notes), notes
     s2["date"]["year"] += 2
     assert by_rule(plan(s2, m2)[0], "petition_answer")                # a year on: agreed again
     # agreed: a grand temple dedicated to the deity, unless one is being built
