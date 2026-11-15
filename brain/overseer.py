@@ -48,6 +48,7 @@ from planner_cleanup import CLEANUP_ACTIONS, cleanup_journal, cleanup_words  # n
 from planner_thirst import thirst_journal  # noqa: E402  (0.105.46, I2) deaths of thirst for the journal
 from planner_recovery import recovery_journal  # noqa: E402  (0.105.46, I4) collapse recovery
 from planner_shopslots import shop_level_action  # noqa: E402  (0.105.54) workshops onto shared levels
+from planner_floors import floor_action, floor_outcome, not_on_floor_words  # noqa: E402  (layout B) hallway-first floors
 from planner_meetings import meeting_open_due, meeting_open_said, meeting_reopen_wait  # noqa: E402  (0.105.47) meetings opened unattended
 from planner_threats import note_intrusions  # noqa: E402  (0.105.30 live fixes)
 from planner_holdfast import note_thief_targets  # noqa: E402  (0.105.47, R2 item 7)
@@ -1456,8 +1457,10 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
                              "reason": p.reason, "action": p.action, "text": cleanup_words(p.action)})
                 if acting:
                     try:
+                        # was: r = bridge.act(shop_level_action(p.action, state))   (two tests look for that text)
                         # (0.105.54) a workshops level: a standing level first, a new one planned for several
-                        r = bridge.act(shop_level_action(p.action, state))
+                        # (layout B) every level with its floor hint; p.action itself stays the proposal's
+                        r = bridge.act(floor_action(shop_level_action(p.action, state), state, memory))
                     except BridgeError as e:
                         r = {"ok": False, "error": str(e)}
                     except DFHackError as e:
@@ -1476,6 +1479,10 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
                         # (0.105.54) the shops went into a standing workshops level
                         outcome_txt = (f"done: into workshops level #{r.get('joined')} "
                                        + ("(a free room)" if r.get("how") == "free_room" else "(the level extended)"))
+                    elif (r.get("ok") is True and p.action["type"] == "start_project"
+                          and isinstance(r.get("floor"), dict)):
+                        # (layout B) the level went into slots along a floor's main hall
+                        outcome_txt = floor_outcome(r) or outcome_txt
                     elif r.get("ok") is True and p.action["type"] == "open_trade" and r.get("clicking"):
                         outcome_txt = f"clicked the depot's Trade button at {r.get('at')} (the screen is checked next cycle)"
                     elif r.get("ok") is True and p.action["type"] == "send_mission" and r.get("sending"):   # (0.105.24)
@@ -1505,6 +1512,9 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
                                             "brain\\probe_trade.py --here), so the goods stay ticked on the screen")
                     elif r.get("waiting"):
                         outcome_txt = f"waiting: {r.get('error')}"
+                    if p.action["type"] == "start_project":
+                        # (layout B) hallway mode was on and the level went the classic way: why
+                        outcome_txt += not_on_floor_words(r)
                     say(f"  {p.rule}: {p.reason} -> {json.dumps(p.action)} [{outcome_txt}]")
                 else:
                     would.append(f"would {short(p.action)}: {p.reason}")
