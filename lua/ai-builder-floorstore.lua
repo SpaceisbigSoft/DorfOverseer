@@ -148,8 +148,11 @@ function floor_commit(site, project_id)
         -- does not insert), and a mark on a level with no record makes one,
         -- which would take that same id. A mark on the placed floor itself is
         -- passed over (commit clears that floor's `full` anyway).
-        local f = FP.commit(store, c.floor, c.placement, project_id, tick)
-        if type(f) ~= 'table' then f = c.floor end
+        local f, cwhy = FP.commit(store, c.floor, c.placement, project_id, tick)
+        -- (B16) a placement the record refuses is not counted as booked: the record is left as it was
+        if type(f) ~= 'table' then
+            return false, 'the placement could not be recorded: ' .. tostring(cwhy or 'refused')
+        end
         local marks = {}
         local st = type(f.stair) == 'table' and f.stair or {}
         for _, m in ipairs(type(c.marks) == 'table' and c.marks or {}) do
