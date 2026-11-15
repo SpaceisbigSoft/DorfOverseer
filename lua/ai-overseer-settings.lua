@@ -427,6 +427,10 @@ function defaults()
         -- (0.105.46, I4) a fallen fort DF sends no migrants to: the AI calls a wave
         -- (DFHack's force Migrants; lua/ai-recovery.lua, brain/planner_recovery.py)
         call_migrants = true,
+        -- (0.105.48) Verticality's stair through a cavern layer (brain/planner_descent.py):
+        -- off by default until it is seen to work (the audit: no hatch, maybe unbuildable
+        -- in cavern air); no preset turns it on
+        deep_descent = false,
         -- (0.105.40b) raw adamantine mined: kept for a sealed breach plan that
         -- isn't built yet. On or off, the dig guard (ai-util dig_forbidden)
         -- leaves adamantine, the spire and the underworld alone
@@ -539,6 +543,7 @@ function sanitize(s)
                         'killzones',                -- (0.105.45) kill zones at the gates and cavern openings
                         'training_squad',           -- (0.105.47) a training-only squad for the keen
                         'call_migrants',            -- (0.105.46, I4) a migrant wave called to a fallen fort
+                        'deep_descent',             -- (0.105.48) the stair through a cavern layer (off)
                         'mine_adamantine',          -- (0.105.40b) reserved: still refused (not built yet)
                         'traffic'}) do              -- (0.105.41) traffic zones on the AI's levels
         if s[k] ~= nil then out[k] = s[k] == true end
@@ -660,6 +665,7 @@ function for_ai(s)
         killzones = s.killzones,                   -- (0.105.45)
         training_squad = s.training_squad,         -- (0.105.47)
         call_migrants = s.call_migrants,           -- (0.105.46, I4)
+        deep_descent = s.deep_descent,             -- (0.105.48) off unless the player turns it on
         mine_adamantine = s.mine_adamantine,       -- (0.105.40b) reserved: adamantine still left alone
         hunting = s.hunting, cavern_farms = s.cavern_farms,   -- (0.105.41, item 4)
         wipe_learned = s.wipe_learned,

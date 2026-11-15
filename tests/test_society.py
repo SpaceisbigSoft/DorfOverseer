@@ -517,8 +517,12 @@ env.dfhack = {
                    for _, id in ipairs(u.burrows) do if id ~= b.id then table.insert(keep, id) end end
                    if on then table.insert(keep, b.id) end
                    u.burrows = keep
+                   b.units = {}
+                   for id in pairs(b.units_) do table.insert(b.units, id) end
+                   table.sort(b.units)
                end,
-               listUnits = function(b) local l = {}; for _, u in pairs(b.units_ or {}) do table.insert(l, u) end; return l end},
+               -- (0.105.48) DFHack 53.17 has no listUnits: the burrow's own b.units (ids)
+               },
     units = {getCitizens = function() return cits end, isCitizen = function(u) return true end,
              isSane = function(u) return not u.insane end,
              isBaby = function(u) return u.baby == true end,
@@ -1035,8 +1039,12 @@ env.dfhack = {
                    for _, id in ipairs(u.burrows) do if id ~= b.id then table.insert(keep, id) end end
                    if on then table.insert(keep, b.id) end
                    u.burrows = keep
+                   b.units = {}
+                   for id in pairs(b.units_) do table.insert(b.units, id) end
+                   table.sort(b.units)
                end,
-               listUnits = function(b) local l = {}; for _, u in pairs(b.units_ or {}) do table.insert(l, u) end; return l end},
+               -- (0.105.48) DFHack 53.17 has no listUnits: the burrow's own b.units (ids)
+               },
     units = {getCitizens = function() return cits end, isCitizen = function(u) return true end,
              isSane = function(u) return not u.insane end, isBaby = function(u) return u.baby == true end,
              getStressCategory = function(u) return u.cat end,
@@ -1175,7 +1183,7 @@ def _():
     lua, env, w = calm_fresh()
     env.calm_burrow_tick(6, 3, False)
     b1 = w.burrow_of(1)
-    lua.execute("local W, b = ...; local u = W.units[7]; b.units_[7] = u; table.insert(u.burrows, b.id)", w, b1)
+    lua.execute("local W, b = ...; local u = W.units[7]; b.units_[7] = u; table.insert(b.units, 7); table.insert(u.burrows, b.id)", w, b1)
     s = env.calm_burrow_status()
     assert "dwarf 7 (not listed)" in _names(s.released_now) and w.nunits(b1) == 1, _names(s.released_now)
     r = env.calm_burrow_tick(6, 3, False, None, True)

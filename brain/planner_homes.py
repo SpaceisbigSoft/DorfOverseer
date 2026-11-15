@@ -99,8 +99,12 @@ def _homes_rules(s: dict, cfg: dict, traits: dict, proposals: list, notes: list)
     reach = _int(h.get("rooms_reachable")) if "rooms_reachable" in h else wanted
     give = min(reach, free)
     if wanted > reach and free:
+        cut = [_int(z) for z in _l(h.get("free_cut_z"))]
         notes.append(f"{wanted - reach} household(s) with no bedroom can't walk to any of the {free} free ones "
-                     "(cut off, or outside the fort)")
+                     "(cut off, or outside the fort)"
+                     + (f"; the cut-off free rooms are on z {', '.join(str(z) for z in cut)} "
+                        "(a level not joined to the fort, or behind a locked door or hatch)" if cut else "")
+                     + ": bedrooms they can reach are dug")
     if apart or give:
         n = min(30, apart + give)
         bits = []
@@ -120,8 +124,10 @@ def _homes_rules(s: dict, cfg: dict, traits: dict, proposals: list, notes: list)
             act["place"] = True
             why += ", each new room placed by its dwarf's taste"
         proposals.append(Proposal("homes", act, why, 4))
-    # more households without a bedroom than free ones: dig the difference
-    short = wanted - free
+    # more households without a bedroom than free ones they can walk to: dig
+    # the difference ((0.105.48, A7) a free room nobody roomless reaches was
+    # counted: 7 roomless, 12 cut-off rooms, only a note every cycle)
+    short = wanted - min(free, reach)
     open_kinds = {_d(p).get("kind") for p in _l(_d(s.get("projects")).get("open"))}
     digging = any(p.action.get("type") == "start_project" and p.action.get("kind") == "bedrooms" for p in proposals)
     # ((0.104.168, review) not when the projects section failed: an open
@@ -131,8 +137,9 @@ def _homes_rules(s: dict, cfg: dict, traits: dict, proposals: list, notes: list)
         rooms = min(32, short + cfg["min_spare_beds"])
         proposals.append(Proposal("homes_dig", {"type": "start_project", "kind": "bedrooms", "rooms": rooms,
                                                 "room_size": room_size(traits)},
-                                  f"{wanted} household(s) have no bedroom and {free} bedroom(s) are free "
-                                  f"(the fort's other beds are the hospital's, the barracks' or outside a room): "
+                                  f"{wanted} household(s) have no bedroom and {free} bedroom(s) are free"
+                                  + (f" ({free - min(free, reach)} of them out of their reach)" if reach < free else "")
+                                  + f" (the fort's other beds are the hospital's, the barracks' or outside a room): "
                                   f"dig {rooms} bedrooms", 4))
     # the stressed to rooms they like (their likes raise a room's worth to them)
     st = _d(_d(s.get("dwarves")).get("stress"))

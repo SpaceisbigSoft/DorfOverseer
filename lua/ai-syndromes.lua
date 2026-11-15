@@ -195,6 +195,9 @@ function syndrome_info(id)
     c = {id = id, name = 'syndrome ' .. tostring(id), routes = {}, effects = {}, deadly = false, known = sd ~= nil}
     if sd then
         pcall(function() if sd.syn_name ~= '' then c.name = txt(sd.syn_name) end end)
+        -- (0.105.48, A7) being drunk (DF's drinks carry "inebriation", whose
+        -- effects include unconsciousness) is no illness: left out of the report
+        if tostring(c.name):lower():find('inebriat', 1, true) then c.drink = true end
         local okr = pcall(function()
             for flag, word in pairs(ROUTES) do
                 if sd.flags[flag] then table.insert(c.routes, word) end
@@ -209,7 +212,7 @@ function syndrome_info(id)
                 if okt and t and not seen[t] then
                     seen[t] = true
                     table.insert(c.effects, t)
-                    if DEADLY[t] then c.deadly = true end
+                    if DEADLY[t] and not c.drink then c.deadly = true end
                 end
             end
         end)
@@ -676,12 +679,16 @@ function report()
         pcall(function()
             for _, a in ipairs(u.syndromes.active) do
                 local info = syndrome_info(a.type)
-                local src = SOURCES[a.type]
-                local row = {id = a.type, name = info.name, days = syndrome_age_days(a), routes = info.routes,
-                             deadly = info.deadly or nil, effects = info.effects,
-                             source = src and src.kind or nil, source_what = src and src.what or nil}
-                if not src then unknown = true end
-                table.insert(syns, row)
+                if info.drink then
+                    out.drunk = (out.drunk or 0) + 1      -- (0.105.48) counted, not listed
+                else
+                    local src = SOURCES[a.type]
+                    local row = {id = a.type, name = info.name, days = syndrome_age_days(a), routes = info.routes,
+                                 deadly = info.deadly or nil, effects = info.effects,
+                                 source = src and src.kind or nil, source_what = src and src.what or nil}
+                    if not src then unknown = true end
+                    table.insert(syns, row)
+                end
             end
         end)
         if #syns > 0 then

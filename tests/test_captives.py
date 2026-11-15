@@ -84,7 +84,9 @@ local RAWS = {[1] = {creature_id = 'GOBLIN', flags = {CAN_SPEAK = true}},
 env.df = {
     global = {cur_year = 200, cur_year_tick = 0,
               world = {units = {active = W.units},
-                       buildings = {other = {ZONE_PIT_POND = W.pits}, all = {}},
+                       -- (0.105.48) DF 53.17's name (ZONE_POND); a name DF lacks raises, as in DFHack
+                       buildings = {other = setmetatable({ZONE_POND = W.pits},
+                                                         {__index = function(_, k) error('no field ' .. k) end}), all = {}},
                        items = {other = {CORPSE = W.corpses, CORPSEPIECE = W.pieces}},
                        world_data = {sites = W.sites},
                        cur_savegame = {save_dir = 'region1'}},
