@@ -588,8 +588,10 @@ function report(txt)
     end
     out.threats = threats(held, txt)
     out.free_mechanisms = (function() local okm, n = pcall(G.free_mechanism_count, 200); return okm and n or nil end)()
-    out.trap_weapons = count_free('TRAPCOMP') + count_free('WEAPON')
+    -- (0.105.48 round 2, A5 #18) trap blades only: the fort's spare weapons
+    -- are the soldiers' (counted, they stopped any blade being ordered)
     out.trapcomps = count_free('TRAPCOMP')
+    out.trap_weapons = out.trapcomps
     out.free_cages = count_free('CAGE')
     out.mechanics = mechanics()
     out.free_levers = (function() local okl, l = pcall(G.free_levers); return okl and #l or nil end)()

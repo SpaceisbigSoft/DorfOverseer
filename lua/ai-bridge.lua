@@ -169,7 +169,14 @@ ACTIONS = {
     build_gatehouse = act_build_gatehouse,            -- (0.105.23)
     unstick_gate = act_unstick_gate,                  -- (0.105.32)
     location_access = act_location_access,            -- (0.105.12)
-    unpause = act_unpause,
+    -- (0.105.48 round 2) never while halted, by whatever path it is called
+    unpause = function(a)
+        if reqscript('ai-status').is_halted() then
+            return {ok = false, rejected = true, halted = true,
+                    error = 'the AI is halted in the game (Ctrl-Shift-H to resume)'}
+        end
+        return act_unpause(a)
+    end,
     found_fort = act_found_fort,
     quiet_announcements = act_quiet_announcements,
     save_game = act_save_game,
@@ -1910,6 +1917,11 @@ end
 -- ai-bridge run <ticks>: unpause, then pause again after that many game ticks.
 local function cmd_run(args)
     if not in_fort() then return NOT_IN_FORT end
+    -- (0.105.48 round 2) halted: the game is the player's, never unpaused by the AI
+    if reqscript('ai-status').is_halted() then
+        return {ok = false, rejected = true, halted = true,
+                error = 'the AI is halted in the game (Ctrl-Shift-H to resume)'}
+    end
     local ticks = whole_number(args[1])
     if not ticks or ticks < 1 or ticks > MAX_RUN_TICKS then
         return reject(('ticks must be a whole number from 1 to %d (1200 ticks = 1 day)'):format(MAX_RUN_TICKS))

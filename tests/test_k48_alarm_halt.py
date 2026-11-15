@@ -215,27 +215,29 @@ if LuaRuntime:
           "(how long away given); one look per AWAY_LOOK_TICKS; halted: stood down as halted")
     def _():
         L = LuaRuntime(unpack_returned_tuples=True)
-        M = L.execute(STATUS, (LUA_DIR / "ai-status.lua").read_text(encoding="utf-8"))
+        M = L.execute(STATUS, module_src("ai-status.lua"))
         M.mark_seen()
         assert M.away_check(True) is None and len(lst(L.eval("CALLS"))) == 0
-        L.execute("df.global.cur_year_tick = 1000 + 2401")
+        away = int(M.AWAY_TICKS) + 1                      # (round 2) ai-util's brain_away: five days
+        M.LAST_SEEN = -1000                               # the last poll long ago in real time too
+        L.execute(f"df.global.cur_year_tick = 1000 + {away}")
         assert M.away_check(True) is not None
         calls = lst(L.eval("CALLS"))
-        assert len(calls) == 1 and not calls[0].halted and calls[0].away_ticks == 2401
-        L.execute("df.global.cur_year_tick = 1000 + 2450")
+        assert len(calls) == 1 and not calls[0].halted and calls[0].away_ticks == away
+        L.execute(f"df.global.cur_year_tick = 1000 + {away + 49}")
         assert M.away_check() is None                      # within AWAY_LOOK_TICKS of the last look
         M.mark_seen()                                      # the brain back
-        L.execute("df.global.cur_year_tick = 1000 + 2600")
+        L.execute(f"df.global.cur_year_tick = 1000 + {away + 200}")
         assert M.away_check() is None and len(lst(L.eval("CALLS"))) == 1
         # a reload with no brain at all: counted from the first look
         L2 = LuaRuntime(unpack_returned_tuples=True)
-        M2 = L2.execute(STATUS, (LUA_DIR / "ai-status.lua").read_text(encoding="utf-8"))
+        M2 = L2.execute(STATUS, module_src("ai-status.lua"))
         assert M2.away_check(True) is None
-        L2.execute("df.global.cur_year_tick = 1000 + 2500")
+        L2.execute(f"df.global.cur_year_tick = 1000 + {away + 100}")
         assert M2.away_check(True) is not None
         # halted: as halted
         L3 = LuaRuntime(unpack_returned_tuples=True)
-        M3 = L3.execute(STATUS, (LUA_DIR / "ai-status.lua").read_text(encoding="utf-8"))
+        M3 = L3.execute(STATUS, module_src("ai-status.lua"))
         M3.mark_seen()
         L3.execute("dfhack.persistent.saveSiteData('ai-overseer/halt', {halted = true})")
         M3.away_check(True)

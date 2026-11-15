@@ -426,6 +426,11 @@ function open_way(id, o)
                 if g.kind == 'bridge' then
                     local busy = st.moving or (st.jobs or 0) > 0
                     local okq, pending = pcall(G.lever_pull_pending, lid)
+                    -- (0.105.48 round 2, A5 #11/#12) at once: a dwarf's pull still
+                    -- queued at the lever (nobody comes: the lever cut off, the
+                    -- civilians burrowed; or open_all's own) is no wait: the
+                    -- instant pull takes it away first (pull_instant)
+                    if o.instant and not st.moving then pending = false end
                     local okoc, occ = pcall(G.bridge_occupied, b)
                     if busy or (okq and pending) then
                         out.waiting = out.waiting + 1
@@ -523,7 +528,9 @@ end
 local function leave_gates(dry_run)
     local G = gates()
     if not G or not G.GATES then return {ok = false, rejected = true, error = 'no gates module'} end
-    pcall(G.gates_restore)
+    -- (0.105.48 round 2, A1 #7) a dry run (it passes the halt) restores nothing:
+    -- gates_restore may arm the watcher or open the saved gates
+    if not dry_run then pcall(G.gates_restore) end
     local GT = G.GATES
     if not GT.scanned or not GT.entrances then
         -- no map of the entrances: the saved lockdown opened by its ids
@@ -545,8 +552,10 @@ local function leave_gates(dry_run)
     for _, e in ipairs(GT.entrances) do
         if e.kind ~= 'cavern' then
             local r = open_way(e.id, {dry_run = dry_run, instant = true, leaving = true})
-            if r.ok or r.waiting then
-                table.insert(out.entrances, {id = e.id, opened = r.opened, waiting = (r.waiting or 0) > 0 and r.waiting or nil,
+            -- (round 2, A5 #12) waiting is a count (0 is truthy in Lua), or true on a refusal
+            local waits = r.waiting == true or (type(r.waiting) == 'number' and r.waiting > 0)
+            if r.ok or waits then
+                table.insert(out.entrances, {id = e.id, opened = r.opened, waiting = waits and r.waiting or nil,
                                              players = r.players and #r.players or nil})
                 out.opened = out.opened + (r.opened or 0)
             elseif r.players then

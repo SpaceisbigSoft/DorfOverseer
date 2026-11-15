@@ -749,12 +749,30 @@ local function gate_name(e)
     return ('AI gate %d (%s)'):format(e.id, e.kind)
 end
 
-local function set_name(id, name)
+-- (0.105.48 round 2, A5 #15) an unnamed piece is named only when it is the
+-- AI's (ai: its plan's record, or the watcher shut it): the name is what the
+-- way out (ai-way-out ai_owned) takes as the AI's ownership, so the player's
+-- own unnamed door, hatch or bridge (and its lever) stays unnamed, theirs.
+-- One already named "AI gate..." is renamed as before.
+local function set_name(id, name, ai)
     local b = df.building.find(id)
     if not b then return end
     local current = tostring(b.name or '')
     if current:lower() == 'ai gate' then return end      -- the player's own gate lever keeps its name
-    if current == '' or current:find('^AI gate') then b.name = name end
+    if current:find('^AI gate') or (current == '' and ai) then b.name = name end
+end
+
+-- (round 2) Is this entrance piece the AI's own, for naming? The AI shut it
+-- (GATES.mine), its plan's record names it (ai-gates-watch ai_planned_building),
+-- or the scan named it before.
+function piece_is_ai(id)
+    if type(GATES.mine) == 'table' and GATES.mine[id] then return true end
+    local okb, b = pcall(df.building.find, id)
+    if not okb or not b then return false end
+    local okn, nm = pcall(function() return tostring(b.name or '') end)
+    if okn and nm:find('^AI gate') then return true end
+    local okp, yes = pcall(ai_planned_building, b)
+    return okp and yes == true
 end
 
 -- A lever a dwarf can pull without running to the gate: inside the fort, and
@@ -915,11 +933,13 @@ function scan_map(now_tick)
     pcall(cut_survey, entrances, fstarts)        -- (0.105.0)
     for _, e in ipairs(entrances) do
         for _, b in ipairs(e.equipment) do
-            set_name(b.id, gate_name(e))
+            local ai = piece_is_ai(b.id)
+            set_name(b.id, gate_name(e), ai)
             -- (0.105.23) a door's or hatch's lever keeps its name: an unnamed one
             -- (the player's, a cavern well's shaft gate) would read as the AI's
-            -- and its hatch be held open by the AI
-            if b.lever_id and b.kind == 'bridge' then set_name(b.lever_id, gate_name(e) .. ' lever') end
+            -- and its hatch be held open by the AI. (round 2) A bridge's lever
+            -- only when the bridge is the AI's.
+            if b.lever_id and b.kind == 'bridge' then set_name(b.lever_id, gate_name(e) .. ' lever', ai) end
         end
     end
     -- (0.104.105) since when each entrance has read "closing" (by its spot):
@@ -947,6 +967,7 @@ function scan_map(now_tick)
         return out
     end
     local closed = carried(GATES.closed)
+    local old = GATES
     GATES = {scanned = true, entrances = entrances, inside = inside, inside_tiles = n,
              scanned_tick = now_tick, armed = GATES.armed, closed = closed,
              opening = carried(GATES.opening),                        -- (0.105.33)
@@ -956,7 +977,19 @@ function scan_map(now_tick)
              peak = GATES.peak, clear_looks = carried(GATES.clear_looks),      -- (0.105.4 review)
              stuck_removed = GATES.stuck_removed, split_seen = GATES.split_seen,   -- (0.105.32)
              mine = GATES.mine}                    -- (0.105.36 fix) by building id: kept as it is
+    -- (0.105.48 round 2, A5 #13) the watcher's heartbeat, marks and counters
+    -- (scalars, or keyed by building id) kept too; by entrance id: carried
+    for _, k in ipairs(RESCAN_KEEP) do
+        if GATES[k] == nil then GATES[k] = old[k] end
+    end
+    GATES.lifted_now = old.lifted_now and carried(old.lifted_now) or nil
 end
+
+-- (0.105.48 round 2) GATES fields a rescan keeps as they are (not `rescan`:
+-- the rescan it asked for is this one)
+RESCAN_KEEP = {'brain_tick', 'away', 'halted', 'repaths', 'lifted', 'let_open', 'left_open', 'gone',
+               'lever_opened', 'hatch_repulled', 'close_pulled', 'pulls_cancelled', 'close_pulls_cancelled',
+               'seal_kept', 'reopened', 'restored_lifted', 'mission_held_skips', 'splits_at'}
 
 -- (13e) this file's locals the later parts use, as module names (each takes
 -- them back as locals of its own)

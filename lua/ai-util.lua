@@ -23,6 +23,27 @@ function abs_tick(year, tick)
     return year * TICKS_PER_YEAR + tick
 end
 
+-- (0.105.48, K2/K3 round 2) The one rule for "the brain away", used by the
+-- gate watcher (ai-gates-watch brain_away) and ai-status's away watcher: no
+-- word from the brain for BRAIN_AWAY_TICKS game ticks (five days: a slow
+-- unattended fort reports every 2400) AND no status poll from the overseer
+-- (its 2 s heartbeat) for BRAIN_AWAY_REAL_S real seconds. A slow live brain
+-- still polls: never away. Never polled: the ticks alone decide. Pure.
+-- now/last_tick: game ticks; real/last_real: os.time() seconds.
+BRAIN_AWAY_TICKS = 6000
+BRAIN_AWAY_REAL_S = 180
+function brain_away(now, last_tick, real, last_real, ticks, real_s)
+    ticks = ticks or BRAIN_AWAY_TICKS
+    real_s = real_s or BRAIN_AWAY_REAL_S
+    if type(now) ~= 'number' or type(last_tick) ~= 'number' then return false end
+    if now - last_tick <= ticks then return false end
+    if type(last_real) == 'number' and type(real) == 'number' and real >= last_real
+            and real - last_real <= real_s then
+        return false                  -- the overseer still polls: a slow brain, not an absent one
+    end
+    return true
+end
+
 -- --- per-report shared walks (0.105.40, E3) ---------------------------------------
 --
 -- A full report walked the units dozens of times: each section (and each part

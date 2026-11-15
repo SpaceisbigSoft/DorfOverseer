@@ -28,7 +28,15 @@ OUTS_PER_ENTRANCE = 40         -- each entrance's outside tiles read for their w
 HOLD_TICKS = 1200              -- a game day: the travellers walk out meanwhile
 MAX_SHUT = 4
 
-MISSION_HOLD = MISSION_HOLD or {}   -- entrance id -> {until = abs tick, key = the mission}
+MISSION_HOLD = MISSION_HOLD or {}   -- entrance id -> {until = abs tick, key = the mission, since, gates}
+
+-- (0.105.48 round 2, A5 #17) the holds are this map's: forgotten when it unloads
+-- (a hold from another save, or a later date, held for years)
+if dfhack and dfhack.onStateChange then
+    dfhack.onStateChange['ai-mission-way'] = function(sc)
+        if sc == SC_MAP_UNLOADED then MISSION_HOLD = {} end
+    end
+end
 
 local function gates()
     local ok, G = pcall(function() return reqscript('ai-gates').GATES end)
@@ -136,24 +144,58 @@ end
 
 -- The hold: an entrance opened for a mission's travellers isn't shut again
 -- by the watcher's "danger coming, nobody outside" look until it ends.
+-- (round 2) the gate building ids of an entrance (ai-gates), as a set; nil unread
+local function gate_ids_of(entrance_id)
+    local ok, ids = pcall(function()
+        local G = reqscript('ai-gates')
+        for _, e in ipairs(G.GATES.entrances or {}) do
+            if e.id == entrance_id then return G.entrance_gate_ids(e) end
+        end
+        return nil
+    end)
+    return ok and type(ids) == 'table' and ids or nil
+end
+
 function hold(entrance_id, key, ticks)
     local now = abs_tick()
+    local ids = {}
+    for id in pairs(gate_ids_of(entrance_id) or {}) do table.insert(ids, id) end
     MISSION_HOLD[entrance_id] = {['until'] = now + (ticks or HOLD_TICKS), key = tostring(key or 'mission'):sub(1, 40),
-                                 since = now}
+                                 since = now, gates = #ids > 0 and ids or nil}
     return MISSION_HOLD[entrance_id]
+end
+
+-- (round 2, A5 #17) Is this hold still good? Not past its end; not from a
+-- later date (an older save loaded: since after now); not longer than
+-- HOLD_TICKS * 2 from now; and the entrance under this id still has one of
+-- the gates it had (a rescan renumbers the entrances). Pure but for the gates.
+function hold_good(entrance_id, h, now)
+    if type(h) ~= 'table' or type(h['until']) ~= 'number' then return false end
+    if h['until'] <= now then return false end
+    if type(h.since) == 'number' and h.since > now then return false end
+    if h['until'] - now > 2 * HOLD_TICKS then return false end
+    if type(h.gates) == 'table' and #h.gates > 0 then
+        local now_ids = gate_ids_of(entrance_id)
+        if now_ids then
+            for _, id in ipairs(h.gates) do if now_ids[id] then return true end end
+            return false
+        end
+    end
+    return true
 end
 
 function mission_held(entrance_id)
     local h = MISSION_HOLD[entrance_id]
     if not h then return false end
-    if h['until'] <= abs_tick() then MISSION_HOLD[entrance_id] = nil; return false end
+    if not hold_good(entrance_id, h, abs_tick()) then MISSION_HOLD[entrance_id] = nil; return false end
     return true
 end
 
 function holds()
     local out = {}
+    local now = abs_tick()
     for id, h in pairs(MISSION_HOLD) do
-        if h['until'] > abs_tick() then table.insert(out, {id = id, key = h.key, ['until'] = h['until']}) end
+        if hold_good(id, h, now) then table.insert(out, {id = id, key = h.key, ['until'] = h['until']}) end
     end
     return out
 end

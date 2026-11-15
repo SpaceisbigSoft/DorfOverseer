@@ -739,8 +739,8 @@ LIFT_CHECKS = 2 * REOPEN_CHECKS
 -- UNATTENDED_TICKS (five game days) and no status poll from the overseer (its
 -- 2 s heartbeat, brain_ping) for UNATTENDED_REAL_S real seconds (never pinged:
 -- the game ticks alone decide)
-UNATTENDED_TICKS = 6000
-UNATTENDED_REAL_S = 180
+UNATTENDED_TICKS = U.BRAIN_AWAY_TICKS or 6000     -- (round 2) ai-util's, one value for both away watchers
+UNATTENDED_REAL_S = U.BRAIN_AWAY_REAL_S or 180
 UNATTENDED_CLEAR = 2
 BRAIN_PING = BRAIN_PING or {}     -- {t = os.time() of the overseer's last status poll}: kept across a rescan
 
@@ -756,17 +756,12 @@ end
 
 -- The brain away? (no `entrances` report for UNATTENDED_TICKS, and no status
 -- poll for UNATTENDED_REAL_S real seconds.) real: the real time now (tests)
+-- (0.105.48 round 2) the rule itself is ai-util's brain_away, shared with
+-- ai-status's away watcher
 function brain_away(now, real)
     now = now or now_abs()
-    local t = GATES.brain_tick
-    if type(now) ~= 'number' or type(t) ~= 'number' then return false end
-    if now - t <= UNATTENDED_TICKS then return false end
-    local p = BRAIN_PING.t
-    real = real or real_now()
-    if type(p) == 'number' and type(real) == 'number' and real >= p and real - p <= UNATTENDED_REAL_S then
-        return false                  -- the overseer still polls: a slow brain, not an absent one
-    end
-    return true
+    return U.brain_away(now, GATES.brain_tick, real or real_now(), BRAIN_PING.t,
+                        UNATTENDED_TICKS, UNATTENDED_REAL_S)
 end
 
 -- (0.105.48, K2) Called by the bridge's `status` (the overseer's 2 s poll)
@@ -1192,9 +1187,25 @@ function prune_gate_planned(list)
                 if okb then b, read = bb, true end
             end
         end
-        if not read or (b and still_planned(b) ~= false) then table.insert(out, k) end
+        if not read or (b and still_planned(b) ~= false) then
+            table.insert(out, k)
+        elseif b then
+            pcall(name_built_gate, b)
+        end
     end
     return out
+end
+
+-- (0.105.48 round 2, A5 #15) The scan names only the AI's own gates "AI
+-- gate...": a door, hatch or bridge the AI planned, built and its record
+-- forgotten here, keeps the AI's mark by its name (renamed by the next scan).
+NAME_KINDS = {Door = true, Hatch = true, Bridge = true}
+function name_built_gate(b)
+    local okt, kind = pcall(function() return df.building_type[b:getType()] end)
+    if not (okt and NAME_KINDS[kind]) then return false end
+    if tostring(b.name or '') ~= '' then return false end
+    b.name = 'AI gate (built)'
+    return true
 end
 
 -- (0.105.36 fix) Since when the AI keeps its records: the first building id
