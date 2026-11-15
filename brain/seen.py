@@ -538,9 +538,11 @@ def watch_blocks(path: Path, since_version: str | None) -> list[dict]:
 
 def _path_in(v, parts: list[str]) -> bool:
     """Whether a dotted path is in a report value: a list matches when any
-    element holds the rest."""
+    element holds the rest. (0.105.51) A field there counts even when empty:
+    an empty Lua table is saved as [] (R3: `perf.cache_age` with no stale
+    section read "not met" in B, C, D and F)."""
     if not parts:
-        return v is not None and v != [] and v != {}
+        return v is not None
     if isinstance(v, list):
         return any(_path_in(x, parts) for x in v)
     if isinstance(v, dict):

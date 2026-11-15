@@ -973,6 +973,19 @@ function openings_report(d, t, txt)
                 row.sealed = true
             end
             if row.id and lure[row.id] then row.lure_open = true end     -- (0.105.45) open on purpose
+            -- (0.105.51) a cavern well's door the seal leaves open (seal_cavern asks the
+            -- same): its shaft gate keeps the cavern out, or a dwarf is beyond it. R3:
+            -- the planner counted "1 door on record, 1 open" and the seal was refused
+            -- "no door or hatch on the way down to lock" (A 12, B 9, C 7, E 7 times)
+            if row.id and o.kind ~= 'well' and type(o.source) == 'string' and o.source:find('^cavern well') then
+                local okw, W = pcall(reqscript, 'ai-well-safety')
+                if okw and W then
+                    local oks, why = pcall(W.door_seal_skip, o)
+                    if oks and type(why) == 'string' then row.seal_skip = why:sub(1, 120) end
+                    local okb, who = pcall(W.door_blocked, o)
+                    if okb and who then row.well_blocked = tostring(who):sub(1, 60) end
+                end
+            end
             row.x, row.y, row.z, row.kind, row.source = o.x, o.y, o.z, o.kind, o.source
             table.insert(list, row)
         end
@@ -985,14 +998,48 @@ function openings_report(d, t, txt)
     return {list = list, n = #list}
 end
 
+-- (0.105.51) The cavern layers' map features: {[global feature index] =
+-- true} (world.features.map_features' subterranean layers, as the bridge's
+-- get_layers reads them), or nil when they can't be read.
+function cavern_gids()
+    local ok, out = pcall(function()
+        local feats = df.global.world.features
+        local t, n = {}, 0
+        for i, f in ipairs(feats.map_features) do
+            if df.feature_init_subterranean_from_layerst:is_instance(f) then
+                t[feats.feature_global_idx[i]] = true
+                n = n + 1
+            end
+        end
+        return n > 0 and t or nil
+    end)
+    return ok and out or nil
+end
+
+-- (0.105.51) Is this a cavern tile: a feature tile (global or local) whose
+-- block belongs to a cavern layer. R3 (15 Nov, A B C E F): fisherdwarves and
+-- others at the surface's river (elevation 32, a local feature's tiles, 90
+-- levels above Cavern1) read as "down in the caverns", and the alarm went up
+-- each time a forgotten beast was in Cavern1. gids: cavern_gids() (nil: the
+-- feature flags alone, as before).
+function on_cavern_tile(x, y, z, gids)
+    local des = dfhack.maps.getTileFlags(x, y, z)
+    if not (des and (des.feature_global or des.feature_local)) then return false end
+    if not gids then return true end
+    local okb, gid = pcall(function()
+        local b = dfhack.maps.getTileBlock(x, y, z)
+        return b and b.global_feature
+    end)
+    if not okb or type(gid) ~= 'number' then return true end     -- unknown: counted, to be safe
+    return gids[gid] == true
+end
+
 -- (0.105.26) Citizens down in a cavern (on a cavern tile): the seal waits for them.
 function cavern_citizens(txt)
     local out = {list = {}, n = 0}
+    local gids = cavern_gids()
     for _, u in ipairs(report_citizens(true)) do
-        local ok, cave = pcall(function()
-            local des = dfhack.maps.getTileFlags(u.pos.x, u.pos.y, u.pos.z)
-            return des and (des.feature_global or des.feature_local) and true or false
-        end)
+        local ok, cave = pcall(on_cavern_tile, u.pos.x, u.pos.y, u.pos.z, gids)
         if ok and cave then
             out.n = out.n + 1
             if #out.list < 10 then
@@ -1723,12 +1770,12 @@ end
 local function citizen_in_cavern(z1, z2)
     if not z1 or not z2 then return nil end
     local lo, hi = math.min(z1, z2), math.max(z1, z2)
+    local gids = cavern_gids()          -- (0.105.51) a cavern layer's tile, not the surface river's
     local ok, who = pcall(function()
         for _, u in ipairs(report_citizens(true)) do
             local p = u.pos
             if p.z >= lo and p.z <= hi then
-                local des = dfhack.maps.getTileFlags(p.x, p.y, p.z)
-                if des and (des.feature_global or des.feature_local) then return u end
+                if on_cavern_tile(p.x, p.y, p.z, gids) then return u end
             end
         end
     end)
@@ -1819,15 +1866,16 @@ function seal_cavern(layer, tiles, open, dry_run, z1, z2, openings)
             given[okey(x, y, z)] = true
         end
     end
-    local well_kept = 0
+    local well_kept, well_why, well_dwarf = 0, nil, 0
     if openings then
         for _, o in pairs(d.openings) do
             if type(o) == 'table' and o.x and o.kind ~= 'well' then
                 -- (0.105.47) a cavern well's door with a dwarf beyond it (its
                 -- gallery, stairs, shaft, the cavern under it): not locked on them
-                local okb, who = false, nil
+                local okb, who, dwarf = false, nil, false
                 if type(o.source) == 'string' and o.source:find('^cavern well') then
                     okb, who = pcall(function() return reqscript('ai-well-safety').door_blocked(o) end)
+                    dwarf = okb and who and true or false
                     -- (K48-K4) nor a gallery's door while its well's shaft gate is linked:
                     -- the well beyond it stays the fort's water (the gate keeps the cavern out)
                     if not (okb and who) then
@@ -1836,6 +1884,12 @@ function seal_cavern(layer, tiles, open, dry_run, z1, z2, openings)
                 end
                 if okb and who then
                     well_kept = well_kept + 1
+                    if dwarf then
+                        well_dwarf = well_dwarf + 1
+                        well_why = tostring(who) .. ' is beyond the cavern well\'s door'
+                    else
+                        well_why = well_why or tostring(who)
+                    end
                 else
                     table.insert(list, {x = o.x, y = o.y, z = o.z})
                 end
@@ -1917,6 +1971,15 @@ function seal_cavern(layer, tiles, open, dry_run, z1, z2, openings)
             save_state(d)
         end
         return {ok = true, locked = 0, adopted = adopted, layer = layer, dry_run = dry_run or nil}
+    end
+    if n == 0 and well_kept > 0 and already == 0 and pull_failed == 0 then
+        -- (0.105.51) the only ways down on record are cavern wells' doors, left
+        -- open (their shaft gate keeps the cavern out, or a dwarf is beyond):
+        -- said as such, not "no door or hatch" (the planner leaves them out too)
+        if not dry_run then save_state(d) end
+        return {ok = false, rejected = true, well_kept = well_kept,
+                nothing_to_do = well_dwarf == 0 or nil, waiting = well_dwarf > 0 or nil,
+                error = 'only cavern well doors on the way down, left open: ' .. tostring(well_why):sub(1, 100)}
     end
     if n == 0 then
         if not dry_run then save_state(d) end          -- (the openings found are kept)

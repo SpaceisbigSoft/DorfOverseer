@@ -1759,6 +1759,12 @@ build_state_body = function(include_units, tier)
             -- a section may return a second value, true: don't keep this copy
             -- (logistics with a part that failed)
             local v, nocache = SECTIONS[name](ctx)
+            -- (0.105.51) a module DFHack read half written (scripts copied over while
+            -- the game ran): its flags dropped and the section tried once more
+            if type(v) == 'table' and type(v.error) == 'string' and v.error:find('Cannot be used as a module', 1, true) then
+                local okr, mod = pcall(function() return reqscript('ai-util').module_flags_reset(v.error) end)
+                if okr and mod then v, nocache = SECTIONS[name](ctx) end
+            end
             state[name] = v
             if days and not nocache and not (type(v) == 'table' and v.error) then   -- (an error is tried again next time)
                 SECTION_CACHE[name] = {tick = now, site = site, value = v}

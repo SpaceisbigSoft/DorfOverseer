@@ -1377,3 +1377,25 @@ function shut_door(b, closed, why) return set_door_flag(b, 'closed', closed, why
 function repath_summary()
     return {n = REPATH.n or 0, writes = REPATH.writes or 0, last_tick = REPATH.last_tick, why = REPATH.why}
 end
+
+-- (0.105.51) DFHack's reqscript refused a module it read no `--@ module = true`
+-- line in: "<name>: Cannot be used as a module". R3 (F, 14 Nov 22:52, the
+-- industry section): the scripts were copied over while the game ran
+-- (0.105.48 to 0.105.49) and DFHack read ai-builder.lua half written; it
+-- keeps the flags it read until the file's time changes (whole seconds), so
+-- a write within the same second left them wrong. err: the error text. The
+-- module's cached flags are dropped (dfhack.lua's Script: flags_mtime,
+-- _flags), so the next reqscript reads the file again. Returns the module's
+-- name when it did, else nil.
+function module_flags_reset(err)
+    local name = type(err) == 'string' and err:match('([%w_%-/]+): Cannot be used as a module') or nil
+    if not name then return nil end
+    local ok = pcall(function()
+        local path = dfhack.findScript(name)
+        local sc = path and dfhack.internal.scripts[path]
+        if not sc then error('not loaded') end
+        sc.flags_mtime = nil
+        sc._flags = {}
+    end)
+    return ok and name or nil
+end

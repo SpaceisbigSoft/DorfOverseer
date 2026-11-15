@@ -203,7 +203,31 @@ def _burial_rules(s: dict, cfg: dict, proposals: list, notes: list, memory, rule
                      f"{int(d.get('unreachable_no_slab') or 0)} with no memorial slab")
 
 
-def cook_train_due(s: dict, cfg: dict) -> str:
+COOK_UNFREE_DAYS = 3     # (0.105.51) the trainee not free to cook this many days running before the next takes over
+
+
+def cook_unfree_long(s: dict, memory, cook: dict) -> bool:
+    """(0.105.51) Has the trainee been not free to cook COOK_UNFREE_DAYS
+    days running (each report seen free starts the count again)? R3 (15 Nov):
+    D's trainee was swapped 97 times, two tavern keepers each week, each
+    seen "not free" once (a stay in the recreation burrow). Without a memory:
+    yes, as before."""
+    if memory is None or not hasattr(memory, "cook_watch"):
+        return True
+    now = abs_tick(s)
+    w = memory.cook_watch if isinstance(memory.cook_watch, dict) else {}
+    if cook.get("free") is not False:
+        if w:
+            memory.cook_watch = {}
+        return False
+    since = w.get("since")
+    if w.get("unit") != cook.get("unit") or not isinstance(since, int) or isinstance(since, bool) or since > now:
+        memory.cook_watch = {"unit": cook.get("unit"), "since": now}
+        return False
+    return now - since >= COOK_UNFREE_DAYS * TICKS_PER_DAY
+
+
+def cook_train_due(s: dict, cfg: dict, memory=None) -> str:
     """'train', 'release' or '' (nothing to do)."""
     sup = _d(s.get("supplies"))
     ck = _d(sup.get("cooks"))
@@ -216,7 +240,7 @@ def cook_train_due(s: dict, cfg: dict) -> str:
         return ""
     if cook.get("unit") is not None:
         # kept: asked again only when the trainee can't cook any more (the next best then)
-        return "train" if cook.get("free") is False else ""
+        return "train" if cook.get("free") is False and cook_unfree_long(s, memory, cook) else ""
     best = max(int(ck.get("best") or 0), int(ck.get("best_any") or 0)) if ck else 0
     if best >= _c(cfg, "cook_train_below"):
         return ""
@@ -228,10 +252,10 @@ def cook_train_due(s: dict, cfg: dict) -> str:
     return "train"
 
 
-def _cook_rule(s: dict, cfg: dict, proposals: list) -> None:
+def _cook_rule(s: dict, cfg: dict, proposals: list, memory=None) -> None:
     if "welfare" in s.get("_errors", {}) or "supplies" in s.get("_errors", {}):
         return
-    due = cook_train_due(s, cfg)
+    due = cook_train_due(s, cfg, memory)
     pop = int(_d(s.get("dwarves")).get("total") or 0)
     if due == "release":
         proposals.append(Proposal("train_cook", {"type": "train_cook", "release": True},
@@ -250,4 +274,4 @@ def _cook_rule(s: dict, cfg: dict, proposals: list) -> None:
 def _welfare_rules(s: dict, cfg: dict, proposals: list, notes: list, memory=None, rules_: dict | None = None) -> None:
     """(0.105.47) Called from plan() beside _dead_notes."""
     _burial_rules(s, cfg, proposals, notes, memory, rules_ or {})
-    _cook_rule(s, cfg, proposals)
+    _cook_rule(s, cfg, proposals, memory)
