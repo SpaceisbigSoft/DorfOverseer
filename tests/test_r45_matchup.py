@@ -337,7 +337,8 @@ def _():
     s = fort_with(a_titan(), squads(488, n=len(BASE["military"]["squads"])))
     p, notes = plan(s, Memory())
     assert not [x for x in p if x.rule == "squad_attack" and 900 in (x.action.get("kill") or [])], notes
-    assert any("hide behind the gates" in n and "fire" in n for n in notes), notes
+    # (0.105.54) the beast plan's note: no melee at its fire, the crossbows' plan and its stage
+    assert any(("hide behind the gates" in n or "stage: hiding" in n) and "fire" in n for n in notes), notes
     s = fort_with(a_beast(), squads(150, n=len(BASE["military"]["squads"])))
     p, notes = plan(s, Memory())
     assert [x for x in p if x.rule == "squad_attack" and 901 in (x.action.get("kill") or [])], notes

@@ -22,7 +22,16 @@ dangers out on the surface, and who fetches the wounded. Each gets a rule:
      whatever the squads could do (0.105.26); unlocked once it has gone;
      every opening onto a cavern gets a door or hatch straight away;
   7. a great danger on the surface near dwarves out there: the alarm;
-  8. nobody has DF's Recover wounded labour: two dwarves put on it.
+  8. nobody has DF's Recover wounded labour: two dwarves put on it;
+  9. (0.105.54, "fight back") the great beast sealed out of the caverns gets a
+     kill plan (beast_tactic: planner_matchup.beast_plan on its facts):
+     melee only when nothing it breathes or spins makes closing in suicidal
+     and the squads are about even; ranged from behind a cavern opening's
+     fortifications; else a cage trap line or the lure pocket (planner_lure)
+     while the fort builds toward the fight, what is missing said. Ready:
+     the squads posted (stationed at the door, or on the archer post), then
+     the seal opened for the fight (_beast_hunt); shut again when the fight
+     goes badly, a citizen goes down, or it never comes.
 """
 
 from __future__ import annotations
@@ -60,6 +69,8 @@ THREAT_CONFIG = {
     "cavern_alarm_max_days": 3,              # (v35 fix) the alarm held for citizens in the caverns this long at most
     "cavern_realarm_days": 7,                # (0.105.51) after that, no new alarm for the caverns this long
     "rescue_labor_cooldown_ticks": 14 * 1200,
+    "beast_open_days": 3,                    # (0.105.54) the seal open this long for a fight that never came: shut
+    "beast_retry_days": 7,                   # ...and not opened again for this long
 }
 PLANNER_CONFIG.update({k: v for k, v in THREAT_CONFIG.items() if k not in PLANNER_CONFIG})
 
@@ -72,7 +83,8 @@ AGENDA_THEMES.update({"fire_guard": "keep the dwarves away from the fire", "pris
                       "reanimation": "rot the bodies an evil land would raise",
                       "moon_cell": "lock the werebeasts in for the full moon",
                       "seal_cavern": "seal the cavern against a beast", "rescue_labor": "fetch the wounded",
-                      "cavern_openings": "doors on the ways into the caverns"})
+                      "cavern_openings": "doors on the ways into the caverns",
+                      "beast_hunt": "kill the great beast in the caverns"})
 
 
 def note_intrusions(state: dict, memory, events: list) -> int:
@@ -743,7 +755,15 @@ def _cavern_beasts(s, cfg, memory, t, rules, proposals, notes):
                 proposals.append(Proposal("threat_alert", {"type": "civ_alert", "on": False},
                                           f"the alarm held {held_days} day(s) for citizens in the caverns: it comes "
                                           "down, and the ways down are locked", 0))
-        if ALL_CAVERNS not in sealed or unlocked:
+        # (0.105.54) the kill plan: the seal held open for a fight under way
+        hunting = False
+        try:
+            hunting = _beast_hunt(s, cfg, memory, t, great, ops, down, sealed, unlocked, proposals, notes)
+        except Exception as e:  # noqa: BLE001  (the seal as before)
+            notes.append(f"the beast plan failed ({type(e).__name__}: {str(e)[:80]})")
+        if hunting:
+            pass
+        elif ALL_CAVERNS not in sealed or unlocked:
             if down:
                 n = int(_d(t.get("cavern_citizens")).get("n") or len(down))
                 where = ", ".join(f"{_d(x).get('name')} at x{_d(x).get('x')} y{_d(x).get('y')} "
@@ -809,20 +829,6 @@ def _cavern_beasts(s, cfg, memory, t, rules, proposals, notes):
                                       "mapped today show no spot for a door or hatch on the way down, and the AI "
                                       "can't wall an opening it hasn't mapped; meanwhile it maps them again each "
                                       "day and puts a door on any opening it finds")
-        # the squads' word, said (the openings stay locked all the same)
-        mil = _d(s.get("military"))
-        able = [q for q in _l(mil.get("squads")) if isinstance(q, dict) and can_fight(q, cfg)]
-        if able:
-            try:
-                from planner_military import fight_or_hide
-                th = {str(o.get("id")): o for o in _l(_d(s.get("others_on_map")).get("threats")) if isinstance(o, dict)}
-                fight, verdict = fight_or_hide(s, memory, cfg, [th.get(str(x.get("id"))) or {"name": x.get("name")}
-                                                                for x in great], able)
-            except Exception:  # noqa: BLE001
-                fight, verdict = False, ""
-            if fight:
-                notes.append(f"{who}: the squads could take it ({verdict}), but the ways into the caverns stay "
-                             "locked while it is about: the AI doesn't send them down after it")
         shafts = [x for x in _l(_d(s.get("projects")).get("well_lids")) if isinstance(x, dict)
                   and x.get("gate") in ("open", "closed", "pulling")]
         # (group 2) a bridge that judges the shaft itself shuts it only for a
@@ -843,6 +849,7 @@ def _cavern_beasts(s, cfg, memory, t, rules, proposals, notes):
                              f"shut against {who}: the nearest open water outside the caverns is made a water "
                              "source meanwhile, and another well is placed when it can be")
     else:
+        _hunt_over(s, memory, notes)
         if ALL_CAVERNS in sealed:
             proposals.append(Proposal("seal_cavern", {"type": "seal_cavern", "layer": ALL_CAVERNS, "open": True},
                                       "no forgotten beast or other great danger left in the caverns: the ways "
@@ -863,6 +870,241 @@ def _cavern_beasts(s, cfg, memory, t, rules, proposals, notes):
                 proposals.append(Proposal("seal_cavern", {"type": "seal_cavern", "layer": name, "open": True},
                                           f"{name} sealed {days} days and no longer in the deep report: unlock "
                                           "the way down", 3))
+
+
+# --- (0.105.54) the beast killed, not only hidden from -------------------------
+
+def _threat_row(s: dict, bid) -> dict:
+    """The others_on_map row of a threat (its facts), {} if none."""
+    for o in _l(_d(s.get("others_on_map")).get("threats")):
+        if isinstance(o, dict) and o.get("id") == bid and bid is not None:
+            return o
+    return {}
+
+
+def _pos(b: dict):
+    p = _d(b.get("pos"))
+    if all(_num(p.get(k)) for k in ("x", "y", "z")):
+        return p
+    if all(_num(b.get(k)) for k in ("x", "y", "z")):
+        return {"x": b["x"], "y": b["y"], "z": b["z"]}
+    return None
+
+
+def _far(a, b) -> float:
+    if not a or not b or not all(_num(_d(b).get(k)) for k in ("x", "y", "z")):
+        return 1e9
+    return abs(a["x"] - b["x"]) + abs(a["y"] - b["y"]) + 3 * abs(a["z"] - b["z"])
+
+
+def _hunt_doors(t: dict) -> list:
+    """The seal's doors and hatches on the ways down (what the squads hold)."""
+    return [o for o in _l(_d(t.get("openings")).get("list")) if isinstance(o, dict) and o.get("kind") != "well"
+            and o.get("building") in ("Door", "Hatch") and o.get("built") is not False and not o.get("seal_skip")
+            and all(_num(o.get(k)) for k in ("x", "y", "z"))]
+
+
+def _cavern_posts(s: dict) -> list:
+    """The cavern openings with fortifications and posts behind them (the kill
+    zones report's survey): where crossbows shoot at a beast coming up."""
+    return [e for e in _l(_d(s.get("killzones")).get("entrances")) if isinstance(e, dict) and e.get("kind") == "cavern"
+            and int(e.get("posts") or 0) > 0 and e.get("id") is not None and not e.get("error")]
+
+
+def beast_tactic(s: dict, memory, cfg: dict, beast: dict) -> dict:
+    """(0.105.54) The kill plan for one great beast (planner_matchup.beast_plan
+    on its facts and the squads not on the player's orders), checked against
+    the fort: a ranged plan needs a fortified cavern opening, a melee one a
+    door on the way down; a fight called off before isn't tried again while
+    it is here. Adds `squads` (ids), `door` or `post`, `name`, `destroyer`."""
+    from planner_matchup import beast_plan, fight_bar_of
+    from planner_military import _players, called_off_ids, fight_key
+    row = dict(_d(beast))
+    row.update({k: v for k, v in _threat_row(s, row.get("id")).items() if v is not None})
+    lure_b = next((b for b in _l(_d(s.get("lures")).get("beasts")) if isinstance(b, dict)
+                   and b.get("id") == row.get("id")), {})
+    avoid = lure_b.get("immune") if isinstance(lure_b.get("immune"), bool) else None
+    if row.get("destroyer") is None and lure_b.get("destroyer") is not None:
+        row["destroyer"] = lure_b.get("destroyer")
+    squads = [q for q in _l(_d(s.get("military")).get("squads")) if isinstance(q, dict)
+              and can_fight(q, cfg) and not _players(q)]
+    ff = _d(getattr(memory, "fight_factor", None)) if memory is not None else {}
+    plan = beast_plan(row, squads, fight_bar_of(s, memory, cfg),
+                      lambda x: float(ff.get(fight_key(x)) or 1.0), trap_avoid=avoid)
+    plan["name"] = str(row.get("name") or row.get("kind") or "a great beast")
+    plan["destroyer"] = bool(row.get("destroyer"))
+    avoid = row.get("trap_avoid") if avoid is None else avoid
+
+    def hold(missing):
+        plan.update(ready=False, tactic="lure" if avoid else "cage")
+        plan["missing"] = [missing] + [m for m in plan["missing"] if m != missing]
+    if row.get("id") in called_off_ids(s, memory):
+        hold("a fight it doesn't win (the last one was called off)")
+    at = _pos(row)
+    if plan["ready"] and plan["tactic"] == "ranged":
+        posts = sorted(_cavern_posts(s), key=lambda e: _far(at, e))
+        if posts:
+            plan["post"] = posts[0]
+            plan["squads"] = [q["id"] for q in squads if squad_ranged(q)]
+        else:
+            hold("fortifications at a cavern opening (the crossbows shoot through them)")
+    if plan["ready"] and plan["tactic"] == "melee":
+        doors = sorted(_hunt_doors(_d(s.get("threats"))), key=lambda o: _far(at, o))
+        if doors:
+            plan["door"] = {k: doors[0][k] for k in ("x", "y", "z")}
+            plan["squads"] = [q["id"] for q in squads]
+        else:
+            hold("a door on the way down for the squads to hold")
+    plan.setdefault("squads", [])
+    return plan
+
+
+def squad_ranged(q: dict) -> bool:
+    """A squad that shoots: the AI's crossbow uniform, or more ranged power than melee."""
+    from planner_matchup import shoots
+    return shoots(q)
+
+
+def _plan_words(plan: dict) -> str:
+    from planner_matchup import TACTIC_WORDS
+    w = f"the plan is {TACTIC_WORDS.get(plan.get('tactic'), plan.get('tactic'))}"
+    if not plan.get("ready") and plan.get("goal") and plan.get("goal") != plan.get("tactic"):
+        w += f", building toward {TACTIC_WORDS.get(plan['goal'], plan['goal'])}"
+    return w
+
+
+def _hunt_over(s: dict, memory, notes: list) -> None:
+    """No great beast left in the caverns: the plan's record ends (said once
+    when the seal had been opened for it)."""
+    if memory is None:
+        return
+    h = getattr(memory, "beast_hunt", None)
+    if isinstance(h, dict) and h:
+        if h.get("stage") == "open":
+            notes.append(f"{h.get('name') or 'the great beast'} is gone from the caverns (killed or fled) after "
+                         f"the seal was opened for the fight ({h.get('tactic')})")
+        memory.beast_hunt = {}
+
+
+def _beast_hunt(s, cfg, memory, t, great, ops, down, sealed, unlocked, proposals, notes) -> bool:
+    """(0.105.54) The sealed beast's kill plan, acted on. True while the seal is
+    held open for the fight (the lock is not asked again meanwhile)."""
+    if memory is None or not great:
+        return False
+    h = memory.beast_hunt if isinstance(getattr(memory, "beast_hunt", None), dict) else {}
+    now = abs_tick(s)
+    if not isinstance(now, int):
+        return False
+    loose = [b for b in great if not b.get("caged")]
+    if len(loose) != 1:
+        if h.get("stage") == "open":
+            h.update(stage="sealed", retry=now)
+            memory.beast_hunt = h
+            notes.append(f"{len(loose)} great beasts below: the seal is locked again (one is fought at a time)")
+            return False
+        notes.append(f"{len(loose)} great beasts below: the caverns stay sealed (the AI opens them for one at a time)")
+        return False
+    b = loose[0]
+    if h.get("id") != b.get("id"):
+        h = {"id": b.get("id"), "stage": "sealed", "since": now}
+    plan = beast_tactic(s, memory, cfg, b)
+    who = plan["name"]
+    h.update(name=who, tactic=plan["tactic"], goal=plan.get("goal"))
+    memory.beast_hunt = h
+    extra = " (it breaks doors: the seal may not hold it)" if plan.get("destroyer") else ""
+    called = b.get("id") in __import__("planner_military").called_off_ids(s, memory)
+    if h.get("stage") == "open":
+        days = (now - int(h.get("opened") or now)) // TICKS_PER_DAY
+        able = [q for q in _l(_d(s.get("military")).get("squads")) if isinstance(q, dict)
+                and q.get("id") in set(_l(h.get("squads"))) and can_fight(q, cfg)]
+        why = ("citizens went down into the caverns" if down else
+               "the fight went badly (called off)" if called else
+               "no squad able to fight is left" if not able else
+               f"it was open {days} day(s) and {who} never came" if days >= _c(cfg, "beast_open_days") else "")
+        if why:
+            h.update(stage="sealed", retry=now + _c(cfg, "beast_retry_days") * TICKS_PER_DAY)
+            notes.append(f"{who}: the seal opened for the fight is locked again ({why}); "
+                         f"{_plan_words(plan)}")
+            return False
+        if plan["tactic"] == "melee" or h.get("tactic") == "melee":
+            on = {x for q in able for x in _l(q.get("kill_ids"))}
+            if b.get("id") not in on:
+                for q in able:
+                    if not any(p.action.get("squad_id") == q["id"] for p in proposals):
+                        proposals.append(Proposal("beast_hunt", {"type": "squad_orders", "squad_id": q["id"],
+                                                                 "kill": [b["id"]]},
+                                                  f"{who}: the seal is open for the fight: "
+                                                  f"{q.get('name') or 'the squad'} goes at it", 0))
+        notes.append(f"{who}{extra}: {_plan_words(plan)}; stage: the seal is open for the fight "
+                     f"({days} day(s)), {len(able)} squad(s) on it")
+        return True
+    sealed_now = ALL_CAVERNS in sealed and not unlocked
+    if not sealed_now:
+        notes.append(f"{who}{extra}: {_plan_words(plan)}; stage: sealing it out first")
+        return False
+    retry = h.get("retry")
+    if isinstance(retry, int) and now < retry:
+        notes.append(f"{who}{extra}: kept sealed; {_plan_words(plan)}; stage: the last try was shut "
+                     f"{max(1, (retry - now) // TICKS_PER_DAY)} day(s) before the next")
+        return False
+    if not plan["ready"]:
+        h["stage"] = "trap"
+        miss = "; ".join(plan.get("missing") or [])
+        notes.append(f"{who}{extra}: kept sealed ({plan.get('why')}); {_plan_words(plan)}; stage: holding it"
+                     + (f"; missing: {miss}" if miss else ""))
+        return False
+    if down:
+        notes.append(f"{who}: {_plan_words(plan)} ({plan.get('why')}); stage: ready, waits until the citizens "
+                     "are out of the caverns")
+        return False
+    others = [i for i in reachable_threats(s, _traits(s), cfg) if i != b.get("id")]
+    if others:
+        notes.append(f"{who}: {_plan_words(plan)}; stage: ready, waits while {len(others)} other threat(s) "
+                     "can reach the dwarves")
+        return False
+    if any(isinstance(r, dict) and r.get("open") for r in _l(_d(s.get("lures")).get("lures"))):
+        notes.append(f"{who}: {_plan_words(plan)}; stage: ready, waits while the lure is open")
+        return False
+    sq = {q.get("id"): q for q in _l(_d(s.get("military")).get("squads")) if isinstance(q, dict)}
+    ids = [i for i in plan["squads"] if i in sq]
+    if not ids:
+        return False
+    if plan["tactic"] == "melee":
+        at = plan["door"]
+        posted = [i for i in ids if {k: _d(sq[i].get("stationed")).get(k) for k in ("x", "y", "z")} == at]
+        todo = [i for i in ids if i not in posted]
+        where = f"the cavern door at x{at['x']} y{at['y']} z{at['z']}"
+    else:
+        e = plan["post"]
+        posted = [i for i in ids if sq[i].get("guarding")]
+        todo = [i for i in ids if i not in posted]
+        where = f"the fortifications by the cavern opening at x{e.get('x')} y{e.get('y')} z{e.get('z')}"
+    if todo:
+        h.update(stage="posting", squads=ids)
+        if plan["tactic"] == "melee":
+            for i in todo:
+                proposals.append(Proposal("beast_hunt", {"type": "squad_station", "squad_id": i, **at,
+                                                         "what": f"cavern door, to fight {who}"[:60]},
+                                          f"{who}: {_plan_words(plan)} ({plan.get('why')}): "
+                                          f"{sq[i].get('name') or 'the squad'} takes its post at {where}", 1))
+        else:
+            proposals.append(Proposal("beast_hunt", {"type": "archer_post", "entrance_id": e["id"], "squads": todo[:6]},
+                                      f"{who}: {_plan_words(plan)} ({plan.get('why')}): the crossbows take their "
+                                      f"post behind {where}", 1))
+        notes.append(f"{who}{extra}: {_plan_words(plan)}; stage: the squads take their posts at {where} "
+                     "(the seal opens once they're there)")
+        return False
+    h.update(stage="open", opened=now, squads=ids)
+    proposals.append(Proposal("beast_hunt", {"type": "seal_cavern", "layer": ALL_CAVERNS, "open": True},
+                              f"{who}: {_plan_words(plan)} ({plan.get('why')}); the squads are posted at "
+                              f"{where}: open the ways into the caverns for the fight", 1))
+    if plan["tactic"] == "melee":
+        for i in ids:
+            proposals.append(Proposal("beast_hunt", {"type": "squad_orders", "squad_id": i, "kill": [b["id"]]},
+                                      f"{who}: the seal opens for the fight: {sq[i].get('name') or 'the squad'} "
+                                      "goes at it", 0))
+    notes.append(f"{who}{extra}: {_plan_words(plan)}; stage: the squads are posted, the seal opens for the fight")
+    return True
 
 
 STAIRISH = ("STAIR", "RAMP")

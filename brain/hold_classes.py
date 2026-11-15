@@ -43,6 +43,7 @@ BY_ACTION = {"strategist"}
 _EXPANSION_RULES = {
     # hunts, kill zones, lures, missions and contact
     "hunt", "killzone", "killzone_parts", "lure_build", "lure_open", "lure_archer",
+    "beast_hunt",   # (0.105.54) the seal opened for a fight with the cavern beast: waits in a crisis
     "mission", "mission_pets", "mission_way", "contact", "training_squad",
     # building above ground and set pieces, landmarks, the grove, the garden court
     "hall", "wings", "soil_floor", "keep", "construct_blocks", "stairwell", "garden_court",

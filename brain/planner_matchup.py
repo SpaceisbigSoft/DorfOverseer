@@ -24,8 +24,7 @@ from __future__ import annotations
 
 from digest import _d, _l
 
-__all__ = ["BREATH_WEIGHT", "facts_mult", "squad_weights", "squad_split", "judge", "matchup", "fight_bar", "strike_bar",
-           "weakened", "clusters", "groups_apart", "all_out", "siege_days", "losses_turned", "fire_breather"]
+__all__ = ["BREATH_WEIGHT", "facts_mult", "squad_weights", "squad_split", "judge", "matchup", "fight_bar", "strike_bar", "weakened", "clusters", "groups_apart", "all_out", "siege_days", "losses_turned", "fire_breather", "melee_bar", "shoots", "ranged_only", "fight_bar_of", "beast_plan", "TACTICS"]
 
 # (0.105.45) a breath's weight against squads that close in (the highest of
 # its kinds counts): fire and dragonfire burn a squad in its armour, deadly
@@ -402,3 +401,117 @@ def losses_turned(squads: list, start: dict, cfg: dict) -> str:
     if alive and wounded >= alive * float(cfg.get("fight_wounded_share", 0.5)):
         return f"{wounded} of the {alive} soldiers out are wounded"
     return ""
+
+# (0.105.54, the player: "fight back") A great beast is killed, not only hidden
+# from. Its tactic, from what it brings (ai-threat-facts) and the squads:
+#   melee   only when nothing it breathes or spins makes closing in suicidal,
+#           and the squads are about even with it (fight_bar_of);
+#   ranged  marksdwarves from behind fortifications (the crossbows' power
+#           alone about even with it);
+#   cage    a cage trap line (the lure pocket's cage traps): it doesn't avoid traps;
+#   lure    the pocket's drawbridges shut it in (it avoids traps), then the crossbows.
+# The fight tactics wait until the squads are ready; meanwhile the beast is
+# kept sealed or lured, and what is missing is said.
+TACTICS = ("melee", "ranged", "cage", "lure")
+TACTIC_WORDS = {"melee": "the squads close in", "ranged": "crossbows from behind fortifications",
+                "cage": "a cage trap line (the lure pocket)", "lure": "lured into the pocket and shut in, then shot"}
+
+
+def melee_bar(t: dict) -> str:
+    """Why closing in on this threat is suicidal ("" if it isn't): a breath of
+    fire or dragonfire, poison gas, dust (a syndrome) or a deadly cloud, a
+    web spray or spun webs. Never melee such a beast (the player)."""
+    t = _d(t)
+    br = set(_breath(t))
+    if br & {"fire", "dragonfire"} or t.get("fire_breather") is True:
+        return "it breathes fire"
+    if "poison_gas" in br or "deadly" in br:
+        return "its breath is a cloud that lays out soldiers"
+    if "dust" in br:
+        return "it breathes dust (a syndrome)"
+    if "web" in br or t.get("webs"):
+        return "its webs hold soldiers who close in"
+    return ""
+
+
+def shoots(q: dict) -> bool:
+    """A squad that shoots: the AI's crossbow uniform, or more ranged power than melee."""
+    from planner_core import is_ranged
+    m, r = squad_split(_d(q))
+    return is_ranged(_d(q)) or r > m
+
+
+def ranged_only(squads: list) -> list:
+    """The squads with only their ranged power counted (they shoot from a post)."""
+    out = []
+    for q in squads or []:
+        if isinstance(q, dict):
+            r = squad_split(q)[1]
+            if r > 0:
+                p = dict(_d(q.get("power")), power=r, melee_power=0.0, ranged_power=r)
+                out.append(dict(q, power=p))
+    return out
+
+
+def fight_bar_of(s: dict, memory, cfg: dict) -> float:
+    """The bar a matchup must reach: the general engagement bar's `fight_bar`
+    (planner_military, when there is one), else `fight_ratio`."""
+    try:
+        import planner_military as PM
+        fb = getattr(PM, "fight_bar", None)
+        if callable(fb):
+            for args in ((s, memory, cfg), (s, cfg), (cfg,)):
+                try:
+                    v = fb(*args)
+                except TypeError:
+                    continue
+                if isinstance(v, tuple):
+                    v = v[0]
+                if isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0:
+                    return float(v)
+                break
+    except Exception:  # noqa: BLE001  (the bar as before)
+        pass
+    return float((cfg or {}).get("fight_ratio", 2.0))
+
+
+def beast_plan(t: dict, squads: list, bar: float, factor=None, trap_avoid=None) -> dict:
+    """How to kill one great beast: {tactic, ready, goal, why, no_melee,
+    melee: (army, need), ranged: (army, need), missing: [words]}.
+    `tactic` is what is done now (a ready fight, else the trap or lure that
+    holds it); `goal` the fight built toward (melee or ranged). `trap_avoid`:
+    traps don't take it (True), do (False), unknown (None: as its facts say)."""
+    t = _d(t)
+    able = [q for q in squads or [] if isinstance(q, dict)]
+    nm = melee_bar(t)
+    full = judge(t, able, factor)
+    rng_sq = ranged_only([q for q in able if shoots(q)])
+    rng = judge(t, rng_sq, factor)
+    need = float(full["need"] or 0.0)
+    avoid = t.get("trap_avoid") if trap_avoid is None else trap_avoid
+    out = {"no_melee": nm, "melee": (round(full["army"], 1), round(need, 1)),
+           "ranged": (round(rng["army"], 1), round(need, 1)), "missing": [], "bar": bar}
+    shooters = sum(int(_d(q.get("power")).get("ranged") or 0) for q in rng_sq)
+    if not nm and full["ratio"] >= bar:
+        out.update(tactic="melee", goal="melee", ready=True,
+                   why=f"the squads {full['army']:.0f} against its {need:.0f}: about even or better")
+        return out
+    if rng["ratio"] >= bar and shooters > 0:
+        out.update(tactic="ranged", goal="ranged", ready=True,
+                   why=f"the crossbows {rng['army']:.0f} against its {need:.0f}"
+                       + (f" ({nm}: no melee)" if nm else ""))
+        return out
+    goal = "ranged" if nm else "melee"
+    if not rng_sq:
+        out["missing"].append("a crossbow squad")
+    elif not shooters:
+        out["missing"].append("bolts in the crossbow squad's quivers")
+    else:
+        out["missing"].append(f"more crossbows (ranged {rng['army']:.0f} of {bar * need:.0f} needed)")
+    if not nm:
+        out["missing"].append(f"stronger squads (all {full['army']:.0f} of {bar * need:.0f} needed)")
+    tactic = "lure" if avoid else "cage"
+    out.update(tactic=tactic, goal=goal, ready=False,
+               why=(f"{nm}: no melee; " if nm else "") + f"the squads {full['army']:.0f}, the crossbows "
+                   f"{rng['army']:.0f} against its {need:.0f}: not yet even")
+    return out

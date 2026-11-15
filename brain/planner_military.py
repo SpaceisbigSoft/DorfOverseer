@@ -727,6 +727,99 @@ def _hazard_rules(s: dict, memory, cfg: dict, proposals: list, notes: list, rule
         notes.append(f"miasma in {h['miasma']} places: rot lying indoors (a refuse pile outside takes it)")
 
 
+def no_melee_great(threats: dict, reach: list, policy: str) -> set:
+    """(0.105.54) The great dangers in reach no melee squad goes at: their
+    breath (fire, poison gas, a deadly cloud, dust) or webs make closing in
+    suicidal (planner_matchup.melee_bar). Under "attack everything": none
+    (the player's)."""
+    if policy == "all":
+        return set()
+    from planner_matchup import melee_bar
+    return {i for i in reach if _d(threats.get(i)).get("great_danger") and melee_bar(_d(threats.get(i)))}
+
+
+def _no_melee_beasts(s: dict, memory, cfg: dict, threats: dict, cloud: set, squads: list,
+                     proposals: list, notes: list) -> None:
+    """(0.105.54) A great beast on the surface or inside that no melee squad may
+    face (no_melee_great): melee squads on it come back; the crossbows go at
+    it from a safe spot (inside the shut gates at the walls, as at a fire
+    breather: planner_firebreath.fire_ranged_ok; or wherever it is when it
+    is already inside the fort) when their power alone is about even with
+    it (planner_matchup.fight_bar_of); else the dwarves hide and the note
+    says the plan, its stage and what is missing."""
+    from planner_matchup import fight_bar_of, judge as judge_, melee_bar, ranged_only
+    from planner_firebreath import fire_ranged_ok
+    from planner_holdfast import _inside_ids
+    rows = [threats[i] for i in sorted(cloud, key=str)]
+    ff = _d(getattr(memory, "fight_factor", None))
+    factor = (lambda t: float(ff.get(fight_key(t)) or 1.0))
+    policy = player_rules(s)["attack_policy"]
+    off = called_off_ids(s, memory)
+    ordered = {p.action.get("squad_id") for p in proposals if p.action.get("type") in ("squad_orders", "squad_station")}
+    # melee squads on it: back
+    for q in squads:
+        kill = {x for x in _l(q.get("kill_ids")) if isinstance(x, int)}
+        if (q.get("ai_orders") and kill & cloud and not _players(q) and q.get("id") not in ordered
+                and not _shoots(q)):
+            t = threats[sorted(kill & cloud, key=str)[0]]
+            proposals.append(Proposal("squad_recall", {"type": "squad_orders", "squad_id": q["id"], "clear": True},
+                                      f"{t.get('name') or 'the beast'}: {melee_bar(t)}: no melee squad faces it, "
+                                      f"{q.get('name') or 'the squad'} comes back", 0))
+            ordered.add(q["id"])
+    shooters = [q for q in squads if _shoots(q) and can_fight(q, cfg) and not _players(q)]
+    j = judge_(rows, ranged_only(shooters), factor)
+    bar = fight_bar_of(s, memory, cfg)
+    inside = _inside_ids(s)
+    try:
+        from planner_weather import weather_outside
+        wx = weather_outside(s, cfg)
+    except Exception:  # noqa: BLE001
+        wx = set()
+    names = ", ".join(f"{t.get('name') or 'a beast'} ({melee_bar(t)})" for t in rows[:3])
+    why_not = {}
+    for t in rows:
+        i = t.get("id")
+        why_not[i] = ("the fight with it was called off" if i in off else
+                      "" if i in inside else fire_ranged_ok(s, memory, t, wx))
+    may = [t["id"] for t in rows if not why_not[t.get("id")]]
+    if policy == "never":
+        notes.append(f"{names}: no melee; the dwarves hide (Rules tab: never)")
+        return
+    if not shooters:
+        notes.append(f"{names}: no melee; the plan is crossbows from behind the gates; stage: hiding, missing a "
+                     "crossbow squad")
+        return
+    if j["ratio"] < bar:
+        notes.append(f"{names}: no melee; the plan is crossbows from behind the gates; stage: hiding (the "
+                     f"crossbows {j['army']:.0f} against {j['need']:.0f}, about {bar * j['need']:.0f} needed: more "
+                     "crossbows and bolts)")
+        return
+    if not may:
+        notes.append(f"{names}: no melee; the plan is crossbows (they could take it: {j['army']:.0f} against "
+                     f"{j['need']:.0f}); stage: waiting for a safe spot ({why_not[rows[0].get('id')]})")
+        return
+    on = set()
+    for q in shooters:
+        if q.get("ai_orders") and not q.get("sheltering"):
+            on |= {x for x in _l(q.get("kill_ids")) if isinstance(x, int)}
+    todo = [i for i in may if i not in on]
+    free = [q for q in shooters if q.get("id") not in ordered and (not q.get("ai_orders") or q.get("sheltering"))]
+    if todo and free:
+        for q in free:
+            proposals.append(Proposal("squad_attack", {"type": "squad_orders", "squad_id": q["id"], "kill": todo[:10]},
+                                      f"{names}: no melee; {q.get('name') or 'the crossbow squad'} shoots at it from "
+                                      f"a safe spot (the crossbows {j['army']:.0f} against {j['need']:.0f})", 0))
+        _note_fight(s, memory, [threats[i] for i in todo])
+    notes.append(f"{names}: no melee; the plan is crossbows from a safe spot; stage: "
+                 + ("shooting" if (on & set(may)) or (todo and free) else "no free crossbow squad"))
+
+
+def _shoots(q: dict) -> bool:
+    """(0.105.54) A squad that shoots (the AI's crossbow uniform, or ranged power)."""
+    from planner_matchup import shoots
+    return shoots(q)
+
+
 def watched_gate_levers(s: dict) -> set:
     """(0.105.33 fix) The levers the gate watcher pulls: each entrance's gate
     levers and a gatehouse's outer drawbridge (its rows carry one lever_id).
@@ -795,7 +888,10 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
     # (0.105.40b) a fire breather is no melee squad's target, great or not
     # (planner_firebreath: crossbows from inside only, and the note why)
     fire = {i for i in reach if threats[i].get("fire_breather") is True and policy != "all"}
-    great = [i for i in reach if threats[i].get("great_danger") and i not in fire]
+    # (0.105.54, "fight back") nor a great beast whose breath, dust or webs make
+    # closing in suicidal: crossbows from a safe spot only (_no_melee_beasts)
+    cloud = no_melee_great(threats, reach, policy) - fire
+    great = [i for i in reach if threats[i].get("great_danger") and i not in fire and i not in cloud]
     # (0.104.118, phase 11) a great danger is fought when the squads are
     # strong enough for it (judged), else the dwarves hide behind shut gates
     fight, verdict = fight_or_hide(s, memory, cfg, [threats[i] for i in great], able) if great else (False, "")
@@ -812,7 +908,7 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
     no_sortie = set(wp["ids"]) if wp["danger"] and not wp["fight"] else set()
     targets = [i for i in reach if (policy == "all" and i not in off)
                or (policy == "ordinary" and i not in off and i not in fire and i not in no_sortie
-                   and (not threats[i].get("great_danger") or fight))]
+                   and i not in cloud and (not threats[i].get("great_danger") or fight))]
     # (0.105.51) a thief among a crowd (a tavern of guests) is no defence target:
     # the thieves rule posts a squad to wait for them (E, 15 Nov: three tavern fights)
     from planner_core import thief_rows, crowded_thief
@@ -820,7 +916,8 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
     if crowd & set(targets):
         targets = [i for i in targets if i not in crowd]
     recalled = set()
-    held_back = [i for i in reach if i not in targets and i not in fire and i not in no_sortie and i not in crowd]
+    held_back = [i for i in reach if i not in targets and i not in fire and i not in no_sortie and i not in crowd
+                 and i not in cloud]
     if no_sortie and policy == "ordinary":
         notes.append(f"{wp['danger']}: the squads stay in")
     # (0.105.48, K16) a squad out on a great danger the squads can no longer
@@ -895,6 +992,8 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
             notes.append(f"{len(targets)} enemies can reach the dwarves and no squad has "
                          f"{cfg['min_squad_to_fight']}+ armed soldiers to send: the dwarves keep behind the alarm "
                          "and the gates meanwhile, while the squads are filled and armed")
+    if cloud:
+        _no_melee_beasts(s, memory, cfg, threats, cloud, squads, proposals, notes)
     if held_back and policy != "never":
         notes.append(f"{len(held_back)} great danger(s) (beast, titan...) can reach the dwarves: the dwarves hide "
                      f"behind the gates ({verdict}; Rules tab: attack everything)")
