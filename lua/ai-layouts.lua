@@ -861,21 +861,23 @@ local function ring_rooms(L, nslots, size, round)
     local opening = (WIDE_OPENINGS[L.kind] and size >= 5) and 3 or 1
     local wall = room_wall(L)
     local pitch = size + wall
-    local ring, per_half = 3, 0
-    while true do
-        local xmax = ring + width - 2
-        per_half = (xmax - 3 + 1 + wall) // pitch
-        if per_half >= 1 and 8 * per_half >= nslots then break end
-        ring = ring + 1
-    end
+    -- (0.105.54, layout A) the loop sized from the room count: the fewest
+    -- rooms per half side (8 a round: two on each side, one either side of
+    -- the axis) and the smallest loop whose side holds them, rooms starting
+    -- 3 tiles off the axis: x 3 .. 3 + per_half * pitch - wall - 1 <= the
+    -- side's last tile (ring + width - 2)
+    local per_half = math.max(1, (nslots + 7) // 8)
+    local ring = math.max(3, per_half * pitch - wall + 4 - width)
     local outer = -(ring + width - 1)          -- the loop's outer row on the north side
     local ry, door_y = outer - 1 - size, outer - 1
     local door_dx = (size - 1) // 2
     local slots, rooms = {}, {}
+    -- (0.105.54) spread round the loop: one room on each side before a
+    -- second on any (4 rooms: one a side, not two sides of two)
     for k = 0, per_half - 1 do
         local right = 3 + k * pitch
-        for q = 0, 3 do
-            for _, rx in ipairs({right, -(right + size - 1)}) do
+        for _, rx in ipairs({right, -(right + size - 1)}) do
+            for q = 0, 3 do
                 if #slots < nslots then
                     local s = {x = rx, y = ry, size = size, side = 'N', opening = opening,
                                door = {x = rx + door_dx, y = door_y}}
@@ -900,10 +902,19 @@ local function ring_rooms(L, nslots, size, round)
     return slots
 end
 
+-- (0.105.54, layout A) A ring only for a big level: under RING_MIN_ROOMS
+-- rooms a loop round the stair is mostly corridor (one workshop had a 17x17
+-- loop, ~250 tiles, four squares of rock between): such a level is laid out
+-- like the corridor style's. The culture's ring stays for halls and homes
+-- with many rooms. BIG_LEVEL_ROOMS: from this many rooms a hall style may
+-- round a workshop's corners (workshops).
+RING_MIN_ROOMS = 4
+BIG_LEVEL_ROOMS = 4
+
 -- The rooms of a room level, arranged as the style's arms say.
 local function rooms_for(L, nslots, size, round)
     if L.style.arms == 'cross' then return cross_rooms(L, nslots, size, round) end
-    if L.style.arms == 'ring' then return ring_rooms(L, nslots, size, round) end
+    if L.style.arms == 'ring' and nslots >= RING_MIN_ROOMS then return ring_rooms(L, nslots, size, round) end
     local slots = corridor_rooms(L, nslots, size, round)
     if L.style.grand then
         local width, top = L.corridor.width, L.corridor.top
@@ -1061,7 +1072,10 @@ function workshops(p)
     local L = new_layout('workshops', p)
     -- (0.105.29, custom ore_piles) one room more, a 5x5 stone (and ore) pile, under 12 shops
     local ore = L.style.customs.ore_piles and #shops < 12
-    local slots = rooms_for(L, #shops + (ore and 1 or 0), 5, L.style.hall ~= 'plain')
+    -- (0.105.54, layout A) square rooms opening 3 wide onto the corridor; a
+    -- hall style rounds their corners only on a big level (BIG_LEVEL_ROOMS)
+    local n = #shops + (ore and 1 or 0)
+    local slots = rooms_for(L, n, 5, L.style.hall ~= 'plain' and n >= BIG_LEVEL_ROOMS)
     for i, s in ipairs(slots) do
         if shops[i] then
             add(L, 'build', s.x + 2, s.y + 2, WORKSHOPS[shops[i]], shops[i])

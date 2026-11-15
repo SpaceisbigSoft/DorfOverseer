@@ -3114,9 +3114,9 @@ def grammar(dry=False, style=None, **kw):
     return B.start_project(p, LUA.table_from({"year": 148, "tick": 100}), dry)
 
 
-@test("avenue: width 1 (and straight, doored) is exactly today's corridor", beside=True)
+@test("avenue: a plan's own width 1 (and straight, doored) is the old 1-wide corridor", beside=True)
 def _():
-    base = grammar()
+    base = grammar(avenue=1)
     assert base.ok and base.z == 72, base.error
     tiles0 = corridor_tiles()
     W.reset(); B.TRY_BESIDE = True
@@ -3128,7 +3128,7 @@ def _():
 
 @test("avenue: width 3 digs a 3-wide corridor with 1-wide doorways at its ends; width 2 one extra row", beside=True)
 def _():
-    base = grammar()
+    base = grammar(avenue=1)
     one = corridor_tiles()
     W.reset(); B.TRY_BESIDE = True
     r = grammar(avenue=3)
@@ -3148,7 +3148,7 @@ def _():
     assert r.ok and len(two) == n + inner and {x for x, _ in two} == {59, 60}, sorted(two)   # +perp of south = west
     # a 3-wide avenue that would graze water is refused there and goes elsewhere
     W.reset(); B.TRY_BESIDE = True
-    base = grammar()
+    base = grammar(avenue=1)
     one = corridor_tiles()
     W.reset(); B.TRY_BESIDE = True
     for y in range(64, 80):
@@ -3163,12 +3163,12 @@ def _():
 @test("dog-leg: half way the corridor steps 2 tiles sideways; a jog into an aquifer is refused", beside=True)
 def _():
     sp = {"spacing": 100}                                  # corridors of 10+ tiles
-    straight = grammar(style=sp)
+    straight = grammar(style=sp, avenue=1)
     assert straight.ok and straight.z == 72 and straight.anchor.x == 60, (straight.error, straight.anchor.x)
     st = corridor_tiles()
     assert {x for x, _ in st} == {60}
     W.reset(); B.TRY_BESIDE = True
-    r = grammar(style=sp, corridors="dog-leg")
+    r = grammar(style=sp, corridors="dog-leg", avenue=1)
     assert r.ok and r.z == 72, r.error
     dl = corridor_tiles()
     assert len(dl) == len(st) + 2 and {x for x, _ in dl} == {58, 59, 60}, sorted(dl)   # +perp of south = west
@@ -3182,7 +3182,7 @@ def _():
     W.reset(); B.TRY_BESIDE = True
     for y in range(69, 72):
         W.set(57, y, 72, LUA.table_from({"aquifer": True}))
-    r = grammar(style=sp, corridors="dog-leg")
+    r = grammar(style=sp, corridors="dog-leg", avenue=1)
     assert r.ok and r.z == 72 and r.anchor.x == 62, (r.error, r.z, r.anchor.x)
     assert {x for x, _ in corridor_tiles()} == {60, 61, 62}
     LUA.eval(AREA_CHECK)(W, 72)
@@ -3191,17 +3191,17 @@ def _():
     for y in range(69, 72):
         W.set(57, y, 72, LUA.table_from({"aquifer": True}))
         W.set(63, y, 72, LUA.table_from({"shape": "FLOOR"}))
-    r = grammar(style=sp, corridors="dog-leg")
+    r = grammar(style=sp, corridors="dog-leg", avenue=1)
     assert r.ok and not (r.z == 72 and r.anchor.x in (58, 62) and r.anchor.y > 60), (r.z, r.anchor.x)
     LUA.eval(AREA_CHECK)(W, r.z)
     # corridors under 4 new tiles stay straight
     B.MAX_CORRIDOR = 3
     try:
         W.reset(); B.TRY_BESIDE = True
-        short = grammar()
+        short = grammar(avenue=1)
         tiles = corridor_tiles()
         W.reset(); B.TRY_BESIDE = True
-        r = grammar(corridors="dog-leg")
+        r = grammar(corridors="dog-leg", avenue=1)
     finally:
         B.MAX_CORRIDOR = 25
     assert short.ok and r.ok and site_of(r) == site_of(short) and corridor_tiles() == tiles, \

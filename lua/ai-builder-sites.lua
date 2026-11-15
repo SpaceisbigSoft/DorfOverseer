@@ -305,14 +305,78 @@ end
 --   dogleg          corridors of 4+ tiles jog 2 tiles sideways half way
 --   doors           'open' (no doors), 'doored' (the style decides, today's
 --                   rule), 'fortified' (a door at both ends of the corridor)
-function plan_grammar(plan)
-    if type(plan) ~= 'table' then return nil end
+--
+-- (0.105.54, layout A) Never 1 wide by default: without a plan, or a plan
+-- that names no avenue (a level without a district hint), the corridor is an
+-- avenue of 2, or 3 when the level's style is spread out (Spacing
+-- WIDE_SPACING+) or large (scale WIDE_SCALE+), as masterplan._grammar draws
+-- them. Only a plan's own avenue 1 (a winding-ways fort) digs 1 wide.
+WIDE_SPACING, WIDE_SCALE = 50, 130
+function default_avenue(L)
+    local st = type(L) == 'table' and type(L.style) == 'table' and L.style or {}
+    return ((tonumber(st.spacing) or 0) >= WIDE_SPACING or (tonumber(st.scale) or 100) >= WIDE_SCALE) and 3 or 2
+end
+
+function plan_grammar(plan, L)
+    if type(plan) ~= 'table' then plan = {} end
     local avenue = math.tointeger(plan.avenue)
-    local g = {avenue = (avenue and avenue >= 1 and avenue <= 3) and avenue or 1,
+    local g = {avenue = (avenue and avenue >= 1 and avenue <= 3) and avenue or default_avenue(L),
                dogleg = plan.corridors == 'dog-leg',
                doors = (plan.doors == 'open' or plan.doors == 'fortified') and plan.doors or nil}
     if g.avenue == 1 and not g.dogleg and not g.doors then return nil end
     return g
+end
+
+-- (0.105.54, layout A) The rooms of the AI's levels on level z, as a set of
+-- map tiles: a connector's walk through the fort's open space stops at
+-- them, so a new corridor leaves from a corridor's or a hall's edge, never
+-- through the back of a workshop alcove or a bedroom. From each level's own
+-- saved cells (never regenerated: a level already dug keeps its shape):
+-- bedroom, office and cell zones, stockpiles and workshops (their 5x5
+-- room) on room levels, and the crypts' tomb zones.
+ROOM_KINDS = {bedrooms = true, suites = true, jail = true, storage = true, workshops = true, tombs = true}
+local ROOM_ZONES = {b = true, o = true, j = true}
+function room_tiles(z, data)
+    local out = {}
+    if data == nil then
+        local ok, d = pcall(load_projects)
+        data = ok and d or nil
+    end
+    if type(data) ~= 'table' or type(data.list) ~= 'table' then return out end
+    local shop_keys = {}
+    for _, key in pairs(layouts.WORKSHOPS or {}) do shop_keys[key] = true end
+    local function rect(ax, ay, x, y, w, h)
+        for dx = 0, w - 1 do
+            for dy = 0, h - 1 do add(out, ax + x + dx, ay + y + dy) end
+        end
+    end
+    for _, p in ipairs(data.list) do
+        local a = type(p) == 'table' and anchor_of(p) or nil
+        if a and math.tointeger(p.z) == z and ROOM_KINDS[p.kind] and type(p.cells) == 'table'
+                and math.tointeger(a.x) and math.tointeger(a.y) then
+            local ax, ay = math.tointeger(a.x), math.tointeger(a.y)
+            local cells = p.cells
+            for _, c in ipairs(type(cells.zone) == 'table' and cells.zone or {}) do
+                local text = tostring(c.text)
+                local key, w, h = text:match('^(%a)%((%d+)x(%d+)%)$')
+                if key and ROOM_ZONES[key] then
+                    rect(ax, ay, c.x, c.y, tonumber(w), tonumber(h))
+                elseif text:match('^T') then
+                    add(out, ax + c.x, ay + c.y)
+                end
+            end
+            if p.kind == 'storage' or p.kind == 'workshops' then
+                for _, c in ipairs(type(cells.place) == 'table' and cells.place or {}) do
+                    local w, h = tostring(c.text):match('%((%d+)x(%d+)%)$')
+                    rect(ax, ay, c.x, c.y, tonumber(w) or 1, tonumber(h) or 1)
+                end
+            end
+            for _, c in ipairs(type(cells.build) == 'table' and cells.build or {}) do
+                if p.kind == 'workshops' and shop_keys[c.text] then rect(ax, ay, c.x - 2, c.y - 2, 5, 5) end
+            end
+        end
+    end
+    return out
 end
 
 -- 90 degrees from direction d (the +perpendicular side).
@@ -378,9 +442,10 @@ function stair_gap_ok(L, ax, ay, stairs_)
     return true
 end
 
-function offset_sites(L, stair, z, reserved, try, dirs, grammar)
+function offset_sites(L, stair, z, reserved, try, dirs, grammar, rooms)
     local group = walk_group(stair.x, stair.y, z)
     if group == 0 then return nil end
+    rooms = rooms or {}
     local shortest, longest = corridor_range(L)
     -- (0.104.107) the plan's own direction (dirs[1]) may take up to
     -- PREFER_SLACK more corridor tiles than another direction before that
@@ -396,6 +461,8 @@ function offset_sites(L, stair, z, reserved, try, dirs, grammar)
             while walked < MAX_WALK_EXISTING do
                 local x, y = stair.x + d.x * (walked + 1), stair.y + d.y * (walked + 1)
                 if not open_fort_tile(info(x, y, z), x, y, z, group) then break end
+                -- (0.105.54) through corridors, halls and stairs only, never a room
+                if has(rooms, x, y) then break end
                 walked = walked + 1
             end
             local e = entry_point(L, d)
@@ -667,7 +734,8 @@ function choose_site(L, stairs, reserved, plan, ceil_z)
     end
     local band = plan_band(plan)
     local dirs = plan_dirs(plan)
-    local grammar = plan_grammar(plan)
+    local grammar = plan_grammar(plan, L)
+    local rooms_by_z = {}                -- (0.105.54) room_tiles, once a level
     stairs = spine_first(stairs, plan, band)
     local found
     local tried = {}
@@ -718,7 +786,10 @@ function choose_site(L, stairs, reserved, plan, ceil_z)
                             if good then return s end
                             note('beside', reason, z)
                             if os.clock() > deadline then out_of_time = true error('timeout') end
-                        end, dirs, grammar)
+                        end, dirs, grammar, (function()
+                            rooms_by_z[z] = rooms_by_z[z] or room_tiles(z)
+                            return rooms_by_z[z]
+                        end)())
                         if site then
                             site.stair = stair
                             found = site
