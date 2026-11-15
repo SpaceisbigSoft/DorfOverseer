@@ -713,12 +713,17 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
     # strong enough for it (judged), else the dwarves hide behind shut gates
     fight, verdict = fight_or_hide(s, memory, cfg, [threats[i] for i in great], able) if great else (False, "")
     # (0.105.26) a great danger whose fight was called off: never a target
-    # again while it's on the map (unless the player's rule is attack everything)
+    # again while it's on the map (since 0.105.48 under attack everything too)
     off = called_off_ids(s, memory)
-    targets = [i for i in reach if policy == "all" or (policy == "ordinary" and i not in off and i not in fire
-                                                       and (not threats[i].get("great_danger") or fight))]
+    # (0.105.48 K1b, audit A6 #6) "attack everything" lowers the bar, it does
+    # not remove the retreat: a fight called off for its losses is off under
+    # `all` too (War-hold: six squads sent at a titan with deadly dust, never
+    # called back however many fell)
+    targets = [i for i in reach if (policy == "all" and i not in off)
+               or (policy == "ordinary" and i not in off and i not in fire
+                   and (not threats[i].get("great_danger") or fight))]
     recalled = set()
-    if off and policy != "all":
+    if off:
         # (0.105.26) the squads whose kill order names it come back, whatever
         # else is about (hiding() is false with a goblin in reach, and the
         # order on the titan stayed); free, they are sent at the others
@@ -730,9 +735,11 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
                                           f"the fight with the great danger was called off: "
                                           f"{q.get('name') or 'the squad'} comes back", 0))
     held_back = [i for i in reach if i not in targets and i not in fire]
-    if great and fight and policy == "ordinary":
-        # (0.104.139) recorded even when the squads were already out at others
-        _note_fight(s, memory, [threats[i] for i in great])
+    if great and ((fight and policy == "ordinary") or (policy == "all" and set(great) - off)):
+        # (0.104.139) recorded even when the squads were already out at others;
+        # (0.105.48 K1b) under `all` too, so its losses are counted and the
+        # fight is called off (fight_or_hide) as under `ordinary`
+        _note_fight(s, memory, [threats[i] for i in great if policy != "all" or i not in off])
     if lone:
         # (0.105.3) a lone intruder inside: one armed squad, whatever the policy
         _lone_squad(s, memory, cfg, squads, lone, threats, proposals, notes)
@@ -799,11 +806,27 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
         # (planner_threats _interrupters) isn't a threat to the game either
         thieves_in |= {x.get("id") for x in _l(_d(_d(s.get("threats")).get("interrupters")).get("list"))
                        if isinstance(x, dict) and x.get("id") is not None and not x.get("caged")}
+        # (0.105.48 K1b, audit A6 #7, #8) a recall respects who sent the squad
+        # and why: a squad on a hunt is the hunt rule's (planner_hunt calls it
+        # back on losses, wounds or hunt_max_days; recalled here after a day,
+        # the bridge closed the hunt as dropped and the next cycle sent it out
+        # again), and one sent at a vampire is the killers rule's (recalled
+        # the very next cycle, the vampire left alone)
+        from planner_hunt import hunt_rows
+        from planner_killers import killer_rows
+        hr = hunt_rows(s)
+        hunting = {h.get("squad_id") for h in (hr[2] if hr else [])}
+        hunting |= {q.get("id") for q in (hr[1] if hr else []) if isinstance(q, dict) and q.get("hunting") is not None}
+        killers_in = {r["id"] for r in killer_rows(s) if r.get("kind") == "vampire"}
         for q in squads:
             if q.get("guarding") and invaders_near:
                 continue                     # (0.104.83) holding the gate while invaders are about
             if thieves_in and set(_l(q.get("kill_ids"))) & thieves_in:
                 continue                     # (0.105.33) after a thief still inside
+            if q.get("id") in hunting:
+                continue                     # (0.105.48) on a hunt: planner_hunt's retreat calls it back
+            if killers_in and set(_l(q.get("kill_ids"))) & killers_in:
+                continue                     # (0.105.48) after a vampire still here (planner_killers)
             if q.get("sheltering") and s.get("civ_alert"):
                 continue                     # (0.105.0) in the shelter until the alarm is over (planner_army)
             if q.get("id") in hospital_guards:

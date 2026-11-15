@@ -1112,6 +1112,63 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
     return proposals, notes
 
 
+# (0.105.48 K1b, audit A6 #5) One order per squad per cycle. About ten rules
+# each took "the first free squad" (berserk, thieves, interrupters, the
+# vampire...) and select() let them all through: squad 185 got four kill
+# orders in one cycle, each replacing the last (lua orders() drops the AI's
+# earlier order), so it ended on the vampire and nobody on the berserk dwarf.
+# The squads an action gives orders to, by the key that names them:
+SQUAD_ORDER_KEYS = {"squad_orders": "squad_id", "squad_station": "squad_id", "hospital_guard": "squad_id",
+                    "hunt_send": "squad_ids", "hunt_recall": "squad_ids", "shelter_squads": "squads",
+                    "archer_post": "squads", "guard_gate": "squads"}
+# a party sized as a whole: never trimmed, held whole when one of it is taken
+SQUAD_WHOLE = {"hunt_send"}
+
+
+def ordered_squads(a: dict) -> list:
+    """The squad ids action `a` gives orders to (none for any other action)."""
+    key = SQUAD_ORDER_KEYS.get(a.get("type")) if isinstance(a, dict) else None
+    if key is None:
+        return []
+    v = a.get(key)
+    out = v if isinstance(v, list) else [v]
+    return [i for i in out if i is not None and not isinstance(i, bool)]
+
+
+def _is_kill(a: dict) -> bool:
+    return a.get("type") == "squad_orders" and not a.get("clear") and isinstance(a.get("kill"), list)
+
+
+def squad_claim(p: Proposal, claimed: dict) -> str | None:
+    """(0.105.48 K1b) p against the squads already given an order this cycle
+    (`claimed`: squad id -> the allowed proposal; the proposals come in
+    priority order, so the first one wins). A kill order on a squad already
+    sent to kill this cycle adds its targets to that one order; a squad
+    list loses the squads taken; anything else on a taken squad waits for the
+    next cycle. Returns why p is held, or None (p goes, maybe trimmed)."""
+    ids = ordered_squads(p.action)
+    taken = [i for i in ids if i in claimed]
+    if not taken:
+        return None
+    win = claimed[taken[0]]
+    if len(ids) == 1 and _is_kill(p.action) and _is_kill(win.action):
+        old = [i for i in win.action["kill"]]
+        add = [i for i in p.action["kill"] if i not in old]
+        if add:
+            win.action = dict(win.action, kill=(old + add)[:50])
+            win.reason = f"{win.reason}; and {p.rule}'s target(s) too"
+        return (f"{p.rule}: squad {taken[0]} already has an order this cycle ({win.rule}): "
+                f"its target(s) were added to that order")
+    key = SQUAD_ORDER_KEYS[p.action["type"]]
+    if isinstance(p.action.get(key), list) and p.action["type"] not in SQUAD_WHOLE:
+        rest = [i for i in p.action[key] if i not in claimed]
+        if rest:
+            p.action = dict(p.action, **{key: rest})
+            return None
+    return (f"{p.rule}: squad {taken[0]} already has an order this cycle ({win.rule}, higher priority); "
+            "this one waits for the next cycle")
+
+
 def select(proposals: list[Proposal], state: dict, memory: Memory,
            cfg: dict = PLANNER_CONFIG) -> tuple[list[Proposal], list[str]]:
     """Apply the limits. Returns (allowed, held back with reasons)."""
@@ -1119,6 +1176,7 @@ def select(proposals: list[Proposal], state: dict, memory: Memory,
     orders_today = memory.orders_by_day.get(str(game_day(state)), 0)
     allowed, held = [], []
     fired_this_cycle: set[str] = set()
+    squads_claimed: dict = {}            # (0.105.48 K1b) one order per squad per cycle
     # (0.104.89) the strategist's word: a raised rule goes first and skips its
     # cooldown; a held one waits (never a survival or safety rule)
     def _steer(p):
@@ -1318,6 +1376,10 @@ def select(proposals: list[Proposal], state: dict, memory: Memory,
                         else f"{p.rule}: waiting on the game (its last answer was to wait); asks again in "
                              f"{wait} day(s)")      # (0.97: it said "refused 0 time(s)")
             continue
+        why_sq = squad_claim(p, squads_claimed)
+        if why_sq:
+            held.append(why_sq)
+            continue
         # (0.104.137) in a crisis, recovery gets extra action slots
         limit = cfg["max_actions_per_cycle"]
         if _d(getattr(memory, "crisis", None)).get("why") and crisis.is_recovery(p):
@@ -1339,6 +1401,8 @@ def select(proposals: list[Proposal], state: dict, memory: Memory,
             # (0.105.46, I3) the manager doesn't get to the AI's orders: approved as placed
             p.action = dict(p.action, approve=True)
         allowed.append(p)
+        for i_ in ordered_squads(p.action):
+            squads_claimed.setdefault(i_, p)
         fired_this_cycle.add(cooldown_key(p))
         if p.is_order:
             orders_today += 1

@@ -118,7 +118,12 @@ LIMIT_EXEMPT = EMERGENCY | {"break_fights", "calm_burrow", "join_levels", "censu
                             "kitchen",   # (0.100) a kitchen setting, once per drink shortage: no slot of its own
                             "mood",      # (0.105.24) a strange mood's materials (a life on it; a handful of actions at most)
                             "insane",    # (0.105.40b) doors between the insane and deadly ground (one action)
-                            "hunting_stop"}   # (fix3) the AI's hunters called in when danger comes: no slot to wait for
+                            "hunting_stop",   # (fix3) the AI's hunters called in when danger comes: no slot to wait for
+                            # (0.105.48 K1b, audit A9 #2) a squad called back from a fight it loses
+                            # (fire breather, necromancer siege, matchup, hunt retreat, called off):
+                            # six recalls held three squads on their kill orders a cycle longer and
+                            # the drink order behind them
+                            "squad_recall"}
 
 
 @dataclass
