@@ -38,6 +38,8 @@ DFAI_SNAPSHOT_WRITE=1 python tests/run_all.py  # all of them
 (on Windows: `set DFAI_SNAPSHOT_WRITE=1` first), then check the changed files
 under `tests/fixtures/snapshots/` with `git diff` and say so in the commit.
 
+**Drawing a level.** `python brain\tools\draw_level.py workshops --param rooms=6` (or `--all`) draws a layout from `lua/ai-layouts.lua` as text, without the game (`tests/test_draw_level.py`).
+
 ## 2. Self-test inside the game
 
 With a fort loaded:
