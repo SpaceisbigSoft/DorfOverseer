@@ -12,12 +12,13 @@ years without a good meal: its best cook had skill 1.
 
 The rules here (lua/ai-welfare.lua does the work):
 
-  burial_corner      coffins anywhere: when the dead the tombs can take
-                     outnumber the free tombs for a season with no tomb level
-                     come (burial_fallback_days), or a week after a tomb
-                     level's search failed (burial_fallback_refused_days), or
-                     at once when burial_fallback_unburied more wait and no
-                     tomb level is under way: coffins (each with a 1x1 tomb
+  burial_corner      coffins anywhere: (0.105.51) at once when the dead the
+                     tombs can take outnumber the free tombs and no tomb
+                     level is under way (burial_fallback_unburied, 1), or two
+                     weeks after while one is (burial_fallback_days, 14; was
+                     a season and 10 dead: C's ghost), or a week after a tomb
+                     level's search failed (burial_fallback_refused_days):
+                     coffins (each with a 1x1 tomb
                      that takes citizens) on free dug floor of the AI's
                      finished levels (a tomb level's spare tiles first, a
                      storage level, a workshop level). Not while the Rules
@@ -32,6 +33,9 @@ The rules here (lua/ai-welfare.lua does the work):
   slabs_ahead_blanks blank slabs for them (the mason engraves a blank one)
   slabs_ahead_place  the engraved slabs put up while no ghost walks (with a
                      ghost, _dead_notes' own `slabs` rule does it)
+  burial_others      (0.105.51) the bodies DF never buries (dead.why.not_ours:
+                     visitors', merchants', other civs') marked for a garbage
+                     dump under the sky (mark_dump bodies), or one made
   train_cook         in a fort of cook_train_max_citizens or fewer whose best
                      free cook is under cook_train_below, while good meals are
                      wanted: the best free cook made the kitchens' only worker,
@@ -53,6 +57,7 @@ from planner_config import PLANNER_CONFIG
 __all__ = ["_welfare_rules", "tombable_dead", "burial_fallback_due", "cook_train_due"]
 
 AGENDA_THEMES["burial_corner"] = AGENDA_THEMES["burial_coffins"] = "bury the dead"
+AGENDA_THEMES["burial_others"] = "the dead DF won't bury out to the dump"
 AGENDA_THEMES["slabs_ahead"] = AGENDA_THEMES["slabs_ahead_blanks"] = AGENDA_THEMES["slabs_ahead_place"] = \
     "memorials for the dead nobody can reach"
 AGENDA_THEMES["train_cook"] = "train a cook"
@@ -124,12 +129,15 @@ def burial_fallback_due(s: dict, cfg: dict, memory=None) -> tuple[int, str]:
     days = (now - since) // TICKS_PER_DAY
     refused = _tomb_refused_at(memory) if memory is not None else None
     if days >= _c(cfg, "burial_fallback_days"):
-        return short, f"the dead have outnumbered the free tombs for {days} days and no tomb level came"
+        return short, (f"the dead have outnumbered the free tombs for {days} days and the tomb level under way "
+                       "isn't done" if tombs_open else
+                       f"the dead have outnumbered the free tombs for {days} days and no tomb level came")
     if (refused is not None and 0 <= now - refused < _c(cfg, "burial_fallback_days") * TICKS_PER_DAY
             and days >= _c(cfg, "burial_fallback_refused_days") and not tombs_open):
         return short, "the tomb level's search failed (no safe level found)"
     if short >= _c(cfg, "burial_fallback_unburied") and not tombs_open:
-        return short, f"{short} more dead than free tombs and no tomb level under way"
+        return short, (f"{short} more dead than free tombs and no tomb level under way (a body left unburied "
+                       "may rise as a ghost)")
     return 0, ""
 
 
@@ -271,7 +279,42 @@ def _cook_rule(s: dict, cfg: dict, proposals: list, memory=None) -> None:
                                    "kitchens so one dwarf learns"), 4))
 
 
+def _others_dead_rule(s: dict, cfg: dict, proposals: list, notes: list) -> None:
+    """(0.105.51) The bodies DF never buries (visitors', merchants', other
+    civs' dwarves: the `dead` section's why.not_ours) marked for a garbage
+    dump under the sky (mark_dump bodies, the bodies alone), or such a dump
+    made first. E (R3): 10 such bodies lay indoors for years, kept as the
+    fort's own; 668 indoor tiles of miasma, every citizen had seen a body."""
+    if "dead" in s.get("_errors", {}) or "disposal" in s.get("_errors", {}):
+        return
+    d = _d(s.get("dead"))
+    why = _d(d.get("why"))
+    # the ones not yet marked nor in a dump (a bridge before 0.105.51: all of them)
+    n = int(why["not_ours_loose"] if isinstance(why.get("not_ours_loose"), int) else why.get("not_ours") or 0)
+    if n <= 0:
+        return
+    dis = _d(s.get("disposal"))
+    if dis.get("siege"):
+        return
+    zones = [z for z in _l(dis.get("dump_zones")) if isinstance(z, dict)]
+    if any(z.get("inside") is False for z in zones):
+        most = min(int(_c(cfg, "burial_others_max")), 500)
+        proposals.append(Proposal("burial_others", {"type": "mark_dump", "bodies": True, "junk": False,
+                                                    "reasons": ["free", "other_dead"], "max": most},
+                                  f"{n} dead of other civs (visitors, merchants: DF buries only its own) lie "
+                                  "unburied: their bodies marked for the garbage dump outside, before they rot "
+                                  "indoors", 4))
+        return
+    clearing = _d(_d(s.get("buildings")).get("clearing"))
+    a = {"type": "place_surface", "kind": "dump"}
+    if not clearing.get("dump") and not any(p.action == a for p in proposals):
+        proposals.append(Proposal("burial_others", a,
+                                  f"{n} dead of other civs lie unburied (DF buries only its own) and the fort has no "
+                                  "garbage dump under the sky for them: make one outside", 5))
+
+
 def _welfare_rules(s: dict, cfg: dict, proposals: list, notes: list, memory=None, rules_: dict | None = None) -> None:
     """(0.105.47) Called from plan() beside _dead_notes."""
     _burial_rules(s, cfg, proposals, notes, memory, rules_ or {})
+    _others_dead_rule(s, cfg, proposals, notes)
     _cook_rule(s, cfg, proposals, memory)

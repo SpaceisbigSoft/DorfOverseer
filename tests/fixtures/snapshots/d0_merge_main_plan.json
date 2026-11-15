@@ -190,7 +190,7 @@
  "enxah-0.104.52-y73-winter.json:Deep mine": [
   {
    "notes": "sha256:5f8c7b456ea058dee6f17598",
-   "props": "sha256:7df5700dd98047998baff2f3",
+   "props": "sha256:5542a775ea8aacffdf535edc",
    "rules": [
     "build",
     "hospital",
@@ -209,6 +209,7 @@
     "labor",
     "recreation",
     "well",
+    "burial_others",
     "squad_trim",
     "needs_meal",
     "pair_chairs",
@@ -222,7 +223,7 @@
   },
   {
    "notes": "sha256:353e5270aaf493f0cb1f45ec",
-   "props": "sha256:b8ec629057d0b023a0003d45",
+   "props": "sha256:ae5046806bdb4f465da22850",
    "rules": [
     "build",
     "hospital",
@@ -241,6 +242,7 @@
     "labor",
     "recreation",
     "well",
+    "burial_others",
     "squad_trim",
     "needs_meal",
     "pair_chairs",
@@ -253,7 +255,7 @@
   },
   {
    "notes": "sha256:353e5270aaf493f0cb1f45ec",
-   "props": "sha256:7df5700dd98047998baff2f3",
+   "props": "sha256:5542a775ea8aacffdf535edc",
    "rules": [
     "build",
     "hospital",
@@ -272,6 +274,7 @@
     "labor",
     "recreation",
     "well",
+    "burial_others",
     "squad_trim",
     "needs_meal",
     "pair_chairs",
@@ -287,7 +290,7 @@
  "enxah-0.104.52-y73-winter.json:Garden fort": [
   {
    "notes": "sha256:1d54210acc6c22f89675941f",
-   "props": "sha256:98fb645f3ab5118014cf0475",
+   "props": "sha256:a35168c2b3c201b4fcd86789",
    "rules": [
     "build",
     "hospital",
@@ -306,6 +309,7 @@
     "labor",
     "recreation",
     "well",
+    "burial_others",
     "farms",
     "squad_trim",
     "needs_meal",
@@ -322,7 +326,7 @@
   },
   {
    "notes": "sha256:6cd672ca69e0da191931269e",
-   "props": "sha256:c8c9043ac2b6b56b0c20f614",
+   "props": "sha256:e0b3600837073f9e463bb617",
    "rules": [
     "build",
     "hospital",
@@ -341,6 +345,7 @@
     "labor",
     "recreation",
     "well",
+    "burial_others",
     "farms",
     "squad_trim",
     "needs_meal",
@@ -356,7 +361,7 @@
   },
   {
    "notes": "sha256:6cd672ca69e0da191931269e",
-   "props": "sha256:98fb645f3ab5118014cf0475",
+   "props": "sha256:a35168c2b3c201b4fcd86789",
    "rules": [
     "build",
     "hospital",
@@ -375,6 +380,7 @@
     "labor",
     "recreation",
     "well",
+    "burial_others",
     "farms",
     "squad_trim",
     "needs_meal",
@@ -393,7 +399,7 @@
  "enxah-0.104.52-y73-winter.json:Hermit hold": [
   {
    "notes": "sha256:d8737d8cf05b896b10570ad3",
-   "props": "sha256:23460d402e066c4697f63cf6",
+   "props": "sha256:38d96eae8df2708e9022a615",
    "rules": [
     "build",
     "hospital",
@@ -412,6 +418,7 @@
     "labor",
     "recreation",
     "well",
+    "burial_others",
     "squad_trim",
     "needs_meal",
     "pair_chairs",
@@ -424,7 +431,7 @@
   },
   {
    "notes": "sha256:4ca9b968ae40358552cd1614",
-   "props": "sha256:9ffa423bf4353b7d3c487bf2",
+   "props": "sha256:9e61e3fb3cf0fb8556217479",
    "rules": [
     "build",
     "hospital",
@@ -443,6 +450,7 @@
     "labor",
     "recreation",
     "well",
+    "burial_others",
     "squad_trim",
     "needs_meal",
     "pair_chairs",
@@ -454,7 +462,7 @@
   },
   {
    "notes": "sha256:4ca9b968ae40358552cd1614",
-   "props": "sha256:23460d402e066c4697f63cf6",
+   "props": "sha256:38d96eae8df2708e9022a615",
    "rules": [
     "build",
     "hospital",
@@ -473,6 +481,7 @@
     "labor",
     "recreation",
     "well",
+    "burial_others",
     "squad_trim",
     "needs_meal",
     "pair_chairs",
@@ -487,7 +496,7 @@
  "enxah-0.104.52-y73-winter.json:Merchant city": [
   {
    "notes": "sha256:a67e39d50a50b92f215c9892",
-   "props": "sha256:8529256e3b756d8e9eb207db",
+   "props": "sha256:ff61e2696f42a301b088b286",
    "rules": [
     "build",
     "hospital",
@@ -506,6 +515,7 @@
     "labor",
     "recreation",
     "well",
+    "burial_others",
     "squad_trim",
     "needs_meal",
     "pair_chairs",
@@ -521,7 +531,7 @@
   },
   {
    "notes": "sha256:d9fde94238e8465a3f6ab139",
-   "props": "sha256:7818d1f0530d96fa103605e3",
+   "props": "sha256:34c9020751694781b935d7f8",
    "rules": [
     "build",
     "hospital",
@@ -540,6 +550,7 @@
     "labor",
     "recreation",
     "well",
+    "burial_others",
     "squad_trim",
     "needs_meal",
     "pair_chairs",
@@ -554,7 +565,7 @@
   },
   {
    "notes": "sha256:d9fde94238e8465a3f6ab139",
-   "props": "sha256:8529256e3b756d8e9eb207db",
+   "props": "sha256:ff61e2696f42a301b088b286",
    "rules": [
     "build",
     "hospital",
@@ -573,6 +584,7 @@
     "labor",
     "recreation",
     "well",
+    "burial_others",
     "squad_trim",
     "needs_meal",
     "pair_chairs",
@@ -590,7 +602,7 @@
  "enxah-0.104.52-y73-winter.json:Monastery": [
   {
    "notes": "sha256:b3659376a5096c0fc1f0c179",
-   "props": "sha256:5e57ee51b0233df507f15f04",
+   "props": "sha256:107ecdc09aa7073f1354a274",
    "rules": [
     "build",
     "hospital",
@@ -607,6 +619,7 @@
     "labor",
     "recreation",
     "well",
+    "burial_others",
     "squad_trim",
     "needs_meal",
     "pair_chairs",
@@ -621,7 +634,7 @@
   },
   {
    "notes": "sha256:8009b418ced407d9afbc6d62",
-   "props": "sha256:05639a3379d147cce2622009",
+   "props": "sha256:598d341ea24539b12a13061d",
    "rules": [
     "build",
     "hospital",
@@ -638,6 +651,7 @@
     "labor",
     "recreation",
     "well",
+    "burial_others",
     "squad_trim",
     "needs_meal",
     "pair_chairs",
@@ -651,7 +665,7 @@
   },
   {
    "notes": "sha256:8009b418ced407d9afbc6d62",
-   "props": "sha256:5e57ee51b0233df507f15f04",
+   "props": "sha256:107ecdc09aa7073f1354a274",
    "rules": [
     "build",
     "hospital",
@@ -668,6 +682,7 @@
     "labor",
     "recreation",
     "well",
+    "burial_others",
     "squad_trim",
     "needs_meal",
     "pair_chairs",
@@ -684,7 +699,7 @@
  "enxah-0.104.52-y73-winter.json:War-hold": [
   {
    "notes": "sha256:5f8c7b456ea058dee6f17598",
-   "props": "sha256:b9f5f5611c0f4d79eb049099",
+   "props": "sha256:d5110f45c53c2374d5aeae81",
    "rules": [
     "build",
     "hospital",
@@ -704,6 +719,7 @@
     "labor",
     "recreation",
     "well",
+    "burial_others",
     "needs_meal",
     "pair_chairs",
     "temple_chest",
@@ -715,7 +731,7 @@
   },
   {
    "notes": "sha256:353e5270aaf493f0cb1f45ec",
-   "props": "sha256:b1ecfe86f219c94320fe2bfc",
+   "props": "sha256:9f301e7fbf57748eae486ced",
    "rules": [
     "build",
     "hospital",
@@ -735,6 +751,7 @@
     "labor",
     "recreation",
     "well",
+    "burial_others",
     "needs_meal",
     "pair_chairs",
     "temple_chest",
@@ -745,7 +762,7 @@
   },
   {
    "notes": "sha256:353e5270aaf493f0cb1f45ec",
-   "props": "sha256:b9f5f5611c0f4d79eb049099",
+   "props": "sha256:d5110f45c53c2374d5aeae81",
    "rules": [
     "build",
     "hospital",
@@ -765,6 +782,7 @@
     "labor",
     "recreation",
     "well",
+    "burial_others",
     "needs_meal",
     "pair_chairs",
     "temple_chest",
@@ -778,7 +796,7 @@
  "enxah-0.104.52-y73-winter.json:own": [
   {
    "notes": "sha256:5f8c7b456ea058dee6f17598",
-   "props": "sha256:27374bdfab84853f088742ec",
+   "props": "sha256:f076f21ecc59445f1200c38d",
    "rules": [
     "build",
     "hospital",
@@ -797,6 +815,7 @@
     "labor",
     "recreation",
     "well",
+    "burial_others",
     "squad_trim",
     "needs_meal",
     "pair_chairs",
@@ -810,7 +829,7 @@
   },
   {
    "notes": "sha256:353e5270aaf493f0cb1f45ec",
-   "props": "sha256:bccfc3e4e5ab718f61047e2e",
+   "props": "sha256:a32b2d607524ee6b92fc62f8",
    "rules": [
     "build",
     "hospital",
@@ -829,6 +848,7 @@
     "labor",
     "recreation",
     "well",
+    "burial_others",
     "squad_trim",
     "needs_meal",
     "pair_chairs",
@@ -841,7 +861,7 @@
   },
   {
    "notes": "sha256:353e5270aaf493f0cb1f45ec",
-   "props": "sha256:27374bdfab84853f088742ec",
+   "props": "sha256:f076f21ecc59445f1200c38d",
    "rules": [
     "build",
     "hospital",
@@ -860,6 +880,7 @@
     "labor",
     "recreation",
     "well",
+    "burial_others",
     "squad_trim",
     "needs_meal",
     "pair_chairs",

@@ -564,13 +564,57 @@ function mark_melt(opts, dry_run)
     return res
 end
 
+-- (0.105.51) The bodies DF never buries, marked for a garbage dump under
+-- the sky (dump on, forbid off): a body or part lying loose on the ground
+-- whose side (ai-util corpse_side) is another's and that was a person: of
+-- the fort's race (a visitor's, a merchant's, another civ's dwarf) or with
+-- a historical figure (an elf, a human, a goblin). An animal's carcass is
+-- the butcher's and the refuse haulers'. None in a dump zone already, none
+-- of the fort's own (fort_remains), none the masks keep (blocked). Without
+-- a dump zone under the sky none is marked (skipped 'no_outside_dump'): an
+-- indoor dump would only move the rot. E (R3): 10 dwarf visitors' bodies
+-- lay unburied indoors for years, 668 indoor tiles of miasma.
+function dump_bodies(ctx, want, max, res, dry_run)
+    local outside = false
+    for _, zn in ipairs(ctx.dumps) do if not zn.inside then outside = true end end
+    res.bodies = 0
+    walk({'CORPSE', 'CORPSEPIECE'}, function(it, kind)
+        local f = it.flags
+        if f.dump or f.removed or f.garbage_collect then return end
+        if not U.on_ground(it) then return end
+        if U.fort_remains(it, kind, ctx) then return end
+        if U.corpse_side(it, kind, ctx) ~= 'other' then return end
+        local okp, person = pcall(function()
+            if ctx.race ~= nil and tonumber(it.race) == ctx.race then return true end
+            local hf = tonumber(it.hist_figure_id)
+            return hf ~= nil and hf >= 0
+        end)
+        if not (okp and person) then return end
+        local x, y, z = position(it)
+        if x and in_dump(ctx.dumps, x, y, z) then return end
+        if not outside then skip(res, 'no_outside_dump'); return end
+        local reason = x and reason_of(it, kind, x, y, z, ctx) or 'unknown'
+        local why = blocked(it, x, y, z, reason, ctx)
+        if why then skip(res, why); return end
+        if reason ~= 'free' and not want[reason] then skip(res, 'reason'); return end
+        if not dry_run then
+            it.flags.dump = true
+            it.flags.forbid = false
+        end
+        count(res, reason, kind)
+        res.bodies = res.bodies + 1
+        if res.n >= max then return false end
+    end)
+end
+
 -- Junk marked for the garbage dump (dump on, forbid and melt off), lying
 -- loose on the ground only: worn (wear >= 2) non-metal clothes and rags,
 -- rotten food, and a dead other's non-metal gear. opts: reasons (the forbidden reasons taken,
 -- and 'free' for what isn't forbidden; default own_dead, used_ammo,
 -- other_dead; what isn't forbidden is taken whatever they say), max (default
 -- 50), player_items ('unknown' is taken only when both it is listed and
--- player_items is true). Refused (but in a dry run) when the fort has no dump zone.
+-- player_items is true), bodies (0.105.51: true, the bodies DF never buries
+-- too, dump_bodies), junk (false: those bodies alone). Refused (but in a dry run) when the fort has no dump zone.
 function mark_dump(opts, dry_run)
     opts = opts or {}
     local ctx = context(opts)
@@ -588,6 +632,16 @@ function mark_dump(opts, dry_run)
     for _, k in ipairs(ROTS) do table.insert(kinds, k) end
     local rots = {}
     for _, k in ipairs(ROTS) do rots[k] = true end
+    -- (0.105.51) opts.bodies: the bodies DF never buries first (dump_bodies)
+    if opts.bodies == true then dump_bodies(ctx, want, max, res, dry_run) end
+    if res.n >= max or opts.junk == false then      -- junk false: the bodies alone
+        res.more = res.n >= max or nil
+        res.marked = res.n
+        if res.n == 0 and not dry_run then
+            res.ok, res.rejected, res.error = false, true, 'no body DF leaves unburied may be marked for the dump now'
+        end
+        return res
+    end
     walk(kinds, function(it, kind)
         local f = it.flags
         if f.dump then return end

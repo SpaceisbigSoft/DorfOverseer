@@ -211,8 +211,9 @@ def _():
     assert tuple(env.forbidden_reason(own, ctx)) == ("own_dead", "own")
     assert tuple(env.forbidden_reason(other_civ, ctx)) == ("other_dead", "other")
     assert tuple(env.forbidden_reason(goblin, ctx)) == ("other_dead", "other")
-    # but nothing of the fort's race is ever destroyed (empty_dump's own test)
-    assert env.fort_remains(other_civ, "CORPSE", ctx) and env.fort_remains(own, "CORPSE", ctx)
+    # (0.105.51) a dwarf of another civ is no longer kept as the fort's own
+    # (DF never buries them: E's visitors rotted indoors for years)
+    assert not env.fort_remains(other_civ, "CORPSE", ctx) and env.fort_remains(own, "CORPSE", ctx)
     assert not env.fort_remains(goblin, "CORPSEPIECE", ctx)
 
 
@@ -293,7 +294,8 @@ def _():
 
 # --- 6. empty_dump ------------------------------------------------------------------------------
 
-@test("6. empty_dump: only forbidden items; never a citizen's body, a dwarf's of any civ, a dead dwarf's or a living owner's")
+@test("6. empty_dump: only forbidden items; never a citizen's body, the fort's civ's, a dead dwarf's or a living owner's "
+      "(0.105.51: another civ's dwarf goes)")
 def _():
     lua, env, w = A.world()
     env.df["global"].plotinfo.civ_id = 7
@@ -310,11 +312,11 @@ def _():
     goblin = mk(lua, w, kind="CORPSE", race=2, unit_id=8, flags={"forbid": True}, pos=(10, 12, 150))
     rags = mk(lua, w, kind="PANTS", flags={"forbid": True}, pos=(11, 12, 150))
     r = env.empty_dump(opts(lua), False)
-    assert set(w.removed.values()) == {goblin.id, rags.id}, (list(w.removed.values()), skipped(r))
-    for it in (citizen, dwarf, civ, ring, owned, free):
+    assert set(w.removed.values()) == {goblin.id, rags.id, dwarf.id}, (list(w.removed.values()), skipped(r))
+    for it in (citizen, civ, ring, owned, free):
         assert not it.flags.removed
     s = skipped(r)
-    assert s.get("own_remains") == 4 and s.get("not_forbidden") == 1 and s.get("owned") == 1, s
+    assert s.get("own_remains") == 3 and s.get("not_forbidden") == 1 and s.get("owned") == 1, s
 
 
 # --- 7. place_dump_zone ---------------------------------------------------------------------------

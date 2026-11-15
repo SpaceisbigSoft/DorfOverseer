@@ -361,11 +361,13 @@ function item_owner(it)
     return u, not (okd and dead)
 end
 
--- The fort's race and civ (either nil when the game can't say).
+-- The fort's race and civ (either nil when the game can't say); third, its
+-- group (the site government, plotinfo.group_id), nil when unread.
 function fort_race_civ()
     local okr, race = pcall(function() return df.global.plotinfo.race_id end)
     local okc, civ = pcall(function() return df.global.plotinfo.civ_id end)
-    return okr and tonumber(race) or nil, okc and tonumber(civ) or nil
+    local okg, group = pcall(function() return df.global.plotinfo.group_id end)
+    return okr and tonumber(race) or nil, okc and tonumber(civ) or nil, okg and tonumber(group) or nil
 end
 
 -- The race and civ of the creature a body (or part) was: (race, civ), each nil when unknown.
@@ -378,28 +380,81 @@ function corpse_race_civ(it)
     return okr and tonumber(race) or nil, okc and tonumber(civ) or nil
 end
 
--- A body, part or remains (DEAD_KINDS): 'own' (the fort's race
--- and civ) or 'other'; nil for anything else. A race that can't be read
--- counts as another's; a civ that can't be read as the fort's.
+-- (0.105.51) The links by which a historical figure was one of the fort's
+-- (its site government, plotinfo.group_id): a member, an office holder,
+-- now or before death.
+OWN_LINKS = {MEMBER = true, FORMER_MEMBER = true, POSITION = true, FORMER_POSITION = true}
+
+-- (0.105.51) What the dead one's own record says: 'own' (their historical
+-- figure was of the fort's group: DFHack's Units.isOwnGroup test), 'visitor'
+-- (a merchant, a diplomat, a visitor or a forest retreat guest, whatever
+-- civ: DF buries none of them), or nil when the record says neither (or
+-- can't be read).
+function corpse_record(it, ctx)
+    local okd, u = pcall(function() return df.unit.find(it.unit_id) end)
+    u = okd and u or nil
+    local hfid
+    pcall(function() hfid = u and tonumber(u.hist_figure_id) end)
+    if hfid == nil or hfid < 0 then
+        pcall(function() hfid = tonumber(it.hist_figure_id) end)
+    end
+    if ctx.group ~= nil and hfid ~= nil and hfid >= 0 then
+        local okh, own = pcall(function()
+            local hf = df.historical_figure.find(hfid)
+            if not hf then return false end
+            for _, l in ipairs(hf.entity_links) do
+                if l.entity_id == ctx.group and OWN_LINKS[df.histfig_entity_link_type[l:getType()] or ''] then
+                    return true
+                end
+            end
+            return false
+        end)
+        if okh and own then return 'own' end
+    end
+    if u then
+        local okv, visitor = pcall(function()
+            local f1, f2 = u.flags1, u.flags2
+            return (f1 and (f1.merchant or f1.diplomat or f1.forest))
+                or (f2 and (f2.visitor or f2.visitor_uninvited)) or false
+        end)
+        if okv and visitor then return 'visitor' end
+    end
+    return nil
+end
+
+-- A body, part or remains (DEAD_KINDS): 'own' (one of the fort's) or
+-- 'other'; nil for anything else. (0.105.51) One of the fort's: their
+-- record says so (a member of the fort's group, of any race), or else of
+-- the fort's race and civ (a civ that can't be read counts as the fort's)
+-- and no merchant, diplomat or visitor. A race that can't
+-- be read counts as another's. DF buries only its own citizens: E (R3) kept
+-- 10 visitors' dwarf bodies rotting indoors for years as "own dead".
 function corpse_side(it, kind, ctx)
     if not DEAD_KINDS[kind or ''] then return nil end
     local race, civ = corpse_race_civ(it)
+    local rec = corpse_record(it, ctx)
+    if rec == 'own' then return 'own' end
     if race == nil or ctx.race == nil or race ~= ctx.race then return 'other' end
     if civ ~= nil and ctx.civ ~= nil and civ ~= ctx.civ then return 'other' end
+    if rec == 'visitor' then return 'other' end
     return 'own'
 end
 
--- The remains of one of the fort's own, in the widest sense (nothing ever
--- destroys these): the dead_dwarf flag, or a body or part of the fort's
--- race OR its civ (or whose race, or kind, can't be read); REMAINS too.
+-- The remains of one of the fort's own (nothing ever dumps or destroys
+-- these): the dead_dwarf flag, a body, part or remains corpse_side calls
+-- the fort's own, one of another race but the fort's civ (no merchant,
+-- diplomat or visitor), or one whose race, or kind, can't be read.
+-- (0.105.51) was the fort's race OR civ: every dwarf's body, a visitor's
+-- too, was kept to rot where it lay (E: 'kept own_dead 25', 668 indoor
+-- miasma tiles, every citizen had seen a dead body).
 function fort_remains(it, kind, ctx)
     if it.flags.dead_dwarf then return true end
     if kind == nil then return true end         -- can't tell what it is: kept
     if not DEAD_KINDS[kind] then return false end
     local race, civ = corpse_race_civ(it)
-    if race == nil or (ctx.race ~= nil and race == ctx.race) then return true end
-    if civ ~= nil and ctx.civ ~= nil and civ == ctx.civ then return true end
-    return false
+    if race == nil then return true end
+    if corpse_side(it, kind, ctx) == 'own' then return true end
+    return civ ~= nil and ctx.civ ~= nil and civ == ctx.civ and corpse_record(it, ctx) ~= 'visitor'
 end
 
 -- The context forbidden_reason reads: the cistern's tiles, the fort's race
@@ -409,7 +464,7 @@ end
 function forbid_context(opts)
     opts = opts or {}
     local ctx = {cistern = cistern_tiles(), in_dump = opts.in_dump, in_stockpile = opts.in_stockpile}
-    ctx.race, ctx.civ = fort_race_civ()
+    ctx.race, ctx.civ, ctx.group = fort_race_civ()
     return ctx
 end
 

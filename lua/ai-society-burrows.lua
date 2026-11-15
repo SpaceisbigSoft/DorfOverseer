@@ -207,11 +207,14 @@ function badly_wants_friends(u)
     return ok and f or nil
 end
 
-local function rec_eligible(u)
+-- (0.105.51) `worst_cat`: the highest stress category moved in (1, very
+-- unhappy, by default; 2, the plain unhappy too, when the brain says the
+-- fort's unhappy share is high: E's bulk sat at 2, out of reach)
+local function rec_eligible(u, worst_cat)
     -- (0.104.139) never one in a tantrum or a rage: they start the fights (rec_base)
     if not rec_base(u) then return false end
     local okc, cat = pcall(dfhack.units.getStressCategory, u)
-    return okc and type(cat) == 'number' and cat <= 1
+    return okc and type(cat) == 'number' and cat <= (worst_cat or 1)
 end
 
 -- Is member `id` (in since `since`) kept? false and why when not.
@@ -284,7 +287,8 @@ end
 
 -- `release` (0.105.33): the brain's word that the burrow is to be emptied
 -- (a threat, the fort shrunk, the status unreadable): everyone out, nobody in.
-function recreation_tick(max, days, dry_run, txt, friends, friend_days, release)
+-- `unhappy` (0.105.51): the plain unhappy moved in too (rec_eligible).
+function recreation_tick(max, days, dry_run, txt, friends, friend_days, release, unhappy)
     max, days = max or 8, days or 28
     friends, friend_days = friends or 0, friend_days or 7
     local d = rec_state()
@@ -344,7 +348,7 @@ function recreation_tick(max, days, dry_run, txt, friends, friend_days, release)
     for _, u in ipairs(report_citizens(true)) do
         local was = tonumber(d.out[tostring(u.id)])
         if was and now - was >= days * 1200 then d.out[tostring(u.id)] = nil; was = nil end
-        if not d.members[tostring(u.id)] and not was and rec_eligible(u) then
+        if not d.members[tostring(u.id)] and not was and rec_eligible(u, unhappy and 2 or 1) then
             local okc, cat = pcall(dfhack.units.getStressCategory, u)
             table.insert(cands, {u = u, cat = okc and cat or 9})
         end
