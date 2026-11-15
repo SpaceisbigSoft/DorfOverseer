@@ -438,7 +438,7 @@ def _():
     i = acts.index("function act_allow_burial")
     assert "reqscript('ai-welfare').corner_areas()" in acts[i:acts.index("\nend\n", i)]
     proj = (LUA / "ai-builder-projects.lua").read_text(encoding="utf-8")
-    assert proj.count("reqscript('ai-welfare').open_tombs(project_areas(p))") == 2
+    assert proj.count("reqscript('ai-welfare').open_tombs(own_areas(p))") == 2   # (F4, S2)
     rep = (LUA / "ai-bridge-report.lua").read_text(encoding="utf-8")
     i = rep.index("function in_ai_tombs")
     assert "corner_areas()" in rep[i:rep.index("\nend\n", i)]

@@ -842,7 +842,9 @@ function start_project(params, now, dry_run)
                  smooth = decor.smooth, engrave = decor.engrave},
         started = now, designated = result,
         plan = plan, in_district = site.in_district,   -- the overseer's hint, and whether it was met
-        free_left = (kind == 'workshops' and (params.spare or 0) > 0) and params.spare or nil,   -- (0.105.54)
+        -- (0.105.54) its free rooms; (V4) none on a floor: unit_params drops the spares there and
+        -- join_workshop_level skips floor levels, so save_projects must not keep it as a "free level"
+        free_left = (kind == 'workshops' and not site.floor and (params.spare or 0) > 0) and params.spare or nil,
     }
     -- (layout B) a floor's level: its new hall tiles are its links (links = site.links or extra_list(site.extra))
     if site.links then p.links = site.links end
@@ -1074,6 +1076,25 @@ function own_tile_test(p)
         local x, y = (b.x1 + b.x2) // 2 - a.x, (b.y1 + b.y2) // 2 - a.y
         return own[x] ~= nil and own[x][y] == true
     end
+end
+
+-- (F4, S2) The boxes a reader counts or places in (tombs opened, coffins put in a corner):
+-- project_areas(p), but a floor level's is its rooms' box alone (copied, never the saved
+-- table) with own(b): true when the middle tile of b (anything with x1, y1, x2, y2) is one
+-- of the level's own room tiles -- never the main hall (its links), never a neighbour's room.
+function own_areas(p)
+    local a, box = anchor_of(p), p.area
+    if type(p.floor) ~= 'table' or type(a) ~= 'table' or type(box) ~= 'table' then return project_areas(p) end
+    local own = layouts.tiles_from_dig(cells_of(p, 'dig'))
+    for _, l in ipairs(type(p.links) == 'table' and p.links or {}) do
+        if type(l) == 'table' and l.x ~= nil and own[l.x] then own[l.x][l.y] = nil end
+    end
+    local ax, ay = a.x, a.y
+    return {{x1 = box.x1, y1 = box.y1, x2 = box.x2, y2 = box.y2, z = box.z,
+             own = function(b)
+                 local x, y = (b.x1 + b.x2) // 2 - ax, (b.y1 + b.y2) // 2 - ay
+                 return own[x] ~= nil and own[x][y] == true
+             end}}
 end
 
 function furnish_progress(p)
@@ -1699,7 +1720,7 @@ function furnish_project(id, buildingplan_on, stalled)
     -- (0.105.47, I7b) a tomb level's tombs take the fort's dead from the start
     -- (automatic burial was found off on free tombs twice in B)
     if p.kind == 'tombs' then
-        pcall(function() results.burial = reqscript('ai-welfare').open_tombs(project_areas(p)).opened end)
+        pcall(function() results.burial = reqscript('ai-welfare').open_tombs(own_areas(p)).opened end)
     end
     p.phase = 'furnish'
     p.furnish_started = {year = now_tick() // 403200, tick = now_tick() % 403200}
@@ -1781,7 +1802,7 @@ function finish_project(id, decor_only, stalled, give_up)
     -- (0.105.47, I7b) and again once its coffins stand: every tomb takes the fort's dead
     local burial
     if p.kind == 'tombs' then
-        pcall(function() burial = reqscript('ai-welfare').open_tombs(project_areas(p)).opened end)
+        pcall(function() burial = reqscript('ai-welfare').open_tombs(own_areas(p)).opened end)
     end
     -- (layout B) a floor level's pile rooms are booked for their shops (ai-builder-floorpiles.lua)
     if p.floor and type(floor_book_piles) == 'function' then pcall(floor_book_piles, p) end
