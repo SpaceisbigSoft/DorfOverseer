@@ -75,6 +75,11 @@ local function decode_floors()
     if type(store.floors) ~= 'table' then store.floors = {} end
     store.fallbacks = math.tointeger(store.fallbacks) or 0
     if store.last ~= nil and type(store.last) ~= 'table' then store.last = nil end
+    -- (F2, V2) the floors that are only expired marks (no run, no slot) are
+    -- taken out as the record is read: the next save keeps it lean
+    if type(FP.prune) == 'function' then
+        pcall(function() FP.prune(store, now_tick(), FLOOR_RETRY_DAYS) end)
+    end
     return store, true
 end
 

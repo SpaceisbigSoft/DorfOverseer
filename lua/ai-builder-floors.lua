@@ -649,6 +649,12 @@ local function floor_search(params, stairs, reserved, data, ceil_z)
                         break
                     end
                 end
+                -- (F2, V2) a new floor the record cannot hold is never dug: commit
+                -- (after the level is designated) would refuse it
+                if not skip and is_new and type(M.plan.room_for) == 'function'
+                        and not M.plan.room_for(store) then
+                    skip = ('the floor record is full (%s floors)'):format(tostring(M.plan.FLOORS_MAX or #store.floors))
+                end
                 if skip then
                     table.insert(notes, label .. ': ' .. skip)
                 else

@@ -821,9 +821,10 @@ def _():
 
 @test("FLOORS_MAX: the 61st floor is refused by commit and by mark_full, the store unchanged")
 def _():
+    # (F2) 60 floors that hold halls: a floor that is only a mark would make way (see test_f2_floor_record)
     store = M.new_store()
     for z in range(60):
-        assert M.mark_full(store, M.new_floor(store, z, 0, 0, 1), "*", 1) is not None
+        assert M.commit(store, M.new_floor(store, z, 0, 0, 1), bedrooms_placement(), 100 + z, 1) is not None
     assert len(store.floors) == 60 and store.next == 61
     before = json.dumps(to_py(store), sort_keys=True)
     extra = M.new_floor(store, 99, 0, 0, 1)
@@ -833,7 +834,7 @@ def _():
     assert out is None and why == "floor record full"
     assert json.dumps(to_py(store), sort_keys=True) == before and len(extra.slots) == 0
     # a floor already in the store still takes a placement
-    assert M.commit(store, M.find_floor(store, 5, 0, 0), bedrooms_placement(), 41, 2) is not None
+    assert M.commit(store, M.find_floor(store, 5, 0, 0), masons_placement(), 41, 2) is not None
 
 
 @test("SLOTS_MAX: the placement that would pass 160 slots is refused, the store unchanged")
@@ -957,7 +958,7 @@ def _():
       return table.concat(out, ' ')
     end""")(SRC)
     assert names == ("FLOORS_MAX RUNS_MAX SLOTS_MAX VERSION claims commit find_floor grammar mark_full migrate "
-                     "new_floor new_store release summary"), names
+                     "new_floor new_store prune release room_for summary"), names
     for word in ("dfhack", "reqscript", "df."):
         code = "\n".join(line.split("--")[0] for line in SRC.splitlines())
         assert word not in code, word

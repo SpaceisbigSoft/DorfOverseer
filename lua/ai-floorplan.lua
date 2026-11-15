@@ -161,10 +161,166 @@ function new_store()
     return {v = VERSION, next = 1, fallbacks = 0, floors = {}}
 end
 
+-- A number, from a number or a numeric string ("12"), or nil.
+local function num_of(v)
+    if is_num(v) then return v end
+    if type(v) == 'string' then
+        local n = tonumber(v)
+        if is_num(n) then return n end
+    end
+    return nil
+end
+
+local RUN_NUMS = {'parent', 'ox', 'oy', 'len', 'walked', 'node', 'low'}
+local SLOT_NUMS = {'u', 'w', 'd'}
+local RECT_NUMS = {'x1', 'y1', 'x2', 'y2'}
+
+-- (F2) The fields of a table that should be numbers: a numeric string becomes
+-- its number (changed), anything else is left to `junk` (true when one of
+-- `required` is not a number, so the caller drops the row). `optional` fields
+-- that are not numbers are cleared.
+local function mend_nums(t, required, optional)
+    local changed, junk = false, false
+    for _, k in ipairs(required) do
+        local v = t[k]
+        local n = num_of(v)
+        if n == nil then junk = true
+        elseif n ~= v then t[k] = n; changed = true end
+    end
+    for _, k in ipairs(optional or {}) do
+        local v = t[k]
+        if v ~= nil then
+            local n = num_of(v)
+            if n ~= v then t[k] = n; changed = true end
+        end
+    end
+    return changed, junk
+end
+
+-- A list (dense, 1..n) from whatever was saved: a list is kept as it is; an
+-- object with string keys (or a list with holes) gives its table values, in
+-- the order of their numeric keys and then their ids. Returns list, changed.
+local function dense(t)
+    local n, count = #t, 0
+    for _ in pairs(t) do count = count + 1 end
+    if count == n then return t, false end
+    local rows = {}
+    for k, v in pairs(t) do table.insert(rows, {k = k, v = v}) end
+    table.sort(rows, function(a, b)
+        local ka, kb = num_of(a.k), num_of(b.k)
+        if ka and kb then return ka < kb end
+        if ka or kb then return ka ~= nil end
+        return tostring(a.k) < tostring(b.k)
+    end)
+    local out = {}
+    for _, r in ipairs(rows) do table.insert(out, r.v) end
+    return out, true
+end
+
+-- (F2, S3) One floor's runs, slots, marks and free run mended in place: a
+-- numeric string becomes its number; a run with no id or no direction, a
+-- second run with the same id, a slot with no run, no side or no place (and
+-- every slot of a dropped run) is dropped. Returns changed.
+local function mend_floor(f)
+    local changed = false
+    local function set(k, v) f[k] = v; changed = true end
+    if type(f.stair) ~= 'table' then set('stair', {})
+    else
+        local c = mend_nums(f.stair, {}, {'x', 'y'})
+        changed = changed or c
+    end
+    if type(f.runs) ~= 'table' then set('runs', {}) end
+    if type(f.slots) ~= 'table' then set('slots', {}) end
+    if type(f.full) ~= 'table' then set('full', {}) end
+    local runs, c1 = dense(f.runs)
+    local slots, c2 = dense(f.slots)
+    changed = changed or c1 or c2
+
+    local kept_runs, ids = {}, {}
+    for _, r in ipairs(runs) do
+        local ok = false
+        if type(r) == 'table' then
+            local c, junk = mend_nums(r, {'id', 'dx', 'dy'}, RUN_NUMS)
+            changed = changed or c
+            if not junk and compass(r.dx, r.dy) and not ids[r.id] then
+                ok = true
+                if r.len == nil then r.len = 0; changed = true end
+                if r.walked == nil then r.walked = 0; changed = true end
+                if r.grew ~= nil then
+                    if type(r.grew) ~= 'table' then r.grew = nil; changed = true
+                    else
+                        for k, v in pairs(r.grew) do
+                            local n = num_of(v)
+                            if n ~= v then r.grew[k] = n; changed = true end
+                        end
+                        if next(r.grew) == nil then r.grew = nil; changed = true end
+                    end
+                end
+                if r.tag ~= nil and type(r.tag) ~= 'string' then r.tag = nil; changed = true end
+                if r.closed ~= nil and type(r.closed) ~= 'string' then r.closed = nil; changed = true end
+                if r.neck ~= nil and type(r.neck) ~= 'boolean' then r.neck = (r.neck == true); changed = true end
+            end
+        end
+        if ok then
+            ids[r.id] = true
+            table.insert(kept_runs, r)
+        else
+            changed = true
+        end
+    end
+
+    local kept_slots = {}
+    for _, s in ipairs(slots) do
+        local ok = false
+        if type(s) == 'table' then
+            local c, junk = mend_nums(s, {'run', 'side'}, SLOT_NUMS)
+            changed = changed or c
+            local placed = is_num(s.u) and is_num(s.w) and is_num(s.d)
+            local side_ok = s.side == 1 or s.side == -1 or (s.axial == true and s.side == 0)
+            if not junk and ids[s.run] and placed and side_ok then
+                ok = true
+                if s.rect ~= nil then
+                    local bad = type(s.rect) ~= 'table'
+                    if not bad then
+                        local cr, jr = mend_nums(s.rect, RECT_NUMS)
+                        changed = changed or cr
+                        bad = jr
+                    end
+                    if bad then s.rect = nil; changed = true end
+                end
+                for _, k in ipairs({'kind', 'tag', 'role', 'flag'}) do
+                    if s[k] ~= nil and type(s[k]) ~= 'string' then s[k] = nil; changed = true end
+                end
+                -- a saved `false` stays false; anything else that is set means dead
+                if s.dead ~= nil and type(s.dead) ~= 'boolean' then s.dead = true; changed = true end
+            end
+        end
+        if ok then table.insert(kept_slots, s) else changed = true end
+    end
+    if #kept_runs ~= #runs or c1 then f.runs = kept_runs end
+    if #kept_slots ~= #slots or c2 then f.slots = kept_slots end
+
+    for tag, tick in pairs(f.full) do
+        local n = num_of(tick)
+        if type(tag) ~= 'string' or n == nil then f.full[tag] = nil; changed = true
+        elseif n ~= tick then f.full[tag] = n; changed = true end
+    end
+    if f.free ~= nil then
+        if type(f.free) ~= 'table' then set('free', nil)
+        else
+            local c = mend_nums(f.free, {}, {'tick', 'east', 'south', 'west', 'north'})
+            changed = changed or c
+        end
+    end
+    if f.hub ~= nil and f.hub ~= 'dug' and f.hub ~= 'found' then set('hub', 'found') end
+    return changed
+end
+
 -- nil / {} / junk / no whole v -> a new store (changed = true). A newer store
 -- comes back untouched with changed = false, why = 'newer': callers then only
--- read it. A v1 store that lost a part (hand-edited, half-written) is mended
--- in place (changed = true, why = 'repaired'). Never throws.
+-- read it. A v1 store that lost a part or holds junk (hand-edited,
+-- half-written, a number saved as a string) is mended in place (changed =
+-- true, why = 'repaired'; see mend_floor). Never throws.
 function migrate(store)
     if type(store) ~= 'table' then
         return new_store(), true, (store == nil) and 'new' or 'junk'
@@ -176,17 +332,30 @@ function migrate(store)
     if v > VERSION then return store, false, 'newer' end
     local changed = false
     if type(store.floors) ~= 'table' then store.floors = {}; changed = true end
-    local kept, dropped = {}, false
-    for _, f in ipairs(store.floors) do
-        if type(f) == 'table' and is_num(f.id) and is_num(f.z) then
-            if type(f.stair) ~= 'table' then f.stair = {}; changed = true end
-            if type(f.runs) ~= 'table' then f.runs = {}; changed = true end
-            if type(f.slots) ~= 'table' then f.slots = {}; changed = true end
-            if type(f.full) ~= 'table' then f.full = {}; changed = true end
-            table.insert(kept, f)
-        else
-            dropped = true
+    local rows, holey = dense(store.floors)
+    local kept, dropped, ids = {}, holey, {}
+    for _, f in ipairs(rows) do
+        local ok = false
+        if type(f) == 'table' then
+            local c, junk = mend_nums(f, {'id', 'z'}, {'made'})
+            changed = changed or c
+            if not junk then
+                ok = true
+                if mend_floor(f) then changed = true end
+            end
         end
+        if ok then table.insert(kept, f) else dropped = true end
+    end
+    -- (F2) a second floor with the same id gets a new one
+    local top = 0
+    for _, f in ipairs(kept) do if f.id > top then top = f.id end end
+    for _, f in ipairs(kept) do
+        if ids[f.id] then
+            top = top + 1
+            f.id = top
+            changed = true
+        end
+        ids[f.id] = true
     end
     if dropped or #kept ~= #store.floors then
         -- a list with a hole or a junk row: rebuilt dense
@@ -194,11 +363,84 @@ function migrate(store)
         for i, f in ipairs(kept) do store.floors[i] = f end
         changed = true
     end
-    local top = max_id(store)
+    local nx = num_of(store.next)
+    if nx ~= store.next then store.next = nx; changed = true end
+    top = max_id(store)
     if not is_num(store.next) or store.next <= top then store.next = top + 1; changed = true end
+    local fb = num_of(store.fallbacks)
+    if fb ~= store.fallbacks then store.fallbacks = fb; changed = true end
     if not is_num(store.fallbacks) then store.fallbacks = 0; changed = true end
     if changed then return store, true, 'repaired' end
     return store, false, nil
+end
+
+-- ---------------------------------------------------------------- prune
+
+local function has_any(t)
+    if type(t) ~= 'table' then return false end
+    return next(t) ~= nil
+end
+
+-- (F2, V2) A floor that is only a mark: no run, no slot, no hub dug. Only such
+-- a floor is ever taken out of the record.
+local function empty_floor(f)
+    return type(f) == 'table' and not has_any(f.runs) and not has_any(f.slots) and f.hub ~= 'dug'
+end
+
+-- The tick of a floor's newest mark (nil: none that is a number).
+local function newest_mark(f)
+    local top
+    for _, t in pairs(type(f.full) == 'table' and f.full or {}) do
+        if is_num(t) and (top == nil or t > top) then top = t end
+    end
+    return top
+end
+
+-- Can the record take one more floor? It can while it holds fewer than
+-- FLOORS_MAX, or when one of its floors is only a mark (make_room drops it).
+-- Reads only.
+function room_for(store)
+    if not usable(store) then return false end
+    if #store.floors < FLOORS_MAX then return true end
+    for _, f in ipairs(store.floors) do
+        if empty_floor(f) then return true end
+    end
+    return false
+end
+
+-- (F2, V2) Take out of the record every floor that is only a mark (no run,
+-- no slot, no hub dug) whose marks are all older than retry_days (default
+-- 28) as of `now`. A floor with a run or a slot is never taken out. With
+-- `room` true, and the record still at FLOORS_MAX, the floor-only-a-mark
+-- whose newest mark is oldest goes too (a mark only saves a search). store.next
+-- never goes back, so an id is never given twice. Returns how many went.
+function prune(store, now, retry_days, room)
+    if not usable(store) then return 0 end
+    local span = (is_num(retry_days) and retry_days > 0 and retry_days or NUMBERS.full_retry_days[3]) * DAY
+    local kept, n = {}, 0
+    for _, f in ipairs(store.floors) do
+        local gone = false
+        if empty_floor(f) and is_num(now) then
+            local t = newest_mark(f)
+            gone = t == nil or now - t >= span
+        end
+        if gone then n = n + 1 else table.insert(kept, f) end
+    end
+    if room and #kept >= FLOORS_MAX then
+        local oldest, at
+        for i, f in ipairs(kept) do
+            if empty_floor(f) then
+                local t = newest_mark(f) or -math.huge
+                if oldest == nil or t < oldest then oldest, at = t, i end
+            end
+        end
+        if at then table.remove(kept, at); n = n + 1 end
+    end
+    if n > 0 then
+        for k in pairs(store.floors) do store.floors[k] = nil end
+        for i, f in ipairs(kept) do store.floors[i] = f end
+    end
+    return n
 end
 
 -- The floor on level z that hangs on the stair at (sx, sy). With no stair
@@ -294,7 +536,7 @@ function commit(store, floor, placement, pid, tick)
     local puts, prun = list_of(placement.puts), list_of(placement.runs)
 
     -- everything is checked before anything is written
-    if not rec and #store.floors >= FLOORS_MAX then return nil, 'floor record full' end
+    if not rec and not room_for(store) then return nil, 'floor record full' end
     local runs_now, added, known = list_of(target.runs), 0, {}
     for _, r in ipairs(runs_now) do
         if type(r) == 'table' then known[r.id] = true end
@@ -319,6 +561,8 @@ function commit(store, floor, placement, pid, tick)
     if #list_of(target.slots) + #puts > SLOTS_MAX then return nil, 'floor record full' end
 
     if not rec then
+        -- (F2, V2) the floors that are only marks make way (room_for said one can)
+        if #store.floors >= FLOORS_MAX then prune(store, tick, nil, true) end
         if not is_num(floor.made) then floor.made = tick end
         rec = insert_floor(store, floor)
     end
@@ -462,6 +706,9 @@ function mark_full(store, floor, tag, tick, free)
     if type(floor) ~= 'table' then return nil, 'no floor' end
     local rec = own_record(store, floor)
     if not rec then
+        -- (F2, V2) a mark never pushes the record past FLOORS_MAX: the expired
+        -- marks go first, and if it is still full this mark is dropped
+        if #store.floors >= FLOORS_MAX then prune(store, tick) end
         if #store.floors >= FLOORS_MAX then return nil, 'floor record full' end
         if not is_num(floor.made) then floor.made = tick end
         rec = insert_floor(store, floor)
