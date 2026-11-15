@@ -101,13 +101,29 @@ def command(ai: bool, preset: str | None = None) -> list[str]:
     return cmd + (["--ai"] if ai else []) + (["--preset", preset] if preset else [])
 
 
-def pump(proc: subprocess.Popen) -> None:
-    """Copy the overseer's output to the console and the log."""
+PUMP_ERRORS_MAX = 20          # (0.105.48, K17) reads failing this many times in a row: the reader gives up
+
+
+def pump(proc: subprocess.Popen, sleep=time.sleep) -> None:
+    """Copy the overseer's output to the console and the log.
+
+    (0.105.48, K17) A read that fails is tried again (a stopped reader would
+    block the overseer), but not for ever: a reader that keeps raising spun
+    a core at full speed. After PUMP_ERRORS_MAX failures in a row it says so
+    and stops; the heartbeat watch still restarts a blocked overseer."""
+    errors = 0
     while True:
         try:
             raw = proc.stdout.readline() if hasattr(proc.stdout, "readline") else next(proc.stdout, "")
-        except Exception:  # noqa: BLE001  (keep reading: a stopped reader would block the overseer)
+        except Exception as e:  # noqa: BLE001  (keep reading: a stopped reader would block the overseer)
+            errors += 1
+            if errors >= PUMP_ERRORS_MAX:
+                log(f"Keeper: the overseer's output can't be read ({type(e).__name__}: {str(e)[:120]}), "
+                    f"{errors} times in a row: no longer copied to this log.")
+                return
+            sleep(0.05 * errors)
             continue
+        errors = 0
         if not raw:
             return
         line = raw.rstrip("\r\n")
@@ -367,6 +383,7 @@ def main(argv=None, popen=subprocess.Popen, sleep=None, max_runs: int | None = N
     except Exception:  # noqa: BLE001
         pass
     EXTRAS["start_ts"], EXTRAS["pinned"] = time.time(), None
+    port_note()
     if args.revive:
         try:
             import revive
@@ -428,6 +445,30 @@ def main(argv=None, popen=subprocess.Popen, sleep=None, max_runs: int | None = N
         lock.close()
     write_status(started, restarts, f"Keeper stopped (after {runs} runs)")
     return 0
+
+
+def port_note() -> str | None:
+    """(0.105.48, K17) Six keepers run at once, one game each: a config.json
+    without its own "dfhack_port" talks to DFHack's 5000 (A's game), and one
+    without a df_launch .exe can't tell its game from the others. Said at
+    the start; returns the line (None when both are set)."""
+    try:
+        from dfhack import read_config
+        cfg = read_config()
+        from util import own_df_folder
+    except Exception:  # noqa: BLE001
+        return None
+    missing = []
+    if not isinstance(cfg.get("dfhack_port"), int):
+        missing.append('"dfhack_port" (DFHack\'s default 5000 is used: the first game\'s port)')
+    if not own_df_folder():
+        missing.append('"df_launch" naming this copy\'s Dwarf Fortress.exe (its game can\'t be told from the '
+                       "others: no check that the game answering is this folder's)")
+    if not missing:
+        return None
+    line = "Keeper: config.json has no " + "; no ".join(missing) + ". With several games on this PC, set both."
+    log(line)
+    return line
 
 
 def log_exception(e: BaseException) -> None:

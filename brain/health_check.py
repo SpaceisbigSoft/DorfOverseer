@@ -72,7 +72,10 @@ FPS_DROP = 0.3                # or fallen this share from the run's early median
 SECTION_SLOW_MS = 150         # a report section whose median build time is over this
 OLD_SAVE_DAYS = 14            # test saves and other forts' backups untouched this long
 STUCK_ROWS = 12               # (0.105.45) things past their timeout in each of the last rows (2 real hours): flagged
-TEST_SAVE = re.compile(r"^(AI Run|AI Test)\b|test", re.I)
+# (0.105.48, K17) only the names scenario.py and the tests give ("AI Run A",
+# "AI Test Save", "AI_Run_B"): a bare "test" anywhere listed a real fort
+# called "Contested" or "Greatest" as an old test save you could delete
+TEST_SAVE = re.compile(r"^AI[ _](Run|Test)(?![a-z])", re.I)
 
 FAIL_NOTE = re.compile(r"^(rule \w+ failed|skipped rules that need report section)")
 

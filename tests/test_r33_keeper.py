@@ -86,7 +86,7 @@ def _():
     restores = []
     rv.restore = lambda log: restores.append(1) or None
     run_day(rv)
-    tries = [c for c in rv.df.calls if c[0] == "ai-title"]
+    tries = [c for c in rv.df.calls if c[0] == "ai-title" and c[1] != "status"]
     assert len(tries) == 2, tries                      # was 72 a day
     assert rv.load_fails == {"autosave 1": 2, "autosave 2": 2}, rv.load_fails
     assert restores, "the backup restore is never reached"
@@ -99,7 +99,7 @@ def _():
     rv.candidates = lambda: (["region1", "autosave 1"], None)
     rv.restore = lambda log: None
     run_day(rv, minutes=200)
-    loaded = [c[2] for c in rv.df.calls if c[0] == "ai-title"]
+    loaded = [c[2] for c in rv.df.calls if c[0] == "ai-title" and c[1] != "status"]
     assert loaded[:3] == ["region1", "region1", "autosave 1"], loaded
 
 
@@ -189,14 +189,15 @@ def _():
 
 # ---------------------------------------------------------------- revive Med (second DF)
 
-@test("revive: never seen up and a Dwarf Fortress process already runs: no second copy until START_BUSY_S")
+@test("revive: never seen up and its own Dwarf Fortress process already runs: no second copy (0.105.48: ever)")
 def _():
     class Down:
         def run(self, *a, timeout=None):
             raise GameNotRunning("no")
-    launched, logs = [], []
+    launched, logs, closed = [], [], []
     rv = revive.Reviver(logs.append, dfhack=Down(), launcher=launched.append)
     rv.df_running = lambda: True
+    rv.close_game = lambda now, why, safe_mid_save=False: closed.append(why) or False
     real = revive.launch_command
     revive.launch_command = lambda: "df.exe"
     try:
@@ -205,10 +206,12 @@ def _():
         for i in range(0, 200, 15):
             t[0] = float(i)
             rv.tick()
-            if t[0] < revive.START_BUSY_S:
-                assert not launched, (i, launched)
-        assert launched == ["df.exe"], launched
+        # (0.105.48, K17) never a second copy while this folder's own game has a process
+        assert not launched and not closed, launched
         assert any("DFHack doesn't answer yet" in x for x in logs), logs
+        t[0] = revive.HUNG_S + 15.0
+        rv.tick()
+        assert not launched and closed and "hung" in closed[0], closed     # alive but silent: hung
         # no process: started after START_DOWN_S as before
         launched.clear()
         rv2 = revive.Reviver(lambda s: None, dfhack=Down(), launcher=launched.append)

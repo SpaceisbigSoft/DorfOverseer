@@ -1172,7 +1172,8 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
     try:
         import pin
         _f = _d(state.get("fort"))
-        refused = pin.refusal(_f.get("world"), _f.get("site_id"))
+        refused = pin.refusal(_f.get("world"), _f.get("site_id"),
+                              df_path=_d(getattr(bridge, "version", None)).get("df_path"))   # (K17)
     except Exception:  # noqa: BLE001
         refused = None
     PIN_SEEN["checked"], PIN_SEEN["refused"] = True, refused
@@ -2135,7 +2136,8 @@ def check_pin(bridge) -> None:
         if not f.get("world") or f.get("site_id") is None:
             PIN_SEEN["failed_at"] = nowm
             return
-        refused = pin.refusal(f.get("world"), f.get("site_id"))
+        refused = pin.refusal(f.get("world"), f.get("site_id"),
+                              df_path=_d(getattr(bridge, "version", None)).get("df_path"))   # (K17)
     except (BridgeError, DFHackError, TypeError, ValueError, ImportError):
         PIN_SEEN["failed_at"] = nowm
         return

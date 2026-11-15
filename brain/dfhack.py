@@ -77,10 +77,11 @@ def save_roots(df_path: str | Path | None) -> list[Path]:
     # names ("autosave 2", "region4"), and on 13 Nov C's and D's keepers picked
     # A's newer one from it and loaded A's fort into their games
     if df_path and (Path(df_path) / "prefs" / "portable.txt").is_file():
+        # (0.105.48, K17) ... and config's df_save_dir is not put first there:
+        # config.example.json names the user folder, so a copied config made
+        # the backups and the revive's candidates another game's saves
         own = Path(df_path) / "save"
-        if own.is_dir() and own not in roots:
-            roots.append(own)
-        return [r for r in roots if r.is_dir()]
+        return [own] if own.is_dir() else []
     appdata = os.environ.get("APPDATA")
     if appdata:
         roots.append(Path(appdata) / "Bay 12 Games" / "Dwarf Fortress" / "save")
