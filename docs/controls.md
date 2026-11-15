@@ -171,9 +171,11 @@ hall, basic workshops and stockpiles are always built when missing.
   with drink, until calm. The burrows retire themselves in a fort where
   dwarves in a tantrum are seen outside them 90% of 40+ times: DF doesn't
   hold them to a burrow (0.105.24).
-- **Tribute a civilisation asks** (0.105.0): *pay small, refuse large* (the
-  default), *always pay* or *always refuse*. It answers a meeting's tribute
-  demand.
+- **Tribute a civilisation asks** (0.105.0): *refuse (the sum asked can't be
+  read yet)* (the default), *always pay* or *always refuse*. It answers a
+  meeting's tribute demand. The default was meant to pay a small tribute and
+  refuse a large one, but the amount the AI read was a topic index, not a
+  sum, so since 0.105.48 it refuses every tribute until the sum can be read.
 - **Appoint a messenger, make contact** (on, 0.105.0): a Messenger is
   appointed, and the nearest site not in contact is named for Make contact.
 - **Send the messenger by the World screen** (off, 0.105.24): the AI drives DF's

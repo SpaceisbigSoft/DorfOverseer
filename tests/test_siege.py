@@ -83,7 +83,7 @@ env.df = {
               items = {other = {}}, units = {active = W.units}}},
     building_type = {SiegeEngine = 'SiegeEngine'},
     siegeengine_type = setmetatable({}, {__index = function(_, k) return k end}),
-    building_siegeenginest = {T_facing = setmetatable({}, {__index = function(_, k) return k end})},
+    siegeengine_orientation = {North = 0, East = 2, South = 4, West = 6, [0] = 'North', [2] = 'East', [4] = 'South', [6] = 'West'},
     unit_labor = {SIEGEOPERATE = 'SIEGEOPERATE', SIEGECRAFT = 'SIEGECRAFT'},
     squad = {find = function() return nil end},
     squad_order_defend_burrowsst = {is_instance = function() return false end},
@@ -262,7 +262,7 @@ if LuaRuntime is not None:
         lua, env, w = world()
         lua.execute("""local W = ...
             local function b(id, x, name, built)
-                table.insert(W.buildings, {id = id, centerx = x, centery = 14, z = 100, type = 'Ballista', name = name,
+                table.insert(W.buildings, {id = id, centerx = x, centery = 14, z = 100, type = 'Ballista', name = name, facing = 4,
                     getType = function() return 'SiegeEngine' end,
                     getBuildStage = function() return built and 1 or 0 end, getMaxBuildStage = function() return 1 end})
             end
@@ -271,6 +271,7 @@ if LuaRuntime is not None:
         r = py(env.report())
         assert (r["ai_engines"], r["built"], r["planned"], r["all_built"]) == (2, 1, 1, 2), r
         assert r["entrances"][0]["engines_near"] == 3
+        assert r["engines"][0]["facing"] == "South", r["engines"]      # (0.105.48 r2) its orientation's name
         assert r["operators"] == 0 and r["ammo"]["siege_ammo"] == 0
         w.G.GATES.scanned = False
         assert not py(env.report())["entrances"]
@@ -335,7 +336,10 @@ if LuaRuntime is not None:
         assert r["ok"] and r["dry_run"] and len(w.buildings) == 0, r
         r = py(env.place_engine(1, "ballista", False))
         assert r["ok"] and r["building_id"] == 900 and w.qf[2].cells.endswith("=ib"), (r, w.qf[2].cells)
-        assert w.buildings[1].name == "AI ballista" and w.buildings[1].facing == r["facing"]
+        # (0.105.48 r2) the facing really set, as a siegeengine_orientation value
+        want = {"Up": 0, "Down": 4, "Left": 6, "Right": 2}[r["facing"]]
+        assert w.buildings[1].name == "AI ballista" and w.buildings[1].facing == want, (r, w.buildings[1].facing)
+        assert w.buildings[1].resting_orientation == want and r["facing_set"]
         assert py(w.site["ai-overseer/siege-engines"]) == [900]
         r = py(env.place_engine(1, "ballista", False))
         assert r["rejected"] and "already" in r["error"], r

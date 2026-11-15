@@ -421,11 +421,7 @@ function order_jobs(ids)
                         -- (0.105.48, A2-5) DFHack 53.17 has no job.getSpecificLabor:
                         -- ai-labor's job_labor (the job type's labour, a reaction's
                         -- by its skill, a skill-less job's by its workshop)
-                        local okl, lab = false, nil
-                        if dfhack.job.getSpecificLabor then okl, lab = pcall(dfhack.job.getSpecificLabor, j) end
-                        if not (okl and lab and lab ~= -1) then
-                            okl, lab = pcall(function() return reqscript('ai-labor').job_labor(j) end)
-                        end
+                        local okl, lab = pcall(function() return reqscript('ai-labor').job_labor(j) end)
                         if okl and lab and lab ~= -1 then
                             e.labor = df.unit_labor[lab]
                             -- (0.105.46, I3) and whether anyone may take it: DF says
@@ -434,7 +430,9 @@ function order_jobs(ids)
                             e.holders = labour_holders(lab, memo)
                             if e.holders == 0 then e.why = 'no citizen has the labour ' .. tostring(e.labor) end
                         end
-                        local okk, sk = pcall(dfhack.job.getSkill, j)
+                        -- (0.105.48 r2) nor job.getSkill: ai-labor's job_skill (the
+                        -- job type's skill, a reaction's its own)
+                        local okk, sk = pcall(function() return reqscript('ai-labor').job_skill(j) end)
                         if okk and sk and sk ~= -1 then e.skill = df.job_skill[sk] end
                     end)
                 end

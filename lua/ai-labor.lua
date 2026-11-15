@@ -438,6 +438,28 @@ SKILLED = 3                -- df.skill_rating Competent
 JOB_SHOP_LABOR = {Masons = 'STONE_CARVER', Carpenters = 'CARPENTER'}
 local REACTION_LABOR
 
+local REACTION_SKILL
+
+-- (0.105.48 r2) the skill a job trains (DFHack 53.17 has no job.getSkill): its
+-- type's (df.job_type attrs), a custom reaction's its own; nil if none
+function job_skill(job)
+    local ok, sk = pcall(function() return df.job_type.attrs[job.job_type].skill end)
+    if ok and sk and sk >= 0 then return sk end
+    if df.job_type[job.job_type] == 'CustomReaction' then
+        if not REACTION_SKILL then
+            REACTION_SKILL = {}
+            pcall(function()
+                for _, r in ipairs(df.global.world.raws.reactions.reactions) do
+                    REACTION_SKILL[r.code] = r.skill
+                end
+            end)
+        end
+        local rs = REACTION_SKILL[job.reaction_name]
+        if rs and rs >= 0 then return rs end
+    end
+    return nil
+end
+
 local function reaction_labor(code)
     if not REACTION_LABOR then
         REACTION_LABOR = {}

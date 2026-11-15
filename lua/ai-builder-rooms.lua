@@ -9,6 +9,9 @@
 PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-rooms'] = '0.105.47'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local info, has, ez = info, has, ez
+-- (0.105.48 r2) constructBuilding is in library/lua/dfhack/buildings.lua, added to
+-- dfhack.buildings only by this require (without it, only after buildingplan loaded it)
+pcall(function() require('dfhack.buildings') end)
 
 -- (0.104.83) A small pen for war dogs just inside a gate: a free 3x3 of
 -- inside floor (no building, zone, designation, water or sky) within 8

@@ -49,6 +49,10 @@ ENGINES_KEY = 'ai-overseer/siege-engines'            -- the AI's engines' buildi
 
 local ORTHO = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}}
 
+-- engine_spot's facing (the way out, screen directions) as the engine's
+-- df.siegeengine_orientation name (+y is south)
+ENGINE_ORIENTATION = {Up = 'North', Down = 'South', Left = 'West', Right = 'East'}
+
 local function report_citizens(...)
     if U.REPORT_CTX and U.citizens then return U.citizens(...) end
     return dfhack.units.getCitizens(...)
@@ -258,7 +262,7 @@ function engines()
             local row = {id = b.id, x = b.centerx, y = b.centery, z = b.z}
             pcall(function() row.kind = tostring(df.siegeengine_type[b.type]):lower() end)
             pcall(function() row.built = b:getBuildStage() >= b:getMaxBuildStage() end)
-            pcall(function() row.facing = df.building_siegeenginest.T_facing[b.facing] end)
+            pcall(function() row.facing = df.siegeengine_orientation[b.facing] end)
             local okn, name = pcall(function() return b.name end)
             row.ai = mine[b.id] == true or (okn and (name == ENGINE_NAME or name == CATAPULT_NAME)) or false
             table.insert(out, row)
@@ -499,8 +503,16 @@ function place_engine(entrance_id, kind, dry_run)
         if b then
             out.building_id = b.id
             pcall(function() b.name = (kind == 'catapult') and CATAPULT_NAME or ENGINE_NAME end)
-            -- (needs an in-game look: the facing enum's names)
-            local okf = pcall(function() b.facing = df.building_siegeenginest.T_facing[sp.facing] end)
+            -- (0.105.48 r2) facing is a df.siegeengine_orientation (North..
+            -- Northwest), not a building_siegeenginest.T_facing (no such type,
+            -- so it was never set); its resting one too, so it turns back out
+            local o = ENGINE_ORIENTATION[sp.facing]
+            local okf = o ~= nil and pcall(function()
+                local v = df.siegeengine_orientation[o]
+                assert(type(v) == 'number')
+                b.facing = v
+            end)
+            if okf then pcall(function() b.resting_orientation = df.siegeengine_orientation[o] end) end
             out.facing_set = okf or nil
             note_engine(b.id)
         end

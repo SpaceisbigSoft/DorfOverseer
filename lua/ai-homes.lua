@@ -44,6 +44,9 @@
 --@module = true
 
 local U = reqscript('ai-util')      -- (13c) helpers shared by the modules
+-- (0.105.48 r2) constructBuilding is in library/lua/dfhack/buildings.lua, added to
+-- dfhack.buildings only by this require (without it, only after buildingplan loaded it)
+pcall(function() require('dfhack.buildings') end)
 
 -- (0.105.40 E3) inside a report, the report's one walk of the units
 -- (ai-util REPORT_CTX: the same units, same order); outside one, afresh

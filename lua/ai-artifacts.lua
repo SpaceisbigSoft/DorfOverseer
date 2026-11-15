@@ -46,6 +46,9 @@
 --@ module = true
 
 local U = reqscript('ai-util')
+-- (0.105.48 r2) constructBuilding is in library/lua/dfhack/buildings.lua, added to
+-- dfhack.buildings only by this require (without it, only after buildingplan loaded it)
+pcall(function() require('dfhack.buildings') end)
 
 SITE_KEY = 'ai-overseer/artifacts'
 KINDS = {pedestal = 'ITEM_TOOL_PEDESTAL', case = 'ITEM_TOOL_DISPLAY_CASE'}

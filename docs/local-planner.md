@@ -44,11 +44,16 @@ fewer tokens the strategist needs.
 Trait values come from the control panel (-200..200 after Extreme). A trait
 **factor** of 2^(trait/100) turns them into multipliers: 0 gives x1, +100 gives
 x2, -100 gives x0.5, and the Extreme range gives x0.25 to x4.
+Stockpile is steeper (0.105.47): its buffer is 2^(Stockpile/50), kept to
+x0.25..x4 (x2 at +50, x4 from +100, x0.5 at -50), and it scales the
+reserves (food, drink, wood, blocks, bars, cloth) as well as the targets
+below (brain/planner_reserves.py `stock_factor`; the Rules switch
+`stockpile_signature` off gives the old 2^(Stockpile/100) on the targets alone).
 
 | # | Rule | Fires when | Action | Traits that shift it |
 | --- | --- | --- | --- | --- |
 | 1 | Threat alert | a threat can walk to the dwarves | civilian alert on (if a burrow is set up); off again after 3 quiet cycles, only if the AI raised it | Caution: at +100 also reacts to threats of unknown reach within 10 levels |
-| 2 | Drink | drink + queued < target (10 per dwarf) | brew_drink, 10 to 100 jobs (about 5 drinks each) | Stockpile buffer scales the target |
+| 2 | Drink | drink + queued < target (10 per dwarf) | brew_drink, 10 to 100 jobs (about 5 drinks each) | Stockpile buffer (2^(Stockpile/50)) scales the target |
 | 3 | Food | meals + queued < target (8 per dwarf), and raw food is available | easy / fine / lavish meals | Stockpile buffer scales the target; Welfare picks the meal grade |
 | 4 | Mandates | a noble's Make mandate matches a known recipe and isn't queued | queue the remaining amount (max 10); a named stone is used; other materials (gold, iron...) are left to you | skipped if Noble deference < -50 |
 | 5 | Automation tools | a useful tool is off | switch it on | Agriculture (seedwatch; autofarm once there are farm plots, so they get crops), Husbandry (nestboxes; autobutcher only when herds are large and Husbandry is 0 or lower), Welfare (tailor), wood need (autochop); suspendmanager always |

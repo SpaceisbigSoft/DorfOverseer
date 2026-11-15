@@ -148,7 +148,9 @@ CAMERA_PACES = {'normal', 'slow', 'fast'}
 CAMERA_PACE_NAMES = {normal = 'normal (20-40 s a place)', slow = 'slow (longer at each place)', fast = 'fast (shorter stops)'}
 -- (0.105.0) what the AI answers when a civilisation asks the fort for tribute
 TRIBUTE_CHOICES = {'small', 'pay', 'refuse'}
-TRIBUTE_NAMES = {small = 'pay small, refuse large', pay = 'always pay', refuse = 'always refuse'}
+-- (0.105.48 r2) 'small' refuses every tribute until the sum asked can be read
+-- (ai-diplomacy TRIBUTE_SUM_KNOWN: DF gives a topic index, not a sum)
+TRIBUTE_NAMES = {small = "refuse (the sum asked can't be read yet)", pay = 'always pay', refuse = 'always refuse'}
 -- (0.105.41, item 8) what the AI answers when a civilisation's diplomat
 -- proposes peace (DF gives the fort no way to offer it): the AI decides
 -- (the default: yes from a civ that has besieged the fort twice or more and

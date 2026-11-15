@@ -418,8 +418,8 @@ local dfhack = {
   maps = {getTileSize = function() return 120, 120, 100 end},
   matinfo = {decode = function(t, i) if t == 0 then return {getToken = function() return 'INORGANIC:IRON' end} end end},
   units = {getCitizens = function() return units end, isAdult = function() return true end},
-  job = {getWorker = function() return nil end, getHolder = function() return nil end,
-         getSpecificLabor = function(j) return j.labor end, getSkill = function() return -1 end},
+  -- (0.105.48 r2) DFHack 53.17's job module: no getSpecificLabor, no getSkill
+  job = {getWorker = function() return nil end, getHolder = function() return nil end},
 }
 local df = {global = {cur_year = 150, cur_year_tick = 1000, pause_state = true,
   world = {cur_savegame = {save_dir = 'region1'}, map = {region_z = 140},
@@ -429,6 +429,7 @@ local df = {global = {cur_year = 150, cur_year_tick = 1000, pause_state = true,
   plotinfo = {site_id = 7, tasks = {wealth = {total = 1234}}, economic_stone = {},
               alerts = {civ_alert_idx = 0, list = {}}, manager_timer = 0}},
   unit_labor = {[5] = 'MECHANIC', [6] = 'MASON'},
+  job_skill = {[33] = 'MECHANICS'},
   job_type = {}, workquota_frequency_type = {[0] = 'OneTime'}}
 H.df, H.dfhack = df, dfhack
 function H.module()
@@ -438,6 +439,8 @@ function H.module()
     error('unexpected require ' .. name) end
   env.reqscript = function(name)
     if name == 'ai-status' then return {is_halted = function() return false end} end
+    if name == 'ai-labor' then return {job_labor = function(j) return j.labor end,
+      job_skill = function(j) return j.skill end} end
     if name == 'workorder' then
       return {preprocess_orders = function(t) return t end, fillin_defaults = function() end,
               create_orders = function(orders)
@@ -494,12 +497,13 @@ return H
 
     @test("bridge: an AI order's waiting job says the labour and how many citizens outside squads hold it")
     def _():
-        job = t({"order_id": 7, "flags": t({"suspend": False}), "labor": 5})
+        job = t({"order_id": 7, "flags": t({"suspend": False}), "labor": 5, "skill": 33})
         job2 = t({"order_id": 8, "flags": t({"suspend": False}), "labor": 6})
         H.df["global"]["world"]["jobs"]["list"] = t({"next": t({"item": job, "next": t({"item": job2})})})
         by = ENV.order_jobs(t({"7": True, "8": True}))
         assert by[7]["labor"] == "MECHANIC" and by[7]["holders"] == 1 and by[7]["why"] is None, dict(by[7])
         assert by[8]["labor"] == "MASON" and by[8]["holders"] == 0
+        assert by[7]["skill"] == "MECHANICS" and by[8]["skill"] is None, dict(by[7])   # (0.105.48 r2) ai-labor's job_skill
         assert "no citizen has the labour MASON" in by[8]["why"]
 
     @test("bridge: the orders report carries each order's material")

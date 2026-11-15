@@ -544,7 +544,7 @@ def player_rules(s: dict) -> dict:
             "hospital_burrow": st.get("hospital_burrow") is not False,
             # (0.104.169) the calm-down burrows: off only when the settings say so (then their members let out)
             "calm_burrow": st.get("calm_burrow") is not False,
-            # (0.105.0) tribute a civilisation asks: pay a small one, refuse a large one (or pay / refuse)
+            # (0.105.0) tribute a civilisation asks: 'small' (refuses while the sum can't be read, 0.105.48), pay / refuse
             "tribute": st.get("tribute") if st.get("tribute") in ("small", "pay", "refuse") else "small",
             # (0.105.41, item 8) a peace proposal: the AI decides (sieges, sliders) / accept / refuse
             "peace": st.get("peace") if st.get("peace") in ("ai", "accept", "refuse") else "ai",

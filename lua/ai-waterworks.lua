@@ -25,6 +25,9 @@
 -- on a fake map. State in site data 'ai-overseer/waterworks'.
 --@module = true
 
+-- (0.105.48 r2) constructBuilding is in library/lua/dfhack/buildings.lua, added to
+-- dfhack.buildings only by this require (without it, only after buildingplan loaded it)
+pcall(function() require('dfhack.buildings') end)
 STATE_KEY = 'ai-overseer/waterworks'
 KINDS = {moat = true, pump = true, irrigation = true, magma = true, power = true}   -- (0.105.37 E3) power: W7
 MAGMA_SHOPS = {MagmaForge = 'wv', MagmaSmelter = 'el', MagmaGlassFurnace = 'ea'}   -- quickfort keys (guesses: wv/el/ea)

@@ -58,17 +58,8 @@ ALLOWED = {
 # (file, name): wrong in 53.17, found by this check in 0.105.48 and reported,
 # not yet given to a group. Each sits behind a pcall, so the game runs on
 # without it, but what it was for never happens.
-REPORTED = {
-    # no such function in DFHack's job module: the waiting order's labour,
-    # its holders and its skill are never filled in (ai-bridge-orders.lua)
-    ("ai-bridge-orders.lua", "dfhack.job.getSpecificLabor"): "not in LuaApi.cpp 53.17-r1",
-    ("ai-bridge-orders.lua", "dfhack.job.getSkill"): "not in LuaApi.cpp 53.17-r1",
-    # constructBuilding lives in library/lua/dfhack/buildings.lua and is there
-    # only after require('dfhack.buildings'); no lua/ file requires it, so these
-    # work only because a plugin (buildingplan) has loaded it first
-    **{(f, "dfhack.buildings.constructBuilding"): "needs require('dfhack.buildings')" for f in (
-        "ai-artifacts.lua", "ai-builder-rooms.lua", "ai-homes.lua", "ai-waterworks.lua")},
-}
+REPORTED: dict = {}   # (0.105.48 round 2: builder 19 fixed job.getSpecificLabor/getSkill and the
+                      # constructBuilding requires)
 
 # (file, name): wrong in 53.17, fixed by another 0.105.48 group (remove at merge).
 EXPECTED_WRONG: dict = {}   # (0.105.48 merge: builder 9 fixed the three)

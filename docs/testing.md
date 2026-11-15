@@ -8,7 +8,35 @@ python tests\run_all.py
 
 Runs every test (planner, building, culture, strategist, overseer loop, the
 in-game panel's Lua, metrics, replay). Nothing touches the game and no tokens
-are spent. The Lua tests need `pip install lupa`; without it they're skipped.
+are spent. `python tests\run_all.py -j 1` runs one file at a time, and
+`python tests\run_all.py builder` only the files whose name has "builder".
+
+**lupa.** The Lua tests need `pip install lupa`. Without it about a third of
+the suite does not run: those tests are skipped, not passed, and the run says
+so at its start and its end. `python tests\run_all.py --no-lupa` hides lupa,
+to see what a PC without it runs.
+
+**Skips are counted.** A file that prints SKIPPED and each test that calls
+`harness.skip()` or `need_lua()` (`[SKIP] ...`) are counted and named in the
+summary; a file whose totals line ends "..., N skipped" is not a full pass.
+A file that skips for want of lupa while lupa is installed counts as failed
+(an import broke), and so does one that ends without a totals line or
+SKIPPED. A test that cannot run without lupa calls `skip()`, never a bare
+`return`.
+
+**Snapshot tests.** Some regression tests compare today's output (a plan,
+blueprints) with a committed JSON snapshot under `tests/fixtures/snapshots/`
+(`tests/snapshots.py`) instead of with an old git commit. A missing snapshot
+fails. When a plan change is meant and its diff has been reviewed,
+re-record with `DFAI_SNAPSHOT_WRITE=1`:
+
+```
+DFAI_SNAPSHOT_WRITE=1 python tests/test_x.py   # one file
+DFAI_SNAPSHOT_WRITE=1 python tests/run_all.py  # all of them
+```
+
+(on Windows: `set DFAI_SNAPSHOT_WRITE=1` first), then check the changed files
+under `tests/fixtures/snapshots/` with `git diff` and say so in the commit.
 
 ## 2. Self-test inside the game
 
