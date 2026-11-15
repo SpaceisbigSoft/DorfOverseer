@@ -523,12 +523,28 @@ function mark_melt(opts, dry_run)
     local res = new_result(dry_run)
     res.already = 0
     walk(GEAR, function(it, kind)
-        if it.flags.melt then res.already = res.already + 1; return end
+        if it.flags.melt then
+            res.already = res.already + 1
+            -- (0.105.48, A2-4) a mark from before this version set the flag
+            -- alone: put it on the game's melt list too (cancel, then mark
+            -- again: both keep the list sorted and without doubles)
+            if not dry_run then
+                pcall(function()
+                    dfhack.items.cancelMelting(it)
+                    if dfhack.items.markForMelting(it) then res.relisted = (res.relisted or 0) + 1 end
+                end)
+            end
+            return
+        end
         local ok, reason = melt_check(it, kind, ctx, keep_enemy, assigned)
         if ok == nil then return end
         if not ok then skip(res, reason); return end
         if not dry_run then
-            it.flags.melt = true
+            -- (0.105.48, A2-4) DFHack's markForMelting: the flag and the
+            -- game's melt list (world.items.other.ANY_MELT_DESIGNATED), where
+            -- the smelter's melt job looks; the flag alone melts nothing
+            local okm, marked = pcall(dfhack.items.markForMelting, it)
+            if not (okm and marked) then skip(res, 'cannot_melt'); return end
             it.flags.forbid = false
             it.flags.dump = false
         end
@@ -539,8 +555,10 @@ function mark_melt(opts, dry_run)
     res.smelters, res.magma_smelters = smelters()
     res.can_melt = res.smelters + res.magma_smelters > 0
     res.melt_order = melt_order()
+    -- (0.105.48, A2-4) said only: the planner places the melt order (its
+    -- order check and stuck hold), not this action
     res.needs_order = res.can_melt and res.melt_order == nil and (res.n + res.already) > 0
-    if res.n == 0 and not dry_run and not res.needs_order then
+    if res.n == 0 and not dry_run and (res.relisted or 0) == 0 then
         res.ok, res.rejected, res.error = false, true, 'no worn or enemy metal gear may be marked for melting now'
     end
     return res
@@ -592,6 +610,8 @@ function mark_dump(opts, dry_run)
         if why then skip(res, why); return end
         if reason ~= 'free' and not want[reason] then skip(res, 'reason'); return end
         if not dry_run then
+            -- (0.105.48, A2-4) off the game's melt list too
+            if it.flags.melt then pcall(dfhack.items.cancelMelting, it) end
             it.flags.dump = true
             it.flags.forbid = false
             it.flags.melt = false

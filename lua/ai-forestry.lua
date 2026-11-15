@@ -104,7 +104,9 @@ function tile_class(x, y, z)
         if not k then return nil end
         local des = dfhack.maps.getTileFlags(x, y, z)
         if not des or des.hidden then return nil end
-        local w = (des.feature_global or des.feature_local) and 'cavern' or (des.outside and 'surface' or 'inside')
+        -- (0.105.48, A2-2) above ground by `subterranean`, not `outside`: a
+        -- grown tree's trunk stands under its own canopy, never `outside`
+        local w = (des.feature_global or des.feature_local) and 'cavern' or (des.subterranean and 'inside' or 'surface')
         return k, w, des.dig ~= df.tile_dig_designation.No
     end)
     if not ok then return nil end
@@ -435,7 +437,7 @@ local function rect_ok(g)
                 local tt = dfhack.maps.getTileType(x, y, g.z)
                 if not tt then return false end
                 local des, occ = dfhack.maps.getTileFlags(x, y, g.z)
-                if not des or des.hidden or not des.outside or des.flow_size > 0 then return false end
+                if not des or des.hidden or des.subterranean or des.flow_size > 0 then return false end   -- (A2-2: canopy tiles)
                 if occ and occ.building ~= df.tile_building_occ.None then return false end
                 local a = df.tiletype.attrs[tt]
                 local shape = df.tiletype_shape[a.shape]

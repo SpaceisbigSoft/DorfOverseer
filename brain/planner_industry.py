@@ -609,6 +609,17 @@ def _disposal_rules(s: dict, cfg: dict, proposals: list, notes: list, memory=Non
                                       "melt into bars (never masterworks or artifacts"
                                       + ("; the enemy's gear is kept, as the Rules say)" if keep_enemy else ")"), 7))
 
+    # (0.105.48, A2-4) the items marked to melt (the AI's or the player's)
+    # want a smelter order: placed here, not by the mark_melt action, so the
+    # order check (fuel, a free smelter) and the stuck hold see it
+    if level >= 1 and marked > 0 and smelters and dis.get("melt_order") is None and not any(
+            isinstance(o, dict) and (o.get("recipe") == "melt_metal" or o.get("job") == "MeltMetalObject")
+            and int(o.get("amount_left") or 0) > 0 for o in _l(s.get("orders"))):
+        n = min(marked, 20)
+        proposals.append(Proposal("disposal_melt_order", {"type": "work_order", "recipe": "melt_metal", "amount": n},
+                                  f"{marked} items are marked to melt and no smelter order melts them: order "
+                                  f"{n} melted down", 7))
+
     if level < 2:
         return
     # 4. dump: worn clothes, rags, rotten things and the enemy's non-metal junk to a garbage dump

@@ -433,6 +433,9 @@ end
 -- detail's labour who aren't on it (migrants arrive with trades).
 
 SKILLED = 3                -- df.skill_rating Competent
+-- (0.105.48, A2-5) the labour of a workshop's skill-less jobs (53.17: stone
+-- furniture is the stone carver's; MASON builds walls)
+JOB_SHOP_LABOR = {Masons = 'STONE_CARVER', Carpenters = 'CARPENTER'}
 local REACTION_LABOR
 
 local function reaction_labor(code)
@@ -461,6 +464,16 @@ function job_labor(job)
         local okl, l2 = pcall(function() return df.job_skill.attrs[sk].labor end)
         if okl and l2 and l2 >= 0 then return l2 end
     end
+    -- (0.105.48, A2-5) jobs whose type names no skill (ConstructSlab,
+    -- ConstructCoffin, ConstructTable, ConstructDoor...): the memorial
+    -- slab's engraving is the engraver's, the rest by the workshop
+    local name = df.job_type[job.job_type]
+    if name == 'EngraveSlab' then return df.unit_labor.ENGRAVER end
+    local okh, kind = pcall(function()
+        local b = dfhack.job.getHolder(job)
+        return b and df.workshop_type[b.type] or nil
+    end)
+    if okh and kind and JOB_SHOP_LABOR[kind] then return df.unit_labor[JOB_SHOP_LABOR[kind]] end
     return nil
 end
 

@@ -3250,24 +3250,15 @@ function act_unforbid_items(a)
     return reqscript('ai-disposal').unforbid_items(o, a.dry_run == true)
 end
 
--- The marks set, then (not in a dry run) a smelter work order "melt a metal
--- object" when one is needed: DF 50 makes no melt job by itself (DF wiki,
--- Melt: "the job order will still need to be made at a smelter").
+-- The marks set (on the game's melt list). (0.105.48, A2-4) The smelter's
+-- "melt a metal object" order is the planner's (disposal_melt_order, through
+-- its order check and stuck hold): DF 50 makes no melt job by itself (DF
+-- wiki, Melt: "the job order will still need to be made at a smelter"), and
+-- an order placed here went past both.
 function act_mark_melt(a)
     local o, err = disposal_opts(a, {}, 'mark_melt')
     if not o then return reject(err) end
-    local r = reqscript('ai-disposal').mark_melt(o, a.dry_run == true)
-    if r.needs_order and a.dry_run ~= true then
-        local want = math.max(1, math.min((r.n or 0) + (r.already or 0), 20))
-        local ok, wo = pcall(act_work_order, {type = 'work_order', recipe = 'melt_metal', amount = want})
-        if ok and type(wo) == 'table' and wo.ok then
-            r.melt_order, r.order_added = wo.order_id, want
-            r.ok, r.rejected, r.error = true, nil, nil
-        else
-            r.order_error = ok and type(wo) == 'table' and wo.error or tostring(wo)
-        end
-    end
-    return r
+    return reqscript('ai-disposal').mark_melt(o, a.dry_run == true)
 end
 
 function act_mark_dump(a)

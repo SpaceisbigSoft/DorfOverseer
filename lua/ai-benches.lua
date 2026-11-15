@@ -43,7 +43,7 @@ NO_MAX = 3000                      -- DF's max_level when the profile sets none
 -- and CUT_GEM, the skills STONECRAFT and CUTGEM; the craftsdwarf's trains stonecraft)
 BENCH_KINDS = {
     Carpenters = {skill = 'CARPENTRY', labor = 'CARPENTER'},
-    Masons = {skill = 'MASONRY', labor = 'MASON'},
+    Masons = {skill = 'CARVE_STONE', labor = 'STONE_CARVER'},   -- (0.105.48, A2-10) 53.17: MASON builds walls
     Craftsdwarfs = {skill = 'STONECRAFT', labor = 'STONE_CRAFT'},
     Jewelers = {skill = 'CUTGEM', labor = 'CUT_GEM'},
     Clothiers = {skill = 'CLOTHESMAKING', labor = 'CLOTHESMAKER'},

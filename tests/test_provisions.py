@@ -39,7 +39,7 @@ CFG = PLANNER_CONFIG
 FAKE = r"""
 local src = ...
 local W = {units = {}, cits = {}, items = {}, plants = {}, raws = {}, buildings = {}, site = {}, inside = {},
-           cave = {}, group = {}, taken = {}, qf = {}, assigned = {}, standing = {}, labor_calls = {},
+           cave = {}, canopy = {}, group = {}, taken = {}, qf = {}, assigned = {}, standing = {}, labor_calls = {},
            creatures = {}, detail = nil, mode = 'OnlySelectedDoesThis', removed_workers = 0}
 local env = setmetatable({}, {__index = _G})
 local function key(x, y, z) return x .. ',' .. y .. ',' .. z end
@@ -109,7 +109,9 @@ env.dfhack = {
     },
     maps = {getTileFlags = function(x, y, z)
         if type(x) == 'table' then x, y, z = x.x, x.y, x.z end
-        return {outside = not W.inside[key(x, y, z)] and not W.cave[key(x, y, z)]}
+        local under = (W.inside[key(x, y, z)] or W.cave[key(x, y, z)]) and true or false
+        if W.canopy[key(x, y, z)] then return {outside = false, subterranean = false} end
+        return {outside = not under, subterranean = under}
     end},
     persistent = {getSiteData = function(k, d) local v = W.site[k]; if v == nil then return d end return v end,
                   saveSiteData = function(k, v) W.site[k] = v end},
@@ -296,8 +298,10 @@ def _():
 
 
 def fruit_raws(lua, w):
-    w.raws[0] = T(lua, {"flags": {"TREE": True}, "growths": [{"mat_index": 0}],
-                        "material": {0: {"flags": {"EDIBLE_RAW": True}}}})
+    # (0.105.48, A2-6) a growth's material is decoded from its mat_type and
+    # mat_index (the plant's raw index, 0 here, past the end of `material`)
+    w.raws[0] = T(lua, {"flags": {"TREE": True}, "growths": [{"mat_index": 0, "mat": {"flags": {"EDIBLE_RAW": True}}}],
+                        "material": {}})
     w.raws[1] = T(lua, {"flags": {"TREE": True}, "growths": [], "material": []})        # no fruit
 
 
@@ -317,6 +321,22 @@ def _():
     f = py(env.report())["fruit"]
     assert f["trees"] == 6 and f["zones"] == 0 and f["ai_zones"] == 0, f
 
+
+
+@test("(0.105.48, A2-2) report fruit and game: a fruit tree's trunk and an animal under the canopy (neither "
+      "outside nor subterranean) are above ground")
+def _():
+    lua, env, w = world()
+    fruit_raws(lua, w)
+    for x in range(40, 43):
+        tree(lua, w, x, 50)
+        w.canopy[f"{x},50,100"] = True
+    w.inside["44,50,100"] = True
+    tree(lua, w, 44, 50)                                  # inside the fort: not a fruit tree to gather
+    w.unit(T(lua, {"id": 50, "animal": True, "pos": {"x": 41, "y": 50, "z": 100}}))
+    r = py(env.report())
+    assert r["fruit"]["trees"] == 3, r["fruit"]
+    assert r["hunting"]["game"] == 1, r["hunting"]
 
 # --- 2. the actions ---------------------------------------------------------------------
 

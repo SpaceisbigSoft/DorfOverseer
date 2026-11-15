@@ -7273,11 +7273,16 @@ def _():
     from planner_industry import _labor_waiting_rule
     cfg = dict(PLANNER_CONFIG)
     props = []
-    lb = {"waiting": [{"labor": "MASON", "jobs": 1, "holders": 2, "idle": 0}]}
+    # (0.105.48, A2-5) by 53.17's labour: the stone carver's (MASON builds walls)
+    lb = {"waiting": [{"labor": "STONE_CARVER", "jobs": 1, "holders": 2, "idle": 0}]}
     _labor_waiting_rule(lb, 90, cfg, props, False, False)
     assert not props, props
     _labor_waiting_rule(lb, 90, cfg, props, False, True)
-    assert props and props[0].action == {"type": "assign_labor", "job": "MASON", "count": 1}, props
+    assert props and props[0].action == {"type": "assign_labor", "job": "STONE_CARVER", "count": 1}, props
+    props = []
+    _labor_waiting_rule({"waiting": [{"labor": "MASON", "jobs": 1, "holders": 2, "idle": 0}]}, 90, cfg, props,
+                        False, True)
+    assert not props, "MASON (walls) is not the dead's work"
     s = fort()
     s["dead"] = {"ghosts": 3, "unburied": 0, "free_tombs": 2}
     s["stone_use"] = {"usable": 5, "economic": {}}

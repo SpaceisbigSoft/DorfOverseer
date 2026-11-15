@@ -1027,7 +1027,8 @@ def ghost_work_blocked(s: dict, memory=None, slabs: bool = True) -> list[str]:
     if (b.get("workshops") is not None and not _has_shop(b, "Masons")
             and not (coffins > 0 and not slabs_short and _has_shop(b, "Carpenters"))):
         out.append("no mason's workshop")
-    if any(isinstance(w, dict) and w.get("labor") == "MASON" and int(w.get("holders") or 0) == 0
+    # (0.105.48, A2-5) 53.17: slabs and coffins are the stone carver's (MASON builds walls)
+    if any(isinstance(w, dict) and w.get("labor") == "STONE_CARVER" and int(w.get("holders") or 0) == 0
            for w in _l(_d(s.get("labor")).get("waiting"))):
         out.append("nobody outside the squads has the mason labour")
     if memory is not None:
@@ -1121,7 +1122,7 @@ def _dead_notes(s: dict, notes: list, proposals: list | None = None, rules_: dic
                                           f"{d['ghosts']} ghost(s) wait for slabs or coffins and the fort has no "
                                           "mason's workshop: build one", 3))
             if proposals is not None and "mason labour" in text:
-                proposals.append(Proposal("ghost_mason", {"type": "assign_labor", "job": "MASON", "count": 1},
+                proposals.append(Proposal("ghost_mason", {"type": "assign_labor", "job": "STONE_CARVER", "count": 1},
                                           f"{d['ghosts']} ghost(s) wait for slabs or coffins and nobody outside "
                                           "the squads has the mason labour: the best at it given it", 3))
             notes.append(text + " (the AI builds what is missing; the quarry rule brings stone)")

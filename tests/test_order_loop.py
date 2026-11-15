@@ -199,7 +199,7 @@ def _():
     n = order_needs("metal_helm", {"material": IRON})
     assert n == {"input": ("bars:IRON", 1), "fuel": True, "shop": "MetalsmithsForge", "labour": "FORGE_ARMOR"}, n
     assert order_needs("metal_greaves", {"material": IRON})["input"] == ("bars:IRON", 2)
-    assert order_needs("stone_blocks")["shop"] == "Masons" and order_needs("stone_blocks")["labour"] == "MASON"
+    assert order_needs("stone_blocks")["shop"] == "Masons" and order_needs("stone_blocks")["labour"] == "STONECUTTER"
     assert order_needs("wooden_crossbow")["shop"] == "Bowyers"
     assert order_needs("mechanisms")["shop"] == "Mechanics"
     assert order_needs("make_charcoal")["fuel"] is False

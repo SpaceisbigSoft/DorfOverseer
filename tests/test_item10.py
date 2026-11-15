@@ -55,9 +55,9 @@ env.df = {
                        units = {active = {}}, items = {other = W.items}}},
     workshop_type = both({Carpenters = 0, Masons = 1, Kitchen = 2, Craftsdwarfs = 3, Jewelers = 4}),
     job_skill = both({CARPENTRY = 1, MASONRY = 2, STONECRAFT = 3, CUTGEM = 4, CLOTHESMAKING = 5,
-                      LEATHERWORK = 6, BOWYER = 7, MECHANICS = 8}),
+                      LEATHERWORK = 6, BOWYER = 7, MECHANICS = 8, CARVE_STONE = 9}),
     unit_labor = both({CARPENTER = 1, MASON = 2, STONE_CRAFT = 3, CUT_GEM = 4, CLOTHESMAKER = 5,
-                       LEATHER = 6, BOWYER = 7, MECHANIC = 8}),
+                       LEATHER = 6, BOWYER = 7, MECHANIC = 8, STONE_CARVER = 9}),
     tiletype = {attrs = setmetatable({}, {__index = function(_, t) return W.tiles[t] end})},
     tiletype_shape = ident, tiletype_material = ident,
     tile_dig_designation = {No = 'No', Default = 'Default'},
@@ -105,6 +105,9 @@ function W.tile(x, y, z, o)
                feature_global = o.cave == true, feature_local = false, hidden = o.hidden == true,
                dig = o.dig or 'No', traffic = o.traffic or 'Normal', flow_size = 0,
                building = o.building or 'None', wall = o.wall}
+    -- (0.105.48) below ground unless outside (or said: a canopy tile is
+    -- neither outside nor subterranean)
+    if o.subterranean ~= nil then t.subterranean = o.subterranean else t.subterranean = not t.outside end
     W.tiles[key(x, y, z)] = t
     return t
 end
@@ -214,8 +217,16 @@ def _():
 #: df-structures' df.unit_labor and df.job_skill tokens the benches use (DF 53; unit_labor has STONE_CRAFT
 #: and CUT_GEM with underscores, job_skill STONECRAFT and CUTGEM without)
 UNIT_LABORS = {"CARPENTER", "MASON", "STONE_CRAFT", "CUT_GEM", "CLOTHESMAKER", "LEATHER", "BOWYER", "MECHANIC",
-               "WOOD_CRAFT", "BONE_CARVE", "ENCRUST_GEM", "METAL_CRAFT", "WEAVER", "TANNER", "SIEGECRAFT"}
-JOB_SKILLS = {"CARPENTRY", "MASONRY", "STONECRAFT", "CUTGEM", "CLOTHESMAKING", "LEATHERWORK", "BOWYER", "MECHANICS"}
+               "WOOD_CRAFT", "BONE_CARVE", "ENCRUST_GEM", "METAL_CRAFT", "WEAVER", "TANNER", "SIEGECRAFT",
+               "STONE_CARVER"}
+JOB_SKILLS = {"CARPENTRY", "MASONRY", "STONECRAFT", "CARVE_STONE", "CUTGEM", "CLOTHESMAKING", "LEATHERWORK", "BOWYER", "MECHANICS"}
+
+
+@test("(0.105.48, A2-10) lua benches: the mason's are rated by stone carving (53.17's MASON labour builds "
+      "walls)")
+def _():
+    lua, env, w = world("ai-benches.lua")
+    assert py(env.BENCH_KINDS)["Masons"] == {"skill": "CARVE_STONE", "labor": "STONE_CARVER"}
 
 
 @test("lua benches: every kind's labour and skill a real df.unit_labor / df.job_skill token; the craftsdwarfs' "
@@ -434,6 +445,16 @@ def _():
     lua.execute("local env = ...; env.CENSUS = nil", env)
     r = py(env.report())
     assert r["ai_marked"] == 0 and r["ai_felled"] == 1, r
+
+
+@test("(0.105.48, A2-2) lua forestry report: a grown tree's trunk under its canopy (not outside, not "
+      "subterranean) is a surface tree, not one inside the fort")
+def _():
+    lua, env, w = world("ai-forestry.lua")
+    forest(lua, w)
+    w.tree(70, 70, 30, _tbl(lua, {"outside": False, "subterranean": False}))
+    r = py(env.report())
+    assert r["surface"]["trees"] == 2 and r["inside"]["trees"] == 1, r
 
 
 def grove_fort(lua, env, w):

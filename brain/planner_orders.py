@@ -182,14 +182,20 @@ def _stuck_orders_rule(s: dict, memory, cfg: dict, proposals: list) -> None:
     orders = [o for o in _l(s.get("orders")) if isinstance(o, dict)]
     if any("validated" in o for o in orders) and not any(o.get("active") for o in orders):
         return
+    # (0.105.48, A2-7) copies are orders of one recipe in one material: an
+    # iron helm order and a steel one are two orders (the material as the
+    # order list gives it, normalised as the stuck memory's key)
+    from order_check import miss_key
+    mat_of = {str(o.get("id")): o.get("material") for o in orders}
     for k, w in memory.order_watch.items():
         if k in unapproved:
             continue
         if (isinstance(w, dict) and w.get("by_ai") and isinstance(w.get("since"), int)
                 and (w.get("left") or 0) > 0):
-            groups.setdefault(str(w.get("what")), []).append((watch_since(w), k, w))
+            groups.setdefault(miss_key(str(w.get("what")), mat_of.get(k)), []).append((watch_since(w), k, w))
     out = []
-    for what, lst in sorted(groups.items()):
+    for gkey, lst in sorted(groups.items()):
+        what = gkey.split("|", 1)[0]
         lst.sort()
         if len(lst) > 1:
             for since, k, w in lst[:-1]:

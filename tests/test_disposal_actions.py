@@ -29,7 +29,7 @@ LUA_DIR = ROOT / "lua"
 FAKE = r"""
 local src = ...
 local W = {items = {}, by_kind = {}, units = {}, zones = {}, piles = {}, furnaces = {}, orders = {},
-           site = {}, removed = {}, caves = {}, assigned = {}}
+           site = {}, removed = {}, caves = {}, assigned = {}, melt_list = {}}
 local env = setmetatable({}, {__index = _G})
 local function qual(self) return self.quality or 0 end
 local function kind_of(self) return self.kind end
@@ -82,7 +82,14 @@ env.dfhack = {
              getOwner = function(it) return it.owner end,
              getHolderUnit = function(it) return it.holder end,
              getContainedItems = function(it) return it.contents or {} end,
-             remove = function(it) it.flags.removed = true; table.insert(W.removed, it.id); return true end},
+             remove = function(it) it.flags.removed = true; table.insert(W.removed, it.id); return true end,
+             -- DFHack's: the flag and world.items.other.ANY_MELT_DESIGNATED
+             markForMelting = function(it)
+                 if it.flags.melt or it.no_melt then return false end
+                 W.melt_list[it.id] = true; it.flags.melt = true; return true end,
+             cancelMelting = function(it)
+                 if not it.flags.melt then return false end
+                 W.melt_list[it.id] = nil; it.flags.melt = false; return true end},
     matinfo = {decode = function(it) return {material = {flags = {IS_METAL = it.metal == true}}} end},
     maps = {getTileFlags = function(x, y, z)
                 return {outside = z >= 150, feature_global = W.caves[z] == true} end,
@@ -283,6 +290,8 @@ def _():
     assert r.smelters == 1 and r.can_melt and r.needs_order, dict(r)
     r = env.mark_melt(opts(lua), False)
     assert r.marked == 2 and worn.flags.melt and enemy.flags.melt and not enemy.flags.forbid, dict(r)
+    # (0.105.48, A2-4) on the game's melt list too, where the smelter looks
+    assert w.melt_list[worn.id] and w.melt_list[enemy.id], dict(w.melt_list)
     assert skipped(r) == {"masterwork": 1, "assigned": 1}, skipped(r)
     for it in (master, wood, fresh, squad):
         assert not it.flags.melt
@@ -290,6 +299,25 @@ def _():
     w.orders[1] = lua.table_from({"id": 8, "job_type": 5, "amount_left": 3})
     r = env.mark_melt(opts(lua), False)
     assert r.already == 2 and r.melt_order == 8 and not r.needs_order, dict(r)
+
+
+@test("(0.105.48, A2-4) mark_melt: an item flagged to melt but off the game's melt list (an older mark) is "
+      "put on it; one the game can't melt is skipped; mark_dump takes a mark off the list")
+def _():
+    if not need_lua():
+        return
+    lua, env, w = world()
+    old = mk(lua, w, kind="WEAPON", metal=True, wear=1, flags={"forbid": False, "melt": True})
+    odd = mk(lua, w, kind="WEAPON", metal=True, wear=2, no_melt=True, flags={"forbid": True, "dead_dwarf": True})
+    w.furnaces[1] = lua.table_from({"type": 1})
+    r = env.mark_melt(opts(lua), False)
+    assert r.already == 1 and r.relisted == 1 and w.melt_list[old.id] and old.flags.melt, dict(r)
+    assert not odd.flags.melt and not w.melt_list[odd.id] and skipped(r).get("cannot_melt") == 1, skipped(r)
+    rags = mk(lua, w, kind="PANTS", wear=2, flags={"melt": True})
+    w.melt_list[rags.id] = True
+    w.dump(50, 10, 10, 150)
+    r = env.mark_dump(opts(lua), False)
+    assert rags.flags.dump and not rags.flags.melt and not w.melt_list[rags.id], dict(r)
 
 
 @test("mark_melt: keep_enemy_gear keeps a dead enemy's unworn gear; keep_masterwork = false is refused")
@@ -530,7 +558,8 @@ def _():
     assert env.act_place_dump(lua.table_from({"inside": "yes"})).rejected
 
 
-@test("bridge: mark_melt adds a melt work order when one is needed (not in a dry run); bad args refused")
+@test("(0.105.48, A2-4) bridge: mark_melt places no work order itself (the planner's disposal_melt_order "
+      "does, through its order check); bad args refused")
 def _():
     if not need_lua():
         return
@@ -538,7 +567,7 @@ def _():
     r = env.act_mark_melt(lua.table_from({"dry_run": True}))
     assert len(made) == 0 and not r.melt_order, dict(r)
     r = env.act_mark_melt(lua.table_from({}))
-    assert r.ok and r.melt_order == 77 and r.order_added == 4 and made[1].recipe == "melt_metal", dict(r)
+    assert len(made) == 0 and not r.melt_order and r.needs_order, dict(r)
     assert env.act_unforbid_items(lua.table_from({"reasons": lua.table_from(["ai"])})).rejected
     assert env.act_unforbid_items(lua.table_from({"max": 9999})).rejected
     r = env.act_unforbid_items(lua.table_from({"reasons": lua.table_from(["unknown"]), "player_items": True, "max": 5}))

@@ -61,7 +61,9 @@ FUEL_SHOPS = {"MetalsmithsForge": "MagmaForge", "Smelter": "MagmaSmelter", "Glas
               "Kiln": "MagmaKiln"}
 NO_FUEL = {"make_charcoal", "collect_sand", "coke_bituminous", "coke_lignite"}
 # the labour each workshop's work calls for (df.unit_labor tokens)
-SHOP_LABOUR = {"Masons": "MASON", "Mechanics": "MECHANIC", "Carpenters": "CARPENTER", "Bowyers": "BOWYER",
+# (0.105.48, A2-10) 53.17: the mason's work is the stone carver's, its
+# blocks the stonecutter's; MASON builds walls)
+SHOP_LABOUR = {"Masons": "STONE_CARVER", "Mechanics": "MECHANIC", "Carpenters": "CARPENTER", "Bowyers": "BOWYER",
                "Loom": "WEAVER", "Clothiers": "CLOTHESMAKER", "Leatherworks": "LEATHER",
                "Farmers": "PROCESS_PLANT", "Smelter": "SMELT", "GlassFurnace": "GLASSMAKER",
                "WoodFurnace": "BURN_WOOD", "Kiln": "POTTERY", "Jewelers": "CUT_GEM"}
@@ -113,6 +115,8 @@ def _labour_of(recipe: str, shop: str | None) -> str | None:
         if recipe.startswith("stone_"):
             return "STONE_CRAFT"
         return None
+    if shop == "Masons" and recipe == "stone_blocks":
+        return "STONECUTTER"
     return SHOP_LABOUR.get(shop or "")
 
 
@@ -216,8 +220,12 @@ def _free_shops(shop: str, s: dict) -> int | None:
             if isinstance(w, dict) and str(w.get("type")) in kinds]
     if not rows:
         return None
-    return sum(1 for w in rows if w.get("built", True) and not w.get("unreachable") and not w.get("blocked")
-               and int(w.get("jobs") or 0) < WORKSHOP_JOBS_MAX)
+    room = [w for w in rows if w.get("built", True) and not w.get("blocked")
+            and int(w.get("jobs") or 0) < WORKSHOP_JOBS_MAX]
+    reach = sum(1 for w in room if not w.get("unreachable"))
+    # (0.105.48, A2-1) "out of reach" alone never holds an order: the flag
+    # may come from a dwarf cut off, and a workshop with room is counted
+    return reach if reach else len(room)
 
 
 def _holders(labour: str, s: dict) -> int | None:
@@ -286,7 +294,7 @@ def order_feasible(recipe, s: dict, action: dict | None = None, cfg: dict = PLAN
         free = _free_shops(shop, s)
         if free == 0:
             return {"ok": False, "missing": "workshop",
-                    "what": f"no free {shop} workshop (each is full, blocked to orders or out of reach)"}
+                    "what": f"no free {shop} workshop (each is full or blocked to orders)"}
     if n["fuel"]:
         magma = FUEL_SHOPS.get(shop or "")
         has_magma = magma and int({**_d(b.get("workshops")), **_d(b.get("furnaces"))}.get(magma) or 0) > 0
@@ -301,7 +309,15 @@ def order_feasible(recipe, s: dict, action: dict | None = None, cfg: dict = PLAN
 
 
 def miss_key(recipe, material=None) -> str:
-    return f"{recipe}|{str(material or '').upper()}"
+    """(0.105.48, A2-3) The same key from the order (as the bridge reports
+    it) and from the action: a material only when it names one
+    (INORGANIC:<STONE, GEM or METAL>, the only kind an action carries). Any
+    stone ("INORGANIC"), a recipe's fixed material (GLASS_GREEN) and a meal's
+    ingredient count read as a material (GLASS_CLEAR) are no material."""
+    mat = str(material or "").upper()
+    if not mat.startswith("INORGANIC:"):
+        mat = ""
+    return f"{recipe}|{mat}"
 
 
 def _book(memory) -> dict:

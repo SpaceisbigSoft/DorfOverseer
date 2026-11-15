@@ -103,9 +103,11 @@ local function has_labor(u, l)
     return ok and v == true
 end
 
+-- (0.105.48, A2-2) above ground: `subterranean` false. `outside` is false
+-- under a tree's canopy (a fruit tree's trunk, game beneath the leaves).
 local function tile_outside(x, y, z)
     local d = dfhack.maps.getTileFlags(x, y, z)
-    return d ~= nil and d.outside == true
+    return d ~= nil and d.subterranean == false
 end
 
 -- --- the hunting -----------------------------------------------------------------------
@@ -417,7 +419,10 @@ function fruitful(raw)
     local ok, v = pcall(function()
         if not raw.flags.TREE then return false end
         for _, g in ipairs(raw.growths) do
-            local m = raw.material[g.mat_index]
+            -- (0.105.48, A2-6) the growth's material by its type and index (its
+            -- mat_index is the plant's raw index, not an index into raw.material)
+            local mi = dfhack.matinfo.decode(g)
+            local m = mi and mi.material
             if m and (m.flags.EDIBLE_RAW or m.flags.EDIBLE_COOKED or has_product(m, 'DRINK_MAT')) then return true end
         end
         return false

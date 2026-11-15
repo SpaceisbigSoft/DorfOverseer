@@ -1147,6 +1147,27 @@ function citizen_anchor()
     return from
 end
 
+-- (0.105.48, A2-1) The walk groups the citizens stand in ({[group] = true},
+-- group 0 left out), or nil when none can be read. A place any citizen can
+-- walk to is in one of them: one dwarf cut off (on a ledge, outside the
+-- gates, swimming) no longer decides for the fort.
+function citizen_walk_groups()
+    local set
+    pcall(function()
+        for _, u in ipairs(report_citizens(true)) do
+            local x, y, z = dfhack.units.getPosition(u)
+            if x then
+                local okg, g = pcall(dfhack.maps.getWalkableGroup, xyz2pos(x, y, z))
+                if okg and type(g) == 'number' and g ~= 0 then
+                    set = set or {}
+                    set[g] = true
+                end
+            end
+        end
+    end)
+    return set
+end
+
 local function is_empty(item)
     local ok, inside = pcall(dfhack.items.getContainedItems, item)
     return ok and #inside == 0
@@ -3410,6 +3431,7 @@ function get_order_desk()
     -- its skill limits (Enxah's masons took no job from a coffin and a
     -- block order for two game months, 168 boulders about)
     local from = citizen_anchor()
+    local groups = citizen_walk_groups()
     for _, b in ipairs(df.global.world.buildings.other.WORKSHOP_ANY) do
         local pr = b.profile
         local e = {id = b.id, type = df.workshop_type[b.type],
@@ -3422,7 +3444,17 @@ function get_order_desk()
             if pr.max_level and pr.max_level < 3000 then e.max_level = pr.max_level end
         end)
         pcall(function()
-            if from then
+            if groups then
+                -- (0.105.48, A2-1) out of reach of every citizen's walk group
+                local ok = false
+                for dy = -2, 2 do for dx = -2, 2 do
+                    if not ok then
+                        local g = dfhack.maps.getWalkableGroup(xyz2pos(b.centerx + dx, b.centery + dy, b.z))
+                        if g and groups[g] then ok = true end
+                    end
+                end end
+                if not ok then e.unreachable = true end
+            elseif from then
                 local ok = false
                 for dy = -2, 2 do for dx = -2, 2 do
                     if not ok and dfhack.maps.canWalkBetween(from, xyz2pos(b.centerx + dx, b.centery + dy, b.z)) then ok = true end

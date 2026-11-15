@@ -418,7 +418,14 @@ function order_jobs(ids)
                                 if pr.max_level and pr.max_level < 3000 then e.max_skill = pr.max_level end
                             end)
                         end
-                        local okl, lab = pcall(dfhack.job.getSpecificLabor, j)
+                        -- (0.105.48, A2-5) DFHack 53.17 has no job.getSpecificLabor:
+                        -- ai-labor's job_labor (the job type's labour, a reaction's
+                        -- by its skill, a skill-less job's by its workshop)
+                        local okl, lab = false, nil
+                        if dfhack.job.getSpecificLabor then okl, lab = pcall(dfhack.job.getSpecificLabor, j) end
+                        if not (okl and lab and lab ~= -1) then
+                            okl, lab = pcall(function() return reqscript('ai-labor').job_labor(j) end)
+                        end
                         if okl and lab and lab ~= -1 then
                             e.labor = df.unit_labor[lab]
                             -- (0.105.46, I3) and whether anyone may take it: DF says
@@ -474,8 +481,10 @@ function get_orders()
         end)
         -- (0.105.46, I3) the order's material (INORGANIC:IRON...): two helm
         -- orders in two metals are two orders, one may lack its bars
+        -- (0.105.48, A2-3) not a meal's: PrepareMeal keeps its ingredient
+        -- count there, which decodes as a glass
         pcall(function()
-            if o.mat_type ~= -1 then
+            if o.mat_type ~= -1 and df.job_type[o.job_type] ~= 'PrepareMeal' then
                 local mi = dfhack.matinfo.decode(o.mat_type, o.mat_index)
                 if mi then e.material = mi:getToken() end
             end

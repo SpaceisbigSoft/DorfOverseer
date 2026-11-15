@@ -136,13 +136,13 @@ def _():
     s["supplies"]["slabs"] = 0
     s["supplies"]["memorial_slabs"] = 0
     s["tools"] = dict(s.get("tools") or {}, autoslab=True)
-    s["labor"] = {"waiting": [{"labor": "MASON", "holders": 0, "jobs": 3}]}
+    s["labor"] = {"waiting": [{"labor": "STONE_CARVER", "holders": 0, "jobs": 3}]}
     props, notes = [], []
     planner_society._dead_notes(s, notes, props, {"engrave_slabs": True}, Memory())
     assert not any(n.startswith(NEEDS) for n in notes), notes
     assert any("no free tomb" in n and "tomb level" in n for n in notes), notes
     assert [p.action for p in by_rule(props, "ghost_mason")] == [
-        {"type": "assign_labor", "job": "MASON", "count": 1}], [p.action for p in props]
+        {"type": "assign_labor", "job": "STONE_CARVER", "count": 1}], [p.action for p in props]
     # no autoslab in this DFHack: kept (DF makes the engraving job only so), with what the AI does
     s["tools"]["autoslab"] = None
     notes = []

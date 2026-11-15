@@ -211,8 +211,10 @@ def gatherers(traits: dict, small: bool) -> int:
     return max(1, base + (1 if v >= 50 else -1 if v <= -50 else 0))
 
 
-# (0.105.22) the dead's work: slabs (a mason), their engraving, coffins
-DEAD_LABORS = ("MASON", "DETAIL", "STONE_CRAFT")
+# (0.105.22) the dead's work: slabs, their engraving, coffins. (0.105.48,
+# A2-5) by 53.17's labours: stone slabs and coffins are the stone carver's
+# (MASON builds walls), the engraving the engraver's
+DEAD_LABORS = ("STONE_CARVER", "ENGRAVER")
 
 
 def _labor_waiting_rule(lb: dict, citizens: int, cfg: dict, proposals: list, thirsty: bool = False,
