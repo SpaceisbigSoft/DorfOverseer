@@ -181,7 +181,10 @@ def _():
     assert not reserve(s)[0]                                             # over the line: nothing to top up
     s["supplies"]["hides"] = 0
     s["stocks"]["leather"] = 2
-    assert not reserve(s)[0]                                             # nothing to tan: held (the reserve's point)
+    # (0.105.51) nothing to tan: one spare animal to the butcher (its hide tanned next)
+    assert [p.action["type"] for p in reserve(s)[0]] == ["slaughter_one"], reserve(s)[0]
+    s["others_on_map"]["tame_animals"] = 2
+    assert not reserve(s)[0]                                             # none to spare: held (the reserve's point)
 
 
 def simulate(s, consumer, take, make_key, use_key, need, cycles=40):

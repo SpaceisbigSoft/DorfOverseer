@@ -318,14 +318,18 @@ PLANNER_CONFIG = {
     # recipes, and the AI's other orders that would use them up wait at or
     # under the reserve. 0 turns one off.
     "reserve_plant_cloth": 3,          # plant cloth (a fibre crop, its plants processed for thread, woven)
-    "reserve_animal_cloth": 2,         # silk or yarn cloth (woven from silk or yarn thread at hand)
-    "reserve_leather": 2,              # leather (a hide tanned)
+    # (0.105.51) silk and yarn kept apart (R3: E's reserve of "silk or yarn" was
+    # met by 3 yarn while four moods in A-F died wanting silk, three yarn)
+    "reserve_silk_cloth": 2,           # silk cloth (woven from silk thread: webs collected at a Loom)
+    "reserve_yarn_cloth": 2,           # yarn cloth (an animal shorn, the wool spun, woven)
+    "reserve_leather": 2,              # leather (a hide tanned; (0.105.51) none: a spare animal to the butcher)
     "reserve_bones": 5,                # bones (bone crafts stop at it)
     "reserve_rough_gems": 4,           # rough gems (gem cutting stops at it); (0.105.47, J1) 2 -> 4: I7a, F cut to 2, then four rough-gem requests failed
     "reserve_cut_gems": 2,             # cut gems (cut from rough over its reserve; encrusting stops at it)
     "reserve_bars": 3,                 # metal bars (metal crafts and jewellery stop at it)
     "reserve_blocks": 5,               # stone blocks (made at the mason's)
     "reserve_logs": 5,                 # logs (only said: felling is the wood rule's)
+    "reserve_green_glass": 3,          # (0.105.51) raw green glass (a glassmaker's mood asks 3; sand at a glass furnace)
     "well_renew_days": 7,              # (0.105.31) a well's channel not dug this long: its job renewed (then weekly)
     "stone_ore_ghost_min": 10,         # (0.105.19) ...or this many while ghosts wait for slabs
     "stone_ore_min": 30,               # (0.104.124) an ore freed for the masons in a crisis only with this many boulders

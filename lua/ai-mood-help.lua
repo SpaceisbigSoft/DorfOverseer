@@ -37,7 +37,7 @@ CANCEL_WINDOW = 3 * 1200        -- job cancellations this recent are read
 CANCEL_TICKS = 100              -- read again at most this often
 CANCEL_ROWS = 30                -- jobs kept in the section
 WEBS_TICKS = 1200               -- the webs counted once a game day
-WEB_REACH_CHECKS = 400          -- walk checks a count at most
+WEB_REACH_CHECKS = 20000        -- webs looked at a count at most (a walk group read each: cheap)
 WEB_REACH_ENOUGH = 200          -- ...or until this many are known within reach
 CRAFT_MOODS = {Fey = true, Secretive = true, Possessed = true, Macabre = true, Fell = true}
 
@@ -89,17 +89,26 @@ local function cancels_memo()
     return list
 end
 
--- the Looms' centres (where a weaver starts for the webs)
-local function looms()
-    local out = {}
+-- (0.105.51) the walk groups a Loom's weaver stands in: every walkable tile
+-- of each Loom's footprint (R3: "reach 0" in all six forts with 4,000-11,000
+-- loose webs, the walk asked from the Loom's centre tile only and from the
+-- first 400 webs of the list; a tile under the loom's frame has no walk group)
+function loom_groups()
+    local out, n = {}, 0
     pcall(function()
         for _, b in ipairs(df.global.world.buildings.all) do
             if b:getType() == df.building_type.Workshop and b.type == df.workshop_type.Loom then
-                table.insert(out, xyz2pos(b.centerx, b.centery, b.z))
+                n = n + 1
+                for x = b.x1, b.x2 do
+                    for y = b.y1, b.y2 do
+                        local ok, g = pcall(dfhack.maps.getWalkableGroup, xyz2pos(x, y, b.z))
+                        if ok and type(g) == 'number' and g ~= 0 then out[g] = true end
+                    end
+                end
             end
         end
     end)
-    return out
+    return out, n
 end
 
 -- a web lying where it was spun, free for a weaver to collect
@@ -112,24 +121,24 @@ function web_loose(it)
     return ok and yes == true
 end
 
--- {total, loose, reach, looms, sampled}
+-- {total, loose, reach, looms, sampled}: a web within reach when its tile's
+-- walk group is a Loom's (DF's own canWalkBetween test, read once a Loom)
 function webs_near()
     local out = {total = 0, loose = 0, reach = 0}
-    local from = looms()
-    out.looms = #from
+    local groups, nl = loom_groups()
+    out.looms = nl
     local checks = 0
     pcall(function()
         for _, it in ipairs(df.global.world.items.other.ANY_WEBS) do
             out.total = out.total + 1
             if web_loose(it) then
                 out.loose = out.loose + 1
-                if #from > 0 and checks < WEB_REACH_CHECKS and out.reach < WEB_REACH_ENOUGH then
+                if next(groups) ~= nil and checks < WEB_REACH_CHECKS and out.reach < WEB_REACH_ENOUGH then
                     checks = checks + 1
                     local okp, pos = pcall(function() return it.pos end)
-                    for _, p in ipairs(from) do
-                        local okw, yes = pcall(dfhack.maps.canWalkBetween, p, pos)
-                        if okp and okw and yes then out.reach = out.reach + 1 break end
-                    end
+                    local okg, g = false, nil
+                    if okp then okg, g = pcall(dfhack.maps.getWalkableGroup, pos) end
+                    if okg and type(g) == 'number' and g ~= 0 and groups[g] then out.reach = out.reach + 1 end
                 end
             end
         end

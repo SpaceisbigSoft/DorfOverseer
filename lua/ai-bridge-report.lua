@@ -1532,6 +1532,13 @@ function get_supplies()
     end)
     -- (0.104.95) glass: bags of sand (sand powder, in a bag), the sand zones,
     -- and the sand in the fort's geology (a sand zone needs some)
+    -- (0.105.51) raw green glass (a glassmaker's mood asks 3; R3: two died
+    -- waiting for it, none in the fort): the mood reserve's count
+    out.green_glass = 0
+    each('ROUGH', function(it)
+        local _, mi = mat_flags(it)
+        if mi and mi:getToken() == 'GLASS_GREEN' then out.green_glass = out.green_glass + it:getStackSize() end
+    end)
     out.sand_bags = 0
     each('POWDER_MISC', function(it)
         local _, mi = mat_flags(it)

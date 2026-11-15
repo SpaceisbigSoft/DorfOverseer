@@ -17,17 +17,24 @@ from planner_insane import INSANE_MOODS, insane_ids, insane_present  # (0.105.40
 from planner_mood_help import (dead_order, usable_thread, silk_route, webs_reach, free_items_skip,  # (0.105.47, J1)
                                TRADE_IF, request_detail)
 
-__all__ = ["MOOD_WORKSHOPS", "_mood_rules", "mood_item_text", "MOOD_CONSUMERS", "MOOD_TRADE_KEYS", "_mood_make", "_mood_slaughter", "_mood_materials", "mood_counts_text", "mood_journal", "mood_trade_wants", "MOOD_BLOCKS", "mood_blocked", "MOOD_RESERVES", "mood_reserve_counts", "reserve_room", "RESERVE_BATCH", "note_reserve_swap", "_mood_reserve_rule", "reserve_trade_wants", "reserve_words"]
+__all__ = ["MOOD_WORKSHOPS", "_mood_rules", "mood_item_text", "MOOD_CONSUMERS", "MOOD_TRADE_KEYS", "_mood_make", "_mood_slaughter", "_mood_materials", "mood_counts_text", "mood_journal", "mood_trade_wants", "MOOD_BLOCKS", "mood_blocked", "MOOD_RESERVES", "mood_reserve_counts", "reserve_room", "RESERVE_BATCH", "note_reserve_swap", "_mood_reserve_rule", "reserve_trade_wants", "reserve_words", "MOOD_SHOP_KINDS", "mood_shops_missing"]
 
 
-# A crafting mood's skill -> the workshop (or furnace) the dwarf must claim.
+# A crafting mood's skill -> the workshop (or furnace) the dwarf must claim
+# (DF's table, wiki "Strange mood"). (0.105.51) a tanner's mood claims a
+# Leather works and a weaver's a Clothier's shop, not a Tanner's or a Loom (R3:
+# A's Ber, a tanner, claimed nothing for 41 days while the AI built four
+# Tanner's and the fort had no Leather works); a miner's, stonecutter's and
+# stone carver's a Mason's, an engraver's a Craftsdwarf's (DF's skill names).
 MOOD_WORKSHOPS = {
     "WOODCRAFT": "Craftsdwarfs", "STONECRAFT": "Craftsdwarfs", "BONECARVE": "Craftsdwarfs",
-    "CARPENTRY": "Carpenters", "MASONRY": "Masons", "CUTGEM": "Jewelers", "ENCRUSTGEM": "Jewelers",
+    "ENGRAVE_STONE": "Craftsdwarfs",
+    "CARPENTRY": "Carpenters", "MASONRY": "Masons", "MINING": "Masons", "CUT_STONE": "Masons",
+    "CARVE_STONE": "Masons", "CUTGEM": "Jewelers", "ENCRUSTGEM": "Jewelers",
     "FORGE_WEAPON": "MetalsmithsForge", "FORGE_ARMOR": "MetalsmithsForge",
     "FORGE_FURNITURE": "MetalsmithsForge", "METALCRAFT": "MetalsmithsForge",
-    "CLOTHESMAKING": "Clothiers", "WEAVING": "Loom", "LEATHERWORK": "Leatherworks",
-    "TANNER": "Tanners", "GLASSMAKER": "GlassFurnace", "BOWYER": "Bowyers", "MECHANICS": "Mechanics",
+    "CLOTHESMAKING": "Clothiers", "WEAVING": "Clothiers", "LEATHERWORK": "Leatherworks",
+    "TANNER": "Leatherworks", "GLASSMAKER": "GlassFurnace", "BOWYER": "Bowyers", "MECHANICS": "Mechanics",
 }
 
 
@@ -758,11 +765,20 @@ def mood_journal(s: dict, memory) -> list[dict]:
 # a hide tanned; a gem cut; blocks), and the AI's other orders that would use
 # one up (the ones mood_blocked holds for a waiting mood) wait while the
 # fort is at or under its reserve. Never a slaughter for a reserve.
+# (0.105.51) R3, 15 Nov, 14 deaths after failed moods (silk 6, yarn 3,
+# leather 3, a bone 1, green glass 1; a workshop of the wrong kind 1): silk
+# and yarn kept apart, raw green glass and bars made by the mood's own
+# routes, and one spare animal to the butcher when the leather is short and
+# no hide is at hand (the slaughter rule's own guards); the mood workshops
+# kept standing (_mood_shops_step).
 
 # reserve -> (config key, words, the AI's orders that use it up)
 MOOD_RESERVES = {
     "plant_cloth": ("reserve_plant_cloth", "plant cloth", MOOD_CLOTH_BLOCKS["plant"]),
-    "animal_cloth": ("reserve_animal_cloth", "silk or yarn cloth", MOOD_CLOTH_BLOCKS["silk"] + MOOD_CLOTH_BLOCKS["yarn"]),
+    # (0.105.51) silk and yarn apart: a mood asks one kind (R3: a yarn-met
+    # "silk or yarn" reserve while the silk moods died)
+    "silk_cloth": ("reserve_silk_cloth", "silk cloth", MOOD_CLOTH_BLOCKS["silk"]),
+    "yarn_cloth": ("reserve_yarn_cloth", "yarn cloth", MOOD_CLOTH_BLOCKS["yarn"]),
     "leather": ("reserve_leather", "leather", MOOD_BLOCKS["leather"]),
     "bones": ("reserve_bones", "bones", MOOD_BLOCKS["bone"]),
     "rough_gems": ("reserve_rough_gems", "rough gems", MOOD_BLOCKS["rough"]),
@@ -770,6 +786,7 @@ MOOD_RESERVES = {
     "bars": ("reserve_bars", "metal bars", MOOD_BLOCKS["bar"]),
     "blocks": ("reserve_blocks", "blocks", ()),
     "logs": ("reserve_logs", "logs", ()),
+    "green_glass": ("reserve_green_glass", "raw green glass", ("glass_crafts", "glass_blocks", "glass_window")),
 }
 
 
@@ -784,7 +801,8 @@ def mood_reserve_counts(s: dict) -> dict:
     ck = ck if isinstance(ck, dict) else None
     return {
         "plant_cloth": _int_or_none(ck.get("plant")) if ck else None,
-        "animal_cloth": (int(ck.get("silk") or 0) + int(ck.get("yarn") or 0)) if ck else None,
+        "silk_cloth": _int_or_none(ck.get("silk")) if ck else None,
+        "yarn_cloth": _int_or_none(ck.get("yarn")) if ck else None,
         "leather": _int_or_none(st.get("leather")),
         "bones": _int_or_none(nd.get("bones")),
         "rough_gems": _int_or_none(st.get("rough_gems")),
@@ -792,6 +810,7 @@ def mood_reserve_counts(s: dict) -> dict:
         "bars": _int_or_none(st.get("metal_bars")),
         "blocks": _int_or_none(st.get("blocks")),
         "logs": _int_or_none(st.get("wood")),
+        "green_glass": _int_or_none(su.get("green_glass")),      # (0.105.51) an older bridge: None
     }
 
 
@@ -868,8 +887,10 @@ def reserve_words(s: dict, cfg: dict, x: dict) -> str:
                      "none": "no fibre crop, seed or plant here: plant cloth and seeds are asked of the caravans"}[route])
         return "; ".join(bits)
     key = {"leather": "leather", "bone": "bones", "rough": "rough_gems", "cut_gem": "cut_gems",
-           "bar": "bars", "block": "blocks", "log": "logs"}.get(kind)
-    if key and kind != "cloth":
+           "bar": "bars", "block": "blocks", "log": "logs", "glass_rough": "green_glass"}.get(kind)
+    if kind == "cloth":
+        key = "silk_cloth" if "silk" in flags else "yarn_cloth" if "yarn" in flags else None
+    if key:
         ckey, words, _ = MOOD_RESERVES[key]
         want, have = int(cfg.get(ckey) or 0), counts.get(key)
         if want and have is not None and have < want:
@@ -879,11 +900,36 @@ def reserve_words(s: dict, cfg: dict, x: dict) -> str:
 
 def reserve_trade_wants(s: dict, cfg: dict) -> list[dict]:
     """(0.105.31) A plant-cloth reserve the fort can't make (no fibre crop,
-    seed or plant): plant cloth and seeds on the caravans' list."""
-    want, have = int(cfg.get("reserve_plant_cloth") or 0), mood_reserve_counts(s)["plant_cloth"]
-    if not want or have is None or have >= want or _plant_cloth_route(s) != "none":
-        return []
-    return [{"key": "CLOTH", "count": want - have}, {"key": "SEEDS", "count": 5}]
+    seed or plant): plant cloth and seeds on the caravans' list.
+    (0.105.51) and a silk or yarn cloth reserve short with no way to make it
+    here (no webs a weaver reaches; no animal to shear): cloth asked of the
+    caravans too (R3: silk 0 all run in every fort, webs out of reach)."""
+    out = []
+    counts = mood_reserve_counts(s)
+    want, have = int(cfg.get("reserve_plant_cloth") or 0), counts["plant_cloth"]
+    if want and have is not None and have < want and _plant_cloth_route(s) == "none":
+        out += [{"key": "CLOTH", "count": want - have}, {"key": "SEEDS", "count": 5}]
+    short = 0
+    for k, made in (("silk_cloth", _silk_made_here(s, cfg)), ("yarn_cloth", _yarn_made_here(s, cfg))):
+        w, h = int(cfg.get(MOOD_RESERVES[k][0]) or 0), counts.get(k)
+        if w and h is not None and h < w and not made:
+            short += w - h
+    if short:
+        if out:
+            out[0]["count"] += short
+        else:
+            out.append({"key": "CLOTH", "count": short})
+    return out
+
+
+def _silk_made_here(s: dict, cfg: dict) -> bool:
+    """(0.105.51) Silk cloth can come here: silk thread DF will weave, or webs a weaver reaches."""
+    return bool(int(usable_thread(s, cfg).get("silk") or 0) > 0 or silk_route(s, cfg))
+
+
+def _yarn_made_here(s: dict, cfg: dict) -> bool:
+    """(0.105.51) Yarn cloth can come here: yarn thread DF will weave, or an animal to shear and spin."""
+    return bool(int(usable_thread(s, cfg).get("yarn") or 0) > 0 or wool_route(s))
 
 
 def _noted_key(s: dict, what: str) -> str:
@@ -955,28 +1001,52 @@ def _mood_reserve_rule(s: dict, memory, cfg: dict, proposals: list, notes: list)
             memory.reserve_noted = _noted_key(s, "plant_cloth")
             notes.append(f"{head}: no fibre crop, seed or plant here, so plant cloth and seeds are on the "
                          "caravans' list")
-    n, have, want = gap("animal_cloth")
+    # (0.105.51) silk and yarn each kept (R3: 6 of the 14 deaths wanted silk, 3 yarn)
+    n, have, want = gap("silk_cloth")
     if n:
+        head = f"{have} silk cloth, a reserve of {want} {FOR}"
         thread = usable_thread(s, cfg)           # (0.105.47, J1) thread DF will weave
-        woven = False
-        for k in ("silk", "yarn"):
-            if int(thread.get(k) or 0) > 0 and _has_shop(b, "Loom") and not dead_order(s, f"weave_{k}_cloth", cfg):
-                woven = True
-                if order(f"weave_{k}_cloth", min(n, int(thread.get(k) or 0)),
-                         f"{have} silk or yarn cloth, a reserve of {want} {FOR}: weave {k} cloth"):
-                    return
-                break
+        if int(thread.get("silk") or 0) > 0 and _has_shop(b, "Loom") and not dead_order(s, "weave_silk_cloth", cfg):
+            if order("weave_silk_cloth", min(n, int(thread.get("silk") or 0)), f"{head}: weave silk cloth"):
+                return
         # (0.105.47, J1) no thread to weave: silk from the webs a weaver can reach
         # (I7a: silk cloth 0 in A all run; 20 moods died on silk, no route)
-        if not woven and silk_route(s, cfg) and not queued(s, {"weave_silk_cloth"}):
+        elif silk_route(s, cfg) and not queued(s, {"weave_silk_cloth"}):
             if order("collect_webs", min(int(cfg.get("mood_webs_collect", 5)), n + 1),
-                     f"{have} silk or yarn cloth, a reserve of {want} {FOR}: collect spider webs for silk "
-                     f"thread ({webs_reach(s)} within a weaver's reach), then weave it"):
+                     f"{head}: collect spider webs for silk thread ({webs_reach(s)} within a weaver's reach), "
+                     "then weave it"):
+                return
+    n, have, want = gap("yarn_cloth")
+    if n:
+        head = f"{have} yarn cloth, a reserve of {want} {FOR}"
+        thread = usable_thread(s, cfg)
+        if int(thread.get("yarn") or 0) > 0 and _has_shop(b, "Loom") and not dead_order(s, "weave_yarn_cloth", cfg):
+            if order("weave_yarn_cloth", min(n, int(thread.get("yarn") or 0)), f"{head}: weave yarn cloth"):
+                return
+        elif (wool_route(s) and not dead_order(s, "shear_creature", cfg) and not dead_order(s, "spin_thread", cfg)
+              and not queued(s, {"weave_yarn_cloth"})):
+            # (0.105.51) no yarn thread: an animal shorn and its wool spun (then woven)
+            sheared = order("shear_creature", 1, f"{head}: shear an animal for wool (then spun and woven)")
+            spun = order("spin_thread", 1, f"{head}: spin the wool into yarn thread")
+            if sheared or spun:
                 return
     n, have, want = gap("leather")
     if n and int(su.get("hides") or 0) > 0 and _has_shop(b, "Tanners"):
         if order("tan_hide", min(n, int(su.get("hides") or 0)), f"{have} leather, a reserve of {want} {FOR}: "
                                                                  "tan a hide"):
+            return
+    elif n and _has_shop(b, "Tanners") and not _reserve_slaughter_recent(s, memory, cfg):
+        # (0.105.51) no hide: one spare tame animal to the butcher before a mood
+        # asks (R3: A's Kadôl, E's ònul and F's Zefon died wanting leather, the
+        # animal for it slaughtered 10-20 days into the mood). The slaughter
+        # rule's own guards: enough tame animals, a butcher's, never a fort
+        # that bans it, never a pet, war or hunting animal, a child or one of
+        # the last two of a kind; never while an animal waits for the butcher.
+        acts: list = []
+        if _mood_slaughter(s, memory, cfg, acts, "its hide tanned for leather " + FOR):
+            for a, why in acts:
+                proposals.append(Proposal("mood_reserve", dict(a, oldest=True),
+                                          f"{have} leather, a reserve of {want}: {why}", 5))
             return
     n, have, want = gap("cut_gems")
     rough, rough_keep = counts.get("rough_gems"), int(cfg.get("reserve_rough_gems") or 0)
@@ -986,9 +1056,79 @@ def _mood_reserve_rule(s: dict, memory, cfg: dict, proposals: list, notes: list)
         if order("cut_gems", min(n, rough - rough_keep), f"{have} cut gems, a reserve of {want} {FOR}: cut "
                                                          "a rough gem (its own reserve kept)", rg["token"]):
             return
+    # (0.105.51) raw green glass and metal bars, by the mood's own routes
+    for key, kind, item in (("green_glass", "glass_rough", {"item": "ROUGH", "material": "green glass"}),
+                            ("bars", "bar", {"item": "BAR"})):
+        n, have, want = gap(key)
+        if not n:
+            continue
+        acts, _why = _mood_make(s, dict(item, quantity=n), kind, None, cfg)
+        if acts:
+            for a, how in acts:
+                proposals.append(Proposal("mood_reserve", a, f"{have} {MOOD_RESERVES[key][1]}, a reserve of {want} "
+                                          f"{FOR}: {how}", 5, a.get("type") == "work_order"))
+            return
+    if _mood_shops_step(s, cfg, proposals):
+        return
     n, have, want = gap("blocks")
     if n and _has_shop(b, "Masons") and int(_d(s.get("stocks")).get("boulders") or 0) > 0:
         order("stone_blocks", n, f"{have} blocks, a reserve of {want} {FOR}: make stone blocks")
+
+
+RESERVE_SLAUGHTER_DAYS = 14     # (0.105.51) one animal for the leather reserve at most this often
+
+
+def _reserve_slaughter_recent(s: dict, memory, cfg: dict) -> bool:
+    """(0.105.51) An animal went to the butcher for the leather reserve lately
+    (memory.mood_help reserve_slaughter), or one is marked for it now: its
+    hide is coming, no other goes."""
+    if any(int(_d(k).get("marked") or 0) > 0 for k in _l(_d(s.get("herd")).get("kinds"))):
+        return True
+    last = _d(getattr(memory, "mood_help", None)).get("reserve_slaughter") if memory is not None else None
+    days = int(cfg.get("reserve_slaughter_days", RESERVE_SLAUGHTER_DAYS))
+    return isinstance(last, int) and 0 <= abs_tick(s) - last < days * TICKS_PER_DAY
+
+
+# (0.105.51) the workshops DF sends a strange mood to, kept standing where
+# the fort works the craft's material but lacks the mood's shop: a mood waits
+# for no level to be dug (R3: A, E and F had no Leather works when a tanner's
+# or leatherworker's mood came; A's glass furnace level, begun on the mood's
+# first day, was not dug in 40). Only these: the AI's other rules build the
+# common shops (the basic ladder, the industries) before moods begin.
+MOOD_SHOP_KINDS = {"Leatherworks": "Tanners", "Clothiers": "Loom", "GlassFurnace": "sand"}
+MOOD_SHOPS_MIN_CITIZENS = 20        # DF's strange moods begin at 20 citizens
+
+
+def mood_shops_missing(s: dict) -> list:
+    """The mood workshop kinds the fort has none of (and none coming) while it
+    works their material: a Tanner's, a Loom, sand on the map."""
+    b = _d(s.get("buildings"))
+    su = _d(s.get("supplies"))
+    sand = bool(_l(su.get("sand_layers")) or int(su.get("sand_bags") or 0) > 0 or int(su.get("sand_zones") or 0) > 0)
+    out = []
+    for kind, source in MOOD_SHOP_KINDS.items():
+        works = sand if source == "sand" else _has_shop(b, source)
+        if works and kind in BUILDABLE_SHOPS and not _has_shop(b, kind) and not _shop_coming(s, kind):
+            out.append(kind)
+    return out
+
+
+def _mood_shops_step(s: dict, cfg: dict, proposals: list) -> bool:
+    """(0.105.51) One workshops level with every mood workshop the fort lacks
+    (not urgent: the builder's ordinary turn)."""
+    if int(_d(s.get("dwarves")).get("total") or 0) < MOOD_SHOPS_MIN_CITIZENS or not player_rules(s)["mood_workshops"]:
+        return False
+    if any(isinstance(p, dict) and p.get("kind") == "workshops" and _workshops_busy([p])
+           for p in _l(_d(s.get("projects")).get("open"))):
+        return False                   # a workshops level under way first
+    missing = mood_shops_missing(s)
+    if not missing:
+        return False
+    proposals.append(Proposal("mood_reserve", {"type": "start_project", "kind": "workshops", "shops": missing},
+                              f"no {', '.join(missing)}: a strange mood of that craft claims only its own kind "
+                              "of workshop, and fails in about 40 days, too short to dig and build one; one of "
+                              "each kept standing", 5))
+    return True
 
 
 def _plants_spare(s: dict, cfg: dict, n: int) -> tuple[bool, str]:

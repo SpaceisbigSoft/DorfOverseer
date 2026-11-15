@@ -77,7 +77,8 @@ def _():
     assert any("2 plant cloth, a reserve of 3 kept for strange moods" in n for n in notes), notes
     assert not reserve_props(s, m)[1] or not any("plant cloth" in n for n in reserve_props(s, m)[1])
     keys = {w["key"]: w["count"] for w in reserve_trade_wants(s, CFG)}
-    assert keys == {"CLOTH": 1, "SEEDS": 5}, keys
+    # (0.105.51) 1 plant cloth, and 2 silk cloth the fort can't make (no webs in reach)
+    assert keys == {"CLOTH": 3, "SEEDS": 5}, keys
     assert any(w["key"] == "SEEDS" for w in trade_wants(s, CFG, 30))
     # never a slaughter for a reserve (the Beast-friends ban untouched)
     assert not [p for p in props if p.action.get("type") == "slaughter_one"]
@@ -99,7 +100,8 @@ def _():
     assert "pig tail" in props[0].reason
     s["farms"]["crops"]["GRASS_TAIL_PIG"]["planted"] = 1          # grows already: nothing to set
     assert not [p for p in reserve_props(s)[0] if p.action.get("type") == "set_farm_crops"]
-    assert reserve_trade_wants(s, CFG) == []                      # it can be made here
+    # plant cloth can be made here: no seeds asked, only (0.105.51) the 2 silk cloth it can't make
+    assert reserve_trade_wants(s, CFG) == [{"key": "CLOTH", "count": 2}], reserve_trade_wants(s, CFG)
 
 
 @test("reserves 3: at the reserve nothing is ordered with nothing to make it of; leather tanned, a gem cut over the rough reserve, blocks made")
