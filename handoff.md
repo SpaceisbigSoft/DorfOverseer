@@ -1,6 +1,6 @@
 # DF AI Overseer: Handoff
 
-15 Nov 2026 (17:40) · @Scott · the one doc to carry between chats: what this is, the plan, how to work, where things live and where to start. History and long lists live in local files (see "Files kept outside this note").
+15 Nov 2026 (17:45) · @Scott · the one doc to carry between chats: what this is, the plan, how to work, where things live and where to start. History and long lists live in local files (see "Files kept outside this note").
 
 ## Standing instructions
 
@@ -231,6 +231,8 @@ Inside the project folder: `DF-AI\docs\` (code-level design notes: building, mil
 ## Starting the next step
 
 Notes for the next chat only (they move to the archive once done).
+
+**Fresh start (15 Nov 17:45): all six reset to `first-save\region4` by the runner's reset job (`reset-forts-2026-11-15`; saves in each game's `old-saves\2026-11-15-<letter>`, logs in `logs\old-runs\2026-11-15`, save backups in `backups-old-runs\2026-11-15`, AI memory in `ai-overseer\old-run-2026-11-15`; region4's 1745 files hash-checked in each). The run starts on 0.105.55 with `start-keepers.bat` (presets); it is the first run with hallway floors from the start and 0.105.54's fights, and 14.1 step 5's exit test again. After a game day: `python brain\seen.py`, the health check, the watch list below.**
 
 **0.105.55 (15 Nov 17:35, delivered to all six through the runner, md5 checked, Lua touched; `main` `88b1a07`; zip `backups\code\DF-Overseer-2026-11-15-88b1a07.zip`).** Layout option B, hallway-first floors: design agent (spec and 16 briefs; kept in the archive's 0.105.55 notes), a survey of the six live forts' levels, 15 parallel builders + the end-to-end group (4 cross-module fixes), an independent verifier (V1-V4, all fixed with failing proofs turned green: `tests/test_v55_floors_verify.py`). The keepers were running 0.105.54 at delivery (logs to 17:21): **restart them** so the brain sends the floor hints (the Lua is live already; until the restart the bridge places floors without the master plan's hints).
 - **Watch in game** (`docs/watch-in-game.md`, "Layout option B"): the first hallway floor in each fort (`floors` report section, the FLOORS digest line, the chronicle's "a main hall was begun"); halls dug first, 3 wide, rooms opening onto them; workshops beside their piles and the links holding (a linked shop starving: `feeder_starve_days`); the War-hold's neck door; 5x5 crossings and statues; a cancel in the middle of a floor keeping the hall for the rest; floors where the stair sits inside an old level answering "no hall"; FPS; the Rules tab's "New levels" row.
