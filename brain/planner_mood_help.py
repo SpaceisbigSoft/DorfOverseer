@@ -125,8 +125,8 @@ def _silk_request(x: dict) -> bool:
 
 def silk_wanted(s: dict, cfg: dict | None = None) -> str:
     """Why the fort wants silk now ('' if not): a crafting mood waits on silk
-    cloth or thread it doesn't have within reach, or the silk-or-yarn cloth
-    reserve is short with no silk or yarn thread to weave."""
+    cloth or thread it doesn't have within reach, or the silk cloth reserve
+    is short with no silk thread to weave."""
     cfg = cfg or PLANNER_CONFIG
     for m in _l(_d(s.get("moods")).get("list")):
         if not isinstance(m, dict) or not m.get("craft"):
@@ -136,12 +136,12 @@ def silk_wanted(s: dict, cfg: dict | None = None) -> str:
                 return f"{m.get('name') or 'a dwarf'}'s mood waits on silk"
     su = _d(s.get("supplies"))
     ck = su.get("cloth_kinds")
-    want = int(cfg.get("reserve_animal_cloth") or 0)
+    want = int(cfg.get("reserve_silk_cloth") or 0)          # (0.105.51) silk on its own
     if isinstance(ck, dict) and want > 0:
-        have = int(ck.get("silk") or 0) + int(ck.get("yarn") or 0)
+        have = int(ck.get("silk") or 0)
         th = usable_thread(s, cfg)
-        if have <= want and not (th.get("silk") or th.get("yarn")):
-            return f"the silk or yarn cloth kept for moods is {have} of {want}"
+        if have <= want and not th.get("silk"):
+            return f"the silk cloth kept for moods is {have} of {want}"
     return ""
 
 
@@ -238,6 +238,9 @@ def note_mood_help(p, r: dict, state: dict, memory, now) -> None:
             cap = dict(_d(mh.get("cap_built")))
             cap[str(a["mood_unit"])] = now if isinstance(now, int) else 0
             mh["cap_built"] = cap
+    # (0.105.51) an animal sent to the butcher for the leather reserve: one a fortnight
+    if getattr(p, "rule", "") == "mood_reserve" and a.get("type") == "slaughter_one" and _d(r).get("ok") is True:
+        mh["reserve_slaughter"] = now if isinstance(now, int) else 0
     # the moods gone are forgotten
     live = {str(m.get("unit_id")) for m in _l(_d(state.get("moods")).get("list")) if isinstance(m, dict)}
     if live:

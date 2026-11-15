@@ -2693,7 +2693,7 @@ end
 for _, name in ipairs({'fill_recreation', 'badly_wants_friends', 'recreation_status', 'recreation_tick', 'hospital_zones',
                        'well_gives_water', 'is_patient', 'in_quarantine', 'hospital_burrow_status', 'hospital_burrow_tick', 'calm_burrow_status',
                        'calm_burrow_tick', 'weather_keep_in', 'weather_keep_in_status',
-                       'release_ai_burrows'}) do   -- (0.105.48, K3)
+                       'release_ai_burrows', 'in_mood'}) do   -- (0.105.48, K3); (0.105.51) in_mood
     _ENV[name] = function(...) return burrows()[name](...) end
 end
 

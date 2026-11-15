@@ -187,8 +187,21 @@ local function rec_noble(u)
     return ok and list ~= nil and #list > 0
 end
 
+-- (0.105.51) a dwarf in a mood (a strange mood, or one gone insane): DF lets
+-- a moody dwarf claim a workshop and fetch materials only inside the burrows
+-- it is assigned to (wiki, Strange mood). R3 (15 Nov): the recreation burrow
+-- (taverns, halls, food piles: no workshop) took five dwarves in strange
+-- moods "for friends" or the low mood; all five went insane and died of thirst
+-- (A's Ber, a tanner, never claimed a workshop; E's Tobul, Avuz and Ilral, C's
+-- Mestthos stalled 40 days gathering).
+function in_mood(u)
+    local ok, m = pcall(function() return u.mood end)
+    return ok and type(m) == 'number' and m >= 0
+end
+
 local function rec_base(u)
     if not dfhack.units.isAdult(u) or u.military.squad_id ~= -1 then return false end
+    if in_mood(u) then return false end              -- (0.105.51) a mood claims its workshop outside
     if rec_noble(u) then return false end
     -- (0.104.169) never one in a tantrum, by the friends' places either: the
     -- recreation burrow is the taverns and halls, where the others are
@@ -219,6 +232,7 @@ local function rec_keep(d, id, since, now, days, friend_days)
     local u = df.unit.find(tonumber(id))
     if not (u and dfhack.units.isCitizen(u) and u.military.squad_id == -1) then return false, 'gone or drafted', u end
     if rec_noble(u) then return false, 'a noble', u end      -- (0.104.168) a noble since moved in: out
+    if in_mood(u) then return false, 'a mood', u end         -- (0.105.51) out at once: its workshop is outside
     if rec_dry(u) then return false, 'thirsty or hungry', u end
     if rec_tantrum(u) then return false, 'a tantrum', u end
     if rec_sick(u) then return false, 'needs care', u end
@@ -762,6 +776,7 @@ local function hb_eligible(u, staff, own_id, rec_id)
     local okb, baby = pcall(dfhack.units.isBaby, u)
     if okb and baby then return false end
     if not hb_citizen(u) or u.military.squad_id ~= -1 or staff[u.id] or in_tantrum(u) then return false end
+    if in_mood(u) then return false end              -- (0.105.51) a strange mood needs its workshop
     if not is_patient(u) then return false end
     local other, rec = burrows_of(u, own_id, rec_id)
     if other then return false end
@@ -895,7 +910,8 @@ local function hb_maintain(d, b, zones, staff, src, now, dry_run, name, released
         local u = df.unit.find(tonumber(id))
         since = tonumber(since) or now
         local keep = u and hb_citizen(u) and u.military.squad_id == -1 and not staff[u.id] and is_patient(u)
-                     and not in_tantrum(u) and not (burrows_of(u, b and b.id or -1, rec_id)) and true or false
+                     and not in_tantrum(u) and not in_mood(u)
+                     and not (burrows_of(u, b and b.id or -1, rec_id)) and true or false
         if keep and hb_dry(u) then
             let_out(id, u, true)                 -- (0.105.22) to drink and eat
         elseif keep and now - since >= days * 1200 then

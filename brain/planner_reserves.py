@@ -46,7 +46,7 @@ __all__ = ["stock_factor", "reserve_cfg", "storage_room_size", "reserve_storage_
 RESERVE_PILES = ["food", "food", "bars_blocks", "cloth", "wood", "furniture"]
 # cfg keys scaled with the stock factor both ways, and those never under their own number
 SCALED = ("cloth_min", "cloth_per_dwarf", "metal_furniture_bars", "precious_crafts_bars")
-SCALED_UP = ("reserve_plant_cloth", "reserve_animal_cloth", "reserve_leather", "reserve_bars",
+SCALED_UP = ("reserve_plant_cloth", "reserve_silk_cloth", "reserve_yarn_cloth", "reserve_leather", "reserve_bars",
              "reserve_blocks", "reserve_logs")
 LIVE_STATUS = ("digging", "furnishing", "decorating", "built")
 

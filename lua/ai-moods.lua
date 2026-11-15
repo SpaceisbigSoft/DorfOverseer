@@ -242,10 +242,40 @@ function cloth_suits(ji, it)
     return kind ~= nil and want[kind] == true
 end
 
+-- (0.105.51) A body-part request (bone, shell, horn, pearl, ivory, wool...)
+-- matched by the corpse piece's own flags (item_body_component corpse_flags:
+-- what it counts as), not DFHack's isSuitableMaterial: R3, E's Tobul waited
+-- 40 days on "1 bone" counted "free, in walk" from a stack of shorn alpaca
+-- wool on a stockpile, and the AI asked no animal for its bones. nil: not a
+-- body-part request, or the item has no corpse flags (DFHack is asked).
+local BODY_MATCH = {bone = 'bone', shell = 'shell', horn = 'horn', pearl = 'pearl', ivory_tooth = 'tooth',
+                    hair_wool = 'hair_wool', yarn = 'yarn', silk = 'silk', leather = 'leather', totemable = 'skull'}
+function body_suits(ji, it)
+    local okb, body = pcall(function() return ji.flags2.body_part end)
+    if not (okb and body == true) then return nil end
+    local okc, cf = pcall(function() return it.corpse_flags end)
+    if not okc or cf == nil then return nil end
+    local want, any = false, false
+    for jf, cfn in pairs(BODY_MATCH) do
+        local okf, on = pcall(function() return ji.flags2[jf] end)
+        if okf and on == true then
+            want = true
+            local okh, has = pcall(function() return cf[cfn] end)
+            if okh and has == true then any = true end
+        end
+    end
+    if not want then return nil end
+    local oku, unb = pcall(function() return cf.unbutchered end)
+    if oku and unb == true then return false end        -- a carcass still to butcher
+    return any
+end
+
 local function suits(ji, it)
     local ok, yes = pcall(function()
         local c = cloth_suits(ji, it)
         if c ~= nil then return c and material_ok(ji, it) end
+        local bs = body_suits(ji, it)
+        if bs == false then return false end
         return dfhack.job.isSuitableItem(ji, it:getType(), it:getSubtype())
             and dfhack.job.isSuitableMaterial(ji, it:getMaterial(), it:getMaterialIndex(), it:getType())
             and material_ok(ji, it)

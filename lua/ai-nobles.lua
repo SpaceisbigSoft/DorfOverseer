@@ -236,7 +236,12 @@ local function candidates(code)
         -- never a soldier of a squad already
         -- (0.105.0) the messenger is away for seasons: never a soldier either
         local away = CIVILIAN_AWAY_OFFICES[code]
-        if u.hist_figure_id >= 0 and not ((military or away) and u.military.squad_id >= 0) then
+        -- (0.105.51) never one in a mood: a strange mood (R3: A's Urdim, possessed
+        -- and gathering, made militia captain on day 20; insane on day 42) or
+        -- one gone insane
+        local okmd, md = pcall(function() return u.mood end)
+        local moody = okmd and type(md) == 'number' and md >= 0
+        if u.hist_figure_id >= 0 and not moody and not ((military or away) and u.military.squad_id >= 0) then
             local skills = {}
             for i, name in ipairs(wants) do skills[i] = skill(u, name) end
             local okm, cat = pcall(function() return dfhack.units.getStressCategory(u) end)
