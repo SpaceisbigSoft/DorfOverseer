@@ -38,6 +38,8 @@ import crisis  # noqa: E402  (0.104.137)
 from planner_moods import mood_blocked  # noqa: E402  (0.105.26) a waiting mood's materials held from other orders
 from planner_moods import reserve_room, note_reserve_swap, _mood_reserve_rule  # noqa: E402  (0.105.31) the mood reserves
 from planner_gates import note_gate_stuck, note_gate_stuck_cycle  # noqa: E402  (0.105.32) a gate the game holds shut
+from planner_guards import (guard_fail, guard_lines, guard_ok, outdoor_filter,  # noqa: E402,F401  (0.105.48, K6)
+                            unknown_filter)
 from planner_building import *  # noqa: E402,F401,F403  (0.104.83: the planner in parts)
 import planner_design  # noqa: E402  (D0) the Design track's loop
 from planner_design import design_rule, note_design  # noqa: E402
@@ -138,14 +140,25 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
     if missing:
         return [], [f"the report has no {' or '.join(missing)} this cycle ({errors[missing[0]]}): "
                     "nothing planned; next cycle tries again"]
-    traits = _traits(s)
-    cfg = reserve_cfg(cfg, traits)          # (0.105.47) the reserves kept follow the Stockpile slider
+    early: list[str] = []
+
+    def _pre(fn, fallback, *args):
+        """(0.105.48, K6) The plan's preamble guarded: a neutral value on an
+        odd report (no sliders, the reserves as configured) and the rules run."""
+        try:
+            return fn(*args)
+        except Exception as e:  # noqa: BLE001
+            early.append(f"rule {getattr(fn, '__name__', 'preamble')} failed ({type(e).__name__}: {str(e)[:120]}); "
+                         "planned with neutral values")
+            return fallback
+    traits = _pre(_traits, {}, s)
+    cfg = _pre(reserve_cfg, cfg, cfg, traits)          # (0.105.47) the reserves kept follow the Stockpile slider
     dw = s["dwarves"]
     citizens = max(1, dw.get("total", 0))
     adults = max(1, dw.get("adults", 0))
     st = s["stocks"]
     proposals: list[Proposal] = []
-    notes: list[str] = []
+    notes: list[str] = early
     reported: set[str] = set()
 
     def can_use(*sections: str) -> bool:
@@ -166,7 +179,7 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
             notes.append(f"rule {fn.__name__} failed ({type(e).__name__}: {str(e)[:120]}); the others ran")
             return None
 
-    rules_ = player_rules(s)                        # the Rules tab, read once a plan
+    rules_ = _pre(player_rules, None, s) or player_rules({"settings": {}})   # the Rules tab, read once a plan
     # (0.105.47) the training squad out of the fort's squads and soldiers before any rule
     _guard(prepare_training, s, cfg)
     # (D0, Design track) the fort's design language kept, its landmarks moved
@@ -176,7 +189,7 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
     buffer = stock_factor(traits, cfg)              # (0.105.47) 2^(Stockpile/50): was 2^(Stockpile/100)
     _guard(fields.note, s, cfg.get("garden_fort", True))   # (0.105.47) the surface fields for the field customs
     buffer = factor(traits, "stockpile")
-    winter = winter_factor(s, memory)               # stock up before winter (and through it)
+    winter = _pre(winter_factor, 1.0, s, memory)    # stock up before winter (and through it)
 
     # 1. Threat alert ------------------------------------------------------
     def _threat_alert():
@@ -595,7 +608,7 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
     if can_use("stocks", "orders", "supplies", "locations"):
         found: list[Proposal] = []
         _guard(_supply_rules, s, citizens, cfg, found, notes,
-               stonebound=has_rule(memory.culture, "stone_containers"), memory=memory)
+               stonebound=bool(_guard(has_rule, memory.culture, "stone_containers")), memory=memory)
         if rules_["order_supplies"]:
             proposals += found
 
@@ -684,8 +697,18 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
 
     # 6c. Military: fill and train the player's squads, send them at threats,
     # close the gate ---------------------------------------------------------
+    # (0.105.48, K6) the gates (the entrances, citizens shut outside, a stuck
+    # gate, a way dug in) under their own guard, needing the entrances and the
+    # threats but not the military section: one failing squad rule, or an
+    # unread military section, no longer silences them
+    # (an older bridge sends no entrances section: normalize's empty default isn't one)
+    if _d(s.get("entrances")) and "entrances" not in errors and can_use("others_on_map"):
+        def _gates_rule():
+            any_reach = bool(reachable_threats(s, traits, cfg))
+            _gate_rules(s, memory, cfg, rules_, any_reach, proposals, notes, traits)
+        _guard(_gates_rule)
     if can_use("military", "others_on_map"):
-        _guard(_military_rules, s, memory, cfg, traits, citizens, proposals, notes)
+        _guard(_military_rules, s, memory, cfg, traits, citizens, proposals, notes, gate_rules=False)
         _guard(_training_squad_rule, s, memory, cfg, proposals, notes)    # (0.105.47)
         _guard(_gate_guard_rule, s, memory, cfg, proposals)
         _guard(_gate_dogs_rule, s, memory, cfg, proposals)
@@ -834,7 +857,7 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
         _guard(_watchdog_notes, s, memory, cfg, notes)
         _guard(_deep_notes, s, notes)
         _guard(_needs_notes, s, cfg, notes, proposals, memory)
-        _guard(_needs_rules, s, cfg, proposals, rules_, young_fort(s, cfg))
+        _guard(_needs_rules, s, cfg, proposals, rules_, bool(_guard(young_fort, s, cfg)))
         _guard(_dairy_rule, s, cfg, citizens, proposals)
         _guard(_eggs_rule, s, cfg, proposals)
         _guard(_war_animal_rule, s, cfg, proposals, traits)   # (0.105.47) by Militarism
@@ -1097,6 +1120,14 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
     kept = _guard(guard_training_orders, s, proposals, notes)
     if kept is not None:
         proposals = kept
+    # (0.105.48, K6) a rule planned on a section that couldn't be read waits
+    # (unknown is not zero); no work outside while danger is about
+    kept = _guard(unknown_filter, s, proposals, notes)
+    if kept is not None:
+        proposals = kept
+    kept = _guard(outdoor_filter, s, memory, traits, cfg, proposals, notes)
+    if kept is not None:
+        proposals = kept
     # (0.104.137) crisis mode: expansion waits, recovery goes first
     why = _d(getattr(memory, "crisis", None)).get("why") if memory is not None else None
     if why:
@@ -1121,227 +1152,255 @@ def select(proposals: list[Proposal], state: dict, memory: Memory,
     fired_this_cycle: set[str] = set()
     # (0.104.89) the strategist's word: a raised rule goes first and skips its
     # cooldown; a held one waits (never a survival or safety rule)
+    failed_ = False
+
     def _steer(p):
-        return steer_of(memory, p.rule, now)
+        try:
+            return steer_of(memory, p.rule, now)
+        except Exception:  # noqa: BLE001  (0.105.48, K6) an odd steer is no steer
+            return None
     # (0.105.26) a waiting strange mood's materials: no other rule's work order
     # uses them up (bags, quivers, shoes, jewellery, crafts and cloth re-ordered
     # what a mood had just cancelled)
-    mood_recipes, mood_mats = mood_blocked(state)
+    try:
+        mood_recipes, mood_mats = mood_blocked(state)
+    except Exception as e:  # noqa: BLE001  (0.105.48, K6) nothing held for a mood this cycle
+        mood_recipes, mood_mats = {}, {}
+        failed_ = True
+        guard_fail(memory, "select", e, now)
     # (0.105.31) and the mood reserves: no other rule's order takes the last few
     # (reserve fixes: held at or under the line, else capped at what lies over
     # it; the reserve rule tops a reserve up at the line, so nothing waits for
     # good while it can be made; a noble's mandate is never held by it)
-    reserve_recipes = reserve_room(state, cfg)
+    try:
+        reserve_recipes = reserve_room(state, cfg)
+    except Exception as e:  # noqa: BLE001  (0.105.48, K6) no reserve held this cycle
+        reserve_recipes = {}
+        failed_ = True
+        guard_fail(memory, "select", e, now)
     for p in sorted(proposals, key=lambda p: p.priority - (2 if (_steer(p) or {}).get("mode") == "raise" else 0)):
-        st_ = _steer(p)
-        if p.rule == "strategist" and p.action.get("type") == "civ_alert" and not p.action.get("on"):
-            # (0.105.36) the strategist's alarm-off is added after plan(): the
-            # plan's own holds on the alarm (a berserk dwarf, the undead,
-            # citizens in the caverns with a beast) apply to it here
-            why_ = alarm_held(normalize(state), memory, cfg)
-            if why_:
-                held.append(f"strategist: the alarm stays up ({why_[:100]})")
-                continue
-            # (item4) and its minimum time on
-            kept_, gnotes_ = [p], []
-            _gs = normalize(state)
-            govern_alarm(_gs, memory, cfg, kept_, gnotes_)
-            if not kept_:
-                held.append(f"strategist: {(gnotes_ or ['the alarm stays up a while yet'])[0][:120]}")
-                continue
-        if st_ and st_["mode"] == "hold":
-            held.append(f"{p.rule}: held by the strategist ({str(st_.get('why') or 'no reason')[:80]})")
-            continue
-        if p.action.get("type") == "work_order" and p.rule != "mood":
-            r_, m_ = str(p.action.get("recipe")), str(p.action.get("material") or "").upper()
-            what = mood_recipes.get(r_) or (mood_mats.get(m_) if m_ and not r_.startswith("smelt") else None)
-            if what:
-                held.append(f"{p.rule}: a strange mood waits for {what}; no {r_} order to use it up meanwhile")
-                continue
-            room = reserve_recipes.get(r_) if p.rule not in ("mood_reserve", "mandate") else None
-            if room and room[0] <= 0:
-                held.append(f"{p.rule}: no {r_} order: it would use up {room[1]}")
-                continue
-            if room and isinstance(p.action.get("amount"), int) and p.action["amount"] > room[0]:
-                p.action = dict(p.action, amount=room[0])
-                p.reason = f"{p.reason} (at most {room[0]}: {room[1]})"
-        last = memory.last_fired.get(cooldown_key(p))      # (v35 fix) per entrance for "stranded"
-        cooldown = cfg.get(COOLDOWN_KEYS.get(p.rule, f"{p.rule}_cooldown_ticks"), cfg["rule_cooldown_ticks"])
-        if (p.rule not in NO_COOLDOWN and last is not None and not (st_ and st_["mode"] == "raise")
-                and 0 <= now - last < cooldown):
-            held.append(f"{p.rule}: waiting for its cooldown")
-            continue
-        if p.rule in LABOR_CAPS and p.action.get("type") == "assign_labor":
-            # (v35 fix) at most the rule's cap of dwarves given its labour in a year
-            cap = int(cfg.get(LABOR_CAPS[p.rule], 4))
-            given = labor_given(memory, p.rule, now)
-            if given >= cap:
-                held.append(f"{p.rule}: the AI gave {given} dwarves the {p.action.get('job')} labour this year "
-                            f"already (at most {cap})")
-                continue
-            if int(p.action.get("count") or 0) > cap - given:
-                p.action = dict(p.action, count=cap - given)
-        if cooldown_key(p) in fired_this_cycle and p.rule not in MULTI_PER_CYCLE:
-            held.append(f"{p.rule}: already acted this cycle")
-            continue
-        sc = _d(_d(getattr(memory, "stuck_cancelled", None)).get(str(p.action.get("recipe"))))
-        # (0.100.1, review) the fort's own drink and food are never held back by
-        # an earlier stuck order of the same recipe (it stalled for want of a
-        # still or barrels, which those rules check): brewing stopped 28 days
-        hold_days = stuck_hold_days(sc, cfg)
-        # (0.105.46, I3) what was missing at the stuck cancel has come (bars
-        # arrived): the recipe's hold gives way (brain/order_check.py)
-        if p.action.get("type") == "work_order" and isinstance(sc.get("tick"), int) and hold_lifted(p, state, memory, cfg):
-            sc = {}
-        if (p.action.get("type") == "work_order" and p.rule not in STUCK_HOLD_EXEMPT
-                and isinstance(sc.get("tick"), int)
-                and 0 <= now - sc["tick"] < hold_days * TICKS_PER_DAY):
-            # (0.104.138, 12l) made of something else, when there's one at hand
-            alt = stuck_fallback(p, state, memory, cfg, now)
-            if alt and not queued(state, {alt["recipe"]}):
-                p = Proposal(p.rule, alt, f"{p.reason} (the {p.action.get('recipe')} order got stuck "
-                                          f"{(now - sc['tick']) // TICKS_PER_DAY} day(s) ago: "
-                                          f"{alt['recipe']} instead)", p.priority, p.is_order)
-                sc = {}
-        if (p.action.get("type") == "work_order" and p.rule not in STUCK_HOLD_EXEMPT
-                and isinstance(sc.get("tick"), int)
-                and 0 <= now - sc["tick"] < hold_days * TICKS_PER_DAY):
-            held.append(f"{p.rule}: an order for {p.action.get('recipe')} got stuck and was cancelled "
-                        f"{(now - sc['tick']) // TICKS_PER_DAY} day(s) ago; tried again after "
-                        f"{hold_days} days")
-            continue
-        # (0.105.46, I3) inputs, fuel, a free workshop and a worker before any
-        # order; none again after a stuck cancel until what it lacked changes
-        og = order_gate(p, state, memory, cfg, now, allowed)
-        if og:
-            held.append(og)
-            continue
-        b = _d(state.get("buildings"))
-        shop = recipe_shop(p.action.get("recipe")) if p.action.get("type") == "work_order" else None
-        if shop and (b.get("workshops") is not None or b.get("furnaces") is not None) and not _has_shop(b, shop):
-            held.append(f"{p.rule}: no {shop} workshop yet for {p.action.get('recipe')}: ordered once it's built")
-            continue
-        if not isinstance(getattr(memory, "shops_seen", None), dict):
-            memory.shops_seen = {}
-        seen = memory.shops_seen
-        for w in set(p.action.get("shops") or []):
-            # (0.99.4) a start that added a shop doesn't count toward "twice"
-            # (region2: 1 -> 3 Craftsdwarfs from two starts, then held for good)
-            if str(w) in seen and shop_count(b, str(w)) > int(seen[str(w)] or 0):
-                memory.shops_started[str(w)] = 0
-                seen.pop(str(w), None)
-                if isinstance(getattr(memory, "shops_retried", None), dict):
-                    memory.shops_retried.pop(str(w), None)     # (v35 fix) built: its re-starts begin again
-                if isinstance(getattr(memory, "shops_held_since", None), dict):
-                    memory.shops_held_since.pop(str(w), None)  # (0.105.36) and its hold's clock with them
-            elif str(w) not in seen and (memory.shops_started or {}).get(str(w), 0) >= 2:
-                # counted before 0.99.4, with nothing to tell a start that worked
-                # from one that didn't: one more try, from today's count
-                memory.shops_started[str(w)] = 1
-                seen[str(w)] = shop_count(b, str(w))
-        again = [w for w in (p.action.get("shops") or []) if (memory.shops_started or {}).get(str(w), 0) >= 2]
-        # (0.105.36) a strange mood's level is never held by this guard: the
-        # count is per shop, whoever started it, and a mood fails in 30-40 days
-        if (p.action.get("type") == "start_project" and p.action.get("kind") == "workshops" and again
-                and p.rule != "mood"):
-            # (0.105.35) nothing waits for the player: held SHOPS_RETRY_DAYS, then
-            # one more start (was held for good, "Needs you")
-            if not isinstance(getattr(memory, "shops_held_since", None), dict):
-                memory.shops_held_since = {}
-            since = memory.shops_held_since
-            for w in again:
-                if not isinstance(since.get(str(w)), int) or since[str(w)] > now:
-                    since[str(w)] = now
-            # (v35 fix) re-started SHOPS_RETRY_MAX times at most (bounded in
-            # total, not only in rate)
-            if not isinstance(getattr(memory, "shops_retried", None), dict):
-                memory.shops_retried = {}
-            tried = memory.shops_retried
-            spent = [w for w in again if int(tried.get(str(w)) or 0) >= SHOPS_RETRY_MAX]
-            due = [w for w in again if w not in spent and now - since[str(w)] >= SHOPS_RETRY_DAYS * TICKS_PER_DAY]
-            for w in due:
-                memory.shops_started[str(w)] = 1
-                tried[str(w)] = int(tried.get(str(w)) or 0) + 1
-                since.pop(str(w), None)
-            waiting = [w for w in again if w not in due and w not in spent]
-            why = []
-            if spent:
-                why.append(f"a workshops level for {', '.join(spent)} was started "
-                           f"{2 + SHOPS_RETRY_MAX} times and the fort report never showed it built: the AI "
-                           "starts it no more (it starts again once one is seen built)")
-            if waiting:
-                left = max(1, SHOPS_RETRY_DAYS - min((now - since[str(w)]) // TICKS_PER_DAY for w in waiting))
-                why.append(f"a workshops level for {', '.join(waiting)} was started twice already and "
-                           f"the fort report doesn't show it built: started once more in {left} day(s)")
-            out = {str(w) for w in spent + waiting}
-            if out:
-                # (0.105.36) only the held shops are left out (was: the whole
-                # level, so two starts that carried the added Still held every
-                # workshops level); held whole when none of its own shops is left
-                shops = list(p.action.get("shops") or [])
-                added = {str(w) for w in (p.action.get("added_shops") or [])}
-                kept = [w for w in shops if str(w) not in out]
-                own = [w for w in shops if str(w) not in added]
-                if not kept or (own and not [w for w in kept if str(w) not in added]):
-                    held.append(f"{p.rule}: {'; '.join(why)}")
+        try:
+            st_ = _steer(p)
+            if p.rule == "strategist" and p.action.get("type") == "civ_alert" and not p.action.get("on"):
+                # (0.105.36) the strategist's alarm-off is added after plan(): the
+                # plan's own holds on the alarm (a berserk dwarf, the undead,
+                # citizens in the caverns with a beast) apply to it here
+                why_ = alarm_held(normalize(state), memory, cfg)
+                if why_:
+                    held.append(f"strategist: the alarm stays up ({why_[:100]})")
                     continue
-                held.append(f"{p.rule}: {', '.join(sorted(out))} left out of this level ({'; '.join(why)}); "
-                            "the rest of it goes ahead")
-                p.action = dict(p.action, shops=kept,
-                                added_shops=[w for w in (p.action.get("added_shops") or []) if str(w) not in out])
-        loop = _loop_count(memory, p, now)
-        if loop is not None:
-            held.append(f"{p.rule}: done {loop} times in the last year, a possible loop: held "
-                        f"{cfg['loop_hold_days']} days (see the run summary)")
-            continue
-        ne = no_effect_wait(memory, p, now, cfg)
-        if ne is not None:
-            held.append(f"{p.rule}: done {cfg.get('no_effect_max', 4)}+ times for the same reason and nothing changed: "
-                        f"held {ne} more day(s); {NO_EFFECT_WHY.get(p.rule, 'look in the game')}")
-            continue
-        stalled = _stalled_days(memory, str(p.action.get("recipe")), now)
-        if (p.action.get("type") == "work_order" and p.rule not in EMERGENCY
-                and p.rule not in ORDER_HOLD_EXEMPT and stalled is not None and stalled >= cfg["order_hold_days"]):
-            held.append(f"{p.rule}: the AI's {p.action.get('recipe')} order hasn't moved in {stalled} days; "
-                        "no more until it does")
-            continue
-        if p.action.get("type") == "place_in_zone" and p.rule not in EMERGENCY:
-            zf = zone_full_days(memory, p.action.get("zone_id"), now)
-            if zf is not None:
-                held.append(f"{p.rule}: zone {p.action.get('zone_id')} has no free floor for a "
-                            f"{p.action.get('what') or 'piece'}; looked at again in {zf} day(s)")
+                # (item4) and its minimum time on
+                kept_, gnotes_ = [p], []
+                _gs = normalize(state)
+                govern_alarm(_gs, memory, cfg, kept_, gnotes_)
+                if not kept_:
+                    held.append(f"strategist: {(gnotes_ or ['the alarm stays up a while yet'])[0][:120]}")
+                    continue
+            if st_ and st_["mode"] == "hold":
+                held.append(f"{p.rule}: held by the strategist ({str(st_.get('why') or 'no reason')[:80]})")
                 continue
-        wait = _refused_wait(memory, p, now, state.get("bridge_version"))
-        if wait is not None:
-            n = _d(memory.refusals.get(refusal_key(p))).get("n")
-            held.append(f"{p.rule}: the game refused it {n} time(s) in a row; tries again in {wait} day(s)" if n
-                        else f"{p.rule}: waiting on the game (its last answer was to wait); asks again in "
-                             f"{wait} day(s)")      # (0.97: it said "refused 0 time(s)")
-            continue
-        # (0.104.137) in a crisis, recovery gets extra action slots
-        limit = cfg["max_actions_per_cycle"]
-        if _d(getattr(memory, "crisis", None)).get("why") and crisis.is_recovery(p):
-            limit += cfg["crisis_extra_actions"]
-        if (p.rule not in LIMIT_EXEMPT
-                and len([a for a in allowed if a.rule not in LIMIT_EXEMPT]) >= limit):
-            held.append(f"{p.rule}: action limit for this cycle reached")
-            continue
-        if (p.is_order and p.rule not in ORDER_HOLD_EXEMPT
-                and orders_today >= cfg["max_orders_per_game_day"]):
-            held.append(f"{p.rule}: work-order limit for today reached")
-            continue
-        kind = p.action.get("kind") if p.action.get("type") == "start_project" else None
-        if kind in ONE_A_CYCLE and any(a.action.get("type") == "start_project" and a.action.get("kind") == kind
-                                       for a in allowed):
-            held.append(f"{p.rule}: one new {kind} level a cycle; this one waits its turn")
-            continue
-        if p.action.get("type") == "work_order" and approve_on_place(memory, cfg, now):
-            # (0.105.46, I3) the manager doesn't get to the AI's orders: approved as placed
-            p.action = dict(p.action, approve=True)
-        allowed.append(p)
-        fired_this_cycle.add(cooldown_key(p))
-        if p.is_order:
-            orders_today += 1
+            if p.action.get("type") == "work_order" and p.rule != "mood":
+                r_, m_ = str(p.action.get("recipe")), str(p.action.get("material") or "").upper()
+                what = mood_recipes.get(r_) or (mood_mats.get(m_) if m_ and not r_.startswith("smelt") else None)
+                if what:
+                    held.append(f"{p.rule}: a strange mood waits for {what}; no {r_} order to use it up meanwhile")
+                    continue
+                room = reserve_recipes.get(r_) if p.rule not in ("mood_reserve", "mandate") else None
+                if room and room[0] <= 0:
+                    held.append(f"{p.rule}: no {r_} order: it would use up {room[1]}")
+                    continue
+                if room and isinstance(p.action.get("amount"), int) and p.action["amount"] > room[0]:
+                    p.action = dict(p.action, amount=room[0])
+                    p.reason = f"{p.reason} (at most {room[0]}: {room[1]})"
+            last = memory.last_fired.get(cooldown_key(p))      # (v35 fix) per entrance for "stranded"
+            cooldown = cfg.get(COOLDOWN_KEYS.get(p.rule, f"{p.rule}_cooldown_ticks"), cfg["rule_cooldown_ticks"])
+            if (p.rule not in NO_COOLDOWN and last is not None and not (st_ and st_["mode"] == "raise")
+                    and 0 <= now - last < cooldown):
+                held.append(f"{p.rule}: waiting for its cooldown")
+                continue
+            if p.rule in LABOR_CAPS and p.action.get("type") == "assign_labor":
+                # (v35 fix) at most the rule's cap of dwarves given its labour in a year
+                cap = int(cfg.get(LABOR_CAPS[p.rule], 4))
+                given = labor_given(memory, p.rule, now)
+                if given >= cap:
+                    held.append(f"{p.rule}: the AI gave {given} dwarves the {p.action.get('job')} labour this year "
+                                f"already (at most {cap})")
+                    continue
+                if int(p.action.get("count") or 0) > cap - given:
+                    p.action = dict(p.action, count=cap - given)
+            if cooldown_key(p) in fired_this_cycle and p.rule not in MULTI_PER_CYCLE:
+                held.append(f"{p.rule}: already acted this cycle")
+                continue
+            sc = _d(_d(getattr(memory, "stuck_cancelled", None)).get(str(p.action.get("recipe"))))
+            # (0.100.1, review) the fort's own drink and food are never held back by
+            # an earlier stuck order of the same recipe (it stalled for want of a
+            # still or barrels, which those rules check): brewing stopped 28 days
+            hold_days = stuck_hold_days(sc, cfg)
+            # (0.105.46, I3) what was missing at the stuck cancel has come (bars
+            # arrived): the recipe's hold gives way (brain/order_check.py)
+            if p.action.get("type") == "work_order" and isinstance(sc.get("tick"), int) and hold_lifted(p, state, memory, cfg):
+                sc = {}
+            if (p.action.get("type") == "work_order" and p.rule not in STUCK_HOLD_EXEMPT
+                    and isinstance(sc.get("tick"), int)
+                    and 0 <= now - sc["tick"] < hold_days * TICKS_PER_DAY):
+                # (0.104.138, 12l) made of something else, when there's one at hand
+                alt = stuck_fallback(p, state, memory, cfg, now)
+                if alt and not queued(state, {alt["recipe"]}):
+                    p = Proposal(p.rule, alt, f"{p.reason} (the {p.action.get('recipe')} order got stuck "
+                                              f"{(now - sc['tick']) // TICKS_PER_DAY} day(s) ago: "
+                                              f"{alt['recipe']} instead)", p.priority, p.is_order)
+                    sc = {}
+            if (p.action.get("type") == "work_order" and p.rule not in STUCK_HOLD_EXEMPT
+                    and isinstance(sc.get("tick"), int)
+                    and 0 <= now - sc["tick"] < hold_days * TICKS_PER_DAY):
+                held.append(f"{p.rule}: an order for {p.action.get('recipe')} got stuck and was cancelled "
+                            f"{(now - sc['tick']) // TICKS_PER_DAY} day(s) ago; tried again after "
+                            f"{hold_days} days")
+                continue
+            # (0.105.46, I3) inputs, fuel, a free workshop and a worker before any
+            # order; none again after a stuck cancel until what it lacked changes
+            og = order_gate(p, state, memory, cfg, now, allowed)
+            if og:
+                held.append(og)
+                continue
+            b = _d(state.get("buildings"))
+            shop = recipe_shop(p.action.get("recipe")) if p.action.get("type") == "work_order" else None
+            if shop and (b.get("workshops") is not None or b.get("furnaces") is not None) and not _has_shop(b, shop):
+                held.append(f"{p.rule}: no {shop} workshop yet for {p.action.get('recipe')}: ordered once it's built")
+                continue
+            if not isinstance(getattr(memory, "shops_seen", None), dict):
+                memory.shops_seen = {}
+            seen = memory.shops_seen
+            for w in set(p.action.get("shops") or []):
+                # (0.99.4) a start that added a shop doesn't count toward "twice"
+                # (region2: 1 -> 3 Craftsdwarfs from two starts, then held for good)
+                if str(w) in seen and shop_count(b, str(w)) > int(seen[str(w)] or 0):
+                    memory.shops_started[str(w)] = 0
+                    seen.pop(str(w), None)
+                    if isinstance(getattr(memory, "shops_retried", None), dict):
+                        memory.shops_retried.pop(str(w), None)     # (v35 fix) built: its re-starts begin again
+                    if isinstance(getattr(memory, "shops_held_since", None), dict):
+                        memory.shops_held_since.pop(str(w), None)  # (0.105.36) and its hold's clock with them
+                elif str(w) not in seen and (memory.shops_started or {}).get(str(w), 0) >= 2:
+                    # counted before 0.99.4, with nothing to tell a start that worked
+                    # from one that didn't: one more try, from today's count
+                    memory.shops_started[str(w)] = 1
+                    seen[str(w)] = shop_count(b, str(w))
+            again = [w for w in (p.action.get("shops") or []) if (memory.shops_started or {}).get(str(w), 0) >= 2]
+            # (0.105.36) a strange mood's level is never held by this guard: the
+            # count is per shop, whoever started it, and a mood fails in 30-40 days
+            if (p.action.get("type") == "start_project" and p.action.get("kind") == "workshops" and again
+                    and p.rule != "mood"):
+                # (0.105.35) nothing waits for the player: held SHOPS_RETRY_DAYS, then
+                # one more start (was held for good, "Needs you")
+                if not isinstance(getattr(memory, "shops_held_since", None), dict):
+                    memory.shops_held_since = {}
+                since = memory.shops_held_since
+                for w in again:
+                    if not isinstance(since.get(str(w)), int) or since[str(w)] > now:
+                        since[str(w)] = now
+                # (v35 fix) re-started SHOPS_RETRY_MAX times at most (bounded in
+                # total, not only in rate)
+                if not isinstance(getattr(memory, "shops_retried", None), dict):
+                    memory.shops_retried = {}
+                tried = memory.shops_retried
+                spent = [w for w in again if int(tried.get(str(w)) or 0) >= SHOPS_RETRY_MAX]
+                due = [w for w in again if w not in spent and now - since[str(w)] >= SHOPS_RETRY_DAYS * TICKS_PER_DAY]
+                for w in due:
+                    memory.shops_started[str(w)] = 1
+                    tried[str(w)] = int(tried.get(str(w)) or 0) + 1
+                    since.pop(str(w), None)
+                waiting = [w for w in again if w not in due and w not in spent]
+                why = []
+                if spent:
+                    why.append(f"a workshops level for {', '.join(spent)} was started "
+                               f"{2 + SHOPS_RETRY_MAX} times and the fort report never showed it built: the AI "
+                               "starts it no more (it starts again once one is seen built)")
+                if waiting:
+                    left = max(1, SHOPS_RETRY_DAYS - min((now - since[str(w)]) // TICKS_PER_DAY for w in waiting))
+                    why.append(f"a workshops level for {', '.join(waiting)} was started twice already and "
+                               f"the fort report doesn't show it built: started once more in {left} day(s)")
+                out = {str(w) for w in spent + waiting}
+                if out:
+                    # (0.105.36) only the held shops are left out (was: the whole
+                    # level, so two starts that carried the added Still held every
+                    # workshops level); held whole when none of its own shops is left
+                    shops = list(p.action.get("shops") or [])
+                    added = {str(w) for w in (p.action.get("added_shops") or [])}
+                    kept = [w for w in shops if str(w) not in out]
+                    own = [w for w in shops if str(w) not in added]
+                    if not kept or (own and not [w for w in kept if str(w) not in added]):
+                        held.append(f"{p.rule}: {'; '.join(why)}")
+                        continue
+                    held.append(f"{p.rule}: {', '.join(sorted(out))} left out of this level ({'; '.join(why)}); "
+                                "the rest of it goes ahead")
+                    p.action = dict(p.action, shops=kept,
+                                    added_shops=[w for w in (p.action.get("added_shops") or []) if str(w) not in out])
+            loop = _loop_count(memory, p, now)
+            if loop is not None:
+                held.append(f"{p.rule}: done {loop} times in the last year, a possible loop: held "
+                            f"{cfg['loop_hold_days']} days (see the run summary)")
+                continue
+            ne = no_effect_wait(memory, p, now, cfg)
+            if ne is not None:
+                held.append(f"{p.rule}: done {cfg.get('no_effect_max', 4)}+ times for the same reason and nothing changed: "
+                            f"held {ne} more day(s); {NO_EFFECT_WHY.get(p.rule, 'look in the game')}")
+                continue
+            stalled = _stalled_days(memory, str(p.action.get("recipe")), now)
+            if (p.action.get("type") == "work_order" and p.rule not in EMERGENCY
+                    and p.rule not in ORDER_HOLD_EXEMPT and stalled is not None and stalled >= cfg["order_hold_days"]):
+                held.append(f"{p.rule}: the AI's {p.action.get('recipe')} order hasn't moved in {stalled} days; "
+                            "no more until it does")
+                continue
+            if p.action.get("type") == "place_in_zone" and p.rule not in EMERGENCY:
+                zf = zone_full_days(memory, p.action.get("zone_id"), now)
+                if zf is not None:
+                    held.append(f"{p.rule}: zone {p.action.get('zone_id')} has no free floor for a "
+                                f"{p.action.get('what') or 'piece'}; looked at again in {zf} day(s)")
+                    continue
+            wait = _refused_wait(memory, p, now, state.get("bridge_version"))
+            if wait is not None:
+                n = _d(memory.refusals.get(refusal_key(p))).get("n")
+                held.append(f"{p.rule}: the game refused it {n} time(s) in a row; tries again in {wait} day(s)" if n
+                            else f"{p.rule}: waiting on the game (its last answer was to wait); asks again in "
+                                 f"{wait} day(s)")      # (0.97: it said "refused 0 time(s)")
+                continue
+            # (0.104.137) in a crisis, recovery gets extra action slots
+            limit = cfg["max_actions_per_cycle"]
+            if _d(getattr(memory, "crisis", None)).get("why") and crisis.is_recovery(p):
+                limit += cfg["crisis_extra_actions"]
+            if (not limit_exempt(p.rule)          # (0.105.48, K6) and every EMERGENCY rule, however late added
+                    and len([a for a in allowed if not limit_exempt(a.rule)]) >= limit):
+                held.append(f"{p.rule}: action limit for this cycle reached")
+                continue
+            if (p.is_order and p.rule not in ORDER_HOLD_EXEMPT
+                    and orders_today >= cfg["max_orders_per_game_day"]):
+                held.append(f"{p.rule}: work-order limit for today reached")
+                continue
+            kind = p.action.get("kind") if p.action.get("type") == "start_project" else None
+            if kind in ONE_A_CYCLE and any(a.action.get("type") == "start_project" and a.action.get("kind") == kind
+                                           for a in allowed):
+                held.append(f"{p.rule}: one new {kind} level a cycle; this one waits its turn")
+                continue
+            if p.action.get("type") == "work_order" and approve_on_place(memory, cfg, now):
+                # (0.105.46, I3) the manager doesn't get to the AI's orders: approved as placed
+                p.action = dict(p.action, approve=True)
+            allowed.append(p)
+            fired_this_cycle.add(cooldown_key(p))
+            if p.is_order:
+                orders_today += 1
+        except Exception as e:  # noqa: BLE001  (0.105.48, K6) one odd proposal never stops the limits
+            failed_ = True
+            guard_fail(memory, "select", e, now)
+            if limit_exempt(p.rule) and p not in allowed:
+                # a response to danger goes as it is; anything else waits a cycle
+                allowed.append(p)
+                fired_this_cycle.add(p.rule)
+            elif p not in allowed:
+                held.append(f"{p.rule}: the limits' check failed on it ({type(e).__name__}: {str(e)[:80]}); "
+                            "it waits a cycle")
+    if not failed_:
+        guard_ok(memory, "select")
     return allowed, held
 
 
@@ -1352,35 +1411,24 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
     the cooldown and counts start anyway, to be safe against doing it twice."""
     now = abs_tick(state)
     today = game_day(state)
-    crops_set_now = any(p.action.get("type") == "set_farm_crops" and r.get("ok") is True for p, r in results)
-    for p, r in results:
-        ok = r.get("ok")
-        brief_timeout_now = brief_timeout(memory, p, r)       # (0.105.26) a search cut short
-        note_labor_given(memory, p, r, now)                   # (v35 fix) LABOR_CAPS
-        _record_any_outcome(p.action, r, state, memory, now, brief=brief_timeout_now)
-        note_refusal(memory, p, r, now, state.get("bridge_version"))
-        note_no_effect(memory, p, ok, now)                 # (0.105.24)
-        note_construct(p, r, state, memory, now)           # (0.105.30) wings, seals, soil floors, the hall
-        note_reserve_swap(p, r, state, memory)             # (0.105.31 reserve fixes) a fibre swap that did nothing
-        note_gate_stuck(p, r, state, memory, now)          # (0.105.32) the unstick step tried, a way dug in
-        note_way_out(p, r, state, memory, now)             # (0.105.47, J16) the way-out guard's try counted
-        note_cleanup(p, r, state, memory, now)             # (0.105.40) a cleanup's trial done, what it removed
-        note_captives(p, r, memory, now)                   # (item6) the pit's trial done, the prisoners sent
-        note_order_loop(p, r, state, memory, now, cfg)     # (0.105.46, I3) a stuck cancel's missing thing; approvals
-        note_mood_help(p, r, state, memory, now)           # (0.105.47, J1) free-items "nothing", a shop past the cap
-        note_syndromes(p, r, memory, now)                  # (0.105.41, item 11) the contaminant clean's trial done
-        note_food_level(p, r, memory)                      # (fix41) one food storage level a kitchen or still
-        note_training(p, r, memory, now)                   # (0.105.47) stress care's release: never drafted again
-        note_stuck(p, r, memory, now)                      # (0.105.45) the stuck sweep's step done
-        note_holdfast(p, r, state, memory, now)            # (0.105.47, R2 item 7) a guard posted, a destroyer's gate tried
-        if p.action.get("type") == "weather_burrow":
-            note_keep_in(memory, now, p.action, ok)        # (item4) evil weather: kept in by the burrow
-        note_quarry_dug(p, r, state, memory, now)          # (item7) the quarry marked, the stone then
-        note_zone_full(memory, p, r, now)                  # (item7) a zone with no free floor for furniture
+    crops_set_now = any(p.action.get("type") == "set_farm_crops" and isinstance(r, dict) and r.get("ok") is True
+                        for p, r in results)
+    failed: set[str] = set()
+
+    def _hook(name, fn, *args, **kw):
+        """(0.105.48, K6) Each of record()'s steps on its own: one raising no
+        longer loses the rest (the alarm's and the gate's ownership, the
+        cooldown, the action log). The failure is counted (memory.guard_fails)
+        and said as a "rule record_<step> failed" note until it runs again."""
         try:
-            note_design(p, r, state, memory, now)          # (D0) sites kept, a landmark's refusals and fallback
-        except Exception:  # noqa: BLE001  (the design record never stops the cycle's record)
-            pass
+            return fn(*args, **kw)
+        except Exception as e:  # noqa: BLE001
+            failed.add(name)
+            guard_fail(memory, "record_" + name, e, now)
+            return None
+
+    def _squads(p, r, ok, a):
+        """The squads, the census, polish: whatever the answer."""
         if p.action.get("type") == "squad_swap" and p.action.get("unit_id") is not None:
             # (0.104.78) sent home, or found already out: not asked for again a week
             memory.swapped[str(p.action["unit_id"])] = now
@@ -1446,6 +1494,9 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
             memory.polish_seen = {"n": int(ps_.get("n") or 0) + 1, "tick": now}
         elif p.action.get("type") == "polish" and r.get("ok") is True and int(r.get("designated") or 0) > 0:
             memory.polish_seen = {}
+
+    def _booked(p, r, ok, a):
+        """The cooldown, the loop log, the order count, the recent actions (False: refused)."""
         if ok is False:
             if p.rule == "build":
                 # No safe site, the dry run disagreed, or the game refused it
@@ -1455,7 +1506,7 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
                 memory.last_fired[p.rule] = now - cooldown + TICKS_PER_DAY
             elif p.rule == "found" and not brief_timeout_now:
                 memory.last_fired[p.rule] = now          # the ground won't allow it: ask again in 3 days
-            continue
+            return False
         memory.last_fired[cooldown_key(p)] = now
         if p.rule not in LOOP_EXEMPT:
             log = memory.action_log.setdefault(refusal_key(p), [])
@@ -1466,7 +1517,10 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
         memory.recent_actions = (memory.recent_actions
                                  + [{"rule": p.rule, "action": p.action, "ok": ok,
                                      "reason": p.reason[:80]}])[-10:]
-        a = p.action
+        return True
+
+    def _starts(p, r, ok, a):
+        """What a start, a memorial or a farm setting books, done or unknown."""
         if a["type"] == "start_project" and a.get("kind") == "workshops":
             for shop in set(a.get("shops") or []):
                 memory.shops_started[str(shop)] = memory.shops_started.get(str(shop), 0) + 1
@@ -1501,6 +1555,9 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
                 built.append(a["name"])
             if ok is not False:
                 memory.last_memorial_tick = abs_tick(state)
+
+    def _asked(p, r, ok, a):
+        """An alarm change or a switch-off with no reply: read off the next reports."""
         if ok is None and a["type"] == "civ_alert":
             # (0.105.33) the alarm changed but no reply came: the next report
             # says whether it went through (note_cycle takes ownership then)
@@ -1508,8 +1565,9 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
         if ok is None and a["type"] == "tool" and a.get("enabled") is False and a.get("name"):
             # (0.105.33) likewise the AI's own switch-off: not booked as the player's
             memory.tool_off_asked = dict(_d(memory.tool_off_asked), **{str(a["name"]): now})
-        if ok is not True:
-            continue
+
+    def _done(p, r, ok, a):
+        """What a done action books."""
         if a["type"] == "cancel_project" and a.get("cavern_well"):
             # (0.104.12) not dug again: the shaft crept for years
             memory.cavern_well_failure = "the last cavern well's shaft was under half dug in a game year: given up"
@@ -1568,6 +1626,9 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
             built = memory.culture.get("memorials_built", [])
             if a["memorial"] in built:
                 built.remove(a["memorial"])
+
+    def _gate_owned(p, r, ok, a):
+        """The AI gate's ownership: a pull asked for."""
         if a["type"] == "pull_gate":
             # (0.105.33) a pull only queues a job (a dwarf may never reach the
             # lever): note_cycle reads the lever's state. Only a lever the
@@ -1577,6 +1638,9 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
             if not (isinstance(lever, dict) and _lever_state(lever) is not None):
                 memory.gate_closed_by_ai = not memory.gate_closed_by_ai
             memory.gate_pull_asked = now          # (0.105.36) a shut read after this is the AI's
+
+    def _done2(p, r, ok, a):
+        """What a done action books (2)."""
         if a["type"] == "set_population_cap":
             slow, strained = "runs slowly" in p.reason, "is strained" in p.reason
             memory.fps_cap = (memory.fps_cap or a.get("cap")) if slow else None
@@ -1618,6 +1682,9 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
                 if sid in memory.squads_rested:
                     memory.squads_rested.remove(sid)
                 memory.last_train_tick = now
+
+    def _alarm_owned(p, r, ok, a):
+        """The alarm's ownership: raised or lowered by the AI."""
         if a["type"] == "civ_alert":
             if a["on"] and r.get("already_on"):
                 pass  # someone else's alert: don't take ownership of it
@@ -1626,6 +1693,9 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
                 memory.quiet_cycles = 0
                 if r.get("on") is None or bool(r.get("on")) == bool(a["on"]):
                     note_alarm_change(memory, now, bool(a["on"]), p.reason)      # (item4)
+
+    def _tools(p, r, ok, a):
+        """The tools the AI switched on or off."""
         if a["type"] == "tool" and a.get("enabled") is False:
             # (0.89) the AI switched it off itself (the elves' quota): not the
             # player's choice, so it may come back on later
@@ -1644,9 +1714,63 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
                 for lst in (memory.tools_confirmed_on, memory.tools_seen_on):
                     if name not in lst:
                         lst.append(name)
+
+    for p, r in results:
+        if not isinstance(r, dict):
+            r = {"ok": None, "error": f"no answer read ({type(r).__name__})"}
+        ok = r.get("ok")
+        brief_timeout_now = bool(_hook("brief_timeout", brief_timeout, memory, p, r))   # (0.105.26) a search cut short
+        _hook("note_labor_given", note_labor_given, memory, p, r, now)              # (v35 fix) LABOR_CAPS
+        _hook("record_outcome", _record_any_outcome, p.action, r, state, memory, now, brief=brief_timeout_now)
+        _hook("note_refusal", note_refusal, memory, p, r, now, state.get("bridge_version"))
+        _hook("note_no_effect", note_no_effect, memory, p, ok, now)                 # (0.105.24)
+        _hook("note_construct", note_construct, p, r, state, memory, now)           # (0.105.30) wings, seals, soil floors, the hall
+        _hook("note_reserve_swap", note_reserve_swap, p, r, state, memory)          # (0.105.31 reserve fixes) a fibre swap that did nothing
+        _hook("note_gate_stuck", note_gate_stuck, p, r, state, memory, now)         # (0.105.32) the unstick step tried, a way dug in
+        _hook("note_way_out", note_way_out, p, r, state, memory, now)               # (0.105.47, J16) the way-out guard's try counted
+        _hook("note_cleanup", note_cleanup, p, r, state, memory, now)               # (0.105.40) a cleanup's trial done, what it removed
+        _hook("note_captives", note_captives, p, r, memory, now)                    # (item6) the pit's trial done, the prisoners sent
+        _hook("note_order_loop", note_order_loop, p, r, state, memory, now, cfg)    # (0.105.46, I3) a stuck cancel's missing thing; approvals
+        _hook("note_mood_help", note_mood_help, p, r, state, memory, now)           # (0.105.47, J1) free-items "nothing", a shop past the cap
+        _hook("note_syndromes", note_syndromes, p, r, memory, now)                  # (0.105.41, item 11) the contaminant clean's trial done
+        _hook("note_food_level", note_food_level, p, r, memory)                     # (fix41) one food storage level a kitchen or still
+        _hook("note_training", note_training, p, r, memory, now)                    # (0.105.47) stress care's release: never drafted again
+        _hook("note_stuck", note_stuck, p, r, memory, now)                          # (0.105.45) the stuck sweep's step done
+        _hook("note_holdfast", note_holdfast, p, r, state, memory, now)             # (0.105.47, R2 item 7) a guard posted, a destroyer's gate tried
+        if p.action.get("type") == "weather_burrow":
+            _hook("note_keep_in", note_keep_in, memory, now, p.action, ok)          # (item4) evil weather: kept in by the burrow
+        _hook("note_quarry_dug", note_quarry_dug, p, r, state, memory, now)         # (item7) the quarry marked, the stone then
+        _hook("note_zone_full", note_zone_full, memory, p, r, now)                  # (item7) a zone with no free floor for furniture
+        _hook("note_design", note_design, p, r, state, memory, now)                 # (D0) sites kept, a landmark's refusals and fallback
+        a = p.action if isinstance(p.action, dict) else {}
+        _hook("squads", _squads, p, r, ok, a)
+        _hook("booked", _booked, p, r, ok, a)      # the cooldown and the log, after the hooks as before
+        if ok is False:
+            continue
+        _hook("starts", _starts, p, r, ok, a)
+        _hook("asked", _asked, p, r, ok, a)
+        if ok is not True:
+            continue
+        _hook("done", _done, p, r, ok, a)
+        _hook("gate", _gate_owned, p, r, ok, a)
+        _hook("done2", _done2, p, r, ok, a)
+        _hook("alarm", _alarm_owned, p, r, ok, a)
+        _hook("tools", _tools, p, r, ok, a)
     for k in list(memory.orders_by_day):
-        if not k.isdigit() or int(k) < today - 4:
+        if not str(k).isdigit() or int(k) < today - 4:
             del memory.orders_by_day[k]
+    if results:
+        for name in RECORD_STEPS:
+            if name not in failed:
+                guard_ok(memory, "record_" + name)
+
+
+RECORD_STEPS = ("brief_timeout", "note_labor_given", "record_outcome", "note_refusal", "note_no_effect",
+                "note_construct", "note_reserve_swap", "note_gate_stuck", "note_way_out", "note_cleanup",
+                "note_captives", "note_order_loop", "note_mood_help", "note_syndromes", "note_food_level",
+                "note_training", "note_stuck", "note_holdfast", "note_keep_in", "note_quarry_dug",
+                "note_zone_full", "note_design", "squads", "booked", "starts", "asked", "done", "gate",
+                "done2", "alarm", "tools")
 
 
 # (0.105.33) a year's ticks kept for each loop key: room for the highest loop
@@ -1784,7 +1908,7 @@ def note_cycle(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> list[
             b_["until"] = min(b_["until"], now + BUILD_HOLD_MAX_DAYS * TICKS_PER_DAY)
         for k in [k for k, v in memory.steer.items()
                   if (v.get("mode") == "raise" and k in RAISE_FORBIDDEN)
-                  or (v.get("mode") == "hold" and (k in HOLD_PROTECTED or k in STEER_PROTECTED))]:
+                  or (v.get("mode") == "hold" and (k in HOLD_PROTECTED or steer_protected(k)))]:
             del memory.steer[k]
     # (0.104.81) one-off keys (a zone, a dwarf, an order) left in the loop
     # log: each key's ticks are kept a year, but the keys themselves grew

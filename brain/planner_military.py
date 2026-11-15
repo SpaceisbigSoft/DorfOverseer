@@ -663,7 +663,9 @@ def watched_gate_levers(s: dict) -> set:
 
 
 def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
-                    proposals: list, notes: list) -> None:
+                    proposals: list, notes: list, gate_rules: bool = True) -> None:
+    """(0.105.48, K6) gate_rules=False: plan() runs _gate_rules itself, under
+    its own guard and without the military section."""
     mil, rules_ = s["military"], player_rules(s)
     squads = [q for q in _l(mil.get("squads")) if isinstance(q, dict)]
     threats = {t.get("id"): t for t in _l(s["others_on_map"].get("threats")) if isinstance(t, dict)}
@@ -675,7 +677,7 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
     # The fort's own entrances: found, closed and opened by the AI itself.
     # (0.97) mapping, walls, doors and traps run whatever gate_lever says (each
     # has its own switch); gate_lever is only closing gates and their levers
-    if "entrances" in s and "entrances" not in s["_errors"]:
+    if gate_rules and "entrances" in s and "entrances" not in s["_errors"]:
         _gate_rules(s, memory, cfg, rules_, any_reach, proposals, notes, traits)
     # A lever the player named "AI gate" and linked to something: pulled too.
     gates = [g for g in _l(mil.get("gates")) if isinstance(g, dict) and not g.get("pending") and g.get("linked")]
