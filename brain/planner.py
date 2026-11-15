@@ -1576,6 +1576,7 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
         if a["type"] == "cancel_project" and a.get("cavern_well"):
             # (0.104.12) not dug again: the shaft crept for years
             memory.cavern_well_failure = "the last cavern well's shaft was under half dug in a game year: given up"
+            memory.cavern_well_failure_at = now          # (K48-K4) tried again well_retry_days later
         if a["type"] == "start_project" and a.get("kind") == "storage":
             memory.storage_started = now                 # (0.104.38)
         if (a["type"] == "start_project" and a.get("kind") == "temple" and a.get("size") == "grand"

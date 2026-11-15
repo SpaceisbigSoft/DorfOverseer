@@ -198,6 +198,14 @@ function unlock(bd)
     return ok
 end
 
+function lock(bd)
+    if LOCK_FN then return LOCK_FN(bd) end
+    local okm, U = pcall(reqscript, 'ai-util')
+    if not (okm and type(U) == 'table') then return false end
+    local _, ok = U.lock_door(bd and bd.b, true, 'well')
+    return ok
+end
+
 local function log(kind, text, extra)
     local e = {tick = now_tick(), kind = kind, text = text}
     for k, v in pairs(extra or {}) do e[k] = v end
@@ -455,7 +463,81 @@ function place_door(p, dry_run)
     return r
 end
 
+-- (K48-K4) The rescue stair closed again: it was a walk from the cavern
+-- floor into the well's stair column for good (read nowhere, never closed).
+-- Once it is dug and nobody is on it or under the well, a hatch goes on its
+-- top step (the well's stair column's bottom, or the step dug beside it),
+-- locked once built (a new rescue unlocks it), and it is one of the ways into
+-- the caverns the seal knows (fort_doors).
+local function rescue_top(p)
+    local r = type(p.rescue) == 'table' and p.rescue or nil
+    local c = r and type(r.cells) == 'table' and r.cells[1] or nil
+    if c and math.tointeger(c.x) and math.tointeger(c.y) and math.tointeger(c.z) then return c end
+    return nil
+end
+
+-- Who is on the rescue stair or under the well (the hatch isn't put or locked on them). nil: nobody.
+local function rescue_below(p, cits)
+    local cells = {}
+    for _, c in ipairs(p.rescue.cells) do cells[c.x .. ',' .. c.y .. ',' .. c.z] = true end
+    for _, c in ipairs(cits) do
+        if cells[c.x .. ',' .. c.y .. ',' .. c.z] then return c.name or ('unit ' .. tostring(c.id)) end
+    end
+    return first_name(below_rows(p, cits, {under = true}))
+end
+
+-- What the rescue stair still needs: 'hatch' (place it), 'lock', or nil.
+function rescue_close_due(p, cits)
+    local top = rescue_top(p)
+    if not top then return nil end
+    local h = p.rescue.hatch
+    if type(h) == 'table' then
+        local b = building_on(h.x, h.y, h.z)
+        if b and b.type == 'Hatch' then
+            if b.built and not b.locked and not rescue_below(p, cits or citizens()) then
+                return 'lock', b
+            end
+            return nil
+        end
+        if (tonumber(h.fails) or 0) >= DOOR_TRIES then return nil end
+    end
+    local t = builder().tile_info(top.x, top.y, top.z)
+    if not t or t.building or t.designated then return nil end
+    if t.shape ~= 'STAIR_DOWN' and t.shape ~= 'STAIR_UPDOWN' then return nil end      -- not dug yet
+    if rescue_below(p, cits or citizens()) then return nil end
+    return 'hatch'
+end
+
+-- One step of closing the rescue stair: {stage, x, y, z} or nil.
+function rescue_close(p, cits, dry_run)
+    local due, b = rescue_close_due(p, cits)
+    if not due then return nil end
+    local top = rescue_top(p)
+    if due == 'lock' then
+        if dry_run then return {stage = 'lock', x = top.x, y = top.y, z = top.z} end
+        if lock(b) then
+            log('rescue', ('cavern well %d: its rescue stair\'s hatch locked (nobody below)'):format(p.id), {project_id = p.id})
+            return {stage = 'locked', x = top.x, y = top.y, z = top.z}
+        end
+        return {stage = 'refused', error = 'the rescue stair\'s hatch would not lock'}
+    end
+    if dry_run then return {stage = 'hatch', x = top.x, y = top.y, z = top.z} end
+    local B = builder()
+    local ok, st = pcall(B.quickfort_apply, 'build', {{x = 0, y = 0, text = 'H'}}, top.z, top.x, top.y)
+    local fails = type(p.rescue.hatch) == 'table' and tonumber(p.rescue.hatch.fails) or 0
+    if not ok or B.stat(st, 'build_designated') ~= 1 then
+        p.rescue.hatch = {x = top.x, y = top.y, z = top.z, fails = fails + 1}
+        return {stage = 'refused', error = ('the game would not place a hatch over the rescue stair at x%d y%d')
+            :format(top.x, top.y)}
+    end
+    p.rescue.hatch = {x = top.x, y = top.y, z = top.z}
+    log('rescue', ('cavern well %d: a hatch over its rescue stair (x%d y%d z%d), locked once built')
+        :format(p.id, top.x, top.y, top.z), {project_id = p.id})
+    return {stage = 'placed', x = top.x, y = top.y, z = top.z}
+end
+
 -- Every cavern well's door: {{x, y, z, kind, project_id}} (ai-threats' openings).
+-- (K48-K4) and its rescue stair's hatch (kind 'hatch', rescue = true).
 function fort_doors()
     local out = {}
     local data = builder().load_projects()
@@ -463,6 +545,11 @@ function fort_doors()
         local d = is_cavern_well(p) and type(p.fort_door) == 'table' and p.fort_door or nil
         if d and math.tointeger(d.x) and (watched(p) or p.phase == 'cancelled') then
             table.insert(out, {x = d.x, y = d.y, z = d.z, kind = d.kind, project_id = p.id})
+        end
+        local h = is_cavern_well(p) and type(p.rescue) == 'table' and type(p.rescue.hatch) == 'table'
+            and p.rescue.hatch or nil
+        if h and math.tointeger(h.x) and not h.fails then
+            table.insert(out, {x = h.x, y = h.y, z = h.z, kind = 'hatch', project_id = p.id, rescue = true})
         end
     end
     return out
@@ -473,6 +560,11 @@ end
 function door_blocked(o, cits)
     local data = builder().load_projects()
     for _, p in ipairs(data.list or {}) do
+        local h = is_cavern_well(p) and type(p.rescue) == 'table' and type(p.rescue.hatch) == 'table'
+            and p.rescue.hatch or nil
+        if h and h.x == o.x and h.y == o.y and h.z == o.z and rescue_top(p) then
+            return rescue_below(p, cits or citizens())          -- (K48-K4) the rescue stair's hatch
+        end
         local d = is_cavern_well(p) and type(p.fort_door) == 'table' and p.fort_door or nil
         if d and d.x == o.x and d.y == o.y and d.z == o.z then
             cits = cits or citizens()
@@ -492,6 +584,29 @@ function door_blocked(o, cits)
                 end
             end
             return first_name(below_rows(p, cits, opts))
+        end
+    end
+    return nil
+end
+
+-- (K48-K4) A cavern well's gallery door the seal leaves open: the well stands
+-- beyond it, so a locked door cuts the fort off from its water, while the
+-- well's own shaft gate (linked, watched every 100 ticks) already keeps the
+-- cavern out. The reason (a string) or nil (the seal locks it as before: a
+-- hall's stair hatch, a given-up well, a gate not linked yet).
+function door_seal_skip(o)
+    local data = builder().load_projects()
+    for _, p in ipairs(data.list or {}) do
+        local d = is_cavern_well(p) and type(p.fort_door) == 'table' and p.fort_door or nil
+        if d and d.x == o.x and d.y == o.y and d.z == o.z then
+            if d.kind ~= 'door' or p.phase == 'cancelled' then return nil end
+            local okg, g = pcall(builder().shaft_gate_state, p)
+            local st = okg and type(g) == 'table' and g.state or nil
+            if st == 'open' or st == 'closed' or st == 'pulling' then
+                return ('cavern well %d: its shaft gate keeps the cavern out (%s); the door would cut the well off')
+                    :format(p.id, st)
+            end
+            return nil
         end
     end
     return nil
@@ -681,6 +796,8 @@ local function todo_of(p, cits)
         local okv, stage = pcall(builder().well_up_advance, p, true, busy)
         if okv and stage == 'next' then table.insert(out, 'level') end
     end
+    local okr, rc = pcall(rescue_close_due, p, cits)        -- (K48-K4)
+    if okr and rc then table.insert(out, 'rescue_close') end
     return out
 end
 
@@ -702,6 +819,12 @@ function step(dry_run)
                 if d.stage == 'placed' or d.stage == 'place' then out.doors = out.doors + 1 end
                 if not dry_run and (d.stage == 'placed' or d.stage == 'refused') then changed = true end
             end
+            local okr, rc = pcall(rescue_close, p, cits, dry_run)     -- (K48-K4)
+            if okr and rc then
+                r.rescue = rc
+                if rc.stage ~= 'refused' then out.rescue_closed = (out.rescue_closed or 0) + 1 end
+                if not dry_run and (rc.stage == 'placed' or rc.stage == 'refused') then changed = true end
+            end
             table.insert(out.wells, r)
         end
     end
@@ -720,7 +843,7 @@ function step(dry_run)
         end
         out.watch_started = (not watch_alive()) or nil
     end
-    if not (out.watch_started or out.traffic > 0 or out.doors > 0 or out.advanced > 0) then
+    if not (out.watch_started or out.traffic > 0 or out.doors > 0 or out.advanced > 0 or out.rescue_closed) then
         return {ok = false, rejected = true, nothing_to_do = true, wells = out.wells,
                 error = 'nothing to do: the watcher runs, the shafts are restricted, the doors stand'}
     end
@@ -904,6 +1027,10 @@ function rescue(x, y, z, pid, dry_run)
         if bd and bd.locked then table.insert(held, bd) end
         local lid = building_on(g.lid.x, g.lid.y, g.lid.z)
         if lid and lid.type == 'Hatch' and lid.locked and not (bd and lid.id == bd.id) then table.insert(held, lid) end
+        -- (K48-K4) the rescue stair's own hatch, locked once they were up
+        local rh = type(p.rescue) == 'table' and type(p.rescue.hatch) == 'table' and p.rescue.hatch or nil
+        local rb = rh and building_on(rh.x, rh.y, rh.z) or nil
+        if rb and rb.type == 'Hatch' and rb.locked then table.insert(held, rb) end
         if #held == 0 then
             return refuse('their way up by the well is open (the same walk group): they can walk up', {joined = true})
         end
@@ -934,8 +1061,13 @@ function rescue(x, y, z, pid, dry_run)
     for _, c in ipairs(plan.cells) do
         pcall(B.quickfort_apply, 'dig', {{x = 0, y = 0, text = c.key .. RESCUE_PRIORITY}}, c.z, c.x, c.y)
     end
+    local old_hatch = type(p.rescue) == 'table' and type(p.rescue.hatch) == 'table' and p.rescue.hatch or nil
+    local top = plan.cells[1]
     p.rescue = {cells = plan.cells, x = x, y = y, z = z, tick = now_tick(),
-                tries = (type(p.rescue) == 'table' and tonumber(p.rescue.tries) or 0) + 1}
+                tries = (type(p.rescue) == 'table' and tonumber(p.rescue.tries) or 0) + 1,
+                -- (K48-K4) the old stair's hatch kept on record when it stands on the new one's top
+                hatch = (old_hatch and top and old_hatch.x == top.x and old_hatch.y == top.y and old_hatch.z == top.z)
+                    and old_hatch or nil}
     B.save_projects(data)
     log('rescue', ('cavern well %d: a stair dug out from its stairs down to a dwarf stranded at x%d y%d z%d (%d tiles)')
         :format(p.id, x, y, z, #plan.cells), {project_id = p.id})

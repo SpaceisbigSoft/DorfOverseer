@@ -44,6 +44,8 @@ WELL_SAFETY_TODO = {
     "traffic": "restrict traffic on a cavern well's shaft column while it is dug",
     "door": "put a door at the fort end of a cavern well's gallery (a way into the caverns the seal can lock)",
     "level": "dig the next level of a cavern well's shaft (from the bottom up, nobody in its column)",
+    # (K48-K4) the rescue stair was a walk from the cavern floor into the well's stairs for good
+    "rescue_close": "close a cavern well's rescue stair now nobody is on it (a hatch on its top step, locked)",
 }
 
 

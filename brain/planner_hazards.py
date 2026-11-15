@@ -268,7 +268,11 @@ def _frost(s, cfg, e, memory, proposals, notes):
     if not f:
         return
     wells = [w for w in _l(f.get("wells")) if isinstance(w, dict)]
-    good = [w for w in wells if w.get("water") == "water"]
+    # (K48-K4) a cavern well shut off (its shaft gate shut, its door locked)
+    # draws no water, though the frost reading looks past its hatch
+    from planner_wells import shut_columns
+    shut = shut_columns(s)
+    good = [w for w in wells if w.get("water") == "water" and (w.get("x"), w.get("y")) not in shut]
     frozen = [w for w in wells if w.get("water") == "ice"]
     open_ = [p for p in _l(_d(s.get("projects")).get("open")) if isinstance(p, dict)]
     if frozen and not good:
@@ -285,7 +289,7 @@ def _frost(s, cfg, e, memory, proposals, notes):
     elif frozen:
         notes.append(f"{len(frozen)} of {len(wells)} well(s) frozen; {len(good)} still draw water")
     zones = [z for z in _l(f.get("zones")) if isinstance(z, dict)]
-    if zones and not good and all(z.get("water") != "water" for z in zones):
+    if zones and not good and all(z.get("water") != "water" for z in zones) and any(z.get("water") == "ice" for z in zones):
         need = _need_water(s, cfg)
         if need:
             from planner_wells import cavern_danger

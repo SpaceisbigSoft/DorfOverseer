@@ -20,7 +20,7 @@ def _far_args(cfg: dict) -> dict:
         out["far_reach"] = 0
     return out
 
-__all__ = ["_well_rule", "_well_lid_rule", "SHAFT_LINK_LOST_MAX", "SHAFT_DANGER_TILES", "SHAFT_DANGER_OPEN", "SHAFT_DRY_REACH", "shaft_judged", "shaft_danger_words", "shaft_far_walker", "shaft_water_short", "cavern_danger", "_water_zone_rule", "cavern_points", "cavern_action", "cavern_well_need", "unfound_cavern", "cavern_well_safe", "WELL_PARTS_SHOPS", "CHAIN_SKIP", "chain_metal", "well_parts_plan", "_well_parts", "_water_traffic_rule", "cistern_pop", "WATER_WORDS", "magma_access", "water_summary", "_water_rules", "CISTERN_WORDS", "_cistern_parts", "_cistern_rule", "WELLS_CONFIG", "shut_wells", "usable_wells", "ai_opens_cavern", "cavern_soldiers_ready", "cavern_open_words", "CISTERN_RETRY_SEALS", "CISTERN_RELINK_ROUNDS", "CISTERN_SHUT_RULE", "jailed"]
+__all__ = ["_well_rule", "_well_lid_rule", "SHAFT_LINK_LOST_MAX", "SHAFT_DANGER_TILES", "SHAFT_DANGER_OPEN", "SHAFT_DRY_REACH", "shaft_judged", "shaft_danger_words", "shaft_far_walker", "shaft_water_short", "cavern_danger", "_water_zone_rule", "cavern_points", "cavern_action", "cavern_well_need", "unfound_cavern", "cavern_well_safe", "WELL_PARTS_SHOPS", "CHAIN_SKIP", "chain_metal", "well_parts_plan", "_well_parts", "_water_traffic_rule", "cistern_pop", "WATER_WORDS", "magma_access", "water_summary", "_water_rules", "CISTERN_WORDS", "_cistern_parts", "_cistern_rule", "WELLS_CONFIG", "shut_wells", "usable_wells", "bad_wells", "water_zones_usable", "no_water_cancels", "cavern_open_danger", "ai_opens_cavern", "cavern_soldiers_ready", "cavern_open_words", "CISTERN_RETRY_SEALS", "CISTERN_RELINK_ROUNDS", "CISTERN_SHUT_RULE", "jailed", "cavern_failure_now", "drinkable_frost_wells", "frost_zone_case", "shut_columns"]
 
 # (0.105.33 B4) the wells' own settings (merged into PLANNER_CONFIG, as planner_threats does)
 WELLS_CONFIG = {
@@ -33,23 +33,100 @@ WELLS_CONFIG = {
 PLANNER_CONFIG.update({k: v for k, v in WELLS_CONFIG.items() if k not in PLANNER_CONFIG})
 
 
+def _shut_rows(s: dict, states: tuple = ("closed", "pulling")) -> list:
+    pr = _d(s.get("projects"))
+    open_ids = {p.get("id") for p in _l(pr.get("open")) if isinstance(p, dict)}
+    return [x for x in _l(pr.get("well_lids")) if isinstance(x, dict)
+            and (x.get("gate") in states or x.get("door_locked")) and not x.get("cancelled")
+            and (x.get("project_id") is None or x.get("project_id") not in open_ids)]
+
+
 def shut_wells(s: dict, states: tuple = ("closed", "pulling")) -> int:
     """(0.105.33 B4) Built cavern wells whose shaft gate is shut (or being
     pulled): the bucket can't reach the water through a shut hatch. Wells
     still being dug or furnished (in the open list) and given-up shafts are
-    not built wells and are not counted."""
-    pr = _d(s.get("projects"))
-    open_ids = {p.get("id") for p in _l(pr.get("open")) if isinstance(p, dict)}
-    return sum(1 for x in _l(pr.get("well_lids")) if isinstance(x, dict)
-               and x.get("gate") in states and not x.get("cancelled")
-               and (x.get("project_id") is None or x.get("project_id") not in open_ids))
+    not built wells and are not counted. (K48-K4) A gallery well whose door
+    the cavern seal locked is cut off from the fort too: counted shut."""
+    return len(_shut_rows(s, states))
 
 
-def usable_wells(s: dict, states: tuple = ("closed", "pulling")) -> int:
+def _frost_wells(s: dict) -> list:
+    """The env_hazards frost part's wells ({id, x, y, z, water}: water,
+    ice or dry, what DF has under each well); [] when the part isn't read."""
+    from planner_ice import _frost
+    return [w for w in _l(_frost(s).get("wells")) if isinstance(w, dict)]
+
+
+def bad_wells(s: dict, kinds: tuple = ("dry",), states: tuple = ("closed", "pulling")) -> int:
+    """(K48-K4) Built wells that give no water now by the frost reading (dry:
+    nothing under them; ice: frozen), less the ones already counted as shut
+    cavern wells (the same column: not counted twice)."""
+    shut_at = shut_columns(s, states)
+    return sum(1 for w in _frost_wells(s) if w.get("water") in kinds and (w.get("x"), w.get("y")) not in shut_at)
+
+
+def usable_wells(s: dict, states: tuple = ("closed", "pulling"), drinkable: bool = True) -> int:
     """(0.105.33 B4) The wells a bucket can draw from: the built ones less the
-    cavern wells whose shaft gate is shut."""
+    cavern wells whose shaft gate is shut. (K48-K4) And less the wells DF
+    has nothing under (dry), and with `drinkable` the frozen ones too: only
+    water a dwarf can drink now (the frost rule places a well for frozen ones)."""
     wells = int(_d(_d(s.get("buildings")).get("other")).get("Well", 0) or 0)
-    return max(0, wells - shut_wells(s, states))
+    kinds = ("dry", "ice") if drinkable else ("dry",)
+    return max(0, wells - shut_wells(s, states) - bad_wells(s, kinds, states))
+
+
+NO_WATER_WORDS = "no water source"
+
+
+def water_zones_usable(s: dict) -> int:
+    """(K48-K4) The Water Source zones that give water now: the zones less
+    the AI's own ones the frost reading finds frozen, dry or gone; none at all
+    when a job was cancelled for "No water source" and none of the AI's zones
+    reads as water (War-hold: one zone DF called empty, 0 usable wells, and
+    the zone rule stopped at "a zone exists")."""
+    n = _d(_d(s.get("buildings")).get("zones")).get("WaterSource") or 0
+    n = n if isinstance(n, int) and not isinstance(n, bool) else (1 if n else 0)
+    from planner_ice import _frost
+    rows = [z for z in _l(_frost(s).get("zones")) if isinstance(z, dict)]
+    n = max(0, n - sum(1 for z in rows if z.get("water") != "water"))
+    # (an older bridge, no frost reading: the zones taken at their word as before)
+    if n and _frost(s) and not any(z.get("water") == "water" for z in rows) and no_water_cancels(s):
+        return 0
+    return n
+
+
+def shut_columns(s: dict, states: tuple = ("closed", "pulling")) -> set:
+    """(K48-K4) The (x, y) columns of the cavern wells shut off (shaft gate
+    shut, or their door locked): the well over each stands there."""
+    out = set()
+    for x in _shut_rows(s, states):
+        h = _d(x.get("shaft_hatch"))
+        if isinstance(h.get("x"), int) and isinstance(h.get("y"), int):
+            out.add((h["x"], h["y"]))
+    return out
+
+
+def drinkable_frost_wells(s: dict) -> list:
+    """(K48-K4) The frost reading's wells with water under them, less the
+    cavern wells shut off: the frost rule's "a well still draws water" (it
+    looked past a shut hatch)."""
+    shut = shut_columns(s)
+    return [w for w in _frost_wells(s) if w.get("water") == "water" and (w.get("x"), w.get("y")) not in shut]
+
+
+def frost_zone_case(s: dict) -> bool:
+    """(K48-K4) The frost rule's own case (planner_hazards frost_water_zone):
+    the AI's zones read, none gives water, one is ice, and no well draws."""
+    from planner_ice import _frost
+    rows = [z for z in _l(_frost(s).get("zones")) if isinstance(z, dict)]
+    return bool(rows and all(z.get("water") != "water" for z in rows) and any(z.get("water") == "ice" for z in rows)
+                and not drinkable_frost_wells(s))
+
+
+def no_water_cancels(s: dict) -> int:
+    """Jobs cancelled for "No water source" in the recent announcements."""
+    return sum(1 for a in _l(s.get("recent_announcements")) if isinstance(a, dict)
+               and NO_WATER_WORDS in str(a.get("text") or "").lower())
 
 
 def jailed(s: dict) -> int:
@@ -61,6 +138,26 @@ def jailed(s: dict) -> int:
     if isinstance(pr, list):
         return sum(1 for p in pr if isinstance(p, dict))
     return int(_d(j.get("punish")).get("prison") or 0)
+
+
+def cavern_failure_now(s: dict, memory, cfg: dict) -> str:
+    """(K48-K4) The cavern well's refusal, while it stands: well_retry_days
+    after it (stamped when it came; an older memory's is stamped now) it is
+    forgotten and a cavern well is tried again. Before, one refusal (a search
+    cut short, a cached "no spot", a stalled shaft) held for the fort's life."""
+    if memory is None or not memory.cavern_well_failure:
+        return ""
+    now = abs_tick(s)
+    at = getattr(memory, "cavern_well_failure_at", None)
+    if not isinstance(at, int) or at > now:
+        memory.cavern_well_failure_at = now
+        return memory.cavern_well_failure
+    days = cfg.get("well_retry_days", WELLS_CONFIG["well_retry_days"])
+    if now - at >= days * TICKS_PER_DAY:
+        memory.cavern_well_failure = ""
+        memory.cavern_well_failure_at = None
+        return ""
+    return memory.cavern_well_failure
 
 
 def _well_rule(s: dict, memory, traits: dict, cfg: dict, proposals: list, notes: list) -> None:
@@ -87,11 +184,14 @@ def _well_rule(s: dict, memory, traits: dict, cfg: dict, proposals: list, notes:
                                                if x.get("gate") == "closed"):
             shaft_danger = "a danger lately"
     if shaft_danger:
-        wells = int(_d(_d(s.get("buildings")).get("other")).get("Well", 0) or 0)
+        # (K48-K4) a dry well (nothing under it) is no well, shut shaft or not
+        wells = max(0, int(_d(_d(s.get("buildings")).get("other")).get("Well", 0) or 0)
+                    - bad_wells(s, ("dry",), ()))
         if shut_wells(s, ("closed",)) and not judged:
             notes.append(f"the cavern well's shaft is shut while {shaft_danger} is near: still counted as a well")
     else:
-        wells = usable_wells(s, ("closed",))
+        # (K48-K4) frozen wells are left to the frost rule (planner_hazards places one inside)
+        wells = usable_wells(s, ("closed",), drinkable=False)
     open_ = [p for p in _l(pr.get("open")) if isinstance(p, dict)]
     building = [p for p in open_ if p.get("kind") == "well"]
     if building:
@@ -104,7 +204,7 @@ def _well_rule(s: dict, memory, traits: dict, cfg: dict, proposals: list, notes:
     # (0.105.4 review) once, by a flag (record sets it when a cavern well with a
     # gallery comes back): the refusal's text is cut to 300 characters, so
     # "gallery" in it was no sure sign. plan() itself only reads it.
-    cavern_failure = memory.cavern_well_failure if memory is not None else ""
+    cavern_failure = cavern_failure_now(s, memory, cfg)
     if (memory is not None and cfg["cavern_well_gallery"] > 0 and not memory.cavern_gallery_retried
             and cavern_failure.startswith("no floor inside the fort over cavern water")):
         cavern_failure = ""
@@ -458,9 +558,13 @@ def shaft_water_short(s: dict, gates: list, cfg: dict | None = None) -> str:
     cfg = PLANNER_CONFIG if cfg is None else cfg
     cavern = [x for x in gates if not x.get("cancelled")]     # a gate being linked: its hatch shut too
     wells = int(_d(_d(s.get("buildings")).get("other")).get("Well", 0) or 0)
-    if wells > len(cavern):
+    # (K48-K4) only wells and zones that give water now: a dry or frozen
+    # ordinary well, or a zone DF calls empty, is no water
+    cols = {(_d(x.get("shaft_hatch")).get("x"), _d(x.get("shaft_hatch")).get("y")) for x in cavern}
+    bad = sum(1 for w in _frost_wells(s) if w.get("water") in ("dry", "ice") and (w.get("x"), w.get("y")) not in cols)
+    if wells - bad > len(cavern):
         return ""
-    if _d(_d(s.get("buildings")).get("zones")).get("WaterSource"):
+    if water_zones_usable(s):
         return ""
     patients = int(_d(s.get("dwarves")).get("needs_medical_care") or 0)
     parched = int(_d(s.get("society")).get("parched") or 0)
@@ -610,15 +714,25 @@ def _water_zone_rule(s: dict, proposals: list, notes: list, cfg: dict | None = N
     cfg = PLANNER_CONFIG if cfg is None else cfg
     if usable_wells(s):
         return
-    if _d(_d(s.get("buildings")).get("zones")).get("WaterSource"):
-        # (0.104.13) the zone is there but the game says it holds no water
-        # (Enxah, winter y61: its pond frozen, "Give water: No water source"
-        # while 10 patients died of thirst): said, and the cavern well dug
-        dry = sum(1 for a in _l(s.get("recent_announcements")) if isinstance(a, dict)
-                  and "no water source" in str(a.get("text") or "").lower())
+    if _d(_d(s.get("buildings")).get("zones")).get("WaterSource") and water_zones_usable(s):
+        # (an older bridge, no frost reading: the zone taken at its word, said as before)
+        dry = no_water_cancels(s)
         if dry:
             notes.append(f"the water source zone gives no water ({dry} job(s) cancelled: \"No water source\"; "
                          "its water is frozen or gone): the injured get water only from a well")
+        return
+    if _d(_d(s.get("buildings")).get("zones")).get("WaterSource"):
+        # (0.104.13) the zone is there but the game says it holds no water
+        # (Enxah, winter y61: its pond frozen, "Give water: No water source"
+        # while 10 patients died of thirst). (K48-K4) No longer the end of it
+        # (War-hold: 0 usable wells and only that note): such a zone counts
+        # as none and the next one is placed below (the frost rule's own
+        # case, frozen zones, is left to it)
+        dry = no_water_cancels(s)
+        if dry:
+            notes.append(f"the water source zone gives no water ({dry} job(s) cancelled: \"No water source\"; "
+                         "its water is frozen or gone): another water source is looked for")
+    if frost_zone_case(s):
         return
     patients = int(_d(s.get("dwarves")).get("needs_medical_care") or 0)
     parched = int(_d(s.get("society")).get("parched") or 0)
@@ -825,6 +939,27 @@ def cavern_open_words(s: dict, cfg: dict) -> str:
     ok, why = ai_opens_cavern(s, cfg)
     return (f" (it opens {layer} for the first time: the AI's call, {why}; the shaft's hatch shuts while a "
             "danger is near)") if ok else ""
+
+
+def cavern_open_danger(s: dict) -> str:
+    """(K48-K4) Why a dig that opens a cavern shouldn't start now ("" when
+    it may): the cavern well's own danger tests (enemies that reach the
+    dwarves, a great danger on the map, an enemy free in the caverns, a
+    danger at a cavern well's shaft). The magma workshop's way through a
+    cavern was opened with none of them."""
+    if _d(s.get("others_on_map")).get("threats_that_can_reach_dwarves"):
+        return "enemies can reach the dwarves"
+    great = [x for x in _l(_d(s.get("deep")).get("dangers")) if isinstance(x, dict) and not x.get("caged")]
+    if great:
+        return f"{great[0].get('name') or 'a great danger'} is on the map"
+    for x in _l(_d(s.get("projects")).get("well_lids")):
+        near = _d(_d(x).get("watch_near"))
+        if near:
+            return f"{shaft_danger_words(near)} is at a cavern well's shaft"
+    danger = cavern_danger(s)
+    if danger:
+        return f"{danger} is in the caverns"
+    return ""
 
 
 def cavern_well_safe(s: dict, cfg: dict, urgent: bool = False):

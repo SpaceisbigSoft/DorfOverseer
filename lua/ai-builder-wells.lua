@@ -1175,6 +1175,7 @@ function well_shaft_step(want_closed, dry_run, dry)
                         gate_mem(p.id).shut_at, gate_mem(p.id).seen = now, hit and now or gate_mem(p.id).seen
                         if sg then sg.shut_at, changed = now, true end
                     end
+                    if sg and not r.error then sg.auto_shut, changed = (want_closed and hit ~= nil) or nil, true end   -- (K48-K4)
                 end
                 if not r.error then r.stage = want_closed and 'closed' or 'opened' end
             elseif g.state == 'open' or g.state == 'closed' then
@@ -1196,6 +1197,7 @@ function well_shaft_step(want_closed, dry_run, dry)
                             gate_mem(p.id).shut_at, gate_mem(p.id).seen = now, hit and now or gate_mem(p.id).seen
                             sg.shut_at, changed = now, true
                         end
+                        if ok then sg.auto_shut, changed = (want_closed and hit ~= nil) or nil, true end   -- (K48-K4)
                     end
                 else
                     r.stage = g.state
@@ -1258,8 +1260,8 @@ end
 -- (0.104.153) The shaft watcher: every SHAFT_WATCH_TICKS inside the game
 -- (the brain reads the fort once a game day: a flier crosses 60 tiles
 -- sooner), an open shaft gate is shut at once when a real danger comes near
--- below it. It only shuts; the brain opens it again (well_shaft) once
--- shaft_hold says the danger has been away long enough. Lives while the
+-- below it, and (K48-K4) opened again once shaft_hold says the danger has
+-- been away long enough (the brain's well_shaft does the same). Lives while the
 -- game runs; `well_lids` says whether it is on, and the `well_shaft`
 -- action starts it.
 --
@@ -1275,18 +1277,24 @@ end
 --   * only in the shaft itself (its column, 2 tiles round) or in the very
 --     cavern the shaft opens into (its map feature; another cavern layer, the
 --     magma sea or the underworld is walled off by rock);
---   * by how it could come up: a flier or a climber (grasping parts) within
---     SHAFT_NEAR (a great one within SHAFT_FAR), one that only walks or
---     swims within SHAFT_CLOSE (a great one within SHAFT_NEAR, but only
---     SHAFT_CLOSE while the brain says the fort is short of water: `dry`);
+--   * by how it could come up: a flier within SHAFT_NEAR, a climber
+--     (grasping parts) within SHAFT_CLIMB, one that only walks or swims
+--     within SHAFT_CLOSE, great (a forgotten beast) or not;
 --   * a shut gate counts it SHAFT_MARGIN tiles further (no flapping at the
 --     edge), stays shut SHAFT_MIN_SHUT ticks at least and opens only once no
 --     danger was seen for SHAFT_CLEAR ticks (not while short of water).
+-- (K48-K4) War-hold and the Garden: every cavern well shut for the life of
+-- one forgotten beast 80-95 tiles off (the great ranges were 80, 95 once
+-- shut: most of a 192-tile layer). The watcher looks every 100 ticks, so the
+-- ranges need only cover what a creature crosses in that time and more: the
+-- great ranges are gone, and the watcher opens what it shut once the danger
+-- is dead, caged or away (it no longer waits for the brain).
 SHAFT_WATCH_TICKS = 100
 SHAFT_CLOSE = 20        -- a walker or swimmer this near below (tiles, levels counted too)
-SHAFT_NEAR = 60         -- a flier or climber (or a great walker) this near
-SHAFT_FAR = 80          -- a great flier or climber (a forgotten beast) this near
-SHAFT_MARGIN = 15       -- a shut gate: counted this much further (hysteresis)
+SHAFT_CLIMB = 25        -- a climber (or one whose body can't be read) this near
+SHAFT_NEAR = 40         -- a flier this near
+SHAFT_FAR = SHAFT_NEAR  -- (kept for older callers: no longer a range of its own)
+SHAFT_MARGIN = 10       -- a shut gate: counted this much further (hysteresis)
 SHAFT_DRY_MARGIN = 5    -- ...a walker's, while the fort is short of water
 SHAFT_LEVELS = 15       -- the cavern unknown (no map feature): only this many levels below
 SHAFT_MIN_SHUT = 1200   -- ticks (a game day) a shut gate stays shut at least
@@ -1313,10 +1321,12 @@ function shaft_judge(c, w, opts)
     local d = math.max(dx, dz)
     local mobile = (c.flier == true) or (c.climber ~= false)
     local reach
-    if mobile then
-        reach = c.great and SHAFT_FAR or SHAFT_NEAR
+    if c.flier == true then
+        reach = SHAFT_NEAR
+    elseif mobile then
+        reach = SHAFT_CLIMB
     else
-        reach = (c.great and not opts.dry) and SHAFT_NEAR or SHAFT_CLOSE
+        reach = SHAFT_CLOSE
     end
     if opts.shut then
         -- short of water a walker's margin is smaller (the brain's SHAFT_DRY_REACH: 20 + 5)
@@ -1466,7 +1476,8 @@ local function shaft_watch_tick()
         end
         if #wells == 0 then return end
         local now, saved = abs_now(), false
-        for i, hit in pairs(shaft_threats(wells)) do
+        local hits = shaft_threats(wells)
+        for i, hit in pairs(hits) do
             local w = wells[i]
             local g = gate_mem(w.id)
             g.seen = now
@@ -1476,9 +1487,28 @@ local function shaft_watch_tick()
                 pull(w.lever_id, true)
                 g.shut_at = now
                 w.p.shaft_gate.shut_at = now
+                w.p.shaft_gate.auto_shut = true       -- (K48-K4) shut for a danger: the watcher opens it again
                 saved = true
                 SHAFT_WATCH.last = {project_id = w.id, tick = df.global.cur_year_tick, year = df.global.cur_year,
                                     unit = hit.u and hit.u.id or nil}
+            end
+        end
+        -- (K48-K4) the watcher opens what it (or well_shaft, for a danger)
+        -- shut, once no danger is judged near and the hold has run out: with
+        -- the brain stopped the wells no longer stay shut for good. Never a
+        -- given-up shaft, one the brain shut for its own reason, or one with
+        -- a citizen on its shut hatch.
+        for i, w in ipairs(wells) do
+            local sg = w.p.shaft_gate
+            if w.shut and not hits[i] and sg.auto_shut and w.p.phase ~= 'cancelled'
+                    and shaft_hold(w.id, sg, now) == 0 and not job_of(w.lever_id, df.job_type.PullLever)
+                    and not well_safety_call('gate_block', w.id, false, false) then
+                local ok = pull(w.lever_id, true)
+                if ok then
+                    sg.auto_shut = nil
+                    saved = true
+                    SHAFT_WATCH.last_open = {project_id = w.id, tick = df.global.cur_year_tick, year = df.global.cur_year}
+                end
             end
         end
         if saved and save_projects then pcall(save_projects, data) end
@@ -1513,6 +1543,16 @@ function well_lids(probe, data)
             -- (0.105.4 review) the shaft's last level held undug till the gate's parts are in store
             if p.held then r.held = true; r.hatch_covers = shaft_hatch_covers() end
             if p.released and p.phase == 'dig' then r.breaking = true end
+            -- (K48-K4) the door at a gallery's fort end, locked (the cavern seal):
+            -- the well beyond it is cut off from the fort, whatever its shaft gate
+            local fd = type(p.fort_door) == 'table' and p.fort_door or nil
+            if fd and fd.kind == 'door' and math.tointeger(fd.x) then
+                local okd, db = pcall(dfhack.buildings.findAtTile, xyz2pos(fd.x, fd.y, fd.z))
+                if okd and db then
+                    local okf, f = pcall(function() return db.door_flags.forbidden end)
+                    if okf and f then r.door_locked = true end
+                end
+            end
             local okb, b = pcall(dfhack.buildings.findAtTile, xyz2pos(top.x, top.y, top.z))
             if okb and b then
                 if b:getType() ~= df.building_type.Hatch then
@@ -1756,7 +1796,17 @@ function well_up_advance(p, dry_run, busy)
     if type(p.held) == 'table' then return 'held' end
     local a = anchor_of(p)
     local z = up.zs[1]
-    if not OPEN_SHAPE(tile_info(a.x, a.y, z - 1)) then return 'below', z end
+    if up.top_first and z == p.z then
+        -- (K48-K4) the top over a rock level (the one under it last): all under that open
+        if not OPEN_SHAPE(tile_info(a.x, a.y, z - 2)) then return 'below', z end
+    elseif up.top_first and z == p.z - 1 then
+        -- the ramp the top's channel left: only once the top is dug, and all under it open
+        if not OPEN_SHAPE(tile_info(a.x, a.y, z - 1)) or not OPEN_SHAPE(tile_info(a.x, a.y, p.z)) then
+            return 'below', z
+        end
+    elseif not OPEN_SHAPE(tile_info(a.x, a.y, z - 1)) then
+        return 'below', z
+    end
     if busy then return 'busy', z end
     if dry_run then return 'next', z end
     local pri = type(p.params) == 'table' and p.params.pri or ''
@@ -1911,13 +1961,26 @@ function place_well(params, now, dry_run)
     -- the last one fell in when it was channelled away (B, E: COLLISION in
     -- the shaft's very column; six drowned in the lake under fresh shafts).
     -- Now no tile of the column is ever a floor or a ramp to stand on.
+    -- (K48-K4) But the top: in a hall (a floor to walk on, not the rock of a
+    -- gallery's end) the last channel opened the floor a dwarf may be
+    -- crossing over a shaft open all the way down (9-22 levels in War-hold).
+    -- There the level under the top stays rock until the top is channelled
+    -- (a dwarf on it drops one level, onto the ramp it leaves), and that ramp
+    -- is channelled away last, from the stair beside it.
     local up = nil
     if held and WELL_DIG_UP ~= false then
         up = {zs = {}}
+        local under = spot.z - 1
+        local tt = tile_info(spot.x, spot.y, spot.z)
+        local top_first = tt ~= nil and tt.shape ~= 'WALL' and held.z ~= under and shaft[1] == under
         for i = #shaft, 1, -1 do
-            if shaft[i] ~= held.z then table.insert(up.zs, shaft[i]) end
+            if shaft[i] ~= held.z and not (top_first and shaft[i] == under) then table.insert(up.zs, shaft[i]) end
         end
         table.insert(up.zs, spot.z)
+        if top_first then
+            table.insert(up.zs, under)
+            up.top_first = true
+        end
     end
     local stairs = {}
     if spot.cavern then

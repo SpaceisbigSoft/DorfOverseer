@@ -513,16 +513,25 @@ def _waterworks_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -
                 notes.append("no magma workshop: the magma lies beneath a cavern (reaching it would open the cavern)")
             else:
                 act = {"type": "water_work", "kind": "magma", "shop": shop, **far_args(cfg)}
-                if choice != "near" and (opens or player_rules(s)["open_caverns"] == "always"):
-                    # the cavern switch allows it (Always, or the AI's call:
-                    # no other way to magma); the bridge walks the planned dig
-                    act["open_caverns"] = True
-                where = "the magma" if choice == "near" else f"the magma {choice}"
-                proposals.append(Proposal("waterworks_magma", act,
-                                          f"dig a {shop} over {where}: a pit fed through a floodgate "
-                                          "(lever \"AI magma\"), its service stair under a locked hatch"
-                                          + (" (its way opens a cavern: the cavern switch allows it)" if opens else ""), 6))
-                return
+                opening = choice != "near" and (opens or player_rules(s)["open_caverns"] == "always")
+                # (K48-K4) the cavern well's danger tests first: the way was
+                # opened with a forgotten beast keeping four wells shut
+                from planner_wells import cavern_open_danger
+                danger = cavern_open_danger(s) if opening else ""
+                if danger:
+                    notes.append(f"a {shop} over the magma {choice} waits: its way opens a cavern, and {danger}")
+                else:
+                    if opening:
+                        # the cavern switch allows it (Always, or the AI's call:
+                        # no other way to magma); the bridge walks the planned dig
+                        act["open_caverns"] = True
+                    where = "the magma" if choice == "near" else f"the magma {choice}"
+                    proposals.append(Proposal("waterworks_magma", act,
+                                              f"dig a {shop} over {where}: a pit fed through a floodgate "
+                                              "(lever \"AI magma\"), its service stair under a locked hatch"
+                                              + (" (its way opens a cavern: the cavern switch allows it)" if opens else ""),
+                                              6))
+                    return
     # (3) irrigation
     why = irrigation_wanted(s, memory)
     if why and rules_["irrigation"] and not started("irrigation") and retry_ok("irrigation"):
