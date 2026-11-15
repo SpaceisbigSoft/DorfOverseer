@@ -97,6 +97,9 @@ def _flags_text(pc: dict) -> str:
     return " ".join(f"{k}={v(fl[k])}" for k in keys[:8]) or "none read"
 
 
+PREVENT_BACKOFF_DAYS = (1, 3, 7)    # (0.105.48, K2) a split nobody is shut out by: the waits between tries
+
+
 def _gate_stuck_rule(s: dict, memory, cfg: dict, proposals: list, notes: list, off: int = 0) -> bool:
     """(0.105.32) unstick_gate for each open gate piece DF's walk map holds
     shut: at once for its stranded (no `stranded_after_ticks` wait: the
@@ -213,12 +216,23 @@ def _gate_stuck_rule(s: dict, memory, cfg: dict, proposals: list, notes: list, o
                    "through it shut")
         else:
             prev = rec.get("prevent") if isinstance(rec.get("prevent"), int) else None
-            days = int(cfg.get("gate_stuck_prevent_days", 1))
-            if (not reach and not ent.get("armed") and (prev is None or not 0 <= now - prev < days * TICKS_PER_DAY)
+            # (0.105.48, K2) War-hold: a split nobody is shut out by (it may be
+            # real geometry) got step 1 and a rescan every day for 60 days. Backed
+            # off 1, 3, 7 days (x gate_stuck_prevent_days); after
+            # gate_stuck_prevent_max tries, left with a note (a citizen shut out
+            # by it brings the stepped rule above back at once)
+            tries = int(rec.get("prevent_n") or 0)
+            days = int(cfg.get("gate_stuck_prevent_days", 1)) * PREVENT_BACKOFF_DAYS[
+                min(max(tries - 1, 0), len(PREVENT_BACKOFF_DAYS) - 1)]
+            if tries >= int(cfg.get("gate_stuck_prevent_max", 4)):
+                notes.append(f"{name} reads open, but the game's walk map splits the way through it; step 1 "
+                             f"was tried {tries} time(s) and the split stays with nobody shut out: left as it is "
+                             "(unstuck at once if a citizen is shut out by it)")
+            elif (not reach and not ent.get("armed") and (prev is None or not 0 <= now - prev < days * TICKS_PER_DAY)
                     and (since is None or since >= step_ticks)):
                 step = 1
             why = (f"{name} reads open, but the game's walk map splits the way through it; nobody is shut "
-                   "out yet")
+                   "out yet" + (f" (try {tries + 1})" if tries else ""))
         if step and isinstance(pid, int):
             act = {"type": "unstick_gate", "id": pid, "step": step}
             if cavern and step >= 2:
@@ -436,6 +450,7 @@ def note_gate_stuck(p, r: dict, state: dict, memory, now: int) -> None:
             rec["cavern"] = True                 # (merge32 review) a cavern's way: no step 2 or 3 again
         if step == 1:
             rec["prevent"] = now
+            rec["prevent_n"] = int(rec.get("prevent_n") or 0) + 1      # (0.105.48, K2) the back-off's count
         memory.gate_unstick[str(a["id"])] = rec
         if r.get("ok") is not False:
             memory.rescan_entrances = True
@@ -493,7 +508,7 @@ def note_gate_stuck_cycle(s: dict, memory) -> None:
             continue
         prev = _d(memory.gate_unstick[k]).get("prevent")
         if isinstance(prev, int) and 0 <= now - prev < TICKS_PER_DAY:
-            memory.gate_unstick[k] = {"prevent": prev}
+            memory.gate_unstick[k] = {"prevent": prev, "prevent_n": _d(memory.gate_unstick[k]).get("prevent_n")}
         else:
             del memory.gate_unstick[k]
 

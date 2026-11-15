@@ -178,6 +178,9 @@ local function ai_lever(G, name)
 end
 
 -- A piece's state now: {shut, locked, raised, moving, jobs}, nil if unread.
+-- (0.105.48, K2) shut: a bridge raised; a door or hatch locked, or (on its
+-- lever) closed. DF's `closed` is set on any door or hatch at rest (nobody
+-- passing), which an ordinary dwarf walks through: not shut.
 function piece_now(g, b)
     local st = {}
     if g.kind == 'bridge' then
@@ -194,7 +197,7 @@ function piece_now(g, b)
             st.locked = b.door_flags.forbidden == true
         end)
         if not ok then return nil end
-        st.shut = st.closed or st.locked
+        st.shut = st.locked or (st.closed and g.lever_driven == true) or false
     end
     pcall(function() st.jobs = #b.jobs end)
     return st
@@ -235,7 +238,9 @@ end
 
 -- The surface entrances' shut pieces: {{entrance, id, kind, x, y, z, name,
 -- raised|closed|locked, lever, ai}} (at most SHUT_MAX), and whether every
--- surface entrance with gates is shut by one.
+-- surface entrance is shut. (0.105.48, K2) An entrance is shut when every
+-- piece it needs (its equipment: the scan keeps only those, any one open
+-- lets a dwarf through) is shut, or its gatehouse bridge (outer) is raised.
 function shut_by(G, levers)
     local out, entrances, shut_e = {}, 0, 0
     local GT = G and G.GATES or nil
@@ -243,12 +248,19 @@ function shut_by(G, levers)
     for _, e in ipairs(GT.entrances) do
         if e.kind ~= 'cavern' then
             entrances = entrances + 1
-            local any = false
+            local outer = {}
+            for _, g in ipairs(e.outer or {}) do outer[g.id] = true end
+            local need, need_shut, outer_shut = 0, 0, false
             for _, g in ipairs(pieces_of(e)) do
                 local okb, b = pcall(df.building.find, g.id)
                 local st = okb and b and piece_now(g, b) or nil
+                if not outer[g.id] then
+                    need = need + 1
+                    if st and st.shut then need_shut = need_shut + 1 end
+                elseif st and st.shut then
+                    outer_shut = true
+                end
                 if st and st.shut then
-                    any = true
                     local lid, own = piece_lever(G, e, g, levers)
                     if #out < SHUT_MAX then
                         local okn, name = pcall(function() return tostring(b.name or '') end)
@@ -261,7 +273,7 @@ function shut_by(G, levers)
                     end
                 end
             end
-            if any then shut_e = shut_e + 1 end
+            if outer_shut or (need > 0 and need_shut == need) then shut_e = shut_e + 1 end
         end
     end
     return out, entrances > 0 and shut_e == entrances
@@ -459,7 +471,10 @@ function open_way(id, o)
                     end
                 end
                 if not o.dry_run and type(GT.mine) == 'table' then GT.mine[g.id] = nil end
-            elseif not lid and mine and st.locked and not st.closed then
+            elseif mine and st.locked and g.kind ~= 'bridge' then
+                -- (0.105.48, K2) a lock the AI put on (a plain door at rest reads
+                -- closed too: no `not closed` test); on the player's lever, its
+                -- lock is undone and the lever left theirs
                 if o.dry_run then
                     table.insert(out.did, 'would unlock ' .. where)
                 else
@@ -469,6 +484,10 @@ function open_way(id, o)
                         table.insert(out.did, 'unlocked ' .. where)
                     end
                     if type(GT.mine) == 'table' then GT.mine[g.id] = nil end
+                end
+                if lid and st.closed and g.lever_driven then
+                    table.insert(out.players, {id = g.id, kind = g.kind, lever = lid,
+                                               x = g.x or b.x1, y = g.y or b.y1, z = g.z or b.z})
                 end
             else
                 -- the player's own (their lever, or a door the AI never named or shut): reported only

@@ -524,9 +524,9 @@ function record_state(rec)
             local t = tile_now(br.x, br.y, br.z)
             st.bridge.step_ready = t ~= nil and not t.walk and t.shape ~= 'FLOOR' or nil
         elseif rec.stage == 'ramp' then
-            local t = tile_now(br.x, br.y, br.z - 1)
-            st.bridge.step_ready = t ~= nil and t.shape == 'FLOOR' or nil
+            st.bridge.step_ready = true        -- (0.105.48, K2) the ramp stays: the bridge goes on
         end
+        st.bridge.since = rec.tick             -- (0.105.48, K2) when the zone was begun
     end
     return st
 end
@@ -552,6 +552,7 @@ function report(txt)
             if rec then
                 local st = record_state(rec)
                 row.kind_traps = rec.kind
+                row.since = rec.tick                          -- (0.105.48, K2) when it was begun
                 row.traps = {planned = st.planned, built = st.built, full = st.full, gone = st.gone, kinds = st.kinds}
                 row.drawbridge = st.bridge
                 if rec.stage ~= 'done' then
@@ -625,8 +626,8 @@ local function dig(text, x, y, z)
     return ok, fail
 end
 
--- One step of a channelled drawbridge: the channel dug -> its ramp removed
--- -> the bridge placed over the drop (and its lever).
+-- One step of a channelled drawbridge: the channel dug -> the bridge placed
+-- over it (and its lever). (0.105.48, K2) Its ramp is no longer removed.
 local function advance(G, e, rec, rk, recs, dry_run, starts)
     local br = rec.bridge
     local out = {ok = true, entrance_id = e.id, stage = rec.stage, bridge = {x = br.x, y = br.y, z = br.z}}
@@ -642,29 +643,22 @@ local function advance(G, e, rec, rk, recs, dry_run, starts)
             out.step = 'channel marked again'
             return out
         end
-        local below = tile_now(br.x, br.y, br.z - 1)
-        if below and below.shape == 'RAMP' then
-            if dry_run then out.dry_run, out.step = true, 'ramp'; return out end
-            if not below.designated then
-                local ok, fail = dig('z', br.x, br.y, br.z - 1)
-                if not ok then return {ok = false, error = 'the ramp in the channel could not be marked for removal ('
-                    .. tostring(fail) .. ')'} end
+        -- (0.105.48, K2) the channel's ramp is left: the pit has eight solid
+        -- sides, so the miner removing it would stand in it (shut in under the
+        -- bridge that follows) or find no tile to work from (the stage waited
+        -- for ever, and no other zone was built). The bridge goes on at once.
+        if dry_run then out.dry_run, out.step = true, 'bridge'; return out end
+        rec.stage = 'ramp'
+    end
+    if rec.stage == 'ramp' then
+        -- (0.105.48, K2) a zone from before: its ramp's removal mark taken away
+        pcall(function()
+            local below = tile_now(br.x, br.y, br.z - 1)
+            if below and below.shape == 'RAMP' and below.designated then
+                local des = dfhack.maps.getTileFlags(br.x, br.y, br.z - 1)
+                if des then des.dig = df.tile_dig_designation.No end
             end
-            rec.stage = 'ramp'
-            out.step = 'the channel\'s ramp marked for removal (a pit nothing climbs out of)'
-        else
-            rec.stage = 'ramp'
-            out.step = 'no ramp left in the channel'
-        end
-        recs[rk] = rec
-        save_records(recs)
-        out.stage = rec.stage
-        return out
-    elseif rec.stage == 'ramp' then
-        local below = tile_now(br.x, br.y, br.z - 1)
-        if below and below.shape == 'RAMP' then
-            return {ok = false, waiting = true, error = 'the ramp in the channel is not removed yet'}
-        end
+        end)
         if dry_run then out.dry_run, out.step = true, 'bridge'; return out end
         local ok, why = place_bridge(G, br)
         if not ok then return {ok = false, error = 'the game would not place the drawbridge: ' .. tostring(why)} end
@@ -672,7 +666,7 @@ local function advance(G, e, rec, rk, recs, dry_run, starts)
         rec.stage = 'done'
         recs[rk] = rec
         save_records(recs)
-        out.stage, out.step, out.lever, out.lever_note = 'done', 'the drawbridge placed over the drop', spot, note
+        out.stage, out.step, out.lever, out.lever_note = 'done', 'the drawbridge placed over the channel', spot, note
         return out
     end
     return {ok = false, rejected = true, error = 'a kill zone stands there already'}

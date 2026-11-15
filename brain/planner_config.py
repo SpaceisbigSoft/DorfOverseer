@@ -773,6 +773,7 @@ PLANNER_CONFIG = {
     # _stranded_rule: unstick_gate at once, one step at a time:
     "gate_stuck_step_hours": 6,         # ...this many game hours between steps (the split still there)
     "gate_stuck_prevent_days": 1,       # ...a split with nobody shut out yet: step 1 at most this often
+    "gate_stuck_prevent_max": 4,        # (0.105.48) ...and tried this many times at most (waits 1, 3, 7 days x the above)
     # ...and citizens cut off with no gate to blame (no split): dig_way_in
     "way_in_after_days": 2,             # ...once they've been out this many game days
     "way_in_min_stranded": 1,           # ...and at least this many are
@@ -1048,6 +1049,7 @@ PLANNER_CONFIG = {
     "killzone_traps": 4,                  # traps a zone (the stretch allows 3-6)
     "killzone_traps_high": 6,             # ...at Fortification or Caution killzone_all_slider and up
     "killzone_cooldown_ticks": 1200,      # one step (a zone, or the next step of its drawbridge) a game day
+    "killzone_stage_days": 20,            # (0.105.48) a zone still building this long no longer holds the next one
     # (0.105.45) a great beast sealed in a cavern lured into a pocket and cut off (brain/planner_lure.py)
     "lure_after_days": 7,                 # a great danger sealed in the caverns this long: the lure is built
     "lure_open_days": 3,                  # open this long with nothing caught: shut again...

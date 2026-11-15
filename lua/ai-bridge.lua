@@ -14,6 +14,7 @@
 --   ai-bridge run <ticks>        unpause, then pause again after <ticks>
 --   ai-bridge act <json>         perform one action (see ACTIONS below)
 --   ai-bridge watch              start the event feed (runs on map load)
+--   ai-bridge mapload            (0.105.48) the gate lockdown kept in the save re-checked after a load
 --   ai-bridge events             hand over queued events, written to a file
 --   ai-bridge map                cavern / magma / underworld layers and depths
 --   ai-bridge probe_defence [x y z ...]  read-only: lever links, bridge, hatch
@@ -1808,6 +1809,9 @@ local function cmd_status()
         remaining = math.max(0, run_until - abs_tick())
     end
     ensure_watching()
+    -- (0.105.48, K2) the overseer's poll is the gate watcher's heartbeat: a slow
+    -- brain is not read as away (lua/ai-gates-watch.lua brain_away)
+    pcall(function() reqscript('ai-gates').brain_ping() end)
     -- (fix41) evil weather coming (a cloud near the map's edge, DF's
     -- announcement, evil rain): an event, so a cycle reads it now
     pcall(function()
@@ -2032,6 +2036,15 @@ local function cmd_watch()
     return {ok = start_watching(), watching = WATCHING == BRIDGE_VERSION}
 end
 
+-- (0.105.48, K2) ai-bridge mapload: run by DFHack on each map load (the init
+-- file dfhack-config/init/onMapLoad-ai-overseer.init, which lua/ai-gates-stuck.lua
+-- writes): a gate lockdown kept in the save is re-checked before any brain
+-- reports (opened unless a danger is near; else the watcher holds it)
+function cmd_mapload()
+    if not in_fort() then return NOT_IN_FORT end
+    return reqscript('ai-gates').on_map_loaded()
+end
+
 -- ai-bridge events: hand over queued events (written to a file, since unit
 -- names can contain characters the console can't carry) and clear the queue.
 local function cmd_events()
@@ -2147,6 +2160,7 @@ local COMMANDS = {
     memory = cmd_memory,
     survey = cmd_survey,
     watch = cmd_watch,
+    mapload = cmd_mapload,                -- (0.105.48, K2) the gates after a load
     events = cmd_events,
     reports = cmd_reports,
     probe = cmd_probe,

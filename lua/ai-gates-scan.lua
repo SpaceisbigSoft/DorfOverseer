@@ -766,21 +766,42 @@ function lever_away(e, l, inside)
     return math.max(math.abs(l.x - e.x), math.abs(l.y - e.y)) >= LEVER_AWAY
 end
 
+-- (0.105.48, K2) Pure: may the watcher pull this lever for a bridge of
+-- entrance e (mine: the entrance's gate ids)? Only the AI's own: named "AI
+-- gate..." (or unnamed: the scan names it so), and working nothing outside
+-- this entrance (a player's lever linked to the bridge and a floodgate too
+-- would work the floodgate with each lockdown).
+function bridge_lever_ok(l, mine)
+    local name = tostring(l.name or '')
+    if name ~= '' and not ai_lever_name(name) then return false end
+    for _, tid in ipairs(l.targets or {}) do
+        if not mine[tid] then return false end
+    end
+    return true
+end
+
 -- For each bridge: the lever the watcher pulls (one away from the gate if
--- there is one, else one inside, else any).
+-- there is one, else one inside, else any). (0.105.48, K2) Of a bridge's
+-- levers, only the AI's own (bridge_lever_ok); doors' and hatches' levers
+-- are drive_levers' (lever_id stays the first for the report).
 function pick_levers(entrances, inside)
     for _, e in ipairs(entrances) do
-        local gates = {}
-        for _, b in ipairs(e.equipment) do table.insert(gates, b) end
-        for _, b in ipairs(e.outer or {}) do table.insert(gates, b) end     -- (0.105.23) a gatehouse's bridge
+        local gates, mine = {}, {}
+        for _, b in ipairs(e.equipment) do table.insert(gates, b); mine[b.id] = true end
+        for _, b in ipairs(e.outer or {}) do table.insert(gates, b); mine[b.id] = true end     -- (0.105.23) a gatehouse's bridge
         for _, b in ipairs(gates) do
             if b.levers and #b.levers > 0 then
                 local best, rank = nil, -1
                 for _, l in ipairs(b.levers) do
                     local r = lever_away(e, l, inside) and 2 or (inside and inside[key(l.x, l.y, l.z)] and 1 or 0)
+                    if b.kind == 'bridge' and not bridge_lever_ok(l, mine) then r = 0 end
                     if r > 0 and r > rank then best, rank = l, r end
                 end
-                if best then b.lever_id, b.lever_away = best.id, rank == 2 end
+                if best then b.lever_id, b.lever_away = best.id, rank == 2
+                elseif b.kind == 'bridge' then
+                    -- (0.105.48, K2) no lever of the AI's own: the watcher never pulls it
+                    b.lever_id, b.players_lever = nil, true
+                end
             end
         end
     end
@@ -870,7 +891,10 @@ function scan(now_tick)
     SCAN_MEMO = nil
     if not ok then error(err, 0) end
     -- (0.105.23) a hatch its new lever link shut, with no watcher holding it: opened
-    if not GATES.armed then pcall(open_lever_hatches) end
+    -- (0.105.48, K2) not while a lockdown from the save waits to be matched to
+    -- this map (summary's gates_restore re-arms it, and opens what is safe)
+    local pending = type(GATES_SAVE) == 'table' and GATES_SAVE.saved ~= nil
+    if not GATES.armed and not pending then pcall(open_lever_hatches) end
     return summary()
 end
 
