@@ -765,12 +765,20 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
     lone = lone_intruders(s, cfg, traits, memory) if any_reach else []
     open_up = bool(lone) or lockdown_released(memory) or bool(any_reach and hunted_outside(s, cfg, traits, memory)
                                                               and not _one_enemy_hold(s, cfg, memory, traits))
+    # (0.105.54) the squads out on a sortie (planner_gates.sortie_out): the AI gate lever lets them out too
+    from planner_gates import sortie_out
+    sortie = bool(sortie_out(s, cfg, memory)) and not lone
+    open_up = open_up or sortie
     if rules_["gate_lever"] and gates:
         # (0.105.36) never pulled while the report says the gate is already
         # shut (the player's, or the AI's own not yet read back)
         if any_reach and not memory.gate_closed_by_ai and not open_up and gates[0].get("shut") is not True:
             proposals.append(Proposal("gate", {"type": "pull_gate", "lever_id": gates[0]["id"]},
                                       "a threat can reach the dwarves: pull the AI gate lever", 0))
+        elif memory.gate_closed_by_ai and sortie:
+            proposals.append(Proposal("gate", {"type": "pull_gate", "lever_id": gates[0]["id"]},
+                                      "the squads sortie against the enemies outside, the civilians in the "
+                                      "shelter: pull the AI gate lever back (open) to let them out", 0))
         elif memory.gate_closed_by_ai and any_reach and open_up:
             proposals.append(Proposal("gate", {"type": "pull_gate", "lever_id": gates[0]["id"]},
                                       "only a few enemies left, inside the fort, or no new one for days: pull "
@@ -1029,6 +1037,23 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
                 proposals.append(Proposal("train", {"type": "squad_routine", "squad_id": q["id"], "routine": staggered},
                                           f"training is met and {len(starved)} soldiers badly miss other things: "
                                           f"{q.get('name') or 'a squad'} goes to {staggered.lower()} (months off by turns)", 5))
+
+    # (0.105.54, "fight back") enemies about: a squad sitting off duty that
+    # isn't sent or posted goes on training, whatever the fort's size or
+    # Militarism: on duty the soldiers wear their uniform and pick up the
+    # gear the gap rules hand out (off duty they put it away), and they
+    # train at the barracks instead of hiding with the civilians. The AI's
+    # own rests end here too; one the player sent off duty stays theirs
+    if rules_["train_squads"] and any_reach and train_to:
+        for q in squads:
+            if (q.get("id") is not None and (q.get("members") or 0) > 0
+                    and "off duty" in str(q.get("routine") or "").lower() and not q.get("ai_orders") and not (q.get("orders") or 0) and not q.get("sheltering")
+                    and not (q["id"] in memory.squads_trained and q["id"] not in memory.squads_rested)):
+                proposals.append(Proposal("train", {"type": "squad_routine", "squad_id": q["id"],
+                                                    "routine": train_to},
+                                          f"enemies can reach the dwarves and {q.get('name') or 'a squad'} sits off "
+                                          f"duty: on {train_to.lower()} (in uniform and armed, ready at the "
+                                          "barracks)", 2))
 
     # Gear: weapons, body armour, helms for every soldier, made at a forge in
     # the best metal there are bars for. Only with a uniform set: without one

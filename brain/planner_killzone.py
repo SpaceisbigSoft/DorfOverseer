@@ -205,6 +205,33 @@ def _link_rule(s: dict, kz: dict, proposals: list) -> bool:
     return False
 
 
+def _facing_notes(kz: dict, rows: list, notes: list) -> None:
+    """(0.105.54) A zone of the AI's at the entrance enemies are coming to (a
+    siege, a beast): what it has ready, said. Its cage traps are loaded
+    again by DF once a full cage is hauled off (planner_military: the
+    animal stockpile and the empty cages); its drawbridge is raised by the
+    gate watcher with the entrance's gates, so one no lever works is said."""
+    near: dict = {}
+    for t in _l(kz.get("threats")):
+        if isinstance(t, dict) and isinstance(t.get("entrance_id"), int) and (t.get("invader") or t.get("great")):
+            near.setdefault(t["entrance_id"], []).append(t)
+    for e in rows:
+        come = near.get(e["id"])
+        if not come or e.get("state") not in ("standing", "building"):
+            continue
+        tr, br = _d(e.get("traps")), _d(e.get("drawbridge"))
+        bits = [f"{int(tr.get('built') or 0)} of {int(tr.get('planned') or 0)} trap(s) built"
+                + (f", {int(tr['full'])} full (hauled off and loaded again)" if int(tr.get("full") or 0) else "")]
+        if all(t.get("trapavoid") is True for t in come):
+            bits.append("they avoid traps (TRAPAVOID): only the drawbridge holds them")
+        if br.get("built") and br.get("linked") is False:
+            bits.append("its drawbridge has no lever yet: it can't be raised against them")
+        elif br.get("built"):
+            bits.append("its drawbridge is raised with the gates as they come near")
+        notes.append(f"the kill zone at the {e.get('kind')} entrance x{e['x']} y{e['y']} faces {len(come)} "
+                     f"enemy/enemies coming that way: " + "; ".join(bits))
+
+
 def _killzone_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> None:
     if not player_rules(s).get("killzones", True):
         return
@@ -212,6 +239,7 @@ def _killzone_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> 
     rows = _rows(kz)
     if not kz or not rows:
         return
+    _facing_notes(kz, rows, notes)
     if _link_rule(s, kz, proposals):
         return
     # full cages: DF hauls them itself (the hazards rule makes the pile and the cages)

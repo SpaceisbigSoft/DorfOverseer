@@ -3989,14 +3989,17 @@ def _():
     assert share(10, True) < share(100)                              # (0.94) Extreme is twice as strong, never a jump
 
 
-@test("military: a squad off duty is put on training (not during a threat)")
+@test("military: a squad off duty is put on training; (0.105.54, \"fight back\") during a threat too, "
+      "unless the player sent it off duty")
 def _():
     s = fort()
     s["military"]["squads"][0]["routine"] = "Off duty"
     t = by_rule(plan(s, Memory())[0], "train")
     assert t and t[0].action == {"type": "squad_routine", "squad_id": 11, "routine": "Staggered training"}, t
     s["others_on_map"]["threats_that_can_reach_dwarves"] = 1
-    assert not by_rule(plan(s, Memory())[0], "train")
+    t = by_rule(plan(s, Memory())[0], "train")
+    assert t and t[0].action["squad_id"] == 11 and "enemies" in t[0].reason, t
+    assert not by_rule(plan(s, Memory(squads_trained=[11]))[0], "train")
 
 
 def geared(**kw):

@@ -14,7 +14,7 @@ from digest import _d, _l
 from planner_core import *  # noqa: F401,F403
 from planner_construct import _wings_rule, cavern_wall_style  # (0.105.30) wing walls, the Hermit's cavern walls
 
-__all__ = ["_gate_rules", "_stranded_rule", "player_gate_row", "split_pieces", "stuck_rows", "note_gate_stuck", "note_gate_stuck_cycle", "note_second_way", "_second_way_rule", "WAY_IN_KINDS", "GATE_STUCK_TRIED", "STRANDED_CONFIG", "GATE_PART_RECIPES", "GATE_PART_STUCK_DAYS", "_gate_parts_rule", "_free_gate_levers", "_lever_far_enough", "machinery_wanted", "_lever_hatches_ok", "_link_wanted", "_lever_rule", "_trap_rule", "_gatehouse_rule", "fort_years", "destroyer_gate_due", "gatehouse_wanted", "gatehouse_asked", "GATEHOUSE_WAGON", "_near_spot", "lone_intruders", "few_ordinary", "few_alert_over", "few_near", "hunted_outside", "ai_gates_shut", "_Rec", "_lockdown", "lockdown_released", "lone_alert_over", "_lockdown_ids", "_lockdown_cap_why", "note_lockdown", "quick_clear", "PASTURE_ACTIONS", "_pasture_hold", "gate_invaders", "main_gate", "_gate_guard_rule", "_gate_dogs_rule"]
+__all__ = ["sortie_out", "_gate_rules", "_stranded_rule", "player_gate_row", "split_pieces", "stuck_rows", "note_gate_stuck", "note_gate_stuck_cycle", "note_second_way", "_second_way_rule", "WAY_IN_KINDS", "GATE_STUCK_TRIED", "STRANDED_CONFIG", "GATE_PART_RECIPES", "GATE_PART_STUCK_DAYS", "_gate_parts_rule", "_free_gate_levers", "_lever_far_enough", "machinery_wanted", "_lever_hatches_ok", "_link_wanted", "_lever_rule", "_trap_rule", "_gatehouse_rule", "fort_years", "destroyer_gate_due", "gatehouse_wanted", "gatehouse_asked", "GATEHOUSE_WAGON", "_near_spot", "lone_intruders", "few_ordinary", "few_alert_over", "few_near", "hunted_outside", "ai_gates_shut", "_Rec", "_lockdown", "lockdown_released", "lone_alert_over", "_lockdown_ids", "_lockdown_cap_why", "note_lockdown", "quick_clear", "PASTURE_ACTIONS", "_pasture_hold", "gate_invaders", "main_gate", "_gate_guard_rule", "_gate_dogs_rule"]
 
 
 # (0.105.26) citizens stranded outside (lua/ai-gates.lua stranded_citizens)
@@ -972,7 +972,15 @@ def _gate_rules(s: dict, memory, cfg: dict, rules_: dict, any_reach: bool,
             notes.append(hold["why"])
             hunted = []
     released = lockdown_released(memory)
-    if any_reach and closable and not ent.get("armed") and rules_["gate_lever"] and (lone or released or hunted):
+    # (0.105.54) the squads out on a sortie: the gates open for them (a
+    # gatehouse's drawbridge lowered) while the civilians shelter
+    sortie = [] if lone or hunted else sortie_out(s, cfg, memory)
+    sortie_still = [] if lone or hunted else _sortie_on(s, cfg, memory,
+                                                                sortie if ent.get("armed") and rules_["gate_lever"] else [])
+    if sortie_still and any_reach and closable and not ent.get("armed") and rules_["gate_lever"]:
+        notes.append(f"the squads are out on a sortie at {len(sortie_still)} enemy/enemies outside, the civilians in "
+                     "the shelter: the gates stay open until the squads are back")
+    elif any_reach and closable and not ent.get("armed") and rules_["gate_lever"] and (lone or released or hunted):
         notes.append(f"{len(lone)} enemy/enemies inside the fort and none outside: the gates stay open "
                      "(shut, they keep only the others out)" if lone else
                      f"only {len(hunted)} ordinary enemy/enemies outside, and a squad on them or citizens out: "
@@ -985,6 +993,11 @@ def _gate_rules(s: dict, memory, cfg: dict, rules_: dict, any_reach: bool,
     elif any_reach and closable and _reach_lift(s, memory, cfg, traits):
         # (0.105.48, K16) the reach alarm came down at its cap: the lockdown lifts too
         proposals.append(Proposal("gates", {"type": "open_gates"}, _reach_lift(s, memory, cfg, traits), 0))
+    elif ent.get("armed") and sortie and rules_["gate_lever"]:
+        proposals.append(Proposal("gates", {"type": "open_gates"},
+                                  f"the squads sortie against {len(sortie)} enemy/enemies outside the gates, the "
+                                  "civilians in the shelter: open the gates (a gatehouse's drawbridge lowered) to "
+                                  "let them out; shut again once they are back", 0))
     elif ent.get("armed") and (lone or released or hunted):
         proposals.append(Proposal("gates", {"type": "open_gates"},
                                   f"only {len(lone)} enemy/enemies left, inside the fort: open the gates (shut, they "
@@ -1674,6 +1687,61 @@ def hunted_outside(s: dict, cfg: dict, traits: dict | None = None, memory=None) 
     return reach if hunted == want else []
 
 
+def sortie_out(s: dict, cfg: dict, memory=None, held_only: bool = True) -> list:
+    """(0.105.54, "fight back") The squads' sortie: the ids of the enemies
+    outside the fort (held off by the shut gates, or out on the surface) that
+    an AI squad able to fight has a kill order on, while the civilians are in
+    the shelter (the alarm up). The gates are opened for it (a gatehouse's
+    raised drawbridge lowered: the watcher lowers it with the hatch) and not
+    armed again until the squads are back. Who goes out, and at what, is the
+    engagement rules' (planner_military); this only lets them out. [] without
+    the gate scan, with the alarm down (the few-ordinary case is
+    hunted_outside's), or with a great danger outside that no squad goes at
+    (an open gate would let it in). held_only: only enemies the gates hold
+    off count (the opening; a squad sent at enemies that can reach the
+    dwarves is the ordinary defence, whose gates the watcher keeps); False:
+    any outside (the sortie the AI opened for, still out: _sortie_on)."""
+    if s.get("civ_alert") is not True or not _d(s.get("entrances")).get("scanned"):
+        return []
+    o = _d(s.get("others_on_map"))
+    rows = {t.get("id"): t for t in _l(o.get("threats")) if isinstance(t, dict) and t.get("id") is not None}
+    from planner_holdfast import _inside_ids
+    inside = _inside_ids(s)
+    held = {t.get("id") for t in held_off_threats(s)}
+    outside = {i for i, t in rows.items() if i not in inside and (
+        i in held or (not held_only and t.get("layer") in (None, "surface", "upper_levels")))}
+    if not outside:
+        return []
+    hunted = set()
+    for q in _l(_d(s.get("military")).get("squads")):
+        if (isinstance(q, dict) and q.get("ai_orders") and can_fight(q, cfg) and not q.get("sheltering")
+                and not q.get("guarding") and isinstance(q.get("kill_ids"), list)):
+            hunted |= outside & {x for x in q["kill_ids"] if isinstance(x, int)}
+    if not hunted:
+        return []
+    if any(rows[i].get("great_danger") and i not in hunted for i in outside & held):
+        return []
+    return sorted(hunted)
+
+
+def _sortie_on(s: dict, cfg: dict, memory, opening: list) -> list:
+    """(0.105.54) The sortie the AI opened the gates for (its record in the
+    atlas, set when the open is proposed) while its squads are still out at
+    enemies outside: the gates aren't armed again meanwhile. The record goes
+    once no squad is out at them."""
+    if memory is None or not isinstance(getattr(memory, "atlas", None), dict):
+        return []
+    if opening:
+        memory.atlas["sortie"] = {"since": abs_tick(s)}
+        return opening
+    if not _d(memory.atlas.get("sortie")):
+        return []
+    out = sortie_out(s, cfg, memory, held_only=False)
+    if not out:
+        memory.atlas.pop("sortie", None)
+    return out
+
+
 def ai_gates_shut(s: dict, memory=None) -> bool:
     """The AI's gates shut now: the watcher armed with an entrance closed, or
     the AI gate lever pulled by the AI."""
@@ -1869,9 +1937,13 @@ def _pasture_hold(s: dict, memory, proposals: list, notes: list) -> list:
 
 def gate_invaders(s: dict) -> list:
     """Invaders on the map that can't reach the dwarves yet (outside the gates,
-    on the surface): the squads wait for them inside the main gate."""
+    on the surface): the squads wait for them inside the main gate.
+    (0.105.54) The bridge names the surface's layer "upper_levels"
+    (ai-bridge-report layer_at), never "surface": a besieger with its layer
+    read was never one, so no archer was posted and no gate guard held."""
     return [t for t in _l(_d(s.get("others_on_map")).get("threats")) if isinstance(t, dict)
-            and t.get("invader") and not t.get("can_reach_dwarves") and t.get("layer") in (None, "surface")]
+            and t.get("invader") and not t.get("can_reach_dwarves")
+            and t.get("layer") in (None, "surface", "upper_levels")]
 
 
 def main_gate(s: dict, memory) -> dict | None:
