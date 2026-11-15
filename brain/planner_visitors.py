@@ -10,7 +10,7 @@ from __future__ import annotations
 from digest import _d, _l
 from planner_core import *  # noqa: F401,F403
 
-__all__ = ["PETITION_KINDS", "petition_orders_wanted", "_petition_rules", "_citizenship_notes", "residency_stance", "_residency_rule", "CLOSABLE_LOCATIONS", "HEISTS_KEEP", "note_heists", "heist_lockout", "heist_lockout_days", "mayor_meetings", "_complaint_holder", "visitor_shut", "location_stale", "note_locations", "LOCATION_WORDS", "_location_words", "_location_access_rule", "outsider_orders"]
+__all__ = ["PETITION_KINDS", "petition_orders_wanted", "_petition_rules", "_citizenship_notes", "residency_stance", "_residency_rule", "CLOSABLE_LOCATIONS", "HEISTS_KEEP", "note_heists", "heist_lockout", "heist_lockout_days", "mayor_meetings", "_complaint_holder", "visitor_shut", "location_stale", "note_locations", "LOCATION_WORDS", "_location_words", "_location_access_rule", "outsider_orders", "yours_since"]
 
 
 PETITION_KINDS = ("performer", "scholar", "monster_hunter", "mercenary", "sanctuary", "citizenship")
@@ -462,6 +462,10 @@ def note_locations(s: dict, memory, cfg: dict) -> None:
         memory.locations_closed = [i for i in mine if i not in yours]
         memory.locations_yours = sorted(set(memory.locations_yours or []) | yours)
         mine = memory.locations_closed
+        # (0.105.51) when: a theft after it shuts it again (yours_since)
+        if isinstance(abs_tick(s), int):
+            memory.locations_yours_at = dict(_d(getattr(memory, "locations_yours_at", None)),
+                                             **{str(i): abs_tick(s) for i in yours})
     w = memory.visitor_shut if isinstance(getattr(memory, "visitor_shut", None), dict) else {}
     now = abs_tick(s)
     if isinstance(w.get("until"), int) and now >= w["until"]:
@@ -472,6 +476,13 @@ def note_locations(s: dict, memory, cfg: dict) -> None:
     acted = _d(getattr(memory, "locations_acted", None))
     stale = int(cfg.get("location_stale_days", 4)) * TICKS_PER_DAY
     memory.locations_acted = {k: t for k, t in acted.items() if isinstance(t, int) and 0 <= now - t < max(stale, TICKS_PER_YEAR)}
+
+
+def yours_since(memory, loc_id: int) -> int:
+    """(0.105.51) When a location the AI shut was found opened by you (0:
+    before 0.105.51, unknown)."""
+    t = _d(getattr(memory, "locations_yours_at", None)).get(str(loc_id))
+    return t if isinstance(t, int) and not isinstance(t, bool) else 0
 
 
 LOCATION_WORDS = {"INN_TAVERN": "tavern", "TEMPLE": "temple", "LIBRARY": "library", "GUILDHALL": "guildhall"}
@@ -527,6 +538,12 @@ def _location_access_rule(s: dict, memory, cfg: dict, proposals: list, notes: li
     if closed or lock or swamp or wary:
         # (review) one the AI shut and you opened again is yours: forgotten, never shut again
         left_open = set(memory.locations_yours or []) | yours
+        if lock and not closed:
+            # (0.105.51) a thief struck since you opened it: shut again (thieves come as
+            # guests). E (15 Nov): its taverns, temple and library were "yours" since
+            # y251 and stayed open through every theft; only the guildhall shut, and
+            # three tavern fights followed (~26 visitors drawn in)
+            left_open -= {i for i in left_open if i not in yours and yours_since(memory, i) < lock[0]}
         shut = [e["id"] for e in locs if e.get("type") in CLOSABLE_LOCATIONS and "VISITORS_ALLOWED" in e["flags"]
                 and e["id"] not in left_open and e["id"] not in stale]
         lock_left = (heist_lockout_days(s, cfg) - (now - lock[0]) // TICKS_PER_DAY) if lock else 0

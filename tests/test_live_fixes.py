@@ -42,6 +42,9 @@ BASE = json.loads((ROOT / "tests" / "fixtures" / "test_fort.json").read_text(enc
 ON = {"type": "civ_alert", "on": True}
 OFF = {"type": "civ_alert", "on": False}
 INVASION = {"kind": "invasion", "civ_id": -1, "invaders_now": 1, "invasion_id": 0, "siege": False, "size": 0}
+# (0.105.51) a lone sneaker's record (above) no longer sounds the alarm
+# (test_k48_thieves_crowd.py); the alarm's own workings are tested on a group's
+GROUP = {"kind": "invasion", "civ_id": 412, "invaders_now": 3, "invasion_id": 0, "siege": False, "size": 3}
 
 
 def fort() -> dict:
@@ -68,11 +71,11 @@ def alarm(props, on=True):
 @test("1a E: DF's invasion record of a hidden thief (nobody seen) sounds the alarm, and it is held")
 def _():
     s, m = fort(), Memory()
-    assert note_intrusions(s, m, [INVASION]) == 1 and m.intrusion["tick"] == abs_tick(s), m.intrusion
+    assert note_intrusions(s, m, [GROUP]) == 1 and m.intrusion["tick"] == abs_tick(s), m.intrusion
     note_cycle(s, m)
     p, _ = plan(s, m)
     a = alarm(p)
-    assert a and "DF reports an intruder" in a[0].reason and "nobody seen yet" in a[0].reason, a
+    assert a and "DF reports 3 intruders" in a[0].reason and "nobody seen yet" in a[0].reason, a
     record([(a[0], {"ok": True, "on": True})], s, m)
     assert m.ai_alert_raised
     # up, nobody seen, for several quiet cycles: it stays up (all_clear would have lowered it)
@@ -95,7 +98,7 @@ def _():
 @test("1a the record ends once an enemy is seen; the player lowering the AI's alarm isn't overruled")
 def _():
     s, m = fort(), Memory()
-    note_intrusions(s, m, [INVASION])
+    note_intrusions(s, m, [GROUP])
     seen = later(s, 100)
     seen["others_on_map"]["threats"] = [{"id": 2266, "name": "Tustong, Weasel Woman Lasher", "can_reach_dwarves": True,
                                          "distance_to_nearest_dwarf": 1, "levels_from_nearest_dwarf": 0}]
@@ -106,12 +109,12 @@ def _():
     assert a and "1 threat(s) can reach the dwarves" in a[0].reason, a      # the usual rule has her
     # the player lowers the AI's alarm for the record: not raised again for it
     s2, m2 = fort(), Memory()
-    note_intrusions(s2, m2, [INVASION])
+    note_intrusions(s2, m2, [GROUP])
     m2.ai_alert_raised = True
     note_cycle(later(s2, 50), m2)                   # civ_alert False: the player lowered it
     assert m2.intrusion.get("cleared") and not alarm(plan(later(s2, 60), m2)[0])
     # a new record counts again
-    note_intrusions(later(s2, 100), m2, [INVASION])
+    note_intrusions(later(s2, 100), m2, [GROUP])
     note_cycle(later(s2, 100), m2)
     assert alarm(plan(later(s2, 100), m2)[0])
     # no record, nothing seen: no alarm (as before)

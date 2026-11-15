@@ -3240,6 +3240,8 @@ function get_others_on_map()
     HOSTILE_WILD = (okb and builder and builder.hostile_wild) or function() return false end
     local okt, TF = pcall(reqscript, 'ai-threat-facts')     -- (0.105.45) a threat's attacks, breath, armour...
     if not okt then TF = nil end
+    local okth, TH = pcall(reqscript, 'ai-threats')         -- (0.105.51) thieves marked
+    if not okth then TH = nil end
     for _, u in ipairs(report_units()) do
         if dfhack.units.isActive(u) and not dfhack.units.isDead(u)
                 and not dfhack.units.isHidden(u)
@@ -3310,6 +3312,19 @@ function get_others_on_map()
                                                 + 3 * math.abs(pos.z - depot.z)) or nil,
                 })
                 if TF then pcall(TF.add_facts, out.threats[#out.threats], u) end   -- (0.105.45) for the matchup
+                -- (0.105.51) a thief or snatcher marked here too (the pulse has no
+                -- threats section: E's spotted artifact seekers got the whole
+                -- defence), with the crowd round them (no squad into a full tavern)
+                if TH then
+                    pcall(function()
+                        local row = out.threats[#out.threats]
+                        local kind = TH.unit_thief_kind(u)
+                        if kind then
+                            row.thief = kind
+                            row.crowd, row.location = TH.crowd_of(u, report_units())
+                        end
+                    end)
+                end
             elseif (function()                          -- (0.104.153) hostile wild animals in the caverns
                         local okh, h = pcall(function() return HOSTILE_WILD(u) end)
                         if not (okh and h) or contained then return false end

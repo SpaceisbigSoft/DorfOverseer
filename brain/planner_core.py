@@ -8,7 +8,7 @@ from quirks import has_rule
 from digest import _d, _l, normalize
 from planner_config import PLANNER_CONFIG, DISPOSAL_ACTION_MAX  # noqa: F401  (13c: the tuning numbers, split out)
 
-__all__ = ["great_present", "all_clear", "STEER_PROTECTED", "STEER_MAX_DAYS", "steer_of", "PLANNER_CONFIG", "BREW_RECIPES", "MEAL_RECIPES", "MANDATE_RECIPES", "BUILDABLE_SHOPS", "SHOP_ALIASES", "SURVIVAL_SHOPS", "TICKS_PER_DAY", "TICKS_PER_YEAR", "NO_COOLDOWN", "COOLDOWN_KEYS", "MULTI_PER_CYCLE", "EMERGENCY", "STUCK_HOLD_EXEMPT", "ORDER_HOLD_EXEMPT", "LIMIT_EXEMPT", "emergency", "limit_exempt", "steer_protected", "Proposal", "Memory", "abs_tick", "stamp_tick", "game_day", "factor", "ADJUST_BOUNDS", "_number", "effective_config", "queued", "unstored_cups", "free_stock", "watch_since", "_clamp", "MEMORIAL_SPAN", "OPTIONAL_LEVELS", "GEAR_WEAPONS", "GEAR_METALS", "NEEDS_YOU", "ask_player", "DISPOSAL_LEVELS", "DISPOSAL_ACTION_MAX", "player_rules", "OPEN_CAVERNS_MODES", "open_caverns_mode", "MAINTAIN_SKIPS", "level_refused", "_traits", "reachable_threats", "held_off_threats", "_holding_off", "ONE_A_CYCLE", "growth_mode", "growth_target", "JOB_SHOPS", "RECIPE_SHOPS", "WOOD_ELSEWHERE", "recipe_shop", "brewable_counts", "brew_recipe", "_watchdog_notes", "jobs_reported", "order_job_state", "masons_jammed", "stuck_hold_days", "_stuck_before", "stone_short", "_office_held", "tantrums_recent", "justice_held", "_restraint_order", "manager_needs_office", "suites_short", "wool_route", "thread_plants_here", "MINING_NEED_ONLY", "mining_plan", "noble_room_kinds", "SOCIAL_NEEDS", "care_waiting", "unmet", "_soldier_swap", "recently_home", "LOCATION_UNITS", "_location", "_location_short", "_real_locations", "can_fight", "is_ranged", "STALE_PROJECT_DAYS", "_workshops_busy", "shop_count", "shops_max", "_has_shop", "RAW_FOOD", "ALL_FOOD", "_idle_share", "idle_line", "IDLE_OLD_LINES", "levels_done", "_lever_state", "update_idle", "AGENDA_THEMES", "agenda", "food_per_dwarf", "WINTER_STOCK", "winter_factor", "young_fort", "established", "has_farms", "_best_metal", "REFUSAL_FIRST_DAYS", "REFUSAL_MAX_DAYS", "REFUSAL_IDLE_DAYS", "REFUSAL_KEYS", "LABOR_CAPS", "labor_given", "note_labor_given", "REFUSAL_ID_TYPES", "PER_ID_COOLDOWN", "refusal_key", "cooldown_key", "_refused_wait", "note_refusal", "zone_full_days", "note_zone_full", "ZONE_FULL_FIRST_DAYS", "ZONE_FULL_MAX_DAYS", "TIMEOUT_TRIES", "timeout_streak", "brief_timeout", "LOOP_LIMITS", "LOOP_LIMIT_DEFAULT", "LOOP_EXEMPT", "_loop_count", "NO_EFFECT_RULES", "NO_EFFECT_WHY", "note_no_effect", "no_effect_wait", "_stalled_days", "_entrance_spot", "_record_any_outcome", "_weapon_gaps", "spare_sig", "MOOD_BODY_FLAGS", "mood_kind", "mood_on_hand", "mood_waits", "_stuck_again_rule", "wildlife_threat", "wildlife_threats", "thief_ids", "snatcher_ids", "GREAT_LIKE_KINDS", "is_release"]
+__all__ = ["great_present", "all_clear", "STEER_PROTECTED", "STEER_MAX_DAYS", "steer_of", "PLANNER_CONFIG", "BREW_RECIPES", "MEAL_RECIPES", "MANDATE_RECIPES", "BUILDABLE_SHOPS", "SHOP_ALIASES", "SURVIVAL_SHOPS", "TICKS_PER_DAY", "TICKS_PER_YEAR", "NO_COOLDOWN", "COOLDOWN_KEYS", "MULTI_PER_CYCLE", "EMERGENCY", "STUCK_HOLD_EXEMPT", "ORDER_HOLD_EXEMPT", "LIMIT_EXEMPT", "emergency", "limit_exempt", "steer_protected", "Proposal", "Memory", "abs_tick", "stamp_tick", "game_day", "factor", "ADJUST_BOUNDS", "_number", "effective_config", "queued", "unstored_cups", "free_stock", "watch_since", "_clamp", "MEMORIAL_SPAN", "OPTIONAL_LEVELS", "GEAR_WEAPONS", "GEAR_METALS", "NEEDS_YOU", "ask_player", "DISPOSAL_LEVELS", "DISPOSAL_ACTION_MAX", "player_rules", "OPEN_CAVERNS_MODES", "open_caverns_mode", "MAINTAIN_SKIPS", "level_refused", "_traits", "reachable_threats", "held_off_threats", "_holding_off", "ONE_A_CYCLE", "growth_mode", "growth_target", "JOB_SHOPS", "RECIPE_SHOPS", "WOOD_ELSEWHERE", "recipe_shop", "brewable_counts", "brew_recipe", "_watchdog_notes", "jobs_reported", "order_job_state", "masons_jammed", "stuck_hold_days", "_stuck_before", "stone_short", "_office_held", "tantrums_recent", "justice_held", "_restraint_order", "manager_needs_office", "suites_short", "wool_route", "thread_plants_here", "MINING_NEED_ONLY", "mining_plan", "noble_room_kinds", "SOCIAL_NEEDS", "care_waiting", "unmet", "_soldier_swap", "recently_home", "LOCATION_UNITS", "_location", "_location_short", "_real_locations", "can_fight", "is_ranged", "STALE_PROJECT_DAYS", "_workshops_busy", "shop_count", "shops_max", "_has_shop", "RAW_FOOD", "ALL_FOOD", "_idle_share", "idle_line", "IDLE_OLD_LINES", "levels_done", "_lever_state", "update_idle", "AGENDA_THEMES", "agenda", "food_per_dwarf", "WINTER_STOCK", "winter_factor", "young_fort", "established", "has_farms", "_best_metal", "REFUSAL_FIRST_DAYS", "REFUSAL_MAX_DAYS", "REFUSAL_IDLE_DAYS", "REFUSAL_KEYS", "LABOR_CAPS", "labor_given", "note_labor_given", "REFUSAL_ID_TYPES", "PER_ID_COOLDOWN", "refusal_key", "cooldown_key", "_refused_wait", "note_refusal", "zone_full_days", "note_zone_full", "ZONE_FULL_FIRST_DAYS", "ZONE_FULL_MAX_DAYS", "TIMEOUT_TRIES", "timeout_streak", "brief_timeout", "LOOP_LIMITS", "LOOP_LIMIT_DEFAULT", "LOOP_EXEMPT", "_loop_count", "NO_EFFECT_RULES", "NO_EFFECT_WHY", "note_no_effect", "no_effect_wait", "_stalled_days", "_entrance_spot", "_record_any_outcome", "_weapon_gaps", "spare_sig", "MOOD_BODY_FLAGS", "mood_kind", "mood_on_hand", "mood_waits", "_stuck_again_rule", "wildlife_threat", "wildlife_threats", "thief_ids", "thief_rows", "crowded_thief", "CROWD_LOCATIONS", "snatcher_ids", "GREAT_LIKE_KINDS", "is_release"]
 
 BREW_RECIPES = {"brew_drink", "brew_drink_from_fruit", "make_mead"}
 MEAL_RECIPES = {"prepare_easy_meal", "prepare_fine_meal", "prepare_lavish_meal"}
@@ -131,7 +131,7 @@ LIMIT_EXEMPT = EMERGENCY | {"break_fights", "calm_burrow", "join_levels", "censu
 # limit also read EMERGENCY itself (limit_exempt, steer_protected): LIMIT_EXEMPT
 # and STEER_PROTECTED are copies made here at import, so a rule a later module
 # put in EMERGENCY (way_out, way_out_dig, well_rescue) missed them
-STEER_PROTECTED.update({"intruder_guard", "destroyer_gate", "hospital_guard", "staff_tantrum", "chronic_posts",
+STEER_PROTECTED.update({"intruder_guard", "thief_watch", "destroyer_gate", "hospital_guard", "staff_tantrum", "chronic_posts",
                         "near_gates", "near_gates_refresh", "hunting_stop", "fire_guard", "magma_guard",
                         "magma_shut", "lure_shut", "mood_shelter", "well_rescue", "well_safety"})
 
@@ -307,6 +307,7 @@ class Memory:
     gatehouses: dict = field(default_factory=dict)           # (0.105.23) entrance "x,y,z" -> {tick, bridge} built
     construct: dict = field(default_factory=dict)            # (0.105.30) wings built, soil floors done, the hall's block wait
     locations_yours: list = field(default_factory=list)      # (0.105.12) ones the AI shut and you opened: left alone
+    locations_yours_at: dict = field(default_factory=dict)   # (0.105.51) location id (str) -> tick it was found yours
     heists: list = field(default_factory=list)               # (0.105.24) [tick, who] artifact heists and visitors' killings
     visitor_shut: dict = field(default_factory=dict)         # (0.105.24) {tick, until, visitors, meetings, unheard}: shut for the mayor
     locations_acted: dict = field(default_factory=dict)      # (0.105.26) location id (str) -> tick the AI last shut or opened it
@@ -685,9 +686,62 @@ def wildlife_threats(s: dict, cfg: dict | None = None) -> list:
 
 
 def thief_ids(s: dict) -> set:
-    """The ids of the thieves and snatchers the threats section lists."""
+    """The ids of the thieves and snatchers the threats section lists.
+    (0.105.51) And the others_on_map threat rows the bridge marks `thief`:
+    the threats section is in the full report only, the pulse between
+    carries others_on_map alone. E (15 Nov) saw three artifact seekers
+    spotted on a pulse cycle: not in the day-old thieves list, each got the
+    alarm, the gates and the defence's squad (a mechanic killed, a tavern
+    fight)."""
     th = _d(_d(s.get("threats")).get("thieves"))
-    return {x.get("id") for x in _l(th.get("list")) if isinstance(x, dict) and x.get("id") is not None}
+    out = {x.get("id") for x in _l(th.get("list")) if isinstance(x, dict) and x.get("id") is not None}
+    out |= {t.get("id") for t in _l(_d(s.get("others_on_map")).get("threats"))
+            if isinstance(t, dict) and t.get("thief") and t.get("id") is not None}
+    return out
+
+
+CROWD_LOCATIONS = ("INN_TAVERN", "TEMPLE", "LIBRARY", "GUILDHALL")
+
+
+def thief_rows(s: dict, threats: dict | None = None) -> list:
+    """(0.105.51) The thieves and snatchers: the threats section's rows
+    (the full report), with the others_on_map threat rows the bridge marks
+    `thief` merged in (the pulse: fresher reach, place and crowd). A thief
+    only in others_on_map is inside when the gate scan says so or it can
+    reach the dwarves."""
+    th = _d(_d(threats if threats is not None else s.get("threats")).get("thieves"))   # `threats`: the section
+    by = {}
+    for x in _l(th.get("list")):
+        if isinstance(x, dict) and x.get("id") is not None:
+            by[x["id"]] = dict(x)
+    inside = {x for x in _l(_d(s.get("entrances")).get("intruders_inside")) if isinstance(x, int)}
+    for t in _l(_d(s.get("others_on_map")).get("threats")):
+        if not isinstance(t, dict) or not t.get("thief") or t.get("id") is None:
+            continue
+        r = by.get(t["id"])
+        if r is None:
+            r = by[t["id"]] = {"id": t["id"], "name": t.get("name"), "kind": t.get("thief"),
+                               "invader": t.get("invader"), "inside": t["id"] in inside or None}
+        for k in ("can_reach_dwarves", "pos", "crowd", "location"):
+            if k in t:
+                r[k] = t[k]
+    return list(by.values())
+
+
+def crowded_thief(row: dict, cfg: dict | None = None) -> bool:
+    """(0.105.51) Is this thief among a crowd: `thief_crowd_min` (3) or more
+    people (no animals, no dangers) within a few tiles (the bridge's
+    `crowd`), or any in a tavern, temple, library or guildhall with them?
+    E (15 Nov): a thief come as a guest was attacked in the tavern three
+    times; each fight drew in the bards, dancers and poets (~26 visitors).
+    A row without `crowd` (an older bridge) never is."""
+    if not isinstance(row, dict):
+        return False
+    n = row.get("crowd")
+    if not isinstance(n, (int, float)) or isinstance(n, bool):
+        return False
+    least = (cfg or PLANNER_CONFIG).get("thief_crowd_min", 3)
+    return n >= least or (row.get("location") in CROWD_LOCATIONS and n >= 1)
 
 
 def snatcher_ids(s: dict) -> list:
@@ -712,7 +766,12 @@ def _lone_thieves(s: dict, cfg: dict, ids: list, rows: dict) -> bool:
         if (i not in thieves or not isinstance(t, dict) or t.get("great_danger") or t.get("flier")
                 or t.get("destroyer") or t.get("fire_breather")):
             return False
-    return not any(t.get("id") not in ids and not wildlife_threat(t, cfg) for t in held_off_threats(s))
+    # (0.105.51) held off at the gates means a siege outside: an invader or a
+    # great danger. E (15 Nov): a night creature come as a poet, walking the
+    # upper levels with its reach unknown that cycle, kept a lone thief off
+    # the triage (the alarm, the gates, the defence's squad)
+    return not any(t.get("id") not in ids and not wildlife_threat(t, cfg)
+                   and (t.get("invader") or t.get("great_danger")) for t in held_off_threats(s))
 
 
 def reachable_threats(s: dict, traits: dict, cfg: dict) -> list:

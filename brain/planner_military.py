@@ -749,8 +749,14 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
     targets = [i for i in reach if (policy == "all" and i not in off)
                or (policy == "ordinary" and i not in off and i not in fire
                    and (not threats[i].get("great_danger") or fight))]
+    # (0.105.51) a thief among a crowd (a tavern of guests) is no defence target:
+    # the thieves rule posts a squad to wait for them (E, 15 Nov: three tavern fights)
+    from planner_core import thief_rows, crowded_thief
+    crowd = {x.get("id") for x in thief_rows(s) if crowded_thief(x, cfg)}
+    if crowd & set(targets):
+        targets = [i for i in targets if i not in crowd]
     recalled = set()
-    held_back = [i for i in reach if i not in targets and i not in fire]
+    held_back = [i for i in reach if i not in targets and i not in fire and i not in crowd]
     # (0.105.48, K16) a squad out on a great danger the squads can no longer
     # take (more came, the verdict turned: held back, not a target now) comes
     # back as a called-off one does, under every policy; a hunt's party is
@@ -847,9 +853,23 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
         # (0.105.33) a thief inside the game doesn't count as a threat: the
         # squad _thieves sent stays on them (recalled, it was sent again next
         # cycle, and so on, the thief never caught)
-        thieves_in = {x.get("id") for x in _l(_d(_d(s.get("threats")).get("thieves")).get("list"))
+        # (0.105.51) the pulse's others_on_map thieves too (thief_rows)
+        from planner_core import thief_rows
+        thieves_in = {x.get("id") for x in thief_rows(s)
                       if isinstance(x, dict) and x.get("id") is not None
                       and (x.get("inside") or x.get("can_reach_dwarves") is True)}
+        # (0.105.51) a squad waiting for a thief in a crowd (planner_threats) stays
+        # while a thief is inside; the intruder guard on its post while DF's
+        # unseen intruder is about (E, 15 Nov: posted, then recalled here the
+        # next cycle, posted again)
+        from planner_threats import thief_watchers, unseen_intrusion
+        from planner_holdfast import _hf
+        posted = {w.get("id") for w in thief_watchers(s, memory)} if thieves_in else set()
+        if unseen_intrusion(s, memory, cfg):
+            for k, g in _d(_hf(memory).get("guards")).items():
+                q = next((q for q in squads if str(q.get("id")) == str(k)), None)
+                if q and _d(q.get("stationed")) == {c: _d(g).get(c) for c in ("x", "y", "z")}:
+                    posted.add(q.get("id"))
         # (item1, 14 Nov) one DF shows keeping the dwarves from drink and food
         # (planner_threats _interrupters) isn't a threat to the game either
         thieves_in |= {x.get("id") for x in _l(_d(_d(s.get("threats")).get("interrupters")).get("list"))
@@ -871,6 +891,8 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
                 continue                     # (0.104.83) holding the gate while invaders are about
             if thieves_in and set(_l(q.get("kill_ids"))) & thieves_in:
                 continue                     # (0.105.33) after a thief still inside
+            if q.get("id") in posted:
+                continue                     # (0.105.51) waiting for a thief, or the intruder guard
             if q.get("id") in hunting:
                 continue                     # (0.105.48) on a hunt: planner_hunt's retreat calls it back
             if killers_in and set(_l(q.get("kill_ids"))) & killers_in:
