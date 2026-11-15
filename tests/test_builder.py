@@ -4223,5 +4223,54 @@ def _():
     r = start(kind="bedrooms", rooms=8, room_size=3)
     assert r.ok and r.ground_z == 90 and r.cover == 24, dict(r)
 
+
+@test("finish (0.105.51): give_up finishes a level whose only waiting pieces are workshops, taking them off", beside=True)
+def _():
+    real_drop = B.drop_waiting_shops
+    try:
+        calls = LUA.eval("{}")
+        B.drop_waiting_shops = LUA.eval("function(calls) return function(p) table.insert(calls, p.id); return 1 end end")(calls)
+        B.furnish_progress = LUA.eval("function() return {placed = 2, done = 1, waiting = {Workshop = 1}} end")
+        r = styled(kind="storage", piles=["food"], style={"smooth": 0})
+        finish_digging()
+        B.furnish_project(r.project_id, True)
+        assert not B.finish_project(r.project_id).ok                              # R3: "1 buildings still waiting"
+        assert not B.finish_project(r.project_id, False, True).ok                 # stalled alone: refused, as before
+        got = B.finish_project(r.project_id, False, False, True)
+        assert got.ok and got.phase == "done" and got.dropped == 1 and calls[1] == r.project_id, dict(got)
+        # a bed waits too: not given up, nothing taken off
+        B.furnish_progress = LUA.eval("function() return {placed = 3, done = 1, waiting = {Workshop = 1, Bed = 1}} end")
+        r2 = styled(kind="storage", piles=["food"], style={"smooth": 0})
+        finish_digging()
+        B.furnish_project(r2.project_id, True)
+        got = B.finish_project(r2.project_id, False, False, True)
+        assert not got.ok and "other than workshops" in got.error and calls[2] is None, dict(got)
+    finally:
+        B.drop_waiting_shops = real_drop
+
+
+@test("furnish_progress (0.105.51): a planned workshop's kind is reported in waiting_shops")
+def _():
+    real_planned = B.is_planned
+    try:
+        B.df = LUA.eval("""(function()
+          local bt = {Workshop = 1, Furnace = 2, Bed = 3, [1] = 'Workshop', [2] = 'Furnace', [3] = 'Bed',
+                      Stockpile = 90, Civzone = 91}
+          local wt = {[22] = 'Millstone', [23] = 'Quern'}
+          local function b(t, sub, exists)
+            return {x1 = 5, x2 = 7, y1 = 5, y2 = 7, z = 70, flags = {exists = exists},
+                    getType = function() return t end, getSubtype = function() return sub end}
+          end
+          return {building_type = bt, workshop_type = wt, furnace_type = {},
+                  global = {world = {buildings = {all = {b(1, 22, false), b(1, 23, true), b(3, -1, false)}}}}}
+        end)()""")
+        B.is_planned = LUA.eval("function(b) return true end")
+        f = B.furnish_progress(LUA.eval("{area = {x1 = 0, x2 = 10, y1 = 0, y2 = 10, z = 70}}"))
+        assert f.placed == 3 and f.done == 1 and f.waiting.Workshop == 1 and f.waiting.Bed == 1, dict(f.waiting)
+        assert dict(f.waiting_shops) == {"Millstone": 1}, dict(f.waiting_shops)
+    finally:
+        B.df = None
+        B.is_planned = real_planned
+
 if __name__ == "__main__":
     finish()

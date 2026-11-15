@@ -1610,6 +1610,12 @@ function get_supplies()
     out.statues = 0
     each('STATUE', function(it) out.statues = out.statues + 1 end)
     each('TABLE', function(it) out.tables = out.tables + 1 end)
+    -- (0.105.51) free doors, cabinets and chairs: the idle-hands rule's stock
+    -- furniture (made while the blocks are at their cap) stops at a count
+    out.doors, out.cabinets, out.chairs = 0, 0, 0
+    each('DOOR', function(it) out.doors = out.doors + 1 end)
+    each('CABINET', function(it) out.cabinets = out.cabinets + 1 end)
+    each('CHAIR', function(it) out.chairs = out.chairs + 1 end)
     each('CHAIN', function(it) out.ropes = out.ropes + 1 end)
     each_any('POWDER_MISC', function(it)
         local _, mi = mat_flags(it)

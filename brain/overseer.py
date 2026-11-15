@@ -881,6 +881,8 @@ def short(a: dict) -> str:
     if t == "start_project":
         what = a.get("name") and f"memorial for {a['name']}" or a.get("kind")
         return f"dig a new {what} level"
+    if t == "finish_project" and a.get("give_up"):       # (0.105.51)
+        return f"finish level #{a.get('project_id')} without its waiting workshops"
     if t in ("furnish_project", "finish_project", "engrave_project", "cancel_project"):
         return f"{t.split('_')[0]} level #{a.get('project_id')}"
     if t == "cancel_work_order":

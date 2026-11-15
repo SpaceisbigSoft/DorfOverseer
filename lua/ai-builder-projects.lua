@@ -578,7 +578,7 @@ end
 -- materials (only buildingplan's own "planned" list counts as waiting, so
 -- furniture that already has its materials isn't ordered again).
 function furnish_progress(p)
-    local placed, done, waiting = 0, 0, {}
+    local placed, done, waiting, shops = 0, 0, {}, nil
     local a = p.area
     for _, b in ipairs(df.global.world.buildings.all) do
         if b.z == a.z and b.x1 >= a.x1 and b.x2 <= a.x2 and b.y1 >= a.y1 and b.y2 <= a.y2 then
@@ -591,11 +591,25 @@ function furnish_progress(p)
                 elseif is_planned(b) then
                     local name = df.building_type[t] or tostring(t)
                     waiting[name] = (waiting[name] or 0) + 1
+                    -- (0.105.51) a planned workshop or furnace by its kind (a
+                    -- Quern waits for a quern, a Millstone for a millstone and
+                    -- a mechanism): the brain orders the piece it lacks
+                    local oks, st = pcall(function() return b:getSubtype() end)
+                    local sub
+                    if oks and t == df.building_type.Workshop then
+                        sub = df.workshop_type[st]
+                    elseif oks and t == df.building_type.Furnace then
+                        sub = df.furnace_type[st]
+                    end
+                    if sub then
+                        shops = shops or {}
+                        shops[sub] = (shops[sub] or 0) + 1
+                    end
                 end
             end
         end
     end
-    return {placed = placed, done = done, waiting = waiting}
+    return {placed = placed, done = done, waiting = waiting, waiting_shops = shops}
 end
 
 -- A {year, tick} date as ticks, or nil.
@@ -1198,8 +1212,30 @@ end
 -- and go up when there's stone; the slot goes to the next level). Enxah's
 -- suites held a building slot 257 days for 4 statues with no stone to carve.
 DECOR_ONLY = {Statue = true}
+-- (0.105.51) give_up: a workshops level whose only missing pieces are
+-- workshops (or furnaces) that waited on and on for their piece (R3: every
+-- fort held 2-5 of its 5 slots with Millstones waiting >1000 days for a
+-- millstone nobody made): the waiting ones are taken off (a planned one
+-- holds what it already has, a mechanism) and the level finished
+GIVE_UP_KINDS = {Workshop = true, Furnace = true}
 
-function finish_project(id, decor_only, stalled)
+function drop_waiting_shops(p)
+    local a, n = p.area, 0
+    local list = {}
+    for _, b in ipairs(df.global.world.buildings.all) do
+        if b.z == a.z and b.x1 >= a.x1 and b.x2 <= a.x2 and b.y1 >= a.y1 and b.y2 <= a.y2
+                and not b.flags.exists and GIVE_UP_KINDS[df.building_type[b:getType()] or '']
+                and is_planned(b) then
+            table.insert(list, b)
+        end
+    end
+    for _, b in ipairs(list) do
+        if pcall(dfhack.buildings.deconstruct, b) then n = n + 1 end
+    end
+    return n
+end
+
+function finish_project(id, decor_only, stalled, give_up)
     local data = load_projects()
     local p = find(data, id)
     -- (merge32) a dug way in finishes from its dig (nothing to furnish)
@@ -1212,14 +1248,23 @@ function finish_project(id, decor_only, stalled)
         return {ok = false, rejected = true, error = 'not a project being furnished'}
     end
     local f = furnish_progress(p)
-    local left = false
+    local left, only_shops = false, true
     for name, n in pairs(f.waiting or {}) do
         if n > 0 and not (decor_only and DECOR_ONLY[name]) then left = true end
+        if n > 0 and not GIVE_UP_KINDS[name] then only_shops = false end
     end
+    local dropped
+    if give_up and left and only_shops then
+        local okd, n = pcall(drop_waiting_shops, p)
+        dropped = okd and n or 0
+        -- falls through to finish
+    elseif give_up then
+        return {ok = false, rejected = true,
+                error = left and 'pieces other than workshops still waiting' or 'no workshop waiting to give up'}
     -- (0.104.141) stalled: everything placed, nothing missing, buildings DF
     -- never finished (a 20-bed hospital at 30 of 31 for 134 days): finished,
     -- the slot freed; DF goes on building what is placed
-    if stalled and not left and f.placed > 0 then
+    elseif stalled and not left and f.placed > 0 then
         -- falls through to finish
     elseif f.done < f.placed and (left or not decor_only) then
         return {ok = false, rejected = true, error = ('%d buildings still waiting'):format(f.placed - f.done)}
@@ -1234,7 +1279,7 @@ function finish_project(id, decor_only, stalled)
     if p.kind == 'tombs' then
         pcall(function() burial = reqscript('ai-welfare').open_tombs(project_areas(p)).opened end)
     end
-    return {ok = true, project_id = id, phase = p.phase, burial = burial}
+    return {ok = true, project_id = id, phase = p.phase, burial = burial, dropped = dropped}
 end
 
 -- Smoothing finished -> engrave the halls (Quickfort only engraves smooth

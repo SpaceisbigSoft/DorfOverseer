@@ -19,7 +19,7 @@ from planner_trade import *  # noqa: F401,F403  (13c: split out by theme)
 from planner_labor import *  # noqa: F401,F403  (13c: split out by theme)
 from planner_farms import *  # noqa: F401,F403  (13c: split out by theme)
 
-__all__ = ["quarry_size", "note_quarry", "quarry_wait", "note_quarry_dug", "CONTAINER_RECIPES", "GEAR_ORDER_METALS", "_supply_rules", "_slow_game_rules", "_clutter_rules", "_disposal_rules", "DISPOSAL_RULES", "disposal_report", "disposal_places_dump", "_kiln_rules", "_soap_rule", "_pasture_rule", "LABOR_MODES_FIXED", "INDUSTRY_SHOPS", "_industry_rules", "_steel_rule", "_bottleneck_rule", "drink_short", "_crop_rules", "_farm_crops_rule", "farm_plots_live", "crops_owned", "drink_known_short", "_kitchen_rule", "_fishery_rule", "_bench_coffins_rule", "STONE_CRAFTS", "order_shop", "_order_slots_rule", "_orphan_jobs_rule", "_unsuspend_rule", "_approve_rule", "_stuck_orders_rule", "COAL_STONES", "_coal_rule", "_picks_order", "_stone_rule", "stone_crisis", "PRECIOUS_ORES", "_cloth_rule", "_trade_rules", "_gems_rule", "GEMS_GENEROUS_GREED", "trade_wants", "_spare_mechanisms_rule", "_hauling_rule", "_surface_basics", "trees_this_year", "_keep_rule", "DEEP_SURFACE_KINDS", "_deep_surface_filter", "_deep_depot_choice", "_deep_depot_watch", "_free_time_rule", "_labor_rules", "OWN_LABOR_RULES", "FEEDER_ORDER", "_feeder_rule", "woodcutters", "gatherers", "trade_margin_for", "keeps_treasures", "spare_mechanisms", "_dairy_rule", "_eggs_rule", "EXCESS_SHOPS", "_excess_shops_rule", "drink_below_target", "drink_crisis", "drink_target_per_dwarf", "crisis_brew_room", "brew_jobs_open", "_labor_waiting_rule", "farm_target", "thirsty_farm_extra", "_farm_rule", "_smelting_rule", "_shoes_recipe", "_glass_rule", "PRECIOUS_METALS", "precious_metal", "_deep_plan_hint"]
+__all__ = ["quarry_size", "note_quarry", "quarry_wait", "note_quarry_dug", "CONTAINER_RECIPES", "GEAR_ORDER_METALS", "_supply_rules", "_slow_game_rules", "_clutter_rules", "_disposal_rules", "DISPOSAL_RULES", "disposal_report", "disposal_places_dump", "_kiln_rules", "_soap_rule", "_pasture_rule", "LABOR_MODES_FIXED", "INDUSTRY_SHOPS", "_industry_rules", "_steel_rule", "_bottleneck_rule", "drink_lacks_containers", "drink_short", "_crop_rules", "_farm_crops_rule", "farm_plots_live", "crops_owned", "drink_known_short", "_kitchen_rule", "_fishery_rule", "_bench_coffins_rule", "STONE_CRAFTS", "order_shop", "_order_slots_rule", "_orphan_jobs_rule", "_unsuspend_rule", "_approve_rule", "_stuck_orders_rule", "COAL_STONES", "_coal_rule", "_picks_order", "_stone_rule", "stone_crisis", "PRECIOUS_ORES", "_cloth_rule", "_trade_rules", "_gems_rule", "GEMS_GENEROUS_GREED", "trade_wants", "_spare_mechanisms_rule", "_hauling_rule", "_surface_basics", "trees_this_year", "_keep_rule", "DEEP_SURFACE_KINDS", "_deep_surface_filter", "_deep_depot_choice", "_deep_depot_watch", "_free_time_rule", "_labor_rules", "OWN_LABOR_RULES", "FEEDER_ORDER", "_feeder_rule", "woodcutters", "gatherers", "trade_margin_for", "keeps_treasures", "spare_mechanisms", "_dairy_rule", "_eggs_rule", "EXCESS_SHOPS", "_excess_shops_rule", "drink_below_target", "drink_crisis", "drink_target_per_dwarf", "crisis_brew_room", "brew_jobs_open", "_labor_waiting_rule", "farm_target", "thirsty_farm_extra", "_farm_rule", "_smelting_rule", "_shoes_recipe", "_glass_rule", "PRECIOUS_METALS", "precious_metal", "_deep_plan_hint"]
 
 CONTAINER_RECIPES = {"wooden_barrel", "stone_large_pot"}
 # ore worth mining for gear, most wanted first (iron makes steel; tin with copper makes bronze)
@@ -1093,14 +1093,32 @@ def _bottleneck_rule(s: dict, cfg: dict, citizens: int, proposals: list, memory=
         _, n, shop = worst[0]
         # (0.99.4) drink and food first: a still or kitchen goes ahead of the
         # craft shops wanted for needs (one workshops level at a time)
+        # (0.105.51) a second Carpenters' while drink is short for want of
+        # barrels and pots goes in as urgent (F: one Carpenters' with 15-21
+        # jobs queued, refused 25 times by the full slots, drink under its
+        # target with no empty barrel to brew into)
+        dry_casks = shop == "Carpenters" and drink_lacks_containers(s, citizens, cfg, memory)
         proposals.append(Proposal("bottleneck", {"type": "start_project", "kind": "workshops", "shops": [shop],
-                                                 **({"urgent": True} if thirsty and shop == "Still" else {})},
+                                                 **({"urgent": True} if (thirsty and shop == "Still") or dry_casks
+                                                    else {})},
                                   f"{n} jobs of the AI's orders wait on {places.get(shop)} {shop} and "
                                   + (f"drink is under the crisis's target ({cfg['crisis_drink_share']:g}x): build "
                                      "another (being drunk eases the fort's stress most)"
                                      if crisis_dry and shop == "Still" else
+                                     "drink is under its target with no empty barrels or pots to brew into: "
+                                     "build another (URGENT)" if dry_casks else
                                      f"{round(100 * idle)}% of the dwarves are idle: build another"),
-                                  3 if shop in ("Still", "Kitchen") else 6))
+                                  3 if shop in ("Still", "Kitchen") or dry_casks else 6))
+
+
+def drink_lacks_containers(s: dict, citizens: int, cfg: dict, memory=None) -> bool:
+    """(0.105.51) Drink under its target and fewer than `drink_containers_low`
+    empty barrels and pots left once the open brew jobs have theirs."""
+    sup = _d(s.get("supplies"))
+    if not isinstance(sup.get("empty_barrels"), int) or not drink_below_target(s, citizens, cfg, memory):
+        return False
+    free = sup["empty_barrels"] + int(sup.get("empty_pots") or 0) - brew_jobs_open(s)
+    return free < cfg["drink_containers_low"]
 
 
 COAL_STONES = {"COAL_BITUMINOUS": "coke_bituminous", "LIGNITE": "coke_lignite"}

@@ -18,7 +18,7 @@ from planner_wells import *  # noqa: F401,F403  (13c: split out by theme)
 from planner_garden import garden_pace  # (0.105.47) the statue gardens sooner by Agriculture
 from planner_alloys import gear_metals  # (fix41) tin and bismuth kept for bronze while there is no iron
 
-__all__ = ["STUCK_FALLBACKS", "stuck_fallback", "magma_access", "GROWTH", "GROWTH_EXTRA_SCORE", "GROWTH_MAX", "growth_want", "growth_candidates", "settled_times", "growth_wait", "GROWTH_SOLDIERS", "GROWTH_ZONES", "GROWTH_MAX_OF", "GROWTH_AT", "TRAIT_NAMES_SHORT", "FURNITURE_RECIPES", "METAL_FURNITURE", "spare_metal", "WOODEN_FURNITURE", "BASIC_WORKSHOPS", "BASIC_STOCKPILES", "memorial_due", "_well_rule", "_well_lid_rule", "cavern_danger", "_planned_note", "_planned_parts_rule", "planned_wants", "_water_zone_rule", "cavern_well_need", "cavern_points", "cavern_action", "cavern_well_safe", "WELL_PARTS_SHOPS", "chain_metal", "well_parts_plan", "_well_parts", "_room_repair_rule", "_water_traffic_rule", "_cleanup_rule", "STORE_GROW", "stone_tidiness", "jail_plan", "cistern_pop", "tavern_factor", "full_stores", "LEARNING_NEEDS", "_stairwell_rule", "WATER_WORDS", "water_summary", "_water_rules", "CISTERN_WORDS", "_cistern_parts", "_cistern_rule", "_deep_notes", "good_times", "ORDINALS", "garden_name", "_pop_cap_rule", "fort_strain", "hospital_shortfall", "dining_shortfall", "social_shortfall", "SOCIAL_KINDS", "_join_rule", "_dig_stall_rule", "_shrink_rule", "room_size", "_project_rules", "CHARACTER_KINDS", "is_character_level", "character_slot_reserved", "character_slot_filter", "temple_size", "more_temple", "has_grand_temple", "piety_slot", "LADDER_BASE", "LADDER_TRAITS", "_ladder_kind", "_ladder_word", "ladder_score", "tombs_short", "PLACEMENT_CUSTOMS", "apply_customs", "customs_pass"]
+__all__ = ["STUCK_FALLBACKS", "stuck_fallback", "magma_access", "GROWTH", "GROWTH_EXTRA_SCORE", "GROWTH_MAX", "growth_want", "growth_candidates", "settled_times", "growth_wait", "GROWTH_SOLDIERS", "GROWTH_ZONES", "GROWTH_MAX_OF", "GROWTH_AT", "TRAIT_NAMES_SHORT", "FURNITURE_RECIPES", "SHOP_PIECE_RECIPES", "waiting_shops", "METAL_FURNITURE", "spare_metal", "WOODEN_FURNITURE", "BASIC_WORKSHOPS", "BASIC_STOCKPILES", "memorial_due", "_well_rule", "_well_lid_rule", "cavern_danger", "_planned_note", "_planned_parts_rule", "planned_wants", "_water_zone_rule", "cavern_well_need", "cavern_points", "cavern_action", "cavern_well_safe", "WELL_PARTS_SHOPS", "chain_metal", "well_parts_plan", "_well_parts", "_room_repair_rule", "_water_traffic_rule", "_cleanup_rule", "STORE_GROW", "stone_tidiness", "jail_plan", "cistern_pop", "tavern_factor", "full_stores", "LEARNING_NEEDS", "_stairwell_rule", "WATER_WORDS", "water_summary", "_water_rules", "CISTERN_WORDS", "_cistern_parts", "_cistern_rule", "_deep_notes", "good_times", "ORDINALS", "garden_name", "_pop_cap_rule", "fort_strain", "hospital_shortfall", "dining_shortfall", "social_shortfall", "SOCIAL_KINDS", "_join_rule", "_dig_stall_rule", "_shrink_rule", "room_size", "_project_rules", "CHARACTER_KINDS", "is_character_level", "character_slot_reserved", "character_slot_filter", "temple_size", "more_temple", "has_grand_temple", "piety_slot", "LADDER_BASE", "LADDER_TRAITS", "_ladder_kind", "_ladder_word", "ladder_score", "tombs_short", "PLACEMENT_CUSTOMS", "apply_customs", "customs_pass"]
 
 
 # Furniture waiting in a project -> the recipe that makes it.
@@ -28,6 +28,26 @@ FURNITURE_RECIPES = {"Bed": "wooden_bed", "Door": "stone_door", "Table": "stone_
                      "Statue": "stone_statue", "Armorstand": "stone_armor_stand",
                      "Weaponrack": "stone_weapon_rack", "Coffin": "stone_coffin",
                      "Bookcase": "stone_bookcase"}
+# (0.105.51) A planned workshop waiting for the piece it is built from (the
+# report's furnish.waiting_shops, by the workshop's kind) -> the recipe making
+# that piece. Only these: the others are built from any block or boulder.
+SHOP_PIECE_RECIPES = {"Quern": "stone_quern", "Millstone": "stone_millstone"}
+SHOP_PIECE_WORDS = {"Quern": "a quern", "Millstone": "a millstone"}
+SHOP_KINDS = {"Workshop", "Furnace"}
+
+
+def waiting_shops(p: dict) -> dict:
+    """{workshop kind: how many} a project's planned workshops wait for their
+    pieces. An older bridge says only "Workshop": the kinds then come from what
+    the level planned (its furniture) that has a piece to make."""
+    fur = _d(p.get("furnish"))
+    named = {k: int(v or 0) for k, v in _d(fur.get("waiting_shops")).items() if isinstance(v, (int, float))}
+    if named:
+        return named
+    n = int(_d(fur.get("waiting")).get("Workshop") or 0)
+    planned = [k for k in _d(p.get("furniture")) if k in SHOP_PIECE_RECIPES]
+    return {planned[0]: n} if n and len(planned) == 1 else {}
+
 
 # The metal version of a stone furniture recipe (made at the forge).
 METAL_FURNITURE = {"stone_table": "metal_table", "stone_chair": "metal_chair", "stone_door": "metal_door",
@@ -887,6 +907,17 @@ def _project_rules(s, traits, cfg, proposals, notes, can_use, memory) -> None:
             proposals.append(Proposal("project", {"type": "finish_project", "project_id": p["id"], "decor_only": True},
                                       f"{what} waits only for {fw.get('Statue')} statue(s) and {why}: "
                                       "finish it (the statues stay planned) and free its slot", 4))
+        # (0.105.51) a workshops level waiting only for its workshops' pieces
+        # (every R3 fort: Millstones waiting >1000 days for a millstone nobody
+        # made, 2-5 of the 5 slots held): given up, the waiting workshops
+        # taken off (the paper rule builds a quern instead)
+        if (p.get("phase") == "furnish" and fw and set(fw) <= SHOP_KINDS
+                and fdays >= cfg["shop_piece_wait_days"]):
+            ws = waiting_shops(p)
+            kinds = ", ".join(f"{n} {k}" for k, n in sorted(ws.items())) or f"{sum(fw.values())} workshop(s)"
+            proposals.append(Proposal("project", {"type": "finish_project", "project_id": p["id"], "give_up": True},
+                                      f"{what} has waited {fdays} days for its workshops ({kinds}) to be built: "
+                                      "give them up and free its slot", 4))
         # (0.104.141) furnished but for buildings placed and never finished
         # (Teacheroar's 20-bed hospital: 30 of 31 done, nothing missing, 134
         # days) while its slot holds a petition's guildhall back: finish it
@@ -911,6 +942,29 @@ def _project_rules(s, traits, cfg, proposals, notes, can_use, memory) -> None:
         for p in open_:
             for kind, n in ((p.get("furnish") or {}).get("waiting") or {}).items():
                 waiting[kind] = waiting.get(kind, 0) + int(n or 0)
+        # (0.105.51) a planned Quern or Millstone waits for its quern or
+        # millstone: ordered at the mason's (not for a level about to be given up)
+        pieces: dict[str, int] = {}
+        for p in open_:
+            if int(_d(p.get("furnish")).get("days") or 0) >= cfg["shop_piece_wait_days"]:
+                continue
+            for shop, n in waiting_shops(p).items():
+                if shop in SHOP_PIECE_RECIPES:
+                    pieces[shop] = pieces.get(shop, 0) + n
+        for shop, n in sorted(pieces.items()):
+            recipe = SHOP_PIECE_RECIPES[shop]
+            if n <= 0 or queued(s, {recipe}):
+                continue
+            why = f"a planned {shop} workshop waits for {SHOP_PIECE_WORDS[shop]} to be built from"
+            if stone_short(s, cfg["stone_low"]):
+                notes.append(f"{why}: no stone the masons may use")
+                continue
+            if not _has_shop(s["buildings"], "Masons"):
+                notes.append(f"{why}: no Masons' workshop to make it")
+                continue
+            proposals.append(Proposal("furniture", {"type": "work_order", "recipe": recipe,
+                                                    "amount": min(n, cfg["max_order"])},
+                                      f"{why}: {min(n, cfg['max_order'])} at the mason's", 3, True))
         for kind, n in sorted(waiting.items()):
             if kind == "Chain":
                 _restraint_order(s, n, cfg, proposals, notes)

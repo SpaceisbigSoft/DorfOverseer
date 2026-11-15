@@ -127,7 +127,9 @@ def _trade_rules(s: dict, cfg: dict, citizens: int, proposals: list, notes: list
             and not (memory is not None and has_rule(getattr(memory, "culture", None), "small_storage"))   # (0.103.19) Waste Not
             and (tr.get("goods") or 0) < citizens * 2 * factor(traits or {}, "trade")
             * (2 if memory is not None and has_rule(getattr(memory, "culture", None), "merchant_princes") else 1)
-            and not queued(s, {"stone_crafts", "metal_crafts"})):
+            and not queued(s, {"stone_crafts", "metal_crafts"})
+            # (0.105.51) not beside the idle hands' own crafts this cycle
+            and not any(_d(p.action).get("recipe") in ("stone_crafts", "metal_crafts") for p in proposals)):
         # (0.104.95) a precious metal the fort has to spare first: its crafts sell
         # for 10-40 times rock's
         metal = precious_metal(s, cfg)

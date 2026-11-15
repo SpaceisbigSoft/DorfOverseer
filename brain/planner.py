@@ -128,6 +128,57 @@ def _set_adopted(s: dict, memory, traits: dict) -> None:
     customs.set_adopted(ids)
 
 
+# (0.105.51) the idle hands' stock furniture once the blocks are at their cap:
+# (recipe, the supplies count of free ones)
+IDLE_STOCK_FURNITURE = (("stone_door", "doors"), ("stone_cabinet", "cabinets"),
+                        ("stone_table", "tables"), ("stone_chair", "chairs"))
+IDLE_CRAFTS = ("stone_crafts", "metal_crafts", "wood_crafts", "bone_crafts")
+
+
+def _idle_at_cap(s: dict, cfg: dict, memory, traits: dict, proposals: list, notes: list, why: str) -> None:
+    """(0.105.51) Idle hands with the blocks at their cap: rock crafts in a
+    larger batch while the goods to sell are fewer than `idle_crafts_per_dwarf`
+    a dwarf (under the trade rule's own line its crafts come first), else stone furniture for
+    stock (doors, cabinets, tables, chairs: whichever is fewest) up to
+    `idle_furniture_stock` free of each, else said."""
+    b = _d(s.get("buildings"))
+    sup = _d(s.get("supplies"))
+    goods = int(_d(s.get("trade")).get("goods") or 0)
+    small = memory is not None and has_rule(getattr(memory, "culture", None), "small_storage")
+    if small:
+        return          # Waste Not: nothing made for its own sake
+    proposed = {_d(p.action).get("recipe") for p in proposals}
+    citizens = max(1, int(_d(s.get("dwarves")).get("total") or 0))
+    trade_line = citizens * 2 * factor(traits or {}, "trade")      # planner_trade's crafts rule
+    if goods < trade_line:
+        return          # the trade rule's crafts come first (its own idle line)
+    if (_has_shop(b, "Craftsdwarfs") and goods < citizens * cfg["idle_crafts_per_dwarf"]
+            and not queued(s, set(IDLE_CRAFTS)) and not proposed & set(IDLE_CRAFTS)):
+        n = cfg["idle_order_min"]
+        proposals.append(Proposal("idle", {"type": "work_order", "recipe": "stone_crafts", "amount": n},
+                                  f"{why}: {n} rock crafts instead ({goods} goods to sell)", 5, True))
+        return
+    if not _has_shop(b, "Masons"):
+        notes.append(f"{why}; no Masons' workshop for stock furniture: idle hands stay idle")
+        return
+    recipes = {r for r, _ in IDLE_STOCK_FURNITURE}
+    if queued(s, recipes) or proposed & recipes:
+        return          # one stock order at a time
+    cap = cfg["idle_furniture_stock"]
+    counted = [(int(sup[k]), r, k) for r, k in IDLE_STOCK_FURNITURE if isinstance(sup.get(k), int)]
+    if len(counted) < len(IDLE_STOCK_FURNITURE):
+        return          # an older bridge: the free furniture isn't counted
+    have = [c for c in counted if c[0] < cap]
+    if not have:
+        notes.append(f"{why}, the goods to sell number {goods} and the free furniture is stocked "
+                     f"({cap} of each): idle hands stay idle")
+        return
+    n0, recipe, key = min(have)
+    n = min(cap - n0, cfg["idle_order_min"])
+    proposals.append(Proposal("idle", {"type": "work_order", "recipe": recipe, "amount": n},
+                              f"{why}: {n} stone {key} for stock instead ({n0} free)", 5, True))
+
+
 def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[Proposal], list[str]]:
     """Return (proposals, notes). Notes say what the planner wanted but couldn't do.
     Reads memory; never changes it, but for the Design track's own record
@@ -793,6 +844,11 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
                 proposals.append(Proposal(
                     "idle", {"type": "work_order", "recipe": "stone_blocks", "amount": jobs},
                     f"{idle} of {adults} adults are idle; blocks {blocks} are below {round(blocks_target)}", 5, True))
+            elif idle_now > idle_share and stone_ok >= cfg["min_boulders_for_blocks"]:
+                # (0.105.51) the blocks at their cap: the rule fell silent (R3:
+                # F 535 blocks, C 534, half the adults idle for years)
+                _idle_at_cap(s, cfg, memory, traits, proposals, notes, f"{idle} of {adults} adults are idle; "
+                             f"blocks {blocks} are at {round(blocks_target)}")
     _guard(_idle_rule)
 
     # 6a. Who digs: enough miners for the digging waiting, while picks lie unused

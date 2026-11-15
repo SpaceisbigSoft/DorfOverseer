@@ -49,6 +49,8 @@ DEFAULT_SHOPS = {"slurry": ("Quern", "Millstone"), "press": ("ScrewPress",), "pa
                  "scroll": ("Craftsdwarfs",), "codex": ("Craftsdwarfs",)}
 AGENDA_THEMES["paper"] = AGENDA_THEMES["paper_shop"] = "paper for the library"
 
+# (0.105.51) built only when nothing else listed will do
+LAST_RESORT_SHOPS = {"Millstone"}
 SHOP_WORDS = {"ScrewPress": "a screw press", "Quern": "a quern", "Millstone": "a millstone",
               "Farmers": "a farmer's workshop", "Craftsdwarfs": "a craftsdwarf's workshop"}
 
@@ -96,12 +98,26 @@ def _order(proposals: list, recipe: str, amount: int, why: str) -> None:
 def _shop_missing(s: dict, cfg: dict, proposals: list, notes: list, shops: tuple, why: str) -> None:
     """A workshop for a paper step: built (the first buildable one) when no
     workshops project is under way, else said."""
-    build = next((x for x in shops if x in BUILDABLE_SHOPS), None)
-    words = " or ".join(SHOP_WORDS.get(x, x) for x in shops)
+    # (0.105.51) a Millstone last: it needs power (a water wheel or windmill
+    # the AI never builds) and a mechanism besides its millstone; the bridge
+    # lists ["Millstone", "Quern"] and every R3 fort built Millstones that
+    # waited >1000 days
+    order = sorted(shops, key=lambda x: x in LAST_RESORT_SHOPS)
+    build = next((x for x in order if x in BUILDABLE_SHOPS), None)
+    words = " or ".join(SHOP_WORDS.get(x, x) for x in order)
     if build is None:
         notes.append(f"{why} needs {words}, which the AI can't build: the paper waits")
         return
     open_ = [p for p in _l(_d(s.get("projects")).get("open")) if isinstance(p, dict)]
+    # (0.105.51) a level for one of these shops is open, however long it has
+    # waited (_workshops_busy leaves stale ones out): no second one beside it
+    # (the building rule orders its piece, or gives it up)
+    coming = next((p for p in open_ if p.get("kind") == "workshops"
+                   and set(shops) & (set(_l(_d(p.get("summary")).get("workshops")))
+                                     | set(_d(p.get("furniture"))))), None)
+    if coming is not None:
+        notes.append(f"{why} waits for {words} (the workshops level, project {coming.get('id')}, is open)")
+        return
     if _workshops_busy(open_):
         notes.append(f"{why} waits for {words} (another workshops project is under way)")
         return
