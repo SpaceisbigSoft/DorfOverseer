@@ -267,6 +267,14 @@ local function entrance_ways(e)
             if not gate_shut_now(g) then shut = false end
         end
     end
+    -- (0.105.48, K2) a gatehouse's raised drawbridge (e.outer) stands in front
+    -- of the hatch: it shuts the way alone (read as no path, a way was dug in
+    -- while the bridge stayed up)
+    if not shut then
+        for _, g in ipairs(e.outer or {}) do
+            if gate_shut_now(g) then shut = true end
+        end
+    end
     return {e = e, groups = groups, shut = shut, by_ai = by_ai}
 end
 
@@ -402,3 +410,4 @@ end
 -- (13e) this file's locals the later parts use, as module names (each takes
 -- them back as locals of its own)
 _ENV.wgroup, _ENV.on_cavern_tile = wgroup, on_cavern_tile
+_ENV.entrance_ways = entrance_ways     -- (0.105.48, K2) for the tests

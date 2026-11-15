@@ -540,7 +540,18 @@ function open_entrance(id, dry_run, cavern_ok)
     -- (v35 fix) a gate the AI didn't shut is the player's: never opened by
     -- the AI (no lever of the player's pulled, no door the player locked
     -- unlocked); the brain digs the shut-out a way in instead
-    if not (GATES.closed and GATES.closed[e.id]) then
+    -- (0.105.48, K2) unbooked, yet a piece the AI shut is still shut (one piece
+    -- of two found open and let be): that piece is the AI's to open
+    local own_shut = false
+    if not (GATES.closed and GATES.closed[e.id]) and type(GATES.mine) == 'table' then
+        for _, list in ipairs({e.equipment or {}, e.outer or {}}) do
+            for _, g in ipairs(list) do
+                local b = GATES.mine[g.id] and df.building.find(g.id)
+                if b and piece_shut(g, b) then own_shut = true end
+            end
+        end
+    end
+    if not (GATES.closed and GATES.closed[e.id]) and not own_shut then
         local okp, shared = pcall(players_shared_levers, e)
         local sh = okp and shared and shared[1] or nil
         return {ok = false, rejected = true, not_ai = true,
@@ -705,6 +716,7 @@ end
 
 function summary()
     pcall(brain_seen)           -- (0.105.47, J16) the brain is here: the watcher's heartbeat
+    if not ONLOAD_INIT_DONE then ONLOAD_INIT_DONE = (pcall(install_onload_init)) end   -- (0.105.48, K2) once a session
     pcall(gates_restore)
     -- (0.105.23) a link made while no watch ran (a reload): taken up, and a
     -- hatch it shut opened, at the next report at the latest
@@ -726,6 +738,7 @@ function summary()
     pcall(gates_persist)
     -- what came back from the save after a load (the brain says it once)
     out.restored = GATES_SAVE.restored_from_save
+    out.onload_check = GATES_SAVE.onload          -- (0.105.48, K2) what the map load's re-check did
     if GATES_SAVE.saved and next(GATES_SAVE.saved.gates or {}) ~= nil then
         -- gates the save says are closed, not yet matched to a scan: the
         -- planner may open them (open_gates) before the scan
@@ -735,8 +748,112 @@ function summary()
     return out
 end
 
+---------------------------------------------------------------------------
+-- (0.105.48, K2) After a load, before any brain reports. Timers die with the
+-- map, so a lockdown in force at a save (the keeper stopping with an enemy in
+-- reach, a crash, DF quitting) was held by nobody until a brain's first
+-- `entrances` report. Now, on SC_MAP_LOADED (this module's state hook within
+-- a DF session; the init file `onMapLoad-ai-overseer.init`, which runs
+-- `ai-bridge mapload`, after a DF restart): a save holding a lockdown has its
+-- entrances mapped and the watcher re-armed from it (gates_restore, whose
+-- lift_restored opens at once every entrance with no live danger: no invader
+-- or great danger in sight, nothing within WIDE); with a danger the watcher
+-- holds it and lifts it itself once the danger is gone (the brain away). No
+-- map (the scan failed): with no live danger near the saved gates, they are
+-- opened by their ids (open_all). Once a load. Returns what it did.
+---------------------------------------------------------------------------
+ONLOAD_INIT_NAME = 'onMapLoad-ai-overseer.init'
+ONLOAD_INIT_TEXT = '# (DF AI Overseer) after a load, the AI\'s gate lockdown re-checked: opened unless a danger is near\n'
+    .. 'ai-bridge mapload\n'
+
+-- Pure: the nearest of the dangers (vis: {pos}) to the saved gates
+-- (positions {x, y, z}), as the watcher measures (3 levels), or math.huge.
+function nearest_to_spots(vis, spots)
+    local best = math.huge
+    for _, d in ipairs(vis or {}) do
+        for _, p in ipairs(spots or {}) do
+            if d.pos and math.abs(d.pos.z - p.z) <= 3 then
+                best = math.min(best, math.max(math.abs(d.pos.x - p.x), math.abs(d.pos.y - p.y)))
+            end
+        end
+    end
+    return best
+end
+
+-- Pure: is a danger live? (vis: visible_dangers(); nearest: to the gates)
+function live_danger(vis, nearest)
+    for _, d in ipairs(vis or {}) do
+        if d.invader or d.great then return true end
+    end
+    return type(nearest) == 'number' and nearest <= WIDE
+end
+
+function on_map_loaded()
+    if GATES_SAVE.onload_done then return {ok = true, already = true} end
+    GATES_SAVE.onload_done = true
+    local okf, fort = pcall(function() return dfhack.world.isFortressMode() end)
+    if okf and fort == false then return {ok = true, not_fort = true} end
+    local saved = U.site_get(GATES_SAVE_KEY, {})
+    if type(saved) ~= 'table' or not (saved.armed or next(saved.gates or {}) ~= nil) then
+        return {ok = true, nothing = true}
+    end
+    local out = {ok = true, saved_gates = #(saved.gates or {}), armed_in_save = saved.armed == true or nil}
+    pcall(gates_restore)                      -- read back first: the scan then leaves its hatches to it
+    if not GATES.scanned then
+        local oks, err = pcall(scan)          -- (its summary restores the save: gates_restore)
+        if not oks then out.scan_error = tostring(err):sub(1, 160) end
+    end
+    pcall(gates_restore)
+    if GATES.scanned then
+        local n = 0
+        for _ in pairs(GATES.closed or {}) do n = n + 1 end
+        out.mapped, out.armed, out.still_closed = true, GATES.armed and true or nil, n > 0 and n or nil
+        out.lifted = GATES.restored_lifted
+    else
+        -- no map of the entrances: the saved gates by their ids
+        local spots = {}
+        for _, g in ipairs(saved.gates or {}) do
+            local okb, b = pcall(df.building.find, g.id)
+            if okb and b then table.insert(spots, {x = b.x1, y = b.y1, z = b.z}) end
+        end
+        local okv, vis = pcall(visible_dangers)
+        vis = okv and vis or {}
+        if live_danger(vis, nearest_to_spots(vis, spots)) then
+            out.kept = true                   -- a danger near: the brain decides when it reports
+        else
+            local okr, r = pcall(open_all)
+            out.opened = okr and type(r) == 'table' and r.opened or 0
+        end
+    end
+    pcall(gates_persist)
+    GATES_SAVE.onload = out
+    return out
+end
+
+-- (0.105.48, K2) The init file DFHack runs on each map load (dfhack-config/
+-- init/onMapLoad-*.init), written once if missing. Returns true when it is there.
+function install_onload_init()
+    local okp, base = pcall(dfhack.getDFPath)
+    if not okp or type(base) ~= 'string' then return false end
+    local dir = base .. '/dfhack-config/init'
+    local path = dir .. '/' .. ONLOAD_INIT_NAME
+    local f = io.open(path, 'r')
+    if f then f:close() return true end
+    pcall(dfhack.filesystem.mkdir_recursive, dir)
+    local w = io.open(path, 'w')
+    if not w then return false end
+    w:write(ONLOAD_INIT_TEXT)
+    w:close()
+    return true
+end
+
 if dfhack and dfhack.onStateChange then
     dfhack.onStateChange['ai-gates-save'] = function(sc)
         if sc == SC_MAP_UNLOADED then GATES_SAVE = {} end
+        -- (0.105.48, K2) a few frames on (the map settled; the init file's
+        -- `ai-bridge mapload` may have done it already: once a load)
+        if sc == SC_MAP_LOADED and dfhack.timeout then
+            pcall(dfhack.timeout, 10, 'frames', function() pcall(on_map_loaded) end)
+        end
     end
 end

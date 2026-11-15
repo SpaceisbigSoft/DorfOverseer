@@ -143,6 +143,28 @@ function visitors_outside()
     return n
 end
 
+-- (0.105.48, K2) the absolute tick (nil if unread), for the watcher's own marks
+function now_tick_abs()
+    local ok, t = pcall(U.abs_tick)
+    return ok and t or nil
+end
+
+-- (0.105.48, K2) The PullLever jobs waiting at a lever taken away: how many.
+local function remove_pulls(lever_id)
+    local n = 0
+    pcall(function()
+        local lv = df.building.find(lever_id)
+        local jobs = {}
+        for _, j in ipairs(lv and lv.jobs or {}) do
+            if j.job_type == df.job_type.PullLever then table.insert(jobs, j) end
+        end
+        for _, j in ipairs(jobs) do
+            if pcall(dfhack.job.removeJob, j) then n = n + 1 end
+        end
+    end)
+    return n
+end
+
 -- A pull job waiting at this lever?
 local function lever_pull_pending(lever_id)
     local okp, pending = pcall(function()
@@ -287,8 +309,15 @@ local function set_bridge(g, b, close)
     local okm, moving = pcall(function() return b.gate_flags.raising or b.gate_flags.lowering end)
     -- lowering (opening) waits while anyone stands where it comes down;
     -- raising goes ahead (a threat is why it's raised)
-    return ok and c ~= close and not (okm and moving) and g.lever_id and #b.jobs == 0
+    local done = ok and c ~= close and not (okm and moving) and g.lever_id and #b.jobs == 0
         and (close or not bridge_occupied(b)) and pull(g.lever_id) or false
+    -- (0.105.48, K2) a close pull is a dwarf's job: the bridge reads down until
+    -- it is done, which is not "found open" (the watcher's own pull on its way)
+    if done and close then
+        GATES.close_pulled = GATES.close_pulled or {}
+        GATES.close_pulled[g.id] = now_tick_abs()
+    end
+    return done
 end
 
 -- (0.105.36 fix) Is this gate piece shut now, as the AI shuts it (a bridge
@@ -348,21 +377,37 @@ local function cancel_opening_pulls(e)
             if b and ai_piece(e, g) then
                 local ok, up = pcall(function() return b.gate_flags.raised and not b.gate_flags.lowering end)
                 if ok and up and lever_pull_pending(g.lever_id) then
-                    pcall(function()
-                        local lv = df.building.find(g.lever_id)
-                        local jobs = {}
-                        for _, j in ipairs(lv and lv.jobs or {}) do
-                            if j.job_type == df.job_type.PullLever then table.insert(jobs, j) end
-                        end
-                        for _, j in ipairs(jobs) do
-                            if pcall(dfhack.job.removeJob, j) then n = n + 1 end
-                        end
-                    end)
+                    n = n + remove_pulls(g.lever_id)
                 end
             end
         end
     end
     if n > 0 then GATES.pulls_cancelled = (GATES.pulls_cancelled or 0) + n end
+    return n
+end
+
+-- (0.105.48, K2) The reverse: an entrance opened or let go while the
+-- watcher's close pull (a dwarf on the way) is still queued at a bridge that
+-- reads down. Done late it would raise the bridge with no danger and nobody
+-- left to lower it (the watcher works booked entrances only): taken away.
+function cancel_closing_pulls(e)
+    local n = 0
+    for _, list in ipairs({e.equipment or {}, e.outer or {}}) do
+        for _, g in ipairs(list) do
+            local b = g.kind == 'bridge' and g.lever_id and df.building.find(g.id)
+            if b and ai_piece(e, g) then
+                local ok, down = pcall(function()
+                    local f = b.gate_flags
+                    return not f.raised and not f.raising and not f.lowering
+                end)
+                if ok and down and lever_pull_pending(g.lever_id) then
+                    n = n + remove_pulls(g.lever_id)
+                end
+                if ok and down and GATES.close_pulled then GATES.close_pulled[g.id] = nil end
+            end
+        end
+    end
+    if n > 0 then GATES.close_pulls_cancelled = (GATES.close_pulls_cancelled or 0) + n end
     return n
 end
 
@@ -391,6 +436,7 @@ local function set_entrance(e, close, was_opening)
         end
         for id in pairs(ours) do GATES.mine[id] = true end
     else
+        pcall(cancel_closing_pulls, e)       -- (0.105.48, K2) a close pull still queued: taken away
         for _, list in ipairs({e.equipment or {}, e.outer or {}}) do
             for _, g in ipairs(list) do if ai_piece(e, g) then ours[g.id] = true end end
         end
@@ -441,7 +487,7 @@ local function set_entrance(e, close, was_opening)
                 elseif b and g.kind == 'bridge' then
                     local ok, raised = pcall(function()
                         local f = b.gate_flags
-                        return f.raised or f.lowering
+                        return f.raised or f.lowering or f.raising      -- (0.105.48, K2) rising too
                     end)
                     if ok and raised then waiting, moving = waiting + 1, moving + 1 end
                 elseif b and g.lever_driven and g.drive_lever and door_shut(b) then
@@ -665,20 +711,46 @@ end
 --     pulled back shut against the player.
 ---------------------------------------------------------------------------
 LIFT_CHECKS = 2 * REOPEN_CHECKS
-UNATTENDED_TICKS = 2400           -- two game days without a report: the brain is away
+-- (0.105.48, K2) a slow unattended fort reports only every 2400 ticks (1200
+-- x perf_slow_cycle_factor) and one failed cycle leaves more: two days read a
+-- live brain as away. Away now needs both: no `entrances` report for
+-- UNATTENDED_TICKS (five game days) and no status poll from the overseer (its
+-- 2 s heartbeat, brain_ping) for UNATTENDED_REAL_S real seconds (never pinged:
+-- the game ticks alone decide)
+UNATTENDED_TICKS = 6000
+UNATTENDED_REAL_S = 180
 UNATTENDED_CLEAR = 2
+BRAIN_PING = BRAIN_PING or {}     -- {t = os.time() of the overseer's last status poll}: kept across a rescan
 
 local function now_abs()
     local ok, t = pcall(U.abs_tick)
     return ok and t or nil
 end
 
--- The brain away? (no `entrances` report for UNATTENDED_TICKS)
-function brain_away(now)
+local function real_now()
+    local ok, t = pcall(os.time)
+    return ok and type(t) == 'number' and t or nil
+end
+
+-- The brain away? (no `entrances` report for UNATTENDED_TICKS, and no status
+-- poll for UNATTENDED_REAL_S real seconds.) real: the real time now (tests)
+function brain_away(now, real)
     now = now or now_abs()
     local t = GATES.brain_tick
     if type(now) ~= 'number' or type(t) ~= 'number' then return false end
-    return now - t > UNATTENDED_TICKS
+    if now - t <= UNATTENDED_TICKS then return false end
+    local p = BRAIN_PING.t
+    real = real or real_now()
+    if type(p) == 'number' and type(real) == 'number' and real >= p and real - p <= UNATTENDED_REAL_S then
+        return false                  -- the overseer still polls: a slow brain, not an absent one
+    end
+    return true
+end
+
+-- (0.105.48, K2) Called by the bridge's `status` (the overseer's 2 s poll)
+function brain_ping()
+    BRAIN_PING.t = real_now() or BRAIN_PING.t
+    return BRAIN_PING.t
 end
 
 -- Called by each `entrances` report (ai-gates-stuck summary)
@@ -788,7 +860,7 @@ function check()
         local watched = {}                    -- (0.105.23) the gatehouse's bridge watched too
         for _, g in ipairs(e.equipment) do table.insert(watched, g) end
         for _, g in ipairs(e.outer or {}) do table.insert(watched, g) end
-        local repulled, drift_open = {}, false
+        local repulled, drift_open, drift_let = {}, false, false
         -- (0.105.47, J16) found open with no danger within WIDE (the player
         -- pulled its lever, a job was lost): left open, never pulled back shut
         local near_e = math.huge
@@ -823,9 +895,17 @@ function check()
                 local now = df.global.cur_year_tick or 0
                 local last = GATES.repulled[g.id]
                 held_by_seal = held_by_seal or seal_holds()
+                -- (0.105.48, K2) the watcher's own close pull still on its way (queued
+                -- at the lever, or pulled within the last 10 looks): not "found open"
+                local own_pull = lever_pull_pending(g.lever_id)
+                local cp = GATES.close_pulled and GATES.close_pulled[g.id]
+                local tnow = now_tick_abs()
+                if not own_pull and cp and tnow and tnow >= cp and tnow - cp <= 10 * CHECK_TICKS then own_pull = true end
                 if ok and still and let_open and not seal_has(held_by_seal, g) then
-                    drift_open = true
-                    GATES.let_open = (GATES.let_open or 0) + 1
+                    if not own_pull then
+                        drift_open, drift_let = true, true
+                        GATES.let_open = (GATES.let_open or 0) + 1
+                    end                 -- (else: the own pull on its way, no danger near: waited for)
                 elseif ok and still and #b.jobs == 0 and (not last or now < last or now - last > 10 * CHECK_TICKS) then
                     GATES.repulled[g.id] = now
                     pcall(pull, g.lever_id)
@@ -840,6 +920,7 @@ function check()
                 held_by_seal = held_by_seal or seal_holds()
                 if let_open and not seal_has(held_by_seal, g) then
                     GATES.let_open = (GATES.let_open or 0) + 1
+                    drift_let = true
                 elseif not repulled[g.drive_lever] then
                     repulled[g.drive_lever] = true
                     local okp, done = pcall(pull_instant, g.drive_lever)
@@ -850,10 +931,24 @@ function check()
             end
         end
         if drift_open then
-            GATES.closed[e.id] = nil
-            -- (0.105.47, J16) opened by someone else: its pieces aren't the AI's shut ones now
+            -- (0.105.48, K2) found open with no danger near (drift_let): the
+            -- entrance's other pieces the AI shut are opened too (left shut and
+            -- forgotten, the AI called its own lock the player's); a queued
+            -- close pull is taken away. Kept booked only while a piece is still
+            -- on its way down or the cavern seal holds one (set_entrance says)
+            if drift_let then
+                pcall(set_entrance, e, false)
+            else
+                GATES.closed[e.id] = nil
+            end
+            -- the pieces open now aren't the AI's shut ones; those still shut stay its own
             if type(GATES.mine) == 'table' then
-                for id in pairs(entrance_gate_ids(e)) do GATES.mine[id] = nil end
+                for _, list in ipairs({e.equipment or {}, e.outer or {}}) do
+                    for _, g in ipairs(list) do
+                        local b = df.building.find(g.id)
+                        if not b or piece_shut(g, b) == false then GATES.mine[g.id] = nil end
+                    end
+                end
             end
             GATES.clear_looks[e.id] = nil
         end

@@ -113,7 +113,7 @@ def _():
     s4["date"]["tick"] = s3["date"]["tick"] + 6 * HOUR
     props, notes = cycle(s4, m)
     assert not acts(props, "gate_stuck"), props
-    assert "7" not in m.gate_unstick or set(m.gate_unstick["7"]) <= {"prevent"}, m.gate_unstick
+    assert "7" not in m.gate_unstick or set(m.gate_unstick["7"]) <= {"prevent", "prevent_n"}, m.gate_unstick   # (0.105.48: the back-off count kept)
 
 
 @test("E's hatch: step 1 answered joined, nobody out any more: no step 2")

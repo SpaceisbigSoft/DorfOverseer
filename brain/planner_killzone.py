@@ -28,8 +28,10 @@ The rule (_killzone_rule; Rules switch `killzones`, on by default):
     trapped: only the ways enemies used and a siege's gate count;
   * ordered by danger (a siege coming, a great beast in that cavern, the
     deaths and threats on record, a closed fort's), one zone at a time: a
-    zone being built goes one step a day (its drawbridge's channel, the
-    ramp removed, the bridge), then the next;
+    zone being built goes one step a day (its drawbridge's channel, then
+    the bridge over it: 0.105.48, its ramp is left, no miner shut in the
+    pit), then the next; one still building after `killzone_stage_days`
+    no longer holds the others (said);
   * the kind: cage traps first (they hold what they catch); mixed (cages
     outside, weapon traps behind) with Fortification high and trap weapons
     or metal for blades; only the drawbridge when every enemy coming that
@@ -50,8 +52,8 @@ from __future__ import annotations
 
 from digest import _d, _l
 import planner_traplean  # noqa: F401,E402  (0.105.47) its config keys (trap_surface_fortification)
-from planner_core import (PLANNER_CONFIG, RECIPE_SHOPS, Proposal, _best_metal, _has_shop, _traits, player_rules,
-                          queued, reachable_threats)
+from planner_core import (PLANNER_CONFIG, RECIPE_SHOPS, TICKS_PER_DAY, Proposal, _best_metal, _has_shop, _traits,
+                          abs_tick, player_rules, queued, reachable_threats)
 
 __all__ = ["killzones_of", "entrance_records", "zone_reasons", "zone_kind", "_killzone_rule"]
 
@@ -222,16 +224,33 @@ def _killzone_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> 
     if reachable_threats(s, _traits(s), cfg):
         return                          # the squads and the gates have it; nobody builds in a fight
     # one zone at a time: one being built goes a step on when its step is ready
-    building = [e for e in rows if e.get("state") == "building"]
+    # (0.105.48, K2) a zone still building after `killzone_stage_days` (its
+    # channel never dug, its traps never built) no longer holds the others: said
+    now = abs_tick(s)
+    limit = _c(cfg, "killzone_stage_days") * TICKS_PER_DAY
+    building = []
+    for e in (r for r in rows if r.get("state") == "building"):
+        since = _d(e.get("drawbridge")).get("since")
+        if not isinstance(since, int):
+            since = e.get("since")
+        if isinstance(since, int) and 0 <= since <= now and now - since > limit:
+            br = _d(e.get("drawbridge"))
+            notes.append(f"the kill zone at x{e['x']} y{e['y']} has been building for "
+                         f"{(now - since) // TICKS_PER_DAY} day(s) (drawbridge stage {br.get('stage') or 'none'}, "
+                         f"traps {_d(e.get('traps')).get('built', '?')} of {_d(e.get('traps')).get('planned', '?')} "
+                         "built): it no longer holds the other zones")
+            if br.get("stage") in ("channel", "ramp") and br.get("step_ready"):
+                building.append(e)
+            continue
+        building.append(e)
     for e in building:
         br = _d(e.get("drawbridge"))
         if br.get("stage") in ("channel", "ramp") and br.get("step_ready"):
             proposals.append(Proposal("killzone", {"type": "build_killzone", "entrance_id": e["id"],
                                                    "drawbridge": True},
-                                      f"the kill zone at x{e['x']} y{e['y']}: "
-                                      + ("the channel is dug: its ramp removed, a pit nothing climbs out of"
-                                         if br["stage"] == "channel" else "the pit is ready: the drawbridge over it"),
-                                      5))
+                                      f"the kill zone at x{e['x']} y{e['y']}: the channel is dug: the drawbridge "
+                                      "over it (its ramp left: no miner shut in the pit)", 5))
+    if building:
         return
     wanted = [r for r in zone_reasons(s, memory, cfg, rows) if r[1].get("state") == "possible"]
     if not wanted:

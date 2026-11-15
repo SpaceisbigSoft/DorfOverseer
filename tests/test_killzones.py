@@ -310,7 +310,8 @@ def _():
     assert placed(w) == [("Tw", 7, 10), ("Tw", 8, 10)], placed(w)      # the bridge's tile trapped instead
 
 
-@test("build: another way in and rock below: channel -> ramp removed -> bridge over the drop, a step a call")
+@test("build: another way in and rock below: channel -> bridge over it, a step a call; (0.105.48, K2) the "
+      "channel's ramp is left (no miner shut in the pit), never marked for removal")
 def _():
     if LuaRuntime is None:
         return
@@ -326,21 +327,36 @@ def _():
     w.now[f"7,10,{Z}"] = T(lua, floor(designated=True))
     r = py(env.build_killzone(1, 2, "mixed", True, False))
     assert r["ok"] is False and r["waiting"] and "not dug yet" in r["error"], r
-    # dug: the ramp below marked for removal
+    # dug, its ramp below: the bridge over it and its lever at once
     w.now[f"7,10,{Z}"] = T(lua, {"walk": False, "shape": "RAMP_TOP"})
     w.now[f"7,10,{Z - 1}"] = T(lua, {"walk": True, "shape": "RAMP"})
-    r = py(env.build_killzone(1, 2, "mixed", True, False))
-    assert r["ok"] and r["stage"] == "ramp", r
-    assert [(d["text"], d["z"]) for d in py(w.dug)][-1] == ("z", Z - 1)
-    r = py(env.build_killzone(1, 2, "mixed", True, False))
-    assert r["ok"] is False and "ramp in the channel is not removed" in r["error"], r
-    # the pit's floor: the bridge over it and its lever
-    w.now[f"7,10,{Z - 1}"] = T(lua, floor())
     r = py(env.build_killzone(1, 2, "mixed", True, True))
     assert r["ok"] and r["dry_run"] and len(placed(w)) == 2, (r, placed(w))
     r = py(env.build_killzone(1, 2, "mixed", True, False))
     assert r["ok"] and r["stage"] == "done", r
     assert placed(w)[-2:] == [("ga(1x1)", 7, 10), ("Tl", 40, 40)], placed(w)
+    assert [d["text"] for d in py(w.dug)] == ["h"], py(w.dug)            # the ramp never marked "z"
+
+
+@test("build (0.105.48, K2): a zone saved at the old 'ramp' stage goes on to the bridge, its ramp still there")
+def _():
+    if LuaRuntime is None:
+        return
+    lua, env, w = world()
+    fort(lua, w)
+    entrance(lua, w)
+    entrance(lua, w, eid=2, x=5, y=3)
+    r = py(env.build_killzone(1, 2, "mixed", True, False))
+    recs = env.records()
+    for k in py(recs):
+        recs[k].stage = "ramp"
+    w.site[env.KZ_KEY] = recs
+    w.now[f"7,10,{Z}"] = T(lua, {"walk": False, "shape": "RAMP_TOP"})
+    w.now[f"7,10,{Z - 1}"] = T(lua, {"walk": True, "shape": "RAMP", "designated": True})
+    st = py(env.record_state(env.records()[next(iter(py(env.records())))]))
+    assert st["bridge"]["step_ready"] is True, st
+    r = py(env.build_killzone(1, 2, "mixed", True, False))
+    assert r["ok"] and r["stage"] == "done" and ("ga(1x1)", 7, 10) in placed(w), r
 
 
 @test("build: water under the bridge (an aquifer): no channel, the bridge flat with its lever")
@@ -366,11 +382,9 @@ def _():
     w.levers_waiting = T(lua, [{"id": 9, "x": 40, "y": 40, "z": Z}])
     r = py(env.build_killzone(1, 0, "cage", True, False))
     assert r["ok"] and r["traps"] == 0 and r["drawbridge"]["channel"] is True, r
-    for step in ({f"7,10,{Z}": {"walk": False, "shape": "RAMP_TOP"}, f"7,10,{Z - 1}": {"walk": True, "shape": "RAMP"}},
-                 {f"7,10,{Z - 1}": floor()}):
-        for k, v in step.items():
-            w.now[k] = T(lua, v)
-        r = py(env.build_killzone(1, 0, "cage", True, False))
+    for k, v in {f"7,10,{Z}": {"walk": False, "shape": "RAMP_TOP"}, f"7,10,{Z - 1}": {"walk": True, "shape": "RAMP"}}.items():
+        w.now[k] = T(lua, v)
+    r = py(env.build_killzone(1, 0, "cage", True, False))
     assert r["stage"] == "done" and "works the bridge" in r["lever_note"] and ("Tl", 40, 40) not in placed(w), r
 
 
