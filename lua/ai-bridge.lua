@@ -1007,6 +1007,7 @@ BRIDGE_MODULES = {
     'ai-way-out',   -- (0.105.47, J16) the citizens' way off the map, the fort left open
     'ai-training-squad',   -- (0.105.47) the training squad
     'ai-welfare',   -- (0.105.47, I7b) the unreachable dead, coffins anywhere, a cook trained
+    'ai-floorplace',   -- (layout B) where halls and rooms go on a floor
     'ai-well-safety',   -- (0.105.47) cavern wells made safe
     'ai-near-gates', 'ai-ice',   -- (0.105.47, I7d) surface work near the gates; water zones off before the ice
     'ai-descent',   -- (0.105.47) the deep plan's stair past the first cavern
