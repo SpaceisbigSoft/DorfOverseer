@@ -297,6 +297,7 @@ def journal_counts(entries: list[dict], date: dict, timeline: list | None = None
     soil_floored = 0    # (0.105.30) tiles floor_rooms placed
     landmarks = []      # (D0) build_blueprint decisions (not dry runs)
     stones = Counter()  # (0.105.47, D1) the stone named in furniture orders (the language's materials)
+    floor_why = None    # (option B) the newest start_project's `not_on_floor`: why it went the classic way
     died, high = [], None   # (0.105.46) (unit id, cause, tick) in the order told; the latest decision tick
     for e in entries:
         if e.get("kind") == "event" and before(e, date):
@@ -388,7 +389,13 @@ def journal_counts(entries: list[dict], date: dict, timeline: list | None = None
                            "when": abs_ticks(e["date"]) if isinstance(e.get("date"), dict) else None,
                            # (group 6) where it lies and the open ground over it (the bridge's ground_z)
                            "x": _d(r.get("anchor")).get("x"), "y": _d(r.get("anchor")).get("y"),
-                           "ground": r.get("ground_z") if _whole(r.get("ground_z")) else None})
+                           "ground": r.get("ground_z") if _whole(r.get("ground_z")) else None,
+                           # (option B) the floor it went onto (the answer's `floor`), or that hallway
+                           # mode was on and it was placed the classic way after all (`not_on_floor`)
+                           "floor": _d(r.get("floor")) or None,
+                           "not_on_floor": bool(r.get("not_on_floor"))})
+            if r.get("not_on_floor"):
+                floor_why = str(r["not_on_floor"])
         elif t == "floor_rooms" and not r.get("dry_run"):
             # (0.105.30) soil floors the keeper finished: tiles placed (any count field the bridge gives)
             # (0.105.46) the bridge's `floors` is the tiles placed; its `tiles` is the bare soil
@@ -418,7 +425,8 @@ def journal_counts(entries: list[dict], date: dict, timeline: list | None = None
             "shut_days": shut_days(access, until), "soil_floored": soil_floored,
             "alarms_on": alarms_on, "gate_works": gate_works, "gems_set": gems_set, "gems_cut": gems_cut, "treasures_kept": treasures_kept,
             "caps": caps, "welcome": welcome_rows(caps, timeline or [], until, first),
-            "landmarks": landmarks, "until": until, "stones": stones}
+            "landmarks": landmarks, "until": until, "stones": stones,
+            "floor_why": floor_why}
 
 
 DAYS_PER_YEAR = 336
@@ -727,6 +735,125 @@ def measures(s: dict, j: dict) -> dict:
     for owner, k in CUSTOM_KEYS.items():
         out["custom_" + k] = sum(1 for lv in levels if CUSTOM_IDS[owner] & set(lv.get("customs") or []))
     out.update(construction_measures(s, j))
+    # (option B) the floor measures, each only when it has a number: a state and a journal from
+    # before the floors give the dict they always gave (tests/test_d0_scorecard.py pins it key
+    # for key); a key that is not there reads None, "no data", like every other (m.get)
+    out.update({k: v for k, v in floor_measures(s, j).items() if v is not None})
+    return out
+
+
+# ---------------------------------------------------------------- (option B) hallway-first floors
+
+FLOOR_KEYS = ("floor_share", "floor_gap_mean", "floor_lead_mean", "floor_room_tiles", "floor_fallbacks",
+              "floors", "floor_hall_per_room", "floor_arm_max", "floor_rooms_per_floor")
+
+
+def floors_section(s: dict) -> dict | None:
+    """The report's `floors` section (lua ai-builder floors_report), or None:
+    no section (an older bridge), one that failed (`error`), a record from a
+    newer version (`newer`: its zeros are no data), or a fort at "classic"
+    with no floor (nothing to measure, not a 0)."""
+    f = s.get("floors")
+    if not isinstance(f, dict) or not f or "error" in f or f.get("newer"):
+        return None
+    if f.get("mode") == "classic" and not _num_or_none(f.get("count")) and not _l(f.get("list")):
+        return None
+    return f
+
+
+def _mean(xs: list, digits: int = 1):
+    return round(sum(xs) / len(xs), digits) if xs else None
+
+
+def floor_measures(s: dict, j: dict) -> dict:
+    """(option B) What the hallway-first floors show of Spacing, Room size and
+    Depth. Every key of FLOOR_KEYS is answered, None (the line reads "no
+    data", never a false 0) when its source is not there; `measures` takes
+    the ones that have a number.
+
+    From the journal's start_project answers (the levels `journal_counts`
+    kept; a join is none of them), counted from the first answer that carries
+    `floor` or `not_on_floor` on (the levels before it were placed before the
+    fort had floors):
+      floor_share       of those levels, the % that went onto a floor
+      floor_fallbacks   how many were placed the classic way with hallway mode on
+      floor_gap_mean    the mean `floor.gap` (rock between two rooms) of the levels on floors
+      floor_lead_mean   the mean `floor.lead` (hall between the stair and the first room)
+      floor_room_tiles  tiles a room: (`tiles` - `floor.hall_new`) summed, over `floor.units` summed
+    From the state's `floors` section; a `no_hall` row (a level no hall can
+    start on) is no floor and is left out of every number:
+      floors                 floors with a main hall
+      floor_hall_per_room    hall tiles a room
+      floor_arm_max          the longest arm, in columns
+      floor_rooms_per_floor  rooms a floor"""
+    out = dict.fromkeys(FLOOR_KEYS)
+    levels = _l(j.get("levels")) if isinstance(j, dict) else []
+    first = next((i for i, lv in enumerate(levels) if lv.get("floor") or lv.get("not_on_floor")), None)
+    if first is not None:
+        since = levels[first:]
+        on = [lv for lv in since if lv.get("floor")]
+        out["floor_share"] = pct(len(on), len(since))
+        out["floor_fallbacks"] = sum(1 for lv in since if lv.get("not_on_floor") and not lv.get("floor"))
+        out["floor_gap_mean"] = _mean([lv["floor"]["gap"] for lv in on
+                                       if _num_or_none(lv["floor"].get("gap")) is not None])
+        out["floor_lead_mean"] = _mean([lv["floor"]["lead"] for lv in on
+                                        if _num_or_none(lv["floor"].get("lead")) is not None])
+        rooms = [(lv["tiles"] - (_num_or_none(lv["floor"].get("hall_new")) or 0), lv["floor"]["units"])
+                 for lv in on if _num_or_none(lv.get("tiles")) is not None and lv["tiles"] > 0
+                 and _num_or_none(lv["floor"].get("units")) is not None and lv["floor"]["units"] > 0]
+        if rooms:
+            out["floor_room_tiles"] = round(sum(t for t, _ in rooms) / sum(u for _, u in rooms), 1)
+    f = floors_section(s)
+    if f is None:
+        return out
+    rows = [_d(x) for x in _l(f.get("list"))]
+    dead = [x for x in rows if x.get("no_hall")]
+    halled = [x for x in rows if not x.get("no_hall")]
+    count = _num_or_none(f.get("count"))
+    if rows:
+        # the rows that have a hall, and the floors past the list's end if the
+        # count says there are more (a count that leaves the no_hall rows out
+        # is smaller than the list: the rows then say it all)
+        n = len(halled) + max(0, int(count or 0) - len(rows))
+    else:
+        n = int(count) if count is not None else None
+    out["floors"] = n
+
+    def less(total, key):
+        total = _num_or_none(total)
+        if total is None:
+            return None
+        return max(0, total - sum(_num_or_none(x.get(key)) or 0 for x in dead))
+
+    n_rooms, hall = less(f.get("rooms"), "rooms"), less(f.get("hall_tiles"), "hall")
+    out["floor_hall_per_room"] = per(hall, n_rooms) if hall is not None and n_rooms else None
+    out["floor_rooms_per_floor"] = per(n_rooms, n) if n_rooms is not None and n else None
+    arms = [a.get("len") for x in halled for a in map(_d, _l(x.get("arms"))) if _num_or_none(a.get("len")) is not None]
+    out["floor_arm_max"] = max(arms) if arms else None
+    return out
+
+
+def floor_notes(labels: list, data: dict) -> list[str]:
+    """(option B) The levels not on a floor, fort by fort, with the last reason
+    (the journal's newest `not_on_floor`, else the floors section's last
+    refused try); nothing when no fort has one."""
+    out = []
+    for lb in labels:
+        _f, s, m, _h, j = data[lb]
+        sec = floors_section(s)
+        n, told = m.get("floor_fallbacks"), _num_or_none(_d(sec).get("fallbacks"))
+        if not n and not told:
+            continue
+        last = _d(_d(sec).get("last"))
+        why = j.get("floor_why") or (last.get("why") if last.get("ok") is False else None)
+        share = m.get("floor_share")
+        bits = []
+        if n is not None:
+            bits.append(f"{n} level(s) placed the classic way" + (f" ({fmt(share)}% went onto a floor)"
+                                                                 if share is not None else ""))
+        if told is not None and told != n:
+            bits.append(f"the builder counts {int(told)}")
+        out.append(f"- Fort {lb}: " + "; ".join(bits) + (f"; last: {str(why)[:300]}" if why else "") + ".")
     return out
 
 
@@ -1056,6 +1183,53 @@ LINES = [
 ]
 
 
+# (option B) The floor lines: what the hallway-first floors show of Depth, Spacing and Room
+# size. Kept beside LINES, not in it, and put into the table after their slider's other lines
+# (floor_lines) only once a fort's report or journal carries a floor: a scorecard of forts from
+# before the floors reads exactly as it did (tests/test_d0_scorecard.py pins that report byte
+# for byte), as the Design block and the per-peak lines do. A fort without floors beside one
+# that has them reads "-" on these lines, never 0.
+# Who should win is read off BUILTIN_PRESETS (lua/ai-overseer-settings.lua):
+FLOOR_LINES = [
+    # (option B) Depth on the floors. Only the Deep mine has the slider (verticality 120;
+    # every other preset 0): past 100 a hall's straight run is 14 columns, not 30, and one
+    # hall leaves a stair, not two, so the same rooms take more floors and no arm grows long.
+    # No low side: the five others sit level at 0.
+    ("Verticality", "floors with a main hall", "floors", {D}, set()),
+    ("Verticality", "longest hall arm, columns (shortest wins)", "-floor_arm_max", {D}, set()),
+    # (option B) Spacing on the floors. The two presets with the slider are below 0 (War-hold
+    # -60, Deep mine -30; the rest 0), so least wins and there is no low side, as on the two
+    # old Spacing lines. The rock between rooms only widens at Spacing 50 and 100, where no built-in
+    # preset is: among the six this line reads flat (1 everywhere), and speaks for a fort the
+    # player set wider. The hall before the first room is the step the presets do take: none at
+    # Spacing -50 or lower, which only the War-hold is (the Deep mine's -30 keeps the 2 of a
+    # fort at 0, so it is not named there).
+    ("Spacing", "rock between rooms on a floor (least wins)", "-floor_gap_mean", {W, D}, set()),
+    ("Spacing", "hall before the first room on a floor (least wins)", "-floor_lead_mean", {W}, set()),
+    # (option B) Room size's line. No built-in preset moves Room size (`size` is in none of
+    # BUILTIN_PRESETS), so no preset is named to win or lose: the forts' numbers are shown and
+    # the line is never judged (it reads "no data") until a preset carries the slider.
+    ("Room size", "tiles a room on a floor", "floor_room_tiles", set(), set()),
+]
+
+
+def has_floors(ms: list[dict]) -> bool:
+    """(option B) Does any fort carry a floor measure (a `floors` section, a
+    start_project answered with `floor` or `not_on_floor`)?"""
+    return any(m.get(k) is not None for m in ms for k in FLOOR_KEYS)
+
+
+def floor_lines(lines: list) -> list:
+    """(option B) `lines` with FLOOR_LINES put in, each after the last line of
+    its own slider (Room size, which had none, after Spacing's)."""
+    out = list(lines)
+    for ln in FLOOR_LINES:
+        after = "Spacing" if ln[0] == "Room size" and not any(x[0] == ln[0] for x in out) else ln[0]
+        at = max((i for i, x in enumerate(out) if x[0] == after), default=len(out) - 1)
+        out.insert(at + 1, ln)
+    return out
+
+
 # (0.105.46) Count lines that grow with the fort's size: when the forts'
 # sizes differ a lot (one collapsed: B went 100 -> 1 -> 28), each gets a
 # "per 100 dwarves (at the peak)" line beside it, judged the same way. The
@@ -1288,6 +1462,8 @@ def score_full(forts: list[Fort], at: str | None, now: bool) -> tuple[str, list[
                                  + (" (collapsed)" if lb in fell else "") for lb in labels] + \
         ["Should win", "Result"]
     lines = LINES + (PEAK_LINES if sizes_differ([data[lb][2] for lb in labels]) else [])
+    if has_floors([data[lb][2] for lb in labels]):       # (option B) only once a fort has floors
+        lines = floor_lines(lines)
     rows, out = [], []
     for slider, what, key, high, low in lines:
         neg = key.startswith("-")
@@ -1366,6 +1542,10 @@ def score_full(forts: list[Fort], at: str | None, now: bool) -> tuple[str, list[
                "|" + " --- |" * (len(labels) + 1)]
         for k in kinds:
             md.append(f"| {k} | " + " | ".join(str(data[lb][2]["kinds"].get(k, 0)) for lb in labels) + " |")
+    # (option B) the levels hallway mode could not put on a floor, with the last reason
+    fnotes = floor_notes(labels, data)
+    if fnotes:
+        md += ["", "Levels not on a floor (hallway mode on, placed the classic way):", ""] + fnotes
     summary = {"title": title, "tally": dict(tally), "lines": len(rows), "good": good,
                "runs": {lb: data[lb][0].run for lb in labels},
                "health": {lb: issues.get(lb, []) for lb in labels},
