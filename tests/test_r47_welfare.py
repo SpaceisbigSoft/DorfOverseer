@@ -263,9 +263,12 @@ def _():
     # kept: not asked again while the trainee can cook...
     s["welfare"] = {"cook": {"unit": 7, "name": "Urist", "free": True, "skill": 2}}
     assert not by(run(s, Memory())[0], "train_cook")
-    # ...the next best when they can't
+    # ...the next best when they can't ((0.105.51) for 3 days running)
     s["welfare"]["cook"]["free"] = False
-    c = by(run(s, Memory())[0], "train_cook")
+    m = Memory()
+    assert not by(run(s, m)[0], "train_cook")
+    m.cook_watch["since"] -= 3 * 1200
+    c = by(run(s, m)[0], "train_cook")
     assert c and "next best" in c[0].reason, c
     # the fort grew: the kitchens open to every cook
     s["dwarves"]["total"] = 60
@@ -451,7 +454,17 @@ env.df = {
                        history = {events = events}}},
     slab_engraving_type = {Memorial = 'Memorial'},
     job_type = {EngraveSlab = 'EngraveSlab'},
-    manager_order = {new = function() return {status = {}} end},
+    -- (0.105.51) as DF 53.17: the dead are named in specdata; no hist_figure_id field
+    manager_order = {new = function()
+        return setmetatable({status = {}, specdata = {hist_figure_id = -1}}, {
+            __newindex = function(t, k, v)
+                if k == 'hist_figure_id' then error('Cannot write field manager_order.hist_figure_id') end
+                rawset(t, k, v)
+            end,
+            __index = function(t, k)
+                if k == 'hist_figure_id' then error('Cannot read field manager_order.hist_figure_id') end
+            end})
+    end},
     historical_figure = {find = function(id) return W.hfs[id] end},
     unit = {find = function(id) return W.byid[id] end},
     workshop_type = {Kitchen = 'Kitchen'},
@@ -485,7 +498,13 @@ function B.qf_try(mode, cells, z, x, y, dry)
     table.insert(W.qf, {mode = mode, text = cells[1].text, x = x, y = y, z = z, dry = dry})
     return true, nil, {}
 end
-env.reqscript = function(n) if n == 'ai-builder' then return B end error('no module ' .. tostring(n)) end
+env.reqscript = function(n)
+    if n == 'ai-builder' then return B end
+    if n == 'ai-society' and W.burrows then          -- (0.105.51) find_burrow, for the cook's burrows
+        return {find_burrow = function(name) return W.burrows[name] end}
+    end
+    error('no module ' .. tostring(n))
+end
 W.orders = orders
 assert(load(src, 'ai-welfare', 't', env))()
 -- helpers to build the fort
@@ -564,7 +583,7 @@ def dead_fort(lua, w):
         w.corpses[len(w.corpses) + 1] = T(lua, {"unit_id": uid, "pos": {"x": x, "y": y, "z": z},
                                                "flags": {"in_building": inb}})
     w.slabs[1] = T(lua, {"engraving_type": "Memorial", "topic": 206})
-    w.orders.insert(w.orders, "#", T(lua, {"job_type": "EngraveSlab", "hist_figure_id": 209}))
+    w.orders.insert(w.orders, "#", T(lua, {"job_type": "EngraveSlab", "specdata": {"hist_figure_id": 209}}))
 
 
 @test("ai-welfare dead_scan: the fort's dead out of reach or gone, those without a slab or an order, never a ghost, visitor or stranger")
@@ -590,7 +609,7 @@ def _():
     r = py(env.engrave_memorials(5, False))
     assert r["ok"] and r["order_ids"] == [100, 101] and len(w.orders) == 3, r
     o = w.orders[2]
-    assert o.job_type == "EngraveSlab" and o.hist_figure_id == 202 and o.amount_total == 1 and o.status.validated
+    assert o.job_type == "EngraveSlab" and o.specdata.hist_figure_id == 202 and o.amount_total == 1 and o.status.validated
     r = py(env.engrave_memorials(5, False))
     assert r["ok"] is False and r.get("nothing_to_do"), r
 
@@ -675,6 +694,47 @@ def _():
     r = py(env.train_cook(False, True))
     assert r["released"] == 1 and len(k1.profile.permitted_workers) == 0 and list(k2.profile.permitted_workers.values()) == [4], r
     assert "cook" not in py(env.report())
+
+
+@test("ai-welfare train_cook (0.105.51): the AI's recreation and shelter burrows don't make the trainee unfree; another burrow does")
+def _():
+    if not need_lua():
+        return
+    lua, env, w = lua_world()
+    w.burrows = T(lua, {"AI recreation": {"id": 21}, "AI shelter": {"id": 22}})
+    w.citizen(T(lua, {"id": 3, "nm": "Sazir", "cook": 1}))
+    w.citizen(T(lua, {"id": 4, "nm": "Dumat", "cook": 0}))
+    w.kitchen(50)
+    assert py(env.train_cook(False, False))["unit_id"] == 3
+    # D (R3): the tavern keeper in the AI's recreation burrow for a few days: still the trainee
+    w.byid[3].burrows = T(lua, [21])
+    assert py(env.report())["cook"]["free"] is True
+    assert py(env.train_cook(False, False))["unit_id"] == 3
+    w.byid[3].burrows = T(lua, [22, 21])
+    assert py(env.report())["cook"]["free"] is True
+    # the hospital's (or a player's) burrow: not free, the next best
+    w.byid[3].burrows = T(lua, [21, 30])
+    assert py(env.report())["cook"]["free"] is False
+    assert py(env.train_cook(False, False))["unit_id"] == 4
+    # no ai-society to ask: any burrow counts, as before
+    w.burrows = None
+    w.byid[4].burrows = T(lua, [21])
+    assert py(env.report())["cook"]["free"] is False
+
+
+@test("ai-welfare engrave_memorials (0.105.51): the order names the dead in specdata (DF 53.17 has no manager_order.hist_figure_id); an order the game won't take uses no id")
+def _():
+    if not need_lua():
+        return
+    lua, env, w = lua_world()
+    dead_fort(lua, w)
+    src = (LUA / "ai-welfare.lua").read_text(encoding="utf-8")
+    assert "o.hist_figure_id" not in src and "specdata.hist_figure_id" in src
+    r = py(env.engrave_memorials(1, False))
+    assert r["ok"] and r["order_ids"] == [100], r
+    assert w.orders[2].specdata.hist_figure_id == 202
+    # the order already there is read from specdata: 209 isn't asked again
+    assert "Ordered" not in [x["name"] for x in py(env.dead_scan())["wanted"]]
 
 
 @test("ai-welfare report: corner coffins built and free, free coffins in store; arrivals from the history, newest first, cached")

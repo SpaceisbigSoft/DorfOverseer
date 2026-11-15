@@ -57,6 +57,7 @@ THREAT_CONFIG = {
     "seal_missing_days": 7,                  # (0.105.0 review) a sealed layer gone from the report: unlocked after
     "threat_alarm_max_days": 7,              # (0.105.0 review) the threats round holds the alarm this long at most
     "cavern_alarm_max_days": 3,              # (v35 fix) the alarm held for citizens in the caverns this long at most
+    "cavern_realarm_days": 7,                # (0.105.51) after that, no new alarm for the caverns this long
     "rescue_labor_cooldown_ticks": 14 * 1200,
 }
 PLANNER_CONFIG.update({k: v for k, v in THREAT_CONFIG.items() if k not in PLANNER_CONFIG})
@@ -432,15 +433,42 @@ def alarm_held(s: dict, memory, cfg: dict) -> str:
     if why:
         return why
     t = _d(s.get("threats"))
-    down = _l(_d(t.get("cavern_citizens")).get("list"))
-    great = cavern_great(s)
     caverns = [c for c in _l(_d(s.get("deep")).get("caverns")) if isinstance(c, dict)]
+    down = cavern_down(t, caverns)
+    great = cavern_great(s)
     if down and great and cavern_at_risk(down, great, caverns):       # (item4) only those it could come at
         since = _d(getattr(memory, "cavern_alarm", None)).get("since")
         if not (isinstance(since, int) and not isinstance(since, bool)
-                and (now - since) // TICKS_PER_DAY >= _c(cfg, "cavern_alarm_max_days")):
+                and (now - since) // TICKS_PER_DAY >= _c(cfg, "cavern_alarm_max_days")) \
+                and not cavern_realarm_wait(memory, now, cfg):
             return f"{len(down)} citizen(s) are in the caverns with a great beast loose"
     return ""
+
+
+def cavern_down(t: dict, caverns: list) -> list:
+    """(0.105.51) The citizens the bridge says are down in the caverns, less
+    any whose level is in no cavern layer while the layers' levels are known.
+    R3 (15 Nov, A B C E F): fisherdwarves and others at the surface river
+    (elevation 32, z 161; Cavern1 is z 123-146) were read as in the caverns
+    (the river's tiles are a map feature's too), and the alarm went up and
+    down again for each (the bridge now asks for a cavern layer's tile)."""
+    down = [x for x in _l(_d(t.get("cavern_citizens")).get("list")) if isinstance(x, dict)]
+    rng = [(min(c["z_top"], c["z_bottom"]), max(c["z_top"], c["z_bottom"])) for c in caverns
+           if isinstance(c, dict) and _num(c.get("z_top")) and _num(c.get("z_bottom"))]
+    if not rng:
+        return down
+    return [x for x in down if not _num(x.get("z")) or any(lo <= x["z"] <= hi for lo, hi in rng)]
+
+
+def cavern_realarm_wait(memory, now, cfg) -> bool:
+    """(0.105.51) The alarm was let down for citizens in the caverns (held its
+    `cavern_alarm_max_days`) less than `cavern_realarm_days` ago: no new
+    alarm for the next one to go down (R3: up for 3 days, down, up again for
+    the next fisherdwarf, A 6 B 4 C 5 E 2 times); the ways down are locked."""
+    lifted = _d(getattr(memory, "cavern_alarm", None)).get("lifted")
+    if not isinstance(lifted, int) or isinstance(lifted, bool) or not isinstance(now, int):
+        return False
+    return 0 <= now - lifted < _c(cfg, "cavern_realarm_days") * TICKS_PER_DAY
 
 
 def cavern_great(s: dict) -> list:
@@ -562,30 +590,55 @@ def _cavern_beasts(s, cfg, memory, t, rules, proposals, notes):
                     if all(_num(v) for v in k) and k not in seen:
                         seen.add(k)
                         tiles.append({"x": p["x"], "y": p["y"], "z": p["z"]})
-        lockable = [o for o in ops if o.get("kind") != "well" and o.get("building") in ("Door", "Hatch")]
+        # (0.105.51) not a cavern well's door the seal leaves open (its shaft gate keeps the
+        # cavern out, or a dwarf is beyond it): R3 counted "1 door on record, 1 open" and the
+        # bridge refused "no door or hatch on the way down to lock" (A 12, B 9, C 7, E 7)
+        lockable = [o for o in ops if o.get("kind") != "well" and o.get("building") in ("Door", "Hatch")
+                    and not o.get("seal_skip") and not o.get("well_blocked")]
         # (a door reads closed whenever nobody passes: only the lock, or the seal's own lever pull, counts)
         # (0.105.45) a door a lure holds open (lua/ai-lure.lua, its phase "open") is open on purpose:
         # the lure locks it again itself (planner_lure)
         unlocked = [o for o in lockable if o.get("built") is not False and not o.get("locked") and not o.get("sealed")
                     and not o.get("lure_open")]
-        down = _l(_d(t.get("cavern_citizens")).get("list"))
+        down = cavern_down(t, caverns)
         # (v35 fix) the alarm is held for them `cavern_alarm_max_days` at most:
         # then let down and the ways locked (whoever can't climb out is the
         # stranded rules': their gate opened once the caverns hold no great danger)
-        held_days, over = 0, False
+        held_days, over, rewait = 0, False, False
         if memory is not None:
             ca = memory.cavern_alarm if isinstance(getattr(memory, "cavern_alarm", None), dict) else {}
             now = abs_tick(s)
+            # (0.105.51) the last let-down is kept (cavern_realarm_wait)
+            lifted = {"lifted": ca["lifted"]} if cavern_realarm_wait(memory, now, cfg) else {}
             if down and (ALL_CAVERNS not in sealed or unlocked):
                 since = ca.get("since")
                 if not isinstance(since, int) or isinstance(since, bool) or since > now:
                     since = now
-                    memory.cavern_alarm = {"since": now}
+                    memory.cavern_alarm = dict(lifted, since=now)
                 held_days = (now - since) // TICKS_PER_DAY
                 over = held_days >= _c(cfg, "cavern_alarm_max_days")
-            elif ca:
-                memory.cavern_alarm = {}
-        if over:
+                if over and not lifted:
+                    memory.cavern_alarm = dict(memory.cavern_alarm, lifted=now)
+                elif not over and lifted:
+                    over = rewait = True
+            elif ca != lifted:
+                memory.cavern_alarm = lifted
+        if rewait:
+            n = int(_d(t.get("cavern_citizens")).get("n") or len(down))
+            notes.append(f"{who} is about and {n} citizen(s) went down into the caverns again: the alarm was let "
+                         f"down for the caverns less than {_c(cfg, 'cavern_realarm_days')} days ago and isn't "
+                         "raised again so soon (the whole fort would stop); the ways down are locked, and whoever "
+                         "can't climb out is let in by their gate once the caverns hold no great danger")
+            down = []
+            reach = int(_d(s.get("others_on_map")).get("threats_that_can_reach_dwarves") or 0)
+            from planner_military import hazard_alert
+            other = hazard_alert(s, cfg) or threat_alert(s, cfg)
+            if (s.get("civ_alert") and getattr(memory, "ai_alert_raised", False) and not reach and not other
+                    and not any(p.action == {"type": "civ_alert", "on": False} for p in proposals)):
+                proposals.append(Proposal("threat_alert", {"type": "civ_alert", "on": False},
+                                          "the alarm was held for citizens in the caverns not long ago: it "
+                                          "comes down, and the ways down are locked", 0))
+        elif over:
             n = int(_d(t.get("cavern_citizens")).get("n") or len(down))
             # (0.105.36) not while another danger holds the alarm (a berserk
             # dwarf, a werebeast, fire, a cloud, the undead): every other
@@ -636,13 +689,14 @@ def _cavern_beasts(s, cfg, memory, t, rules, proposals, notes):
                     from planner_military import no_shelter
                     no_shelter(s, memory, f"{who} is about and {n} citizen(s) are in the caverns ({where})",
                                proposals, notes)
-            elif not lockable and not _seal_has_lock(caverns) and (tiles or any(c.get("open") for c in caverns)):
+            elif ((not lockable or _seal_refused_none(memory, s)) and not _seal_has_lock(caverns)
+                  and (tiles or any(c.get("open") for c in caverns))):
                 # (item7) nothing on the way down to lock: B, E and A (13 Nov)
                 # were refused "no door or hatch on the way down to lock" over
                 # and over. The AI closes the way itself first (a door, or the
                 # opening walled when nobody needs it), or says why it needn't
                 _cavern_close_way(s, who, caverns, proposals, notes)
-            elif tiles or lockable:
+            elif (tiles or lockable) and not _seal_refused_none(memory, s):
                 act = {"type": "seal_cavern", "layer": ALL_CAVERNS, "openings": True}
                 if tiles:
                     act["tiles"] = tiles[:20]
@@ -727,6 +781,20 @@ def _cavern_beasts(s, cfg, memory, t, rules, proposals, notes):
 
 
 STAIRISH = ("STAIR", "RAMP")
+
+
+def _seal_refused_none(memory, s) -> bool:
+    """(0.105.51) The seal was refused "no door or hatch on the way down to
+    lock" and its back-off still runs: not asked again meanwhile (R3: A 12,
+    B 9, C 7, E 7, F 10 refusals) but the way down closed (a door built,
+    _cavern_close_way) where the caverns are open to the fort."""
+    for k, r in _d(getattr(memory, "refusals", None)).items():
+        if (isinstance(k, str) and k.startswith("seal_cavern:") and isinstance(r, dict)
+                and str(r.get("why") or "").startswith("no door or hatch")):
+            until, now = r.get("until"), abs_tick(s)
+            if isinstance(until, int) and isinstance(now, int) and now < until:
+                return True
+    return False
 
 
 def _seal_has_lock(caverns: list) -> bool:

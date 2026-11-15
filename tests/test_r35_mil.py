@@ -175,7 +175,7 @@ def _():
 @test("citizens down in the caverns with a beast about: the alarm calls them up, and an AI 'all clear' is held")
 def _():
     s = cave()
-    s["threats"]["cavern_citizens"] = {"n": 1, "list": [{"name": "Kib", "x": 1, "y": 2, "z": 3}]}
+    s["threats"]["cavern_citizens"] = {"n": 1, "list": [{"name": "Kib", "x": 1, "y": 2, "z": 115}]}
     s["civ_alert"], s["civ_alert_ready"] = True, True
     props = [pm.Proposal("threat_alert", {"type": "civ_alert", "on": False}, "all clear", 0)]
     notes = []

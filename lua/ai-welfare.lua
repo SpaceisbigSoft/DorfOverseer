@@ -96,14 +96,25 @@ local function memorial_hfs()
     return out
 end
 
+-- (0.105.51) The hist figure a work order names: DF 53.17 keeps it in the
+-- order's specdata union (df-structures df.workquota.xml: manager_order.specdata,
+-- a job_spec_data with hist_figure_id); there is no manager_order.hist_figure_id
+-- (R3, 15 Nov: "Cannot write field manager_order.hist_figure_id", C 17, E 7).
+function order_hf(o)
+    local ok, hf = pcall(function() return o.specdata.hist_figure_id end)
+    if ok and type(hf) == 'number' then return hf end
+    return -1
+end
+
 -- The hist figures an EngraveSlab work order already names.
 local function ordered_hfs()
     local out, n = {}, 0
     pcall(function()
         for _, o in ipairs(df.global.world.manager_orders.all) do
             pcall(function()
-                if o.job_type == df.job_type.EngraveSlab and (o.hist_figure_id or -1) >= 0 then
-                    out[o.hist_figure_id] = true
+                local hf = order_hf(o)
+                if o.job_type == df.job_type.EngraveSlab and hf >= 0 then
+                    out[hf] = true
                     n = n + 1
                 end
             end)
@@ -186,10 +197,17 @@ end
 local function slab_order(hf)
     local mo = df.global.world.manager_orders
     local o = df.manager_order:new()
+    -- (0.105.51) the dead named first: a failed write leaves no order id used
+    local ok, err = pcall(function()
+        o.job_type = df.job_type.EngraveSlab
+        o.specdata.hist_figure_id = hf
+    end)
+    if not ok then
+        pcall(function() o:delete() end)
+        error(err)
+    end
     o.id = mo.manager_order_next_id
     mo.manager_order_next_id = mo.manager_order_next_id + 1
-    o.job_type = df.job_type.EngraveSlab
-    o.hist_figure_id = hf
     o.amount_left = 1
     o.amount_total = 1
     pcall(function() o.status.validated = true end)
@@ -376,6 +394,19 @@ end
 -- recreation or calm-down burrow, a player's: the kitchen may be outside it)
 local COOK_RQ = {'rq_diagnosis', 'rq_immobilize', 'rq_dressing', 'rq_cleaning', 'rq_surgery', 'rq_suture',
                  'rq_setting', 'rq_traction', 'rq_crutch'}
+-- (0.105.51) {burrow id = true}: the AI's recreation and shelter burrows
+function cook_skip_burrows()
+    local out = {}
+    pcall(function()
+        local S = reqscript('ai-society')
+        for _, name in ipairs({'AI recreation', 'AI shelter'}) do
+            local b = S.find_burrow(name)
+            if b then out[b.id] = true end
+        end
+    end)
+    return out
+end
+
 local function can_cook(u)
     local ok, yes = pcall(function()
         return dfhack.units.isAlive(u) and dfhack.units.isAdult(u) and dfhack.units.isSane(u)
@@ -392,7 +423,16 @@ local function can_cook(u)
         return false
     end)
     if okh and patient then return false end
-    local okb, inb = pcall(function() return #u.burrows > 0 end)
+    -- (0.105.51) the AI's recreation burrow and its shelter (the alarm's and
+    -- evil weather's keep-in) are a short stay: not counted. R3 (15 Nov): D's
+    -- trainee swapped 97 times, two tavern keepers in and out of the recreation burrow
+    local okb, inb = pcall(function()
+        local skip = cook_skip_burrows()
+        for _, id in ipairs(u.burrows) do
+            if not skip[id] then return true end
+        end
+        return false
+    end)
     if okb and inb then return false end
     return true
 end

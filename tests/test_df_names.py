@@ -53,6 +53,9 @@ ALLOWED = {
     ("ai-herd.lua", "df.global.plotinfo.equipment.training_assignments"): "second try after plotinfo.training.training_assignments",
     ("ai-society.lua", "df.global.plotinfo.equipment.training_assignments"): "second try after plotinfo.training.training_assignments",
     ("ai-noble-demands.lua", "df.global.world.engravings"): "first try; world.event.engravings (right) follows",
+    # (0.105.51) a Lua table, not a C++ function: library/lua/dfhack.lua sets it
+    # (internal.scripts = internal.scripts or {}, the Script objects by path)
+    ("ai-util.lua", "dfhack.internal.scripts"): "dfhack.lua's own table of loaded scripts (module_flags_reset)",
 }
 
 # (file, name): wrong in 53.17, found by this check in 0.105.48 and reported,

@@ -289,7 +289,7 @@ def cavern_state():
     s["deep"] = {"caverns": [{"name": "Cavern1", "discovered": True, "open": True, "z_top": 120, "z_bottom": 110}],
                  "dangers": [{"id": 50, "name": "Ozkak", "kind": "forgotten beast", "layer": "Cavern1"}],
                  "cursed": []}
-    s["threats"]["cavern_citizens"] = {"n": 1, "list": [{"name": "Kib", "x": 1, "y": 2, "z": 3}]}
+    s["threats"]["cavern_citizens"] = {"n": 1, "list": [{"name": "Kib", "x": 1, "y": 2, "z": 115}]}
     s["civ_alert"], s["civ_alert_ready"] = True, True
     return s
 
@@ -313,10 +313,10 @@ def _():
     props, notes = [], []
     pt._cavern_beasts(s, CFG, m, s["threats"], pt.threat_rules_of(s), props, notes)
     assert [p.action for p in props if p.rule == "threat_alert"] == [off], props
-    # nobody down any more: the hold forgotten
+    # nobody down any more: the hold forgotten ((0.105.51) the let-down kept: no new alarm soon)
     s["threats"]["cavern_citizens"] = {"n": 0, "list": []}
     pt._cavern_beasts(s, CFG, m, s["threats"], pt.threat_rules_of(s), [], [])
-    assert m.cavern_alarm == {}, m.cavern_alarm
+    assert set(m.cavern_alarm) <= {"lifted"}, m.cavern_alarm
     assert CFG["cavern_alarm_max_days"] == 3
 
 
