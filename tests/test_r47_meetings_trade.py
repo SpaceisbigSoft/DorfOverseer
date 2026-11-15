@@ -504,6 +504,24 @@ def _():
     assert how == "key" and len(G.clicks) == n_before, how      # not certain: no line clicked (Yes falls to the key)
 
 
+@test("answers (0.105.52): a topic with only an Okay (WorldStatus): Yes presses the Okay; No never does")
+def _():
+    import test_world as TW
+    env, G = TW.world(TW.MEETING)
+    TW.LUA.execute(r"""local env = ...
+        env.reqscript = function(n)
+          if n == 'ai-meeting-open' then return {find_word = function(w)
+            if w == 'Okay' then return {{10, 5}} end
+            return {} end} end
+          error('reqscript ' .. n)
+        end""", env)
+    how, place = env.press_named("Yes", None)
+    assert how == "okay" and place.y == 5, how
+    n0 = len(G.clicks)
+    got = env.press_named("No", None)
+    assert got is None and len(G.clicks) == n0, got
+
+
 @test("answers: every topic concluded: the text stepped on with the confirm key, never a click")
 def _():
     import test_world as TW

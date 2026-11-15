@@ -763,6 +763,14 @@ function press_named(name, btn)
     if #found == 1 then
         return 'line', click_found(found[1][2], #found[1][1])
     end
+    -- (0.105.52) a topic with no choice to make (the liaison's WorldStatus,
+    -- "There is much to share..."): its only button is Okay, which is the yes
+    if name == 'Yes' and #found == 0 then
+        local oko, ho = pcall(function() return reqscript('ai-meeting-open').find_word('Okay') end)
+        if oko and type(ho) == 'table' and #ho == 1 then
+            return 'okay', click_found(ho, #'Okay')
+        end
+    end
     local key = KEY_FOR[name]
     if key then
         pcall(function() require('gui').simulateInput(dfhack.gui.getDFViewscreen(true), key) end)
