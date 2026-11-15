@@ -327,6 +327,7 @@ QUIET_AT_DEFAULT = {"missions": "rescue", "send_missions": False,
                     "world_cleanup": "safe",     # (0.105.40) the review has no cleanup to steer
                     "peace": "ai",               # (0.105.41, item 8) nor a peace proposal to answer
                     "hunt": "ai",                # (0.105.45) hunting: said only once the player changes it
+                    "floor_layout": "hallway",   # (layout B) how new levels are placed: likewise
                     "raid_policy": "off"}        # (0.105.47, J17) the raid policy: likewise ((0.105.48) off by default)
 
 # (v35 fix) three-state Rules switches: "ai" (the AI decides), "always", "never"

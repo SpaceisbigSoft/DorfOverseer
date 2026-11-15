@@ -237,6 +237,11 @@ WORLD_CLEANUP_NAMES = {off = 'off', safe = 'safe: spatter, dead, lost junk',
 -- A reserve always stays home, and a hunt going badly is called back
 HUNT_CHOICES = {'off', 'small', 'ai'}
 HUNT_NAMES = {off = 'off', small = 'thieves, ambushes', ai = 'AI decides (beasts too)'}
+-- (layout B) how new levels are placed: hallway (the default, new and running forts alike: on each floor
+-- a 3-wide main hall from the central stair, rooms and workshops in rows along it; lua/ai-floorplan.lua),
+-- classic (each level on its own near a stair, as up to 0.105.54)
+FLOOR_LAYOUT_CHOICES = {'hallway', 'classic'}
+FLOOR_LAYOUT_NAMES = {hallway = 'along a main hall on each floor', classic = 'each on its own (classic)'}
 -- (0.105.47, J17) raids (brain/planner_raids.py), inside `missions` = all:
 -- ai (the default: by the sliders: high Militarism aggressive, else
 -- reactive, very low Militarism only sure wins); aggressive (any civ's site
@@ -253,6 +258,7 @@ RULE_CHOICES = {disposal = DISPOSAL_CHOICES, open_caverns = OPEN_CAVERNS_CHOICES
                 peace = PEACE_CHOICES,                                    -- (0.105.41, item 8)
                 hunt = HUNT_CHOICES,                                      -- (0.105.45)
                 raid_policy = RAID_POLICY_CHOICES,                        -- (0.105.47, J17)
+                floor_layout = FLOOR_LAYOUT_CHOICES,                      -- (layout B)
                 world_cleanup = WORLD_CLEANUP_CHOICES}                    -- (0.105.40)
 GEAR_WEAPONS = {'axe', 'spear', 'mace'}
 GEAR_WEAPON_NAMES = {axe = 'battle axes', spear = 'spears', mace = 'maces'}
@@ -393,6 +399,7 @@ function defaults()
         -- (0.105.40, 13e) world cleanup for the game's speed (WORLD_CLEANUP_CHOICES)
         world_cleanup = 'safe',
         hunt = 'ai',               -- (0.105.45) hunting (HUNT_CHOICES)
+        floor_layout = 'hallway',  -- (layout B) how new levels are placed (FLOOR_LAYOUT_CHOICES)
         -- (0.105.47, J17) raids by the sliders (RAID_POLICY_CHOICES); (0.105.48, K9)
         -- 'off' by default until the audit's mission and raid fixes are watched live
         raid_policy = 'off',
@@ -559,6 +566,7 @@ function sanitize(s)
     out.missions = one_of(s.missions, MISSION_CHOICES, d.missions)        -- (0.105.39)
     out.world_cleanup = one_of(s.world_cleanup, WORLD_CLEANUP_CHOICES, d.world_cleanup)   -- (0.105.40)
     out.hunt = one_of(s.hunt, HUNT_CHOICES, d.hunt)                       -- (0.105.45)
+    out.floor_layout = one_of(s.floor_layout, FLOOR_LAYOUT_CHOICES, d.floor_layout)   -- (layout B)
     out.raid_policy = one_of(s.raid_policy, RAID_POLICY_CHOICES, d.raid_policy)   -- (0.105.47, J17)
     for _, k in ipairs({'wipe_learned', 'wipe_learned_all'}) do
         local n = math.tointeger(tonumber(s[k]))
@@ -655,6 +663,7 @@ function for_ai(s)
         keep_enemy_gear = s.keep_enemy_gear,
         cavern_logging = s.cavern_logging,         -- (item10)
         world_cleanup = s.world_cleanup,           -- (0.105.40) off | safe | full
+        floor_layout = s.floor_layout,              -- (layout B) hallway | classic
         hunt = s.hunt,                             -- (0.105.45) off | small | ai
         raid_policy = s.raid_policy,               -- (0.105.47, J17) ai | aggressive | reactive | off
         traffic = s.traffic,                       -- (0.105.41) traffic zones on the AI's levels

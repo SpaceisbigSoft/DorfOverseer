@@ -616,6 +616,8 @@ def player_rules(s: dict) -> dict:
             # (0.105.46, I4) a fallen fort DF sends no migrants to: the AI calls a wave
             # (DFHack's force Migrants; brain/planner_recovery.py): off only when the settings say so
             "call_migrants": st.get("call_migrants") is not False,
+            # (layout B) new levels along a main hall on each floor (the default), or each on its own
+            "floor_layout": "classic" if st.get("floor_layout") == "classic" else "hallway",
             # (0.105.47) a training-only squad for the keen at high Welfare (brain/planner_training.py)
             "training_squad": st.get("training_squad") is not False}
 

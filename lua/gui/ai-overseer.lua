@@ -634,6 +634,24 @@ function RulesPage:init()
         initial_option = S.WORLD_CLEANUP_NAMES[p.settings.world_cleanup] and p.settings.world_cleanup or 'safe',
         on_change = function(v) p:set_field('world_cleanup', v) end,
     })
+    -- (layout B) how new levels are placed: along a main hall on each floor (the default) or each on
+    -- its own (classic). The right-hand column's free row 4, beside the "Levels the AI may build"
+    -- heading (which ends at column 36) and above the hospital burrow's switch (row 4 + hrow, 5 at least)
+    table.insert(views, widgets.CycleHotkeyLabel{
+        view_id = 'floor_layout',
+        frame = {t = 4, l = 56, w = 62},
+        label = 'New levels:',
+        label_width = 12,
+        options = (function()
+            local out = {}
+            for _, m in ipairs(S.FLOOR_LAYOUT_CHOICES) do
+                table.insert(out, {label = S.FLOOR_LAYOUT_NAMES[m], value = m})
+            end
+            return out
+        end)(),
+        initial_option = S.FLOOR_LAYOUT_NAMES[p.settings.floor_layout] and p.settings.floor_layout or 'hallway',
+        on_change = function(v) p:set_field('floor_layout', v) end,
+    })
     table.insert(views, widgets.ToggleHotkeyLabel{
         view_id = 'expel_vampires',
         frame = {t = t + 8, l = 0, w = 60},
@@ -1018,6 +1036,7 @@ function RulesPage:refresh()
     end
     self.subviews.open_caverns:setOption(S.open_caverns_choice(s.open_caverns), false)   -- (v35 fix) three-state
     self.subviews.world_cleanup:setOption(S.WORLD_CLEANUP_NAMES[s.world_cleanup] and s.world_cleanup or 'safe', false)   -- (0.105.40)
+    self.subviews.floor_layout:setOption(S.FLOOR_LAYOUT_NAMES[s.floor_layout] and s.floor_layout or 'hallway', false)   -- (layout B)
     self.subviews.engrave_slabs:setOption(s.engrave_slabs, false)
     self.subviews.import_smelting:setOption(s.import_smelting, false)
     self.subviews.alert_shelter:setOption(s.alert_shelter, false)
