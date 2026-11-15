@@ -654,10 +654,18 @@ end
 -- walks (one candidate level an item). Until a walk is whole the last
 -- finished plan is sent (`stale` when it was made for other ways in or
 -- another pick), or none (`walking`).
+-- (0.105.51) R3 (15 Nov): with the full report's 3000 ms the plan took
+-- 1-2.3 s median of each full report during a danger (report time 1.0 ->
+-- 2.1 s): now 700 ms (more slices, the pulses' between them), 1000 ms
+-- while there is no plan at all yet (the first within a few reports of a
+-- new danger); and with nothing changed (the same ways in and pick, the same
+-- dangers, none of them inside the fort) the last plan is kept up to
+-- SHELTER_PLAN_KEEP_TICKS and nothing is walked.
 SHELTER_SLICE_MS_PULSE = 150      -- a pulse's budget...
-SHELTER_SLICE_MS_FIRST = 1000     -- ...a pulse's with no plan at all yet (a danger just come)
-SHELTER_SLICE_MS_FULL = 3000      -- ...a full report's (its limit is 30 s)
+SHELTER_SLICE_MS_FIRST = 1000     -- ...a pulse's or a full report's with no plan at all yet (a danger just come)
+SHELTER_SLICE_MS_FULL = 700       -- ...a full report's (0.105.51: was 3000)
 SHELTER_GRID_TICKS = 1200         -- the inside tiles walked again at most this often
+SHELTER_PLAN_KEEP_TICKS = 2 * 1200   -- (0.105.51) nothing changed and calm inside: the plan kept this long
 
 local function run_slices(name, spec)
     local ok, SL = pcall(reqscript, 'ai-slices')
@@ -783,8 +791,52 @@ local function walk_finish(acc)
     local bar = {}
     pcall(function() bar = barracks(ctx.grid) end)
     local info = ctx.info
-    return {tick = info.now, sig = info.sig, grid = ctx.grid, cands = acc.cands, rest = ctx.rest, keep = acc.keep,
+    return {tick = info.now, sig = info.sig, dsig = info.dsig, grid = ctx.grid, cands = acc.cands, rest = ctx.rest, keep = acc.keep,
             civs = #ctx.civs, civ_out = ctx.civ_out, ways = info.ways, barracks = bar, levels = {info.lo, info.hi}}
+end
+
+-- (0.105.51) The time a report may walk the plan for: a pulse's, a full
+-- report's, or with no plan at all yet the first plan's (the larger).
+function shelter_budget(tier, have_plan)
+    if tier == 'pulse' then return have_plan and SHELTER_SLICE_MS_PULSE or SHELTER_SLICE_MS_FIRST end
+    if have_plan then return SHELTER_SLICE_MS_FULL end
+    return math.max(SHELTER_SLICE_MS_FULL, SHELTER_SLICE_MS_FIRST)
+end
+
+-- (0.105.51) the dangers as one string: their ids, sorted
+function danger_sig(list)
+    local ids = {}
+    for _, t in ipairs(list or {}) do table.insert(ids, tostring(t.id)) end
+    table.sort(ids)
+    return table.concat(ids, ',')
+end
+
+-- (0.105.51) is any danger on (or beside) an inside tile of the grid? (no grid: false)
+function inside_any(grid, list)
+    if type(grid) ~= 'table' then return false end
+    for _, t in ipairs(list or {}) do
+        local f = grid[K(t.x, t.y, t.z)]
+        if f and f >= INSIDE then return true end
+        local nk = grid_key_near(grid, t, 1)
+        if nk and grid[nk] >= INSIDE then return true end
+    end
+    return false
+end
+
+-- (0.105.51) Is the last plan m good as it is? Walked for these ways in and
+-- this pick (sig) within SHELTER_PLAN_TICKS; or, nothing changed (the same
+-- dangers, none inside the fort), within SHELTER_PLAN_KEEP_TICKS. Returns
+-- fresh, and whether it is fresh only by the second rule (kept).
+function plan_fresh(m, sig, dsig, now, any_inside)
+    if not m or m.sig ~= sig or type(now) ~= 'number' or type(m.tick) ~= 'number' or now < m.tick then
+        return false, false
+    end
+    local age = now - m.tick
+    if age < SHELTER_PLAN_TICKS then return true, false end
+    if age < SHELTER_PLAN_KEEP_TICKS and m.dsig ~= nil and m.dsig == dsig and not any_inside then
+        return true, true
+    end
+    return false, false
 end
 
 -- The report section `shelter_plan`. tier: the report's ('pulse': the
@@ -826,18 +878,22 @@ function report(txt, tier)
     table.sort(sig)
     local pick_sig = cur and table.concat(cur.levels, ',') or 'whole'
     local signature = table.concat(sig, ',') .. '|' .. pick_sig .. '|' .. lo .. '-' .. hi
-    local budget = SHELTER_SLICE_MS_FULL
-    if tier == 'pulse' then budget = MEMO and SHELTER_SLICE_MS_PULSE or SHELTER_SLICE_MS_FIRST end
-    local t0 = os.clock()
-    local base, gst, gdone, gtotal = run_slices('shelter_grid', {
-        key = lo .. '-' .. hi, now = now, ttl = SHELTER_GRID_TICKS,
-        items = function() return block_list(lo, hi) end,
-        init = function() return {grid = {}, counts = {}} end,
-        visit = grid_visit, finish = function(acc) return acc end, max_ms = budget})
+    local budget = shelter_budget(tier, MEMO ~= nil)
+    local dsig = danger_sig(list)
     local m = MEMO
-    local fresh = m and m.sig == signature and now >= m.tick and now - m.tick < SHELTER_PLAN_TICKS
+    local fresh, kept = plan_fresh(m, signature, dsig, now, inside_any(m and m.grid, list))
+    if kept then out.kept = true end           -- (0.105.51) nothing changed: nothing walked
+    local t0 = os.clock()
+    local base, gst, gdone, gtotal
+    if not fresh then
+        base, gst, gdone, gtotal = run_slices('shelter_grid', {
+            key = lo .. '-' .. hi, now = now, ttl = SHELTER_GRID_TICKS,
+            items = function() return block_list(lo, hi) end,
+            init = function() return {grid = {}, counts = {}} end,
+            visit = grid_visit, finish = function(acc) return acc end, max_ms = budget})
+    end
     if base and not fresh then
-        local info = {points = points, ways = ways, lo = lo, hi = hi, cur = cur, now = now, sig = signature}
+        local info = {points = points, ways = ways, lo = lo, hi = hi, cur = cur, now = now, sig = signature, dsig = dsig}
         local left = math.max(1, budget - (os.clock() - t0) * 1000)
         local r, wst, wdone, wtotal = run_slices('shelter_walk', {
             key = signature, now = now, ttl = 0,

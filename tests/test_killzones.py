@@ -658,6 +658,7 @@ def _():
         assert "killzones" not in json.loads(path.read_text(encoding="utf-8")), path.name
 
 
-if LuaRuntime is None:
-    finish("these tests need the lupa package (pip install lupa)")
-finish()
+if __name__ == "__main__":       # (0.105.51) imported for its rig by test_k51_report_speed
+    if LuaRuntime is None:
+        finish("these tests need the lupa package (pip install lupa)")
+    finish()
