@@ -1062,11 +1062,27 @@ end
 -- Buildings inside the project's area: placed, built, and still waiting for
 -- materials (only buildingplan's own "planned" list counts as waiting, so
 -- furniture that already has its materials isn't ordered again).
+-- (layout B, B16) A floor level's box (round all its rooms) can hold a neighbour's rooms on the
+-- same hall: for a floor level a building counts only when its middle tile is one the level dug.
+-- nil for any other level (its box is its own).
+function own_tile_test(p)
+    if type(p.floor) ~= 'table' then return nil end
+    local a = anchor_of(p)
+    if type(a) ~= 'table' then return nil end
+    local own = layouts.tiles_from_dig(cells_of(p, 'dig'))
+    return function(b)
+        local x, y = (b.x1 + b.x2) // 2 - a.x, (b.y1 + b.y2) // 2 - a.y
+        return own[x] ~= nil and own[x][y] == true
+    end
+end
+
 function furnish_progress(p)
     local placed, done, waiting, shops = 0, 0, {}, nil
     local a = p.area
+    local mine = own_tile_test(p)       -- (layout B)
     for _, b in ipairs(df.global.world.buildings.all) do
-        if b.z == a.z and b.x1 >= a.x1 and b.x2 <= a.x2 and b.y1 >= a.y1 and b.y2 <= a.y2 then
+        if b.z == a.z and b.x1 >= a.x1 and b.x2 <= a.x2 and b.y1 >= a.y1 and b.y2 <= a.y2
+                and (not mine or mine(b)) then
             local t = b:getType()
             if t ~= df.building_type.Stockpile and t ~= df.building_type.Civzone then
                 placed = placed + 1
@@ -1708,8 +1724,10 @@ GIVE_UP_KINDS = {Workshop = true, Furnace = true}
 function drop_waiting_shops(p)
     local a, n = p.area, 0
     local list = {}
+    local mine = own_tile_test(p)       -- (layout B)
     for _, b in ipairs(df.global.world.buildings.all) do
         if b.z == a.z and b.x1 >= a.x1 and b.x2 <= a.x2 and b.y1 >= a.y1 and b.y2 <= a.y2
+                and (not mine or mine(b))
                 and not b.flags.exists and GIVE_UP_KINDS[df.building_type[b:getType()] or '']
                 and is_planned(b) then
             table.insert(list, b)
