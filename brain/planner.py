@@ -78,6 +78,7 @@ from planner_near_gates import _near_gates_rule  # noqa: E402  (0.105.47, I7d) s
 from planner_ice import _ice_rule  # noqa: E402  (0.105.47, I7d) surface water zones, shore wells, traffic before the ice
 import fields  # noqa: E402  (0.105.47) the Garden fort's surface fields (masterplan's field customs)
 from planner_garden import _garden_court_rule, garden_pace  # noqa: E402,F401  (0.105.47) the garden court
+from planner_floor_notes import floors_view, floors_line, _floor_notes  # noqa: E402,F401  (layout B) what the floors are doing, in words
 from planner_killzone import _killzone_rule  # noqa: E402  (0.105.45) kill zones at the gates and cavern openings
 from planner_lure import _lure_rule  # noqa: E402  (0.105.45) a sealed cavern beast lured into a pocket, cut off
 from planner_wellsafe import _well_safety_rule  # noqa: E402  (0.105.47) cavern wells made safe, the stranded under one let out
@@ -1180,6 +1181,7 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
     _guard(_reserve_storage_rule, s, memory, cfg, traits, proposals, notes)
     _guard(reserves_pass, proposals, memory, traits, cfg)
     _guard(guided_pass, proposals, s, memory, traits, cfg)   # (0.105.47, D1) every new level in the language
+    _guard(_floor_notes, s, memory, cfg, notes)   # (layout B) the floors in words: a fallback, a full floor
     # (0.105.23, 14.1 step 4c) Surface -80 or lower: nothing above ground, no level at or above the surface
     kept = _guard(_deep_surface_filter, s, traits, memory, proposals, notes)
     if kept is not None:
