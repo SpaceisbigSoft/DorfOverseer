@@ -1,11 +1,19 @@
 """(0.105.42) The reviver orders saves by world.sav's time, not the newest file in the folder."""
-import os, sys, tempfile, time
+import os
+import sys
+import tempfile
+import time
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "brain"))
-import backup
+from harness import finish, test  # noqa: E402
+
+import backup  # noqa: E402
 
 
-def test_world_sav_orders_saves():
+@test("the newest save by world.sav's time, not by a stray newer file in an older save")
+def _():
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
         old, new = root / "autosave 1", root / "autosave 3"
@@ -23,7 +31,8 @@ def test_world_sav_orders_saves():
         assert backup.folder_mtime(old) > backup.folder_mtime(new)   # the old way picked autosave 1
 
 
-def test_no_world_sav_falls_back():
+@test("no world.sav: the folder's own time")
+def _():
     with tempfile.TemporaryDirectory() as d:
         p = Path(d) / "x"
         p.mkdir()
@@ -32,4 +41,4 @@ def test_no_world_sav_falls_back():
 
 
 if __name__ == "__main__":
-    test_world_sav_orders_saves(); test_no_world_sav_falls_back(); print("ok")
+    finish()

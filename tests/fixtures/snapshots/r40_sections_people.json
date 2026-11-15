@@ -1,0 +1,51 @@
+{
+ "get_dwarf_levels": {
+  "by_layer": {
+   "unknown": 6
+  },
+  "citizens": 6,
+  "outside": 0,
+  "z_bottom": 120,
+  "z_top": 160
+ },
+ "get_moods": {
+  "list": {
+   "1": {
+    "craft": true,
+    "mood": "Fey",
+    "name": "Unit 2",
+    "skill": "nil",
+    "unit_id": 2
+   }
+  }
+ },
+ "get_others_on_map": {
+  "contained_dangers": 0,
+  "diplomats": 0,
+  "merchants": 0,
+  "tame_animals": 0,
+  "threats": {
+   "1": {
+    "can_reach_dwarves": true,
+    "distance_to_nearest_dwarf": 66,
+    "flier": false,
+    "great_danger": true,
+    "id": 23,
+    "invader": false,
+    "kinds": {
+     "1": "Titan"
+    },
+    "levels_from_nearest_dwarf": 2,
+    "name": "Unit 23",
+    "pos": {
+     "x": 90,
+     "y": 10,
+     "z": 158
+    },
+    "size": 5000
+   }
+  },
+  "threats_that_can_reach_dwarves": 1,
+  "visitors": 0
+ }
+}

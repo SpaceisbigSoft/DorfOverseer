@@ -16,7 +16,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-from harness import test, finish, code_has  # noqa: E402
+from harness import test, finish, code_has, skip  # noqa: E402
 sys.path.insert(0, str(ROOT / "brain"))
 
 from planner import PLANNER_CONFIG, Memory, Proposal, record, select, abs_tick, TICKS_PER_DAY  # noqa: E402
@@ -507,7 +507,9 @@ return H
         src = (LUA_DIR / "ai-bridge-orders.lua").read_text(encoding="utf-8")
         assert code_has(src, "if mi then e.material = mi:getToken() end")
 else:
-    print("(lupa missing: the bridge tests are skipped)")
+    @test("bridge: the work-order placing, approving, labour holders and material tests (4)")
+    def _():
+        skip("needs the lupa package (pip install lupa)")      # (0.105.48) counted, not passed
 
 
 @test("watch list: the 0.105.46 order-loop block is in docs/watch-in-game.md")

@@ -22,7 +22,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "brain"))
 sys.path.insert(0, str(ROOT / "tests"))
-from harness import make_test, finish  # noqa: E402
+from harness import make_test, finish, need_lua  # noqa: E402
 from lua_modules_util import module_src  # noqa: E402
 
 import planner_paper as PP  # noqa: E402
@@ -285,8 +285,7 @@ def _lua_fn(src: str, name: str) -> str:
 
 @test("bridge (lua): paper_reaction asks ai-paper, nil when it fails")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     L = LuaRuntime()
     L.execute("CODES = {slurry = 'MAKE_SLURRY_FROM_PLANT'}\n"
               "function reqscript(n) assert(n == 'ai-paper'); return {reaction = function(k) return CODES[k] end} end\n"
@@ -379,8 +378,7 @@ def game():
 
 @test("ai-paper (lua): vanilla codes found; their workshops and free inputs reported")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env, g = game()
     lua.execute("""
         local env, G = ...
@@ -407,8 +405,7 @@ def _():
 
 @test("ai-paper (lua): other codes found by the reaction's shape (a papyrus sheet from a plant; parchment isn't paper)")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env, g = game()
     lua.execute("""
         local env, G = ...
@@ -429,8 +426,7 @@ def _():
 
 @test("ai-paper (lua): quires and scrolls blank and written, codices, rollers and bindings counted")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env, g = game()
     lua.execute("""
         local env, G = ...
@@ -454,8 +450,7 @@ def _():
 
 @test("ai-paper (lua): orders_open (fix6): a paper reaction's or a roller/binding order open; others not")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env, g = game()
     lua.execute("""
         local env, G = ...
@@ -479,8 +474,7 @@ def _():
 
 @test("ai-paper (lua): the reaction codes cached a world (none is cached too)")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env, g = game()
     assert env.reaction("slurry") is None
     lua.execute("local env, G = ...; G.rx('MAKE_SLURRY_FROM_PLANT', {'PLANT'}, {'GLOB'}, {'Quern'}, 'X')", env, g)
@@ -491,8 +485,7 @@ def _():
 
 @test("lua files compile")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     L = LuaRuntime()
     load = L.eval("function(src, name) local f, e = load(src, name, 't', {}); return e end")
     for name in ("ai-paper.lua", "ai-bridge-orders.lua", "ai-bridge-probes.lua", "ai-bridge.lua", "ai-layouts.lua"):

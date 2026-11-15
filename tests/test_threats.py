@@ -15,7 +15,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 from lua_modules_util import module_src  # (13c lua-modules) the modules' sources, with lua/ai-util.lua
-from harness import test, finish, code_has  # noqa: E402
+from harness import test, finish, code_has, skip  # noqa: E402
 sys.path.insert(0, str(ROOT / "brain"))
 
 import planner  # noqa: E402
@@ -367,6 +367,10 @@ return e
         assert M.act_seal_cavern(t({"layer": "Cavern1", "open": True})).open is True
         for bad in ({}, {"layer": "C"}, {"layer": "C", "tiles": [{"x": 1}]}, {"layer": "C", "tiles": []}):
             assert M.act_seal_cavern(t(bad)).rejected, bad
+else:
+    @test("the 4 Lua test(s) of the block at line 248: not run")
+    def _():
+        skip("needs the lupa package (pip install lupa)")      # (0.105.48) counted, not passed
 
 
 if __name__ == "__main__":

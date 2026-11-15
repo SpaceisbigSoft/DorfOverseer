@@ -28,7 +28,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-from harness import test, finish  # noqa: E402
+from harness import test, finish, need_lua  # noqa: E402
 from lua_modules_util import module_src  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "brain"))
@@ -170,6 +170,7 @@ def _():
 
 @test("2: food lying outside a pile under the sky is not counted loose; under a roof it is")
 def _():
+    need_lua()
     lua, env, w = world()
     w.outside["5,5,100"] = True
     w.item(T(lua, {"kind": "PLANT", "flags": {"on_ground": True}, "pos": {"x": 5, "y": 5, "z": 100}}))
@@ -182,6 +183,7 @@ def _():
 
 @test("3: a new food pile is never laid in an open project's box nor on minecart track")
 def _():
+    need_lua()
     lua, env, w = world()
     k = w.shop(T(lua, {"type": "Kitchen", "x1": 20, "y1": 20}))
     free = py(env.inside_rect(T(lua, {"x1": 20, "y1": 20, "x2": 22, "y2": 22, "z": 100}), 3, 3, 20))
@@ -206,6 +208,7 @@ def _():
 
 @test("7 (re-review): the reserved boxes are every box an open project keeps (p.areas too, as project_areas gives)")
 def _():
+    need_lua()
     lua, env, w = world()
     B = lua.eval("""{load_projects = function() return {list = {
         {phase = 'dig', area = {x1 = 0, y1 = 0, x2 = 1, y2 = 1, z = 100},
@@ -315,6 +318,7 @@ def _():
 
 @test("6: the feeder pile and the furnish step clear the cached food_store section")
 def _():
+    need_lua()
     src = (LUA_DIR / "ai-bridge.lua").read_text(encoding="utf-8")
     lua = LuaRuntime()
     start = src.index("CACHE_INVALIDATES = {")
@@ -331,6 +335,7 @@ def _():
 @test("7: the AI's pile remembered by its building id too; a pile gone is forgotten, and a player's pile later at "
       "the same corner is the player's")
 def _():
+    need_lua()
     lua, env, w = world()
     k = w.shop(T(lua, {"type": "Kitchen", "x1": 20, "y1": 20}))
     r = py(env.food_pile(T(lua, {"building_id": k.id, "tiles": 9, "barrels": 9}), False))
@@ -428,6 +433,7 @@ def _lua_fn(src: str, name: str) -> str:
 
 @test("10: the alloy reaction cache is one world's: keyed by the save folder, emptied when the world is unloaded")
 def _():
+    need_lua()
     src = (LUA_DIR / "ai-bridge-orders.lua").read_text(encoding="utf-8")
     hook = src[src.index("if dfhack and dfhack.onStateChange then\n    dfhack.onStateChange['ai-bridge-alloys']"):]
     hook = hook[:hook.index("\nend\n") + 5]
@@ -464,6 +470,7 @@ def _():
 
 @test("11: the food item walk stops at its time budget and says partial; a partial count is no low for the rot watch")
 def _():
+    need_lua()
     lua, env, w = world()
     for i in range(600):
         w.item(T(lua, {"kind": "PLANT", "flags": {"on_ground": True}, "pos": {"x": 5, "y": 5, "z": 100}}))

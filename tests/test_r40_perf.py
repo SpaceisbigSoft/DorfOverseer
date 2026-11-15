@@ -17,7 +17,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
-from harness import test, finish  # noqa: E402
+from harness import test, finish, skip  # noqa: E402
 sys.path.insert(0, str(ROOT / "brain"))
 
 import digest  # noqa: E402
@@ -124,6 +124,10 @@ if LuaRuntime is not None:
         bad = {p.name: check(p.read_text(encoding="utf-8"), p.name) for p in files}
         bad = {k: v for k, v in bad.items() if v}
         assert files and not bad, bad
+else:
+    @test("the 3 Lua test(s) of the block at line 47: not run")
+    def _():
+        skip("needs the lupa package (pip install lupa)")      # (0.105.48) counted, not passed
 
 
 # --- the digest -----------------------------------------------------------------------

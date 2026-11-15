@@ -5,9 +5,14 @@ or building on it), '~' water, 'X' rock that can't be dug (a cavern wall).
 """
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
-from lupa.lua53 import LuaRuntime
+try:
+    from lupa.lua53 import LuaRuntime  # noqa: E402
+except ImportError:
+    print("SKIPPED: these tests need the lupa package (pip install lupa)")
+    sys.exit(0)
 
 ROOT = Path(__file__).resolve().parent.parent
 from lua_modules_util import module_src  # (13c lua-modules) the modules' sources, with lua/ai-util.lua

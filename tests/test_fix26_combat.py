@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-from harness import test, finish  # noqa: E402
+from harness import test, finish, need_lua  # noqa: E402
 from lua_modules_util import module_src  # noqa: E402
 sys.path.insert(0, str(ROOT / "brain"))
 
@@ -303,8 +303,7 @@ ALL = 13 * 512          # levels 160-172 (citizens on 170, plus 2; the pile on 1
 
 @test("3. a lever-driven hatch shut by its link (closed, not locked) reads as shut: no tiles left out")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env, got, w = world()
     r = env.refresh_shelter()
     assert r.open_entrances == 0 and r.excluded_tiles == 0 and r.tiles == ALL, dict(r)
@@ -315,8 +314,7 @@ def _():
 
 @test("3. a building destroyer that can walk to the shut gate makes it open; the shelter is said stale")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env, got, w = world()
     r = env.refresh_shelter()
     assert r.open_entrances == 0, dict(r)
@@ -336,8 +334,7 @@ def _():
 
 @test("4. the deep depot hall and its road are never shelter")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env, got, w = world()
     lua.execute("""local w = ...
         w.setdeep({stage = 'placed', tiles = {{x = 126, y = 158, z = 165, r = 'd'}},
@@ -351,8 +348,7 @@ def _():
 
 @test("2. the shelter's drink and well are counted; with neither away from the entrance, they're taken back")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env, got, w = world()
     lua.execute("""local w = ...
         w.drinks[1] = {flags = {}, pos = {x = 120, y = 150, z = 166}}

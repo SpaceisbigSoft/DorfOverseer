@@ -21,7 +21,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 sys.path.insert(0, str(ROOT / "brain"))
-from harness import make_test, test as plain_test, finish  # noqa: E402
+from harness import make_test, test as plain_test, finish, need_lua, skip  # noqa: E402
 from planner import PLANNER_CONFIG, TICKS_PER_DAY, Memory, abs_tick  # noqa: E402
 from planner_core import NEEDS_YOU  # noqa: E402
 
@@ -54,8 +54,7 @@ if LuaRuntime is not None:
 
 
 def _reset():
-    if LuaRuntime is None:
-        return
+    need_lua()
     W.reset()
     B.well_miners = lambda: W.citizens          # every citizen a miner
     B.CAVERN_NO_SPOT = None
@@ -135,6 +134,10 @@ if LuaRuntime is not None:
         assert B.cancel_project(r3.project_id, False).ok
         r4 = B.place_well(LUA.table(), LUA.table_from({"year": 148, "tick": 400}), True)
         assert r4.ok and (r4.x, r4.y) == (r3.x, r3.y)
+else:
+    @test("the 3 Lua test(s) of the block at line 83: not run")
+    def _():
+        skip("needs the lupa package (pip install lupa)")      # (0.105.48) counted, not passed
 
 
 # ---- the bridge's registration ----------------------------------------------------------

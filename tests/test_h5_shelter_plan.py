@@ -26,7 +26,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
-from harness import test, finish  # noqa: E402
+from harness import test, finish, need_lua  # noqa: E402
 from lua_modules_util import module_src  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "brain"))
@@ -110,8 +110,7 @@ def grid(lua, env, levels):
 
 @test("pure: keys round-trip; the walk crosses a stair only up-to-down, and a ramp both ways")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env = pure()
     k = env.K(700, 513, 170)
     assert tuple(env.unkey(k)) == (700, 513, 170)
@@ -132,8 +131,7 @@ def _():
 
 @test("pure: the walk stops at its cap and says so")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env = pure()
     g = grid(lua, env, {10: ["." * 50]})
     dist, n, capped = env.bfs(g, T(lua, [env.K(1, 1, 10)]), 10)
@@ -149,8 +147,7 @@ def fort_levels():
 
 @test("pure: plan() gives the threat's walk and the civilians' to each level, the late ones and a choke")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env = pure()
     g = grid(lua, env, fort_levels())
     seeds99 = [env.K(x, y, 99) for x in range(1, 15) for y in range(1, 8)]
@@ -174,8 +171,7 @@ def _():
 
 @test("pure: a level the threat can't walk to has no d_threat; a civilian beyond it is unreached")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env = pure()
     g = grid(lua, env, {100: ["o.....", "......"], 99: ["......"]})       # no stair between
     cands = T(lua, [{"z": 99, "key": 99, "seeds": [env.K(x, 1, 99) for x in range(1, 7)]}])
@@ -186,8 +182,7 @@ def _():
 
 @test("pure: chokes: the first in from the threat, the narrowest, a stair; none near the shelter")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env = pure()
     g = grid(lua, env, {100: ["o.........>"], 99: [".........." + "X"] + [".........." + "."] * 4})
     seeds = [env.K(x, y, 99) for x in range(1, 12) for y in range(1, 6)]
@@ -288,8 +283,7 @@ def titan(lua, w, x, y, z):
 
 @test("report: nothing dangerous on the map: danger false, no walk")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env, w = fake()
     civ(lua, w, 3, 3, 99)
     r = py(env.report())
@@ -298,8 +292,7 @@ def _():
 
 @test("report: a titan at the gate: its way in, both levels walked (the deeper one farther), the drink by level")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env, w = fake()
     civ(lua, w, 3, 3, 99)
     civ(lua, w, 4, 4, 99)
@@ -316,8 +309,7 @@ def _():
 
 @test("report: a titan inside: inside, and its walk to the AI's pick (the pick's own walk kept)")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env, w = fake()
     civ(lua, w, 3, 3, 98)
     titan(lua, w, 5, 5, 99)
@@ -330,8 +322,7 @@ def _():
 
 @test("pick: refused when the alert's burrow isn't the AI shelter; levels kept and the shelter redrawn; cleared")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env, w = fake()
     w.alert_burrows[1] = 9
     r = py(env.pick(T(lua, [98]), None, False))
@@ -350,8 +341,7 @@ def _():
 
 @test("pick: a pick with no tiles is undone (the old pick back)")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env, w = fake()
     w.tiles = 0
     r = py(env.pick(T(lua, [98]), None, False))
@@ -360,8 +350,7 @@ def _():
 
 @test("pick: an old pick (over 10 game days) is dropped: the whole fort again")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env, w = fake()
     w.site["ai-overseer/shelter-pick"] = T(lua, {"levels": [98], "tick": 300 * 403200 + 1000 - 13 * 1200})
     assert env.pick_levels() is None
@@ -377,8 +366,7 @@ def _fake_src(file: str, name: str) -> str:
 
 @test("ai-society: the shelter drawn over the AI's pick only (and the whole fort without one)")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua = LuaRuntime(unpack_returned_tuples=True)
     env, got, w = lua.execute(_fake_src("test_fix26_combat.py", "FAKE"), module_src("ai-society.lua"))
     r = env.refresh_shelter()

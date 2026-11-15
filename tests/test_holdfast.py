@@ -20,7 +20,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
-from harness import test, finish  # noqa: E402
+from harness import test, finish, need_lua  # noqa: E402
 from lua_modules_util import module_src  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "brain"))
@@ -264,8 +264,7 @@ def _():
 
 @test("lua: the shelter plan takes a destroyer's door-only entrances as its ways in (ways_in, door_only)")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua = LuaRuntime(unpack_returned_tuples=True)
     env = lua.execute("""local src = ...
         local env = setmetatable({}, {__index = _G})

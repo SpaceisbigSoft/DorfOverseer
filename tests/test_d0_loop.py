@@ -24,6 +24,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 from harness import test, finish  # noqa: E402
+from snapshots import snapshot  # noqa: E402
 sys.path.insert(0, str(ROOT / "brain"))
 
 from digest import game_text  # noqa: E402
@@ -679,7 +680,7 @@ def _():
     assert a.blueprint is None and any("name" in r for r in a.rejected) and len(a.actions) == 1, a
 
 
-@test("design_ai off: no review's instructions or message change (byte-compare with main's, the fixture)")
+@test("design_ai off: no review's instructions or message change (byte-compare with the snapshot, the fixture)")
 def _():
     reset()
     probe = r'''
@@ -702,25 +703,20 @@ m = Memory(); m.culture = {"design": {"mode": "architect", "lang": None, "ask": 
 maybe_review(s, m, TokenBank(), C(), {"recipes": ["brew_drink"], "tools": ["autochop"]}, [])
 print(json.dumps(out))
 '''
+    # (0.105.48) was run beside `git archive main` (a moving branch; without it the test
+    # returned and passed); now against 0.105.47's instructions and message, committed in
+    # tests/fixtures/snapshots/d0_loop_review.json
     with tempfile.TemporaryDirectory() as tmp:
-        main = Path(tmp) / "main"
-        main.mkdir()
-        arch = subprocess.run(["git", "-C", str(ROOT), "archive", "main", "brain"], capture_output=True)
-        if arch.returncode != 0:
-            print("  (no main branch to compare with here)")
-            return
-        subprocess.run(["tar", "-x", "-C", str(main)], input=arch.stdout, check=True)
         p = Path(tmp) / "probe.py"
         p.write_text(probe, encoding="utf-8")
         fx = ROOT / "tests" / "fixtures" / "test_fort.json"
         env = dict(os.environ, DFAI_LOG_DIR=tmp)
-        runs = []
-        for brain in (main / "brain", ROOT / "brain"):
-            r = subprocess.run([sys.executable, "-I", str(p), str(brain), str(fx)], capture_output=True, text=True,
-                               env=env, cwd=tmp)
-            assert r.returncode == 0, r.stderr[-800:]
-            runs.append(json.loads(r.stdout.strip().splitlines()[-1]))
-    assert runs[0] and runs[0] == runs[1], "the review's instructions or message changed"
+        r = subprocess.run([sys.executable, "-I", str(p), str(ROOT / "brain"), str(fx)], capture_output=True,
+                           text=True, env=env, cwd=tmp)
+        assert r.returncode == 0, r.stderr[-800:]
+        runs = [None, json.loads(r.stdout.strip().splitlines()[-1])]
+    assert runs[1], "no review asked"
+    snapshot("d0_loop_review", runs[1])
     assert runs[1][0][2] == {}, "no answer size asked when design is off"
 
 

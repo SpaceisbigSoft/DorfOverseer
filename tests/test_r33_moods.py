@@ -28,7 +28,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "brain"))
 sys.path.insert(0, str(ROOT / "tests"))
-from harness import test, finish  # noqa: E402
+from harness import test, finish, need_lua  # noqa: E402
 from lua_modules_util import module_src  # noqa: E402
 
 import planner_moods  # noqa: E402
@@ -75,6 +75,7 @@ def materials(s, missing, stalled):
 
 @test("L6 free_items: an item ai-disposal keeps (cistern, danger, cavern) stays forbidden; the rest is freed")
 def _():
+    need_lua()
     L, W = lua_world()
     env = W.env
     j = W.job(L.table_from([L.table_from({"t": 4, "kind": "iron", "q": 2})]), L.table_from([]))
@@ -97,6 +98,7 @@ def _():
 
 @test("L6 free_items: when ai-disposal can't be read, nothing is freed")
 def _():
+    need_lua()
     L, W = lua_world()
     env = W.env
     j = W.job(L.table_from([L.table_from({"t": 4, "kind": "iron", "q": 1})]), L.table_from([]))
@@ -112,6 +114,7 @@ def _():
 
 @test("moods.md 2: a request of green glass isn't met by plain rough gems (suits checks the material)")
 def _():
+    need_lua()
     L, W = lua_world()
     env = W.env
     # mat_type 3 (green glass); the rough gems are inorganic (mat_type 0)
@@ -134,6 +137,7 @@ def _():
 
 @test("moods.md 1: thread or cloth in the hospital's chest is 'other', not free for the mood")
 def _():
+    need_lua()
     L, W = lua_world()
     env = W.env
     L.execute("""local W = ...
@@ -166,6 +170,7 @@ def _():
 
 @test("lua: every lua/*.lua and lua/gui/*.lua compiles under Lua 5.3")
 def _():
+    need_lua()
     from lupa.lua53 import LuaRuntime
     L = LuaRuntime()
     chk = L.eval("function(s, n) local f, e = load(s, n, 't', {}); return f ~= nil, e end")

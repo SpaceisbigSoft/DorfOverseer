@@ -19,7 +19,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 sys.path.insert(0, str(ROOT / "brain"))
-from harness import test, finish  # noqa: E402
+from harness import test, finish, skip  # noqa: E402
 
 import scorecard  # noqa: E402
 
@@ -358,6 +358,10 @@ if LuaRuntime is not None:
         names = [x.thought for x in c.causes.values()]
         assert "SameBooze" not in names and len(names) == 15, names
         assert c.same_booze == 2 and c.citizens == 3, (c.same_booze, c.citizens)
+else:
+    @test("the 3 Lua test(s) of the block at line 275: not run")
+    def _():
+        skip("needs the lupa package (pip install lupa)")      # (0.105.48) counted, not passed
 
 
 if __name__ == "__main__":

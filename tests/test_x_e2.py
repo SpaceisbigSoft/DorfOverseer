@@ -17,13 +17,13 @@ from __future__ import annotations
 
 import ast
 import json
-import subprocess
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 sys.path.insert(0, str(ROOT / "brain"))
+from snapshots import digest, snapshot  # noqa: E402
 from harness import make_test, finish  # noqa: E402
 
 try:
@@ -392,14 +392,11 @@ def _():
 
 @test("Scripts identity: to_layouts, check_format and cost give byte-identical results to merged0's")
 def _():
-    try:
-        old_src = subprocess.run(["git", "-C", str(ROOT), "show", "4b0de9a:lua/ai-blueprints.lua"],
-                                 capture_output=True, text=True, check=True).stdout
-    except Exception as e:  # noqa: BLE001
-        print(f"SKIPPED part: no merged0 to compare with ({e})")
-        return
-    OLD = _load(LAYOUTS_SRC, old_src)
+    # (0.105.48) was compared with merged0's (4b0de9a) ai-blueprints.lua, a commit not in
+    # every clone (then "SKIPPED part" and counted as passed); now with 0.105.47's
+    # results, which matched merged0's, in tests/fixtures/snapshots/x_e2_scripts.json
     files = sorted(FIXTURES.glob("*.json")) + sorted(LIBRARY.glob("*.json"))
+    got = {}
     for f in files:
         raw = json.loads(f.read_text(encoding="utf-8"))
         # (merge) E1's drawings with openings ('*') or rock rails ('O') are new: no old result to match
@@ -407,12 +404,11 @@ def _():
         if any("*" in r for r in rows) or (raw.get("ground") != "surface" and any("O" in r for r in rows)):
             continue
         bp = plt(raw)
-        for q in range(4):
-            assert DUMP(BP.to_layouts, bp, q) == DUMP(OLD.to_layouts, bp, q), (f.name, q)
-        a, b = DUMP(BP.check_format, bp), DUMP(OLD.check_format, bp)
-        assert a == b, (f.name, 'check', a[:400], b[:400])
-        a, b = DUMP(BP.cost, bp), DUMP(OLD.cost, bp)
-        assert a == b, (f.name, 'cost', a, b)
+        got[f.parent.name + "/" + f.name] = {"layouts": [digest(DUMP(BP.to_layouts, bp, q)) for q in range(4)],
+                                             "check": digest(DUMP(BP.check_format, bp)),
+                                             "cost": DUMP(BP.cost, bp)}
+    assert len(got) >= 40, len(got)
+    snapshot("x_e2_scripts", got)
 
 
 @test("random drawings that pass the format: every plan made replays as safe (the rest refused with ORDER)")
@@ -442,18 +438,29 @@ def _():
     assert made >= 50 and refused < made, (made, refused)
 
 
+# Lua VM instructions (in thousands) a call runs: a measure of work that does not
+# depend on the machine or its load, as the wall clock did (audit A12, finding 9)
+COUNT_K = PL.eval("""function(f, ...)
+    local n = 0
+    debug.sethook(function() n = n + 1 end, '', 1000)
+    local ok, r, why = pcall(f, ...)
+    debug.sethook()
+    if not ok then error(r) end
+    return n, r, why
+end""")
+
+
 @test("a big drawing (a 13x13 block of walls under an 11x11 one, 290 built tiles) plans quickly and safely")
 def _():
-    import time
     l1 = ["." * 7 + "@" + "." * 7, "U" + "W" * 13 + "."] + ["." + "W" * 13 + "." for _ in range(12)] + ["." * 15]
     l2 = ["_" * 15, "D" + "." * 13 + "_"] + ["_." + "W" * 11 + "._" for _ in range(11)] + ["_" + "." * 13 + "_", "_" * 15]
     big = surface([l1, l2], "The Block")
-    t = time.perf_counter()
-    r, why = stages(big)
-    dt = time.perf_counter() - t
-    assert r is not None, why
+    k, r, why = COUNT_K(BP.build_stages, plt(big), 0)
+    assert r is not None, [dict(x) for x in ll(why)] if why else why
     assert not replay(big, as_steps(r))
-    assert dt < 2.0, dt
+    # 0.105.47 runs about 44,000 thousand instructions here (about a second);
+    # the old bound was 2 s: twice that work
+    assert k < 90_000, k
 
 
 # --- the builder on the fake fort ------------------------------------------------

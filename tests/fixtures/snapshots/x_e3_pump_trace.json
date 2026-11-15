@@ -1,0 +1,16 @@
+[
+ "{\"ok\": true, \"stage\": \"planned\"}",
+ "{\"ok\": true, \"stage\": \"digging\"}",
+ "{\"ok\": true, \"stage\": \"building\"}",
+ "{\"error\": \"being built: the floodgate, the lever, screwpump, screwpump, screwpump, hatch\", \"ok\": false, \"stage\": \"building\", \"waiting\": true}",
+ "{\"ok\": true, \"stage\": \"linking\"}",
+ "{\"ok\": true, \"stage\": \"filling\"}",
+ "{\"ok\": true, \"stage\": \"filling\"}",
+ "{\"error\": \"pumping: the reservoir 0/7 (from 0/7)\", \"ok\": false, \"stage\": \"filling\", \"waiting\": true}",
+ "{\"error\": \"pumping: the reservoir 0/7 (from 0/7)\", \"ok\": false, \"stage\": \"filling\", \"waiting\": true}",
+ "{\"ok\": true, \"stage\": \"done\"}",
+ "{\"error\": \"the pump is done (no leak)\", \"ok\": false, \"stage\": \"done\", \"waiting\": true}",
+ "{\"error\": \"the pump is done (no leak)\", \"ok\": false, \"stage\": \"done\", \"waiting\": true}",
+ "[[63, 61, 90, \"j\", \"dig\"], [63, 60, 89, \"h\", \"dig\"], [64, 60, 89, \"d\", \"dig\"], [63, 61, 89, \"i\", \"dig\"], [65, 59, 89, \"d\", \"dig\"], [65, 60, 89, \"d\", \"dig\"], [65, 61, 89, \"d\", \"dig\"], [66, 59, 89, \"d\", \"dig\"], [66, 61, 89, \"d\", \"dig\"], [67, 59, 89, \"d\", \"dig\"], [67, 60, 89, \"d\", \"dig\"], [67, 61, 89, \"d\", \"dig\"], [66, 60, 89, \"d\", \"dig\"], [65, 60, 89, \"d\", \"dig\"], [64, 60, 88, \"h\", \"dig\"], [63, 60, 88, \"d\", \"dig\"], [63, 61, 88, \"i\", \"dig\"], [63, 60, 87, \"h\", \"dig\"], [64, 60, 87, \"d\", \"dig\"], [63, 61, 87, \"i\", \"dig\"], [62, 60, 86, \"d\", \"dig\"], [63, 60, 86, \"d\", \"dig\"], [63, 61, 86, \"u\", \"dig\"], [62, 60, 90, \"Tl\", \"build\"], [63, 61, 90, \"H\", \"build\"], [63, 60, 89, \"Msh(2x1)\", \"build\"], [63, 60, 88, \"Msk(2x1)\", \"build\"], [63, 60, 87, \"Msh(2x1)\", \"build\"], [62, 60, 86, \"x\", \"build\"], [61, 60, 86, \"d\", \"dig\"]]",
+ "[[\"depth\", 5], [\"gate\", \"open\"], [\"kind\", \"pump\"], [\"lift\", 3], [\"linked\", true], [\"path_tiles\", 22], [\"power\", \"dwarf\"], [\"stage\", \"done\"]]"
+]

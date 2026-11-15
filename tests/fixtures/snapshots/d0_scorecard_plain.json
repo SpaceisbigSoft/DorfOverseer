@@ -1,0 +1,2264 @@
+{
+ "False": [
+  "# Slider scorecard: all at 250-summer\n\n| Fort | Preset | Season | Population | Levels |\n| --- | --- | --- | --- | --- |\n| A | War-hold | summer 250 | 20 | 1 |\n| B | Monastery | summer 250 | 20 | 1 |\n\n| Slider | Line | A War | B Mon | Should win | Result |\n| --- | --- | --- | --- | --- | --- |\n| Militarism | soldiers, % of adults | 50 | 5 | War / low: Mon | pass |\n| Militarism | barracks and ranges | 2 | 2 | War / low: Mon | flat |\n| Fortification | traps | 0 | 0 | War | flat |\n| Fortification | bridges, floodgates, hatches | 0 | 0 | War | flat |\n| Fortification | gate works done | 0 | 0 | Her, War | flat |\n| Fortification | gatehouses built | 0 | 0 | Her, War | flat |\n| Engineering | levers | - | - | Deep, War | no data |\n| Engineering | the AI's levers | - | - | Deep, War | no data |\n| Engineering | lever-driven gates | - | - | Deep, War | no data |\n| Engineering | mechanisms in store | - | - | Deep, War | no data |\n| Caution | alarms raised | 0 | 0 | Her, War / low: Deep | flat |\n| Caution | second stairwells dug | 0 | 0 | Her, War / low: Deep | flat |\n| Justice | jail cells | 0 | 0 | War / low: Mon | flat |\n| Justice | restraints | - | - | War / low: Mon | no data |\n| Piety | temples | 0 | 0 | Mon | flat |\n| Piety | best temple's value | 0 | 0 | Mon | flat |\n| Piety | worshipped gods with a temple, % | - | - | Mon | no data |\n| Piety | grand temples (tier 2+) | - | - | Mon | no data |\n| Welfare | unhappy, % (lowest wins) | 5 | 5 | Gar, Mon / low: War | flat |\n| Welfare | good meals a dwarf | - | - | Gar, Mon / low: War | no data |\n| Welfare | drink kinds | - | - | Gar, Mon | no data |\n| Welfare | upset by the same booze, % (lowest wins) | - | - | Gar, Mon | no data |\n| Outsiders | locations open to visitors, % | - | - | Mer / low: Her, War | no data |\n| Outsiders | days shut to visitors | 0 | 0 | Her, War / low: Mer | flat |\n| Outsiders | guildhalls | 0 | 0 | Mer, Mon / low: Her, War | flat |\n| Outsiders | petitions agreed | 0 | 0 | Mer, Mon / low: Her, War | flat |\n| Outsiders | petitions declined | 0 | 0 | Her, War / low: Mer, Mon | flat |\n| Trade | goods taken to caravans | 1 | 1 | Mer / low: Her | no data |\n| Trade | value taken to caravans | 100 | 100 | Mer / low: Her | no data |\n| Greed | gems set into goods (fewest wins) | 0 | 0 | Her, Mer / low: Mon | flat |\n| Greed | gems kept, % of gems cut | - | - | Her, Mer / low: Mon | no data |\n| Greed | treasures kept from the caravans | 0 | 0 | Her, Mer | no data |\n| Grandeur | statues | 3 | 3 | Gar, Mon / low: War | flat |\n| Grandeur | meeting halls | 0 | 0 | Gar, Mon / low: War | flat |\n| Grandeur | garden levels | 0 | 0 | Gar, Mon / low: War | flat |\n| Craftsmanship | legendary, % of adults | - | - | Mer, Mon | no data |\n| Craftsmanship | craftsdwarf's shops | 0 | 0 | Mer, Mon | flat |\n| Growth | population | 20 | 20 | Mer / low: Her | no data |\n| Growth | newcomers welcome, % of the last year's days | - | - | Mer / low: Her | no data |\n| Mining | ore in store | - | - | Deep / low: Gar | no data |\n| Mining | veins mined | 0 | 0 | Deep / low: Gar | no data |\n| Mining | underground depot built | 0 | 0 | Deep | no data |\n| Verticality | levels' height span | 1 | 1 | Deep | no data |\n| Verticality | deepest level below the surface | 2 | 2 | Deep | no data |\n| Surface | levels at or above the surface | 0 | 0 | Gar, Mer / low: Deep, Her | no data |\n| Surface | surface farm plots | - | - | Gar, Mer / low: Deep, Her | no data |\n| Agriculture | farm tiles | 40 | 60 | Gar / low: Deep | no data |\n| Agriculture | farm plots | 4 | 4 | Gar / low: Deep | no data |\n| Husbandry | tame animals | - | - | Gar | no data |\n| Husbandry | pastures | - | - | Gar | no data |\n| Husbandry | kinds with a breeding pair | - | - | Gar | no data |\n| Husbandry | wild animals tamed | - | - | Gar | no data |\n| Industriousness | idle, % of adults not in squads (lowest wins) | 20 | 10.5 | Deep / low: Mon | fail |\n| Industriousness | levels smoothed or engraved | 0 | 0 | Deep / low: Mon | flat |\n| Deference | suite levels | 0 | 0 | Mer, War / low: Her | flat |\n| Deference | offices | 0 | 0 | Mer, War / low: Her | flat |\n| Spacing | new corridor tiles a level (fewest wins) | - | - | Deep, War | no data |\n| Spacing | tiles a bedroom (smallest wins) | - | - | Deep, War | no data |\n| Stockpile | storage tiles a dwarf at the peak, stone aside | - | - | Her, Mer | no data |\n| Stockpile | drink and meals a dwarf at the peak | 0 | 0 | Her, Mer | no data |\n| Piety | cloister temples and cells | 0 | 0 | Mon | flat |\n| Trade | wide ways, tavern by the gate | 0 | 0 | Mer | no data |\n| Outsiders | winding ways, hidden levels | 0 | 0 | Her | no data |\n| Militarism | barracks by the gate, armouries | 0 | 0 | War | flat |\n| Mining | deep halls, ore piles | 0 | 0 | Deep | no data |\n| Agriculture | halls and kitchens by the fields | 0 | 0 | Gar | no data |\n| Surface | constructed tiles above ground | - | - | Gar, Mer / low: Deep, Her | no data |\n| Surface | roofed surface tiles | - | - | Gar, Mer / low: Deep, Her | no data |\n| Fortification | gate walls and wings | - | - | War | no data |\n| Fortification | cavern openings walled | - | - | Her | no data |\n| Craftsmanship | constructions of blocks, % | - | - | Mer, Mon | no data |\n| Grandeur | soil floors finished | - | - | Gar, Mon / low: War | no data |\n\n**45 no data, 25 flat, 1 pass, 1 fail** of 72 lines.\n\nLines flat at 0 in every fort:\n\n- also at 0 everywhere: traps; bridges, floodgates, hatches; gate works done; gatehouses built; alarms raised; second stairwells dug; jail cells; temples; best temple's value; days shut to visitors; guildhalls; petitions agreed; petitions declined; gems set into goods (fewest wins); meeting halls; garden levels; craftsdwarf's shops; levels smoothed or engraved; suite levels; offices; cloister temples and cells; barracks by the gate, armouries.\n\nSliders that win every line: none.\nSliders that win none: Fortification, Engineering, Caution, Justice, Piety, Welfare, Outsiders, Trade, Greed, Grandeur, Craftsmanship, Growth, Mining, Verticality, Surface, Agriculture, Husbandry, Industriousness, Deference, Spacing, Stockpile.\n\n## Health\n\n| Bar | A | B | Under the bar |\n| --- | --- | --- | --- |\n| failed moods <= 0 | 0 | 0 | 2 of 2 |\n| deaths by thirst <= 0 | 0 | 0 | 2 of 2 |\n| unhappy, % < 10 | 5 | 5 | 2 of 2 |\n| truly idle adults not in squads, % (no job, no leisure) < 25 | 20 | 10.5 | 2 of 2 |\n| moods / artifacts | 0 / 0 | 0 / 0 | |\n\nDeaths by cause (this run's journal, or the game's count from last year on when that is more):\n\nnone.\n\nLevels started, by kind:\n\n| Kind | A | B |\n| --- | --- | --- |\n| barracks | 1 | 1 |\n",
+  [
+   {
+    "key": "soldier_pct",
+    "line": "soldiers, % of adults",
+    "result": "pass",
+    "slider": "Militarism",
+    "values": {
+     "A": 50.0,
+     "B": 5.0
+    }
+   },
+   {
+    "key": "barracks",
+    "line": "barracks and ranges",
+    "result": "flat",
+    "slider": "Militarism",
+    "values": {
+     "A": 2,
+     "B": 2
+    }
+   },
+   {
+    "key": "traps",
+    "line": "traps",
+    "result": "flat",
+    "slider": "Fortification",
+    "values": {
+     "A": 0,
+     "B": 0
+    }
+   },
+   {
+    "key": "bridges",
+    "line": "bridges, floodgates, hatches",
+    "result": "flat",
+    "slider": "Fortification",
+    "values": {
+     "A": 0,
+     "B": 0
+    }
+   },
+   {
+    "key": "gate_works",
+    "line": "gate works done",
+    "result": "flat",
+    "slider": "Fortification",
+    "values": {
+     "A": 0,
+     "B": 0
+    }
+   },
+   {
+    "key": "gatehouses",
+    "line": "gatehouses built",
+    "result": "flat",
+    "slider": "Fortification",
+    "values": {
+     "A": 0,
+     "B": 0
+    }
+   },
+   {
+    "key": "levers",
+    "line": "levers",
+    "result": "no data",
+    "slider": "Engineering",
+    "values": {
+     "A": null,
+     "B": null
+    }
+   },
+   {
+    "key": "ai_levers",
+    "line": "the AI's levers",
+    "result": "no data",
+    "slider": "Engineering",
+    "values": {
+     "A": null,
+     "B": null
+    }
+   },
+   {
+    "key": "lever_gates",
+    "line": "lever-driven gates",
+    "result": "no data",
+    "slider": "Engineering",
+    "values": {
+     "A": null,
+     "B": null
+    }
+   },
+   {
+    "key": "mechanisms",
+    "line": "mechanisms in store",
+    "result": "no data",
+    "slider": "Engineering",
+    "values": {
+     "A": null,
+     "B": null
+    }
+   },
+   {
+    "key": "alerts",
+    "line": "alarms raised",
+    "result": "flat",
+    "slider": "Caution",
+    "values": {
+     "A": 0,
+     "B": 0
+    }
+   },
+   {
+    "key": "stairwells_dug",
+    "line": "second stairwells dug",
+    "result": "flat",
+    "slider": "Caution",
+    "values": {
+     "A": 0,
+     "B": 0
+    }
+   },
+   {
+    "key": "jails",
+    "line": "jail cells",
+    "result": "flat",
+    "slider": "Justice",
+    "values": {
+     "A": 0,
+     "B": 0
+    }
+   },
+   {
+    "key": "restraints",
+    "line": "restraints",
+    "result": "no data",
+    "slider": "Justice",
+    "values": {
+     "A": null,
+     "B": null
+    }
+   },
+   {
+    "key": "temples",
+    "line": "temples",
+    "result": "flat",
+    "slider": "Piety",
+    "values": {
+     "A": 0,
+     "B": 0
+    }
+   },
+   {
+    "key": "temple_value",
+    "line": "best temple's value",
+    "result": "flat",
+    "slider": "Piety",
+    "values": {
+     "A": 0,
+     "B": 0
+    }
+   },
+   {
+    "key": "gods_housed_pct",
+    "line": "worshipped gods with a temple, %",
+    "result": "no data",
+    "slider": "Piety",
+    "values": {
+     "A": null,
+     "B": null
+    }
+   },
+   {
+    "key": "grand_temples",
+    "line": "grand temples (tier 2+)",
+    "result": "no data",
+    "slider": "Piety",
+    "values": {
+     "A": null,
+     "B": null
+    }
+   },
+   {
+    "key": "-unhappy_pct",
+    "line": "unhappy, % (lowest wins)",
+    "result": "flat",
+    "slider": "Welfare",
+    "values": {
+     "A": 5.0,
+     "B": 5.0
+    }
+   },
+   {
+    "key": "good_meals_pd",
+    "line": "good meals a dwarf",
+    "result": "no data",
+    "slider": "Welfare",
+    "values": {
+     "A": null,
+     "B": null
+    }
+   },
+   {
+    "key": "drink_kinds",
+    "line": "drink kinds",
+    "result": "no data",
+    "slider": "Welfare",
+    "values": {
+     "A": null,
+     "B": null
+    }
+   },
+   {
+    "key": "-same_booze_pct",
+    "line": "upset by the same booze, % (lowest wins)",
+    "result": "no data",
+    "slider": "Welfare",
+    "values": {
+     "A": null,
+     "B": null
+    }
+   },
+   {
+    "key": "visitors_open_pct",
+    "line": "locations open to visitors, %",
+    "result": "no data",
+    "slider": "Outsiders",
+    "values": {
+     "A": null,
+     "B": null
+    }
+   },
+   {
+    "key": "shut_days",
+    "line": "days shut to visitors",
+    "result": "flat",
+    "slider": "Outsiders",
+    "values": {
+     "A": 0.0,
+     "B": 0.0
+    }
+   },
+   {
+    "key": "guildhalls",
+    "line": "guildhalls",
+    "result": "flat",
+    "slider": "Outsiders",
+    "values": {
+     "A": 0,
+     "B": 0
+    }
+   },
+   {
+    "key": "petitions_yes",
+    "line": "petitions agreed",
+    "result": "flat",
+    "slider": "Outsiders",
+    "values": {
+     "A": 0,
+     "B": 0
+    }
+   },
+   {
+    "key": "petitions_no",
+    "line": "petitions declined",
+    "result": "flat",
+    "slider": "Outsiders",
+    "values": {
+     "A": 0,
+     "B": 0
+    }
+   },
+   {
+    "key": "trade_runs",
+    "line": "goods taken to caravans",
+    "result": "no data",
+    "slider": "Trade",
+    "values": {
+     "A": 1,
+     "B": 1
+    }
+   },
+   {
+    "key": "trade_value",
+    "line": "value taken to caravans",
+    "result": "no data",
+    "slider": "Trade",
+    "values": {
+     "A": 100,
+     "B": 100
+    }
+   },
+   {
+    "key": "-gems_set",
+    "line": "gems set into goods (fewest wins)",
+    "result": "flat",
+    "slider": "Greed",
+    "values": {
+     "A": 0,
+     "B": 0
+    }
+   },
+   {
+    "key": "gems_kept_pct",
+    "line": "gems kept, % of gems cut",
+    "result": "no data",
+    "slider": "Greed",
+    "values": {
+     "A": null,
+     "B": null
+    }
+   },
+   {
+    "key": "treasures_kept",
+    "line": "treasures kept from the caravans",
+    "result": "no data",
+    "slider": "Greed",
+    "values": {
+     "A": 0,
+     "B": 0
+    }
+   },
+   {
+    "key": "statues",
+    "line": "statues",
+    "result": "flat",
+    "slider": "Grandeur",
+    "values": {
+     "A": 3,
+     "B": 3
+    }
+   },
+   {
+    "key": "halls",
+    "line": "meeting halls",
+    "result": "flat",
+    "slider": "Grandeur",
+    "values": {
+     "A": 0,
+     "B": 0
+    }
+   },
+   {
+    "key": "gardens",
+    "line": "garden levels",
+    "result": "flat",
+    "slider": "Grandeur",
+    "values": {
+     "A": 0,
+     "B": 0
+    }
+   },
+   {
+    "key": "legendary_pct",
+    "line": "legendary, % of adults",
+    "result": "no data",
+    "slider": "Craftsmanship",
+    "values": {
+     "A": null,
+     "B": null
+    }
+   },
+   {
+    "key": "craft_shops",
+    "line": "craftsdwarf's shops",
+    "result": "flat",
+    "slider": "Craftsmanship",
+    "values": {
+     "A": 0,
+     "B": 0
+    }
+   },
+   {
+    "key": "pop",
+    "line": "population",
+    "result": "no data",
+    "slider": "Growth",
+    "values": {
+     "A": 20,
+     "B": 20
+    }
+   },
+   {
+    "key": "welcome_pct",
+    "line": "newcomers welcome, % of the last year's days",
+    "result": "no data",
+    "slider": "Growth",
+    "values": {
+     "A": null,
+     "B": null
+    }
+   },
+   {
+    "key": "ore",
+    "line": "ore in store",
+    "result": "no data",
+    "slider": "Mining",
+    "values": {
+     "A": null,
+     "B": null
+    }
+   },
+   {
+    "key": "ore_runs",
+    "line": "veins mined",
+    "result": "no data",
+    "slider": "Mining",
+    "values": {
+     "A": 0,
+     "B": 0
+    }
+   },
+   {
+    "key": "deep_depot",
+    "line": "underground depot built",
+    "result": "no data",
+    "slider": "Mining",
+    "values": {
+     "A": 0,
+     "B": 0
+    }
+   },
+   {
+    "key": "z_span",
+    "line": "levels' height span",
+    "result": "no data",
+    "slider": "Verticality",
+    "values": {
+     "A": 1,
+     "B": 1
+    }
+   },
+   {
+    "key": "depth",
+    "line": "deepest level below the surface",
+    "result": "no data",
+    "slider": "Verticality",
+    "values": {
+     "A": 2,
+     "B": 2
+    }
+   },
+   {
+    "key": "levels_up",
+    "line": "levels at or above the surface",
+    "result": "no data",
+    "slider": "Surface",
+    "values": {
+     "A": 0,
+     "B": 0
+    }
+   },
+   {
+    "key": "surface_plots",
+    "line": "surface farm plots",
+    "result": "no data",
+    "slider": "Surface",
+    "values": {
+     "A": null,
+     "B": null
+    }
+   },
+   {
+    "key": "farm_tiles",
+    "line": "farm tiles",
+    "result": "no data",
+    "slider": "Agriculture",
+    "values": {
+     "A": 40,
+     "B": 60
+    }
+   },
+   {
+    "key": "plots",
+    "line": "farm plots",
+    "result": "no data",
+    "slider": "Agriculture",
+    "values": {
+     "A": 4,
+     "B": 4
+    }
+   },
+   {
+    "key": "animals",
+    "line": "tame animals",
+    "result": "no data",
+    "slider": "Husbandry",
+    "values": {
+     "A": null,
+     "B": null
+    }
+   },
+   {
+    "key": "pastures",
+    "line": "pastures",
+    "result": "no data",
+    "slider": "Husbandry",
+    "values": {
+     "A": null,
+     "B": null
+    }
+   },
+   {
+    "key": "breeding_pairs",
+    "line": "kinds with a breeding pair",
+    "result": "no data",
+    "slider": "Husbandry",
+    "values": {
+     "A": null,
+     "B": null
+    }
+   },
+   {
+    "key": "tamed",
+    "line": "wild animals tamed",
+    "result": "no data",
+    "slider": "Husbandry",
+    "values": {
+     "A": null,
+     "B": null
+    }
+   },
+   {
+    "key": "-idle_pct",
+    "line": "idle, % of adults not in squads (lowest wins)",
+    "result": "fail",
+    "slider": "Industriousness",
+    "values": {
+     "A": 20.0,
+     "B": 10.5
+    }
+   },
+   {
+    "key": "polish_runs",
+    "line": "levels smoothed or engraved",
+    "result": "flat",
+    "slider": "Industriousness",
+    "values": {
+     "A": 0,
+     "B": 0
+    }
+   },
+   {
+    "key": "suites",
+    "line": "suite levels",
+    "result": "flat",
+    "slider": "Deference",
+    "values": {
+     "A": 0,
+     "B": 0
+    }
+   },
+   {
+    "key": "offices",
+    "line": "offices",
+    "result": "flat",
+    "slider": "Deference",
+    "values": {
+     "A": 0,
+     "B": 0
+    }
+   },
+   {
+    "key": "-corridor_mean",
+    "line": "new corridor tiles a level (fewest wins)",
+    "result": "no data",
+    "slider": "Spacing",
+    "values": {
+     "A": null,
+     "B": null
+    }
+   },
+   {
+    "key": "-bedroom_tiles",
+    "line": "tiles a bedroom (smallest wins)",
+    "result": "no data",
+    "slider": "Spacing",
+    "values": {
+     "A": null,
+     "B": null
+    }
+   },
+   {
+    "key": "store_tiles_pd",
+    "line": "storage tiles a dwarf at the peak, stone aside",
+    "result": "no data",
+    "slider": "Stockpile",
+    "values": {
+     "A": null,
+     "B": null
+    }
+   },
+   {
+    "key": "stores_peak_pd",
+    "line": "drink and meals a dwarf at the peak",
+    "result": "no data",
+    "slider": "Stockpile",
+    "values": {
+     "A": 0.0,
+     "B": 0.0
+    }
+   },
+   {
+    "key": "custom_M",
+    "line": "cloister temples and cells",
+    "result": "flat",
+    "slider": "Piety",
+    "values": {
+     "A": 0,
+     "B": 0
+    }
+   },
+   {
+    "key": "custom_ME",
+    "line": "wide ways, tavern by the gate",
+    "result": "no data",
+    "slider": "Trade",
+    "values": {
+     "A": 0,
+     "B": 0
+    }
+   },
+   {
+    "key": "custom_H",
+    "line": "winding ways, hidden levels",
+    "result": "no data",
+    "slider": "Outsiders",
+    "values": {
+     "A": 0,
+     "B": 0
+    }
+   },
+   {
+    "key": "custom_W",
+    "line": "barracks by the gate, armouries",
+    "result": "flat",
+    "slider": "Militarism",
+    "values": {
+     "A": 0,
+     "B": 0
+    }
+   },
+   {
+    "key": "custom_D",
+    "line": "deep halls, ore piles",
+    "result": "no data",
+    "slider": "Mining",
+    "values": {
+     "A": 0,
+     "B": 0
+    }
+   },
+   {
+    "key": "custom_G",
+    "line": "halls and kitchens by the fields",
+    "result": "no data",
+    "slider": "Agriculture",
+    "values": {
+     "A": 0,
+     "B": 0
+    }
+   },
+   {
+    "key": "built_up",
+    "line": "constructed tiles above ground",
+    "result": "no data",
+    "slider": "Surface",
+    "values": {
+     "A": null,
+     "B": null
+    }
+   },
+   {
+    "key": "roofed_up",
+    "line": "roofed surface tiles",
+    "result": "no data",
+    "slider": "Surface",
+    "values": {
+     "A": null,
+     "B": null
+    }
+   },
+   {
+    "key": "gate_walls",
+    "line": "gate walls and wings",
+    "result": "no data",
+    "slider": "Fortification",
+    "values": {
+     "A": null,
+     "B": null
+    }
+   },
+   {
+    "key": "cavern_walls",
+    "line": "cavern openings walled",
+    "result": "no data",
+    "slider": "Fortification",
+    "values": {
+     "A": null,
+     "B": null
+    }
+   },
+   {
+    "key": "block_pct",
+    "line": "constructions of blocks, %",
+    "result": "no data",
+    "slider": "Craftsmanship",
+    "values": {
+     "A": null,
+     "B": null
+    }
+   },
+   {
+    "key": "soil_floors",
+    "line": "soil floors finished",
+    "result": "no data",
+    "slider": "Grandeur",
+    "values": {
+     "A": null,
+     "B": null
+    }
+   }
+  ],
+  {
+   "good": [],
+   "health": {
+    "A": [],
+    "B": []
+   },
+   "lines": 72,
+   "presets": {
+    "A": "War-hold",
+    "B": "Monastery"
+   },
+   "runs": {
+    "A": null,
+    "B": null
+   },
+   "tally": {
+    "fail": 1,
+    "flat": 25,
+    "no data": 45,
+    "pass": 1
+   },
+   "title": "all at 250-summer"
+  }
+ ],
+ "LINES": [
+  [
+   "Militarism",
+   "soldiers, % of adults",
+   "soldier_pct",
+   [
+    "War-hold"
+   ],
+   [
+    "Monastery"
+   ]
+  ],
+  [
+   "Militarism",
+   "barracks and ranges",
+   "barracks",
+   [
+    "War-hold"
+   ],
+   [
+    "Monastery"
+   ]
+  ],
+  [
+   "Fortification",
+   "traps",
+   "traps",
+   [
+    "War-hold"
+   ],
+   []
+  ],
+  [
+   "Fortification",
+   "bridges, floodgates, hatches",
+   "bridges",
+   [
+    "War-hold"
+   ],
+   []
+  ],
+  [
+   "Fortification",
+   "gate works done",
+   "gate_works",
+   [
+    "Hermit hold",
+    "War-hold"
+   ],
+   []
+  ],
+  [
+   "Fortification",
+   "gatehouses built",
+   "gatehouses",
+   [
+    "Hermit hold",
+    "War-hold"
+   ],
+   []
+  ],
+  [
+   "Engineering",
+   "levers",
+   "levers",
+   [
+    "Deep mine",
+    "War-hold"
+   ],
+   []
+  ],
+  [
+   "Engineering",
+   "the AI's levers",
+   "ai_levers",
+   [
+    "Deep mine",
+    "War-hold"
+   ],
+   []
+  ],
+  [
+   "Engineering",
+   "lever-driven gates",
+   "lever_gates",
+   [
+    "Deep mine",
+    "War-hold"
+   ],
+   []
+  ],
+  [
+   "Engineering",
+   "mechanisms in store",
+   "mechanisms",
+   [
+    "Deep mine",
+    "War-hold"
+   ],
+   []
+  ],
+  [
+   "Caution",
+   "alarms raised",
+   "alerts",
+   [
+    "Hermit hold",
+    "War-hold"
+   ],
+   [
+    "Deep mine"
+   ]
+  ],
+  [
+   "Caution",
+   "second stairwells dug",
+   "stairwells_dug",
+   [
+    "Hermit hold",
+    "War-hold"
+   ],
+   [
+    "Deep mine"
+   ]
+  ],
+  [
+   "Justice",
+   "jail cells",
+   "jails",
+   [
+    "War-hold"
+   ],
+   [
+    "Monastery"
+   ]
+  ],
+  [
+   "Justice",
+   "restraints",
+   "restraints",
+   [
+    "War-hold"
+   ],
+   [
+    "Monastery"
+   ]
+  ],
+  [
+   "Piety",
+   "temples",
+   "temples",
+   [
+    "Monastery"
+   ],
+   []
+  ],
+  [
+   "Piety",
+   "best temple's value",
+   "temple_value",
+   [
+    "Monastery"
+   ],
+   []
+  ],
+  [
+   "Piety",
+   "worshipped gods with a temple, %",
+   "gods_housed_pct",
+   [
+    "Monastery"
+   ],
+   []
+  ],
+  [
+   "Piety",
+   "grand temples (tier 2+)",
+   "grand_temples",
+   [
+    "Monastery"
+   ],
+   []
+  ],
+  [
+   "Welfare",
+   "unhappy, % (lowest wins)",
+   "-unhappy_pct",
+   [
+    "Garden fort",
+    "Monastery"
+   ],
+   [
+    "War-hold"
+   ]
+  ],
+  [
+   "Welfare",
+   "good meals a dwarf",
+   "good_meals_pd",
+   [
+    "Garden fort",
+    "Monastery"
+   ],
+   [
+    "War-hold"
+   ]
+  ],
+  [
+   "Welfare",
+   "drink kinds",
+   "drink_kinds",
+   [
+    "Garden fort",
+    "Monastery"
+   ],
+   []
+  ],
+  [
+   "Welfare",
+   "upset by the same booze, % (lowest wins)",
+   "-same_booze_pct",
+   [
+    "Garden fort",
+    "Monastery"
+   ],
+   []
+  ],
+  [
+   "Outsiders",
+   "locations open to visitors, %",
+   "visitors_open_pct",
+   [
+    "Merchant city"
+   ],
+   [
+    "Hermit hold",
+    "War-hold"
+   ]
+  ],
+  [
+   "Outsiders",
+   "days shut to visitors",
+   "shut_days",
+   [
+    "Hermit hold",
+    "War-hold"
+   ],
+   [
+    "Merchant city"
+   ]
+  ],
+  [
+   "Outsiders",
+   "guildhalls",
+   "guildhalls",
+   [
+    "Merchant city",
+    "Monastery"
+   ],
+   [
+    "Hermit hold",
+    "War-hold"
+   ]
+  ],
+  [
+   "Outsiders",
+   "petitions agreed",
+   "petitions_yes",
+   [
+    "Merchant city",
+    "Monastery"
+   ],
+   [
+    "Hermit hold",
+    "War-hold"
+   ]
+  ],
+  [
+   "Outsiders",
+   "petitions declined",
+   "petitions_no",
+   [
+    "Hermit hold",
+    "War-hold"
+   ],
+   [
+    "Merchant city",
+    "Monastery"
+   ]
+  ],
+  [
+   "Trade",
+   "goods taken to caravans",
+   "trade_runs",
+   [
+    "Merchant city"
+   ],
+   [
+    "Hermit hold"
+   ]
+  ],
+  [
+   "Trade",
+   "value taken to caravans",
+   "trade_value",
+   [
+    "Merchant city"
+   ],
+   [
+    "Hermit hold"
+   ]
+  ],
+  [
+   "Greed",
+   "gems set into goods (fewest wins)",
+   "-gems_set",
+   [
+    "Hermit hold",
+    "Merchant city"
+   ],
+   [
+    "Monastery"
+   ]
+  ],
+  [
+   "Greed",
+   "gems kept, % of gems cut",
+   "gems_kept_pct",
+   [
+    "Hermit hold",
+    "Merchant city"
+   ],
+   [
+    "Monastery"
+   ]
+  ],
+  [
+   "Greed",
+   "treasures kept from the caravans",
+   "treasures_kept",
+   [
+    "Hermit hold",
+    "Merchant city"
+   ],
+   []
+  ],
+  [
+   "Grandeur",
+   "statues",
+   "statues",
+   [
+    "Garden fort",
+    "Monastery"
+   ],
+   [
+    "War-hold"
+   ]
+  ],
+  [
+   "Grandeur",
+   "meeting halls",
+   "halls",
+   [
+    "Garden fort",
+    "Monastery"
+   ],
+   [
+    "War-hold"
+   ]
+  ],
+  [
+   "Grandeur",
+   "garden levels",
+   "gardens",
+   [
+    "Garden fort",
+    "Monastery"
+   ],
+   [
+    "War-hold"
+   ]
+  ],
+  [
+   "Craftsmanship",
+   "legendary, % of adults",
+   "legendary_pct",
+   [
+    "Merchant city",
+    "Monastery"
+   ],
+   []
+  ],
+  [
+   "Craftsmanship",
+   "craftsdwarf's shops",
+   "craft_shops",
+   [
+    "Merchant city",
+    "Monastery"
+   ],
+   []
+  ],
+  [
+   "Growth",
+   "population",
+   "pop",
+   [
+    "Merchant city"
+   ],
+   [
+    "Hermit hold"
+   ]
+  ],
+  [
+   "Growth",
+   "newcomers welcome, % of the last year's days",
+   "welcome_pct",
+   [
+    "Merchant city"
+   ],
+   [
+    "Hermit hold"
+   ]
+  ],
+  [
+   "Mining",
+   "ore in store",
+   "ore",
+   [
+    "Deep mine"
+   ],
+   [
+    "Garden fort"
+   ]
+  ],
+  [
+   "Mining",
+   "veins mined",
+   "ore_runs",
+   [
+    "Deep mine"
+   ],
+   [
+    "Garden fort"
+   ]
+  ],
+  [
+   "Mining",
+   "underground depot built",
+   "deep_depot",
+   [
+    "Deep mine"
+   ],
+   []
+  ],
+  [
+   "Verticality",
+   "levels' height span",
+   "z_span",
+   [
+    "Deep mine"
+   ],
+   []
+  ],
+  [
+   "Verticality",
+   "deepest level below the surface",
+   "depth",
+   [
+    "Deep mine"
+   ],
+   []
+  ],
+  [
+   "Surface",
+   "levels at or above the surface",
+   "levels_up",
+   [
+    "Garden fort",
+    "Merchant city"
+   ],
+   [
+    "Deep mine",
+    "Hermit hold"
+   ]
+  ],
+  [
+   "Surface",
+   "surface farm plots",
+   "surface_plots",
+   [
+    "Garden fort",
+    "Merchant city"
+   ],
+   [
+    "Deep mine",
+    "Hermit hold"
+   ]
+  ],
+  [
+   "Agriculture",
+   "farm tiles",
+   "farm_tiles",
+   [
+    "Garden fort"
+   ],
+   [
+    "Deep mine"
+   ]
+  ],
+  [
+   "Agriculture",
+   "farm plots",
+   "plots",
+   [
+    "Garden fort"
+   ],
+   [
+    "Deep mine"
+   ]
+  ],
+  [
+   "Husbandry",
+   "tame animals",
+   "animals",
+   [
+    "Garden fort"
+   ],
+   []
+  ],
+  [
+   "Husbandry",
+   "pastures",
+   "pastures",
+   [
+    "Garden fort"
+   ],
+   []
+  ],
+  [
+   "Husbandry",
+   "kinds with a breeding pair",
+   "breeding_pairs",
+   [
+    "Garden fort"
+   ],
+   []
+  ],
+  [
+   "Husbandry",
+   "wild animals tamed",
+   "tamed",
+   [
+    "Garden fort"
+   ],
+   []
+  ],
+  [
+   "Industriousness",
+   "idle, % of adults not in squads (lowest wins)",
+   "-idle_pct",
+   [
+    "Deep mine"
+   ],
+   [
+    "Monastery"
+   ]
+  ],
+  [
+   "Industriousness",
+   "levels smoothed or engraved",
+   "polish_runs",
+   [
+    "Deep mine"
+   ],
+   [
+    "Monastery"
+   ]
+  ],
+  [
+   "Deference",
+   "suite levels",
+   "suites",
+   [
+    "Merchant city",
+    "War-hold"
+   ],
+   [
+    "Hermit hold"
+   ]
+  ],
+  [
+   "Deference",
+   "offices",
+   "offices",
+   [
+    "Merchant city",
+    "War-hold"
+   ],
+   [
+    "Hermit hold"
+   ]
+  ],
+  [
+   "Spacing",
+   "new corridor tiles a level (fewest wins)",
+   "-corridor_mean",
+   [
+    "Deep mine",
+    "War-hold"
+   ],
+   []
+  ],
+  [
+   "Spacing",
+   "tiles a bedroom (smallest wins)",
+   "-bedroom_tiles",
+   [
+    "Deep mine",
+    "War-hold"
+   ],
+   []
+  ],
+  [
+   "Stockpile",
+   "storage tiles a dwarf at the peak, stone aside",
+   "store_tiles_pd",
+   [
+    "Hermit hold",
+    "Merchant city"
+   ],
+   []
+  ],
+  [
+   "Stockpile",
+   "drink and meals a dwarf at the peak",
+   "stores_peak_pd",
+   [
+    "Hermit hold",
+    "Merchant city"
+   ],
+   []
+  ],
+  [
+   "Piety",
+   "cloister temples and cells",
+   "custom_M",
+   [
+    "Monastery"
+   ],
+   []
+  ],
+  [
+   "Trade",
+   "wide ways, tavern by the gate",
+   "custom_ME",
+   [
+    "Merchant city"
+   ],
+   []
+  ],
+  [
+   "Outsiders",
+   "winding ways, hidden levels",
+   "custom_H",
+   [
+    "Hermit hold"
+   ],
+   []
+  ],
+  [
+   "Militarism",
+   "barracks by the gate, armouries",
+   "custom_W",
+   [
+    "War-hold"
+   ],
+   []
+  ],
+  [
+   "Mining",
+   "deep halls, ore piles",
+   "custom_D",
+   [
+    "Deep mine"
+   ],
+   []
+  ],
+  [
+   "Agriculture",
+   "halls and kitchens by the fields",
+   "custom_G",
+   [
+    "Garden fort"
+   ],
+   []
+  ],
+  [
+   "Surface",
+   "constructed tiles above ground",
+   "built_up",
+   [
+    "Garden fort",
+    "Merchant city"
+   ],
+   [
+    "Deep mine",
+    "Hermit hold"
+   ]
+  ],
+  [
+   "Surface",
+   "roofed surface tiles",
+   "roofed_up",
+   [
+    "Garden fort",
+    "Merchant city"
+   ],
+   [
+    "Deep mine",
+    "Hermit hold"
+   ]
+  ],
+  [
+   "Fortification",
+   "gate walls and wings",
+   "gate_walls",
+   [
+    "War-hold"
+   ],
+   []
+  ],
+  [
+   "Fortification",
+   "cavern openings walled",
+   "cavern_walls",
+   [
+    "Hermit hold"
+   ],
+   []
+  ],
+  [
+   "Craftsmanship",
+   "constructions of blocks, %",
+   "block_pct",
+   [
+    "Merchant city",
+    "Monastery"
+   ],
+   []
+  ],
+  [
+   "Grandeur",
+   "soil floors finished",
+   "soil_floors",
+   [
+    "Garden fort",
+    "Monastery"
+   ],
+   [
+    "War-hold"
+   ]
+  ]
+ ],
+ "True": [
+  "# Slider scorecard: each fort's newest season\n\n| Fort | Preset | Season | Population | Levels |\n| --- | --- | --- | --- | --- |\n| A | War-hold | spring 251 | 20 | 1 |\n| B | Monastery | summer 250 | 20 | 1 |\n\n| Slider | Line | A War | B Mon | Should win | Result |\n| --- | --- | --- | --- | --- | --- |\n| Militarism | soldiers, % of adults | 75 | 5 | War / low: Mon | pass |\n| Militarism | barracks and ranges | 2 | 2 | War / low: Mon | flat |\n| Fortification | traps | 0 | 0 | War | flat |\n| Fortification | bridges, floodgates, hatches | 0 | 0 | War | flat |\n| Fortification | gate works done | 0 | 0 | Her, War | flat |\n| Fortification | gatehouses built | 0 | 0 | Her, War | flat |\n| Engineering | levers | - | - | Deep, War | no data |\n| Engineering | the AI's levers | - | - | Deep, War | no data |\n| Engineering | lever-driven gates | - | - | Deep, War | no data |\n| Engineering | mechanisms in store | - | - | Deep, War | no data |\n| Caution | alarms raised | 0 | 0 | Her, War / low: Deep | flat |\n| Caution | second stairwells dug | 0 | 0 | Her, War / low: Deep | flat |\n| Justice | jail cells | 0 | 0 | War / low: Mon | flat |\n| Justice | restraints | - | - | War / low: Mon | no data |\n| Piety | temples | 0 | 0 | Mon | flat |\n| Piety | best temple's value | 0 | 0 | Mon | flat |\n| Piety | worshipped gods with a temple, % | - | - | Mon | no data |\n| Piety | grand temples (tier 2+) | - | - | Mon | no data |\n| Welfare | unhappy, % (lowest wins) | 5 | 5 | Gar, Mon / low: War | flat |\n| Welfare | good meals a dwarf | - | - | Gar, Mon / low: War | no data |\n| Welfare | drink kinds | - | - | Gar, Mon | no data |\n| Welfare | upset by the same booze, % (lowest wins) | - | - | Gar, Mon | no data |\n| Outsiders | locations open to visitors, % | - | - | Mer / low: Her, War | no data |\n| Outsiders | days shut to visitors | 0 | 0 | Her, War / low: Mer | flat |\n| Outsiders | guildhalls | 0 | 0 | Mer, Mon / low: Her, War | flat |\n| Outsiders | petitions agreed | 0 | 0 | Mer, Mon / low: Her, War | flat |\n| Outsiders | petitions declined | 0 | 0 | Her, War / low: Mer, Mon | flat |\n| Trade | goods taken to caravans | 2 | 1 | Mer / low: Her | no data |\n| Trade | value taken to caravans | 1099 | 100 | Mer / low: Her | no data |\n| Greed | gems set into goods (fewest wins) | 0 | 0 | Her, Mer / low: Mon | flat |\n| Greed | gems kept, % of gems cut | - | - | Her, Mer / low: Mon | no data |\n| Greed | treasures kept from the caravans | 0 | 0 | Her, Mer | no data |\n| Grandeur | statues | 3 | 3 | Gar, Mon / low: War | flat |\n| Grandeur | meeting halls | 0 | 0 | Gar, Mon / low: War | flat |\n| Grandeur | garden levels | 0 | 0 | Gar, Mon / low: War | flat |\n| Craftsmanship | legendary, % of adults | - | - | Mer, Mon | no data |\n| Craftsmanship | craftsdwarf's shops | 0 | 0 | Mer, Mon | flat |\n| Growth | population | 20 | 20 | Mer / low: Her | no data |\n| Growth | newcomers welcome, % of the last year's days | - | - | Mer / low: Her | no data |\n| Mining | ore in store | - | - | Deep / low: Gar | no data |\n| Mining | veins mined | 0 | 0 | Deep / low: Gar | no data |\n| Mining | underground depot built | 0 | 0 | Deep | no data |\n| Verticality | levels' height span | 1 | 1 | Deep | no data |\n| Verticality | deepest level below the surface | 2 | 2 | Deep | no data |\n| Surface | levels at or above the surface | 0 | 0 | Gar, Mer / low: Deep, Her | no data |\n| Surface | surface farm plots | - | - | Gar, Mer / low: Deep, Her | no data |\n| Agriculture | farm tiles | 40 | 60 | Gar / low: Deep | no data |\n| Agriculture | farm plots | 4 | 4 | Gar / low: Deep | no data |\n| Husbandry | tame animals | - | - | Gar | no data |\n| Husbandry | pastures | - | - | Gar | no data |\n| Husbandry | kinds with a breeding pair | - | - | Gar | no data |\n| Husbandry | wild animals tamed | - | - | Gar | no data |\n| Industriousness | idle, % of adults not in squads (lowest wins) | 40 | 10.5 | Deep / low: Mon | fail |\n| Industriousness | levels smoothed or engraved | 0 | 0 | Deep / low: Mon | flat |\n| Deference | suite levels | 0 | 0 | Mer, War / low: Her | flat |\n| Deference | offices | 0 | 0 | Mer, War / low: Her | flat |\n| Spacing | new corridor tiles a level (fewest wins) | - | - | Deep, War | no data |\n| Spacing | tiles a bedroom (smallest wins) | - | - | Deep, War | no data |\n| Stockpile | storage tiles a dwarf at the peak, stone aside | - | - | Her, Mer | no data |\n| Stockpile | drink and meals a dwarf at the peak | 0 | 0 | Her, Mer | no data |\n| Piety | cloister temples and cells | 0 | 0 | Mon | flat |\n| Trade | wide ways, tavern by the gate | 0 | 0 | Mer | no data |\n| Outsiders | winding ways, hidden levels | 0 | 0 | Her | no data |\n| Militarism | barracks by the gate, armouries | 0 | 0 | War | flat |\n| Mining | deep halls, ore piles | 0 | 0 | Deep | no data |\n| Agriculture | halls and kitchens by the fields | 0 | 0 | Gar | no data |\n| Surface | constructed tiles above ground | - | - | Gar, Mer / low: Deep, Her | no data |\n| Surface | roofed surface tiles | - | - | Gar, Mer / low: Deep, Her | no data |\n| Fortification | gate walls and wings | - | - | War | no data |\n| Fortification | cavern openings walled | - | - | Her | no data |\n| Craftsmanship | constructions of blocks, % | - | - | Mer, Mon | no data |\n| Grandeur | soil floors finished | - | - | Gar, Mon / low: War | no data |\n\n**45 no data, 25 flat, 1 pass, 1 fail** of 72 lines.\n\nLines flat at 0 in every fort:\n\n- also at 0 everywhere: traps; bridges, floodgates, hatches; gate works done; gatehouses built; alarms raised; second stairwells dug; jail cells; temples; best temple's value; days shut to visitors; guildhalls; petitions agreed; petitions declined; gems set into goods (fewest wins); meeting halls; garden levels; craftsdwarf's shops; levels smoothed or engraved; suite levels; offices; cloister temples and cells; barracks by the gate, armouries.\n\nSliders that win every line: none.\nSliders that win none: Fortification, Engineering, Caution, Justice, Piety, Welfare, Outsiders, Trade, Greed, Grandeur, Craftsmanship, Growth, Mining, Verticality, Surface, Agriculture, Husbandry, Industriousness, Deference, Spacing, Stockpile.\n\n## Health\n\n| Bar | A | B | Under the bar |\n| --- | --- | --- | --- |\n| failed moods <= 0 | 0 | 0 | 2 of 2 |\n| deaths by thirst <= 0 | 0 | 0 | 2 of 2 |\n| unhappy, % < 10 | 5 | 5 | 2 of 2 |\n| truly idle adults not in squads, % (no job, no leisure) < 25 | 40 **over** | 10.5 | 1 of 2 |\n| moods / artifacts | 0 / 0 | 0 / 0 | |\n\nDeaths by cause (this run's journal, or the game's count from last year on when that is more):\n\nnone.\n\nLevels started, by kind:\n\n| Kind | A | B |\n| --- | --- | --- |\n| barracks | 1 | 1 |\n",
+  [
+   {
+    "key": "soldier_pct",
+    "line": "soldiers, % of adults",
+    "result": "pass",
+    "slider": "Militarism",
+    "values": {
+     "A": 75.0,
+     "B": 5.0
+    }
+   },
+   {
+    "key": "barracks",
+    "line": "barracks and ranges",
+    "result": "flat",
+    "slider": "Militarism",
+    "values": {
+     "A": 2,
+     "B": 2
+    }
+   },
+   {
+    "key": "traps",
+    "line": "traps",
+    "result": "flat",
+    "slider": "Fortification",
+    "values": {
+     "A": 0,
+     "B": 0
+    }
+   },
+   {
+    "key": "bridges",
+    "line": "bridges, floodgates, hatches",
+    "result": "flat",
+    "slider": "Fortification",
+    "values": {
+     "A": 0,
+     "B": 0
+    }
+   },
+   {
+    "key": "gate_works",
+    "line": "gate works done",
+    "result": "flat",
+    "slider": "Fortification",
+    "values": {
+     "A": 0,
+     "B": 0
+    }
+   },
+   {
+    "key": "gatehouses",
+    "line": "gatehouses built",
+    "result": "flat",
+    "slider": "Fortification",
+    "values": {
+     "A": 0,
+     "B": 0
+    }
+   },
+   {
+    "key": "levers",
+    "line": "levers",
+    "result": "no data",
+    "slider": "Engineering",
+    "values": {
+     "A": null,
+     "B": null
+    }
+   },
+   {
+    "key": "ai_levers",
+    "line": "the AI's levers",
+    "result": "no data",
+    "slider": "Engineering",
+    "values": {
+     "A": null,
+     "B": null
+    }
+   },
+   {
+    "key": "lever_gates",
+    "line": "lever-driven gates",
+    "result": "no data",
+    "slider": "Engineering",
+    "values": {
+     "A": null,
+     "B": null
+    }
+   },
+   {
+    "key": "mechanisms",
+    "line": "mechanisms in store",
+    "result": "no data",
+    "slider": "Engineering",
+    "values": {
+     "A": null,
+     "B": null
+    }
+   },
+   {
+    "key": "alerts",
+    "line": "alarms raised",
+    "result": "flat",
+    "slider": "Caution",
+    "values": {
+     "A": 0,
+     "B": 0
+    }
+   },
+   {
+    "key": "stairwells_dug",
+    "line": "second stairwells dug",
+    "result": "flat",
+    "slider": "Caution",
+    "values": {
+     "A": 0,
+     "B": 0
+    }
+   },
+   {
+    "key": "jails",
+    "line": "jail cells",
+    "result": "flat",
+    "slider": "Justice",
+    "values": {
+     "A": 0,
+     "B": 0
+    }
+   },
+   {
+    "key": "restraints",
+    "line": "restraints",
+    "result": "no data",
+    "slider": "Justice",
+    "values": {
+     "A": null,
+     "B": null
+    }
+   },
+   {
+    "key": "temples",
+    "line": "temples",
+    "result": "flat",
+    "slider": "Piety",
+    "values": {
+     "A": 0,
+     "B": 0
+    }
+   },
+   {
+    "key": "temple_value",
+    "line": "best temple's value",
+    "result": "flat",
+    "slider": "Piety",
+    "values": {
+     "A": 0,
+     "B": 0
+    }
+   },
+   {
+    "key": "gods_housed_pct",
+    "line": "worshipped gods with a temple, %",
+    "result": "no data",
+    "slider": "Piety",
+    "values": {
+     "A": null,
+     "B": null
+    }
+   },
+   {
+    "key": "grand_temples",
+    "line": "grand temples (tier 2+)",
+    "result": "no data",
+    "slider": "Piety",
+    "values": {
+     "A": null,
+     "B": null
+    }
+   },
+   {
+    "key": "-unhappy_pct",
+    "line": "unhappy, % (lowest wins)",
+    "result": "flat",
+    "slider": "Welfare",
+    "values": {
+     "A": 5.0,
+     "B": 5.0
+    }
+   },
+   {
+    "key": "good_meals_pd",
+    "line": "good meals a dwarf",
+    "result": "no data",
+    "slider": "Welfare",
+    "values": {
+     "A": null,
+     "B": null
+    }
+   },
+   {
+    "key": "drink_kinds",
+    "line": "drink kinds",
+    "result": "no data",
+    "slider": "Welfare",
+    "values": {
+     "A": null,
+     "B": null
+    }
+   },
+   {
+    "key": "-same_booze_pct",
+    "line": "upset by the same booze, % (lowest wins)",
+    "result": "no data",
+    "slider": "Welfare",
+    "values": {
+     "A": null,
+     "B": null
+    }
+   },
+   {
+    "key": "visitors_open_pct",
+    "line": "locations open to visitors, %",
+    "result": "no data",
+    "slider": "Outsiders",
+    "values": {
+     "A": null,
+     "B": null
+    }
+   },
+   {
+    "key": "shut_days",
+    "line": "days shut to visitors",
+    "result": "flat",
+    "slider": "Outsiders",
+    "values": {
+     "A": 0.0,
+     "B": 0.0
+    }
+   },
+   {
+    "key": "guildhalls",
+    "line": "guildhalls",
+    "result": "flat",
+    "slider": "Outsiders",
+    "values": {
+     "A": 0,
+     "B": 0
+    }
+   },
+   {
+    "key": "petitions_yes",
+    "line": "petitions agreed",
+    "result": "flat",
+    "slider": "Outsiders",
+    "values": {
+     "A": 0,
+     "B": 0
+    }
+   },
+   {
+    "key": "petitions_no",
+    "line": "petitions declined",
+    "result": "flat",
+    "slider": "Outsiders",
+    "values": {
+     "A": 0,
+     "B": 0
+    }
+   },
+   {
+    "key": "trade_runs",
+    "line": "goods taken to caravans",
+    "result": "no data",
+    "slider": "Trade",
+    "values": {
+     "A": 2,
+     "B": 1
+    }
+   },
+   {
+    "key": "trade_value",
+    "line": "value taken to caravans",
+    "result": "no data",
+    "slider": "Trade",
+    "values": {
+     "A": 1099,
+     "B": 100
+    }
+   },
+   {
+    "key": "-gems_set",
+    "line": "gems set into goods (fewest wins)",
+    "result": "flat",
+    "slider": "Greed",
+    "values": {
+     "A": 0,
+     "B": 0
+    }
+   },
+   {
+    "key": "gems_kept_pct",
+    "line": "gems kept, % of gems cut",
+    "result": "no data",
+    "slider": "Greed",
+    "values": {
+     "A": null,
+     "B": null
+    }
+   },
+   {
+    "key": "treasures_kept",
+    "line": "treasures kept from the caravans",
+    "result": "no data",
+    "slider": "Greed",
+    "values": {
+     "A": 0,
+     "B": 0
+    }
+   },
+   {
+    "key": "statues",
+    "line": "statues",
+    "result": "flat",
+    "slider": "Grandeur",
+    "values": {
+     "A": 3,
+     "B": 3
+    }
+   },
+   {
+    "key": "halls",
+    "line": "meeting halls",
+    "result": "flat",
+    "slider": "Grandeur",
+    "values": {
+     "A": 0,
+     "B": 0
+    }
+   },
+   {
+    "key": "gardens",
+    "line": "garden levels",
+    "result": "flat",
+    "slider": "Grandeur",
+    "values": {
+     "A": 0,
+     "B": 0
+    }
+   },
+   {
+    "key": "legendary_pct",
+    "line": "legendary, % of adults",
+    "result": "no data",
+    "slider": "Craftsmanship",
+    "values": {
+     "A": null,
+     "B": null
+    }
+   },
+   {
+    "key": "craft_shops",
+    "line": "craftsdwarf's shops",
+    "result": "flat",
+    "slider": "Craftsmanship",
+    "values": {
+     "A": 0,
+     "B": 0
+    }
+   },
+   {
+    "key": "pop",
+    "line": "population",
+    "result": "no data",
+    "slider": "Growth",
+    "values": {
+     "A": 20,
+     "B": 20
+    }
+   },
+   {
+    "key": "welcome_pct",
+    "line": "newcomers welcome, % of the last year's days",
+    "result": "no data",
+    "slider": "Growth",
+    "values": {
+     "A": null,
+     "B": null
+    }
+   },
+   {
+    "key": "ore",
+    "line": "ore in store",
+    "result": "no data",
+    "slider": "Mining",
+    "values": {
+     "A": null,
+     "B": null
+    }
+   },
+   {
+    "key": "ore_runs",
+    "line": "veins mined",
+    "result": "no data",
+    "slider": "Mining",
+    "values": {
+     "A": 0,
+     "B": 0
+    }
+   },
+   {
+    "key": "deep_depot",
+    "line": "underground depot built",
+    "result": "no data",
+    "slider": "Mining",
+    "values": {
+     "A": 0,
+     "B": 0
+    }
+   },
+   {
+    "key": "z_span",
+    "line": "levels' height span",
+    "result": "no data",
+    "slider": "Verticality",
+    "values": {
+     "A": 1,
+     "B": 1
+    }
+   },
+   {
+    "key": "depth",
+    "line": "deepest level below the surface",
+    "result": "no data",
+    "slider": "Verticality",
+    "values": {
+     "A": 2,
+     "B": 2
+    }
+   },
+   {
+    "key": "levels_up",
+    "line": "levels at or above the surface",
+    "result": "no data",
+    "slider": "Surface",
+    "values": {
+     "A": 0,
+     "B": 0
+    }
+   },
+   {
+    "key": "surface_plots",
+    "line": "surface farm plots",
+    "result": "no data",
+    "slider": "Surface",
+    "values": {
+     "A": null,
+     "B": null
+    }
+   },
+   {
+    "key": "farm_tiles",
+    "line": "farm tiles",
+    "result": "no data",
+    "slider": "Agriculture",
+    "values": {
+     "A": 40,
+     "B": 60
+    }
+   },
+   {
+    "key": "plots",
+    "line": "farm plots",
+    "result": "no data",
+    "slider": "Agriculture",
+    "values": {
+     "A": 4,
+     "B": 4
+    }
+   },
+   {
+    "key": "animals",
+    "line": "tame animals",
+    "result": "no data",
+    "slider": "Husbandry",
+    "values": {
+     "A": null,
+     "B": null
+    }
+   },
+   {
+    "key": "pastures",
+    "line": "pastures",
+    "result": "no data",
+    "slider": "Husbandry",
+    "values": {
+     "A": null,
+     "B": null
+    }
+   },
+   {
+    "key": "breeding_pairs",
+    "line": "kinds with a breeding pair",
+    "result": "no data",
+    "slider": "Husbandry",
+    "values": {
+     "A": null,
+     "B": null
+    }
+   },
+   {
+    "key": "tamed",
+    "line": "wild animals tamed",
+    "result": "no data",
+    "slider": "Husbandry",
+    "values": {
+     "A": null,
+     "B": null
+    }
+   },
+   {
+    "key": "-idle_pct",
+    "line": "idle, % of adults not in squads (lowest wins)",
+    "result": "fail",
+    "slider": "Industriousness",
+    "values": {
+     "A": 40.0,
+     "B": 10.5
+    }
+   },
+   {
+    "key": "polish_runs",
+    "line": "levels smoothed or engraved",
+    "result": "flat",
+    "slider": "Industriousness",
+    "values": {
+     "A": 0,
+     "B": 0
+    }
+   },
+   {
+    "key": "suites",
+    "line": "suite levels",
+    "result": "flat",
+    "slider": "Deference",
+    "values": {
+     "A": 0,
+     "B": 0
+    }
+   },
+   {
+    "key": "offices",
+    "line": "offices",
+    "result": "flat",
+    "slider": "Deference",
+    "values": {
+     "A": 0,
+     "B": 0
+    }
+   },
+   {
+    "key": "-corridor_mean",
+    "line": "new corridor tiles a level (fewest wins)",
+    "result": "no data",
+    "slider": "Spacing",
+    "values": {
+     "A": null,
+     "B": null
+    }
+   },
+   {
+    "key": "-bedroom_tiles",
+    "line": "tiles a bedroom (smallest wins)",
+    "result": "no data",
+    "slider": "Spacing",
+    "values": {
+     "A": null,
+     "B": null
+    }
+   },
+   {
+    "key": "store_tiles_pd",
+    "line": "storage tiles a dwarf at the peak, stone aside",
+    "result": "no data",
+    "slider": "Stockpile",
+    "values": {
+     "A": null,
+     "B": null
+    }
+   },
+   {
+    "key": "stores_peak_pd",
+    "line": "drink and meals a dwarf at the peak",
+    "result": "no data",
+    "slider": "Stockpile",
+    "values": {
+     "A": 0.0,
+     "B": 0.0
+    }
+   },
+   {
+    "key": "custom_M",
+    "line": "cloister temples and cells",
+    "result": "flat",
+    "slider": "Piety",
+    "values": {
+     "A": 0,
+     "B": 0
+    }
+   },
+   {
+    "key": "custom_ME",
+    "line": "wide ways, tavern by the gate",
+    "result": "no data",
+    "slider": "Trade",
+    "values": {
+     "A": 0,
+     "B": 0
+    }
+   },
+   {
+    "key": "custom_H",
+    "line": "winding ways, hidden levels",
+    "result": "no data",
+    "slider": "Outsiders",
+    "values": {
+     "A": 0,
+     "B": 0
+    }
+   },
+   {
+    "key": "custom_W",
+    "line": "barracks by the gate, armouries",
+    "result": "flat",
+    "slider": "Militarism",
+    "values": {
+     "A": 0,
+     "B": 0
+    }
+   },
+   {
+    "key": "custom_D",
+    "line": "deep halls, ore piles",
+    "result": "no data",
+    "slider": "Mining",
+    "values": {
+     "A": 0,
+     "B": 0
+    }
+   },
+   {
+    "key": "custom_G",
+    "line": "halls and kitchens by the fields",
+    "result": "no data",
+    "slider": "Agriculture",
+    "values": {
+     "A": 0,
+     "B": 0
+    }
+   },
+   {
+    "key": "built_up",
+    "line": "constructed tiles above ground",
+    "result": "no data",
+    "slider": "Surface",
+    "values": {
+     "A": null,
+     "B": null
+    }
+   },
+   {
+    "key": "roofed_up",
+    "line": "roofed surface tiles",
+    "result": "no data",
+    "slider": "Surface",
+    "values": {
+     "A": null,
+     "B": null
+    }
+   },
+   {
+    "key": "gate_walls",
+    "line": "gate walls and wings",
+    "result": "no data",
+    "slider": "Fortification",
+    "values": {
+     "A": null,
+     "B": null
+    }
+   },
+   {
+    "key": "cavern_walls",
+    "line": "cavern openings walled",
+    "result": "no data",
+    "slider": "Fortification",
+    "values": {
+     "A": null,
+     "B": null
+    }
+   },
+   {
+    "key": "block_pct",
+    "line": "constructions of blocks, %",
+    "result": "no data",
+    "slider": "Craftsmanship",
+    "values": {
+     "A": null,
+     "B": null
+    }
+   },
+   {
+    "key": "soil_floors",
+    "line": "soil floors finished",
+    "result": "no data",
+    "slider": "Grandeur",
+    "values": {
+     "A": null,
+     "B": null
+    }
+   }
+  ],
+  {
+   "good": [],
+   "health": {
+    "A": [
+     "truly idle adults not in squads 40"
+    ],
+    "B": []
+   },
+   "lines": 72,
+   "presets": {
+    "A": "War-hold",
+    "B": "Monastery"
+   },
+   "runs": {
+    "A": null,
+    "B": null
+   },
+   "tally": {
+    "fail": 1,
+    "flat": 25,
+    "no data": 45,
+    "pass": 1
+   },
+   "title": "each fort's newest season"
+  }
+ ]
+}

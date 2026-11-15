@@ -1,0 +1,602 @@
+{
+ "blueprints/bad_door_in_air.json": {
+  "check": "sha256:5904138818b880fbd342fc54",
+  "cost": "{1={built=number:5,doors=number:1,dug=number:0,items=number:0,jobs=number:20,stairs=number:1,statues=number:0,},n=number:1,}",
+  "layouts": [
+   "sha256:5efbd7633d740f5e3ab0e5b5",
+   "sha256:5efbd7633d740f5e3ab0e5b5",
+   "sha256:5efbd7633d740f5e3ab0e5b5",
+   "sha256:5efbd7633d740f5e3ab0e5b5"
+  ]
+ },
+ "blueprints/bad_doors.json": {
+  "check": "sha256:3d3f8ca9e830db1a2a80b687",
+  "cost": "{1={built=number:0,doors=number:9,dug=number:20,items=number:0,jobs=number:20,stairs=number:0,statues=number:0,},n=number:1,}",
+  "layouts": [
+   "sha256:3ed38adbdb25ead191b507ac",
+   "sha256:3ed38adbdb25ead191b507ac",
+   "sha256:3ed38adbdb25ead191b507ac",
+   "sha256:3ed38adbdb25ead191b507ac"
+  ]
+ },
+ "blueprints/bad_empty_lower.json": {
+  "check": "sha256:9cf698ac193f1b2f77912e64",
+  "cost": "{1={built=number:0,doors=number:0,dug=number:2,items=number:0,jobs=number:2,stairs=number:0,statues=number:0,},n=number:1,}",
+  "layouts": [
+   "sha256:3cae84a3ba6e095d75a541b1",
+   "sha256:3cae84a3ba6e095d75a541b1",
+   "sha256:3cae84a3ba6e095d75a541b1",
+   "sha256:3cae84a3ba6e095d75a541b1"
+  ]
+ },
+ "blueprints/bad_finish.json": {
+  "check": "sha256:8e391e61592e65f2156913c2",
+  "cost": "{1={built=number:0,doors=number:0,dug=number:2,items=number:0,jobs=number:2,stairs=number:0,statues=number:0,},n=number:1,}",
+  "layouts": [
+   "sha256:2fda5d66c7373b984e143fba",
+   "sha256:2fda5d66c7373b984e143fba",
+   "sha256:2fda5d66c7373b984e143fba",
+   "sha256:2fda5d66c7373b984e143fba"
+  ]
+ },
+ "blueprints/bad_floating.json": {
+  "check": "sha256:1aa37d6b211f21191beebf73",
+  "cost": "{1={built=number:3,doors=number:0,dug=number:0,items=number:0,jobs=number:12,stairs=number:1,statues=number:0,},n=number:1,}",
+  "layouts": [
+   "sha256:74458a514111767c4843d61a",
+   "sha256:74458a514111767c4843d61a",
+   "sha256:74458a514111767c4843d61a",
+   "sha256:74458a514111767c4843d61a"
+  ]
+ },
+ "blueprints/bad_floor_on_wall.json": {
+  "check": "sha256:266c7a7b2940d4f3fd6ed7b0",
+  "cost": "{1={built=number:7,doors=number:0,dug=number:0,items=number:0,jobs=number:28,stairs=number:1,statues=number:0,},n=number:1,}",
+  "layouts": [
+   "sha256:5069db625793ba213d77a461",
+   "sha256:5069db625793ba213d77a461",
+   "sha256:5069db625793ba213d77a461",
+   "sha256:5069db625793ba213d77a461"
+  ]
+ },
+ "blueprints/bad_ground.json": {
+  "check": "sha256:acc6592c3004dabb4bef22ec",
+  "cost": "{1={built=number:0,doors=number:0,dug=number:1,items=number:0,jobs=number:1,stairs=number:0,statues=number:0,},n=number:1,}",
+  "layouts": [
+   "sha256:60ff99d01e84bae90465b703",
+   "sha256:60ff99d01e84bae90465b703",
+   "sha256:60ff99d01e84bae90465b703",
+   "sha256:60ff99d01e84bae90465b703"
+  ]
+ },
+ "blueprints/bad_island.json": {
+  "check": "sha256:f1eb871e4c6e3b00f3e4c4e2",
+  "cost": "{1={built=number:0,doors=number:0,dug=number:3,items=number:0,jobs=number:3,stairs=number:0,statues=number:0,},n=number:1,}",
+  "layouts": [
+   "sha256:42a537e71e287d9101ee5dcb",
+   "sha256:42a537e71e287d9101ee5dcb",
+   "sha256:42a537e71e287d9101ee5dcb",
+   "sha256:42a537e71e287d9101ee5dcb"
+  ]
+ },
+ "blueprints/bad_join_row.json": {
+  "check": "sha256:5543a1e1fec714d551a000f8",
+  "cost": "{1={built=number:0,doors=number:0,dug=number:2,items=number:0,jobs=number:2,stairs=number:0,statues=number:0,},n=number:1,}",
+  "layouts": [
+   "sha256:0a1b34e1e989f0bee1f50aa9",
+   "sha256:0a1b34e1e989f0bee1f50aa9",
+   "sha256:0a1b34e1e989f0bee1f50aa9",
+   "sha256:0a1b34e1e989f0bee1f50aa9"
+  ]
+ },
+ "blueprints/bad_legend_count.json": {
+  "check": "sha256:a3f44d9b71fe57a56804d42a",
+  "cost": "{1={built=number:0,doors=number:0,dug=number:14,items=number:13,jobs=number:144,stairs=number:0,statues=number:0,},n=number:1,}",
+  "layouts": [
+   "sha256:d0af1ae321dd40a2c7cfa1bb",
+   "sha256:d0af1ae321dd40a2c7cfa1bb",
+   "sha256:d0af1ae321dd40a2c7cfa1bb",
+   "sha256:d0af1ae321dd40a2c7cfa1bb"
+  ]
+ },
+ "blueprints/bad_legend_item.json": {
+  "check": "sha256:84f8b6e20a60ac8a2d9ed0a4",
+  "cost": "{1={built=number:0,doors=number:0,dug=number:2,items=number:0,jobs=number:2,stairs=number:0,statues=number:0,},n=number:1,}",
+  "layouts": [
+   "sha256:407b49c0e571e9809b504b13",
+   "sha256:407b49c0e571e9809b504b13",
+   "sha256:407b49c0e571e9809b504b13",
+   "sha256:407b49c0e571e9809b504b13"
+  ]
+ },
+ "blueprints/bad_legend_missing.json": {
+  "check": "sha256:61b1dc3779372ca836bc7ebc",
+  "cost": "{1={built=number:0,doors=number:0,dug=number:2,items=number:0,jobs=number:2,stairs=number:0,statues=number:0,},n=number:1,}",
+  "layouts": [
+   "sha256:a170fdb4a49f0d171509992e",
+   "sha256:a170fdb4a49f0d171509992e",
+   "sha256:a170fdb4a49f0d171509992e",
+   "sha256:a170fdb4a49f0d171509992e"
+  ]
+ },
+ "blueprints/bad_level_size.json": {
+  "check": "sha256:a612520c4dbc863a1879b422",
+  "cost": "{1={built=number:0,doors=number:0,dug=number:3,items=number:0,jobs=number:3,stairs=number:0,statues=number:0,},n=number:1,}",
+  "layouts": [
+   "sha256:352173e7919480822d454cb9",
+   "sha256:352173e7919480822d454cb9",
+   "sha256:352173e7919480822d454cb9",
+   "sha256:352173e7919480822d454cb9"
+  ]
+ },
+ "blueprints/bad_name.json": {
+  "check": "sha256:17690e053bb3f21d2659a9e4",
+  "cost": "{1={built=number:0,doors=number:0,dug=number:2,items=number:0,jobs=number:2,stairs=number:0,statues=number:0,},n=number:1,}",
+  "layouts": [
+   "sha256:66791c6d65ef5b8ffaf38053",
+   "sha256:66791c6d65ef5b8ffaf38053",
+   "sha256:66791c6d65ef5b8ffaf38053",
+   "sha256:66791c6d65ef5b8ffaf38053"
+  ]
+ },
+ "blueprints/bad_no_join.json": {
+  "check": "sha256:6f02e7afd7520b4832b092eb",
+  "cost": "{1={built=number:0,doors=number:0,dug=number:1,items=number:0,jobs=number:1,stairs=number:0,statues=number:0,},n=number:1,}",
+  "layouts": [
+   "sha256:ad97f58bca070996fcc631dd",
+   "sha256:ad97f58bca070996fcc631dd",
+   "sha256:ad97f58bca070996fcc631dd",
+   "sha256:ad97f58bca070996fcc631dd"
+  ]
+ },
+ "blueprints/bad_no_levels.json": {
+  "check": "sha256:a783d5c269a53e203f2fbdcb",
+  "cost": "{1={built=number:0,doors=number:0,dug=number:0,items=number:0,jobs=number:0,stairs=number:0,statues=number:0,},n=number:1,}",
+  "layouts": [
+   "sha256:fc2d0c70c6de6657542ae426",
+   "sha256:fc2d0c70c6de6657542ae426",
+   "sha256:fc2d0c70c6de6657542ae426",
+   "sha256:fc2d0c70c6de6657542ae426"
+  ]
+ },
+ "blueprints/bad_purpose.json": {
+  "check": "sha256:c8b3889e945b4ca645c73e0f",
+  "cost": "{1={built=number:0,doors=number:0,dug=number:2,items=number:0,jobs=number:2,stairs=number:0,statues=number:0,},n=number:1,}",
+  "layouts": [
+   "sha256:9781170504e410659ad0b124",
+   "sha256:9781170504e410659ad0b124",
+   "sha256:9781170504e410659ad0b124",
+   "sha256:9781170504e410659ad0b124"
+  ]
+ },
+ "blueprints/bad_ragged.json": {
+  "check": "sha256:8d1e49fe648aa9057558d2eb",
+  "cost": "{1={built=number:0,doors=number:0,dug=number:3,items=number:0,jobs=number:3,stairs=number:0,statues=number:0,},n=number:1,}",
+  "layouts": [
+   "sha256:bb1c6679256bdea08f1d0989",
+   "sha256:bb1c6679256bdea08f1d0989",
+   "sha256:bb1c6679256bdea08f1d0989",
+   "sha256:bb1c6679256bdea08f1d0989"
+  ]
+ },
+ "blueprints/bad_ramp_under_rock.json": {
+  "check": "sha256:9102e321c60e950960e2b41c",
+  "cost": "{1={built=number:0,doors=number:0,dug=number:4,items=number:0,jobs=number:4,stairs=number:0,statues=number:0,},n=number:1,}",
+  "layouts": [
+   "sha256:7e771944d4982323e1a5f530",
+   "sha256:7e771944d4982323e1a5f530",
+   "sha256:7e771944d4982323e1a5f530",
+   "sha256:7e771944d4982323e1a5f530"
+  ]
+ },
+ "blueprints/bad_rock_in_surface.json": {
+  "check": "sha256:d68cbde5e0ffd6f317835abc",
+  "cost": "{1={built=number:0,doors=number:0,dug=number:0,items=number:0,jobs=number:0,stairs=number:0,statues=number:0,},n=number:1,}",
+  "layouts": [
+   "sha256:4094d6ef3fcc835f8554125e",
+   "sha256:4094d6ef3fcc835f8554125e",
+   "sha256:4094d6ef3fcc835f8554125e",
+   "sha256:4094d6ef3fcc835f8554125e"
+  ]
+ },
+ "blueprints/bad_row_type.json": {
+  "check": "sha256:d87949762b44f3e3af6e971c",
+  "cost": "{1={built=number:0,doors=number:0,dug=number:1,items=number:0,jobs=number:1,stairs=number:0,statues=number:0,},n=number:1,}",
+  "layouts": [
+   "sha256:d8486a63e59ac942752c5787",
+   "sha256:d8486a63e59ac942752c5787",
+   "sha256:d8486a63e59ac942752c5787",
+   "sha256:d8486a63e59ac942752c5787"
+  ]
+ },
+ "blueprints/bad_six_levels.json": {
+  "check": "sha256:8aa322f782d3ac87d3329f61",
+  "cost": "{1={built=number:0,doors=number:0,dug=number:6,items=number:0,jobs=number:6,stairs=number:0,statues=number:0,},n=number:1,}",
+  "layouts": [
+   "sha256:a334884920ad8b4882c6f8c0",
+   "sha256:a334884920ad8b4882c6f8c0",
+   "sha256:a334884920ad8b4882c6f8c0",
+   "sha256:a334884920ad8b4882c6f8c0"
+  ]
+ },
+ "blueprints/bad_stair_below_rock.json": {
+  "check": "sha256:72fcf99f38b713d7f3ad85d8",
+  "cost": "{1={built=number:0,doors=number:0,dug=number:3,items=number:0,jobs=number:3,stairs=number:1,statues=number:0,},n=number:1,}",
+  "layouts": [
+   "sha256:d0ecce349de49bfbf632d07d",
+   "sha256:d0ecce349de49bfbf632d07d",
+   "sha256:d0ecce349de49bfbf632d07d",
+   "sha256:d0ecce349de49bfbf632d07d"
+  ]
+ },
+ "blueprints/bad_stair_columns.json": {
+  "check": "sha256:dbe1a9cf312aafe115abce1f",
+  "cost": "{1={built=number:0,doors=number:0,dug=number:13,items=number:0,jobs=number:13,stairs=number:5,statues=number:0,},n=number:1,}",
+  "layouts": [
+   "sha256:3acf6191df013d49188285cc",
+   "sha256:3acf6191df013d49188285cc",
+   "sha256:3acf6191df013d49188285cc",
+   "sha256:3acf6191df013d49188285cc"
+  ]
+ },
+ "blueprints/bad_stair_into_nothing.json": {
+  "check": "sha256:66e11c86479073ad5604498b",
+  "cost": "{1={built=number:0,doors=number:0,dug=number:3,items=number:0,jobs=number:3,stairs=number:1,statues=number:0,},n=number:1,}",
+  "layouts": [
+   "sha256:fd8c569e1e4ce4319f57ab11",
+   "sha256:fd8c569e1e4ce4319f57ab11",
+   "sha256:fd8c569e1e4ce4319f57ab11",
+   "sha256:fd8c569e1e4ce4319f57ab11"
+  ]
+ },
+ "blueprints/bad_statue_blocks.json": {
+  "check": "sha256:b8a53955b5f85a4a4266aab8",
+  "cost": "{1={built=number:0,doors=number:0,dug=number:6,items=number:1,jobs=number:16,stairs=number:0,statues=number:1,},n=number:1,}",
+  "layouts": [
+   "sha256:9df1875b142e63fbdc708fdb",
+   "sha256:9df1875b142e63fbdc708fdb",
+   "sha256:9df1875b142e63fbdc708fdb",
+   "sha256:9df1875b142e63fbdc708fdb"
+  ]
+ },
+ "blueprints/bad_statues.json": {
+  "check": "sha256:611eecb23b2468a49ccb507a",
+  "cost": "{1={built=number:0,doors=number:0,dug=number:36,items=number:17,jobs=number:206,stairs=number:0,statues=number:17,},n=number:1,}",
+  "layouts": [
+   "sha256:a806daa9d1921fac0d5ee64c",
+   "sha256:a806daa9d1921fac0d5ee64c",
+   "sha256:a806daa9d1921fac0d5ee64c",
+   "sha256:a806daa9d1921fac0d5ee64c"
+  ]
+ },
+ "blueprints/bad_surface_in_rock.json": {
+  "check": "sha256:5484cb3dc9fd368971e5005b",
+  "cost": "{1={built=number:0,doors=number:0,dug=number:1,items=number:0,jobs=number:1,stairs=number:0,statues=number:0,},n=number:1,}",
+  "layouts": [
+   "sha256:ed67f5957241ea39bd52da1e",
+   "sha256:ed67f5957241ea39bd52da1e",
+   "sha256:ed67f5957241ea39bd52da1e",
+   "sha256:ed67f5957241ea39bd52da1e"
+  ]
+ },
+ "blueprints/bad_surface_up_top.json": {
+  "check": "sha256:9453b979bed5e4e177fceece",
+  "cost": "{1={built=number:5,doors=number:0,dug=number:0,items=number:0,jobs=number:20,stairs=number:1,statues=number:0,},n=number:1,}",
+  "layouts": [
+   "sha256:aaf0f3a1eb8255e4b34d2e07",
+   "sha256:aaf0f3a1eb8255e4b34d2e07",
+   "sha256:aaf0f3a1eb8255e4b34d2e07",
+   "sha256:aaf0f3a1eb8255e4b34d2e07"
+  ]
+ },
+ "blueprints/bad_symbol.json": {
+  "check": "sha256:fd08bf6d7f93efd7879ef4c5",
+  "cost": "{1={built=number:0,doors=number:0,dug=number:1,items=number:0,jobs=number:1,stairs=number:0,statues=number:0,},n=number:1,}",
+  "layouts": [
+   "sha256:4b44a5ffc57dca234b8234dc",
+   "sha256:4b44a5ffc57dca234b8234dc",
+   "sha256:4b44a5ffc57dca234b8234dc",
+   "sha256:4b44a5ffc57dca234b8234dc"
+  ]
+ },
+ "blueprints/bad_too_much_digging.json": {
+  "check": "sha256:b23e60ab3c02e8eff3253659",
+  "cost": "{1={built=number:0,doors=number:0,dug=number:961,items=number:0,jobs=number:961,stairs=number:0,statues=number:0,},n=number:1,}",
+  "layouts": [
+   "sha256:887030b1f79f63c9546be0f6",
+   "sha256:887030b1f79f63c9546be0f6",
+   "sha256:887030b1f79f63c9546be0f6",
+   "sha256:887030b1f79f63c9546be0f6"
+  ]
+ },
+ "blueprints/bad_too_wide.json": {
+  "check": "sha256:0466f99c3ca16f450906e82c",
+  "cost": "{1={built=number:0,doors=number:0,dug=number:32,items=number:0,jobs=number:32,stairs=number:0,statues=number:0,},n=number:1,}",
+  "layouts": [
+   "sha256:8a5ce960136976af59697495",
+   "sha256:8a5ce960136976af59697495",
+   "sha256:8a5ce960136976af59697495",
+   "sha256:8a5ce960136976af59697495"
+  ]
+ },
+ "blueprints/bad_two_joins.json": {
+  "check": "sha256:b3aa1eb3cd0712508bd24187",
+  "cost": "{1={built=number:0,doors=number:0,dug=number:4,items=number:0,jobs=number:4,stairs=number:0,statues=number:0,},n=number:1,}",
+  "layouts": [
+   "sha256:8460ff3b57e8de0a64a4ce5b",
+   "sha256:8460ff3b57e8de0a64a4ce5b",
+   "sha256:8460ff3b57e8de0a64a4ce5b",
+   "sha256:8460ff3b57e8de0a64a4ce5b"
+  ]
+ },
+ "blueprints/bad_unicode.json": {
+  "check": "sha256:077b6f86b5f67f12e0ec4a15",
+  "cost": "{1={built=number:0,doors=number:0,dug=number:1,items=number:0,jobs=number:1,stairs=number:0,statues=number:0,},n=number:1,}",
+  "layouts": [
+   "sha256:9877e6b11962708330bcaad3",
+   "sha256:9877e6b11962708330bcaad3",
+   "sha256:9877e6b11962708330bcaad3",
+   "sha256:9877e6b11962708330bcaad3"
+  ]
+ },
+ "blueprints/bad_up_on_first.json": {
+  "check": "sha256:6b66dbc445a474a28d05a8a2",
+  "cost": "{1={built=number:0,doors=number:0,dug=number:2,items=number:0,jobs=number:2,stairs=number:1,statues=number:0,},n=number:1,}",
+  "layouts": [
+   "sha256:c66b68891e739dc9838d794c",
+   "sha256:c66b68891e739dc9838d794c",
+   "sha256:c66b68891e739dc9838d794c",
+   "sha256:c66b68891e739dc9838d794c"
+  ]
+ },
+ "blueprints/bad_version.json": {
+  "check": "sha256:36f796ab7639c9339af35155",
+  "cost": "{1={built=number:0,doors=number:0,dug=number:2,items=number:0,jobs=number:2,stairs=number:0,statues=number:0,},n=number:1,}",
+  "layouts": [
+   "sha256:9b2d1448db9a8403a04562ae",
+   "sha256:9b2d1448db9a8403a04562ae",
+   "sha256:9b2d1448db9a8403a04562ae",
+   "sha256:9b2d1448db9a8403a04562ae"
+  ]
+ },
+ "blueprints/bad_workshop_cramped.json": {
+  "check": "sha256:8efb53b0d495d8287335ecd9",
+  "cost": "{1={built=number:0,doors=number:0,dug=number:7,items=number:1,jobs=number:17,stairs=number:0,statues=number:0,},n=number:1,}",
+  "layouts": [
+   "sha256:f9b5ff9ec0c413b6a4c7f83f",
+   "sha256:f9b5ff9ec0c413b6a4c7f83f",
+   "sha256:f9b5ff9ec0c413b6a4c7f83f",
+   "sha256:f9b5ff9ec0c413b6a4c7f83f"
+  ]
+ },
+ "blueprints/bad_zone_kind.json": {
+  "check": "sha256:93c9949e6a3c2ee0d6bb8aa2",
+  "cost": "{1={built=number:0,doors=number:0,dug=number:2,items=number:0,jobs=number:2,stairs=number:0,statues=number:0,},n=number:1,}",
+  "layouts": [
+   "sha256:ddc55b6f669c115a044de565",
+   "sha256:ddc55b6f669c115a044de565",
+   "sha256:ddc55b6f669c115a044de565",
+   "sha256:ddc55b6f669c115a044de565"
+  ]
+ },
+ "blueprints/bad_zone_level.json": {
+  "check": "sha256:57298d7f7fc2da07a87a583e",
+  "cost": "{1={built=number:0,doors=number:0,dug=number:2,items=number:0,jobs=number:2,stairs=number:0,statues=number:0,},n=number:1,}",
+  "layouts": [
+   "sha256:0580df847c93303192d8e7df",
+   "sha256:0580df847c93303192d8e7df",
+   "sha256:0580df847c93303192d8e7df",
+   "sha256:0580df847c93303192d8e7df"
+  ]
+ },
+ "blueprints/good_cross_hall.json": {
+  "check": "sha256:b813d7bef53ecef9d4c78135",
+  "cost": "{1={built=number:0,doors=number:0,dug=number:46,items=number:4,jobs=number:86,stairs=number:0,statues=number:4,},n=number:1,}",
+  "layouts": [
+   "sha256:2159c7968fc1c2889dc00cff",
+   "sha256:8cc65cb315829e65b0444fae",
+   "sha256:1ffea30def363839e7ce6b94",
+   "sha256:6a0bcfe32da2bb872f8c2684"
+  ]
+ },
+ "blueprints/good_doors.json": {
+  "check": "sha256:b813d7bef53ecef9d4c78135",
+  "cost": "{1={built=number:0,doors=number:1,dug=number:24,items=number:0,jobs=number:24,stairs=number:0,statues=number:0,},n=number:1,}",
+  "layouts": [
+   "sha256:1b911e24f3074ef48582b119",
+   "sha256:3f9e0ab821745b52f2eea54e",
+   "sha256:f350021c737052d4f3c406d7",
+   "sha256:78ac577595a159d517f701c8"
+  ]
+ },
+ "blueprints/good_engraved.json": {
+  "check": "sha256:b813d7bef53ecef9d4c78135",
+  "cost": "{1={built=number:0,doors=number:0,dug=number:36,items=number:0,jobs=number:36,stairs=number:0,statues=number:0,},n=number:1,}",
+  "layouts": [
+   "sha256:576226655d51543b58c16770",
+   "sha256:55f5f9266f65b47f07e2772d",
+   "sha256:7a03355e183d2befc898a8e6",
+   "sha256:fd40d4fe36675b97d1948ada"
+  ]
+ },
+ "blueprints/good_gate_hall.json": {
+  "check": "sha256:b813d7bef53ecef9d4c78135",
+  "cost": "{1={built=number:0,doors=number:0,dug=number:26,items=number:4,jobs=number:66,stairs=number:0,statues=number:0,},n=number:1,}",
+  "layouts": [
+   "sha256:52166504a1d02a4beeb3deb9",
+   "sha256:4e472d836f2b52c0aff0b0c9",
+   "sha256:d660c49e88db055515c92289",
+   "sha256:4afa6f1ed5f4c11b53985a04"
+  ]
+ },
+ "blueprints/good_library.json": {
+  "check": "sha256:b813d7bef53ecef9d4c78135",
+  "cost": "{1={built=number:0,doors=number:0,dug=number:36,items=number:5,jobs=number:86,stairs=number:0,statues=number:0,},n=number:1,}",
+  "layouts": [
+   "sha256:679cb5f3096f78f68c0564c6",
+   "sha256:6000260fbb602b66c3dc7146",
+   "sha256:6763af671dd4e94685e1208d",
+   "sha256:4f62d7015660477d33c4d27a"
+  ]
+ },
+ "blueprints/good_meeting.json": {
+  "check": "sha256:b813d7bef53ecef9d4c78135",
+  "cost": "{1={built=number:0,doors=number:0,dug=number:36,items=number:3,jobs=number:66,stairs=number:0,statues=number:0,},n=number:1,}",
+  "layouts": [
+   "sha256:5559b1b722ed88f6926d6fd5",
+   "sha256:4d1098c4353320f969781a83",
+   "sha256:04b92552cdffa4a3973e337d",
+   "sha256:bd803fcdb2b6b838052541f1"
+  ]
+ },
+ "blueprints/good_necropolis.json": {
+  "check": "sha256:b813d7bef53ecef9d4c78135",
+  "cost": "{1={built=number:0,doors=number:0,dug=number:71,items=number:6,jobs=number:131,stairs=number:1,statues=number:0,},n=number:1,}",
+  "layouts": [
+   "sha256:4de154cdaa027d11855a9747",
+   "sha256:dad7534f06624d1c3f06da81",
+   "sha256:36faa84cec9fdddc18cefe50",
+   "sha256:102ccdf5b7749af183286d87"
+  ]
+ },
+ "blueprints/good_ramp.json": {
+  "check": "sha256:b813d7bef53ecef9d4c78135",
+  "cost": "{1={built=number:0,doors=number:0,dug=number:31,items=number:0,jobs=number:31,stairs=number:0,statues=number:0,},n=number:1,}",
+  "layouts": [
+   "sha256:849546ffc7cd94be29b30740",
+   "sha256:8d5f41fbac6d0b2881f19cb5",
+   "sha256:44d1f91ac36ff991cb627f26",
+   "sha256:c13a36abf7e186ddae114f3b"
+  ]
+ },
+ "blueprints/good_small_room.json": {
+  "check": "sha256:b813d7bef53ecef9d4c78135",
+  "cost": "{1={built=number:0,doors=number:0,dug=number:10,items=number:0,jobs=number:10,stairs=number:0,statues=number:0,},n=number:1,}",
+  "layouts": [
+   "sha256:67cab2c9dd199e89a651fddd",
+   "sha256:27042e84a01a909e0506146b",
+   "sha256:2273b566e349907274bcd28d",
+   "sha256:110d914812aab63031c05668"
+  ]
+ },
+ "blueprints/good_spiral_descent.json": {
+  "check": "sha256:b813d7bef53ecef9d4c78135",
+  "cost": "{1={built=number:0,doors=number:0,dug=number:197,items=number:3,jobs=number:227,stairs=number:1,statues=number:3,},n=number:1,}",
+  "layouts": [
+   "sha256:02f5972b56480f4ecbbcbf08",
+   "sha256:f33f4c9bd6b244bebc1658af",
+   "sha256:0261e93e3c83b98e644ca8de",
+   "sha256:c579327b99d5bc16e75100a5"
+  ]
+ },
+ "blueprints/good_surface_room.json": {
+  "check": "sha256:b813d7bef53ecef9d4c78135",
+  "cost": "{1={built=number:8,doors=number:1,dug=number:0,items=number:0,jobs=number:32,stairs=number:0,statues=number:0,},n=number:1,}",
+  "layouts": [
+   "sha256:81f21e40f3c8f5d7e6db8989",
+   "sha256:75b641a4d85895f7a0723caf",
+   "sha256:0219c966f6ac121083f37950",
+   "sha256:ef3d10b7d7d17731638ff301"
+  ]
+ },
+ "blueprints/good_tower.json": {
+  "check": "sha256:b813d7bef53ecef9d4c78135",
+  "cost": "{1={built=number:112,doors=number:0,dug=number:0,items=number:1,jobs=number:458,stairs=number:1,statues=number:1,},n=number:1,}",
+  "layouts": [
+   "sha256:9e8be780c485a86d0262061e",
+   "sha256:1396876de3b76620540c8c7d",
+   "sha256:34c3204b096f0a47c24cbaad",
+   "sha256:5195e04a3e80bd32c957c8f1"
+  ]
+ },
+ "blueprints/good_wide_hall.json": {
+  "check": "sha256:b813d7bef53ecef9d4c78135",
+  "cost": "{1={built=number:0,doors=number:0,dug=number:507,items=number:0,jobs=number:507,stairs=number:0,statues=number:0,},n=number:1,}",
+  "layouts": [
+   "sha256:c517574ecaa0c4baa61c0dce",
+   "sha256:e028be606c16dc33496b160c",
+   "sha256:fb927914f1f31b14bad39d83",
+   "sha256:84b08695a36632b3d78839ab"
+  ]
+ },
+ "blueprints/good_workshop_hall.json": {
+  "check": "sha256:b813d7bef53ecef9d4c78135",
+  "cost": "{1={built=number:0,doors=number:0,dug=number:56,items=number:2,jobs=number:76,stairs=number:0,statues=number:0,},n=number:1,}",
+  "layouts": [
+   "sha256:96fe4c8132ad98e39f12884e",
+   "sha256:df520a2b586b909793c95d03",
+   "sha256:b50d77c633f0fcf1cfaf3ccf",
+   "sha256:6ae130177e97f3845566a619"
+  ]
+ },
+ "blueprints/good_ziggurat.json": {
+  "check": "sha256:b813d7bef53ecef9d4c78135",
+  "cost": "{1={built=number:132,doors=number:0,dug=number:0,items=number:1,jobs=number:538,stairs=number:1,statues=number:1,},n=number:1,}",
+  "layouts": [
+   "sha256:45340d34ec82e8ea6273af31",
+   "sha256:ef8c1fa1f137b2b155bde4b4",
+   "sha256:389a37ba9458d49f65072999",
+   "sha256:436eb8db2d8e884875d1c666"
+  ]
+ },
+ "landmarks/descent.json": {
+  "check": "sha256:b813d7bef53ecef9d4c78135",
+  "cost": "{1={built=number:0,doors=number:0,dug=number:217,items=number:5,jobs=number:267,stairs=number:3,statues=number:5,},n=number:1,}",
+  "layouts": [
+   "sha256:a677414777c22911e89ec3ca",
+   "sha256:db1fc42511aad9d39411fde7",
+   "sha256:3317992c03e4c858f03323cd",
+   "sha256:76d41367597cdeba67a3828f"
+  ]
+ },
+ "landmarks/gate_hall.json": {
+  "check": "sha256:b813d7bef53ecef9d4c78135",
+  "cost": "{1={built=number:0,doors=number:1,dug=number:106,items=number:9,jobs=number:196,stairs=number:0,statues=number:3,},n=number:1,}",
+  "layouts": [
+   "sha256:09556d842b3e24ab505b3836",
+   "sha256:b859cf73a9d3dd8a2066c603",
+   "sha256:1098ac64eec56e26feb07889",
+   "sha256:2acc536c9c0de896bcf27119"
+  ]
+ },
+ "landmarks/god_hall.json": {
+  "check": "sha256:b813d7bef53ecef9d4c78135",
+  "cost": "{1={built=number:0,doors=number:1,dug=number:230,items=number:18,jobs=number:410,stairs=number:0,statues=number:10,},n=number:1,}",
+  "layouts": [
+   "sha256:a40f6a1d629683fb7c369b63",
+   "sha256:772df8840a16a25f28c5587d",
+   "sha256:9bcd37f74164b17d89468eb4",
+   "sha256:40e3528a78b73a3c70d215ee"
+  ]
+ },
+ "landmarks/great_hall.json": {
+  "check": "sha256:b813d7bef53ecef9d4c78135",
+  "cost": "{1={built=number:0,doors=number:0,dug=number:530,items=number:24,jobs=number:770,stairs=number:0,statues=number:8,},n=number:1,}",
+  "layouts": [
+   "sha256:21e165e1a88317adef91c254",
+   "sha256:1bc56dddda95ba4800553fa7",
+   "sha256:d1994d61d444370faf20b32d",
+   "sha256:f31b1cb362da117c6157eed5"
+  ]
+ },
+ "landmarks/necropolis.json": {
+  "check": "sha256:b813d7bef53ecef9d4c78135",
+  "cost": "{1={built=number:0,doors=number:0,dug=number:291,items=number:36,jobs=number:651,stairs=number:1,statues=number:4,},n=number:1,}",
+  "layouts": [
+   "sha256:96d4abae184c7e257a68250a",
+   "sha256:9293b335a6d20090f3e17ed8",
+   "sha256:07a3363223df17fb8066baaa",
+   "sha256:1a0bdbfdbd9e6c67ea67d4e7"
+  ]
+ },
+ "landmarks/ziggurat.json": {
+  "check": "sha256:b813d7bef53ecef9d4c78135",
+  "cost": "{1={built=number:177,doors=number:1,dug=number:0,items=number:0,jobs=number:708,stairs=number:2,statues=number:0,},n=number:1,}",
+  "layouts": [
+   "sha256:336be7560f9fc910958a4147",
+   "sha256:68e7effc9f7df02170fde4a0",
+   "sha256:055062c4fe8c4c4c5b48b70c",
+   "sha256:7d4356f5ed19705014a3d7ff"
+  ]
+ }
+}

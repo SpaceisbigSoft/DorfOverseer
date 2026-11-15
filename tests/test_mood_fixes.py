@@ -28,7 +28,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "brain"))
 sys.path.insert(0, str(ROOT / "tests"))
-from harness import test, finish  # noqa: E402
+from harness import test, finish, need_lua  # noqa: E402
 from lua_modules_util import module_src  # noqa: E402
 
 import planner  # noqa: E402
@@ -153,6 +153,7 @@ def _():
 
 @test("lua: slaughter_pick(oldest) takes the oldest of the kind and sex; without it, as before")
 def _():
+    need_lua()
     from lupa.lua53 import LuaRuntime
     src = (ROOT / "lua" / "ai-bridge-actions.lua").read_text(encoding="utf-8")
     body = re.search(r"\nfunction slaughter_pick\(.*?\nend\n", src, re.S).group(0)
@@ -277,6 +278,7 @@ _FAKE = re.search(r'FAKE = r"""(.*?)"""', (ROOT / "tests" / "test_moods.py").rea
 
 @test("lua: request_avail counts what the dwarf carries as held (not twice); an error part way is 'capped'")
 def _():
+    need_lua()
     from lupa.lua53 import LuaRuntime
     L = LuaRuntime(unpack_returned_tuples=True)
     W = L.execute(_FAKE, module_src("ai-moods.lua"))
@@ -308,6 +310,7 @@ def _():
 
 @test("lua: the changed files compile under Lua 5.3")
 def _():
+    need_lua()
     from lupa.lua53 import LuaRuntime
     L = LuaRuntime()
     for f in ("ai-moods.lua", "ai-bridge-actions.lua"):

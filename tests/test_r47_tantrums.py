@@ -29,7 +29,11 @@ import planner_tantrums as PT  # noqa: E402
 import crisis  # noqa: E402
 from digest import SECTION_DEFAULTS  # noqa: E402
 
-from lupa.lua53 import LuaRuntime  # noqa: E402
+try:
+    from lupa.lua53 import LuaRuntime  # noqa: E402
+except ImportError:
+    print("SKIPPED: these tests need the lupa package (pip install lupa)")
+    sys.exit(0)
 
 LUA_DIR = ROOT / "lua"
 DAY = 1200

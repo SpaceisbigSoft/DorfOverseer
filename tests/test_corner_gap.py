@@ -10,7 +10,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "brain"))
 from harness import test, finish  # noqa: E402
-from lupa.lua53 import LuaRuntime  # noqa: E402
+try:
+    from lupa.lua53 import LuaRuntime  # noqa: E402
+except ImportError:
+    print("SKIPPED: these tests need the lupa package (pip install lupa)")
+    sys.exit(0)
 
 SRC = (ROOT / "lua" / "ai-builder-sites.lua").read_text(encoding="utf-8")
 FN = re.search(r"\nfunction corner_gap\(.*?\nend\n", SRC, re.S).group(0)

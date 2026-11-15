@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-from harness import test, finish, code_has  # noqa: E402
+from harness import test, finish, code_has, need_lua  # noqa: E402
 from lua_modules_util import module_src  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "brain"))
@@ -123,6 +123,7 @@ def tr(w, x, y, z=100):
 @test("tiles: a bedrooms level: the stair (its level and the stair level it dug) and the corridor High, "
       "every other dug tile Low, each tile once")
 def _():
+    need_lua()
     lua, env, w = world()
     t = tiles(lua, env, bedrooms())
     high = {(x, y, z) for x, y, z, v in t if v == "high"}
@@ -136,6 +137,7 @@ def _():
 
 @test("tiles: a storage level gets only its stair and corridor (High); the rest stays Normal")
 def _():
+    need_lua()
     lua, env, w = world()
     t = tiles(lua, env, bedrooms(kind="storage"))
     assert all(v == "high" for *_, v in t) and len(t) == 6, t
@@ -143,6 +145,7 @@ def _():
 
 @test("tiles: an older level without links: its straight corridor found from the stair toward the anchor")
 def _():
+    need_lua()
     lua, env, w = world()
     t = tiles(lua, env, bedrooms(links=False))
     high = {(x, y) for x, y, z, v in t if v == "high" and z == 100}
@@ -155,6 +158,7 @@ def _():
 
 @test("tiles: a way in is High all through (shaft stairs, gallery, dug cells)")
 def _():
+    need_lua()
     lua, env, w = world()
     p = {"id": 3, "kind": "way_in", "phase": "done", "z": 100, "anchor": {"x": 10, "y": 10},
          "stair": {"x": 10, "y": 10}, "cells": {"dig": []},
@@ -167,6 +171,7 @@ def _():
 
 @test("report: only finished levels are waiting (dig, furnish, wells and cancelled ones not); the deep depot once dug")
 def _():
+    need_lua()
     lua, env, w = world()
     put(lua, w, bedrooms(1), bedrooms(2, phase="furnish"), bedrooms(3, kind="well"),
         bedrooms(4, phase="cancelled"), bedrooms(5, phase="decorate", kind="tombs"))
@@ -185,6 +190,7 @@ def _():
 @test("paint: only tiles at Normal change; the player's Low, High or Restricted ones are left and counted; "
       "the level is recorded and not painted again")
 def _():
+    need_lua()
     lua, env, w = world()
     put(lua, w, bedrooms(1))
     w.tile(52, 50, 100).traffic = LOW          # the player's
@@ -204,6 +210,7 @@ def _():
 
 @test("paint: in slices (max tiles a call): a cursor in the save, resumed next call, then the next level")
 def _():
+    need_lua()
     lua, env, w = world()
     put(lua, w, bedrooms(1), bedrooms(2, kind="storage", z=120))
     r = py(env.paint(T(lua, {"max": 5}), False))
@@ -222,6 +229,7 @@ def _():
 
 @test("paint: the time budget stops a slice early (and it resumes)")
 def _():
+    need_lua()
     lua, env, w = world()
     put(lua, w, bedrooms(1))
     env.os = lua.eval("setmetatable({clock = (function() local c = 0; return function() c = c + 0.02; return c end end)()}, {__index = os})")
@@ -231,6 +239,7 @@ def _():
 
 @test("paint: a dry run counts and changes nothing (no tile, no cursor, no record)")
 def _():
+    need_lua()
     lua, env, w = world()
     put(lua, w, bedrooms(1))
     r = py(env.paint(T(lua, {"max": 5}), True))
@@ -240,6 +249,7 @@ def _():
 
 @test("paint: off on the Rules tab: refused, nothing painted; the report says so")
 def _():
+    need_lua()
     lua, env, w = world()
     put(lua, w, bedrooms(1))
     w.settings = T(lua, {"traffic": False})
@@ -251,6 +261,7 @@ def _():
 @test("paint: a level gone from the records drops its cursor; nothing to do (no refusal back-off), "
       "an asked-for unknown level still refused")
 def _():
+    need_lua()
     lua, env, w = world()
     put(lua, w, bedrooms(1))
     env.paint(T(lua, {"max": 3}), False)
@@ -271,6 +282,7 @@ def painted(lua, env, w):
 
 @test("audit: a few tiles back at Normal (a guard lifted) are painted again; the level's check date moves")
 def _():
+    need_lua()
     lua, env, w = world()
     painted(lua, env, w)
     w.tile(56, 49, 100).traffic = NORMAL
@@ -285,6 +297,7 @@ def _():
 
 @test("audit: the player changed many tiles (or wiped them to Normal): the level is his from then on, never painted again")
 def _():
+    need_lua()
     lua, env, w = world()
     painted(lua, env, w)
     for x in (56, 57, 58):
@@ -307,6 +320,7 @@ def _():
 
 @test("audit: tiles a guard restricted (a fire) don't count against the level; a dry run changes nothing")
 def _():
+    need_lua()
     lua, env, w = world()
     painted(lua, env, w)
     for x in (56, 57, 58):
@@ -322,6 +336,7 @@ def _():
 
 @test("audit: needs a painted level; ai_value gives what the AI painted (for the fire guard), nil elsewhere")
 def _():
+    need_lua()
     lua, env, w = world()
     put(lua, w, bedrooms(1))
     assert py(env.paint(T(lua, {"key": "p1", "audit": True}), False))["ok"] is False
@@ -375,6 +390,7 @@ return env
 @test("hooks: the fire guard (run in a fake fort) restricts the AI's painted tiles too and lifts them back to what "
       "the AI painted; the player's own High kept; start_project keeps the corridor (links)")
 def _():
+    need_lua()
     lua = LuaRuntime(unpack_returned_tuples=True)
     tiles = lua.table_from({"51,50,100": lua.table_from({"traffic": HIGH}),     # the AI's High
                             "49,50,100": lua.table_from({"traffic": LOW}),      # the AI's Low
@@ -400,6 +416,7 @@ def _():
 
 @test("Lua: ai-traffic compiles (Lua 5.3), is a module, and names the traffic values, never numbers")
 def _():
+    need_lua()
     lua = LuaRuntime(unpack_returned_tuples=True)
     assert lua.eval("function(s) local f, e = load(s, 'c', 't', {}); return e end")(SRC) is None
     assert "--@module = true" in SRC
@@ -424,6 +441,7 @@ def _():
 
 @test("settings: traffic on by default, kept off when set off, sent to the brain; a row on the Rules page clear of the others")
 def _():
+    need_lua()
     lua = LuaRuntime(unpack_returned_tuples=True)
     S = lua.eval("""function(src)
       local env = setmetatable({dfhack_flags = {module = true}, dfhack = {getDFPath = function() return '.' end,

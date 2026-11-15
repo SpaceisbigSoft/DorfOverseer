@@ -17,7 +17,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "brain"))
 sys.path.insert(0, str(ROOT / "tests"))
-from harness import make_test, finish  # noqa: E402
+from harness import make_test, finish, skip  # noqa: E402
 
 from planner import Memory, plan, record, note_cycle  # noqa: E402
 import planner_core  # noqa: E402
@@ -162,7 +162,7 @@ def lupa_test(name):
     def wrap(fn):
         if HAVE_LUPA:
             return test(name)(fn)
-        return fn
+        return test(name)(lambda: skip("needs the lupa package (pip install lupa)"))   # (0.105.48) counted
     return wrap
 
 

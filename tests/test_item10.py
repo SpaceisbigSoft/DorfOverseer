@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-from harness import test, finish  # noqa: E402
+from harness import test, finish, need_lua  # noqa: E402
 from lua_modules_util import module_src  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "brain"))
@@ -202,6 +202,7 @@ def bench_fort(lua, env, w, areas=True):
 
 @test("lua benches: the AI's own workshops of a kind (in its areas), their skill range, the labour's skills")
 def _():
+    need_lua()
     lua, env, w = world("ai-benches.lua")
     bench_fort(lua, env, w)
     r = py(env.report())
@@ -221,6 +222,7 @@ JOB_SKILLS = {"CARPENTRY", "MASONRY", "STONECRAFT", "CUTGEM", "CLOTHESMAKING", "
 @test("lua benches: every kind's labour and skill a real df.unit_labor / df.job_skill token; the craftsdwarfs' "
       "and jewelers' learners counted (STONE_CRAFT, CUT_GEM)")
 def _():
+    need_lua()
     lua, env, w = world("ai-benches.lua")
     kinds = py(env.BENCH_KINDS)
     for kind, k in kinds.items():
@@ -239,6 +241,7 @@ def _():
 @test("lua cap_bench: the newest untouched one capped, the oldest kept for the masters; remembered; "
       "refused with one, twice, or when the player set the others")
 def _():
+    need_lua()
     lua, env, w = world("ai-benches.lua")
     bench_fort(lua, env, w)
     r = py(env.cap_bench("Carpenters", 5, True))
@@ -266,6 +269,7 @@ def _():
 
 @test("lua release_bench: the AI's cap lifted; one the player changed since is forgotten, untouched")
 def _():
+    need_lua()
     lua, env, w = world("ai-benches.lua")
     bench_fort(lua, env, w)
     assert py(env.cap_bench("Carpenters", 5, False))["ok"]
@@ -283,6 +287,7 @@ def _():
 
 @test("lua benches: no AI areas, no workshop of the AI's; a capped workshop gone is forgotten")
 def _():
+    need_lua()
     lua, env, w = world("ai-benches.lua")
     bench_fort(lua, env, w, areas=False)
     assert py(env.report())["kinds"] in ({}, [])
@@ -349,6 +354,7 @@ def forest(lua, w):
 
 @test("lua forestry report: trees by where they stand, reach, cavern layers by z band, dangers near a layer")
 def _():
+    need_lua()
     lua, env, w = world("ai-forestry.lua")
     forest(lua, w)
     r = py(env.report())
@@ -366,6 +372,7 @@ def _():
 @test("lua cavern_logging: the reachable cavern trees marked, nearest first, remembered; none in a layer "
       "with a danger; stop unmarks the AI's; inside_only leaves the caverns")
 def _():
+    need_lua()
     lua, env, w = world("ai-forestry.lua")
     forest(lua, w)
     r = py(env.cavern_logging(5, True, False, False))
@@ -397,6 +404,7 @@ def _():
 @test("lua cavern_logging: a danger near one layer: the report counts the AI's marks it makes unsafe, and "
       "stop unsafe_only lifts only those (the safe layer's marks stand; no mark-unmark churn)")
 def _():
+    need_lua()
     lua, env, w = world("ai-forestry.lua")
     forest(lua, w)
     w.walk_z[20] = True
@@ -426,6 +434,7 @@ def _():
 
 @test("lua cavern_logging: a felled tree the AI marked is forgotten and counted")
 def _():
+    need_lua()
     lua, env, w = world("ai-forestry.lua")
     forest(lua, w)
     assert py(env.cavern_logging(1, False, False, False))["ok"]
@@ -451,6 +460,7 @@ def grove_fort(lua, env, w):
 @test("lua keep_grove: the patch with the most saplings near the fort, its traffic restricted, its trees' "
       "marks lifted, remembered; guard unmarks again; a reserved area or no way in refuses")
 def _():
+    need_lua()
     lua, env, w = world("ai-forestry.lua")
     grove_fort(lua, env, w)
     r = py(env.keep_grove(True, False))
@@ -644,6 +654,7 @@ def leather_fort(lua, w):
 @test("lua leather_gear: empty leather entries by slot and kind, the given ones, the free leather pieces on "
       "DF's list, every class asked for")
 def _():
+    need_lua()
     lua, env, w = world("ai-leather-gear.lua")
     leather_fort(lua, w)
     r = py(env.report())

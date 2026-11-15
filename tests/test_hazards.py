@@ -21,7 +21,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
-from harness import test, finish  # noqa: E402
+from harness import test, finish, need_lua  # noqa: E402
 from lua_modules_util import module_src  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "brain"))
@@ -167,9 +167,9 @@ def first_look(env):
 
 @test("magma: spilt magma near a dwarf is found, recorded, put in a spot with the nearest dwarf; magma there at the first read is not spilt")
 def _():
+    need_lua()
     lua, env, w = world()
-    if LuaRuntime is None:
-        return
+    need_lua()
     cit(lua, w, 1, 50, 50, 100)
     spill(lua, w, [(40, 40)])                   # there before the AI looked: the player's
     m = report(env)["magma"]
@@ -186,6 +186,7 @@ def _():
 
 @test("magma: a new tile at a later read marks it spreading (grew_ago); a dwarf on a magma tile is burning")
 def _():
+    need_lua()
     lua, env, w = world()
     cit(lua, w, 1, 50, 50, 100)
     first_look(env)
@@ -200,6 +201,7 @@ def _():
 
 @test("magma: the map's own magma (a feature), the AI's magma works' tiles and a magma workshop's pit are not spilt")
 def _():
+    need_lua()
     lua, env, w = world()
     cit(lua, w, 1, 50, 50, 100)
     first_look(env)
@@ -215,6 +217,7 @@ def _():
 
 @test("magma: a spot near the AI's magma works names it (for the floodgate); a still block is read only once a day")
 def _():
+    need_lua()
     lua, env, w = world()
     cit(lua, w, 1, 50, 50, 100)
     first_look(env)
@@ -236,6 +239,7 @@ def _():
 
 @test("magma_guard: tiles round the spilt magma near the dwarves restricted (only Normal ones), jobs beside it off; lift undoes it")
 def _():
+    need_lua()
     lua, env, w = world()
     cit(lua, w, 1, 50, 50, 100)
     first_look(env)
@@ -259,6 +263,7 @@ def _():
 
 @test("magma_guard: refused with nothing to do when no spilt magma is near the dwarves")
 def _():
+    need_lua()
     lua, env, w = world()
     cit(lua, w, 1, 10, 10, 100)
     spill(lua, w, [(40, 40)])
@@ -269,6 +274,7 @@ def _():
 
 @test("magma: cooled tiles reported settled with how long dry and the walls left; magma_reclaim digs a wall, never one beside liquid")
 def _():
+    need_lua()
     lua, env, w = world()
     cit(lua, w, 1, 50, 50, 100)
     first_look(env)
@@ -296,6 +302,7 @@ def _():
 
 @test("magma_reclaim: dig false only opens the paths; nothing cooled and nothing restricted: refused")
 def _():
+    need_lua()
     lua, env, w = world()
     r = py(env.magma_reclaim(DAY, True, False))
     assert r["rejected"] and r["nothing_to_do"], r
@@ -315,6 +322,7 @@ def _():
 
 @test("magma (review): a player's magma channel built later counts only in the AI's levels or near the dwarves; never on a building or zone outside the AI's levels or beside the player's floodgate")
 def _():
+    need_lua()
     lua, env, w = world()
     cit(lua, w, 1, 50, 50, 100)
     w.levels = T(lua, [{"x1": 30, "y1": 30, "x2": 40, "y2": 40, "z": 100}])
@@ -345,6 +353,7 @@ def _():
 
 @test("magma (review): a recorded tile that no longer counts (an older save's record of the player's magma) is forgotten")
 def _():
+    need_lua()
     lua, env, w = world()
     cit(lua, w, 1, 50, 50, 100)
     first_look(env)
@@ -359,6 +368,7 @@ def _():
 
 @test("magma_guard (review): a tile the AI painted High/Low is restricted and given its painted value back on lift and on reclaim; the player's own Low kept")
 def _():
+    need_lua()
     lua, env, w = world()
     cit(lua, w, 1, 50, 50, 100)
     first_look(env)
@@ -407,6 +417,7 @@ def island_world(lua, w):
 
 @test("channel check: channels at both ends of a floor strip over an open room leave it hanging: the first refused (the strip held by it), one end alone is let by")
 def _():
+    need_lua()
     lua, env, w = world()
     island_world(lua, w)
     bad = py(env.channel_islands(T(lua, [{"x": 49, "y": 50}, {"x": 53, "y": 50}]), 100))
@@ -421,6 +432,7 @@ def _():
 
 @test("channel check: on rock (a wall under every floor) nothing is refused")
 def _():
+    need_lua()
     lua, env, w = world()
     bad = py(env.channel_islands(T(lua, [{"x": 10, "y": 10}, {"x": 12, "y": 10}]), 100))
     assert not bad, bad
@@ -428,6 +440,7 @@ def _():
 
 @test("channel_check: quickfort data with the hanging channels taken out, other keys kept, recorded only for real")
 def _():
+    need_lua()
     lua, env, w = world()
     island_world(lua, w)
     data = lua.table_from({100: lua.table_from({50: lua.table_from({49: "h", 53: "h", 60: "d"})})})
@@ -446,6 +459,7 @@ def _():
 
 @test("cave-ins: the announcement's spot with the hurt and the cut off near it; old ones and other news left out")
 def _():
+    need_lua()
     lua, env, w = world()
     cit(lua, w, 1, 50, 50, 100, hurt=True)
     cit(lua, w, 2, 52, 50, 100)
@@ -472,6 +486,7 @@ def _():
 
 @test("frost: each well's water (water, ice, dry), the AI's water zones, the moat frozen, dwarves on ice, the surface freezing")
 def _():
+    need_lua()
     lua, env, w = world()
     cit(lua, w, 1, 30, 30, 120)
     w.tiles["30,30,120"] = T(lua, {"shape": "FLOOR", "material": "FROZEN_LIQUID", "outside": True})
@@ -496,6 +511,7 @@ def _():
 
 @test("heat: what burns or melts by a magma workshop, an AI floodgate that isn't magma-safe, a burning dwarf near it")
 def _():
+    need_lua()
     lua, env, w = world()
     cit(lua, w, 1, 61, 60, 100)
     cit(lua, w, 2, 90, 90, 100)
@@ -512,6 +528,7 @@ def _():
 
 @test("heat_risk: wood burns, a low-melting metal melts, a fixed-temperature or high-melting one is safe")
 def _():
+    need_lua()
     lua, env, w = world()
     assert env.heat_risk(T(lua, {"ignite_point": 10508, "melting_point": 60001})) == "burns"
     assert env.heat_risk(T(lua, {"ignite_point": 60001, "melting_point": 11500})) == "melts"
@@ -522,6 +539,7 @@ def _():
 
 @test("report: the cave-ins, frost and heat are read again only after LIGHT_TICKS (the magma every time)")
 def _():
+    need_lua()
     lua, env, w = world()
     cit(lua, w, 1, 50, 50, 100)
     r1 = py(env.report())

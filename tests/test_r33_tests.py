@@ -93,7 +93,7 @@ def _():
     sys.path.insert(0, str(ROOT / "tests"))
     import run_all
     with tempfile.TemporaryDirectory() as d:
-        (Path(d) / "test_a_skips.py").write_text('print("SKIPPED: no lupa")\nprint()\nprint("0 passed, 0 failed")\n')
+        (Path(d) / "test_a_skips.py").write_text('print("SKIPPED: no fort data here")\nprint()\nprint("0 passed, 0 failed")\n')
         (Path(d) / "test_b_runs.py").write_text('print("[PASS] x")\nprint()\nprint("1 passed, 0 failed")\n')
         old = run_all.HERE
         run_all.HERE = Path(d)

@@ -22,7 +22,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 sys.path.insert(0, str(ROOT / "brain"))
-from harness import test, finish  # noqa: E402
+from harness import test, finish, need_lua  # noqa: E402
 from planner import PLANNER_CONFIG as CFG, Memory  # noqa: E402
 import planner_core  # noqa: E402
 import planner_farms  # noqa: E402
@@ -160,6 +160,7 @@ def _():
 
 @test("D4 High: the bridge stamps the refusal of a twice-retired work (a new tick, `retired` kept)")
 def _():
+    need_lua()
     env, W = moat_world()
     to_filling(env, W, "moat")
     st = env.load_state()
@@ -230,6 +231,7 @@ def _():
 
 @test("D4 Med: floods a year apart, or far from the work, never hold a done moat")
 def _():
+    need_lua()
     env, W = moat_world()
     wk = to_filling(env, W, "moat")
     wk.stage = "done"
@@ -252,6 +254,7 @@ def _():
 
 @test("D4 Med: three floods near the work within 28 days: held (then retired by the AI), saying so")
 def _():
+    need_lua()
     env, W = moat_world()
     wk = to_filling(env, W, "moat")
     soak(W, wk)
@@ -266,6 +269,7 @@ def _():
 
 @test("D4 Med: irrigation shut at day 26 and reopened at day 30 isn't held at its next step")
 def _():
+    need_lua()
     env, W = irrigation_world()
     to_filling(env, W, "irrigation")
     W.tick += 26 * DAY
@@ -283,6 +287,7 @@ def _():
 
 @test("D4 Med: a moat shut at day 25 of filling and reopened isn't held at once; a pull not made is asked again")
 def _():
+    need_lua()
     env, W = moat_world()
     to_filling(env, W, "moat")
     W.tick += 25 * DAY
@@ -327,6 +332,7 @@ def _():
 
 @test("D4 Med: the bridge's re-check: a still-wet room stays held (gate shut); dried, it is finished")
 def _():
+    need_lua()
     env, W = irrigation_world()
     to_filling(env, W, "irrigation")
     wk = works(W).irrigation
@@ -349,6 +355,7 @@ def _():
 
 @test("D4 Med: the floodgate gone: a new one placed where it stood, then built, linked and filled again")
 def _():
+    need_lua()
     env, W = moat_world()
     wk = to_filling(env, W, "moat")
     g = wk.plan.gate
@@ -377,6 +384,7 @@ def _():
 
 @test("D4 Med: the stack's screw pumps are set to 'Start pump manually' while it fills, unset when done")
 def _():
+    need_lua()
     env, W = pump_world()
     wk = to_filling(env, W, "pump")
     pumps = [b for b in wk.plan.builds.values() if b.kind == "ScrewPump"]
@@ -396,6 +404,7 @@ def _():
 
 @test("D4 Med: a flood shut stops the pumps; the stall flag is cleared once the reservoir rises again")
 def _():
+    need_lua()
     env, W = pump_world()
     wk = to_filling(env, W, "pump")
     t = wk.plan.test

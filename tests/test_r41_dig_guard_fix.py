@@ -34,7 +34,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 LUA_DIR = ROOT / "lua"
 sys.path.insert(0, str(ROOT / "brain"))
-from harness import test, finish  # noqa: E402
+from harness import test, finish, need_lua  # noqa: E402
 from lua_modules_util import module_src, UTIL_SRC  # noqa: E402
 
 try:
@@ -102,8 +102,7 @@ def broken_at(*tiles):
 def util_test(name):
     def deco(fn):
         def run():
-            if LuaRuntime is None:
-                return
+            need_lua()
             reset()
             try:
                 fn()
@@ -159,8 +158,7 @@ def wayin_world():
 def path_test(name):
     def deco(fn):
         def run():
-            if LuaRuntime is None:
-                return
+            need_lua()
             fn()
         return test(name)(run)
     return deco
@@ -337,8 +335,7 @@ def _():
     seg = src[i:i + 900]
     assert "held = true" in seg and "guards the underworld" in seg and "d.guard_held" in seg, seg
     assert src.index("'dig-now'", i) > i + seg.index("held = true")
-    if LuaRuntime is None:
-        return
+    need_lua()
     reset()
     adamantine(30, 30, 20)
     U.dig_guard_reset()
@@ -505,8 +502,7 @@ def _():
         assert "if dfhack and dfhack.onStateChange then" in src, name
         keys += re.findall(r"dfhack\.onStateChange\['([^']+)'\]", src)
     assert len(keys) == len(set(keys)) and "ai-util-dig-guard" in keys, keys
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua = LuaRuntime(unpack_returned_tuples=True)
 
     class Event:                    # a Python object: a userdata in Lua, as DFHack's event is
@@ -522,8 +518,7 @@ def _():
 @test("ff 5, 8: 'n' is no longer a key the guard calls safe; the unreadable tiles remembered up to "
       "DIG_GUARD_TILES_MAX")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     assert U.DIG_KEYS_SAFE.n is None and U.dig_cell_unknown("n")
     assert U.DIG_KEYS_SAFE.x is True and not U.dig_cell_unknown("x")
     reset()

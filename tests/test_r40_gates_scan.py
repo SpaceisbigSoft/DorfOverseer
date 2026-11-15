@@ -50,7 +50,10 @@ def base_src() -> str | None:
 
 OLD = base_src()
 if OLD is None:
-    print(f"SKIPPED: no {BASE} commit to compare with (git history needed)")
+    # (0.105.48) a one-off proof, not a regression test: the 0.105.40 scan against
+    # merge39's own source, run side by side. Without that commit nothing is compared.
+    print(f"SKIPPED: a one-off proof that 0.105.40's cheaper gate scan answers as merge39's; it needs "
+          f"commit {BASE}, not in this clone (the scan itself is tested by test_gates*.py and test_r3*_gates.py)")
     sys.exit(0)
 OLD_SRC = with_util(OLD, "ai-gates.lua")
 NEW_SRC = module_src("ai-gates.lua")

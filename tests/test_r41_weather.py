@@ -16,7 +16,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 from lua_modules_util import module_src  # noqa: E402
-from harness import test, finish  # noqa: E402
+from harness import test, finish, skip  # noqa: E402
 sys.path.insert(0, str(ROOT / "brain"))
 
 import planner  # noqa: E402
@@ -374,6 +374,10 @@ return e
             end""")
         r = E.weather_section()
         assert r.rain == "evil" and r.near_fort and r.region.edge_near == 150, r
+else:
+    @test("the 4 Lua test(s) of the block at line 227: not run")
+    def _():
+        skip("needs the lupa package (pip install lupa)")      # (0.105.48) counted, not passed
 
 
 if __name__ == "__main__":
